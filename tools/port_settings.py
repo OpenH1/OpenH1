@@ -42,212 +42,12 @@ MENU_PLATFORMS = ("desktop", "android", "web", "vr", "hdr", "touch", "pointer", 
 # display.hdr_paper_white's values, percent of the system's SDR white
 PAPER_WHITES = (50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200, 250)
 
-# each screen: its folder below PE, its screen's widget (the name the profile
-# menu opens), its header (widget, bitmap), the row spacing, and its rows:
-# (label, setting, [(shown, value)], help, platform[, key]): platform is None
-# for every platform, else the platforms the row is for, separated by spaces
-# (MENU_PLATFORMS: the menus' platform attribute,
-# port/linux/src/menu_files.c); key names the row's widgets where two rows set
-# one setting (one for each platform), else the setting's name does
-SCREENS = {
-    "video_settings": {
-        "screen": "video_settings_screen",
-        "header": ("header_profile_video_settings", f"{PE}/video_settings/header_profile_video_settings"),
-        # (eleven places on the desktop: closer than the other screens' 30px
-        # step, the last row where it was at 30.) each platform packs its own
-        # rows, so a row hidden on this machine does not leave a gap
-        "spacing": 27,
-        "help_top": 364,
-        "platform_places": True,
-        # (rows in the place of the row before them: Window Size in
-        # Resolution's, port/linux/game/menu_functions.c showing the one the
-        # display mode chosen uses; Android's and the web's anti-aliasing in the
-        # desktop's)
-        "same_place": ["display.window_size", "anti_aliasing_android", "anti_aliasing_web"],
-        "rows": [
-            ("DISPLAY MODE:", "display.mode",
-             [("FULLSCREEN", "fullscreen"), ("BORDERLESS", "borderless"), ("WINDOWED", "windowed")],
-             "Fullscreen takes the display; borderless covers it\nwith a window. F11 switches to the window.",
-             "desktop"),
-            # (port/linux/game/menu_tags.c adds the display's resolutions)
-            ("RESOLUTION:", "display.resolution", [("NATIVE", "native")],
-             "What fullscreen and borderless draw at. Fullscreen\nsets the display to it; borderless scales it.",
-             "desktop"),
-            # (port/linux/game/menu_tags.c puts the sizes that fit the desktop
-            # in place of this one)
-            ("WINDOW SIZE:", "display.window_size", [("1280 x 960", "1280x960")],
-             "The window's size: 4:3, then 16:10, 16:9 and 21:9\n(its edges can also be dragged).", "desktop"),
-            ("RENDER RESOLUTION:", "display.resolution_scaling", [("FULL", "native"), ("XBOX 640X480", "original")],
-             "Full draws at your screen's resolution; Xbox draws\nthe Xbox's 640x480 and scales it up.", "desktop web"),
-            ("V-SYNC:", "display.vsync", ON_OFF,
-             "Wait for the display between frames: the picture\nnever tears, at a little more input lag.", None),
-            ("FRAME RATE LIMIT:", "display.max_fps",
-             [("AUTO", "0"), ("30", "30"), ("60", "60"), ("120", "120"), ("144", "144"), ("165", "165"),
-              ("240", "240"), ("NONE", "-1")],
-             "With V-Sync off, the most frames a second. Auto:\ntwice the display's refresh rate.", "desktop web"),
-            # (display.battery_saver: port/linux/src/battery_saver.c)
-            ("BATTERY SAVER:", "display.battery_saver", [("OFF", "off"), ("ON", "on"), ("AUTO", "auto")],
-             "Up to 60 frames a second, Classic graphics, for\nbattery and heat. Auto: on while on battery.", None),
-            ("SMOOTH MOTION:", "display.interpolation", ON_OFF,
-             "Smooth movement at any frame rate, between the\ngame's 30 updates a second.", None),
-            ("INSTANT AIM:", "display.direct_camera", ON_OFF,
-             "Turn the view the moment the mouse moves, not up\nto two of the game's updates later.", "desktop web"),
-            ("HIGH-RES HUD:", "display.high_res_hud", ON_OFF,
-             "Draw the HUD from the high-res redraws; off\ndraws the game's own pictures.", None),
-            ("BUTTON STYLE:", "display.hud_button_style",
-             [("CLASSIC", "classic"), ("GEMS", "gems"), ("DARK GEMS", "menu_gems")],
-             "Classic: plain Xbox buttons. Gems: shaded Xbox\nbuttons. Dark Gems: the menu's button artwork.", None),
-            ("HIGH-RES TEXT:", "display.high_res_text", ON_OFF,
-             "Draw text and titles with high-res fonts; off\ndraws the game's own.", None),
-            ("ANTI-ALIASING:", "display.anti_aliasing",
-             [("OFF", "off"), ("FXAA", "fxaa"), ("SMAA", "smaa"), ("SSAA 2X", "ssaa2x"), ("MSAA 2X", "msaa2x"),
-              ("MSAA 4X", "msaa4x"), ("MSAA 8X", "msaa8x")],
-             "Smooth jagged edges. FXAA and SMAA cost little;\nSSAA and MSAA are sharper and cost more.",
-             "desktop"),
-            # (Android's Vulkan draws SMAA; the web's OpenGL ES has FXAA alone)
-            ("ANTI-ALIASING:", "display.anti_aliasing",
-             [("OFF", "off"), ("FXAA", "fxaa"), ("SMAA", "smaa"), ("MSAA 2X", "msaa2x"), ("MSAA 4X", "msaa4x")],
-             "Smooth jagged edges. FXAA and SMAA cost little;\nMSAA is sharper and costs more.",
-             "android", "anti_aliasing_android"),
-            ("ANTI-ALIASING:", "display.anti_aliasing",
-             [("OFF", "off"), ("FXAA", "fxaa"), ("MSAA 2X", "msaa2x"), ("MSAA 4X", "msaa4x")],
-             "Smooth jagged edges. FXAA costs little; MSAA is\nsharper and costs more.",
-             "web", "anti_aliasing_web"),
-            ("TEXTURE FILTERING:", "display.anisotropic_filtering",
-             [("OFF", "0"), ("2X", "2"), ("4X", "4"), ("8X", "8"), ("16X", "16")],
-             "Keep floors and walls sharp into the distance.\nOff looks as the Xbox did.", None),
-            ("SHADOW QUALITY:", "display.shadow_resolution",
-             [("XBOX", "128"), ("MEDIUM", "256"), ("HIGH", "512"), ("ULTRA", "1024")],
-             "How smooth the edges of objects' shadows are:\nXBOX as the original; higher costs more.",
-             None),
-            ("SMOOTH LIGHTING:", "display.per_pixel_lighting", ON_OFF,
-             "Light characters and weapons smoothly, without\nthe flat facets of the Xbox's lighting.", None),
-            ("MODEL DETAIL:", "display.model_detail",
-             [("AUTO", "auto"), ("XBOX", "stock"), ("FULL", "native"), ("HIGHEST", "highest")],
-             "Detail of models in the distance: Xbox as on a TV,\nFull for your screen. Auto: Full in VR.", None),
-            ("SHIELD GLOW:", "display.shield_glow", ON_OFF,
-             "Shields light their surroundings as they flare.\nOnline: the host's choice.", None),
-            ("GLOW INTENSITY:", "display.shield_glow_intensity", [("DEFAULT", "default"), ("LIGHT SHOW", "light_show")],
-             "Light Show: the glow reaches three times as far.\nOnline: the host's choice.", None),
-            ("DYNAMIC LIGHTS:", "display.dynamic_lights", [("CLASSIC", "classic"), ("ENHANCED", "enhanced")],
-             "Enhanced: plasma bolts, muzzle flashes and blasts\nlight their surroundings smoothly, with a glow.",
-             "desktop android"),
-            ("MATCH TIMER:", "display.match_timer", ON_OFF,
-             "Draw a clock at the bottom right in multiplayer,\ncounting up from the start of the game.", None),
-            # (display.hdr's rows, on the renderers that draw it: menu_files.c's
-            # "hdr")
-            ("HDR:", "display.hdr", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
-             "Brighter highlights on an HDR display. Auto: on\nwhen the display shows HDR.", "hdr"),
-            ("HDR MODE:", "display.hdr_mode", [("FAITHFUL", "faithful"), ("PUNCHY", "punchy")],
-             "Faithful: the stock picture, brighter highlights.\nPunchy: the whole scene lifted, remaster style.",
-             "hdr"),
-            ("HDR BRIGHTNESS:", "display.hdr_paper_white", [(f"{value}%", str(value)) for value in PAPER_WHITES],
-             "With HDR, how bright white surfaces and the HUD\nare, in percent of the system's white.", "hdr"),
-            # (OpenCE's OVERSHIELD and HDR DISPLAY rows are left out: OpenH1's
-            # renderers do not draw the overshield's rise, and HDR output is
-            # display.hdr's own; port/linux/README.md)
-        ],
-    },
-    "mouse_settings": {
-        "screen": "mouse_settings_screen",
-        "header": ("header_profile_mouse_settings", f"{PE}/mouse_settings/header_profile_mouse_settings"),
-        "spacing": 30,
-        "rows": [
-            ("HORIZONTAL SENSITIVITY:", "input.mouse_sensitivity", SENSITIVITIES,
-             "How fast the view turns side to side for the\nmouse's movement.", None),
-            ("VERTICAL SENSITIVITY:", "input.mouse_vertical_sensitivity", [("SAME", "0")] + SENSITIVITIES,
-             "How fast the view turns up and down; Same\nturns it as fast as side to side.", None),
-            ("INVERT VERTICAL AXIS:", "input.invert_mouse", YES_NO,
-             "Moving the mouse forward looks down.", None),
-            ("AIM ASSIST:", "input.mouse_aim_assist", ON_OFF,
-             "Slow and drag the view along with a target while\naiming with the mouse, as with a controller.", None),
-            ("BUTTON PROMPTS:", "input.button_prompts",
-             [("AUTO", "auto"), ("CONTROLLER", "controller"), ("KEYBOARD", "keyboard")],
-             "The HUD's prompts name the key bound to the action.\nAuto: the keys or the buttons, as last played with.",
-             None),
-        ],
-    },
-    "audio_settings": {
-        "screen": "audio_settings_screen",
-        "header": ("header_profile_audio_settings", f"{PE}/audio_settings/header_profile_audio_settings"),
-        "spacing": 30,
-        # (the devices, desktop only, first: Android's rows from the top)
-        "platform_places": True,
-        "rows": [
-            # (port/linux/game/menu_tags.c adds the devices SDL finds)
-            ("OUTPUT DEVICE:", "audio.output_device", [("SYSTEM DEFAULT", "default")],
-             "Where the game's sound and the voices play.", "desktop"),
-            ("INPUT DEVICE:", "audio.input_device", [("SYSTEM DEFAULT", "default")],
-             "The microphone voice chat listens to.", "desktop"),
-            ("MASTER VOLUME:", "audio.volume", VOLUMES, "The volume of everything.", None),
-            ("MUSIC VOLUME:", "audio.music_volume", VOLUMES, "The music's volume.", None),
-            ("EFFECTS VOLUME:", "audio.effects_volume", VOLUMES,
-             "The volume of every other sound: effects and\nspeech.", None),
-            ("REVERB:", "audio.reverb", ON_OFF,
-             "Echo sounds as the place you are in does, and\nmuffle those behind walls, as the Xbox did.", None),
-            ("SOUND:", "audio.enabled", ON_OFF,
-             "Turn all sound off or on. Takes effect the next\ntime the game starts.", None),
-            # voice chat: this machine's own (port/linux/game/network_voice.c)
-            ("VOICE CHAT:", "audio.voice_chat",
-             [("PUSH TO TALK", "push_to_talk"), ("OPEN MIC", "open_mic"), ("OFF", "off")],
-             "Talk in network games: while PUSH TO TALK is held\n(Controls), whenever you speak, or never.", None),
-            ("VOICE VOLUME:", "audio.voice_volume", VOLUMES, "The other players' voices.", None),
-        ],
-    },
-    "network_setup": {
-        "screen": "network_settings_screen",
-        "header": ("header_profile_network_settings", f"{PE}/network_setup/header_profile_network_settings"),
-        "spacing": 30,
-        # (the router, the clipboard and the updates, which the web build
-        # has not: the other rows from the top there)
-        "platform_places": True,
-        "rows": [
-            ("INTERNET PLAY:", "network.online", ON_OFF,
-             "Host and join games over the internet by invite\nlinks; off keeps to the local network.",
-             "desktop android web"),
-            ("OPEN ROUTER PORT:", "network.allow_upnp", ON_OFF,
-             "Ask your router to open the game's port (UPnP),\nso that players can reach your games.",
-             "desktop android"),
-            ("JOIN FROM CLIPBOARD:", "network.join_from_clipboard", ON_OFF,
-             "Join a game when you switch to the game with its\ninvite link copied.", "desktop android"),
-            ("CHECK FOR UPDATES:", "update.auto", ON_OFF,
-             "Look for a new version when the game starts.", "desktop android"),
-            ("PLAYER NAMES:", "display.player_names",
-             [("ALL", "all"), ("ALLIES", "allies"), ("ENEMIES", "enemies"), ("NONE", "none")],
-             "In multiplayer, whose names are drawn above their\nheads.", None),
-            ("PLAYER NAME SIZE:", "display.player_name_scale",
-             [(f"{value:g}x", f"{value:g}") for value in (0.5, 0.75, 1, 1.25, 1.5, 2)],
-             "How large the players' names are drawn.", None),
-            ("SCOREBOARD LAYOUT:", "display.scoreboard_team_layout", [("TEAMS", "teams"), ("BY SCORE", "score")],
-             "A team game's scoreboard: a column for each team,\nor every player in order of score.", None),
-            ("SCOREBOARD PANEL:", "display.scoreboard_background", ON_OFF,
-             "Draw a panel behind the scoreboard, for clearer\ntext.", None),
-        ],
-    },
-    "gamepad_setup": {
-        "screen": "gamepad_setup_screen",
-        "header": ("header_profile_controller_setting", f"{PE}/controller_edit/header_profile_controller_setting"),
-        "spacing": 30,
-        "rows": [
-            ("LOOK SENSITIVITY:", "profile.look_sensitivity", [(str(step), str(step)) for step in range(1, 11)],
-             "How fast the right stick turns the view.", None),
-            ("INVERT LOOK:", "profile.invert_look", YES_NO, "Pushing the right stick up looks down.", None),
-            ("INVERT FLIGHT:", "profile.flight_inversion", YES_NO,
-             "Flying vehicles pitch as aircraft do: pushing up\nflies down.", None),
-            ("AUTO-CENTER LOOK:", "profile.autocenter", YES_NO,
-             "Level the view while walking.", None),
-            ("BUTTON LAYOUT:", "profile.button_preset",
-             [("DEFAULT", "0"), ("SWAP TRIGGERS", "1"), ("SWAP A, L TRIGGER", "2"), ("SWAP B, L TRIGGER", "3"),
-              ("SWAP B, R STICK", "4"), ("BUMPER JUMPER", "5")],
-             "Which of the controller's buttons does what (not\nthe keyboard's: Controls Setup sets those).", None),
-            ("STICK LAYOUT:", "profile.joystick_preset",
-             [("DEFAULT", "0"), ("SOUTHPAW", "1"), ("LEGACY", "2"), ("LEGACY SOUTHPAW", "3")],
-             "Which stick moves and which looks.", None),
-            ("VIBRATION:", "profile.vibration", ON_OFF, "Rumble the controller.", None),
-            ("IN-GAME HELP:", "profile.ingame_help", ON_OFF, "Show the game's hints about its controls.", None),
-        ],
-    },
-}
+# the old settings screens' layout (rows of a label and a spinner over their
+# row backgrounds, a line of help for the row chosen, Defaults, OK and Cancel),
+# which VR Setup keeps: each its folder below PE, its screen's widget, its
+# header (widget, bitmap), the row spacing, and its rows (label, setting,
+# [(shown, value)], help, platform[, key])
+SCREENS = {}
 
 # ---------- VR Setup (the VR build's, HALO_VR: port/linux/src/vr.c), its
 # item in the profile menu only while the game runs in VR (platform "vr").
@@ -410,158 +210,452 @@ FRAMES_ADDED = {
         '<frame png="ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__5.png" '
         'width="512" height="256"/>'],
 }
-# Video Setup's categories open ordinary settings screens. Each has the same
-# pending edits, Defaults, OK and Cancel as the other settings screens.
-_video = SCREENS["video_settings"]
-_graphics = {"display.high_res_hud", "display.hud_button_style", "display.high_res_text", "display.anti_aliasing",
-             "display.anisotropic_filtering",
-             "display.shadow_resolution", "display.per_pixel_lighting",
-             "display.dynamic_lights", "display.model_detail", "display.match_timer"}
-# (first, display.graphics: Classic or Enhanced, which shows the rows it
-# chooses at its values as it changes, port/linux/game/menu_functions.c's
-# graphics_preset_show; last, the simulation's rate, game.sim_rate, which
-# menu_functions.c's sim_rate_row_show locks at ORIGINAL (30) in a game that
-# plays at 30 whatever it says: a network game, split screen, a film's
-# playback. Twelve rows, closer than the others' 30px, the help line lower)
-# (the visual modifiers: a screen of their own, Extra Effects)
-_extra_effects = {"display.shield_glow", "display.shield_glow_intensity", "display.hdr", "display.hdr_mode",
-                  "display.hdr_paper_white"}
-SCREENS["video_settings/graphics"] = {
-    "screen": "graphics_settings_screen", "header": _video["header"], "spacing": 24, "help_top": 366,
-    "same_place": ["anti_aliasing_android", "anti_aliasing_web"],
-    "rows": [("PRESET:", "display.graphics", [("ENHANCED", "enhanced"), ("CLASSIC", "classic")],
-              "Classic draws as the Xbox did; Enhanced turns on\nthe improvements below. Each can still be changed.",
-              None)] +
-            [row for row in _video["rows"] if row[1] in _graphics] +
-            [("TICK RATE:", "game.sim_rate", [("ORIGINAL (30)", "30"), ("60", "60"), ("120", "120")],
-              "How often the world updates. 60 and 120 respond\nfaster; online games always play at 30.", None)],
-}
-SCREENS["video_settings/extra_effects"] = {
-    "screen": "extra_effects_settings_screen", "header": _video["header"], "spacing": 30,
-    "rows": [row for row in _video["rows"] if row[1] in _extra_effects],
-}
-_video["rows"] = [row for row in _video["rows"] if row[1] not in _graphics | _extra_effects]
-_video["categories"] = [
-    ("GRAPHICS:", "video_settings/graphics",
-     "Classic or Enhanced, the HUD, text, shadows,\nlighting, anti-aliasing and the tick rate."),
-    ("FOV AND VIEWMODELS:", "video_settings/fov_viewmodels",
-     "The field of view and the first-person\nweapon. Their defaults keep the stock view."),
-    ("EXTRA EFFECTS:", "video_settings/extra_effects",
-     "Visual modifiers the stock game does not\nhave, such as the shield glow and HDR."),
-]
-SCREENS["video_settings/fov_viewmodels"] = {
-    "screen": "fov_viewmodel_settings_screen", "header": _video["header"], "spacing": 30,
-    "rows": [
-        ("FOV:", "display.fov", [("DEFAULT", "0")] + [(str(n), str(n)) for n in range(80, 151, 5)],
-         "On foot, horizontal at 16:9, in degrees.\nDefault keeps the stock view.", None),
-        ("VIEWMODEL FOV:", "display.viewmodel_fov", [("DEFAULT", "0")] + [(str(n), str(n)) for n in range(80, 151, 5)],
-         "The weapon and hands, horizontal at 16:9.\nDefault keeps the weapon's stock view.", None),
-        ("VIEWMODELS:", "display.viewmodel_visible", ON_OFF,
-         "Draw first-person weapons, hands and attached\nvisuals. Gameplay and sound continue when off.", None),
-        ("PASSENGER THIRD PERSON:", "display.passenger_third_person", ON_OFF,
-         "Third-person Warthog and Scorpion passengers in\nthe campaign and co-op. Weapon zoom is disabled.", None),
-        ("ARM SHIELDS:", "display.viewmodel_shield", ON_OFF,
-         "The energy shield's flare on your first-person\narms too, as on your body.", None),
-        ("LEGS:", "display.first_person_legs", ON_OFF,
-         "Your legs in first person, seen looking down,\nmoving as you run. Your body as others see it.", None),
-        ("SHIELD COLOR:", "display.shield_color", [("DEFAULT", "default")] + [(c.upper(), c) for c in SHIELD_COLORS],
-         "Your shield's flare in an armor color, whatever\nyour armor. Only you see it. Default: its own.", None),
-    ],
-}
 
-# Audio Setup's sound processing (port/linux/src/dsound_sdl.c): the reverb
-# and the resampler, a screen of their own (a category, as Video Setup's);
-# the devices and the volumes stay on Audio Setup
-_audio = SCREENS["audio_settings"]
-_processing = {"audio.reverb"}
-SCREENS["audio_settings/sound_processing"] = {
-    "screen": "sound_processing_settings_screen", "header": _audio["header"], "spacing": 30,
-    "rows": [row for row in _audio["rows"] if row[1] in _processing] + [
-        ("RESAMPLER:", "audio.resampler", [("CLEAN", "sinc"), ("CLASSIC", "linear")],
-         "How sounds are converted to your speakers' rate:\nClean is clear; Classic is brighter but harsher.",
-         None),
-    ],
-}
-_audio["rows"] = [row for row in _audio["rows"] if row[1] not in _processing]
+# ---------- Settings: its tabs and their pages (port/linux/game/menu_functions.c's
+# "port settings ..." functions)
+#
+# Settings opens straight to its tabs, VIDEO to PROFILE across the top (LB and
+# RB, Q and E, or a click switch them), each a page of rows under section
+# headers, and on the right a panel saying what the row chosen does: its name,
+# its value in large type and plain words. A row ending in "›" opens a page of
+# its own (Advanced Graphics, Controller...), laid out the same, with its own
+# title, OK and Cancel. A change is kept, on every tab and page, until
+# Settings' OK writes them all (config.toml's, and the profile's controller
+# settings, name and colour, saved), or Cancel forgets them all; a page's OK
+# keeps its changes for Settings' OK, its Cancel forgets them.
+#
+# Only the controller's settings, the name and the colour are the profile's
+# ("profile.<field>"): their page and the PROFILE tab, with no profile, offer
+# to make one there (CREATE PROFILE), and Settings opens without one.
+#
+# Each page is generated laid out for every row (its rows and section headers
+# a step apart, the tabs' from SETTINGS_TOP, the pages' from PAGE_TOP), and
+# menu_functions.c packs the rows shown each frame at the same steps: a row of
+# another platform (left out as the menus load), or one hidden (in a game, with
+# no profile, a row that follows another's value), leaves no gap, and a
+# section with no row shown is hidden. A tab's page keeps the folder and the
+# screen's name of the settings screen it replaces, which the PC version's
+# profile menu (still generated, no longer opened) names.
+#
+# A row: (label, setting, [(shown, value)], help, platform[, key]); a link: (label,
+# None, the screen it opens, help, platform[, key, function]); a section:
+# (SECTION, title). platform is None for every platform, else the platforms
+# (MENU_PLATFORMS) separated by spaces; key names the row's widgets where two
+# rows set one setting, else the setting's name does. A help is plain words,
+# wrapped to the panel by menu_functions.c; after a "|", a note in smaller
+# words. (A value added to a setting is one more (shown, value) pair here,
+# then python3 tools/port_settings.py writes the pages' files.)
 
-# (voice chat stays on Audio Setup; the text chat's rows are the multiplayer
-# HUD's, on Network Setup)
-_audio["categories"] = [
-    ("SOUND PROCESSING:", "audio_settings/sound_processing",
-     "The reverb, and how sounds are converted to the\noutput's rate."),
-]
+SECTION = "section"
+# the geometry, in the 640x480 menu units (menu_functions.c's SETTINGS_*
+# have the same): the rows' column and the panel beside it
+SETTINGS_ROW_X, SETTINGS_ROW_WIDTH, SETTINGS_ROW_HEIGHT, SETTINGS_ROW_STEP = 28, 344, 20, 21
+SETTINGS_SECTION_HEIGHT, SETTINGS_SECTION_STEP = 18, 20
+SETTINGS_TOP, PAGE_TOP = 104, 80
+SETTINGS_TABS_TOP = 76
+SETTINGS_TAB_WIDTH, SETTINGS_TAB_HEIGHT, SETTINGS_TAB_STEP = 90, 22, 96
+SETTINGS_PANEL_X, SETTINGS_PANEL_WIDTH, SETTINGS_PANEL_BOTTOM = 388, 224, 400
+# the value's column in a row, and the arrows either side of it
+SETTINGS_SPINNER_X, SETTINGS_SPINNER_WIDTH = 188, 146
+# the Quality row's pictures in the panel (its stills: SETTINGS_STILLS)
+SETTINGS_STILL_WIDTH, SETTINGS_STILL_HEIGHT = 96, 60
+SETTINGS_BLUE = "#FF2896FF"
+SETTINGS_DIM = "#FF6F9CD0"
+SETTINGS = "main_menu/settings"
+SETTINGS_TITLE = f"{SETTINGS}/header_settings"
+SETTINGS_FUNCTIONS = "port settings page"
 
-# Network Setup's map sharing (port/linux/game/map_share.c): this machine's
-# part in another's game, a screen of its own (a category, as Video Setup's)
-SEED_UPLOADS = (64, 128, 256, 512, 1024, 2048, 4096, 8192, 10240)
-_network = SCREENS["network_setup"]
-# (and the multiplayer HUD's rows, and streamer mode, screens of their own:
-# Network Setup has room for nine places)
-_hud_settings = ("display.player_names", "display.player_name_scale", "display.scoreboard_team_layout",
-                 "display.scoreboard_background")
-_hud_rows = [row for row in _network["rows"] if row[1] in _hud_settings]
-_network["rows"] = [row for row in _network["rows"] if row[1] not in _hud_settings]
-_network["categories"] = [
-    ("MAP SHARING:", "network_setup/map_sharing",
-     "Downloading Custom Edition maps you do not have,\nand helping send them to other players.",
-     "desktop android"),
-    ("MULTIPLAYER HUD:", "network_setup/multiplayer_hud",
-     "Players' names above their heads, the\nscoreboard, and the text chat."),
-    ("STREAMER MODE:", "network_setup/streamer_mode",
-     "Hide offensive words in names and text from\nother players, maps and mods, as stars."),
-]
-SCREENS["network_setup/map_sharing"] = {
-    "screen": "map_sharing_settings_screen", "header": _network["header"], "spacing": 30,
-    "rows": [
-        ("DOWNLOAD MAPS:", "network.map_download", ON_OFF,
-         "Joining a game on a Custom Edition map you do not\nhave: download it from the players (if shared).",
-         None),
-        ("HELP SEND MAPS:", "network.map_seed", ON_OFF,
-         "In another's game, send its map to players who\njoin without it, as a torrent's peers do.", None),
-        ("UPLOAD LIMIT:", "network.map_seed_upload",
-         [(f"{kb} KB/S" if kb < 1024 else f"{kb // 1024} MB/S", str(kb)) for kb in SEED_UPLOADS],
-         "The most you send of maps to other players, so\nthat the game keeps the rest of your upload.", None),
-    ],
-}
-
-# Network Setup's multiplayer HUD: its rows, moved from Network Setup, and the
-# text chat's (port/linux/game/network_chat.c)
-SCREENS["network_setup/multiplayer_hud"] = {
-    "screen": "multiplayer_hud_settings_screen", "header": _network["header"], "spacing": 30,
-    "rows": _hud_rows + [
-        ("TEXT CHAT:", "display.text_chat", [("SHOW", "true"), ("HIDE", "false")],
-         "SHOW the text chat, or HIDE it: no lines, and\nits keys and D-pad Up open nothing.", None),
-        ("CHAT TEXT:", "display.chat_style", [("COLORS", "colors"), ("WHITE", "white")],
-         "The text chat's colors: COLORS, names in their\nteam's color; WHITE, as Custom Edition.", None),
-    ],
-}
-
-# Network Setup's streamer mode (port/linux/game/text_filter.c): words hidden
-# in what other players, maps and mods show, each group from a severity of
-# Surge AI's on (port/assets/text_filter)
+DISPLAY_MODES = [("FULLSCREEN", "fullscreen"), ("BORDERLESS", "borderless"), ("WINDOWED", "windowed")]
+FIELDS_OF_VIEW = [("DEFAULT", "0")] + [(str(n), str(n)) for n in range(80, 151, 5)]
+ANTI_ALIASING_HELP = "Smooths jagged edges. FXAA and SMAA cost little; {} sharper and {} more of the graphics card."
 STREAMER_LEVELS = [("OFF", "off"), ("SEVERE", "severe"), ("STRONG AND WORSE", "strong"), ("MILD AND WORSE", "mild")]
-SCREENS["network_setup/streamer_mode"] = {
-    "screen": "streamer_mode_settings_screen", "header": _network["header"], "spacing": 30,
-    "rows": [
-        ("STREAMER MODE:", "streamer.enabled", ON_OFF,
-         "Hide offensive words in names and text from\nother players, maps and mods, as stars.", None),
-        ("CENSOR SLURS:", "streamer.slurs", STREAMER_LEVELS,
-         "Slurs about race, sexuality, gender and\ndisability.", None),
-        ("CENSOR SWEARING:", "streamer.swearing", STREAMER_LEVELS,
-         "Swearing and sexual words (STRONG AND WORSE\nleaves the mildest showing).", None),
-        ("CENSOR INSULTS:", "streamer.insults", STREAMER_LEVELS,
-         "Name-calling and insults that are not slurs.", None),
-    ],
-}
+SEED_UPLOADS = (64, 128, 256, 512, 1024, 2048, 4096, 8192, 10240)
+VR_CONTROLS = f"{PE}/vr_controls/vr_controls_screen"
 
-# Network Setup in a game (the pause menu's SETTINGS: port/linux/game/
-# menu_tags.c's pause_network_patch): its pages alone, without the rows that
-# would drop the game (internet play) or are for the main menu (the router,
-# the clipboard, the updates)
-SCREENS["network_setup/in_game"] = {
-    "screen": "in_game_network_settings_screen", "header": _network["header"], "spacing": 30,
-    "platform_places": True, "rows": [], "categories": _network["categories"],
+
+def _page_screen(folder: str, screen: str) -> str:
+    return f"{PE}/{folder}/{screen}"
+
+
+# the pages that rows open (and the tabs'): folder below PE, screen, title
+# (a <bitmap> name: TITLES), and for a tab its name
+ADVANCED = ("video_settings/advanced", "advanced_graphics_screen")
+FIRST_PERSON = ("video_settings/first_person", "first_person_screen")
+CONTROLLER = ("gamepad_setup", "gamepad_setup_screen")
+KEY_BINDINGS = ("controls_setup", "controls_settings_screen")
+STREAMER = ("interface_settings/streamer_mode", "streamer_mode_screen")
+# (making a profile: as the main menu's items do, its name asked, then the
+# profile made and edited, menu_functions.c's settings_profile_new)
+CREATE_PROFILE = ("CREATE PROFILE ›", None, None,
+                  "Your name, colour and controller layout are kept in a player profile. Make one to set them; the "
+                  "rest of Settings works without one.", None, "create_profile", "port settings new profile")
+
+PAGES = {
+    # ---- the tabs
+    "video_settings": {
+        "screen": "video_settings_screen", "tab": "VIDEO",
+        "about": "The window, the frame rate and the graphics.",
+        "rows": [
+            (SECTION, "DISPLAY"),
+            ("WINDOW", "display.mode", DISPLAY_MODES,
+             "How the game takes the screen. Fullscreen sets the display to the game's resolution; borderless covers "
+             "the screen with a window, so that other windows open over it at once; windowed is a window you can "
+             "move and resize. F11 switches between the window and the screen.", "computer"),
+            # (in Window Size's place, the one the display mode shown uses:
+            # menu_functions.c's video_rows_show; port/linux/game/menu_tags.c
+            # adds the display's resolutions, and puts the sizes that fit the
+            # desktop in place of Window Size's own)
+            ("RESOLUTION", "display.resolution", [("NATIVE", "native")],
+             "What fullscreen and borderless draw at. Native is the display's own, the sharpest; a lower one is "
+             "lighter on a slow computer, and softer. Fullscreen sets the display to it; borderless scales it.",
+             "computer"),
+            ("WINDOW SIZE", "display.window_size", [("1280 x 960", "1280x960")],
+             "The window's size: 4:3 first, then 16:10, 16:9 and 21:9. Its edges can also be dragged.", "computer"),
+            ("FRAME RATE LIMIT", "display.max_fps",
+             [("AUTO", "0"), ("30", "30"), ("60", "60"), ("120", "120"), ("144", "144"), ("165", "165"),
+              ("240", "240"), ("NONE", "-1")],
+             "The most frames drawn a second while V-Sync is off. Auto is twice the display's refresh rate. More "
+             "feels smoother and uses more power; None draws as fast as it can.", "desktop web"),
+            ("VSYNC", "display.vsync", ON_OFF,
+             "Waits for the display before showing each frame, so that the picture never tears. It adds a little "
+             "input lag, and holds the frame rate to the display's refresh rate.", None),
+            ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
+             "How wide you see on foot, in degrees across a 16:9 screen. Default keeps the Xbox's view. Wider shows "
+             "more around you, and makes everything look smaller and farther away.", None),
+            ("FIRST PERSON ›", None, _page_screen(*FIRST_PERSON),
+             "Your weapon's field of view and whether it is drawn, your legs and arms, your shield's colour, and the "
+             "view from a vehicle's passenger seat.", None),
+            (SECTION, "GRAPHICS"),
+            # (Classic or Enhanced, CUSTOM while any setting it chooses is
+            # another value: menu_functions.c's graphics_preset_show; choosing
+            # either sets them all again, as config_write does)
+            ("QUALITY", "display.graphics", [("ENHANCED", "enhanced"), ("CLASSIC", "classic"), ("CUSTOM", "custom")],
+             "Enhanced: smoother edges, sharper textures and shadows, smoother lighting. Classic looks as the "
+             "Xbox did.|Changing one shows CUSTOM.", None),
+            ("SHADOW QUALITY", "display.shadow_resolution",
+             [("XBOX", "128"), ("MEDIUM", "256"), ("HIGH", "512"), ("ULTRA", "1024")],
+             "How sharp the shadows of characters, vehicles and weapons are. Xbox is the original's soft, blocky "
+             "shadow; each step up is crisper, and costs a little more of the graphics card.", None),
+            # (display.hdr's rows, on the renderers that draw it: menu_files.c's
+            # "hdr")
+            ("HDR", "display.hdr", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
+             "Brighter highlights on an HDR display. Auto turns it on while the display shows HDR; a display "
+             "without HDR shows the game as it was.", "hdr"),
+            ("ADVANCED GRAPHICS ›", None, _page_screen(*ADVANCED),
+             "Anti-aliasing, texture filtering, model detail, the lighting and the shields' glow, HDR's look, "
+             "smooth motion and the tick rate.", None),
+            (SECTION, "BATTERY"),
+            # (display.battery_saver: port/linux/src/battery_saver.c)
+            ("BATTERY SAVER", "display.battery_saver", [("OFF", "off"), ("ON", "on"), ("AUTO", "auto")],
+             "Up to 60 frames a second and Classic graphics, for a longer battery and a cooler device. Auto turns "
+             "it on while the device runs on its battery. Your own settings come back as it turns off.", None),
+        ],
+    },
+    "audio_settings": {
+        "screen": "audio_settings_screen", "tab": "AUDIO",
+        "about": "The devices, the volumes, voice chat and the sound.",
+        "rows": [
+            (SECTION, "DEVICES"),
+            # (port/linux/game/menu_tags.c adds the devices SDL finds)
+            ("OUTPUT DEVICE", "audio.output_device", [("SYSTEM DEFAULT", "default")],
+             "Where the game's sound and the other players' voices play.", "desktop"),
+            ("INPUT DEVICE", "audio.input_device", [("SYSTEM DEFAULT", "default")],
+             "The microphone voice chat listens to.", "desktop"),
+            (SECTION, "VOLUME"),
+            ("MASTER VOLUME", "audio.volume", VOLUMES, "The volume of everything the game plays.", None),
+            ("MUSIC VOLUME", "audio.music_volume", VOLUMES, "The music's volume.", None),
+            ("EFFECTS VOLUME", "audio.effects_volume", VOLUMES,
+             "Every other sound: weapons, vehicles, the world and the characters' speech.", None),
+            # voice chat: this machine's own (port/linux/game/network_voice.c)
+            (SECTION, "VOICE CHAT"),
+            ("VOICE CHAT", "audio.voice_chat",
+             [("PUSH TO TALK", "push_to_talk"), ("OPEN MIC", "open_mic"), ("OFF", "off")],
+             "Talk to the other players in network games: while Push to Talk is held (Key Bindings sets its key), "
+             "whenever you speak, or never.", None),
+            ("VOICE VOLUME", "audio.voice_volume", VOLUMES, "How loud the other players' voices are.", None),
+            # (the reverb and the resampler: port/linux/src/dsound_sdl.c)
+            (SECTION, "SOUND"),
+            ("REVERB", "audio.reverb", ON_OFF,
+             "Echoes sounds as the place you are in would, and muffles those behind walls, as the Xbox did. It "
+             "costs a little of the processor.", None),
+            ("RESAMPLER", "audio.resampler", [("CLEAN", "sinc"), ("CLASSIC", "linear")],
+             "How sounds are converted to your speakers' rate. Clean is clear; Classic is brighter but harsher, and "
+             "costs a little less.", None),
+            ("SOUND", "audio.enabled", ON_OFF,
+             "Turns all sound off or on, from the next time the game starts.", None),
+        ],
+    },
+    # (CONTROLS: the mouse's rows, in Mouse Setup's place)
+    "mouse_settings": {
+        "screen": "mouse_settings_screen", "tab": "CONTROLS",
+        "about": "The mouse, the controller and the keys.",
+        "rows": [
+            (SECTION, "MOUSE"),
+            ("SENSITIVITY", "input.mouse_sensitivity", SENSITIVITIES,
+             "How fast the view turns side to side as the mouse moves.", None),
+            ("VERTICAL SENSITIVITY", "input.mouse_vertical_sensitivity", [("SAME", "0")] + SENSITIVITIES,
+             "How fast the view turns up and down. Same turns it as fast as side to side.", None),
+            ("INVERT MOUSE", "input.invert_mouse", YES_NO,
+             "Moving the mouse forward looks down, as a flight stick does.", None),
+            ("MOUSE AIM ASSIST", "input.mouse_aim_assist", ON_OFF,
+             "Slows and drags your aim along with a target while you aim with the mouse, as it does with a "
+             "controller.", None),
+            ("INSTANT AIM", "display.direct_camera", ON_OFF,
+             "Turns the view the moment the mouse moves, not up to two of the game's updates later. Off feels as "
+             "the original did.", "computer web"),
+            (SECTION, "CONTROLLER"),
+            ("CONTROLLER ›", None, _page_screen(*CONTROLLER),
+             "The look sensitivity and inversion, the button and stick layouts, and vibration, kept in your player "
+             "profile.", None),
+            (SECTION, "KEYBOARD"),
+            ("KEY BINDINGS ›", None, _page_screen(*KEY_BINDINGS),
+             "The keys and mouse buttons for each action, two for each.", None),
+            ("BUTTON PROMPTS", "input.button_prompts",
+             [("AUTO", "auto"), ("CONTROLLER", "controller"), ("KEYBOARD", "keyboard")],
+             "The buttons the HUD's prompts show. Auto shows the keys or the controller's buttons, as you last "
+             "played with.", None),
+            # (VR Setup, the VR build's, while it plays in the headset)
+            (SECTION, "VR"),
+            ("VR SETUP ›", None, VR_CONTROLS,
+             "Your hands, aiming, turning, your height, the HUD and the menus in VR.", "vr"),
+        ],
+    },
+    "network_setup": {
+        "screen": "network_settings_screen", "tab": "ONLINE",
+        "about": "Internet play, sharing maps and updates.",
+        "rows": [
+            # (in a game, the rows that would drop it or are the main menu's
+            # are hidden: menu_functions.c's settings_rows_show)
+            (SECTION, "INTERNET"),
+            ("INTERNET PLAY", "network.online", ON_OFF,
+             "Host and join games over the internet with invite links, and find public games. Off keeps to the "
+             "local network.", "desktop android web"),
+            ("OPEN ROUTER PORT", "network.allow_upnp", ON_OFF,
+             "Asks your router to open the game's port (UPnP), so that players can reach the games you host.",
+             "desktop android"),
+            ("JOIN FROM CLIPBOARD", "network.join_from_clipboard", ON_OFF,
+             "Joins a game when you switch to the game with its invite link copied.", "desktop android"),
+            # (port/linux/game/map_share.c: this machine's part in another's
+            # game)
+            (SECTION, "MAP SHARING"),
+            ("DOWNLOAD MAPS", "network.map_download", ON_OFF,
+             "Joining a game on a Custom Edition map you do not have downloads it from the players, if they "
+             "share it.", "desktop android"),
+            ("HELP SEND MAPS", "network.map_seed", ON_OFF,
+             "In another player's game, sends its map to the players who join without it, as a torrent's peers "
+             "do.", "desktop android"),
+            ("UPLOAD LIMIT", "network.map_seed_upload",
+             [(f"{kb} KB/S" if kb < 1024 else f"{kb // 1024} MB/S", str(kb)) for kb in SEED_UPLOADS],
+             "The most of your upload that sending maps takes, so that the game keeps the rest.",
+             "desktop android"),
+            (SECTION, "UPDATES"),
+            ("CHECK FOR UPDATES", "update.auto", ON_OFF,
+             "Looks for a new version when the game starts.", "desktop android"),
+        ],
+    },
+    "interface_settings": {
+        "screen": "interface_settings_screen", "tab": "INTERFACE",
+        "about": "The HUD, the players' names, the scoreboard and the chat.",
+        "rows": [
+            (SECTION, "HUD"),
+            ("HIGH-RES HUD", "display.high_res_hud", ON_OFF,
+             "Draws the HUD from sharp high-resolution redraws. Off draws the game's own pictures.", None),
+            # (shown while HIGH-RES HUD is: menu_functions.c's
+            # hud_button_style_row_show)
+            ("BUTTON STYLE", "display.hud_button_style",
+             [("CLASSIC", "classic"), ("GEMS", "gems"), ("DARK GEMS", "menu_gems")],
+             "The buttons the HUD draws. Classic: plain Xbox buttons. Gems: shaded Xbox buttons. Dark Gems: the "
+             "menus' button artwork.", None),
+            ("HIGH-RES TEXT", "display.high_res_text", ON_OFF,
+             "Draws text and titles with sharp high-resolution fonts. Off draws the game's own.", None),
+            ("MATCH TIMER", "display.match_timer", ON_OFF,
+             "Draws a clock at the bottom right in multiplayer, counting up from the start of the game.", None),
+            (SECTION, "MULTIPLAYER"),
+            ("PLAYER NAMES", "display.player_names",
+             [("ALL", "all"), ("ALLIES", "allies"), ("ENEMIES", "enemies"), ("NONE", "none")],
+             "In multiplayer, whose names are drawn above their heads.", None),
+            ("NAME SIZE", "display.player_name_scale",
+             [(f"{value:g}x", f"{value:g}") for value in (0.5, 0.75, 1, 1.25, 1.5, 2)],
+             "How large the players' names are drawn.", None),
+            ("SCOREBOARD", "display.scoreboard_team_layout", [("TEAMS", "teams"), ("BY SCORE", "score")],
+             "A team game's scoreboard: a column for each team, or every player in order of score.", None),
+            ("SCOREBOARD PANEL", "display.scoreboard_background", ON_OFF,
+             "Draws a dark panel behind the scoreboard, for clearer text.", None),
+            # (the text chat's: port/linux/game/network_chat.c)
+            (SECTION, "CHAT"),
+            ("TEXT CHAT", "display.text_chat", [("SHOW", "true"), ("HIDE", "false")],
+             "Shows the text chat. Hide draws none of its lines, and its keys and D-pad Up open nothing.", None),
+            ("CHAT TEXT", "display.chat_style", [("COLORS", "colors"), ("WHITE", "white")],
+             "Colors draws the names in their team's colour; White draws it all white, as Custom Edition does.",
+             None),
+            ("STREAMER MODE ›", None, _page_screen(*STREAMER),
+             "Hides offensive words in names and text from other players, maps and mods, as stars.", None),
+        ],
+    },
+    "profile_settings": {
+        "screen": "profile_settings_screen", "tab": "PROFILE",
+        "about": "Your player profile: your name and your colour.",
+        "rows": [
+            # (with no profile, NAME and COLOR are hidden and CREATE PROFILE
+            # shown; in a game, those whose screens are ui.map's: the name's
+            # keyboard, the colours' pictures: settings_rows_show)
+            (SECTION, "PLAYER"),
+            ("NAME ›", None, f"{PE}/name_edit/profile_name_screen",
+             "The name the other players see, kept in your player profile.", None, "name",
+             "player profile change name"),
+            ("COLOR ›", None, f"{PE}/color_edit/color_select_screen",
+             "Your armour's colour in free-for-all multiplayer games, kept in your player profile.", None, "color"),
+            CREATE_PROFILE,
+            (SECTION, "ABOUT"),
+            ("OPENH1", None, None,
+             "Halo: Combat Evolved, the Xbox game, on this computer, played from your own copy of its maps. OpenH1 "
+             "is a free fan project.", None, "about"),
+        ],
+    },
+    # ---- the pages the rows open
+    ADVANCED[0]: {
+        "screen": ADVANCED[1], "title": "ADVANCED GRAPHICS",
+        "rows": [
+            (SECTION, "IMAGE"),
+            ("RENDER RESOLUTION", "display.resolution_scaling", [("FULL", "native"), ("XBOX 640X480", "original")],
+             "Full draws the game at your screen's resolution. Xbox draws it at the Xbox's 640x480 and scales it "
+             "up: softer, and very light on the graphics card.", "computer web"),
+            ("ANTI-ALIASING", "display.anti_aliasing",
+             [("OFF", "off"), ("FXAA", "fxaa"), ("SMAA", "smaa"), ("SSAA 2X", "ssaa2x"), ("MSAA 2X", "msaa2x"),
+              ("MSAA 4X", "msaa4x"), ("MSAA 8X", "msaa8x")],
+             ANTI_ALIASING_HELP.format("SSAA and MSAA are", "cost"), "desktop"),
+            # (Android's Vulkan draws SMAA; the web's OpenGL ES has FXAA alone)
+            ("ANTI-ALIASING", "display.anti_aliasing",
+             [("OFF", "off"), ("FXAA", "fxaa"), ("SMAA", "smaa"), ("MSAA 2X", "msaa2x"), ("MSAA 4X", "msaa4x")],
+             ANTI_ALIASING_HELP.format("MSAA is", "costs"), "android", "anti_aliasing_android"),
+            ("ANTI-ALIASING", "display.anti_aliasing",
+             [("OFF", "off"), ("FXAA", "fxaa"), ("MSAA 2X", "msaa2x"), ("MSAA 4X", "msaa4x")],
+             "Smooths jagged edges. FXAA costs little; MSAA is sharper and costs more of the graphics card.",
+             "web", "anti_aliasing_web"),
+            ("TEXTURE FILTERING", "display.anisotropic_filtering",
+             [("OFF", "0"), ("2X", "2"), ("4X", "4"), ("8X", "8"), ("16X", "16")],
+             "Keeps floors and walls sharp into the distance, at a small cost. Off looks as the Xbox did: surfaces "
+             "blur a few steps away.", None),
+            ("MODEL DETAIL", "display.model_detail",
+             [("AUTO", "auto"), ("XBOX", "stock"), ("FULL", "native"), ("HIGHEST", "highest")],
+             "How detailed characters and vehicles stay in the distance. Xbox simplifies them as on a TV; Full keeps "
+             "their detail for your screen; Highest always draws the most. Auto is Full in VR.", None),
+            ("SMOOTH MOTION", "display.interpolation", ON_OFF,
+             "Draws movement smoothly between the game's 30 updates a second, so that it looks fluid at any frame "
+             "rate. Off shows each update as it is.", None),
+            (SECTION, "LIGHTING AND HDR"),
+            ("SMOOTH LIGHTING", "display.per_pixel_lighting", ON_OFF,
+             "Lights characters and weapons smoothly, without the flat facets of the Xbox's lighting, at a small "
+             "cost.", None),
+            ("DYNAMIC LIGHTS", "display.dynamic_lights", [("CLASSIC", "classic"), ("ENHANCED", "enhanced")],
+             "Enhanced: plasma bolts, muzzle flashes and blasts light their surroundings smoothly, with a glow. "
+             "Classic lights them as the Xbox did.", "desktop android"),
+            ("SHIELD GLOW", "display.shield_glow", ON_OFF,
+             "Shields light their surroundings as they flare, in the shield's own colour. Online: the host's "
+             "choice.", None),
+            ("GLOW INTENSITY", "display.shield_glow_intensity", [("DEFAULT", "default"), ("LIGHT SHOW", "light_show")],
+             "Light Show: the shields' glow reaches three times as far, and is brighter. Online: the host's choice.",
+             None),
+            ("HDR MODE", "display.hdr_mode", [("FAITHFUL", "faithful"), ("PUNCHY", "punchy")],
+             "Faithful keeps the original picture and brightens its highlights. Punchy lifts the whole scene, as a "
+             "remaster would.", "hdr"),
+            ("HDR BRIGHTNESS", "display.hdr_paper_white", [(f"{value}%", str(value)) for value in PAPER_WHITES],
+             "With HDR, how bright white surfaces and the HUD are, in percent of your system's white. Raise it in a "
+             "bright room.", "hdr"),
+            # (OpenCE's OVERSHIELD and HDR DISPLAY rows are left out: OpenH1's
+            # renderers do not draw the overshield's rise, and HDR output is
+            # display.hdr's own; port/linux/README.md)
+            (SECTION, "GAME"),
+            # (locked at ORIGINAL (30) in a game that plays at 30 whatever it
+            # says, a network game, split screen, a film's playback:
+            # menu_functions.c's sim_rate_row_show)
+            ("TICK RATE", "game.sim_rate", [("ORIGINAL (30)", "30"), ("60", "60"), ("120", "120")],
+             "How often the world updates each second. 60 and 120 respond faster and take more of the processor. "
+             "Online games and split screen always play at 30, the original's rate.", None),
+        ],
+    },
+    FIRST_PERSON[0]: {
+        "screen": FIRST_PERSON[1], "title": "FIRST PERSON",
+        "rows": [
+            (SECTION, "VIEW"),
+            ("WEAPON FIELD OF VIEW", "display.viewmodel_fov", FIELDS_OF_VIEW,
+             "How wide your weapon and hands are drawn, in degrees across a 16:9 screen. Default keeps the "
+             "weapon's own view.", None),
+            ("WEAPON AND HANDS", "display.viewmodel_visible", [("SHOW", "true"), ("HIDE", "false")],
+             "Draws your weapon, your hands and what they hold. Hide clears the view; you still fire, reload and "
+             "hear them.", None),
+            ("LEGS", "display.first_person_legs", ON_OFF,
+             "Your legs when you look down, moving as you run: your body as the others see it.", None),
+            ("PASSENGER VIEW", "display.passenger_third_person", [("BEHIND", "true"), ("SEAT", "false")],
+             "Riding in a Warthog or a Scorpion in the campaign and co-op: the view from behind the vehicle, or "
+             "from your seat. Behind, the weapon cannot zoom.", None),
+            (SECTION, "SHIELDS"),
+            ("ARM SHIELDS", "display.viewmodel_shield", ON_OFF,
+             "Your shield's flare on your first-person arms too, as on your body.", None),
+            ("SHIELD COLOR", "display.shield_color", [("DEFAULT", "default")] + [(c.upper(), c) for c in SHIELD_COLORS],
+             "Your shield's flare in an armour colour, whatever your armour. Only you see it. Default keeps its "
+             "own.", None),
+        ],
+    },
+    CONTROLLER[0]: {
+        "screen": CONTROLLER[1], "title": "CONTROLLER", "profile": True,
+        "rows": [
+            (SECTION, "LOOK"),
+            ("LOOK SENSITIVITY", "profile.look_sensitivity", [(str(step), str(step)) for step in range(1, 11)],
+             "How fast the right stick turns the view.", None),
+            ("INVERT LOOK", "profile.invert_look", YES_NO, "Pushing the right stick up looks down.", None),
+            ("INVERT FLIGHT", "profile.flight_inversion", YES_NO,
+             "Flying vehicles pitch as aircraft do: pushing up flies down.", None),
+            ("AUTO-CENTER LOOK", "profile.autocenter", YES_NO, "Levels the view while you walk.", None),
+            (SECTION, "LAYOUT"),
+            ("BUTTON LAYOUT", "profile.button_preset",
+             [("DEFAULT", "0"), ("SWAP TRIGGERS", "1"), ("SWAP A, L TRIGGER", "2"), ("SWAP B, L TRIGGER", "3"),
+              ("SWAP B, R STICK", "4"), ("BUMPER JUMPER", "5")],
+             "Which of the controller's buttons does what. The keyboard's keys are Key Bindings'.", None),
+            ("STICK LAYOUT", "profile.joystick_preset",
+             [("DEFAULT", "0"), ("SOUTHPAW", "1"), ("LEGACY", "2"), ("LEGACY SOUTHPAW", "3")],
+             "Which stick moves and which looks.", None),
+            (SECTION, "FEEDBACK"),
+            ("VIBRATION", "profile.vibration", ON_OFF, "Rumbles the controller.", None),
+            ("IN-GAME HELP", "profile.ingame_help", ON_OFF, "Shows the game's hints about its controls.", None),
+            (SECTION, "PROFILE"),
+            CREATE_PROFILE,
+        ],
+    },
+    STREAMER[0]: {
+        "screen": STREAMER[1], "title": "STREAMER MODE",
+        "rows": [
+            # (port/linux/game/text_filter.c: words hidden in what other
+            # players, maps and mods show, each group from a severity of Surge
+            # AI's on, port/assets/text_filter)
+            (SECTION, "STREAMER MODE"),
+            ("STREAMER MODE", "streamer.enabled", ON_OFF,
+             "Hides offensive words in names and text from other players, maps and mods, as stars.", None),
+            (SECTION, "WORDS HIDDEN"),
+            ("SLURS", "streamer.slurs", STREAMER_LEVELS,
+             "Slurs about race, sexuality, gender and disability.", None),
+            ("SWEARING", "streamer.swearing", STREAMER_LEVELS,
+             "Swearing and sexual words. Strong and Worse leaves the mildest showing.", None),
+            ("INSULTS", "streamer.insults", STREAMER_LEVELS,
+             "Name-calling and insults that are not slurs.", None),
+        ],
+    },
 }
+SETTINGS_TAB_PAGES = [folder for folder, page in PAGES.items() if "tab" in page]
+# the panel's words for the buttons, on a tab and on a page the rows open
+SETTINGS_BUTTON_HELP = {
+    "tab": ["Puts this tab's settings back to their defaults. Nothing changes until OK.",
+            "Keeps your changes, on every tab, and applies them.",
+            "Leaves Settings without keeping any change."],
+    "page": ["Puts this page's settings back to their defaults.",
+             "Keeps these changes; Settings' OK applies them.",
+             "Goes back without these changes."],
+}
+# the pages' titles (TITLES): Settings', over every tab, and each page's
+SETTINGS_TITLES = {SETTINGS_TITLE: "SETTINGS"}
+SETTINGS_TITLES.update({f"{PE}/{folder}/header_{page['screen'][:-len('_screen')]}": page["title"]
+                        for folder, page in PAGES.items() if "title" in page})
+SETTINGS_TITLES[f"{PE}/controls_setup/header_key_bindings"] = "KEY BINDINGS"
 
 # Controls Setup: the keyboard and mouse's actions, in groups (the order of
 # port/linux/game/menu_functions.c's table of them)
@@ -796,7 +890,7 @@ def _controls_screen() -> list:
     folder = "controls_setup"
     base = f"{PE}/{folder}"
     spec = {"screen": "controls_settings_screen", "spacing": 30,
-            "header": ("header_profile_controls_settings", f"{base}/header_profile_controls_settings")}
+            "header": ("header_key_bindings", f"{base}/header_key_bindings")}
     rows, extra = [(f"{base}/op_group", None)], []
     extra += _widget(f"{base}/op_group", [("width", 512), ("height", 28), ("flags", "pass_unhandled_to_focused_child"),
                                           ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
@@ -853,11 +947,236 @@ def _vr_item() -> list:
                     '<on event="left_mouse" run="mouse emit accept event"/>'])
 
 
+def _settings_text(name: str, pairs: list, inner: list = ()) -> list:
+    """a text widget of Settings' (the small font, unless pairs say)"""
+    pairs = [("type", "text"), ("controller", 1)] + pairs
+    if not any(key == "font" for key, _ in pairs):
+        pairs.append(("font", "ui\\small_ui"))
+    return _widget(name, pairs, list(inner))
+
+
+def _settings_platform(rows: list, start: int):
+    """a section's platforms: those of its rows (None: every platform)"""
+    platforms = set()
+    for entry in rows[start + 1:]:
+        if entry[0] == SECTION:
+            break
+        if entry[4] is None:
+            return None
+        platforms.update(entry[4].split())
+    return " ".join(name for name in MENU_PLATFORMS if name in platforms) or None
+
+
+# the rows in the place of the row before them, each platform having one of
+# them at most, or menu_functions.c showing one (video_rows_show): Window Size
+# in Resolution's, Android's and the web's anti-aliasing in the desktop's
+SETTINGS_SAME_PLACE = {"window_size", "anti_aliasing_android", "anti_aliasing_web"}
+
+
+def _settings_page(folder: str, page: dict) -> list:
+    """a tab of Settings, or a page a row opens: the title, the tabs (a
+    tab's), the rows under their sections, the panel (the list's
+    description), and Defaults, OK and Cancel"""
+    base = f"{PE}/{folder}"
+    tab = "tab" in page
+    kind = "tab" if tab else "page"
+    y = SETTINGS_TOP if tab else PAGE_TOP
+    # (a tab's title is Settings'; a page's, its own: its widget named as
+    # its picture)
+    header = SETTINGS_TITLE if tab else f"{base}/header_{page['screen'][:-len('_screen')]}"
+    cancel = "port settings cancel" if tab else "port settings page cancel"
+    labels, helps, children, extra = [], [page.get("about", "")], [], []
+    for index, entry in enumerate(page["rows"]):
+        if entry[0] == SECTION:
+            # (a section's title over its line, which the list passes over:
+            # menu_functions.c's settings_rows_pack disables it)
+            platform = _settings_platform(page["rows"], index)
+            name = f"{base}/section_{index}"
+            children.append(f'<child{attributes([("widget", name), ("x", SETTINGS_ROW_X), ("y", y), ("platform", platform)])}/>')
+            extra += _widget(name, [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_SECTION_HEIGHT),
+                                    ("bitmap", f"{SETTINGS}/section"), ("platform", platform)],
+                             [f'<child widget="{name}_title"/>'])
+            extra += _settings_text(f"{name}_title", [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_SECTION_HEIGHT),
+                                                      ("string_list", f"{base}/labels"),
+                                                      ("string_index", len(labels) or None), ("color", SETTINGS_DIM),
+                                                      ("text_x", 2), ("text_y", 1)])
+            labels.append(entry[1])
+            helps.append("")
+            y += SETTINGS_SECTION_STEP
+            continue
+        label, setting, choices, help_text, platform, *named = entry
+        # (a link's by its label: "ADVANCED GRAPHICS ›", advanced_graphics)
+        key = named[0] if named else setting.split(".", 1)[1] if setting else \
+            re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+        row = f"{base}/op_{key}"
+        if key in SETTINGS_SAME_PLACE or setting == "display.window_size":
+            y -= SETTINGS_ROW_STEP
+        children.append(f'<child{attributes([("widget", row), ("x", SETTINGS_ROW_X), ("y", y), ("platform", platform)])}/>')
+        y += SETTINGS_ROW_STEP
+        label_widget = _settings_text(f"{base}/{key}_label",
+                                      [("width", SETTINGS_SPINNER_X - 4 if setting else SETTINGS_ROW_WIDTH - 12),
+                                       ("height", SETTINGS_ROW_HEIGHT), ("string_list", f"{base}/labels"),
+                                       ("string_index", len(labels) or None), ("color", SETTINGS_BLUE),
+                                       ("text_x", 10), ("text_y", 4)])
+        row_pairs = [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_ROW_HEIGHT),
+                     ("flags", "pass_unhandled_to_focused_child"), ("bitmap", f"{SETTINGS}/row"),
+                     ("color", SETTINGS_BLUE), ("platform", platform)]
+        if setting:
+            extra += _widget(row, row_pairs, [f'<child widget="{base}/{key}_label"/>',
+                                              f'<child widget="{base}/{key}_spinner" x="{SETTINGS_SPINNER_X}"/>'])
+            extra += label_widget
+            extra += _widget(f"{base}/{key}_spinner",
+                             [("type", "spinner"), ("top", 2), ("width", SETTINGS_SPINNER_WIDTH), ("height", 16),
+                              ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+                              ("strings", "|".join(shown for shown, _ in choices)), ("setting", setting),
+                              ("values", "|".join(value for _, value in choices)), ("font", "ui\\small_ui"),
+                              ("color", SETTINGS_BLUE), ("align", "center"), ("text_y", 2),
+                              ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
+                              ("header_bounds", "2 -6 14 0"),
+                              ("footer_bounds", f"2 {SETTINGS_SPINNER_WIDTH} 14 {SETTINGS_SPINNER_WIDTH + 6}")],
+                             ['<on event="created" run="port setting load"/>'])
+        else:
+            # (a row that opens a page, choices: its screen; run: a function
+            # first; none: nothing to open)
+            run = named[1] if len(named) > 1 else None
+            handlers = []
+            if choices or run:
+                branch = "true" if run == "port settings new profile" else None
+                handlers = [f'<on{attributes([("event", event), ("run", run), ("open", choices), ("branch", branch)])}/>'
+                            for event in ("a", "start")]
+                handlers.append('<on event="left_mouse" run="mouse emit accept event"/>')
+                if branch:
+                    handlers.append(f'<conditional widget="{SETTINGS}/settings_creating_profile" if_failed="true"/>')
+            extra += _widget(row, row_pairs, handlers + [f'<child widget="{base}/{key}_label"/>'])
+            extra += label_widget
+        labels.append(label)
+        helps.append(help_text)
+    lines = []
+    lines += _widget(f"{base}/{page['screen']}",
+                     [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child pause_game"),
+                      ("bitmap", "bitmaps/gradient")],
+                     [f'<on event="b" run="{cancel}" back="true"/>',
+                      f'<on event="back" run="{cancel}" back="true"/>',
+                      *(['<on event="white" run="port settings tab previous"/>',
+                         '<on event="black" run="port settings tab next"/>'] if tab else []),
+                      f'<child widget="{header}"/>',
+                      f'<child widget="{base}/options_menu"/>'])
+    if not tab:
+        lines += _widget(header, [("controller", 1), ("left", 35), ("top", 11), ("width", 605), ("height", 59),
+                                  ("bitmap", header)], [])
+    # (the tabs last: up from the first row, down from the buttons)
+    lines += _widget(f"{base}/options_menu",
+                     [("type", "column_list"), ("width", 640), ("height", 480),
+                      ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                      ("description", f"{SETTINGS}/{kind}_panel")],
+                     [f'<data input="{SETTINGS_FUNCTIONS}"/>', *children,
+                      f'<child widget="{base}/button_bar" y="414"/>',
+                      *([f'<child widget="{base}/tabs" y="{SETTINGS_TABS_TOP}"/>'] if tab else [])])
+    lines += _widget(f"{base}/button_bar",
+                     [("type", "column_list"), ("width", 640), ("height", 28),
+                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     [f'<child widget="{base}/button_defaults" y="1"/>',
+                      f'<child widget="{base}/button_ok" x="380" y="1"/>',
+                      f'<child widget="{base}/button_cancel" x="510" y="1"/>'])
+    if tab:
+        # (each tab: its name, the current one framed; A or a click opens it)
+        items = []
+        for index, other in enumerate(SETTINGS_TAB_PAGES):
+            current = other == folder
+            name = f"{base}/tab_{PAGES[other]['screen'][:-len('_screen')]}"
+            items.append(f'<child widget="{name}" x="{SETTINGS_ROW_X + index * SETTINGS_TAB_STEP}"/>')
+            lines += _settings_text(name, [("width", SETTINGS_TAB_WIDTH), ("height", SETTINGS_TAB_HEIGHT),
+                                           ("bitmap", f"{SETTINGS}/{'tab_current' if current else 'tab'}"),
+                                           ("string_list", f"{SETTINGS}/tab_names"), ("string_index", index or None),
+                                           ("color", "#FFFFFFFF" if current else SETTINGS_BLUE),
+                                           ("align", "center"), ("text_y", 5)],
+                                    ['<on event="a" run="port settings tab"/>',
+                                     '<on event="start" run="port settings tab"/>',
+                                     '<on event="left_mouse" run="mouse emit accept event"/>'])
+        lines += _widget(f"{base}/tabs", [("type", "column_list"), ("width", 640), ("height", SETTINGS_TAB_HEIGHT),
+                                          ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")], items)
+    lines += _button(f"{base}/button_defaults", 3, ['<on event="a" run="port settings defaults"/>',
+                                                     '<on event="start" run="port settings defaults"/>'])
+    ok = "port settings ok" if tab else "port settings keep"
+    lines += _button(f"{base}/button_ok", 1, [f'<on event="a" run="{ok}" back="true"/>',
+                                               f'<on event="start" run="{ok}" back="true"/>'])
+    lines += _button(f"{base}/button_cancel", 2, [f'<on event="a" run="{cancel}" back="true"/>',
+                                                   f'<on event="start" run="{cancel}" back="true"/>'])
+    lines += extra
+    lines += _strings(f"{base}/labels", labels)
+    lines += _strings(f"{base}/help_strings", helps)
+    return lines
+
+
+def _settings_shared() -> list:
+    """what every page of Settings shares: its title, the panels, the tabs'
+    names, the buttons' words, and the screens that make a profile"""
+    lines = _widget(SETTINGS_TITLE, [("controller", 1), ("left", 35), ("top", 11), ("width", 605), ("height", 59),
+                                     ("bitmap", SETTINGS_TITLE)], [])
+    for kind, top in (("tab", SETTINGS_TOP), ("page", PAGE_TOP)):
+        # (menu_functions.c's settings_panel_show fills it in, and shows the
+        # Quality row's pictures)
+        height = SETTINGS_PANEL_BOTTOM - top
+        # (a description's children are placed on the screen, not in it)
+        left, still_y = SETTINGS_PANEL_X + 14, top + 52
+        children = [f'<child widget="{SETTINGS}/panel_name" x="{left}" y="{top + 12}"/>',
+                    f'<child widget="{SETTINGS}/panel_value" x="{left}" y="{top + 26}"/>']
+        for index, still in enumerate(("classic", "enhanced")):
+            x = SETTINGS_PANEL_X + 12 + index * (SETTINGS_STILL_WIDTH + 8)
+            children += [f'<child widget="{SETTINGS}/panel_{still}" x="{x}" y="{still_y}"/>',
+                         f'<child widget="{SETTINGS}/panel_{still}_frame" x="{x}" y="{still_y}"/>',
+                         f'<child widget="{SETTINGS}/panel_{still}_caption" x="{x}" y="{still_y + SETTINGS_STILL_HEIGHT + 2}"/>']
+        children += [f'<child widget="{SETTINGS}/panel_text" x="{left}" y="{top + 52}"/>',
+                     f'<child widget="{SETTINGS}/panel_note" x="{left}" y="{top + height - 40}"/>']
+        lines += _widget(f"{SETTINGS}/{kind}_panel",
+                         [("controller", 1), ("left", SETTINGS_PANEL_X), ("top", top),
+                          ("width", SETTINGS_PANEL_WIDTH), ("height", height),
+                          ("bitmap", f"{SETTINGS}/{kind}_panel")], children)
+    lines += _settings_text(f"{SETTINGS}/panel_name", [("width", 196), ("height", 18), ("color", SETTINGS_DIM)])
+    lines += _settings_text(f"{SETTINGS}/panel_value", [("width", 196), ("height", 24), ("font", "ui\\large_ui"),
+                                                       ("color", "#FFFFFFFF")])
+    lines += _settings_text(f"{SETTINGS}/panel_text", [("width", 196), ("height", 220), ("color", SETTINGS_BLUE)])
+    lines += _settings_text(f"{SETTINGS}/panel_note", [("width", 196), ("height", 40), ("color", SETTINGS_DIM)])
+    for index, still in enumerate(("classic", "enhanced")):
+        lines += _widget(f"{SETTINGS}/panel_{still}", [("controller", 1), ("width", SETTINGS_STILL_WIDTH),
+                                                       ("height", SETTINGS_STILL_HEIGHT),
+                                                       ("bitmap", f"{SETTINGS}/graphics_{still}")], [])
+        lines += _widget(f"{SETTINGS}/panel_{still}_frame", [("controller", 1), ("width", SETTINGS_STILL_WIDTH),
+                                                             ("height", SETTINGS_STILL_HEIGHT),
+                                                             ("bitmap", f"{SETTINGS}/still_frame")], [])
+        lines += _settings_text(f"{SETTINGS}/panel_{still}_caption",
+                                [("width", SETTINGS_STILL_WIDTH), ("height", 18),
+                                 ("string_list", f"{SETTINGS}/still_captions"), ("string_index", index or None),
+                                 ("color", SETTINGS_BLUE), ("align", "center")])
+    # (making a profile, from CREATE PROFILE: its name asked, as the main
+    # menu's items ask it ("new campaign chosen", settings_profile_new), the
+    # profile made and edited ("new campaign decision", which edits it for
+    # a screen of this name), then back to the page, which shows its rows)
+    lines += _widget(f"{SETTINGS}/settings_creating_profile",
+                     [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child no_history"),
+                      ("auto_close", 1)],
+                     [f'<on event="deleted" run="new campaign decision" open="{SETTINGS}/settings_saving_profile"/>'])
+    lines += _widget(f"{SETTINGS}/settings_saving_profile",
+                     [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child no_history"),
+                      ("auto_close", 1000), ("auto_close_fade", 500)],
+                     ['<on event="b" run="NULL"/>', '<on event="back" run="NULL"/>',
+                      '<on event="deleted" run="NULL" back="true"/>',
+                      '<child widget="error/warning_creating_player_profile_screen"/>'])
+    lines += _strings(f"{SETTINGS}/tab_names", [PAGES[folder]["tab"] for folder in SETTINGS_TAB_PAGES])
+    lines += _strings(f"{SETTINGS}/tab_about", [PAGES[folder]["about"] for folder in SETTINGS_TAB_PAGES])
+    lines += _strings(f"{SETTINGS}/button_help", SETTINGS_BUTTON_HELP["tab"] + SETTINGS_BUTTON_HELP["page"])
+    lines += _strings(f"{SETTINGS}/still_captions", ["CLASSIC", "ENHANCED"])
+    return lines
+
+
 def settings_files() -> dict:
     """the files of the port's screens, by their names in ce/"""
     files = {}
     for folder, spec in SCREENS.items():
         files[f"{PE}/{folder}".replace("/", ".") + ".xml"] = _setting_screen(folder, spec)
+    for folder, page in PAGES.items():
+        files[f"{PE}/{folder}".replace("/", ".") + ".xml"] = _settings_page(folder, page)
+    files[SETTINGS.replace("/", ".") + ".xml"] = _settings_shared()
     files[f"{PE}/vr_controls".replace("/", ".") + ".xml"] += _vr_item()
     files[f"{PE}/controls_setup".replace("/", ".") + ".xml"] = _controls_screen()
     return {name: ['<?xml version="1.0" encoding="UTF-8"?>',
@@ -869,7 +1188,79 @@ def replaced(folder: str) -> bool:
     """whether the PC version's folder of widgets is replaced by ours (and
     those below it: the controls' advanced screen, the video test)"""
     return any(folder == path or folder.startswith(f"{path}/")
-               for path in [*(f"{PE}/{name}" for name in [*SCREENS, "controls_setup"]), *REPLACED_FOLDERS])
+               for path in [*(f"{PE}/{name}" for name in [*SCREENS, *PAGES, "controls_setup"]), *REPLACED_FOLDERS])
+
+
+# ---------- Settings' pictures (tools/ce_menus.py draws them, with the
+# titles): the rows' highlight, a section's line, the tabs, the panel, the
+# frames of the Quality row's stills, in the redraws' blue and navy
+
+def _rounded(width: float, height: float, inset: float, radius: float, fill: str = "none",
+             fill_opacity: float = 1.0, stroke: str = "none", stroke_width: float = 0) -> str:
+    return (f'  <rect x="{inset:g}" y="{inset:g}" width="{width - 2 * inset:g}" height="{height - 2 * inset:g}" '
+            f'rx="{radius:g}" fill="{fill}" fill-opacity="{fill_opacity:g}" stroke="{stroke}" '
+            f'stroke-width="{stroke_width:g}"/>')
+
+
+def _svg(width: int, height: int, body: list) -> str:
+    return "\n".join([f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+                      f'viewBox="0 0 {width} {height}">', *body, "</svg>", ""])
+
+
+def settings_pictures() -> list:
+    """(bitmap name, [(SVG, width, height)] for its frames) of Settings'
+    pictures"""
+    row_w, row_h = SETTINGS_ROW_WIDTH, SETTINGS_ROW_HEIGHT
+    tab_w, tab_h = SETTINGS_TAB_WIDTH, SETTINGS_TAB_HEIGHT
+    still_w, still_h = SETTINGS_STILL_WIDTH, SETTINGS_STILL_HEIGHT
+    pictures = [
+        # (a row: nothing, and while chosen the option_bkds redraw's framed
+        # bar)
+        (f"{SETTINGS}/row", [(_svg(row_w, row_h, []), row_w, row_h),
+                             (_svg(row_w, row_h, [_rounded(row_w, row_h, 1, 8, "#002244", 0.9, "#2299ff", 2)]),
+                              row_w, row_h)]),
+        (f"{SETTINGS}/section", [(_svg(row_w, SETTINGS_SECTION_HEIGHT, [
+            f'  <rect x="0" y="{SETTINGS_SECTION_HEIGHT - 1.5:g}" width="{row_w}" height="1" fill="#2995ff" '
+            'fill-opacity="0.45"/>']), row_w, SETTINGS_SECTION_HEIGHT)]),
+        (f"{SETTINGS}/tab", [(_svg(tab_w, tab_h, []), tab_w, tab_h),
+                             (_svg(tab_w, tab_h, [_rounded(tab_w, tab_h, 1, 8, "#002244", 0.9, "#2299ff", 2)]),
+                              tab_w, tab_h)]),
+        (f"{SETTINGS}/tab_current",
+         [(_svg(tab_w, tab_h, [_rounded(tab_w, tab_h, 1, 8, "#0a2a5a", 0.75, "#2299ff", 2)]), tab_w, tab_h),
+          (_svg(tab_w, tab_h, [_rounded(tab_w, tab_h, 1, 8, "#0d3a7a", 0.9, "#8cc8ff", 2)]), tab_w, tab_h)]),
+    ]
+    for kind, top in (("tab", SETTINGS_TOP), ("page", PAGE_TOP)):
+        height = SETTINGS_PANEL_BOTTOM - top
+        # (list_field's framed panel: a navy field, a blue rim)
+        pictures.append((f"{SETTINGS}/{kind}_panel", [(_svg(SETTINGS_PANEL_WIDTH, height, [
+            _rounded(SETTINGS_PANEL_WIDTH, height, 1, 9.5, "#000e23", 0.88, "#2995ff", 2)]),
+            SETTINGS_PANEL_WIDTH, height)]))
+    pictures.append((f"{SETTINGS}/still_frame", [
+        (_svg(still_w, still_h, [_rounded(still_w, still_h, 0.75, 4, stroke="#1d4f8a", stroke_width=1.5)]),
+         still_w, still_h),
+        (_svg(still_w, still_h, [_rounded(still_w, still_h, 1, 4, stroke="#2995ff", stroke_width=2)]),
+         still_w, still_h)]))
+    return pictures
+
+
+# the stills the Quality row's panel shows (port/assets/menus/stills, made as
+# NON_HANDDRAWN.md says): bitmap name, file, width and height in the menu's
+# units, and what it is
+SETTINGS_STILLS = [
+    (f"{SETTINGS}/graphics_classic", "stills/graphics_classic.png", SETTINGS_STILL_WIDTH, SETTINGS_STILL_HEIGHT,
+     "Quality CLASSIC (`display.graphics = \"classic\"`)"),
+    (f"{SETTINGS}/graphics_enhanced", "stills/graphics_enhanced.png", SETTINGS_STILL_WIDTH, SETTINGS_STILL_HEIGHT,
+     "Quality ENHANCED (`display.graphics = \"enhanced\"`)"),
+]
+# NON_HANDDRAWN.md's words for them (tools/ce_menus.py)
+SETTINGS_STILLS_MADE = [
+    "Settings' Quality row shows these two small screenshots of the game, the same view drawn by each preset",
+    "(`port/assets/menus/stills`, shipped as they are). They are this port's own drawing of the game: a local",
+    "Slayer game on Blood Gulch (`debug.network_test = \"local:bloodgulch:slayer\"`, `debug.random_seed = 7`,",
+    "four bots), the same frame of each run captured offscreen by the macOS build at 1600x1200",
+    "(`debug.screenshot_every`), cropped to 16:10, scaled to 288x180 (three times their size in the menu) and",
+    "reduced to 96 colours for size.",
+]
 
 
 # ---------- multiplayer (PLAN.md section 11)
@@ -1111,6 +1502,11 @@ WIDGET_PATCHES = {
     f"{MT}/connected/connected_map_select_wrapper": {"set": {
         "flags": "pass_unhandled_to_focused_child pause_game main_menu_if_no_history tag_controller_index force_handle_mouse",
     }},
+    # (Settings opens its first tab at once, with a profile or without one:
+    # menu_functions.c's settings_begin)
+    "main_menu/main_menu_item_settings": {"handlers": [
+        f'<on event="{event}" run="port settings begin" open="{PE}/video_settings/video_settings_screen"/>'
+        for event in ("a", "start")] + ['<on event="left_mouse" run="mouse emit accept event"/>']},
     # (the main menu's MODS, before Quit: _mods)
     "main_menu/main_menu_select_list": {"insert_before": {"main_menu/main_menu_item_quit_game": [
         f'<child widget="main_menu/main_menu_item_mods" x="{MODS_ITEM_PLACE[0]}" y="{MODS_ITEM_PLACE[1]}"/>']}},
@@ -1269,6 +1665,7 @@ TITLES = {
     f"{MT}/lobby/header_lobby": "GAME LOBBY",
     f"{MT}/coop/header_player_2": "PLAYER 2 PROFILE",
     f"{MT}/lobby/header_add_player": "ADD PLAYER",
+    **SETTINGS_TITLES,
 }
 
 

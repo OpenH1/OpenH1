@@ -49,25 +49,24 @@ def test_negative_control(control):
     assert status == CHECK_FAILED, f"the code with a fault ({control}) passed '{case}': the test cannot see it"
 
 
-def test_the_row_on_graphics():
-    """Graphics has the row, its values the rates port_config.c's game.sim_rate takes (its default, 30, first and
-    called ORIGINAL), on every platform's screen, and the screen runs sim_rate_row_show with its help."""
+def test_the_row_on_advanced_graphics():
+    """Advanced Graphics has the row, its values the rates port_config.c's game.sim_rate takes (its default, 30,
+    first and called ORIGINAL), on every platform's page, and the page runs sim_rate_row_show each frame."""
     sys.path.insert(0, str(ROOT / "tools"))
     import port_settings
 
-    name = "main_menu.settings_select.player_setup.player_profile_edit.video_settings.graphics.xml"
+    name = "main_menu.settings_select.player_setup.player_profile_edit.video_settings.advanced.xml"
     text = "\n".join(port_settings.settings_files()[name])
     spinner = re.search(r'<widget name="[^"]*/sim_rate_spinner"[^>]*>', text).group(0)
     assert 'strings="ORIGINAL (30)|60|120"' in spinner and 'values="30|60|120"' in spinner, spinner
     assert 'setting="game.sim_rate"' in spinner
     child = re.search(r'<child widget="[^"]*/op_sim_rate"[^>]*/>', text).group(0)
     assert "platform=" not in child, child
-    labels = re.search(r'<strings name="[^"]*/graphics/labels">(.*?)</strings>', text, re.S).group(1)
-    assert '<string text="TICK RATE:"/>' in labels
-    # its row fits above the help line (y + 28 <= help_top)
-    spec = port_settings.SCREENS["video_settings/graphics"]
-    assert int(re.search(r'y="(\d+)"', child).group(1)) + 28 <= spec["help_top"]
+    labels = re.search(r'<strings name="[^"]*/advanced/labels">(.*?)</strings>', text, re.S).group(1)
+    assert '<string text="TICK RATE"/>' in labels
+    # its row fits above the buttons (y + the row's height <= 414)
+    assert int(re.search(r'y="(\d+)"', child).group(1)) + port_settings.SETTINGS_ROW_HEIGHT <= 414
     assert '{ "game.sim_rate", _config_integer, "30", "HALO_SIM_RATE"' in read("port/linux/src/port_config.c")
-    help_update = read("port/linux/game/menu_functions.c")
-    help_update = help_update[help_update.index('else if (!strcmp(name, "port settings help"))'):]
-    assert help_update.index("sim_rate_row_show(widget);") < help_update.index("settings_help(widget);")
+    update = read("port/linux/game/menu_functions.c")
+    update = update[update.index("static void settings_page_update("):]
+    assert update.index("sim_rate_row_show(list);") < update.index("settings_each(screen, setting_stash);")

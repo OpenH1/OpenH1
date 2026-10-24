@@ -6237,6 +6237,24 @@ boolean ui_widget_port_open(
 	return TRUE;
 }
 
+/* a screen by name in place of the widget's, kept out of the history (back
+returns to the screen before the widget's): Settings' tabs, which B leaves
+together (port/linux/game/menu_functions.c) */
+boolean ui_widget_port_switch(
+	struct widget_instance *widget,
+	char const *name,
+	boolean *widget_deleted)
+{
+	(void)widget;
+	if (!ui_widget_load_by_name_or_tag(name, NONE, NULL, NONE, NONE, NONE, NONE))
+	{
+		error(2, "event handler failed to spawn widget");
+		return FALSE;
+	}
+	*widget_deleted = TRUE;
+	return TRUE;
+}
+
 /* the gametype editor's: the gametype (a built-in one too: saving it asks
 for a new name, player_ui_save_profile) being edited */
 boolean ui_widget_port_gametype_edit_begin(

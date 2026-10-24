@@ -3069,6 +3069,13 @@ int config_default(const char *name, char *text, size_t size)
 	return 1;
 }
 
+/* the name of the entry'th setting display.graphics chooses, else NULL past
+the last (Settings' Quality row: menu_functions.c's graphics_preset_show) */
+const char *config_graphics_setting(int entry)
+{
+	return entry >= 0 && (size_t)entry < NUMBER_OF_CONFIG_GRAPHICS ? config_graphics[entry].name : NULL;
+}
+
 int config_graphics_value(const char *graphics, const char *name, char *text, size_t size)
 {
 	long index = config_setting_index(name);

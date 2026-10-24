@@ -348,6 +348,30 @@
 	<bitmap name="main_menu/multiplayer_type_select/server_settings/voice_options/header_voice_options">
 		<frame png="ce/port/main_menu/multiplayer_type_select/server_settings/voice_options/header_voice_options.png" width="512" height="64"/>
 	</bitmap>
+	<bitmap name="main_menu/settings/header_settings">
+		<frame png="ce/port/main_menu/settings/header_settings.png" width="512" height="64"/>
+	</bitmap>
+	<bitmap name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/header_key_bindings">
+		<frame png="ce/port/main_menu/settings_select/player_setup/player_profile_edit/controls_setup/header_key_bindings.png" width="512" height="64"/>
+	</bitmap>
+	<bitmap name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/header_gamepad_setup">
+		<frame png="ce/port/main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/header_gamepad_setup.png" width="512" height="64"/>
+	</bitmap>
+	<bitmap name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/header_streamer_mode">
+		<frame png="ce/port/main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/header_streamer_mode.png" width="512" height="64"/>
+	</bitmap>
+	<bitmap name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/header_advanced_graphics">
+		<frame png="ce/port/main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/header_advanced_graphics.png" width="512" height="64"/>
+	</bitmap>
+	<bitmap name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/header_first_person">
+		<frame png="ce/port/main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/header_first_person.png" width="512" height="64"/>
+	</bitmap>
+	<bitmap name="main_menu/settings_select/player_setup/player_profile_edit/vr_controls/header_vr_controls">
+		<frame png="ce/port/main_menu/settings_select/player_setup/player_profile_edit/vr_controls/header_vr_controls.png" width="512" height="64"/>
+	</bitmap>
+	<bitmap name="main_menu/settings_select/player_setup/player_profile_edit/vr_display/header_vr_display">
+		<frame png="ce/port/main_menu/settings_select/player_setup/player_profile_edit/vr_display/header_vr_display.png" width="512" height="64"/>
+	</bitmap>
 	<bitmap name="pause/pausebox_left">
 		<frame png="ce/port/pause/pausebox_left__0.png" width="16" height="256"/>
 		<frame png="ce/port/pause/pausebox_left__1.png" width="16" height="256"/>
@@ -431,10 +455,35 @@
 		<frame png="ce/port/main_menu/multiplayer_type_select/touch_open_button__0.png" width="300" height="40"/>
 		<frame png="ce/port/main_menu/multiplayer_type_select/touch_open_button__1.png" width="300" height="40"/>
 	</bitmap>
-	<bitmap name="main_menu/settings_select/player_setup/player_profile_edit/vr_controls/header_vr_controls">
-		<frame png="ce/port/main_menu/settings_select/player_setup/player_profile_edit/vr_controls/header_vr_controls.png" width="512" height="64"/>
+	<bitmap name="main_menu/settings/row">
+		<frame png="ce/port/main_menu/settings/row__0.png" width="344" height="20"/>
+		<frame png="ce/port/main_menu/settings/row__1.png" width="344" height="20"/>
 	</bitmap>
-	<bitmap name="main_menu/settings_select/player_setup/player_profile_edit/vr_display/header_vr_display">
-		<frame png="ce/port/main_menu/settings_select/player_setup/player_profile_edit/vr_display/header_vr_display.png" width="512" height="64"/>
+	<bitmap name="main_menu/settings/section">
+		<frame png="ce/port/main_menu/settings/section__0.png" width="344" height="18"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/tab">
+		<frame png="ce/port/main_menu/settings/tab__0.png" width="90" height="22"/>
+		<frame png="ce/port/main_menu/settings/tab__1.png" width="90" height="22"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/tab_current">
+		<frame png="ce/port/main_menu/settings/tab_current__0.png" width="90" height="22"/>
+		<frame png="ce/port/main_menu/settings/tab_current__1.png" width="90" height="22"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/tab_panel">
+		<frame png="ce/port/main_menu/settings/tab_panel__0.png" width="224" height="296"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/page_panel">
+		<frame png="ce/port/main_menu/settings/page_panel__0.png" width="224" height="320"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/still_frame">
+		<frame png="ce/port/main_menu/settings/still_frame__0.png" width="96" height="60"/>
+		<frame png="ce/port/main_menu/settings/still_frame__1.png" width="96" height="60"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/graphics_classic">
+		<frame png="stills/graphics_classic.png" width="96" height="60"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/graphics_enhanced">
+		<frame png="stills/graphics_enhanced.png" width="96" height="60"/>
 	</bitmap>
 </menus>

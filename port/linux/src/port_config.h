@@ -40,6 +40,9 @@ int config_default(const char *name, char *text, size_t size);
 "enhanced") gives a setting it chooses, as text ("16", "smaa"); 0 if it
 does not choose it */
 int config_graphics_value(const char *graphics, const char *name, char *text, size_t size);
+/* the name of the entry'th setting display.graphics chooses, NULL past the
+last */
+const char *config_graphics_setting(int entry);
 /* how many times config_write has changed a setting: what keeps one reads
 it again when this moves */
 unsigned long config_changes(void);

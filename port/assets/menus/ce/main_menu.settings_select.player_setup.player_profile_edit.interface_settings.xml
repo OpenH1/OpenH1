@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The port's settings screen, in the PC version's style (tools/port_settings.py) -->
+<menus>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/interface_settings_screen" width="640" height="480" flags="pass_unhandled_to_focused_child pause_game" bitmap="bitmaps/gradient">
+		<on event="b" run="port settings cancel" back="true"/>
+		<on event="back" run="port settings cancel" back="true"/>
+		<on event="white" run="port settings tab previous"/>
+		<on event="black" run="port settings tab next"/>
+		<child widget="main_menu/settings/header_settings"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/options_menu"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/options_menu" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child up_down_tabs_children" description="main_menu/settings/tab_panel">
+		<data input="port settings page"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_0" x="28" y="104"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_high_res_hud" x="28" y="124"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_hud_button_style" x="28" y="145"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_high_res_text" x="28" y="166"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_match_timer" x="28" y="187"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_5" x="28" y="208"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_player_names" x="28" y="228"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_player_name_scale" x="28" y="249"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_scoreboard_team_layout" x="28" y="270"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_scoreboard_background" x="28" y="291"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_10" x="28" y="312"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_text_chat" x="28" y="332"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_chat_style" x="28" y="353"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_streamer_mode" x="28" y="374"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/button_bar" y="414"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tabs" y="76"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/button_defaults" y="1"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/button_ok" x="380" y="1"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/button_cancel" x="510" y="1"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_video_settings" type="text" controller="1" width="90" height="22" bitmap="main_menu/settings/tab" string_list="main_menu/settings/tab_names" color="#FF2896FF" align="center" text_y="5" font="ui\small_ui">
+		<on event="a" run="port settings tab"/>
+		<on event="start" run="port settings tab"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_audio_settings" type="text" controller="1" width="90" height="22" bitmap="main_menu/settings/tab" string_list="main_menu/settings/tab_names" string_index="1" color="#FF2896FF" align="center" text_y="5" font="ui\small_ui">
+		<on event="a" run="port settings tab"/>
+		<on event="start" run="port settings tab"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_mouse_settings" type="text" controller="1" width="90" height="22" bitmap="main_menu/settings/tab" string_list="main_menu/settings/tab_names" string_index="2" color="#FF2896FF" align="center" text_y="5" font="ui\small_ui">
+		<on event="a" run="port settings tab"/>
+		<on event="start" run="port settings tab"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_network_settings" type="text" controller="1" width="90" height="22" bitmap="main_menu/settings/tab" string_list="main_menu/settings/tab_names" string_index="3" color="#FF2896FF" align="center" text_y="5" font="ui\small_ui">
+		<on event="a" run="port settings tab"/>
+		<on event="start" run="port settings tab"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_interface_settings" type="text" controller="1" width="90" height="22" bitmap="main_menu/settings/tab_current" string_list="main_menu/settings/tab_names" string_index="4" color="#FFFFFFFF" align="center" text_y="5" font="ui\small_ui">
+		<on event="a" run="port settings tab"/>
+		<on event="start" run="port settings tab"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_profile_settings" type="text" controller="1" width="90" height="22" bitmap="main_menu/settings/tab" string_list="main_menu/settings/tab_names" string_index="5" color="#FF2896FF" align="center" text_y="5" font="ui\small_ui">
+		<on event="a" run="port settings tab"/>
+		<on event="start" run="port settings tab"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tabs" type="column_list" width="640" height="22" flags="pass_unhandled_to_focused_child left_right_tabs_items">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_video_settings" x="28"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_audio_settings" x="124"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_mouse_settings" x="220"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_network_settings" x="316"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_interface_settings" x="412"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_profile_settings" x="508"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/button_defaults" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" string_list="strings/common_button_captions" string_index="3" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port settings defaults"/>
+		<on event="start" run="port settings defaults"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/button_ok" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" string_list="strings/common_button_captions" string_index="1" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port settings ok" back="true"/>
+		<on event="start" run="port settings ok" back="true"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/button_cancel" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" string_list="strings/common_button_captions" string_index="2" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port settings cancel" back="true"/>
+		<on event="start" run="port settings cancel" back="true"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_0" width="344" height="18" bitmap="main_menu/settings/section">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_0_title"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_0_title" type="text" controller="1" width="344" height="18" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" color="#FF6F9CD0" text_x="2" text_y="1" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_high_res_hud" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/high_res_hud_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/high_res_hud_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/high_res_hud_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="1" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/high_res_hud_spinner" type="spinner" top="2" width="146" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="ON|OFF" setting="display.high_res_hud" values="true|false" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 146 14 152">
+		<on event="created" run="port setting load"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_hud_button_style" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/hud_button_style_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/hud_button_style_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/hud_button_style_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="2" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/hud_button_style_spinner" type="spinner" top="2" width="146" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="CLASSIC|GEMS|DARK GEMS" setting="display.hud_button_style" values="classic|gems|menu_gems" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 146 14 152">
+		<on event="created" run="port setting load"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_high_res_text" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/high_res_text_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/high_res_text_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/high_res_text_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="3" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/high_res_text_spinner" type="spinner" top="2" width="146" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="ON|OFF" setting="display.high_res_text" values="true|false" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 146 14 152">
+		<on event="created" run="port setting load"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_match_timer" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/match_timer_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/match_timer_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/match_timer_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="4" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/match_timer_spinner" type="spinner" top="2" width="146" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="ON|OFF" setting="display.match_timer" values="true|false" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 146 14 152">
+		<on event="created" run="port setting load"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_5" width="344" height="18" bitmap="main_menu/settings/section">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_5_title"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_5_title" type="text" controller="1" width="344" height="18" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="5" color="#FF6F9CD0" text_x="2" text_y="1" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_player_names" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/player_names_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/player_names_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/player_names_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="6" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/player_names_spinner" type="spinner" top="2" width="146" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="ALL|ALLIES|ENEMIES|NONE" setting="display.player_names" values="all|allies|enemies|none" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 146 14 152">
+		<on event="created" run="port setting load"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_player_name_scale" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/player_name_scale_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/player_name_scale_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/player_name_scale_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="7" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/player_name_scale_spinner" type="spinner" top="2" width="146" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="0.5x|0.75x|1x|1.25x|1.5x|2x" setting="display.player_name_scale" values="0.5|0.75|1|1.25|1.5|2" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 146 14 152">
+		<on event="created" run="port setting load"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_scoreboard_team_layout" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/scoreboard_team_layout_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/scoreboard_team_layout_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/scoreboard_team_layout_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="8" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/scoreboard_team_layout_spinner" type="spinner" top="2" width="146" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="TEAMS|BY SCORE" setting="display.scoreboard_team_layout" values="teams|score" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 146 14 152">
+		<on event="created" run="port setting load"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_scoreboard_background" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/scoreboard_background_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/scoreboard_background_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/scoreboard_background_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="9" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/scoreboard_background_spinner" type="spinner" top="2" width="146" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="ON|OFF" setting="display.scoreboard_background" values="true|false" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 146 14 152">
+		<on event="created" run="port setting load"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_10" width="344" height="18" bitmap="main_menu/settings/section">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_10_title"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_10_title" type="text" controller="1" width="344" height="18" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="10" color="#FF6F9CD0" text_x="2" text_y="1" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_text_chat" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/text_chat_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/text_chat_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/text_chat_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="11" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/text_chat_spinner" type="spinner" top="2" width="146" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="SHOW|HIDE" setting="display.text_chat" values="true|false" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 146 14 152">
+		<on event="created" run="port setting load"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_chat_style" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/chat_style_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/chat_style_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/chat_style_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="12" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/chat_style_spinner" type="spinner" top="2" width="146" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="COLORS|WHITE" setting="display.chat_style" values="colors|white" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 146 14 152">
+		<on event="created" run="port setting load"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_streamer_mode" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF">
+		<on event="a" open="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/streamer_mode_screen"/>
+		<on event="start" open="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/streamer_mode_screen"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode_label"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode_label" type="text" controller="1" width="332" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="13" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	</widget>
+	<strings name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels">
+		<string text="HUD"/>
+		<string text="HIGH-RES HUD"/>
+		<string text="BUTTON STYLE"/>
+		<string text="HIGH-RES TEXT"/>
+		<string text="MATCH TIMER"/>
+		<string text="MULTIPLAYER"/>
+		<string text="PLAYER NAMES"/>
+		<string text="NAME SIZE"/>
+		<string text="SCOREBOARD"/>
+		<string text="SCOREBOARD PANEL"/>
+		<string text="CHAT"/>
+		<string text="TEXT CHAT"/>
+		<string text="CHAT TEXT"/>
+		<string text="STREAMER MODE ›"/>
+	</strings>
+	<strings name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/help_strings">
+		<string text="The HUD, the players' names, the scoreboard and the chat."/>
+		<string text=""/>
+		<string text="Draws the HUD from sharp high-resolution redraws. Off draws the game's own pictures."/>
+		<string text="The buttons the HUD draws. Classic: plain Xbox buttons. Gems: shaded Xbox buttons. Dark Gems: the menus' button artwork."/>
+		<string text="Draws text and titles with sharp high-resolution fonts. Off draws the game's own."/>
+		<string text="Draws a clock at the bottom right in multiplayer, counting up from the start of the game."/>
+		<string text=""/>
+		<string text="In multiplayer, whose names are drawn above their heads."/>
+		<string text="How large the players' names are drawn."/>
+		<string text="A team game's scoreboard: a column for each team, or every player in order of score."/>
+		<string text="Draws a dark panel behind the scoreboard, for clearer text."/>
+		<string text=""/>
+		<string text="Shows the text chat. Hide draws none of its lines, and its keys and D-pad Up open nothing."/>
+		<string text="Colors draws the names in their team's colour; White draws it all white, as Custom Edition does."/>
+		<string text="Hides offensive words in names and text from other players, maps and mods, as stars."/>
+	</strings>
+</menus>

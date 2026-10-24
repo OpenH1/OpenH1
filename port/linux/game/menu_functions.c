@@ -114,6 +114,9 @@ int config_write(char const *name, char const *value);
 int config_boolean(char const *name);
 int config_default(char const *name, char *text, unsigned int size);
 int config_graphics_value(char const *graphics, char const *name, char *text, unsigned int size);
+char const *config_graphics_setting(int entry);
+long pc_menu_widget_string_list(long definition_index);
+boolean ui_widget_port_switch(struct widget_instance *widget, char const *name, boolean *widget_deleted);
 char const *config_string(char const *name);
 void platform_display_apply(void);
 void platform_binding_capture_begin(void);
@@ -413,19 +416,90 @@ static boolean setting_write(char const *name, char const *value)
 	return FALSE;
 }
 
-/* Graphics' preset spinner, and the preset it showed, since it was made
+/* Video's Quality spinner, and the value it showed, since it was made
 (graphics_preset_show) */
 static struct
 {
 	struct widget_instance *spinner;
 	short shown;
-	char const *value;
-} graphics_preset = { NULL, NONE, NULL };
+} graphics_preset = { NULL, NONE };
+
+/* ---------- Settings' changes kept (tools/port_settings.py's PAGES)
+
+What a tab or a page of Settings shows changed is kept here, by setting,
+until Settings' OK writes it all (settings_pending_write) or its Cancel
+forgets it: a tab or a page made again shows the changes kept (setting_load),
+whichever of them made them. Each page notes its rows' as they change
+(settings_page_update). A page a row opens keeps its own at its OK, and its
+Cancel puts back what was kept when it opened (settings_snapshot). */
+
+#define SETTINGS_PENDING_COUNT 160
+
+struct settings_pending
+{
+	char name[48];
+	char value[80];
+};
+
+static struct
+{
+	struct settings_pending entries[SETTINGS_PENDING_COUNT];
+	short count;
+} settings_pending, settings_snapshot;
+
+static short settings_pending_find(char const *name)
+{
+	short index;
+
+	for (index = 0; index < settings_pending.count; index++)
+	{
+		if (!strcmp(settings_pending.entries[index].name, name))
+			return index;
+	}
+	return NONE;
+}
+
+static char const *settings_pending_value(char const *name)
+{
+	short index = settings_pending_find(name);
+
+	return index == NONE ? NULL : settings_pending.entries[index].value;
+}
+
+static void settings_pending_set(char const *name, char const *value)
+{
+	short index = settings_pending_find(name);
+
+	if (index == NONE)
+	{
+		if (settings_pending.count >= SETTINGS_PENDING_COUNT || strlen(name) >= sizeof(settings_pending.entries[0].name))
+			return;
+		index = settings_pending.count++;
+		snprintf(settings_pending.entries[index].name, sizeof(settings_pending.entries[index].name), "%s", name);
+	}
+	snprintf(settings_pending.entries[index].value, sizeof(settings_pending.entries[index].value), "%s", value);
+}
+
+static void settings_pending_remove(char const *name)
+{
+	short index = settings_pending_find(name);
+
+	if (index == NONE)
+		return;
+	settings_pending.entries[index] = settings_pending.entries[--settings_pending.count];
+}
+
+static void settings_pending_clear(void)
+{
+	settings_pending.count = 0;
+	settings_snapshot.count = 0;
+}
 
 static boolean setting_load(struct widget_instance *widget)
 {
 	struct pc_menu_setting *setting = pc_menu_setting_get(widget->definition_tag_index);
 	char current[300];
+	char const *pending;
 
 	if (spinner_item(widget))
 		return TRUE;
@@ -434,6 +508,10 @@ static boolean setting_load(struct widget_instance *widget)
 	setting->loaded_index = setting_value_index(setting, current);
 	if (setting->loaded_index < (short)widget->parameters.list.number_of_items)
 		widget->parameters.list.selected_index = setting->loaded_index;
+	/* (Settings' change kept, shown as the page is made again) */
+	pending = settings_pending_value(setting->setting);
+	if (pending && setting_value_index(setting, pending) < (short)widget->parameters.list.number_of_items)
+		widget->parameters.list.selected_index = setting_value_index(setting, pending);
 	/* (Graphics' preset: the rows it chooses follow it from here) */
 	if (!strcmp(setting->setting, "display.graphics"))
 	{
@@ -1565,65 +1643,139 @@ static void video_rows_show(struct widget_instance *list)
 	}
 }
 
-/* Graphics' button style follows the pending HUD choice, including Defaults.
-The remaining options close the gap; the help and bottom buttons stay put. */
+/* Interface's button style, shown while the HUD shown is the high-res one
+(Defaults too); the rows below close the gap (settings_rows_pack) */
 static void hud_button_style_row_show(struct widget_instance *list)
 {
 	struct widget_instance *hud = named(list, "high_res_hud_spinner", 0);
 	struct widget_instance *row = named(list, "op_hud_button_style", 0);
 	struct pc_menu_setting *setting = hud ? pc_menu_setting_get(hud->definition_tag_index) : NULL;
-	struct widget_instance *child;
-	short index, spacing;
-	boolean visible;
+	short index;
 
-	if (!setting || !row || !hud->parent) return;
+	if (!setting || !row)
+		return;
 	index = hud->parameters.list.selected_index;
-	visible = index >= 0 && index < setting->value_count && !strcmp(setting->values[index], "true");
-	/* (the page's spacing: the row's below the HUD's, neither of which moves) */
-	spacing = row->vertical_offset - hud->parent->vertical_offset;
-	if (row->visible != visible)
-	{
-		for (child = row->next; child; child = child->next)
-			if (!strncmp(child->name, "op_", 3))
-				child->vertical_offset += visible ? spacing : -spacing;
-		row->visible = visible;
-	}
-	if (!visible && list->focused_child == row)
-	{
-		for (index = 0, child = list->child; child && child != hud->parent; child = child->next)
-			index++;
-		list->focused_child = hud->parent;
-		list->parameters.list.selected_index = index;
-	}
+	row->visible = index >= 0 && index < setting->value_count && !strcmp(setting->values[index], "true");
 }
 
-/* Graphics' preset (display.graphics): Classic or Enhanced chosen (Defaults
-too) shows each row it chooses at the preset's value, which OK writes (and
-port_config.c leaves to the preset); a row changed after is the player's
-own */
+/* a setting's value as Settings shows it: the change kept, else
+config.toml's (or the profile's) */
+static boolean settings_value(char const *name, char *text, unsigned int size)
+{
+	char const *pending = settings_pending_value(name);
+
+	if (pending)
+	{
+		snprintf(text, size, "%s", pending);
+		return TRUE;
+	}
+	return setting_text(name, text, size, FALSE);
+}
+
+static boolean settings_values_same(char const *a, char const *b)
+{
+	double number_a, number_b;
+
+	if (!_stricmp(a, b))
+		return TRUE;
+	return text_is_number(a, &number_a) && text_is_number(b, &number_b) && number_a == number_b;
+}
+
+/* whether a setting Quality (display.graphics) chooses is not at the value
+the preset gives it: Quality shows CUSTOM */
+static boolean graphics_preset_custom(char const *preset)
+{
+	char const *name;
+	int entry;
+
+	for (entry = 0; (name = config_graphics_setting(entry)) != NULL; entry++)
+	{
+		char given[300], shown[300];
+
+		if (config_graphics_value(preset, name, given, sizeof(given)) &&
+			settings_value(name, shown, sizeof(shown)) && !settings_values_same(given, shown))
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+/* the preset chosen, Classic or Enhanced: each setting it chooses kept at
+its value (those on another page too), which Settings' OK writes after
+display.graphics (as config_write, leaving them to the preset), and those
+on the page shown at it */
+static char const *graphics_preset_choice;
+
 static boolean graphics_preset_row_show(struct widget_instance *spinner, struct pc_menu_setting *setting)
 {
 	char text[300];
 
-	if (config_graphics_value(graphics_preset.value, setting->setting, text, sizeof(text)))
+	if (config_graphics_value(graphics_preset_choice, setting->setting, text, sizeof(text)))
 		spinner->parameters.list.selected_index = setting_value_index(setting, text);
 	return TRUE;
 }
 
+static void graphics_preset_choose(struct widget_instance *list, char const *preset)
+{
+	char const *name;
+	int entry;
+
+	settings_pending_set("display.graphics", preset);
+	for (entry = 0; (name = config_graphics_setting(entry)) != NULL; entry++)
+	{
+		char given[300];
+
+		if (config_graphics_value(preset, name, given, sizeof(given)))
+			settings_pending_set(name, given);
+	}
+	graphics_preset_choice = preset;
+	settings_each(screen_of(list), graphics_preset_row_show);
+}
+
+/* Video's Quality (display.graphics): CLASSIC or ENHANCED, or CUSTOM while
+any setting it chooses (on this page or Advanced Graphics) is another
+value. Classic or Enhanced chosen (Defaults too) puts them all at the
+preset's values; CUSTOM is passed over, the way the spinner went, unless it
+is so */
 static void graphics_preset_show(struct widget_instance *list)
 {
 	struct widget_instance *spinner = named(list, "graphics_spinner", 0);
 	struct pc_menu_setting *setting = spinner ? pc_menu_setting_get(spinner->definition_tag_index) : NULL;
-	short index;
+	short index, custom, count;
+	char base[64];
 
 	if (!setting || spinner != graphics_preset.spinner)
 		return;
-	index = spinner->parameters.list.selected_index;
-	if (index == graphics_preset.shown || index < 0 || index >= setting->value_count)
+	count = (short)setting->value_count;
+	custom = setting_value_index(setting, "custom");
+	if (strcmp(setting->values[custom], "custom") || !settings_value("display.graphics", base, sizeof(base)))
 		return;
-	graphics_preset.shown = index;
-	graphics_preset.value = setting->values[index];
-	settings_each(screen_of(list), graphics_preset_row_show);
+	index = spinner->parameters.list.selected_index;
+	if (index < 0 || index >= count)
+		return;
+	if (index != graphics_preset.shown)
+	{
+		if (index == custom && !graphics_preset_custom(base))
+		{
+			short step = graphics_preset.shown != NONE && (graphics_preset.shown + 1) % count == index ? 1 : count - 1;
+
+			index = (short)((index + step) % count);
+			spinner->parameters.list.selected_index = index;
+		}
+		if (index != custom)
+			graphics_preset_choose(list, setting->values[index]);
+		graphics_preset.shown = index;
+		return;
+	}
+	if (index != custom)
+		snprintf(base, sizeof(base), "%s", setting->values[index]);
+	if (graphics_preset_custom(base) != (index == custom))
+	{
+		index = index == custom ? setting_value_index(setting, base) : custom;
+		spinner->parameters.list.selected_index = index;
+		graphics_preset.shown = index;
+	}
 }
 
 /* Graphics' SIMULATION row (game.sim_rate): where the game sets the setting
@@ -1670,6 +1822,614 @@ static void sim_rate_row_show(struct widget_instance *list)
 			list->parameters.list.selected_index = index;
 		}
 	}
+}
+
+/* ---------- Settings' tabs and pages (tools/port_settings.py's PAGES)
+
+"port settings begin" (the main menu's and the pause menu's SETTINGS) forgets
+what the last Settings kept and edits player 1's profile, if there is one:
+Settings opens on its first tab with no profile too. A tab's "port settings
+tab" (A or a click on one of the tabs), "port settings tab next" and
+"previous" (RB and LB, E and Q) open another tab in its place, out of the
+history, so that B and Cancel ("port settings cancel": nothing kept, the
+profile's changes forgotten) leave Settings from any tab, and its OK ("port
+settings ok") writes every change kept, saves the profile's and applies the
+window's. A page a row opens keeps its changes at its OK ("port settings
+keep"), and its Cancel ("port settings page cancel") puts back what was kept
+when it opened. "port settings new profile" (CREATE PROFILE) asks for a new
+profile's name, as the main menu's items do.
+
+"port settings page" (a tab's or a page's list, each frame) shows the rows
+that are for this game (settings_rows_show), packs them at the steps
+tools/port_settings.py laid them out at, notes the changes, keeps the tabs on
+the one shown, and fills in the panel for the row chosen (settings_panel_show):
+its name, its value in large type, and its words wrapped to the panel. */
+
+/* as tools/port_settings.py lays the rows out (SETTINGS_ROW_STEP,
+SETTINGS_SECTION_STEP, SETTINGS_TOP, PAGE_TOP), and the panel's words'
+places under its name (_settings_shared) */
+#define SETTINGS_ROW_STEP 21
+#define SETTINGS_SECTION_STEP 20
+#define SETTINGS_TABS_ROWS_TOP 104
+#define SETTINGS_PAGE_ROWS_TOP 80
+#define SETTINGS_PANEL_TEXT_TOP 44
+#define SETTINGS_PANEL_TEXT_UNDER_STILLS 122
+#define SETTINGS_PANEL_TEXT_LENGTH 512
+#define SETTINGS_FOLDER "pc\\main_menu\\settings_select\\player_setup\\player_profile_edit\\"
+#define SETTINGS_SHARED "pc\\main_menu\\settings\\"
+/* the link rows' sign, after their labels (U+203A) */
+#define SETTINGS_LINK_SIGN 0x203A
+
+/* the tabs in order: each one's folder (below the profile menu's, whose
+screens they replace) and screen */
+static struct
+{
+	char const *folder;
+	char const *screen;
+} const settings_tabs[] =
+{
+	{ "video_settings", "video_settings_screen" },
+	{ "audio_settings", "audio_settings_screen" },
+	{ "mouse_settings", "mouse_settings_screen" },
+	{ "network_setup", "network_settings_screen" },
+	{ "interface_settings", "interface_settings_screen" },
+	{ "profile_settings", "profile_settings_screen" },
+};
+
+/* the rows hidden in a game (not on the main menu): those that would drop
+it or are the main menu's (internet play, the router, the clipboard, the
+updates), and those whose screens are ui.map's (the name's keyboard, the
+colours' pictures) or make a profile */
+static char const *const settings_in_game_hidden[] =
+{
+	"op_online", "op_allow_upnp", "op_join_from_clipboard", "op_auto", "op_name", "op_color", "op_create_profile",
+};
+
+static struct
+{
+	/* the screen a page update last saw (a page made: its snapshot) */
+	struct widget_instance *screen;
+	long screen_tag;
+	long screen_time;
+	/* the panel's words' fonts and widths, as last drawn
+	(menu_functions_text_box_drawn): NONE before */
+	long text_font;
+	short text_width;
+	long note_font;
+	short note_width;
+} settings_page = { NULL, NONE, 0, NONE, 0, NONE, 0 };
+
+static short settings_tab_of(struct widget_instance const *screen)
+{
+	short tab;
+
+	for (tab = 0; tab < (short)NUMBEROF(settings_tabs); tab++)
+	{
+		if (screen->name && !strcmp(screen->name, settings_tabs[tab].screen))
+			return tab;
+	}
+	return NONE;
+}
+
+/* a change on the page noted (Quality's CUSTOM is not a value of its own) */
+static boolean setting_stash(struct widget_instance *spinner, struct pc_menu_setting *setting)
+{
+	short index = spinner->parameters.list.selected_index;
+
+	if (spinner->disabled || index < 0 || index >= setting->value_count || setting->loaded_index == NONE)
+		return TRUE;
+	if (!strcmp(setting->setting, "display.graphics") && !strcmp(setting->values[index], "custom"))
+		return TRUE;
+	if (index == setting->loaded_index)
+		settings_pending_remove(setting->setting);
+	else
+		settings_pending_set(setting->setting, setting->values[index]);
+	return TRUE;
+}
+
+/* Settings' OK: every change kept written (display.graphics first, which
+leaves those it chooses to it: those after it, at its values, stay so), the
+window's applied, and the profile's saved */
+static void settings_pending_write(void)
+{
+	short pass, index;
+
+	for (pass = 0; pass < 2; pass++)
+	{
+		for (index = 0; index < settings_pending.count; index++)
+		{
+			struct settings_pending const *entry = &settings_pending.entries[index];
+
+			if ((pass == 0) != !strcmp(entry->name, "display.graphics"))
+				continue;
+			if (setting_write(entry->name, entry->value))
+				platform_log("menus: %s = %s", entry->name, entry->value);
+			else
+				platform_log("menus: could not set %s", entry->name);
+		}
+	}
+	settings_pending_clear();
+	platform_display_apply();
+	if (player_ui_get_edit_player_profile())
+	{
+		if (player_ui_edit_profile_is_dirty() && !player_ui_save_profile())
+			platform_log("menus: could not save the profile's changes");
+		player_ui_end_editing_profile();
+	}
+}
+
+/* another tab in the place of this one (out of the history) */
+static boolean settings_tab_open(struct widget_instance *widget, short tab, boolean *widget_deleted)
+{
+	struct widget_instance *screen = screen_of(widget);
+	short count = (short)NUMBEROF(settings_tabs);
+	char name[256];
+
+	tab = (short)((tab + count) % count);
+	if (tab == settings_tab_of(screen))
+		return TRUE;
+	settings_each(screen, setting_stash);
+	snprintf(name, sizeof(name), SETTINGS_FOLDER "%s\\%s", settings_tabs[tab].folder, settings_tabs[tab].screen);
+	ui_play_audio_feedback_sound(SOUND_CURSOR);
+	return ui_widget_port_switch(widget, name, widget_deleted);
+}
+
+/* CREATE PROFILE: the new profile's name asked (a press: the profile is made
+on its controller); FALSE, for its row's conditional to make it */
+static boolean settings_profile_new(struct widget_instance *widget, struct event_record *event,
+	boolean *widget_deleted)
+{
+	if (!main_menu_is_active() || !event || event->controller_index < 0 || event->controller_index >= 4)
+		return TRUE;
+	settings_each(screen_of(widget), setting_stash);
+	game_function("new campaign chosen", widget, event, widget_deleted);
+	return FALSE;
+}
+
+/* "port settings <name>": FALSE if it is not one of these */
+static boolean settings_function(char const *name, struct widget_instance *widget, struct event_record *event,
+	boolean *widget_deleted, boolean *result)
+{
+	struct widget_instance *screen = screen_of(widget);
+
+	*result = TRUE;
+	if (!strcmp(name, "begin"))
+	{
+		settings_pending_clear();
+		pc_menu_profile_edit_begin();
+	}
+	else if (!strcmp(name, "tab"))
+	{
+		*result = settings_tab_open(widget, sibling_index(widget), widget_deleted);
+	}
+	else if (!strcmp(name, "tab next") || !strcmp(name, "tab previous"))
+	{
+		short tab = settings_tab_of(screen);
+
+		if (tab != NONE)
+			*result = settings_tab_open(widget, (short)(tab + (!strcmp(name, "tab next") ? 1 : -1)), widget_deleted);
+	}
+	else if (!strcmp(name, "ok"))
+	{
+		settings_each(screen, setting_stash);
+		settings_pending_write();
+	}
+	else if (!strcmp(name, "cancel"))
+	{
+		settings_pending_clear();
+		player_ui_end_editing_profile();
+	}
+	else if (!strcmp(name, "keep"))
+	{
+		settings_each(screen, setting_stash);
+	}
+	else if (!strcmp(name, "page cancel"))
+	{
+		settings_pending = settings_snapshot;
+	}
+	else if (!strcmp(name, "new profile"))
+	{
+		*result = settings_profile_new(widget, event, widget_deleted);
+	}
+	else
+	{
+		return FALSE;
+	}
+	return TRUE;
+}
+
+/* whether the row sets one of the profile's settings ("profile.<field>"),
+or opens what is the profile's (its name, its colour) */
+static boolean settings_row_profile(struct widget_instance *row)
+{
+	struct widget_instance *child;
+
+	if (!strcmp(row->name, "op_name") || !strcmp(row->name, "op_color"))
+		return TRUE;
+	for (child = row->child; child; child = child->next)
+	{
+		struct pc_menu_setting *setting = child->type == 2 && !spinner_item(child) ?
+			pc_menu_setting_get(child->definition_tag_index) : NULL;
+
+		if (setting && !strncmp(setting->setting, "profile.", 8))
+			return TRUE;
+	}
+	return FALSE;
+}
+
+/* the rows that are for this game: in a game, not those of
+settings_in_game_hidden; with no profile, not the profile's, but CREATE
+PROFILE (on the main menu) */
+static void settings_rows_show(struct widget_instance *list)
+{
+	boolean in_game = !main_menu_is_active();
+	boolean profile = player_ui_get_edit_player_profile() != NULL;
+	struct widget_instance *row;
+
+	for (row = list->child; row; row = row->next)
+	{
+		short index;
+
+		if (!row->name || strncmp(row->name, "op_", 3))
+			continue;
+		if (!strcmp(row->name, "op_create_profile"))
+		{
+			row->visible = !profile && !in_game;
+			continue;
+		}
+		if (!profile && settings_row_profile(row))
+			row->visible = FALSE;
+		for (index = 0; in_game && index < (short)NUMBEROF(settings_in_game_hidden); index++)
+		{
+			if (!strcmp(row->name, settings_in_game_hidden[index]))
+				row->visible = FALSE;
+		}
+	}
+}
+
+/* the rows shown, a step apart from the top, each section's title over them
+(hidden with none shown), as tools/port_settings.py lays them out for every
+row */
+static void settings_rows_pack(struct widget_instance *list, boolean tab)
+{
+	short y = tab ? SETTINGS_TABS_ROWS_TOP : SETTINGS_PAGE_ROWS_TOP;
+	struct widget_instance *child;
+
+	for (child = list->child; child; child = child->next)
+	{
+		if (!child->name)
+			continue;
+		if (!strncmp(child->name, "section_", 8))
+		{
+			struct widget_instance *row;
+
+			/* (a title the list passes over) */
+			child->disabled = TRUE;
+			child->visible = FALSE;
+			for (row = child->next; row && (!row->name || strncmp(row->name, "section_", 8)); row = row->next)
+			{
+				if (row->name && !strncmp(row->name, "op_", 3) && row->visible)
+					child->visible = TRUE;
+			}
+			if (child->visible)
+			{
+				child->vertical_offset = (short)(list->vertical_offset + y);
+				y += SETTINGS_SECTION_STEP;
+			}
+		}
+		else if (!strncmp(child->name, "op_", 3) && child->visible)
+		{
+			child->vertical_offset = (short)(list->vertical_offset + y);
+			y += SETTINGS_ROW_STEP;
+		}
+	}
+}
+
+/* the focus on a row hidden goes to the first row shown */
+static void settings_focus_shown(struct widget_instance *list)
+{
+	struct widget_instance *child;
+	short index = 0;
+
+	if (!list->focused_child || (list->focused_child->visible &&
+		(!list->focused_child->name || strncmp(list->focused_child->name, "section_", 8))))
+		return;
+	for (child = list->child; child; child = child->next, index++)
+	{
+		if (child->visible && child->name && !strncmp(child->name, "op_", 3) && !child->disabled)
+		{
+			list->focused_child = child;
+			list->parameters.list.selected_index = index;
+			return;
+		}
+	}
+}
+
+/* the tabs' focus, while they have not the list's, on the tab shown */
+static void settings_tabs_show(struct widget_instance *list, short tab)
+{
+	struct widget_instance *tabs = named(list, "tabs", 0);
+	struct widget_instance *item;
+	short index = 0;
+
+	if (!tabs || tab == NONE || list->focused_child == tabs)
+		return;
+	for (item = tabs->child; item && index < tab; item = item->next)
+		index++;
+	if (item)
+	{
+		tabs->focused_child = item;
+		tabs->parameters.list.selected_index = tab;
+	}
+}
+
+/* a widget's own text: its label's string (from its list), or the value a
+spinner shows */
+static wchar_t const *settings_widget_text(struct widget_instance *widget, short index)
+{
+	long list = widget ? pc_menu_widget_string_list(widget->definition_tag_index) : NONE;
+
+	if (list == NONE)
+		return NULL;
+	if (index == NONE)
+		index = pc_menu_string_index(widget->definition_tag_index);
+	return index >= 0 ? unicode_string_list_get_string(list, index) : NULL;
+}
+
+static wchar_t const *settings_string(char const *list, short index)
+{
+	long tag_index = tag_loaded('ustr', list);
+
+	return tag_index != NONE && index >= 0 ? unicode_string_list_get_string(tag_index, index) : NULL;
+}
+
+/* the words for the row, from the help list beside its labels' */
+static wchar_t const *settings_row_help(struct widget_instance *label)
+{
+	long labels = label ? pc_menu_widget_string_list(label->definition_tag_index) : NONE;
+	short index = label ? pc_menu_string_index(label->definition_tag_index) : NONE;
+	char name[256];
+	char *last;
+
+	if (labels == NONE || index == NONE)
+		return NULL;
+	snprintf(name, sizeof(name), "%s", tag_get_name(labels));
+	last = strrchr(name, '\\');
+	if (!last || strcmp(last + 1, "labels"))
+		return NULL;
+	snprintf(last + 1, sizeof(name) - (size_t)(last + 1 - name), "help_strings");
+	return settings_string(name, (short)(index + 1));
+}
+
+static void settings_wide_copy(wchar_t *to, wchar_t const *from, short size)
+{
+	short length = 0;
+
+	for (; from && *from && length < size - 1; from++)
+		to[length++] = *from;
+	to[length] = 0;
+}
+
+/* how wide the text is drawn in the font */
+static short settings_text_width(long font, wchar_t const *text)
+{
+	static real_argb_color const white = { 1.0f, 1.0f, 1.0f, 1.0f };
+	rectangle2d bounds, text_bounds, cursor;
+
+	bounds.x0 = 0;
+	bounds.y0 = 0;
+	bounds.x1 = 0x3FFF;
+	bounds.y1 = 480;
+	draw_string_set_draw_mode(font, NONE, 0, 0, &white);
+	draw_unicode_string_compute_bounds(&bounds, text, &text_bounds, &cursor);
+	return (short)(MAX(text_bounds.x1, cursor.x0) - bounds.x0);
+}
+
+/* the words in lines that fit across width in the font (the game's line
+breaks, \r\n), broken at spaces; as they are while the font is not known */
+static short settings_text_wrap(wchar_t const *text, wchar_t *wrapped, short size, long font, short width)
+{
+	short length = 0, line_start = 0, lines = 1;
+
+	wrapped[0] = 0;
+	while (text && *text && length < size - 3)
+	{
+		short word = 0, mark = length;
+
+		while (text[word] == ' ')
+			word++;
+		while (text[word] && text[word] != ' ')
+			word++;
+		if (length + word + 2 >= size)
+			break;
+		memcpy(wrapped + length, text, word * sizeof(wchar_t));
+		wrapped[length + word] = 0;
+		if (font != NONE && mark > line_start && settings_text_width(font, wrapped + line_start) > width)
+		{
+			/* (the word to the next line, without its space) */
+			short skip = 0;
+
+			while (text[skip] == ' ')
+				skip++;
+			wrapped[mark] = '\r';
+			wrapped[mark + 1] = '\n';
+			length = (short)(mark + 2);
+			line_start = length;
+			memcpy(wrapped + length, text + skip, (word - skip) * sizeof(wchar_t));
+			length = (short)(length + word - skip);
+			lines++;
+		}
+		else
+		{
+			length = (short)(length + word);
+		}
+		wrapped[length] = 0;
+		text += word;
+	}
+	return lines;
+}
+
+/* the panel: the row chosen's name, its value in large type and its words
+(after a "|", a note under them); Quality's pictures, the preset shown
+framed; the tabs' and the buttons' own words */
+static void settings_panel_show(struct widget_instance *list, short tab)
+{
+	struct widget_instance *panel = list->parameters.list.extended_description;
+	struct widget_instance *row = list->focused_child;
+	struct widget_instance *text, *note;
+	wchar_t name[ROW_TEXT_LENGTH] = { 0 }, value[ROW_TEXT_LENGTH] = { 0 };
+	wchar_t words[SETTINGS_PANEL_TEXT_LENGTH] = { 0 }, wrapped[SETTINGS_PANEL_TEXT_LENGTH];
+	wchar_t const *help = NULL;
+	wchar_t *bar;
+	short still = NONE, length, lines, index;
+	boolean stills = FALSE;
+	char const *const stills_names[] = { "panel_classic", "panel_enhanced" };
+
+	if (!panel || !row || !row->name)
+		return;
+	if (!strcmp(row->name, "tabs") && row->focused_child)
+	{
+		index = sibling_index(row->focused_child);
+		settings_wide_copy(name, L"SETTINGS", ROW_TEXT_LENGTH);
+		settings_wide_copy(value, settings_string(SETTINGS_SHARED "tab_names", index), ROW_TEXT_LENGTH);
+		help = settings_string(SETTINGS_SHARED "tab_about", index);
+	}
+	else if (!strcmp(row->name, "button_bar") && row->focused_child)
+	{
+		index = sibling_index(row->focused_child);
+		settings_wide_copy(name, settings_widget_text(row->focused_child, NONE), ROW_TEXT_LENGTH);
+		help = settings_string(SETTINGS_SHARED "button_help", (short)((tab == NONE ? 3 : 0) + index));
+	}
+	else if (!strncmp(row->name, "op_", 3))
+	{
+		struct widget_instance *label = row->child && row->child->type == 1 ? row->child : NULL;
+		struct widget_instance *spinner;
+		struct player_profile *profile = player_ui_get_edit_player_profile();
+
+		settings_wide_copy(name, settings_widget_text(label, NONE), ROW_TEXT_LENGTH);
+		for (length = 0; name[length]; length++)
+		{
+		}
+		/* (a link's name without its sign) */
+		while (length > 0 && (name[length - 1] == SETTINGS_LINK_SIGN || name[length - 1] == ' '))
+			name[--length] = 0;
+		for (spinner = row->child; spinner && spinner->type != 2; spinner = spinner->next)
+		{
+		}
+		if (spinner)
+		{
+			settings_wide_copy(value, settings_widget_text(spinner, spinner->parameters.list.selected_index),
+				ROW_TEXT_LENGTH);
+		}
+		else if (profile && !strcmp(row->name, "op_name"))
+		{
+			ustrncpy(value, profile->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH);
+			value[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
+		}
+		else if (profile && !strcmp(row->name, "op_color"))
+		{
+			string_get("pc\\main_menu\\settings_select\\player_setup\\player_profile_edit\\color_edit\\colors_list",
+				profile->primary_color_index, value);
+		}
+		help = settings_row_help(label);
+		/* (Quality: CLASSIC or ENHANCED framed, neither for CUSTOM) */
+		if (!strcmp(row->name, "op_graphics") && spinner)
+		{
+			struct pc_menu_setting *setting = pc_menu_setting_get(spinner->definition_tag_index);
+			short shown = spinner->parameters.list.selected_index;
+
+			stills = TRUE;
+			if (setting && shown >= 0 && shown < setting->value_count)
+				still = !strcmp(setting->values[shown], "classic") ? 0 : !strcmp(setting->values[shown], "enhanced") ? 1 : NONE;
+		}
+	}
+	settings_wide_copy(words, help, SETTINGS_PANEL_TEXT_LENGTH);
+	for (bar = words; *bar && *bar != '|'; bar++)
+	{
+	}
+	if (*bar)
+		*bar++ = 0;
+	text_set_length(named(panel, "panel_name", 0), name, ROW_TEXT_LENGTH);
+	text_set_length(named(panel, "panel_value", 0), value, ROW_TEXT_LENGTH);
+	lines = settings_text_wrap(words, wrapped, SETTINGS_PANEL_TEXT_LENGTH, settings_page.text_font,
+		settings_page.text_width);
+	text = named(panel, "panel_text", 0);
+	text_set_length(text, wrapped, SETTINGS_PANEL_TEXT_LENGTH);
+	/* (under the name, or under Quality's pictures) */
+	if (text && named(panel, "panel_name", 0))
+		text->vertical_offset = (short)(named(panel, "panel_name", 0)->vertical_offset +
+			(stills ? SETTINGS_PANEL_TEXT_UNDER_STILLS : SETTINGS_PANEL_TEXT_TOP));
+	settings_text_wrap(bar, wrapped, SETTINGS_PANEL_TEXT_LENGTH, settings_page.note_font, settings_page.note_width);
+	note = named(panel, "panel_note", 0);
+	text_set_length(note, wrapped, SETTINGS_PANEL_TEXT_LENGTH);
+	/* (the note a line under the words) */
+	if (note && text)
+	{
+		short line = 12;
+
+		if (settings_page.text_font != NONE)
+		{
+			rectangle2d bounds, text_bounds, cursor;
+			static real_argb_color const white = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+			bounds.x0 = 0;
+			bounds.y0 = 0;
+			bounds.x1 = 0x3FFF;
+			bounds.y1 = 480;
+			/* (a line's height: two lines' less one's) */
+			draw_string_set_draw_mode(settings_page.text_font, NONE, 0, 0, &white);
+			draw_unicode_string_compute_bounds(&bounds, L"X\r\nX", &text_bounds, &cursor);
+			line = (short)(text_bounds.y1 - text_bounds.y0);
+			draw_unicode_string_compute_bounds(&bounds, L"X", &text_bounds, &cursor);
+			line = (short)(line - (text_bounds.y1 - text_bounds.y0));
+		}
+		note->vertical_offset = (short)(text->vertical_offset + lines * line + line / 2);
+	}
+	for (index = 0; index < 2; index++)
+	{
+		char frame_name[32];
+		struct widget_instance *widget;
+
+		if ((widget = named(panel, stills_names[index], 0)) != NULL)
+			widget->visible = stills;
+		snprintf(frame_name, sizeof(frame_name), "%s_frame", stills_names[index]);
+		if ((widget = named(panel, frame_name, 0)) != NULL)
+		{
+			widget->visible = stills;
+			widget->animation.current_frame_index = (short)(still == index);
+		}
+		snprintf(frame_name, sizeof(frame_name), "%s_caption", stills_names[index]);
+		if ((widget = named(panel, frame_name, 0)) != NULL)
+			widget->visible = stills;
+	}
+}
+
+/* "port settings page": each frame of a tab's or a page's list */
+static void settings_page_update(struct widget_instance *list)
+{
+	struct widget_instance *screen = screen_of(list);
+	short tab = settings_tab_of(screen);
+
+	/* (a page made: what was kept as it opened, for its Cancel) */
+	if (screen != settings_page.screen || screen->definition_tag_index != settings_page.screen_tag ||
+		screen->creation_time != settings_page.screen_time)
+	{
+		settings_page.screen = screen;
+		settings_page.screen_tag = screen->definition_tag_index;
+		settings_page.screen_time = screen->creation_time;
+		if (tab == NONE)
+			settings_snapshot = settings_pending;
+	}
+	video_rows_show(list);
+	hud_button_style_row_show(list);
+	settings_rows_show(list);
+	graphics_preset_show(list);
+	sim_rate_row_show(list);
+	settings_each(screen, setting_stash);
+	settings_rows_pack(list, tab != NONE);
+	settings_focus_shown(list);
+	settings_tabs_show(list, tab);
+	settings_panel_show(list, tab);
 }
 
 /* ---------- Change Color: the profile's colour, from a list of the
@@ -5392,27 +6152,6 @@ static boolean profile_save_changes(struct widget_instance *widget, boolean *wid
 	return TRUE;
 }
 
-/* "port profile settings save" (Gamepads' OK in a single-player campaign:
-menu_tags.c's pause_settings_patch): the profile saved at once, not on
-Settings' OK, so that the campaign's next save of the player's profile
-keeps it; saving makes it the player's own (player_ui_save_profile), and it
-is edited again from what was saved, for Settings to go on with */
-static boolean profile_settings_save(struct widget_instance *widget)
-{
-	long index = player_ui_get_edit_profile_index();
-
-	settings_each(screen_of(widget), setting_changed_save);
-	if (!player_ui_get_edit_player_profile() || !player_ui_edit_profile_is_dirty())
-		return TRUE;
-	if (!player_ui_save_profile())
-	{
-		platform_log("menus: could not save the profile's changes");
-		return campaign_fail();
-	}
-	player_ui_begin_editing_profile(index);
-	return TRUE;
-}
-
 /* "port pause end game" (the in-game pause menu's END GAME, the host's:
 menu_tags.c's pause_patch): the game ends as its time limit would, its
 players staying for the next (the carnage report, then the host's PICK GAME) */
@@ -5721,6 +6460,17 @@ voice chat (or muted) has a speaker just left of their name
 void menu_functions_text_box_drawn(struct widget_instance *widget, rectangle2d const *bounds)
 {
 	short row;
+
+	/* (Settings' panel's words: the font and width they are wrapped to,
+	settings_panel_show) */
+	if (widget->name && (!strcmp(widget->name, "panel_text") || !strcmp(widget->name, "panel_note")))
+	{
+		boolean note = !strcmp(widget->name, "panel_note");
+
+		*(note ? &settings_page.note_font : &settings_page.text_font) = draw_string_get_font();
+		*(note ? &settings_page.note_width : &settings_page.text_width) = (short)(bounds->x1 - bounds->x0);
+		return;
+	}
 
 	/* (the Mods screen's texts: the fonts and widths their lines are
 	measured in, mods_text_fits) */
@@ -6935,6 +7685,7 @@ boolean pc_menu_event_function_invoke(
 	}
 	{
 		char const *name = pc_menu_function_name(function_index);
+		boolean result = TRUE;
 
 		if (!name)
 			return FALSE;
@@ -7077,9 +7828,10 @@ boolean pc_menu_event_function_invoke(
 		{
 			return profile_save_changes(widget, widget_deleted);
 		}
-		else if (!strcmp(name, "port profile settings save"))
+		else if (!strncmp(name, "port settings ", 14) && settings_function(name + 14, widget, event, widget_deleted,
+			&result))
 		{
-			return profile_settings_save(widget);
+			return result;
 		}
 		else if (!strcmp(name, "direct ip connect go"))
 		{
@@ -7367,12 +8119,11 @@ void pc_menu_game_data_function_invoke(
 		lobby_update(widget);
 	else if (!strcmp(name, "port settings help"))
 	{
-		video_rows_show(widget);
-		hud_button_style_row_show(widget);
-		graphics_preset_show(widget);
 		sim_rate_row_show(widget);
 		settings_help(widget);
 	}
+	else if (!strcmp(name, "port settings page"))
+		settings_page_update(widget);
 	else if (!strcmp(name, "controls update menu"))
 		controls_update(widget);
 	else if (!strcmp(name, "port mods update"))
