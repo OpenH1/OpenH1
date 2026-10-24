@@ -3437,6 +3437,9 @@ static boolean ui_widget_function_denied(
 	return denied;
 }
 
+/* port: ui_widget_event_handler_functions.h */
+boolean ui_widget_function_failure_expected = FALSE;
+
 boolean ui_widget_event_handler_function_invoke(
 	struct widget_instance *widget,
 	struct event_record *event,
@@ -3465,7 +3468,10 @@ boolean ui_widget_event_handler_function_invoke(
 	if ((short)function_index >= 0 && function_index < 102)
 	{
 		result = event_handler_function_list.functions[(short)function_index](widget, event, widget_deleted);
-		if (!result)
+		/* port: not where the failure is the handler's branch to its conditional
+		widget ("new game if no plyr profiles" with no profile, at the first
+		start), which the player saw as an error */
+		if (!result && !ui_widget_function_failure_expected)
 			console_warning("event handler '%s' failed", event_handler_function_list.names[(short)function_index]);
 		return result;
 	}

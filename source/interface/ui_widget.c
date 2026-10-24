@@ -3310,6 +3310,10 @@ static void event_handler_dispatch(
 		if (!hs_evaluate_by_name(handler->script))
 			error(_error_silent, "failed to run ui widget event script '%s'", handler->script);
 	}
+	/* port: a failure that opens a conditional widget is expected, not warned
+	of (ui_widget_event_handler_function_invoke) */
+	ui_widget_function_failure_expected =
+		TEST_FLAG(handler->flags, _event_handler_look_for_conditional_widget_on_failure_bit);
 	if (TEST_FLAG(handler->flags, _event_handler_run_function_bit) &&
 		!widget_deleted &&
 		!ui_widget_event_handler_function_invoke(
@@ -3318,12 +3322,14 @@ static void event_handler_dispatch(
 			handler->function,
 			&widget_deleted))
 	{
+		ui_widget_function_failure_expected = FALSE; /* port */
 		error(_error_silent, "event handler function %d of %s failed", handler->function,
 			tag_get_name(definition_tag_index));
 		function_failed = TRUE;
 	}
 	else
 	{
+		ui_widget_function_failure_expected = FALSE; /* port */
 		if (TEST_FLAG(handler->flags, _event_handler_give_focus_to_widget_bit) &&
 			!widget_deleted)
 		{
