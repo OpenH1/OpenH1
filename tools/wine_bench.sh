@@ -44,15 +44,11 @@
 set -euo pipefail
 
 bench=${OPENH1_BENCH:-$HOME/openh1-wine}
-# (the shared copy a machine's admin may put in /srv/openh1/maps, for every
-# account on it, else this account's own)
-if [ -z "${OPENH1_BENCH_MAPS:-}" ] && [ -f /srv/openh1/maps/bloodgulch.map ]; then
-	OPENH1_BENCH_MAPS=/srv/openh1/maps
-fi
-# the game data: the computer's shared maps folder, else the bench's own
+# the game data: OPENH1_BENCH_MAPS, else the shared copy a computer's admin
+# may put in /srv/openh1/maps for every account on it, else the bench's own
 if [ -n "${OPENH1_BENCH_MAPS:-}" ]; then
 	maps=$OPENH1_BENCH_MAPS
-elif [ -d /srv/openh1/maps ]; then
+elif [ -f /srv/openh1/maps/bloodgulch.map ]; then
 	maps=/srv/openh1/maps
 else
 	maps=$bench/data/maps
