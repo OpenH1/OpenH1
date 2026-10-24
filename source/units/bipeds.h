@@ -123,6 +123,13 @@ void biped_get_sight_position(
 	real_vector3d *desired_facing,
 	real_vector3d const *desired_gun_offset,
 	real_point3d *sight_position);
+/* port: how far the biped's eye (biped_get_sight_position's) rises in the next
+ticks (a fraction of one) as its crouch goes on changing, negative as it
+crouches: where a view drawn that long after the newest step has it
+(render_interpolation.c) */
+real biped_eye_rise_ahead(
+	long biped_index,
+	real ticks);
 void biped_get_physics_pill(
 	long biped_index,
 	real_point3d *base,

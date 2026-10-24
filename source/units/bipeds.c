@@ -574,10 +574,15 @@ landing, a jump, a melee's strike, a bump, falling damage, the animation,
 the counters of ticks) follows the last sub-step, once a tick, in the order
 biped_update has it; but a jump whose press only a later sub-step reads
 (player_control.c's) launches at the end of that sub-step, as a tick
-launches one at its end (biped_substep_jump). Nothing here outlives the
-tick: it is emptied at the last sub-step, and an entry of another tick is
-ignored. Every other biped (a rider, a body: the macro lane, objects.h)
-moves in its tick, as at 30. A lift carries its riders of the micro lane a
+launches one at its end (biped_substep_jump). The tick's change of its
+crouch (biped_physics_prepare's, once a tick from the seat the tick before
+left it in) is made a share a sub-step, as its movement is: the crouch
+starts the tick where the tick before left it and each sub-step ends its
+share of the way, the last where a tick at 30 ends, so the eye (the
+first-person view) goes down and up in the sub-steps, not a tick's step at
+the first of them. Nothing here outlives the tick: it is emptied at the
+last sub-step, and an entry of another tick is ignored. Every other biped
+(a rider, a body: the macro lane, objects.h) moves in its tick, as at 30. A lift carries its riders of the micro lane a
 share each sub-step before they move (objects.c's slot), and they stand on
 what the sub-step sees of the macro lane.
 
@@ -639,6 +644,11 @@ struct biped_substep_datum
 	/* the pill at the first sub-step's start: what the melee strike sweeps
 	from, once a tick, as a tick at 30 does */
 	real_point3d tick_position;
+	/* the crouch at the tick's start and as biped_physics_prepare changed it
+	for the tick: each sub-step ends its share of the way, the last at the
+	tick's (bipeds_substep), so the eye goes down a share a sub-step */
+	real crouch_start;
+	real crouch_end;
 	/* of the sub-steps so far: the fastest landing, an elevator stood on,
 	the last object bumped and the velocity it was bumped at */
 	real landing_velocity;
@@ -1223,6 +1233,30 @@ void biped_get_sight_position(
 	}
 
 	return;
+}
+
+/* port: the crouch goes on toward the seat the biped is in (all the way down
+crouched, up otherwise) a tick's change a tick, as biped_physics_prepare
+makes it, until it gets there; the eye (biped_get_sight_position's) with it */
+real biped_eye_rise_ahead(
+	long biped_index,
+	real ticks)
+{
+	struct biped_datum *biped = biped_try_and_get(biped_index);
+	struct biped_definition *definition;
+	real change;
+	real ahead;
+
+	if (!biped || !(ticks > 0.f))
+		return 0.f;
+	definition = biped_definition_get(biped->definition_index);
+	change = definition->biped.runtime_crouch_transition_velocity * ticks;
+	if (biped->unit.animation.base_seat_index == _unit_base_seat_crouch)
+		ahead = MIN(biped->biped.crouch + change, 1.f);
+	else
+		ahead = MAX(biped->biped.crouch - change, 0.f);
+	return (biped->biped.crouch - ahead) *
+		(definition->biped.standing_camera_height - definition->biped.crouching_camera_height);
 }
 
 void biped_get_autoaim_pill(
@@ -4589,12 +4623,15 @@ static boolean biped_moves_in_substeps(
 		object_lane_moves_in_substeps(biped_index);
 }
 
-/* port: the tick's movement left for the fast phase, if the biped moves in it */
+/* port: the tick's movement left for the fast phase, if the biped moves in it;
+its crouch (crouch_start before biped_physics_prepare changed it) put back
+where the tick starts it, for the sub-steps to change */
 static boolean biped_substep_defer(
 	long biped_index,
 	struct biped_physics const *physics,
 	struct unit_animation_update_data const *animation,
-	struct biped_player_speeds const *speeds)
+	struct biped_player_speeds const *speeds,
+	real crouch_start)
 {
 	long tick = game_time_get();
 	struct biped_substep_datum *datum = NULL;
@@ -4631,6 +4668,9 @@ static boolean biped_substep_defer(
 	datum->bumped_velocity = physics->velocity;
 	datum->jumped = FALSE;
 	datum->launch_velocity = *global_zero_vector3d;
+	datum->crouch_start = crouch_start;
+	datum->crouch_end = biped_get(biped_index)->biped.crouch;
+	biped_get(biped_index)->biped.crouch = crouch_start;
 
 	return TRUE;
 }
@@ -5219,12 +5259,20 @@ static void bipeds_substep(
 		biped = biped_try_and_get(biped_index);
 		if (!biped || biped->object.parent_object_index != NONE)
 		{
+			/* (its crouch the tick's, as the tick would have left it) */
+			if (biped)
+				biped->biped.crouch = datum->crouch_end;
 			datum->tick = NONE;
 			continue;
 		}
 
 		profile_enter(biped_update_section);
 		biped_substep_move(biped_index, datum, substep_index, tick_fraction, &physics);
+		/* (its crouch its share of the tick's change of it, which the
+		sub-step moved with as the tick's step moves with the crouch it
+		starts with: the last the tick's own) */
+		biped->biped.crouch = last ? datum->crouch_end :
+			datum->crouch_start + (datum->crouch_end - datum->crouch_start) * sim_substep_end_fraction();
 
 		if (!last)
 		{
@@ -5259,10 +5307,11 @@ static boolean biped_update_moving(
 {
 	struct biped_physics physics;
 	struct biped_player_speeds speeds;
+	real crouch = biped_get(biped_index)->biped.crouch;
 
 	if (!biped_physics_prepare(biped_index, animation, &physics, &speeds))
 		return FALSE;
-	if (biped_substep_defer(biped_index, &physics, animation, &speeds))
+	if (biped_substep_defer(biped_index, &physics, animation, &speeds, crouch))
 		return TRUE;
 	if (biped_substep_inline(biped_index, &physics, animation, &speeds))
 		return FALSE;
