@@ -456,9 +456,8 @@ def test_battery_saver_reads_the_classic_values(config_check_mac):
 
 
 def test_vsync_default_by_build(tmp_path, monkeypatch, config_check_mac):
-    """display.vsync: off on the Linux builds, Windows and the Mac; on
-    under gamescope (the Steam Deck's Game Mode) where the player has not
-    set it, and as set where they have"""
+    """display.vsync: off on the Linux builds (the Steam Deck's Game Mode
+    too), Windows and the Mac, and as set where the player has set it"""
     for name in ("GAMESCOPE_WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "SteamDeck", "SteamGamepadUI", "HALO_NO_VSYNC"):
         monkeypatch.delenv(name, raising=False)
     assert config_check_mac("get", "display.vsync") == "false"
@@ -467,9 +466,9 @@ def test_vsync_default_by_build(tmp_path, monkeypatch, config_check_mac):
     assert "\n# vsync = false\n" in run.config.read_text()
     monkeypatch.setenv("SteamDeck", "1")
     monkeypatch.setenv("SteamGamepadUI", "1")
-    assert run("get", "display.vsync") == "true"
-    run("write", "display.vsync", "false")
     assert run("get", "display.vsync") == "false"
+    run("write", "display.vsync", "true")
+    assert run("get", "display.vsync") == "true"
 
 
 def test_graphics_preset_on_a_headset(config_check):
