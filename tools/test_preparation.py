@@ -448,10 +448,12 @@ def test_direct_loading_handoff_stops_window_writes_and_restarts(tmp_path):
 #define LOADING_GL_H
 struct loading_gl { int unused; };
 static int image_draws;
-static int loading_gl_draw(struct loading_gl *image, const unsigned char *pixels, int width, int height)
+static int loading_gl_draw(struct loading_gl *image, const unsigned char *pixels, int frame_width, int width,
+    int height)
 {
     (void)image;
-    assert(width == 640 && height == 480);
+    /* (a 4:3 window's frame is the stock 640: loading_art_width) */
+    assert(frame_width == 640 && width == 640 && height == 480);
     if (pixels) { assert(pixels[3] == 255); image_draws++; }
     return pixels != NULL;
 }
