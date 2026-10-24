@@ -332,6 +332,13 @@ read `xbox/include`. To add a name, follow `port/include/xdk/README.md`.
 ### Art and credit
 
 - Replacement HUD, title and menu art is made of hand-drawn redraws.
+- An explicit, credited exception to these rules (and to "never the game's
+  art" below), decided by the maintainers: the HUD message icons' pictures
+  of the weapons and the skull are Aerocatia's and Jessie's art from Halo
+  PC Restored (`port/assets/hud/art`, `port/assets/hud/NOTICE.md`), used as
+  that NOTICE says, with credit in `AUTHORS.md`. Keep it and its credit; do
+  not redraw or remove it, and take nothing else from that art without the
+  maintainers' decision.
 - Prefer an existing redraw (the ui-svg-handmade set), then a new redraw. A
   Custom Edition picture that cannot reasonably be redrawn (a 3D render, a
   screenshot, a logo) may be used only if it is listed in

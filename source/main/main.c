@@ -1483,15 +1483,14 @@ short main_get_window_count(
 	return single_window ? 1 : PIN(local_player_count(), 1, MAXIMUM_WINDOWS);
 }
 
-#ifdef HALO_PROFILE
 /* port: whether the main menu's map is the one loaded (profile_console.c: a
-recording of debug.profile_record_when = "game" waits for another) */
+recording of debug.profile_record_when = "game" waits for another; a network
+game's next lobby keeps its clock running, network_game_manager.c) */
 boolean main_menu_is_loaded(
 	void)
 {
 	return main_globals.main_menu_scenario_loaded;
 }
-#endif
 
 static void main_new_map(
 	struct game_options *options)

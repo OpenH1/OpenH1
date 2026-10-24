@@ -6,7 +6,7 @@ uploaded, and each one's GL texture.
 
 Which bitmap is at an address the game knows (from the loaded map's tags:
 port/linux/game/hud_hires_tags.c). Each texture is decoded from its PNG when
-first drawn and kept: up to 71 of the HUD's, about 227 MB with their mip
+first drawn and kept: up to 77 of the HUD's, about 232 MB with their mip
 levels, though a game draws only some (the scopes' only when zoomed), and
 the titles of the menus shown, about 3 MB each (11 MB for the carnage
 report's, a whole panel), and their button icons, about 0.3 MB each (5.3
@@ -200,15 +200,53 @@ unsigned long hud_hires_asset_sprites(long asset)
 	return hud_hires_embedded[asset].sprites;
 }
 
-/* whether the texture drawn for some of a bitmap's sprites can be drawn for
-the bitmap whose pixels are at address (guest virtual; its first mip level
-level0_size bytes): its setting on, the pixels those it was drawn for, and
-the texture decoded */
-int hud_hires_sprites_drawable(long asset, unsigned long address, unsigned long level0_size)
+/* a texel's place among a swizzled bitmap's: the bits of x and y
+alternating, x's first, until each runs out (xbox_texture_decode.c) */
+static unsigned long swizzled_index(unsigned long x, unsigned long y, unsigned long width, unsigned long height)
+{
+	unsigned long index = 0, bit = 0, shift;
+
+	for (shift = 0; (1UL << shift) < width || (1UL << shift) < height; shift++)
+	{
+		if ((1UL << shift) < width)
+			index |= ((x >> shift) & 1UL) << bit++;
+		if ((1UL << shift) < height)
+			index |= ((y >> shift) & 1UL) << bit++;
+	}
+	return index;
+}
+
+/* the CRC-32 of a cell's texels (hud_hires_cell) in the bitmap at pixels,
+each texel_size bytes, swizzled unless linear */
+static unsigned long cell_crc(const unsigned char *pixels, unsigned long width, unsigned long height,
+	unsigned long texel_size, int linear, const struct hud_hires_cell *cell)
+{
+	unsigned long crc = 0, x, y;
+
+	for (y = cell->top; y < cell->bottom; y++)
+	{
+		for (x = cell->left; x < cell->right; x++)
+		{
+			unsigned long index = linear ? y * width + x : swizzled_index(x, y, width, height);
+
+			crc = crc32(crc, (const Bytef *)pixels + index * texel_size, (uInt)texel_size);
+		}
+	}
+	return crc;
+}
+
+/* the sequences (a bit each) whose sprites the texture drawn for some of a
+bitmap's can be drawn for, in the bitmap of this size whose pixels are at
+address (guest virtual; its first mip level level0_size bytes, swizzled
+unless linear): its setting on, the pixels those it was drawn for (each
+cell's own, or the whole bitmap's), and the texture decoded; 0 if none */
+unsigned long hud_hires_sprites_drawable(long asset, unsigned long address, long width, long height,
+	int linear, unsigned long level0_size)
 {
 	static int hud_enabled, titles_enabled;
 	static unsigned long read_at = (unsigned long)-1;
-	unsigned long levels;
+	const struct hud_hires_embedded *embedded;
+	unsigned long levels, drawable;
 
 	if (read_at != config_changes())
 	{
@@ -221,18 +259,55 @@ int hud_hires_sprites_drawable(long asset, unsigned long address, unsigned long 
 	{
 		return 0;
 	}
-	if (crc32(0L, (const Bytef *)address, (uInt)level0_size) != hud_hires_embedded[asset].crc)
+	embedded = &hud_hires_embedded[asset];
+	if (embedded->cell_count)
+	{
+		/* (an uncompressed bitmap's texels, whose cells are checked apart: a
+		sequence is drawn if all its sprites' cells are those its texture
+		was drawn for) */
+		unsigned long texels = width > 0 && height > 0 ? (unsigned long)width * (unsigned long)height : 0;
+		unsigned long texel_size = texels ? level0_size / texels : 0;
+		unsigned long other = 0;
+		unsigned int index;
+
+		drawable = 0;
+		for (index = 0; index < embedded->cell_count; index++)
+		{
+			const struct hud_hires_cell *cell = &embedded->cells[index];
+			unsigned long sequence = 1UL << cell->sequence;
+
+			drawable |= sequence;
+			if (!texel_size || level0_size % texels || cell->right > (unsigned long)width ||
+				cell->bottom > (unsigned long)height ||
+				cell_crc((const unsigned char *)address, width, height, texel_size, linear, cell) != cell->crc)
+			{
+				other |= sequence;
+			}
+		}
+		drawable &= embedded->sprites & ~other;
+		if (other && !textures[asset].other_pixels_logged)
+		{
+			platform_log("high-res hud: %s bitmap %d's sprites of sequences 0x%lx are not those its texture "
+				"was drawn for here (a modified map): drawn as they are", embedded->tag, embedded->bitmap, other);
+			textures[asset].other_pixels_logged = 1;
+		}
+	}
+	else if (crc32(0L, (const Bytef *)address, (uInt)level0_size) != embedded->crc)
 	{
 		if (!textures[asset].other_pixels_logged)
 		{
 			platform_log("high-res hud: %s bitmap %d is not the one its sprites' texture was drawn for "
 				"here (another language's or a modified map): drawn as it is",
-				hud_hires_embedded[asset].tag, hud_hires_embedded[asset].bitmap);
+				embedded->tag, embedded->bitmap);
 			textures[asset].other_pixels_logged = 1;
 		}
 		return 0;
 	}
-	return hud_hires_override_texture(asset, &levels) != 0;
+	else
+	{
+		drawable = embedded->sprites;
+	}
+	return drawable && hud_hires_override_texture(asset, &levels) ? drawable : 0;
 }
 
 /* the placeholder the game draws the texture's sprites from: its D3D

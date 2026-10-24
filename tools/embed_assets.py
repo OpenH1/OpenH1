@@ -170,9 +170,19 @@ def main() -> None:
         sequences = [sprite["sequence"] for sprite in asset.get("sprites", [])]
         if any(not 0 <= sequence < 32 for sequence in sequences):
             sys.exit(f"{name}: sprite sequences must be 0 to 31 (hud_hires.h: sprites)")
-        sprites = sum(1 << sequence for sequence in sequences)
+        sprites = sum(1 << sequence for sequence in set(sequences))
+        # (their cells, each checked on its own texels, where the list has
+        # their checksums: hud_hires.h, hud_hires_cell)
+        cells = [sprite for sprite in asset.get("sprites", []) if "crc" in sprite]
+        if cells:
+            lines.append(f"static const struct hud_hires_cell cells{index}[] = {{")
+            lines.extend(f"\t{{ {cell['sequence']}, {', '.join(str(value) for value in cell['cell'])}, "
+                         f"0x{cell['crc']:08x}u }}," for cell in cells)
+            lines.append("};")
+            lines.append("")
         table.append(f'\t{{ "{tag}", {asset["bitmap"]}, {width}, {height}, 0x{asset["crc"]:08x}u, {coverage}, '
                      f'{point_threshold}, {int(title)}, 0x{sprites:x}u, '
+                     f'{f"cells{index}" if cells else "0"}, {len(cells)}, '
                      f'{int((asset["tag"], asset["bitmap"]) in custom_edition)}, asset{index}, {len(data)} }},')
     lines.append("const struct hud_hires_embedded hud_hires_embedded[] =")
     lines.append("{")

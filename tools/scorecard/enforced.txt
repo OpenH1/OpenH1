@@ -30,3 +30,5 @@ ledge
 U15
 # a player's crouch, a share a sub-step (StageKit's crouch)
 crouch
+# a player strafing one way and the other (StageKit's walk)
+strafe

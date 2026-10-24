@@ -96,6 +96,10 @@ void sim_trace_projectile_collision(long projectile_index, void const *point, vo
 	float time_remaining, float fraction);
 void sim_trace_projectile_detonate(long projectile_index);
 void sim_trace_weapon_fire(long weapon_index, long owner_object_index, short trigger_index);
+/* each frame drawn: the first local player's camera, and its first-person
+weapon's nodes (first_person_weapons.c) */
+void sim_trace_frame(short local_player_index, void const *camera_position, void const *camera_forward,
+	void const *camera_up, void const *node_matrices, short node_count);
 /* debug.latency_log (port/linux/game/latency_log.c): the first local
 player's input to the frame that shows it, each call made only while the
 log is on (LATENCY_LOG): a weapon fired (weapons.c), each simulation step
