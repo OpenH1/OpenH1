@@ -76,6 +76,7 @@ their handlers open opens.
 */
 
 #include "cseries.h"
+#include "cache/cache_files.h"
 #include "game/game.h"
 #include "input/input.h"
 #include "interface/event_manager.h"
@@ -3624,10 +3625,13 @@ static void mods_update(struct widget_instance *list)
 
 static struct
 {
-	/* the main menu drawn since the updater last looked, and its tag */
+	/* the main menu drawn since the updater last looked, its tag, and the
+	tags' generation that is of (cache_files_tags_generation: a map loaded
+	since has numbered its tags again) */
 	boolean main_menu_shown;
 	long main_menu_tag;
-} update_question = { FALSE, NONE };
+	unsigned long main_menu_generation;
+} update_question = { FALSE, NONE, 0 };
 
 /* "port update question": the MODS item, drawn on the main menu */
 static void update_question_note(struct widget_instance *widget)
@@ -3638,6 +3642,7 @@ static void update_question_note(struct widget_instance *widget)
 		screen = screen->parent;
 	update_question.main_menu_shown = TRUE;
 	update_question.main_menu_tag = screen->definition_tag_index;
+	update_question.main_menu_generation = cache_files_tags_generation();
 }
 
 /* the updater's, between frames (not while the widgets are drawn, which
@@ -3649,7 +3654,7 @@ int pc_menu_update_question_open(void)
 	boolean shown = update_question.main_menu_shown;
 
 	update_question.main_menu_shown = FALSE;
-	if (!shown)
+	if (!shown || update_question.main_menu_generation != cache_files_tags_generation())
 		return 0;
 	if (!ui_widget_load_by_name_or_tag("pc\\main_menu\\update\\update_screen", NONE, NULL, NONE,
 		update_question.main_menu_tag, NONE, NONE))

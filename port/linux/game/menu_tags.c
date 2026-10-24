@@ -36,6 +36,7 @@ menu gets FRIENDLY FIRE too.
 
 #include "cseries.h"
 #include "bitmaps/bitmap_group.h"
+#include "cache/cache_files.h"
 #include "game/game.h"
 #include "tag_files/tag_groups.h"
 #include "text/text_group.h"
@@ -501,6 +502,9 @@ static struct
 	long setting_count;
 	boolean loaded;
 	char root[300];
+	/* the tags' generation they were added to (cache_files_tags_generation):
+	the settings' definitions are tag indices of that map's */
+	unsigned long generation;
 } menu_tags;
 
 /* the build under way */
@@ -2271,6 +2275,7 @@ void menu_tags_loaded(
 		platform_log("menus: there is no widget named %s, the main menu", menus->root);
 	}
 	menu_tags.loaded = TRUE;
+	menu_tags.generation = cache_files_tags_generation();
 	platform_log("menus: %ld widgets, %ld string lists and %ld bitmaps added to the map's %ld tags",
 		widget_count, own_lists + menus->string_list_count, menus->bitmap_count, build.first_index);
 	goto done;
@@ -2425,6 +2430,14 @@ struct pc_menu_setting *pc_menu_setting_get(
 {
 	long index;
 
+	/* (the settings are let go with their map's tags, menu_tags_unloaded:
+	a checked build stops on any kept past them) */
+	if (menu_tags.setting_count && menu_tags.generation != cache_files_tags_generation() &&
+		cache_files_kept_tag_index(menu_tags.settings[0].definition_index, menu_tags.generation,
+		"the menus' settings (menu_tags.c)") == NONE)
+	{
+		return NULL;
+	}
 	for (index = 0; index < menu_tags.setting_count; index++)
 	{
 		if (menu_tags.settings[index].definition_index == definition_index)

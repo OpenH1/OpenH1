@@ -66,6 +66,14 @@ boolean cache_files_give_time_to_precache(
 /* port: the name the map loaded was loaded by (cache_files.c) */
 char const *cache_file_loaded_map_name(
 	void);
+/* port: the loaded tags' generation, and a tag index kept since one: NONE
+when another map's tags have been loaded since (cache_files.c) */
+unsigned long cache_files_tags_generation(
+	void);
+long cache_files_kept_tag_index(
+	long tag_index,
+	unsigned long generation,
+	char const *what);
 char const *cache_files_build_region(
 	char const *build);
 char const *cache_files_multiplayer_region(
