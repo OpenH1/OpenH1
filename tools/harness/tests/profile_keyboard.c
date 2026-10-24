@@ -15,6 +15,9 @@ struct platform_input_state { unsigned char keys[TEST_SCANCODE_COUNT], mouse_but
 typedef struct { unsigned short wButtons; BYTE bAnalogButtons[8]; SHORT sThumbLX, sThumbLY; } XINPUT_GAMEPAD;
 #define SDL_BUTTON_X1 4
 static BOOL text_typing, text_typing_enter_armed, text_typing_keyboard, text_typing_field;
+/* whether a server browser is shown (xinput_sdl.c's halo_keyboard_browser_keys): not, but in browser-keys */
+static int browser_shown;
+static int halo_keyboard_browser_keys_active(void) { return browser_shown; }
 static struct { boolean active, shift_active, caps_active, symbols_active;
     void *keyboard; short row, column; word buffer_size; short last_event, last_key,
     number_of_event_repeats, caption_index; boolean last_exit_saved_text, first_key_replaces_buffer;
@@ -127,6 +130,29 @@ int main(int argc, char **argv)
         input.keys[SDL_SCANCODE_RETURN] = 1; keys_held_over_switch(&input);
         keyboard_gamepad(&input,&pad);
         CHECK(pad.bAnalogButtons[XINPUT_GAMEPAD_A], "fresh Enter was still suppressed");
+    }
+    else CASE("browser-keys")
+    {
+        /* typing a name takes Tab and E whether a server browser is shown or not; closed, Tab is the
+           Profiles screen's new profile (Y), never its delete (X), and only a browser's sort */
+        struct platform_input_state input = {0}; XINPUT_GAMEPAD pad = {0};
+        browser_shown = TRUE;
+        input.keys[SDL_SCANCODE_TAB] = 1; input.keys[SDL_SCANCODE_E] = 1;
+        keyboard_gamepad(&input, &pad);
+        CHECK(!pad.bAnalogButtons[XINPUT_GAMEPAD_X] && !pad.bAnalogButtons[XINPUT_GAMEPAD_Y] &&
+            !pad.bAnalogButtons[XINPUT_GAMEPAD_BLACK], "typing's Tab or E pressed a menu button");
+        virtual_keyboard_select();
+        for (browser_shown = 0; browser_shown < 2; browser_shown++)
+        {
+            memset(&input, 0, sizeof(input)); memset(&pad, 0, sizeof(pad));
+            input.keys[SDL_SCANCODE_TAB] = 1;
+            keyboard_gamepad(&input, &pad);
+            CHECK(!pad.bAnalogButtons[XINPUT_GAMEPAD_X] == !browser_shown &&
+                !pad.bAnalogButtons[XINPUT_GAMEPAD_Y] == !!browser_shown,
+                "Tab pressed X %d, Y %d (a browser shown: %d)", pad.bAnalogButtons[XINPUT_GAMEPAD_X],
+                pad.bAnalogButtons[XINPUT_GAMEPAD_Y], browser_shown);
+        }
+        browser_shown = FALSE;
     }
     else CHECK(FALSE, "unknown case");
     ordinary_input();
