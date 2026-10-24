@@ -130,9 +130,42 @@ def write_mixed_logs(tmp_path, seconds=40, host_rate=120, opence_rate=30, heard=
     return host, [opence, openh1]
 
 
-def judge_mixed(host, clients, rate=120):
-    arguments = argparse.Namespace(seconds=30, skip=3, rate=rate)
+def judge_mixed(host, clients, rate=120, events=False):
+    arguments = argparse.Namespace(seconds=30, skip=3, rate=rate, events=events)
     return net_compare.judge_mixed(host, clients, [True, False], arguments, dict(net_compare.TOLERANCES))
+
+
+def with_hits(path, hits, dealt=0, rejected=0):
+    """the log's hit figures as at its end: hits reported, dealt and rejected"""
+    path.write_text(path.read_text().replace("hits 0 dealt 0 rejected 0",
+                                             f"hits {hits} dealt {dealt} rejected {rejected}"))
+
+
+def test_mixed_hits_taken_both_ways(tmp_path):
+    host, clients = write_mixed_logs(tmp_path)
+    with_hits(host, 0, dealt=30)
+    with_hits(clients[0], 18)
+    with_hits(clients[1], 12)
+    divergences, problems, figures = judge_mixed(host, clients, events=True)
+    assert not divergences and not problems
+    assert figures["hits"] == "reported 18 and 12 (OpenCE first), the host dealt 30 and rejected 0"
+
+
+def test_mixed_hit_rejected(tmp_path):
+    host, clients = write_mixed_logs(tmp_path)
+    with_hits(host, 0, dealt=29, rejected=1)
+    with_hits(clients[0], 18)
+    with_hits(clients[1], 12)
+    divergences, _, _ = judge_mixed(host, clients, events=True)
+    assert [item["field"] for item in divergences] == ["hits"]
+
+
+def test_mixed_client_without_hits(tmp_path):
+    host, clients = write_mixed_logs(tmp_path)
+    with_hits(host, 0, dealt=12)
+    with_hits(clients[1], 12)
+    _, problems, _ = judge_mixed(host, clients, events=True)
+    assert any("client reported no hits" in problem for problem in problems)
 
 
 def test_mixed_in_step(tmp_path):
