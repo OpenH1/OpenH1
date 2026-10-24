@@ -570,7 +570,7 @@ static inline int loading_art_scene_draw(struct loading_art *art, float seconds,
 			{
 				const uint32_t *p = pixels + pixel;
 				int gx = (int)((p[1] >> 8) & 255) - (int)((p[-1] >> 8) & 255);
-				int gy = (int)((p[width] >> 8) & 255) - (int)((p[-width] >> 8) & 255);
+				int gy = (int)((p[width] >> 8) & 255) - (int)((p[-(int)width] >> 8) & 255);
 				edge = (gx < 0 ? -gx : gx) + (gy < 0 ? -gy : gy);
 			}
 			coverage = art->text_valid ? art->text[pixel] : 0;
