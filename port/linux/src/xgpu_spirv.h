@@ -102,8 +102,10 @@ struct xgpu_spirv_uniforms
 	in texture space (its offset in texels). The whole eyes' are identity. */
 	float fovea_view[4][4];
 	float fovea_sample[4][4];
-	/* this draw's counter in the visibility tests' uint storage buffer */
-	float visibility_counter, vr_unused[3];
+	/* this draw's counter in the visibility tests' uint storage buffer;
+	its constant depth bias, where depth is reversed (xgpu_spirv_options
+	reversed_depth: xgpu_reversed_depth_bias) */
+	float visibility_counter, depth_bias, vr_unused[2];
 	/* the VR mode's effects (xgpu_spirv_options effect): for each view, the
 	world point (homogeneous) at a pixel and depth, as columns (the point is
 	unproject[0] x + unproject[1] y + unproject[2] depth + unproject[3],
@@ -131,7 +133,13 @@ struct xgpu_spirv_uniforms
   as the light the bolt scatters toward each eye;
 - input_samples: the samples of the colour target a display.hdr draw that
   blends in its shader reads (XGPU_SPIRV_SET_INPUT): more than 1, each
-  sample its own (sample shading). */
+  sample its own (sample shading);
+- reversed_depth: depth reversed (xgpu_backend.h, "Reversed depth"): the
+  vertex shaders write w - z (from the projection's rows where the program
+  has them and draws one view: xgpu_vertex_program_depth_rows) and add the
+  uniforms' depth_bias, a z-sprite writes its depth reversed, the flat
+  glows read the scene's depth reversed (not with the VR mode's views or
+  effects, whose depth stays the game's). */
 struct xgpu_spirv_options
 {
 	BOOL count_samples;
@@ -141,6 +149,7 @@ struct xgpu_spirv_options
 	BOOL foveated;
 	int effect, effect_fade;
 	int input_samples;
+	BOOL reversed_depth;
 };
 
 /* ---------- the VR mode's effects

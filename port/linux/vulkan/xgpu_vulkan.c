@@ -45,6 +45,7 @@ that changes.
 #include "../src/loading_presentation.h"
 #include "../src/loading_art.h"
 #include "../src/xgpu_hdr.h"
+#include "../src/xgpu_stream.h"
 
 #ifdef _WIN32
 /* (the 64-bit Windows host: Windows's loader, vulkan-1.dll) */
@@ -2649,7 +2650,8 @@ static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *
 		/* (depth is written only where it is tested, as OpenGL has it) */
 		depth_stencil.depthTestEnable = description->depth_test ? VK_TRUE : VK_FALSE;
 		depth_stencil.depthWriteEnable = description->depth_test && description->depth_write ? VK_TRUE : VK_FALSE;
-		depth_stencil.depthCompareOp = compare_op(description->depth_function);
+		depth_stencil.depthCompareOp = compare_op(XGPU_VULKAN_REVERSED_DEPTH ?
+			xgpu_reversed_depth_function(description->depth_function) : description->depth_function);
 		depth_stencil.stencilTestEnable = description->stencil_test ? VK_TRUE : VK_FALSE;
 		depth_stencil.front.failOp = stencil_op(description->stencil_fail);
 		depth_stencil.front.passOp = stencil_op(description->stencil_pass);
@@ -2971,6 +2973,8 @@ void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t 
 
 	if (!count || !rectangles || (!vk.color && !vk.depth))
 		return;
+	if (XGPU_VULKAN_REVERSED_DEPTH)
+		depth = 1.0f - depth;
 	/* (depth or stencil cleared: not in a pass that samples the depth) */
 	if (vk.pass_reads_depth && (parts & (XGPU_VULKAN_CLEAR_DEPTH | XGPU_VULKAN_CLEAR_STENCIL)))
 		pass_end();
@@ -3377,8 +3381,8 @@ void xgpu_vulkan_draw(const struct xgpu_vulkan_draw *draw)
 	viewport.y = (float)dynamic->viewport[1];
 	viewport.width = (float)dynamic->viewport[2];
 	viewport.height = (float)dynamic->viewport[3];
-	viewport.minDepth = dynamic->depth_range[0];
-	viewport.maxDepth = dynamic->depth_range[1];
+	viewport.minDepth = XGPU_VULKAN_REVERSED_DEPTH ? 1.0f - dynamic->depth_range[1] : dynamic->depth_range[0];
+	viewport.maxDepth = XGPU_VULKAN_REVERSED_DEPTH ? 1.0f - dynamic->depth_range[0] : dynamic->depth_range[1];
 	/* (the scissor rectangle where it is one, else the whole target, as
 	OpenGL's scissor test is enabled; inside the targets) */
 	if (dynamic->scissor[2] > 0 && dynamic->scissor[3] > 0)
@@ -3422,7 +3426,11 @@ void xgpu_vulkan_draw(const struct xgpu_vulkan_draw *draw)
 	}
 	if (!vk.bound.dynamic || memcmp(vk.bound.depth_bias, dynamic->depth_bias, sizeof(vk.bound.depth_bias)))
 	{
-		vkCmdSetDepthBias(commands, dynamic->depth_bias[1], 0.0f, dynamic->depth_bias[0]);
+		/* (reversed: the constant bias the shaders', the slope's turned) */
+		if (XGPU_VULKAN_REVERSED_DEPTH)
+			vkCmdSetDepthBias(commands, 0.0f, 0.0f, -dynamic->depth_bias[0]);
+		else
+			vkCmdSetDepthBias(commands, dynamic->depth_bias[1], 0.0f, dynamic->depth_bias[0]);
 		memcpy(vk.bound.depth_bias, dynamic->depth_bias, sizeof(vk.bound.depth_bias));
 	}
 	if (!vk.bound.dynamic || memcmp(vk.bound.blend, dynamic->blend_color, sizeof(vk.bound.blend)))
@@ -4737,12 +4745,17 @@ static int format_has(VkFormat format, int buffer, VkFormatFeatureFlags features
 }
 
 /* Depth is also read by the scope, cockpit and feedback paths. Attachment
-support alone does not guarantee sampling of a combined depth/stencil format. */
+support alone does not guarantee sampling of a combined depth/stencil format.
+Reversed depth is kept in a float where the device has one: an integer
+depth steps as finely near 0 as near 1, which reversed depth does not gain
+from (xgpu_vulkan.h). */
 static int depth_format_choose(void)
 {
 	VkFormatFeatureFlags features = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
 
-	if (format_has(VK_FORMAT_D24_UNORM_S8_UINT, 0, features))
+	if (XGPU_VULKAN_REVERSED_DEPTH && format_has(VK_FORMAT_D32_SFLOAT_S8_UINT, 0, features))
+		vk.depth_format = VK_FORMAT_D32_SFLOAT_S8_UINT;
+	else if (format_has(VK_FORMAT_D24_UNORM_S8_UINT, 0, features))
 		vk.depth_format = VK_FORMAT_D24_UNORM_S8_UINT;
 	else if (format_has(VK_FORMAT_D32_SFLOAT_S8_UINT, 0, features))
 		vk.depth_format = VK_FORMAT_D32_SFLOAT_S8_UINT;

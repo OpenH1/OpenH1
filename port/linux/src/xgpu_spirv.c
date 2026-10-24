@@ -94,7 +94,7 @@ enum
 	CAPABILITY_IMAGE_QUERY = 50, CAPABILITY_MULTIVIEW = 4439,
 	EXECUTION_MODEL_VERTEX = 0, EXECUTION_MODEL_FRAGMENT = 4,
 	EXECUTION_MODE_ORIGIN_UPPER_LEFT = 7, EXECUTION_MODE_EARLY_FRAGMENT_TESTS = 9, EXECUTION_MODE_DEPTH_REPLACING = 12,
-	EXECUTION_MODE_DEPTH_LESS = 15,
+	EXECUTION_MODE_DEPTH_GREATER = 14, EXECUTION_MODE_DEPTH_LESS = 15,
 	DIM_2D = 1, DIM_3D = 2, DIM_CUBE = 3, DIM_SUBPASS_DATA = 6,
 	IMAGE_OPERANDS_LOD = 2, IMAGE_OPERANDS_SAMPLE = 0x40,
 	SCOPE_DEVICE = 1,
@@ -808,7 +808,7 @@ enum
 	U_VIEWPORT_SCALE, U_VIEWPORT_OFFSET, U_POINT_SIZE, U_SCREEN_OFFSET, U_ALPHA_REFERENCE, U_SCREEN_POINTS,
 	U_PS_C0, U_PS_C1, U_PS_FINAL_C0, U_PS_FINAL_C1, U_FOG_COLOR, U_FOG_PARAMETERS, U_BUMP_MATRIX, U_BUMP_LUMINANCE,
 	U_TEXTURE_SCALE, U_BLEND_CONSTANT, U_TEXTURE_BORDER, U_TEXTURE_BORDER_LINEAR, U_MODEL_LIGHTS,
-	U_EYE_CORRECTION, U_SCREEN_CORRECTION, U_FOVEA_VIEW, U_FOVEA_SAMPLE, U_VISIBILITY_COUNTER,
+	U_EYE_CORRECTION, U_SCREEN_CORRECTION, U_FOVEA_VIEW, U_FOVEA_SAMPLE, U_VISIBILITY_COUNTER, U_DEPTH_BIAS,
 	U_EFFECT_UNPROJECT, U_EFFECT_EYE,
 	U_COUNT,
 };
@@ -829,7 +829,7 @@ static void declare_uniforms(struct module *m)
 		offsetof(struct xgpu_spirv_uniforms, model_lights),
 		offsetof(struct xgpu_spirv_uniforms, eye_correction), offsetof(struct xgpu_spirv_uniforms, screen_correction),
 		offsetof(struct xgpu_spirv_uniforms, fovea_view), offsetof(struct xgpu_spirv_uniforms, fovea_sample),
-		offsetof(struct xgpu_spirv_uniforms, visibility_counter),
+		offsetof(struct xgpu_spirv_uniforms, visibility_counter), offsetof(struct xgpu_spirv_uniforms, depth_bias),
 		offsetof(struct xgpu_spirv_uniforms, effect_unproject), offsetof(struct xgpu_spirv_uniforms, effect_eye),
 	};
 	unsigned int members[U_COUNT], block;
@@ -840,6 +840,7 @@ static void declare_uniforms(struct module *m)
 		switch (member)
 		{
 		case U_POINT_SIZE: case U_SCREEN_OFFSET: case U_ALPHA_REFERENCE: case U_SCREEN_POINTS: case U_VISIBILITY_COUNTER:
+		case U_DEPTH_BIAS:
 			members[member] = m->t_float;
 			break;
 		case U_PS_C0: case U_PS_C1: case U_EYE_CORRECTION: members[member] = block_array(m, 8); break;
@@ -868,7 +869,8 @@ vec4 */
 static unsigned int uniform(struct module *m, int member, int element)
 {
 	unsigned int operands[3], pointer;
-	BOOL scalar = (member >= U_POINT_SIZE && member <= U_SCREEN_POINTS) || member == U_VISIBILITY_COUNTER;
+	BOOL scalar = (member >= U_POINT_SIZE && member <= U_SCREEN_POINTS) || member == U_VISIBILITY_COUNTER ||
+		member == U_DEPTH_BIAS;
 	unsigned int type = scalar ? m->t_float : m->t_v4;
 	int count = 2;
 
@@ -1469,6 +1471,12 @@ BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 	BOOL clip_captured = FALSE;
 	unsigned int one = 0;
 	int slot;
+	/* reversed depth: the point and the projection's rows its depth is the
+	dot products of (xgpu_vertex_program_depth_rows), in a draw of one view */
+	unsigned long depth_z = 0, depth_w = 0;
+	BOOL depth_rows = options->reversed_depth && !options->multiview &&
+		xgpu_vertex_program_depth_rows(program, &depth_z, &depth_w);
+	unsigned int depth_point = 0, depth_z_row = 0, depth_w_row = 0;
 
 	module_begin(&m, EXECUTION_MODEL_VERTEX);
 	inputs = vertex_inputs(program, lighting);
@@ -1579,6 +1587,13 @@ BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 			b = vertex_operand(&m, &state, &instruction->b, instruction->relative);
 		if (operands & 4)
 			c = vertex_operand(&m, &state, &instruction->c, instruction->relative);
+		if (depth_rows && index == depth_z)
+		{
+			depth_point = a;
+			depth_z_row = b;
+		}
+		if (depth_rows && index == depth_w)
+			depth_w_row = b;
 		if (instruction->mac != XGPU_MAC_NOP)
 			state.mac = mac_operation(&m, &state, instruction->mac, a, b, c);
 		if (instruction->ilu != XGPU_ILU_NOP)
@@ -1686,6 +1701,34 @@ BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 			w = extract(&m, state.position, 3);
 			screen_position = vec4_of(&m, fscale(&m, 3, ndc, w), w);
 			position = clip_captured ? select_n(&m, 4, screen_points, screen_position, position) : screen_position;
+		}
+		/* the depth reversed (xgpu_spirv_options reversed_depth): w - z, as
+		one dot product where the program's z and w are the projection's
+		rows' (and the screen conversion's depth is none), which keeps every
+		bit of the depth the world's coordinates would round away; the draw's
+		constant depth bias toward the camera */
+		if (options->reversed_depth)
+		{
+			unsigned int z;
+
+			w = extract(&m, position, 3);
+			z = fsub(&m, 1, w, extract(&m, position, 2));
+			if (depth_rows && clip_captured && depth_point && depth_z_row && depth_w_row)
+			{
+				unsigned int row = fsub(&m, 4, depth_w_row, depth_z_row), rows_z, identity;
+
+				rows_z = program->instructions[depth_z].mac == XGPU_MAC_DPH ?
+					fadd(&m, 1, fdot(&m, xyz(&m, depth_point), xyz(&m, row)), extract(&m, row, 3)) :
+					fdot(&m, depth_point, row);
+				identity = op2(&m, OP_LOGICAL_AND, m.t_bool,
+					compare(&m, OP_F_ORD_EQUAL, extract(&m, vertex_constant(&m, constant_int(&m, XGPU_VERTEX_CONSTANT_BIAS - 38)), 2),
+					scale_parts[2]),
+					compare(&m, OP_F_ORD_EQUAL, extract(&m, vertex_constant(&m, constant_int(&m, XGPU_VERTEX_CONSTANT_BIAS - 37)), 2),
+					extract(&m, viewport_offset, 2)));
+				z = op3(&m, OP_SELECT, m.t_float, identity, rows_z, z);
+			}
+			z = fadd(&m, 1, z, fmul(&m, 1, uniform(&m, U_DEPTH_BIAS, -1), w));
+			position = op3(&m, OP_COMPOSITE_INSERT, m.t_v4, z, position, 2);
 		}
 		/* (a w of zero, or not a number: behind the camera) */
 		w = extract(&m, position, 3);
@@ -3308,17 +3351,19 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 		discard_if(&m, zsprite_hidden);
 	store(&m, color_out, result);
 	/* else its depth, no farther than the card: the conservative depth's
-	promise, so that the depth test before the shader keeps what it can */
+	promise, so that the depth test before the shader keeps what it can (on
+	reversed depth, 1 - it and no nearer than the card's reversed) */
 	if (frag_depth_out && state.replaced_depth)
 	{
-		unsigned int operands[2];
+		unsigned int operands[2], card = extract(&m, load(&m, m.t_v4, state.frag_coord), 2);
 
-		store(&m, frag_depth_out, ext2(&m, GLSL_F_MIN, m.t_float, state.replaced_depth,
-			extract(&m, load(&m, m.t_v4, state.frag_coord), 2)));
+		store(&m, frag_depth_out, options->reversed_depth ?
+			ext2(&m, GLSL_F_MAX, m.t_float, fsub(&m, 1, constant_float(&m, 1.0f), state.replaced_depth), card) :
+			ext2(&m, GLSL_F_MIN, m.t_float, state.replaced_depth, card));
 		operands[0] = main_id;
 		operands[1] = EXECUTION_MODE_DEPTH_REPLACING;
 		instruction(&m, SECTION_EXECUTION_MODES, OP_EXECUTION_MODE, 2, operands);
-		operands[1] = EXECUTION_MODE_DEPTH_LESS;
+		operands[1] = options->reversed_depth ? EXECUTION_MODE_DEPTH_GREATER : EXECUTION_MODE_DEPTH_LESS;
 		instruction(&m, SECTION_EXECUTION_MODES, OP_EXECUTION_MODE, 2, operands);
 	}
 	if (count_samples)
@@ -3672,6 +3717,9 @@ BOOL xgpu_spirv_halo_pixel_shader(const struct xgpu_spirv_options *options, stru
 	operands[2] = IMAGE_OPERANDS_LOD;
 	operands[3] = constant_int(&m, 0);
 	scene = extract(&m, op(&m, OP_IMAGE_FETCH, m.t_v4, 4, operands), 0);
+	/* (depth reversed: as the game has it, 1 - it) */
+	if (options->reversed_depth)
+		scene = fsub(&m, 1, constant_float(&m, 1.0f), scene);
 	/* float away = scene - depth_parameters.x;
 	float distance = away * depth_parameters.y > 0.0 ? depth_parameters.y / away : 1.0e9;
 	float fade = scene >= 1.0 ? 1.0 : clamp((distance - depth) / depth_parameters.z, 0.0, 1.0); */

@@ -309,6 +309,7 @@ static uint32_t uniforms_make(void *context, const struct xgpu_metal_stream_unif
 		to->point_size = from->point_size;
 		to->screen_offset = from->screen_offset;
 		to->alpha_reference = from->alpha_reference;
+		to->depth_bias = inputs->depth_bias;
 		memcpy(to->ps_c0, from->ps_c0, sizeof(to->ps_c0));
 		memcpy(to->ps_c1, from->ps_c1, sizeof(to->ps_c1));
 		memcpy(to->ps_final_c0, from->ps_final_c0, sizeof(to->ps_final_c0));

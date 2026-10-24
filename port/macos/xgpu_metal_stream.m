@@ -107,6 +107,8 @@ static struct
 	float constants[XGPU_METAL_VERTEX_CONSTANT_COUNT][4];
 	float blend_color[4];
 	struct xgpu_stream_sampler samplers[4];
+	/* (the constant depth bias the uniforms were made with) */
+	float depth_bias;
 	BOOL uniforms_dirty;
 	/* the stages as set; set since they were bound, and the write
 	tracking's serial then; a target's copy bound (checked at each draw) */
@@ -726,7 +728,14 @@ static void uniforms_update(void)
 	struct xgpu_metal_stream_uniform_inputs inputs;
 	unsigned char bytes[4096];
 	uint32_t size;
+	float depth_bias = xgpu_reversed_depth_bias(stream.pipeline.depth_bias, stream.dynamic.depth_bias[1]);
 
+	/* (the bias is the pipeline's and the dynamic state's) */
+	if (depth_bias != stream.depth_bias)
+	{
+		stream.depth_bias = depth_bias;
+		stream.uniforms_dirty = YES;
+	}
 	if (!stream.uniforms_dirty || !stream.uniforms_set)
 		return;
 	stream.uniforms_dirty = NO;
@@ -739,6 +748,7 @@ static void uniforms_update(void)
 	inputs.blend_color = stream.blend_color;
 	inputs.constants = (const float (*)[4])stream.constants;
 	inputs.samplers = stream.samplers;
+	inputs.depth_bias = stream.depth_bias;
 	size = stream.shaders.uniforms(stream.shaders.context, &inputs, bytes, sizeof(bytes));
 	if (size)
 		xgpu_metal_set_draw_uniforms(bytes, size);

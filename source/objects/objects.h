@@ -456,9 +456,10 @@ items.c). Until a type is, its objects are of the macro lane */
 void object_lane_register(unsigned long object_type_mask);
 /* its lane (_object_lane_macro or _object_lane_micro): a player's biped, an
 AI's (an actor's or a swarm's), a vehicle a player drives, a projectile and an
-item loose in the world are of the micro lane once their type is registered,
-the rest of the macro lane, and anything carried of the lane of what carries
-it, at any rate */
+item loose in the world are of the micro lane once their type is registered
+(but an OpenCE player's biped, vehicle and projectiles in a mixed game:
+network_standard.c), the rest of the macro lane, and anything carried of the
+lane of what carries it, at any rate */
 short object_get_lane(long object_index);
 /* whether it moves in this tick's sub-steps: of the micro lane, and the tick
 has more than one */

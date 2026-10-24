@@ -80,7 +80,9 @@ by SHA-256) into `build/<build>/third_party` (`build/linux_x86_64/third_party`,
 `libvulkan.so.1` when it starts. It needs Vulkan 1.3 (dynamic rendering,
 timeline semaphores, host query reset), precise occlusion queries, and a
 combined depth/stencil format that supports both attachments and sampling
-(D24S8, or D32S8). Its driver must expose these features. VR also requires
+(D32S8, or D24S8: depth is kept reversed, 1 - the game's, which a float holds
+finely at a distance; the VR build keeps the game's, in D24S8 first;
+`xgpu_backend.h`, "Reversed depth"). Its driver must expose these features. VR also requires
 stereo multiview and depth clamping for the sky; four-view foveation requires
 four multiview views and fragment storage-buffer atomics.
 

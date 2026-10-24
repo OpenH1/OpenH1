@@ -615,11 +615,12 @@ command stream's backend table. They run on one thread, the render thread.
   alpha read as 1 by a swizzle), R5G6B5, A1R5G5B5, X1R5G5B5, A4R4G4B4 (read
   through ABGR4 by a swizzle), L8, A8, A8L8, DXT1 to DXT5 (BC1 to BC3), and
   the depth formats (D24S8 is 32-bit float depth with 8-bit stencil: Apple's
-  GPUs have no 24-bit depth). An upload writes a texture at once where no
+  GPUs have no 24-bit depth), depth kept reversed, 1 - the game's
+  (`xgpu_backend.h`, "Reversed depth"). An upload writes a texture at once where no
   work the GPU still has reads it, else it is a blit in the frame's order.
   A multisampled target draws into a multisampled attachment resolved into
   it at each pass's end. A new target is cleared when it is made (black;
-  depth 1, stencil 0): Apple's GPUs give a new private texture no contents
+  depth the far plane, stencil 0): Apple's GPUs give a new private texture no contents
   of their own (an M1 Max's read as magenta), and the game presents its
   back buffer once, right after it makes its device, before it draws.
 - **Guest data in place.** Guest memory is the host's (unified memory), so

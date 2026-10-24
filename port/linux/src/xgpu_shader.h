@@ -105,6 +105,86 @@ struct xgpu_vertex_program
 	unsigned char projects;
 };
 
+/* the instructions whose dot products are the clip position's z and w as
+the screen conversion captures it (the last to write each before the last
+capture): the MAC's DP4 or DPH, the same for both, of one input or
+temporary that does not change between them, each with a constant row (the
+game's projection: c[-94] and c[-93]). The backends keep depth reversed
+(xgpu_backend.h, "Reversed depth"), w - z: which, from these, the emitters
+compute as one dot product with the difference of the rows, as exact as w
+is, where z and w apart lose the depth's last bits to the size of the
+world's coordinates. 0 if the program has none. */
+static __inline int xgpu_vertex_program_depth_rows(const struct xgpu_vertex_program *program,
+	unsigned long *z_instruction, unsigned long *w_instruction)
+{
+	long writers[2] = { -1, -1 }, captured[2] = { -1, -1 };
+	const struct xgpu_vertex_instruction *z, *w;
+	unsigned long index, first, last;
+	int component;
+
+	for (index = 0; index < program->instruction_count; index++)
+	{
+		const struct xgpu_vertex_instruction *instruction = &program->instructions[index];
+		BOOL mac = instruction->mac != XGPU_MAC_NOP && instruction->mac != XGPU_MAC_ARL;
+		BOOL dot = instruction->mac == XGPU_MAC_DP4 || instruction->mac == XGPU_MAC_DPH;
+
+		/* (the capture reads the position before the instruction writes) */
+		if (instruction->captures_clip)
+		{
+			captured[0] = writers[0];
+			captured[1] = writers[1];
+		}
+		/* z is mask bit 1, w bit 0: a write by anything but a dot product
+		leaves none */
+		for (component = 0; component < 2; component++)
+		{
+			unsigned char bit = (unsigned char)(2 >> component);
+			BOOL by_mac = (mac && instruction->mac_temporary == XGPU_VERTEX_POSITION && (instruction->mac_mask & bit)) ||
+				(instruction->writes_output && instruction->output == XGPU_OUTPUT_POSITION &&
+				!instruction->output_from_ilu && (instruction->output_mask & bit));
+			BOOL by_ilu = (instruction->ilu != XGPU_ILU_NOP && instruction->ilu_temporary == XGPU_VERTEX_POSITION &&
+				(instruction->ilu_mask & bit)) || (instruction->writes_output &&
+				instruction->output == XGPU_OUTPUT_POSITION && instruction->output_from_ilu &&
+				(instruction->output_mask & bit));
+
+			if (by_ilu || (by_mac && !dot))
+				writers[component] = -2;
+			else if (by_mac)
+				writers[component] = (long)index;
+		}
+	}
+	if (captured[0] < 0 || captured[1] < 0 || captured[0] == captured[1])
+		return 0;
+	z = &program->instructions[captured[0]];
+	w = &program->instructions[captured[1]];
+	if (z->mac != w->mac || z->b.file != XGPU_VERTEX_CONSTANT || w->b.file != XGPU_VERTEX_CONSTANT ||
+		(z->a.file != XGPU_VERTEX_INPUT && z->a.file != XGPU_VERTEX_TEMPORARY) ||
+		(z->a.file == XGPU_VERTEX_TEMPORARY && z->a.index >= XGPU_VERTEX_POSITION) ||
+		z->a.file != w->a.file || z->a.index != w->a.index || z->a.negate != w->a.negate ||
+		z->a.swizzle[0] != w->a.swizzle[0] || z->a.swizzle[1] != w->a.swizzle[1] ||
+		z->a.swizzle[2] != w->a.swizzle[2] || z->a.swizzle[3] != w->a.swizzle[3])
+	{
+		return 0;
+	}
+	/* (the operand the same in both: not written from the first on) */
+	first = (unsigned long)(captured[0] < captured[1] ? captured[0] : captured[1]);
+	last = (unsigned long)(captured[0] < captured[1] ? captured[1] : captured[0]);
+	for (index = first; z->a.file == XGPU_VERTEX_TEMPORARY && index < last; index++)
+	{
+		const struct xgpu_vertex_instruction *instruction = &program->instructions[index];
+
+		if ((instruction->mac != XGPU_MAC_NOP && instruction->mac != XGPU_MAC_ARL && instruction->mac_mask &&
+			instruction->mac_temporary == z->a.index) ||
+			(instruction->ilu != XGPU_ILU_NOP && instruction->ilu_mask && instruction->ilu_temporary == z->a.index))
+		{
+			return 0;
+		}
+	}
+	*z_instruction = (unsigned long)captured[0];
+	*w_instruction = (unsigned long)captured[1];
+	return 1;
+}
+
 /* decodes NV2A vertex program microcode (the instruction words after the
 program header, four each) */
 void nv2a_vertex_program_decode(const DWORD *instructions, unsigned long instruction_count,
