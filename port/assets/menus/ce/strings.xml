@@ -369,23 +369,25 @@
 		<string text="UNKNOWN LEVEL\n\n\n" map="19"/>
 	</strings>
 	<strings name="main_menu/multiplayer_type_select/multiplayer_option_descriptions" map="ui\shell\main_menu\multiplayer_type_select\multiplayer_option_descriptions">
-		<string text="Browse the games on the\nInternet." map="0"/>
-		<string text="Join a multiplayer game on\nyour LAN." map="1"/>
-		<string text="Join a game by its invite link,\nor one a Discord invite\nreached."/>
-		<string text="Host a game on the Internet:\nplayers join by its invite\nlink or Discord."/>
-		<string text="Host a game on your LAN\nonly." map="4"/>
-		<string text="Play the campaign with a\nfriend in split screen:\nplayer 2 on a gamepad."/>
-		<string text="Set all the attributes for your \nmultiplayer gametypes and\nkeep them for future use." map="5"/>
+		<string text="Public games on the Internet,\nwith their players and ping."/>
+		<string text="Games on your Wi-Fi or local\nnetwork."/>
+		<string text="Join a friend's game with the\ninvite link they send you, or\na Discord invite."/>
+		<string text="Host a game on the Internet.\nFriends join with your invite\nlink."/>
+		<string text="Host a game for players on\nyour Wi-Fi or local network."/>
+		<string text="Play the campaign together\nover the Internet: friends\njoin with your invite link."/>
+		<string text="Play the campaign with a\nfriend on this screen.\nPlayer 2 uses a controller."/>
+		<string text="Make your own gametypes:\nthe rules, weapons and\nvehicles, kept for next time."/>
 	</strings>
 	<strings name="main_menu/multiplayer_type_select/multiplayer_options" map="ui\shell\main_menu\multiplayer_type_select\multiplayer_options">
 		<string text="JOIN GAME" map="0"/>
 		<string text="CREATE GAME" map="1"/>
 		<string text="INTERNET" map="2"/>
-		<string text="LAN" map="3"/>
-		<string text="DIRECT LINK"/>
+		<string text="LOCAL NETWORK"/>
+		<string text="JOIN BY LINK"/>
 		<string text="EDIT GAMETYPES" map="5"/>
 		<string text="SERVER BROWSER"/>
-		<string text="CO-OP CAMPAIGN"/>
+		<string text="SPLIT-SCREEN CO-OP"/>
+		<string text="ONLINE CO-OP"/>
 	</strings>
 	<strings name="main_menu/multiplayer_type_select/server_settings/cap_server_settings_options" map="ui\shell\main_menu\multiplayer_type_select\server_settings\cap_server_settings_options">
 		<string text="Enter a name for your server." map="0"/>

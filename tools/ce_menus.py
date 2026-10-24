@@ -77,9 +77,15 @@ CHILD_OFFSETS = {
     ("ui\\shell\\main_menu\\main_menu_select_list", "ui\\shell\\main_menu\\main_menu_item_quit_game"):
         port_settings.QUIT_ITEM_PLACE,
     ("ui\\shell\\main_menu\\multiplayer_type_select\\multiplayer_type_select_list",
-     "ui\\shell\\main_menu\\multiplayer_type_select\\multiplayer_type_gametypes_item"): (0, 358),
+     "ui\\shell\\main_menu\\multiplayer_type_select\\multiplayer_type_gametypes_item"):
+        port_settings.MULTIPLAYER_GAMETYPES_PLACE,
     ("ui\\shell\\main_menu\\multiplayer_type_select\\multiplayer_type_select_screen",
-     "ui\\shell\\main_menu\\blueline"): (64, 349),
+     "ui\\shell\\main_menu\\blueline"): port_settings.MULTIPLAYER_LINE_PLACE,
+    # (the rest of Multiplayer's rows, a step closer for Create Game's two
+    # co-op items)
+    **{("ui\\shell\\main_menu\\multiplayer_type_select\\multiplayer_type_select_list",
+        f"ui\\shell\\main_menu\\multiplayer_type_select\\{name}"): place
+       for name, place in port_settings.MULTIPLAYER_ROWS.items()},
     # the browser's rows up under the column titles, into the place of the
     # scroll up button (hidden: the list does not scroll)
     **{("ui\\shell\\main_menu\\multiplayer_type_select\\join_game\\join_game_items_list",

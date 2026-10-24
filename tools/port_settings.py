@@ -77,10 +77,10 @@ SCREENS = {
             # in place of this one)
             ("WINDOW SIZE:", "display.window_size", [("1280 x 960", "1280x960")],
              "The window's size: 4:3, then 16:10, 16:9 and 21:9\n(its edges can also be dragged).", "desktop"),
-            ("RESOLUTION SCALING:", "display.resolution_scaling", [("NATIVE", "native"), ("ORIGINAL", "original")],
-             "Native draws at the resolution; Original draws\nthe Xbox's 640x480 and scales it up.", "desktop web"),
+            ("RENDER RESOLUTION:", "display.resolution_scaling", [("FULL", "native"), ("XBOX 640X480", "original")],
+             "Full draws at your screen's resolution; Xbox draws\nthe Xbox's 640x480 and scales it up.", "desktop web"),
             ("V-SYNC:", "display.vsync", ON_OFF,
-             "Wait for the display between frames, so that the\npicture never tears.", None),
+             "Wait for the display between frames: the picture\nnever tears, at a little more input lag.", None),
             ("FRAME RATE LIMIT:", "display.max_fps",
              [("AUTO", "0"), ("30", "30"), ("60", "60"), ("120", "120"), ("144", "144"), ("165", "165"),
               ("240", "240"), ("NONE", "-1")],
@@ -89,9 +89,9 @@ SCREENS = {
             ("BATTERY SAVER:", "display.battery_saver", [("OFF", "off"), ("ON", "on"), ("AUTO", "auto")],
              "Up to 60 frames a second, Classic graphics, for\nbattery and heat. Auto: on while on battery.", None),
             ("SMOOTH MOTION:", "display.interpolation", ON_OFF,
-             "Draw a frame for every display refresh, blending\nbetween the game's 30 ticks a second.", None),
+             "Smooth movement at any frame rate, between the\ngame's 30 updates a second.", None),
             ("INSTANT AIM:", "display.direct_camera", ON_OFF,
-             "In first person, turn the view the moment the\nmouse moves, not up to two ticks later.", "desktop web"),
+             "Turn the view the moment the mouse moves, not up\nto two of the game's updates later.", "desktop web"),
             ("HIGH-RES HUD:", "display.high_res_hud", ON_OFF,
              "Draw the HUD from the high-res redraws; off\ndraws the game's own pictures.", None),
             ("BUTTON STYLE:", "display.hud_button_style",
@@ -102,35 +102,35 @@ SCREENS = {
             ("ANTI-ALIASING:", "display.anti_aliasing",
              [("OFF", "off"), ("FXAA", "fxaa"), ("SMAA", "smaa"), ("SSAA 2X", "ssaa2x"), ("MSAA 2X", "msaa2x"),
               ("MSAA 4X", "msaa4x"), ("MSAA 8X", "msaa8x")],
-             "Smooth jagged edges, which the Xbox did not. FXAA\nand SMAA are cheap; SSAA and MSAA are sharper.",
+             "Smooth jagged edges. FXAA and SMAA cost little;\nSSAA and MSAA are sharper and cost more.",
              "desktop"),
             # (Android's Vulkan draws SMAA; the web's OpenGL ES has FXAA alone)
             ("ANTI-ALIASING:", "display.anti_aliasing",
              [("OFF", "off"), ("FXAA", "fxaa"), ("SMAA", "smaa"), ("MSAA 2X", "msaa2x"), ("MSAA 4X", "msaa4x")],
-             "Smooth jagged edges, which the Xbox did not. FXAA\nand SMAA are cheap; MSAA is sharper.",
+             "Smooth jagged edges. FXAA and SMAA cost little;\nMSAA is sharper and costs more.",
              "android", "anti_aliasing_android"),
             ("ANTI-ALIASING:", "display.anti_aliasing",
              [("OFF", "off"), ("FXAA", "fxaa"), ("MSAA 2X", "msaa2x"), ("MSAA 4X", "msaa4x")],
-             "Smooth jagged edges, which the Xbox did not. FXAA\nis cheap; MSAA is sharper.",
+             "Smooth jagged edges. FXAA costs little; MSAA is\nsharper and costs more.",
              "web", "anti_aliasing_web"),
             ("TEXTURE FILTERING:", "display.anisotropic_filtering",
              [("OFF", "0"), ("2X", "2"), ("4X", "4"), ("8X", "8"), ("16X", "16")],
-             "Keep floors and walls sharp at a grazing angle,\nwhich the Xbox did not. Off: as the Xbox.", None),
-            ("SHADOW RESOLUTION:", "display.shadow_resolution",
-             [("128", "128"), ("256", "256"), ("512", "512"), ("1024", "1024")],
-             "The size objects' shadows are drawn at: 128 as on\nthe Xbox; larger for smoother, as soft, edges.",
+             "Keep floors and walls sharp into the distance.\nOff looks as the Xbox did.", None),
+            ("SHADOW QUALITY:", "display.shadow_resolution",
+             [("XBOX", "128"), ("MEDIUM", "256"), ("HIGH", "512"), ("ULTRA", "1024")],
+             "How smooth the edges of objects' shadows are:\nXBOX as the original; higher costs more.",
              None),
-            ("PER-PIXEL LIGHTING:", "display.per_pixel_lighting", ON_OFF,
-             "Light models for each pixel, without the facets\nof the Xbox's lighting for each vertex.", None),
+            ("SMOOTH LIGHTING:", "display.per_pixel_lighting", ON_OFF,
+             "Light characters and weapons smoothly, without\nthe flat facets of the Xbox's lighting.", None),
             ("MODEL DETAIL:", "display.model_detail",
-             [("AUTO", "auto"), ("STOCK", "stock"), ("NATIVE", "native"), ("HIGHEST", "highest")],
-             "Stock picks models' detail by the Xbox's 480 lines;\nnative by this display's; auto: native in VR.", None),
+             [("AUTO", "auto"), ("XBOX", "stock"), ("FULL", "native"), ("HIGHEST", "highest")],
+             "Detail of models in the distance: Xbox as on a TV,\nFull for your screen. Auto: Full in VR.", None),
             ("SHIELD GLOW:", "display.shield_glow", ON_OFF,
              "Shields light their surroundings as they flare,\nin the shield's own color.", None),
             ("GLOW INTENSITY:", "display.shield_glow_intensity", [("DEFAULT", "default"), ("LIGHT SHOW", "light_show")],
-             "Light Show: the shield glow three times as far,\nat full from a third of the flare.", None),
+             "Light Show: the shield glow reaches three times\nas far, and is brighter.", None),
             ("DYNAMIC LIGHTS:", "display.dynamic_lights", [("CLASSIC", "classic"), ("ENHANCED", "enhanced")],
-             "Enhanced: plasma, flashes and blasts light each\npixel, gliding with the bolt, a glow about it.",
+             "Enhanced: plasma bolts, muzzle flashes and blasts\nlight their surroundings smoothly, with a glow.",
              "desktop android"),
             ("MATCH TIMER:", "display.match_timer", ON_OFF,
              "Draw a clock at the bottom right in multiplayer,\ncounting up from the start of the game.", None),
@@ -141,7 +141,7 @@ SCREENS = {
             ("HDR MODE:", "display.hdr_mode", [("FAITHFUL", "faithful"), ("PUNCHY", "punchy")],
              "Faithful: the stock picture, brighter highlights.\nPunchy: the whole scene lifted, remaster style.",
              "hdr"),
-            ("PAPER WHITE:", "display.hdr_paper_white", [(f"{value}%", str(value)) for value in PAPER_WHITES],
+            ("HDR BRIGHTNESS:", "display.hdr_paper_white", [(f"{value}%", str(value)) for value in PAPER_WHITES],
              "With HDR, how bright white surfaces and the HUD\nare, in percent of the system's white.", "hdr"),
             # (OpenCE's OVERSHIELD and HDR DISPLAY rows are left out: OpenH1's
             # renderers do not draw the overshield's rise, and HDR output is
@@ -186,7 +186,7 @@ SCREENS = {
             ("REVERB:", "audio.reverb", ON_OFF,
              "Echo sounds as the place you are in does, and\nmuffle those behind walls, as the Xbox did.", None),
             ("SOUND:", "audio.enabled", ON_OFF,
-             "Play sound at all; from the next time the game\nstarts.", None),
+             "Turn all sound off or on. Takes effect the next\ntime the game starts.", None),
             # voice chat: this machine's own (port/linux/game/network_voice.c)
             ("VOICE CHAT:", "audio.voice_chat",
              [("PUSH TO TALK", "push_to_talk"), ("OPEN MIC", "open_mic"), ("OFF", "off")],
@@ -205,11 +205,11 @@ SCREENS = {
             ("INTERNET PLAY:", "network.online", ON_OFF,
              "Host and join games over the internet by invite\nlinks; off keeps to the local network.",
              "desktop android web"),
-            ("UPNP PORT FORWARDING:", "network.allow_upnp", ON_OFF,
-             "Let internet play ask the router to forward its\nport, for networks that stop connections.",
+            ("OPEN ROUTER PORT:", "network.allow_upnp", ON_OFF,
+             "Ask your router to open the game's port (UPnP),\nso that players can reach your games.",
              "desktop android"),
             ("JOIN FROM CLIPBOARD:", "network.join_from_clipboard", ON_OFF,
-             "Join the game of an invite link copied before\nswitching to the game.", "desktop android"),
+             "Join a game when you switch to the game with its\ninvite link copied.", "desktop android"),
             ("CHECK FOR UPDATES:", "update.auto", ON_OFF,
              "Look for a new version when the game starts.", "desktop android"),
             ("PLAYER NAMES:", "display.player_names",
@@ -433,8 +433,8 @@ SCREENS["video_settings/graphics"] = {
               "Classic draws as the Xbox did; Enhanced turns on\nthe improvements below. Each can still be changed.",
               None)] +
             [row for row in _video["rows"] if row[1] in _graphics] +
-            [("SIMULATION:", "game.sim_rate", [("ORIGINAL (30)", "30"), ("60", "60"), ("120", "120")],
-              "How often the world moves. Original plays exactly\nas shipped; 60 and 120 respond faster.", None)],
+            [("TICK RATE:", "game.sim_rate", [("ORIGINAL (30)", "30"), ("60", "60"), ("120", "120")],
+              "How often the world updates. 60 and 120 respond\nfaster; online games always play at 30.", None)],
 }
 SCREENS["video_settings/extra_effects"] = {
     "screen": "extra_effects_settings_screen", "header": _video["header"], "spacing": 30,
@@ -443,7 +443,7 @@ SCREENS["video_settings/extra_effects"] = {
 _video["rows"] = [row for row in _video["rows"] if row[1] not in _graphics | _extra_effects]
 _video["categories"] = [
     ("GRAPHICS:", "video_settings/graphics",
-     "Classic or Enhanced, the HUD, text, shadows,\nlighting, anti-aliasing and the simulation rate."),
+     "Classic or Enhanced, the HUD, text, shadows,\nlighting, anti-aliasing and the tick rate."),
     ("FOV AND VIEWMODELS:", "video_settings/fov_viewmodels",
      "The field of view and the first-person\nweapon. Their defaults keep the stock view."),
     ("EXTRA EFFECTS:", "video_settings/extra_effects",
@@ -477,8 +477,8 @@ _processing = {"audio.reverb"}
 SCREENS["audio_settings/sound_processing"] = {
     "screen": "sound_processing_settings_screen", "header": _audio["header"], "spacing": 30,
     "rows": [row for row in _audio["rows"] if row[1] in _processing] + [
-        ("RESAMPLER:", "audio.resampler", [("SINC", "sinc"), ("LINEAR", "linear")],
-         "How sounds are converted to the output's rate:\nsinc is clean; linear is brighter, with aliasing.",
+        ("RESAMPLER:", "audio.resampler", [("CLEAN", "sinc"), ("CLASSIC", "linear")],
+         "How sounds are converted to your speakers' rate:\nClean is clear; Classic is brighter but harsher.",
          None),
     ],
 }
@@ -921,16 +921,21 @@ def LOADOUT_HELPS(slot: str) -> list:
 
 
 STRING_OVERRIDES.update({
-    f"{MT}/multiplayer_options": ["JOIN GAME", "CREATE GAME", "INTERNET", "LAN", "DIRECT LINK", "EDIT GAMETYPES",
-                                  "SERVER BROWSER", "CO-OP CAMPAIGN"],
+    # (plain names: LOCAL NETWORK for the PC version's LAN, JOIN BY LINK,
+    # and the two co-ops by how they are played)
+    f"{MT}/multiplayer_options": ["JOIN GAME", "CREATE GAME", "INTERNET", "LOCAL NETWORK", "JOIN BY LINK",
+                                  "EDIT GAMETYPES", "SERVER BROWSER", "SPLIT-SCREEN CO-OP", "ONLINE CO-OP"],
+    # (the items' in the list's order: menu_functions.c's description of
+    # the item chosen)
     f"{MT}/multiplayer_option_descriptions": [
-        "Browse the games on the\\nInternet.",
-        "Join a multiplayer game on\\nyour LAN.",
-        "Join a game by its invite link,\\nor one a Discord invite\\nreached.",
-        "Host a game on the Internet:\\nplayers join by its invite\\nlink or Discord.",
-        "Host a game on your LAN\\nonly.",
-        "Play the campaign with a\\nfriend in split screen:\\nplayer 2 on a gamepad.",
-        "Set all the attributes for your \\nmultiplayer gametypes and\\nkeep them for future use.",
+        "Public games on the Internet,\\nwith their players and ping.",
+        "Games on your Wi-Fi or local\\nnetwork.",
+        "Join a friend's game with the\\ninvite link they send you, or\\na Discord invite.",
+        "Host a game on the Internet.\\nFriends join with your invite\\nlink.",
+        "Host a game for players on\\nyour Wi-Fi or local network.",
+        "Play the campaign together\\nover the Internet: friends\\njoin with your invite link.",
+        "Play the campaign with a\\nfriend on this screen.\\nPlayer 2 uses a controller.",
+        "Make your own gametypes:\\nthe rules, weapons and\\nvehicles, kept for next time.",
     ],
     "main_menu/gametype_select/var_gametype_banks": ["STANDARD", "CUSTOM"],
     # (the PC's weapon sets, then the Xbox's NO GRENADES: menu_functions.c's
@@ -978,8 +983,8 @@ STRING_OVERRIDES.update({
 # port's own, the rest of their lists the PC version's
 OVERRIDE_ORIGINALS = {
     f"{PE}/profile_edit_descriptions": [0, None, None, None, None, None, None, 7, None],
-    f"{MT}/multiplayer_options": [0, 1, 2, 3, None, 5, None, None],
-    f"{MT}/multiplayer_option_descriptions": [0, 1, None, None, 4, None, 5],
+    f"{MT}/multiplayer_options": [0, 1, 2, None, None, 5, None, None, None],
+    f"{MT}/multiplayer_option_descriptions": [None] * 8,
     "main_menu/gametype_select/var_gametype_banks": [0, 2],
     "main_menu/settings_select/multiplayer_setup/item_options_edit/item_options_labels": [0, 1, 2, 3, 4] + [None] * 4,
     # (the first's note that infinite grenades work only with 4 players or
@@ -992,6 +997,22 @@ OVERRIDE_ORIGINALS = {
 # the map lists' first row: SINGLEPLAYER, MULTIPLAYER, CUSTOM SINGLEPLAYER or
 # CUSTOM MULTIPLAYER maps (_map_kind)
 MAP_KIND_CHOOSER = "main_menu/new_select/list_item_0_map_kind"
+
+# Multiplayer's rows, a step closer than the PC version's 33 units for
+# Create Game's ONLINE CO-OP and SPLIT-SCREEN CO-OP: each item's and
+# header's place (x, y) in the list, then the line and EDIT GAMETYPES below
+# them, the highlight inside the description panel's bottom curve
+# (tools/ce_menus.py's CHILD_OFFSETS)
+MULTIPLAYER_ROW_STEP = 31
+MULTIPLAYER_ROWS = {
+    name: (-32 if name in ("multiplayer_type_join_item", "multiplayer_type_create_item") else 0,
+           78 + MULTIPLAYER_ROW_STEP * index)
+    for index, name in enumerate([
+        "multiplayer_type_join_item", "multiplayer_type_join_internet_item", "multiplayer_type_join_lan_item",
+        "multiplayer_type_join_direct_item", "multiplayer_type_create_item", "multiplayer_type_create_internet_item",
+        "multiplayer_type_create_lan_item", "multiplayer_type_online_coop_item", "multiplayer_type_coop_item"])}
+MULTIPLAYER_LINE_PLACE = (64, 363)
+MULTIPLAYER_GAMETYPES_PLACE = (0, 370)
 
 # changes to the PC version's widgets (by our names): attributes set, all
 # their handlers replaced, children added, game data inputs added
@@ -1031,7 +1052,9 @@ WIDGET_PATCHES = {
     ]},
     # (Co-op, after Create Game's: _coop)
     f"{MT}/multiplayer_type_select_list": {"insert_before": {
-        f"{MT}/multiplayer_type_gametypes_item": [f'<child widget="{MT}/multiplayer_type_coop_item" y="309"/>'],
+        f"{MT}/multiplayer_type_gametypes_item": [
+            f'<child widget="{MT}/{name}" y="{MULTIPLAYER_ROWS[name][1]}"/>'
+            for name in ("multiplayer_type_online_coop_item", "multiplayer_type_coop_item")],
     }},
     # (the Map screen's and New Game's lists: SINGLEPLAYER or MULTIPLAYER
     # maps, the first row's chooser's (_map_kind); B on the Map screen goes
@@ -1063,6 +1086,9 @@ WIDGET_PATCHES = {
         f'<child widget="{MT}/join_game/header_server_browser"/>',
         f'<child widget="{MT}/join_game/header_direct_link"/>',
     ]},
+    # (Join's local network list: LOCAL NETWORK, not the PC version's LAN
+    # LOBBY: TITLES)
+    f"{MT}/join_game/header_lan": {"set": {"bitmap": f"{MT}/join_game/header_local_network"}},
     # (the small font's line does not fit below their 4 units of offset)
     f"{MT}/join_game/ticker_player_info": {"set": {"text_y": 1}},
     f"{MT}/join_game/ticker_rules_info": {"set": {"text_y": 1}},
@@ -1118,7 +1144,8 @@ TITLES = {
     f"{PE}/vr_display/header_vr_display": "VR DISPLAY",
     "main_menu/mods/header_mods": "MODS",
     f"{MT}/join_game/header_server_browser": "SERVER BROWSER",
-    f"{MT}/join_game/header_direct_link": "DIRECT LINK",
+    f"{MT}/join_game/header_direct_link": "JOIN BY LINK",
+    f"{MT}/join_game/header_local_network": "LOCAL NETWORK",
     f"{MT}/join_game/header_password": "PASSWORD",
     f"{MT}/lobby/header_lobby": "GAME LOBBY",
     f"{MT}/coop/header_player_2": "PLAYER 2 PROFILE",
@@ -1660,8 +1687,14 @@ def _lobby() -> list:
                      [f'<child widget="{base}/lobby_button_team" x="120" y="1"/>',
                       f'<child widget="{base}/lobby_button_start" x="250" y="1"/>',
                       f'<child widget="{base}/lobby_button_add" x="380" y="1"/>',
-                      f'<child widget="{base}/lobby_button_leave" x="510" y="1"/>'])
+                      f'<child widget="{base}/lobby_button_leave" x="510" y="1"/>',
+                      # (COPY INVITE, on the left as Defaults is on the
+                      # settings screens: the host's of an internet game,
+                      # shown while it has an invite link; last, so that the
+                      # focus starts on START NOW)
+                      f'<child widget="{base}/lobby_button_invite" y="1"/>'])
     for key, caption, handlers in (
+        ("invite", "COPY INVITE", ['<on event="a" run="ss copy invite"/>', '<on event="start" run="ss copy invite"/>']),
         ("add", "ADD PLAYER", ['<on event="a" run="port lobby add player"/>',
                                '<on event="start" run="port lobby add player"/>']),
         ("team", "SWITCH TEAM", ['<on event="a" run="swap player team"/>', '<on event="start" run="swap player team"/>']),
@@ -1756,6 +1789,16 @@ def _coop() -> list:
                     [f'<on event="a" run="port coop begin" open="{base}/player_2_profile_screen" branch="true"/>',
                      f'<on event="start" run="port coop begin" open="{base}/player_2_profile_screen" branch="true"/>',
                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    # (ONLINE CO-OP, under Create Game: hosting over the Internet, the map
+    # list opening on the campaign's levels, menu_functions.c's
+    # multiplayer_mode_set and map_list_initialize)
+    lines += _widget(f"{MT}/multiplayer_type_online_coop_item",
+                     [("type", "text"), ("left", 51), ("width", 232), ("height", 32), ("bitmap", "bitmaps/list_item_bkd"),
+                      ("string_list", f"{MT}/multiplayer_options"), ("string_index", 8), ("font", "ui\\large_ui"),
+                      ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 5)],
+                     ['<on event="a" run="join controller to mp game"/>',
+                      f'<on event="a" run="mp type set mode" open="{MT}/connected/connected_map_select_wrapper"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
     lines += _widget(f"{base}/player_2_profile_screen", [("width", 640), ("height", 480),
                                                          ("flags", "pass_unhandled_to_focused_child"),
                                                          ("bitmap", "bitmaps/gradient")],

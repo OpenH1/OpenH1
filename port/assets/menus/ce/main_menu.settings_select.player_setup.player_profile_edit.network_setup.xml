@@ -101,7 +101,7 @@
 	</widget>
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels">
 		<string text="INTERNET PLAY:"/>
-		<string text="UPNP PORT FORWARDING:"/>
+		<string text="OPEN ROUTER PORT:"/>
 		<string text="JOIN FROM CLIPBOARD:"/>
 		<string text="CHECK FOR UPDATES:"/>
 		<string text="MAP SHARING:"/>
@@ -111,8 +111,8 @@
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/help_strings">
 		<string text=""/>
 		<string text="Host and join games over the internet by invite\nlinks; off keeps to the local network."/>
-		<string text="Let internet play ask the router to forward its\nport, for networks that stop connections."/>
-		<string text="Join the game of an invite link copied before\nswitching to the game."/>
+		<string text="Ask your router to open the game's port (UPnP),\nso that players can reach your games."/>
+		<string text="Join a game when you switch to the game with its\ninvite link copied."/>
 		<string text="Look for a new version when the game starts."/>
 		<string text="Downloading Custom Edition maps you do not have,\nand helping send them to other players."/>
 		<string text="Players' names above their heads, the\nscoreboard, and the text chat."/>

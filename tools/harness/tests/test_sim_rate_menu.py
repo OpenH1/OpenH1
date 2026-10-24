@@ -63,7 +63,7 @@ def test_the_row_on_graphics():
     child = re.search(r'<child widget="[^"]*/op_sim_rate"[^>]*/>', text).group(0)
     assert "platform=" not in child, child
     labels = re.search(r'<strings name="[^"]*/graphics/labels">(.*?)</strings>', text, re.S).group(1)
-    assert '<string text="SIMULATION:"/>' in labels
+    assert '<string text="TICK RATE:"/>' in labels
     # its row fits above the help line (y + 28 <= help_top)
     spec = port_settings.SCREENS["video_settings/graphics"]
     assert int(re.search(r'y="(\d+)"', child).group(1)) + 28 <= spec["help_top"]

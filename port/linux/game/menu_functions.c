@@ -2937,6 +2937,9 @@ static short const maximum_players[] = { 2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 12
 static struct
 {
 	short mode;
+	/* Create Game's ONLINE CO-OP: the map list opens on the campaign's
+	levels (map_list_initialize) */
+	boolean campaign_first;
 	/* Create Game's gametype list */
 	long gametypes[MAXIMUM_GAMETYPES];
 	short gametype_count;
@@ -3111,8 +3114,9 @@ static void multiplayer_mode_set(struct widget_instance *widget)
 
 	/* (an instance's name is cut to 31 characters:
 	"multiplayer_type_create_interne") */
+	multiplayer.campaign_first = strstr(name, "online_coop") != NULL;
 	multiplayer.mode =
-		strstr(name, "create_inter") ? _multiplayer_mode_host_internet :
+		strstr(name, "create_inter") || multiplayer.campaign_first ? _multiplayer_mode_host_internet :
 		strstr(name, "create_lan") ? _multiplayer_mode_host_lan :
 		strstr(name, "join_lan") ? _multiplayer_mode_lan :
 		strstr(name, "join_direct") ? _multiplayer_mode_direct_link : _multiplayer_mode_server_browser;
@@ -3221,6 +3225,13 @@ static boolean map_list_initialize(struct widget_instance *list)
 		map_list.kind = MAP_KIND_CUSTOM_MULTIPLAYER;
 		last_used -= xbox_multiplayer_map_count(map_list.map_count);
 	}
+	/* (ONLINE CO-OP's: the campaign's levels, from the first) */
+	if (multiplayer.campaign_first && map_list.hosting)
+	{
+		map_list.kind = MAP_KIND_SINGLEPLAYER;
+		last_used = 0;
+	}
+	multiplayer.campaign_first = FALSE;
 	map_kind_set(list, map_list.kind);
 	map_step_open(list, MAP_STEP_MAPS, last_used);
 	return TRUE;
@@ -3619,7 +3630,7 @@ static void server_settings_update(struct widget_instance *list)
 	wide_to_text(multiplayer.game_name, text, sizeof(text));
 	text_field_show(named(list, "server_name_value", 0), text, text_field_editing(row));
 	if (multiplayer.mode != _multiplayer_mode_host_internet)
-		snprintf(text, sizeof(text), "NONE: A LAN GAME");
+		snprintf(text, sizeof(text), "NONE: LOCAL NETWORK ONLY");
 	else if (!config_boolean("network.online"))
 		snprintf(text, sizeof(text), "INTERNET PLAY IS OFF (SETTINGS)");
 	else if (!p2p_invite_link(text, sizeof(text)))
@@ -3824,6 +3835,10 @@ static short browser_row_index(struct widget_instance *row)
 /* the ping each row shows (-1: none), coloured by pc_menu_text_color: green
 under PING_GOOD milliseconds, yellow under PING_FAIR, red above */
 static short browser_row_pings[BROWSER_ROWS];
+/* whether each row's game is closed (full, or starting): its players shown
+grey (pc_menu_text_color) */
+static boolean browser_row_closed[BROWSER_ROWS];
+#define PLAYERS_COLOR_CLOSED 0x7F8A99FFUL
 enum
 {
 	PING_GOOD = 80,
@@ -3834,19 +3849,31 @@ enum
 #define PING_COLOR_POOR 0xE86A5AFFUL
 
 /* ui_widget.c: a text's colour in place of its own (FALSE: its own): a
-server browser row's ping by how good it is */
+server browser row's ping by how good it is, and a closed game's players
+grey */
 boolean pc_menu_text_color(struct widget_instance *widget, real_argb_color *color)
 {
 	short row = widget->parent ? browser_row_index(widget->parent) : NONE;
 	short ping;
 	unsigned long rgba;
 
-	if (row < 0 || row >= BROWSER_ROWS || strcmp(widget->name, "server_item_ping"))
+	if (row < 0 || row >= BROWSER_ROWS)
 		return FALSE;
-	ping = browser_row_pings[row];
-	if (ping < 0)
-		return FALSE;
-	rgba = ping < PING_GOOD ? PING_COLOR_GOOD : ping < PING_FAIR ? PING_COLOR_FAIR : PING_COLOR_POOR;
+	if (!strcmp(widget->name, "server_item_players"))
+	{
+		if (!browser_row_closed[row])
+			return FALSE;
+		rgba = PLAYERS_COLOR_CLOSED;
+	}
+	else
+	{
+		if (strcmp(widget->name, "server_item_ping"))
+			return FALSE;
+		ping = browser_row_pings[row];
+		if (ping < 0)
+			return FALSE;
+		rgba = ping < PING_GOOD ? PING_COLOR_GOOD : ping < PING_FAIR ? PING_COLOR_FAIR : PING_COLOR_POOR;
+	}
 	color->red = (real)((rgba >> 24) & 0xFF) / 255.0f;
 	color->green = (real)((rgba >> 16) & 0xFF) / 255.0f;
 	color->blue = (real)((rgba >> 8) & 0xFF) / 255.0f;
@@ -3931,7 +3958,10 @@ static boolean browser_initialize(struct widget_instance *screen, struct event_r
 	char const *title = multiplayer.mode == _multiplayer_mode_lan ? "header_lan" :
 		multiplayer.mode == _multiplayer_mode_direct_link ? "header_direct_link" : "header_server_browser";
 	char const *const titles[] = { "header_internet", "header_lan", "header_direct_link", "header_server_browser" };
-	char const *const unused[] = { "op_browser_mode", "join_game_button_update", "join_game_button_filters" };
+	/* (and the column titles of the dedicated and classic columns, which
+	the rows leave empty) */
+	char const *const unused[] = { "op_browser_mode", "join_game_button_update", "join_game_button_filters",
+		"op_sort_header_dedicated", "op_sort_header_classic" };
 	short index;
 
 	server_browser_initialize(screen);
@@ -4033,6 +4063,25 @@ static void map_display_name(char const *map_name, wchar_t *text)
 	{
 		string_get("pc\\main_menu\\map_list", index, text);
 		return;
+	}
+	/* (a stock map's variant, named <map>@<variant> (bloodgulch@ce+): the
+	map's own name) */
+	if (strchr(scenario_name(map_name), '@'))
+	{
+		char base[ROW_TEXT_LENGTH];
+		char const *name = scenario_name(map_name);
+		size_t length = MIN((size_t)(strchr(name, '@') - name), sizeof(base) - 1);
+
+		memcpy(base, name, length);
+		base[length] = 0;
+		for (index = 0; length && index < count; index++)
+		{
+			if (!_stricmp(scenario_name(names[index]), base))
+			{
+				string_get("pc\\main_menu\\mp_map_list", index, text);
+				return;
+			}
+		}
 	}
 	for (index = 0; map_name[index] && index < ROW_TEXT_LENGTH - 1; index++)
 		text[index] = (wchar_t)(unsigned char)map_name[index];
@@ -4254,11 +4303,14 @@ static void lobby_browser_update(struct widget_instance *list)
 		text_set(named(row, "server_item_type", 0), game_type_name(game->engine_type));
 		usnprintf(text, ROW_TEXT_LENGTH - 1, L"%d/%d", game->player_count, game->maximum_player_count);
 		text_set(named(row, "server_item_players", 0), text);
-		/* (its host's ping, once probed: p2p_lobby.c) */
+		/* (its host's ping, once probed: p2p_lobby.c; "..." while it is
+		measured, "-" never, for a game with a password, N/A for a host not
+		reached. Whether the game is under way or full is the footer's) */
 		browser_row_pings[index - lobby_browser.first] = game->failed ? -1 : game->ping;
+		browser_row_closed[index - lobby_browser.first] = !game->open;
 		usnprintf(text, ROW_TEXT_LENGTH - 1, L"%d", game->ping);
-		text_set(named(row, "server_item_ping", 0), game->failed ? L"FAILED" : game->ping >= 0 ? text :
-			!game->open ? L"CLOSED" : game->in_progress ? L"LIVE" : L"-");
+		text_set(named(row, "server_item_ping", 0), game->failed ? L"N/A" : game->ping >= 0 ? text :
+			game->locked ? L"-" : L"...");
 		/* (the lock: a game with a password. Its bitmap's first frame is
 		empty, the PC version's for no lock; the next is the lock, in the
 		menus' blue) */
@@ -4612,8 +4664,9 @@ static void browser_update(struct widget_instance *list)
 		/* (a Direct Link game's host: the tunnel's ping) */
 		ping = multiplayer.mode == _multiplayer_mode_direct_link ? p2p_peer_ping(game->xnaddr + 2) : -1;
 		browser_row_pings[index] = (short)ping;
+		browser_row_closed[index] = !game->open;
 		usnprintf(text, ROW_TEXT_LENGTH - 1, L"%d", ping);
-		text_set(named(row, "server_item_ping", 0), ping >= 0 ? text : advertised_in_progress(game) ? L"LIVE" : L"");
+		text_set(named(row, "server_item_ping", 0), ping >= 0 ? text : L"");
 		visible_set(named(row, "server_item_locked", 0), FALSE);
 		visible_set(named(row, "server_item_dedicated", 0), FALSE);
 		visible_set(named(row, "server_item_classic", 0), FALSE);
@@ -4627,7 +4680,7 @@ static void browser_update(struct widget_instance *list)
 		{
 			usnprintf(text, NUMBEROF(text) - 1, L"%s", multiplayer.mode == _multiplayer_mode_direct_link ?
 				L"Copy an invite link and PASTE LINK, or accept a Discord invite" :
-				L"Looking for games on your LAN...");
+				L"Looking for games on your local network...");
 		}
 		else
 		{
@@ -5173,6 +5226,12 @@ static void lobby_update(struct widget_instance *list)
 	}
 	lobby_join_help(list);
 	visible_set(named(list, "lobby_button_team", 0), game && game->variant.universal_variant.teams);
+	/* (COPY INVITE: the host's, while its game has an invite link) */
+	{
+		char invite[TEXT_FIELD_LENGTH];
+
+		visible_set(named(list, "lobby_button_invite", 0), p2p_invite_link(invite, sizeof(invite)) > 0);
+	}
 	/* (the buttons' focus, off Switch Team when it is hidden) */
 	focus_off_hidden(named(list, "lobby_button_bar", 0));
 	visible_set(named(description, "lobby_right_item", 0), game != NULL && state >= _client_state_pregame);
@@ -6274,6 +6333,11 @@ boolean pc_menu_event_function_invoke(
 				multiplayer.mode == _multiplayer_mode_host_lan) && !global_network_game_server_get())
 			{
 				platform_log("menus: the game could not be made (is its port in use?)");
+				/* (said on the screen too: not a silent dead end) */
+				display_error_text_deferred(player_ui_get_active_player_profile_index(0) == NONE ?
+					L"Choose a player profile\r\nfirst (Profiles, on the\r\nmain menu)." :
+					L"The game could not be\r\nstarted: another program\r\nmay be using its network\r\nport.",
+					NONE);
 				return campaign_fail();
 			}
 		}
