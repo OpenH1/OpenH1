@@ -2407,8 +2407,8 @@ The one-shot controls (the action and reload, the flashlight, equipment,
 the weapon and grenade switches and the zoom) stay the tick's: a frame's
 press reaches one tick, latched until it is let go (player_queues_new.c).
 Nothing is counted here (the autolevel's and the look acceleration's are the
-frame's). In a network game every tick has one sub-step, so nothing here
-runs, as in a game at 30. */
+frame's). In a network game of other machines every tick has one sub-step,
+so nothing here runs, as in a game at 30. */
 
 /* the unit controls a sub-step's reading changes */
 #define PLAYER_CONTROL_SUBSTEP_HELD_FLAGS ( \
@@ -2542,7 +2542,9 @@ static void player_control_substep_read(
 }
 
 /* a local player whose unit a sub-step's reading moves: the player, or NONE
-(a network game's, none or one without a controller, input taken away) */
+(a network game of other machines', none or one without a controller, input
+taken away; split screen, a network game of one machine, is this machine's
+alone: sim_rate_follows_setting) */
 static long player_control_substep_player_index(
 	short local_player_index)
 {
@@ -2550,7 +2552,7 @@ static long player_control_substep_player_index(
 	struct player_datum *player;
 	short gamepad_index;
 
-	if (game_connection() != _game_connection_local || player_index == NONE)
+	if (!sim_rate_follows_setting() || player_index == NONE)
 		return NONE;
 	player = player_get(player_index);
 	gamepad_index = player->local_player_index;

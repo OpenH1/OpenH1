@@ -25,6 +25,8 @@ enum
 static long setting = 30;
 static unsigned long changes = 1;
 static short connection = _game_connection_local;
+/* a network server's game takes no other machine (split screen) */
+static boolean splitscreen = FALSE;
 
 long config_integer(char const *name)
 {
@@ -39,6 +41,11 @@ unsigned long config_changes(void)
 static short game_connection(void)
 {
 	return connection;
+}
+
+boolean network_game_is_splitscreen_local(void)
+{
+	return connection == _game_connection_network_server && splitscreen;
 }
 
 /* (real_math.h's) */
@@ -187,12 +194,22 @@ int main(int argc, char **argv)
 		}
 		set(120, _game_connection_local);
 		CHECK(sim_rate_get() == 120, "local: %ld", sim_rate_get());
+		/* split screen (and the bots' games): a network game of one machine,
+		its own server's, that takes no other: the setting */
+		splitscreen = TRUE;
+		set(120, _game_connection_network_server);
+		CHECK(sim_rate_get() == 120, "split screen: %ld", sim_rate_get());
+		set(60, _game_connection_network_server);
+		CHECK(sim_rate_get() == 60 && sim_substep_count() == 2, "split screen at 60: %ld", sim_rate_get());
+		splitscreen = FALSE;
+		set(120, _game_connection_network_server);
+		CHECK(sim_rate_get() == 30, "a server that takes other machines: %ld", sim_rate_get());
 		return 0;
 	}
 
 	/* the setting is set aside (the menus' row locked) exactly where the
 	connection, not the setting, gives the rate: every connection but a game
-	of this machine alone */
+	of this machine alone (its own connection's, or split screen's) */
 	if (!strcmp(case_name, "locked"))
 	{
 		static short const connections[] = { _game_connection_local, _game_connection_network_client,
@@ -207,6 +224,10 @@ int main(int argc, char **argv)
 			CHECK(sim_rate_locked() == (connections[index] != _game_connection_local),
 				"connection %d at 30: locked %d", connections[index], sim_rate_locked());
 		}
+		splitscreen = TRUE;
+		set(120, _game_connection_network_server);
+		CHECK(!sim_rate_locked() && sim_rate_get() == 120, "split screen locked %d at %ld", sim_rate_locked(),
+			sim_rate_get());
 		return 0;
 	}
 

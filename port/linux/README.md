@@ -598,7 +598,7 @@ the setting for one start of the game. It has priority over the file.
 | `game.console_log` | `"important"` | `HALO_CONSOLE_LOG` | What the console shows on the screen. `"important"`: bans, players that the host drops for cheating, the reasons that the game refuses a command, and the asserts that stop the game. `"all"`: all the lines. `"none"`: only the asserts that stop the game. The output of a command always shows. `debug.txt` gets all the lines. |
 | `game.language` | `""` | `HALO_LANGUAGE` | The language of the menus: `ja`, `de`, `fr`, `es` or `it`. Empty: English. |
 | `game.enhanced_animations` | `true` | `HALO_ENHANCED_ANIMATIONS` | `true`: the player bipeds' grenade throws keep their legs moving, blended by speed and direction (crouched throws stay crouched, throws in the air use the jump's legs), Warthog and Scorpion riders stay seated to throw and let go of the grips to throw and reload, and a player turns with the aim while throwing, as while meleeing. `false`: the original animations, which freeze the legs during a throw and stand a rider up. Only in config.toml, not in the menus. |
-| `game.sim_rate` | `30` | `HALO_SIM_RATE` | How many steps a second the game takes for what a player feels in their hands: their own movement and aim, projectiles, thrown items, and the VR mode's throws and grabs. `30` (as the game was made), `60` or `120`: 1, 2 or 4 steps inside each of the game's 30 ticks a second. Everything else keeps the 30 ticks: the AI, scripts, cinematics, animations, timers, vehicles, saved games and the network. Any other value is `30`. Nothing moves in the smaller steps yet, so every rate plays exactly as `30` does (refer to "Simulation rate" in "How the port operates"). Network games are always `30`, hosting or joining, because OpenCE's netcode steps at 30. So are split screen games (and so games with bots), which run as a network game of one computer, and the playback of a saved film. SIMULATION in Video Setup > Graphics: ORIGINAL (30), 60 or 120. A change applies from the next tick. Where the game sets the setting aside (a network game, split screen, a film's playback), the row is locked: dimmed, at ORIGINAL (30), passed over, and OK leaves the setting as it was. |
+| `game.sim_rate` | `60` | `HALO_SIM_RATE` | How many steps a second the game takes for what a player feels in their hands: their own movement and aim, projectiles, thrown items, and the VR mode's throws and grabs. `30` (as the game was made), `60` or `120`: 1, 2 or 4 steps inside each of the game's 30 ticks a second. Everything else keeps the 30 ticks: the AI, scripts, cinematics, animations, timers, vehicles, saved games and the network. Any other value is `30` (refer to "Simulation rate" in "How the port operates"). It applies to games of this computer alone: the campaign, split screen and games with bots (a split screen game runs as a network game of one computer that takes no other). Network games with other computers are always `30`, hosting or joining, because OpenCE's netcode steps at 30, and so is the playback of a saved film. TICK RATE in Video Setup > Graphics > Advanced: ORIGINAL (30), 60 or 120. A change applies from the next tick. Where the game sets the setting aside (a network game with other computers, a film's playback), the row is locked: dimmed, at ORIGINAL (30), passed over, and OK leaves the setting as it was. |
 | `game.unlock_all_levels` | `false` | `HALO_UNLOCK_ALL_LEVELS` | `true`: a profile created afterward starts with all the campaign levels finished on all the difficulties. `false`: a new profile starts at The Pillar of Autumn, and each level opens when you finish the level before it, as on the Xbox. Existing profiles keep their progress. To start a profile over, type `profile_reset_campaign` in the console. |
 | `bots.count` | `0` | `HALO_BOTS` | Computer players (bots) in a local (split screen) Slayer game: `0` to `15` join its lobby with the players, as far as the game has room. Not in system link or internet games. `0`: none, as in the stock game. Refer to "Bots". |
 | `bots.skill` | `"normal"` | `HALO_BOT_SKILL` | How well the bots play: `"easy"`, `"normal"`, `"heroic"` or `"legendary"`: how soon they react, how far and how wide they see, how large their aim error is and how fast it settles, how fast they turn. |
@@ -4799,13 +4799,18 @@ mode's throws and grabs move in smaller steps.
   (`game_time_get_tick_fraction`). `sim_substep_blend` gives the sub-step
   that the frame is in.
 
-- The rate is taken at the start of each tick. It is 30 in a network game
-  (the netcode is OpenCE's, and every machine must step alike), in a split
-  screen game (a network game of one machine, for now) and in the playback
-  of a saved film. A protocol of OpenH1's own would agree on a rate
-  in `sim_rate_network`. Meanwhile (`sim_rate_locked`) Video Setup >
-  Graphics' SIMULATION row is locked at ORIGINAL (30), and its OK leaves
-  the setting as it was (`game/menu_functions.c`, `sim_rate_row_show`).
+- The rate is taken at the start of each tick. It is the setting (60 by
+  default) in a game of this machine alone (`sim_rate_follows_setting`): a
+  game of its own connection (the campaign) or a split screen game (and so
+  the bots' games), a network game of one machine that takes no other
+  (`network_game_is_splitscreen_local`), whose sub-steps take each frame's
+  input as the campaign's do (`game/player_control.c`). It is 30 in a
+  network game with other machines (the netcode is OpenCE's, and every
+  machine must step alike) and in the playback of a saved film. A protocol
+  of OpenH1's own would agree on a rate in `sim_rate_network`. Meanwhile
+  (`sim_rate_locked`) Video Setup > Graphics' TICK RATE row is locked at
+  ORIGINAL (30), and its OK leaves the setting as it was
+  (`game/menu_functions.c`, `sim_rate_row_show`).
 - Velocities and timers in the game state stay per tick. A sub-step takes
   its share with `sim_per_substep` (linear), `sim_per_substep_squared`
   (accelerations), `sim_decay_per_substep` (a factor each tick) and
@@ -4847,9 +4852,11 @@ mode's throws and grabs move in smaller steps.
   view's snapshot is moved back to where the tick left that point, and the
   frames move it with that point onto the vehicle's path.
 - The profiling build times the fast phase as `game_tick.substeps`.
-- The determinism check writes the rate (`rate 30`) before the first tick.
+- The determinism check writes the rate (`rate 60`) before the first tick.
   `tools/determinism_compare.py` compares two logs of different rates
-  only with `--across-rates`. Make a run to compare against at 30.
+  only with `--across-rates`. Make a run to compare against a build
+  before the setting, or against master as the scorecard's gate does, at
+  30 (`HALO_SIM_RATE=30`): the default is 60.
 
 ### Game source changes
 

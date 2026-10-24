@@ -8,16 +8,20 @@ runs each sub-step when its time has come, so a tick's sub-steps are
 spread over the frames that pass meanwhile; here is which is next, and
 whether the frame's input was read since the last.
 
-The rate is taken at each tick's start and holds for the tick. It is 30,
+The rate is taken at each tick's start and holds for the tick. It is
+game.sim_rate (60 unless the player chose otherwise) in a game of this
+machine alone: a game of its own connection (the campaign) and a split
+screen game (and so the bots' games), which is a network game of one
+machine, its own server's, that takes no other machine
+(network_game_is_splitscreen_local) for its whole length. It is 30,
 whatever game.sim_rate says, in a game that must stay as it was:
 
-- A network game, hosting or joining: the netcode is OpenCE's (NETCODE.md),
-  whose machines each simulate the players from the same input, so all of
-  them must step alike, and OpenCE steps at 30. A protocol of OpenH1's own
-  could agree on a rate with every machine before the game starts; it would
-  say so in sim_rate_network (below), the one place that decides it. (A
-  split screen game, and so the bots' games, is a network game of one
-  machine, its own server's: 30 too, for now.)
+- A network game of other machines, hosting or joining: the netcode is
+  OpenCE's (NETCODE.md), whose machines each simulate the players from the
+  same input, so all of them must step alike, and OpenCE steps at 30. A
+  protocol of OpenH1's own could agree on a rate with every machine before
+  the game starts; it would say so in sim_rate_network (below), the one
+  place that decides it.
 - A saved film's playback (game_connection's film playback), which replays
   a recording's input tick by tick.
 
@@ -51,6 +55,8 @@ sub-step a frame.
 /* port/linux/src/port_config.c */
 long config_integer(char const *name);
 unsigned long config_changes(void);
+/* networking/network_game_globals.c */
+boolean network_game_is_splitscreen_local(void);
 
 /* ---------- globals */
 
@@ -101,14 +107,24 @@ static long sim_rate_network(
 	return SIM_RATE_CLASSIC;
 }
 
+/* (public: sim_rate.h) */
+boolean sim_rate_follows_setting(
+	void)
+{
+	short connection = game_connection();
+
+	return connection == _game_connection_local ||
+		(connection == _game_connection_network_server && network_game_is_splitscreen_local());
+}
+
 /* the rate a tick begun now takes */
 static long sim_rate_for_connection(
 	void)
 {
+	if (sim_rate_follows_setting())
+		return sim_rate_setting();
 	switch (game_connection())
 	{
-	case _game_connection_local:
-		return sim_rate_setting();
 	case _game_connection_network_client:
 	case _game_connection_network_server:
 		return sim_rate_network();
@@ -142,7 +158,7 @@ long sim_rate_get(
 boolean sim_rate_locked(
 	void)
 {
-	return game_connection() != _game_connection_local;
+	return !sim_rate_follows_setting();
 }
 
 short sim_substep_count(

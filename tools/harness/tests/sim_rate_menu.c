@@ -64,7 +64,7 @@ static struct widget_instance *named(struct widget_instance *widget, char const 
 
 static boolean setting_text(char const *name, char *text, unsigned int size, boolean default_value)
 {
-	snprintf(text, size, "%s", strcmp(name, "game.sim_rate") ? "" : default_value ? "30" : config_value);
+	snprintf(text, size, "%s", strcmp(name, "game.sim_rate") ? "" : default_value ? "60" : config_value);
 	return TRUE;
 }
 
@@ -132,13 +132,13 @@ int main(int argc, char **argv)
 		spinner.parameters.list.selected_index = 2;
 		setting_changed_save(&spinner, &sim_rate_setting);
 		CHECK(writes == 1 && !strcmp(config_value, "120"), "OK wrote %d times: %s", writes, config_value);
-		/* Defaults: ORIGINAL (30) */
+		/* Defaults: 60 (port_config.c) */
 		setting_default_show(&spinner, &sim_rate_setting);
-		CHECK(spinner.parameters.list.selected_index == 0, "defaults: %d", spinner.parameters.list.selected_index);
+		CHECK(spinner.parameters.list.selected_index == 1, "defaults: %d", spinner.parameters.list.selected_index);
 		return 0;
 	}
 
-	/* a network game, split screen or a film: ORIGINAL (30) shown, dimmed,
+	/* a network game of other machines or a film: ORIGINAL (30) shown, dimmed,
 	passed over; OK and Defaults leave the setting as it was */
 	if (!strcmp(case_name, "locked"))
 	{

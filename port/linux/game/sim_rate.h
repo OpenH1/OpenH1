@@ -71,15 +71,20 @@ typedef void (*sim_substep_procedure)(short substep_index, short substep_count, 
 /* ---------- prototypes */
 
 /* the rate this tick simulates at, 30, 60 or 120: game.sim_rate, but 30 in
-a network game (the classic netcode's, whatever the host or client) and in a
-saved film's playback */
+a network game of other machines (the classic netcode's, whatever the host
+or client) and in a saved film's playback */
 long sim_rate_get(void);
+
+/* whether the game played (or about to be, from a lobby) is of this machine
+alone and takes game.sim_rate: a game of its own connection, or split
+screen (a network game of one machine that takes no other) */
+boolean sim_rate_follows_setting(void);
 
 /* whether game.sim_rate is set aside: the game played (or about to be, from
 a lobby) takes its rate from its connection, not the setting: a network
-game (split screen too, a network game of one machine) or a film's
-playback. The menus' SIMULATION row shows it locked at ORIGINAL (30)
-meanwhile (menu_functions.c's sim_rate_row_show) */
+game of other machines or a film's playback. The menus' SIMULATION row
+shows it locked at ORIGINAL (30) meanwhile (menu_functions.c's
+sim_rate_row_show) */
 boolean sim_rate_locked(void);
 
 /* the sub-steps of this tick (1, 2 or 4), and the one running: 0 up to

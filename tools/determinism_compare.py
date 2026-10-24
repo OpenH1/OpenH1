@@ -21,10 +21,10 @@ and for a data array the elements and the offsets in them:
     python tools/determinism_compare.py a/determinism.txt b/determinism.txt \\
         --dump a/determinism.txt.300.bin b/determinism.txt.300.bin
 
-A log names the simulation's rate it ran at (game.sim_rate; none: 30). Two
-runs at different rates are compared only with --across-rates (while the
-fast phase moves nothing, every rate leaves the game state of 30): a run to
-compare against is made at 30.
+A log names the simulation's rate it ran at (game.sim_rate, 60 by default;
+none: 30). Two runs at different rates are compared only with
+--across-rates: a run to compare against an older build's is made at 30
+(HALO_SIM_RATE=30).
 
 Exit status: 0 when the logs agree for every tick both have, 1 when they
 part, 2 when a log cannot be read or has no ticks.
@@ -321,7 +321,7 @@ def main():
         rates = f"A {'/'.join(map(str, rates_a))} Hz, B {'/'.join(map(str, rates_b))} Hz"
         if not args.across_rates:
             print(f"error: the runs simulated at different rates ({rates}; game.sim_rate): a run to compare "
-                  "against is made at 30, or --across-rates compares them anyway")
+                  "against is made at the same rate (HALO_SIM_RATE), or --across-rates compares them anyway")
             return 2
         print(f"note: comparing across simulation rates ({rates})")
     symbols = Symbols(args.symbols)
