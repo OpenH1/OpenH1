@@ -4925,6 +4925,11 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 		frame_input_time = (uint64_t)now.tv_sec * 1000000000u + (uint64_t)now.tv_nsec;
 	}
 
+	/* the loading screens present before main_initialize_time sets the
+	vertical blank callback, and without the thread nothing retires a
+	queued frame */
+	if (!halo_interpolation_enabled())
+		vertical_blank_start();
 	pthread_mutex_lock(&vertical_blank_lock);
 	/* the Xbox keeps at most two frames queued behind its 60 Hz display;
 	with interpolation, frames come at the real display's rate instead,
