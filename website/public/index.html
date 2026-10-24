@@ -53,6 +53,7 @@ img, video { display: block; max-width: 100%; }
 .skip { position: absolute; left: 12px; top: -60px; z-index: 50; padding: 10px 14px; background: var(--green); color: #061000; border-radius: 6px; font-weight: 700; }
 .skip:focus { top: 12px; }
 :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .lit { color: var(--green); text-shadow: 0 0 34px var(--glow); }
 
 /* ---------- header */
@@ -159,15 +160,59 @@ h2 { margin: 0; font: 900 clamp(40px, 6vw, 92px)/0.92 var(--display); font-stret
 .co.west .lbl { left: auto; right: -14px; }
 .co.down .leader { bottom: auto; top: 9px; background: linear-gradient(180deg, var(--green), rgba(157, 255, 60, 0.25)); }
 .co.down .lbl { bottom: auto; top: calc(var(--len, 44px) + 9px); }
-.lat { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 14px; }
-.lat li { display: grid; grid-template-columns: minmax(130px, 210px) 1fr; gap: 16px; align-items: center; }
-.lat .who { color: var(--soft); font-size: 15px; }
-.lat .who small { display: block; color: var(--muted); font: 500 11px/1.4 var(--mono); }
-.lat .bar { position: relative; height: 34px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); overflow: hidden; }
-.lat .bar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, rgba(157,255,60,.25), var(--green)); box-shadow: 0 0 18px var(--glow); }
-.lat .bar.old i { background: rgba(238,244,234,.18); box-shadow: none; }
-.lat .bar b { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font: 700 14px/1 var(--mono); color: var(--text); }
-@media (max-width: 560px) { .lat li { grid-template-columns: 1fr; gap: 6px; } }
+/* 05: the "feel it" demo (both panels answer one press, each after its
+   measured median) and where the time goes (each stage's median) */
+.feel { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: clamp(10px, 2vw, 20px); width: 100%; margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: crosshair; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; border-radius: 8px; }
+.feel:focus-visible { outline-offset: 6px; }
+.pane { position: relative; aspect-ratio: 16 / 10; border-radius: 6px; overflow: hidden; background: radial-gradient(ellipse 70% 60% at 50% 50%, rgba(157, 255, 60, 0.05), transparent 70%), repeating-linear-gradient(0deg, rgba(238, 244, 234, 0.025) 0 1px, transparent 1px 4px), #070906; box-shadow: 0 0 0 1px var(--line), 0 30px 90px -40px rgba(157, 255, 60, 0.28); }
+.pane.old { box-shadow: 0 0 0 1px var(--line-soft); --hit: #eef4ea; --burst: rgba(255, 214, 140, 0.95); }
+.pane.new { --hit: var(--green); --burst: rgba(200, 255, 140, 0.95); }
+.pane .tagl { top: 12px; }
+.pane .tagl.l { left: 12px; }
+.pane svg { position: absolute; left: 50%; top: 50%; width: 38%; max-width: 180px; transform: translate(-50%, -50%); overflow: visible; }
+.pane .xh { stroke: rgba(238, 244, 234, 0.5); stroke-width: 2; fill: none; }
+.pane .hm { stroke: var(--hit); stroke-width: 5; stroke-linecap: round; opacity: 0; }
+.pane .fl { position: absolute; left: 50%; top: 50%; width: 46%; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, -50%) scale(.4); background: radial-gradient(circle, #fff 0 8%, var(--burst) 18%, rgba(255, 200, 90, 0.35) 40%, transparent 68%); opacity: 0; pointer-events: none; }
+.pane.hit .fl { animation: fl .26s ease-out; }
+.pane.hit .hm { animation: hm .34s ease-out; }
+@keyframes fl { 0% { opacity: 1; transform: translate(-50%, -50%) scale(.55); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.25); } }
+@keyframes hm { 0%, 40% { opacity: 1; } 100% { opacity: 0; } }
+.pane .ms { position: absolute; left: 12px; right: 12px; bottom: 10px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.pane .ms b { font: 700 clamp(26px, 4vw, 44px)/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.pane.new .ms b { color: var(--green); text-shadow: 0 0 24px var(--glow); }
+.pane .ms span { color: var(--muted); }
+.feel-hint { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 18px; margin: 14px 0 0; color: var(--muted); }
+.feel-hint strong { color: var(--green); font-weight: 500; }
+.where { margin: 72px 0 0; }
+.where h3 { margin: 0 0 6px; font: 800 22px/1.2 var(--display); font-stretch: 112%; text-transform: uppercase; letter-spacing: 0.01em; }
+.where > p { margin: 0 0 22px; color: var(--soft); max-width: 640px; }
+.stack { margin: 0; padding: 0; list-style: none; display: grid; gap: 14px; }
+.stack li { display: grid; grid-template-columns: minmax(140px, 220px) 1fr 84px; gap: 16px; align-items: center; }
+.stack .who { color: var(--soft); font-size: 15px; }
+.stack .who small { display: block; color: var(--muted); font: 500 11px/1.4 var(--mono); }
+.stack .track { display: flex; height: 30px; border-radius: 5px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line-soft); overflow: hidden; }
+.stack .track i { display: block; height: 100%; width: calc(var(--v) / 48 * 100%); background: var(--c); }
+.stack .track i + i { box-shadow: inset 1px 0 0 rgba(4, 5, 4, 0.7); }
+.stack .tot { font: 700 15px/1 var(--mono); color: var(--text); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.s-read { --c: #4fb8c9; } .s-tick { --c: var(--green); } .s-frame { --c: #eef4ea; } .s-draw { --c: #5d7a52; } .s-hand { --c: #e9ad45; }
+.keys { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 20px 0 0; padding: 0; list-style: none; color: var(--soft); font-size: 14px; }
+.keys li { display: flex; align-items: center; gap: 8px; }
+.keys li::before { content: ""; width: 12px; height: 12px; border-radius: 3px; background: var(--c); }
+@media (max-width: 560px) {
+  .feel { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .pane { aspect-ratio: 4 / 5; }
+  .pane svg { width: 62%; }
+  .pane .fl { width: 80%; }
+  .pane .tagl { top: 8px; padding: 6px 8px; font-size: 10px; letter-spacing: 0.08em; }
+  .pane .tagl.l { left: 8px; }
+  .pane .ms { left: 8px; right: 8px; flex-direction: column; align-items: flex-start; gap: 2px; }
+  .stack li { grid-template-columns: 1fr 76px; gap: 6px 10px; }
+  .stack .who { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pane.hit .fl { animation: none; opacity: 0; }
+  .pane.hit .hm { animation: none; opacity: 1; }
+}
 .legend { display: none; margin: 16px 0 0; padding: 0; list-style: none; counter-reset: c; }
 .legend.always { display: block; }
 .legend li { counter-increment: c; position: relative; padding: 6px 0 6px 34px; color: var(--soft); font-size: 15px; }
@@ -506,15 +551,40 @@ footer .legal a { color: var(--soft); }
           <p class="kicker mono">05 · Responsive</p>
           <h2 id="fast-title">Press. <span class="lit">It happens.</span></h2>
         </div>
-        <p class="reveal d1">The time from your click to the shot on screen, measured in the game. The view turns the frame you move the mouse, your gun is drawn from the newest moment, and on OpenH1's own servers your input lands on a step up to 120 times a second instead of 30.</p>
+        <p class="reveal d1">The time from your click to the shot on screen, measured in the game. The view turns the frame you move the mouse, your gun is drawn from the newest moment, and on OpenH1's own servers your input lands on a step up to 120 times a second instead of 30. Feel the difference.</p>
       </div>
-      <ul class="lat reveal" aria-label="Milliseconds from pressing fire to the frame that shows it, median">
-        <li><span class="who">Before<small>this port, 30 tick</small></span><span class="bar old"><i style="width:100%"></i><b>55 ms</b></span></li>
-        <li><span class="who">Now, Legacy servers<small>30 tick, plays with OpenCE</small></span><span class="bar"><i style="width:36%"></i><b>20 ms</b></span></li>
-        <li><span class="who">OpenH1 60 Tick<small>OpenH1's own servers</small></span><span class="bar"><i style="width:20%"></i><b>11 ms</b></span></li>
-        <li><span class="who">OpenH1 120 Tick<small>OpenH1's own servers</small></span><span class="bar"><i style="width:11%"></i><b>6 ms</b></span></li>
-      </ul>
-      <p class="caption mono">Measured in the game: pressing fire to the frame that shows the shot, median of 21 presses at each rate, a Mac, a local game with bots · your display adds its own few milliseconds · mouse sensitivity is 1:1 with Counter-Strike 2 (0.022° a count), read raw</p>
+      <button type="button" class="feel reveal" id="feel" aria-labelledby="feel-label" aria-describedby="feel-hint">
+          <span class="pane old" data-ms="47.7">
+            <span class="tagl l mono">Original</span>
+            <span class="fl"></span>
+            <svg viewBox="-60 -60 120 120" aria-hidden="true" focusable="false"><circle class="xh" r="22"/><path class="xh" d="M0 -40v12M0 40v-12M-40 0h12M40 0h-12"/><path class="hm" d="M-17 -17l-12 -12M17 -17l12 -12M-17 17l-12 12M17 17l12 12"/></svg>
+            <span class="ms"><b>0 ms</b><span class="mono">median 47.7 ms</span></span>
+          </span>
+          <span class="pane new" data-ms="5.9">
+            <span class="tagl l mono">OpenH1 120 Tick</span>
+            <span class="fl"></span>
+            <svg viewBox="-60 -60 120 120" aria-hidden="true" focusable="false"><circle class="xh" r="22"/><path class="xh" d="M0 -40v12M0 40v-12M-40 0h12M40 0h-12"/><path class="hm" d="M-17 -17l-12 -12M17 -17l12 -12M-17 17l-12 12M17 17l12 12"/></svg>
+            <span class="ms"><b>0 ms</b><span class="mono">median 5.9 ms</span></span>
+          </span>
+        <span class="sr-only" id="feel-label">Fire: both panels respond, the original after 48 milliseconds, OpenH1 120 Tick after 6</span>
+      </button>
+      <p class="feel-hint mono" id="feel-hint"><span><strong>Click, tap</strong> or press <strong>Space</strong> to fire</span><span>Timed from our measurements</span></p>
+      <p class="sr-only" id="feel-out" aria-live="polite"></p>
+
+      <div class="where reveal">
+        <h3>Where the time goes</h3>
+        <p>Pressing fire, stage by stage. The original drew one frame a tick and queued it behind the display; OpenH1 acts on your press at the next step and shows it in the next frame.</p>
+        <ul class="stack" aria-label="Milliseconds from pressing fire to the frame that shows it, by stage, median">
+          <li><span class="who">Original timing<small>one frame a tick, recreated</small></span><span class="track" role="img" aria-label="Original timing: 47.7 ms in all; reading the press 14.3 ms, waiting for the tick 0.5 ms, the tick to its frame 0.9 ms, drawing 2.1 ms, handing the frame on 29.4 ms"><i class="s-read" style="--v:14.3"></i><i class="s-tick" style="--v:0.5"></i><i class="s-frame" style="--v:0.9"></i><i class="s-draw" style="--v:2.1"></i><i class="s-hand" style="--v:29.4"></i></span><b class="tot">47.7 ms</b></li>
+          <li><span class="who">Legacy 30<small>plays with OpenCE</small></span><span class="track" role="img" aria-label="Legacy 30: 19.7 ms in all; reading the press 1.0 ms, waiting for the tick 17.1 ms, the tick to its frame 0.4 ms, drawing 0.9 ms, handing the frame on 0.1 ms"><i class="s-read" style="--v:1.0"></i><i class="s-tick" style="--v:17.1"></i><i class="s-frame" style="--v:0.4"></i><i class="s-draw" style="--v:0.9"></i><i class="s-hand" style="--v:0.1"></i></span><b class="tot">19.7 ms</b></li>
+          <li><span class="who">OpenH1 60 Tick<small>OpenH1's own servers</small></span><span class="track" role="img" aria-label="OpenH1 60 Tick: 11.1 ms in all; reading the press 1.1 ms, waiting for the tick 9.1 ms, the tick to its frame 0.2 ms, drawing 0.9 ms, handing the frame on 0.6 ms"><i class="s-read" style="--v:1.1"></i><i class="s-tick" style="--v:9.1"></i><i class="s-frame" style="--v:0.2"></i><i class="s-draw" style="--v:0.9"></i><i class="s-hand" style="--v:0.6"></i></span><b class="tot">11.1 ms</b></li>
+          <li><span class="who">OpenH1 120 Tick<small>OpenH1's own servers</small></span><span class="track" role="img" aria-label="OpenH1 120 Tick: 5.9 ms in all; reading the press 1.1 ms, waiting for the tick 2.4 ms, the tick to its frame 0.3 ms, drawing 0.7 ms, handing the frame on 1.0 ms"><i class="s-read" style="--v:1.1"></i><i class="s-tick" style="--v:2.4"></i><i class="s-frame" style="--v:0.3"></i><i class="s-draw" style="--v:0.7"></i><i class="s-hand" style="--v:1.0"></i></span><b class="tot">5.9 ms</b></li>
+        </ul>
+        <ul class="keys" aria-hidden="true">
+          <li class="s-read">Reading the press</li><li class="s-tick">Waiting for the tick</li><li class="s-frame">Tick to its frame</li><li class="s-draw">Drawing</li><li class="s-hand">Handing the frame on (the original's queue)</li>
+        </ul>
+      </div>
+      <p class="caption mono">Measured with the game's own log (debug.latency_log): pressing fire to the frame handed to the screen, median of 21 presses (50 for the original), on a Mac, in a local game with bots. Your display adds its own few milliseconds to both. The original's timing is recreated in OpenH1 with its improvements switched off: 30 ticks, one frame a tick, no frames between ticks, the view drawn from the last tick. Each stage is its own median. This is a local game: on the Xbox's system link, which ran in lockstep, your own moves also waited a round trip to the other machines.</p>
     </div>
   </section>
 
@@ -735,6 +805,43 @@ footer .legal a { color: var(--soft); }
       words[i].classList.remove("off"); words[i].classList.add("on");
       setTimeout(() => prev.classList.remove("off"), 600);
     }, 2000);
+  }
+
+  // 05, feel it: one press, both panels answer, each at its measured median
+  // (the display's own delay is the same for both)
+  const feel = document.getElementById("feel");
+  if (feel) {
+    const panes = [...feel.querySelectorAll(".pane")].map((el) => ({ el, ms: +el.dataset.ms, b: el.querySelector(".ms b") }));
+    const out = document.getElementById("feel-out");
+    let shots = [], running = false, last = -1e9;
+    const frame = () => {
+      const now = performance.now();
+      shots = shots.filter((s) => {
+        const p = s.pane, waited = now - s.t0;
+        if (waited >= p.ms) {
+          p.b.textContent = Math.round(p.ms) + " ms";
+          p.el.classList.remove("hit"); void p.el.offsetWidth; p.el.classList.add("hit");
+          clearTimeout(p.off); p.off = setTimeout(() => p.el.classList.remove("hit"), 360);
+          return false;
+        }
+        if (s === p.latest) p.b.textContent = Math.floor(waited) + " ms";
+        return true;
+      });
+      if (shots.length) requestAnimationFrame(frame); else running = false;
+    };
+    const fire = (t0) => {
+      last = performance.now();
+      for (const pane of panes) { const s = { pane, t0 }; pane.latest = s; shots.push(s); }
+      out.textContent = "Original 48 milliseconds, OpenH1 120 Tick 6 milliseconds";
+      if (!running) { running = true; requestAnimationFrame(frame); }
+    };
+    feel.addEventListener("pointerdown", (e) => { if (e.button === 0) fire(e.timeStamp || performance.now()); });
+    feel.addEventListener("keydown", (e) => {
+      if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); fire(e.timeStamp || performance.now()); }
+    });
+    feel.addEventListener("keyup", (e) => { if (e.key === " ") e.preventDefault(); });
+    // a screen reader's or a switch's activation comes as a click alone
+    feel.addEventListener("click", () => { if (performance.now() - last > 600) fire(performance.now()); });
   }
 
   // the header turns solid past the top

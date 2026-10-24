@@ -43,6 +43,12 @@ From the top:
   - 02, anti-aliasing: a lens, OpenH1 inside it;
   - 03, the plasma glow: two clips side by side, with a numbered legend;
   - 04, frames between ticks: two clips side by side.
+- **05, Responsive**: the "feel it" demo (one button, two panels: a press
+  flashes the Original after its measured median, 47.7 ms, and OpenH1 120
+  Tick after its own, 5.9 ms; for less motion, the hit marker without the
+  burst), and where the time goes, each stage's median of
+  `tools/latency_summary.py` as a stacked bar. Change the numbers with a new
+  measurement only.
   The wipe and the lens play one short demo the first time it scrolls into view
   (none for less motion), and stops as soon as the visitor touches it.
 - **VR**, **Platforms**, **Under the hood** (the details for purists, in a
