@@ -3916,6 +3916,23 @@ short ui_widget_port_list_index(
 	return index;
 }
 
+/* port: a text box's font and the width its text is drawn in, as
+widget_instance_render_text_box takes them, from its definition in the map
+loaded now (a font's tag index is not kept: the next map renumbers it) */
+long ui_widget_port_text_box_font(
+	struct widget_instance *widget,
+	short *width)
+{
+	struct ui_widget_definition *definition;
+
+	*width = 0;
+	if (!widget || widget->type != _ui_widget_type_text_box || widget->definition_tag_index == NONE)
+		return NONE;
+	definition = ui_widget_definition_get(widget->definition_tag_index);
+	*width = (short)(definition->bounds.x1 - definition->bounds.x0 - definition->horizontal_offset);
+	return definition->text_font.index;
+}
+
 /* port: back to the screen before, for the menus' functions */
 void ui_widget_port_go_back(
 	struct widget_instance *widget)
