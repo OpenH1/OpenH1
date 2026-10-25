@@ -369,6 +369,8 @@ def _page_screen(folder: str, screen: str) -> str:
 # (a <bitmap> name: TITLES), and for a tab its name
 ADVANCED = ("video_settings/advanced", "advanced_graphics_screen")
 FIRST_PERSON = ("video_settings/first_person", "first_person_screen")
+# (Android's: the picture on a tall screen, and portrait's frame)
+SCREEN_LAYOUT = ("video_settings/screen_layout", "screen_layout_screen")
 CONTROLLER = ("gamepad_setup", "gamepad_setup_screen")
 KEY_BINDINGS = ("controls_setup", "controls_settings_screen")
 STREAMER = ("interface_settings/streamer_mode", "streamer_mode_screen")
@@ -410,11 +412,12 @@ PAGES = {
             ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
              "How wide you see on foot, in degrees across a 16:9 screen. Default keeps the Xbox's view; wider shows "
              "more around you.", None),
-            # (display.picture_position: Android's, on a screen taller than the
-            # picture; d3d8_device.c's picture_top, the backend's present)
-            ("PICTURE POSITION", "display.picture_position", [("CENTER", "center"), ("TOP", "top")],
-             "Where the picture sits on a screen taller than it, such as a folding phone's inner screen or a "
-             "tablet. Top puts all the black space below it, where the touch controls are.", "android"),
+            ("ORIENTATION", "display.orientation", [("LANDSCAPE", "landscape"), ("PORTRAIT", "portrait")],
+             "Which way up you hold the device, from the next start. Portrait has the picture at the top and the "
+             "touch controls below it.", "android"),
+            ("SCREEN LAYOUT ›", None, _page_screen(*SCREEN_LAYOUT),
+             "Where the picture sits on a screen taller than it, and its shape.",
+             "android"),
             ("FIRST PERSON ›", None, _page_screen(*FIRST_PERSON),
              "Your weapon's field of view and whether it is drawn, your legs and arms, your shield's color, and the "
              "view from a vehicle's passenger seat.", None),
@@ -720,6 +723,21 @@ PAGES = {
             ("IN-GAME HELP", "profile.ingame_help", ON_OFF, "Shows the game's hints about its controls.", None),
             (SECTION, "PROFILE"),
             CREATE_PROFILE,
+        ],
+    },
+    SCREEN_LAYOUT[0]: {
+        "screen": SCREEN_LAYOUT[1], "title": "SCREEN LAYOUT",
+        "rows": [
+            (SECTION, "PICTURE"),
+            # (display.picture_position: Android's, on a screen taller than the
+            # picture; d3d8_device.c's picture_top, the backend's present)
+            ("PICTURE POSITION", "display.picture_position", [("CENTER", "center"), ("TOP", "top")],
+             "Where the picture sits on a screen taller than it, such as a folding phone's inner screen or a "
+             "tablet. Top puts all the black space below it, where the touch controls are. Portrait always has it "
+             "at the top.", "android"),
+            ("PICTURE SHAPE", "display.picture_shape", [("4:3", "4:3"), ("16:9", "16:9")],
+             "The picture's shape on a screen taller than it. 4:3 is the Xbox's; 16:9 sees more to the sides and "
+             "leaves more of the screen to the touch controls.", "android"),
         ],
     },
     STREAMER[0]: {

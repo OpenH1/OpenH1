@@ -4337,8 +4337,9 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 	{
 		/* letterboxed to the image's shape, in the window as it is seen
 		(the swapchain and the image turned back): centered, or at the top
-		of a taller window (display.picture_position); then turned with
-		the frame */
+		of a taller window, as the game says (d3d8_device.c's
+		picture_top_in: display.picture_position, a portrait window); then
+		turned with the frame */
 		window_width = turns & 1 ? vk.swapchain_extent.height : vk.swapchain_extent.width;
 		window_height = turns & 1 ? vk.swapchain_extent.width : vk.swapchain_extent.height;
 		image_width = turns & 1 ? image->description.height : image->description.width;

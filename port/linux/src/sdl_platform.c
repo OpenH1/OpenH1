@@ -269,9 +269,11 @@ BOOL platform_sdl_initialize(void)
 		exit(EXIT_SUCCESS);
 	SDL_SetHint(SDL_HINT_APP_NAME, "Halo");
 #ifdef HALO_ANDROID
-	/* landscape only; the back key arrives as a key event (xinput_sdl.c)
-	instead of closing the activity */
-	SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+	/* landscape (either way up) or, display.orientation, portrait (SDL
+	asks the activity for it as it makes the window); the back key arrives
+	as a key event (xinput_sdl.c) instead of closing the activity */
+	SDL_SetHint(SDL_HINT_ORIENTATIONS, !strcmp(config_string("display.orientation"), "portrait") ?
+		"Portrait PortraitUpsideDown" : "LandscapeLeft LandscapeRight");
 	SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
 	/* touching the screen must not aim or fire (the mouse drives the
 	controller emulation in xinput_sdl.c) */

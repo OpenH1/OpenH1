@@ -248,9 +248,21 @@ static unsigned short hdr_tag(const struct xgpu_pipeline_key *key)
 static BOOL vr_screen_mode(long *width, float scale[2]);
 #endif
 
+/* the narrowest picture, in columns of the 480 lines: a display narrower
+than it letterboxes it (display.picture_shape on Android: 4:3 or 16:9, the
+even width a 16:9 display already has, so it adds no bars there) */
+static long screen_narrowest_width(void)
+{
+#ifdef HALO_ANDROID
+	if (!strcmp(config_string("display.picture_shape"), "16:9"))
+		return 852;
+#endif
+	return 640;
+}
+
 static void screen_mode_choose(long *width, float scale[2])
 {
-	long display_width, display_height;
+	long display_width, display_height, narrowest;
 
 #ifdef HALO_VR
 	/* the menus' 640x480, at the scale of the HUD's image (each VR pass sets
@@ -265,7 +277,8 @@ static void screen_mode_choose(long *width, float scale[2])
 	{
 		long wanted = (SCREEN_HEIGHT * display_width + display_height / 2) / display_height;
 
-		*width = wanted < 640 ? 640 : wanted > SCREEN_MAXIMUM_WIDTH ? SCREEN_MAXIMUM_WIDTH : wanted & ~1L;
+		narrowest = screen_narrowest_width();
+		*width = wanted < narrowest ? narrowest : wanted > SCREEN_MAXIMUM_WIDTH ? SCREEN_MAXIMUM_WIDTH : wanted & ~1L;
 		scale[0] = (float)display_width / (float)*width;
 		scale[1] = (float)display_height / (float)SCREEN_HEIGHT;
 		/* a display narrower or wider than the game can be: the picture
@@ -1572,12 +1585,32 @@ static BOOL picture_top(void)
 #endif
 }
 
+/* where the picture is in a window of these pixels: at the top as the
+setting has it, and always in a portrait-shaped one (Android), whose space
+below is the touch controls'; the game decides it, the backend's present
+places the picture so (picture_position_send) */
+static BOOL picture_top_in(int pixel_width, int pixel_height)
+{
+#ifdef HALO_ANDROID
+	if (pixel_height > pixel_width)
+		return TRUE;
+#endif
+	(void)pixel_width;
+	(void)pixel_height;
+	return picture_top();
+}
+
 /* (between frames: halo_screen_commit) where the picture goes, to the
-backend's present: each frame, as a backend made again starts centered */
+backend's present: each frame, as a backend made again starts centered,
+and the window's shape may have changed */
 static void picture_position_send(void)
 {
-	if (device.gl_ready)
-		xgpu_backend_picture_top(picture_top());
+	int pixel_width = 0, pixel_height = 0;
+
+	if (!device.gl_ready)
+		return;
+	platform_video_drawable_size(&pixel_width, &pixel_height);
+	xgpu_backend_picture_top(picture_top_in(pixel_width, pixel_height));
 }
 
 /* a point in the window, as SDL reports it, in the menus' coordinates: the
@@ -1606,7 +1639,7 @@ static void ui_point_from_window_on(float window_x, float window_y, int centered
 		width = (int)((long)pixel_height * back_buffer->target.pixel_width / back_buffer->target.pixel_height);
 	}
 	left = (pixel_width - width) / 2;
-	top = picture_top() ? 0 : (pixel_height - height) / 2;
+	top = picture_top_in(pixel_width, pixel_height) ? 0 : (pixel_height - height) / 2;
 	screen_x = (window_x * pixel_width / window_width - left) * (float)back_buffer->target.width / (float)width;
 	screen_y = (window_y * pixel_height / window_height - top) * (float)back_buffer->target.height / (float)height;
 	*x = (short)floorf(screen_x - (centered ? (float)(halo_screen_width() - 640) / 2.0f : 0.0f));
