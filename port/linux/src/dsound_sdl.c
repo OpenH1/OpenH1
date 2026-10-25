@@ -28,11 +28,14 @@ mode with vr.hrtf, a mono 3D voice goes to each ear through a model of a head
 instead of the pan (hrtf), as the Xbox's DirectSound put its 3D voices through
 its HRTF; 2D voices (the menus, the music, the HUD) are as they were.
 
-The output is stereo or 5.1 (audio.channels). For 5.1 the speaker config
-reports AC-3, as an Xbox set to Dolby Digital does: the game then sends its
-2D voices to the center and back mix bins too (dsound_initialize_channel),
-3D voices and stereo voices positioned in the world are panned around the
-five full range speakers (surround_pan), and the reverb plays from the
+The output is stereo or 5.1 (audio.channels; "auto": 5.1 on a device of
+six channels or more, as the host's SDL reports it, output_channels_choose).
+For 5.1 the speaker config reports AC-3, as an Xbox set to Dolby Digital
+does: the game then sends its 2D voices to the center and back mix bins too
+(dsound_initialize_channel: a mono one at half to the front three, a stereo
+one whole to the front pair and at half to the back pair), 3D voices and
+stereo voices positioned in the world are panned around the five full range
+speakers by VBAP (surround_pan), never the HRTF, and the reverb plays from the
 front and back pairs. The mix bins 0-5 are in SDL's 5.1 order (FL, FR, FC,
 LFE, BL, BR), so bin n is output channel n. The game sends nothing to the
 LFE bin. Stereo output mixes exactly as before.
@@ -849,10 +852,19 @@ static const float surround_ring_angle[SURROUND_RING_SPEAKERS + 1] =
 	0.0f, 0.52359878f, 1.91986218f, 4.36332313f, 5.75958653f, 6.28318531f,
 };
 
-/* the speaker gains of a sound from a direction, side (right) and ahead: an
-equal power pan between the two speakers either side of it, blended (in
-power) towards all five equally by spread, 0 to 1. Their power sums to 1, as
-the stereo pan's does */
+/* the speaker gains of a sound from a direction, side (right) and ahead:
+vector base amplitude panning (Pulkki's VBAP, in the plane) between the two
+speakers either side of it, blended (in power) towards all five equally by
+spread, 0 to 1. Their power sums to 1, as the stereo pan's does.
+
+VBAP takes the gains g1 and g2 whose sum g1 l1 + g2 l2 of the speakers'
+directions l1 and l2 points the sound's way p, then scales them to a power
+of 1: g1 = sin(a2 - a) / sin(a2 - a1) and g2 = sin(a - a1) / sin(a2 - a1),
+a the sound's angle, a1 and a2 the speakers', the common divisor gone with
+the scaling. So a sound at a speaker plays from it alone, one between two
+from both, as the tangent law of stereo panning puts a phantom image (the
+listener between them hears it where it is), and no pair is wider than 180
+degrees (the backs' 140 is the widest). */
 static void surround_pan(float side, float ahead, float spread, float *gains)
 {
 	float angle = atan2f(side, ahead);
@@ -868,12 +880,20 @@ static void surround_pan(float side, float ahead, float spread, float *gains)
 			break;
 	}
 	{
-		float width = surround_ring_angle[segment + 1] - surround_ring_angle[segment];
-		float position = (angle - surround_ring_angle[segment]) / width;
+		float first = sinf(surround_ring_angle[segment + 1] - angle);
+		float second = sinf(angle - surround_ring_angle[segment]);
+		float length;
 
-		position = position < 0.0f ? 0.0f : position > 1.0f ? 1.0f : position;
-		gains[surround_ring_channel[segment]] = cosf(position * 1.57079633f);
-		gains[surround_ring_channel[(segment + 1) % SURROUND_RING_SPEAKERS]] = sinf(position * 1.57079633f);
+		first = first > 0.0f ? first : 0.0f;
+		second = second > 0.0f ? second : 0.0f;
+		length = sqrtf(first * first + second * second);
+		if (length < 1.0e-6f)
+		{
+			first = 1.0f;
+			length = 1.0f;
+		}
+		gains[surround_ring_channel[segment]] = first / length;
+		gains[surround_ring_channel[(segment + 1) % SURROUND_RING_SPEAKERS]] = second / length;
 	}
 	for (speaker = 0; speaker < SURROUND_RING_SPEAKERS; speaker++)
 	{
@@ -2087,6 +2107,24 @@ static void mix(float *output, unsigned long frames)
 	mix_frames += frames;
 }
 
+/* ---------- the output's channels
+
+audio.channels (setting: "stereo", "5.1" or "auto"; anything else is
+stereo) and the channels of the device the sound plays on (device_channels;
+0 when it cannot say): 6 for 5.1, 2 for stereo. "auto" is 5.1 on a device
+of six channels or more (a 5.1 or 7.1 receiver, a surround headset: SDL
+lays the 5.1 out on a 7.1's speakers), stereo on fewer (speakers, a pair
+of headphones) and when it cannot say. On 5.1 the speakers are panned
+(surround_pan), never the HRTF, which is for a pair of ears. */
+static unsigned long output_channels_choose(const char *setting, int device_channels)
+{
+	if (setting && !strcmp(setting, "5.1"))
+		return 6;
+	if (setting && !strcmp(setting, "auto") && device_channels >= 6)
+		return 6;
+	return 2;
+}
+
 /* ---------- output */
 
 static SDL_AudioStream *audio_stream;
@@ -2187,8 +2225,10 @@ unsigned long dsound_sdl_recorded_frames(void)
 	return record_frames;
 }
 
-/* audio.channels: "stereo", "5.1", or "auto" (stereo: below). Android
-plays stereo */
+/* audio.channels on Android: stereo; elsewhere what output_channels_choose
+makes of the setting and of the channels the device has, which the host's
+SDL says (host_desktop.c: SDL_GetAudioDeviceFormat, the format the device
+plays in, not one SDL would convert to) */
 static unsigned long choose_output_channels(SDL_AudioDeviceID device)
 {
 #ifdef HALO_ANDROID
@@ -2196,19 +2236,19 @@ static unsigned long choose_output_channels(SDL_AudioDeviceID device)
 	return 2;
 #else
 	const char *setting = config_string("audio.channels");
+	SDL_AudioSpec spec;
+	int device_channels = 0;
 
-	(void)device;
-	if (!strcmp(setting, "5.1"))
-		return 6;
-	if (strcmp(setting, "auto"))
+	if (setting && !strcmp(setting, "auto") && SDL_GetAudioDeviceFormat(device, &spec, NULL))
+		device_channels = spec.channels;
+	if (setting && strcmp(setting, "auto") && strcmp(setting, "stereo") && strcmp(setting, "5.1"))
+		platform_log("audio.channels \"%s\" is not \"auto\", \"stereo\" or \"5.1\"; using stereo", setting);
+	if (setting && !strcmp(setting, "auto"))
 	{
-		if (strcmp(setting, "stereo"))
-			platform_log("audio.channels \"%s\" is not \"auto\", \"stereo\" or \"5.1\"; using stereo", setting);
-		return 2;
+		platform_log("sound: the device has %d channels%s", device_channels,
+			device_channels ? "" : " (it cannot say: stereo)");
 	}
-	/* (the guest's SDL bridges no device format to ask, guest_sdl.c: "auto"
-	is stereo, and 5.1 is "5.1" asked for by name) */
-	return 2;
+	return output_channels_choose(setting, device_channels);
 #endif
 }
 
@@ -2688,14 +2728,16 @@ VOID WINAPI DirectSoundDoWork(void)
 	frame: the host keeps what the sound plays on, and the mixer crossfades
 	each voice from one to the other as it changes */
 	headphones = host_audio_headphones();
-	hrtf_enabled = spatial_hrtf(spatial_setting, headphones, vr_running, vr_hrtf);
+	/* (5.1 is panned around its speakers whatever audio.spatial says: the
+	HRTF is for a pair of ears) */
+	hrtf_enabled = output_channels != 6 && spatial_hrtf(spatial_setting, headphones, vr_running, vr_hrtf);
 	if (headphones != logged_headphones || hrtf_enabled != logged_hrtf)
 	{
 		logged_headphones = headphones;
 		logged_hrtf = hrtf_enabled;
 		platform_log("audio: the sound plays on %s; the world's sounds %s (audio.spatial \"%s\"%s)",
 			headphones > 0 ? "headphones" : headphones == 0 ? "speakers" : "a device not known (speakers)",
-			hrtf_enabled ? (output_channels == 6 ? "panned around the 5.1 speakers" : "through the HRTF") : "panned",
+			output_channels == 6 ? "panned around the 5.1 speakers" : hrtf_enabled ? "through the HRTF" : "panned",
 			spatial_setting, vr_running ? ", the VR mode: vr.hrtf" : "");
 	}
 	if (log_voices)

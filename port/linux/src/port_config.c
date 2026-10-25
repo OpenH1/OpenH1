@@ -332,9 +332,10 @@ static const struct config_setting config_settings[] =
 		"The audio device's buffer, in sample frames at 48 kHz (64 to 8192): larger\n"
 		"rides out stalls that cut the sound out, smaller has less delay (1024\n"
 		"is 21 ms, 2048 is 43 ms)." },
-	{ "audio.channels", _config_string, "\"stereo\"", "HALO_AUDIO_CHANNELS", _environment_value, _platform_desktop,
+	{ "audio.channels", _config_string, "\"auto\"", "HALO_AUDIO_CHANNELS", _environment_value, _platform_desktop,
 		"\"stereo\", \"5.1\" (surround, as the Xbox's Dolby Digital), or \"auto\"\n"
-		"for 5.1 when the sound device has six or more channels." },
+		"for 5.1 when the sound device has six or more channels (a 5.1 or 7.1\n"
+		"receiver or headset) and stereo otherwise. Read when the game starts." },
 	{ "audio.reverb", _config_boolean, "true", "HALO_REVERB", _environment_value, _platform_all,
 		"Reverberate the world's sounds as the place the player is in does (the\n"
 		"maps' sound environments, as the Xbox's I3DL2 reverb did); false keeps\n"

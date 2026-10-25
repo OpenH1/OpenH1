@@ -20,6 +20,10 @@ signals:
 	- the Doppler shift of a 3D voice coming, going, or with the listener
 	  moving, and its limits;
 	- the limiter: a mix up to full scale as it is, a sum over it held to it;
+	- audio.channels' choice from the device's channels, and the 5.1 pan
+	  (VBAP): each speaker's angle on its speaker alone, every angle where
+	  the tangent law hears it, never the LFE, through the mixer too, and
+	  2D voices by the game's AC-3 mix bins;
 	- 3D audio: audio.spatial's choice of the HRTF or the pan; the HRTF's
 	  cues (the time and the level between the ears, the notch moving with
 	  the sound up and down, a sound behind duller) and the pan's (none of
@@ -1145,6 +1149,159 @@ int main(int argc, char **argv)
 		free(exact);
 		free(signal);
 		free(samples);
+		return 0;
+	}
+	/* audio.channels and the device's channels: "auto" is 5.1 on six or
+	more, stereo on fewer and when the device cannot say; "5.1" and "stereo"
+	whatever the device; anything else stereo */
+	CASE("channels")
+	{
+		static const struct { const char *setting; int device_channels; unsigned long expected; } cases[] = {
+			{ "auto", 6, 6 }, { "auto", 8, 6 }, { "auto", 2, 2 }, { "auto", 1, 2 }, { "auto", 4, 2 },
+			{ "auto", 5, 2 }, { "auto", 0, 2 }, { "stereo", 6, 2 }, { "stereo", 8, 2 }, { "5.1", 2, 6 },
+			{ "5.1", 0, 6 }, { "7.1", 8, 2 }, { "", 6, 2 },
+		};
+
+		for (index = 0; index < sizeof(cases) / sizeof(cases[0]); index++)
+		{
+			unsigned long chosen = output_channels_choose(cases[index].setting, cases[index].device_channels);
+
+			CHECK(chosen == cases[index].expected, "audio.channels \"%s\" on a device of %d channels: %lu, not %lu",
+				cases[index].setting, cases[index].device_channels, chosen, cases[index].expected);
+		}
+		return 0;
+	}
+	/* the 5.1 pan (VBAP): a sound at each speaker's angle plays from that
+	speaker alone; one at any angle from the two either side of it, their
+	power summing to 1, their gains' vector sum pointing its way (where the
+	tangent law puts the image); never from the LFE. A 3D voice through the
+	mixer on 5.1: from its speaker's channel, nearly all of it. 2D voices by
+	the mix bins the game gives them on AC-3 */
+	CASE("surround")
+	{
+		/* each speaker's angle (degrees, clockwise from ahead) and its channel
+		in SDL's 5.1 order (FL, FR, FC, LFE, BL, BR) */
+		static const struct { double degrees; unsigned long channel; } speakers[] = {
+			{ 0.0, 2 }, { 30.0, 1 }, { 110.0, 5 }, { 250.0, 4 }, { 330.0, 0 },
+		};
+		static const double channel_degrees[MAXIMUM_OUTPUT_CHANNELS] = { 330.0, 30.0, 0.0, -1.0, 250.0, 110.0 };
+		float gains[MAXIMUM_OUTPUT_CHANNELS];
+		unsigned long speaker, degree;
+
+		for (index = 0; index < sizeof(speakers) / sizeof(speakers[0]); index++)
+		{
+			double radians = speakers[index].degrees * PI / 180.0;
+
+			surround_pan((float)sin(radians), (float)cos(radians), 0.0f, gains);
+			for (speaker = 0; speaker < MAXIMUM_OUTPUT_CHANNELS; speaker++)
+			{
+				CHECK(fabsf(gains[speaker] - (speaker == speakers[index].channel ? 1.0f : 0.0f)) < 1.0e-4f,
+					"a sound at %.0f degrees: channel %lu at %f (its speaker is channel %lu)", speakers[index].degrees,
+					speaker, gains[speaker], speakers[index].channel);
+			}
+		}
+		for (degree = 0; degree < 3600; degree++)
+		{
+			double radians = degree * PI / 1800.0, power = 0.0, x = 0.0, y = 0.0, heard;
+			unsigned long sounding = 0;
+
+			surround_pan((float)sin(radians), (float)cos(radians), 0.0f, gains);
+			for (speaker = 0; speaker < MAXIMUM_OUTPUT_CHANNELS; speaker++)
+			{
+				power += (double)gains[speaker] * gains[speaker];
+				if (gains[speaker] > 1.0e-4f)
+				{
+					sounding++;
+					x += gains[speaker] * sin(channel_degrees[speaker] * PI / 180.0);
+					y += gains[speaker] * cos(channel_degrees[speaker] * PI / 180.0);
+				}
+			}
+			heard = atan2(x, y) * 180.0 / PI;
+			heard = fmod(heard - degree / 10.0 + 540.0, 360.0) - 180.0;
+			CHECK(gains[3] == 0.0f, "a sound at %.1f degrees: the LFE at %f", degree / 10.0, gains[3]);
+			CHECK(fabs(power - 1.0) < 1.0e-4 && sounding <= 2 && fabs(heard) < 0.05,
+				"a sound at %.1f degrees: power %f, %lu speakers, heard %.2f degrees off", degree / 10.0, power,
+				sounding, heard);
+		}
+		/* through the mixer: a 1 kHz mono 3D voice 50 units away at each
+		speaker's angle, 5.1 out */
+		output_channels = 6;
+		for (index = 0; index < sizeof(speakers) / sizeof(speakers[0]); index++)
+		{
+			unsigned long frames = 22050, count = 8192, n;
+			short *samples = malloc(frames * sizeof(short));
+			float *output = calloc(count * MAXIMUM_OUTPUT_CHANNELS, sizeof(float));
+			static float send[8192];
+			double radians = speakers[index].degrees * PI / 180.0, energy[MAXIMUM_OUTPUT_CHANNELS] = { 0 }, total = 0.0;
+			struct sdl_stream *stream;
+
+			for (n = 0; n < frames; n++)
+				samples[n] = (short)lround(16000.0 * sin(2.0 * PI * 1000.0 * n / 22050.0));
+			stream = voice_new(samples, frames, 1, 22050, 0);
+			stream->has_3d = TRUE;
+			stream->mode = DS3DMODE_NORMAL;
+			stream->position[0] = (float)(50.0 * sin(radians));
+			stream->position[2] = (float)(50.0 * cos(radians));
+			stream->minimum_distance = 1.0f;
+			stream->maximum_distance = 1000.0f;
+			mix_voice(stream, output, send, count);
+			for (n = 0; n < count; n++)
+			{
+				for (speaker = 0; speaker < MAXIMUM_OUTPUT_CHANNELS; speaker++)
+				{
+					energy[speaker] += (double)output[n * MAXIMUM_OUTPUT_CHANNELS + speaker] *
+						output[n * MAXIMUM_OUTPUT_CHANNELS + speaker];
+				}
+			}
+			for (speaker = 0; speaker < MAXIMUM_OUTPUT_CHANNELS; speaker++)
+				total += energy[speaker];
+			CHECK(total > 0.0 && energy[speakers[index].channel] > 0.9 * total && energy[3] == 0.0,
+				"a 3D voice at %.0f degrees on 5.1: %.1f%% from channel %lu (its speaker), the LFE %g",
+				speakers[index].degrees, total > 0.0 ? 100.0 * energy[speakers[index].channel] / total : 0.0,
+				speakers[index].channel, energy[3]);
+			voice_delete(stream);
+			free(output);
+			free(samples);
+		}
+		/* a mono 2D voice at half to the front three; a stereo one's left
+		whole to the front left and at half to the back left, its right
+		likewise; none to the center or the LFE */
+		{
+			unsigned long frames = 4800, count = 4096, n;
+			short *samples = malloc(frames * 2 * sizeof(short));
+			float *output = calloc(count * MAXIMUM_OUTPUT_CHANNELS, sizeof(float));
+			static float send[4096];
+			float surround[2][MAXIMUM_OUTPUT_CHANNELS];
+			struct sdl_stream *stream;
+
+			for (n = 0; n < frames * 2; n++)
+				samples[n] = (short)(n & 1 ? -8000 : 8000);
+			stream = voice_new(samples, frames, 1, 48000, 0);
+			memset(stream->surround_bins, 0, sizeof(stream->surround_bins));
+			stream->surround_bins[0][0] = stream->surround_bins[0][1] = stream->surround_bins[0][2] = 0.5f;
+			voice_surround_gains(stream, surround);
+			CHECK(surround[0][0] == 0.5f && surround[0][1] == 0.5f && surround[0][2] == 0.5f && surround[0][3] == 0.0f &&
+				surround[0][4] == 0.0f && surround[0][5] == 0.0f, "a mono 2D voice: %g %g %g %g %g %g", surround[0][0],
+				surround[0][1], surround[0][2], surround[0][3], surround[0][4], surround[0][5]);
+			voice_delete(stream);
+			stream = voice_new(samples, frames, 2, 48000, 0);
+			memset(stream->surround_bins, 0, sizeof(stream->surround_bins));
+			stream->surround_bins[0][0] = 1.0f;
+			stream->surround_bins[1][1] = 1.0f;
+			stream->surround_bins[0][4] = 0.5f;
+			stream->surround_bins[1][5] = 0.5f;
+			mix_voice(stream, output, send, count);
+			/* (the left +8000, the right -8000: each speaker its side's sign) */
+			n = 2048 * MAXIMUM_OUTPUT_CHANNELS;
+			CHECK(output[n] > 0.2f && output[n + 1] < -0.2f && fabsf(output[n + 4] - 0.5f * output[n]) < 1.0e-3f &&
+				fabsf(output[n + 5] - 0.5f * output[n + 1]) < 1.0e-3f && output[n + 2] == 0.0f && output[n + 3] == 0.0f,
+				"a stereo 2D voice on 5.1: %f %f %f %f %f %f", output[n], output[n + 1], output[n + 2], output[n + 3],
+				output[n + 4], output[n + 5]);
+			voice_delete(stream);
+			free(output);
+			free(samples);
+		}
+		output_channels = 2;
 		return 0;
 	}
 	/* audio.spatial: "auto" through the HRTF on headphones only (speakers
