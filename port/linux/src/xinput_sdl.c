@@ -1114,8 +1114,9 @@ void test_input_press(unsigned long buttons)
 the first poll, for testing the menus: a, b, x, y, up, down, left, right,
 start, back, lb and rb (the white and black buttons), lt and rt (the
 triggers), forward (the left
-stick pushed forward, which moves a player whom no menu has), or wait
-(none), separated by spaces or commas */
+stick pushed forward, which moves a player whom no menu has), screenshot
+(the Screenshot key's capture, once), or wait (none), separated by spaces
+or commas */
 static char test_input_menu[512];
 static Uint64 test_input_menu_since;
 
@@ -1165,6 +1166,15 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 	}
 	if (length == 7 && !strncmp(token, "forward", 7))
 		pad->sThumbLY = 32767;
+	if (length == 10 && !strncmp(token, "screenshot", 10))
+	{
+		static Uint64 shot_second = (Uint64)-1;
+
+		if (shot_second != elapsed / 1000)
+			platform_screenshot_request();
+		shot_second = elapsed / 1000;
+		return;
+	}
 	for (index = 0; index < sizeof(buttons) / sizeof(buttons[0]); index++)
 	{
 		if (strlen(buttons[index].name) == length && !strncmp(token, buttons[index].name, length))

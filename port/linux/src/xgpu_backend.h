@@ -151,10 +151,15 @@ void xgpu_backend_clear(unsigned long flags, const float color[4], float depth, 
 void xgpu_backend_clear_target(xgpu_target target, const float color[4]);
 
 /* a target's pixels (a layer of a layered one, or -1) as BGRA rows from
-its first, malloc'd (raw: as the API reads them, BGRA or not: the key's
-screenshot, as before). Answered now; a screenshot can wait for the
-frame's end. */
-unsigned char *xgpu_backend_read_target(xgpu_target target, int layer, BOOL raw);
+its first, malloc'd: display.hdr's back buffer clamped to [0, 1], or with
+tone_map tone mapped into it (xgpu_hdr.h's xgpu_hdr_sdr_pixel). Answered
+now; a screenshot can wait for the frame's end. */
+unsigned char *xgpu_backend_read_target(xgpu_target target, int layer, BOOL tone_map);
+/* the screenshot key's picture (controls.screenshot): the target, tone
+mapped as xgpu_backend_read_target's, written by the host as a PNG file in
+directory (made if it is missing), named for the local date and time; its
+name (or why it failed) into name. Answered now. */
+BOOL xgpu_backend_screenshot(xgpu_target target, const char *directory, char *name, unsigned long name_size);
 
 /* ---------- textures */
 

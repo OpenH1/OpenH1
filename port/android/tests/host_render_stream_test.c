@@ -637,7 +637,41 @@ static int test_read_target(void *context, const struct xgpu_stream_read_target 
 	(void)context;
 	for (index = 0; index < record->size; index++)
 		pixels[index] = (unsigned char)(index * 7 + record->target);
-	text_printf(&actual, "read %u %d %u %u\n", record->target, record->layer, record->raw, record->size);
+	text_printf(&actual, "read %u %d %u %u\n", record->target, record->layer, record->tone_map, record->size);
+	return 1;
+}
+
+/* the screenshot key's file (XGPU_STREAM_SCREENSHOT): what the host's
+writer was given */
+static struct
+{
+	int calls;
+	uint32_t width, height;
+	char directory[256];
+	int pixels_read;
+} screenshot_test;
+
+static int test_screenshot_writer(unsigned char *bgra, uint32_t width, uint32_t height, const char *directory, char *name,
+	uint32_t name_size)
+{
+	uint32_t index;
+
+	screenshot_test.calls++;
+	screenshot_test.width = width;
+	screenshot_test.height = height;
+	snprintf(screenshot_test.directory, sizeof(screenshot_test.directory), "%s", directory);
+	screenshot_test.pixels_read = 1;
+	for (index = 0; index < width * height * 4; index += 997)
+	{
+		if (bgra[index] != (unsigned char)(index * 7 + 7))
+			screenshot_test.pixels_read = 0;
+	}
+	if (!strcmp(directory, "/no/such/folder"))
+	{
+		snprintf(name, name_size, "the screenshots folder cannot be made");
+		return 0;
+	}
+	snprintf(name, name_size, "2026-01-02_03.04.05.png");
 	return 1;
 }
 
@@ -1628,6 +1662,29 @@ static void test_round_trip(void)
 		UINT result = xgpu_backend_visibility_result(index);
 
 		CHECK(result == 0 || result == index * 3 + 1);
+	}
+	/* the screenshot key's: the target read tone mapped, handed to the
+	host's writer with its folder, and the file's name back; a failure's
+	reason; and no writer, no read */
+	{
+		char name[64];
+
+		memset(&screenshot_test, 0, sizeof(screenshot_test));
+		host_render_stream_set_screenshot_writer(test_screenshot_writer);
+		CHECK(xgpu_backend_screenshot(7, "/data/screenshots", name, sizeof(name)));
+		text_printf(&expected, "read 7 -1 1 %u\n", 640 * 480 * 4);
+		CHECK(!strcmp(name, "2026-01-02_03.04.05.png"));
+		CHECK(screenshot_test.calls == 1 && screenshot_test.width == 640 && screenshot_test.height == 480);
+		CHECK(!strcmp(screenshot_test.directory, "/data/screenshots"));
+		CHECK(screenshot_test.pixels_read);
+		CHECK(!xgpu_backend_screenshot(7, "/no/such/folder", name, sizeof(name)));
+		text_printf(&expected, "read 7 -1 1 %u\n", 640 * 480 * 4);
+		CHECK(!strcmp(name, "the screenshots folder cannot be made"));
+		CHECK(!xgpu_backend_screenshot(7, "", name, sizeof(name)) && !name[0]);
+		CHECK(!xgpu_backend_screenshot(99, "/data/screenshots", name, sizeof(name)) && !name[0]);
+		host_render_stream_set_screenshot_writer(NULL);
+		CHECK(!xgpu_backend_screenshot(7, "/data/screenshots", name, sizeof(name)) && !name[0]);
+		CHECK(screenshot_test.calls == 2);
 	}
 	xgpu_backend_target_delete(7);
 	text_printf(&expected, "target delete 7\n");

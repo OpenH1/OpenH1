@@ -1068,6 +1068,8 @@ int main(int argc, char *argv[])
 			return 2;
 		}
 		host_render_record_set_restorer(restore);
+		/* (the Screenshot key's pictures are the game's, not the replay's) */
+		host_render_stream_set_screenshot_writer(NULL);
 
 		/* the ring's header, as it was when the recording began */
 		ring = host_pointer(ring_address());

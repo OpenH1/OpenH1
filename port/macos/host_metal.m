@@ -1273,6 +1273,7 @@ int host_metal_initialize(void)
 		host_render_stream_set_backend(xgpu_metal_stream_backend());
 		xgpu_metal_stream_set_shaders(xgpu_metal_shaders());
 		host_render_record_set_shooter(xgpu_metal_stream_shot);
+		host_render_stream_set_screenshot_writer(host_screenshot_write);
 	}
 	return result;
 }
