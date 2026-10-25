@@ -450,20 +450,6 @@
 		<frame png="ce/port/main_menu/multiplayer_type_select/join_game/favorite_star__2.png" width="16" height="16"/>
 		<frame png="ce/port/main_menu/multiplayer_type_select/join_game/favorite_star__3.png" width="16" height="16"/>
 	</bitmap>
-	<bitmap name="main_menu/multiplayer_type_select/touch_item_bkd">
-		<frame png="ce/port/main_menu/multiplayer_type_select/touch_item_bkd__0.png" width="300" height="46"/>
-		<frame png="ce/port/main_menu/multiplayer_type_select/touch_item_bkd__1.png" width="300" height="46"/>
-	</bitmap>
-	<bitmap name="main_menu/multiplayer_type_select/touch_panel_body">
-		<frame png="ce/port/main_menu/multiplayer_type_select/touch_panel_body__0.png" width="704" height="322"/>
-	</bitmap>
-	<bitmap name="main_menu/multiplayer_type_select/touch_panel_cap">
-		<frame png="ce/port/main_menu/multiplayer_type_select/touch_panel_cap__0.png" width="16" height="322"/>
-	</bitmap>
-	<bitmap name="main_menu/multiplayer_type_select/touch_open_button">
-		<frame png="ce/port/main_menu/multiplayer_type_select/touch_open_button__0.png" width="300" height="40"/>
-		<frame png="ce/port/main_menu/multiplayer_type_select/touch_open_button__1.png" width="300" height="40"/>
-	</bitmap>
 	<bitmap name="main_menu/settings/row">
 		<frame png="ce/port/main_menu/settings/row__0.png" width="344" height="20"/>
 		<frame png="ce/port/main_menu/settings/row__1.png" width="344" height="20"/>
@@ -655,5 +641,90 @@
 	<bitmap name="main_menu/parts/button_164x26">
 		<frame png="ce/port/main_menu/parts/button_164x26__0.png" width="164" height="26"/>
 		<frame png="ce/port/main_menu/parts/button_164x26__1.png" width="164" height="26"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/chip_112x52">
+		<frame png="ce/port/main_menu/parts/chip_112x52__0.png" width="112" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_112x52__1.png" width="112" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_112x52__2.png" width="112" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_112x52__3.png" width="112" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/chip_120x52">
+		<frame png="ce/port/main_menu/parts/chip_120x52__0.png" width="120" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_120x52__1.png" width="120" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_120x52__2.png" width="120" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_120x52__3.png" width="120" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/touch_row_364x52">
+		<frame png="ce/port/main_menu/parts/touch_row_364x52__0.png" width="364" height="52"/>
+		<frame png="ce/port/main_menu/parts/touch_row_364x52__1.png" width="364" height="52"/>
+		<frame png="ce/port/main_menu/parts/touch_row_364x52__2.png" width="364" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/tile_164x52">
+		<frame png="ce/port/main_menu/parts/tile_164x52__0.png" width="164" height="52"/>
+		<frame png="ce/port/main_menu/parts/tile_164x52__1.png" width="164" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/tile_182x52">
+		<frame png="ce/port/main_menu/parts/tile_182x52__0.png" width="182" height="52"/>
+		<frame png="ce/port/main_menu/parts/tile_182x52__1.png" width="182" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/tile_368x52">
+		<frame png="ce/port/main_menu/parts/tile_368x52__0.png" width="368" height="52"/>
+		<frame png="ce/port/main_menu/parts/tile_368x52__1.png" width="368" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/touch_button_60x52">
+		<frame png="ce/port/main_menu/parts/touch_button_60x52__0.png" width="60" height="52"/>
+		<frame png="ce/port/main_menu/parts/touch_button_60x52__1.png" width="60" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/touch_button_66x52">
+		<frame png="ce/port/main_menu/parts/touch_button_66x52__0.png" width="66" height="52"/>
+		<frame png="ce/port/main_menu/parts/touch_button_66x52__1.png" width="66" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/touch_button_84x52">
+		<frame png="ce/port/main_menu/parts/touch_button_84x52__0.png" width="84" height="52"/>
+		<frame png="ce/port/main_menu/parts/touch_button_84x52__1.png" width="84" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/touch_button_106x52">
+		<frame png="ce/port/main_menu/parts/touch_button_106x52__0.png" width="106" height="52"/>
+		<frame png="ce/port/main_menu/parts/touch_button_106x52__1.png" width="106" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/touch_button_110x52">
+		<frame png="ce/port/main_menu/parts/touch_button_110x52__0.png" width="110" height="52"/>
+		<frame png="ce/port/main_menu/parts/touch_button_110x52__1.png" width="110" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/touch_button_118x52">
+		<frame png="ce/port/main_menu/parts/touch_button_118x52__0.png" width="118" height="52"/>
+		<frame png="ce/port/main_menu/parts/touch_button_118x52__1.png" width="118" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/touch_button_120x52">
+		<frame png="ce/port/main_menu/parts/touch_button_120x52__0.png" width="120" height="52"/>
+		<frame png="ce/port/main_menu/parts/touch_button_120x52__1.png" width="120" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/touch_button_136x52">
+		<frame png="ce/port/main_menu/parts/touch_button_136x52__0.png" width="136" height="52"/>
+		<frame png="ce/port/main_menu/parts/touch_button_136x52__1.png" width="136" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/touch_button_140x52">
+		<frame png="ce/port/main_menu/parts/touch_button_140x52__0.png" width="140" height="52"/>
+		<frame png="ce/port/main_menu/parts/touch_button_140x52__1.png" width="140" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/touch_button_188x52">
+		<frame png="ce/port/main_menu/parts/touch_button_188x52__0.png" width="188" height="52"/>
+		<frame png="ce/port/main_menu/parts/touch_button_188x52__1.png" width="188" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/touch_button_212x52">
+		<frame png="ce/port/main_menu/parts/touch_button_212x52__0.png" width="212" height="52"/>
+		<frame png="ce/port/main_menu/parts/touch_button_212x52__1.png" width="212" height="52"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/section_368">
+		<frame png="ce/port/main_menu/parts/section_368__0.png" width="368" height="20"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/panel_192x324">
+		<frame png="ce/port/main_menu/parts/panel_192x324__0.png" width="192" height="324"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/panel_208x320">
+		<frame png="ce/port/main_menu/parts/panel_208x320__0.png" width="208" height="320"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/panel_212x276">
+		<frame png="ce/port/main_menu/parts/panel_212x276__0.png" width="212" height="276"/>
 	</bitmap>
 </menus>

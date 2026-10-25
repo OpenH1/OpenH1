@@ -3,7 +3,7 @@ team's column, a game without teams' one list, the order, the tags, this machine
 player's, a game of this machine alone's bots: lobby_board.c), and its layout at 4:3, 16:10, 16:9 and 21:9 (16:9's,
 centred): the teams' columns and the details panel apart and WIDE_MARGIN from the screen's edges, each row in its
 column with its dot, name and tag in it, the panel's words and controls in it, the footer's prompts apart; the
-touchscreen keeping the list it had. Each check has a fault that it must catch."""
+touchscreen's the same players with its own panel and buttons. Each check has a fault that it must catch."""
 
 import re
 import sys
@@ -173,12 +173,18 @@ def test_lobby_layout(aspect):
     check_lobby_layout(WIDTHS[aspect])
 
 
-def test_touchscreen_keeps_its_lobby():
-    """On a touchscreen the lobby is the list of players and buttons it was; the computer's has none of them."""
-    touch = {box.name for box in layout(ROOT_SCREEN, 852, frozenset({"touch", "android"}))}
-    computer = {box.name for box in layout(ROOT_SCREEN, 852)}
-    assert "lobby_list" in touch and "lobby_button_start" in touch and not any(n.startswith("board_") for n in touch)
-    assert "board_panel" in computer and "lobby_list" not in computer
+def test_touchscreen_lobby_is_the_board():
+    """On a touchscreen the lobby is the computer's players and its own panel and buttons (_touch_lobby_board, its
+    tap targets test_touch_screens.py's); the list of players and buttons it had is gone."""
+    touch = layout(ROOT_SCREEN, 852, frozenset({"touch", "android"}))
+    computer = layout(ROOT_SCREEN, 852)
+    names = {box.name for box in touch}
+    assert {"board_row_0_0", "board_row_1_12", "board_panel", "board_start", "board_settings"} <= names
+    assert "lobby_list" not in names and "lobby_list" not in {box.name for box in computer}
+    # (the players where the computer has them; the panel and its controls the touchscreen's own)
+    assert [box for box in touch if box.name.startswith("board_row_")] == \
+        [box for box in computer if box.name.startswith("board_row_")]
+    assert {box.path[-1] for box in touch if box.name == "board_start"} == {"board_prompts"}
 
 
 # a fault in the layout (a widget's wide attribute, or a child's place), and the width it shows at

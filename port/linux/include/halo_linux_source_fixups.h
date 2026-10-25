@@ -142,6 +142,10 @@ far left of the menus' 0 the screen's edge is; 0 elsewhere
 short ui_widget_port_anchor_offset(long flags);
 short ui_widget_port_stretch(long flags);
 short ui_widget_port_anchor_extra(void);
+/* whether the menus are laid out for a touchscreen (their "touch" platform:
+the Android and iOS apps, or debug.touch_menus): their buttons then name no
+controller's key (port/linux/game/menu_tags.c) */
+int ui_widget_port_touch_menus(void);
 /* the wide layout of the port's own screens (their widgets' wide attribute:
 port/linux/game/menu_tags.c): the extra width past the menus' 640 a view
 this wide lays them out in (to 16:9's), and a value's part of it; the
