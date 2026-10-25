@@ -373,8 +373,10 @@ static struct network_player *lobby_board_own_player(short controller)
 
 /* the row's player as last shown (column, row), NULL if none: the hook for
 a row's own action. A player another machine has, not a bot and not in this
-machine's party, is one INVITE TO PARTY could ask (the scoreboard's party
-invites, not offered here yet: lobby_board_party_invitable) */
+machine's party, is one INVITE TO PARTY could ask (lobby_board_party_invitable;
+the scoreboard's invites, network_party.c's network_party_player_actions,
+take a player of the game being played, which the lobby has not yet: the
+row's network player's machine is what they would ask) */
 static struct network_player *lobby_board_row_player(short column, short row)
 {
 	if (column < 0 || column >= LOBBY_BOARD_COLUMNS || row < 0 || row >= LOBBY_BOARD_ROWS)
