@@ -2108,8 +2108,8 @@ def _server_settings() -> list:
     at a tick rate, or Legacy), its invite link, and whether the server
     browser lists it (PUBLIC or PRIVATE: an internet game's)"""
     base = f"{MT}/server_settings"
-    # (thirteen rows: closer together, the help lower)
-    spec = {"screen": "server_settings_screen", "spacing": 22, "help_top": 366,
+    # (fourteen rows: closer together, the help lower)
+    spec = {"screen": "server_settings_screen", "spacing": SERVER_SETTINGS_SPACING, "help_top": 364,
             "header": ("header_server_settings", f"{base}/header_server_settings")}
     rows, extra = [], []
     extra += _value_row(base, "server_name", 0, "ss edit server name")
@@ -2234,6 +2234,26 @@ def _server_settings() -> list:
                                                  ("font", "ui\\small_ui"), ("color", "#FF2896FF"), ("align", "center"),
                                                  ("text_y", 5), ("text_flags", "no_focus_test")], [])
         rows.append((f"{base}/op_{key}", None, SETUP_OPTIONS_PLACE + index))
+    # BOTS (a network game's, after the gametype's rows: its bots, which the
+    # host plays, on a screen of their own, BOT_SETUP), its value what they
+    # are (menu_functions.c's server_settings_bots)
+    key, _, _, _ = BOT_SETUP
+    target = f"{base}/{key}/{key}_screen"
+    extra += _widget(f"{base}/op_{key}", [("width", 512), ("height", 28),
+                                         ("flags", "pass_unhandled_to_focused_child"),
+                                         ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
+                     [f'<on event="a" open="{target}"/>', f'<on event="start" open="{target}"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>',
+                      f'<child widget="{base}/{key}_label"/>', f'<child widget="{base}/{key}_value" x="230" y="1"/>'])
+    extra += _widget(f"{base}/{key}_label", [("type", "text"), ("controller", 1), ("width", 230), ("height", 22),
+                                             ("string_list", f"{base}/labels"),
+                                             ("string_index", 13 + len(COOP_SETUP_SCREENS) + len(BOTS_ROWS)),
+                                             ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("text_x", 13),
+                                             ("text_y", 4)], [])
+    extra += _widget(f"{base}/{key}_value", [("type", "text"), ("controller", 1), ("width", 280), ("height", 22),
+                                             ("font", "ui\\small_ui"), ("color", "#FF2896FF"), ("align", "center"),
+                                             ("text_y", 5), ("text_flags", "no_focus_test")], [])
+    rows.append((f"{base}/op_{key}", None, SETUP_OPTIONS_PLACE + len(SETUP_OPTION_SCREENS)))
     extra += _button(f"{base}/button_defaults", 3, [])
     extra += _widget(f"{base}/button_ok", [("type", "text"), ("width", 128), ("height", 24),
                                            ("bitmap", "bitmaps/text_button_background"), ("text", "START GAME"),
@@ -2246,7 +2266,8 @@ def _server_settings() -> list:
                                          "PLAYER OPTIONS:", "ITEM OPTIONS:", "VEHICLE OPTIONS:", "INDICATOR OPTIONS:",
                                          "TEAMPLAY OPTIONS:", "LISTING:",
                                          *(f"{title}:" for _, title, _, _ in COOP_SETUP_SCREENS), "PASSWORD:",
-                                         f"{MAP_SHARE_SETUP[1]}:", "GAME:", *(label for _, label, _, _ in BOTS_ROWS)])
+                                         f"{MAP_SHARE_SETUP[1]}:", "GAME:", *(label for _, label, _, _ in BOTS_ROWS),
+                                         f"{BOT_SETUP[1]}:"])
     extra += _strings(f"{base}/help_strings", [
         "",
         "The name the game shows in the lists of games.\\nEnter changes it.",
@@ -2271,6 +2292,10 @@ def _server_settings() -> list:
         *(help_text for _, help_text in GAME_MODES),
         # (the bots' rows': menu_functions.c's BOTS_HELP)
         *(help_text for _, _, _, help_text in BOTS_ROWS),
+        # (a network game's BOTS row's, and its line for a gametype the bots
+        # do not play: menu_functions.c's BOT_OPTIONS_HELP)
+        BOT_SETUP[2],
+        BOTS_HINT,
     ])
     lines = _screen(base, spec, rows, ["server settings update"],
                     ['<on event="created" run="server settings init"/>'], extra)
@@ -2278,9 +2303,14 @@ def _server_settings() -> list:
     lines = [line.replace(f'<child widget="{base}/options_menu"/>',
                           f'<child widget="{base}/options_menu"/>\n\t\t<child widget="{base}/bots_hint"/>')
              for line in lines]
-    # (co-op's options' screens, and map sharing's)
-    for key, title, _, screen_rows in [*COOP_SETUP_SCREENS, MAP_SHARE_SETUP]:
+    # (co-op's options' screens, map sharing's and the bots')
+    for key, title, _, screen_rows in [*COOP_SETUP_SCREENS, MAP_SHARE_SETUP, BOT_SETUP]:
         lines += _setup_option_screen(f"{base}/{key}", key, screen_rows)
+    # (the bots' screen under SERVER SETUP's title: a title of its own is a
+    # picture ce_menus.py draws, TITLES)
+    key = BOT_SETUP[0]
+    lines = [line.replace(f'bitmap="{base}/{key}/header_{key}"', f'bitmap="{base}/header_server_settings"')
+             for line in lines]
     # (no Defaults: the bar is START and CANCEL; B cancels the name's edit
     # first)
     lines = [line.replace(f'<child widget="{base}/button_defaults" y="1"/>', "") for line in lines]
@@ -2355,6 +2385,29 @@ MAP_SHARE_SETUP = ("map_share_options", "MAP SHARING",
     ("map_share_upload", "UPLOAD LIMIT:", [f"{kb} KB/S" if kb < 1024 else f"{kb // 1024} MB/S"
                                            for kb in MAP_SHARE_UPLOADS],
      ["The most you send of maps, so that the game\\nkeeps the rest of your upload."] * len(MAP_SHARE_UPLOADS)),
+])
+# Server Setup's bots in a network game (port/linux/game/bots.c: the host
+# plays them, as players of machines of their own), laid out as co-op's
+# options are (its key, its title, its row's help and its rows: menu_functions.c's
+# gametype_options give their settings' values, bots.count, bots.skill,
+# bots.teams, bots.make_room and bots.fill_to; FILL TO is shown with MAKE
+# ROOM FOR PLAYERS on). A local game's are BOTS_ROWS, on Server Setup itself
+BOT_FILLS = list(range(2, 17))
+BOT_SETUP = ("bot_options", "BOTS", "Computer players you host for this game, and\\nwhether they leave as players join.", [
+    ("bot_count", "BOTS:", ["NONE", *(str(count) for count in range(1, 16))],
+     ["No bots in this game."] + ["The most bots that play in this game. Your\\ncomputer plays them."] * 15),
+    ("bot_skill", "BOT SKILL:", ["EASY", "NORMAL", "HEROIC", "LEGENDARY"],
+     ["How well the bots play: how soon they react,\\nhow well they aim, how far they see."] * 4),
+    ("bot_teams", "BOT TEAMS:", ["EVEN", "AGAINST YOU"], [
+        "In a team game, bots go on both teams, evening\\nthem with the players.",
+        "In a team game, every bot goes on the team you\\nare not on.",
+    ]),
+    ("bot_make_room", "MAKE ROOM:", ["ON", "OFF"], [
+        "A bot leaves as a player joins, and comes back\\nas a player leaves.",
+        "The bots stay. MAXIMUM PLAYERS counts the\\nplayers alone.",
+    ]),
+    ("bot_fill_to", "FILL TO:", [str(count) for count in BOT_FILLS],
+     ["Bots fill the game up to this many players and\\nbots (no more than MAXIMUM PLAYERS)."] * len(BOT_FILLS)),
 ])
 # (Server Setup's place of its options' rows, co-op's or the gametype's: after
 # MAP SHARING's)
@@ -2899,6 +2952,8 @@ BOTS_ROWS = [
 # (Server Setup's places of their rows: GAME's, INVITE LINK's and LISTING's;
 # the line saying why a gametype has none, PASSWORD's, below them)
 BOTS_FIRST_PLACE = 2
+# (Server Setup's rows' step)
+SERVER_SETTINGS_SPACING = 20
 BOTS_HINT = "Bots play Slayer, SWAT, Infection and Gun Game only."
 
 
@@ -2943,7 +2998,7 @@ def _bots_rows(base: str, first_label: int) -> tuple:
                           '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
         rows.append((f"{base}/op_{key}", None, BOTS_FIRST_PLACE + index))
     extra += _widget(f"{base}/bots_hint", [("type", "text"), ("controller", 1), ("left", 67),
-                                           ("top", 73 + 22 * (BOTS_FIRST_PLACE + len(BOTS_ROWS)) + 4),
+                                           ("top", 73 + SERVER_SETTINGS_SPACING * (BOTS_FIRST_PLACE + len(BOTS_ROWS)) + 4),
                                            ("width", 480), ("height", 22), ("text", BOTS_HINT),
                                            ("font", "ui\\small_ui"), ("color", "#FF2896FF"),
                                            ("text_flags", "no_focus_test")], [])

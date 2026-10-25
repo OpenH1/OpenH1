@@ -88,7 +88,7 @@ struct host_controls_player_view
 	boolean own;
 	/* a bot (bots.c's machines) */
 	boolean bot;
-	/* ... which the bots let the host take out (none yet: bots.c) */
+	/* ... which the host may take out (its network game's: bots.c) */
 	boolean bot_removable;
 	/* the game has teams, and teams may move in it
 	(network_host_controls_team_moves_for) */
@@ -191,8 +191,10 @@ boolean network_host_controls_unban(char const *line);
 /* (the host) OpenCE players may join the game from now on (an OpenH1 game's) */
 boolean network_host_controls_opence_joins(void);
 void network_host_controls_set_opence_joins(boolean allowed);
-/* the bots' rows of Game (bots.c's host-owned bots of a network game: none
-yet), their texts, and a row's value stepped (left -1, right or A 1) */
+/* the bots' rows of Game (bots.c's host-owned bots of a network game:
+BOTS, BOT SKILL, BOT TEAMS, MAKE ROOM FOR PLAYERS and, with it on, FILL TO;
+none in a gametype the bots do not play), their texts, and a row's value
+stepped (left -1, right or A 1), written to config.toml */
 short network_host_controls_bot_rows(void);
 void network_host_controls_bot_row(short row, wchar_t *label, wchar_t *value, wchar_t *help, short size);
 void network_host_controls_bot_row_step(short row, short step);

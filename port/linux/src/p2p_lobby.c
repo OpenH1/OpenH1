@@ -24,9 +24,10 @@ false details:
 	printable ASCII), a stamp (8: the game's kind, an OpenCE gametype's mode
 	and Hardcore, port/linux/game/game_modes.h's game_modes_kind; then a
 	Standard game's rate in Hz, a Legacy game's zero; then a mixed game's
-	OpenH1 protocol version, any other's zero; the rest reserved, zero: none
-	of it read by OpenCE), and the signature (64) of "hceu-lobby-1" and all before
-	it.
+	OpenH1 protocol version, any other's zero; then the bots its host plays,
+	which the players' count leaves out (port/linux/game/bots.c), zero for
+	none; the rest reserved, zero: none of it read by OpenCE), and the
+	signature (64) of "hceu-lobby-1" and all before it.
 
 Each host has a slot, hceu/3/lobby/s/<its key's hash in hex>: its listing,
 retained on every broker (and expiring there after LISTING_EXPIRY seconds
@@ -129,7 +130,7 @@ struct listing
 	unsigned char token[P2P_TOKEN_SIZE];
 	/* (_listing_password: its token, sealed) */
 	unsigned char sealed_token[P2P_SEALED_TOKEN_SIZE];
-	int player_count, maximum_player_count, engine_type, kind, rate, openh1_version;
+	int player_count, maximum_player_count, engine_type, kind, rate, openh1_version, bots;
 	char name[P2P_LISTING_NAME_SIZE + 1];
 	char map[P2P_LISTING_MAP_SIZE + 1];
 	char gametype[P2P_LISTING_GAMETYPE_SIZE + 1];
@@ -186,6 +187,8 @@ static struct
 	int standard, mixed, rate;
 	int flags;
 	int player_count, maximum_player_count;
+	/* the bots its host plays, apart from its players (p2p_set_game_bots) */
+	int bots;
 	/* the password's key (p2p_set_hosting_password), if it has one */
 	int has_password;
 	unsigned char password_key[P2P_PASSWORD_KEY_SIZE];
@@ -340,6 +343,7 @@ static int listing_make(unsigned char *bytes, int flags)
 		bytes[size + 1] = (unsigned char)lobby.rate;
 	if (lobby.standard && lobby.mixed)
 		bytes[size + 2] = (unsigned char)HALO_PORT_STANDARD_NETWORK_VERSION;
+	bytes[size + 3] = (unsigned char)lobby.bots;
 	size += STAMP_SIZE;
 	memcpy(data, signature_label, sizeof(signature_label) - 1);
 	memcpy(data + sizeof(signature_label) - 1, signed_part, (size_t)size);
@@ -409,6 +413,7 @@ static int listing_read(const unsigned char *bytes, int size, struct listing *li
 	listing->kind = offset < size ? bytes[offset] : 0;
 	listing->rate = offset + 1 < size ? bytes[offset + 1] : 0;
 	listing->openh1_version = offset + 2 < size ? bytes[offset + 2] : 0;
+	listing->bots = offset + 3 < size ? bytes[offset + 3] : 0;
 	offset += STAMP_SIZE;
 	if (offset + P2P_SIGNATURE_SIZE != size)
 		return 0;
@@ -692,6 +697,7 @@ static void listing_take(const struct queued *queued, const struct listing *list
 	shown->maximum_player_count = (unsigned char)listing->maximum_player_count;
 	shown->engine_type = (unsigned char)listing->engine_type;
 	shown->kind = (unsigned char)listing->kind;
+	shown->bots = (unsigned char)listing->bots;
 	/* (a Standard game's rate, a mixed one's of this build's protocol too,
 	which this build joins as OpenH1; a Legacy game's 30, and a mixed one's
 	of another protocol, which this build joins as OpenCE does) */
@@ -967,6 +973,20 @@ void p2p_set_game_listing_standard(int standard, int mixed, int rate)
 	lobby.standard = standard;
 	lobby.mixed = mixed;
 	lobby.rate = rate;
+	if (lobby.listed)
+		republish_soon(0);
+	pthread_mutex_unlock(&p2p_lock);
+}
+
+void p2p_set_game_bots(int count)
+{
+	count = count < 0 ? 0 : count > 255 ? 255 : count;
+	/* (only the game's server writes it: unchanged, it need not wait for the
+	lock) */
+	if (count == lobby.bots)
+		return;
+	pthread_mutex_lock(&p2p_lock);
+	lobby.bots = count;
 	if (lobby.listed)
 		republish_soon(0);
 	pthread_mutex_unlock(&p2p_lock);

@@ -83,6 +83,10 @@ long update_server_ticked_update_number(
 struct player_action const *update_server_update_actions(
 	long update_number,
 	short *count);
+/* (the host) a bot's controls in the update its tick ran (bots.c) */
+void update_server_take_bot_action(
+	long absolute_player_index,
+	struct player_action const *action);
 /* each player's latest input forgotten, for a new game */
 void update_queues_distributed_reset(
 	void);

@@ -417,6 +417,25 @@ static void lobby_checks(void)
 		"a mixed game's listing: the network version, its rate and protocol in the stamp");
 	check(games(&listing) == 1 && listing.standard && listing.mixed && listing.rate == 60,
 		"a mixed game is listed as an OpenH1 game OpenCE joins too, with its rate");
+	check(published[published_size - P2P_SIGNATURE_SIZE - 5] == 0 && listing.bots == 0, "a game without bots lists none");
+	/* a game with bots (port/linux/game/bots.c): its players counted alone,
+	the bots in the stamp, which OpenCE does not read */
+	p2p_set_game_bots(10);
+	clock_now += 6000;
+	lobby_update(token, 6, 16);
+	hear(published, published_size, 0, NULL);
+	check(published[published_size - P2P_SIGNATURE_SIZE - 5] == 10 &&
+		published[published_size - P2P_SIGNATURE_SIZE - 7] == 60 &&
+		published[published_size - P2P_SIGNATURE_SIZE - 6] == HALO_PORT_STANDARD_NETWORK_VERSION,
+		"a game's bots in its stamp, beside its rate and protocol");
+	check(games(&listing) == 1 && listing.bots == 10 && listing.player_count == 6 &&
+		listing.maximum_player_count == 16 && listing.mixed, "a game is listed with its players and its bots apart");
+	p2p_set_game_bots(0);
+	clock_now += 6000;
+	lobby_update(token, 3, 16);
+	hear(published, published_size, 0, NULL);
+	check(published[published_size - P2P_SIGNATURE_SIZE - 5] == 0 && games(&listing) == 1 && listing.bots == 0,
+		"a game whose bots left lists none");
 	p2p_set_game_listing_standard(1, 0, 120);
 	clock_now += 6000;
 	lobby_update(token, 3, 16);
