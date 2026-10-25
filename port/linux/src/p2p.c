@@ -3670,6 +3670,21 @@ static void poll_invite_file(void)
 }
 #endif
 
+#ifdef HALO_MACOS
+/* port/macos/host_links.c: the links the Mac or iPhone app was opened with
+(halo://..., the join page's addresses), at its launch or since: macOS and
+iOS give a running app the links it handles, and start no second copy */
+int host_app_take_link(char *link, int size);
+
+static void poll_app_links(void)
+{
+	char text[256];
+
+	while (host_app_take_link(text, sizeof(text)))
+		p2p_invite_received(text);
+}
+#endif
+
 /* ---------- the thread */
 
 static void *p2p_thread(void *unused)
@@ -3913,6 +3928,9 @@ static void *p2p_thread(void *unused)
 		p2p_discord_update();
 #ifdef HALO_ANDROID
 		poll_invite_file();
+#endif
+#ifdef HALO_MACOS
+		poll_app_links();
 #endif
 #ifdef HALO_PROFILE
 		profile_trace_end(p2p_profile_names.pass);

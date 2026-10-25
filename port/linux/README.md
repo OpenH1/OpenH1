@@ -1338,7 +1338,8 @@ To join a game, do one of these steps:
   file that only the user can read (`halo-ce-universal.key` in
   `$XDG_RUNTIME_DIR`, else `~/.halo-ce-universal.key`; on Windows in
   `%LOCALAPPDATA%`) encrypts the link, so the programs of other users cannot
-  read it.
+  read it. On macOS and iOS the system gives the link to the app, running
+  or started by it (`port/macos/host_links.c`).
 - Copy the link (or the 64 digits) and go to the game.
 - Enter `halo <link>`.
 - Accept a Discord invite, or ask to join in Discord. Refer to "Discord".
@@ -1859,10 +1860,10 @@ it is the game's (`#join=` and `halo://join/`, 64 digits).
 
 The address opens the join page (`website/public/join`, on openh1.com). The
 code is after `#`, which a browser never sends to the site. The page opens
-the `halo://` link (on Windows, Linux and Android, where the game is its
-handler), shows the link to copy into JOIN BY LINK (or the Party screen's
-PASTE LINK; the game also joins a link that it finds on the clipboard when
-it comes to the front), and shows the downloads for a friend who does not
+the `halo://` link (the game is its handler on Windows, Linux, Android,
+macOS and iOS), shows the link to copy into JOIN BY LINK (or the Party
+screen's PASTE LINK; the game also joins a link that it finds on the
+clipboard when it comes to the front), and shows the downloads for a friend who does not
 have OpenH1 yet. The game takes the join page's addresses, as it takes every
 other form of the links (`halo://join/`, `halo://party/`, a bare code,
 `?join=`, `?party=`).
