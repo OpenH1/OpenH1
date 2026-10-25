@@ -500,9 +500,25 @@ static void typing_gamepad(const struct platform_input_state *input, XINPUT_GAME
 	pad->bAnalogButtons[XINPUT_GAMEPAD_B] |= analog(k[SDL_SCANCODE_ESCAPE]);
 }
 
+/* when a server browser was shown last (halo_keyboard_browser_keys): its
+keys while it was, within a quarter of a second */
+static Uint64 browser_keys_time;
+#define BROWSER_KEYS_MILLISECONDS 250
+
+void halo_keyboard_browser_keys(void)
+{
+	browser_keys_time = SDL_GetTicks() + 1;
+}
+
+int halo_keyboard_browser_keys_active(void)
+{
+	return browser_keys_time && SDL_GetTicks() + 1 - browser_keys_time < BROWSER_KEYS_MILLISECONDS;
+}
+
 static void keyboard_gamepad(const struct platform_input_state *input, XINPUT_GAMEPAD *pad)
 {
 	const unsigned char *k = input->keys;
+	BOOL browser = halo_keyboard_browser_keys_active();
 	BOOL mouse = !input->mouse_released;
 	const unsigned char *m = input->mouse_buttons;
 	int x = 0, y = 0;
@@ -542,15 +558,21 @@ static void keyboard_gamepad(const struct platform_input_state *input, XINPUT_GA
 	/* the system back key (gesture or button) backs out of menus */
 	pad->bAnalogButtons[XINPUT_GAMEPAD_B] |= analog(k[SDL_SCANCODE_AC_BACK]);
 #endif
-	/* (Delete and E as X: the server browsers' sort, drawn as E in the
-	menus' prompts while the keyboard and mouse play: ui_widget.c) */
-	pad->bAnalogButtons[XINPUT_GAMEPAD_X] |= analog(k[SDL_SCANCODE_DELETE] || k[SDL_SCANCODE_E]);
-	/* (Q and E as LB and RB, the white and black buttons: Settings' tabs) */
+	/* (Delete and E as X: Load Game's, Profiles' and the gametypes' delete;
+	in a server browser Tab instead, its sort, drawn as Tab in the menus'
+	prompts while the keyboard and mouse play: ui_widget.c) */
+	pad->bAnalogButtons[XINPUT_GAMEPAD_X] |= analog(k[SDL_SCANCODE_DELETE] ||
+		(browser ? k[SDL_SCANCODE_TAB] : k[SDL_SCANCODE_E]));
+	/* (Q and E as LB and RB, the white and black buttons: Settings' and the
+	server browsers' tabs) */
 	pad->bAnalogButtons[XINPUT_GAMEPAD_WHITE] |= analog(k[SDL_SCANCODE_Q]);
 	pad->bAnalogButtons[XINPUT_GAMEPAD_BLACK] |= analog(k[SDL_SCANCODE_E]);
-	/* (F too: the server browsers' favorite, drawn as F in the menus'
-	prompts while the keyboard and mouse play: ui_widget.c) */
-	pad->bAnalogButtons[XINPUT_GAMEPAD_Y] |= analog(k[SDL_SCANCODE_TAB] || k[SDL_SCANCODE_F]);
+	/* (F as Y: the server browsers' favorite, drawn as F; Tab too but in a
+	server browser: the Profiles screen's new profile) */
+	pad->bAnalogButtons[XINPUT_GAMEPAD_Y] |= analog(k[SDL_SCANCODE_F] || (!browser && k[SDL_SCANCODE_TAB]));
+	/* (R as the right trigger: Multiplayer's and the server browser's
+	refresh, drawn as R) */
+	pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER] |= analog(k[SDL_SCANCODE_R]);
 }
 
 /* the keys held when the game and the menus switch, or typing or the
@@ -1090,7 +1112,8 @@ void test_input_press(unsigned long buttons)
 
 /* debug.test_input "menu:<buttons>": the buttons pressed one a second, from
 the first poll, for testing the menus: a, b, x, y, up, down, left, right,
-start, back, lb and rb (the white and black buttons), forward (the left
+start, back, lb and rb (the white and black buttons), lt and rt (the
+triggers), forward (the left
 stick pushed forward, which moves a player whom no menu has), or wait
 (none), separated by spaces or commas */
 static char test_input_menu[512];
@@ -1117,6 +1140,8 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 		{ "back", -1, XINPUT_GAMEPAD_BACK },
 		{ "lb", XINPUT_GAMEPAD_WHITE, 0 },
 		{ "rb", XINPUT_GAMEPAD_BLACK, 0 },
+		{ "lt", XINPUT_GAMEPAD_LEFT_TRIGGER, 0 },
+		{ "rt", XINPUT_GAMEPAD_RIGHT_TRIGGER, 0 },
 	};
 	Uint64 elapsed = SDL_GetTicks() - test_input_menu_since;
 	Uint64 step = elapsed / 1000;

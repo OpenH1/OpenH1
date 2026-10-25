@@ -97,9 +97,10 @@
 	<widget name="main_menu/multiplayer_type_select/multiplayer_type_select_screen" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/gradient">
 		<on event="created" run="mp type menu initialize"/>
 		<on event="deleted" run="port multiplayer status end"/>
+		<on event="right_trigger" run="port multiplayer refresh"/>
 		<child widget="main_menu/multiplayer_type_select/header_multiplayer"/>
-		<child widget="main_menu/multiplayer_type_select/multiplayer_type_select_list" platform="pointer"/>
-		<child widget="main_menu/blueline" x="64" y="363" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/hub/hub_list" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/hub/hub_divider" x="28" y="308" platform="pointer"/>
 		<child widget="main_menu/multiplayer_type_select/touch/multiplayer_touch_list" platform="touch"/>
 		<child widget="main_menu/multiplayer_type_select/touch/multiplayer_touch_open_bar" y="346" platform="touch"/>
 		<child widget="main_menu/multiplayer_type_select/touch/multiplayer_touch_hint" platform="touch"/>

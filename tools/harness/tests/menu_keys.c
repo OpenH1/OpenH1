@@ -27,6 +27,13 @@ struct platform_input_state
 #define SDL_BUTTON_X1 4
 typedef struct { unsigned short wButtons; BYTE bAnalogButtons[8]; SHORT sThumbLX, sThumbLY; } XINPUT_GAMEPAD;
 static BOOL text_typing, text_typing_enter_armed;
+/* whether a server browser is shown (xinput_sdl.c's halo_keyboard_browser_keys) */
+static int browser_shown;
+
+static int halo_keyboard_browser_keys_active(void)
+{
+	return browser_shown;
+}
 
 #include "under_test.inc"
 
@@ -42,6 +49,8 @@ static int scancode(char const *name)
 		{ "F", SDL_SCANCODE_F },
 		{ "Q", SDL_SCANCODE_Q },
 		{ "F1", SDL_SCANCODE_F1 },
+		{ "Tab", SDL_SCANCODE_TAB },
+		{ "R", SDL_SCANCODE_R },
 	};
 	size_t index;
 
@@ -64,6 +73,7 @@ static boolean pressed(XINPUT_GAMEPAD const *pad, short icon)
 	case _icon_y_button: return pad->bAnalogButtons[XINPUT_GAMEPAD_Y] != 0;
 	case _icon_black_button: return pad->bAnalogButtons[XINPUT_GAMEPAD_BLACK] != 0;
 	case _icon_white_button: return pad->bAnalogButtons[XINPUT_GAMEPAD_WHITE] != 0;
+	case _icon_right_trigger: return pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER] != 0;
 	case _icon_back_button: return (pad->wButtons & XINPUT_GAMEPAD_BACK) != 0;
 	case _icon_start_button: return (pad->wButtons & XINPUT_GAMEPAD_START) != 0;
 	default: return FALSE;
@@ -77,24 +87,62 @@ int main(int argc, char **argv)
 
 	CASE("keys")
 	{
-		/* each button named a key: that key, alone, presses it in the menus */
-		for (icon = _icon_a_button; icon <= _icon_right_thumb; icon++)
+		/* each button named a key: that key, alone, presses it in the menus,
+		the other menus' and a server browser's */
+		for (browser_shown = 0; browser_shown < 2; browser_shown++)
 		{
-			char const *name = ui_widget_port_menu_key(icon);
-			struct platform_input_state input;
-			XINPUT_GAMEPAD pad;
-			int key;
+			for (icon = _icon_a_button; icon <= _icon_right_thumb; icon++)
+			{
+				char const *name = ui_widget_port_menu_key(icon);
+				struct platform_input_state input;
+				XINPUT_GAMEPAD pad;
+				int key;
 
-			if (!name)
-				continue;
-			key = scancode(name);
-			CHECK(key >= 0, "button %d drawn as %s, no key of the menus", icon, name);
+				if (!name)
+					continue;
+				key = scancode(name);
+				CHECK(key >= 0, "button %d drawn as %s, no key of the menus", icon, name);
+				memset(&input, 0, sizeof(input));
+				memset(&pad, 0, sizeof(pad));
+				input.menus = TRUE;
+				input.keys[key] = 1;
+				keyboard_gamepad(&input, &pad);
+				CHECK(pressed(&pad, icon), "button %d drawn as %s, which does not press it (in a browser: %d)",
+					icon, name, browser_shown);
+			}
+		}
+		return 0;
+	}
+	CASE("browser")
+	{
+		/* the other menus' keys as before the browsers': Tab is Y (Profiles'
+		new profile), never X (their delete), and E is X; in a browser Tab is
+		X (its sort) alone and E is RB alone (its next tab) */
+		struct platform_input_state input;
+		XINPUT_GAMEPAD pad;
+		short shown;
+
+		for (shown = 0; shown < 2; shown++)
+		{
+			browser_shown = shown;
 			memset(&input, 0, sizeof(input));
 			memset(&pad, 0, sizeof(pad));
 			input.menus = TRUE;
-			input.keys[key] = 1;
+			input.keys[SDL_SCANCODE_TAB] = 1;
 			keyboard_gamepad(&input, &pad);
-			CHECK(pressed(&pad, icon), "button %d drawn as %s, which does not press it", icon, name);
+			CHECK(pressed(&pad, _icon_x_button) == shown && pressed(&pad, _icon_y_button) == !shown,
+				"Tab in %s presses X %d, Y %d", shown ? "a browser" : "the other menus",
+				pressed(&pad, _icon_x_button), pressed(&pad, _icon_y_button));
+			memset(&input, 0, sizeof(input));
+			memset(&pad, 0, sizeof(pad));
+			input.menus = TRUE;
+			input.keys[SDL_SCANCODE_E] = 1;
+			keyboard_gamepad(&input, &pad);
+			CHECK(pressed(&pad, _icon_black_button) && pressed(&pad, _icon_x_button) == !shown,
+				"E in %s presses RB %d, X %d", shown ? "a browser" : "the other menus",
+				pressed(&pad, _icon_black_button), pressed(&pad, _icon_x_button));
+			CHECK(!strcmp(ui_widget_port_menu_key(_icon_x_button), shown ? "Tab" : "E"),
+				"X drawn as %s", ui_widget_port_menu_key(_icon_x_button));
 		}
 		return 0;
 	}

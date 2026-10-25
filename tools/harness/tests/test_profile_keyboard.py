@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run  # noqa: E402
 
 CASES = ['done', 'cancel', 'external-close', 'dispose', 'initialize',
-         'invalid-name', 'duplicate-name', 'field-owner', 'reopen', 'launch-failure', 'held-enter']
+         'invalid-name', 'duplicate-name', 'field-owner', 'reopen', 'launch-failure', 'held-enter', 'browser-keys']
 
 
 def generated(fault=False):

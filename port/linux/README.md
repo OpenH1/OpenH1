@@ -426,6 +426,17 @@ Multiplayer HUD with the text chat, and Streamer Mode), not INTERNET PLAY,
 which would drop the game, nor the rows for the main menu.
 END GAME ends the game as its time limit does: the players stay, and after
 the carnage report the host picks the next map and gametype (PICK GAME).
+
+The carnage report after a game is laid out as Settings is: a line with the
+gametype, map and length, the result (each team's score with the winner
+marked, or the free for all's winner), and one table of the players with
+their place, score, kills, assists, deaths, kills per death, suicides and (in
+a team game) betrayals, your own row lit and each team's totals at its
+foot. These are the statistics the game keeps of each player; it keeps no
+accuracy or sprees. Enter (A) picks the next game and Esc (B) leaves, as
+before. The in-game scoreboard has the same rules and lit row, no Ping
+column in a game of this computer alone, and its prompts in a footer;
+players' names over their heads fade out while it shows.
 LEAVE GAME of the host still ends the game for everyone. The buttons go into
 the map's own pause menu, before LEAVE GAME, so the buttons of a custom map
 stay. The Xbox's pause box is drawn taller to hold them (a redraw,
@@ -572,7 +583,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.chat_style` | `"colors"` | `HALO_CHAT_STYLE` | The text chat's colours (Settings > Network Setup > Multiplayer HUD > CHAT TEXT): `"colors"`, the player's name in their team's colour and the text a pale blue; `"white"`, all of it white, as Custom Edition. |
 | `display.scoreboard_team_layout` | `"teams"` | `HALO_SCOREBOARD_TEAM_LAYOUT` | How the multiplayer scoreboard (hold BACK, or tab) lists a team game's players. `"teams"`: a column for each team, red on the left and blue on the right. `"score"`: all the players in order of score. With more players than fit, the mouse wheel and Page Up / Page Down scroll the scoreboard. |
 | `display.scoreboard_background` | `true` | `HALO_SCOREBOARD_BACKGROUND` | `true`: the multiplayer scoreboard (hold BACK, or tab) has a panel behind its text, for clearer text. |
-| `display.scoreboard_background_color` | `"16, 16, 16, 150"` | `HALO_SCOREBOARD_BACKGROUND_COLOR` | The colour of the scoreboard's panel: `"red, green, blue, alpha"`, each from `0` to `255`. Alpha `0` is see-through, `255` is solid. |
+| `display.scoreboard_background_color` | `"6, 20, 48, 190"` (the menus' dark blue) | `HALO_SCOREBOARD_BACKGROUND_COLOR` | The color of the scoreboard's panel: `"red, green, blue, alpha"`, each from `0` to `255`. Alpha `0` is see-through, `255` is solid. |
 | `display.anisotropic_filtering` | `display.graphics`'s | `HALO_ANISOTROPIC_FILTERING` | Textures seen at a grazing angle (floors, walls, terrain) are sampled along the angle from finer mip levels, so they stay sharp; the Xbox game asks for none. `0` or `1`: as on the Xbox. `2`, `4`, `8` or `16`: at most that many samples (at most the GPU's); `4` keeps most of `16`'s sharpness at less cost on slower GPUs. It applies to the textures of the map that have mip levels and are filtered linearly (base, detail, bump and environment maps; lightmaps have no mip levels), not to what the game renders, such as the water's ripples. With Vulkan (Linux, Windows, Android), only where the GPU has `samplerAnisotropy`. Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
 | `display.latency_meter` | `false` | `HALO_LATENCY_METER` | `true`: in a network game, your round trip to the host in milliseconds at the top right of the screen, "Ping 45 ms" with four bars: green below 80 ms, yellow below 150, red from 150. The host shows "Max ping", its slowest player's. A player's machine that has heard nothing from the host for two seconds shows "Connection problem". The round trip includes each machine's wait for its next tick, so a LAN reads 15 to 35 ms. Not shown in the menus, after the game, in a co-op cutscene or when the host plays alone. The scoreboard's pings take the same colours, and show the round trips this machine times itself (the host: each player's; a player: their own), so they agree with the meter. Nothing more is sent. Only in config.toml, not in the menus. |
 | `display.per_pixel_lighting` | `display.graphics`'s | `HALO_PER_PIXEL_LIGHTING` | `false`: the models (characters, weapons, vehicles, scenery) are lit at each vertex and the light is blended between them, as on the Xbox. The light across a curved surface then shows facets, and a point light that passes close lights only the vertices it reaches. `true`: the models are lit at each pixel by the same lights (the ambient light, two distant lights and two point lights), which changes their look. Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
@@ -1367,52 +1378,53 @@ GAME joins only with the correct password. The invite link of the game joins
 it without the password. The host keeps the password only while the game
 runs.
 
-In the Server Browser, as in Custom Edition's, a click selects a game
-(outlined in yellow), and a click on the selected game, a double click, A,
-Enter or JOIN joins it. The game joins the invite of the game, as for a
+The Server Browser, the LAN list and Join by Link are laid out as Settings
+is: tabs across the top, the games under their columns (Server, Map, Mode,
+Players, Ping), the chosen game's details in a panel at the right with JOIN
+GAME, and the keys at the bottom (F Favorite, R Refresh, Tab Sort, Esc Back
+on the keyboard; a controller's Y, right trigger, X and B). A name, map or
+mode too long for its column ends in "..."; the panel shows all of it. A
+click selects a game, and a click on the selected game, a double click, A,
+Enter or JOIN GAME joins it. The game joins the invite of the game, as for a
 link. When it reaches the host, it opens the lobby. If it cannot reach the
-host in 30 seconds, it marks the game FAILED; when this machine's NAT gives
-each destination its own port and no router forwards
-`network.tunnel_port`, the line below the games says so (turn on UPnP on
-the router, or forward the port: refer to "Connection").
+host in 30 seconds, it marks the game failed, and the panel says why; when
+this machine's NAT gives each destination its own port and no router
+forwards `network.tunnel_port`, it says so (turn on UPnP on the router, or
+forward the port: refer to "Connection").
 
-The PING column shows the round trip to each host in milliseconds. The
-browser times it as a join would reach the host: it makes the tunnel with
-the listing's invite, keeps the shortest of three pings, and closes the
-tunnel again. It times a few hosts at once, each again every two minutes
-and on REFRESH. Joining a host whose tunnel is open uses that tunnel. A
-game with a password, whose invite the listing hides, shows no ping, nor
-does a host not reached; a game that is full or starting shows CLOSED.
-REFRESH also asks the hosts for their listings again.
+The Ping column shows the round trip to each host in milliseconds, coloured
+by how good it is, with bars before it. The browser times it as a join would
+reach the host: it makes the tunnel with the listing's invite, keeps the
+shortest of three pings, and closes the tunnel again. It times a few hosts
+at once, each again every two minutes and on Refresh. Joining a host whose
+tunnel is open uses that tunnel. While it is timed the column shows a faded
+"…"; a game with a password, whose invite the listing hides, a host not
+reached and a LAN game show "–". Refresh also asks the hosts for their
+listings again.
 
-The gametype column names an OpenCE gametype's kind (SWAT, INFECTION, GUN
-GAME, or HC and the game engine for Hardcore: HC CTF, HC SLAYER), which the
-host sends with the game (network version 37), and otherwise the game
-engine's (SLAYER, CTF, KING OF THE HILL). The browser of LAN games, and the
-preview of a game before joining it, name it the same way.
+The Mode column names an OpenCE gametype's kind (SWAT, INFECTION, GUN GAME,
+or HC and the game engine for Hardcore: HC CTF, HC SLAYER), which the host
+sends with the game (network version 37), and otherwise the game engine's
+(SLAYER, CTF, KING OF THE HILL). The preview of a game before joining it
+names it the same way. An OpenH1 game shows its tick rate in a badge after
+its name ("60", "120"); a Legacy game shows none. The panel names the
+chosen game's kind (OPENH1 or LEGACY), its tick rate (a Legacy game's 30),
+and OPENCE CAN JOIN for one OpenCE players join too (an OpenH1 game at 30,
+the default, and every Legacy game: NETCODE.md, "OpenH1 and Legacy games").
 
-Before the gametype, the column shows each game's tick rate ("60 SLAYER"; a
-Legacy game shows 30). The line below the games names the chosen game's
-kind: "OpenH1 60 Tick, OpenCE can join" (an OpenH1 game that OpenCE players
-join too, at 30: the default), "OpenH1 60 Tick" (OpenH1 players only) or
-"Legacy" (NETCODE.md, "OpenH1 and Legacy games").
+Sorting and the tabs, in all three lists, for this run of the game:
 
-Sorting and filtering, in all three lists (Server Browser, LAN, Direct
-Link), for this run of the game:
-
-- Choosing a column's title sorts the games by it: Server Name, Map, Game
-  (the tick rate, and an OpenH1 game before a Legacy one at 30), Players or
-  Ping. Choosing it again sorts the other way. Click or tap the title, or
-  with a controller press up from the first game to reach the titles, left
-  and right to pick one, and A. An arrow over the title shows the way.
-  Players and the tick rate sort the highest first; a ping not known goes
-  last either way.
-- X on a game sorts by the next column, then back to the order found. The
-  line below the games names the sort.
-- KIND (left of FAVORITES; not in Direct Link) shows every game, OpenH1's
-  own only (those OpenCE players can join too among them), or Legacy ones
-  only.
-- Favorites stay at the top, sorted the same way among themselves.
+- Choosing a column's title sorts the games by it; choosing it again sorts
+  the other way. Click or tap the title, or with a controller press up from
+  the first game to reach the titles, left and right to pick one, and A.
+  The title sorted by is brighter, with an arrow its way. Players sort the
+  most first; a ping not known goes last either way. Tab (X) sorts by the
+  next column.
+- The tabs (Q and E, LB and RB, or a click; not in Join by Link) show every
+  game, OpenH1's own only (those OpenCE players can join too among them),
+  Legacy ones only, co-op games, or the favorites.
+- Favorites stay at the top, sorted the same way among themselves; those
+  not found stay at the bottom of All and Favorites, grey.
 
 How it operates (`src/p2p_lobby.c`):
 
@@ -4933,7 +4945,8 @@ Other changes:
 | `render/render.c` | The 3D view of each window is tone mapped (`display.hdr`) and antialiased (`display.anti_aliasing`) before the HUD is drawn. The projectiles' lights' glows are drawn after the transparent geometry (`display.dynamic_lights`). |
 | `render/render.c` | `render_initialize` reads the structure culling tests from `display.structure_culling`. |
 | `models/models.c` | A model's size, which chooses its level of detail and whether it is drawn, is scaled as `display.model_detail` says (`halo_model_detail_scale`, `src/d3d8_device.c`)., and each permutation draws the level `game/model_detail.c` chooses from the model's (stock: the model's). |
-| `interface/hud.c` | In multiplayer, players' names are drawn above their heads (`display.player_names`, `display.player_name_scale`). |
+| `interface/hud.c` | In multiplayer, players' names are drawn above their heads (`display.player_names`, `display.player_name_scale`), and fade out while the scoreboard shows. |
+| `game/game_engine.c` | The carnage report and the full-screen scoreboard are laid out as Settings is: the report's one table of the players' statistics with the teams' totals, the result and the game's line; the scoreboard's rules, lit row and footer, and no ping column in a game of one computer. |
 | `text/draw_string.c`, `interface/terminal.c`, `interface/virtual_keyboard.c` | Streamer mode's words are hidden in every string drawn or measured (`game/text_filter.c`), but in the console's line and the virtual keyboard's text being typed. |
 | `rasterizer/rasterizer_text.c`, `text/draw_string.c` | Text is drawn from an atlas of the fonts' glyphs, rasterized at the resolution the game draws at (`src/text_hires.c`), when the font has every character of the string. Text can be drawn scaled about a point (`rasterizer_text_set_scale`), as the players' names are. Each glyph's advance is centred on the font tag character's, so the layout is the same, and a glyph is cut at a text box only where the font tag's character visibly was. |
 | `interface/first_person_weapons.c` | The first-person hands are drawn with the unit's shield modifier shader, as its body is (`display.viewmodel_shield`). |

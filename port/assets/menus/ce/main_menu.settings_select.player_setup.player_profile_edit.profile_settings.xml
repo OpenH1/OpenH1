@@ -129,11 +129,11 @@
 		<string text="OPENH1"/>
 	</strings>
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/profile_settings/help_strings">
-		<string text="Your player profile: your name and your colour."/>
+		<string text="Your player profile: your name and your color."/>
 		<string text=""/>
 		<string text="The name the other players see, kept in your player profile."/>
-		<string text="Your armour's colour in free-for-all multiplayer games, kept in your player profile."/>
-		<string text="Your name, colour and controller layout are kept in a player profile. Make one to set them; the rest of Settings works without one."/>
+		<string text="Your armor's color in free-for-all multiplayer games, kept in your player profile."/>
+		<string text="Your name, color and controller layout are kept in a player profile. Make one to set them; the rest of Settings works without one."/>
 		<string text=""/>
 		<string text="Halo: Combat Evolved, the Xbox game, on this computer, played from your own copy of its maps. OpenH1 is a free fan project."/>
 	</strings>
