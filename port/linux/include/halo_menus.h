@@ -108,7 +108,7 @@ struct halo_menu_widget
 {
 	char const *name, *type, *controller, *flags, *bitmap, *text, *strings, *values, *setting, *font, *color,
 		*align, *description, *string_list, *list_flags, *text_flags, *header_bitmap, *footer_bitmap,
-		*header_bounds, *footer_bounds;
+		*header_bounds, *footer_bounds, *wide;
 	long x, y, left, top, width, height, text_x, text_y, auto_close, auto_close_fade, string_index;
 	long has_width, has_height;
 	/* indices in their arrays, or HALO_MENU_NONE */

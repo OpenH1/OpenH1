@@ -142,6 +142,17 @@ far left of the menus' 0 the screen's edge is; 0 elsewhere
 short ui_widget_port_anchor_offset(long flags);
 short ui_widget_port_stretch(long flags);
 short ui_widget_port_anchor_extra(void);
+/* the wide layout of the port's own screens (their widgets' wide attribute:
+port/linux/game/menu_tags.c): the extra width past the menus' 640 a view
+this wide lays them out in (to 16:9's), and a value's part of it; the
+layout for a view; the extra width it is for; a widget's move and its
+growth past its picture in it */
+short ui_widget_port_wide_extra_of(long width);
+short ui_widget_port_wide_scale(short value, short extra);
+void ui_widget_port_wide_layout(long width);
+short ui_widget_port_wide_extra(void);
+short ui_widget_port_wide_offset(long definition_index);
+short ui_widget_port_wide_stretch(long definition_index);
 /* the screen's pixels to the Xbox's one (port/linux/src/d3d8_device.c) */
 float halo_screen_scale(void);
 /* takes up a new width between frames (F11); returns the width */

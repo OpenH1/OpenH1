@@ -219,3 +219,65 @@ def test_hub_keeps_every_place():
     for name in ("online_now_label", "online_games_0", "best_label", "best_0_name", "best_0_badge", "best_0_about",
                  "multiplayer_options_txt"):
         assert f'<child widget="{MT}/hub/{name}"/>' in hub, name
+
+
+@pytest.mark.parametrize("aspect", ["4:3", "16:10", "16:9", "21:9"])
+def test_browser_wide_layout(aspect):
+    """The browser at 4:3, 16:10 (the Steam Deck), 16:9 and 21:9 (16:9's, centred): its rows from the screen's left,
+    their columns in order inside them, apart, each title over its column, Server, Map and Mode wider on a wider
+    screen; the panel beside them to the screen's right, its words and JOIN GAME in it; the tabs spread apart between
+    LB's and RB's prompts; the footer's prompts at the screen's edges, apart; everything on the screen."""
+    from harness.menu_layout import layout, one, usable
+
+    port_settings = _port_settings()
+    width = port_settings.WIDE_SCREENS[aspect]
+    area = usable(width)
+    boxes = layout(f"{MT}/join_game/join_game_screen", width)
+    rows = [box for box in boxes if re.fullmatch(r"server_item_\d+", box.name)]
+    panel = one(boxes, "browser_panel")
+    assert len(rows) == port_settings.BROWSER_ROWS
+    columns = ("server_name", "map", "type", "players", "ping_ms")
+    for row in rows + [panel, one(boxes, "browser_columns_line"), one(boxes, "browser_empty")]:
+        assert row.inside(area), f"{row} is off the screen {area}"
+    for row in rows:
+        assert row.x1 + 8 <= panel.x0, f"{row} reaches the panel {panel}"
+        cells = [box for column in columns for box in boxes
+                 if box.name == f"server_item_{column}" and box.path[-1] == row.name]
+        assert len(cells) == len(columns)
+        for cell in cells:
+            assert cell.inside(row), f"{cell} is out of its row {row}"
+        assert all(cells[index].x1 <= cells[index + 1].x0 for index in range(len(cells) - 1)), cells
+    # (each title over its column, in order)
+    first = rows[0]
+    titles = []
+    for header, _, column in port_settings.BROWSER_HEADERS:
+        title = one(boxes, header)
+        cell = [box for box in boxes if box.name == f"server_item_{column if column != 'ping' else 'ping_ms'}"
+                and box.path[-1] == first.name][0]
+        if column in ("players", "ping"):
+            assert title.x1 == cell.x1, (title, cell)
+        else:
+            assert cell.x0 - 8 <= title.x0 <= cell.x0, (title, cell)
+        titles.append(title)
+    assert all(titles[index].x1 <= titles[index + 1].x0 for index in range(len(titles) - 1)), titles
+    for name in ("panel_title", "panel_where", "panel_players", "panel_ping", "panel_status", "panel_kind",
+                 "panel_tick", "panel_opence", "button_join"):
+        assert one(boxes, name).inside(panel), name
+    tabs = [box for box in boxes if box.name.startswith("tab_") and box.path[-1] == "browser_tabs"]
+    prompts = [one(boxes, "tab_prompt_previous"), one(boxes, "tab_prompt_next")]
+    assert len(tabs) == len(port_settings.BROWSER_TABS)
+    for index, box in enumerate(tabs + prompts):
+        assert box.inside(area), box
+        assert all(not box.overlaps(other) for other in (tabs + prompts)[index + 1:]), box
+    footer = [box for box in boxes if box.name.startswith("prompt_") and box.name != "prompt_paste"]
+    for index, box in enumerate(footer):
+        assert box.inside(area), box
+        assert all(not box.overlaps(other) for other in footer[index + 1:]), box
+    # (the room the screen adds: Server's, Map's and Mode's, and the panel's; 21:9 lays out as 16:9)
+    narrow = layout(f"{MT}/join_game/join_game_screen", 640)
+    for name in ("server_item_server_name", "server_item_map", "server_item_type", "browser_panel"):
+        wide, plain = one(boxes, name) if name == "browser_panel" else [box for box in boxes if box.name == name][0], \
+            one(narrow, name) if name == "browser_panel" else [box for box in narrow if box.name == name][0]
+        assert (wide.x1 - wide.x0 > plain.x1 - plain.x0) == (width > 640), name
+    if width > port_settings.WIDE_WIDTH:
+        assert boxes == layout(f"{MT}/join_game/join_game_screen", port_settings.WIDE_WIDTH)

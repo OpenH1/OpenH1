@@ -263,6 +263,16 @@ struct menu_frame_placement
 	short width, height;
 };
 
+/* a widget's wide layout (its wide attribute): how far it moves (and what
+is in it) and how much wider it is on a 16:9 screen, and its definition's
+right as the menus' 640 have it (ui_widget_port_wide_layout) */
+struct menu_wide
+{
+	struct ui_widget_definition *definition;
+	short dx, dw;
+	short x1;
+};
+
 /* a spinner bound to a setting (menu_functions.c) */
 struct pc_menu_setting
 {
@@ -509,6 +519,11 @@ static struct
 	long original_count;
 	struct pc_menu_setting *settings;
 	long setting_count;
+	/* the wide layouts of the tags added, by their index after the map's
+	(original_count), and the extra width they are laid out for now */
+	struct menu_wide *wides;
+	long wide_count;
+	short wide_extra;
 	boolean loaded;
 	char root[300];
 	/* the tags' generation they were added to (cache_files_tags_generation):
@@ -541,6 +556,108 @@ static struct
 	/* a network co-op game's map's: its pause menu gets FRIENDLY FIRE too */
 	boolean coop;
 } build;
+
+/* ---------- the wide layout of the port's own screens
+
+The port's screens (Settings, the server browser, Multiplayer; the lobby
+can, by the same means) use the screen's width up to 16:9; the game's own
+menus stay in the centred 640. A widget's wide attribute, "dx dw"
+(tools/port_settings.py's wide), moves it (and what is in it, as an anchor
+does) by dx and makes it dw wider on a 16:9 screen, WIDE_LAYOUT_WIDTH of the
+menus' units at 480 lines, and by a part of that on a narrower one, down to
+nothing at the menus' 640 (4:3); a wider screen (21:9, 32:9) has 16:9's
+layout, centred. Each frame's widgets are drawn (and clicked) at the width
+of the view they are drawn in (ui_widget_port_wide_layout: a split screen's
+quarter has the 640's); a widget anchored on a touchscreen (anchor_left,
+anchor_right, stretch) keeps its anchor instead. */
+#define WIDE_LAYOUT_WIDTH 852
+#define WIDE_LAYOUT_EXTRA (WIDE_LAYOUT_WIDTH - 640)
+
+/* the extra width a view this wide lays the port's screens out in: 0 at the
+menus' 640 or less, WIDE_LAYOUT_EXTRA at 16:9 and wider */
+short ui_widget_port_wide_extra_of(long width)
+{
+	return (short)(width <= 640 ? 0 : width >= WIDE_LAYOUT_WIDTH ? WIDE_LAYOUT_EXTRA : width - 640);
+}
+
+/* a wide attribute's move or growth at an extra width (its 16:9 value's
+part of it, rounded) */
+short ui_widget_port_wide_scale(short value, short extra)
+{
+	long scaled = (long)value * extra;
+
+	return (short)((scaled + (scaled < 0 ? -WIDE_LAYOUT_EXTRA / 2 : WIDE_LAYOUT_EXTRA / 2)) / WIDE_LAYOUT_EXTRA);
+}
+
+/* whether a widget with a wide layout keeps its touchscreen's anchor */
+static boolean wide_anchored(struct menu_wide const *wide)
+{
+	return ui_widget_port_anchor_offset(wide->definition->flags) || ui_widget_port_stretch(wide->definition->flags);
+}
+
+/* a widget definition's wide layout, NULL if it has none (or is anchored on
+a touchscreen) */
+static struct menu_wide const *wide_of(long definition_index)
+{
+	long index;
+	struct menu_wide const *wide;
+
+	if (!menu_tags.wides || definition_index == NONE)
+		return NULL;
+	index = DATUM_INDEX_TO_ABSOLUTE_INDEX(definition_index) - menu_tags.original_count;
+	if (index < 0 || index >= menu_tags.wide_count)
+		return NULL;
+	wide = &menu_tags.wides[index];
+	return wide->definition && !wide_anchored(wide) ? wide : NULL;
+}
+
+/* the port's screens laid out for a view this wide: each widget's
+definition as much wider as its wide attribute says (its move is
+ui_widget_port_wide_offset's, as it is drawn) */
+void ui_widget_port_wide_layout(long width)
+{
+	short extra = ui_widget_port_wide_extra_of(width);
+	long index;
+
+	if (extra == menu_tags.wide_extra || !menu_tags.wides)
+		return;
+	menu_tags.wide_extra = extra;
+	for (index = 0; index < menu_tags.wide_count; index++)
+	{
+		struct menu_wide const *wide = &menu_tags.wides[index];
+
+		if (wide->definition && wide->dw)
+		{
+			wide->definition->bounds.x1 = (short)(wide->x1 +
+				(wide_anchored(wide) ? 0 : ui_widget_port_wide_scale(wide->dw, extra)));
+		}
+	}
+}
+
+/* the extra width the port's screens are laid out in now (the view's past
+the menus' 640: ui_widget_port_wide_layout), half of it each side */
+short ui_widget_port_wide_extra(void)
+{
+	return menu_tags.wide_extra;
+}
+
+/* how far a widget (and what is in it) is moved where it is drawn, in the
+layout now */
+short ui_widget_port_wide_offset(long definition_index)
+{
+	struct menu_wide const *wide = wide_of(definition_index);
+
+	return wide ? ui_widget_port_wide_scale(wide->dx, menu_tags.wide_extra) : 0;
+}
+
+/* how much wider than its picture a widget is drawn in the layout now: its
+picture's middle stretched (ui_widget.c) */
+short ui_widget_port_wide_stretch(long definition_index)
+{
+	struct menu_wide const *wide = wide_of(definition_index);
+
+	return wide ? ui_widget_port_wide_scale(wide->dw, menu_tags.wide_extra) : 0;
+}
 
 /* ---------- private code */
 
@@ -1321,6 +1438,26 @@ static void *widget_build(long widget_index)
 		source->file, source->line);
 	definition->horizontal_offset = (short)source->text_x;
 	definition->vertical_offset = (short)source->text_y;
+	/* its wide layout: "dx dw" (ui_widget_port_wide_layout) */
+	if (source->wide)
+	{
+		long index = DATUM_INDEX_TO_ABSOLUTE_INDEX(build.widget_tags[widget_index]) - menu_tags.original_count;
+		long dx, dw;
+		char end;
+
+		if (sscanf(source->wide, "%ld %ld %c", &dx, &dw, &end) != 2 || dx < -WIDE_LAYOUT_EXTRA ||
+			dx > WIDE_LAYOUT_EXTRA || dw < -WIDE_LAYOUT_EXTRA || dw > WIDE_LAYOUT_EXTRA)
+		{
+			problem(source->file, source->line, "wide is \"dx dw\", each -212 to 212:", source->wide);
+		}
+		else if (index >= 0 && index < menu_tags.wide_count)
+		{
+			menu_tags.wides[index].definition = definition;
+			menu_tags.wides[index].dx = (short)dx;
+			menu_tags.wides[index].dw = (short)dw;
+			menu_tags.wides[index].x1 = definition->bounds.x1;
+		}
+	}
 	/* the list */
 	definition->list_flags |= flags_parse(source->list_flags, list_flag_names, NUMBEROF(list_flag_names),
 		source->file, source->line);
@@ -2190,6 +2327,9 @@ void menu_tags_loaded(
 	instances = build.failed ? NULL : instances_grow(total, &build.first_index, &build.first_salt);
 	if (!instances)
 		goto failed;
+	/* (the widgets' wide layouts, by their tags' indices after the map's) */
+	menu_tags.wides = allocate(total * sizeof(*menu_tags.wides));
+	menu_tags.wide_count = menu_tags.wides ? total : 0;
 	/* each new tag's index */
 	for (index = 0; index < widget_count; index++)
 	{

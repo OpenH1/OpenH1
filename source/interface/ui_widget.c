@@ -1701,14 +1701,19 @@ static __inline real compute_offset_coordinate(
 		1.0);
 }
 
-void draw_bitmap_in_rect(
+/* port: draw_bitmap_in_rect, its texture's columns from u0 to u1 (its parts'
+of the bitmap's width) rather than from its left (u1 negative: from its
+left, as the bitmap rectangle has it) */
+static void draw_bitmap_columns_in_rect(
 	struct bitmap_data *bitmap,
 	rectangle2d *rect,
 	rectangle2d *bitmap_rect,
 	rectangle2d *clip_rect,
 	pixel32 argb,
 	struct rasterizer_dynamic_screen_geometry_parameters *multitexture_params,
-	boolean no_plasma)
+	boolean no_plasma,
+	real u0,
+	real u1)
 {
 	if (bitmap && rect)
 	{
@@ -1792,6 +1797,7 @@ void draw_bitmap_in_rect(
 		{
 			vertices[vertex_index].color = argb;
 			vertices[vertex_index].texture_coordinates.x =
+				u1 >= 0.0f ? ((vertex_index % 3) ? u1 : u0) :
 				(vertex_index % 3) ? texture_width : 0.0f;
 			vertices[vertex_index].texture_coordinates.y =
 				(vertex_index > 1) ? texture_height : 0.0f;
@@ -1865,6 +1871,88 @@ void draw_bitmap_in_rect(
 		parameters.alpha_weighted = FALSE;
 		parameters.framebuffer_blend_function = 0;
 		rasterizer_psuedo_dynamic_screen_quad_draw(&parameters, vertices);
+	}
+
+	return;
+}
+
+void draw_bitmap_in_rect(
+	struct bitmap_data *bitmap,
+	rectangle2d *rect,
+	rectangle2d *bitmap_rect,
+	rectangle2d *clip_rect,
+	pixel32 argb,
+	struct rasterizer_dynamic_screen_geometry_parameters *multitexture_params,
+	boolean no_plasma)
+{
+	draw_bitmap_columns_in_rect(bitmap, rect, bitmap_rect, clip_rect, argb, multitexture_params, no_plasma,
+		0.0f, -1.0f);
+
+	return;
+}
+
+/* port: a picture drawn wider than it is (the wide layout of the port's
+screens, ui_widget_port_wide_stretch; the carnage report's panel), its
+`edge` units at each end as they are, the rest of it as it is in the middle,
+and the column each side of the middle stretched across the width added
+between them (a picture of a box, its middle plain: edge half its width) */
+void draw_bitmap_widened_in_rect(
+	struct bitmap_data *bitmap,
+	rectangle2d *rect,
+	short picture_width,
+	short edge,
+	rectangle2d *clip_rect,
+	pixel32 argb,
+	struct rasterizer_dynamic_screen_geometry_parameters *multitexture_params,
+	boolean no_plasma)
+{
+	/* (each part's right in the rectangle, and its texture's columns, as
+	parts of the bitmap's width) */
+	short rights[5];
+	real columns[5][2];
+	real used;
+	real end;
+	short added;
+	short part_index;
+	rectangle2d part = *rect;
+	rectangle2d texels;
+
+	if (!bitmap || !rect || picture_width <= 0)
+		return;
+	/* (its rows as draw_bitmap_in_rect's texels the size of the rectangle
+	have them: as many of the bitmap's as it is high) */
+	texels.x0 = 0;
+	texels.y0 = 0;
+	texels.x1 = picture_width;
+	texels.y1 = (short)(rect->y1 - rect->y0);
+	edge = (short)PIN(edge, 0, picture_width / 2);
+	added = (short)MAX(rect->x1 - rect->x0 - picture_width, 0);
+	/* (the picture's part of the bitmap, as draw_bitmap_in_rect's texels
+	the size of the rectangle have it) */
+	used = MIN((real)picture_width / MAX(1.0f, (real)bitmap->width), 1.0f);
+	end = used * edge / picture_width;
+	rights[0] = (short)(rect->x0 + edge);
+	rights[1] = (short)(rights[0] + added / 2);
+	rights[2] = (short)(rights[1] + picture_width - 2 * edge);
+	rights[3] = (short)(rect->x1 - edge);
+	rights[4] = rect->x1;
+	columns[0][0] = 0.0f;
+	columns[0][1] = end;
+	columns[1][0] = columns[1][1] = end;
+	columns[2][0] = end;
+	columns[2][1] = used - end;
+	columns[3][0] = columns[3][1] = used - end;
+	columns[4][0] = used - end;
+	columns[4][1] = used;
+	for (part_index = 0; part_index < NUMBEROF(rights); part_index++)
+	{
+		part.x1 = rights[part_index];
+		if (part.x1 > part.x0)
+		{
+			draw_bitmap_columns_in_rect(bitmap, &part, &texels, clip_rect, argb, multitexture_params, no_plasma,
+				columns[part_index][0], columns[part_index][1]);
+		}
+		part.x0 = part.x1;
 	}
 
 	return;
@@ -6145,8 +6233,9 @@ static void ui_mouse_note_slot_band(
 		/* where widget_instance_render_recursive draws the child: the
 		list's offset plus the child's own */
 		slot = ui_widget_definition_get(child->definition_tag_index)->bounds;
-		slot.x0 += offset.x + child->horizontal_offset;
-		slot.x1 += offset.x + child->horizontal_offset;
+		/* port: (and its move in the wide layout) */
+		slot.x0 += offset.x + child->horizontal_offset + ui_widget_port_wide_offset(child->definition_tag_index);
+		slot.x1 += offset.x + child->horizontal_offset + ui_widget_port_wide_offset(child->definition_tag_index);
 		slot.y0 += offset.y + child->vertical_offset;
 		slot.y1 += offset.y + child->vertical_offset;
 		if (!found)
@@ -6226,6 +6315,11 @@ static void ui_mouse_note_target(
 			sibling_bounds = sibling_definition->bounds;
 			sibling_bounds.x0 += offset.x - widget->horizontal_offset + sibling->horizontal_offset;
 			sibling_bounds.x1 += offset.x - widget->horizontal_offset + sibling->horizontal_offset;
+			/* port: (each moved in the wide layout as it is drawn) */
+			sibling_bounds.x0 += ui_widget_port_wide_offset(sibling->definition_tag_index) -
+				ui_widget_port_wide_offset(widget->definition_tag_index);
+			sibling_bounds.x1 += ui_widget_port_wide_offset(sibling->definition_tag_index) -
+				ui_widget_port_wide_offset(widget->definition_tag_index);
 			sibling_bounds.y0 += offset.y - widget->vertical_offset + sibling->vertical_offset;
 			sibling_bounds.y1 += offset.y - widget->vertical_offset + sibling->vertical_offset;
 			distance = (short)ABS(sibling_bounds.x0 - bounds.x1);
@@ -7236,6 +7330,9 @@ static void widget_instance_render_recursive(
 	/* port: anchored to the screen's left or right edge where the screen is
 	wider than the menus' 640 (ui_widget_port_anchor_offset) */
 	offset.x += ui_widget_port_anchor_offset(definition->flags);
+	/* port: and moved in the wide layout of the port's own screens
+	(ui_widget_port_wide_offset) */
+	offset.x += ui_widget_port_wide_offset(widget->definition_tag_index);
 	for (input_index = 0;
 		input_index < definition->game_data_inputs.count;
 		input_index++)
@@ -7344,12 +7441,15 @@ static void widget_instance_render_recursive(
 			laid out as the stock pictures are */
 			rectangle2d texels = bounds;
 			short frame_x, frame_y, frame_width, frame_height;
+			short widened = ui_widget_port_wide_stretch(widget->definition_tag_index);
+			boolean placed = FALSE;
 			boolean shown = TRUE;
 			boolean stretched = custom_edition_picture &&
 				custom_edition_maps_campaign_level(widget->animation.current_frame_index) == NONE;
 
 			if (pc_menu_frame_placement(bitmap, &frame_x, &frame_y, &frame_width, &frame_height))
 			{
+				placed = TRUE;
 				bounds.x0 += frame_x;
 				bounds.y0 += frame_y;
 				texels.x0 = 0;
@@ -7358,7 +7458,22 @@ static void widget_instance_render_recursive(
 				texels.y1 = (short)((long)(bounds.y1 - bounds.y0) * bitmap->height / frame_height);
 				shown = bounds.x1 > bounds.x0 && bounds.y1 > bounds.y0;
 			}
-			if (shown)
+			/* port: a widget the wide layout made wider than its picture: its
+			picture's middle stretched (ui_widget_port_wide_stretch), its
+			ends as they are */
+			if (shown && widened > 0 && !stretched && !placed)
+			{
+				draw_bitmap_widened_in_rect(
+					bitmap,
+					&bounds,
+					(short)(bounds.x1 - bounds.x0 - widened),
+					(short)((bounds.x1 - bounds.x0 - widened) / 2),
+					clip,
+					color,
+					&multitexture_params,
+					FALSE);
+			}
+			else if (shown)
 			{
 				draw_bitmap_in_rect(
 					bitmap,
@@ -7465,6 +7580,8 @@ void render_ui_widgets_postgame(
 
 	if (virtual_keyboard_active())
 		return;
+	/* port: the port's screens laid out for the view's width */
+	ui_widget_port_wide_layout(window_bounds->x1 - window_bounds->x0);
 	local_player_index = PIN(
 		local_player_index,
 		0,
@@ -7504,7 +7621,7 @@ void render_ui_widgets_postgame(
 		if (should_render)
 		{
 			/* port: (ui_widget_port_anchor_extra, as below) */
-			bounds.x0 = (short)-ui_widget_port_anchor_extra();
+			bounds.x0 = (short)-MAX(ui_widget_port_anchor_extra(), (ui_widget_port_wide_extra() + 1) / 2);
 			bounds.y0 = 0;
 			bounds.x1 = window_bounds->x1 - window_bounds->x0;
 			bounds.y1 = window_bounds->y1 - window_bounds->y0;
@@ -7540,6 +7657,9 @@ void render_ui_widgets(
 		local_player_index == NONE ? 0 : local_player_index;
 	if (bink_playback_ui_rendering_inhibited())
 		return;
+	/* port: the port's screens laid out for the view's width (a split
+	screen's quarter has the menus' 640) */
+	ui_widget_port_wide_layout(window_bounds->x1 - window_bounds->x0);
 	if (!virtual_keyboard_active())
 	{
 		local_player_index = PIN(
@@ -7583,8 +7703,9 @@ void render_ui_widgets(
 				point2d offset;
 
 				/* port: from the screen's left edge where widgets are anchored to
-				it (ui_widget_port_anchor_extra), not the menus' 0 */
-				bounds.x0 = (short)-ui_widget_port_anchor_extra();
+				it (ui_widget_port_anchor_extra), or the wide layout's
+				(ui_widget_port_wide_extra), not the menus' 0 */
+				bounds.x0 = (short)-MAX(ui_widget_port_anchor_extra(), (ui_widget_port_wide_extra() + 1) / 2);
 				bounds.y0 = 0;
 				bounds.x1 = window_bounds->x1 - window_bounds->x0;
 				bounds.y1 = window_bounds->y1 - window_bounds->y0;

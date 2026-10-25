@@ -516,14 +516,22 @@ rasterizer_draw_string(
 					&viewport_bounds,
 					-render.camera.viewport_bounds.x0,
 					-render.camera.viewport_bounds.y0);
+				/* port: from the screen's left edge, left of the menus' 0 while
+				they draw centred on a wide screen (the port's screens' wide layout,
+				a key cap's words in a prompt: ui_widget.c's
+				draw_string_and_hack_in_icons; the carnage report) */
+				viewport_bounds.x0 = (short)(viewport_bounds.x0 -
+					MAX(ui_widget_port_anchor_extra(), (halo_screen_width() - 640) / 2));
 			}
 			else
 			{
 				/* port: left of 0 where the menus' widgets are anchored to a wide
-				screen's left edge (ui_widget_port_anchor_extra) */
+				screen's left edge (ui_widget_port_anchor_extra), or laid out across
+				it (the port's screens' wide layout, the carnage report): the
+				widgets' own clip keeps the others in the 640 */
 				set_rectangle2d(
 					&viewport_bounds,
-					FLOOR(clip->x0, -ui_widget_port_anchor_extra()),
+					FLOOR(clip->x0, -MAX(ui_widget_port_anchor_extra(), (halo_screen_width() - 640) / 2)),
 					FLOOR(clip->y0, 0),
 					MIN(render.camera.viewport_bounds.x1 - render.camera.viewport_bounds.x0, clip->x1),
 					MIN(render.camera.viewport_bounds.y1 - render.camera.viewport_bounds.y0, clip->y1));
@@ -649,14 +657,22 @@ rasterizer_draw_unicode_string(
 					&viewport_bounds,
 					-render.camera.viewport_bounds.x0,
 					-render.camera.viewport_bounds.y0);
+				/* port: from the screen's left edge, left of the menus' 0 while
+				they draw centred on a wide screen (the port's screens' wide layout,
+				a key cap's words in a prompt: ui_widget.c's
+				draw_string_and_hack_in_icons; the carnage report) */
+				viewport_bounds.x0 = (short)(viewport_bounds.x0 -
+					MAX(ui_widget_port_anchor_extra(), (halo_screen_width() - 640) / 2));
 			}
 			else
 			{
 				/* port: left of 0 where the menus' widgets are anchored to a wide
-				screen's left edge (ui_widget_port_anchor_extra) */
+				screen's left edge (ui_widget_port_anchor_extra), or laid out across
+				it (the port's screens' wide layout, the carnage report): the
+				widgets' own clip keeps the others in the 640 */
 				set_rectangle2d(
 					&viewport_bounds,
-					FLOOR(clip->x0, -ui_widget_port_anchor_extra()),
+					FLOOR(clip->x0, -MAX(ui_widget_port_anchor_extra(), (halo_screen_width() - 640) / 2)),
 					FLOOR(clip->y0, 0),
 					MIN(render.camera.viewport_bounds.x1 - render.camera.viewport_bounds.x0, clip->x1),
 					MIN(render.camera.viewport_bounds.y1 - render.camera.viewport_bounds.y0, clip->y1));

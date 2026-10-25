@@ -139,6 +139,7 @@ be a child of many).
 | `description` | A column list's extended description: a widget |
 | `controller` | `1` to `4`, or `any` (the default); a `<child>`'s or `child_controller`: the one it is for |
 | `auto_close`, `auto_close_fade` | It closes itself after this many milliseconds, fading for this many |
+| `wide` | "dx dw": on a 16:9 screen the widget (and what is in it) moves dx and is dw wider, and on a narrower one by its part of that (none at 4:3); a wider one has 16:9's. Below |
 | `platform` | `desktop`, `android` or `web`, or several separated by spaces: it is only there; `vr`: only in the VR build while it plays in the headset; `touch`: the touchscreen's builds (Android, iOS, or `debug.touch_menus`), `pointer`: the others; `computer`: the desktop's builds but iOS's. Every element takes this. |
 
 Widget flags: `pass_unhandled_to_focused_child` (an event it does not handle
@@ -155,6 +156,20 @@ touchscreen's wide screens (where the menus are laid out for touch: the
 right edge, by as much as the screen is wider than the menus' 640 on that
 side; `stretch` draws its picture wider by both sides' width, from its left
 (a panel that reaches from the menus' middle to the right edge).
+
+The port's own screens (Settings, the server browser, Multiplayer; the lobby
+next) use a wide screen's width up to 16:9 (852 of the menus' units at 480
+lines; 21:9 and wider have 16:9's, in the middle): a widget's `wide`, "dx
+dw", moves it dx and widens it dw at 16:9, and by its part of the screen's
+extra width on a narrower one (16:10's 128 of 212), none at 4:3. A move
+carries what is in the widget, as an anchor does; a widened picture keeps
+its ends and stretches its middle. `-106 0` keeps a widget as far from the
+screen's left edge as the 640 have it from theirs, `106 0` from the right;
+`-106 212` stretches it across. `tools/port_settings.py`'s `wide`,
+`WIDE_LEFT`, `WIDE_RIGHT` and `wide_spread` (tabs) write them, and
+`tools/harness/menu_layout.py` lays a screen out at a width for its tests.
+Widgets anchored on a touchscreen keep their anchors; the game's own menus
+have no `wide`, and stay in the middle 640.
 
 On a touchscreen a tap on an item of a list with an extended description
 (the Multiplayer menu, the settings) chooses it, showing what the
