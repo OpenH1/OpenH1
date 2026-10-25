@@ -13785,7 +13785,7 @@ struct hs_function_definition *hs_function_get(
 		522,
 		function_index>=0 && function_index<hs_function_table_count);
 
-	return hs_function_table.functions[function_index];
+	return (struct hs_function_definition *)hs_function_table.functions[function_index];
 }
 
 short hs_find_script_by_name(

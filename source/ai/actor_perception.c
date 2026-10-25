@@ -1044,7 +1044,7 @@ struct actor_perception_definition_view
 
 /* ---------- prototypes */
 
-static long actor_perception_qsort_compare_optional_props(
+static int actor_perception_qsort_compare_optional_props(
 	void const *a,
 	void const *b);
 
@@ -6100,7 +6100,7 @@ boolean actor_situation_try_new_target(
 
 /* ---------- private code */
 
-static long actor_perception_qsort_compare_optional_props(
+static int actor_perception_qsort_compare_optional_props(
 	void const *a,
 	void const *b)
 {

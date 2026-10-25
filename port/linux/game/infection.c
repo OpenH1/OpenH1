@@ -31,6 +31,7 @@ request #420 by arisson2001rojas-design.
 #include "networking/network_game_globals.h"
 #include "networking/network_game_manager.h"
 #include "networking/network_server_manager.h"
+#include "networking/network_server_manager_internal.h"
 #include "objects/objects.h"
 #include "objects/object_definitions.h"
 #include "physics/collisions.h"

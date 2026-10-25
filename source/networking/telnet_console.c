@@ -49,6 +49,8 @@ symbols in this file:
 #include "hs/hs.h"
 #include "networking/telnet_console.h"
 
+#include <ctype.h>
+
 /* ---------- constants */
 
 enum

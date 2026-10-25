@@ -784,6 +784,7 @@ def test_progress_bar_shader_cache_and_preparation_restore(tmp_path):
 #include <string.h>
 typedef int boolean;
 typedef unsigned char byte;
+typedef unsigned int UINT;
 #define NONE -1
 #define TRUE 1
 #define FALSE 0
@@ -805,7 +806,7 @@ static int IDirect3DDevice8_SetVertexShader(int device, unsigned handle) {
     calls++;
     return 0;
 }
-static int IDirect3DDevice8_GetVertexShaderSize(int device, unsigned handle, long *size) {
+static int IDirect3DDevice8_GetVertexShaderSize(int device, unsigned handle, UINT *size) {
     (void)device; (void)handle; *size = 1; return 0;
 }
 static int IDirect3DDevice8_LoadVertexShader(int device, unsigned handle, long offset) {

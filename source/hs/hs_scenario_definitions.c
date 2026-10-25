@@ -94,14 +94,14 @@ static struct byte_swap_definition hs_syntax_node_definition;
 struct tag_enum_definition hs_script_types_enum =
 {
 	5,
-	hs_script_type_names,
+	(char **)hs_script_type_names,
 	NULL,
 };
 
 struct tag_enum_definition hs_types_enum =
 {
 	49,
-	hs_type_names,
+	(char **)hs_type_names,
 	NULL,
 };
 

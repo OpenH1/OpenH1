@@ -625,7 +625,8 @@ boolean vehicle_stuck(
 						&instance.physics->mass_points, mass_point_index,
 						struct physics_mass_point_definition);
 
-					add_vectors3d(&center, &mass_point->position, &center);
+					add_vectors3d((real_vector3d const *)&center, (real_vector3d const *)&mass_point->position,
+						(real_vector3d *)&center);
 					mass_point_count++;
 				}
 			}
@@ -642,7 +643,7 @@ boolean vehicle_stuck(
 
 				matrix4x3_transform_point(&instance.world_matrix, &center, &center_in_world);
 				object_get_origin(vehicle_index, &origin);
-				subtract_vectors3d(&center_in_world, &origin, direction);
+				subtract_vectors3d((real_vector3d const *)&center_in_world, (real_vector3d const *)&origin, direction);
 
 				if (normalize3d(direction)!=0.0f)
 					stuck = TRUE;
@@ -1098,7 +1099,8 @@ static void update_alien_fighter_physics_new(
 
 			desired_rotation.forward = vehicle->unit.desired_facing_vector;
 
-			point_from_line3d(global_up3d, &desired_rotation.forward, -desired_rotation.forward.k, &desired_rotation.up);
+			point_from_line3d((real_point3d const *)global_up3d, &desired_rotation.forward, -desired_rotation.forward.k,
+				(real_point3d *)&desired_rotation.up);
 
 			if (normalize3d(&desired_rotation.up)==0.0f)
 				desired_rotation.up = *global_forward3d;
