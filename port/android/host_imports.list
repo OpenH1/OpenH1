@@ -54,5 +54,6 @@ host_render_stream_open
 host_render_stream_submit
 host_render_stream_wait
 host_render_stream_close
+host_audio_headphones
 
 host_errno

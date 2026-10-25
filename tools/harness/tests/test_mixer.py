@@ -1,9 +1,13 @@
 """The real mixer of dsound_sdl.c on known signals (mixer.c): its resampler against the same low pass worked out in
 double precision, sines through it as the ear hears them, voices out of earshot, mono voices, the linear
-resampler, the Xbox ADPCM decoder against reference vectors, the Doppler shift and the limiter.
+resampler, the Xbox ADPCM decoder against reference vectors, the Doppler shift, the limiter, and 3D audio:
+audio.spatial's choice, the HRTF's cues against the pan's, its distance, occlusion, reverb and Doppler, the crossfade
+when the choice changes, and 2D voices left as they are.
 
     python tools/harness/tests/test_mixer.py metrics   the figures
-    python tools/harness/tests/test_mixer.py bench [voices] [out of earshot] [indoor]   a game's worth of voices, timed
+    python tools/harness/tests/test_mixer.py bench [voices] [out of earshot] [indoor|outdoor] [hrtf]   a game's worth of
+        voices, timed (through the HRTF: hrtf)
+    python tools/harness/tests/test_mixer.py circle out.wav hrtf|pan   a sound going round the listener, to listen to
     python tools/harness/tests/test_mixer.py render > out.raw   noise through the mixer, to compare with another's
 (MIXER_SOURCE=path: of another dsound_sdl.c; MIXER_SCALAR=1: its resampler adding tap by tap)
 """
@@ -17,7 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, mutated, read, run  # noqa: E402
 
 SOURCE = "port/linux/src/dsound_sdl.c"
-CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "limiter"]
+CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "limiter",
+         "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch", "dry-2d"]
 
 # a fault in the mixer, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -42,6 +47,27 @@ NEGATIVE_CONTROLS = {
                             "doppler"),
     # the limiter's ceiling under full scale, as it was
     "limiter-ceiling": (("#define LIMITER_CEILING 1.0f", "#define LIMITER_CEILING 0.891f"), "limiter"),
+    # audio.spatial: headphones forced panned; a device not known taken as headphones; the VR mode by audio.spatial
+    "spatial-headphones-panned": (('if (!strcmp(setting, "headphones"))\n\t\treturn TRUE;',
+                                   'if (!strcmp(setting, "headphones"))\n\t\treturn FALSE;'), "spatial-choice"),
+    "spatial-unknown-headphones": (("return headphones > 0;", "return headphones != 0;"), "spatial-choice"),
+    "spatial-vr-ignored": (("if (vr_running)\n\t\treturn vr_hrtf;", "if (vr_running && 0)\n\t\treturn vr_hrtf;"),
+                           "spatial-choice"),
+    # the HRTF: no time between the ears, no head shadow, the notch fixed (no elevation), nothing behind
+    "hrtf-no-delay": (("parameters->delay[ear] = strength *", "parameters->delay[ear] = 0.0f * strength *"), "hrtf-cues"),
+    "hrtf-no-shadow": (("float shadow = 1.0f + strength *", "float shadow = 1.0f + 0.0f * strength *"), "hrtf-cues"),
+    "hrtf-no-elevation": (("elevation = (elevation + 30.0f) / 90.0f;", "elevation = 30.0f / 90.0f;"), "hrtf-cues"),
+    "hrtf-no-rear": (("#define HRTF_REAR_DEPTH 0.55f", "#define HRTF_REAR_DEPTH 0.0f"), "hrtf-cues"),
+    # through the HRTF: the distance left out
+    "hrtf-no-distance": (("hrtf_out->gain = 0.70710678f * attenuation *", "hrtf_out->gain = 0.70710678f *"),
+                         "hrtf-paths"),
+    # the choice switched at once, without the crossfade
+    "hrtf-switch-at-once": (("hrtf_mix = hrtf_on ? stream->hrtf_mix : 0.0f;",
+                             "hrtf_mix = hrtf_on && hrtf_enabled ? 1.0f : 0.0f;"), "hrtf-switch"),
+    # a 2D mono voice through the HRTF
+    "hrtf-2d": (("\t*hrtf_on = FALSE;\n\tif (stream->has_3d && stream->mode != DS3DMODE_DISABLE)",
+                 "\t*hrtf_on = FALSE;\n\tif (stream->channels == 1 || (stream->has_3d && stream->mode != DS3DMODE_DISABLE))"),
+                "dry-2d"),
 }
 
 
