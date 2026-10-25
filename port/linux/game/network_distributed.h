@@ -151,6 +151,13 @@ enum
 	bit each, to the host's OpenH1 clients (unreliable, each second and when
 	they change) */
 	_distributed_message_opence_players = 122,
+	/* parties made in the game (network_party.c), reliably: a client's word
+	to the host (whether it can party and is in one, an invite to a player,
+	an ask to join theirs), the invite or ask the host sends on to that
+	player's machine, and the host's list of who can party */
+	_distributed_message_party_up = 123,
+	_distributed_message_party_down = 124,
+	_distributed_message_party_players = 125,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };

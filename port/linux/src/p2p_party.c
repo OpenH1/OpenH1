@@ -1066,6 +1066,43 @@ int p2p_party_make(void)
 	return 1;
 }
 
+int p2p_party_invite_link(char *link, int size)
+{
+	unsigned char token[P2P_TOKEN_SIZE];
+
+	pthread_mutex_lock(&p2p_lock);
+	if (!party.active)
+	{
+		posix_random_bytes(token, sizeof(token));
+		lead(token);
+	}
+	snprintf(link, (size_t)size, "%s", party.link);
+	pthread_mutex_unlock(&p2p_lock);
+	return 1;
+}
+
+unsigned long p2p_party_tag(void)
+{
+	unsigned long tag = 0;
+	const char *hex;
+	int index;
+
+	pthread_mutex_lock(&p2p_lock);
+	/* (the topic's first digits, after "hceu/3/") */
+	hex = strrchr(party.topic, '/');
+	for (index = 0; party.active && hex && index < 8 && hex[1 + index]; index++)
+	{
+		char digit = hex[1 + index];
+
+		tag = tag << 4 | (unsigned long)(digit <= '9' ? digit - '0' : (digit | 0x20) - 'a' + 10);
+	}
+	/* (never 0 in a party) */
+	if (party.active && !tag)
+		tag = 1;
+	pthread_mutex_unlock(&p2p_lock);
+	return tag;
+}
+
 int p2p_party_lead_link(const char *text)
 {
 	unsigned char token[P2P_TOKEN_SIZE];
