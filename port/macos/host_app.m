@@ -12,7 +12,8 @@ HALO_SAVE_ROOT) and config.toml's paths.data and paths.saves are kept.
   host's log in ~/Library/Logs/OpenH1 (halo.log, and the previous start's
   halo.previous.log), where Console shows it, unless the error output is a
   terminal. The Metal pipelines' archive is in ~/Library/Caches/OpenH1
-  (xgpu_metal.m).
+  (xgpu_metal.m). ~ is HOME, so that a test or a script that sets HOME to
+  a folder of its own keeps all three there, away from the player's.
 - The game data: the players supply the Xbox game's maps folder or its
   disc image. Without one, an open panel asks for either. A folder is
   checked (ui.map, an Xbox cache, and the other maps of the disc), kept as a
@@ -1036,14 +1037,27 @@ static void update_start(void)
 
 /* ---------- start */
 
+/* HOME, which the tests and scripts point at a folder of their own (as the
+Metal archive's folder follows it, host_metal.m), else the account's
+(NSHomeDirectory, which does not read HOME) */
+static NSString *home_folder(void)
+{
+	const char *home = getenv("HOME");
+
+	if (home && home[0] == '/' && strcmp(home, "/"))
+		return [NSString stringWithUTF8String:home];
+	return NSHomeDirectory();
+}
+
 void host_app_start(void)
 {
 	@autoreleasepool
 	{
 		NSBundle *bundle = [NSBundle mainBundle];
 		NSFileManager *files = [NSFileManager defaultManager];
-		NSURL *library = [files URLsForDirectory:NSLibraryDirectory inDomains:NSUserDomainMask].firstObject;
-		NSURL *support = [[files URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject
+		NSURL *library = [NSURL fileURLWithPath:[home_folder() stringByAppendingPathComponent:@"Library"]
+			isDirectory:YES];
+		NSURL *support = [[library URLByAppendingPathComponent:@"Application Support"]
 			URLByAppendingPathComponent:APP_FOLDER];
 		NSURL *logs = [[library URLByAppendingPathComponent:@"Logs"] URLByAppendingPathComponent:APP_FOLDER];
 		NSString *brokers;

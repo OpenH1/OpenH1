@@ -96,8 +96,11 @@ a Mac app does, before the game starts:
   the game's lines) goes to `~/Library/Logs/OpenH1/halo.log`, the previous
   start's to `halo.previous.log` (Console shows them), unless the error
   output is a terminal. The Metal archive is in `~/Library/Caches/OpenH1`.
-  `HALO_DATA_ROOT` and `HALO_SAVE_ROOT`, and `paths.data` and `paths.saves`
-  in `config.toml`, still choose other folders.
+  `~` is `HOME`: a test or a script that runs the app with `HOME` set to a
+  folder of its own keeps the settings, the log and the caches there,
+  away from the player's. `HALO_DATA_ROOT` and `HALO_SAVE_ROOT`, and
+  `paths.data` and `paths.saves` in `config.toml`, still choose other
+  folders.
 - **The maps.** The players supply them. Without a maps folder, an open
   panel asks for the Xbox game's disc image or its maps folder (a short
   explanation in it). It enables folders and, of the files, disc images
