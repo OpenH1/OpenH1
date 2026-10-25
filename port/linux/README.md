@@ -802,6 +802,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.gl_debug` | `false` | `HALO_GL_DEBUG` | Deprecated: `debug.gpu_validation`'s old name, which still turns it on (with Vulkan, the validation layers). |
 | `debug.skip_cinematics` | `false` | `HALO_SKIP_CINEMATICS` | Skip each cinematic of a local game: as the skip button does where the level lets it be skipped, else run at sixteen times its speed (`main_skip`), so that a test reaches play in seconds (b30's opening, which cannot be skipped, in about 100 frames rather than 2,400). |
 | `debug.menu_open` | `""` | `HALO_MENU_OPEN` | Start on this screen of the menus (`main_menu/settings_select/...`, as `port/assets/menus` names it), a player profile being edited, to look at it. |
+| `debug.matchmaking`, `debug.matchmaking_host` | `""` | `HALO_MATCHMAKING`, `HALO_MATCHMAKING_HOST` | Search a matchmaking playlist (its name, `"Team Slayer"`, or its number, 1 up) once the main menu is up, and how well this machine tells its party it can host (`"strict"` or `"open"`; empty: as its network is), for a test; with either, a player without a profile plays. |
 | `debug.party` | `""` | `HALO_PARTY` | Join this party link at the start, or lead its party (`lead:` before the link): several copies of the game in one party, for a test. |
 | `debug.discord_socket` | `""` | `HALO_DISCORD_SOCKET` | The Discord client's socket (on Windows, its pipe) to connect to, and no other: a stand-in for Discord in a test, so that a test never reaches the Discord app of the person at the computer. Empty: Discord's own. |
 | `debug.gpu_skip_vertex_shaders`, `debug.gpu_debug_expression`, `debug.gpu_debug_flat`, `debug.gpu_debug_texture0` | off | `HALO_GPU_SKIP_VS`, `HALO_GPU_DEBUG_EXPR`, `HALO_GPU_DEBUG_FLAT`, `HALO_GPU_DEBUG_T0` | Tools to find problems in the graphics: skip the draws of a vertex shader, or replace the output of all pixel shaders with an expression (for example `t0.rgb`). `debug.gpu_debug_expression` is Metal's alone (`HALO_GPU_DEBUG_EXPR`, as MSL): it does nothing with Vulkan, whose shaders are SPIR-V written directly, with no source to put it in. |
@@ -1404,6 +1405,37 @@ from its link and signed by each member, on a topic of their own: OpenCE and
 older versions of OpenH1 never see them, and a game without a party is as
 before. Voice chat in a party is not done yet (the game's voice chat goes
 through the host of a game).
+
+### Matchmaking
+
+Multiplayer > PLAY ONLINE > MATCHMAKING finds a game for you and your party
+by playlist (`game/matchmaking.c`; the screen is `game/matchmaking_menu.inc`),
+with no server of its own: it uses the server browser's public games and
+the party's brokers.
+
+- The playlists: TEAM SLAYER (4 against 4), SLAYER (everyone for
+  themselves, 8 at most, parties of 2), CAPTURE THE FLAG (4 against 4), SWAT
+  and BIG TEAM BATTLE (8 against 8 on Blood Gulch, Sidewinder and Boarding
+  Action). Each has its gametypes, maps, players and the biggest party it
+  takes.
+- Pick a playlist and press A (or SEARCH). Your party's leader searches for
+  everyone; a member sees that its leader searches. The panel shows the time
+  searched, the games found and what the search is doing; CANCEL (X) stops
+  it. The search goes on if you go back to Multiplayer, whose MATCHMAKING
+  says SEARCHING.
+- The search takes an OpenH1 game hosted for the playlist with room for the
+  whole party, the nearest first (then the fullest), and joins it; the party
+  follows, its slots held by the host (refer to "Parties"). A game it cannot
+  reach or join is passed over.
+- When none fits for 20 to 35 seconds, the party hosts one: the member with
+  the best connection (one whose network is not strict, when the leader's
+  is) leads and hosts, and the others follow. The game is public, named
+  after the playlist, on one of its maps with its gametype. Others searching
+  the playlist find it. It starts by itself 3 seconds after it is full, or
+  after 90 seconds: with bots filling it in Slayer playlists, else with the
+  players it has (2 at least).
+- It never joins a Legacy game, nor an OpenH1 game of another version. OpenCE
+  players can join a game it hosts, as any OpenH1 game.
 
 ### Text chat
 
