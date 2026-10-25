@@ -2963,6 +2963,7 @@ static struct
 	{ "controls.push_to_talk", L"PUSH TO TALK", 3 },
 	{ "controls.chat", L"CHAT", 3 },
 	{ "controls.team_chat", L"TEAM CHAT", 3 },
+	{ "controls.party_accept", L"ACCEPT INVITE", 3 },
 };
 
 static struct

@@ -203,8 +203,8 @@ class ApplePlatform:
     guest_imports: Optional[List[Path]] = None
     # more of port/linux/src's files built into the app's host (not the
     # Metal tests') beside the platform.h stand-in: the disc image's
-    # extractor, xiso.c, for the first start's (port/macos/host_app.m,
-    # port/ios/data_import.m)
+    # extractor, xiso.c, for the iOS app's first start
+    # (port/ios/data_import.m; the macOS app's is the guest's, first_start.c)
     shared_extra: Optional[List[str]] = None
 
 
@@ -217,8 +217,6 @@ def macos_platform() -> ApplePlatform:
                      "-DSDL_SHARED=ON -DSDL_STATIC=OFF"),
         sdl_library="libSDL3.0.dylib", sdl_link="-lSDL3", guest_image_source=PORT_DIR / "guest_image.S",
         shader_platform="macos",
-        # (the first start's disc image extraction: host_app.m)
-        shared_extra=["xiso.h", "xiso.c", "posix.h"],
         link_flags="-Wl,-rpath,@executable_path -Wl,-rpath,@executable_path/../Frameworks")
 
 

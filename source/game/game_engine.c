@@ -574,6 +574,7 @@ symbols in this file:
 #include "network_votekick.h" /* port: port/linux/game/network_votekick.c */
 #include "network_voice.h" /* port: port/linux/game/network_voice.c */
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
+#include "network_party.h" /* port: port/linux/game/network_party.c */
 #include "halo_keyboard.h" /* port: port/linux/src/xinput_sdl.c */
 /* (network_server_manager_internal.h's: the host's game record) */
 struct network_game *network_game_server_get_game(struct network_game_server *server);
@@ -1954,7 +1955,9 @@ static pixel32 scoreboard_faded(
 picked opens a menu of what may be done to them, the players' vote to kick
 them (network_votekick.c), muting their voice and text chat on this
 machine (network_voice.c, network_chat.c), and the host's Mute for everyone
-(network_chat.c), Kick and Ban, Ban picked twice */
+(network_chat.c), Kick and Ban, Ban picked twice; and for an OpenH1 player,
+their party: Invite to party, Join their party, and their invite accepted
+(network_party.c) */
 enum
 {
 	_scoreboard_item_vote,
@@ -1962,6 +1965,9 @@ enum
 	_scoreboard_item_host_mute,
 	_scoreboard_item_kick,
 	_scoreboard_item_ban,
+	_scoreboard_item_party_invite,
+	_scoreboard_item_party_join,
+	_scoreboard_item_party_accept,
 	_scoreboard_item_cancel,
 	NUMBER_OF_SCOREBOARD_ITEMS,
 
@@ -2043,6 +2049,20 @@ static void scoreboard_menu_items(
 		offered[_scoreboard_item_ban] = TRUE;
 		usprintf(labels[_scoreboard_item_kick], L"Kick");
 		usprintf(labels[_scoreboard_item_ban], scoreboard_menu.ban_picked ? L"Ban: pick again to ban" : L"Ban");
+	}
+	/* (their party: network_party.c) */
+	{
+		unsigned long party = network_party_player_actions(scoreboard_menu.player_index);
+		short action;
+
+		for (action = 0; action < NUMBER_OF_NETWORK_PARTY_ACTIONS; action++)
+		{
+			short party_item = (short)(_scoreboard_item_party_invite + action);
+
+			offered[party_item] = TEST_FLAG(party, action);
+			if (offered[party_item])
+				network_party_action_label(scoreboard_menu.player_index, action, labels[party_item], 48);
+		}
 	}
 	offered[_scoreboard_item_cancel] = TRUE;
 	usprintf(labels[_scoreboard_item_cancel], L"Cancel");
@@ -2142,6 +2162,11 @@ static void scoreboard_menu_pick(
 			return;
 		}
 		network_votekick_host_kick(player_index, TRUE);
+		break;
+	case _scoreboard_item_party_invite:
+	case _scoreboard_item_party_join:
+	case _scoreboard_item_party_accept:
+		network_party_player_act(scoreboard_menu.player_index, (short)(item - _scoreboard_item_party_invite));
 		break;
 	default:
 		break;

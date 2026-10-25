@@ -7,9 +7,15 @@ Xbox paths are translated below two roots. d:\ is the data root, the
 directory holding the game's maps/ folder: paths.data (port_config.c), else the current
 directory when it has maps/, else the game's folder when it has maps/ (on
 Linux the release's root, or ~/.local/share/halo-linux when the game is
-installed: install_layout.c; on Windows the executable's folder), else
+installed: install_layout.c; on Windows the executable's folder; on macOS
+config.toml's, the app's folder in Application Support), else
 assets/ in the current directory or two levels above the executable (the
-repository root for build/linux_x86_64/halo).
+repository root for build/linux_x86_64/halo). The macOS app looks only in
+its own folder, never in the current one or by where the app is. Without
+maps, the first start copies them into the game's folder
+(platform_offer_game_data); a paths.data whose folder has no maps (moved, or
+on a drive not connected) is passed over for the game's folder, and the
+first start says so.
 h:\ is the Halo Custom Edition install paths.custom_edition names, if any
 (its maps folder holds the resource maps Custom Edition maps need, and more
 maps).
@@ -25,6 +31,9 @@ matched case-insensitively, like the Xbox's FATX volumes.
 #include "load_trace.h"
 #include "install_layout.h"
 
+#ifdef HALO_MACOS
+#include <SDL3/SDL.h>
+#endif
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -43,19 +52,39 @@ static BOOL directory_exists(const char *path)
 	return posix_stat(path, &information) == 0;
 }
 
-/* whether directory has a maps folder, in any case */
+/* whether directory has a maps folder, in any case (a link to one followed:
+a link to a folder that is gone is none) */
 static BOOL has_maps(const char *directory)
 {
 	char on_disk[256];
+	char path[MAX_PATH];
+	struct posix_file_information information;
 
-	return directory_exists(directory) &&
-		posix_find_entry_case_insensitive(directory, "maps", on_disk, sizeof(on_disk));
+	if (!directory_exists(directory) ||
+		!posix_find_entry_case_insensitive(directory, "maps", on_disk, sizeof(on_disk)))
+	{
+		return FALSE;
+	}
+	snprintf(path, sizeof(path), "%s/%s", directory, on_disk);
+	return posix_stat(path, &information) == 0 && (information.flags & _posix_file_is_directory) != 0;
 }
 
 static void trim_separators(char *path)
 {
 	while (strlen(path) > 1 && path[strlen(path) - 1] == '/')
 		path[strlen(path) - 1] = '\0';
+}
+
+/* whether this is the macOS app (its executable in OpenH1.app), whose data
+is in its own folder only, wherever the app is */
+static BOOL running_in_app(const char *executable)
+{
+#ifdef HALO_MACOS
+	return strstr(executable, ".app/Contents/MacOS/") != NULL;
+#else
+	(void)executable;
+	return FALSE;
+#endif
 }
 
 const char *platform_data_root(void)
@@ -65,20 +94,31 @@ const char *platform_data_root(void)
 	if (!root[0])
 	{
 		const char *environment = config_string("paths.data");
+		/* paths.data's folder, when it has no maps (moved, deleted, or on
+		a drive not connected): the game's folder is looked in instead, and
+		the first start says so */
+		char missing[MAX_PATH] = "";
 
+#if !defined(HALO_ANDROID) && !defined(HALO_IOS)
+		if (*environment && !has_maps(environment))
+		{
+			platform_log("paths.data (%s) has no maps folder: looking for the maps in the game's folder",
+				environment);
+			snprintf(missing, sizeof(missing), "%s", environment);
+			trim_separators(missing);
+			environment = "";
+		}
+#endif
 		if (*environment)
 		{
 			snprintf(root, sizeof(root), "%s", environment);
 		}
-		else if (has_maps("."))
-		{
-			snprintf(root, sizeof(root), ".");
-		}
 		else
 		{
-			char executable[MAX_PATH];
+			char executable[MAX_PATH] = "";
 			char game_folder[MAX_PATH] = "";
 			ssize_t length = readlink("/proc/self/exe", executable, sizeof(executable) - 1);
+			BOOL app;
 
 			if (length > 0)
 			{
@@ -90,31 +130,50 @@ const char *platform_data_root(void)
 				if (slash)
 					*slash = '\0';
 			}
-#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_MACOS)
+			app = running_in_app(executable);
+#if defined(HALO_MACOS)
+			/* on macOS, the folder of config.toml: the app's in Application
+			Support (port/macos/host_app.m), else the executable's */
+			{
+				const char *base = SDL_GetBasePath();
+
+				if (base && *base)
+				{
+					snprintf(game_folder, sizeof(game_folder), "%s", base);
+					trim_separators(game_folder);
+				}
+			}
+#elif !defined(HALO_WINDOWS) && !defined(HALO_ANDROID)
 			/* on Linux, the game's folder (the release's root, above its
 			bin/), or ~/.local/share/halo-linux when the game is installed
 			(install_layout.c) */
 			snprintf(game_folder, sizeof(game_folder), "%s", install_data_folder());
 #endif
 			snprintf(root, sizeof(root), ".");
-			if (game_folder[0] && has_maps(game_folder))
+			/* (the current folder and the repository's assets: a build run
+			from a checkout's; never the macOS app's, whose data is its
+			folder's) */
+			if (!app && has_maps("."))
+			{
+				snprintf(root, sizeof(root), ".");
+			}
+			else if (game_folder[0] && has_maps(game_folder))
 			{
 				/* in the game's folder (next to the executable on Windows),
-				where the desktop ports' first start extracts it
+				where the desktop ports' first start copies it
 				(platform_offer_game_data) */
 				snprintf(root, sizeof(root), "%s", game_folder);
 			}
-			else if (has_maps("assets"))
+			else if (!app && has_maps("assets"))
 			{
 				snprintf(root, sizeof(root), "assets");
 			}
-			else if (length > 0)
+			else if (!app && length > 0)
 			{
 				/* <repository>/build/linux_x86_64/halo -> <repository>/assets */
 				char *slash;
 				int level;
 
-				executable[length] = '\0';
 				for (level = 0; level < 3 && (slash = strrchr(executable, '/')); level++)
 					*slash = '\0';
 				if (level == 3 && strlen(executable) + sizeof("/assets") <= sizeof(executable))
@@ -125,8 +184,8 @@ const char *platform_data_root(void)
 				}
 			}
 #ifndef HALO_ANDROID
-			if (!has_maps(root) && game_folder[0] && platform_offer_game_data(game_folder) &&
-				has_maps(game_folder))
+			if (!has_maps(root) && game_folder[0] &&
+				platform_offer_game_data(game_folder, missing[0] ? missing : NULL) && has_maps(game_folder))
 			{
 				snprintf(root, sizeof(root), "%s", game_folder);
 			}

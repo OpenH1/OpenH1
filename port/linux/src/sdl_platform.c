@@ -312,10 +312,11 @@ BOOL platform_sdl_initialize(void)
 	return TRUE;
 }
 
-#if !defined(HALO_ANDROID) && (defined(HALO_WINDOWS) || defined(HALO_MACOS))
-/* ---------- first start without game data (xbox_files.c), on Windows and
-macOS: the system's dialogs. (The Linux builds' is first_start.c, in the
-game's own window) */
+#if !defined(HALO_ANDROID) && (defined(HALO_WINDOWS) || defined(HALO_IOS))
+/* ---------- first start without game data (xbox_files.c), on Windows: the
+system's dialogs. (The Linux builds' and the macOS app's is first_start.c,
+in the game's own window; the iOS app asks before the game starts,
+port/ios/host_app.m) */
 
 struct data_extraction
 {
@@ -515,7 +516,7 @@ static BOOL data_choose_image(char *path, int size, BOOL *failed, char *error, i
 	return TRUE;
 }
 
-BOOL platform_offer_game_data(const char *destination)
+BOOL platform_offer_game_data(const char *destination, const char *missing)
 {
 	static const SDL_MessageBoxButtonData buttons[] =
 	{
@@ -532,6 +533,8 @@ BOOL platform_offer_game_data(const char *destination)
 	{
 		return FALSE;
 	}
+	if (missing && *missing)
+		platform_log("paths.data (%s) has no maps folder", missing);
 	image_found = data_find_image(destination, found, sizeof(found));
 	if (image_found)
 	{
@@ -1199,10 +1202,12 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 				, NULL);
 		return FALSE;
 	}
+#endif
+	/* (the events are read on this thread, the main one: on macOS also
+	the window's own, without which it never comes on screen) */
 	platform_event_thread = SDL_GetCurrentThreadID();
 	platform_mouse_capture(TRUE);
 	return TRUE;
-#endif
 }
 
 #ifdef HALO_VR
