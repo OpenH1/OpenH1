@@ -32,6 +32,11 @@ replay have no host_app.m) */
 void host_app_update_tick(void);
 #pragma weak host_app_update_tick
 #endif
+#ifdef __APPLE__
+/* port/macos/host_links.c: the links the app is opened with (halo://...),
+which SDL sends as drop events, kept for the guest */
+void host_links_watch(void);
+#endif
 #if defined(__APPLE__) && !TARGET_OS_IPHONE
 /* port/macos/host_raw_mouse.m: the mouse's unaccelerated counts */
 #define HOST_RAW_MOUSE 1
@@ -136,6 +141,10 @@ static void *handle_release(uint32_t handle, int type, void **binding)
 
 int host_sdl_init(uint32_t flags)
 {
+#ifdef __APPLE__
+	/* (before SDL starts: the link a launch was for may come as it does) */
+	host_links_watch();
+#endif
 	return SDL_Init((SDL_InitFlags)flags);
 }
 

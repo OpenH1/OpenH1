@@ -43,6 +43,15 @@ def test_info_plist():
     assert simulator["CFBundleSupportedPlatforms"] == ["iPhoneSimulator"]
 
 
+def test_info_plist_takes_the_games_links():
+    """the app is the handler of halo:// links (invites, parties' links), the scheme p2p.h's links have"""
+    plist = ios_app.info_plist(IOS_BUNDLE_ID, 0, IOS_MINIMUM)
+    (url_type,) = plist["CFBundleURLTypes"]
+    assert url_type["CFBundleURLSchemes"] == ["halo"] and url_type["CFBundleURLName"] == IOS_BUNDLE_ID
+    header = (ROOT / "port/linux/src/p2p.h").read_text()
+    assert '#define P2P_PARTY_LINK_PREFIX "halo://party/"' in header
+
+
 def test_entitlements_ask_for_no_jit():
     """the address space and the memory; no JIT or unsigned executable
     memory, which iOS gives no app"""

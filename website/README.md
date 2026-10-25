@@ -108,11 +108,10 @@ anywhere" in `port/linux/README.md`): chat apps such as Steam's make
 after `#` (`#party=<32 hex digits>` for a party, `#join=<64>` for a game),
 which a browser never sends to the site; the page also takes an older
 address's `?join=` and `?party=`. The page opens the `halo://` link at once
-(not on Apple's systems, whose OpenH1 takes no links yet, and where the
-browser would say the address is not valid), shows the link to copy into
-JOIN BY LINK, and, when OpenH1 did not open (the page kept the focus) or
-the code is missing, the downloads, as the home page's (the visitor's
-machine first). Its style is the landing page's, its rules copied as
+(OpenH1 is its handler on every system, the Mac and the iPhone too), shows
+the link to copy into JOIN BY LINK, and, when OpenH1 did not open (the page
+kept the focus) or the code is missing, the downloads, as the home page's
+(the visitor's machine first). Its style is the landing page's, its rules copied as
 `maps.html`'s are; it is named from the site's root (`/fonts/...`), as it
 is in a folder. `tools/test_join_page.py` checks how it reads the links
 (with Node, when there is one) and that it loads nothing from other sites.
