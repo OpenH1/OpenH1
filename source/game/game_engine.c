@@ -1800,6 +1800,9 @@ static pixel32 scoreboard_background_color(
 	return color;
 }
 
+static short scoreboard_name_width(
+	short window_width);
+
 /* a row of the scoreboard: its text (tab separated) from the column's left
 (tabs: the column's stops), on the row below the title's (at top) */
 static void scoreboard_draw_row(
@@ -1832,7 +1835,7 @@ static void scoreboard_draw_row(
 	}
 	tab_stops[0] = left;
 	tab_stops[1] = (short)(left + SCOREBOARD_PLACE_WIDTH);
-	tab_stops[2] = (short)(tab_stops[1] + SCOREBOARD_NAME_WIDTH);
+	tab_stops[2] = (short)(tab_stops[1] + scoreboard_name_width((short)(bounds.x1 - bounds.x0)));
 	tab_stops[3] = (short)(tab_stops[2] + SCOREBOARD_SCORE_WIDTH);
 	draw_string_set_tab_stops(tabs ? tab_stops : NULL, tabs ? 4 : 0);
 	/* (the row as wide as the screen once scaled) */
@@ -1915,11 +1918,21 @@ static boolean scoreboard_ping_shown(
 	return network && !network_game_is_splitscreen_local();
 }
 
+/* the names' column's width in a view this wide: wider on a wide screen by
+half the width the menus' wide layout adds (ui_widget_port_wide_extra_of: to
+16:9's), in the scoreboard's text before it is scaled */
+static short scoreboard_name_width(
+	short window_width)
+{
+	return (short)(SCOREBOARD_NAME_WIDTH + ui_widget_port_wide_extra_of(window_width) / 2 / SCOREBOARD_SCALE);
+}
+
 /* a column's width: its place, name and score, and its ping if shown */
 static short scoreboard_column_width(
-	boolean ping_shown)
+	boolean ping_shown,
+	short name_width)
 {
-	return (short)(SCOREBOARD_PLACE_WIDTH + SCOREBOARD_NAME_WIDTH + SCOREBOARD_SCORE_WIDTH +
+	return (short)(SCOREBOARD_PLACE_WIDTH + name_width + SCOREBOARD_SCORE_WIDTH +
 		(ping_shown ? SCOREBOARD_PING_WIDTH : 0));
 }
 
@@ -2183,7 +2196,8 @@ static void game_engine_rasterize_scoreboard(
 		game_connection() == _game_connection_network_server;
 	boolean campaign = !game_engine;
 	boolean ping_shown = scoreboard_ping_shown(network);
-	short column_width = scoreboard_column_width(ping_shown);
+	short name_width = scoreboard_name_width((short)(bounds.x1 - bounds.x0));
+	short column_width = scoreboard_column_width(ping_shown, name_width);
 	boolean team_columns;
 	/* (the footer: how to pick a player, and where the scroll is) */
 	boolean pick_prompt;
@@ -2530,13 +2544,13 @@ static void game_engine_rasterize_scoreboard(
 			stop, then scaled as it is drawn, as scoreboard_rectangle has it;
 			within the name's column) */
 			text.x0 = (short)(row_left + SCOREBOARD_PLACE_WIDTH);
-			text.x1 = (short)(text.x0 + SCOREBOARD_NAME_WIDTH);
+			text.x1 = (short)(text.x0 + name_width);
 			text.y0 = (short)(top + (2 + row) * line_height);
 			text.y1 = (short)(text.y0 + line_height);
 			draw_string_set_draw_mode(font_index, NONE, 0, 0, row_color);
 			draw_unicode_string_compute_bounds(&text, player->name, &ink, &cursor);
 			middle = (short)(top + (draw_unicode_string_capital_middle(&text, player->name) - top) * SCOREBOARD_SCALE);
-			scoreboard_rectangle(&icon, bounds.x0, top, line_height, text.x0, SCOREBOARD_NAME_WIDTH, 2 + row, 1);
+			scoreboard_rectangle(&icon, bounds.x0, top, line_height, text.x0, name_width, 2 + row, 1);
 			size = (short)((icon.y1 - icon.y0) * 2 / 3);
 			name_end = (short)(bounds.x0 + (MAX(ink.x1, text.x0) - bounds.x0) * SCOREBOARD_SCALE);
 			icon.x0 = (short)MIN(name_end + 4, icon.x1 - size);
@@ -2848,7 +2862,10 @@ columns. The rows share the table's height, so that it fills the panel. The
 footer has the scores' buttons (game_engine_update_non_deterministic): the
 host's A picks the next game and B leaves, a client's B leaves, drawn as the
 keys that press them while the keyboard and mouse play (ui_widget.c's
-ui_widget_port_menu_key). Only what this machine draws changes. */
+ui_widget_port_menu_key). On a wide screen it is as wide as the menus' wide
+layout (ui_widget_port_wide_extra_of: to 16:9's, centred), its panel's ends
+at the screen's edges and the table's columns spread across it
+(carnage_report_sides). Only what this machine draws changes. */
 enum
 {
 	_carnage_column_place,
@@ -2866,6 +2883,9 @@ enum
 	footer's strip below), its sides' margin, and its parts' tops */
 	CARNAGE_LEFT = 24,
 	CARNAGE_RIGHT = 616,
+	/* (a wide screen's: the panel's columns this far in from its ends
+	stretched, clear of its title's backdrop) */
+	CARNAGE_PANEL_EDGE = 40,
 	CARNAGE_INFO_TOP = 72,
 	CARNAGE_INFO_BOTTOM = 88,
 	CARNAGE_BANNER_TOP = 92,
@@ -2877,6 +2897,8 @@ enum
 	CARNAGE_FOOTER_BOTTOM = 442,
 	/* the table's inner margin, its heading's height, and its rows' tallest */
 	CARNAGE_TABLE_PADDING = 10,
+	/* the table's width in the menus' 640 */
+	CARNAGE_TABLE_WIDTH = CARNAGE_RIGHT - CARNAGE_LEFT - 2 * CARNAGE_TABLE_PADDING,
 	CARNAGE_HEADING_HEIGHT = 18,
 	CARNAGE_MAXIMUM_ROW_HEIGHT = 30,
 	/* the columns' widths but the player's, which takes the rest */
@@ -2918,8 +2940,23 @@ struct carnage_row
 game_engine_switch_to_postgame), in ticks; NONE while it plays */
 static long carnage_report_game_ticks = NONE;
 
+/* the report's left and right on a screen this wide: the menus' 640 less
+CARNAGE_LEFT each side, and on a wide screen half the width its wide layout
+adds each side too */
+static void carnage_report_sides(
+	long screen_width,
+	short *left,
+	short *right)
+{
+	short half = (short)(ui_widget_port_wide_extra_of(screen_width) / 2);
+
+	*left = (short)(CARNAGE_LEFT - half);
+	*right = (short)(CARNAGE_RIGHT + half);
+}
+
 /* the table's columns, from left to right between left and right: a team
-game's have betrayals, which a free for all has none of; the count */
+game's have betrayals, which a free for all has none of; the count. A
+wider table (a wide screen's) has each as much wider, the player's the rest */
 static short carnage_report_columns(
 	boolean teams,
 	short left,
@@ -2935,12 +2972,17 @@ static short carnage_report_columns(
 	short fixed = 0;
 	short x = left;
 	short kind;
+	short spread[NUMBER_OF_CARNAGE_COLUMNS];
+	long table = MAX(right - left, 0);
 
 	for (kind = 0; kind < count; kind++)
-		fixed = (short)(fixed + widths[kind]);
+	{
+		spread[kind] = (short)(widths[kind] * MAX(table, CARNAGE_TABLE_WIDTH) / CARNAGE_TABLE_WIDTH);
+		fixed = (short)(fixed + spread[kind]);
+	}
 	for (kind = 0; kind < count; kind++)
 	{
-		short width = kind == _carnage_column_player ? (short)MAX(right - left - fixed, 0) : widths[kind];
+		short width = kind == _carnage_column_player ? (short)MAX(right - left - fixed, 0) : spread[kind];
 
 		columns[kind].kind = kind;
 		columns[kind].x0 = x;
@@ -3248,7 +3290,10 @@ static void carnage_report_banner(
 	real_argb_color color;
 	rectangle2d box;
 	rectangle2d text;
+	short left;
+	short right;
 
+	carnage_report_sides(halo_screen_width(), &left, &right);
 	box.y0 = CARNAGE_BANNER_TOP;
 	box.y1 = CARNAGE_BANNER_BOTTOM;
 	if (global_variant.universal_variant.teams)
@@ -3264,8 +3309,8 @@ static void carnage_report_banner(
 			/* (a tie: both or neither won) */
 			boolean tie = won[0] == won[1];
 
-			box.x0 = (short)(team == 0 ? CARNAGE_LEFT : (CARNAGE_LEFT + CARNAGE_RIGHT + CARNAGE_BANNER_GAP) / 2);
-			box.x1 = (short)(team == 0 ? (CARNAGE_LEFT + CARNAGE_RIGHT - CARNAGE_BANNER_GAP) / 2 : CARNAGE_RIGHT);
+			box.x0 = (short)(team == 0 ? left : (left + right + CARNAGE_BANNER_GAP) / 2);
+			box.x1 = (short)(team == 0 ? (left + right - CARNAGE_BANNER_GAP) / 2 : right);
 			if (won[team] && !tie)
 				carnage_report_box(&box, team == 0 ? 0xF02A0F16 : 0xF00A2456, 0xFF000000 | (team == 0 ? 0xFF6B5E : team_color));
 			else
@@ -3291,8 +3336,8 @@ static void carnage_report_banner(
 		boolean tie = (entries[0].place & 0x80000000) != 0;
 
 		carnage_report_name(entries[0].player_index, name);
-		box.x0 = CARNAGE_LEFT;
-		box.x1 = CARNAGE_RIGHT;
+		box.x0 = left;
+		box.x1 = right;
 		carnage_report_box(&box, 0xF00A2456, 0xFF5AA9FF);
 		if (tie)
 			usnprintf(label, NUMBEROF(label), L"TIED FOR FIRST");
@@ -3385,21 +3430,24 @@ static void carnage_report_footer(
 	boolean keys = halo_keyboard_prompts();
 	real_argb_color color;
 	rectangle2d bounds;
+	short left;
+	short right;
 
+	carnage_report_sides(halo_screen_width(), &left, &right);
 	carnage_report_color(CARNAGE_PROMPT, game_engine_globals.postgame_progress, &color);
 	draw_string_set_draw_mode(font_index, NONE, 0, 0, &color);
 	draw_string_set_tab_stops(NULL, 0);
 	bounds.y0 = CARNAGE_FOOTER_TOP + 6;
 	bounds.y1 = CARNAGE_FOOTER_BOTTOM;
-	bounds.x1 = 640;
+	bounds.x1 = (short)(right + CARNAGE_LEFT);
 	/* (each as wide as its text and button: the keys' caps, Enter and Esc,
 	are wider than the controller's buttons) */
-	bounds.x0 = (short)(CARNAGE_RIGHT - (keys ? 82 : 72));
+	bounds.x0 = (short)(right - (keys ? 82 : 72));
 	draw_string_and_hack_in_icons(&bounds, NULL, NULL, 0, L"%b-button LEAVE", FALSE);
 	if (server)
 	{
 		bounds.y0 = CARNAGE_FOOTER_TOP + 6;
-		bounds.x0 = (short)(CARNAGE_RIGHT - (keys ? 82 + 18 + 136 : 72 + 18 + 116));
+		bounds.x0 = (short)(right - (keys ? 82 + 18 + 136 : 72 + 18 + 116));
 		draw_string_and_hack_in_icons(&bounds, NULL, NULL, 0, L"%a-button NEXT GAME", FALSE);
 	}
 }
@@ -3428,10 +3476,13 @@ void game_engine_post_rasterize_post_game(
 	short row_height;
 	short top;
 	short column;
+	short left;
+	short right;
 	real text_height;
 
 	if (!game_engine)
 		return;
+	carnage_report_sides(halo_screen_width(), &left, &right);
 	teams = global_variant.universal_variant.teams;
 	small_font = carnage_report_font(FALSE);
 	large_font = carnage_report_font(TRUE);
@@ -3445,7 +3496,25 @@ void game_engine_post_rasterize_post_game(
 		bounds.y0 = 0;
 		bounds.x1 = 640;
 		bounds.y1 = 480;
-		if (bitmap_group_try_and_get_bitmap(hud_definition->carnage_report_bitmap.index, 0))
+		/* (on a wide screen, its ends at the screen's edges: the columns
+		CARNAGE_PANEL_EDGE in from its ends stretched, its middle, the
+		title's, as it is) */
+		if (bitmap_group_try_and_get_bitmap(hud_definition->carnage_report_bitmap.index, 0) &&
+			right - left > CARNAGE_RIGHT - CARNAGE_LEFT)
+		{
+			bounds.x0 = (short)(left - CARNAGE_LEFT);
+			bounds.x1 = (short)(right + CARNAGE_LEFT);
+			draw_bitmap_widened_in_rect(
+				bitmap_group_try_and_get_bitmap(hud_definition->carnage_report_bitmap.index, 0),
+				&bounds,
+				640,
+				CARNAGE_PANEL_EDGE,
+				NULL,
+				NONE,
+				NULL,
+				TRUE);
+		}
+		else if (bitmap_group_try_and_get_bitmap(hud_definition->carnage_report_bitmap.index, 0))
 		{
 			draw_bitmap_in_rect(
 				bitmap_group_try_and_get_bitmap(hud_definition->carnage_report_bitmap.index, 0),
@@ -3473,8 +3542,8 @@ void game_engine_post_rasterize_post_game(
 		usnprintf(string + length, NUMBEROF(string) - length, L"   /   %ld OF %ld PLAYERS", entry_count, all_count);
 		string[NUMBEROF(string) - 1] = 0;
 	}
-	bounds.x0 = CARNAGE_LEFT;
-	bounds.x1 = CARNAGE_RIGHT;
+	bounds.x0 = left;
+	bounds.x1 = right;
 	bounds.y0 = CARNAGE_INFO_TOP;
 	bounds.y1 = CARNAGE_INFO_BOTTOM;
 	carnage_report_color(CARNAGE_INFO, 1.0f, &color);
@@ -3485,8 +3554,8 @@ void game_engine_post_rasterize_post_game(
 	/* the table: its panel (ending under its last row, a few players' rows
 	at their tallest leaving the panel's foot, not the table, empty), its
 	heading, the players' rows, the teams' totals */
-	column_count = carnage_report_columns(teams, CARNAGE_LEFT + CARNAGE_TABLE_PADDING,
-		CARNAGE_RIGHT - CARNAGE_TABLE_PADDING, columns);
+	column_count = carnage_report_columns(teams, (short)(left + CARNAGE_TABLE_PADDING),
+		(short)(right - CARNAGE_TABLE_PADDING), columns);
 	row_height = carnage_report_row_height(entry_count + (teams ? 2 : 0),
 		CARNAGE_TABLE_BOTTOM - CARNAGE_TABLE_TOP - 2 * 4);
 	text_height = MIN(11.0f, 0.7f * row_height);
@@ -3517,7 +3586,7 @@ void game_engine_post_rasterize_post_game(
 		carnage_report_text(&bounds, heading, small_font, columns[column].justification, 8.0f, &color);
 	}
 	top = (short)(top + CARNAGE_HEADING_HEIGHT);
-	carnage_report_quad(CARNAGE_LEFT + CARNAGE_TABLE_PADDING, (short)(top - 1), CARNAGE_RIGHT - CARNAGE_TABLE_PADDING,
+	carnage_report_quad((short)(left + CARNAGE_TABLE_PADDING), (short)(top - 1), (short)(right - CARNAGE_TABLE_PADDING),
 		top, CARNAGE_RULE);
 	for (entry_index = 0; entry_index < entry_count; entry_index++)
 	{
@@ -3526,15 +3595,15 @@ void game_engine_post_rasterize_post_game(
 		top = (short)(top + row_height);
 		if (entry_index + 1 < entry_count)
 		{
-			carnage_report_quad(CARNAGE_LEFT + CARNAGE_TABLE_PADDING, (short)(top - 1),
-				CARNAGE_RIGHT - CARNAGE_TABLE_PADDING, top, CARNAGE_ROW_RULE);
+			carnage_report_quad((short)(left + CARNAGE_TABLE_PADDING), (short)(top - 1),
+				(short)(right - CARNAGE_TABLE_PADDING), top, CARNAGE_ROW_RULE);
 		}
 	}
 	if (teams)
 	{
 		short team;
 
-		carnage_report_quad(CARNAGE_LEFT + CARNAGE_TABLE_PADDING, top, CARNAGE_RIGHT - CARNAGE_TABLE_PADDING,
+		carnage_report_quad((short)(left + CARNAGE_TABLE_PADDING), top, (short)(right - CARNAGE_TABLE_PADDING),
 			(short)(top + 1), CARNAGE_RULE);
 		for (team = 0; team < 2; team++)
 		{

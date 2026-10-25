@@ -163,7 +163,8 @@ MENU_ATTRIBUTES = {
     "widget": {"name", "type", "controller", "flags", "bitmap", "text", "strings", "values", "setting", "font",
                "color", "align", "description", "string_list", "list_flags", "text_flags", "header_bitmap",
                "footer_bitmap", "header_bounds", "footer_bounds", "child_controller", "x", "y", "left", "top",
-               "width", "height", "text_x", "text_y", "auto_close", "auto_close_fade", "string_index", "platform"},
+               "width", "height", "text_x", "text_y", "auto_close", "auto_close_fade", "string_index", "platform",
+               "wide"},
     "child": {"widget", "controller", "x", "y", "platform"},
     "on": {"event", "run", "script", "open", "replace", "close", "widget", "focus", "reload", "sound", "otherwise",
            "label", "back", "branch", "platform"},
@@ -225,6 +226,10 @@ def test_menus_are_well_formed():
                 assert re.fullmatch(r"-?[0-9]+", value) and -32768 <= int(value) <= 32767, f"{where} {attribute}"
             for attribute in ("back", "branch", "if_failed"):
                 assert element.get(attribute) in (None, "true", "false"), f"{where} {attribute}"
+            # (menu_tags.c's wide layout: "dx dw", each within the extra width 16:9 has)
+            if element.get("wide") is not None:
+                assert re.fullmatch(r"-?[0-9]+ -?[0-9]+", element.get("wide")) and \
+                    all(abs(int(value)) <= 212 for value in element.get("wide").split()), f"{where} wide"
             assert not (element.text or "").strip() and not (element.tail or "").strip(), where
             if element.tag == "bitmap":
                 bitmaps[element.get("name")] = element
