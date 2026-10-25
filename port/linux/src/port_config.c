@@ -1154,7 +1154,8 @@ static const struct config_setting config_settings[] =
 		"\"host:<map>\" hosts a game on that map, \"local:<map>\" plays a local (split\n"
 		"screen) game on it, \"join\" joins the first game found,\n"
 		"\"browse\" the one with the most players the server browser lists (not\n"
-		"co-op, if it can), \"log\" logs the game that runs (and runs its cues);\n"
+		"co-op, if it can), \"follow\" its party leader's (debug.party), \"log\"\n"
+		"logs the game that runs (and runs its cues);\n"
 		"empty for none." },
 	{ "debug.network_test_start", _config_real, "15.0", "HALO_NETWORK_TEST_START", _environment_value, _platform_all,
 		"Seconds after hosting that an automated test game starts." },

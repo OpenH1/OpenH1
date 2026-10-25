@@ -22,6 +22,10 @@ Automated system link sessions for testing the netcode without the menus
   lists after five seconds (internet play's public games: a host's with
   debug.network_test_public), co-op ones last, as picking it there does,
   and then as "join". It logs what it lists.
+- "follow" (a party's member: debug.party) joins its party's leader's
+  internet game once the party asks it to (p2p_party_follow), its invite's
+  host reached, and then as "join": the Party screen's follow without the
+  menus (and so without a player profile);
 - "log" hosts and joins nothing: the game that runs (map_name, in init.txt,
   plays one without the menus) is logged, as below.
 
@@ -120,6 +124,7 @@ enum
 	_network_test_host,
 	_network_test_join,
 	_network_test_browse,
+	_network_test_follow,
 	_network_test_log,
 };
 
@@ -232,6 +237,10 @@ static void network_test_read_settings(
 	else if (!strcmp(setting, "browse"))
 	{
 		network_test.mode = _network_test_browse;
+	}
+	else if (!strcmp(setting, "follow"))
+	{
+		network_test.mode = _network_test_follow;
 	}
 	else if (!strcmp(setting, "log"))
 	{
@@ -1587,6 +1596,21 @@ void network_test_update(
 		{
 			p2p_lobby_browse(FALSE);
 			platform_log("network test: joining %s's game (%s) from the server browser", games[0].name, games[0].map);
+			network_test.mode = _network_test_join;
+		}
+		break;
+	}
+	case _network_test_follow:
+	{
+		char link[128];
+		unsigned long order = 0;
+
+		/* (the leader's internet game: its host reached by its invite, then
+		joined as "join" joins) */
+		if (p2p_party_follow(link, sizeof(link), &order) == _p2p_party_game_invite && p2p_join_invite(link))
+		{
+			p2p_party_follow_result(order, _p2p_party_follow_joined);
+			platform_log("network test: following the party's leader into its game");
 			network_test.mode = _network_test_join;
 		}
 		break;
