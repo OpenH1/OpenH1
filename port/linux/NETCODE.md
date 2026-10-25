@@ -1253,7 +1253,7 @@ game without the menus (in a team game the joining player takes the other
 team; `local:<map>` plays a local split screen game instead, which the
 bots of `bots.count` join), and `debug.test_input` plays controller 1 with a scripted bot (or,
 `look:<seed>`, one that stands still, only turning and looking up and
-down); each machine logs every player's position, health and shields,
+down) in the game alone, leaving the menus and the lobby to the test; each machine logs every player's position, health and shields,
 where they aim and face, their animation state and how hard they move,
 weapons, grenades, score, kills and deaths every second, with the objects
 made and removed and the hits reported, dealt, rejected and replayed, so
