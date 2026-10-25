@@ -641,6 +641,10 @@ def play(run_folder, host_copy, clients, map_name, args, host_extra, seeds):
     base = args.address_base.rsplit(".", 1)
     host_address = args.address_base
     client_addresses = [f"{base[0]}.{int(base[1]) + 1 + number}" for number in range(len(clients))]
+    # (or the addresses given: a Mac's loopback has 127.0.0.1 alone, so a host on its network address and a
+    # client on 127.0.0.1)
+    for number, address in enumerate(args.client_address[:len(clients)]):
+        client_addresses[number] = address
     host_log = run_folder / "host.log"
     client_logs = [run_folder / ("client.log" if not number else f"client{number + 1}.log")
                    for number in range(len(clients))]
@@ -980,6 +984,9 @@ def main():
     parser.add_argument("--seed", type=int, default=1, help="the bots' first seed (each run its own)")
     parser.add_argument("--address-base", default="127.0.0.210",
                         help="the host's loopback address; the client takes the next")
+    parser.add_argument("--client-address", action="append", default=[], metavar="ADDRESS",
+                        help="a client's address in place of the next after the host's (repeatable: the first "
+                             "client's, then the second's)")
     parser.add_argument("--window", action="store_true",
                         help="draw in a hidden window instead of the null renderer, on the display the tool has "
                              "(DISPLAY or WAYLAND_DISPLAY; a virtual one, Xvfb, rather than a desktop), or --display's")
