@@ -75,6 +75,8 @@ extern unsigned char pc_menu_split_players(void);
 /* port/linux/game/network_test.c: the game's time in seconds while one runs,
 else -1 */
 extern double network_test_game_seconds(void);
+/* main/main.c: the menus' map is loaded (the menus are up, the lobby too) */
+extern unsigned char main_menu_is_loaded(void);
 /* port/linux/game/sim_trace.c: the simulation's clock, seconds from the
 scenario's start to the step to come (negative before it starts); the
 player's view turned to a yaw and pitch, in degrees (debug.test_input
@@ -1598,6 +1600,12 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 		test_latency_gamepad(pad, seed);
 		return;
 	}
+	/* (a game's player alone, never the menus': its stick and its A every
+	few seconds would work the lobby, whose GAME SETTINGS opens Server Setup
+	over a network test's game, which makes it private, out of the server
+	browser, and whose START GAME there sets its gametype) */
+	if (main_menu_is_loaded())
+		return;
 	if (test_input_holding_action)
 	{
 		/* (standing still, the button held from a second on) */
