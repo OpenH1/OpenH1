@@ -1441,13 +1441,15 @@ static void add_heard(const unsigned char *key, const unsigned char *code, unsig
 	}
 	if (find_sent(code))
 	{
-		/* (asked for: friends now) */
+		/* (asked for: friends now. An ADD back, as an accept sends: both may
+		have asked at once, this profile's own not sent yet) */
 		record = friend_make(key, name);
 		if (!record)
 			return;
 		record->last_time = time;
 		p2p_log("Friends: %s accepted; friends now", name);
 		notice(_p2p_friends_notice_accepted, name);
+		send_add(code);
 		send_hello(record);
 		return;
 	}
@@ -2276,6 +2278,22 @@ void p2p_friends_saw_player(const unsigned char *code, const char *name, int ope
 	{
 		pthread_mutex_unlock(&p2p_lock);
 		return;
+	}
+	/* (a player of a code noted before as one of none, by its name, as its
+	code came after: that one let go) */
+	for (index = 0; code && index < P2P_FRIENDS_RECENT; index++)
+	{
+		struct recent_record *recent = &friends.recent[index];
+
+		if (recent->used && !recent->has_code && !recent->opence && !strcmp(recent->name, cleaned) &&
+			now - recent->time < RECENT_SEEN_SECONDS * 10)
+		{
+			memmove(recent, recent + 1, sizeof(*recent) * (size_t)(P2P_FRIENDS_RECENT - 1 - index));
+			memset(&friends.recent[P2P_FRIENDS_RECENT - 1], 0, sizeof(friends.recent[0]));
+			if (record > recent)
+				record--;
+			index--;
+		}
 	}
 	/* (the newest first: those before it moved down, the oldest let go) */
 	if (!record)

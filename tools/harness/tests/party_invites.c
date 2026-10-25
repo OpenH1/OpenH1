@@ -1419,7 +1419,9 @@ static void case_friends(void)
 		CHECK(network_party_player_actions(datum(OTHER_PLAYER)) & add, "Add friend on a client too");
 	}
 	/* (the recent players: the others, not bots, OpenCE's said so, codes
-	where the host told them) */
+	where the host told them; none at the game's start, before the host has
+	told the codes) */
+	CHECK(seen_count == 0, "none noted at once: %d", seen_count);
 	seen_count = 0;
 	opence_heard[OPENCE_PLAYER] = TRUE;
 	frame(FRIEND_RECENT_MILLISECONDS + 1);

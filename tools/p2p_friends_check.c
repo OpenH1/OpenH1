@@ -721,6 +721,22 @@ static void case_mutual(void)
 	run(3000);
 	check(relation(a, b) == _p2p_friend_online && relation(b, a) == _p2p_friend_online,
 		"asking each other is accepting");
+	/* (at once: D's ask heard by C before C's own went; C answers it) */
+	{
+		int c = add_machine("Cortana"), d = add_machine("Foe");
+
+		run(500);
+		add(c, d);
+		add(d, c);
+		switch_to(d);
+		pthread_mutex_lock(&p2p_lock);
+		p2p_friends_update();
+		pthread_mutex_unlock(&p2p_lock);
+		deliver();
+		check(relation(c, d) == _p2p_friend_online, "C, its own ask not sent yet, is D's friend");
+		run(3000);
+		check(relation(d, c) == _p2p_friend_online, "and D is C's at once, not after ADD_INTERVAL");
+	}
 }
 
 static void case_offline(void)
@@ -1006,6 +1022,15 @@ static void case_recent(void)
 	count = p2p_friends_list(list_buffer, P2P_FRIENDS_LIST_MAXIMUM);
 	check(count == 2 && !strcmp(list_buffer[0].name, "Johnson") && !strcmp(list_buffer[0].game, "CTF"),
 		"seen again: moved up, once");
+	/* (a player noted before its code came, then with it: once, with it) */
+	wall_now += 100;
+	p2p_friends_saw_player(NULL, "Foe Hammer", 0, "CTF");
+	code[1] = 0x55;
+	p2p_friends_saw_player(code, "Foe Hammer", 0, "CTF");
+	count = p2p_friends_list(list_buffer, P2P_FRIENDS_LIST_MAXIMUM);
+	check(count == 3 && !strcmp(list_buffer[0].name, "Foe Hammer") && list_buffer[0].has_code &&
+		strcmp(list_buffer[1].name, "Foe Hammer"), "a player noted before its code came: once, with it");
+	code[1] = 0x44;
 	for (index = 0; index < P2P_FRIENDS_RECENT + 10; index++)
 	{
 		code[0] = (unsigned char)index;

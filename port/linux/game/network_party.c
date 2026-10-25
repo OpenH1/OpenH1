@@ -1430,10 +1430,16 @@ static void party_recent_update(
 	if ((connection != _game_connection_network_client && connection != _game_connection_network_server) ||
 		!game_in_progress() || !config_boolean("network.online"))
 	{
+		party_globals.recent_time = 0;
 		return;
 	}
-	if (party_globals.recent_time && now - party_globals.recent_time < FRIEND_RECENT_MILLISECONDS)
+	/* (the first a while into the game: the host has told the codes) */
+	if (!party_globals.recent_time || now - party_globals.recent_time < FRIEND_RECENT_MILLISECONDS)
+	{
+		if (!party_globals.recent_time)
+			party_globals.recent_time = now | 1;
 		return;
+	}
 	party_globals.recent_time = now | 1;
 	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
 	{

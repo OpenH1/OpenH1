@@ -107,8 +107,11 @@ NEGATIVE_CONTROLS = {
                            "\n\t\t{\n\t\t\tcontinue;"), "friends"),
     "legacy-codes-noted": (("coded = party_game() && party_globals.codes[player_index].has;",
                             "coded = party_globals.codes[player_index].has;"), "friends"),
-    "recent-every-frame": (("\tif (party_globals.recent_time && now - party_globals.recent_time < "
-                            "FRIEND_RECENT_MILLISECONDS)\n\t\treturn;\n", ""), "friends"),
+    "recent-every-frame": (("\tif (!party_globals.recent_time || now - party_globals.recent_time < "
+                            "FRIEND_RECENT_MILLISECONDS)\n", "\tif (!party_globals.recent_time)\n"), "friends"),
+    "recent-at-once": (("\tif (!party_globals.recent_time || now - party_globals.recent_time < "
+                        "FRIEND_RECENT_MILLISECONDS)\n", "\tif (party_globals.recent_time && now - "
+                        "party_globals.recent_time < FRIEND_RECENT_MILLISECONDS)\n"), "friends"),
 }
 
 
