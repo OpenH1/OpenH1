@@ -441,6 +441,21 @@ static void lobby_checks(void)
 	check(published[published_size - P2P_SIGNATURE_SIZE - 5] == 0 && games(&listing) == 1 && listing.bots == 0,
 		"a game whose bots left lists none");
 	check(listing.holds_party, "and holds room for a party too");
+	check(published[published_size - P2P_SIGNATURE_SIZE - 3] == 0 && listing.playlist == 0,
+		"a game of no matchmaking playlist lists none");
+	/* a matchmaking game: its playlist in the stamp's sixth byte */
+	p2p_set_game_listing_playlist(3);
+	clock_now += 6000;
+	lobby_update(token, 3, 16);
+	hear(published, published_size, 0, NULL);
+	check(published[published_size - P2P_SIGNATURE_SIZE - 3] == 3 && games(&listing) == 1 && listing.playlist == 3,
+		"a matchmaking game is listed with its playlist");
+	p2p_set_game_listing_playlist(0);
+	clock_now += 6000;
+	lobby_update(token, 3, 16);
+	hear(published, published_size, 0, NULL);
+	check(published[published_size - P2P_SIGNATURE_SIZE - 3] == 0 && games(&listing) == 1 && listing.playlist == 0,
+		"and with none once it is no longer hosted for it");
 	p2p_set_game_listing_standard(1, 0, 120);
 	clock_now += 6000;
 	lobby_update(token, 3, 16);

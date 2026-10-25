@@ -142,6 +142,10 @@ void p2p_set_game_listing_standard(int standard, int mixed, int rate);
 /* ... and the bots its host plays (port/linux/game/bots.c), which the
 players' count (p2p_set_game_player_counts) leaves out */
 void p2p_set_game_bots(int count);
+/* ... and the matchmaking playlist it was hosted for (port/linux/game/
+matchmaking_menu.inc's; 0: none, a game of its own), which the browsers of
+those looking for a game of the playlist find it by */
+void p2p_set_game_listing_playlist(int playlist);
 /* the server browser: while on, the public games are gathered (asked for
 when turned on, and by p2p_lobby_refresh) */
 void p2p_lobby_browse(int on);
@@ -184,6 +188,8 @@ struct p2p_listing
 	(port/linux/game/network_party.c): an OpenH1 game of a build that does,
 	which this one joins as an OpenH1 game */
 	unsigned char holds_party;
+	/* the matchmaking playlist it was hosted for (an OpenH1 game's; 0: none) */
+	unsigned char playlist;
 	/* joining it failed this run (p2p_lobby_mark_failed) */
 	unsigned char failed;
 	/* milliseconds, -1 if not known */
@@ -497,6 +503,28 @@ int p2p_party_follow(char *invite, int size, unsigned long *order);
 void p2p_party_follow_result(unsigned long order, int result);
 /* the leader's game asked to be joined again (JOIN LEADER) */
 void p2p_party_follow_again(void);
+/* hosting for the party (matchmaking: port/linux/game/matchmaking_menu.inc).
+How well this machine can host a game now, which a member's STATE tells its
+leader (_p2p_party_host_*: each frame, the same again costing little) */
+enum
+{
+	/* not now (in a game, or not in the menus), or not known (a build
+	that does not say) */
+	_p2p_party_host_unable,
+	/* a strict NAT: some players will not reach it */
+	_p2p_party_host_strict,
+	_p2p_party_host_open,
+};
+void p2p_party_set_host_quality(int quality);
+/* a leader that would host a game for the party (of the matchmaking
+playlist, 1 to 255): the lead passed to the member that can host best, if
+one can better than this machine (it then leads and hosts, and this machine
+follows it): nonzero if it was; 0 (this machine hosts) if none can, or this
+machine leads none */
+int p2p_party_pass_host(int playlist);
+/* the playlist this machine was asked to host a game of, as its party's new
+leader, once (0: none) */
+int p2p_party_take_host_request(void);
 /* the party's other members, if this machine leads it: the hash of each
 one's tunnel key (P2P_PLAYER_KEY_HASH_SIZE bytes each, into hashes: the
 X25519 form of its party key, the key a game's host knows it by,

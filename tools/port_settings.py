@@ -1715,7 +1715,7 @@ MULTIPLAYER_ROWS = {
         "multiplayer_type_create_bots_item"])}
 # (the screen's line, in the PC version's line's place: the hub's, over
 # EDIT GAMETYPES, _hub)
-MULTIPLAYER_LINE_PLACE = (28, 336)
+MULTIPLAYER_LINE_PLACE = (28, 364)
 # the screen's children for one platform only (tools/ce_menus.py): the
 # computer's list and its line (the hub's, in the PC version's places:
 # WIDGET_PATCHES' swap), the touchscreen's tiles in their place (_touch_hub)
@@ -3373,6 +3373,7 @@ HUB_DESCRIPTIONS = [
     "Host a game on the Internet, or for players on your local network only.",
     "Play the campaign together: online, or split screen on this computer.",
     "Group up with friends: they join with your party's link, and come with you to every game you host or join.",
+    "Pick a playlist: OpenH1 finds a game with room for you and your party, or hosts one that fills up.",
 ]
 
 
@@ -3816,6 +3817,9 @@ def _hub() -> list:
         "hub_join_internet": ("SERVER BROWSER", joins(browser), "browser_note"),
         "hub_join_lan_item": ("LOCAL NETWORK", joins(browser), "item_note"),
         "hub_join_direct": ("JOIN BY LINK", joins(browser), "invite_note"),
+        # (matchmaking's screen: _matchmaking)
+        "hub_matchmaking": ("MATCHMAKING", [f'<on event="{event}" open="{MT}/matchmaking/matchmaking_screen"/>'
+                                            for event in ("a", "start")], "matchmaking_note"),
         # (the party's screen: _party)
         "hub_party": ("PARTY", [f'<on event="{event}" open="{MT}/party/party_screen"/>' for event in ("a", "start")],
                       "party_note"),
@@ -3854,8 +3858,9 @@ def _hub() -> list:
                                          ("description", f"{HUB}/hub_panel")],
                        ['<data input="port multiplayer status"/>', *children])
 
-    lines = page_list("hub_list", [("section_online", "PLAY ONLINE", ["hub_join_internet", "hub_join_lan_item",
-                                                                      "hub_join_direct", "hub_party"]),
+    lines = page_list("hub_list", [("section_online", "PLAY ONLINE", ["hub_matchmaking", "hub_join_internet",
+                                                                      "hub_join_lan_item", "hub_join_direct",
+                                                                      "hub_party"]),
                                    ("section_host", "HOST", ["hub_create", "hub_create_bots", "hub_coop"]),
                                    (None, None, ["hub_gametypes"])], "hub_prompts")
     lines += _section(f"{HUB}/section_online", "PLAY ONLINE", item_w, wide(-WIDE_HALF, HUB_WIDE_ITEMS))
@@ -3889,7 +3894,7 @@ def _hub() -> list:
     # menu_functions.c's multiplayer_status_notes)
     # (right-aligned in from the highlight's end, clear of the items' words)
     for name, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C"),
-                        ("party_note", "#FF7FB2FF")):
+                        ("party_note", "#FF7FB2FF"), ("matchmaking_note", "#FF5ED38C")):
         lines += _widget(f"{HUB}/{name}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
                                            ("wide", wide(0, HUB_WIDE_ITEMS)),
                                            ("font", "ui\\small_ui"), ("color", color), ("align", "right"),
@@ -3987,6 +3992,89 @@ def _party() -> list:
                                             ("flags", "pass_unhandled_to_focused_child up_down_tabs_children")],
                      ['<data input="port party update"/>', f'<child widget="{base}/party_prompts" y="414"/>'])
     lines += _prompts(base, "party_prompts", PARTY_PROMPTS)
+    return lines
+
+
+# the Matchmaking screen's (_matchmaking): a row for each playlist
+# (matchmaking.c's), and its footer's prompts (menu_functions.c's
+# matchmaking_screen_update shows SEARCH or CANCEL)
+MATCHMAKING_ROWS = 5
+MATCHMAKING_PROMPTS = [
+    ("prompt_search", "%a-button SEARCH", 28, 124, '<on event="a" run="port matchmaking button"/>'),
+    ("prompt_cancel", "%x-button CANCEL", 28, 124, '<on event="a" run="port matchmaking button"/>'),
+    ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="port matchmaking button"/>'),
+]
+
+
+def _matchmaking() -> list:
+    """the Matchmaking screen (port/linux/game/matchmaking_menu.inc), in
+    Multiplayer's look (_hub's parts): MATCHMAKING's section over a row for
+    each playlist (its name, and at its end what its search is doing), the
+    panel beside them (the playlist chosen's name and what it is, the search:
+    its time, the games it found and what it does now, and what matchmaking
+    is), and the footer's key prompts: SEARCH (A, a row's A or click: the
+    playlist searched for the whole party) or, while a search goes on, CANCEL
+    (X), and BACK. On a wide screen it is laid out as Multiplayer is
+    (HUB_WIDE_ITEMS, HUB_WIDE_PANEL)"""
+    base = f"{MT}/matchmaking"
+    left, top, width, height = HUB_PANEL
+    item_w, item_h = HUB_ITEM
+    step = item_h + 2
+    items_wide = wide(-WIDE_HALF, HUB_WIDE_ITEMS)
+    rows = [f'<child widget="{base}/mm_row_{row}" x="{HUB_LIST_X}" y="{top + PART_SECTION_HEIGHT + 2 + step * row}"/>'
+            for row in range(MATCHMAKING_ROWS)]
+    lines = _widget(f"{base}/matchmaking_screen", [("width", 640), ("height", 480),
+                                                   ("flags", "pass_unhandled_to_focused_child"),
+                                                   ("bitmap", "bitmaps/gradient")],
+                    ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                     '<on event="x" run="port matchmaking x"/>', f'<child widget="{MT}/header_multiplayer"/>',
+                     f'<child widget="{base}/section_matchmaking" x="{HUB_LIST_X}" y="{top}"/>',
+                     f'<child widget="{base}/matchmaking_panel"/>', f'<child widget="{base}/matchmaking_list"/>'])
+    lines += _section(f"{base}/section_matchmaking", "MATCHMAKING", item_w, items_wide)
+    lines += _widget(f"{base}/matchmaking_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                                  ("flags", "pass_unhandled_to_focused_child up_down_tabs_items")],
+                     ['<data input="port matchmaking update"/>', *rows,
+                      f'<child widget="{base}/matchmaking_prompts" y="414"/>'])
+    # (a playlist's row: its name, filled in, and what its search does at
+    # its end)
+    for row in range(MATCHMAKING_ROWS):
+        lines += _widget(f"{base}/mm_row_{row}", [("type", "text"), ("width", item_w), ("height", item_h),
+                                                  ("wide", items_wide), ("bitmap", part_highlight(item_w, item_h)),
+                                                  ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE), ("text_x", 10),
+                                                  ("text_y", 5)],
+                         ['<on event="a" run="port matchmaking button"/>',
+                          '<on event="start" run="port matchmaking button"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          f'<child widget="{base}/mm_note_{row}"/>'])
+        lines += _widget(f"{base}/mm_note_{row}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
+                                                   ("wide", wide(0, HUB_WIDE_ITEMS)), ("font", "ui\\small_ui"),
+                                                   ("color", "#FF5ED38C"), ("align", "right"), ("text_y", 8),
+                                                   ("text_flags", "no_focus_test")], [])
+    # (the panel, Multiplayer's: menu_functions.c's matchmaking_screen_update)
+    x, inner = left + 14, width - 28
+    panel = []
+
+    def text(name, ty, h, font, color, words=None):
+        panel.append(f'<child widget="{base}/{name}"/>')
+        pairs = [("left", x), ("top", top + ty), ("width", inner), ("height", h), ("font", font), ("color", color),
+                 ("wide", wide(0, HUB_WIDE_PANEL[1]))]
+        return (_widget(f"{base}/{name}", [("type", "text"), ("controller", 1), *pairs, ("text", words),
+                                           ("text_flags", "no_focus_test")], [])
+                if words else _part_text(f"{base}/{name}", pairs))
+
+    lines += text("panel_title", 14, 24, "ui\\large_ui", "#FFFFFFFF")
+    lines += text("panel_about", 40, 36, "ui\\small_ui", SETTINGS_BLUE)
+    lines += text("panel_status_label", 84, 16, "ui\\small_ui", PART_DIM, words="SEARCH")
+    lines += text("panel_status", 100, 24, "ui\\large_ui", "#FFFFFFFF")
+    lines += text("panel_detail", 126, 84, "ui\\small_ui", SETTINGS_BLUE)
+    lines += text("panel_help", height - 76, 64, "ui\\small_ui", SETTINGS_BLUE,
+                  words="Matchmaking finds a game with room for your whole party, by ping, or hosts one that "
+                        "players searching the same playlist join. Your party comes with you.")
+    lines += _widget(f"{base}/matchmaking_panel", [("controller", 1), ("left", left), ("top", top),
+                                                   ("width", width), ("height", height),
+                                                   ("bitmap", part_panel(width, height)),
+                                                   ("wide", wide(*HUB_WIDE_PANEL))], panel)
+    lines += _prompts(base, "matchmaking_prompts", MATCHMAKING_PROMPTS)
     return lines
 
 
@@ -4776,6 +4864,7 @@ def multiplayer_files() -> dict:
         f"{MT}/coop".replace("/", ".") + ".xml": head + _coop() + ["</menus>", ""],
         f"{MT}/bots".replace("/", ".") + ".xml": head + _bots() + ["</menus>", ""],
         f"{MT}/party".replace("/", ".") + ".xml": head + _party() + ["</menus>", ""],
+        f"{MT}/matchmaking".replace("/", ".") + ".xml": head + _matchmaking() + ["</menus>", ""],
         f"{MT}/party/touch".replace("/", ".") + ".xml": head + _touch_party() + ["</menus>", ""],
         HOST_CONTROLS.replace("/", ".") + ".xml": head + _host_controls() + ["</menus>", ""],
         f"{HOST_CONTROLS}/touch".replace("/", ".") + ".xml": head + _touch_host_controls()[1] + ["</menus>", ""],

@@ -810,6 +810,15 @@ A party's leader joins a game first and its members follow it in
   and the host decides. In a team game the host puts a party's player on the
   team most of its party is on, if that team has half the game's players or
   fewer; the lobby's auto team balance moves a player of no party first.
+- Matchmaking (`port/linux/game/matchmaking.c`) adds nothing to the game's
+  messages: a host lists the playlist it hosts for in the listing's stamp
+  (its sixth byte, the playlist's number; an OpenH1 game's alone), and a
+  party picks its host among its members by a byte a member adds to its
+  STATE after its name (how well it can host now: unable, strict NAT, open;
+  a leader's STATE has none, and older builds read no further than the
+  name) and a HOST message (`'H'`, the member's id and the playlist) that
+  the member takes by taking the lead (`p2p_party.c`). An older build
+  passes over the type and never sends the byte, so it is never asked.
 - The listing's stamp says the host holds room (its fifth byte, 1). A
   Legacy host, and an older OpenH1 one (which drops 128 as a kind it does not
   know), hold nothing: the browser says there is no room guarantee and the
