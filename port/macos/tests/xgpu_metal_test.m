@@ -119,6 +119,23 @@ void host_render_stream_set_backend(const struct host_render_backend *backend)
 	(void)backend;
 }
 
+void host_render_stream_set_screenshot_writer(host_render_screenshot_writer writer)
+{
+	(void)writer;
+}
+
+int host_screenshot_write(unsigned char *bgra, uint32_t width, uint32_t height, const char *directory, char *name,
+	uint32_t name_size)
+{
+	(void)bgra;
+	(void)width;
+	(void)height;
+	(void)directory;
+	(void)name;
+	(void)name_size;
+	return 0;
+}
+
 const struct xgpu_stream_ring *host_render_stream_ring(void)
 {
 	return NULL;

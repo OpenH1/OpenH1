@@ -330,8 +330,9 @@ static void stream_clear_target(void *context, const struct xgpu_stream_clear_ta
 }
 
 /* an RGBA16F target's pixels (display.hdr's back buffer) as BGRA8, as an
-SDR display shows them (clamped to [0, 1]); 0 if they cannot be read */
-static int read_half_floats(struct stream_target *entry, uint32_t layer, unsigned char *bgra)
+SDR display shows them (clamped to [0, 1]), or tone mapped into [0, 1]
+(xgpu_hdr_sdr_pixel: the screenshot key's); 0 if they cannot be read */
+static int read_half_floats(struct stream_target *entry, uint32_t layer, unsigned char *bgra, int tone_map)
 {
 	uint32_t width = entry->description.width, height = entry->description.height;
 	__fp16 *halves = malloc((size_t)width * height * 8);
@@ -345,6 +346,14 @@ static int read_half_floats(struct stream_target *entry, uint32_t layer, unsigne
 	{
 		int channel;
 
+		if (tone_map)
+		{
+			float rgba[4] = { (float)halves[pixel * 4], (float)halves[pixel * 4 + 1], (float)halves[pixel * 4 + 2],
+				(float)halves[pixel * 4 + 3] };
+
+			xgpu_hdr_sdr_pixel(rgba, bgra + pixel * 4);
+			continue;
+		}
 		for (channel = 0; channel < 4; channel++)
 		{
 			float value = (float)halves[pixel * 4 + channel];
@@ -371,7 +380,8 @@ static int stream_read_target(void *context, const struct xgpu_stream_read_targe
 	if ((uint64_t)width * height * 4 > record->size)
 		return 0;
 	if (entry->description.format == XGPU_METAL_FORMAT_RGBA16F)
-		return read_half_floats(entry, record->layer > 0 ? (uint32_t)record->layer : 0, host_pointer(record->pixels));
+		return read_half_floats(entry, record->layer > 0 ? (uint32_t)record->layer : 0, host_pointer(record->pixels),
+			record->tone_map != 0);
 	return xgpu_metal_read_pixels(entry->texture, 0, record->layer > 0 ? (uint32_t)record->layer : 0, 0, 0, width, height,
 		host_pointer(record->pixels), width * 4);
 }
@@ -455,7 +465,7 @@ int xgpu_metal_stream_shot(uint32_t target, const char *path)
 		return 0;
 	if (entry->description.format == XGPU_METAL_FORMAT_RGBA16F)
 		shot_half_floats(entry, path);
-	if (entry->description.format == XGPU_METAL_FORMAT_RGBA16F ? read_half_floats(entry, 0, pixels) :
+	if (entry->description.format == XGPU_METAL_FORMAT_RGBA16F ? read_half_floats(entry, 0, pixels, 0) :
 		xgpu_metal_read_pixels(entry->texture, 0, 0, 0, 0, width, height, pixels, width * 4))
 	{
 		CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);

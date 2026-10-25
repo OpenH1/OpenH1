@@ -4304,84 +4304,31 @@ void d3d8_gl_set_height_fade(float inverse_softness, float height, float offset,
 
 /* ---------- presentation */
 
-#ifndef HALO_GUEST
-/* the screenshot key's PNG (controls.screenshot; a guest has none of the
-SDL calls it takes) */
+/* the screenshot key's picture (controls.screenshot): the frame as it is
+presented, written by the host as a PNG in the data folder's screenshots
+(xgpu_backend_screenshot: named for the local date and time), and a note on
+screen */
 static void write_key_screenshot(struct render_target_entry *target)
 {
-	char directory[512], path[640], timestamp[32], filename[64];
-	SDL_Time now;
-	SDL_DateTime date;
-	SDL_Surface *surface = NULL;
-	unsigned int collision;
-	unsigned long width = target->target.pixel_width, height = target->target.pixel_height;
-	unsigned char *read;
-	unsigned long row, column;
+	char directory[512], name[64];
 
 	if (snprintf(directory, sizeof(directory), "%s/screenshots", platform_data_root()) >= (int)sizeof(directory))
 	{
-		SDL_SetError("Screenshot directory path is too long");
-		goto failed;
+		console_printf(FALSE, "Screenshot failed: the folder's path is too long");
+		return;
 	}
-	if (!SDL_CreateDirectory(directory) || !SDL_GetCurrentTime(&now) || !SDL_TimeToDateTime(now, &date, true))
-		goto failed;
-	snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d_%02d.%02d.%02d",
-		date.year, date.month, date.day, date.hour, date.minute, date.second);
-	for (collision = 0; collision < 1000; collision++)
+	if (xgpu_backend_screenshot(target->target.number, directory, name, sizeof(name)))
 	{
-		if (collision)
-			snprintf(filename, sizeof(filename), "%s_%u.png", timestamp, collision + 1);
-		else
-			snprintf(filename, sizeof(filename), "%s.png", timestamp);
-		snprintf(path, sizeof(path), "%s/%s", directory, filename);
-		if (!SDL_GetPathInfo(path, NULL))
-			break;
+		console_printf(FALSE, "Screenshot saved: %s", name);
+		platform_log("screenshot: saved %s/%s", directory, name);
 	}
-	if (collision == 1000)
+	else
 	{
-		SDL_SetError("Too many screenshots with the same timestamp");
-		goto failed;
+		console_printf(FALSE, "Screenshot failed: %s", name[0] ? name : "no renderer");
+		platform_log("screenshot: failed (%s)", name[0] ? name : "no renderer");
 	}
-	if (!width || !height || width > INT_MAX / 4 || height > INT_MAX)
-	{
-		SDL_SetError("Invalid screenshot dimensions");
-		goto failed;
-	}
-	surface = SDL_CreateSurface((int)width, (int)height, SDL_PIXELFORMAT_BGRA32);
-	if (!surface)
-		goto failed;
-	/* the render target before the display blit's vertical flip: its row
-	zero is the top of the image */
-	read = xgpu_backend_read_target(target->target.number, -1, TRUE);
-	if (!read)
-	{
-		SDL_SetError("the screenshot's pixels could not be read");
-		goto failed;
-	}
-	for (row = 0; row < height; row++)
-		memcpy((unsigned char *)surface->pixels + (size_t)row * surface->pitch, read + row * width * 4, width * 4);
-	free(read);
-	/* Destination alpha is scratch data in the game, not transparency. */
-	for (row = 0; row < height; row++)
-	{
-		unsigned char *pixels = (unsigned char *)surface->pixels + (size_t)row * surface->pitch;
-
-		for (column = 0; column < width; column++)
-			pixels[column * 4 + 3] = 0xff;
-	}
-	if (!SDL_SavePNG(surface, path))
-		goto failed;
-	SDL_DestroySurface(surface);
-	console_printf(FALSE, "Saved screenshot as %s", filename);
-	return;
-
-failed:
-	console_printf(FALSE, "Screenshot failed: %.180s", SDL_GetError());
-	if (surface)
-		SDL_DestroySurface(surface);
 }
 
-#endif
 /* writes BGRA pixels as a BMP named <name><frame>.bmp in the screenshot
 folder: rows from the top (as the game's targets hold them), or from the
 bottom (as the VR mode's eye images do) */
@@ -4889,10 +4836,8 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 				free(pixels);
 			}
 		}
-#ifndef HALO_GUEST
 		if (platform_screenshot_take_request())
 			write_key_screenshot(back_buffer);
-#endif
 		xgpu_backend_present(back_buffer->target.number);
 		memory_watch_begin_frame();
 		xgpu_backend_frame_end();

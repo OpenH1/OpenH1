@@ -181,6 +181,22 @@ the guest starts (macOS: the Metal backend). Without one,
 host_render_stream_open fails and the guest keeps its own renderer. */
 void host_render_stream_set_backend(const struct host_render_backend *backend);
 
+/* the screenshot key's file (XGPU_STREAM_SCREENSHOT): writes the pixels
+(BGRA rows from the top) as a PNG in directory (made if it is missing), and
+the file's name into name (name_size bytes); nonzero if written, else the
+reason in name. Set by the platform's host with its backend
+(host_screenshot_write); without one the record's answer is a failure. */
+typedef int (*host_render_screenshot_writer)(unsigned char *bgra, uint32_t width, uint32_t height, const char *directory,
+	char *name, uint32_t name_size);
+void host_render_stream_set_screenshot_writer(host_render_screenshot_writer writer);
+/* host_screenshot.c's, with SDL: YYYY-MM-DD_HH.MM.SS.png in local time
+(host_screenshot_name: the how manyth of its second, collision, from 0,
+adds _2, _3 and on) */
+int host_screenshot_write(unsigned char *bgra, uint32_t width, uint32_t height, const char *directory, char *name,
+	uint32_t name_size);
+void host_screenshot_name(char *name, uint32_t name_size, int year, int month, int day, int hour, int minute,
+	int second, unsigned collision);
+
 /* GPU completion may release ring space even when no more records arrive.
 Called from any thread, after publishing the backend's completed fence. */
 void host_render_stream_gpu_completed(void);

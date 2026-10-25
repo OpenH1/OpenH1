@@ -794,7 +794,7 @@ static unsigned char *read_image(struct xgpu_vulkan_image *image, int layer)
 
 	if (!description || !(pixels = malloc((size_t)description->width * description->height * 4)))
 		return NULL;
-	if (!xgpu_vulkan_read_pixels(image, layer, pixels, description->width * 4))
+	if (!xgpu_vulkan_read_pixels(image, layer, pixels, description->width * 4, 0))
 	{
 		free(pixels);
 		return NULL;
