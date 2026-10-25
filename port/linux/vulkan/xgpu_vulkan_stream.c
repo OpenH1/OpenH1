@@ -2387,7 +2387,7 @@ before the anti-aliasing and the HUD. */
 static void stream_picture_top(void *context, uint32_t top)
 {
 	(void)context;
-	xgpu_vulkan_picture_top(top != 0);
+	xgpu_vulkan_picture_top(top ? (int)(top - 1) : -1);
 }
 
 static void stream_hdr(void *context, const struct xgpu_stream_hdr *record)

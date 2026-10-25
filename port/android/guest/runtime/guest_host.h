@@ -138,6 +138,9 @@ void host_touch_look_read(float *delta);
 void host_touch_rumble(unsigned int low, unsigned int high);
 /* tells the overlay when to show: touch_input.c's _touch_scene_* */
 void host_touch_scene(int scene);
+/* where the overlay wants the picture's top in a portrait window, in the
+window's pixels (under its top strip), or -1 if it has not said */
+int host_touch_picture_top(void);
 /* the game control on each of the 16 controller buttons (touch_game.c),
 for the overlay's labels */
 void host_touch_bindings(const int *controls);

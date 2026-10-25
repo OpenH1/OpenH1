@@ -9,7 +9,8 @@ controller (port/linux/src/xinput_sdl.c). The game hands back what the
 overlay needs to know: whether it is in a game with no menu or cinematic up
 and the input.touch_controls setting (host_touch_scene), the profile's
 button mapping, which names the buttons (host_touch_bindings), and how hard
-port 0 rumbles.
+port 0 rumbles; and the overlay tells the game where it wants the picture
+in a portrait window (host_touch_picture_top).
 
 The iOS app's overlay (port/ios/touch_controls.m, a UIKit view over SDL's)
 hands its state over through the same functions, host_touch.h's, without
@@ -50,6 +51,9 @@ static int64_t gyro_ns;
 static int rumble_amplitude;
 static int64_t rumble_ns;
 static volatile int touch_scene;
+/* where the overlay wants the picture's top in a portrait window, in the
+window's pixels, plus 1 (0: it has not said) */
+static volatile int touch_picture_top;
 /* the game control on each controller button (-1: none), and a count of
 its changes, which the overlay polls */
 #define TOUCH_BUTTONS 16
@@ -210,6 +214,19 @@ int host_touch_scene_read(void)
 	return touch_scene;
 }
 
+void host_touch_set_picture_top(int top)
+{
+	touch_picture_top = top < 0 ? 0 : top + 1;
+}
+
+/* the guest's, every frame (port/linux/src/d3d8_device.c's picture_top_in):
+where the overlay wants the picture's top in a portrait window, in the
+window's pixels, or -1 if it has not said */
+int host_touch_picture_top(void)
+{
+	return touch_picture_top - 1;
+}
+
 #ifdef __ANDROID__
 /* ---------- the Android overlay's (TouchControls.java's natives) */
 
@@ -275,5 +292,13 @@ JNIEXPORT jint JNICALL Java_com_halo_decomp_TouchControls_nativeScene(JNIEnv *en
 	(void)env;
 	(void)cls;
 	return host_touch_scene_read();
+}
+
+/* the picture's top in a portrait window, in its pixels (-1: none) */
+JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativePictureTop(JNIEnv *env, jclass cls, jint top)
+{
+	(void)env;
+	(void)cls;
+	host_touch_set_picture_top(top);
 }
 #endif

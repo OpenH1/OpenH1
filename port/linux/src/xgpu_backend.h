@@ -99,9 +99,10 @@ display, as the backend last looked (answered now, from what the backend
 writes where the front end reads it: the stream's ring): whether it shows
 HDR, and its headroom */
 void xgpu_backend_hdr(BOOL active, int mode, int paper_white);
-/* display.picture_position: the presented picture letterboxed at the top of
-a window taller than it (not centered), from the next present on */
-void xgpu_backend_picture_top(BOOL top);
+/* display.picture_position: the presented picture letterboxed this many
+pixels from the top of a window taller than it (no lower than its bottom),
+or centered (-1), from the next present on */
+void xgpu_backend_picture_top(int top);
 void xgpu_backend_tone_map(xgpu_target target, const long corners[4]);
 BOOL xgpu_backend_display_hdr(float *headroom);
 

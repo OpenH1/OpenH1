@@ -1585,19 +1585,30 @@ static BOOL picture_top(void)
 #endif
 }
 
-/* where the picture is in a window of these pixels: at the top as the
-setting has it, and always in a portrait-shaped one (Android), whose space
-below is the touch controls'; the game decides it, the backend's present
+#ifdef HALO_ANDROID
+/* port/android/guest/runtime/guest_host.h */
+int host_touch_picture_top(void);
+#endif
+
+/* where the picture's top is in a window of these pixels, in its pixels
+(-1: centered): at the top as the setting has it, and always near it in a
+portrait-shaped one (Android), whose space below is the touch controls':
+where the overlay wants it, under its top strip (host_touch_picture_top),
+or at the top until it says; the game decides it, the backend's present
 places the picture so (picture_position_send) */
-static BOOL picture_top_in(int pixel_width, int pixel_height)
+static int picture_top_in(int pixel_width, int pixel_height)
 {
 #ifdef HALO_ANDROID
 	if (pixel_height > pixel_width)
-		return TRUE;
+	{
+		int top = host_touch_picture_top();
+
+		return top > 0 ? top : 0;
+	}
 #endif
 	(void)pixel_width;
 	(void)pixel_height;
-	return picture_top();
+	return picture_top() ? 0 : -1;
 }
 
 /* (between frames: halo_screen_commit) where the picture goes, to the
@@ -1639,7 +1650,9 @@ static void ui_point_from_window_on(float window_x, float window_y, int centered
 		width = (int)((long)pixel_height * back_buffer->target.pixel_width / back_buffer->target.pixel_height);
 	}
 	left = (pixel_width - width) / 2;
-	top = picture_top_in(pixel_width, pixel_height) ? 0 : (pixel_height - height) / 2;
+	/* (as the present places it: no lower than the window's bottom) */
+	top = picture_top_in(pixel_width, pixel_height);
+	top = top < 0 ? (pixel_height - height) / 2 : top < pixel_height - height ? top : pixel_height - height;
 	screen_x = (window_x * pixel_width / window_width - left) * (float)back_buffer->target.width / (float)width;
 	screen_y = (window_y * pixel_height / window_height - top) * (float)back_buffer->target.height / (float)height;
 	*x = (short)floorf(screen_x - (centered ? (float)(halo_screen_width() - 640) / 2.0f : 0.0f));
