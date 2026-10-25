@@ -1,9 +1,11 @@
 /*
 BOTS.C
 
-Computer players (bots) for local multiplayer games (bots.count): the lobby
-of a local (split screen) Slayer game takes as many as the setting asks for
-(network_server_manager.c adds them), and each plays as a player does -
+Computer players (bots) for the multiplayer games this computer hosts
+(bots.count): the lobby of a Slayer game, local (split screen) or system link
+or internet, takes as many as the setting asks for (network_server_manager.c
+adds them, and in a network game makes room for the players who join:
+bots.make_room), and each plays as a player does -
 spawns, respawns, scores, is in the scores and the game's rules - with its
 controls from here instead of a controller: the game tick takes every bot's
 action from bots_update_actions (players_update_before_game), where a
@@ -50,10 +52,15 @@ settles, how fast it turns, how tight its shots must be before it fires.
 The simulation: a bot decides from the game state at the tick and its own
 random numbers (seeded per bot and game), and its path searches run in the
 tick, so the bots do the same in two runs of the same input. Nothing of a
-bot is in the game state: multiplayer games are never saved. Bots are in
-local games only, which no other machine sees: no message of the network
-protocol changes, and bots_update_actions does nothing unless a local game
-runs. debug.bot_player has a bot of its own drive the first local player
+bot is in the game state: multiplayer games are never saved. Only the
+machine that hosts the game runs the bots. In a system link or internet
+game each bot is a player of a machine with no connection (bots.h), and
+the host's tick takes its controls as it takes a remote player's input and
+gives them to the clients with the others' (the relayed input:
+update_server_take_bot_action), so a client replays a bot as any other
+machine's player, and an OpenCE client sees an ordinary player: no message
+of the network protocol changes. bots_update_actions does nothing on a
+client. debug.bot_player has a bot of its own drive the first local player
 too (the trailer's captures: the camera rides with a fighter). halo.log has
 the map's preparation and each minute of play's bots line: the searches and how many failed, the times a bot stood stuck, shots
 and each bot's kills and deaths; debug.bot_trace logs each bot's state.
@@ -90,6 +97,9 @@ and each bot's kills and deaths; debug.bot_trace logs each bot's state.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* source/game/player_queues_new.c */
+void update_server_take_bot_action(long absolute_player_index, struct player_action const *action);
 
 /* port/linux/src/port_config.c */
 const char *config_string(char const *name);
@@ -349,9 +359,34 @@ short bots_teams(void)
 	return strcmp(config_string("bots.teams"), "against") ? _bots_teams_even : _bots_teams_against;
 }
 
+int bots_make_room(void)
+{
+	return config_boolean("bots.make_room") != 0;
+}
+
+long bots_fill_to(void)
+{
+	long count = config_integer("bots.fill_to");
+
+	return count < 2 ? 2 : count > HALO_PORT_MAXIMUM_NETWORK_PLAYERS ? HALO_PORT_MAXIMUM_NETWORK_PLAYERS : count;
+}
+
+int bots_play_game_engine(long game_engine_index)
+{
+	return game_engine_index == game_engine_slayer;
+}
+
 int bots_machine_is_bot(long machine_index)
 {
 	return machine_index >= BOTS_FIRST_MACHINE && machine_index < BOTS_FIRST_MACHINE + BOTS_MAXIMUM;
+}
+
+int bots_player_is_bot(long player_index)
+{
+	struct player_datum *player = player_index != NONE ? player_try_and_get(player_index) : NULL;
+
+	return player && player->local_player_index == NONE &&
+		bots_machine_is_bot(player->network_player_data.machine_index);
 }
 
 void bots_network_player(long bot_index, struct network_player *player)
@@ -2772,9 +2807,12 @@ void bots_update_actions(struct player_action *actions)
 	struct player_datum *player;
 	long count = 0;
 
-	/* (local games alone: no other machine sees a bot) */
-	if (!game_engine_running() || !network_game_is_splitscreen_local())
+	/* (the host's alone: a client replays the bots from the host's input) */
+	if (!game_engine_running() || !global_network_game_server_get() ||
+		game_connection() != _game_connection_network_server)
+	{
 		return;
+	}
 	data_iterator_new(&iterator, player_data);
 	while ((player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
 	{
@@ -2787,7 +2825,9 @@ void bots_update_actions(struct player_action *actions)
 			bot_index = BOTS_MAXIMUM;
 			bot = &bots_globals.player_bot;
 		}
-		else if (player->local_player_index != NONE ||
+		/* (and not a bot that left the game in progress, whose datum stays
+		for the scores: bots_network_player's machine may be another's now) */
+		else if (player->local_player_index != NONE || player->quit_out_of_game ||
 			!bots_machine_is_bot(player->network_player_data.machine_index))
 		{
 			continue;
@@ -2812,6 +2852,10 @@ void bots_update_actions(struct player_action *actions)
 		if (absolute_index >= 0 && absolute_index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
 		{
 			bots_bot_update(bot, bot_index, &actions[absolute_index]);
+			/* (a network game's: the clients are given it as the input the
+			host's tick ran, which they replay the bot by) */
+			if (bot != &bots_globals.player_bot)
+				update_server_take_bot_action(absolute_index, &actions[absolute_index]);
 			/* (debug.bot_player: the view turned with the bot's aim, which
 			the unit follows, as a player's view leads its unit's; the
 			camera is the player's control's facing, not the action's) */

@@ -2671,8 +2671,9 @@ static int parse_invite(const char *text, unsigned char *host_hash, unsigned cha
 
 	for (search = text; *search && !start; search++)
 	{
-		/* (a link, or an address with one: ?join=) */
-		static const char *const prefixes[] = { "halo://join/", "?join=", "&join=" };
+		/* (a link, or an address with one: ?join=, or the join page's
+		#join=, the part a browser never sends) */
+		static const char *const prefixes[] = { "halo://join/", "?join=", "&join=", "#join=" };
 		int prefix;
 
 		for (prefix = 0; prefix < (int)(sizeof(prefixes) / sizeof(*prefixes)) && !start; prefix++)
@@ -2717,6 +2718,31 @@ static int parse_invite(const char *text, unsigned char *host_hash, unsigned cha
 int p2p_parse_invite(const char *text, unsigned char *host_hash, unsigned char *token)
 {
 	return parse_invite(text, host_hash, token);
+}
+
+/* (p2p.h) */
+int p2p_invite_message(const char *text, char *message, int size)
+{
+	unsigned char hash[P2P_KEY_HASH_SIZE], token[P2P_TOKEN_SIZE];
+	unsigned char bytes[P2P_KEY_HASH_SIZE + P2P_TOKEN_SIZE];
+	char hex[2 * (P2P_KEY_HASH_SIZE + P2P_TOKEN_SIZE) + 1];
+
+	/* (a party's link first: p2p_join_invite takes it so) */
+	if (p2p_party_parse_link(text, token))
+	{
+		p2p_hex(token, P2P_TOKEN_SIZE, hex);
+		snprintf(message, (size_t)size, "Join my OpenH1 party: %s#party=%s\n"
+			"Or paste this into OpenH1's Join by Link: " P2P_PARTY_LINK_PREFIX "%s", P2P_JOIN_PAGE, hex, hex);
+		return 1;
+	}
+	if (parse_invite(text, hash, token) <= 0)
+		return 0;
+	memcpy(bytes, hash, P2P_KEY_HASH_SIZE);
+	memcpy(bytes + P2P_KEY_HASH_SIZE, token, P2P_TOKEN_SIZE);
+	p2p_hex(bytes, sizeof(bytes), hex);
+	snprintf(message, (size_t)size, "Join my OpenH1 game: %s#join=%s\n"
+		"Or paste this into OpenH1's Join by Link: halo://join/%s", P2P_JOIN_PAGE, hex, hex);
+	return 1;
 }
 
 void p2p_offer_clipboard(const char *text)

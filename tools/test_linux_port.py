@@ -566,7 +566,7 @@ def test_p2p_signatures_and_listings(tmp_path):
 # process (tools/p2p_party_check.c), each case by its name
 
 PARTY_CASES = ["make", "join", "follow", "busy", "local", "leave", "handoff", "timeout", "regroup", "disband",
-               "full", "joinless", "format", "version"]
+               "full", "joinless", "format", "version", "spare"]
 PARTY_SOURCES = ["tools/p2p_party_check.c", "port/linux/src/p2p_crypto.c", "port/third_party/monocypher/monocypher.c",
                  "port/third_party/monocypher/monocypher-ed25519.c"]
 
@@ -638,6 +638,12 @@ PARTY_MUTATIONS = [
      "\t\tif (0)", "joinless"),
     ("the menus are not told who could not follow",
      "notice(_p2p_party_notice_follow_failed, member->name, member->result);", "(void)0;", "follow"),
+    ("a friend Discord gave the spare's link to is not answered",
+     "if (!party.active && spare_heard(payload, size))", "if (0)", "spare"),
+    ("the spare's topic is not listened on", "\t\tp2p_signal_party(on ? party.spare.topic : \"\");", "\t\t(void)0;",
+     "spare"),
+    ("MAKE PARTY makes a party of its own, not the spare's", "\tif (party.spare.made)\n\t\tmemcpy(token",
+     "\tif (0)\n\t\tmemcpy(token", "spare"),
 ]
 
 

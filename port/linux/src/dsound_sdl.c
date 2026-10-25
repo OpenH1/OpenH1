@@ -22,15 +22,20 @@ resampling) and applies:
 	  game gives the voice and the listener (doppler).
 3D voices also send to an I3DL2 reverb of the environment the listener is in
 (reverb). Cones are not modelled (no sound of the maps has one). A look-ahead
-limiter keeps the sum under full scale (limit). In the VR mode, with vr.hrtf,
-a mono 3D voice goes to each ear through a model of a head instead of the pan
-(hrtf).
+limiter keeps the sum under full scale (limit). On headphones (audio.spatial:
+"auto" asks the host what the sound plays on, spatial_hrtf), and in the VR
+mode with vr.hrtf, a mono 3D voice goes to each ear through a model of a head
+instead of the pan (hrtf), as the Xbox's DirectSound put its 3D voices through
+its HRTF; 2D voices (the menus, the music, the HUD) are as they were.
 
-The output is stereo or 5.1 (audio.channels). For 5.1 the speaker config
-reports AC-3, as an Xbox set to Dolby Digital does: the game then sends its
-2D voices to the center and back mix bins too (dsound_initialize_channel),
-3D voices and stereo voices positioned in the world are panned around the
-five full range speakers (surround_pan), and the reverb plays from the
+The output is stereo or 5.1 (audio.channels; "auto": 5.1 on a device of
+six channels or more, as the host's SDL reports it, output_channels_choose).
+For 5.1 the speaker config reports AC-3, as an Xbox set to Dolby Digital
+does: the game then sends its 2D voices to the center and back mix bins too
+(dsound_initialize_channel: a mono one at half to the front three, a stereo
+one whole to the front pair and at half to the back pair), 3D voices and
+stereo voices positioned in the world are panned around the five full range
+speakers by VBAP (surround_pan), never the HRTF, and the reverb plays from the
 front and back pairs. The mix bins 0-5 are in SDL's 5.1 order (FL, FR, FC,
 LFE, BL, BR), so bin n is output channel n. The game sends nothing to the
 LFE bin. Stereo output mixes exactly as before.
@@ -44,6 +49,7 @@ buffer, so streams still drain at their real rate.
 
 audio.volume sets the master volume (default 1.0); audio.reverb = false
 turns the reverb off, and audio.doppler = false the Doppler shift;
+audio.spatial chooses the HRTF or the pan ("auto", "headphones", "speakers");
 audio.resampler = "linear" resamples between neighbouring frames instead of
 with the sinc low pass; audio.enabled = false skips opening a device;
 audio.channels chooses stereo or 5.1
@@ -106,6 +112,9 @@ the pinna behind (its frequency and its depth) */
 #define HRTF_NOTCH_Q 2.0f
 #define HRTF_REAR_FREQUENCY 2500.0f
 #define HRTF_REAR_DEPTH 0.55f
+/* the crossfade between the pan and the HRTF when the choice changes (the
+headphones plugged in or out, audio.spatial): 100 ms */
+#define HRTF_FADE_FRAMES 4800
 #if defined(__GNUC__) || defined(__clang__)
 #define RESAMPLER_ALIGNED __attribute__((aligned(16)))
 #else
@@ -136,6 +145,9 @@ struct hrtf_parameters
 	float notch[5];
 	float notch_frequency;
 	float rear;
+	/* each ear's gain: the pan's in the middle (-3 dB), with the voice's
+	distance and direct path, the head's filters doing the rest */
+	float gain;
 };
 
 struct sdl_stream
@@ -212,15 +224,17 @@ struct sdl_stream
 	/* the direct path's low pass, for each channel, and the room send's */
 	float direct_lowpass[2];
 	float room_lowpass;
-	/* through the HRTF (hrtf): the parameters the mixer is ramping from, the
-	voice's last HRTF_FRAMES frames as the ears take them (its direct path's,
-	notched; how many were written), and the filters' states: the rear's low
-	pass, the notch's last two inputs and outputs, each ear's shadow's last
-	input and output */
+	/* through the HRTF (hrtf): whether its filters ran in the last mix (their
+	states are the voice's), how much of the voice they play (0 the pan's to
+	1 theirs, crossfaded over HRTF_FADE_FRAMES as the choice changes), the
+	parameters the mixer is ramping from, the voice's last HRTF_FRAMES frames
+	as the ears take them (its direct path's, notched; the oldest first),
+	and the filters' states: the rear's low pass, the notch's last two
+	inputs and outputs, each ear's shadow's last input and output */
 	BOOL hrtf_on;
+	float hrtf_mix;
 	struct hrtf_parameters hrtf_current;
 	float hrtf_frames[HRTF_FRAMES];
-	unsigned long hrtf_written;
 	float hrtf_rear;
 	float hrtf_notch[4];
 	float hrtf_shadow[2][2];
@@ -247,7 +261,8 @@ static struct
 static float master_volume = 1.0f;
 /* audio.doppler */
 static BOOL doppler_enabled = TRUE;
-/* vr.hrtf, in the VR mode (DirectSoundDoWork) */
+/* whether mono 3D voices go through the HRTF: on headphones, audio.spatial;
+in the VR mode, vr.hrtf (spatial_hrtf, DirectSoundDoWork) */
 static BOOL hrtf_enabled = FALSE;
 /* 2 or 6 (audio.channels), chosen when the device first opens; the game
 sets its mix bins by it, so it holds while the game runs */
@@ -474,12 +489,15 @@ static float doppler_ratio(const struct sdl_stream *stream)
 
 /* ---------- the HRTF
 
-In the VR mode (vr.hrtf), a mono 3D voice reaches each ear as it would a
-head's, from its direction (the listener's: the head as it is tracked,
+On headphones (audio.spatial, spatial_hrtf), and in the VR mode (vr.hrtf), a
+mono 3D voice reaches each ear as it would a head's, from its direction (the
+listener's: the camera's, or in VR the head as it is tracked,
 sound_manager.c refresh_listener), rather than panned between them: a
-sound behind or above is told from one ahead or below, on headphones or the
-headset's speakers. Not a measured HRTF (which would need a dataset of a
-head's, and a convolution for each voice and ear) but a model of a head's
+sound behind or above is told from one ahead or below. The Xbox's
+DirectSound put its 3D voices through its own HRTF (DirectSoundUseFullHRTF)
+and left the 2D ones (the menus, the music, the HUD) dry; so here. Not a
+measured HRTF (which would need a dataset of a head's, and a convolution
+for each voice and ear) but a model of a head's
 (Brown and Duda, "A structural model for binaural sound synthesis", 1998),
 a few filters a voice, its parameters from the direction:
 	- each ear its own delay, from the time the sound takes around a sphere
@@ -497,7 +515,12 @@ a few filters a voice, its parameters from the direction:
 A sound close to the head (within HRTF_NEAR) fades to the middle, as the pan
 centres one within its minimum distance. The parameters are ramped across
 each mix, as the gains are: a turn of the head moves the sound smoothly
-from ear to ear, with no step. */
+from ear to ear, with no step. Distance, the direct path's obstruction and
+occlusion (its low pass), the room send and the Doppler shift are the
+pan's, before the head's filters. When the choice changes (headphones
+plugged in or out mid-game), each voice crossfades between the pan and the
+HRTF over HRTF_FADE_FRAMES, both running meanwhile: no click. Speakers,
+and 5.1, keep the pan (a head's filters are for a pair of ears). */
 
 static struct
 {
@@ -572,17 +595,17 @@ static void hrtf_place(float right, float up, float ahead, float distance, struc
 	parameters->rear = front < 0.0f ? -front * strength * HRTF_REAR_DEPTH : 0.0f;
 }
 
-/* the frame of the voice's written ones delay frames before the last
-(at least 1: one frame each side of it is read), interpolated (Catmull-Rom) */
-static float hrtf_read(const float *frames, unsigned long written, float delay)
+/* the frame delay frames before newest (at least 1: one frame each side of
+it is read; at most HRTF_FRAMES - 2), interpolated (Catmull-Rom) */
+static float hrtf_read(const float *newest, float delay)
 {
 	unsigned long whole = (unsigned long)delay;
-	unsigned long at = written - 1 - whole;
+	const float *at = newest - whole;
 	float t = delay - (float)whole;
-	float newer = frames[(at + 1) % HRTF_FRAMES];
-	float x0 = frames[at % HRTF_FRAMES];
-	float x1 = frames[(at - 1) % HRTF_FRAMES];
-	float older = frames[(at - 2) % HRTF_FRAMES];
+	float newer = at[1];
+	float x0 = at[0];
+	float x1 = at[-1];
+	float older = at[-2];
 
 	return x0 + 0.5f * t * (x1 - newer + t * (2.0f * newer - 5.0f * x0 + 4.0f * x1 - older +
 		t * (3.0f * (x0 - x1) + older - newer)));
@@ -602,11 +625,95 @@ static void hrtf_step(struct hrtf_parameters *parameters, const struct hrtf_para
 	for (index = 0; index < 5; index++)
 		parameters->notch[index] += step->notch[index];
 	parameters->rear += step->rear;
+	parameters->gain += step->gain;
 }
 
-/* the gains of a 3D voice to the left and right, and the room rolloff's
-attenuation of its room send; through the HRTF (hrtf_on: a mono voice in
-the VR mode, vr.hrtf), its gain to each ear and its way there (hrtf_out) */
+/* frames of a mono voice's direct path (direct) through the HRTF to each
+ear, added to output (stereo) at mix of the voice (a frame's step of it
+ramp_mix: the crossfade with the pan, which the voice's mix added), from
+the voice's parameters (stream->hrtf_current) to target, ramped over
+ramp_frames; a pass of its own over the mix, its delay line one run of
+frames (the voice's last and these), so that it keeps to registers */
+static void hrtf_process(struct sdl_stream *stream, const float *direct, float *output, unsigned long frames,
+	unsigned long ramp_frames, const struct hrtf_parameters *target, float mix, float ramp_mix)
+{
+	float line[HRTF_FRAMES + MIX_CHUNK_FRAMES];
+	struct hrtf_parameters now = stream->hrtf_current, ramp;
+	float rear = stream->hrtf_rear, notch[4], shadow[2][2];
+	unsigned long frame;
+	int index;
+
+	for (index = 0; index < 2; index++)
+	{
+		ramp.delay[index] = (target->delay[index] - now.delay[index]) / (float)ramp_frames;
+		ramp.shadow_b0[index] = (target->shadow_b0[index] - now.shadow_b0[index]) / (float)ramp_frames;
+		ramp.shadow_b1[index] = (target->shadow_b1[index] - now.shadow_b1[index]) / (float)ramp_frames;
+	}
+	for (index = 0; index < 5; index++)
+		ramp.notch[index] = (target->notch[index] - now.notch[index]) / (float)ramp_frames;
+	ramp.rear = (target->rear - now.rear) / (float)ramp_frames;
+	ramp.gain = (target->gain - now.gain) / (float)ramp_frames;
+	memcpy(notch, stream->hrtf_notch, sizeof(notch));
+	memcpy(shadow, stream->hrtf_shadow, sizeof(shadow));
+	memcpy(line, stream->hrtf_frames, sizeof(stream->hrtf_frames));
+	for (frame = 0; frame < frames; frame++)
+	{
+		/* behind, the high frequencies taken off; the pinna's notch; then
+		each ear its own delay and the head's shadow */
+		float x = direct[frame], notched;
+		int ear;
+
+		rear = flush_denormal(x + hrtf.rear_lowpass * (rear - x));
+		x -= now.rear * (x - rear);
+		notched = now.notch[0] * x + now.notch[1] * notch[0] + now.notch[2] * notch[1] - now.notch[3] * notch[2] -
+			now.notch[4] * notch[3];
+		notched = flush_denormal(notched);
+		notch[1] = notch[0];
+		notch[0] = x;
+		notch[3] = notch[2];
+		notch[2] = notched;
+		line[HRTF_FRAMES + frame] = notched;
+		for (ear = 0; ear < 2; ear++)
+		{
+			float heard = hrtf_read(line + HRTF_FRAMES + frame, 1.0f + now.delay[ear]);
+			float shadowed = flush_denormal(now.shadow_b0[ear] * heard + now.shadow_b1[ear] * shadow[ear][0] -
+				hrtf.shadow_a1 * shadow[ear][1]);
+
+			shadow[ear][0] = heard;
+			shadow[ear][1] = shadowed;
+			output[frame * 2 + ear] += shadowed * now.gain * mix;
+		}
+		hrtf_step(&now, &ramp);
+		mix += ramp_mix;
+	}
+	memcpy(stream->hrtf_frames, line + frames, sizeof(stream->hrtf_frames));
+	stream->hrtf_current = *target;
+	stream->hrtf_rear = rear;
+	memcpy(stream->hrtf_notch, notch, sizeof(notch));
+	memcpy(stream->hrtf_shadow, shadow, sizeof(shadow));
+}
+
+/* audio.spatial ("auto", "headphones" or "speakers"; another is "auto")
+and what the host says the sound plays on (headphones: 1 headphones, 0
+speakers, -1 unknown, host_audio_headphones): whether 3D voices go through
+the HRTF. Unknown is speakers: the pan is right for both, the HRTF only
+for headphones. In the VR mode, vr.hrtf alone, as before (the headset's
+speakers are at the ears) */
+static BOOL spatial_hrtf(const char *setting, int headphones, BOOL vr_running, BOOL vr_hrtf)
+{
+	if (vr_running)
+		return vr_hrtf;
+	if (!strcmp(setting, "headphones"))
+		return TRUE;
+	if (!strcmp(setting, "speakers"))
+		return FALSE;
+	return headphones > 0;
+}
+
+/* the gains of a 3D voice to the left and right (the pan's), and the room
+rolloff's attenuation of its room send; for a mono voice through the HRTF
+(hrtf_on: chosen, or crossfading from it), its gain to each ear and its way
+there (hrtf_out) */
 static void spatialize(const struct sdl_stream *stream, float *left, float *right, float *room,
 	BOOL *hrtf_on, struct hrtf_parameters *hrtf_out)
 {
@@ -654,13 +761,13 @@ static void spatialize(const struct sdl_stream *stream, float *left, float *righ
 		*left = cosf(angle) * 1.41421356f * 0.70710678f;
 		*right = sinf(angle) * 1.41421356f * 0.70710678f;
 	}
-	/* or through the HRTF, each ear at the pan's gain in the middle (-3
+	/* and through the HRTF, each ear at the pan's gain in the middle (-3
 	dB), the head's filters doing the rest */
-	*hrtf_on = hrtf_enabled && stream->channels == 1;
+	*hrtf_on = stream->channels == 1 && (hrtf_enabled || stream->hrtf_mix > 0.0f);
 	if (*hrtf_on)
 	{
 		hrtf_place(side, up, ahead, distance, hrtf_out);
-		*left = *right = 0.70710678f;
+		hrtf_out->gain = 0.70710678f * attenuation * gain_from_millibels(stream->direct);
 	}
 	*left *= attenuation * gain_from_millibels(stream->direct);
 	*right *= attenuation * gain_from_millibels(stream->direct);
@@ -745,10 +852,19 @@ static const float surround_ring_angle[SURROUND_RING_SPEAKERS + 1] =
 	0.0f, 0.52359878f, 1.91986218f, 4.36332313f, 5.75958653f, 6.28318531f,
 };
 
-/* the speaker gains of a sound from a direction, side (right) and ahead: an
-equal power pan between the two speakers either side of it, blended (in
-power) towards all five equally by spread, 0 to 1. Their power sums to 1, as
-the stereo pan's does */
+/* the speaker gains of a sound from a direction, side (right) and ahead:
+vector base amplitude panning (Pulkki's VBAP, in the plane) between the two
+speakers either side of it, blended (in power) towards all five equally by
+spread, 0 to 1. Their power sums to 1, as the stereo pan's does.
+
+VBAP takes the gains g1 and g2 whose sum g1 l1 + g2 l2 of the speakers'
+directions l1 and l2 points the sound's way p, then scales them to a power
+of 1: g1 = sin(a2 - a) / sin(a2 - a1) and g2 = sin(a - a1) / sin(a2 - a1),
+a the sound's angle, a1 and a2 the speakers', the common divisor gone with
+the scaling. So a sound at a speaker plays from it alone, one between two
+from both, as the tangent law of stereo panning puts a phantom image (the
+listener between them hears it where it is), and no pair is wider than 180
+degrees (the backs' 140 is the widest). */
 static void surround_pan(float side, float ahead, float spread, float *gains)
 {
 	float angle = atan2f(side, ahead);
@@ -764,12 +880,20 @@ static void surround_pan(float side, float ahead, float spread, float *gains)
 			break;
 	}
 	{
-		float width = surround_ring_angle[segment + 1] - surround_ring_angle[segment];
-		float position = (angle - surround_ring_angle[segment]) / width;
+		float first = sinf(surround_ring_angle[segment + 1] - angle);
+		float second = sinf(angle - surround_ring_angle[segment]);
+		float length;
 
-		position = position < 0.0f ? 0.0f : position > 1.0f ? 1.0f : position;
-		gains[surround_ring_channel[segment]] = cosf(position * 1.57079633f);
-		gains[surround_ring_channel[(segment + 1) % SURROUND_RING_SPEAKERS]] = sinf(position * 1.57079633f);
+		first = first > 0.0f ? first : 0.0f;
+		second = second > 0.0f ? second : 0.0f;
+		length = sqrtf(first * first + second * second);
+		if (length < 1.0e-6f)
+		{
+			first = 1.0f;
+			length = 1.0f;
+		}
+		gains[surround_ring_channel[segment]] = first / length;
+		gains[surround_ring_channel[(segment + 1) % SURROUND_RING_SPEAKERS]] = second / length;
 	}
 	for (speaker = 0; speaker < SURROUND_RING_SPEAKERS; speaker++)
 	{
@@ -1136,11 +1260,14 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	unsigned long frame;
 	/* (a stereo voice panned towards its sound: voice_gains) */
 	BOOL positioned = stream->channels == 2 && stream->stereo_positioned;
-	/* (through the HRTF: its parameters, now and a frame's step of their
-	ramp, and its filters' states, here as the low passes' are) */
-	BOOL hrtf_on;
-	struct hrtf_parameters target_hrtf, hrtf_now, hrtf_ramp;
-	float hrtf_rear, hrtf_notch[4], hrtf_shadow[2][2];
+	/* (through the HRTF: whether it may take the voice, and whether its
+	filters run in this mix; how much of the voice they play, at the start,
+	the end and a frame's step; its parameters, and the direct path the
+	HRTF takes, hrtf_process) */
+	BOOL hrtf_on, hrtf_running;
+	float hrtf_mix, hrtf_mix_end, ramp_hrtf_mix, hrtf_mix_start;
+	struct hrtf_parameters target_hrtf;
+	float hrtf_direct[MIX_CHUNK_FRAMES];
 	/* on 5.1, the speakers' gains (voice_surround_gains) */
 	BOOL surround = output_channels == 6;
 	float target_surround[2][MAXIMUM_OUTPUT_CHANNELS], surround_gains[2][MAXIMUM_OUTPUT_CHANNELS];
@@ -1149,6 +1276,14 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 
 	if (stream->paused || !stream->packet_count || !stream->sample_rate)
 		return;
+	/* (at most MIX_CHUNK_FRAMES at a time: the HRTF's direct path) */
+	if (frames > MIX_CHUNK_FRAMES)
+	{
+		mix_voice(stream, output, send, MIX_CHUNK_FRAMES);
+		mix_voice(stream, output + MIX_CHUNK_FRAMES * output_channels, send + MIX_CHUNK_FRAMES,
+			frames - MIX_CHUNK_FRAMES);
+		return;
+	}
 	target_step = (double)(stream->frequency ? stream->frequency : stream->sample_rate) / OUTPUT_RATE *
 		doppler_ratio(stream);
 	/* (the step ramps from the last mix's to it, as the gains do) */
@@ -1174,7 +1309,27 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	/* (the HRTF is for a pair of ears: none on 5.1) */
 	if (surround)
 		hrtf_on = FALSE;
-	if (hrtf_on && (!stream->gains_valid || !stream->hrtf_on))
+	/* how much of the voice the HRTF plays: towards all of it while it is
+	chosen (hrtf_enabled), none otherwise, a frame's share of the crossfade
+	at a time; a voice starting is at once where it is going */
+	hrtf_mix = hrtf_on ? stream->hrtf_mix : 0.0f;
+	hrtf_mix_end = hrtf_on && hrtf_enabled ? 1.0f : 0.0f;
+	if (!stream->gains_valid)
+		hrtf_mix = hrtf_mix_end;
+	else
+	{
+		float fade = (float)frames / HRTF_FADE_FRAMES;
+
+		if (hrtf_mix_end > hrtf_mix)
+			hrtf_mix_end = hrtf_mix + fade < 1.0f ? hrtf_mix + fade : 1.0f;
+		else if (hrtf_mix_end < hrtf_mix)
+			hrtf_mix_end = hrtf_mix - fade > 0.0f ? hrtf_mix - fade : 0.0f;
+	}
+	ramp_hrtf_mix = (hrtf_mix_end - hrtf_mix) / (float)frames;
+	hrtf_running = hrtf_on && (hrtf_mix > 0.0f || hrtf_mix_end > 0.0f);
+	/* (its filters start from silence, as the crossfade starts from none
+	of them) */
+	if (hrtf_running && (!stream->gains_valid || !stream->hrtf_on))
 	{
 		stream->hrtf_current = target_hrtf;
 		memset(stream->hrtf_frames, 0, sizeof(stream->hrtf_frames));
@@ -1182,7 +1337,8 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 		memset(stream->hrtf_notch, 0, sizeof(stream->hrtf_notch));
 		memset(stream->hrtf_shadow, 0, sizeof(stream->hrtf_shadow));
 	}
-	stream->hrtf_on = hrtf_on;
+	stream->hrtf_on = hrtf_running;
+	stream->hrtf_mix = hrtf_mix_end;
 	if (surround)
 		voice_surround_gains(stream, target_surround);
 	if (!stream->gains_valid)
@@ -1213,24 +1369,7 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	ramp_room = (target_room - room) / (float)frames;
 	ramp_direct_lowpass = (target_direct_lowpass - direct_lowpass) / (float)frames;
 	ramp_room_lowpass = (target_room_lowpass - room_lowpass) / (float)frames;
-	if (hrtf_on)
-	{
-		int index;
-
-		hrtf_now = stream->hrtf_current;
-		for (index = 0; index < 2; index++)
-		{
-			hrtf_ramp.delay[index] = (target_hrtf.delay[index] - hrtf_now.delay[index]) / (float)frames;
-			hrtf_ramp.shadow_b0[index] = (target_hrtf.shadow_b0[index] - hrtf_now.shadow_b0[index]) / (float)frames;
-			hrtf_ramp.shadow_b1[index] = (target_hrtf.shadow_b1[index] - hrtf_now.shadow_b1[index]) / (float)frames;
-		}
-		for (index = 0; index < 5; index++)
-			hrtf_ramp.notch[index] = (target_hrtf.notch[index] - hrtf_now.notch[index]) / (float)frames;
-		hrtf_ramp.rear = (target_hrtf.rear - hrtf_now.rear) / (float)frames;
-		hrtf_rear = stream->hrtf_rear;
-		memcpy(hrtf_notch, stream->hrtf_notch, sizeof(hrtf_notch));
-		memcpy(hrtf_shadow, stream->hrtf_shadow, sizeof(hrtf_shadow));
-	}
+	hrtf_mix_start = hrtf_mix;
 	if (surround)
 	{
 		for (speaker = 0; speaker < MAXIMUM_OUTPUT_CHANNELS; speaker++)
@@ -1338,35 +1477,19 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 		}
 		direct_state[0] = sample_left;
 		direct_state[1] = sample_right;
-		if (hrtf_on)
+		if (hrtf_running)
 		{
-			/* through the HRTF: behind, the high frequencies taken off; the
-			pinna's notch; then each ear its own delay and the head's shadow */
-			float x = sample_left, notched;
-			int ear;
+			/* through the HRTF (hrtf_process, after), crossfaded with the
+			pan while the choice changes */
+			float panned = 1.0f - hrtf_mix;
 
-			hrtf_rear = flush_denormal(x + hrtf.rear_lowpass * (hrtf_rear - x));
-			x -= hrtf_now.rear * (x - hrtf_rear);
-			notched = hrtf_now.notch[0] * x + hrtf_now.notch[1] * hrtf_notch[0] + hrtf_now.notch[2] * hrtf_notch[1] -
-				hrtf_now.notch[3] * hrtf_notch[2] - hrtf_now.notch[4] * hrtf_notch[3];
-			notched = flush_denormal(notched);
-			hrtf_notch[1] = hrtf_notch[0];
-			hrtf_notch[0] = x;
-			hrtf_notch[3] = hrtf_notch[2];
-			hrtf_notch[2] = notched;
-			stream->hrtf_frames[stream->hrtf_written % HRTF_FRAMES] = notched;
-			stream->hrtf_written++;
-			for (ear = 0; ear < 2; ear++)
+			hrtf_direct[frame] = sample_left;
+			if (panned > 0.0f)
 			{
-				float heard = hrtf_read(stream->hrtf_frames, stream->hrtf_written, 1.0f + hrtf_now.delay[ear]);
-				float shadowed = flush_denormal(hrtf_now.shadow_b0[ear] * heard +
-					hrtf_now.shadow_b1[ear] * hrtf_shadow[ear][0] - hrtf.shadow_a1 * hrtf_shadow[ear][1]);
-
-				hrtf_shadow[ear][0] = heard;
-				hrtf_shadow[ear][1] = shadowed;
-				output[frame * 2 + ear] += shadowed * (ear ? right : left);
+				output[frame * 2] += sample_left * left * panned;
+				output[frame * 2 + 1] += sample_left * right * panned;
 			}
-			hrtf_step(&hrtf_now, &hrtf_ramp);
+			hrtf_mix += ramp_hrtf_mix;
 		}
 		else if (surround)
 		{
@@ -1422,13 +1545,9 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	stream->direct_lowpass[0] = direct_state[0];
 	stream->direct_lowpass[1] = direct_state[1];
 	stream->room_lowpass = room_state;
-	if (hrtf_on)
-	{
-		stream->hrtf_current = target_hrtf;
-		stream->hrtf_rear = hrtf_rear;
-		memcpy(stream->hrtf_notch, hrtf_notch, sizeof(hrtf_notch));
-		memcpy(stream->hrtf_shadow, hrtf_shadow, sizeof(hrtf_shadow));
-	}
+	/* (the frames mixed: all of them, or those before the voice ran dry) */
+	if (hrtf_running)
+		hrtf_process(stream, hrtf_direct, output, frame, frames, &target_hrtf, hrtf_mix_start, ramp_hrtf_mix);
 	stream->current_left = target_left;
 	stream->current_right = target_right;
 	stream->current_room = target_room;
@@ -1988,6 +2107,24 @@ static void mix(float *output, unsigned long frames)
 	mix_frames += frames;
 }
 
+/* ---------- the output's channels
+
+audio.channels (setting: "stereo", "5.1" or "auto"; anything else is
+stereo) and the channels of the device the sound plays on (device_channels;
+0 when it cannot say): 6 for 5.1, 2 for stereo. "auto" is 5.1 on a device
+of six channels or more (a 5.1 or 7.1 receiver, a surround headset: SDL
+lays the 5.1 out on a 7.1's speakers), stereo on fewer (speakers, a pair
+of headphones) and when it cannot say. On 5.1 the speakers are panned
+(surround_pan), never the HRTF, which is for a pair of ears. */
+static unsigned long output_channels_choose(const char *setting, int device_channels)
+{
+	if (setting && !strcmp(setting, "5.1"))
+		return 6;
+	if (setting && !strcmp(setting, "auto") && device_channels >= 6)
+		return 6;
+	return 2;
+}
+
 /* ---------- output */
 
 static SDL_AudioStream *audio_stream;
@@ -2088,8 +2225,10 @@ unsigned long dsound_sdl_recorded_frames(void)
 	return record_frames;
 }
 
-/* audio.channels: "stereo", "5.1", or "auto" (stereo: below). Android
-plays stereo */
+/* audio.channels on Android: stereo; elsewhere what output_channels_choose
+makes of the setting and of the channels the device has, which the host's
+SDL says (host_desktop.c: SDL_GetAudioDeviceFormat, the format the device
+plays in, not one SDL would convert to) */
 static unsigned long choose_output_channels(SDL_AudioDeviceID device)
 {
 #ifdef HALO_ANDROID
@@ -2097,19 +2236,19 @@ static unsigned long choose_output_channels(SDL_AudioDeviceID device)
 	return 2;
 #else
 	const char *setting = config_string("audio.channels");
+	SDL_AudioSpec spec;
+	int device_channels = 0;
 
-	(void)device;
-	if (!strcmp(setting, "5.1"))
-		return 6;
-	if (strcmp(setting, "auto"))
+	if (setting && !strcmp(setting, "auto") && SDL_GetAudioDeviceFormat(device, &spec, NULL))
+		device_channels = spec.channels;
+	if (setting && strcmp(setting, "auto") && strcmp(setting, "stereo") && strcmp(setting, "5.1"))
+		platform_log("audio.channels \"%s\" is not \"auto\", \"stereo\" or \"5.1\"; using stereo", setting);
+	if (setting && !strcmp(setting, "auto"))
 	{
-		if (strcmp(setting, "stereo"))
-			platform_log("audio.channels \"%s\" is not \"auto\", \"stereo\" or \"5.1\"; using stereo", setting);
-		return 2;
+		platform_log("sound: the device has %d channels%s", device_channels,
+			device_channels ? "" : " (it cannot say: stereo)");
 	}
-	/* (the guest's SDL bridges no device format to ask, guest_sdl.c: "auto"
-	is stereo, and 5.1 is "5.1" asked for by name) */
-	return 2;
+	return output_channels_choose(setting, device_channels);
 #endif
 }
 
@@ -2516,6 +2655,10 @@ static void voices_log(void)
 		right_axis[1] = listener.top[2] * listener.front[0] - listener.top[0] * listener.front[2];
 		right_axis[2] = listener.top[0] * listener.front[1] - listener.top[1] * listener.front[0];
 		voice_gains(stream, &left, &right, &room, &direct_lowpass, &room_lowpass, &hrtf_on, &parameters);
+		/* (through the HRTF, each ear's gain is its own, the pan's not
+		heard) */
+		if (hrtf_on && hrtf_enabled && output_channels == 2)
+			left = right = parameters.gain;
 		if (hrtf_on)
 		{
 			/* (the shadows' gains at the highest frequencies: (b0 - b1) /
@@ -2542,10 +2685,20 @@ static void voices_log(void)
 int halo_vr_running(void);
 #endif
 
+/* (the host: port/android/host/host_audio_route.c) what the system's sound
+plays on: 1 headphones, 0 speakers, -1 unknown; kept current by the host as
+the output device changes, and cheap to ask */
+int host_audio_headphones(void);
+
 VOID WINAPI DirectSoundDoWork(void)
 {
 	static unsigned long volume_read_at = (unsigned long)-1;
 	static BOOL log_voices;
+	static char spatial_setting[16] = "auto";
+	static int logged_headphones = -2;
+	static BOOL logged_hrtf;
+	BOOL vr_running = FALSE, vr_hrtf = FALSE;
+	int headphones;
 #ifdef HALO_VR
 	static BOOL hrtf_setting;
 #endif
@@ -2560,15 +2713,33 @@ VOID WINAPI DirectSoundDoWork(void)
 		reverb_enabled = config_boolean("audio.reverb");
 		doppler_enabled = config_boolean("audio.doppler");
 		log_voices = config_boolean("debug.audio_log");
+		snprintf(spatial_setting, sizeof(spatial_setting), "%s", config_string("audio.spatial"));
 #ifdef HALO_VR
 		hrtf_setting = config_boolean("vr.hrtf");
 #endif
 		resampler_mode = resampler_mode_read();
 	}
 #ifdef HALO_VR
-	/* (the HRTF in the VR mode alone: on the flat screen, the pan) */
-	hrtf_enabled = hrtf_setting && halo_vr_running();
+	/* (in the VR mode, vr.hrtf, as before) */
+	vr_running = halo_vr_running() != 0;
+	vr_hrtf = hrtf_setting;
 #endif
+	/* the HRTF on headphones, the pan on speakers (audio.spatial), each
+	frame: the host keeps what the sound plays on, and the mixer crossfades
+	each voice from one to the other as it changes */
+	headphones = host_audio_headphones();
+	/* (5.1 is panned around its speakers whatever audio.spatial says: the
+	HRTF is for a pair of ears) */
+	hrtf_enabled = output_channels != 6 && spatial_hrtf(spatial_setting, headphones, vr_running, vr_hrtf);
+	if (headphones != logged_headphones || hrtf_enabled != logged_hrtf)
+	{
+		logged_headphones = headphones;
+		logged_hrtf = hrtf_enabled;
+		platform_log("audio: the sound plays on %s; the world's sounds %s (audio.spatial \"%s\"%s)",
+			headphones > 0 ? "headphones" : headphones == 0 ? "speakers" : "a device not known (speakers)",
+			output_channels == 6 ? "panned around the 5.1 speakers" : hrtf_enabled ? "through the HRTF" : "panned",
+			spatial_setting, vr_running ? ", the VR mode: vr.hrtf" : "");
+	}
 	if (log_voices)
 		voices_log();
 	streams_complete_finished();

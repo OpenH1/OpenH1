@@ -292,6 +292,25 @@ int host_sdl_get_audio_device_name(uint32_t device, char *name, int size)
 	return 1;
 }
 
+/* (the guest's SDL_AudioSpec is the host's: three 32-bit fields) */
+typedef char host_audio_spec_size_check[sizeof(SDL_AudioSpec) == 12 ? 1 : -1];
+
+/* the format a device plays in (SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK: the
+default's) into spec, and its frames a buffer into sample_frames (NULL: not
+wanted); 0 when SDL cannot say */
+int host_sdl_get_audio_device_format(uint32_t device, void *spec, int *sample_frames)
+{
+	SDL_AudioSpec found;
+	int frames = 0;
+
+	if (!spec || !SDL_GetAudioDeviceFormat((SDL_AudioDeviceID)device, &found, &frames))
+		return 0;
+	memcpy(spec, &found, sizeof(found));
+	if (sample_frames)
+		*sample_frames = frames;
+	return 1;
+}
+
 /* ---------- the 2D renderer */
 
 static SDL_Renderer *renderer_of(uint32_t renderer)

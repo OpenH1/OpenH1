@@ -1577,11 +1577,12 @@ BOOL platform_next_keystroke(struct platform_keystroke *keystroke)
 bool SDL_ShowAndroidToast(const char *message, int duration, int gravity, int xoffset, int yoffset);
 #endif
 
-/* whether the text has an invite link in it (its prefix, in any case), or a
-party's link (p2p_party.c) */
+/* whether the text has an invite link in it (its prefix, in any case), a
+party's link (p2p_party.c), or the join page's address of either (COPY
+INVITE's message: p2p_invite_message) */
 static BOOL platform_text_has_invite_link(const char *text)
 {
-	static const char *const prefixes[] = { "halo://join/", P2P_PARTY_LINK_PREFIX };
+	static const char *const prefixes[] = { "halo://join/", P2P_PARTY_LINK_PREFIX, "openh1.com/join/#" };
 
 	for (; *text; text++)
 	{

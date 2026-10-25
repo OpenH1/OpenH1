@@ -98,7 +98,7 @@
 	</strings>
 	<strings name="main_menu/settings/tab_about">
 		<string text="The window, the frame rate and the graphics."/>
-		<string text="The devices, the volumes, voice chat and the sound."/>
+		<string text="The sound and its devices, 3D audio, the volumes and voice chat."/>
 		<string text="The mouse, the controller and the keys."/>
 		<string text="Internet play, sharing maps and updates."/>
 		<string text="The HUD, the players' names, the scoreboard and the chat."/>

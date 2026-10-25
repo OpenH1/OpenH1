@@ -664,6 +664,7 @@ struct widget_instance;
 #include "networking/network_game_globals.h"
 #include "networking/network_server_manager.h"
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
+#include "network_party.h" /* port: port/linux/game/network_party.c */
 #include "rasterizer/rasterizer.h"
 #include "saved games/player_profile.h"
 #include "saved games/playlist_profile.h"
@@ -7835,6 +7836,17 @@ void render_ui_widgets(
 				ui_mouse_widen_values();
 			}
 			ui_mouse_targets_settled = TRUE;
+		}
+		/* port: a Discord friend's ask to join, over the menus, near the top
+		of the whole screen (port/linux/game/network_party.c; the HUD shows
+		it in the game) */
+		if (first_players_render && ui_widgets_active())
+		{
+			bounds.x0 = (short)(-(halo_screen_width() - 640) / 2);
+			bounds.x1 = (short)(640 + (halo_screen_width() - 640) / 2);
+			bounds.y0 = 0;
+			bounds.y1 = 480;
+			network_party_discord_draw(&bounds, tag_loaded(FONT_GROUP_TAG, "ui\\small_ui"), 10);
 		}
 		if (widget_globals.fade_to_black >= 0.0f &&
 			widget_globals.fade_to_black <= 1.0f)

@@ -875,9 +875,47 @@ int posix_register_url_scheme(const char *scheme, const char *description)
 
 /* ---------- Discord's local socket */
 
-int posix_discord_connect(void)
+/* a connection to the socket at this path made by this user, else -1 */
+static int discord_socket_connect(const char *path)
+{
+	struct sockaddr_un address;
+	int socket_descriptor;
+
+	memset(&address, 0, sizeof(address));
+	address.sun_family = AF_UNIX;
+	if (strlen(path) >= sizeof(address.sun_path) || access(path, F_OK) != 0)
+		return -1;
+	snprintf(address.sun_path, sizeof(address.sun_path), "%s", path);
+	/* (not blocking: a client that does not take connections is passed
+	over) */
+	socket_descriptor = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+	if (socket_descriptor < 0)
+		return -1;
+	if (connect(socket_descriptor, (struct sockaddr *)&address, sizeof(address)) == 0)
+	{
+#ifdef SO_PEERCRED
+		/* only this user's Discord (in /tmp another user may make the
+		socket, and would be given the invite) */
+		struct ucred credentials;
+		socklen_t length = sizeof(credentials);
+
+		if (getsockopt(socket_descriptor, SOL_SOCKET, SO_PEERCRED, &credentials, &length) == 0 &&
+			credentials.uid == getuid())
+		{
+			return socket_descriptor;
+		}
+#else
+		return socket_descriptor;
+#endif
+	}
+	close(socket_descriptor);
+	return -1;
+}
+
+int posix_discord_connect(const char *path)
 {
 #ifdef __ANDROID__
+	(void)path;
 	return -1;
 #else
 	/* where Discord (and its Flatpak and Snap packages) put discord-ipc-N */
@@ -888,6 +926,8 @@ int posix_discord_connect(void)
 	int directory_count = 0;
 	int index;
 
+	if (path && *path)
+		return discord_socket_connect(path);
 	for (index = 0; index < (int)(sizeof(variables) / sizeof(*variables)); index++)
 	{
 		const char *value = getenv(variables[index]);
@@ -906,38 +946,14 @@ int posix_discord_connect(void)
 
 			for (number = 0; number < 10; number++)
 			{
-				struct sockaddr_un address;
+				char candidate[sizeof(((struct sockaddr_un *)0)->sun_path)];
 				int socket_descriptor;
 
-				memset(&address, 0, sizeof(address));
-				address.sun_family = AF_UNIX;
-				snprintf(address.sun_path, sizeof(address.sun_path), "%s/%sdiscord-ipc-%d",
-					directories[index], subdirectories[subdirectory], number);
-				if (access(address.sun_path, F_OK) != 0)
-					continue;
-				/* (not blocking: a client that does not take connections is
-				passed over) */
-				socket_descriptor = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-				if (socket_descriptor < 0)
-					return -1;
-				if (connect(socket_descriptor, (struct sockaddr *)&address, sizeof(address)) == 0)
-				{
-#ifdef SO_PEERCRED
-					/* only this user's Discord (in /tmp another user may make
-					the socket, and would be given the invite) */
-					struct ucred credentials;
-					socklen_t length = sizeof(credentials);
-
-					if (getsockopt(socket_descriptor, SOL_SOCKET, SO_PEERCRED, &credentials, &length) == 0 &&
-						credentials.uid == getuid())
-					{
-						return socket_descriptor;
-					}
-#else
+				snprintf(candidate, sizeof(candidate), "%s/%sdiscord-ipc-%d", directories[index],
+					subdirectories[subdirectory], number);
+				socket_descriptor = discord_socket_connect(candidate);
+				if (socket_descriptor >= 0)
 					return socket_descriptor;
-#endif
-				}
-				close(socket_descriptor);
 			}
 		}
 	}

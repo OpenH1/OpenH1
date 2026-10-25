@@ -442,8 +442,9 @@ game of this computer alone (BOTS' COUNT, SKILL and TEAMS, as in Server
 Setup), the countdown and how another player joins, and the host's GAME
 SETTINGS (Server Setup, whose START GAME comes back to the lobby) and START
 GAME (Enter, or A on the players). A player sees "Waiting for the host"
-there instead. The footer has CHANGE TEAM, INVITE LINK (Y, or F: an
-internet game's link, copied), ADD PLAYER and LEAVE. On a phone or tablet
+there instead. The footer has CHANGE TEAM, COPY INVITE (Y, or F: your
+party's invite, or else the internet game's, copied; refer to "Invites from
+anywhere"), ADD PLAYER and LEAVE. On a phone or tablet
 the lobby is the list of players and buttons it was. After a game of this
 computer alone the host picks the next one as in a network game (the map,
 the gametype, Server Setup, then this lobby), not on the Xbox's Select Map
@@ -471,7 +472,8 @@ tabs:
   (HOST, BOT, OPENH1 or OPENCE; in a Legacy game the host cannot tell OpenH1's
   players from OpenCE's). For the player chosen: KICK, BAN (pressed twice),
   MOVE TO RED or BLUE, and MUTE FOR ALL (their text chat and voice, for
-  everyone). The host's own players are never kicked, banned or muted. A team
+  everyone). The host's own players are never kicked, banned or muted; KICK
+  on a bot takes it out, one bot fewer (`bots.count`). A team
   move is offered in an OpenH1 game of teams with no OpenCE player: the
   player dies (no death counted) and respawns on the other team.
 - GAME: END GAME NOW and RESTART ROUND (each pressed twice; a restart starts
@@ -480,7 +482,10 @@ tabs:
   them), ALLOW VOTEKICK (`network.votekick`), LISTING (a public internet
   game's PUBLIC or PRIVATE), MAX PLAYERS (left and right; never fewer than
   are in the game) and ALLOW OPENCE PLAYERS (an OpenH1 game's, for new
-  joins). The bots' rows will be here once the bots play network games.
+  joins), then, in a gametype the bots play, the bots' rows: BOTS, BOT
+  SKILL, BOT TEAMS, MAKE ROOM FOR PLAYERS and (with it on) FILL TO, each
+  written to `config.toml` as it changes, which the game takes at once
+  (refer to "Bots").
 - BANS: `bans.txt`'s players, when they were banned and why, and UNBAN.
 
 The scoreboard's player menu (a right click on a name) offers the host the
@@ -562,9 +567,31 @@ and the game's rules, on the teams that `bots.teams` asks for, and they
 follow the teams' changes in the lobby. They look for enemies, aim, fire,
 throw grenades and pick up better weapons, as well as `bots.skill` lets
 them, and walk the paths that the campaign's AI finds on the maps' walkable
-surfaces (`game/bots.c`). They are never in system link or internet games,
-nor in other gametypes (but SWAT, Infection and Gun Game, which are
-Slayer's: below), and nothing that the machines send each other changes.
+surfaces (`game/bots.c`). They play no other gametypes (but SWAT, Infection
+and Gun Game, which are Slayer's: below).
+
+Bots play system link and internet games too, OpenH1 and Legacy, public or
+private: Create Game's Server Setup has a BOTS row after the gametype's
+rows, its value what they are ("10, NORMAL, FILL TO 16", NONE, or NOT IN
+THIS GAMETYPE, dimmed, for a gametype they do not play), and A opens their
+screen: BOTS, BOT SKILL, BOT TEAMS, MAKE ROOM (ON or OFF) and, with it on,
+FILL TO (2 to 16), written to `config.toml` with OK. The host plays them:
+each bot is a player of a machine of its own with no connection, whose
+input the host's tick gives the others with every other player's, so every
+machine sees an ordinary player, OpenCE's in a mixed game too, and an OpenH1
+game's bots move at its rate (NETCODE.md, "Bots in network games"). With
+MAKE ROOM on (`bots.make_room`, the default) the bots make room for people:
+no more of them play than leave the game `bots.fill_to` players and bots
+(and its MAXIMUM PLAYERS), so a player who joins a game the bots fill takes
+a bot's place at once, in the lobby or in the game (the bot of the team
+with more players, the lowest scoring), and a bot comes back a few seconds
+after a player leaves. With it off, the bots stay, and MAXIMUM PLAYERS
+counts the players alone: a game of 16 with 10 bots takes 16 people. The
+server browser and the local network's list count the people
+("6/16", the panel "6/16 · 10 BOTS"), the scoreboard's ping column says BOT
+for a bot, and the carnage report names it "(Bot)". The bots stay from game
+to game, and go with the host's game; the welcome to OpenCE players goes to
+real machines alone.
 
 ## OpenCE gametypes
 
@@ -680,9 +707,10 @@ the setting for one start of the game. It has priority over the file.
 | `audio.music_volume` | `1.0` | `HALO_MUSIC_VOLUME` | The music's volume, of the master volume. |
 | `audio.effects_volume` | `1.0` | `HALO_EFFECTS_VOLUME` | The volume of the other sounds (effects and speech), of the master volume. |
 | `audio.buffer_frames` | `1024` | `HALO_AUDIO_BUFFER_FRAMES` | The audio device's buffer, in sample frames at 48 kHz, from `64` to `8192`. Larger rides out stalls that would cut the sound out; smaller has less delay (1024 is 21 ms, 2048 is 43 ms). Not on Android. |
-| `audio.channels` | `"stereo"` | `HALO_AUDIO_CHANNELS` | `"stereo"`, or `"5.1"` for surround sound as with Dolby Digital on the Xbox. `"auto"`: 5.1 if the sound device has 6 or more channels (on Windows; the Linux builds and macOS, whose game cannot ask the device, take `"auto"` as stereo, and give 5.1 when it is asked for by name). Not on Android. In VR, 5.1 turns `vr.hrtf` off. |
+| `audio.channels` | `"auto"` | `HALO_AUDIO_CHANNELS` | `"stereo"`, or `"5.1"` for surround sound as with Dolby Digital on the Xbox: the world's sounds panned around the five speakers (VBAP), the game's 2D sounds on the speakers it sends them to, nothing on the LFE (the game sends it none). `"auto"`: 5.1 if the sound device has 6 or more channels (the host's SDL says how many the device plays: a 5.1 or 7.1 receiver or headset), else stereo. Read when the game starts. Not on Android. 5.1 is always panned, never the HRTF (`vr.hrtf` too). |
 | `audio.reverb` | `true` | `HALO_REVERB` | `true`: the sounds of the world reverberate as the place the player is in does: the sound environments of the maps (a corridor, a cave, a large hall, outdoors) set the reverberation, as the I3DL2 reverb of the Xbox did. A sound behind a wall or a door is muffled in it too. `false`: no reverberation (sounds behind a wall are still muffled). |
 | `audio.doppler` | `true` | `HALO_DOPPLER` | `true`: a sound of the world moving towards the player rises in pitch and one moving away falls (a Banshee or a Ghost passing by, a plasma bolt), from the velocities the game gives each sound, as the Xbox's DirectSound shifted them (the speed of sound 343 m/s, the shift held to an octave either way). `false`: each keeps its pitch. |
+| `audio.spatial` | `"auto"` | `HALO_AUDIO_SPATIAL` | How the world's sounds are placed around you (Settings > Audio > 3D AUDIO; "3D audio"): `"headphones"` through a model of a head (HRTF), each from its direction, ahead, behind, above or below, as the Xbox's 3D audio was; `"speakers"` panned left and right; `"auto"` the first on headphones and the second otherwise, as the system's output changes. The menus, music and HUD are not placed. 5.1 is always panned; the VR mode keeps `vr.hrtf`. |
 | `audio.resampler` | `"sinc"` | `HALO_AUDIO_RESAMPLER` | How the sounds are converted to the output's rate (48 kHz): `"sinc"` with a band-limited low pass, which keeps out the images above the sound's own rate; `"linear"` between neighbouring samples, which lets some of them through and sounds brighter for it. Audio Setup's SOUND PROCESSING screen sets it, with `audio.reverb`. |
 | `audio.voice_chat` | `"push_to_talk"` | `HALO_VOICE_CHAT` | How you talk in voice chat: `"push_to_talk"` (while `controls.push_to_talk` is held; the microphone opens when you first press it), `"open_mic"` (when the microphone hears speech), or `"off"`. You hear the other players in every case. Refer to "Voice chat". |
 | `audio.voice_volume` | `1.0` | `HALO_VOICE_VOLUME` | The volume of the voices of the other players, `0` to `2`. |
@@ -702,9 +730,11 @@ the setting for one start of the game. It has priority over the file.
 | `game.enhanced_animations` | `true` | `HALO_ENHANCED_ANIMATIONS` | `true`: the player bipeds' grenade throws keep their legs moving, blended by speed and direction (crouched throws stay crouched, throws in the air use the jump's legs), Warthog and Scorpion riders stay seated to throw and let go of the grips to throw and reload, and a player turns with the aim while throwing, as while meleeing. `false`: the original animations, which freeze the legs during a throw and stand a rider up. Only in config.toml, not in the menus. |
 | `game.sim_rate` | `60` | `HALO_SIM_RATE` | How many steps a second the game takes for what a player feels in their hands: their own movement and aim, projectiles, thrown items, and the VR mode's throws and grabs. `30` (as the game was made), `60` or `120`: 1, 2 or 4 steps inside each of the game's 30 ticks a second. Everything else keeps the 30 ticks: the AI, scripts, cinematics, animations, timers, vehicles, saved games and the network. Any other value is `30` (refer to "Simulation rate" in "How the port operates"). It applies to games of this computer alone: the campaign, split screen and games with bots (a split screen game runs as a network game of one computer that takes no other). Network games with other computers use the rate the game agreed on, hosting or joining: `30` in a Legacy game (OpenCE's netcode steps at 30), and the host's `network.sim_rate` in an OpenH1 game. The playback of a saved film is always `30`. TICK RATE in Video Setup > Graphics > Advanced: ORIGINAL (30), 60 or 120. A change applies from the next tick. Where the game sets the setting aside (a network game with other computers, a film's playback), the row is locked: dimmed, at the game's rate (ORIGINAL (30) in a Legacy game), passed over, and OK leaves the setting as it was. |
 | `game.unlock_all_levels` | `false` | `HALO_UNLOCK_ALL_LEVELS` | `true`: a profile created afterward starts with all the campaign levels finished on all the difficulties. `false`: a new profile starts at The Pillar of Autumn, and each level opens when you finish the level before it, as on the Xbox. Existing profiles keep their progress. To start a profile over, type `profile_reset_campaign` in the console. |
-| `bots.count` | `0` | `HALO_BOTS` | Computer players (bots) in a local (split screen) Slayer game: `0` to `15` join its lobby with the players, as far as the game has room. Not in system link or internet games. `0`: none, as in the stock game. BOTS in Server Setup of Multiplayer > PLAY WITH BOTS writes it. Refer to "Bots". |
+| `bots.count` | `0` | `HALO_BOTS` | Computer players (bots) in a Slayer game this computer hosts: `0` to `15` join its lobby with the players, as far as the game has room: a local (split screen) game, or a system link or internet one, where the host plays them and the other machines see them as players (`bots.make_room`). `0`: none, as in the stock game. BOTS in Server Setup (of Multiplayer > PLAY WITH BOTS, or its BOTS screen in a network game) writes it. Refer to "Bots". |
 | `bots.skill` | `"normal"` | `HALO_BOT_SKILL` | How well the bots play: `"easy"`, `"normal"`, `"heroic"` or `"legendary"`: how soon they react, how far and how wide they see, how large their aim error is and how fast it settles, how fast they turn. BOT SKILL in Server Setup of Multiplayer > PLAY WITH BOTS writes it. |
 | `bots.teams` | `"even"` | `HALO_BOT_TEAMS` | In a team game: `"even"` puts the bots on both teams, evening them with the players; `"against"` puts them all on the team the players are not on. BOT TEAMS (EVEN or AGAINST YOU) in Server Setup of Multiplayer > PLAY WITH BOTS writes it. |
+| `bots.make_room` | `true` | `HALO_BOTS_MAKE_ROOM` | In a system link or internet game with bots: a bot leaves as a player joins, so that the game has no more than `bots.fill_to` players and bots, and comes back as a player leaves. `false`: the bots stay, and the game's most players are its players' alone. MAKE ROOM on Server Setup's BOTS screen writes it. Refer to "Bots". |
+| `bots.fill_to` | `16` | `HALO_BOTS_FILL_TO` | With `bots.make_room`, the players and bots a system link or internet game is filled to (2 to 128; no more than its most players). FILL TO on Server Setup's BOTS screen writes it. |
 | `paths.data` | `""` | `HALO_DATA_ROOT` | The data root. Refer to "Start the game". |
 | `paths.saves` | `""` | `HALO_SAVE_ROOT` | The save root. Refer to "Files and folders". |
 | `network.address` | `""` | `HALO_NET_ADDRESS` | The IPv4 address of this machine for system link. Refer to "Play on one computer". |
@@ -746,7 +776,9 @@ the setting for one start of the game. It has priority over the file.
 | `network.coop_public` | `false` | `HALO_NET_COOP_PUBLIC` | `true`: an online co-op game (Create Game > ONLINE CO-OP, or Internet with a SINGLEPLAYER map) starts as PUBLIC. `false`: it starts as PRIVATE. LISTING in co-op's Server Setup writes its choice here. Refer to "Server browser". |
 | `network.brokers_file` | `"brokers.txt"` | `HALO_NET_BROKERS_FILE` | The file of the public MQTT brokers that let the machines of an invite find each other, and that carry the listings of the server browser: next to `config.toml` (else the release's, `share/openh1/brokers.txt`), unless a full path. One `host:port` on each line, up to 4; `#` starts a comment. |
 | `network.stun_servers` | Google and Cloudflare | `HALO_NET_STUN` | The public STUN servers (`host:port`, with commas between them) that give the internet address of a machine. |
-| `discord.application_id` | OpenCE's application (OpenH1 has none of its own) | `HALO_DISCORD_APPLICATION` | The Discord application for invites. Empty: no Discord. |
+| `discord.application_id` | OpenCE's application (until OpenH1 has its own: refer to "OpenH1's Discord application") | `HALO_DISCORD_APPLICATION` | The Discord application for your status, invites and asks to join. Its name is what Discord shows you playing. Empty: no Discord. |
+| `discord.rich_presence` | `true` | `HALO_DISCORD_RICH_PRESENCE` | `true`: Discord shows what you do: in the menus, in a party, the game you host or play. Refer to "Discord". `false`: Discord shows nothing, and no one joins you through Discord. |
+| `discord.allow_join_requests` | `true` | `HALO_DISCORD_ALLOW_JOIN_REQUESTS` | `true`: Discord friends can ask to join your party or game (the game asks you), and you can invite them with Discord's Invite to Join. `false`: Discord shows no Join buttons, and declines asks; send your invite instead. |
 | `update.auto` | `true` | `HALO_UPDATE_AUTO` | `true`: at start-up, the game looks for a new version. Refer to "Updates". `false`: the game does not look. |
 | `streamer.enabled` | `false` | `HALO_STREAMER_MODE` | `true`: streamer mode hides offensive words, as stars, in the names and text of other players, maps and mods, at the levels below. Refer to "Streamer mode". STREAMER MODE in Settings > Network Setup > Streamer Mode. |
 | `streamer.slurs` | `"mild"` | `HALO_STREAMER_SLURS` | With `streamer.enabled`, the slurs (race, ethnicity, sexuality, gender, disability) hidden: `"off"`, `"severe"`, `"strong"` (strong and severe) or `"mild"` (all). CENSOR SLURS in Settings > Network Setup > Streamer Mode. |
@@ -771,6 +803,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.skip_cinematics` | `false` | `HALO_SKIP_CINEMATICS` | Skip each cinematic of a local game: as the skip button does where the level lets it be skipped, else run at sixteen times its speed (`main_skip`), so that a test reaches play in seconds (b30's opening, which cannot be skipped, in about 100 frames rather than 2,400). |
 | `debug.menu_open` | `""` | `HALO_MENU_OPEN` | Start on this screen of the menus (`main_menu/settings_select/...`, as `port/assets/menus` names it), a player profile being edited, to look at it. |
 | `debug.party` | `""` | `HALO_PARTY` | Join this party link at the start, or lead its party (`lead:` before the link): several copies of the game in one party, for a test. |
+| `debug.discord_socket` | `""` | `HALO_DISCORD_SOCKET` | The Discord client's socket (on Windows, its pipe) to connect to, and no other: a stand-in for Discord in a test, so that a test never reaches the Discord app of the person at the computer. Empty: Discord's own. |
 | `debug.gpu_skip_vertex_shaders`, `debug.gpu_debug_expression`, `debug.gpu_debug_flat`, `debug.gpu_debug_texture0` | off | `HALO_GPU_SKIP_VS`, `HALO_GPU_DEBUG_EXPR`, `HALO_GPU_DEBUG_FLAT`, `HALO_GPU_DEBUG_T0` | Tools to find problems in the graphics: skip the draws of a vertex shader, or replace the output of all pixel shaders with an expression (for example `t0.rgb`). `debug.gpu_debug_expression` is Metal's alone (`HALO_GPU_DEBUG_EXPR`, as MSL): it does nothing with Vulkan, whose shaders are SPIR-V written directly, with no source to put it in. |
 | `debug.dynamic_lights_look`, `debug.dynamic_lights_log` | `""`, `false` | `HALO_DYNAMIC_LIGHTS_LOOK`, `HALO_DYNAMIC_LIGHTS_LOG` | Tools for the enhanced dynamic lights: up to eight numbers in place of their look's (the lights' brightness, `1.7`; their core's inverse square in radii, `12`; the spill past white, `0.18`; the wrap on models, `0.25`; the glow's size in the light's radius, `0.22`, its brightness, `1.2`, its softness against what it meets in world units, `0.12`, and its least size, `0.035`), and a log of where the first projectile's light is drawn each frame beside where the game placed it at the tick, and once a second how many lights there are. |
 | `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_hitch`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_chat`, `debug.network_test_name`, `debug.network_test_players`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_HITCH`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PLAYERS`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link, or (`log`) a log of the game one machine plays (`game/network_test.c`); a `local:` game has `debug.network_test_players` players (split screen); a test game starts `debug.network_test_start` seconds (`15.0`) after the host opens it. Refer to `NETCODE.md`. `debug.test_input = "menu:a down down a"` presses menu buttons one a second (`a`, `b`, `x`, `y`, `up`, `down`, `left`, `right`, `start`, `back` or `wait`, `screenshot`, the Screenshot key's capture, or `click:<x>:<y>`, a click of the pointer there, `x` and `y` 0 to 1 of the window; `back+x` holds Back through its second and presses X half way through it), for testing the menus; `"script:0.5 jump; 1-2 move=0,1; 2 aim=90,10"` presses, holds and aims on the simulation's clock, in seconds from the scenario's start, the same at any simulation rate (`tools/scorecard`). |
@@ -791,7 +824,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.trace`, `debug.trace_seconds`, `debug.trace_mutation` | `""`, `0.0`, `""` | `HALO_TRACE`, `HALO_TRACE_SECONDS`, `HALO_TRACE_MUTATION` | A file to write a line a simulation step to (`game/sim_trace.c`): the players' place, velocity and aim, each projectile's, and the step's shots, projectiles made, strikes and detonations, timed in seconds from the scenario's start; quit once the scenario has run `debug.trace_seconds`; `debug.trace_mutation` puts a known bug in on purpose (`head_start`, `jump`, `speed`), which the scorecard must catch (`tools/scorecard`). Off, it costs a test a call. `HALO_GUEST_IMAGE` (the environment only) runs another guest image in the game's place: StageKit's map writer (`tools/stagekit`). |
 | `debug.frame_time` | `0.0` | `HALO_FRAME_TIME` | Seconds of game time each frame runs, whatever time it took, so that two runs of the same input run the same frames (the determinism check, with `debug.determinism_log`); `0` the time each frame took. |
 | `debug.random_seed` | `0` | `HALO_RANDOM_SEED` | The random seed of the network games this machine hosts, so that a test plays the same game again (where players spawn, the weapons' spread, the AI's choices); `0` a new one for each game, from the clock. |
-| `debug.audio_log` | `false` | `HALO_AUDIO_LOG` | Write to the log, five times a second, each sound placed in the world that plays: where it is from the listener (metres ahead, right and up), its gain in each ear (in VR, the HRTF's delays and filters too), and the time the mixing takes. |
+| `debug.audio_log` | `false` | `HALO_AUDIO_LOG` | Write to the log, five times a second, each sound placed in the world that plays: where it is from the listener (metres ahead, right and up), its gain in each ear (through the HRTF, its delays and filters too), and the time the mixing takes. |
 | `debug.audio_record` | `""` | `HALO_AUDIO_RECORD` | Record the game's sound as it plays (with a device or without) to this WAV file, 48 kHz 16-bit stereo, for automatic tests. Empty: none. |
 | `debug.sample_seconds` | `0.0` | `HALO_SAMPLE` | The builds with a host only (Linux, Android, macOS). The host writes to the log, this often in seconds, where each game thread is: its program counter and frame chain, to find where the game spends its time or stops. `0`: never. |
 | `debug.memory_watch` | `true` | `HALO_MEMORY_WATCH` | The builds with a host only (Linux, Android, macOS). `true`: the host notices the game's writes to cached textures and vertices by page protection. `false`: it compares page contents once a frame instead, which is slower. |
@@ -1137,6 +1170,50 @@ the world (such as `rasterizer_wireframe`). Refer to `NETCODE.md`.
 The frame rate shows at the bottom right of the screen. It is the mean over
 half a second.
 
+## 3D audio
+
+On headphones the world's sounds reach each ear as they would reach your
+head, as the Xbox's DirectSound put its 3D sounds through its HRTF: a sound
+to your left is a little later and duller at your right ear, one behind is
+duller, and one above or below has a tone of its own (the notch of the
+pinna's), so ahead, behind, above and below can be told apart. On speakers
+they are panned left and right, as before. The menus, the music, the HUD
+and the other 2D sounds are as they were. The model is the VR mode's ("Sound
+from your head": Brown and Duda's, a few filters a sound); a sound's
+distance, occlusion, reverb and Doppler shift are the pan's.
+
+`audio.spatial` (Settings > Audio > 3D AUDIO) chooses. `"auto"`, the
+default, asks the system what it plays on, at the start and each second
+after (`port/android/host/host_audio_route.c`, in the host, which the game
+asks through `host_audio_headphones`); plugging headphones in or taking them
+out mid-game crossfades each sound between the two over 100 ms, with no
+click:
+
+- macOS: the default output device: its name (External Headphones, AirPods,
+  a headset), the built-in output's data source, Bluetooth (headphones
+  unless its name says a speaker).
+- iOS: the audio session's route (wired or Bluetooth headphones).
+- Windows: the default endpoint's form factor (Headphones or Headset).
+- Linux: the sound server's default sink (PulseAudio, or PipeWire's pulse
+  server, through libpulse loaded at run time): its form factor, its active
+  port, or Bluetooth; else ALSA's headphone or headset jack. The Steam
+  Deck's 3.5 mm jack is headphones.
+- Android: the devices the game's sound is routed to (Android 13 and
+  later), or those connected: wired, Bluetooth and USB headsets and
+  headphones, hearing aids.
+
+A device it cannot tell is speakers. `"headphones"` and `"speakers"` choose
+for good. 5.1 is panned around its speakers, and the VR mode keeps
+`vr.hrtf`. The log says what the sound plays on as it changes ("audio: the
+sound plays on headphones; the world's sounds through the HRTF").
+
+The HRTF costs about 15 ns a 3D sound a frame on an Apple M2 core: the
+mixer's bench (`tools/harness/tests/test_mixer.py bench 24 16 indoor hrtf`,
+24 sounds indoors) takes 3.6% of a core through it and 1.9% panned (the VR
+mode's HRTF took 4.7% before it had a pass of its own); a game on Blood
+Gulch with bots, 2.0% and 1.4%. `test_mixer.py circle out.wav hrtf` (or
+`pan`) writes a sound going round the listener, to listen to.
+
 ## Field of view
 
 Video Setup's FOV AND VIEWMODELS screen sets the field of view of the
@@ -1264,10 +1341,13 @@ To join a game, do one of these steps:
   read it.
 - Copy the link (or the 64 digits) and go to the game.
 - Enter `halo <link>`.
-- Accept a Discord invite. Refer to "Discord".
+- Accept a Discord invite, or ask to join in Discord. Refer to "Discord".
+- Open the join page's address (`https://openh1.com/join/#join=<64
+  digits>`): refer to "Invites from anywhere".
 
 The game also takes a web address with an invite
-(`https://openh1.com/?join=<64 digits>`), as a link.
+(`https://openh1.com/?join=<64 digits>`, or the join page's
+`https://openh1.com/join/#join=<64 digits>`), as a link.
 
 When the machines connect, the game of the host shows in Multiplayer,
 System Link. Join the game as on a local network. System link on a local
@@ -1280,8 +1360,9 @@ Friends can group up before a game and go from game to game together
 
 - Multiplayer > PLAY ONLINE > PARTY opens the Party screen (on a
   touchscreen, PARTY at the foot of Multiplayer). MAKE PARTY makes a party
-  of up to 16 players, you its leader, and puts its link on the clipboard
-  (COPY LINK puts it there again): `halo://party/<32 hexadecimal digits>`.
+  of up to 16 players, you its leader, and puts its link on the clipboard:
+  `halo://party/<32 hexadecimal digits>`. COPY INVITE copies an invite to
+  paste in any chat (refer to "Invites from anywhere").
   Friends join it as they join an invite: they open the link, copy it and
   go to the game, use JOIN BY LINK, or PASTE LINK on the Party screen. The
   Party screen lists the members, marks the leader, and says where each
@@ -1768,14 +1849,98 @@ In the game, each machine has an address in 100.64.0.0/10:
 - The broadcasts of the game go to all the machines. Thus the game of the
   host shows on the other machines.
 
+### Invites from anywhere
+
+Steam's chat, and most other apps, make only `https://` links clickable,
+not `halo://`. COPY INVITE (on the Party screen, and in the lobby's footer)
+copies a short message for any chat (`p2p_invite_message`):
+
+```
+Join my OpenH1 party: https://openh1.com/join/#party=<32 hexadecimal digits>
+Or paste this into OpenH1's Join by Link: halo://party/<32 hexadecimal digits>
+```
+
+In a party it is the party's invite: a friend joins the party, then follows
+its leader into the lobby or the game. Out of a party, in an internet game,
+it is the game's (`#join=` and `halo://join/`, 64 digits).
+
+The address opens the join page (`website/public/join`, on openh1.com). The
+code is after `#`, which a browser never sends to the site. The page opens
+the `halo://` link (on Windows, Linux and Android, where the game is its
+handler), shows the link to copy into JOIN BY LINK (or the Party screen's
+PASTE LINK; the game also joins a link that it finds on the clipboard when
+it comes to the front), and shows the downloads for a friend who does not
+have OpenH1 yet. The game takes the join page's addresses, as it takes every
+other form of the links (`halo://join/`, `halo://party/`, a bare code,
+`?join=`, `?party=`).
+
 ### Discord
 
-If the Discord desktop client operates, the game of the host shows in
-Discord (through the application of `discord.application_id`). The activity
-has a private party with the invite as its join secret. The host can send
-the invite with the invite button of Discord. When a person accepts it, that
-person joins the game. If the game does not operate, Discord starts it.
-The game sends the activity only to a Discord client of the same user.
+If the Discord desktop client operates, Discord shows what you do in
+OpenH1 (`src/p2p_discord.c`, through the application of
+`discord.application_id`; `discord.rich_presence = false` shows nothing):
+
+- In the menus: "In the menus", and in a party "In a party (3 of 16)".
+- When you host: "Hosting OpenH1 120 Tick · Slayer on Blood Gulch", and
+  "In the lobby" or "Playing" with the number of players (or the party).
+- In the game of another machine: what the game is, the same way.
+- In the campaign: "Campaign on" the level.
+
+Friends join you through Discord (`discord.allow_join_requests`):
+
+- A friend clicks **Ask to Join** on your status. The game shows "Bob asks
+  to join your party" for 30 seconds, over the menus or at the top of the
+  game: J (`controls.party_accept`) or a controller's D-pad Down lets them
+  in, Esc or the D-pad's Up declines. The keys are taken for the answer
+  only (Esc does not also go back or pause). An ask not answered is
+  declined.
+- You send **Invite to Join** from Discord.
+- In a party, they join your party (its link is the activity's join
+  secret), then follow its leader into the lobby or the game. When you play
+  an internet game out of a party, they join the game (its invite). In the
+  menus out of a party, a party is made for them, you its leader: when you
+  let them in, or when a friend that you invited arrives (the game listens
+  for them on the party's topic, as long as Discord has its link). In a LAN
+  game, or the campaign, no one can join through Discord.
+
+Discord gives the secret only to the friends that you invite or let in.
+When you accept an invite in Discord, or a friend lets you in, the game
+joins it as it joins a link. If the game does not operate, Discord starts
+it. The game connects only to a Discord client of the same user.
+
+#### OpenH1's Discord application
+
+Discord shows the name of the application (`discord.application_id`) as
+the game that you play, and its pictures. Until OpenH1 has an application
+of its own, the game uses OpenCE's: Discord shows "OpenCE", and the logo
+alone. To make OpenH1's (a few minutes; only with the Discord account that
+is to own it):
+
+1. Go to <https://discord.com/developers/applications> and click
+   **New Application**. Name it `OpenH1`.
+2. In **General Information**, set the **App Icon** to
+   `port/assets/icon/openh1-icon.png` and a short description (for example,
+   "Halo: Combat Evolved, open source, on every platform"). Copy the
+   **Application ID** (only digits).
+3. In **Rich Presence** > **Art Assets**, add these three images, with
+   these names exactly (the game sends the names; Discord can take a few
+   minutes to show new art):
+
+   | Name | File | Where Discord shows it |
+   | --- | --- | --- |
+   | `logo` | `port/assets/discord/logo.png` | The large picture, always |
+   | `party` | `port/assets/discord/party.png` | The small picture in its corner, in a party |
+   | `host` | `port/assets/discord/host.png` | The small picture, when you host |
+
+   The SVG files beside them are their sources (1024 × 1024 pixels).
+4. Put the id in `port/linux/src/port_config.c` as the default of
+   `discord.application_id` (and in the settings table above), in place of
+   OpenCE's (`1553978809840050229`). To try it first on one computer, put
+   it in `config.toml`: `application_id = "<id>"` under `[discord]`.
+
+The game sends the small pictures only with an application other than
+OpenCE's, whose art has `logo` alone. Ask to Join, Join and Invite to Join
+need no other setting of the application.
 
 ## Mods
 
@@ -4641,7 +4806,7 @@ does; making the eye images from the four layers cost 0.2 ms more there.
 | High-res text | The menus' and HUD's text is drawn with Overpass (`port/assets/fonts`, SIL Open Font License) in place of the maps' bitmap fonts, which are Interstate. `src/text_hires.c` rasterizes each glyph with stb_truetype (`port/third_party/stb`) at the resolution the game draws at, into an atlas that a placeholder bitmap of the game stands for. The game lays the text out from its font tags as before: each font is as tall as its tag's capitals, and narrowed where the tag's letters are narrower than the Xbox maps' (the fonts of a Custom Edition `loc.map`), so that its letters do not run into each other. The menus' titles (the screens' headers and the main menu's items) are pictures of text in the maps, so they are drawn as the high-res HUD is: `tools/title_assets.py` sets each one again in OpenCE, Roger White's public-domain Newtown respaced to match the maps' commercial title typeface (`tools/title_font.py`), at 4x the bitmap's size over its own plate or glow, each letter placed where the map's letter is, in `port/assets/titles`. The postgame carnage report's title is set over a hand-made SVG redraw of its panel (`port/assets/titles/svg`) instead. The A, B, X and Y button icons beside the menus' key labels and in their text ("Press A to Join") are drawn from hand-made SVG redraws at 8x the size of the maps' bitmaps (`port/assets/buttons`, made by `tools/button_assets.py`), in the same sizes and places. `display.high_res_text = false` turns it off. |
 | Dynamic lights | `display.dynamic_lights = "enhanced"` (`src/d3d8_device.c`, `game/dynamic_lights.c`; Vulkan's `src/xgpu_spirv.c`, `vulkan/xgpu_vulkan_stream.c`): the frame's lights are a uniform block, and a 32 x 32 x 16 grid about the camera, its cells growing with the distance (out to 128 world units each way), a 128-bit mask of the lights that reach each cell (an integer 3D texture). The structure's lightmap pass and the models' per-pixel lighting (`display.per_pixel_lighting`'s, which this turns on) add the lights of their cell for each pixel, in place of the game's pass over the structure for each light and its two lights for each model. The vertex shaders hand on the world position: a model program's skinned position before it is projected, a structure's vertex as it is. The glows are a camera-facing quad each, projected as the game's programs are, faded against the scene's depth, sampled with the target drawn into without it. With Vulkan the block and the cells are its draw set's, written in the stream's order, and the glows' shaders are the SPIR-V emitter's. Metal draws them alike (`src/xgpu_msl.c`, `port/macos/xgpu_metal_stream.m`): the block and the cells (in buffers: the cells' masks in the texture's order) are copied into the frame's upload ring as the stream sends them and bound for the draws after them, and the glows' functions are the MSL emitter's, the SPIR-V emitter's operation for operation. A view that finds more lights than the 128 lit (512 on the desktop builds and the Mac, 256 on the Steam Frame: `include/halo_port_capacity.h`) lights the 128 that show most, each scored by its brightness times its radius over its distance as it was drawn last frame, those wholly behind the camera last (`game/dynamic_lights.c`, `dynamic_lights_rank`), classic lights too. |
 | Anti-aliasing | Off unless `display.anti_aliasing` is set (`src/d3d8_device.c`). FXAA (written in the port) and SMAA (`port/third_party/smaa`, MIT licensed, at its HIGH preset, compiled as GLSL) are passes over the 3D view of each window, after the lens flares and before the HUD and the menus (`render/render.c`). The Vulkan backend runs them, their GLSL (`tools/vulkan_post_shaders.py`) compiled to SPIR-V when the port is changed (`vulkan/xgpu_vulkan_post.c`), its pipelines made when the setting is chosen and as a map is prepared. The Metal backend runs them too, the same SPIR-V written as MSL by SPIRV-Cross (`port/macos/xgpu_metal_post.c`, `tools/metal_post_shaders.py`). Supersampling draws the render targets the size of the screen at two times the resolution in each direction, and the display blit scales them down. Multisampling draws the back buffer and its depth buffer into multisampled renderbuffers, and with them any target that is drawn together with one of them (a mirror's view, in the secondary target with the back buffer's depth buffer), so that the attachments of a framebuffer are all multisampled or none is. A target's pixels are resolved into its texture before something reads the texture (as a texture, or at the display blit). Visibility tests count samples, divided by the samples of a pixel. An alpha-tested surface (foliage, grates) covers the samples of a pixel in proportion to its alpha past the reference (the sample mask). |
-| Sound | Xbox DirectSound on SDL3 audio (`src/dsound_sdl.c`): PCM and Xbox ADPCM, mixed at 48 kHz in stereo or 5.1, with volume, pitch, mix bins, distance, pan, occlusion and obstruction, and the Doppler shift of moving sounds (`audio.doppler`). There are no cones (no sound of the maps has one). On 5.1 the game gets the AC-3 speaker setting of the Xbox and sends its 2D sounds to the center and back speakers, 3D sounds pan across the five speakers, and the reverb plays from the front and back pairs. The game sends nothing to the LFE channel. |
+| Sound | Xbox DirectSound on SDL3 audio (`src/dsound_sdl.c`): PCM and Xbox ADPCM, mixed at 48 kHz in stereo or 5.1, with volume, pitch, mix bins, distance, pan, occlusion and obstruction, and the Doppler shift of moving sounds (`audio.doppler`); on headphones, the world's sounds through an HRTF (`audio.spatial`, "3D audio"). There are no cones (no sound of the maps has one). On 5.1 the game gets the AC-3 speaker setting of the Xbox and sends its 2D sounds to the center and back speakers, 3D sounds pan across the five speakers, and the reverb plays from the front and back pairs. The game sends nothing to the LFE channel. |
 | Input | XInput on SDL3 (`src/xinput_sdl.c`): keyboard, mouse, gamepads with rumble, and the debug keyboard for the console. |
 | Files | The Win32 file functions and the MSVC file functions on POSIX, with the translation of Xbox paths. |
 | Threads | Threads, events, mutexes, critical sections, interlocked operations and alertable waits. |
@@ -5022,14 +5187,14 @@ Other changes:
 | `game/player_control.c` | The mouse aims the player on controller 1 directly, its zoomed turn as `input.zoom_sensitivity` chooses (`view_fov.c`). |
 | `sound/game_sound.c` | The game calculates the obstruction of each sound one time for each tick, not for each frame. |
 | `sound/sound_manager.c` | A track of a looping sound that is gone stops, even in the millisecond it started (`refresh_sound`). The Xbox never drew three frames in one millisecond; the port can (the null renderer, no frame limit), and then read the deleted looping sound and crashed. |
-| `cseries/errors.c` | `debug.txt` stays open between lines. A line that is the same as the line before it is counted, not written again (`last line repeated N times`). At 64 MB, `debug.txt` becomes `debug.old.txt` and a new `debug.txt` starts. |
+| `cseries/errors.c` | `debug.txt` stays open between lines. A line, or a run of up to four lines, that comes twice in a row is counted, not written again, until another line comes or the game ends (`last line repeated N times`, `last 2 lines repeated N times`). At 64 MB, `debug.txt` becomes `debug.old.txt` and a new `debug.txt` starts. |
 | `networking/`, `game/`, `interface/`, `bungie_net/network/` and the pools of objects, effects and sounds | The system link limits and the memory for them. |
 | `game/`, `objects/`, `units/`, `networking/` | The distributed netcode. Refer to `NETCODE.md`. |
 | `cache/cache_files.c` | When a map's tags load and unload, the port finds the bitmaps that the high-res HUD replaces (`game/hud_hires_tags.c`), adds the tags of the menus to the menus' map (`game/menu_tags.c`), and plays the mods' tags (`game/mods.c`). |
 | `cache/xbox_sound_cache.c`, `cache/xbox_texture_cache.c` | The samples of a mod's sound are copied from memory, and the pixels of a mod's bitmap read from its file and laid out for the hardware, at once (`game/mod_sounds.c`, `game/mod_bitmaps.c`); a mod's linear bitmap need not have rows of whole steps of the pitch. |
 | `hs/hs.c` | The console's `mods_reload`, `mods_enable` and `mods_list`, which a client may run too. |
 | `interface/ui_widget.c`, `interface/ui_widget_event_handler_functions.c`, `interface/ui_widget_game_data_input_functions.c` | The main menu is the PC version's from `port/assets/menus` (`display.menus`); the menus' widgets can call the port's functions (`game/menu_functions.c`) and send the PC version's custom activation event; the widgets' memory is 256 KB, not 16 KB; the main menu and Multiplayer clear co-op's controllers, so that a gamepad going back to controller 1 is not a controller unplugged; the lobby's split screen players leave alone, and one who quits in game is not joined to the next game (`interface/player_ui.c`).; Multiplayer's PLAY WITH BOTS hosts a game that takes no other machine, as the Xbox's split screen does (`ui_widget_port_host_local`); the port's own screens are laid out for the view's width up to 16:9 (their widgets' `wide`: `game/menu_tags.c`'s `ui_widget_port_wide_layout`), a picture widened by stretching its middle (`draw_bitmap_widened_in_rect`); after a game of this machine alone the host's map select and the lobby open in place of the Xbox's split screen Select Map and Select Teams (`game/menu_tags.c`'s `pc_menus_screen`). |
-| `interface/player_ui.c` | Fast setup opens the pregame screen through the port's menus (the lobby), as `interface/ui_widget.c` does. |
+| `interface/player_ui.c` | Fast setup opens the pregame screen through the port's menus (the lobby), as `interface/ui_widget.c` does. Player 1's last used profile (`lastprof.txt`) is looked for once, not each time the menus and the party ask (each frame), which logged its absence again each time. |
 | `game/game_engine.c`, `game/game_engine.h`, `game/game_engine_slayer.c`, `game/game.c`, `game/aim_assist.c`, `game/players.c`, `objects/damage.c`, `objects/objects.c`, `units/units.c`, `items/weapons.c`, `saved games/playlist_profile.c`, `saved games/saved_game_files.c` | OpenCE's gametypes (`game/game_modes.c`, "OpenCE gametypes"): the gametype's PC options carry a mode and Hardcore with their options; the built-in ones are written after the Xbox's default gametypes; Infection's and Gun Game's game engines are Slayer's with their rules; SWAT's headshots, Hardcore's motion sensor, aim assist and restore of the killer; Infection's zombies' skulls, grenades, powerups, seats and melee. |
 | `game/game.c` | Each tick takes its rate (`game.sim_rate`), and runs the fast phase's sub-steps after the objects' update (`game/sim_rate.c`; "Simulation rate"). |
 | `game/game_time.c`, `main/main.c` | With `debug.fixed_step`, a game of one machine runs a step a frame (a tick, or a sub-step of `game.sim_rate`), each frame taking a step's time, so that it plays the same every time (`tools/stagekit`). |
@@ -5069,7 +5234,7 @@ Other changes:
 | `cache/cache_files.c`, `networking/network_client_manager.c`, `networking/network_server_manager.c`, `networking/network_server_message_handler.c`, `main/main.c`, `interface/interface.c` | Map sharing (`game/map_share.c`): a client that does not have the game's Custom Edition map asks the host for it instead of leaving, is not given time to precache it until it has it, and adds its players to a game in progress only then; the host gives the game's map its own name and its version (its hash's start), takes the requests from any machine in the game, lobby too, and does not drop a machine that downloads; the transfers run each frame, and their progress is drawn over the screen. |
 | `cutscene/cinematics.c` | A scenario's titles (some Custom Edition maps show their name for the whole game) are not drawn over a menu, as the letterbox is not: the screen's overlays are drawn after the players' menus. |
 | `tag_files/tag_groups.h` | `TAG_BLOCK_GET_ELEMENT` returns an element in the block without a call, and calls `tag_block_get_element_with_size` for anything else. |
-| `game/players.c`, `networking/network_server_manager.c` | Bots (`game/bots.c`, `bots.count`): the lobby of a local Slayer game takes the bot players, each the one player of a machine of its own that no real machine is, and every tick their actions come from `game/bots.c` instead of their empty queues. Nothing changes in a system link or internet game. |
+| `game/players.c`, `game/player_queues_new.c`, `networking/network_server_manager.c` | Bots (`game/bots.c`, `bots.count`): the lobby of a Slayer game this machine hosts takes the bot players, each the one player of a machine of its own that no real machine is (joining machines are numbered below them), and every tick their actions come from `game/bots.c` instead of their empty queues, into the update the host relays (`update_server_take_bot_action`). A network game's bots make room for the players who join (`bots.make_room`), told the other machines by the game's own messages; the advertisement and the listing count the players apart from them. |
 | `input/input_xbox.c`, `physics/collision_usage.c` | The clock is read only for a button held, and for collision tests only when their times are shown (a read of the clock was slow in a browser, for the web port). |
 | `math/random_math.c`, `game/game.c`, `game/game_time.c` | The local seed is set from the game's at a map's start, and is two: the ticks' and the frames' ("Determinism"). The seeds' takers and the game state's allocations go to the determinism check (`game/determinism_log.c`). |
 | `cseries/debug_memory.c` | The debug allocator fills a new allocation from a seed of its own, not the game's local seed. |

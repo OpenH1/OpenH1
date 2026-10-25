@@ -15,7 +15,8 @@ Automated system link sessions for testing the netcode without the menus
   difficulty, as the Map screen does for a campaign level;
 - "local:<map>[:<variant>...]" the same with a local (split screen) game of
   one player, as Multiplayer > Split Screen of the Xbox's menus sets one up
-  (no other machine joins it: the bots' games, bots.count);
+  (no other machine joins it; the bots of bots.count join it, as they join
+  a hosted game);
 - "join" searches for games and joins the first it finds, as picking it in
   the system link list does;
 - "browse" joins the game with the most players that the server browser

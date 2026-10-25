@@ -45,6 +45,13 @@ not heard: their invites are let go.
 
 The pregame lobby and the carnage report have no player menu yet: when they
 do, network_party_player_actions and network_party_player_act are theirs too.
+
+A Discord friend's ask to join (port/linux/src/p2p_discord.c) is shown the
+same way, in the game and over the menus alike (network_party_discord_draw,
+from ui_widget.c's render_ui_widgets): "Bob asks to join your party", with
+its keys as the player plays: the accept's (J) and Esc, else the
+controller's D-pad Down and Up. port/linux/src/xinput_sdl.c answers it,
+taking those keys from the game and the menus while it is shown.
 */
 
 #include "cseries.h"
@@ -70,6 +77,8 @@ do, network_party_player_actions and network_party_player_act are theirs too.
 #include "network_party.h"
 #include "halo_keyboard.h"
 #include "bots.h"
+/* (a Discord friend's ask to join: p2p_discord_join_request) */
+#include "../src/p2p.h"
 
 #include <stdio.h>
 
@@ -972,11 +981,20 @@ void network_party_draw(
 	real alpha;
 	boolean prompt;
 
-	if (!party_globals.active || font_index == NONE || local_player_index != local_player_get_next(NONE) ||
-		ui_widgets_active() || cinematic_in_progress())
+	if (font_index == NONE || local_player_index != local_player_get_next(NONE) || ui_widgets_active() ||
+		cinematic_in_progress())
 	{
 		return;
 	}
+	/* (a Discord friend's ask, above the line) */
+	{
+		rectangle2d view = window;
+
+		offset_rectangle2d(&view, -render.camera.viewport_bounds.x0, -render.camera.viewport_bounds.y0);
+		network_party_discord_draw(&view, font_index, (short)(view.y0 + (view.y1 - view.y0) / 8));
+	}
+	if (!party_globals.active)
+		return;
 	prompt = party_prompted(now);
 	if (prompt)
 	{
@@ -1067,6 +1085,107 @@ void network_party_draw(
 			draw_string_set_draw_mode(font_index, NONE, 0 /* left */, 0, &color);
 			draw_string_and_hack_in_icons(&rest, NULL, NULL, 0, button, FALSE);
 		}
+	}
+	draw_string_set_indents(0, 0);
+}
+
+/* a part of a line, after the cursor (where the last left it) */
+static void party_line_part(
+	rectangle2d *bounds,
+	rectangle2d *cursor,
+	wchar_t const *text)
+{
+	rectangle2d rest = *bounds;
+
+	draw_string_set_indents((short)(cursor->x0 - bounds->x0), 0);
+	draw_unicode_string_compute_bounds(bounds, text, &rest, cursor);
+	rest.x0 = bounds->x0;
+	rasterizer_draw_unicode_string(&rest, NULL, NULL, 0, text);
+}
+
+void network_party_discord_draw(
+	rectangle2d const *window,
+	long font_index,
+	short y)
+{
+	char latin1[P2P_DISCORD_REQUEST_NAME_SIZE];
+	wchar_t name[P2P_DISCORD_REQUEST_NAME_SIZE];
+	wchar_t text[96];
+	rectangle2d bounds, cursor, measured;
+	real_argb_color color;
+	struct font_header *font;
+	short line_height, width, index;
+	char key[32];
+	boolean keys;
+	int game = FALSE;
+
+	if (font_index == NONE || !p2p_discord_join_request(latin1, sizeof(latin1), &game))
+		return;
+	for (index = 0; index < P2P_DISCORD_REQUEST_NAME_SIZE - 1 && latin1[index]; index++)
+		name[index] = (wchar_t)(unsigned char)latin1[index];
+	name[index] = 0;
+	usnprintf(text, NUMBEROF(text), game ? L"%s asks to join your game   " : L"%s asks to join your party   ", name);
+	text[NUMBEROF(text) - 1] = 0;
+	font = font_definition_get(font_index);
+	line_height = (short)(font->ascending_height + font->descending_height + font->leading_height);
+	if (line_height <= 0)
+		return;
+	keys = halo_keyboard_prompts() && halo_keyboard_action_name(HALO_KEYBOARD_PARTY_ACCEPT, key, sizeof(key));
+	color.alpha = 1.0f;
+	color.red = 0.81f;
+	color.green = 0.89f;
+	color.blue = 1.0f;
+	draw_string_set_draw_mode(font_index, NONE, 0 /* left */, 0, &color);
+	/* (centered at y: the text measured, and room for the keys and their
+	words) */
+	measured = *window;
+	cursor = *window;
+	draw_string_set_indents(0, 0);
+	draw_unicode_string_compute_bounds(&measured, text, &bounds, &cursor);
+	width = (short)(bounds.x1 - bounds.x0 + 10 * line_height);
+	bounds.x0 = (short)MAX(window->x0, (window->x0 + window->x1 - width) / 2);
+	bounds.x1 = window->x1;
+	bounds.y0 = y;
+	bounds.y1 = (short)(bounds.y0 + 2 * line_height);
+	{
+		rectangle2d panel;
+
+		panel.x0 = (short)(bounds.x0 - line_height / 2);
+		panel.x1 = (short)MIN(window->x1, bounds.x0 + width + line_height / 2);
+		panel.y0 = (short)(bounds.y0 - line_height / 4);
+		panel.y1 = (short)(bounds.y0 + line_height + line_height / 4);
+		draw_quad(&panel, ((pixel32)200 << 24) | 0x00061430);
+	}
+	cursor = bounds;
+	draw_string_set_indents(0, 0);
+	draw_unicode_string_compute_bounds(&bounds, text, &measured, &cursor);
+	measured.x0 = bounds.x0;
+	rasterizer_draw_unicode_string(&measured, NULL, NULL, 0, text);
+	if (keys)
+	{
+		pixel32 key_color = real_argb_color_to_pixel32(&color);
+
+		cursor.x0 -= 3;
+		if (hud_key_prompt_draw_key(key, &bounds, &cursor, key_color))
+		{
+			draw_string_set_draw_mode(font_index, NONE, 0 /* left */, 0, &color);
+			party_line_part(&bounds, &cursor, L" Accept   ");
+			if (hud_key_prompt_draw_key("Esc", &bounds, &cursor, key_color))
+			{
+				draw_string_set_draw_mode(font_index, NONE, 0 /* left */, 0, &color);
+				party_line_part(&bounds, &cursor, L" Decline");
+			}
+			draw_string_set_indents(0, 0);
+			return;
+		}
+	}
+	{
+		rectangle2d rest = bounds;
+
+		rest.x0 = cursor.x0;
+		draw_string_set_draw_mode(font_index, NONE, 0 /* left */, 0, &color);
+		draw_string_set_indents(0, 0);
+		draw_string_and_hack_in_icons(&rest, NULL, NULL, 0, L"%dpad-down Accept   %dpad-up Decline", FALSE);
 	}
 	draw_string_set_indents(0, 0);
 }

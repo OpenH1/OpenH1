@@ -65,7 +65,7 @@ def test_other_input_or_flags_miss(tmp_path):
 def test_a_converter_change_misses(tmp_path):
     tools = tmp_path / "tools"
     tools.mkdir()
-    for name in ("guest_asm_cache.py", "android_asm_convert.py", "guest_base_register.py"):
+    for name in ("guest_asm_cache.py", "android_asm_convert.py", "guest_base_register.py", "guest_branch_relax.py"):
         shutil.copy(ROOT / "tools" / name, tools / name)
     global SCRIPT
     saved, SCRIPT = SCRIPT, tools / "guest_asm_cache.py"

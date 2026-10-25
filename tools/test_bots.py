@@ -1,7 +1,7 @@
 """The bots (port/linux/game/bots.c, bots.count) in the game: a local Slayer game on a stock map, played without a
 person (debug.network_test "local:", the scripted controller 1 of debug.test_input) for a minute and more, in which
-every bot walks the map, the bots kill and die, and the game ends cleanly; and a system link game, which no bot joins
-whatever bots.count asks. Needs the retail maps in assets/maps and a Linux build (ninja linux_x86_64 or linux_arm64); the game draws
+every bot walks the map, the bots kill and die, and the game ends cleanly; and a system link game, whose host plays
+them as a local game's. Needs the retail maps in assets/maps and a Linux build (ninja linux_x86_64 or linux_arm64); the game draws
 offscreen (SDL's offscreen video driver), with no audio, internet play or update check."""
 
 import math
@@ -89,11 +89,14 @@ def test_bots_play_a_local_slayer_game(tmp_path, map_name, variant, count, skill
     assert "bots: tick" in output, "no bots line a minute into the game"
 
 
-def test_no_bots_in_a_system_link_game(tmp_path):
+def test_bots_in_a_system_link_game(tmp_path):
+    """a system link game's host plays its bots as a local game's does: each a player of a machine of its own"""
     _game("bloodgulch")
-    status, output, _ = _play(tmp_path, "host:bloodgulch:slayer", 30, HALO_BOTS=6)
+    status, output, _ = _play(tmp_path, "host:bloodgulch:slayer", 75, HALO_BOTS=6)
     assert status == 0, output[-2000:]
     players = _players(output)
     assert players, "the system link game did not start"
-    assert all(player["machine"] < BOTS_FIRST_MACHINE for player in players.values()), "a bot in a system link game"
-    assert not re.search(r"\bbots: ", output), "the bots ran in a system link game"
+    bots = {index: player for index, player in players.items() if player["machine"] >= BOTS_FIRST_MACHINE}
+    assert len(bots) == 6, f"{len(bots)} bots in the system link game, not 6"
+    assert sum(bot["walked"] for bot in bots.values()) >= 6 * 30.0, "the bots stood still"
+    assert "bots: tick" in output, "no bots line a minute into the game"

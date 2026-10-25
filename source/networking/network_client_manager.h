@@ -55,6 +55,11 @@ byte network_game_client_advertised_game_kind(
 long network_game_client_advertised_game_rate(
 	struct network_game_client *client,
 	struct network_advertised_game const *game);
+/* port: the bots its host plays (port/linux/game/bots.c), apart from its
+players */
+long network_game_client_advertised_game_bots(
+	struct network_game_client *client,
+	struct network_advertised_game const *game);
 /* port: whether the advertised game is an OpenH1 Standard game (this
 machine joins it as one), and one OpenCE players join too (a mixed game:
 port/linux/game/network_standard.c) */

@@ -45,6 +45,7 @@ drive the controller.
 /* port/linux/game/network_aim_assist.c */
 extern unsigned char network_aim_assist_block_mouse(void);
 #include "halo_keyboard.h"
+#include "p2p.h"
 #ifdef HALO_VR
 #include "vr.h"
 #endif
@@ -74,6 +75,8 @@ extern unsigned char pc_menu_split_players(void);
 /* port/linux/game/network_test.c: the game's time in seconds while one runs,
 else -1 */
 extern double network_test_game_seconds(void);
+/* main/main.c: the menus' map is loaded (the menus are up, the lobby too) */
+extern unsigned char main_menu_is_loaded(void);
 /* port/linux/game/sim_trace.c: the simulation's clock, seconds from the
 scenario's start to the step to come (negative before it starts); the
 player's view turned to a yaw and pitch, in degrees (debug.test_input
@@ -997,6 +1000,92 @@ int halo_push_to_talk_held(void)
 	return 0;
 }
 
+/* ---------- a Discord friend's ask to join (p2p_discord.c) */
+
+/* answered before the game and the menus see the keys, wherever the player
+is (port/linux/game/network_party.c shows the ask): the party's accept
+(controls.party_accept, J) or a controller's D-pad Down lets the friend in,
+Escape or the D-pad's Up does not. A key pressed for it is taken from the
+game and the menus until it is let go of (Escape does not also back out of
+a menu, nor pause the game). Not while the console is open or a line is
+typed */
+static unsigned long discord_ask_serial(void)
+{
+	char name[P2P_DISCORD_REQUEST_NAME_SIZE];
+
+	if (console_is_active() || network_chat_typing() || text_typing)
+		return 0;
+	return p2p_discord_join_request(name, sizeof(name), NULL);
+}
+
+static void input_take(struct platform_input_state *input, int code)
+{
+	if (code >= 0 && code < SDL_SCANCODE_COUNT)
+		input->keys[code] = 0;
+	else if (code >= INPUT_MOUSE && code < INPUT_WHEEL)
+		input->mouse_buttons[code - INPUT_MOUSE] = 0;
+}
+
+static void discord_ask_keys(struct platform_input_state *input, unsigned long serial)
+{
+	static BOOL accept_held, decline_held, accept_taken, decline_taken;
+	BOOL accept = FALSE, decline = input->keys[SDL_SCANCODE_ESCAPE] != 0;
+	int slot;
+
+	bindings_read();
+	for (slot = 0; slot < MAXIMUM_BINDINGS; slot++)
+		accept = accept || input_held(input, bindings[HALO_KEYBOARD_PARTY_ACCEPT][slot]);
+	if (serial && accept && !accept_held)
+	{
+		p2p_discord_answer(serial, 1);
+		accept_taken = TRUE;
+	}
+	else if (serial && decline && !decline_held)
+	{
+		p2p_discord_answer(serial, 0);
+		decline_taken = TRUE;
+	}
+	accept_held = accept;
+	decline_held = decline;
+	accept_taken = accept_taken && accept;
+	decline_taken = decline_taken && decline;
+	if (accept_taken || (serial && accept))
+	{
+		for (slot = 0; slot < MAXIMUM_BINDINGS; slot++)
+			input_take(input, bindings[HALO_KEYBOARD_PARTY_ACCEPT][slot]);
+	}
+	if (decline_taken || (serial && decline))
+		input->keys[SDL_SCANCODE_ESCAPE] = 0;
+}
+
+/* the controller's (its own D-pad, not the arrow keys the menus press it
+with) */
+static void discord_ask_pad(SDL_Gamepad *gamepad, unsigned long serial, XINPUT_GAMEPAD *pad)
+{
+	static BOOL accept_held, decline_held, accept_taken, decline_taken;
+	BOOL accept = gamepad && SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+	BOOL decline = gamepad && SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP);
+
+	if (serial && accept && !accept_held)
+	{
+		p2p_discord_answer(serial, 1);
+		accept_taken = TRUE;
+	}
+	else if (serial && decline && !decline_held)
+	{
+		p2p_discord_answer(serial, 0);
+		decline_taken = TRUE;
+	}
+	accept_held = accept;
+	decline_held = decline;
+	accept_taken = accept_taken && accept;
+	decline_taken = decline_taken && decline;
+	if (accept_taken || (serial && accept))
+		pad->wButtons &= (WORD)~XINPUT_GAMEPAD_DPAD_DOWN;
+	if (decline_taken || (serial && decline))
+		pad->wButtons &= (WORD)~XINPUT_GAMEPAD_DPAD_UP;
+}
+
 /* ---------- the HUD's button prompts (halo_keyboard_prompts) */
 
 /* what the first player last played with: the keyboard and mouse (a key
@@ -1688,6 +1777,12 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 		test_latency_gamepad(pad, seed);
 		return;
 	}
+	/* (a game's player alone, never the menus': its stick and its A every
+	few seconds would work the lobby, whose GAME SETTINGS opens Server Setup
+	over a network test's game, which makes it private, out of the server
+	browser, and whose START GAME there sets its gametype) */
+	if (main_menu_is_loaded())
+		return;
 	if (test_input_holding_action)
 	{
 		/* (standing still, the button held from a second on) */
@@ -2038,6 +2133,7 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		unsigned long scoreboard_keys = 0;
 		int scoreboard_hold;
 		BOOL console_active;
+		unsigned long discord_ask;
 
 		platform_input_read(&input, TRUE);
 		mouse_poll(&input);
@@ -2045,6 +2141,9 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		keyboard_actions_held = 0;
 		scoreboard_hold = scoreboard_pad_port_hold(0, input.menus);
 		keys_held_over_switch(&input, scoreboard_hold == HALO_SCOREBOARD_PAD_HOLDS);
+		/* (a Discord friend's ask answered first, its keys taken) */
+		discord_ask = discord_ask_serial();
+		discord_ask_keys(&input, discord_ask);
 		/* (a chat line typed takes the keyboard as the console does) */
 		console_active = console_is_active() || network_chat_typing();
 		held = console_active ? 0 : keyboard_bound_actions(&input);
@@ -2073,6 +2172,7 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		}
 		if (port_gamepad(gamepads, count, 0))
 			sdl_gamepad_state(gamepads[0], &state->Gamepad);
+		discord_ask_pad(port_gamepad(gamepads, count, 0), discord_ask, &state->Gamepad);
 #ifdef HALO_VR
 		if (halo_vr_running())
 		{
