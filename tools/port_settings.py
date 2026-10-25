@@ -441,14 +441,26 @@ PAGES = {
     },
     "audio_settings": {
         "screen": "audio_settings_screen", "tab": "AUDIO",
-        "about": "The devices, the volumes, voice chat and the sound.",
+        "about": "The sound and its devices, 3D audio, the volumes and voice chat.",
         "rows": [
-            (SECTION, "DEVICES"),
-            # (port/linux/game/menu_tags.c adds the devices SDL finds)
+            # (the devices' rows: port/linux/game/menu_tags.c adds the devices
+            # SDL finds; 3D audio, the reverb and the resampler:
+            # port/linux/src/dsound_sdl.c)
+            (SECTION, "SOUND"),
             ("OUTPUT DEVICE", "audio.output_device", [("SYSTEM DEFAULT", "default")],
              "Where the game's sound and the other players' voices play.", "desktop"),
-            ("INPUT DEVICE", "audio.input_device", [("SYSTEM DEFAULT", "default")],
-             "The microphone voice chat listens to.", "desktop"),
+            ("3D AUDIO", "audio.spatial", [("AUTO", "auto"), ("HEADPHONES", "headphones"), ("SPEAKERS", "speakers")],
+             "Where the sounds around you come from. Headphones places each ahead, behind, above or below you, as "
+             "the Xbox's 3D audio did; Speakers pans them left and right. Auto chooses by what you are listening "
+             "on, and changes when you plug headphones in or take them out.", None),
+            ("REVERB", "audio.reverb", ON_OFF,
+             "Echoes sounds as the place you are in would, and muffles those behind walls, as the Xbox did. It "
+             "costs a little of the processor.", None),
+            ("RESAMPLER", "audio.resampler", [("CLEAN", "sinc"), ("CLASSIC", "linear")],
+             "How sounds are converted to your speakers' rate. Clean is clear; Classic is brighter but harsher, and "
+             "costs a little less.", None),
+            ("SOUND", "audio.enabled", ON_OFF,
+             "Turns all sound off or on, from the next time the game starts.", None),
             (SECTION, "VOLUME"),
             ("MASTER VOLUME", "audio.volume", VOLUMES, "The volume of everything the game plays.", None),
             ("MUSIC VOLUME", "audio.music_volume", VOLUMES, "The music's volume.", None),
@@ -460,17 +472,9 @@ PAGES = {
              [("PUSH TO TALK", "push_to_talk"), ("OPEN MIC", "open_mic"), ("OFF", "off")],
              "Talk to the other players in network games: while Push to Talk is held (Key Bindings sets its key), "
              "whenever you speak, or never.", None),
+            ("INPUT DEVICE", "audio.input_device", [("SYSTEM DEFAULT", "default")],
+             "The microphone voice chat listens to.", "desktop"),
             ("VOICE VOLUME", "audio.voice_volume", VOLUMES, "How loud the other players' voices are.", None),
-            # (the reverb and the resampler: port/linux/src/dsound_sdl.c)
-            (SECTION, "SOUND"),
-            ("REVERB", "audio.reverb", ON_OFF,
-             "Echoes sounds as the place you are in would, and muffles those behind walls, as the Xbox did. It "
-             "costs a little of the processor.", None),
-            ("RESAMPLER", "audio.resampler", [("CLEAN", "sinc"), ("CLASSIC", "linear")],
-             "How sounds are converted to your speakers' rate. Clean is clear; Classic is brighter but harsher, and "
-             "costs a little less.", None),
-            ("SOUND", "audio.enabled", ON_OFF,
-             "Turns all sound off or on, from the next time the game starts.", None),
         ],
     },
     # (CONTROLS: the mouse's rows, in Mouse Setup's place)

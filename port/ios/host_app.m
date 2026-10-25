@@ -23,6 +23,7 @@ game starts, in place of port/macos/host_app.m.
   seconds, as on Android.
 */
 
+#import <AVFoundation/AVFoundation.h>
 #import <UIKit/UIKit.h>
 #include <SDL3/SDL.h>
 
@@ -96,6 +97,31 @@ void host_app_background_wait(void)
 	{
 		SDL_PumpEvents();
 		SDL_Delay(50);
+	}
+}
+
+/* ---------- the sound's route */
+
+/* (port/android/host/host_audio_route.c, its thread: audio.spatial "auto")
+what the audio session plays on: 1 headphones (wired, AirPods and other
+Bluetooth headphones), 0 the speaker or another, -1 none */
+int host_app_audio_headphones(void)
+{
+	@autoreleasepool
+	{
+		AVAudioSessionRouteDescription *route = [AVAudioSession sharedInstance].currentRoute;
+
+		for (AVAudioSessionPortDescription *port in route.outputs)
+		{
+			NSString *type = port.portType;
+
+			if ([type isEqualToString:AVAudioSessionPortHeadphones] ||
+				[type isEqualToString:AVAudioSessionPortBluetoothA2DP] ||
+				[type isEqualToString:AVAudioSessionPortBluetoothLE] ||
+				[type isEqualToString:AVAudioSessionPortBluetoothHFP])
+				return 1;
+		}
+		return route.outputs.count ? 0 : -1;
 	}
 }
 

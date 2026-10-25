@@ -4,6 +4,9 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Insets;
+import android.media.AudioAttributes;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -20,6 +23,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.List;
 
 import org.libsdl.app.SDLActivity;
 
@@ -249,6 +254,50 @@ public class HaloActivity extends SDLActivity {
      */
     public int[] getSystemGestureInsetsPixels() {
         return gestureInsets.clone();
+    }
+
+    /**
+     * What the game's sound plays on, for audio.spatial "auto" (the world's
+     * sounds through the HRTF on headphones, panned on the speaker): 1
+     * headphones (wired headphones or a headset, Bluetooth, a USB headset,
+     * a hearing aid), 0 the speaker or another, -1 not known. From Android
+     * 13 the devices a game's sound is routed to; before, any headphones
+     * connected, which Android plays media on. The game's native code calls
+     * this through JNI by name and signature, once a second from a thread
+     * of its own (host_audio_route.c GetMethodID(...,
+     * "audioOutputHeadphones", "()I")), so it must not be renamed, retyped
+     * or removed as unused
+     */
+    public int audioOutputHeadphones() {
+        try {
+            AudioManager manager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (manager == null)
+                return -1;
+            List<AudioDeviceInfo> devices = null;
+            if (Build.VERSION.SDK_INT >= 33) {
+                AudioAttributes game = new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).build();
+                devices = manager.getAudioDevicesForAttributes(game);
+            }
+            if (devices == null || devices.isEmpty())
+                devices = Arrays.asList(manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS));
+            for (AudioDeviceInfo device : devices) {
+                switch (device.getType()) {
+                case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
+                case AudioDeviceInfo.TYPE_WIRED_HEADSET:
+                case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+                case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+                case AudioDeviceInfo.TYPE_BLE_HEADSET:
+                case AudioDeviceInfo.TYPE_USB_HEADSET:
+                case AudioDeviceInfo.TYPE_HEARING_AID:
+                    return 1;
+                default:
+                    break;
+                }
+            }
+            return devices.isEmpty() ? -1 : 0;
+        } catch (RuntimeException e) {
+            return -1;
+        }
     }
 
     /**
