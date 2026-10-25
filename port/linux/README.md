@@ -739,6 +739,7 @@ the setting for one start of the game. It has priority over the file.
 | `paths.saves` | `""` | `HALO_SAVE_ROOT` | The save root. Refer to "Files and folders". |
 | `network.address` | `""` | `HALO_NET_ADDRESS` | The IPv4 address of this machine for system link. Refer to "Play on one computer". |
 | `network.broadcast` | `""` | `HALO_NET_BROADCAST` | IPv4 addresses, with commas between them, that get the broadcasts of the game. Empty: 255.255.255.255. |
+| `network.port` | `5150` | `HALO_NET_PORT` | The UDP port of system link games (the Xbox's); the clients' is the next. Another port lets copies of the game host side by side on one computer (tests, dedicated setups). A LAN game on another port is found only by machines set to the same port. Refer to "Play on one computer". |
 | `network.online` | `true` | `HALO_NET_ONLINE` | `true`: internet play. `false`: system link on the local network only. |
 | `network.join_from_clipboard` | `true` | `HALO_NET_JOIN_FROM_CLIPBOARD` | `true`: when the game comes to the front, it joins the game of an invite link on the clipboard. |
 | `network.tunnel_port` | `0` | `HALO_NET_TUNNEL_PORT` | The UDP port for internet play. `0`: the game selects a port. Refer to "Internet play". |
@@ -814,7 +815,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.bot_player_weapon` | `""` | `HALO_BOT_PLAYER_WEAPON` | With `debug.bot_player`, a weapon (part of its tag's name: `sniper`, `rocket`) the player's bot goes for wherever on the map it lies, and keeps; with a sniper rifle it looks through the scope at a distance. |
 | `debug.bot_player_grenades` | `""` | `HALO_BOT_PLAYER_GRENADES` | With `debug.bot_player`, `plasma`: the player's bot spawns with four plasma grenades and no frags, and throws them at 4 to 18 world units, six times as often as a bot, for sticks. |
 | `debug.bot_player_vehicle` | `""` | `HALO_BOT_PLAYER_VEHICLE` | With `debug.bot_player`, a vehicle (part of its tag's name: `warthog`, `ghost`) the player's bot walks to and boards whenever it is on foot, a free one nearest first, and drives: along its paths, and full ahead at the enemies it fights. |
-| `debug.touch_menus` | `false` | `HALO_TOUCH_MENUS` | Lays the menus out as the touchscreen's builds (Android, iOS) do: their `touch` screens (the Multiplayer menu's rows a finger's size, Create Game's in one row, its panel's OPEN button) anchored to a wide screen's edges, for looking at them on a computer. Read as the menus load. |
+| `debug.touch_menus` | `false` | `HALO_TOUCH_MENUS` | Lays the menus out as the touchscreen's builds (Android, iOS) do: their `touch` screens (Multiplayer's tiles, the server browser, the lobby, Host Controls and the Party screen with every tap target a finger's size, the tabs as chips and the footer's key prompts as buttons), for looking at them on a computer. Read as the menus load. |
 | `debug.touch_targets` | `false` | `HALO_TOUCH_TARGETS` | Outlines the tap targets of the menus (item green, value blue, list slot yellow, legend button red, the band beside the slots of a list orange, keys of the on-screen keyboard white), marks where the last finger went down and the last tap landed for 3 seconds, and logs each tap with the target that it hit (for a value, also where it splits into previous and next): to judge the accuracy of touch. |
 | `debug.log_addresses` | `false` | `HALO_LOG_ADDRESSES=1` sets `true` | `true`: other machines' internet addresses are written whole in `debug.txt` and the console, for debugging your own network. `false`: a public address is written as a tag (`addr#3f2a9c`) that matches up only within one run; local network addresses are always whole. Do not post a `debug.txt` written with this on. |
 | `debug.network_latency`, `debug.network_loss`, `debug.network_corrupt`, `debug.network_corrupt_stream`, `debug.network_corrupt_after` | `0` | `HALO_NETWORK_LATENCY`, `HALO_NETWORK_LOSS`, `HALO_NETWORK_CORRUPT`, `HALO_NETWORK_CORRUPT_STREAM`, `HALO_NETWORK_CORRUPT_AFTER` | The game holds all the data that it receives for this number of milliseconds, ignores this percentage of the datagrams, and damages this percentage of the datagrams it receives, and this percentage of its reads of streams, at random (bytes changed, cut short, stretched or replaced), from this many seconds after the start. Use the first two to test the netcode as on the internet, and the others to test that nothing another machine sends can crash the game (a damaged stream is closed, so a little goes a long way; a host's messages to its own client are damaged too, so start damaging once the game has started). |
@@ -1308,6 +1309,13 @@ Do not give 127.0.0.1 to a copy. Each copy gets to its own address through
 127.0.0.1. Linux and Windows send all of 127.0.0.0/8 to the loopback
 interface.
 
+Two games side by side (two tests at once, say) need ports of their own:
+`network.port` (`HALO_NET_PORT`) moves a game's port from 5150 (the
+clients' from 5151) to another and the next. Give the host and its clients
+the same port. A Mac's loopback interface has 127.0.0.1 alone, so there the
+port keeps two hosts apart. The map sharing port (5153) does not move:
+turn `network.map_share` off in such tests.
+
 ### Test with many machines
 
 `tools/system_link_bots.py` adds simple machines to a game. Each machine has
@@ -1319,7 +1327,8 @@ calculate the game or move their players.
 
 Each machine uses its own loopback address, from 127.0.0.2. The option
 `--start` starts the game when all the machines are in the lobby. If the
-host has no `network.address`, do not give `--host`.
+host has no `network.address`, do not give `--host`. For a host with
+another `network.port`, give `--port` the same port.
 
 ## Internet play
 
@@ -1339,7 +1348,8 @@ To join a game, do one of these steps:
   file that only the user can read (`halo-ce-universal.key` in
   `$XDG_RUNTIME_DIR`, else `~/.halo-ce-universal.key`; on Windows in
   `%LOCALAPPDATA%`) encrypts the link, so the programs of other users cannot
-  read it.
+  read it. On macOS and iOS the system gives the link to the app, running
+  or started by it (`port/macos/host_links.c`).
 - Copy the link (or the 64 digits) and go to the game.
 - Enter `halo <link>`.
 - Accept a Discord invite, or ask to join in Discord. Refer to "Discord".
@@ -1359,8 +1369,7 @@ network does not need an invite.
 Friends can group up before a game and go from game to game together
 (`src/p2p_party.c`; the menus' side is `game/party_menu.inc`):
 
-- Multiplayer > PLAY ONLINE > PARTY opens the Party screen (on a
-  touchscreen, PARTY at the foot of Multiplayer). MAKE PARTY makes a party
+- Multiplayer > PLAY ONLINE > PARTY opens the Party screen. MAKE PARTY makes a party
   of up to 16 players, you its leader, and puts its link on the clipboard:
   `halo://party/<32 hexadecimal digits>`. COPY INVITE copies an invite to
   paste in any chat (refer to "Invites from anywhere").
@@ -1906,10 +1915,10 @@ it is the game's (`#join=` and `halo://join/`, 64 digits).
 
 The address opens the join page (`website/public/join`, on openh1.com). The
 code is after `#`, which a browser never sends to the site. The page opens
-the `halo://` link (on Windows, Linux and Android, where the game is its
-handler), shows the link to copy into JOIN BY LINK (or the Party screen's
-PASTE LINK; the game also joins a link that it finds on the clipboard when
-it comes to the front), and shows the downloads for a friend who does not
+the `halo://` link (the game is its handler on Windows, Linux, Android,
+macOS and iOS), shows the link to copy into JOIN BY LINK (or the Party
+screen's PASTE LINK; the game also joins a link that it finds on the
+clipboard when it comes to the front), and shows the downloads for a friend who does not
 have OpenH1 yet. The game takes the join page's addresses, as it takes every
 other form of the links (`halo://join/`, `halo://party/`, a bare code,
 `?join=`, `?party=`).

@@ -318,20 +318,30 @@ static char const *const widget_flag_names[] =
 #define WIDGET_FLAG_STRETCH 19
 #define WIDGET_FLAG_KEEP_ENDS 20
 
-/* how far the screen reaches past each side of the menus' 640 where its
-widgets are anchored to its edges: on the touchscreens' builds (the phones'
-wide screens, which the menus' 640 would leave with wide empty sides, or
-debug.touch_menus), else 0, the menus centred as the PC version has them */
-short ui_widget_port_anchor_extra(void)
+/* whether the menus are laid out for a touchscreen: the touchscreens'
+builds, or debug.touch_menus (read once, as the menus load: menu_files.c's
+MENU_TOUCH) */
+int ui_widget_port_touch_menus(void)
 {
 #if !defined(HALO_ANDROID) && !defined(HALO_IOS)
 	static int touch_menus = -1;
 
 	if (touch_menus < 0)
 		touch_menus = config_boolean("debug.touch_menus") != 0;
-	if (!touch_menus)
-		return 0;
+	return touch_menus;
+#else
+	return 1;
 #endif
+}
+
+/* how far the screen reaches past each side of the menus' 640 where its
+widgets are anchored to its edges: on the touchscreens' builds (the phones'
+wide screens, which the menus' 640 would leave with wide empty sides, or
+debug.touch_menus), else 0, the menus centred as the PC version has them */
+short ui_widget_port_anchor_extra(void)
+{
+	if (!ui_widget_port_touch_menus())
+		return 0;
 	return (short)MAX((halo_screen_width() - 640) / 2, 0);
 }
 
@@ -465,7 +475,7 @@ static char const *const port_function_names[] =
 	/* (the update question, the Steam Frame's and gamescope's: menu_functions.c) */
 	"port update now",
 	/* (Multiplayer's panel: menu_functions.c's multiplayer_status) */
-	"port multiplayer status end", "port multiplayer refresh", "port multiplayer open",
+	"port multiplayer status end", "port multiplayer refresh",
 	/* (Settings' tabs and pages: menu_functions.c's settings_*) */
 	"port settings begin", "port settings tab", "port settings tab next", "port settings tab previous",
 	"port settings ok", "port settings cancel", "port settings keep", "port settings page cancel",
@@ -503,7 +513,7 @@ static char const *const port_game_data_input_names[] =
 	"server settings update", "audio menu update", "mp prof vehicles update", "solo map list update",
 	"mp map list update", "gt select list update", "gt edit list update", "load game list update",
 	"direct ip connect update", "network settings update",
-	"port settings help", "color picker update", "3wide player profile list update", "port lobby update",
+	"port settings help", "color picker update", "3wide player profile list update",
 	"port lobby preview update",
 	/* (the gametype editor's: the Xbox's stops the game on the buttons'
 	row; the Xbox's read only player_ui's gametype, not Server Setup's) */

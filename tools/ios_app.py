@@ -37,6 +37,8 @@ APP_NAME = "OpenH1"
 EXECUTABLE = "halo"
 DEFAULT_APP = ROOT / "build/ios" / (APP_NAME + ".app")
 DEFAULT_BUNDLE_ID = "com.openh1.openh1"
+# the scheme of the game's links (port/linux/src/p2p.h), as the macOS app's
+URL_SCHEME = "halo"
 # what the README says of the project (tools/macos_app.py's)
 COPYRIGHT = ("OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox "
              "Game Studios, Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft "
@@ -92,6 +94,11 @@ def info_plist(bundle_id: str, build: int, minimum: str, simulator: bool = False
         "GCSupportedGameControllers": [{"ProfileName": "ExtendedGamepad"}],
         "NSMicrophoneUsageDescription": "Voice chat in network games uses the microphone while you talk.",
         "NSLocalNetworkUsageDescription": "System link finds and plays games on your local network.",
+        # (the handler of the game's links, halo://join/... and
+        # halo://party/..., which SDL's scene delegate is given:
+        # port/macos/host_links.c)
+        "CFBundleURLTypes": [{"CFBundleURLName": bundle_id, "CFBundleTypeRole": "Viewer",
+                              "CFBundleURLSchemes": [URL_SCHEME]}],
     }
 
 

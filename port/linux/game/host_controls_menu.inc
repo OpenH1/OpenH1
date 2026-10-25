@@ -124,6 +124,22 @@ static short host_action_index(struct widget_instance const *button)
 	return button && !strncmp(button->name, "host_action_", 12) ? (short)atoi(button->name + 12) : NONE;
 }
 
+/* the rows the list has (tools/port_settings.py's HOST_ROWS on the
+computer, its touchscreen's fewer and taller: TOUCH_HOST_ROWS), at most
+HOST_CONTROLS_ROWS */
+static short host_rows_of(struct widget_instance *list)
+{
+	struct widget_instance *child;
+	short rows = 0;
+
+	for (child = list->child; child; child = child->next)
+	{
+		if (host_row_index(child) != NONE && rows < HOST_CONTROLS_ROWS)
+			rows++;
+	}
+	return rows ? rows : HOST_CONTROLS_ROWS;
+}
+
 static void host_focus(struct widget_instance *list, struct widget_instance *child)
 {
 	struct widget_instance *each;
@@ -652,8 +668,9 @@ static void host_buttons_show(struct widget_instance *list, struct host_controls
 			break;
 		}
 		/* (the confirm key's prompt on the button with the focus alone, as
-		the device in use has it: ui_widget.c) */
-		if (text[0] && button && button == list->focused_child)
+		the device in use has it: ui_widget.c; a touchscreen's buttons are
+		tapped, and name no key) */
+		if (text[0] && button && button == list->focused_child && !ui_widget_port_touch_menus())
 		{
 			wchar_t words[64];
 
@@ -775,7 +792,7 @@ static void host_controls_update(struct widget_instance *list)
 	struct widget_instance *child;
 	struct widget_instance *focused = list->focused_child;
 	short focused_row = host_row_index(focused);
-	short count, rows, chosen, index;
+	short count, rows, chosen, index, shown = host_rows_of(list);
 	long opening_player;
 	short opening_tab;
 	wchar_t text[HOST_CONTROLS_TEXT_LENGTH];
@@ -789,14 +806,14 @@ static void host_controls_update(struct widget_instance *list)
 	}
 	host_entries_read();
 	count = host_entry_count();
-	rows = (short)MIN(count, HOST_CONTROLS_ROWS);
+	rows = (short)MIN(count, shown);
 	/* (a list of more entries than rows: the focus kept off its ends while
 	there are more past them, the list moving instead) */
 	if (focused_row == rows - 1 && host_menu.first + rows < count && list_scrolls_at_end())
 		host_menu.first++;
 	else if (focused_row == 0 && host_menu.first > 0 && list_scrolls_at_end())
 		host_menu.first--;
-	host_menu.first = (short)PIN(host_menu.first, 0, MAX(count - HOST_CONTROLS_ROWS, 0));
+	host_menu.first = (short)PIN(host_menu.first, 0, MAX(count - shown, 0));
 	/* (the opening's player's row given the focus, once shown) */
 	if (host_menu.focus_chosen)
 	{
@@ -805,8 +822,8 @@ static void host_controls_update(struct widget_instance *list)
 		{
 			char name[24];
 
-			if (chosen < host_menu.first || chosen >= host_menu.first + HOST_CONTROLS_ROWS)
-				host_menu.first = (short)PIN(chosen - HOST_CONTROLS_ROWS / 2, 0, MAX(count - HOST_CONTROLS_ROWS, 0));
+			if (chosen < host_menu.first || chosen >= host_menu.first + shown)
+				host_menu.first = (short)PIN(chosen - shown / 2, 0, MAX(count - shown, 0));
 			snprintf(name, sizeof(name), "host_item_%d", chosen - host_menu.first + 1);
 			host_focus(list, named(list, name, 0));
 			focused = list->focused_child;

@@ -5,7 +5,9 @@ The lobby on the computer (tools/port_settings.py's _lobby_board), the
 network game's and a game of this machine alone's (PLAY WITH BOTS, split
 screen), in Multiplayer's look: the menus' shared parts, included in
 menu_functions.c after party_menu.inc, whose helpers it uses. The
-touchscreen keeps the list of players and buttons it had (lobby_update).
+touchscreen's is the same by the same names, its panel's controls and the
+footer's buttons a finger's size (tools/port_settings.py's
+_touch_lobby_board).
 
 It draws what this machine knows of the game, and sends nothing of its own
 but what the Xbox's lobby sent (a player's team, the start): the game's
@@ -728,7 +730,8 @@ static void lobby_board_update(struct widget_instance *list)
 		else if (seconds == 0)
 			usnprintf(text, NUMBEROF(text) - 1, controls.start ? L"STARTING..." : L"Starting...");
 		else
-			usnprintf(text, NUMBEROF(text) - 1, controls.start ? L"%%a-button START GAME" : L"Waiting for the host");
+			usnprintf(text, NUMBEROF(text) - 1, !controls.start ? L"Waiting for the host" :
+				ui_widget_port_touch_menus() ? L"START GAME" : L"%%a-button START GAME");
 		text[NUMBEROF(text) - 1] = 0;
 		text_set(named(list, "board_start", 0), text);
 		text_set(named(panel, "board_waiting", 0), text);

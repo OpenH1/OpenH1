@@ -176,7 +176,7 @@ def test_browser_layout():
 def test_hub_keeps_every_place():
     """Multiplayer's list, on the computer: PLAY ONLINE's items, HOST's (CREATE GAME's and CO-OP CAMPAIGN's pages
     and PLAY WITH BOTS) and EDIT GAMETYPES, each opening what the PC version's list did (the same functions and
-    screens: the touchscreen keeps its own list), its panel with ONLINE NOW and BEST FOR YOU, the panel's
+    screens; the touchscreen's tiles too: _touch_hub), its panel with ONLINE NOW and BEST FOR YOU, the panel's
     descriptions one for each of menu_functions.c's items, and REFRESH and BACK in its footer."""
     port_settings = _port_settings()
     hub = (CE / "main_menu.multiplayer_type_select.hub.xml").read_text()
@@ -199,14 +199,16 @@ def test_hub_keeps_every_place():
         "hub_split_coop": "multiplayer_type_coop_item",
         "hub_gametypes": "multiplayer_type_gametypes_item",
     }
+    touch = (CE / "main_menu.multiplayer_type_select.hub.touch.xml").read_text()
     for ours, theirs in pairs.items():
         assert handlers(hub, f"{MT}/hub/{ours}") == handlers(pc + port, f"{MT}/{theirs}"), ours
-    # (the screen shows the hub's list and line on the computer, the touchscreen's list as before)
+        assert handlers(touch, f"{MT}/hub/touch/{ours}") == handlers(hub, f"{MT}/hub/{ours}"), ours
+    # (the screen shows the hub's list and line on the computer, the touchscreen's tiles)
     screen = re.search(rf'<widget name="{MT}/multiplayer_type_select_screen".*?</widget>', pc, re.S).group(0)
     assert f'<child widget="{MT}/hub/hub_list" platform="pointer"/>' in screen
     x, y = port_settings.MULTIPLAYER_LINE_PLACE
     assert f'<child widget="{MT}/hub/hub_divider" x="{x}" y="{y}" platform="pointer"/>' in screen
-    assert f'<child widget="{MT}/touch/multiplayer_touch_list" platform="touch"/>' in screen
+    assert f'<child widget="{MT}/hub/touch/hub_list" platform="touch"/>' in screen
     assert '<on event="right_trigger" run="port multiplayer refresh"/>' in screen
     # (the items' names menu_functions.c knows, and its descriptions)
     menus = read("port/linux/game/menu_functions.c")

@@ -298,7 +298,6 @@ function joinLink(hash, search) {
 
   // the visitor's machine first, and marked, as on the home page
   const ua = navigator.userAgent, touch = navigator.maxTouchPoints > 1;
-  const apple = /iPhone|iPad|Mac/.test(ua);
   const os = /Android/.test(ua) ? "android" : /iPhone|iPad/.test(ua) ? "" : /Windows/.test(ua) ? "windows" : /Mac/.test(ua) ? (touch ? "" : "mac") : /Linux|CrOS/.test(ua) ? "linux" : "";
   const mine = os && document.querySelector(`#downloads [data-os="${os}"]`);
   if (mine) { mine.classList.add("mine"); mine.parentElement.prepend(mine); }
@@ -351,10 +350,10 @@ function joinLink(hash, search) {
     }, 1600);
   };
   $("open").addEventListener("click", attempt);
-  // (at once, but on Apple's systems, whose OpenH1 takes no links yet: the
-  // browser would say the address is not valid)
-  if (apple) { status.textContent = "Copy the link, then paste it into OpenH1."; install(); }
-  else { attempt(); location.href = found.link; }
+  // (at once, everywhere: OpenH1 is the halo:// links' handler on Windows,
+  // Linux, Android, the Mac and the iPhone)
+  attempt();
+  location.href = found.link;
 })();
 </script>
 </body>
