@@ -471,7 +471,8 @@ tabs:
   (HOST, BOT, OPENH1 or OPENCE; in a Legacy game the host cannot tell OpenH1's
   players from OpenCE's). For the player chosen: KICK, BAN (pressed twice),
   MOVE TO RED or BLUE, and MUTE FOR ALL (their text chat and voice, for
-  everyone). The host's own players are never kicked, banned or muted. A team
+  everyone). The host's own players are never kicked, banned or muted; KICK
+  on a bot takes it out, one bot fewer (`bots.count`). A team
   move is offered in an OpenH1 game of teams with no OpenCE player: the
   player dies (no death counted) and respawns on the other team.
 - GAME: END GAME NOW and RESTART ROUND (each pressed twice; a restart starts
@@ -480,7 +481,10 @@ tabs:
   them), ALLOW VOTEKICK (`network.votekick`), LISTING (a public internet
   game's PUBLIC or PRIVATE), MAX PLAYERS (left and right; never fewer than
   are in the game) and ALLOW OPENCE PLAYERS (an OpenH1 game's, for new
-  joins). The bots' rows will be here once the bots play network games.
+  joins), then, in a gametype the bots play, the bots' rows: BOTS, BOT
+  SKILL, BOT TEAMS, MAKE ROOM FOR PLAYERS and (with it on) FILL TO, each
+  written to `config.toml` as it changes, which the game takes at once
+  (refer to "Bots").
 - BANS: `bans.txt`'s players, when they were banned and why, and UNBAN.
 
 The scoreboard's player menu (a right click on a name) offers the host the
