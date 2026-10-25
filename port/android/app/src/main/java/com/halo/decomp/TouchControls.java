@@ -4,6 +4,7 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -324,6 +325,8 @@ public final class TouchControls extends View implements SensorEventListener, In
     private boolean controllerConnected;
     private boolean mouseConnected;
     private boolean keyboardConnected;
+    /** the density the controls were last laid out for (onConfigurationChanged) */
+    private int densityDpi;
     private boolean touchscreen;
     private boolean deviceInputActive;
     /** the controls are on screen: shown() for SHOW_DELAY_MS */
@@ -497,11 +500,24 @@ public final class TouchControls extends View implements SensorEventListener, In
         requestApplyInsets();
     }
 
+    /**
+     * a new density, perhaps at the same size (the activity handles density
+     * in its configChanges, as a folding phone's two screens can differ):
+     * the finger's width in logical units changes
+     */
+    @Override
+    protected void onConfigurationChanged(Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        if (configuration.densityDpi != densityDpi)
+            layoutControls();
+    }
+
     /** scales the grid to the display (its height, keeping the circles round) */
     private void layoutControls() {
         if (getWidth() <= 0 || getHeight() <= 0)
             return;
         reset();
+        densityDpi = getResources().getConfiguration().densityDpi;
         float width = getWidth();
         float height = getHeight();
         scale = Math.max(0.01f, Math.min(width / GRID_WIDTH, height / GRID_HEIGHT));

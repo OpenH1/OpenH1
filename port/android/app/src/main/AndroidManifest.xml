@@ -81,7 +81,7 @@
             android:screenOrientation="sensorLandscape"
             android:resizeableActivity="false"
             android:preferMinimalPostProcessing="true"
-            android:configChanges="layoutDirection|locale|grammaticalGender|fontScale|fontWeightAdjustment|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation">
+            android:configChanges="layoutDirection|locale|grammaticalGender|fontScale|fontWeightAdjustment|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation|density">
             <meta-data
                 android:name="android.app.category"
                 android:value="game" />
