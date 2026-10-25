@@ -8,7 +8,10 @@ messages (their format and guards: the host takes a client's only from its
 own stream and its own players, at most a few at once, and sends an invite
 on only to an OpenH1 machine of the game that told it it can party, never to
 an OpenCE one), and an invite accepted, which joins the party as its link
-does (p2p_party_join_link). test_party_invites.py takes the code
+does (p2p_party_join_link); and the room held for a party joining the game
+(the leader's ask of the host and the host's answer, the holds as the
+host's server asks of them, a party's machines told apart, the holds let
+go). test_party_invites.py takes the code
 (under_test.inc: network_party.c from its constants to its drawing) and the
 constants (config.inc).
 */
@@ -343,6 +346,86 @@ static int usnprintf(wchar_t *buffer, long size, wchar_t const *format, ...)
 }
 
 /* p2p_party.c's */
+/* this machine's party's other members, as the party tells a leader: the
+hashes of their tunnel keys */
+static unsigned char party_members[16 * 16];
+static int party_member_count;
+
+static int p2p_party_member_key_hashes(unsigned char *hashes, int maximum_count)
+{
+	int count = party_member_count < maximum_count ? party_member_count : maximum_count;
+
+	memcpy(hashes, party_members, (size_t)count * 16);
+	return count;
+}
+
+/* the machines of the internet: their addresses (as the game keeps them,
+10.0.0.<machine>) and their tunnel keys' hashes (each byte 0x40 + the
+machine); 192.168.0.1 a machine of this network */
+#define INTERNET_ADDRESS(machine) (0x0A000000UL | (unsigned long)(machine))
+#define LAN_ADDRESS 0xC0A80001UL
+
+static void key_hash_of(long machine_index, unsigned char *key_hash)
+{
+	memset(key_hash, 0x40 + (int)machine_index, 16);
+}
+
+static int p2p_peer_key_hash(unsigned long virtual_address, unsigned char *identifier, unsigned char *key_hash)
+{
+	unsigned char const *bytes = (unsigned char const *)&virtual_address;
+	unsigned long address = (unsigned long)bytes[0] << 24 | (unsigned long)bytes[1] << 16 |
+		(unsigned long)bytes[2] << 8 | bytes[3];
+
+	if ((address & 0xFF000000UL) != 0x0A000000UL)
+		return 0;
+	memset(identifier, 0, 6);
+	key_hash_of((long)(address & 0xFF), key_hash);
+	return 1;
+}
+
+static const unsigned char *p2p_identifier(void)
+{
+	static unsigned char identifier[6] = { 0x02, 0x11, 0x22, 0x33, 0x44, 0x55 };
+
+	return identifier;
+}
+
+/* the host's game, as its server has it: its players and its most */
+struct network_game
+{
+	short player_count;
+	byte maximum_players;
+};
+
+struct network_game_server
+{
+	int unused;
+};
+
+static struct network_game host_game = { 5, 16 };
+static struct network_game_server host_server;
+
+static struct network_game_server *global_network_game_server_get(void)
+{
+	return connection == _game_connection_network_server ? &host_server : NULL;
+}
+
+static struct network_game *network_game_server_get_game(struct network_game_server *server)
+{
+	(void)server;
+	return &host_game;
+}
+
+static unsigned long network_game_server_machine_address(long machine_index)
+{
+	return machine_index > 0 && machine_index < MACHINES ? INTERNET_ADDRESS(machine_index) : 0;
+}
+
+static short network_game_client_get_local_machine_index(void)
+{
+	return connection == _game_connection_network_server ? HOST_MACHINE : OPENH1_MACHINE;
+}
+
 static int p2p_party_invite_link(char *link, int size)
 {
 	invite_links_asked++;
@@ -415,9 +498,12 @@ static void game(short as)
 	party_link[0] = joined_link[0] = 0;
 	invite_links_asked = 0;
 	sent_count = 0;
+	party_member_count = 0;
+	host_game.player_count = 5;
+	host_game.maximum_players = 16;
 	player_add(HOST_PLAYER, HOST_MACHINE, as == _game_connection_network_server, L"Hosty");
 	player_add(OPENH1_PLAYER, OPENH1_MACHINE, as == _game_connection_network_client, L"Keyes");
-	player_add(OTHER_PLAYER, OTHER_MACHINE, FALSE, L"Paul");
+	player_add(OTHER_PLAYER, OTHER_MACHINE, FALSE, L"Cortana");
 	player_add(OPENCE_PLAYER, OPENCE_MACHINE, FALSE, L"Classic");
 	player_add(OLDER_PLAYER, OLDER_MACHINE, FALSE, L"Oldie");
 	player_add(BOT_PLAYER, BOT_MACHINE, FALSE, L"Johnson");
@@ -769,7 +855,7 @@ static void case_accept(void)
 	client_hears(_party_request_invite, OTHER_PLAYER, OPENH1_PLAYER, 0, 0xAB, TRUE);
 	CHECK(party_globals.prompt.kind == _party_request_invite &&
 		party_globals.prompt.player_index == datum(OTHER_PLAYER) &&
-		!wcscmp(party_globals.prompt.name, L"Paul"), "the invite to answer, from Paul");
+		!wcscmp(party_globals.prompt.name, L"Cortana"), "the invite to answer, from Cortana");
 	press_key();
 	CHECK(!strcmp(joined_link, "halo://party/abababababababababababababababab"),
 		"its key joins the party by its link: %s", joined_link);
@@ -866,7 +952,7 @@ static void case_invite(void)
 	CHECK(sent_count == 0, "no invite to a player not offered one");
 	/* (an ask let in: the invite, its answer) */
 	client_hears(_party_request_ask, OTHER_PLAYER, OPENH1_PLAYER, 0, 0, TRUE);
-	CHECK(party_globals.prompt.kind == _party_request_ask, "Paul asks to join");
+	CHECK(party_globals.prompt.kind == _party_request_ask, "Cortana asks to join");
 	press_key();
 	CHECK(sent_count == 1 && sent_request(0)->kind == _party_request_invite &&
 		TEST_FLAG(sent_request(0)->flags, _party_invite_answer_bit) && sent_request(0)->target_index == OTHER_PLAYER &&
@@ -883,6 +969,179 @@ static void case_invite(void)
 		sent_request(0)->player_index == HOST_PLAYER, "the host's invite goes to the machine");
 }
 
+/* the party's members (machines first to first + count - 1) as the party
+tells this machine, its leader */
+static void members_are(long first, short count)
+{
+	short index;
+
+	party_member_count = count;
+	for (index = 0; index < count; index++)
+		key_hash_of(first + index, party_members + index * 16);
+}
+
+/* the last message sent of a type, its index; NONE */
+static short sent_last(byte type)
+{
+	short index;
+
+	for (index = (short)(sent_count - 1); index >= 0; index--)
+	{
+		if (sent[index].type == type)
+			return index;
+	}
+	return NONE;
+}
+
+/* a leader's ask for its members (machines first to first + count - 1)
+heard by the host, over its stream or not */
+static void host_hears_hold(long machine_index, long first, short count, boolean from_stream)
+{
+	struct distributed_party_hold_message message;
+	short index;
+
+	memset(&message, 0, sizeof(message));
+	message.header.type = _distributed_message_party_hold;
+	message.header.count = (byte)count;
+	for (index = 0; index < count; index++)
+	{
+		message.members[index].format = PARTY_HOLD_FORMAT;
+		key_hash_of(first + index, message.members[index].key_hash);
+	}
+	network_party_handle_message(machine_index, (word const *)&message,
+		(word)(sizeof(message.header) + count * sizeof(message.members[0])), from_stream);
+}
+
+static struct distributed_party_held const *sent_answer(short index)
+{
+	return &((struct distributed_party_held_message const *)sent[index].bytes)->answer;
+}
+
+static void case_holds(void)
+{
+	short index;
+
+	/* a client leading a party asks its host to hold room for its members */
+	game(_game_connection_network_client);
+	members_are(5, 2);
+	sent_count = 0;
+	frame(PARTY_HOLD_READ_MILLISECONDS + 1);
+	index = sent_last(_distributed_message_party_hold);
+	CHECK(index != NONE && sent[index].machine_index == NONE && sent[index].count == 2 &&
+		sent[index].size == 8 + 2 * sizeof(struct distributed_party_hold), "the leader asks the host for its two");
+	{
+		struct distributed_party_hold_message const *message = (void const *)sent[index].bytes;
+		unsigned char key_hash[16];
+
+		key_hash_of(6, key_hash);
+		CHECK(message->members[0].format == PARTY_HOLD_FORMAT && !memcmp(message->members[1].key_hash, key_hash, 16),
+			"each by its tunnel key's hash, with its format");
+	}
+	CHECK(_distributed_message_party_hold >= FIRST_OPENH1_DISTRIBUTED_MESSAGE, "as one of OpenH1's own messages");
+	sent_count = 0;
+	frame(PARTY_HOLD_ASK_MILLISECONDS + 1);
+	CHECK(sent_last(_distributed_message_party_hold) == NONE, "not again while its members are the same");
+	members_are(5, 3);
+	frame(PARTY_HOLD_ASK_MILLISECONDS + 1);
+	index = sent_last(_distributed_message_party_hold);
+	CHECK(index != NONE && sent[index].count == 3, "again when they change");
+	game(_game_connection_network_client);
+	sent_count = 0;
+	frame(PARTY_HOLD_READ_MILLISECONDS + 1);
+	CHECK(sent_last(_distributed_message_party_hold) == NONE, "a member, or a party of one, asks for none");
+	agreed_rate = 0;
+	members_are(5, 2);
+	frame(PARTY_HOLD_ASK_MILLISECONDS + 1);
+	CHECK(sent_last(_distributed_message_party_hold) == NONE, "nor anyone in a Legacy game");
+
+	/* the host: a game of 7 with 5 players holds room for 2 of the 3 */
+	game(_game_connection_network_server);
+	host_game.player_count = 5;
+	host_game.maximum_players = 7;
+	sent_count = 0;
+	host_hears_hold(OPENH1_MACHINE, 5, 3, TRUE);
+	index = sent_last(_distributed_message_party_held);
+	CHECK(index != NONE && sent[index].machine_index == OPENH1_MACHINE && sent_answer(index)->format ==
+		PARTY_HOLD_FORMAT && sent_answer(index)->asked == 3 && sent_answer(index)->held == 2 &&
+		sent_answer(index)->seconds == PARTY_HOLD_MILLISECONDS / 1000, "answered: 2 of the 3 held, for how long");
+	CHECK(network_party_held_slots() == 2, "the advertisement counts the 2");
+	CHECK(network_party_slot_open(INTERNET_ADDRESS(5), 5, 7) && network_party_slot_open(INTERNET_ADDRESS(6), 5, 7),
+		"the members held may join");
+	CHECK(!network_party_slot_open(INTERNET_ADDRESS(7), 5, 7), "the third, not held, finds the game full");
+	CHECK(!network_party_slot_open(LAN_ADDRESS, 5, 7), "as does a machine of this network");
+	CHECK(network_party_machines_together(NONE, INTERNET_ADDRESS(5), OPENH1_MACHINE),
+		"a member joining is of its leader's party");
+	CHECK(!network_party_machines_together(NONE, INTERNET_ADDRESS(5), OTHER_MACHINE), "and not of another");
+	CHECK(network_party_machine_in_party(OPENH1_MACHINE) && !network_party_machine_in_party(OTHER_MACHINE),
+		"the leader's machine is in a party");
+	/* (machine 5's player added) */
+	machine_present[5] = TRUE;
+	network_party_slot_taken(5, INTERNET_ADDRESS(5));
+	CHECK(network_party_held_slots() == 1, "its slot taken up");
+	CHECK(network_party_machines_together(5, INTERNET_ADDRESS(5), OPENH1_MACHINE) &&
+		network_party_machine_in_party(5), "and it one of its leader's party from now on");
+	CHECK(network_party_slot_open(INTERNET_ADDRESS(7), 5, 7), "a slot beyond the one held is anyone's");
+	/* (asks no machine may make) */
+	sent_count = 0;
+	host_hears_hold(OPENCE_MACHINE, 1, 1, TRUE);
+	CHECK(sent_last(_distributed_message_party_held) == NONE && network_party_held_slots() == 1,
+		"an OpenCE machine's ask is not taken");
+	host_hears_hold(OTHER_MACHINE, 1, 1, FALSE);
+	CHECK(sent_last(_distributed_message_party_held) == NONE && network_party_held_slots() == 1,
+		"nor one that came as a datagram");
+	/* (a member in the game already is not held again) */
+	host_hears_hold(OPENH1_MACHINE, 5, 2, TRUE);
+	index = sent_last(_distributed_message_party_held);
+	CHECK(index != NONE && sent_answer(index)->held == 1 && network_party_held_slots() == 1,
+		"the party's ask again: its earlier holds replaced, its member in the game not held");
+	host_hears_hold(OPENH1_MACHINE, 5, 2, TRUE);
+	index = sent_last(_distributed_message_party_held);
+	CHECK(PARTY_HOLD_GRANTS == 3 && index != NONE && sent_answer(index)->held == 1, "a third ask held too");
+	host_hears_hold(OPENH1_MACHINE, 5, 2, TRUE);
+	index = sent_last(_distributed_message_party_held);
+	CHECK(index != NONE && sent_answer(index)->held == 0 && network_party_held_slots() == 1,
+		"no more than PARTY_HOLD_GRANTS asks a game (the last held kept)");
+	/* lapsing */
+	frame(PARTY_HOLD_MILLISECONDS - 1000);
+	CHECK(network_party_held_slots() == 1, "kept a while");
+	frame(1001);
+	CHECK(network_party_held_slots() == 0, "let go when its member has not come");
+	CHECK(network_party_slot_open(INTERNET_ADDRESS(7), 6, 7), "its slot anyone's again");
+	/* the leader gone: its party's holds let go */
+	game(_game_connection_network_server);
+	host_game.player_count = 5;
+	host_game.maximum_players = 16;
+	host_hears_hold(OPENH1_MACHINE, 5, 2, TRUE);
+	CHECK(network_party_held_slots() == 2, "held");
+	machine_present[OPENH1_MACHINE] = FALSE;
+	frame(PARTY_LIST_MILLISECONDS + 1);
+	CHECK(network_party_held_slots() == 0, "the leader left: its party's holds let go");
+	/* the host's own party: held without asking */
+	game(_game_connection_network_server);
+	members_are(6, 2);
+	sent_count = 0;
+	frame(PARTY_HOLD_READ_MILLISECONDS + 1);
+	CHECK(network_party_held_slots() == 2 && sent_last(_distributed_message_party_hold) == NONE,
+		"a host leading a party holds room for its members itself");
+	CHECK(network_party_machines_together(NONE, INTERNET_ADDRESS(6), HOST_MACHINE),
+		"its members are of the host's party");
+	frame(PARTY_LIST_MILLISECONDS + 1);
+	CHECK(network_party_held_slots() == 2, "kept while the host is in its game");
+	/* nothing in a Legacy game */
+	game(_game_connection_network_server);
+	agreed_rate = 0;
+	frame(PARTY_LIST_MILLISECONDS + 1);
+	host_hears_hold(OPENH1_MACHINE, 5, 2, TRUE);
+	CHECK(network_party_held_slots() == 0 && network_party_slot_open(LAN_ADDRESS, 15, 16),
+		"a Legacy game's host holds nothing");
+	/* the team for a party's player */
+	{
+		short party_counts[2] = { 0, 3 }, team_counts[2] = { 4, 3 };
+
+		CHECK(network_party_team_choice(party_counts, team_counts, 16) == 1, "its party's team");
+	}
+}
+
 int main(int argc, char **argv)
 {
 	char const *case_name = argc > 1 ? argv[1] : "";
@@ -893,6 +1152,7 @@ int main(int argc, char **argv)
 	else CASE("status") case_status();
 	else CASE("accept") case_accept();
 	else CASE("invite") case_invite();
+	else CASE("holds") case_holds();
 	else
 	{
 		fprintf(stderr, "no case %s\n", case_name);

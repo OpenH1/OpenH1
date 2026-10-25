@@ -13,7 +13,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, constant, enum_with, mutated, read, run  # noqa: E402
 
-CASES = ["actions", "route", "list", "status", "accept", "invite"]
+CASES = ["actions", "route", "list", "status", "accept", "invite", "holds"]
 
 # a fault in network_party.c, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -37,7 +37,7 @@ NEGATIVE_CONTROLS = {
     "no-rate": (("\t\tif (*burst <= 0)\n\t\t\treturn;", ""), "route"),
     "other-format-taken": (("if (request.format != PARTY_FORMAT || request.kind >= NUMBER_OF_PARTY_REQUESTS)",
                             "if (request.kind >= NUMBER_OF_PARTY_REQUESTS)"), "route"),
-    "machine-gone-kept": (("\t\tif (!present[index])\n\t\t\tcsmemset", "\t\tif (0)\n\t\t\tcsmemset"), "route"),
+    "machine-gone-kept": (("\t\tif (present[index])\n\t\t\tcontinue;", "\t\tif (1)\n\t\t\tcontinue;"), "route"),
     "list-every-time": (("(!changed && party_globals.machines[machine_index].listed)", "(changed && 0)"), "list"),
     "status-legacy": (("\tif (!party_game())\n\t{\n\t\tif (party_globals.active)\n\t\t\tparty_reset();\n\t\treturn;",
                        "\tif (0)\n\t{\n\t\treturn;"), "status"),
@@ -52,6 +52,30 @@ NEGATIVE_CONTROLS = {
     "button-ignored": (("|| (button && !party_globals.button_held)", ""), "accept"),
     "let-in-not-answer": (("if (party_invite(player_index, TRUE))", "if (party_invite(player_index, FALSE))"),
                           "invite"),
+    "hold-never-asked": (("\tparty_hold_update(now);\n", ""), "holds"),
+    "hold-asked-each-time": (("\tif (*count == party_globals.hold_asked_count &&",
+                              "\tif (0 && *count == party_globals.hold_asked_count &&"), "holds"),
+    "hold-for-opence": (("\tif (!network_standard_machine_is_openh1(machine_index) || machine_index < 0 ||",
+                         "\tif (machine_index < 0 ||"), "holds"),
+    "hold-unanswered": (("\tdistributed_send_to_machine_reliably(machine_index, &message, _distributed_message_party_held, 1,",
+                         "\tif (0) distributed_send_to_machine_reliably(machine_index, &message, _distributed_message_party_held, 1,"),
+                        "holds"),
+    "holds-not-advertised": (("return party_globals.active && party_host() ? party_holds_count(party_globals.holds) : 0;",
+                              "return 0;"), "holds"),
+    "held-members-in-game-again": (("\t\tif (!party_key_hash_present(key_hashes + index * PARTY_KEY_HASH_SIZE))",
+                                    "\t\tif (1)"), "holds"),
+    "grants-unlimited": (("\tif (party_globals.machines[group].hold_grants >= PARTY_HOLD_GRANTS)", "\tif (0)"),
+                         "holds"),
+    "holds-never-lapse": (("\t\tshort released = party_holds_expire(party_globals.holds, now);",
+                           "\t\tshort released = 0;"), "holds"),
+    "leader-gone-holds-kept": (("\t\tif (party_holds_release(party_globals.holds, index))",
+                                "\t\tif (0)"), "holds"),
+    "own-machine-forgotten": (("\t\tif (own >= 0 && own < MAXIMUM_PARTY_MACHINES)\n\t\t\tpresent[own] = TRUE;",
+                               "\t\t(void)own;"), "holds"),
+    "taken-not-let-go": (("\tparty_globals.holds[index].used = FALSE;\n\terror(_error_log, \"party: machine #%ld took",
+                          "\terror(_error_log, \"party: machine #%ld took"), "holds"),
+    "joiner-of-no-party": (("\tgroup = party_machine_group(machine_index, address);",
+                            "\tgroup = party_machine_group(machine_index, 0);"), "holds"),
 }
 
 
@@ -62,7 +86,8 @@ def generated(fault=None):
     config = "".join(f"#define {name} {constant(limits, name)}\n" for name in (
         "HALO_PORT_MAXIMUM_NETWORK_MACHINES", "HALO_PORT_MAXIMUM_NETWORK_PLAYERS"))
     for name in ("_distributed_message_party_up", "_distributed_message_party_down",
-                 "_distributed_message_party_players", "_distributed_message_player_substeps"):
+                 "_distributed_message_party_players", "_distributed_message_player_substeps",
+                 "_distributed_message_party_hold", "_distributed_message_party_held"):
         value = re.search(rf"\b{name} = (\d+)", distributed).group(1)
         config += f"#define {name} {value}\n"
     first = re.search(r"#define FIRST_OPENH1_DISTRIBUTED_MESSAGE (\w+)", distributed).group(1)
@@ -70,6 +95,9 @@ def generated(fault=None):
     config += enum_with(distributed, "_distributed_to_host_reliably") + "\n"
     config += enum_with(keyboard, "HALO_KEYBOARD_PARTY_ACCEPT") + "\n"
     config += enum_with(keyboard, "HALO_CHAT_PAD_DOWN") + "\n"
+    p2p = read("port/linux/src/p2p.h")
+    config += "".join(f"#define {name} {constant(p2p, name)}\n"
+                      for name in ("P2P_PLAYER_KEY_HASH_SIZE", "P2P_PARTY_MAXIMUM_MEMBERS"))
     header = read("port/linux/game/network_party.h")
     # (the actions, and the prototypes: the code's functions call each other in any order)
     config += header[header.index("/* ---------- constants */"):header.rindex("#endif")]

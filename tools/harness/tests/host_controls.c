@@ -693,7 +693,7 @@ static void case_players(void)
 		"a Legacy game's: not told apart");
 	player_try_and_get(test_player_index(OPENCE_PLAYER))->quit_out_of_game = TRUE;
 	CHECK(network_host_controls_players(players, 8) == NUMBER_OF_TEST_PLAYERS - 1, "not those who quit");
-	CHECK(network_host_controls_open_command("players pa") && world.screen_loaded, "opened");
+	CHECK(network_host_controls_open_command("players jo") && world.screen_loaded, "opened");
 	{
 		long player_index;
 		short tab;

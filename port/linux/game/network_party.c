@@ -1146,8 +1146,9 @@ static void party_host_hold_heard(
 	short index;
 	short held;
 
-	if (machine_index < 0 || machine_index >= MAXIMUM_PARTY_MACHINES ||
-		!network_standard_machine_is_openh1(machine_index))
+	/* (an OpenH1 machine's alone) */
+	if (!network_standard_machine_is_openh1(machine_index) || machine_index < 0 ||
+		machine_index >= MAXIMUM_PARTY_MACHINES)
 	{
 		return;
 	}
