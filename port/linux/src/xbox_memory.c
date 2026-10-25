@@ -29,6 +29,7 @@ Halo Custom Edition maps need the window their tag data is linked to,
 #include <errno.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/sysinfo.h>
 #include <unistd.h>
 
 #ifdef HALO_GUEST
@@ -115,6 +116,23 @@ static void custom_edition_tag_cache_reserve(void)
 void *halo_custom_edition_tag_cache(void)
 {
 	return custom_edition_tag_cache;
+}
+
+/* sysinfo's total, which the guests' hosts give (the Linux kernel's, or the
+macOS and iOS host's hw.memsize: port/macos/host_syscall.c), read once */
+unsigned long long platform_memory_bytes(void)
+{
+	static unsigned long long bytes;
+	static int read;
+	struct sysinfo info;
+
+	if (!read)
+	{
+		read = 1;
+		if (sysinfo(&info) == 0)
+			bytes = (unsigned long long)info.totalram * (info.mem_unit ? info.mem_unit : 1);
+	}
+	return bytes;
 }
 
 BOOL platform_is_contiguous(const void *address)
@@ -223,6 +241,34 @@ void platform_contiguous_free(void *address)
 		for (page = first; page < first + count; page++)
 			page_protection[page] = 0;
 		block_page_count[first] = 0;
+	}
+	pthread_mutex_unlock(&arena_lock);
+}
+
+void platform_contiguous_discard(void *address, unsigned long size)
+{
+	unsigned long start = ((unsigned long)address + PAGE_SIZE_BYTES - 1) & ~(PAGE_SIZE_BYTES - 1);
+	unsigned long end = ((unsigned long)address + size) & ~(PAGE_SIZE_BYTES - 1);
+	unsigned long page, run;
+
+	if (end <= start || !platform_is_contiguous((void *)start) || !platform_is_contiguous((void *)(end - 1)))
+		return;
+	pthread_mutex_lock(&arena_lock);
+	/* (fresh zeroed pages mapped over them, run by run of one protection;
+	pages of no block are left alone) */
+	for (page = (start - PLATFORM_CONTIGUOUS_BASE) / PAGE_SIZE_BYTES; page < (end - PLATFORM_CONTIGUOUS_BASE) / PAGE_SIZE_BYTES;
+		page = run)
+	{
+		void *run_address = (void *)(PLATFORM_CONTIGUOUS_BASE + page * PAGE_SIZE_BYTES);
+
+		for (run = page + 1; run < (end - PLATFORM_CONTIGUOUS_BASE) / PAGE_SIZE_BYTES &&
+			page_protection[run] == page_protection[page]; run++)
+			;
+		if (!page_protection[page])
+			continue;
+		memory_watch_forget(run_address, (run - page) * PAGE_SIZE_BYTES);
+		mmap(run_address, (run - page) * PAGE_SIZE_BYTES, protection_to_host(page_protection[page]),
+			MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
 	}
 	pthread_mutex_unlock(&arena_lock);
 }

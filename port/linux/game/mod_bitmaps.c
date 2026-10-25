@@ -96,8 +96,9 @@ char *tag_get_name(long tag_index);
 /* the device's (d3d8_gl.c, D3DDevice_GetDeviceCaps) */
 #define MAXIMUM_BITMAP_SIZE 4096
 #define MAXIMUM_VOLUME_BITMAP_SIZE 512
-/* the most of the texture cache one bitmap's pixels may take */
-#define MAXIMUM_BITMAP_PIXELS_SIZE (HALO_PORT_TEXTURE_CACHE_SIZE / 4)
+/* the most of the texture cache one bitmap's pixels may take: a quarter of
+what the cache holds for a map that plays mods' bitmaps */
+#define MAXIMUM_BITMAP_PIXELS_SIZE texture_cache_mod_bitmap_size_limit()
 
 /* bitmaps.c's bitmap types and flags, and bitmap_group.c's group types */
 enum

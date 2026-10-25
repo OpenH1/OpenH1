@@ -90,7 +90,7 @@ signed executable instead, at the guest's addresses:
 2. The loader reserves the guest's 4 GB as on macOS, at a base that is a
    multiple of 4 GB (`host_memory_base.c`), copies the image there and fills
    its import table (in the image's `.data`).
-3. It then maps the read-only part (`0x88000000` up to the data) again,
+3. It then maps the read-only part (`0xA0000000` up to the data) again,
    from the executable's file (`dladdr` gives its path and the image's
    offset in it), with `mmap(MAP_FIXED, PROT_READ | PROT_EXEC)`: the pages
    of the signed executable, which the kernel checks against the app's

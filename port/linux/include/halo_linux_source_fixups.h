@@ -115,6 +115,12 @@ void latency_log_frame_presented(void);
 /* the Custom Edition tag cache window, or NULL unless the
 game.custom_edition setting reserved it (port/linux/src/xbox_memory.c) */
 void *halo_custom_edition_tag_cache(void);
+/* the computer's memory in bytes, or 0 when the system does not say
+(port/linux/src/xbox_memory.c) */
+unsigned long long platform_memory_bytes(void);
+/* gives the memory of the pages of a part of an XPhysicalAlloc block back to
+the system, which reads as zeros (port/linux/src/xbox_memory.c) */
+void platform_contiguous_discard(void *address, unsigned long size);
 /* where Halo PC keeps the channels of the pixels a Custom Edition bitmap
 just arrived at (an enum custom_edition_channel_order,
 port/linux/game/cache_file_formats.h), which the renderer then samples in

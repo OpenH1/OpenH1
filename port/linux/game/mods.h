@@ -94,6 +94,8 @@ unsigned long mods_memory_left(void);
 /* the map loaded's name ("a10"), and whether its tags are loaded */
 char const *mods_map_name(void);
 boolean mods_map_loaded(void);
+/* how many of the map's bitmaps the mods play (xbox_texture_cache.c) */
+long mods_bitmap_count(void);
 
 /* ---------- prototypes/MOD_SOUNDS.C */
 

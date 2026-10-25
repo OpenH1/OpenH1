@@ -113,8 +113,9 @@ ARM64_32 = GuestArch(
     elf_arch="aarch64",
     environment_suffix="",
     ld_emulation="aarch64linux",
-    # (just above the Xbox window: Android's ART fills the low 4 GB upwards)
-    image_base=0x88000000,
+    # (just above the Xbox window, which ends at 0xA0000000: Android's ART
+    # fills the low 4 GB upwards)
+    image_base=0xA0000000,
     # (the 64-bit AArch64 library, whose functions take and return the same
     # registers in the guest)
     builtins_flags=(),

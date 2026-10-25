@@ -21,9 +21,9 @@ The Xbox game state is 0x345000 bytes at 0x80061000 and ends where the tag
 cache begins (0x803A6000). Cache files are linked to that tag cache address,
 so the game state cannot grow in place. The native builds put a 16 MB game
 state above the tag cache (which ends at 0x819A6000), inside the Xbox memory
-window (0x80000000-0xA0000000, the AArch64 guests' to
-0x88000000: port/linux/src/platform.h) and below everything the window hands out
-top-down (texture and sound caches, Direct3D resources).
+window (0x80000000-0xA0000000: port/linux/src/platform.h) and below
+everything the window hands out top-down (texture and sound caches,
+Direct3D resources).
 
 The CPU part holds about 17.2 MB of pools at the sizes below (the Xbox pools
 fill 3,165,260 of its 0x305000 bytes); the GPU part holds only the decal
@@ -42,18 +42,42 @@ them on the Xbox, which Xbox maps were made to fit. Halo Custom Edition maps
 were made for Halo PC, which has no such bound: a texture that does not fit
 is drawn as the default one ("YOU GOT STABBED" in debug.txt; Elite_Alpha_Siege
 did at 22 MB), and a frame of bigass_v3 draws more than 64 MB (DamnationCE's
-measurement). The desktop builds' cache is 256 MB, half their 512 MB memory
-window (port/linux/src/platform.h), whose pages are backed as they are used.
-The AArch64 guests' window (Android's and 64-bit ARM Linux's) is 128 MB, and
-their cache the Xbox's; the x86-64 guest's window and
-cache are the desktop's. */
+measurement). The cache is 256 MB of every build's 512 MB memory window
+(port/linux/src/platform.h), whose pages are backed as they are used; it
+fills before it lets go of a texture (lruv_block_new), so a map uses as much
+of it as its textures take, up to the size it plays with
+(texture_cache_size_for_map, xbox_texture_cache.c):
 
-#if defined(HALO_GUEST) && defined(__aarch64__)
-#define HALO_PORT_TEXTURE_CACHE_PAGE_COUNT 0x580 /* (0x580) */
-#else
+- the desktop builds (x86-64, Windows): the whole, for every map;
+- the AArch64 guests (Android, iOS, macOS, 64-bit ARM Linux and the Steam
+  Frame): an Xbox map the Xbox's 22 MB, which it was made for, so it uses no
+  more memory than it did when the cache was that size; a Custom Edition
+  map, or one a mod's bitmaps are played over (mod_bitmaps.c), a 32nd of the
+  computer's memory, at least 64 MB and at most the whole: 64 MB at 2 GB,
+  128 at 4, 192 at 6, the whole 256 from 8 GB (every Mac, the Steam Frame).
+  The GPU holds what the cache does once more (as BC or ASTC blocks, the
+  same size or twice it: xgpu_vulkan_textures.c, xgpu_metal_textures.c), so
+  a 32nd keeps the two under a tenth of a phone's memory; at 4 GB it is
+  twice the 64 MB a frame of bigass_v3 was measured to pass.
+  The memory is sysinfo's (the guests' hosts': Linux's, or hw.memsize on
+  macOS and iOS, port/macos/host_syscall.c); unknown, it is the least.
+
+The texture cache is not in the game state (its globals and blocks are the C
+heap's, xbox_texture_cache.c), and the game state stays where it is: saved
+games load whatever these sizes. */
+
 #define HALO_PORT_TEXTURE_CACHE_PAGE_COUNT 0x4000 /* (0x580) */
-#endif
 #define HALO_PORT_TEXTURE_CACHE_SIZE (HALO_PORT_TEXTURE_CACHE_PAGE_COUNT*0x4000) /* (0x1600000) */
+/* a Custom Edition map's: the computer's memory over this, in pages from the
+least to the whole */
+#define HALO_PORT_TEXTURE_CACHE_MEMORY_SHARE 32
+#if defined(HALO_GUEST) && defined(__aarch64__)
+#define HALO_PORT_TEXTURE_CACHE_XBOX_MAP_PAGE_COUNT 0x580 /* (0x580) */
+#define HALO_PORT_TEXTURE_CACHE_LEAST_PAGE_COUNT 0x1000
+#else
+#define HALO_PORT_TEXTURE_CACHE_XBOX_MAP_PAGE_COUNT HALO_PORT_TEXTURE_CACHE_PAGE_COUNT
+#define HALO_PORT_TEXTURE_CACHE_LEAST_PAGE_COUNT HALO_PORT_TEXTURE_CACHE_PAGE_COUNT
+#endif
 
 /* ---------- sounds
 
@@ -62,8 +86,9 @@ the Xbox. Halo Custom Edition maps' sounds, converted when they load
 (port/linux/game/custom_edition_sounds.c), and those of sound tags loaded
 over a map's by mods (mod_sounds.c), are longer than the Xbox maps' and fill it (a
 campaign map's dialogue and music did, "SOUND CACHE BLOWN" in debug.txt).
-The desktop builds' cache is 16 MB (the x86-64 guest's too); the 128 MB
-windows of the AArch64 guests keep the Xbox's. */
+The desktop builds' cache is 16 MB (the x86-64 guest's too); the AArch64
+guests keep the Xbox's, as an Xbox map fills a larger one before it lets
+go of a sound, and its size is the same for every map. */
 
 #if defined(HALO_GUEST) && defined(__aarch64__)
 #define HALO_PORT_SOUND_CACHE_SIZE 0x400000 /* (0x400000) */

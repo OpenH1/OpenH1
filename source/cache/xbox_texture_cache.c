@@ -341,8 +341,117 @@ static struct xbox_texture_cache_globals xbox_texture_cache_globals;
 struct texture_cache_debug_options texture_cache_debug_options = {0};
 boolean debug_texture_cache = FALSE;
 static unsigned long texture_cache_last_failure_time = 0;
+/* port: the pages the map being played may take, and the most any map has
+taken since the memory of those past it went back to the system
+(texture_cache_size_for_map) */
+static long texture_cache_map_pages = HALO_PORT_TEXTURE_CACHE_XBOX_MAP_PAGE_COUNT;
+static long texture_cache_backed_pages = HALO_PORT_TEXTURE_CACHE_XBOX_MAP_PAGE_COUNT;
 
 /* ---------- public code */
+
+/* port: the pages a map's textures may take (halo_port_capacity.h): an Xbox
+map's count for an Xbox map; for a Custom Edition map, or one a mod's
+bitmaps are played over, the computer's memory (memory_bytes, 0 when
+unknown) over HALO_PORT_TEXTURE_CACHE_MEMORY_SHARE, from the least (the
+whole, on the desktop builds) to the whole */
+long texture_cache_map_page_count(
+	boolean custom_edition,
+	boolean mod_bitmaps,
+	unsigned long long memory_bytes)
+{
+	unsigned long long page_count;
+
+	if (!custom_edition && !mod_bitmaps)
+	{
+		return HALO_PORT_TEXTURE_CACHE_XBOX_MAP_PAGE_COUNT;
+	}
+	page_count = memory_bytes / HALO_PORT_TEXTURE_CACHE_MEMORY_SHARE / XBOX_TEXTURE_CACHE_PAGE_SIZE;
+	if (page_count < HALO_PORT_TEXTURE_CACHE_LEAST_PAGE_COUNT)
+	{
+		page_count = HALO_PORT_TEXTURE_CACHE_LEAST_PAGE_COUNT;
+	}
+	if (page_count > XBOX_TEXTURE_CACHE_PAGE_COUNT)
+	{
+		page_count = XBOX_TEXTURE_CACHE_PAGE_COUNT;
+	}
+
+	return (long)page_count;
+}
+
+/* port: the computer's memory, where the cache's size follows it (the
+desktop builds ask no system for it) */
+static unsigned long long texture_cache_memory_bytes(
+	void)
+{
+	return HALO_PORT_TEXTURE_CACHE_LEAST_PAGE_COUNT < XBOX_TEXTURE_CACHE_PAGE_COUNT ? platform_memory_bytes() : 0;
+}
+
+/* port: the memory of the cache's pages past the map's goes back to the
+system: an Xbox map after a Custom Edition one uses no more than it did
+before it (texture_cache_size_for_map) */
+static void texture_cache_discard_past_map_pages(
+	void)
+{
+	if (texture_cache_backed_pages > texture_cache_map_pages)
+	{
+		platform_contiguous_discard(
+			(byte *)physical_memory_get_texture_cache_base_address() +
+				texture_cache_map_pages * XBOX_TEXTURE_CACHE_PAGE_SIZE,
+			(unsigned long)(texture_cache_backed_pages - texture_cache_map_pages) * XBOX_TEXTURE_CACHE_PAGE_SIZE);
+	}
+	texture_cache_backed_pages = texture_cache_map_pages;
+}
+
+/* port: the pages of the map being played (texture_cache_map_page_count),
+set once its tags and its mods' bitmaps are loaded, and whenever the mods'
+bitmaps change (port/linux/game/mods.c), when the cache holds none of the
+textures it would let go of: what is not drawn is not backed, and an Xbox
+map takes no more than the Xbox's on the builds that keep it for those */
+void texture_cache_size_for_map(
+	void)
+{
+	extern long mods_bitmap_count(void); /* port/linux/game/mods.c */
+	long page_count = texture_cache_map_page_count(
+		custom_edition_cache_tags_loaded(),
+		mods_bitmap_count() > 0,
+		texture_cache_memory_bytes());
+
+	if (page_count == texture_cache_map_pages)
+	{
+		return;
+	}
+	if (page_count < texture_cache_map_pages)
+	{
+		texture_cache_flush();
+	}
+	texture_cache_map_pages = page_count;
+	if (page_count > texture_cache_backed_pages)
+	{
+		texture_cache_backed_pages = page_count;
+	}
+	/* (stolen memory is given back to the map's pages, and the rest to the
+	system: texture_cache_return_memory) */
+	if (!xbox_texture_cache_globals.stolen_memory)
+	{
+		lruv_resize(xbox_texture_cache_globals.cache, page_count);
+		texture_cache_discard_past_map_pages();
+	}
+	error(
+		_error_silent,
+		"texture cache: %ld MB for this map",
+		page_count * XBOX_TEXTURE_CACHE_PAGE_SIZE >> 20);
+
+	return;
+}
+
+/* port: the most one mod's bitmap may take, a quarter of what the cache
+holds for a map that plays mods' bitmaps (port/linux/game/mod_bitmaps.c) */
+unsigned long texture_cache_mod_bitmap_size_limit(
+	void)
+{
+	return (unsigned long)texture_cache_map_page_count(FALSE, TRUE, texture_cache_memory_bytes()) *
+		XBOX_TEXTURE_CACHE_PAGE_SIZE / 4;
+}
 
 void texture_cache_delete(
 	void)
@@ -394,10 +503,13 @@ static void texture_cache_preparation_checkpoint(void *const *bound)
 }
 
 /* port: leave room for a draw's remaining stages before the next complete
-draw permits a checkpoint. The budget follows the shared cache capacity. */
+draw permits a checkpoint. The budget follows the cache's capacity for the
+map (texture_cache_size_for_map). */
 void texture_cache_preparation_begin(void)
 {
-	halo_gpu_preparation_checkpoint_set(XBOX_TEXTURE_CACHE_SIZE / 8, texture_cache_preparation_checkpoint);
+	halo_gpu_preparation_checkpoint_set(
+		(unsigned long)texture_cache_map_pages * XBOX_TEXTURE_CACHE_PAGE_SIZE / 8,
+		texture_cache_preparation_checkpoint);
 }
 
 void texture_cache_bitmap_new(
@@ -451,8 +563,11 @@ void *texture_cache_steal_memory(
 	long size)
 {
 	long page_count = size / XBOX_TEXTURE_CACHE_PAGE_SIZE + 1;
+	/* port: from the top of the map's pages (texture_cache_size_for_map) */
 	long remaining_page_count =
-		XBOX_TEXTURE_CACHE_STEALABLE_PAGE_COUNT - page_count;
+		XBOX_TEXTURE_CACHE_STEALABLE_PAGE_COUNT -
+		(XBOX_TEXTURE_CACHE_PAGE_COUNT - texture_cache_map_pages) -
+		page_count;
 	byte *base_address =
 		(byte *)physical_memory_get_texture_cache_base_address() +
 		remaining_page_count * XBOX_TEXTURE_CACHE_PAGE_SIZE;
@@ -497,13 +612,16 @@ void texture_cache_return_memory(
 		"c:\\halo\\SOURCE\\cache\\xbox_texture_cache.c",
 		345,
 		xbox_texture_cache_globals.stolen_memory);
+	/* port: the map's pages (texture_cache_size_for_map) */
 	lruv_resize(
 		xbox_texture_cache_globals.cache,
-		XBOX_TEXTURE_CACHE_PAGE_COUNT);
+		texture_cache_map_pages);
 	XPhysicalProtect(
 		physical_memory_get_texture_cache_base_address(),
 		XBOX_TEXTURE_CACHE_SIZE,
 		XBOX_TEXTURE_CACHE_PROTECTION);
+	/* port: and the pages past the map's to the system */
+	texture_cache_discard_past_map_pages();
 	xbox_texture_cache_globals.stolen_memory = FALSE;
 
 	return;
@@ -732,9 +850,11 @@ void texture_cache_new(
 		98,
 		xbox_texture_cache_globals.textures != NULL,
 		"xbox_texture_cache_globals.textures");
+	/* port: the pages an Xbox map takes, until a map takes others
+	(texture_cache_size_for_map) */
 	xbox_texture_cache_globals.cache = lruv_new(
 		"xbox texture cache",
-		XBOX_TEXTURE_CACHE_PAGE_COUNT,
+		texture_cache_map_pages,
 		XBOX_TEXTURE_CACHE_PAGE_SIZE_BITS,
 		XBOX_TEXTURE_CACHE_PAGE_COUNT,
 		texture_cache_delete_block_proc,
@@ -932,6 +1052,8 @@ void texture_cache_debug_render(
 		colors[1] = global_real_argb_green;
 		colors[2] = global_real_argb_blue;
 		colors[3] = NULL;
+		/* port: the pages past the map's are none's (texture_cache_size_for_map) */
+		csmemset(page_usage, 0, sizeof(page_usage));
 		lruv_cache_get_page_usage(xbox_texture_cache_globals.cache, page_usage);
 
 		for (page_index = 0; page_index < XBOX_TEXTURE_CACHE_PAGE_COUNT; page_index++)
