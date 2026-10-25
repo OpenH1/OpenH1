@@ -4223,15 +4223,31 @@ static void render_state_bitmap(
 		scale = hud_globals_get_scale(local_player_count() > 1);
 		point.x = (short)(icon->offset.x * scale + cursor_bounds->x0 + 1.0f);
 		point.y = (short)(cursor_bounds->y1 - icon->offset.y * scale - 2.0f);
-		hud_draw_bitmap_direct(
-			bitmap,
-			_hud_anchor_bottom_left,
-			&point,
-			clip,
-			scale,
-			0.0f,
-			TEST_FLAG(icon->flags, _hud_icon_use_color_bit) ? icon->color : color,
-			FALSE);
+		/* port: in text drawn scaled (rasterizer_text_set_scale: the
+		scoreboard's prompts), drawn where the text puts it and as much
+		smaller or larger; laid out (the cursor) as the text is, unscaled */
+		{
+			real text_scale;
+			real origin_x;
+			real origin_y;
+			point2d drawn = point;
+
+			rasterizer_text_get_scale(&text_scale, &origin_x, &origin_y);
+			if (text_scale != 1.0f)
+			{
+				drawn.x = (short)(origin_x + (point.x - origin_x) * text_scale);
+				drawn.y = (short)(origin_y + (point.y - origin_y) * text_scale);
+			}
+			hud_draw_bitmap_direct(
+				bitmap,
+				_hud_anchor_bottom_left,
+				&drawn,
+				clip,
+				scale * text_scale,
+				0.0f,
+				TEST_FLAG(icon->flags, _hud_icon_use_color_bit) ? icon->color : color,
+				FALSE);
+		}
 		if (TEST_FLAG(icon->flags, _hud_icon_absolute_width_bit))
 			cursor_bounds->x0 = icon->width_offset + point.x;
 		else if (clip)
@@ -4277,6 +4293,39 @@ static char const *ui_widget_port_menu_key(
 	default:
 		return NULL;
 	}
+}
+
+/* port: a controller button's icon (A to the right thumb) drawn at the
+cursor, past which the cursor then moves, as draw_string_and_hack_in_icons
+draws one in text (the in-game scoreboard's prompts, game_engine.c, which
+lay out each prompt's button or key and words themselves) */
+void ui_widget_port_draw_button(
+	short icon_type,
+	rectangle2d *bounds,
+	rectangle2d *cursor,
+	pixel32 color)
+{
+	struct icon_hud_element_definition *icon;
+	byte saved_flags;
+	short saved_width_offset;
+
+	if (!hud_globals || icon_type < _icon_a_button || icon_type > _icon_right_thumb ||
+		icon_type >= hud_globals->messaging.button_icons.count)
+	{
+		return;
+	}
+	icon = TAG_BLOCK_GET_ELEMENT(&hud_globals->messaging.button_icons, icon_type, struct icon_hud_element_definition);
+	saved_flags = icon->flags;
+	saved_width_offset = icon->width_offset;
+	icon->flags &= ~FLAG(_hud_icon_use_color_bit);
+	if (icon_is_special[icon_type])
+	{
+		icon->flags &= ~FLAG(_hud_icon_absolute_width_bit);
+		icon->width_offset = -5;
+	}
+	render_state_bitmap(bounds, cursor, color, icon);
+	icon->flags = saved_flags;
+	icon->width_offset = saved_width_offset;
 }
 
 void draw_string_and_hack_in_icons(

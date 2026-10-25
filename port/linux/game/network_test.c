@@ -135,8 +135,11 @@ static struct
 	short mode;
 	char map_name[64];
 	char variant_name[64];
-	/* "local:": a local (split screen) game, not a system link one */
+	/* "local:": a local (split screen) game, not a system link one; its
+	players (debug.network_test_players: split screen's views, the first
+	controller's the first) */
 	boolean local;
+	short local_players;
 	/* ... the variant of this game, of variant_name's list; and the seconds
 	the last game's scores have been shown */
 	short variant_index;
@@ -249,6 +252,7 @@ static void network_test_read_settings(
 	}
 	network_test.public_game = config_boolean("debug.network_test_public") != 0;
 	network_test.start_delay = (real)config_real("debug.network_test_start");
+	network_test.local_players = (short)PIN(config_integer("debug.network_test_players"), 1, MAXIMUM_NUMBER_OF_LOCAL_PLAYERS);
 	network_test.kill_interval = (real)config_real("debug.network_test_kill");
 	network_test.shoot_interval = (real)config_real("debug.network_test_shoot");
 	network_test.vehicle_time = (real)config_real("debug.network_test_vehicle");
@@ -1709,6 +1713,14 @@ void network_test_update(
 			{
 				network_test_set_name();
 				network_test.player_added = network_game_client_add_player(global_network_game_client_get(), 0);
+				/* (a local game's others: split screen) */
+				if (network_test.local)
+				{
+					short local_player_index;
+
+					for (local_player_index = 1; local_player_index < network_test.local_players; local_player_index++)
+						network_game_client_add_player(global_network_game_client_get(), local_player_index);
+				}
 			}
 			if (network_test.setup_seconds >= network_test.start_delay)
 			{

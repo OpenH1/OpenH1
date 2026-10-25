@@ -9,7 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run  # noqa: E402
 
 CASES = ['done', 'cancel', 'external-close', 'dispose', 'initialize',
-         'invalid-name', 'duplicate-name', 'field-owner', 'reopen', 'launch-failure', 'held-enter', 'browser-keys']
+         'invalid-name', 'duplicate-name', 'field-owner', 'reopen', 'launch-failure', 'held-enter',
+         'scoreboard-escape', 'browser-keys']
 
 
 def generated(fault=False):
@@ -30,6 +31,8 @@ def generated(fault=False):
     if fault == 'held-enter':
         code, count = re.subn(r' \| \(text_typing \? [24] : 0\)', '', code)
         assert count == 1
+    if fault == 'scoreboard-escape':
+        code = mutated(code, ' | (scoreboard_holds ? 16 : 0)', '')
     setter = function(vk, 'virtual_keyboard_set_active')
     if fault is True:
         setter = mutated(setter, 'platform_text_typing(active);', 'if (active) platform_text_typing(active);')
@@ -55,4 +58,10 @@ def test_original_sticky_typing_detected(case):
 
 def test_held_enter_guard_detected():
     status, output = run(build('profile_keyboard', generated('held-enter')), 'held-enter')
+    assert status == CHECK_FAILED, output
+
+
+def test_scoreboard_escape_guard_detected():
+    """the scoreboard's letting go is a switch of what the keys are for: without it, its Escape pauses the game"""
+    status, output = run(build('profile_keyboard', generated('scoreboard-escape')), 'scoreboard-escape')
     assert status == CHECK_FAILED, output

@@ -295,6 +295,159 @@ static void chat_pad_hold_over(XINPUT_GAMEPAD *pad)
 	}
 }
 
+/* ---------- the scoreboard's player menu (halo_keyboard.h) */
+
+/* a controller held for the scoreboard while the game asked within this
+many readings of it (it reads each once a frame, and asks every frame the
+scoreboard shows: counted in frames, not time, so that a frame slow to draw,
+a screenshot's, lets nothing go) */
+#define SCOREBOARD_PAD_READINGS 3
+
+static struct scoreboard_pad
+{
+	/* what the game last said, and how many readings ago; whether a menu
+	was up as the controller was read */
+	int hold;
+	int readings;
+	BOOL menus;
+	/* the buttons (halo_scoreboard_pad_button bits) the last reading had,
+	and those pressed since the game last asked */
+	unsigned long buttons;
+	unsigned long pressed;
+	/* what the scoreboard took that is still held (the game gets none of
+	it till let go of) */
+	WORD held_buttons;
+	unsigned char held_analog;
+} scoreboard_pads[PORT_COUNT];
+static pthread_mutex_t scoreboard_pad_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* (an analog button down: pressed a little way, a trigger at rest not) */
+#define SCOREBOARD_PAD_ANALOG_DOWN 0x20
+
+/* a reading's buttons for the scoreboard (the keyboard's are the caller's) */
+static unsigned long scoreboard_pad_bits(const XINPUT_GAMEPAD *pad)
+{
+	/* (an analog button pressed half way; the stick most of the way) */
+	enum { PRESSED = 0x80, PUSHED = 22000 };
+	unsigned long bits = 0;
+
+	if (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP) bits |= 1UL << HALO_SCOREBOARD_PAD_UP;
+	if (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN) bits |= 1UL << HALO_SCOREBOARD_PAD_DOWN;
+	if (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT) bits |= 1UL << HALO_SCOREBOARD_PAD_LEFT;
+	if (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) bits |= 1UL << HALO_SCOREBOARD_PAD_RIGHT;
+	if (pad->sThumbLY > PUSHED) bits |= 1UL << HALO_SCOREBOARD_PAD_STICK_UP;
+	if (pad->sThumbLY < -PUSHED) bits |= 1UL << HALO_SCOREBOARD_PAD_STICK_DOWN;
+	if (pad->sThumbLX < -PUSHED) bits |= 1UL << HALO_SCOREBOARD_PAD_STICK_LEFT;
+	if (pad->sThumbLX > PUSHED) bits |= 1UL << HALO_SCOREBOARD_PAD_STICK_RIGHT;
+	if (pad->bAnalogButtons[XINPUT_GAMEPAD_X] >= PRESSED) bits |= 1UL << HALO_SCOREBOARD_PAD_OPEN;
+	if (pad->bAnalogButtons[XINPUT_GAMEPAD_A] >= PRESSED) bits |= 1UL << HALO_SCOREBOARD_PAD_ACCEPT;
+	if (pad->bAnalogButtons[XINPUT_GAMEPAD_B] >= PRESSED) bits |= 1UL << HALO_SCOREBOARD_PAD_CANCEL;
+	if (pad->wButtons & XINPUT_GAMEPAD_BACK) bits |= 1UL << HALO_SCOREBOARD_PAD_CLOSE;
+	return bits;
+}
+
+/* the keyboard's: the arrows, Enter (open and choose), Escape and Backspace,
+and the scoreboard's key among the actions held */
+static unsigned long scoreboard_pad_keys(const unsigned char *keys, unsigned long held)
+{
+	unsigned long bits = 0;
+
+	if (keys[SDL_SCANCODE_UP]) bits |= 1UL << HALO_SCOREBOARD_PAD_UP;
+	if (keys[SDL_SCANCODE_DOWN]) bits |= 1UL << HALO_SCOREBOARD_PAD_DOWN;
+	if (keys[SDL_SCANCODE_LEFT]) bits |= 1UL << HALO_SCOREBOARD_PAD_LEFT;
+	if (keys[SDL_SCANCODE_RIGHT]) bits |= 1UL << HALO_SCOREBOARD_PAD_RIGHT;
+	if (keys[SDL_SCANCODE_RETURN] || keys[SDL_SCANCODE_KP_ENTER])
+		bits |= (1UL << HALO_SCOREBOARD_PAD_OPEN) | (1UL << HALO_SCOREBOARD_PAD_ACCEPT);
+	if (keys[SDL_SCANCODE_ESCAPE] || keys[SDL_SCANCODE_BACKSPACE]) bits |= 1UL << HALO_SCOREBOARD_PAD_CANCEL;
+	if (held & (1UL << HALO_KEYBOARD_SCOREBOARD)) bits |= 1UL << HALO_SCOREBOARD_PAD_CLOSE;
+	return bits;
+}
+
+/* how the scoreboard holds a port's controller as it is read: as the game
+last said, while it says so every frame and no menu is up */
+static int scoreboard_pad_port_hold(int port, BOOL menus)
+{
+	struct scoreboard_pad *pad = &scoreboard_pads[port];
+	int hold;
+
+	pthread_mutex_lock(&scoreboard_pad_lock);
+	pad->menus = menus;
+	if (pad->readings <= SCOREBOARD_PAD_READINGS)
+		pad->readings++;
+	hold = menus || pad->readings > SCOREBOARD_PAD_READINGS ? HALO_SCOREBOARD_PAD_FREE : pad->hold;
+	pthread_mutex_unlock(&scoreboard_pad_lock);
+	return hold;
+}
+
+/* a port's reading (keys: the keyboard's bits, port 0's): its presses kept
+for the game while the scoreboard asks, and what the scoreboard takes taken
+from it */
+static void scoreboard_pad_read(int port, XINPUT_GAMEPAD *reading, unsigned long keys, int hold)
+{
+	struct scoreboard_pad *pad = &scoreboard_pads[port];
+	unsigned long bits = scoreboard_pad_bits(reading) | keys;
+	WORD take_buttons = 0;
+	unsigned char take_analog = 0;
+	unsigned char analog_down = 0;
+	int index;
+
+	pthread_mutex_lock(&scoreboard_pad_lock);
+	if (hold != HALO_SCOREBOARD_PAD_FREE)
+		pad->pressed |= bits & ~pad->buttons;
+	else
+		pad->pressed = 0;
+	pad->buttons = bits;
+	for (index = 0; index < 8; index++)
+	{
+		if (reading->bAnalogButtons[index] >= SCOREBOARD_PAD_ANALOG_DOWN)
+			analog_down |= (unsigned char)(1 << index);
+	}
+	if (hold == HALO_SCOREBOARD_PAD_HOLDS)
+	{
+		take_buttons = (WORD)~0;
+		take_analog = 0xff;
+		reading->sThumbLX = reading->sThumbLY = reading->sThumbRX = reading->sThumbRY = 0;
+	}
+	else if (hold == HALO_SCOREBOARD_PAD_OFFERED)
+	{
+		take_buttons = XINPUT_GAMEPAD_DPAD_UP | XINPUT_GAMEPAD_DPAD_DOWN | XINPUT_GAMEPAD_DPAD_LEFT |
+			XINPUT_GAMEPAD_DPAD_RIGHT;
+		take_analog = (unsigned char)(1 << XINPUT_GAMEPAD_X);
+	}
+	/* (and what it took that is still held) */
+	take_buttons |= (WORD)(pad->held_buttons & reading->wButtons);
+	take_analog |= (unsigned char)(pad->held_analog & analog_down);
+	pad->held_buttons = (WORD)(take_buttons & reading->wButtons);
+	pad->held_analog = (unsigned char)(take_analog & analog_down);
+	pthread_mutex_unlock(&scoreboard_pad_lock);
+	reading->wButtons &= (WORD)~take_buttons;
+	for (index = 0; index < 8; index++)
+	{
+		if (take_analog & (1 << index))
+			reading->bAnalogButtons[index] = 0;
+	}
+}
+
+unsigned long halo_scoreboard_pad(short controller_index, int hold)
+{
+	struct scoreboard_pad *pad;
+	unsigned long pressed;
+
+	if (controller_index < 0 || controller_index >= PORT_COUNT)
+		return 1UL << HALO_SCOREBOARD_PAD_LAPSED;
+	pad = &scoreboard_pads[controller_index];
+	pthread_mutex_lock(&scoreboard_pad_lock);
+	if (pad->hold == HALO_SCOREBOARD_PAD_FREE || pad->menus || pad->readings > SCOREBOARD_PAD_READINGS)
+		pressed = 1UL << HALO_SCOREBOARD_PAD_LAPSED;
+	else
+		pressed = pad->pressed;
+	pad->pressed = 0;
+	pad->hold = hold;
+	pad->readings = 0;
+	pthread_mutex_unlock(&scoreboard_pad_lock);
+	return pressed;
+}
+
 /* the touch controls' stick as the player's movement (input_abstraction.c's
 keyboard_controls_update), forward and strafe -1..1, whatever the
 profile's sticks do; nonzero while it is pushed. Nothing but on Android and
@@ -582,13 +735,14 @@ static void keyboard_gamepad(const struct platform_input_state *input, XINPUT_GA
 console starts or ends, count as up until let go of: the escape that opens
 the pause menu does not also back out of it, nor the one that closes it (or
 the console) pause the game again, nor the Enter that ends typing press the
-next screen's A */
-static void keys_held_over_switch(struct platform_input_state *input)
+next screen's A, nor the Escape that closes the scoreboard's player menu
+(scoreboard_holds) open the pause menu */
+static void keys_held_over_switch(struct platform_input_state *input, BOOL scoreboard_holds)
 {
 	static unsigned char held[SDL_SCANCODE_COUNT];
 	static int context = -1;
 	int next_context = (input->menus != FALSE) | (text_typing ? 2 : 0) | (console_is_active() ? 4 : 0) |
-		(network_chat_typing() ? 8 : 0);
+		(network_chat_typing() ? 8 : 0) | (scoreboard_holds ? 16 : 0);
 	int scancode;
 
 	if (context != next_context)
@@ -1205,7 +1359,8 @@ start, back, lb and rb (the white and black buttons), lt and rt (the
 triggers), forward (the left
 stick pushed forward, which moves a player whom no menu has), screenshot
 (the Screenshot key's capture, once), or wait (none), separated by spaces
-or commas */
+or commas; two or more joined by + ("back+x") hold the first through the
+second and press the others half way through it */
 static char test_input_menu[512];
 static Uint64 test_input_menu_since;
 
@@ -1235,13 +1390,12 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 	};
 	Uint64 elapsed = SDL_GetTicks() - test_input_menu_since;
 	Uint64 step = elapsed / 1000;
+	Uint64 into = elapsed % 1000;
 	const char *token = test_input_menu;
 	size_t length;
+	size_t part;
 	unsigned int index;
 
-	/* (pressed for the first 150 ms of its second) */
-	if (elapsed % 1000 >= 150)
-		return;
 	for (;;)
 	{
 		token += strspn(token, " ,");
@@ -1253,26 +1407,49 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 		step--;
 		token += length;
 	}
-	if (length == 7 && !strncmp(token, "forward", 7))
-		pad->sThumbLY = 32767;
 	if (length == 10 && !strncmp(token, "screenshot", 10))
 	{
 		static Uint64 shot_second = (Uint64)-1;
 
-		if (shot_second != elapsed / 1000)
+		if (shot_second != elapsed / 1000 && into < 150)
+		{
 			platform_screenshot_request();
-		shot_second = elapsed / 1000;
+			shot_second = elapsed / 1000;
+		}
 		return;
 	}
-	for (index = 0; index < sizeof(buttons) / sizeof(buttons[0]); index++)
+	/* (a button pressed for the first 150 ms of its second; "<held>+<pressed>"
+	holds the first through its second and presses the others 500 ms into it,
+	as one hand holds Back while the other presses X) */
+	for (part = 0; length; part++)
 	{
-		if (strlen(buttons[index].name) == length && !strncmp(token, buttons[index].name, length))
+		size_t name_length = strcspn(token, "+ ,");
+		BOOL down;
+
+		if (name_length > length)
+			name_length = length;
+		if (part == 0)
+			down = name_length < length && token[name_length] == '+' ? TRUE : into < 150;
+		else
+			down = into >= 500 && into < 650;
+		if (down && name_length == 7 && !strncmp(token, "forward", 7))
+			pad->sThumbLY = 32767;
+		for (index = 0; down && index < sizeof(buttons) / sizeof(buttons[0]); index++)
 		{
-			if (buttons[index].analog >= 0)
-				pad->bAnalogButtons[buttons[index].analog] = 255;
-			else
-				pad->wButtons |= buttons[index].digital;
-			return;
+			if (strlen(buttons[index].name) == name_length && !strncmp(token, buttons[index].name, name_length))
+			{
+				if (buttons[index].analog >= 0)
+					pad->bAnalogButtons[buttons[index].analog] = 255;
+				else
+					pad->wButtons |= buttons[index].digital;
+			}
+		}
+		token += name_length;
+		length -= name_length;
+		if (length && *token == '+')
+		{
+			token++;
+			length--;
 		}
 	}
 }
@@ -1953,6 +2130,8 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 	{
 		struct platform_input_state input;
 		unsigned long held;
+		unsigned long scoreboard_keys = 0;
+		int scoreboard_hold;
 		BOOL console_active;
 		unsigned long discord_ask;
 
@@ -1960,7 +2139,8 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		mouse_poll(&input);
 		wheel_update();
 		keyboard_actions_held = 0;
-		keys_held_over_switch(&input);
+		scoreboard_hold = scoreboard_pad_port_hold(0, input.menus);
+		keys_held_over_switch(&input, scoreboard_hold == HALO_SCOREBOARD_PAD_HOLDS);
 		/* (a Discord friend's ask answered first, its keys taken) */
 		discord_ask = discord_ask_serial();
 		discord_ask_keys(&input, discord_ask);
@@ -1973,7 +2153,22 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 			if (input.menus)
 				keyboard_gamepad(&input, &state->Gamepad);
 			else
+			{
+				/* (the scoreboard's keys, which it takes from the game while
+				it offers its player menu: the arrows and Enter; all while it
+				holds the controls) */
+				scoreboard_keys = scoreboard_pad_keys(input.keys, held);
+				if (scoreboard_hold == HALO_SCOREBOARD_PAD_HOLDS)
+					held = 0;
+				else if (scoreboard_hold == HALO_SCOREBOARD_PAD_OFFERED)
+				{
+					input.keys[SDL_SCANCODE_UP] = input.keys[SDL_SCANCODE_DOWN] = 0;
+					input.keys[SDL_SCANCODE_LEFT] = input.keys[SDL_SCANCODE_RIGHT] = 0;
+					input.keys[SDL_SCANCODE_RETURN] = input.keys[SDL_SCANCODE_KP_ENTER] = 0;
+					held = keyboard_bound_actions(&input);
+				}
 				keyboard_controls(held, &state->Gamepad);
+			}
 		}
 		if (port_gamepad(gamepads, count, 0))
 			sdl_gamepad_state(gamepads[0], &state->Gamepad);
@@ -2013,6 +2208,9 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		scores) */
 		halo_vr_gamepad_back(back || test_input_back);
 #endif
+		/* (the scoreboard's player menu reads them, and takes what it
+		uses: scoreboard_pad_read) */
+		scoreboard_pad_read(0, &state->Gamepad, scoreboard_keys, scoreboard_hold);
 		/* (the text chat's on-screen keyboard reads them, and takes them
 		while it is up) */
 		chat_pad_record(&state->Gamepad);
@@ -2031,7 +2229,12 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 	else if (port_gamepad(gamepads, count, port))
 #endif
 	{
+		struct platform_input_state input;
+
 		sdl_gamepad_state(port_gamepad(gamepads, count, port), &state->Gamepad);
+		/* (a split screen player's scoreboard, as port 0's) */
+		platform_input_read(&input, FALSE);
+		scoreboard_pad_read(port, &state->Gamepad, 0, scoreboard_pad_port_hold(port, input.menus));
 	}
 
 	if (memcmp(&state->Gamepad, &controllers[port].previous, sizeof(state->Gamepad)))

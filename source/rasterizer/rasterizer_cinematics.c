@@ -600,11 +600,15 @@ void rasterizer_screen_effect_port_enumerate(
 {
 	struct rasterizer_cinematic_screen_effect_parameters parameters;
 	short convolution, extra, mask, light, light_mask, desaturation, additive, desaturation_mask, mode, noise;
+	/* (a split screen's views draw no blur, warp or video, which
+	rasterizer_screen_effect halts on with more than one: those of a
+	full screen's only) */
+	boolean split = main_get_window_count() > 1;
 
 	if (!map)
 		return;
 	port_screen_effect_parameters_given = TRUE;
-	for (convolution = 0; convolution < 3; convolution++)
+	for (convolution = 0; convolution < (split ? 1 : 3); convolution++)
 	for (extra = 0; extra < 1 + (convolution != 0); extra++)
 	for (mask = 0; mask < 1 + (convolution != 1); mask++)
 	for (light = 0; light < 2; light++)
@@ -627,7 +631,7 @@ void rasterizer_screen_effect_port_enumerate(
 			parameters.filter_desaturation_tint.blue = 0.5f;
 		rasterizer_screen_effect(&parameters);
 	}
-	for (mode = 0; mode < 3; mode++)
+	for (mode = 0; mode < (split ? 0 : 3); mode++)
 	for (noise = 0; noise < 2; noise++)
 	{
 		csmemset(&parameters, 0, sizeof(parameters));
