@@ -8524,7 +8524,8 @@ static void lobby_update(struct widget_instance *list)
 		usnprintf(text, NUMBEROF(text) - 1, L"%s\r\n%s\r\n%d of %d players\r\n\r\n%s", gametype,
 			kind ? kind : engine_names[PIN(game->variant.game_engine_index, 0, 5)], lobby_player_count,
 			game->maximum_players,
-			seconds > 0 ? L"Starting in:" : game->machine_count < 2 ? L"Waiting for players" : L"");
+			seconds > 0 ? L"Starting in:" : seconds == 0 ? L"Starting..." :
+				game->machine_count < 2 ? L"Waiting for players" : L"");
 		text[NUMBEROF(text) - 1] = 0;
 		if (seconds > 0)
 		{
