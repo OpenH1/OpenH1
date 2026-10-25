@@ -347,7 +347,7 @@ static void distributed_send_to_machine_reliably(long machine_index, void *messa
 
 static void world_reset(void)
 {
-	static wchar_t const *const names[NUMBER_OF_TEST_PLAYERS] = { L"Erin", L"Paul", L"Nora", L"Bot" };
+	static wchar_t const *const names[NUMBER_OF_TEST_PLAYERS] = { L"Keyes", L"Johnson", L"Cortana", L"Bot" };
 	static char const machines[NUMBER_OF_TEST_PLAYERS] = { 0, OPENH1_MACHINE, OPENCE_MACHINE, (char)BOT_MACHINE };
 	short index;
 

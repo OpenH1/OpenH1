@@ -161,6 +161,12 @@ enum
 	/* a player the host put on the other team (network_host_controls.c),
 	reliably, to the host's OpenH1 clients in a game of no OpenCE machine */
 	_distributed_message_host_team = 126,
+	/* room held for a party joining the game (network_party.c), reliably:
+	its leader's ask of the host, the hashes of its members' tunnel keys
+	(128), and the host's answer, how many it holds room for (129). (127 is
+	left for the online bots) */
+	_distributed_message_party_hold = 128,
+	_distributed_message_party_held = 129,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };

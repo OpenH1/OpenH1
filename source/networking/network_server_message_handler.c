@@ -270,6 +270,9 @@ symbols in this file:
 
 /* port/linux/game/network_distributed.c's */
 void network_distributed_handle_message(long machine_index, word const *message, word size);
+/* port: port/linux/game/network_party.c's (network_party.h) */
+boolean network_party_slot_open(unsigned long address, short players, short maximum);
+short network_party_held_slots(void);
 /* port/linux/game/network_voice.c's: voice chat, in the lobby too */
 boolean network_voice_handles_message(word const *message, word size);
 void network_voice_handle_message(long machine_index, word const *message, word size);
@@ -1842,7 +1845,10 @@ static boolean network_game_server_handle_message_client_broadcast_game_search(
 			advertisement.engine_type = (short)game->variant.game_engine_index;
 			csmemcpy(&advertisement.map, &game->map, sizeof(game->map));
 			advertisement.machine_count = game->machine_count;
-			advertisement.player_count = game->player_count;
+			/* port: and the slots held for a party's members, who are on
+			their way (network_party.c) */
+			advertisement.player_count = (short)MIN(game->player_count + network_party_held_slots(),
+				game->maximum_players);
 			advertisement.maximum_player_count = game->maximum_players;
 			advertisement.variant_setting = (short)game->variant.universal_variant.score_to_win;
 			advertisement.flags = 0;
@@ -2062,6 +2068,17 @@ static boolean network_game_server_handle_message_client_join_game_request(
 				network_game_server_get_client_connection(server_client_machine),
 				&source_address,
 				FALSE);
+			/* port: the slots held for a party's members, while they follow
+			their leader in, are theirs alone: to anyone else the game is full
+			(network_party.c) */
+			if (!full && !network_party_slot_open(source_address.address.long_words[0],
+				network_game_server_get_game(server)->player_count,
+				network_game_server_get_game(server)->maximum_players))
+			{
+				network_event("client machine '%s' @%s refused: the game's room left is held for a party",
+					join_game_request.machine_name, transport_address_to_string(&source_address));
+				full = TRUE;
+			}
 			if ((network_game_server_get_state(server, NULL) == _network_game_server_state_pregame || late_join) &&
 				network_game_server_game_is_open(server) &&
 				!full)

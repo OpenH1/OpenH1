@@ -116,19 +116,26 @@ static struct
 	int prompts_state;
 	/* when COPY INVITE last copied the party's (the panel says so a while) */
 	unsigned long copied_time;
+	/* the leader's game looked full when it was found (its host holding
+	this machine's slot, it said so): a refused join is the game's being
+	full */
+	boolean found_full;
 } party_menu;
 
 /* lobby_menu.inc's: what Discord is told of the game this machine is in */
 static void lobby_presence_tell(void);
 
 /* what a game found allows a member following its leader: _p2p_party_follow_joined
-(join it), _p2p_party_follow_none (wait: it is not open yet), or why not */
+(join it), _p2p_party_follow_none (wait: it is not open yet), or why not. An
+OpenH1 game that looks full is joined: its host may hold a slot for this
+machine (port/linux/game/network_party.c), which it counts as taken, and
+says whether it does by taking the join or refusing it */
 static short party_game_verdict(boolean open, boolean in_progress, short players, short maximum, boolean compatible,
 	boolean standard, boolean mixed)
 {
 	if (!compatible)
 		return standard || mixed ? _p2p_party_follow_version : _p2p_party_follow_legacy;
-	if (maximum > 0 && players >= maximum)
+	if (maximum > 0 && players >= maximum && !standard && !mixed)
 		return _p2p_party_follow_full;
 	if (!open && !in_progress)
 		return _p2p_party_follow_none;
@@ -360,6 +367,9 @@ static boolean party_in_leader_game(void)
 
 static void party_follow_end(short result)
 {
+	/* (refused, by a host that held no slot for this machine) */
+	if (result == _p2p_party_follow_refused && party_menu.found_full)
+		result = _p2p_party_follow_full;
 	if (result != _p2p_party_follow_none)
 	{
 		p2p_party_follow_result(party_menu.order, result);
@@ -414,6 +424,8 @@ static void party_follow_update(void)
 			view.verdict = party_game_verdict(game->open, advertised_in_progress(game), (short)game->player_count,
 				game->maximum_player_count, network_game_client_advertised_game_compatible(client, game, FALSE),
 				advertised_game_standard(game), advertised_game_mixed(game));
+			party_menu.found_full = game->maximum_player_count > 0 &&
+				game->player_count >= game->maximum_player_count;
 		}
 		view.in_game = party_in_leader_game();
 		view.in_none = party_client_state() == NONE || party_client_state() == _client_state_searching;
@@ -458,6 +470,7 @@ static void party_follow_update(void)
 		return;
 	}
 	platform_log("menus: following the party's leader into its game");
+	party_menu.found_full = FALSE;
 	snprintf(party_menu.link, sizeof(party_menu.link), "%s", link);
 	party_menu.order = order;
 	party_menu.stage = _party_follow_reaching;

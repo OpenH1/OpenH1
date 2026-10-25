@@ -1187,6 +1187,10 @@ static const struct config_setting config_settings[] =
 		"player it may to its party (unless debug.party leads one), a client asks\n"
 		"to join the party of each player in one, and each machine then accepts\n"
 		"the invite it has, as the scoreboard and the accept key do; 0 never." },
+	{ "debug.network_test_players", _config_integer, "0", "HALO_NETWORK_TEST_PLAYERS", _environment_value,
+		_platform_all,
+		"The most players an automated test host's games take (as Server\n"
+		"Setup's MAX PLAYERS); 0 the game's own." },
 	{ "debug.network_test_name", _config_string, "\"\"", "HALO_NETWORK_TEST_NAME", _environment_value, _platform_all,
 		"The name this machine's player takes in an automated test game (ASCII);\n"
 		"empty keeps its profile's." },

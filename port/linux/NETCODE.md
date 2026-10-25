@@ -745,6 +745,39 @@ machine:
   join token says so): an OpenCE machine would keep the player on the old
   team. The player respawns on the new team; their score goes with them.
 
+### Parties in public games
+
+A party's leader joins a game first and its members follow it in
+(`port/linux/game/party_menu.inc`), so the host holds room for them meanwhile
+(`port/linux/game/network_party.c`):
+
+- The leader, a client of an OpenH1 game, asks its host to hold room for its
+  members (`_distributed_message_party_hold`, 128, reliably, over its own
+  stream): an entry for each, with a format byte and the hash of its tunnel
+  key (`p2p_party_member_key_hashes`: the X25519 form of its party key, the
+  key it reaches a host with, which the host reads with `p2p_peer_key_hash`).
+  It asks again when its members change. The host holds as many as it has
+  room for (slots free of players and of other parties' holds, and of bots
+  that make room for players) for 20 seconds, and answers how many
+  (`_distributed_message_party_held`, 129). A host leading a party holds
+  room for its own members the same way. A machine is granted holds at most
+  3 times a game; each grant replaces the last. A leader that leaves lets its
+  holds go.
+- A held slot is its member's alone: anyone else's join, and any other
+  machine's player, is refused as for a full game until the member's player
+  is in or the hold lapses. The advertisement and the server browser's
+  listing count held slots as players, so browsers show the room really left.
+  A member that finds its leader's OpenH1 game looking full joins anyway,
+  and the host decides. In a team game the host puts a party's player on the
+  team most of its party is on, if that team has half the game's players or
+  fewer; the lobby's auto team balance moves a player of no party first.
+- The listing's stamp says the host holds room (its fourth byte, 1). A
+  Legacy host, and an older OpenH1 one (which drops 128 as a kind it does not
+  know), hold nothing: the browser says there is no room guarantee and the
+  members join as they can. Nothing goes to an OpenCE machine. The OpenH1
+  protocol version is unchanged: the new kinds are only asked for, and an
+  older host ignores them.
+
 ## Joining a game in progress
 
 A game stays open when it starts (on the Xbox it closed, since every

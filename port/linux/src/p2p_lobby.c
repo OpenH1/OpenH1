@@ -24,9 +24,11 @@ false details:
 	printable ASCII), a stamp (8: the game's kind, an OpenCE gametype's mode
 	and Hardcore, port/linux/game/game_modes.h's game_modes_kind; then a
 	Standard game's rate in Hz, a Legacy game's zero; then a mixed game's
-	OpenH1 protocol version, any other's zero; the rest reserved, zero: none
-	of it read by OpenCE), and the signature (64) of "hceu-lobby-1" and all before
-	it.
+	OpenH1 protocol version, any other's zero; then what the host does
+	(_stamp_holds_party: it holds room for a party joining it,
+	port/linux/game/network_party.c; builds before it wrote zero); the rest
+	reserved, zero: none of it read by OpenCE), and the signature (64) of
+	"hceu-lobby-1" and all before it.
 
 Each host has a slot, hceu/3/lobby/s/<its key's hash in hex>: its listing,
 retained on every broker (and expiring there after LISTING_EXPIRY seconds
@@ -88,6 +90,9 @@ enum
 	/* its token sealed with a password's key */
 	_listing_password = 16,
 	STAMP_SIZE = 8,
+	/* the stamp's fourth byte: an OpenH1 host that holds room for a party
+	joining its game (port/linux/game/network_party.c) */
+	_stamp_holds_party = 1,
 	/* the signed part's end: everything but the signature */
 	MAXIMUM_LISTING_SIZE = 2 + 1 + 2 + 1 + 4 + 4 + P2P_KEY_SIZE + P2P_SEALED_TOKEN_SIZE + 3 +
 		(1 + P2P_LISTING_NAME_SIZE) + (1 + P2P_LISTING_MAP_SIZE) + (1 + P2P_LISTING_GAMETYPE_SIZE) + STAMP_SIZE +
@@ -129,7 +134,7 @@ struct listing
 	unsigned char token[P2P_TOKEN_SIZE];
 	/* (_listing_password: its token, sealed) */
 	unsigned char sealed_token[P2P_SEALED_TOKEN_SIZE];
-	int player_count, maximum_player_count, engine_type, kind, rate, openh1_version;
+	int player_count, maximum_player_count, engine_type, kind, rate, openh1_version, features;
 	char name[P2P_LISTING_NAME_SIZE + 1];
 	char map[P2P_LISTING_MAP_SIZE + 1];
 	char gametype[P2P_LISTING_GAMETYPE_SIZE + 1];
@@ -340,6 +345,9 @@ static int listing_make(unsigned char *bytes, int flags)
 		bytes[size + 1] = (unsigned char)lobby.rate;
 	if (lobby.standard && lobby.mixed)
 		bytes[size + 2] = (unsigned char)HALO_PORT_STANDARD_NETWORK_VERSION;
+	/* (an OpenH1 game's host of this build holds room for a party) */
+	if (lobby.standard)
+		bytes[size + 3] = _stamp_holds_party;
 	size += STAMP_SIZE;
 	memcpy(data, signature_label, sizeof(signature_label) - 1);
 	memcpy(data + sizeof(signature_label) - 1, signed_part, (size_t)size);
@@ -409,6 +417,7 @@ static int listing_read(const unsigned char *bytes, int size, struct listing *li
 	listing->kind = offset < size ? bytes[offset] : 0;
 	listing->rate = offset + 1 < size ? bytes[offset + 1] : 0;
 	listing->openh1_version = offset + 2 < size ? bytes[offset + 2] : 0;
+	listing->features = offset + 3 < size ? bytes[offset + 3] : 0;
 	offset += STAMP_SIZE;
 	if (offset + P2P_SIGNATURE_SIZE != size)
 		return 0;
@@ -702,6 +711,9 @@ static void listing_take(const struct queued *queued, const struct listing *list
 	shown->open = (listing->flags & _listing_open) != 0;
 	shown->in_progress = (listing->flags & _listing_in_progress) != 0;
 	shown->has_teams = (listing->flags & _listing_has_teams) != 0;
+	/* (an OpenH1 game this build joins as one: its host's holds are this
+	build's to ask for) */
+	shown->holds_party = shown->standard && (listing->features & _stamp_holds_party) != 0;
 }
 
 /* the hosts' pings: those not known lately probed, while there is room (a

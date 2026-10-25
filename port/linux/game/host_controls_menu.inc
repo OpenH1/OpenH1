@@ -767,8 +767,9 @@ static void host_panel_show(struct widget_instance *list, short chosen)
 	menu_text_box_wrap(named(panel, "panel_status", 0), status, 5);
 }
 
-/* "port host update" (the list's, each frame) */
-static void host_controls_update(struct widget_instance *list)
+/* "port host update" (the list's, each frame; not inlined, as
+browser_update is not) */
+static __declspec(noinline) void host_controls_update(struct widget_instance *list)
 {
 	struct widget_instance *screen = screen_of(list);
 	struct widget_instance *child;

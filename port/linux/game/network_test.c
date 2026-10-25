@@ -158,6 +158,9 @@ static struct
 	/* debug.network_test_party's */
 	real party_time;
 	long score_to_win;
+	/* the most players the host's games take (debug.network_test_players;
+	0: the game's own) */
+	long maximum_players;
 	long logged_time;
 	boolean public_game;
 	boolean browsing;
@@ -246,6 +249,7 @@ static void network_test_read_settings(
 	snprintf(network_test.pickup_weapon, sizeof(network_test.pickup_weapon), "%s",
 		config_string("debug.network_test_pickup_weapon"));
 	network_test.score_to_win = (long)config_integer("debug.network_test_score");
+	network_test.maximum_players = (long)config_integer("debug.network_test_players");
 	network_test.cue_players = MAX(1, config_integer("debug.network_test_cue_players"));
 	network_test.cues_start = NONE;
 	{
@@ -1614,6 +1618,14 @@ void network_test_update(
 			}
 			else
 			{
+				/* debug.network_test_players: a game of so many (as Server
+				Setup's MAX PLAYERS has it) */
+				if (network_test.maximum_players > 0)
+				{
+					extern void network_game_server_port_set_settings(wchar_t const *name, long maximum_players);
+
+					network_game_server_port_set_settings(NULL, network_test.maximum_players);
+				}
 				player_ui_fast_setup_network_server();
 				platform_log("network test: hosting %s", network_test.map_name);
 				/* (in the server browser, as Create Game > Internet's PUBLIC) */

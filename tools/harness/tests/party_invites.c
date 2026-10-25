@@ -416,7 +416,7 @@ static void game(short as)
 	invite_links_asked = 0;
 	sent_count = 0;
 	player_add(HOST_PLAYER, HOST_MACHINE, as == _game_connection_network_server, L"Hosty");
-	player_add(OPENH1_PLAYER, OPENH1_MACHINE, as == _game_connection_network_client, L"Erin");
+	player_add(OPENH1_PLAYER, OPENH1_MACHINE, as == _game_connection_network_client, L"Keyes");
 	player_add(OTHER_PLAYER, OTHER_MACHINE, FALSE, L"Paul");
 	player_add(OPENCE_PLAYER, OPENCE_MACHINE, FALSE, L"Classic");
 	player_add(OLDER_PLAYER, OLDER_MACHINE, FALSE, L"Oldie");

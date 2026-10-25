@@ -37,9 +37,14 @@ static void case_verdict(void)
 		"a game under way is joined (its lobby first)");
 	CHECK(party_game_verdict(FALSE, FALSE, 3, 16, TRUE, TRUE, FALSE) == _p2p_party_follow_none,
 		"a game not open yet is waited for");
-	CHECK(party_game_verdict(TRUE, FALSE, 16, 16, TRUE, TRUE, FALSE) == _p2p_party_follow_full, "a full game is not");
-	CHECK(party_game_verdict(FALSE, TRUE, 16, 16, TRUE, TRUE, FALSE) == _p2p_party_follow_full,
+	CHECK(party_game_verdict(TRUE, FALSE, 16, 16, TRUE, FALSE, FALSE) == _p2p_party_follow_full,
+		"a full Legacy game is not");
+	CHECK(party_game_verdict(FALSE, TRUE, 16, 16, TRUE, FALSE, FALSE) == _p2p_party_follow_full,
 		"nor one under way that is full");
+	CHECK(party_game_verdict(TRUE, FALSE, 16, 16, TRUE, TRUE, FALSE) == _p2p_party_follow_joined,
+		"an OpenH1 game that looks full is: its host may hold this member's slot, and decides");
+	CHECK(party_game_verdict(TRUE, FALSE, 16, 16, TRUE, FALSE, TRUE) == _p2p_party_follow_joined,
+		"a mixed one too");
 	CHECK(party_game_verdict(TRUE, FALSE, 3, 16, FALSE, TRUE, FALSE) == _p2p_party_follow_version,
 		"an OpenH1 game of another version is not");
 	CHECK(party_game_verdict(TRUE, FALSE, 3, 16, FALSE, FALSE, TRUE) == _p2p_party_follow_version,

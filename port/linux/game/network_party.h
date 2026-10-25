@@ -48,6 +48,30 @@ in window at y, in the font (the HUD's in the game; over the menus,
 ui_widget.c's, theirs) */
 void network_party_discord_draw(rectangle2d const *window, long font_index, short y);
 
+/* room held for a party joining the game, while its members follow their
+leader in (the host's server: network_server_message_handler.c,
+network_server_manager.c). Addresses are as the game keeps them (host
+order): a machine's of the internet is its tunnel's stand-in. Whether the
+machine at this address may take one of the game's player slots (maximum,
+players of them taken): the slots held are their members' alone */
+boolean network_party_slot_open(unsigned long address, short players, short maximum);
+/* ... a player of the machine (its index in the game, at that address)
+added: its hold taken up, the machine one of its party's from now on */
+void network_party_slot_taken(long machine_index, unsigned long address);
+/* ... whether two machines are of one party: the machine (machine_index:
+NONE, or one not in the game yet) at address, and another in the game */
+boolean network_party_machines_together(long machine_index, unsigned long address, long other_machine_index);
+/* ... whether a machine is in a party (the lobby's team balance moves
+another's player first) */
+boolean network_party_machine_in_party(long machine_index);
+/* ... the slots held, not taken up yet (the advertisement and the server
+browser's listing count them as players') */
+short network_party_held_slots(void);
+/* ... the team (0, 1) for a player of a party joining a team game: its
+party's (party_counts: its players on each team), if that team has room for
+it (team_counts: each team's players; maximum: the game's most); NONE: none */
+short network_party_team_choice(short const *party_counts, short const *team_counts, short maximum);
+
 /* (network_distributed.c) the messages, in the lobby too; from_stream: it
 came over the sender's own stream (anything else is refused) */
 boolean network_party_handles_message(word const *message, word size);
