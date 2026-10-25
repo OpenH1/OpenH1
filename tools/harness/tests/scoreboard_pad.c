@@ -33,7 +33,11 @@ typedef struct
 	BYTE bAnalogButtons[8];
 	SHORT sThumbLX, sThumbLY, sThumbRX, sThumbRY;
 } XINPUT_GAMEPAD;
-typedef int pthread_mutex_t;
+/* (one thread: no lock; named apart from the C library's, which its
+headers may have declared) */
+typedef int test_mutex;
+#define pthread_mutex_t test_mutex
+#undef PTHREAD_MUTEX_INITIALIZER
 #define PTHREAD_MUTEX_INITIALIZER 0
 #define pthread_mutex_lock(lock) ((void)(lock))
 #define pthread_mutex_unlock(lock) ((void)(lock))
