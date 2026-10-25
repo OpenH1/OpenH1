@@ -158,8 +158,9 @@ there is none (always, on Android) */
 int posix_user_secret(unsigned char *secret, int size);
 
 /* a connection to the Discord desktop client's local socket or pipe, or -1
-if none is running (always, on Android) */
-int posix_discord_connect(void);
+if none is running (always, on Android); path, if not empty, is the only
+one tried (debug.discord_socket: a test's stand-in) */
+int posix_discord_connect(const char *path);
 /* writes what it can of buffer without waiting; returns the bytes written
 (0 if none could be now), or -1 if the connection failed */
 int posix_discord_write(int handle, const void *buffer, int length);

@@ -111,6 +111,10 @@ struct player_datum
 
 struct network_game
 {
+	struct
+	{
+		short game_engine_index;
+	} variant;
 	wchar_t name[16];
 	unsigned char maximum_players;
 	short player_count;
@@ -256,6 +260,77 @@ static char const *pc_menus_screen(char const *name)
 static void console_warning(const char *format, ...) { (void)format; }
 static unsigned long system_milliseconds(void) { return 1000; }
 static int bots_machine_is_bot(long machine_index) { return machine_index >= BOTS_FIRST_MACHINE; }
+/* the bots' settings (bots.c's, config.toml's) and the host's removal of one */
+enum { _bots_teams_even, _bots_teams_against, BOTS_MAXIMUM = 15, TEST_SLAYER = 2 };
+static struct
+{
+	long count;
+	short skill;
+	short teams;
+	int make_room;
+	long fill_to;
+	long removed_machine;
+	char written[64];
+} bots_world;
+static long bots_wanted_count(void) { return bots_world.count; }
+static short bots_skill(void) { return bots_world.skill; }
+static short bots_teams(void) { return bots_world.teams; }
+static int bots_make_room(void) { return bots_world.make_room; }
+static long bots_fill_to(void) { return bots_world.fill_to; }
+static int bots_play_game_engine(long game_engine_index) { return game_engine_index == TEST_SLAYER; }
+static int bots_player_is_bot(long player_index)
+{
+	struct player_datum *player = player_try_and_get(player_index);
+
+	return player && bots_machine_is_bot(player->network_player_data.machine_index);
+}
+static int config_write(const char *name, const char *value)
+{
+	static char const *const skills[] = { "easy", "normal", "heroic", "legendary" };
+	short index;
+
+	snprintf(bots_world.written, sizeof(bots_world.written), "%s=%s", name, value);
+	if (!strcmp(name, "bots.count"))
+		bots_world.count = atol(value);
+	else if (!strcmp(name, "bots.fill_to"))
+		bots_world.fill_to = atol(value);
+	else if (!strcmp(name, "bots.make_room"))
+		bots_world.make_room = !strcmp(value, "true");
+	else if (!strcmp(name, "bots.teams"))
+		bots_world.teams = !strcmp(value, "against") ? _bots_teams_against : _bots_teams_even;
+	else if (!strcmp(name, "bots.skill"))
+	{
+		for (index = 0; index < 4; index++)
+		{
+			if (!strcmp(value, skills[index]))
+				bots_world.skill = index;
+		}
+	}
+	return 1;
+}
+static boolean network_game_server_port_bots_remove(struct network_game_server *server, long machine_index)
+{
+	bots_world.removed_machine = machine_index;
+	return server != NULL;
+}
+/* (the game's: %s of a wide string, as MSVC's) */
+static void usnprintf(wchar_t *text, long size, wchar_t const *format, ...)
+{
+	wchar_t wide_format[128];
+	long from, to = 0;
+	va_list arguments;
+
+	for (from = 0; format[from] && to < (long)(sizeof(wide_format) / sizeof(wide_format[0])) - 2; from++)
+	{
+		wide_format[to++] = format[from];
+		if (format[from] == L'%' && format[from + 1] == L's')
+			wide_format[to++] = L'l';
+	}
+	wide_format[to] = 0;
+	va_start(arguments, format);
+	vswprintf(text, (size_t)size, wide_format, arguments);
+	va_end(arguments);
+}
 static struct player_datum *distributed_player(short player_index)
 {
 	return player_index >= 0 && player_index < NUMBER_OF_TEST_PLAYERS ?
@@ -465,9 +540,12 @@ static void case_actions(void)
 	CHECK(TEST_FLAG(actions, _host_controls_kick) && TEST_FLAG(actions, _host_controls_ban) &&
 		TEST_FLAG(actions, _host_controls_mute), "an OpenCE machine's player is kicked as any");
 	actions = network_host_controls_player_actions(test_player_index(BOT_PLAYER));
-	CHECK(!TEST_FLAG(actions, _host_controls_kick) && !TEST_FLAG(actions, _host_controls_ban), "a bot");
-	CHECK(!network_host_controls_kick(test_player_index(BOT_PLAYER), FALSE) && world.kicked == NONE,
-		"a bot's machine, the host's, never kicked");
+	CHECK(TEST_FLAG(actions, _host_controls_kick) && !TEST_FLAG(actions, _host_controls_ban) &&
+		!TEST_FLAG(actions, _host_controls_mute), "a bot: taken out, neither banned nor muted");
+	bots_world.removed_machine = NONE;
+	CHECK(network_host_controls_kick(test_player_index(BOT_PLAYER), FALSE) && world.kicked == NONE &&
+		bots_world.removed_machine == BOT_MACHINE, "a bot taken out by the bots, its machine (the host's) not kicked");
+	CHECK(!network_host_controls_kick(test_player_index(BOT_PLAYER), TRUE), "a bot banned");
 }
 
 /* who may move teams: an OpenH1 game of teams without OpenCE's machines */
@@ -705,6 +783,50 @@ static void case_players(void)
 	CHECK(!network_host_controls_open_command("players zz"), "no such player");
 }
 
+/* the bots of a network game: a bot taken out (bots.count one less), and
+the bots' rows of Game, their values stepped and written */
+static void case_bots(void)
+{
+	wchar_t label[64], value[64], help[96];
+
+	world_reset();
+	memset(&bots_world, 0, sizeof(bots_world));
+	bots_world.count = 5;
+	bots_world.skill = 1;
+	bots_world.make_room = TRUE;
+	bots_world.fill_to = 16;
+	bots_world.removed_machine = NONE;
+	server_game.variant.game_engine_index = TEST_SLAYER;
+	CHECK(!host_controls_bot_removable(test_player_index(OPENH1_PLAYER)), "a player taken out as a bot");
+	CHECK(host_controls_bot_removable(test_player_index(BOT_PLAYER)), "the host's bot cannot be taken out");
+	CHECK(host_controls_bot_remove(test_player_index(BOT_PLAYER)) && bots_world.removed_machine == BOT_MACHINE,
+		"the bot not taken out");
+	CHECK(bots_world.count == 4, "bots.count %ld after one taken out, not 4", bots_world.count);
+	world.server = FALSE;
+	CHECK(!host_controls_bot_removable(test_player_index(BOT_PLAYER)), "a bot taken out by a client");
+	world.server = TRUE;
+	CHECK(network_host_controls_bot_rows() == 5, "%d bots' rows, not 5", network_host_controls_bot_rows());
+	network_host_controls_bot_row(0, label, value, help, 64);
+	CHECK(!wcscmp(label, L"BOTS") && !wcscmp(value, L"4"), "BOTS shows %ls %ls", label, value);
+	network_host_controls_bot_row(1, label, value, help, 64);
+	CHECK(!wcscmp(value, L"NORMAL"), "BOT SKILL shows %ls", value);
+	network_host_controls_bot_row_step(0, 1);
+	CHECK(bots_world.count == 5 && !strcmp(bots_world.written, "bots.count=5"), "BOTS stepped: %s", bots_world.written);
+	bots_world.count = 15;
+	network_host_controls_bot_row_step(0, 1);
+	CHECK(bots_world.count == 0, "BOTS past 15: %ld", bots_world.count);
+	network_host_controls_bot_row_step(1, -1);
+	CHECK(bots_world.skill == 0, "BOT SKILL stepped left: %d", bots_world.skill);
+	network_host_controls_bot_row_step(2, 1);
+	CHECK(bots_world.teams == _bots_teams_against, "BOT TEAMS not switched");
+	network_host_controls_bot_row_step(4, 1);
+	CHECK(bots_world.fill_to == 2, "FILL TO past 16: %ld", bots_world.fill_to);
+	network_host_controls_bot_row_step(3, 1);
+	CHECK(!bots_world.make_room && network_host_controls_bot_rows() == 4, "FILL TO's row with MAKE ROOM off");
+	server_game.variant.game_engine_index = TEST_SLAYER + 1;
+	CHECK(network_host_controls_bot_rows() == 0, "the bots' rows in a gametype the bots do not play");
+}
+
 int main(int argc, char **argv)
 {
 	char const *case_name = argc > 1 ? argv[1] : "";
@@ -719,6 +841,7 @@ int main(int argc, char **argv)
 	else CASE("maximum") case_maximum();
 	else CASE("bans") case_bans();
 	else CASE("players") case_players();
+	else CASE("bots") case_bots();
 	else
 	{
 		fprintf(stderr, "no case %s\n", case_name);

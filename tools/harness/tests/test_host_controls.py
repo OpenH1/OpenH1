@@ -18,7 +18,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, ROOT, build, constant, mutated, read, run  # noqa: E402
 
-CASES = ["seats", "actions", "team_moves", "kick", "move", "lock", "end", "maximum", "bans", "players"]
+CASES = ["seats", "actions", "team_moves", "kick", "move", "lock", "end", "maximum", "bans", "players", "bots"]
 
 # a fault in network_host_controls.c, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -64,6 +64,13 @@ NEGATIVE_CONTROLS = {
     "ban-of-nothing": (("if (!ban->address[0] && (!ban->hardware_id[0] || !strcmp(ban->hardware_id, \"none\")))",
                         "if (0)"), "bans"),
     "quit-listed": (("\t\tif (player->quit_out_of_game)\n\t\t\tcontinue;", ""), "players"),
+    "bot-out-kept-in-count": (("\tif (!config_write(\"bots.count\", text))", "\tif (0)"), "bots"),
+    "bot-out-by-a-client": (("return player && !player->quit_out_of_game && global_network_game_server_get() &&",
+                             "return player && !player->quit_out_of_game &&"), "bots"),
+    "bot-rows-in-any-gametype": (("if (!server || !bots_play_game_engine(network_game_server_get_game(server)->variant"
+                                  ".game_engine_index))", "if (!server)"), "bots"),
+    "fill-row-always": (("return bots_make_room() ? NUMBER_OF_HOST_BOT_ROWS : _host_bot_row_fill_to;",
+                         "return NUMBER_OF_HOST_BOT_ROWS;"), "bots"),
     "legacy-told-apart": (("\t\telse if (network_standard_machine_is_openh1(machine_index))\n"
                            "\t\t\tentry->tag = _host_controls_tag_openh1;", ""), "players"),
 }

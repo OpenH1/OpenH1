@@ -1,12 +1,16 @@
-/* bots.h: computer players for local multiplayer games (port/linux/game/bots.c)
+/* bots.h: computer players for the multiplayer games this computer hosts
+(port/linux/game/bots.c)
 
-A bot is a player of a local (split screen) game whose controls come from
-code instead of a controller: it is in the lobby, the scores and the game's
-rules as any player is, spawns, respawns and scores. Each bot is the one
-player of a machine of its own at the top of the machine indices
-(BOTS_FIRST_MACHINE up), which no real machine takes: a split screen game has
-only its own machine. The bots have no view and no controller: nothing is
-drawn for them. */
+A bot is a player of a game this machine hosts (a local split screen game,
+or a system link or internet one) whose controls come from code instead of
+a controller: it is in the lobby, the scores and the game's rules as any
+player is, spawns, respawns and scores. Each bot is the one player of a
+machine of its own at the top of the machine indices (BOTS_FIRST_MACHINE up),
+which no real machine takes (network_server_manager.c numbers the machines
+that join below them): a machine with no connection, whose player the host
+plays as it plays a remote player whose input comes at once. The other
+machines of a network game see an ordinary player of an ordinary machine.
+The bots have no view and no controller: nothing is drawn for them. */
 #ifndef HALO_BOTS_H
 #define HALO_BOTS_H
 
@@ -26,20 +30,31 @@ enum
 	_bots_teams_against,
 };
 
-/* the settings (bots.count, bots.skill, bots.teams) */
+/* the settings (bots.count, bots.skill, bots.teams, bots.make_room,
+bots.fill_to) */
 long bots_wanted_count(void);
 short bots_skill(void);
 short bots_teams(void);
+int bots_make_room(void);
+long bots_fill_to(void);
+/* the bots play the game engine's games (Slayer's, and so SWAT, Infection
+and Gun Game) */
+int bots_play_game_engine(long game_engine_index);
 
 /* a machine is a bot's */
 int bots_machine_is_bot(long machine_index);
+/* a player (its datum) is a bot: on any machine of the game, as its machine
+says (an OpenH1 machine's scores tag it) */
+int bots_player_is_bot(long player_index);
 /* the network player for bot number `bot_index` (0 up): its machine,
 controller, name and no team or colour yet */
 void bots_network_player(long bot_index, struct network_player *player);
 
 /* the game tick (players_update_before_game): every bot's controls this
-tick, into the actions of the players by their index; nothing outside a
-local game */
+tick, into the actions of the players by their index, on the machine that
+hosts the game (a network game's host gives them to its clients as it gives
+a remote player's: player_queues_new.c's update_server_take_bot_action);
+nothing on a client */
 void bots_update_actions(struct player_action *actions);
 /* the first local player's view turned toward the nearest enemy in sight
 (debug.test_input's "hunt"), and how it moves (forward and strafe, -1 to

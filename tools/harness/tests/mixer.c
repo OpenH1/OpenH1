@@ -23,11 +23,18 @@ signals:
 	- audio.channels' choice from the device's channels, and the 5.1 pan
 	  (VBAP): each speaker's angle on its speaker alone, every angle where
 	  the tangent law hears it, never the LFE, through the mixer too, and
-	  2D voices by the game's AC-3 mix bins.
+	  2D voices by the game's AC-3 mix bins;
+	- 3D audio: audio.spatial's choice of the HRTF or the pan; the HRTF's
+	  cues (the time and the level between the ears, the notch moving with
+	  the sound up and down, a sound behind duller) and the pan's (none of
+	  above, below or behind); distance, occlusion, the room send and the
+	  Doppler shift through the HRTF as panned; the crossfade as the choice
+	  changes (no click); 2D voices as they were.
 "render" writes voices at each rate and a scene's whole mix as raw floats
 (test_mixer.py compares the resampler adding four taps at a time with it
-adding tap by tap), "metrics" prints the figures and "bench" times a game's
-worth of voices.
+adding tap by tap), "metrics" prints the figures, "bench" times a game's
+worth of voices (through the HRTF too) and "circle" writes a sound going
+round the listener to a WAV file, to listen to.
 */
 
 #include "harness.h"
@@ -567,6 +574,224 @@ static void doppler_figures(float velocity, float listener_velocity, DWORD mode,
 	free(samples);
 }
 
+/* ---------- 3D audio: the HRTF and the pan */
+
+/* a mono 3D voice of frames frames at rate, right, up and ahead of the
+listener (at the origin, facing +z, +y up: +x is its right), its minimum
+distance a unit, not sending to the reverb */
+static struct sdl_stream *voice_placed(const short *samples, unsigned long frames, unsigned long rate, float right,
+	float up, float ahead)
+{
+	struct sdl_stream *stream = voice_new(samples, frames, 1, rate, 0);
+
+	stream->has_3d = TRUE;
+	stream->mode = DS3DMODE_NORMAL;
+	stream->position[0] = right;
+	stream->position[1] = up;
+	stream->position[2] = ahead;
+	stream->minimum_distance = 1.0f;
+	stream->maximum_distance = 100.0f;
+	return stream;
+}
+
+/* the listener as voice_placed has it */
+static void listener_reset(void)
+{
+	memset(&listener, 0, sizeof(listener));
+	listener.front[2] = 1.0f;
+	listener.top[1] = 1.0f;
+	listener.rolloff_factor = 1.0f;
+	listener.distance_factor = 1.0f;
+}
+
+/* a second of noise at 48 kHz, as 16-bit samples */
+static short *noise_samples(unsigned long frames)
+{
+	double *signal = noise(frames), *exact = malloc(frames * sizeof(double));
+	short *samples = malloc(frames * sizeof(short));
+
+	quantize(signal, samples, exact, frames);
+	free(signal);
+	free(exact);
+	return samples;
+}
+
+/* frames of a mono 3D voice of noise at (right, up, ahead), through the
+HRTF or panned: both ears, interleaved, after the first mix (its ramps) */
+static float *placed_noise(BOOL through_hrtf, float right, float up, float ahead, unsigned long frames)
+{
+	short *samples = noise_samples(frames + 4096);
+	struct sdl_stream *stream = voice_placed(samples, frames + 4096, 48000, right, up, ahead);
+	float *output = malloc((frames + CHUNK) * 2 * sizeof(float));
+
+	hrtf_enabled = through_hrtf;
+	render(stream, output, frames + CHUNK, TRUE);
+	memmove(output, output + CHUNK * 2, frames * 2 * sizeof(float));
+	hrtf_enabled = FALSE;
+	voice_delete(stream);
+	free(samples);
+	return output;
+}
+
+/* the level between the ears above a few kHz (the first difference's
+power, left over right, dB) */
+static double ears_level(const float *output, unsigned long frames)
+{
+	double left = 0.0, right = 0.0;
+	unsigned long n;
+
+	for (n = 1; n < frames; n++)
+	{
+		double l = output[n * 2] - output[(n - 1) * 2], r = output[n * 2 + 1] - output[(n - 1) * 2 + 1];
+
+		left += l * l;
+		right += r * r;
+	}
+	return 10.0 * log10((left + 1e-30) / (right + 1e-30));
+}
+
+/* how much later the right ear hears what the left does (frames, -48 to
+48: the lag of the ears' greatest cross-correlation) */
+static long ears_delay(const float *output, unsigned long frames)
+{
+	long lag, best = 0;
+	double best_sum = -1e30;
+
+	for (lag = -48; lag <= 48; lag++)
+	{
+		double sum = 0.0;
+		unsigned long n;
+
+		for (n = 64; n + 64 < frames; n++)
+			sum += (double)output[n * 2] * output[(n + lag) * 2 + 1];
+		if (sum > best_sum)
+		{
+			best_sum = sum;
+			best = lag;
+		}
+	}
+	return best;
+}
+
+/* an ear's (0 left, 1 right) power around hertz: a 1024-frame Hann
+window's spectrum at the five bins nearest it, over every window, in dB */
+static double ear_band(const float *output, unsigned long frames, int ear, double hertz)
+{
+	unsigned long first, n;
+	long bin, center = lround(hertz * 1024.0 / OUTPUT_RATE);
+	double power = 0.0;
+
+	for (first = 0; first + 1024 <= frames; first += 512)
+	{
+		for (bin = center - 2; bin <= center + 2; bin++)
+		{
+			double re = 0.0, im = 0.0;
+
+			for (n = 0; n < 1024; n++)
+			{
+				double window = 0.5 - 0.5 * cos(2.0 * PI * n / 1024.0);
+				double x = output[(first + n) * 2 + ear] * window;
+
+				re += x * cos(2.0 * PI * bin * n / 1024.0);
+				im -= x * sin(2.0 * PI * bin * n / 1024.0);
+			}
+			power += re * re + im * im;
+		}
+	}
+	return 10.0 * log10(power + 1e-30);
+}
+
+/* both ears' power, dB */
+static double ears_power(const float *output, unsigned long frames)
+{
+	double power = 0.0;
+	unsigned long n;
+
+	for (n = 0; n < frames * 2; n++)
+		power += (double)output[n] * output[n];
+	return 10.0 * log10(power + 1e-30);
+}
+
+/* "circle": a sound going round the listener, ear high, 8 seconds from
+ahead to the right, behind, the left and ahead again, then 4 over the
+head, ahead to above, behind and below, through the HRTF or panned, to a
+16-bit WAV file: bursts of noise, four a second, which ears place best */
+static int circle(const char *path, BOOL through_hrtf)
+{
+	unsigned long frames = OUTPUT_RATE * 12, n, done;
+	short *samples = malloc((frames + OUTPUT_RATE) * sizeof(short));
+	float *output = calloc(frames * 2, sizeof(float));
+	struct sdl_stream *stream;
+	FILE *file;
+	unsigned char header[44];
+	unsigned long bytes = frames * 4;
+
+	random_state = 3;
+	for (n = 0; n < frames + OUTPUT_RATE; n++)
+	{
+		double t = (double)(n % (OUTPUT_RATE / 4)) / OUTPUT_RATE;
+		double envelope = t < 0.002 ? t / 0.002 : t < 0.12 ? exp(-(t - 0.002) * 18.0) : 0.0;
+
+		samples[n] = (short)(26000.0 * envelope * random_uniform());
+	}
+	hrtf_initialize();
+	listener_reset();
+	stream = voice_placed(samples, frames + OUTPUT_RATE, OUTPUT_RATE, 0.0f, 0.0f, 1.5f);
+	hrtf_enabled = through_hrtf;
+	for (done = 0; done < frames; done += CHUNK)
+	{
+		static float buffer[CHUNK * 2], send[CHUNK];
+		double t = (double)done / OUTPUT_RATE, angle;
+		unsigned long count = frames - done < CHUNK ? frames - done : CHUNK, frame;
+
+		if (t < 8.0)
+		{
+			angle = 2.0 * PI * t / 8.0;
+			stream->position[0] = (float)(1.5 * sin(angle));
+			stream->position[1] = 0.0f;
+			stream->position[2] = (float)(1.5 * cos(angle));
+		}
+		else
+		{
+			angle = 2.0 * PI * (t - 8.0) / 4.0;
+			stream->position[0] = 0.0f;
+			stream->position[1] = (float)(1.5 * sin(angle));
+			stream->position[2] = (float)(1.5 * cos(angle));
+		}
+		memset(buffer, 0, sizeof(buffer));
+		memset(send, 0, sizeof(send));
+		mix_voice(stream, buffer, send, count);
+		for (frame = 0; frame < count * 2; frame++)
+			output[done * 2 + frame] = buffer[frame];
+	}
+	hrtf_enabled = FALSE;
+	file = fopen(path, "wb");
+	if (!file)
+		return 2;
+	memcpy(header, "RIFF\0\0\0\0WAVEfmt \x10\0\0\0\x01\0\x02\0\x80\xbb\0\0\0\xee\x02\0\x04\0\x10\0data\0\0\0\0", 44);
+	for (n = 0; n < 4; n++)
+	{
+		header[4 + n] = (unsigned char)((bytes + 36) >> (8 * n));
+		header[40 + n] = (unsigned char)(bytes >> (8 * n));
+	}
+	fwrite(header, 1, 44, file);
+	for (n = 0; n < frames * 2; n++)
+	{
+		long value = lround(output[n] * 32767.0);
+		unsigned char pair[2];
+
+		value = value > 32767 ? 32767 : value < -32768 ? -32768 : value;
+		pair[0] = (unsigned char)(value & 0xff);
+		pair[1] = (unsigned char)((value >> 8) & 0xff);
+		fwrite(pair, 1, 2, file);
+	}
+	fclose(file);
+	voice_delete(stream);
+	free(samples);
+	free(output);
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	char const *case_name = argc > 1 ? argv[1] : "";
@@ -1079,6 +1304,319 @@ int main(int argc, char **argv)
 		output_channels = 2;
 		return 0;
 	}
+	/* audio.spatial: "auto" through the HRTF on headphones only (speakers
+	and not known: the pan), "headphones" and "speakers" whatever the host
+	says, another word as "auto"; the VR mode by vr.hrtf alone */
+	CASE("spatial-choice")
+	{
+		static const struct { const char *setting; int headphones; BOOL vr, vr_hrtf, expected; } cases[] = {
+			{ "auto", 1, FALSE, FALSE, TRUE }, { "auto", 0, FALSE, FALSE, FALSE },
+			{ "auto", -1, FALSE, FALSE, FALSE }, { "headphones", 0, FALSE, FALSE, TRUE },
+			{ "headphones", -1, FALSE, FALSE, TRUE }, { "headphones", 1, FALSE, FALSE, TRUE },
+			{ "speakers", 1, FALSE, FALSE, FALSE }, { "speakers", -1, FALSE, FALSE, FALSE },
+			{ "", 1, FALSE, FALSE, TRUE }, { "", -1, FALSE, FALSE, FALSE },
+			{ "auto", 1, TRUE, FALSE, FALSE }, { "speakers", 0, TRUE, TRUE, TRUE },
+			{ "headphones", 1, TRUE, FALSE, FALSE },
+		};
+
+		for (index = 0; index < sizeof(cases) / sizeof(cases[0]); index++)
+		{
+			CHECK(spatial_hrtf(cases[index].setting, cases[index].headphones, cases[index].vr, cases[index].vr_hrtf) ==
+				cases[index].expected, "audio.spatial \"%s\", the host saying %d%s: %s, not %s", cases[index].setting,
+				cases[index].headphones, cases[index].vr ? (cases[index].vr_hrtf ? ", VR with vr.hrtf" : ", VR") : "",
+				cases[index].expected ? "panned" : "through the HRTF", cases[index].expected ? "through the HRTF" : "panned");
+		}
+		return 0;
+	}
+	/* a 3D voice of noise through the HRTF: to the left (90 degrees), the
+	right ear 0.66 ms later (Woodworth's 31.5 frames) and its high
+	frequencies well down; ahead and behind, the ears alike, and behind
+	duller above a few kHz; above, the pinna's notch moved up from ahead's
+	7.7 kHz to 11 kHz, below down to 6 kHz. Panned: to the left, louder in
+	the left ear but at the same time; above, below and behind exactly as
+	ahead (no cue of them) */
+	CASE("hrtf-cues")
+	{
+		unsigned long frames = 48000;
+		float *left_hrtf, *ahead_hrtf, *behind_hrtf, *above_hrtf, *below_hrtf, *left_pan, *ahead_pan, *above_pan,
+			*below_pan, *behind_pan;
+		double notch_ahead, notch_above, notch_below, rear_db, low_db;
+		long delay;
+		int ear;
+
+		hrtf_initialize();
+		listener_reset();
+		left_hrtf = placed_noise(TRUE, -3.0f, 0.0f, 0.0f, frames);
+		ahead_hrtf = placed_noise(TRUE, 0.0f, 0.0f, 3.0f, frames);
+		behind_hrtf = placed_noise(TRUE, 0.0f, 0.0f, -3.0f, frames);
+		above_hrtf = placed_noise(TRUE, 0.0f, 3.0f, 0.0f, frames);
+		below_hrtf = placed_noise(TRUE, 0.0f, -3.0f, 0.0f, frames);
+		left_pan = placed_noise(FALSE, -3.0f, 0.0f, 0.0f, frames);
+		ahead_pan = placed_noise(FALSE, 0.0f, 0.0f, 3.0f, frames);
+		behind_pan = placed_noise(FALSE, 0.0f, 0.0f, -3.0f, frames);
+		above_pan = placed_noise(FALSE, 0.0f, 3.0f, 0.0f, frames);
+		below_pan = placed_noise(FALSE, 0.0f, -3.0f, 0.0f, frames);
+
+		delay = ears_delay(left_hrtf, frames);
+		CHECK(delay >= 29 && delay <= 34, "to the left through the HRTF, the right ear %ld frames later, not 31.5", delay);
+		CHECK(ears_level(left_hrtf, frames) > 10.0, "to the left through the HRTF, the left ear's high frequencies "
+			"%+.1f dB over the right's", ears_level(left_hrtf, frames));
+		delay = ears_delay(left_pan, frames);
+		CHECK(delay == 0, "to the left panned, the right ear %ld frames later, not at once", delay);
+		CHECK(ears_level(left_pan, frames) > 6.0, "to the left panned, the left ear %+.1f dB over the right",
+			ears_level(left_pan, frames));
+		CHECK(labs(ears_delay(ahead_hrtf, frames)) <= 1 && fabs(ears_level(ahead_hrtf, frames)) < 0.5 &&
+			labs(ears_delay(behind_hrtf, frames)) <= 1 && fabs(ears_level(behind_hrtf, frames)) < 0.5,
+			"ahead and behind through the HRTF, the ears differ: %ld and %ld frames, %+.2f and %+.2f dB",
+			ears_delay(ahead_hrtf, frames), ears_delay(behind_hrtf, frames), ears_level(ahead_hrtf, frames),
+			ears_level(behind_hrtf, frames));
+		for (ear = 0; ear < 2; ear++)
+		{
+			rear_db = ear_band(behind_hrtf, frames, ear, 15000.0) - ear_band(ahead_hrtf, frames, ear, 15000.0);
+			low_db = ear_band(behind_hrtf, frames, ear, 300.0) - ear_band(ahead_hrtf, frames, ear, 300.0);
+			CHECK(rear_db < -4.0 && fabs(low_db) < 1.0, "behind through the HRTF, 15 kHz %+.1f dB and 300 Hz %+.1f dB "
+				"of ahead's (ear %d)", rear_db, low_db, ear);
+			/* (each notch: its band against the other's) */
+			notch_ahead = ear_band(ahead_hrtf, frames, ear, 7667.0) - ear_band(ahead_hrtf, frames, ear, 11000.0);
+			notch_above = ear_band(above_hrtf, frames, ear, 7667.0) - ear_band(above_hrtf, frames, ear, 11000.0);
+			notch_below = ear_band(below_hrtf, frames, ear, 6000.0) - ear_band(below_hrtf, frames, ear, 7667.0);
+			CHECK(notch_above - notch_ahead > 8.0 && notch_below < -4.0, "the notch: ahead 7.7 kHz %+.1f dB of 11 kHz, "
+				"above %+.1f dB; below 6 kHz %+.1f dB of 7.7 kHz (ear %d)", notch_ahead, notch_above, notch_below, ear);
+		}
+		for (index = 0; index < frames * 2; index++)
+		{
+			CHECK(above_pan[index] == ahead_pan[index] && below_pan[index] == ahead_pan[index] &&
+				behind_pan[index] == ahead_pan[index], "panned, above, below or behind differs from ahead at %lu",
+				index);
+		}
+		free(left_hrtf);
+		free(ahead_hrtf);
+		free(behind_hrtf);
+		free(above_hrtf);
+		free(below_hrtf);
+		free(left_pan);
+		free(ahead_pan);
+		free(behind_pan);
+		free(above_pan);
+		free(below_pan);
+		return 0;
+	}
+	/* through the HRTF, a 3D voice keeps the pan's distance, the direct
+	path's occlusion (its low pass), the room send and the Doppler shift:
+	8 units away 12 dB under 2 (its minimum distance 1), as panned; the
+	high frequencies of an occluded voice as far down as panned; the same
+	send to the reverb; a 1 kHz sine coming at 10 units a second heard
+	343 / (343 - 30.5) times as high */
+	CASE("hrtf-paths")
+	{
+		unsigned long frames = 24000;
+		short *samples = noise_samples(frames + 4096);
+		float *output = malloc((frames + CHUNK) * 2 * sizeof(float));
+		double near_db[2], far_db[2], open_db[2], muffled_db[2], send_power[2];
+		int through;
+
+		hrtf_initialize();
+		listener_reset();
+		for (through = 0; through < 2; through++)
+		{
+			struct sdl_stream *stream;
+			static float buffer[CHUNK * 2], send[CHUNK];
+			unsigned long chunk, n;
+
+			hrtf_enabled = through;
+			stream = voice_placed(samples, frames + 4096, 48000, -2.0f, 0.0f, 0.0f);
+			render(stream, output, frames, TRUE);
+			near_db[through] = ears_power(output + CHUNK * 2, frames - CHUNK);
+			voice_delete(stream);
+			stream = voice_placed(samples, frames + 4096, 48000, -8.0f, 0.0f, 0.0f);
+			render(stream, output, frames, TRUE);
+			far_db[through] = ears_power(output + CHUNK * 2, frames - CHUNK);
+			open_db[through] = ear_band(output + CHUNK * 2, frames - CHUNK, 0, 12000.0) -
+				ear_band(output + CHUNK * 2, frames - CHUNK, 0, 500.0);
+			voice_delete(stream);
+			stream = voice_placed(samples, frames + 4096, 48000, -8.0f, 0.0f, 0.0f);
+			stream->direct_hf = -2000;
+			render(stream, output, frames, TRUE);
+			muffled_db[through] = ear_band(output + CHUNK * 2, frames - CHUNK, 0, 12000.0) -
+				ear_band(output + CHUNK * 2, frames - CHUNK, 0, 500.0);
+			voice_delete(stream);
+			/* (the send, indoors) */
+			environment.lRoom = -1000;
+			stream = voice_placed(samples, frames + 4096, 48000, -3.0f, 0.0f, 1.0f);
+			stream->room = 0;
+			stream->room_hf = -300;
+			send_power[through] = 0.0;
+			for (chunk = 0; chunk < 20; chunk++)
+			{
+				memset(buffer, 0, sizeof(buffer));
+				memset(send, 0, sizeof(send));
+				mix_voice(stream, buffer, send, CHUNK);
+				for (n = 0; n < CHUNK; n++)
+					send_power[through] += (double)send[n] * send[n];
+			}
+			environment.lRoom = DSBVOLUME_MIN;
+			voice_delete(stream);
+		}
+		hrtf_enabled = FALSE;
+		for (through = 0; through < 2; through++)
+		{
+			CHECK(fabs(far_db[through] - near_db[through] + 12.04) < 0.3, "%s, 8 units away %+.2f dB of 2", through ?
+				"through the HRTF" : "panned", far_db[through] - near_db[through]);
+		}
+		CHECK(fabs((muffled_db[1] - open_db[1]) - (muffled_db[0] - open_db[0])) < 1.0 && muffled_db[1] - open_db[1] < -6.0,
+			"occluded, the high frequencies %+.1f dB through the HRTF, %+.1f dB panned", muffled_db[1] - open_db[1],
+			muffled_db[0] - open_db[0]);
+		CHECK(send_power[0] > 0.0 && send_power[1] == send_power[0], "the room send through the HRTF %g, panned %g",
+			send_power[1], send_power[0]);
+		free(output);
+		free(samples);
+		{
+			float ratio;
+			double rest_db;
+
+			resampler_mode = RESAMPLER_SINC;
+			hrtf_enabled = TRUE;
+			doppler_figures(-10.0f, 0.0f, DS3DMODE_NORMAL, 343.0 / (343.0 - 30.48), &ratio, &rest_db);
+			hrtf_enabled = FALSE;
+			listener_reset();
+			CHECK(fabs(ratio - 343.0 / (343.0 - 30.48)) < 1.0e-5 && rest_db < -40.0, "through the HRTF, coming at 10 "
+				"units a second: shifted %.5f, the rest %.1f dB", ratio, rest_db);
+		}
+		return 0;
+	}
+	/* the choice changing as a 3D voice plays (headphones plugged in, then
+	out): a 100 Hz sine to the left crossfades from the pan to the HRTF and
+	back, with no step: no frame moves further from the last than the
+	sine does at the louder of the two (no click) */
+	CASE("hrtf-switch")
+	{
+		unsigned long frames = 48000 * 3, n, chunk;
+		short *samples = malloc((frames + 4096) * sizeof(short));
+		/* (whole mixes of CHUNK: the last runs past frames) */
+		float *output = malloc((frames + CHUNK) * 2 * sizeof(float));
+		struct sdl_stream *stream;
+		double steady[2] = { 0.0, 0.0 }, switching[2] = { 0.0, 0.0 };
+		int ear;
+
+		for (n = 0; n < frames + 4096; n++)
+			samples[n] = (short)lround(16000.0 * sin(2.0 * PI * 100.0 * n / 48000.0));
+		hrtf_initialize();
+		listener_reset();
+		stream = voice_placed(samples, frames + 4096, 48000, -3.0f, 0.0f, 0.5f);
+		/* (each switch a quarter of a cycle past a zero crossing) */
+		for (chunk = 0; chunk * CHUNK < frames; chunk++)
+		{
+			static float buffer[CHUNK * 2], send[CHUNK];
+
+			hrtf_enabled = chunk >= 94 && chunk < 188;
+			memset(buffer, 0, sizeof(buffer));
+			memset(send, 0, sizeof(send));
+			mix_voice(stream, buffer, send, CHUNK);
+			memcpy(output + chunk * CHUNK * 2, buffer, sizeof(buffer));
+		}
+		hrtf_enabled = FALSE;
+		for (n = CHUNK + 1; n < frames; n++)
+		{
+			/* (the switches and their crossfades, and where each is still) */
+			BOOL near_switch = (n >= 94 * CHUNK - 16 && n < 94 * CHUNK + HRTF_FADE_FRAMES + 2 * CHUNK) ||
+				(n >= 188 * CHUNK - 16 && n < 188 * CHUNK + HRTF_FADE_FRAMES + 2 * CHUNK);
+
+			for (ear = 0; ear < 2; ear++)
+			{
+				double step = fabs(output[n * 2 + ear] - output[(n - 1) * 2 + ear]);
+
+				if (near_switch)
+					switching[ear] = step > switching[ear] ? step : switching[ear];
+				else
+					steady[ear] = step > steady[ear] ? step : steady[ear];
+			}
+		}
+		for (ear = 0; ear < 2; ear++)
+		{
+			CHECK(steady[ear] > 0.0 && switching[ear] < 1.05 * steady[ear], "the %s ear: a step of %.5f while the choice "
+				"changes, %.5f at most otherwise (a click)", ear ? "right" : "left", switching[ear], steady[ear]);
+		}
+		voice_delete(stream);
+		free(output);
+		free(samples);
+		return 0;
+	}
+	/* 2D voices (the menus, the music, the HUD), stereo voices placed in
+	the world and 3D voices with 3D off are as they were through the HRTF:
+	the same to the bit; a mono 3D voice is not (the HRTF is on) */
+	CASE("dry-2d")
+	{
+		unsigned long frames = 24000, kind;
+		short *samples = noise_samples(frames * 2 + 4096);
+		float *panned = malloc(frames * 2 * sizeof(float)), *through = malloc(frames * 2 * sizeof(float));
+
+		hrtf_initialize();
+		listener_reset();
+		for (kind = 0; kind < 5; kind++)
+		{
+			int pass;
+			BOOL same = TRUE;
+
+			for (pass = 0; pass < 2; pass++)
+			{
+				struct sdl_stream *stream;
+
+				if (kind == 0)
+				{
+					/* a 2D stereo voice (music) */
+					stream = voice_new(samples, frames + 2048, 2, 44100, 0);
+				}
+				else if (kind == 1)
+				{
+					/* a 2D mono voice (the HUD's, a menu's) */
+					stream = voice_new(samples, frames + 2048, 1, 22050, 0);
+					stream->mix_left = 0.8f;
+					stream->mix_right = 0.5f;
+				}
+				else if (kind == 2)
+				{
+					/* a stereo voice placed in the world */
+					stream = voice_new(samples, frames + 2048, 2, 22050, 0);
+					stream->stereo_positioned = TRUE;
+					stream->stereo_pan = -0.6f;
+				}
+				else if (kind == 3)
+				{
+					/* a 3D voice with 3D off */
+					stream = voice_placed(samples, frames + 2048, 22050, -3.0f, 1.0f, 0.0f);
+					stream->mode = DS3DMODE_DISABLE;
+				}
+				else
+				{
+					/* a mono 3D voice: the HRTF's */
+					stream = voice_placed(samples, frames + 2048, 22050, -3.0f, 1.0f, 0.0f);
+				}
+				hrtf_enabled = pass;
+				render(stream, pass ? through : panned, frames, TRUE);
+				hrtf_enabled = FALSE;
+				voice_delete(stream);
+			}
+			for (index = 0; index < frames * 2; index++)
+				same = same && through[index] == panned[index];
+			CHECK(same == (kind != 4), "voice %lu (0 2D stereo, 1 2D mono, 2 stereo placed, 3 3D off, 4 mono 3D) "
+				"%s through the HRTF", kind, same ? "the same" : "changed");
+		}
+		free(samples);
+		free(panned);
+		free(through);
+		return 0;
+	}
+	/* "circle <file.wav> hrtf|pan": a sound going round the listener, to
+	listen to (circle) */
+	CASE("circle")
+	{
+		if (argc < 4)
+		{
+			fprintf(stderr, "circle <file.wav> hrtf|pan\n");
+			return 2;
+		}
+		return circle(argv[2], !strcmp(argv[3], "hrtf"));
+	}
 	CASE("metrics")
 	{
 		static const double tones[] = { 100, 1000, 5000, 8000, 10000, 10500, 15000, 18000, 20000, 21000 };
@@ -1146,8 +1684,12 @@ int main(int argc, char **argv)
 		}
 		return 0;
 	}
+	/* "bench [voices] [out of earshot] [indoor|outdoor] [hrtf]": through the
+	HRTF, the 3D voices' */
 	CASE("bench")
 	{
+		hrtf_initialize();
+		hrtf_enabled = argc > 5 && !strcmp(argv[5], "hrtf");
 		bench(argc > 2 ? strtoul(argv[2], NULL, 0) : 24, argc > 3 ? strtoul(argv[3], NULL, 0) : 16,
 			argc > 4 && !strcmp(argv[4], "indoor"), 10.0);
 		return 0;

@@ -823,6 +823,9 @@ static struct
 	byte kind;
 	byte rate;
 	byte openh1_version;
+	/* (the bots the host plays, which its player count leaves out:
+	port/linux/game/bots.c) */
+	byte bots;
 } network_game_client_advertised_versions[MAXIMUM_NETWORK_ADVERTISED_GAMES];
 
 /* port: the OpenH1 protocol version of the advertised game at the index: a
@@ -2611,6 +2614,8 @@ static boolean add_advertised_game(
 				advertisement->__unknown5A[HALO_PORT_ADVERTISED_RATE_OFFSET];
 			network_game_client_advertised_versions[game_index].openh1_version =
 				advertisement->__unknown5A[HALO_PORT_ADVERTISED_OPENH1_VERSION_OFFSET];
+			network_game_client_advertised_versions[game_index].bots =
+				advertisement->__unknown5A[HALO_PORT_ADVERTISED_BOTS_OFFSET];
 		}
 
 		if (advertisement->game_name[0] != L'\0')
@@ -3353,6 +3358,19 @@ long network_game_client_advertised_game_rate(
 		return 30;
 	}
 	return network_game_client_advertised_versions[game_index].rate;
+}
+
+/* port: the bots the host of the advertised game plays (its player count's
+are its players alone) */
+long network_game_client_advertised_game_bots(
+	struct network_game_client *client,
+	struct network_advertised_game const *game)
+{
+	long game_index = client ? game - client->available_games : NONE;
+
+	if (game_index < 0 || game_index >= MAXIMUM_NETWORK_ADVERTISED_GAMES)
+		return 0;
+	return network_game_client_advertised_versions[game_index].bots;
 }
 
 /* port: whether the advertised game is an OpenH1 Standard game this machine

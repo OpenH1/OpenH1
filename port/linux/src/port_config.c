@@ -344,6 +344,14 @@ static const struct config_setting config_settings[] =
 		"Shift the pitch of the world's sounds as they move towards or away\n"
 		"from the player, as the Xbox's DirectSound did (a Banshee passing by);\n"
 		"false keeps their pitch." },
+	{ "audio.spatial", _config_string, "\"auto\"", "HALO_AUDIO_SPATIAL", _environment_value, _platform_all,
+		"How the world's sounds are placed around you: \"headphones\" through a\n"
+		"model of a head (HRTF), each from its direction, ahead, behind, above or\n"
+		"below, as the Xbox's 3D audio was; \"speakers\" panned left and right;\n"
+		"\"auto\" the first on headphones (wired, Bluetooth, AirPods, a USB\n"
+		"headset, the Steam Deck's jack) and the second otherwise, changing as\n"
+		"the system's output does. The menus, music and HUD are not placed.\n"
+		"The VR mode keeps vr.hrtf; 5.1 is always panned." },
 	{ "audio.resampler", _config_string, "\"sinc\"", "HALO_AUDIO_RESAMPLER", _environment_value, _platform_all,
 		"How sounds are converted to the output's rate: \"sinc\" with a\n"
 		"band-limited low pass; \"linear\" between neighbouring samples,\n"
@@ -855,15 +863,25 @@ static const struct config_setting config_settings[] =
 		"as the game's own maps' are before they run; false refuses them\n"
 		"(docs/custom_edition_caches.md)." },
 	{ "bots.count", _config_integer, "0", "HALO_BOTS", _environment_value, _platform_all,
-		"Computer players (bots) in a local (split screen) Slayer game: 0 to 15\n"
-		"join its lobby with the players, as far as the game has room. Not in\n"
-		"system link or internet games. 0: none, as in the stock game." },
+		"Computer players (bots) in a Slayer game this computer hosts: 0 to 15\n"
+		"join its lobby with the players, as far as the game has room: a local\n"
+		"(split screen) game, or a system link or internet one, where the host\n"
+		"plays them and the other machines see them as players (bots.make_room).\n"
+		"0: none, as in the stock game." },
 	{ "bots.skill", _config_string, "\"normal\"", "HALO_BOT_SKILL", _environment_value, _platform_all,
 		"How well the bots play: \"easy\", \"normal\", \"heroic\" or \"legendary\"\n"
 		"(how soon they react, how well they aim, how far they see)." },
 	{ "bots.teams", _config_string, "\"even\"", "HALO_BOT_TEAMS", _environment_value, _platform_all,
 		"In team games: \"even\" puts the bots on both teams, evening them with\n"
 		"the players; \"against\" puts them all on the team the players are not on." },
+	{ "bots.make_room", _config_boolean, "true", "HALO_BOTS_MAKE_ROOM", _environment_value, _platform_all,
+		"In a system link or internet game with bots (bots.count): a bot leaves\n"
+		"as a player joins, so that the game has no more than bots.fill_to\n"
+		"players and bots, and comes back as a player leaves. false: the bots\n"
+		"stay, and the game's most players are its players' alone." },
+	{ "bots.fill_to", _config_integer, "16", "HALO_BOTS_FILL_TO", _environment_value, _platform_all,
+		"With bots.make_room, the players and bots a system link or internet\n"
+		"game is filled to (2 to 128; no more than its most players)." },
 	{ "display.viewmodel_shield", _config_boolean, "false", "HALO_VIEWMODEL_SHIELD", _environment_value, _platform_all,
 		"The energy shield's flare on the first-person arms too, as on the body\n"
 		"(the stock game draws it on the body only)." },
@@ -1112,8 +1130,19 @@ static const struct config_setting config_settings[] =
 		"comma-separated host:port." },
 	{ "discord.application_id", _config_string, "\"1553978809840050229\"", "HALO_DISCORD_APPLICATION",
 		_environment_value, _platform_desktop,
-		"The Discord application internet play invites go through while the\n"
-		"Discord desktop client runs; empty for none." },
+		"The Discord application your status, invites and asks to join go\n"
+		"through while the Discord desktop client runs (its name is what Discord\n"
+		"shows you playing): OpenCE's until OpenH1 has its own; empty for none." },
+	{ "discord.rich_presence", _config_boolean, "true", "HALO_DISCORD_RICH_PRESENCE", _environment_value,
+		_platform_desktop,
+		"Show what you are doing in Discord: in the menus, in a party, the game\n"
+		"you host or play. false: nothing is shown, and no one joins you through\n"
+		"Discord." },
+	{ "discord.allow_join_requests", _config_boolean, "true", "HALO_DISCORD_ALLOW_JOIN_REQUESTS",
+		_environment_value, _platform_desktop,
+		"Let Discord friends ask to join your party or game (the game asks you:\n"
+		"J lets them in, Esc does not), and invite them with Discord's Invite to\n"
+		"Join. false: no Join buttons; send your invite link instead." },
 
 	{ "update.auto", _config_boolean, "true", "HALO_UPDATE_AUTO", _environment_value, _platform_all,
 		"Look for a new version when the game starts, and offer to update to it;\n"
@@ -1515,6 +1544,9 @@ static const struct config_setting config_settings[] =
 	{ "debug.menu_open", _config_string, "\"\"", "HALO_MENU_OPEN", _environment_value, _platform_all,
 		"Start on this screen of the menus (port/assets/menus) instead of the main\n"
 		"menu, a player profile being edited; empty for the main menu." },
+	{ "debug.discord_socket", _config_string, "\"\"", "HALO_DISCORD_SOCKET", _environment_value, _platform_desktop,
+		"The Discord client's socket (on Windows its pipe) to connect to, and no\n"
+		"other: a test's stand-in for Discord. Empty: Discord's own." },
 	{ "debug.party", _config_string, "\"\"", "HALO_PARTY", _environment_value, _platform_all,
 		"Join this party's link at the start, or lead its party (\"lead:\" before\n"
 		"the link): several copies of the game in one party, in a test; empty\n"
@@ -2725,6 +2757,7 @@ static const struct
 	{ "display.shield_color", { "default", "white", "black", "red", "blue", "gray", "yellow", "green", "pink",
 		"purple", "cyan", "cobalt", "orange", "teal", "sage", "brown", "tan", "maroon", "salmon", NULL }, NULL },
 	{ "audio.resampler", { "sinc", "linear", NULL }, NULL },
+	{ "audio.spatial", { "auto", "headphones", "speakers", NULL }, "auto" },
 	{ "audio.voice_chat", { "push_to_talk", "open_mic", "off", NULL }, NULL },
 	{ "input.touch_controls", { "auto", "on", "off", NULL }, NULL },
 	{ "input.button_prompts", { "auto", "controller", "keyboard", NULL }, NULL },

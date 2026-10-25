@@ -207,6 +207,7 @@ python -m pytest -q tools/test_windows_build.py         # the Windows host's imp
 python -m pytest -q tools/test_guest_toolchain.py         # the guests' pinned LLVM: its archives, what is kept of them, libxml2's stand-in
 python -m pytest -q tools/test_linux_package.py tools/test_install_layout.py   # the Linux release's layout, its install.sh
 python -m pytest -q tools/test_guest_base_register.py tools/test_host_memory_base.py  # the base register
+python -m pytest -q tools/test_guest_branch_relax.py       # the guests' conditional branches relaxed once the base register puts them out of reach
 python -m pytest -q tools/test_macos_metal.py               # the Metal backend (ninja macos_metal_test first)
 python -m pytest -q tools/test_metal_post_shaders.py        # the Metal backend's anti-aliasing passes (tools/metal_post_shaders.py)
 python -m pytest -q tools/test_hdr.py                       # display.hdr's contract: the draws' classification, the reference curves (docs/hdr.md)
@@ -223,6 +224,7 @@ python -m pytest -q tools/test_ios_touch_layout.py          # the iOS touch layo
 python tools/touch_assets.py --check                        # the touch controls' pictures as their SVGs draw them
 python tools/test_light_storage.py
 python tools/test_death_timing.py
+python -m pytest -q tools/test_join_page.py                 # the website's join page: the links it reads (Node), nothing loaded from elsewhere
 python -m pytest -q tools/test_net_compare.py               # net_compare.py's judging of logs, its copies and their processes
 python -m pytest -q tools/test_determinism_compare.py       # determinism_compare.py's reading of the determinism logs
 python tools/net_compare.py --a build/linux_x86_64/halo --b <other build> --data <game data> --swap
