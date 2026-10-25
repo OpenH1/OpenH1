@@ -3503,7 +3503,7 @@ HUB_PAGE_PROMPTS = [HUB_PROMPTS[1]]
 PARTY_ROWS, PARTY_ROW_STEP = 16, 19
 PARTY_PROMPTS = [
     ("prompt_make", "%a-button MAKE PARTY", 28, 144, '<on event="a" run="port party button"/>'),
-    ("prompt_copy", "%a-button COPY LINK", 28, 144, '<on event="a" run="port party button"/>'),
+    ("prompt_copy", "%a-button COPY INVITE", 28, 144, '<on event="a" run="port party button"/>'),
     ("prompt_paste", "%x-button PASTE LINK", 176, 144, '<on event="a" run="port party button"/>'),
     ("prompt_follow", "%x-button JOIN LEADER", 176, 144, '<on event="a" run="port party button"/>'),
     ("prompt_end", "%x-button END PARTY", 176, 144, '<on event="a" run="port party button"/>'),
@@ -3539,7 +3539,7 @@ LOBBY_FREE_DOT = "#9CBBE6"
 # lobby_board_controls)
 LOBBY_PROMPTS = [
     ("prompt_team", "CHANGE TEAM", 28, 144, '<on event="a" run="port lobby team toggle"/>'),
-    ("prompt_invite", "%y-button INVITE LINK", 176, 124, '<on event="a" run="port lobby invite"/>'),
+    ("prompt_invite", "%y-button COPY INVITE", 176, 124, '<on event="a" run="port lobby invite"/>'),
     ("prompt_add", "%x-button ADD PLAYER", 324, 124, '<on event="a" run="port lobby add player"/>'),
     ("prompt_leave", "%b-button LEAVE", 516, 96, '<on event="a" run="mouse emit back event"/>'),
 ]
@@ -4072,7 +4072,7 @@ def _party() -> list:
     words in their place out of a party; the panel beside them (the party's
     size, its link, where the leader is and the follow, what just happened,
     and what a party is); the footer's key prompts, each shown when it
-    applies: MAKE PARTY or COPY LINK (A), PASTE LINK, JOIN LEADER or END
+    applies: MAKE PARTY or COPY INVITE (A), PASTE LINK, JOIN LEADER or END
     PARTY (X), LEAVE PARTY (Y), BACK. Every prompt runs "port party button"
     ("port party x" and "y" the screen's X and Y), which joins the leader's
     game first once it is found (an A press posted). The touchscreen opens it

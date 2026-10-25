@@ -99,7 +99,7 @@ struct lobby_board_controls
 	gametype the bots do not play) */
 	boolean bots;
 	boolean bots_locked;
-	/* CHANGE TEAM, INVITE LINK, ADD PLAYER */
+	/* CHANGE TEAM, COPY INVITE, ADD PLAYER */
 	boolean team_change;
 	boolean invite;
 	boolean add_player;
@@ -118,7 +118,7 @@ static struct
 	struct lobby_board_entry entries[LOBBY_BOARD_COLUMNS][LOBBY_BOARD_ROWS];
 	/* each row's player INVITE TO PARTY could ask (lobby_board_party_invitable) */
 	boolean invitable[LOBBY_BOARD_COLUMNS][LOBBY_BOARD_ROWS];
-	/* when INVITE LINK last copied it */
+	/* when COPY INVITE last copied it */
 	unsigned long copied_time;
 } lobby_board;
 
@@ -691,7 +691,7 @@ static void lobby_board_update(struct widget_instance *list)
 		else if (seconds == 0)
 			usnprintf(text, NUMBEROF(text) - 1, L"The game is starting.");
 		else if (lobby_board.copied_time && system_milliseconds() - lobby_board.copied_time < LOBBY_BOARD_COPIED_TIME)
-			usnprintf(text, NUMBEROF(text) - 1, L"Invite link copied: paste it to your friends.");
+			usnprintf(text, NUMBEROF(text) - 1, L"Invite copied: paste it in a chat to your friends.");
 		else if (controls.bots_locked)
 			usnprintf(text, NUMBEROF(text) - 1, L"Bots play Slayer, SWAT, Infection and Gun Game only.");
 		else if (lobby_join.adding)
@@ -821,15 +821,25 @@ static boolean lobby_board_click(struct widget_instance *widget, short controlle
 		(short)(x >= settings_slider_track_x(blue) - LOBBY_BOARD_COLUMN_GAP / 2 ? 1 : 0));
 }
 
-/* "port lobby invite" (Y, INVITE LINK's prompt): the game's invite link
-copied, said in the panel */
+/* "port lobby invite" (Y, COPY INVITE's prompt): a message with the
+party's link (in a party: a friend joins it, then follows its leader into
+the game), else the game's, copied (a line with the join page's address of
+it, which chat apps make clickable, and one with the link:
+p2p_invite_message), said in the panel */
 static boolean lobby_board_invite_copy(void)
 {
 	char link[TEXT_FIELD_LENGTH];
+	char message[P2P_INVITE_MESSAGE_SIZE];
+	struct p2p_party_status party;
 
-	if (lobby_board_invite(link, sizeof(link)) <= 0)
+	p2p_party_status(&party);
+	if (party.state != _p2p_party_none)
+		snprintf(link, sizeof(link), "%s", party.link);
+	else if (lobby_board_invite(link, sizeof(link)) <= 0)
 		return FALSE;
-	platform_clipboard_set(link);
+	if (!p2p_invite_message(link, message, sizeof(message)))
+		return FALSE;
+	platform_clipboard_set(message);
 	lobby_board.copied_time = system_milliseconds() | 1;
 	ui_play_audio_feedback_sound(SOUND_FORWARD);
 	return TRUE;
@@ -844,4 +854,97 @@ static boolean lobby_board_settings(struct widget_instance *widget, boolean *wid
 		return campaign_fail();
 	ui_play_audio_feedback_sound(SOUND_FORWARD);
 	return ui_widget_port_switch(widget, SERVER_SETUP_NAME, widget_deleted);
+}
+
+/* ---- what Discord is told (p2p_discord_set_game, from party_update) */
+
+/* scenario.c's: the map played */
+extern long global_scenario_index;
+
+/* text as UTF-8 (Discord's), at most size bytes with its end */
+static void lobby_utf8(wchar_t const *wide, char *text, short size)
+{
+	short length = 0;
+
+	for (; *wide && length < size - 1; wide++)
+	{
+		unsigned long code = (unsigned short)*wide;
+
+		if (code < 0x80)
+			text[length++] = (char)code;
+		else if (code < 0x800 && length < size - 2)
+		{
+			text[length++] = (char)(0xC0 | code >> 6);
+			text[length++] = (char)(0x80 | (code & 0x3F));
+		}
+		else if (code >= 0x800 && (code < 0xD800 || code > 0xDFFF) && length < size - 3)
+		{
+			text[length++] = (char)(0xE0 | code >> 12);
+			text[length++] = (char)(0x80 | ((code >> 6) & 0x3F));
+			text[length++] = (char)(0x80 | (code & 0x3F));
+		}
+		else
+			break;
+	}
+	text[length] = 0;
+}
+
+/* the game this machine is in, as Discord's activity says it: "OpenH1 120
+Tick · Slayer on Blood Gulch" (Legacy for a game of OpenCE's netcode; a
+game of this machine alone's without either), "Campaign on Halo"; whether
+this machine hosts it for the network, and whether it is under way, its
+invite link and players */
+static void lobby_presence_tell(void)
+{
+	void *client = global_network_game_client_get();
+	struct network_game *game = client ? network_game_client_get_game(client) : NULL;
+	short state = party_client_state();
+	wchar_t text[ROW_TEXT_LENGTH * 3], map[ROW_TEXT_LENGTH];
+	char description[ROW_TEXT_LENGTH * 3];
+	char link[TEXT_FIELD_LENGTH];
+	boolean host = global_network_game_server_get() != NULL;
+	boolean local = host && network_game_is_splitscreen_local();
+
+	if (game && state >= _client_state_pregame)
+	{
+		wchar_t const *kind = game_modes_variant_kind_name(&game->variant, &game->variant_options);
+		wchar_t gametype[NUMBEROF(game->variant.human_readable_game_description) + 1];
+		boolean standard = host ? network_standard_hosting() : network_standard_agreed_rate() > 0;
+		long rate = network_standard_agreed_rate();
+		size_t length = 0;
+
+		ustrncpy(gametype, game->variant.human_readable_game_description, NUMBEROF(gametype) - 1);
+		gametype[NUMBEROF(gametype) - 1] = 0;
+		if (!gametype[0])
+			ustrncpy(gametype, kind ? kind : game->variant.game_engine_index ?
+				engine_names[PIN(game->variant.game_engine_index, 0, 5)] : L"Co-op", NUMBEROF(gametype) - 1);
+		lobby_board_map_text(game->map.name, map, NUMBEROF(map));
+		text[0] = 0;
+		if (!local)
+		{
+			if (standard)
+				usnprintf(text, NUMBEROF(text) - 1, L"OpenH1 %ld Tick \x00B7 ", rate > 0 ? rate : 30L);
+			else
+				usnprintf(text, NUMBEROF(text) - 1, L"Legacy \x00B7 ");
+			text[NUMBEROF(text) - 1] = 0;
+			length = ustrlen(text);
+		}
+		usnprintf(text + length, NUMBEROF(text) - 1 - length, L"%s on %s", gametype, map);
+		text[NUMBEROF(text) - 1] = 0;
+		lobby_utf8(text, description, sizeof(description));
+		p2p_discord_set_game(host && !local, state >= _client_state_ingame, description,
+			lobby_board_invite(link, sizeof(link)) > 0 ? link : NULL, game->player_count, game->maximum_players);
+		return;
+	}
+	/* (the campaign, or a game of its own without the network) */
+	if (!client && pc_menu_game_playing() && global_scenario_index != NONE)
+	{
+		lobby_board_map_text(tag_get_name(global_scenario_index), map, NUMBEROF(map));
+		usnprintf(text, NUMBEROF(text) - 1, L"Campaign on %s", map);
+		text[NUMBEROF(text) - 1] = 0;
+		lobby_utf8(text, description, sizeof(description));
+		p2p_discord_set_game(FALSE, TRUE, description, NULL, 0, 0);
+		return;
+	}
+	p2p_discord_set_game(FALSE, FALSE, NULL, NULL, 0, 0);
 }
