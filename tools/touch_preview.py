@@ -102,13 +102,13 @@ def layout(width, height, dpi):
                                str(width), str(height), str(dpi)],
                               check=True, capture_output=True, text=True).stdout
     lines = text.split("\n")
-    scale, logical_width, logical_height, finger = (float(v) for v in lines[0].split())
+    scale, logical_width, logical_height, finger, toolbar_y = (float(v) for v in lines[0].split())
     controls = []
     for line in lines[1:]:
         if line:
             kind, x, y, radius, size, shown = line.split()
             controls.append((int(kind), float(x), float(y), float(radius), float(size), shown == "true"))
-    return scale, logical_width, logical_height, finger, controls
+    return scale, logical_width, logical_height, finger, toolbar_y, controls
 
 
 def landscape(width, height):
@@ -215,7 +215,7 @@ def pulse(millis):
 
 
 def draw(name, width, height, dpi, style, idle, state, background, out):
-    scale, logical_width, logical_height, finger, controls = layout(width, height, dpi)
+    scale, logical_width, logical_height, finger, toolbar_y, controls = layout(width, height, dpi)
     if background:
         image = Image.open(background).convert("RGBA").resize((width, height), Image.LANCZOS)
     else:
@@ -270,7 +270,6 @@ def draw(name, width, height, dpi, style, idle, state, background, out):
                         (1 if active else MINOR_ICON_ALPHA if minor else ICON_ALPHA) * max(opacity, 0.5),
                         rotate, fit=True, brighten=brighten)
     # the toolbar: hide and options, line icons
-    toolbar_y = 38
     hide_radius = max(TOOLBAR_RADIUS, min(finger, 34))
     options_radius = max(OPTIONS_RADIUS, min(finger, 34))
     toolbar = max(opacity, 0.5) * ICON_ALPHA

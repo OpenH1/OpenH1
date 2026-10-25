@@ -11,8 +11,10 @@ import java.util.Properties;
  * size and whether it shows, with the settings that go with them, in the
  * overlay's logical units. Places are kept for the display the layout is
  * on and saved on a 960 x 540 grid, so a layout moves between displays of
- * other shapes. A layout file is Java properties text (version 3; 1 and 2
- * are still read).
+ * other shapes. A portrait layout (a display taller than it is wide, the
+ * game's picture at its top) is one of its own, on a 540 x 960 grid, with
+ * the controls in the space under the picture. A layout file is Java
+ * properties text (version 3; 1 and 2 are still read).
  */
 final class TouchLayout {
     /** the kinds of control: a button of TouchControls's list, by index */
@@ -45,6 +47,14 @@ final class TouchLayout {
      */
     static final float TOP_ROW = 72;
     static final float LOWER_PART = 90;
+    /** the portrait grid, and its placement: every line keeps its distance
+     * from the bottom of a taller display, and the columns from the nearer
+     * side of a wider one (the ones between LEFT_PART and RIGHT_PART take
+     * the extra width) */
+    private static final float PORTRAIT_GRID_WIDTH = 540;
+    private static final float PORTRAIT_GRID_HEIGHT = 960;
+    static final float LEFT_PART = 240;
+    static final float RIGHT_PART = 300;
     private static final int MAX_FILE_LENGTH = 65536;
 
     /**
@@ -61,6 +71,21 @@ final class TouchLayout {
         {236, 465}, {650, 465}, {220, 36}, {300, 36}, {570, 36}, {390, 36},
         {100, 101}, {100, 199}, {51, 150}, {149, 150}, {115, 440}, {255, 239}
     };
+    /**
+     * the portrait defaults, under a 4:3 picture across the grid's width
+     * (405 high): the stick at the lower left, the right thumb's cluster at
+     * the lower right, crouch and zoom between them at the bottom, the D-pad
+     * over the stick, and the top row (light, the grenade's type, pause,
+     * the toolbar's hide, back, then the toolbar's options) under the
+     * picture
+     */
+    private static final float[][] PORTRAIT_DEFAULTS = {
+        {470, 870}, {382, 890}, {370, 760}, {375, 638}, {460, 728}, {475, 588},
+        {230, 898}, {305, 898}, {50, 488}, {125, 488}, {200, 488}, {340, 488},
+        {95, 551}, {95, 649}, {46, 600}, {144, 600}, {125, 800}, {250, 700}
+    };
+    /** how far up from the bottom the portrait toolbar is, on its grid */
+    static final float PORTRAIT_TOOLBAR_FROM_BOTTOM = 472;
     private static final float[] RADII = {
         40, 30, 30, 30, 55, 40, 26, 26, 24, 24, 28, 24, 22, 22, 22, 22, 64, 45
     };
@@ -105,8 +130,10 @@ final class TouchLayout {
     }
 
     private final ArrayList<Control> controls = new ArrayList<>();
-    private float width = GRID_WIDTH;
-    private float height = GRID_HEIGHT;
+    /** a portrait layout (its grid PORTRAIT_GRID_WIDTH x PORTRAIT_GRID_HEIGHT) */
+    final boolean portrait;
+    private float width;
+    private float height;
     /** the smallest radius a control is drawn and touched at, in logical units */
     private float minimumRadius;
 
@@ -118,7 +145,31 @@ final class TouchLayout {
     boolean floatingStick = false;
 
     TouchLayout() {
+        this(false);
+    }
+
+    TouchLayout(boolean portrait) {
+        this.portrait = portrait;
+        width = gridWidth();
+        height = gridHeight();
         resetDefaults();
+    }
+
+    /** the grid the places are on, and saved on */
+    float gridWidth() {
+        return portrait ? PORTRAIT_GRID_WIDTH : GRID_WIDTH;
+    }
+
+    float gridHeight() {
+        return portrait ? PORTRAIT_GRID_HEIGHT : GRID_HEIGHT;
+    }
+
+    /** takes the settings saved with every layout (vibration, gyroscope, opacity, the floating stick) */
+    void takeSettings(TouchLayout other) {
+        rumbleEnabled = other.rumbleEnabled;
+        gyroscopeEnabled = other.gyroscopeEnabled;
+        opacity = other.opacity;
+        floatingStick = other.floatingStick;
     }
 
     /** places the layout on a display of this size, in logical units */
@@ -196,8 +247,9 @@ final class TouchLayout {
     /** the default controls, at their default places, sizes and visibility */
     void resetDefaults() {
         controls.clear();
-        for (int i = 0; i < DEFAULTS.length; i++) {
-            Control control = new Control(i, DEFAULTS[i][0], DEFAULTS[i][1]);
+        float[][] defaults = portrait ? PORTRAIT_DEFAULTS : DEFAULTS;
+        for (int i = 0; i < defaults.length; i++) {
+            Control control = new Control(i, defaults[i][0], defaults[i][1]);
             control.shown = !hiddenByDefault(i);
             controls.add(control);
         }
@@ -241,18 +293,18 @@ final class TouchLayout {
         float radius = radius(control);
         moved.x = Math.max(radius, Math.min(width - radius, x));
         moved.y = Math.max(radius, Math.min(height - radius, y));
-        moved.placeX = moved.x * GRID_WIDTH / width;
-        moved.placeY = gridY(moved.y, height);
+        moved.placeX = gridX(moved.x);
+        moved.placeY = gridY(moved.y);
     }
 
     /** puts a control at a saved place on the grid, if it is a valid one */
     void restore(int control, float x, float y) {
-        if (Float.isFinite(x) && Float.isFinite(y) && x >= 0 && x <= GRID_WIDTH && y >= 0 && y <= GRID_HEIGHT) {
+        if (Float.isFinite(x) && Float.isFinite(y) && x >= 0 && x <= gridWidth() && y >= 0 && y <= gridHeight()) {
             Control restored = controls.get(control);
             restored.placeX = x;
             restored.placeY = y;
-            restored.x = x * width / GRID_WIDTH;
-            restored.y = displayY(y, height);
+            restored.x = displayX(x);
+            restored.y = displayY(y);
         }
     }
 
@@ -264,33 +316,66 @@ final class TouchLayout {
         for (int i = 0; i < size(); i++) {
             Control control = controls.get(i);
             float radius = radius(i);
-            control.x = Math.max(radius, Math.min(width - radius, control.placeX * width / GRID_WIDTH));
-            control.y = Math.max(radius, Math.min(height - radius, displayY(control.placeY, height)));
+            control.x = Math.max(radius, Math.min(width - radius, displayX(control.placeX)));
+            control.y = Math.max(radius, Math.min(height - radius, displayY(control.placeY)));
         }
     }
 
-    /** a line of the grid on a display this high, in logical units (TOP_ROW, LOWER_PART) */
-    static float displayY(float placeY, float height) {
-        float extra = height - GRID_HEIGHT;
-        if (!(extra > 0))
-            return placeY * height / GRID_HEIGHT;
-        if (placeY <= TOP_ROW)
-            return placeY;
-        if (placeY >= LOWER_PART)
-            return placeY + extra;
-        return TOP_ROW + (placeY - TOP_ROW) * (LOWER_PART - TOP_ROW + extra) / (LOWER_PART - TOP_ROW);
+    /** a place on this layout's grid on the display, each way, and back */
+    private float displayX(float placeX) {
+        return portrait ? edgeKept(placeX, width, PORTRAIT_GRID_WIDTH, LEFT_PART, RIGHT_PART)
+            : placeX * width / GRID_WIDTH;
     }
 
-    /** the grid's line at this height on a display this high: displayY's inverse */
-    static float gridY(float y, float height) {
-        float extra = height - GRID_HEIGHT;
+    private float displayY(float placeY) {
+        return portrait ? edgeKept(placeY, height, PORTRAIT_GRID_HEIGHT, 0, 1) : displayY(placeY, height);
+    }
+
+    private float gridX(float x) {
+        return portrait ? edgeKeptBack(x, width, PORTRAIT_GRID_WIDTH, LEFT_PART, RIGHT_PART) : x * GRID_WIDTH / width;
+    }
+
+    private float gridY(float y) {
+        return portrait ? edgeKeptBack(y, height, PORTRAIT_GRID_HEIGHT, 0, 1) : gridY(y, height);
+    }
+
+    /**
+     * a line of a grid this long on a display this long: on a longer one the
+     * lines to near keep their distance from its start and those from far
+     * from its end, and the ones between take the extra length; on a shorter
+     * one, its share
+     */
+    static float edgeKept(float line, float length, float grid, float near, float far) {
+        float extra = length - grid;
         if (!(extra > 0))
-            return y * GRID_HEIGHT / height;
-        if (y <= TOP_ROW)
-            return y;
-        if (y >= LOWER_PART + extra)
-            return y - extra;
-        return TOP_ROW + (y - TOP_ROW) * (LOWER_PART - TOP_ROW) / (LOWER_PART - TOP_ROW + extra);
+            return line * length / grid;
+        if (line <= near)
+            return line;
+        if (line >= far)
+            return line + extra;
+        return near + (line - near) * (far - near + extra) / (far - near);
+    }
+
+    /** edgeKept's inverse */
+    static float edgeKeptBack(float at, float length, float grid, float near, float far) {
+        float extra = length - grid;
+        if (!(extra > 0))
+            return at * grid / length;
+        if (at <= near)
+            return at;
+        if (at >= far + extra)
+            return at - extra;
+        return near + (at - near) * (far - near) / (far - near + extra);
+    }
+
+    /** a line of the landscape grid on a display this high, in logical units (TOP_ROW, LOWER_PART) */
+    static float displayY(float placeY, float height) {
+        return edgeKept(placeY, height, GRID_HEIGHT, TOP_ROW, LOWER_PART);
+    }
+
+    /** the landscape grid's line at this height on a display this high: displayY's inverse */
+    static float gridY(float y, float height) {
+        return edgeKeptBack(y, height, GRID_HEIGHT, TOP_ROW, LOWER_PART);
     }
 
     /** the layout as a layout file's text, with the look sensitivity */
@@ -304,6 +389,9 @@ final class TouchLayout {
         values.setProperty("gyroscope", Boolean.toString(gyroscopeEnabled));
         values.setProperty("opacity", Float.toString(opacity));
         values.setProperty("floating-stick", Boolean.toString(floatingStick));
+        // (a landscape layout's file is as it was)
+        if (portrait)
+            values.setProperty("orientation", "portrait");
         values.setProperty("count", Integer.toString(size()));
         values.setProperty("sensitivity", Float.toString(sensitivity));
         for (int i = 0; i < size(); i++) {
@@ -335,7 +423,10 @@ final class TouchLayout {
             float sensitivity = Float.parseFloat(values.getProperty("sensitivity"));
             if (count < BASE_COUNT || count > MAX_CONTROLS || !validSensitivity(sensitivity))
                 throw new IllegalArgumentException("Invalid layout settings");
-            TouchLayout layout = new TouchLayout();
+            String orientation = values.getProperty("orientation", "landscape");
+            if (!"landscape".equals(orientation) && !"portrait".equals(orientation))
+                throw new IllegalArgumentException("Invalid orientation");
+            TouchLayout layout = new TouchLayout("portrait".equals(orientation));
             layout.controls.clear();
             if (version >= 2) {
                 layout.rumbleEnabled = readBoolean(values, "rumble");
@@ -349,7 +440,7 @@ final class TouchLayout {
                 layout.floatingStick = readBoolean(values, "floating-stick");
             }
             for (int i = 0; i < count; i++)
-                layout.controls.add(readControl(values, i, version));
+                layout.controls.add(readControl(values, i, version, layout.gridWidth(), layout.gridHeight()));
             return new Configuration(layout, sensitivity);
         } catch (IOException | NullPointerException e) {
             throw new IllegalArgumentException("Incomplete layout file", e);
@@ -367,7 +458,8 @@ final class TouchLayout {
         throw new IllegalArgumentException("Unsupported layout file");
     }
 
-    private static Control readControl(Properties values, int index, int version) {
+    private static Control readControl(Properties values, int index, int version, float gridWidth,
+                                       float gridHeight) {
         String key = "control." + index + ".";
         int type = Integer.parseInt(values.getProperty(key + "type"));
         float x = Float.parseFloat(values.getProperty(key + "x"));
@@ -375,8 +467,8 @@ final class TouchLayout {
         String shown = values.getProperty(key + "visible");
         float size = version >= 2 ? Float.parseFloat(values.getProperty(key + "size")) : 1f;
         boolean validType = type >= 0 && type < BASE_COUNT && (index >= BASE_COUNT ? type != LEFT : type == index);
-        boolean validPlace = Float.isFinite(x) && Float.isFinite(y) && x >= 0 && x <= GRID_WIDTH
-            && y >= 0 && y <= GRID_HEIGHT;
+        boolean validPlace = Float.isFinite(x) && Float.isFinite(y) && x >= 0 && x <= gridWidth
+            && y >= 0 && y <= gridHeight;
         boolean validSize = Float.isFinite(size) && size >= MIN_SIZE && size <= MAX_SIZE;
         if (!validType || !validPlace || !validSize || !("true".equals(shown) || "false".equals(shown)))
             throw new IllegalArgumentException("Invalid control in layout file");

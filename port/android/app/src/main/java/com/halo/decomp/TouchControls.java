@@ -148,6 +148,8 @@ public final class TouchControls extends View implements SensorEventListener, In
 
     private static final String PREFERENCES = "touch-layout-v1";
     private static final String KEY_CONFIGURATION = "configuration";
+    /** the portrait layout's (display.orientation "portrait", a portrait-shaped window) */
+    private static final String KEY_PORTRAIT_CONFIGURATION = "configuration-portrait";
     private static final String KEY_HIDDEN = "hidden";
 
     /**
@@ -291,7 +293,14 @@ public final class TouchControls extends View implements SensorEventListener, In
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
         .build();
 
-    private TouchLayout layout = new TouchLayout();
+    /**
+     * the layouts of a landscape view and of a portrait one (taller than it
+     * is wide: the game's picture at the top, the controls below it), each
+     * edited and saved on its own; layout is the one in use (layoutControls)
+     */
+    private TouchLayout landscapeLayout = new TouchLayout(false);
+    private TouchLayout portraitLayout = new TouchLayout(true);
+    private TouchLayout layout = landscapeLayout;
     private float sensitivity = 1f;
     /** the controls removed by the toolbar's Hide, until its Touch */
     private boolean hidden;
@@ -460,16 +469,27 @@ public final class TouchControls extends View implements SensorEventListener, In
 
     private void loadLayout(Context context) {
         String configuration = preferences.getString(KEY_CONFIGURATION, null);
-        if (configuration == null)
-            return;
+        String portrait = preferences.getString(KEY_PORTRAIT_CONFIGURATION, null);
         try {
-            TouchLayout.Configuration saved = TouchLayout.importConfiguration(configuration);
-            layout = saved.layout;
-            sensitivity = saved.sensitivity;
+            if (configuration != null) {
+                TouchLayout.Configuration saved = TouchLayout.importConfiguration(configuration);
+                if (!saved.layout.portrait) {
+                    landscapeLayout = saved.layout;
+                    sensitivity = saved.sensitivity;
+                }
+            }
+            // (none saved yet: the portrait defaults, with the settings the landscape layout has)
+            portraitLayout.takeSettings(landscapeLayout);
+            if (portrait != null) {
+                TouchLayout.Configuration saved = TouchLayout.importConfiguration(portrait);
+                if (saved.layout.portrait)
+                    portraitLayout = saved.layout;
+            }
         } catch (IllegalArgumentException e) {
             Toast.makeText(context, "The saved touch layout could not be read. Using the default one.",
                 Toast.LENGTH_LONG).show();
         }
+        layout = landscapeLayout;
     }
 
     // ---------- the activity's lifecycle (HaloActivity)
@@ -524,7 +544,14 @@ public final class TouchControls extends View implements SensorEventListener, In
         densityDpi = getResources().getConfiguration().densityDpi;
         float width = getWidth();
         float height = getHeight();
-        scale = Math.max(0.01f, Math.min(width / GRID_WIDTH, height / GRID_HEIGHT));
+        // (a portrait view has the portrait layout, its settings the ones in use)
+        boolean portrait = height > width;
+        if (portrait != layout.portrait) {
+            TouchLayout next = portrait ? portraitLayout : landscapeLayout;
+            next.takeSettings(layout);
+            layout = next;
+        }
+        scale = Math.max(0.01f, Math.min(width / layout.gridWidth(), height / layout.gridHeight()));
         logicalWidth = width / scale;
         logicalHeight = height / scale;
         layout.bounds(logicalWidth, logicalHeight);
@@ -543,7 +570,9 @@ public final class TouchControls extends View implements SensorEventListener, In
     }
 
     private float toolbarY() {
-        return Math.max(38, insetTop / scale + 38);
+        float top = Math.max(38, insetTop / scale + 38);
+        // (portrait: in the row of light and pause, under the game's picture)
+        return layout.portrait ? Math.max(top, logicalHeight - TouchLayout.PORTRAIT_TOOLBAR_FROM_BOTTOM) : top;
     }
 
     private float optionsX() {
@@ -1094,7 +1123,12 @@ public final class TouchControls extends View implements SensorEventListener, In
     // ---------- the layout, saved and in files
 
     private boolean saveLayout() {
-        boolean saved = preferences.edit().putString(KEY_CONFIGURATION, exportLayout()).commit();
+        // (the settings saved with every layout are the same in both)
+        (layout == landscapeLayout ? portraitLayout : landscapeLayout).takeSettings(layout);
+        boolean saved = preferences.edit()
+            .putString(KEY_CONFIGURATION, landscapeLayout.exportConfiguration(sensitivity))
+            .putString(KEY_PORTRAIT_CONFIGURATION, portraitLayout.exportConfiguration(sensitivity))
+            .commit();
         if (!saved)
             Toast.makeText(getContext(), "The touch layout could not be saved. Try again.", Toast.LENGTH_LONG).show();
         return saved;
@@ -1104,16 +1138,36 @@ public final class TouchControls extends View implements SensorEventListener, In
         return layout.exportConfiguration(sensitivity);
     }
 
-    /** replaces the layout with a layout file's (saved first: it throws if the file is not valid) */
+    /**
+     * replaces the layout of the file's orientation (a portrait layout's
+     * file says so) with the file's, and its settings both layouts' (saved
+     * first: it throws if the file is not valid)
+     */
     public void importLayout(String text) {
         TouchLayout.Configuration imported = TouchLayout.importConfiguration(text);
-        imported.layout.bounds(logicalWidth, logicalHeight);
-        imported.layout.setMinimumRadius(minimumRadius());
+        boolean inUse = imported.layout.portrait == layout.portrait;
+        if (inUse) {
+            imported.layout.bounds(logicalWidth, logicalHeight);
+            imported.layout.setMinimumRadius(minimumRadius());
+        }
+        TouchLayout other = imported.layout.portrait ? landscapeLayout : portraitLayout;
+        other.takeSettings(imported.layout);
         String normalized = imported.layout.exportConfiguration(imported.sensitivity);
-        if (!preferences.edit().putString(KEY_CONFIGURATION, normalized).commit())
+        if (!preferences.edit()
+                .putString(imported.layout.portrait ? KEY_PORTRAIT_CONFIGURATION : KEY_CONFIGURATION, normalized)
+                .putString(imported.layout.portrait ? KEY_CONFIGURATION : KEY_PORTRAIT_CONFIGURATION,
+                    other.exportConfiguration(imported.sensitivity))
+                .commit())
             throw new IllegalArgumentException("Could not save the imported layout");
         reset();
-        layout = imported.layout;
+        if (imported.layout.portrait)
+            portraitLayout = imported.layout;
+        else
+            landscapeLayout = imported.layout;
+        if (inUse)
+            layout = imported.layout;
+        else
+            layout.takeSettings(imported.layout);
         sensitivity = imported.sensitivity;
         setHidden(false);
         cancelRumble();

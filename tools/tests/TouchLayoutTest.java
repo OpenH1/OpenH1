@@ -196,6 +196,76 @@ public final class TouchLayoutTest {
             high.bounds(960, tall);
             check(Math.abs(high.y(0) - middle) < 0.01f, "A control put in the middle of a tall display comes back there");
         }
+        // The portrait layout: its own grid and defaults, apart at every
+        // portrait shape (a 16:9 phone, 20:9, the Fold7's cover, a split
+        // screen half, a folding phone's inner screen), as low as on 16:9 on
+        // a taller one and the right thumb's cluster at the right of a wider
+        // one; its file says it is portrait, a landscape one's is as it was.
+        TouchLayout upright = new TouchLayout(true);
+        check(upright.portrait && upright.gridWidth() == 540 && upright.gridHeight() == 960,
+              "A portrait layout is on its own grid");
+        check(upright.size() == 18 && !upright.shown(TouchLayout.FIRE_LEFT), "A portrait layout has every control");
+        for (float[] display : new float[][] {
+                {540, 960, 24 * 2.25f / 2.25f}, {540, 1200, 24 * 2.625f / 2f}, {540, 1260, 24 * 2.35f / 2f},
+                {901.5f, 960, 24 * 2.625f / 1.198f}, {865, 960, 24 * 2.35f / 2.275f}, {540, 960, 34}}) {
+            TouchLayout tall = new TouchLayout(true);
+            tall.bounds(display[0], display[1]);
+            tall.setMinimumRadius(display[2]);
+            for (int a = 0; a < tall.size(); a++) {
+                if (!tall.shown(a))
+                    continue;
+                check(tall.x(a) - tall.radius(a) >= 0 && tall.x(a) + tall.radius(a) <= display[0]
+                      && tall.y(a) - tall.radius(a) >= 0 && tall.y(a) + tall.radius(a) <= display[1],
+                      "A portrait control stays on the display");
+                for (int b = a + 1; b < tall.size(); b++) {
+                    if (tall.shown(b))
+                        check(Math.hypot(tall.x(a) - tall.x(b), tall.y(a) - tall.y(b)) >= tall.radius(a) + tall.radius(b),
+                              "Portrait controls do not overlap at " + display[0] + " x " + display[1]);
+                }
+            }
+        }
+        TouchLayout portraitBase = new TouchLayout(true);
+        TouchLayout portraitTall = new TouchLayout(true);
+        portraitTall.bounds(540, 1200);
+        TouchLayout portraitWide = new TouchLayout(true);
+        portraitWide.bounds(865, 960);
+        for (int i = 0; i < portraitBase.size(); i++) {
+            check(Math.abs((1200 - portraitTall.y(i)) - (960 - portraitBase.y(i))) < 0.01f
+                  && portraitTall.x(i) == portraitBase.x(i),
+                  "Portrait controls keep their distance from the bottom of a taller display");
+            if (portraitBase.x(i) >= TouchLayout.RIGHT_PART)
+                check(Math.abs((865 - portraitWide.x(i)) - (540 - portraitBase.x(i))) < 0.01f,
+                      "The right thumb's portrait controls keep their distance from the right of a wider display");
+            else if (portraitBase.x(i) <= TouchLayout.LEFT_PART)
+                check(portraitWide.x(i) == portraitBase.x(i),
+                      "The left thumb's portrait controls keep their distance from the left of a wider display");
+        }
+        portraitWide.move(4, 600, 300);
+        float portraitX = portraitWide.x(4), portraitY = portraitWide.y(4);
+        TouchLayout.Configuration uprightCopy = TouchLayout.importConfiguration(portraitWide.exportConfiguration(1.5f));
+        check(uprightCopy.layout.portrait, "A portrait layout's file says it is portrait");
+        uprightCopy.layout.bounds(865, 960);
+        check(Math.abs(uprightCopy.layout.x(4) - portraitX) < 0.01f && Math.abs(uprightCopy.layout.y(4) - portraitY) < 0.01f,
+              "A portrait layout comes back from its file");
+        check(!new TouchLayout().exportConfiguration(1f).contains("orientation"),
+              "A landscape layout's file is as it was");
+        check(!TouchLayout.importConfiguration(new TouchLayout().exportConfiguration(1f)).layout.portrait,
+              "A layout file without an orientation is landscape");
+        String sideways = portraitWide.exportConfiguration(1f).replace("orientation=portrait", "orientation=sideways");
+        try {
+            TouchLayout.importConfiguration(sideways);
+            check(false, "An unknown orientation must be refused");
+        } catch (IllegalArgumentException expected) {
+        }
+        TouchLayout settingsFrom = new TouchLayout();
+        settingsFrom.rumbleEnabled = false;
+        settingsFrom.gyroscopeEnabled = true;
+        settingsFrom.floatingStick = true;
+        settingsFrom.setOpacity(0.5f);
+        TouchLayout settingsTo = new TouchLayout(true);
+        settingsTo.takeSettings(settingsFrom);
+        check(!settingsTo.rumbleEnabled && settingsTo.gyroscopeEnabled && settingsTo.floatingStick
+              && settingsTo.opacity == 0.5f, "The settings follow from one layout to the other");
         // Sizes follow use: fire the largest, then jump and the grenade, then reload,
         // swap and melee; the seldom used (stick clicks, white, black, back, the
         // D-pad) smaller than all of those.
