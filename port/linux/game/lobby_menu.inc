@@ -536,10 +536,21 @@ static void lobby_board_update(struct widget_instance *list)
 	else if (game)
 	{
 		wchar_t name[ROW_TEXT_LENGTH];
+		short bots = 0;
 
+		/* (and the host's bots among them, bots.c's) */
+		for (index = 0; index < count; index++)
+			bots += entries[index].bot ? 1 : 0;
 		lobby_board_game_name(game, entries, players, count, name, NUMBEROF(name));
 		usnprintf(text, NUMBEROF(text) - 1, L"%s \x00B7 %s \x00B7 %d of %d players", name,
 			controls.invite ? L"Internet" : L"Local network", count, game->maximum_players);
+		if (bots)
+		{
+			size_t length = ustrlen(text);
+
+			usnprintf(text + length, NUMBEROF(text) - 1 - length, bots == 1 ? L" \x00B7 1 bot" : L" \x00B7 %d bots",
+				bots);
+		}
 	}
 	text[NUMBEROF(text) - 1] = 0;
 	menu_text_box_fit(named(screen, "board_subtitle", 0), text, 0);
