@@ -71,7 +71,12 @@
             </intent-filter>
         </activity>
 
-        <!-- in a process of its own, with a fresh Java heap (HaloApplication) -->
+        <!-- in a process of its own, with a fresh Java heap (HaloApplication);
+             resizeable: in split screen, a pop-up window, Samsung DeX, or
+             on a folding phone folded or unfolded mid-game, the window
+             changes size in place (the Vulkan swapchain is made again, the
+             touch controls are laid out again); full screen stays landscape
+             (SDL_HINT_ORIENTATIONS, sdl_platform.c) -->
         <activity
             android:name=".HaloActivity"
             android:process=":game"
@@ -79,12 +84,20 @@
             android:alwaysRetainTaskState="true"
             android:launchMode="singleInstance"
             android:screenOrientation="sensorLandscape"
-            android:resizeableActivity="false"
+            android:resizeableActivity="true"
             android:preferMinimalPostProcessing="true"
             android:configChanges="layoutDirection|locale|grammaticalGender|fontScale|fontWeightAdjustment|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation|density">
             <meta-data
                 android:name="android.app.category"
                 android:value="game" />
+            <!-- a window no smaller than this (a phone's half in split
+                 screen is larger); a new pop-up or DeX window opens at 16:9 -->
+            <layout
+                android:defaultWidth="960dp"
+                android:defaultHeight="540dp"
+                android:gravity="center"
+                android:minWidth="320dp"
+                android:minHeight="240dp" />
         </activity>
 
         <!-- the downloaded new version, for the package installer (Updater) -->
