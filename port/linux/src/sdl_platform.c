@@ -1202,10 +1202,12 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 				, NULL);
 		return FALSE;
 	}
+#endif
+	/* (the events are read on this thread, the main one: on macOS also
+	the window's own, without which it never comes on screen) */
 	platform_event_thread = SDL_GetCurrentThreadID();
 	platform_mouse_capture(TRUE);
 	return TRUE;
-#endif
 }
 
 #ifdef HALO_VR
