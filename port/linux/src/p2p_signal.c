@@ -182,8 +182,11 @@ enum
 	/* the party's (p2p_party.c) */
 	_topic_party,
 	_topic_probe,
+	/* the friends' (p2p_friends.c): the profile's inbox, each friend's
+	presence */
+	_topic_friends = _topic_probe + P2P_MAXIMUM_PROBES,
 	/* the topics a broker is subscribed to */
-	NUMBER_OF_TOPICS = _topic_probe + P2P_MAXIMUM_PROBES,
+	NUMBER_OF_TOPICS = _topic_friends + P2P_FRIENDS_TOPICS,
 };
 
 /* MQTT 5's properties */
@@ -394,7 +397,11 @@ static struct
 
 	/* the party's topic (p2p_signal_party; empty: none) */
 	char party_topic[TOPIC_SIZE];
+	/* the friends' (p2p_signal_friends; empty: none) */
+	char friends_topics[P2P_FRIENDS_TOPICS][TOPIC_SIZE];
 } signalling;
+
+typedef char topic_size_assert[TOPIC_SIZE == P2P_TOPIC_SIZE ? 1 : -1];
 
 static int elapsed(unsigned long since, unsigned long time)
 {
@@ -720,12 +727,19 @@ static void broker_sync_topics(struct broker *broker)
 	wanted[_topic_party] = signalling.party_topic;
 	for (index = 0; index < P2P_MAXIMUM_PROBES; index++)
 		wanted[_topic_probe + index] = signalling.probes[index].join.active ? signalling.probes[index].topic : "";
+	for (index = 0; index < P2P_FRIENDS_TOPICS; index++)
+		wanted[_topic_friends + index] = signalling.friends_topics[index];
 	for (index = 0; index < NUMBER_OF_TOPICS; index++)
 	{
 		char *had = broker->topics[index];
 
 		if (!strcmp(wanted[index], had))
 			continue;
+		/* (a few at a time: a profile's friends' topics at once would
+		overrun the connection's buffer, which closes it; the rest at the
+		next passes, p2p_signal_update) */
+		if (broker->output_size > BUFFER_SIZE / 2)
+			return;
 		if (had[0])
 			broker_topic(broker, had, 0, 0);
 		/* (No Local: the own slot's and the party's, whose own messages
@@ -1451,6 +1465,18 @@ static void publish_received(struct broker *broker, const char *topic, const uns
 		p2p_party_heard(payload, size);
 		return;
 	}
+	{
+		int index;
+
+		for (index = 0; index < P2P_FRIENDS_TOPICS && signalling.friends_topics[index][0]; index++)
+		{
+			if (!strcmp(topic, signalling.friends_topics[index]))
+			{
+				p2p_friends_heard(topic, payload, size);
+				return;
+			}
+		}
+	}
 	if (signalling.hosting && !strcmp(topic, signalling.host_topic))
 	{
 		message_size = p2p_open(signalling.host_key, payload, size, message);
@@ -1923,6 +1949,10 @@ void p2p_signal_update(const int *read, int read_count, const int *write, int wr
 		{
 			broker_send(broker, 0xC0, NULL, 0);
 		}
+		/* (the topics not subscribed to yet: a few each pass) */
+		broker_sync_topics(broker);
+		if (broker->state != _broker_ready)
+			continue;
 		broker_update_lobby(broker);
 	}
 	for (index = 0; index < MAXIMUM_JOINS + P2P_MAXIMUM_PROBES; index++)
@@ -2167,6 +2197,33 @@ void p2p_signal_party(const char *topic)
 {
 	snprintf(signalling.party_topic, sizeof(signalling.party_topic), "%s", topic);
 	sync_all_topics();
+}
+
+void p2p_signal_friends(const char (*topics)[P2P_TOPIC_SIZE], int count)
+{
+	int index;
+
+	for (index = 0; index < P2P_FRIENDS_TOPICS; index++)
+	{
+		snprintf(signalling.friends_topics[index], TOPIC_SIZE, "%s",
+			index < count && strlen(topics[index]) < TOPIC_SIZE ? topics[index] : "");
+	}
+	sync_all_topics();
+}
+
+void p2p_signal_friends_publish(const char *topic, const unsigned char *payload, int size, int urgent)
+{
+	int index;
+
+	if (!topic[0] || strlen(topic) >= TOPIC_SIZE || size > MAXIMUM_MESSAGE_SIZE + P2P_SEAL_OVERHEAD)
+		return;
+	for (index = 0; index < signalling.broker_count; index++)
+	{
+		struct broker *broker = &signalling.brokers[index];
+
+		if (broker->state == _broker_ready && (urgent || broker_may_publish(broker, 0)))
+			broker_publish(broker, topic, payload, size);
+	}
 }
 
 void p2p_signal_party_publish(const unsigned char *payload, int size, int urgent)

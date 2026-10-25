@@ -181,6 +181,40 @@ on its topic meanwhile). Under p2p_lock */
 void p2p_party_spare(char *link, int link_size, char *id, int id_size);
 void p2p_party_spare_lead(void);
 void p2p_party_standby(int on);
+/* ... and listened on while friends may join it (p2p_friends.c: the
+presence shared), as while Discord offers it */
+void p2p_party_friends_standby(int on);
+
+/* ---------- p2p_friends.c: friends */
+
+enum
+{
+	/* a topic's most, with its end (hceu/3/f/ and 32 hex digits: 42) */
+	P2P_TOPIC_SIZE = 64,
+	/* the friends' topics listened on: the profile's inbox and each
+	friend's presence */
+	P2P_FRIENDS_TOPICS = 1 + P2P_FRIENDS_MAXIMUM,
+};
+
+/* the p2p thread's pass, under p2p_lock */
+void p2p_friends_update(void);
+/* a message on one of the friends' topics, under p2p_lock */
+void p2p_friends_heard(const char *topic, const unsigned char *payload, int size);
+/* the game is quitting: the file written, an OFFLINE published at once;
+under p2p_lock. Whether the presence is published (an OFFLINE is due as
+the game quits) */
+void p2p_friends_quit(void);
+int p2p_friends_publishing(void);
+/* (tools/p2p_friends_check.c's) the code of a key; friends.txt's text read
+into the friends (returns whether it held an identity), and written (its
+size, 0 if it does not fit); the list's order */
+void p2p_friend_code_of(const unsigned char *key, unsigned char *code);
+int p2p_friends_parse(const char *text, int size);
+int p2p_friends_format(char *text, int size);
+int p2p_friends_compare(const struct p2p_friend *first, const struct p2p_friend *second);
+/* seconds and milliseconds since 1970 (p2p.c) */
+long long p2p_wall_seconds(void);
+unsigned long long p2p_wall_milliseconds(void);
 
 /* ---------- p2p_signal.c: signalling through public MQTT brokers */
 
@@ -236,6 +270,12 @@ message published on it on every broker, at most once: within each
 broker's bucket, or (urgent: the game is quitting) at once */
 void p2p_signal_party(const char *topic);
 void p2p_signal_party_publish(const unsigned char *payload, int size, int urgent);
+/* the friends' topics (p2p_friends.c: count of them, the rest none)
+subscribed to, a few at a time; and a message published on any topic (a
+friend's inbox, the own presence) on every broker, at most once: within
+each broker's bucket, or (urgent) at once */
+void p2p_signal_friends(const char (*topics)[P2P_TOPIC_SIZE], int count);
+void p2p_signal_friends_publish(const char *topic, const unsigned char *payload, int size, int urgent);
 
 /* ---------- p2p_crypto.c */
 
@@ -346,5 +386,10 @@ void p2p_discord_user(char *id, int id_size, char *name, int name_size);
 /* what to show: hosting with an invite link's secret and player counts, or
 not (secret NULL); under p2p_lock */
 void p2p_discord_set_hosting(const char *secret, int player_count, int maximum_player_count);
+/* the game this machine is in, as the game told (p2p_discord_set_game): its
+words (UTF-8, empty: none), whether it hosts it and it is under way, its
+players; under p2p_lock */
+void p2p_discord_game(int *hosting, int *playing, char *description, int size, int *player_count,
+	int *maximum_player_count);
 
 #endif

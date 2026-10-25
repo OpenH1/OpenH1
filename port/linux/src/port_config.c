@@ -983,6 +983,11 @@ static const struct config_setting config_settings[] =
 		"The server browser: public games are listed through the signalling\n"
 		"brokers, and Join Game > Server Browser shows them. False lists no\n"
 		"game of this machine's and shows none." },
+	{ "friends.share_status", _config_boolean, "true", "HALO_FRIENDS_SHARE_STATUS", _environment_value, _platform_all,
+		"Show your friends that you are online, and where (the menus, a party,\n"
+		"a game), and let them join you (Multiplayer > FRIENDS). Only your\n"
+		"friends can read it. False appears offline: nothing is published, and\n"
+		"you still see your friends." },
 	{ "network.host_public", _config_boolean, "true", "HALO_NET_HOST_PUBLIC", _environment_value, _platform_all,
 		"Whether a new game of Create Game > Internet starts as PUBLIC (listed\n"
 		"in everyone's server browser: anyone can see and join it) or, false,\n"
@@ -1571,6 +1576,16 @@ static const struct config_setting config_settings[] =
 		"How well this machine tells its party it can host a matchmaking game,\n"
 		"for a test: \"strict\" (its network's NAT strict) or \"open\"; empty: as\n"
 		"its network is. Set, a player of no profile hosts the game." },
+	{ "debug.friends_folder", _config_string, "\"\"", "HALO_FRIENDS_FOLDER", _environment_value, _platform_all,
+		"Keep friends.txt (the friends, the friend key) in this folder, not the\n"
+		"player profile's: a test's copies of the game, which have no profile;\n"
+		"empty for the profile's." },
+	{ "debug.friends", _config_string, "\"\"", "HALO_FRIENDS", _environment_value, _platform_all,
+		"Friends' actions a test takes at a second after the start:\n"
+		"\"<second> <action> [<friend code>]|...\", the actions add, accept\n"
+		"(every request), ignore (every request), remove, block, invite, join\n"
+		"(the code's friend), accept_invite, share and hide (friends.share_status),\n"
+		"and list (the list logged); empty for none." },
 	{ "debug.party", _config_string, "\"\"", "HALO_PARTY", _environment_value, _platform_all,
 		"Join this party's link at the start, or lead its party (\"lead:\" before\n"
 		"the link): several copies of the game in one party, in a test; empty\n"

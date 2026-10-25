@@ -902,6 +902,16 @@ void p2p_discord_set_game(int hosting, int playing, const char *description, con
 	pthread_mutex_unlock(&p2p_lock);
 }
 
+void p2p_discord_game(int *hosting, int *playing, char *description, int size, int *player_count,
+	int *maximum_player_count)
+{
+	*hosting = discord.game.hosting;
+	*playing = discord.game.playing;
+	snprintf(description, (size_t)size, "%s", discord.game.description);
+	*player_count = discord.game.player_count;
+	*maximum_player_count = discord.game.maximum_player_count;
+}
+
 unsigned long p2p_discord_join_request(char *name, int size, int *game)
 {
 	unsigned long serial = 0;
