@@ -71,6 +71,9 @@ symbols in this file:
 /* port: how big debug.txt grows before it is rolled to debug.old.txt and
 begun again (write_to_debug_file) */
 #define DEBUG_FILE_PORT_MAXIMUM_SIZE (64L * 1024 * 1024)
+/* port: the most lines a run of lines written again (each in turn) can have,
+counted rather than written (write_to_debug_file) */
+#define DEBUG_FILE_PORT_REPEAT_LINES 4
 
 /* ---------- macros */
 
@@ -91,9 +94,19 @@ long fucked_up_shit_count = 0;
 
 /* ---------- public code */
 
+/* port: (write_to_debug_file with no line: a run counted written down) */
+static void write_to_debug_file(
+	char const *string,
+	boolean date);
+
 void errors_dispose(
 	void)
 {
+	/* port: a run of lines counted as the game ends written down */
+	if (error_globals.output_to_debug_file)
+	{
+		write_to_debug_file(NULL, FALSE);
+	}
 	stack_walk_dispose();
 
 	return;
@@ -126,23 +139,153 @@ closing it per line takes milliseconds on Windows, and a host logs
 thousands of lines when a hundred machines join, load or leave. Each line is
 one write, under a lock, so lines from several threads do not interleave.
 
-port: A line written again as it was (the same warning each tick) is
-counted, not written, until a different one comes ("last line repeated N
-times"). Past DEBUG_FILE_PORT_MAXIMUM_SIZE the file is rolled to
-debug.old.txt (the one before that let go) and begun again: a game left
-running for days wrote without end. */
+port: Lines written again as they were, a line or a few in turn (the same
+warning each tick, or a failure and its caller's), are counted once they
+come twice in a row, not written, until a different one comes ("last line
+repeated N times", "last 2 lines repeated N times"): the same two lines
+each frame filled debug.txt with 60 MB in minutes. Past
+DEBUG_FILE_PORT_MAXIMUM_SIZE the file is rolled to debug.old.txt (the one
+before that let go) and begun again: a game left running for days wrote
+without end. */
 static void debug_file_port_write(
 	FILE *file,
 	char const *prefix,
 	char const *string);
 
+/* port: the lines last written, and the run of them counted
+(debug_file_port_repeated) */
+struct debug_file_port_repeats
+{
+	char lines[2 * DEBUG_FILE_PORT_REPEAT_LINES][1024];
+	boolean dated[2 * DEBUG_FILE_PORT_REPEAT_LINES];
+	unsigned long written;
+	/* the lines in the run counted (0: none), how many of its next pass
+	have come, and its passes counted */
+	long period;
+	long position;
+	unsigned long count;
+};
+
 static FILE *debug_file_port = NULL;
 static long debug_file_port_size = 0;
-static char debug_file_port_last_line[1024];
-static unsigned long debug_file_port_repeat_count = 0;
+static struct debug_file_port_repeats debug_file_port_repeats;
 static volatile long debug_file_port_lock = 0;
 /* (write_to_error_file's header again, atop the file begun again) */
 static boolean debug_file_port_rolled = FALSE;
+
+/* port: the line written back (1: the last) */
+static char const *debug_file_port_recent(
+	long back)
+{
+	struct debug_file_port_repeats *repeats = &debug_file_port_repeats;
+
+	return repeats->lines[(repeats->written - back) % (2 * DEBUG_FILE_PORT_REPEAT_LINES)];
+}
+
+/* port: TRUE if the line is the next of the run counted, and counted (not
+to be written). A line that is not (or none: the log's end) ends the run:
+*ended is how many lines
+it had (0 none), *passes how many times they were counted, and *partial how
+many of a pass that was not finished came (written again, then, as
+debug_file_port_recent(ended) on) */
+static boolean debug_file_port_repeated(
+	char const *string,
+	long *ended,
+	unsigned long *passes,
+	long *partial)
+{
+	struct debug_file_port_repeats *repeats = &debug_file_port_repeats;
+
+	*ended = 0;
+	*passes = 0;
+	*partial = 0;
+	if (repeats->period)
+	{
+		if (string && !strncmp(string, debug_file_port_recent(repeats->period - repeats->position),
+			sizeof(repeats->lines[0])))
+		{
+			repeats->position++;
+			if (repeats->position == repeats->period)
+			{
+				repeats->position = 0;
+				repeats->count++;
+			}
+			return TRUE;
+		}
+		*ended = repeats->period;
+		*passes = repeats->count;
+		*partial = repeats->position;
+		repeats->period = 0;
+	}
+	return FALSE;
+}
+
+/* port: the line written, kept */
+static void debug_file_port_written(
+	char const *string,
+	boolean date)
+{
+	struct debug_file_port_repeats *repeats = &debug_file_port_repeats;
+	long slot = (long)(repeats->written % (2 * DEBUG_FILE_PORT_REPEAT_LINES));
+
+	strncpy(repeats->lines[slot], string, sizeof(repeats->lines[slot]) - 1);
+	repeats->lines[slot][sizeof(repeats->lines[slot]) - 1] = 0;
+	repeats->dated[slot] = date;
+	repeats->written++;
+}
+
+/* port: a run begun, after a line written, if the last lines are the same
+few twice */
+static void debug_file_port_run_begin(
+	void)
+{
+	struct debug_file_port_repeats *repeats = &debug_file_port_repeats;
+	long period, back;
+
+	for (period = 1; period <= DEBUG_FILE_PORT_REPEAT_LINES && repeats->written >= (unsigned long)(2 * period); period++)
+	{
+		for (back = 1; back <= period; back++)
+		{
+			if (csstrcmp(debug_file_port_recent(back), debug_file_port_recent(back + period)))
+			{
+				break;
+			}
+		}
+		if (back > period)
+		{
+			repeats->period = period;
+			repeats->position = 0;
+			repeats->count = 0;
+			return;
+		}
+	}
+}
+
+static void debug_file_port_prefix(
+	char *prefix)
+{
+	long timeptr;
+	struct tm *_time;
+
+	time(&timeptr);
+	_time = localtime(&timeptr);
+	if (_time)
+	{
+		sprintf(
+			prefix,
+			"%02d.%02d.%02d %02d:%02d:%02d  ",
+			_time->tm_mon + 1,
+			_time->tm_mday,
+			_time->tm_year % 100,
+			_time->tm_hour,
+			_time->tm_min,
+			_time->tm_sec);
+	}
+	else
+	{
+		csstrcpy(prefix, "<TIME UNAVAILABLE>  ");
+	}
+}
 
 static void write_to_debug_file(
 	char const *string,
@@ -150,7 +293,8 @@ static void write_to_debug_file(
 {
 	FILE *file;
 	char prefix[32];
-	long spin;
+	long spin, ended, partial, index;
+	unsigned long passes, first;
 
 	/* (a moment's wait for another thread's line; a crash report written
 	while this thread held the lock goes on without it) */
@@ -178,58 +322,50 @@ static void write_to_debug_file(
 		debug_file_port = file;
 	}
 
-	if (!csstrcmp(string, debug_file_port_last_line))
+	if (debug_file_port_repeated(string, &ended, &passes, &partial))
 	{
-		debug_file_port_repeat_count++;
 		__sync_lock_release(&debug_file_port_lock);
 		return;
 	}
 
 	prefix[0] = 0;
-	if (date || debug_file_port_repeat_count)
+	if (date || passes || partial)
 	{
-		long timeptr;
-		struct tm *_time;
-
-		time(&timeptr);
-		_time = localtime(&timeptr);
-		if (_time)
-		{
-			sprintf(
-				prefix,
-				"%02d.%02d.%02d %02d:%02d:%02d  ",
-				_time->tm_mon + 1,
-				_time->tm_mday,
-				_time->tm_year % 100,
-				_time->tm_hour,
-				_time->tm_min,
-				_time->tm_sec);
-		}
-		else
-		{
-			csstrcpy(prefix, "<TIME UNAVAILABLE>  ");
-		}
+		debug_file_port_prefix(prefix);
 	}
 
-	if (debug_file_port_repeat_count)
+	if (passes)
 	{
 		char repeated[64];
 
-		sprintf(repeated, "last line repeated %lu times\r\n", debug_file_port_repeat_count);
+		if (ended == 1)
+		{
+			sprintf(repeated, "last line repeated %lu times\r\n", passes);
+		}
+		else
+		{
+			sprintf(repeated, "last %ld lines repeated %lu times\r\n", ended, passes);
+		}
 		debug_file_port_write(file, prefix, repeated);
-		debug_file_port_repeat_count = 0;
 		file = debug_file_port;
 	}
-	if (file)
+	/* (the lines of a pass not finished, as they came) */
+	first = debug_file_port_repeats.written - (unsigned long)ended;
+	for (index = 0; file && index < partial; index++)
 	{
-		long index;
+		char line[1024];
+		long slot = (long)((first + (unsigned long)index) % (2 * DEBUG_FILE_PORT_REPEAT_LINES));
 
-		for (index = 0; index < (long)sizeof(debug_file_port_last_line) - 1 && string[index]; index++)
-		{
-			debug_file_port_last_line[index] = string[index];
-		}
-		debug_file_port_last_line[index] = 0;
+		csstrcpy(line, debug_file_port_repeats.lines[slot]);
+		debug_file_port_write(file, debug_file_port_repeats.dated[slot] ? prefix : "", line);
+		debug_file_port_written(line, debug_file_port_repeats.dated[slot]);
+		file = debug_file_port;
+	}
+	if (file && string)
+	{
 		debug_file_port_write(file, date ? prefix : "", string);
+		debug_file_port_written(string, date);
+		debug_file_port_run_begin();
 	}
 
 	__sync_lock_release(&debug_file_port_lock);
