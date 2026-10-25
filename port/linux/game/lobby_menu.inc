@@ -287,6 +287,60 @@ static int lobby_board_invite(char *link, int size)
 		p2p_game_invite(party_network_order(address.address.long_words[0]), link, size);
 }
 
+/* whether a name (at most length characters) is another */
+static boolean lobby_board_names_equal(wchar_t const *name, short length, wchar_t const *other)
+{
+	short index;
+
+	for (index = 0; index < length && name[index]; index++)
+	{
+		if (name[index] != other[index])
+			return FALSE;
+	}
+	return other[index] == 0;
+}
+
+/* a network game's name as the lobby says it: the host's own, or, while it
+is the name the game was given (none; a name the server took from the map's
+random players' names, ui\random_player_names, as its machine's nickname; or
+the host's player's own, Server Setup's first), "<the host's player>'s game" */
+static void lobby_board_game_name(struct network_game const *game, struct lobby_board_entry const *entries,
+	struct network_player *const *players, short count, wchar_t *name, short size)
+{
+	long names = tag_loaded('ustr', "ui\\random_player_names");
+	struct string_list *list = names != NONE ? unicode_string_list_definition_get(names) : NULL;
+	struct network_player const *host = NULL;
+	wchar_t host_name[NUMBEROF(host->name) + 1];
+	boolean given = !game->name[0];
+	short index;
+
+	for (index = 0; index < count && !host; index++)
+	{
+		if (entries[index].host && !entries[index].bot)
+			host = players[index];
+	}
+	for (index = 0; list && !given && index < list->strings.count; index++)
+	{
+		wchar_t const *random_name = unicode_string_list_get_string(names, index);
+
+		given = random_name && lobby_board_names_equal(game->name, NUMBEROF(game->name), random_name);
+	}
+	if (host)
+	{
+		ustrncpy(host_name, host->name, NUMBEROF(host->name));
+		host_name[NUMBEROF(host->name)] = 0;
+		given |= lobby_board_names_equal(game->name, NUMBEROF(game->name), host_name);
+	}
+	if (host && host_name[0] && given)
+		usnprintf(name, size - 1, L"%s's game", host_name);
+	else
+	{
+		ustrncpy(name, game->name, MIN(size, (short)NUMBEROF(game->name) + 1) - 1);
+		name[MIN(size, (short)NUMBEROF(game->name) + 1) - 1] = 0;
+	}
+	name[size - 1] = 0;
+}
+
 /* the game's map's name: a multiplayer map's (the Xbox's, a Custom Edition
 map's), a co-op game's level's, else its file's */
 static void lobby_board_map_text(char const *map_name, wchar_t *text, short size)
@@ -467,18 +521,27 @@ static void lobby_board_update(struct widget_instance *list)
 		own_player, lobby_board_invite(link, sizeof(link)) > 0, lobby_local_player_count() < MAXIMUM_LOCAL_PLAYERS,
 		&controls);
 
-	/* (the game's name, where it is, its players) */
+	/* (the game's name, where it is, its players: a game of this machine
+	alone's none, as no one else sees it) */
 	text[0] = 0;
-	if (game)
+	if (game && local)
 	{
-		wchar_t name[NUMBEROF(game->name) + 1];
+		boolean bots = FALSE;
 
-		ustrncpy(name, game->name, NUMBEROF(game->name));
-		name[NUMBEROF(game->name)] = 0;
-		usnprintf(text, NUMBEROF(text) - 1, L"%s%s%s \x00B7 %d of %d players", name, name[0] ? L" \x00B7 " : L"",
-			local ? L"This computer" : controls.invite ? L"Internet" : L"Local network", count, game->maximum_players);
-		text[NUMBEROF(text) - 1] = 0;
+		for (index = 0; index < count; index++)
+			bots |= entries[index].bot;
+		usnprintf(text, NUMBEROF(text) - 1, count == 1 ? L"%s \x00B7 1 player" : L"%s \x00B7 %d players",
+			bots ? L"Play with Bots" : L"This computer", count);
 	}
+	else if (game)
+	{
+		wchar_t name[ROW_TEXT_LENGTH];
+
+		lobby_board_game_name(game, entries, players, count, name, NUMBEROF(name));
+		usnprintf(text, NUMBEROF(text) - 1, L"%s \x00B7 %s \x00B7 %d of %d players", name,
+			controls.invite ? L"Internet" : L"Local network", count, game->maximum_players);
+	}
+	text[NUMBEROF(text) - 1] = 0;
 	menu_text_box_fit(named(screen, "board_subtitle", 0), text, 0);
 
 	/* (the teams' columns, or one list) */

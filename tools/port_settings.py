@@ -2503,7 +2503,7 @@ def _lobby_board(base: str) -> tuple:
                                                                                        0))])
     # (each column's rows: a player's dot, name and tag, or how many more
     # there are than the rows)
-    name_w = row_w - 22 - LOBBY_TAG_WIDTH - 6
+    name_w = row_w - 22 - LOBBY_TAG_WIDTH - LOBBY_TAG_INSET
     for column in range(2):
         for row in range(LOBBY_ROWS):
             key = f"{column}_{row}"
@@ -2514,7 +2514,7 @@ def _lobby_board(base: str) -> tuple:
                                                          ("wide", lobby_column_wide(column))],
                              [f'<child widget="{base}/board_dot_{key}" x="8" y="{(row_h - LOBBY_DOT) // 2}"/>',
                               f'<child widget="{base}/board_name_{key}" x="22"/>',
-                              f'<child widget="{base}/board_tag_{key}" x="{row_w - LOBBY_TAG_WIDTH - 6}"/>'])
+                              f'<child widget="{base}/board_tag_{key}" x="{row_w - LOBBY_TAG_WIDTH - LOBBY_TAG_INSET}"/>'])
             lines += _widget(f"{base}/board_dot_{key}", [("controller", 1), ("width", LOBBY_DOT),
                                                          ("height", LOBBY_DOT), ("bitmap", part_dot(LOBBY_DOT))], [])
             lines += _part_text(f"{base}/board_name_{key}", [("width", name_w), ("height", row_h),
@@ -3525,6 +3525,8 @@ LOBBY_WIDE_PANEL = (-WIDE_HALF + LOBBY_WIDE_PLAYERS, WIDE_EXTRA - LOBBY_WIDE_PLA
 LOBBY_ROWS, LOBBY_ROWS_TOP, LOBBY_ROW_STEP = 13, 36, 20
 LOBBY_ROW = (LOBBY_COLUMN_WIDTH - 16, 18)
 LOBBY_DOT, LOBBY_TAG_WIDTH = 8, 58
+# (the tag kept in from its row's end, clear of your own row's frame)
+LOBBY_TAG_INSET = 10
 # the panel's words, controls and buttons, LOBBY_PANEL_INNER wide
 LOBBY_PANEL_INNER = LOBBY_PANEL[2] - 28
 LOBBY_CONTROL_HEIGHT = 22

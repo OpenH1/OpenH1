@@ -64,6 +64,28 @@ def compile_launcher(sln: Any) -> str:
 # The optimisation level of every unit, and of link-time optimisation.
 OPTIMISATION = "-O2"
 
+# What no unit of our own code (port/, source/, tools/) may hold, on every
+# platform: a function that can end without its value, a call to a function
+# it has no declaration of, a declaration without its type, an integer as a
+# pointer or a pointer as an integer, a pointer of the wrong type. The
+# compiler warns of each, and each has shipped as a crash or a hang (a
+# function that returned whatever its register held; an undeclared
+# function's int cutting a pointer short). These make it stop the build;
+# the vendored libraries (port/third_party, and what is downloaded: musl,
+# SDL) keep their own flags. (tools/test_build_errors.py)
+OWN_CODE_ERRORS = [
+    "-Werror=return-type",
+    "-Werror=implicit-function-declaration",
+    "-Werror=implicit-int",
+    "-Werror=int-conversion",
+    "-Werror=incompatible-pointer-types",
+]
+# Our units that otherwise build without warnings (the game's decompiled
+# sources, the guest's platform layer): -w would silence OWN_CODE_ERRORS
+# too, as clang's -w drops every diagnostic that is not an error by
+# default, -Werror= ones as well; -Wno-everything before them leaves them.
+QUIET_OWN_CODE_FLAGS = ["-Wno-everything", *OWN_CODE_ERRORS]
+
 # the TOML parser the platform layer reads config.toml with (port_config.c)
 TOML_DIR = Path("port/third_party/tomlc17")
 EXPAT_DIR = Path("port/third_party/expat")

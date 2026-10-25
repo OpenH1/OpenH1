@@ -141,7 +141,7 @@ def check_lobby_layout(width):
             for part in (dot, name, tag):
                 assert part.inside(row_box), f"{part} is out of its row {row_box}"
             assert dot.x1 <= name.x0 and name.x1 <= tag.x0, (dot, name, tag)
-            assert tag.x1 + 2 <= row_box.x1, f"{tag} at its row's very end {row_box}"
+            assert tag.x1 + 8 <= row_box.x1, f"{tag} against its row's frame {row_box}"
     assert one(boxes, "board_title_all").inside(players)
     for box in boxes:
         if box.path and box.path[-1] == "board_panel":

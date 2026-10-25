@@ -492,7 +492,7 @@ static struct tag_block_definition bitmap_data_block =
 	NULL,
 	bitmap_data_block_fields,
 	NULL,
-	postprocess_bitmap,
+	(postprocess_block_proc)postprocess_bitmap,
 	NULL,
 	delete_bitmap,
 	NULL,

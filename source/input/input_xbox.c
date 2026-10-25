@@ -121,6 +121,9 @@ symbols in this file:
 #include "interface/player_ui.h"
 #include "main/console.h"
 
+/* cseries_windows.c's */
+unsigned long system_milliseconds(void);
+
 /* ---------- constants */
 
 enum

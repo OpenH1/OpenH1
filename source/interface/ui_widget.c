@@ -6529,7 +6529,7 @@ static short ui_mouse_label_text_right(
 
 	if (!text || !*text || definition->text_font.index == NONE ||
 		definition->justification < 0 || definition->justification >= NUMBER_OF_TEXT_JUSTIFICATIONS ||
-		string_has_icons_to_draw(text))
+		string_has_icons_to_draw((wchar_t *)text))
 	{
 		return NONE;
 	}

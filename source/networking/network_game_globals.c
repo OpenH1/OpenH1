@@ -114,6 +114,8 @@ symbols in this file:
 /* port: source/math/random_math.c's, port/linux/src/port_config.c's */
 unsigned long get_number_suitable_for_initializing_random_seed(void);
 long config_integer(const char *name);
+/* cseries_windows.c's */
+unsigned long system_milliseconds(void);
 
 /* ---------- constants */
 

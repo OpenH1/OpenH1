@@ -2046,6 +2046,9 @@ void player_control_action_test_note(
 	}
 }
 
+/* the platform layer's (port/linux/src/port_config.c) */
+int config_boolean(const char *name);
+
 static void player_control_action_test_check_reset_input_blob(
 	struct input_blob *input)
 {

@@ -95,7 +95,7 @@ def test_xdk_headers_compile_for_the_game(tmp_path):
     source = write(tmp_path / "unit.c", "".join(
         f"#include <{name}>\n" for name in ("xtl.h", "xbdm.h", "xkbd.h", "d3d8perf.h")
     ))
-    flags = [flag for flag in x86_game_abi.GAME_ABI_FLAGS + x86_game_abi.GAME_FLAGS if flag != "-w"]
+    flags = [flag for flag in x86_game_abi.GAME_ABI_FLAGS + x86_game_abi.GAME_FLAGS if flag != "-Wno-everything"]
     for defines in ([], ["-DDEBUG_KEYBOARD"], ["-DNOD3D", "-DNODSOUND"]):
         subprocess.run(
             ["clang", *flags, *defines, "-Werror", "-fsyntax-only",

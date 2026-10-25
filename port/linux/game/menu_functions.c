@@ -87,6 +87,7 @@ their handlers open opens.
 #include "main/main.h"
 #include "networking/network_game_manager.h"
 #include "saved games/player_profile.h"
+#include "tag_files/tag_files.h"
 #include "tag_files/tag_groups.h"
 #include "text/text_group.h"
 #include "text/unicode.h"
@@ -3819,7 +3820,7 @@ short network_game_client_get_seconds_to_game_start(void *client);
 /* (the lobby's team change and start, as the Xbox's pregame's: lobby_menu.inc) */
 boolean network_game_client_update_local_player_data(void *client, struct network_player *player);
 boolean network_game_client_request_start_time_change(void *client, short request_type);
-boolean network_player_is_valid(struct network_player *player);
+boolean network_player_is_valid(struct network_player const *player);
 boolean playlist_profile_get(long index, struct game_variant *variant);
 boolean playlist_profile_get_display_name(long index, wchar_t *name);
 boolean playlist_profile_get_options(long index, struct game_variant_options *options);

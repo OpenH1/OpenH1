@@ -31,6 +31,7 @@ of their own (menu_functions.c's OPENCE).
 #include "game/players.h"
 #include "networking/network_game_globals.h"
 #include "objects/objects.h"
+#include "text/unicode.h"
 #include "units/units.h"
 #include "game_modes.h"
 #include "gun_game.h"

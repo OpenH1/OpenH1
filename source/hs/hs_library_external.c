@@ -678,7 +678,7 @@ void hs_object_set_permutation(
 		}
 		object_permute_region(
 			object_index,
-			permutation_name,
+			(char *)permutation_name,
 			desired_region_index,
 			TRUE);
 	}
