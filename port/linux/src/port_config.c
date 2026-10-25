@@ -236,7 +236,7 @@ static const struct config_setting config_settings[] =
 		"motion sensor's reach, in sight and not camouflaged; none show if the\n"
 		"gametype's motion tracker shows no players, only allies' if it shows\n"
 		"only friends." },
-	{ "display.player_name_scale", _config_real, "1.0", "HALO_PLAYER_NAME_SCALE", _environment_value, _platform_all,
+	{ "display.player_name_scale", _config_real, "0.75", "HALO_PLAYER_NAME_SCALE", _environment_value, _platform_all,
 		"How large the players' names are drawn: 1.0 three quarters of the size of\n"
 		"the HUD's text, 0.25 to 4." },
 	{ "display.match_timer", _config_boolean, "false", "HALO_MATCH_TIMER", _environment_value, _platform_all,
@@ -969,7 +969,7 @@ static const struct config_setting config_settings[] =
 		"which OpenCE players join too at 30 (network.allow_opence), or\n"
 		"\"legacy\", OpenCE's netcode at 30 ticks a second for everyone. Read as\n"
 		"the game is hosted (\"standard\" is \"openh1\" too)." },
-	{ "network.sim_rate", _config_integer, "60", "HALO_NET_SIM_RATE", _environment_value, _platform_all,
+	{ "network.sim_rate", _config_integer, "120", "HALO_NET_SIM_RATE", _environment_value, _platform_all,
 		"Hosting an OpenH1 game: its tick rate, 30, 60 or 120 (game.sim_rate's\n"
 		"steps), which every machine of it takes as the game starts. A Legacy game\n"
 		"plays at 30." },
