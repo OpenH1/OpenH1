@@ -655,6 +655,15 @@ change:
   host sends them only to OpenH1 machines that told it they can party, so
   never to an OpenCE machine, and an older OpenH1 drops them as kinds it
   does not know.
+- Friends (`port/linux/src/p2p_friends.c`): a client's party status also
+  tells its player's friend code (a flag bit, and the code in the status's
+  token, which a status left empty before); the host sends the codes on to
+  the same machines in `_distributed_message_friend_players` (130, reliably,
+  when they change: an entry each, its format byte, the player and the
+  code). Older builds send no code, never set the bit, and drop 130 as a
+  kind they do not know: nothing they read changed, so the network version
+  stays. The friends themselves (requests, presence, invites) go through the
+  signalling brokers, never the game's connection.
 - The host's controls (`network_host_controls.c`, below) use 126 to move a
   player to the other team, only in an OpenH1 game with no OpenCE machine in
   it.

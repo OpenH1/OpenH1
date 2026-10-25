@@ -17,7 +17,8 @@ p2p_friends.c's order: the friends online (JOIN when their presence offers
 their party, or their invite waits; INVITE), the requests (ACCEPT, IGNORE),
 the friends offline, the requests sent (CANCEL), the recent players (ADD
 FRIEND, for one with a code), the codes blocked (UNBLOCK); a friend's REMOVE
-and BLOCK, a request's or a player's BLOCK, each pressed twice. The rows
+(which ends its invites too), a request's or a player's BLOCK, each pressed
+twice. The rows
 scroll at their ends, as the server browser's. JOIN joins the friend's party
 (the Party screen then opens over this one, and follows its leader into its
 games as any party does).

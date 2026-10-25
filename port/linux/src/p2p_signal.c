@@ -8,7 +8,9 @@ a broker that refuses 5). Every broker is used at once, so any one of them
 working is enough (an answer goes back through each broker a request came
 through).
 They also carry parties' messages (p2p_party.c: each party's topic and key
-its link's), and the server browser's listings of public games (p2p_lobby.c):
+its link's), friends' (p2p_friends.c: the profile's inbox and each friend's
+presence, subscribed to a few at a time, as many as a profile has friends),
+and the server browser's listings of public games (p2p_lobby.c):
 retained in each host's slot, published at least once (QoS 1, sent again
 until the broker acknowledges them), expiring at the broker after
 LISTING_EXPIRY seconds (MQTT 5), and cleared by the broker if the host's

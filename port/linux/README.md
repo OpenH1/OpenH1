@@ -745,6 +745,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.tunnel_port` | `0` | `HALO_NET_TUNNEL_PORT` | The UDP port for internet play. `0`: the game selects a port. Refer to "Internet play". |
 | `network.allow_upnp` | `true` | `HALO_NET_ALLOW_UPNP` | `true`: internet play can ask the router to forward its port (UPnP). `false`: the game does not ask. Refer to "Internet play". |
 | `network.public_lobby` | `true` | `HALO_NET_PUBLIC_LOBBY` | `true`: the server browser. Public games are listed, and Join Game > Server Browser shows them. `false`: no games are listed or shown. Refer to "Server browser". |
+| `friends.share_status` | `true` | `HALO_FRIENDS_SHARE_STATUS` | Show your friends that you are online, and where, and let them join you (Multiplayer > FRIENDS). Only your friends can read it. `false` appears offline: nothing is published, and you still see your friends. Refer to "Friends". |
 | `network.host_public` | `true` | `HALO_NET_HOST_PUBLIC` | `true`: a new game of Create Game > Internet starts as PUBLIC. `false`: it starts as PRIVATE. LISTING in Server Setup changes it for each game. Refer to "Server browser". |
 | `network.game_mode` | `"openh1"` | `HALO_NET_GAME_MODE` | When you host: `"openh1"`, an OpenH1 game ("OpenH1 60 Tick" and the like) at the tick rate `network.sim_rate` sets, which OpenCE players can join too, at 30 (`network.allow_opence`); `"legacy"`, OpenCE's netcode at 30 ticks a second for everyone. `"standard"` is the same as `"openh1"`. Server Setup's GAME row (OPENH1 30 TICK, OPENH1 60 TICK, OPENH1 120 TICK or LEGACY) writes it and `network.sim_rate`. Read when hosting starts, and again when the game is started from Server Setup if no one has joined yet. Refer to "OpenH1 and Legacy games" in NETCODE.md. |
 | `network.sim_rate` | `120` | `HALO_NET_SIM_RATE` | When you host an OpenH1 game: its tick rate, `30`, `60` or `120`. Every machine in the game uses it from the start of the game to its end, and each player's sub-step inputs go to every machine (NETCODE.md, "Sub-step inputs"). The server browser shows it before each game's gametype ("60 SLAYER"; a Legacy game's 30). |
@@ -805,6 +806,8 @@ the setting for one start of the game. It has priority over the file.
 | `debug.menu_open` | `""` | `HALO_MENU_OPEN` | Start on this screen of the menus (`main_menu/settings_select/...`, as `port/assets/menus` names it), a player profile being edited, to look at it. |
 | `debug.matchmaking`, `debug.matchmaking_host` | `""` | `HALO_MATCHMAKING`, `HALO_MATCHMAKING_HOST` | Search a matchmaking playlist (its name, `"Team Slayer"`, or its number, 1 up) once the main menu is up, and how well this machine tells its party it can host (`"strict"` or `"open"`; empty: as its network is), for a test; with either, a player without a profile plays. |
 | `debug.party` | `""` | `HALO_PARTY` | Join this party link at the start, or lead its party (`lead:` before the link): several copies of the game in one party, for a test. |
+| `debug.friends_folder` | `""` | `HALO_FRIENDS_FOLDER` | Keep `friends.txt` in this folder, not the player profile's: a test's copies, which have no profile. |
+| `debug.friends` | `""` | `HALO_FRIENDS` | The Friends screen's actions a test takes at a second after the start: `"<second> <action> [<code>]\|..."`, the actions `add`, `accept` and `ignore` (every request), `remove`, `block`, `unblock`, `invite`, `join`, `accept_invite`, `share`, `hide`, `list` (logged) and `show` (a row chosen); a code is its text, or `@` and another copy's `friends.txt`. |
 | `debug.discord_socket` | `""` | `HALO_DISCORD_SOCKET` | The Discord client's socket (on Windows, its pipe) to connect to, and no other: a stand-in for Discord in a test, so that a test never reaches the Discord app of the person at the computer. Empty: Discord's own. |
 | `debug.gpu_skip_vertex_shaders`, `debug.gpu_debug_expression`, `debug.gpu_debug_flat`, `debug.gpu_debug_texture0` | off | `HALO_GPU_SKIP_VS`, `HALO_GPU_DEBUG_EXPR`, `HALO_GPU_DEBUG_FLAT`, `HALO_GPU_DEBUG_T0` | Tools to find problems in the graphics: skip the draws of a vertex shader, or replace the output of all pixel shaders with an expression (for example `t0.rgb`). `debug.gpu_debug_expression` is Metal's alone (`HALO_GPU_DEBUG_EXPR`, as MSL): it does nothing with Vulkan, whose shaders are SPIR-V written directly, with no source to put it in. |
 | `debug.dynamic_lights_look`, `debug.dynamic_lights_log` | `""`, `false` | `HALO_DYNAMIC_LIGHTS_LOOK`, `HALO_DYNAMIC_LIGHTS_LOG` | Tools for the enhanced dynamic lights: up to eight numbers in place of their look's (the lights' brightness, `1.7`; their core's inverse square in radii, `12`; the spill past white, `0.18`; the wrap on models, `0.25`; the glow's size in the light's radius, `0.22`, its brightness, `1.2`, its softness against what it meets in world units, `0.12`, and its least size, `0.035`), and a log of where the first projectile's light is drawn each frame beside where the game placed it at the tick, and once a second how many lights there are. |
@@ -1445,6 +1448,57 @@ the party's brokers.
   players it has (2 at least).
 - It never joins a Legacy game, nor an OpenH1 game of another version. OpenCE
   players can join a game it hosts, as any OpenH1 game.
+
+### Friends
+
+Multiplayer > PLAY ONLINE > FRIENDS keeps lasting friends for each player
+profile (`src/p2p_friends.c`; the screen is `game/friends_menu.inc`), with
+no server of its own: their messages go through the same signalling brokers
+as invites and parties, sealed and signed, on topics only the players
+concerned can work out.
+
+- Each profile has a key of its own, made the first time and kept in
+  `friends.txt` in the profile's folder (keep it to yourself: it is the
+  profile's identity to its friends). Its **friend code** is a hash of the key,
+  12 letters and digits in groups of four, `K7QM-2XPA-9DTR`. Its last character
+  is a check: a mistyped character, or two swapped, is caught. Lower case, I or
+  L for 1, O for 0 and the dashes are all taken.
+- The first row is your code: COPY CODE puts it on the clipboard, and ADD BY
+  CODE sends a friend request to a code typed (a code on the clipboard is
+  filled in). The other player sees the request (and a toast); ACCEPT makes
+  you friends, IGNORE turns it down for good (they can't send it again, until
+  you add them). Two players who ask each other are friends at once. A
+  request is sent again each start and every 5 minutes until it is answered
+  or cancelled, so the other player need not be online.
+- The list shows your friends online first (where they are: the menus, a
+  party, hosting or playing a game, and which), then the requests, the
+  friends offline, the requests you sent, your recent players and the codes
+  you blocked. A toast says when a friend comes online, sends a request, or
+  accepts yours.
+- **JOIN** joins a friend's party, or, out of one, makes a party with them as
+  its leader (the same spare party Discord's Ask to Join uses); the party
+  then follows them into their games, as any party does. **INVITE** sends a
+  friend your party's link (a party is made if you have none): they see "Keyes
+  invites you to their party" with J or D-pad Down to join (Esc or D-pad Up:
+  not now), as a Discord friend's ask; on a touchscreen they join from the
+  Friends screen.
+- **REMOVE** and **BLOCK** (each pressed twice) end a friendship on both sides.
+  A blocked code's requests and invites are let go; UNBLOCK lets them in
+  again.
+- **Online status**: each game shares where it is with its friends only, on a
+  topic and key that only they hold (a new key is made when you remove or
+  block a friend, so they can no longer read it), once a minute and when it
+  changes. APPEAR OFFLINE (or `friends.share_status = false`) publishes
+  nothing: friends see you offline at once, and you still see them.
+- **Recent players**: the last 50 players of your network games, with when and
+  in what game. In an OpenH1 game each machine tells the host its player's
+  friend code, which the host tells the other OpenH1 players: ADD FRIEND
+  works on them here, and the scoreboard's player menu (right-click on the
+  scores) has **Add friend**. OpenCE players, players of older builds and
+  every player of a Legacy game have no code: they are listed, and can't be
+  added.
+- Internet play (`network.online`) must be on. With it, the game keeps its
+  connection to the brokers while a profile has a code.
 
 ### Text chat
 

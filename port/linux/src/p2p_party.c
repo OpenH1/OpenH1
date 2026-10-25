@@ -75,7 +75,9 @@ not on the tunnel: its machines need not reach each other until they play.
   Join) arrives: while the activity offers it, the spare's topic is
   listened on (p2p_party_standby), and a STATE heard on it makes the party
   before it is taken. Making a party (MAKE PARTY, a scoreboard's invite)
-  makes the spare's too.
+  makes the spare's too. Friends' presence (p2p_friends.c) offers the same
+  spare to friends (their JOIN), and listens on its topic while it is shared
+  (p2p_party_friends_standby).
 
 Voice in the party: none yet. network.voice_lobby's voice is the game's
 (port/linux/game/network_voice.c), carried by its connection to the host,
