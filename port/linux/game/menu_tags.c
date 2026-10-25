@@ -483,6 +483,8 @@ static char const *const port_function_names[] =
 	"port browser tab", "port browser tab next", "port browser tab previous", "port browser refresh",
 	/* (Multiplayer's PARTY and its screen: party_menu.inc) */
 	"port party open", "port party button", "port party x", "port party y",
+	/* (Multiplayer's MATCHMAKING and its screen: matchmaking_menu.inc) */
+	"port matchmaking button", "port matchmaking x",
 	/* (the pause menu's HOST CONTROLS and its screen: host_controls_menu.inc) */
 	"port host open", "port host init", "port host tab", "port host tab next", "port host tab previous",
 	"port host row", "port host left", "port host right", "port host action",
@@ -525,6 +527,7 @@ static char const *const port_game_data_input_names[] =
 	"port connect update",
 	/* (the Party screen: party_menu.inc) */
 	"port party update",
+	"port matchmaking update",
 	/* (Host Controls: host_controls_menu.inc) */
 	"port host update",
 	/* (the computer's lobby: lobby_menu.inc) */

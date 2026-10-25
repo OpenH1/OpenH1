@@ -566,7 +566,7 @@ def test_p2p_signatures_and_listings(tmp_path):
 # process (tools/p2p_party_check.c), each case by its name
 
 PARTY_CASES = ["make", "join", "follow", "busy", "local", "leave", "handoff", "timeout", "regroup", "disband",
-               "full", "joinless", "format", "version", "keys", "spare"]
+               "full", "joinless", "format", "version", "keys", "host", "spare"]
 PARTY_SOURCES = ["tools/p2p_party_check.c", "port/linux/src/p2p_crypto.c", "port/third_party/monocypher/monocypher.c",
                  "port/third_party/monocypher/monocypher-ed25519.c"]
 
@@ -650,6 +650,20 @@ PARTY_MUTATIONS = [
      "\t\t\tcontinue;\n\t\t/* (once each", ")\n\t\t\tcontinue;\n\t\t/* (once each", "keys"),
     ("a member names the others", "leading() && index < party.roster_count && count < maximum_count",
      "index < party.roster_count && count < maximum_count", "keys"),
+    ("the lead passed to a member no better", "\t\t\tmember->host_quality <= quality)",
+     "\t\t\tmember->host_quality < 0)", "host"),
+    ("the last of the best, not the first", "\t\tbest = member;\n\t\tquality = member->host_quality;",
+     "\t\tbest = member;", "host"),
+    ("a member that cannot host takes the lead", "\t\t\tparty.host_quality > _p2p_party_host_unable)",
+     "\t\t\t1)", "host"),
+    ("an ask to host from anyone taken", "\t\tif (member && !memcmp(id, party.leader, MEMBER_ID_SIZE) && "
+     "body_size == MEMBER_ID_SIZE + 1 &&\n\t\t\tis_self(body) && party.listed && !leading()",
+     "\t\tif (member && body_size == MEMBER_ID_SIZE + 1 &&\n\t\t\tis_self(body) && party.listed && !leading()",
+     "host"),
+    ("the host's ask taken again and again", "\tparty.host_request = 0;\n", "", "host"),
+    ("a member's host byte not read", "\t\tmember->host_quality = offset < size && body[offset] <= "
+     "_p2p_party_host_open ? body[offset] :\n\t\t\t_p2p_party_host_unable;",
+     "\t\tmember->host_quality = _p2p_party_host_unable;", "host"),
 ]
 
 

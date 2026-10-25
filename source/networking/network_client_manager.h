@@ -37,6 +37,11 @@ short network_game_client_get_state(
 	short *state_data);
 boolean network_game_client_join_first_available_game(
 	void);
+/* port: ... or the one whose host has this identifier (its XNADDR's abEnet,
+6 bytes: a host an invite or the server browser reached), as picking it in
+the list does (NULL: the first) */
+boolean network_game_client_join_available_game(
+	byte const *identifier);
 boolean network_game_client_set_team(
 	char team_index);
 /* whether the advertised game's host has this machine's network version

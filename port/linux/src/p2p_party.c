@@ -27,7 +27,10 @@ not on the tunnel: its machines need not reach each other until they play.
     game no link reaches: a LAN game or a game of its own) and that game's
     host (its key's hash, 16), its last follow's order (4) and result
     (1), and its name (a length byte, then up to 15 characters of printable
-    ASCII). The leader's adds its game, which the party follows: its order
+    ASCII); a member's then how well it can host a game now (1: _p2p_party_host_*;
+    builds before matchmaking sent none, which is taken for unable, and
+    take no more than the name, as a leader's has its game after it). The
+    leader's adds its game, which the party follows: its order
     (4: the term, then a count of the leader's games), what it is (the
     menus, an internet game, a game no link reaches) and, for an internet
     game, its invite (the host's key hash and the token, 32); and the
@@ -38,6 +41,12 @@ not on the tunnel: its machines need not reach each other until they play.
   - DISBAND ('D'): the leader ends the party.
   - REFUSE ('R'): the leader turns a machine away (8: its id; then why: the
     party is full).
+  - HOST ('H'): the leader asks a member to lead the party and host a game
+    for it (8: its id; then the matchmaking playlist, 1): the member that can
+    host best, better than the leader (p2p_party_pass_host). The member, if
+    it still can, takes the lead (a term higher), which the others follow as
+    any new leader, and hosts (p2p_party_take_host_request). A build without
+    it passes over the type.
 - Joining: a machine with the link subscribes and sends its STATE until the
   leader lists it (JOIN_WAIT, else it gives up: the party has ended). The
   leader lists every new machine heard, up to P2P_PARTY_MAXIMUM_MEMBERS,
@@ -94,6 +103,7 @@ enum
 	_message_leave = 'L',
 	_message_disband = 'D',
 	_message_refuse = 'R',
+	_message_host = 'H',
 
 	/* a member's id: the first bytes of its key's SHA-256 */
 	MEMBER_ID_SIZE = 8,
@@ -105,7 +115,7 @@ enum
 	/* an invite: its host's key hash and its token */
 	INVITE_SIZE = P2P_KEY_HASH_SIZE + P2P_TOKEN_SIZE,
 	/* the most a message is (p2p_signal.c takes 512) */
-	MAXIMUM_PARTY_MESSAGE_SIZE = HEADER_SIZE + STATE_FIXED_SIZE + 1 + P2P_PARTY_NAME_SIZE + 4 + 1 + INVITE_SIZE +
+	MAXIMUM_PARTY_MESSAGE_SIZE = HEADER_SIZE + STATE_FIXED_SIZE + 1 + P2P_PARTY_NAME_SIZE + 1 + 4 + 1 + INVITE_SIZE +
 		1 + P2P_PARTY_MAXIMUM_MEMBERS * MEMBER_ID_SIZE + P2P_SIGNATURE_SIZE,
 	/* the machines heard: the members, and some besides (joiners not listed
 	yet, a full party's refused) */
@@ -161,6 +171,9 @@ struct member
 	reaches a game's host with), worked out when first asked for */
 	unsigned char key_hash[P2P_KEY_HASH_SIZE];
 	unsigned char key_hashed;
+	/* how well it can host now, as its STATE last told
+	(_p2p_party_host_*) */
+	unsigned char host_quality;
 };
 
 struct departed
@@ -205,6 +218,10 @@ static struct
 	unsigned char result;
 	/* the leader's game this machine was asked to join, and answered */
 	unsigned long handled_order;
+	/* how well this machine can host now (_p2p_party_host_*), and the
+	playlist it was asked to host a game of, as the new leader (0: none) */
+	unsigned char host_quality;
+	int host_request;
 
 	/* the leader (zero: none known yet), its term, when last heard */
 	unsigned char leader[MEMBER_ID_SIZE];
@@ -440,6 +457,9 @@ static void send_state(void)
 	message[size++] = (unsigned char)length;
 	memcpy(message + size, party.name, (size_t)length);
 	size += length;
+	/* (a member's: how well it can host) */
+	if (!leading())
+		message[size++] = party.host_quality;
 	if (leading())
 	{
 		put_long(message + size, party.target_order);
@@ -473,6 +493,16 @@ static void send_disband(void)
 	unsigned char message[MAXIMUM_PARTY_MESSAGE_SIZE];
 
 	send_message(message, message_header(message, _message_disband));
+}
+
+static void send_host(const unsigned char *id, int playlist)
+{
+	unsigned char message[MAXIMUM_PARTY_MESSAGE_SIZE];
+	int size = message_header(message, _message_host);
+
+	memcpy(message + size, id, MEMBER_ID_SIZE);
+	message[size + MEMBER_ID_SIZE] = (unsigned char)playlist;
+	send_message(message, size + MEMBER_ID_SIZE + 1);
 }
 
 static void send_refuse(const unsigned char *id)
@@ -708,6 +738,10 @@ static void state_heard(struct member *member, const unsigned char *body, int si
 		return;
 	clean_name(member->name, (const char *)body + offset, length);
 	offset += length;
+	/* (a member's: how well it can host; none from an older build) */
+	if (!(flags & _state_leads))
+		member->host_quality = offset < size && body[offset] <= _p2p_party_host_open ? body[offset] :
+			_p2p_party_host_unable;
 	member->listed = (flags & _state_listed) != 0;
 	if (flags & _state_leads)
 		leader_state_heard(member, term, body, offset, size);
@@ -884,6 +918,19 @@ void p2p_party_heard(const unsigned char *payload, int size)
 			leave_party(_p2p_party_notice_disbanded);
 		}
 		break;
+	case _message_host:
+		/* (the leader's ask that this machine lead and host: taken while it
+		still can host) */
+		if (member && !memcmp(id, party.leader, MEMBER_ID_SIZE) && body_size == MEMBER_ID_SIZE + 1 &&
+			is_self(body) && party.listed && !leading() && body[MEMBER_ID_SIZE] &&
+			party.host_quality > _p2p_party_host_unable)
+		{
+			p2p_log("Internet play: the party's leader asked this machine to host for the party; it leads now");
+			take_lead(party.term + 1);
+			party.host_request = body[MEMBER_ID_SIZE];
+			notice(_p2p_party_notice_leader, NULL, 0);
+		}
+		break;
 	case _message_refuse:
 		if (member && !memcmp(id, party.leader, MEMBER_ID_SIZE) && body_size == MEMBER_ID_SIZE + 1 &&
 			is_self(body) && !party.listed)
@@ -976,6 +1023,7 @@ static void leave_party(int kind)
 	unsigned long serial = party.notice_serial;
 	int count = party.notice_count;
 	struct spare spare = party.spare;
+	unsigned char host_quality = party.host_quality;
 
 	memcpy(name, party.name, sizeof(name));
 	memcpy(invite, party.game_invite, INVITE_SIZE);
@@ -991,6 +1039,7 @@ static void leave_party(int kind)
 	party.notice_count = count;
 	party.notice_serial = serial;
 	party.spare = spare;
+	party.host_quality = host_quality;
 	if (kind)
 		notice(kind, NULL, 0);
 	p2p_signal_party(party.spare.standby ? party.spare.topic : "");
@@ -1422,6 +1471,64 @@ int p2p_party_member_key_hashes(unsigned char *hashes, int maximum_count)
 	}
 	pthread_mutex_unlock(&p2p_lock);
 	return count;
+}
+
+void p2p_party_set_host_quality(int quality)
+{
+	quality = quality < _p2p_party_host_unable || quality > _p2p_party_host_open ? _p2p_party_host_unable : quality;
+	/* (only the game's thread writes it: unchanged, it need not wait for the
+	lock) */
+	if (quality == party.host_quality)
+		return;
+	pthread_mutex_lock(&p2p_lock);
+	party.host_quality = (unsigned char)quality;
+	party.send_wanted = 1;
+	pthread_mutex_unlock(&p2p_lock);
+}
+
+int p2p_party_pass_host(int playlist)
+{
+	const struct member *best = NULL;
+	int quality = 0;
+	int index;
+
+	pthread_mutex_lock(&p2p_lock);
+	/* (the first on the roster of the best, heard lately, of this version) */
+	quality = party.host_quality;
+	for (index = 0; leading() && playlist > 0 && playlist <= 255 && index < party.roster_count; index++)
+	{
+		const struct member *member = find_member(party.roster[index]);
+
+		if (is_self(party.roster[index]) || !member || !member->listed ||
+			member->network_version != HALO_PORT_NETWORK_VERSION || elapsed(member->heard_time, MEMBER_TIMEOUT) ||
+			member->host_quality <= quality)
+		{
+			continue;
+		}
+		best = member;
+		quality = member->host_quality;
+	}
+	if (best)
+	{
+		/* (twice: the brokers carry each at most once) */
+		send_host(best->id, playlist);
+		send_host(best->id, playlist);
+		p2p_log("Internet play: %s can host better than this machine; it leads the party now, and hosts",
+			best->name);
+	}
+	pthread_mutex_unlock(&p2p_lock);
+	return best != NULL;
+}
+
+int p2p_party_take_host_request(void)
+{
+	int playlist;
+
+	pthread_mutex_lock(&p2p_lock);
+	playlist = leading() ? party.host_request : 0;
+	party.host_request = 0;
+	pthread_mutex_unlock(&p2p_lock);
+	return playlist;
 }
 
 void p2p_party_follow_again(void)

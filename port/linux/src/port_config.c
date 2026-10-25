@@ -1557,6 +1557,15 @@ static const struct config_setting config_settings[] =
 	{ "debug.discord_socket", _config_string, "\"\"", "HALO_DISCORD_SOCKET", _environment_value, _platform_desktop,
 		"The Discord client's socket (on Windows its pipe) to connect to, and no\n"
 		"other: a test's stand-in for Discord. Empty: Discord's own." },
+	{ "debug.matchmaking", _config_string, "\"\"", "HALO_MATCHMAKING", _environment_value, _platform_all,
+		"Search the matchmaking playlist of this name (\"Team Slayer\") or number\n"
+		"(1 up) once the main menu is up, as its row on the Matchmaking screen\n"
+		"does, for a test (port/linux/game/matchmaking.c): a player of no profile\n"
+		"joins its game." },
+	{ "debug.matchmaking_host", _config_string, "\"\"", "HALO_MATCHMAKING_HOST", _environment_value, _platform_all,
+		"How well this machine tells its party it can host a matchmaking game,\n"
+		"for a test: \"strict\" (its network's NAT strict) or \"open\"; empty: as\n"
+		"its network is." },
 	{ "debug.party", _config_string, "\"\"", "HALO_PARTY", _environment_value, _platform_all,
 		"Join this party's link at the start, or lead its party (\"lead:\" before\n"
 		"the link): several copies of the game in one party, in a test; empty\n"

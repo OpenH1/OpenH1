@@ -28,8 +28,10 @@ false details:
 	which the players' count leaves out (port/linux/game/bots.c), zero for
 	none; then what the host does (_stamp_holds_party: it holds room for a
 	party joining it, port/linux/game/network_party.c; builds before it
-	wrote zero); the rest reserved, zero: none of it read by OpenCE), and the
-	signature (64) of "hceu-lobby-1" and all before it.
+	wrote zero); then its matchmaking playlist (port/linux/game/
+	matchmaking_menu.inc's, zero for none: a game of its own); the rest
+	reserved, zero: none of it read by OpenCE), and the signature (64) of
+	"hceu-lobby-1" and all before it.
 
 Each host has a slot, hceu/3/lobby/s/<its key's hash in hex>: its listing,
 retained on every broker (and expiring there after LISTING_EXPIRY seconds
@@ -135,7 +137,7 @@ struct listing
 	unsigned char token[P2P_TOKEN_SIZE];
 	/* (_listing_password: its token, sealed) */
 	unsigned char sealed_token[P2P_SEALED_TOKEN_SIZE];
-	int player_count, maximum_player_count, engine_type, kind, rate, openh1_version, bots, features;
+	int player_count, maximum_player_count, engine_type, kind, rate, openh1_version, bots, features, playlist;
 	char name[P2P_LISTING_NAME_SIZE + 1];
 	char map[P2P_LISTING_MAP_SIZE + 1];
 	char gametype[P2P_LISTING_GAMETYPE_SIZE + 1];
@@ -194,6 +196,8 @@ static struct
 	int player_count, maximum_player_count;
 	/* the bots its host plays, apart from its players (p2p_set_game_bots) */
 	int bots;
+	/* its matchmaking playlist (p2p_set_game_listing_playlist), 0: none */
+	int playlist;
 	/* the password's key (p2p_set_hosting_password), if it has one */
 	int has_password;
 	unsigned char password_key[P2P_PASSWORD_KEY_SIZE];
@@ -352,6 +356,9 @@ static int listing_make(unsigned char *bytes, int flags)
 	/* (an OpenH1 game's host of this build holds room for a party) */
 	if (lobby.standard)
 		bytes[size + 4] = _stamp_holds_party;
+	/* (a matchmaking game's playlist: an OpenH1 game's alone) */
+	if (lobby.standard)
+		bytes[size + 5] = (unsigned char)lobby.playlist;
 	size += STAMP_SIZE;
 	memcpy(data, signature_label, sizeof(signature_label) - 1);
 	memcpy(data + sizeof(signature_label) - 1, signed_part, (size_t)size);
@@ -423,6 +430,7 @@ static int listing_read(const unsigned char *bytes, int size, struct listing *li
 	listing->openh1_version = offset + 2 < size ? bytes[offset + 2] : 0;
 	listing->bots = offset + 3 < size ? bytes[offset + 3] : 0;
 	listing->features = offset + 4 < size ? bytes[offset + 4] : 0;
+	listing->playlist = offset + 5 < size ? bytes[offset + 5] : 0;
 	offset += STAMP_SIZE;
 	if (offset + P2P_SIGNATURE_SIZE != size)
 		return 0;
@@ -720,6 +728,7 @@ static void listing_take(const struct queued *queued, const struct listing *list
 	/* (an OpenH1 game this build joins as one: its host's holds are this
 	build's to ask for) */
 	shown->holds_party = shown->standard && (listing->features & _stamp_holds_party) != 0;
+	shown->playlist = (unsigned char)(shown->standard ? listing->playlist : 0);
 }
 
 /* the hosts' pings: those not known lately probed, while there is room (a
@@ -985,6 +994,20 @@ void p2p_set_game_listing_standard(int standard, int mixed, int rate)
 	lobby.standard = standard;
 	lobby.mixed = mixed;
 	lobby.rate = rate;
+	if (lobby.listed)
+		republish_soon(0);
+	pthread_mutex_unlock(&p2p_lock);
+}
+
+void p2p_set_game_listing_playlist(int playlist)
+{
+	playlist = playlist < 0 || playlist > 255 ? 0 : playlist;
+	/* (only the game's server writes it: unchanged, it need not wait for the
+	lock) */
+	if (playlist == lobby.playlist)
+		return;
+	pthread_mutex_lock(&p2p_lock);
+	lobby.playlist = playlist;
 	if (lobby.listed)
 		republish_soon(0);
 	pthread_mutex_unlock(&p2p_lock);

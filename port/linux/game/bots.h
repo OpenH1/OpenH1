@@ -41,6 +41,11 @@ long bots_fill_to(void);
 and Gun Game) */
 int bots_play_game_engine(long game_engine_index);
 
+/* a matchmaking game's bots in place of the settings' (the host's of its
+playlist: port/linux/game/matchmaking_menu.inc): count of them, making room
+for players, filling the game to fill_to players and bots; count NONE: the
+settings' again */
+void bots_set_matchmaking(long count, long fill_to);
 /* a machine is a bot's */
 int bots_machine_is_bot(long machine_index);
 /* a player (its datum) is a bot: on any machine of the game, as its machine
