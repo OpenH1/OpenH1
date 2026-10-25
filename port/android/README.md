@@ -185,7 +185,7 @@ with the positions on the Xbox controller:
 | Create | back | |
 
 The controller gets the rumble. The back gesture of Android is the B
-button. A Bluetooth or USB keyboard operates as on Linux.
+button in the menus (back out) and pauses a game. A Bluetooth or USB keyboard operates as on Linux.
 
 The touchscreen operates the menus: tap an item to select it (on a
 setting with values, tap its left or right half), tap a button of the key
