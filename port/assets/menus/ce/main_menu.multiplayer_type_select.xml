@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- The PC version's menus: ui\shell\main_menu\multiplayer_type_select (tools/ce_menus.py) -->
 <menus>
-	<widget name="main_menu/multiplayer_type_select/header_multiplayer" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/multiplayer_type_select/header_multiplayer" flags="anchor_left">
+	<widget name="main_menu/multiplayer_type_select/header_multiplayer" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/multiplayer_type_select/header_multiplayer" flags="anchor_left" wide="-106 0">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/multiplayer_options_pic" controller="1" left="288" top="82" width="307" height="244" bitmap="main_menu/multiplayer_type_select/mp_options">
 	</widget>

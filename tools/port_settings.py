@@ -278,7 +278,13 @@ SETTINGS_SECTION_HEIGHT, SETTINGS_SECTION_STEP, SETTINGS_SECTION_GAP = 18, 20, 6
 SETTINGS_TOP, PAGE_TOP = 104, 80
 SETTINGS_TABS_TOP = 76
 # (the tabs from SETTINGS_TABS_X, LB and RB, or Q and E, either side)
-SETTINGS_TAB_WIDTH, SETTINGS_TAB_HEIGHT, SETTINGS_TAB_STEP, SETTINGS_TABS_X = 90, 22, 92, 40
+# (SETTINGS_TAB_WIDTH the tab's picture's; laid out SETTINGS_TAB_LAID wide,
+# its picture's ends kept (keep_ends), so that LB's and RB's prompts keep
+# WIDE_MARGIN from the screen's edges)
+SETTINGS_TAB_WIDTH, SETTINGS_TAB_HEIGHT, SETTINGS_TAB_STEP, SETTINGS_TABS_X = 90, 22, 88, 56
+SETTINGS_TAB_LAID = 86
+# (the tab keys' prompts: LB's at the margin, RB's after the last tab)
+SETTINGS_TAB_PROMPT_WIDTH = 30
 SETTINGS_PANEL_X, SETTINGS_PANEL_WIDTH, SETTINGS_PANEL_BOTTOM = 388, 224, 400
 # the value's column in a row, and the arrows either side of it
 SETTINGS_SPINNER_X, SETTINGS_SPINNER_WIDTH = 188, 140
@@ -289,6 +295,63 @@ SETTINGS_DIM = "#FF6F9CD0"
 SETTINGS = "main_menu/settings"
 SETTINGS_TITLE = f"{SETTINGS}/header_settings"
 SETTINGS_FUNCTIONS = "port settings page"
+
+# ---------- the wide layout of the port's own screens (menu_tags.c's
+# ui_widget_port_wide_layout): a widget's wide attribute, "dx dw", moves it
+# (and what is in it) dx and makes it dw wider on a 16:9 screen, WIDE_WIDTH
+# of the menus' units at 480 lines, and by a part of that on a narrower one,
+# none at the menus' 640 (4:3); a wider screen has 16:9's layout, centred. A
+# widget with none stays in the centred 640, as the game's own menus do.
+# Settings, the server browser and Multiplayer use it (the lobby can too)
+WIDE_WIDTH = 852
+WIDE_EXTRA = WIDE_WIDTH - 640
+WIDE_HALF = WIDE_EXTRA // 2
+# the space kept between the screen's edges and what is nearest them (the
+# carnage report's CARNAGE_LEFT): the rows', panels', tabs' and buttons'
+WIDE_MARGIN = 24
+# the screens' widths the layout is checked at (menu units at 480 lines, as
+# d3d8_device.c's screen_mode_choose has them): 4:3, 16:10 (the Steam Deck),
+# 16:9 and 21:9
+WIDE_SCREENS = {"4:3": 640, "16:10": 768, "16:9": 852, "21:9": 1138}
+
+
+def wide(dx: float = 0, dw: float = 0):
+    """a widget's wide attribute: moved dx, dw wider, on a 16:9 screen (None:
+    neither, the widget where the 640 have it)"""
+    return f"{round(dx)} {round(dw)}" if round(dx) or round(dw) else None
+
+
+# a widget as far from the screen's left edge as the 640 have it from
+# theirs, and from its right
+WIDE_LEFT = wide(-WIDE_HALF)
+WIDE_RIGHT = wide(WIDE_HALF)
+
+
+def wide_extra_of(width: int) -> int:
+    """the extra width a view this wide lays the screens out in
+    (menu_tags.c's ui_widget_port_wide_extra_of)"""
+    return 0 if width <= 640 else WIDE_EXTRA if width >= WIDE_WIDTH else width - 640
+
+
+def wide_scale(value: int, extra: int) -> int:
+    """a wide attribute's move or growth at an extra width, rounded as
+    menu_tags.c's ui_widget_port_wide_scale (half away from 0)"""
+    scaled = value * extra
+    rounded = abs(scaled) + WIDE_EXTRA // 2
+    return rounded // WIDE_EXTRA * (-1 if scaled < 0 else 1)
+
+
+def wide_spread(index: int, count: int) -> int:
+    """the move of the index'th of count things spread from the screen's
+    left edge to its right (tabs)"""
+    return round(-WIDE_HALF + index * WIDE_EXTRA / max(count - 1, 1))
+
+
+# Settings on a wide screen: the rows from the screen's left, SETTINGS_WIDE_ROWS
+# wider (the labels' column; the values at the rows' right), the panel beside
+# them to the screen's right, wider by the rest, the tabs spread across it
+SETTINGS_WIDE_ROWS = 120
+SETTINGS_WIDE_PANEL = (-WIDE_HALF + SETTINGS_WIDE_ROWS, WIDE_EXTRA - SETTINGS_WIDE_ROWS)
 
 DISPLAY_MODES = [("FULLSCREEN", "fullscreen"), ("BORDERLESS", "borderless"), ("WINDOWED", "windowed")]
 FIELDS_OF_VIEW = [("DEFAULT", "0")] + [(str(n), str(n)) for n in range(80, 151, 5)]
@@ -761,10 +824,10 @@ def _strings(name: str, texts: list) -> list:
             *[f"\t\t<string{attributes([('text', text)])}/>" for text in texts], "\t</strings>"]
 
 
-def _button(name: str, caption: int, handlers: list) -> list:
+def _button(name: str, caption: int, handlers: list, wide_layout=None) -> list:
     pairs = [("type", "text"), ("width", 128), ("height", 24), ("bitmap", "bitmaps/text_button_background"),
              ("string_list", "strings/common_button_captions"), ("string_index", caption), ("font", "ui\\small_ui"),
-             ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 2)]
+             ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 2), ("wide", wide_layout)]
     return _widget(name, pairs, handlers + ['<on event="left_mouse" run="mouse emit accept event"/>'])
 
 
@@ -1024,9 +1087,11 @@ def _settings_page(folder: str, page: dict) -> list:
                 y += SETTINGS_SECTION_GAP
             children.append(f'<child{attributes([("widget", name), ("x", SETTINGS_ROW_X), ("y", y), ("platform", platform)])}/>')
             extra += _widget(name, [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_SECTION_HEIGHT),
-                                    ("bitmap", f"{SETTINGS}/section"), ("platform", platform)],
+                                    ("bitmap", f"{SETTINGS}/section"), ("platform", platform),
+                                    ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS))],
                              [f'<child widget="{name}_title"/>'])
             extra += _settings_text(f"{name}_title", [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_SECTION_HEIGHT),
+                                                      ("wide", wide(0, SETTINGS_WIDE_ROWS)),
                                                       ("string_list", f"{base}/labels"),
                                                       ("string_index", len(labels) or None), ("color", SETTINGS_DIM),
                                                       ("text_x", 2), ("text_y", 1)])
@@ -1047,10 +1112,11 @@ def _settings_page(folder: str, page: dict) -> list:
                                       [("width", SETTINGS_SPINNER_X - 4 if setting else SETTINGS_ROW_WIDTH - 12),
                                        ("height", SETTINGS_ROW_HEIGHT), ("string_list", f"{base}/labels"),
                                        ("string_index", len(labels) or None), ("color", SETTINGS_BLUE),
-                                       ("text_x", 10), ("text_y", 2)])
+                                       ("text_x", 10), ("text_y", 2), ("wide", wide(0, SETTINGS_WIDE_ROWS))])
         row_pairs = [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_ROW_HEIGHT),
                      ("flags", "pass_unhandled_to_focused_child"), ("bitmap", f"{SETTINGS}/row"),
-                     ("color", SETTINGS_BLUE), ("platform", platform)]
+                     ("color", SETTINGS_BLUE), ("platform", platform),
+                     ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS))]
         if setting and isinstance(choices, Slider):
             # (a slider: its track, the thumb on it, and its number, which
             # menu_functions.c's "port slider ..." set and its page update
@@ -1069,7 +1135,8 @@ def _settings_page(folder: str, page: dict) -> list:
             extra += label_widget
             extra += _widget(f"{base}/{key}_track", [("controller", 1), ("width", SLIDER_TRACK_WIDTH),
                                                      ("height", SLIDER_TRACK_HEIGHT),
-                                                     ("bitmap", f"{SETTINGS}/slider_track")],
+                                                     ("bitmap", f"{SETTINGS}/slider_track"),
+                                                     ("wide", wide(SETTINGS_WIDE_ROWS))],
                              [f'<child widget="{base}/{key}_thumb"/>'])
             extra += _widget(f"{base}/{key}_thumb", [("controller", 1), ("width", SLIDER_THUMB_WIDTH),
                                                      ("height", SLIDER_TRACK_HEIGHT),
@@ -1081,7 +1148,8 @@ def _settings_page(folder: str, page: dict) -> list:
                                                             ("bitmap", f"{SETTINGS}/slider_field"),
                                                             ("color", SETTINGS_BLUE), ("align", "center"),
                                                             ("text_y", 0),
-                                                            ("text_flags", "no_focus_test")])
+                                                            ("text_flags", "no_focus_test"),
+                                                            ("wide", wide(SETTINGS_WIDE_ROWS))])
         elif setting:
             extra += _widget(row, row_pairs, [f'<child widget="{base}/{key}_label"/>',
                                               f'<child widget="{base}/{key}_spinner" x="{SETTINGS_SPINNER_X}"/>'])
@@ -1094,7 +1162,8 @@ def _settings_page(folder: str, page: dict) -> list:
                               ("color", SETTINGS_BLUE), ("align", "center"), ("text_y", 0),
                               ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
                               ("header_bounds", "2 -6 14 0"),
-                              ("footer_bounds", f"2 {SETTINGS_SPINNER_WIDTH} 14 {SETTINGS_SPINNER_WIDTH + 6}")],
+                              ("footer_bounds", f"2 {SETTINGS_SPINNER_WIDTH} 14 {SETTINGS_SPINNER_WIDTH + 6}"),
+                              ("wide", wide(SETTINGS_WIDE_ROWS))],
                              ['<on event="created" run="port setting load"/>'])
         else:
             # (a row that opens a page, choices: its screen; run: a function
@@ -1121,14 +1190,15 @@ def _settings_page(folder: str, page: dict) -> list:
                       *(['<on event="white" run="port settings tab previous"/>',
                          '<on event="black" run="port settings tab next"/>'] if tab else []),
                       f'<child widget="{header}"/>',
-                      *([f'<child widget="{SETTINGS}/tab_prompt_previous" x="6" y="{SETTINGS_TABS_TOP}"/>',
+                      *([f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" '
+                         f'y="{SETTINGS_TABS_TOP}"/>',
                          f'<child widget="{SETTINGS}/tab_prompt_next" '
-                         f'x="{SETTINGS_TABS_X + 5 * SETTINGS_TAB_STEP + SETTINGS_TAB_WIDTH + 4}" '
+                         f'x="{SETTINGS_TABS_X + 5 * SETTINGS_TAB_STEP + SETTINGS_TAB_LAID + 4}" '
                          f'y="{SETTINGS_TABS_TOP}"/>'] if tab else []),
                       f'<child widget="{base}/options_menu"/>'])
     if not tab:
         lines += _widget(header, [("controller", 1), ("left", 35), ("top", 11), ("width", 605), ("height", 59),
-                                  ("bitmap", header)], [])
+                                  ("bitmap", header), ("wide", WIDE_LEFT)], [])
     # (the tabs last: up from the first row, down from the buttons)
     lines += _widget(f"{base}/options_menu",
                      [("type", "column_list"), ("width", 640), ("height", 480),
@@ -1140,9 +1210,9 @@ def _settings_page(folder: str, page: dict) -> list:
     lines += _widget(f"{base}/button_bar",
                      [("type", "column_list"), ("width", 640), ("height", 28),
                       ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
-                     [f'<child widget="{base}/button_defaults" y="1"/>',
-                      f'<child widget="{base}/button_ok" x="380" y="1"/>',
-                      f'<child widget="{base}/button_cancel" x="510" y="1"/>'])
+                     [f'<child widget="{base}/button_defaults" x="{WIDE_MARGIN}" y="1"/>',
+                      f'<child widget="{base}/button_ok" x="{640 - WIDE_MARGIN - 2 * 128 - 2}" y="1"/>',
+                      f'<child widget="{base}/button_cancel" x="{640 - WIDE_MARGIN - 128}" y="1"/>'])
     if tab:
         # (each tab: its name, the current one framed; A or a click opens it)
         items = []
@@ -1150,7 +1220,9 @@ def _settings_page(folder: str, page: dict) -> list:
             current = other == folder
             name = f"{base}/tab_{PAGES[other]['screen'][:-len('_screen')]}"
             items.append(f'<child widget="{name}" x="{SETTINGS_TABS_X + index * SETTINGS_TAB_STEP}"/>')
-            lines += _settings_text(name, [("width", SETTINGS_TAB_WIDTH), ("height", SETTINGS_TAB_HEIGHT),
+            lines += _settings_text(name, [("width", SETTINGS_TAB_LAID), ("height", SETTINGS_TAB_HEIGHT),
+                                           ("flags", "keep_ends"),
+                                           ("wide", wide(wide_spread(index, len(SETTINGS_TAB_PAGES)))),
                                            ("bitmap", f"{SETTINGS}/{'tab_current' if current else 'tab'}"),
                                            ("string_list", f"{SETTINGS}/tab_names"), ("string_index", index or None),
                                            ("color", "#FFFFFFFF" if current else SETTINGS_BLUE),
@@ -1161,12 +1233,12 @@ def _settings_page(folder: str, page: dict) -> list:
         lines += _widget(f"{base}/tabs", [("type", "column_list"), ("width", 640), ("height", SETTINGS_TAB_HEIGHT),
                                           ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")], items)
     lines += _button(f"{base}/button_defaults", 3, ['<on event="a" run="port settings defaults"/>',
-                                                     '<on event="start" run="port settings defaults"/>'])
+                                                     '<on event="start" run="port settings defaults"/>'], WIDE_LEFT)
     ok = "port settings ok" if tab else "port settings keep"
     lines += _button(f"{base}/button_ok", 1, [f'<on event="a" run="{ok}" back="true"/>',
-                                               f'<on event="start" run="{ok}" back="true"/>'])
+                                               f'<on event="start" run="{ok}" back="true"/>'], WIDE_RIGHT)
     lines += _button(f"{base}/button_cancel", 2, [f'<on event="a" run="{cancel}" back="true"/>',
-                                                   f'<on event="start" run="{cancel}" back="true"/>'])
+                                                   f'<on event="start" run="{cancel}" back="true"/>'], WIDE_RIGHT)
     lines += extra
     lines += _strings(f"{base}/labels", labels)
     lines += _strings(f"{base}/help_strings", helps)
@@ -1177,7 +1249,7 @@ def _settings_shared() -> list:
     """what every page of Settings shares: its title, the panels, the tabs'
     names, the buttons' words, and the screens that make a profile"""
     lines = _widget(SETTINGS_TITLE, [("controller", 1), ("left", 35), ("top", 11), ("width", 605), ("height", 59),
-                                     ("bitmap", SETTINGS_TITLE)], [])
+                                     ("bitmap", SETTINGS_TITLE), ("wide", WIDE_LEFT)], [])
     for kind, top in (("tab", SETTINGS_TOP), ("page", PAGE_TOP)):
         # (menu_functions.c's settings_panel_show fills it in, and shows the
         # Quality row's pictures)
@@ -1199,27 +1271,34 @@ def _settings_shared() -> list:
         lines += _widget(f"{SETTINGS}/{kind}_panel",
                          [("controller", 1), ("left", SETTINGS_PANEL_X), ("top", top),
                           ("width", SETTINGS_PANEL_WIDTH), ("height", height),
-                          ("bitmap", f"{SETTINGS}/{kind}_panel")], children)
-    lines += _settings_text(f"{SETTINGS}/panel_name", [("width", 196), ("height", 18), ("color", SETTINGS_DIM)])
+                          ("bitmap", f"{SETTINGS}/{kind}_panel"), ("wide", wide(*SETTINGS_WIDE_PANEL))], children)
+    # (in a wider panel: its words wider, its pictures in its middle)
+    grown, middle = wide(0, SETTINGS_WIDE_PANEL[1]), wide(SETTINGS_WIDE_PANEL[1] / 2)
+    lines += _settings_text(f"{SETTINGS}/panel_name", [("width", 196), ("height", 18), ("color", SETTINGS_DIM),
+                                                      ("wide", grown)])
     lines += _settings_text(f"{SETTINGS}/panel_value", [("width", 196), ("height", 24), ("font", "ui\\large_ui"),
-                                                       ("color", "#FFFFFFFF")])
-    lines += _settings_text(f"{SETTINGS}/panel_text", [("width", 196), ("height", 220), ("color", SETTINGS_BLUE)])
-    lines += _settings_text(f"{SETTINGS}/panel_note", [("width", 196), ("height", 40), ("color", SETTINGS_DIM)])
+                                                       ("color", "#FFFFFFFF"), ("wide", grown)])
+    lines += _settings_text(f"{SETTINGS}/panel_text", [("width", 196), ("height", 220), ("color", SETTINGS_BLUE),
+                                                      ("wide", grown)])
+    lines += _settings_text(f"{SETTINGS}/panel_note", [("width", 196), ("height", 40), ("color", SETTINGS_DIM),
+                                                      ("wide", grown)])
     for index, still in enumerate(("classic", "enhanced")):
         lines += _widget(f"{SETTINGS}/panel_{still}", [("controller", 1), ("width", SETTINGS_STILL_WIDTH),
                                                        ("height", SETTINGS_STILL_HEIGHT),
-                                                       ("bitmap", f"{SETTINGS}/graphics_{still}")], [])
+                                                       ("bitmap", f"{SETTINGS}/graphics_{still}"), ("wide", middle)],
+                         [])
         lines += _widget(f"{SETTINGS}/panel_{still}_frame", [("controller", 1), ("width", SETTINGS_STILL_WIDTH),
                                                              ("height", SETTINGS_STILL_HEIGHT),
-                                                             ("bitmap", f"{SETTINGS}/still_frame")], [])
+                                                             ("bitmap", f"{SETTINGS}/still_frame"), ("wide", middle)],
+                         [])
         lines += _settings_text(f"{SETTINGS}/panel_{still}_caption",
                                 [("width", SETTINGS_STILL_WIDTH), ("height", 18),
                                  ("string_list", f"{SETTINGS}/still_captions"), ("string_index", index or None),
-                                 ("color", SETTINGS_BLUE), ("align", "center")])
+                                 ("color", SETTINGS_BLUE), ("align", "center"), ("wide", middle)])
     for key in SETTINGS_VALUE_PICTURES:
         lines += _widget(f"{SETTINGS}/panel_picture_{key}",
                          [("controller", 1), ("width", SETTINGS_PICTURE_WIDTH), ("height", SETTINGS_PICTURE_HEIGHT),
-                          ("bitmap", f"{SETTINGS}/pictures_{key}")], [])
+                          ("bitmap", f"{SETTINGS}/pictures_{key}"), ("wide", middle)], [])
     # (making a profile, from CREATE PROFILE: its name asked, as the main
     # menu's items ask it ("new campaign chosen", settings_profile_new), the
     # profile made and edited ("new campaign decision", which edits it for
@@ -1238,7 +1317,9 @@ def _settings_shared() -> list:
     # of the tabs: the HUD's button pictures, display.hud_button_style, or
     # its key caps, ui_widget.c and hud_key_prompts.c)
     for name, icon in (("previous", "white"), ("next", "black")):
-        lines += _settings_text(f"{SETTINGS}/tab_prompt_{name}", [("width", 30), ("height", SETTINGS_TAB_HEIGHT),
+        lines += _settings_text(f"{SETTINGS}/tab_prompt_{name}", [("width", SETTINGS_TAB_PROMPT_WIDTH),
+                                                                 ("height", SETTINGS_TAB_HEIGHT),
+                                                                 ("wide", WIDE_RIGHT if name == "next" else WIDE_LEFT),
                                                                  ("text", f"%{icon}-button"), ("color", SETTINGS_BLUE), ("text_x", 2),
                                                                  ("text_y", 3)])
     lines += _strings(f"{SETTINGS}/tab_names", [PAGES[folder]["tab"] for folder in SETTINGS_TAB_PAGES])
@@ -1714,7 +1795,7 @@ WIDGET_PATCHES = {
         f'<child widget="{MT}/touch/multiplayer_touch_list" platform="touch"/>',
         f'<child widget="{MT}/touch/multiplayer_touch_open_bar" y="346" platform="touch"/>',
         f'<child widget="{MT}/touch/multiplayer_touch_hint" platform="touch"/>']},
-    f"{MT}/header_multiplayer": {"set": {"flags": "anchor_left"}},
+    f"{MT}/header_multiplayer": {"set": {"flags": "anchor_left", "wide": WIDE_LEFT}},
     # (the list's headers, which the touchscreen's list shows too, at its rows'
     # left edge)
     f"{MT}/multiplayer_type_join_item": {"set": {"flags": "anchor_left"}},
@@ -3052,8 +3133,13 @@ def _multiplayer_status() -> list:
 # prompts (the HUD's button pictures, or the keyboard's keys while it plays:
 # ui_widget.c's ui_widget_port_menu_key), each prompt a button the pointer
 # clicks too. menu_functions.c's menu parts fill them in (menu_tabs_show,
-# menu_text_fit, menu_text_box_wrap, menu_prompts_show). The server browser
-# and Multiplayer use them; another screen can, by the same names
+# menu_text_fit, menu_text_box_wrap, menu_prompts_show). On a wide screen
+# (wide: the wide layout) the tabs spread from its left edge to its right,
+# a footer's prompts keep to its edges (those left of the middle to its
+# left, the others to its right), and a section's title and line, a list's
+# rows and its panel take the wide attribute their screen gives them. The
+# server browser and Multiplayer use them; another screen can, by the same
+# names
 PARTS = "main_menu/parts"
 PARTS_TAB = f"{PARTS}/tab"
 PART_TEXT = "#FFCFE3FF"
@@ -3115,6 +3201,16 @@ BROWSER_COLUMNS = {
     "favorite": (6, 16), "server_name": (26, 110), "map": (140, 78), "type": (222, 60), "players": (284, 56),
     "ping": (344, 54),
 }
+# on a wide screen (wide): the list from the screen's left, BROWSER_WIDE_LIST
+# wider, the Server, Map and Mode columns taking the room (each column's move
+# and growth in a row), the panel beside it to the screen's right, wider by
+# the rest
+BROWSER_WIDE_LIST = 144
+BROWSER_WIDE_COLUMNS = {
+    "favorite": (0, 0), "server_name": (0, 64), "map": (64, 44), "type": (108, 36), "players": (144, 0),
+    "ping": (144, 0),
+}
+BROWSER_WIDE_PANEL = (-WIDE_HALF + BROWSER_WIDE_LIST, WIDE_EXTRA - BROWSER_WIDE_LIST)
 # (the star in a place of its own, in from the highlight's rounded end, and
 # the ping's number as far in from its other end)
 # the ping's column: its bars, then its milliseconds at its right (the bars
@@ -3147,6 +3243,10 @@ HUB = f"{MT}/hub"
 HUB_ITEM = (280, 26)
 HUB_LIST_X = 28
 HUB_PANEL = (316, 80, 296, 320)
+# on a wide screen (wide): the items from its left, HUB_WIDE_ITEMS wider, the
+# panel beside them to its right, wider by the rest
+HUB_WIDE_ITEMS = 80
+HUB_WIDE_PANEL = (-WIDE_HALF + HUB_WIDE_ITEMS, WIDE_EXTRA - HUB_WIDE_ITEMS)
 HUB_PROMPTS = [
     ("prompt_refresh", "%right-trigger REFRESH", 28, 124, '<on event="a" run="port multiplayer refresh"/>'),
     ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="mouse emit back event"/>'),
@@ -3244,15 +3344,17 @@ def _part_text(name: str, pairs: list) -> list:
 def _tab_strip(base: str, strip: str, tabs: list, handlers: list) -> list:
     """a strip of tabs, a column list (menu_functions.c's menu_tabs_show
     knows it by its name's end, "_tabs"): each tab's words, its picture
-    Settings' tab (menu_tabs_show frames the current one); A or a click
-    runs the handlers"""
+    Settings' tab (menu_tabs_show frames the current one), spread across a
+    wide screen; A or a click runs the handlers"""
     lines = _widget(f"{base}/{strip}", [("type", "column_list"), ("width", 640), ("height", SETTINGS_TAB_HEIGHT),
                                        ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
                     [f'<child widget="{base}/{name}" x="{SETTINGS_TABS_X + index * SETTINGS_TAB_STEP}"/>'
                      for index, (name, _) in enumerate(tabs)])
-    for name, words in tabs:
-        lines += _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("width", SETTINGS_TAB_WIDTH),
-                                           ("height", SETTINGS_TAB_HEIGHT), ("bitmap", PARTS_TAB), ("text", words),
+    for index, (name, words) in enumerate(tabs):
+        lines += _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("width", SETTINGS_TAB_LAID),
+                                           ("height", SETTINGS_TAB_HEIGHT), ("flags", "keep_ends"),
+                                           ("wide", wide(wide_spread(index, len(tabs)))),
+                                           ("bitmap", PARTS_TAB), ("text", words),
                                            ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE), ("align", "center"),
                                            ("text_y", 3)],
                          handlers + ['<on event="left_mouse" run="mouse emit accept event"/>'])
@@ -3267,8 +3369,9 @@ def _prompts(base: str, bar: str, prompts: list, defined: tuple = ()) -> list:
     lines = _widget(f"{base}/{bar}", [("type", "column_list"), ("width", 640), ("height", PART_PROMPT_HEIGHT + 4),
                                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
                     [f'<child widget="{base}/{name}" x="{x}" y="1"/>' for name, _, x, _, _ in prompts])
-    for name, words, _, width, handler in (prompt for prompt in prompts if prompt[0] not in defined):
+    for name, words, x, width, handler in (prompt for prompt in prompts if prompt[0] not in defined):
         lines += _widget(f"{base}/{name}", [("type", "text"), ("width", width), ("height", PART_PROMPT_HEIGHT),
+                                           ("wide", prompt_wide(x, width)),
                                            ("bitmap", part_highlight(width, PART_PROMPT_HEIGHT)), ("text", words),
                                            ("font", "ui\\small_ui"), ("color", PART_TEXT), ("text_x", 8),
                                            ("text_y", 4)],
@@ -3277,10 +3380,16 @@ def _prompts(base: str, bar: str, prompts: list, defined: tuple = ()) -> list:
     return lines
 
 
-def _section(name: str, words: str, width: int) -> list:
+def prompt_wide(x: int, width: int):
+    """a footer's prompt on a wide screen: at its left edge if left of the
+    middle, else at its right"""
+    return WIDE_LEFT if x + width / 2 < 320 else WIDE_RIGHT
+
+
+def _section(name: str, words: str, width: int, wide_layout=None) -> list:
     """a section's title over its line, which a list passes over (it takes
     no events)"""
-    return _widget(name, [("type", "text"), ("width", width), ("height", PART_SECTION_HEIGHT),
+    return _widget(name, [("type", "text"), ("width", width), ("height", PART_SECTION_HEIGHT), ("wide", wide_layout),
                           ("bitmap", part_section(width)),
                           ("text", words), ("font", "ui\\small_ui"), ("color", PART_DIM), ("text_x", 4)], [])
 
@@ -3317,30 +3426,32 @@ def _browser() -> list:
                      '<on event="right_trigger" run="port browser refresh"/>',
                      f'<child widget="{base}/header_join_game"/>',
                      f'<child widget="{base}/browser_counts"/>',
-                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="6" y="{SETTINGS_TABS_TOP}"/>',
+                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" y="{SETTINGS_TABS_TOP}"/>',
                      f'<child widget="{SETTINGS}/tab_prompt_next" '
-                     f'x="{SETTINGS_TABS_X + (len(BROWSER_TABS) - 1) * SETTINGS_TAB_STEP + SETTINGS_TAB_WIDTH + 4}" '
+                     f'x="{SETTINGS_TABS_X + (len(BROWSER_TABS) - 1) * SETTINGS_TAB_STEP + SETTINGS_TAB_LAID + 4}" '
                      f'y="{SETTINGS_TABS_TOP}"/>',
                      f'<child widget="{base}/browser_columns_line"/>',
                      f'<child widget="{base}/browser_empty"/>',
                      f'<child widget="{list_name}"/>'])
     # (the title of the mode chosen: menu_functions.c's browser_initialize)
     lines += _widget(f"{base}/header_join_game", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
-                                                  ("height", 59)],
+                                                  ("height", 59), ("wide", WIDE_LEFT)],
                      [f'<child widget="{base}/{name}"/>' for name in
                       ("header_server_browser", "header_lan", "header_direct_link")])
     lines += _header(f"{base}/header_lan", f"{base}/header_local_network")
     lines += _part_text(f"{base}/browser_counts", [("left", 420), ("top", 46), ("width", 192), ("height", 18),
-                                                  ("font", "ui\\small_ui"), ("color", PART_DIM), ("align", "right")])
+                                                  ("font", "ui\\small_ui"), ("color", PART_DIM), ("align", "right"),
+                                                  ("wide", WIDE_RIGHT)])
     lines += _widget(f"{base}/browser_columns_line", [("controller", 1), ("left", BROWSER_LIST_X),
                                                       ("top", BROWSER_HEADERS_TOP + 14), ("width", BROWSER_LIST_WIDTH),
-                                                      ("height", 4), ("bitmap", part_line(BROWSER_LIST_WIDTH))], [])
+                                                      ("height", 4), ("bitmap", part_line(BROWSER_LIST_WIDTH)),
+                                                      ("wide", wide(-WIDE_HALF, BROWSER_WIDE_LIST))], [])
     # (the list's words while it has no rows: menu_functions.c's
     # browser_empty_text)
     lines += _part_text(f"{base}/browser_empty", [("left", BROWSER_LIST_X + 24), ("top", 200),
                                                  ("width", BROWSER_LIST_WIDTH - 48), ("height", 80),
                                                  ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE),
-                                                 ("align", "center")])
+                                                 ("align", "center"), ("wide", wide(-WIDE_HALF, BROWSER_WIDE_LIST))])
     # (the list: the tabs, the column titles (up from the first row), the
     # rows, JOIN GAME, the footer; the panel is its description)
     rows = [f'<child widget="{base}/server_item_{row}" x="{BROWSER_LIST_X}" '
@@ -3365,9 +3476,13 @@ def _browser() -> list:
     for name, words, column in BROWSER_HEADERS:
         width = BROWSER_HEADER_WIDTHS.get(column, BROWSER_COLUMNS[column][1])
         right = column in ("players", "ping")
+        # (over its column, on a wide screen too: the list's move and the
+        # column's, its growth)
+        moved, grown = BROWSER_WIDE_COLUMNS[column]
         lines += _widget(f"{base}/{name}", [("type", "text"), ("width", width), ("height", 16), ("text", words),
                                            ("font", "ui\\small_ui"), ("color", PART_DIM),
-                                           ("align", "right" if right else None)],
+                                           ("align", "right" if right else None),
+                                           ("wide", wide(-WIDE_HALF + moved, grown))],
                          ['<on event="a" run="gamespy select header"/>',
                           '<on event="start" run="gamespy select header"/>',
                           '<on event="left_mouse" run="mouse emit accept event"/>',
@@ -3384,7 +3499,8 @@ def _browser() -> list:
     for row in range(1, BROWSER_ROWS + 1):
         lines += _widget(f"{base}/server_item_{row}",
                          [("width", BROWSER_LIST_WIDTH), ("height", BROWSER_ROW_HEIGHT),
-                          ("bitmap", part_row(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT))],
+                          ("bitmap", part_row(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT)),
+                          ("wide", wide(-WIDE_HALF, BROWSER_WIDE_LIST))],
                          ['<on event="a" run="gamespy select item"/>', '<on event="start" run="gamespy select item"/>',
                           '<on event="left_mouse" run="mouse emit accept event"/>',
                           '<on event="double_click" run="gamespy select item"/>',
@@ -3400,7 +3516,8 @@ def _browser() -> list:
                          [("type", "text"), ("width", BROWSER_COLUMNS[column][1]), ("height", BROWSER_ROW_HEIGHT),
                           ("font", "ui\\small_ui"),
                           ("color", "#FFFFFFFF" if column == "server_name" else "#FFC9DCF7"),
-                          ("align", "right" if column == "players" else None), ("text_y", 2)], [])
+                          ("align", "right" if column == "players" else None), ("text_y", 2),
+                          ("wide", wide(*BROWSER_WIDE_COLUMNS[column]))], [])
     lines += _widget(f"{base}/server_item_tick", [("type", "text"), ("width", BROWSER_TICK_BADGE),
                                                   ("height", PART_PILL_HEIGHT),
                                                   ("bitmap", part_pill(BROWSER_TICK_BADGE)), ("font", "ui\\small_ui"),
@@ -3409,13 +3526,15 @@ def _browser() -> list:
     lines += _widget(f"{base}/server_item_locked", [("width", 16), ("height", 16),
                                                     ("bitmap", f"{base}/locked_icon")], [])
     lines += _widget(f"{base}/server_item_ping", [("width", BROWSER_PING_BARS), ("height", 16),
-                                                  ("bitmap", PING_BARS)], [])
+                                                  ("bitmap", PING_BARS), ("wide", wide(*BROWSER_WIDE_COLUMNS["ping"]))],
+                     [])
     # (its milliseconds, coloured by how good, "..." faded while measured:
     # menu_functions.c's pc_menu_text_color)
     lines += _widget(f"{base}/server_item_ping_ms", [("type", "text"), ("width", BROWSER_COLUMNS["ping"][1]),
                                                      ("height", BROWSER_ROW_HEIGHT), ("font", "ui\\small_ui"),
                                                      ("color", "#FFC9DCF7"), ("align", "right"), ("text_y", 2),
-                                                     ("text_flags", "no_focus_test")], [])
+                                                     ("text_flags", "no_focus_test"),
+                                                     ("wide", wide(*BROWSER_WIDE_COLUMNS["ping"]))], [])
     # (the panel: the game chosen's name, map and mode, its kind, tick rate
     # and whether OpenCE's players join it, its players and ping, a line of
     # how it is (under way, a password, joining), and JOIN GAME over it:
@@ -3429,10 +3548,13 @@ def _browser() -> list:
                 ("panel_ping", 173, inner_width, 24, "ui\\large_ui", "#FFFFFFFF", "right"),
                 ("panel_status", 202, inner_width, 60, "ui\\small_ui", SETTINGS_BLUE, None)]
     panel_children = []
+    # (in a wider panel, the words as much wider as it, moved with it)
+    panel_moved, panel_grown = BROWSER_WIDE_PANEL
     for name, y, width, height, font, color, align in children:
         panel_children.append(f'<child widget="{base}/{name}" x="{inner_left}" y="{panel_top + y}"/>')
         lines += _part_text(f"{base}/{name}", [("width", width), ("height", height), ("font", font),
-                                               ("color", color), ("align", align)])
+                                               ("color", color), ("align", align),
+                                               ("wide", wide(0, panel_grown) if width == inner_width else None)])
     for name, x, y, width in (("panel_kind", 0, 108, BROWSER_PILL), ("panel_tick", BROWSER_PILL + 4, 108, BROWSER_PILL),
                               ("panel_opence", 0, 128, BROWSER_WIDE_PILL)):
         panel_children.append(f'<child widget="{base}/{name}" x="{inner_left + x}" y="{panel_top + y}"/>')
@@ -3442,13 +3564,15 @@ def _browser() -> list:
                                            ("text_flags", "no_focus_test")], [])
     lines += _widget(f"{base}/browser_panel", [("controller", 1), ("left", panel_left), ("top", panel_top),
                                                ("width", panel_width), ("height", panel_height),
-                                               ("bitmap", part_panel(panel_width, panel_height))], panel_children)
+                                               ("bitmap", part_panel(panel_width, panel_height)),
+                                               ("wide", wide(*BROWSER_WIDE_PANEL))], panel_children)
     join_w, join_h = BROWSER_JOIN
     lines += _widget(f"{base}/browser_join_bar", [("type", "column_list"), ("width", 640), ("height", join_h),
                                                   ("flags", "pass_unhandled_to_focused_child")],
                      [f'<child widget="{base}/button_join" x="{inner_left}"/>'])
     lines += _widget(f"{base}/button_join", [("type", "text"), ("width", join_w), ("height", join_h),
                                              ("bitmap", part_button(join_w, join_h)),
+                                             ("wide", wide(panel_moved, panel_grown)),
                                              ("text", "%a-button JOIN GAME"), ("font", "ui\\small_ui"),
                                              ("color", "#FFFFFFFF"), ("text_x", 12), ("text_y", 5)],
                      ['<on event="a" run="gamespy select button"/>', '<on event="start" run="gamespy select button"/>',
@@ -3523,9 +3647,10 @@ def _hub() -> list:
                                                                       "hub_join_direct", "hub_party"]),
                                    ("section_host", "HOST", ["hub_create", "hub_create_bots", "hub_coop"]),
                                    (None, None, ["hub_gametypes"])], "hub_prompts")
-    lines += _section(f"{HUB}/section_online", "PLAY ONLINE", item_w)
-    lines += _section(f"{HUB}/section_host", "HOST", item_w)
-    lines += _widget(f"{HUB}/hub_divider", [("width", item_w), ("height", 4), ("bitmap", part_line(item_w))], [])
+    lines += _section(f"{HUB}/section_online", "PLAY ONLINE", item_w, wide(-WIDE_HALF, HUB_WIDE_ITEMS))
+    lines += _section(f"{HUB}/section_host", "HOST", item_w, wide(-WIDE_HALF, HUB_WIDE_ITEMS))
+    lines += _widget(f"{HUB}/hub_divider", [("width", item_w), ("height", 4), ("bitmap", part_line(item_w)),
+                                            ("wide", wide(-WIDE_HALF, HUB_WIDE_ITEMS))], [])
     # (CREATE GAME's page and CO-OP CAMPAIGN's: their two items, the same
     # panel, B back to Multiplayer)
     for page, words, names in (("create", "CREATE GAME", ["hub_create_inter", "hub_create_lan_item"]),
@@ -3537,9 +3662,10 @@ def _hub() -> list:
                           '<on event="deleted" run="port multiplayer status end"/>',
                           f'<child widget="{MT}/header_multiplayer"/>', f'<child widget="{HUB}/{page}_list"/>'])
         lines += page_list(f"{page}_list", [(f"section_{page}", words, names)], "page_prompts")
-        lines += _section(f"{HUB}/section_{page}", words, item_w)
+        lines += _section(f"{HUB}/section_{page}", words, item_w, wide(-WIDE_HALF, HUB_WIDE_ITEMS))
     for name, (words, handlers, note) in items.items():
         lines += _widget(f"{HUB}/{name}", [("type", "text"), ("width", item_w), ("height", item_h),
+                                           ("wide", wide(-WIDE_HALF, HUB_WIDE_ITEMS)),
                                            ("bitmap", part_highlight(item_w, item_h)), ("text", words),
                                            ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE), ("text_x", 10),
                                            ("text_y", 5)],
@@ -3552,6 +3678,7 @@ def _hub() -> list:
     for name, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C"),
                         ("party_note", "#FF7FB2FF")):
         lines += _widget(f"{HUB}/{name}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
+                                           ("wide", wide(0, HUB_WIDE_ITEMS)),
                                            ("font", "ui\\small_ui"), ("color", color), ("align", "right"),
                                            ("text_y", 8), ("text_flags", "no_focus_test")], [])
     lines += _prompts(HUB, "hub_prompts", HUB_PROMPTS)
@@ -3563,16 +3690,20 @@ def _hub() -> list:
 
     # (each placed by its own left and top, which the panel's functions move
     # it from: menu_functions.c's multiplayer_status_number, the badges)
-    def text(name, tx, ty, w, h, font, color, align=None, words=None):
+    def text(name, tx, ty, w, h, font, color, align=None, words=None, wide_layout=None):
         panel.append(f'<child widget="{HUB}/{name}"/>')
         pairs = [("left", tx), ("top", ty), ("width", w), ("height", h), ("font", font), ("color", color),
-                 ("align", align)]
+                 ("align", align), ("wide", wide_layout)]
         return (_widget(f"{HUB}/{name}", [("type", "text"), ("controller", 1), *pairs, ("text", words),
                                          ("text_flags", "no_focus_test")], [])
                 if words else _part_text(f"{HUB}/{name}", pairs))
 
-    lines += text("multiplayer_status", x, top + 14, inner, 24, "ui\\large_ui", "#FFFFFFFF")
-    lines += text("multiplayer_status_detail", x, top + 42, inner, 120, "ui\\large_ui", SETTINGS_BLUE)
+    # (in a wider panel, moved with it: its words wider, the players counted
+    # and each best game's players and ping at its right)
+    grown, players_moved, right = wide(0, HUB_WIDE_PANEL[1]), HUB_WIDE_PANEL[1] // 2, wide(HUB_WIDE_PANEL[1])
+    lines += text("multiplayer_status", x, top + 14, inner, 24, "ui\\large_ui", "#FFFFFFFF", wide_layout=grown)
+    lines += text("multiplayer_status_detail", x, top + 42, inner, 120, "ui\\large_ui", SETTINGS_BLUE,
+                  wide_layout=grown)
     lines += text("online_now_label", x, top + 12, 200, 16, "ui\\small_ui", PART_DIM, words="ONLINE NOW")
     players_x = x + 124
     for count, count_x in (("games", x), ("players", players_x)):
@@ -3581,14 +3712,18 @@ def _hub() -> list:
             lines += _widget(f"{HUB}/online_{count}_{digit}", [("controller", 1),
                                                                ("left", count_x + DIGIT_SIZE[0] * digit),
                                                                ("top", top + 28), ("width", DIGIT_SIZE[0]),
-                                                               ("height", DIGIT_SIZE[1]), ("bitmap", STATUS_DIGITS)],
+                                                               ("height", DIGIT_SIZE[1]), ("bitmap", STATUS_DIGITS),
+                                                               ("wide", wide(players_moved if count == "players"
+                                                                             else 0))],
                              [])
     lines += text("online_games_label", x, top + 46, 80, 18, "ui\\small_ui", SETTINGS_BLUE)
-    lines += text("online_players_label", players_x, top + 46, 90, 18, "ui\\small_ui", SETTINGS_BLUE)
+    lines += text("online_players_label", players_x, top + 46, 90, 18, "ui\\small_ui", SETTINGS_BLUE,
+                  wide_layout=wide(players_moved))
     lines += text("best_label", x, top + 76, 200, 16, "ui\\small_ui", PART_DIM, words="BEST FOR YOU")
     for row in range(BEST_GAMES):
         row_top = top + 94 + 40 * row
-        lines += text(f"best_{row}_name", x, row_top, 166, 20, "ui\\large_ui", "#FFFFFFFF")
+        lines += text(f"best_{row}_name", x, row_top, 166, 20, "ui\\large_ui", "#FFFFFFFF",
+                      wide_layout=wide(0, HUB_WIDE_PANEL[1]))
         panel.append(f'<child widget="{HUB}/best_{row}_badge"/>')
         lines += _widget(f"{HUB}/best_{row}_badge", [("type", "text"), ("controller", 1), ("left", x),
                                                      ("top", row_top + 3), ("width", BROWSER_PILL),
@@ -3596,16 +3731,19 @@ def _hub() -> list:
                                                      ("bitmap", part_pill(BROWSER_PILL)),
                                                      ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
                                                      ("align", "center"), ("text_flags", "no_focus_test")], [])
-        lines += text(f"best_{row}_about", x, row_top + 19, 176, 18, "ui\\small_ui", SETTINGS_BLUE)
+        lines += text(f"best_{row}_about", x, row_top + 19, 176, 18, "ui\\small_ui", SETTINGS_BLUE,
+                      wide_layout=wide(0, HUB_WIDE_PANEL[1]))
         lines += text(f"best_{row}_players", x + inner - 100, row_top + 6, 70, 20, "ui\\large_ui", "#FFFFFFFF",
-                      "right")
+                      "right", wide_layout=right)
         panel.append(f'<child widget="{HUB}/best_{row}_ping"/>')
         lines += _widget(f"{HUB}/best_{row}_ping", [("controller", 1), ("left", x + inner - 24),
                                                     ("top", row_top + 9), ("width", 24), ("height", 16),
-                                                    ("bitmap", PING_BARS)], [])
-    lines += text("multiplayer_options_txt", x, top + height - 76, inner, 64, "ui\\small_ui", SETTINGS_BLUE)
+                                                    ("bitmap", PING_BARS), ("wide", right)], [])
+    lines += text("multiplayer_options_txt", x, top + height - 76, inner, 64, "ui\\small_ui", SETTINGS_BLUE,
+                  wide_layout=grown)
     lines += _widget(f"{HUB}/hub_panel", [("controller", 1), ("left", left), ("top", top), ("width", width),
-                                          ("height", height), ("bitmap", part_panel(width, height))], panel)
+                                          ("height", height), ("bitmap", part_panel(width, height)),
+                                          ("wide", wide(*HUB_WIDE_PANEL))], panel)
     lines += _strings(f"{HUB}/descriptions", HUB_DESCRIPTIONS)
     return lines
 
@@ -3621,10 +3759,14 @@ def _party() -> list:
     PARTY (X), LEAVE PARTY (Y), BACK. Every prompt runs "port party button"
     ("port party x" and "y" the screen's X and Y), which joins the leader's
     game first once it is found (an A press posted). The touchscreen opens it
-    from PARTY on Multiplayer's bar (WIDGET_PATCHES)"""
+    from PARTY on Multiplayer's bar (WIDGET_PATCHES). On a wide screen it is
+    laid out as Multiplayer is (HUB_WIDE_ITEMS, HUB_WIDE_PANEL)"""
     base = f"{MT}/party"
     left, top, width, height = HUB_PANEL
     item_w = HUB_ITEM[0]
+    # (the members' column as wide as Multiplayer's items, its names and
+    # where they are each half the room)
+    items_wide, half = wide(-WIDE_HALF, HUB_WIDE_ITEMS), HUB_WIDE_ITEMS // 2
     lines = _text_button(f"{MT}/multiplayer_button_party", "PARTY",
                          [f'<on event="{event}" open="{base}/party_screen"/>' for event in ("a", "start")])
     rows = [f'<child widget="{base}/party_{part}_{row}"/>' for row in range(PARTY_ROWS)
@@ -3638,30 +3780,31 @@ def _party() -> list:
                       f'<child widget="{base}/section_party" x="{HUB_LIST_X}" y="{top}"/>',
                       f'<child widget="{base}/party_count"/>', f'<child widget="{base}/party_empty"/>', *rows,
                       f'<child widget="{base}/party_panel"/>', f'<child widget="{base}/party_list"/>'])
-    lines += _section(f"{base}/section_party", "PARTY", item_w)
+    lines += _section(f"{base}/section_party", "PARTY", item_w, items_wide)
     lines += _part_text(f"{base}/party_count", [("left", HUB_LIST_X), ("top", top + 2), ("width", item_w - 4),
                                                ("height", 16), ("font", "ui\\small_ui"), ("color", PART_DIM),
-                                               ("align", "right")])
+                                               ("align", "right"), ("wide", items_wide)])
     # (the list's words out of a party: menu_functions.c's browser_empty's)
     lines += _part_text(f"{base}/party_empty", [("left", HUB_LIST_X + 16), ("top", 180), ("width", item_w - 32),
                                                ("height", 100), ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE),
-                                               ("align", "center")])
+                                               ("align", "center"), ("wide", items_wide)])
     # (a member's row: its name, the leader's pill in its place's, else where
     # it is)
     for row in range(PARTY_ROWS):
         y = top + PART_SECTION_HEIGHT + 4 + PARTY_ROW_STEP * row
         lines += _part_text(f"{base}/party_name_{row}", [("left", HUB_LIST_X + 6), ("top", y), ("width", 150),
                                                         ("height", PARTY_ROW_STEP), ("font", "ui\\small_ui"),
-                                                        ("color", "#FFFFFFFF")])
+                                                        ("color", "#FFFFFFFF"), ("wide", wide(-WIDE_HALF, half))])
         lines += _part_text(f"{base}/party_where_{row}", [("left", HUB_LIST_X + 156), ("top", y),
                                                          ("width", item_w - 160), ("height", PARTY_ROW_STEP),
                                                          ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE),
-                                                         ("align", "right")])
+                                                         ("align", "right"), ("wide", wide(-WIDE_HALF + half, half))])
         lines += _widget(f"{base}/party_leader_{row}", [("type", "text"), ("controller", 1),
                                                          ("left", HUB_LIST_X + item_w - BROWSER_PILL - 4),
                                                          ("top", y + 1), ("width", BROWSER_PILL),
                                                          ("height", PART_PILL_HEIGHT),
                                                          ("bitmap", part_pill(BROWSER_PILL)), ("text", "LEADER"),
+                                                         ("wide", wide(-WIDE_HALF + HUB_WIDE_ITEMS)),
                                                          ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
                                                          ("align", "center"), ("text_flags", "no_focus_test")], [])
     # (the panel, Multiplayer's: menu_functions.c's party_screen_update)
@@ -3670,7 +3813,8 @@ def _party() -> list:
 
     def text(name, ty, h, font, color, words=None):
         panel.append(f'<child widget="{base}/{name}"/>')
-        pairs = [("left", x), ("top", top + ty), ("width", inner), ("height", h), ("font", font), ("color", color)]
+        pairs = [("left", x), ("top", top + ty), ("width", inner), ("height", h), ("font", font), ("color", color),
+                 ("wide", wide(0, HUB_WIDE_PANEL[1]))]
         return (_widget(f"{base}/{name}", [("type", "text"), ("controller", 1), *pairs, ("text", words),
                                            ("text_flags", "no_focus_test")], [])
                 if words else _part_text(f"{base}/{name}", pairs))
@@ -3682,7 +3826,8 @@ def _party() -> list:
     lines += text("panel_notice", 160, 66, "ui\\small_ui", "#FFFFFFFF")
     lines += text("panel_about", height - 76, 64, "ui\\small_ui", SETTINGS_BLUE)
     lines += _widget(f"{base}/party_panel", [("controller", 1), ("left", left), ("top", top), ("width", width),
-                                             ("height", height), ("bitmap", part_panel(width, height))], panel)
+                                             ("height", height), ("bitmap", part_panel(width, height)),
+                                             ("wide", wide(*HUB_WIDE_PANEL))], panel)
     lines += _widget(f"{base}/party_list", [("type", "column_list"), ("width", 640), ("height", 480),
                                             ("flags", "pass_unhandled_to_focused_child up_down_tabs_children")],
                      ['<data input="port party update"/>', f'<child widget="{base}/party_prompts" y="414"/>'])

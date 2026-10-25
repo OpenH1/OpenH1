@@ -108,6 +108,16 @@ void draw_bitmap_in_rect(
 	pixel32 argb,
 	struct rasterizer_dynamic_screen_geometry_parameters *multitexture_params,
 	boolean no_plasma);
+/* port: (ui_widget.c) */
+void draw_bitmap_widened_in_rect(
+	struct bitmap_data *bitmap,
+	rectangle2d *rect,
+	short picture_width,
+	short edge,
+	rectangle2d *clip_rect,
+	pixel32 argb,
+	struct rasterizer_dynamic_screen_geometry_parameters *multitexture_params,
+	boolean no_plasma);
 struct widget_instance *widget_instance_get_topmost_parent(
 	struct widget_instance *widget);
 int widget_instance_get_child_index_from_parent(

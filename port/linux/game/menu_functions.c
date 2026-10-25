@@ -4092,13 +4092,14 @@ static void settings_slider_set(short slider, double value)
 }
 
 /* the track's left edge on the screen (its offsets and its parents', as the
-menus draw them: each widget's in its parent's) */
+menus draw them: each widget's in its parent's, and its move in the wide
+layout, ui_widget_port_wide_offset) */
 static short settings_slider_track_x(struct widget_instance *track)
 {
 	short x = 0;
 
 	for (; track; track = track->parent)
-		x = (short)(x + track->horizontal_offset);
+		x = (short)(x + track->horizontal_offset + ui_widget_port_wide_offset(track->definition_tag_index));
 	return x;
 }
 
