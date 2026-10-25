@@ -353,6 +353,25 @@ static inline float xgpu_hdr_lights(float base, float light, int lights)
 	}
 	return powf(result, 1.0f / 2.2f);
 }
+
+/* a pixel of the frame (its values, RGBA) for an SDR picture, as BGRA8:
+tone mapped at a peak of 1, as an SDR display shows HDR (Faithful's, which
+leaves a pixel no channel of which is past white as it is), for the
+screenshot key's PNG */
+static inline void xgpu_hdr_sdr_pixel(const float rgba[4], unsigned char bgra[4])
+{
+	float rgb[3] = { rgba[0], rgba[1], rgba[2] };
+	int channel;
+
+	xgpu_hdr_tone_map(rgb, XGPU_HDR_MODE_FAITHFUL, 1.0f);
+	for (channel = 0; channel < 4; channel++)
+	{
+		float value = channel == 3 ? rgba[3] : rgb[channel];
+
+		bgra[channel == 3 ? 3 : 2 - channel] =
+			(unsigned char)(value <= 0.0f ? 0 : value >= 1.0f ? 255 : (int)(value * 255.0f + 0.5f));
+	}
+}
 #endif
 
 /* ---------- the classification (xgpu_hdr.c) */

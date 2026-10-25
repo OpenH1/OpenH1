@@ -236,7 +236,7 @@ static const struct config_setting config_settings[] =
 		"motion sensor's reach, in sight and not camouflaged; none show if the\n"
 		"gametype's motion tracker shows no players, only allies' if it shows\n"
 		"only friends." },
-	{ "display.player_name_scale", _config_real, "1.0", "HALO_PLAYER_NAME_SCALE", _environment_value, _platform_all,
+	{ "display.player_name_scale", _config_real, "0.75", "HALO_PLAYER_NAME_SCALE", _environment_value, _platform_all,
 		"How large the players' names are drawn: 1.0 three quarters of the size of\n"
 		"the HUD's text, 0.25 to 4." },
 	{ "display.match_timer", _config_boolean, "false", "HALO_MATCH_TIMER", _environment_value, _platform_all,
@@ -339,6 +339,10 @@ static const struct config_setting config_settings[] =
 		"Reverberate the world's sounds as the place the player is in does (the\n"
 		"maps' sound environments, as the Xbox's I3DL2 reverb did); false keeps\n"
 		"them dry." },
+	{ "audio.doppler", _config_boolean, "true", "HALO_DOPPLER", _environment_value, _platform_all,
+		"Shift the pitch of the world's sounds as they move towards or away\n"
+		"from the player, as the Xbox's DirectSound did (a Banshee passing by);\n"
+		"false keeps their pitch." },
 	{ "audio.resampler", _config_string, "\"sinc\"", "HALO_AUDIO_RESAMPLER", _environment_value, _platform_all,
 		"How sounds are converted to the output's rate: \"sinc\" with a\n"
 		"band-limited low pass; \"linear\" between neighbouring samples,\n"
@@ -799,7 +803,7 @@ static const struct config_setting config_settings[] =
 	{ "controls.pause", _config_string, "\"Escape\"", "HALO_KEY_PAUSE", _environment_value, _platform_all,
 		"The pause menu (the controller's Start)." },
 	{ "controls.screenshot", _config_string, "\"F10\"", "HALO_KEY_SCREENSHOT", _environment_value, _platform_all,
-		"Save a PNG screenshot beside maps/ (press once per capture)." },
+		"Save a PNG screenshot in screenshots/ beside maps/ (press once per capture)." },
 	{ "controls.push_to_talk", _config_string, "\"V\"", "HALO_KEY_PUSH_TO_TALK", _environment_value, _platform_all,
 		"Voice chat: talk while it is held (audio.voice_chat \"push_to_talk\")." },
 	{ "controls.chat", _config_string, "\"T\"", "HALO_KEY_CHAT", _environment_value, _platform_all,
@@ -975,7 +979,7 @@ static const struct config_setting config_settings[] =
 		"which OpenCE players join too at 30 (network.allow_opence), or\n"
 		"\"legacy\", OpenCE's netcode at 30 ticks a second for everyone. Read as\n"
 		"the game is hosted (\"standard\" is \"openh1\" too)." },
-	{ "network.sim_rate", _config_integer, "60", "HALO_NET_SIM_RATE", _environment_value, _platform_all,
+	{ "network.sim_rate", _config_integer, "120", "HALO_NET_SIM_RATE", _environment_value, _platform_all,
 		"Hosting an OpenH1 game: its tick rate, 30, 60 or 120 (game.sim_rate's\n"
 		"steps), which every machine of it takes as the game starts. A Legacy game\n"
 		"plays at 30." },

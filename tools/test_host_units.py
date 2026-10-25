@@ -140,3 +140,37 @@ def test_image_base_agrees():
                             capture_output=True, text=True, check=True).stdout
     value = next(line.split()[2] for line in output.splitlines() if line.startswith("#define HALO_GUEST_IMAGE_BASE "))
     assert int(value.rstrip("uU"), 16) == arch.image_base
+
+
+def sdl_build():
+    """an SDL3 the builds made (its headers and library), or None"""
+    for headers in sorted(ROOT.glob("build/*/third_party/SDL3/include")):
+        build = headers.parent.parent.parent
+        libraries = sorted([*build.glob("libSDL3.*dylib"), *build.glob("**/libSDL3.so*")])
+        if (headers / "SDL3" / "SDL.h").exists() and libraries:
+            return headers, libraries[0]
+    return None
+
+
+def test_host_screenshot(tmp_path):
+    """the screenshot key's files (port/android/host/host_screenshot.c):
+    their names, the folder made, the PNG's pixels, two in one second, a
+    folder that cannot be made; with an SDL3 a build made"""
+    sdl = sdl_build()
+    if not sdl:
+        pytest.skip("no SDL3 built (ninja macos, linux_x86_64 or linux_arm64 first)")
+    headers, library = sdl
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    cc = compiler()
+    if not cc:
+        pytest.skip("no C compiler")
+    binary = tmp_path / "host_screenshot_test"
+    subprocess.run(
+        [cc, "-std=gnu11", "-Wall", "-Wextra", "-Werror", "-O1", f"-I{HOST}", f"-I{headers}",
+         f"-I{ROOT / 'port' / 'linux' / 'src'}", str(TESTS / "host_screenshot_test.c"), str(HOST / "host_screenshot.c"),
+         str(library), f"-Wl,-rpath,{library.parent}", "-o", str(binary)],
+        check=True,
+    )
+    result = subprocess.run([str(binary), str(scratch)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr

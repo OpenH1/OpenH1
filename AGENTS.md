@@ -194,6 +194,7 @@ python -m pytest -q tools/test_linux_port.py                # the build, the map
                                                             # tools/x86_game_abi.py, needs gcc-multilib on x86-64 Linux)
 python -m pytest -q tools/test_mods.py                      # mods played over a map (needs assets/maps)
 python -m pytest -q tools/test_bots.py                      # the bots in local games (needs assets/maps)
+python -m pytest -q tools/test_screenshot_key.py            # the Screenshot key's PNG in a hidden run (a build, assets/maps)
 python -m pytest -q tools/test_cache_file_formats.py tools/test_bmp_files.py tools/test_profile.py
 python -m pytest -q tools/test_render_manifest.py tools/test_render_stream.py  # the renderer's manifest, the command stream
 python -m pytest -q tools/test_vulkan_passes.py tools/test_host_vr_vulkan.py  # the Vulkan backend, the VR host (a fake GPU)

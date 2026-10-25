@@ -160,8 +160,8 @@ everywhere, `keep_ends`: the widget's picture drawn at the widget's width
 with its ends as they are, its middle stretched or shortened (a tab laid out
 narrower than its picture).
 
-The port's own screens (Settings, the server browser, Multiplayer; the lobby
-next) use a wide screen's width up to 16:9 (852 of the menus' units at 480
+The port's own screens (Settings, the server browser, Multiplayer, the
+lobby) use a wide screen's width up to 16:9 (852 of the menus' units at 480
 lines; 21:9 and wider have 16:9's, in the middle): a widget's `wide`, "dx
 dw", moves it dx and widens it dw at 16:9, and by its part of the screen's
 extra width on a narrower one (16:10's 128 of 212), none at 4:3. A move

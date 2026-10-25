@@ -1,5 +1,7 @@
-"""The real pregame countdown of network_server_manager.c: the lobby's START NOW starts it for a host alone, a host with
-split screen players and machines together, and a machine joining without a player does not stop it."""
+"""The real pregame countdown of network_server_manager.c: the host's START GAME (its own faster) starts the game at
+once, with one press, for a host alone, a host with split screen players and machines together, even during a countdown
+another machine started; the other machines' requests count down as the Xbox game's did; and a machine joining without
+a player does not stop it."""
 
 import sys
 from pathlib import Path
@@ -12,14 +14,16 @@ from harness import CHECK_FAILED, build, constant, enum_with, function, mutated,
 CASES = [
     "split-screen-start-now", "alone-start-now", "empty-lobby-waits", "two-machines-start-now",
     "two-machines-team-game-needs-both-teams", "playerless-machine-keeps-countdown",
-    "split-screen-team-game-one-team",
+    "split-screen-team-game-one-team", "host-start-during-countdown", "other-machines-count-down",
+    "host-stop-and-start-at-once",
 ]
 FUNCTIONS = (
     "countdown_timer_update", "countdown_timer_get_time_remaining", "countdown_timer_increment",
     "countdown_timer_decrement", "countdown_timer_set_time_remaining",
     "network_game_server_get_client_machine_count", "server_needs_more_teams",
     "server_has_enough_machines", "server_players_on_one_machine", "server_ok_to_countdown",
-    "network_game_server_update_countdown",
+    "network_game_server_update_countdown", "network_game_server_client_machine_may_slow_countdown",
+    "network_game_server_game_start_request_event",
 )
 CONSTANTS = (
     "MAXIMUM_NETWORK_MACHINE_COUNT", "MAXIMUM_NETWORK_PLAYER_COUNT", "NUMBER_OF_MULTIPLAYER_TEAMS",
@@ -29,9 +33,27 @@ CONSTANTS = (
 
 # a fault in network_server_manager.c, the function it is in, and the case that must catch it
 NEGATIVE_CONTROLS = {
+    # the host's press as the Xbox game took it: a 30 second countdown, pressed again and again
+    "host-faster-counts-down": (
+        ("return host ? _network_game_server_countdown_event_start_immediately : request;", "return request;"),
+        "network_game_server_game_start_request_event", "alone-start-now",
+    ),
+    # the host's press lost in a tick another machine changed the countdown
+    "start-at-once-once-a-tick": (
+        (
+            "told at once */\n\t\t\t\tif (countdown_event == _network_game_server_countdown_event_start_immediately)",
+            "told at once */\n\t\t\t\tif (countdown_event == _network_game_server_countdown_event_start_immediately && "
+            "!server->countdown_state.adjusted_time_this_tick)",
+        ),
+        "network_game_server_update_countdown", "host-start-during-countdown",
+    ),
+    "anyone-starts-at-once": (
+        ("return host ? request : NONE;", "return request;"),
+        "network_game_server_game_start_request_event", "other-machines-count-down",
+    ),
     "one-player-only": (
         ("else if ((short)player->machine_index != first_machine_index)", "else"),
-        "server_players_on_one_machine", "split-screen-start-now",
+        "server_players_on_one_machine", "split-screen-team-game-one-team",
     ),
     "machines-ignored": (
         ("else if ((short)player->machine_index != first_machine_index)", "else if (0)"),

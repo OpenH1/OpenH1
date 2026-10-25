@@ -587,7 +587,7 @@ def _generate_macos_app(n: Writer, sln: Any, built: Dict[str, Any]) -> None:
     replay_obj = host_obj_dir / "tools" / "halo_replay.m.o"
     n.build(outputs=replay_obj, rule="macos_host_cc", inputs=PORT_DIR / "tools" / "halo_replay.m",
             variables={"cflags": objc_cflags})
-    replay_host = [host_obj_dir / "host_render_stream.c.o", record_obj]
+    replay_host = [host_obj_dir / "host_render_stream.c.o", host_obj_dir / "host_screenshot.c.o", record_obj]
     replay = BUILD / "halo_replay"
     n.build(outputs=replay, rule="macos_host_link", inputs=[replay_obj, *replay_host, *metal_objects, *shared_objects],
             implicit=[libsdl])

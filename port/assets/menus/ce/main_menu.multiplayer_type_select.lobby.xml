@@ -8,10 +8,481 @@
 		<on event="b" run="port lobby leave" back="true"/>
 		<on event="back" run="port lobby leave" back="true"/>
 		<on event="start" run="port lobby join" open="main_menu/multiplayer_type_select/lobby/player_profile_screen" branch="true"/>
-		<child widget="main_menu/new_select/sel_list_desc_bkd"/>
-		<child widget="main_menu/multiplayer_type_select/lobby/lobby_list"/>
-		<child widget="main_menu/multiplayer_type_select/lobby/header_lobby"/>
-		<child widget="main_menu/multiplayer_type_select/lobby/lobby_join_help"/>
+		<on event="x" run="port lobby add player"/>
+		<on event="y" run="port lobby invite"/>
+		<child widget="main_menu/new_select/sel_list_desc_bkd" platform="touch"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/lobby_list" platform="touch"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/header_lobby" platform="touch"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/lobby_join_help" platform="touch"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_header" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_subtitle" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_team_0" x="28" y="80" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_title_0" x="40" y="88" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_team_1" x="226" y="80" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_title_1" x="238" y="88" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_all" x="28" y="80" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_title_all" x="40" y="88" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_count_0" x="112" y="92" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_count_1" x="310" y="92" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_0_0" x="36" y="116" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_0_1" x="36" y="136" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_0_2" x="36" y="156" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_0_3" x="36" y="176" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_0_4" x="36" y="196" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_0_5" x="36" y="216" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_0_6" x="36" y="236" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_0_7" x="36" y="256" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_0_8" x="36" y="276" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_0_9" x="36" y="296" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_0_10" x="36" y="316" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_0_11" x="36" y="336" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_0_12" x="36" y="356" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_1_0" x="234" y="116" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_1_1" x="234" y="136" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_1_2" x="234" y="156" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_1_3" x="234" y="176" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_1_4" x="234" y="196" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_1_5" x="234" y="216" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_1_6" x="234" y="236" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_1_7" x="234" y="256" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_1_8" x="234" y="276" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_1_9" x="234" y="296" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_1_10" x="234" y="316" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_1_11" x="234" y="336" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_row_1_12" x="234" y="356" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_panel" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_list" platform="pointer"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_header" controller="1" left="35" top="11" width="363" height="59" bitmap="main_menu/multiplayer_type_select/lobby/header_lobby" wide="-106 0">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_subtitle" type="text" controller="1" left="300" top="50" width="312" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" wide="106 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_team_0" controller="1" width="186" height="320" bitmap="main_menu/parts/team_panel_186x320" wide="-106 70">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_title_0" type="text" controller="1" width="100" height="22" text="RED" font="ui\large_ui" color="#FFFF6B5E" wide="-106 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_team_1" controller="1" width="186" height="320" bitmap="main_menu/parts/team_panel_186x320" wide="-36 70">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_title_1" type="text" controller="1" width="100" height="22" text="BLUE" font="ui\large_ui" color="#FF5AA9FF" wide="-36 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_all" controller="1" width="384" height="320" bitmap="main_menu/parts/panel_384x320" wide="-106 140">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_title_all" type="text" controller="1" width="100" height="22" text="PLAYERS" font="ui\large_ui" color="#FF2896FF" wide="-106 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_count_0" type="text" controller="1" width="90" height="16" font="ui\small_ui" color="#FF6F9CD0" align="right" wide="-36 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_count_1" type="text" controller="1" width="90" height="16" font="ui\small_ui" color="#FF6F9CD0" align="right" wide="34 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_0_0" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-106 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_0_0" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_0_0" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_0_0" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_0_0" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_0_0" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_0_0" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_0_1" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-106 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_0_1" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_0_1" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_0_1" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_0_1" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_0_1" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_0_1" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_0_2" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-106 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_0_2" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_0_2" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_0_2" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_0_2" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_0_2" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_0_2" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_0_3" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-106 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_0_3" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_0_3" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_0_3" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_0_3" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_0_3" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_0_3" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_0_4" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-106 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_0_4" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_0_4" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_0_4" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_0_4" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_0_4" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_0_4" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_0_5" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-106 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_0_5" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_0_5" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_0_5" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_0_5" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_0_5" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_0_5" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_0_6" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-106 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_0_6" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_0_6" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_0_6" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_0_6" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_0_6" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_0_6" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_0_7" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-106 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_0_7" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_0_7" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_0_7" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_0_7" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_0_7" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_0_7" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_0_8" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-106 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_0_8" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_0_8" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_0_8" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_0_8" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_0_8" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_0_8" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_0_9" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-106 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_0_9" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_0_9" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_0_9" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_0_9" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_0_9" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_0_9" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_0_10" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-106 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_0_10" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_0_10" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_0_10" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_0_10" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_0_10" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_0_10" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_0_11" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-106 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_0_11" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_0_11" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_0_11" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_0_11" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_0_11" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_0_11" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_0_12" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-106 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_0_12" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_0_12" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_0_12" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_0_12" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_0_12" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_0_12" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_1_0" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-36 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_1_0" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_1_0" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_1_0" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_1_0" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_1_0" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_1_0" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_1_1" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-36 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_1_1" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_1_1" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_1_1" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_1_1" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_1_1" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_1_1" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_1_2" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-36 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_1_2" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_1_2" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_1_2" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_1_2" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_1_2" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_1_2" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_1_3" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-36 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_1_3" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_1_3" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_1_3" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_1_3" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_1_3" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_1_3" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_1_4" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-36 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_1_4" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_1_4" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_1_4" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_1_4" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_1_4" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_1_4" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_1_5" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-36 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_1_5" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_1_5" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_1_5" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_1_5" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_1_5" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_1_5" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_1_6" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-36 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_1_6" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_1_6" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_1_6" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_1_6" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_1_6" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_1_6" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_1_7" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-36 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_1_7" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_1_7" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_1_7" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_1_7" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_1_7" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_1_7" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_1_8" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-36 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_1_8" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_1_8" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_1_8" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_1_8" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_1_8" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_1_8" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_1_9" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-36 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_1_9" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_1_9" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_1_9" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_1_9" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_1_9" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_1_9" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_1_10" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-36 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_1_10" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_1_10" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_1_10" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_1_10" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_1_10" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_1_10" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_1_11" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-36 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_1_11" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_1_11" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_1_11" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_1_11" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_1_11" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_1_11" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_row_1_12" controller="1" width="170" height="18" bitmap="main_menu/parts/player_row_170x18" wide="-36 70">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_dot_1_12" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_name_1_12" x="22"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tag_1_12" x="102"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_dot_1_12" controller="1" width="8" height="8" bitmap="main_menu/parts/dot_8">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_name_1_12" type="text" controller="1" width="80" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 70" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tag_1_12" type="text" controller="1" width="58" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_y="2" wide="70 0" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_next_label" type="text" controller="1" width="164" height="16" font="ui\small_ui" color="#FF6F9CD0" text="NEXT GAME" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_gametype" type="text" controller="1" width="164" height="22" font="ui\large_ui" color="#FFFFFFFF" wide="0 72" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_map" type="text" controller="1" width="164" height="16" font="ui\small_ui" color="#FF2896FF" wide="0 72" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_limits" type="text" controller="1" width="164" height="16" font="ui\small_ui" color="#FF2896FF" wide="0 72" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_kind" type="text" controller="1" width="64" height="16" bitmap="main_menu/parts/pill_64" font="ui\small_ui" color="#FFFFFFFF" align="center" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_tick" type="text" controller="1" width="64" height="16" bitmap="main_menu/parts/pill_64" font="ui\small_ui" color="#FFFFFFFF" align="center" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_opence" type="text" controller="1" width="132" height="16" bitmap="main_menu/parts/pill_132" font="ui\small_ui" color="#FFFFFFFF" align="center" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_section_bots" type="text" width="164" height="20" wide="0 72" bitmap="main_menu/parts/section_164" text="BOTS" font="ui\small_ui" color="#FF6F9CD0" text_x="4">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_status" type="text" controller="1" width="164" height="28" font="ui\small_ui" color="#FF2896FF" wide="0 72" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_waiting" type="text" controller="1" width="164" height="26" font="ui\large_ui" color="#FF2896FF" align="center" wide="0 72" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_panel" controller="1" left="420" top="80" width="192" height="320" bitmap="main_menu/parts/panel_192x320" wide="34 72">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_next_label" x="434" y="92"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_gametype" x="434" y="108"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_map" x="434" y="132"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_limits" x="434" y="148"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_kind" x="434" y="170"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_tick" x="502" y="170"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_opence" x="434" y="190"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_section_bots" x="434" y="214"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_status" x="434" y="306"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_waiting" x="434" y="364"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_players" width="384" height="320" wide="-106 140">
+		<on event="left" run="port lobby team red"/>
+		<on event="right" run="port lobby team blue"/>
+		<on event="a" run="port lobby team click"/>
+		<on event="start" run="port lobby start"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_bots_count" width="164" height="22" flags="pass_unhandled_to_focused_child" bitmap="main_menu/parts/item_164x22" wide="34 72">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_bots_count_label" x="8"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_bots_count_spinner" x="70"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_bots_count_label" type="text" controller="1" width="60" height="22" text="COUNT" font="ui\small_ui" color="#FF2896FF" text_y="4">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_bots_count_spinner" type="spinner" top="1" width="84" height="20" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="NONE|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15" setting="bots.count" values="0|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="3" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="7 -6 19 0" footer_bounds="7 87 19 93" wide="72 0">
+		<on event="created" run="port setting load"/>
+		<on event="start" run="port lobby start"/>
+		<on event="left_mouse" run="mouse spinner 1wide click"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_bots_skill" width="164" height="22" flags="pass_unhandled_to_focused_child" bitmap="main_menu/parts/item_164x22" wide="34 72">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_bots_skill_label" x="8"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_bots_skill_spinner" x="70"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_bots_skill_label" type="text" controller="1" width="60" height="22" text="SKILL" font="ui\small_ui" color="#FF2896FF" text_y="4">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_bots_skill_spinner" type="spinner" top="1" width="84" height="20" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="EASY|NORMAL|HEROIC|LEGENDARY" setting="bots.skill" values="easy|normal|heroic|legendary" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="3" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="7 -6 19 0" footer_bounds="7 87 19 93" wide="72 0">
+		<on event="created" run="port setting load"/>
+		<on event="start" run="port lobby start"/>
+		<on event="left_mouse" run="mouse spinner 1wide click"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_bots_teams" width="164" height="22" flags="pass_unhandled_to_focused_child" bitmap="main_menu/parts/item_164x22" wide="34 72">
+		<child widget="main_menu/multiplayer_type_select/lobby/board_bots_teams_label" x="8"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_bots_teams_spinner" x="70"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_bots_teams_label" type="text" controller="1" width="60" height="22" text="TEAMS" font="ui\small_ui" color="#FF2896FF" text_y="4">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_bots_teams_spinner" type="spinner" top="1" width="84" height="20" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="EVEN|AGAINST YOU" setting="bots.teams" values="even|against" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="3" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="7 -6 19 0" footer_bounds="7 87 19 93" wide="72 0">
+		<on event="created" run="port setting load"/>
+		<on event="start" run="port lobby start"/>
+		<on event="left_mouse" run="mouse spinner 1wide click"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_settings" type="text" width="164" height="22" bitmap="main_menu/parts/outline_164x22" wide="34 72" text="GAME SETTINGS" font="ui\small_ui" color="#FFCFE3FF" align="center" text_y="4">
+		<on event="a" run="port lobby settings"/>
+		<on event="start" run="port lobby start"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_start" type="text" width="164" height="26" bitmap="main_menu/parts/button_164x26" wide="34 72" font="ui\small_ui" color="#FFFFFFFF" text_x="12" text_y="6">
+		<on event="a" run="port lobby start"/>
+		<on event="start" run="port lobby start"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_list" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child up_down_tabs_items">
+		<data input="net splitscreen prejoin players"/>
+		<data input="port lobby board update"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_players" x="28" y="80"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_bots_count" x="434" y="236"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_bots_skill" x="434" y="258"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_bots_teams" x="434" y="280"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_settings" x="434" y="336"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_start" x="434" y="364"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/board_prompts" y="414"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/board_prompts" type="column_list" width="640" height="26" flags="pass_unhandled_to_focused_child left_right_tabs_items">
+		<child widget="main_menu/multiplayer_type_select/lobby/prompt_team" x="28" y="1"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/prompt_invite" x="176" y="1"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/prompt_add" x="324" y="1"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/prompt_leave" x="516" y="1"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/prompt_invite" type="text" width="124" height="22" wide="-106 0" bitmap="main_menu/parts/item_124x22" text="%y-button INVITE LINK" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="4">
+		<on event="a" run="port lobby invite"/>
+		<on event="start" run="port lobby invite"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/prompt_add" type="text" width="124" height="22" wide="106 0" bitmap="main_menu/parts/item_124x22" text="%x-button ADD PLAYER" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="4">
+		<on event="a" run="port lobby add player"/>
+		<on event="start" run="port lobby add player"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/prompt_leave" type="text" width="96" height="22" wide="106 0" bitmap="main_menu/parts/item_96x22" text="%b-button LEAVE" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="4">
+		<on event="a" run="mouse emit back event"/>
+		<on event="start" run="mouse emit back event"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/prompt_team" type="text" width="144" height="22" wide="-106 0" bitmap="main_menu/parts/item_144x22" text="CHANGE TEAM" font="ui\small_ui" color="#FFCFE3FF" text_x="30" text_y="4">
+		<on event="a" run="port lobby team toggle"/>
+		<on event="start" run="port lobby team toggle"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/prompt_team_left" x="8" y="5"/>
+		<child widget="main_menu/multiplayer_type_select/lobby/prompt_team_right" x="18" y="5"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/prompt_team_left" width="6" height="12" bitmap="bitmaps/arrow_sm_left">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/lobby/prompt_team_right" width="6" height="12" bitmap="bitmaps/arrow_sm_right">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/header_lobby" controller="1" left="35" top="11" width="363" height="59" bitmap="main_menu/multiplayer_type_select/lobby/header_lobby">
 	</widget>

@@ -107,6 +107,7 @@ symbols in this file:
 #include "units/units.h"
 #include "map_share.h" /* port: port/linux/game/map_share.c */
 #include "latency_meter.h" /* port: port/linux/game/latency_meter.c */
+#include "network_host_controls.h" /* port: port/linux/game/network_host_controls.c */
 
 /* ---------- constants */
 
@@ -735,6 +736,28 @@ void interface_draw_screen(
 		return;
 
 	interface_draw_weapon_screen_effect(); /* port: (above) */
+	/* port: Host Controls open over the game (its first local player's:
+	port/linux/game/network_host_controls.c), with no HUD or scoreboard
+	under it, the world dimmed behind it */
+	if (render.local_player_index == local_player_get_next(NONE) && network_host_controls_shown())
+	{
+		/* (the whole of this player's view, edge to edge: its bounds and a
+		quarter of them more each way, which the view cuts off; the HUD's
+		own stop short of a wide screen's foot) */
+		rectangle2d bounds = render.camera.viewport_bounds;
+		short width = (short)(bounds.x1 - bounds.x0);
+		short height = (short)(bounds.y1 - bounds.y0);
+
+		offset_rectangle2d(&bounds, -render.camera.viewport_bounds.x0, -render.camera.viewport_bounds.y0);
+		bounds.x0 = (short)(bounds.x0 - width / 4);
+		bounds.y0 = (short)(bounds.y0 - height / 4);
+		bounds.x1 = (short)(bounds.x1 + width / 4);
+		bounds.y1 = (short)(bounds.y1 + height / 4);
+		rasterizer_hud_begin();
+		draw_quad(&bounds, NETWORK_HOST_CONTROLS_BACKDROP);
+		rasterizer_hud_end();
+		return;
+	}
 	hud_draw_screen();
 	game_engine_post_rasterize();
 

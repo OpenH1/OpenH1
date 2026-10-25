@@ -82,7 +82,7 @@ WINDOWS_GUEST_DEFINES = ["-DHALO_WINDOWS=1", "-DHALO_VULKAN=1", "-mno-red-zone",
 # memory below 4 GB, threads on low stacks, Windows's system calls, the
 # exception handlers, the entry point)
 SHARED_HOST_SOURCES = ["host_common.c", "host_loader.c", "host_memory_watch.c", "host_render_record.c",
-                       "host_render_stream.c", "host_sdl.c", "host_watch_hash.c"]
+                       "host_render_stream.c", "host_screenshot.c", "host_sdl.c", "host_watch_hash.c"]
 # the posix.h and update.h functions the guest's platform layer calls, on
 # Windows (port/windows/src)
 WIN32_HOST_SOURCES = ["win32_files.c", "win32_net.c", "win32_p2p.c", "win32_update.c", "win32_upnp.c"]

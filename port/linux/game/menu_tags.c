@@ -60,6 +60,7 @@ int platform_audio_devices(int recording, char (*names)[128], int maximum);
 /* the game's network server (this machine hosts: network_game_globals.c) */
 void *global_network_game_server_get(void);
 boolean network_game_is_active(void);
+boolean network_game_is_splitscreen_local(void);
 
 /* cache_files.c's (port) */
 void *cache_files_tag_instances(long *count);
@@ -86,7 +87,7 @@ adds to */
 /* the campaign's full screen pause screen, which pause_campaign_patch adds to */
 #define CAMPAIGN_PAUSE_SCREEN "ui\\shell\\solo_game\\pause_game\\pause_game"
 /* the tags pause_patch or pause_campaign_patch adds: two buttons and their
-texts (SETTINGS, and END GAME or FRIENDLY FIRE) */
+texts (SETTINGS, and HOST CONTROLS, END GAME or FRIENDLY FIRE) */
 #define PAUSE_PATCH_TAGS 4
 /* what a frame of ui.map's is drawn as in a game map, which has not got it */
 #define BLANK_PNG "ce/port/blank__0.png"
@@ -482,6 +483,12 @@ static char const *const port_function_names[] =
 	"port browser tab", "port browser tab next", "port browser tab previous", "port browser refresh",
 	/* (Multiplayer's PARTY and its screen: party_menu.inc) */
 	"port party open", "port party button", "port party x", "port party y",
+	/* (the pause menu's HOST CONTROLS and its screen: host_controls_menu.inc) */
+	"port host open", "port host init", "port host tab", "port host tab next", "port host tab previous",
+	"port host row", "port host left", "port host right", "port host action",
+	/* (the computer's lobby: lobby_menu.inc) */
+	"port lobby team red", "port lobby team blue", "port lobby team toggle", "port lobby team click",
+	"port lobby start", "port lobby invite", "port lobby settings",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -518,6 +525,10 @@ static char const *const port_game_data_input_names[] =
 	"port connect update",
 	/* (the Party screen: party_menu.inc) */
 	"port party update",
+	/* (Host Controls: host_controls_menu.inc) */
+	"port host update",
+	/* (the computer's lobby: lobby_menu.inc) */
+	"port lobby board update",
 };
 
 static struct
@@ -573,8 +584,8 @@ static struct
 
 /* ---------- the wide layout of the port's own screens
 
-The port's screens (Settings, the server browser, Multiplayer; the lobby
-can, by the same means) use the screen's width up to 16:9; the game's own
+The port's screens (Settings, the server browser, Multiplayer, the lobby)
+use the screen's width up to 16:9; the game's own
 menus stay in the centred 640. A widget's wide attribute, "dx dw"
 (tools/port_settings.py's wide), moves it (and what is in it, as an anchor
 does) by dx and makes it dw wider on a 16:9 screen, WIDE_LAYOUT_WIDTH of the
@@ -1719,8 +1730,11 @@ static void menu_tags_release(void)
 
 Its list (RESUME GAME, LEAVE GAME; a custom map's own buttons too) gets
 SETTINGS, the menus' settings (as the main menu's SETTINGS opens them), and
-for the host END GAME, which ends the game as its time limit would: its
-players stay, and the host picks the next map after the carnage report.
+for the host of a network game HOST CONTROLS (menu_functions.c's
+host_controls_menu.inc: its players, the game, the bans; END GAME is its
+Game's), or for the host of a game of this machine alone END GAME, which
+ends the game as its time limit would: its players stay, and the host picks
+the next map after the carnage report.
 They are copies of the map's LEAVE GAME button (its look), put before it.
 The map's pause screens move to fit them: on the Xbox's own (its box of
 pausebox2 pieces), the box is the port's taller one (pause/pausebox_*:
@@ -1729,6 +1743,8 @@ what is below the list moves down. */
 
 /* (Settings' first tab: tools/port_settings.py) */
 #define PAUSE_SETTINGS_SCREEN "main_menu/settings_select/player_setup/player_profile_edit/video_settings/video_settings_screen"
+/* (Host Controls: tools/port_settings.py's _host_controls) */
+#define PAUSE_HOST_CONTROLS_SCREEN "main_menu/host_controls/host_controls_screen"
 #define PAUSE_BUTTON_SPACING 35
 #define PAUSE_BOX_FIRST_BUTTONS 3
 
@@ -1838,13 +1854,16 @@ static void *pause_button(struct cache_file_tag_instance *instances, struct ui_w
 	return button;
 }
 
-/* the list's buttons: SETTINGS, and the host's END GAME or network co-op's
-FRIENDLY FIRE (whose text says the machine's choice: menu_functions.c), put
-before LEAVE GAME or REVERT TO SAVED (quit); returns how many were added, and
-how much taller the list grew for them (growth) */
+/* the list's buttons: SETTINGS, and network co-op's FRIENDLY FIRE (whose
+text says the machine's choice: menu_functions.c), a network game's host's
+HOST CONTROLS, or the host's END GAME, put before LEAVE GAME or REVERT TO
+SAVED (quit); returns how many were added, and how much taller the list grew
+for them (growth) */
 static long pause_list_patch(struct cache_file_tag_instance *instances, struct ui_widget_definition *list, long quit,
 	boolean host, short *growth)
 {
+	long host_controls_widget = widget_named(PAUSE_HOST_CONTROLS_SCREEN);
+	boolean host_controls = host && !network_game_is_splitscreen_local() && host_controls_widget != NONE;
 	struct ui_widget_child_reference *children = list->child_widgets.address;
 	long count = list->child_widgets.count, added = host || build.coop ? 2 : 1, child;
 	struct ui_widget_child_reference *grown = allocate((count + added) * sizeof(struct ui_widget_child_reference));
@@ -1862,12 +1881,15 @@ static long pause_list_patch(struct cache_file_tag_instance *instances, struct u
 	tags[0] = next_tag();
 	buttons[0] = pause_button(instances, model, names[0], "SETTINGS",
 		function_index("port settings begin", "pause", 0), build.widget_tags[settings_widget], NULL, NONE);
-	names[1] = build.coop ? "pause/friendly_fire_button" : "pause/end_game_button";
+	names[1] = build.coop ? "pause/friendly_fire_button" : host_controls ? "pause/host_controls_button" :
+		"pause/end_game_button";
 	tags[1] = added > 1 ? next_tag() : NONE;
 	buttons[1] = build.coop ?
 		pause_button(instances, model, names[1], "FRIENDLY FIRE ON",
 			function_index("port coop friendly fire", "pause", 0), NONE, "FRIENDLY FIRE OFF",
 			game_data_input_index("port coop friendly fire text", "pause", 0)) :
+		host_controls ? pause_button(instances, model, names[1], "HOST CONTROLS",
+			function_index("port host open", "pause", 0), build.widget_tags[host_controls_widget], NULL, NONE) :
 		host ? pause_button(instances, model, names[1], "END GAME",
 			function_index("port pause end game", "pause", 0), NONE, NULL, NONE) : NULL;
 	if (!buttons[0] || (added > 1 && !buttons[1]))
@@ -2027,7 +2049,8 @@ static void pause_patch(struct cache_file_tag_instance *instances)
 		}
 	}
 	if (patched_list != NONE)
-		platform_log("menus: the pause menu has SETTINGS%s", host ? " and END GAME" : "");
+		platform_log("menus: the pause menu has SETTINGS%s", !host ? "" : network_game_is_splitscreen_local() ?
+			" and END GAME" : " and HOST CONTROLS");
 }
 
 /* ---------- the campaign's pause menu
@@ -2554,7 +2577,8 @@ short pc_menu_string_index(
 
 /* the screen the engine opens by name after a network game (the Xbox's),
 or ours where the PC version's menus are up: the host's map select, the
-lobby */
+lobby (a network game's, and a game of this machine alone's in place of the
+Xbox's split screen Select Teams) */
 char const *pc_menus_screen(
 	char const *name)
 {
@@ -2567,6 +2591,12 @@ char const *pc_menus_screen(
 		{ "ui\\shell\\main_menu\\multiplayer_type_select\\connected\\connected_map_select_postgame_wrapper",
 			"pc\\main_menu\\multiplayer_type_select\\connected\\connected_map_select_wrapper" },
 		{ "ui\\shell\\main_menu\\multiplayer_type_select\\connected\\pregame\\connected_pregame_screen",
+			"pc\\main_menu\\multiplayer_type_select\\lobby\\lobby_screen" },
+		/* (a game of this machine alone's: the map select and the lobby
+		too, its bots in it) */
+		{ "ui\\shell\\main_menu\\multiplayer_type_select\\split_screen\\splitscreen_map_select_postgame_wrapper",
+			"pc\\main_menu\\multiplayer_type_select\\connected\\connected_map_select_wrapper" },
+		{ "ui\\shell\\main_menu\\multiplayer_type_select\\split_screen\\pregame\\splitscreen_pregame_wrapper_normal",
 			"pc\\main_menu\\multiplayer_type_select\\lobby\\lobby_screen" },
 	};
 	short index;

@@ -299,7 +299,8 @@ Protocol version 1 (on network version 38) agrees on the game's tick rate
 and carries it in the game record, advertisement and listing; version 2
 sends each player's sub-steps at 60 and 120 (below, "Sub-step inputs");
 version 3 lets OpenCE players into an OpenH1 game (below, "OpenCE players in
-an OpenH1 game").
+an OpenH1 game"); version 4 moves a player to the other team in a game (below,
+"The host's controls").
 
 `port/linux/network_format.txt` records the wire format of the current
 version (`tools/network_format.py`): `test_linux_port.py` fails when the
@@ -654,6 +655,9 @@ change:
   host sends them only to OpenH1 machines that told it they can party, so
   never to an OpenCE machine, and an older OpenH1 drops them as kinds it
   does not know.
+- The host's controls (`network_host_controls.c`, below) use 126 to move a
+  player to the other team, only in an OpenH1 game with no OpenCE machine in
+  it.
 
 Shots between players of different rates are resolved as every client's
 shots are (above, "Shooter's hits"), and nothing in that reads a rate:
@@ -711,6 +715,35 @@ client, and `--opence` names the copies that join as OpenCE: it checks
 those lines too, and with `--events` that each client reported hits and the
 host rejected none (`debug.network_test_shoot`: the OpenCE player shoots an
 OpenH1 player, an OpenH1 player the OpenCE one).
+
+### The host's controls
+
+The host's HOST CONTROLS (its pause menu, the scoreboard's player menu, the
+console's `host_controls`: `port/linux/game/network_host_controls.c`) use the
+host's own authority and send nothing new to a Legacy game's or an OpenCE
+machine:
+
+- Kick and Ban are the console's `kick` and `ban` (the machine dropped, a
+  ban's line in `bans.txt`). Mute for everyone is the text chat's host mute.
+  End game now ends the game as its time limit does; Restart round ends it,
+  presses the scores' A for the host (every machine to the lobby, as
+  `network_game_server_reset_to_pregame` sends it) and starts the lobby's
+  countdown on the same map and gametype.
+- Lock teams refuses, on the host, a client's change of its players' team in
+  the lobby (the player settings it sends): the client sees its team stay. Max
+  players, the listing and Allow OpenCE players change only what the host
+  takes and advertises from then on (an OpenH1 game closed to OpenCE's joins
+  advertises as an OpenH1 game again, and stays mixed for those in it).
+- Move to other team has no message in the Xbox's game, which changes teams
+  only in the lobby. The host kills the player's living unit without
+  statistics (as a player who quits; every machine sees the death as any
+  other), sets the team on its player and game records, and tells each
+  OpenH1 client (`_distributed_message_host_team`, 126, reliably: the player
+  and the team, with a format byte), which takes it only from the host's
+  stream in an OpenH1 game of teams. It is offered only in an OpenH1 game with
+  no OpenCE machine in it, whose machines all play the host's protocol (their
+  join token says so): an OpenCE machine would keep the player on the old
+  team. The player respawns on the new team; their score goes with them.
 
 ### Bots in network games
 

@@ -217,6 +217,8 @@ static const uint32_t record_minimum[XGPU_STREAM_RECORD_TYPES] =
 	[XGPU_STREAM_ANTI_ALIAS] = sizeof(struct xgpu_stream_anti_alias),
 	[XGPU_STREAM_HDR] = sizeof(struct xgpu_stream_hdr),
 	[XGPU_STREAM_TONE_MAP] = sizeof(struct xgpu_stream_tone_map),
+	/* (and its folder's path, at least its NUL) */
+	[XGPU_STREAM_SCREENSHOT] = sizeof(struct xgpu_stream_screenshot) + XGPU_STREAM_RECORD_ALIGNMENT,
 	[XGPU_STREAM_TARGET_CREATE] = sizeof(struct xgpu_stream_target_create),
 	[XGPU_STREAM_TARGET_DELETE] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_TARGET_MULTISAMPLE] = sizeof(struct xgpu_stream_target_multisample),
@@ -340,6 +342,48 @@ static void answer(uint32_t reply, const void *value, size_t size)
 		memcpy(host_pointer(reply), value, size);
 }
 
+static host_render_screenshot_writer screenshot_writer;
+
+void host_render_stream_set_screenshot_writer(host_render_screenshot_writer writer)
+{
+	screenshot_writer = writer;
+}
+
+/* XGPU_STREAM_SCREENSHOT: the target read as READ_TARGET reads it, tone
+mapped, into the guest's pixels, and written; 1 if written */
+static uint32_t screenshot(const struct host_render_backend *backend, void *context,
+	const struct xgpu_stream_screenshot *shot, uint32_t size)
+{
+	struct xgpu_stream_read_target read;
+	uint32_t length = size - (uint32_t)sizeof(*shot), written;
+	char *name;
+
+	/* (the folder's path ends within the record) */
+	if (!memchr(shot->directory, 0, length) || !shot->directory[0])
+		return 0;
+	if (!backend->read_target || !screenshot_writer || !shot->pixels || !shot->name || !shot->width || !shot->height ||
+		(uint64_t)shot->width * shot->height * 4 > shot->size)
+		return 0;
+	memset(&read, 0, sizeof(read));
+	read.header = XGPU_STREAM_HEADER(XGPU_STREAM_READ_TARGET, sizeof(read));
+	read.target = shot->target;
+	read.layer = -1;
+	read.tone_map = 1;
+	read.pixels = shot->pixels;
+	read.size = shot->size;
+	name = host_pointer(shot->name);
+	if (!backend->read_target(context, &read))
+	{
+		snprintf(name, XGPU_STREAM_SCREENSHOT_NAME, "the frame cannot be read");
+		return 0;
+	}
+	name[0] = 0;
+	written = screenshot_writer(host_pointer(shot->pixels), shot->width, shot->height, shot->directory, name,
+		XGPU_STREAM_SCREENSHOT_NAME) ? 1 : 0;
+	name[XGPU_STREAM_SCREENSHOT_NAME - 1] = 0;
+	return written;
+}
+
 #define CALL(name, ...) do { if (backend->name) backend->name(context, __VA_ARGS__); } while (0)
 #define CALL0(name) do { if (backend->name) backend->name(context); } while (0)
 
@@ -450,6 +494,14 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 		if (backend->read_target && read->pixels && read->size)
 			written = backend->read_target(context, read) ? 1 : 0;
 		answer(read->reply, &written, sizeof(written));
+		break;
+	}
+	case XGPU_STREAM_SCREENSHOT:
+	{
+		const struct xgpu_stream_screenshot *shot = (const void *)start;
+		uint32_t written = screenshot(backend, context, shot, size);
+
+		answer(shot->reply, &written, sizeof(written));
 		break;
 	}
 	case XGPU_STREAM_SET_TEXTURES:

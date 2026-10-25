@@ -1,6 +1,6 @@
 """The real mixer of dsound_sdl.c on known signals (mixer.c): its resampler against the same low pass worked out in
-double precision, sines through it as the ear hears them, voices out of earshot, mono voices and the linear
-resampler.
+double precision, sines through it as the ear hears them, voices out of earshot, mono voices, the linear
+resampler, the Xbox ADPCM decoder against reference vectors, the Doppler shift and the limiter.
 
     python tools/harness/tests/test_mixer.py metrics   the figures
     python tools/harness/tests/test_mixer.py bench [voices] [out of earshot] [indoor]   a game's worth of voices, timed
@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, mutated, read, run  # noqa: E402
 
 SOURCE = "port/linux/src/dsound_sdl.c"
-CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear"]
+CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "limiter"]
 
 # a fault in the mixer, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -27,6 +27,21 @@ NEGATIVE_CONTROLS = {
                            "for (phase = 0; phase <= RESAMPLER_TABLE_STEPS; phase += 2)"), "impulse"),
     "no-stretch": (("#define RESAMPLER_MAXIMUM_STRETCH 2", "#define RESAMPLER_MAXIMUM_STRETCH 1"), "aliases"),
     "linear-nearest": (("left_frames[0] + (left_frames[1] - left_frames[0]) * fraction", "left_frames[0]"), "linear"),
+    # Xbox ADPCM: the high nibble first, the header's sample left out (all 64 nibbles decoded), the step index held a
+    # step short, the channels' words not interleaved
+    "adpcm-high-nibble-first": (("ima_expand(nibbles[byte] & 0xf, &predictor, &index)",
+                                 "ima_expand(nibbles[byte] >> 4, &predictor, &index)"), "adpcm"),
+    "adpcm-no-header-sample": (("unsigned long sample = group * 8 + byte * 2 + 1;",
+                                "unsigned long sample = group * 8 + byte * 2;"), "adpcm"),
+    "adpcm-index-87": (("if (*index > 88) *index = 88;", "if (*index > 87) *index = 87;"), "adpcm"),
+    "adpcm-not-interleaved": (("(group * channels + channel) * 4", "(channel * 8 + group) * 4"), "adpcm"),
+    # the Doppler shift: left out, or the source's part with the wrong sign
+    "doppler-off": (("doppler_ratio(stream);\n\t/* (the step", "1.0;\n\t/* (the step"), "doppler"),
+    "doppler-source-sign": (("(DOPPLER_SPEED_OF_SOUND + listener_speed) / (DOPPLER_SPEED_OF_SOUND + source_speed)",
+                             "(DOPPLER_SPEED_OF_SOUND + listener_speed) / (DOPPLER_SPEED_OF_SOUND - source_speed)"),
+                            "doppler"),
+    # the limiter's ceiling under full scale, as it was
+    "limiter-ceiling": (("#define LIMITER_CEILING 1.0f", "#define LIMITER_CEILING 0.891f"), "limiter"),
 }
 
 
