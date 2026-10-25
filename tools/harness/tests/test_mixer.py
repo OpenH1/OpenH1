@@ -1,6 +1,7 @@
 """The real mixer of dsound_sdl.c on known signals (mixer.c): its resampler against the same low pass worked out in
 double precision, sines through it as the ear hears them, voices out of earshot, mono voices, the linear
-resampler, the Xbox ADPCM decoder against reference vectors, the Doppler shift and the limiter.
+resampler, the Xbox ADPCM decoder against reference vectors, the Doppler shift, the limiter, audio.channels' choice
+and the 5.1 pan.
 
     python tools/harness/tests/test_mixer.py metrics   the figures
     python tools/harness/tests/test_mixer.py bench [voices] [out of earshot] [indoor]   a game's worth of voices, timed
@@ -17,7 +18,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, mutated, read, run  # noqa: E402
 
 SOURCE = "port/linux/src/dsound_sdl.c"
-CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "limiter"]
+CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "limiter", "channels",
+         "surround"]
 
 # a fault in the mixer, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -42,6 +44,22 @@ NEGATIVE_CONTROLS = {
                             "doppler"),
     # the limiter's ceiling under full scale, as it was
     "limiter-ceiling": (("#define LIMITER_CEILING 1.0f", "#define LIMITER_CEILING 0.891f"), "limiter"),
+    # audio.channels "auto" stereo whatever the device (as every build was before the host said its channels)
+    "auto-always-stereo": (('!strcmp(setting, "auto") && device_channels >= 6', '!strcmp(setting, "auto") && 0'),
+                           "channels"),
+    "auto-on-four": (("device_channels >= 6", "device_channels >= 4"), "channels"),
+    # the 5.1 pan: the backs swapped, a back on the LFE, or the pan linear in the angle (the pairwise pan it was)
+    "surround-backs-swapped": (("surround_ring_channel[SURROUND_RING_SPEAKERS] = { 2, 1, 5, 4, 0 }",
+                                "surround_ring_channel[SURROUND_RING_SPEAKERS] = { 2, 1, 4, 5, 0 }"), "surround"),
+    "surround-back-on-lfe": (("surround_ring_channel[SURROUND_RING_SPEAKERS] = { 2, 1, 5, 4, 0 }",
+                              "surround_ring_channel[SURROUND_RING_SPEAKERS] = { 2, 1, 5, 3, 0 }"), "surround"),
+    "surround-linear-in-angle": (("float first = sinf(surround_ring_angle[segment + 1] - angle);\n"
+                                  "\t\tfloat second = sinf(angle - surround_ring_angle[segment]);",
+                                  "float first = cosf(1.57079633f * (angle - surround_ring_angle[segment]) /\n"
+                                  "\t\t\t(surround_ring_angle[segment + 1] - surround_ring_angle[segment]));\n"
+                                  "\t\tfloat second = sinf(1.57079633f * (angle - surround_ring_angle[segment]) /\n"
+                                  "\t\t\t(surround_ring_angle[segment + 1] - surround_ring_angle[segment]));"),
+                                 "surround"),
 }
 
 
