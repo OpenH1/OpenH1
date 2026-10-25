@@ -23,6 +23,10 @@ Automated system link sessions for testing the netcode without the menus
   lists after five seconds (internet play's public games: a host's with
   debug.network_test_public), co-op ones last, as picking it there does,
   and then as "join". It logs what it lists.
+- "follow" (a party's member: debug.party) joins its party's leader's
+  internet game once the party asks it to (p2p_party_follow), its invite's
+  host reached, and then as "join": the Party screen's follow without the
+  menus (and so without a player profile);
 - "log" hosts and joins nothing: the game that runs (map_name, in init.txt,
   plays one without the menus) is logged, as below.
 
@@ -121,6 +125,7 @@ enum
 	_network_test_host,
 	_network_test_join,
 	_network_test_browse,
+	_network_test_follow,
 	_network_test_log,
 };
 
@@ -162,6 +167,9 @@ static struct
 	/* debug.network_test_party's */
 	real party_time;
 	long score_to_win;
+	/* the most players the host's games take (debug.network_test_most_players;
+	0: the game's own) */
+	long maximum_players;
 	long logged_time;
 	boolean public_game;
 	boolean browsing;
@@ -234,6 +242,10 @@ static void network_test_read_settings(
 	{
 		network_test.mode = _network_test_browse;
 	}
+	else if (!strcmp(setting, "follow"))
+	{
+		network_test.mode = _network_test_follow;
+	}
 	else if (!strcmp(setting, "log"))
 	{
 		network_test.mode = _network_test_log;
@@ -251,6 +263,7 @@ static void network_test_read_settings(
 	snprintf(network_test.pickup_weapon, sizeof(network_test.pickup_weapon), "%s",
 		config_string("debug.network_test_pickup_weapon"));
 	network_test.score_to_win = (long)config_integer("debug.network_test_score");
+	network_test.maximum_players = (long)config_integer("debug.network_test_most_players");
 	network_test.cue_players = MAX(1, config_integer("debug.network_test_cue_players"));
 	network_test.cues_start = NONE;
 	{
@@ -1592,6 +1605,21 @@ void network_test_update(
 		}
 		break;
 	}
+	case _network_test_follow:
+	{
+		char link[128];
+		unsigned long order = 0;
+
+		/* (the leader's internet game: its host reached by its invite, then
+		joined as "join" joins) */
+		if (p2p_party_follow(link, sizeof(link), &order) == _p2p_party_game_invite && p2p_join_invite(link))
+		{
+			p2p_party_follow_result(order, _p2p_party_follow_joined);
+			platform_log("network test: following the party's leader into its game");
+			network_test.mode = _network_test_join;
+		}
+		break;
+	}
 	case _network_test_host:
 		if (!network_test.set_up)
 		{
@@ -1619,6 +1647,14 @@ void network_test_update(
 			}
 			else
 			{
+				/* debug.network_test_most_players: a game of so many (as Server
+				Setup's MAX PLAYERS has it) */
+				if (network_test.maximum_players > 0)
+				{
+					extern void network_game_server_port_set_settings(wchar_t const *name, long maximum_players);
+
+					network_game_server_port_set_settings(NULL, network_test.maximum_players);
+				}
 				player_ui_fast_setup_network_server();
 				platform_log("network test: hosting %s", network_test.map_name);
 				/* (in the server browser, as Create Game > Internet's PUBLIC) */

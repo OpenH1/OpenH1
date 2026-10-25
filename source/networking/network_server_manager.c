@@ -489,6 +489,7 @@ void p2p_set_game_bots(int count);
 /* port: game_engine.c's (a player's score as the game type has it) */
 long game_engine_network_player_score(long player_index);
 #include "network_standard.h" /* port: port/linux/game/network_standard.c */
+#include "network_party.h" /* port: port/linux/game/network_party.c */
 
 /* ---------- constants */
 
@@ -1724,7 +1725,9 @@ static long network_game_server_port_bots_wanted(
 	{
 		long fill = MIN(bots_fill_to(), network_game_server_port_bots_human_maximum(server));
 
-		wanted = MIN(wanted, MAX(fill - census->humans, 0));
+		/* (and none for the slots held for a party's members, who are on
+		their way: network_party.c) */
+		wanted = MIN(wanted, MAX(fill - census->humans - network_party_held_slots(), 0));
 	}
 	return wanted;
 }
@@ -2026,12 +2029,13 @@ boolean network_game_server_idle(
 	network_game_server_port_bots(server);
 	network_game_server_port_bots_ingame(server);
 	/* (what Discord shows of a game hosted for internet play, and the
-	server browser's listing: its players, and its bots apart) */
+	server browser's listing: its players, and its bots apart, and the slots
+	held for a party's members, who are on their way, taken: network_party.c) */
 	{
 		long bots, maximum;
 		long humans = network_game_server_port_bots_humans(server, &bots, &maximum);
 
-		p2p_set_game_player_counts((int)humans, (int)maximum);
+		p2p_set_game_player_counts((int)MIN(humans + network_party_held_slots(), maximum), (int)maximum);
 		p2p_set_game_bots((int)bots);
 	}
 	network_game_server_list(server);
@@ -2956,18 +2960,38 @@ boolean network_game_server_add_player_to_game(
 	struct network_player *player)
 {
 	boolean success;
+	boolean remote;
+	unsigned long address;
 
 	match_assert(NETWORK_SERVER_MANAGER_FILE, 0x46C, server);
 	match_assert(NETWORK_SERVER_MANAGER_FILE, 0x46D, machine);
 	match_assert(NETWORK_SERVER_MANAGER_FILE, 0x46E, player);
 
+	/* (a machine of another's, and where it is) */
+	remote = VALID_INDEX(machine->machine_index, MAXIMUM_NETWORK_MACHINE_COUNT) &&
+		!network_game_server_client_machine_is_local(server, machine);
+	address = remote ? network_game_server_client_machine_addresses[machine->machine_index] : 0;
+
+	/* port: the slots held for a party's members, while they follow their
+	leader in, are theirs alone (network_party.c; its join was refused, but
+	a machine in the game may add another player) */
+	if (remote && machine->machine_index == player->machine_index && !network_party_slot_open(address))
+	{
+		network_event("server refused a player of machine #%d: the game's room left is held for a party",
+			machine->machine_index);
+		return FALSE;
+	}
 	if (machine->machine_index == player->machine_index)
 	{
 		/* port: the smaller team (the Xbox game took turns with a counter of
-		its own, which a failed add or an earlier game moved on) */
+		its own, which a failed add or an earlier game moved on); a party's
+		players on its team, where it has room (network_party.c) */
 		{
 			long player_count_by_team[NUMBER_OF_MULTIPLAYER_TEAMS] = { 0, 0 };
+			short party_counts[NUMBER_OF_MULTIPLAYER_TEAMS] = { 0, 0 };
+			short team_counts[NUMBER_OF_MULTIPLAYER_TEAMS];
 			long player_index;
+			short party_team;
 
 			for (player_index = 0; player_index < MAXIMUM_NETWORK_PLAYER_COUNT; player_index++)
 			{
@@ -2977,9 +3001,23 @@ boolean network_game_server_add_player_to_game(
 					VALID_INDEX(other_player->team_index, NUMBER_OF_MULTIPLAYER_TEAMS))
 				{
 					player_count_by_team[other_player->team_index]++;
+					if (network_party_machines_together(machine->machine_index, address,
+						other_player->machine_index))
+					{
+						party_counts[other_player->team_index]++;
+					}
 				}
 			}
 			player->team_index = player_count_by_team[1] < player_count_by_team[0] ? 1 : 0;
+			team_counts[0] = (short)player_count_by_team[0];
+			team_counts[1] = (short)player_count_by_team[1];
+			party_team = network_party_team_choice(party_counts, team_counts, server->game.maximum_players);
+			if (server->game.variant.universal_variant.teams && party_team != NONE)
+			{
+				network_event("a party's player of machine #%d goes on its party's team (%d)", machine->machine_index,
+					party_team);
+				player->team_index = party_team;
+			}
 		}
 
 		/* (the name comes from the wire) */
@@ -3002,6 +3040,9 @@ boolean network_game_server_add_player_to_game(
 		success = network_game_add_player(&server->game, player);
 		if (success == TRUE)
 		{
+			/* port: its party's slot, if one was held for it, taken up */
+			if (remote)
+				network_party_slot_taken(machine->machine_index, address);
 			network_event(
 				"server added player from machine #%d at controller index #%d to the game",
 				player->machine_index,
@@ -5470,6 +5511,9 @@ static boolean network_game_server_idle_pregame_tasks(
 			{
 				short count[2] = { 0, 0 };
 				long last[2] = { NONE, NONE };
+				/* (a player of no party moved first: a party kept together,
+				network_party.c) */
+				long last_alone[2] = { NONE, NONE };
 				short bigger;
 
 				for (itr = 0; itr < MAXIMUM_NETWORK_PLAYER_COUNT; itr++)
@@ -5480,12 +5524,15 @@ static boolean network_game_server_idle_pregame_tasks(
 					{
 						count[player->team_index]++;
 						last[player->team_index] = itr;
+						if (!network_party_machine_in_party(player->machine_index))
+							last_alone[player->team_index] = itr;
 					}
 				}
 				if (ABS(count[0] - count[1]) <= 1)
 					break;
 				bigger = count[0] > count[1] ? 0 : 1;
-				server->game.players[last[bigger]].team_index = 1 - bigger;
+				server->game.players[last_alone[bigger] != NONE ? last_alone[bigger] : last[bigger]].team_index =
+					1 - bigger;
 				network_game_server_send_game_data_pregame(server);
 			}
 		}

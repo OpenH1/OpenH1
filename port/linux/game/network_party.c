@@ -46,6 +46,32 @@ not heard: their invites are let go.
 The pregame lobby and the carnage report have no player menu yet: when they
 do, network_party_player_actions and network_party_player_act are theirs too.
 
+Room held for a party (NETCODE.md, "Parties in public games"): a party's
+leader joins a game first, and its members follow it in
+(port/linux/game/party_menu.inc). So that strangers do not take the slots
+meanwhile and split the party, the leader, a client of an OpenH1 game,
+asks its host to hold room for its members (_distributed_message_party_hold,
+reliably, over its own stream: the hash of each member's tunnel key, which
+the party knows it by, p2p_party_member_key_hashes, and which the host knows
+the machine joining by, p2p_peer_key_hash), and again when its members
+change. The host holds as many as it has room for (its slots free of
+players and of other parties' holds, and those of bots that would make room
+for players), for PARTY_HOLD_MILLISECONDS, and answers with how many
+(_distributed_message_party_held). A host that leads a party holds room for
+its own members the same way, without asking. Until a member's player is in
+the game, or its hold lapses, its slot is its alone: a machine of no hold is
+refused as for a full game (network_party_slot_open, at its join and at each
+player it adds), and the advertisement and the server browser's listing
+count the slots held as taken. A member's player added takes up its hold,
+and in a team game the host puts it on its party's team, if that team has
+room (network_party_team_choice). A party's machines are told apart by the
+holds they took up, and by their party's tag (as told the host). A machine
+asks for holds at most PARTY_HOLD_GRANTS times a game, which each replace
+the last. A Legacy host, and an OpenH1 one of an older build (which drops
+the kinds as unknown), hold nothing: the browser says there is no room
+guarantee (p2p_lobby.c's stamp says which hosts hold), and the members join
+as they can.
+
 A Discord friend's ask to join (port/linux/src/p2p_discord.c) is shown the
 same way, in the game and over the menus alike (network_party_discord_draw,
 from ui_widget.c's render_ui_widgets): "Bob asks to join your party", with
@@ -77,6 +103,11 @@ taking those keys from the game and the menus while it is shown.
 #include "network_party.h"
 #include "halo_keyboard.h"
 #include "bots.h"
+#include "networking/network_client_manager.h"
+#include "networking/network_game_globals.h"
+#include "networking/network_game_manager.h"
+#include "networking/network_server_manager.h"
+#include "networking/network_server_manager_internal.h"
 /* (a Discord friend's ask to join: p2p_discord_join_request) */
 #include "../src/p2p.h"
 
@@ -139,6 +170,25 @@ enum
 	PARTY_REFILL_MILLISECONDS = 5000,
 	/* the host: its list made again this often */
 	PARTY_LIST_MILLISECONDS = 500,
+
+	/* room held for a party: the messages' format; a tunnel key's hash
+	(p2p.h's P2P_PLAYER_KEY_HASH_SIZE); a party's other members (its most,
+	less its leader); the holds at once, of every party joining */
+	PARTY_HOLD_FORMAT = 1,
+	PARTY_KEY_HASH_SIZE = P2P_PLAYER_KEY_HASH_SIZE,
+	MAXIMUM_PARTY_HOLD_MEMBERS = P2P_PARTY_MAXIMUM_MEMBERS - 1,
+	MAXIMUM_PARTY_HOLDS = 32,
+	/* milliseconds a hold waits for its member, from its grant */
+	PARTY_HOLD_MILLISECONDS = 20000,
+	/* the grants a machine may have in a game (each replacing the last) */
+	PARTY_HOLD_GRANTS = 3,
+	/* a leader's members read this often, and asked for again (changed) no
+	sooner than this; an ask the host has not answered made again this
+	often, so many times (a host that holds nothing never answers) */
+	PARTY_HOLD_READ_MILLISECONDS = 500,
+	PARTY_HOLD_ASK_MILLISECONDS = 2000,
+	PARTY_HOLD_RETRY_MILLISECONDS = 5000,
+	PARTY_HOLD_ASKS = 3,
 };
 
 /* ---------- structures */
@@ -183,7 +233,40 @@ struct distributed_party_players_message
 	struct distributed_party_player players[MAXIMUM_TRACKED_PLAYERS];
 };
 
+/* a leader's ask of the host (_distributed_message_party_hold): an entry
+for each member to hold room for, the hash of its tunnel key */
+struct distributed_party_hold
+{
+	byte format;
+	byte reserved[3];
+	byte key_hash[PARTY_KEY_HASH_SIZE];
+};
+
+struct distributed_party_hold_message
+{
+	struct distributed_message_header header;
+	struct distributed_party_hold members[MAXIMUM_PARTY_HOLD_MEMBERS];
+};
+
+/* the host's answer (_distributed_message_party_held): the members asked
+for, those it holds room for, and for how many seconds */
+struct distributed_party_held
+{
+	byte format;
+	byte asked;
+	byte held;
+	byte seconds;
+};
+
+struct distributed_party_held_message
+{
+	struct distributed_message_header header;
+	struct distributed_party_held answer;
+};
+
 typedef char distributed_party_request_size_assert[sizeof(struct distributed_party_request) == 28 ? 1 : -1];
+typedef char distributed_party_hold_size_assert[sizeof(struct distributed_party_hold) == 20 ? 1 : -1];
+typedef char distributed_party_held_size_assert[sizeof(struct distributed_party_held) == 4 ? 1 : -1];
 typedef char distributed_party_player_size_assert[sizeof(struct distributed_party_player) == 8 ? 1 : -1];
 
 /* a player's, as the host says (or, on the host, as their machine told) */
@@ -191,6 +274,17 @@ struct party_player
 {
 	byte flags;
 	unsigned long tag;
+};
+
+/* (the host) a slot held for a party's member: the hash of its tunnel key,
+the party's (its leader's machine, by its index in the game), and when it
+was granted */
+struct party_hold
+{
+	boolean used;
+	short group;
+	unsigned long time;
+	byte key_hash[PARTY_KEY_HASH_SIZE];
 };
 
 /* ---------- globals */
@@ -218,7 +312,23 @@ static struct
 		short burst;
 		unsigned long refill_time;
 		boolean listed;
+		/* its party, as the holds tell (the leader's machine index + 1; 0:
+		none), and the holds granted it this game */
+		short group;
+		short hold_grants;
 	} machines[MAXIMUM_PARTY_MACHINES];
+	/* the host: room held for parties joining */
+	struct party_hold holds[MAXIMUM_PARTY_HOLDS];
+	/* a leader (a client, or the host): its members as last read, and as
+	last asked for (or held, the host's own), and when */
+	unsigned long hold_read_time;
+	short hold_asked_count;
+	byte hold_asked[MAXIMUM_PARTY_HOLD_MEMBERS * PARTY_KEY_HASH_SIZE];
+	unsigned long hold_asked_time;
+	/* ... how many times they were (a client), and whether the host
+	answered */
+	short hold_asks;
+	boolean hold_answered;
 	unsigned long list_time;
 	struct distributed_party_player sent[MAXIMUM_TRACKED_PLAYERS];
 	short sent_count;
@@ -250,6 +360,9 @@ static struct
 } party_globals;
 
 /* ---------- private code */
+
+/* (room held for a party, below) */
+static short party_holds_release(struct party_hold *holds, short group);
 
 /* in an OpenH1 game (a Standard one, mixed or not) on the network */
 static boolean party_game(
@@ -605,10 +718,21 @@ static void party_host_list(
 		if (machine_indices[index] >= 0 && machine_indices[index] < MAXIMUM_PARTY_MACHINES)
 			present[machine_indices[index]] = TRUE;
 	}
+	/* (and the host's own, whose party's holds are its own) */
+	{
+		short own = network_game_client_get_local_machine_index();
+
+		if (own >= 0 && own < MAXIMUM_PARTY_MACHINES)
+			present[own] = TRUE;
+	}
 	for (index = 0; index < MAXIMUM_PARTY_MACHINES; index++)
 	{
-		if (!present[index])
-			csmemset(&party_globals.machines[index], 0, sizeof(party_globals.machines[index]));
+		if (present[index])
+			continue;
+		csmemset(&party_globals.machines[index], 0, sizeof(party_globals.machines[index]));
+		/* (a leader gone: its party follows it elsewhere) */
+		if (party_holds_release(party_globals.holds, index))
+			error(_error_log, "party: machine #%d left; the room held for its party is let go", index);
 	}
 	csmemset(&message, 0, sizeof(message));
 	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
@@ -757,6 +881,393 @@ static void party_keys_update(
 	}
 }
 
+/* ---------- room held for a party: the holds themselves (the host's) */
+
+/* the slots held */
+static short party_holds_count(
+	struct party_hold const *holds)
+{
+	short count = 0;
+	short index;
+
+	for (index = 0; index < MAXIMUM_PARTY_HOLDS; index++)
+	{
+		if (holds[index].used)
+			count++;
+	}
+	return count;
+}
+
+/* the hold of a key's hash, NONE for none (or no hash) */
+static short party_holds_find(
+	struct party_hold const *holds,
+	byte const *key_hash)
+{
+	short index;
+
+	for (index = 0; key_hash && index < MAXIMUM_PARTY_HOLDS; index++)
+	{
+		if (holds[index].used && !csmemcmp(holds[index].key_hash, key_hash, PARTY_KEY_HASH_SIZE))
+			return index;
+	}
+	return NONE;
+}
+
+/* a party's holds (group: its leader's machine) let go; returns how many */
+static short party_holds_release(
+	struct party_hold *holds,
+	short group)
+{
+	short count = 0;
+	short index;
+
+	for (index = 0; index < MAXIMUM_PARTY_HOLDS; index++)
+	{
+		if (holds[index].used && holds[index].group == group)
+		{
+			holds[index].used = FALSE;
+			count++;
+		}
+	}
+	return count;
+}
+
+/* room held for a party's members (count of them, a key's hash each) as
+its leader asks (group: its leader's machine), the party's earlier holds
+let go first: as many as the game has room for, its slots (maximum, for its
+people: the bots apart, port/linux/game/bots.c) free of players and of other
+parties' holds; a member held for another party already, or named twice, is
+held once. Returns how many are held */
+static short party_holds_grant(
+	struct party_hold *holds,
+	short group,
+	byte const *key_hashes,
+	short count,
+	short players,
+	short maximum,
+	unsigned long now)
+{
+	short granted = 0;
+	short room;
+	short member;
+
+	party_holds_release(holds, group);
+	room = (short)(maximum - players - party_holds_count(holds));
+	for (member = 0; member < count && granted < room; member++)
+	{
+		byte const *key_hash = key_hashes + member * PARTY_KEY_HASH_SIZE;
+		short index;
+
+		if (party_holds_find(holds, key_hash) != NONE)
+			continue;
+		for (index = 0; index < MAXIMUM_PARTY_HOLDS && holds[index].used; index++)
+			;
+		if (index == MAXIMUM_PARTY_HOLDS)
+			break;
+		holds[index].used = TRUE;
+		holds[index].group = group;
+		holds[index].time = now;
+		csmemcpy(holds[index].key_hash, key_hash, PARTY_KEY_HASH_SIZE);
+		granted++;
+	}
+	return granted;
+}
+
+/* holds whose member has not come in PARTY_HOLD_MILLISECONDS let go;
+returns how many */
+static short party_holds_expire(
+	struct party_hold *holds,
+	unsigned long now)
+{
+	short count = 0;
+	short index;
+
+	for (index = 0; index < MAXIMUM_PARTY_HOLDS; index++)
+	{
+		if (holds[index].used && now - holds[index].time >= PARTY_HOLD_MILLISECONDS)
+		{
+			holds[index].used = FALSE;
+			count++;
+		}
+	}
+	return count;
+}
+
+/* whether a machine (its tunnel key's hash; NULL: not reached through the
+tunnel, a machine of this network) may take one of the game's slots
+(maximum, players of them taken, its people's: the bots apart): the one
+held for it, if one is, else one no party holds */
+static boolean party_holds_admit(
+	struct party_hold const *holds,
+	byte const *key_hash,
+	short players,
+	short maximum)
+{
+	if (party_holds_find(holds, key_hash) != NONE)
+		return players < maximum;
+	return players + party_holds_count(holds) < maximum;
+}
+
+/* the team (0 or 1) for a player of a party joining a team game: the one
+most of its party's players in the game are on (party_counts: each team's),
+if it has room for one more (team_counts: each team's players; a team has
+half the game's most players, rounded up); NONE if none of its party is in
+the game yet, or that team is full (the smaller team, then, as anyone's) */
+static short party_team_choice(
+	short const *party_counts,
+	short const *team_counts,
+	short maximum)
+{
+	short team;
+
+	if (party_counts[0] <= 0 && party_counts[1] <= 0)
+		return NONE;
+	team = (short)(party_counts[1] > party_counts[0] ? 1 : 0);
+	return team_counts[team] < (maximum + 1) / 2 ? team : NONE;
+}
+
+/* ---------- room held for a party: asking, and holding */
+
+/* (the host) the tunnel key's hash of the machine reached at this address
+(host order, as the game keeps it: p2p_peer_key_hash): FALSE for none (a
+machine of this network) */
+static boolean party_address_key_hash(
+	unsigned long address,
+	byte *key_hash)
+{
+	byte bytes[4];
+	byte identifier[6];
+	unsigned long value;
+
+	if (!address)
+		return FALSE;
+	bytes[0] = (byte)(address >> 24);
+	bytes[1] = (byte)(address >> 16);
+	bytes[2] = (byte)(address >> 8);
+	bytes[3] = (byte)address;
+	csmemcpy(&value, bytes, sizeof(value));
+	return p2p_peer_key_hash(value, identifier, key_hash) != 0;
+}
+
+/* (the host) whether a key's hash is that of a machine in the game already,
+or of this one */
+static boolean party_key_hash_present(
+	byte const *key_hash)
+{
+	long machine_indices[MAXIMUM_PARTY_MACHINES];
+	short count = distributed_client_machines(machine_indices, MAXIMUM_PARTY_MACHINES);
+	byte machine_hash[PARTY_KEY_HASH_SIZE];
+	byte identifier[6];
+	short index;
+
+	for (index = 0; index < count; index++)
+	{
+		if (party_address_key_hash(network_game_server_machine_address(machine_indices[index]), machine_hash) &&
+			!csmemcmp(machine_hash, key_hash, PARTY_KEY_HASH_SIZE))
+		{
+			return TRUE;
+		}
+	}
+	/* (this machine's identifier is its key's hash, as p2p.c makes one) */
+	csmemcpy(identifier, key_hash, sizeof(identifier));
+	identifier[0] = (byte)((identifier[0] & 0xFC) | 0x02);
+	return !csmemcmp(identifier, p2p_identifier(), sizeof(identifier));
+}
+
+/* (the host) the game's people and the most it takes of them, its bots
+apart (port/linux/game/bots.c: a bot leaves for a player who comes, or the
+game takes as many more as it has bots) */
+static boolean party_host_game(
+	short *players,
+	short *maximum)
+{
+	struct network_game_server *server = global_network_game_server_get();
+	long most = 0;
+
+	if (!server)
+		return FALSE;
+	*players = (short)network_game_server_port_bots_humans(server, NULL, &most);
+	*maximum = (short)most;
+	return TRUE;
+}
+
+/* (the host) room held for the members a party's leader (its machine: group)
+named, those not in the game already: returns how many are held */
+static short party_host_hold(
+	short group,
+	byte const *key_hashes,
+	short count,
+	unsigned long now)
+{
+	byte wanted[MAXIMUM_PARTY_HOLD_MEMBERS * PARTY_KEY_HASH_SIZE];
+	short wanted_count = 0;
+	short players, maximum;
+	short index;
+	short held;
+
+	if (group < 0 || group >= MAXIMUM_PARTY_MACHINES || !party_host_game(&players, &maximum))
+		return 0;
+	if (party_globals.machines[group].hold_grants >= PARTY_HOLD_GRANTS)
+	{
+		error(_error_log, "party: machine #%d asked for room for its party too often; none held", group);
+		return 0;
+	}
+	party_globals.machines[group].hold_grants++;
+	party_globals.machines[group].group = (short)(group + 1);
+	for (index = 0; index < count && wanted_count < MAXIMUM_PARTY_HOLD_MEMBERS; index++)
+	{
+		if (!party_key_hash_present(key_hashes + index * PARTY_KEY_HASH_SIZE))
+		{
+			csmemcpy(wanted + wanted_count * PARTY_KEY_HASH_SIZE, key_hashes + index * PARTY_KEY_HASH_SIZE,
+				PARTY_KEY_HASH_SIZE);
+			wanted_count++;
+		}
+	}
+	held = party_holds_grant(party_globals.holds, group, wanted, wanted_count, players, maximum, now);
+	error(_error_log, "party: holding room for %d of the %d members of machine #%d's party not in the game "
+		"(%d of %d players), for %d seconds", held, wanted_count, group, players, maximum,
+		PARTY_HOLD_MILLISECONDS / 1000);
+	return held;
+}
+
+/* (the host) a leader's ask: held, and answered */
+static void party_host_hold_heard(
+	long machine_index,
+	struct distributed_party_hold const *members,
+	short count,
+	unsigned long now)
+{
+	struct distributed_party_held_message message;
+	byte key_hashes[MAXIMUM_PARTY_HOLD_MEMBERS * PARTY_KEY_HASH_SIZE];
+	short taken = 0;
+	short index;
+	short held;
+
+	/* (an OpenH1 machine's alone) */
+	if (!network_standard_machine_is_openh1(machine_index) || machine_index < 0 ||
+		machine_index >= MAXIMUM_PARTY_MACHINES)
+	{
+		return;
+	}
+	for (index = 0; index < count; index++)
+	{
+		if (members[index].format != PARTY_HOLD_FORMAT)
+			continue;
+		csmemcpy(key_hashes + taken * PARTY_KEY_HASH_SIZE, members[index].key_hash, PARTY_KEY_HASH_SIZE);
+		taken++;
+	}
+	held = party_host_hold((short)machine_index, key_hashes, taken, now);
+	csmemset(&message, 0, sizeof(message));
+	message.answer.format = PARTY_HOLD_FORMAT;
+	message.answer.asked = (byte)taken;
+	message.answer.held = (byte)held;
+	message.answer.seconds = (byte)(PARTY_HOLD_MILLISECONDS / 1000);
+	distributed_send_to_machine_reliably(machine_index, &message, _distributed_message_party_held, 1,
+		sizeof(message));
+}
+
+/* a leader: its party's members (into key_hashes, their count), read each
+PARTY_HOLD_READ_MILLISECONDS; TRUE when they are new to this game, or have
+changed since they were last asked for (no sooner than
+PARTY_HOLD_ASK_MILLISECONDS after), or (a client) the host has not answered
+in PARTY_HOLD_RETRY_MILLISECONDS, PARTY_HOLD_ASKS times at most */
+static boolean party_hold_members_changed(
+	byte *key_hashes,
+	short *count,
+	unsigned long now)
+{
+	if (party_globals.hold_read_time && now - party_globals.hold_read_time < PARTY_HOLD_READ_MILLISECONDS)
+		return FALSE;
+	if (party_globals.hold_asked_time && now - party_globals.hold_asked_time < PARTY_HOLD_ASK_MILLISECONDS)
+		return FALSE;
+	party_globals.hold_read_time = now | 1;
+	*count = (short)p2p_party_member_key_hashes(key_hashes, MAXIMUM_PARTY_HOLD_MEMBERS);
+	if (*count == party_globals.hold_asked_count &&
+		!csmemcmp(key_hashes, party_globals.hold_asked, *count * PARTY_KEY_HASH_SIZE))
+	{
+		if (party_host() || !*count || party_globals.hold_answered || party_globals.hold_asks >= PARTY_HOLD_ASKS ||
+			now - party_globals.hold_asked_time < PARTY_HOLD_RETRY_MILLISECONDS)
+		{
+			return FALSE;
+		}
+	}
+	else
+	{
+		party_globals.hold_asks = 0;
+		party_globals.hold_answered = FALSE;
+	}
+	party_globals.hold_asked_count = *count;
+	csmemcpy(party_globals.hold_asked, key_hashes, *count * PARTY_KEY_HASH_SIZE);
+	party_globals.hold_asked_time = now | 1;
+	party_globals.hold_asks++;
+	return *count > 0;
+}
+
+/* (a client) the host has taken this machine into its game: its join
+accepted, its machine given its index (asked before, a hold is let go) */
+static boolean party_client_accepted(
+	void)
+{
+	struct network_game_client *client = global_network_game_client_get();
+
+	return client && network_game_client_get_machine_index(client) != NONE;
+}
+
+/* a leader of a party: room for its members asked of the host (a client),
+or held (the host, for its own party), when they change */
+static void party_hold_update(
+	unsigned long now)
+{
+	byte key_hashes[MAXIMUM_PARTY_HOLD_MEMBERS * PARTY_KEY_HASH_SIZE];
+	short count = 0;
+
+	if (!TEST_FLAG(party_globals.own_flags, _party_status_online_bit) || (!party_host() && !party_client_accepted()) ||
+		!party_hold_members_changed(key_hashes, &count, now))
+	{
+		return;
+	}
+	if (party_host())
+	{
+		party_host_hold(network_game_client_get_local_machine_index(), key_hashes, count, now);
+		return;
+	}
+	{
+		struct distributed_party_hold_message message;
+		short index;
+
+		csmemset(&message, 0, sizeof(message));
+		for (index = 0; index < count; index++)
+		{
+			message.members[index].format = PARTY_HOLD_FORMAT;
+			csmemcpy(message.members[index].key_hash, key_hashes + index * PARTY_KEY_HASH_SIZE,
+				PARTY_KEY_HASH_SIZE);
+		}
+		distributed_send(&message, _distributed_message_party_hold, count,
+			(word)(sizeof(message.header) + count * sizeof(message.members[0])), _distributed_to_host_reliably);
+		error(_error_log, "party: asked the host to hold room for this party's %d other members", count);
+	}
+}
+
+/* (the host) a machine's party: the group of the hold it took up (or of
+the party it leads), else 0; of one joining (machine_index NONE, or its
+hold not taken up yet), its hold's, by its address */
+static short party_machine_group(
+	long machine_index,
+	unsigned long address)
+{
+	byte key_hash[PARTY_KEY_HASH_SIZE];
+	short index;
+
+	if (machine_index >= 0 && machine_index < MAXIMUM_PARTY_MACHINES && party_globals.machines[machine_index].group)
+		return party_globals.machines[machine_index].group;
+	if (address && party_address_key_hash(address, key_hash) &&
+		(index = party_holds_find(party_globals.holds, key_hash)) != NONE)
+	{
+		return (short)(party_globals.holds[index].group + 1);
+	}
+	return 0;
+}
+
 /* ---------- public code */
 
 void network_party_update(
@@ -777,7 +1288,14 @@ void network_party_update(
 	}
 	party_status_update(now);
 	if (party_host())
+	{
+		short released = party_holds_expire(party_globals.holds, now);
+
+		if (released)
+			error(_error_log, "party: %d slots held for a party's members who did not come are let go", released);
 		party_host_list(now);
+	}
+	party_hold_update(now);
 	party_keys_update(now);
 }
 
@@ -896,7 +1414,8 @@ boolean network_party_handles_message(
 		return FALSE;
 	csmemcpy(&header, message, sizeof(header));
 	return header.type == _distributed_message_party_up || header.type == _distributed_message_party_down ||
-		header.type == _distributed_message_party_players;
+		header.type == _distributed_message_party_players || header.type == _distributed_message_party_hold ||
+		header.type == _distributed_message_party_held;
 }
 
 void network_party_handle_message(
@@ -948,7 +1467,117 @@ void network_party_handle_message(
 			party_list_heard(players, header.count);
 		}
 		break;
+	case _distributed_message_party_hold:
+		if (!party_host() || machine_index == NONE || header.count > MAXIMUM_PARTY_HOLD_MEMBERS ||
+			size != sizeof(header) + header.count * sizeof(struct distributed_party_hold))
+		{
+			return;
+		}
+		{
+			struct distributed_party_hold members[MAXIMUM_PARTY_HOLD_MEMBERS];
+
+			csmemcpy(members, entries, header.count * sizeof(members[0]));
+			party_host_hold_heard(machine_index, members, header.count, system_milliseconds());
+		}
+		break;
+	case _distributed_message_party_held:
+	{
+		struct distributed_party_held answer;
+
+		if (party_host() || machine_index != NONE || header.count != 1 || size != sizeof(header) + sizeof(answer))
+			return;
+		csmemcpy(&answer, entries, sizeof(answer));
+		if (answer.format != PARTY_HOLD_FORMAT)
+			return;
+		party_globals.hold_answered = TRUE;
+		error(_error_log, "party: the host holds room for %d of this party's %d other members, for %d seconds",
+			answer.held, answer.asked, answer.seconds);
+		break;
 	}
+	}
+}
+
+/* ---------- room held for a party: the host's server */
+
+boolean network_party_slot_open(
+	unsigned long address)
+{
+	byte key_hash[PARTY_KEY_HASH_SIZE];
+	boolean reached;
+	short players, maximum;
+
+	if (!party_globals.active || !party_host() || !party_host_game(&players, &maximum))
+		return TRUE;
+	reached = party_address_key_hash(address, key_hash);
+	return party_holds_admit(party_globals.holds, reached ? key_hash : NULL, players, maximum);
+}
+
+void network_party_slot_taken(
+	long machine_index,
+	unsigned long address)
+{
+	byte key_hash[PARTY_KEY_HASH_SIZE];
+	short index;
+
+	if (!party_globals.active || !party_host() || machine_index < 0 || machine_index >= MAXIMUM_PARTY_MACHINES ||
+		!party_address_key_hash(address, key_hash) ||
+		(index = party_holds_find(party_globals.holds, key_hash)) == NONE)
+	{
+		return;
+	}
+	party_globals.machines[machine_index].group = (short)(party_globals.holds[index].group + 1);
+	party_globals.holds[index].used = FALSE;
+	error(_error_log, "party: machine #%ld took up the slot held for it (machine #%d's party)", machine_index,
+		party_globals.holds[index].group);
+}
+
+boolean network_party_machines_together(
+	long machine_index,
+	unsigned long address,
+	long other_machine_index)
+{
+	short group, other_group;
+
+	if (!party_globals.active || !party_host())
+		return FALSE;
+	group = party_machine_group(machine_index, address);
+	other_group = party_machine_group(other_machine_index, 0);
+	if (group && group == other_group)
+		return TRUE;
+	/* (else as their parties' tags say: told by each, a client's) */
+	if (machine_index < 0 || machine_index >= MAXIMUM_PARTY_MACHINES || other_machine_index < 0 ||
+		other_machine_index >= MAXIMUM_PARTY_MACHINES)
+	{
+		return FALSE;
+	}
+	return party_machine_told(machine_index) && party_machine_told(other_machine_index) &&
+		TEST_FLAG(party_globals.machines[machine_index].flags, _party_status_in_party_bit) &&
+		party_globals.machines[machine_index].tag &&
+		party_globals.machines[machine_index].tag == party_globals.machines[other_machine_index].tag;
+}
+
+boolean network_party_machine_in_party(
+	long machine_index)
+{
+	if (!party_globals.active || !party_host() || machine_index < 0 || machine_index >= MAXIMUM_PARTY_MACHINES)
+		return FALSE;
+	return party_globals.machines[machine_index].group ||
+		(party_machine_told(machine_index) &&
+			TEST_FLAG(party_globals.machines[machine_index].flags, _party_status_in_party_bit));
+}
+
+short network_party_held_slots(
+	void)
+{
+	return party_globals.active && party_host() ? party_holds_count(party_globals.holds) : 0;
+}
+
+short network_party_team_choice(
+	short const *party_counts,
+	short const *team_counts,
+	short maximum)
+{
+	return party_team_choice(party_counts, team_counts, maximum);
 }
 
 /* ---------- drawing */

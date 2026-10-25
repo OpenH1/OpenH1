@@ -6182,6 +6182,24 @@ enum
 
 static void text_to_wide(char const *text, wchar_t *wide, short size);
 
+/* what a game's row and panel say of its room for this machine's party
+(browser_party_room): nothing (it leads no party of more than itself); room
+for the whole party, which its host holds as the party follows its leader
+in (an OpenH1 game of a build that holds room: port/linux/game/network_party.c);
+room, but no guarantee (a Legacy game's host, or an older OpenH1 one's,
+holds none: the members join as they can); no room for the whole party */
+enum
+{
+	_browser_party_none,
+	_browser_party_held,
+	_browser_party_unheld,
+	_browser_party_no_room,
+};
+
+/* this machine's party as the server browser counts it: its members of
+this version (itself too) if it leads one, else 0; read once a frame */
+static short browser_party_size;
+
 /* a ping's column while it is measured, and while it is not known */
 #define BROWSER_PING_MEASURING L"\x2026"
 #define BROWSER_PING_UNKNOWN L"\x2013"
@@ -6205,7 +6223,40 @@ struct browser_row
 	boolean openh1, mixed, locked, open, in_progress, offline;
 	/* a local network game's machines */
 	short machines;
+	/* its room for this machine's party (_browser_party_*), and the
+	party's size */
+	short party_room, party_size;
 };
+
+/* a game's room for a party of size (itself too; 1 or less: none) whose
+leader joins it, with players of maximum in it (those its host holds slots
+for counted), its host holding room (holds) or not (_browser_party_*) */
+static short browser_party_room(short size, short players, short maximum, boolean holds)
+{
+	if (size <= 1)
+		return _browser_party_none;
+	if (maximum > 0 && players + size > maximum)
+		return _browser_party_no_room;
+	return holds ? _browser_party_held : _browser_party_unheld;
+}
+
+/* this machine's party's size, if it leads one (browser_party_size) */
+static short browser_party_members(void)
+{
+	struct p2p_party_status status;
+	short count = 0;
+	short index;
+
+	p2p_party_status(&status);
+	if (status.state != _p2p_party_member || !status.leader)
+		return 0;
+	for (index = 0; index < status.count; index++)
+	{
+		if (!status.members[index].other_version)
+			count++;
+	}
+	return count;
+}
 
 /* a public game's (the server browser's) */
 static void browser_listing_row(struct p2p_listing const *game, struct browser_row *row)
@@ -6227,6 +6278,9 @@ static void browser_listing_row(struct p2p_listing const *game, struct browser_r
 	row->locked = game->locked != 0;
 	row->open = game->open != 0;
 	row->in_progress = game->in_progress != 0;
+	row->party_size = browser_party_size;
+	row->party_room = browser_party_room(browser_party_size, game->player_count, game->maximum_player_count,
+		game->holds_party != 0);
 }
 
 /* a local network game's, or Join by Link's (its host's ping, the
@@ -6342,7 +6396,8 @@ static void browser_row_show(struct widget_instance *row_widget, short row_index
 
 	browser_row_favorite[row_index] = favorite || row->offline;
 	browser_row_offline[row_index] = row->offline;
-	browser_row_closed[row_index] = !row->open && !row->offline;
+	/* (and one without room for this machine's whole party) */
+	browser_row_closed[row_index] = (!row->open && !row->offline) || row->party_room == _browser_party_no_room;
 	browser_row_star(row_widget, row_index, row_widget == row_widget->parent->focused_child);
 	/* (the name, room left for its badge and lock after it) */
 	if (tick && row->openh1 && !row->offline)
@@ -6486,12 +6541,31 @@ static void browser_panel_show(struct widget_instance *list, struct browser_row 
 static void browser_status_text(struct browser_row const *row, wchar_t *text, short size)
 {
 	wchar_t machines[32];
+	wchar_t party[80];
 
 	machines[0] = 0;
 	if (row->machines > 1)
 		usnprintf(machines, NUMBEROF(machines) - 1, L"On %d machines.", row->machines);
 	machines[NUMBEROF(machines) - 1] = 0;
-	usnprintf(text, size - 1, L"%s%s%s", !row->open ? L"Full or starting. " :
+	/* (its room for this machine's party, first) */
+	switch (row->open ? row->party_room : _browser_party_none)
+	{
+	case _browser_party_held:
+		usnprintf(party, NUMBEROF(party) - 1, L"Room for your party (%d). ", row->party_size);
+		break;
+	case _browser_party_unheld:
+		usnprintf(party, NUMBEROF(party) - 1, L"Room for your party (%d). No room guarantee: some may not get in. ",
+			row->party_size);
+		break;
+	case _browser_party_no_room:
+		usnprintf(party, NUMBEROF(party) - 1, L"No room for your party of %d. ", row->party_size);
+		break;
+	default:
+		party[0] = 0;
+		break;
+	}
+	party[NUMBEROF(party) - 1] = 0;
+	usnprintf(text, size - 1, L"%s%s%s%s", party, !row->open ? L"Full or starting. " :
 		row->in_progress ? L"Under way: its lobby shows first. " : L"",
 		row->locked ? L"It has a password. " : L"", machines);
 	text[size - 1] = 0;
@@ -6955,6 +7029,8 @@ static void lobby_browser_update(struct widget_instance *list)
 	unsigned long now = system_milliseconds();
 	short chosen, rows;
 
+	/* (this machine's party, as the rows count it) */
+	browser_party_size = browser_party_members();
 	lobby_browser.count = lobby_browser_valid_games(lobby_browser.games,
 		(short)p2p_lobby_games(lobby_browser.games, LOBBY_BROWSER_GAMES));
 	lobby_browser.count = lobby_browser_favorites(lobby_browser.count);

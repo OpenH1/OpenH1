@@ -40,6 +40,11 @@ each run by its name:
   another format (noted once), sent again (replayed), from a member gone,
   of a leader with an older term, and a malformed one;
 - version: a member of another HALO_PORT_NETWORK_VERSION is shown so;
+- keys: the leader names its other members by their tunnel keys' hashes
+  (p2p_party_member_key_hashes, which the host of a game they join holds
+  room by): each the hash of the X25519 key the machine reaches a host with,
+  as p2p.c makes it from its seed, in the roster's order; a member of
+  another version left out; none named by a member, nor by a leader alone;
 - spare: the party Discord offers out of a party (p2p_party_spare): the
   same link and id until it is made, its id the party's topic's digits (not
   the link's); a friend with its link is not answered while its topic is not
@@ -145,6 +150,14 @@ void posix_random_bytes(void *buffer, posix_ulong size)
 }
 
 const unsigned char *p2p_signing_key(void) { return machines[current].key; }
+
+void p2p_key_hash(const unsigned char *key, unsigned char *hash)
+{
+	unsigned char digest[P2P_SHA256_SIZE];
+
+	p2p_sha256(key, P2P_KEY_SIZE, digest);
+	memcpy(hash, digest, P2P_KEY_HASH_SIZE);
+}
 
 void p2p_sign(const void *message, int size, unsigned char *signature)
 {
@@ -366,7 +379,7 @@ static void case_make(void)
 	unsigned char token[P2P_TOKEN_SIZE];
 
 	add_machine();
-	name(0, "Nora");
+	name(0, "Keyes");
 	switch_to(0);
 	check(p2p_party_make(), "a party is made");
 	check(!strncmp(machines[0].clipboard, "halo://party/", 13) && strlen(machines[0].clipboard) == 13 + 32,
@@ -380,7 +393,7 @@ static void case_make(void)
 	check(!p2p_party_parse_link(invite_a, token), "a game's invite is no party's link");
 	status_of(0, &status);
 	check(status.state == _p2p_party_member && status.leader && status.count == 1 && status.members[0].self &&
-		status.members[0].leader && !strcmp(status.members[0].name, "Nora"), "the maker leads it alone");
+		status.members[0].leader && !strcmp(status.members[0].name, "Keyes"), "the maker leads it alone");
 	check(!strcmp(status.link, machines[0].clipboard), "its status has its link");
 	check(notice_of(0, _p2p_party_notice_made) != NULL, "the menus are told it was made");
 	run(5000);
@@ -1056,6 +1069,46 @@ static void case_version(void)
 	check(member_named(1, "A") && !member_named(1, "A")->other_version, "one of the same version is not");
 }
 
+static void case_keys(void)
+{
+	unsigned char hashes[P2P_PARTY_MAXIMUM_MEMBERS * P2P_KEY_HASH_SIZE];
+	unsigned char secret[P2P_KEY_SIZE], tunnel_key[P2P_KEY_SIZE], expected[P2P_KEY_HASH_SIZE];
+	unsigned char id[MEMBER_ID_SIZE];
+	struct member *member;
+	int count, index;
+
+	party_of(4);
+	switch_to(0);
+	count = p2p_party_member_key_hashes(hashes, P2P_PARTY_MAXIMUM_MEMBERS);
+	check(count == 3, "the leader names its three other members");
+	for (index = 1; index < 4 && count == 3; index++)
+	{
+		/* (the key the machine reaches a host with: p2p.c's, of its seed) */
+		p2p_ed25519_public(machines[index].seed, tunnel_key, secret);
+		p2p_x25519(tunnel_key, secret, NULL);
+		p2p_key_hash(tunnel_key, expected);
+		check(!memcmp(hashes + (index - 1) * P2P_KEY_HASH_SIZE, expected, P2P_KEY_HASH_SIZE),
+			"each by the hash of the tunnel key it reaches a host with, in the roster's order");
+	}
+	check(p2p_party_member_key_hashes(hashes, 2) == 2, "no more than asked for");
+	/* (D of another version: it cannot join the leader's games) */
+	member_id(machines[3].key, id);
+	member = find_member(id);
+	check(member != NULL, "the leader hears D");
+	if (member)
+		member->network_version = HALO_PORT_NETWORK_VERSION + 1;
+	check(p2p_party_member_key_hashes(hashes, P2P_PARTY_MAXIMUM_MEMBERS) == 2,
+		"a member of another version is not named");
+	switch_to(1);
+	check(p2p_party_member_key_hashes(hashes, P2P_PARTY_MAXIMUM_MEMBERS) == 0, "a member names no one");
+	memset(&party, 0, sizeof(party));
+	memset(machines, 0, sizeof(machines));
+	machine_count = 0;
+	current = -1;
+	party_of(1);
+	check(p2p_party_member_key_hashes(hashes, P2P_PARTY_MAXIMUM_MEMBERS) == 0, "a leader alone names no one");
+}
+
 static const struct
 {
 	const char *name;
@@ -1076,6 +1129,7 @@ static const struct
 	{ "joinless", case_joinless },
 	{ "format", case_format },
 	{ "version", case_version },
+	{ "keys", case_keys },
 	{ "spare", case_spare },
 };
 
