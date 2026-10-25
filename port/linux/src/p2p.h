@@ -91,6 +91,22 @@ it: its first digits only, since players post their logs and an invite lets
 anyone join; the dedicated server's log, its operator's, has it whole */
 const char *p2p_invite_log_text(const char *invite, char *text, int size);
 
+/* the join page (website/public/join): a link's token in its address's
+part after "#" (#party=, #join=), which browsers never send, opened as the
+link it is (halo://), else the downloads and the link to paste */
+#define P2P_JOIN_PAGE "https://openh1.com/join/"
+enum
+{
+	/* a message of p2p_invite_message's, with its end */
+	P2P_INVITE_MESSAGE_SIZE = 320,
+};
+/* what COPY INVITE puts on the clipboard for the party or game link within
+text: a line with the join page's address of it, which chat apps (Steam's,
+Discord's) make clickable as they do not halo://, and a line with the link
+itself, for JOIN BY LINK (every form of either is taken: p2p_join_invite).
+0 if text holds no link */
+int p2p_invite_message(const char *text, char *message, int size);
+
 /* the hosted game's players and the most it takes, which Discord shows
 (0, 0: not hosting; until the game says, the machines the tunnel reaches
 are shown). The game's server calls it as they change (calling it with the
@@ -205,6 +221,24 @@ void p2p_discord_sanitize(char *destination, int size, const char *source, int n
 /* the Discord user signed in to the client on this machine, as its
 READY told (empty if none, or internet play is off) */
 void p2p_discord_identity(char *id, int id_size, char *name, int name_size);
+/* what Discord's activity says of the game this machine is in (p2p_discord.c;
+port/linux/game/lobby_menu.inc tells it ten times a second, the same again
+costing little): whether this machine hosts it and it is under way (not in
+its lobby), what it is in UTF-8 ("OpenH1 120 Tick · Slayer on Blood Gulch";
+NULL or empty: in no game), and a game joined's invite link (NULL: none, a
+LAN game) and players */
+void p2p_discord_set_game(int hosting, int playing, const char *description, const char *invite, int player_count,
+	int maximum_player_count);
+/* a Discord friend's ask to join this machine's party or game, the oldest
+not answered (each is let go after a while): its serial (0: none), the
+friend's name (Latin-1) and whether they would join a game (game, if not
+NULL), not a party; the answer to one, letting them in or not */
+enum
+{
+	P2P_DISCORD_REQUEST_NAME_SIZE = 33,
+};
+unsigned long p2p_discord_join_request(char *name, int size, int *game);
+void p2p_discord_answer(unsigned long serial, int accept);
 /* this machine's hardware id, as hex (empty if none), a host told it when
 joining (a keyed hash of what the machine is known by: p2p.c); and the hex
 kept of one told: lowercase hex digits only, P2P_HARDWARE_ID_BYTES' worth */
@@ -433,8 +467,6 @@ int p2p_party_lead_link(const char *text);
 it for everyone */
 void p2p_party_leave(void);
 void p2p_party_disband(void);
-/* the link put on the clipboard again: 0 if not in a party */
-int p2p_party_copy_link(void);
 /* the party's link, to invite a player of the game (the scoreboard's Invite
 to party: port/linux/game/network_party.c), a party made for it (this
 machine its leader) if it is in none; the clipboard is left alone */
