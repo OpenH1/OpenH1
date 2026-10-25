@@ -24,6 +24,7 @@ bound MAXIMUM_QUEUED_EVENTS 128
 bound MAXIMUM_REGIONS_PER_OBJECT 8
 bound MAXIMUM_SIM_SUBSTEPS 4
 bound MAXIMUM_STATISTICS_PER_MESSAGE 64
+bound MAXIMUM_TRACKED_PLAYERS HALO_PORT_MAXIMUM_NETWORK_PLAYERS
 bound MAXIMUM_WEAPONS_PER_UNIT 4
 bound NUMBER_OF_ANGLES enum f0ce7d0319b6
 bound NUMBER_OF_OBJECT_CHANGE_COLORS enum b00724872e2d
@@ -31,6 +32,7 @@ bound NUMBER_OF_PLAYER_POWERUPS enum 43075f42087c
 bound NUMBER_OF_UNIT_GRENADE_TYPES enum a0462dbcbdd9
 bound OBJECT_NAME_BYTES MAXIMUM_OBJECT_NAMES_PER_SCENARIO / 8
 bound P2P_PLAYER_KEY_HASH_SIZE 16
+bound PARTY_TOKEN_SIZE 16
 define DISTRIBUTED_ANGULAR_VELOCITY_SCALE 4096.0f
 define DISTRIBUTED_TIME_WINDOW_TICKS (15 * TICKS_PER_SECOND)
 define DISTRIBUTED_UNIT_SCALE 32767.0f
@@ -83,6 +85,9 @@ enum _distributed_message_object_changes 5
 enum _distributed_message_object_states 6
 enum _distributed_message_objects_synchronized 8
 enum _distributed_message_opence_players 122
+enum _distributed_message_party_down 124
+enum _distributed_message_party_players 125
+enum _distributed_message_party_up 123
 enum _distributed_message_pickups 13
 enum _distributed_message_pings 19
 enum _distributed_message_player_inputs 14
@@ -282,6 +287,10 @@ struct distributed_object_change 343e570cfa1d
 struct distributed_object_change_message 4c3679cd4dae
 struct distributed_object_state 1b656bbda892
 struct distributed_object_state_message 004c4b7aa530
+struct distributed_party_player ad8b0a57d35a
+struct distributed_party_players_message 1184f2cbc11a
+struct distributed_party_request b2550530abf9
+struct distributed_party_request_message 4cfd458d0c52
 struct distributed_pickup 46e6f981ac40
 struct distributed_pings_message 35c6009dee29
 struct distributed_player_input a0cf65a1197c
