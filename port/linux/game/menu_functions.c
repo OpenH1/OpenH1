@@ -3801,6 +3801,7 @@ boolean ui_widget_port_host_local(struct widget_instance *widget, struct event_r
 boolean ui_widget_port_browse(struct widget_instance *widget, struct event_record *event, boolean *widget_deleted);
 boolean ui_widget_port_open(struct widget_instance *widget, char const *name, boolean *widget_deleted);
 boolean network_game_client_advertised_game_in_progress(void *client, struct advertised_game *game);
+boolean network_game_client_advertised_game_dedicated(void *client, struct advertised_game *game);
 byte network_game_client_advertised_game_kind(void *client, struct advertised_game *game);
 long network_game_client_advertised_game_rate(void *client, struct advertised_game *game);
 long network_game_client_advertised_game_bots(void *client, struct advertised_game *game);
@@ -5233,6 +5234,25 @@ static boolean advertised_in_progress(struct advertised_game *game)
 	return network_game_client_advertised_game_in_progress(global_network_game_client_get(), game);
 }
 
+/* whether the advertised game's host is a dedicated server (OpenCE's halo
+--server: HALO_PORT_ADVERTISED_DEDICATED_FLAG), with no player of its own */
+static boolean advertised_dedicated(struct advertised_game *game)
+{
+	return network_game_client_advertised_game_dedicated(global_network_game_client_get(), game);
+}
+
+/* whether the game this machine joined last is a dedicated server's, as its
+advertisement said: the lobby's lines (lobby_menu.inc) */
+static boolean lobby_joined_dedicated;
+
+/* the advertised game joined (ui_widget_port_join), into the lobby */
+static boolean advertised_join(struct widget_instance *widget, struct advertised_game *game,
+	boolean *widget_deleted)
+{
+	lobby_joined_dedicated = game && advertised_dedicated(game);
+	return ui_widget_port_join(widget, game, LOBBY_NAME, widget_deleted);
+}
+
 static void browser_games_read(void)
 {
 	void *client = global_network_game_client_get();
@@ -6249,6 +6269,8 @@ struct browser_row
 	short ping, ping_state;
 	short rate;
 	boolean openh1, mixed, locked, open, in_progress, offline;
+	/* a dedicated server's (OpenCE's halo --server: no player of its own) */
+	boolean dedicated;
 	/* a local network game's machines */
 	short machines;
 	/* its room for this machine's party (_browser_party_*), and the
@@ -6336,6 +6358,7 @@ static void browser_advertised_row(struct advertised_game *game, struct browser_
 	row->mixed = advertised_game_mixed(game);
 	row->open = game->open;
 	row->in_progress = advertised_in_progress(game);
+	row->dedicated = advertised_dedicated(game);
 	row->machines = game->machine_count;
 }
 
@@ -6609,7 +6632,8 @@ static void browser_status_text(struct browser_row const *row, wchar_t *text, sh
 			usnprintf(playlist, NUMBEROF(playlist) - 1, L"Matchmaking: %s. ", name);
 		playlist[NUMBEROF(playlist) - 1] = 0;
 	}
-	usnprintf(text, size - 1, L"%s%s%s%s%s", playlist, party, !row->open ? L"Full or starting. " :
+	usnprintf(text, size - 1, L"%s%s%s%s%s%s", row->dedicated ? L"A dedicated server. " : L"", playlist, party,
+		!row->open ? L"Full or starting. " :
 		row->in_progress ? L"Under way: its lobby shows first. " : L"",
 		row->locked ? L"It has a password. " : L"", machines);
 	text[size - 1] = 0;
@@ -7322,7 +7346,7 @@ static boolean lobby_browser_select(struct widget_instance *widget, short contro
 			return campaign_fail();
 		if (!multiplayer_player(controller))
 			return FALSE;
-		return ui_widget_port_join(widget, found, LOBBY_NAME, widget_deleted);
+		return advertised_join(widget, found, widget_deleted);
 	}
 	if (row == NONE && !strstr(widget->name, "button_join"))
 		return TRUE;
@@ -8155,7 +8179,7 @@ static boolean browser_join(struct widget_instance *widget, short controller, bo
 		return campaign_fail();
 	if (!multiplayer_player(controller))
 		return FALSE;
-	return ui_widget_port_join(widget, multiplayer.games[multiplayer.game_chosen], LOBBY_NAME, widget_deleted);
+	return advertised_join(widget, multiplayer.games[multiplayer.game_chosen], widget_deleted);
 }
 
 /* "port browser favorite" (Y on a row, F on the keyboard) and a click on a
@@ -8753,7 +8777,7 @@ static boolean preview_join(struct widget_instance *widget, short controller, bo
 		return campaign_fail();
 	if (!lobby_local_player_count() && !multiplayer_player(controller))
 		return FALSE;
-	return ui_widget_port_join(widget, game, LOBBY_NAME, widget_deleted);
+	return advertised_join(widget, game, widget_deleted);
 }
 
 /* ---- the gametype editor: Edit Gametypes' list (the built-in gametypes

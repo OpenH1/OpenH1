@@ -92,6 +92,10 @@ enum
 	_listing_closed = 8,
 	/* its token sealed with a password's key */
 	_listing_password = 16,
+	/* a dedicated server's (OpenCE's halo --server), as its host says: a
+	browser takes a master server's word for it, not this (any host can
+	set it) */
+	_listing_dedicated = 32,
 	STAMP_SIZE = 8,
 	/* the stamp's fourth byte: an OpenH1 host that holds room for a party
 	joining its game (port/linux/game/network_party.c) */
