@@ -797,7 +797,7 @@ void rasterizer_transparent_geometry_groups_end(
 			result = IDirect3DDevice8_GetVisibilityTestResult(
 				global_d3d_device,
 				index,
-				&pixel_count,
+				(UINT *)&pixel_count,
 				&timestamp);
 		}
 		while (result == D3DERR_TESTINCOMPLETE);

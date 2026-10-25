@@ -96,28 +96,37 @@ a Mac app does, before the game starts:
   the game's lines) goes to `~/Library/Logs/OpenH1/halo.log`, the previous
   start's to `halo.previous.log` (Console shows them), unless the error
   output is a terminal. The Metal archive is in `~/Library/Caches/OpenH1`.
-  `HALO_DATA_ROOT` and `HALO_SAVE_ROOT`, and `paths.data` and `paths.saves`
-  in `config.toml`, still choose other folders.
-- **The maps.** The players supply them. Without a maps folder, an open
-  panel asks for the Xbox game's disc image or its maps folder (a short
-  explanation in it). It enables folders and, of the files, disc images
-  (`.iso` or `.xiso` in any case, as `halo1.xiso.iso`). A disc image's maps
-  folder is extracted by `port/linux/src/xiso.c` (the desktop builds' and the
-  iOS app's extractor, built into the host: `shared_extra` in
-  `tools/macos_build.py`) into the data root's `maps`, a folder of its own
-  (no bookmark, no link), through `maps.partial`, with a window showing the
-  copy; an image that is not one, or has no maps, is refused with xiso.c's
-  reason. Either is checked: `ui.map` must be an Xbox cache file (the PC
-  version's and Custom Edition's are refused, with the reason), and maps
-  that lack some of the disc's 23 can be used once the player agrees. A
-  folder is kept as a
-  bookmark (`maps.bookmark`), which finds the folder again when it is moved
-  or renamed, and the data root's `maps` is a symbolic link to it, made
-  again at each start. A `maps` folder of the data root's own (not a link)
-  is used as it is. The panel's tests:
-  `HALO_MAPS_PANEL_ANSWER=<folder or image>;...` (or `cancel`) answers each
-  showing of the panel with the next one, and each alert with its first
-  button.
+  `~` is `HOME`: a test or a script that runs the app with `HOME` set to a
+  folder of its own keeps the settings, the log and the caches there,
+  away from the player's. `HALO_DATA_ROOT` and `HALO_SAVE_ROOT`, and
+  `paths.data` and `paths.saves` in `config.toml`, still choose other
+  folders.
+- **The maps.** The players supply them, and the game keeps its own copy
+  in the app's folder (`maps`), as the Linux builds do: it does not depend
+  on where the app is, nor on a folder elsewhere staying where it is. The
+  game's data root is this folder (`config.toml`'s, `SDL_GetBasePath`), or
+  `paths.data` if it is set; the app never looks in the current folder or
+  beside itself (`port/linux/src/xbox_files.c`). Without maps, the game's
+  first start (`port/linux/src/first_start.c`, as on Linux: "Start the game"
+  in `port/linux/README.md`) shows in the game's own window, from the
+  start, what it finds: disc images (`.iso` or `.xiso`) and maps folders in
+  Downloads, on the Desktop, in the home folder (not Documents, Pictures,
+  Music, Movies or the Library, which would each ask for access), on the
+  drives in `/Volumes`, and the maps folders the app's earlier versions used
+  (`HALO_MAPS_USED_BEFORE`, which `host_app.m` fills: their `maps.bookmark`
+  and `maps` link in Application Support's `OpenH1` and `OpenCE` folders).
+  Choosing one copies its maps (an image's are extracted by `xiso.c`)
+  through `maps.partial`, with the progress, and the game starts. "Browse
+  for the disc image or folder..." opens the open panel as a sheet of the
+  game's window (fullscreen or not), which takes an image, the maps folder,
+  or the folder holding it. It works with a controller, the keyboard and the
+  mouse. A `paths.data` whose folder has no maps (moved, or on a drive that
+  is not connected) is said on that screen. The tests:
+  `HALO_FIRST_START_INPUT` presses the screen's buttons, and
+  `HALO_MAPS_PANEL_ANSWER=<image or folder>` (or `cancel`) answers the panel
+  a second after it shows. (The app before this kept a folder where it was,
+  through a bookmark and a link; a link that still leads to the maps keeps
+  working.)
 - **The window.** Its place and size, and whether it was fullscreen, are
   kept in `window.plist`; the next start opens it fullscreen or not
   (`HALO_FULLSCREEN`, unless the environment has it) and puts the window

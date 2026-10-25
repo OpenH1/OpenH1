@@ -42,8 +42,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from .android_build import TOML_DIR, fetch_third_party, generate_guest_image
-from .build_common import (MINIUPNPC_DIR, OPTIMISATION, compile_launcher, configuration_defines, miniupnpc_sources,
-                           updater_defines)
+from .build_common import (MINIUPNPC_DIR, OPTIMISATION, OWN_CODE_ERRORS, compile_launcher, configuration_defines,
+                           miniupnpc_sources, updater_defines)
 from .guest_arch import X32
 from .guest_toolchain import LLVM_VERSION, GuestToolchain, guest_toolchain
 from .ninja_syntax import Writer
@@ -109,6 +109,7 @@ HOST_FLAGS = [
     "-std=gnu11",
     "-Wall",
     "-Wno-unused-function",
+    *OWN_CODE_ERRORS,
     "-D_CRT_SECURE_NO_WARNINGS",
     "-D_CRT_NONSTDC_NO_WARNINGS",
     "-D_WINSOCK_DEPRECATED_NO_WARNINGS",

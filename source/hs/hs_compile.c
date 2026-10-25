@@ -421,6 +421,8 @@ symbols in this file:
 #include "scenario/scenario.h"
 #include "scenario/scenario_definitions.h"
 
+#include <ctype.h>
+
 /* ---------- constants */
 
 enum
@@ -1478,7 +1480,7 @@ static boolean hs_parse_enum(
 	long expression_index)
 {
 	struct hs_syntax_node *expression = hs_syntax_get(expression_index);
-	struct hs_enum_definition *enum_definition = &hs_enum_table[expression->type-_hs_type_enum_game_difficulty];
+	struct hs_enum_definition const *enum_definition = &hs_enum_table[expression->type-_hs_type_enum_game_difficulty];
 	short value_index;
 	boolean result = TRUE;
 

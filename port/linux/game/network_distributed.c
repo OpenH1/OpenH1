@@ -78,6 +78,7 @@ machine (their datum identifiers need not be).
 #include "network_distributed.h"
 #include "network_voice.h"
 #include "network_aim_assist.h"
+#include "network_party.h"
 #include "network_shield_effects.h"
 #include "network_substeps.h"
 #include "network_standard.h"
@@ -4641,6 +4642,13 @@ void network_distributed_handle_message(
 	if (map_share_handles_message(message, size))
 	{
 		map_share_handle_message(machine_index, message, size, machine_index != NONE ?
+			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
+		return;
+	}
+	/* (parties made in the game, in the lobby too: network_party.c) */
+	if (network_party_handles_message(message, size))
+	{
+		network_party_handle_message(machine_index, message, size, machine_index != NONE ?
 			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
 		return;
 	}

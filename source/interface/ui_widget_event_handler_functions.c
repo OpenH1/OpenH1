@@ -1059,7 +1059,7 @@ boolean network_game_client_add_player(
 	short controller_index);
 void playlist_profiles_enumerate_available_to_local_player_index(
 	short local_player_index,
-	long *profile_count,
+	word *profile_count,
 	long *profile_indices);
 extern byte cached_variant_profile[0x144];
 static boolean new_campaign_chosen(
@@ -1079,6 +1079,10 @@ extern byte cached_player_profile[0x9C];
 long playlist_profile_new(
 	short local_player_index,
 	wchar_t *name);
+/* port: playlist_profile.c's: a gametype's PC options (game_engine.h) */
+boolean playlist_profile_get_options(
+	long playlist_profile_index,
+	struct game_variant_options *options);
 struct game_variant_data *build_game_variant_slayer(
 	struct game_variant_data *variant);
 
@@ -1931,7 +1935,8 @@ static boolean network_game_join_game_from_server_list(
 						which is the newer, and stays in the list) */
 						if (!network_game_client_advertised_game_compatible(global_network_game_client_get(), server, TRUE))
 							return FALSE;
-						transport_client_start(server + 0x18, server + 8, server, 0x141E, &address);
+						transport_client_start((XNADDR const *)(server + 0x18), (XNKEY const *)(server + 8),
+							(XNKID const *)server, 0x141E, &address);
 						if (address.address.long_words[0] != zero && address.port != zero)
 						{
 							join_descriptor.unknown02 = (short)zero;
@@ -3249,7 +3254,7 @@ static boolean playlist_profile_initialize_game_engine(
 	struct event_record *event,
 	boolean *widget_deleted)
 {
-	wchar_t *profile = player_ui_get_edit_playlist_profile();
+	wchar_t *profile = (wchar_t *)player_ui_get_edit_playlist_profile();
 	long game_engine;
 
 	match_vassert("c:\\halo\\SOURCE\\interface\\ui_widget_event_handler_functions.c", 2738,
@@ -3351,7 +3356,7 @@ static boolean multiplayer_profiles_list_initialize(
 		long profile_count;
 
 		profile_count = 100;
-		playlist_profiles_enumerate_available_to_local_player_index(0, &profile_count, profile_indices);
+		playlist_profiles_enumerate_available_to_local_player_index(0, (word *)&profile_count, profile_indices);
 		if ((word)profile_count < 3)
 		{
 			long *profile_index_pointer;
@@ -3579,7 +3584,7 @@ static boolean playlist_profile_initialize_name(
 	struct event_record *event,
 	boolean *widget_deleted)
 {
-	wchar_t *profile = player_ui_get_edit_playlist_profile();
+	wchar_t *profile = (wchar_t *)player_ui_get_edit_playlist_profile();
 	boolean result = TRUE;
 
 	match_vassert("c:\\halo\\SOURCE\\interface\\ui_widget_event_handler_functions.c", 2770,
@@ -6168,7 +6173,8 @@ boolean ui_widget_port_join(
 	{
 		return FALSE;
 	}
-	transport_client_start(server + 0x18, server + 8, server, 0x141E, &address);
+	transport_client_start((XNADDR const *)(server + 0x18), (XNKEY const *)(server + 8),
+		(XNKID const *)server, 0x141E, &address);
 	if (!address.address.long_words[0] || !address.port)
 	{
 		error(2, "attempted to join a network game with a bogus address");

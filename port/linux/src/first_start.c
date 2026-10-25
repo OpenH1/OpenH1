@@ -1,9 +1,10 @@
 /*
 FIRST_START.C
 
-The Linux builds' first start without game data (platform_offer_game_data,
-called by xbox_files.c): a screen in a window of the game's own that finds
-the player's disc image (game_data_scan.c) and copies its maps, operated with
+The Linux builds' and the macOS app's first start without game data
+(platform_offer_game_data, called by xbox_files.c): a screen in a window of
+the game's own that finds the player's disc image or maps folder
+(game_data_scan.c) and copies its maps into the game's folder, operated with
 a controller, the keyboard, the mouse or touch.
 
 It asks nothing of the desktop: on a Steam Deck in Game Mode (gamescope) and
@@ -15,12 +16,20 @@ next to the game, and when it finds none it says where to put it and looks
 again when asked. The system's file dialog is only an extra ("Browse..."), on
 a desktop, and a failure to show one is said in the window too.
 
-(Windows' and macOS's first starts are sdl_platform.c's and host_app.m's.)
+On macOS the screen is the game's window from the start, so the player never
+sees a dialog of the system's alone, hidden behind other windows or in
+another Space, while the game shows nothing. Browse... opens the Mac's open
+panel as a sheet of this window (port/macos/host_app.m), which takes the disc
+image or the maps folder; the window stays fullscreen meanwhile. A maps
+folder is copied too, not used where it is: the game's data is the game's
+own, whatever becomes of the folder or wherever the app is.
+
+(Windows' first start is sdl_platform.c's.)
 */
 
 #include "platform.h"
 
-#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_MACOS)
+#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_IOS)
 
 #include "port_config.h"
 #include "xiso.h"
@@ -95,6 +104,8 @@ struct chooser
 	float scroll;
 	/* whether the system's file dialog may be offered */
 	BOOL browse;
+	/* paths.data's folder, which has no maps ("" when it has not been set) */
+	char missing[GAME_DATA_PATH_SIZE];
 	char error_title[128];
 	char error[1200];
 	/* the left stick's last direction (-1, 0 or 1), moved once a push */
@@ -306,7 +317,11 @@ static const char *item_label(const struct chooser_item *item)
 	case _action_look_again:
 		return "Look again";
 	case _action_browse:
+#ifdef HALO_MACOS
+		return "Browse for the disc image or folder...";
+#else
 		return "Browse for the disc image...";
+#endif
 	case _action_back:
 		return "Back";
 	case _action_quit:
@@ -440,10 +455,17 @@ static void draw_list(float left, float width)
 {
 	int unit = chooser.unit;
 	char destination[GAME_DATA_PATH_SIZE + 64];
-	char explanation[GAME_DATA_PATH_SIZE * 2];
+	char missing[GAME_DATA_PATH_SIZE + 160] = "";
+	char explanation[GAME_DATA_PATH_SIZE * 3];
 	float y;
 
-	snprintf(destination, sizeof(destination), "%s/maps", chooser.places.destination);
+	game_data_short_path(&chooser.places, chooser.places.destination, destination, (int)sizeof(destination) - 8);
+	strcat(destination, "/maps");
+	if (chooser.missing[0])
+	{
+		snprintf(missing, sizeof(missing), "The maps are no longer in %s, the folder paths.data names (moved, or "
+			"on a drive not connected?). ", chooser.missing);
+	}
 	if (chooser.candidate_count)
 	{
 		BOOL one = chooser.candidate_count == 1;
@@ -452,16 +474,25 @@ static void draw_list(float left, float width)
 			chooser.candidates[0].kind == _game_data_image ? "Your Halo disc image was found" :
 			"Your Halo maps folder was found", colour_text);
 		snprintf(explanation, sizeof(explanation),
-			"OpenH1 plays the maps of your own Halo: Combat Evolved for the Xbox. Choosing %s copies "
-			"the maps (about 2 GB) to %s.", one ? "it" : "one", destination);
+			"%sOpenH1 plays the maps of your own Halo: Combat Evolved for the Xbox. Choosing %s copies "
+			"the maps (about 2 GB) to %s.", missing, one ? "it" : "one", destination);
 	}
 	else
 	{
 		y = draw_heading(left, width, "Halo's maps were not found", colour_text);
 		snprintf(explanation, sizeof(explanation),
-			"OpenH1 plays the maps of your own Halo: Combat Evolved for the Xbox. Put your disc image (.iso) "
+#ifdef HALO_MACOS
+			"%sOpenH1 plays the maps of your own Halo: Combat Evolved for the Xbox. Choose Browse to pick its "
+			"disc image (.iso or .xiso) or its maps folder, or put either in Downloads and choose Look again. "
+			"The maps (about 2 GB) are copied to %s.\n\n"
+			"%sLooked in %s.",
+			missing, destination,
+#else
+			"%sOpenH1 plays the maps of your own Halo: Combat Evolved for the Xbox. Put your disc image (.iso) "
 			"in Downloads or on your SD card, then press A to look again.\n\n"
 			"%sLooked in %s.",
+			missing,
+#endif
 			chooser.looked_again ? "Still nothing found. " : "", chooser.places_text);
 	}
 	y = paragraph(left, y, width, unit, colour_dim, explanation);
@@ -474,6 +505,7 @@ static void draw_copy(float left, float width)
 {
 	int unit = chooser.unit;
 	char explanation[GAME_DATA_PATH_SIZE * 3];
+	char destination[GAME_DATA_PATH_SIZE];
 	char file[256], line[400], fitted[400];
 	unsigned long long done, total;
 	float y, fraction;
@@ -484,9 +516,11 @@ static void draw_copy(float left, float width)
 	total = chooser.copy.total;
 	pthread_mutex_unlock(&chooser.copy.lock);
 	y = draw_heading(left, width, "Copying the maps...", colour_text);
-	snprintf(explanation, sizeof(explanation), "From %s (%s) to %s/maps. About 2 GB: this takes a few minutes.",
+	game_data_short_path(&chooser.places, chooser.copy.destination, destination, (int)sizeof(destination));
+	snprintf(explanation, sizeof(explanation), "From %s (%s) to %s/maps. About 2 GB: this takes a few minutes.%s",
 		chooser.copy.source.kind == _game_data_image ? chooser.copy.source.name : "the maps folder",
-		chooser.copy.source.place, chooser.copy.destination);
+		chooser.copy.source.place, destination,
+		chooser.copy.source.kind == _game_data_image ? "" : " The folder itself stays as it is.");
 	y = paragraph(left, y, width, unit, colour_dim, explanation) + unit * 16;
 	fraction = total ? (float)((double)done / (double)total) : 0.0f;
 	fill(left, y, width, (float)(unit * 10), colour_bar);
@@ -682,7 +716,16 @@ static void browse(void)
 		{ "All files", "*" },
 	};
 	static struct browse_answer answer;
+#ifdef HALO_MACOS
+	/* (the open panel is a sheet of the window, which shows in its
+	fullscreen Space too) */
+	BOOL fullscreen = FALSE;
+#else
 	BOOL fullscreen = (SDL_GetWindowFlags(chooser.window) & SDL_WINDOW_FULLSCREEN) != 0;
+#endif
+	struct game_data_candidate picked;
+	char error[600];
+	int folder;
 
 	memset(&answer, 0, sizeof(answer));
 	/* (a dialog cannot show above a fullscreen window) */
@@ -708,9 +751,23 @@ static void browse(void)
 		show_error("No file picker here", message);
 		return;
 	}
-	if (answer.path[0])
+	if (!answer.path[0])
+		return;
+	platform_log("first start: picked %s", answer.path);
+	/* (the Mac's panel takes a maps folder, or the folder holding one, as
+	well as an image) */
+	folder = game_data_picked_folder(answer.path, &picked, error, sizeof(error));
+	if (folder < 0)
 	{
-		struct game_data_candidate picked;
+		show_error("That folder holds no Xbox maps", error);
+		return;
+	}
+	if (folder > 0)
+	{
+		start_copy(&picked);
+		return;
+	}
+	{
 		const char *slash = strrchr(answer.path, '/');
 
 		memset(&picked, 0, sizeof(picked));
@@ -921,7 +978,7 @@ static void test_input(void)
 
 /* ---------- public code */
 
-BOOL platform_offer_game_data(const char *destination)
+BOOL platform_offer_game_data(const char *destination, const char *missing)
 {
 	BOOL gamescope;
 	SDL_JoystickID *gamepads;
@@ -945,6 +1002,7 @@ BOOL platform_offer_game_data(const char *destination)
 #endif
 	game_data_default_places(&chooser.places, destination);
 	game_data_places_text(&chooser.places, chooser.places_text, sizeof(chooser.places_text));
+	snprintf(chooser.missing, sizeof(chooser.missing), "%s", missing ? missing : "");
 	platform_log("first start: no game data; looking for a disc image (%s)%s", chooser.places_text,
 		gamescope ? " under gamescope" : "");
 	chooser.window = first_start_window(gamescope);
@@ -1002,6 +1060,13 @@ BOOL platform_offer_game_data(const char *destination)
 	}
 	SDL_DestroyRenderer(chooser.renderer);
 	SDL_DestroyWindow(chooser.window);
+	/* (the window gone from the screen, its closing animation over, before
+	the game loads its first map, which it does without reading events) */
+	for (count = 0; count < 15; count++)
+	{
+		SDL_PumpEvents();
+		SDL_Delay(20);
+	}
 	return TRUE;
 }
 

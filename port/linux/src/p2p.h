@@ -435,6 +435,13 @@ void p2p_party_leave(void);
 void p2p_party_disband(void);
 /* the link put on the clipboard again: 0 if not in a party */
 int p2p_party_copy_link(void);
+/* the party's link, to invite a player of the game (the scoreboard's Invite
+to party: port/linux/game/network_party.c), a party made for it (this
+machine its leader) if it is in none; the clipboard is left alone */
+int p2p_party_invite_link(char *link, int size);
+/* 32 bits of the party's topic (not of its link, which lets anyone in), by
+which the machines of a game tell who is in the same party; 0 in none */
+unsigned long p2p_party_tag(void);
 /* what the party is told of this machine (each frame: unchanged, little
 is done): its player's name, and where it is (_p2p_party_place_*) and in
 what (_p2p_party_game_*, an internet game with its invite link, NULL

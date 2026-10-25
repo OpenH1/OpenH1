@@ -1966,7 +1966,7 @@ boolean rasterizer_set_texture_bitmap_data(
 		D3DBaseTexture *d3d_texture;
 
 		profile_texture_start();
-		d3d_texture = _texture_cache_bitmap_get_hardware_format(bitmap, TRUE, TRUE);
+		d3d_texture = _texture_cache_bitmap_get_hardware_format((struct bitmap_data *)bitmap, TRUE, TRUE);
 		profile_texture_end();
 		IDirect3DDevice8_SetTexture(global_d3d_device, stage, d3d_texture);
 	}

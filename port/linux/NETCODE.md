@@ -646,6 +646,14 @@ change:
   heard, holding the tick's input, and the host's corrections keep it near.
 - The host does not welcome OpenH1 machines it knows by their token
   (`network.opence_welcome`).
+- Parties made from the scoreboard (`network_party.c`) use 123 to 125,
+  reliably, in OpenH1 games only: a client's word to the host (whether it
+  can party and is in one, an invite with the party's token, an ask to join),
+  the invite or ask the host sends on to the one machine it is for, and the
+  host's list of who can party. Each entry has a format byte of its own. The
+  host sends them only to OpenH1 machines that told it they can party, so
+  never to an OpenCE machine, and an older OpenH1 drops them as kinds it
+  does not know.
 
 Shots between players of different rates are resolved as every client's
 shots are (above, "Shooter's hits"), and nothing in that reads a rate:

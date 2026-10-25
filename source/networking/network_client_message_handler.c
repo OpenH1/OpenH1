@@ -203,6 +203,8 @@ symbols in this file:
 
 /* port/linux/game/network_distributed.c's */
 void network_distributed_handle_message(long machine_index, word const *message, word size);
+/* cseries_windows.c's */
+unsigned long system_milliseconds(void);
 
 /* ---------- constants */
 

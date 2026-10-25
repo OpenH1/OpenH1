@@ -40,7 +40,8 @@ from .linux_package import ROOT as REPO_ROOT, notices as release_notices
 from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, SDL_TAG,
                             TOML_DIR, fetch_third_party, generate_guest_image)
 from .build_common import (ASTC_CXX_FLAGS, ASTC_DIR, ASTC_HOST_CXX_SOURCES, ASTC_HOST_SOURCES, MBEDTLS_DIR, MINIUPNPC_DEFINES,
-                           MINIUPNPC_DIR, astc_encoder_sources, compile_launcher, download, miniupnpc_sources)
+                           MINIUPNPC_DIR, OWN_CODE_ERRORS, astc_encoder_sources, compile_launcher, download,
+                           miniupnpc_sources)
 from .guest_arch import ARM64_32
 from .guest_toolchain import LLVM_VERSION, guest_toolchain
 from .ninja_syntax import Writer
@@ -203,8 +204,8 @@ class ApplePlatform:
     guest_imports: Optional[List[Path]] = None
     # more of port/linux/src's files built into the app's host (not the
     # Metal tests') beside the platform.h stand-in: the disc image's
-    # extractor, xiso.c, for the first start's (port/macos/host_app.m,
-    # port/ios/data_import.m)
+    # extractor, xiso.c, for the iOS app's first start
+    # (port/ios/data_import.m; the macOS app's is the guest's, first_start.c)
     shared_extra: Optional[List[str]] = None
 
 
@@ -217,8 +218,6 @@ def macos_platform() -> ApplePlatform:
                      "-DSDL_SHARED=ON -DSDL_STATIC=OFF"),
         sdl_library="libSDL3.0.dylib", sdl_link="-lSDL3", guest_image_source=PORT_DIR / "guest_image.S",
         shader_platform="macos",
-        # (the first start's disc image extraction: host_app.m)
-        shared_extra=["xiso.h", "xiso.c", "posix.h"],
         link_flags="-Wl,-rpath,@executable_path -Wl,-rpath,@executable_path/../Frameworks")
 
 
@@ -318,7 +317,7 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
         deps="gcc",
     )
     host_cflags = " ".join([
-        "-O2", "-g", "-Wall", "-Wno-unused-function", "-D_DARWIN_C_SOURCE", "-DHALO_GUEST_BASE=1",
+        "-O2", "-g", "-Wall", "-Wno-unused-function", *OWN_CODE_ERRORS, "-D_DARWIN_C_SOURCE", "-DHALO_GUEST_BASE=1",
         target.target_flags,
         f"-I{ANDROID_DIR}/include", f"-I{ANDROID_DIR}/host", f"-I{sdl_dir}/include", f"-I{LINUX_DIR}/src", f"-I{ASTC_DIR}",
         f"-I{TOML_DIR}", f"-I{ANDROID_DIR}/guest/libc/arch/generic", f"-I{PORT_DIR}",
