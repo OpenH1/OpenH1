@@ -254,6 +254,8 @@ static struct
 	unsigned long bots_time;
 	unsigned long full_time;
 	long game_engine;
+	/* its map's name (a multiplayer map's: "carousel") */
+	char map[32];
 	short listed_playlist;
 	/* debug.matchmaking taken */
 	boolean debug_checked;
@@ -593,7 +595,8 @@ static boolean matchmaking_host(
 		name[index] = 0;
 		network_game_server_port_set_settings(name, playlist->players);
 	}
-	main_set_multiplayer_map_name((char *)playlist->maps[pick % MAX(maps, 1)]);
+	snprintf(matchmaking.map, sizeof(matchmaking.map), "%s", playlist->maps[pick % MAX(maps, 1)]);
+	main_set_multiplayer_map_name(matchmaking.map);
 	player_ui_fast_setup_network_server();
 	matchmaking.host_time = system_milliseconds();
 	matchmaking.set_up = matchmaking.player_added = matchmaking.bots_asked = FALSE;
@@ -606,8 +609,10 @@ static boolean matchmaking_host(
 /* the hosted game's set up (its map and gametype), its own player, and its
 start (matchmaking_start_choice) */
 static void matchmaking_host_update(
-	unsigned long now)
+	void)
 {
+	/* (the clock read now: the host may have been made this frame) */
+	unsigned long now = system_milliseconds();
 	struct matchmaking_playlist const *playlist = &matchmaking_playlists[matchmaking.playlist];
 	struct network_game_server *server = global_network_game_server_get();
 	struct network_game_client *client = global_network_game_client_get();
@@ -619,13 +624,12 @@ static void matchmaking_host_update(
 	{
 		unsigned long pick = now ^ ((unsigned long)p2p_identifier()[4] << 8);
 		char const *name = playlist->variants[playlist->variants[1] ? pick % MATCHMAKING_MAXIMUM_VARIANTS : 0];
-		char map[64], path[128];
+		char path[128];
 		struct game_variant variant;
 		struct game_variant_options options;
 		boolean opence = game_modes_gametype_by_name(name, &variant, &options);
 
-		snprintf(map, sizeof(map), "%s", main_get_multiplayer_map_name());
-		snprintf(path, sizeof(path), "levels\\test\\%s\\%s", map, map);
+		snprintf(path, sizeof(path), "levels\\test\\%s\\%s", matchmaking.map, matchmaking.map);
 		network_game_server_change_map_name(server, path);
 		if (!opence)
 			variant = *game_engine_get_variant_by_name(&variant, name);
@@ -637,7 +641,7 @@ static void matchmaking_host_update(
 		matchmaking.listed_playlist = (short)(matchmaking.playlist + 1);
 		p2p_set_game_listing_playlist(matchmaking.listed_playlist);
 		matchmaking.set_up = TRUE;
-		platform_log("matchmaking: %s on %s, listed for the playlist", name, map);
+		platform_log("matchmaking: %s on %s, listed for the playlist", name, matchmaking.map);
 	}
 	if (!matchmaking.player_added && now - matchmaking.host_time >= MATCHMAKING_PLAYER_MILLISECONDS)
 	{
@@ -979,5 +983,5 @@ void matchmaking_update(
 	if (stage != matchmaking.stage)
 		matchmaking_stage(stage);
 	if (matchmaking.stage == _matchmaking_hosting)
-		matchmaking_host_update(now);
+		matchmaking_host_update();
 }
