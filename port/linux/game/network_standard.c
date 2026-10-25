@@ -91,8 +91,12 @@ static struct
 	boolean hosting;
 	long hosting_rate;
 	/* ... OpenCE players may join it (network.allow_opence as the server
-	was made) */
+	was made, or as Host Controls' Allow OpenCE players has it since); and
+	OpenCE players may be in it, having been let join since the server was
+	made (stepped and sent to as a mixed game's: Host Controls' closing it
+	keeps those in it) */
 	boolean mixed;
+	boolean mixed_since;
 	/* joining: the game joined is Standard (its advertisement said so) */
 	boolean joined;
 	/* hosting: the token each machine joined with (_network_standard_join_*),
@@ -138,6 +142,7 @@ void network_standard_server_created(
 	network_standard_globals.hosting = !(mode && !csstrcmp(mode, "legacy"));
 	network_standard_globals.hosting_rate = network_standard_rate_setting();
 	network_standard_globals.mixed = network_standard_globals.hosting && config_boolean("network.allow_opence");
+	network_standard_globals.mixed_since = network_standard_globals.mixed;
 	csmemset(network_standard_globals.machine_kinds, 0, sizeof(network_standard_globals.machine_kinds));
 }
 
@@ -159,7 +164,26 @@ boolean network_standard_hosting(
 boolean network_standard_hosting_mixed(
 	void)
 {
+	return network_standard_globals.hosting && (network_standard_globals.mixed || network_standard_globals.mixed_since);
+}
+
+boolean network_standard_opence_joins_open(
+	void)
+{
 	return network_standard_globals.hosting && network_standard_globals.mixed;
+}
+
+void network_standard_set_opence_joins(
+	boolean allowed)
+{
+	if (!network_standard_globals.hosting)
+		return;
+	/* (a game OpenCE's players did not join until now is mixed from now on:
+	its machines all OpenH1's, each known by its token; one closed to them
+	stays mixed for those in it) */
+	network_standard_globals.mixed = allowed;
+	if (allowed)
+		network_standard_globals.mixed_since = TRUE;
 }
 
 void network_standard_advertise(

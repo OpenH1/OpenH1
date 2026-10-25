@@ -246,7 +246,7 @@ int posix_hardware_id_source(char *text, int size)
 	return 0;
 }
 
-int posix_discord_connect(void)
+int posix_discord_connect(const char *path)
 {
 	int slot;
 	int number;
@@ -255,12 +255,16 @@ int posix_discord_connect(void)
 		;
 	if (slot == MAXIMUM_DISCORD_PIPES)
 		return -1;
-	for (number = 0; number < 10; number++)
+	/* (a pipe named, debug.discord_socket's, alone) */
+	for (number = 0; number < (path && *path ? 1 : 10); number++)
 	{
-		char name[64];
+		char name[256];
 		HANDLE pipe;
 
-		snprintf(name, sizeof(name), "\\\\.\\pipe\\discord-ipc-%d", number);
+		if (path && *path)
+			snprintf(name, sizeof(name), "%s", path);
+		else
+			snprintf(name, sizeof(name), "\\\\.\\pipe\\discord-ipc-%d", number);
 		/* (the pipe's server may only identify this user, not act as them:
 		it may be another user's) */
 		pipe = CreateFileA(name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING,

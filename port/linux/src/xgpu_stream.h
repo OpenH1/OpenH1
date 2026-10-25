@@ -230,6 +230,8 @@ enum
 	/* display.hdr (xgpu_hdr.h) */
 	XGPU_STREAM_HDR,
 	XGPU_STREAM_TONE_MAP,
+	/* the screenshot key's picture (controls.screenshot) */
+	XGPU_STREAM_SCREENSHOT,            /* synchronous */
 	XGPU_STREAM_RECORD_TYPES,
 };
 
@@ -353,16 +355,37 @@ struct xgpu_stream_clear_target
 
 /* synchronous: the host writes the target's (or its layer's, -1 none)
 pixels as BGRA rows from its first into pixels (guest memory of
-width * height * 4 bytes, as the target was made), then the reply */
+width * height * 4 bytes, as the target was made), then the reply.
+display.hdr's RGBA16F back buffer is clamped to [0, 1], as an SDR display
+shows it, or with tone_map, tone mapped into it (xgpu_hdr_sdr_pixel) */
 struct xgpu_stream_read_target
 {
 	uint32_t header;
 	uint32_t target;
 	int32_t layer;
-	uint32_t raw;
+	uint32_t tone_map;
 	uint32_t pixels, size;
 	/* (guest address of a uint32_t: 1 written, 0 failed) */
 	uint32_t reply;
+};
+
+/* synchronous: the screenshot key's picture. The host reads the target as
+READ_TARGET does, tone mapped, into pixels (guest memory of width * height
+* 4 bytes), and writes it as a PNG file in the folder the record ends with
+(a UTF-8 path and its NUL, made if it is missing), named for the local date
+and time; then the file's name (without its folder, NUL-terminated) into
+name (XGPU_STREAM_SCREENSHOT_NAME bytes of guest memory), and the reply (a
+uint32_t: 1 written, 0 failed) */
+#define XGPU_STREAM_SCREENSHOT_NAME 64u
+struct xgpu_stream_screenshot
+{
+	uint32_t header;
+	uint32_t target;
+	uint32_t width, height;
+	uint32_t pixels, size;
+	uint32_t name;
+	uint32_t reply;
+	char directory[];
 };
 
 /* ---------- textures */
@@ -962,6 +985,8 @@ XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_hdr, 16);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_tone_map, 24);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_set_targets, 16);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_clear, 36);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_read_target, 28);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_screenshot, 32);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_sampler, 24);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_texture_stage, 72);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pixel_key, 264);

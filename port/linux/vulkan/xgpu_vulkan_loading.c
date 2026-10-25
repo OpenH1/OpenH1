@@ -24,7 +24,7 @@ static void loading_capture(const struct loading_presentation_frame *frame, stru
 	pixels = malloc((size_t)description->width * description->height * 4);
 	if (!pixels)
 		return;
-	if (xgpu_vulkan_read_pixels(image, 0, pixels, description->width * 4))
+	if (xgpu_vulkan_read_pixels(image, 0, pixels, description->width * 4, 0))
 		host_loading_capture_write(frame, pixels, description->width, description->height, 0,
 			description->format == XGPU_VULKAN_FORMAT_BGRA8);
 	free(pixels);

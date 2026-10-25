@@ -45,6 +45,7 @@ drive the controller.
 /* port/linux/game/network_aim_assist.c */
 extern unsigned char network_aim_assist_block_mouse(void);
 #include "halo_keyboard.h"
+#include "p2p.h"
 #ifdef HALO_VR
 #include "vr.h"
 #endif
@@ -843,6 +844,92 @@ int halo_push_to_talk_held(void)
 	return 0;
 }
 
+/* ---------- a Discord friend's ask to join (p2p_discord.c) */
+
+/* answered before the game and the menus see the keys, wherever the player
+is (port/linux/game/network_party.c shows the ask): the party's accept
+(controls.party_accept, J) or a controller's D-pad Down lets the friend in,
+Escape or the D-pad's Up does not. A key pressed for it is taken from the
+game and the menus until it is let go of (Escape does not also back out of
+a menu, nor pause the game). Not while the console is open or a line is
+typed */
+static unsigned long discord_ask_serial(void)
+{
+	char name[P2P_DISCORD_REQUEST_NAME_SIZE];
+
+	if (console_is_active() || network_chat_typing() || text_typing)
+		return 0;
+	return p2p_discord_join_request(name, sizeof(name), NULL);
+}
+
+static void input_take(struct platform_input_state *input, int code)
+{
+	if (code >= 0 && code < SDL_SCANCODE_COUNT)
+		input->keys[code] = 0;
+	else if (code >= INPUT_MOUSE && code < INPUT_WHEEL)
+		input->mouse_buttons[code - INPUT_MOUSE] = 0;
+}
+
+static void discord_ask_keys(struct platform_input_state *input, unsigned long serial)
+{
+	static BOOL accept_held, decline_held, accept_taken, decline_taken;
+	BOOL accept = FALSE, decline = input->keys[SDL_SCANCODE_ESCAPE] != 0;
+	int slot;
+
+	bindings_read();
+	for (slot = 0; slot < MAXIMUM_BINDINGS; slot++)
+		accept = accept || input_held(input, bindings[HALO_KEYBOARD_PARTY_ACCEPT][slot]);
+	if (serial && accept && !accept_held)
+	{
+		p2p_discord_answer(serial, 1);
+		accept_taken = TRUE;
+	}
+	else if (serial && decline && !decline_held)
+	{
+		p2p_discord_answer(serial, 0);
+		decline_taken = TRUE;
+	}
+	accept_held = accept;
+	decline_held = decline;
+	accept_taken = accept_taken && accept;
+	decline_taken = decline_taken && decline;
+	if (accept_taken || (serial && accept))
+	{
+		for (slot = 0; slot < MAXIMUM_BINDINGS; slot++)
+			input_take(input, bindings[HALO_KEYBOARD_PARTY_ACCEPT][slot]);
+	}
+	if (decline_taken || (serial && decline))
+		input->keys[SDL_SCANCODE_ESCAPE] = 0;
+}
+
+/* the controller's (its own D-pad, not the arrow keys the menus press it
+with) */
+static void discord_ask_pad(SDL_Gamepad *gamepad, unsigned long serial, XINPUT_GAMEPAD *pad)
+{
+	static BOOL accept_held, decline_held, accept_taken, decline_taken;
+	BOOL accept = gamepad && SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+	BOOL decline = gamepad && SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP);
+
+	if (serial && accept && !accept_held)
+	{
+		p2p_discord_answer(serial, 1);
+		accept_taken = TRUE;
+	}
+	else if (serial && decline && !decline_held)
+	{
+		p2p_discord_answer(serial, 0);
+		decline_taken = TRUE;
+	}
+	accept_held = accept;
+	decline_held = decline;
+	accept_taken = accept_taken && accept;
+	decline_taken = decline_taken && decline;
+	if (accept_taken || (serial && accept))
+		pad->wButtons &= (WORD)~XINPUT_GAMEPAD_DPAD_DOWN;
+	if (decline_taken || (serial && decline))
+		pad->wButtons &= (WORD)~XINPUT_GAMEPAD_DPAD_UP;
+}
+
 /* ---------- the HUD's button prompts (halo_keyboard_prompts) */
 
 /* what the first player last played with: the keyboard and mouse (a key
@@ -1114,8 +1201,9 @@ void test_input_press(unsigned long buttons)
 the first poll, for testing the menus: a, b, x, y, up, down, left, right,
 start, back, lb and rb (the white and black buttons), lt and rt (the
 triggers), forward (the left
-stick pushed forward, which moves a player whom no menu has), or wait
-(none), separated by spaces or commas */
+stick pushed forward, which moves a player whom no menu has), screenshot
+(the Screenshot key's capture, once), or wait (none), separated by spaces
+or commas */
 static char test_input_menu[512];
 static Uint64 test_input_menu_since;
 
@@ -1165,6 +1253,15 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 	}
 	if (length == 7 && !strncmp(token, "forward", 7))
 		pad->sThumbLY = 32767;
+	if (length == 10 && !strncmp(token, "screenshot", 10))
+	{
+		static Uint64 shot_second = (Uint64)-1;
+
+		if (shot_second != elapsed / 1000)
+			platform_screenshot_request();
+		shot_second = elapsed / 1000;
+		return;
+	}
 	for (index = 0; index < sizeof(buttons) / sizeof(buttons[0]); index++)
 	{
 		if (strlen(buttons[index].name) == length && !strncmp(token, buttons[index].name, length))
@@ -1849,12 +1946,16 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		struct platform_input_state input;
 		unsigned long held;
 		BOOL console_active;
+		unsigned long discord_ask;
 
 		platform_input_read(&input, TRUE);
 		mouse_poll(&input);
 		wheel_update();
 		keyboard_actions_held = 0;
 		keys_held_over_switch(&input);
+		/* (a Discord friend's ask answered first, its keys taken) */
+		discord_ask = discord_ask_serial();
+		discord_ask_keys(&input, discord_ask);
 		/* (a chat line typed takes the keyboard as the console does) */
 		console_active = console_is_active() || network_chat_typing();
 		held = console_active ? 0 : keyboard_bound_actions(&input);
@@ -1868,6 +1969,7 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		}
 		if (port_gamepad(gamepads, count, 0))
 			sdl_gamepad_state(gamepads[0], &state->Gamepad);
+		discord_ask_pad(port_gamepad(gamepads, count, 0), discord_ask, &state->Gamepad);
 #ifdef HALO_VR
 		if (halo_vr_running())
 		{

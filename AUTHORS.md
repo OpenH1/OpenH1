@@ -13,6 +13,9 @@
   OpenH1 VR's): the OpenH1 lockup and mark by Erin Cena
   (`website/public/brand`) in openh1.com's Boot Glow look, drawn by
   `tools/steam_art.py` from `port/assets/steam/art.html`.
+- **Discord's Rich Presence art** (`port/assets/discord`: `logo`, the
+  game's icon's OpenH1 mark (above) on a dark tile; `party` and `host`,
+  drawn for OpenH1 in openh1.com's Boot Glow colors).
 - **The controller's A, B, X and Y buttons** (the menus' button icons, the
   HUD messages' and the Android touch controls'): redraws by saulob
   (`port/assets/buttons`).

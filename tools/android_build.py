@@ -460,7 +460,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     ]
     guest_abi = " ".join(guest_abi_flags(arch, platform_defines) + base_register_flags + configuration_defines(sln))
     guest_code = " ".join(GUEST_CODE_FLAGS)
-    tool_implicit = [*([Path("tools/android_asm_convert.py")] if arch.darwin_assembly else []),
+    tool_implicit = [*([Path("tools/android_asm_convert.py"), Path("tools/guest_branch_relax.py")]
+                       if arch.darwin_assembly else []),
                      *([Path("tools/guest_asm_cache.py")] if arch.darwin_assembly and asm_cache else []),
                      *generated_headers]
     if base_register:

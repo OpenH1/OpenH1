@@ -161,6 +161,26 @@ thread) */
 int p2p_party_join_link_locked(const char *text);
 /* whether this machine is in a party (or joining one); under p2p_lock */
 int p2p_party_active(void);
+/* what Discord shows of the party (p2p_discord.c): in one (or joining
+one), its members, its link, the id it is shown by (its topic's digits,
+which let no one in), and where this machine is (_p2p_party_place_*, as
+the game said, in a party or not) */
+struct p2p_party_presence
+{
+	int active;
+	int count;
+	char link[P2P_PARTY_LINK_SIZE];
+	char id[2 * 16 + 1];
+	int place;
+};
+void p2p_party_presence(struct p2p_party_presence *presence);
+/* out of a party, the party Discord offers (the spare: made when first
+asked for), its link and id; made a party, this machine its leader (a
+friend let in, or one given the link arriving: p2p_party_standby listens
+on its topic meanwhile). Under p2p_lock */
+void p2p_party_spare(char *link, int link_size, char *id, int id_size);
+void p2p_party_spare_lead(void);
+void p2p_party_standby(int on);
 
 /* ---------- p2p_signal.c: signalling through public MQTT brokers */
 
@@ -324,7 +344,7 @@ void p2p_discord_update(void);
 /* the Discord user signed in, as told (empty if none): under p2p_lock */
 void p2p_discord_user(char *id, int id_size, char *name, int name_size);
 /* what to show: hosting with an invite link's secret and player counts, or
-not (secret NULL) */
+not (secret NULL); under p2p_lock */
 void p2p_discord_set_hosting(const char *secret, int player_count, int maximum_player_count);
 
 #endif

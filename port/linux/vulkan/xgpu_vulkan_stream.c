@@ -665,7 +665,7 @@ static int stream_read_target(void *context, const struct xgpu_stream_read_targe
 		return 0;
 	target_resolve(target);
 	return xgpu_vulkan_read_pixels(target->image, record->layer > 0 ? (uint32_t)record->layer : 0,
-		host_pointer(record->pixels), target->width * 4);
+		host_pointer(record->pixels), target->width * 4, record->tone_map != 0);
 }
 
 /* ---------- textures */

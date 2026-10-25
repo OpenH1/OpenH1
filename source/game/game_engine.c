@@ -575,6 +575,7 @@ symbols in this file:
 #include "network_voice.h" /* port: port/linux/game/network_voice.c */
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
 #include "network_party.h" /* port: port/linux/game/network_party.c */
+#include "network_host_controls.h" /* port: port/linux/game/network_host_controls.c */
 #include "halo_keyboard.h" /* port: port/linux/src/xinput_sdl.c */
 /* (network_server_manager_internal.h's: the host's game record) */
 struct network_game *network_game_server_get_game(struct network_game_server *server);
@@ -1954,20 +1955,25 @@ static pixel32 scoreboard_faded(
 (halo_scoreboard_pointer_update: a right click frees it): a player's name
 picked opens a menu of what may be done to them, the players' vote to kick
 them (network_votekick.c), muting their voice and text chat on this
-machine (network_voice.c, network_chat.c), and the host's Mute for everyone
-(network_chat.c), Kick and Ban, Ban picked twice; and for an OpenH1 player,
-their party: Invite to party, Join their party, and their invite accepted
-(network_party.c) */
+machine (network_voice.c, network_chat.c); for an OpenH1 player, their
+party: Invite to party, Join their party, and their invite accepted
+(network_party.c); then the host's, those Host Controls offers for the
+player (network_host_controls.c: none for the host's own players but Move,
+no Ban or Mute for a bot): Mute for everyone (network_chat.c), Kick, Ban
+(picked twice), Move to the other team, and Host controls..., which opens
+Host Controls with the player chosen */
 enum
 {
 	_scoreboard_item_vote,
 	_scoreboard_item_mute,
-	_scoreboard_item_host_mute,
-	_scoreboard_item_kick,
-	_scoreboard_item_ban,
 	_scoreboard_item_party_invite,
 	_scoreboard_item_party_join,
 	_scoreboard_item_party_accept,
+	_scoreboard_item_host_mute,
+	_scoreboard_item_kick,
+	_scoreboard_item_ban,
+	_scoreboard_item_move_team,
+	_scoreboard_item_host_controls,
 	_scoreboard_item_cancel,
 	NUMBER_OF_SCOREBOARD_ITEMS,
 
@@ -2037,19 +2043,6 @@ static void scoreboard_menu_items(
 					L"Mute voice and chat");
 		}
 	}
-	if (network_votekick_host())
-	{
-		/* (the host's mute of their voice and lines, for every machine:
-		network_chat.c) */
-		offered[_scoreboard_item_host_mute] = TRUE;
-		usprintf(labels[_scoreboard_item_host_mute],
-			network_chat_host_mute_minutes((short)DATUM_INDEX_TO_ABSOLUTE_INDEX(scoreboard_menu.player_index)) ?
-				L"Unmute for everyone" : L"Mute for everyone");
-		offered[_scoreboard_item_kick] = TRUE;
-		offered[_scoreboard_item_ban] = TRUE;
-		usprintf(labels[_scoreboard_item_kick], L"Kick");
-		usprintf(labels[_scoreboard_item_ban], scoreboard_menu.ban_picked ? L"Ban: pick again to ban" : L"Ban");
-	}
 	/* (their party: network_party.c) */
 	{
 		unsigned long party = network_party_player_actions(scoreboard_menu.player_index);
@@ -2063,6 +2056,29 @@ static void scoreboard_menu_items(
 			if (offered[party_item])
 				network_party_action_label(scoreboard_menu.player_index, action, labels[party_item], 48);
 		}
+	}
+	/* (the host's, as Host Controls has them for the player:
+	network_host_controls.c) */
+	if (network_host_controls_available())
+	{
+		unsigned long actions = network_host_controls_player_actions(scoreboard_menu.player_index);
+		struct player_datum *player = player_try_and_get(scoreboard_menu.player_index);
+
+		/* (the host's mute of their voice and lines, for every machine:
+		network_chat.c) */
+		offered[_scoreboard_item_host_mute] = TEST_FLAG(actions, _host_controls_mute);
+		usprintf(labels[_scoreboard_item_host_mute],
+			network_chat_host_mute_minutes((short)DATUM_INDEX_TO_ABSOLUTE_INDEX(scoreboard_menu.player_index)) ?
+				L"Unmute for everyone" : L"Mute for everyone");
+		offered[_scoreboard_item_kick] = TEST_FLAG(actions, _host_controls_kick);
+		offered[_scoreboard_item_ban] = TEST_FLAG(actions, _host_controls_ban);
+		usprintf(labels[_scoreboard_item_kick], L"Kick");
+		usprintf(labels[_scoreboard_item_ban], scoreboard_menu.ban_picked ? L"Ban: pick again to ban" : L"Ban");
+		offered[_scoreboard_item_move_team] = TEST_FLAG(actions, _host_controls_move_team) && player;
+		usprintf(labels[_scoreboard_item_move_team], player && player->team_index == 1 ? L"Move to Red team" :
+			L"Move to Blue team");
+		offered[_scoreboard_item_host_controls] = TRUE;
+		usprintf(labels[_scoreboard_item_host_controls], L"Host controls...");
 	}
 	offered[_scoreboard_item_cancel] = TRUE;
 	usprintf(labels[_scoreboard_item_cancel], L"Cancel");
@@ -2152,7 +2168,8 @@ static void scoreboard_menu_pick(
 		network_chat_host_mute(player_index, !network_chat_host_mute_minutes(player_index));
 		break;
 	case _scoreboard_item_kick:
-		network_votekick_host_kick(player_index, FALSE);
+		/* (the console's kick: network_host_controls.c) */
+		network_host_controls_kick(scoreboard_menu.player_index, FALSE);
 		break;
 	case _scoreboard_item_ban:
 		/* (a ban lasts: picked twice) */
@@ -2161,7 +2178,14 @@ static void scoreboard_menu_pick(
 			scoreboard_menu.ban_picked = TRUE;
 			return;
 		}
-		network_votekick_host_kick(player_index, TRUE);
+		network_host_controls_kick(scoreboard_menu.player_index, TRUE);
+		break;
+	case _scoreboard_item_move_team:
+		network_host_controls_move_team(scoreboard_menu.player_index);
+		break;
+	case _scoreboard_item_host_controls:
+		/* (on its Players tab, the player chosen) */
+		network_host_controls_open(scoreboard_menu.player_index, 0);
 		break;
 	case _scoreboard_item_party_invite:
 	case _scoreboard_item_party_join:

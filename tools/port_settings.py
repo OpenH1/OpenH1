@@ -3507,7 +3507,7 @@ HUB_PAGE_PROMPTS = [HUB_PROMPTS[1]]
 PARTY_ROWS, PARTY_ROW_STEP = 16, 19
 PARTY_PROMPTS = [
     ("prompt_make", "%a-button MAKE PARTY", 28, 144, '<on event="a" run="port party button"/>'),
-    ("prompt_copy", "%a-button COPY LINK", 28, 144, '<on event="a" run="port party button"/>'),
+    ("prompt_copy", "%a-button COPY INVITE", 28, 144, '<on event="a" run="port party button"/>'),
     ("prompt_paste", "%x-button PASTE LINK", 176, 144, '<on event="a" run="port party button"/>'),
     ("prompt_follow", "%x-button JOIN LEADER", 176, 144, '<on event="a" run="port party button"/>'),
     ("prompt_end", "%x-button END PARTY", 176, 144, '<on event="a" run="port party button"/>'),
@@ -3543,7 +3543,7 @@ LOBBY_FREE_DOT = "#9CBBE6"
 # lobby_board_controls)
 LOBBY_PROMPTS = [
     ("prompt_team", "CHANGE TEAM", 28, 144, '<on event="a" run="port lobby team toggle"/>'),
-    ("prompt_invite", "%y-button INVITE LINK", 176, 124, '<on event="a" run="port lobby invite"/>'),
+    ("prompt_invite", "%y-button COPY INVITE", 176, 124, '<on event="a" run="port lobby invite"/>'),
     ("prompt_add", "%x-button ADD PLAYER", 324, 124, '<on event="a" run="port lobby add player"/>'),
     ("prompt_leave", "%b-button LEAVE", 516, 96, '<on event="a" run="mouse emit back event"/>'),
 ]
@@ -4076,7 +4076,7 @@ def _party() -> list:
     words in their place out of a party; the panel beside them (the party's
     size, its link, where the leader is and the follow, what just happened,
     and what a party is); the footer's key prompts, each shown when it
-    applies: MAKE PARTY or COPY LINK (A), PASTE LINK, JOIN LEADER or END
+    applies: MAKE PARTY or COPY INVITE (A), PASTE LINK, JOIN LEADER or END
     PARTY (X), LEAVE PARTY (Y), BACK. Every prompt runs "port party button"
     ("port party x" and "y" the screen's X and Y), which joins the leader's
     game first once it is found (an A press posted). The touchscreen opens it
@@ -4156,6 +4156,151 @@ def _party() -> list:
     return lines
 
 
+# ---------- Host Controls (port/linux/game/host_controls_menu.inc,
+# network_host_controls.c): the pause menu's HOST CONTROLS, the host's of a
+# network game alone (menu_tags.c's pause_patch), laid out as the server
+# browser is (its rows, columns, panel and button: the menus' shared parts)
+HOST_CONTROLS = "main_menu/host_controls"
+HOST_TABS = [("tab_players", "PLAYERS"), ("tab_game", "GAME"), ("tab_bans", "BANS")]
+# the rows (the browser's), and each column's place and width in a row, with
+# its move and growth on a wide screen (the list BROWSER_WIDE_LIST wider): a
+# player's name, team, score, ping and tag (a pill: HOST, BOT, OPENH1,
+# OPENCE), or Game's and Bans' label and value (at the row's right)
+HOST_ROWS = BROWSER_ROWS
+HOST_COLUMNS = {
+    "label": (6, 150, 0, 84), "team": (160, 66, 84, 20), "score": (230, 50, 104, 20), "ping": (284, 44, 124, 20),
+    "tag": (336, BROWSER_PILL, BROWSER_WIDE_LIST, 0), "value": (190, 208, 0, BROWSER_WIDE_LIST),
+}
+# the panel's buttons (a player's Kick, Ban, Move and Mute; a ban's Unban),
+# the browser's JOIN GAME's size, a step apart up from the panel's foot
+HOST_ACTIONS, HOST_ACTION_STEP = 4, 28
+HOST_PROMPTS = [
+    ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="mouse emit back event"/>'),
+]
+TITLES[f"{HOST_CONTROLS}/header_host_controls"] = "HOST CONTROLS"
+
+
+def _host_controls() -> list:
+    """Host Controls (port/linux/game/host_controls_menu.inc), in the server
+    browser's look: its tabs (PLAYERS, GAME, BANS: LB and RB, Q and E, or a
+    click), the counts of the game's players and its kind, the column titles
+    over the rows (each tab's own: menu_functions.c fills them), the rows
+    (the players, the game's settings, the bans), the row chosen's details in
+    the panel beside them with its buttons, words in the rows' place while
+    there are none, and the footer's BACK. A or a click on a row chooses it
+    (a player's or a ban's: the focus to its buttons; a game's row: it
+    changes, or for End game and Restart round asks again), left and right
+    step a game's row's value"""
+    base = HOST_CONTROLS
+    list_name = f"{base}/host_list"
+    panel_left, panel_top, panel_width, panel_height = BROWSER_PANEL
+    inner_left, inner_width = panel_left + 12, panel_width - 24
+    panel_moved, panel_grown = BROWSER_WIDE_PANEL
+    list_wide = wide(-WIDE_HALF, BROWSER_WIDE_LIST)
+    lines = _widget(f"{base}/host_controls_screen",
+                    [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child"),
+                     ("bitmap", "bitmaps/gradient")],
+                    ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                     '<on event="white" run="port host tab previous"/>',
+                     '<on event="black" run="port host tab next"/>',
+                     f'<child widget="{base}/header_host_controls"/>',
+                     f'<child widget="{base}/host_counts"/>',
+                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" y="{SETTINGS_TABS_TOP}"/>',
+                     f'<child widget="{SETTINGS}/tab_prompt_next" '
+                     f'x="{SETTINGS_TABS_X + (len(HOST_TABS) - 1) * SETTINGS_TAB_STEP + SETTINGS_TAB_LAID + 4}" '
+                     f'y="{SETTINGS_TABS_TOP}"/>',
+                     *(f'<child widget="{base}/header_{column}"/>' for column in HOST_COLUMNS if column != "tag"),
+                     f'<child widget="{base}/host_columns_line"/>',
+                     f'<child widget="{base}/host_empty"/>',
+                     f'<child widget="{list_name}"/>'])
+    lines += _widget(f"{base}/header_host_controls", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
+                                                      ("height", 59), ("bitmap", f"{base}/header_host_controls"),
+                                                      ("wide", WIDE_LEFT)], [])
+    lines += _part_text(f"{base}/host_counts", [("left", 420), ("top", 46), ("width", 192), ("height", 18),
+                                               ("font", "ui\\small_ui"), ("color", PART_DIM), ("align", "right"),
+                                               ("wide", WIDE_RIGHT)])
+    # (the column titles, each tab's: menu_functions.c's host_controls_headers)
+    for column, (x, width, moved, grown) in HOST_COLUMNS.items():
+        if column == "tag":
+            continue
+        lines += _part_text(f"{base}/header_{column}",
+                            [("left", BROWSER_LIST_X + x), ("top", BROWSER_HEADERS_TOP), ("width", width),
+                             ("height", 16), ("font", "ui\\small_ui"), ("color", PART_DIM),
+                             ("align", "right" if column in ("score", "ping", "value") else None),
+                             ("wide", wide(-WIDE_HALF + moved, grown))])
+    lines += _widget(f"{base}/host_columns_line", [("controller", 1), ("left", BROWSER_LIST_X),
+                                                   ("top", BROWSER_HEADERS_TOP + 14), ("width", BROWSER_LIST_WIDTH),
+                                                   ("height", 4), ("bitmap", part_line(BROWSER_LIST_WIDTH)),
+                                                   ("wide", list_wide)], [])
+    lines += _part_text(f"{base}/host_empty", [("left", BROWSER_LIST_X + 24), ("top", 200),
+                                              ("width", BROWSER_LIST_WIDTH - 48), ("height", 80),
+                                              ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE),
+                                              ("align", "center"), ("wide", list_wide)])
+    # (the list: the tabs, the rows, the panel's buttons, the footer; the
+    # panel is its description)
+    rows = [f'<child widget="{base}/host_item_{row}" x="{BROWSER_LIST_X}" '
+            f'y="{BROWSER_ROWS_TOP + BROWSER_ROW_STEP * (row - 1)}"/>' for row in range(1, HOST_ROWS + 1)]
+    actions_top = panel_top + panel_height - 10 - BROWSER_JOIN[1] - (HOST_ACTIONS - 1) * HOST_ACTION_STEP
+    actions = [f'<child widget="{base}/host_action_{index}" x="{inner_left}" '
+               f'y="{actions_top + index * HOST_ACTION_STEP}"/>' for index in range(HOST_ACTIONS)]
+    lines += _widget(list_name, [("type", "column_list"), ("width", 640), ("height", 480),
+                                 ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                                 ("description", f"{base}/host_panel")],
+                     ['<data input="port host update"/>', '<on event="created" run="port host init"/>',
+                      f'<child widget="{base}/host_tabs" y="{SETTINGS_TABS_TOP}"/>', *rows, *actions,
+                      f'<child widget="{base}/host_prompts" y="414"/>'])
+    lines += _tab_strip(base, "host_tabs", HOST_TABS, ['<on event="a" run="port host tab"/>',
+                                                       '<on event="start" run="port host tab"/>'])
+    for row in range(1, HOST_ROWS + 1):
+        lines += _widget(f"{base}/host_item_{row}",
+                         [("width", BROWSER_LIST_WIDTH), ("height", BROWSER_ROW_HEIGHT),
+                          ("bitmap", part_row(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT)), ("wide", list_wide)],
+                         ['<on event="a" run="port host row"/>', '<on event="start" run="port host row"/>',
+                          '<on event="left" run="port host left"/>', '<on event="right" run="port host right"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          *(f'<child widget="{base}/host_item_{column}" x="{x}"' + (' y="1"/>' if column == "tag" else "/>")
+                            for column, (x, *_) in HOST_COLUMNS.items())])
+    for column, (x, width, moved, grown) in HOST_COLUMNS.items():
+        if column == "tag":
+            lines += _widget(f"{base}/host_item_tag", [("type", "text"), ("width", width),
+                                                       ("height", PART_PILL_HEIGHT), ("bitmap", part_pill(width)),
+                                                       ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
+                                                       ("align", "center"), ("text_flags", "no_focus_test"),
+                                                       ("wide", wide(moved, grown))], [])
+            continue
+        lines += _widget(f"{base}/host_item_{column}",
+                         [("type", "text"), ("width", width), ("height", BROWSER_ROW_HEIGHT), ("font", "ui\\small_ui"),
+                          ("color", "#FFFFFFFF" if column == "label" else "#FFC9DCF7"),
+                          ("align", "right" if column in ("score", "ping", "value") else None), ("text_y", 2),
+                          ("text_flags", None if column == "label" else "no_focus_test"),
+                          ("wide", wide(moved, grown))], [])
+    # (the panel: the row chosen's name, what it is, and what its buttons
+    # do or what was done: menu_functions.c's host_controls_panel)
+    children = [("panel_title", 12, 48, "ui\\large_ui", "#FFFFFFFF"),
+                ("panel_where", 60, 44, "ui\\small_ui", SETTINGS_BLUE),
+                ("panel_status", 106, 160, "ui\\small_ui", "#FFFFFFFF")]
+    panel_children = []
+    for name, y, height, font, color in children:
+        panel_children.append(f'<child widget="{base}/{name}" x="{inner_left}" y="{panel_top + y}"/>')
+        lines += _part_text(f"{base}/{name}", [("width", inner_width), ("height", height), ("font", font),
+                                               ("color", color), ("wide", wide(0, panel_grown))])
+    lines += _widget(f"{base}/host_panel", [("controller", 1), ("left", panel_left), ("top", panel_top),
+                                            ("width", panel_width), ("height", panel_height),
+                                            ("bitmap", part_panel(panel_width, panel_height)),
+                                            ("wide", wide(*BROWSER_WIDE_PANEL))], panel_children)
+    join_w, join_h = BROWSER_JOIN
+    for index in range(HOST_ACTIONS):
+        lines += _widget(f"{base}/host_action_{index}", [("type", "text"), ("width", join_w), ("height", join_h),
+                                                         ("bitmap", part_button(join_w, join_h)),
+                                                         ("wide", wide(panel_moved, panel_grown)),
+                                                         ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
+                                                         ("text_x", 12), ("text_y", 5)],
+                         ['<on event="a" run="port host action"/>', '<on event="start" run="port host action"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>'])
+    lines += _prompts(base, "host_prompts", HOST_PROMPTS)
+    return lines
+
+
 def multiplayer_files() -> dict:
     """the port's multiplayer widgets: the browser's additions, the server
     settings, the lobby"""
@@ -4170,6 +4315,7 @@ def multiplayer_files() -> dict:
         f"{MT}/coop".replace("/", ".") + ".xml": head + _coop() + ["</menus>", ""],
         f"{MT}/bots".replace("/", ".") + ".xml": head + _bots() + ["</menus>", ""],
         f"{MT}/party".replace("/", ".") + ".xml": head + _party() + ["</menus>", ""],
+        HOST_CONTROLS.replace("/", ".") + ".xml": head + _host_controls() + ["</menus>", ""],
         MT.replace("/", ".") + ".port.xml": head + _multiplayer_status() + ["</menus>", ""],
         TOUCH.replace("/", ".") + ".xml": head + _multiplayer_touch() + ["</menus>", ""],
         "main_menu/new_select".replace("/", ".") + ".port.xml": head + _map_kind() + ["</menus>", ""],

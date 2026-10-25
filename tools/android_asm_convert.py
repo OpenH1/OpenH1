@@ -15,7 +15,9 @@ translation of the x86 Android emulator does not have these, and stops the
 app with SIGILL at the first one (the HUD's, once a game is drawn).
 
 With --base-register, the result is also rewritten for a guest whose memory
-lies at a base the host chooses (tools/guest_base_register.py).
+lies at a base the host chooses (tools/guest_base_register.py). Then the
+conditional branches that the added instructions put out of reach are
+relaxed (tools/guest_branch_relax.py).
 
 Usage: android_asm_convert.py [--base-register] input.s output.s
 """
@@ -309,6 +311,12 @@ def convert_file(source, destination, base_register=False):
             result = "\n".join(rewrite(result.split("\n"))[0])
         except BaseRegisterError as e:
             raise ConvertError(f"base register: {e}") from None
+    # (the branches the added instructions put out of reach relaxed)
+    from guest_branch_relax import RelaxError, relax
+    try:
+        result = "\n".join(relax(result.split("\n"))[0])
+    except RelaxError as e:
+        raise ConvertError(str(e)) from None
     with open(destination, "w", encoding="utf-8", errors="surrogateescape") as f:
         f.write(result)
 

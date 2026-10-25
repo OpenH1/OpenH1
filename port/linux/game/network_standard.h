@@ -56,6 +56,11 @@ long network_standard_agreed_rate(void);
 /* Mixed games: a Standard game that OpenCE players join (network.allow_opence,
 read with network.game_mode) */
 boolean network_standard_hosting_mixed(void);
+/* ... and whether it takes OpenCE's joins now (Host Controls' Allow OpenCE
+players: those in it stay); an OpenH1 game made OpenCE's to join from now on,
+or no more */
+boolean network_standard_opence_joins_open(void);
+void network_standard_set_opence_joins(boolean allowed);
 /* the host's advertisement's reserved bytes: its version (a mixed game's the
 Legacy game's), and a Standard game's rate and, a mixed game's, the OpenH1
 protocol version */

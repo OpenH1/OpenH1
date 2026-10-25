@@ -811,7 +811,7 @@ static const struct config_setting config_settings[] =
 	{ "controls.pause", _config_string, "\"Escape\"", "HALO_KEY_PAUSE", _environment_value, _platform_all,
 		"The pause menu (the controller's Start)." },
 	{ "controls.screenshot", _config_string, "\"F10\"", "HALO_KEY_SCREENSHOT", _environment_value, _platform_all,
-		"Save a PNG screenshot beside maps/ (press once per capture)." },
+		"Save a PNG screenshot in screenshots/ beside maps/ (press once per capture)." },
 	{ "controls.push_to_talk", _config_string, "\"V\"", "HALO_KEY_PUSH_TO_TALK", _environment_value, _platform_all,
 		"Voice chat: talk while it is held (audio.voice_chat \"push_to_talk\")." },
 	{ "controls.chat", _config_string, "\"T\"", "HALO_KEY_CHAT", _environment_value, _platform_all,
@@ -1119,8 +1119,19 @@ static const struct config_setting config_settings[] =
 		"comma-separated host:port." },
 	{ "discord.application_id", _config_string, "\"1553978809840050229\"", "HALO_DISCORD_APPLICATION",
 		_environment_value, _platform_desktop,
-		"The Discord application internet play invites go through while the\n"
-		"Discord desktop client runs; empty for none." },
+		"The Discord application your status, invites and asks to join go\n"
+		"through while the Discord desktop client runs (its name is what Discord\n"
+		"shows you playing): OpenCE's until OpenH1 has its own; empty for none." },
+	{ "discord.rich_presence", _config_boolean, "true", "HALO_DISCORD_RICH_PRESENCE", _environment_value,
+		_platform_desktop,
+		"Show what you are doing in Discord: in the menus, in a party, the game\n"
+		"you host or play. false: nothing is shown, and no one joins you through\n"
+		"Discord." },
+	{ "discord.allow_join_requests", _config_boolean, "true", "HALO_DISCORD_ALLOW_JOIN_REQUESTS",
+		_environment_value, _platform_desktop,
+		"Let Discord friends ask to join your party or game (the game asks you:\n"
+		"J lets them in, Esc does not), and invite them with Discord's Invite to\n"
+		"Join. false: no Join buttons; send your invite link instead." },
 
 	{ "update.auto", _config_boolean, "true", "HALO_UPDATE_AUTO", _environment_value, _platform_all,
 		"Look for a new version when the game starts, and offer to update to it;\n"
@@ -1522,6 +1533,9 @@ static const struct config_setting config_settings[] =
 	{ "debug.menu_open", _config_string, "\"\"", "HALO_MENU_OPEN", _environment_value, _platform_all,
 		"Start on this screen of the menus (port/assets/menus) instead of the main\n"
 		"menu, a player profile being edited; empty for the main menu." },
+	{ "debug.discord_socket", _config_string, "\"\"", "HALO_DISCORD_SOCKET", _environment_value, _platform_desktop,
+		"The Discord client's socket (on Windows its pipe) to connect to, and no\n"
+		"other: a test's stand-in for Discord. Empty: Discord's own." },
 	{ "debug.party", _config_string, "\"\"", "HALO_PARTY", _environment_value, _platform_all,
 		"Join this party's link at the start, or lead its party (\"lead:\" before\n"
 		"the link): several copies of the game in one party, in a test; empty\n"

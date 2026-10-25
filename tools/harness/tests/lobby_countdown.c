@@ -2,17 +2,21 @@
 LOBBY_COUNTDOWN.C (test)
 
 The real pregame countdown of source/networking/network_server_manager.c:
-whether the lobby's START NOW (the "faster" request,
-_network_game_server_countdown_event_player_joined) starts the countdown,
-for a host alone, a host with split screen players, and machines together.
-test_lobby_countdown.py takes the constants, enums and timer structures
-(config.inc) and the code (under_test.inc).
+the host's START GAME (the lobby's "faster" request,
+_network_game_server_countdown_event_player_joined, from the host's own
+machine) starts the game at once, with one press, for a host alone, a host
+with split screen players, and machines together; the other machines'
+requests count down as the Xbox game's did. test_lobby_countdown.py takes
+the constants, enums and timer structures (config.inc) and the code
+(under_test.inc).
 */
 
 #include "harness.h"
 
 #define NETWORK_SERVER_MANAGER_FILE "server"
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MILLISECONDS_PER_SECOND 1000
+#define VALID_INDEX(index, count) ((index) >= 0 && (index) < (count))
 
 #include "config.inc"
 
@@ -26,6 +30,7 @@ struct network_player
 struct network_game_server_client_machine
 {
 	void *connection;
+	short machine_index;
 	boolean joined;
 };
 
@@ -51,6 +56,7 @@ struct network_game_server
 
 static struct network_game_server server;
 static int connection;
+static boolean network_game_server_countdown_slowed[MAXIMUM_NETWORK_MACHINE_COUNT];
 
 static unsigned long system_milliseconds(void) { return 1000; }
 static boolean network_game_should_accept_remote_connections(void) { return TRUE; }
@@ -62,7 +68,17 @@ static boolean network_game_server_client_machine_is_joined_to_game(
 {
 	return machine->joined;
 }
-static void network_game_server_countdown_started(struct network_game_server *s) { }
+/* machine 0 is the host's */
+static boolean network_game_server_client_machine_is_local(
+	struct network_game_server *s,
+	struct network_game_server_client_machine *machine)
+{
+	return machine->joined && machine->machine_index == 0;
+}
+static void network_game_server_countdown_started(struct network_game_server *s)
+{
+	memset(network_game_server_countdown_slowed, 0, sizeof(network_game_server_countdown_slowed));
+}
 
 #include "under_test.inc"
 
@@ -70,6 +86,7 @@ static void join_machine(
 	short machine_index)
 {
 	server.client_machines[machine_index].connection = &connection;
+	server.client_machines[machine_index].machine_index = machine_index;
 	server.client_machines[machine_index].joined = TRUE;
 }
 
@@ -80,6 +97,7 @@ static void lobby(
 	short index;
 
 	memset(&server, 0, sizeof(server));
+	memset(network_game_server_countdown_slowed, 0, sizeof(network_game_server_countdown_slowed));
 	server.state = _network_game_server_state_pregame;
 	server.game.minimum_players = 2;
 	for (index = 0; index < machines; index++)
@@ -97,11 +115,40 @@ static void add_player(
 	player->team_index = team_index;
 }
 
-/* the lobby's START NOW */
+/* a machine's game start request, as network_server_message_handler.c
+takes it: FALSE if it is ignored */
+static boolean request(
+	short machine_index,
+	short request_type)
+{
+	short countdown_event = network_game_server_game_start_request_event(&server,
+		&server.client_machines[machine_index], request_type);
+
+	if (countdown_event == NONE)
+		return FALSE;
+	network_game_server_update_countdown(&server, countdown_event);
+	return TRUE;
+}
+
+/* the lobby's START GAME, the host's (the pregame screen's faster) */
 static void start_now(void)
 {
-	network_game_server_update_countdown(&server, _network_game_server_countdown_event_player_joined);
+	request(0, _network_game_server_countdown_event_player_joined);
 }
+
+static long time_remaining(void)
+{
+	return countdown_timer_get_time_remaining(&server.countdown_state.timer);
+}
+
+/* the host's game starts now: the server starts it once every machine has
+the map (network_game_server_idle_pregame_tasks) */
+#define CHECK_STARTS_NOW(what) \
+	do \
+	{ \
+		CHECK(server.countdown_state.active, "%s never starts the game", what); \
+		CHECK(time_remaining() == 0, "%s: %ld ms to go, not a start at once", what, time_remaining()); \
+	} while (0)
 
 int main(int argc, char **argv)
 {
@@ -113,9 +160,7 @@ int main(int argc, char **argv)
 		add_player(0, 0);
 		add_player(0, 1);
 		start_now();
-		CHECK(server.countdown_state.active, "one machine's two players never start the countdown");
-		CHECK(server.countdown_state.timer.time_remaining == NETWORK_GAME_COUNTDOWN_TIME,
-			"%ld ms to go, not a system link game's countdown", server.countdown_state.timer.time_remaining);
+		CHECK_STARTS_NOW("one machine's two players");
 		return 0;
 	}
 	CASE("alone-start-now")
@@ -123,7 +168,7 @@ int main(int argc, char **argv)
 		lobby(1);
 		add_player(0, 0);
 		start_now();
-		CHECK(server.countdown_state.active, "the host alone no longer starts the countdown");
+		CHECK_STARTS_NOW("the host alone");
 		return 0;
 	}
 	CASE("empty-lobby-waits")
@@ -140,7 +185,7 @@ int main(int argc, char **argv)
 		add_player(0, 0);
 		add_player(1, 1);
 		start_now();
-		CHECK(server.countdown_state.active, "two machines no longer start the countdown");
+		CHECK_STARTS_NOW("two machines' host");
 		return 0;
 	}
 	CASE("two-machines-team-game-needs-both-teams")
@@ -173,7 +218,59 @@ int main(int argc, char **argv)
 		add_player(0, 0);
 		add_player(0, 0);
 		start_now();
-		CHECK(server.countdown_state.active, "one machine's players of one team never start the countdown");
+		CHECK_STARTS_NOW("one machine's players of one team");
+		return 0;
+	}
+	/* a countdown another machine started (its faster, the Xbox game's): the
+	host's one press starts the game, even in the tick the countdown changed */
+	CASE("host-start-during-countdown")
+	{
+		lobby(2);
+		add_player(0, 0);
+		add_player(1, 1);
+		CHECK(request(1, _network_game_server_countdown_event_player_joined), "another machine's faster is ignored");
+		CHECK(request(1, _network_game_server_countdown_event_player_joined), "another machine's faster is ignored");
+		CHECK(server.countdown_state.active && server.countdown_state.adjusted_time_this_tick,
+			"another machine's fasters did not change the countdown this tick");
+		start_now();
+		CHECK_STARTS_NOW("the host's press after another machine's faster");
+		return 0;
+	}
+	/* the other machines' requests are the Xbox game's: a faster starts the
+	countdown and takes time off it, a slower adds to it (once), a stop or a
+	start at once is not theirs */
+	CASE("other-machines-count-down")
+	{
+		lobby(2);
+		add_player(0, 0);
+		add_player(1, 1);
+		CHECK(!request(1, _network_game_server_countdown_event_start_immediately),
+			"another machine may start the game at once");
+		CHECK(!request(1, _network_game_server_countdown_event_stop), "another machine may stop the countdown");
+		CHECK(!server.countdown_state.active, "another machine's start at once or stop started the countdown");
+		request(1, _network_game_server_countdown_event_player_joined);
+		CHECK(time_remaining() == NETWORK_GAME_COUNTDOWN_TIME,
+			"another machine's faster: %ld ms to go, not the Xbox game's countdown", time_remaining());
+		server.countdown_state.adjusted_time_this_tick = FALSE;
+		request(1, _network_game_server_countdown_event_player_joined);
+		CHECK(time_remaining() == NETWORK_GAME_COUNTDOWN_TIME - NETWORK_GAME_COUNTDOWN_ADJUSTMENT,
+			"another machine's second faster: %ld ms to go", time_remaining());
+		server.countdown_state.adjusted_time_this_tick = FALSE;
+		CHECK(request(1, _network_game_server_countdown_event_player_left), "another machine's first slower is ignored");
+		server.countdown_state.adjusted_time_this_tick = FALSE;
+		CHECK(!request(1, _network_game_server_countdown_event_player_left), "another machine's second slower is taken");
+		return 0;
+	}
+	/* the host's start at once (a script's) and its stop are still its own */
+	CASE("host-stop-and-start-at-once")
+	{
+		lobby(1);
+		add_player(0, 0);
+		CHECK(request(0, _network_game_server_countdown_event_start_immediately), "the host's start at once is ignored");
+		CHECK_STARTS_NOW("the host's start at once");
+		server.countdown_state.adjusted_time_this_tick = FALSE;
+		CHECK(request(0, _network_game_server_countdown_event_stop), "the host's stop is ignored");
+		CHECK(!server.countdown_state.active, "the host's stop did not stop the countdown");
 		return 0;
 	}
 	fprintf(stderr, "unknown case: %s\n", case_name);

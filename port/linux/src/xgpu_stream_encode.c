@@ -782,7 +782,7 @@ void xgpu_backend_clear_target(xgpu_target target, const float color[4])
 	memcpy(record_body->color, color, sizeof(record_body->color));
 }
 
-unsigned char *xgpu_backend_read_target(xgpu_target target, int layer, BOOL raw)
+unsigned char *xgpu_backend_read_target(xgpu_target target, int layer, BOOL tone_map)
 {
 	struct xgpu_stream_read_target *record_body;
 	unsigned char *pixels;
@@ -797,7 +797,7 @@ unsigned char *xgpu_backend_read_target(xgpu_target target, int layer, BOOL raw)
 	record_body = record(XGPU_STREAM_READ_TARGET, sizeof(*record_body));
 	record_body->target = target;
 	record_body->layer = layer;
-	record_body->raw = raw ? 1 : 0;
+	record_body->tone_map = tone_map ? 1 : 0;
 	record_body->pixels = STREAM_ADDRESS(pixels);
 	record_body->size = size;
 	record_body->reply = STREAM_ADDRESS(&stream.replies->value);
@@ -809,6 +809,47 @@ unsigned char *xgpu_backend_read_target(xgpu_target target, int layer, BOOL raw)
 		return NULL;
 	}
 	return pixels;
+}
+
+BOOL xgpu_backend_screenshot(xgpu_target target, const char *directory, char *name, unsigned long name_size)
+{
+	struct xgpu_stream_screenshot *record_body;
+	unsigned char *pixels;
+	char *written_name;
+	uint32_t size, length;
+	BOOL written;
+
+	if (!name || !name_size)
+		return FALSE;
+	name[0] = 0;
+	if (!stream.open || target >= TARGET_MAXIMUM || !stream.targets[target].width || !directory || !directory[0])
+		return FALSE;
+	length = (uint32_t)strlen(directory);
+	if (length > 4096)
+		return FALSE;
+	size = stream.targets[target].width * stream.targets[target].height * 4;
+	/* (the pixels, then the name the host writes) */
+	pixels = stream_allocate(16, size + XGPU_STREAM_SCREENSHOT_NAME);
+	if (!pixels)
+		return FALSE;
+	written_name = (char *)pixels + size;
+	record_body = record(XGPU_STREAM_SCREENSHOT, (uint32_t)sizeof(*record_body) + length + 1);
+	record_body->target = target;
+	record_body->width = stream.targets[target].width;
+	record_body->height = stream.targets[target].height;
+	record_body->pixels = STREAM_ADDRESS(pixels);
+	record_body->size = size;
+	record_body->name = STREAM_ADDRESS(written_name);
+	record_body->reply = STREAM_ADDRESS(&stream.replies->value);
+	memcpy(record_body->directory, directory, length + 1);
+	written_name[0] = 0;
+	stream.replies->value = 0;
+	synchronous();
+	written = stream.replies->value != 0;
+	written_name[XGPU_STREAM_SCREENSHOT_NAME - 1] = 0;
+	snprintf(name, name_size, "%s", written_name);
+	stream_free(pixels);
+	return written;
 }
 
 /* ---------- textures */

@@ -272,9 +272,11 @@ averaged; depth and stencil: the first sample), in the stream's order */
 void xgpu_vulkan_image_resolve(struct xgpu_vulkan_image *multisampled, struct xgpu_vulkan_image *image);
 /* reads a layer's first level as rows of 4-byte pixels (BGRA8 images:
 BGRA; display.hdr's RGBA16F ones as BGRA too, clamped to [0, 1] as an SDR
-display shows them) from the first, after the work recorded so far: waits
+display shows them, or with tone_map tone mapped into it: xgpu_hdr.h's
+xgpu_hdr_sdr_pixel) from the first, after the work recorded so far: waits
 for the GPU (screenshots, tests); 1 on success */
-int xgpu_vulkan_read_pixels(struct xgpu_vulkan_image *image, uint32_t layer, void *pixels, uint32_t bytes_per_row);
+int xgpu_vulkan_read_pixels(struct xgpu_vulkan_image *image, uint32_t layer, void *pixels, uint32_t bytes_per_row,
+	int tone_map);
 
 /* ---------- samplers */
 

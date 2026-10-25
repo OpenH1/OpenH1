@@ -44,6 +44,8 @@ that changes.
 #include "host_load_trace.h"
 #include "../src/loading_presentation.h"
 #include "../src/loading_art.h"
+/* (the reference's xgpu_hdr_sdr_pixel: the screenshot key's pictures) */
+#define XGPU_HDR_REFERENCE
 #include "../src/xgpu_hdr.h"
 #include "../src/xgpu_stream.h"
 
@@ -1968,7 +1970,8 @@ static unsigned char half_byte(uint16_t half)
 	return (unsigned char)(value <= 0.0f ? 0 : value >= 1.0f ? 255 : (int)(value * 255.0f + 0.5f));
 }
 
-int xgpu_vulkan_read_pixels(struct xgpu_vulkan_image *image, uint32_t layer, void *pixels, uint32_t bytes_per_row)
+int xgpu_vulkan_read_pixels(struct xgpu_vulkan_image *image, uint32_t layer, void *pixels, uint32_t bytes_per_row,
+	int tone_map)
 {
 	uint32_t width = image->description.width, height = image->description.height, row;
 	/* (display.hdr's half floats: 8 bytes a pixel, made BGRA8's) */
@@ -2019,6 +2022,14 @@ int xgpu_vulkan_read_pixels(struct xgpu_vulkan_image *image, uint32_t layer, voi
 			/* (RGBA as BGRA) */
 			for (pixel = 0; pixel < width; pixel++)
 			{
+				if (tone_map)
+				{
+					float rgba[4] = { half_value(from[pixel * 4]), half_value(from[pixel * 4 + 1]),
+						half_value(from[pixel * 4 + 2]), half_value(from[pixel * 4 + 3]) };
+
+					xgpu_hdr_sdr_pixel(rgba, to + pixel * 4);
+					continue;
+				}
 				to[pixel * 4] = half_byte(from[pixel * 4 + 2]);
 				to[pixel * 4 + 1] = half_byte(from[pixel * 4 + 1]);
 				to[pixel * 4 + 2] = half_byte(from[pixel * 4]);

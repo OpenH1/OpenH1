@@ -158,6 +158,9 @@ enum
 	_distributed_message_party_up = 123,
 	_distributed_message_party_down = 124,
 	_distributed_message_party_players = 125,
+	/* a player the host put on the other team (network_host_controls.c),
+	reliably, to the host's OpenH1 clients in a game of no OpenCE machine */
+	_distributed_message_host_team = 126,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };

@@ -413,6 +413,7 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 	backend = *xgpu_vulkan_stream_backend();
 	backend.exiting = vulkan_exiting;
 	host_render_stream_set_backend(&backend);
+	host_render_stream_set_screenshot_writer(host_screenshot_write);
 	atexit(vulkan_shutdown);
 	opened = 1;
 	return 1;

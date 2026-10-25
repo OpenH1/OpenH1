@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OpenH1: join a friend</title>
+<meta name="description" content="A friend invited you to play OpenH1. Open the invite in OpenH1, or install it first.">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#040504">
+<meta property="og:title" content="Join me in OpenH1">
+<meta property="og:description" content="A friend invited you to play OpenH1. Open this link to join them.">
+<meta property="og:image" content="https://openh1.com/media/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preload" href="/fonts/Archivo-Latin.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+/* Boot Glow, as index.html has it: the same fonts, colors, header, cards
+   and footer (its rules copied here as they are, as maps.html does), and a
+   few of this page's own below them. Change them together. The page is at
+   /join/: its files are named from the site's root. */
+@font-face { font-family: "Archivo"; font-weight: 100 900; font-stretch: 62% 125%; font-display: swap; src: url("/fonts/Archivo-Latin.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 400 800; font-display: swap; src: url("/fonts/Inter-Latin.woff2") format("woff2"); }
+@font-face { font-family: "Overpass Mono"; font-weight: 400 700; font-display: swap; src: url("/fonts/OverpassMono-Latin.woff2") format("woff2"); }
+
+:root {
+  color-scheme: dark;
+  --bg: #040504;
+  --panel: #090c08;
+  --line: rgba(157, 255, 60, 0.15);
+  --line-soft: rgba(238, 244, 234, 0.08);
+  --text: #eef4ea;
+  --soft: #c6cfc1;
+  --muted: #8e9a89;
+  --green: #9dff3c;
+  --glow: rgba(157, 255, 60, 0.42);
+  --display: "Archivo", "Arial Black", system-ui, sans-serif;
+  --body: "Inter", system-ui, sans-serif;
+  --mono: "Overpass Mono", ui-monospace, monospace;
+  --gutter: clamp(16px, 4vw, 48px);
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 400 17px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+::selection { background: var(--green); color: #061000; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 0 var(--gutter); }
+.mono { font: 500 12px/1.45 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; }
+.skip { position: absolute; left: 12px; top: -60px; z-index: 50; padding: 10px 14px; background: var(--green); color: #061000; border-radius: 6px; font-weight: 700; }
+.skip:focus { top: 12px; }
+:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+.lit { color: var(--green); text-shadow: 0 0 34px var(--glow); }
+
+/* ---------- header */
+.top { position: fixed; inset: 0 0 auto; z-index: 20; transition: background .4s ease, border-color .4s ease; border-bottom: 1px solid transparent; }
+.top.solid { background: rgba(4, 5, 4, 0.8); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); border-bottom-color: var(--line-soft); }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; height: 72px; gap: 20px; }
+.wordmark { display: inline-flex; text-decoration: none; }
+.wordmark img { display: block; height: 22px; width: auto; }
+footer .wordmark img { height: 18px; }
+.top nav { display: flex; gap: clamp(16px, 2.4vw, 32px); align-items: center; }
+.top nav a { text-decoration: none; color: var(--muted); font: 500 12px/1 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; transition: color .2s; }
+.top nav a:hover { color: var(--text); }
+.top nav a.gh { color: var(--text); border: 1px solid rgba(238, 244, 234, 0.3); padding: 10px 14px; border-radius: 999px; }
+.top nav a.gh:hover { border-color: var(--green); color: var(--green); }
+
+.btn { display: inline-flex; align-items: center; gap: 10px; padding: 16px 26px; border-radius: 999px; background: var(--green); color: #061000; text-decoration: none; font: 700 15px/1 var(--body);
+  box-shadow: 0 0 0 1px rgba(157, 255, 60, 0.5), 0 10px 40px -8px var(--glow); transition: transform .2s ease, box-shadow .2s ease; }
+.btn:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px var(--green), 0 14px 50px -6px var(--glow); }
+.btn.ghost { background: rgba(4, 5, 4, 0.55); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+.btn.ghost:hover { box-shadow: inset 0 0 0 1px var(--green), 0 14px 50px -6px var(--glow); }
+
+/* ---------- sections */
+.sec { padding: clamp(80px, 10vw, 140px) 0 0; }
+.sec-head { display: grid; grid-template-columns: 1.15fr 1fr; gap: 48px; align-items: end; margin-bottom: 48px; }
+.kicker { color: var(--green); margin: 0 0 18px; }
+h2 { margin: 0; font: 900 clamp(40px, 6vw, 92px)/0.92 var(--display); font-stretch: 118%; letter-spacing: -0.02em; text-transform: uppercase; }
+.sec-head p { margin: 0; color: var(--soft); font-size: 18px; max-width: 470px; }
+
+/* your copy */
+.byo { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: start; padding: clamp(32px, 5vw, 56px); border-radius: 10px; background: radial-gradient(ellipse 80% 120% at 0% 0%, rgba(157, 255, 60, 0.08), transparent 60%), var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.byo h2 { font-size: clamp(34px, 4.4vw, 64px); }
+.byo ol { margin: 0; padding: 0; list-style: none; counter-reset: s; }
+.byo li { counter-increment: s; position: relative; padding: 0 0 18px 48px; color: var(--soft); }
+.byo li::before { content: "0" counter(s); position: absolute; left: 0; top: 2px; color: var(--green); font: 600 13px/1.4 var(--mono); letter-spacing: .1em; }
+.byo code { font: 500 14px var(--mono); color: var(--text); }
+
+/* the downloads, as index.html's */
+.dl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.dl article { display: flex; flex-direction: column; padding: 28px 26px 26px; border-radius: 8px; background: linear-gradient(180deg, #0a0d09, #070906); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.dl article.mine { box-shadow: inset 0 0 0 1px var(--green), 0 0 60px -20px var(--glow); }
+.dl h3 { margin: 0 0 6px; font: 900 26px/1.1 var(--display); font-stretch: 116%; letter-spacing: -0.01em; }
+.dl p { margin: 0; color: var(--soft); font-size: 15px; }
+.dl .btn { justify-content: center; margin: 22px 0 18px; padding: 14px 20px; }
+.dl ol { margin: 0; padding: 0 0 0 18px; color: var(--soft); font-size: 14px; }
+.dl li { margin-bottom: 8px; }
+.dl li::marker { color: var(--green); font: 600 12px var(--mono); }
+.dl code, .dl em { font: 500 13px var(--mono); font-style: normal; color: var(--text); }
+.dl .maps { margin-top: auto; padding-top: 10px; color: var(--muted); font-size: 14px; text-underline-offset: 3px; }
+.dl .maps:hover { color: var(--green); }
+
+footer { margin-top: clamp(96px, 12vw, 160px); border-top: 1px solid var(--line-soft); padding: 40px 0 48px; color: var(--muted); font-size: 14px; }
+footer .row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 18px 24px; align-items: center; }
+footer nav { display: flex; flex-wrap: wrap; gap: 22px; }
+footer nav a { text-decoration: none; }
+footer nav a:hover { color: var(--text); }
+footer .legal { margin: 26px 0 0; max-width: 920px; font-size: 13px; line-height: 1.6; }
+footer .legal a { color: var(--soft); }
+
+/* ---------- this page's own */
+.page-head { padding-top: calc(72px + clamp(56px, 8vw, 112px)); position: relative; }
+.page-head::before { content: ""; position: absolute; inset: 0 0 -40%; z-index: -1; pointer-events: none; background: radial-gradient(ellipse 50% 60% at 12% 70%, rgba(157, 255, 60, 0.12), transparent 70%); }
+h1 { margin: 0; font: 900 clamp(46px, 7.4vw, 120px)/0.88 var(--display); font-stretch: 116%; letter-spacing: -0.02em; text-transform: uppercase; }
+h1 span { display: block; }
+h1 .lit { text-shadow: 0 0 40px var(--glow), 0 0 2px rgba(157, 255, 60, 0.8); }
+.eyebrow { color: var(--green); margin: 0 0 22px; text-shadow: 0 0 14px var(--glow); }
+.lede { max-width: 640px; margin: 26px 0 0; color: #d6dfd2; font-size: clamp(17px, 1.45vw, 20px); }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 34px 0 0; }
+.status { min-height: 1.6em; margin: 20px 0 0; color: var(--muted); }
+.status.lit { color: var(--green); }
+.byo p { margin: 0 0 14px; color: var(--soft); }
+.byo p strong, .byo li strong { color: var(--text); font-weight: 600; }
+.link { display: block; margin: 6px 0 14px; padding: 12px 14px; border-radius: 6px; background: #020302; box-shadow: inset 0 0 0 1px var(--line-soft); font: 500 13px/1.6 var(--mono); color: var(--text); overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; }
+.dl article, .byo > div { min-width: 0; }
+[hidden] { display: none !important; }
+
+@media (max-width: 1100px) {
+  .dl { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 900px) {
+  .top nav a.opt { display: none; }
+  .sec-head, .byo { grid-template-columns: 1fr; gap: 20px; }
+}
+@media (max-width: 560px) {
+  .dl { grid-template-columns: 1fr; }
+  .actions .btn { width: 100%; justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top" id="top">
+  <div class="wrap">
+    <a class="wordmark" href="/" aria-label="OpenH1, home"><img src="/brand/openh1-lockup.svg" alt="OpenH1" width="129" height="22"></a>
+    <nav aria-label="Sections">
+      <a class="opt" href="/#features">Features</a>
+      <a href="/#get">Download</a>
+      <a class="gh" href="https://github.com/OpenH1/OpenH1">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-head" aria-labelledby="page-title">
+    <div class="wrap">
+      <p class="eyebrow mono" id="eyebrow">An invite · OpenH1</p>
+      <h1 id="page-title"><span id="title-top">Join your</span><span class="lit" id="title-what">friend.</span></h1>
+      <p class="lede" id="lede">A friend invited you to play OpenH1. Open the invite in OpenH1 to join them.</p>
+      <div class="actions" id="actions" hidden>
+        <a class="btn" id="open" href="#">Open in OpenH1</a>
+        <button class="btn ghost" id="copy" type="button">Copy the link</button>
+      </div>
+      <p class="status mono" id="status" role="status" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <!-- 01: OpenH1 installed already -->
+  <section class="sec" id="paste" aria-labelledby="paste-title" hidden>
+    <div class="wrap">
+      <div class="byo">
+        <div>
+          <p class="kicker mono">01 · Have OpenH1?</p>
+          <h2 id="paste-title">Paste it <span class="lit">in.</span></h2>
+        </div>
+        <div>
+          <p>If OpenH1 didn't open, copy this link:</p>
+          <code class="link" id="link"></code>
+          <ol>
+            <li>Start OpenH1. It joins a link it finds copied when it comes to the front.</li>
+            <li id="where-game">Or go to <strong>Multiplayer</strong>, then <strong>Join by Link</strong>.</li>
+            <li id="where-party" hidden>Or go to <strong>Multiplayer</strong>, then <strong>Party</strong>, and choose <strong>Paste Link</strong>.</li>
+          </ol>
+          <p>The link works while your friend's copy of OpenH1 is running.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02: not installed yet -->
+  <section class="sec" id="install" aria-labelledby="install-title" hidden>
+    <div class="wrap">
+      <div class="sec-head">
+        <div>
+          <p class="kicker mono" id="install-kicker">02 · Install OpenH1</p>
+          <h2 id="install-title">Get it <span class="lit">first.</span></h2>
+        </div>
+        <p>Free, and always the latest build. Install it, open it once with your maps, then open the invite again.</p>
+      </div>
+      <div class="dl" id="downloads">
+        <article data-os="windows">
+          <h3>Windows</h3>
+          <p>For any Windows PC.</p>
+          <a class="btn" href="https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Windows.zip">Download for Windows</a>
+          <ol>
+            <li>Unzip it anywhere, and open <code>halo.exe</code>.</li>
+            <li>Windows may say it protected your PC: choose <em>More info</em>, then <em>Run anyway</em>.</li>
+          </ol>
+          <a class="maps" href="/maps#give">Need your maps?</a>
+        </article>
+        <article data-os="linux">
+          <h3>Steam Deck</h3>
+          <p>And any 64-bit Linux PC with Vulkan.</p>
+          <a class="btn" href="https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Linux.zip">Download for Steam Deck</a>
+          <ol>
+            <li>In Desktop Mode, download it and unzip it.</li>
+            <li>Open <code>install.sh</code> in that folder, and choose your game's disc image or maps folder.</li>
+          </ol>
+          <a class="maps" href="/maps#give">Need your maps?</a>
+        </article>
+        <article data-os="mac">
+          <h3>Mac</h3>
+          <p>Apple silicon, macOS 14.4 or later.</p>
+          <a class="btn" href="https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1.dmg">Download for Mac</a>
+          <ol>
+            <li>Open the downloaded <code>.dmg</code>.</li>
+            <li>Drag OpenH1 to Applications, and open it from there.</li>
+          </ol>
+          <a class="maps" href="/maps#give">Need your maps?</a>
+        </article>
+        <article data-os="android">
+          <h3>Android</h3>
+          <p>64-bit Android 9 or later, with Vulkan 1.3.</p>
+          <a class="btn" href="https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Android.apk">Download for Android</a>
+          <ol>
+            <li>Download it on your phone, and open it.</li>
+            <li>When Android asks, allow your browser to install apps, then choose <em>Install</em>.</li>
+          </ol>
+          <a class="maps" href="/maps#give">Need your maps?</a>
+        </article>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="row">
+      <a class="wordmark" href="/" aria-label="OpenH1, home"><img src="/brand/openh1-lockup.svg" alt="OpenH1" width="105" height="18"></a>
+      <nav aria-label="Footer">
+        <a href="https://github.com/OpenH1/OpenH1">Source</a>
+        <a href="https://github.com/OpenH1/OpenH1/issues">Report a problem</a>
+        <a href="https://github.com/OpenH1/OpenH1/blob/master/LICENSE">License</a>
+        <a href="/fonts/LICENSES.txt">Font licenses</a>
+      </nav>
+    </div>
+    <p class="legal">Free software under the AGPL-3.0-or-later. Built on <a href="https://github.com/OpenCommunityEdition/OpenCE">OpenCE</a>.
+      OpenH1 is an unofficial fan project, not endorsed by or affiliated with Microsoft, Xbox Game Studios, Halo Studios or Bungie.
+      Halo is a trademark of Microsoft Corporation. No game data is included: you need your own copy of the game.</p>
+  </div>
+</footer>
+
+<script>
+// join-link:begin
+// The link an invite's address holds: the party's or the game's token after
+// "#party=" or "#join=" (the part after "#", which a browser never sends to
+// the site), a bare token there, or ?party= or ?join= (older addresses).
+// A party's token is 32 hex digits, a game's 64 (its host's key hash, then
+// its token), as the game's links have them (port/linux/src/p2p.c,
+// p2p_party.c). null if it holds none.
+function joinLink(hash, search) {
+  const parts = [String(hash || "").replace(/^#/, ""), String(search || "").replace(/^\?/, "")];
+  for (const part of parts) {
+    for (const pair of part.split("&")) {
+      const named = /^(party|join)=([0-9a-fA-F]+)$/.exec(pair);
+      const kind = named ? named[1] : "";
+      const digits = (named ? named[2] : /^[0-9a-fA-F]+$/.test(pair) ? pair : "").toLowerCase();
+      if (digits.length === 32 && kind !== "join") return { kind: "party", link: "halo://party/" + digits };
+      if (digits.length === 64 && kind !== "party") return { kind: "game", link: "halo://join/" + digits };
+    }
+  }
+  return null;
+}
+// join-link:end
+
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const top = $("top");
+  const onScroll = () => top.classList.toggle("solid", scrollY > 40);
+  addEventListener("scroll", onScroll, { passive: true }); onScroll();
+
+  // the visitor's machine first, and marked, as on the home page
+  const ua = navigator.userAgent, touch = navigator.maxTouchPoints > 1;
+  const apple = /iPhone|iPad|Mac/.test(ua);
+  const os = /Android/.test(ua) ? "android" : /iPhone|iPad/.test(ua) ? "" : /Windows/.test(ua) ? "windows" : /Mac/.test(ua) ? (touch ? "" : "mac") : /Linux|CrOS/.test(ua) ? "linux" : "";
+  const mine = os && document.querySelector(`#downloads [data-os="${os}"]`);
+  if (mine) { mine.classList.add("mine"); mine.parentElement.prepend(mine); }
+
+  const found = joinLink(location.hash, location.search);
+  const install = () => { $("install").hidden = false; };
+  // (an older address's ?join=, which the site was sent: the address shown without it)
+  if (found && location.search && history.replaceState)
+    history.replaceState(null, "", location.pathname + "#" + (found.kind === "party" ? "party=" : "join=") + found.link.replace(/^halo:\/\/\w+\//, ""));
+  if (!found) {
+    $("eyebrow").textContent = "An invite · Not complete";
+    $("title-top").textContent = "This link is";
+    $("title-what").textContent = "incomplete.";
+    $("lede").textContent = "The invite's code is missing or cut short. Ask your friend to copy the invite again (COPY INVITE in OpenH1), and paste all of it.";
+    $("install-kicker").textContent = "01 · Install OpenH1";
+    install();
+    return;
+  }
+  const party = found.kind === "party";
+  $("title-what").textContent = party ? "party." : "game.";
+  $("title-top").textContent = "Join my";
+  $("lede").textContent = party
+    ? "A friend invited you to their OpenH1 party. Join it, and you go with them to every game they play."
+    : "A friend invited you to their OpenH1 game. Open the invite in OpenH1 to join it.";
+  $("where-game").hidden = party;
+  $("where-party").hidden = !party;
+  $("link").textContent = found.link;
+  $("open").href = found.link;
+  $("actions").hidden = false;
+  $("paste").hidden = false;
+
+  const status = $("status");
+  $("copy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(found.link); status.textContent = "Copied. Now switch to OpenH1."; status.classList.add("lit"); }
+    catch { status.textContent = "Select the link below and copy it."; }
+  });
+
+  // OpenH1 opened: the page loses the focus (or is hidden) soon after
+  let left = false;
+  const away = () => { left = true; };
+  addEventListener("blur", away);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) away(); });
+  const attempt = () => {
+    left = false;
+    status.textContent = "Opening OpenH1...";
+    status.classList.remove("lit");
+    setTimeout(() => {
+      if (left) { status.textContent = "Opened in OpenH1. Nothing happened? Paste the link in, below."; status.classList.add("lit"); }
+      else { status.textContent = "OpenH1 didn't open. Install it, or paste the link in."; install(); }
+    }, 1600);
+  };
+  $("open").addEventListener("click", attempt);
+  // (at once, but on Apple's systems, whose OpenH1 takes no links yet: the
+  // browser would say the address is not valid)
+  if (apple) { status.textContent = "Copy the link, then paste it into OpenH1."; install(); }
+  else { attempt(); location.href = found.link; }
+})();
+</script>
+</body>
+</html>

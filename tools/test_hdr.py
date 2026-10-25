@@ -188,6 +188,23 @@ int main(void)
 		CHECK(xgpu_hdr_lights(0.8f, 3.0f, 1) > 1.2f && xgpu_hdr_lights(0.8f, 3.0f, 0) <= 1.0f,
 			"the lights' core past white with HDR: %.3f", xgpu_hdr_lights(0.8f, 3.0f, 1));
 	}
+	{
+		/* the screenshot key's picture: the SDR frame's pixels as they are, a
+		highlight inside white keeping its hue, a core white */
+		float sdr[4] = { 0.5f, 0.25f, 1.0f, 0.3f }, glow[4] = { 1.6f, 0.8f, 0.4f, 1.0f },
+			core[4] = { 3.0f, 2.5f, 1.5f, 1.0f };
+		unsigned char bgra[4];
+
+		xgpu_hdr_sdr_pixel(sdr, bgra);
+		CHECK(bgra[0] == 255 && bgra[1] == 64 && bgra[2] == 128 && bgra[3] == 77,
+			"an SDR pixel as it is, as BGRA: %u %u %u %u", bgra[0], bgra[1], bgra[2], bgra[3]);
+		xgpu_hdr_sdr_pixel(glow, bgra);
+		CHECK(bgra[2] == 255 && bgra[1] > 64 && bgra[1] < 255 && bgra[0] < bgra[1],
+			"a glow past white in SDR, its hue kept: %u %u %u", bgra[2], bgra[1], bgra[0]);
+		xgpu_hdr_sdr_pixel(core, bgra);
+		CHECK(bgra[0] == 255 && bgra[1] == 255 && bgra[2] == 255, "a core of light white: %u %u %u", bgra[2], bgra[1],
+			bgra[0]);
+	}
 	printf("%d failed\n", failures);
 	return failures != 0;
 }
