@@ -1335,7 +1335,8 @@ int main(int argc, char **argv)
 	{
 		unsigned long frames = 48000 * 3, n, chunk;
 		short *samples = malloc((frames + 4096) * sizeof(short));
-		float *output = malloc(frames * 2 * sizeof(float));
+		/* (whole mixes of CHUNK: the last runs past frames) */
+		float *output = malloc((frames + CHUNK) * 2 * sizeof(float));
 		struct sdl_stream *stream;
 		double steady[2] = { 0.0, 0.0 }, switching[2] = { 0.0, 0.0 };
 		int ear;
