@@ -2010,7 +2010,8 @@ picked opens a menu of what may be done to them, the players' vote to kick
 them (network_votekick.c), muting their voice and text chat on this
 machine (network_voice.c, network_chat.c); for an OpenH1 player, their
 party: Invite to party, Join their party, and their invite accepted
-(network_party.c); then the host's, those Host Controls offers for the
+(network_party.c), and Add friend (port/linux/src/p2p_friends.c); then the
+host's, those Host Controls offers for the
 player (network_host_controls.c: none for the host's own players but Move,
 no Ban or Mute for a bot): Mute for everyone (network_chat.c), Kick, Ban
 (picked twice), Move to the other team, and Host controls..., which opens
@@ -2022,6 +2023,9 @@ enum
 	_scoreboard_item_party_invite,
 	_scoreboard_item_party_join,
 	_scoreboard_item_party_accept,
+	/* port: Add friend, an OpenH1 player's (network_party.c,
+	port/linux/src/p2p_friends.c) */
+	_scoreboard_item_party_friend,
 	_scoreboard_item_host_mute,
 	_scoreboard_item_kick,
 	_scoreboard_item_ban,
@@ -2242,6 +2246,7 @@ static void scoreboard_menu_pick(
 	case _scoreboard_item_party_invite:
 	case _scoreboard_item_party_join:
 	case _scoreboard_item_party_accept:
+	case _scoreboard_item_party_friend:
 		network_party_player_act(scoreboard_menu->player_index, (short)(item - _scoreboard_item_party_invite));
 		break;
 	default:

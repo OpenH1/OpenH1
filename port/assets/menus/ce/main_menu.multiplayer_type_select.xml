@@ -100,7 +100,7 @@
 		<on event="right_trigger" run="port multiplayer refresh"/>
 		<child widget="main_menu/multiplayer_type_select/header_multiplayer"/>
 		<child widget="main_menu/multiplayer_type_select/hub/hub_list" platform="pointer"/>
-		<child widget="main_menu/multiplayer_type_select/hub/hub_divider" x="28" y="364" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/hub/hub_divider" x="28" y="375" platform="pointer"/>
 		<child widget="main_menu/multiplayer_type_select/hub/touch/hub_list" platform="touch"/>
 	</widget>
 </menus>

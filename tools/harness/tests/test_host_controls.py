@@ -127,8 +127,8 @@ def test_scoreboard_offers_host_controls():
     engine = read("source/game/game_engine.c")
     items = engine[engine.index("\t_scoreboard_item_vote,"):engine.index("NUMBER_OF_SCOREBOARD_ITEMS")]
     order = re.findall(r"_scoreboard_item_(\w+),", items)
-    assert order == ["vote", "mute", "party_invite", "party_join", "party_accept", "host_mute", "kick", "ban",
-                     "move_team", "host_controls", "cancel"]
+    assert order == ["vote", "mute", "party_invite", "party_join", "party_accept", "party_friend", "host_mute", "kick",
+                     "ban", "move_team", "host_controls", "cancel"]
     offered = engine[engine.index("static void scoreboard_menu_items("):engine.index("static long scoreboard_menu_first_row(")]
     assert "if (network_host_controls_available())" in offered
     for item, action in (("host_mute", "mute"), ("kick", "kick"), ("ban", "ban"), ("move_team", "move_team")):

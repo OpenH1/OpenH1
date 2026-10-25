@@ -148,9 +148,11 @@ enum
 	NUMBER_OF_PARTY_REQUESTS,
 
 	/* a status's flags (and the host's list's): the machine can party
-	(network.online), is in a party */
+	(network.online), is in a party, and its token is its player's friend
+	code (port/linux/src/p2p_friends.c: builds before friends send none) */
 	_party_status_online_bit = 0,
 	_party_status_in_party_bit,
+	_party_status_friend_code_bit,
 	/* an invite's: the answer to the player's ask */
 	_party_invite_answer_bit = 0,
 
@@ -189,6 +191,15 @@ enum
 	PARTY_HOLD_ASK_MILLISECONDS = 2000,
 	PARTY_HOLD_RETRY_MILLISECONDS = 5000,
 	PARTY_HOLD_ASKS = 3,
+
+	/* friends: the host's list's format, a code (p2p.h's
+	P2P_FRIEND_CODE_BYTES), the game's players noted for the recent players
+	this often */
+	FRIEND_FORMAT = 1,
+	FRIEND_CODE_SIZE = P2P_FRIEND_CODE_BYTES,
+	FRIEND_RECENT_MILLISECONDS = 3000,
+	/* a friends' notice shown this long */
+	FRIEND_TOAST_MILLISECONDS = 5000,
 };
 
 /* ---------- structures */
@@ -264,6 +275,24 @@ struct distributed_party_held_message
 	struct distributed_party_held answer;
 };
 
+/* the host's list of friend codes (_distributed_message_friend_players): an
+entry for each player whose machine told one */
+struct distributed_friend_player
+{
+	byte format;
+	byte player_index;
+	byte reserved[2];
+	byte code[8];
+};
+
+struct distributed_friend_players_message
+{
+	struct distributed_message_header header;
+	struct distributed_friend_player players[MAXIMUM_TRACKED_PLAYERS];
+};
+
+typedef char distributed_friend_player_size_assert[sizeof(struct distributed_friend_player) == 12 ? 1 : -1];
+typedef char friend_code_size_assert[FRIEND_CODE_SIZE <= 8 && FRIEND_CODE_SIZE <= PARTY_TOKEN_SIZE ? 1 : -1];
 typedef char distributed_party_request_size_assert[sizeof(struct distributed_party_request) == 28 ? 1 : -1];
 typedef char distributed_party_hold_size_assert[sizeof(struct distributed_party_hold) == 20 ? 1 : -1];
 typedef char distributed_party_held_size_assert[sizeof(struct distributed_party_held) == 4 ? 1 : -1];
@@ -316,7 +345,28 @@ static struct
 		none), and the holds granted it this game */
 		short group;
 		short hold_grants;
+		/* its player's friend code, as its status told; whether it has the
+		friends' list */
+		boolean has_code;
+		byte code[FRIEND_CODE_SIZE];
+		boolean friends_listed;
 	} machines[MAXIMUM_PARTY_MACHINES];
+	/* this machine's player's friend code (none: no profile), as told */
+	boolean has_own_code;
+	byte own_code[FRIEND_CODE_SIZE];
+	byte told_code[FRIEND_CODE_SIZE];
+	/* every machine: each player's friend code (by absolute index) */
+	struct
+	{
+		boolean has;
+		byte code[FRIEND_CODE_SIZE];
+	} codes[MAXIMUM_TRACKED_PLAYERS];
+	/* the host: the friends' list as last sent; the players last noted for
+	the recent players, when */
+	struct distributed_friend_player friends_sent[MAXIMUM_TRACKED_PLAYERS];
+	short friends_sent_count;
+	boolean friends_ever_sent;
+	unsigned long recent_time;
 	/* the host: room held for parties joining */
 	struct party_hold holds[MAXIMUM_PARTY_HOLDS];
 	/* a leader (a client, or the host): its members as last read, and as
@@ -664,15 +714,21 @@ static void party_status_update(
 	party_globals.status_time = now | 1;
 	party_globals.own_flags = 0;
 	party_globals.own_tag = 0;
+	party_globals.has_own_code = FALSE;
 	if (config_boolean("network.online"))
 	{
 		SET_FLAG(party_globals.own_flags, _party_status_online_bit, TRUE);
 		party_globals.own_tag = p2p_party_tag();
 		SET_FLAG(party_globals.own_flags, _party_status_in_party_bit, party_globals.own_tag != 0);
+		/* (its player's friend code: p2p_friends.c, a profile's) */
+		party_globals.has_own_code = p2p_friends_own_code(party_globals.own_code) != 0;
+		SET_FLAG(party_globals.own_flags, _party_status_friend_code_bit, party_globals.has_own_code);
 	}
 	if (!party_host() &&
 		(!party_globals.told || party_globals.told_flags != party_globals.own_flags ||
 			party_globals.told_tag != party_globals.own_tag ||
+			(party_globals.has_own_code && csmemcmp(party_globals.told_code, party_globals.own_code,
+				FRIEND_CODE_SIZE)) ||
 			now - party_globals.told_time >= PARTY_RETELL_MILLISECONDS))
 	{
 		struct distributed_party_request request;
@@ -684,11 +740,90 @@ static void party_status_update(
 		request.target_index = NO_PLAYER;
 		request.flags = party_globals.own_flags;
 		party_put_tag(request.tag, party_globals.own_tag);
+		/* (a status's token, unused before friends: the friend code) */
+		if (party_globals.has_own_code)
+			csmemcpy(request.token, party_globals.own_code, FRIEND_CODE_SIZE);
 		party_send(&request);
 		party_globals.told = TRUE;
 		party_globals.told_flags = party_globals.own_flags;
 		party_globals.told_tag = party_globals.own_tag;
+		csmemcpy(party_globals.told_code, party_globals.own_code, FRIEND_CODE_SIZE);
 		party_globals.told_time = now;
+	}
+}
+
+/* (the host) each player's friend code (its own player's, and those its
+machines told), made again with party_host_list; sent on to the machines
+that told it they can party, when it changed (and to a machine new to it).
+A machine of an older build never tells one, and drops the message's kind
+as one it does not know */
+static void party_host_friends_list(
+	long const *machine_indices,
+	short machine_count)
+{
+	struct distributed_friend_players_message message;
+	short count = 0;
+	short player_index;
+	short index;
+	boolean changed;
+
+	csmemset(&message, 0, sizeof(message));
+	csmemset(party_globals.codes, 0, sizeof(party_globals.codes));
+	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+	{
+		struct player_datum *player = distributed_player(player_index);
+		byte const *code = NULL;
+		long machine_index;
+
+		if (!player || bots_machine_is_bot(player->network_player_data.machine_index))
+			continue;
+		if (player->local_player_index != NONE)
+			code = party_globals.has_own_code ? party_globals.own_code : NULL;
+		else if (party_machine_told(machine_index = party_player_machine(player_index)) &&
+			party_globals.machines[machine_index].has_code)
+		{
+			code = party_globals.machines[machine_index].code;
+		}
+		if (!code)
+			continue;
+		party_globals.codes[player_index].has = TRUE;
+		csmemcpy(party_globals.codes[player_index].code, code, FRIEND_CODE_SIZE);
+		message.players[count].format = FRIEND_FORMAT;
+		message.players[count].player_index = (byte)player_index;
+		csmemcpy(message.players[count].code, code, FRIEND_CODE_SIZE);
+		count++;
+	}
+	changed = !party_globals.friends_ever_sent || count != party_globals.friends_sent_count ||
+		csmemcmp(message.players, party_globals.friends_sent, count * sizeof(message.players[0]));
+	csmemcpy(party_globals.friends_sent, message.players, count * sizeof(message.players[0]));
+	party_globals.friends_sent_count = count;
+	party_globals.friends_ever_sent = TRUE;
+	for (index = 0; index < machine_count; index++)
+	{
+		long machine_index = machine_indices[index];
+
+		if (!party_machine_told(machine_index) || (!changed && party_globals.machines[machine_index].friends_listed))
+			continue;
+		party_globals.machines[machine_index].friends_listed = TRUE;
+		distributed_send_to_machine_reliably(machine_index, &message, _distributed_message_friend_players, count,
+			(word)(sizeof(message.header) + count * sizeof(message.players[0])));
+	}
+}
+
+/* (a client) the host's list of friend codes */
+static void party_friends_heard(
+	struct distributed_friend_player const *players,
+	short count)
+{
+	short index;
+
+	csmemset(party_globals.codes, 0, sizeof(party_globals.codes));
+	for (index = 0; index < count; index++)
+	{
+		if (players[index].format != FRIEND_FORMAT || players[index].player_index >= MAXIMUM_TRACKED_PLAYERS)
+			continue;
+		party_globals.codes[players[index].player_index].has = TRUE;
+		csmemcpy(party_globals.codes[players[index].player_index].code, players[index].code, FRIEND_CODE_SIZE);
 	}
 }
 
@@ -778,6 +913,7 @@ static void party_host_list(
 		distributed_send_to_machine_reliably(machine_index, &message, _distributed_message_party_players, count,
 			(word)(sizeof(message.header) + count * sizeof(message.players[0])));
 	}
+	party_host_friends_list(machine_indices, machine_count);
 }
 
 /* (the host) a client's word: its status, or an invite or ask of one of
@@ -797,6 +933,8 @@ static void party_host_heard(
 		party_globals.machines[machine_index].heard = TRUE;
 		party_globals.machines[machine_index].flags = request->flags;
 		party_globals.machines[machine_index].tag = party_get_tag(request->tag);
+		party_globals.machines[machine_index].has_code = TEST_FLAG(request->flags, _party_status_friend_code_bit);
+		csmemcpy(party_globals.machines[machine_index].code, request->token, FRIEND_CODE_SIZE);
 		party_globals.list_time = 0;
 		return;
 	}
@@ -1268,6 +1406,55 @@ static short party_machine_group(
 	return 0;
 }
 
+/* ---------- friends: codes and the recent players */
+
+/* whether a player of this relation (port/linux/src/p2p.h's _p2p_friend_*)
+may be sent a friend request: none yet, or one asked this machine (its
+request accepted so) */
+static boolean party_friend_addable(
+	int relation)
+{
+	return relation == _p2p_friend_none || relation == _p2p_friend_request;
+}
+
+/* the players of the network game under way, noted for the recent players
+(p2p_friends_saw_player) every FRIEND_RECENT_MILLISECONDS: each of another
+machine, not a bot, with its friend code if the host told one (an OpenH1
+game's), an OpenCE machine's said so */
+static void party_recent_update(
+	unsigned long now)
+{
+	short connection = game_connection();
+	short player_index;
+
+	if ((connection != _game_connection_network_client && connection != _game_connection_network_server) ||
+		!game_in_progress() || !config_boolean("network.online"))
+	{
+		return;
+	}
+	if (party_globals.recent_time && now - party_globals.recent_time < FRIEND_RECENT_MILLISECONDS)
+		return;
+	party_globals.recent_time = now | 1;
+	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+	{
+		struct player_datum *player = distributed_player(player_index);
+		wchar_t name[PARTY_NAME_SIZE + 1];
+		char ascii[PARTY_NAME_SIZE + 1];
+		boolean coded;
+
+		if (!player || player->local_player_index != NONE ||
+			bots_machine_is_bot(player->network_player_data.machine_index))
+		{
+			continue;
+		}
+		party_player_name(player, name);
+		party_name_ascii(name, ascii, sizeof(ascii));
+		coded = party_game() && party_globals.codes[player_index].has;
+		p2p_friends_saw_player(coded ? party_globals.codes[player_index].code : NULL, ascii,
+			!coded && network_standard_player_is_opence(player_index), NULL);
+	}
+}
+
 /* ---------- public code */
 
 void network_party_update(
@@ -1275,6 +1462,7 @@ void network_party_update(
 {
 	unsigned long now = system_milliseconds();
 
+	party_recent_update(now);
 	if (!party_game())
 	{
 		if (party_globals.active)
@@ -1306,12 +1494,23 @@ unsigned long network_party_player_actions(
 	short absolute_index = player ? (short)DATUM_INDEX_TO_ABSOLUTE_INDEX(player_index) : NONE;
 	boolean prompted = party_prompted(system_milliseconds()) && party_globals.prompt.player_index == player_index;
 
+	unsigned long actions;
+
 	if (!player || absolute_index < 0 || absolute_index >= MAXIMUM_TRACKED_PLAYERS || !party_globals.active)
 		return 0;
-	return party_actions(party_game(), TEST_FLAG(party_globals.own_flags, _party_status_online_bit), player,
+	actions = party_actions(party_game(), TEST_FLAG(party_globals.own_flags, _party_status_online_bit), player,
 		network_standard_player_is_opence(player_index) ||
 			(party_host() && network_standard_machine_is_opence(party_player_machine(absolute_index))),
 		&party_globals.players[absolute_index], party_globals.own_tag, prompted);
+	/* (a friend request: a player of another machine whose code the host
+	told, not a friend, nor asked or blocked; this machine with a profile) */
+	if (party_game() && party_globals.has_own_code && player->local_player_index == NONE &&
+		party_globals.codes[absolute_index].has &&
+		party_friend_addable(p2p_friends_relation(party_globals.codes[absolute_index].code)))
+	{
+		SET_FLAG(actions, _network_party_action_add_friend, TRUE);
+	}
+	return actions;
 }
 
 void network_party_action_label(
@@ -1332,6 +1531,9 @@ void network_party_action_label(
 		break;
 	case _network_party_action_accept:
 		text = party_globals.prompt.kind == _party_request_ask ? L"Let into your party" : L"Accept party invite";
+		break;
+	case _network_party_action_add_friend:
+		text = L"Add friend";
 		break;
 	}
 	usnprintf(label, size, L"%s", text);
@@ -1374,6 +1576,16 @@ void network_party_player_act(
 	case _network_party_action_accept:
 		network_party_accept();
 		break;
+	case _network_party_action_add_friend:
+	{
+		char ascii[PARTY_NAME_SIZE + 1];
+		short absolute_index = (short)DATUM_INDEX_TO_ABSOLUTE_INDEX(player_index);
+
+		party_name_ascii(name, ascii, sizeof(ascii));
+		if (p2p_friends_add(party_globals.codes[absolute_index].code, ascii) == _p2p_friends_done)
+			party_notice(L"Friend request sent to %s", name);
+		break;
+	}
 	}
 }
 
@@ -1415,7 +1627,7 @@ boolean network_party_handles_message(
 	csmemcpy(&header, message, sizeof(header));
 	return header.type == _distributed_message_party_up || header.type == _distributed_message_party_down ||
 		header.type == _distributed_message_party_players || header.type == _distributed_message_party_hold ||
-		header.type == _distributed_message_party_held;
+		header.type == _distributed_message_party_held || header.type == _distributed_message_friend_players;
 }
 
 void network_party_handle_message(
@@ -1465,6 +1677,19 @@ void network_party_handle_message(
 
 			csmemcpy(players, entries, header.count * sizeof(players[0]));
 			party_list_heard(players, header.count);
+		}
+		break;
+	case _distributed_message_friend_players:
+		if (party_host() || machine_index != NONE || header.count > MAXIMUM_TRACKED_PLAYERS ||
+			size != sizeof(header) + header.count * sizeof(struct distributed_friend_player))
+		{
+			return;
+		}
+		{
+			struct distributed_friend_player players[MAXIMUM_TRACKED_PLAYERS];
+
+			csmemcpy(players, entries, header.count * sizeof(players[0]));
+			party_friends_heard(players, header.count);
 		}
 		break;
 	case _distributed_message_party_hold:
@@ -1732,6 +1957,129 @@ static void party_line_part(
 	rasterizer_draw_unicode_string(&rest, NULL, NULL, 0, text);
 }
 
+/* a friend's toast (port/linux/src/p2p_friends.c): its invite to its party,
+with its keys as the player plays (as a Discord friend's ask: the accept's
+and Esc, else the controller's D-pad Down and Up; on a touchscreen, where
+to answer it), or the newest notice (a friend online, a request, a request
+accepted) for FRIEND_TOAST_MILLISECONDS, fading; centered in window at y */
+static void party_friends_draw(
+	rectangle2d const *window,
+	long font_index,
+	short y)
+{
+	static unsigned long notice_serial, notice_time;
+	struct p2p_friends_notice notice;
+	char latin1[P2P_FRIEND_NAME_SIZE];
+	wchar_t name[P2P_FRIEND_NAME_SIZE];
+	wchar_t text[112];
+	rectangle2d bounds, cursor, measured;
+	real_argb_color color;
+	struct font_header *font;
+	short line_height, width, index;
+	unsigned long now = system_milliseconds();
+	boolean invite = p2p_friends_invite_prompt(latin1, sizeof(latin1)) != 0;
+	char key[32];
+	boolean keys;
+	real alpha = 1.0f;
+
+	if (!invite)
+	{
+		if (!p2p_friends_notice(&notice))
+			return;
+		/* (a notice new since the last frame: shown from now) */
+		if (notice.serial != notice_serial)
+		{
+			notice_serial = notice.serial;
+			notice_time = now;
+		}
+		alpha = party_line_alpha(now - notice_time, FRIEND_TOAST_MILLISECONDS);
+		if (alpha <= 0.0f)
+			return;
+		csmemcpy(latin1, notice.name, sizeof(latin1));
+	}
+	for (index = 0; index < P2P_FRIEND_NAME_SIZE - 1 && latin1[index]; index++)
+		name[index] = (wchar_t)(unsigned char)latin1[index];
+	name[index] = 0;
+	if (invite)
+	{
+		usnprintf(text, NUMBEROF(text), ui_widget_port_touch_menus() ?
+			L"%s invites you to their party: join from Multiplayer, Friends" : L"%s invites you to their party   ",
+			name);
+	}
+	else
+	{
+		usnprintf(text, NUMBEROF(text), notice.kind == _p2p_friends_notice_online ? L"%s is online" :
+			notice.kind == _p2p_friends_notice_request ? L"%s sent you a friend request: see Multiplayer, Friends" :
+			L"%s accepted your friend request", name);
+	}
+	text[NUMBEROF(text) - 1] = 0;
+	font = font_definition_get(font_index);
+	line_height = (short)(font->ascending_height + font->descending_height + font->leading_height);
+	if (line_height <= 0)
+		return;
+	keys = halo_keyboard_prompts() && halo_keyboard_action_name(HALO_KEYBOARD_PARTY_ACCEPT, key, sizeof(key));
+	color.alpha = alpha;
+	color.red = 0.81f;
+	color.green = 0.89f;
+	color.blue = 1.0f;
+	draw_string_set_draw_mode(font_index, NONE, 0 /* left */, 0, &color);
+	measured = *window;
+	cursor = *window;
+	draw_string_set_indents(0, 0);
+	draw_unicode_string_compute_bounds(&measured, text, &bounds, &cursor);
+	width = (short)(bounds.x1 - bounds.x0 + (invite && !ui_widget_port_touch_menus() ? 10 * line_height : 0));
+	bounds.x0 = (short)MAX(window->x0, (window->x0 + window->x1 - width) / 2);
+	bounds.x1 = window->x1;
+	bounds.y0 = y;
+	bounds.y1 = (short)(bounds.y0 + 2 * line_height);
+	{
+		rectangle2d panel;
+
+		panel.x0 = (short)(bounds.x0 - line_height / 2);
+		panel.x1 = (short)MIN(window->x1, bounds.x0 + width + line_height / 2);
+		panel.y0 = (short)(bounds.y0 - line_height / 4);
+		panel.y1 = (short)(bounds.y0 + line_height + line_height / 4);
+		draw_quad(&panel, ((pixel32)(200 * alpha) << 24) | 0x00061430);
+	}
+	cursor = bounds;
+	draw_string_set_indents(0, 0);
+	draw_unicode_string_compute_bounds(&bounds, text, &measured, &cursor);
+	measured.x0 = bounds.x0;
+	rasterizer_draw_unicode_string(&measured, NULL, NULL, 0, text);
+	if (!invite || ui_widget_port_touch_menus())
+	{
+		draw_string_set_indents(0, 0);
+		return;
+	}
+	if (keys)
+	{
+		pixel32 key_color = real_argb_color_to_pixel32(&color);
+
+		cursor.x0 -= 3;
+		if (hud_key_prompt_draw_key(key, &bounds, &cursor, key_color))
+		{
+			draw_string_set_draw_mode(font_index, NONE, 0 /* left */, 0, &color);
+			party_line_part(&bounds, &cursor, L" Join   ");
+			if (hud_key_prompt_draw_key("Esc", &bounds, &cursor, key_color))
+			{
+				draw_string_set_draw_mode(font_index, NONE, 0 /* left */, 0, &color);
+				party_line_part(&bounds, &cursor, L" Not now");
+			}
+			draw_string_set_indents(0, 0);
+			return;
+		}
+	}
+	{
+		rectangle2d rest = bounds;
+
+		rest.x0 = cursor.x0;
+		draw_string_set_draw_mode(font_index, NONE, 0 /* left */, 0, &color);
+		draw_string_set_indents(0, 0);
+		draw_string_and_hack_in_icons(&rest, NULL, NULL, 0, L"%dpad-down Join   %dpad-up Not now", FALSE);
+	}
+	draw_string_set_indents(0, 0);
+}
+
 void network_party_discord_draw(
 	rectangle2d const *window,
 	long font_index,
@@ -1748,8 +2096,14 @@ void network_party_discord_draw(
 	boolean keys;
 	int game = FALSE;
 
-	if (font_index == NONE || !p2p_discord_join_request(latin1, sizeof(latin1), &game))
+	if (font_index == NONE)
 		return;
+	/* (no Discord friend's ask: a friend's toast) */
+	if (!p2p_discord_join_request(latin1, sizeof(latin1), &game))
+	{
+		party_friends_draw(window, font_index, y);
+		return;
+	}
 	for (index = 0; index < P2P_DISCORD_REQUEST_NAME_SIZE - 1 && latin1[index]; index++)
 		name[index] = (wchar_t)(unsigned char)latin1[index];
 	name[index] = 0;

@@ -1714,8 +1714,13 @@ MULTIPLAYER_ROWS = {
         "multiplayer_type_create_lan_item", "multiplayer_type_online_coop_item", "multiplayer_type_coop_item",
         "multiplayer_type_create_bots_item"])}
 # (the screen's line, in the PC version's line's place: the hub's, over
-# EDIT GAMETYPES, _hub)
-MULTIPLAYER_LINE_PLACE = (28, 364)
+# EDIT GAMETYPES, _hub: its list's items HUB_LIST_STEP apart, its sections
+# HUB_SECTION_GAP, EDIT GAMETYPES HUB_GAMETYPES_GAP under the line, to keep
+# clear of the footer)
+MULTIPLAYER_LINE_PLACE = (28, 375)
+HUB_LIST_STEP = 27
+HUB_SECTION_GAP = 6
+HUB_GAMETYPES_GAP = 6
 # the screen's children for one platform only (tools/ce_menus.py): the
 # computer's list and its line (the hub's, in the PC version's places:
 # WIDGET_PATCHES' swap), the touchscreen's tiles in their place (_touch_hub)
@@ -3374,6 +3379,7 @@ HUB_DESCRIPTIONS = [
     "Play the campaign together: online, or split screen on this computer.",
     "Group up with friends: they join with your party's link, and come with you to every game you host or join.",
     "Pick a playlist: OpenH1 finds a game with room for you and your party, or hosts one that fills up.",
+    "Your friends, who's online and where, with your friend code. Join them, invite them, or add someone you played.",
 ]
 
 
@@ -3404,7 +3410,7 @@ def parts_pictures() -> list:
              [(framed(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT, "#0d3a7a", 0.9, "#8cc8ff"), BROWSER_LIST_WIDTH,
                BROWSER_ROW_HEIGHT)])]
     prompt_widths = sorted({width for *_, width, _ in BROWSER_PROMPTS + HUB_PROMPTS + PARTY_PROMPTS +
-                            LOBBY_PROMPTS})
+                            LOBBY_PROMPTS + FRIENDS_PROMPTS})
     join_w, join_h = BROWSER_JOIN
     return [
         # (Settings' tab, then its current one: menu_functions.c's
@@ -3823,6 +3829,9 @@ def _hub() -> list:
         # (the party's screen: _party)
         "hub_party": ("PARTY", [f'<on event="{event}" open="{MT}/party/party_screen"/>' for event in ("a", "start")],
                       "party_note"),
+        # (the friends' screen: _friends)
+        "hub_friends": ("FRIENDS", [f'<on event="{event}" open="{MT}/friends/friends_screen"/>'
+                                    for event in ("a", "start")], "friends_note"),
         "hub_create": ("CREATE GAME ›", [f'<on event="{event}" open="{HUB}/create_screen"/>'
                                               for event in ("a", "start")], None),
         "hub_create_bots": ("PLAY WITH BOTS", creates, None),
@@ -3838,9 +3847,7 @@ def _hub() -> list:
             f'<on event="{event}" run="port coop begin" open="{MT}/coop/player_2_profile_screen"/>'
             for event in ("a", "start")], None),
     }
-    step = item_h + 2
-
-    def page_list(name, sections, prompts):
+    def page_list(name, sections, prompts, step=item_h + 2, gap=8):
         children, y = [], top
         for section, words, names in sections:
             if section:
@@ -3848,21 +3855,23 @@ def _hub() -> list:
                 y += PART_SECTION_HEIGHT + 2
             for item in names:
                 if item == "hub_gametypes":
-                    y = MULTIPLAYER_LINE_PLACE[1] + 9
+                    y = MULTIPLAYER_LINE_PLACE[1] + HUB_GAMETYPES_GAP
                 children.append(f'<child widget="{HUB}/{item}" x="{HUB_LIST_X}" y="{y}"/>')
                 y += step
-            y += 8
+            y += gap
         children.append(f'<child widget="{HUB}/{prompts}" y="414"/>')
         return _widget(f"{HUB}/{name}", [("type", "column_list"), ("width", 640), ("height", 480),
                                          ("flags", "pass_unhandled_to_focused_child up_down_tabs_items"),
                                          ("description", f"{HUB}/hub_panel")],
                        ['<data input="port multiplayer status"/>', *children])
 
+    # (Multiplayer's own list a unit closer, its sections closer, for its
+    # eleven items: HUB_LIST_STEP)
     lines = page_list("hub_list", [("section_online", "PLAY ONLINE", ["hub_matchmaking", "hub_join_internet",
                                                                       "hub_join_lan_item", "hub_join_direct",
-                                                                      "hub_party"]),
+                                                                      "hub_party", "hub_friends"]),
                                    ("section_host", "HOST", ["hub_create", "hub_create_bots", "hub_coop"]),
-                                   (None, None, ["hub_gametypes"])], "hub_prompts")
+                                   (None, None, ["hub_gametypes"])], "hub_prompts", HUB_LIST_STEP, HUB_SECTION_GAP)
     lines += _section(f"{HUB}/section_online", "PLAY ONLINE", item_w, wide(-WIDE_HALF, HUB_WIDE_ITEMS))
     lines += _section(f"{HUB}/section_host", "HOST", item_w, wide(-WIDE_HALF, HUB_WIDE_ITEMS))
     lines += _widget(f"{HUB}/hub_divider", [("width", item_w), ("height", 4), ("bitmap", part_line(item_w)),
@@ -3894,7 +3903,8 @@ def _hub() -> list:
     # menu_functions.c's multiplayer_status_notes)
     # (right-aligned in from the highlight's end, clear of the items' words)
     for name, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C"),
-                        ("party_note", "#FF7FB2FF"), ("matchmaking_note", "#FF5ED38C")):
+                        ("party_note", "#FF7FB2FF"), ("matchmaking_note", "#FF5ED38C"),
+                        ("friends_note", "#FF5ED38C")):
         lines += _widget(f"{HUB}/{name}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
                                            ("wide", wide(0, HUB_WIDE_ITEMS)),
                                            ("font", "ui\\small_ui"), ("color", color), ("align", "right"),
@@ -4075,6 +4085,183 @@ def _matchmaking() -> list:
                                                    ("bitmap", part_panel(width, height)),
                                                    ("wide", wide(*HUB_WIDE_PANEL))], panel)
     lines += _prompts(base, "matchmaking_prompts", MATCHMAKING_PROMPTS)
+    return lines
+
+
+# the Friends screen's (_friends, menu_functions.c's friends_menu.inc): its
+# rows (the first this profile's own code, then the list:
+# port/linux/src/p2p_friends.c's order), and its footer's prompts, those of
+# the row chosen shown (friends_screen_update): its first action (A), its
+# second (X), its third (Y: REMOVE, BLOCK, or the own row's APPEAR OFFLINE
+# or ONLINE), each wide enough for the keyboard's keys' names ("Enter")
+FRIENDS_ROWS = 10
+FRIENDS_PROMPTS = [
+    ("prompt_copy", "%a-button COPY CODE", 28, 144, '<on event="a" run="port friends button"/>'),
+    ("prompt_join", "%a-button JOIN", 28, 144, '<on event="a" run="port friends button"/>'),
+    ("prompt_accept", "%a-button ACCEPT", 28, 144, '<on event="a" run="port friends button"/>'),
+    ("prompt_add", "%a-button ADD FRIEND", 28, 144, '<on event="a" run="port friends button"/>'),
+    ("prompt_unblock", "%a-button UNBLOCK", 28, 144, '<on event="a" run="port friends button"/>'),
+    ("prompt_code", "%x-button ADD BY CODE", 176, 144, '<on event="a" run="port friends button"/>'),
+    ("prompt_invite", "%x-button INVITE", 176, 144, '<on event="a" run="port friends button"/>'),
+    ("prompt_ignore", "%x-button IGNORE", 176, 144, '<on event="a" run="port friends button"/>'),
+    ("prompt_cancel", "%x-button CANCEL", 176, 144, '<on event="a" run="port friends button"/>'),
+    ("prompt_remove", "%y-button REMOVE", 324, 164, '<on event="a" run="port friends button"/>'),
+    ("prompt_block", "%y-button BLOCK", 324, 164, '<on event="a" run="port friends button"/>'),
+    ("prompt_hide", "%y-button APPEAR OFFLINE", 324, 164, '<on event="a" run="port friends button"/>'),
+    ("prompt_show", "%y-button APPEAR ONLINE", 324, 164, '<on event="a" run="port friends button"/>'),
+    ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="port friends button"/>'),
+]
+# (the touchscreen's: buttons, their words alone)
+TOUCH_FRIENDS_PROMPTS = [
+    (name, words.split(" ", 1)[1], x, width, handler) for name, words, x, width, handler in [
+        ("prompt_copy", "% COPY CODE", 28, 120, '<on event="a" run="port friends button"/>'),
+        ("prompt_join", "% JOIN", 28, 120, '<on event="a" run="port friends button"/>'),
+        ("prompt_accept", "% ACCEPT", 28, 120, '<on event="a" run="port friends button"/>'),
+        ("prompt_add", "% ADD FRIEND", 28, 120, '<on event="a" run="port friends button"/>'),
+        ("prompt_unblock", "% UNBLOCK", 28, 120, '<on event="a" run="port friends button"/>'),
+        ("prompt_code", "% ADD BY CODE", 152, 120, '<on event="a" run="port friends button"/>'),
+        ("prompt_invite", "% INVITE", 152, 120, '<on event="a" run="port friends button"/>'),
+        ("prompt_ignore", "% IGNORE", 152, 120, '<on event="a" run="port friends button"/>'),
+        ("prompt_cancel", "% CANCEL", 152, 120, '<on event="a" run="port friends button"/>'),
+        ("prompt_remove", "% REMOVE", 276, 106, '<on event="a" run="port friends button"/>'),
+        ("prompt_block", "% BLOCK", 276, 106, '<on event="a" run="port friends button"/>'),
+        ("prompt_hide", "% HIDE ME", 276, 106, '<on event="a" run="port friends button"/>'),
+        ("prompt_show", "% SHOW ME", 276, 106, '<on event="a" run="port friends button"/>'),
+        ("prompt_back", "% BACK", 502, 110, '<on event="a" run="port friends button"/>'),
+    ]]
+
+
+def _friends_panel(base: str, place: tuple, wide_panel: tuple, folder: str) -> list:
+    """the Friends screen's panel, at place (left, top, width, height), wider
+    on a wide screen by wide_panel: the row chosen's kind, name, where it is
+    and what it does (menu_functions.c's friends_screen_update), and this
+    profile's code at its foot"""
+    left, top, width, height = place
+    x, inner = left + 14, width - 28
+    narrow = inner < 240
+    panel, lines = [], []
+
+    def text(name, ty, h, font, color, words=None):
+        panel.append(f'<child widget="{folder}/{name}"/>')
+        pairs = [("left", x), ("top", top + ty), ("width", inner), ("height", h), ("font", font), ("color", color),
+                 ("wide", wide(0, wide_panel[1]))]
+        return (_widget(f"{folder}/{name}", [("type", "text"), ("controller", 1), *pairs, ("text", words),
+                                             ("text_flags", "no_focus_test")], [])
+                if words else _part_text(f"{folder}/{name}", pairs))
+
+    lines += text("panel_kind", 12, 16, "ui\\small_ui", PART_DIM)
+    lines += text("panel_title", 28, 24, "ui\\large_ui", "#FFFFFFFF")
+    lines += text("panel_status", 56, 44, "ui\\large_ui", SETTINGS_BLUE)
+    lines += text("panel_detail", 104, 100 if narrow else 84, "ui\\small_ui", SETTINGS_BLUE)
+    lines += text("panel_code_label", height - 96, 16, "ui\\small_ui", PART_DIM, words="YOUR FRIEND CODE")
+    lines += text("panel_code", height - 80, 24, "ui\\large_ui", "#FFFFFFFF")
+    lines += text("panel_help", height - 54, 44, "ui\\small_ui", SETTINGS_BLUE)
+    lines += _widget(f"{folder}/friends_panel", [("controller", 1), ("left", left), ("top", top), ("width", width),
+                                                ("height", height), ("bitmap", part_panel(width, height)),
+                                                ("wide", wide(*wide_panel))], panel)
+    return lines
+
+
+def _friends() -> list:
+    """the Friends screen (port/linux/game/friends_menu.inc), in
+    Multiplayer's look (_hub's parts): FRIENDS's section (how many are
+    online at its end) over its rows: this profile's code first (COPY CODE,
+    ADD BY CODE), then the friends online, the friend requests, the friends
+    offline, the requests sent, the recent players and the codes blocked,
+    each its name and, at its end, where it is or what it is; the panel
+    beside them (the row chosen: its kind, name, where it is and its game,
+    and this profile's code); the footer's prompts of the row chosen: COPY
+    CODE, JOIN, ACCEPT, ADD FRIEND or UNBLOCK (A), ADD BY CODE, INVITE,
+    IGNORE or CANCEL (X), APPEAR OFFLINE or ONLINE, REMOVE or BLOCK (Y),
+    BACK. The list scrolls
+    at its ends. On a wide screen it is laid out as Multiplayer is
+    (HUB_WIDE_ITEMS, HUB_WIDE_PANEL); the touchscreen's is _touch_friends"""
+    base = f"{MT}/friends"
+    top = HUB_PANEL[1]
+    item_w, item_h = HUB_ITEM
+    step = item_h + 2
+    items_wide = wide(-WIDE_HALF, HUB_WIDE_ITEMS)
+    lines = _widget(f"{base}/friends_screen", [("width", 640), ("height", 480),
+                                               ("flags", "pass_unhandled_to_focused_child"),
+                                               ("bitmap", "bitmaps/gradient")],
+                    ['<on event="created" run="port friends open"/>', '<on event="b" back="true"/>',
+                     '<on event="back" back="true"/>', '<on event="x" run="port friends x"/>',
+                     '<on event="y" run="port friends y"/>',
+                     f'<child widget="{MT}/header_multiplayer"/>',
+                     f'<child widget="{base}/section_friends" x="{HUB_LIST_X}" y="{top}" platform="pointer"/>',
+                     f'<child widget="{base}/friends_count" platform="pointer"/>',
+                     f'<child widget="{base}/touch/section_friends" x="{BROWSER_LIST_X}" y="{top}" '
+                     'platform="touch"/>',
+                     f'<child widget="{base}/touch/friends_count" platform="touch"/>',
+                     f'<child widget="{base}/friends_panel" platform="pointer"/>',
+                     f'<child widget="{base}/friends_list" platform="pointer"/>',
+                     f'<child widget="{base}/touch/friends_panel" platform="touch"/>',
+                     f'<child widget="{base}/touch/friends_list" platform="touch"/>'])
+    lines += _section(f"{base}/section_friends", "FRIENDS", item_w, items_wide)
+    lines += _part_text(f"{base}/friends_count", [("left", HUB_LIST_X), ("top", top + 2), ("width", item_w - 4),
+                                                 ("height", 16), ("font", "ui\\small_ui"), ("color", PART_DIM),
+                                                 ("align", "right"), ("wide", items_wide)])
+    rows = [f'<child widget="{base}/fr_row_{row}" x="{HUB_LIST_X}" y="{top + PART_SECTION_HEIGHT + 2 + step * row}"/>'
+            for row in range(FRIENDS_ROWS)]
+    lines += _widget(f"{base}/friends_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                              ("flags", "pass_unhandled_to_focused_child up_down_tabs_items")],
+                     ['<data input="port friends update"/>', *rows,
+                      f'<child widget="{base}/friends_prompts" y="414"/>'])
+    # (a row: its name, filled in, and at its end where it is: green for a
+    # friend online or a request, blue otherwise)
+    for row in range(FRIENDS_ROWS):
+        lines += _widget(f"{base}/fr_row_{row}", [("type", "text"), ("width", item_w), ("height", item_h),
+                                                  ("wide", items_wide), ("bitmap", part_highlight(item_w, item_h)),
+                                                  ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE), ("text_x", 10),
+                                                  ("text_y", 5)],
+                         ['<on event="a" run="port friends button"/>',
+                          '<on event="start" run="port friends button"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          f'<child widget="{base}/fr_note_{row}"/>', f'<child widget="{base}/fr_live_{row}"/>'])
+        for note, color in ((f"fr_note_{row}", "#FF7FB2FF"), (f"fr_live_{row}", "#FF5ED38C")):
+            lines += _widget(f"{base}/{note}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
+                                                ("wide", wide(0, HUB_WIDE_ITEMS)), ("font", "ui\\small_ui"),
+                                                ("color", color), ("align", "right"), ("text_y", 8),
+                                                ("text_flags", "no_focus_test")], [])
+    lines += _friends_panel(base, HUB_PANEL, HUB_WIDE_PANEL, base)
+    lines += _prompts(base, "friends_prompts", FRIENDS_PROMPTS)
+    lines += _friends_add()
+    return lines
+
+
+def _friends_add() -> list:
+    """the Friends screen's ADD BY CODE: a friend's code typed (a code on the
+    clipboard first, if there is one), SEND REQUEST sends it a friend request
+    if it is a code (its check character right); else its help says so"""
+    base = f"{MT}/friends/add"
+    spec = {"screen": "add_screen", "spacing": 28, "help_top": 120,
+            "header": ("header_add_friend", f"{MT}/header_multiplayer")}
+    extra = _value_row(base, "code", 0, "port friends code edit")
+    extra += _button(f"{base}/button_defaults", 3, [])
+    extra += _widget(f"{base}/button_ok", [("type", "text"), ("width", 128), ("height", 24),
+                                           ("bitmap", "bitmaps/text_button_background"), ("text", "SEND REQUEST"),
+                                           ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
+                                           ("text_y", 2)],
+                     ['<on event="a" run="port friends code send"/>', '<on event="start" run="port friends code send"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    extra += _strings(f"{base}/labels", ["FRIEND CODE:"])
+    # (by its state: friends_menu.inc's friends_add_update)
+    extra += _strings(f"{base}/help_strings", [
+        "",
+        "Type your friend's code (like K7QM-2XPA-9DTR), then\\npress Enter to send them a friend request.",
+        "That code has a typo: check it and try again.",
+        "That is not a friend code: it has 12 letters and digits.",
+        "That is your own code. Send it to your friends.",
+        "Already your friend, or a request is waiting.",
+        "Too many friends or requests. Remove some first.",
+        "Make a player profile first (Settings).",
+    ])
+    lines = _screen(base, spec, [(f"{base}/op_code", None)], ["port friends code update"],
+                    ['<on event="created" run="port friends code init"/>'], extra)
+    lines = [line.replace(f'<child widget="{base}/button_defaults" y="1"/>', "") for line in lines]
+    lines = [line.replace('<on event="b" back="true"/>', '<on event="b" run="port friends code back"/>')
+             .replace('<on event="back" back="true"/>', '<on event="back" run="port friends code back"/>')
+             for line in lines]
     return lines
 
 
@@ -4289,13 +4476,17 @@ TOUCH_TILE = ((TOUCH_HUB_WIDTH - TOUCH_GAP) // 2, TOUCH_TAP)
 TOUCH_HUB_PANEL = (HUB_LIST_X + TOUCH_HUB_WIDTH + 8, HUB_PANEL[1],
                    640 - HUB_LIST_X - (HUB_LIST_X + TOUCH_HUB_WIDTH + 8), HUB_PANEL[3])
 TOUCH_TILES = [
-    ("section_online", "PLAY ONLINE", [("hub_join_internet", "BROWSE GAMES", "browser_note"),
+    ("section_online", "PLAY ONLINE", [("hub_matchmaking", "MATCHMAKING", "matchmaking_note"),
+                                       ("hub_join_internet", "BROWSE GAMES", "browser_note"),
                                        ("hub_join_lan_item", "LOCAL GAMES", "item_note"),
                                        ("hub_join_direct", "JOIN BY LINK", "invite_note"),
-                                       ("hub_party", "PARTY", "party_note")]),
+                                       ("hub_party", "PARTY", "party_note"),
+                                       ("hub_friends", "FRIENDS", "friends_note")]),
     ("section_host", "HOST", [("hub_create", "CREATE GAME ›", None), ("hub_create_bots", "PLAY WITH BOTS", None),
                               ("hub_coop", "CO-OP ›", None), ("hub_gametypes", "GAMETYPES", None)]),
 ]
+# (the hint's place, width: beside the title, over the panel)
+TOUCH_HUB_HINT = (330, 46, 640 - 28 - 330)
 TOUCH_HUB_PROMPTS = [
     ("prompt_refresh", "REFRESH", 28, 136, '<on event="a" run="port multiplayer refresh"/>'),
     ("prompt_back", "BACK", 502, 110, '<on event="a" run="mouse emit back event"/>'),
@@ -4331,6 +4522,12 @@ TOUCH_HOST_CELLS = {
     "value": (180, 16, 170, 20, 84, BROWSER_WIDE_LIST - 84),
 }
 TOUCH_HOST_BACK = (502, 110)
+# the Friends screen's (_touch_friends): its rows under FRIENDS's title
+# (each TOUCH_TAP tall, to end over the footer's band), and its panel beside
+# them, as Host Controls' is
+TOUCH_FRIENDS_ROWS = 5
+TOUCH_FRIENDS_TOP = HUB_PANEL[1] + PART_SECTION_HEIGHT + 4
+TOUCH_FRIENDS_PANEL = TOUCH_HOST_PANEL
 TOUCH_PARTY_PROMPTS = [
     ("prompt_make", "MAKE PARTY", 28, 140, '<on event="a" run="port party button"/>'),
     ("prompt_copy", "COPY LINK", 28, 140, '<on event="a" run="port party button"/>'),
@@ -4369,7 +4566,8 @@ def touch_sizes() -> dict:
     """each touch part's sizes, as the layouts use them"""
     panel_inner = TOUCH_PANEL_WIDTH - 24
     buttons = {(width, TOUCH_TAP) for prompts in (TOUCH_BROWSER_PROMPTS, TOUCH_HUB_PROMPTS, TOUCH_LOBBY_PROMPTS,
-                                                  TOUCH_PARTY_PROMPTS) for *_, width, _ in prompts}
+                                                  TOUCH_PARTY_PROMPTS, TOUCH_FRIENDS_PROMPTS)
+               for *_, width, _ in prompts}
     buttons |= {(panel_inner, TOUCH_TAP), (TOUCH_HOST_BACK[1], TOUCH_TAP)}
     return {
         "chip": sorted({(TOUCH_CHIP_WIDTHS[count], TOUCH_TAP) for count in TOUCH_CHIP_WIDTHS}),
@@ -4597,8 +4795,11 @@ def _touch_hub() -> tuple:
                f'<on event="a" run="mp type set mode" open="{MT}/connected/connected_map_select_wrapper"/>']
     browser = f"{MT}/join_game/join_game_screen"
     handlers.update({
+        "hub_matchmaking": [f'<on event="{event}" open="{MT}/matchmaking/matchmaking_screen"/>'
+                            for event in ("a", "start")],
         "hub_join_internet": joins(browser), "hub_join_lan_item": joins(browser), "hub_join_direct": joins(browser),
         "hub_party": [f'<on event="{event}" open="{MT}/party/party_screen"/>' for event in ("a", "start")],
+        "hub_friends": [f'<on event="{event}" open="{MT}/friends/friends_screen"/>' for event in ("a", "start")],
         "hub_create": [f'<on event="{event}" open="{HUB}/create_screen"/>' for event in ("a", "start")],
         "hub_create_bots": creates,
         "hub_coop": [f'<on event="{event}" open="{HUB}/coop_screen"/>' for event in ("a", "start")],
@@ -4618,19 +4819,25 @@ def _touch_hub() -> tuple:
                                            ("text", words), ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE),
                                            ("text_x", 10), ("text_y", 9 if note else 17)], inner)
 
+    # (PLAY ONLINE's three rows and HOST's two, each title just over its
+    # tiles, to end over the footer's band; the hint beside the title)
     children, y = [], HUB_PANEL[1]
     for section, words, items in TOUCH_TILES:
         children.append(f'<child widget="{touch}/{section}" x="{HUB_LIST_X}" y="{y}"/>')
         lines += _section(f"{touch}/{section}", words, TOUCH_HUB_WIDTH, wide(-WIDE_HALF, HUB_WIDE_ITEMS))
-        y += PART_SECTION_HEIGHT + 6
+        y += PART_SECTION_HEIGHT + 4
         for index, (name, label, note) in enumerate(items):
             column = index % 2
             children.append(f'<child widget="{touch}/{name}" x="{HUB_LIST_X + column * (tile_w + TOUCH_GAP)}" '
                             f'y="{y + index // 2 * TOUCH_STEP}"/>')
             lines += tile(name, label, note, tile_w, wide(-WIDE_HALF + column * half, half))
-        y += 2 * TOUCH_STEP + 8
+        y += (len(items) + 1) // 2 * TOUCH_STEP - TOUCH_GAP + 6
     children.append(f'<child widget="{touch}/hub_hint"/>')
-    lines += _touch_hint(f"{touch}/hub_hint", y + 2)
+    lines += _widget(f"{touch}/hub_hint", [("type", "text"), ("controller", 1), ("left", TOUCH_HUB_HINT[0]),
+                                          ("top", TOUCH_HUB_HINT[1]), ("width", TOUCH_HUB_HINT[2]), ("height", 18),
+                                          ("text", TOUCH_HINT), ("font", "ui\\small_ui"), ("color", PART_DIM),
+                                          ("align", "right"), ("wide", WIDE_RIGHT),
+                                          ("text_flags", "no_focus_test")], [])
     children.append(f'<child widget="{touch}/hub_prompts" y="{TOUCH_FOOTER_TOP}"/>')
     lines += _widget(f"{touch}/hub_list", [("type", "column_list"), ("width", 640), ("height", 480),
                                           ("flags", "pass_unhandled_to_focused_child up_down_tabs_items"),
@@ -4638,7 +4845,8 @@ def _touch_hub() -> tuple:
                      ['<data input="port multiplayer status"/>', *children])
     lines += _hub_panel(touch, TOUCH_HUB_PANEL, HUB_WIDE_PANEL)
     for note, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C"),
-                        ("party_note", "#FF7FB2FF")):
+                        ("party_note", "#FF7FB2FF"), ("matchmaking_note", "#FF5ED38C"),
+                        ("friends_note", "#FF5ED38C")):
         lines += _widget(f"{touch}/{note}", [("type", "text"), ("width", tile_w - 20), ("height", 16),
                                             ("wide", wide(0, half)), ("font", "ui\\small_ui"), ("color", color),
                                             ("text_flags", "no_focus_test")], [])
@@ -4675,6 +4883,44 @@ def _touch_party() -> list:
                     ['<data input="port party update"/>', f'<child widget="{touch}/party_prompts" '
                                                           f'y="{TOUCH_FOOTER_TOP}"/>'])
     return lines + _touch_prompts(touch, "party_prompts", TOUCH_PARTY_PROMPTS)
+
+
+def _touch_friends() -> list:
+    """the Friends screen on a touchscreen (_friends's widgets by the same
+    names, its own in friends/touch): TOUCH_FRIENDS_ROWS rows TOUCH_TAP tall
+    under FRIENDS's title, each its name over where it is, the panel beside
+    them (_friends_panel's, narrower), and the footer's buttons, those of the
+    row chosen shown"""
+    base = f"{MT}/friends"
+    touch = f"{base}/touch"
+    row_w = TOUCH_LIST_WIDTH
+    list_wide = wide(-WIDE_HALF, BROWSER_WIDE_LIST)
+    rows = [f'<child widget="{touch}/fr_row_{row}" x="{BROWSER_LIST_X}" y="{TOUCH_FRIENDS_TOP + TOUCH_STEP * row}"/>'
+            for row in range(TOUCH_FRIENDS_ROWS)]
+    lines = _widget(f"{touch}/friends_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                              ("flags", "pass_unhandled_to_focused_child up_down_tabs_children")],
+                    ['<data input="port friends update"/>', *rows,
+                     f'<child widget="{touch}/friends_prompts" y="{TOUCH_FOOTER_TOP}"/>'])
+    lines += _section(f"{touch}/section_friends", "FRIENDS", TOUCH_HUB_WIDTH, list_wide)
+    lines += _part_text(f"{touch}/friends_count", [("left", BROWSER_LIST_X), ("top", HUB_PANEL[1] + 2),
+                                                  ("width", row_w - 4), ("height", 16), ("font", "ui\\small_ui"),
+                                                  ("color", PART_DIM), ("align", "right"), ("wide", list_wide)])
+    for row in range(TOUCH_FRIENDS_ROWS):
+        lines += _widget(f"{touch}/fr_row_{row}", [("type", "text"), ("width", row_w), ("height", TOUCH_TAP),
+                                                   ("bitmap", touch_row(row_w, TOUCH_TAP)), ("wide", list_wide),
+                                                   ("font", "ui\\large_ui"), ("color", "#FFFFFFFF"), ("text_x", 12),
+                                                   ("text_y", 7)],
+                         ['<on event="a" run="port friends button"/>', '<on event="start" run="port friends button"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          f'<child widget="{touch}/fr_note_{row}" x="12" y="30"/>',
+                          f'<child widget="{touch}/fr_live_{row}" x="12" y="30"/>'])
+        for note, color in ((f"fr_note_{row}", "#FF7FB2FF"), (f"fr_live_{row}", "#FF5ED38C")):
+            lines += _widget(f"{touch}/{note}", [("type", "text"), ("width", row_w - 24), ("height", 16),
+                                                 ("wide", wide(0, BROWSER_WIDE_LIST)), ("font", "ui\\small_ui"),
+                                                 ("color", color), ("text_flags", "no_focus_test")], [])
+    lines += _friends_panel(touch, TOUCH_FRIENDS_PANEL, BROWSER_WIDE_PANEL, touch)
+    lines += _touch_prompts(touch, "friends_prompts", TOUCH_FRIENDS_PROMPTS)
+    return lines
 
 
 def _touch_lobby_board(base: str) -> tuple:
@@ -4866,6 +5112,8 @@ def multiplayer_files() -> dict:
         f"{MT}/party".replace("/", ".") + ".xml": head + _party() + ["</menus>", ""],
         f"{MT}/matchmaking".replace("/", ".") + ".xml": head + _matchmaking() + ["</menus>", ""],
         f"{MT}/party/touch".replace("/", ".") + ".xml": head + _touch_party() + ["</menus>", ""],
+        f"{MT}/friends".replace("/", ".") + ".xml": head + _friends() + ["</menus>", ""],
+        f"{MT}/friends/touch".replace("/", ".") + ".xml": head + _touch_friends() + ["</menus>", ""],
         HOST_CONTROLS.replace("/", ".") + ".xml": head + _host_controls() + ["</menus>", ""],
         f"{HOST_CONTROLS}/touch".replace("/", ".") + ".xml": head + _touch_host_controls()[1] + ["</menus>", ""],
         MT.replace("/", ".") + ".port.xml": head + _multiplayer_status() + ["</menus>", ""],

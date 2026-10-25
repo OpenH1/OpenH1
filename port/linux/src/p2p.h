@@ -593,13 +593,14 @@ struct p2p_friend
 	char game[P2P_FRIEND_GAME_SIZE];
 };
 
-/* the profile's: it has an identity (a profile), its code, a broker is
-connected, its presence is shared; its friends, those online, the requests
-waiting */
+/* the profile's: it has an identity (a profile), its code and name, a
+broker is connected, its presence is shared; its friends, those online, the
+requests waiting */
 struct p2p_friends_state
 {
 	int identity;
 	char code[P2P_FRIEND_CODE_TEXT_SIZE];
+	char name[P2P_FRIEND_NAME_SIZE];
 	int connected, sharing;
 	int friends, online, requests;
 };
@@ -640,6 +641,9 @@ little); another folder is read (a new identity made in it if it has none) */
 void p2p_friends_set_profile(const char *folder, const char *name);
 /* the profile's code: 0 if there is no profile */
 int p2p_friends_own_code(unsigned char *code);
+/* the code another friends.txt says it has (a test's: debug.friends): 0 if
+it says none */
+int p2p_friends_code_in_file(const char *path, unsigned char *code);
 void p2p_friends_state(struct p2p_friends_state *state);
 /* the list, in its order; returns its count */
 int p2p_friends_list(struct p2p_friend *entries, int maximum);

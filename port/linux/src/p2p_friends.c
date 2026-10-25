@@ -1950,6 +1950,21 @@ int p2p_friends_own_code(unsigned char *code)
 	return has;
 }
 
+int p2p_friends_code_in_file(const char *path, unsigned char *code)
+{
+	int size;
+	char *text = file_read(path, &size);
+	const char *at = text ? strstr(text, "Your friend code: ") : NULL;
+	char typed[P2P_FRIEND_CODE_TEXT_SIZE];
+	int found;
+
+	if (at)
+		snprintf(typed, sizeof(typed), "%s", at + 18);
+	found = at && p2p_friend_code_parse(typed, code) > 0;
+	free(text);
+	return found;
+}
+
 int p2p_friends_relation(const unsigned char *code)
 {
 	int relation = _p2p_friend_none;
@@ -2431,6 +2446,7 @@ void p2p_friends_state(struct p2p_friends_state *state)
 	state->identity = friends.has_identity;
 	if (friends.has_identity)
 		p2p_friend_code_format(friends.code, state->code, sizeof(state->code));
+	snprintf(state->name, sizeof(state->name), "%s", friends.name);
 	state->connected = p2p_signal_connected();
 	state->sharing = friends.sharing;
 	for (index = 0; index < P2P_FRIENDS_MAXIMUM; index++)
