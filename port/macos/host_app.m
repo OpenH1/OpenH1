@@ -12,16 +12,19 @@ HALO_SAVE_ROOT) and config.toml's paths.data and paths.saves are kept.
   host's log in ~/Library/Logs/OpenH1 (halo.log, and the previous start's
   halo.previous.log), where Console shows it, unless the error output is a
   terminal. The Metal pipelines' archive is in ~/Library/Caches/OpenH1
-  (xgpu_metal.m).
-- The game data: the players supply the Xbox game's maps folder or its
-  disc image. Without one, an open panel asks for either. A folder is
-  checked (ui.map, an Xbox cache, and the other maps of the disc), kept as a
-  bookmark (maps.bookmark), which follows the folder when it is moved or
-  renamed, and the data root's maps is a symbolic link to it, made again at
-  each start. A disc image (.iso or .xiso, any name: halo1.xiso.iso) has its
-  maps folder extracted into the data root's maps, a folder of its own, by
-  port/linux/src/xiso.c (the desktop builds' and the iOS app's extractor),
-  with a window showing the copy; the image is not needed after.
+  (xgpu_metal.m). ~ is HOME, so that a test or a script that sets HOME to
+  a folder of its own keeps all three there, away from the player's.
+- The game data: the players supply the Xbox game's disc image or its maps
+  folder, whose maps are copied into the app's folder (its maps), as the
+  Linux builds do: the game's data is the game's own, whatever becomes of
+  the image or the folder, and wherever the app is. Without it, the game's
+  first start (port/linux/src/first_start.c) shows in the game's window
+  what it finds (in Downloads, on the Desktop, on drives, and the maps
+  folders the app's earlier versions used: maps_used_before) and copies the
+  one chosen, with its progress; Browse... there is the open panel, a sheet
+  of the window (host_app_choose_game_data). So the player is never left
+  with a dialog alone, behind other windows or in another Space, and a
+  window that shows nothing.
 - The window: its place and size, and whether it was fullscreen, are kept
   (window.plist) and the next start opens it so (display.fullscreen, through
   HALO_FULLSCREEN, and the window's frame once it is a window).
@@ -52,7 +55,6 @@ Full Screen) and turns Quit into the game's quit event.
 #include "host.h"
 #undef host_page_size
 #include "tomlc17.h"
-#include "xiso.h"
 
 #include <stdarg.h>
 #include <stdatomic.h>
@@ -65,21 +67,26 @@ Full Screen) and turns Quit into the game's quit event.
 Halo for Mac, MacSoft's port, has ~/Library/Application Support/Halo) */
 #define APP_FOLDER @"OpenH1"
 
-/* the Xbox disc's maps, which the game's menus offer: the campaign and
-multiplayer */
-static NSString *const disc_maps[] =
-{
-	@"a10", @"a30", @"a50", @"b30", @"b40", @"c10", @"c20", @"c40", @"d20", @"d40",
-	@"beavercreek", @"bloodgulch", @"boardingaction", @"carousel", @"chillout", @"damnation", @"hangemhigh",
-	@"longest", @"prisoner", @"putput", @"ratrace", @"sidewinder", @"wizard",
-};
-
 static NSString *support_folder;
 static char settings_folder[1024];
 
 const char *host_app_settings_folder(void)
 {
 	return settings_folder[0] ? settings_folder : NULL;
+}
+
+/* ---------- folders */
+
+/* HOME, which the tests and scripts point at a folder of their own (as the
+Metal archive's folder follows it, host_metal.m), else the account's
+(NSHomeDirectory, which does not read HOME) */
+static NSString *home_folder(void)
+{
+	const char *home = getenv("HOME");
+
+	if (home && home[0] == '/' && strcmp(home, "/"))
+		return [NSString stringWithUTF8String:home];
+	return NSHomeDirectory();
 }
 
 /* ---------- the log */
@@ -140,200 +147,15 @@ static BOOL config_boolean_setting(const char *name, BOOL default_value)
 
 /* ---------- the maps */
 
-/* xiso.c's log lines, the host's */
-void platform_log(const char *format, ...)
+/* the folder before the project was OpenH1, under Application Support:
+OpenCE's, which the app used until 2026-10-19 */
+#define PREVIOUS_APP_FOLDER @"OpenCE"
+
+static BOOL is_folder(NSString *path)
 {
-	char line[512];
-	va_list arguments;
+	BOOL directory = NO;
 
-	va_start(arguments, format);
-	vsnprintf(line, sizeof(line), format, arguments);
-	va_end(arguments);
-	host_logf(HOST_LOG_INFO, "%s", line);
-}
-
-/* name in folder, in any case (the volume may tell case apart), or nil */
-static NSURL *entry_named(NSURL *folder, NSString *name)
-{
-	NSArray<NSURL *> *entries = [[NSFileManager defaultManager] contentsOfDirectoryAtURL:folder
-		includingPropertiesForKeys:nil options:0 error:NULL];
-
-	for (NSURL *entry in entries)
-	{
-		if ([entry.lastPathComponent caseInsensitiveCompare:name] == NSOrderedSame)
-			return entry;
-	}
-	return nil;
-}
-
-enum maps_check
-{
-	_maps_good,
-	_maps_incomplete,
-	_maps_unusable
-};
-
-/* whether folder (or a maps folder in it) is the Xbox game's maps folder:
-its maps (in *maps), else why not (in *problem; the missing maps where
-incomplete) */
-static enum maps_check maps_check(NSURL *folder, NSURL **maps, NSString **problem)
-{
-	NSURL *ui = entry_named(folder, @"ui.map");
-	NSMutableArray<NSString *> *missing = [NSMutableArray array];
-	NSFileHandle *file;
-	NSData *header;
-	uint32_t words[2];
-	size_t index;
-
-	if (!ui && entry_named(folder, @"maps"))
-	{
-		folder = entry_named(folder, @"maps");
-		ui = entry_named(folder, @"ui.map");
-	}
-	*maps = folder;
-	if (!ui)
-	{
-		*problem = [NSString stringWithFormat:@"“%@” has no ui.map: it is not Halo’s maps folder.",
-			folder.lastPathComponent];
-		return _maps_unusable;
-	}
-	file = [NSFileHandle fileHandleForReadingFromURL:ui error:NULL];
-	header = [file readDataOfLength:sizeof(words)];
-	[file closeFile];
-	if (header.length != sizeof(words))
-	{
-		*problem = @"Its ui.map cannot be read.";
-		return _maps_unusable;
-	}
-	memcpy(words, header.bytes, sizeof(words));
-	/* a cache file's header: 'head' and its version, 5 for the Xbox's (7
-	for the PC version's, 609 for Custom Edition's) */
-	if (words[0] != 0x68656164)
-	{
-		*problem = @"Its ui.map is not one of Halo’s maps.";
-		return _maps_unusable;
-	}
-	if (words[1] != 5)
-	{
-		*problem = @"These are the maps of Halo for PC or Halo Custom Edition. The game needs the maps "
-			"folder of the Xbox game, Halo: Combat Evolved. (Custom Edition maps go in the custom_maps "
-			"folder beside it.)";
-		return _maps_unusable;
-	}
-	for (index = 0; index < sizeof(disc_maps) / sizeof(disc_maps[0]); index++)
-	{
-		if (!entry_named(folder, [disc_maps[index] stringByAppendingString:@".map"]))
-			[missing addObject:disc_maps[index]];
-	}
-	if (missing.count)
-	{
-		*problem = [NSString stringWithFormat:@"%lu of the disc’s maps are not in it: %@.",
-			(unsigned long)missing.count, [missing componentsJoinedByString:@", "]];
-		return _maps_incomplete;
-	}
-	return _maps_good;
-}
-
-static NSString *bookmark_path(void)
-{
-	return [support_folder stringByAppendingPathComponent:@"maps.bookmark"];
-}
-
-/* the data root's maps, a link to the folder */
-static BOOL maps_link(NSURL *maps)
-{
-	NSFileManager *files = [NSFileManager defaultManager];
-	NSString *link = [support_folder stringByAppendingPathComponent:@"maps"];
-	NSString *target = [files destinationOfSymbolicLinkAtPath:link error:NULL];
-	NSError *error = nil;
-
-	if (target && [target isEqualToString:maps.path])
-		return YES;
-	if (target)
-		[files removeItemAtPath:link error:NULL];
-	if (![files createSymbolicLinkAtPath:link withDestinationPath:maps.path error:&error])
-	{
-		host_logf(HOST_LOG_ERROR, "cannot link %s to %s: %s", link.fileSystemRepresentation,
-			maps.fileSystemRepresentation, error.localizedDescription.UTF8String);
-		return NO;
-	}
-	return YES;
-}
-
-static void maps_remember(NSURL *maps)
-{
-	NSError *error = nil;
-	NSData *bookmark = [maps bookmarkDataWithOptions:0 includingResourceValuesForKeys:nil relativeToURL:nil
-		error:&error];
-
-	if (!bookmark || ![bookmark writeToFile:bookmark_path() atomically:YES])
-		host_logf(HOST_LOG_ERROR, "cannot keep the maps folder's bookmark: %s",
-			error ? error.localizedDescription.UTF8String : "cannot write it");
-}
-
-/* the folder the bookmark names, or nil */
-static NSURL *maps_remembered(void)
-{
-	NSData *bookmark = [NSData dataWithContentsOfFile:bookmark_path()];
-	BOOL stale = NO;
-	NSURL *maps;
-
-	if (!bookmark)
-		return nil;
-	maps = [NSURL URLByResolvingBookmarkData:bookmark options:NSURLBookmarkResolutionWithoutUI relativeToURL:nil
-		bookmarkDataIsStale:&stale error:NULL];
-	if (maps && stale)
-		maps_remember(maps);
-	return maps;
-}
-
-/* HALO_MAPS_PANEL_ANSWER, for the automated tests: the folders or disc
-images (or "cancel") the panel is answered with, one for each time it is shown,
-separated by semicolons; each alert is answered with its first button. The
-answer comes a second after the panel or alert shows. */
-static NSMutableArray<NSString *> *test_answers;
-
-static void test_answer_soon(void (^answer)(void))
-{
-	NSTimer *timer = [NSTimer timerWithTimeInterval:1.0 repeats:NO block:^(NSTimer *unused) { answer(); }];
-
-	[[NSRunLoop mainRunLoop] addTimer:timer forMode:NSModalPanelRunLoopMode];
-}
-
-static NSModalResponse alert(NSAlertStyle style, NSString *message, NSString *information, NSArray *buttons)
-{
-	NSAlert *box = [[NSAlert alloc] init];
-
-	box.alertStyle = style;
-	box.messageText = message;
-	box.informativeText = information;
-	for (NSString *button in buttons)
-		[box addButtonWithTitle:button];
-	host_logf(HOST_LOG_INFO, "%s: %s", message.UTF8String, information.UTF8String);
-	if (test_answers)
-	{
-		test_answer_soon(^{
-			host_logf(HOST_LOG_INFO, "test: answered \"%s\"", [buttons[0] UTF8String]);
-			[NSApp stopModalWithCode:NSAlertFirstButtonReturn];
-		});
-	}
-	return [box runModal];
-}
-
-/* the folder the panel is answered with, or nil for none */
-static NSURL *test_answer_panel(void)
-{
-	NSString *answer;
-
-	if (!test_answers.count)
-		return nil;
-	answer = test_answers.firstObject;
-	[test_answers removeObjectAtIndex:0];
-	test_answer_soon(^{
-		host_logf(HOST_LOG_INFO, "test: the panel answered with %s", answer.UTF8String);
-		[NSApp stopModalWithCode:[answer isEqualToString:@"cancel"] ? NSModalResponseCancel : NSModalResponseOK];
-	});
-	return [answer isEqualToString:@"cancel"] ? nil : [NSURL fileURLWithPath:answer];
+	return [[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&directory] && directory;
 }
 
 /* whether url names a disc image: .iso or .xiso, in any case (and
@@ -345,16 +167,70 @@ static BOOL is_disc_image(NSURL *url)
 	return [extension isEqualToString:@"iso"] || [extension isEqualToString:@"xiso"];
 }
 
-static BOOL is_folder(NSURL *url)
+/* the folder a bookmark file names, or nil */
+static NSString *bookmark_folder(NSString *path)
 {
-	BOOL directory = NO;
+	NSData *bookmark = [NSData dataWithContentsOfFile:path];
+	BOOL stale = NO;
 
-	return [[NSFileManager defaultManager] fileExistsAtPath:url.path isDirectory:&directory] && directory;
+	if (!bookmark)
+		return nil;
+	return [NSURL URLByResolvingBookmarkData:bookmark
+		options:NSURLBookmarkResolutionWithoutUI | NSURLBookmarkResolutionWithoutMounting relativeToURL:nil
+		bookmarkDataIsStale:&stale error:NULL].path;
 }
 
-/* the panel's choices: folders, and of the files only disc images (the
-panel is given no types: .xiso has none of its own, and would be greyed
-out) */
+/* HALO_MAPS_USED_BEFORE, for the game's first start (game_data_scan.c): the
+maps folders the app's earlier versions played, which it offers first, to
+copy into the app's folder. Those versions used the player's maps folder
+where it was, through a bookmark (maps.bookmark) and a link (maps) in the
+app's folder, and OpenCE's folder before the project was OpenH1: an update
+that stopped reading OpenCE's left its players without maps, and a folder
+moved or a second copy of the app did the same. */
+static void maps_used_before(void)
+{
+	NSString *own = [support_folder stringByAppendingPathComponent:@"maps"];
+	NSString *previous = [[support_folder stringByDeletingLastPathComponent]
+		stringByAppendingPathComponent:PREVIOUS_APP_FOLDER];
+	NSMutableArray<NSString *> *found = [NSMutableArray array];
+	NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:own error:NULL];
+
+	/* (the app's own maps folder, copied there: the bookmark is of no use) */
+	if ([attributes.fileType isEqualToString:NSFileTypeDirectory])
+	{
+		[[NSFileManager defaultManager] removeItemAtPath:[support_folder
+			stringByAppendingPathComponent:@"maps.bookmark"] error:NULL];
+		return;
+	}
+	if (getenv("HALO_MAPS_USED_BEFORE"))
+		return;
+	for (NSString *folder in @[ support_folder, previous ])
+	{
+		NSString *bookmarked = bookmark_folder([folder stringByAppendingPathComponent:@"maps.bookmark"]);
+		NSString *linked = [folder stringByAppendingPathComponent:@"maps"];
+		NSString *target = [[NSFileManager defaultManager] destinationOfSymbolicLinkAtPath:linked error:NULL];
+
+		/* (a link's folder, else the folder itself: as the player knows
+		their paths, not as NSString resolves /tmp's) */
+		if (target)
+			linked = target.isAbsolutePath ? target : [folder stringByAppendingPathComponent:target];
+
+		for (NSString *maps in @[ bookmarked ?: @"", linked ])
+		{
+			if (maps.length && is_folder(maps) && ![maps isEqualToString:own] && ![found containsObject:maps])
+				[found addObject:maps];
+		}
+	}
+	if (!found.count)
+		return;
+	for (NSString *maps in found)
+		host_logf(HOST_LOG_INFO, "maps: an earlier version's: %s", maps.fileSystemRepresentation);
+	setenv("HALO_MAPS_USED_BEFORE", [found componentsJoinedByString:@"\n"].fileSystemRepresentation, 1);
+}
+
+/* the open panel's choices: folders, and of the files only disc images
+(the panel is given no types: .xiso has none of its own, and would be
+greyed out) */
 @interface HaloMapsPanelDelegate : NSObject <NSOpenSavePanelDelegate>
 @end
 
@@ -363,242 +239,83 @@ out) */
 - (BOOL)panel:(id)sender shouldEnableURL:(NSURL *)url
 {
 	(void)sender;
-	return is_folder(url) || is_disc_image(url);
+	return is_folder(url.path) || is_disc_image(url);
 }
 
 @end
 
-/* the extraction's progress, which xiso.c reports from its thread */
-static _Atomic(unsigned long long) extract_done, extract_total;
-
-static void extract_progress(void *context, const char *file, unsigned long long done, unsigned long long total)
+/* the first start's Browse... (port/linux/src/first_start.c, through
+host_desktop.c's host_sdl_open_file_dialog): the open panel, a sheet of the
+game's window (so that it shows over it, fullscreen or not, in its Space),
+for the disc image or the maps folder. 1 with its path, 0 for none.
+HALO_MAPS_PANEL_ANSWER, for the automated tests: the folder or disc image
+(or "cancel") the panel is answered with, a second after it shows */
+int host_app_choose_game_data(SDL_Window *window, char *path, uint32_t size)
 {
-	(void)context;
-	(void)file;
-	atomic_store(&extract_done, done);
-	atomic_store(&extract_total, total);
-}
-
-/* the disc image's maps folder copied into the data root's maps (a folder
-of its own: no bookmark, no link), with a window showing the copy; nil, or
-why not (for the player) */
-static NSString *maps_extract(NSURL *image)
-{
-	static char error[512];
-	NSFileManager *files = [NSFileManager defaultManager];
-	NSString *maps = [support_folder stringByAppendingPathComponent:@"maps"];
-	NSString *destination = support_folder;
-	NSPanel *window = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, 440, 110)
-		styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
-	NSTextField *label = [NSTextField labelWithString:[NSString stringWithFormat:
-		@"Copying the maps out of “%@”…", image.lastPathComponent]];
-	NSTextField *detail = [NSTextField labelWithString:@" "];
-	NSProgressIndicator *bar = [[NSProgressIndicator alloc] init];
-	NSStackView *stack;
-	dispatch_semaphore_t finished = dispatch_semaphore_create(0);
-	NSModalSession session;
-	__block int succeeded = 0;
-
-	/* (a link to a folder chosen before that is not usable: the copy takes
-	its place) */
-	if ([files destinationOfSymbolicLinkAtPath:maps error:NULL])
-		[files removeItemAtPath:maps error:NULL];
-	host_logf(HOST_LOG_INFO, "maps: extracting %s into %s", image.fileSystemRepresentation,
-		maps.fileSystemRepresentation);
-	window.title = @"Copying Halo’s Maps";
-	label.lineBreakMode = NSLineBreakByTruncatingMiddle;
-	detail.font = [NSFont monospacedDigitSystemFontOfSize:[NSFont smallSystemFontSize] weight:NSFontWeightRegular];
-	detail.textColor = [NSColor secondaryLabelColor];
-	bar.style = NSProgressIndicatorStyleBar;
-	bar.indeterminate = NO;
-	bar.minValue = 0.0;
-	bar.maxValue = 1.0;
-	stack = [NSStackView stackViewWithViews:@[ label, bar, detail ]];
-	stack.orientation = NSUserInterfaceLayoutOrientationVertical;
-	stack.alignment = NSLayoutAttributeLeading;
-	stack.spacing = 10;
-	stack.edgeInsets = NSEdgeInsetsMake(20, 20, 20, 20);
-	[bar.widthAnchor constraintEqualToConstant:400].active = YES;
-	[label.widthAnchor constraintLessThanOrEqualToConstant:400].active = YES;
-	window.contentView = stack;
-	[window center];
-	atomic_store(&extract_done, 0);
-	atomic_store(&extract_total, 0);
-	error[0] = 0;
-	session = [NSApp beginModalSessionForWindow:window];
-	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-		succeeded = xiso_extract_maps(image.path.fileSystemRepresentation, destination.fileSystemRepresentation,
-			extract_progress, NULL, error, sizeof(error));
-		dispatch_semaphore_signal(finished);
-	});
-	for (;;)
-	{
-		unsigned long long done = atomic_load(&extract_done), total = atomic_load(&extract_total);
-
-		if (total)
-		{
-			bar.doubleValue = (double)done / (double)total;
-			detail.stringValue = [NSString stringWithFormat:@"%@ of %@",
-				[NSByteCountFormatter stringFromByteCount:(long long)done countStyle:NSByteCountFormatterCountStyleFile],
-				[NSByteCountFormatter stringFromByteCount:(long long)total countStyle:NSByteCountFormatterCountStyleFile]];
-		}
-		[NSApp runModalSession:session];
-		if (!dispatch_semaphore_wait(finished, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 20)))
-			break;
-	}
-	[NSApp endModalSession:session];
-	[window orderOut:nil];
-	if (!succeeded)
-	{
-		host_logf(HOST_LOG_WARN, "maps: the extraction failed: %s", error);
-		return error[0] ? [NSString stringWithUTF8String:error] : @"The maps could not be copied out of it.";
-	}
-	/* (the folder chosen before, if any, is no longer the game's) */
-	[files removeItemAtPath:bookmark_path() error:NULL];
-	return nil;
-}
-
-/* Quit while the app asks for the maps (before the game reads SDL's
-events): at once */
-static bool SDLCALL quit_watch(void *unused, SDL_Event *event)
-{
-	(void)unused;
-	if (event->type == SDL_EVENT_QUIT)
-	{
-		host_logf(HOST_LOG_INFO, "quit before the game started");
-		exit(EXIT_SUCCESS);
-	}
-	return true;
-}
-
-/* the maps folder the player chooses, or the one extracted from the disc
-image they choose (*extracted, the data root's maps); quits if they choose
-none */
-static NSURL *maps_choose(BOOL *extracted)
-{
-	NSURL *chosen = nil;
-	HaloMapsPanelDelegate *delegate = [HaloMapsPanelDelegate new];
-	BOOL from_image = NO;
-
-	/* (SDL's application: its menus, and Quit as the game's quit event) */
-	SDL_InitSubSystem(SDL_INIT_VIDEO);
-	SDL_AddEventWatch(quit_watch, NULL);
-	if (getenv("HALO_MAPS_PANEL_ANSWER"))
-	{
-		test_answers = [[@(getenv("HALO_MAPS_PANEL_ANSWER")) componentsSeparatedByString:@";"] mutableCopy];
-	}
-	[NSApp activate];
-	while (!chosen)
+	@autoreleasepool
 	{
 		NSOpenPanel *panel = [NSOpenPanel openPanel];
-		NSURL *answer = test_answer_panel();
-		NSURL *picked;
-		NSURL *maps;
-		NSString *problem = nil;
-		BOOL image;
+		HaloMapsPanelDelegate *delegate = [HaloMapsPanelDelegate new];
+		NSWindow *parent = window ? (__bridge NSWindow *)SDL_GetPointerProperty(SDL_GetWindowProperties(window),
+			SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL) : nil;
+		NSString *downloads = [home_folder() stringByAppendingPathComponent:@"Downloads"];
+		const char *test = getenv("HALO_MAPS_PANEL_ANSWER");
+		NSString *answer = test && *test ? [NSString stringWithUTF8String:test] : nil;
+		__block NSModalResponse response = NSModalResponseCancel;
+		__block BOOL done = NO;
+		NSString *picked;
 
 		panel.canChooseDirectories = YES;
 		panel.canChooseFiles = YES;
 		panel.allowsMultipleSelection = NO;
 		panel.delegate = delegate;
 		panel.prompt = @"Use These Maps";
-		panel.message = @"Choose the maps folder or the disc image (.iso or .xiso) of Halo: Combat Evolved for the "
-			"Xbox, from your own copy of the game.\nA folder holds ui.map, bloodgulch.map and the other maps; it stays "
-			"where it is. A disc image’s maps are copied into the game’s folder.";
-		if ([panel runModal] != NSModalResponseOK || !(answer ?: panel.URL))
+		panel.message = @"Choose the disc image (.iso or .xiso) or the maps folder of Halo: Combat Evolved for the "
+			"Xbox, from your own copy of the game.\nIts maps are copied into the game’s folder; the image or the folder "
+			"stays as it is.";
+		if (is_folder(downloads))
+			panel.directoryURL = [NSURL fileURLWithPath:downloads isDirectory:YES];
+		if (answer)
 		{
-			if (alert(NSAlertStyleInformational, @"Halo needs its maps to play",
-					@"The game data is not part of the app: choose the maps folder or the disc image of your "
-					"copy of Halo: Combat Evolved for the Xbox.", @[ @"Choose…", @"Quit" ]) ==
-				NSAlertFirstButtonReturn)
-			{
-				continue;
-			}
-			host_logf(HOST_LOG_INFO, "no maps folder chosen: quitting");
-			exit(EXIT_SUCCESS);
-		}
-		picked = answer ?: panel.URL;
-		image = !is_folder(picked);
-		if (image)
-		{
-			problem = maps_extract(picked);
-			if (problem)
-			{
-				alert(NSAlertStyleWarning, @"The maps could not be copied from that disc image", problem,
-					@[ @"Choose Another…" ]);
-				continue;
-			}
-			picked = [NSURL fileURLWithPath:[support_folder stringByAppendingPathComponent:@"maps"]];
-		}
-		switch (maps_check(picked, &maps, &problem))
-		{
-		case _maps_good:
-			chosen = maps;
-			break;
-		case _maps_incomplete:
-			if (alert(NSAlertStyleWarning, @"Some maps are missing", [problem stringByAppendingString:
-					@" The levels without their maps cannot be played."],
-					@[ image ? @"Use These Maps" : @"Use This Folder", @"Choose Another…" ]) ==
-				NSAlertFirstButtonReturn)
-			{
-				chosen = maps;
-			}
-			break;
-		case _maps_unusable:
-			alert(NSAlertStyleWarning, image ? @"That disc image cannot be used" : @"That folder cannot be used",
-				problem, @[ @"Choose Another…" ]);
-			break;
-		}
-		/* (a copy not taken is not kept) */
-		if (image && !chosen)
-			[[NSFileManager defaultManager] removeItemAtURL:picked error:NULL];
-		from_image = image;
-	}
-	*extracted = from_image;
-	SDL_RemoveEventWatch(quit_watch, NULL);
-	return chosen;
-}
+			NSTimer *timer = [NSTimer timerWithTimeInterval:1.0 repeats:NO block:^(NSTimer *unused) {
+				NSModalResponse code = [answer isEqualToString:@"cancel"] ? NSModalResponseCancel : NSModalResponseOK;
 
-/* the data root (support_folder) with its maps, asking for them if there
-are none */
-static void maps_find(void)
-{
-	NSURL *maps = maps_remembered();
-	NSURL *found;
-	NSString *problem = nil;
-	NSURL *link = [NSURL fileURLWithPath:[support_folder stringByAppendingPathComponent:@"maps"]];
-	NSNumber *symbolic = nil;
+				host_logf(HOST_LOG_INFO, "test: the panel answered with %s", answer.UTF8String);
+				if (parent)
+					[parent endSheet:panel returnCode:code];
+				else
+					[NSApp stopModalWithCode:code];
+			}];
 
-	/* a maps folder of its own, which the player put there */
-	[link getResourceValue:&symbolic forKey:NSURLIsSymbolicLinkKey error:NULL];
-	if ([[NSFileManager defaultManager] fileExistsAtPath:link.path] && !symbolic.boolValue)
-	{
-		host_logf(HOST_LOG_INFO, "maps: %s", link.fileSystemRepresentation);
-		return;
-	}
-	if (maps && maps_check(maps, &found, &problem) == _maps_unusable)
-	{
-		host_logf(HOST_LOG_WARN, "maps: %s cannot be used: %s", maps.fileSystemRepresentation, problem.UTF8String);
-		maps = nil;
-	}
-	else if (maps)
-	{
-		maps = found;
-	}
-	if (!maps)
-	{
-		BOOL extracted = NO;
-
-		maps = maps_choose(&extracted);
-		if (extracted)
-		{
-			host_logf(HOST_LOG_INFO, "maps: %s (from the disc image)", maps.fileSystemRepresentation);
-			return;
+			[[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
 		}
-		maps_remember(maps);
+		if (parent)
+		{
+			[panel beginSheetModalForWindow:parent completionHandler:^(NSModalResponse result) {
+				response = result;
+				done = YES;
+			}];
+			/* (the sheet answers through the window's events) */
+			while (!done)
+			{
+				SDL_PumpEvents();
+				SDL_Delay(20);
+			}
+		}
+		else
+		{
+			[NSApp activate];
+			response = [panel runModal];
+		}
+		path[0] = 0;
+		if (response != NSModalResponseOK)
+			return 0;
+		picked = answer ?: panel.URL.path;
+		if (!picked.length)
+			return 0;
+		snprintf(path, size, "%s", picked.fileSystemRepresentation);
+		return 1;
 	}
-	host_logf(HOST_LOG_INFO, "maps: %s", maps.fileSystemRepresentation);
-	maps_link(maps);
 }
 
 /* ---------- the window */
@@ -728,6 +445,11 @@ static void window_remember(void)
 				window_frame_saved(note.object);
 		}];
 	}
+	/* (the first start's window closed: the game's, next, is placed too) */
+	[center addObserverForName:NSWindowWillCloseNotification object:nil queue:main usingBlock:^(NSNotification *note) {
+		if (is_game_window(note.object))
+			window_placed = NO;
+	}];
 }
 
 /* ---------- updates (Sparkle) */
@@ -1042,8 +764,9 @@ void host_app_start(void)
 	{
 		NSBundle *bundle = [NSBundle mainBundle];
 		NSFileManager *files = [NSFileManager defaultManager];
-		NSURL *library = [files URLsForDirectory:NSLibraryDirectory inDomains:NSUserDomainMask].firstObject;
-		NSURL *support = [[files URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject
+		NSURL *library = [NSURL fileURLWithPath:[home_folder() stringByAppendingPathComponent:@"Library"]
+			isDirectory:YES];
+		NSURL *support = [[library URLByAppendingPathComponent:@"Application Support"]
 			URLByAppendingPathComponent:APP_FOLDER];
 		NSURL *logs = [[library URLByAppendingPathComponent:@"Logs"] URLByAppendingPathComponent:APP_FOLDER];
 		NSString *brokers;
@@ -1076,11 +799,10 @@ void host_app_start(void)
 		saves = [support_folder stringByAppendingPathComponent:@"saves"];
 		if (!getenv("HALO_SAVE_ROOT") && !config_path_setting("paths.saves"))
 			setenv("HALO_SAVE_ROOT", saves.fileSystemRepresentation, 1);
-		if (!getenv("HALO_DATA_ROOT") && !config_path_setting("paths.data"))
-		{
-			setenv("HALO_DATA_ROOT", support_folder.fileSystemRepresentation, 1);
-			maps_find();
-		}
+		/* (the data root is this folder, config.toml's, unless paths.data
+		says another: port/linux/src/xbox_files.c; without maps there, the
+		game's first start) */
+		maps_used_before();
 		window_remember();
 	}
 }

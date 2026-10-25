@@ -24,8 +24,12 @@ Only integers, floats, strings and flat structures cross, as in host_sdl.c.
 /* ---------- general */
 
 #ifdef __APPLE__
+#include <TargetConditionals.h>
 /* port/macos/host_app.m */
 const char *host_app_settings_folder(void);
+#if !TARGET_OS_IPHONE
+int host_app_choose_game_data(SDL_Window *window, char *path, uint32_t size);
+#endif
 #endif
 
 /* the executable's folder; the macOS app's settings folder in Application
@@ -444,9 +448,12 @@ static void SDLCALL file_dialog_chosen(void *userdata, const char * const *files
 /* the file the player picks (filter_names and filter_patterns: the
 filters' names and patterns one after another, each NUL terminated), once
 the dialog closes; 1 with its path, 0 if none, -1 when no dialog could be
-shown (SDL needs the desktop portal or zenity: first_start.c then says so) */
-int host_sdl_open_file_dialog(int filter_count, const char *filter_names, const char *filter_patterns,
-	char *path, uint32_t size)
+shown (SDL needs the desktop portal or zenity: first_start.c then says so).
+window: the dialog's parent (0 for none). On macOS, the app's open panel, a
+sheet of the window, which takes the game's disc image or its maps folder
+(port/macos/host_app.m) */
+int host_sdl_open_file_dialog(uint32_t window, int filter_count, const char *filter_names,
+	const char *filter_patterns, char *path, uint32_t size)
 {
 	SDL_DialogFileFilter filters[8];
 	struct file_dialog dialog;
@@ -454,6 +461,11 @@ int host_sdl_open_file_dialog(int filter_count, const char *filter_names, const 
 
 	if (filter_count < 0 || filter_count > 8 || !size)
 		return 0;
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
+	(void)filter_names;
+	(void)filter_patterns;
+	return host_app_choose_game_data(window ? window_of(window) : NULL, path, size);
+#endif
 	for (index = 0; index < filter_count; index++)
 	{
 		filters[index].name = filter_names;
@@ -465,7 +477,8 @@ int host_sdl_open_file_dialog(int filter_count, const char *filter_names, const 
 	memset(&dialog, 0, sizeof(dialog));
 	dialog.path = path;
 	dialog.size = size;
-	SDL_ShowOpenFileDialog(file_dialog_chosen, &dialog, NULL, filters, filter_count, NULL, false);
+	SDL_ShowOpenFileDialog(file_dialog_chosen, &dialog, window ? window_of(window) : NULL, filters, filter_count,
+		NULL, false);
 	/* the dialog answers through events (and on some systems another
 	thread), as in sdl_platform.c */
 	while (!SDL_GetAtomicInt(&dialog.done))

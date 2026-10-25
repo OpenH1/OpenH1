@@ -67,8 +67,8 @@ int host_sdl_render_debug_text(unsigned int renderer, float x, float y, const ch
 int host_sdl_render_present(unsigned int renderer);
 /* (struct message_box, below) */
 int host_sdl_show_message_box(void *box);
-int host_sdl_open_file_dialog(int filter_count, const char *filter_names, const char *filter_patterns,
-	char *path, unsigned int size);
+int host_sdl_open_file_dialog(unsigned int window, int filter_count, const char *filter_names,
+	const char *filter_patterns, char *path, unsigned int size);
 int host_update_download(const char *url, const char *path, unsigned int progress, unsigned int context,
 	char *error, int error_size, unsigned int maximum);
 int host_update_executable_path(char *path, int size);
@@ -846,7 +846,8 @@ bool SDL_ShowMessageBox(const SDL_MessageBoxData *data, int *button)
 /* the host waits for the dialog, then the callback runs here, before this
 returns (sdl_platform.c and first_start.c wait for it either way): with no
 files when none was picked, and NULL, as SDL's own, when no dialog could be
-shown */
+shown. (On macOS the host's is the app's open panel, a sheet of window,
+which takes a maps folder too: host_app.m) */
 void SDL_ShowOpenFileDialog(SDL_DialogFileCallback callback, void *userdata, SDL_Window *window,
 	const SDL_DialogFileFilter *filters, int filter_count, const char *default_location, bool allow_many)
 {
@@ -858,7 +859,6 @@ void SDL_ShowOpenFileDialog(SDL_DialogFileCallback callback, void *userdata, SDL
 	int index;
 	int result;
 
-	(void)window;
 	(void)default_location;
 	(void)allow_many;
 	for (index = 0; index < filter_count && index < 8; index++)
@@ -874,7 +874,7 @@ void SDL_ShowOpenFileDialog(SDL_DialogFileCallback callback, void *userdata, SDL
 		patterns_used += pattern_length;
 		count++;
 	}
-	result = host_sdl_open_file_dialog(count, names, patterns, path, sizeof(path));
+	result = host_sdl_open_file_dialog(WINDOW(window), count, names, patterns, path, sizeof(path));
 	if (result > 0)
 		callback(userdata, files, -1);
 	else if (result < 0)

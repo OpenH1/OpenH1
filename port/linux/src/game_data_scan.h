@@ -4,8 +4,9 @@ GAME_DATA_SCAN.H
 Where the first start looks for the player's game data (game_data_scan.c):
 Xbox disc images of Halo (.iso, .xiso) and maps folders already copied out
 of one, in the places a player puts a file (Downloads, the Desktop, the home
-folder, an SD card or a USB drive) and next to the game. first_start.c shows
-what it finds in the game's window. Only the C library is used here, so that
+folder, an SD card or a USB drive), in the maps folders an earlier version
+of the game used, and next to the game. first_start.c shows what it finds
+in the game's window, on Linux and macOS. Only the C library is used here, so that
 it can be compiled and tested anywhere (port/android/tests/game_data_scan_test.c).
 */
 
@@ -15,7 +16,8 @@ it can be compiled and tested anywhere (port/android/tests/game_data_scan_test.c
 #define GAME_DATA_CANDIDATES 12
 #define GAME_DATA_PATH_SIZE 1024
 #define GAME_DATA_MEDIA_ROOTS 3
-#define GAME_DATA_ROOTS 12
+#define GAME_DATA_EARLIER 4
+#define GAME_DATA_ROOTS 16
 
 enum
 {
@@ -50,9 +52,14 @@ struct game_data_places
 	char downloads[GAME_DATA_PATH_SIZE];
 	char desktop[GAME_DATA_PATH_SIZE];
 	/* the folders removable drives are mounted under (/run/media,
-	/media), and the table of mounts that names their devices */
+	/media; /Volumes on macOS), and the table of mounts that names their
+	devices ("" for none: each drive is then the first folder below its
+	media folder, as /Volumes/NAME) */
 	char media[GAME_DATA_MEDIA_ROOTS][GAME_DATA_PATH_SIZE];
 	char mounts[GAME_DATA_PATH_SIZE];
+	/* the maps folders an earlier version of the game used (the macOS
+	app's: HALO_MAPS_USED_BEFORE, a path a line), looked in first */
+	char earlier[GAME_DATA_EARLIER][GAME_DATA_PATH_SIZE];
 	/* how long a scan may take, in milliseconds */
 	int time_limit;
 };
@@ -72,6 +79,15 @@ int game_data_scan(const struct game_data_places *places, game_data_image_check 
 
 /* the places a scan looks in, for the player ("Downloads, the Desktop, ...") */
 void game_data_places_text(const struct game_data_places *places, char *text, int size);
+
+/* path for the player: in the home folder, from ~ */
+void game_data_short_path(const struct game_data_places *places, const char *path, char *result, int size);
+
+/* what a folder the player picked (the system's file dialog) is: 1 with
+*candidate its Xbox maps folder (the folder, or a maps folder in it); 0 when
+it is not a folder (a disc image, perhaps); -1 when it holds no Xbox maps,
+with the reason (for the player) in error */
+int game_data_picked_folder(const char *path, struct game_data_candidate *candidate, char *error, int error_size);
 
 /* called as the copy goes: the file being copied, and the bytes copied of
 all the files' */
