@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- The port's settings screen, in the PC version's style (tools/port_settings.py) -->
 <menus>
-	<widget name="main_menu/settings/header_settings" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/settings/header_settings">
+	<widget name="main_menu/settings/header_settings" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/settings/header_settings" wide="-106 0">
 	</widget>
-	<widget name="main_menu/settings/tab_panel" controller="1" left="388" top="104" width="224" height="296" bitmap="main_menu/settings/tab_panel">
+	<widget name="main_menu/settings/tab_panel" controller="1" left="388" top="104" width="224" height="296" bitmap="main_menu/settings/tab_panel" wide="14 92">
 		<child widget="main_menu/settings/panel_name" x="402" y="116"/>
 		<child widget="main_menu/settings/panel_value" x="402" y="130"/>
 		<child widget="main_menu/settings/panel_classic" x="400" y="156"/>
@@ -22,7 +22,7 @@
 		<child widget="main_menu/settings/panel_text" x="402" y="156"/>
 		<child widget="main_menu/settings/panel_note" x="402" y="360"/>
 	</widget>
-	<widget name="main_menu/settings/page_panel" controller="1" left="388" top="80" width="224" height="320" bitmap="main_menu/settings/page_panel">
+	<widget name="main_menu/settings/page_panel" controller="1" left="388" top="80" width="224" height="320" bitmap="main_menu/settings/page_panel" wide="14 92">
 		<child widget="main_menu/settings/panel_name" x="402" y="92"/>
 		<child widget="main_menu/settings/panel_value" x="402" y="106"/>
 		<child widget="main_menu/settings/panel_classic" x="400" y="132"/>
@@ -41,39 +41,39 @@
 		<child widget="main_menu/settings/panel_text" x="402" y="132"/>
 		<child widget="main_menu/settings/panel_note" x="402" y="360"/>
 	</widget>
-	<widget name="main_menu/settings/panel_name" type="text" controller="1" width="196" height="18" color="#FF6F9CD0" font="ui\small_ui">
+	<widget name="main_menu/settings/panel_name" type="text" controller="1" width="196" height="18" color="#FF6F9CD0" wide="0 92" font="ui\small_ui">
 	</widget>
-	<widget name="main_menu/settings/panel_value" type="text" controller="1" width="196" height="24" font="ui\large_ui" color="#FFFFFFFF">
+	<widget name="main_menu/settings/panel_value" type="text" controller="1" width="196" height="24" font="ui\large_ui" color="#FFFFFFFF" wide="0 92">
 	</widget>
-	<widget name="main_menu/settings/panel_text" type="text" controller="1" width="196" height="220" color="#FF2896FF" font="ui\small_ui">
+	<widget name="main_menu/settings/panel_text" type="text" controller="1" width="196" height="220" color="#FF2896FF" wide="0 92" font="ui\small_ui">
 	</widget>
-	<widget name="main_menu/settings/panel_note" type="text" controller="1" width="196" height="40" color="#FF6F9CD0" font="ui\small_ui">
+	<widget name="main_menu/settings/panel_note" type="text" controller="1" width="196" height="40" color="#FF6F9CD0" wide="0 92" font="ui\small_ui">
 	</widget>
-	<widget name="main_menu/settings/panel_classic" controller="1" width="96" height="60" bitmap="main_menu/settings/graphics_classic">
+	<widget name="main_menu/settings/panel_classic" controller="1" width="96" height="60" bitmap="main_menu/settings/graphics_classic" wide="46 0">
 	</widget>
-	<widget name="main_menu/settings/panel_classic_frame" controller="1" width="96" height="60" bitmap="main_menu/settings/still_frame">
+	<widget name="main_menu/settings/panel_classic_frame" controller="1" width="96" height="60" bitmap="main_menu/settings/still_frame" wide="46 0">
 	</widget>
-	<widget name="main_menu/settings/panel_classic_caption" type="text" controller="1" width="96" height="18" string_list="main_menu/settings/still_captions" color="#FF2896FF" align="center" font="ui\small_ui">
+	<widget name="main_menu/settings/panel_classic_caption" type="text" controller="1" width="96" height="18" string_list="main_menu/settings/still_captions" color="#FF2896FF" align="center" wide="46 0" font="ui\small_ui">
 	</widget>
-	<widget name="main_menu/settings/panel_enhanced" controller="1" width="96" height="60" bitmap="main_menu/settings/graphics_enhanced">
+	<widget name="main_menu/settings/panel_enhanced" controller="1" width="96" height="60" bitmap="main_menu/settings/graphics_enhanced" wide="46 0">
 	</widget>
-	<widget name="main_menu/settings/panel_enhanced_frame" controller="1" width="96" height="60" bitmap="main_menu/settings/still_frame">
+	<widget name="main_menu/settings/panel_enhanced_frame" controller="1" width="96" height="60" bitmap="main_menu/settings/still_frame" wide="46 0">
 	</widget>
-	<widget name="main_menu/settings/panel_enhanced_caption" type="text" controller="1" width="96" height="18" string_list="main_menu/settings/still_captions" string_index="1" color="#FF2896FF" align="center" font="ui\small_ui">
+	<widget name="main_menu/settings/panel_enhanced_caption" type="text" controller="1" width="96" height="18" string_list="main_menu/settings/still_captions" string_index="1" color="#FF2896FF" align="center" wide="46 0" font="ui\small_ui">
 	</widget>
-	<widget name="main_menu/settings/panel_picture_fov" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_fov">
+	<widget name="main_menu/settings/panel_picture_fov" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_fov" wide="46 0">
 	</widget>
-	<widget name="main_menu/settings/panel_picture_anti_aliasing" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_anti_aliasing">
+	<widget name="main_menu/settings/panel_picture_anti_aliasing" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_anti_aliasing" wide="46 0">
 	</widget>
-	<widget name="main_menu/settings/panel_picture_anti_aliasing_android" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_anti_aliasing_android">
+	<widget name="main_menu/settings/panel_picture_anti_aliasing_android" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_anti_aliasing_android" wide="46 0">
 	</widget>
-	<widget name="main_menu/settings/panel_picture_resolution_scaling" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_resolution_scaling">
+	<widget name="main_menu/settings/panel_picture_resolution_scaling" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_resolution_scaling" wide="46 0">
 	</widget>
-	<widget name="main_menu/settings/panel_picture_high_res_hud" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_high_res_hud">
+	<widget name="main_menu/settings/panel_picture_high_res_hud" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_high_res_hud" wide="46 0">
 	</widget>
-	<widget name="main_menu/settings/panel_picture_hud_button_style" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_hud_button_style">
+	<widget name="main_menu/settings/panel_picture_hud_button_style" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_hud_button_style" wide="46 0">
 	</widget>
-	<widget name="main_menu/settings/panel_picture_hdr_mode" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_hdr_mode">
+	<widget name="main_menu/settings/panel_picture_hdr_mode" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_hdr_mode" wide="46 0">
 	</widget>
 	<widget name="main_menu/settings/settings_creating_profile" width="640" height="480" flags="pass_unhandled_to_focused_child no_history" auto_close="1">
 		<on event="deleted" run="new campaign decision" open="main_menu/settings/settings_saving_profile"/>
@@ -84,9 +84,9 @@
 		<on event="deleted" run="NULL" back="true"/>
 		<child widget="error/warning_creating_player_profile_screen"/>
 	</widget>
-	<widget name="main_menu/settings/tab_prompt_previous" type="text" controller="1" width="30" height="22" text="%white-button" color="#FF2896FF" text_x="2" text_y="3" font="ui\small_ui">
+	<widget name="main_menu/settings/tab_prompt_previous" type="text" controller="1" width="30" height="22" wide="-106 0" text="%white-button" color="#FF2896FF" text_x="2" text_y="3" font="ui\small_ui">
 	</widget>
-	<widget name="main_menu/settings/tab_prompt_next" type="text" controller="1" width="30" height="22" text="%black-button" color="#FF2896FF" text_x="2" text_y="3" font="ui\small_ui">
+	<widget name="main_menu/settings/tab_prompt_next" type="text" controller="1" width="30" height="22" wide="106 0" text="%black-button" color="#FF2896FF" text_x="2" text_y="3" font="ui\small_ui">
 	</widget>
 	<strings name="main_menu/settings/tab_names">
 		<string text="VIDEO"/>

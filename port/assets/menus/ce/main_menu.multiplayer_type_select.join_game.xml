@@ -13,24 +13,24 @@
 		<on event="right_trigger" run="port browser refresh"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/header_join_game"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/browser_counts"/>
-		<child widget="main_menu/settings/tab_prompt_previous" x="6" y="76"/>
-		<child widget="main_menu/settings/tab_prompt_next" x="502" y="76"/>
+		<child widget="main_menu/settings/tab_prompt_previous" x="24" y="76"/>
+		<child widget="main_menu/settings/tab_prompt_next" x="498" y="76"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/browser_columns_line"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/browser_empty"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/join_game_items_list"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/header_join_game" controller="1" left="35" top="11" width="363" height="59">
+	<widget name="main_menu/multiplayer_type_select/join_game/header_join_game" controller="1" left="35" top="11" width="363" height="59" wide="-106 0">
 		<child widget="main_menu/multiplayer_type_select/join_game/header_server_browser"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/header_lan"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/header_direct_link"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/header_lan" controller="1" left="35" top="11" width="363" height="59" bitmap="main_menu/multiplayer_type_select/join_game/header_local_network">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/browser_counts" type="text" controller="1" left="420" top="46" width="192" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" text_flags="no_focus_test">
+	<widget name="main_menu/multiplayer_type_select/join_game/browser_counts" type="text" controller="1" left="420" top="46" width="192" height="18" font="ui\small_ui" color="#FF6F9CD0" align="right" wide="106 0" text_flags="no_focus_test">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/browser_columns_line" controller="1" left="28" top="118" width="404" height="4" bitmap="main_menu/parts/line_404">
+	<widget name="main_menu/multiplayer_type_select/join_game/browser_columns_line" controller="1" left="28" top="118" width="404" height="4" bitmap="main_menu/parts/line_404" wide="-106 144">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/browser_empty" type="text" controller="1" left="52" top="200" width="356" height="80" font="ui\large_ui" color="#FF2896FF" align="center" text_flags="no_focus_test">
+	<widget name="main_menu/multiplayer_type_select/join_game/browser_empty" type="text" controller="1" left="52" top="200" width="356" height="80" font="ui\large_ui" color="#FF2896FF" align="center" wide="-106 144" text_flags="no_focus_test">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/join_game_items_list" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child up_down_tabs_children" description="main_menu/multiplayer_type_select/join_game/browser_panel">
 		<data input="gamespy screen update"/>
@@ -54,33 +54,33 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/join_game_button_bar" y="414"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/browser_tabs" type="column_list" width="640" height="22" flags="pass_unhandled_to_focused_child left_right_tabs_items">
-		<child widget="main_menu/multiplayer_type_select/join_game/tab_all" x="40"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/tab_openh1" x="132"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/tab_legacy" x="224"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/tab_coop" x="316"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/tab_all" x="56"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/tab_openh1" x="144"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/tab_legacy" x="232"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/tab_coop" x="320"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/tab_favorites" x="408"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/tab_all" type="text" controller="1" width="90" height="22" bitmap="main_menu/parts/tab" text="ALL" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/tab_all" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="-106 0" bitmap="main_menu/parts/tab" text="ALL" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="a" run="port browser tab"/>
 		<on event="start" run="port browser tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/tab_openh1" type="text" controller="1" width="90" height="22" bitmap="main_menu/parts/tab" text="OPENH1" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/tab_openh1" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="-53 0" bitmap="main_menu/parts/tab" text="OPENH1" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="a" run="port browser tab"/>
 		<on event="start" run="port browser tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/tab_legacy" type="text" controller="1" width="90" height="22" bitmap="main_menu/parts/tab" text="LEGACY" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/tab_legacy" type="text" controller="1" width="86" height="22" flags="keep_ends" bitmap="main_menu/parts/tab" text="LEGACY" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="a" run="port browser tab"/>
 		<on event="start" run="port browser tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/tab_coop" type="text" controller="1" width="90" height="22" bitmap="main_menu/parts/tab" text="CO-OP" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/tab_coop" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="53 0" bitmap="main_menu/parts/tab" text="CO-OP" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="a" run="port browser tab"/>
 		<on event="start" run="port browser tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/tab_favorites" type="text" controller="1" width="90" height="22" bitmap="main_menu/parts/tab" text="FAVORITES" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/tab_favorites" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="106 0" bitmap="main_menu/parts/tab" text="FAVORITES" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="a" run="port browser tab"/>
 		<on event="start" run="port browser tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -92,31 +92,31 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/op_sort_header_players" x="298"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/op_sort_header_ping" x="372"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/op_sort_header_server_name" type="text" width="110" height="16" text="SERVER" font="ui\small_ui" color="#FF6F9CD0">
+	<widget name="main_menu/multiplayer_type_select/join_game/op_sort_header_server_name" type="text" width="110" height="16" text="SERVER" font="ui\small_ui" color="#FF6F9CD0" wide="-106 64">
 		<on event="a" run="gamespy select header"/>
 		<on event="start" run="gamespy select header"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/header_sort_arrows"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/op_sort_header_map" type="text" width="78" height="16" text="MAP" font="ui\small_ui" color="#FF6F9CD0">
+	<widget name="main_menu/multiplayer_type_select/join_game/op_sort_header_map" type="text" width="78" height="16" text="MAP" font="ui\small_ui" color="#FF6F9CD0" wide="-42 44">
 		<on event="a" run="gamespy select header"/>
 		<on event="start" run="gamespy select header"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/header_sort_arrows"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/op_sort_header_type" type="text" width="40" height="16" text="MODE" font="ui\small_ui" color="#FF6F9CD0">
+	<widget name="main_menu/multiplayer_type_select/join_game/op_sort_header_type" type="text" width="40" height="16" text="MODE" font="ui\small_ui" color="#FF6F9CD0" wide="2 36">
 		<on event="a" run="gamespy select header"/>
 		<on event="start" run="gamespy select header"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/header_sort_arrows"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/op_sort_header_players" type="text" width="70" height="16" text="PLAYERS" font="ui\small_ui" color="#FF6F9CD0" align="right">
+	<widget name="main_menu/multiplayer_type_select/join_game/op_sort_header_players" type="text" width="70" height="16" text="PLAYERS" font="ui\small_ui" color="#FF6F9CD0" align="right" wide="38 0">
 		<on event="a" run="gamespy select header"/>
 		<on event="start" run="gamespy select header"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/header_sort_arrows"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/op_sort_header_ping" type="text" width="54" height="16" text="PING" font="ui\small_ui" color="#FF6F9CD0" align="right">
+	<widget name="main_menu/multiplayer_type_select/join_game/op_sort_header_ping" type="text" width="54" height="16" text="PING" font="ui\small_ui" color="#FF6F9CD0" align="right" wide="38 0">
 		<on event="a" run="gamespy select header"/>
 		<on event="start" run="gamespy select header"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -130,7 +130,7 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/header_sort_down_arrow" width="16" height="16" bitmap="bitmaps/arrow_sm_down">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_1" width="404" height="18" bitmap="main_menu/parts/row_404x18">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_1" width="404" height="18" bitmap="main_menu/parts/row_404x18" wide="-106 144">
 		<on event="a" run="gamespy select item"/>
 		<on event="start" run="gamespy select item"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -145,7 +145,7 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_2" width="404" height="18" bitmap="main_menu/parts/row_404x18">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_2" width="404" height="18" bitmap="main_menu/parts/row_404x18" wide="-106 144">
 		<on event="a" run="gamespy select item"/>
 		<on event="start" run="gamespy select item"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -160,7 +160,7 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_3" width="404" height="18" bitmap="main_menu/parts/row_404x18">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_3" width="404" height="18" bitmap="main_menu/parts/row_404x18" wide="-106 144">
 		<on event="a" run="gamespy select item"/>
 		<on event="start" run="gamespy select item"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -175,7 +175,7 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_4" width="404" height="18" bitmap="main_menu/parts/row_404x18">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_4" width="404" height="18" bitmap="main_menu/parts/row_404x18" wide="-106 144">
 		<on event="a" run="gamespy select item"/>
 		<on event="start" run="gamespy select item"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -190,7 +190,7 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_5" width="404" height="18" bitmap="main_menu/parts/row_404x18">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_5" width="404" height="18" bitmap="main_menu/parts/row_404x18" wide="-106 144">
 		<on event="a" run="gamespy select item"/>
 		<on event="start" run="gamespy select item"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -205,7 +205,7 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_6" width="404" height="18" bitmap="main_menu/parts/row_404x18">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_6" width="404" height="18" bitmap="main_menu/parts/row_404x18" wide="-106 144">
 		<on event="a" run="gamespy select item"/>
 		<on event="start" run="gamespy select item"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -220,7 +220,7 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_7" width="404" height="18" bitmap="main_menu/parts/row_404x18">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_7" width="404" height="18" bitmap="main_menu/parts/row_404x18" wide="-106 144">
 		<on event="a" run="gamespy select item"/>
 		<on event="start" run="gamespy select item"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -235,7 +235,7 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_8" width="404" height="18" bitmap="main_menu/parts/row_404x18">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_8" width="404" height="18" bitmap="main_menu/parts/row_404x18" wide="-106 144">
 		<on event="a" run="gamespy select item"/>
 		<on event="start" run="gamespy select item"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -250,7 +250,7 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_9" width="404" height="18" bitmap="main_menu/parts/row_404x18">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_9" width="404" height="18" bitmap="main_menu/parts/row_404x18" wide="-106 144">
 		<on event="a" run="gamespy select item"/>
 		<on event="start" run="gamespy select item"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -265,7 +265,7 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_10" width="404" height="18" bitmap="main_menu/parts/row_404x18">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_10" width="404" height="18" bitmap="main_menu/parts/row_404x18" wide="-106 144">
 		<on event="a" run="gamespy select item"/>
 		<on event="start" run="gamespy select item"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -280,7 +280,7 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_11" width="404" height="18" bitmap="main_menu/parts/row_404x18">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_11" width="404" height="18" bitmap="main_menu/parts/row_404x18" wide="-106 144">
 		<on event="a" run="gamespy select item"/>
 		<on event="start" run="gamespy select item"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -295,7 +295,7 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_12" width="404" height="18" bitmap="main_menu/parts/row_404x18">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_12" width="404" height="18" bitmap="main_menu/parts/row_404x18" wide="-106 144">
 		<on event="a" run="gamespy select item"/>
 		<on event="start" run="gamespy select item"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -310,7 +310,7 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_13" width="404" height="18" bitmap="main_menu/parts/row_404x18">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_13" width="404" height="18" bitmap="main_menu/parts/row_404x18" wide="-106 144">
 		<on event="a" run="gamespy select item"/>
 		<on event="start" run="gamespy select item"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -325,7 +325,7 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_14" width="404" height="18" bitmap="main_menu/parts/row_404x18">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_14" width="404" height="18" bitmap="main_menu/parts/row_404x18" wide="-106 144">
 		<on event="a" run="gamespy select item"/>
 		<on event="start" run="gamespy select item"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -340,35 +340,35 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_server_name" type="text" width="110" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_server_name" type="text" width="110" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2" wide="0 64">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_map" type="text" width="78" height="18" font="ui\small_ui" color="#FFC9DCF7" text_y="2">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_map" type="text" width="78" height="18" font="ui\small_ui" color="#FFC9DCF7" text_y="2" wide="64 44">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_type" type="text" width="60" height="18" font="ui\small_ui" color="#FFC9DCF7" text_y="2">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_type" type="text" width="60" height="18" font="ui\small_ui" color="#FFC9DCF7" text_y="2" wide="108 36">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_players" type="text" width="56" height="18" font="ui\small_ui" color="#FFC9DCF7" align="right" text_y="2">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_players" type="text" width="56" height="18" font="ui\small_ui" color="#FFC9DCF7" align="right" text_y="2" wide="144 0">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/server_item_tick" type="text" width="30" height="16" bitmap="main_menu/parts/pill_30" font="ui\small_ui" color="#FFFFFFFF" align="center" text_flags="no_focus_test">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/server_item_locked" width="16" height="16" bitmap="main_menu/multiplayer_type_select/join_game/locked_icon">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_ping" width="24" height="16" bitmap="main_menu/multiplayer_type_select/ping_bars">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_ping" width="24" height="16" bitmap="main_menu/multiplayer_type_select/ping_bars" wide="144 0">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" type="text" width="54" height="18" font="ui\small_ui" color="#FFC9DCF7" align="right" text_y="2" text_flags="no_focus_test">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" type="text" width="54" height="18" font="ui\small_ui" color="#FFC9DCF7" align="right" text_y="2" text_flags="no_focus_test" wide="144 0">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/panel_title" type="text" controller="1" width="148" height="48" font="ui\large_ui" color="#FFFFFFFF" text_flags="no_focus_test">
+	<widget name="main_menu/multiplayer_type_select/join_game/panel_title" type="text" controller="1" width="148" height="48" font="ui\large_ui" color="#FFFFFFFF" wide="0 68" text_flags="no_focus_test">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/panel_where" type="text" controller="1" width="148" height="44" font="ui\small_ui" color="#FF2896FF" text_flags="no_focus_test">
+	<widget name="main_menu/multiplayer_type_select/join_game/panel_where" type="text" controller="1" width="148" height="44" font="ui\small_ui" color="#FF2896FF" wide="0 68" text_flags="no_focus_test">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/panel_players_label" type="text" controller="1" width="70" height="20" font="ui\small_ui" color="#FF6F9CD0" text_flags="no_focus_test">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/panel_players" type="text" controller="1" width="148" height="24" font="ui\large_ui" color="#FFFFFFFF" align="right" text_flags="no_focus_test">
+	<widget name="main_menu/multiplayer_type_select/join_game/panel_players" type="text" controller="1" width="148" height="24" font="ui\large_ui" color="#FFFFFFFF" align="right" wide="0 68" text_flags="no_focus_test">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/panel_ping_label" type="text" controller="1" width="70" height="20" font="ui\small_ui" color="#FF6F9CD0" text_flags="no_focus_test">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/panel_ping" type="text" controller="1" width="148" height="24" font="ui\large_ui" color="#FFFFFFFF" align="right" text_flags="no_focus_test">
+	<widget name="main_menu/multiplayer_type_select/join_game/panel_ping" type="text" controller="1" width="148" height="24" font="ui\large_ui" color="#FFFFFFFF" align="right" wide="0 68" text_flags="no_focus_test">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/panel_status" type="text" controller="1" width="148" height="60" font="ui\small_ui" color="#FF2896FF" text_flags="no_focus_test">
+	<widget name="main_menu/multiplayer_type_select/join_game/panel_status" type="text" controller="1" width="148" height="60" font="ui\small_ui" color="#FF2896FF" wide="0 68" text_flags="no_focus_test">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/panel_kind" type="text" controller="1" width="64" height="16" bitmap="main_menu/parts/pill_64" font="ui\small_ui" color="#FFFFFFFF" align="center" text_flags="no_focus_test">
 	</widget>
@@ -376,7 +376,7 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/panel_opence" type="text" controller="1" width="132" height="16" bitmap="main_menu/parts/pill_132" font="ui\small_ui" color="#FFFFFFFF" align="center" text_flags="no_focus_test">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/browser_panel" controller="1" left="440" top="104" width="172" height="296" bitmap="main_menu/parts/panel_172x296">
+	<widget name="main_menu/multiplayer_type_select/join_game/browser_panel" controller="1" left="440" top="104" width="172" height="296" bitmap="main_menu/parts/panel_172x296" wide="38 68">
 		<child widget="main_menu/multiplayer_type_select/join_game/panel_title" x="452" y="116"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/panel_where" x="452" y="164"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/panel_players_label" x="452" y="258"/>
@@ -391,7 +391,7 @@
 	<widget name="main_menu/multiplayer_type_select/join_game/browser_join_bar" type="column_list" width="640" height="24" flags="pass_unhandled_to_focused_child">
 		<child widget="main_menu/multiplayer_type_select/join_game/button_join" x="452"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/button_join" type="text" width="148" height="24" bitmap="main_menu/parts/button_148x24" text="%a-button JOIN GAME" font="ui\small_ui" color="#FFFFFFFF" text_x="12" text_y="5">
+	<widget name="main_menu/multiplayer_type_select/join_game/button_join" type="text" width="148" height="24" bitmap="main_menu/parts/button_148x24" wide="38 68" text="%a-button JOIN GAME" font="ui\small_ui" color="#FFFFFFFF" text_x="12" text_y="5">
 		<on event="a" run="gamespy select button"/>
 		<on event="start" run="gamespy select button"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -403,27 +403,27 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/prompt_sort" x="304" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/prompt_back" x="516" y="1"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/prompt_favorite" type="text" width="124" height="22" bitmap="main_menu/parts/item_124x22" text="%y-button FAVORITE" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="4">
+	<widget name="main_menu/multiplayer_type_select/join_game/prompt_favorite" type="text" width="124" height="22" wide="-106 0" bitmap="main_menu/parts/item_124x22" text="%y-button FAVORITE" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="4">
 		<on event="a" run="port browser favorite"/>
 		<on event="start" run="port browser favorite"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/prompt_refresh" type="text" width="124" height="22" bitmap="main_menu/parts/item_124x22" text="%right-trigger REFRESH" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="4">
+	<widget name="main_menu/multiplayer_type_select/join_game/prompt_refresh" type="text" width="124" height="22" wide="-106 0" bitmap="main_menu/parts/item_124x22" text="%right-trigger REFRESH" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="4">
 		<on event="a" run="port browser refresh"/>
 		<on event="start" run="port browser refresh"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/prompt_paste" type="text" width="144" height="22" bitmap="main_menu/parts/item_144x22" text="%right-trigger PASTE LINK" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="4">
+	<widget name="main_menu/multiplayer_type_select/join_game/prompt_paste" type="text" width="144" height="22" wide="-106 0" bitmap="main_menu/parts/item_144x22" text="%right-trigger PASTE LINK" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="4">
 		<on event="a" run="port browser refresh"/>
 		<on event="start" run="port browser refresh"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/prompt_sort" type="text" width="100" height="22" bitmap="main_menu/parts/item_100x22" text="%x-button SORT" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="4">
+	<widget name="main_menu/multiplayer_type_select/join_game/prompt_sort" type="text" width="100" height="22" wide="106 0" bitmap="main_menu/parts/item_100x22" text="%x-button SORT" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="4">
 		<on event="a" run="port browser sort"/>
 		<on event="start" run="port browser sort"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/prompt_back" type="text" width="96" height="22" bitmap="main_menu/parts/item_96x22" text="%b-button BACK" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="4">
+	<widget name="main_menu/multiplayer_type_select/join_game/prompt_back" type="text" width="96" height="22" wide="106 0" bitmap="main_menu/parts/item_96x22" text="%b-button BACK" font="ui\small_ui" color="#FFCFE3FF" text_x="8" text_y="4">
 		<on event="a" run="mouse emit back event"/>
 		<on event="start" run="mouse emit back event"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
