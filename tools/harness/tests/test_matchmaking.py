@@ -72,6 +72,7 @@ FAULTS = {
                                  "return _matchmaking_looking;\n\t\t}\n\t\treturn _matchmaking_reaching;"), "join"),
     "handoff-forever": (("if (view->waited > MATCHMAKING_HANDOFF_MILLISECONDS)", "if (0)"), "host"),
     "new-leader-not-followed": (("\t\tif (view->leader_game)\n", "\t\tif (0)\n"), "host"),
+    "followed-for-ever": (("if (view->waited > MATCHMAKING_FOLLOW_MILLISECONDS)", "if (0)"), "host"),
     "server-waited-for-ever": (("if (!view->hosting && view->waited > MATCHMAKING_HOST_MILLISECONDS)", "if (0)"),
                                "host"),
 }

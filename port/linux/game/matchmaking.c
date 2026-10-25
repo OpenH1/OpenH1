@@ -96,8 +96,10 @@ enum
 	/* a host reached and its game found in this long, joined in this long */
 	MATCHMAKING_REACH_MILLISECONDS = 15000,
 	MATCHMAKING_JOIN_MILLISECONDS = 20000,
-	/* the member asked to host leads in this long, else this machine hosts */
+	/* the member asked to host leads in this long, else this machine hosts;
+	its game is there to follow in this long, else the search is given up */
 	MATCHMAKING_HANDOFF_MILLISECONDS = 10000,
+	MATCHMAKING_FOLLOW_MILLISECONDS = 30000,
 	/* a hosted game: set up this long after it is made (fast setup clears
 	its map), its own player added this long after; it starts this long
 	after it is full, or after waiting this long, with bots after this long
@@ -455,6 +457,12 @@ static short matchmaking_step(
 		/* (the lead back here: looked for again) */
 		if (view->leading)
 			return _matchmaking_looking;
+		/* (the new leader hosts nothing: the search given up) */
+		if (view->waited > MATCHMAKING_FOLLOW_MILLISECONDS)
+		{
+			*action = _matchmaking_action_give_up;
+			return _matchmaking_idle;
+		}
 		return _matchmaking_following;
 	case _matchmaking_hosting:
 		if (!view->hosting && view->waited > MATCHMAKING_HOST_MILLISECONDS)
@@ -531,11 +539,12 @@ static boolean matchmaking_player(
 	}
 	if (profile_index != NONE && ui_widget_port_multiplayer_player(controller, profile_index))
 		return TRUE;
-	if (config_string("debug.matchmaking")[0])
+	if (config_string("debug.matchmaking")[0] || config_string("debug.matchmaking_host")[0])
 	{
 		player_ui_local_player_joined_multiplayer_game(0);
 		return TRUE;
 	}
+	platform_log("matchmaking: no player profile to play with");
 	return FALSE;
 }
 
@@ -978,6 +987,7 @@ void matchmaking_update(
 	case _matchmaking_action_give_up:
 		platform_log("matchmaking: the %s game could not be hosted", matchmaking_playlists[matchmaking.playlist].name);
 		matchmaking.problem = _matchmaking_problem_hosting;
+		matchmaking.order = 0;
 		break;
 	}
 	if (stage != matchmaking.stage)

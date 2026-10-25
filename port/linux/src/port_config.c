@@ -1565,7 +1565,7 @@ static const struct config_setting config_settings[] =
 	{ "debug.matchmaking_host", _config_string, "\"\"", "HALO_MATCHMAKING_HOST", _environment_value, _platform_all,
 		"How well this machine tells its party it can host a matchmaking game,\n"
 		"for a test: \"strict\" (its network's NAT strict) or \"open\"; empty: as\n"
-		"its network is." },
+		"its network is. Set, a player of no profile hosts the game." },
 	{ "debug.party", _config_string, "\"\"", "HALO_PARTY", _environment_value, _platform_all,
 		"Join this party's link at the start, or lead its party (\"lead:\" before\n"
 		"the link): several copies of the game in one party, in a test; empty\n"

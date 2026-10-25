@@ -216,6 +216,10 @@ static void case_host(void)
 	view.leader_game = TRUE;
 	CHECK(step(&view, &action) == _matchmaking_reaching && action == _matchmaking_action_follow, "then reached");
 	view.leader_game = FALSE;
+	view.waited = MATCHMAKING_FOLLOW_MILLISECONDS + 1;
+	CHECK(step(&view, &action) == _matchmaking_idle && action == _matchmaking_action_give_up,
+		"the new leader hosting nothing: the search given up");
+	view.waited = 0;
 	view.leading = TRUE;
 	CHECK(step(&view, &action) == _matchmaking_looking, "the lead back here: looked for again");
 	view.leading = FALSE;
