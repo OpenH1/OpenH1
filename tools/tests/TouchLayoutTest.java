@@ -150,6 +150,26 @@ public final class TouchLayoutTest {
                 }
             }
         }
+        // A control dragged into a corner of a folding phone's inner screen (2184 x 1968 at
+        // 376 dpi) is back in the corner after the cover screen (2520 x 1080) and back: the
+        // shorter display and the larger finger push it inward only while they last, and its
+        // saved place stays where it was put.
+        TouchLayout fold = new TouchLayout();
+        fold.bounds(960, 865.05f);
+        fold.setMinimumRadius(24 * 2.35f / 2.275f);
+        fold.move(0, 99999, 99999);
+        float cornerX = fold.x(0), cornerY = fold.y(0), placeX = fold.savedX(0), placeY = fold.savedY(0);
+        for (int round = 0; round < 3; round++) {
+            fold.bounds(1260, 540);
+            fold.setMinimumRadius(24 * 2.35f / 2f);
+            check(fold.x(0) + fold.radius(0) <= 1260 && fold.y(0) + fold.radius(0) <= 540,
+                  "A control in a corner stays on the cover screen");
+            fold.bounds(960, 865.05f);
+            fold.setMinimumRadius(24 * 2.35f / 2.275f);
+        }
+        check(fold.x(0) == cornerX && fold.y(0) == cornerY,
+              "A control in a corner comes back to it after folding and unfolding");
+        check(fold.savedX(0) == placeX && fold.savedY(0) == placeY, "Folding does not move a saved place");
         // Sizes follow use: fire the largest, then jump and the grenade, then reload,
         // swap and melee; the seldom used (stick clicks, white, black, back, the
         // D-pad) smaller than all of those.
