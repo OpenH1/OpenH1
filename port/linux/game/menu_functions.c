@@ -97,6 +97,8 @@ their handlers open opens.
 #include "custom_edition_maps.h"
 #include "game_modes.h"
 #include "network_voice.h"
+#include "network_chat.h"
+#include "network_host_controls.h"
 #include "sim_rate.h"
 #include "network_standard.h"
 #include "text/draw_string.h"
@@ -5355,6 +5357,8 @@ enum
 #define PING_COLOR_MEASURING 0x4A5A78FFUL
 
 static boolean browser_sort_header_current(struct widget_instance const *widget);
+/* (Host Controls' team colours: host_controls_menu.inc) */
+static boolean host_controls_text_color(struct widget_instance *widget, real_argb_color *color);
 
 /* ui_widget.c: a text's colour in place of its own (FALSE: its own): a
 strip of tabs' current one white, and the browsers' column title they are
@@ -5366,6 +5370,8 @@ boolean pc_menu_text_color(struct widget_instance *widget, real_argb_color *colo
 	short row = widget->parent ? browser_row_index(widget->parent) : NONE;
 	unsigned long rgba;
 
+	if (host_controls_text_color(widget, color))
+		return TRUE;
 	if ((menu_tab_strip(widget->parent) && widget->animation.current_frame_index >= 2) ||
 		browser_sort_header_current(widget))
 	{
@@ -9610,6 +9616,10 @@ static void gametype_engine_name(struct widget_instance *text_box)
 #include "party_menu.inc"
 #include "lobby_menu.inc"
 
+/* ---------- Host Controls: the pause menu's HOST CONTROLS, the host's */
+
+#include "host_controls_menu.inc"
+
 /* ---------- public code */
 
 boolean pc_menu_event_function_invoke(
@@ -9946,6 +9956,33 @@ boolean pc_menu_event_function_invoke(
 		{
 			return party_screen_key(widget, !strcmp(name, "port party y"), controller);
 		}
+		/* (Host Controls: host_controls_menu.inc) */
+		else if (!strcmp(name, "port host open"))
+		{
+			return host_controls_open();
+		}
+		else if (!strcmp(name, "port host init"))
+		{
+			return host_controls_initialize();
+		}
+		else if (!strcmp(name, "port host tab") || !strcmp(name, "port host tab next") ||
+			!strcmp(name, "port host tab previous"))
+		{
+			return host_controls_tab(widget, (short)(!strcmp(name, "port host tab next") ? 1 :
+				!strcmp(name, "port host tab previous") ? -1 : 0));
+		}
+		else if (!strcmp(name, "port host row"))
+		{
+			return host_controls_row(widget);
+		}
+		else if (!strcmp(name, "port host left") || !strcmp(name, "port host right"))
+		{
+			return host_controls_step(widget, (short)(!strcmp(name, "port host left") ? -1 : 1));
+		}
+		else if (!strcmp(name, "port host action"))
+		{
+			return host_controls_action(widget);
+		}
 		/* (the computer's lobby: lobby_menu.inc) */
 		else if (!strcmp(name, "port lobby team red") || !strcmp(name, "port lobby team blue") ||
 			!strcmp(name, "port lobby team toggle"))
@@ -10171,6 +10208,8 @@ void pc_menu_game_data_function_invoke(
 		multiplayer_status_update(widget);
 	else if (!strcmp(name, "port party update"))
 		party_screen_update(widget);
+	else if (!strcmp(name, "port host update"))
+		host_controls_update(widget);
 	else if (!strcmp(name, "port playlist edit desc"))
 		playlist_edit_description(widget);
 }

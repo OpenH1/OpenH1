@@ -2806,6 +2806,7 @@ symbols in this file:
 #include "networking/network_game_manager.h"
 #include "networking/network_server_manager.h"
 #include "network_votekick.h" /* port: port/linux/game/network_votekick.c */
+#include "network_host_controls.h" /* port: port/linux/game/network_host_controls.c */
 #include "objects/damage.h"
 #include "objects/object_lights.h"
 #include "objects/scenery.h"
@@ -15604,6 +15605,16 @@ static boolean hs_compile_and_evaluate_command(
 			name[length] = 0;
 			return network_votekick_player_named(name);
 		}
+	}
+	/* port: the host's Host Controls ("host_controls", or with the tab:
+	"host_controls game", "bans", "players <player name>"), as its pause
+	menu opens it, and its "end", "restart" and "unban <player>"
+	(network_host_controls.c) */
+	{
+		char const *text = hs_host_player_command(expression, "host_controls");
+
+		if (text)
+			return network_host_controls_open_command(text);
 	}
 	/* port: profile_reset_campaign, which clears the first player's
 	profile's campaign progress (player_ui_reset_campaign_progress) once

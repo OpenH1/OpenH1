@@ -383,6 +383,7 @@ symbols in this file:
 #include "network_voice.h" /* port: port/linux/game/network_voice.c */
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
 #include "network_party.h" /* port: port/linux/game/network_party.c */
+#include "network_host_controls.h" /* port: port/linux/game/network_host_controls.c */
 #include "party.h" /* port: port/linux/game/party_menu.inc */
 #include "network_aim_assist.h" /* port: port/linux/game/network_aim_assist.c */
 #include "network_shield_effects.h" /* port: port/linux/game/network_shield_effects.c */
@@ -3651,6 +3652,9 @@ void main_loop(
 			/* port: parties made in a network game, from the scoreboard
 			(port/linux/game/network_party.c) */
 			network_party_update();
+			/* port: the host's controls' restart of a round, between the scores
+			and the lobby (port/linux/game/network_host_controls.c) */
+			network_host_controls_update();
 			/* port: a frame of a network game that took seconds (a hitch,
 			a stall of the renderer or of the VR runtime) noted in debug.txt,
 			nothing having been sent or read meanwhile: why a machine

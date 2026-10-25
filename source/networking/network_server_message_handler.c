@@ -250,6 +250,7 @@ symbols in this file:
 #include "cseries.h"
 #include "game_modes.h" /* port: port/linux/game/game_modes.c */
 #include "network_standard.h" /* port: port/linux/game/network_standard.c */
+#include "network_host_controls.h" /* port: port/linux/game/network_host_controls.c */
 #include "bungie_net/common/message_header.h"
 #include "bungie_net/network/transport.h"
 #include "bungie_net/network/transport_endpoint_winsock.h"
@@ -2538,6 +2539,14 @@ static boolean network_game_server_handle_message_client_player_settings_request
 					!VALID_INDEX(player.team_index, NUMBER_OF_MULTIPLAYER_TEAMS)))
 			{
 				player.team_index = game->players[player.player_list_index].team_index;
+			}
+			/* port: the host's Lock teams (Host Controls) keeps a player on
+			the team the host has them on, but the host machine's own */
+			if (VALID_INDEX(player.player_list_index, MAXIMUM_NUMBER_OF_PLAYERS))
+			{
+				player.team_index = network_host_controls_lobby_team(
+					network_game_server_client_machine_is_local(server, client_machine), player.team_index,
+					game->players[player.player_list_index].team_index);
 			}
 			if (player.machine_index != machine_index)
 			{

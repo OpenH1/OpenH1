@@ -79,6 +79,7 @@ machine (their datum identifiers need not be).
 #include "network_voice.h"
 #include "network_aim_assist.h"
 #include "network_party.h"
+#include "network_host_controls.h"
 #include "network_shield_effects.h"
 #include "network_substeps.h"
 #include "network_standard.h"
@@ -111,6 +112,9 @@ extern real global_gravity;
 void network_game_server_kick_machine(long machine_index, boolean kept_out);
 unsigned long network_game_server_machine_address(long machine_index);
 char const *network_game_server_machine_hardware_id(long machine_index);
+long network_game_server_port_kept_out_count(void);
+unsigned long network_game_server_port_kept_out_address(long index);
+void network_game_server_port_release_kept_out(long index);
 void p2p_hardware_id_sanitize(char *destination, int size, const char *source);
 void p2p_discord_sanitize(char *destination, int size, const char *source, int name);
 void p2p_discord_identity(char *id, int id_size, char *name, int name_size);
@@ -4469,6 +4473,123 @@ void network_distributed_kick(
 	}
 }
 
+/* (the host: Host Controls, network_host_controls.c) BANS_FILE's lines,
+each as it is but for its end, at most maximum (a longer line cut); how many */
+short network_distributed_ban_lines(
+	char (*lines)[HOST_CONTROLS_BAN_LINE_SIZE],
+	short maximum)
+{
+	FILE *file = fopen(BANS_FILE, "r");
+	short count = 0;
+
+	if (!file)
+		return 0;
+	while (count < maximum && fgets(lines[count], HOST_CONTROLS_BAN_LINE_SIZE, file))
+	{
+		size_t length = strlen(lines[count]);
+
+		/* (the rest of a line too long for its place, passed over) */
+		if (length && lines[count][length - 1] != '\n' && !feof(file))
+		{
+			int character;
+
+			while ((character = fgetc(file)) != EOF && character != '\n')
+				;
+		}
+		while (length && (lines[count][length - 1] == '\n' || lines[count][length - 1] == '\r'))
+			lines[count][--length] = 0;
+		if (length)
+			count++;
+	}
+	fclose(file);
+	return count;
+}
+
+/* ... the line that is `line` (as network_distributed_ban_lines gave it)
+taken out of BANS_FILE, the others kept as they are (written anew, then put
+in its place), and the server's keeping out of its address (the host's ban
+of this game: network_server_manager.c) let go; FALSE if no line was */
+boolean network_distributed_unban(
+	char const *line)
+{
+	static char const new_file[] = BANS_FILE ".new";
+	char read_line[HOST_CONTROLS_BAN_LINE_SIZE];
+	char address[HOST_CONTROLS_BAN_ADDRESS_SIZE] = "";
+	boolean found = FALSE;
+	FILE *file = fopen(BANS_FILE, "r");
+	FILE *rewritten;
+	long index;
+
+	if (!file || !line || !line[0])
+	{
+		if (file)
+			fclose(file);
+		return FALSE;
+	}
+	rewritten = fopen(new_file, "w");
+	if (!rewritten)
+	{
+		fclose(file);
+		error(_error_log, "could not write %s to take a ban out", new_file);
+		return FALSE;
+	}
+	while (fgets(read_line, sizeof(read_line), file))
+	{
+		size_t length = strlen(read_line);
+		size_t kept = length;
+
+		while (kept && (read_line[kept - 1] == '\n' || read_line[kept - 1] == '\r'))
+			kept--;
+		/* (the one line, once) */
+		if (!found && kept == strlen(line) && !strncmp(read_line, line, kept))
+		{
+			found = TRUE;
+			continue;
+		}
+		fputs(read_line, rewritten);
+		/* (a line longer than the buffer goes on as it is) */
+		while (length && read_line[length - 1] != '\n' && fgets(read_line, sizeof(read_line), file))
+		{
+			fputs(read_line, rewritten);
+			length = strlen(read_line);
+		}
+	}
+	fclose(file);
+	fclose(rewritten);
+	if (!found)
+	{
+		remove(new_file);
+		return FALSE;
+	}
+	if (remove(BANS_FILE) != 0 || rename(new_file, BANS_FILE) != 0)
+	{
+		error(_error_log, "could not put %s in the place of %s", new_file, BANS_FILE);
+		return FALSE;
+	}
+	/* (its address no longer kept out of this server's games) */
+	{
+		char const *ip = strstr(line, "ip=");
+		long length = 0;
+
+		for (ip = ip ? ip + 3 : NULL; ip && *ip && *ip != '\t' && length < (long)sizeof(address) - 1; ip++)
+			address[length++] = *ip;
+		address[length] = 0;
+	}
+	for (index = 0; address[0] && index < network_game_server_port_kept_out_count(); index++)
+	{
+		unsigned long kept_out = network_game_server_port_kept_out_address(index);
+		char text[32];
+
+		if (!kept_out)
+			continue;
+		distributed_address_text(kept_out, text, sizeof(text));
+		if (!strcmp(text, address))
+			network_game_server_port_release_kept_out(index);
+	}
+	error(_error_log, "unbanned by the host: %s", address[0] ? address : "(no address)");
+	return TRUE;
+}
+
 /* (the host) a client machine's tick, which one of its messages is
 stamped with: its clock measured, each window, against the host's; one
 whose game runs fast (distributed_client_clock) has its players'
@@ -4649,6 +4770,13 @@ void network_distributed_handle_message(
 	if (network_party_handles_message(message, size))
 	{
 		network_party_handle_message(machine_index, message, size, machine_index != NONE ?
+			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
+		return;
+	}
+	/* (the host's team moves: network_host_controls.c) */
+	if (network_host_controls_handles_message(message, size))
+	{
+		network_host_controls_handle_message(machine_index, message, size, machine_index != NONE ?
 			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
 		return;
 	}

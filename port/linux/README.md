@@ -455,12 +455,41 @@ screen before JOIN GAME: players join there the same way, START or ADD
 PLAYER then START, and JOIN GAME brings them all into the game.
 
 In a multiplayer game, the pause menu (escape) has SETTINGS, which opens
-the profile's settings while the game goes on, and for the host END GAME.
+the profile's settings while the game goes on, and for the host HOST
+CONTROLS (below; in a game of this computer alone, END GAME).
 There Network Setup has only its pages that work in a game (Map Sharing,
 Multiplayer HUD with the text chat, and Streamer Mode), not INTERNET PLAY,
 which would drop the game, nor the rows for the main menu.
 END GAME ends the game as its time limit does: the players stay, and after
 the carnage report the host picks the next map and gametype (PICK GAME).
+
+HOST CONTROLS is the host's of a network game (internet or LAN), laid out as
+the server browser is, over the game dimmed and without its HUD, with three
+tabs:
+
+- PLAYERS: everyone in the game, with their team, score, ping and a tag
+  (HOST, BOT, OPENH1 or OPENCE; in a Legacy game the host cannot tell OpenH1's
+  players from OpenCE's). For the player chosen: KICK, BAN (pressed twice),
+  MOVE TO RED or BLUE, and MUTE FOR ALL (their text chat and voice, for
+  everyone). The host's own players are never kicked, banned or muted. A team
+  move is offered in an OpenH1 game of teams with no OpenCE player: the
+  player dies (no death counted) and respawns on the other team.
+- GAME: END GAME NOW and RESTART ROUND (each pressed twice; a restart starts
+  the same map and gametype again after a few seconds in the lobby), LOCK
+  TEAMS (players cannot switch teams in the lobby; the host still moves
+  them), ALLOW VOTEKICK (`network.votekick`), LISTING (a public internet
+  game's PUBLIC or PRIVATE), MAX PLAYERS (left and right; never fewer than
+  are in the game) and ALLOW OPENCE PLAYERS (an OpenH1 game's, for new
+  joins). The bots' rows will be here once the bots play network games.
+- BANS: `bans.txt`'s players, when they were banned and why, and UNBAN.
+
+The scoreboard's player menu (a right click on a name) offers the host the
+same: Mute for everyone, Kick, Ban (picked twice), Move to the other team,
+and Host controls..., which opens Host Controls with the player chosen. The
+console's `host_controls` opens it too (`host_controls game`, `host_controls
+bans`, `host_controls players <name>`), and `host_controls end` and
+`host_controls restart` end or restart the round, and `host_controls unban
+<name>` unbans. Clients have none of it.
 
 The carnage report after a game is laid out as Settings is: a line with the
 gametype, map and length, the result (each team's score with the winner
@@ -1638,8 +1667,9 @@ Only machines with the invite can find the game:
   not drop the player, because another machine can send datagrams with the
   player's address: it adds an `unverified` line to `cheaters.txt`.
 - The host can ban a player with `ban <player name>` in the developer
-  console (Tab completes the name). Remove a line from `bans.txt` to unban.
-  Refer to `NETCODE.md`. `kick <player name>` drops the player the same
+  console (Tab completes the name), or from HOST CONTROLS (its pause menu,
+  above). Unban a player in HOST CONTROLS > BANS, or remove their line from
+  `bans.txt`. Refer to `NETCODE.md`. `kick <player name>` drops the player the same
   way, but keeps nothing: no line in `bans.txt`, and the player can join
   again at once. In co-op, `bringto` brings every player to the host.
 - Players can vote to kick a player. The host turns this on or off with

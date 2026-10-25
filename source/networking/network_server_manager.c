@@ -1212,6 +1212,29 @@ unsigned long network_game_server_machine_address(
 		network_game_server_client_machine_addresses[machine_index] : 0;
 }
 
+/* port: the addresses this server keeps out of its games (a ban's, one
+dropped for cheating: network_game_server_kicked_addresses), each by its
+place, 0 for none; and one let in again (Host Controls' Unban:
+network_distributed.c's network_distributed_unban) */
+long network_game_server_port_kept_out_count(
+	void)
+{
+	return MAXIMUM_KICKED_ADDRESSES;
+}
+
+unsigned long network_game_server_port_kept_out_address(
+	long index)
+{
+	return VALID_INDEX(index, MAXIMUM_KICKED_ADDRESSES) ? network_game_server_kicked_addresses[index] : 0;
+}
+
+void network_game_server_port_release_kept_out(
+	long index)
+{
+	if (VALID_INDEX(index, MAXIMUM_KICKED_ADDRESSES))
+		network_game_server_kicked_addresses[index] = 0;
+}
+
 /* port: the distributed netcode asks that a client machine be dropped (its
 game ran faster than this one's: network_distributed.c); it is, once this
 server next looks at its machines, not while its messages are read. Its
@@ -1530,9 +1553,9 @@ static void network_game_server_list(
 	p2p_set_game_listing(name, tag_name_strip_path(game->map.name), gametype, game->variant.game_engine_index,
 		game_modes_kind(&game->variant, &game->variant_options), open, in_progress,
 		game->variant.universal_variant.teams);
-	/* port: (a Standard game's, one OpenCE players join too, and its rate:
-	network_standard.c) */
-	p2p_set_game_listing_standard(network_standard_hosting(), network_standard_hosting_mixed(),
+	/* port: (a Standard game's, one OpenCE players join too while it takes
+	them, and its rate: network_standard.c) */
+	p2p_set_game_listing_standard(network_standard_hosting(), network_standard_opence_joins_open(),
 		(int)network_standard_server_rate(state == _network_game_server_state_pregame && !in_progress));
 }
 
