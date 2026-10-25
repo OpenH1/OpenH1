@@ -128,10 +128,10 @@ def test_scoreboard_offers_host_controls():
         assert re.search(rf"offered\[_scoreboard_item_{item}\] = TEST_FLAG\(actions, _host_controls_{action}\)",
                          offered), item
     picked = engine[engine.index("static void scoreboard_menu_pick("):engine.index("static void game_engine_rasterize_scoreboard(")]
-    assert "network_host_controls_kick(scoreboard_menu.player_index, FALSE)" in picked
-    assert "network_host_controls_kick(scoreboard_menu.player_index, TRUE)" in picked
-    assert "network_host_controls_move_team(scoreboard_menu.player_index)" in picked
-    assert "network_host_controls_open(scoreboard_menu.player_index, 0)" in picked
+    assert "network_host_controls_kick(scoreboard_menu->player_index, FALSE)" in picked
+    assert "network_host_controls_kick(scoreboard_menu->player_index, TRUE)" in picked
+    assert "network_host_controls_move_team(scoreboard_menu->player_index)" in picked
+    assert "network_host_controls_open(scoreboard_menu->player_index, 0)" in picked
     assert "ban_picked" in picked, "Ban is picked twice"
 
 

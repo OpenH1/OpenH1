@@ -930,6 +930,12 @@ void rasterizer_text_set_scale(
 	real scale,
 	real origin_x,
 	real origin_y);
+/* port: ... and what it is (what else is drawn in the text, scaled with it:
+its prompts' buttons and key caps) */
+void rasterizer_text_get_scale(
+	real *scale,
+	real *origin_x,
+	real *origin_y);
 void rasterizer_text_cache_flush(
 	void);
 void rasterizer_text_cache_dispose(

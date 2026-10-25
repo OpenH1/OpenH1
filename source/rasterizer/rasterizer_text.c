@@ -801,6 +801,18 @@ void rasterizer_text_set_scale(
 	return;
 }
 
+void rasterizer_text_get_scale(
+	real *scale,
+	real *origin_x,
+	real *origin_y)
+{
+	*scale = text_scale;
+	*origin_x = text_scale_origin_x;
+	*origin_y = text_scale_origin_y;
+
+	return;
+}
+
 /* port: a character's quad, scaled (rasterizer_text_set_scale) */
 static void rasterizer_text_draw_scaled_character(
 	struct dynamic_screen_vertex const *vertices)

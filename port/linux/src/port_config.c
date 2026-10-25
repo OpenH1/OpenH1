@@ -1191,6 +1191,10 @@ static const struct config_setting config_settings[] =
 	{ "debug.network_test_cue_players", _config_integer, "1", "HALO_NETWORK_TEST_CUE_PLAYERS", _environment_value,
 		_platform_all,
 		"The players debug.network_test_cues waits for." },
+	{ "debug.network_test_players", _config_integer, "1", "HALO_NETWORK_TEST_PLAYERS", _environment_value,
+		_platform_all,
+		"The players of a \"local:\" network test's game (1 to 4): its split\n"
+		"screen, the first controller's player the first." },
 	{ "debug.network_test_public", _config_boolean, "false", "HALO_NETWORK_TEST_PUBLIC", _environment_value,
 		_platform_all,
 		"The network test's host lists its game in the server browser, as Create\n"
@@ -1246,7 +1250,8 @@ static const struct config_setting config_settings[] =
 		"\"menu:<buttons>\" presses menu\n"
 		"buttons one a second (a, b, x, y, up, down, left, right, start, back or\n"
 		"wait, or click:<x>:<y>, a click of the pointer there, 0 to 1 of the\n"
-		"window, separated by spaces or commas), for testing the menus;\n"
+		"window, separated by spaces or commas; \"back+x\" holds Back through its\n"
+		"second and presses X half way), for testing the menus;\n"
 		"\"script:<second>[-<second>] <action>;...\" presses, holds and aims (\"hunt\": at the\n"
 		"nearest enemy in sight) on the\n"
 		"simulation's clock in seconds from the scenario's start (tools/scorecard),\n"
