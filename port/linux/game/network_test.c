@@ -164,7 +164,7 @@ static struct
 	/* debug.network_test_party's */
 	real party_time;
 	long score_to_win;
-	/* the most players the host's games take (debug.network_test_players;
+	/* the most players the host's games take (debug.network_test_most_players;
 	0: the game's own) */
 	long maximum_players;
 	long logged_time;
@@ -259,7 +259,7 @@ static void network_test_read_settings(
 	snprintf(network_test.pickup_weapon, sizeof(network_test.pickup_weapon), "%s",
 		config_string("debug.network_test_pickup_weapon"));
 	network_test.score_to_win = (long)config_integer("debug.network_test_score");
-	network_test.maximum_players = (long)config_integer("debug.network_test_players");
+	network_test.maximum_players = (long)config_integer("debug.network_test_most_players");
 	network_test.cue_players = MAX(1, config_integer("debug.network_test_cue_players"));
 	network_test.cues_start = NONE;
 	{
@@ -1643,7 +1643,7 @@ void network_test_update(
 			}
 			else
 			{
-				/* debug.network_test_players: a game of so many (as Server
+				/* debug.network_test_most_players: a game of so many (as Server
 				Setup's MAX PLAYERS has it) */
 				if (network_test.maximum_players > 0)
 				{
