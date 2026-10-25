@@ -81,6 +81,7 @@ Called from the main loop every frame (main.c).
 
 #include "../src/p2p.h" /* port: port/linux/src/p2p.c, p2p_lobby.c */
 #include "network_chat.h"
+#include "network_party.h"
 #include "network_voice.h"
 #include "sim_rate.h"
 #include "network_standard.h"
@@ -154,6 +155,8 @@ static struct
 	/* debug.network_test_chat's, and the lines said this game */
 	real chat_time;
 	short chat_lines_said;
+	/* debug.network_test_party's */
+	real party_time;
 	long score_to_win;
 	long logged_time;
 	boolean public_game;
@@ -239,6 +242,7 @@ static void network_test_read_settings(
 	network_test.hitch_seconds = (real)config_real("debug.network_test_hitch");
 	network_test.pickup_time = (real)config_real("debug.network_test_pickup");
 	network_test.chat_time = (real)config_real("debug.network_test_chat");
+	network_test.party_time = (real)config_real("debug.network_test_party");
 	snprintf(network_test.pickup_weapon, sizeof(network_test.pickup_weapon), "%s",
 		config_string("debug.network_test_pickup_weapon"));
 	network_test.score_to_win = (long)config_integer("debug.network_test_score");
@@ -940,6 +944,48 @@ static void network_test_last_player_name(
 	name[index] = 0;
 }
 
+/* debug.network_test_party, that many seconds in: the host invites each
+player it may to its party (one made for it), unless it leads one already
+(debug.party), and a client asks each player in a party to let it in, as
+their scoreboard menus do; then from three seconds on (its line shown) each
+second each machine accepts the invite (or lets in the ask) it has, as its
+key does (network_party.c) */
+static void network_test_party(
+	void)
+{
+	long party_time = (long)(network_test.party_time * TICKS_PER_SECOND);
+	struct data_iterator iterator;
+	struct player_datum *player;
+
+	if (game_time_get() >= party_time && game_time_get() - party_time < TICKS_PER_SECOND)
+	{
+		data_iterator_new(&iterator, player_data);
+		while ((player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
+		{
+			unsigned long actions = network_party_player_actions(iterator.datum_index);
+			char name[16];
+			short index;
+
+			for (index = 0; index < 15 && index < (short)NUMBEROF(player->name) && player->name[index]; index++)
+				name[index] = player_name_character_ascii(player->name[index]);
+			name[index] = 0;
+			platform_log("network test: party actions for %s: %s%s%s", name,
+				TEST_FLAG(actions, _network_party_action_invite) ? "invite " : "",
+				TEST_FLAG(actions, _network_party_action_join) ? "join " : "",
+				TEST_FLAG(actions, _network_party_action_accept) ? "accept" : "");
+			if (network_test.mode == _network_test_host && !*config_string("debug.party") &&
+				TEST_FLAG(actions, _network_party_action_invite))
+			{
+				network_party_player_act(iterator.datum_index, _network_party_action_invite);
+			}
+			if (network_test.mode != _network_test_host && TEST_FLAG(actions, _network_party_action_join))
+				network_party_player_act(iterator.datum_index, _network_party_action_join);
+		}
+	}
+	if (game_time_get() >= party_time + 3 * TICKS_PER_SECOND && network_party_accept())
+		platform_log("network test: a party invite accepted");
+}
+
 /* both machines stand the last player at the driver's entrance of the
 nearest vehicle no one rides (a joining machine's player then holds the
 action button, as a player getting in does) */
@@ -1198,6 +1244,8 @@ void network_test_update(
 				test_input_hold_action(hold);
 			}
 		}
+		if (network_test.party_time > 0.0f)
+			network_test_party();
 		/* debug.network_test_chat: each machine's player says a line to
 		everyone that many seconds in, one to the team two seconds on, and
 		one to the vehicle two more on, the host having seated the last two

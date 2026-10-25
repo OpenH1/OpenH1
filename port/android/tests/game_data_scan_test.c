@@ -3,8 +3,9 @@ GAME_DATA_SCAN_TEST.C
 
 Tests of the first start's search for game data (port/linux/src/game_data_scan.c):
 which disc images and maps folders it offers from a made-up home folder, SD
-card and game folder, in what order and with what places, and the copy of a
-maps folder. Built and run by tools/test_host_units.py with a scratch folder
+card, game folder and an earlier version's maps folder, in what order and
+with what places, drives without a table of mounts (macOS's /Volumes), the
+copy of a maps folder, and a folder the player picks. Built and run by tools/test_host_units.py with a scratch folder
 as its argument; exits nonzero on a failure.
 */
 
@@ -238,6 +239,78 @@ static void test_copy(void)
 	CHECK(!result && strstr(error, "has no maps"), "a folder without maps: %d, %s", result, error);
 }
 
+/* an earlier version's maps folder (HALO_MAPS_USED_BEFORE) first, shown
+from ~; and drives named by their folders where there is no table of mounts
+(macOS's /Volumes), whose links (to the startup disk) are not entered */
+static void test_earlier_and_volumes(void)
+{
+	struct game_data_places places;
+	struct game_data_candidate candidates[GAME_DATA_CANDIDATES];
+	char earlier[1100], expected[1100], target[1024], link_path[1024];
+	int count, checks = 0;
+
+	make_folder("home2/Library/Old/maps");
+	make_ui_map("home2/Library/Old/maps/ui.map", 5, 1 << 20);
+	make_folder("Volumes/My Drive/Games");
+	make_file("Volumes/My Drive/Games/halo.xiso", "HALO", 4, 100LL << 20);
+	make_folder("startup/Users");
+	make_file("startup/Users/elsewhere.iso", "HALO", 4, 100LL << 20);
+	path_of("startup", target, sizeof(target));
+	path_of("Volumes/Startup Disk", link_path, sizeof(link_path));
+	if (symlink(target, link_path) != 0)
+		failures++;
+	path_of("home2", earlier, sizeof(earlier));
+	setenv("HOME", earlier, 1);
+	path_of("home2/Library/Old/maps", earlier, sizeof(earlier));
+	/* (the path a line: one that is not a whole path is passed over) */
+	strcat(earlier, "\nrelative/maps");
+	setenv("HALO_MAPS_USED_BEFORE", earlier, 1);
+	path_of("game2", expected, sizeof(expected));
+	game_data_default_places(&places, expected);
+	unsetenv("HALO_MAPS_USED_BEFORE");
+	path_of("home2/Library/Old/maps", expected, sizeof(expected));
+	CHECK(!strcmp(places.earlier[0], expected) && !places.earlier[1][0], "earlier %s, %s", places.earlier[0],
+		places.earlier[1]);
+	path_of("Volumes", places.media[0], sizeof(places.media[0]));
+	places.media[1][0] = 0;
+	places.mounts[0] = 0;
+	places.time_limit = 10000;
+	count = game_data_scan(&places, image_check, &checks, candidates, GAME_DATA_CANDIDATES);
+	CHECK(count == 2, "%d candidates, not 2", count);
+	if (count < 2)
+		return;
+	CHECK(candidates[0].kind == _game_data_image && !strcmp(candidates[0].place, "Drive My Drive/Games"),
+		"the drive's image: %s (%s)", candidates[0].path, candidates[0].place);
+	CHECK(candidates[1].kind == _game_data_maps_folder && !strcmp(candidates[1].path, expected) &&
+		!strcmp(candidates[1].place, "~/Library/Old"), "the earlier maps: %s (%s)", candidates[1].path,
+		candidates[1].place);
+}
+
+/* a folder the player picks: the maps folder, the folder holding it,
+Halo PC's, none, or a file */
+static void test_picked_folder(void)
+{
+	struct game_data_candidate candidate;
+	char path[1024], expected[1024], error[600];
+
+	path_of("home/Halo/maps", path, sizeof(path));
+	CHECK(game_data_picked_folder(path, &candidate, error, sizeof(error)) == 1 && !strcmp(candidate.path, path) &&
+		candidate.kind == _game_data_maps_folder && candidate.size == (1ULL << 20) + (3ULL << 20),
+		"the maps folder: %s", candidate.path);
+	snprintf(expected, sizeof(expected), "%s", path);
+	path_of("home/Halo", path, sizeof(path));
+	CHECK(game_data_picked_folder(path, &candidate, error, sizeof(error)) == 1 && !strcmp(candidate.path, expected) &&
+		!strcmp(candidate.place, path), "the folder holding it: %s (%s)", candidate.path, candidate.place);
+	path_of("home/pc", path, sizeof(path));
+	CHECK(game_data_picked_folder(path, &candidate, error, sizeof(error)) == -1 && strstr(error, "Halo for PC"),
+		"Halo PC's: %s", error);
+	path_of("home/Desktop", path, sizeof(path));
+	CHECK(game_data_picked_folder(path, &candidate, error, sizeof(error)) == -1 && strstr(error, "no ui.map"),
+		"no maps: %s", error);
+	path_of("home/Downloads/Halo.ISO", path, sizeof(path));
+	CHECK(game_data_picked_folder(path, &candidate, error, sizeof(error)) == 0, "a file");
+}
+
 static void test_default_places(void)
 {
 	struct game_data_places places;
@@ -282,6 +355,8 @@ int main(int argc, char **argv)
 	snprintf(root, sizeof(root), "%s", argv[1]);
 	test_scan();
 	test_copy();
+	test_picked_folder();
+	test_earlier_and_volumes();
 	test_default_places();
 	if (failures)
 		printf("%d failures\n", failures);

@@ -5,7 +5,9 @@ The first start's search for the player's game data (game_data_scan.h), and
 the copy of a maps folder it finds. On a Steam Deck in Game Mode (gamescope)
 or in a VR headset no system file dialog can be shown, so the game finds the
 disc image itself, in the places a player puts a downloaded or copied file,
-and first_start.c offers what it finds in the game's own window.
+and first_start.c offers what it finds in the game's own window. The macOS
+app does the same (its window works in fullscreen, in any Space and with a
+controller), and looks first in the maps folders its earlier versions used.
 
 The search is shallow and bounded: each place a few folders deep, hidden
 folders and the large folders of games (steamapps) skipped, and the whole
@@ -14,9 +16,15 @@ the caller's check (xiso.c) has found Halo's maps in it; a maps folder only
 when its ui.map is the Xbox game's (not Halo PC's, version 7, or Custom
 Edition's, 609). (Files are reached through posix.h, as the rest of the
 platform layer's: the game's ABI cannot use the C library's struct stat.)
+
+On macOS the folders the system guards (Documents, Pictures, Music, Movies,
+the Library) are not looked in: each would ask the player to let the game
+in. Downloads and the Desktop are, and asking for them is the price of
+finding the image there; the time the player takes to answer is not counted
+against the scan's.
 */
 
-#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_MACOS)
+#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_IOS)
 
 #include "game_data_scan.h"
 #include "posix.h"
@@ -81,6 +89,8 @@ struct scan
 	int seen_count;
 	struct scan_mount mounts[SCAN_MAXIMUM_MOUNTS];
 	int mount_count;
+	/* the earlier maps folders' places, for the player */
+	char earlier_labels[GAME_DATA_EARLIER][GAME_DATA_PATH_SIZE];
 	struct timespec started;
 	long visits;
 	int stopped;
@@ -121,6 +131,9 @@ static int name_is_skipped(const char *name)
 	{
 		"steamapps", "compatdata", "shadercache", "node_modules", "lost+found", "System Volume Information",
 		"maps.partial", "proc", "sys", "dev",
+#ifdef HALO_MACOS
+		"Library", "Documents", "Pictures", "Music", "Movies", "Applications",
+#endif
 	};
 	size_t index;
 
@@ -294,6 +307,15 @@ static void scan_place(struct scan *scan, const struct scan_root *root, const ch
 				snprintf(label, sizeof(label), "Drive %.250s", base_name(drive->point));
 			below = folder + strlen(drive->point);
 		}
+		else if (!scan->places->mounts[0] && *below == '/')
+		{
+			/* (no table of mounts: the drive is the first folder below,
+			/Volumes/NAME) */
+			size_t length = strcspn(below + 1, "/");
+
+			snprintf(label, sizeof(label), "Drive %.*s", (int)(length < 250 ? length : 250), below + 1);
+			below += 1 + length;
+		}
 		else
 		{
 			snprintf(label, sizeof(label), "Drive");
@@ -416,48 +438,83 @@ static int scan_is_other_root(const struct scan *scan, const char *path)
 		if (places->media[index][0] && !strcmp(path, places->media[index]))
 			return 1;
 	}
+	for (index = 0; index < GAME_DATA_EARLIER; index++)
+	{
+		if (places->earlier[index][0] && !strcmp(path, places->earlier[index]))
+			return 1;
+	}
 	return 0;
+}
+
+/* whether a folder is a symbolic link (/Volumes holds one to the startup
+disk, /) */
+static int is_link(const char *path)
+{
+	char target[8];
+
+	return readlink(path, target, sizeof(target)) >= 0;
 }
 
 static void scan_folder(struct scan *scan, const struct scan_root *root, const char *folder, int depth)
 {
 	void *directory;
 	char name[256];
+	struct timespec opened;
+	long waited;
+	int pass;
 
 	if (scan->stopped)
 		return;
+	clock_gettime(CLOCK_MONOTONIC, &opened);
 	directory = posix_directory_open(folder);
-	if (!directory)
-		return;
-	while (!scan_should_stop(scan) && posix_directory_next(directory, name, sizeof(name)))
+	/* (the time the player took to let the game in, where the system asks:
+	macOS's Downloads, Desktop and drives) */
+	waited = milliseconds_since(&opened);
+	if (waited > 250)
 	{
-		char path[GAME_DATA_PATH_SIZE];
-		struct posix_file_information information;
-		int image = name_is_image(name);
-		int ui_map = !name_compare(name, "ui.map");
+		long long nanoseconds = (long long)scan->started.tv_nsec + (long long)(waited % 1000) * 1000000;
 
-		/* (only what may be offered or entered is looked at: most entries
-		cost no system call) */
-		if (!image && !ui_map && (depth >= root->depth || name_is_skipped(name)))
-			continue;
-		if ((size_t)snprintf(path, sizeof(path), "%s/%s", folder, name) >= sizeof(path) ||
-			posix_stat(path, &information) != 0)
-		{
-			continue;
-		}
-		if (!is_folder(&information))
-		{
-			if (ui_map)
-				scan_maps_folder(scan, root, folder, path, &information);
-			else if (image)
-				scan_image(scan, root, folder, path, &information);
-		}
-		else if (depth < root->depth && !name_is_skipped(name) && !scan_is_other_root(scan, path))
-		{
-			scan_folder(scan, root, path, depth + 1);
-		}
+		scan->started.tv_sec += waited / 1000 + (time_t)(nanoseconds / 1000000000);
+		scan->started.tv_nsec = (long)(nanoseconds % 1000000000);
 	}
-	posix_directory_close(directory);
+	/* (its files first, then its folders: what lies near the top of a
+	drive or a folder is found before the time runs out in a deep one) */
+	for (pass = 0; directory && pass < 2; pass++)
+	{
+		if (pass)
+			directory = posix_directory_open(folder);
+		while (directory && !scan_should_stop(scan) && posix_directory_next(directory, name, sizeof(name)))
+		{
+			char path[GAME_DATA_PATH_SIZE];
+			struct posix_file_information information;
+			int image = name_is_image(name);
+			int ui_map = !name_compare(name, "ui.map");
+
+			/* (only what may be offered or entered is looked at: most
+			entries cost no system call) */
+			if (!pass ? !image && !ui_map : depth >= root->depth || name_is_skipped(name))
+				continue;
+			if ((size_t)snprintf(path, sizeof(path), "%s/%s", folder, name) >= sizeof(path) ||
+				posix_stat(path, &information) != 0)
+			{
+				continue;
+			}
+			if (!pass && !is_folder(&information))
+			{
+				if (ui_map)
+					scan_maps_folder(scan, root, folder, path, &information);
+				else
+					scan_image(scan, root, folder, path, &information);
+			}
+			else if (pass && is_folder(&information) && !scan_is_other_root(scan, path) &&
+				!(depth == 0 && !root->label[0] && !scan->places->mounts[0] && is_link(path)))
+			{
+				scan_folder(scan, root, path, depth + 1);
+			}
+		}
+		if (directory)
+			posix_directory_close(directory);
+	}
 }
 
 /* ---------- public code */
@@ -502,6 +559,26 @@ static void user_folder(const char *home, const char *key, const char *fallback,
 		folder[strlen(folder) - 1] = 0;
 }
 
+/* the earlier versions' maps folders (HALO_MAPS_USED_BEFORE: the macOS
+app's host, port/macos/host_app.m, names them, a path a line) */
+static void earlier_folders(struct game_data_places *places)
+{
+	const char *list = getenv("HALO_MAPS_USED_BEFORE");
+	int count = 0;
+
+	while (list && *list && count < GAME_DATA_EARLIER)
+	{
+		size_t length = strcspn(list, "\n");
+
+		if (length && length < GAME_DATA_PATH_SIZE && list[0] == '/')
+		{
+			memcpy(places->earlier[count], list, length);
+			places->earlier[count++][length] = 0;
+		}
+		list += length + (list[length] == '\n');
+	}
+}
+
 void game_data_default_places(struct game_data_places *places, const char *destination)
 {
 	const char *home = getenv("HOME");
@@ -519,10 +596,24 @@ void game_data_default_places(struct game_data_places *places, const char *desti
 		if (!strcmp(places->desktop, places->home))
 			places->desktop[0] = 0;
 	}
+#ifdef HALO_MACOS
+	/* (each drive a folder of /Volumes, by the name the Finder shows) */
+	snprintf(places->media[0], sizeof(places->media[0]), "/Volumes");
+#else
 	snprintf(places->media[0], sizeof(places->media[0]), "/run/media");
 	snprintf(places->media[1], sizeof(places->media[1]), "/media");
 	snprintf(places->mounts, sizeof(places->mounts), "/proc/self/mounts");
+#endif
+	earlier_folders(places);
 	places->time_limit = 3000;
+}
+
+void game_data_short_path(const struct game_data_places *places, const char *path, char *result, int size)
+{
+	if (places->home[0] && path_is_below(path, places->home))
+		snprintf(result, (size_t)size, "~%s", path + strlen(places->home));
+	else
+		snprintf(result, (size_t)size, "%s", path);
 }
 
 int game_data_scan(const struct game_data_places *places, game_data_image_check check, void *context,
@@ -541,7 +632,26 @@ int game_data_scan(const struct game_data_places *places, game_data_image_check 
 	scan.maximum = maximum;
 	clock_gettime(CLOCK_MONOTONIC, &scan.started);
 	scan_read_mounts(&scan);
-	/* (in the order offered: where a player puts a file first) */
+	/* (in the order offered: the maps an earlier version played, then where
+	a player puts a file) */
+	for (index = 0; index < GAME_DATA_EARLIER; index++)
+	{
+		char parent[GAME_DATA_PATH_SIZE];
+		char *slash;
+
+		if (!places->earlier[index][0])
+			continue;
+		/* (its place is the folder above it) */
+		snprintf(parent, sizeof(parent), "%s", places->earlier[index]);
+		slash = strrchr(parent, '/');
+		if (slash && slash > parent)
+			*slash = 0;
+		game_data_short_path(places, parent, scan.earlier_labels[index], (int)sizeof(scan.earlier_labels[index]));
+		roots[root_count].path = places->earlier[index];
+		roots[root_count].label = scan.earlier_labels[index];
+		/* (the maps folder itself, or a folder holding it) */
+		roots[root_count++].depth = 1;
+	}
 	if (places->downloads[0])
 	{
 		roots[root_count].path = places->downloads;
@@ -593,8 +703,99 @@ int game_data_scan(const struct game_data_places *places, game_data_image_check 
 
 void game_data_places_text(const struct game_data_places *places, char *text, int size)
 {
-	snprintf(text, (size_t)size, "Downloads, the Desktop, your home folder, SD cards and USB drives, and %s",
-		places->destination);
+	char destination[GAME_DATA_PATH_SIZE];
+
+	game_data_short_path(places, places->destination, destination, (int)sizeof(destination));
+	snprintf(text, (size_t)size, "%sDownloads, the Desktop, your home folder, %s, and %s",
+		places->earlier[0][0] ? "the maps folder an earlier version used, " : "",
+		places->mounts[0] ? "SD cards and USB drives" : "drives", destination);
+}
+
+/* ---------- a folder the player picked */
+
+/* name in folder, in any case, into found (folder/name); nonzero if it is
+there */
+static int find_entry(const char *folder, const char *name, char *found, size_t size)
+{
+	void *directory = posix_directory_open(folder);
+	char entry[256];
+	int result = 0;
+
+	if (!directory)
+		return 0;
+	while (!result && posix_directory_next(directory, entry, sizeof(entry)))
+	{
+		if (!name_compare(entry, name))
+		{
+			snprintf(found, size, "%s/%s", folder, entry);
+			result = 1;
+		}
+	}
+	posix_directory_close(directory);
+	return result;
+}
+
+/* a ui.map's version, or 0 for a file that is not one of Halo's maps */
+static unsigned long ui_map_version(const char *path)
+{
+	unsigned char header[8];
+	int descriptor = open(path, O_RDONLY | O_CLOEXEC);
+	long count;
+
+	if (descriptor < 0)
+		return 0;
+	count = (long)read(descriptor, header, sizeof(header));
+	close(descriptor);
+	if (count != (long)sizeof(header) || read_u32(header) != MAP_HEADER_SIGNATURE)
+		return 0;
+	return read_u32(header + 4);
+}
+
+int game_data_picked_folder(const char *path, struct game_data_candidate *candidate, char *error, int error_size)
+{
+	struct posix_file_information information;
+	char maps[GAME_DATA_PATH_SIZE], inner[GAME_DATA_PATH_SIZE], ui_map[GAME_DATA_PATH_SIZE + 256];
+	char *slash;
+	unsigned long version;
+
+	if (posix_stat(path, &information) != 0 || !is_folder(&information))
+		return 0;
+	snprintf(maps, sizeof(maps), "%s", path);
+	/* (the folder above the maps folder, the disc's copy, picked: its maps) */
+	if (!find_entry(maps, "ui.map", ui_map, sizeof(ui_map)) && find_entry(path, "maps", inner, sizeof(inner)) &&
+		posix_stat(inner, &information) == 0 && is_folder(&information))
+	{
+		snprintf(maps, sizeof(maps), "%s", inner);
+	}
+	if (!find_entry(maps, "ui.map", ui_map, sizeof(ui_map)))
+	{
+		snprintf(error, (size_t)error_size, "%s has no ui.map, so it is not Halo's maps folder. Choose the maps "
+			"folder of Halo: Combat Evolved for the Xbox (it holds ui.map, bloodgulch.map and the other maps), "
+			"or its disc image.", base_name(path));
+		return -1;
+	}
+	version = ui_map_version(ui_map);
+	if (version == HALO_PC_MAP_VERSION || version == CUSTOM_EDITION_MAP_VERSION)
+	{
+		snprintf(error, (size_t)error_size, "These are the maps of Halo for PC or Halo Custom Edition. OpenH1 "
+			"plays the maps of the Xbox game, Halo: Combat Evolved: choose its maps folder or its disc image.");
+		return -1;
+	}
+	if (!version)
+	{
+		snprintf(error, (size_t)error_size, "The ui.map in %s is not one of Halo's maps.", base_name(maps));
+		return -1;
+	}
+	memset(candidate, 0, sizeof(*candidate));
+	candidate->kind = _game_data_maps_folder;
+	snprintf(candidate->path, sizeof(candidate->path), "%s", maps);
+	snprintf(candidate->name, sizeof(candidate->name), "%s", base_name(maps));
+	snprintf(candidate->place, sizeof(candidate->place), "%s", maps);
+	slash = strrchr(candidate->place, '/');
+	if (slash && slash > candidate->place)
+		*slash = 0;
+	candidate->size = maps_size(maps);
+	return 1;
 }
 
 /* ---------- the copy of a maps folder */
