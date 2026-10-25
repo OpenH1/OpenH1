@@ -427,7 +427,7 @@ long hud_hires_upscale_at(unsigned long address, long width, long height)
 		if (bitmap->cache_block_index != NONE && (unsigned long)bitmap->base_address == address &&
 			bitmap->width == width && bitmap->height == height &&
 			hud_hires_ce_stock_matches(ce_stock_bitmaps[index].signature, address, width, height,
-				(unsigned long)bitmap_mipmap_get_pixel_data_size(bitmap, 0)))
+				(unsigned long)bitmap_mipmap_get_pixel_data_size((struct bitmap_data *)bitmap, 0)))
 			return 4;
 	}
 

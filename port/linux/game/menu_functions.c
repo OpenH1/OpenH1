@@ -87,6 +87,7 @@ their handlers open opens.
 #include "main/main.h"
 #include "networking/network_game_manager.h"
 #include "saved games/player_profile.h"
+#include "tag_files/tag_files.h"
 #include "tag_files/tag_groups.h"
 #include "text/text_group.h"
 #include "text/unicode.h"
@@ -3808,7 +3809,7 @@ struct network_game *network_game_client_get_game(void *client);
 struct network_game *network_game_server_get_game(void *server);
 short network_game_client_get_local_machine_index(void);
 short network_game_client_get_seconds_to_game_start(void *client);
-boolean network_player_is_valid(struct network_player *player);
+boolean network_player_is_valid(struct network_player const *player);
 boolean playlist_profile_get(long index, struct game_variant *variant);
 boolean playlist_profile_get_display_name(long index, wchar_t *name);
 boolean playlist_profile_get_options(long index, struct game_variant_options *options);

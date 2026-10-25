@@ -555,7 +555,8 @@ void editor_camera_update(
 	{
 		if (!controls->active)
 		{
-			scripted_camera_update(NULL, controls, result);
+			scripted_camera_update(NULL, (struct camera_control const *)controls,
+				(struct scripted_camera_command *)result);
 			return;
 		}
 

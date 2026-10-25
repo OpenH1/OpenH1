@@ -61,7 +61,7 @@ struct recorded_animation_event_stream_definition recorded_animation_event_strea
 		"recorded_animation_event_stream_data",
 		0,
 		0x200000,
-		byte_swap_recording,
+		(byte_swap_data_proc)byte_swap_recording,
 	},
 	{
 		{ _tag_field_string, 0, "name^", NULL },

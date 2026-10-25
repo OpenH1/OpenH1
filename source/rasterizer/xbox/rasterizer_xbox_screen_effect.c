@@ -109,6 +109,9 @@ symbols in this file:
 #include "rasterizer_xbox.h"
 #include "rasterizer_xbox_pixel_shader.h"
 
+/* cseries_windows.c's */
+unsigned long system_milliseconds(void);
+
 /* ---------- constants */
 
 enum

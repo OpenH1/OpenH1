@@ -33,8 +33,9 @@ from typing import List, Optional, Sequence
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from tools.build_common import (MONOCYPHER_DIR, TOML_DIR, EXPAT_DIR, KCP_DIR, XDK_INCLUDE, ZLIB_DEFINES,  # noqa: E402
-                                ZLIB_DIR, ZLIB_SOURCES, game_defines_and_includes)
+from tools.build_common import (MONOCYPHER_DIR, OWN_CODE_ERRORS, QUIET_OWN_CODE_FLAGS, TOML_DIR,  # noqa: E402
+                                EXPAT_DIR, KCP_DIR, XDK_INCLUDE, ZLIB_DEFINES, ZLIB_DIR, ZLIB_SOURCES,
+                                game_defines_and_includes)
 
 # Flags shared by the game and the XDK-facing half of the platform layer.
 # They reproduce the MSVC/Xbox ABI the source was written against:
@@ -72,17 +73,13 @@ GAME_ABI_FLAGS = [
 ]
 
 # The game, with glibc restricted to ISO C so that POSIX names (random,
-# strnlen, ...) cannot collide with the game's own declarations.
+# strnlen, ...) cannot collide with the game's own declarations; without
+# warnings, as the guests build it, but for the mistakes it must not have
+# (tools/build_common.py)
 GAME_FLAGS = [
     "-std=gnu89",
     "-D__STRICT_ANSI__",
-    "-w",
-    "-Wno-error=incompatible-pointer-types",
-    "-Wno-error=incompatible-function-pointer-types",
-    "-Wno-error=int-conversion",
-    "-Wno-error=implicit-function-declaration",
-    "-Wno-error=implicit-int",
-    "-Wno-error=return-type",
+    *QUIET_OWN_CODE_FLAGS,
 ]
 
 PLATFORM_FLAGS = [
@@ -99,6 +96,7 @@ PLATFORM_FLAGS = [
     "-Wno-missing-braces",
     "-Wno-unused-variable",
     "-Wno-ignored-pragmas",
+    *OWN_CODE_ERRORS,
 ]
 
 # Code that talks to glibc alone, with its native 32-bit ABI (no
@@ -115,6 +113,7 @@ POSIX_FLAGS = [
     "-O2",
     "-g",
     "-Wall",
+    *OWN_CODE_ERRORS,
 ]
 
 LINK_FLAGS = ["--target=i686-linux-gnu", "-m32", "-no-pie", "-g"]
