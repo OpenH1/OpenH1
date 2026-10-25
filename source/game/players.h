@@ -418,6 +418,11 @@ unsigned long const *players_get_combined_pvs(
 
 void player_control_fix_for_loaded_game_state(void);
 
+/* port: declared for port/linux/game/network_test.c */
+boolean player_handle_powerup(
+	long player_index,
+	short powerup_type,
+	short duration);
 void player_handle_powerup_minor(
 	long player_index,
 	short powerup_index,

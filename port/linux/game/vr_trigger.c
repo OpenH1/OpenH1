@@ -45,6 +45,7 @@ the third person are other models.
 #include "rasterizer/rasterizer.h"
 #include "rasterizer/rasterizer_geometry.h"
 #include "rasterizer/rasterizer_model_types.h"
+#include "rasterizer/rasterizer_models.h"
 #include "shaders/shader_definitions.h"
 #include "shaders/shaders.h"
 #include "tag_files/tag_groups.h"

@@ -71,6 +71,7 @@ symbols in this file:
 #include "bitmaps/bitmap_group.h"
 #include "cseries/errors.h"
 #include "effects/contrail_definitions.h"
+#include "game/game.h"
 #include "memory/data.h"
 #include "objects/object_definitions.h"
 #include "physics/point_physics.h"

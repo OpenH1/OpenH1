@@ -4726,7 +4726,7 @@ void ai_debug_update(
 					ai_debug.path_end_surface_index, ai_debug.path_accept_radius);
 			}
 
-			path_state_build_path(&ai_debug.path_state, &ai_debug.field_608A8);
+			path_state_build_path(&ai_debug.path_state, (struct path_result *)&ai_debug.field_608A8);
 
 			ai_debug.field_4C818 = TRUE;
 			ai_debug.path_storage.valid = TRUE;

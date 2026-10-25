@@ -811,6 +811,9 @@ static const struct config_setting config_settings[] =
 		"Escape lets it go)." },
 	{ "controls.team_chat", _config_string, "\"Y\"", "HALO_KEY_TEAM_CHAT", _environment_value, _platform_all,
 		"Network games' text chat: type a line to your team." },
+	{ "controls.party_accept", _config_string, "\"J\"", "HALO_KEY_PARTY_ACCEPT", _environment_value, _platform_all,
+		"Network games: accept the party invite a player sent you (the\n"
+		"controller's D-pad Down)." },
 
 	{ "game.console_log", _config_string, "\"important\"", "HALO_CONSOLE_LOG", _environment_value, _platform_all,
 		"What the game's console shows on screen of what it logs: \"important\"\n"
@@ -1168,6 +1171,11 @@ static const struct config_setting config_settings[] =
 		"host seats the last two players in one first), then the host mutes and\n"
 		"unmutes a player, refuses a link and turns the chat off, and the\n"
 		"clients type on the on-screen keyboard (port/linux/NETCODE.md); 0 never." },
+	{ "debug.network_test_party", _config_real, "0.0", "HALO_NETWORK_TEST_PARTY", _environment_value, _platform_all,
+		"This many seconds into an automated test game the host invites each\n"
+		"player it may to its party (unless debug.party leads one), a client asks\n"
+		"to join the party of each player in one, and each machine then accepts\n"
+		"the invite it has, as the scoreboard and the accept key do; 0 never." },
 	{ "debug.network_test_name", _config_string, "\"\"", "HALO_NETWORK_TEST_NAME", _environment_value, _platform_all,
 		"The name this machine's player takes in an automated test game (ASCII);\n"
 		"empty keeps its profile's." },

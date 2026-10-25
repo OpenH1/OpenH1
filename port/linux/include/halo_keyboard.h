@@ -42,6 +42,9 @@ enum halo_keyboard_action
 	everyone, or to the team: port/linux/game/network_chat.c) */
 	HALO_KEYBOARD_CHAT,
 	HALO_KEYBOARD_TEAM_CHAT,
+	/* (a party invite's, which the game itself does not read: accepting
+	the newest one a player of the game sent, port/linux/game/network_party.c) */
+	HALO_KEYBOARD_PARTY_ACCEPT,
 	NUMBER_OF_HALO_KEYBOARD_ACTIONS
 };
 

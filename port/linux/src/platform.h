@@ -102,9 +102,11 @@ const char *platform_data_root(void);
 or "" when none is set or it has no maps folder */
 const char *platform_custom_edition_root(void);
 /* on the desktop, when the data root has no maps folder: offers to copy it
-out of an Xbox disc image into destination (sdl_platform.c), and quits if
-the player declines; nonzero once destination has one */
-BOOL platform_offer_game_data(const char *destination);
+out of an Xbox disc image (or, on Linux and macOS, from a maps folder) into
+destination (first_start.c; sdl_platform.c on Windows), and quits if the
+player declines; nonzero once destination has one. missing: the folder
+paths.data names, which has no maps (said to the player), or NULL */
+BOOL platform_offer_game_data(const char *destination, const char *missing);
 /* what the data root's maps folder holds, which should be the Xbox maps
 (sdl_platform.c tells the player when it is not, rather than the game
 failing on Halo PC's ui.map) */

@@ -30,10 +30,11 @@ from typing import Any, Dict, List, Optional
 
 from .guest_arch import ARM64_32, GuestArch
 from .guest_toolchain import LLVM_VERSION, guest_toolchain
-from .build_common import (LINUX_PROFILE, MINIUPNPC_DEFINES, MINIUPNPC_DIR, MUSL_MATH_DIR, PLATFORM_SEMANTICS_HEADER,
-                           SEMANTICS_HEADER, STB_VORBIS_SOURCE, XDK_INCLUDE, compile_launcher, configuration_defines,
-                           download, game_defines_and_includes, game_sources, miniupnpc_sources, musl_math_sources,
-                           opus_cflags, opus_sources, pgo_profile, profile_use_flags, updater_defines, xdk_headers)
+from .build_common import (LINUX_PROFILE, MINIUPNPC_DEFINES, MINIUPNPC_DIR, MUSL_MATH_DIR, OWN_CODE_ERRORS,
+                           PLATFORM_SEMANTICS_HEADER, QUIET_OWN_CODE_FLAGS, SEMANTICS_HEADER, STB_VORBIS_SOURCE,
+                           XDK_INCLUDE, compile_launcher, configuration_defines, download, game_defines_and_includes,
+                           game_sources, miniupnpc_sources, musl_math_sources, opus_cflags, opus_sources, pgo_profile,
+                           profile_use_flags, updater_defines, xdk_headers)
 from . import check_host_imports
 from .embed_assets import hud_assets_build, hud_configure_inputs
 from .linux_package import ROOT as REPO_ROOT, notices as release_notices
@@ -498,26 +499,22 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     )
     n.build(outputs=libguestc, rule=f"{prefix}_ar", inputs=musl_objects)
 
-    # the game
+    # the game: without warnings, but for the mistakes it must not have
+    # (build_common.QUIET_OWN_CODE_FLAGS); the Ogg Vorbis decoder, built as
+    # its units are, without any
+    def game_unit_cflags(warnings: List[str]) -> str:
+        return " ".join([
+            guest_abi, guest_code, "-std=gnu89", "-D__STRICT_ANSI__", *warnings, profile_flags,
+            f"-include {prefix_header}", f"-include {semantics_header}",
+            f"-I{LINUX_DIR}/include",
+            # the headers of the port's own game units (port/linux/game), for
+            # the game sources that call them
+            f"-iquote {Path(config['game_sources'])}",
+            game_defines_and_includes(config), *libc_includes, f"-idirafter {XDK_INCLUDE}",
+        ])
+
     objects: List[Path] = []
-    game_flags = [
-        "-std=gnu89", "-D__STRICT_ANSI__", "-w",
-        "-Wno-error=incompatible-pointer-types",
-        "-Wno-error=incompatible-function-pointer-types",
-        "-Wno-error=int-conversion",
-        "-Wno-error=implicit-function-declaration",
-        "-Wno-error=implicit-int",
-        "-Wno-error=return-type",
-    ]
-    game_cflags = " ".join([
-        guest_abi, guest_code, " ".join(game_flags), profile_flags,
-        f"-include {prefix_header}", f"-include {semantics_header}",
-        f"-I{LINUX_DIR}/include",
-        # the headers of the port's own game units (port/linux/game), for the
-        # game sources that call them
-        f"-iquote {Path(config['game_sources'])}",
-        game_defines_and_includes(config), *libc_includes, f"-idirafter {XDK_INCLUDE}",
-    ])
+    game_cflags = game_unit_cflags(QUIET_OWN_CODE_FLAGS)
     for source in game_sources(config):
         cflags = game_cflags
         if source.as_posix() == "source/main/main.c":
@@ -527,17 +524,23 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
         objects.append(guest_object(source, cflags))
     for source in sorted(Path(config["game_sources"]).glob("*.c")):
         objects.append(guest_object(source, game_cflags))
-    objects.append(guest_object(STB_VORBIS_SOURCE, game_cflags))
+    objects.append(guest_object(STB_VORBIS_SOURCE, game_unit_cflags(["-w"])))
 
-    # the platform layer shared with Linux, and the guest runtime
-    platform_cflags = " ".join([
-        guest_abi, guest_code, "-std=gnu11", "-D_GNU_SOURCE", "-DHALO_LINUX_PLATFORM_LAYER", "-w", profile_flags,
-        f"-include {prefix_header}", f"-include {platform_semantics_header}",
-        f"-I{LINUX_DIR}/src", f"-I{LINUX_DIR}/include", f"-I{PORT_DIR}/guest/runtime",
-        f"-I{PORT_DIR}/include", f"-I{TOML_DIR}", f"-I{EXPAT_DIR}", f"-I{KCP_DIR}", f"-I{MONOCYPHER_DIR}",
-        f"-I{ZLIB_DIR}", "-Isource -Isource/cseries",
-        f"-I{sdl_dir}/include", *libc_includes, f"-idirafter {XDK_INCLUDE}",
-    ])
+    # the platform layer shared with Linux, and the guest runtime: as the
+    # game, without warnings but OWN_CODE_ERRORS; the vendored libraries
+    # built with it, without any
+    def platform_unit_cflags(warnings: List[str]) -> str:
+        return " ".join([
+            guest_abi, guest_code, "-std=gnu11", "-D_GNU_SOURCE", "-DHALO_LINUX_PLATFORM_LAYER", *warnings,
+            profile_flags, f"-include {prefix_header}", f"-include {platform_semantics_header}",
+            f"-I{LINUX_DIR}/src", f"-I{LINUX_DIR}/include", f"-I{PORT_DIR}/guest/runtime",
+            f"-I{PORT_DIR}/include", f"-I{TOML_DIR}", f"-I{EXPAT_DIR}", f"-I{KCP_DIR}", f"-I{MONOCYPHER_DIR}",
+            f"-I{ZLIB_DIR}", "-Isource -Isource/cseries",
+            f"-I{sdl_dir}/include", *libc_includes, f"-idirafter {XDK_INCLUDE}",
+        ])
+
+    platform_cflags = platform_unit_cflags(QUIET_OWN_CODE_FLAGS)
+    third_party_cflags = platform_unit_cflags(["-w"])
     guest_host_only = {"memory_watch.c"}  # replaced by guest_memory_watch.c
     for source in sorted((LINUX_DIR / "src").glob("*.c")):
         if source.name.startswith("posix_") or source.name in guest_host_only:
@@ -550,12 +553,12 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     for source in hud_assets_build(n, prefix, gen_dir / "hud_hires_assets.c"):
         objects.append(guest_object(source, platform_cflags))
     # the settings file's parser (port/third_party/tomlc17)
-    objects.append(guest_object(TOML_DIR / "tomlc17.c", platform_cflags))
+    objects.append(guest_object(TOML_DIR / "tomlc17.c", third_party_cflags))
     # the menus' XML parser (port/third_party/expat; menu_files.c)
     for name in EXPAT_SOURCES:
-        objects.append(guest_object(EXPAT_DIR / name, platform_cflags))
+        objects.append(guest_object(EXPAT_DIR / name, third_party_cflags))
     # internet play's reliable streams (port/third_party/kcp; p2p.c)
-    objects.append(guest_object(KCP_DIR / "ikcp.c", platform_cflags))
+    objects.append(guest_object(KCP_DIR / "ikcp.c", third_party_cflags))
     # voice chat's codec (port/third_party/opus), with the guest's ABI and C
     # library
     for source in opus_sources():
@@ -563,12 +566,12 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     # internet play's signatures, for public games' listings
     # (port/third_party/monocypher; p2p_crypto.c)
     for name in ("monocypher.c", "monocypher-ed25519.c"):
-        objects.append(guest_object(MONOCYPHER_DIR / name, platform_cflags))
+        objects.append(guest_object(MONOCYPHER_DIR / name, third_party_cflags))
     # the port's zlib
     for name in ZLIB_SOURCES:
         # (not the processor's features that the guest's assembly step is
         # not told it may use: AArch64's CRC32 instructions)
-        objects.append(guest_object(ZLIB_DIR / name, " ".join([platform_cflags, *ZLIB_DEFINES, *arch.zlib_flags])))
+        objects.append(guest_object(ZLIB_DIR / name, " ".join([third_party_cflags, *ZLIB_DEFINES, *arch.zlib_flags])))
     # the game's sin, pow and the rest, the same on every port
     # (port/include/halo_math.h)
     musl_math_cflags = " ".join([
@@ -579,13 +582,14 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
         objects.append(guest_object(source, musl_math_cflags))
     runtime_internal_cflags = " ".join([
         guest_abi, "-std=c99", "-ffreestanding", "-fno-common", "-D_XOPEN_SOURCE=700", "-D_GNU_SOURCE",
+        *OWN_CODE_ERRORS,
         f"-I{PORT_DIR}/guest/runtime", f"-I{PORT_DIR}/include",
         f"-I{libc_arch}", f"-I{arch_generic}", f"-I{musl_dir}/arch/generic", f"-I{libc_internal}",
         f"-I{PORT_DIR}/guest/libc/src_include", f"-I{musl_dir}/src/include",
         f"-I{musl_dir}/src/internal", f"-I{libc_include}", f"-I{musl_dir}/include",
     ])
     runtime_cflags = " ".join([
-        guest_abi, guest_code, "-std=gnu11", "-D_GNU_SOURCE",
+        guest_abi, guest_code, "-std=gnu11", "-D_GNU_SOURCE", *OWN_CODE_ERRORS,
         f"-I{PORT_DIR}/guest/runtime", f"-I{PORT_DIR}/include", f"-I{LINUX_DIR}/src",
         f"-I{sdl_dir}/include", *libc_includes,
     ])
@@ -748,7 +752,7 @@ def generate_android_build(n: Writer, sln: Any) -> None:
         deps="gcc",
     )
     host_cflags = " ".join([
-        "-O2", "-g", "-fPIC", "-Wall", "-Wno-unused-function", "-D_GNU_SOURCE",
+        "-O2", "-g", "-fPIC", "-Wall", "-Wno-unused-function", *OWN_CODE_ERRORS, "-D_GNU_SOURCE",
         f"-I{PORT_DIR}/include", f"-I{PORT_DIR}/host", f"-I{SDL_DIR}/include", f"-I{LINUX_DIR}/src",
         f"-I{TOML_DIR}", "-DHALO_VULKAN=1", *(["-DHALO_GUEST_BASE=1"] if base_register else []),
     ])
