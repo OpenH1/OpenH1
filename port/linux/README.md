@@ -414,12 +414,37 @@ the map list on the campaign's levels, and friends join by the invite link.
 Network games have split screen too: up to 4 players on each computer. In
 the game lobby, another controller presses START to join, and the new
 player's profile is chosen on the ADD PLAYER screen that opens (with any
-controller). With one gamepad, choose the lobby's ADD PLAYER button first:
-until then that gamepad shares controller 1 with the keyboard. Two players on one profile get different names from the host. A
+controller). With one gamepad, choose the lobby's ADD PLAYER first (X, or
+E on the keyboard): until then that gamepad shares controller 1 with the keyboard. Two players on one profile get different names from the host. A
 player's B in the lobby leaves the game alone, and the last player of the
 computer leaves it for all of them. When all the players are on the host's
-computer, START NOW starts the game without another computer, and a team
-game does not need a player on each team. In the game, each player's pause menu
+computer, START GAME starts the game without another computer, and a team
+game does not need a player on each team.
+
+The lobby, a network game's and a game of this computer alone's (PLAY WITH
+BOTS, split screen), is laid out as Multiplayer is (`game/lobby_menu.inc`).
+The players are in a column for each team, red's and blue's, or in one list
+in a game without teams and in Infection, whose zombies are chosen as it
+starts. Each row has the player's team's dot, name and a tag: HOST, BOT,
+PARTY (a member of your party), OPENCE or OPENH1 (the host knows each
+computer's; a player knows only its own). Your own row is framed. In each
+column the host comes first, then your party's members together, then the
+others, the bots last; a column with more players than rows says how many
+more. Left and right (the arrow keys, the D-pad) put you on red's or blue's
+team, as does a click on a column. The panel beside them has the next
+game (its gametype, map, score to win and time; OPENH1 and its tick rate,
+or LEGACY; OPENCE CAN JOIN, which only the host knows), the bots' rows of a
+game of this computer alone (BOTS' COUNT, SKILL and TEAMS, as in Server
+Setup), the countdown and how another player joins, and the host's GAME
+SETTINGS (Server Setup, whose START GAME comes back to the lobby) and START
+GAME (Enter, or A on the players). A player sees "Waiting for the host"
+there instead. The footer has CHANGE TEAM, INVITE LINK (Y, or F: an
+internet game's link, copied), ADD PLAYER and LEAVE. On a phone or tablet
+the lobby is the list of players and buttons it was. After a game of this
+computer alone the host picks the next one as in a network game (the map,
+the gametype, Server Setup, then this lobby), not on the Xbox's Select Map
+and Select Teams; a local game started by `debug.network_test` opens this
+lobby too. In the game, each player's pause menu
 opens on their part of the screen, and its LEAVE GAME is theirs: their part
 of the screen stays until the game ends. A game under way shows its own
 screen before JOIN GAME: players join there the same way, START or ADD
@@ -4962,7 +4987,7 @@ Other changes:
 | `cache/cache_files.c` | When a map's tags load and unload, the port finds the bitmaps that the high-res HUD replaces (`game/hud_hires_tags.c`), adds the tags of the menus to the menus' map (`game/menu_tags.c`), and plays the mods' tags (`game/mods.c`). |
 | `cache/xbox_sound_cache.c`, `cache/xbox_texture_cache.c` | The samples of a mod's sound are copied from memory, and the pixels of a mod's bitmap read from its file and laid out for the hardware, at once (`game/mod_sounds.c`, `game/mod_bitmaps.c`); a mod's linear bitmap need not have rows of whole steps of the pitch. |
 | `hs/hs.c` | The console's `mods_reload`, `mods_enable` and `mods_list`, which a client may run too. |
-| `interface/ui_widget.c`, `interface/ui_widget_event_handler_functions.c`, `interface/ui_widget_game_data_input_functions.c` | The main menu is the PC version's from `port/assets/menus` (`display.menus`); the menus' widgets can call the port's functions (`game/menu_functions.c`) and send the PC version's custom activation event; the widgets' memory is 256 KB, not 16 KB; the main menu and Multiplayer clear co-op's controllers, so that a gamepad going back to controller 1 is not a controller unplugged; the lobby's split screen players leave alone, and one who quits in game is not joined to the next game (`interface/player_ui.c`).; Multiplayer's PLAY WITH BOTS hosts a game that takes no other machine, as the Xbox's split screen does (`ui_widget_port_host_local`); the port's own screens are laid out for the view's width up to 16:9 (their widgets' `wide`: `game/menu_tags.c`'s `ui_widget_port_wide_layout`), a picture widened by stretching its middle (`draw_bitmap_widened_in_rect`). |
+| `interface/ui_widget.c`, `interface/ui_widget_event_handler_functions.c`, `interface/ui_widget_game_data_input_functions.c` | The main menu is the PC version's from `port/assets/menus` (`display.menus`); the menus' widgets can call the port's functions (`game/menu_functions.c`) and send the PC version's custom activation event; the widgets' memory is 256 KB, not 16 KB; the main menu and Multiplayer clear co-op's controllers, so that a gamepad going back to controller 1 is not a controller unplugged; the lobby's split screen players leave alone, and one who quits in game is not joined to the next game (`interface/player_ui.c`).; Multiplayer's PLAY WITH BOTS hosts a game that takes no other machine, as the Xbox's split screen does (`ui_widget_port_host_local`); the port's own screens are laid out for the view's width up to 16:9 (their widgets' `wide`: `game/menu_tags.c`'s `ui_widget_port_wide_layout`), a picture widened by stretching its middle (`draw_bitmap_widened_in_rect`); after a game of this machine alone the host's map select and the lobby open in place of the Xbox's split screen Select Map and Select Teams (`game/menu_tags.c`'s `pc_menus_screen`). |
 | `interface/player_ui.c` | Fast setup opens the pregame screen through the port's menus (the lobby), as `interface/ui_widget.c` does. |
 | `game/game_engine.c`, `game/game_engine.h`, `game/game_engine_slayer.c`, `game/game.c`, `game/aim_assist.c`, `game/players.c`, `objects/damage.c`, `objects/objects.c`, `units/units.c`, `items/weapons.c`, `saved games/playlist_profile.c`, `saved games/saved_game_files.c` | OpenCE's gametypes (`game/game_modes.c`, "OpenCE gametypes"): the gametype's PC options carry a mode and Hardcore with their options; the built-in ones are written after the Xbox's default gametypes; Infection's and Gun Game's game engines are Slayer's with their rules; SWAT's headshots, Hardcore's motion sensor, aim assist and restore of the killer; Infection's zombies' skulls, grenades, powerups, seats and melee. |
 | `game/game.c` | Each tick takes its rate (`game.sim_rate`), and runs the fast phase's sub-steps after the objects' update (`game/sim_rate.c`; "Simulation rate"). |
