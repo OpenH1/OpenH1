@@ -17,10 +17,14 @@ either with the right trigger and the stick held (the pressed look) or idle
 an action prompted, a magazine to reload, no grenades, a vehicle. Without --background the picture behind
 is a dark landscape drawn here (no game art). --size draws the default layout
 at a display of your own, such as a folding phone's inner screen or a 21:9
-cover screen, in place of the list. Needs Pillow and NumPy.
+cover screen, in place of the list. A display taller than it is wide is
+portrait: the picture (--background: the game's own 4:3 or 16:9 frame, as
+--picture-shape) goes where TouchControls places it, under the strip, with
+--frame's look (display.frame_style) around it. Needs Pillow and NumPy.
 """
 
 import argparse
+import hashlib
 import math
 import subprocess
 import tempfile
@@ -94,21 +98,96 @@ CONTROL_JUMP, CONTROL_ACTION, CONTROL_GRENADE, CONTROL_CROUCH = 0, 2, 6, 10
 CAPTION_FONT = ROOT / "port/android/app/src/main/res/font/touch_caption.ttf"
 
 
-def layout(width, height, dpi):
+def layout(width, height, dpi, shape="4:3"):
     with tempfile.TemporaryDirectory() as classes:
         subprocess.run(["javac", "--release", "17", "-d", classes, str(JAVA / "TouchLayout.java"),
                         str(ROOT / "tools/tests/TouchLayoutDump.java")], check=True)
         text = subprocess.run(["java", "-cp", classes, "com.halo.decomp.TouchLayoutDump",
-                               str(width), str(height), str(dpi)],
+                               str(width), str(height), str(dpi), shape],
                               check=True, capture_output=True, text=True).stdout
     lines = text.split("\n")
-    scale, logical_width, logical_height, finger, toolbar_y = (float(v) for v in lines[0].split())
+    scale, logical_width, logical_height, finger, toolbar_y, hide_x, top, bottom = (float(v) for v in lines[0].split())
     controls = []
     for line in lines[1:]:
         if line:
             kind, x, y, radius, size, shown = line.split()
             controls.append((int(kind), float(x), float(y), float(radius), float(size), shown == "true"))
-    return scale, logical_width, logical_height, finger, toolbar_y, controls
+    picture = (top, bottom) if top >= 0 else None
+    return scale, logical_width, logical_height, finger, toolbar_y, hide_x, picture, controls
+
+
+def draw_frame(image, s, look, width, height, strip, picture):
+    """TouchControls.recordFrame: display.frame_style's look around the picture (top, bottom in logical units),
+    clipped out of it"""
+    green = (0x78, 0xcd, 0x3c)
+    accent = HUD_COLOR if look == "halo" else green
+    W, H = image.size
+    rows = np.arange(H)[:, None]
+    if look == "halo":
+        shade = rows / max(1, H - 1)
+        rgb = np.array([5, 9, 17]) + shade[..., None] * np.array([6, 10, 18])
+        rgb = rgb * np.ones((1, W, 1))
+        rgb[(np.floor(rows[:, 0] / s) % 3 == 0)] *= 1 - 46 / 255   # scan lines, a unit in three
+    else:
+        rgb = np.array([7, 9, 7]) * np.ones((H, W, 1))
+    layer = Image.fromarray(np.clip(rgb, 0, 255).astype(np.uint8)).convert("RGBA")
+    draw = ImageDraw.Draw(layer)
+    x, y = width / 2, picture[1] + (height - picture[1]) / 2
+    if look == "halo":
+        for radius, alpha in ((150, 0.10), (205, 0.13), (212, 0.07), (300, 0.055)):
+            draw.ellipse([(x - radius) * s, (y - radius) * s, (x + radius) * s, (y + radius) * s],
+                         outline=accent + (round(255 * alpha),), width=max(1, round(0.75 * s)))
+        for tick in range(72):
+            turn = tick * math.pi / 36
+            outer = 228 if tick % 6 == 0 else 218
+            draw.line([(x + 212 * math.cos(turn)) * s, (y + 212 * math.sin(turn)) * s,
+                       (x + outer * math.cos(turn)) * s, (y + outer * math.sin(turn)) * s],
+                      fill=accent + (31,), width=max(1, round(0.75 * s)))
+    else:
+        line = -height
+        while line < width:
+            draw.line([line * s, 0, (line + height) * s, height * s], fill=(12, 18, 11, 255), width=max(1, round(1.5 * s)))
+            line += 6
+        yy, xx = np.mgrid[0:H, 0:W]
+        fade = np.clip(1 - np.hypot(xx / s - x, yy / s - y) / 230, 0, 1) * 0.27 * 255
+        glow = Image.fromarray(np.dstack([np.full((H, W), c, np.uint8) for c in accent] + [fade.astype(np.uint8)]))
+        layer.alpha_composite(glow)
+        draw = ImageDraw.Draw(layer)
+        for radius, alpha in ((120, 0.24), (126, 0.1)):
+            draw.ellipse([(x - radius) * s, (y - radius) * s, (x + radius) * s, (y + radius) * s],
+                         outline=accent + (round(255 * alpha),), width=max(1, round(1.5 * s)))
+    strip_fill = Image.new("RGBA", image.size)
+    ImageDraw.Draw(strip_fill).rectangle([0, 0, W, strip * s],
+                                         fill=(6, 11, 20, 235) if look == "halo" else (10, 13, 10, 235))
+    layer.alpha_composite(strip_fill)
+    marks = Image.new("RGBA", image.size)
+    draw = ImageDraw.Draw(marks)
+    thin, thick = max(1, round(1.5 * s)), max(1, round(2 * s))
+    draw.line([0, strip * s, W, strip * s], fill=accent + (150,), width=thin)
+    top, bottom, gap = picture[0], picture[1], 4
+    if look == "halo":
+        draw.line([(x - 150) * s, strip * s, (x - 130) * s, (strip - 8) * s, (x + 130) * s, (strip - 8) * s,
+                   (x + 150) * s, strip * s], fill=accent + (110,), width=thin)
+        for corner in range(4):
+            side = 1 if corner % 2 == 0 else -1
+            corner_x = 6 if corner % 2 == 0 else width - 6
+            line_y = top - gap if corner < 2 else bottom + gap
+            out = -1 if corner < 2 else 1
+            draw.line([corner_x * s, (line_y + out * 11) * s, corner_x * s, line_y * s,
+                       (corner_x + side * 22) * s, line_y * s], fill=accent + (199,), width=thick)
+        draw.line([0, (bottom + 0.75) * s, W, (bottom + 0.75) * s], fill=accent + (130,), width=thin)
+    else:
+        draw.rounded_rectangle([-gap * s, (top - gap) * s, (width + gap) * s, (bottom + gap) * s], radius=10 * s,
+                               outline=accent + (171,), width=thick)
+    layer.alpha_composite(marks)
+    # (clipped out of the picture, as canvas.clipOutRect)
+    alpha = np.array(layer.getchannel("A"))
+    alpha[round(top * s):round(bottom * s), :] = 0
+    layer.putalpha(Image.fromarray(alpha))
+    inside = (0, round(top * s), W, round(bottom * s))
+    before = hashlib.sha256(image.crop(inside).tobytes()).hexdigest()
+    image.alpha_composite(layer)
+    assert hashlib.sha256(image.crop(inside).tobytes()).hexdigest() == before, "the frame drew over the picture"
 
 
 def landscape(width, height):
@@ -214,9 +293,19 @@ def pulse(millis):
     return 0.5 - 0.5 * math.cos(millis / 1000 * PULSE_HZ * 2 * math.pi)
 
 
-def draw(name, width, height, dpi, style, idle, state, background, out):
-    scale, logical_width, logical_height, finger, toolbar_y, controls = layout(width, height, dpi)
-    if background:
+def draw(name, width, height, dpi, style, idle, state, background, out, frame="plain", shape="4:3"):
+    scale, logical_width, logical_height, finger, toolbar_y, hide_x, picture, controls = layout(width, height, dpi,
+                                                                                               shape)
+    if picture:
+        # portrait: the game's picture where TouchControls.placePicture puts it, black around it
+        image = Image.new("RGBA", (width, height), (0, 0, 0, 255))
+        top, bottom = round(picture[0] * scale), round(picture[1] * scale)
+        shot = Image.open(background).convert("RGBA") if background else landscape(width, bottom - top)
+        image.paste(shot.resize((width, bottom - top), Image.LANCZOS), (0, top))
+        if frame != "plain":
+            strip = toolbar_y + 36
+            draw_frame(image, scale, frame, logical_width, logical_height, strip, picture)
+    elif background:
         image = Image.open(background).convert("RGBA").resize((width, height), Image.LANCZOS)
     else:
         image = landscape(width, height)
@@ -273,7 +362,7 @@ def draw(name, width, height, dpi, style, idle, state, background, out):
     hide_radius = max(TOOLBAR_RADIUS, min(finger, 34))
     options_radius = max(OPTIONS_RADIUS, min(finger, 34))
     toolbar = max(opacity, 0.5) * ICON_ALPHA
-    painter.picture("icon_hide", logical_width / 2, toolbar_y, hide_radius * MINOR_ICON_SIZE, toolbar, fit=True)
+    painter.picture("icon_hide", hide_x, toolbar_y, hide_radius * MINOR_ICON_SIZE, toolbar, fit=True)
     painter.picture("icon_options", logical_width - 42, toolbar_y, options_radius * MINOR_ICON_SIZE, toolbar, fit=True)
     out.mkdir(parents=True, exist_ok=True)
     image.convert("RGB").save(out / (name + ".png"), optimize=True)
@@ -296,11 +385,16 @@ def main():
     parser.add_argument("--size", type=parse_size, action="append", metavar="WxH@DPI",
                         help="draw the default layout at this display (pixels and dots per inch) "
                              "instead of the list; repeatable")
+    parser.add_argument("--frame", choices=["plain", "halo", "xbox"], default="plain",
+                        help="portrait: display.frame_style's look around the picture")
+    parser.add_argument("--picture-shape", choices=["4:3", "16:9"], default="4:3",
+                        help="portrait: display.picture_shape")
     args = parser.parse_args()
     if args.size:
         for width, height, dpi in args.size:
-            draw("touch-controls-" + str(width) + "x" + str(height), width, height, dpi, "classic", False, 0,
-                 args.background, args.out)
+            suffix = "" if height <= width else "-" + args.frame + ("-169" if args.picture_shape == "16:9" else "")
+            draw("touch-controls-" + str(width) + "x" + str(height) + suffix, width, height, dpi, "classic", False, 0,
+                 args.background, args.out, args.frame, args.picture_shape)
         return
     for name, width, height, dpi, style, idle, state in DISPLAYS:
         draw(name, width, height, dpi, style, idle, state, args.background, args.out)

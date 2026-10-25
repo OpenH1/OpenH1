@@ -261,16 +261,22 @@ enum
 	_touch_scene_captions = 1 << 7,
 	/* player 1's state, which the overlay's buttons show (touch_game.c's
 	_touch_context_* bits: an action prompted, a magazine to reload, no
-	grenades, in a vehicle), from this bit up */
+	grenades, in a vehicle), in bits 8 to 15 */
 	_touch_scene_context_shift = 8,
+	/* the portrait frame's look, display.frame_style (Android): 0 "plain",
+	1 "halo", 2 "xbox"; and display.picture_shape "16:9", which the overlay
+	places the picture by */
+	_touch_scene_frame_shift = 16,
+	_touch_scene_wide_picture = 1 << 18,
 };
 
 /* the touch controls' stick at port 0's last read, -1..1, y down */
 static float move_x, move_y;
 
 /* the settings the overlay reads: input.touch_controls as
-_touch_scene_on, _touch_scene_off or 0, display.hud_button_style and
-input.touch_captions */
+_touch_scene_on, _touch_scene_off or 0, display.hud_button_style,
+input.touch_captions, and on Android display.frame_style and
+display.picture_shape */
 static int touch_controls_setting(void)
 {
 	static int setting;
@@ -293,6 +299,16 @@ static int touch_controls_setting(void)
 			setting |= 2 << _touch_scene_style_shift;
 		if (config_boolean("input.touch_captions"))
 			setting |= _touch_scene_captions;
+#ifdef HALO_ANDROID
+		value = config_string("display.frame_style");
+		if (value && !strcmp(value, "halo"))
+			setting |= 1 << _touch_scene_frame_shift;
+		else if (value && !strcmp(value, "xbox"))
+			setting |= 2 << _touch_scene_frame_shift;
+		value = config_string("display.picture_shape");
+		if (value && !strcmp(value, "16:9"))
+			setting |= _touch_scene_wide_picture;
+#endif
 	}
 	return setting;
 }

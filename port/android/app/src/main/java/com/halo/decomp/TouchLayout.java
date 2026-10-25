@@ -12,8 +12,9 @@ import java.util.Properties;
  * overlay's logical units. Places are kept for the display the layout is
  * on and saved on a 960 x 540 grid, so a layout moves between displays of
  * other shapes. A portrait layout (a display taller than it is wide, the
- * game's picture at its top) is one of its own, on a 540 x 960 grid, with
- * the controls in the space under the picture. A layout file is Java
+ * game's picture near its top) is one of its own, on a 540 x 960 grid: a
+ * strip along the top with back and pause, the picture under it, and the
+ * controls in the space under the picture. A layout file is Java
  * properties text (version 3; 1 and 2 are still read).
  */
 final class TouchLayout {
@@ -57,12 +58,18 @@ final class TouchLayout {
      * back and pause, the menus' buttons, stay at the top
      */
     static final float WHITE_BLACK_ROW = 36;
-    /** the portrait grid, and its placement: every line keeps its distance
-     * from the bottom of a taller display, and the columns from the nearer
-     * side of a wider one (the ones between LEFT_PART and RIGHT_PART take
-     * the extra width) */
+    /** the portrait grid, and its placement: the strip along the top (its
+     * lines down to PORTRAIT_STRIP) keeps its distance from the top, under
+     * the display's top inset (a camera's cutout), the rest (from
+     * PORTRAIT_LOWER_PART down) its distance from the bottom of a taller
+     * display, and the columns from the nearer side of a wider one (the
+     * ones between LEFT_PART and RIGHT_PART take the extra width) */
     private static final float PORTRAIT_GRID_WIDTH = 540;
     private static final float PORTRAIT_GRID_HEIGHT = 960;
+    static final float PORTRAIT_STRIP = 72;
+    private static final float PORTRAIT_LOWER_PART = 90;
+    /** the space between the picture and the default controls under it, at the least */
+    private static final float PICTURE_MARGIN = 10;
     static final float LEFT_PART = 240;
     static final float RIGHT_PART = 300;
     private static final int MAX_FILE_LENGTH = 65536;
@@ -83,19 +90,17 @@ final class TouchLayout {
     };
     /**
      * the portrait defaults, under a 4:3 picture across the grid's width
-     * (405 high): the stick at the lower left, the right thumb's cluster at
-     * the lower right, crouch and zoom between them at the bottom, the D-pad
-     * over the stick, and the top row (light, the grenade's type, pause,
-     * the toolbar's hide, back, then the toolbar's options) under the
-     * picture
+     * (405 high) under the strip: the stick at the lower left, the right
+     * thumb's cluster at the lower right, crouch and zoom between them at
+     * the bottom, the D-pad over the stick with white and black (the
+     * flashlight and the grenade's type) beside it, and back and pause, the
+     * menus' buttons, in the strip at the top with the toolbar
      */
     private static final float[][] PORTRAIT_DEFAULTS = {
         {470, 870}, {382, 890}, {370, 760}, {375, 638}, {460, 728}, {475, 588},
-        {230, 898}, {305, 898}, {50, 488}, {125, 488}, {200, 488}, {340, 488},
+        {230, 898}, {305, 898}, {215, 560}, {215, 640}, {112, 36}, {44, 36},
         {95, 551}, {95, 649}, {46, 600}, {144, 600}, {125, 800}, {250, 700}
     };
-    /** how far up from the bottom the portrait toolbar is, on its grid */
-    static final float PORTRAIT_TOOLBAR_FROM_BOTTOM = 472;
     private static final float[] RADII = {
         40, 30, 30, 30, 55, 40, 26, 26, 24, 24, 28, 24, 22, 22, 22, 22, 64, 45
     };
@@ -146,6 +151,8 @@ final class TouchLayout {
     private float height;
     /** the smallest radius a control is drawn and touched at, in logical units */
     private float minimumRadius;
+    /** portrait: the display's top inset (a camera's cutout), in logical units, which the strip stays under */
+    private float topInset;
 
     boolean rumbleEnabled = true;
     boolean gyroscopeEnabled = false;
@@ -199,6 +206,38 @@ final class TouchLayout {
     void setMinimumRadius(float radius) {
         minimumRadius = Float.isFinite(radius) && radius > 0 ? Math.min(radius, MAX_MINIMUM_RADIUS) : 0;
         keepAllInside();
+    }
+
+    /** portrait: the display's top inset (a camera's cutout), in logical units, which the strip stays under */
+    void setTopInset(float inset) {
+        topInset = Float.isFinite(inset) && inset > 0 ? Math.min(inset, height / 4) : 0;
+        keepAllInside();
+    }
+
+    /** the bottom of the portrait strip, in logical units: the picture's highest top */
+    float stripBottom() {
+        return topInset + PORTRAIT_STRIP;
+    }
+
+    /** the height of the game's picture across a portrait display this wide: 480 lines of 640 columns (4:3) or 852 (16:9), as the game makes it */
+    static float pictureHeight(float width, boolean wide) {
+        return width * 480 / (wide ? 852 : 640);
+    }
+
+    /**
+     * portrait: where the game's picture's top goes, in logical units, for a
+     * picture this high across the display: half way down the space between
+     * the strip and the default controls (not the ones the player moved, so
+     * the picture stays put as they move), or with no room, under the strip,
+     * the controls over its lower part
+     */
+    float pictureTop(float pictureHeight) {
+        float controlsTop = height;
+        for (int i = 0; i < PORTRAIT_DEFAULTS.length; i++) {
+            if (PORTRAIT_DEFAULTS[i][1] > PORTRAIT_STRIP && !hiddenByDefault(i))
+                controlsTop = Math.min(controlsTop, displayY(i, PORTRAIT_DEFAULTS[i][1]) - Math.max(RADII[i], minimumRadius));
+        }
+        return stripBottom() + Math.max(0, (controlsTop - PICTURE_MARGIN - stripBottom() - pictureHeight) / 2);
     }
 
     int size() {
@@ -338,7 +377,8 @@ final class TouchLayout {
     }
 
     private float displayY(int type, float placeY) {
-        return portrait ? edgeKept(placeY, height, PORTRAIT_GRID_HEIGHT, 0, 1) : displayY(type, placeY, height);
+        return portrait ? topInset + edgeKept(placeY, height - topInset, PORTRAIT_GRID_HEIGHT, PORTRAIT_STRIP,
+            PORTRAIT_LOWER_PART) : displayY(type, placeY, height);
     }
 
     private float gridX(float x) {
@@ -346,7 +386,8 @@ final class TouchLayout {
     }
 
     private float gridY(int type, float y) {
-        return portrait ? edgeKeptBack(y, height, PORTRAIT_GRID_HEIGHT, 0, 1) : gridY(type, y, height);
+        return portrait ? Math.max(0, edgeKeptBack(y - topInset, height - topInset, PORTRAIT_GRID_HEIGHT,
+            PORTRAIT_STRIP, PORTRAIT_LOWER_PART)) : gridY(type, y, height);
     }
 
     /**

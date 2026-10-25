@@ -12,8 +12,13 @@ import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LightingColorFilter;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.Picture;
+import android.graphics.RadialGradient;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
@@ -145,6 +150,12 @@ public final class TouchControls extends View implements SensorEventListener, In
     /** display.hud_button_style (0 classic, 1 gems, 2 menu_gems) and input.touch_captions */
     private static final int SCENE_STYLE_SHIFT = 5;
     private static final int SCENE_CAPTIONS = 128;
+    /** display.frame_style (0 plain, 1 halo, 2 xbox) and display.picture_shape "16:9", for portrait */
+    private static final int SCENE_FRAME_SHIFT = 16;
+    private static final int SCENE_WIDE_PICTURE = 1 << 18;
+    private static final int FRAME_HALO = 1;
+    /** the frame's accents: the HUD's cyan (HUD_COLOR) for halo, a green for xbox */
+    private static final int FRAME_GREEN = 0xff78cd3c;
 
     private static final String PREFERENCES = "touch-layout-v1";
     private static final String KEY_CONFIGURATION = "configuration";
@@ -257,6 +268,7 @@ public final class TouchControls extends View implements SensorEventListener, In
     private static native int nativeRumble();
     private static native int nativeScene();
     private static native int nativeBindings(int[] controls);
+    private static native void nativePictureTop(int pixels);
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint pictures = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
@@ -333,6 +345,13 @@ public final class TouchControls extends View implements SensorEventListener, In
     private float logicalHeight = GRID_HEIGHT;
     private int insetRight;
     private int insetTop;
+    /** the camera cutout's top inset, in pixels: portrait's strip stays under it */
+    private int cutoutTop;
+    /** portrait: where the game's picture is, in logical units (empty in landscape) */
+    private final RectF pictureRect = new RectF();
+    /** the portrait frame, drawn once for its look and the picture's place (null: draw it again) */
+    private Picture frame;
+    private int frameStyle;
 
     private int scene;
     private boolean controllerConnected;
@@ -402,6 +421,9 @@ public final class TouchControls extends View implements SensorEventListener, In
                     || TouchContext.fromScene(was) != TouchContext.fromScene(scene)
                     || (showing && !hidden && TouchContext.animating(TouchContext.fromScene(scene))))
                 invalidate();
+            // (the picture's shape and the frame's look: placed and drawn again)
+            if (((was ^ scene) & (3 << SCENE_FRAME_SHIFT | SCENE_WIDE_PICTURE | SCENE_KNOWN)) != 0)
+                placePicture();
             fadeWhenIdle();
             updateShowing();
             readBindings();
@@ -450,11 +472,17 @@ public final class TouchControls extends View implements SensorEventListener, In
             int top = insetTop;
             insetRight = insets.getSystemWindowInsetRight();
             insetTop = insets.getSystemWindowInsetTop();
+            int cutout = cutoutTop;
+            cutoutTop = 0;
             if (insets.getDisplayCutout() != null) {
                 insetRight = Math.max(insetRight, insets.getDisplayCutout().getSafeInsetRight());
                 insetTop = Math.max(insetTop, insets.getDisplayCutout().getSafeInsetTop());
+                cutoutTop = insets.getDisplayCutout().getSafeInsetTop();
             }
-            if (insetRight != right || insetTop != top)
+            // (portrait's strip, the controls in it and the picture under it move with the cutout alone)
+            if (cutoutTop != cutout)
+                layoutControls();
+            else if (insetRight != right || insetTop != top)
                 invalidate();
             return insets;
         });
@@ -555,7 +583,31 @@ public final class TouchControls extends View implements SensorEventListener, In
         logicalWidth = width / scale;
         logicalHeight = height / scale;
         layout.bounds(logicalWidth, logicalHeight);
+        layout.setTopInset(portrait ? cutoutTop / scale : 0);
         layout.setMinimumRadius(minimumRadius());
+        placePicture();
+    }
+
+    /**
+     * portrait: where the game's picture goes (under the strip, lowered into
+     * the space above the controls: TouchLayout.pictureTop), told to the
+     * game, which draws it there (host_touch_picture_top); landscape: none,
+     * the game places it itself
+     */
+    private void placePicture() {
+        if (!layout.portrait || getWidth() <= 0) {
+            pictureRect.setEmpty();
+            nativePictureTop(-1);
+        } else {
+            boolean wide = (scene & SCENE_WIDE_PICTURE) != 0;
+            int top = Math.round(layout.pictureTop(TouchLayout.pictureHeight(logicalWidth, wide)) * scale);
+            // (as the game's present: whole pixels, the picture no lower than the bottom)
+            int height = getWidth() * 480 / (wide ? 852 : 640);
+            top = Math.max(0, Math.min(top, getHeight() - height));
+            pictureRect.set(0, top / scale, logicalWidth, (top + height) / scale);
+            nativePictureTop(top);
+        }
+        frame = null;
         invalidate();
     }
 
@@ -570,9 +622,15 @@ public final class TouchControls extends View implements SensorEventListener, In
     }
 
     private float toolbarY() {
-        float top = Math.max(38, insetTop / scale + 38);
-        // (portrait: in the row of light and pause, under the game's picture)
-        return layout.portrait ? Math.max(top, logicalHeight - TouchLayout.PORTRAIT_TOOLBAR_FROM_BOTTOM) : top;
+        // (portrait: in the strip, with back and pause)
+        if (layout.portrait)
+            return layout.stripBottom() - TouchLayout.PORTRAIT_STRIP / 2;
+        return Math.max(38, insetTop / scale + 38);
+    }
+
+    /** the toolbar's hide: in the middle, or in portrait beside the options (a camera's cutout is in the middle) */
+    private float hideX() {
+        return layout.portrait ? optionsX() - 70 : logicalWidth / 2;
     }
 
     private float optionsX() {
@@ -792,7 +850,7 @@ public final class TouchControls extends View implements SensorEventListener, In
             return TOOLBAR_EXPORT;
         if (editing && inside(x, y, optionsX() - 78, toolbarY(), toolbarRadius(OPTIONS_RADIUS)))
             return TOOLBAR_IMPORT;
-        if (!editing && inside(x, y, logicalWidth / 2, toolbarY(), toolbarRadius(TOOLBAR_RADIUS)))
+        if (!editing && inside(x, y, hideX(), toolbarY(), toolbarRadius(TOOLBAR_RADIUS)))
             return TOOLBAR_TOGGLE;
         if (hidden && !editing)
             return NOTHING;
@@ -1704,7 +1762,7 @@ public final class TouchControls extends View implements SensorEventListener, In
             toolbarItem(canvas, optionsX() - 78, OPTIONS_RADIUS, null, "Import");
             label(canvas, logicalWidth / 2, toolbarY() + 58, 1000, "Drag the controls, then push Save", 14, 1f);
         } else {
-            toolbarItem(canvas, logicalWidth / 2, TOOLBAR_RADIUS, hidden ? showIcon : hideIcon, null);
+            toolbarItem(canvas, hideX(), TOOLBAR_RADIUS, hidden ? showIcon : hideIcon, null);
             toolbarItem(canvas, optionsX(), OPTIONS_RADIUS, optionsIcon, null);
         }
     }
@@ -1732,13 +1790,133 @@ public final class TouchControls extends View implements SensorEventListener, In
         paint.clearShadowLayer();
     }
 
+    /**
+     * portrait's frame in display.frame_style's look, around the game's
+     * picture and never over it (clipped out): the strip along the top, the
+     * panel under the picture with its rings, and a line or brackets just
+     * outside the picture's edges; in menus too
+     */
+    private void drawFrame(Canvas canvas) {
+        int style = (scene >> SCENE_FRAME_SHIFT) & 3;
+        if (pictureRect.isEmpty() || (scene & SCENE_KNOWN) == 0 || style == 0 || style > 2)
+            return;
+        if (frame == null || frameStyle != style) {
+            frame = new Picture();
+            frameStyle = style;
+            recordFrame(frame.beginRecording((int) Math.ceil(logicalWidth), (int) Math.ceil(logicalHeight)), style);
+            frame.endRecording();
+        }
+        canvas.save();
+        canvas.clipOutRect(pictureRect);
+        canvas.drawPicture(frame);
+        canvas.restore();
+    }
+
+    /** the frame's drawing, in logical units: halo (the HUD's cyan on navy, rings like the menus') or xbox (green on ribbed black) */
+    private void recordFrame(Canvas canvas, int style) {
+        boolean halo = style == FRAME_HALO;
+        int accent = halo ? HUD_COLOR : FRAME_GREEN;
+        float width = logicalWidth, height = logicalHeight, strip = layout.stripBottom();
+        float x = width / 2, y = pictureRect.bottom + (height - pictureRect.bottom) / 2;
+        Paint ink = new Paint(Paint.ANTI_ALIAS_FLAG);
+        if (halo) {
+            ink.setShader(new LinearGradient(0, 0, 0, height, Color.rgb(5, 9, 17), Color.rgb(11, 19, 35),
+                Shader.TileMode.CLAMP));
+            canvas.drawRect(0, 0, width, height, ink);
+            ink.setShader(null);
+            ink.setColor(Color.argb(46, 0, 0, 0));
+            for (float line = 0; line < height; line += 3)
+                canvas.drawRect(0, line, width, line + 1, ink);
+            ink.setStyle(Paint.Style.STROKE);
+            ink.setStrokeWidth(0.75f);
+            float[][] rings = {{150, 0.10f}, {205, 0.13f}, {212, 0.07f}, {300, 0.055f}};
+            for (float[] ring : rings) {
+                ink.setColor(alpha(accent, ring[1]));
+                canvas.drawCircle(x, y, ring[0], ink);
+            }
+            ink.setColor(alpha(accent, 0.12f));
+            for (int tick = 0; tick < 72; tick++) {
+                double turn = tick * Math.PI / 36;
+                float outer = tick % 6 == 0 ? 228 : 218;
+                canvas.drawLine(x + 212 * (float) Math.cos(turn), y + 212 * (float) Math.sin(turn),
+                    x + outer * (float) Math.cos(turn), y + outer * (float) Math.sin(turn), ink);
+            }
+        } else {
+            canvas.drawColor(Color.rgb(7, 9, 7));
+            ink.setStyle(Paint.Style.STROKE);
+            ink.setStrokeWidth(1.5f);
+            ink.setColor(Color.rgb(12, 18, 11));
+            for (float line = -height; line < width; line += 6)
+                canvas.drawLine(line, 0, line + height, height, ink);
+            ink.setStyle(Paint.Style.FILL);
+            ink.setShader(new RadialGradient(x, y, 230, alpha(accent, 0.27f), alpha(accent, 0), Shader.TileMode.CLAMP));
+            canvas.drawCircle(x, y, 230, ink);
+            ink.setShader(null);
+            ink.setStyle(Paint.Style.STROKE);
+            ink.setColor(alpha(accent, 0.24f));
+            canvas.drawCircle(x, y, 120, ink);
+            ink.setColor(alpha(accent, 0.1f));
+            canvas.drawCircle(x, y, 126, ink);
+        }
+        // the strip, and the line under it
+        ink.setStyle(Paint.Style.FILL);
+        ink.setColor(halo ? Color.argb(235, 6, 11, 20) : Color.argb(235, 10, 13, 10));
+        canvas.drawRect(0, 0, width, strip, ink);
+        ink.setStyle(Paint.Style.STROKE);
+        ink.setStrokeWidth(1.5f);
+        ink.setColor(alpha(accent, 0.59f));
+        canvas.drawLine(0, strip, width, strip, ink);
+        // just outside the picture: brackets at its corners (halo) or a rounded frame (xbox)
+        float gap = 4;
+        RectF picture = pictureRect;
+        if (halo) {
+            Path shield = new Path();
+            shield.moveTo(x - 150, strip);
+            shield.lineTo(x - 130, strip - 8);
+            shield.lineTo(x + 130, strip - 8);
+            shield.lineTo(x + 150, strip);
+            ink.setColor(alpha(accent, 0.43f));
+            canvas.drawPath(shield, ink);
+            ink.setStrokeWidth(2);
+            ink.setColor(alpha(accent, 0.78f));
+            float reach = 22;
+            for (int corner = 0; corner < 4; corner++) {
+                float side = corner % 2 == 0 ? 1 : -1;
+                float cornerX = corner % 2 == 0 ? picture.left + 6 : picture.right - 6;
+                float lineY = corner < 2 ? picture.top - gap : picture.bottom + gap;
+                float out = corner < 2 ? -1 : 1;
+                Path bracket = new Path();
+                bracket.moveTo(cornerX, lineY + out * reach / 2);
+                bracket.lineTo(cornerX, lineY);
+                bracket.lineTo(cornerX + side * reach, lineY);
+                canvas.drawPath(bracket, ink);
+            }
+            ink.setStrokeWidth(1.5f);
+            ink.setColor(alpha(accent, 0.51f));
+            canvas.drawLine(picture.left, picture.bottom + 0.75f, picture.right, picture.bottom + 0.75f, ink);
+        } else {
+            ink.setStrokeWidth(2);
+            ink.setColor(alpha(accent, 0.67f));
+            canvas.drawRoundRect(picture.left - gap, picture.top - gap, picture.right + gap, picture.bottom + gap, 10, 10,
+                ink);
+        }
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
-        if (!showing && !editing)
+        if (!showing && !editing) {
+            if (!pictureRect.isEmpty()) {
+                canvas.save();
+                canvas.scale(scale, scale);
+                drawFrame(canvas);
+                canvas.restore();
+            }
             return;
+        }
         float opacity = layout.opacity * (editing ? 1f : idle);
         canvas.save();
         canvas.scale(scale, scale);
+        drawFrame(canvas);
         if (!hidden || editing) {
             if (layout.shown(TouchLayout.LEFT))
                 drawStick(canvas, opacity);

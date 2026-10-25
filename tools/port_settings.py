@@ -413,10 +413,10 @@ PAGES = {
              "How wide you see on foot, in degrees across a 16:9 screen. Default keeps the Xbox's view; wider shows "
              "more around you.", None),
             ("ORIENTATION", "display.orientation", [("LANDSCAPE", "landscape"), ("PORTRAIT", "portrait")],
-             "Which way up you hold the device, from the next start. Portrait has the picture at the top and the "
-             "touch controls below it.", "android"),
+             "Which way up you hold the device, from the next start. Portrait has a strip of buttons along the "
+             "top, the picture under it and the touch controls below it.", "android"),
             ("SCREEN LAYOUT ›", None, _page_screen(*SCREEN_LAYOUT),
-             "Where the picture sits on a screen taller than it, and its shape.",
+             "Where the picture sits on a screen taller than it, its shape, and the frame around it in portrait.",
              "android"),
             ("FIRST PERSON ›", None, _page_screen(*FIRST_PERSON),
              "Your weapon's field of view and whether it is drawn, your legs and arms, your shield's color, and the "
@@ -734,10 +734,16 @@ PAGES = {
             ("PICTURE POSITION", "display.picture_position", [("CENTER", "center"), ("TOP", "top")],
              "Where the picture sits on a screen taller than it, such as a folding phone's inner screen or a "
              "tablet. Top puts all the black space below it, where the touch controls are. Portrait always has it "
-             "at the top.", "android"),
+             "near the top, under the strip of buttons.", "android"),
             ("PICTURE SHAPE", "display.picture_shape", [("4:3", "4:3"), ("16:9", "16:9")],
              "The picture's shape on a screen taller than it. 4:3 is the Xbox's; 16:9 sees more to the sides and "
              "leaves more of the screen to the touch controls.", "android"),
+            (SECTION, "PORTRAIT"),
+            # (display.frame_style: Android's, around the picture in portrait;
+            # TouchControls.java's drawFrame)
+            ("PORTRAIT FRAME", "display.frame_style", [("PLAIN", "plain"), ("HALO", "halo"), ("XBOX", "xbox")],
+             "The look of the screen around the picture when you play in portrait: plain black, Halo's blue lines "
+             "and rings, or Xbox green. It is never drawn over the picture.", "android"),
         ],
     },
     STREAMER[0]: {

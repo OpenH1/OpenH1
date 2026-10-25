@@ -245,9 +245,13 @@ public final class TouchLayoutTest {
         TouchLayout portraitWide = new TouchLayout(true);
         portraitWide.bounds(865, 960);
         for (int i = 0; i < portraitBase.size(); i++) {
-            check(Math.abs((1200 - portraitTall.y(i)) - (960 - portraitBase.y(i))) < 0.01f
-                  && portraitTall.x(i) == portraitBase.x(i),
-                  "Portrait controls keep their distance from the bottom of a taller display");
+            if (portraitBase.y(i) <= TouchLayout.PORTRAIT_STRIP)
+                check(portraitTall.y(i) == portraitBase.y(i) && portraitTall.x(i) == portraitBase.x(i),
+                      "The portrait strip's controls keep their distance from the top of a taller display");
+            else
+                check(Math.abs((1200 - portraitTall.y(i)) - (960 - portraitBase.y(i))) < 0.01f
+                      && portraitTall.x(i) == portraitBase.x(i),
+                      "Portrait controls keep their distance from the bottom of a taller display");
             if (portraitBase.x(i) >= TouchLayout.RIGHT_PART)
                 check(Math.abs((865 - portraitWide.x(i)) - (540 - portraitBase.x(i))) < 0.01f,
                       "The right thumb's portrait controls keep their distance from the right of a wider display");
@@ -255,6 +259,44 @@ public final class TouchLayoutTest {
                 check(portraitWide.x(i) == portraitBase.x(i),
                       "The left thumb's portrait controls keep their distance from the left of a wider display");
         }
+        // The strip: back and pause in it, at the top under a camera's
+        // cutout; the picture under it, lowered half way into the free space
+        // and clear of the default controls where there is room (20:9, the
+        // Fold7's cover), under the strip where there is none (16:9, a
+        // folding phone's inner screen); a moved control does not move it.
+        for (float[] display : new float[][] {{540, 960}, {540, 1200}, {540, 1260}, {865, 960}, {901.5f, 960}}) {
+            for (float inset : new float[] {0, 40}) {
+                TouchLayout strip = new TouchLayout(true);
+                strip.bounds(display[0], display[1]);
+                strip.setTopInset(inset);
+                for (int i : new int[] {10, 11})
+                    check(strip.y(i) + strip.radius(i) <= strip.stripBottom() && strip.y(i) - strip.radius(i) >= inset,
+                          "Back and pause are in the strip, under the cutout");
+                float lowest = display[1];
+                for (int i = 0; i < strip.size(); i++)
+                    if (strip.shown(i) && strip.y(i) > strip.stripBottom())
+                        lowest = Math.min(lowest, strip.y(i) - strip.radius(i));
+                for (boolean sixteenNine : new boolean[] {false, true}) {
+                    float high = TouchLayout.pictureHeight(display[0], sixteenNine);
+                    float top = strip.pictureTop(high);
+                    check(top >= strip.stripBottom(), "The picture is under the strip");
+                    if (top > strip.stripBottom())
+                        check(top + high <= lowest && Math.abs((top - strip.stripBottom()) - (lowest - 10 - top - high)) < 0.01f,
+                              "A lowered picture is half way between the strip and the controls, clear of them");
+                    else
+                        check(strip.stripBottom() + high + 10 >= lowest, "The picture stays under the strip only without room");
+                    TouchLayout moved = new TouchLayout(true);
+                    moved.bounds(display[0], display[1]);
+                    moved.setTopInset(inset);
+                    moved.move(TouchLayout.WHITE, 30, moved.stripBottom() + 5);
+                    check(moved.pictureTop(high) == top, "A moved control does not move the picture");
+                }
+            }
+        }
+        TouchLayout tallStrip = new TouchLayout(true);
+        tallStrip.bounds(540, 1200);
+        check(tallStrip.pictureTop(TouchLayout.pictureHeight(540, false)) > TouchLayout.PORTRAIT_STRIP + 100,
+              "On a 20:9 phone the picture is lowered");
         portraitWide.move(4, 600, 300);
         float portraitX = portraitWide.x(4), portraitY = portraitWide.y(4);
         TouchLayout.Configuration uprightCopy = TouchLayout.importConfiguration(portraitWide.exportConfiguration(1.5f));

@@ -323,18 +323,25 @@ static const struct config_setting config_settings[] =
 		"phone's inner screen, a tablet, a window in split screen): \"center\",\n"
 		"with black above and below, or \"top\", with all the black below it,\n"
 		"where the touch controls under the thumbs are. A window taller than it\n"
-		"is wide (portrait) always has the picture at the top." },
+		"is wide (portrait) has the picture under the touch controls' top strip\n"
+		"(lowered into the space above the controls when there is room)." },
 	{ "display.orientation", _config_string, "\"landscape\"", "HALO_ORIENTATION", _environment_value,
 		_platform_android,
 		"Which way up the game is held, from the next start: \"landscape\", or\n"
-		"\"portrait\", with the picture at the top of the screen and the touch\n"
-		"controls in the space below it (display.picture_shape)." },
+		"\"portrait\", with a strip along the top for back, pause and the touch\n"
+		"toolbar, the picture under it and the touch controls in the space\n"
+		"below it (display.picture_shape, display.frame_style)." },
 	{ "display.picture_shape", _config_string, "\"4:3\"", "HALO_PICTURE_SHAPE", _environment_value,
 		_platform_android,
 		"The picture's shape on a screen taller than it (portrait, a folding\n"
 		"phone's inner screen, a tablet): \"4:3\", the Xbox's, or \"16:9\", wider\n"
 		"and shorter, which sees more to the sides and leaves more of the screen\n"
 		"to the touch controls." },
+	{ "display.frame_style", _config_string, "\"plain\"", "HALO_FRAME_STYLE", _environment_value,
+		_platform_android,
+		"The look of the screen around the picture in portrait: \"plain\" black,\n"
+		"\"halo\" (navy, with the HUD's cyan lines and rings) or \"xbox\" (ribbed\n"
+		"black, with green). It is never drawn over the picture." },
 
 	{ "audio.enabled", _config_boolean, "true", "HALO_NO_AUDIO", _environment_set_is_false, _platform_all,
 		"Play sound." },
@@ -2811,6 +2818,7 @@ static const struct
 	{ "display.picture_position", { "center", "top", NULL }, NULL },
 	{ "display.orientation", { "landscape", "portrait", NULL }, NULL },
 	{ "display.picture_shape", { "4:3", "16:9", NULL }, NULL },
+	{ "display.frame_style", { "plain", "halo", "xbox", NULL }, NULL },
 	{ "display.hud_button_style", { "classic", "gems", "menu_gems", NULL }, NULL },
 	{ "display.menus", { "pc", "xbox", NULL }, NULL },
 	{ "display.player_names", { "all", "allies", "enemies", "none", NULL }, NULL },

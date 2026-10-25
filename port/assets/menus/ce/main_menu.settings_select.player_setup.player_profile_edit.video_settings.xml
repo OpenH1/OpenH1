@@ -257,8 +257,8 @@
 		<string text="The most frames drawn a second while V-Sync is off. Auto is twice the display's refresh rate. More feels smoother and uses more power; None draws as fast as it can."/>
 		<string text="Waits for the display before showing each frame, so that the picture never tears. It adds a little input lag, and holds the frame rate to the display's refresh rate."/>
 		<string text="How wide you see on foot, in degrees across a 16:9 screen. Default keeps the Xbox's view; wider shows more around you."/>
-		<string text="Which way up you hold the device, from the next start. Portrait has the picture at the top and the touch controls below it."/>
-		<string text="Where the picture sits on a screen taller than it, and its shape."/>
+		<string text="Which way up you hold the device, from the next start. Portrait has a strip of buttons along the top, the picture under it and the touch controls below it."/>
+		<string text="Where the picture sits on a screen taller than it, its shape, and the frame around it in portrait."/>
 		<string text="Your weapon's field of view and whether it is drawn, your legs and arms, your shield's color, and the view from a vehicle's passenger seat."/>
 		<string text=""/>
 		<string text="Enhanced: smoother edges, sharper textures and shadows, smoother lighting. Classic looks as the Xbox did.|Changing one shows CUSTOM."/>
