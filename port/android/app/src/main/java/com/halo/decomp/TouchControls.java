@@ -305,6 +305,14 @@ public final class TouchControls extends View implements SensorEventListener, In
     private int lookPointer = -1;
     private float lookX;
     private float lookY;
+    /**
+     * the kind of control that crouches (the one bound to Crouch), tapped
+     * on: it stays down while the stick moves, until it is tapped again,
+     * Jump is pressed or a vehicle's seat is taken; -1 standing. (Crouch
+     * sits under the left thumb beside the stick, where it cannot be held
+     * while moving; the Xbox's is the stick's own click.)
+     */
+    private int crouchedKind = -1;
     /** a floating stick's centre while a thumb holds it (logical units) */
     private boolean stickFloating;
     private float stickX;
@@ -675,6 +683,7 @@ public final class TouchControls extends View implements SensorEventListener, In
         toolbarFingers.clear();
         lookPointer = -1;
         stickFloating = false;
+        crouchedKind = -1;
         gyroAim.reset();
         nativeLookReset();
         Arrays.fill(axes, 0);
@@ -692,15 +701,33 @@ public final class TouchControls extends View implements SensorEventListener, In
         axes[5] = 0;
         for (int i = 0; i < owners.size(); i++) {
             int control = owners.valueAt(i);
-            if (control < 0 || control >= layout.size())
+            if (control < 0 || control >= layout.size() || crouches(layout.type(control)))
                 continue;
-            Kind kind = KINDS[layout.type(control)];
-            if (kind.bit >= 0)
-                bits |= 1 << kind.bit;
-            if (kind.trigger >= 0)
-                axes[kind.trigger] = 32767;
+            bits = press(KINDS[layout.type(control)], bits);
         }
+        // (crouch: tapped on, held by no finger)
+        if (crouchedKind >= 0 && (!crouches(crouchedKind) || hiddenNow(crouchedKind)))
+            crouchedKind = -1;
+        if (crouchedKind >= 0)
+            bits = press(KINDS[crouchedKind], bits);
         nativeState(axes[0], axes[1], axes[2], axes[3], axes[4], axes[5], bits);
+    }
+
+    /** a kind of control pressed: its trigger pulled (axes), and the buttons with its bit */
+    private int press(Kind kind, int bits) {
+        if (kind.trigger >= 0)
+            axes[kind.trigger] = 32767;
+        return kind.bit >= 0 ? bits | 1 << kind.bit : bits;
+    }
+
+    /** whether a kind of control crouches (is bound to Crouch) */
+    private boolean crouches(int type) {
+        return gameControl(type) == TouchContext.CONTROL_CROUCH;
+    }
+
+    /** held by a finger, or a crouch tapped on */
+    private boolean pressed(int control) {
+        return held(control) || (crouchedKind >= 0 && layout.type(control) == crouchedKind);
     }
 
     private boolean held(int control) {
@@ -879,6 +906,11 @@ public final class TouchControls extends View implements SensorEventListener, In
                 moveStick(target, x, y);
             } else {
                 buttonTouches.put(id, new float[] {px, py});
+                int type = layout.type(target);
+                if (crouches(type))
+                    crouchedKind = crouchedKind == type ? -1 : type;
+                else if (gameControl(type) == TouchContext.CONTROL_JUMP)
+                    crouchedKind = -1;
                 tap();
             }
         } else if (!hidden && lookPointer < 0 && !inGestureZone(px, py, false)) {
@@ -1694,7 +1726,7 @@ public final class TouchControls extends View implements SensorEventListener, In
             for (int i = 0; i < layout.size(); i++) {
                 if (!layout.shown(i) || layout.type(i) == TouchLayout.LEFT || (!editing && hiddenNow(layout.type(i))))
                     continue;
-                control(canvas, i, held(i) || dragControl == i, opacity);
+                control(canvas, i, pressed(i) || dragControl == i, opacity);
             }
         }
         drawToolbar(canvas);

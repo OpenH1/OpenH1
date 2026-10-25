@@ -265,6 +265,9 @@ controls' scene (`port/linux/game/touch_game.c`, `TouchContext.java`):
 - With none of the current grenade type, the grenade button is dimmed.
 - In a vehicle's seat (driver, passenger or gunner), Jump and Crouch hide
   and the action button's caption says EXIT; Fire stays.
+- Crouch is tapped on and off, not held: it sits under the left thumb
+  beside the stick, so a tap crouches until Crouch is tapped again, Jump is
+  pressed or a vehicle's seat is taken, and the button shows held meanwhile.
 - Each button press gives a short, light tap of the vibrator, with the
   vibration on ("General"), on top of the game's own rumble.
 
