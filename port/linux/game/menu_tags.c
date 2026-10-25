@@ -2574,7 +2574,10 @@ char const *pc_menus_screen(
 			"pc\\main_menu\\multiplayer_type_select\\connected\\connected_map_select_wrapper" },
 		{ "ui\\shell\\main_menu\\multiplayer_type_select\\connected\\pregame\\connected_pregame_screen",
 			"pc\\main_menu\\multiplayer_type_select\\lobby\\lobby_screen" },
-		/* (a game of this machine alone's: the lobby too, its bots in it) */
+		/* (a game of this machine alone's: the map select and the lobby
+		too, its bots in it) */
+		{ "ui\\shell\\main_menu\\multiplayer_type_select\\split_screen\\splitscreen_map_select_postgame_wrapper",
+			"pc\\main_menu\\multiplayer_type_select\\connected\\connected_map_select_wrapper" },
 		{ "ui\\shell\\main_menu\\multiplayer_type_select\\split_screen\\pregame\\splitscreen_pregame_wrapper_normal",
 			"pc\\main_menu\\multiplayer_type_select\\lobby\\lobby_screen" },
 	};

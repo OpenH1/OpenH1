@@ -4901,8 +4901,10 @@ void network_game_reset_to_pregame_ui(
 		}
 		else
 		{
+			/* port: with the PC version's menus, the host's map select, as a
+			network game's (its Server Setup, then the lobby) */
 			if (!ui_widget_load_by_name_or_tag(
-				"ui\\shell\\main_menu\\multiplayer_type_select\\split_screen\\splitscreen_map_select_postgame_wrapper",
+				pc_menus_screen("ui\\shell\\main_menu\\multiplayer_type_select\\split_screen\\splitscreen_map_select_postgame_wrapper"),
 				NONE, NULL, NONE, NONE, NONE, NONE))
 			{
 				error(_error_silent, "failed to load map select postgame screen");
