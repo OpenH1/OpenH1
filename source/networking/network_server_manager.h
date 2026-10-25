@@ -117,6 +117,17 @@ void network_game_server_change_map_name(
 void network_game_server_change_game_variant(
 	struct network_game_server *server,
 	struct game_variant *variant);
+/* port: the game's players, apart from its bots (port/linux/game/bots.c),
+with how many bots it has and the most players it takes for its players
+(the server browser's listing, the advertisement) */
+long network_game_server_port_bots_humans(
+	struct network_game_server *server,
+	long *bots,
+	long *maximum);
+/* port: whether a player who joins finds room: fewer players than the game
+takes, and a slot free or a bot to make room (bots.make_room) */
+boolean network_game_server_has_room_for_player(
+	struct network_game_server *server);
 
 /* ---------- globals */
 

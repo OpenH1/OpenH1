@@ -81,6 +81,9 @@ advertises HALO_PORT_NETWORK_VERSION, as a Legacy game does), the OpenH1
 protocol version (a Legacy game's 0). OpenCE reads no reserved byte past the
 game's kind */
 #define HALO_PORT_ADVERTISED_OPENH1_VERSION_OFFSET 5
+/* ... and the bots the host plays in the game (port/linux/game/bots.c),
+which its player count leaves out (0 for none, as before) */
+#define HALO_PORT_ADVERTISED_BOTS_OFFSET 6
 
 /* OpenH1's Standard games (port/linux/game/network_standard.c, NETCODE.md's
 "Versions") have a protocol version of their own, separate from

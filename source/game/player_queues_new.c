@@ -1170,6 +1170,29 @@ long update_server_ticked_update_number(
 		update_client_globals.next_update_number_to_dequeue - 1 : NONE;
 }
 
+/* port: a bot's controls this tick (port/linux/game/bots.c), which the
+host's tick took in place of what its queue held: the update the tick ran
+has them, so that the host gives its clients the bot's input as the input
+its tick ran a remote player with (network_distributed.c's relayed input) */
+void update_server_take_bot_action(
+	long absolute_player_index,
+	struct player_action const *action)
+{
+	long update_number = update_server_ticked_update_number();
+	struct update *update = update_number != NONE ? update_server_get_update(update_number) : NULL;
+
+	if (!update || update->update_number != update_number || absolute_player_index < 0 ||
+		absolute_player_index >= update->update.action_count || !distributed_action_valid(action))
+	{
+		return;
+	}
+	update->update.actions[absolute_player_index] = *action;
+	/* (no client's input is the bot's: none a machine that had its slot
+	sent, whose sub-steps the host would replay on the bot,
+	update_queues_distributed_input_key) */
+	update_server_distributed_inputs[absolute_player_index].valid = FALSE;
+}
+
 struct player_action const *update_server_update_actions(
 	long update_number,
 	short *count)

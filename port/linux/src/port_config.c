@@ -850,15 +850,25 @@ static const struct config_setting config_settings[] =
 		"as the game's own maps' are before they run; false refuses them\n"
 		"(docs/custom_edition_caches.md)." },
 	{ "bots.count", _config_integer, "0", "HALO_BOTS", _environment_value, _platform_all,
-		"Computer players (bots) in a local (split screen) Slayer game: 0 to 15\n"
-		"join its lobby with the players, as far as the game has room. Not in\n"
-		"system link or internet games. 0: none, as in the stock game." },
+		"Computer players (bots) in a Slayer game this computer hosts: 0 to 15\n"
+		"join its lobby with the players, as far as the game has room: a local\n"
+		"(split screen) game, or a system link or internet one, where the host\n"
+		"plays them and the other machines see them as players (bots.make_room).\n"
+		"0: none, as in the stock game." },
 	{ "bots.skill", _config_string, "\"normal\"", "HALO_BOT_SKILL", _environment_value, _platform_all,
 		"How well the bots play: \"easy\", \"normal\", \"heroic\" or \"legendary\"\n"
 		"(how soon they react, how well they aim, how far they see)." },
 	{ "bots.teams", _config_string, "\"even\"", "HALO_BOT_TEAMS", _environment_value, _platform_all,
 		"In team games: \"even\" puts the bots on both teams, evening them with\n"
 		"the players; \"against\" puts them all on the team the players are not on." },
+	{ "bots.make_room", _config_boolean, "true", "HALO_BOTS_MAKE_ROOM", _environment_value, _platform_all,
+		"In a system link or internet game with bots (bots.count): a bot leaves\n"
+		"as a player joins, so that the game has no more than bots.fill_to\n"
+		"players and bots, and comes back as a player leaves. false: the bots\n"
+		"stay, and the game's most players are its players' alone." },
+	{ "bots.fill_to", _config_integer, "16", "HALO_BOTS_FILL_TO", _environment_value, _platform_all,
+		"With bots.make_room, the players and bots a system link or internet\n"
+		"game is filled to (2 to 128; no more than its most players)." },
 	{ "display.viewmodel_shield", _config_boolean, "false", "HALO_VIEWMODEL_SHIELD", _environment_value, _platform_all,
 		"The energy shield's flare on the first-person arms too, as on the body\n"
 		"(the stock game draws it on the body only)." },

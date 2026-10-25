@@ -3785,6 +3785,7 @@ boolean ui_widget_port_open(struct widget_instance *widget, char const *name, bo
 boolean network_game_client_advertised_game_in_progress(void *client, struct advertised_game *game);
 byte network_game_client_advertised_game_kind(void *client, struct advertised_game *game);
 long network_game_client_advertised_game_rate(void *client, struct advertised_game *game);
+long network_game_client_advertised_game_bots(void *client, struct advertised_game *game);
 boolean network_game_client_advertised_game_standard(void *client, struct advertised_game *game);
 boolean network_game_client_advertised_game_mixed(void *client, struct advertised_game *game);
 boolean network_game_client_advertised_game_compatible(void *client, struct advertised_game const *game,
@@ -6118,6 +6119,9 @@ struct browser_row
 	wchar_t mode[ROW_TEXT_LENGTH];
 	wchar_t gametype[ROW_TEXT_LENGTH];
 	short players, maximum_players;
+	/* the bots its host plays (port/linux/game/bots.c), which players and
+	maximum_players leave out */
+	short bots;
 	/* milliseconds (_browser_ping_measured), and else why not */
 	short ping, ping_state;
 	short rate;
@@ -6136,6 +6140,7 @@ static void browser_listing_row(struct p2p_listing const *game, struct browser_r
 	text_to_wide(game->gametype, row->gametype, ROW_TEXT_LENGTH);
 	row->players = game->player_count;
 	row->maximum_players = game->maximum_player_count;
+	row->bots = game->bots;
 	row->ping = game->ping;
 	row->ping_state = game->failed ? _browser_ping_failed : game->ping >= 0 ? _browser_ping_measured :
 		game->locked ? _browser_ping_locked : _browser_ping_measuring;
@@ -6160,6 +6165,7 @@ static void browser_advertised_row(struct advertised_game *game, struct browser_
 		ROW_TEXT_LENGTH);
 	row->players = game->player_count;
 	row->maximum_players = game->maximum_player_count;
+	row->bots = (short)network_game_client_advertised_game_bots(global_network_game_client_get(), game);
 	row->ping = (short)ping;
 	row->ping_state = ping >= 0 ? _browser_ping_measured : multiplayer.mode == _multiplayer_mode_direct_link ?
 		_browser_ping_measuring : _browser_ping_local;
@@ -6387,6 +6393,10 @@ static void browser_panel_show(struct widget_instance *list, struct browser_row 
 	text_set(named(panel, "panel_ping_label", 0), L"PING");
 	if (row->offline)
 		usnprintf(text, NUMBEROF(text) - 1, L"Offline");
+	/* (its players, then its bots apart) */
+	else if (row->bots)
+		usnprintf(text, NUMBEROF(text) - 1, L"%d/%d \x00B7 %d BOT%s", row->players, row->maximum_players, row->bots,
+			row->bots == 1 ? L"" : L"S");
 	else
 		usnprintf(text, NUMBEROF(text) - 1, L"%d/%d", row->players, row->maximum_players);
 	text[NUMBEROF(text) - 1] = 0;

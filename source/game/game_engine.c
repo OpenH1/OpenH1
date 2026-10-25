@@ -1749,6 +1749,9 @@ enum
 
 /* network_distributed.c's */
 long distributed_player_ping(short player_index);
+/* port/linux/game/bots.c's: a player the host plays, whose ping column says
+BOT and whose name the carnage report tags */
+int bots_player_is_bot(long player_index);
 /* port_config.c's */
 int config_boolean(const char *name);
 const char *config_string(const char *name);
@@ -2497,7 +2500,11 @@ static void game_engine_rasterize_scoreboard(
 				status_string = string_list_index != NONE ? unicode_string_list_get_string(string_list_index, 0x8B) : L"";
 		}
 		ping_string[0] = 0;
-		if (ping_shown)
+		/* port: a bot has no ping: its column says what it is
+		(port/linux/game/bots.c) */
+		if (ping_shown && bots_player_is_bot(entry->player_index))
+			usprintf(ping_string, L"BOT");
+		else if (ping_shown)
 		{
 			/* port: as this machine times it, with the latency meter on
 			(latency_meter.c); else the host's measure, as before */
@@ -3197,7 +3204,8 @@ static void carnage_report_info(
 	carnage_report_capitals(string);
 }
 
-/* a player's name (at most the 12 characters it has room for) */
+/* a player's name (at most the 12 characters it has room for), and a
+bot's tag (port/linux/game/bots.c): at most 18 */
 static void carnage_report_name(
 	long player_index,
 	wchar_t *name)
@@ -3208,6 +3216,8 @@ static void carnage_report_name(
 	for (index = 0; index < (short)NUMBEROF(player->name) && player->name[index]; index++)
 		name[index] = player->name[index];
 	name[index] = 0;
+	if (bots_player_is_bot(player_index))
+		usnprintf(name + index, 7, L" (Bot)");
 }
 
 /* a cell of a row (a player's, or a team's totals) */
@@ -3226,7 +3236,7 @@ static void carnage_report_cell(
 			usnprintf(string, size, L"%s", get_place_string(entry));
 		break;
 	case _carnage_column_player:
-		if (row->player_index != NONE && size >= 16)
+		if (row->player_index != NONE && size >= 20)
 			carnage_report_name(row->player_index, string);
 		else if (row->player_index == NONE)
 			usnprintf(string, size, row->team_index == 0 ? L"RED TEAM" : L"BLUE TEAM");
@@ -3331,7 +3341,7 @@ static void carnage_report_banner(
 	}
 	else if (entry_count > 0)
 	{
-		wchar_t name[16];
+		wchar_t name[24];
 		/* (the first place tied: populate_statistic_buffer marks it) */
 		boolean tie = (entries[0].place & 0x80000000) != 0;
 
