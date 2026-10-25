@@ -198,6 +198,12 @@ void draw_string_and_hack_in_icons(
 	short height_adjust,
 	wchar_t const *instring,
 	boolean ignore_icon_color);
+/* port: a controller button's icon at the cursor, which moves past it */
+void ui_widget_port_draw_button(
+	short icon_type,
+	rectangle2d *bounds,
+	rectangle2d *cursor,
+	pixel32 color);
 void ui_widgets_dispose(
 	void);
 boolean widget_event_function_list_widget_goto_next_item(

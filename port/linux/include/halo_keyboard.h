@@ -95,6 +95,56 @@ enum halo_chat_pad_button
 };
 
 unsigned long halo_chat_pad_buttons(void);
+
+/* the scoreboard's player menu by controller and keyboard (source/game/
+game_engine.c): each frame a local player's scoreboard shows its player menu
+(a network game's), the game says how it holds that player's controller
+(halo_scoreboard_pad), and has a bit for each of these pressed since it
+last asked. While it is offered (the scoreboard held open with Back or the
+scoreboard key) the scoreboard takes the D-pad and X of the controller, and
+the arrow keys and Enter of the keyboard, from the game; while it holds the
+controls (the scoreboard pinned open to pick a player, or the player menu
+open) it takes everything but the screenshot and push to talk, and what is
+held as it lets go stays the scoreboard's till let go of (no melee for the B
+that closed it, no pause menu for the Escape). Only for the game: never
+while a menu is up, nor once the game has not asked for a few frames (its
+game over), when the presses are dropped and the next ask is told so
+(HALO_SCOREBOARD_PAD_LAPSED). */
+enum halo_scoreboard_pad_button
+{
+	/* the D-pad, the arrow keys */
+	HALO_SCOREBOARD_PAD_UP,
+	HALO_SCOREBOARD_PAD_DOWN,
+	HALO_SCOREBOARD_PAD_LEFT,
+	HALO_SCOREBOARD_PAD_RIGHT,
+	/* the left stick pushed most of the way (moving the player but while
+	the scoreboard holds the controls) */
+	HALO_SCOREBOARD_PAD_STICK_UP,
+	HALO_SCOREBOARD_PAD_STICK_DOWN,
+	HALO_SCOREBOARD_PAD_STICK_LEFT,
+	HALO_SCOREBOARD_PAD_STICK_RIGHT,
+	/* X, Enter: the player menu opened */
+	HALO_SCOREBOARD_PAD_OPEN,
+	/* A, Enter: chosen */
+	HALO_SCOREBOARD_PAD_ACCEPT,
+	/* B, Escape, Backspace: back */
+	HALO_SCOREBOARD_PAD_CANCEL,
+	/* Back, the scoreboard's key (controls.scoreboard): closed */
+	HALO_SCOREBOARD_PAD_CLOSE,
+	/* (no button: the presses were dropped since the last ask) */
+	HALO_SCOREBOARD_PAD_LAPSED,
+	NUMBER_OF_HALO_SCOREBOARD_PAD_BITS
+};
+
+/* how the scoreboard holds a controller */
+enum
+{
+	HALO_SCOREBOARD_PAD_FREE,
+	HALO_SCOREBOARD_PAD_OFFERED,
+	HALO_SCOREBOARD_PAD_HOLDS
+};
+
+unsigned long halo_scoreboard_pad(short controller_index, int hold);
 /* the taps on the touchscreen outside the menus since the last call while
 that keyboard is up, and where the latest was (0 to 1 across and down the
 window) */

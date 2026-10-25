@@ -118,18 +118,34 @@ int main(int argc, char **argv)
     else CASE("held-enter")
     {
         struct platform_input_state input = { .menus = TRUE }; XINPUT_GAMEPAD pad = {0};
-        keys_held_over_switch(&input);
+        keys_held_over_switch(&input, FALSE);
         input.keys[SDL_SCANCODE_RETURN] = 1;
-        keys_held_over_switch(&input); keyboard_gamepad(&input,&pad);
+        keys_held_over_switch(&input, FALSE); keyboard_gamepad(&input,&pad);
         CHECK(pad.wButtons & XINPUT_GAMEPAD_START, "Enter did not accept keyboard");
         virtual_keyboard_select();
         memset(&pad,0,sizeof(pad));
-        keys_held_over_switch(&input); keyboard_gamepad(&input,&pad);
+        keys_held_over_switch(&input, FALSE); keyboard_gamepad(&input,&pad);
         CHECK(!pad.wButtons && !pad.bAnalogButtons[XINPUT_GAMEPAD_A], "held Done also activated the next menu");
-        input.keys[SDL_SCANCODE_RETURN] = 0; keys_held_over_switch(&input);
-        input.keys[SDL_SCANCODE_RETURN] = 1; keys_held_over_switch(&input);
+        input.keys[SDL_SCANCODE_RETURN] = 0; keys_held_over_switch(&input, FALSE);
+        input.keys[SDL_SCANCODE_RETURN] = 1; keys_held_over_switch(&input, FALSE);
         keyboard_gamepad(&input,&pad);
         CHECK(pad.bAnalogButtons[XINPUT_GAMEPAD_A], "fresh Enter was still suppressed");
+    }
+    else CASE("scoreboard-escape")
+    {
+        /* the Escape that closes the scoreboard's player menu (the scoreboard holding the controls) is
+           up for the game till let go of: no pause menu; a fresh one is the game's */
+        struct platform_input_state input = {0};
+        virtual_keyboard_cancel();
+        keys_held_over_switch(&input, TRUE);
+        input.keys[SDL_SCANCODE_ESCAPE] = 1;
+        keys_held_over_switch(&input, TRUE);
+        CHECK(input.keys[SDL_SCANCODE_ESCAPE], "Escape reached the scoreboard");
+        keys_held_over_switch(&input, FALSE);
+        CHECK(!input.keys[SDL_SCANCODE_ESCAPE], "the Escape that closed the scoreboard paused the game");
+        input.keys[SDL_SCANCODE_ESCAPE] = 0; keys_held_over_switch(&input, FALSE);
+        input.keys[SDL_SCANCODE_ESCAPE] = 1; keys_held_over_switch(&input, FALSE);
+        CHECK(input.keys[SDL_SCANCODE_ESCAPE], "a fresh Escape was still suppressed");
     }
     else CASE("browser-keys")
     {
