@@ -648,11 +648,11 @@
 		<frame png="ce/port/main_menu/parts/chip_112x52__2.png" width="112" height="52"/>
 		<frame png="ce/port/main_menu/parts/chip_112x52__3.png" width="112" height="52"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/chip_120x52">
-		<frame png="ce/port/main_menu/parts/chip_120x52__0.png" width="120" height="52"/>
-		<frame png="ce/port/main_menu/parts/chip_120x52__1.png" width="120" height="52"/>
-		<frame png="ce/port/main_menu/parts/chip_120x52__2.png" width="120" height="52"/>
-		<frame png="ce/port/main_menu/parts/chip_120x52__3.png" width="120" height="52"/>
+	<bitmap name="main_menu/parts/chip_116x52">
+		<frame png="ce/port/main_menu/parts/chip_116x52__0.png" width="116" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_116x52__1.png" width="116" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_116x52__2.png" width="116" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_116x52__3.png" width="116" height="52"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/touch_row_364x52">
 		<frame png="ce/port/main_menu/parts/touch_row_364x52__0.png" width="364" height="52"/>
@@ -711,10 +711,6 @@
 		<frame png="ce/port/main_menu/parts/touch_button_188x52__0.png" width="188" height="52"/>
 		<frame png="ce/port/main_menu/parts/touch_button_188x52__1.png" width="188" height="52"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/touch_button_212x52">
-		<frame png="ce/port/main_menu/parts/touch_button_212x52__0.png" width="212" height="52"/>
-		<frame png="ce/port/main_menu/parts/touch_button_212x52__1.png" width="212" height="52"/>
-	</bitmap>
 	<bitmap name="main_menu/parts/section_368">
 		<frame png="ce/port/main_menu/parts/section_368__0.png" width="368" height="20"/>
 	</bitmap>
@@ -726,5 +722,8 @@
 	</bitmap>
 	<bitmap name="main_menu/parts/panel_212x276">
 		<frame png="ce/port/main_menu/parts/panel_212x276__0.png" width="212" height="276"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/panel_212x334">
+		<frame png="ce/port/main_menu/parts/panel_212x334__0.png" width="212" height="334"/>
 	</bitmap>
 </menus>

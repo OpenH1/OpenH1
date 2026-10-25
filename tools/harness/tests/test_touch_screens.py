@@ -42,7 +42,7 @@ SCREENS = {
                         "server_item_map", "server_item_type", "server_item_players", "server_item_tick",
                         "server_item_locked", "server_item_ping", "server_item_ping_ms", "server_item_favorite",
                         "browser_panel", "panel_title", "panel_where", "panel_kind", "panel_tick", "panel_opence",
-                        "panel_players", "panel_ping", "panel_status", "browser_join_bar", "button_join",
+                        "panel_status", "browser_join_bar", "button_join",
                         "join_game_button_bar", "prompt_favorite", "prompt_refresh", "prompt_paste", "prompt_sort",
                         "prompt_back", "browser_empty", "browser_counts"]),
     "lobby": (f"{MT}/lobby/lobby_screen",
@@ -132,7 +132,7 @@ def test_tap_targets_are_a_finger_tall_on_every_display():
 @pytest.mark.parametrize("width", WIDTHS)
 def test_touch_targets(screen, width):
     """every tap target 44 points or more each way on every display, on the screen within WIDE_MARGIN of its
-    edges, over no other"""
+    edges, over no other; the rows and panels over the footer's band, its buttons under it"""
     root, _ = SCREENS[screen]
     found = targets(root, width)
     assert found, f"{screen}: no tap targets"
@@ -142,6 +142,12 @@ def test_touch_targets(screen, width):
         assert box.x1 - box.x0 >= finger(), f"{screen} at {width}: {name} is {box.x1 - box.x0} wide"
         assert box.inside(area), f"{screen} at {width}: {name} {box} is outside {area}"
         assert box.y1 <= 470, f"{screen} at {width}: {name} {box} is under the screen's foot"
+    # (the rows and panels end over the footer's band, the footer's buttons are under it)
+    band = port_settings.TOUCH_FOOTER_BAND
+    for box in layout(root, width, TOUCH):
+        if box.y1 - box.y0 < 480 and box.y0 < band and (box.name.endswith("_panel") or
+                                                       any(box == target for target, _ in found)):
+            assert box.y1 <= band, f"{screen} at {width}: {box.name} {box} crosses the footer's band at {band}"
     for index, (box, name) in enumerate(found):
         for other, other_name in found[index + 1:]:
             if box.name in other.path or other.name in box.path:
@@ -209,7 +215,8 @@ def test_touch_words_fit():
     SORT's, Host Controls' buttons') fit theirs at their longest (the countdown is the Xbox's, under ten
     seconds)"""
     pytest.importorskip("PIL")
-    given = {f"{MT}/join_game/touch/prompt_sort": "SORT: PLAYERS", f"{MT}/lobby/touch/board_start": "STARTING IN 9",
+    given = {f"{MT}/join_game/touch/prompt_sort": "SORT: PLAYERS", f"{MT}/join_game/touch/panel_status":
+             "Room for your party (16). No room guarantee: some may not get in. It has a password.", f"{MT}/lobby/touch/board_start": "STARTING IN 9",
              **{f"main_menu/host_controls/touch/host_action_{index}": "UNMUTE FOR ALL" for index in range(4)}}
     for path in sorted(CE.glob("*.touch.xml")):
         for element in ElementTree.parse(path).getroot().iter("widget"):
@@ -222,5 +229,10 @@ def test_touch_words_fit():
                 words = max(element.get("strings").split("|"), key=lambda value: text_width(value, element.get("font")))
             room = int(element.get("width")) - (2 * int(element.get("text_x", 0)) if element.get("align") != "center"
                                                 else 12 if element.get("type") == "text" else 40)
+            # (a text the game wraps, to the lines its box has)
+            lines = max(1, int(element.get("height")) // 20)
+            if lines > 1:
+                room *= lines
+                words = words + " " * 8 * (lines - 1)
             width = text_width(words, element.get("font", "small"))
             assert width <= room, f"{name}: {words!r} is {width:.0f} wide, {room} room"

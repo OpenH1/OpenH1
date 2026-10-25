@@ -4163,6 +4163,9 @@ TOUCH_STEP = TOUCH_TAP + TOUCH_GAP
 TOUCH_CHIPS_TOP = 76
 TOUCH_ROWS_TOP = TOUCH_CHIPS_TOP + TOUCH_TAP + 6
 TOUCH_FOOTER_TOP = 414
+# the footer's band (bitmaps/gradient's line across the screens): rows and
+# panels end over it, the footer's buttons are under it
+TOUCH_FOOTER_BAND = 410
 TOUCH_HINT = "Tap to choose, tap again to open."
 # the browser's and Host Controls' list (its rows TOUCH_LIST_WIDTH wide,
 # BROWSER_WIDE_LIST wider on a wide screen) and the panel beside it
@@ -4221,15 +4224,17 @@ TOUCH_LOBBY_PROMPTS = [
     ("prompt_leave", "LEAVE", 552, 60, '<on event="a" run="mouse emit back event"/>'),
 ]
 TOUCH_LOBBY_PANEL = (LOBBY_PANEL[0], LOBBY_TOP, LOBBY_PANEL[2], 324)
-# Host Controls': its rows (TOUCH_HOST_ROWS, under the column titles), each
-# a player's name with its tag under it and its team, score and ping at its
-# right (or a setting's or a ban's words and value), the panel's buttons
-# stacked TOUCH_STEP apart up from its foot; BACK beside the chips
+# Host Controls': the chips over the list alone, the column titles under
+# them, its rows (TOUCH_HOST_ROWS, TOUCH_HOST_STEP apart to end over the
+# footer's band), each a player's name with its tag under it and its team,
+# score and ping at its right (or a setting's or a ban's words and value);
+# the panel beside them from the chips' top to the band, its four buttons
+# stacked up from its foot under its words; BACK in the footer
 TOUCH_HOST_ROWS = 5
-TOUCH_HOST_HEADERS_TOP = TOUCH_ROWS_TOP - 4
-TOUCH_HOST_ROWS_TOP = TOUCH_HOST_HEADERS_TOP + 18
-TOUCH_HOST_PANEL = (TOUCH_PANEL_X, TOUCH_HOST_ROWS_TOP, TOUCH_PANEL_WIDTH,
-                    (TOUCH_HOST_ROWS - 1) * TOUCH_STEP + TOUCH_TAP)
+TOUCH_HOST_STEP = TOUCH_TAP + 2
+TOUCH_HOST_HEADERS_TOP = TOUCH_CHIPS_TOP + TOUCH_TAP
+TOUCH_HOST_ROWS_TOP = TOUCH_FOOTER_BAND - (TOUCH_HOST_ROWS - 1) * TOUCH_HOST_STEP - TOUCH_TAP
+TOUCH_HOST_PANEL = (TOUCH_PANEL_X, TOUCH_CHIPS_TOP, TOUCH_PANEL_WIDTH, TOUCH_FOOTER_BAND - TOUCH_CHIPS_TOP)
 # (x, y, width, height, wide move, wide growth) in a row; the column titles over
 # the team, score, ping and value
 TOUCH_HOST_CELLS = {
@@ -4237,7 +4242,7 @@ TOUCH_HOST_CELLS = {
     "ping": (284, 16, 66, 20, 124, 20), "tag": (12, 31, BROWSER_PILL, PART_PILL_HEIGHT, 0, 0),
     "value": (180, 16, 170, 20, 84, BROWSER_WIDE_LIST - 84),
 }
-TOUCH_HOST_BACK = (BROWSER_LIST_X + TOUCH_LIST_WIDTH + 8, 640 - BROWSER_LIST_X - (BROWSER_LIST_X + TOUCH_LIST_WIDTH + 8))
+TOUCH_HOST_BACK = (502, 110)
 TOUCH_PARTY_PROMPTS = [
     ("prompt_make", "MAKE PARTY", 28, 140, '<on event="a" run="port party button"/>'),
     ("prompt_copy", "COPY LINK", 28, 140, '<on event="a" run="port party button"/>'),
@@ -4331,7 +4336,7 @@ def touch_pictures() -> list:
 
 # the chips' widths for a strip of so many (the browser's five, Host
 # Controls' three beside BACK), TOUCH_GAP + 2 apart
-TOUCH_CHIP_WIDTHS = {5: 112, 3: 120}
+TOUCH_CHIP_WIDTHS = {5: 112, 3: 116}
 
 
 def _touch_chips(base: str, strip: str, tabs: list, handlers: list, span: int) -> list:
@@ -4453,17 +4458,15 @@ def _touch_browser() -> tuple:
                                                       ("font", "ui\\small_ui"), ("color", "#FFC9DCF7"),
                                                       ("align", "right"), ("text_flags", "no_focus_test"),
                                                       ("wide", wide(ping_moved))], [])
-    # (the panel: _browser's words, a little closer together, JOIN GAME at
-    # its foot)
+    # (the panel: _browser's words but its players and ping, which the row
+    # has; its status four lines, as menu_functions.c's browser_panel_show
+    # wraps it on a touchscreen: the party's room, why it is closed, its
+    # password; JOIN GAME at its foot)
     panel_children = []
     for name, y, text_h, font, color, align in (
             ("panel_title", 10, 44, "ui\\large_ui", "#FFFFFFFF", None),
             ("panel_where", 54, 30, "ui\\small_ui", SETTINGS_BLUE, None),
-            ("panel_players_label", 129, 18, "ui\\small_ui", PART_DIM, None),
-            ("panel_players", 126, 22, "ui\\large_ui", "#FFFFFFFF", "right"),
-            ("panel_ping_label", 151, 18, "ui\\small_ui", PART_DIM, None),
-            ("panel_ping", 148, 22, "ui\\large_ui", "#FFFFFFFF", "right"),
-            ("panel_status", 172, 30, "ui\\small_ui", SETTINGS_BLUE, None)):
+            ("panel_status", 126, 84, "ui\\small_ui", SETTINGS_BLUE, None)):
         text_w = 70 if name.endswith("_label") else inner_width
         panel_children.append(f'<child widget="{touch}/{name}" x="{inner_left}" y="{top + y}"/>')
         lines += _part_text(f"{touch}/{name}", [("width", text_w), ("height", text_h), ("font", font),
@@ -4665,9 +4668,9 @@ def _touch_lobby_board(base: str) -> tuple:
 def _touch_host_controls() -> tuple:
     """Host Controls on a touchscreen (_host_controls' widgets by the same
     names, in host_controls/touch): its tabs a row of chips with BACK beside
-    them, the column titles over TOUCH_HOST_ROWS rows, the panel beside them
-    with its buttons stacked from its foot. Returns the screen's children and
-    the widgets"""
+    them over the list, the column titles over TOUCH_HOST_ROWS rows, the panel
+    beside them with its buttons stacked from its foot, BACK in the footer.
+    Returns the screen's children and the widgets"""
     base = HOST_CONTROLS
     touch = f"{base}/touch"
     left, top, width, height = TOUCH_HOST_PANEL
@@ -4692,20 +4695,20 @@ def _touch_host_controls() -> tuple:
                                                ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE),
                                                ("align", "center"), ("wide", list_wide)])
     rows = [f'<child widget="{touch}/host_item_{row}" x="{BROWSER_LIST_X}" '
-            f'y="{TOUCH_HOST_ROWS_TOP + TOUCH_STEP * (row - 1)}"/>' for row in range(1, TOUCH_HOST_ROWS + 1)]
-    actions_top = top + height - 8 - TOUCH_TAP - (HOST_ACTIONS - 1) * TOUCH_STEP
+            f'y="{TOUCH_HOST_ROWS_TOP + TOUCH_HOST_STEP * (row - 1)}"/>' for row in range(1, TOUCH_HOST_ROWS + 1)]
+    actions_top = top + height - 8 - TOUCH_TAP - (HOST_ACTIONS - 1) * TOUCH_HOST_STEP
     actions = [f'<child widget="{touch}/host_action_{index}" x="{inner_left}" '
-               f'y="{actions_top + index * TOUCH_STEP}"/>' for index in range(HOST_ACTIONS)]
+               f'y="{actions_top + index * TOUCH_HOST_STEP}"/>' for index in range(HOST_ACTIONS)]
     back_x, back_w = TOUCH_HOST_BACK
     lines += _widget(f"{touch}/host_list", [("type", "column_list"), ("width", 640), ("height", 480),
                                            ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
                                            ("description", f"{touch}/host_panel")],
                      ['<data input="port host update"/>', '<on event="created" run="port host init"/>',
                       f'<child widget="{touch}/host_tabs" y="{TOUCH_CHIPS_TOP}"/>', *rows, *actions,
-                      f'<child widget="{touch}/host_prompts" y="{TOUCH_CHIPS_TOP}"/>'])
+                      f'<child widget="{touch}/host_prompts" y="{TOUCH_FOOTER_TOP}"/>'])
     lines += _touch_chips(touch, "host_tabs", HOST_TABS, ['<on event="a" run="port host tab"/>',
                                                           '<on event="start" run="port host tab"/>'],
-                          back_x - BROWSER_LIST_X - 8)
+                          TOUCH_LIST_WIDTH)
     lines += _touch_prompts(touch, "host_prompts", [("prompt_back", "BACK", back_x, back_w,
                                                      '<on event="a" run="mouse emit back event"/>')])
     for row in range(1, TOUCH_HOST_ROWS + 1):
@@ -4735,7 +4738,7 @@ def _touch_host_controls() -> tuple:
     panel_children = []
     for name, y, text_h, font, color in (("panel_title", 8, 22, "ui\\large_ui", "#FFFFFFFF"),
                                          ("panel_where", 32, 28, "ui\\small_ui", SETTINGS_BLUE),
-                                         ("panel_status", 62, 22, "ui\\small_ui", "#FFFFFFFF")):
+                                         ("panel_status", 62, 48, "ui\\small_ui", "#FFFFFFFF")):
         panel_children.append(f'<child widget="{touch}/{name}" x="{inner_left}" y="{top + y}"/>')
         lines += _part_text(f"{touch}/{name}", [("width", inner_width), ("height", text_h), ("font", font),
                                                 ("color", color), ("wide", wide(0, panel_grown))])

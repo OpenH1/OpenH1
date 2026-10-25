@@ -6512,7 +6512,8 @@ static void browser_panel_show(struct widget_instance *list, struct browser_row 
 		visible_set(named(panel, details[index], 0), row != NULL);
 	visible_set(named(panel, "panel_opence", 0), row && !row->offline && (!row->openh1 || row->mixed));
 	menu_text_box_wrap(named(panel, "panel_title", 0), row ? row->name : title, 2);
-	menu_text_box_wrap(named(panel, "panel_status", 0), status ? status : L"", 3);
+	/* (the touchscreen's panel is narrower: a line more for the status) */
+	menu_text_box_wrap(named(panel, "panel_status", 0), status ? status : L"", ui_widget_port_touch_menus() ? 4 : 3);
 	if (!row)
 		return;
 	/* (its map and mode, and its gametype's own name if it has another) */
