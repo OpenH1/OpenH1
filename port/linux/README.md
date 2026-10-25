@@ -739,6 +739,7 @@ the setting for one start of the game. It has priority over the file.
 | `paths.saves` | `""` | `HALO_SAVE_ROOT` | The save root. Refer to "Files and folders". |
 | `network.address` | `""` | `HALO_NET_ADDRESS` | The IPv4 address of this machine for system link. Refer to "Play on one computer". |
 | `network.broadcast` | `""` | `HALO_NET_BROADCAST` | IPv4 addresses, with commas between them, that get the broadcasts of the game. Empty: 255.255.255.255. |
+| `network.port` | `5150` | `HALO_NET_PORT` | The UDP port of system link games (the Xbox's); the clients' is the next. Another port lets copies of the game host side by side on one computer (tests, dedicated setups). A LAN game on another port is found only by machines set to the same port. Refer to "Play on one computer". |
 | `network.online` | `true` | `HALO_NET_ONLINE` | `true`: internet play. `false`: system link on the local network only. |
 | `network.join_from_clipboard` | `true` | `HALO_NET_JOIN_FROM_CLIPBOARD` | `true`: when the game comes to the front, it joins the game of an invite link on the clipboard. |
 | `network.tunnel_port` | `0` | `HALO_NET_TUNNEL_PORT` | The UDP port for internet play. `0`: the game selects a port. Refer to "Internet play". |
@@ -1307,6 +1308,13 @@ Do not give 127.0.0.1 to a copy. Each copy gets to its own address through
 127.0.0.1. Linux and Windows send all of 127.0.0.0/8 to the loopback
 interface.
 
+Two games side by side (two tests at once, say) need ports of their own:
+`network.port` (`HALO_NET_PORT`) moves a game's port from 5150 (the
+clients' from 5151) to another and the next. Give the host and its clients
+the same port. A Mac's loopback interface has 127.0.0.1 alone, so there the
+port keeps two hosts apart. The map sharing port (5153) does not move:
+turn `network.map_share` off in such tests.
+
 ### Test with many machines
 
 `tools/system_link_bots.py` adds simple machines to a game. Each machine has
@@ -1318,7 +1326,8 @@ calculate the game or move their players.
 
 Each machine uses its own loopback address, from 127.0.0.2. The option
 `--start` starts the game when all the machines are in the lobby. If the
-host has no `network.address`, do not give `--host`.
+host has no `network.address`, do not give `--host`. For a host with
+another `network.port`, give `--port` the same port.
 
 ## Internet play
 

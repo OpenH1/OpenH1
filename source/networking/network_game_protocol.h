@@ -10,11 +10,21 @@ Shared game-protocol constants for the connection and message consumers.
 
 /* ---------- constants */
 
+/* port: the game's ports are network.port's (network_game_globals.c), the
+Xbox's 5150 (0x141E) and 5151 by default: the host's, and the next its
+clients' (a client's game searches and pings name it). Another lets copies
+of the game host side by side on one computer (tests, dedicated setups);
+a LAN game on another port is found only by machines set to it */
 enum
 {
-	NETWORK_GAME_SERVER_PORT = 0x141E,
-	NETWORK_GAME_CLIENT_PORT = 0x141F,
+	NETWORK_GAME_DEFAULT_SERVER_PORT = 0x141E,
 };
+
+unsigned short network_game_server_port(void);
+unsigned short network_game_client_port(void);
+
+#define NETWORK_GAME_SERVER_PORT network_game_server_port()
+#define NETWORK_GAME_CLIENT_PORT network_game_client_port()
 
 enum
 {

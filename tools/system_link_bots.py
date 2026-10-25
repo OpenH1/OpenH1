@@ -2,7 +2,7 @@
 
 Joins a native-build Halo host (port/) with many
 lightweight machines, each with one player, speaking the game's system link
-protocol directly: TCP to the host's port 5150 for the game's messages, UDP for
+protocol directly: TCP to the host's port 5150 (--port, its network.port) for the game's messages, UDP for
 player input. Each machine binds its own loopback address (127.0.0.2,
 127.0.0.3, ...) because the host tells machines apart by address, so run it on
 the host's computer (or give it --first-address on a network where the
@@ -35,8 +35,11 @@ import struct
 import sys
 import time
 
-SERVER_PORT = 0x141E
-CLIENT_PORT = 0x141F
+# the host's port and its clients' (network.port, and the next): the
+# Xbox's by default, --port's otherwise
+DEFAULT_SERVER_PORT = 0x141E
+SERVER_PORT = DEFAULT_SERVER_PORT
+CLIENT_PORT = DEFAULT_SERVER_PORT + 1
 MESSAGE_TYPE_PACKET = 3
 PACKET_VERSION = 1
 JOIN_TOKEN = b"message in a bottle"[:16]  # network_game_generate_join_game_token (DEBUG builds)
@@ -300,7 +303,13 @@ def main():
     parser.add_argument("--load-seconds", type=float, default=1.0,
                         help="how long each machine takes to load the map once the game begins")
     parser.add_argument("--status-every", type=float, default=5.0)
+    parser.add_argument("--port", type=int, default=DEFAULT_SERVER_PORT,
+                        help="the host's network.port (HALO_NET_PORT); the machines bind the next")
     options = parser.parse_args()
+    if not 1024 <= options.port <= 65534:
+        parser.error("--port: 1024 to 65534, as network.port")
+    global SERVER_PORT, CLIENT_PORT
+    SERVER_PORT, CLIENT_PORT = options.port, options.port + 1
 
     started = time.monotonic()
 
