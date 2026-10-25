@@ -52,8 +52,9 @@ import java.util.Locale;
  * It shows only in a game, never at the main menu, over a menu (which
  * takes taps itself, port/linux/src/touch_input.c) or during a cinematic,
  * only on a touchscreen, and with input.touch_controls = "auto" only while
- * no controller, mouse or keyboard is connected. While it is not shown it
- * lets every finger through to the game.
+ * no controller is connected and no mouse or keyboard is plugged in or
+ * paired (the phone's own keys and touchpad do not count). While it is not
+ * shown it lets every finger through to the game.
  */
 public final class TouchControls extends View implements SensorEventListener, InputManager.InputDeviceListener {
     /** what a finger holds besides a control: the view swipe */
@@ -579,18 +580,40 @@ public final class TouchControls extends View implements SensorEventListener, In
             || device.getMotionRange(MotionEvent.AXIS_HAT_X, InputDevice.SOURCE_JOYSTICK) != null;
     }
 
-    /** a physical mouse (or a trackpad): a non-virtual SOURCE_MOUSE device */
+    /**
+     * a mouse (or a trackpad) plugged in or paired: an external SOURCE_MOUSE
+     * device, not a phone's own touchpad (a Galaxy's sec_touchpad says
+     * SOURCE_MOUSE too)
+     */
     private static boolean isMouse(InputDevice device) {
-        if (device == null || device.isVirtual())
+        if (device == null || device.isVirtual() || !isExternal(device))
             return false;
         return (device.getSources() & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE;
     }
 
-    /** a physical keyboard: a non-virtual SOURCE_KEYBOARD device */
+    /**
+     * a keyboard plugged in or paired: an external SOURCE_KEYBOARD device
+     * with letters, not a phone's own keys (power, volume) or touchscreen,
+     * which say SOURCE_KEYBOARD too
+     */
     private static boolean isKeyboard(InputDevice device) {
-        if (device == null || device.isVirtual())
+        if (device == null || device.isVirtual() || !isExternal(device))
             return false;
-        return (device.getSources() & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD;
+        return (device.getSources() & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD
+            && device.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC;
+    }
+
+    /**
+     * not built into the device: InputDevice.isExternal() from Android 10;
+     * on Android 9, anything without a touchscreen or touchpad source (a
+     * touchpad paired on Android 9 does not hide the controls)
+     */
+    private static boolean isExternal(InputDevice device) {
+        if (Build.VERSION.SDK_INT >= 29)
+            return device.isExternal();
+        int sources = device.getSources();
+        return (sources & InputDevice.SOURCE_TOUCHSCREEN) != InputDevice.SOURCE_TOUCHSCREEN
+            && (sources & InputDevice.SOURCE_TOUCHPAD) != InputDevice.SOURCE_TOUCHPAD;
     }
 
     private void refreshInputDevices() {

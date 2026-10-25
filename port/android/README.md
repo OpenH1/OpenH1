@@ -285,12 +285,13 @@ the mouse settings do not apply.
 
 The touch controls show only in a game. In the menus and during
 cinematics they hide, and the touchscreen operates the menus as described
-above. They also hide when a controller, a physical mouse or a physical
-keyboard is connected, for example the built-in controller of a handheld:
-the game says which controllers it sees, as SDL finds a pad the app's own
-device list can miss (one paired while the game runs). A device without a
-touchscreen (a TV) never shows them. The setting `input.touch_controls`
-changes this (refer to "Settings").
+above. They also hide when a controller is connected, for example the
+built-in controller of a handheld (the game says which controllers it
+sees, as SDL finds a pad the app's own device list can miss: one paired
+while the game runs), and when a mouse or a keyboard with letters is
+plugged in or paired; the phone's own buttons, touchscreen and touchpad do
+not count. A device without a touchscreen (a TV) never shows them. The
+setting `input.touch_controls` changes this (refer to "Settings").
 
 The buttons at the top of the screen:
 
