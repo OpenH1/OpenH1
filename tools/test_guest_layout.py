@@ -27,7 +27,8 @@ ABI_HEADER = ROOT / "port" / "android" / "include" / "halo_android_abi.h"
 # (the hosts' processors: the guest's ELF architecture)
 HOST_TARGETS = {"aarch64": "aarch64-linux-gnu", "x86_64": "x86_64-linux-gnu"}
 DESKTOP_WINDOW = 0x20000000
-DEVELOPMENT_KIT_WINDOW = 0x08000000
+# the Xbox's texture cache, in 16 KB pages (22 MB)
+XBOX_TEXTURE_CACHE_PAGES = 0x580
 
 
 def clang() -> str:
@@ -41,11 +42,18 @@ def macros(flags: Sequence[str], text: str) -> Dict[str, int]:
     """the integer macros that text defines, preprocessed with flags"""
     output = subprocess.run([clang(), *flags, "-E", "-dM", "-x", "c", "-"], input=text, capture_output=True,
                             text=True, check=True).stdout
-    values = {}
+    values, names = {}, {}
     for line in output.splitlines():
         match = re.fullmatch(r"#define (\w+) \(?(0x[0-9A-Fa-f]+|\d+)[uUlL]*\)?", line.strip())
         if match:
             values[match.group(1)] = int(match.group(2), 0)
+        match = re.fullmatch(r"#define (\w+) ([A-Za-z_]\w*)", line.strip())
+        if match:
+            names[match.group(1)] = match.group(2)
+    # (and those defined as another's)
+    for name, other in names.items():
+        if other in values:
+            values[name] = values[other]
     return values
 
 
@@ -103,15 +111,30 @@ def test_image_range_is_the_hosts(name):
 
 
 def test_window_sizes():
-    """the x86-64 guest, whose image is below the window, has the desktop's
-    window and caches; the AArch64 guests, whose image is right above it, have
-    a development kit's window and the Xbox's caches"""
+    """every guest has the desktop builds' window and texture cache (the AArch64 guests' image above the window,
+    the x86-64 guest's below it); an Xbox map takes the Xbox's 22 MB of it on the AArch64 guests, and their sound
+    cache is the Xbox's"""
     x32 = guest_macros(guest_flags(X32))
     native = guest_macros(["--target=i686-linux-gnu"])
+    arm64 = guest_macros(guest_flags(ARM64_32))
     assert x32["PLATFORM_CONTIGUOUS_SIZE"] == native["PLATFORM_CONTIGUOUS_SIZE"] == DESKTOP_WINDOW
-    for name in ("HALO_PORT_TEXTURE_CACHE_PAGE_COUNT", "HALO_PORT_SOUND_CACHE_SIZE"):
+    assert arm64["PLATFORM_CONTIGUOUS_SIZE"] == DESKTOP_WINDOW
+    for name in ("HALO_PORT_TEXTURE_CACHE_PAGE_COUNT", "HALO_PORT_TEXTURE_CACHE_XBOX_MAP_PAGE_COUNT",
+                 "HALO_PORT_TEXTURE_CACHE_LEAST_PAGE_COUNT", "HALO_PORT_SOUND_CACHE_SIZE"):
         assert x32[name] == native[name], name
-    small = guest_macros(guest_flags(ARM64_32))
-    assert small["PLATFORM_CONTIGUOUS_SIZE"] == DEVELOPMENT_KIT_WINDOW
-    assert small["HALO_PORT_TEXTURE_CACHE_PAGE_COUNT"] == 0x580
-    assert small["HALO_PORT_SOUND_CACHE_SIZE"] == 0x400000
+    assert arm64["HALO_PORT_TEXTURE_CACHE_PAGE_COUNT"] == x32["HALO_PORT_TEXTURE_CACHE_PAGE_COUNT"] == 0x4000
+    assert x32["HALO_PORT_TEXTURE_CACHE_XBOX_MAP_PAGE_COUNT"] == x32["HALO_PORT_TEXTURE_CACHE_LEAST_PAGE_COUNT"] == 0x4000
+    assert arm64["HALO_PORT_TEXTURE_CACHE_XBOX_MAP_PAGE_COUNT"] == XBOX_TEXTURE_CACHE_PAGES
+    assert XBOX_TEXTURE_CACHE_PAGES < arm64["HALO_PORT_TEXTURE_CACHE_LEAST_PAGE_COUNT"] < 0x4000
+    assert arm64["HALO_PORT_SOUND_CACHE_SIZE"] == 0x400000
+
+
+@pytest.mark.parametrize("name", sorted(GUEST_ARCHES))
+def test_caches_fit_above_the_game_state(name):
+    """the window hands out the caches top-down, above the game state (xbox_memory.c's caches_fit_the_window), with
+    room left for the Direct3D resources a Custom Edition map makes"""
+    guest = guest_macros(guest_flags(GUEST_ARCHES[name]))
+    game_state_end = guest["HALO_PORT_GAME_STATE_BASE_ADDRESS"] + guest["HALO_PORT_GAME_STATE_CPU_SIZE"] + \
+        guest["HALO_PORT_GAME_STATE_GPU_SIZE"] - guest["PLATFORM_CONTIGUOUS_BASE"]
+    caches = guest["HALO_PORT_TEXTURE_CACHE_PAGE_COUNT"] * 0x4000 + guest["HALO_PORT_SOUND_CACHE_SIZE"]
+    assert game_state_end + caches + 0x8000000 <= guest["PLATFORM_CONTIGUOUS_SIZE"]

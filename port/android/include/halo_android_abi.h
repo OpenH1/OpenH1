@@ -30,28 +30,26 @@ This header is included by both halves.
 #include <stdint.h>
 
 /* the guest image is linked to run here (tools/guest_arch.py's image_base,
-which must agree). AArch64: just above the Xbox window, as Android's ART
-keeps its heaps low in the address space and fills it upwards. x86-64 (x32):
-below 2 GB, where the 32-bit sign-extended addresses of x32's static code
-can reach it; the window above it is reached through registers. */
+which must agree). AArch64: just above the Xbox window, at 0xA0000000, as
+Android's ART keeps its heaps low in the address space and fills it
+upwards. x86-64 (x32): below 2 GB, where the 32-bit sign-extended addresses
+of x32's static code can reach it; the window above it is reached through
+registers. */
 #if defined(__x86_64__)
 #define HALO_GUEST_IMAGE_BASE 0x70000000u
 #else
-#define HALO_GUEST_IMAGE_BASE 0x88000000u
+#define HALO_GUEST_IMAGE_BASE 0xA0000000u
 #endif
 /* the room the host reserves for the image there (port/android/host/host_memory.c) */
 #define HALO_GUEST_IMAGE_RESERVE 0x04000000u
 
 /* the Xbox contiguous memory window (port/linux/src/platform.h's
-PLATFORM_CONTIGUOUS_SIZE, which must agree: tools/test_guest_layout.py).
-AArch64: a development kit's 128 MB, as the image is linked right above it.
-x86-64: the desktop builds' 512 MB, to 0xA0000000, as the image is below it. */
+PLATFORM_CONTIGUOUS_SIZE, which must agree: tools/test_guest_layout.py):
+the desktop builds' 512 MB, to 0xA0000000, on both processors (the AArch64
+image above it, the x86-64 one below). Its pages are backed as they are
+used. */
 #define HALO_GUEST_WINDOW_BASE 0x80000000u
-#if defined(__x86_64__)
 #define HALO_GUEST_WINDOW_SIZE 0x20000000u
-#else
-#define HALO_GUEST_WINDOW_SIZE 0x08000000u
-#endif
 #if HALO_GUEST_IMAGE_BASE < HALO_GUEST_WINDOW_BASE + HALO_GUEST_WINDOW_SIZE && \
 	HALO_GUEST_IMAGE_BASE + HALO_GUEST_IMAGE_RESERVE > HALO_GUEST_WINDOW_BASE
 #error the guest image's range overlaps the Xbox window

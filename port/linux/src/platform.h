@@ -145,25 +145,23 @@ that window at start-up and hands out page-granular blocks from it, so the
 physical/virtual arithmetic the game and Direct3D rely on keeps working. */
 
 #define PLATFORM_CONTIGUOUS_BASE 0x80000000UL
-#if defined(HALO_GUEST) && defined(__aarch64__)
-/* 128 MB, a development kit's: the AArch64 guests' image (Android's, and
-64-bit ARM Linux's) is linked just above the window. The guests' host
-reserves HALO_GUEST_WINDOW_SIZE (port/android/include/halo_android_abi.h),
-which must agree; so must halo_port_capacity.h's test of the same builds. */
-#define PLATFORM_CONTIGUOUS_SIZE 0x08000000UL
-#else
-/* 512 MB on the desktop builds, whose caches outgrow the Xbox's (Custom
-Edition maps' textures and geometry: halo_port_capacity.h), the x86-64
-guest's too, whose image is linked below the window. Its pages are backed
-as they are used. */
+/* 512 MB, whose caches outgrow the Xbox's (Custom Edition maps' textures and
+geometry: halo_port_capacity.h), on every build: the guests' image is linked
+below the window (x86-64's) or just above it (AArch64's, at 0xA0000000), and
+their host reserves HALO_GUEST_WINDOW_SIZE (port/android/include/
+halo_android_abi.h), which must agree. Its pages are backed as they are
+used. */
 #define PLATFORM_CONTIGUOUS_SIZE 0x20000000UL
-#endif
 #define PLATFORM_ANY_PHYSICAL_ADDRESS 0xffffffffUL
 
 /* returns NULL on failure; physical_address places the block exactly */
 void *platform_contiguous_alloc(unsigned long size, unsigned long alignment,
 	unsigned long physical_address, DWORD protect);
 void platform_contiguous_free(void *address);
+/* gives the memory of the pages of [address, address + size) back to the
+system: they stay the block's, with their protection, and read as zeros
+(also declared for the game in halo_linux_source_fixups.h) */
+void platform_contiguous_discard(void *address, unsigned long size);
 BOOL platform_is_contiguous(const void *address);
 #define PLATFORM_PHYSICAL_TO_VIRTUAL(physical) ((void *)((unsigned long)(physical) | PLATFORM_CONTIGUOUS_BASE))
 #define PLATFORM_VIRTUAL_TO_PHYSICAL(address) ((unsigned long)(address) & ~PLATFORM_CONTIGUOUS_BASE)
@@ -172,6 +170,10 @@ BOOL platform_is_contiguous(const void *address);
 reserved at start-up when the game.custom_edition setting is on, else NULL
 (also declared for the game in halo_linux_source_fixups.h). */
 void *halo_custom_edition_tag_cache(void);
+/* the computer's memory in bytes, 0 when unknown (also declared for the
+game in halo_linux_source_fixups.h: the texture cache's size,
+halo_port_capacity.h) */
+unsigned long long platform_memory_bytes(void);
 /* which textures hold their channels where Halo PC keeps them
 (xbox_textures.c; also declared for the game there) */
 void halo_custom_edition_texels_channels(const void *texels, unsigned char channel_order);

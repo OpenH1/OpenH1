@@ -439,7 +439,9 @@ def test_texture_checkpoint_keeps_all_bound_stages_pinned(tmp_path):
     source = r'''
 #include <assert.h>
 #include <stddef.h>
-#define XBOX_TEXTURE_CACHE_SIZE (22 * 1024 * 1024)
+#define XBOX_TEXTURE_CACHE_PAGE_SIZE 0x4000
+/* (an Xbox map's pages on the AArch64 guests, of a cache of 0x4000) */
+static long texture_cache_map_pages = 0x580;
 struct xbox_texture_cache_texture { int hardware_format; };
 struct data_iterator { int next, datum_index; };
 static struct xbox_texture_cache_texture entries[6];
@@ -471,7 +473,11 @@ int main(void)
     void *bound[4];
     int index;
     texture_cache_preparation_begin();
-    assert(budget == XBOX_TEXTURE_CACHE_SIZE / 8 && callback);
+    assert(budget == 22 * 1024 * 1024 / 8 && callback);
+    /* (the map's pages, not the whole cache's) */
+    texture_cache_map_pages = 0x4000;
+    texture_cache_preparation_begin();
+    assert(budget == 256 * 1024 * 1024 / 8);
     for (index = 0; index < 4; index++) bound[index] = &entries[index + 1].hardware_format;
     callback(bound);
     assert(advanced == 1 && !touched[0] && !touched[5]);

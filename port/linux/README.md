@@ -2367,16 +2367,16 @@ As "How it operates" under "64-bit ARM", with these differences:
   is musl with `guest/libc/arch/x32` of `port/android`: musl's x86 bits,
   with the guest's own types and system calls, as for `arm64_32`.
 - The guest image is linked at `0x70000000`, below 2 GB, not above the
-  Xbox memory at `0x80000000` as on AArch64: x32's static code addresses
+  Xbox memory (`0x80000000` to `0xA0000000`) as on AArch64: x32's static code addresses
   its own symbols with 32-bit values that are sign-extended, which cannot
   reach 2 GB or more. The Xbox memory above it is reached through
   registers, and its addresses compute with 32-bit wraparound, as on the
   Xbox.
-- As the image is not above the Xbox memory, the Xbox memory is the
-  desktop builds' 512 MB (`0x80000000` to `0xA0000000`), as on Windows,
-  with its 256 MB texture cache and 16 MB sound cache, which Custom Edition
-  maps need (`halo_port_capacity.h`). The 64-bit ARM build and Android have
-  128 MB, with the Xbox's caches.
+- The Xbox memory is 512 MB, as on every build, with the desktop builds'
+  256 MB texture cache, all of it for every map, and their 16 MB sound
+  cache, which Custom Edition maps need (`halo_port_capacity.h`). The
+  64-bit ARM build and Android give an Xbox map 22 MB of the texture cache
+  and keep the Xbox's 4 MB sound cache.
 - The guest calls the host's functions through import stubs that jump
   through a table of 64-bit addresses. The host's functions read pointer
   arguments as 64-bit registers, and x32 code passes them zero-extended,

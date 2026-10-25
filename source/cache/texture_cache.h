@@ -46,6 +46,16 @@ void *texture_cache_steal_memory(
 	long size);
 void texture_cache_debug_render(
 	void);
+/* port: the pages a map's textures may take, and the map's set as it
+loads and as mods' bitmaps change (halo_port_capacity.h) */
+long texture_cache_map_page_count(
+	boolean custom_edition,
+	boolean mod_bitmaps,
+	unsigned long long memory_bytes);
+void texture_cache_size_for_map(
+	void);
+unsigned long texture_cache_mod_bitmap_size_limit(
+	void);
 
 /* ---------- globals */
 

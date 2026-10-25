@@ -12,6 +12,7 @@ fail with ENOSYS, logged once.
 */
 
 #include "host.h"
+#include "halo_guest_syscall.h"
 
 #include <dirent.h>
 #include <limits.h>
@@ -28,6 +29,7 @@ fail with ENOSYS, logged once.
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <sys/time.h>
 #include <sys/uio.h>
 #include <sys/utsname.h>
@@ -588,6 +590,35 @@ static long guest_vector(int descriptor, uint64_t vector, int count, int64_t off
 	return result_of(positional ? preadv(descriptor, host_vector, count, offset) : readv(descriptor, host_vector, count));
 }
 
+/* ---------- the computer's memory */
+
+/* sysinfo's memory (the game's texture cache is sized by it,
+halo_port_capacity.h) and uptime: the memory is hw.memsize, the free part
+the free pages; counted in units as large as their 32 bits need, as a 64-bit
+Linux kernel does for its 32-bit programs */
+static long guest_sysinfo(struct halo_guest_sysinfo *result)
+{
+	uint64_t total = 0, unit = 1;
+	uint32_t free_pages = 0;
+	size_t size = sizeof(total);
+	struct timespec now;
+
+	if (sysctlbyname("hw.memsize", &total, &size, NULL, 0) != 0)
+		return result_of(-1);
+	size = sizeof(free_pages);
+	if (sysctlbyname("vm.page_free_count", &free_pages, &size, NULL, 0) != 0)
+		free_pages = 0;
+	while (total / unit > UINT32_MAX)
+		unit <<= 1;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	memset(result, 0, sizeof(*result));
+	result->uptime = (uint32_t)now.tv_sec;
+	result->totalram = (uint32_t)(total / unit);
+	result->freeram = (uint32_t)((uint64_t)free_pages * (uint64_t)getpagesize() / unit);
+	result->mem_unit = (uint32_t)unit;
+	return 0;
+}
+
 /* ---------- dispatch */
 
 static long long dispatch(long long number, long long a, long long b, long long c, long long d, long long e,
@@ -955,9 +986,12 @@ static long long dispatch(long long number, long long a, long long b, long long 
 		result->maximum = value.rlim_max == RLIM_INFINITY ? ~0ULL : value.rlim_max;
 		return 0;
 	}
+	case __NR_sysinfo:
+		if (!(uint32_t)a)
+			return -14; /* EFAULT */
+		return guest_sysinfo(GUEST(struct halo_guest_sysinfo *, a));
 	case __NR_membarrier:
 	case __NR_statx:
-	case __NR_sysinfo:
 		return -38;
 
 	default:

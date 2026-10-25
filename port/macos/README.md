@@ -313,7 +313,7 @@ that the guest gives it (`iovec`, `timespec`, ...).
 The guest's memory is `port/android/host/host_memory_base.c`: the 4 GB
 reserved at one time, with guard regions below and above. The Xbox window
 and the image are at their usual guest addresses, `0x80000000` and
-`0x88000000`.
+`0xA0000000`.
 
 The Linux arm64 and Android builds can use the base register too
 (`configure.py --guest-base`): then they do not need the fixed low ranges

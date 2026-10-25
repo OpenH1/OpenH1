@@ -30,6 +30,7 @@ back until mods_enable true, or until the map changes.
 /* ---------- headers */
 
 #include "cseries.h"
+#include "cache/texture_cache.h"
 #include "main/console.h"
 #include "mods.h"
 
@@ -91,6 +92,10 @@ static void mods_update(
 	mods_globals.bitmap_count = mod_bitmaps_update(remove_all, at_load);
 	mods_globals.sound_count = mod_sounds_update(remove_all, at_load);
 	mods_globals.model_count = mod_models_update(remove_all, at_load);
+	/* (the texture cache's size follows the mods' bitmaps: as the map
+	loads, mods_tags_loaded) */
+	if (!at_load)
+		texture_cache_size_for_map();
 
 	return;
 }
@@ -241,6 +246,13 @@ boolean mods_map_loaded(
 	return mods_globals.map_loaded;
 }
 
+/* how many of the map's bitmaps the mods play (texture_cache_size_for_map) */
+long mods_bitmap_count(
+	void)
+{
+	return mods_globals.bitmap_count;
+}
+
 /* (scenario_tags_load, once a map's tags are loaded) */
 void mods_tags_loaded(
 	char const *map_name)
@@ -264,6 +276,9 @@ void mods_tags_loaded(
 	{
 		mods_update(FALSE, TRUE);
 	}
+	/* (the map's textures and the mods' bitmaps known, the texture cache
+	takes the map's size: xbox_texture_cache.c) */
+	texture_cache_size_for_map();
 
 	return;
 }

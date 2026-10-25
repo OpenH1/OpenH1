@@ -204,9 +204,10 @@ plays), and `debug.txt` and the console say why.
   bitmap). A bitmap that is not a power of two on each side is drawn
   linear, as a Custom Edition map's is: it must be an uncompressed 2D
   bitmap.
-- One bitmap's pixels may take a quarter of the texture cache: 64 MB on
-  Linux and Windows, 5.5 MB on Android and the web (a 2048 x 2048 DXT5 with
-  its mipmaps fits on all of them).
+- One bitmap's pixels may take a quarter of the texture cache a map with
+  mods' bitmaps has: 64 MB on Linux, Windows and Macs; on Android, iOS and
+  64-bit ARM Linux, from 16 MB to 64 MB by the device's memory (a 2048 x
+  2048 DXT5 with its mipmaps fits on all of them).
 - A bitmap replaces the map's bitmap of its name, and the map's other tags
   use it as the map's: it must have at least as many bitmaps, of the same
   types, and as many sequences, each with at least as many sprites. It can
