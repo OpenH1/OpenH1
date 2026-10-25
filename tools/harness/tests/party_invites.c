@@ -390,19 +390,19 @@ static const unsigned char *p2p_identifier(void)
 	return identifier;
 }
 
-/* the host's game, as its server has it: its players and its most */
-struct network_game
-{
-	short player_count;
-	byte maximum_players;
-};
-
+/* the host's game, as its server has it: its people and the most it takes
+of them, and its bots, apart (network_game_server_port_bots_humans) */
 struct network_game_server
 {
 	int unused;
 };
 
-static struct network_game host_game = { 5, 16 };
+static struct
+{
+	short player_count;
+	short maximum_players;
+	short bots;
+} host_game = { 5, 16, 0 };
 static struct network_game_server host_server;
 
 static struct network_game_server *global_network_game_server_get(void)
@@ -410,10 +410,14 @@ static struct network_game_server *global_network_game_server_get(void)
 	return connection == _game_connection_network_server ? &host_server : NULL;
 }
 
-static struct network_game *network_game_server_get_game(struct network_game_server *server)
+static long network_game_server_port_bots_humans(struct network_game_server *server, long *bots, long *maximum)
 {
 	(void)server;
-	return &host_game;
+	if (bots)
+		*bots = host_game.bots;
+	if (maximum)
+		*maximum = host_game.maximum_players;
+	return host_game.player_count;
 }
 
 static unsigned long network_game_server_machine_address(long machine_index)
@@ -522,6 +526,7 @@ static void game(short as)
 	client_accepted = TRUE;
 	host_game.player_count = 5;
 	host_game.maximum_players = 16;
+	host_game.bots = 0;
 	player_add(HOST_PLAYER, HOST_MACHINE, as == _game_connection_network_server, L"Hosty");
 	player_add(OPENH1_PLAYER, OPENH1_MACHINE, as == _game_connection_network_client, L"Keyes");
 	player_add(OTHER_PLAYER, OTHER_MACHINE, FALSE, L"Cortana");
@@ -1033,6 +1038,15 @@ static void host_hears_hold(long machine_index, long first, short count, boolean
 		(word)(sizeof(message.header) + count * sizeof(message.members[0])), from_stream);
 }
 
+/* whether the machine at the address may join the host's game of players
+of most (its people, the bots apart) */
+static boolean slot_open(unsigned long address, short players, short maximum)
+{
+	host_game.player_count = players;
+	host_game.maximum_players = maximum;
+	return network_party_slot_open(address);
+}
+
 static struct distributed_party_held const *sent_answer(short index)
 {
 	return &((struct distributed_party_held_message const *)sent[index].bytes)->answer;
@@ -1112,10 +1126,10 @@ static void case_holds(void)
 		PARTY_HOLD_FORMAT && sent_answer(index)->asked == 3 && sent_answer(index)->held == 2 &&
 		sent_answer(index)->seconds == PARTY_HOLD_MILLISECONDS / 1000, "answered: 2 of the 3 held, for how long");
 	CHECK(network_party_held_slots() == 2, "the advertisement counts the 2");
-	CHECK(network_party_slot_open(INTERNET_ADDRESS(5), 5, 7) && network_party_slot_open(INTERNET_ADDRESS(6), 5, 7),
+	CHECK(slot_open(INTERNET_ADDRESS(5), 5, 7) && slot_open(INTERNET_ADDRESS(6), 5, 7),
 		"the members held may join");
-	CHECK(!network_party_slot_open(INTERNET_ADDRESS(7), 5, 7), "the third, not held, finds the game full");
-	CHECK(!network_party_slot_open(LAN_ADDRESS, 5, 7), "as does a machine of this network");
+	CHECK(!slot_open(INTERNET_ADDRESS(7), 5, 7), "the third, not held, finds the game full");
+	CHECK(!slot_open(LAN_ADDRESS, 5, 7), "as does a machine of this network");
 	CHECK(network_party_machines_together(NONE, INTERNET_ADDRESS(5), OPENH1_MACHINE),
 		"a member joining is of its leader's party");
 	CHECK(!network_party_machines_together(NONE, INTERNET_ADDRESS(5), OTHER_MACHINE), "and not of another");
@@ -1127,7 +1141,7 @@ static void case_holds(void)
 	CHECK(network_party_held_slots() == 1, "its slot taken up");
 	CHECK(network_party_machines_together(5, INTERNET_ADDRESS(5), OPENH1_MACHINE) &&
 		network_party_machine_in_party(5), "and it one of its leader's party from now on");
-	CHECK(network_party_slot_open(INTERNET_ADDRESS(7), 5, 7), "a slot beyond the one held is anyone's");
+	CHECK(slot_open(INTERNET_ADDRESS(7), 5, 7), "a slot beyond the one held is anyone's");
 	/* (asks no machine may make) */
 	sent_count = 0;
 	host_hears_hold(OPENCE_MACHINE, 1, 1, TRUE);
@@ -1153,7 +1167,7 @@ static void case_holds(void)
 	CHECK(network_party_held_slots() == 1, "kept a while");
 	frame(1001);
 	CHECK(network_party_held_slots() == 0, "let go when its member has not come");
-	CHECK(network_party_slot_open(INTERNET_ADDRESS(7), 6, 7), "its slot anyone's again");
+	CHECK(slot_open(INTERNET_ADDRESS(7), 6, 7), "its slot anyone's again");
 	/* the leader gone: its party's holds let go */
 	game(_game_connection_network_server);
 	host_game.player_count = 5;
@@ -1179,8 +1193,19 @@ static void case_holds(void)
 	agreed_rate = 0;
 	frame(PARTY_LIST_MILLISECONDS + 1);
 	host_hears_hold(OPENH1_MACHINE, 5, 2, TRUE);
-	CHECK(network_party_held_slots() == 0 && network_party_slot_open(LAN_ADDRESS, 15, 16),
+	CHECK(network_party_held_slots() == 0 && slot_open(LAN_ADDRESS, 15, 16),
 		"a Legacy game's host holds nothing");
+	/* bots: a game of 16 the bots fill (12 people and 4 bots that make room
+	for players) holds room for a party of 3, its people counted alone */
+	game(_game_connection_network_server);
+	host_game.player_count = 12;
+	host_game.maximum_players = 16;
+	host_game.bots = 4;
+	host_hears_hold(OPENH1_MACHINE, 5, 3, TRUE);
+	CHECK(network_party_held_slots() == 3, "a game the bots fill holds room for a party: the bots make room");
+	CHECK(slot_open(INTERNET_ADDRESS(5), 12, 16), "its member is let in, a bot to leave for it");
+	CHECK(slot_open(INTERNET_ADDRESS(9), 12, 16), "and a stranger the last slot");
+	CHECK(!slot_open(INTERNET_ADDRESS(9), 13, 16), "but no slot held");
 	/* the team for a party's player */
 	{
 		short party_counts[2] = { 0, 3 }, team_counts[2] = { 4, 3 };

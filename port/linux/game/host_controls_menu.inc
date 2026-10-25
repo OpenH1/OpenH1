@@ -18,8 +18,9 @@ own ways: this file only shows it.
 - GAME: End game now and Restart round (each pressed twice), Lock teams,
   Allow votekick, Listing (an internet game's), Max players (left and
   right: never fewer than are in it), Allow OpenCE players (an OpenH1
-  game's), then the bots' rows (network_host_controls_bot_rows: none until
-  the bots play network games).
+  game's), then the bots' rows (network_host_controls_bot_rows: BOTS, BOT
+  SKILL, BOT TEAMS, MAKE ROOM FOR PLAYERS and FILL TO, in a gametype the
+  bots play).
 - BANS: bans.txt's lines (read again each second), and the panel's UNBAN.
 
 A or a click on a player's or a ban's row chooses it and puts the focus on
@@ -767,9 +768,8 @@ static void host_panel_show(struct widget_instance *list, short chosen)
 	menu_text_box_wrap(named(panel, "panel_status", 0), status, 5);
 }
 
-/* "port host update" (the list's, each frame; not inlined, as
-browser_update is not) */
-static __declspec(noinline) void host_controls_update(struct widget_instance *list)
+/* "port host update" (the list's, each frame) */
+static void host_controls_update(struct widget_instance *list)
 {
 	struct widget_instance *screen = screen_of(list);
 	struct widget_instance *child;

@@ -139,6 +139,9 @@ its listing's version that game's protocol version), one OpenCE players join
 too (mixed: its version the network version, the protocol's in its stamp),
 and its rate */
 void p2p_set_game_listing_standard(int standard, int mixed, int rate);
+/* ... and the bots its host plays (port/linux/game/bots.c), which the
+players' count (p2p_set_game_player_counts) leaves out */
+void p2p_set_game_bots(int count);
 /* the server browser: while on, the public games are gathered (asked for
 when turned on, and by p2p_lobby_refresh) */
 void p2p_lobby_browse(int on);
@@ -174,6 +177,8 @@ struct p2p_listing
 	/* an OpenH1 Standard game (port/linux/game/network_standard.c), one
 	OpenCE players join too (mixed), and its rate in Hz (a Legacy game's 30) */
 	unsigned char standard, mixed, rate;
+	/* the bots its host plays, apart from its players */
+	unsigned char bots;
 	unsigned char open, in_progress, has_teams;
 	/* its host holds room for a party that joins it, its leader first
 	(port/linux/game/network_party.c): an OpenH1 game of a build that does,

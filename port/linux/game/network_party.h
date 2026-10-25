@@ -52,9 +52,10 @@ void network_party_discord_draw(rectangle2d const *window, long font_index, shor
 leader in (the host's server: network_server_message_handler.c,
 network_server_manager.c). Addresses are as the game keeps them (host
 order): a machine's of the internet is its tunnel's stand-in. Whether the
-machine at this address may take one of the game's player slots (maximum,
-players of them taken): the slots held are their members' alone */
-boolean network_party_slot_open(unsigned long address, short players, short maximum);
+machine at this address may take one of the game's player slots (its
+people's, the bots apart: network_game_server_port_bots_humans): the slots
+held are their members' alone */
+boolean network_party_slot_open(unsigned long address);
 /* ... a player of the machine (its index in the game, at that address)
 added: its hold taken up, the machine one of its party's from now on */
 void network_party_slot_taken(long machine_index, unsigned long address);

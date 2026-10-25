@@ -1,5 +1,5 @@
 """Room held for a party joining a game (port/linux/game/network_party.c's holds: granted, lapsing, let go, taken
-by their members alone, bots making room, a party's team) and what the server browser says of a game's room for
+by their members alone, a party's team) and what the server browser says of a game's room for
 the party (menu_functions.c's browser_party_room). The leader's ask and the host's answer are messages of their
 own (NETCODE.md, "Parties in public games"); a real run of several copies checks those."""
 
@@ -7,7 +7,7 @@ import pytest
 
 from tools.harness import build, constant, enum_with, function, mutated, read, run, structure
 
-CASES = ["grant", "expire", "release", "admit", "bots", "team", "room"]
+CASES = ["grant", "expire", "release", "admit", "team", "room"]
 HOLDS = ["party_holds_count", "party_holds_find", "party_holds_release", "party_holds_grant", "party_holds_expire",
          "party_holds_admit", "party_team_choice"]
 
@@ -40,11 +40,9 @@ FAULTS = {
     "held-twice": (("\t\tif (party_holds_find(holds, key_hash) != NONE)\n\t\t\tcontinue;\n", ""), "grant"),
     "never-lapse": (("now - holds[index].time >= PARTY_HOLD_MILLISECONDS", "0"), "expire"),
     "every-party-let-go": (("holds[index].used && holds[index].group == group", "holds[index].used"), "release"),
-    "stranger-takes-held": (("return players - bots + party_holds_count(holds) < maximum;",
-                             "return players - bots < maximum;"), "admit"),
-    "member-refused": (("\t\treturn players - bots < maximum;\n", "\t\treturn FALSE;\n"), "admit"),
-    "bots-stay": (("room = (short)(maximum - (players - bots) - party_holds_count(holds));",
-                   "room = (short)(maximum - players - party_holds_count(holds));"), "bots"),
+    "stranger-takes-held": (("return players + party_holds_count(holds) < maximum;",
+                             "return players < maximum;"), "admit"),
+    "member-refused": (("\t\treturn players < maximum;\n", "\t\treturn FALSE;\n"), "admit"),
     "team-overfilled": (("return team_counts[team] < (maximum + 1) / 2 ? team : NONE;", "return team;"), "team"),
     "team-of-the-fewest": (("team = (short)(party_counts[1] > party_counts[0] ? 1 : 0);",
                             "team = (short)(party_counts[1] > party_counts[0] ? 0 : 1);"), "team"),

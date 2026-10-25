@@ -55,6 +55,7 @@ int host_sdl_get_closest_fullscreen_display_mode(unsigned int display, int width
 int host_sdl_get_display_usable_bounds(unsigned int display, void *rectangle);
 int host_sdl_get_audio_devices(int recording, unsigned int *ids, int maximum);
 int host_sdl_get_audio_device_name(unsigned int device, char *name, int size);
+int host_sdl_get_audio_device_format(unsigned int device, void *spec, int *sample_frames);
 unsigned int host_sdl_create_renderer(unsigned int window, const char *name);
 void host_sdl_destroy_renderer(unsigned int renderer);
 int host_sdl_set_render_vsync(unsigned int renderer, int vsync);
@@ -730,6 +731,15 @@ const char *SDL_GetAudioDeviceName(SDL_AudioDeviceID device)
 	}
 	pthread_mutex_unlock(&lock);
 	return result;
+}
+
+/* the format the device plays in (SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK: the
+system's default's), its channels the speakers it has (dsound_sdl.c's
+audio.channels "auto"); SDL_AudioSpec is three 32-bit fields for the guest
+too */
+bool SDL_GetAudioDeviceFormat(SDL_AudioDeviceID device, SDL_AudioSpec *spec, int *sample_frames)
+{
+	return host_sdl_get_audio_device_format((unsigned int)device, spec, sample_frames) != 0;
 }
 
 /* ---------- the 2D renderer */

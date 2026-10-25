@@ -2,8 +2,9 @@
 
 /* Room held for a party joining a game (port/linux/game/network_party.c's
 holds, the host's): a leader's ask held as far as the game has room (its
-slots free of players and of other parties' holds, a bot's counted free
-when it makes room for players), the party's earlier holds replaced, a
+slots free of players and of other parties' holds: its people's, the bots
+apart, which party_invites.c's holds case checks), the party's earlier
+holds replaced, a
 member held once; a hold lapsing when its member does not come, and let go
 with its party; a slot held taken by its member alone; a party's players
 put on its team where the team has room; and what the server browser says
@@ -51,26 +52,26 @@ static void case_grant(void)
 
 	reset();
 	/* (a game of 16 with 10 players: room for 6) */
-	CHECK(party_holds_grant(holds, 3, members(0, 8, list), 8, 10, 0, 16, 1000) == 6,
+	CHECK(party_holds_grant(holds, 3, members(0, 8, list), 8, 10, 16, 1000) == 6,
 		"a party of 9 joining a game with room for 6: 6 held");
 	CHECK(party_holds_count(holds) == 6, "6 held");
 	CHECK(party_holds_find(holds, hashes[5]) != NONE && party_holds_find(holds, hashes[6]) == NONE,
 		"the first 6 named held, the rest not");
-	CHECK(party_holds_grant(holds, 4, members(20, 2, list), 2, 10, 0, 16, 1000) == 0,
+	CHECK(party_holds_grant(holds, 4, members(20, 2, list), 2, 10, 16, 1000) == 0,
 		"another party finds no room: the held slots are not its");
-	CHECK(party_holds_grant(holds, 3, members(0, 3, list), 3, 10, 0, 16, 2000) == 3,
+	CHECK(party_holds_grant(holds, 3, members(0, 3, list), 3, 10, 16, 2000) == 3,
 		"the party asks again (its members changed): its earlier holds replaced");
 	CHECK(party_holds_count(holds) == 3 && party_holds_find(holds, hashes[4]) == NONE,
 		"those it no longer names let go");
 	CHECK(holds[party_holds_find(holds, hashes[0])].time == 2000, "held anew from the second ask");
-	CHECK(party_holds_grant(holds, 4, members(1, 2, list), 2, 10, 0, 16, 2000) == 0,
+	CHECK(party_holds_grant(holds, 4, members(1, 2, list), 2, 10, 16, 2000) == 0,
 		"members another party holds are not held again");
 	memcpy(list, hashes[30], PARTY_KEY_HASH_SIZE);
 	memcpy(list + PARTY_KEY_HASH_SIZE, hashes[30], PARTY_KEY_HASH_SIZE);
-	CHECK(party_holds_grant(holds, 5, list, 2, 10, 0, 16, 2000) == 1, "a member named twice is held once");
+	CHECK(party_holds_grant(holds, 5, list, 2, 10, 16, 2000) == 1, "a member named twice is held once");
 	reset();
-	CHECK(party_holds_grant(holds, 3, members(0, 4, list), 4, 16, 0, 16, 1000) == 0, "a full game holds nothing");
-	CHECK(party_holds_grant(holds, 3, members(0, 0, list), 0, 4, 0, 16, 1000) == 0, "a party of one asks for none");
+	CHECK(party_holds_grant(holds, 3, members(0, 4, list), 4, 16, 16, 1000) == 0, "a full game holds nothing");
+	CHECK(party_holds_grant(holds, 3, members(0, 0, list), 0, 4, 16, 1000) == 0, "a party of one asks for none");
 }
 
 static void case_expire(void)
@@ -78,12 +79,12 @@ static void case_expire(void)
 	byte list[64 * PARTY_KEY_HASH_SIZE];
 
 	reset();
-	party_holds_grant(holds, 3, members(0, 3, list), 3, 4, 0, 16, 1000);
+	party_holds_grant(holds, 3, members(0, 3, list), 3, 4, 16, 1000);
 	CHECK(party_holds_expire(holds, 1000 + PARTY_HOLD_MILLISECONDS - 1) == 0 && party_holds_count(holds) == 3,
 		"kept while its members may still come");
 	CHECK(party_holds_expire(holds, 1000 + PARTY_HOLD_MILLISECONDS) == 3 && party_holds_count(holds) == 0,
 		"let go once they have not come in time");
-	party_holds_grant(holds, 3, members(0, 3, list), 3, 4, 0, 16, (unsigned long)0 - 100);
+	party_holds_grant(holds, 3, members(0, 3, list), 3, 4, 16, (unsigned long)0 - 100);
 	CHECK(party_holds_expire(holds, 200) == 0, "kept across the clock's wrap");
 	CHECK(party_holds_expire(holds, PARTY_HOLD_MILLISECONDS) == 3, "and let go after it");
 }
@@ -93,8 +94,8 @@ static void case_release(void)
 	byte list[64 * PARTY_KEY_HASH_SIZE];
 
 	reset();
-	party_holds_grant(holds, 3, members(0, 3, list), 3, 4, 0, 16, 1000);
-	party_holds_grant(holds, 7, members(10, 2, list), 2, 4, 0, 16, 1000);
+	party_holds_grant(holds, 3, members(0, 3, list), 3, 4, 16, 1000);
+	party_holds_grant(holds, 7, members(10, 2, list), 2, 4, 16, 1000);
 	CHECK(party_holds_release(holds, 3) == 3, "a leader gone: its party's holds let go");
 	CHECK(party_holds_count(holds) == 2 && party_holds_find(holds, hashes[10]) != NONE,
 		"another party's kept");
@@ -106,38 +107,21 @@ static void case_admit(void)
 	byte list[64 * PARTY_KEY_HASH_SIZE];
 
 	reset();
-	CHECK(party_holds_admit(holds, hashes[40], 15, 0, 16), "nothing held: anyone takes a free slot");
-	CHECK(!party_holds_admit(holds, hashes[40], 16, 0, 16), "none in a full game");
-	party_holds_grant(holds, 3, members(0, 3, list), 3, 13, 0, 16, 1000);
-	CHECK(!party_holds_admit(holds, hashes[40], 13, 0, 16), "the room left held: a stranger finds the game full");
-	CHECK(!party_holds_admit(holds, NULL, 13, 0, 16), "as does a machine of this network (no tunnel key)");
-	CHECK(party_holds_admit(holds, hashes[1], 13, 0, 16), "a member takes its slot");
+	CHECK(party_holds_admit(holds, hashes[40], 15, 16), "nothing held: anyone takes a free slot");
+	CHECK(!party_holds_admit(holds, hashes[40], 16, 16), "none in a full game");
+	party_holds_grant(holds, 3, members(0, 3, list), 3, 13, 16, 1000);
+	CHECK(!party_holds_admit(holds, hashes[40], 13, 16), "the room left held: a stranger finds the game full");
+	CHECK(!party_holds_admit(holds, NULL, 13, 16), "as does a machine of this network (no tunnel key)");
+	CHECK(party_holds_admit(holds, hashes[1], 13, 16), "a member takes its slot");
 	/* (its player added: its hold taken up) */
 	holds[party_holds_find(holds, hashes[1])].used = FALSE;
-	CHECK(party_holds_admit(holds, hashes[2], 14, 0, 16), "the next member takes its own");
-	CHECK(!party_holds_admit(holds, hashes[40], 14, 0, 16), "a stranger still none");
+	CHECK(party_holds_admit(holds, hashes[2], 14, 16), "the next member takes its own");
+	CHECK(!party_holds_admit(holds, hashes[40], 14, 16), "a stranger still none");
 	reset();
-	party_holds_grant(holds, 3, members(0, 2, list), 2, 10, 0, 16, 1000);
-	CHECK(party_holds_admit(holds, hashes[40], 10, 0, 16), "room beyond the held: a stranger takes it");
-	CHECK(!party_holds_admit(holds, hashes[40], 14, 0, 16), "but not the held");
-	CHECK(!party_holds_admit(holds, hashes[0], 16, 0, 16), "a member of a game filled meanwhile finds it full");
-}
-
-static void case_bots(void)
-{
-	byte list[64 * PARTY_KEY_HASH_SIZE];
-
-	reset();
-	/* (a game of 16: 12 players and 4 bots that make room for players) */
-	CHECK(party_holds_grant(holds, 3, members(0, 3, list), 3, 16, 4, 16, 1000) == 3,
-		"a full game of bots that make room: the party held, the bots leaving for it");
-	CHECK(party_holds_admit(holds, hashes[0], 16, 4, 16), "its member let in, a bot to leave");
-	CHECK(party_holds_admit(holds, hashes[40], 16, 4, 16), "a stranger the bot left over");
-	party_holds_grant(holds, 4, members(10, 1, list), 1, 16, 4, 16, 1000);
-	CHECK(!party_holds_admit(holds, hashes[40], 16, 4, 16), "none once every bot's slot is held");
-	reset();
-	CHECK(party_holds_grant(holds, 3, members(0, 3, list), 3, 16, 0, 16, 1000) == 0,
-		"bots that stay hold the game full");
+	party_holds_grant(holds, 3, members(0, 2, list), 2, 10, 16, 1000);
+	CHECK(party_holds_admit(holds, hashes[40], 10, 16), "room beyond the held: a stranger takes it");
+	CHECK(!party_holds_admit(holds, hashes[40], 14, 16), "but not the held");
+	CHECK(!party_holds_admit(holds, hashes[0], 16, 16), "a member of a game filled meanwhile finds it full");
 }
 
 static void case_team(void)
@@ -186,8 +170,6 @@ int main(int argc, char **argv)
 		case_release();
 	else if (!strcmp(name, "admit"))
 		case_admit();
-	else if (!strcmp(name, "bots"))
-		case_bots();
 	else if (!strcmp(name, "team"))
 		case_team();
 	else if (!strcmp(name, "room"))

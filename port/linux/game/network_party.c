@@ -934,18 +934,16 @@ static short party_holds_release(
 
 /* room held for a party's members (count of them, a key's hash each) as
 its leader asks (group: its leader's machine), the party's earlier holds
-let go first: as many as the game has room for, its slots (maximum) free of
-players and of other parties' holds, a bot's counted free when it leaves
-to make room for players (bots: those of the players); a member held for
-another party already, or named twice, is held once. Returns how many are
-held */
+let go first: as many as the game has room for, its slots (maximum, for its
+people: the bots apart, port/linux/game/bots.c) free of players and of other
+parties' holds; a member held for another party already, or named twice, is
+held once. Returns how many are held */
 static short party_holds_grant(
 	struct party_hold *holds,
 	short group,
 	byte const *key_hashes,
 	short count,
 	short players,
-	short bots,
 	short maximum,
 	unsigned long now)
 {
@@ -954,7 +952,7 @@ static short party_holds_grant(
 	short member;
 
 	party_holds_release(holds, group);
-	room = (short)(maximum - (players - bots) - party_holds_count(holds));
+	room = (short)(maximum - players - party_holds_count(holds));
 	for (member = 0; member < count && granted < room; member++)
 	{
 		byte const *key_hash = key_hashes + member * PARTY_KEY_HASH_SIZE;
@@ -997,18 +995,17 @@ static short party_holds_expire(
 
 /* whether a machine (its tunnel key's hash; NULL: not reached through the
 tunnel, a machine of this network) may take one of the game's slots
-(maximum, players of them taken, bots of those a bot's that leaves to make
-room for players): the one held for it, if one is, else one no party holds */
+(maximum, players of them taken, its people's: the bots apart): the one
+held for it, if one is, else one no party holds */
 static boolean party_holds_admit(
 	struct party_hold const *holds,
 	byte const *key_hash,
 	short players,
-	short bots,
 	short maximum)
 {
 	if (party_holds_find(holds, key_hash) != NONE)
-		return players - bots < maximum;
-	return players - bots + party_holds_count(holds) < maximum;
+		return players < maximum;
+	return players + party_holds_count(holds) < maximum;
 }
 
 /* the team (0 or 1) for a player of a party joining a team game: the one
@@ -1030,15 +1027,6 @@ static short party_team_choice(
 }
 
 /* ---------- room held for a party: asking, and holding */
-
-/* the bots of the game that leave to make room for players (the online
-bots' "make room for players", once they are in: none yet, the bots of a
-network game being their work) */
-static short party_room_bots(
-	void)
-{
-	return 0;
-}
 
 /* (the host) the tunnel key's hash of the machine reached at this address
 (host order, as the game keeps it: p2p_peer_key_hash): FALSE for none (a
@@ -1086,18 +1074,20 @@ static boolean party_key_hash_present(
 	return !csmemcmp(identifier, p2p_identifier(), sizeof(identifier));
 }
 
-/* (the host) the game's players and its most */
+/* (the host) the game's people and the most it takes of them, its bots
+apart (port/linux/game/bots.c: a bot leaves for a player who comes, or the
+game takes as many more as it has bots) */
 static boolean party_host_game(
 	short *players,
 	short *maximum)
 {
 	struct network_game_server *server = global_network_game_server_get();
-	struct network_game *game = server ? network_game_server_get_game(server) : NULL;
+	long most = 0;
 
-	if (!game)
+	if (!server)
 		return FALSE;
-	*players = game->player_count;
-	*maximum = game->maximum_players;
+	*players = (short)network_game_server_port_bots_humans(server, NULL, &most);
+	*maximum = (short)most;
 	return TRUE;
 }
 
@@ -1133,8 +1123,7 @@ static short party_host_hold(
 			wanted_count++;
 		}
 	}
-	held = party_holds_grant(party_globals.holds, group, wanted, wanted_count, players, party_room_bots(), maximum,
-		now);
+	held = party_holds_grant(party_globals.holds, group, wanted, wanted_count, players, maximum, now);
 	error(_error_log, "party: holding room for %d of the %d members of machine #%d's party not in the game "
 		"(%d of %d players), for %d seconds", held, wanted_count, group, players, maximum,
 		PARTY_HOLD_MILLISECONDS / 1000);
@@ -1511,17 +1500,16 @@ void network_party_handle_message(
 /* ---------- room held for a party: the host's server */
 
 boolean network_party_slot_open(
-	unsigned long address,
-	short players,
-	short maximum)
+	unsigned long address)
 {
 	byte key_hash[PARTY_KEY_HASH_SIZE];
 	boolean reached;
+	short players, maximum;
 
-	if (!party_globals.active || !party_host())
+	if (!party_globals.active || !party_host() || !party_host_game(&players, &maximum))
 		return TRUE;
 	reached = party_address_key_hash(address, key_hash);
-	return party_holds_admit(party_globals.holds, reached ? key_hash : NULL, players, party_room_bots(), maximum);
+	return party_holds_admit(party_globals.holds, reached ? key_hash : NULL, players, maximum);
 }
 
 void network_party_slot_taken(

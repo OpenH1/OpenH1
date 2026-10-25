@@ -271,7 +271,7 @@ symbols in this file:
 /* port/linux/game/network_distributed.c's */
 void network_distributed_handle_message(long machine_index, word const *message, word size);
 /* port: port/linux/game/network_party.c's (network_party.h) */
-boolean network_party_slot_open(unsigned long address, short players, short maximum);
+boolean network_party_slot_open(unsigned long address);
 short network_party_held_slots(void);
 boolean network_party_handles_message(word const *message, word size);
 void network_party_handle_message(long machine_index, word const *message, word size, boolean from_stream);
@@ -1834,6 +1834,7 @@ static boolean network_game_server_handle_message_client_broadcast_game_search(
 		if (game)
 		{
 			struct message_server_game_advertise advertisement = {0};
+			long bots = 0;
 			struct transport_address address;
 			struct network_message *reply;
 
@@ -1862,11 +1863,18 @@ static boolean network_game_server_handle_message_client_broadcast_game_search(
 			advertisement.engine_type = (short)game->variant.game_engine_index;
 			csmemcpy(&advertisement.map, &game->map, sizeof(game->map));
 			advertisement.machine_count = game->machine_count;
-			/* port: and the slots held for a party's members, who are on
-			their way (network_party.c) */
-			advertisement.player_count = (short)MIN(game->player_count + network_party_held_slots(),
-				game->maximum_players);
-			advertisement.maximum_player_count = game->maximum_players;
+			/* port: its players, and the most it takes of them, its bots
+			apart (port/linux/game/bots.c), whose count goes in a reserved
+			byte, below; and the slots held for a party's members, who are
+			on their way (network_party.c) */
+			{
+				long maximum;
+
+				advertisement.player_count = (short)network_game_server_port_bots_humans(server, &bots, &maximum);
+				advertisement.player_count = (short)MIN(advertisement.player_count + network_party_held_slots(),
+					maximum);
+				advertisement.maximum_player_count = (short)maximum;
+			}
 			advertisement.variant_setting = (short)game->variant.universal_variant.score_to_win;
 			advertisement.flags = 0;
 			if (game->variant.universal_variant.teams == TRUE)
@@ -1899,11 +1907,13 @@ static boolean network_game_server_handle_message_client_broadcast_game_search(
 			/* (an OpenCE gametype's kind, the server browser's name for it) */
 			advertisement.reserved[HALO_PORT_ADVERTISED_KIND_OFFSET] = game_modes_kind(&game->variant,
 				&game->variant_options);
+			/* (and its bots, which OpenCE does not read) */
+			advertisement.reserved[HALO_PORT_ADVERTISED_BOTS_OFFSET] = (byte)MIN(bots, 255);
 			/* (open to joins: not while the machines load the game, nor
 			once it is over, nor in progress when no player can join it) */
 			if (network_game_server_get_state(server, NULL) == _network_game_server_state_ingame
 				? network_game_server_accepts_late_joins(server)
-				: network_game_server_game_is_open(server) && network_game_has_free_player_slot(game))
+				: network_game_server_game_is_open(server) && network_game_server_has_room_for_player(server))
 			{
 				advertisement.flags |= FLAG(_game_advertisement_open_bit);
 			}
@@ -2061,7 +2071,7 @@ static boolean network_game_server_handle_message_client_join_game_request(
 			fill it) is full: a machine that joined could add none, and held
 			the countdown for ever */
 			boolean full = network_game_server_get_state(server, NULL) == _network_game_server_state_pregame &&
-				!network_game_has_free_player_slot(network_game_server_get_game(server));
+				!network_game_server_has_room_for_player(server);
 
 			/* port: its hardware id, as it tells it: hex only (anything else
 			left out), no more than its field; the host logs it, and refuses
@@ -2088,9 +2098,7 @@ static boolean network_game_server_handle_message_client_join_game_request(
 			/* port: the slots held for a party's members, while they follow
 			their leader in, are theirs alone: to anyone else the game is full
 			(network_party.c) */
-			if (!full && !network_party_slot_open(source_address.address.long_words[0],
-				network_game_server_get_game(server)->player_count,
-				network_game_server_get_game(server)->maximum_players))
+			if (!full && !network_party_slot_open(source_address.address.long_words[0]))
 			{
 				network_event("client machine '%s' @%s refused: the game's room left is held for a party",
 					join_game_request.machine_name, transport_address_to_string(&source_address));

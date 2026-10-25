@@ -745,6 +745,43 @@ machine:
   join token says so): an OpenCE machine would keep the player on the old
   team. The player respawns on the new team; their score goes with them.
 
+### Bots in network games
+
+A host plays the bots of its system link and internet games
+(`port/linux/game/bots.c`, `bots.count`; README.md, "Bots"), and nothing
+new goes between the machines:
+
+- Each bot is the one player of a machine of its own, a machine index from
+  `BOTS_FIRST_MACHINE` (113) up that no real machine takes: the host numbers
+  the machines that join below it. The machine has no connection: the host
+  plays its player, as it plays a remote player whose input comes at once.
+- The bots join the lobby as players do, in the game's settings record, and
+  a game in progress as a late joiner's players do
+  (`_message_server_add_player_ingame`); one leaves as a machine's player
+  who quits (`_message_server_remove_player_ingame`). Every machine, an
+  OpenCE one too, sees an ordinary player of an ordinary machine.
+- The host's tick takes each bot's controls from `bots.c` in place of what
+  its queue held, and puts them in the update the tick ran
+  (`update_server_take_bot_action`), which is what the host relays of every
+  player (`_distributed_message_relayed_actions`). A client replays a bot
+  from that input and the host's corrections, as any remote player. A bot
+  holds its tick's controls through the tick's sub-steps (an OpenH1 game at
+  60 or 120), as a player whose sub-steps changed nothing: the host sends no
+  sub-steps of it, and every OpenH1 machine steps it alike. The host deals a
+  bot's damage itself, as a player of no client.
+- The advertisement's and the listing's players are the people (the game's
+  maximum players theirs: with `bots.make_room` off the record's most
+  players are theirs and the bots'), and the bots go in a reserved byte
+  OpenCE does not read: the advertisement's
+  `HALO_PORT_ADVERTISED_BOTS_OFFSET`, the listing's fourth stamp byte. A
+  game without bots sends them as zero, as before.
+
+Checked on one Mac (an internet game through a local broker, the host and
+a client each a hidden copy, 4 bots, 60 seconds): `net_compare --compare`
+passes at 120 and in a Legacy game, the client logging the bots as the
+host's players (machines 113 to 116), their positions 0.03 world units
+apart on average.
+
 ### Parties in public games
 
 A party's leader joins a game first and its members follow it in
@@ -757,8 +794,10 @@ A party's leader joins a game first and its members follow it in
   key (`p2p_party_member_key_hashes`: the X25519 form of its party key, the
   key it reaches a host with, which the host reads with `p2p_peer_key_hash`).
   It asks again when its members change. The host holds as many as it has
-  room for (slots free of players and of other parties' holds, and of bots
-  that make room for players) for 20 seconds, and answers how many
+  room for (slots free of players and of other parties' holds, the bots
+  apart: a bot leaves for a member who comes, as for any player, and with
+  `bots.make_room` fewer bots join while slots are held) for 20 seconds,
+  and answers how many
   (`_distributed_message_party_held`, 129). A host leading a party holds
   room for its own members the same way. A machine is granted holds at most
   3 times a game; each grant replaces the last. A leader that leaves lets its
@@ -771,7 +810,7 @@ A party's leader joins a game first and its members follow it in
   and the host decides. In a team game the host puts a party's player on the
   team most of its party is on, if that team has half the game's players or
   fewer; the lobby's auto team balance moves a player of no party first.
-- The listing's stamp says the host holds room (its fourth byte, 1). A
+- The listing's stamp says the host holds room (its fifth byte, 1). A
   Legacy host, and an older OpenH1 one (which drops 128 as a kind it does not
   know), hold nothing: the browser says there is no room guarantee and the
   members join as they can. Nothing goes to an OpenCE machine. The OpenH1
@@ -1249,7 +1288,7 @@ game without the menus (in a team game the joining player takes the other
 team; `local:<map>` plays a local split screen game instead, which the
 bots of `bots.count` join), and `debug.test_input` plays controller 1 with a scripted bot (or,
 `look:<seed>`, one that stands still, only turning and looking up and
-down); each machine logs every player's position, health and shields,
+down) in the game alone, leaving the menus and the lobby to the test; each machine logs every player's position, health and shields,
 where they aim and face, their animation state and how hard they move,
 weapons, grenades, score, kills and deaths every second, with the objects
 made and removed and the hits reported, dealt, rejected and replayed, so

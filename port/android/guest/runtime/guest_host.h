@@ -100,6 +100,13 @@ int host_sdl_get_audio_stream_data(unsigned int stream, void *data, int length);
 int host_sdl_get_audio_stream_available(unsigned int stream);
 void host_sdl_destroy_audio_stream(unsigned int stream);
 
+/* ---------- the sound's output (host_audio_route.c)
+
+What the system's sound plays on, for audio.spatial (dsound_sdl.c): 1
+headphones, 0 speakers, -1 not known; kept current by a thread of the
+host's, so asking costs nothing */
+int host_audio_headphones(void);
+
 /* ---------- the renderer's command stream (port/linux/src/xgpu_stream.h,
 port/android/host/host_render_stream.h): the ring at the guest address
 ring opened (0, or -1: the host has no renderer for it); its records to
