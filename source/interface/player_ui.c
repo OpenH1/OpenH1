@@ -684,12 +684,22 @@ void player_ui_set_single_player_local_player_controller(
 long player_ui_get_player1_last_used_profile_index(
 	void)
 {
-	if (!player1_profile_path[0] &&
-		saved_game_file_retrieve_player1_last_used_profile_directory(
-			player1_profile_path))
+	/* port: lastprof.txt is looked for once. The menus ask each frame, and
+	without the file (no profile chosen yet: a new player, a headless or test
+	game) each look logged two lines to debug.txt, 60 MB in minutes; the
+	file is only written here (player_ui_remember_player1_profile), which
+	sets the path itself */
+	static boolean player1_profile_path_looked_for = FALSE;
+
+	if (!player1_profile_path[0] && !player1_profile_path_looked_for)
 	{
-		player1_last_used_profile_index = saved_game_file_find_profile_index_for_directory_path(
-			player1_profile_path, _saved_game_file_type_player_profile);
+		player1_profile_path_looked_for = TRUE;
+		if (saved_game_file_retrieve_player1_last_used_profile_directory(
+			player1_profile_path))
+		{
+			player1_last_used_profile_index = saved_game_file_find_profile_index_for_directory_path(
+				player1_profile_path, _saved_game_file_type_player_profile);
+		}
 	}
 	return player1_last_used_profile_index;
 }
