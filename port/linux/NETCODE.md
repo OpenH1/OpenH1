@@ -655,6 +655,15 @@ change:
   host sends them only to OpenH1 machines that told it they can party, so
   never to an OpenCE machine, and an older OpenH1 drops them as kinds it
   does not know.
+- Friends (`port/linux/src/p2p_friends.c`): a client's party status also
+  tells its player's friend code (a flag bit, and the code in the status's
+  token, which a status left empty before); the host sends the codes on to
+  the same machines in `_distributed_message_friend_players` (130, reliably,
+  when they change: an entry each, its format byte, the player and the
+  code). Older builds send no code, never set the bit, and drop 130 as a
+  kind they do not know: nothing they read changed, so the network version
+  stays. The friends themselves (requests, presence, invites) go through the
+  signalling brokers, never the game's connection.
 - The host's controls (`network_host_controls.c`, below) use 126 to move a
   player to the other team, only in an OpenH1 game with no OpenCE machine in
   it.
@@ -810,6 +819,15 @@ A party's leader joins a game first and its members follow it in
   and the host decides. In a team game the host puts a party's player on the
   team most of its party is on, if that team has half the game's players or
   fewer; the lobby's auto team balance moves a player of no party first.
+- Matchmaking (`port/linux/game/matchmaking.c`) adds nothing to the game's
+  messages: a host lists the playlist it hosts for in the listing's stamp
+  (its sixth byte, the playlist's number; an OpenH1 game's alone), and a
+  party picks its host among its members by a byte a member adds to its
+  STATE after its name (how well it can host now: unable, strict NAT, open;
+  a leader's STATE has none, and older builds read no further than the
+  name) and a HOST message (`'H'`, the member's id and the playlist) that
+  the member takes by taking the lead (`p2p_party.c`). An older build
+  passes over the type and never sends the byte, so it is never asked.
 - The listing's stamp says the host holds room (its fifth byte, 1). A
   Legacy host, and an older OpenH1 one (which drops 128 as a kind it does not
   know), hold nothing: the browser says there is no room guarantee and the
@@ -1376,7 +1394,10 @@ own, which the tool ends however it ends: stopped with Ctrl-C, SIGTERM or
 SIGHUP, it stops the copies and exits 128 plus the signal's number, and
 killed outright, the kernel ends the copies (`PR_SET_PDEATHSIG`). `--compare <host log>
 <client log>` judges two logs already written, and
-`--a-wrapper`/`--b-wrapper` run a build under an emulator. Both builds
+`--a-wrapper`/`--b-wrapper` run a build under an emulator. `--port <n>`
+plays the game on port n (`network.port`; the clients' n + 1), so that two
+runs, or a run and another game, share the computer (both builds must have
+the setting). Both builds
 must log the drift (below): one built before it is an error.
 
 The host decides and a client predicts its own player, so the comparison

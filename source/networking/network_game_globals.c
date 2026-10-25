@@ -108,6 +108,7 @@ symbols in this file:
 #include "memory/data_packet_groups.h"
 #include "network_client_manager.h"
 #include "network_messages.h"
+#include "networking/network_game_protocol.h"
 #include "network_game_manager.h"
 #include "network_game_globals.h"
 #include "network_server_manager_internal.h"
@@ -264,6 +265,30 @@ struct player_action_collection_definition player_action_collection_definition =
 };
 
 /* ---------- public code */
+
+/* port: network.port, the host's port (network_game_protocol.h), read once:
+the Xbox's, 5150, unless set to another (1024 to 65534, as the client's is
+the next) */
+unsigned short network_game_server_port(void)
+{
+	static unsigned short port;
+
+	if (!port)
+	{
+		long setting = config_integer("network.port");
+
+		port = setting >= 1024 && setting <= 65534 ? (unsigned short)setting :
+			(unsigned short)NETWORK_GAME_DEFAULT_SERVER_PORT;
+		if (port != NETWORK_GAME_DEFAULT_SERVER_PORT)
+			network_event("system link on port %d (network.port), its clients' %d", port, port + 1);
+	}
+	return port;
+}
+
+unsigned short network_game_client_port(void)
+{
+	return (unsigned short)(network_game_server_port() + 1);
+}
 
 /* the distributed netcode's per-tick state (port/linux/game/network_distributed.c),
 unreliably to the host, as the game update is */

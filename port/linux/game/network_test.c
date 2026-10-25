@@ -987,10 +987,15 @@ static void network_test_party(
 			for (index = 0; index < 15 && index < (short)NUMBEROF(player->name) && player->name[index]; index++)
 				name[index] = player_name_character_ascii(player->name[index]);
 			name[index] = 0;
-			platform_log("network test: party actions for %s: %s%s%s", name,
+			platform_log("network test: party actions for %s: %s%s%s%s", name,
 				TEST_FLAG(actions, _network_party_action_invite) ? "invite " : "",
 				TEST_FLAG(actions, _network_party_action_join) ? "join " : "",
-				TEST_FLAG(actions, _network_party_action_accept) ? "accept" : "");
+				TEST_FLAG(actions, _network_party_action_accept) ? "accept " : "",
+				TEST_FLAG(actions, _network_party_action_add_friend) ? "add-friend" : "");
+			/* (every machine sends each player it may a friend request, as the
+			scoreboard's Add friend does: port/linux/src/p2p_friends.c) */
+			if (TEST_FLAG(actions, _network_party_action_add_friend))
+				network_party_player_act(iterator.datum_index, _network_party_action_add_friend);
 			if (network_test.mode == _network_test_host && !*config_string("debug.party") &&
 				TEST_FLAG(actions, _network_party_action_invite))
 			{

@@ -338,6 +338,15 @@ def environment_of(window=False, display=None):
     return net_compare.copy_environment(copy, "127.0.0.210", "127.0.0.211", "join", 1, args, [])
 
 
+def test_port_only_when_asked():
+    """--port gives every copy network.port; without it the game's own (5150) is left be"""
+    assert "HALO_NET_PORT" not in environment_of()
+    args = argparse.Namespace(start=8.0, seconds=60, skip=3, events=False, window=False, display=None, port=25150)
+    copy = {"data": Path("/data"), "saves": Path("/saves")}
+    environment = net_compare.copy_environment(copy, "127.0.0.210", "127.0.0.211", "join", 1, args, [])
+    assert environment["HALO_NET_PORT"] == "25150"
+
+
 def test_headless_copies_have_no_display(monkeypatch):
     monkeypatch.setenv("DISPLAY", ":0")
     monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")

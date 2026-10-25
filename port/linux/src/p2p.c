@@ -81,6 +81,7 @@ only look up and create stand-ins.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 enum
 {
@@ -487,6 +488,20 @@ static int has_identifier;
 unsigned long p2p_now(void)
 {
 	return GetTickCount();
+}
+
+long long p2p_wall_seconds(void)
+{
+	return (long long)time(NULL);
+}
+
+unsigned long long p2p_wall_milliseconds(void)
+{
+	struct timespec now;
+
+	if (clock_gettime(CLOCK_REALTIME, &now))
+		return (unsigned long long)time(NULL) * 1000;
+	return (unsigned long long)now.tv_sec * 1000 + (unsigned long long)now.tv_nsec / 1000000;
 }
 
 static int elapsed(unsigned long since, unsigned long time)
@@ -3423,6 +3438,7 @@ static void lobby_quit(void)
 {
 	pthread_mutex_lock(&p2p_lock);
 	p2p_party_quit();
+	p2p_friends_quit();
 	p2p_lobby_quit();
 	pthread_mutex_unlock(&p2p_lock);
 }
@@ -3916,7 +3932,10 @@ static void *p2p_thread(void *unused)
 		}
 		/* a party (p2p_party.c): signalling while in one */
 		p2p_party_update();
-		if ((p2p_lobby_listed() || p2p_party_active()) && !p2p.lobby_quit_registered)
+		/* friends (p2p_friends.c): signalling while a profile has an
+		identity */
+		p2p_friends_update();
+		if ((p2p_lobby_listed() || p2p_party_active() || p2p_friends_publishing()) && !p2p.lobby_quit_registered)
 		{
 			p2p.lobby_quit_registered = 1;
 			atexit(lobby_quit);

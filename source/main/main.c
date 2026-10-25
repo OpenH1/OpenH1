@@ -385,6 +385,7 @@ symbols in this file:
 #include "network_party.h" /* port: port/linux/game/network_party.c */
 #include "network_host_controls.h" /* port: port/linux/game/network_host_controls.c */
 #include "party.h" /* port: port/linux/game/party_menu.inc */
+#include "matchmaking.h" /* port: port/linux/game/matchmaking.c */
 #include "network_aim_assist.h" /* port: port/linux/game/network_aim_assist.c */
 #include "network_shield_effects.h" /* port: port/linux/game/network_shield_effects.c */
 #include "map_share.h" /* port: port/linux/game/map_share.c */
@@ -3649,6 +3650,12 @@ void main_loop(
 			/* port: the party, which follows its leader into its games
 			(port/linux/game/party_menu.inc) */
 			party_update();
+			/* port: friends: the profile whose they are
+			(port/linux/game/friends_menu.inc) */
+			friends_update();
+			/* port: matchmaking: a game found or hosted for the party by
+			playlist (port/linux/game/matchmaking.c) */
+			matchmaking_update();
 			/* port: parties made in a network game, from the scoreboard
 			(port/linux/game/network_party.c) */
 			network_party_update();

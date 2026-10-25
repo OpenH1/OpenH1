@@ -110,6 +110,8 @@ their handlers open opens.
 #include "text_filter.h"
 /* (the party: party_menu.inc) */
 #include "party.h"
+/* (matchmaking: matchmaking_menu.inc, matchmaking.c) */
+#include "matchmaking.h"
 /* (the lobby's bots: lobby_menu.inc) */
 #include "bots.h"
 #include "bungie_net/network/transport.h"
@@ -1086,6 +1088,12 @@ static void visible_set(struct widget_instance *widget, boolean visible);
 static void party_screen_noted(struct widget_instance *widget);
 static void party_hub_note(wchar_t *text, short size);
 static void party_hub_status(wchar_t *headline, short headline_size, wchar_t *detail, short detail_size);
+/* (matchmaking_menu.inc's) */
+static void matchmaking_hub_note(wchar_t *text, short size);
+static void matchmaking_hub_status(wchar_t *headline, short headline_size, wchar_t *detail, short detail_size);
+/* (friends_menu.inc's) */
+static void friends_hub_note(wchar_t *text, short size);
+static void friends_hub_status(wchar_t *headline, short headline_size, wchar_t *detail, short detail_size);
 short ui_widget_port_multiplayer_maps(char const *const **names, short *last_used);
 
 static boolean map_kind_singleplayer(short kind)
@@ -6246,6 +6254,8 @@ struct browser_row
 	/* its room for this machine's party (_browser_party_*), and the
 	party's size */
 	short party_room, party_size;
+	/* the matchmaking playlist it was hosted for (1 up; 0: none) */
+	short playlist;
 };
 
 /* a game's room for a party of size (itself too; 1 or less: none) whose
@@ -6299,6 +6309,7 @@ static void browser_listing_row(struct p2p_listing const *game, struct browser_r
 	row->open = game->open != 0;
 	row->in_progress = game->in_progress != 0;
 	row->party_size = browser_party_size;
+	row->playlist = game->playlist;
 	row->party_room = browser_party_room(browser_party_size, game->player_count, game->maximum_player_count,
 		game->holds_party != 0);
 }
@@ -6563,6 +6574,7 @@ static void browser_status_text(struct browser_row const *row, wchar_t *text, sh
 {
 	wchar_t machines[32];
 	wchar_t party[80];
+	wchar_t playlist[MATCHMAKING_PLAYLIST_NAME_SIZE * 2 + 16];
 
 	machines[0] = 0;
 	if (row->machines > 1)
@@ -6586,7 +6598,18 @@ static void browser_status_text(struct browser_row const *row, wchar_t *text, sh
 		break;
 	}
 	party[NUMBEROF(party) - 1] = 0;
-	usnprintf(text, size - 1, L"%s%s%s%s", party, !row->open ? L"Full or starting. " :
+	/* (a matchmaking game's playlist: matchmaking.c's) */
+	playlist[0] = 0;
+	if (row->playlist > 0)
+	{
+		wchar_t name[MATCHMAKING_PLAYLIST_NAME_SIZE * 2];
+
+		matchmaking_playlist_text((short)(row->playlist - 1), name, NUMBEROF(name), NULL, 0);
+		if (name[0])
+			usnprintf(playlist, NUMBEROF(playlist) - 1, L"Matchmaking: %s. ", name);
+		playlist[NUMBEROF(playlist) - 1] = 0;
+	}
+	usnprintf(text, size - 1, L"%s%s%s%s%s", playlist, party, !row->open ? L"Full or starting. " :
 		row->in_progress ? L"Under way: its lobby shows first. " : L"",
 		row->locked ? L"It has a password. " : L"", machines);
 	text[size - 1] = 0;
@@ -7596,6 +7619,10 @@ enum
 	_multiplayer_item_coop,
 	/* (PARTY, which opens the party's screen: party_menu.inc) */
 	_multiplayer_item_party,
+	/* (MATCHMAKING, which opens its screen: matchmaking_menu.inc) */
+	_multiplayer_item_matchmaking,
+	/* (FRIENDS, which opens its screen: friends_menu.inc) */
+	_multiplayer_item_friends,
 };
 
 /* Multiplayer's items and its pages' (port_settings.py's _hub), by their
@@ -7618,6 +7645,8 @@ static struct
 	{ "hub_online_coop", _multiplayer_item_online_coop },
 	{ "hub_split_coop", _multiplayer_item_split_screen_coop },
 	{ "hub_party", _multiplayer_item_party },
+	{ "hub_matchmaking", _multiplayer_item_matchmaking },
+	{ "hub_friends", _multiplayer_item_friends },
 };
 
 #define MULTIPLAYER_DESCRIPTIONS "pc\\main_menu\\multiplayer_type_select\\hub\\descriptions"
@@ -7877,6 +7906,10 @@ static void multiplayer_status_notes(struct widget_instance *list)
 	text_set(named(list, "invite_note", 0), multiplayer_status.invite ? L"INVITE READY" : L"");
 	party_hub_note(text, NUMBEROF(text));
 	text_set(named(list, "party_note", 0), text);
+	matchmaking_hub_note(text, NUMBEROF(text));
+	text_set(named(list, "matchmaking_note", 0), text);
+	friends_hub_note(text, NUMBEROF(text));
+	text_set(named(list, "friends_note", 0), text);
 }
 
 /* the item chosen: Multiplayer's list's (the computer's and the
@@ -8046,6 +8079,12 @@ static void multiplayer_status_update(struct widget_instance *list)
 		break;
 	case _multiplayer_item_party:
 		party_hub_status(headline, NUMBEROF(headline), detail, NUMBEROF(detail));
+		break;
+	case _multiplayer_item_matchmaking:
+		matchmaking_hub_status(headline, NUMBEROF(headline), detail, NUMBEROF(detail));
+		break;
+	case _multiplayer_item_friends:
+		friends_hub_status(headline, NUMBEROF(headline), detail, NUMBEROF(detail));
 		break;
 	case _multiplayer_item_bots:
 		usnprintf(headline, NUMBEROF(headline) - 1, L"BOTS ON THIS COMPUTER");
@@ -9648,6 +9687,8 @@ static void gametype_engine_name(struct widget_instance *text_box)
 /* ---------- the party: Multiplayer's PARTY and its screen */
 
 #include "party_menu.inc"
+#include "matchmaking_menu.inc"
+#include "friends_menu.inc"
 #include "lobby_menu.inc"
 
 /* ---------- Host Controls: the pause menu's HOST CONTROLS, the host's */
@@ -9982,6 +10023,20 @@ boolean pc_menu_event_function_invoke(
 		{
 			return party_screen_button(widget, controller, widget_deleted);
 		}
+		/* (matchmaking: matchmaking_menu.inc) */
+		else if (!strcmp(name, "port matchmaking button"))
+		{
+			return matchmaking_screen_button(widget, controller);
+		}
+		else if (!strcmp(name, "port matchmaking x"))
+		{
+			return matchmaking_screen_key(widget, controller);
+		}
+		/* (friends: friends_menu.inc) */
+		else if (!strncmp(name, "port friends ", 13))
+		{
+			return friends_menu_event(name + 13, widget, controller, widget_deleted);
+		}
 		else if (!strcmp(name, "port party x") || !strcmp(name, "port party y"))
 		{
 			return party_screen_key(widget, !strcmp(name, "port party y"), controller);
@@ -10236,6 +10291,12 @@ void pc_menu_game_data_function_invoke(
 		multiplayer_status_update(widget);
 	else if (!strcmp(name, "port party update"))
 		party_screen_update(widget);
+	else if (!strcmp(name, "port matchmaking update"))
+		matchmaking_screen_update(widget);
+	else if (!strcmp(name, "port friends update"))
+		friends_screen_update(widget);
+	else if (!strcmp(name, "port friends code update"))
+		friends_add_update(widget);
 	else if (!strcmp(name, "port host update"))
 		host_controls_update(widget);
 	else if (!strcmp(name, "port playlist edit desc"))

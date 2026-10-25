@@ -1008,14 +1008,35 @@ is (port/linux/game/network_party.c shows the ask): the party's accept
 Escape or the D-pad's Up does not. A key pressed for it is taken from the
 game and the menus until it is let go of (Escape does not also back out of
 a menu, nor pause the game). Not while the console is open or a line is
-typed */
+typed. With no Discord ask, a friend's invite to its party is answered the
+same way (port/linux/src/p2p_friends.c): accepted, it joins the party */
+
+/* the ask answered is a friend's invite (its serial p2p_friends.c's) */
+static BOOL ask_is_friends;
+
 static unsigned long discord_ask_serial(void)
 {
 	char name[P2P_DISCORD_REQUEST_NAME_SIZE];
+	unsigned long serial;
 
+	ask_is_friends = FALSE;
 	if (console_is_active() || network_chat_typing() || text_typing)
 		return 0;
-	return p2p_discord_join_request(name, sizeof(name), NULL);
+	serial = p2p_discord_join_request(name, sizeof(name), NULL);
+	if (!serial)
+	{
+		serial = p2p_friends_invite_prompt(NULL, 0);
+		ask_is_friends = serial != 0;
+	}
+	return serial;
+}
+
+static void ask_answer(unsigned long serial, int accept)
+{
+	if (ask_is_friends)
+		p2p_friends_answer(serial, accept);
+	else
+		p2p_discord_answer(serial, accept);
 }
 
 static void input_take(struct platform_input_state *input, int code)
@@ -1037,12 +1058,12 @@ static void discord_ask_keys(struct platform_input_state *input, unsigned long s
 		accept = accept || input_held(input, bindings[HALO_KEYBOARD_PARTY_ACCEPT][slot]);
 	if (serial && accept && !accept_held)
 	{
-		p2p_discord_answer(serial, 1);
+		ask_answer(serial, 1);
 		accept_taken = TRUE;
 	}
 	else if (serial && decline && !decline_held)
 	{
-		p2p_discord_answer(serial, 0);
+		ask_answer(serial, 0);
 		decline_taken = TRUE;
 	}
 	accept_held = accept;
@@ -1068,12 +1089,12 @@ static void discord_ask_pad(SDL_Gamepad *gamepad, unsigned long serial, XINPUT_G
 
 	if (serial && accept && !accept_held)
 	{
-		p2p_discord_answer(serial, 1);
+		ask_answer(serial, 1);
 		accept_taken = TRUE;
 	}
 	else if (serial && decline && !decline_held)
 	{
-		p2p_discord_answer(serial, 0);
+		ask_answer(serial, 0);
 		decline_taken = TRUE;
 	}
 	accept_held = accept;

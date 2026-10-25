@@ -334,9 +334,23 @@ static struct
 
 /* ---------- settings */
 
+/* a matchmaking game's bots (bots_set_matchmaking): how many, and the most
+players and bots they fill it to; NONE: the settings' */
+static struct
+{
+	long count;
+	long fill_to;
+} bots_matchmaking = { NONE, 0 };
+
+void bots_set_matchmaking(long count, long fill_to)
+{
+	bots_matchmaking.count = count < 0 ? NONE : count;
+	bots_matchmaking.fill_to = fill_to;
+}
+
 long bots_wanted_count(void)
 {
-	long count = config_integer("bots.count");
+	long count = bots_matchmaking.count != NONE ? bots_matchmaking.count : config_integer("bots.count");
 
 	return count < 0 ? 0 : count > BOTS_MAXIMUM ? BOTS_MAXIMUM : count;
 }
@@ -361,12 +375,12 @@ short bots_teams(void)
 
 int bots_make_room(void)
 {
-	return config_boolean("bots.make_room") != 0;
+	return bots_matchmaking.count != NONE || config_boolean("bots.make_room") != 0;
 }
 
 long bots_fill_to(void)
 {
-	long count = config_integer("bots.fill_to");
+	long count = bots_matchmaking.count != NONE ? bots_matchmaking.fill_to : config_integer("bots.fill_to");
 
 	return count < 2 ? 2 : count > HALO_PORT_MAXIMUM_NETWORK_PLAYERS ? HALO_PORT_MAXIMUM_NETWORK_PLAYERS : count;
 }

@@ -142,6 +142,10 @@ void p2p_set_game_listing_standard(int standard, int mixed, int rate);
 /* ... and the bots its host plays (port/linux/game/bots.c), which the
 players' count (p2p_set_game_player_counts) leaves out */
 void p2p_set_game_bots(int count);
+/* ... and the matchmaking playlist it was hosted for (port/linux/game/
+matchmaking_menu.inc's; 0: none, a game of its own), which the browsers of
+those looking for a game of the playlist find it by */
+void p2p_set_game_listing_playlist(int playlist);
 /* the server browser: while on, the public games are gathered (asked for
 when turned on, and by p2p_lobby_refresh) */
 void p2p_lobby_browse(int on);
@@ -184,6 +188,8 @@ struct p2p_listing
 	(port/linux/game/network_party.c): an OpenH1 game of a build that does,
 	which this one joins as an OpenH1 game */
 	unsigned char holds_party;
+	/* the matchmaking playlist it was hosted for (an OpenH1 game's; 0: none) */
+	unsigned char playlist;
 	/* joining it failed this run (p2p_lobby_mark_failed) */
 	unsigned char failed;
 	/* milliseconds, -1 if not known */
@@ -497,6 +503,28 @@ int p2p_party_follow(char *invite, int size, unsigned long *order);
 void p2p_party_follow_result(unsigned long order, int result);
 /* the leader's game asked to be joined again (JOIN LEADER) */
 void p2p_party_follow_again(void);
+/* hosting for the party (matchmaking: port/linux/game/matchmaking_menu.inc).
+How well this machine can host a game now, which a member's STATE tells its
+leader (_p2p_party_host_*: each frame, the same again costing little) */
+enum
+{
+	/* not now (in a game, or not in the menus), or not known (a build
+	that does not say) */
+	_p2p_party_host_unable,
+	/* a strict NAT: some players will not reach it */
+	_p2p_party_host_strict,
+	_p2p_party_host_open,
+};
+void p2p_party_set_host_quality(int quality);
+/* a leader that would host a game for the party (of the matchmaking
+playlist, 1 to 255): the lead passed to the member that can host best, if
+one can better than this machine (it then leads and hosts, and this machine
+follows it): nonzero if it was; 0 (this machine hosts) if none can, or this
+machine leads none */
+int p2p_party_pass_host(int playlist);
+/* the playlist this machine was asked to host a game of, as its party's new
+leader, once (0: none) */
+int p2p_party_take_host_request(void);
 /* the party's other members, if this machine leads it: the hash of each
 one's tunnel key (P2P_PLAYER_KEY_HASH_SIZE bytes each, into hashes: the
 X25519 form of its party key, the key a game's host knows it by,
@@ -504,5 +532,148 @@ p2p_peer_key_hash), of those listed and of this network version, at most
 maximum_count; returns their count (0 leading no one, or not leading) */
 int p2p_party_member_key_hashes(unsigned char *hashes, int maximum_count);
 void p2p_party_status(struct p2p_party_status *status);
+
+/* ---- friends (p2p_friends.c): a player profile's lasting friends, by
+friend code, their online status (each shares it with its friends alone),
+and the players of its recent games (port/linux/game/friends_menu.inc is the
+menus' side). Each profile has a key of its own, in friends.txt in its
+folder; its code is its key's hash */
+
+enum
+{
+	P2P_FRIENDS_MAXIMUM = 64,
+	/* requests waiting, requests sent, codes blocked, recent players */
+	P2P_FRIENDS_REQUESTS = 16,
+	P2P_FRIENDS_SENT = 16,
+	P2P_FRIENDS_BLOCKED = 32,
+	P2P_FRIENDS_RECENT = 50,
+	P2P_FRIENDS_LIST_MAXIMUM = P2P_FRIENDS_MAXIMUM + P2P_FRIENDS_REQUESTS + P2P_FRIENDS_SENT + P2P_FRIENDS_RECENT +
+		P2P_FRIENDS_BLOCKED,
+	/* a code (55 bits), and its text ("K7QM-2XPA-9DTR") with its end */
+	P2P_FRIEND_CODE_BYTES = 7,
+	P2P_FRIEND_CODE_TEXT_SIZE = 15,
+	/* a name (printable ASCII) and a game's words (UTF-8), with their ends */
+	P2P_FRIEND_NAME_SIZE = 16,
+	P2P_FRIEND_GAME_SIZE = 64,
+};
+
+/* what an entry of the list is, in the list's order: a friend online, a
+request to this profile, a friend offline, a request this profile sent, a
+recent player, a code blocked. As a relation (p2p_friends_relation), a
+friend is _p2p_friend_online, online or not */
+enum
+{
+	_p2p_friend_online,
+	_p2p_friend_request,
+	_p2p_friend_offline,
+	_p2p_friend_sent,
+	_p2p_friend_recent,
+	_p2p_friend_blocked,
+	_p2p_friend_none,
+	/* this profile's own code, or no profile */
+	_p2p_friend_self,
+};
+
+struct p2p_friend
+{
+	int kind;
+	unsigned char code[P2P_FRIEND_CODE_BYTES];
+	char name[P2P_FRIEND_NAME_SIZE];
+	/* a friend online: where (_p2p_party_place_*), hosting, playing (its
+	game under way), its party's size (0: none), its game's players and
+	most, whether JOIN reaches it, and whether its invite waits */
+	unsigned char place, hosting, playing, party_count, players, maximum_players, joinable, inviting;
+	/* a recent player: it has a code (not an OpenCE player's, nor an older
+	build's), it is OpenCE's, and what it is to this profile (_p2p_friend_*) */
+	unsigned char has_code, opence, relation;
+	/* seconds since 1970: a friend's added, a request's, a recent player's
+	seen */
+	long long time;
+	/* a friend online's game, a recent player's (UTF-8) */
+	char game[P2P_FRIEND_GAME_SIZE];
+};
+
+/* the profile's: it has an identity (a profile), its code and name, a
+broker is connected, its presence is shared; its friends, those online, the
+requests waiting */
+struct p2p_friends_state
+{
+	int identity;
+	char code[P2P_FRIEND_CODE_TEXT_SIZE];
+	char name[P2P_FRIEND_NAME_SIZE];
+	int connected, sharing;
+	int friends, online, requests;
+};
+
+/* what the toasts say (port/linux/game/network_party.c) */
+enum
+{
+	_p2p_friends_notice_online,
+	_p2p_friends_notice_request,
+	_p2p_friends_notice_accepted,
+};
+
+struct p2p_friends_notice
+{
+	unsigned long serial;
+	int kind;
+	char name[P2P_FRIEND_NAME_SIZE];
+};
+
+/* how an action went */
+enum
+{
+	_p2p_friends_done,
+	_p2p_friends_no_profile,
+	_p2p_friends_self,
+	_p2p_friends_already,
+	_p2p_friends_full,
+};
+
+/* a code as its text ("K7QM-2XPA-9DTR"; size at least
+P2P_FRIEND_CODE_TEXT_SIZE), and the code of a text: 1, 0 if it is none, -1
+if its check character is wrong (a mistyped code) */
+int p2p_friend_code_format(const unsigned char *code, char *text, int size);
+int p2p_friend_code_parse(const char *text, unsigned char *code);
+/* the profile whose friends these are: its folder (where friends.txt is;
+empty: none) and its player's name, each frame (the same again costing
+little); another folder is read (a new identity made in it if it has none) */
+void p2p_friends_set_profile(const char *folder, const char *name);
+/* the profile's code: 0 if there is no profile */
+int p2p_friends_own_code(unsigned char *code);
+/* the code another friends.txt says it has (a test's: debug.friends): 0 if
+it says none */
+int p2p_friends_code_in_file(const char *path, unsigned char *code);
+void p2p_friends_state(struct p2p_friends_state *state);
+/* the list, in its order; returns its count */
+int p2p_friends_list(struct p2p_friend *entries, int maximum);
+/* what a code is to the profile (_p2p_friend_*) */
+int p2p_friends_relation(const unsigned char *code);
+/* a friend request to a code (its player's name, if known), or its request
+accepted (_p2p_friends_*) */
+int p2p_friends_add(const unsigned char *code, const char *name);
+/* a request turned down (not shown again); a request sent taken back; a
+friend removed (on both sides); a code blocked (a friend removed, its
+requests and invites let go: 0 if it cannot be, its own) and unblocked */
+void p2p_friends_ignore(const unsigned char *code);
+void p2p_friends_cancel(const unsigned char *code);
+void p2p_friends_remove(const unsigned char *code);
+int p2p_friends_block(const unsigned char *code, const char *name);
+void p2p_friends_unblock(const unsigned char *code);
+/* joins a friend's party (its invite's, else the one its presence offers:
+its own, or the one made for it as the friend joins): 0 if none; invites a
+friend to this machine's party (one made if none): 0 if not sent */
+int p2p_friends_join(const unsigned char *code);
+int p2p_friends_invite(const unsigned char *code);
+/* a player of a network game this machine is in (its code, NULL if it has
+none; an OpenCE player's), and the game's words (NULL: as Discord's
+activity has them), for the recent players */
+void p2p_friends_saw_player(const unsigned char *code, const char *name, int opence, const char *game);
+/* the newest notice: 0 if none */
+int p2p_friends_notice(struct p2p_friends_notice *latest);
+/* a friend's invite to its party not answered yet, the oldest: its serial
+(0: none) and the friend's name; and the answer, joining or not */
+unsigned long p2p_friends_invite_prompt(char *name, int size);
+void p2p_friends_answer(unsigned long serial, int accept);
 
 #endif

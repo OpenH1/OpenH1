@@ -487,6 +487,10 @@ def copy_environment(copy, address, broadcast, test, seed, args, extra):
         "HALO_EXIT_AFTER": str(args.start + args.skip + args.seconds + 120),
         "SDL_AUDIO_DRIVER": "dummy",
     })
+    port = getattr(args, "port", 0)
+    if port:
+        # (the game's port, the host's and its clients' alike: --port)
+        environment["HALO_NET_PORT"] = str(port)
     if args.events:
         # hits every few seconds (each machine's player the next player)
         # and a kill now and then (the host's), so that damage, deaths,
@@ -982,6 +986,9 @@ def main():
     parser.add_argument("--swap", action="store_true", help="also play each map with B hosting and A joining")
     parser.add_argument("--repeat", type=int, default=1, help="play each game this many times")
     parser.add_argument("--seed", type=int, default=1, help="the bots' first seed (each run its own)")
+    parser.add_argument("--port", type=int, default=0,
+                        help="the copies' network.port (HALO_NET_PORT; the clients' is the next), so that the run "
+                             "keeps off another game's ports on this computer (0: the game's, 5150)")
     parser.add_argument("--address-base", default="127.0.0.210",
                         help="the host's loopback address; the client takes the next")
     parser.add_argument("--client-address", action="append", default=[], metavar="ADDRESS",
@@ -1030,6 +1037,8 @@ def main():
         parser.error("--opence is for a --mixed game")
     if set(args.opence.upper().replace(" ", "").split(",")) - {"", "B", "C"}:
         parser.error("--opence names the joining copies, B and C")
+    if args.port and not 1024 <= args.port <= 65534:
+        parser.error("--port: 1024 to 65534, as network.port")
     stop_on_signals()
     try:
         return play_all(args, tolerances)

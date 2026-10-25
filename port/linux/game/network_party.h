@@ -20,6 +20,9 @@ enum
 	_network_party_action_join,
 	/* accept their invite, or let them in (they asked) */
 	_network_party_action_accept,
+	/* send them a friend request (an OpenH1 player who told its friend code,
+	not a friend yet: port/linux/src/p2p_friends.c) */
+	_network_party_action_add_friend,
 	NUMBER_OF_NETWORK_PARTY_ACTIONS
 };
 

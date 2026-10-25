@@ -151,10 +151,11 @@ def test_settings_layout(aspect, folder, root, tab):
 def test_hub_layout(aspect):
     """Multiplayer on the computer: its items under their sections from the screen's left, its panel beside them to
     its right, what the panel shows in it (the counts, the best games' names before their players and pings), the
-    footer's prompts at the screen's edges; on the screen, none over another; its title moved with its items."""
+    footer's prompts at the screen's edges, the items above them; on the screen, none over another; its title moved
+    with its items."""
     width = WIDTHS[aspect]
     area = inner(width)
-    for root, page_items in ((f"{MT}/multiplayer_type_select_screen", 8), (f"{MT}/hub/create_screen", 2),
+    for root, page_items in ((f"{MT}/multiplayer_type_select_screen", 10), (f"{MT}/hub/create_screen", 2),
                              (f"{MT}/hub/coop_screen", 2)):
         boxes = layout(root, width)
         items = [box for box in boxes if box.name.startswith("hub_") and box.path[-1].endswith("_list")
@@ -177,8 +178,65 @@ def test_hub_layout(aspect):
         for box in prompts:
             assert box.inside(area), box
         _check_apart(prompts, "prompts")
+        for box in items:
+            assert box.y1 <= min(prompt.y0 for prompt in prompts) - 4, f"{box} reaches the footer"
         title = one(boxes, "header_multiplayer")
         assert title.x0 - items[0].x0 == 35 - port_settings.HUB_LIST_X
+
+
+@pytest.mark.parametrize("aspect", WIDTHS)
+def test_friends_layout(aspect):
+    """The Friends screen, laid out as Multiplayer is: its rows (each note in its row) under their section from the
+    screen's left, apart, above the footer, the panel beside them to its right with its words in it, its footer's
+    prompts on the screen and, of those one row shows at once, none over another."""
+    width = WIDTHS[aspect]
+    area = inner(width)
+    boxes = layout(f"{MT}/friends/friends_screen", width)
+    panel = one(boxes, "friends_panel")
+    section = one(boxes, "section_friends")
+    assert panel.inside(area) and section.inside(area) and section.x1 + 8 <= panel.x0
+    rows = [one(boxes, f"fr_row_{row}") for row in range(port_settings.FRIENDS_ROWS)]
+    prompts = {box.name: box for box in boxes if box.name.startswith("prompt_")}
+    for row, box in enumerate(rows):
+        assert box.inside(area) and box.x0 >= section.x0 and box.x1 <= section.x1 and box.x1 + 8 <= panel.x0, box
+        assert one(boxes, f"fr_note_{row}").inside(box) and one(boxes, f"fr_live_{row}").inside(box), row
+        assert box.y1 <= min(prompt.y0 for prompt in prompts.values()) - 4, f"{box} reaches the footer"
+    _check_apart(rows, "rows")
+    for box in boxes:
+        if box.path and box.path[-1] == "friends_panel":
+            assert box.inside(panel), f"{box} is out of the panel {panel}"
+    for box in prompts.values():
+        assert box.inside(area), box
+    # (the prompts each kind of row shows: friends_menu.inc's friends_prompts_of)
+    for shown in (["copy", "code", "hide"], ["copy", "code", "show"], ["join", "invite", "remove"],
+                  ["accept", "ignore", "block"], ["cancel"], ["add", "block"], ["unblock"]):
+        _check_apart([prompts[f"prompt_{name}"] for name in shown] + [prompts["prompt_back"]], f"prompts {shown}")
+
+
+@pytest.mark.parametrize("aspect", WIDTHS)
+def test_matchmaking_layout(aspect):
+    """The Matchmaking screen, laid out as Multiplayer is: its playlists' rows (each note in its row) under their
+    section from the screen's left, apart, the panel beside them to its right with its words in it, its footer's
+    prompts at the screen's edges; on the screen, none over another."""
+    width = WIDTHS[aspect]
+    area = inner(width)
+    boxes = layout(f"{MT}/matchmaking/matchmaking_screen", width)
+    panel = one(boxes, "matchmaking_panel")
+    section = one(boxes, "section_matchmaking")
+    assert panel.inside(area) and section.inside(area) and section.x1 + 8 <= panel.x0
+    rows = [one(boxes, f"mm_row_{row}") for row in range(port_settings.MATCHMAKING_ROWS)]
+    for row, box in enumerate(rows):
+        assert box.inside(area) and box.x0 >= section.x0 and box.x1 <= section.x1 and box.x1 + 8 <= panel.x0, box
+        assert one(boxes, f"mm_note_{row}").inside(box), row
+    _check_apart(rows, "rows")
+    for box in boxes:
+        if box.path and box.path[-1] == "matchmaking_panel":
+            assert box.inside(panel), f"{box} is out of the panel {panel}"
+    prompts = [box for box in boxes if box.name.startswith("prompt_")]
+    for box in prompts:
+        assert box.inside(area), box
+    for left in ("prompt_search", "prompt_cancel"):
+        assert one(boxes, left).x0 - usable(width).x0 == 28
 
 
 @pytest.mark.parametrize("aspect", WIDTHS)

@@ -45,6 +45,14 @@ each run by its name:
   room by): each the hash of the X25519 key the machine reaches a host with,
   as p2p.c makes it from its seed, in the roster's order; a member of
   another version left out; none named by a member, nor by a leader alone;
+- host: hosting for the party (matchmaking): each member tells how well
+  it can host now; the leader passes the lead to the member that can host
+  best, if better than itself (p2p_party_pass_host), which then leads (a
+  term higher) and is asked to host the playlist once
+  (p2p_party_take_host_request), the others following it; none passed when
+  no member can host better, to a member that cannot host any more, nor by
+  a member; a STATE without the byte (an older build's) is a member unable
+  to host;
 - spare: the party Discord offers out of a party (p2p_party_spare): the
   same link and id until it is made, its id the party's topic's digits (not
   the link's); a friend with its link is not answered while its topic is not
@@ -826,8 +834,10 @@ static void case_format(void)
 		"its roster of three, then the signature");
 	/* a member's: no game nor roster */
 	size = opened_state(1, message);
-	check(message[HEADER_SIZE] == _state_listed && size == HEADER_SIZE + STATE_FIXED_SIZE + 2 + P2P_SIGNATURE_SIZE,
+	check(message[HEADER_SIZE] == _state_listed && size == HEADER_SIZE + STATE_FIXED_SIZE + 3 + P2P_SIGNATURE_SIZE,
 		"a member's STATE has no game nor roster");
+	check(message[size - P2P_SIGNATURE_SIZE - 1] == _p2p_party_host_unable,
+		"but how well it can host, after its name (not told yet: unable)");
 
 	/* what is turned away (B listening) */
 	switch_to(0);
@@ -917,7 +927,9 @@ static void case_format(void)
 		int claim_size = opened_state(2, claim) - P2P_SIGNATURE_SIZE;
 		unsigned char id[MEMBER_ID_SIZE];
 
-		/* (made a leader's, of term 0: its game none, its roster empty) */
+		/* (made a leader's, of term 0: its game none, its roster empty; a
+		member's host quality, after its name, is not a leader's) */
+		claim_size -= 1;
 		member_id(machines[2].key, id);
 		claim[HEADER_SIZE] = _state_leads | _state_listed;
 		put_long(claim + HEADER_SIZE + 1, 0);
@@ -1109,6 +1121,90 @@ static void case_keys(void)
 	check(p2p_party_member_key_hashes(hashes, P2P_PARTY_MAXIMUM_MEMBERS) == 0, "a leader alone names no one");
 }
 
+static void quality(int index, int value)
+{
+	switch_to(index);
+	p2p_party_set_host_quality(value);
+}
+
+static void case_host(void)
+{
+	struct p2p_party_status status;
+	unsigned char id[MEMBER_ID_SIZE];
+	int index;
+
+	party_of(4);
+	quality(0, _p2p_party_host_strict);
+	quality(1, _p2p_party_host_strict);
+	quality(2, _p2p_party_host_open);
+	quality(3, _p2p_party_host_open);
+	run(1000);
+	/* (an ask to host from a member, not the leader: not taken) */
+	member_id(machines[1].key, id);
+	switch_to(3);
+	send_host(id, 2);
+	run(1500);
+	status_of(1, &status);
+	check(!strcmp(status.leader_name, "A"), "an ask to host from a member is not taken");
+	switch_to(1);
+	check(!p2p_party_pass_host(1), "a member passes no lead");
+	switch_to(0);
+	check(!p2p_party_pass_host(0), "nor a leader for no playlist");
+	check(p2p_party_pass_host(3), "a leader of a strict network passes the lead to one that can host better");
+	run(1500);
+	for (index = 0; index < 4; index++)
+	{
+		status_of(index, &status);
+		check(!strcmp(status.leader_name, "C"), "the first on the roster of the best, C, leads now");
+	}
+	switch_to(2);
+	check(party.term == 2, "a term higher");
+	check(p2p_party_take_host_request() == 3, "and is asked to host the playlist");
+	check(p2p_party_take_host_request() == 0, "once");
+	switch_to(3);
+	check(p2p_party_take_host_request() == 0, "the others are not asked");
+	switch_to(0);
+	check(p2p_party_take_host_request() == 0 && !party.host_request, "nor the old leader");
+	/* (C leads: none can host better than C) */
+	switch_to(2);
+	check(!p2p_party_pass_host(3), "none passed when no member can host better");
+	/* a member that can no longer host (in a game) when asked: not taken */
+	quality(2, _p2p_party_host_strict);
+	quality(0, _p2p_party_host_open);
+	run(1000);
+	quality(0, _p2p_party_host_unable);
+	switch_to(2);
+	check(p2p_party_pass_host(1), "passed to A, which told it could host");
+	run(1500);
+	status_of(1, &status);
+	check(!strcmp(status.leader_name, "C"), "A, unable now, did not take the lead");
+	switch_to(0);
+	check(p2p_party_take_host_request() == 0, "nor was it asked to host");
+	/* an older build's STATE (no host byte): unable to host */
+	switch_to(1);
+	send_state();
+	{
+		unsigned char message[600], sealed[700];
+		int size = p2p_open(party.seal, last_sealed, last_sealed_size, message) - P2P_SIGNATURE_SIZE;
+		int sealed_size;
+
+		message[size - 1] = _p2p_party_host_open;
+		put_long(message + 35, get_long(message + 35) + 10);
+		sealed_size = sealed_message(1, message, size - 1, NULL, sealed);
+		switch_to(2);
+		p2p_party_heard(sealed, sealed_size);
+		member_id(machines[1].key, id);
+		check(find_member(id) && find_member(id)->host_quality == _p2p_party_host_unable,
+			"a STATE without how well it can host is a member unable to");
+		/* (and with it, the byte read) */
+		put_long(message + 35, get_long(message + 35) + 1);
+		sealed_size = sealed_message(1, message, size, NULL, sealed);
+		switch_to(2);
+		p2p_party_heard(sealed, sealed_size);
+		check(find_member(id) && find_member(id)->host_quality == _p2p_party_host_open, "a member's byte is read");
+	}
+}
+
 static const struct
 {
 	const char *name;
@@ -1130,6 +1226,7 @@ static const struct
 	{ "format", case_format },
 	{ "version", case_version },
 	{ "keys", case_keys },
+	{ "host", case_host },
 	{ "spare", case_spare },
 };
 
