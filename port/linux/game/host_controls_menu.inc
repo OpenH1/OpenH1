@@ -632,26 +632,33 @@ static void host_buttons_show(struct widget_instance *list, struct host_controls
 		switch (action)
 		{
 		case _host_controls_kick:
-			usnprintf(text, NUMBEROF(text) - 1, L"%%a-button KICK");
+			usnprintf(text, NUMBEROF(text) - 1, L"KICK");
 			break;
 		case _host_controls_ban:
-			usnprintf(text, NUMBEROF(text) - 1, host_confirming(_host_controls_ban) ? L"%%a-button CONFIRM BAN" :
-				L"%%a-button BAN");
+			usnprintf(text, NUMBEROF(text) - 1, host_confirming(_host_controls_ban) ? L"CONFIRM BAN" : L"BAN");
 			break;
 		case _host_controls_move_team:
-			usnprintf(text, NUMBEROF(text) - 1, player && player->team == 1 ? L"%%a-button MOVE TO RED" :
-				L"%%a-button MOVE TO BLUE");
+			usnprintf(text, NUMBEROF(text) - 1, player && player->team == 1 ? L"MOVE TO RED" : L"MOVE TO BLUE");
 			break;
 		case _host_controls_mute:
 			usnprintf(text, NUMBEROF(text) - 1, player && network_chat_host_mute_minutes(
-				(short)DATUM_INDEX_TO_ABSOLUTE_INDEX(player->player_index)) ? L"%%a-button UNMUTE ALL" :
-				L"%%a-button MUTE FOR ALL");
+				(short)DATUM_INDEX_TO_ABSOLUTE_INDEX(player->player_index)) ? L"UNMUTE FOR ALL" : L"MUTE FOR ALL");
 			break;
 		case _host_button_unban:
-			usnprintf(text, NUMBEROF(text) - 1, L"%%a-button UNBAN");
+			usnprintf(text, NUMBEROF(text) - 1, L"UNBAN");
 			break;
 		default:
 			break;
+		}
+		/* (the confirm key's prompt on the button with the focus alone, as
+		the device in use has it: ui_widget.c) */
+		if (text[0] && button && button == list->focused_child)
+		{
+			wchar_t words[64];
+
+			ustrncpy(words, text, NUMBEROF(words) - 1);
+			words[NUMBEROF(words) - 1] = 0;
+			usnprintf(text, NUMBEROF(text) - 1, L"%%a-button %s", words);
 		}
 		text[NUMBEROF(text) - 1] = 0;
 		text_set(button, text);

@@ -64,6 +64,10 @@ enum
 	MAXIMUM_HOST_CONTROLS_BANS = 128,
 };
 
+/* the world behind Host Controls, dimmed (pixel32: black, three quarters
+over it) */
+#define NETWORK_HOST_CONTROLS_BACKDROP 0xC0000000
+
 /* ---------- structures */
 
 /* who looks: whether Host Controls is this machine's */
@@ -200,6 +204,9 @@ boolean network_host_controls_open(long player_index, short tab);
 Players) and a player chosen by their name's start; or "end" and "restart",
 Game's End game now and Restart round; or "unban <players or address>" */
 boolean network_host_controls_open_command(char const *text);
+/* whether Host Controls is shown now (its update ran a moment ago): the
+HUD hidden under it, the world dimmed (interface.c) */
+boolean network_host_controls_shown(void);
 /* (the screen's update, each frame) the player (NONE: none) and tab an
 opening asked for, taken once; FALSE: none asked */
 boolean network_host_controls_take_opening(long *player_index, short *tab);

@@ -460,7 +460,8 @@ END GAME ends the game as its time limit does: the players stay, and after
 the carnage report the host picks the next map and gametype (PICK GAME).
 
 HOST CONTROLS is the host's of a network game (internet or LAN), laid out as
-the server browser is, with three tabs:
+the server browser is, over the game dimmed and without its HUD, with three
+tabs:
 
 - PLAYERS: everyone in the game, with their team, score, ping and a tag
   (HOST, BOT, OPENH1 or OPENCE; in a Legacy game the host cannot tell OpenH1's

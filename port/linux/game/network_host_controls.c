@@ -650,7 +650,7 @@ boolean network_host_controls_open(
 	host_controls.opening_player = player_index;
 	host_controls.opening_tab = tab;
 	/* (one shown takes the opening's tab and player as it is) */
-	if (host_controls.screen_time && system_milliseconds() - host_controls.screen_time < HOST_CONTROLS_SHOWN_TIME)
+	if (network_host_controls_shown())
 		return TRUE;
 	/* (the first local player's, whose keyboard and mouse the scoreboard's
 	menu and the console are) */
@@ -743,6 +743,13 @@ boolean network_host_controls_open_command(
 		}
 	}
 	return network_host_controls_open(chosen, tab);
+}
+
+boolean network_host_controls_shown(
+	void)
+{
+	return host_controls.screen_time && system_milliseconds() - host_controls.screen_time < HOST_CONTROLS_SHOWN_TIME &&
+		network_host_controls_available();
 }
 
 boolean network_host_controls_take_opening(
