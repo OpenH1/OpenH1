@@ -21,6 +21,7 @@ final class TouchLayout {
     /** the kinds of control: a button of TouchControls's list, by index */
     static final int WHITE = 8;
     static final int BLACK = 9;
+    static final int PAUSE = 10;
     static final int LEFT = 16;
     static final int FIRE_LEFT = 17;
     static final int BASE_COUNT = 18;
@@ -80,6 +81,9 @@ final class TouchLayout {
     private static final float PORTRAIT_LOWER_PART = 90;
     /** the space between the picture and the default controls under it, at the least */
     private static final float PICTURE_MARGIN = 10;
+    /** portrait, the picture behind the strip: pause and the toolbar's hide this far either side of the strip's
+     * middle, clear of the HUD's top corners (the ammunition at the left, the shields at the right) */
+    static final float GATHERED_APART = 40;
     static final float LEFT_PART = 240;
     static final float RIGHT_PART = 300;
     private static final int MAX_FILE_LENGTH = 65536;
@@ -163,6 +167,8 @@ final class TouchLayout {
     private float minimumRadius;
     /** portrait: the display's top inset (a camera's cutout), in logical units, which the strip stays under */
     private float topInset;
+    /** portrait: the picture is behind the strip, pause in its middle (setPictureTop) */
+    private boolean gathered;
 
     boolean rumbleEnabled = true;
     boolean gyroscopeEnabled = false;
@@ -227,6 +233,17 @@ final class TouchLayout {
     /** the bottom of the portrait strip, in logical units: the picture's highest top */
     float stripBottom() {
         return topInset + PORTRAIT_STRIP;
+    }
+
+    /** portrait: where the picture's top is, in logical units; above the strip's bottom, pause moves to the strip's middle */
+    void setPictureTop(float top) {
+        gathered = portrait && top < stripBottom() - 0.5f;
+        keepAllInside();
+    }
+
+    /** portrait: whether the picture is behind the strip, pause and the toolbar's hide in its middle */
+    boolean stripGathered() {
+        return gathered;
     }
 
     /** the height of the game's picture across a portrait display this wide: 480 lines of 640 columns (4:3) or 852 (16:9), as the game makes it */
@@ -387,7 +404,7 @@ final class TouchLayout {
 
     /** a place on this layout's grid on the display, each way, and back */
     private float displayX(int type, float placeX) {
-        return portrait ? edgeKept(placeX, width, PORTRAIT_GRID_WIDTH, LEFT_PART, RIGHT_PART)
+        return portrait ? edgeKept(placeX, width, PORTRAIT_GRID_WIDTH, LEFT_PART, RIGHT_PART) + gatherShift(type)
             : placeX * width / GRID_WIDTH + tallShift(type, height, 0);
     }
 
@@ -397,7 +414,7 @@ final class TouchLayout {
     }
 
     private float gridX(int type, float x) {
-        return portrait ? edgeKeptBack(x, width, PORTRAIT_GRID_WIDTH, LEFT_PART, RIGHT_PART)
+        return portrait ? edgeKeptBack(x - gatherShift(type), width, PORTRAIT_GRID_WIDTH, LEFT_PART, RIGHT_PART)
             : Math.max(0, Math.min(GRID_WIDTH, (x - tallShift(type, height, 0)) * GRID_WIDTH / width));
     }
 
@@ -456,6 +473,14 @@ final class TouchLayout {
         y -= tallShift(type, height, 1);
         return Math.max(0, type == WHITE || type == BLACK ? edgeKeptBack(y, height, GRID_HEIGHT, 0, WHITE_BLACK_ROW)
             : gridY(y, height));
+    }
+
+    /** portrait: how far pause moves across, from its place, to the strip's middle with the picture behind the strip; else 0 */
+    private float gatherShift(int type) {
+        if (!gathered || type != PAUSE)
+            return 0;
+        return width / 2 - GATHERED_APART
+            - edgeKept(PORTRAIT_DEFAULTS[PAUSE][0], width, PORTRAIT_GRID_WIDTH, LEFT_PART, RIGHT_PART);
     }
 
     /**

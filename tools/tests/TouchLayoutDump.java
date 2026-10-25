@@ -21,7 +21,6 @@ public final class TouchLayoutDump {
         layout.bounds(width / scale, height / scale);
         layout.setMinimumRadius(Math.min(24 * density / scale, TouchLayout.MAX_MINIMUM_RADIUS));
         float toolbar = layout.portrait ? layout.stripBottom() - TouchLayout.PORTRAIT_STRIP / 2 : 38;
-        float hide = layout.portrait ? width / scale - 42 - 70 : width / scale / 2;
         // (TouchControls.placePicture: whole pixels)
         boolean wide = args.length > 3 && args[3].equals("16:9");
         float top = -1, bottom = -1;
@@ -31,7 +30,10 @@ public final class TouchLayoutDump {
             pixels = Math.max(0, Math.min(pixels, (int) height - pictureHeight));
             top = pixels / scale;
             bottom = (pixels + pictureHeight) / scale;
+            layout.setPictureTop(top);
         }
+        float hide = !layout.portrait ? width / scale / 2
+            : layout.stripGathered() ? width / scale / 2 + TouchLayout.GATHERED_APART : width / scale - 42 - 70;
         System.out.println(scale + " " + width / scale + " " + height / scale + " " + 24 * density / scale + " "
             + toolbar + " " + hide + " " + top + " " + bottom);
         for (int i = 0; i < layout.size(); i++) {

@@ -605,6 +605,7 @@ public final class TouchControls extends View implements SensorEventListener, In
             int height = getWidth() * 480 / (wide ? 852 : 640);
             top = Math.max(0, Math.min(top, getHeight() - height));
             pictureRect.set(0, top / scale, logicalWidth, (top + height) / scale);
+            layout.setPictureTop(top / scale);
             nativePictureTop(top);
         }
         frame = null;
@@ -628,9 +629,15 @@ public final class TouchControls extends View implements SensorEventListener, In
         return Math.max(38, insetTop / scale + 38);
     }
 
-    /** the toolbar's hide: in the middle, or in portrait beside the options (a camera's cutout is in the middle) */
+    /**
+     * the toolbar's hide: in the middle, or in portrait beside the options
+     * (a camera's cutout is in the middle), but with the picture behind the
+     * strip right of the middle, beside pause, off the HUD's shields
+     */
     private float hideX() {
-        return layout.portrait ? optionsX() - 70 : logicalWidth / 2;
+        if (layout.portrait)
+            return layout.stripGathered() ? logicalWidth / 2 + TouchLayout.GATHERED_APART : optionsX() - 70;
+        return logicalWidth / 2;
     }
 
     private float optionsX() {

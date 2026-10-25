@@ -309,6 +309,29 @@ public final class TouchLayoutTest {
                     else
                         check(top == Math.max(inset, lowest - 10 - high) && top < strip.stripBottom(),
                               "Without room the picture moves up as far as it must to clear the controls, to the top");
+                    // (and with the picture behind the strip, pause moves to its middle, off the HUD's
+                    // ammunition, and back to its place when the picture is lowered again; one dragged
+                    // there stays where it was put)
+                    TouchLayout plain = new TouchLayout(true);
+                    plain.bounds(display[0], display[1]);
+                    plain.setTopInset(inset);
+                    strip.setPictureTop(top);
+                    if (room >= 0)
+                        check(!strip.stripGathered() && strip.x(TouchLayout.PAUSE) == plain.x(TouchLayout.PAUSE),
+                              "Pause stays at its place with the picture under the strip");
+                    else
+                        check(strip.stripGathered()
+                              && strip.x(TouchLayout.PAUSE) == display[0] / 2 - TouchLayout.GATHERED_APART
+                              && strip.y(TouchLayout.PAUSE) == plain.y(TouchLayout.PAUSE),
+                              "Pause is in the strip's middle with the picture behind the strip");
+                    strip.move(TouchLayout.PAUSE, display[0] / 2 - 90, strip.y(TouchLayout.PAUSE));
+                    float dragged = strip.x(TouchLayout.PAUSE);
+                    strip.setPictureTop(strip.stripBottom());
+                    strip.setPictureTop(top);
+                    check(Math.abs(strip.x(TouchLayout.PAUSE) - dragged) < 0.01f, "A dragged pause stays where it was put");
+                    strip.setPictureTop(strip.stripBottom());
+                    check(!strip.stripGathered(), "A picture under the strip leaves pause at its place");
+                    strip.resetDefaults();
                     TouchLayout moved = new TouchLayout(true);
                     moved.bounds(display[0], display[1]);
                     moved.setTopInset(inset);
