@@ -487,6 +487,67 @@ static unsigned long p2p_party_tag(void)
 	return party_link[0] ? 0x1234ABCDUL : 0;
 }
 
+/* p2p_friends.c's: this machine's profile's code (none: no profile), what
+a code is to it, the requests sent, the players noted for the recent ones */
+static boolean own_has_code;
+static int friend_relation = _p2p_friend_none;
+static unsigned char friend_added[P2P_FRIEND_CODE_BYTES];
+static char friend_added_name[32];
+static short friends_added;
+static struct
+{
+	boolean coded;
+	unsigned char code[P2P_FRIEND_CODE_BYTES];
+	char name[16];
+	boolean opence;
+} seen_players[16];
+static short seen_count;
+
+static void own_code_of(unsigned char *code)
+{
+	memset(code, 0xC0, P2P_FRIEND_CODE_BYTES);
+}
+
+/* (a machine's player's code: each byte 0xC0 + the machine) */
+static void code_of_machine(long machine_index, unsigned char *code)
+{
+	memset(code, 0xC0 + (int)machine_index, P2P_FRIEND_CODE_BYTES);
+}
+
+static int p2p_friends_own_code(unsigned char *code)
+{
+	if (own_has_code)
+		own_code_of(code);
+	return own_has_code;
+}
+
+static int p2p_friends_relation(const unsigned char *code)
+{
+	(void)code;
+	return friend_relation;
+}
+
+static int p2p_friends_add(const unsigned char *code, const char *name)
+{
+	memcpy(friend_added, code, P2P_FRIEND_CODE_BYTES);
+	snprintf(friend_added_name, sizeof(friend_added_name), "%s", name);
+	friends_added++;
+	return _p2p_friends_done;
+}
+
+static void p2p_friends_saw_player(const unsigned char *code, const char *name, int opence, const char *game)
+{
+	(void)game;
+	if (seen_count >= 16)
+		return;
+	seen_players[seen_count].coded = code != NULL;
+	if (code)
+		memcpy(seen_players[seen_count].code, code, P2P_FRIEND_CODE_BYTES);
+	snprintf(seen_players[seen_count].name, sizeof(seen_players[seen_count].name), "%s", name);
+	seen_players[seen_count].opence = opence != 0;
+	seen_count++;
+}
+
 #include "under_test.inc"
 
 /* ---------- the test's game */
@@ -527,6 +588,10 @@ static void game(short as)
 	host_game.player_count = 5;
 	host_game.maximum_players = 16;
 	host_game.bots = 0;
+	own_has_code = FALSE;
+	friend_relation = _p2p_friend_none;
+	friends_added = 0;
+	seen_count = 0;
 	player_add(HOST_PLAYER, HOST_MACHINE, as == _game_connection_network_server, L"Hosty");
 	player_add(OPENH1_PLAYER, OPENH1_MACHINE, as == _game_connection_network_client, L"Keyes");
 	player_add(OTHER_PLAYER, OTHER_MACHINE, FALSE, L"Cortana");
@@ -1214,6 +1279,173 @@ static void case_holds(void)
 	}
 }
 
+/* a client's word with its player's friend code (flag: its friend code
+bit; the token carries the code) */
+static void status_told_code(long machine_index, short player_index, byte flags)
+{
+	struct distributed_party_request_message message;
+
+	request_make(&message, _distributed_message_party_up, _party_request_status, player_index, NO_PLAYER, flags, 0,
+		0);
+	code_of_machine(machine_index, message.request.token);
+	network_party_handle_message(machine_index, (word const *)&message, sizeof(message), TRUE);
+}
+
+/* the host's friends' list heard by the client: each player (absolute
+index) with its machine's code */
+static void client_hears_codes(short count, short const *player_indices, long const *machines, byte format,
+	boolean from_stream, short size_change)
+{
+	struct distributed_friend_players_message message;
+	short index;
+
+	memset(&message, 0, sizeof(message));
+	message.header.type = _distributed_message_friend_players;
+	message.header.count = (byte)count;
+	for (index = 0; index < count; index++)
+	{
+		message.players[index].format = format;
+		message.players[index].player_index = (byte)player_indices[index];
+		code_of_machine(machines[index], message.players[index].code);
+	}
+	network_party_handle_message(NONE, (word const *)&message,
+		(word)(sizeof(message.header) + count * sizeof(message.players[0]) + size_change), from_stream);
+}
+
+/* the player noted for the recent players by its name, NULL if none */
+static short seen_index(char const *name)
+{
+	short index;
+
+	for (index = 0; index < seen_count; index++)
+	{
+		if (!strcmp(seen_players[index].name, name))
+			return index;
+	}
+	return NONE;
+}
+
+/* friends: the host tells its OpenH1 machines that told it each player's
+friend code (each client's own in its status), Add friend offered for a
+player of a code not a friend, and the game's players noted for the recent
+players */
+static void case_friends(void)
+{
+	unsigned long add = FLAG(_network_party_action_add_friend);
+	unsigned char code[P2P_FRIEND_CODE_BYTES];
+	struct distributed_friend_players_message const *message;
+	short index;
+
+	/* (the host: the codes its machines told, to the machines that told it,
+	never an OpenCE one) */
+	game(_game_connection_network_server);
+	own_has_code = TRUE;
+	frame(PARTY_STATUS_MILLISECONDS + 1);
+	status_told_code(OPENH1_MACHINE, OPENH1_PLAYER, ONLINE | FLAG(_party_status_friend_code_bit));
+	status_told_code(OTHER_MACHINE, OTHER_PLAYER, ONLINE);
+	status_told_code(OPENCE_MACHINE, OPENCE_PLAYER, ONLINE | FLAG(_party_status_friend_code_bit));
+	sent_count = 0;
+	frame(PARTY_LIST_MILLISECONDS + 1);
+	CHECK(sent_to(OPENH1_MACHINE, _distributed_message_friend_players) == 1 &&
+		sent_to(OTHER_MACHINE, _distributed_message_friend_players) == 1, "the codes to the machines that told it");
+	CHECK(sent_to(OPENCE_MACHINE, _distributed_message_friend_players) == 0 &&
+		sent_to(OLDER_MACHINE, _distributed_message_friend_players) == 0, "never to an OpenCE or older machine");
+	for (index = 0; index < sent_count && sent[index].type != _distributed_message_friend_players; index++)
+		;
+	CHECK(index < sent_count && sent[index].type >= FIRST_OPENH1_DISTRIBUTED_MESSAGE, "one of OpenH1's own messages");
+	message = (struct distributed_friend_players_message const *)sent[index].bytes;
+	CHECK(sent[index].count == 2 && sent[index].size == sizeof(message->header) + 2 * sizeof(message->players[0]),
+		"the host's own player's code and the one told with its bit: %d", sent[index].count);
+	own_code_of(code);
+	CHECK(message->players[0].format == FRIEND_FORMAT && message->players[0].player_index == HOST_PLAYER &&
+		!memcmp(message->players[0].code, code, P2P_FRIEND_CODE_BYTES), "the host's own player's code");
+	code_of_machine(OPENH1_MACHINE, code);
+	CHECK(message->players[1].player_index == OPENH1_PLAYER &&
+		!memcmp(message->players[1].code, code, P2P_FRIEND_CODE_BYTES), "the client's, as its status told");
+	sent_count = 0;
+	frame(PARTY_LIST_MILLISECONDS + 1);
+	CHECK(sent_to(OPENH1_MACHINE, _distributed_message_friend_players) == 0, "not again, unchanged");
+	status_told_code(OTHER_MACHINE, OTHER_PLAYER, ONLINE | FLAG(_party_status_friend_code_bit));
+	frame(PARTY_LIST_MILLISECONDS + 1);
+	CHECK(sent_to(OPENH1_MACHINE, _distributed_message_friend_players) == 1, "again, changed");
+	/* (the host's scoreboard: Add friend for a coded player not a friend) */
+	CHECK(network_party_player_actions(datum(OTHER_PLAYER)) & add, "Add friend for a player of a code");
+	CHECK(!(network_party_player_actions(datum(OPENCE_PLAYER)) & add), "never for an OpenCE machine's player");
+	CHECK(!(network_party_player_actions(datum(OLDER_PLAYER)) & add), "nor one of no code");
+	CHECK(!(network_party_player_actions(datum(HOST_PLAYER)) & add), "nor this machine's own");
+	friend_relation = _p2p_friend_online;
+	CHECK(!(network_party_player_actions(datum(OTHER_PLAYER)) & add), "nor a friend");
+	friend_relation = _p2p_friend_sent;
+	CHECK(!(network_party_player_actions(datum(OTHER_PLAYER)) & add), "nor one asked already");
+	friend_relation = _p2p_friend_blocked;
+	CHECK(!(network_party_player_actions(datum(OTHER_PLAYER)) & add), "nor one blocked");
+	friend_relation = _p2p_friend_request;
+	CHECK(network_party_player_actions(datum(OTHER_PLAYER)) & add, "one who asked: its request accepted");
+	friend_relation = _p2p_friend_none;
+	network_party_player_act(datum(OTHER_PLAYER), _network_party_action_add_friend);
+	code_of_machine(OTHER_MACHINE, code);
+	CHECK(friends_added == 1 && !memcmp(friend_added, code, P2P_FRIEND_CODE_BYTES) &&
+		!strcmp(friend_added_name, "Cortana"), "Add friend asks for its code, with its name");
+	own_has_code = FALSE;
+	frame(PARTY_STATUS_MILLISECONDS + 1);
+	CHECK(!(network_party_player_actions(datum(OTHER_PLAYER)) & add), "no Add friend with no profile");
+	/* (a client: its code in its status; the list taken over the host's
+	stream alone, of its format and size) */
+	game(_game_connection_network_client);
+	own_has_code = TRUE;
+	sent_count = 0;
+	frame(PARTY_STATUS_MILLISECONDS + 1);
+	own_code_of(code);
+	CHECK(sent_count == 1 && (sent_request(0)->flags & FLAG(_party_status_friend_code_bit)) &&
+		!memcmp(sent_request(0)->token, code, P2P_FRIEND_CODE_BYTES), "its status tells its code");
+	{
+		static byte const none[PARTY_TOKEN_SIZE];
+
+		CHECK(!memcmp(sent_request(0)->token + P2P_FRIEND_CODE_BYTES, none, PARTY_TOKEN_SIZE - P2P_FRIEND_CODE_BYTES),
+			"and nothing else (never the party's link)");
+	}
+	{
+		short listed[] = { HOST_PLAYER, OTHER_PLAYER };
+		long machines[] = { HOST_MACHINE, OTHER_MACHINE };
+
+		client_hears_codes(2, listed, machines, FRIEND_FORMAT, FALSE, 0);
+		CHECK(!party_globals.codes[OTHER_PLAYER].has, "not from a datagram");
+		client_hears_codes(2, listed, machines, FRIEND_FORMAT, TRUE, -1);
+		CHECK(!party_globals.codes[OTHER_PLAYER].has, "nor of another size");
+		client_hears_codes(2, listed, machines, FRIEND_FORMAT + 1, TRUE, 0);
+		CHECK(!party_globals.codes[OTHER_PLAYER].has, "an entry of another format is let go");
+		client_hears_codes(2, listed, machines, FRIEND_FORMAT, TRUE, 0);
+		CHECK(party_globals.codes[OTHER_PLAYER].has && party_globals.codes[HOST_PLAYER].has, "the host's list taken");
+		CHECK(network_party_player_actions(datum(OTHER_PLAYER)) & add, "Add friend on a client too");
+	}
+	/* (the recent players: the others, not bots, OpenCE's said so, codes
+	where the host told them) */
+	seen_count = 0;
+	opence_heard[OPENCE_PLAYER] = TRUE;
+	frame(FRIEND_RECENT_MILLISECONDS + 1);
+	code_of_machine(OTHER_MACHINE, code);
+	CHECK(seen_index("Cortana") != NONE && seen_players[seen_index("Cortana")].coded &&
+		!memcmp(seen_players[seen_index("Cortana")].code, code, P2P_FRIEND_CODE_BYTES), "a player noted with its code");
+	CHECK(seen_index("Classic") != NONE && !seen_players[seen_index("Classic")].coded &&
+		seen_players[seen_index("Classic")].opence, "an OpenCE player noted as such, of no code");
+	CHECK(seen_index("Oldie") != NONE && !seen_players[seen_index("Oldie")].coded, "an older OpenH1's, of no code");
+	CHECK(seen_index("Keyes") == NONE, "not this machine's own player");
+	CHECK(seen_index("Johnson") == NONE, "nor a bot");
+	index = seen_count;
+	frame(FRIEND_RECENT_MILLISECONDS / 2);
+	CHECK(seen_count == index, "not every frame");
+	/* (a Legacy game: noted, of no code, whatever was heard) */
+	agreed_rate = 0;
+	seen_count = 0;
+	frame(FRIEND_RECENT_MILLISECONDS + 1);
+	CHECK(seen_index("Cortana") != NONE && !seen_players[seen_index("Cortana")].coded, "a Legacy game: no codes");
+	/* (a local game: none) */
+	game(_game_connection_local);
+	seen_count = 0;
+	frame(FRIEND_RECENT_MILLISECONDS + 1);
+	CHECK(seen_count == 0, "a local game's players are not noted");
+}
+
 int main(int argc, char **argv)
 {
 	char const *case_name = argc > 1 ? argv[1] : "";
@@ -1225,6 +1457,7 @@ int main(int argc, char **argv)
 	else CASE("accept") case_accept();
 	else CASE("invite") case_invite();
 	else CASE("holds") case_holds();
+	else CASE("friends") case_friends();
 	else
 	{
 		fprintf(stderr, "no case %s\n", case_name);

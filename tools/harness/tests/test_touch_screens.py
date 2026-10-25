@@ -1,6 +1,6 @@
 """The touchscreen's layouts of the redesigned multiplayer screens (tools/port_settings.py's _touch_*: the menus'
 "touch" platform, the Android and iOS apps and debug.touch_menus): Multiplayer and its pages, the server browser,
-the lobby, Host Controls and the Party screen at each display's width, from a 4:3 tablet's (and a folding phone's
+the lobby, Host Controls, the Party and Friends screens at each display's width, from a 4:3 tablet's (and a folding phone's
 inner screen, laid out as 4:3) to a 21:9 phone's. Every tap target is at least TOUCH_TAP tall, 44 points or more on
 each display of TOUCH_DISPLAYS; on the screen, WIDE_MARGIN from its edges; over no other; the words fixed in it fit
 it (with the menus' fonts: Pillow). The touch layouts have the widgets menu_functions.c fills by name, as many rows
@@ -30,9 +30,10 @@ TOUCH_DISPLAYS = [("phone", 2400, 1080, 420), ("phone 21:9", 2520, 1080, 420), (
 # (the screens: their roots, and the names menu_functions.c finds in them)
 SCREENS = {
     "multiplayer": (f"{MT}/multiplayer_type_select_screen",
-                    ["hub_join_internet", "hub_join_lan_item", "hub_join_direct", "hub_party", "hub_create",
-                     "hub_create_bots", "hub_coop", "hub_gametypes", "browser_note", "item_note", "invite_note",
-                     "party_note", "hub_panel", "multiplayer_status", "multiplayer_status_detail",
+                    ["hub_matchmaking", "hub_join_internet", "hub_join_lan_item", "hub_join_direct", "hub_party",
+                     "hub_friends", "hub_create", "hub_create_bots", "hub_coop", "hub_gametypes", "browser_note",
+                     "item_note", "invite_note", "party_note", "matchmaking_note", "friends_note", "hub_panel",
+                     "multiplayer_status", "multiplayer_status_detail",
                      "multiplayer_options_txt", "online_now_label", "online_games_2", "online_players_2",
                      "best_2_name", "best_2_badge", "best_2_players", "best_2_ping", "prompt_refresh"]),
     "create game": (f"{MT}/hub/create_screen", ["hub_create_inter", "hub_create_lan_item", "hub_panel"]),
@@ -55,6 +56,12 @@ SCREENS = {
                        "host_item_score", "host_item_ping", "host_item_tag", "host_item_value", "host_action_0",
                        "host_action_3", "host_panel", "panel_title", "panel_where", "panel_status", "header_label",
                        "header_value", "host_empty", "host_counts"]),
+    "friends": (f"{MT}/friends/friends_screen",
+                ["friends_list", "friends_prompts", "fr_row_0", "fr_row_4", "fr_note_4", "fr_live_4", "friends_panel",
+                 "panel_kind", "panel_title", "panel_status", "panel_detail", "panel_code", "panel_help",
+                 "friends_count", "section_friends", "prompt_copy", "prompt_join", "prompt_accept", "prompt_add",
+                 "prompt_unblock", "prompt_code", "prompt_invite", "prompt_ignore", "prompt_cancel", "prompt_remove",
+                 "prompt_block", "prompt_hide", "prompt_show", "prompt_back"]),
     "party": (f"{MT}/party/party_screen",
               ["party_list", "party_prompts", "prompt_make", "prompt_copy", "prompt_paste", "prompt_follow",
                "prompt_end", "prompt_leave", "prompt_back", "party_panel", "party_name_15", "party_empty"]),
