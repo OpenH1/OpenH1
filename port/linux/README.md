@@ -691,6 +691,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.gl_debug` | `false` | `HALO_GL_DEBUG` | Deprecated: `debug.gpu_validation`'s old name, which still turns it on (with Vulkan, the validation layers). |
 | `debug.skip_cinematics` | `false` | `HALO_SKIP_CINEMATICS` | Skip each cinematic of a local game: as the skip button does where the level lets it be skipped, else run at sixteen times its speed (`main_skip`), so that a test reaches play in seconds (b30's opening, which cannot be skipped, in about 100 frames rather than 2,400). |
 | `debug.menu_open` | `""` | `HALO_MENU_OPEN` | Start on this screen of the menus (`main_menu/settings_select/...`, as `port/assets/menus` names it), a player profile being edited, to look at it. |
+| `debug.party` | `""` | `HALO_PARTY` | Join this party link at the start, or lead its party (`lead:` before the link): several copies of the game in one party, for a test. |
 | `debug.gpu_skip_vertex_shaders`, `debug.gpu_debug_expression`, `debug.gpu_debug_flat`, `debug.gpu_debug_texture0` | off | `HALO_GPU_SKIP_VS`, `HALO_GPU_DEBUG_EXPR`, `HALO_GPU_DEBUG_FLAT`, `HALO_GPU_DEBUG_T0` | Tools to find problems in the graphics: skip the draws of a vertex shader, or replace the output of all pixel shaders with an expression (for example `t0.rgb`). `debug.gpu_debug_expression` is Metal's alone (`HALO_GPU_DEBUG_EXPR`, as MSL): it does nothing with Vulkan, whose shaders are SPIR-V written directly, with no source to put it in. |
 | `debug.dynamic_lights_look`, `debug.dynamic_lights_log` | `""`, `false` | `HALO_DYNAMIC_LIGHTS_LOOK`, `HALO_DYNAMIC_LIGHTS_LOG` | Tools for the enhanced dynamic lights: up to eight numbers in place of their look's (the lights' brightness, `1.7`; their core's inverse square in radii, `12`; the spill past white, `0.18`; the wrap on models, `0.25`; the glow's size in the light's radius, `0.22`, its brightness, `1.2`, its softness against what it meets in world units, `0.12`, and its least size, `0.035`), and a log of where the first projectile's light is drawn each frame beside where the game placed it at the tick, and once a second how many lights there are. |
 | `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_hitch`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_chat`, `debug.network_test_name`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_HITCH`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link, or (`log`) a log of the game one machine plays (`game/network_test.c`); a test game starts `debug.network_test_start` seconds (`15.0`) after the host opens it. Refer to `NETCODE.md`. `debug.test_input = "menu:a down down a"` presses menu buttons one a second (`a`, `b`, `x`, `y`, `up`, `down`, `left`, `right`, `start`, `back` or `wait`, or `click:<x>:<y>`, a click of the pointer there, `x` and `y` 0 to 1 of the window), for testing the menus; `"script:0.5 jump; 1-2 move=0,1; 2 aim=90,10"` presses, holds and aims on the simulation's clock, in seconds from the scenario's start, the same at any simulation rate (`tools/scorecard`). |
@@ -1192,6 +1193,39 @@ The game also takes a web address with an invite
 When the machines connect, the game of the host shows in Multiplayer,
 System Link. Join the game as on a local network. System link on a local
 network does not need an invite.
+
+### Parties
+
+Friends can group up before a game and go from game to game together
+(`src/p2p_party.c`; the menus' side is `game/party_menu.inc`):
+
+- Multiplayer > PLAY ONLINE > PARTY opens the Party screen (on a
+  touchscreen, PARTY at the foot of Multiplayer). MAKE PARTY makes a party
+  of up to 16 players, you its leader, and puts its link on the clipboard
+  (COPY LINK puts it there again): `halo://party/<32 hexadecimal digits>`.
+  Friends join it as they join an invite: they open the link, copy it and
+  go to the game, use JOIN BY LINK, or PASTE LINK on the Party screen. The
+  Party screen lists the members, marks the leader, and says where each
+  one is.
+- When the leader hosts an internet game, or joins one (by a link or from
+  the Server Browser), every member joins it too: the Party screen opens
+  over the main menu or Multiplayer, and joins the game. A member who
+  cannot join (the game is full, another version of OpenH1, a Legacy game
+  that this version cannot join, a host that cannot be reached, or a LAN
+  game) sees why, and stays in the party; the leader sees it too. JOIN
+  LEADER tries again. A member in another game joins when it goes back to
+  the menus.
+- After a game the party is where it was. When the host leaves, the party
+  is in the menus again, and the leader takes it to the next game.
+- LEAVE PARTY leaves; the leader's party passes to the next member (also
+  when the leader quits, or is not heard for 12 seconds). The leader can
+  END PARTY for everyone.
+
+A party's messages go through the signalling brokers, encrypted with a key
+from its link and signed by each member, on a topic of their own: OpenCE and
+older versions of OpenH1 never see them, and a game without a party is as
+before. Voice chat in a party is not done yet (the game's voice chat goes
+through the host of a game).
 
 ### Text chat
 

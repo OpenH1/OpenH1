@@ -382,6 +382,7 @@ symbols in this file:
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
 #include "network_voice.h" /* port: port/linux/game/network_voice.c */
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
+#include "party.h" /* port: port/linux/game/party_menu.inc */
 #include "network_aim_assist.h" /* port: port/linux/game/network_aim_assist.c */
 #include "network_shield_effects.h" /* port: port/linux/game/network_shield_effects.c */
 #include "map_share.h" /* port: port/linux/game/map_share.c */
@@ -3643,6 +3644,9 @@ void main_loop(
 			map_share_update();
 			/* port: network games' text chat (port/linux/game/network_chat.c) */
 			network_chat_update();
+			/* port: the party, which follows its leader into its games
+			(port/linux/game/party_menu.inc) */
+			party_update();
 			/* port: a frame of a network game that took seconds (a hitch,
 			a stall of the renderer or of the VR runtime) noted in debug.txt,
 			nothing having been sent or read meanwhile: why a machine

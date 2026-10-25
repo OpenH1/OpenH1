@@ -7,7 +7,8 @@ tell each other where they can be reached, through public MQTT brokers
 a broker that refuses 5). Every broker is used at once, so any one of them
 working is enough (an answer goes back through each broker a request came
 through).
-They also carry the server browser's listings of public games (p2p_lobby.c):
+They also carry parties' messages (p2p_party.c: each party's topic and key
+its link's), and the server browser's listings of public games (p2p_lobby.c):
 retained in each host's slot, published at least once (QoS 1, sent again
 until the broker acknowledges them), expiring at the broker after
 LISTING_EXPIRY seconds (MQTT 5), and cleared by the broker if the host's
@@ -178,6 +179,8 @@ enum
 	_topic_own_slot,
 	_topic_query,
 	_topic_slots,
+	/* the party's (p2p_party.c) */
+	_topic_party,
 	_topic_probe,
 	/* the topics a broker is subscribed to */
 	NUMBER_OF_TOPICS = _topic_probe + P2P_MAXIMUM_PROBES,
@@ -388,6 +391,9 @@ static struct
 
 	/* the server browser's probes (p2p_signal_probe) */
 	struct probe probes[P2P_MAXIMUM_PROBES];
+
+	/* the party's topic (p2p_signal_party; empty: none) */
+	char party_topic[TOPIC_SIZE];
 } signalling;
 
 static int elapsed(unsigned long since, unsigned long time)
@@ -711,6 +717,7 @@ static void broker_sync_topics(struct broker *broker)
 	wanted[_topic_own_slot] = lobby && signalling.lobby_listed ? signalling.own_slot : "";
 	wanted[_topic_query] = lobby && signalling.lobby_listed ? P2P_LOBBY_QUERY_TOPIC : "";
 	wanted[_topic_slots] = lobby && signalling.lobby_browsing ? P2P_LOBBY_SLOT_PREFIX "+" : "";
+	wanted[_topic_party] = signalling.party_topic;
 	for (index = 0; index < P2P_MAXIMUM_PROBES; index++)
 		wanted[_topic_probe + index] = signalling.probes[index].join.active ? signalling.probes[index].topic : "";
 	for (index = 0; index < NUMBER_OF_TOPICS; index++)
@@ -721,8 +728,10 @@ static void broker_sync_topics(struct broker *broker)
 			continue;
 		if (had[0])
 			broker_topic(broker, had, 0, 0);
+		/* (No Local: the own slot's and the party's, whose own messages
+		the game has no use for) */
 		if (wanted[index][0])
-			broker_topic(broker, wanted[index], 1, index == _topic_own_slot);
+			broker_topic(broker, wanted[index], 1, index == _topic_own_slot || index == _topic_party);
 		/* (a send that failed closed the broker, which forgot its topics:
 		they are asked for again once it is ready again) */
 		if (broker->state != _broker_ready)
@@ -1437,6 +1446,11 @@ static void publish_received(struct broker *broker, const char *topic, const uns
 		p2p_lobby_query_heard();
 		return;
 	}
+	if (signalling.party_topic[0] && !strcmp(topic, signalling.party_topic))
+	{
+		p2p_party_heard(payload, size);
+		return;
+	}
 	if (signalling.hosting && !strcmp(topic, signalling.host_topic))
 	{
 		message_size = p2p_open(signalling.host_key, payload, size, message);
@@ -2146,5 +2160,26 @@ void p2p_signal_lobby_quit(void)
 		/* DISCONNECT (MQTT 5: a normal one, its reason and no properties) */
 		broker_send(broker, 0xE0, disconnect, broker->protocol == 5 ? 2 : 0);
 		broker_flush(broker);
+	}
+}
+
+void p2p_signal_party(const char *topic)
+{
+	snprintf(signalling.party_topic, sizeof(signalling.party_topic), "%s", topic);
+	sync_all_topics();
+}
+
+void p2p_signal_party_publish(const unsigned char *payload, int size, int urgent)
+{
+	int index;
+
+	if (!signalling.party_topic[0] || size > MAXIMUM_MESSAGE_SIZE + P2P_SEAL_OVERHEAD)
+		return;
+	for (index = 0; index < signalling.broker_count; index++)
+	{
+		struct broker *broker = &signalling.brokers[index];
+
+		if (broker->state == _broker_ready && (urgent || broker_may_publish(broker, 0)))
+			broker_publish(broker, signalling.party_topic, payload, size);
 	}
 }
