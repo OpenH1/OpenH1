@@ -18,6 +18,8 @@ import java.util.Properties;
  */
 final class TouchLayout {
     /** the kinds of control: a button of TouchControls's list, by index */
+    static final int WHITE = 8;
+    static final int BLACK = 9;
     static final int LEFT = 16;
     static final int FIRE_LEFT = 17;
     static final int BASE_COUNT = 18;
@@ -47,6 +49,14 @@ final class TouchLayout {
      */
     static final float TOP_ROW = 72;
     static final float LOWER_PART = 90;
+    /**
+     * but white and black (the flashlight and the grenade's type), used in
+     * play, come down with the rest: their lines down to WHITE_BLACK_ROW
+     * share the extra height and the ones below it keep their distance from
+     * the bottom, so by default they stay above the D-pad, by the left thumb;
+     * back and pause, the menus' buttons, stay at the top
+     */
+    static final float WHITE_BLACK_ROW = 36;
     /** the portrait grid, and its placement: every line keeps its distance
      * from the bottom of a taller display, and the columns from the nearer
      * side of a wider one (the ones between LEFT_PART and RIGHT_PART take
@@ -294,7 +304,7 @@ final class TouchLayout {
         moved.x = Math.max(radius, Math.min(width - radius, x));
         moved.y = Math.max(radius, Math.min(height - radius, y));
         moved.placeX = gridX(moved.x);
-        moved.placeY = gridY(moved.y);
+        moved.placeY = gridY(moved.type, moved.y);
     }
 
     /** puts a control at a saved place on the grid, if it is a valid one */
@@ -304,7 +314,7 @@ final class TouchLayout {
             restored.placeX = x;
             restored.placeY = y;
             restored.x = displayX(x);
-            restored.y = displayY(y);
+            restored.y = displayY(restored.type, y);
         }
     }
 
@@ -317,7 +327,7 @@ final class TouchLayout {
             Control control = controls.get(i);
             float radius = radius(i);
             control.x = Math.max(radius, Math.min(width - radius, displayX(control.placeX)));
-            control.y = Math.max(radius, Math.min(height - radius, displayY(control.placeY)));
+            control.y = Math.max(radius, Math.min(height - radius, displayY(control.type, control.placeY)));
         }
     }
 
@@ -327,16 +337,16 @@ final class TouchLayout {
             : placeX * width / GRID_WIDTH;
     }
 
-    private float displayY(float placeY) {
-        return portrait ? edgeKept(placeY, height, PORTRAIT_GRID_HEIGHT, 0, 1) : displayY(placeY, height);
+    private float displayY(int type, float placeY) {
+        return portrait ? edgeKept(placeY, height, PORTRAIT_GRID_HEIGHT, 0, 1) : displayY(type, placeY, height);
     }
 
     private float gridX(float x) {
         return portrait ? edgeKeptBack(x, width, PORTRAIT_GRID_WIDTH, LEFT_PART, RIGHT_PART) : x * GRID_WIDTH / width;
     }
 
-    private float gridY(float y) {
-        return portrait ? edgeKeptBack(y, height, PORTRAIT_GRID_HEIGHT, 0, 1) : gridY(y, height);
+    private float gridY(int type, float y) {
+        return portrait ? edgeKeptBack(y, height, PORTRAIT_GRID_HEIGHT, 0, 1) : gridY(type, y, height);
     }
 
     /**
@@ -376,6 +386,18 @@ final class TouchLayout {
     /** the landscape grid's line at this height on a display this high: displayY's inverse */
     static float gridY(float y, float height) {
         return edgeKeptBack(y, height, GRID_HEIGHT, TOP_ROW, LOWER_PART);
+    }
+
+    /** a kind of control's line of the landscape grid on a display this high (white and black: WHITE_BLACK_ROW) */
+    static float displayY(int type, float placeY, float height) {
+        return type == WHITE || type == BLACK ? edgeKept(placeY, height, GRID_HEIGHT, 0, WHITE_BLACK_ROW)
+            : displayY(placeY, height);
+    }
+
+    /** the kind's line at this height: displayY's inverse */
+    static float gridY(int type, float y, float height) {
+        return type == WHITE || type == BLACK ? edgeKeptBack(y, height, GRID_HEIGHT, 0, WHITE_BLACK_ROW)
+            : gridY(y, height);
     }
 
     /** the layout as a layout file's text, with the look sensitivity */
