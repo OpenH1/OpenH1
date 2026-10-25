@@ -13,7 +13,13 @@ signals:
 	- a voice out of earshot, which is not resampled, moves on as one heard
 	  does, and is heard the same once it comes into earshot;
 	- mono voices heard as stereo ones with both channels the same are;
-	- audio.resampler = "linear": each frame between the two around it.
+	- audio.resampler = "linear": each frame between the two around it;
+	- Xbox ADPCM decoded as a decoder written apart decodes it (two blocks'
+	  frames from it), and as the format reads, a frame at a time, for
+	  blocks of every header;
+	- the Doppler shift of a 3D voice coming, going, or with the listener
+	  moving, and its limits;
+	- the limiter: a mix up to full scale as it is, a sum over it held to it.
 "render" writes voices at each rate and a scene's whole mix as raw floats
 (test_mixer.py compares the resampler adding four taps at a time with it
 adding tap by tap), "metrics" prints the figures and "bench" times a game's
@@ -442,6 +448,121 @@ static void bench(unsigned long voices, unsigned long silent, BOOL indoor, doubl
 		indoor ? " indoors" : "", 100.0 * elapsed / seconds, elapsed * 1e9 / ((double)chunks * CHUNK));
 }
 
+/* ---------- Xbox ADPCM */
+
+/* two blocks (bytes (73 i + 41) mod 256 under their headers) and their frames
+as a decoder written apart from the port's (tools: an IMA ADPCM decoder in
+Python from the format, which ffmpeg's adpcm_ima_wav matches in the framing,
+nibble order and interleave) decodes them: a stereo block (headers 1000 at
+step 30, -20000 at step 60), and a mono one (32000 at step 80) that clips */
+static const unsigned char adpcm_stereo_block[72] = {
+	0xe8, 0x03, 0x1e, 0x00, 0xe0, 0xb1, 0x3c, 0x00, 0x71, 0xba, 0x03, 0x4c, 0x95, 0xde, 0x27, 0x70, 0xb9, 0x02, 0x4b,
+	0x94, 0xdd, 0x26, 0x6f, 0xb8, 0x01, 0x4a, 0x93, 0xdc, 0x25, 0x6e, 0xb7, 0x00, 0x49, 0x92, 0xdb, 0x24, 0x6d, 0xb6,
+	0xff, 0x48, 0x91, 0xda, 0x23, 0x6c, 0xb5, 0xfe, 0x47, 0x90, 0xd9, 0x22, 0x6b, 0xb4, 0xfd, 0x46, 0x8f, 0xd8, 0x21,
+	0x6a, 0xb3, 0xfc, 0x45, 0x8e, 0xd7, 0x20, 0x69, 0xb2, 0xfb, 0x44, 0x8d, 0xd6, 0x1f, 0x68,
+};
+static const short adpcm_stereo_frames[2][64] = {
+	{ 1000, 1048, 1268, 1111, 911, 1093, 1116, 922, 1157, 1063, 863, 993, 1016, 866, 1042, 1255, 1170, 1248, 1271,
+	  1164, 1340, 1505, 1441, 1265, 1005, 902, 1186, 1377, 1274, 1054, 739, 1118, 1373, 1511, 1385, 1194, 812, 1169,
+	  1400, 1021, 1684, 1413, 509, 1110, 1657, 961, 2137, 3579, 2221, 2749, 3550, 2822, 4544, 6186, 4694, 2948, -572,
+	  -2081, 3866, 7918, 2762, -1925, -11056, 691 },
+	{ -20000, -16876, -18122, -23036, -30402, -15694, -5183, -3272, 22787, -18179, -32768, 20477, 32767, -23096,
+	  30149, 26054, -15, 32767, 32767, -15648, 32767, 32767, 4098, 7822, 11207, -22648, 30597, 32767, 4098, -32768,
+	  -32768, -32768, 750, 32767, 4098, -32768, -32768, 28668, 32767, 32767, 21595, -15647, -32768, 20477, 32767,
+	  -28669, -32764, -32768, -32768, 12285, 32767, -20478, -24573, 31290, -13763, -9668, 8953, -28289, -32384, 16031,
+	  -29022, -32768, -20482, -24206 },
+};
+static const short adpcm_mono_frames[64] = {
+	32000, 10978, 32767, 32767, 20481, -32768, -32768, -32768, -14147, -3991, 32767, 12289, -13780, 9919, 12996,
+	-12187, 18284, 32767, 20481, -27934, -32768, 28668, 32767, 32767, 32767, 20481, -5588, 11340, 14417, -5169, 17724,
+	32767, 21595, -15647, -32768, 20477, 32767, -23096, 30149, 26054, -15, 10141, 13218, -772, 22121, 32767, 24373,
+	1480, -32375, 12678, 32767, -15648, 32767, 32767, 4098, 7822, 11207, 1975, 27158, 32767, 23535, 3949, -24031, 9487,
+};
+
+/* a block decoded a frame at a time from the format, apart from the port's
+loops: frame 0 of a channel is its header's sample (the header's third byte
+its step index, held to 88); frame n its nibble n - 1, the nibbles in 4-byte
+words that take turns between the channels, eight a word, low nibble first
+(the 64th pads the block); IMA ADPCM's step and its index's moves */
+static void adpcm_expected(const unsigned char *block, unsigned long channels, short *frames)
+{
+	static const int steps[89] = {
+		7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97,
+		107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796,
+		876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428,
+		4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385,
+		24623, 27086, 29794, 32767,
+	};
+	unsigned long channel, n;
+
+	for (channel = 0; channel < channels; channel++)
+	{
+		long predictor = (short)(block[channel * 4] | (block[channel * 4 + 1] << 8));
+		int index = block[channel * 4 + 2] > 88 ? 88 : block[channel * 4 + 2];
+
+		frames[channel] = (short)predictor;
+		for (n = 1; n < 64; n++)
+		{
+			unsigned long nibble_index = n - 1, word = nibble_index / 8, within = nibble_index % 8;
+			unsigned char byte = block[4 * channels + (word * channels + channel) * 4 + within / 2];
+			int nibble = within & 1 ? byte >> 4 : byte & 15, magnitude = nibble & 7, bit;
+			long difference = steps[index] >> 3;
+
+			for (bit = 2; bit >= 0; bit--)
+			{
+				if (magnitude & (1 << bit))
+					difference += steps[index] >> (2 - bit);
+			}
+			predictor += nibble & 8 ? -difference : difference;
+			predictor = predictor > 32767 ? 32767 : predictor < -32768 ? -32768 : predictor;
+			index += magnitude < 4 ? -1 : 2 * (magnitude - 3);
+			index = index < 0 ? 0 : index > 88 ? 88 : index;
+			frames[n * channels + channel] = (short)predictor;
+		}
+	}
+}
+
+/* ---------- Doppler */
+
+/* a 1 kHz sine at 22 kHz from a 3D voice ten units ahead of the listener (at
+the origin, facing +z, a unit 3.048 metres as the game sets it), moving along z
+at velocity units a second (towards the listener: negative), the listener at
+listener_velocity, in mode; the shift the mixer works out, and the power of
+what it plays besides a sine at expected times 1 kHz, against the sine (dB) */
+static void doppler_figures(float velocity, float listener_velocity, DWORD mode, double expected, float *ratio,
+	double *rest_db)
+{
+	unsigned long frames = 22050, outputs = 30000, played = (unsigned long)(OUTPUT_RATE / expected), n;
+	short *samples = malloc(frames * sizeof(short));
+	double *signal = malloc(frames * sizeof(double)), *exact = malloc(frames * sizeof(double)), amplitude;
+	float *output = calloc(outputs, sizeof(float));
+	struct sdl_stream *stream;
+
+	for (n = 0; n < frames; n++)
+		signal[n] = 0.5 * sin(2.0 * PI * 1000.0 * n / 22050.0);
+	quantize(signal, samples, exact, frames);
+	stream = voice_new(samples, frames, 1, 22050, 0);
+	stream->has_3d = TRUE;
+	stream->mode = mode;
+	stream->position[2] = 10.0f;
+	stream->velocity[2] = velocity;
+	stream->minimum_distance = 1.0f;
+	stream->maximum_distance = 1000.0f;
+	listener.distance_factor = 3.048f;
+	listener.velocity[2] = listener_velocity;
+	*ratio = doppler_ratio(stream);
+	render(stream, output, outputs, FALSE);
+	/* (the frames it plays for, short of where it starts and ends) */
+	tone_fit(output, 2000, (played < outputs ? played : outputs) - 2000, 1000.0 * expected / OUTPUT_RATE, &amplitude,
+		rest_db);
+	listener.velocity[2] = 0.0f;
+	voice_delete(stream);
+	free(output);
+	free(exact);
+	free(signal);
+	free(samples);
+}
+
 int main(int argc, char **argv)
 {
 	char const *case_name = argc > 1 ? argv[1] : "";
@@ -671,6 +792,134 @@ int main(int argc, char **argv)
 		free(exact);
 		free(samples);
 		free(signal);
+		return 0;
+	}
+	/* Xbox ADPCM decoded as the reference decoder decodes the two blocks, and
+	as the format reads a frame at a time for blocks of every header (step
+	indices past 88, predictors at full scale, nibbles that clip) */
+	CASE("adpcm")
+	{
+		static unsigned char blocks[400 * 72];
+		short expected[64 * 2];
+		unsigned long frames, channels, block, n;
+		short *decoded = decode_adpcm(adpcm_stereo_block, 72, 2, &frames);
+		unsigned char mono[36];
+
+		CHECK(decoded && frames == 64, "a stereo block is %lu frames, not 64", frames);
+		for (n = 0; n < 64 * 2; n++)
+			CHECK(decoded[n] == adpcm_stereo_frames[n % 2][n / 2], "stereo frame %lu, channel %lu: %d, not %d", n / 2,
+				n % 2, decoded[n], adpcm_stereo_frames[n % 2][n / 2]);
+		free(decoded);
+		mono[0] = 0x00;
+		mono[1] = 0x7d;
+		mono[2] = 80;
+		mono[3] = 0;
+		for (n = 4; n < 36; n++)
+			mono[n] = (unsigned char)((n * 73 + 41) & 0xff);
+		decoded = decode_adpcm(mono, 36, 1, &frames);
+		CHECK(decoded && frames == 64, "a mono block is %lu frames, not 64", frames);
+		for (n = 0; n < 64; n++)
+			CHECK(decoded[n] == adpcm_mono_frames[n], "mono frame %lu: %d, not %d", n, decoded[n], adpcm_mono_frames[n]);
+		free(decoded);
+		random_state = 3;
+		for (n = 0; n < sizeof(blocks); n++)
+			blocks[n] = (unsigned char)((random_uniform() + 1.0) * 128.0);
+		for (channels = 1; channels <= 2; channels++)
+		{
+			unsigned long count = sizeof(blocks) / (36 * channels);
+
+			/* (and a part block at the end, which is not played) */
+			decoded = decode_adpcm(blocks, sizeof(blocks) - 7, channels, &frames);
+			CHECK(frames == (count - 1) * 64, "%lu channels: %lu frames of %lu blocks and a part", channels, frames,
+				count);
+			for (block = 0; block + 1 < count; block++)
+			{
+				adpcm_expected(blocks + block * 36 * channels, channels, expected);
+				for (n = 0; n < 64 * channels; n++)
+					CHECK(decoded[block * 64 * channels + n] == expected[n], "%lu channels, block %lu (step index %d), "
+						"frame %lu: %d, not %d", channels, block, blocks[block * 36 * channels + 4 * (n % channels) + 2],
+						n / channels, decoded[block * 64 * channels + n], expected[n]);
+			}
+			free(decoded);
+		}
+		return 0;
+	}
+	/* the Doppler shift: a sound coming at 10 units a second (30.5 m/s) is
+	heard 343 / (343 - 30.5) times as high, going away 343 / (343 + 30.5); the
+	listener coming at it (343 + 30.5) / 343; head-relative, the voice's own
+	velocity alone; to an octave at most; none with audio.doppler false, nor
+	for a 2D voice */
+	CASE("doppler")
+	{
+		static const struct { float velocity, listener_velocity; DWORD mode; double expected; } cases[] = {
+			{ 0.0f, 0.0f, DS3DMODE_NORMAL, 1.0 },
+			{ -10.0f, 0.0f, DS3DMODE_NORMAL, 343.0 / (343.0 - 30.48) },
+			{ 10.0f, 0.0f, DS3DMODE_NORMAL, 343.0 / (343.0 + 30.48) },
+			{ 0.0f, 10.0f, DS3DMODE_NORMAL, (343.0 + 30.48) / 343.0 },
+			{ -10.0f, 10.0f, DS3DMODE_HEADRELATIVE, 343.0 / (343.0 - 30.48) },
+			{ -1000.0f, 0.0f, DS3DMODE_NORMAL, 2.0 },
+			{ -10.0f, 0.0f, DS3DMODE_DISABLE, 1.0 },
+		};
+		float ratio;
+		double rest_db;
+
+		resampler_mode = RESAMPLER_SINC;
+		for (index = 0; index < sizeof(cases) / sizeof(cases[0]); index++)
+		{
+			doppler_figures(cases[index].velocity, cases[index].listener_velocity, cases[index].mode,
+				cases[index].expected, &ratio, &rest_db);
+			CHECK(fabs(ratio - cases[index].expected) < 1.0e-5 && rest_db < -60.0, "at %.0f units a second, the "
+				"listener at %.0f (mode %lu): shifted %.5f, not %.5f; the rest %.1f dB", cases[index].velocity,
+				cases[index].listener_velocity, cases[index].mode, ratio, cases[index].expected, rest_db);
+		}
+		doppler_enabled = FALSE;
+		doppler_figures(-10.0f, 0.0f, DS3DMODE_NORMAL, 1.0, &ratio, &rest_db);
+		CHECK(ratio == 1.0f && rest_db < -60.0, "audio.doppler false: shifted %.5f, the rest %.1f dB", ratio, rest_db);
+		doppler_enabled = TRUE;
+		return 0;
+	}
+	/* the limiter leaves a mix up to full scale as it is (the menus' music
+	reaches it), and holds two such voices' sum to it */
+	CASE("limiter")
+	{
+		unsigned long frames = 48000 * 2, n, chunk;
+		short *samples = malloc(frames * 2 * sizeof(short));
+		double *signal = malloc(frames * sizeof(double)), *exact = malloc(frames * sizeof(double));
+		static float mixed[CHUNK * 2];
+		struct sdl_stream *first, *second;
+		float alone = 0.0f, both = 0.0f;
+
+		for (n = 0; n < frames; n++)
+			signal[n] = 0.999 * sin(2.0 * PI * 997.0 * n / 48000.0);
+		for (n = 0; n < frames; n++)
+			samples[n * 2] = samples[n * 2 + 1] = (short)lround(signal[n] * 32768.0);
+		reverb_initialize();
+		first = voice_new(samples, frames, 2, 48000, 0);
+		streams = first;
+		for (chunk = 0; chunk < OUTPUT_RATE / 2 / CHUNK; chunk++)
+		{
+			mix(mixed, CHUNK);
+			for (n = 0; chunk && n < CHUNK * 2; n++)
+				alone = fabsf(mixed[n]) > alone ? fabsf(mixed[n]) : alone;
+		}
+		CHECK(alone > 0.998f && alone < 1.0f, "a voice at -0.01 dBFS comes out at %.2f dBFS", decibels(alone));
+		second = voice_new(samples, frames, 2, 48000, 0);
+		second->next = first;
+		streams = second;
+		for (chunk = 0; chunk < OUTPUT_RATE / 2 / CHUNK; chunk++)
+		{
+			mix(mixed, CHUNK);
+			for (n = 0; chunk && n < CHUNK * 2; n++)
+				both = fabsf(mixed[n]) > both ? fabsf(mixed[n]) : both;
+		}
+		CHECK(both <= 1.0f + 1.0e-6f && both > 0.99f, "two voices at -0.01 dBFS come out at %.2f dBFS",
+			decibels(both));
+		streams = NULL;
+		voice_delete(first);
+		voice_delete(second);
+		free(exact);
+		free(signal);
+		free(samples);
 		return 0;
 	}
 	CASE("metrics")

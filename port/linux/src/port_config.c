@@ -339,6 +339,10 @@ static const struct config_setting config_settings[] =
 		"Reverberate the world's sounds as the place the player is in does (the\n"
 		"maps' sound environments, as the Xbox's I3DL2 reverb did); false keeps\n"
 		"them dry." },
+	{ "audio.doppler", _config_boolean, "true", "HALO_DOPPLER", _environment_value, _platform_all,
+		"Shift the pitch of the world's sounds as they move towards or away\n"
+		"from the player, as the Xbox's DirectSound did (a Banshee passing by);\n"
+		"false keeps their pitch." },
 	{ "audio.resampler", _config_string, "\"sinc\"", "HALO_AUDIO_RESAMPLER", _environment_value, _platform_all,
 		"How sounds are converted to the output's rate: \"sinc\" with a\n"
 		"band-limited low pass; \"linear\" between neighbouring samples,\n"

@@ -17,11 +17,14 @@ resampling) and applies:
 	  minimum and maximum distance, an equal power pan from the source's
 	  direction in listener space, and the I3DL2 direct path, obstruction
 	  and occlusion levels, their high frequency levels a low pass at the
-	  environment's HF reference: a sound behind a wall is muffled.
+	  environment's HF reference: a sound behind a wall is muffled;
+	- for 3D voices, DirectSound's Doppler shift from the velocities the
+	  game gives the voice and the listener (doppler).
 3D voices also send to an I3DL2 reverb of the environment the listener is in
-(reverb). Doppler and cones are not modelled. A look-ahead limiter keeps the
-sum under full scale (limit). In the VR mode, with vr.hrtf, a mono 3D voice
-goes to each ear through a model of a head instead of the pan (hrtf).
+(reverb). Cones are not modelled (no sound of the maps has one). A look-ahead
+limiter keeps the sum under full scale (limit). In the VR mode, with vr.hrtf,
+a mono 3D voice goes to each ear through a model of a head instead of the pan
+(hrtf).
 
 The output is stereo or 5.1 (audio.channels). For 5.1 the speaker config
 reports AC-3, as an Xbox set to Dolby Digital does: the game then sends its
@@ -40,9 +43,10 @@ Without an audio device, a clock thread runs the same mixer into a scratch
 buffer, so streams still drain at their real rate.
 
 audio.volume sets the master volume (default 1.0); audio.reverb = false
-turns the reverb off; audio.resampler = "linear" resamples between
-neighbouring frames instead of with the sinc low pass; audio.enabled = false
-skips opening a device; audio.channels chooses stereo or 5.1
+turns the reverb off, and audio.doppler = false the Doppler shift;
+audio.resampler = "linear" resamples between neighbouring frames instead of
+with the sinc low pass; audio.enabled = false skips opening a device;
+audio.channels chooses stereo or 5.1
 (port_config.c). For automated tests, debug.audio_record records the mix to a
 WAV file (its front pair, on 5.1) and debug.audio_log logs the 3D voices' places
 and gains (record, voices_log).
@@ -77,6 +81,13 @@ and gains (record, voices_log).
 #define RESAMPLER_KAISER_BETA 6.5
 #define RESAMPLER_MAXIMUM_STRETCH 2
 #define RESAMPLER_HISTORY 128
+
+/* the Doppler shift (doppler): the speed of sound (metres a second), the
+Doppler factor (DirectSound's default, which the game keeps), and the most a
+voice is shifted either way (an octave) */
+#define DOPPLER_SPEED_OF_SOUND 343.0f
+#define DOPPLER_FACTOR 1.0f
+#define DOPPLER_MAXIMUM_RATIO 2.0f
 
 /* the HRTF (hrtf): the frames a voice keeps for its ears' delays, the head's
 radius (metres) and the speed of sound (metres a second), the head shadow's
@@ -163,6 +174,8 @@ struct sdl_stream
 	BOOL has_3d;
 	DWORD mode;
 	float position[3];
+	/* (units a second; SetVelocity) */
+	float velocity[3];
 	float minimum_distance, maximum_distance;
 	/* the I3DL2 direct path's level and high frequency level, in millibels
 	with obstruction and occlusion (SetI3DL2Source) */
@@ -189,8 +202,10 @@ struct sdl_stream
 	double phase;
 	unsigned long silence;
 	/* gains and low pass coefficients the mixer is ramping from, to avoid
-	clicks */
+	clicks, and the step through the frames (the frequency, Doppler shifted,
+	over the output rate) */
 	float current_left, current_right, current_room;
+	double current_step;
 	float current_direct_lowpass, current_room_lowpass;
 	float current_surround[2][MAXIMUM_OUTPUT_CHANNELS];
 	BOOL gains_valid;
@@ -222,11 +237,16 @@ static struct
 	float top[3];
 	float rolloff_factor;
 	/* meters a unit (SetDistanceFactor): the game sets 3.048, a world unit
-	being 10 feet. Only Doppler, which is not modelled, would use it */
+	being 10 feet. Only the Doppler shift uses it (doppler) */
 	float distance_factor;
-} listener = { { 0, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 }, 1.0f, 1.0f };
+	/* (units a second; the game gives each voice's velocity relative to the
+	listener, and the listener none) */
+	float velocity[3];
+} listener = { { 0, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 }, 1.0f, 1.0f, { 0, 0, 0 } };
 
 static float master_volume = 1.0f;
+/* audio.doppler */
+static BOOL doppler_enabled = TRUE;
 /* vr.hrtf, in the VR mode (DirectSoundDoWork) */
 static BOOL hrtf_enabled = FALSE;
 /* 2 or 6 (audio.channels), chosen when the device first opens; the game
@@ -407,6 +427,49 @@ static float distance_attenuation(const struct sdl_stream *stream, float distanc
 	if (distance > maximum)
 		distance = maximum;
 	return minimum / (minimum + rolloff_factor * (distance - minimum));
+}
+
+/* ---------- Doppler
+
+The game gives each 3D voice its velocity (units a second, relative to the
+listener: sound_manager.c update_channels) and the Xbox's DirectSound shifted
+its pitch by them, as a sound passing by is heard: a Banshee, a Ghost or a
+plasma bolt rising as it comes and falling as it goes. DirectSound's shift:
+the frequency times (c + D v_listener) / (c + D v_source), c the speed of
+sound, D the Doppler factor, the velocities' parts along the line from the
+listener to the source in metres a second (the distance factor's metres a
+unit), the source's away from the listener, the listener's towards the
+source. Each part is held within half the speed of sound, and the shift to
+an octave either way, so that a projectile passing close by, or a velocity
+that jumps (a teleport), takes no voice up out of hearing. */
+
+static float doppler_ratio(const struct sdl_stream *stream)
+{
+	float offset[3], distance, source_speed, listener_speed = 0.0f, ratio, limit = 0.5f * DOPPLER_SPEED_OF_SOUND;
+	int axis;
+
+	if (!doppler_enabled || !stream->has_3d || stream->mode == DS3DMODE_DISABLE)
+		return 1.0f;
+	for (axis = 0; axis < 3; axis++)
+	{
+		offset[axis] = stream->position[axis] -
+			(stream->mode == DS3DMODE_HEADRELATIVE ? 0.0f : listener.position[axis]);
+	}
+	distance = sqrtf(dot3(offset, offset));
+	if (distance < 1.0e-4f)
+		return 1.0f;
+	source_speed = DOPPLER_FACTOR * listener.distance_factor * dot3(stream->velocity, offset) / distance;
+	/* (head-relative: the voice's velocity is the listener's already) */
+	if (stream->mode != DS3DMODE_HEADRELATIVE)
+		listener_speed = DOPPLER_FACTOR * listener.distance_factor * dot3(listener.velocity, offset) / distance;
+	source_speed = source_speed < -limit ? -limit : source_speed > limit ? limit : source_speed;
+	listener_speed = listener_speed < -limit ? -limit : listener_speed > limit ? limit : listener_speed;
+	ratio = (DOPPLER_SPEED_OF_SOUND + listener_speed) / (DOPPLER_SPEED_OF_SOUND + source_speed);
+	if (ratio > DOPPLER_MAXIMUM_RATIO)
+		ratio = DOPPLER_MAXIMUM_RATIO;
+	if (ratio < 1.0f / DOPPLER_MAXIMUM_RATIO)
+		ratio = 1.0f / DOPPLER_MAXIMUM_RATIO;
+	return ratio;
 }
 
 /* ---------- the HRTF
@@ -991,6 +1054,14 @@ static void resampler_reset(struct sdl_stream *stream)
 	stream->silence = 0;
 }
 
+/* how much the low pass is narrowed for a voice taking frames step at a time:
+for one faster than the output rate, to keep what it takes above the output's
+band out (up to RESAMPLER_MAXIMUM_STRETCH times) */
+static float resampler_scale(double step)
+{
+	return step > 1.0 ? (float)(1.0 / (step < RESAMPLER_MAXIMUM_STRETCH ? step : RESAMPLER_MAXIMUM_STRETCH)) : 1.0f;
+}
+
 static float packet_sample(const struct voice_packet *packet, unsigned long frame, unsigned long channel,
 	unsigned long channels)
 {
@@ -1056,7 +1127,7 @@ static BOOL voice_has_frames(struct sdl_stream *stream)
 the reverb's send (frames of mono) */
 static void mix_voice(struct sdl_stream *stream, float *output, float *send, unsigned long frames)
 {
-	double step;
+	double step, target_step, ramp_step;
 	float target_left, target_right, target_room, left, right, room, ramp_left, ramp_right, ramp_room, scale;
 	float target_direct_lowpass, target_room_lowpass, direct_lowpass, room_lowpass;
 	float ramp_direct_lowpass, ramp_room_lowpass;
@@ -1078,10 +1149,11 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 
 	if (stream->paused || !stream->packet_count || !stream->sample_rate)
 		return;
-	step = (double)(stream->frequency ? stream->frequency : stream->sample_rate) / OUTPUT_RATE;
-	/* the low pass narrowed for a voice taking frames faster than the output
-	rate, and the frames it reaches on each side */
-	scale = step > 1.0 ? (float)(1.0 / (step < RESAMPLER_MAXIMUM_STRETCH ? step : RESAMPLER_MAXIMUM_STRETCH)) : 1.0f;
+	target_step = (double)(stream->frequency ? stream->frequency : stream->sample_rate) / OUTPUT_RATE *
+		doppler_ratio(stream);
+	/* (the step ramps from the last mix's to it, as the gains do) */
+	step = stream->gains_valid ? stream->current_step : target_step;
+	scale = resampler_scale(step > target_step ? step : target_step);
 	width = (long)ceilf(RESAMPLER_ZERO_CROSSINGS / scale);
 	/* a voice that ran dry and stopped (below) starts over once it has
 	frames again: stream_process starts over only a stream with no packets,
@@ -1092,7 +1164,11 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 			return;
 		resampler_reset(stream);
 		stream->gains_valid = FALSE;
+		step = target_step;
+		scale = resampler_scale(step);
+		width = (long)ceilf(RESAMPLER_ZERO_CROSSINGS / scale);
 	}
+	ramp_step = (target_step - step) / (double)frames;
 	voice_gains(stream, &target_left, &target_right, &target_room, &target_direct_lowpass, &target_room_lowpass,
 		&hrtf_on, &target_hrtf);
 	/* (the HRTF is for a pair of ears: none on 5.1) */
@@ -1336,6 +1412,7 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 		direct_lowpass += ramp_direct_lowpass;
 		room_lowpass += ramp_room_lowpass;
 		stream->phase += step;
+		step += ramp_step;
 		while (stream->phase >= 1.0)
 		{
 			stream->phase -= 1.0;
@@ -1355,6 +1432,7 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	stream->current_left = target_left;
 	stream->current_right = target_right;
 	stream->current_room = target_room;
+	stream->current_step = target_step;
 	stream->current_direct_lowpass = target_direct_lowpass;
 	stream->current_room_lowpass = target_room_lowpass;
 	if (surround)
@@ -1674,9 +1752,14 @@ for as long as it would go over, both channels alike. The output is delayed
 LIMITER_LOOKAHEAD - 1 frames (1.3 ms), so that the gain comes down smoothly
 before each peak: the smallest gain the frames ahead need, averaged over the
 last LIMITER_LOOKAHEAD frames, is never more than a peak needs when it plays.
-The gain comes back up over LIMITER_RELEASE_SECONDS. */
+The gain comes back up over LIMITER_RELEASE_SECONDS. The ceiling is full
+scale: the menus' music is mastered to it (the title theme's samples reach 0
+dBFS), and a ceiling under it (it was -1 dBFS) turned the theme down by up to
+1.2 dB at each of its loud notes and for the release after, a sixth of its
+loud part, where the Xbox played it as it is. Only a sum over full scale is
+turned down. */
 
-#define LIMITER_CEILING 0.891f /* -1 dBFS */
+#define LIMITER_CEILING 1.0f /* 0 dBFS */
 #define LIMITER_LOOKAHEAD 64
 #define LIMITER_RELEASE_SECONDS 0.1f
 
@@ -1824,10 +1907,13 @@ static void record(const float *output, unsigned long frames)
 		count = MIX_CHUNK_FRAMES * OUTPUT_CHANNELS;
 	for (index = 0; index < count; index++)
 	{
-		/* (on 5.1, the front pair) */
-		float sample = output[index / OUTPUT_CHANNELS * output_channels + index % OUTPUT_CHANNELS] * 32767.0f;
+		/* (on 5.1, the front pair) rounded to the nearest step, at the
+		scale the mixer reads samples at, so that a voice played as it is is
+		recorded as it is; cutting toward zero took half a step off each
+		sample on average */
+		float sample = output[index / OUTPUT_CHANNELS * output_channels + index % OUTPUT_CHANNELS] * 32768.0f;
 
-		samples[index] = (short)(sample > 32767.0f ? 32767.0f : (sample < -32768.0f ? -32768.0f : sample));
+		samples[index] = (short)lrintf(sample > 32767.0f ? 32767.0f : (sample < -32768.0f ? -32768.0f : sample));
 	}
 	fwrite(samples, sizeof(short), count, record_file);
 	if ((record_frames + frames) / OUTPUT_RATE != record_frames / OUTPUT_RATE)
@@ -2036,6 +2122,7 @@ static void audio_start(void)
 	audio_started = TRUE;
 	master_volume = (float)config_real("audio.volume");
 	reverb_enabled = config_boolean("audio.reverb");
+	doppler_enabled = config_boolean("audio.doppler");
 	resampler_mode = resampler_mode_read();
 	resampler_initialize();
 	resampler_phases_initialize();
@@ -2442,10 +2529,11 @@ static void voices_log(void)
 				(1.0f + hrtf.rear_lowpass))));
 		}
 		platform_log("audio: voice %p: %.2f m ahead, %.2f right, %.2f up (minimum distance %.2f m); gains left %.1f "
-			"dB, right %.1f dB%s", (void *)stream, dot3(offset, listener.front) * listener.distance_factor,
+			"dB, right %.1f dB; Doppler x%.3f%s", (void *)stream, dot3(offset, listener.front) * listener.distance_factor,
 			dot3(offset, right_axis) * listener.distance_factor, dot3(offset, listener.top) * listener.distance_factor,
 			stream->minimum_distance * listener.distance_factor,
-			left > 0.0f ? 20.0f * log10f(left) : -999.0f, right > 0.0f ? 20.0f * log10f(right) : -999.0f, heard);
+			left > 0.0f ? 20.0f * log10f(left) : -999.0f, right > 0.0f ? 20.0f * log10f(right) : -999.0f,
+			doppler_ratio(stream), heard);
 	}
 	pthread_mutex_unlock(&mixer_lock);
 }
@@ -2462,14 +2550,15 @@ VOID WINAPI DirectSoundDoWork(void)
 	static BOOL hrtf_setting;
 #endif
 
-	/* (audio.volume, audio.reverb and audio.resampler read again when the
-	settings change: on the game's thread, not the mixer's, whose lock the
-	config's file I/O would hold) */
+	/* (audio.volume, audio.reverb, audio.doppler and audio.resampler read
+	again when the settings change: on the game's thread, not the mixer's,
+	whose lock the config's file I/O would hold) */
 	if (volume_read_at != config_changes())
 	{
 		volume_read_at = config_changes();
 		master_volume = (float)config_real("audio.volume");
 		reverb_enabled = config_boolean("audio.reverb");
+		doppler_enabled = config_boolean("audio.doppler");
 		log_voices = config_boolean("debug.audio_log");
 #ifdef HALO_VR
 		hrtf_setting = config_boolean("vr.hrtf");
@@ -2564,7 +2653,17 @@ HRESULT WINAPI IDirectSound_SetPosition(LPDIRECTSOUND sound, FLOAT x, FLOAT y, F
 	return DS_OK;
 }
 
-HRESULT WINAPI IDirectSound_SetVelocity(LPDIRECTSOUND sound, FLOAT x, FLOAT y, FLOAT z, DWORD apply) { (void)sound; (void)x; (void)y; (void)z; (void)apply; return DS_OK; }
+HRESULT WINAPI IDirectSound_SetVelocity(LPDIRECTSOUND sound, FLOAT x, FLOAT y, FLOAT z, DWORD apply)
+{
+	(void)sound;
+	(void)apply;
+	pthread_mutex_lock(&mixer_lock);
+	listener.velocity[0] = x;
+	listener.velocity[1] = y;
+	listener.velocity[2] = z;
+	pthread_mutex_unlock(&mixer_lock);
+	return DS_OK;
+}
 
 static void normalize3(float *vector)
 {
@@ -2781,7 +2880,12 @@ HRESULT WINAPI IDirectSoundStream_Pause(LPDIRECTSOUNDSTREAM stream, DWORD pause)
 	STREAM_SETTER(record->paused = pause == DSSTREAMPAUSE_PAUSE)
 }
 
-HRESULT WINAPI IDirectSoundStream_SetVelocity(LPDIRECTSOUNDSTREAM stream, FLOAT x, FLOAT y, FLOAT z, DWORD apply) { (void)stream; (void)x; (void)y; (void)z; (void)apply; return DS_OK; }
+HRESULT WINAPI IDirectSoundStream_SetVelocity(LPDIRECTSOUNDSTREAM stream, FLOAT x, FLOAT y, FLOAT z, DWORD apply)
+{
+	(void)apply;
+	STREAM_SETTER(record->velocity[0] = x; record->velocity[1] = y; record->velocity[2] = z)
+}
+
 HRESULT WINAPI IDirectSoundStream_SetConeAngles(LPDIRECTSOUNDSTREAM stream, DWORD inside, DWORD outside, DWORD apply) { (void)stream; (void)inside; (void)outside; (void)apply; return DS_OK; }
 HRESULT WINAPI IDirectSoundStream_SetConeOrientation(LPDIRECTSOUNDSTREAM stream, FLOAT x, FLOAT y, FLOAT z, DWORD apply) { (void)stream; (void)x; (void)y; (void)z; (void)apply; return DS_OK; }
 HRESULT WINAPI IDirectSoundStream_SetConeOutsideVolume(LPDIRECTSOUNDSTREAM stream, LONG volume, DWORD apply) { (void)stream; (void)volume; (void)apply; return DS_OK; }
