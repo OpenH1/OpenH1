@@ -437,6 +437,20 @@ accuracy or sprees. Enter (A) picks the next game and Esc (B) leaves, as
 before. The in-game scoreboard has the same rules and lit row, no Ping
 column in a game of this computer alone, and its prompts in a footer;
 players' names over their heads fade out while it shows.
+
+The port's own screens use the screen's width up to 16:9: Settings,
+Multiplayer, the Server Browser (and the LAN list and Join by Link) and the
+carnage report. Their lists start at the screen's left and their panels end
+at its right, each wider by what the screen adds: Settings' rows and help
+panel, the browser's Server, Map and Mode columns and its details panel,
+Multiplayer's items and panel, the carnage report's columns, and the
+scoreboard's names. The tabs spread across the screen, and the key prompts
+keep to its edges. A wider screen (21:9 and up) has the 16:9 layout in its
+middle; a 16:10 screen (the Steam Deck) a little less than 16:9's; 4:3 the
+640 as before. The PC version's own screens stay in the middle 640. The
+layout follows the mouse, the keys, the highlights and the scrolling, and a
+part of a split screen narrower than the menus (three or four players) has
+the 640's (`port/assets/menus/README.md`, `wide`).
 LEAVE GAME of the host still ends the game for everyone. The buttons go into
 the map's own pause menu, before LEAVE GAME, so the buttons of a custom map
 stay. The Xbox's pause box is drawn taller to hold them (a redraw,
@@ -4897,7 +4911,7 @@ Other changes:
 | `cache/cache_files.c` | When a map's tags load and unload, the port finds the bitmaps that the high-res HUD replaces (`game/hud_hires_tags.c`), adds the tags of the menus to the menus' map (`game/menu_tags.c`), and plays the mods' tags (`game/mods.c`). |
 | `cache/xbox_sound_cache.c`, `cache/xbox_texture_cache.c` | The samples of a mod's sound are copied from memory, and the pixels of a mod's bitmap read from its file and laid out for the hardware, at once (`game/mod_sounds.c`, `game/mod_bitmaps.c`); a mod's linear bitmap need not have rows of whole steps of the pitch. |
 | `hs/hs.c` | The console's `mods_reload`, `mods_enable` and `mods_list`, which a client may run too. |
-| `interface/ui_widget.c`, `interface/ui_widget_event_handler_functions.c`, `interface/ui_widget_game_data_input_functions.c` | The main menu is the PC version's from `port/assets/menus` (`display.menus`); the menus' widgets can call the port's functions (`game/menu_functions.c`) and send the PC version's custom activation event; the widgets' memory is 256 KB, not 16 KB; the main menu and Multiplayer clear co-op's controllers, so that a gamepad going back to controller 1 is not a controller unplugged; the lobby's split screen players leave alone, and one who quits in game is not joined to the next game (`interface/player_ui.c`).; Multiplayer's PLAY WITH BOTS hosts a game that takes no other machine, as the Xbox's split screen does (`ui_widget_port_host_local`). |
+| `interface/ui_widget.c`, `interface/ui_widget_event_handler_functions.c`, `interface/ui_widget_game_data_input_functions.c` | The main menu is the PC version's from `port/assets/menus` (`display.menus`); the menus' widgets can call the port's functions (`game/menu_functions.c`) and send the PC version's custom activation event; the widgets' memory is 256 KB, not 16 KB; the main menu and Multiplayer clear co-op's controllers, so that a gamepad going back to controller 1 is not a controller unplugged; the lobby's split screen players leave alone, and one who quits in game is not joined to the next game (`interface/player_ui.c`).; Multiplayer's PLAY WITH BOTS hosts a game that takes no other machine, as the Xbox's split screen does (`ui_widget_port_host_local`); the port's own screens are laid out for the view's width up to 16:9 (their widgets' `wide`: `game/menu_tags.c`'s `ui_widget_port_wide_layout`), a picture widened by stretching its middle (`draw_bitmap_widened_in_rect`). |
 | `interface/player_ui.c` | Fast setup opens the pregame screen through the port's menus (the lobby), as `interface/ui_widget.c` does. |
 | `game/game_engine.c`, `game/game_engine.h`, `game/game_engine_slayer.c`, `game/game.c`, `game/aim_assist.c`, `game/players.c`, `objects/damage.c`, `objects/objects.c`, `units/units.c`, `items/weapons.c`, `saved games/playlist_profile.c`, `saved games/saved_game_files.c` | OpenCE's gametypes (`game/game_modes.c`, "OpenCE gametypes"): the gametype's PC options carry a mode and Hardcore with their options; the built-in ones are written after the Xbox's default gametypes; Infection's and Gun Game's game engines are Slayer's with their rules; SWAT's headshots, Hardcore's motion sensor, aim assist and restore of the killer; Infection's zombies' skulls, grenades, powerups, seats and melee. |
 | `game/game.c` | Each tick takes its rate (`game.sim_rate`), and runs the fast phase's sub-steps after the objects' update (`game/sim_rate.c`; "Simulation rate"). |
@@ -4914,7 +4928,7 @@ Other changes:
 | `render/render.c` | `render_initialize` reads the structure culling tests from `display.structure_culling`. |
 | `models/models.c` | A model's size, which chooses its level of detail and whether it is drawn, is scaled as `display.model_detail` says (`halo_model_detail_scale`, `src/d3d8_device.c`)., and each permutation draws the level `game/model_detail.c` chooses from the model's (stock: the model's). |
 | `interface/hud.c` | In multiplayer, players' names are drawn above their heads (`display.player_names`, `display.player_name_scale`), and fade out while the scoreboard shows. |
-| `game/game_engine.c` | The carnage report and the full-screen scoreboard are laid out as Settings is: the report's one table of the players' statistics with the teams' totals, the result and the game's line; the scoreboard's rules, lit row and footer, and no ping column in a game of one computer. |
+| `game/game_engine.c` | The carnage report and the full-screen scoreboard are laid out as Settings is: the report's one table of the players' statistics with the teams' totals, the result and the game's line; the scoreboard's rules, lit row and footer, and no ping column in a game of one computer. Both are as wide as the menus' wide layout: the report's panel and columns across the screen up to 16:9, the scoreboard's names wider. |
 | `text/draw_string.c`, `interface/terminal.c`, `interface/virtual_keyboard.c` | Streamer mode's words are hidden in every string drawn or measured (`game/text_filter.c`), but in the console's line and the virtual keyboard's text being typed. |
 | `rasterizer/rasterizer_text.c`, `text/draw_string.c` | Text is drawn from an atlas of the fonts' glyphs, rasterized at the resolution the game draws at (`src/text_hires.c`), when the font has every character of the string. Text can be drawn scaled about a point (`rasterizer_text_set_scale`), as the players' names are. Each glyph's advance is centred on the font tag character's, so the layout is the same, and a glyph is cut at a text box only where the font tag's character visibly was. |
 | `interface/first_person_weapons.c` | The first-person hands are drawn with the unit's shield modifier shader, as its body is (`display.viewmodel_shield`). |

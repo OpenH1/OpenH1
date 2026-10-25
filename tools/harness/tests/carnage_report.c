@@ -9,7 +9,11 @@ across the table), its rows (each player's statistics, this machine's
 players lit), the teams' totals (every player's of the game, shown or not),
 the rows' height (the players' and the totals' rows filling the table, none
 taller than the tallest), kills per death, and the scoreboard's ping (shown
-only in a network game with other machines, its column then wider).
+only in a network game with other machines, its column then wider); on a
+wide screen (the menus' wide layout: 16:10, 16:9, and 21:9 as 16:9) the
+report as wide as the layout, on the screen, its columns spread across it
+and the players' widest, and the scoreboard's names wider, its two team
+columns still on the screen.
 test_carnage_report.py takes the enums, structures and code.
 */
 
@@ -64,19 +68,19 @@ static void player_set(long index, long team, short local, short kills, short as
 #define TABLE_LEFT (CARNAGE_LEFT + CARNAGE_TABLE_PADDING)
 #define TABLE_RIGHT (CARNAGE_RIGHT - CARNAGE_TABLE_PADDING)
 
-static void check_columns(boolean teams, short expected_count)
+static void check_columns_between(boolean teams, short expected_count, short table_left, short table_right,
+	struct carnage_column *columns)
 {
-	struct carnage_column columns[NUMBER_OF_CARNAGE_COLUMNS + 4];
 	short count;
 	short index;
 
-	memset(columns, 0, sizeof(columns));
-	count = carnage_report_columns(teams, TABLE_LEFT, TABLE_RIGHT, columns);
+	memset(columns, 0, (NUMBER_OF_CARNAGE_COLUMNS + 4) * sizeof(*columns));
+	count = carnage_report_columns(teams, table_left, table_right, columns);
 	CHECK(count == expected_count, "%s: %d columns, not %d", teams ? "teams" : "free for all", count, expected_count);
-	CHECK(columns[0].x0 == TABLE_LEFT, "the first column starts at %d, not the table's left %d", columns[0].x0,
-		TABLE_LEFT);
-	CHECK(columns[count - 1].x1 == TABLE_RIGHT, "the last column ends at %d, not the table's right %d",
-		columns[count - 1].x1, TABLE_RIGHT);
+	CHECK(columns[0].x0 == table_left, "the first column starts at %d, not the table's left %d", columns[0].x0,
+		table_left);
+	CHECK(columns[count - 1].x1 == table_right, "the last column ends at %d, not the table's right %d",
+		columns[count - 1].x1, table_right);
 	for (index = 0; index < count; index++)
 	{
 		CHECK(columns[index].kind == index, "column %d shows %d", index, columns[index].kind);
@@ -91,6 +95,51 @@ static void check_columns(boolean teams, short expected_count)
 	/* (a name of 11 characters, about 7 of the report's units each) */
 	CHECK(columns[_carnage_column_player].x1 - columns[_carnage_column_player].x0 >= 100,
 		"the player's column is %d wide", columns[_carnage_column_player].x1 - columns[_carnage_column_player].x0);
+}
+
+static void check_columns(boolean teams, short expected_count)
+{
+	struct carnage_column columns[NUMBER_OF_CARNAGE_COLUMNS + 4];
+
+	check_columns_between(teams, expected_count, TABLE_LEFT, TABLE_RIGHT, columns);
+}
+
+/* the screens' widths (in the menus' units at 480 lines): 4:3, 16:10,
+16:9 and 21:9 */
+static long const screen_widths[] = { 640, 768, 852, 1138 };
+
+/* the report on a screen this wide: on it, as wide as the menus' wide
+layout, its columns spread across it (each at least as wide as at 4:3, the
+player's the widest) */
+static void check_wide_report(long screen_width, boolean teams)
+{
+	struct carnage_column columns[NUMBER_OF_CARNAGE_COLUMNS + 4];
+	struct carnage_column narrow[NUMBER_OF_CARNAGE_COLUMNS + 4];
+	short side = (short)(ui_widget_port_wide_extra_of(screen_width) / 2);
+	short screen_side = (short)((screen_width - 640) / 2);
+	short left, right, count, index;
+
+	carnage_report_sides(screen_width, &left, &right);
+	CHECK(left == CARNAGE_LEFT - side && right == CARNAGE_RIGHT + side, "at %ld wide: %d to %d", screen_width, left,
+		right);
+	CHECK(left >= -screen_side && right <= 640 + screen_side, "at %ld wide, %d to %d is off the screen", screen_width,
+		left, right);
+	check_columns_between(teams, teams ? NUMBER_OF_CARNAGE_COLUMNS : _carnage_column_betrayals,
+		(short)(left + CARNAGE_TABLE_PADDING), (short)(right - CARNAGE_TABLE_PADDING), columns);
+	count = carnage_report_columns(teams, TABLE_LEFT, TABLE_RIGHT, narrow);
+	for (index = 0; index < count; index++)
+	{
+		short width = (short)(columns[index].x1 - columns[index].x0);
+		short narrow_width = (short)(narrow[index].x1 - narrow[index].x0);
+
+		CHECK(width >= narrow_width, "at %ld wide, column %d is %d wide, %d at 4:3", screen_width, index, width,
+			narrow_width);
+		CHECK(side == 0 || width > narrow_width, "at %ld wide, column %d is no wider than at 4:3", screen_width,
+			index);
+		CHECK(index == _carnage_column_player ||
+			width < columns[_carnage_column_player].x1 - columns[_carnage_column_player].x0,
+			"at %ld wide, column %d is wider than the players'", screen_width, index);
+	}
 }
 
 int main(int argc, char **argv)
@@ -211,6 +260,41 @@ int main(int argc, char **argv)
 		CHECK(carnage_report_ratio_tenths(0, 0) == 0, "no kills or deaths: %ld", carnage_report_ratio_tenths(0, 0));
 		return 0;
 	}
+	CASE("columns-wide")
+	{
+		size_t index;
+
+		for (index = 0; index < sizeof(screen_widths) / sizeof(*screen_widths); index++)
+		{
+			check_wide_report(screen_widths[index], TRUE);
+			check_wide_report(screen_widths[index], FALSE);
+		}
+		return 0;
+	}
+	/* (the scoreboard's names wider on a wider screen, to 16:9's; its two
+	team columns, with their pings, on the screen, scaled as they are drawn) */
+	CASE("scoreboard-wide")
+	{
+		size_t index;
+		short previous = 0;
+
+		CHECK(scoreboard_name_width(640) == SCOREBOARD_NAME_WIDTH, "4:3's names are %d wide",
+			scoreboard_name_width(640));
+		for (index = 0; index < sizeof(screen_widths) / sizeof(*screen_widths); index++)
+		{
+			short width = (short)screen_widths[index];
+			short name_width = scoreboard_name_width(width);
+			short columns = (short)(2 * scoreboard_column_width(TRUE, name_width) + SCOREBOARD_COLUMN_GAP);
+
+			CHECK(name_width >= previous, "the names narrower on a wider screen: %d", name_width);
+			CHECK(columns * SCOREBOARD_SCALE <= width, "at %d wide the team columns are %d", width, columns);
+			previous = name_width;
+		}
+		CHECK(scoreboard_name_width(1138) == scoreboard_name_width(852), "21:9's names %d wide, 16:9's %d",
+			scoreboard_name_width(1138), scoreboard_name_width(852));
+		CHECK(scoreboard_name_width(852) > SCOREBOARD_NAME_WIDTH, "16:9's names no wider");
+		return 0;
+	}
 	CASE("ping")
 	{
 		splitscreen_local = FALSE;
@@ -218,11 +302,13 @@ int main(int argc, char **argv)
 		CHECK(!scoreboard_ping_shown(FALSE), "a ping in a game with no network");
 		splitscreen_local = TRUE;
 		CHECK(!scoreboard_ping_shown(TRUE), "a ping in a game of this machine alone (split screen, bots)");
-		CHECK(scoreboard_column_width(TRUE) == scoreboard_column_width(FALSE) + SCOREBOARD_PING_WIDTH,
-			"a column %d wide with its ping, %d without", scoreboard_column_width(TRUE), scoreboard_column_width(FALSE));
-		CHECK(scoreboard_column_width(FALSE) ==
+		CHECK(scoreboard_column_width(TRUE, SCOREBOARD_NAME_WIDTH) ==
+			scoreboard_column_width(FALSE, SCOREBOARD_NAME_WIDTH) + SCOREBOARD_PING_WIDTH,
+			"a column %d wide with its ping, %d without", scoreboard_column_width(TRUE, SCOREBOARD_NAME_WIDTH),
+			scoreboard_column_width(FALSE, SCOREBOARD_NAME_WIDTH));
+		CHECK(scoreboard_column_width(FALSE, SCOREBOARD_NAME_WIDTH) ==
 			SCOREBOARD_PLACE_WIDTH + SCOREBOARD_NAME_WIDTH + SCOREBOARD_SCORE_WIDTH,
-			"a column without its ping %d wide", scoreboard_column_width(FALSE));
+			"a column without its ping %d wide", scoreboard_column_width(FALSE, SCOREBOARD_NAME_WIDTH));
 		return 0;
 	}
 	fprintf(stderr, "unknown case: %s\n", case_name);
