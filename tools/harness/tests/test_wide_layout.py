@@ -154,7 +154,7 @@ def test_hub_layout(aspect):
     footer's prompts at the screen's edges; on the screen, none over another; its title moved with its items."""
     width = WIDTHS[aspect]
     area = usable(width)
-    for root, page_items in ((f"{MT}/multiplayer_type_select_screen", 7), (f"{MT}/hub/create_screen", 2),
+    for root, page_items in ((f"{MT}/multiplayer_type_select_screen", 8), (f"{MT}/hub/create_screen", 2),
                              (f"{MT}/hub/coop_screen", 2)):
         boxes = layout(root, width)
         items = [box for box in boxes if box.name.startswith("hub_") and box.path[-1].endswith("_list")
@@ -179,3 +179,29 @@ def test_hub_layout(aspect):
         _check_apart(prompts, "prompts")
         title = one(boxes, "header_multiplayer")
         assert title.x0 - items[0].x0 == 35 - port_settings.HUB_LIST_X
+
+
+@pytest.mark.parametrize("aspect", WIDTHS)
+def test_party_layout(aspect):
+    """The Party screen, laid out as Multiplayer is: its members' rows (each name before where it is, the leader's
+    pill at the row's end) under their section from the screen's left, the panel beside them to its right with its
+    words in it, its footer's prompts at the screen's edges; on the screen, none over another."""
+    width = WIDTHS[aspect]
+    area = usable(width)
+    boxes = layout(f"{MT}/party/party_screen", width)
+    panel = one(boxes, "party_panel")
+    section = one(boxes, "section_party")
+    assert panel.inside(area) and section.inside(area) and section.x1 + 8 <= panel.x0
+    for row in range(port_settings.PARTY_ROWS):
+        name, where, leader = (one(boxes, f"party_{part}_{row}") for part in ("name", "where", "leader"))
+        for box in (name, where, leader):
+            assert box.inside(area) and box.x0 >= section.x0 and box.x1 <= section.x1, box
+        assert name.x1 <= where.x0, (name, where)
+    for box in boxes:
+        if box.path and box.path[-1] == "party_panel":
+            assert box.inside(panel), f"{box} is out of the panel {panel}"
+    prompts = [box for box in boxes if box.name.startswith("prompt_")]
+    for box in prompts:
+        assert box.inside(area), box
+    for left in ("prompt_make", "prompt_copy"):
+        assert one(boxes, left).x0 - area.x0 == 28

@@ -104,6 +104,9 @@ their handlers open opens.
 #include "../src/p2p.h"
 #include "../src/browser_favorites.h"
 #include "text_filter.h"
+/* (the party: party_menu.inc) */
+#include "party.h"
+#include "bungie_net/network/transport.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -1073,6 +1076,10 @@ enum
 #define MAP_KIND_ROWS 10
 
 static void visible_set(struct widget_instance *widget, boolean visible);
+/* (party_menu.inc's) */
+static void party_screen_noted(struct widget_instance *widget);
+static void party_hub_note(wchar_t *text, short size);
+static void party_hub_status(wchar_t *headline, short headline_size, wchar_t *detail, short detail_size);
 short ui_widget_port_multiplayer_maps(char const *const **names, short *last_used);
 
 static boolean map_kind_singleplayer(short kind)
@@ -3650,6 +3657,8 @@ static void update_question_note(struct widget_instance *widget)
 	update_question.main_menu_shown = TRUE;
 	update_question.main_menu_tag = screen->definition_tag_index;
 	update_question.main_menu_generation = cache_files_tags_generation();
+	/* (the Party screen may open over it: party_menu.inc) */
+	party_screen_noted(screen);
 }
 
 /* the updater's, between frames (not while the widgets are drawn, which
@@ -3776,6 +3785,9 @@ byte network_game_client_advertised_game_kind(void *client, struct advertised_ga
 long network_game_client_advertised_game_rate(void *client, struct advertised_game *game);
 boolean network_game_client_advertised_game_standard(void *client, struct advertised_game *game);
 boolean network_game_client_advertised_game_mixed(void *client, struct advertised_game *game);
+boolean network_game_client_advertised_game_compatible(void *client, struct advertised_game const *game,
+	boolean tell);
+void network_game_client_get_remote_server_address(void *client, struct transport_address *address);
 boolean ui_widget_port_join(struct widget_instance *widget, void *advertised_game, char const *lobby_name,
 	boolean *widget_deleted);
 boolean ui_widget_port_multiplayer_player(short controller_index, long profile_index);
@@ -7294,6 +7306,9 @@ static void browser_update(struct widget_instance *list)
 	/* (the browsers' keys, while one is shown: Tab sorts, E is the next tab
 	alone; halo_keyboard_browser_keys) */
 	halo_keyboard_browser_keys();
+	/* (the Party screen may open over it: a party's link joined by JOIN BY
+	LINK, party_menu.inc) */
+	party_screen_noted(list);
 	if (multiplayer.mode == _multiplayer_mode_server_browser)
 	{
 		lobby_browser_update(list);
@@ -7369,6 +7384,8 @@ enum
 	/* (CREATE GAME's and CO-OP CAMPAIGN's, which open their pages) */
 	_multiplayer_item_create,
 	_multiplayer_item_coop,
+	/* (PARTY, which opens the party's screen: party_menu.inc) */
+	_multiplayer_item_party,
 };
 
 /* Multiplayer's items and its pages' (port_settings.py's _hub), by their
@@ -7390,6 +7407,7 @@ static struct
 	{ "hub_create_lan_item", _multiplayer_item_create_local },
 	{ "hub_online_coop", _multiplayer_item_online_coop },
 	{ "hub_split_coop", _multiplayer_item_split_screen_coop },
+	{ "hub_party", _multiplayer_item_party },
 };
 
 #define MULTIPLAYER_DESCRIPTIONS "pc\\main_menu\\multiplayer_type_select\\hub\\descriptions"
@@ -7647,6 +7665,8 @@ static void multiplayer_status_notes(struct widget_instance *list)
 	text[NUMBEROF(text) - 1] = 0;
 	text_set(named(list, "item_note", 0), text);
 	text_set(named(list, "invite_note", 0), multiplayer_status.invite ? L"INVITE READY" : L"");
+	party_hub_note(text, NUMBEROF(text));
+	text_set(named(list, "party_note", 0), text);
 }
 
 /* the touchscreen's rows (port_settings.py's _multiplayer_touch), by their
@@ -7741,6 +7761,8 @@ static void multiplayer_status_update(struct widget_instance *list)
 
 	boolean counts;
 
+	/* (the Party screen may open over it: party_menu.inc) */
+	party_screen_noted(list);
 	if (!description)
 		return;
 	multiplayer_status_read();
@@ -7894,6 +7916,9 @@ static void multiplayer_status_update(struct widget_instance *list)
 	case _multiplayer_item_coop:
 		usnprintf(headline, NUMBEROF(headline) - 1, L"THE CAMPAIGN TOGETHER");
 		usnprintf(detail, NUMBEROF(detail) - 1, L"Online, or split screen\r\non this computer.");
+		break;
+	case _multiplayer_item_party:
+		party_hub_status(headline, NUMBEROF(headline), detail, NUMBEROF(detail));
 		break;
 	case _multiplayer_item_bots:
 		usnprintf(headline, NUMBEROF(headline) - 1, L"BOTS ON THIS COMPUTER");
@@ -9566,6 +9591,10 @@ static void gametype_engine_name(struct widget_instance *text_box)
 		text_box->parameters.text_box.string_list_index = strings[PIN(variant->game_engine_index, 0, 5)];
 }
 
+/* ---------- the party: Multiplayer's PARTY and its screen */
+
+#include "party_menu.inc"
+
 /* ---------- public code */
 
 boolean pc_menu_event_function_invoke(
@@ -9889,6 +9918,19 @@ boolean pc_menu_event_function_invoke(
 			multiplayer_status.read_time = 0;
 			ui_play_audio_feedback_sound(SOUND_FORWARD);
 		}
+		/* (the party: party_menu.inc) */
+		else if (!strcmp(name, "port party open"))
+		{
+			return party_screen_open_event(widget, event, controller, widget_deleted);
+		}
+		else if (!strcmp(name, "port party button"))
+		{
+			return party_screen_button(widget, controller, widget_deleted);
+		}
+		else if (!strcmp(name, "port party x") || !strcmp(name, "port party y"))
+		{
+			return party_screen_key(widget, !strcmp(name, "port party y"), controller);
+		}
 		else if (!strcmp(name, "controls screen init") || !strcmp(name, "controls screen defaults"))
 		{
 			return controls_load(!strcmp(name, "controls screen defaults"));
@@ -10087,6 +10129,8 @@ void pc_menu_game_data_function_invoke(
 		coop_friendly_fire_text(widget);
 	else if (!strcmp(name, "port multiplayer status"))
 		multiplayer_status_update(widget);
+	else if (!strcmp(name, "port party update"))
+		party_screen_update(widget);
 	else if (!strcmp(name, "port playlist edit desc"))
 		playlist_edit_description(widget);
 }

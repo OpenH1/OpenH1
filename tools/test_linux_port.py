@@ -562,6 +562,98 @@ def test_p2p_signatures_and_listings(tmp_path):
     assert "PASS" in result.stdout
 
 
+# ---------- parties (port/linux/src/p2p_party.c): several machines in one
+# process (tools/p2p_party_check.c), each case by its name
+
+PARTY_CASES = ["make", "join", "follow", "busy", "local", "leave", "handoff", "timeout", "regroup", "disband",
+               "full", "joinless", "format", "version"]
+PARTY_SOURCES = ["tools/p2p_party_check.c", "port/linux/src/p2p_crypto.c", "port/third_party/monocypher/monocypher.c",
+                 "port/third_party/monocypher/monocypher-ed25519.c"]
+
+
+def party_check_build(folder: Path, source=None) -> Path:
+    """tools/p2p_party_check.c with p2p_party.c (or a copy of it: source),
+    built for this computer: the party's messages are written byte by byte,
+    so the game's ABI changes nothing of them"""
+    compiler = shutil.which("clang") or shutil.which("cc")
+    if not compiler:
+        pytest.skip("needs a C compiler")
+    root = Path(__file__).resolve().parent.parent
+    folder.mkdir(parents=True, exist_ok=True)
+    program = folder / "p2p_party_check"
+    # (warnings are errors but in a mutated copy, whose fault may leave a
+    # variable unused)
+    defines = [f'-DP2P_PARTY_SOURCE="{source}"'] if source else ["-Werror"]
+    flags = ["-std=gnu99", "-Wall", "-Wextra", "-Wno-unused-parameter", "-Iport/linux/src",
+             "-Iport/third_party/monocypher", "-idirafter", "port/linux/include"]
+    built = subprocess.run([compiler, *flags, *defines, "-O1", "-o", str(program), *PARTY_SOURCES, "-lpthread"],
+                           cwd=root, capture_output=True, text=True)
+    assert built.returncode == 0, built.stderr[-4000:]
+    return program
+
+
+def party_run(program: Path, case: str) -> subprocess.CompletedProcess:
+    return subprocess.run([str(program), case], capture_output=True, text=True, timeout=120)
+
+
+@pytest.fixture(scope="module")
+def party_check(tmp_path_factory):
+    return party_check_build(tmp_path_factory.mktemp("party"))
+
+
+@pytest.mark.parametrize("case", PARTY_CASES)
+def test_party(party_check, case):
+    """a party's machines, made, joined, leading, following the leader into
+    its games, leaving, regrouping (tools/p2p_party_check.c's cases), and
+    its messages' format"""
+    result = party_run(party_check, case)
+    assert result.returncode == 0 and "PASS" in result.stdout, result.stdout
+
+
+# each fault put in p2p_party.c, and the case that must then fail: a check
+# that cannot fail proves nothing
+PARTY_MUTATIONS = [
+    ("an older term's leader is followed", "return term > party.term;", "return term < party.term;", "timeout"),
+    ("a joiner is never listed", "memcpy(party.roster[party.roster_count++], member->id, MEMBER_ID_SIZE);\n"
+     "\tparty.send_wanted = 1;", "party.send_wanted = 1;", "join"),
+    ("a seventeenth is listed", "if (party.roster_count >= P2P_PARTY_MAXIMUM_MEMBERS)",
+     "if (party.roster_count > P2P_PARTY_MAXIMUM_MEMBERS)", "full"),
+    ("a message sent again is taken", "if (member && sequence <= member->sequence)",
+     "if (member && sequence < member->sequence)", "format"),
+    ("signatures are not checked",
+     "if (!p2p_ed25519_verify(message + 3, data, P2P_SHA256_SIZE + size, message + size))", "if (0)", "format"),
+    ("another format is read", "if (message[1] != PARTY_VERSION)", "if (0)", "format"),
+    ("a follow answered is asked again", "\t\tparty.handled_order = order;\n", "", "follow"),
+    ("busy is an answer", "if (result != _p2p_party_follow_busy && result != _p2p_party_follow_none)",
+     "if (result != _p2p_party_follow_none)", "busy"),
+    ("a leader's leave is a member's", "\twas_leader = !memcmp(member->id, party.leader, MEMBER_ID_SIZE);\n"
+     "\tif (party.listed)", "\twas_leader = 0;\n\tif (party.listed)", "handoff"),
+    ("a silent leader is never passed over", "\t\tleader_lost();\n\t}\n\tif ((party.send_wanted",
+     "\t}\n\tif ((party.send_wanted", "timeout"),
+    ("no one is in the leader's game", "return place == _p2p_party_place_game && !memcmp(host, party.target_invite, "
+     "P2P_KEY_HASH_SIZE);", "return 0;", "follow"),
+    ("a member ends the party", "void p2p_party_disband(void)\n{\n\tpthread_mutex_lock(&p2p_lock);\n\tif (leading())",
+     "void p2p_party_disband(void)\n{\n\tpthread_mutex_lock(&p2p_lock);\n\tif (party.active)", "disband"),
+    ("a link no one answers is waited on for ever", "\t\tif (elapsed(party.joined_time, JOIN_WAIT))",
+     "\t\tif (0)", "joinless"),
+    ("the menus are not told who could not follow",
+     "notice(_p2p_party_notice_follow_failed, member->name, member->result);", "(void)0;", "follow"),
+]
+
+
+@pytest.mark.parametrize("what,original,mutated,case", PARTY_MUTATIONS, ids=[m[0] for m in PARTY_MUTATIONS])
+def test_party_negative_controls(tmp_path, what, original, mutated, case):
+    root = Path(__file__).resolve().parent.parent
+    text = (root / "port/linux/src/p2p_party.c").read_text()
+    assert text.count(original) == 1, f"the mutation's text ({what}) is no longer in p2p_party.c once"
+    copy = write(tmp_path / "p2p_party.c", text.replace(original, mutated))
+    program = party_check_build(tmp_path, source=copy)
+    result = party_run(program, case)
+    # (a fault that overruns the roster crashes the check: failing too)
+    assert result.returncode != 0 and ("FAIL" in result.stdout or result.returncode < 0), \
+        f"{what}: the {case} case still passes"
+
+
 
 # port_config.c on its own, with the app's file paths (HALO_DATA_ROOT) and C
 # library calls: "get <setting>" prints it, "write <setting> <value>" sets it
