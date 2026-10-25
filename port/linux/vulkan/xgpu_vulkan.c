@@ -473,6 +473,9 @@ static struct
 	VkExtent2D surface_extent;
 	VkSurfaceTransformFlagBitsKHR surface_transform;
 	uint32_t suboptimal_presents;
+	/* the presents left, after the window's size changed, at which the
+	surface is asked again (RESIZE_CHECKS) */
+	uint32_t resize_checks;
 	/* quarter turns clockwise the frames are drawn turned by, for a
 	swapchain made for the display's own way up (preTransform: Android's
 	pre-rotation); and what turns them (NULL: none, the compositor turns
@@ -3625,6 +3628,13 @@ of frames): a SUBOPTIMAL that making the swapchain again cannot mend is
 not asked about every frame */
 #define SUBOPTIMAL_CHECKS 60
 
+/* presents after the window's size changes at which the surface is asked
+again, each (about two seconds of frames): Android can tell the new size a
+little after the event (split screen on a folding phone), and a swapchain
+made for the old one is scaled into the window, squashed or stretched, with
+no SUBOPTIMAL or OUT_OF_DATE to say so */
+#define RESIZE_CHECKS 120
+
 static void swapchain_forget(void)
 {
 	uint32_t index;
@@ -3884,7 +3894,10 @@ static void window_changes(void)
 	uint32_t asked = __atomic_load_n(&vk.interval_asked, __ATOMIC_ACQUIRE);
 
 	if (__atomic_exchange_n(&vk.window_resized, 0, __ATOMIC_ACQ_REL))
+	{
 		vk.swapchain_stale = 1;
+		vk.resize_checks = RESIZE_CHECKS;
+	}
 	if (asked && (int)(asked - 1) != vk.interval)
 	{
 		/* (made again for its present mode: not for the refreshes a
@@ -4088,18 +4101,13 @@ void xgpu_vulkan_window_interval(int interval)
 		__ATOMIC_RELEASE);
 }
 
-/* a SUBOPTIMAL present: 1 if the surface's extent or transform changed
-from the swapchain's (which making it again mends) or the surface is
-lost; else the present is fine as it is (a compositor that turns or
-scales it), and the surface is asked again only after SUBOPTIMAL_CHECKS
-more */
-static int swapchain_changed(void)
+/* 1 if the surface's extent or transform changed from the swapchain's
+(which making it again mends) or the surface is lost */
+static int surface_changed(void)
 {
 	VkSurfaceCapabilitiesKHR capabilities;
 	VkResult result;
 
-	if (vk.suboptimal_presents++ % SUBOPTIMAL_CHECKS)
-		return 0;
 	result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk.physical, vk.surface, &capabilities);
 	if (result == VK_ERROR_SURFACE_LOST_KHR)
 	{
@@ -4112,6 +4120,16 @@ static int swapchain_changed(void)
 		(capabilities.currentExtent.width != 0xffffffffu &&
 		(capabilities.currentExtent.width != vk.surface_extent.width ||
 		capabilities.currentExtent.height != vk.surface_extent.height));
+}
+
+/* a SUBOPTIMAL present: surface_changed, else the present is fine as it is
+(a compositor that turns or scales it), and the surface is asked again
+only after SUBOPTIMAL_CHECKS more */
+static int swapchain_changed(void)
+{
+	if (vk.suboptimal_presents++ % SUBOPTIMAL_CHECKS)
+		return 0;
+	return surface_changed();
 }
 
 void xgpu_vulkan_window_suspend(int suspended)
@@ -4207,6 +4225,15 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 	if (__atomic_load_n(&vk.window_hidden, __ATOMIC_ACQUIRE) || (!vk.surface && !surface_remake()))
 		return 0;
 	window_changes();
+	/* (a resize's new size, told late: RESIZE_CHECKS) */
+	if (vk.resize_checks && vk.swapchain && !vk.swapchain_stale)
+	{
+		vk.resize_checks--;
+		if (surface_changed())
+			vk.swapchain_stale = 1;
+		if (!vk.surface)
+			return 0;
+	}
 	if (vk.swapchain_stale || !vk.swapchain)
 	{
 		if (!swapchain_make())
