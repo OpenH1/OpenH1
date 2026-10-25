@@ -129,8 +129,13 @@ mapping runs there, but proves nothing of the device's.
 landscape only, full screen without the status bar, `UILaunchScreen`
 (black), UIKit's scenes (SDL's scene delegate), `UIFileSharingEnabled` and
 `LSSupportsOpeningDocumentsInPlace` (the Files app shows the app's
-Documents), `GCSupportsControllerUserInteraction`, and the microphone's
-(voice chat) and the local network's (system link) explanations.
+Documents), `GCSupportsControllerUserInteraction`, the microphone's
+(voice chat) and the local network's (system link) explanations, and
+`CFBundleURLTypes`: the app is the handler of `halo://` links (invites and
+parties' links), as the Mac app is. UIKit gives SDL's scene delegate the
+link (`scene:openURLContexts:`, or the scene's options when the link starts
+the app), which SDL sends on as a drop event, and `port/macos/host_links.c`
+keeps it for internet play (`port/macos/README.md`).
 
 When it starts (`port/ios/host_app.m`), the host puts the game's files in
 the app's Documents folder: `config.toml`, the data root (`maps`,

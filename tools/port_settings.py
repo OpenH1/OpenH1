@@ -1718,7 +1718,7 @@ MULTIPLAYER_ROWS = {
 MULTIPLAYER_LINE_PLACE = (28, 336)
 # the screen's children for one platform only (tools/ce_menus.py): the
 # computer's list and its line (the hub's, in the PC version's places:
-# WIDGET_PATCHES' swap), the touchscreen's in their place (_multiplayer_touch)
+# WIDGET_PATCHES' swap), the touchscreen's tiles in their place (_touch_hub)
 CHILD_PLATFORMS = {
     (f"{MT}/multiplayer_type_select_screen", f"{MT}/hub/hub_list"): "pointer",
     (f"{MT}/multiplayer_type_select_screen", f"{MT}/hub/hub_divider"): "pointer",
@@ -1795,10 +1795,7 @@ WIDGET_PATCHES = {
         '<on event="deleted" run="port multiplayer status end"/>',
         '<on event="right_trigger" run="port multiplayer refresh"/>'], "swap": {
         f"{MT}/multiplayer_type_select_list": f"{MT}/hub/hub_list", "main_menu/blueline": f"{MT}/hub/hub_divider",
-    }, "children": [
-        f'<child widget="{MT}/touch/multiplayer_touch_list" platform="touch"/>',
-        f'<child widget="{MT}/touch/multiplayer_touch_open_bar" y="346" platform="touch"/>',
-        f'<child widget="{MT}/touch/multiplayer_touch_hint" platform="touch"/>']},
+    }, "children": [f'<child widget="{MT}/hub/touch/hub_list" platform="touch"/>']},
     f"{MT}/header_multiplayer": {"set": {"flags": "anchor_left", "wide": WIDE_LEFT}},
     # (the list's headers, which the touchscreen's list shows too, at its rows'
     # left edge)
@@ -2510,7 +2507,7 @@ def _lobby_board(base: str) -> tuple:
     player joins), and the host's GAME SETTINGS (Server Setup) and START
     GAME, or WAITING FOR THE HOST; the footer's key prompts. Left and right
     (and a click on a column) change this player's team. Returns the
-    screen's children and the widgets"""
+    screen's children and the widgets (the players' the touchscreen's too)"""
     top, height = LOBBY_TOP, LOBBY_HEIGHT
     panel_left, _, panel_width, _ = LOBBY_PANEL
     inner_left, inner = panel_left + 14, LOBBY_PANEL_INNER
@@ -2518,7 +2515,7 @@ def _lobby_board(base: str) -> tuple:
     panel_moved, panel_grown = LOBBY_WIDE_PANEL
     row_w, row_h = LOBBY_ROW
     pointer = ' platform="pointer"'
-    children = [f'<child widget="{base}/board_header"{pointer}/>', f'<child widget="{base}/board_subtitle"{pointer}/>']
+    children = [f'<child widget="{base}/board_header"/>', f'<child widget="{base}/board_subtitle"/>']
     lines = _widget(f"{base}/board_header", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
                                              ("height", 59), ("bitmap", f"{base}/header_lobby"), ("wide", WIDE_LEFT)],
                     [])
@@ -2529,8 +2526,8 @@ def _lobby_board(base: str) -> tuple:
     # and how many it has)
     for column, (words, (color, _)) in enumerate(zip(("RED", "BLUE"), LOBBY_TEAM_COLORS)):
         x = lobby_column_x(column)
-        children += [f'<child widget="{base}/board_team_{column}" x="{x}" y="{top}"{pointer}/>',
-                     f'<child widget="{base}/board_title_{column}" x="{x + 12}" y="{top + 8}"{pointer}/>']
+        children += [f'<child widget="{base}/board_team_{column}" x="{x}" y="{top}"/>',
+                     f'<child widget="{base}/board_title_{column}" x="{x + 12}" y="{top + 8}"/>']
         lines += _widget(f"{base}/board_team_{column}", [("controller", 1), ("width", LOBBY_COLUMN_WIDTH),
                                                          ("height", height),
                                                          ("bitmap", part_team_panel(LOBBY_COLUMN_WIDTH, height)),
@@ -2540,8 +2537,8 @@ def _lobby_board(base: str) -> tuple:
                                                           ("color", "#FF" + color[1:]),
                                                           ("wide", lobby_column_wide(column, dw=0)),
                                                           ("text_flags", "no_focus_test")], [])
-    children += [f'<child widget="{base}/board_all" x="{LOBBY_LIST_X}" y="{top}"{pointer}/>',
-                 f'<child widget="{base}/board_title_all" x="{LOBBY_LIST_X + 12}" y="{top + 8}"{pointer}/>']
+    children += [f'<child widget="{base}/board_all" x="{LOBBY_LIST_X}" y="{top}"/>',
+                 f'<child widget="{base}/board_title_all" x="{LOBBY_LIST_X + 12}" y="{top + 8}"/>']
     lines += _widget(f"{base}/board_all", [("controller", 1), ("width", players_width), ("height", height),
                                            ("bitmap", part_panel(players_width, height)),
                                            ("wide", wide(-WIDE_HALF, LOBBY_WIDE_PLAYERS))], [])
@@ -2553,7 +2550,7 @@ def _lobby_board(base: str) -> tuple:
     # its panel's)
     for column in range(2):
         count_x = lobby_column_x(column) + LOBBY_COLUMN_WIDTH - 12 - 90
-        children.append(f'<child widget="{base}/board_count_{column}" x="{count_x}" y="{top + 12}"{pointer}/>')
+        children.append(f'<child widget="{base}/board_count_{column}" x="{count_x}" y="{top + 12}"/>')
         lines += _part_text(f"{base}/board_count_{column}", [("width", 90), ("height", 16), ("font", "ui\\small_ui"),
                                                             ("color", PART_DIM), ("align", "right"),
                                                             ("wide", lobby_column_wide(column, LOBBY_WIDE_PLAYERS // 2,
@@ -2565,7 +2562,7 @@ def _lobby_board(base: str) -> tuple:
         for row in range(LOBBY_ROWS):
             key = f"{column}_{row}"
             children.append(f'<child widget="{base}/board_row_{key}" x="{lobby_column_x(column) + 8}" '
-                            f'y="{top + LOBBY_ROWS_TOP + LOBBY_ROW_STEP * row}"{pointer}/>')
+                            f'y="{top + LOBBY_ROWS_TOP + LOBBY_ROW_STEP * row}"/>')
             lines += _widget(f"{base}/board_row_{key}", [("controller", 1), ("width", row_w), ("height", row_h),
                                                          ("bitmap", part_player_row(row_w, row_h)),
                                                          ("wide", lobby_column_wide(column))],
@@ -2709,9 +2706,8 @@ def _lobby() -> list:
     # network_game_reset_to_pregame_ui opening it in place of the Xbox's
     # pregame: leaving it goes to the main menu, as the PC version's postgame
     # screens do)
-    # (the computer's: its players in a column for each team and the details
-    # panel, _lobby_board; the touchscreen's: the list of players and the
-    # buttons below, as it was)
+    # (its players in a column for each team and the details panel,
+    # _lobby_board; the touchscreen's panel and buttons, _touch_lobby_board)
     board_children, board = _lobby_board(base)
     lines = _widget(f"{base}/lobby_screen", [("width", 640), ("height", 480),
                                              ("flags", "pass_unhandled_to_focused_child main_menu_if_no_history"),
@@ -2724,34 +2720,14 @@ def _lobby() -> list:
                      f'<on event="start" run="port lobby join" open="{base}/player_profile_screen" branch="true"/>',
                      '<on event="x" run="port lobby add player"/>',
                      '<on event="y" run="port lobby invite"/>',
-                     '<child widget="main_menu/new_select/sel_list_desc_bkd" platform="touch"/>',
-                     f'<child widget="{base}/lobby_list" platform="touch"/>',
-                     f'<child widget="{base}/header_lobby" platform="touch"/>',
-                     f'<child widget="{base}/lobby_join_help" platform="touch"/>',
-                     *board_children])
+                     *board_children, *_touch_lobby_board(base)[0]])
     lines += board
     lines += _header(f"{base}/header_lobby", f"{base}/header_lobby")
     lines += _widget(f"{base}/lobby_join_help", [("type", "text"), ("controller", 1), ("left", 355), ("top", 446),
                                                  ("width", 275), ("height", 24), ("font", "ui\\small_ui"),
                                                  ("color", "#FF2896FF"), ("align", "right"), ("text_y", 5),
                                                  ("text_flags", "no_focus_test")], [])
-    # (its rows: any controller's left and right switch its own player's team,
-    # on the rows only, so that they move along the buttons)
-    rows = [f'<child widget="{base}/list_item_{index}" x="20" y="{73 + 30 * index}"/>' for index in range(11)]
-    lines += _widget(f"{base}/lobby_list", [("type", "column_list"), ("width", 640), ("height", 480),
-                                            ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
-                                            ("description", f"{base}/lobby_desc")],
-                     ['<data input="net splitscreen prejoin players"/>', '<data input="port lobby update"/>',
-                      *rows,
-                      f'<child widget="{base}/lobby_button_bar" y="414"/>'])
-    for index in range(11):
-        lines += _widget(f"{base}/list_item_{index}",
-                         [("width", 390), ("height", 28),
-                          ("bitmap", "bitmaps/sel_list_item_bkd_top" if index == 0 else "bitmaps/sel_list_item_bkd"),
-                          ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("align", "center"), ("text_y", 3)],
-                         ['<on event="left right" run="swap player team"/>',
-                          '<child widget="main_menu/new_select/list_item_text" x="25"/>',
-                          '<child widget="main_menu/new_select/list_item_arrows"/>'])
+    # (the panel of a game under way's lobby, before joining it: below)
     lines += _widget(f"{base}/lobby_desc", [("width", 640), ("height", 480)],
                      ['<child widget="main_menu/current_profile_name"/>',
                       f'<child widget="{base}/lobby_right_item" x="22" y="2"/>'])
@@ -2773,34 +2749,6 @@ def _lobby() -> list:
     lines += _widget(f"{base}/lobby_game_data", [("type", "text"), ("controller", 1), ("left", 417), ("top", 250),
                                                  ("width", 146), ("height", 144), ("font", "ui\\small_ui"),
                                                  ("color", "#FF2896FF")], [])
-    lines += _widget(f"{base}/lobby_button_bar", [("type", "column_list"), ("width", 640), ("height", 28),
-                                                  ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
-                     # (SWITCH TEAM first: hidden in a game without teams, which
-                     # moves the focus to the first shown, START NOW; at the end
-                     # it traps none)
-                     [f'<child widget="{base}/lobby_button_team" x="120" y="1"/>',
-                      f'<child widget="{base}/lobby_button_start" x="250" y="1"/>',
-                      f'<child widget="{base}/lobby_button_add" x="380" y="1"/>',
-                      f'<child widget="{base}/lobby_button_leave" x="510" y="1"/>',
-                      # (COPY INVITE, on the left as Defaults is on the
-                      # settings screens: the host's of an internet game,
-                      # shown while it has an invite link; last, so that the
-                      # focus starts on START NOW)
-                      f'<child widget="{base}/lobby_button_invite" y="1"/>'])
-    for key, caption, handlers in (
-        ("invite", "COPY INVITE", ['<on event="a" run="ss copy invite"/>', '<on event="start" run="ss copy invite"/>']),
-        ("add", "ADD PLAYER", ['<on event="a" run="port lobby add player"/>',
-                               '<on event="start" run="port lobby add player"/>']),
-        ("team", "SWITCH TEAM", ['<on event="a" run="swap player team"/>', '<on event="start" run="swap player team"/>']),
-        ("start", "START NOW", ['<on event="a" run="net game speed start"/>',
-                                '<on event="start" run="net game speed start"/>']),
-        ("leave", "LEAVE", ['<on event="a" run="mouse emit back event"/>',
-                            '<on event="start" run="mouse emit back event"/>'])):
-        lines += _widget(f"{base}/lobby_button_{key}", [("type", "text"), ("width", 128), ("height", 24),
-                                                       ("bitmap", "bitmaps/text_button_background"),
-                                                       ("text", caption), ("font", "ui\\small_ui"),
-                                                       ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 2)],
-                         handlers + ['<on event="left_mouse" run="mouse emit accept event"/>'])
     # a split screen player's profile, chosen as they join the lobby (any
     # controller's presses: Co-op's rows; the host's countdown waits)
     lines += _widget(f"{base}/player_profile_screen", [("width", 640), ("height", 480),
@@ -3165,197 +3113,6 @@ def ping_bars_frames() -> list:
     return frames
 
 
-# the touchscreen's Multiplayer (the menus' "touch" platform: the Android and
-# iOS apps): its rows 46 units tall (44 points and more on a phone), Create
-# Game's three in one row, the panel stretched to the screen's right edge
-# (the port's flags anchor_left, anchor_right and stretch: menu_tags.c), a
-# large OPEN button in it, and the hint that a tap chooses and another opens
-# (ui_widget.c's ui_mouse_tap_chooses_first)
-TOUCH = f"{MT}/touch"
-TOUCH_ITEM = f"{MT}/touch_item_bkd"
-TOUCH_ITEM_SIZE = (300, 46)
-TOUCH_PANEL_BODY = f"{MT}/touch_panel_body"
-TOUCH_PANEL_CAP = f"{MT}/touch_panel_cap"
-TOUCH_OPEN_BUTTON = f"{MT}/touch_open_button"
-# the panel's body: its width as the 640 have it, and the picture's (the
-# widest screen's stretch: a phone of 2.2 to 1 adds 2 x 208)
-TOUCH_PANEL_WIDTH = 262
-TOUCH_PANEL_PICTURE_WIDTH = 704
-TOUCH_PANEL = (345, 78, 322)
-TOUCH_ROW_STEP = 48
-
-
-def touch_item_frames() -> list:
-    """a touchscreen row's background: nothing, and chosen the menus' list
-    item's (a rounded left end, a blue outline, open to the right), taller"""
-    width, height = TOUCH_ITEM_SIZE
-    blank = f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}"/>\n'
-    chosen = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
-              f'viewBox="0 0 {width} {height}">'
-              f'<path d="M12,0 H{width} V{height} H12 A12,12 0 0 1 0,{height - 12} V12 A12,12 0 0 1 12,0 Z" '
-              'fill="#000e23"/>'
-              f'<path d="M{width},1 H12 A11,11 0 0 0 1,12 V{height - 12} A11,11 0 0 0 12,{height - 1} H{width}" '
-              'fill="none" stroke="#2995ff" stroke-width="2"/></svg>\n')
-    return [(blank, width, height), (chosen, width, height)]
-
-
-def touch_panel_frames() -> list:
-    """the panel's body (the menus' description field's left end, its top
-    and bottom running on, which a stretched widget shows as much of as it
-    is wide) and its right end"""
-    width, height = TOUCH_PANEL_PICTURE_WIDTH, TOUCH_PANEL[2]
-    body = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
-            f'viewBox="0 0 {width} {height}">'
-            f'<rect x="2" y="2" width="{width - 2}" height="{height - 4}" fill="#000e23"/>'
-            f'<path d="M9.5,0 H{width} V2 H10.5 A8.5,8.5 0 0 0 2,10.5 V{height - 10.5} A8.5,8.5 0 0 0 10.5,{height - 2} '
-            f'H{width} V{height} H9.5 A9.5,9.5 0 0 1 0,{height - 9.5} V9.5 A9.5,9.5 0 0 1 9.5,0 Z" '
-            'fill="#2995ff"/></svg>\n')
-    cap = (f'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="{height}" viewBox="0 0 16 {height}">'
-           f'<rect x="0" y="2" width="14" height="{height - 4}" fill="#000e23"/>'
-           f'<path d="M0,0 H6.5 A9.5,9.5 0 0 1 16,9.5 V{height - 9.5} A9.5,9.5 0 0 1 6.5,{height} H0 V{height - 2} '
-           f'H5.5 A8.5,8.5 0 0 0 14,{height - 10.5} V10.5 A8.5,8.5 0 0 0 5.5,2 H0 Z" fill="#2995ff"/></svg>\n')
-    return [(body, width, height)], [(cap, 16, height)]
-
-
-def touch_open_frames() -> list:
-    """the panel's OPEN button: the menus' text buttons' pill, larger, and
-    brighter while chosen"""
-    width, height = 300, 40
-    frames = []
-    for fill, opacity in (("#004488", "0.6"), ("#1a5fb4", "0.9")):
-        frames.append((f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
-                       f'viewBox="0 0 {width} {height}">'
-                       f'<rect x="1.5" y="1.5" width="{width - 3}" height="{height - 3}" rx="{(height - 3) / 2}" '
-                       f'fill="{fill}" fill-opacity="{opacity}" stroke="#3399ff" stroke-width="2"/></svg>\n',
-                       width, height))
-    return frames
-
-
-def _multiplayer_touch() -> list:
-    """the touchscreen's Multiplayer: its list, its panel, its OPEN button
-    and its hint (TOUCH)"""
-    width, height = TOUCH_ITEM_SIZE
-    left, top, panel_height = TOUCH_PANEL
-
-    # (each row anchored to the screen's left edge, not the list: the list's
-    # description, its panel, is drawn in it and is anchored by its own parts)
-    def item(name, text=None, string_index=None, handlers=(), x_width=width, bitmap=TOUCH_ITEM, extra=(),
-             anchored=True):
-        return _widget(f"{TOUCH}/{name}", [("type", "text"), ("left", 51), ("width", x_width), ("height", height),
-                                           ("flags", "anchor_left" if anchored else None),
-                                           ("bitmap", bitmap), ("text", text),
-                                           ("string_list", f"{MT}/multiplayer_options" if string_index is not None
-                                            else None), ("string_index", string_index),
-                                           ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("text_x", 15),
-                                           ("text_y", 14)],
-                       [*handlers, '<on event="left_mouse" run="mouse emit accept event"/>', *extra])
-
-    def joins(mode_open):
-        return [f'<on event="a" run="mp type set mode" open="{mode_open}"/>',
-                f'<on event="start" run="mp type set mode" open="{mode_open}"/>']
-
-    def creates():
-        return ['<on event="a" run="join controller to mp game"/>',
-                f'<on event="a" run="mp type set mode" open="{MT}/connected/connected_map_select_wrapper"/>']
-
-    lines = []
-    rows = [("multiplayer_type_join_item", -32, 78)]
-    y = 104
-    for name in ("multiplayer_touch_browser_item", "multiplayer_touch_join_lan_item", "multiplayer_touch_join_direct_item"):
-        rows.append((f"touch/{name}", 0, y))
-        y += TOUCH_ROW_STEP
-    rows.append(("multiplayer_type_create_item", -32, y + 2))
-    y += 28
-    rows.append(("touch/multiplayer_touch_create_row", 0, y))
-    y += TOUCH_ROW_STEP + 6
-    rows.append(("touch/multiplayer_touch_gametypes_item", 0, y))
-    lines += _widget(f"{TOUCH}/multiplayer_touch_list",
-                     [("type", "column_list"), ("width", 640), ("height", 480),
-                      ("flags", "pass_unhandled_to_focused_child up_down_tabs_items"),
-                      ("description", f"{TOUCH}/multiplayer_touch_desc")],
-                     ['<data input="port multiplayer status"/>'] +
-                     [f'<child widget="{MT}/{name}"' + (f' x="{x}"' if x else "") + f' y="{y}"/>'
-                      for name, x, y in rows] +
-                     [f'<child widget="{MT}/multiplayer_type_button_bar" y="414"/>'])
-    lines += item("multiplayer_touch_browser_item", string_index=6, handlers=joins(f"{MT}/join_game/join_game_screen"))
-    lines += item("multiplayer_touch_join_lan_item", string_index=3, handlers=joins(f"{MT}/join_game/join_game_screen"),
-                  extra=[f'<child widget="{TOUCH}/item_note"/>'])
-    lines += item("multiplayer_touch_join_direct_item", string_index=4,
-                  handlers=joins(f"{MT}/join_game/join_game_screen"), extra=[f'<child widget="{TOUCH}/invite_note"/>'])
-    # (the notes at the rows' ends, as the computer's: menu_functions.c's
-    # multiplayer_status_notes)
-    for name, color in (("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C")):
-        lines += _widget(f"{TOUCH}/{name}", [("type", "text"), ("width", width - 12), ("height", height),
-                                             ("font", "ui\\small_ui"), ("color", color), ("align", "right"),
-                                             ("text_y", 17), ("text_flags", "no_focus_test")], [])
-    lines += item("multiplayer_touch_gametypes_item", string_index=5, handlers=[
-        f'<on event="a" open="main_menu/settings_select/multiplayer_setup/playlist_select/gametype_select_screen"/>'])
-    # (Create Game's row: INTERNET, LOCAL and CO-OP side by side, each chosen
-    # by left and right or a tap)
-    lines += _widget(f"{TOUCH}/multiplayer_touch_create_row",
-                     [("type", "column_list"), ("left", 51), ("width", width), ("height", height),
-                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items anchor_left"),
-                      ("bitmap", TOUCH_ITEM)],
-                     [f'<child widget="{TOUCH}/multiplayer_touch_create_inter_item"/>',
-                      f'<child widget="{TOUCH}/multiplayer_touch_create_lan_item" x="118"/>',
-                      f'<child widget="{TOUCH}/multiplayer_touch_online_coop"  x="204"/>'])
-    for name, text, x_width in (("multiplayer_touch_create_inter_item", "INTERNET", 110),
-                                ("multiplayer_touch_create_lan_item", "LOCAL", 82),
-                                ("multiplayer_touch_online_coop", "CO-OP", 90)):
-        lines += item(name, text=text, handlers=creates(), x_width=x_width, bitmap=None, anchored=False)
-    # (its panel: the menus' description field stretched to the screen's
-    # right edge; the Server Browser's counts, a headline and a line for the
-    # rest, the item's description, as the computer's panel has them, by the
-    # same names: menu_functions.c's multiplayer_status_update)
-    def text(name, x, y, w, h, font, color, value=None):
-        return _widget(f"{TOUCH}/{name}", [("type", "text"), ("controller", 1), ("left", x), ("top", y),
-                                           ("width", w), ("height", h), ("flags", "anchor_left"), ("text", value),
-                                           ("font", font), ("color", color), ("text_flags", "no_focus_test")], [])
-    x = left + 18
-    lines += _widget(f"{TOUCH}/multiplayer_touch_desc", [("width", 640), ("height", 480)],
-                     [f'<child widget="{TOUCH}/{name}"/>' for name in [
-                         "panel_body", "panel_cap", "multiplayer_status", "multiplayer_status_detail",
-                         "online_now_label",
-                         *[f"online_{count}_{digit}" for count in ("games", "players")
-                           for digit in range(STATUS_DIGIT_PLACES)],
-                         "online_games_label", "online_players_label", "multiplayer_options_txt"]])
-    lines += _widget(f"{TOUCH}/panel_body", [("left", left), ("top", top), ("width", TOUCH_PANEL_WIDTH),
-                                             ("height", panel_height), ("flags", "anchor_left stretch"),
-                                             ("bitmap", TOUCH_PANEL_BODY)], [])
-    lines += _widget(f"{TOUCH}/panel_cap", [("left", left + TOUCH_PANEL_WIDTH), ("top", top), ("width", 16),
-                                            ("height", panel_height), ("flags", "anchor_right"),
-                                            ("bitmap", TOUCH_PANEL_CAP)], [])
-    lines += text("multiplayer_status", x, 96, 420, 30, "ui\\large_ui", "#FFFFFFFF")
-    lines += text("multiplayer_status_detail", x, 128, 420, 90, "ui\\large_ui", "#FF2896FF")
-    lines += text("online_now_label", x, 88, 200, 18, "ui\\small_ui", "#FF2896FF", "ONLINE NOW")
-    for count, count_left in (("games", x), ("players", x + 170)):
-        for digit in range(STATUS_DIGIT_PLACES):
-            lines += _widget(f"{TOUCH}/online_{count}_{digit}",
-                             [("controller", 1), ("left", count_left + DIGIT_SIZE[0] * digit), ("top", 106),
-                              ("width", DIGIT_SIZE[0]), ("height", DIGIT_SIZE[1]), ("flags", "anchor_left"),
-                              ("bitmap", STATUS_DIGITS)], [])
-    lines += text("online_games_label", x, 124, 140, 20, "ui\\large_ui", "#FF2896FF")
-    lines += text("online_players_label", x + 170, 124, 150, 20, "ui\\large_ui", "#FF2896FF")
-    lines += text("multiplayer_options_txt", x, 200, 420, 80, "ui\\large_ui", "#FF2896FF")
-    # (OPEN: a bar of its own, so that one tap uses it; it opens the item
-    # chosen, "port multiplayer open")
-    lines += _widget(f"{TOUCH}/multiplayer_touch_open_bar",
-                     [("type", "column_list"), ("width", 640), ("height", 44),
-                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items anchor_left")],
-                     [f'<child widget="{TOUCH}/multiplayer_touch_open" x="{x}"/>'])
-    lines += _widget(f"{TOUCH}/multiplayer_touch_open",
-                     [("type", "text"), ("width", 300), ("height", 40), ("bitmap", TOUCH_OPEN_BUTTON),
-                      ("font", "ui\\large_ui"), ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 12)],
-                     ['<on event="a" run="port multiplayer open"/>', '<on event="start" run="port multiplayer open"/>',
-                      '<on event="left_mouse" run="mouse emit accept event"/>'])
-    lines += _widget(f"{TOUCH}/multiplayer_touch_hint",
-                     [("type", "text"), ("controller", 1), ("left", 51), ("top", 446), ("width", 320), ("height", 24),
-                      ("flags", "anchor_left"), ("text", "Tap to choose, tap again to open."),
-                      ("font", "ui\\small_ui"), ("color", "#FF2896FF"), ("text_y", 5),
-                      ("text_flags", "no_focus_test")], [])
-    return lines
-
-
 def _multiplayer_status() -> list:
     """Multiplayer's panel: in the place of the PC version's pictures, what
     is live for the item chosen, a headline and a line below it (the games
@@ -3671,6 +3428,7 @@ def parts_pictures() -> list:
         (part_button(join_w, join_h), [(framed(join_w, join_h, "#1e5fd1", 0.9, "#5aa9ff"), join_w, join_h),
                                        (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h)]),
         *lobby_pictures(framed, highlight),
+        *touch_pictures(),
     ]
 
 
@@ -3802,13 +3560,15 @@ def _browser() -> list:
                      '<on event="right_trigger" run="port browser refresh"/>',
                      f'<child widget="{base}/header_join_game"/>',
                      f'<child widget="{base}/browser_counts"/>',
-                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" y="{SETTINGS_TABS_TOP}"/>',
+                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" y="{SETTINGS_TABS_TOP}" '
+                     'platform="pointer"/>',
                      f'<child widget="{SETTINGS}/tab_prompt_next" '
                      f'x="{SETTINGS_TABS_X + (len(BROWSER_TABS) - 1) * SETTINGS_TAB_STEP + SETTINGS_TAB_LAID + 4}" '
-                     f'y="{SETTINGS_TABS_TOP}"/>',
-                     f'<child widget="{base}/browser_columns_line"/>',
-                     f'<child widget="{base}/browser_empty"/>',
-                     f'<child widget="{list_name}"/>'])
+                     f'y="{SETTINGS_TABS_TOP}" platform="pointer"/>',
+                     f'<child widget="{base}/browser_columns_line" platform="pointer"/>',
+                     f'<child widget="{base}/browser_empty" platform="pointer"/>',
+                     f'<child widget="{list_name}" platform="pointer"/>',
+                     *_touch_browser()[0]])
     # (the title of the mode chosen: menu_functions.c's browser_initialize)
     lines += _widget(f"{base}/header_join_game", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
                                                   ("height", 59), ("wide", WIDE_LEFT)],
@@ -3957,6 +3717,81 @@ def _browser() -> list:
     return lines
 
 
+def _hub_panel(folder: str, place: tuple, wide_panel: tuple) -> list:
+    """Multiplayer's panel (its list's description), in folder, at place (left, top, width, height),
+    moved and widened on a wide screen by wide_panel: what is live for the item chosen, and its
+    description (menu_functions.c's multiplayer_status_update finds them by their names: the
+    computer's _hub, the touchscreen's _touch_hub, narrower)"""
+    left, top, width, height = place
+    x, inner = left + 14, width - 28
+    panel, lines = [], []
+    # (a narrow panel's best games: each its players and ping on its second line)
+    compact = inner < 240
+
+    # (each placed by its own left and top, which the panel's functions move
+    # it from: menu_functions.c's multiplayer_status_number, the badges)
+    def text(name, tx, ty, w, h, font, color, align=None, words=None, wide_layout=None):
+        panel.append(f'<child widget="{folder}/{name}"/>')
+        pairs = [("left", tx), ("top", ty), ("width", w), ("height", h), ("font", font), ("color", color),
+                 ("align", align), ("wide", wide_layout)]
+        return (_widget(f"{folder}/{name}", [("type", "text"), ("controller", 1), *pairs, ("text", words),
+                                         ("text_flags", "no_focus_test")], [])
+                if words else _part_text(f"{folder}/{name}", pairs))
+
+    # (in a wider panel, moved with it: its words wider, the players counted
+    # and each best game's players and ping at its right)
+    grown, players_moved, right = wide(0, wide_panel[1]), wide_panel[1] // 2, wide(wide_panel[1])
+    lines += text("multiplayer_status", x, top + 14, inner, 24, "ui\\small_ui" if compact else "ui\\large_ui",
+                  "#FFFFFFFF", wide_layout=grown)
+    lines += text("multiplayer_status_detail", x, top + 42, inner, 120, "ui\\large_ui", SETTINGS_BLUE,
+                  wide_layout=grown)
+    lines += text("online_now_label", x, top + 12, 200, 16, "ui\\small_ui", PART_DIM, words="ONLINE NOW")
+    players_x = x + min(124, inner - 84)
+    for count, count_x in (("games", x), ("players", players_x)):
+        for digit in range(STATUS_DIGIT_PLACES):
+            panel.append(f'<child widget="{folder}/online_{count}_{digit}"/>')
+            lines += _widget(f"{folder}/online_{count}_{digit}", [("controller", 1),
+                                                               ("left", count_x + DIGIT_SIZE[0] * digit),
+                                                               ("top", top + 28), ("width", DIGIT_SIZE[0]),
+                                                               ("height", DIGIT_SIZE[1]), ("bitmap", STATUS_DIGITS),
+                                                               ("wide", wide(players_moved if count == "players"
+                                                                             else 0))],
+                             [])
+    lines += text("online_games_label", x, top + 46, 80, 18, "ui\\small_ui", SETTINGS_BLUE)
+    lines += text("online_players_label", players_x, top + 46, 90, 18, "ui\\small_ui", SETTINGS_BLUE,
+                  wide_layout=wide(players_moved))
+    lines += text("best_label", x, top + 76, 200, 16, "ui\\small_ui", PART_DIM, words="BEST FOR YOU")
+    for row in range(BEST_GAMES):
+        row_top = top + 94 + 40 * row
+        lines += text(f"best_{row}_name", x, row_top, inner - 4 if compact else 166, 20, "ui\\large_ui", "#FFFFFFFF",
+                      wide_layout=wide(0, wide_panel[1]))
+        panel.append(f'<child widget="{folder}/best_{row}_badge"/>')
+        lines += _widget(f"{folder}/best_{row}_badge", [("type", "text"), ("controller", 1), ("left", x),
+                                                     ("top", row_top + 3), ("width", BROWSER_PILL),
+                                                     ("height", PART_PILL_HEIGHT),
+                                                     ("bitmap", part_pill(BROWSER_PILL)),
+                                                     ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
+                                                     ("align", "center"), ("text_flags", "no_focus_test")], [])
+        lines += text(f"best_{row}_about", x, row_top + 19, inner - 104 if compact else 176, 18, "ui\\small_ui",
+                      SETTINGS_BLUE,
+                      wide_layout=wide(0, wide_panel[1]))
+        lines += text(f"best_{row}_players", x + inner - 100, row_top + (19 if compact else 6), 70, 20,
+                      "ui\\large_ui", "#FFFFFFFF",
+                      "right", wide_layout=right)
+        panel.append(f'<child widget="{folder}/best_{row}_ping"/>')
+        lines += _widget(f"{folder}/best_{row}_ping", [("controller", 1), ("left", x + inner - 24),
+                                                    ("top", row_top + (21 if compact else 9)), ("width", 24),
+                                                    ("height", 16),
+                                                    ("bitmap", PING_BARS), ("wide", right)], [])
+    lines += text("multiplayer_options_txt", x, top + height - (96 if compact else 76), inner, 84 if compact else 64,
+                  "ui\\small_ui", SETTINGS_BLUE,
+                  wide_layout=grown)
+    lines += _widget(f"{folder}/hub_panel", [("controller", 1), ("left", left), ("top", top), ("width", width),
+                                            ("height", height), ("bitmap", part_panel(width, height)),
+                                            ("wide", wide(*wide_panel))], panel)
+    return lines
+
+
 def _hub() -> list:
     """Multiplayer, in Settings' look: PLAY ONLINE's items (the server
     browser, its games counted; the local network, its games found; a
@@ -3966,8 +3801,8 @@ def _hub() -> list:
     them (menu_functions.c's multiplayer_status_update: the games online
     and the best of them for the server browser, else what is live for the
     item, and its description), and the footer's key prompts. Each item
-    opens what the PC version's (and the port's) did; the touchscreen keeps
-    its own list (_multiplayer_touch)"""
+    opens what the PC version's (and the port's) did; the touchscreen has
+    them as tiles (_touch_hub)"""
     left, top, width, height = HUB_PANEL
     item_w, item_h = HUB_ITEM
     joins = lambda screen: [f'<on event="a" run="mp type set mode" open="{screen}"/>',  # noqa: E731
@@ -4036,7 +3871,9 @@ def _hub() -> list:
                                                   ("bitmap", "bitmaps/gradient")],
                          ['<on event="created" run="mp type menu initialize"/>',
                           '<on event="deleted" run="port multiplayer status end"/>',
-                          f'<child widget="{MT}/header_multiplayer"/>', f'<child widget="{HUB}/{page}_list"/>'])
+                          f'<child widget="{MT}/header_multiplayer"/>',
+                          f'<child widget="{HUB}/{page}_list" platform="pointer"/>',
+                          f'<child widget="{HUB}/touch/{page}_list" platform="touch"/>'])
         lines += page_list(f"{page}_list", [(f"section_{page}", words, names)], "page_prompts")
         lines += _section(f"{HUB}/section_{page}", words, item_w, wide(-WIDE_HALF, HUB_WIDE_ITEMS))
     for name, (words, handlers, note) in items.items():
@@ -4059,67 +3896,7 @@ def _hub() -> list:
                                            ("text_y", 8), ("text_flags", "no_focus_test")], [])
     lines += _prompts(HUB, "hub_prompts", HUB_PROMPTS)
     lines += _prompts(HUB, "page_prompts", HUB_PAGE_PROMPTS, defined=tuple(name for name, *_ in HUB_PROMPTS))
-    # (the panel, by the touchscreen's panel's names: what is live for the
-    # item chosen, and its description)
-    x, inner = left + 14, width - 28
-    panel = []
-
-    # (each placed by its own left and top, which the panel's functions move
-    # it from: menu_functions.c's multiplayer_status_number, the badges)
-    def text(name, tx, ty, w, h, font, color, align=None, words=None, wide_layout=None):
-        panel.append(f'<child widget="{HUB}/{name}"/>')
-        pairs = [("left", tx), ("top", ty), ("width", w), ("height", h), ("font", font), ("color", color),
-                 ("align", align), ("wide", wide_layout)]
-        return (_widget(f"{HUB}/{name}", [("type", "text"), ("controller", 1), *pairs, ("text", words),
-                                         ("text_flags", "no_focus_test")], [])
-                if words else _part_text(f"{HUB}/{name}", pairs))
-
-    # (in a wider panel, moved with it: its words wider, the players counted
-    # and each best game's players and ping at its right)
-    grown, players_moved, right = wide(0, HUB_WIDE_PANEL[1]), HUB_WIDE_PANEL[1] // 2, wide(HUB_WIDE_PANEL[1])
-    lines += text("multiplayer_status", x, top + 14, inner, 24, "ui\\large_ui", "#FFFFFFFF", wide_layout=grown)
-    lines += text("multiplayer_status_detail", x, top + 42, inner, 120, "ui\\large_ui", SETTINGS_BLUE,
-                  wide_layout=grown)
-    lines += text("online_now_label", x, top + 12, 200, 16, "ui\\small_ui", PART_DIM, words="ONLINE NOW")
-    players_x = x + 124
-    for count, count_x in (("games", x), ("players", players_x)):
-        for digit in range(STATUS_DIGIT_PLACES):
-            panel.append(f'<child widget="{HUB}/online_{count}_{digit}"/>')
-            lines += _widget(f"{HUB}/online_{count}_{digit}", [("controller", 1),
-                                                               ("left", count_x + DIGIT_SIZE[0] * digit),
-                                                               ("top", top + 28), ("width", DIGIT_SIZE[0]),
-                                                               ("height", DIGIT_SIZE[1]), ("bitmap", STATUS_DIGITS),
-                                                               ("wide", wide(players_moved if count == "players"
-                                                                             else 0))],
-                             [])
-    lines += text("online_games_label", x, top + 46, 80, 18, "ui\\small_ui", SETTINGS_BLUE)
-    lines += text("online_players_label", players_x, top + 46, 90, 18, "ui\\small_ui", SETTINGS_BLUE,
-                  wide_layout=wide(players_moved))
-    lines += text("best_label", x, top + 76, 200, 16, "ui\\small_ui", PART_DIM, words="BEST FOR YOU")
-    for row in range(BEST_GAMES):
-        row_top = top + 94 + 40 * row
-        lines += text(f"best_{row}_name", x, row_top, 166, 20, "ui\\large_ui", "#FFFFFFFF",
-                      wide_layout=wide(0, HUB_WIDE_PANEL[1]))
-        panel.append(f'<child widget="{HUB}/best_{row}_badge"/>')
-        lines += _widget(f"{HUB}/best_{row}_badge", [("type", "text"), ("controller", 1), ("left", x),
-                                                     ("top", row_top + 3), ("width", BROWSER_PILL),
-                                                     ("height", PART_PILL_HEIGHT),
-                                                     ("bitmap", part_pill(BROWSER_PILL)),
-                                                     ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
-                                                     ("align", "center"), ("text_flags", "no_focus_test")], [])
-        lines += text(f"best_{row}_about", x, row_top + 19, 176, 18, "ui\\small_ui", SETTINGS_BLUE,
-                      wide_layout=wide(0, HUB_WIDE_PANEL[1]))
-        lines += text(f"best_{row}_players", x + inner - 100, row_top + 6, 70, 20, "ui\\large_ui", "#FFFFFFFF",
-                      "right", wide_layout=right)
-        panel.append(f'<child widget="{HUB}/best_{row}_ping"/>')
-        lines += _widget(f"{HUB}/best_{row}_ping", [("controller", 1), ("left", x + inner - 24),
-                                                    ("top", row_top + 9), ("width", 24), ("height", 16),
-                                                    ("bitmap", PING_BARS), ("wide", right)], [])
-    lines += text("multiplayer_options_txt", x, top + height - 76, inner, 64, "ui\\small_ui", SETTINGS_BLUE,
-                  wide_layout=grown)
-    lines += _widget(f"{HUB}/hub_panel", [("controller", 1), ("left", left), ("top", top), ("width", width),
-                                          ("height", height), ("bitmap", part_panel(width, height)),
-                                          ("wide", wide(*HUB_WIDE_PANEL))], panel)
+    lines += _hub_panel(HUB, HUB_PANEL, HUB_WIDE_PANEL)
     lines += _strings(f"{HUB}/descriptions", HUB_DESCRIPTIONS)
     return lines
 
@@ -4155,7 +3932,9 @@ def _party() -> list:
                       '<on event="y" run="port party y"/>', f'<child widget="{MT}/header_multiplayer"/>',
                       f'<child widget="{base}/section_party" x="{HUB_LIST_X}" y="{top}"/>',
                       f'<child widget="{base}/party_count"/>', f'<child widget="{base}/party_empty"/>', *rows,
-                      f'<child widget="{base}/party_panel"/>', f'<child widget="{base}/party_list"/>'])
+                      f'<child widget="{base}/party_panel"/>',
+                      f'<child widget="{base}/party_list" platform="pointer"/>',
+                      f'<child widget="{base}/touch/party_list" platform="touch"/>'])
     lines += _section(f"{base}/section_party", "PARTY", item_w, items_wide)
     lines += _part_text(f"{base}/party_count", [("left", HUB_LIST_X), ("top", top + 2), ("width", item_w - 4),
                                                ("height", 16), ("font", "ui\\small_ui"), ("color", PART_DIM),
@@ -4260,14 +4039,17 @@ def _host_controls() -> list:
                      '<on event="black" run="port host tab next"/>',
                      f'<child widget="{base}/header_host_controls"/>',
                      f'<child widget="{base}/host_counts"/>',
-                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" y="{SETTINGS_TABS_TOP}"/>',
+                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" y="{SETTINGS_TABS_TOP}" '
+                     'platform="pointer"/>',
                      f'<child widget="{SETTINGS}/tab_prompt_next" '
                      f'x="{SETTINGS_TABS_X + (len(HOST_TABS) - 1) * SETTINGS_TAB_STEP + SETTINGS_TAB_LAID + 4}" '
-                     f'y="{SETTINGS_TABS_TOP}"/>',
-                     *(f'<child widget="{base}/header_{column}"/>' for column in HOST_COLUMNS if column != "tag"),
-                     f'<child widget="{base}/host_columns_line"/>',
-                     f'<child widget="{base}/host_empty"/>',
-                     f'<child widget="{list_name}"/>'])
+                     f'y="{SETTINGS_TABS_TOP}" platform="pointer"/>',
+                     *(f'<child widget="{base}/header_{column}" platform="pointer"/>' for column in HOST_COLUMNS
+                       if column != "tag"),
+                     f'<child widget="{base}/host_columns_line" platform="pointer"/>',
+                     f'<child widget="{base}/host_empty" platform="pointer"/>',
+                     f'<child widget="{list_name}" platform="pointer"/>',
+                     *_touch_host_controls()[0]])
     lines += _widget(f"{base}/header_host_controls", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
                                                       ("height", 59), ("bitmap", f"{base}/header_host_controls"),
                                                       ("wide", WIDE_LEFT)], [])
@@ -4356,23 +4138,648 @@ def _host_controls() -> list:
     return lines
 
 
+# ---------- the touchscreen's layouts of the redesigned multiplayer screens
+# (the menus' "touch" platform: the Android and iOS apps, debug.touch_menus):
+# the server browser and Multiplayer, the lobby, Host Controls and the Party
+# screen, each in the same look as the computer's (the menus' shared parts),
+# by the same widgets' names (menu_functions.c finds them by their names'
+# last part: each screen's own are in a "touch" folder beside its own), laid
+# out for a finger: every tap target TOUCH_TAP tall, the tabs a row of chips,
+# the footer's key prompts buttons (their words alone: a tap names no key),
+# the details panel beside the list as on the computer, and the wide layout
+# the computer's (to 16:9's, centred on a wider phone). A tap on a row of a
+# list with a panel chooses it and shows it there, a second tap uses it
+# (ui_widget.c's ui_mouse_tap_chooses_first): TOUCH_HINT says so
+
+# the least height of a tap target: 44 points on a phone 1080 pixels tall at
+# 420 dots an inch (its 480 lines 411 points: 0.86 points a unit), more on any
+# taller or less dense display (tools/harness/tests/test_touch_screens.py's
+# TOUCH_DISPLAYS)
+TOUCH_TAP = 52
+# the space between two targets, and the rows' step
+TOUCH_GAP = 4
+TOUCH_STEP = TOUCH_TAP + TOUCH_GAP
+# the chips' row (under the title), the rows under it, the footer's buttons
+TOUCH_CHIPS_TOP = 76
+TOUCH_ROWS_TOP = TOUCH_CHIPS_TOP + TOUCH_TAP + 6
+TOUCH_FOOTER_TOP = 414
+# the footer's band (bitmaps/gradient's line across the screens): rows and
+# panels end over it, the footer's buttons are under it
+TOUCH_FOOTER_BAND = 410
+TOUCH_HINT = "Tap to choose, tap again to open."
+# the browser's and Host Controls' list (its rows TOUCH_LIST_WIDTH wide,
+# BROWSER_WIDE_LIST wider on a wide screen) and the panel beside it
+TOUCH_LIST_WIDTH = 364
+TOUCH_PANEL_X = BROWSER_LIST_X + TOUCH_LIST_WIDTH + 8
+TOUCH_PANEL_WIDTH = 640 - BROWSER_LIST_X - TOUCH_PANEL_X
+TOUCH_BROWSER_ROWS = 5
+TOUCH_BROWSER_PANEL = (TOUCH_PANEL_X, TOUCH_ROWS_TOP, TOUCH_PANEL_WIDTH,
+                       TOUCH_ROWS_TOP + (TOUCH_BROWSER_ROWS - 1) * TOUCH_STEP + TOUCH_TAP - TOUCH_ROWS_TOP)
+# a browser row's parts: (x, y, width, wide move, wide growth) in the row; its
+# name and players on its first line, its map, mode and ping under them
+TOUCH_BROWSER_CELLS = {
+    "server_name": (32, 7, 220, 0, BROWSER_WIDE_LIST), "players": (272, 7, 80, BROWSER_WIDE_LIST, 0),
+    "map": (32, 30, 120, 0, BROWSER_WIDE_LIST // 2),
+    "type": (158, 30, 100, BROWSER_WIDE_LIST // 2, BROWSER_WIDE_LIST // 2),
+    "ping": (272, 30, 80, BROWSER_WIDE_LIST, 0),
+}
+# the footer's buttons: (widget, words, x, width, its function); SORT's words
+# are the game's (the sort: menu_functions.c's browser_header_show)
+TOUCH_BROWSER_PROMPTS = [
+    ("prompt_favorite", "FAVORITE", 28, 136, '<on event="a" run="port browser favorite"/>'),
+    ("prompt_refresh", "REFRESH", 170, 136, '<on event="a" run="port browser refresh"/>'),
+    ("prompt_paste", "PASTE LINK", 170, 136, '<on event="a" run="port browser refresh"/>'),
+    ("prompt_sort", None, 312, 136, '<on event="a" run="port browser sort"/>'),
+    ("prompt_back", "BACK", 502, 110, '<on event="a" run="mouse emit back event"/>'),
+]
+# Multiplayer's tiles: two columns TOUCH_HUB_WIDTH wide in all (HUB_WIDE_ITEMS
+# wider, between them, on a wide screen) under PLAY ONLINE's and HOST's
+# titles, each its name over what is live for it (its note), their words
+# short enough for a tile; the panel beside them (_hub_panel's, narrower)
+TOUCH_HUB_WIDTH = 368
+TOUCH_TILE = ((TOUCH_HUB_WIDTH - TOUCH_GAP) // 2, TOUCH_TAP)
+TOUCH_HUB_PANEL = (HUB_LIST_X + TOUCH_HUB_WIDTH + 8, HUB_PANEL[1],
+                   640 - HUB_LIST_X - (HUB_LIST_X + TOUCH_HUB_WIDTH + 8), HUB_PANEL[3])
+TOUCH_TILES = [
+    ("section_online", "PLAY ONLINE", [("hub_join_internet", "BROWSE GAMES", "browser_note"),
+                                       ("hub_join_lan_item", "LOCAL GAMES", "item_note"),
+                                       ("hub_join_direct", "JOIN BY LINK", "invite_note"),
+                                       ("hub_party", "PARTY", "party_note")]),
+    ("section_host", "HOST", [("hub_create", "CREATE GAME ›", None), ("hub_create_bots", "PLAY WITH BOTS", None),
+                              ("hub_coop", "CO-OP ›", None), ("hub_gametypes", "GAMETYPES", None)]),
+]
+TOUCH_HUB_PROMPTS = [
+    ("prompt_refresh", "REFRESH", 28, 136, '<on event="a" run="port multiplayer refresh"/>'),
+    ("prompt_back", "BACK", 502, 110, '<on event="a" run="mouse emit back event"/>'),
+]
+# the lobby's footer: the computer's prompts and its panel's GAME SETTINGS and
+# START GAME (whose words are the game's: the countdown), a row of buttons
+# under the players and the panel; the panel's bots' rows TOUCH_TAP tall
+TOUCH_LOBBY_PROMPTS = [
+    ("prompt_team", "CHANGE TEAM", 28, 120, '<on event="a" run="port lobby team toggle"/>'),
+    ("prompt_invite", "INVITE", 154, 66, '<on event="a" run="port lobby invite"/>'),
+    ("prompt_add", "ADD PLAYER", 226, 106, '<on event="a" run="port lobby add player"/>'),
+    ("board_settings", "SETTINGS", 338, 84, '<on event="a" run="port lobby settings"/>'),
+    ("board_start", None, 428, 118, '<on event="a" run="port lobby start"/>'),
+    ("prompt_leave", "LEAVE", 552, 60, '<on event="a" run="mouse emit back event"/>'),
+]
+TOUCH_LOBBY_PANEL = (LOBBY_PANEL[0], LOBBY_TOP, LOBBY_PANEL[2], 324)
+# Host Controls': the chips over the list alone, the column titles under
+# them, its rows (TOUCH_HOST_ROWS, TOUCH_HOST_STEP apart to end over the
+# footer's band), each a player's name with its tag under it and its team,
+# score and ping at its right (or a setting's or a ban's words and value);
+# the panel beside them from the chips' top to the band, its four buttons
+# stacked up from its foot under its words; BACK in the footer
+TOUCH_HOST_ROWS = 5
+TOUCH_HOST_STEP = TOUCH_TAP + 2
+TOUCH_HOST_HEADERS_TOP = TOUCH_CHIPS_TOP + TOUCH_TAP
+TOUCH_HOST_ROWS_TOP = TOUCH_FOOTER_BAND - (TOUCH_HOST_ROWS - 1) * TOUCH_HOST_STEP - TOUCH_TAP
+TOUCH_HOST_PANEL = (TOUCH_PANEL_X, TOUCH_CHIPS_TOP, TOUCH_PANEL_WIDTH, TOUCH_FOOTER_BAND - TOUCH_CHIPS_TOP)
+# (x, y, width, height, wide move, wide growth) in a row; the column titles over
+# the team, score, ping and value
+TOUCH_HOST_CELLS = {
+    "label": (12, 9, 164, 20, 0, 84), "team": (180, 16, 48, 20, 84, 20), "score": (230, 16, 50, 20, 104, 20),
+    "ping": (284, 16, 66, 20, 124, 20), "tag": (12, 31, BROWSER_PILL, PART_PILL_HEIGHT, 0, 0),
+    "value": (180, 16, 170, 20, 84, BROWSER_WIDE_LIST - 84),
+}
+TOUCH_HOST_BACK = (502, 110)
+TOUCH_PARTY_PROMPTS = [
+    ("prompt_make", "MAKE PARTY", 28, 140, '<on event="a" run="port party button"/>'),
+    ("prompt_copy", "COPY LINK", 28, 140, '<on event="a" run="port party button"/>'),
+    ("prompt_paste", "PASTE LINK", 172, 140, '<on event="a" run="port party button"/>'),
+    ("prompt_follow", "JOIN LEADER", 172, 140, '<on event="a" run="port party button"/>'),
+    ("prompt_end", "END PARTY", 172, 140, '<on event="a" run="port party button"/>'),
+    ("prompt_leave", "LEAVE PARTY", 316, 140, '<on event="a" run="port party button"/>'),
+    ("prompt_back", "BACK", 502, 110, '<on event="a" run="port party button"/>'),
+]
+
+
+def touch_chip(width: int, height: int) -> str:
+    """a tab as a chip: an outline, filled while it has the focus, the
+    current one filled brighter (menu_tabs_show's four frames)"""
+    return f"{PARTS}/chip_{width}x{height}"
+
+
+def touch_row(width: int, height: int) -> str:
+    """a row of a list whose functions choose its frame, for a finger: faintly
+    filled (a target), focused, and chosen"""
+    return f"{PARTS}/touch_row_{width}x{height}"
+
+
+def touch_tile(width: int, height: int) -> str:
+    """a tile of a list (Multiplayer's items): faintly filled, and focused
+    (two frames, which the engine shows by the focus)"""
+    return f"{PARTS}/tile_{width}x{height}"
+
+
+def touch_button(width: int, height: int) -> str:
+    """a footer's button: outlined, and filled while it has the focus"""
+    return f"{PARTS}/touch_button_{width}x{height}"
+
+
+def touch_sizes() -> dict:
+    """each touch part's sizes, as the layouts use them"""
+    panel_inner = TOUCH_PANEL_WIDTH - 24
+    buttons = {(width, TOUCH_TAP) for prompts in (TOUCH_BROWSER_PROMPTS, TOUCH_HUB_PROMPTS, TOUCH_LOBBY_PROMPTS,
+                                                  TOUCH_PARTY_PROMPTS) for *_, width, _ in prompts}
+    buttons |= {(panel_inner, TOUCH_TAP), (TOUCH_HOST_BACK[1], TOUCH_TAP)}
+    return {
+        "chip": sorted({(TOUCH_CHIP_WIDTHS[count], TOUCH_TAP) for count in TOUCH_CHIP_WIDTHS}),
+        "row": [(TOUCH_LIST_WIDTH, TOUCH_TAP)],
+        "tile": sorted({TOUCH_TILE, (TOUCH_HUB_WIDTH, TOUCH_TAP), (TOUCH_LOBBY_PANEL[2] - 28, TOUCH_TAP)}),
+        "button": sorted(buttons),
+        "panel": sorted({TOUCH_BROWSER_PANEL[2:], TOUCH_HOST_PANEL[2:], TOUCH_LOBBY_PANEL[2:],
+                         TOUCH_HUB_PANEL[2:]}),
+        "section": [TOUCH_HUB_WIDTH],
+    }
+
+
+def touch_pictures() -> list:
+    """(bitmap name, [(SVG, width, height)] for its frames) of the touch
+    layouts' parts, in the shared parts' look"""
+    def framed(width, height, fill, opacity, stroke, radius=8, stroke_width=2):
+        return (_svg(width, height, [_rounded(width, height, stroke_width / 2, radius, fill, opacity, stroke,
+                                              stroke_width)]), width, height)
+
+    sizes = touch_sizes()
+    pictures = []
+    for width, height in sizes["chip"]:
+        radius = height / 2 - 4
+        pictures.append((touch_chip(width, height), [
+            framed(width, height, "#000e23", 0.6, "#1f5fb0", radius),
+            framed(width, height, "#002244", 0.9, "#2299ff", radius),
+            framed(width, height, "#0d3a7a", 0.9, "#5aa9ff", radius),
+            framed(width, height, "#1e5fd1", 1.0, "#b8dbff", radius)]))
+    for width, height in sizes["row"]:
+        pictures.append((touch_row(width, height), [
+            framed(width, height, "#081a40", 0.55, "none", 8, 0),
+            framed(width, height, "#002244", 0.9, "#2299ff"),
+            framed(width, height, "#0d3a7a", 0.9, "#8cc8ff")]))
+    for width, height in sizes["tile"]:
+        pictures.append((touch_tile(width, height), [
+            framed(width, height, "#081a40", 0.75, "#1f4f9a"),
+            framed(width, height, "#0d3a7a", 0.95, "#8cc8ff")]))
+    for width, height in sizes["button"]:
+        pictures.append((touch_button(width, height), [
+            framed(width, height, "#0a2a5a", 0.8, "#2f7fff"),
+            framed(width, height, "#1e5fd1", 1.0, "#b8dbff")]))
+    # (Multiplayer's sections' titles, as wide as its tiles)
+    for width in sizes["section"]:
+        pictures.append((part_section(width), [(_svg(width, PART_SECTION_HEIGHT, [
+            f'  <rect x="0" y="{PART_SECTION_HEIGHT - 1.5:g}" width="{width}" height="1" fill="#2995ff" '
+            'fill-opacity="0.45"/>']), width, PART_SECTION_HEIGHT)]))
+    # (the details panels, the shared parts' panel at the touch layouts' sizes)
+    for width, height in sizes["panel"]:
+        pictures.append((part_panel(width, height), [framed(width, height, "#000e23", 0.88, "#2995ff", 9.5)]))
+    return pictures
+
+
+# the chips' widths for a strip of so many (the browser's five, Host
+# Controls' three beside BACK), TOUCH_GAP + 2 apart
+TOUCH_CHIP_WIDTHS = {5: 112, 3: 116}
+
+
+def _touch_chips(base: str, strip: str, tabs: list, handlers: list, span: int) -> list:
+    """a strip of tabs as chips (a column list whose name ends "_tabs", as
+    menu_tabs_show knows it): each its words, TOUCH_TAP tall, spread over
+    span of the 640's width and each its part wider on a wide screen; a tap
+    runs the handlers"""
+    width = TOUCH_CHIP_WIDTHS[len(tabs)]
+    step = width + TOUCH_GAP + 2
+    grown = span * WIDE_EXTRA // 584 // len(tabs)
+    lines = _widget(f"{base}/{strip}", [("type", "column_list"), ("width", 640), ("height", TOUCH_TAP),
+                                       ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                    [f'<child widget="{base}/{name}" x="{BROWSER_LIST_X + index * step}"/>'
+                     for index, (name, _) in enumerate(tabs)])
+    for index, (name, words) in enumerate(tabs):
+        lines += _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("width", width),
+                                           ("height", TOUCH_TAP), ("wide", wide(-WIDE_HALF + index * grown, grown)),
+                                           ("bitmap", touch_chip(width, TOUCH_TAP)), ("text", words),
+                                           ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE), ("align", "center"),
+                                           ("text_y", 19)],
+                         handlers + ['<on event="left_mouse" run="mouse emit accept event"/>'])
+    return lines
+
+
+def _touch_prompts(base: str, bar: str, prompts: list, defined: tuple = (), start: str = None) -> list:
+    """a footer of buttons, TOUCH_TAP tall: each its words (None: the
+    game's), its function run by a tap (or A, with a controller; Start runs
+    start if given, else the same); those left of the middle keep to a wide
+    screen's left edge, the others to its right (those another footer has,
+    by their names in defined, its)"""
+    lines = _widget(f"{base}/{bar}", [("type", "column_list"), ("width", 640), ("height", TOUCH_TAP),
+                                     ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                    [f'<child widget="{base}/{name}" x="{x}"/>' for name, _, x, _, _ in prompts])
+    for name, words, x, width, handler in (prompt for prompt in prompts if prompt[0] not in defined):
+        lines += _widget(f"{base}/{name}", [("type", "text"), ("width", width), ("height", TOUCH_TAP),
+                                           ("wide", prompt_wide(x, width)),
+                                           ("bitmap", touch_button(width, TOUCH_TAP)), ("text", words),
+                                           ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
+                                           ("text_y", 19)],
+                         [handler, start or handler.replace('event="a"', 'event="start"'),
+                          '<on event="left_mouse" run="mouse emit accept event"/>'])
+    return lines
+
+
+def _touch_hint(name: str, y: int) -> list:
+    return _widget(name, [("type", "text"), ("controller", 1), ("left", BROWSER_LIST_X), ("top", y),
+                          ("width", 300), ("height", 18), ("text", TOUCH_HINT), ("font", "ui\\small_ui"),
+                          ("color", PART_DIM), ("wide", WIDE_LEFT), ("text_flags", "no_focus_test")], [])
+
+
+def _touch_browser() -> tuple:
+    """the server browser on a touchscreen (_browser's widgets by the same
+    names, its own in join_game/touch): its tabs a row of chips, TOUCH_BROWSER_ROWS
+    rows each a game's name and players over its map, mode and ping (the
+    columns' titles left out: SORT says the sort), the panel beside them
+    with JOIN GAME, and the footer's buttons. Returns the screen's children
+    and the widgets"""
+    base = f"{MT}/join_game"
+    touch = f"{base}/touch"
+    left, top, width, height = TOUCH_BROWSER_PANEL
+    inner_left, inner_width = left + 12, width - 24
+    panel_moved, panel_grown = BROWSER_WIDE_PANEL
+    list_wide = wide(-WIDE_HALF, BROWSER_WIDE_LIST)
+    children = [f'<child widget="{touch}/browser_empty" platform="touch"/>',
+                f'<child widget="{touch}/join_game_items_list" platform="touch"/>']
+    lines = _part_text(f"{touch}/browser_empty", [("left", BROWSER_LIST_X + 24), ("top", 230),
+                                                 ("width", TOUCH_LIST_WIDTH - 48), ("height", 80),
+                                                 ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE),
+                                                 ("align", "center"), ("wide", list_wide)])
+    rows = [f'<child widget="{touch}/server_item_{row}" x="{BROWSER_LIST_X}" '
+            f'y="{TOUCH_ROWS_TOP + TOUCH_STEP * (row - 1)}"/>' for row in range(1, TOUCH_BROWSER_ROWS + 1)]
+    join_y = top + height - TOUCH_TAP - 10
+    lines += _widget(f"{touch}/join_game_items_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                                      ("flags", "pass_unhandled_to_focused_child "
+                                                                "up_down_tabs_children"),
+                                                      ("description", f"{touch}/browser_panel")],
+                     ['<data input="gamespy screen update"/>',
+                      f'<child widget="{touch}/browser_tabs" y="{TOUCH_CHIPS_TOP}"/>', *rows,
+                      f'<child widget="{touch}/browser_join_bar" y="{join_y}"/>',
+                      f'<child widget="{touch}/join_game_button_bar" y="{TOUCH_FOOTER_TOP}"/>'])
+    lines += _touch_chips(touch, "browser_tabs", BROWSER_TABS, ['<on event="a" run="port browser tab"/>',
+                                                                '<on event="start" run="port browser tab"/>'], 584)
+    row_w = TOUCH_LIST_WIDTH
+    for row in range(1, TOUCH_BROWSER_ROWS + 1):
+        lines += _widget(f"{touch}/server_item_{row}",
+                         [("width", row_w), ("height", TOUCH_TAP), ("bitmap", touch_row(row_w, TOUCH_TAP)),
+                          ("wide", list_wide)],
+                         ['<on event="a" run="gamespy select item"/>', '<on event="start" run="gamespy select item"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          f'<child widget="{FAVORITE_STAR_WIDGET}" x="10" y="18"/>',
+                          *(f'<child widget="{touch}/server_item_{column}" x="{TOUCH_BROWSER_CELLS[column][0]}" '
+                            f'y="{TOUCH_BROWSER_CELLS[column][1]}"/>' for column in ("server_name", "map", "type",
+                                                                                      "players")),
+                          f'<child widget="{touch}/server_item_tick" y="{TOUCH_BROWSER_CELLS["server_name"][1] + 2}"/>',
+                          f'<child widget="{touch}/server_item_locked" y="{TOUCH_BROWSER_CELLS["server_name"][1] + 2}"/>',
+                          f'<child widget="{touch}/server_item_ping" x="{TOUCH_BROWSER_CELLS["ping"][0]}" '
+                          f'y="{TOUCH_BROWSER_CELLS["ping"][1] - 1}"/>',
+                          f'<child widget="{touch}/server_item_ping_ms" x="{TOUCH_BROWSER_CELLS["ping"][0]}" '
+                          f'y="{TOUCH_BROWSER_CELLS["ping"][1]}"/>'])
+    for column in ("server_name", "map", "type", "players"):
+        _, _, cell_w, moved, grown = TOUCH_BROWSER_CELLS[column]
+        large = column in ("server_name", "players")
+        lines += _widget(f"{touch}/server_item_{column}",
+                         [("type", "text"), ("width", cell_w), ("height", 20 if large else 16),
+                          ("font", "ui\\large_ui" if large else "ui\\small_ui"),
+                          ("color", "#FFFFFFFF" if column == "server_name" else "#FFC9DCF7"),
+                          ("align", "right" if column == "players" else None), ("wide", wide(moved, grown))], [])
+    lines += _widget(f"{touch}/server_item_tick", [("type", "text"), ("width", BROWSER_TICK_BADGE),
+                                                   ("height", PART_PILL_HEIGHT),
+                                                   ("bitmap", part_pill(BROWSER_TICK_BADGE)), ("font", "ui\\small_ui"),
+                                                   ("color", "#FFFFFFFF"), ("align", "center"),
+                                                   ("text_flags", "no_focus_test")], [])
+    lines += _widget(f"{touch}/server_item_locked", [("width", 16), ("height", 16),
+                                                     ("bitmap", f"{base}/locked_icon")], [])
+    _, _, ping_w, ping_moved, _ = TOUCH_BROWSER_CELLS["ping"]
+    lines += _widget(f"{touch}/server_item_ping", [("width", BROWSER_PING_BARS), ("height", 16),
+                                                   ("bitmap", PING_BARS), ("wide", wide(ping_moved))], [])
+    lines += _widget(f"{touch}/server_item_ping_ms", [("type", "text"), ("width", ping_w), ("height", 16),
+                                                      ("font", "ui\\small_ui"), ("color", "#FFC9DCF7"),
+                                                      ("align", "right"), ("text_flags", "no_focus_test"),
+                                                      ("wide", wide(ping_moved))], [])
+    # (the panel: _browser's words but its players and ping, which the row
+    # has; its status four lines, as menu_functions.c's browser_panel_show
+    # wraps it on a touchscreen: the party's room, why it is closed, its
+    # password; JOIN GAME at its foot)
+    panel_children = []
+    for name, y, text_h, font, color, align in (
+            ("panel_title", 10, 44, "ui\\large_ui", "#FFFFFFFF", None),
+            ("panel_where", 54, 30, "ui\\small_ui", SETTINGS_BLUE, None),
+            ("panel_status", 126, 84, "ui\\small_ui", SETTINGS_BLUE, None)):
+        text_w = 70 if name.endswith("_label") else inner_width
+        panel_children.append(f'<child widget="{touch}/{name}" x="{inner_left}" y="{top + y}"/>')
+        lines += _part_text(f"{touch}/{name}", [("width", text_w), ("height", text_h), ("font", font),
+                                                ("color", color), ("align", align),
+                                                ("wide", wide(0, panel_grown) if text_w == inner_width else None)])
+    for name, x, y, pill_w in (("panel_kind", 0, 86, BROWSER_PILL), ("panel_tick", BROWSER_PILL + 4, 86, BROWSER_PILL),
+                               ("panel_opence", 0, 106, BROWSER_WIDE_PILL)):
+        panel_children.append(f'<child widget="{base}/{name}" x="{inner_left + x}" y="{top + y}"/>')
+    lines += _widget(f"{touch}/browser_panel", [("controller", 1), ("left", left), ("top", top), ("width", width),
+                                                ("height", height), ("bitmap", part_panel(width, height)),
+                                                ("wide", wide(*BROWSER_WIDE_PANEL))], panel_children)
+    lines += _widget(f"{touch}/browser_join_bar", [("type", "column_list"), ("width", 640), ("height", TOUCH_TAP),
+                                                   ("flags", "pass_unhandled_to_focused_child")],
+                     [f'<child widget="{touch}/button_join" x="{inner_left}"/>'])
+    lines += _widget(f"{touch}/button_join", [("type", "text"), ("width", inner_width), ("height", TOUCH_TAP),
+                                              ("bitmap", touch_button(inner_width, TOUCH_TAP)),
+                                              ("wide", wide(panel_moved, panel_grown)), ("text", "JOIN GAME"),
+                                              ("font", "ui\\large_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
+                                              ("text_y", 16)],
+                     ['<on event="a" run="gamespy select button"/>', '<on event="start" run="gamespy select button"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    lines += _touch_prompts(touch, "join_game_button_bar", TOUCH_BROWSER_PROMPTS)
+    return children, lines
+
+
+def _touch_hub() -> tuple:
+    """Multiplayer on a touchscreen (_hub's items, by the same names, in
+    hub/touch): PLAY ONLINE's and HOST's items as two columns of tiles, each
+    its name over what is live for it, the panel beside them (the
+    computer's), REFRESH and BACK under them; CREATE GAME's and CO-OP
+    CAMPAIGN's pages their two items as wide tiles"""
+    touch = f"{HUB}/touch"
+    tile_w, tile_h = TOUCH_TILE
+    half = HUB_WIDE_ITEMS // 2
+    lines = []
+    handlers = {}
+    joins = lambda screen: [f'<on event="a" run="mp type set mode" open="{screen}"/>',  # noqa: E731
+                            f'<on event="start" run="mp type set mode" open="{screen}"/>']
+    creates = ['<on event="a" run="join controller to mp game"/>',
+               f'<on event="a" run="mp type set mode" open="{MT}/connected/connected_map_select_wrapper"/>']
+    browser = f"{MT}/join_game/join_game_screen"
+    handlers.update({
+        "hub_join_internet": joins(browser), "hub_join_lan_item": joins(browser), "hub_join_direct": joins(browser),
+        "hub_party": [f'<on event="{event}" open="{MT}/party/party_screen"/>' for event in ("a", "start")],
+        "hub_create": [f'<on event="{event}" open="{HUB}/create_screen"/>' for event in ("a", "start")],
+        "hub_create_bots": creates,
+        "hub_coop": [f'<on event="{event}" open="{HUB}/coop_screen"/>' for event in ("a", "start")],
+        "hub_gametypes": [f'<on event="{event}" open="main_menu/settings_select/multiplayer_setup/playlist_select/'
+                          'gametype_select_screen"/>' for event in ("a", "start")],
+        "hub_create_inter": creates, "hub_create_lan_item": creates, "hub_online_coop": creates,
+        "hub_split_coop": [f'<on event="{event}" run="port coop begin" open="{MT}/coop/player_2_profile_screen"/>'
+                           for event in ("a", "start")],
+    })
+
+    def tile(name, words, note, width, wide_layout):
+        inner = [*handlers[name], '<on event="left_mouse" run="mouse emit accept event"/>']
+        if note:
+            inner.append(f'<child widget="{touch}/{note}" x="10" y="31"/>')
+        return _widget(f"{touch}/{name}", [("type", "text"), ("width", width), ("height", tile_h),
+                                           ("wide", wide_layout), ("bitmap", touch_tile(width, tile_h)),
+                                           ("text", words), ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE),
+                                           ("text_x", 10), ("text_y", 9 if note else 17)], inner)
+
+    children, y = [], HUB_PANEL[1]
+    for section, words, items in TOUCH_TILES:
+        children.append(f'<child widget="{touch}/{section}" x="{HUB_LIST_X}" y="{y}"/>')
+        lines += _section(f"{touch}/{section}", words, TOUCH_HUB_WIDTH, wide(-WIDE_HALF, HUB_WIDE_ITEMS))
+        y += PART_SECTION_HEIGHT + 6
+        for index, (name, label, note) in enumerate(items):
+            column = index % 2
+            children.append(f'<child widget="{touch}/{name}" x="{HUB_LIST_X + column * (tile_w + TOUCH_GAP)}" '
+                            f'y="{y + index // 2 * TOUCH_STEP}"/>')
+            lines += tile(name, label, note, tile_w, wide(-WIDE_HALF + column * half, half))
+        y += 2 * TOUCH_STEP + 8
+    children.append(f'<child widget="{touch}/hub_hint"/>')
+    lines += _touch_hint(f"{touch}/hub_hint", y + 2)
+    children.append(f'<child widget="{touch}/hub_prompts" y="{TOUCH_FOOTER_TOP}"/>')
+    lines += _widget(f"{touch}/hub_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                          ("flags", "pass_unhandled_to_focused_child up_down_tabs_items"),
+                                          ("description", f"{touch}/hub_panel")],
+                     ['<data input="port multiplayer status"/>', *children])
+    lines += _hub_panel(touch, TOUCH_HUB_PANEL, HUB_WIDE_PANEL)
+    for note, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C"),
+                        ("party_note", "#FF7FB2FF")):
+        lines += _widget(f"{touch}/{note}", [("type", "text"), ("width", tile_w - 20), ("height", 16),
+                                            ("wide", wide(0, half)), ("font", "ui\\small_ui"), ("color", color),
+                                            ("text_flags", "no_focus_test")], [])
+    lines += _touch_prompts(touch, "hub_prompts", TOUCH_HUB_PROMPTS)
+    lines += _touch_prompts(touch, "page_prompts", [TOUCH_HUB_PROMPTS[1]],
+                            defined=tuple(name for name, *_ in TOUCH_HUB_PROMPTS))
+    # (the pages: their two items as wide tiles under their title)
+    for page, words, names in (("create", "CREATE GAME", [("hub_create_inter", "INTERNET"),
+                                                          ("hub_create_lan_item", "LOCAL NETWORK")]),
+                               ("coop", "CO-OP CAMPAIGN", [("hub_online_coop", "ONLINE CO-OP"),
+                                                           ("hub_split_coop", "SPLIT-SCREEN CO-OP")])):
+        y = HUB_PANEL[1]
+        page_children = [f'<child widget="{touch}/section_{page}" x="{HUB_LIST_X}" y="{y}"/>']
+        lines += _section(f"{touch}/section_{page}", words, TOUCH_HUB_WIDTH, wide(-WIDE_HALF, HUB_WIDE_ITEMS))
+        y += PART_SECTION_HEIGHT + 6
+        for index, (name, label) in enumerate(names):
+            page_children.append(f'<child widget="{touch}/{name}" x="{HUB_LIST_X}" y="{y + index * TOUCH_STEP}"/>')
+            lines += tile(name, label, None, TOUCH_HUB_WIDTH, wide(-WIDE_HALF, HUB_WIDE_ITEMS))
+        page_children.append(f'<child widget="{touch}/page_prompts" y="{TOUCH_FOOTER_TOP}"/>')
+        lines += _widget(f"{touch}/{page}_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                                 ("flags", "pass_unhandled_to_focused_child up_down_tabs_items"),
+                                                 ("description", f"{touch}/hub_panel")],
+                         ['<data input="port multiplayer status"/>', *page_children])
+    return lines
+
+
+def _touch_party() -> list:
+    """the Party screen on a touchscreen: the computer's (_party), its footer
+    a row of buttons (party/touch's party_list, by the same names)"""
+    base = f"{MT}/party"
+    touch = f"{base}/touch"
+    lines = _widget(f"{touch}/party_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                           ("flags", "pass_unhandled_to_focused_child up_down_tabs_children")],
+                    ['<data input="port party update"/>', f'<child widget="{touch}/party_prompts" '
+                                                          f'y="{TOUCH_FOOTER_TOP}"/>'])
+    return lines + _touch_prompts(touch, "party_prompts", TOUCH_PARTY_PROMPTS)
+
+
+def _touch_lobby_board(base: str) -> tuple:
+    """the lobby on a touchscreen (_lobby_board's players and panel, by the
+    same names, in lobby/touch): the computer's players' columns; the panel
+    beside them its next game and the bots' rows, each TOUCH_TAP tall; the
+    footer a row of buttons under both, GAME SETTINGS and START GAME among
+    them. Returns the screen's children and the widgets"""
+    touch = f"{base}/touch"
+    left, top, width, height = TOUCH_LOBBY_PANEL
+    inner_left, inner = left + 14, width - 28
+    panel_moved, panel_grown = LOBBY_WIDE_PANEL
+    grown = wide(0, panel_grown)
+    children = [f'<child widget="{touch}/board_panel" platform="touch"/>',
+                f'<child widget="{touch}/board_list" platform="touch"/>']
+    panel = []
+
+    def text(name, y, h, font, color, words=None, align=None):
+        panel.append(f'<child widget="{touch}/{name}" x="{inner_left}" y="{top + y}"/>')
+        pairs = [("width", inner), ("height", h), ("font", font), ("color", color), ("align", align),
+                 ("wide", grown)]
+        return (_widget(f"{touch}/{name}", [("type", "text"), ("controller", 1), *pairs, ("text", words),
+                                            ("text_flags", "no_focus_test")], [])
+                if words else _part_text(f"{touch}/{name}", pairs))
+
+    lines = text("board_next_label", 8, 16, "ui\\small_ui", PART_DIM, "NEXT GAME")
+    lines += text("board_gametype", 24, 22, "ui\\large_ui", "#FFFFFFFF")
+    lines += text("board_map", 46, 16, "ui\\small_ui", SETTINGS_BLUE)
+    lines += text("board_limits", 62, 16, "ui\\small_ui", SETTINGS_BLUE)
+    for name, x, y in (("board_kind", 0, 82), ("board_tick", BROWSER_PILL + 4, 82), ("board_opence", 0, 100)):
+        panel.append(f'<child widget="{base}/{name}" x="{inner_left + x}" y="{top + y}"/>')
+    panel.append(f'<child widget="{touch}/board_section_bots" x="{inner_left}" y="{top + 120}"/>')
+    lines += _section(f"{touch}/board_section_bots", "BOTS", inner, grown)
+    lines += text("board_status", height - 24, 24, "ui\\small_ui", SETTINGS_BLUE)
+    lines += text("board_waiting", 142, LOBBY_START[1], "ui\\large_ui", SETTINGS_BLUE, align="center")
+    lines += _widget(f"{touch}/board_panel", [("controller", 1), ("left", left), ("top", top), ("width", width),
+                                              ("height", height), ("bitmap", part_panel(width, height)),
+                                              ("wide", wide(*LOBBY_WIDE_PANEL))], panel)
+    controls = wide(panel_moved, panel_grown)
+    start = '<on event="start" run="port lobby start"/>'
+    items = [f'<child widget="{base}/board_players" x="{LOBBY_LIST_X}" y="{top}"/>']
+    # (each bots' row its label over its value, the value's arrows at the
+    # row's ends: a tap on either half steps it)
+    labels = ("BOTS", "BOT SKILL", "BOT TEAMS")
+    for index, ((key, _, choices, _), label) in enumerate(zip(BOTS_ROWS, labels)):
+        items.append(f'<child widget="{touch}/board_{key}" x="{inner_left}" '
+                     f'y="{top + 142 + (TOUCH_TAP + 2) * index}"/>')
+        lines += _widget(f"{touch}/board_{key}", [("width", inner), ("height", TOUCH_TAP),
+                                                  ("flags", "pass_unhandled_to_focused_child"),
+                                                  ("bitmap", touch_tile(inner, TOUCH_TAP)), ("wide", controls)],
+                         [f'<child widget="{touch}/board_{key}_label" x="10" y="5"/>',
+                          f'<child widget="{touch}/board_{key}_spinner"/>'])
+        lines += _widget(f"{touch}/board_{key}_label", [("type", "text"), ("controller", 1), ("width", inner - 20),
+                                                        ("height", 16), ("text", label), ("font", "ui\\small_ui"),
+                                                        ("color", PART_DIM), ("wide", wide(0, panel_grown)),
+                                                        ("text_flags", "no_focus_test")], [])
+        lines += _widget(f"{touch}/board_{key}_spinner",
+                         [("type", "spinner"), ("width", inner), ("height", TOUCH_TAP),
+                          ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+                          ("strings", "|".join(shown for shown, _ in choices)),
+                          ("setting", f"bots.{key.split('_', 1)[1]}"),
+                          ("values", "|".join(value for _, value in choices)), ("font", "ui\\small_ui"),
+                          ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 27),
+                          ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
+                          ("header_bounds", "28 8 40 14"),
+                          ("footer_bounds", f"28 {inner - 14} 40 {inner - 8}"),
+                          ("wide", wide(0, panel_grown))],
+                         ['<on event="created" run="port setting load"/>', start,
+                          '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    items.append(f'<child widget="{touch}/board_prompts" y="{TOUCH_FOOTER_TOP}"/>')
+    lines += _widget(f"{touch}/board_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                             ("flags", "pass_unhandled_to_focused_child up_down_tabs_items")],
+                     ['<data input="net splitscreen prejoin players"/>', '<data input="port lobby board update"/>',
+                      *items])
+    lines += _touch_prompts(touch, "board_prompts", TOUCH_LOBBY_PROMPTS, start=start)
+    return children, lines
+
+
+def _touch_host_controls() -> tuple:
+    """Host Controls on a touchscreen (_host_controls' widgets by the same
+    names, in host_controls/touch): its tabs a row of chips with BACK beside
+    them over the list, the column titles over TOUCH_HOST_ROWS rows, the panel
+    beside them with its buttons stacked from its foot, BACK in the footer.
+    Returns the screen's children and the widgets"""
+    base = HOST_CONTROLS
+    touch = f"{base}/touch"
+    left, top, width, height = TOUCH_HOST_PANEL
+    inner_left, inner_width = left + 12, width - 24
+    panel_moved, panel_grown = BROWSER_WIDE_PANEL
+    list_wide = wide(-WIDE_HALF, BROWSER_WIDE_LIST)
+    children = [*(f'<child widget="{touch}/header_{column}" platform="touch"/>'
+                  for column in TOUCH_HOST_CELLS if column != "tag"),
+                f'<child widget="{touch}/host_empty" platform="touch"/>',
+                f'<child widget="{touch}/host_list" platform="touch"/>']
+    lines = []
+    for column, (x, _, cell_w, _, moved, grown) in TOUCH_HOST_CELLS.items():
+        if column == "tag":
+            continue
+        lines += _part_text(f"{touch}/header_{column}",
+                            [("left", BROWSER_LIST_X + x), ("top", TOUCH_HOST_HEADERS_TOP), ("width", cell_w),
+                             ("height", 16), ("font", "ui\\small_ui"), ("color", PART_DIM),
+                             ("align", "right" if column in ("score", "ping", "value") else None),
+                             ("wide", wide(-WIDE_HALF + moved, grown))])
+    lines += _part_text(f"{touch}/host_empty", [("left", BROWSER_LIST_X + 24), ("top", 230),
+                                               ("width", TOUCH_LIST_WIDTH - 48), ("height", 80),
+                                               ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE),
+                                               ("align", "center"), ("wide", list_wide)])
+    rows = [f'<child widget="{touch}/host_item_{row}" x="{BROWSER_LIST_X}" '
+            f'y="{TOUCH_HOST_ROWS_TOP + TOUCH_HOST_STEP * (row - 1)}"/>' for row in range(1, TOUCH_HOST_ROWS + 1)]
+    actions_top = top + height - 8 - TOUCH_TAP - (HOST_ACTIONS - 1) * TOUCH_HOST_STEP
+    actions = [f'<child widget="{touch}/host_action_{index}" x="{inner_left}" '
+               f'y="{actions_top + index * TOUCH_HOST_STEP}"/>' for index in range(HOST_ACTIONS)]
+    back_x, back_w = TOUCH_HOST_BACK
+    lines += _widget(f"{touch}/host_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                           ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                                           ("description", f"{touch}/host_panel")],
+                     ['<data input="port host update"/>', '<on event="created" run="port host init"/>',
+                      f'<child widget="{touch}/host_tabs" y="{TOUCH_CHIPS_TOP}"/>', *rows, *actions,
+                      f'<child widget="{touch}/host_prompts" y="{TOUCH_FOOTER_TOP}"/>'])
+    lines += _touch_chips(touch, "host_tabs", HOST_TABS, ['<on event="a" run="port host tab"/>',
+                                                          '<on event="start" run="port host tab"/>'],
+                          TOUCH_LIST_WIDTH)
+    lines += _touch_prompts(touch, "host_prompts", [("prompt_back", "BACK", back_x, back_w,
+                                                     '<on event="a" run="mouse emit back event"/>')])
+    for row in range(1, TOUCH_HOST_ROWS + 1):
+        lines += _widget(f"{touch}/host_item_{row}",
+                         [("width", TOUCH_LIST_WIDTH), ("height", TOUCH_TAP),
+                          ("bitmap", touch_row(TOUCH_LIST_WIDTH, TOUCH_TAP)), ("wide", list_wide)],
+                         ['<on event="a" run="port host row"/>', '<on event="start" run="port host row"/>',
+                          '<on event="left" run="port host left"/>', '<on event="right" run="port host right"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          *(f'<child widget="{touch}/host_item_{column}" x="{x}" y="{y}"/>'
+                            for column, (x, y, *_) in TOUCH_HOST_CELLS.items())])
+    for column, (_, _, cell_w, cell_h, moved, grown) in TOUCH_HOST_CELLS.items():
+        if column == "tag":
+            lines += _widget(f"{touch}/host_item_tag", [("type", "text"), ("width", cell_w), ("height", cell_h),
+                                                        ("bitmap", part_pill(cell_w)), ("font", "ui\\small_ui"),
+                                                        ("color", "#FFFFFFFF"), ("align", "center"),
+                                                        ("text_flags", "no_focus_test")], [])
+            continue
+        lines += _widget(f"{touch}/host_item_{column}",
+                         [("type", "text"), ("width", cell_w), ("height", cell_h),
+                          ("font", "ui\\large_ui" if column == "label" else "ui\\small_ui"),
+                          ("color", "#FFFFFFFF" if column == "label" else "#FFC9DCF7"),
+                          ("align", "right" if column in ("score", "ping", "value") else None),
+                          ("text_y", 0 if column == "label" else 3),
+                          ("text_flags", None if column == "label" else "no_focus_test"),
+                          ("wide", wide(moved, grown))], [])
+    panel_children = []
+    for name, y, text_h, font, color in (("panel_title", 8, 22, "ui\\large_ui", "#FFFFFFFF"),
+                                         ("panel_where", 32, 28, "ui\\small_ui", SETTINGS_BLUE),
+                                         ("panel_status", 62, 48, "ui\\small_ui", "#FFFFFFFF")):
+        panel_children.append(f'<child widget="{touch}/{name}" x="{inner_left}" y="{top + y}"/>')
+        lines += _part_text(f"{touch}/{name}", [("width", inner_width), ("height", text_h), ("font", font),
+                                                ("color", color), ("wide", wide(0, panel_grown))])
+    lines += _widget(f"{touch}/host_panel", [("controller", 1), ("left", left), ("top", top), ("width", width),
+                                             ("height", height), ("bitmap", part_panel(width, height)),
+                                             ("wide", wide(*BROWSER_WIDE_PANEL))], panel_children)
+    for index in range(HOST_ACTIONS):
+        lines += _widget(f"{touch}/host_action_{index}", [("type", "text"), ("width", inner_width),
+                                                          ("height", TOUCH_TAP),
+                                                          ("bitmap", touch_button(inner_width, TOUCH_TAP)),
+                                                          ("wide", wide(panel_moved, panel_grown)),
+                                                          ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
+                                                          ("align", "center"), ("text_y", 19)],
+                         ['<on event="a" run="port host action"/>', '<on event="start" run="port host action"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>'])
+    return children, lines
+
+
 def multiplayer_files() -> dict:
     """the port's multiplayer widgets: the browser's additions, the server
-    settings, the lobby"""
+    settings, the lobby, and the touchscreen's layouts of them (each folder's
+    touch folder's file)"""
     head = ['<?xml version="1.0" encoding="UTF-8"?>',
             "<!-- The port's multiplayer screens, in the PC version's style (tools/port_settings.py) -->", "<menus>"]
     return {
         f"{MT}/join_game".replace("/", ".") + ".xml": head + _browser() + ["</menus>", ""],
+        f"{MT}/join_game/touch".replace("/", ".") + ".xml": head + _touch_browser()[1] + ["</menus>", ""],
         f"{MT}/join_game".replace("/", ".") + ".port.xml": head + _join_game_extras() + ["</menus>", ""],
         f"{HUB}".replace("/", ".") + ".xml": head + _hub() + ["</menus>", ""],
+        f"{HUB}/touch".replace("/", ".") + ".xml": head + _touch_hub() + ["</menus>", ""],
         f"{MT}/server_settings".replace("/", ".") + ".xml": head + _server_settings() + ["</menus>", ""],
         f"{MT}/lobby".replace("/", ".") + ".xml": head + _lobby() + ["</menus>", ""],
+        f"{MT}/lobby/touch".replace("/", ".") + ".xml": head + _touch_lobby_board(f"{MT}/lobby")[1] +
+        ["</menus>", ""],
         f"{MT}/coop".replace("/", ".") + ".xml": head + _coop() + ["</menus>", ""],
         f"{MT}/bots".replace("/", ".") + ".xml": head + _bots() + ["</menus>", ""],
         f"{MT}/party".replace("/", ".") + ".xml": head + _party() + ["</menus>", ""],
+        f"{MT}/party/touch".replace("/", ".") + ".xml": head + _touch_party() + ["</menus>", ""],
         HOST_CONTROLS.replace("/", ".") + ".xml": head + _host_controls() + ["</menus>", ""],
+        f"{HOST_CONTROLS}/touch".replace("/", ".") + ".xml": head + _touch_host_controls()[1] + ["</menus>", ""],
         MT.replace("/", ".") + ".port.xml": head + _multiplayer_status() + ["</menus>", ""],
-        TOUCH.replace("/", ".") + ".xml": head + _multiplayer_touch() + ["</menus>", ""],
         "main_menu/new_select".replace("/", ".") + ".port.xml": head + _map_kind() + ["</menus>", ""],
         "main_menu/settings_select/multiplayer_setup/item_options_edit".replace("/", ".") + ".port.xml": head + _item_options_extras() + ["</menus>", ""],
         PLAYER_EDIT.replace("/", ".") + ".port.xml": head + _player_options_extras() + ["</menus>", ""],

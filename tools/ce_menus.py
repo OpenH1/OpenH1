@@ -725,13 +725,6 @@ def main() -> None:
     # (the browsers' rows' star: Lucide's, port/assets/icons/lucide)
     lines.append(art.port_picture(port_settings.FAVORITE_STAR,
                                   port_settings.favorite_star_frames(ROOT / "port/assets/icons/lucide")))
-    # (the touchscreen's Multiplayer: its rows, its panel's two parts, its
-    # OPEN button)
-    body, cap = port_settings.touch_panel_frames()
-    lines.append(art.port_picture(port_settings.TOUCH_ITEM, port_settings.touch_item_frames()))
-    lines.append(art.port_picture(port_settings.TOUCH_PANEL_BODY, body))
-    lines.append(art.port_picture(port_settings.TOUCH_PANEL_CAP, cap))
-    lines.append(art.port_picture(port_settings.TOUCH_OPEN_BUTTON, port_settings.touch_open_frames()))
     # (Settings' rows, tabs and panels, and the Quality row's stills)
     lines += [art.port_picture(name, frames) for name, frames in port_settings.settings_pictures()]
     lines += [art.still(name, png, width, height) for name, png, width, height, _ in port_settings.SETTINGS_STILLS]
@@ -739,7 +732,8 @@ def main() -> None:
                         port_settings.SETTINGS_PICTURE_HEIGHT)
               for key, pngs in port_settings.SETTINGS_VALUE_PICTURES.items()]
     # (the menus' shared parts, in Settings' look: the server browser's and
-    # Multiplayer's tabs, rows, panels, pills, button and prompts)
+    # Multiplayer's tabs, rows, panels, pills, button and prompts, and the
+    # touchscreen's chips, rows, tiles and buttons)
     lines += [art.port_picture(name, frames) for name, frames in port_settings.parts_pictures()]
     lines.append("</menus>")
     (CE / "bitmaps.xml").write_text("\n".join(lines) + "\n")

@@ -270,6 +270,11 @@ symbols in this file:
 
 /* port/linux/game/network_distributed.c's */
 void network_distributed_handle_message(long machine_index, word const *message, word size);
+/* port: port/linux/game/network_party.c's (network_party.h) */
+boolean network_party_slot_open(unsigned long address);
+short network_party_held_slots(void);
+boolean network_party_handles_message(word const *message, word size);
+void network_party_handle_message(long machine_index, word const *message, word size, boolean from_stream);
 /* port/linux/game/network_voice.c's: voice chat, in the lobby too */
 boolean network_voice_handles_message(word const *message, word size);
 void network_voice_handle_message(long machine_index, word const *message, word size);
@@ -1487,6 +1492,21 @@ boolean network_game_server_handle_client_message(
 					}
 					break;
 				}
+				/* (port: parties' from any machine that joined, in the lobby
+				too, from its stream alone: a party's leader asks for room for
+				its members as it joins, network_party.c) */
+				if (network_party_handles_message(message, message_buffer_size))
+				{
+					long machine_index;
+
+					if (network_game_server_client_machine_is_joined_to_game(server, machine) &&
+						network_game_server_get_client_machine(server, machine, &machine_index))
+					{
+						network_game_server_client_machine_heard(server, machine);
+						network_party_handle_message(machine_index, message, message_buffer_size, TRUE);
+					}
+					break;
+				}
 				/* (in game, from a machine that has loaded it, as a datagram
 				is: else dropped) */
 				if (network_game_server_client_machine_is_joined_to_game(server, machine) &&
@@ -1845,11 +1865,14 @@ static boolean network_game_server_handle_message_client_broadcast_game_search(
 			advertisement.machine_count = game->machine_count;
 			/* port: its players, and the most it takes of them, its bots
 			apart (port/linux/game/bots.c), whose count goes in a reserved
-			byte, below */
+			byte, below; and the slots held for a party's members, who are
+			on their way (network_party.c) */
 			{
 				long maximum;
 
 				advertisement.player_count = (short)network_game_server_port_bots_humans(server, &bots, &maximum);
+				advertisement.player_count = (short)MIN(advertisement.player_count + network_party_held_slots(),
+					maximum);
 				advertisement.maximum_player_count = (short)maximum;
 			}
 			advertisement.variant_setting = (short)game->variant.universal_variant.score_to_win;
@@ -2072,6 +2095,15 @@ static boolean network_game_server_handle_message_client_join_game_request(
 				network_game_server_get_client_connection(server_client_machine),
 				&source_address,
 				FALSE);
+			/* port: the slots held for a party's members, while they follow
+			their leader in, are theirs alone: to anyone else the game is full
+			(network_party.c) */
+			if (!full && !network_party_slot_open(source_address.address.long_words[0]))
+			{
+				network_event("client machine '%s' @%s refused: the game's room left is held for a party",
+					join_game_request.machine_name, transport_address_to_string(&source_address));
+				full = TRUE;
+			}
 			if ((network_game_server_get_state(server, NULL) == _network_game_server_state_pregame || late_join) &&
 				network_game_server_game_is_open(server) &&
 				!full)

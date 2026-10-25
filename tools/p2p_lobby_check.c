@@ -394,6 +394,8 @@ static void lobby_checks(void)
 	check(published[3] == (HALO_PORT_NETWORK_VERSION >> 8) && published[4] == (HALO_PORT_NETWORK_VERSION & 0xFF) &&
 		published[published_size - P2P_SIGNATURE_SIZE - 7] == 0 && listing.kind == 0x81 && !listing.standard &&
 		listing.rate == 30, "a Legacy game is listed at the network version, at 30");
+	check(published[published_size - P2P_SIGNATURE_SIZE - 4] == 0 && !listing.holds_party,
+		"a Legacy game's host holds no room for a party");
 	/* a Standard game: its protocol's version, which builds that know
 	nothing of it take for a newer one, and its rate */
 	p2p_set_game_listing_standard(1, 0, 120);
@@ -405,6 +407,8 @@ static void lobby_checks(void)
 		((published[3] << 8) | published[4]) > HALO_PORT_NETWORK_VERSION, "a Standard game's listing version");
 	check(games(&listing) == 1 && listing.standard && !listing.mixed && listing.rate == 120 && listing.kind == 0x81,
 		"a Standard game is listed, with its rate");
+	check(published[published_size - P2P_SIGNATURE_SIZE - 4] == 1 && listing.holds_party,
+		"its host holds room for a party joining it (the stamp's fifth byte)");
 	/* a mixed game (one OpenCE joins too): the network version, which
 	OpenCE lists, with the rate and the protocol in its stamp */
 	p2p_set_game_listing_standard(1, 1, 60);
@@ -436,6 +440,7 @@ static void lobby_checks(void)
 	hear(published, published_size, 0, NULL);
 	check(published[published_size - P2P_SIGNATURE_SIZE - 5] == 0 && games(&listing) == 1 && listing.bots == 0,
 		"a game whose bots left lists none");
+	check(listing.holds_party, "and holds room for a party too");
 	p2p_set_game_listing_standard(1, 0, 120);
 	clock_now += 6000;
 	lobby_update(token, 3, 16);

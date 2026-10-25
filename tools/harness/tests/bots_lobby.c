@@ -91,6 +91,41 @@ static long bots_fill_to(void) { return fill_to; }
 static long game_time_get(void) { return game_time; }
 static unsigned long system_milliseconds(void) { return clock_milliseconds; }
 static boolean network_game_player_slot_held(long player_index) { (void)player_index; return FALSE; }
+
+/* the slots a host holds for a party's members on their way
+(network_party.c's, test_party_invites.py's: here only how many, which the
+bots that make room leave free); and the machines' own, none this machine's,
+at no address */
+static short held_slots;
+static short network_party_held_slots(void) { return held_slots; }
+static boolean network_party_slot_open(unsigned long address) { (void)address; return TRUE; }
+static void network_party_slot_taken(long machine_index, unsigned long address)
+{
+	(void)machine_index;
+	(void)address;
+}
+static boolean network_party_machines_together(long machine_index, unsigned long address, long other_machine_index)
+{
+	(void)machine_index;
+	(void)address;
+	(void)other_machine_index;
+	return FALSE;
+}
+static short network_party_team_choice(short const *party_counts, short const *team_counts, short maximum)
+{
+	(void)party_counts;
+	(void)team_counts;
+	(void)maximum;
+	return NONE;
+}
+static unsigned long network_game_server_client_machine_addresses[MAXIMUM_NETWORK_MACHINE_COUNT];
+static boolean network_game_server_client_machine_is_local(struct network_game_server *server,
+	struct network_game_server_client_machine *machine)
+{
+	(void)server;
+	(void)machine;
+	return FALSE;
+}
 static boolean player_name_is_unique(struct network_game_server *server, wchar_t const *name)
 {
 	(void)server;
@@ -539,6 +574,39 @@ int main(int argc, char **argv)
 		fill_to = 4;
 		idle(1);
 		CHECK(bots() == 10, "%ld bots in a local game, not 10", bots());
+		return 0;
+	}
+	/* a party's members on their way (network_party.c's holds): the bots
+	that make room leave the slots held free, and come back once they are
+	not */
+	CASE("party-held")
+	{
+		network_lobby(game_engine_slayer, 8);
+		player(0, 0);
+		wanted = 10;
+		fill_to = 8;
+		idle(1);
+		CHECK(bots() == 7, "%ld bots filling to 8 with one player, not 7", bots());
+		held_slots = 3;
+		idle(1);
+		CHECK(bots() == 4, "%ld bots with 3 slots held for a party, not 4: they leave for it", bots());
+		join(1);
+		held_slots = 2;
+		idle(1);
+		CHECK(bots() == 4 && server.game.player_count == 6, "%ld bots, %d players once a member came in", bots(),
+			server.game.player_count);
+		held_slots = 0;
+		idle(1);
+		CHECK(bots() == 6, "%ld bots once the holds lapsed, not 6", bots());
+		/* (make room off: the bots take none of the players' slots anyway) */
+		network_lobby(game_engine_slayer, 8);
+		make_room = FALSE;
+		player(0, 0);
+		wanted = 5;
+		held_slots = 3;
+		idle(1);
+		CHECK(bots() == 5, "%ld bots of a game whose bots stay, not 5", bots());
+		held_slots = 0;
 		return 0;
 	}
 	/* make room off: the bots stay, and the game takes its most players of

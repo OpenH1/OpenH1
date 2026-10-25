@@ -8,16 +8,23 @@
 		<on event="black" run="port host tab next"/>
 		<child widget="main_menu/host_controls/header_host_controls"/>
 		<child widget="main_menu/host_controls/host_counts"/>
-		<child widget="main_menu/settings/tab_prompt_previous" x="24" y="76"/>
-		<child widget="main_menu/settings/tab_prompt_next" x="322" y="76"/>
-		<child widget="main_menu/host_controls/header_label"/>
-		<child widget="main_menu/host_controls/header_team"/>
-		<child widget="main_menu/host_controls/header_score"/>
-		<child widget="main_menu/host_controls/header_ping"/>
-		<child widget="main_menu/host_controls/header_value"/>
-		<child widget="main_menu/host_controls/host_columns_line"/>
-		<child widget="main_menu/host_controls/host_empty"/>
-		<child widget="main_menu/host_controls/host_list"/>
+		<child widget="main_menu/settings/tab_prompt_previous" x="24" y="76" platform="pointer"/>
+		<child widget="main_menu/settings/tab_prompt_next" x="322" y="76" platform="pointer"/>
+		<child widget="main_menu/host_controls/header_label" platform="pointer"/>
+		<child widget="main_menu/host_controls/header_team" platform="pointer"/>
+		<child widget="main_menu/host_controls/header_score" platform="pointer"/>
+		<child widget="main_menu/host_controls/header_ping" platform="pointer"/>
+		<child widget="main_menu/host_controls/header_value" platform="pointer"/>
+		<child widget="main_menu/host_controls/host_columns_line" platform="pointer"/>
+		<child widget="main_menu/host_controls/host_empty" platform="pointer"/>
+		<child widget="main_menu/host_controls/host_list" platform="pointer"/>
+		<child widget="main_menu/host_controls/touch/header_label" platform="touch"/>
+		<child widget="main_menu/host_controls/touch/header_team" platform="touch"/>
+		<child widget="main_menu/host_controls/touch/header_score" platform="touch"/>
+		<child widget="main_menu/host_controls/touch/header_ping" platform="touch"/>
+		<child widget="main_menu/host_controls/touch/header_value" platform="touch"/>
+		<child widget="main_menu/host_controls/touch/host_empty" platform="touch"/>
+		<child widget="main_menu/host_controls/touch/host_list" platform="touch"/>
 	</widget>
 	<widget name="main_menu/host_controls/header_host_controls" controller="1" left="35" top="11" width="363" height="59" bitmap="main_menu/host_controls/header_host_controls" wide="-106 0">
 	</widget>

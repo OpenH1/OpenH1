@@ -86,6 +86,15 @@ Support's OpenH1 folder whatever the app is called, so an earlier
   `CAMetalDisplayLink` is 14.0), `NSMicrophoneUsageDescription` (voice
   chat), `NSLocalNetworkUsageDescription` (system link), and the project's
   disclaimer as its copyright.
+- `CFBundleURLTypes`: the app is the handler of `halo://` links (invites,
+  `halo://join/...`, and parties' links, `halo://party/...`), which the join
+  page opens (`website/public/join`). macOS gives SDL's application
+  delegate the link (the GetURL Apple event), whether the app is running
+  or the link starts it, and SDL sends it on as a drop event;
+  `host_links.c` keeps it for the guest's internet play, which joins it as
+  it joins a link that a second copy of the game hands over on Linux
+  (`p2p_invite_received`). `tools/test_macos_app.py` runs
+  `tests/host_links_test.c`.
 
 When its executable runs inside the app, the host (`host_app.m`) does what
 a Mac app does, before the game starts:

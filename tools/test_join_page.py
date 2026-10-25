@@ -83,3 +83,11 @@ def test_join_link_negative_control():
         "\nconsole.log(JSON.stringify(joinLink('#party=" + PARTY[:-1] + "', '')));\n"
     result = subprocess.run([node, "-e", program], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0 and json.loads(result.stdout) is not None
+
+
+def test_page_opens_the_link_on_every_system():
+    """the page opens the halo:// link at once on every system: the Mac's and the iPhone's apps are its handler too
+    (tools/macos_app.py, tools/ios_app.py)"""
+    script = PAGE.read_text().split("<script>")[1]
+    assert re.search(r"\n  attempt\(\);\n  location\.href = found\.link;\n", script)
+    assert not re.search(r"\bapple\b", script) and "iPhone|iPad|Mac" not in script

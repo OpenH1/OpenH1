@@ -1,6 +1,8 @@
 # Host functions the macOS guest imports beyond the Linux arm64 guest's
 # (port/linux/host/host_imports.list): declared in guest_metal.c, defined
-# in host_metal.m. tools/android_imports.py generates the stubs.
+# in host_metal.m (host_app_take_link in host_links.c, which the iOS host
+# has too). tools/android_imports.py generates the stubs.
 host_metal_window_open
 host_metal_battery_saver
 host_metal_vsync
+host_app_take_link

@@ -17,7 +17,7 @@ from harness import CHECK_FAILED, build, constant, enum_with, function, mutated,
 
 CASES = ["fills", "room", "fewer", "even", "against", "follows-players", "network-lobby", "slayer-only",
          "not-once-started", "no-player-no-bots", "names-and-machines", "make-room-lobby", "fill-to", "fixed-bots",
-         "listing-counts", "make-room-ingame", "leaver", "host-removes-a-bot"]
+         "listing-counts", "make-room-ingame", "leaver", "host-removes-a-bot", "party-held"]
 GAME_MANAGER_FUNCTIONS = ("network_game_invalidate_player", "network_player_is_valid", "network_game_player_is_valid",
                           "network_game_add_player", "network_game_remove_player", "network_game_has_free_player_slot")
 BOTS_FUNCTIONS = ("bots_machine_is_bot", "bots_network_player", "bots_play_game_engine")
@@ -59,7 +59,11 @@ NEGATIVE_CONTROLS = {
     "no-room-made": ("network_game_server_add_player_to_game",
                      ("network_game_server_port_bots_make_room(server);", ";"), "make-room-lobby"),
     "fill-ignored": ("network_game_server_port_bots_wanted",
-                     ("wanted = MIN(wanted, MAX(fill - census->humans, 0));", ";"), "fill-to"),
+                     ("wanted = MIN(wanted, MAX(fill - census->humans - network_party_held_slots(), 0));", ";"),
+                     "fill-to"),
+    "bots-take-held-slots": ("network_game_server_port_bots_wanted",
+                             ("fill - census->humans - network_party_held_slots()", "fill - census->humans"),
+                             "party-held"),
     "fill-in-local-games": ("network_game_server_port_bots_wanted",
                             ("!network_game_is_splitscreen_local() && bots_make_room()", "bots_make_room()"),
                             "fill-to"),

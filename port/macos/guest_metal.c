@@ -10,3 +10,6 @@ translate its arguments with the base register.
 int host_metal_window_open(unsigned int window);
 void host_metal_battery_saver(int on);
 void host_metal_vsync(int on);
+/* (port/macos/host_links.c, iOS's too) the links the app was opened with:
+the oldest not taken yet, 1; else 0 */
+int host_app_take_link(char *link, int size);
