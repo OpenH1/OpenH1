@@ -131,9 +131,11 @@ public final class TouchLayoutTest {
                       "At the capped minimum radius the D-pad's buttons stay apart");
             }
         }
-        // The default controls never overlap: on a phone (2400 x 1080 at 420 dpi, a
-        // finger 31.5 units wide), a tablet (2560 x 1600 at 320 dpi) and at the cap.
-        float[][] displays = {{1200, 540, 31.5f}, {960, 600, 24 * 2 / 2.6667f}, {960, 540, 80}};
+        // The default controls never overlap: on a phone (2400 x 1080 at 420 dpi, a finger 31.5 units wide), a
+        // tablet (2560 x 1600 at 320 dpi), a 21:9 phone (2520 x 1080 at 360 dpi), a folding phone's inner screen
+        // (2184 x 1968 at 360 dpi) and at the cap.
+        float[][] displays = {{1200, 540, 31.5f}, {960, 600, 24 * 2 / 2.6667f}, {1260, 540, 24 * 2.25f / 2f},
+                              {960, 865.05f, 24 * 2.25f / 2.275f}, {960, 540, 80}};
         for (float[] display : displays) {
             TouchLayout spread = new TouchLayout();
             spread.bounds(display[0], display[1]);

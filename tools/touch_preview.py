@@ -5,6 +5,7 @@ phone:
 
     python tools/touch_preview.py --out port/android/docs
     python tools/touch_preview.py --out /tmp/touch --background shot.png
+    python tools/touch_preview.py --out /tmp/touch --size 2184x1968@360 --size 2520x1080@360
 
 The places and sizes are TouchLayout's own (tools/tests/TouchLayoutDump.java,
 compiled with JDK 17+), the pictures the app's (res/drawable-nodpi, from
@@ -14,7 +15,9 @@ display.hud_button_style, with the captions (input.touch_captions), and
 either with the right trigger and the stick held (the pressed look) or idle
 (faded, no finger on the screen), and in a player's state (TouchContext):
 an action prompted, a magazine to reload, no grenades, a vehicle. Without --background the picture behind
-is a dark landscape drawn here (no game art). Needs Pillow and NumPy.
+is a dark landscape drawn here (no game art). --size draws the default layout
+at a display of your own, such as a folding phone's inner screen or a 21:9
+cover screen, in place of the list. Needs Pillow and NumPy.
 """
 
 import argparse
@@ -278,11 +281,28 @@ def draw(name, width, height, dpi, style, idle, state, background, out):
     print(out / (name + ".png"))
 
 
+def parse_size(text):
+    """a display given as WIDTHxHEIGHT@DPI, such as 2184x1968@360"""
+    pixels, _, dpi = text.partition("@")
+    width, _, height = pixels.partition("x")
+    if not all(part.isdecimal() and int(part) > 0 for part in (width, height, dpi)):
+        raise argparse.ArgumentTypeError(f"{text!r}: WIDTHxHEIGHT@DPI expected, such as 2184x1968@360")
+    return int(width), int(height), int(dpi)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--background", type=Path, help="a picture to draw the controls over")
+    parser.add_argument("--size", type=parse_size, action="append", metavar="WxH@DPI",
+                        help="draw the default layout at this display (pixels and dots per inch) "
+                             "instead of the list; repeatable")
     args = parser.parse_args()
+    if args.size:
+        for width, height, dpi in args.size:
+            draw("touch-controls-" + str(width) + "x" + str(height), width, height, dpi, "classic", False, 0,
+                 args.background, args.out)
+        return
     for name, width, height, dpi, style, idle, state in DISPLAYS:
         draw(name, width, height, dpi, style, idle, state, args.background, args.out)
 
