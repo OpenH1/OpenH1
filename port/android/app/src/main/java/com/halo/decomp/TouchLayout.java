@@ -54,14 +54,19 @@ final class TouchLayout {
      * but white and black (the flashlight and the grenade's type), used in
      * play, come down with the rest: their lines down to WHITE_BLACK_ROW
      * share the extra height and the ones below it keep their distance from
-     * the bottom; and they move across to TALL_WHITE_BLACK, beside the
-     * D-pad at its right, one above the other (as in portrait), by the left
-     * thumb, fully once the display is TALL_EXTRA taller than 16:9 (the iOS
-     * layout has them there on every display); back and pause, the menus'
-     * buttons, stay at the top
+     * the bottom; and they move across to TALL_PLACES, beside the D-pad at
+     * its right, one above the other (as in portrait), by the left thumb,
+     * fully once the display is TALL_EXTRA taller than 16:9 (the iOS layout
+     * has them there on every display), with the second fire (hidden until
+     * added) moved out of their way; back and pause, the menus' buttons,
+     * stay at the top
      */
     static final float WHITE_BLACK_ROW = 36;
-    private static final float[][] TALL_WHITE_BLACK = {{200, 114}, {200, 186}};
+    /** the kinds that move on a display taller than 16:9, and where to: white and black's lines measured as
+     * WHITE_BLACK_ROW's is, the second fire's as the rest; apart by a finger's width (MAX_MINIMUM_RADIUS) twice
+     * over, with room for a caption */
+    private static final int[] TALL_KINDS = {WHITE, BLACK, FIRE_LEFT};
+    private static final float[][] TALL_PLACES = {{220, 108}, {220, 192}, {320, 239}};
     static final float TALL_EXTRA = 60;
     /** the portrait grid, and its placement: the strip along the top (its
      * lines down to PORTRAIT_STRIP) keeps its distance from the top, under
@@ -440,31 +445,34 @@ final class TouchLayout {
         return edgeKeptBack(y, height, GRID_HEIGHT, TOP_ROW, LOWER_PART);
     }
 
-    /** a kind of control's line of the landscape grid on a display this high (white and black: WHITE_BLACK_ROW, TALL_WHITE_BLACK) */
+    /** a kind of control's line of the landscape grid on a display this high (white and black: WHITE_BLACK_ROW; TALL_PLACES) */
     static float displayY(int type, float placeY, float height) {
-        return type == WHITE || type == BLACK
-            ? edgeKept(placeY, height, GRID_HEIGHT, 0, WHITE_BLACK_ROW) + tallShift(type, height, 1)
-            : displayY(placeY, height);
+        return (type == WHITE || type == BLACK ? edgeKept(placeY, height, GRID_HEIGHT, 0, WHITE_BLACK_ROW)
+            : displayY(placeY, height)) + tallShift(type, height, 1);
     }
 
     /** the kind's line at this height: displayY's inverse */
     static float gridY(int type, float y, float height) {
-        return type == WHITE || type == BLACK
-            ? Math.max(0, edgeKeptBack(y - tallShift(type, height, 1), height, GRID_HEIGHT, 0, WHITE_BLACK_ROW))
-            : gridY(y, height);
+        y -= tallShift(type, height, 1);
+        return Math.max(0, type == WHITE || type == BLACK ? edgeKeptBack(y, height, GRID_HEIGHT, 0, WHITE_BLACK_ROW)
+            : gridY(y, height));
     }
 
     /**
-     * how far white or black moves from its place toward TALL_WHITE_BLACK on
-     * a landscape display this high, across (axis 0) or down (1): none up to
-     * 16:9, all of it from TALL_EXTRA taller; 0 for the other kinds
+     * how far a kind of TALL_KINDS moves from its place toward its
+     * TALL_PLACES place on a landscape display this high, across (axis 0)
+     * or down (1): none up to 16:9, all of it from TALL_EXTRA taller; 0 for
+     * the other kinds
      */
     static float tallShift(int type, float height, int axis) {
-        if (type != WHITE && type != BLACK)
-            return 0;
-        float share = Math.max(0, Math.min(1, (height - GRID_HEIGHT) / TALL_EXTRA));
-        float[] tall = TALL_WHITE_BLACK[type - WHITE];
-        return share * (axis == 0 ? tall[0] - DEFAULTS[type][0] : tall[1] - WHITE_BLACK_ROW);
+        for (int i = 0; i < TALL_KINDS.length; i++) {
+            if (TALL_KINDS[i] != type)
+                continue;
+            float share = Math.max(0, Math.min(1, (height - GRID_HEIGHT) / TALL_EXTRA));
+            float from = axis == 0 ? DEFAULTS[type][0] : type == FIRE_LEFT ? DEFAULTS[type][1] : WHITE_BLACK_ROW;
+            return share * (TALL_PLACES[i][axis] - from);
+        }
+        return 0;
     }
 
     /** the layout as a layout file's text, with the look sensitivity */

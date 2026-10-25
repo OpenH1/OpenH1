@@ -193,10 +193,10 @@ public final class TouchLayoutTest {
                 else if (!whiteOrBlack)
                     check(Math.abs((tall - high.y(i)) - (540 - flat.y(i))) < 0.01f,
                           "The controls under the thumbs keep their distance from the bottom of a taller display");
-                if (!whiteOrBlack)
+                if (!whiteOrBlack && high.type(i) != TouchLayout.FIRE_LEFT)
                     check(high.x(i) == flat.x(i), "A taller display keeps each control's distance from the sides");
             }
-            for (int kind : new int[] {0, TouchLayout.WHITE}) {
+            for (int kind : new int[] {0, TouchLayout.WHITE, TouchLayout.FIRE_LEFT}) {
                 for (float line = 0; line <= 540; line += 0.5f) {
                     float y = TouchLayout.displayY(kind, line, tall);
                     check(Math.abs(TouchLayout.gridY(kind, y, tall) - line) < 0.001f,
@@ -212,11 +212,15 @@ public final class TouchLayoutTest {
                   && high.y(TouchLayout.WHITE) > high.y(12) - high.radius(12)
                   && high.y(TouchLayout.BLACK) < high.y(13) + high.radius(13),
                   "White and black are beside the D-pad, one above the other, on a taller display");
-            for (int a = 0; a < high.size(); a++)
-                for (int b = a + 1; b < high.size(); b++)
-                    if (high.shown(a) && high.shown(b))
+            // (and at a finger's largest width, as in a small window: every control, the second fire too)
+            for (float finger : new float[] {0, TouchLayout.MAX_MINIMUM_RADIUS}) {
+                high.setMinimumRadius(finger);
+                for (int a = 0; a < high.size(); a++)
+                    for (int b = a + 1; b < high.size(); b++)
                         check(Math.hypot(high.x(a) - high.x(b), high.y(a) - high.y(b)) >= high.radius(a) + high.radius(b),
-                              "Controls do not overlap on a taller display");
+                              "Controls do not overlap on a taller display (" + a + ", " + b + " at " + tall + ")");
+            }
+            high.setMinimumRadius(0);
             high.move(TouchLayout.WHITE, 480, tall / 3);
             float whiteMiddle = high.y(TouchLayout.WHITE);
             high.bounds(960, 540);
