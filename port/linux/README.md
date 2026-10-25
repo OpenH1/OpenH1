@@ -103,6 +103,10 @@ sequence:
 4. `assets/` in the current folder, and `assets/` in the repository that
    contains the executable.
 
+A `paths.data` whose folder has no `maps/` (it was moved, or it is on a
+drive that is not connected) is passed over for the others, and the first
+start, below, says so and offers to find the maps again.
+
 If the game finds no data (its first start), it looks for your Xbox disc
 image itself and shows what it finds on a screen of its own, in its window
 (`port/linux/src/first_start.c`). The screen works with a controller (the
