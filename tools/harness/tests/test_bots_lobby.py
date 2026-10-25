@@ -17,7 +17,7 @@ from harness import CHECK_FAILED, build, constant, enum_with, function, mutated,
 
 CASES = ["fills", "room", "fewer", "even", "against", "follows-players", "network-lobby", "slayer-only",
          "not-once-started", "no-player-no-bots", "names-and-machines", "make-room-lobby", "fill-to", "fixed-bots",
-         "listing-counts", "make-room-ingame", "leaver"]
+         "listing-counts", "make-room-ingame", "leaver", "host-removes-a-bot"]
 GAME_MANAGER_FUNCTIONS = ("network_game_invalidate_player", "network_player_is_valid", "network_game_player_is_valid",
                           "network_game_add_player", "network_game_remove_player", "network_game_has_free_player_slot")
 BOTS_FUNCTIONS = ("bots_machine_is_bot", "bots_network_player", "bots_play_game_engine")
@@ -27,6 +27,7 @@ SERVER_FUNCTIONS = ("network_game_server_port_bots_census", "network_game_server
                     "network_game_server_port_bots_team", "network_game_server_port_bots_leaver",
                     "network_game_server_port_bots_leave", "network_game_server_port_bots",
                     "network_game_server_port_bots_ingame", "network_game_server_port_bots_make_room",
+                    "network_game_server_port_bots_remove",
                     "network_game_server_port_bots_humans", "network_game_server_has_room_for_player",
                     "network_game_server_add_player_to_game")
 
@@ -34,8 +35,8 @@ SERVER_FUNCTIONS = ("network_game_server_port_bots_census", "network_game_server
 NEGATIVE_CONTROLS = {
     "bots-in-any-gametype": ("bots_play_game_engine", ("return game_engine_index == game_engine_slayer;", "return 1;"),
                              "slayer-only"),
-    "bots-local-only": ("network_game_server_port_bots_wanted", ("census->human_team == NONE)",
-                        "census->human_team == NONE || !network_game_is_splitscreen_local())"), "network-lobby"),
+    "bots-local-only": ("network_game_server_port_bots_wanted", ("|| !census->humans)",
+                        "|| !census->humans || !network_game_is_splitscreen_local())"), "network-lobby"),
     "bots-once-started": ("network_game_server_port_bots",
                           ("server->state != _network_game_server_state_pregame || server->sent_start_game_message",
                            "server->state != _network_game_server_state_pregame"), "not-once-started"),
@@ -43,9 +44,14 @@ NEGATIVE_CONTROLS = {
                          "even"),
     "against-the-players": ("network_game_server_port_bots_team", ("human_team == 0 ? 1 : 0", "human_team"),
                             "against"),
-    "one-too-many-stays": ("network_game_server_port_bots", ("bot_index >= wanted; bot_index--",
-                                                             "bot_index > wanted; bot_index--"), "fewer"),
-    "bots-alone": ("network_game_server_port_bots_wanted", (" || census->human_team == NONE)", ")"),
+    "one-too-many-stays": ("network_game_server_port_bots", ("census.bots > wanted;", "census.bots > wanted + 1;"),
+                           "fewer"),
+    "removed-bot-stays": ("network_game_server_port_bots_remove",
+                          ("if (slot == NONE || !network_game_server_port_bots_leave(server, slot))",
+                           "if (slot == NONE)"), "host-removes-a-bot"),
+    "removed-bot-replaced": ("network_game_server_port_bots",
+                             ("missing = wanted - census.bots;", "missing = BOTS_MAXIMUM;"), "host-removes-a-bot"),
+    "bots-alone": ("network_game_server_port_bots_wanted", (" || !census->humans)", ")"),
                    "no-player-no-bots"),
     "teams-not-followed": ("network_game_server_port_bots",
                            ("else if (server->game.players[census.slot_of_bot[bot_index]].team_index != team_index)",
@@ -68,6 +74,10 @@ NEGATIVE_CONTROLS = {
     "comes-back-at-once": ("network_game_server_port_bots_ingame",
                            (" ||\n\t\tsystem_milliseconds() - network_game_server_bots.changed_time < "
                             "BOTS_RETURN_MILLISECONDS)", ")"), "make-room-ingame"),
+    "comes-back-as-a-player-leaves": ("network_game_server_port_bots_ingame",
+                                      ("\t\tnetwork_game_server_bots.changed_time = system_milliseconds();\n"
+                                       "\tnetwork_game_server_bots.humans",
+                                       "\t\t;\n\tnetwork_game_server_bots.humans"), "make-room-ingame"),
     "comes-back-over-a-joiner": ("network_game_server_port_bots_ingame",
                                  (" || server->waiting_player_count > 0", ""), "make-room-ingame"),
     "highest-scoring-leaves": ("network_game_server_port_bots_leaver", ("score < best_score", "score > best_score"),

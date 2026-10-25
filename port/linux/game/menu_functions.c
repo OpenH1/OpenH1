@@ -9560,7 +9560,10 @@ static void gametype_option_help(struct widget_instance *list)
 	}
 	/* (BOTS' FILL TO with MAKE ROOM on alone: its row last) */
 	if (named(list, "bot_make_room_spinner", 0))
-		visible_set(named(list, "op_bot_fill_to", 0), named(list, "bot_make_room_spinner", 0)->parameters.list.selected_index == 0);
+	{
+		visible_set(named(list, "op_bot_fill_to", 0),
+			named(list, "bot_make_room_spinner", 0)->parameters.list.selected_index == 0);
+	}
 	/* (TEXT CHAT held at OFF while the game is listed: text_chat_locked) */
 	if (named(list, TEXT_CHAT_SPINNER, 0) && p2p_hosting_listed())
 		named(list, TEXT_CHAT_SPINNER, 0)->parameters.list.selected_index = TEXT_CHAT_OFF;

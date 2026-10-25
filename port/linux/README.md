@@ -504,9 +504,31 @@ and the game's rules, on the teams that `bots.teams` asks for, and they
 follow the teams' changes in the lobby. They look for enemies, aim, fire,
 throw grenades and pick up better weapons, as well as `bots.skill` lets
 them, and walk the paths that the campaign's AI finds on the maps' walkable
-surfaces (`game/bots.c`). They are never in system link or internet games,
-nor in other gametypes (but SWAT, Infection and Gun Game, which are
-Slayer's: below), and nothing that the machines send each other changes.
+surfaces (`game/bots.c`). They play no other gametypes (but SWAT, Infection
+and Gun Game, which are Slayer's: below).
+
+Bots play system link and internet games too, OpenH1 and Legacy, public or
+private: Create Game's Server Setup has a BOTS row after the gametype's
+rows, its value what they are ("10, NORMAL, FILL TO 16", NONE, or NOT IN
+THIS GAMETYPE, dimmed, for a gametype they do not play), and A opens their
+screen: BOTS, BOT SKILL, BOT TEAMS, MAKE ROOM (ON or OFF) and, with it on,
+FILL TO (2 to 16), written to `config.toml` with OK. The host plays them:
+each bot is a player of a machine of its own with no connection, whose
+input the host's tick gives the others with every other player's, so every
+machine sees an ordinary player, OpenCE's in a mixed game too, and an OpenH1
+game's bots move at its rate (NETCODE.md, "Bots in network games"). With
+MAKE ROOM on (`bots.make_room`, the default) the bots make room for people:
+no more of them play than leave the game `bots.fill_to` players and bots
+(and its MAXIMUM PLAYERS), so a player who joins a game the bots fill takes
+a bot's place at once, in the lobby or in the game (the bot of the team
+with more players, the lowest scoring), and a bot comes back a few seconds
+after a player leaves. With it off, the bots stay, and MAXIMUM PLAYERS
+counts the players alone: a game of 16 with 10 bots takes 16 people. The
+server browser and the local network's list count the people
+("6/16", the panel "6/16 · 10 BOTS"), the scoreboard's ping column says BOT
+for a bot, and the carnage report names it "(Bot)". The bots stay from game
+to game, and go with the host's game; the welcome to OpenCE players goes to
+real machines alone.
 
 ## OpenCE gametypes
 
@@ -643,9 +665,11 @@ the setting for one start of the game. It has priority over the file.
 | `game.enhanced_animations` | `true` | `HALO_ENHANCED_ANIMATIONS` | `true`: the player bipeds' grenade throws keep their legs moving, blended by speed and direction (crouched throws stay crouched, throws in the air use the jump's legs), Warthog and Scorpion riders stay seated to throw and let go of the grips to throw and reload, and a player turns with the aim while throwing, as while meleeing. `false`: the original animations, which freeze the legs during a throw and stand a rider up. Only in config.toml, not in the menus. |
 | `game.sim_rate` | `60` | `HALO_SIM_RATE` | How many steps a second the game takes for what a player feels in their hands: their own movement and aim, projectiles, thrown items, and the VR mode's throws and grabs. `30` (as the game was made), `60` or `120`: 1, 2 or 4 steps inside each of the game's 30 ticks a second. Everything else keeps the 30 ticks: the AI, scripts, cinematics, animations, timers, vehicles, saved games and the network. Any other value is `30` (refer to "Simulation rate" in "How the port operates"). It applies to games of this computer alone: the campaign, split screen and games with bots (a split screen game runs as a network game of one computer that takes no other). Network games with other computers use the rate the game agreed on, hosting or joining: `30` in a Legacy game (OpenCE's netcode steps at 30), and the host's `network.sim_rate` in an OpenH1 game. The playback of a saved film is always `30`. TICK RATE in Video Setup > Graphics > Advanced: ORIGINAL (30), 60 or 120. A change applies from the next tick. Where the game sets the setting aside (a network game with other computers, a film's playback), the row is locked: dimmed, at the game's rate (ORIGINAL (30) in a Legacy game), passed over, and OK leaves the setting as it was. |
 | `game.unlock_all_levels` | `false` | `HALO_UNLOCK_ALL_LEVELS` | `true`: a profile created afterward starts with all the campaign levels finished on all the difficulties. `false`: a new profile starts at The Pillar of Autumn, and each level opens when you finish the level before it, as on the Xbox. Existing profiles keep their progress. To start a profile over, type `profile_reset_campaign` in the console. |
-| `bots.count` | `0` | `HALO_BOTS` | Computer players (bots) in a local (split screen) Slayer game: `0` to `15` join its lobby with the players, as far as the game has room. Not in system link or internet games. `0`: none, as in the stock game. BOTS in Server Setup of Multiplayer > PLAY WITH BOTS writes it. Refer to "Bots". |
+| `bots.count` | `0` | `HALO_BOTS` | Computer players (bots) in a Slayer game this computer hosts: `0` to `15` join its lobby with the players, as far as the game has room: a local (split screen) game, or a system link or internet one, where the host plays them and the other machines see them as players (`bots.make_room`). `0`: none, as in the stock game. BOTS in Server Setup (of Multiplayer > PLAY WITH BOTS, or its BOTS screen in a network game) writes it. Refer to "Bots". |
 | `bots.skill` | `"normal"` | `HALO_BOT_SKILL` | How well the bots play: `"easy"`, `"normal"`, `"heroic"` or `"legendary"`: how soon they react, how far and how wide they see, how large their aim error is and how fast it settles, how fast they turn. BOT SKILL in Server Setup of Multiplayer > PLAY WITH BOTS writes it. |
 | `bots.teams` | `"even"` | `HALO_BOT_TEAMS` | In a team game: `"even"` puts the bots on both teams, evening them with the players; `"against"` puts them all on the team the players are not on. BOT TEAMS (EVEN or AGAINST YOU) in Server Setup of Multiplayer > PLAY WITH BOTS writes it. |
+| `bots.make_room` | `true` | `HALO_BOTS_MAKE_ROOM` | In a system link or internet game with bots: a bot leaves as a player joins, so that the game has no more than `bots.fill_to` players and bots, and comes back as a player leaves. `false`: the bots stay, and the game's most players are its players' alone. MAKE ROOM on Server Setup's BOTS screen writes it. Refer to "Bots". |
+| `bots.fill_to` | `16` | `HALO_BOTS_FILL_TO` | With `bots.make_room`, the players and bots a system link or internet game is filled to (2 to 128; no more than its most players). FILL TO on Server Setup's BOTS screen writes it. |
 | `paths.data` | `""` | `HALO_DATA_ROOT` | The data root. Refer to "Start the game". |
 | `paths.saves` | `""` | `HALO_SAVE_ROOT` | The save root. Refer to "Files and folders". |
 | `network.address` | `""` | `HALO_NET_ADDRESS` | The IPv4 address of this machine for system link. Refer to "Play on one computer". |
@@ -5002,7 +5026,7 @@ Other changes:
 | `cache/cache_files.c`, `networking/network_client_manager.c`, `networking/network_server_manager.c`, `networking/network_server_message_handler.c`, `main/main.c`, `interface/interface.c` | Map sharing (`game/map_share.c`): a client that does not have the game's Custom Edition map asks the host for it instead of leaving, is not given time to precache it until it has it, and adds its players to a game in progress only then; the host gives the game's map its own name and its version (its hash's start), takes the requests from any machine in the game, lobby too, and does not drop a machine that downloads; the transfers run each frame, and their progress is drawn over the screen. |
 | `cutscene/cinematics.c` | A scenario's titles (some Custom Edition maps show their name for the whole game) are not drawn over a menu, as the letterbox is not: the screen's overlays are drawn after the players' menus. |
 | `tag_files/tag_groups.h` | `TAG_BLOCK_GET_ELEMENT` returns an element in the block without a call, and calls `tag_block_get_element_with_size` for anything else. |
-| `game/players.c`, `networking/network_server_manager.c` | Bots (`game/bots.c`, `bots.count`): the lobby of a local Slayer game takes the bot players, each the one player of a machine of its own that no real machine is, and every tick their actions come from `game/bots.c` instead of their empty queues. Nothing changes in a system link or internet game. |
+| `game/players.c`, `game/player_queues_new.c`, `networking/network_server_manager.c` | Bots (`game/bots.c`, `bots.count`): the lobby of a Slayer game this machine hosts takes the bot players, each the one player of a machine of its own that no real machine is (joining machines are numbered below them), and every tick their actions come from `game/bots.c` instead of their empty queues, into the update the host relays (`update_server_take_bot_action`). A network game's bots make room for the players who join (`bots.make_room`), told the other machines by the game's own messages; the advertisement and the listing count the players apart from them. |
 | `input/input_xbox.c`, `physics/collision_usage.c` | The clock is read only for a button held, and for collision tests only when their times are shown (a read of the clock was slow in a browser, for the web port). |
 | `math/random_math.c`, `game/game.c`, `game/game_time.c` | The local seed is set from the game's at a map's start, and is two: the ticks' and the frames' ("Determinism"). The seeds' takers and the game state's allocations go to the determinism check (`game/determinism_log.c`). |
 | `cseries/debug_memory.c` | The debug allocator fills a new allocation from a seed of its own, not the game's local seed. |

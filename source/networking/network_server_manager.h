@@ -124,6 +124,13 @@ long network_game_server_port_bots_humans(
 	struct network_game_server *server,
 	long *bots,
 	long *maximum);
+/* port: the host takes the bot of the machine (port/linux/game/bots.h's
+BOTS_FIRST_MACHINE up) out of its game, lobby or in progress (Host
+Controls): with bots.count one less, none takes its place; FALSE if there is
+no such bot */
+boolean network_game_server_port_bots_remove(
+	struct network_game_server *server,
+	long machine_index);
 /* port: whether a player who joins finds room: fewer players than the game
 takes, and a slot free or a bot to make room (bots.make_room) */
 boolean network_game_server_has_room_for_player(

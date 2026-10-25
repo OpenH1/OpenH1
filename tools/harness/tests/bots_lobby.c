@@ -434,13 +434,23 @@ int main(int argc, char **argv)
 		CHECK(bots_in(&team0, &team1) == 0, "%ld bots joined a local game in progress", bots_in(&team0, &team1));
 		return 0;
 	}
-	/* no bots before a player is in */
+	/* no bots before a player is in; a player of no team yet (between two
+	games of other kinds) keeps them */
 	CASE("no-player-no-bots")
 	{
+		struct network_player *human;
+
 		lobby(game_engine_slayer, 16);
 		wanted = 6;
 		network_game_server_port_bots(&server);
 		CHECK(bots_in(&team0, &team1) == 0 && server.game.player_count == 0, "bots in a lobby with no player");
+		human = player(0, 0);
+		network_game_server_port_bots(&server);
+		human->team_index = 5;
+		sends = 0;
+		network_game_server_port_bots(&server);
+		CHECK(bots_in(&team0, &team1) == 6 && sends <= 1, "%ld bots, %ld sends with the player of no team",
+			bots_in(&team0, &team1), sends);
 		return 0;
 	}
 	/* each bot the one player of a machine no real machine is, named, a
@@ -469,7 +479,8 @@ int main(int argc, char **argv)
 		}
 		CHECK(named == 15, "%ld of 15 bots named", named);
 		CHECK(!bots_machine_is_bot(0) && !bots_machine_is_bot(BOTS_FIRST_MACHINE - 1), "a real machine is a bot");
-		CHECK(BOTS_FIRST_MACHINE + BOTS_MAXIMUM <= HALO_PORT_MAXIMUM_NETWORK_MACHINES, "the bots' machines past the session's");
+		CHECK(BOTS_FIRST_MACHINE + BOTS_MAXIMUM <= HALO_PORT_MAXIMUM_NETWORK_MACHINES,
+			"the bots' machines past the session's");
 		return 0;
 	}
 	/* make room (network): the bots fill the game to bots.fill_to; a player
@@ -595,9 +606,11 @@ int main(int argc, char **argv)
 			"%ld bots, %ld removals once a player joined", bots(), messages[_message_server_remove_player_ingame]);
 		idle(5);
 		CHECK(bots() == 6 && joined_ingame == 0, "the bots changed again (%ld bots)", bots());
+		clock_milliseconds += 10000;
+		idle(1);
 		leave(1);
 		idle(3);
-		CHECK(bots() == 6 && joined_ingame == 0, "a bot came back at once");
+		CHECK(bots() == 6 && joined_ingame == 0, "a bot came back at once as the player left");
 		clock_milliseconds += 5000;
 		server.waiting_player_count = 1;
 		idle(3);
@@ -658,6 +671,34 @@ int main(int argc, char **argv)
 		scores[4] = -2;
 		join(1);
 		CHECK(bots() == 6 && !bot_in(4), "not the lowest scoring bot that left a free for all");
+		return 0;
+	}
+	/* the host takes a bot out (Host Controls, bots.count one less): it
+	leaves, the others stay as they are, and none takes its place; in a game
+	in progress every machine told */
+	CASE("host-removes-a-bot")
+	{
+		long round;
+
+		for (round = 0; round < 2; round++)
+		{
+			network_lobby(game_engine_slayer, 16);
+			player(0, 0);
+			wanted = 5;
+			idle(1);
+			if (round)
+				server.state = _network_game_server_state_ingame;
+			CHECK(network_game_server_port_bots_remove(&server, BOTS_FIRST_MACHINE + 2), "bot 3 not removed");
+			CHECK(!network_game_server_port_bots_remove(&server, BOTS_FIRST_MACHINE + 2), "bot 3 removed twice");
+			CHECK(!network_game_server_port_bots_remove(&server, 0), "a player removed as a bot");
+			wanted = 4;
+			sends = 0;
+			clock_milliseconds += 10000;
+			idle(3);
+			CHECK(bots() == 4 && !bot_in(2) && bot_in(0) && bot_in(1) && bot_in(3) && bot_in(4),
+				"the bots changed after the host took bot 3 out (%ld)", bots());
+			CHECK(!round || messages[_message_server_remove_player_ingame] == 1, "the game in progress not told");
+		}
 		return 0;
 	}
 	fprintf(stderr, "unknown case: %s\n", case_name);
