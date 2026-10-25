@@ -75,7 +75,9 @@ not on the tunnel: its machines need not reach each other until they play.
   Join) arrives: while the activity offers it, the spare's topic is
   listened on (p2p_party_standby), and a STATE heard on it makes the party
   before it is taken. Making a party (MAKE PARTY, a scoreboard's invite)
-  makes the spare's too.
+  makes the spare's too. Friends' presence (p2p_friends.c) offers the same
+  spare to friends (their JOIN), and listens on its topic while it is shared
+  (p2p_party_friends_standby).
 
 Voice in the party: none yet. network.voice_lobby's voice is the game's
 (port/linux/game/network_voice.c), carried by its connection to the host,
@@ -182,12 +184,14 @@ struct departed
 	unsigned long sequence;
 };
 
-/* the party not made yet that Discord offers (made: its token is), its
-seal and topic, and whether its topic is listened on */
+/* the party not made yet that Discord offers, and friends' presence
+(made: its token is), its seal and topic, and whether its topic is listened
+on for Discord, and for friends (either: spare_listening) */
 struct spare
 {
 	int made;
 	int standby;
+	int friends;
 	unsigned char token[P2P_TOKEN_SIZE];
 	unsigned char seal[P2P_SHA256_SIZE];
 	char topic[64];
@@ -265,6 +269,13 @@ static struct
 static const unsigned char no_id[MEMBER_ID_SIZE];
 /* the messages sent now are the last before the game quits */
 static int party_urgent;
+
+/* whether the spare's topic is listened on (out of a party): for Discord,
+or for friends */
+static int spare_listening(void)
+{
+	return party.spare.made && (party.spare.standby || party.spare.friends);
+}
 
 static int elapsed(unsigned long since, unsigned long time)
 {
@@ -820,7 +831,7 @@ static int spare_heard(const unsigned char *payload, int size)
 {
 	unsigned char message[MAXIMUM_PARTY_MESSAGE_SIZE + P2P_SEAL_OVERHEAD];
 
-	if (!party.spare.made || !party.spare.standby || size > (int)sizeof(message))
+	if (!spare_listening() || size > (int)sizeof(message))
 		return 0;
 	size = p2p_open(party.spare.seal, payload, size, message);
 	return size >= HEADER_SIZE + P2P_SIGNATURE_SIZE && message[0] == PARTY_MAGIC && message[1] == PARTY_VERSION &&
@@ -951,7 +962,7 @@ void p2p_party_update(void)
 	if (!party.active)
 	{
 		/* (the spare's topic listened on: the brokers connected) */
-		if (party.spare.standby)
+		if (spare_listening())
 			p2p_signal_start();
 		return;
 	}
@@ -1042,7 +1053,7 @@ static void leave_party(int kind)
 	party.host_quality = host_quality;
 	if (kind)
 		notice(kind, NULL, 0);
-	p2p_signal_party(party.spare.standby ? party.spare.topic : "");
+	p2p_signal_party(spare_listening() ? party.spare.topic : "");
 }
 
 /* this machine leaves the party it is in (a leader names the next on its
@@ -1321,14 +1332,27 @@ void p2p_party_spare_lead(void)
 	lead(token);
 }
 
+/* the spare's topic told p2p_signal.c, if listening on it changed */
+static void spare_listen(int was)
+{
+	if (spare_listening() != was && !party.active)
+		p2p_signal_party(spare_listening() ? party.spare.topic : "");
+}
+
 void p2p_party_standby(int on)
 {
-	on = on && party.spare.made;
-	if (on == party.spare.standby)
-		return;
-	party.spare.standby = on;
-	if (!party.active)
-		p2p_signal_party(on ? party.spare.topic : "");
+	int was = spare_listening();
+
+	party.spare.standby = on && party.spare.made;
+	spare_listen(was);
+}
+
+void p2p_party_friends_standby(int on)
+{
+	int was = spare_listening();
+
+	party.spare.friends = on && party.spare.made;
+	spare_listen(was);
 }
 
 void p2p_party_leave(void)

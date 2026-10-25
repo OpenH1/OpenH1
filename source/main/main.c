@@ -3650,6 +3650,9 @@ void main_loop(
 			/* port: the party, which follows its leader into its games
 			(port/linux/game/party_menu.inc) */
 			party_update();
+			/* port: friends: the profile whose they are
+			(port/linux/game/friends_menu.inc) */
+			friends_update();
 			/* port: matchmaking: a game found or hosted for the party by
 			playlist (port/linux/game/matchmaking.c) */
 			matchmaking_update();

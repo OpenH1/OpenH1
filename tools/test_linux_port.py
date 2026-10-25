@@ -640,7 +640,8 @@ PARTY_MUTATIONS = [
      "notice(_p2p_party_notice_follow_failed, member->name, member->result);", "(void)0;", "follow"),
     ("a friend Discord gave the spare's link to is not answered",
      "if (!party.active && spare_heard(payload, size))", "if (0)", "spare"),
-    ("the spare's topic is not listened on", "\t\tp2p_signal_party(on ? party.spare.topic : \"\");", "\t\t(void)0;",
+    ("the spare's topic is not listened on", "\t\tp2p_signal_party(spare_listening() ? party.spare.topic : \"\");",
+     "\t\t(void)0;",
      "spare"),
     ("MAKE PARTY makes a party of its own, not the spare's", "\tif (party.spare.made)\n\t\tmemcpy(token",
      "\tif (0)\n\t\tmemcpy(token", "spare"),
@@ -676,6 +677,113 @@ def test_party_negative_controls(tmp_path, what, original, mutated, case):
     program = party_check_build(tmp_path, source=copy)
     result = party_run(program, case)
     # (a fault that overruns the roster crashes the check: failing too)
+    assert result.returncode != 0 and ("FAIL" in result.stdout or result.returncode < 0), \
+        f"{what}: the {case} case still passes"
+
+
+# ---------- friends (port/linux/src/p2p_friends.c): several machines in one
+# process (tools/p2p_friends_check.c), each case by its name
+
+FRIENDS_CASES = ["code", "file", "request", "ignore", "mutual", "offline", "presence", "hidden", "remove", "block",
+                 "invite", "join", "recent", "forged"]
+FRIENDS_SOURCES = ["tools/p2p_friends_check.c", "port/linux/src/p2p_crypto.c",
+                   "port/third_party/monocypher/monocypher.c", "port/third_party/monocypher/monocypher-ed25519.c"]
+
+
+def friends_check_build(folder: Path, source=None) -> Path:
+    """tools/p2p_friends_check.c with p2p_friends.c (or a copy of it:
+    source), built for this computer, as the party's check is"""
+    compiler = shutil.which("clang") or shutil.which("cc")
+    if not compiler:
+        pytest.skip("needs a C compiler")
+    root = Path(__file__).resolve().parent.parent
+    folder.mkdir(parents=True, exist_ok=True)
+    program = folder / "p2p_friends_check"
+    defines = [f'-DP2P_FRIENDS_SOURCE="{source}"'] if source else ["-Werror"]
+    flags = ["-std=gnu99", "-Wall", "-Wextra", "-Wno-unused-parameter", "-Iport/linux/src",
+             "-Iport/third_party/monocypher", "-idirafter", "port/linux/include"]
+    built = subprocess.run([compiler, *flags, *defines, "-O1", "-o", str(program), *FRIENDS_SOURCES, "-lpthread"],
+                           cwd=root, capture_output=True, text=True)
+    assert built.returncode == 0, built.stderr[-4000:]
+    return program
+
+
+def friends_run(program: Path, case: str, folder: Path) -> subprocess.CompletedProcess:
+    folder.mkdir(parents=True, exist_ok=True)
+    return subprocess.run([str(program), case, str(folder)], capture_output=True, text=True, timeout=120)
+
+
+@pytest.fixture(scope="module")
+def friends_check(tmp_path_factory):
+    return friends_check_build(tmp_path_factory.mktemp("friends"))
+
+
+@pytest.mark.parametrize("case", FRIENDS_CASES)
+def test_friends(friends_check, tmp_path, case):
+    """friends' codes, their file, requests (accepted, ignored, mutual, while
+    away), presence (only friends read it; appearing offline), removing,
+    blocking, invites, joining, recent players, and what is turned away
+    (tools/p2p_friends_check.c's cases)"""
+    result = friends_run(friends_check, case, tmp_path / "profiles")
+    assert result.returncode == 0 and "PASS" in result.stdout, result.stdout
+
+
+# each fault put in p2p_friends.c, and the case that must then fail
+FRIENDS_MUTATIONS = [
+    ("signatures are not checked", "\treturn p2p_ed25519_verify(message + 3, data, P2P_SHA256_SIZE + size, "
+     "message + size);", "\treturn 1;", "forged"),
+    ("another format is read", "if (size < 3 || message[0] != FRIENDS_MAGIC || message[1] != FRIENDS_VERSION ||",
+     "if (size < 3 || message[0] != FRIENDS_MAGIC ||", "forged"),
+    ("a request sent again is taken", "\t\tif (time > request->last_time)", "\t\tif (1)", "forged"),
+    ("the checks' budget is not spent", "\tfriends.checks_left--;\n", "", "forged"),
+    ("a code's check character is not checked", "\tif (code_check(values) != values[11])\n\t\treturn -1;\n", "",
+     "code"),
+    ("a check that misses swaps", "\t\tinterim = code_double(interim) ^ values[index];",
+     "\t\tinterim = interim ^ values[index];", "code"),
+    ("an ignored code's request is shown", "\tif (find_blocked(code) || ignored(code))\n\t\treturn;",
+     "\tif (find_blocked(code))\n\t\treturn;", "ignore"),
+    ("a blocked code's request is shown", "\tif (find_blocked(code) || ignored(code))\n\t\treturn;",
+     "\tif (ignored(code))\n\t\treturn;", "block"),
+    ("asking each other is not accepting", "\tif (find_sent(code))\n\t{\n\t\t/* (asked for: friends now.",
+     "\tif (0)\n\t{\n\t\t/* (asked for: friends now.", "mutual"),
+    ("a request sent is never sent again", "(!sent->sent || elapsed(sent->sent_time, ADD_INTERVAL))",
+     "!sent->sent", "offline"),
+    ("the presence shared while hidden", "\tsharing = friends.share_setting;\n", "\tsharing = 1;\n", "hidden"),
+    ("a friend never goes offline", "\treturn record->heard && !(record->presence.flags & _presence_offline) &&\n"
+     "\t\t!elapsed(record->heard_time, PRESENCE_TIMEOUT);",
+     "\treturn record->heard && !(record->presence.flags & _presence_offline);", "presence"),
+    ("a friend's FIRST is not answered", "((!presence_same(&presence, &friends.published) || (friends.presence_wanted &&",
+     "((!presence_same(&presence, &friends.published) || (0 &&", "presence"),
+    ("the presence key kept on removal", "\tfriends.topics_wanted = 1;\n\tpresence_rotate();\n",
+     "\tfriends.topics_wanted = 1;\n", "remove"),
+    ("invites taken at once again", "(record->invited && !elapsed(record->invite_time, INVITE_INTERVAL))", "(0)",
+     "invite"),
+    ("an offline friend is joined", "if (record && !joined && online(record) &&", "if (record && !joined &&", "join"),
+    ("a player of no code kept beside its code",
+     "\t\t\tmemmove(recent, recent + 1, sizeof(*recent) * (size_t)(P2P_FRIENDS_RECENT - 1 - index));\n",
+     "\t\t\tbreak;\n", "recent"),
+    ("a friend listed again as a recent player",
+     "\t\tif (!recent->used || (recent->has_code && find_friend(recent->code)))",
+     "\t\tif (!recent->used)", "request"),
+    ("no ADD back when both asked at once", "\t\tnotice(_p2p_friends_notice_accepted, name);\n\t\tsend_add(code);\n",
+     "\t\tnotice(_p2p_friends_notice_accepted, name);\n", "mutual"),
+    ("its own code a recent player", "(code && !memcmp(code, friends.code, P2P_FRIEND_CODE_BYTES)) || !cleaned[0])",
+     "!cleaned[0])", "recent"),
+    ("the list's order turned", "\t\treturn first->kind < second->kind ? -1 : 1;",
+     "\t\treturn first->kind < second->kind ? 1 : -1;", "recent"),
+    ("its own key a friend in the file", " || (friends.has_identity && !memcmp(record.key, friends.key, "
+     "P2P_KEY_SIZE)))", ")", "file"),
+]
+
+
+@pytest.mark.parametrize("what,original,mutated,case", FRIENDS_MUTATIONS, ids=[m[0] for m in FRIENDS_MUTATIONS])
+def test_friends_negative_controls(tmp_path, what, original, mutated, case):
+    root = Path(__file__).resolve().parent.parent
+    text = (root / "port/linux/src/p2p_friends.c").read_text()
+    assert text.count(original) == 1, f"the mutation's text ({what}) is no longer in p2p_friends.c once"
+    copy = write(tmp_path / "p2p_friends.c", text.replace(original, mutated))
+    program = friends_check_build(tmp_path, source=copy)
+    result = friends_run(program, case, tmp_path / "profiles")
     assert result.returncode != 0 and ("FAIL" in result.stdout or result.returncode < 0), \
         f"{what}: the {case} case still passes"
 

@@ -1091,6 +1091,9 @@ static void party_hub_status(wchar_t *headline, short headline_size, wchar_t *de
 /* (matchmaking_menu.inc's) */
 static void matchmaking_hub_note(wchar_t *text, short size);
 static void matchmaking_hub_status(wchar_t *headline, short headline_size, wchar_t *detail, short detail_size);
+/* (friends_menu.inc's) */
+static void friends_hub_note(wchar_t *text, short size);
+static void friends_hub_status(wchar_t *headline, short headline_size, wchar_t *detail, short detail_size);
 short ui_widget_port_multiplayer_maps(char const *const **names, short *last_used);
 
 static boolean map_kind_singleplayer(short kind)
@@ -7618,6 +7621,8 @@ enum
 	_multiplayer_item_party,
 	/* (MATCHMAKING, which opens its screen: matchmaking_menu.inc) */
 	_multiplayer_item_matchmaking,
+	/* (FRIENDS, which opens its screen: friends_menu.inc) */
+	_multiplayer_item_friends,
 };
 
 /* Multiplayer's items and its pages' (port_settings.py's _hub), by their
@@ -7641,6 +7646,7 @@ static struct
 	{ "hub_split_coop", _multiplayer_item_split_screen_coop },
 	{ "hub_party", _multiplayer_item_party },
 	{ "hub_matchmaking", _multiplayer_item_matchmaking },
+	{ "hub_friends", _multiplayer_item_friends },
 };
 
 #define MULTIPLAYER_DESCRIPTIONS "pc\\main_menu\\multiplayer_type_select\\hub\\descriptions"
@@ -7902,6 +7908,8 @@ static void multiplayer_status_notes(struct widget_instance *list)
 	text_set(named(list, "party_note", 0), text);
 	matchmaking_hub_note(text, NUMBEROF(text));
 	text_set(named(list, "matchmaking_note", 0), text);
+	friends_hub_note(text, NUMBEROF(text));
+	text_set(named(list, "friends_note", 0), text);
 }
 
 /* the item chosen: Multiplayer's list's (the computer's and the
@@ -8074,6 +8082,9 @@ static void multiplayer_status_update(struct widget_instance *list)
 		break;
 	case _multiplayer_item_matchmaking:
 		matchmaking_hub_status(headline, NUMBEROF(headline), detail, NUMBEROF(detail));
+		break;
+	case _multiplayer_item_friends:
+		friends_hub_status(headline, NUMBEROF(headline), detail, NUMBEROF(detail));
 		break;
 	case _multiplayer_item_bots:
 		usnprintf(headline, NUMBEROF(headline) - 1, L"BOTS ON THIS COMPUTER");
@@ -9677,6 +9688,7 @@ static void gametype_engine_name(struct widget_instance *text_box)
 
 #include "party_menu.inc"
 #include "matchmaking_menu.inc"
+#include "friends_menu.inc"
 #include "lobby_menu.inc"
 
 /* ---------- Host Controls: the pause menu's HOST CONTROLS, the host's */
@@ -10020,6 +10032,11 @@ boolean pc_menu_event_function_invoke(
 		{
 			return matchmaking_screen_key(widget, controller);
 		}
+		/* (friends: friends_menu.inc) */
+		else if (!strncmp(name, "port friends ", 13))
+		{
+			return friends_menu_event(name + 13, widget, controller, widget_deleted);
+		}
 		else if (!strcmp(name, "port party x") || !strcmp(name, "port party y"))
 		{
 			return party_screen_key(widget, !strcmp(name, "port party y"), controller);
@@ -10276,6 +10293,10 @@ void pc_menu_game_data_function_invoke(
 		party_screen_update(widget);
 	else if (!strcmp(name, "port matchmaking update"))
 		matchmaking_screen_update(widget);
+	else if (!strcmp(name, "port friends update"))
+		friends_screen_update(widget);
+	else if (!strcmp(name, "port friends code update"))
+		friends_add_update(widget);
 	else if (!strcmp(name, "port host update"))
 		host_controls_update(widget);
 	else if (!strcmp(name, "port playlist edit desc"))

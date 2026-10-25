@@ -167,6 +167,10 @@ enum
 	left for the online bots) */
 	_distributed_message_party_hold = 128,
 	_distributed_message_party_held = 129,
+	/* the friend codes of the game's players (network_party.c), reliably:
+	the host's list, to the machines that told it they can party (each
+	client tells its own in its party status) */
+	_distributed_message_friend_players = 130,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };

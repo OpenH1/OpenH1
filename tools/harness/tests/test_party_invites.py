@@ -13,7 +13,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, constant, enum_with, mutated, read, run  # noqa: E402
 
-CASES = ["actions", "route", "list", "status", "accept", "invite", "holds"]
+CASES = ["actions", "route", "list", "status", "accept", "invite", "holds", "friends"]
 
 # a fault in network_party.c, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -82,6 +82,36 @@ NEGATIVE_CONTROLS = {
     "asked-again-for-ever": (("party_globals.hold_answered || party_globals.hold_asks >= PARTY_HOLD_ASKS ||",
                               "party_globals.hold_answered ||"), "holds"),
     "answer-not-heard": (("\t\tparty_globals.hold_answered = TRUE;\n", ""), "holds"),
+    # friends: the codes and the recent players
+    "codes-to-anyone": (("\t\tif (!party_machine_told(machine_index) || (!changed && "
+                         "party_globals.machines[machine_index].friends_listed))",
+                         "\t\tif (!changed && party_globals.machines[machine_index].friends_listed)"), "friends"),
+    "code-without-its-bit": (("party_globals.machines[machine_index].has_code = TEST_FLAG(request->flags, "
+                              "_party_status_friend_code_bit);", "party_globals.machines[machine_index].has_code = TRUE;"),
+                             "friends"),
+    "codes-every-time": (("(!changed && party_globals.machines[machine_index].friends_listed)", "(changed && 0)"),
+                         "friends"),
+    "codes-of-any-size": (("\t\t\tsize != sizeof(header) + header.count * sizeof(struct distributed_friend_player))",
+                           "\t\t\t0)"), "friends"),
+    "codes-of-any-format": (("if (players[index].format != FRIEND_FORMAT || players[index].player_index >= ",
+                             "if (players[index].player_index >= "), "friends"),
+    "status-without-code": (("\t\tif (party_globals.has_own_code)\n\t\t\tcsmemcpy(request.token, "
+                             "party_globals.own_code, FRIEND_CODE_SIZE);\n", ""), "friends"),
+    "add-a-friend-again": (("\t\tparty_friend_addable(p2p_friends_relation(party_globals.codes[absolute_index].code)))",
+                            "\t\t1)"), "friends"),
+    "add-without-profile": (("if (party_game() && party_globals.has_own_code && player->local_player_index == NONE &&",
+                             "if (party_game() && player->local_player_index == NONE &&"), "friends"),
+    "own-player-recent": (("\t\tif (!player || player->local_player_index != NONE ||\n"
+                           "\t\t\tbots_machine_is_bot(player->network_player_data.machine_index))\n\t\t{\n\t\t\tcontinue;",
+                           "\t\tif (!player ||\n\t\t\tbots_machine_is_bot(player->network_player_data.machine_index))"
+                           "\n\t\t{\n\t\t\tcontinue;"), "friends"),
+    "legacy-codes-noted": (("coded = party_game() && party_globals.codes[player_index].has;",
+                            "coded = party_globals.codes[player_index].has;"), "friends"),
+    "recent-every-frame": (("\tif (!party_globals.recent_time || now - party_globals.recent_time < "
+                            "FRIEND_RECENT_MILLISECONDS)\n", "\tif (!party_globals.recent_time)\n"), "friends"),
+    "recent-at-once": (("\tif (!party_globals.recent_time || now - party_globals.recent_time < "
+                        "FRIEND_RECENT_MILLISECONDS)\n", "\tif (party_globals.recent_time && now - "
+                        "party_globals.recent_time < FRIEND_RECENT_MILLISECONDS)\n"), "friends"),
 }
 
 
@@ -93,7 +123,8 @@ def generated(fault=None):
         "HALO_PORT_MAXIMUM_NETWORK_MACHINES", "HALO_PORT_MAXIMUM_NETWORK_PLAYERS"))
     for name in ("_distributed_message_party_up", "_distributed_message_party_down",
                  "_distributed_message_party_players", "_distributed_message_player_substeps",
-                 "_distributed_message_party_hold", "_distributed_message_party_held"):
+                 "_distributed_message_party_hold", "_distributed_message_party_held",
+                 "_distributed_message_friend_players"):
         value = re.search(rf"\b{name} = (\d+)", distributed).group(1)
         config += f"#define {name} {value}\n"
     first = re.search(r"#define FIRST_OPENH1_DISTRIBUTED_MESSAGE (\w+)", distributed).group(1)
@@ -103,7 +134,9 @@ def generated(fault=None):
     config += enum_with(keyboard, "HALO_CHAT_PAD_DOWN") + "\n"
     p2p = read("port/linux/src/p2p.h")
     config += "".join(f"#define {name} {constant(p2p, name)}\n"
-                      for name in ("P2P_PLAYER_KEY_HASH_SIZE", "P2P_PARTY_MAXIMUM_MEMBERS"))
+                      for name in ("P2P_PLAYER_KEY_HASH_SIZE", "P2P_PARTY_MAXIMUM_MEMBERS", "P2P_FRIEND_CODE_BYTES"))
+    # (friends' relations and results: p2p_friends.c's)
+    config += enum_with(p2p, "\t_p2p_friend_request,") + "\n" + enum_with(p2p, "_p2p_friends_done") + "\n"
     header = read("port/linux/game/network_party.h")
     # (the actions, and the prototypes: the code's functions call each other in any order)
     config += header[header.index("/* ---------- constants */"):header.rindex("#endif")]
