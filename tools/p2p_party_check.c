@@ -39,7 +39,13 @@ each run by its name:
   sealed with another party's key, signed by a key not its sender's, of
   another format (noted once), sent again (replayed), from a member gone,
   of a leader with an older term, and a malformed one;
-- version: a member of another HALO_PORT_NETWORK_VERSION is shown so.
+- version: a member of another HALO_PORT_NETWORK_VERSION is shown so;
+- spare: the party Discord offers out of a party (p2p_party_spare): the
+  same link and id until it is made, its id the party's topic's digits (not
+  the link's); a friend with its link is not answered while its topic is not
+  listened on, and is, its party made, this machine its leader, while it is
+  (p2p_party_standby); let in, it is made (p2p_party_spare_lead); MAKE
+  PARTY makes it; the next is another.
 Prints PASS or the failures.
 */
 
@@ -959,6 +965,77 @@ static void case_format(void)
 	}
 }
 
+static void case_spare(void)
+{
+	char link[P2P_PARTY_LINK_SIZE], again[P2P_PARTY_LINK_SIZE], id[33], id_again[33];
+	unsigned char token[P2P_TOKEN_SIZE];
+	struct p2p_party_presence presence;
+	struct p2p_party_status status;
+	int index;
+
+	for (index = 0; index < 5; index++)
+	{
+		char text[2] = { (char)('A' + index), 0 };
+
+		add_machine();
+		name(index, text);
+	}
+	switch_to(0);
+	p2p_party_spare(link, sizeof(link), id, sizeof(id));
+	p2p_party_spare(again, sizeof(again), id_again, sizeof(id_again));
+	check(!strcmp(link, again) && !strcmp(id, id_again), "the spare is the same until it is made a party");
+	check(p2p_party_parse_link(link, token) && strlen(id) == 32 && !strstr(link, id),
+		"its link is a party's, its id 32 digits not the link's");
+	p2p_party_presence(&presence);
+	check(!presence.active, "the spare is no party yet");
+	/* (its topic not listened on: a friend with the link is not answered) */
+	switch_to(1);
+	p2p_party_join_link(link);
+	run(JOIN_WAIT + 2000);
+	status_of(1, &status);
+	check(status.state == _p2p_party_none, "not listened on, a friend with its link gives up");
+	status_of(0, &status);
+	check(status.state == _p2p_party_none, "... and no party is made");
+	/* (listened on: made, the friend's to join) */
+	switch_to(0);
+	p2p_party_standby(1);
+	check(!strncmp(machines[0].topic, "hceu/3/", 7) && !strcmp(machines[0].topic + 7, id),
+		"listening on the spare's topic");
+	switch_to(1);
+	p2p_party_join_link(link);
+	run(3000);
+	status_of(0, &status);
+	check(status.state == _p2p_party_member && status.leader && status.count == 2 &&
+		!strcmp(status.members[0].name, "A") && !strcmp(status.members[1].name, "B"),
+		"a friend with the link arriving makes the party, this machine its leader, the friend in it");
+	status_of(1, &status);
+	check(status.state == _p2p_party_member && status.count == 2 && !strcmp(status.leader_name, "A"),
+		"the friend is in it");
+	switch_to(0);
+	p2p_party_presence(&presence);
+	check(presence.active && presence.count == 2 && !strcmp(presence.link, link) && !strcmp(presence.id, id),
+		"the party is the spare's: its link and its id");
+	p2p_party_spare(again, sizeof(again), id_again, sizeof(id_again));
+	check(strcmp(again, link) && strcmp(id_again, id), "the next spare is another");
+	/* (let in: made at once) */
+	switch_to(2);
+	p2p_party_spare(link, sizeof(link), id, sizeof(id));
+	p2p_party_spare_lead();
+	status_of(2, &status);
+	check(status.state == _p2p_party_member && status.leader && status.count == 1 && !strcmp(status.link, link),
+		"a friend let in: the spare made a party, this machine its leader");
+	switch_to(3);
+	p2p_party_join_link(link);
+	run(3000);
+	status_of(2, &status);
+	check(status.count == 2, "the friend let in joins it");
+	/* (MAKE PARTY makes the spare) */
+	switch_to(4);
+	p2p_party_spare(link, sizeof(link), id, sizeof(id));
+	p2p_party_make();
+	check(!strcmp(machines[4].clipboard, link), "MAKE PARTY makes the spare's party");
+}
+
 static void case_version(void)
 {
 	unsigned char message[600], sealed[700];
@@ -999,6 +1076,7 @@ static const struct
 	{ "joinless", case_joinless },
 	{ "format", case_format },
 	{ "version", case_version },
+	{ "spare", case_spare },
 };
 
 int main(int argc, char **argv)

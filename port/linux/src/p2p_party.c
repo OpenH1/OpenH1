@@ -58,6 +58,15 @@ not on the tunnel: its machines need not reach each other until they play.
   Each machine also says where it is, so that the party shows who is with
   the leader. After a game, the party is where it was: with the host, or in
   the menus, where the leader takes it on.
+- Out of a party, Discord's activity (p2p_discord.c) offers the link of a
+  party not made yet, the spare (p2p_party_spare: a token of its own,
+  made when first asked for), so that a friend can ask to join: the party
+  is made of it, this machine its leader, when the player lets one in
+  (p2p_party_spare_lead), or when one Discord gave the link to (Invite to
+  Join) arrives: while the activity offers it, the spare's topic is
+  listened on (p2p_party_standby), and a STATE heard on it makes the party
+  before it is taken. Making a party (MAKE PARTY, a scoreboard's invite)
+  makes the spare's too.
 
 Voice in the party: none yet. network.voice_lobby's voice is the game's
 (port/linux/game/network_voice.c), carried by its connection to the host,
@@ -156,6 +165,17 @@ struct departed
 	unsigned long sequence;
 };
 
+/* the party not made yet that Discord offers (made: its token is), its
+seal and topic, and whether its topic is listened on */
+struct spare
+{
+	int made;
+	int standby;
+	unsigned char token[P2P_TOKEN_SIZE];
+	unsigned char seal[P2P_SHA256_SIZE];
+	char topic[64];
+};
+
 static struct
 {
 	/* in a party (or joining one: not listed yet) */
@@ -216,6 +236,9 @@ static struct
 	struct p2p_party_notice notices[P2P_PARTY_MAXIMUM_NOTICES];
 	int notice_count;
 	unsigned long notice_serial;
+
+	/* out of a party, the one Discord offers (kept as a party ends) */
+	struct spare spare;
 } party;
 
 static const unsigned char no_id[MEMBER_ID_SIZE];
@@ -753,6 +776,19 @@ static void leave_heard(struct member *member, const unsigned char *body, int si
 
 static void leave_party(int kind);
 
+/* whether a message on the spare's topic, listened on, is a joiner's
+STATE of this format (sealed with the spare's key) */
+static int spare_heard(const unsigned char *payload, int size)
+{
+	unsigned char message[MAXIMUM_PARTY_MESSAGE_SIZE + P2P_SEAL_OVERHEAD];
+
+	if (!party.spare.made || !party.spare.standby || size > (int)sizeof(message))
+		return 0;
+	size = p2p_open(party.spare.seal, payload, size, message);
+	return size >= HEADER_SIZE + P2P_SIGNATURE_SIZE && message[0] == PARTY_MAGIC && message[1] == PARTY_VERSION &&
+		message[2] == _message_state;
+}
+
 void p2p_party_heard(const unsigned char *payload, int size)
 {
 	unsigned char message[MAXIMUM_PARTY_MESSAGE_SIZE + P2P_SEAL_OVERHEAD];
@@ -763,6 +799,13 @@ void p2p_party_heard(const unsigned char *payload, int size)
 	const unsigned char *body;
 	int body_size;
 
+	/* (out of a party, a friend Discord gave the spare's link to: the party
+	made for them, their STATE then taken as a joiner's) */
+	if (!party.active && spare_heard(payload, size))
+	{
+		p2p_log("Internet play: a friend arrived with the party link Discord gave them");
+		p2p_party_spare_lead();
+	}
 	if (!party.active || size > (int)sizeof(message))
 		return;
 	size = p2p_open(party.seal, payload, size, message);
@@ -855,7 +898,12 @@ void p2p_party_update(void)
 	int index;
 
 	if (!party.active)
+	{
+		/* (the spare's topic listened on: the brokers connected) */
+		if (party.spare.standby)
+			p2p_signal_start();
 		return;
+	}
 	p2p_signal_start();
 	if (!p2p_signal_connected())
 	{
@@ -923,6 +971,7 @@ static void leave_party(int kind)
 	struct p2p_party_notice notices[P2P_PARTY_MAXIMUM_NOTICES];
 	unsigned long serial = party.notice_serial;
 	int count = party.notice_count;
+	struct spare spare = party.spare;
 
 	memcpy(name, party.name, sizeof(name));
 	memcpy(invite, party.game_invite, INVITE_SIZE);
@@ -937,9 +986,10 @@ static void leave_party(int kind)
 	memcpy(party.notices, notices, sizeof(notices));
 	party.notice_count = count;
 	party.notice_serial = serial;
+	party.spare = spare;
 	if (kind)
 		notice(kind, NULL, 0);
-	p2p_signal_party("");
+	p2p_signal_party(party.spare.standby ? party.spare.topic : "");
 }
 
 /* this machine leaves the party it is in (a leader names the next on its
@@ -968,17 +1018,28 @@ static void leave_locked(int kind, int urgent)
 	leave_party(kind);
 }
 
-/* a party (its token) begun on this machine: the topic and keys */
-static void begin(const unsigned char *token)
+/* a party's topic, of its token */
+static void party_topic(const unsigned char *token, char *topic, int size)
 {
 	char hex[2 * P2P_TOKEN_SIZE + 1];
 	unsigned char digest[P2P_SHA256_SIZE];
 
-	party.active = 1;
-	memcpy(party.token, token, P2P_TOKEN_SIZE);
 	p2p_hmac_sha256(token, P2P_TOKEN_SIZE, "party", 5, digest);
 	p2p_hex(digest, 16, hex);
-	snprintf(party.topic, sizeof(party.topic), "hceu/3/%s", hex);
+	snprintf(topic, (size_t)size, "hceu/3/%s", hex);
+}
+
+/* a party (its token) begun on this machine: the topic and keys (the
+spare's made the party's) */
+static void begin(const unsigned char *token)
+{
+	char hex[2 * P2P_TOKEN_SIZE + 1];
+
+	if (party.spare.made && !memcmp(token, party.spare.token, P2P_TOKEN_SIZE))
+		memset(&party.spare, 0, sizeof(party.spare));
+	party.active = 1;
+	memcpy(party.token, token, P2P_TOKEN_SIZE);
+	party_topic(token, party.topic, sizeof(party.topic));
 	p2p_hmac_sha256(token, P2P_TOKEN_SIZE, "party seal", 10, party.seal);
 	p2p_hmac_sha256(token, P2P_TOKEN_SIZE, "party id", 8, party.context);
 	p2p_hex(token, P2P_TOKEN_SIZE, hex);
@@ -995,7 +1056,9 @@ static void begin(const unsigned char *token)
 
 int p2p_party_parse_link(const char *text, unsigned char *token)
 {
-	static const char *const prefixes[] = { P2P_PARTY_LINK_PREFIX, "?party=", "&party=" };
+	/* (the link; a web address with it, the join page's (#party=: the part
+	a browser never sends) or ?party=) */
+	static const char *const prefixes[] = { P2P_PARTY_LINK_PREFIX, "?party=", "&party=", "#party=" };
 	const char *search;
 
 	for (search = text; *search; search++)
@@ -1039,6 +1102,16 @@ int p2p_party_parse_link(const char *text, unsigned char *token)
 	return 0;
 }
 
+/* a new party's token: the spare's, if Discord offers it (a friend given
+its link joins the party made), else a new one */
+static void new_token(unsigned char *token)
+{
+	if (party.spare.made)
+		memcpy(token, party.spare.token, P2P_TOKEN_SIZE);
+	else
+		posix_random_bytes(token, P2P_TOKEN_SIZE);
+}
+
 /* a party of this token made, this machine its leader */
 static void lead(const unsigned char *token)
 {
@@ -1058,7 +1131,7 @@ int p2p_party_make(void)
 	/* (a party of its own already, no one else in it: kept) */
 	if (!leading() || party.roster_count > 1)
 	{
-		posix_random_bytes(token, sizeof(token));
+		new_token(token);
 		lead(token);
 	}
 	p2p_offer_clipboard(party.link);
@@ -1073,7 +1146,7 @@ int p2p_party_invite_link(char *link, int size)
 	pthread_mutex_lock(&p2p_lock);
 	if (!party.active)
 	{
-		posix_random_bytes(token, sizeof(token));
+		new_token(token);
 		lead(token);
 	}
 	snprintf(link, (size_t)size, "%s", party.link);
@@ -1145,6 +1218,66 @@ int p2p_party_active(void)
 	return party.active;
 }
 
+/* ---------- Discord's (p2p_discord.c), under p2p_lock */
+
+/* the id a party is shown by: its topic's digits (not its link's, which
+let anyone in) */
+static void topic_id(const char *topic, char *id, int size)
+{
+	const char *slash = strrchr(topic, '/');
+
+	snprintf(id, (size_t)size, "%s", slash ? slash + 1 : "");
+}
+
+void p2p_party_presence(struct p2p_party_presence *presence)
+{
+	memset(presence, 0, sizeof(*presence));
+	presence->place = party.place;
+	if (!party.active)
+		return;
+	presence->active = 1;
+	presence->count = party.listed && party.roster_count > 0 ? party.roster_count : 1;
+	snprintf(presence->link, sizeof(presence->link), "%s", party.link);
+	topic_id(party.topic, presence->id, sizeof(presence->id));
+}
+
+void p2p_party_spare(char *link, int link_size, char *id, int id_size)
+{
+	char hex[2 * P2P_TOKEN_SIZE + 1];
+
+	if (!party.spare.made)
+	{
+		memset(&party.spare, 0, sizeof(party.spare));
+		posix_random_bytes(party.spare.token, P2P_TOKEN_SIZE);
+		p2p_hmac_sha256(party.spare.token, P2P_TOKEN_SIZE, "party seal", 10, party.spare.seal);
+		party_topic(party.spare.token, party.spare.topic, sizeof(party.spare.topic));
+		party.spare.made = 1;
+	}
+	p2p_hex(party.spare.token, P2P_TOKEN_SIZE, hex);
+	snprintf(link, (size_t)link_size, "%s%s", P2P_PARTY_LINK_PREFIX, hex);
+	topic_id(party.spare.topic, id, id_size);
+}
+
+void p2p_party_spare_lead(void)
+{
+	unsigned char token[P2P_TOKEN_SIZE];
+
+	if (party.active || !party.spare.made)
+		return;
+	memcpy(token, party.spare.token, P2P_TOKEN_SIZE);
+	lead(token);
+}
+
+void p2p_party_standby(int on)
+{
+	on = on && party.spare.made;
+	if (on == party.spare.standby)
+		return;
+	party.spare.standby = on;
+	if (!party.active)
+		p2p_signal_party(on ? party.spare.topic : "");
+}
+
 void p2p_party_leave(void)
 {
 	pthread_mutex_lock(&p2p_lock);
@@ -1169,18 +1302,6 @@ void p2p_party_disband(void)
 void p2p_party_quit(void)
 {
 	leave_locked(0, 1);
-}
-
-int p2p_party_copy_link(void)
-{
-	int active;
-
-	pthread_mutex_lock(&p2p_lock);
-	active = party.active;
-	if (active)
-		p2p_offer_clipboard(party.link);
-	pthread_mutex_unlock(&p2p_lock);
-	return active;
 }
 
 void p2p_party_set_name(const char *name)

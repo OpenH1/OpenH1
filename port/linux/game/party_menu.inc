@@ -114,7 +114,12 @@ static struct
 	unsigned long update_time;
 	/* the party's state the screen's prompts were last focused for */
 	int prompts_state;
+	/* when COPY INVITE last copied the party's (the panel says so a while) */
+	unsigned long copied_time;
 } party_menu;
+
+/* lobby_menu.inc's: what Discord is told of the game this machine is in */
+static void lobby_presence_tell(void);
 
 /* what a game found allows a member following its leader: _p2p_party_follow_joined
 (join it), _p2p_party_follow_none (wait: it is not open yet), or why not */
@@ -512,6 +517,7 @@ void party_update(void)
 	}
 	party_name_tell();
 	party_game_tell();
+	lobby_presence_tell();
 	party_follow_update();
 	p2p_party_status(&status);
 	party_screen_open(&status);
@@ -734,8 +740,10 @@ static boolean party_screen_open_event(struct widget_instance *widget, struct ev
 }
 
 /* "port party update" (the list's): the members' rows, the panel, the
-footer's prompts that apply */
-static void party_screen_update(struct widget_instance *list)
+footer's prompts that apply (not inlined in the menus' function that runs
+it, pc_menu_game_data_function_invoke: that function's own branches would
+reach past their range once the guest's base register lengthens it) */
+static __declspec(noinline) void party_screen_update(struct widget_instance *list)
 {
 	struct widget_instance *screen = screen_of(list);
 	struct widget_instance *panel = named(screen, "party_panel", 0);
@@ -799,9 +807,11 @@ static void party_screen_update(struct widget_instance *list)
 	menu_text_box_wrap(named(panel, "panel_status", 0), text, 3);
 	party_newest_notice(&status, text, NUMBEROF(text));
 	menu_text_box_wrap(named(panel, "panel_notice", 0), text, 3);
-	menu_text_box_wrap(named(panel, "panel_about", 0), in_party ?
-		L"When your leader hosts or joins a game, the party joins it too. Anyone who can't is told why, and stays." :
-		L"Got a party link? Copy it, then PASTE LINK.", 4);
+	menu_text_box_wrap(named(panel, "panel_about", 0), !in_party ? L"Got a party link? Copy it, then PASTE LINK." :
+		party_menu.copied_time && system_milliseconds() - party_menu.copied_time < PARTY_NOTICE_TIME ?
+		L"Invite copied: paste it in a chat to your friends. Its link opens OpenH1, or shows how to get it." :
+		L"When your leader hosts or joins a game, the party joins it too. Anyone who can't is told why, and stays.",
+		4);
 	/* (PASTE LINK while a party's link is on the clipboard, read again
 	twice a second) */
 	if (!party_menu.clipboard_time || system_milliseconds() - party_menu.clipboard_time > 500)
@@ -929,6 +939,22 @@ static boolean party_join_found(struct widget_instance *widget, short controller
 	return TRUE;
 }
 
+/* COPY INVITE: a message with the party's link on the clipboard, a line
+with the join page's address of it, which chat apps make clickable, and one
+with the link (p2p_invite_message) */
+static boolean party_invite_copy(void)
+{
+	struct p2p_party_status status;
+	char message[P2P_INVITE_MESSAGE_SIZE];
+
+	p2p_party_status(&status);
+	if (status.state == _p2p_party_none || !p2p_invite_message(status.link, message, sizeof(message)))
+		return FALSE;
+	platform_clipboard_set(message);
+	party_menu.copied_time = system_milliseconds() | 1;
+	return TRUE;
+}
+
 /* a prompt's doing (by its name): FALSE if it fails */
 static boolean party_screen_action(char const *name, short controller)
 {
@@ -949,7 +975,7 @@ static boolean party_screen_action(char const *name, short controller)
 	}
 	else if (!strcmp(name, "prompt_copy"))
 	{
-		if (!p2p_party_copy_link())
+		if (!party_invite_copy())
 			return campaign_fail();
 	}
 	else if (!strcmp(name, "prompt_follow"))

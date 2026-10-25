@@ -41,8 +41,12 @@ void network_party_player_act(long player_index, short action);
 /* the newest invite (or ask) accepted: as its key does */
 boolean network_party_accept(void);
 /* (the HUD of the first local player's view) the invite to accept, with
-its key, or what was done */
+its key, or what was done; and a Discord friend's ask to join */
 void network_party_draw(short local_player_index);
+/* a Discord friend's ask to join, with its keys, if there is one: centered
+in window at y, in the font (the HUD's in the game; over the menus,
+ui_widget.c's, theirs) */
+void network_party_discord_draw(rectangle2d const *window, long font_index, short y);
 
 /* (network_distributed.c) the messages, in the lobby too; from_stream: it
 came over the sender's own stream (anything else is refused) */

@@ -30,6 +30,8 @@ typedef unsigned short word;
 #define DATUM_INDEX_NEW(absolute_index, identifier) \
 	((long)(((unsigned long)(unsigned short)(identifier) << 16) | (unsigned long)(absolute_index)))
 #define error(level, ...) ((void)(level))
+/* (network_party.h's drawing takes one; nothing here draws) */
+typedef struct { short y0, x0, y1, x1; } rectangle2d;
 
 #include "config.inc"
 
