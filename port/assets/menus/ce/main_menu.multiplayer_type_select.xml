@@ -9,6 +9,7 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/multiplayer_type_button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items anchor_right">
 		<data input="common button bar update"/>
+		<child widget="main_menu/multiplayer_type_select/multiplayer_button_party" x="250" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/multiplayer_button_refresh" x="380" y="1"/>
 		<child widget="common_button_back" x="510" y="1"/>
 	</widget>

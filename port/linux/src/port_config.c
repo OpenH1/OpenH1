@@ -1502,6 +1502,10 @@ static const struct config_setting config_settings[] =
 	{ "debug.menu_open", _config_string, "\"\"", "HALO_MENU_OPEN", _environment_value, _platform_all,
 		"Start on this screen of the menus (port/assets/menus) instead of the main\n"
 		"menu, a player profile being edited; empty for the main menu." },
+	{ "debug.party", _config_string, "\"\"", "HALO_PARTY", _environment_value, _platform_all,
+		"Join this party's link at the start, or lead its party (\"lead:\" before\n"
+		"the link): several copies of the game in one party, in a test; empty\n"
+		"for none." },
 	{ "debug.gpu_stats", _config_boolean, "false", "HALO_GPU_STATS", _environment_set_is_true, _platform_all,
 		"Log the renderer's draw counts once a second (with Vulkan, also its\n"
 		"submissions, passes, clears and pipelines every 600 frames)." },

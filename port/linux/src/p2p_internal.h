@@ -2,7 +2,7 @@
 P2P_INTERNAL.H
 
 Shared internals of internet play (p2p.c, p2p_signal.c, p2p_crypto.c,
-p2p_discord.c; see p2p.c for the design).
+p2p_discord.c, p2p_lobby.c, p2p_party.c; see p2p.c for the design).
 */
 
 #ifndef __HALO_LINUX_P2P_INTERNAL_H
@@ -141,6 +141,27 @@ address not known yet). The probes end as the browser closes. Under
 p2p_lock, on the p2p thread */
 int p2p_probe_start(const unsigned char *host_hash, const unsigned char *token);
 
+/* the host's key hash and the token of the invite within text (a link, or
+a code): 1 if it holds one, -1 if an older version's, else 0 */
+int p2p_parse_invite(const char *text, unsigned char *host_hash, unsigned char *token);
+/* text (a link) put on the clipboard, as a new invite is; under p2p_lock */
+void p2p_offer_clipboard(const char *text);
+
+/* ---------- p2p_party.c: parties */
+
+/* the p2p thread's pass, under p2p_lock */
+void p2p_party_update(void);
+/* a message on the party's topic (sealed), under p2p_lock */
+void p2p_party_heard(const unsigned char *payload, int size);
+/* the game is quitting: the party left at once (the brokers' buckets
+passed over); under p2p_lock */
+void p2p_party_quit(void);
+/* p2p_party_join_link under p2p_lock (an invite that arrived on the p2p
+thread) */
+int p2p_party_join_link_locked(const char *text);
+/* whether this machine is in a party (or joining one); under p2p_lock */
+int p2p_party_active(void);
+
 /* ---------- p2p_signal.c: signalling through public MQTT brokers */
 
 /* connects to the brokers, if not already; called from the p2p thread */
@@ -190,6 +211,11 @@ void p2p_signal_lobby_query(void);
 and the slot cleared on every ready broker now, whatever their buckets, and
 the connections closed cleanly */
 void p2p_signal_lobby_quit(void);
+/* the party's topic (p2p_party.c; empty: none) subscribed to, and a
+message published on it on every broker, at most once: within each
+broker's bucket, or (urgent: the game is quitting) at once */
+void p2p_signal_party(const char *topic);
+void p2p_signal_party_publish(const unsigned char *payload, int size, int urgent);
 
 /* ---------- p2p_crypto.c */
 

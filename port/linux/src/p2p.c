@@ -53,6 +53,9 @@ link games as if they were on one LAN, without a server of this project's.
   the game chosen in the browser keeps its tunnel while it is chosen:
   p2p_probe_keep). The game sees nothing of a probe's peer; a join of its
   host takes its tunnel up.
+- A party (p2p_party.c) is friends grouped through the brokers alone, by a
+  link of its own (halo://party/...), which p2p_join_invite takes as it
+  takes invites; its leader's game, as an invite, is what the others join.
 - A join asks the brokers at once, beside STUN, and sends its request as
   soon as one STUN server has answered. A host takes a joiner's new proven
   request in place of the session it still had with it (the joiner gave
@@ -384,7 +387,8 @@ static struct
 	int hosting_lan_only;
 	int has_token;
 	unsigned char token[P2P_TOKEN_SIZE];
-	/* whether the server browser's exit hook is set (lobby_quit) */
+	/* whether the exit hook of the server browser and the party is set
+	(lobby_quit) */
 	int lobby_quit_registered;
 	/* whether the server browser listed this token (p2p_lobby.c): going
 	private makes a new one */
@@ -2710,6 +2714,17 @@ static int parse_invite(const char *text, unsigned char *host_hash, unsigned cha
 	return 1;
 }
 
+int p2p_parse_invite(const char *text, unsigned char *host_hash, unsigned char *token)
+{
+	return parse_invite(text, host_hash, token);
+}
+
+void p2p_offer_clipboard(const char *text)
+{
+	snprintf(p2p.clipboard, sizeof(p2p.clipboard), "%s", text);
+	p2p.has_clipboard = 1;
+}
+
 /* the host of the public game this machine joined from the server browser
 (p2p_join_listing), till another invite is joined: its identifier */
 static unsigned char listed_host[P2P_IDENTIFIER_SIZE];
@@ -2806,6 +2821,13 @@ int p2p_join_invite(const char *text)
 	int result;
 
 	p2p_identifier();
+	/* (a party's link joins the party: p2p_party.c) */
+	if (p2p_party_join_link(text))
+	{
+		if (!p2p.running)
+			p2p_log("Internet play is off (network.online in config.toml): the party's link is ignored");
+		return 1;
+	}
 	pthread_mutex_lock(&p2p_lock);
 	result = join_invite(text);
 	pthread_mutex_unlock(&p2p_lock);
@@ -2847,6 +2869,9 @@ int p2p_joined_listed_host(void)
 
 void p2p_invite_received(const char *text)
 {
+	/* (a party's link joins the party) */
+	if (p2p_party_join_link_locked(text))
+		return;
 	/* (an older version's is logged as such) */
 	if (!join_invite(text))
 		p2p_log("Internet play: that is not an invite");
@@ -3266,6 +3291,43 @@ int p2p_invite_link(char *link, int size)
 	return hosting;
 }
 
+int p2p_game_invite(unsigned long host_address, char *link, int size)
+{
+	int found = 0;
+
+	if (size > 0)
+		link[0] = 0;
+	if (!p2p.running)
+		return 0;
+	pthread_mutex_lock(&p2p_lock);
+	if (!host_address)
+	{
+		found = p2p.hosting && p2p.has_token;
+		if (found)
+			snprintf(link, (size_t)size, "%s", p2p.invite);
+	}
+	else
+	{
+		struct peer const *peer = find_peer_by_address(host_address);
+
+		/* (the host the last invite joined reached, at that address) */
+		if (peer && peer->connected && peer->is_host && !peer->is_player &&
+			!memcmp(peer->identifier, p2p.join_host, P2P_IDENTIFIER_SIZE))
+		{
+			unsigned char bytes[P2P_KEY_HASH_SIZE + P2P_TOKEN_SIZE];
+			char text[2 * (P2P_KEY_HASH_SIZE + P2P_TOKEN_SIZE) + 1];
+
+			memcpy(bytes, p2p.join_host_hash, P2P_KEY_HASH_SIZE);
+			memcpy(bytes + P2P_KEY_HASH_SIZE, p2p.join_token, P2P_TOKEN_SIZE);
+			p2p_hex(bytes, sizeof(bytes), text);
+			snprintf(link, (size_t)size, "halo://join/%s", text);
+			found = 1;
+		}
+	}
+	pthread_mutex_unlock(&p2p_lock);
+	return found;
+}
+
 void p2p_set_game_player_counts(int count, int maximum)
 {
 	/* (only the game's server writes these: unchanged, it need not wait
@@ -3328,11 +3390,13 @@ static void *upnp_thread(void *unused)
 	return NULL;
 }
 
-/* quitting: a game listed in the server browser is taken out of it at once
-(not when its listing lapses), as when it stops being hosted */
+/* quitting: the party is left at once (its leader's passes on, not after
+its silence), and a game listed in the server browser is taken out of it
+at once (not when its listing lapses), as when it stops being hosted */
 static void lobby_quit(void)
 {
 	pthread_mutex_lock(&p2p_lock);
+	p2p_party_quit();
 	p2p_lobby_quit();
 	pthread_mutex_unlock(&p2p_lock);
 }
@@ -3443,7 +3507,8 @@ const char *p2p_take_clipboard_text(void)
 /* ---------- invites from elsewhere */
 
 /* the first command line argument holding an invite (or an older
-version's, which the copy that takes it says it cannot join) */
+version's, which the copy that takes it says it cannot join), or a party's
+link */
 static int command_line_invite(char *text, int size)
 {
 	int index;
@@ -3452,7 +3517,8 @@ static int command_line_invite(char *text, int size)
 	{
 		unsigned char hash[P2P_KEY_HASH_SIZE], token[P2P_TOKEN_SIZE];
 
-		if (parse_invite(text, hash, token))
+		/* (or a party's link) */
+		if (parse_invite(text, hash, token) || p2p_party_parse_link(text, token))
 			return 1;
 	}
 	return 0;
@@ -3805,14 +3871,14 @@ static void *p2p_thread(void *unused)
 			hosted_player_counts(&count, &maximum);
 			p2p_lobby_update(p2p.hosting && p2p.has_token ? p2p.token : NULL, count, maximum);
 			if (p2p_lobby_listed())
-			{
 				p2p.token_listed = 1;
-				if (!p2p.lobby_quit_registered)
-				{
-					p2p.lobby_quit_registered = 1;
-					atexit(lobby_quit);
-				}
-			}
+		}
+		/* a party (p2p_party.c): signalling while in one */
+		p2p_party_update();
+		if ((p2p_lobby_listed() || p2p_party_active()) && !p2p.lobby_quit_registered)
+		{
+			p2p.lobby_quit_registered = 1;
+			atexit(lobby_quit);
 		}
 		update_joining();
 		update_answering();

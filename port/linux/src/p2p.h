@@ -81,6 +81,11 @@ void p2p_set_hosting_allowed(int allowed);
 /* the invite link of the game this machine hosts (empty, 0: none, or LAN
 only) */
 int p2p_invite_link(char *link, int size);
+/* the invite link that reaches the game whose host has this address
+(network byte order; 0: this machine, hosting): its own invite (as
+p2p_invite_link), or the invite this machine joined with, if the tunnel
+reaches its host at that address; 0 if none (a LAN game) */
+int p2p_game_invite(unsigned long host_address, char *link, int size);
 /* an invite (a link or a code, or any text holding one) as the log shows
 it: its first digits only, since players post their logs and an invite lets
 anyone join; the dedicated server's log, its operator's, has it whole */
@@ -284,5 +289,166 @@ void p2p_join_cancel(void);
 /* BLAKE2b with a 32-byte digest (Monocypher's): a map's pieces
 (map_share.c) */
 void p2p_blake2b_256(const void *data, unsigned long size, unsigned char *digest);
+
+/* ---- parties (p2p_party.c): friends grouped before any game, who go from
+game to game together (port/linux/game/party.c is the menus' side). A
+party's machines talk through the signalling brokers; the leader's game is
+the party's, which the others join */
+
+/* a party's link: this, then its token in hexadecimal */
+#define P2P_PARTY_LINK_PREFIX "halo://party/"
+
+enum
+{
+	P2P_PARTY_MAXIMUM_MEMBERS = 16,
+	/* a member's name as kept (printable ASCII), with its end */
+	P2P_PARTY_NAME_SIZE = 16,
+	P2P_PARTY_LINK_SIZE = 13 + 2 * 16 + 1,
+	P2P_PARTY_MAXIMUM_NOTICES = 8,
+};
+
+/* in a party: none, joining one (its leader has not listed this machine
+yet), a member */
+enum
+{
+	_p2p_party_none,
+	_p2p_party_joining,
+	_p2p_party_member,
+};
+
+/* where a machine is: the menus, joining a game, an internet game, a game
+no link reaches (a LAN game, a game of its own) */
+enum
+{
+	_p2p_party_place_menus,
+	_p2p_party_place_joining,
+	_p2p_party_place_game,
+	_p2p_party_place_local_game,
+};
+
+/* the leader's game, which the party follows: none (the menus), an
+internet game (its invite), a game no link reaches */
+enum
+{
+	_p2p_party_game_none,
+	_p2p_party_game_invite,
+	_p2p_party_game_local,
+};
+
+/* how a member's following its leader into a game went */
+enum
+{
+	_p2p_party_follow_none,
+	_p2p_party_follow_joined,
+	/* the host was not reached */
+	_p2p_party_follow_unreachable,
+	_p2p_party_follow_full,
+	/* another version of OpenH1's network code */
+	_p2p_party_follow_version,
+	/* a Legacy game this machine cannot join (an OpenCE-only one) */
+	_p2p_party_follow_legacy,
+	/* a game no link reaches (the leader's network's, or its own) */
+	_p2p_party_follow_local,
+	/* in another game: follows once back in the menus */
+	_p2p_party_follow_busy,
+	/* the host turned it away, or the join failed */
+	_p2p_party_follow_refused,
+};
+
+/* what the menus show of what happened */
+enum
+{
+	_p2p_party_notice_none,
+	_p2p_party_notice_made,
+	/* this machine joined (name: the leader's) */
+	_p2p_party_notice_joined,
+	_p2p_party_notice_member_joined,
+	_p2p_party_notice_member_left,
+	/* not heard for a while */
+	_p2p_party_notice_member_lost,
+	/* this machine leads now */
+	_p2p_party_notice_leader,
+	_p2p_party_notice_new_leader,
+	/* the leader ended the party; this machine did */
+	_p2p_party_notice_disbanded,
+	_p2p_party_notice_ended,
+	_p2p_party_notice_you_left,
+	_p2p_party_notice_full,
+	/* no answer from the party (it may have ended) */
+	_p2p_party_notice_unreachable,
+	/* a member of another version (name; none: someone) */
+	_p2p_party_notice_version,
+	/* a member could not join the leader's game (result: why) */
+	_p2p_party_notice_follow_failed,
+};
+
+struct p2p_party_notice
+{
+	unsigned long serial;
+	int kind;
+	char name[P2P_PARTY_NAME_SIZE];
+	int result;
+};
+
+struct p2p_party_member
+{
+	char name[P2P_PARTY_NAME_SIZE];
+	unsigned char self, leader;
+	/* _p2p_party_place_*; in the leader's game (or the menus with it) */
+	unsigned char place, with_leader;
+	/* its follow's result, of the leader's game now */
+	unsigned char result;
+	unsigned char other_version;
+};
+
+struct p2p_party_status
+{
+	/* _p2p_party_none, _joining, _member; this machine leads */
+	int state;
+	int leader;
+	char link[P2P_PARTY_LINK_SIZE];
+	char leader_name[P2P_PARTY_NAME_SIZE];
+	/* the leader's game (_p2p_party_game_*) */
+	int target_kind;
+	/* in the roster's order (this machine first while it joins) */
+	int count;
+	struct p2p_party_member members[P2P_PARTY_MAXIMUM_MEMBERS];
+	/* the latest notices, the newest last (kept after a party ends) */
+	int notice_count;
+	struct p2p_party_notice notices[P2P_PARTY_MAXIMUM_NOTICES];
+};
+
+/* the token of the party link within text: 0 if it holds none */
+int p2p_party_parse_link(const char *text, unsigned char *token);
+/* a new party, this machine its leader (the one it leads alone, if it
+does), its link put on the clipboard */
+int p2p_party_make(void);
+/* joins the party of a link within text (leaving the one it is in): 0 if
+it holds none. p2p_join_invite takes party links too */
+int p2p_party_join_link(const char *text);
+/* makes the party of a link within text, this machine its leader
+(debug.party's: several copies of the game in one party, in a test) */
+int p2p_party_lead_link(const char *text);
+/* leaves the party (a leader's passes to the next member); a leader ends
+it for everyone */
+void p2p_party_leave(void);
+void p2p_party_disband(void);
+/* the link put on the clipboard again: 0 if not in a party */
+int p2p_party_copy_link(void);
+/* what the party is told of this machine (each frame: unchanged, little
+is done): its player's name, and where it is (_p2p_party_place_*) and in
+what (_p2p_party_game_*, an internet game with its invite link, NULL
+otherwise). A leader's game is the party's */
+void p2p_party_set_name(const char *name);
+void p2p_party_set_game(int place, int kind, const char *invite);
+/* a member: the leader's game to join (an internet game, into invite, or
+one no link reaches), once for each of the leader's games (order),
+until p2p_party_follow_result says how it went; _p2p_party_game_none if
+none (none, or this machine is in it already) */
+int p2p_party_follow(char *invite, int size, unsigned long *order);
+void p2p_party_follow_result(unsigned long order, int result);
+/* the leader's game asked to be joined again (JOIN LEADER) */
+void p2p_party_follow_again(void);
+void p2p_party_status(struct p2p_party_status *status);
 
 #endif

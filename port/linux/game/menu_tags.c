@@ -457,6 +457,8 @@ static char const *const port_function_names[] =
 	"port connect retry", "port connect back",
 	/* (the browsers' sort, X on a row: menu_functions.c's browser_sort_choose) */
 	"port browser sort",
+	/* (Multiplayer's PARTY and its screen: party_menu.inc) */
+	"port party open", "port party button",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -491,6 +493,8 @@ static char const *const port_game_data_input_names[] =
 	"port settings page",
 	/* (internet play's connecting box) */
 	"port connect update",
+	/* (the Party screen: party_menu.inc) */
+	"port party update",
 };
 
 static struct

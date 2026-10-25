@@ -1695,9 +1695,11 @@ WIDGET_PATCHES = {
             "online_games_label", "online_players_label", "best_label",
             *[f"best_{row}_{part}" for row in range(BEST_GAMES) for part in ("name", "about", "players", "ping")]]]},
     f"{MT}/multiplayer_type_join_lan_item": {"children": [f'<child widget="{MT}/item_note"/>']},
+    # (PARTY, then REFRESH, beside Back: _party, _multiplayer_status)
     f"{MT}/multiplayer_type_button_bar": {"set": {"flags": "pass_unhandled_to_focused_child left_right_tabs_items "
                                                            "anchor_right"}, "insert_before": {
-        "common_button_back": [f'<child widget="{MT}/multiplayer_button_refresh" x="380" y="1"/>']}},
+        "common_button_back": [f'<child widget="{MT}/multiplayer_button_party" x="250" y="1"/>',
+                               f'<child widget="{MT}/multiplayer_button_refresh" x="380" y="1"/>']}},
     f"{MT}/multiplayer_type_select_screen": {"handlers": [
         '<on event="created" run="mp type menu initialize"/>',
         '<on event="deleted" run="port multiplayer status end"/>'], "children": [
@@ -3092,6 +3094,54 @@ def _multiplayer_status() -> list:
     return lines
 
 
+def _party() -> list:
+    """Multiplayer's PARTY (beside REFRESH on its button bar: WIDGET_PATCHES)
+    and the Party screen (port/linux/game/party_menu.inc): the party's
+    members, the leader marked, each one's place (with the leader, or why
+    not); a panel of the party's link, where the leader is, and what just
+    happened; the buttons MAKE PARTY or JOIN FROM LINK out of a party, COPY
+    LINK, JOIN LEADER (a member not in the leader's game) or END PARTY (the
+    leader), LEAVE PARTY in one, and BACK; the footer's key prompts, as the
+    input in use draws them. Every button runs "port party button", which
+    joins the leader's game first once it is found (an A press posted)"""
+    base = f"{MT}/party"
+    lines = _text_button(f"{MT}/multiplayer_button_party", "PARTY",
+                         [f'<on event="a" open="{base}/party_screen"/>', f'<on event="start" open="{base}/party_screen"/>'])
+    lines += _widget(f"{base}/party_screen", [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child"),
+                                              ("bitmap", "bitmaps/gradient")],
+                     ['<on event="created" run="port party open"/>', '<on event="b" back="true"/>',
+                      '<on event="back" back="true"/>',
+                      '<child widget="main_menu/new_select/sel_list_desc_bkd"/>',
+                      f'<child widget="{base}/party_title"/>', f'<child widget="{base}/party_members"/>',
+                      f'<child widget="{base}/party_panel"/>', f'<child widget="{base}/party_prompts"/>',
+                      f'<child widget="{base}/party_list"/>'])
+
+    def text(name, left, top, width, height, font, color, align=None):
+        return _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("left", left), ("top", top),
+                                          ("width", width), ("height", height), ("font", font), ("color", color),
+                                          ("align", align), ("text_flags", "no_focus_test")], [])
+    lines += text("party_title", 40, 24, 360, 30, "ui\\large_ui", "#FF2896FF")
+    lines += text("party_members", 40, 78, 360, 330, "ui\\large_ui", "#FFFFFFFF")
+    lines += text("party_panel", 417, 87, 190, 310, "ui\\small_ui", "#FF2896FF")
+    lines += text("party_prompts", 355, 446, 275, 24, "ui\\small_ui", "#FF2896FF", "right")
+    lines += _widget(f"{base}/party_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                            ("flags", "pass_unhandled_to_focused_child up_down_tabs_children")],
+                     ['<data input="port party update"/>', f'<child widget="{base}/party_button_bar" y="414"/>'])
+    # (one of MAKE PARTY and COPY LINK, and of JOIN FROM LINK, JOIN LEADER and
+    # END PARTY, is shown at once, in one place: menu_functions.c's
+    # focus_off_hidden takes the focus off those hidden)
+    buttons = [("make", "MAKE PARTY", 120), ("copy", "COPY LINK", 120), ("join", "JOIN FROM LINK", 250),
+               ("follow", "JOIN LEADER", 250), ("end", "END PARTY", 250), ("leave", "LEAVE PARTY", 380),
+               ("back", "BACK", 510)]
+    lines += _widget(f"{base}/party_button_bar", [("type", "column_list"), ("width", 640), ("height", 28),
+                                                  ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     [f'<child widget="{base}/party_button_{key}" x="{x}" y="1"/>' for key, _, x in buttons])
+    for key, caption, _ in buttons:
+        lines += _text_button(f"{base}/party_button_{key}", caption, ['<on event="a" run="port party button"/>',
+                                                                     '<on event="start" run="port party button"/>'])
+    return lines
+
+
 def multiplayer_files() -> dict:
     """the port's multiplayer widgets: the browser's additions, the server
     settings, the lobby"""
@@ -3103,6 +3153,7 @@ def multiplayer_files() -> dict:
         f"{MT}/lobby".replace("/", ".") + ".xml": head + _lobby() + ["</menus>", ""],
         f"{MT}/coop".replace("/", ".") + ".xml": head + _coop() + ["</menus>", ""],
         f"{MT}/bots".replace("/", ".") + ".xml": head + _bots() + ["</menus>", ""],
+        f"{MT}/party".replace("/", ".") + ".xml": head + _party() + ["</menus>", ""],
         MT.replace("/", ".") + ".port.xml": head + _multiplayer_status() + ["</menus>", ""],
         TOUCH.replace("/", ".") + ".xml": head + _multiplayer_touch() + ["</menus>", ""],
         "main_menu/new_select".replace("/", ".") + ".port.xml": head + _map_kind() + ["</menus>", ""],

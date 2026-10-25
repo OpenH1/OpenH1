@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The port's multiplayer screens, in the PC version's style (tools/port_settings.py) -->
+<menus>
+	<widget name="main_menu/multiplayer_type_select/multiplayer_button_party" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="PARTY" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" open="main_menu/multiplayer_type_select/party/party_screen"/>
+		<on event="start" open="main_menu/multiplayer_type_select/party/party_screen"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/party/party_screen" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/gradient">
+		<on event="created" run="port party open"/>
+		<on event="b" back="true"/>
+		<on event="back" back="true"/>
+		<child widget="main_menu/new_select/sel_list_desc_bkd"/>
+		<child widget="main_menu/multiplayer_type_select/party/party_title"/>
+		<child widget="main_menu/multiplayer_type_select/party/party_members"/>
+		<child widget="main_menu/multiplayer_type_select/party/party_panel"/>
+		<child widget="main_menu/multiplayer_type_select/party/party_prompts"/>
+		<child widget="main_menu/multiplayer_type_select/party/party_list"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/party/party_title" type="text" controller="1" left="40" top="24" width="360" height="30" font="ui\large_ui" color="#FF2896FF" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/party/party_members" type="text" controller="1" left="40" top="78" width="360" height="330" font="ui\large_ui" color="#FFFFFFFF" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/party/party_panel" type="text" controller="1" left="417" top="87" width="190" height="310" font="ui\small_ui" color="#FF2896FF" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/party/party_prompts" type="text" controller="1" left="355" top="446" width="275" height="24" font="ui\small_ui" color="#FF2896FF" align="right" text_flags="no_focus_test">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/party/party_list" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child up_down_tabs_children">
+		<data input="port party update"/>
+		<child widget="main_menu/multiplayer_type_select/party/party_button_bar" y="414"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/party/party_button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items">
+		<child widget="main_menu/multiplayer_type_select/party/party_button_make" x="120" y="1"/>
+		<child widget="main_menu/multiplayer_type_select/party/party_button_copy" x="120" y="1"/>
+		<child widget="main_menu/multiplayer_type_select/party/party_button_join" x="250" y="1"/>
+		<child widget="main_menu/multiplayer_type_select/party/party_button_follow" x="250" y="1"/>
+		<child widget="main_menu/multiplayer_type_select/party/party_button_end" x="250" y="1"/>
+		<child widget="main_menu/multiplayer_type_select/party/party_button_leave" x="380" y="1"/>
+		<child widget="main_menu/multiplayer_type_select/party/party_button_back" x="510" y="1"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/party/party_button_make" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="MAKE PARTY" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port party button"/>
+		<on event="start" run="port party button"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/party/party_button_copy" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="COPY LINK" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port party button"/>
+		<on event="start" run="port party button"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/party/party_button_join" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="JOIN FROM LINK" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port party button"/>
+		<on event="start" run="port party button"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/party/party_button_follow" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="JOIN LEADER" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port party button"/>
+		<on event="start" run="port party button"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/party/party_button_end" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="END PARTY" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port party button"/>
+		<on event="start" run="port party button"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/party/party_button_leave" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="LEAVE PARTY" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port party button"/>
+		<on event="start" run="port party button"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/party/party_button_back" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="BACK" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port party button"/>
+		<on event="start" run="port party button"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+</menus>
