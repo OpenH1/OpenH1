@@ -5,7 +5,12 @@ server_settings_bots, tools/port_settings.py's BOTS_ROWS): in a game of this
 machine alone (PLAY WITH BOTS) they take the network's rows' places, each
 written to config.toml as it changes; a gametype the bots do not play locks
 them, dimmed and passed over, and the line below them says why; in a network
-game they are hidden */
+game they are hidden, and its own BOTS row (server_settings_network_bots)
+shows what its bots are, locked as they are for a gametype the bots do not
+play */
+
+#include <wchar.h>
+#include <stdarg.h>
 
 #define MAXIMUM_STRINGS 32
 #define NUMBEROF(array) ((long)(sizeof(array) / sizeof((array)[0])))
@@ -86,6 +91,45 @@ static boolean setting_write(char const *name, char const *value)
 }
 
 #define platform_log(...) ((void)0)
+#define PIN(value, low, high) ((value) < (low) ? (low) : (value) > (high) ? (high) : (value))
+#define ROW_TEXT_LENGTH 64
+
+/* the bots' settings as the network row reads them, and the text it set */
+static long bots_count_setting;
+static short bots_skill_setting;
+static int bots_make_room_setting;
+static long bots_fill_to_setting;
+static long bots_wanted_count(void) { return bots_count_setting; }
+static short bots_skill(void) { return bots_skill_setting; }
+static int bots_make_room(void) { return bots_make_room_setting; }
+static long bots_fill_to(void) { return bots_fill_to_setting; }
+static wchar_t shown_text[ROW_TEXT_LENGTH];
+static struct widget_instance *shown_in;
+
+/* (the game's: %s of a wide string, as MSVC's) */
+static void usnprintf(wchar_t *text, long size, wchar_t const *format, ...)
+{
+	wchar_t wide_format[128];
+	long from, to = 0;
+	va_list arguments;
+
+	for (from = 0; format[from] && to < (long)NUMBEROF(wide_format) - 2; from++)
+	{
+		wide_format[to++] = format[from];
+		if (format[from] == L'%' && format[from + 1] == L's')
+			wide_format[to++] = L'l';
+	}
+	wide_format[to] = 0;
+	va_start(arguments, format);
+	vswprintf(text, (size_t)size, wide_format, arguments);
+	va_end(arguments);
+}
+
+static void text_set(struct widget_instance *text_box, wchar_t const *text)
+{
+	shown_in = text_box;
+	wcsncpy(shown_text, text, ROW_TEXT_LENGTH - 1);
+}
 
 #include "under_test.inc"
 
@@ -94,6 +138,8 @@ rows: GAME NAME, GAME (the network's), the three bots rows (a label and a
 spinner each), MAP SHARING, the buttons */
 static struct widget_instance screen, list, help, hint, name_row, game_mode_row, invite_row, map_share_row, button_bar;
 static struct widget_instance rows[3], labels[3], spinners[3];
+/* a network game's BOTS row (its label and value), after the gametype's rows */
+static struct widget_instance bot_options_row, bot_options_label, bot_options_value;
 
 static void setup(char const *count, char const *skill, char const *teams)
 {
@@ -155,7 +201,19 @@ static void setup(char const *count, char const *skill, char const *teams)
 		spinners[index].parameters.list.selected_index = settings[index].loaded_index;
 	}
 	map_share_row = (struct widget_instance){ .name = "op_map_share_options", .visible = TRUE, .alpha_modifier = 1.0f,
-		.parent = &list, .next = &button_bar };
+		.parent = &list, .next = &bot_options_row };
+	bot_options_row = (struct widget_instance){ .name = "op_bot_options", .visible = TRUE, .alpha_modifier = 1.0f,
+		.parent = &list, .child = &bot_options_label, .next = &button_bar };
+	bot_options_label = (struct widget_instance){ .name = "bot_options_label", .visible = TRUE, .alpha_modifier = 1.0f,
+		.parent = &bot_options_row, .next = &bot_options_value };
+	bot_options_value = (struct widget_instance){ .name = "bot_options_value", .visible = TRUE, .alpha_modifier = 1.0f,
+		.parent = &bot_options_row };
+	bots_count_setting = 10;
+	bots_skill_setting = 1;
+	bots_make_room_setting = TRUE;
+	bots_fill_to_setting = 16;
+	shown_in = NULL;
+	shown_text[0] = 0;
 	button_bar = (struct widget_instance){ .name = "button_bar", .visible = TRUE, .alpha_modifier = 1.0f,
 		.parent = &list };
 }
@@ -163,7 +221,10 @@ static void setup(char const *count, char const *skill, char const *teams)
 static void frames(boolean local, boolean playable, int count)
 {
 	while (count--)
+	{
 		server_settings_bots(&list, local, playable);
+		server_settings_network_bots(&list, !local, playable);
+	}
 }
 
 int main(int argc, char **argv)
@@ -236,7 +297,7 @@ int main(int argc, char **argv)
 		}
 		CHECK(hint.visible, "no line saying why the bots are locked");
 		CHECK(!game_mode_row.visible && !invite_row.visible, "a network row shown");
-		CHECK(list.focused_child == &button_bar && list.parameters.list.selected_index == 7,
+		CHECK(list.focused_child == &button_bar && list.parameters.list.selected_index == 8,
 			"focus left on a locked row");
 		spinners[0].parameters.list.selected_index = 0;
 		frames(TRUE, FALSE, 2);
@@ -245,6 +306,53 @@ int main(int argc, char **argv)
 		spinners[0].parameters.list.selected_index = settings[0].loaded_index;
 		frames(TRUE, TRUE, 1);
 		CHECK(!rows[0].disabled && rows[0].alpha_modifier == 1.0f && !hint.visible, "still locked");
+		return 0;
+	}
+
+	/* a network game's BOTS row: shown with what its bots are (FILL TO with
+	MAKE ROOM on alone), its help; hidden in a game of this machine alone */
+	if (!strcmp(case_name, "network-row"))
+	{
+		setup("2", "normal", "even");
+		frames(FALSE, TRUE, 2);
+		CHECK(bot_options_row.visible && !bot_options_row.disabled && bot_options_row.alpha_modifier == 1.0f,
+			"the network game's BOTS row hidden, locked or dimmed");
+		CHECK(shown_in == &bot_options_value && !wcscmp(shown_text, L"10, NORMAL, FILL TO 16"), "the row shows %ls",
+			shown_text);
+		bots_make_room_setting = FALSE;
+		bots_skill_setting = 3;
+		frames(FALSE, TRUE, 1);
+		CHECK(!wcscmp(shown_text, L"10, LEGENDARY"), "without make room the row shows %ls", shown_text);
+		bots_count_setting = 0;
+		frames(FALSE, TRUE, 1);
+		CHECK(!wcscmp(shown_text, L"NONE"), "with no bots the row shows %ls", shown_text);
+		list.focused_child = &bot_options_row;
+		frames(FALSE, TRUE, 1);
+		CHECK(help.parameters.text_box.string_list_index == BOT_OPTIONS_HELP, "the row's help is %d",
+			help.parameters.text_box.string_list_index);
+		frames(TRUE, TRUE, 1);
+		CHECK(!bot_options_row.visible, "the network game's BOTS row shown in a game of this machine alone");
+		return 0;
+	}
+
+	/* ... locked for a gametype the bots do not play: dimmed, passed over,
+	saying why */
+	if (!strcmp(case_name, "network-row-locked"))
+	{
+		setup("2", "normal", "even");
+		list.focused_child = &bot_options_row;
+		frames(FALSE, FALSE, 2);
+		CHECK(bot_options_row.visible && bot_options_row.disabled, "the locked BOTS row takes focus");
+		CHECK(bot_options_row.alpha_modifier > 0.0f && bot_options_row.alpha_modifier < 1.0f, "the row not dimmed");
+		CHECK(!wcscmp(shown_text, L"NOT IN THIS GAMETYPE"), "the locked row shows %ls", shown_text);
+		CHECK(list.focused_child == &button_bar, "focus left on the locked row");
+		list.focused_child = &bot_options_row;
+		bot_options_row.disabled = FALSE;
+		server_settings_network_bots(&list, TRUE, FALSE);
+		CHECK(help.parameters.text_box.string_list_index == BOT_OPTIONS_LOCKED_HELP || list.focused_child != &bot_options_row,
+			"the locked row's help is %d", help.parameters.text_box.string_list_index);
+		frames(FALSE, TRUE, 1);
+		CHECK(!bot_options_row.disabled && bot_options_row.alpha_modifier == 1.0f, "still locked in Slayer");
 		return 0;
 	}
 
