@@ -170,6 +170,32 @@ public final class TouchLayoutTest {
         check(fold.x(0) == cornerX && fold.y(0) == cornerY,
               "A control in a corner comes back to it after folding and unfolding");
         check(fold.savedX(0) == placeX && fold.savedY(0) == placeY, "Folding does not move a saved place");
+        // A taller display keeps the top row at the top and the rest as far
+        // from the bottom as on a 16:9 one (a folding phone's inner screen,
+        // a 4:3 tablet, a tall window).
+        TouchLayout flat = new TouchLayout();
+        for (float tall : new float[] {600, 720, 865.05f, 926.1f, 2133.3f}) {
+            TouchLayout high = new TouchLayout();
+            high.bounds(960, tall);
+            for (int i = 0; i < high.size(); i++) {
+                if (flat.y(i) <= TouchLayout.TOP_ROW)
+                    check(high.y(i) == flat.y(i), "The top row stays at the top of a taller display");
+                else
+                    check(Math.abs((tall - high.y(i)) - (540 - flat.y(i))) < 0.01f,
+                          "The controls under the thumbs keep their distance from the bottom of a taller display");
+                check(high.x(i) == flat.x(i), "A taller display keeps each control's distance from the sides");
+            }
+            for (float line = 0; line <= 540; line += 0.5f) {
+                float y = TouchLayout.displayY(line, tall);
+                check(Math.abs(TouchLayout.gridY(y, tall) - line) < 0.001f, "A line of the grid comes back from the display");
+                check(line == 0 || y > TouchLayout.displayY(line - 0.5f, tall), "Lower lines of the grid stay lower on the display");
+            }
+            high.move(0, 480, tall / 2);
+            float middle = high.y(0);
+            high.bounds(960, 540);
+            high.bounds(960, tall);
+            check(Math.abs(high.y(0) - middle) < 0.01f, "A control put in the middle of a tall display comes back there");
+        }
         // Sizes follow use: fire the largest, then jump and the grenade, then reload,
         // swap and melee; the seldom used (stick clicks, white, black, back, the
         // D-pad) smaller than all of those.

@@ -57,6 +57,13 @@ haptics stand in for Android's vibrator.
 #define MAX_MINIMUM_RADIUS 34.0f
 #define GRID_WIDTH 960.0f
 #define GRID_HEIGHT 540.0f
+/* on a display taller than the grid (an iPad) the top row (the grid's lines
+   down to TOP_ROW) keeps its distance from the top and the rest (from
+   LOWER_PART down) its distance from the bottom, so the controls under the
+   thumbs sit as low as on a phone; the lines between take the extra height
+   (TouchLayout.java's displayY) */
+#define TOP_ROW 72.0f
+#define LOWER_PART 90.0f
 #define LAYOUT_VERSION 3
 #define MAX_FILE_LENGTH 65536
 
@@ -102,6 +109,34 @@ static float clampf(float value, float low, float high)
 	return value < low ? low : value > high ? high : value;
 }
 
+/* a line of the grid on a display this high, in logical units */
+static float display_y(float line, float height)
+{
+	float extra = height - GRID_HEIGHT;
+
+	if (!(extra > 0.0f))
+		return line * height / GRID_HEIGHT;
+	if (line <= TOP_ROW)
+		return line;
+	if (line >= LOWER_PART)
+		return line + extra;
+	return TOP_ROW + (line - TOP_ROW) * (LOWER_PART - TOP_ROW + extra) / (LOWER_PART - TOP_ROW);
+}
+
+/* the grid's line at this height on a display this high: display_y's inverse */
+static float grid_y(float y, float height)
+{
+	float extra = height - GRID_HEIGHT;
+
+	if (!(extra > 0.0f))
+		return y * GRID_HEIGHT / height;
+	if (y <= TOP_ROW)
+		return y;
+	if (y >= LOWER_PART + extra)
+		return y - extra;
+	return TOP_ROW + (y - TOP_ROW) * (LOWER_PART - TOP_ROW) / (LOWER_PART - TOP_ROW + extra);
+}
+
 static float layout_radius(const struct layout *layout, int control)
 {
 	float radius = RADII[layout->controls[control].type] * layout->controls[control].size;
@@ -139,7 +174,7 @@ static void layout_reset(struct layout *layout)
 
 		control->type = index;
 		control->x = DEFAULTS[index][0] * layout->width / GRID_WIDTH;
-		control->y = DEFAULTS[index][1] * layout->height / GRID_HEIGHT;
+		control->y = display_y(DEFAULTS[index][1], layout->height);
 		control->shown = index != KIND_FIRE_LEFT;
 		control->size = 1.0f;
 	}
@@ -166,7 +201,7 @@ static void layout_bounds(struct layout *layout, float width, float height)
 	for (index = 0; index < layout->count; index++)
 	{
 		layout->controls[index].x *= width / layout->width;
-		layout->controls[index].y *= height / layout->height;
+		layout->controls[index].y = display_y(grid_y(layout->controls[index].y, layout->height), height);
 	}
 	layout->width = width;
 	layout->height = height;
@@ -234,7 +269,7 @@ static NSString *layout_export(const struct layout *layout, float sensitivity)
 
 		[text appendFormat:@"control.%d.type=%d\ncontrol.%d.x=%g\ncontrol.%d.y=%g\ncontrol.%d.visible=%s\n"
 			"control.%d.size=%g\n", index, control->type, index, control->x * GRID_WIDTH / layout->width, index,
-			control->y * GRID_HEIGHT / layout->height, index, control->shown ? "true" : "false", index,
+			grid_y(control->y, layout->height), index, control->shown ? "true" : "false", index,
 			control->size];
 	}
 	return text;
@@ -488,7 +523,8 @@ static float context_swell(int control, int context, double seconds)
 #define STICK_REACH 1.28f
 #define STICK_KNOB_RADIUS 24.0f
 #define FLOATING_ZONE_WIDTH 0.45f
-#define FLOATING_ZONE_TOP 0.35f
+/* (and logical units up from the bottom: 65% of a 16:9 display's height, as low on a taller one) */
+#define FLOATING_ZONE_HEIGHT 351.0f
 #define LOOK_RADIANS_PER_UNIT 0.0022f
 #define BUTTON_ALPHA 0.8f
 #define MINOR_BUTTON_ALPHA 0.55f
@@ -999,7 +1035,7 @@ static BOOL inside(float x, float y, float cx, float cy, float radius)
 
 - (BOOL)inFloatingZone:(CGPoint)point
 {
-	return point.x < logical_width * FLOATING_ZONE_WIDTH && point.y > logical_height * FLOATING_ZONE_TOP;
+	return point.x < logical_width * FLOATING_ZONE_WIDTH && point.y > logical_height - FLOATING_ZONE_HEIGHT;
 }
 
 - (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event

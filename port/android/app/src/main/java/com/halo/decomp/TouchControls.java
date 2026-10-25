@@ -79,9 +79,13 @@ public final class TouchControls extends View implements SensorEventListener, In
     private static final float STICK_DEAD_ZONE = 0.12f;
     private static final float STICK_REACH = 1.28f;
     private static final float STICK_KNOB_RADIUS = 24;
-    /** a floating stick goes where a thumb lands in this part of the display (from the lower left) */
+    /**
+     * a floating stick goes where a thumb lands in this part of the display,
+     * from the lower left: a share of its width, and logical units up from
+     * the bottom (65% of a 16:9 display's height, as low on a taller one)
+     */
     private static final float FLOATING_ZONE_WIDTH = 0.45f;
-    private static final float FLOATING_ZONE_TOP = 0.35f;
+    private static final float FLOATING_ZONE_HEIGHT = 351;
     /** radians per logical unit of swipe (the mouse's rate: xinput_sdl.c) */
     private static final float LOOK_RADIANS_PER_UNIT = 0.0022f;
     /**
@@ -727,7 +731,7 @@ public final class TouchControls extends View implements SensorEventListener, In
     }
 
     private boolean inFloatingZone(float x, float y) {
-        return x < logicalWidth * FLOATING_ZONE_WIDTH && y > logicalHeight * FLOATING_ZONE_TOP;
+        return x < logicalWidth * FLOATING_ZONE_WIDTH && y > logicalHeight - FLOATING_ZONE_HEIGHT;
     }
 
     private void moveStick(int control, float x, float y) {

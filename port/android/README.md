@@ -283,6 +283,12 @@ as the phone turns, never inverted). The setting `input.touch_aim_assist`
 turns the aim assist off. "Look sensitivity" sets how far a swipe turns;
 the mouse settings do not apply.
 
+On a screen taller than 16:9 (the inner screen of a folding phone, a
+tablet) the controls under the thumbs keep the distance from the bottom
+that they have on a phone, and the top row stays at the top; the space
+between them is left to the game. On a wider screen they spread to the
+sides.
+
 The touch controls show only in a game. In the menus and during
 cinematics they hide, and the touchscreen operates the menus as described
 above. They also hide when a controller, a physical mouse or a physical

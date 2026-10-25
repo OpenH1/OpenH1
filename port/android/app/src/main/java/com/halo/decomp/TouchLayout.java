@@ -36,6 +36,15 @@ final class TouchLayout {
     private static final float GRID_WIDTH = 960;
     private static final float GRID_HEIGHT = 540;
     private static final int VERSION = 3;
+    /**
+     * on a display taller than the grid (a folding phone's inner screen, a
+     * tablet) the top row (the grid's lines down to TOP_ROW) keeps its
+     * distance from the top and the rest (from LOWER_PART down) its distance
+     * from the bottom, so the controls under the thumbs sit as low as on a
+     * 16:9 phone; the lines between take the extra height
+     */
+    static final float TOP_ROW = 72;
+    static final float LOWER_PART = 90;
     private static final int MAX_FILE_LENGTH = 65536;
 
     /**
@@ -233,7 +242,7 @@ final class TouchLayout {
         moved.x = Math.max(radius, Math.min(width - radius, x));
         moved.y = Math.max(radius, Math.min(height - radius, y));
         moved.placeX = moved.x * GRID_WIDTH / width;
-        moved.placeY = moved.y * GRID_HEIGHT / height;
+        moved.placeY = gridY(moved.y, height);
     }
 
     /** puts a control at a saved place on the grid, if it is a valid one */
@@ -243,7 +252,7 @@ final class TouchLayout {
             restored.placeX = x;
             restored.placeY = y;
             restored.x = x * width / GRID_WIDTH;
-            restored.y = y * height / GRID_HEIGHT;
+            restored.y = displayY(y, height);
         }
     }
 
@@ -256,8 +265,32 @@ final class TouchLayout {
             Control control = controls.get(i);
             float radius = radius(i);
             control.x = Math.max(radius, Math.min(width - radius, control.placeX * width / GRID_WIDTH));
-            control.y = Math.max(radius, Math.min(height - radius, control.placeY * height / GRID_HEIGHT));
+            control.y = Math.max(radius, Math.min(height - radius, displayY(control.placeY, height)));
         }
+    }
+
+    /** a line of the grid on a display this high, in logical units (TOP_ROW, LOWER_PART) */
+    static float displayY(float placeY, float height) {
+        float extra = height - GRID_HEIGHT;
+        if (!(extra > 0))
+            return placeY * height / GRID_HEIGHT;
+        if (placeY <= TOP_ROW)
+            return placeY;
+        if (placeY >= LOWER_PART)
+            return placeY + extra;
+        return TOP_ROW + (placeY - TOP_ROW) * (LOWER_PART - TOP_ROW + extra) / (LOWER_PART - TOP_ROW);
+    }
+
+    /** the grid's line at this height on a display this high: displayY's inverse */
+    static float gridY(float y, float height) {
+        float extra = height - GRID_HEIGHT;
+        if (!(extra > 0))
+            return y * GRID_HEIGHT / height;
+        if (y <= TOP_ROW)
+            return y;
+        if (y >= LOWER_PART + extra)
+            return y - extra;
+        return TOP_ROW + (y - TOP_ROW) * (LOWER_PART - TOP_ROW) / (LOWER_PART - TOP_ROW + extra);
     }
 
     /** the layout as a layout file's text, with the look sensitivity */
