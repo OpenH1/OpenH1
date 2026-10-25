@@ -921,6 +921,7 @@ symbols in this file:
 #include "main/main.h"
 #include "networking/network_game_globals.h"
 #include "networking/network_game_manager.h"
+#include "networking/network_game_protocol.h" /* port: network.port */
 #include "networking/network_messages.h"
 #include "networking/network_server_manager.h"
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
@@ -1936,7 +1937,7 @@ static boolean network_game_join_game_from_server_list(
 						if (!network_game_client_advertised_game_compatible(global_network_game_client_get(), server, TRUE))
 							return FALSE;
 						transport_client_start((XNADDR const *)(server + 0x18), (XNKEY const *)(server + 8),
-							(XNKID const *)server, 0x141E, &address);
+							(XNKID const *)server, NETWORK_GAME_SERVER_PORT, &address);
 						if (address.address.long_words[0] != zero && address.port != zero)
 						{
 							join_descriptor.unknown02 = (short)zero;
@@ -6174,7 +6175,7 @@ boolean ui_widget_port_join(
 		return FALSE;
 	}
 	transport_client_start((XNADDR const *)(server + 0x18), (XNKEY const *)(server + 8),
-		(XNKID const *)server, 0x141E, &address);
+		(XNKID const *)server, NETWORK_GAME_SERVER_PORT, &address);
 	if (!address.address.long_words[0] || !address.port)
 	{
 		error(2, "attempted to join a network game with a bogus address");

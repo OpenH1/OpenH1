@@ -957,6 +957,11 @@ static const struct config_setting config_settings[] =
 		"Comma-separated IPv4 addresses system link sends its announcements to\n"
 		"instead of the local network's broadcast address (for VPNs); empty for\n"
 		"the local network." },
+	{ "network.port", _config_integer, "5150", "HALO_NET_PORT", _environment_value, _platform_all,
+		"The UDP port system link games are hosted on (5150, the Xbox's; the\n"
+		"clients' is the next). Another lets copies of the game host side by\n"
+		"side on one computer, for tests and dedicated setups: a LAN game on\n"
+		"another port is found only by machines set to it." },
 	{ "network.online", _config_boolean, "true", "HALO_NET_ONLINE", _environment_value, _platform_all,
 		"Internet play: hosting makes an invite link (logged, and put on the\n"
 		"clipboard) that lets whoever has it join over the internet; opening a\n"

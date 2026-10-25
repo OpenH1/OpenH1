@@ -1341,7 +1341,10 @@ own, which the tool ends however it ends: stopped with Ctrl-C, SIGTERM or
 SIGHUP, it stops the copies and exits 128 plus the signal's number, and
 killed outright, the kernel ends the copies (`PR_SET_PDEATHSIG`). `--compare <host log>
 <client log>` judges two logs already written, and
-`--a-wrapper`/`--b-wrapper` run a build under an emulator. Both builds
+`--a-wrapper`/`--b-wrapper` run a build under an emulator. `--port <n>`
+plays the game on port n (`network.port`; the clients' n + 1), so that two
+runs, or a run and another game, share the computer (both builds must have
+the setting). Both builds
 must log the drift (below): one built before it is an error.
 
 The host decides and a client predicts its own player, so the comparison
