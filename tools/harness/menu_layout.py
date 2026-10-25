@@ -83,6 +83,14 @@ def usable(width):
     return Box("usable", -side, 0, 640 + side, 480, ())
 
 
+def inner(width):
+    """the usable area less the margin kept from the screen's edges (port_settings.WIDE_MARGIN): where the rows,
+    panels, tabs and buttons of the port's screens are"""
+    area = usable(width)
+    margin = port_settings.WIDE_MARGIN
+    return Box("inner", area.x0 + margin, 0, area.x1 - margin, 480, ())
+
+
 def layout(root, width, platforms=DESKTOP):
     """the widgets under a screen (root) as drawn on a screen this wide: a Box each, in drawing order (a list's
     description after its children)"""

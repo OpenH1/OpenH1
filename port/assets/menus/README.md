@@ -155,7 +155,10 @@ touchscreen's wide screens (where the menus are laid out for touch: the
 `anchor_right` move the widget (and what is in it) to the screen's left or
 right edge, by as much as the screen is wider than the menus' 640 on that
 side; `stretch` draws its picture wider by both sides' width, from its left
-(a panel that reaches from the menus' middle to the right edge).
+(a panel that reaches from the menus' middle to the right edge). And
+everywhere, `keep_ends`: the widget's picture drawn at the widget's width
+with its ends as they are, its middle stretched or shortened (a tab laid out
+narrower than its picture).
 
 The port's own screens (Settings, the server browser, Multiplayer; the lobby
 next) use a wide screen's width up to 16:9 (852 of the menus' units at 480
@@ -168,7 +171,8 @@ screen's left edge as the 640 have it from theirs, `106 0` from the right;
 `-106 212` stretches it across. `tools/port_settings.py`'s `wide`,
 `WIDE_LEFT`, `WIDE_RIGHT` and `wide_spread` (tabs) write them, and
 `tools/harness/menu_layout.py` lays a screen out at a width for its tests.
-Widgets anchored on a touchscreen keep their anchors; the game's own menus
+Their rows, panels, tabs and buttons keep `WIDE_MARGIN` (24 units) from the
+screen's edges at every width. Widgets anchored on a touchscreen keep their anchors; the game's own menus
 have no `wide`, and stay in the middle 640.
 
 On a touchscreen a tap on an item of a list with an extended description

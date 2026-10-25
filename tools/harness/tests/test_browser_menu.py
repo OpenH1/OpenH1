@@ -226,19 +226,20 @@ def test_browser_wide_layout(aspect):
     """The browser at 4:3, 16:10 (the Steam Deck), 16:9 and 21:9 (16:9's, centred): its rows from the screen's left,
     their columns in order inside them, apart, each title over its column, Server, Map and Mode wider on a wider
     screen; the panel beside them to the screen's right, its words and JOIN GAME in it; the tabs spread apart between
-    LB's and RB's prompts; the footer's prompts at the screen's edges, apart; everything on the screen."""
-    from harness.menu_layout import layout, one, usable
+    LB's and RB's prompts; the footer's prompts at the screen's edges, apart; everything on the screen, WIDE_MARGIN from
+    its edges."""
+    from harness.menu_layout import inner, layout, one
 
     port_settings = _port_settings()
     width = port_settings.WIDE_SCREENS[aspect]
-    area = usable(width)
+    area = inner(width)
     boxes = layout(f"{MT}/join_game/join_game_screen", width)
     rows = [box for box in boxes if re.fullmatch(r"server_item_\d+", box.name)]
     panel = one(boxes, "browser_panel")
     assert len(rows) == port_settings.BROWSER_ROWS
     columns = ("server_name", "map", "type", "players", "ping_ms")
     for row in rows + [panel, one(boxes, "browser_columns_line"), one(boxes, "browser_empty")]:
-        assert row.inside(area), f"{row} is off the screen {area}"
+        assert row.inside(area), f"{row} is within the margin of the screen's edge {area}"
     for row in rows:
         assert row.x1 + 8 <= panel.x0, f"{row} reaches the panel {panel}"
         cells = [box for column in columns for box in boxes

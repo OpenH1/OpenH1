@@ -306,14 +306,16 @@ static char const *const widget_flag_names[] =
 	"main_menu_if_no_history", "tag_controller_index", "nifty_fx", "no_history",
 	/* (the PC version's, which this engine has no use for) */
 	"force_handle_mouse", "no_widescreen_fill",
-	/* (the port's: ui_widget_port_anchor_offset, ui_widget_port_stretch) */
-	"anchor_left", "anchor_right", "stretch",
+	/* (the port's: ui_widget_port_anchor_offset, ui_widget_port_stretch,
+	ui_widget_port_keep_ends) */
+	"anchor_left", "anchor_right", "stretch", "keep_ends",
 };
 
 /* the port's widget flags' bits (widget_flag_names) */
 #define WIDGET_FLAG_ANCHOR_LEFT 17
 #define WIDGET_FLAG_ANCHOR_RIGHT 18
 #define WIDGET_FLAG_STRETCH 19
+#define WIDGET_FLAG_KEEP_ENDS 20
 
 /* how far the screen reaches past each side of the menus' 640 where its
 widgets are anchored to its edges: on the touchscreens' builds (the phones'
@@ -352,6 +354,14 @@ left (a panel anchored left that reaches the right edge) */
 short ui_widget_port_stretch(long flags)
 {
 	return flags & FLAG(WIDGET_FLAG_STRETCH) ? (short)(2 * ui_widget_port_anchor_extra()) : 0;
+}
+
+/* keep_ends: the widget's picture drawn at the widget's width with its ends
+as they are, its middle stretched or shortened (a tab narrower than its
+picture: ui_widget.c's draw_bitmap_widened_in_rect) */
+boolean ui_widget_port_keep_ends(long flags)
+{
+	return (flags & FLAG(WIDGET_FLAG_KEEP_ENDS)) != 0;
 }
 
 static char const *const widget_type_names[] = { "container", "text", "spinner", "column_list" };

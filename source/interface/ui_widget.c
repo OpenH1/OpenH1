@@ -1895,7 +1895,9 @@ void draw_bitmap_in_rect(
 screens, ui_widget_port_wide_stretch; the carnage report's panel), its
 `edge` units at each end as they are, the rest of it as it is in the middle,
 and the column each side of the middle stretched across the width added
-between them (a picture of a box, its middle plain: edge half its width) */
+between them (a picture of a box, its middle plain: edge half its width);
+or narrower (a widget whose picture keeps its ends, the port's keep_ends
+flag), its two halves' ends meeting */
 void draw_bitmap_widened_in_rect(
 	struct bitmap_data *bitmap,
 	rectangle2d *rect,
@@ -1930,6 +1932,21 @@ void draw_bitmap_widened_in_rect(
 	/* (the picture's part of the bitmap, as draw_bitmap_in_rect's texels
 	the size of the rectangle have it) */
 	used = MIN((real)picture_width / MAX(1.0f, (real)bitmap->width), 1.0f);
+	/* (narrower than the picture: its left half's left and its right
+	half's right, meeting in the middle) */
+	if (rect->x1 - rect->x0 < picture_width)
+	{
+		short half = (short)((rect->x1 - rect->x0) / 2);
+
+		part.x1 = (short)(rect->x0 + half);
+		draw_bitmap_columns_in_rect(bitmap, &part, &texels, clip_rect, argb, multitexture_params, no_plasma,
+			0.0f, used * half / picture_width);
+		part.x0 = part.x1;
+		part.x1 = rect->x1;
+		draw_bitmap_columns_in_rect(bitmap, &part, &texels, clip_rect, argb, multitexture_params, no_plasma,
+			used * (picture_width - (rect->x1 - part.x0)) / picture_width, used);
+		return;
+	}
 	end = used * edge / picture_width;
 	rights[0] = (short)(rect->x0 + edge);
 	rights[1] = (short)(rights[0] + added / 2);
@@ -7458,16 +7475,22 @@ static void widget_instance_render_recursive(
 				texels.y1 = (short)((long)(bounds.y1 - bounds.y0) * bitmap->height / frame_height);
 				shown = bounds.x1 > bounds.x0 && bounds.y1 > bounds.y0;
 			}
-			/* port: a widget the wide layout made wider than its picture: its
-			picture's middle stretched (ui_widget_port_wide_stretch), its
-			ends as they are */
-			if (shown && widened > 0 && !stretched && !placed)
+			/* port: a widget the wide layout made wider than its picture, or
+			one whose picture keeps its ends (keep_ends) at another width:
+			its picture's middle stretched or shortened
+			(ui_widget_port_wide_stretch), its ends as they are */
+			if (shown && !stretched && !placed &&
+				(widened > 0 || (ui_widget_port_keep_ends(definition->flags) &&
+					bounds.x1 - bounds.x0 != bitmap->width)))
 			{
+				short picture_width = ui_widget_port_keep_ends(definition->flags) ? bitmap->width :
+					(short)(bounds.x1 - bounds.x0 - widened);
+
 				draw_bitmap_widened_in_rect(
 					bitmap,
 					&bounds,
-					(short)(bounds.x1 - bounds.x0 - widened),
-					(short)((bounds.x1 - bounds.x0 - widened) / 2),
+					picture_width,
+					(short)(picture_width / 2),
 					clip,
 					color,
 					&multitexture_params,

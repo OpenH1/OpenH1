@@ -1,7 +1,7 @@
 """The wide layout of the port's own screens (port/linux/game/menu_tags.c's ui_widget_port_wide_layout,
 tools/port_settings.py's wide): the extra width a view lays them out in and a wide attribute's part of it, the
 generator's copy of them the engine's; Settings and Multiplayer at 4:3, 16:10 (the Steam Deck), 16:9 and 21:9 (16:9's,
-centred), every part on the screen, nothing over another, each row, item, tab and button where a click finds it; and
+centred), every part on the screen and WIDE_MARGIN from its edges, nothing over another, each row, item, tab and button where a click finds it; and
 the game's own menus left centred. The server browser's are test_browser_menu.py's, the carnage report's
 test_carnage_report.py's."""
 
@@ -14,7 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, ROOT, build, function, mutated, read, run  # noqa: E402
 from harness import menu_layout  # noqa: E402
-from harness.menu_layout import layout, named, one, usable  # noqa: E402
+from harness.menu_layout import inner, layout, named, one, usable  # noqa: E402
 
 port_settings = menu_layout.port_settings
 
@@ -100,14 +100,14 @@ def test_settings_layout(aspect, folder, root, tab):
     spread across it, apart, between LB's and RB's prompts, DEFAULTS at its left and OK and CANCEL at its right;
     all on the screen, none over another; 21:9 as 16:9."""
     width = WIDTHS[aspect]
-    area = usable(width)
+    area = inner(width)
     boxes = layout(root, width)
     rows = [box for box in boxes if box.name.startswith("op_") and box.path[-1] == "options_menu"]
     sections = [box for box in boxes if re.fullmatch(r"section_\d+", box.name)]
     panel = one(boxes, "tab_panel" if tab else "page_panel")
     assert rows
     for box in rows + sections + [panel]:
-        assert box.inside(area), f"{box} is off the screen {area}"
+        assert box.inside(area), f"{box} is within the margin of the screen's edge {area}"
     for box in rows + sections:
         assert box.x1 + 8 <= panel.x0, f"{box} reaches the panel {panel}"
     # (each row's label before its value, both in the row)
@@ -140,7 +140,7 @@ def test_settings_layout(aspect, folder, root, tab):
     # 16:9's)
     if width >= port_settings.WIDE_WIDTH:
         assert layout(root, width) == layout(root, port_settings.WIDE_WIDTH)
-        assert rows[0].x0 - area.x0 == 28 and area.x1 - panel.x1 == 28
+        assert rows[0].x0 - usable(width).x0 == 28 and usable(width).x1 - panel.x1 == 28
     if width > 640:
         narrow = [box for box in layout(root, 640) if box.name in (rows[0].name, panel.name)]
         assert rows[0].x1 - rows[0].x0 > narrow[0].x1 - narrow[0].x0
@@ -153,7 +153,7 @@ def test_hub_layout(aspect):
     its right, what the panel shows in it (the counts, the best games' names before their players and pings), the
     footer's prompts at the screen's edges; on the screen, none over another; its title moved with its items."""
     width = WIDTHS[aspect]
-    area = usable(width)
+    area = inner(width)
     for root, page_items in ((f"{MT}/multiplayer_type_select_screen", 8), (f"{MT}/hub/create_screen", 2),
                              (f"{MT}/hub/coop_screen", 2)):
         boxes = layout(root, width)
@@ -162,7 +162,7 @@ def test_hub_layout(aspect):
         panel = one(boxes, "hub_panel")
         assert len(items) == page_items, items
         for box in items + [panel]:
-            assert box.inside(area), f"{box} is off the screen {area}"
+            assert box.inside(area), f"{box} is within the margin of the screen's edge {area}"
             assert box is panel or box.x1 + 8 <= panel.x0, f"{box} reaches the panel"
         _check_apart(items, "items")
         for box in boxes:
@@ -187,7 +187,7 @@ def test_party_layout(aspect):
     pill at the row's end) under their section from the screen's left, the panel beside them to its right with its
     words in it, its footer's prompts at the screen's edges; on the screen, none over another."""
     width = WIDTHS[aspect]
-    area = usable(width)
+    area = inner(width)
     boxes = layout(f"{MT}/party/party_screen", width)
     panel = one(boxes, "party_panel")
     section = one(boxes, "section_party")
@@ -204,4 +204,4 @@ def test_party_layout(aspect):
     for box in prompts:
         assert box.inside(area), box
     for left in ("prompt_make", "prompt_copy"):
-        assert one(boxes, left).x0 - area.x0 == 28
+        assert one(boxes, left).x0 - usable(width).x0 == 28

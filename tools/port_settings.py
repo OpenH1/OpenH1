@@ -278,7 +278,13 @@ SETTINGS_SECTION_HEIGHT, SETTINGS_SECTION_STEP, SETTINGS_SECTION_GAP = 18, 20, 6
 SETTINGS_TOP, PAGE_TOP = 104, 80
 SETTINGS_TABS_TOP = 76
 # (the tabs from SETTINGS_TABS_X, LB and RB, or Q and E, either side)
-SETTINGS_TAB_WIDTH, SETTINGS_TAB_HEIGHT, SETTINGS_TAB_STEP, SETTINGS_TABS_X = 90, 22, 92, 40
+# (SETTINGS_TAB_WIDTH the tab's picture's; laid out SETTINGS_TAB_LAID wide,
+# its picture's ends kept (keep_ends), so that LB's and RB's prompts keep
+# WIDE_MARGIN from the screen's edges)
+SETTINGS_TAB_WIDTH, SETTINGS_TAB_HEIGHT, SETTINGS_TAB_STEP, SETTINGS_TABS_X = 90, 22, 88, 56
+SETTINGS_TAB_LAID = 86
+# (the tab keys' prompts: LB's at the margin, RB's after the last tab)
+SETTINGS_TAB_PROMPT_WIDTH = 30
 SETTINGS_PANEL_X, SETTINGS_PANEL_WIDTH, SETTINGS_PANEL_BOTTOM = 388, 224, 400
 # the value's column in a row, and the arrows either side of it
 SETTINGS_SPINNER_X, SETTINGS_SPINNER_WIDTH = 188, 140
@@ -300,6 +306,9 @@ SETTINGS_FUNCTIONS = "port settings page"
 WIDE_WIDTH = 852
 WIDE_EXTRA = WIDE_WIDTH - 640
 WIDE_HALF = WIDE_EXTRA // 2
+# the space kept between the screen's edges and what is nearest them (the
+# carnage report's CARNAGE_LEFT): the rows', panels', tabs' and buttons'
+WIDE_MARGIN = 24
 # the screens' widths the layout is checked at (menu units at 480 lines, as
 # d3d8_device.c's screen_mode_choose has them): 4:3, 16:10 (the Steam Deck),
 # 16:9 and 21:9
@@ -1181,9 +1190,10 @@ def _settings_page(folder: str, page: dict) -> list:
                       *(['<on event="white" run="port settings tab previous"/>',
                          '<on event="black" run="port settings tab next"/>'] if tab else []),
                       f'<child widget="{header}"/>',
-                      *([f'<child widget="{SETTINGS}/tab_prompt_previous" x="6" y="{SETTINGS_TABS_TOP}"/>',
+                      *([f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" '
+                         f'y="{SETTINGS_TABS_TOP}"/>',
                          f'<child widget="{SETTINGS}/tab_prompt_next" '
-                         f'x="{SETTINGS_TABS_X + 5 * SETTINGS_TAB_STEP + SETTINGS_TAB_WIDTH + 4}" '
+                         f'x="{SETTINGS_TABS_X + 5 * SETTINGS_TAB_STEP + SETTINGS_TAB_LAID + 4}" '
                          f'y="{SETTINGS_TABS_TOP}"/>'] if tab else []),
                       f'<child widget="{base}/options_menu"/>'])
     if not tab:
@@ -1200,9 +1210,9 @@ def _settings_page(folder: str, page: dict) -> list:
     lines += _widget(f"{base}/button_bar",
                      [("type", "column_list"), ("width", 640), ("height", 28),
                       ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
-                     [f'<child widget="{base}/button_defaults" y="1"/>',
-                      f'<child widget="{base}/button_ok" x="380" y="1"/>',
-                      f'<child widget="{base}/button_cancel" x="510" y="1"/>'])
+                     [f'<child widget="{base}/button_defaults" x="{WIDE_MARGIN}" y="1"/>',
+                      f'<child widget="{base}/button_ok" x="{640 - WIDE_MARGIN - 2 * 128 - 2}" y="1"/>',
+                      f'<child widget="{base}/button_cancel" x="{640 - WIDE_MARGIN - 128}" y="1"/>'])
     if tab:
         # (each tab: its name, the current one framed; A or a click opens it)
         items = []
@@ -1210,7 +1220,8 @@ def _settings_page(folder: str, page: dict) -> list:
             current = other == folder
             name = f"{base}/tab_{PAGES[other]['screen'][:-len('_screen')]}"
             items.append(f'<child widget="{name}" x="{SETTINGS_TABS_X + index * SETTINGS_TAB_STEP}"/>')
-            lines += _settings_text(name, [("width", SETTINGS_TAB_WIDTH), ("height", SETTINGS_TAB_HEIGHT),
+            lines += _settings_text(name, [("width", SETTINGS_TAB_LAID), ("height", SETTINGS_TAB_HEIGHT),
+                                           ("flags", "keep_ends"),
                                            ("wide", wide(wide_spread(index, len(SETTINGS_TAB_PAGES)))),
                                            ("bitmap", f"{SETTINGS}/{'tab_current' if current else 'tab'}"),
                                            ("string_list", f"{SETTINGS}/tab_names"), ("string_index", index or None),
@@ -1306,7 +1317,8 @@ def _settings_shared() -> list:
     # of the tabs: the HUD's button pictures, display.hud_button_style, or
     # its key caps, ui_widget.c and hud_key_prompts.c)
     for name, icon in (("previous", "white"), ("next", "black")):
-        lines += _settings_text(f"{SETTINGS}/tab_prompt_{name}", [("width", 30), ("height", SETTINGS_TAB_HEIGHT),
+        lines += _settings_text(f"{SETTINGS}/tab_prompt_{name}", [("width", SETTINGS_TAB_PROMPT_WIDTH),
+                                                                 ("height", SETTINGS_TAB_HEIGHT),
                                                                  ("wide", WIDE_RIGHT if name == "next" else WIDE_LEFT),
                                                                  ("text", f"%{icon}-button"), ("color", SETTINGS_BLUE), ("text_x", 2),
                                                                  ("text_y", 3)])
@@ -3339,8 +3351,8 @@ def _tab_strip(base: str, strip: str, tabs: list, handlers: list) -> list:
                     [f'<child widget="{base}/{name}" x="{SETTINGS_TABS_X + index * SETTINGS_TAB_STEP}"/>'
                      for index, (name, _) in enumerate(tabs)])
     for index, (name, words) in enumerate(tabs):
-        lines += _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("width", SETTINGS_TAB_WIDTH),
-                                           ("height", SETTINGS_TAB_HEIGHT),
+        lines += _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("width", SETTINGS_TAB_LAID),
+                                           ("height", SETTINGS_TAB_HEIGHT), ("flags", "keep_ends"),
                                            ("wide", wide(wide_spread(index, len(tabs)))),
                                            ("bitmap", PARTS_TAB), ("text", words),
                                            ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE), ("align", "center"),
@@ -3414,9 +3426,9 @@ def _browser() -> list:
                      '<on event="right_trigger" run="port browser refresh"/>',
                      f'<child widget="{base}/header_join_game"/>',
                      f'<child widget="{base}/browser_counts"/>',
-                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="6" y="{SETTINGS_TABS_TOP}"/>',
+                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" y="{SETTINGS_TABS_TOP}"/>',
                      f'<child widget="{SETTINGS}/tab_prompt_next" '
-                     f'x="{SETTINGS_TABS_X + (len(BROWSER_TABS) - 1) * SETTINGS_TAB_STEP + SETTINGS_TAB_WIDTH + 4}" '
+                     f'x="{SETTINGS_TABS_X + (len(BROWSER_TABS) - 1) * SETTINGS_TAB_STEP + SETTINGS_TAB_LAID + 4}" '
                      f'y="{SETTINGS_TABS_TOP}"/>',
                      f'<child widget="{base}/browser_columns_line"/>',
                      f'<child widget="{base}/browser_empty"/>',
