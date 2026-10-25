@@ -54,10 +54,15 @@ final class TouchLayout {
      * but white and black (the flashlight and the grenade's type), used in
      * play, come down with the rest: their lines down to WHITE_BLACK_ROW
      * share the extra height and the ones below it keep their distance from
-     * the bottom, so by default they stay above the D-pad, by the left thumb;
-     * back and pause, the menus' buttons, stay at the top
+     * the bottom; and they move across to TALL_WHITE_BLACK, beside the
+     * D-pad at its right, one above the other (as in portrait), by the left
+     * thumb, fully once the display is TALL_EXTRA taller than 16:9 (the iOS
+     * layout has them there on every display); back and pause, the menus'
+     * buttons, stay at the top
      */
     static final float WHITE_BLACK_ROW = 36;
+    private static final float[][] TALL_WHITE_BLACK = {{200, 114}, {200, 186}};
+    static final float TALL_EXTRA = 60;
     /** the portrait grid, and its placement: the strip along the top (its
      * lines down to PORTRAIT_STRIP) keeps its distance from the top, under
      * the display's top inset (a camera's cutout), the rest (from
@@ -228,8 +233,10 @@ final class TouchLayout {
      * portrait: where the game's picture's top goes, in logical units, for a
      * picture this high across the display: half way down the space between
      * the strip and the default controls (not the ones the player moved, so
-     * the picture stays put as they move), or with no room, under the strip,
-     * the controls over its lower part
+     * the picture stays put as they move); with no room there, up as far as
+     * it must go to clear the controls, at most to the top inset (the
+     * strip's buttons then over its upper edge), the controls over its lower
+     * part only when even that is not enough
      */
     float pictureTop(float pictureHeight) {
         float controlsTop = height;
@@ -237,7 +244,10 @@ final class TouchLayout {
             if (PORTRAIT_DEFAULTS[i][1] > PORTRAIT_STRIP && !hiddenByDefault(i))
                 controlsTop = Math.min(controlsTop, displayY(i, PORTRAIT_DEFAULTS[i][1]) - Math.max(RADII[i], minimumRadius));
         }
-        return stripBottom() + Math.max(0, (controlsTop - PICTURE_MARGIN - stripBottom() - pictureHeight) / 2);
+        float room = controlsTop - PICTURE_MARGIN - stripBottom() - pictureHeight;
+        if (room >= 0)
+            return stripBottom() + room / 2;
+        return Math.max(topInset, controlsTop - PICTURE_MARGIN - pictureHeight);
     }
 
     int size() {
@@ -342,7 +352,7 @@ final class TouchLayout {
         float radius = radius(control);
         moved.x = Math.max(radius, Math.min(width - radius, x));
         moved.y = Math.max(radius, Math.min(height - radius, y));
-        moved.placeX = gridX(moved.x);
+        moved.placeX = gridX(moved.type, moved.x);
         moved.placeY = gridY(moved.type, moved.y);
     }
 
@@ -352,7 +362,7 @@ final class TouchLayout {
             Control restored = controls.get(control);
             restored.placeX = x;
             restored.placeY = y;
-            restored.x = displayX(x);
+            restored.x = displayX(restored.type, x);
             restored.y = displayY(restored.type, y);
         }
     }
@@ -365,15 +375,15 @@ final class TouchLayout {
         for (int i = 0; i < size(); i++) {
             Control control = controls.get(i);
             float radius = radius(i);
-            control.x = Math.max(radius, Math.min(width - radius, displayX(control.placeX)));
+            control.x = Math.max(radius, Math.min(width - radius, displayX(control.type, control.placeX)));
             control.y = Math.max(radius, Math.min(height - radius, displayY(control.type, control.placeY)));
         }
     }
 
     /** a place on this layout's grid on the display, each way, and back */
-    private float displayX(float placeX) {
+    private float displayX(int type, float placeX) {
         return portrait ? edgeKept(placeX, width, PORTRAIT_GRID_WIDTH, LEFT_PART, RIGHT_PART)
-            : placeX * width / GRID_WIDTH;
+            : placeX * width / GRID_WIDTH + tallShift(type, height, 0);
     }
 
     private float displayY(int type, float placeY) {
@@ -381,8 +391,9 @@ final class TouchLayout {
             PORTRAIT_LOWER_PART) : displayY(type, placeY, height);
     }
 
-    private float gridX(float x) {
-        return portrait ? edgeKeptBack(x, width, PORTRAIT_GRID_WIDTH, LEFT_PART, RIGHT_PART) : x * GRID_WIDTH / width;
+    private float gridX(int type, float x) {
+        return portrait ? edgeKeptBack(x, width, PORTRAIT_GRID_WIDTH, LEFT_PART, RIGHT_PART)
+            : Math.max(0, Math.min(GRID_WIDTH, (x - tallShift(type, height, 0)) * GRID_WIDTH / width));
     }
 
     private float gridY(int type, float y) {
@@ -429,16 +440,31 @@ final class TouchLayout {
         return edgeKeptBack(y, height, GRID_HEIGHT, TOP_ROW, LOWER_PART);
     }
 
-    /** a kind of control's line of the landscape grid on a display this high (white and black: WHITE_BLACK_ROW) */
+    /** a kind of control's line of the landscape grid on a display this high (white and black: WHITE_BLACK_ROW, TALL_WHITE_BLACK) */
     static float displayY(int type, float placeY, float height) {
-        return type == WHITE || type == BLACK ? edgeKept(placeY, height, GRID_HEIGHT, 0, WHITE_BLACK_ROW)
+        return type == WHITE || type == BLACK
+            ? edgeKept(placeY, height, GRID_HEIGHT, 0, WHITE_BLACK_ROW) + tallShift(type, height, 1)
             : displayY(placeY, height);
     }
 
     /** the kind's line at this height: displayY's inverse */
     static float gridY(int type, float y, float height) {
-        return type == WHITE || type == BLACK ? edgeKeptBack(y, height, GRID_HEIGHT, 0, WHITE_BLACK_ROW)
+        return type == WHITE || type == BLACK
+            ? Math.max(0, edgeKeptBack(y - tallShift(type, height, 1), height, GRID_HEIGHT, 0, WHITE_BLACK_ROW))
             : gridY(y, height);
+    }
+
+    /**
+     * how far white or black moves from its place toward TALL_WHITE_BLACK on
+     * a landscape display this high, across (axis 0) or down (1): none up to
+     * 16:9, all of it from TALL_EXTRA taller; 0 for the other kinds
+     */
+    static float tallShift(int type, float height, int axis) {
+        if (type != WHITE && type != BLACK)
+            return 0;
+        float share = Math.max(0, Math.min(1, (height - GRID_HEIGHT) / TALL_EXTRA));
+        float[] tall = TALL_WHITE_BLACK[type - WHITE];
+        return share * (axis == 0 ? tall[0] - DEFAULTS[type][0] : tall[1] - WHITE_BLACK_ROW);
     }
 
     /** the layout as a layout file's text, with the look sensitivity */

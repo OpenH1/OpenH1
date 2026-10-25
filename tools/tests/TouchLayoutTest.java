@@ -175,6 +175,14 @@ public final class TouchLayoutTest {
         // a 4:3 tablet, a tall window); white and black (the flashlight and
         // the grenade's type) come down with the rest, above the D-pad.
         TouchLayout flat = new TouchLayout();
+        TouchLayout notTaller = new TouchLayout();
+        notTaller.bounds(960, 540);
+        TouchLayout wider = new TouchLayout();
+        wider.bounds(1260, 540);
+        for (int kind : new int[] {TouchLayout.WHITE, TouchLayout.BLACK})
+            check(notTaller.x(kind) == flat.x(kind) && notTaller.y(kind) == flat.y(kind)
+                  && wider.y(kind) == flat.y(kind) && wider.x(kind) == flat.x(kind) * 1260 / 960,
+                  "White and black stay in the top row up to 16:9 and on wider displays");
         for (float tall : new float[] {600, 720, 865.05f, 926.1f, 2133.3f}) {
             TouchLayout high = new TouchLayout();
             high.bounds(960, tall);
@@ -182,10 +190,11 @@ public final class TouchLayoutTest {
                 boolean whiteOrBlack = high.type(i) == TouchLayout.WHITE || high.type(i) == TouchLayout.BLACK;
                 if (flat.y(i) <= TouchLayout.TOP_ROW && !whiteOrBlack)
                     check(high.y(i) == flat.y(i), "The top row stays at the top of a taller display");
-                else
+                else if (!whiteOrBlack)
                     check(Math.abs((tall - high.y(i)) - (540 - flat.y(i))) < 0.01f,
                           "The controls under the thumbs keep their distance from the bottom of a taller display");
-                check(high.x(i) == flat.x(i), "A taller display keeps each control's distance from the sides");
+                if (!whiteOrBlack)
+                    check(high.x(i) == flat.x(i), "A taller display keeps each control's distance from the sides");
             }
             for (int kind : new int[] {0, TouchLayout.WHITE}) {
                 for (float line = 0; line <= 540; line += 0.5f) {
@@ -196,9 +205,18 @@ public final class TouchLayoutTest {
                           "Lower lines of the grid stay lower on the display");
                 }
             }
-            for (int kind : new int[] {TouchLayout.WHITE, TouchLayout.BLACK})
-                check(high.y(kind) + high.radius(kind) < high.y(12) - high.radius(12)
-                      && high.y(kind) > tall - 540, "White and black stay above the D-pad, low on a taller display");
+            // (white and black beside the D-pad's right arrow, one above the other)
+            check(high.x(TouchLayout.WHITE) - high.radius(TouchLayout.WHITE) > high.x(15) + high.radius(15)
+                  && high.x(TouchLayout.BLACK) == high.x(TouchLayout.WHITE)
+                  && high.y(TouchLayout.WHITE) < high.y(15) && high.y(TouchLayout.BLACK) > high.y(15)
+                  && high.y(TouchLayout.WHITE) > high.y(12) - high.radius(12)
+                  && high.y(TouchLayout.BLACK) < high.y(13) + high.radius(13),
+                  "White and black are beside the D-pad, one above the other, on a taller display");
+            for (int a = 0; a < high.size(); a++)
+                for (int b = a + 1; b < high.size(); b++)
+                    if (high.shown(a) && high.shown(b))
+                        check(Math.hypot(high.x(a) - high.x(b), high.y(a) - high.y(b)) >= high.radius(a) + high.radius(b),
+                              "Controls do not overlap on a taller display");
             high.move(TouchLayout.WHITE, 480, tall / 3);
             float whiteMiddle = high.y(TouchLayout.WHITE);
             high.bounds(960, 540);
@@ -279,12 +297,14 @@ public final class TouchLayoutTest {
                 for (boolean sixteenNine : new boolean[] {false, true}) {
                     float high = TouchLayout.pictureHeight(display[0], sixteenNine);
                     float top = strip.pictureTop(high);
-                    check(top >= strip.stripBottom(), "The picture is under the strip");
-                    if (top > strip.stripBottom())
-                        check(top + high <= lowest && Math.abs((top - strip.stripBottom()) - (lowest - 10 - top - high)) < 0.01f,
+                    float room = lowest - 10 - strip.stripBottom() - high;
+                    if (room >= 0)
+                        check(top >= strip.stripBottom() && top + high <= lowest
+                              && Math.abs((top - strip.stripBottom()) - (lowest - 10 - top - high)) < 0.01f,
                               "A lowered picture is half way between the strip and the controls, clear of them");
                     else
-                        check(strip.stripBottom() + high + 10 >= lowest, "The picture stays under the strip only without room");
+                        check(top == Math.max(inset, lowest - 10 - high) && top < strip.stripBottom(),
+                              "Without room the picture moves up as far as it must to clear the controls, to the top");
                     TouchLayout moved = new TouchLayout(true);
                     moved.bounds(display[0], display[1]);
                     moved.setTopInset(inset);
