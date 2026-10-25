@@ -694,6 +694,20 @@ static void case_request(void)
 	}
 	entry = entry_of(b, a);
 	check(entry && entry->kind == _p2p_friend_online, "B sees A online");
+	/* (a friend played with: listed as a friend, not again as a recent
+	player) */
+	{
+		unsigned char code[P2P_FRIEND_CODE_BYTES];
+		int count, at, recent = 0;
+
+		code_of(b, code);
+		switch_to(a);
+		p2p_friends_saw_player(code, "Johnson", 0, "Slayer");
+		count = p2p_friends_list(list_buffer, P2P_FRIENDS_LIST_MAXIMUM);
+		for (at = 0; at < count; at++)
+			recent += list_buffer[at].kind == _p2p_friend_recent;
+		check(!recent, "a friend is not listed again as a recent player");
+	}
 }
 
 static void case_ignore(void)

@@ -119,7 +119,7 @@ static void case_notes(void)
 	CHECK(note_is(&entry, L"Blocked", FALSE), "blocked");
 	entry = entry_of(_p2p_friend_recent);
 	entry.time = 10000 - 300;
-	CHECK(note_is(&entry, L"5 min ago", FALSE), "a recent player: when");
+	CHECK(note_is(&entry, L"Played 5 min ago", FALSE), "a recent player: when");
 	entry.relation = _p2p_friend_online;
 	CHECK(note_is(&entry, L"Friend", FALSE), "one a friend already");
 	entry.relation = _p2p_friend_sent;

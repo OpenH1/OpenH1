@@ -394,8 +394,11 @@ static void friends_row_note(struct p2p_friend const *entry, char const *own_cod
 			usnprintf(text, size - 1, L"Request sent");
 		else
 		{
+			wchar_t when[32];
+
 			browser_favorite_last_seen_text(entry->time, now, ago, sizeof(ago));
-			friends_wide(ago, text, size);
+			friends_wide(ago, when, NUMBEROF(when));
+			usnprintf(text, size - 1, L"Played %s", when);
 		}
 		break;
 	case _p2p_friend_blocked:

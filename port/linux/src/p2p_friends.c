@@ -2419,7 +2419,8 @@ int p2p_friends_list(struct p2p_friend *entries, int maximum)
 	{
 		struct recent_record const *recent = &friends.recent[index];
 
-		if (!recent->used)
+		/* (a friend is listed as one, not again here) */
+		if (!recent->used || (recent->has_code && find_friend(recent->code)))
 			continue;
 		memset(&entries[count], 0, sizeof(entries[count]));
 		entries[count].kind = _p2p_friend_recent;
