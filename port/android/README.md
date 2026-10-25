@@ -352,6 +352,7 @@ These settings are only for Android:
 | `debug.sample_seconds` | Refer to "Find problems". |
 | `debug.memory_watch` | `true` (the default): the app notices the game's writes to textures and vertices by page protection. `false`: it compares page contents once a frame instead, which is slower. Refer to "Limits". |
 | `display.astc_textures` | `"auto"` (the default): on a GPU without BC's formats (Mali, PowerVR) that samples ASTC, the maps' DXT textures are transcoded to ASTC 4x4, a quarter of the memory and bandwidth of the decoded textures; their few blocks that need encoding are encoded on worker threads the first time and kept in the app's cache folder. `"off"`: decoded, as before. Checked on a Pixel 11 Pro (PowerVR); the emulator, whose ASTC is emulated, draws those textures black. The log says which (`vulkan: DXT textures as ...`). Refer to [port/linux/README.md](../linux/README.md#settings). |
+| `display.picture_position` | Where the picture sits on a screen taller than it, such as the inner screen of a folding phone, a tablet or a window in split screen. `"center"` (the default) leaves black above and below it. `"top"` puts all the black below it, where the touch controls under the thumbs are. |
 
 ## Internet play
 

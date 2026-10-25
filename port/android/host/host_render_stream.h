@@ -84,6 +84,8 @@ struct host_render_backend
 	/* display.hdr (xgpu_hdr.h): its state, and a 3D view's tone map */
 	void (*hdr)(void *context, const struct xgpu_stream_hdr *record);
 	void (*tone_map)(void *context, const struct xgpu_stream_tone_map *record);
+	/* display.picture_position: the picture at the top of a taller window (nonzero) or centered */
+	void (*picture_top)(void *context, uint32_t top);
 
 	void (*target_create)(void *context, const struct xgpu_stream_target_create *record);
 	void (*target_delete)(void *context, uint32_t target);

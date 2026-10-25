@@ -317,6 +317,12 @@ static const struct config_setting config_settings[] =
 		"kept in the app's caches folder. \"auto\" by default on iOS; \"off\" on\n"
 		"Android, where it is yet to be checked on a device (try \"auto\"). Read\n"
 		"by the host from the file, at the start (port/linux/astc/xgpu_astc.h)." },
+	{ "display.picture_position", _config_string, "\"center\"", "HALO_PICTURE_POSITION", _environment_value,
+		_platform_android,
+		"Where the game's picture sits on a screen taller than it (a folding\n"
+		"phone's inner screen, a tablet, a window in split screen): \"center\",\n"
+		"with black above and below, or \"top\", with all the black below it,\n"
+		"where the touch controls under the thumbs are." },
 
 	{ "audio.enabled", _config_boolean, "true", "HALO_NO_AUDIO", _environment_set_is_false, _platform_all,
 		"Play sound." },
@@ -2790,6 +2796,7 @@ static const struct
 	{ "display.resolution_scaling", { "native", "original", NULL }, NULL },
 	{ "display.anti_aliasing", { "off", "fxaa", "smaa", "ssaa2x", "msaa2x", "msaa4x", "msaa8x", NULL }, NULL },
 	{ "display.astc_textures", { "auto", "always", "off", NULL }, NULL },
+	{ "display.picture_position", { "center", "top", NULL }, NULL },
 	{ "display.hud_button_style", { "classic", "gems", "menu_gems", NULL }, NULL },
 	{ "display.menus", { "pc", "xbox", NULL }, NULL },
 	{ "display.player_names", { "all", "allies", "enemies", "none", NULL }, NULL },
