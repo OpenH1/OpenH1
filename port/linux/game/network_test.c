@@ -1560,7 +1560,7 @@ void network_test_update(
 				if (!global_network_game_client_get())
 					create_global_network_game_client();
 				ui_widget_load_by_name_or_tag(
-					"ui\\shell\\main_menu\\multiplayer_type_select\\split_screen\\pregame\\splitscreen_pregame_wrapper_normal",
+					pc_menus_screen("ui\\shell\\main_menu\\multiplayer_type_select\\split_screen\\pregame\\splitscreen_pregame_wrapper_normal"),
 					NONE, NULL, NONE, NONE, NONE, NONE);
 				platform_log("network test: a local game on %s", network_test.map_name);
 			}

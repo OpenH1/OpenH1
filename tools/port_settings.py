@@ -302,7 +302,7 @@ SETTINGS_FUNCTIONS = "port settings page"
 # of the menus' units at 480 lines, and by a part of that on a narrower one,
 # none at the menus' 640 (4:3); a wider screen has 16:9's layout, centred. A
 # widget with none stays in the centred 640, as the game's own menus do.
-# Settings, the server browser and Multiplayer use it (the lobby can too)
+# Settings, the server browser, Multiplayer and the lobby use it
 WIDE_WIDTH = 852
 WIDE_EXTRA = WIDE_WIDTH - 640
 WIDE_HALF = WIDE_EXTRA // 2
@@ -2429,6 +2429,219 @@ SETUP_OPTION_SCREENS = [
 ]
 
 
+def lobby_column_x(column: int) -> int:
+    """a team's column's left (red's, blue's)"""
+    return LOBBY_LIST_X + column * (LOBBY_COLUMN_WIDTH + LOBBY_COLUMN_GAP)
+
+
+def lobby_column_wide(column: int, dx: int = 0, dw=None):
+    """a team's column's part (or a part of it, dx along) on a wide screen:
+    each column half of the players' growth, blue's moved by red's"""
+    return wide(-WIDE_HALF + column * (LOBBY_WIDE_PLAYERS // 2) + dx, LOBBY_WIDE_PLAYERS // 2 if dw is None else dw)
+
+
+def _lobby_board(base: str) -> tuple:
+    """the lobby on the computer (lobby_menu.inc's lobby_board_update), in
+    Multiplayer's look (the menus' shared parts): the game's name, where it
+    is and its players over the panels; the players from the screen's left,
+    in a column for each team (one list, both columns', in a game without
+    teams), each a row of its dot, name and tag, this machine's own framed;
+    the details panel beside them to its right: the next game (its gametype,
+    map and limits; OPENH1 or LEGACY, its tick rate, whether OpenCE's
+    players join), a game of this machine alone's bots (Server Setup's
+    BOTS_ROWS, here too), how the game is (the countdown, how another
+    player joins), and the host's GAME SETTINGS (Server Setup) and START
+    GAME, or WAITING FOR THE HOST; the footer's key prompts. Left and right
+    (and a click on a column) change this player's team. Returns the
+    screen's children and the widgets"""
+    top, height = LOBBY_TOP, LOBBY_HEIGHT
+    panel_left, _, panel_width, _ = LOBBY_PANEL
+    inner_left, inner = panel_left + 14, LOBBY_PANEL_INNER
+    players_width = 2 * LOBBY_COLUMN_WIDTH + LOBBY_COLUMN_GAP
+    panel_moved, panel_grown = LOBBY_WIDE_PANEL
+    row_w, row_h = LOBBY_ROW
+    pointer = ' platform="pointer"'
+    children = [f'<child widget="{base}/board_header"{pointer}/>', f'<child widget="{base}/board_subtitle"{pointer}/>']
+    lines = _widget(f"{base}/board_header", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
+                                             ("height", 59), ("bitmap", f"{base}/header_lobby"), ("wide", WIDE_LEFT)],
+                    [])
+    lines += _part_text(f"{base}/board_subtitle", [("left", 300), ("top", 50), ("width", 312), ("height", 18),
+                                                   ("font", "ui\\small_ui"), ("color", PART_DIM), ("align", "right"),
+                                                   ("wide", WIDE_RIGHT)])
+    # (the teams' panels, or one for a game without teams, each its title
+    # and how many it has)
+    for column, (words, (color, _)) in enumerate(zip(("RED", "BLUE"), LOBBY_TEAM_COLORS)):
+        x = lobby_column_x(column)
+        children += [f'<child widget="{base}/board_team_{column}" x="{x}" y="{top}"{pointer}/>',
+                     f'<child widget="{base}/board_title_{column}" x="{x + 12}" y="{top + 8}"{pointer}/>']
+        lines += _widget(f"{base}/board_team_{column}", [("controller", 1), ("width", LOBBY_COLUMN_WIDTH),
+                                                         ("height", height),
+                                                         ("bitmap", part_team_panel(LOBBY_COLUMN_WIDTH, height)),
+                                                         ("wide", lobby_column_wide(column))], [])
+        lines += _widget(f"{base}/board_title_{column}", [("type", "text"), ("controller", 1), ("width", 100),
+                                                          ("height", 22), ("text", words), ("font", "ui\\large_ui"),
+                                                          ("color", "#FF" + color[1:]),
+                                                          ("wide", lobby_column_wide(column, dw=0)),
+                                                          ("text_flags", "no_focus_test")], [])
+    children += [f'<child widget="{base}/board_all" x="{LOBBY_LIST_X}" y="{top}"{pointer}/>',
+                 f'<child widget="{base}/board_title_all" x="{LOBBY_LIST_X + 12}" y="{top + 8}"{pointer}/>']
+    lines += _widget(f"{base}/board_all", [("controller", 1), ("width", players_width), ("height", height),
+                                           ("bitmap", part_panel(players_width, height)),
+                                           ("wide", wide(-WIDE_HALF, LOBBY_WIDE_PLAYERS))], [])
+    lines += _widget(f"{base}/board_title_all", [("type", "text"), ("controller", 1), ("width", 100), ("height", 22),
+                                                 ("text", "PLAYERS"), ("font", "ui\\large_ui"),
+                                                 ("color", SETTINGS_BLUE), ("wide", WIDE_LEFT),
+                                                 ("text_flags", "no_focus_test")], [])
+    # (the counts at the columns' right; a game without teams' at blue's,
+    # its panel's)
+    for column in range(2):
+        count_x = lobby_column_x(column) + LOBBY_COLUMN_WIDTH - 12 - 90
+        children.append(f'<child widget="{base}/board_count_{column}" x="{count_x}" y="{top + 12}"{pointer}/>')
+        lines += _part_text(f"{base}/board_count_{column}", [("width", 90), ("height", 16), ("font", "ui\\small_ui"),
+                                                            ("color", PART_DIM), ("align", "right"),
+                                                            ("wide", lobby_column_wide(column, LOBBY_WIDE_PLAYERS // 2,
+                                                                                       0))])
+    # (each column's rows: a player's dot, name and tag, or how many more
+    # there are than the rows)
+    name_w = row_w - 22 - LOBBY_TAG_WIDTH - 6
+    for column in range(2):
+        for row in range(LOBBY_ROWS):
+            key = f"{column}_{row}"
+            children.append(f'<child widget="{base}/board_row_{key}" x="{lobby_column_x(column) + 8}" '
+                            f'y="{top + LOBBY_ROWS_TOP + LOBBY_ROW_STEP * row}"{pointer}/>')
+            lines += _widget(f"{base}/board_row_{key}", [("controller", 1), ("width", row_w), ("height", row_h),
+                                                         ("bitmap", part_player_row(row_w, row_h)),
+                                                         ("wide", lobby_column_wide(column))],
+                             [f'<child widget="{base}/board_dot_{key}" x="8" y="{(row_h - LOBBY_DOT) // 2}"/>',
+                              f'<child widget="{base}/board_name_{key}" x="22"/>',
+                              f'<child widget="{base}/board_tag_{key}" x="{row_w - LOBBY_TAG_WIDTH - 6}"/>'])
+            lines += _widget(f"{base}/board_dot_{key}", [("controller", 1), ("width", LOBBY_DOT),
+                                                         ("height", LOBBY_DOT), ("bitmap", part_dot(LOBBY_DOT))], [])
+            lines += _part_text(f"{base}/board_name_{key}", [("width", name_w), ("height", row_h),
+                                                             ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
+                                                             ("text_y", 2),
+                                                             ("wide", wide(0, LOBBY_WIDE_PLAYERS // 2))])
+            lines += _part_text(f"{base}/board_tag_{key}", [("width", LOBBY_TAG_WIDTH), ("height", row_h),
+                                                            ("font", "ui\\small_ui"), ("color", PART_DIM),
+                                                            ("align", "right"), ("text_y", 2),
+                                                            ("wide", wide(LOBBY_WIDE_PLAYERS // 2))])
+    # (the details panel: its words as much wider as it, moved with it)
+    grown = wide(0, panel_grown)
+    panel = []
+
+    def text(name, y, h, font, color, words=None, width=inner, align=None, wide_layout=grown):
+        panel.append(f'<child widget="{base}/{name}" x="{inner_left}" y="{top + y}"/>')
+        pairs = [("width", width), ("height", h), ("font", font), ("color", color), ("align", align),
+                 ("wide", wide_layout)]
+        return (_widget(f"{base}/{name}", [("type", "text"), ("controller", 1), *pairs, ("text", words),
+                                           ("text_flags", "no_focus_test")], [])
+                if words else _part_text(f"{base}/{name}", pairs))
+
+    lines += text("board_next_label", 12, 16, "ui\\small_ui", PART_DIM, "NEXT GAME", wide_layout=None)
+    lines += text("board_gametype", 28, 22, "ui\\large_ui", "#FFFFFFFF")
+    lines += text("board_map", 52, 16, "ui\\small_ui", SETTINGS_BLUE)
+    lines += text("board_limits", 68, 16, "ui\\small_ui", SETTINGS_BLUE)
+    for name, x, y, width in (("board_kind", 0, 90, BROWSER_PILL), ("board_tick", BROWSER_PILL + 4, 90, BROWSER_PILL),
+                              ("board_opence", 0, 110, BROWSER_WIDE_PILL)):
+        panel.append(f'<child widget="{base}/{name}" x="{inner_left + x}" y="{top + y}"/>')
+        lines += _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("width", width),
+                                           ("height", PART_PILL_HEIGHT), ("bitmap", part_pill(width)),
+                                           ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
+                                           ("text_flags", "no_focus_test")], [])
+    panel.append(f'<child widget="{base}/board_section_bots" x="{inner_left}" y="{top + 134}"/>')
+    lines += _section(f"{base}/board_section_bots", "BOTS", inner, grown)
+    # (how the game is: the countdown, waiting for players, how another
+    # player joins; up in the bots' place when it has none:
+    # lobby_board_update)
+    lines += text("board_status", 226, 28, "ui\\small_ui", SETTINGS_BLUE)
+    lines += text("board_waiting", 284, LOBBY_START[1], "ui\\large_ui", SETTINGS_BLUE, align="center")
+    children.append(f'<child widget="{base}/board_panel"{pointer}/>')
+    lines += _widget(f"{base}/board_panel", [("controller", 1), ("left", panel_left), ("top", top),
+                                             ("width", panel_width), ("height", height),
+                                             ("bitmap", part_panel(*LOBBY_PANEL[2:])),
+                                             ("wide", wide(*LOBBY_WIDE_PANEL))], panel)
+    # (what takes the focus: the players (left and right their team, a
+    # click a column's; A or Start the host's start), the bots' rows, GAME
+    # SETTINGS, START GAME and the footer's prompts)
+    controls = wide(panel_moved, panel_grown)
+    start = '<on event="start" run="port lobby start"/>'
+    items = [f'<child widget="{base}/board_players" x="{LOBBY_LIST_X}" y="{top}"/>']
+    lines += _widget(f"{base}/board_players", [("width", players_width), ("height", height),
+                                               ("wide", wide(-WIDE_HALF, LOBBY_WIDE_PLAYERS))],
+                     ['<on event="left" run="port lobby team red"/>', '<on event="right" run="port lobby team blue"/>',
+                      '<on event="a" run="port lobby team click"/>', start,
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    labels = ("COUNT", "SKILL", "TEAMS")
+    for index, ((key, _, choices, _), label) in enumerate(zip(BOTS_ROWS, labels)):
+        items.append(f'<child widget="{base}/board_{key}" x="{inner_left}" '
+                     f'y="{top + 156 + LOBBY_CONTROL_HEIGHT * index}"/>')
+        spinner_x, spinner_w = 70, 84
+        lines += _widget(f"{base}/board_{key}", [("width", inner), ("height", LOBBY_CONTROL_HEIGHT),
+                                                 ("flags", "pass_unhandled_to_focused_child"),
+                                                 ("bitmap", part_highlight(inner, LOBBY_CONTROL_HEIGHT)),
+                                                 ("wide", controls)],
+                         [f'<child widget="{base}/board_{key}_label" x="8"/>',
+                          f'<child widget="{base}/board_{key}_spinner" x="{spinner_x}"/>'])
+        lines += _widget(f"{base}/board_{key}_label", [("type", "text"), ("controller", 1), ("width", 60),
+                                                       ("height", LOBBY_CONTROL_HEIGHT), ("text", label),
+                                                       ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE),
+                                                       ("text_y", 4)], [])
+        lines += _widget(f"{base}/board_{key}_spinner",
+                         [("type", "spinner"), ("top", 1), ("width", spinner_w), ("height", 20),
+                          ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+                          ("strings", "|".join(shown for shown, _ in choices)),
+                          ("setting", f"bots.{key.split('_', 1)[1]}"),
+                          ("values", "|".join(value for _, value in choices)), ("font", "ui\\small_ui"),
+                          ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 3),
+                          ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
+                          ("header_bounds", "7 -6 19 0"),
+                          ("footer_bounds", f"7 {spinner_w + 3} 19 {spinner_w + 9}"),
+                          ("wide", wide(panel_grown))],
+                         ['<on event="created" run="port setting load"/>', start,
+                          '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    items += [f'<child widget="{base}/board_settings" x="{inner_left}" y="{top + 256}"/>',
+              f'<child widget="{base}/board_start" x="{inner_left}" y="{top + 284}"/>',
+              f'<child widget="{base}/board_prompts" y="414"/>']
+    lines += _widget(f"{base}/board_settings", [("type", "text"), ("width", inner), ("height", LOBBY_CONTROL_HEIGHT),
+                                                ("bitmap", part_outline(inner, LOBBY_CONTROL_HEIGHT)),
+                                                ("wide", controls), ("text", "GAME SETTINGS"),
+                                                ("font", "ui\\small_ui"), ("color", "#FFCFE3FF"), ("align", "center"),
+                                                ("text_y", 4)],
+                     ['<on event="a" run="port lobby settings"/>', start,
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    # (its words the game's: START GAME, or the countdown; from the left, as
+    # a key's picture in them is not measured with them)
+    lines += _widget(f"{base}/board_start", [("type", "text"), ("width", LOBBY_START[0]), ("height", LOBBY_START[1]),
+                                             ("bitmap", part_button(*LOBBY_START)), ("wide", controls),
+                                             ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("text_x", 12),
+                                             ("text_y", 6)],
+                     ['<on event="a" run="port lobby start"/>', start,
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    children.append(f'<child widget="{base}/board_list"{pointer}/>')
+    lines += _widget(f"{base}/board_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                            ("flags", "pass_unhandled_to_focused_child up_down_tabs_items")],
+                     ['<data input="net splitscreen prejoin players"/>', '<data input="port lobby board update"/>',
+                      *items])
+    # (CHANGE TEAM's keys the arrows, the keyboard's and the D-pad's alike:
+    # the spinners' arrows before its words)
+    team_prompt = LOBBY_PROMPTS[0]
+    lines += _prompts(base, "board_prompts", LOBBY_PROMPTS, defined=(team_prompt[0],))
+    _, words, x, width, handler = team_prompt
+    lines += _widget(f"{base}/{team_prompt[0]}", [("type", "text"), ("width", width), ("height", PART_PROMPT_HEIGHT),
+                                                  ("wide", prompt_wide(x, width)),
+                                                  ("bitmap", part_highlight(width, PART_PROMPT_HEIGHT)),
+                                                  ("text", words), ("font", "ui\\small_ui"), ("color", PART_TEXT),
+                                                  ("text_x", 30), ("text_y", 4)],
+                     [handler, handler.replace('event="a"', 'event="start"'),
+                      '<on event="left_mouse" run="mouse emit accept event"/>',
+                      f'<child widget="{base}/prompt_team_left" x="8" y="5"/>',
+                      f'<child widget="{base}/prompt_team_right" x="18" y="5"/>'])
+    for way in ("left", "right"):
+        lines += _widget(f"{base}/prompt_team_{way}", [("width", 6), ("height", 12),
+                                                      ("bitmap", f"bitmaps/arrow_sm_{way}")], [])
+    return children, lines
+
+
 def _lobby() -> list:
     """the lobby the host's and the joining players wait in (the Xbox's
     pregame's functions, which need no widget of theirs): up to the port's
@@ -2439,6 +2652,10 @@ def _lobby() -> list:
     # network_game_reset_to_pregame_ui opening it in place of the Xbox's
     # pregame: leaving it goes to the main menu, as the PC version's postgame
     # screens do)
+    # (the computer's: its players in a column for each team and the details
+    # panel, _lobby_board; the touchscreen's: the list of players and the
+    # buttons below, as it was)
+    board_children, board = _lobby_board(base)
     lines = _widget(f"{base}/lobby_screen", [("width", 640), ("height", 480),
                                              ("flags", "pass_unhandled_to_focused_child main_menu_if_no_history"),
                                              ("bitmap", "bitmaps/gradient")],
@@ -2448,10 +2665,14 @@ def _lobby() -> list:
                      '<on event="b" run="port lobby leave" back="true"/>',
                      '<on event="back" run="port lobby leave" back="true"/>',
                      f'<on event="start" run="port lobby join" open="{base}/player_profile_screen" branch="true"/>',
-                     '<child widget="main_menu/new_select/sel_list_desc_bkd"/>',
-                     f'<child widget="{base}/lobby_list"/>',
-                     f'<child widget="{base}/header_lobby"/>',
-                     f'<child widget="{base}/lobby_join_help"/>'])
+                     '<on event="x" run="port lobby add player"/>',
+                     '<on event="y" run="port lobby invite"/>',
+                     '<child widget="main_menu/new_select/sel_list_desc_bkd" platform="touch"/>',
+                     f'<child widget="{base}/lobby_list" platform="touch"/>',
+                     f'<child widget="{base}/header_lobby" platform="touch"/>',
+                     f'<child widget="{base}/lobby_join_help" platform="touch"/>',
+                     *board_children])
+    lines += board
     lines += _header(f"{base}/header_lobby", f"{base}/header_lobby")
     lines += _widget(f"{base}/lobby_join_help", [("type", "text"), ("controller", 1), ("left", 355), ("top", 446),
                                                  ("width", 275), ("height", 24), ("font", "ui\\small_ui"),
@@ -3187,6 +3408,30 @@ def part_button(width: int, height: int) -> str:
     return f"{PARTS}/button_{width}x{height}"
 
 
+def part_outline(width: int, height: int) -> str:
+    """a button drawn as its outline (the lobby's GAME SETTINGS), filled
+    while it has the focus"""
+    return f"{PARTS}/outline_{width}x{height}"
+
+
+def part_team_panel(width: int, height: int) -> str:
+    """a team's panel (the lobby's columns): red's edge, then blue's, by the
+    frame"""
+    return f"{PARTS}/team_panel_{width}x{height}"
+
+
+def part_player_row(width: int, height: int) -> str:
+    """a player's row (the lobby's): a player's, then this machine's own
+    (framed), then its own while the players have the focus (brighter)"""
+    return f"{PARTS}/player_row_{width}x{height}"
+
+
+def part_dot(size: int) -> str:
+    """a player's dot: red's, blue's, and a game without teams', by the
+    frame"""
+    return f"{PARTS}/dot_{size}"
+
+
 # the browser's geometry, in the 640x480 menu units: the tabs (Settings'),
 # the list's left and width, its rows, the details panel beside it, and each
 # column's place and width in a row (menu_functions.c's browser_row_show
@@ -3265,6 +3510,37 @@ PARTY_PROMPTS = [
     ("prompt_leave", "%y-button LEAVE PARTY", 324, 144, '<on event="a" run="port party button"/>'),
     ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="port party button"/>'),
 ]
+# the lobby's (_lobby_board, menu_functions.c's lobby_menu.inc): its players
+# from the screen's left, in a column for each team (one list, both
+# columns', in a game without teams), the details panel beside them to its
+# right; on a wide screen the players LOBBY_WIDE_PLAYERS wider (each column
+# half of it), the panel to the screen's right, wider by the rest
+LOBBY_TOP, LOBBY_HEIGHT = 80, 320
+LOBBY_LIST_X, LOBBY_COLUMN_WIDTH, LOBBY_COLUMN_GAP = 28, 186, 12
+LOBBY_PANEL = (420, LOBBY_TOP, 192, LOBBY_HEIGHT)
+LOBBY_WIDE_PLAYERS = 140
+LOBBY_WIDE_PANEL = (-WIDE_HALF + LOBBY_WIDE_PLAYERS, WIDE_EXTRA - LOBBY_WIDE_PLAYERS)
+# a column's rows (lobby_menu.inc's LOBBY_BOARD_ROWS), under its title: each
+# its player's dot, name and tag (HOST, PARTY, OPENH1, OPENCE, BOT)
+LOBBY_ROWS, LOBBY_ROWS_TOP, LOBBY_ROW_STEP = 13, 36, 20
+LOBBY_ROW = (LOBBY_COLUMN_WIDTH - 16, 18)
+LOBBY_DOT, LOBBY_TAG_WIDTH = 8, 58
+# the panel's words, controls and buttons, LOBBY_PANEL_INNER wide
+LOBBY_PANEL_INNER = LOBBY_PANEL[2] - 28
+LOBBY_CONTROL_HEIGHT = 22
+LOBBY_START = (LOBBY_PANEL_INNER, 26)
+# the team colors: red's and blue's, their columns' edges, and a game
+# without teams' dot
+LOBBY_TEAM_COLORS = [("#FF6B5E", "#7A2A2A"), ("#5AA9FF", "#1F4F9A")]
+LOBBY_FREE_DOT = "#9CBBE6"
+# the footer's prompts, each shown when it applies (lobby_menu.inc's
+# lobby_board_controls)
+LOBBY_PROMPTS = [
+    ("prompt_team", "CHANGE TEAM", 28, 144, '<on event="a" run="port lobby team toggle"/>'),
+    ("prompt_invite", "%y-button INVITE LINK", 176, 124, '<on event="a" run="port lobby invite"/>'),
+    ("prompt_add", "%x-button ADD PLAYER", 324, 124, '<on event="a" run="port lobby add player"/>'),
+    ("prompt_leave", "%b-button LEAVE", 516, 96, '<on event="a" run="mouse emit back event"/>'),
+]
 # the items' descriptions, in menu_functions.c's _multiplayer_item_* order
 HUB_DESCRIPTIONS = [
     "Every public game on the Internet, OpenH1 and Legacy. Press %a-button to see them all.",
@@ -3308,7 +3584,8 @@ def parts_pictures() -> list:
     rows = [(part_row(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT), highlight(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT) +
              [(framed(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT, "#0d3a7a", 0.9, "#8cc8ff"), BROWSER_LIST_WIDTH,
                BROWSER_ROW_HEIGHT)])]
-    prompt_widths = sorted({width for *_, width, _ in BROWSER_PROMPTS + HUB_PROMPTS + PARTY_PROMPTS})
+    prompt_widths = sorted({width for *_, width, _ in BROWSER_PROMPTS + HUB_PROMPTS + PARTY_PROMPTS +
+                            LOBBY_PROMPTS})
     join_w, join_h = BROWSER_JOIN
     return [
         # (Settings' tab, then its current one: menu_functions.c's
@@ -3332,6 +3609,44 @@ def parts_pictures() -> list:
         *((part_pill(width), pill(width)) for width in (BROWSER_TICK_BADGE, BROWSER_PILL, BROWSER_WIDE_PILL)),
         (part_button(join_w, join_h), [(framed(join_w, join_h, "#1e5fd1", 0.9, "#5aa9ff"), join_w, join_h),
                                        (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h)]),
+        *lobby_pictures(framed, highlight),
+    ]
+
+
+def lobby_pictures(framed, highlight) -> list:
+    """the lobby's own parts (_lobby_board): its teams' panels, the panel of
+    a game without teams and the details panel, a player's row and dot, the
+    panel's section, controls and buttons"""
+    column_w, height = LOBBY_COLUMN_WIDTH, LOBBY_HEIGHT
+    players_w = 2 * LOBBY_COLUMN_WIDTH + LOBBY_COLUMN_GAP
+    row_w, row_h = LOBBY_ROW
+    inner, control_h = LOBBY_PANEL_INNER, LOBBY_CONTROL_HEIGHT
+    start_w, start_h = LOBBY_START
+    dot = LOBBY_DOT
+
+    def disc(color):
+        return (_svg(dot, dot, [f'  <circle cx="{dot / 2:g}" cy="{dot / 2:g}" r="{dot / 2 - 0.5:g}" '
+                                f'fill="{color}"/>']), dot, dot)
+
+    return [
+        (part_team_panel(column_w, height), [(framed(column_w, height, "#081a40", 0.9, edge, 9.5), column_w, height)
+                                             for _, edge in LOBBY_TEAM_COLORS]),
+        (part_panel(players_w, height), [(framed(players_w, height, "#081a40", 0.9, "#1f4f9a", 9.5), players_w,
+                                          height)]),
+        (part_panel(*LOBBY_PANEL[2:]), [(framed(*LOBBY_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5),
+                                         *LOBBY_PANEL[2:])]),
+        (part_player_row(row_w, row_h), [(framed(row_w, row_h, "#0b2252", 0.9, "none", 5), row_w, row_h),
+                                         (framed(row_w, row_h, "#0e2a63", 1.0, "#3d8bff", 5), row_w, row_h),
+                                         (framed(row_w, row_h, "#0d3a7a", 1.0, "#b8dbff", 5), row_w, row_h)]),
+        (part_dot(dot), [disc(color) for color, _ in LOBBY_TEAM_COLORS] + [disc(LOBBY_FREE_DOT)]),
+        (part_section(inner), [(_svg(inner, PART_SECTION_HEIGHT, [
+            f'  <rect x="0" y="{PART_SECTION_HEIGHT - 1.5:g}" width="{inner}" height="1" fill="#2995ff" '
+            'fill-opacity="0.45"/>']), inner, PART_SECTION_HEIGHT)]),
+        (part_highlight(inner, control_h), highlight(inner, control_h)),
+        (part_outline(inner, control_h), [(framed(inner, control_h, "none", 1.0, "#2f7fff"), inner, control_h),
+                                          (framed(inner, control_h, "#0d3a7a", 0.9, "#b8dbff"), inner, control_h)]),
+        (part_button(start_w, start_h), [(framed(start_w, start_h, "#1e5fd1", 0.9, "#5aa9ff"), start_w, start_h),
+                                         (framed(start_w, start_h, "#2a6fe0", 1.0, "#b8dbff"), start_w, start_h)]),
     ]
 
 

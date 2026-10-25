@@ -4891,8 +4891,9 @@ void network_game_reset_to_pregame_ui(
 	{
 		if (network_game_is_quickstart_local())
 		{
+			/* port: with the PC version's menus, the lobby (port/linux/game/menu_tags.c) */
 			if (!ui_widget_load_by_name_or_tag(
-				"ui\\shell\\main_menu\\multiplayer_type_select\\split_screen\\pregame\\splitscreen_pregame_wrapper_normal",
+				pc_menus_screen("ui\\shell\\main_menu\\multiplayer_type_select\\split_screen\\pregame\\splitscreen_pregame_wrapper_normal"),
 				NONE, NULL, NONE, NONE, NONE, NONE))
 			{
 				error(_error_silent, "failed to load pregame screen after quickstart match");

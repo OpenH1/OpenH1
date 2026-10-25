@@ -482,6 +482,9 @@ static char const *const port_function_names[] =
 	"port browser tab", "port browser tab next", "port browser tab previous", "port browser refresh",
 	/* (Multiplayer's PARTY and its screen: party_menu.inc) */
 	"port party open", "port party button", "port party x", "port party y",
+	/* (the computer's lobby: lobby_menu.inc) */
+	"port lobby team red", "port lobby team blue", "port lobby team toggle", "port lobby team click",
+	"port lobby start", "port lobby invite", "port lobby settings",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -518,6 +521,8 @@ static char const *const port_game_data_input_names[] =
 	"port connect update",
 	/* (the Party screen: party_menu.inc) */
 	"port party update",
+	/* (the computer's lobby: lobby_menu.inc) */
+	"port lobby board update",
 };
 
 static struct
@@ -573,8 +578,8 @@ static struct
 
 /* ---------- the wide layout of the port's own screens
 
-The port's screens (Settings, the server browser, Multiplayer; the lobby
-can, by the same means) use the screen's width up to 16:9; the game's own
+The port's screens (Settings, the server browser, Multiplayer, the lobby)
+use the screen's width up to 16:9; the game's own
 menus stay in the centred 640. A widget's wide attribute, "dx dw"
 (tools/port_settings.py's wide), moves it (and what is in it, as an anchor
 does) by dx and makes it dw wider on a 16:9 screen, WIDE_LAYOUT_WIDTH of the
@@ -2554,7 +2559,8 @@ short pc_menu_string_index(
 
 /* the screen the engine opens by name after a network game (the Xbox's),
 or ours where the PC version's menus are up: the host's map select, the
-lobby */
+lobby (a network game's, and a game of this machine alone's in place of the
+Xbox's split screen Select Teams) */
 char const *pc_menus_screen(
 	char const *name)
 {
@@ -2567,6 +2573,9 @@ char const *pc_menus_screen(
 		{ "ui\\shell\\main_menu\\multiplayer_type_select\\connected\\connected_map_select_postgame_wrapper",
 			"pc\\main_menu\\multiplayer_type_select\\connected\\connected_map_select_wrapper" },
 		{ "ui\\shell\\main_menu\\multiplayer_type_select\\connected\\pregame\\connected_pregame_screen",
+			"pc\\main_menu\\multiplayer_type_select\\lobby\\lobby_screen" },
+		/* (a game of this machine alone's: the lobby too, its bots in it) */
+		{ "ui\\shell\\main_menu\\multiplayer_type_select\\split_screen\\pregame\\splitscreen_pregame_wrapper_normal",
 			"pc\\main_menu\\multiplayer_type_select\\lobby\\lobby_screen" },
 	};
 	short index;

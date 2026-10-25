@@ -106,6 +106,8 @@ their handlers open opens.
 #include "text_filter.h"
 /* (the party: party_menu.inc) */
 #include "party.h"
+/* (the lobby's bots: lobby_menu.inc) */
+#include "bots.h"
 #include "bungie_net/network/transport.h"
 
 #include <stdlib.h>
@@ -3709,6 +3711,12 @@ Xbox's networking, run by the engine's port entry points
 #define MAXIMUM_GAMETYPES 100
 #define BROWSER_ROWS 15
 #define LOBBY_ROWS 11
+/* the computer's lobby's rows in each of its columns, and its columns
+(lobby_menu.inc; tools/port_settings.py's LOBBY_ROWS); the rows with a
+speaker icon, either lobby's */
+#define LOBBY_BOARD_ROWS 13
+#define LOBBY_BOARD_COLUMNS 2
+#define LOBBY_ICON_ROWS (LOBBY_BOARD_ROWS * LOBBY_BOARD_COLUMNS)
 #define TEXT_FIELD_LENGTH 128
 #define PLAYLIST_READ_ONLY_BIT 0x40000000UL
 /* (a key stroke's modifier, as input_xbox.c has them: shift, control) */
@@ -3807,6 +3815,9 @@ struct network_game *network_game_client_get_game(void *client);
 struct network_game *network_game_server_get_game(void *server);
 short network_game_client_get_local_machine_index(void);
 short network_game_client_get_seconds_to_game_start(void *client);
+/* (the lobby's team change and start, as the Xbox's pregame's: lobby_menu.inc) */
+boolean network_game_client_update_local_player_data(void *client, struct network_player *player);
+boolean network_game_client_request_start_time_change(void *client, short request_type);
 boolean network_player_is_valid(struct network_player *player);
 boolean playlist_profile_get(long index, struct game_variant *variant);
 boolean playlist_profile_get_display_name(long index, wchar_t *name);
@@ -8398,8 +8409,8 @@ static void lobby_map_show(struct widget_instance *description, char const *map_
 for their speaker icons (menu_functions_text_box_drawn); and when */
 static struct
 {
-	struct widget_instance *texts[LOBBY_ROWS];
-	long machines[LOBBY_ROWS];
+	struct widget_instance *texts[LOBBY_ICON_ROWS];
+	long machines[LOBBY_ICON_ROWS];
 	short count;
 	unsigned long updated_at;
 } lobby_icons;
@@ -9594,6 +9605,7 @@ static void gametype_engine_name(struct widget_instance *text_box)
 /* ---------- the party: Multiplayer's PARTY and its screen */
 
 #include "party_menu.inc"
+#include "lobby_menu.inc"
 
 /* ---------- public code */
 
@@ -9931,6 +9943,29 @@ boolean pc_menu_event_function_invoke(
 		{
 			return party_screen_key(widget, !strcmp(name, "port party y"), controller);
 		}
+		/* (the computer's lobby: lobby_menu.inc) */
+		else if (!strcmp(name, "port lobby team red") || !strcmp(name, "port lobby team blue") ||
+			!strcmp(name, "port lobby team toggle"))
+		{
+			return lobby_board_team(widget, controller, (short)(!strcmp(name, "port lobby team red") ? 0 :
+				!strcmp(name, "port lobby team blue") ? 1 : NONE));
+		}
+		else if (!strcmp(name, "port lobby team click"))
+		{
+			return lobby_board_click(widget, controller);
+		}
+		else if (!strcmp(name, "port lobby start"))
+		{
+			return lobby_board_start();
+		}
+		else if (!strcmp(name, "port lobby invite"))
+		{
+			return lobby_board_invite_copy();
+		}
+		else if (!strcmp(name, "port lobby settings"))
+		{
+			return lobby_board_settings(widget, widget_deleted);
+		}
 		else if (!strcmp(name, "controls screen init") || !strcmp(name, "controls screen defaults"))
 		{
 			return controls_load(!strcmp(name, "controls screen defaults"));
@@ -10102,6 +10137,8 @@ void pc_menu_game_data_function_invoke(
 		preview_update(widget);
 	else if (!strcmp(name, "port lobby update"))
 		lobby_update(widget);
+	else if (!strcmp(name, "port lobby board update"))
+		lobby_board_update(widget);
 	else if (!strcmp(name, "port settings help"))
 	{
 		sim_rate_row_show(widget);
