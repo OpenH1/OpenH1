@@ -278,12 +278,12 @@ void rasterizer_set_vertex_shader_permutation(
 			offset = 0;
 			for (packed_shader_index = 0; packed_shader_index < 3; packed_shader_index++)
 			{
-				long size;
+				UINT size;
 
 				if (IDirect3DDevice8_GetVertexShaderSize(
 					global_d3d_device,
 					vertex_shader_table[vertex_shader_runtime_globals.packed_shaders[packed_shader_index].vertex_shader_index].handle,
-					(UINT *)&size) >= 0 && success)
+					&size) >= 0 && success)
 					success = TRUE;
 				else
 				{
