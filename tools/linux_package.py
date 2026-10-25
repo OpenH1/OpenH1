@@ -12,6 +12,7 @@ anywhere and starts with bin/openh1:
     bin/openh1                                 the game
     lib/openh1/libSDL3.so.0                    its SDL (the rpath is $ORIGIN:$ORIGIN/../lib/openh1)
     share/openh1/brokers.txt                   internet play's brokers (network.brokers_file)
+    share/openh1/masters.txt                   the master servers (network.masters_file)
     share/openh1/vr                            only in the VR build's (--vr): install.sh's sign of it
     share/openh1/steam/<kind>.png              Steam's library artwork, which install.sh gives its shortcut
                                                (port/assets/steam, tools/steam_art.py; the VR build's OpenH1 VR's)
@@ -49,6 +50,7 @@ NAME = "openh1"  # install_layout.h's INSTALL_NAME
 DESKTOP_ENTRY = ROOT / "port/assets/linux/openh1.desktop"
 ICONS = ROOT / "port/assets/icon/hicolor"  # openh1-<size>.png (tools/app_icon.py)
 BROKERS = ROOT / "port/assets/network/brokers.txt"
+MASTERS = ROOT / "port/assets/network/masters.txt"
 INSTALLER = ROOT / "tools/linux_install.sh"  # the tree's install.sh (and the Steam Frame package's)
 STEAM_ART = ROOT / "port/assets/steam"  # <variant>/<kind>.png (tools/steam_art.py)
 DOCUMENTS = [(ROOT / "README.md", "README.md"), (ROOT / "port/linux/README.md", "README.linux.md")]
@@ -76,11 +78,15 @@ def notices(platform: str) -> List[Tuple[Path, str]]:
         # the menus' bitmaps), whose ISC license asks copies to carry its
         # notice
         (ROOT / "port/assets/icons/lucide/LICENSE", "lucide-LICENSE.txt"),
+        # the JSON tokenizer (port/third_party/jsmn) of the server browser's
+        # master servers' lists and a dedicated server's API, in every
+        # build, whose MIT license asks copies to carry its notice
+        (ROOT / "port/third_party/jsmn/LICENSE", "jsmn-LICENSE.txt"),
     ]
-    if platform.startswith("linux") or platform in ("macos", "ios"):
-        # the self-updater's TLS (port/third_party/mbedtls: posix_update.c,
-        # in the Linux and Apple hosts), whose Apache license asks binaries
-        # to carry it
+    if platform.startswith("linux") or platform in ("macos", "ios", "android"):
+        # the self-updater's and the master servers' TLS
+        # (port/third_party/mbedtls: posix_update.c, in the Linux, Apple and
+        # Android hosts), whose Apache license asks binaries to carry it
         pairs.insert(0, (ROOT / "port/third_party/mbedtls/LICENSE", "mbedtls-LICENSE.txt"))
     if platform in ("macos", "ios", "android"):
         # the DXT textures' ASTC encoder (port/third_party/astc-encoder), in
@@ -112,6 +118,7 @@ def stage_tree(dist: Path, executable: Path, library: Optional[Path], notices: I
     if library:
         _copy(library, dist / "lib" / NAME / library.name)
     _copy(BROKERS, dist / "share" / NAME / BROKERS.name)
+    _copy(MASTERS, dist / "share" / NAME / MASTERS.name)
     if vr:
         (dist / "share" / NAME / "vr").write_text(
             "The VR build (HALO_VR). install.sh installs it in ~/Applications/OpenH1-VR, beside the other build.\n")

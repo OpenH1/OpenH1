@@ -215,6 +215,13 @@ int p2p_friends_compare(const struct p2p_friend *first, const struct p2p_friend 
 /* seconds and milliseconds since 1970 (p2p.c) */
 long long p2p_wall_seconds(void);
 unsigned long long p2p_wall_milliseconds(void);
+/* the token of the game hosted was listed elsewhere than the brokers (a
+master server's listing: p2p_lobby_host_listing), so going private makes a
+new invite too; under p2p_lock */
+void p2p_token_listed(const unsigned char *token);
+/* the tunnel's socket's port (network byte order): a master server's
+listing of a dedicated server (server_master.c) */
+unsigned short p2p_tunnel_local_port(void);
 
 /* ---------- p2p_signal.c: signalling through public MQTT brokers */
 

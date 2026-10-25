@@ -1,8 +1,10 @@
 """The real pregame countdown of network_server_manager.c: the host's START GAME (its own faster) starts the game at
 once, with one press, for a host alone, a host with split screen players and machines together, even during a countdown
 another machine started; the other machines' requests count down as the Xbox game's did; and a machine joining without
-a player does not stop it."""
+a player does not stop it; and a dedicated server's rule, its director's (server_director.c's
+server_director_ok_to_countdown): server.min_players held to 1 to 16, server.team_start, and its own state."""
 
+import re
 import sys
 from pathlib import Path
 
@@ -16,6 +18,8 @@ CASES = [
     "two-machines-team-game-needs-both-teams", "playerless-machine-keeps-countdown",
     "split-screen-team-game-one-team", "host-start-during-countdown", "other-machines-count-down",
     "host-stop-and-start-at-once",
+    "dedicated-one-team-starts", "dedicated-both-teams-waits",
+    "dedicated-below-minimum-waits", "dedicated-minimum-clamped", "dedicated-director-refuses",
 ]
 FUNCTIONS = (
     "countdown_timer_update", "countdown_timer_get_time_remaining", "countdown_timer_increment",
@@ -63,6 +67,10 @@ NEGATIVE_CONTROLS = {
         ("return first_machine_index != NONE;", "return TRUE;"),
         "server_players_on_one_machine", "empty-lobby-waits",
     ),
+    "dedicated-rule-ignored": (
+        ("if (halo_server_mode())", "if (0)"),
+        "server_ok_to_countdown", "dedicated-one-team-starts",
+    ),
     "joined-machines-counted": (
         (
             "return first_machine_index != NONE;",
@@ -70,11 +78,49 @@ NEGATIVE_CONTROLS = {
         ),
         "server_players_on_one_machine", "playerless-machine-keeps-countdown",
     ),
+    "teams-passed-as-none": (
+        ("server_director_ok_to_countdown(server->game.player_count, server_needs_more_teams(server))",
+         "server_director_ok_to_countdown(server->game.player_count, FALSE)"),
+        "server_ok_to_countdown", "dedicated-both-teams-waits",
+    ),
+    "both-ignored": (
+        ('if (needs_more_teams && !strcmp(team_start, "both"))', "if (0)"),
+        "server_director_ok_to_countdown", "dedicated-both-teams-waits",
+    ),
+    "minimum-unchecked": (
+        ("|| player_count < minimum)", ")"),
+        "server_director_ok_to_countdown", "dedicated-below-minimum-waits",
+    ),
+    "minimum-not-floored": (
+        ('PIN(config_integer("server.min_players"), 1, 16)', 'CEILING(config_integer("server.min_players"), 16)'),
+        "server_director_ok_to_countdown", "dedicated-minimum-clamped",
+    ),
+    "minimum-not-capped": (
+        ('PIN(config_integer("server.min_players"), 1, 16)', 'MAX(config_integer("server.min_players"), 1)'),
+        "server_director_ok_to_countdown", "dedicated-minimum-clamped",
+    ),
+    "quitting-ignored": (
+        ("if (director.quitting || ", "if ("),
+        "server_director_ok_to_countdown", "dedicated-director-refuses",
+    ),
+    "state-ignored": (
+        ("director.state != _server_state_lobby || ", ""),
+        "server_director_ok_to_countdown", "dedicated-director-refuses",
+    ),
+    "entry-ignored": (
+        ("!director.entry_applied || ", ""),
+        "server_director_ok_to_countdown", "dedicated-director-refuses",
+    ),
 }
+
+
+# the director's rule (port/linux/game/server_director.c), its state named director: the test's server is the game's
+DIRECTOR_FUNCTIONS = ("server_director_ok_to_countdown",)
 
 
 def generated(fault=None, faulty_function=None):
     source = read("source/networking/network_server_manager.c")
+    director = read("port/linux/game/server_director.c")
     # (the machine and player counts are halo_port_limits.h's, which constant() does not follow into)
     with_limits = source + read("port/linux/include/halo_port_limits.h")
     config = ""
@@ -84,7 +130,14 @@ def generated(fault=None, faulty_function=None):
         config += enum_with(source, member) + "\n"
     for name in ("countdown_timer", "network_game_server_countdown_state"):
         config += structure(source, name) + "\n"
+    config += enum_with(read("port/linux/game/server_director.h"), "_server_state_lobby") + "\n"
+    config += "#define MAX(a, b) ((a) > (b) ? (a) : (b))\n"
     text = ""
+    for name in DIRECTOR_FUNCTIONS:
+        code = re.sub(r'(?<!")\bserver\.', "director.", function(director, name))
+        if fault and name == faulty_function:
+            code = mutated(code, *fault)
+        text += code + "\n"
     for name in FUNCTIONS:
         code = function(source, name)
         if fault and name == faulty_function:

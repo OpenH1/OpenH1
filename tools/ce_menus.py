@@ -68,12 +68,23 @@ LEFT_OUT = {
     # port_settings.WIDGET_PATCHES)
     "ui\\shell\\main_menu\\multiplayer_type_select\\checking_updates_screen_create",
     "ui\\shell\\main_menu\\multiplayer_type_select\\checking_updates_screen_join",
+    # (the server browser's Filters' PING, which is not known before a game
+    # is joined (the browser does not ping the master servers' servers), and
+    # TEAMPLAY OPTIONS, which the port's Filters leave to GAME TYPE)
+    "ui\\shell\\main_menu\\multiplayer_type_select\\join_game\\filters\\op_ping",
+    "ui\\shell\\main_menu\\multiplayer_type_select\\join_game\\filters\\op_game_options",
 }
 # children moved: (parent, child) to (x, y); the main menu's Quit a row below
 # Mods, which takes Credits' place; Multiplayer's Edit Gametypes and divider
 # below Co-op, keeping its 32-unit highlight inside the description panel's
 # bottom curve (port_settings.WIDGET_PATCHES)
 CHILD_OFFSETS = {
+    # the server browser's source tab (ALL GAMES, DEDICATED, P2P GAMES), 20
+    # units wider than CE's for its words (port_settings.WIDGET_PATCHES): 9
+    # units left, so that its words and arrows are centred in the tab the
+    # screen's border picture outlines (its own box is gone)
+    ("ui\\shell\\main_menu\\multiplayer_type_select\\join_game\\op_browser_mode",
+     "ui\\shell\\main_menu\\multiplayer_type_select\\join_game\\browser_mode_spinner"): (16, 1),
     # Player Options' rows 27 apart, not 30, so that the host's AIM ASSIST and
     # SHIELD EFFECTS fit below them and above the help, which some fill with
     # three lines (port_settings.WIDGET_PATCHES)
@@ -158,6 +169,9 @@ WIRED = {
     "mouse emit x event", "emit custom activation event", "single prev cl item activated", "controls back handler",
     "gamespy back handler", "gamespy dismiss error", "gamespy dismiss filters", "gamespy screen init",
     "gamespy screen dispose", "mp type set mode",
+    # (the server browser's: menu_functions.c's lobby_browser_*)
+    "gamespy select header", "gamespy select button", "gamespy select item", "gamespy screen update",
+    "gamespy update filter settings",
     "campaign menu init", "campaign menu continue", "difficulty item select", "solo map list update",
     "load game menu init", "load game menu dispose", "load game menu activated", "load game list update",
     "load game menu delete request", "load game menu delete finish",

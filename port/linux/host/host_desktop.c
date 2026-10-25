@@ -587,3 +587,97 @@ int host_app_is_playing(void)
 {
 	return atomic_load(&host_playing);
 }
+
+/* ---------- a dedicated server's signals, which the host owns
+(port/linux/src/posix_server.c, in the guest) */
+
+#include <signal.h>
+
+enum
+{
+	/* posix_server.h's bits */
+	HOST_SERVER_SIGNAL_QUIT = 1,
+	HOST_SERVER_SIGNAL_RELOAD = 2,
+	HOST_SERVER_SIGNAL_STATUS = 4,
+};
+
+static _Atomic int host_server_signals;
+static _Atomic int host_server_quit_signal;
+static _Atomic int host_server_quit_count;
+static _Atomic int host_server_deadline_code;
+
+static void host_server_signal(int number)
+{
+	switch (number)
+	{
+	case SIGTERM:
+	case SIGINT:
+		/* (a second one: at once) */
+		if (atomic_fetch_add(&host_server_quit_count, 1))
+			_Exit(128 + number);
+		atomic_store(&host_server_quit_signal, number);
+		atomic_fetch_or(&host_server_signals, HOST_SERVER_SIGNAL_QUIT);
+		break;
+#ifndef _WIN32
+	case SIGHUP:
+		atomic_fetch_or(&host_server_signals, HOST_SERVER_SIGNAL_RELOAD);
+		break;
+	case SIGUSR1:
+		atomic_fetch_or(&host_server_signals, HOST_SERVER_SIGNAL_STATUS);
+		break;
+#endif
+	}
+#ifdef _WIN32
+	/* (Windows's handler is reset after each signal) */
+	signal(number, host_server_signal);
+#endif
+}
+
+void host_server_signals_install(void)
+{
+#ifdef _WIN32
+	signal(SIGINT, host_server_signal);
+	signal(SIGTERM, host_server_signal);
+#else
+	struct sigaction action;
+
+	memset(&action, 0, sizeof(action));
+	action.sa_handler = host_server_signal;
+	/* (the others held while one is handled) */
+	sigfillset(&action.sa_mask);
+	sigaction(SIGTERM, &action, NULL);
+	sigaction(SIGINT, &action, NULL);
+	sigaction(SIGHUP, &action, NULL);
+	sigaction(SIGUSR1, &action, NULL);
+	signal(SIGPIPE, SIG_IGN);
+	signal(SIGTTIN, SIG_IGN);
+	signal(SIGTTOU, SIG_IGN);
+#endif
+}
+
+int host_server_signals_take(void)
+{
+	int taken = atomic_exchange(&host_server_signals, 0);
+
+	return taken | (atomic_load(&host_server_quit_signal) << 8);
+}
+
+static int SDLCALL host_server_deadline(void *context)
+{
+	int quit = atomic_load(&host_server_quit_signal);
+
+	SDL_Delay((Uint32)(uintptr_t)context);
+	_Exit(quit ? 128 + quit : atomic_load(&host_server_deadline_code));
+	return 0;
+}
+
+void host_server_quit_deadline(int seconds, int exit_code)
+{
+	SDL_Thread *thread;
+
+	atomic_store(&host_server_deadline_code, exit_code);
+	thread = SDL_CreateThread(host_server_deadline, "server deadline",
+		(void *)(uintptr_t)(1000U * (unsigned int)(seconds > 0 ? seconds : 1)));
+	if (thread)
+		SDL_DetachThread(thread);
+}

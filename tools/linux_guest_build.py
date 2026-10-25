@@ -357,5 +357,8 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     # internet play's MQTT brokers, a file beside the game (network.brokers_file)
     brokers = build / "brokers.txt"
     n.build(outputs=brokers, rule=f"{prefix}_copy", inputs=Path("port/assets/network/brokers.txt"))
-    n.build(outputs=target.name, rule="phony", inputs=[output, staged_sdl, sdl_license, brokers])
+    # ... and the master servers of dedicated servers (network.masters_file)
+    masters = build / "masters.txt"
+    n.build(outputs=masters, rule=f"{prefix}_copy", inputs=Path("port/assets/network/masters.txt"))
+    n.build(outputs=target.name, rule="phony", inputs=[output, staged_sdl, sdl_license, brokers, masters])
     n.newline()

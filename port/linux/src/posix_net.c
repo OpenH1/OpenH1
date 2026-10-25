@@ -697,6 +697,10 @@ posix_ulong posix_resolve_ipv4(const char *host)
 
 /* ---------- the process and the desktop */
 
+#ifdef __APPLE__
+#include <crt_externs.h>
+#endif
+
 int posix_command_line_argument(int index, char *buffer, posix_ulong size)
 {
 #ifdef __ANDROID__
@@ -704,6 +708,12 @@ int posix_command_line_argument(int index, char *buffer, posix_ulong size)
 	(void)buffer;
 	(void)size;
 	return 0;
+#elif defined(__APPLE__)
+	/* (the macOS host's: Darwin has no /proc) */
+	if (!size || index < 0 || index >= *_NSGetArgc())
+		return 0;
+	snprintf(buffer, size, "%s", (*_NSGetArgv())[index]);
+	return 1;
 #else
 	char command_line[4096];
 	ssize_t length;

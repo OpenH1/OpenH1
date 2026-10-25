@@ -701,6 +701,7 @@ double config_real(const char *name);
 void vr_seat_test_update(void);
 void vr_death_test_update(void);
 #endif
+#include "server_director.h" /* port: port/linux/game/server_director.c */
 
 /* ---------- prototypes */
 
@@ -3226,6 +3227,10 @@ void halt_and_catch_fire(
 	char label[96];
 	#endif
 
+	/* port: a dedicated server has no screen to halt on: its error logged,
+	it ends with exit code 1 (port/linux/game/server_director.c) */
+	if (halo_server_mode())
+		server_fatal(error_get());
 	if (!global_screenshot_count.halt_recursion_lock)
 	{
 		scenario = global_scenario_try_and_get();
@@ -3349,6 +3354,9 @@ void halt_and_catch_fire(
 void main_loop_of_death(
 	void)
 {
+	/* port: as halt_and_catch_fire, on a dedicated server */
+	if (halo_server_mode())
+		server_fatal(error_get());
 	while (TRUE)
 	{
 		input_frame_begin();
@@ -3630,6 +3638,9 @@ void main_loop(
 
 			/* automated system link tests (port/linux/game/network_test.c) */
 			network_test_update(main_globals.main_menu_scenario_loaded, main_globals.seconds_elapsed);
+			/* port: a dedicated server's hosting, rotation and commands
+			(port/linux/game/server_director.c) */
+			server_update(main_globals.main_menu_scenario_loaded, main_globals.seconds_elapsed);
 			/* port: voice chat, in the lobby and in game (port/linux/game/network_voice.c) */
 			network_voice_update();
 
@@ -3713,7 +3724,17 @@ void main_loop(
 			}
 			profile_scope_exit(main_network_start_frame_section)
 
-			profile_scope(main_update_time_section, main_update_time();)
+			/* port: a dedicated server's frames paced by its clock, with no
+			display to wait for (port/linux/src/server_mode.c) */
+			if (halo_server_mode())
+			{
+				server_mode_pace_frame();
+				profile_scope(main_update_time_section, main_update_time_unthrottled();)
+			}
+			else
+			{
+				profile_scope(main_update_time_section, main_update_time();)
+			}
 			profile_scope_enter(main_ui_update_section)
 			process_ui_widgets();
 			bink_playback_update();
@@ -3798,14 +3819,16 @@ void main_loop(
 					profile_render_end();
 				}
 			}
-			else
+			/* port: nothing drawn on a dedicated server, nor waited for */
+			else if (!halo_server_mode())
 			{
 				profile_render_start();
 				main_pregame_render();
 				profile_render_end();
 			}
 
-			profile_scope(main_throttle_section, main_rasterizer_throttle();)
+			if (!halo_server_mode())
+				profile_scope(main_throttle_section, main_rasterizer_throttle();)
 
 			if (render_frame && !debug_no_drawing)
 			{

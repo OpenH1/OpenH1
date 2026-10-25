@@ -5229,6 +5229,16 @@ static boolean game_from_peer(struct advertised_game const *game)
 	return p2p_peer_address(game->xnaddr + 2, &address) != 0;
 }
 
+/* (network_test.c's probe of an invite's game, halo --probe) whether the
+client's index'th advertised game came from internet play's peers */
+boolean menu_advertised_game_from_peer(long index)
+{
+	void *client = global_network_game_client_get();
+	struct advertised_game *games = client ? network_game_client_get_available_games(client) : NULL;
+
+	return games && index >= 0 && index < MAXIMUM_ADVERTISED_GAMES && game_from_peer(&games[index]);
+}
+
 static boolean advertised_in_progress(struct advertised_game *game)
 {
 	return network_game_client_advertised_game_in_progress(global_network_game_client_get(), game);
@@ -5887,9 +5897,11 @@ other way, the title brighter with its arrow; X (Tab on the keyboard) sorts
 by the next column's. The favorites stay first, each part sorted alike; in
 the order the lists open in (the most players first), the dedicated servers
 come before the games players host. The tabs
-(LB and RB, Q and E, A or a click on one) show every game, OpenH1's own,
-Legacy ones (OpenCE's netcode: port/linux/game/network_standard.c), co-op
-games, or the favorites. Nothing is sent: it is the lists', and kept while
+(LB and RB, Q and E, A or a click on one) show every game, the dedicated
+servers (on the LAN by their advertisement's word, on the internet by a
+master server's: port/linux/src/master_list.c), OpenH1's own, Legacy ones
+(OpenCE's netcode: port/linux/game/network_standard.c), co-op games, or the
+favorites. Nothing is sent: it is the lists', and kept while
 the game runs */
 
 enum
@@ -5906,6 +5918,7 @@ enum
 enum
 {
 	_browser_tab_all,
+	_browser_tab_dedicated,
 	_browser_tab_openh1,
 	_browser_tab_legacy,
 	_browser_tab_coop,
@@ -6021,6 +6034,8 @@ static boolean browser_tab_shows(struct browser_sort_entry const *entry, boolean
 {
 	switch (browser_tab)
 	{
+	case _browser_tab_dedicated:
+		return entry->dedicated;
 	case _browser_tab_openh1:
 		return entry->openh1;
 	case _browser_tab_legacy:
@@ -6178,7 +6193,10 @@ for, newer games it cannot join), into text */
 static void browser_empty_text(short mode, short tab, boolean online, boolean public_lobby, boolean looking,
 	int newer, wchar_t *text, short size)
 {
-	static wchar_t const *const kinds[NUMBER_OF_BROWSER_TABS] = { L"", L"OpenH1 ", L"Legacy ", L"co-op ", L"" };
+	static wchar_t const *const kinds[NUMBER_OF_BROWSER_TABS] =
+	{
+		L"", L"dedicated server ", L"OpenH1 ", L"Legacy ", L"co-op ", L"",
+	};
 	boolean server_browser = mode == _multiplayer_mode_server_browser;
 
 	if (mode == _multiplayer_mode_direct_link)
@@ -6276,8 +6294,11 @@ struct browser_row
 	short ping, ping_state;
 	short rate;
 	boolean openh1, mixed, locked, open, in_progress, offline;
-	/* a dedicated server's (OpenCE's halo --server: no player of its own) */
+	/* a dedicated server's (halo --server: no player of its own), and who
+	runs it and where, as a master server lists it (empty: not said) */
 	boolean dedicated;
+	wchar_t publisher[P2P_LISTING_PUBLISHER_SIZE + 1];
+	wchar_t region[P2P_LISTING_REGION_SIZE + 1];
 	/* a local network game's machines */
 	short machines;
 	/* its room for this machine's party (_browser_party_*), and the
@@ -6329,8 +6350,13 @@ static void browser_listing_row(struct p2p_listing const *game, struct browser_r
 	row->maximum_players = game->maximum_player_count;
 	row->bots = game->bots;
 	row->ping = game->ping;
+	/* (a master server's game is not probed: the players' addresses are
+	not told to every server listed, p2p_lobby.c) */
 	row->ping_state = game->failed ? _browser_ping_failed : game->ping >= 0 ? _browser_ping_measured :
-		game->locked ? _browser_ping_locked : _browser_ping_measuring;
+		game->locked || game->master ? _browser_ping_locked : _browser_ping_measuring;
+	row->dedicated = game->dedicated != 0;
+	text_to_wide(game->publisher, row->publisher, NUMBEROF(row->publisher));
+	text_to_wide(game->region, row->region, NUMBEROF(row->region));
 	row->rate = game->rate;
 	row->openh1 = game->standard != 0;
 	row->mixed = game->mixed != 0;
@@ -6603,6 +6629,7 @@ static void browser_panel_show(struct widget_instance *list, struct browser_row 
 static void browser_status_text(struct browser_row const *row, wchar_t *text, short size)
 {
 	wchar_t machines[32];
+	wchar_t server[P2P_LISTING_PUBLISHER_SIZE + P2P_LISTING_REGION_SIZE + 32];
 	wchar_t party[80];
 	wchar_t playlist[MATCHMAKING_PLAYLIST_NAME_SIZE * 2 + 16];
 
@@ -6639,7 +6666,15 @@ static void browser_status_text(struct browser_row const *row, wchar_t *text, sh
 			usnprintf(playlist, NUMBEROF(playlist) - 1, L"Matchmaking: %s. ", name);
 		playlist[NUMBEROF(playlist) - 1] = 0;
 	}
-	usnprintf(text, size - 1, L"%s%s%s%s%s%s", row->dedicated ? L"A dedicated server. " : L"", playlist, party,
+	/* (a dedicated server's, who runs it and where, first) */
+	server[0] = 0;
+	if (row->dedicated)
+	{
+		usnprintf(server, NUMBEROF(server) - 1, L"A dedicated server%s%s%s%s. ", row->publisher[0] ? L" by " : L"",
+			row->publisher, row->region[0] ? L", " : L"", row->region);
+		server[NUMBEROF(server) - 1] = 0;
+	}
+	usnprintf(text, size - 1, L"%s%s%s%s%s%s", server, playlist, party,
 		!row->open ? L"Full or starting. " :
 		row->in_progress ? L"Under way: its lobby shows first. " : L"",
 		row->locked ? L"It has a password. " : L"", machines);
@@ -7047,8 +7082,8 @@ static short lobby_browser_favorites(short count)
 		entries[index].rate = game->rate;
 		entries[index].openh1 = game->standard != 0;
 		entries[index].coop = game->engine_type == 0;
-		/* (on a master server's word alone, which this build hears from none) */
-		entries[index].dedicated = FALSE;
+		/* (on a master server's word alone: p2p_lobby.c) */
+		entries[index].dedicated = game->dedicated != 0;
 		settings_wide_copy(entries[index].mode, game_kind_name(game->engine_type, game->kind, FALSE),
 			BROWSER_MODE_LENGTH);
 	}

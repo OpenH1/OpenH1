@@ -81,6 +81,13 @@ int host_update_launch(const char *path);
 int host_update_restart(const char *path);
 /* (the macOS app's updater: updater.c's updater_poll, port/macos/host_app.m) */
 void host_app_playing(int playing);
+/* a dedicated server's signals, which the host owns (port/linux/src/
+posix_server.c): installed; those that came since the last take (its bits,
+and the last quitting signal's number times 256); the process ended unless
+it has in seconds */
+void host_server_signals_install(void);
+int host_server_signals_take(void);
+void host_server_quit_deadline(int seconds, int exit_code);
 
 /* ---------- general */
 
@@ -160,6 +167,63 @@ void SDL_DestroyMutex(SDL_Mutex *mutex)
 		return;
 	pthread_mutex_destroy((pthread_mutex_t *)mutex);
 	free(mutex);
+}
+
+/* (a dedicated server's master servers' thread: server_master.c) */
+SDL_Condition *SDL_CreateCondition(void)
+{
+	pthread_cond_t *condition = malloc(sizeof(*condition));
+
+	if (condition && pthread_cond_init(condition, NULL) != 0)
+	{
+		free(condition);
+		condition = NULL;
+	}
+	return (SDL_Condition *)condition;
+}
+
+void SDL_DestroyCondition(SDL_Condition *condition)
+{
+	if (!condition)
+		return;
+	pthread_cond_destroy((pthread_cond_t *)condition);
+	free(condition);
+}
+
+void SDL_SignalCondition(SDL_Condition *condition)
+{
+	if (condition)
+		pthread_cond_signal((pthread_cond_t *)condition);
+}
+
+void SDL_BroadcastCondition(SDL_Condition *condition)
+{
+	if (condition)
+		pthread_cond_broadcast((pthread_cond_t *)condition);
+}
+
+bool SDL_WaitConditionTimeout(SDL_Condition *condition, SDL_Mutex *mutex, Sint32 milliseconds)
+{
+	struct timespec until;
+
+	if (!condition || !mutex)
+		return false;
+	if (milliseconds < 0)
+		return pthread_cond_wait((pthread_cond_t *)condition, (pthread_mutex_t *)mutex) == 0;
+	clock_gettime(CLOCK_REALTIME, &until);
+	until.tv_sec += milliseconds / 1000;
+	until.tv_nsec += (long)(milliseconds % 1000) * 1000000L;
+	if (until.tv_nsec >= 1000000000L)
+	{
+		until.tv_sec++;
+		until.tv_nsec -= 1000000000L;
+	}
+	return pthread_cond_timedwait((pthread_cond_t *)condition, (pthread_mutex_t *)mutex, &until) == 0;
+}
+
+void SDL_WaitCondition(SDL_Condition *condition, SDL_Mutex *mutex)
+{
+	SDL_WaitConditionTimeout(condition, mutex, -1);
 }
 
 struct guest_sdl_thread
@@ -954,3 +1018,4 @@ int update_restart(const char *path)
 {
 	return host_update_restart(path);
 }
+
