@@ -76,6 +76,12 @@ NEGATIVE_CONTROLS = {
                           "\terror(_error_log, \"party: machine #%ld took"), "holds"),
     "joiner-of-no-party": (("\tgroup = party_machine_group(machine_index, address);",
                             "\tgroup = party_machine_group(machine_index, 0);"), "holds"),
+    "asked-before-taken-in": ((" || (!party_host() && !party_client_accepted()) ||", " ||"), "holds"),
+    "unanswered-never-asked-again": (("party_globals.hold_answered || party_globals.hold_asks >= PARTY_HOLD_ASKS ||",
+                                      "1 ||"), "holds"),
+    "asked-again-for-ever": (("party_globals.hold_answered || party_globals.hold_asks >= PARTY_HOLD_ASKS ||",
+                              "party_globals.hold_answered ||"), "holds"),
+    "answer-not-heard": (("\t\tparty_globals.hold_answered = TRUE;\n", ""), "holds"),
 }
 
 

@@ -426,6 +426,26 @@ static short network_game_client_get_local_machine_index(void)
 	return connection == _game_connection_network_server ? HOST_MACHINE : OPENH1_MACHINE;
 }
 
+/* this machine's client, and whether its host has accepted it (its join) */
+struct network_game_client
+{
+	int unused;
+};
+
+static struct network_game_client this_client;
+static boolean client_accepted = TRUE;
+
+static struct network_game_client *global_network_game_client_get(void)
+{
+	return &this_client;
+}
+
+static short network_game_client_get_machine_index(struct network_game_client *client)
+{
+	(void)client;
+	return client_accepted ? network_game_client_get_local_machine_index() : NONE;
+}
+
 static int p2p_party_invite_link(char *link, int size)
 {
 	invite_links_asked++;
@@ -499,6 +519,7 @@ static void game(short as)
 	invite_links_asked = 0;
 	sent_count = 0;
 	party_member_count = 0;
+	client_accepted = TRUE;
 	host_game.player_count = 5;
 	host_game.maximum_players = 16;
 	player_add(HOST_PLAYER, HOST_MACHINE, as == _game_connection_network_server, L"Hosty");
@@ -1021,10 +1042,15 @@ static void case_holds(void)
 {
 	short index;
 
-	/* a client leading a party asks its host to hold room for its members */
+	/* a client leading a party asks its host to hold room for its members,
+	once the host has taken it in */
 	game(_game_connection_network_client);
+	client_accepted = FALSE;
 	members_are(5, 2);
 	sent_count = 0;
+	frame(PARTY_HOLD_READ_MILLISECONDS + 1);
+	CHECK(sent_last(_distributed_message_party_hold) == NONE, "not while its join is not taken yet");
+	client_accepted = TRUE;
 	frame(PARTY_HOLD_READ_MILLISECONDS + 1);
 	index = sent_last(_distributed_message_party_hold);
 	CHECK(index != NONE && sent[index].machine_index == NONE && sent[index].count == 2 &&
@@ -1040,11 +1066,32 @@ static void case_holds(void)
 	CHECK(_distributed_message_party_hold >= FIRST_OPENH1_DISTRIBUTED_MESSAGE, "as one of OpenH1's own messages");
 	sent_count = 0;
 	frame(PARTY_HOLD_ASK_MILLISECONDS + 1);
-	CHECK(sent_last(_distributed_message_party_hold) == NONE, "not again while its members are the same");
+	CHECK(sent_last(_distributed_message_party_hold) == NONE, "not again at once while its members are the same");
+	frame(PARTY_HOLD_RETRY_MILLISECONDS);
+	CHECK(sent_last(_distributed_message_party_hold) != NONE, "asked again, the host not answering");
+	frame(PARTY_HOLD_RETRY_MILLISECONDS + 1);
+	sent_count = 0;
+	frame(PARTY_HOLD_RETRY_MILLISECONDS + 1);
+	frame(PARTY_HOLD_RETRY_MILLISECONDS + 1);
+	CHECK(sent_last(_distributed_message_party_hold) == NONE, "but PARTY_HOLD_ASKS times at most");
 	members_are(5, 3);
 	frame(PARTY_HOLD_ASK_MILLISECONDS + 1);
 	index = sent_last(_distributed_message_party_hold);
 	CHECK(index != NONE && sent[index].count == 3, "again when they change");
+	{
+		struct distributed_party_held_message answer;
+
+		memset(&answer, 0, sizeof(answer));
+		answer.header.type = _distributed_message_party_held;
+		answer.header.count = 1;
+		answer.answer.format = PARTY_HOLD_FORMAT;
+		answer.answer.asked = 3;
+		answer.answer.held = 3;
+		network_party_handle_message(NONE, (word const *)&answer, sizeof(answer), TRUE);
+	}
+	sent_count = 0;
+	frame(PARTY_HOLD_RETRY_MILLISECONDS + 1);
+	CHECK(sent_last(_distributed_message_party_hold) == NONE, "not again once answered");
 	game(_game_connection_network_client);
 	sent_count = 0;
 	frame(PARTY_HOLD_READ_MILLISECONDS + 1);

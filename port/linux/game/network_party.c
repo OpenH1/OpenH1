@@ -103,6 +103,7 @@ taking those keys from the game and the menus while it is shown.
 #include "network_party.h"
 #include "halo_keyboard.h"
 #include "bots.h"
+#include "networking/network_client_manager.h"
 #include "networking/network_game_globals.h"
 #include "networking/network_game_manager.h"
 #include "networking/network_server_manager.h"
@@ -182,9 +183,12 @@ enum
 	/* the grants a machine may have in a game (each replacing the last) */
 	PARTY_HOLD_GRANTS = 3,
 	/* a leader's members read this often, and asked for again (changed) no
-	sooner than this */
+	sooner than this; an ask the host has not answered made again this
+	often, so many times (a host that holds nothing never answers) */
 	PARTY_HOLD_READ_MILLISECONDS = 500,
 	PARTY_HOLD_ASK_MILLISECONDS = 2000,
+	PARTY_HOLD_RETRY_MILLISECONDS = 5000,
+	PARTY_HOLD_ASKS = 3,
 };
 
 /* ---------- structures */
@@ -321,6 +325,10 @@ static struct
 	short hold_asked_count;
 	byte hold_asked[MAXIMUM_PARTY_HOLD_MEMBERS * PARTY_KEY_HASH_SIZE];
 	unsigned long hold_asked_time;
+	/* ... how many times they were (a client), and whether the host
+	answered */
+	short hold_asks;
+	boolean hold_answered;
 	unsigned long list_time;
 	struct distributed_party_player sent[MAXIMUM_TRACKED_PLAYERS];
 	short sent_count;
@@ -1172,7 +1180,8 @@ static void party_host_hold_heard(
 /* a leader: its party's members (into key_hashes, their count), read each
 PARTY_HOLD_READ_MILLISECONDS; TRUE when they are new to this game, or have
 changed since they were last asked for (no sooner than
-PARTY_HOLD_ASK_MILLISECONDS after) */
+PARTY_HOLD_ASK_MILLISECONDS after), or (a client) the host has not answered
+in PARTY_HOLD_RETRY_MILLISECONDS, PARTY_HOLD_ASKS times at most */
 static boolean party_hold_members_changed(
 	byte *key_hashes,
 	short *count,
@@ -1187,12 +1196,32 @@ static boolean party_hold_members_changed(
 	if (*count == party_globals.hold_asked_count &&
 		!csmemcmp(key_hashes, party_globals.hold_asked, *count * PARTY_KEY_HASH_SIZE))
 	{
-		return FALSE;
+		if (party_host() || !*count || party_globals.hold_answered || party_globals.hold_asks >= PARTY_HOLD_ASKS ||
+			now - party_globals.hold_asked_time < PARTY_HOLD_RETRY_MILLISECONDS)
+		{
+			return FALSE;
+		}
+	}
+	else
+	{
+		party_globals.hold_asks = 0;
+		party_globals.hold_answered = FALSE;
 	}
 	party_globals.hold_asked_count = *count;
 	csmemcpy(party_globals.hold_asked, key_hashes, *count * PARTY_KEY_HASH_SIZE);
 	party_globals.hold_asked_time = now | 1;
+	party_globals.hold_asks++;
 	return *count > 0;
+}
+
+/* (a client) the host has taken this machine into its game: its join
+accepted, its machine given its index (asked before, a hold is let go) */
+static boolean party_client_accepted(
+	void)
+{
+	struct network_game_client *client = global_network_game_client_get();
+
+	return client && network_game_client_get_machine_index(client) != NONE;
 }
 
 /* a leader of a party: room for its members asked of the host (a client),
@@ -1203,7 +1232,7 @@ static void party_hold_update(
 	byte key_hashes[MAXIMUM_PARTY_HOLD_MEMBERS * PARTY_KEY_HASH_SIZE];
 	short count = 0;
 
-	if (!TEST_FLAG(party_globals.own_flags, _party_status_online_bit) ||
+	if (!TEST_FLAG(party_globals.own_flags, _party_status_online_bit) || (!party_host() && !party_client_accepted()) ||
 		!party_hold_members_changed(key_hashes, &count, now))
 	{
 		return;
@@ -1471,6 +1500,7 @@ void network_party_handle_message(
 		csmemcpy(&answer, entries, sizeof(answer));
 		if (answer.format != PARTY_HOLD_FORMAT)
 			return;
+		party_globals.hold_answered = TRUE;
 		error(_error_log, "party: the host holds room for %d of this party's %d other members, for %d seconds",
 			answer.held, answer.asked, answer.seconds);
 		break;
