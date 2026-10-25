@@ -125,6 +125,9 @@ void host_android_path(int which, char *buffer, unsigned int size);
 /* the edges where Android keeps its gestures, as left, top, right, bottom
 in pixels of the current orientation, into insets[4]; all 0 when unknown */
 void host_gesture_insets(int *insets);
+/* display.orientation: asks the activity for the way up, 0 landscape, 1
+portrait (either way up), 2 whichever way the device is held */
+void host_orientation(int which);
 
 /* ---------- the on-screen touch controls (host_touch.c, android_imports.list) */
 

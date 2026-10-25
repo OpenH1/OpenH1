@@ -354,7 +354,7 @@ These settings are only for Android:
 | `debug.memory_watch` | `true` (the default): the app notices the game's writes to textures and vertices by page protection. `false`: it compares page contents once a frame instead, which is slower. Refer to "Limits". |
 | `display.astc_textures` | `"auto"` (the default): on a GPU without BC's formats (Mali, PowerVR) that samples ASTC, the maps' DXT textures are transcoded to ASTC 4x4, a quarter of the memory and bandwidth of the decoded textures; their few blocks that need encoding are encoded on worker threads the first time and kept in the app's cache folder. `"off"`: decoded, as before. Checked on a Pixel 11 Pro (PowerVR); the emulator, whose ASTC is emulated, draws those textures black. The log says which (`vulkan: DXT textures as ...`). Refer to [port/linux/README.md](../linux/README.md#settings). |
 | `display.picture_position` | Where the picture sits on a screen taller than it, such as the inner screen of a folding phone, a tablet or a window in split screen. `"center"` (the default) leaves black above and below it. `"top"` puts all the black below it, where the touch controls under the thumbs are. A window taller than it is wide (portrait) has the picture under the strip along the top, lowered into the space above the touch controls when there is room. |
-| `display.orientation` | `"landscape"` (the default) or `"portrait"`, from the next start. In portrait a strip along the top holds back, pause and the touch toolbar; the picture is under it, lowered into the middle of the space above the touch controls when there is room; when there is none (a folding phone's inner screen, half a phone in split screen) it moves up, as far as the top of the screen, to clear the controls, and pause and the toolbar's hide move to the middle of the strip, off the corners of the game's HUD. |
+| `display.orientation` | `"landscape"` (the default), `"portrait"`, or `"auto"`, whichever way the device is held (as its own rotation lock allows); a change applies at once, the game turning in place. In portrait a strip along the top holds back, pause and the touch toolbar; the picture is under it, lowered into the middle of the space above the touch controls when there is room; when there is none (a folding phone's inner screen, half a phone in split screen) it moves up, as far as the top of the screen, to clear the controls, and pause and the toolbar's hide move to the middle of the strip, off the corners of the game's HUD. |
 | `display.picture_shape` | The shape of the picture on a screen taller than it: `"4:3"` (the default, the Xbox's) or `"16:9"`, which sees more to the sides and leaves more of the screen to the touch controls. |
 | `display.frame_style` | The look of the screen around the picture in portrait: `"plain"` (the default) black, `"halo"` (navy, with the HUD's cyan lines and rings) or `"xbox"` (ribbed black, with green). It is never drawn over the picture. |
 
@@ -427,7 +427,7 @@ folded or unfolded mid-game. The window can have any shape and size from
 again. A window taller than 4:3 has the 640 columns across its width, with
 black above and below (`display.picture_position` puts all of it below;
 `display.picture_shape` makes the picture 16:9). In full screen the game
-stays in landscape unless `display.orientation` is `"portrait"`; a
+stays in landscape unless `display.orientation` is `"portrait"` or `"auto"`; a
 portrait-shaped window has a strip along the top (back, pause and the
 toolbar), the picture under it and the touch controls below it.
 

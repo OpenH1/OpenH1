@@ -412,9 +412,10 @@ PAGES = {
             ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
              "How wide you see on foot, in degrees across a 16:9 screen. Default keeps the Xbox's view; wider shows "
              "more around you.", None),
-            ("ORIENTATION", "display.orientation", [("LANDSCAPE", "landscape"), ("PORTRAIT", "portrait")],
-             "Which way up you hold the device, from the next start. Portrait has a strip of buttons along the "
-             "top, the picture under it and the touch controls below it.", "android"),
+            ("ORIENTATION", "display.orientation",
+             [("LANDSCAPE", "landscape"), ("PORTRAIT", "portrait"), ("AUTO", "auto")],
+             "Which way up you hold the device. Portrait has a strip of buttons along the top, the picture under "
+             "it and the touch controls below it. Auto turns with the device.", "android"),
             ("SCREEN LAYOUT ›", None, _page_screen(*SCREEN_LAYOUT),
              "Where the picture sits on a screen taller than it, its shape, and the frame around it in portrait.",
              "android"),

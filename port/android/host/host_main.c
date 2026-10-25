@@ -127,6 +127,40 @@ void host_gesture_insets(int *insets)
 	}
 }
 
+/* the guest's, display.orientation (sdl_platform.c's orientation_apply): 0
+landscape, 1 portrait (either way up), 2 whichever way the device is held,
+as its own rotation lock allows; Activity.setRequestedOrientation, which
+turns the window in place (HaloActivity's configChanges); SDL asks only as
+it makes the window. Logged, so the log shows each request. */
+void host_orientation(int which)
+{
+	/* ActivityInfo's SCREEN_ORIENTATION_USER_LANDSCAPE, _USER_PORTRAIT and
+	_FULL_USER */
+	static const jint requests[] = { 11, 12, 13 };
+	static const char *const names[] = { "landscape", "portrait", "auto" };
+	JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+	jobject activity = (jobject)SDL_GetAndroidActivity();
+
+	if (which < 0 || which > 2)
+		which = 0;
+	if (env && activity)
+	{
+		jclass activity_class = (*env)->GetObjectClass(env, activity);
+		jmethodID method = activity_class ? (*env)->GetMethodID(env, activity_class, "setRequestedOrientation", "(I)V") : NULL;
+
+		if (method)
+			(*env)->CallVoidMethod(env, activity, method, requests[which]);
+		/* (a Java exception left pending would break the thread's next JNI
+		call) */
+		if ((*env)->ExceptionCheck(env))
+			(*env)->ExceptionClear(env);
+		if (activity_class)
+			(*env)->DeleteLocalRef(env, activity_class);
+		(*env)->DeleteLocalRef(env, activity);
+	}
+	host_logf(HOST_LOG_INFO, "orientation %s", names[which]);
+}
+
 /* Whether the app runs through an ARM translator. The x86 emulator runs the
 app's ARM code through one, which ro.dalvik.vm.native.bridge names; it
 cannot deliver the page faults of the write tracking to the app

@@ -327,10 +327,11 @@ static const struct config_setting config_settings[] =
 		"(lowered into the space above the controls when there is room)." },
 	{ "display.orientation", _config_string, "\"landscape\"", "HALO_ORIENTATION", _environment_value,
 		_platform_android,
-		"Which way up the game is held, from the next start: \"landscape\", or\n"
+		"Which way up the game is held, changing at once: \"landscape\",\n"
 		"\"portrait\", with a strip along the top for back, pause and the touch\n"
 		"toolbar, the picture under it and the touch controls in the space\n"
-		"below it (display.picture_shape, display.frame_style)." },
+		"below it (display.picture_shape, display.frame_style), or \"auto\",\n"
+		"whichever way the device is held (as its own rotation lock allows)." },
 	{ "display.picture_shape", _config_string, "\"4:3\"", "HALO_PICTURE_SHAPE", _environment_value,
 		_platform_android,
 		"The picture's shape on a screen taller than it (portrait, a folding\n"
@@ -2816,7 +2817,7 @@ static const struct
 	{ "display.anti_aliasing", { "off", "fxaa", "smaa", "ssaa2x", "msaa2x", "msaa4x", "msaa8x", NULL }, NULL },
 	{ "display.astc_textures", { "auto", "always", "off", NULL }, NULL },
 	{ "display.picture_position", { "center", "top", NULL }, NULL },
-	{ "display.orientation", { "landscape", "portrait", NULL }, NULL },
+	{ "display.orientation", { "landscape", "portrait", "auto", NULL }, NULL },
 	{ "display.picture_shape", { "4:3", "16:9", NULL }, NULL },
 	{ "display.frame_style", { "plain", "halo", "xbox", NULL }, NULL },
 	{ "display.hud_button_style", { "classic", "gems", "menu_gems", NULL }, NULL },

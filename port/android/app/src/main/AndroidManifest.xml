@@ -76,7 +76,8 @@
              on a folding phone folded or unfolded mid-game, the window
              changes size in place (the Vulkan swapchain is made again, the
              touch controls are laid out again); full screen stays landscape
-             (SDL_HINT_ORIENTATIONS, sdl_platform.c) -->
+             unless display.orientation says otherwise, and turns in place
+             as it changes (sdl_platform.c's orientation_apply) -->
         <activity
             android:name=".HaloActivity"
             android:process=":game"

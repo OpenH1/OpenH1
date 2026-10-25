@@ -269,11 +269,13 @@ BOOL platform_sdl_initialize(void)
 		exit(EXIT_SUCCESS);
 	SDL_SetHint(SDL_HINT_APP_NAME, "Halo");
 #ifdef HALO_ANDROID
-	/* landscape (either way up) or, display.orientation, portrait (SDL
-	asks the activity for it as it makes the window); the back key arrives
-	as a key event (xinput_sdl.c) instead of closing the activity */
+	/* landscape (either way up) or, display.orientation, portrait or
+	either (SDL asks the activity for it as it makes the window; then
+	orientation_apply, as the setting changes); the back key arrives as a
+	key event (xinput_sdl.c) instead of closing the activity */
 	SDL_SetHint(SDL_HINT_ORIENTATIONS, !strcmp(config_string("display.orientation"), "portrait") ?
-		"Portrait PortraitUpsideDown" : "LandscapeLeft LandscapeRight");
+		"Portrait PortraitUpsideDown" : !strcmp(config_string("display.orientation"), "auto") ?
+		"LandscapeLeft LandscapeRight Portrait PortraitUpsideDown" : "LandscapeLeft LandscapeRight");
 	SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
 	/* touching the screen must not aim or fire (the mouse drives the
 	controller emulation in xinput_sdl.c) */
@@ -1950,6 +1952,35 @@ static void platform_pump_events_headless(void)
 	}
 }
 
+#ifdef HALO_ANDROID
+/* port/android/guest/runtime/guest_host.h */
+void host_orientation(int which);
+
+/* (on the window's thread: platform_pump_events) display.orientation, as
+Settings or config.toml has it now, asked of the activity once the window
+is made and whenever it changes: SDL asks only as it makes the window, and
+not again for a full-screen one; the window turns in place, and the
+swapchain and the touch controls follow its shape */
+static void orientation_apply(void)
+{
+	static unsigned long read_at;
+	static int asked = -1;
+	const char *value;
+	int which;
+
+	if (asked >= 0 && read_at == config_changes())
+		return;
+	read_at = config_changes();
+	value = config_string("display.orientation");
+	which = !strcmp(value, "portrait") ? 1 : !strcmp(value, "auto") ? 2 : 0;
+	if (which != asked)
+	{
+		asked = which;
+		host_orientation(which);
+	}
+}
+#endif
+
 void platform_pump_events(void)
 {
 	SDL_Event event;
@@ -1977,6 +2008,9 @@ void platform_pump_events(void)
 	/* (Settings > Audio's output device, as it changes: dsound_sdl.c) */
 	dsound_sdl_output_device_check();
 	screen_keyboard_update();
+#else
+	/* (display.orientation, as it changes) */
+	orientation_apply();
 #endif
 	pthread_mutex_lock(&input_lock);
 #ifndef HALO_ANDROID
