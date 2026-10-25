@@ -487,9 +487,10 @@ def copy_environment(copy, address, broadcast, test, seed, args, extra):
         "HALO_EXIT_AFTER": str(args.start + args.skip + args.seconds + 120),
         "SDL_AUDIO_DRIVER": "dummy",
     })
-    if args.port:
+    port = getattr(args, "port", 0)
+    if port:
         # (the game's port, the host's and its clients' alike: --port)
-        environment["HALO_NET_PORT"] = str(args.port)
+        environment["HALO_NET_PORT"] = str(port)
     if args.events:
         # hits every few seconds (each machine's player the next player)
         # and a kill now and then (the host's), so that damage, deaths,
