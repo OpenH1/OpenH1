@@ -10,7 +10,7 @@ The compile cache (ccache) gives the Darwin assembly back, but cannot cache
 past it: without this, every object is converted and assembled again in
 every build (60-70 ms each, and 7 s or more for hud_hires_assets). An
 object is found by the SHA-256 of everything that makes it: the Darwin
-assembly; this script's, the converter's and (with --base-register)
+assembly; this script's, the converter's, the branch relaxation's and (with --base-register)
 tools/guest_base_register.py's sources; the arguments (the files' names
 and the assembler's command among them); and the assembler's
 executable (its path, size and time). A cached object is the object the
@@ -48,7 +48,7 @@ def executable_identity(command: str) -> bytes:
 
 def key(arguments, darwin_s: Path, base_register: bool, assembler) -> str:
     digest = hashlib.sha256()
-    sources = [Path(__file__).resolve(), TOOLS / "android_asm_convert.py"]
+    sources = [Path(__file__).resolve(), TOOLS / "android_asm_convert.py", TOOLS / "guest_branch_relax.py"]
     if base_register:
         sources.append(TOOLS / "guest_base_register.py")
     for source in sources:
