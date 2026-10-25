@@ -143,6 +143,12 @@ boolean network_game_server_lobby_is_open(
 boolean network_game_server_client_machine_may_slow_countdown(
 	struct network_game_server *server,
 	struct network_game_server_client_machine *machine);
+/* the countdown event a machine's game start request makes, NONE if it is
+ignored: the host's own faster starts the game at once */
+short network_game_server_game_start_request_event(
+	struct network_game_server *server,
+	struct network_game_server_client_machine *machine,
+	short request);
 /* ---------- globals */
 
 /* ---------- public code */

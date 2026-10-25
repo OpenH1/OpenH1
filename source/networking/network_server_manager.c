@@ -4146,7 +4146,16 @@ void network_game_server_update_countdown(
 		{
 			if (server->countdown_state.active == TRUE)
 			{
-				if (!server->countdown_state.adjusted_time_this_tick)
+				/* port: the host's start at once is taken even after another
+				change this tick (a machine's faster or slower), so that one
+				press always starts the game; the clients are told at once */
+				if (countdown_event == _network_game_server_countdown_event_start_immediately)
+				{
+					server->countdown_state.adjusted_time_this_tick = TRUE;
+					countdown_timer_set_time_remaining(&server->countdown_state.timer, 0);
+					server->countdown_state.last_countdown_message_time = 0;
+				}
+				else if (!server->countdown_state.adjusted_time_this_tick)
 				{
 					switch (countdown_event)
 					{
@@ -4180,11 +4189,6 @@ void network_game_server_update_countdown(
 							server->countdown_state.active = FALSE;
 							server->countdown_state.adjusted_time_this_tick = TRUE;
 							break;
-
-						case _network_game_server_countdown_event_start_immediately:
-							server->countdown_state.adjusted_time_this_tick = TRUE;
-							countdown_timer_set_time_remaining(&server->countdown_state.timer, 0);
-							break;
 					}
 				}
 			}
@@ -4197,6 +4201,7 @@ void network_game_server_update_countdown(
 					countdown_timer_set_time_remaining(&server->countdown_state.timer, 0);
 					server->countdown_state.active = TRUE;
 					server->countdown_state.adjusted_time_this_tick = FALSE;
+					server->countdown_state.last_countdown_message_time = 0;
 					network_game_server_countdown_started(server);
 				}
 				else
@@ -4258,6 +4263,37 @@ boolean network_game_server_client_machine_may_slow_countdown(
 	}
 	network_game_server_countdown_slowed[machine->machine_index] = TRUE;
 	return TRUE;
+}
+
+/* port: the countdown event a client machine's game start request makes, or
+NONE (ignored). The host's own faster (the lobby's START GAME, the pregame
+screen's START NOW) starts the game at once: the Xbox game counted 30
+seconds down (10 split screen) and each faster took 5 off, so the host
+pressed again and again. The game still waits for every machine to have the
+map (network_game_server_idle_pregame_tasks). The other machines' faster and
+slower count down as before (a slower once each countdown); a stop or a
+start at once is the host's alone (the Xbox game took any event from any
+machine, and a machine could hold the lobby or skip the countdown). The
+messages and what the clients are told are the Xbox game's. */
+short network_game_server_game_start_request_event(
+	struct network_game_server *server,
+	struct network_game_server_client_machine *machine,
+	short request)
+{
+	boolean host = network_game_server_client_machine_is_local(server, machine);
+
+	switch (request)
+	{
+		case _network_game_server_countdown_event_player_joined:
+			return host ? _network_game_server_countdown_event_start_immediately : request;
+		case _network_game_server_countdown_event_player_left:
+			return network_game_server_client_machine_may_slow_countdown(server, machine) ? request : NONE;
+		case _network_game_server_countdown_event_stop:
+		case _network_game_server_countdown_event_start_immediately:
+			return host ? request : NONE;
+	}
+
+	return NONE;
 }
 
 /* ---------- private code */

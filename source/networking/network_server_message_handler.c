@@ -355,14 +355,6 @@ enum network_game_server_rejection_reason
 	_network_game_server_rejection_reason_game_not_open = 5,
 };
 
-enum network_game_server_countdown_event
-{
-	_network_game_server_countdown_event_player_left = 0,
-	_network_game_server_countdown_event_player_joined,
-	_network_game_server_countdown_event_stop,
-	_network_game_server_countdown_event_start_immediately,
-};
-
 /* ---------- macros */
 
 #define network_machine_is_valid(machine) \
@@ -2604,25 +2596,15 @@ static boolean network_game_server_handle_message_client_game_start_request(
 			_network_game_packet_class_client_pregame))
 		{
 			/* (a short on the wire: the rest of the long is not written) */
-			short countdown_event = (short)game_start_request.countdown_time;
+			short request = (short)game_start_request.countdown_time;
+			/* port: the host's own start at once, the others' faster and
+			slower (network_game_server_game_start_request_event) */
+			short countdown_event = network_game_server_game_start_request_event(server, client_machine, request);
 
-			/* port: the pregame screen's faster and slower, from any machine;
-			to stop the countdown or start at once (a script's), the host's own
-			(the Xbox game took any event from any machine, and a machine
-			could hold the lobby or skip the countdown) */
-			if ((countdown_event == _network_game_server_countdown_event_player_left &&
-					network_game_server_client_machine_may_slow_countdown(server, client_machine)) ||
-				countdown_event == _network_game_server_countdown_event_player_joined ||
-				((countdown_event == _network_game_server_countdown_event_stop ||
-					countdown_event == _network_game_server_countdown_event_start_immediately) &&
-					network_game_server_client_machine_is_local(server, client_machine)))
-			{
+			if (countdown_event != NONE)
 				network_game_server_update_countdown(server, countdown_event);
-			}
 			else
-			{
-				network_event("ignoring a game start request (#%d) from a client machine", countdown_event);
-			}
+				network_event("ignoring a game start request (#%d) from a client machine", request);
 		}
 		else
 		{

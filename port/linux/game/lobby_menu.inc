@@ -480,7 +480,7 @@ static void lobby_board_update(struct widget_instance *list)
 	struct lobby_board_controls controls;
 	wchar_t text[SETTINGS_PANEL_TEXT_LENGTH];
 	char link[TEXT_FIELD_LENGTH];
-	short count = 0, column, row, index, mode = _game_mode_none, seconds = 0;
+	short count = 0, column, row, index, mode = _game_mode_none, seconds = NONE;
 	boolean teams = FALSE, own_player = FALSE;
 
 	if (!game || state < _client_state_pregame)
@@ -688,6 +688,8 @@ static void lobby_board_update(struct widget_instance *list)
 		text[0] = 0;
 		if (seconds > 0)
 			usnprintf(text, NUMBEROF(text) - 1, L"The game starts in %d.", seconds);
+		else if (seconds == 0)
+			usnprintf(text, NUMBEROF(text) - 1, L"The game is starting.");
 		else if (lobby_board.copied_time && system_milliseconds() - lobby_board.copied_time < LOBBY_BOARD_COPIED_TIME)
 			usnprintf(text, NUMBEROF(text) - 1, L"Invite link copied: paste it to your friends.");
 		else if (controls.bots_locked)
@@ -712,6 +714,8 @@ static void lobby_board_update(struct widget_instance *list)
 		menu_text_box_wrap(named(panel, "board_status", 0), text, 2);
 		if (seconds > 0)
 			usnprintf(text, NUMBEROF(text) - 1, controls.start ? L"STARTING IN %d" : L"Starting in %d", seconds);
+		else if (seconds == 0)
+			usnprintf(text, NUMBEROF(text) - 1, controls.start ? L"STARTING..." : L"Starting...");
 		else
 			usnprintf(text, NUMBEROF(text) - 1, controls.start ? L"%%a-button START GAME" : L"Waiting for the host");
 		text[NUMBEROF(text) - 1] = 0;
@@ -789,7 +793,9 @@ static boolean lobby_board_team(struct widget_instance *widget, short controller
 }
 
 /* "port lobby start" (START GAME, A or Start on the players, Start on the
-panel's controls): the host's game starts, its countdown begun */
+panel's controls): the host's game starts, at once (the host's own faster:
+network_game_server_game_start_request_event) once every machine has the
+map */
 static boolean lobby_board_start(void)
 {
 	void *client = global_network_game_client_get();
