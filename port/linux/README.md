@@ -1199,12 +1199,14 @@ network does not need an invite.
 Friends can group up before a game and go from game to game together
 (`src/p2p_party.c`; the menus' side is `game/party_menu.inc`):
 
-- Multiplayer > PARTY > MAKE PARTY makes a party of up to 16 players, you
-  its leader, and puts its link on the clipboard:
-  `halo://party/<32 hexadecimal digits>`. Friends join it as they join an
-  invite: they open the link, copy it and go to the game, use JOIN BY LINK,
-  or JOIN FROM LINK on the Party screen. The Party screen lists the
-  members, marks the leader, and says where each one is.
+- Multiplayer > PLAY ONLINE > PARTY opens the Party screen (on a
+  touchscreen, PARTY at the foot of Multiplayer). MAKE PARTY makes a party
+  of up to 16 players, you its leader, and puts its link on the clipboard
+  (COPY LINK puts it there again): `halo://party/<32 hexadecimal digits>`.
+  Friends join it as they join an invite: they open the link, copy it and
+  go to the game, use JOIN BY LINK, or PASTE LINK on the Party screen. The
+  Party screen lists the members, marks the leader, and says where each
+  one is.
 - When the leader hosts an internet game, or joins one (by a link or from
   the Server Browser), every member joins it too: the Party screen opens
   over the main menu or Multiplayer, and joins the game. A member who

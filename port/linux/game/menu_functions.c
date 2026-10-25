@@ -1078,6 +1078,8 @@ enum
 static void visible_set(struct widget_instance *widget, boolean visible);
 /* (party_menu.inc's) */
 static void party_screen_noted(struct widget_instance *widget);
+static void party_hub_note(wchar_t *text, short size);
+static void party_hub_status(wchar_t *headline, short headline_size, wchar_t *detail, short detail_size);
 short ui_widget_port_multiplayer_maps(char const *const **names, short *last_used);
 
 static boolean map_kind_singleplayer(short kind)
@@ -7381,6 +7383,8 @@ enum
 	/* (CREATE GAME's and CO-OP CAMPAIGN's, which open their pages) */
 	_multiplayer_item_create,
 	_multiplayer_item_coop,
+	/* (PARTY, which opens the party's screen: party_menu.inc) */
+	_multiplayer_item_party,
 };
 
 /* Multiplayer's items and its pages' (port_settings.py's _hub), by their
@@ -7402,6 +7406,7 @@ static struct
 	{ "hub_create_lan_item", _multiplayer_item_create_local },
 	{ "hub_online_coop", _multiplayer_item_online_coop },
 	{ "hub_split_coop", _multiplayer_item_split_screen_coop },
+	{ "hub_party", _multiplayer_item_party },
 };
 
 #define MULTIPLAYER_DESCRIPTIONS "pc\\main_menu\\multiplayer_type_select\\hub\\descriptions"
@@ -7659,6 +7664,8 @@ static void multiplayer_status_notes(struct widget_instance *list)
 	text[NUMBEROF(text) - 1] = 0;
 	text_set(named(list, "item_note", 0), text);
 	text_set(named(list, "invite_note", 0), multiplayer_status.invite ? L"INVITE READY" : L"");
+	party_hub_note(text, NUMBEROF(text));
+	text_set(named(list, "party_note", 0), text);
 }
 
 /* the touchscreen's rows (port_settings.py's _multiplayer_touch), by their
@@ -7908,6 +7915,9 @@ static void multiplayer_status_update(struct widget_instance *list)
 	case _multiplayer_item_coop:
 		usnprintf(headline, NUMBEROF(headline) - 1, L"THE CAMPAIGN TOGETHER");
 		usnprintf(detail, NUMBEROF(detail) - 1, L"Online, or split screen\r\non this computer.");
+		break;
+	case _multiplayer_item_party:
+		party_hub_status(headline, NUMBEROF(headline), detail, NUMBEROF(detail));
 		break;
 	case _multiplayer_item_bots:
 		usnprintf(headline, NUMBEROF(headline) - 1, L"BOTS ON THIS COMPUTER");
@@ -9915,6 +9925,10 @@ boolean pc_menu_event_function_invoke(
 		else if (!strcmp(name, "port party button"))
 		{
 			return party_screen_button(widget, controller, widget_deleted);
+		}
+		else if (!strcmp(name, "port party x") || !strcmp(name, "port party y"))
+		{
+			return party_screen_key(widget, !strcmp(name, "port party y"), controller);
 		}
 		else if (!strcmp(name, "controls screen init") || !strcmp(name, "controls screen defaults"))
 		{

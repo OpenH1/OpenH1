@@ -1630,7 +1630,7 @@ MULTIPLAYER_ROWS = {
         "multiplayer_type_create_bots_item"])}
 # (the screen's line, in the PC version's line's place: the hub's, over
 # EDIT GAMETYPES, _hub)
-MULTIPLAYER_LINE_PLACE = (28, 308)
+MULTIPLAYER_LINE_PLACE = (28, 336)
 # the screen's children for one platform only (tools/ce_menus.py): the
 # computer's list and its line (the hub's, in the PC version's places:
 # WIDGET_PATCHES' swap), the touchscreen's in their place (_multiplayer_touch)
@@ -3152,6 +3152,19 @@ HUB_PROMPTS = [
     ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="mouse emit back event"/>'),
 ]
 HUB_PAGE_PROMPTS = [HUB_PROMPTS[1]]
+# the Party screen's (_party): a row for each member (its most,
+# p2p.h's P2P_PARTY_MAXIMUM_MEMBERS), and its footer's prompts, those of a
+# place shown one at a time (menu_functions.c's party_screen_update)
+PARTY_ROWS, PARTY_ROW_STEP = 16, 19
+PARTY_PROMPTS = [
+    ("prompt_make", "%a-button MAKE PARTY", 28, 144, '<on event="a" run="port party button"/>'),
+    ("prompt_copy", "%a-button COPY LINK", 28, 144, '<on event="a" run="port party button"/>'),
+    ("prompt_paste", "%x-button PASTE LINK", 176, 144, '<on event="a" run="port party button"/>'),
+    ("prompt_follow", "%x-button JOIN LEADER", 176, 144, '<on event="a" run="port party button"/>'),
+    ("prompt_end", "%x-button END PARTY", 176, 144, '<on event="a" run="port party button"/>'),
+    ("prompt_leave", "%y-button LEAVE PARTY", 324, 144, '<on event="a" run="port party button"/>'),
+    ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="port party button"/>'),
+]
 # the items' descriptions, in menu_functions.c's _multiplayer_item_* order
 HUB_DESCRIPTIONS = [
     "Every public game on the Internet, OpenH1 and Legacy. Press %a-button to see them all.",
@@ -3165,6 +3178,7 @@ HUB_DESCRIPTIONS = [
     "Make your own gametypes: the rules, weapons and vehicles, kept for next time.",
     "Host a game on the Internet, or for players on your local network only.",
     "Play the campaign together: online, or split screen on this computer.",
+    "Group up with friends: they join with your party's link, and come with you to every game you host or join.",
 ]
 
 
@@ -3194,7 +3208,7 @@ def parts_pictures() -> list:
     rows = [(part_row(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT), highlight(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT) +
              [(framed(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT, "#0d3a7a", 0.9, "#8cc8ff"), BROWSER_LIST_WIDTH,
                BROWSER_ROW_HEIGHT)])]
-    prompt_widths = sorted({width for *_, width, _ in BROWSER_PROMPTS + HUB_PROMPTS})
+    prompt_widths = sorted({width for *_, width, _ in BROWSER_PROMPTS + HUB_PROMPTS + PARTY_PROMPTS})
     join_w, join_h = BROWSER_JOIN
     return [
         # (Settings' tab, then its current one: menu_functions.c's
@@ -3446,7 +3460,8 @@ def _browser() -> list:
 def _hub() -> list:
     """Multiplayer, in Settings' look: PLAY ONLINE's items (the server
     browser, its games counted; the local network, its games found; a
-    friend's link), HOST's (CREATE GAME and CO-OP CAMPAIGN, each a page of
+    friend's link; the party, its players: _party), HOST's (CREATE GAME and
+    CO-OP CAMPAIGN, each a page of
     two, and PLAY WITH BOTS), EDIT GAMETYPES under a line, the panel beside
     them (menu_functions.c's multiplayer_status_update: the games online
     and the best of them for the server browser, else what is live for the
@@ -3466,6 +3481,9 @@ def _hub() -> list:
         "hub_join_internet": ("SERVER BROWSER", joins(browser), "browser_note"),
         "hub_join_lan_item": ("LOCAL NETWORK", joins(browser), "item_note"),
         "hub_join_direct": ("JOIN BY LINK", joins(browser), "invite_note"),
+        # (the party's screen: _party)
+        "hub_party": ("PARTY", [f'<on event="{event}" open="{MT}/party/party_screen"/>' for event in ("a", "start")],
+                      "party_note"),
         "hub_create": ("CREATE GAME ›", [f'<on event="{event}" open="{HUB}/create_screen"/>'
                                               for event in ("a", "start")], None),
         "hub_create_bots": ("PLAY WITH BOTS", creates, None),
@@ -3502,7 +3520,7 @@ def _hub() -> list:
                        ['<data input="port multiplayer status"/>', *children])
 
     lines = page_list("hub_list", [("section_online", "PLAY ONLINE", ["hub_join_internet", "hub_join_lan_item",
-                                                                      "hub_join_direct"]),
+                                                                      "hub_join_direct", "hub_party"]),
                                    ("section_host", "HOST", ["hub_create", "hub_create_bots", "hub_coop"]),
                                    (None, None, ["hub_gametypes"])], "hub_prompts")
     lines += _section(f"{HUB}/section_online", "PLAY ONLINE", item_w)
@@ -3528,10 +3546,11 @@ def _hub() -> list:
                          [*handlers, '<on event="left_mouse" run="mouse emit accept event"/>',
                           *([f'<child widget="{HUB}/{note}"/>'] if note else [])])
     # (at the items' ends: the server browser's games, the local network's
-    # found, an invite link copied, in green: menu_functions.c's
-    # multiplayer_status_notes)
+    # found, an invite link copied, in green, the party's players:
+    # menu_functions.c's multiplayer_status_notes)
     # (right-aligned in from the highlight's end, clear of the items' words)
-    for name, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C")):
+    for name, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C"),
+                        ("party_note", "#FF7FB2FF")):
         lines += _widget(f"{HUB}/{name}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
                                            ("font", "ui\\small_ui"), ("color", color), ("align", "right"),
                                            ("text_y", 8), ("text_flags", "no_focus_test")], [])
@@ -3592,50 +3611,82 @@ def _hub() -> list:
 
 
 def _party() -> list:
-    """Multiplayer's PARTY (beside REFRESH on its button bar: WIDGET_PATCHES)
-    and the Party screen (port/linux/game/party_menu.inc): the party's
-    members, the leader marked, each one's place (with the leader, or why
-    not); a panel of the party's link, where the leader is, and what just
-    happened; the buttons MAKE PARTY or JOIN FROM LINK out of a party, COPY
-    LINK, JOIN LEADER (a member not in the leader's game) or END PARTY (the
-    leader), LEAVE PARTY in one, and BACK; the footer's key prompts, as the
-    input in use draws them. Every button runs "port party button", which
-    joins the leader's game first once it is found (an A press posted)"""
+    """the Party screen (port/linux/game/party_menu.inc), in Multiplayer's
+    look (_hub's parts): PARTY's section over its members, a row each (its
+    name, the leader's pill, and where it is: with the leader, or why not),
+    words in their place out of a party; the panel beside them (the party's
+    size, its link, where the leader is and the follow, what just happened,
+    and what a party is); the footer's key prompts, each shown when it
+    applies: MAKE PARTY or COPY LINK (A), PASTE LINK, JOIN LEADER or END
+    PARTY (X), LEAVE PARTY (Y), BACK. Every prompt runs "port party button"
+    ("port party x" and "y" the screen's X and Y), which joins the leader's
+    game first once it is found (an A press posted). The touchscreen opens it
+    from PARTY on Multiplayer's bar (WIDGET_PATCHES)"""
     base = f"{MT}/party"
+    left, top, width, height = HUB_PANEL
+    item_w = HUB_ITEM[0]
     lines = _text_button(f"{MT}/multiplayer_button_party", "PARTY",
-                         [f'<on event="a" open="{base}/party_screen"/>', f'<on event="start" open="{base}/party_screen"/>'])
-    lines += _widget(f"{base}/party_screen", [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child"),
+                         [f'<on event="{event}" open="{base}/party_screen"/>' for event in ("a", "start")])
+    rows = [f'<child widget="{base}/party_{part}_{row}"/>' for row in range(PARTY_ROWS)
+            for part in ("name", "where", "leader")]
+    lines += _widget(f"{base}/party_screen", [("width", 640), ("height", 480),
+                                              ("flags", "pass_unhandled_to_focused_child"),
                                               ("bitmap", "bitmaps/gradient")],
                      ['<on event="created" run="port party open"/>', '<on event="b" back="true"/>',
-                      '<on event="back" back="true"/>',
-                      '<child widget="main_menu/new_select/sel_list_desc_bkd"/>',
-                      f'<child widget="{base}/party_title"/>', f'<child widget="{base}/party_members"/>',
-                      f'<child widget="{base}/party_panel"/>', f'<child widget="{base}/party_prompts"/>',
-                      f'<child widget="{base}/party_list"/>'])
+                      '<on event="back" back="true"/>', '<on event="x" run="port party x"/>',
+                      '<on event="y" run="port party y"/>', f'<child widget="{MT}/header_multiplayer"/>',
+                      f'<child widget="{base}/section_party" x="{HUB_LIST_X}" y="{top}"/>',
+                      f'<child widget="{base}/party_count"/>', f'<child widget="{base}/party_empty"/>', *rows,
+                      f'<child widget="{base}/party_panel"/>', f'<child widget="{base}/party_list"/>'])
+    lines += _section(f"{base}/section_party", "PARTY", item_w)
+    lines += _part_text(f"{base}/party_count", [("left", HUB_LIST_X), ("top", top + 2), ("width", item_w - 4),
+                                               ("height", 16), ("font", "ui\\small_ui"), ("color", PART_DIM),
+                                               ("align", "right")])
+    # (the list's words out of a party: menu_functions.c's browser_empty's)
+    lines += _part_text(f"{base}/party_empty", [("left", HUB_LIST_X + 16), ("top", 180), ("width", item_w - 32),
+                                               ("height", 100), ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE),
+                                               ("align", "center")])
+    # (a member's row: its name, the leader's pill in its place's, else where
+    # it is)
+    for row in range(PARTY_ROWS):
+        y = top + PART_SECTION_HEIGHT + 4 + PARTY_ROW_STEP * row
+        lines += _part_text(f"{base}/party_name_{row}", [("left", HUB_LIST_X + 6), ("top", y), ("width", 150),
+                                                        ("height", PARTY_ROW_STEP), ("font", "ui\\small_ui"),
+                                                        ("color", "#FFFFFFFF")])
+        lines += _part_text(f"{base}/party_where_{row}", [("left", HUB_LIST_X + 156), ("top", y),
+                                                         ("width", item_w - 160), ("height", PARTY_ROW_STEP),
+                                                         ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE),
+                                                         ("align", "right")])
+        lines += _widget(f"{base}/party_leader_{row}", [("type", "text"), ("controller", 1),
+                                                         ("left", HUB_LIST_X + item_w - BROWSER_PILL - 4),
+                                                         ("top", y + 1), ("width", BROWSER_PILL),
+                                                         ("height", PART_PILL_HEIGHT),
+                                                         ("bitmap", part_pill(BROWSER_PILL)), ("text", "LEADER"),
+                                                         ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
+                                                         ("align", "center"), ("text_flags", "no_focus_test")], [])
+    # (the panel, Multiplayer's: menu_functions.c's party_screen_update)
+    x, inner = left + 14, width - 28
+    panel = []
 
-    def text(name, left, top, width, height, font, color, align=None):
-        return _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("left", left), ("top", top),
-                                          ("width", width), ("height", height), ("font", font), ("color", color),
-                                          ("align", align), ("text_flags", "no_focus_test")], [])
-    lines += text("party_title", 40, 24, 360, 30, "ui\\large_ui", "#FF2896FF")
-    lines += text("party_members", 40, 78, 360, 330, "ui\\large_ui", "#FFFFFFFF")
-    lines += text("party_panel", 417, 87, 190, 310, "ui\\small_ui", "#FF2896FF")
-    lines += text("party_prompts", 355, 446, 275, 24, "ui\\small_ui", "#FF2896FF", "right")
+    def text(name, ty, h, font, color, words=None):
+        panel.append(f'<child widget="{base}/{name}"/>')
+        pairs = [("left", x), ("top", top + ty), ("width", inner), ("height", h), ("font", font), ("color", color)]
+        return (_widget(f"{base}/{name}", [("type", "text"), ("controller", 1), *pairs, ("text", words),
+                                           ("text_flags", "no_focus_test")], [])
+                if words else _part_text(f"{base}/{name}", pairs))
+
+    lines += text("panel_title", 14, 24, "ui\\large_ui", "#FFFFFFFF")
+    lines += text("panel_link_label", 44, 16, "ui\\small_ui", PART_DIM, words="PARTY LINK")
+    lines += text("panel_link", 60, 18, "ui\\small_ui", "#FFFFFFFF")
+    lines += text("panel_status", 86, 66, "ui\\large_ui", SETTINGS_BLUE)
+    lines += text("panel_notice", 160, 66, "ui\\small_ui", "#FFFFFFFF")
+    lines += text("panel_about", height - 76, 64, "ui\\small_ui", SETTINGS_BLUE)
+    lines += _widget(f"{base}/party_panel", [("controller", 1), ("left", left), ("top", top), ("width", width),
+                                             ("height", height), ("bitmap", part_panel(width, height))], panel)
     lines += _widget(f"{base}/party_list", [("type", "column_list"), ("width", 640), ("height", 480),
                                             ("flags", "pass_unhandled_to_focused_child up_down_tabs_children")],
-                     ['<data input="port party update"/>', f'<child widget="{base}/party_button_bar" y="414"/>'])
-    # (one of MAKE PARTY and COPY LINK, and of JOIN FROM LINK, JOIN LEADER and
-    # END PARTY, is shown at once, in one place: menu_functions.c's
-    # focus_off_hidden takes the focus off those hidden)
-    buttons = [("make", "MAKE PARTY", 120), ("copy", "COPY LINK", 120), ("join", "JOIN FROM LINK", 250),
-               ("follow", "JOIN LEADER", 250), ("end", "END PARTY", 250), ("leave", "LEAVE PARTY", 380),
-               ("back", "BACK", 510)]
-    lines += _widget(f"{base}/party_button_bar", [("type", "column_list"), ("width", 640), ("height", 28),
-                                                  ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
-                     [f'<child widget="{base}/party_button_{key}" x="{x}" y="1"/>' for key, _, x in buttons])
-    for key, caption, _ in buttons:
-        lines += _text_button(f"{base}/party_button_{key}", caption, ['<on event="a" run="port party button"/>',
-                                                                     '<on event="start" run="port party button"/>'])
+                     ['<data input="port party update"/>', f'<child widget="{base}/party_prompts" y="414"/>'])
+    lines += _prompts(base, "party_prompts", PARTY_PROMPTS)
     return lines
 
 

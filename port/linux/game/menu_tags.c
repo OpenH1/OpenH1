@@ -461,7 +461,7 @@ static char const *const port_function_names[] =
 	browser_refresh) */
 	"port browser tab", "port browser tab next", "port browser tab previous", "port browser refresh",
 	/* (Multiplayer's PARTY and its screen: party_menu.inc) */
-	"port party open", "port party button",
+	"port party open", "port party button", "port party x", "port party y",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from

@@ -2,9 +2,11 @@
 PARTY_MENU.INC
 
 The party's menus (port/linux/src/p2p_party.c's parties): Multiplayer's
-PARTY and its screen (tools/port_settings.py's _party), included in
-menu_functions.c, whose widgets' helpers it uses (kept apart for the
-Multiplayer menu's redesign).
+PARTY (its note and panel: party_hub_note, party_hub_status) and the Party
+screen (tools/port_settings.py's _party, in Multiplayer's look: the menus'
+shared parts, its rows, panel and footer's key prompts), included in
+menu_functions.c, whose widgets' helpers it uses (kept apart, for the Lobby's
+redesign to come).
 
 Each frame (party_update, from main.c) the party is told this player's
 name and the game this machine is in: an internet game (its invite: the
@@ -28,8 +30,8 @@ The follow's steps (party_follow_step) and what a found game allows
 */
 
 #define PARTY_NAME "pc\\main_menu\\multiplayer_type_select\\party\\party_screen"
-/* the members' lines and the panel's */
-#define PARTY_TEXT_LENGTH 768
+/* the members' rows (tools/port_settings.py's PARTY_ROWS) */
+#define PARTY_ROWS 16
 /* milliseconds: the host not reached, its game not found, not open, not
 joined in this long, the follow gives up; a notice is shown this long */
 #define PARTY_REACH_TIME 20000
@@ -110,6 +112,8 @@ static struct
 	boolean debug_party_done;
 	/* the last frame party_update did its work */
 	unsigned long update_time;
+	/* the party's state the screen's prompts were last focused for */
+	int prompts_state;
 } party_menu;
 
 /* what a game found allows a member following its leader: _p2p_party_follow_joined
@@ -620,37 +624,37 @@ static void party_notice_text(struct p2p_party_notice const *notice, wchar_t *te
 	text[size - 1] = 0;
 }
 
-/* a member's line: its name, and where it is */
-static void party_member_line(struct p2p_party_status const *status, struct p2p_party_member const *member,
-	wchar_t *line, short size)
+/* where a member is, as its row says it (the leader's row has its pill in
+its place) */
+static wchar_t const *party_member_where(struct p2p_party_status const *status,
+	struct p2p_party_member const *member)
 {
-	wchar_t name[P2P_PARTY_NAME_SIZE];
-	wchar_t const *where;
-
-	party_wide(member->name[0] ? member->name : "Player", name, NUMBEROF(name));
-	if (member->leader)
-		where = L"Leader";
-	else if (member->self && status->state == _p2p_party_joining)
-		where = L"Joining...";
-	else if (member->place == _p2p_party_place_joining)
-		where = L"Joining a game...";
-	else if (member->with_leader)
-		where = status->target_kind == _p2p_party_game_none ? L"Ready" : L"In the game";
-	else if (member->place != _p2p_party_place_menus)
-		where = L"In another game";
-	else if (member->result != _p2p_party_follow_none && member->result != _p2p_party_follow_joined &&
-		member->result != _p2p_party_follow_busy)
+	if (member->self && status->state == _p2p_party_joining)
+		return L"Joining...";
+	if (member->other_version)
+		return L"Another version";
+	if (member->place == _p2p_party_place_joining)
+		return L"Joining a game...";
+	if (member->with_leader)
+		return status->target_kind == _p2p_party_game_none ? L"Ready" : L"In the game";
+	if (member->place != _p2p_party_place_menus)
+		return L"In another game";
+	switch (member->result)
 	{
-		usnprintf(line, size - 1, L"%s%s: Couldn't join (%s)%s\r\n", name, member->self ? L" (you)" : L"",
-			party_result_text(member->result), member->other_version ? L", another version" : L"");
-		line[size - 1] = 0;
-		return;
+	case _p2p_party_follow_unreachable:
+		return L"Can't reach the host";
+	case _p2p_party_follow_full:
+		return L"The game is full";
+	case _p2p_party_follow_version:
+		return L"Another version";
+	case _p2p_party_follow_legacy:
+		return L"Can't join Legacy";
+	case _p2p_party_follow_local:
+		return L"A local game";
+	case _p2p_party_follow_refused:
+		return L"Not let in";
 	}
-	else
-		where = L"In the menus";
-	usnprintf(line, size - 1, L"%s%s: %s%s\r\n", name, member->self ? L" (you)" : L"", where,
-		member->other_version ? L" (another version)" : L"");
-	line[size - 1] = 0;
+	return L"In the menus";
 }
 
 /* the leader in a game this machine is not in (JOIN LEADER) */
@@ -669,79 +673,54 @@ static boolean party_leader_elsewhere(struct p2p_party_status const *status)
 	return FALSE;
 }
 
-/* the panel's words: the party's link, where the leader is, the follow,
-and the newest notice */
-static void party_panel_text(struct p2p_party_status const *status, wchar_t *text, short size)
+/* the panel's line of where the party is: the leader's game, the follow,
+or what a party is */
+static void party_status_text(struct p2p_party_status const *status, wchar_t *text, short size)
 {
-	wchar_t part[ROW_TEXT_LENGTH * 3];
-	unsigned long now = system_milliseconds();
-	short length;
-
-	text[0] = 0;
-	if (status->state == _p2p_party_none)
-	{
-		usnprintf(text, size - 1, L"Make a party, then send your\r\nfriends its link. When you\r\n"
-			L"host or join a game, they\r\njoin it with you.\r\n\r\nGot a party link? Copy it,\r\nthen JOIN FROM LINK.");
-	}
+	if (!config_boolean("network.online"))
+		usnprintf(text, size - 1, L"Internet play is off. Turn it on in Settings, Network Setup.");
+	else if (status->state == _p2p_party_none)
+		usnprintf(text, size - 1, L"Make a party, then send your friends its link.");
 	else if (status->state == _p2p_party_joining)
 		usnprintf(text, size - 1, L"Joining the party...");
+	else if (status->leader)
+	{
+		usnprintf(text, size - 1, status->count > 1 ? L"You lead. Host or join a game, and your party comes too." :
+			L"You lead. Send your friends the party's link.");
+	}
+	else if (party_menu.stage == _party_follow_reaching)
+		usnprintf(text, size - 1, L"Following your leader: finding the host...");
+	else if (party_menu.stage == _party_follow_finding || party_menu.stage == _party_follow_ready)
+		usnprintf(text, size - 1, L"Following your leader: joining the game...");
+	else if (party_menu.result_order && party_menu.result != _p2p_party_follow_joined &&
+		party_menu.result != _p2p_party_follow_none && party_leader_elsewhere(status))
+	{
+		usnprintf(text, size - 1, L"Couldn't join your leader's game: %s.", party_result_text(party_menu.result));
+	}
+	else if (status->target_kind == _p2p_party_game_invite)
+		usnprintf(text, size - 1, L"Your leader is in a game.");
+	else if (status->target_kind == _p2p_party_game_local)
+		usnprintf(text, size - 1, L"Your leader is in a local network game, which the party can't follow.");
 	else
-	{
-		char shown[32];
-		wchar_t link[32];
-
-		/* (its first digits: the whole link is on the clipboard, and the
-		screen may be streamed) */
-		snprintf(shown, sizeof(shown), "%.21s...", status->link);
-		party_wide(shown, link, NUMBEROF(link));
-		usnprintf(text, size - 1, L"PARTY LINK\r\n%s\r\nCOPY LINK puts it on the\r\nclipboard.\r\n\r\n", link);
-		length = (short)ustrlen(text);
-		if (status->leader)
-		{
-			usnprintf(text + length, size - 1 - length, status->count > 1 ?
-				L"You lead. Host or join a game\r\nand your party follows." :
-				L"You lead. Waiting for friends\r\nto join.");
-		}
-		else if (party_menu.stage == _party_follow_reaching || party_menu.stage == _party_follow_finding ||
-			party_menu.stage == _party_follow_ready)
-		{
-			usnprintf(text + length, size - 1 - length, party_menu.stage == _party_follow_reaching ?
-				L"Following your leader:\r\nfinding the host..." : L"Following your leader:\r\njoining the game...");
-		}
-		else if (party_menu.result_order && party_menu.result != _p2p_party_follow_joined &&
-			party_menu.result != _p2p_party_follow_none && party_leader_elsewhere(status))
-		{
-			usnprintf(text + length, size - 1 - length, L"Couldn't join your leader's\r\ngame: %s.",
-				party_result_text(party_menu.result));
-		}
-		else if (status->target_kind == _p2p_party_game_invite)
-			usnprintf(text + length, size - 1 - length, L"Your leader is in a game.");
-		else if (status->target_kind == _p2p_party_game_local)
-		{
-			usnprintf(text + length, size - 1 - length,
-				L"Your leader is in a local\r\nnetwork game, which the\r\nparty can't follow.");
-		}
-		else
-			usnprintf(text + length, size - 1 - length, L"Waiting for your leader to\r\nhost or join a game.");
-	}
-	/* the newest notice, a while */
-	if (status->notice_count)
-	{
-		struct p2p_party_notice const *notice = &status->notices[status->notice_count - 1];
-
-		if (notice->serial != party_menu.notice_serial)
-		{
-			party_menu.notice_serial = notice->serial;
-			party_menu.notice_time = now;
-		}
-		if (now - party_menu.notice_time < PARTY_NOTICE_TIME)
-		{
-			party_notice_text(notice, part, NUMBEROF(part));
-			length = (short)ustrlen(text);
-			usnprintf(text + length, size - 1 - length, L"\r\n\r\n%s", part);
-		}
-	}
+		usnprintf(text, size - 1, L"Waiting for your leader to host or join a game.");
 	text[size - 1] = 0;
+}
+
+/* the newest notice's words, a while after it came (else none) */
+static void party_newest_notice(struct p2p_party_status const *status, wchar_t *text, short size)
+{
+	unsigned long now = system_milliseconds();
+
+	text[0] = 0;
+	if (!status->notice_count)
+		return;
+	if (status->notices[status->notice_count - 1].serial != party_menu.notice_serial)
+	{
+		party_menu.notice_serial = status->notices[status->notice_count - 1].serial;
+		party_menu.notice_time = now;
+	}
+	if (now - party_menu.notice_time < PARTY_NOTICE_TIME)
+		party_notice_text(&status->notices[status->notice_count - 1], text, size);
 }
 
 /* "port party open" (the screen's created): the client that finds the
@@ -750,39 +729,80 @@ static boolean party_screen_open_event(struct widget_instance *widget, struct ev
 	boolean *widget_deleted)
 {
 	party_menu.controller = controller >= 0 && controller < 4 ? controller : 0;
+	party_menu.prompts_state = NONE;
 	return ui_widget_port_browse(widget, event, widget_deleted);
 }
 
-/* "port party update": the members, the panel, the buttons shown */
+/* "port party update" (the list's): the members' rows, the panel, the
+footer's prompts that apply */
 static void party_screen_update(struct widget_instance *list)
 {
 	struct widget_instance *screen = screen_of(list);
+	struct widget_instance *panel = named(screen, "party_panel", 0);
+	struct widget_instance *bar = named(list, "party_prompts", 0);
 	struct p2p_party_status status;
-	wchar_t text[PARTY_TEXT_LENGTH];
-	short index, length = 0;
+	wchar_t text[SETTINGS_PANEL_TEXT_LENGTH];
+	char name[32];
+	short row;
 	boolean in_party, member;
 
 	party_menu.screen_shown = TRUE;
 	p2p_party_status(&status);
 	in_party = status.state != _p2p_party_none;
 	member = status.state == _p2p_party_member;
+	/* (PARTY's count, and its words out of a party) */
 	text[0] = 0;
-	if (!config_boolean("network.online"))
-		usnprintf(text, NUMBEROF(text) - 1, L"Internet play is off.\r\nTurn it on in Settings,\r\nNetwork Setup.");
-	for (index = 0; index < status.count; index++)
+	if (in_party)
+		usnprintf(text, NUMBEROF(text) - 1, L"%d OF %d", status.count, P2P_PARTY_MAXIMUM_MEMBERS);
+	text_set(named(screen, "party_count", 0), text);
+	menu_text_box_wrap(named(screen, "party_empty", 0), in_party ? L"" :
+		L"You're not in a party yet. Make one, or paste a friend's party link.", 3);
+	for (row = 0; row < PARTY_ROWS; row++)
 	{
-		party_member_line(&status, &status.members[index], text + length, (short)(NUMBEROF(text) - length));
-		length = (short)ustrlen(text);
+		struct p2p_party_member const *shown = row < status.count ? &status.members[row] : NULL;
+		struct widget_instance *where;
+		char row_name[24];
+
+		snprintf(row_name, sizeof(row_name), "party_name_%d", row);
+		visible_set(named(screen, row_name, 0), shown != NULL);
+		if (shown)
+		{
+			snprintf(name, sizeof(name), "%s%s", shown->name[0] ? shown->name : "Player", shown->self ? " (you)" : "");
+			party_wide(name, text, NUMBEROF(text));
+			menu_text_box_fit(named(screen, row_name, 0), text, 0);
+		}
+		snprintf(row_name, sizeof(row_name), "party_leader_%d", row);
+		visible_set(named(screen, row_name, 0), shown && shown->leader);
+		snprintf(row_name, sizeof(row_name), "party_where_%d", row);
+		where = named(screen, row_name, 0);
+		visible_set(where, shown && !shown->leader);
+		if (shown && !shown->leader)
+			text_set(where, party_member_where(&status, shown));
 	}
-	text_set_length(named(screen, "party_members", 0), text, PARTY_TEXT_LENGTH);
-	usnprintf(text, NUMBEROF(text) - 1, in_party ? L"PARTY (%d OF %d)" : L"PARTY", status.count,
-		P2P_PARTY_MAXIMUM_MEMBERS);
-	text_set(named(screen, "party_title", 0), text);
-	party_panel_text(&status, text, NUMBEROF(text));
-	text_set_length(named(screen, "party_panel", 0), text, PARTY_TEXT_LENGTH);
-	/* (the buttons: the device's own, drawn as the input in use has them) */
-	text_set(named(screen, "party_prompts", 0), L"%a-button Select    %b-button Back");
-	/* (JOIN FROM LINK while a party's link is on the clipboard, read again
+	/* (the panel: the party's size, its link's first digits (the whole
+	link is on the clipboard, and the screen may be streamed), where it is,
+	what just happened, what a party is) */
+	if (!in_party)
+		usnprintf(text, NUMBEROF(text) - 1, L"NO PARTY");
+	else if (!member)
+		usnprintf(text, NUMBEROF(text) - 1, L"JOINING...");
+	else
+		usnprintf(text, NUMBEROF(text) - 1, status.count == 1 ? L"JUST YOU" : L"PARTY OF %d", status.count);
+	text[NUMBEROF(text) - 1] = 0;
+	text_set(named(panel, "panel_title", 0), text);
+	visible_set(named(panel, "panel_link_label", 0), member);
+	visible_set(named(panel, "panel_link", 0), member);
+	snprintf(name, sizeof(name), "%.21s...", status.link);
+	party_wide(name, text, NUMBEROF(text));
+	text_set(named(panel, "panel_link", 0), text);
+	party_status_text(&status, text, NUMBEROF(text));
+	menu_text_box_wrap(named(panel, "panel_status", 0), text, 3);
+	party_newest_notice(&status, text, NUMBEROF(text));
+	menu_text_box_wrap(named(panel, "panel_notice", 0), text, 3);
+	menu_text_box_wrap(named(panel, "panel_about", 0), in_party ?
+		L"When your leader hosts or joins a game, the party joins it too. Anyone who can't is told why, and stays." :
+		L"Got a party link? Copy it, then PASTE LINK.", 4);
+	/* (PASTE LINK while a party's link is on the clipboard, read again
 	twice a second) */
 	if (!party_menu.clipboard_time || system_milliseconds() - party_menu.clipboard_time > 500)
 	{
@@ -793,14 +813,76 @@ static void party_screen_update(struct widget_instance *list)
 		party_menu.clipboard_link = platform_clipboard_get(clipboard, sizeof(clipboard)) &&
 			p2p_party_parse_link(clipboard, token);
 	}
-	visible_set(named(list, "party_button_make", 0), !in_party);
-	visible_set(named(list, "party_button_join", 0), !in_party && party_menu.clipboard_link);
-	visible_set(named(list, "party_button_copy", 0), member);
-	visible_set(named(list, "party_button_follow", 0), member && party_leader_elsewhere(&status) &&
+	menu_prompts_show(bar, "prompt_make", !in_party);
+	menu_prompts_show(bar, "prompt_copy", member);
+	menu_prompts_show(bar, "prompt_paste", !in_party && party_menu.clipboard_link);
+	menu_prompts_show(bar, "prompt_follow", member && party_leader_elsewhere(&status) &&
 		party_menu.stage == _party_follow_idle);
-	visible_set(named(list, "party_button_end", 0), member && status.leader && status.count > 1);
-	visible_set(named(list, "party_button_leave", 0), in_party);
-	focus_off_hidden(named(list, "party_button_bar", 0));
+	menu_prompts_show(bar, "prompt_end", member && status.leader && status.count > 1);
+	menu_prompts_show(bar, "prompt_leave", in_party);
+	/* (as the party's state changes, the focus on the first prompt shown,
+	not left on another, as LEAVE PARTY while joining) */
+	if (bar && status.state != party_menu.prompts_state)
+	{
+		struct widget_instance *prompt;
+		short index = 0;
+
+		party_menu.prompts_state = status.state;
+		for (prompt = bar->child; prompt && !prompt->visible; prompt = prompt->next)
+			index++;
+		if (prompt)
+		{
+			bar->focused_child = prompt;
+			bar->parameters.list.selected_index = index;
+		}
+	}
+}
+
+/* Multiplayer's PARTY: the note at its end (its players), and the panel's
+headline and line */
+static void party_hub_note(wchar_t *text, short size)
+{
+	struct p2p_party_status status;
+
+	p2p_party_status(&status);
+	text[0] = 0;
+	if (status.state == _p2p_party_joining)
+		usnprintf(text, size - 1, L"Joining...");
+	else if (status.state == _p2p_party_member)
+		usnprintf(text, size - 1, status.count == 1 ? L"Just you" : L"%d players", status.count);
+	text[size - 1] = 0;
+}
+
+static void party_hub_status(wchar_t *headline, short headline_size, wchar_t *detail, short detail_size)
+{
+	struct p2p_party_status status;
+	wchar_t leader[P2P_PARTY_NAME_SIZE];
+
+	p2p_party_status(&status);
+	party_wide(status.leader_name, leader, NUMBEROF(leader));
+	if (!config_boolean("network.online"))
+	{
+		usnprintf(headline, headline_size - 1, L"INTERNET PLAY IS OFF");
+		usnprintf(detail, detail_size - 1, L"Turn it on in Settings,\r\nNetwork Setup.");
+	}
+	else if (status.state == _p2p_party_none)
+	{
+		usnprintf(headline, headline_size - 1, L"NO PARTY YET");
+		usnprintf(detail, detail_size - 1, L"Make one, then send your\r\nfriends its link.");
+	}
+	else if (status.state == _p2p_party_joining)
+		usnprintf(headline, headline_size - 1, L"JOINING A PARTY");
+	else if (status.count == 1)
+	{
+		usnprintf(headline, headline_size - 1, L"YOUR PARTY");
+		usnprintf(detail, detail_size - 1, L"Just you so far. Send your\r\nfriends the party's link.");
+	}
+	else
+	{
+		usnprintf(headline, headline_size - 1, L"PARTY OF %d", status.count);
+		usnprintf(detail, detail_size - 1, status.leader ? L"You lead it." : L"%s leads it.", leader);
+	}
+	headline[headline_size - 1] = detail[detail_size - 1] = 0;
 }
 
 /* the leader's game found: joined (or, under way, its lobby shown first),
@@ -847,51 +929,81 @@ static boolean party_join_found(struct widget_instance *widget, short controller
 	return TRUE;
 }
 
-/* "port party button" (each of the screen's buttons; the A press posted
-once the leader's game is found joins it) */
-static boolean party_screen_button(struct widget_instance *widget, short controller, boolean *widget_deleted)
+/* a prompt's doing (by its name): FALSE if it fails */
+static boolean party_screen_action(char const *name, short controller)
 {
 	char text[TEXT_FIELD_LENGTH];
 
-	if (party_menu.stage == _party_follow_ready)
-		return party_join_found(widget, controller, widget_deleted);
 	party_menu.controller = controller >= 0 && controller < 4 ? controller : 0;
-	if (!strcmp(widget->name, "party_button_make"))
+	if (!strcmp(name, "prompt_make"))
 	{
 		if (!config_boolean("network.online") || !p2p_party_make())
 			return campaign_fail();
 		party_menu.asked_here = TRUE;
 	}
-	else if (!strcmp(widget->name, "party_button_join"))
+	else if (!strcmp(name, "prompt_paste"))
 	{
 		if (!platform_clipboard_get(text, sizeof(text)) || !p2p_party_join_link(text))
 			return campaign_fail();
 		party_menu.asked_here = TRUE;
 	}
-	else if (!strcmp(widget->name, "party_button_copy"))
+	else if (!strcmp(name, "prompt_copy"))
 	{
 		if (!p2p_party_copy_link())
 			return campaign_fail();
 	}
-	else if (!strcmp(widget->name, "party_button_follow"))
+	else if (!strcmp(name, "prompt_follow"))
 	{
 		party_menu.result_order = 0;
 		p2p_party_follow_again();
 	}
-	else if (!strcmp(widget->name, "party_button_end"))
-	{
+	else if (!strcmp(name, "prompt_end"))
 		p2p_party_disband();
-	}
-	else if (!strcmp(widget->name, "party_button_leave"))
+	else if (!strcmp(name, "prompt_leave"))
 	{
 		party_follow_end(_p2p_party_follow_none);
 		p2p_party_leave();
 	}
-	else if (!strcmp(widget->name, "party_button_back"))
+	else if (!strcmp(name, "prompt_back"))
 	{
 		event_manager_post_button(controller, BUTTON_B);
 		return TRUE;
 	}
+	else
+		return TRUE;
 	ui_play_audio_feedback_sound(SOUND_FORWARD);
+	return TRUE;
+}
+
+/* "port party button" (each prompt's A or click; the A press posted once
+the leader's game is found joins it, whichever has the focus) */
+static boolean party_screen_button(struct widget_instance *widget, short controller, boolean *widget_deleted)
+{
+	if (party_menu.stage == _party_follow_ready)
+		return party_join_found(widget, controller, widget_deleted);
+	return party_screen_action(widget->name, controller);
+}
+
+/* "port party x" and "port party y" (the screen's X and Y): the X prompt
+shown (PASTE LINK, JOIN LEADER or END PARTY), LEAVE PARTY */
+static boolean party_screen_key(struct widget_instance *widget, boolean y, short controller)
+{
+	static char const *const x_prompts[] = { "prompt_paste", "prompt_follow", "prompt_end" };
+	struct widget_instance *screen = screen_of(widget);
+	short index;
+
+	if (y)
+	{
+		struct widget_instance *leave = named(screen, "prompt_leave", 0);
+
+		return leave && leave->visible ? party_screen_action("prompt_leave", controller) : TRUE;
+	}
+	for (index = 0; index < NUMBEROF(x_prompts); index++)
+	{
+		struct widget_instance *prompt = named(screen, x_prompts[index], 0);
+
+		if (prompt && prompt->visible)
+			return party_screen_action(x_prompts[index], controller);
+	}
 	return TRUE;
 }
