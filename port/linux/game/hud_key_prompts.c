@@ -151,6 +151,27 @@ static boolean vr_prompt_text(
 
 /* the key's name at the cursor in a key cap, as the HUD draws a button
 there, the cursor moved past it */
+/* a part of a key cap, laid out as the text is: drawn where the text is,
+scaled as it is (rasterizer_text_set_scale: the scoreboard's prompts) */
+static void key_cap_quad(rectangle2d const *part, pixel32 color)
+{
+	real scale, origin_x, origin_y;
+	rectangle2d drawn = *part;
+
+	rasterizer_text_get_scale(&scale, &origin_x, &origin_y);
+	if (scale != 1.0f)
+	{
+		drawn.x0 = (short)(origin_x + (part->x0 - origin_x) * scale);
+		drawn.x1 = (short)(origin_x + (part->x1 - origin_x) * scale);
+		drawn.y0 = (short)(origin_y + (part->y0 - origin_y) * scale);
+		drawn.y1 = (short)(origin_y + (part->y1 - origin_y) * scale);
+		/* (an edge a pixel wide at the least) */
+		drawn.x1 = (short)MAX(drawn.x1, drawn.x0 + 1);
+		drawn.y1 = (short)MAX(drawn.y1, drawn.y0 + 1);
+	}
+	draw_quad(&drawn, color);
+}
+
 static boolean key_cap_draw(wchar_t const *text, rectangle2d *bounds, rectangle2d *cursor, pixel32 color)
 {
 	rectangle2d text_bounds, box, edge;
@@ -180,20 +201,20 @@ static boolean key_cap_draw(wchar_t const *text, rectangle2d *bounds, rectangle2
 		box.y0 = (short)(middle - half + 1);
 		box.y1 = (short)(middle + half);
 		fill = ((pixel32)((color >> 24) * 3 / 10) << 24) | (color & 0x00FFFFFFUL);
-		draw_quad(&box, fill);
+		key_cap_quad(&box, fill);
 		edge = box;
 		edge.y1 = (short)(box.y0 + 1);
-		draw_quad(&edge, color);
+		key_cap_quad(&edge, color);
 		edge.y0 = (short)(box.y1 - 1);
 		edge.y1 = box.y1;
-		draw_quad(&edge, color);
+		key_cap_quad(&edge, color);
 		edge.y0 = (short)(box.y0 + 1);
 		edge.y1 = (short)(box.y1 - 1);
 		edge.x1 = (short)(box.x0 + 1);
-		draw_quad(&edge, color);
+		key_cap_quad(&edge, color);
 		edge.x0 = (short)(box.x1 - 1);
 		edge.x1 = box.x1;
-		draw_quad(&edge, color);
+		key_cap_quad(&edge, color);
 	}
 	text_bounds.x0 = bounds->x0;
 	rasterizer_draw_unicode_string(&text_bounds, NULL, NULL, 0, text);

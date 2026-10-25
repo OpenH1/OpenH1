@@ -806,7 +806,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.discord_socket` | `""` | `HALO_DISCORD_SOCKET` | The Discord client's socket (on Windows, its pipe) to connect to, and no other: a stand-in for Discord in a test, so that a test never reaches the Discord app of the person at the computer. Empty: Discord's own. |
 | `debug.gpu_skip_vertex_shaders`, `debug.gpu_debug_expression`, `debug.gpu_debug_flat`, `debug.gpu_debug_texture0` | off | `HALO_GPU_SKIP_VS`, `HALO_GPU_DEBUG_EXPR`, `HALO_GPU_DEBUG_FLAT`, `HALO_GPU_DEBUG_T0` | Tools to find problems in the graphics: skip the draws of a vertex shader, or replace the output of all pixel shaders with an expression (for example `t0.rgb`). `debug.gpu_debug_expression` is Metal's alone (`HALO_GPU_DEBUG_EXPR`, as MSL): it does nothing with Vulkan, whose shaders are SPIR-V written directly, with no source to put it in. |
 | `debug.dynamic_lights_look`, `debug.dynamic_lights_log` | `""`, `false` | `HALO_DYNAMIC_LIGHTS_LOOK`, `HALO_DYNAMIC_LIGHTS_LOG` | Tools for the enhanced dynamic lights: up to eight numbers in place of their look's (the lights' brightness, `1.7`; their core's inverse square in radii, `12`; the spill past white, `0.18`; the wrap on models, `0.25`; the glow's size in the light's radius, `0.22`, its brightness, `1.2`, its softness against what it meets in world units, `0.12`, and its least size, `0.035`), and a log of where the first projectile's light is drawn each frame beside where the game placed it at the tick, and once a second how many lights there are. |
-| `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_hitch`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_chat`, `debug.network_test_name`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_HITCH`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link, or (`log`) a log of the game one machine plays (`game/network_test.c`); a test game starts `debug.network_test_start` seconds (`15.0`) after the host opens it. Refer to `NETCODE.md`. `debug.test_input = "menu:a down down a"` presses menu buttons one a second (`a`, `b`, `x`, `y`, `up`, `down`, `left`, `right`, `start`, `back` or `wait`, `screenshot`, the Screenshot key's capture, or `click:<x>:<y>`, a click of the pointer there, `x` and `y` 0 to 1 of the window), for testing the menus; `"script:0.5 jump; 1-2 move=0,1; 2 aim=90,10"` presses, holds and aims on the simulation's clock, in seconds from the scenario's start, the same at any simulation rate (`tools/scorecard`). |
+| `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_hitch`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_chat`, `debug.network_test_name`, `debug.network_test_players`, `debug.network_test_most_players`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_HITCH`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PLAYERS`, `HALO_NETWORK_TEST_MOST_PLAYERS`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link, or (`log`) a log of the game one machine plays (`game/network_test.c`); a `local:` game has `debug.network_test_players` players (split screen), and a hosted one takes `debug.network_test_most_players` at most (`0`: the game's own); a test game starts `debug.network_test_start` seconds (`15.0`) after the host opens it. Refer to `NETCODE.md`. `debug.test_input = "menu:a down down a"` presses menu buttons one a second (`a`, `b`, `x`, `y`, `up`, `down`, `left`, `right`, `start`, `back` or `wait`, `screenshot`, the Screenshot key's capture, or `click:<x>:<y>`, a click of the pointer there, `x` and `y` 0 to 1 of the window; `back+x` holds Back through its second and presses X half way through it), for testing the menus; `"script:0.5 jump; 1-2 move=0,1; 2 aim=90,10"` presses, holds and aims on the simulation's clock, in seconds from the scenario's start, the same at any simulation rate (`tools/scorecard`). |
 | `debug.network_test_cues`, `debug.network_test_cue_players` | none, `1` | `HALO_NETWORK_TEST_CUES`, `HALO_NETWORK_TEST_CUE_PLAYERS` | Console lines a test runs at their seconds, from the first tick that many players are in (`"<second> <line>\|..."`). |
 | `debug.bot_trace` | `0` | `HALO_BOT_TRACE` | Every this many seconds, each bot's state is written to the log: where it is and where it goes, its path, its target and its weapon. `0`: never. |
 | `debug.bot_player` | `false` | `HALO_BOT_PLAYER` (set) | In a local game with bots (`bots.count`), a bot of its own plays the first player too, and its view is drawn as the player's: footage of a fighter without a person at the controls. |
@@ -1338,7 +1338,8 @@ To join a game, do one of these steps:
   file that only the user can read (`halo-ce-universal.key` in
   `$XDG_RUNTIME_DIR`, else `~/.halo-ce-universal.key`; on Windows in
   `%LOCALAPPDATA%`) encrypts the link, so the programs of other users cannot
-  read it.
+  read it. On macOS and iOS the system gives the link to the app, running
+  or started by it (`port/macos/host_links.c`).
 - Copy the link (or the 64 digits) and go to the game.
 - Enter `halo <link>`.
 - Accept a Discord invite, or ask to join in Discord. Refer to "Discord".
@@ -1374,6 +1375,14 @@ Friends can group up before a game and go from game to game together
   game) sees why, and stays in the party; the leader sees it too. JOIN
   LEADER tries again. A member in another game joins when it goes back to
   the menus.
+- In the Server Browser, the leader sees whether a game has room for the
+  whole party: "Room for your party (4)", or the players dimmed and "No room
+  for your party of 4". When the leader joins an OpenH1 game, its host holds
+  a slot for each member for 20 seconds while they follow, so that no one
+  else takes them and splits the party; in a team game it puts the party on
+  one team when that team has room. A Legacy game's host, or an older
+  OpenH1's, holds nothing: the browser says "No room guarantee", and the
+  members join as they can.
 - After a game the party is where it was. When the host leaves, the party
   is in the menus again, and the leader takes it to the next game.
 - LEAVE PARTY leaves; the leader's party passes to the next member (also
@@ -1382,7 +1391,7 @@ Friends can group up before a game and go from game to game together
 - In an OpenH1 network game, right-click on the scores to pick a player:
   **Invite to party** invites them to your party (one is made if you have
   none), and **Join their party**, when they are in one, asks them to let
-  you in. The player sees "Erin invites you to their party" (or "Erin wants
+  you in. The player sees "Keyes invites you to their party" (or "Keyes wants
   to join your party") at the top of the screen for 30 seconds; J
   (`controls.party_accept`) or a controller's D-pad Down accepts, the same
   as opening the party's link, and doing nothing lets it go. The picked
@@ -1756,7 +1765,14 @@ Only machines with the invite can find the game:
   VOTE KICK in Server Setup > Teamplay Options (`network.votekick`; in
   co-op, Server Setup > Voice and Voting). Hold the scoreboard key, right-click to
   show the pointer, and click the name of the player. Then click **Start
-  a vote to kick**. Other players vote in the same way, and see the vote on
+  a vote to kick**. With a controller (or the keyboard), hold Back (the
+  scoreboard key): a player is lit, and X (Enter) opens their menu. The
+  D-pad (the arrow keys) moves the light and pins the scoreboard open, so
+  Back can be let go of; while it is pinned the player stands, the left stick
+  moves the light too, A (Enter) opens the menu, and B (Esc) or Back
+  closes the scoreboard. In the menu, up and down pick an item, A (Enter)
+  does it and B (Esc) goes back. In split screen each player picks on
+  their own view with their own controller. Other players vote in the same way, and see the vote on
   the scoreboard. `votekick <player name>` in the developer console does
   the same. The host also gets **Kick** and **Ban** in this menu: these do
   the same as the `kick` and `ban` commands (click **Ban** two times). The
@@ -1858,10 +1874,10 @@ it is the game's (`#join=` and `halo://join/`, 64 digits).
 
 The address opens the join page (`website/public/join`, on openh1.com). The
 code is after `#`, which a browser never sends to the site. The page opens
-the `halo://` link (on Windows, Linux and Android, where the game is its
-handler), shows the link to copy into JOIN BY LINK (or the Party screen's
-PASTE LINK; the game also joins a link that it finds on the clipboard when
-it comes to the front), and shows the downloads for a friend who does not
+the `halo://` link (the game is its handler on Windows, Linux, Android,
+macOS and iOS), shows the link to copy into JOIN BY LINK (or the Party
+screen's PASTE LINK; the game also joins a link that it finds on the
+clipboard when it comes to the front), and shows the downloads for a friend who does not
 have OpenH1 yet. The game takes the join page's addresses, as it takes every
 other form of the links (`halo://join/`, `halo://party/`, a bare code,
 `?join=`, `?party=`).

@@ -33,7 +33,8 @@ def test_case(case):
 FAULTS = {
     "legacy-as-version": (("return standard || mixed ? _p2p_party_follow_version : _p2p_party_follow_legacy;",
                            "return _p2p_party_follow_version;"), "verdict"),
-    "full-joined": (("if (maximum > 0 && players >= maximum)", "if (0)"), "verdict"),
+    "full-joined": (("if (maximum > 0 && players >= maximum && !standard && !mixed)", "if (0)"), "verdict"),
+    "full-openh1-given-up": ((" && !standard && !mixed)", ")"), "verdict"),
     "closed-joined": (("if (!open && !in_progress)", "if (0)"), "verdict"),
     "screen-left-ignored": (("if (!view->screen)\n\t\t\treturn _party_follow_idle;", ""), "reach"),
     "reach-forever": ((" || view->waited > PARTY_REACH_TIME", ""), "reach"),

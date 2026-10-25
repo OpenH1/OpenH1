@@ -157,6 +157,10 @@ struct member
 	unsigned char result;
 	/* what the menus were told of it (_announced_*) */
 	unsigned char announced;
+	/* the hash of its tunnel key (its party key's X25519 form: the key it
+	reaches a game's host with), worked out when first asked for */
+	unsigned char key_hash[P2P_KEY_HASH_SIZE];
+	unsigned char key_hashed;
 };
 
 struct departed
@@ -1390,6 +1394,34 @@ void p2p_party_follow_result(unsigned long order, int result)
 	if (result != _p2p_party_follow_busy && result != _p2p_party_follow_none)
 		party.handled_order = order;
 	pthread_mutex_unlock(&p2p_lock);
+}
+
+int p2p_party_member_key_hashes(unsigned char *hashes, int maximum_count)
+{
+	int count = 0;
+	int index;
+
+	pthread_mutex_lock(&p2p_lock);
+	for (index = 0; leading() && index < party.roster_count && count < maximum_count; index++)
+	{
+		struct member *member = find_member(party.roster[index]);
+		unsigned char x25519[P2P_KEY_SIZE];
+
+		if (is_self(party.roster[index]) || !member || member->network_version != HALO_PORT_NETWORK_VERSION)
+			continue;
+		/* (once each: the key's form takes a little work) */
+		if (!member->key_hashed)
+		{
+			if (!p2p_ed25519_to_x25519(member->key, x25519))
+				continue;
+			p2p_key_hash(x25519, member->key_hash);
+			member->key_hashed = 1;
+		}
+		memcpy(hashes + count * P2P_KEY_HASH_SIZE, member->key_hash, P2P_KEY_HASH_SIZE);
+		count++;
+	}
+	pthread_mutex_unlock(&p2p_lock);
+	return count;
 }
 
 void p2p_party_follow_again(void)

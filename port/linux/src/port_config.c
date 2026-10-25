@@ -1173,7 +1173,8 @@ static const struct config_setting config_settings[] =
 		"\"host:<map>\" hosts a game on that map, \"local:<map>\" plays a local (split\n"
 		"screen) game on it, \"join\" joins the first game found,\n"
 		"\"browse\" the one with the most players the server browser lists (not\n"
-		"co-op, if it can), \"log\" logs the game that runs (and runs its cues);\n"
+		"co-op, if it can), \"follow\" its party leader's (debug.party), \"log\"\n"
+		"logs the game that runs (and runs its cues);\n"
 		"empty for none." },
 	{ "debug.network_test_start", _config_real, "15.0", "HALO_NETWORK_TEST_START", _environment_value, _platform_all,
 		"Seconds after hosting that an automated test game starts." },
@@ -1206,6 +1207,10 @@ static const struct config_setting config_settings[] =
 		"player it may to its party (unless debug.party leads one), a client asks\n"
 		"to join the party of each player in one, and each machine then accepts\n"
 		"the invite it has, as the scoreboard and the accept key do; 0 never." },
+	{ "debug.network_test_most_players", _config_integer, "0", "HALO_NETWORK_TEST_MOST_PLAYERS", _environment_value,
+		_platform_all,
+		"The most players an automated test host's games take (as Server\n"
+		"Setup's MAX PLAYERS); 0 the game's own." },
 	{ "debug.network_test_name", _config_string, "\"\"", "HALO_NETWORK_TEST_NAME", _environment_value, _platform_all,
 		"The name this machine's player takes in an automated test game (ASCII);\n"
 		"empty keeps its profile's." },
@@ -1221,6 +1226,10 @@ static const struct config_setting config_settings[] =
 	{ "debug.network_test_cue_players", _config_integer, "1", "HALO_NETWORK_TEST_CUE_PLAYERS", _environment_value,
 		_platform_all,
 		"The players debug.network_test_cues waits for." },
+	{ "debug.network_test_players", _config_integer, "1", "HALO_NETWORK_TEST_PLAYERS", _environment_value,
+		_platform_all,
+		"The players of a \"local:\" network test's game (1 to 4): its split\n"
+		"screen, the first controller's player the first." },
 	{ "debug.network_test_public", _config_boolean, "false", "HALO_NETWORK_TEST_PUBLIC", _environment_value,
 		_platform_all,
 		"The network test's host lists its game in the server browser, as Create\n"
@@ -1276,7 +1285,8 @@ static const struct config_setting config_settings[] =
 		"\"menu:<buttons>\" presses menu\n"
 		"buttons one a second (a, b, x, y, up, down, left, right, start, back or\n"
 		"wait, or click:<x>:<y>, a click of the pointer there, 0 to 1 of the\n"
-		"window, separated by spaces or commas), for testing the menus;\n"
+		"window, separated by spaces or commas; \"back+x\" holds Back through its\n"
+		"second and presses X half way), for testing the menus;\n"
 		"\"script:<second>[-<second>] <action>;...\" presses, holds and aims (\"hunt\": at the\n"
 		"nearest enemy in sight) on the\n"
 		"simulation's clock in seconds from the scenario's start (tools/scorecard),\n"

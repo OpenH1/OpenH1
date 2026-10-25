@@ -566,7 +566,7 @@ def test_p2p_signatures_and_listings(tmp_path):
 # process (tools/p2p_party_check.c), each case by its name
 
 PARTY_CASES = ["make", "join", "follow", "busy", "local", "leave", "handoff", "timeout", "regroup", "disband",
-               "full", "joinless", "format", "version", "spare"]
+               "full", "joinless", "format", "version", "keys", "spare"]
 PARTY_SOURCES = ["tools/p2p_party_check.c", "port/linux/src/p2p_crypto.c", "port/third_party/monocypher/monocypher.c",
                  "port/third_party/monocypher/monocypher-ed25519.c"]
 
@@ -644,6 +644,12 @@ PARTY_MUTATIONS = [
      "spare"),
     ("MAKE PARTY makes a party of its own, not the spare's", "\tif (party.spare.made)\n\t\tmemcpy(token",
      "\tif (0)\n\t\tmemcpy(token", "spare"),
+    ("a member is named by its party key, not its tunnel key", "\t\t\tp2p_key_hash(x25519, member->key_hash);",
+     "\t\t\tp2p_key_hash(member->key, member->key_hash);", "keys"),
+    ("a member of another version is named", " || member->network_version != HALO_PORT_NETWORK_VERSION)\n"
+     "\t\t\tcontinue;\n\t\t/* (once each", ")\n\t\t\tcontinue;\n\t\t/* (once each", "keys"),
+    ("a member names the others", "leading() && index < party.roster_count && count < maximum_count",
+     "index < party.roster_count && count < maximum_count", "keys"),
 ]
 
 

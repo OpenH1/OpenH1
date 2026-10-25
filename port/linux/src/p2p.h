@@ -180,6 +180,10 @@ struct p2p_listing
 	/* the bots its host plays, apart from its players */
 	unsigned char bots;
 	unsigned char open, in_progress, has_teams;
+	/* its host holds room for a party that joins it, its leader first
+	(port/linux/game/network_party.c): an OpenH1 game of a build that does,
+	which this one joins as an OpenH1 game */
+	unsigned char holds_party;
 	/* joining it failed this run (p2p_lobby_mark_failed) */
 	unsigned char failed;
 	/* milliseconds, -1 if not known */
@@ -493,6 +497,12 @@ int p2p_party_follow(char *invite, int size, unsigned long *order);
 void p2p_party_follow_result(unsigned long order, int result);
 /* the leader's game asked to be joined again (JOIN LEADER) */
 void p2p_party_follow_again(void);
+/* the party's other members, if this machine leads it: the hash of each
+one's tunnel key (P2P_PLAYER_KEY_HASH_SIZE bytes each, into hashes: the
+X25519 form of its party key, the key a game's host knows it by,
+p2p_peer_key_hash), of those listed and of this network version, at most
+maximum_count; returns their count (0 leading no one, or not leading) */
+int p2p_party_member_key_hashes(unsigned char *hashes, int maximum_count);
 void p2p_party_status(struct p2p_party_status *status);
 
 #endif
