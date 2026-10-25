@@ -190,8 +190,12 @@ button. A Bluetooth or USB keyboard operates as on Linux.
 The touchscreen operates the menus: tap an item to select it (on a
 setting with values, tap its left or right half), tap a button of the key
 at the bottom of a screen (for example "B = Back") to push it, and drag to
-scroll a list (down or right steps back, up or left steps forward). A drag
-stops at the first and the last item, and it does not change a setting's
+scroll a list. Multiplayer, the server browser, the lobby, Host Controls
+and the Party screen are laid out for a finger: tiles, rows and buttons
+44 points tall or more, the tabs as chips, the bottom's buttons by their
+words; a tap on a row chooses it and shows it in the panel beside, a second
+tap opens or joins it. Drag a list to scroll it (down or right steps back,
+up or left steps forward). A drag stops at the first and the last item, and it does not change a setting's
 value. Touches that start in the edge-gesture zones of Android do not tap
 or scroll at the sides, and do not scroll at the top and bottom, because the
 first swipe from an edge in full screen only shows the system bars.

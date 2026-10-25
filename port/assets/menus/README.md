@@ -180,6 +180,17 @@ On a touchscreen a tap on an item of a list with an extended description
 description says of it, and a second tap uses it; a list without one (the
 button bars) uses its item at the first tap.
 
+The redesigned multiplayer screens (Multiplayer, the server browser, the
+lobby, Host Controls, the Party screen) have a touchscreen's layout of
+their own beside the computer's, in the same look and by the same widgets'
+names (each folder's `touch` folder, `*.touch.xml`; the screen's children
+`platform="touch"` and `"pointer"`): every tap target `TOUCH_TAP` units
+tall (44 points on a phone), the tabs a row of chips, the footer's key
+prompts buttons that name no key, the details panel beside the list, laid
+out as the computer's is on a wide screen (`tools/port_settings.py`'s
+`_touch_*`; `tools/harness/tests/test_touch_screens.py` checks them at each
+display's width).
+
 A widget takes the focus if it has an `<on>` or is a list; a screen gives it
 to its first such child.
 
