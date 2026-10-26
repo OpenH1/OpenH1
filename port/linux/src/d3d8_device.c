@@ -1640,7 +1640,7 @@ int halo_ui_pointer_update(int menus_active, struct halo_ui_pointer *pointer)
 	pointer->right_clicks = (unsigned char)(state.right_clicks < 255 ? state.right_clicks : 255);
 	pointer->wheel_steps = (signed char)(state.wheel_steps < -8 ? -8 : state.wheel_steps > 8 ? 8 : state.wheel_steps);
 	pointer->touch = state.touch != FALSE;
-	pointer->left_held = state.left_held != FALSE && state.touch == FALSE;
+	pointer->left_held = state.touch == FALSE ? state.left_held != FALSE : state.finger_held != FALSE;
 	pointer->downs = (unsigned char)(state.downs < 255 ? state.downs : 255);
 	ui_point_from_window(state.down_x, state.down_y, &pointer->down_x, &pointer->down_y);
 	return 1;

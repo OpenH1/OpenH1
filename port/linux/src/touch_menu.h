@@ -60,6 +60,10 @@ struct touch_menu_output
 	wants to show where it began */
 	int downs;
 	float down_x, down_y;
+	/* a finger is down (not one void_tap), and where it is now: a slider
+	it went down on follows it (menu_functions.c) */
+	int held;
+	float held_x, held_y;
 };
 
 struct touch_menu

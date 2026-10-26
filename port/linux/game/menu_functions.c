@@ -4211,6 +4211,41 @@ static boolean settings_slider_function(char const *name, struct widget_instance
 	return FALSE;
 }
 
+/* ui_widget.c's: a finger put down on an item at x, taken when the item
+is a slider's row (or in one) and x is on its track: the value goes there,
+the row is chosen, and the finger, held, drags it (settings_sliders_show),
+as the mouse's button does; its drag then steps no list */
+boolean menu_functions_finger_down(struct widget_instance *item, short x)
+{
+	struct widget_instance *row = item;
+	struct widget_instance *track;
+	short slider = NONE;
+	short depth;
+
+	for (depth = 0; row && depth < 3 && (slider = settings_slider_of(row)) == NONE; depth++)
+		row = row->parent;
+	track = slider != NONE ? settings_slider_track(row) : NULL;
+	if (!track || x < settings_slider_track_x(track) - 4 || x >= settings_slider_track_x(track) + SLIDER_TRACK_WIDTH + 4)
+		return FALSE;
+	/* (a number being typed is kept, and the finger places the value
+	too, where the mouse's click would only end the typing) */
+	if (text_field_editing(NULL))
+		text_field_end(TRUE);
+	if (row->parent)
+	{
+		struct widget_instance *child;
+		short index = 0;
+
+		for (child = row->parent->child; child && child != row; child = child->next)
+			index++;
+		row->parent->focused_child = row;
+		row->parent->parameters.list.selected_index = index;
+	}
+	settings_slider_place(slider, track, x);
+	settings_slider.dragged = row;
+	return TRUE;
+}
+
 /* (each frame of a page) the sliders' thumbs at their values and their
 numbers shown (typed into, the text typed); the one dragged follows the
 mouse while its button is held; one typed into whose row lost the focus

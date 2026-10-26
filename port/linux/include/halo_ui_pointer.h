@@ -30,8 +30,8 @@ struct halo_ui_pointer
 	the touchscreen reports them (debug.touch_targets shows them) */
 	unsigned char downs;
 	short down_x, down_y;
-	/* nonzero while the mouse's left button is held (a slider dragged:
-	menu_functions.c); never the touchscreen's */
+	/* nonzero while the mouse's left button is held, or a finger is on the
+	touchscreen (a slider dragged: menu_functions.c) */
 	unsigned char left_held;
 };
 

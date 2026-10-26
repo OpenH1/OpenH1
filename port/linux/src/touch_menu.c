@@ -56,6 +56,9 @@ void touch_menu_down(struct touch_menu *menu, unsigned long long finger, float x
 	menu->output.downs++;
 	menu->output.down_x = x;
 	menu->output.down_y = y;
+	menu->output.held = 1;
+	menu->output.held_x = x;
+	menu->output.held_y = y;
 	menu->scrolling = 0;
 	menu->no_scroll = in_top_or_bottom_zone(menu, y);
 	menu->void_tap = 0;
@@ -71,6 +74,8 @@ void touch_menu_move(struct touch_menu *menu, unsigned long long finger, float x
 
 	if (!menu->finger_down || finger != menu->finger)
 		return;
+	menu->output.held_x = x;
+	menu->output.held_y = y;
 	if (!menu->scrolling)
 	{
 		float dx = x - menu->down_x, dy = y - menu->down_y;
@@ -84,6 +89,7 @@ void touch_menu_move(struct touch_menu *menu, unsigned long long finger, float x
 		if (menu->no_scroll)
 		{
 			menu->void_tap = 1;
+			menu->output.held = 0;
 			return;
 		}
 		/* the steps count from the slop's edge on the axis: the slop is not
@@ -126,6 +132,7 @@ void touch_menu_up(struct touch_menu *menu, unsigned long long finger, float x, 
 	menu->finger_down = 0;
 	menu->scrolling = 0;
 	menu->void_tap = 0;
+	menu->output.held = 0;
 }
 
 void touch_menu_cancel(struct touch_menu *menu)
@@ -136,6 +143,7 @@ void touch_menu_cancel(struct touch_menu *menu)
 	menu->remainder = 0.0f;
 	menu->pending_steps = 0;
 	menu->output.downs = 0;
+	menu->output.held = 0;
 }
 
 void touch_menu_read(struct touch_menu *menu, struct touch_menu_output *output)
