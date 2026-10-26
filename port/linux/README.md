@@ -1106,7 +1106,11 @@ Other things the game moves once a tick are drawn between ticks as well:
 
 The direction of the view is an exception. The game reads the mouse and the
 sticks in each frame. In first person, on foot, each frame points the view
-where the player aims at that time (`display.direct_camera`). Thus the view
+where the player aims at that time (`display.direct_camera`), with the
+mouse's motion that came while the frame was calculated: the view reads the
+mouse again as the frame takes it, after the simulation, and turns on by
+that motion, which the next frame's input then gives the player (only the
+view drawn takes it early: nothing sent or simulated changes). Thus the view
 turns in the frame that the mouse moves. The view also stands where the
 newest step left the player, carried on by the player's velocity for the
 time since that step, and the gun and hands are posed from it with their

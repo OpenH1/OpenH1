@@ -92,9 +92,11 @@ extern void latency_log_read(int trigger, int stick_x, int stick_y);
 /* ... and when the scripted player pressed what it reads ("latency:") */
 extern void latency_log_pressed(unsigned long long when_ns);
 /* ... and the mouse's: its fire binding held, its motion read; the view
-turned by it */
+turned by it, by the frame's input or by the drawn view's own late reading
+(halo_linux_mouse_look_late) */
 extern void latency_log_mouse_read(int fire, float dx, float dy);
 extern void latency_log_mouse_turned(void);
+extern void latency_log_mouse_late(float dx, float dy);
 
 /* ---------- device tables */
 
@@ -120,6 +122,10 @@ static BOOL gamepad_idle(SDL_Gamepad *gamepad);
 
 static pthread_mutex_t mouse_lock = PTHREAD_MUTEX_INITIALIZER;
 static float mouse_pending_x, mouse_pending_y;
+/* the motion the frame's input took for the player's facing
+(halo_linux_mouse_look), since the first controller was read last: the
+drawn view may then take what has come since (halo_linux_mouse_look_late) */
+static BOOL mouse_look_taken;
 static unsigned long mouse_polls_unconsumed = 0;
 static float mouse_wheel_accumulated = 0.0f;
 /* the wheel's switch (wheel_update): when the wheel last moved, until when
@@ -191,6 +197,7 @@ int halo_linux_mouse_look(short gamepad_index, float *yaw, float *pitch)
 	mouse_pending_x = 0.0f;
 	mouse_pending_y = 0.0f;
 	mouse_polls_unconsumed = 0;
+	mouse_look_taken = TRUE;
 	pthread_mutex_unlock(&mouse_lock);
 	if (x == 0.0f && y == 0.0f)
 		return FALSE;
@@ -198,6 +205,51 @@ int halo_linux_mouse_look(short gamepad_index, float *yaw, float *pitch)
 	*yaw = -x * radians;
 	*pitch = (invert ? y : -y) * radians * vertical_sensitivity;
 	latency_log_mouse_turned();
+	return TRUE;
+}
+
+/* The drawn view's own reading of the mouse (render_interpolation.c, as the
+frame takes the player's view, in first person on foot: display.direct_camera),
+late in the frame: the radians of yaw and pitch of the motion come since the
+frame's input took it (halo_linux_mouse_look), as that would turn them. Only
+the view drawn turns by them: the motion stays the next frame's input, which
+turns the player's facing by it then, so the game is as it was (nothing sent,
+nothing simulated changes). FALSE, and no turn, when the frame's input took
+no motion (the mouse not aiming the player: a menu, the console, the
+scoreboard's pointer, F12) or nothing has come. Once a frame. */
+int halo_linux_mouse_look_late(short gamepad_index, float *yaw, float *pitch)
+{
+	static unsigned long read_at = (unsigned long)-1;
+	static int invert;
+	struct platform_input_state input;
+	BOOL taken;
+	float radians;
+
+	*yaw = 0.0f;
+	*pitch = 0.0f;
+	if (gamepad_index != 0)
+		return FALSE;
+	pthread_mutex_lock(&mouse_lock);
+	taken = mouse_look_taken;
+	mouse_look_taken = FALSE;
+	pthread_mutex_unlock(&mouse_lock);
+	if (!taken)
+		return FALSE;
+	if (read_at != config_changes())
+	{
+		read_at = config_changes();
+		invert = config_boolean("input.invert_mouse");
+	}
+	/* (the window's events come now, as the next frame's reading would
+	take them) */
+	platform_pump_events();
+	platform_input_read(&input, FALSE);
+	if (input.mouse_released || (input.mouse_dx == 0.0f && input.mouse_dy == 0.0f))
+		return FALSE;
+	latency_log_mouse_late(input.mouse_dx, input.mouse_dy);
+	radians = mouse_radians_per_count(mouse_sensitivity());
+	*yaw = -input.mouse_dx * radians;
+	*pitch = (invert ? input.mouse_dy : -input.mouse_dy) * radians * vertical_sensitivity;
 	return TRUE;
 }
 
@@ -2254,6 +2306,9 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		platform_input_read(&input, TRUE);
 		mouse_poll(&input);
 		wheel_update();
+		pthread_mutex_lock(&mouse_lock);
+		mouse_look_taken = FALSE;
+		pthread_mutex_unlock(&mouse_lock);
 		keyboard_actions_held = 0;
 		scoreboard_hold = scoreboard_pad_port_hold(0, input.menus);
 		keys_held_over_switch(&input, scoreboard_hold == HALO_SCOREBOARD_PAD_HOLDS);
