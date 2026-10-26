@@ -279,7 +279,13 @@ browser names in its gametype column ("SWAT", "HC CTF"); a browser takes a
 mode for a Slayer game only, and one it does not know as none. Then version 38
 lets the host's shield effects be `players` (SHIELD EFFECTS' PLAYERS' OWN), a
 value of distributed message 91 that tells each client to draw its own
-settings', not synced.
+settings', not synced. Then version 39 marks a dedicated server's game (a
+host with no player of its own, `halo --server`, OpenCE's) with a flag of
+its LAN advertisement (`HALO_PORT_ADVERTISED_DEDICATED_FLAG`, 0x04 of the
+third reserved byte) and of its internet listing (32), which the server
+browser shows. The listing's flag is its host's word, which any host can
+set, so a browser counts a game a dedicated server's on a master server's
+word alone, not on that flag.
 
 OpenH1's own games ("OpenH1 60 Tick" and the like, below; Standard games in
 the code) have a protocol version of their own,
@@ -300,7 +306,19 @@ and carries it in the game record, advertisement and listing; version 2
 sends each player's sub-steps at 60 and 120 (below, "Sub-step inputs");
 version 3 lets OpenCE players into an OpenH1 game (below, "OpenCE players in
 an OpenH1 game"); version 4 moves a player to the other team in a game (below,
-"The host's controls").
+"The host's controls"); version 5 is the first on network version 39, whose
+dedicated server's flag it carries, and changes nothing else of its own. With no new version, each client then tells the
+host its build (distributed message 92, `_distributed_message_client_build`,
+reliably once a game after its ready, over its connection alone): its
+number, configuration, the label it shows ("OpenH1 Linux | build 120
+(release)", OpenCE's "OpenCE Linux | build 282 (release)"), the GitHub
+repository it is made from (owner/name, which the build scripts take from
+CI's `GITHUB_REPOSITORY` or the checkout's origin remote: OpenH1's builds
+say `OpenH1/OpenH1`) and the mods it plays, a line each ("folder version",
+in the load order); the host keeps it printable and logs it once, and a
+dedicated server shows it in `/api/players` (`client`). A host without the
+message drops it as a kind it does not know. It is below 120, so an OpenH1
+host takes it from OpenCE's clients in a mixed game too.
 
 `port/linux/network_format.txt` records the wire format of the current
 version (`tools/network_format.py`): `test_linux_port.py` fails when the
@@ -473,7 +491,7 @@ matching builds so an older client cannot silently ignore the rule.
 A host plays one of two kinds of game (`network.game_mode`, read when it
 starts hosting; `port/linux/game/network_standard.c`):
 
-- **Legacy**: OpenCE's netcode at network version 38 and 30 ticks a second,
+- **Legacy**: OpenCE's netcode at network version 39 and 30 ticks a second,
   which OpenCE builds join. A Legacy game is unchanged in every byte: its
   advertisement, listing, join token and game record are as before.
 - **OpenH1** (`"openh1"`, the default when hosting; `"standard"`, its first
@@ -630,7 +648,7 @@ change:
   gets none of OpenH1's own messages (120 and above:
   `network_standard_message_goes_to`, checked where the distributed netcode
   queues a datagram's messages and a reliable one). Everything else in an
-  OpenH1 game is network version 38's already.
+  OpenH1 game is network version 39's already.
 - Each player is stepped at their own rate on every OpenH1 machine. An
   OpenCE player's biped, and the vehicle they drive, are of the macro lane
   (`objects.h`): they move once a tick, exactly as on the player's own

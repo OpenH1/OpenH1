@@ -66,7 +66,7 @@ is newer (network_client_manager.c). A host advertises it, with its netcode,
 in its game's advertisement's reserved bytes (network_server_message_handler.c),
 which hosts built before there was a version send as zeros: version 0.
 Raise it with any change to what the machines send each other. */
-#define HALO_PORT_NETWORK_VERSION 38
+#define HALO_PORT_NETWORK_VERSION 39
 /* ... the advertisement's reserved bytes: the version (a little-endian word),
 then flags, then the game's kind (an OpenCE gametype's mode, and Hardcore:
 port/linux/game/game_modes.h's game_modes_kind), for the server browser */
@@ -95,11 +95,12 @@ takes it for a newer version and does not join. Raise it with any change to
 what a Standard game's machines send each other, and with every raise of
 HALO_PORT_NETWORK_VERSION: HALO_PORT_STANDARD_BASE_VERSION is the network
 version it was last raised for, and the build fails until they agree. */
-#define HALO_PORT_STANDARD_NETWORK_VERSION 4
+#define HALO_PORT_STANDARD_NETWORK_VERSION 5
 /* (1: the rate agreed; 2: the players' sub-steps sent, network_substeps.c;
 3: OpenCE players in the game, network_standard.c's mixed games; 4: a
-player moved to the other team by the host, network_host_controls.c) */
-#define HALO_PORT_STANDARD_BASE_VERSION 38
+player moved to the other team by the host, network_host_controls.c; 5:
+network version 39, a dedicated server's flag) */
+#define HALO_PORT_STANDARD_BASE_VERSION 39
 #define HALO_PORT_STANDARD_VERSION_BIT 0x8000
 #define HALO_PORT_STANDARD_ADVERTISED_VERSION (HALO_PORT_STANDARD_VERSION_BIT | HALO_PORT_STANDARD_NETWORK_VERSION)
 #if HALO_PORT_STANDARD_BASE_VERSION != HALO_PORT_NETWORK_VERSION
@@ -116,6 +117,9 @@ netcode was removed; hosts of version 4 built before then may not) */
 /* ... the game is under way (loading, playing or over), not in its lobby:
 the menus show it before joining it (hosts built before then never set it) */
 #define HALO_PORT_ADVERTISED_IN_PROGRESS_FLAG 0x02
+/* ... the host is a dedicated server, with no player of its own (halo
+--server: port/linux/src/server_mode.c): the menus say so (from version 39) */
+#define HALO_PORT_ADVERTISED_DEDICATED_FLAG 0x04
 
 /* a message header's 12-bit length allows messages of up to 0xFFF bytes,
 header included; the per-tick update of 128 players is 3,857 */

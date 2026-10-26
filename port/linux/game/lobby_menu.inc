@@ -475,6 +475,8 @@ static void lobby_board_update(struct widget_instance *list)
 	short state_data, state = client ? network_game_client_get_state(client, &state_data) : NONE;
 	boolean host = global_network_game_server_get() != NULL;
 	boolean local = host && network_game_is_splitscreen_local();
+	/* (a dedicated server's game: no host's player, its own rules start it) */
+	boolean dedicated = !host && lobby_joined_dedicated;
 	short machine = network_game_client_get_local_machine_index();
 	boolean players_focused = list->focused_child && !strcmp(list->focused_child->name, "board_players");
 	struct p2p_party_status party;
@@ -545,7 +547,8 @@ static void lobby_board_update(struct widget_instance *list)
 			bots += entries[index].bot ? 1 : 0;
 		lobby_board_game_name(game, entries, players, count, name, NUMBEROF(name));
 		usnprintf(text, NUMBEROF(text) - 1, L"%s \x00B7 %s \x00B7 %d of %d players", name,
-			controls.invite ? L"Internet" : L"Local network", count, game->maximum_players);
+			dedicated ? L"Dedicated server" : controls.invite ? L"Internet" : L"Local network", count,
+			game->maximum_players);
 		if (bots)
 		{
 			size_t length = ustrlen(text);
@@ -713,6 +716,8 @@ static void lobby_board_update(struct widget_instance *list)
 			usnprintf(text, NUMBEROF(text) - 1, L"Infection: the zombies are chosen when the game starts.");
 		else if (host && !local && game->machine_count < 2)
 			usnprintf(text, NUMBEROF(text) - 1, L"Waiting for players to join.");
+		else if (dedicated)
+			usnprintf(text, NUMBEROF(text) - 1, L"A dedicated server: it starts once enough players join.");
 		else if (lobby_local_player_count() < MAXIMUM_LOCAL_PLAYERS)
 		{
 			short controller;
@@ -730,7 +735,8 @@ static void lobby_board_update(struct widget_instance *list)
 		else if (seconds == 0)
 			usnprintf(text, NUMBEROF(text) - 1, controls.start ? L"STARTING..." : L"Starting...");
 		else
-			usnprintf(text, NUMBEROF(text) - 1, !controls.start ? L"Waiting for the host" :
+			usnprintf(text, NUMBEROF(text) - 1, dedicated ? L"Waiting for players" :
+				!controls.start ? L"Waiting for the host" :
 				ui_widget_port_touch_menus() ? L"START GAME" : L"%%a-button START GAME");
 		text[NUMBEROF(text) - 1] = 0;
 		text_set(named(list, "board_start", 0), text);

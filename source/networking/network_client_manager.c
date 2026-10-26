@@ -3332,6 +3332,19 @@ boolean network_game_client_advertised_game_in_progress(
 		(network_game_client_advertised_versions[game_index].flags & HALO_PORT_ADVERTISED_IN_PROGRESS_FLAG) != 0;
 }
 
+/* port: whether the advertised game's host is a dedicated server
+(HALO_PORT_ADVERTISED_DEDICATED_FLAG: OpenCE's halo --server, with no player
+of its own), for the browser's row and the lobby's line */
+boolean network_game_client_advertised_game_dedicated(
+	struct network_game_client *client,
+	struct network_advertised_game const *game)
+{
+	long game_index = client ? game - client->available_games : NONE;
+
+	return game_index >= 0 && game_index < MAXIMUM_NETWORK_ADVERTISED_GAMES &&
+		(network_game_client_advertised_versions[game_index].flags & HALO_PORT_ADVERTISED_DEDICATED_FLAG) != 0;
+}
+
 /* port: the advertised game's kind (an OpenCE gametype's mode, and Hardcore:
 port/linux/game/game_modes.h), for the server browser's name of it */
 byte network_game_client_advertised_game_kind(
