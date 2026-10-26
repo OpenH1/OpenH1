@@ -604,6 +604,8 @@ struct message_client_ping
 /* port/linux/src/p2p.c's */
 void p2p_hardware_id(char *hex, int size);
 void p2p_join_refused(int rejection_code);
+/* the platform layer's (sdl_platform.c) */
+void platform_show_message(char const *title, char const *message);
 
 struct message_client_join_game_request
 {
@@ -2426,6 +2428,16 @@ void network_game_client_rejected_by_game(
 
 	case _rejection_code_blacklisted_machine:
 		reason = "_rejection_code_blacklisted_machine";
+		break;
+
+	/* port: a dedicated server's word filter (server.chat_filter "block")
+	keeps out a word of this machine's player's name: the player told so,
+	which an older build took for a closed game */
+	case _rejection_code_name_refused:
+		reason = "_rejection_code_name_refused";
+		platform_show_message("Halo: cannot join this game",
+			"The host refused your player name: its word filter keeps out a word in it.\n\n"
+			"Change your name in Settings > Profile to join this host.");
 		break;
 	}
 
