@@ -1236,6 +1236,9 @@ public final class TouchControls extends View implements SensorEventListener, In
         sensitivity = imported.sensitivity;
         setHidden(false);
         cancelRumble();
+        // (laid out again: the new layout has no top inset, picture or
+        // gather of its own until it is)
+        layoutControls();
         invalidate();
     }
 
