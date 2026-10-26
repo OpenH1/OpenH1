@@ -5884,7 +5884,9 @@ static void browser_favorites_match(struct browser_favorite const *games, short 
 title chosen (a click, a tap, or A on it: up from the first row reaches the
 titles, left and right go between them) sorts the games by it, again the
 other way, the title brighter with its arrow; X (Tab on the keyboard) sorts
-by the next column's. The favorites stay first, each part sorted alike. The tabs
+by the next column's. The favorites stay first, each part sorted alike; in
+the order the lists open in (the most players first), the dedicated servers
+come before the games players host. The tabs
 (LB and RB, Q and E, A or a click on one) show every game, OpenH1's own,
 Legacy ones (OpenCE's netcode: port/linux/game/network_standard.c), co-op
 games, or the favorites. Nothing is sent: it is the lists', and kept while
@@ -5926,6 +5928,8 @@ struct browser_sort_entry
 	boolean openh1;
 	/* the campaign's (network co-op: no gametype) */
 	boolean coop;
+	/* a dedicated server's */
+	boolean dedicated;
 };
 
 static short browser_sort_column = _browser_sort_players;
@@ -5983,6 +5987,9 @@ static boolean browser_sort_before(struct browser_sort_entry const *a, struct br
 {
 	int difference = 0;
 
+	/* (the order the lists open in: the dedicated servers first) */
+	if (browser_sort_column == _browser_sort_players && browser_sort_descending && a->dedicated != b->dedicated)
+		return a->dedicated;
 	switch (browser_sort_column)
 	{
 	case _browser_sort_players:
@@ -7040,6 +7047,8 @@ static short lobby_browser_favorites(short count)
 		entries[index].rate = game->rate;
 		entries[index].openh1 = game->standard != 0;
 		entries[index].coop = game->engine_type == 0;
+		/* (on a master server's word alone, which this build hears from none) */
+		entries[index].dedicated = FALSE;
 		settings_wide_copy(entries[index].mode, game_kind_name(game->engine_type, game->kind, FALSE),
 			BROWSER_MODE_LENGTH);
 	}
@@ -7502,6 +7511,7 @@ static short local_browser_favorites(struct widget_instance *list)
 		entries[index].rate = (short)advertised_game_rate(game);
 		entries[index].openh1 = advertised_game_standard(game);
 		entries[index].coop = game->engine_type == 0;
+		entries[index].dedicated = advertised_dedicated(game);
 		settings_wide_copy(entries[index].mode, game_kind_name(game->engine_type, favorites[index].kind, FALSE),
 			BROWSER_MODE_LENGTH);
 	}
