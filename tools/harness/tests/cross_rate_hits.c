@@ -12,9 +12,11 @@ takes a report whose target is within REPORT_HISTORY_TOLERANCE (and a few
 ticks' movement) of where it had the target at a tick as far back as the
 report was made: a sub-step's pose is less than a tick's movement from a
 tick's, so a hit from either rate is taken alike, and one far from anywhere
-the target was is refused at either. test_cross_rate_hits.py takes the code
-(under_test.inc: network_damage.c's distributed_distance_squared,
-distributed_history_near and distributed_target_seen) and the constants
+the target was is refused at either. A shot taken gives the host's own pose
+of the target nearest the report, which its line of sight check traces to
+(distributed_report_line_of_sight): one of the ticks', at either rate.
+test_cross_rate_hits.py takes the code (under_test.inc: network_damage.c's
+distributed_distance_squared and distributed_target_seen) and the constants
 (config.inc).
 */
 
@@ -116,13 +118,25 @@ static void shots(short substeps, real speed, long latency, real error, boolean 
 			/* (the host's check looks back from the report's tick, with its
 			slack: network_damage.c's distributed_report_valid) */
 			long ticks = latency + TARGET_HISTORY_SLACK_TICKS;
+			real_point3d host_pose = { -1000.0f, -1000.0f, -1000.0f };
 			short result;
 
 			seen.y += error;
-			result = distributed_target_seen(TARGET, &seen, ticks);
+			result = distributed_target_seen(TARGET, &seen, ticks, &host_pose);
 			CHECK(taken ? result == TRUE : result == FALSE,
 				"a %d Hz shot at tick %ld sub-step %d (%.3f world units a tick, %ld ticks late, %.2f off): %s",
 				30 * substeps, tick, substep, speed, latency, error, result == TRUE ? "taken" : "refused");
+			/* (the line of sight is traced to the host's pose of a tick, the
+			nearest of those in reach: within reach of the report, at either
+			rate) */
+			if (result == TRUE)
+			{
+				real reach = REPORT_HISTORY_TOLERANCE + REPORT_HISTORY_LEAD_TICKS * speed;
+
+				CHECK(distributed_distance_squared(&seen, &host_pose) <= reach * reach,
+					"a %d Hz shot at tick %ld sub-step %d: traced to (%.2f %.2f %.2f), not a pose near the report",
+					30 * substeps, tick, substep, host_pose.x, host_pose.y, host_pose.z);
+			}
 		}
 	}
 }

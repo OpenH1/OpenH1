@@ -318,6 +318,12 @@ is held. The profile's button layout (Settings > Gamepads) is the
 gamepads' only. Besides the Xbox's five, it has the Master Chief
 Collection's Bumper Jumper: jump on the left bumper, melee on the right,
 switching grenades on A, action and reload on B and the flashlight on X.
+Fishsticks has zoom on the left trigger and melee on the right stick's
+button, the grenade thrown with the right bumper, crouch on B and grenades
+switched with the pad's left direction (which then does not strafe or turn).
+
+Recon is the standard layout with action and reload on the right bumper and
+grenades switched with the left bumper (the flashlight moves to X).
 
 | Action | Keys and buttons (default) |
 | --- | --- |
@@ -5308,7 +5314,7 @@ Other changes:
 | `game/game_time.c`, `items/projectiles.c`, `items/weapons.c` | `debug.trace` (`game/sim_trace.c`, `tools/scorecard`): a call after each simulation step, and a call each where a projectile is made, strikes and detonates and a weapon fires, made only while the trace is on (`SIM_TRACE`). |
 | `game/game_time.c`, `items/weapons.c`, `main/main.c` | `debug.latency_log` (`game/latency_log.c`): a call around each simulation step, where a weapon fires, and as each frame begins, is drawn and is handed on, made only while the log is on (`LATENCY_LOG`); the controller's and the mouse's readings call it from `src/xinput_sdl.c`. |
 | `input/input_abstraction.c`, `game/player_control.c`, `game/players.c`, `game/player_queues_new.c`, `units/units.h` | The keyboard and mouse's actions (`src/xinput_sdl.c`, `include/halo_keyboard.h`) join controller 1's game controls; their reload key reloads on its own, and their action key only acts (a control flag of the port's, sent with the player's action, stops the reload the controller's X falls back to). |
-| `saved games/player_profile.h`, `interface/player_ui.c` | A sixth button layout, the Master Chief Collection's Bumper Jumper (`profile.button_preset` 5). A layout the build does not know (a later build's) gets the standard buttons, not none, which moved start and back and stopped the game. |
+| `saved games/player_profile.h`, `interface/player_ui.c` | A sixth button layout, the Master Chief Collection's Bumper Jumper (`profile.button_preset` 5), and a seventh, Fishsticks (6: zoom on the left trigger, melee on the right stick's button, grenade throw on the right bumper, crouch on B, grenade switch on the pad's left, which then does not move you), and an eighth, Recon (7: the standard buttons with action and reload on the right bumper, grenade switch on the left bumper, flashlight on X). A layout the build does not know (a later build's) gets the standard buttons, not none, which moved start and back and stopped the game. |
 | `sound/sound_manager.c`, `interface/hud.c`, `game/game_engine.c` | The music's and the other sounds' volumes; the HUD's and the scoreboard's settings are read again when Settings changes them. |
 | `rasterizer/xbox/rasterizer_xbox_shadows.c` | With larger shadow maps (`display.shadow_resolution`), the blur's taps stay half a texel apart, and more passes widen it to cover the same part of the map as on the Xbox. |
 | `rasterizer/xbox/rasterizer_xbox_shadows.c`, `render/render_objects.c`, `rasterizer/rasterizer.h` | The shadow atlas: a frame's shadow casters (up to 9, with maps up to 512) are drawn into regions of an atlas first, the blur's passes run once over all of them (one quad a region, the guard bands between them black, as a map's border reads), the last into a map of each region's own, and then each object's receivers are drawn sampling its map. A frame's N shadows take 6 + N passes at 512 rather than 7N; they look the same. More casters, 1024 maps and the debugging options draw them one at a time as before. |

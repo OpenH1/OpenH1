@@ -74,6 +74,11 @@ SDL_URL = "https://github.com/libsdl-org/SDL.git"
 SDL_ANDROID_MOUSE_PATCH = Path("port/android/patches/sdl-relative-mouse.patch")
 SDL_ANDROID_MOUSE_LISTENER = "android-project/app/src/main/java/org/libsdl/app/SDLControllerManager.java"
 ANDROID_API = 28
+# what Gradle builds the APK from beside what ninja stages: the app's Java,
+# manifest and resources, and the Gradle files
+APP_SOURCES = PORT_DIR / "app" / "src"
+GRADLE_FILES = [PORT_DIR / "build.gradle", PORT_DIR / "settings.gradle", PORT_DIR / "gradle.properties",
+                PORT_DIR / "gradle" / "wrapper" / "gradle-wrapper.properties", PORT_DIR / "app" / "build.gradle"]
 
 # The guest's code generation on every architecture (tools/guest_arch.py has
 # each one's target): no C library but the guest's (musl), no unwinding
@@ -283,9 +288,16 @@ def host_memory_sources(sources: List[Path], base_register: bool) -> List[Path]:
     return [source for source in sources if source.name != "host_memory_base.c"]
 
 
+def app_sources() -> List[Path]:
+    """the files under port/android/app/src, which the APK's rule lists"""
+    return sorted(path for path in APP_SOURCES.rglob("*") if path.is_file())
+
+
 def android_configure_inputs() -> List[Path]:
+    # (app/src's folders, so that adding or removing a file there re-runs it)
+    app_folders = [APP_SOURCES, *sorted(path for path in APP_SOURCES.rglob("*") if path.is_dir())]
     return [Path(__file__), GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, SDL_ANDROID_MOUSE_PATCH, PORT_DIR / "guest" / "runtime", PORT_DIR / "host",
-            LINUX_DIR / "src", Path("tools/vulkan_build.py"), VULKAN_DIR, *hud_configure_inputs()]
+            LINUX_DIR / "src", Path("tools/vulkan_build.py"), VULKAN_DIR, *app_folders, *hud_configure_inputs()]
 
 
 def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: GuestArch, prefix: str, label: str,
@@ -836,7 +848,9 @@ def generate_android_build(n: Writer, sln: Any) -> None:
         description="ANDROID GRADLE $out",
         pool="console",
     )
+    # (and the app's own files: a change to its Java, manifest or resources
+    # alone would otherwise leave the old APK in place)
     n.build(outputs=apk, rule="android_gradle", inputs=[libmain, staged_sdl, *staged_assets],
-            implicit=[sdl_android_mouse_listener])
+            implicit=[sdl_android_mouse_listener, *app_sources(), *GRADLE_FILES])
     n.build(outputs="android_apk", rule="phony", inputs=apk)
     n.newline()

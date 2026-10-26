@@ -943,7 +943,7 @@ static boolean party_join_found(struct widget_instance *widget, short controller
 		csmemcpy(multiplayer.preview_xnaddr, game->xnaddr, sizeof(multiplayer.preview_xnaddr));
 		return ui_widget_port_open(widget, PREVIEW_NAME, widget_deleted);
 	}
-	if (!ui_widget_port_join(widget, game, LOBBY_NAME, widget_deleted))
+	if (!advertised_join(widget, game, widget_deleted))
 	{
 		platform_log("menus: following the party's leader: the game could not be joined");
 		party_follow_end(_p2p_party_follow_refused);
