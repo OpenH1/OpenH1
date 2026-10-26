@@ -771,7 +771,10 @@ static void listing_take(const struct queued *queued, const struct listing *list
 	build's to ask for) */
 	shown->holds_party = shown->standard && (listing->features & _stamp_holds_party) != 0;
 	shown->playlist = (unsigned char)(shown->standard ? listing->playlist : 0);
-	shown->dedicated = (listing->flags & _listing_dedicated) != 0 || (game->master && game->master_dedicated);
+	/* (a dedicated server's on a master's word alone: the listing's own
+	flag is its host's, which any host can set, so a game the brokers alone
+	list is the players' however it calls itself) */
+	shown->dedicated = game->master && game->master_dedicated;
 	shown->network_version = (unsigned short)listing->version;
 }
 
@@ -998,7 +1001,7 @@ int p2p_lobby_take_master_listing(const unsigned char *payload, int size, const 
 			game->master = 1;
 			game->master_dedicated = dedicated != 0;
 			game->master_time = p2p_now();
-			game->listing.dedicated = (listing.flags & _listing_dedicated) != 0 || dedicated;
+			game->listing.dedicated = dedicated != 0;
 			game->listing.master = 1;
 			snprintf(game->listing.publisher, sizeof(game->listing.publisher), "%s", publisher ? publisher : "");
 			snprintf(game->listing.region, sizeof(game->listing.region), "%s", region ? region : "");
