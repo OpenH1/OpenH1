@@ -307,7 +307,18 @@ sends each player's sub-steps at 60 and 120 (below, "Sub-step inputs");
 version 3 lets OpenCE players into an OpenH1 game (below, "OpenCE players in
 an OpenH1 game"); version 4 moves a player to the other team in a game (below,
 "The host's controls"); version 5 is the first on network version 39, whose
-dedicated server's flag it carries, and changes nothing else of its own.
+dedicated server's flag it carries, and changes nothing else of its own. With no new version, each client then tells the
+host its build (distributed message 92, `_distributed_message_client_build`,
+reliably once a game after its ready, over its connection alone): its
+number, configuration, the label it shows ("OpenH1 Linux | build 120
+(release)", OpenCE's "OpenCE Linux | build 282 (release)"), the GitHub
+repository it is made from (owner/name, which the build scripts take from
+CI's `GITHUB_REPOSITORY` or the checkout's origin remote: OpenH1's builds
+say `OpenH1/OpenH1`) and the mods it plays, a line each ("folder version",
+in the load order); the host keeps it printable and logs it once, and a
+dedicated server shows it in `/api/players` (`client`). A host without the
+message drops it as a kind it does not know. It is below 120, so an OpenH1
+host takes it from OpenCE's clients in a mixed game too.
 
 `port/linux/network_format.txt` records the wire format of the current
 version (`tools/network_format.py`): `test_linux_port.py` fails when the
