@@ -30,6 +30,7 @@ and its structures copied field by field where they hold pointers.
 
 void host_sdl_get_base_path(char *buffer, unsigned int size);
 void host_sdl_pump_events(void);
+int host_sdl_wait_event(int milliseconds);
 int host_sdl_push_event(const void *event);
 long long host_sdl_get_window_flags(unsigned int window);
 int host_sdl_set_window_fullscreen(unsigned int window, int fullscreen);
@@ -111,6 +112,15 @@ void SDL_PumpEvents(void)
 bool SDL_PushEvent(SDL_Event *event)
 {
 	return host_sdl_push_event(event) != 0;
+}
+
+/* (only to wait: the event stays queued for SDL_PollEvent, which is how
+sdl_platform.c's frame wait takes it) */
+bool SDL_WaitEventTimeout(SDL_Event *event, Sint32 milliseconds)
+{
+	if (event)
+		return false;
+	return host_sdl_wait_event(milliseconds) != 0;
 }
 
 /* ---------- atomics, mutexes and threads, the guest's own */

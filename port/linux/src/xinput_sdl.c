@@ -1734,7 +1734,9 @@ commas (all four by default). The player otherwise stands still. (A weapon
 that fires as the control is pulled: SWAT's pistol, debug.network_test
 "local:<map>:swat"; the plasma pistol, a multiplayer game's otherwise,
 fires as it is let go.) The mouse's come with the window's events
-(halo_test_input_pump), the controller's with its reading */
+(halo_test_input_pump), the controller's with its reading; each ends the
+frame's wait for the clock at its time, as a person's event does
+(halo_test_input_next_ns, sdl_platform.c) */
 #define LATENCY_TURN_COUNTS 200.0f
 
 enum
@@ -1852,6 +1854,13 @@ int halo_test_input_pump(struct platform_input_state *state, unsigned char *butt
 	}
 	test_latency.mouse_played = test_latency.pressed;
 	return test_latency.pressed != pressed;
+}
+
+/* when the scripted player presses next (debug.test_input "latency:"), 0
+for none */
+Uint64 halo_test_input_next_ns(void)
+{
+	return test_latency.state > 0 ? test_latency.next_ns : 0;
 }
 
 static void test_input_gamepad(XINPUT_GAMEPAD *pad)

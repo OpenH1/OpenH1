@@ -139,9 +139,23 @@ static struct platform_ui_pointer ui_pointer;
 static float ui_pointer_wheel;
 #endif
 static pthread_mutex_t input_lock = PTHREAD_MUTEX_INITIALIZER;
+/* the presses come (platform_pump_events), under input_lock: a key, a mouse
+or gamepad button down or up, a gamepad's trigger or stick past
+INPUT_AXIS_PRESSED (a trigger past INPUT_TRIGGER_PRESSED) or back, the
+mouse's motion after INPUT_MOUSE_STILL_NS still; the frame's wait for the
+clock ends at one (platform_video_swap). Each gamepad axis's last side of
+its threshold, any gamepad's */
+static unsigned long input_presses;
+static Uint64 input_mouse_moved_ns;
+static unsigned char input_axis_beyond[SDL_GAMEPAD_AXIS_COUNT];
+#define INPUT_AXIS_PRESSED 16000
+#define INPUT_TRIGGER_PRESSED 8000
+#define INPUT_MOUSE_STILL_NS 50000000ull
 /* port/linux/src/xinput_sdl.c: the scripted player's mouse, as its events
-would bring it (debug.test_input "latency:"), nonzero for a press come */
+would bring it (debug.test_input "latency:"), nonzero for a press come; and
+when it presses next, 0 for none */
 int halo_test_input_pump(struct platform_input_state *state, unsigned char *buttons_pressed);
+Uint64 halo_test_input_next_ns(void);
 /* rebinding (platform_binding_capture_begin), under input_lock: waiting for
 an input, and the one taken; then the keyboard and mouse settle (their keys
 and buttons held then are let go) before they drive anything again */
@@ -1339,10 +1353,67 @@ static Uint64 frame_interval_ns(void)
 	return rate > 0.0f ? (Uint64)(1e9f / rate) : 0;
 }
 
+#ifndef HALO_ANDROID
+/* The frame's wait for the clock (platform_video_swap), until a time of
+SDL_GetTicksNS, ended by a press (input_presses): the window's events are
+taken as they come, as the next frame's reading would take them, so that a
+press is read at once, not up to an interval later. Motion is no press
+(but for the mouse's after it was still): the mouse and the sticks move
+continuously, and the frames stay at their rate. The scripted player's
+press (debug.test_input "latency:") ends it at its time, as a person's
+event does. The wait is the system's for the window's events (SDL's, which
+with a gamepad looks every millisecond), in whole milliseconds, and the
+last one's part a plain sleep: nothing runs meanwhile. TRUE for a press. */
+static BOOL platform_frame_wait(Uint64 until)
+{
+	unsigned long presses;
+
+	/* (the events are taken on the window's thread only) */
+	if (!platform_window || SDL_GetCurrentThreadID() != platform_event_thread)
+	{
+		Uint64 now = SDL_GetTicksNS();
+
+		if (until > now)
+			SDL_DelayPrecise(until - now);
+		return FALSE;
+	}
+	pthread_mutex_lock(&input_lock);
+	presses = input_presses;
+	pthread_mutex_unlock(&input_lock);
+	for (;;)
+	{
+		Uint64 now = SDL_GetTicksNS(), wake = until, scripted = halo_test_input_next_ns();
+		BOOL pressed;
+
+		if (now >= until)
+			return FALSE;
+		if (scripted && scripted < wake)
+			wake = scripted;
+		if (wake - now >= 1000000u)
+			SDL_WaitEventTimeout(NULL, (Sint32)((wake - now) / 1000000u));
+		else
+		{
+			SDL_DelayPrecise(wake - now);
+			if (wake == until)
+				return FALSE;
+		}
+		platform_pump_events();
+		pthread_mutex_lock(&input_lock);
+		pressed = input_presses != presses;
+		pthread_mutex_unlock(&input_lock);
+		if (pressed)
+			return TRUE;
+	}
+}
+#endif
+
 void platform_video_swap(void)
 {
 	Uint64 swap_start = SDL_GetTicks(), swap_time;
 	static Uint64 next_frame;
+	/* a press began a frame before next_frame (platform_frame_wait): the
+	frame after it waits for next_frame without a wake */
+	static BOOL woken;
 	Uint64 interval, now;
 	/* (the host shows the frame, on its render thread: here it is paced) */
 	/* (a frame the graphics driver held for seconds: the game froze, and
@@ -1360,10 +1431,24 @@ void platform_video_swap(void)
 		/* (the Android guest's SDL waits in milliseconds) */
 		SDL_Delay((Uint32)((next_frame - now) / 1000000u));
 #else
-		SDL_DelayPrecise(next_frame - now);
+		/* A press while the frame waits begins the next at once: it is read
+		now, and acted on now if a step is due, else at the step's frame as
+		before. That frame is one more: next_frame stays, and the frame
+		after it waits for it as before, without a wake, so a frame comes
+		before its time once in an interval at most (a frame a press, which
+		are few), and none comes later than it would have. */
+		if (!woken && platform_frame_wait(next_frame))
+		{
+			woken = TRUE;
+			return;
+		}
+		now = SDL_GetTicksNS();
+		if (next_frame > now)
+			SDL_DelayPrecise(next_frame - now);
 #endif
 		now = next_frame;
 	}
+	woken = FALSE;
 	/* (a frame more than an interval late starts the count again) */
 	next_frame = now - next_frame > interval ? now + interval : next_frame + interval;
 }
@@ -1998,6 +2083,8 @@ void platform_pump_events(void)
 			exit(EXIT_SUCCESS);
 		case SDL_EVENT_KEY_DOWN:
 		case SDL_EVENT_KEY_UP:
+			if (!event.key.repeat)
+				input_presses++;
 			if (event.key.scancode < SDL_SCANCODE_COUNT)
 			{
 				input_state.keys[event.key.scancode] = event.key.down;
@@ -2068,9 +2155,17 @@ void platform_pump_events(void)
 #endif
 			input_state.mouse_dx += event.motion.xrel;
 			input_state.mouse_dy += event.motion.yrel;
+			{
+				Uint64 now = SDL_GetTicksNS();
+
+				if (now - input_mouse_moved_ns >= INPUT_MOUSE_STILL_NS)
+					input_presses++;
+				input_mouse_moved_ns = now;
+			}
 			break;
 		case SDL_EVENT_MOUSE_BUTTON_DOWN:
 		case SDL_EVENT_MOUSE_BUTTON_UP:
+			input_presses++;
 			if (event.button.button < 32)
 			{
 				if (event.button.down)
@@ -2245,6 +2340,22 @@ void platform_pump_events(void)
 			}
 #endif
 			break;
+		case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+		case SDL_EVENT_GAMEPAD_BUTTON_UP:
+			input_presses++;
+			break;
+		case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+			if (event.gaxis.axis < SDL_GAMEPAD_AXIS_COUNT)
+			{
+				int threshold = event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER ||
+					event.gaxis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER ? INPUT_TRIGGER_PRESSED : INPUT_AXIS_PRESSED;
+				unsigned char beyond = abs(event.gaxis.value) >= threshold;
+
+				if (beyond != input_axis_beyond[event.gaxis.axis])
+					input_presses++;
+				input_axis_beyond[event.gaxis.axis] = beyond;
+			}
+			break;
 		case SDL_EVENT_GAMEPAD_REMOVED:
 			/* (SDL keeps a gamepad open until it is closed, even once the
 			controller has gone) */
@@ -2274,7 +2385,8 @@ void platform_pump_events(void)
 		}
 	}
 #endif
-	halo_test_input_pump(&input_state, mouse_buttons_pressed);
+	if (halo_test_input_pump(&input_state, mouse_buttons_pressed))
+		input_presses++;
 	pthread_mutex_unlock(&input_lock);
 	looked_at_clipboard = TRUE;
 	platform_invite_clipboard(look_at_clipboard);

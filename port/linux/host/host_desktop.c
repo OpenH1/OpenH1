@@ -51,6 +51,13 @@ void host_sdl_pump_events(void)
 	SDL_PumpEvents();
 }
 
+/* waits for an event, up to that many milliseconds, and leaves it queued: 1
+if one came */
+int host_sdl_wait_event(int milliseconds)
+{
+	return SDL_WaitEventTimeout(NULL, milliseconds) ? 1 : 0;
+}
+
 /* events that carry no pointer (the menus' Quit pushes SDL_EVENT_QUIT) */
 int host_sdl_push_event(const void *event)
 {
