@@ -139,6 +139,9 @@ static struct platform_ui_pointer ui_pointer;
 static float ui_pointer_wheel;
 #endif
 static pthread_mutex_t input_lock = PTHREAD_MUTEX_INITIALIZER;
+/* port/linux/src/xinput_sdl.c: the scripted player's mouse, as its events
+would bring it (debug.test_input "latency:"), nonzero for a press come */
+int halo_test_input_pump(struct platform_input_state *state, unsigned char *buttons_pressed);
 /* rebinding (platform_binding_capture_begin), under input_lock: waiting for
 an input, and the one taken; then the keyboard and mouse settle (their keys
 and buttons held then are let go) before they drive anything again */
@@ -2271,6 +2274,7 @@ void platform_pump_events(void)
 		}
 	}
 #endif
+	halo_test_input_pump(&input_state, mouse_buttons_pressed);
 	pthread_mutex_unlock(&input_lock);
 	looked_at_clipboard = TRUE;
 	platform_invite_clipboard(look_at_clipboard);

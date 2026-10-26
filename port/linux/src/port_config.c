@@ -1292,7 +1292,8 @@ static const struct config_setting config_settings[] =
 		"up and down; \"walk:<seed>\" plays as \"bot\" without turning (the same\n"
 		"input each tick at any frame rate); \"pad\" turns, looks, fires, throws, holds Back and walks in\n"
 		"turn, logging each (the VR mode's vr.aim = \"gamepad\"); \"latency:<seed>\" pulls the fire\n"
-		"control and pushes the stick in turn on the real clock (debug.latency_log);\n"
+		"control, pushes the stick, clicks the mouse and moves it in turn on the real\n"
+		"clock (debug.latency_log; \"latency:<seed>:fire,click,turn\" plays those only);\n"
 		"\"menu:<buttons>\" presses menu\n"
 		"buttons one a second (a, b, x, y, up, down, left, right, start, back or\n"
 		"wait, or click:<x>:<y>, a click of the pointer there, 0 to 1 of the\n"
@@ -1357,8 +1358,9 @@ static const struct config_setting config_settings[] =
 		"each voice heard logged once a second." },
 	{ "debug.latency_log", _config_string, "\"\"", "HALO_LATENCY_LOG", _environment_value, _platform_all,
 		"A file to write a line to for each press of the fire control and each\n"
-		"move from standing of the first player: the milliseconds from the\n"
-		"controller's reading to the step that acts on it, to the first frame\n"
+		"move from standing of the first player, on the controller and the mouse,\n"
+		"and each turn of the mouse: the milliseconds from the reading of the\n"
+		"controller or the mouse to the step that acts on it, to the first frame\n"
 		"drawn after it, to the first frame that shows it (the frames draw a\n"
 		"tick behind), and that frame's drawing and handing on\n"
 		"(port/linux/game/latency_log.c, tools/latency_summary.py); empty for\n"
