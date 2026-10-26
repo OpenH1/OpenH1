@@ -2,7 +2,8 @@
 network_standard.c): each shooter's machine decides its hit at its own rate, and the host takes the report if the
 target is near where the host had it at a tick as far back as the report was made (network_damage.c). A 30 Hz
 shooter's target seen at a tick's pose and a 60 or 120 Hz shooter's seen between two ticks' poses are taken alike;
-a target where the host never had it is refused at either rate."""
+a target where the host never had it is refused at either rate. The pose a shot taken gives is the host's own nearest
+the report, which the host's line of sight check traces to whatever the shooter's rate."""
 
 import re
 import sys
@@ -21,11 +22,15 @@ NEGATIVE_CONTROLS = {
     "no-look-back": (("back <= ticks && back < TARGET_HISTORY_TICKS", "back <= 0 && back < TARGET_HISTORY_TICKS"),
                      "opence-shooter"),
     # (none of the ticks' movement: a sub-step's pose a vehicle's tick from the ticks' refused)
-    "tolerance-too-tight": (("real reach = tolerance + REPORT_HISTORY_LEAD_TICKS * speed;", "real reach = 0.1f;"),
-                            "openh1-shooter"),
+    "tolerance-too-tight": (("reach = REPORT_HISTORY_TOLERANCE +\n"
+                             "\t\t\tREPORT_HISTORY_LEAD_TICKS * tick->objects[column_player_index][column_slot].speed;",
+                             "reach = 0.1f;"), "openh1-shooter"),
     # (anything taken)
-    "anything-taken": (("return distributed_distance_squared(position, history_position) <= reach * reach;",
-                        "return TRUE;"), "never-there"),
+    "anything-taken": (("if (distance <= reach * reach && (!seen || distance < seen_distance))",
+                        "if (distance <= reach * reach + 1e9f && (!seen || distance < seen_distance))"), "never-there"),
+    # (no pose given for the line of sight to be traced to)
+    "no-pose-given": (("*seen_position = tick->objects[column_player_index][column_slot].position;", ";"),
+                      "opence-shooter"),
 }
 
 
@@ -37,7 +42,7 @@ def generated(fault=None):
     for name in ("REPORT_HISTORY_TOLERANCE", "REPORT_HISTORY_LEAD_TICKS"):
         config += f"#define {name} {re.search(rf'#define {name} ([0-9.]+f)', source).group(1)}\n"
     code = "\n".join(function(source, name) for name in (
-        "distributed_distance_squared", "distributed_history_near", "distributed_target_seen"))
+        "distributed_distance_squared", "distributed_target_seen"))
     if fault:
         code = mutated(code, *fault)
     return (("config.inc", config), ("under_test.inc", code))
@@ -59,6 +64,10 @@ def test_negative_control(control):
 def test_the_host_checks_every_report_so():
     """Every client's report goes through the one check, whatever the shooter's rate: none of it reads a rate."""
     valid = function(read("port/linux/game/network_damage.c"), "distributed_report_valid")
-    assert "seen = distributed_target_seen(report->object_index, &report->target_position, ticks);" in valid
+    assert ("seen = distributed_target_seen(report->object_index, &report->target_position, ticks, &seen_position);"
+            in valid)
+    # (and every point hit's line of sight, the shooter's rate not asked: traced to the pose the check gave)
+    assert "!distributed_report_line_of_sight(machine_index, player_index, &report->damage.origin, &centre," in valid
+    assert "centre.x = seen_position.x +" in valid
     assert "ticks = MIN(now - report->host_time + TARGET_HISTORY_SLACK_TICKS, TARGET_HISTORY_TICKS - 1);" in valid
     assert "sim_" not in valid and "substep" not in valid
