@@ -1398,10 +1398,10 @@ static BOOL platform_frame_wait(Uint64 until)
 		if (now >= until)
 			return FALSE;
 		if (scripted && scripted < wake)
-			wake = scripted;
+			wake = scripted < now ? now : scripted;
 		if (wake - now >= 1000000u)
 			SDL_WaitEventTimeout(NULL, (Sint32)((wake - now) / 1000000u));
-		else
+		else if (wake > now)
 		{
 			SDL_DelayPrecise(wake - now);
 			if (wake == until)
