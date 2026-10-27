@@ -44,7 +44,7 @@ void host_links_watch(void);
 /* port/macos/host_raw_mouse.m: the mouse's unaccelerated counts */
 #define HOST_RAW_MOUSE 1
 void host_raw_mouse_start(void);
-int host_raw_mouse_take(float *x, float *y);
+int host_raw_mouse_take(float *x, float *y, unsigned long long *age_ns);
 #endif
 
 #define HANDLE_COUNT 256
@@ -249,13 +249,18 @@ int host_sdl_poll_event(void *event)
 		late as the game reads its events: host_raw_mouse.m) */
 		SDL_Window *focus = SDL_GetMouseFocus();
 		float x, y;
+		unsigned long long age;
+		Uint64 now;
 
-		if (!focus || !SDL_GetWindowRelativeMouseMode(focus) || !host_raw_mouse_take(&x, &y) ||
+		if (!focus || !SDL_GetWindowRelativeMouseMode(focus) || !host_raw_mouse_take(&x, &y, &age) ||
 			(x == 0.0f && y == 0.0f))
 			return 0;
 		SDL_zero(host_event);
 		host_event.type = SDL_EVENT_MOUSE_MOTION;
-		host_event.motion.timestamp = SDL_GetTicksNS();
+		/* (stamped when its first count came, as SDL stamps the system's
+		events with theirs) */
+		now = SDL_GetTicksNS();
+		host_event.motion.timestamp = age < now ? now - age : now;
 		host_event.motion.windowID = SDL_GetWindowID(focus);
 		host_event.motion.which = 1;
 		host_event.motion.state = SDL_GetMouseState(&host_event.motion.x, &host_event.motion.y);
@@ -274,11 +279,16 @@ int host_sdl_poll_event(void *event)
 	{
 		SDL_Window *window = SDL_GetWindowFromID(host_event.motion.windowID);
 		float x, y;
+		unsigned long long age;
 
-		if (window && SDL_GetWindowRelativeMouseMode(window) && host_raw_mouse_take(&x, &y))
+		if (window && SDL_GetWindowRelativeMouseMode(window) && host_raw_mouse_take(&x, &y, &age))
 		{
+			Uint64 now = SDL_GetTicksNS();
+
 			host_event.motion.xrel = x;
 			host_event.motion.yrel = y;
+			if (age && age < now && now - age < host_event.motion.timestamp)
+				host_event.motion.timestamp = now - age;
 		}
 	}
 #endif

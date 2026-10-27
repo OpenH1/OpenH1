@@ -151,11 +151,14 @@ static unsigned char input_axis_beyond[SDL_GAMEPAD_AXIS_COUNT];
 #define INPUT_AXIS_PRESSED 16000
 #define INPUT_TRIGGER_PRESSED 8000
 #define INPUT_MOUSE_STILL_NS 50000000ull
-/* port/linux/src/xinput_sdl.c: the scripted player's mouse, as its events
-would bring it (debug.test_input "latency:"), nonzero for a press come; and
-when it presses next, 0 for none */
-int halo_test_input_pump(struct platform_input_state *state, unsigned char *buttons_pressed);
+/* port/linux/src/xinput_sdl.c: the scripted player's mouse's next event come
+(debug.test_input "latency:"), and when it presses next, 0 for none */
+int halo_test_input_mouse_event(int *button, float *dx, Uint64 *when, int *pressed);
 Uint64 halo_test_input_next_ns(void);
+/* port/linux/game/latency_log.c (debug.latency_log): when the mouse's press
+or its motion from still was made, as its event says (SDL's timestamp: on
+the Mac the system's time of the event, the raw mouse's its first count's) */
+void latency_log_mouse_pressed(int turn, unsigned long long when_ns);
 /* rebinding (platform_binding_capture_begin), under input_lock: waiting for
 an input, and the one taken; then the keyboard and mouse settle (their keys
 and buttons held then are let go) before they drive anything again */
@@ -2076,6 +2079,42 @@ void platform_pump_events(void)
 	dsound_sdl_output_device_check();
 	screen_keyboard_update();
 #endif
+#ifndef HALO_ANDROID
+	/* (the scripted player's mouse, debug.test_input "latency:", as SDL's
+	events with their times, read below as a person's are) */
+	{
+		SDL_Event pushed;
+		int button, pressed;
+		float dx;
+		Uint64 when;
+
+		while (halo_test_input_mouse_event(&button, &dx, &when, &pressed))
+		{
+			memset(&pushed, 0, sizeof(pushed));
+			if (button)
+			{
+				pushed.type = button > 0 ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
+				pushed.button.timestamp = when;
+				pushed.button.button = SDL_BUTTON_LEFT;
+				pushed.button.down = button > 0;
+				pushed.button.clicks = 1;
+			}
+			else
+			{
+				pushed.type = SDL_EVENT_MOUSE_MOTION;
+				pushed.motion.timestamp = when;
+				pushed.motion.xrel = dx;
+			}
+			SDL_PushEvent(&pushed);
+		}
+		if (pressed)
+		{
+			pthread_mutex_lock(&input_lock);
+			input_presses++;
+			pthread_mutex_unlock(&input_lock);
+		}
+	}
+#endif
 	pthread_mutex_lock(&input_lock);
 #ifndef HALO_ANDROID
 	/* (the scoreboard closed, or no longer offering it: the pointer goes) */
@@ -2171,13 +2210,18 @@ void platform_pump_events(void)
 				Uint64 now = SDL_GetTicksNS();
 
 				if (now - input_mouse_moved_ns >= INPUT_MOUSE_STILL_NS)
+				{
 					input_presses++;
+					latency_log_mouse_pressed(1, event.motion.timestamp);
+				}
 				input_mouse_moved_ns = now;
 			}
 			break;
 		case SDL_EVENT_MOUSE_BUTTON_DOWN:
 		case SDL_EVENT_MOUSE_BUTTON_UP:
 			input_presses++;
+			if (event.button.down)
+				latency_log_mouse_pressed(0, event.button.timestamp);
 			if (event.button.button < 32)
 			{
 				if (event.button.down)
@@ -2397,8 +2441,6 @@ void platform_pump_events(void)
 		}
 	}
 #endif
-	if (halo_test_input_pump(&input_state, mouse_buttons_pressed))
-		input_presses++;
 	pthread_mutex_unlock(&input_lock);
 	looked_at_clipboard = TRUE;
 	platform_invite_clipboard(look_at_clipboard);
