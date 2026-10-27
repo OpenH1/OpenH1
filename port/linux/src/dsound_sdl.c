@@ -2133,6 +2133,224 @@ static BOOL audio_started = FALSE;
 static char audio_device_name[PLATFORM_AUDIO_DEVICE_NAME_SIZE];
 static unsigned long audio_device_read_at = (unsigned long)-1;
 
+/* ---------- the device's timing
+
+The device asks for frames as it plays them out (audio_callback): a request
+for a buffer comes as it has room for one, the frames queued ahead of it
+(device_timing: SDL's driver keeps a buffer or more) still to play. A
+request answered after those have played out leaves the device nothing to
+play: it plays silence (a dropout, heard as a click or a crackle), and then
+plays the frames late (PipeWire, WASAPI) or skips them (CoreAudio's
+AudioQueue).
+
+So each request is timed against the device's clock, which the requests
+themselves keep: the lag of a request, its time since the first request
+less the time of the frames asked for before it, is least when it comes
+as soon as it can (TIMING_BLOCK_NS: the least of each block of requests, a
+fall followed at once; a rise followed once the next block keeps it too,
+which a device that plays the frames late after a dropout does, and the
+device's clock running a little slower than the computer's). An answer's
+lateness, its request's lag over that least plus the time to answer it, is
+what the device has waited of what it had queued: more than that is a
+dropout, counted once until an answer is in time again with half to spare.
+More than TIMING_PAUSE_NS is the device stopping (the computer asleep, the
+sound moved to another device) rather than a dropout. The game's thread
+logs the dropouts and, with audio.buffer_frames 0, grows the buffer
+(timing_check). */
+#define TIMING_BLOCK_NS 250000000LL
+#define TIMING_BLOCK_REQUESTS 8
+#define TIMING_RISE_NS 1000000LL
+#define TIMING_PAUSE_NS 250000000LL
+
+/* the device the sound plays on (device_timing_read): its driver, its
+buffer (frames) and rate, the time SDL's driver keeps queued ahead of the
+buffer it asks for and the system's latency after (microseconds; -1 not
+known) */
+static char device_driver[32];
+static int device_timing[4];
+static BOOL device_timing_valid;
+
+static struct
+{
+	/* (the mixer's thread) the time the device has queued ahead of a
+	request (nanoseconds); the first request since the device opened, the
+	frames asked for since, the request being answered and its lag; the
+	least lag followed, this block's and the last's; whether an answer was
+	late and none in time since */
+	Sint64 slack_ns;
+	Sint64 first_ns;
+	Uint64 frames;
+	Sint64 request_ns, lag_ns;
+	Sint64 baseline_ns, least_ns, last_least_ns;
+	BOOL baseline_valid;
+	Sint64 block_ns;
+	unsigned long block_requests;
+	BOOL late;
+	/* (timing_lock) since the device opened: its dropouts and their silence
+	(the lateness beyond the slack), its pauses; the latest answer since the
+	game's thread last took it */
+	unsigned long dropouts;
+	double silence_ms;
+	unsigned long pauses;
+	Sint64 latest_ns;
+} timing;
+static pthread_mutex_t timing_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* (no request can be answered meanwhile: the device opening) */
+static void timing_reset(void)
+{
+	pthread_mutex_lock(&timing_lock);
+	memset(&timing, 0, sizeof(timing));
+	pthread_mutex_unlock(&timing_lock);
+}
+
+/* (the device opened, not yet playing) its slack; none for SDL's dummy and
+disk drivers (the tests'), which have no device to run dry */
+static void timing_slack(void)
+{
+	if (device_timing_valid && (!strcmp(device_driver, "dummy") || !strcmp(device_driver, "disk")))
+		timing.slack_ns = INT64_MAX;
+	else if (device_timing_valid && device_timing[2] > 0)
+		timing.slack_ns = (Sint64)device_timing[2] * 1000;
+	else
+		timing.slack_ns = (Sint64)((double)(device_timing_valid ? device_timing[0] : 1024) *
+			(1.0e9 / OUTPUT_RATE));
+}
+
+/* (the mixer's thread) a request, at now */
+static void timing_request(Sint64 now)
+{
+	Sint64 lag;
+
+	timing.request_ns = now;
+	if (!timing.first_ns)
+	{
+		timing.first_ns = now;
+		timing.block_ns = now;
+		timing.least_ns = INT64_MAX;
+	}
+	lag = now - timing.first_ns - (Sint64)((double)timing.frames * (1.0e9 / OUTPUT_RATE));
+	timing.lag_ns = lag;
+	if (!timing.baseline_valid || lag < timing.baseline_ns)
+	{
+		timing.baseline_valid = TRUE;
+		timing.baseline_ns = lag;
+	}
+	if (lag < timing.least_ns)
+		timing.least_ns = lag;
+	if (++timing.block_requests < TIMING_BLOCK_REQUESTS || now - timing.block_ns < TIMING_BLOCK_NS)
+		return;
+	/* (a small rise followed at once, a larger one once two blocks keep it) */
+	if (timing.least_ns - timing.baseline_ns < TIMING_RISE_NS)
+		timing.baseline_ns = timing.least_ns;
+	else if (timing.last_least_ns - timing.baseline_ns >= TIMING_RISE_NS)
+		timing.baseline_ns = timing.least_ns < timing.last_least_ns ? timing.least_ns : timing.last_least_ns;
+	timing.last_least_ns = timing.least_ns;
+	timing.block_ns = now;
+	timing.block_requests = 0;
+	timing.least_ns = INT64_MAX;
+}
+
+/* (the mixer's thread) the request answered: frames handed back at now */
+static void timing_answered(unsigned long frames, Sint64 now)
+{
+	Sint64 lateness = timing.lag_ns - timing.baseline_ns + (now - timing.request_ns);
+
+	timing.frames += frames;
+	pthread_mutex_lock(&timing_lock);
+	if (lateness > timing.latest_ns)
+		timing.latest_ns = lateness;
+	if (lateness > timing.slack_ns && !timing.late)
+	{
+		timing.late = TRUE;
+		if (lateness - timing.slack_ns > TIMING_PAUSE_NS)
+		{
+			timing.pauses++;
+		}
+		else
+		{
+			timing.dropouts++;
+			timing.silence_ms += (double)(lateness - timing.slack_ns) / 1.0e6;
+		}
+	}
+	else if (lateness < timing.slack_ns / 2)
+	{
+		timing.late = FALSE;
+	}
+	pthread_mutex_unlock(&timing_lock);
+}
+
+/* ---------- the sound's latency (debug.latency_log)
+
+From the simulation step in which the first player's weapon fires
+(latency_log.c) to the sound of it heard: the next voice the game starts
+(stream_process: the game's sound update, in the frame after the step), the
+device's next request (a mix takes a newly started voice from the start of
+its buffer), and the frames queued on the device ahead of that buffer and
+the system's latency after (device_timing: what SDL's driver keeps queued,
+and what the system reports). The time to answer the request is not added:
+the buffer plays after those queued ahead, however soon it is handed back,
+unless so late that the device runs dry (timing). */
+static struct
+{
+	/* (mixer_lock) the next voice started is measured, from the step at
+	armed_ns; the voice measured, from act_ns, started at start_ns; the
+	device's request whose buffer first had it (the mixer's thread sets
+	mixed), and when that buffer was handed back (handed_ns) */
+	Uint64 armed_ns;
+	struct sdl_stream *stream;
+	Uint64 act_ns, start_ns, request_ns, handed_ns;
+	BOOL mixed;
+} sound_latency;
+/* (the mixer's thread) the voice measured is in the buffer being mixed */
+static BOOL sound_latency_handing;
+
+/* (the host: port/android/host/host_sdl.c) */
+int host_sdl_audio_stream_timing(unsigned int stream, char *driver, int driver_size, int *timing);
+
+/* (the game's thread) the voice measured, once its first frames are
+handed back to the device: [0] the step, [1] its start, [2] the device's
+request, [3] the buffer handed back (SDL's clock, nanoseconds); the frames
+queued on the device ahead of the buffer and the system's latency after
+(milliseconds; system -1 not known), the device's buffer (frames) and its
+dropouts since it opened. FALSE until then */
+BOOL dsound_sdl_latency_take(unsigned long long *times, double *queued_ms, double *system_ms, long *buffer_frames,
+	unsigned long *dropouts)
+{
+	BOOL taken = FALSE;
+
+	pthread_mutex_lock(&mixer_lock);
+	if (sound_latency.handed_ns)
+	{
+		times[0] = sound_latency.act_ns;
+		times[1] = sound_latency.start_ns;
+		times[2] = sound_latency.request_ns;
+		times[3] = sound_latency.handed_ns;
+		memset(&sound_latency, 0, sizeof(sound_latency));
+		taken = TRUE;
+	}
+	pthread_mutex_unlock(&mixer_lock);
+	if (!taken)
+		return FALSE;
+	*queued_ms = device_timing_valid ? device_timing[2] / 1000.0 : 0.0;
+	*system_ms = device_timing_valid && device_timing[3] >= 0 ? device_timing[3] / 1000.0 : -1.0;
+	*buffer_frames = device_timing_valid ? device_timing[0] : 0;
+	pthread_mutex_lock(&timing_lock);
+	*dropouts = timing.dropouts;
+	pthread_mutex_unlock(&timing_lock);
+	return TRUE;
+}
+
+/* (the game's thread) the next voice started is measured, from act_ns (a
+step in which the weapon fired), unless one is being measured */
+void dsound_sdl_latency_arm(unsigned long long act_ns)
+{
+	pthread_mutex_lock(&mixer_lock);
+	if (!sound_latency.stream && !sound_latency.handed_ns)
+		sound_latency.armed_ns = act_ns;
+	pthread_mutex_unlock(&mixer_lock);
+}
+
 /* audio.output_device ("default": the system's; none on Android) */
 static const char *audio_device_setting(void)
 {
@@ -2144,9 +2362,28 @@ static const char *audio_device_setting(void)
 static void SDLCALL audio_callback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount)
 {
 	float buffer[MIX_CHUNK_FRAMES * MAXIMUM_OUTPUT_CHANNELS];
+	unsigned long handed = 0;
+	Sint64 now;
 
 	(void)userdata;
 	(void)total_amount;
+	if (additional_amount <= 0)
+		return;
+	timing_request((Sint64)SDL_GetTicksNS());
+	/* (debug.latency_log: the voice measured, in this buffer from its start;
+	the game's thread marks it, mixer_lock held) */
+	if (sound_latency.stream)
+	{
+		pthread_mutex_lock(&mixer_lock);
+		if (sound_latency.stream && !sound_latency.mixed && !sound_latency.stream->paused &&
+			sound_latency.stream->sample_rate && voice_has_frames(sound_latency.stream))
+		{
+			sound_latency.mixed = TRUE;
+			sound_latency.request_ns = (Uint64)timing.request_ns;
+			sound_latency_handing = TRUE;
+		}
+		pthread_mutex_unlock(&mixer_lock);
+	}
 	while (additional_amount > 0)
 	{
 		unsigned long frames = (unsigned long)additional_amount / (output_channels * sizeof(float));
@@ -2158,6 +2395,17 @@ static void SDLCALL audio_callback(void *userdata, SDL_AudioStream *stream, int 
 		mix(buffer, frames);
 		SDL_PutAudioStreamData(stream, buffer, (int)(frames * output_channels * sizeof(float)));
 		additional_amount -= (int)(frames * output_channels * sizeof(float));
+		handed += frames;
+	}
+	now = (Sint64)SDL_GetTicksNS();
+	timing_answered(handed, now);
+	if (sound_latency_handing)
+	{
+		sound_latency_handing = FALSE;
+		pthread_mutex_lock(&mixer_lock);
+		if (sound_latency.mixed)
+			sound_latency.handed_ns = (Uint64)now;
+		pthread_mutex_unlock(&mixer_lock);
 	}
 }
 
@@ -2252,10 +2500,148 @@ static unsigned long choose_output_channels(SDL_AudioDeviceID device)
 #endif
 }
 
-static void audio_start(void)
+/* ---------- the device's buffer
+
+The frames the device asks for at a time (audio.buffer_frames: SDL's
+SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, which the host's SDL takes). A request
+is handed to a thread of the host's that runs the guest's mix
+(host_sdl.c), and the sound plays after the frames SDL's driver keeps
+queued ahead of it, a buffer or more (device_timing): a smaller buffer is
+heard sooner, but each request must be answered sooner too, or the device
+runs dry (timing). 0, the default: BUFFER_FRAMES_AUTO to start, doubled up
+to BUFFER_FRAMES_AUTO_MOST each time the device runs dry, which the log
+says (timing_check; the sound stops for a moment as the device opens
+again). On Android and iOS 1024: there 512 broke the menus' music up (the
+thread that runs the guest getting too little time). */
+#ifdef HALO_WINDOWS
+#define BUFFER_FRAMES_AUTO 512
+#else
+#define BUFFER_FRAMES_AUTO 256
+#endif
+#define BUFFER_FRAMES_AUTO_MOST 2048
+static long buffer_frames = 1024;
+static BOOL buffer_frames_auto;
+/* when the device last opened (SDL_GetTicks) */
+static Uint64 audio_opened_at;
+
+static void buffer_frames_choose(void)
+{
+#if defined(HALO_ANDROID) || defined(HALO_IOS)
+	buffer_frames = 1024;
+#else
+	buffer_frames = config_integer("audio.buffer_frames");
+	buffer_frames_auto = buffer_frames <= 0;
+	if (buffer_frames_auto)
+		buffer_frames = BUFFER_FRAMES_AUTO;
+	if (buffer_frames < 64)
+		buffer_frames = 64;
+	if (buffer_frames > 8192)
+		buffer_frames = 8192;
+#endif
+}
+
+/* (the device opened: device_timing) */
+static void device_timing_read(SDL_AudioStream *stream)
+{
+	char system[32] = "not known";
+
+	device_timing_valid = host_sdl_audio_stream_timing((unsigned int)(uintptr_t)stream, device_driver,
+		(int)sizeof(device_driver), device_timing) != 0;
+	timing_slack();
+	if (!device_timing_valid)
+		return;
+	if (device_timing[3] >= 0)
+		snprintf(system, sizeof(system), "%.1f ms", device_timing[3] / 1000.0);
+	platform_log("sound: the device (%s) asks for %d frames at a time at %d Hz (audio.buffer_frames %ld%s); "
+		"%.1f ms queued ahead of them, the system's latency after %s", device_driver, device_timing[0],
+		device_timing[1], buffer_frames_auto ? 0L : buffer_frames, buffer_frames_auto ? ", automatic" : "",
+		device_timing[2] / 1000.0, system);
+}
+
+/* the device (audio.output_device, else the system's default) opened at
+buffer_frames, playing; NULL when none opens */
+static SDL_AudioStream *audio_open(void)
 {
 	SDL_AudioSpec spec;
+	SDL_AudioStream *stream;
+	char frames[16];
 
+	spec.format = SDL_AUDIO_F32;
+	/* (on a device opened again, the game's mix bins are set for the
+	channels the sound started with; SDL turns them into the device's) */
+	spec.channels = (int)output_channels;
+	spec.freq = OUTPUT_RATE;
+	snprintf(frames, sizeof(frames), "%ld", buffer_frames);
+	SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, frames);
+	timing_reset();
+	audio_opened_at = SDL_GetTicks();
+	stream = SDL_OpenAudioDeviceStream(platform_audio_device(FALSE, audio_device_name), &spec, audio_callback, NULL);
+	if (!stream && strcmp(audio_device_name, "default"))
+		stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, audio_callback, NULL);
+	if (!stream)
+		return NULL;
+	device_timing_read(stream);
+	SDL_ResumeAudioStreamDevice(stream);
+	return stream;
+}
+
+/* (the event thread, each frame) the device's dropouts since the log last
+said, at most every TIMING_LOG_MS; with audio.buffer_frames 0, the buffer
+doubled at a dropout, the device opened again, but not for those in the
+first TIMING_SETTLE_MS after it opened (the game starting up) */
+#define TIMING_LOG_MS 10000
+#define TIMING_SETTLE_MS 5000
+static void timing_check(void)
+{
+	static Uint64 logged_at;
+	static unsigned long logged_dropouts, settled_dropouts;
+	unsigned long dropouts;
+	double silence_ms;
+	Uint64 now = SDL_GetTicks();
+
+	pthread_mutex_lock(&timing_lock);
+	dropouts = timing.dropouts;
+	silence_ms = timing.silence_ms;
+	pthread_mutex_unlock(&timing_lock);
+	if (dropouts < logged_dropouts)
+		logged_dropouts = 0;
+	if (now - audio_opened_at < TIMING_SETTLE_MS)
+		settled_dropouts = dropouts;
+	if (dropouts == logged_dropouts)
+		return;
+	if (buffer_frames_auto && dropouts > settled_dropouts && buffer_frames < BUFFER_FRAMES_AUTO_MOST)
+	{
+		long from = buffer_frames;
+
+		buffer_frames *= 2;
+		if (buffer_frames > BUFFER_FRAMES_AUTO_MOST)
+			buffer_frames = BUFFER_FRAMES_AUTO_MOST;
+		platform_log("sound: the device ran dry (%.1f ms of silence since it opened): its buffer grows from %ld to "
+			"%ld frames (audio.buffer_frames 0, automatic)", silence_ms, from, buffer_frames);
+		SDL_DestroyAudioStream(audio_stream);
+		audio_stream = audio_open();
+		logged_dropouts = 0;
+		logged_at = now;
+		if (!audio_stream)
+		{
+			pthread_t thread;
+
+			platform_log("audio: cannot open an audio device (%s); sound is silent", SDL_GetError());
+			pthread_create(&thread, NULL, silent_clock_thread, NULL);
+			pthread_detach(thread);
+		}
+		return;
+	}
+	if (logged_at && now - logged_at < TIMING_LOG_MS)
+		return;
+	platform_log("sound: the device ran dry %lu time%s since it opened, %.1f ms of silence in all (a buffer of %ld "
+		"frames: audio.buffer_frames)", dropouts, dropouts == 1 ? "" : "s", silence_ms, buffer_frames);
+	logged_dropouts = dropouts;
+	logged_at = now;
+}
+
+static void audio_start(void)
+{
 	if (audio_started)
 		return;
 	audio_started = TRUE;
@@ -2277,40 +2663,11 @@ static void audio_start(void)
 		snprintf(audio_device_name, sizeof(audio_device_name), "%s", audio_device_setting());
 		output_channels = choose_output_channels(platform_audio_device(FALSE, audio_device_name));
 		platform_log("sound: %s", output_channels == 6 ? "5.1 surround" : "stereo");
-		spec.format = SDL_AUDIO_F32;
-		spec.channels = (int)output_channels;
-		spec.freq = OUTPUT_RATE;
-		{
-			/* frames per callback, which the host's SDL takes (host_sdl.c's
-			hint): each callback is handed to a thread that can run the
-			guest, and on Android 512 left it too little time and the menus'
-			music broke up, which 1024 does not (about 21 ms at 48 kHz, 11
-			ms more than 512). The desktop's: audio.buffer_frames
-			(port_config.c), 1024 unless set */
-#ifdef HALO_ANDROID
-			long buffer_frames = 1024;
-#else
-			long buffer_frames = config_integer("audio.buffer_frames");
-#endif
-			char frames[16];
-
-			if (buffer_frames < 64)
-				buffer_frames = 64;
-			if (buffer_frames > 8192)
-				buffer_frames = 8192;
-			snprintf(frames, sizeof(frames), "%ld", buffer_frames);
-			SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, frames);
-		}
+		buffer_frames_choose();
 		audio_device_read_at = config_changes();
-		audio_stream = SDL_OpenAudioDeviceStream(platform_audio_device(FALSE, audio_device_name), &spec,
-			audio_callback, NULL);
-		if (!audio_stream && strcmp(audio_device_name, "default"))
-			audio_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, audio_callback, NULL);
+		audio_stream = audio_open();
 		if (audio_stream)
-		{
-			SDL_ResumeAudioStreamDevice(audio_stream);
 			return;
-		}
 		platform_log("cannot open an audio device (%s); sound is silent", SDL_GetError());
 		output_channels = 2;
 	}
@@ -2327,28 +2684,19 @@ changed (Settings > Audio): the sound goes on on the new device, else the
 system's default */
 void dsound_sdl_output_device_check(void)
 {
-	SDL_AudioSpec spec;
-	SDL_AudioStream *stream;
-
+	if (!audio_stream)
+		return;
+	timing_check();
 	if (!audio_stream || audio_device_read_at == config_changes())
 		return;
 	audio_device_read_at = config_changes();
 	if (!strcmp(audio_device_name, audio_device_setting()))
 		return;
 	snprintf(audio_device_name, sizeof(audio_device_name), "%s", audio_device_setting());
-	spec.format = SDL_AUDIO_F32;
-	/* (the game's mix bins are set for the channels the sound started with;
-	SDL turns them into the new device's) */
-	spec.channels = (int)output_channels;
-	spec.freq = OUTPUT_RATE;
 	SDL_DestroyAudioStream(audio_stream);
-	stream = SDL_OpenAudioDeviceStream(platform_audio_device(FALSE, audio_device_name), &spec, audio_callback, NULL);
-	if (!stream)
-		stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, audio_callback, NULL);
-	audio_stream = stream;
+	audio_stream = audio_open();
 	if (audio_stream)
 	{
-		SDL_ResumeAudioStreamDevice(audio_stream);
 		platform_log("audio: playing on %s", audio_device_name);
 	}
 	else
@@ -2448,6 +2796,8 @@ static ULONG STDMETHODCALLTYPE stream_release(IDirectSoundStream *object)
 
 	stream_flush(object);
 	pthread_mutex_lock(&mixer_lock);
+	if (sound_latency.stream == stream)
+		memset(&sound_latency, 0, sizeof(sound_latency));
 	for (link = &streams; *link; link = &(*link)->next)
 	{
 		if (*link == stream)
@@ -2517,6 +2867,14 @@ static HRESULT STDMETHODCALLTYPE stream_process(IDirectSoundStream *object, LPCX
 		stream->cursor = 0;
 		resampler_reset(stream);
 		stream->gains_valid = FALSE;
+		/* (debug.latency_log: the voice started after the weapon fired) */
+		if (sound_latency.armed_ns && !sound_latency.stream)
+		{
+			sound_latency.stream = stream;
+			sound_latency.act_ns = sound_latency.armed_ns;
+			sound_latency.start_ns = SDL_GetTicksNS();
+			sound_latency.armed_ns = 0;
+		}
 	}
 	stream->packet_count++;
 	pthread_mutex_unlock(&mixer_lock);
@@ -2626,12 +2984,22 @@ static void voices_log(void)
 	if (mix_frames)
 	{
 		char recorded[48] = "";
+		Sint64 latest_ns;
+		unsigned long dropouts;
+		double silence_ms;
 
 		if (record_file)
 			snprintf(recorded, sizeof(recorded), "; %.2f s recorded", (double)record_frames / OUTPUT_RATE);
-		platform_log("audio: mixing took %.2f%% of the time it mixed (the HRTF %s)%s", 100.0 *
+		pthread_mutex_lock(&timing_lock);
+		latest_ns = timing.latest_ns;
+		timing.latest_ns = 0;
+		dropouts = timing.dropouts;
+		silence_ms = timing.silence_ms;
+		pthread_mutex_unlock(&timing_lock);
+		platform_log("audio: mixing took %.2f%% of the time it mixed (the HRTF %s)%s; the device waited %.2f ms "
+			"at most of the %.2f ms it had queued, %lu dropouts (%.1f ms) since it opened", 100.0 *
 			(double)mix_nanoseconds / ((double)mix_frames * 1.0e9 / OUTPUT_RATE), hrtf_enabled ? "on" : "off",
-			recorded);
+			recorded, (double)latest_ns / 1.0e6, (double)timing.slack_ns / 1.0e6, dropouts, silence_ms);
 		mix_nanoseconds = 0;
 		mix_frames = 0;
 	}

@@ -2,10 +2,11 @@
 HOST_LINKS.C
 
 The links the system opens the Mac and iPhone apps with: invites
-(halo://join/...), parties' links (halo://party/...) and the join page's
+(openh1://join/...), parties' links (openh1://party/...) and the join page's
 addresses of either (https://openh1.com/join/#party=..., #join=...). The
-apps' Info.plist names them the halo scheme's handler (tools/macos_app.py,
-tools/ios_app.py).
+apps' Info.plist names them the openh1 scheme's handler (tools/macos_app.py,
+tools/ios_app.py), and not the halo scheme's, OpenCE's, which older builds'
+links have: one of those that reaches the app anyway is still taken.
 
 The system gives a link to SDL's application delegate, at the launch it
 started or while the game runs: on macOS the GetURL Apple event, on iOS
@@ -56,7 +57,8 @@ static int starts_with(const char *text, const char *prefix)
 game or party; anything else, a file dropped on the window, is left be) */
 int host_links_is_link(const char *text)
 {
-	return text && (starts_with(text, "halo://") || starts_with(text, "https://openh1.com/join/"));
+	return text && (starts_with(text, "openh1://") || starts_with(text, "halo://") ||
+		starts_with(text, "https://openh1.com/join/"));
 }
 
 void host_links_add(const char *text)

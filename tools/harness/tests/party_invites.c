@@ -454,7 +454,7 @@ static int p2p_party_invite_link(char *link, int size)
 {
 	invite_links_asked++;
 	if (!party_link[0])
-		snprintf(party_link, sizeof(party_link), "halo://party/00112233445566778899aabbccddeeff");
+		snprintf(party_link, sizeof(party_link), "openh1://party/00112233445566778899aabbccddeeff");
 	snprintf(link, (size_t)size, "%s", party_link);
 	return 1;
 }
@@ -467,16 +467,16 @@ static int p2p_party_join_link(const char *text)
 
 static int p2p_party_parse_link(const char *text, unsigned char *token)
 {
-	const char *hex = strstr(text, "halo://party/");
+	const char *hex = strstr(text, "openh1://party/");
 	int index;
 
-	if (!hex || strlen(hex + 13) < 32)
+	if (!hex || strlen(hex + 15) < 32)
 		return 0;
 	for (index = 0; index < 16; index++)
 	{
 		unsigned int value;
 
-		sscanf(hex + 13 + 2 * index, "%2x", &value);
+		sscanf(hex + 15 + 2 * index, "%2x", &value);
 		token[index] = (unsigned char)value;
 	}
 	return 1;
@@ -732,7 +732,7 @@ static void case_actions(void)
 	CHECK(network_party_player_actions(datum(OPENH1_PLAYER)) == 0, "nor this machine's own player");
 	CHECK(network_party_player_actions(NONE) == 0, "nor no player");
 	/* (in the same party: nothing to do) */
-	snprintf(party_link, sizeof(party_link), "halo://party/00112233445566778899aabbccddeeff");
+	snprintf(party_link, sizeof(party_link), "openh1://party/00112233445566778899aabbccddeeff");
 	tags[0] = 0x1234ABCDUL;
 	client_hears_list(4, listed, flags, tags);
 	frame(PARTY_STATUS_MILLISECONDS + 1);
@@ -920,7 +920,7 @@ static void case_status(void)
 		sent_request(0)->player_index == OPENH1_PLAYER, "told the host it can party");
 	frame(PARTY_STATUS_MILLISECONDS + 1);
 	CHECK(sent_count == 1, "not again, unchanged");
-	snprintf(party_link, sizeof(party_link), "halo://party/00112233445566778899aabbccddeeff");
+	snprintf(party_link, sizeof(party_link), "openh1://party/00112233445566778899aabbccddeeff");
 	frame(PARTY_STATUS_MILLISECONDS + 1);
 	CHECK(sent_count == 2 && sent_request(1)->flags == IN_PARTY && party_get_tag(sent_request(1)->tag) == 0x1234ABCDUL,
 		"in a party, with its tag");
@@ -948,14 +948,14 @@ static void case_accept(void)
 		party_globals.prompt.player_index == datum(OTHER_PLAYER) &&
 		!wcscmp(party_globals.prompt.name, L"Cortana"), "the invite to answer, from Cortana");
 	press_key();
-	CHECK(!strcmp(joined_link, "halo://party/abababababababababababababababab"),
+	CHECK(!strcmp(joined_link, "openh1://party/abababababababababababababababab"),
 		"its key joins the party by its link: %s", joined_link);
 	CHECK(party_globals.prompt.kind == NONE, "answered");
 	/* (the controller's D-pad Down) */
 	joined_link[0] = 0;
 	client_hears(_party_request_invite, OTHER_PLAYER, OPENH1_PLAYER, 0, 0xCD, TRUE);
 	press_button();
-	CHECK(!strcmp(joined_link, "halo://party/cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"), "and the D-pad Down: %s", joined_link);
+	CHECK(!strcmp(joined_link, "openh1://party/cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"), "and the D-pad Down: %s", joined_link);
 	/* (ignored: it fades, and the key then does nothing) */
 	joined_link[0] = 0;
 	client_hears(_party_request_invite, OTHER_PLAYER, OPENH1_PLAYER, 0, 0xEF, TRUE);
@@ -1010,7 +1010,7 @@ static void case_accept(void)
 	CHECK(!joined_link[0], "another player's answer is not this ask's");
 	party_globals.prompt.kind = NONE;
 	client_hears(_party_request_invite, OTHER_PLAYER, OPENH1_PLAYER, FLAG(_party_invite_answer_bit), 0x56, TRUE);
-	CHECK(!strcmp(joined_link, "halo://party/56565656565656565656565656565656"), "their answer: joined at once");
+	CHECK(!strcmp(joined_link, "openh1://party/56565656565656565656565656565656"), "their answer: joined at once");
 	joined_link[0] = 0;
 	client_hears(_party_request_invite, OTHER_PLAYER, OPENH1_PLAYER, FLAG(_party_invite_answer_bit), 0x78, TRUE);
 	CHECK(!joined_link[0], "once");

@@ -12,13 +12,27 @@ Addresses and ports are in network byte order.
 #ifndef __HALO_LINUX_P2P_H
 #define __HALO_LINUX_P2P_H
 
+/* the scheme of the game's links (openh1://join/..., an invite, and
+openh1://party/..., a party's), the one the game registers with the system
+(p2p.c, tools/macos_app.py, tools/ios_app.py, the Android manifest) */
+#define P2P_LINK_SCHEME "openh1"
+/* an invite link: this, then its host's key hash and its token in
+hexadecimal (p2p.c) */
+#define P2P_JOIN_LINK_PREFIX "openh1://join/"
+/* the scheme older builds' links have, OpenCE's: links of it are still
+taken (shared before, or handed over by an older copy), but the game makes
+none and registers it nowhere, and on the desktop drops a registration of
+it that points at this executable (p2p.c) */
+#define P2P_OLD_LINK_SCHEME "halo"
+#define P2P_OLD_JOIN_LINK_PREFIX "halo://join/"
+
 /* starts internet play, if network.online is set, when the game starts
 its networking; local_address is the address the game's sockets are
 reached at (network.address, else 127.0.0.1) */
 void p2p_initialize(unsigned long local_address);
 
 /* on the desktop, before anything else: if this process was started with
-an invite link (halo://join/...) and another copy of the game is running,
+an invite link (openh1://join/...) and another copy of the game is running,
 passes the link to it and returns nonzero (this one should quit) */
 int p2p_hand_off_invite(void);
 
@@ -93,7 +107,7 @@ const char *p2p_invite_log_text(const char *invite, char *text, int size);
 
 /* the join page (website/public/join): a link's token in its address's
 part after "#" (#party=, #join=), which browsers never send, opened as the
-link it is (halo://), else the downloads and the link to paste */
+link it is (openh1://), else the downloads and the link to paste */
 #define P2P_JOIN_PAGE "https://openh1.com/join/"
 enum
 {
@@ -102,7 +116,7 @@ enum
 };
 /* what COPY INVITE puts on the clipboard for the party or game link within
 text: a line with the join page's address of it, which chat apps (Steam's,
-Discord's) make clickable as they do not halo://, and a line with the link
+Discord's) make clickable as they do not openh1://, and a line with the link
 itself, for JOIN BY LINK (every form of either is taken: p2p_join_invite).
 0 if text holds no link */
 int p2p_invite_message(const char *text, char *message, int size);
@@ -157,7 +171,7 @@ enum
 	P2P_LISTING_MAP_SIZE = 32,
 	P2P_LISTING_GAMETYPE_SIZE = 24,
 	/* an invite link's text (P2P_LINK_SIZE) */
-	P2P_LISTING_INVITE_SIZE = 77,
+	P2P_LISTING_INVITE_SIZE = 79,
 	/* a password's game's: its host's key and its key's hash, and its token
 	sealed (P2P_KEY_SIZE, P2P_KEY_HASH_SIZE, P2P_SEALED_TOKEN_SIZE) */
 	P2P_LISTING_SIGNING_KEY_SIZE = 32,
@@ -345,14 +359,16 @@ party's machines talk through the signalling brokers; the leader's game is
 the party's, which the others join */
 
 /* a party's link: this, then its token in hexadecimal */
-#define P2P_PARTY_LINK_PREFIX "halo://party/"
+#define P2P_PARTY_LINK_PREFIX "openh1://party/"
+/* an older build's, which the game still takes (P2P_OLD_LINK_SCHEME) */
+#define P2P_OLD_PARTY_LINK_PREFIX "halo://party/"
 
 enum
 {
 	P2P_PARTY_MAXIMUM_MEMBERS = 16,
 	/* a member's name as kept (printable ASCII), with its end */
 	P2P_PARTY_NAME_SIZE = 16,
-	P2P_PARTY_LINK_SIZE = 13 + 2 * 16 + 1,
+	P2P_PARTY_LINK_SIZE = 15 + 2 * 16 + 1,
 	P2P_PARTY_MAXIMUM_NOTICES = 8,
 };
 

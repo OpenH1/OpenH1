@@ -57,6 +57,27 @@ left out; one not acted on within a second (the weapon empty) is counted,
 not logged; tools/latency_summary.py takes the lines' median and
 95th percentile. The frame's own way to the screen is the renderer's: the
 Metal backend's HALO_METAL_STATS logs its input to screen.
+
+The sound of a shot (a fire event's step) gets a line of its own once its
+first frames are handed to the sound device (port/linux/src/dsound_sdl.c,
+"the sound's latency"):
+
+    sound <act_to_start> <start_to_request> <answer> <queued> <system> <total> <buffer> <dropouts>
+
+    act_to_start      the step to the voice the game starts next (its sound
+                      update, in the frame after the step)
+    start_to_request  that to the device's next request for frames, whose
+                      buffer has the voice from its start
+    answer            the request to its frames handed back (the mix, and the
+                      hand-off to the thread that runs it); not in the total
+    queued            the frames SDL's driver keeps queued ahead of that
+                      buffer (by the driver and the buffer)
+    system            the system's own latency after, as it reports it (the
+                      Mac's CoreAudio; -1 not known)
+    total             the step to the sound heard: act_to_start,
+                      start_to_request, queued and system
+    buffer            the device's buffer (frames; audio.buffer_frames)
+    dropouts          the times the device ran dry since it opened
 */
 
 #include "cseries.h"
@@ -78,6 +99,10 @@ float render_interpolation_fraction(void);
 /* SDL's clock, the game's (port/linux/src: the frame's pacing, the
 controllers' reading) */
 unsigned long long SDL_GetTicksNS(void);
+/* port/linux/src/dsound_sdl.c: the sound of a shot */
+void dsound_sdl_latency_arm(unsigned long long act_ns);
+int dsound_sdl_latency_take(unsigned long long *times, double *queued_ms, double *system_ms, long *buffer_frames,
+	unsigned long *dropouts);
 
 int latency_log_on;
 
@@ -382,6 +407,7 @@ void latency_log_fire(
 		{
 			event->acting = TRUE;
 			event->act_ns = latency_now();
+			dsound_sdl_latency_arm(event->act_ns);
 		}
 	}
 }
@@ -498,6 +524,26 @@ void latency_log_frame_rendered(
 	}
 }
 
+/* the sound of a shot, once handed to the device */
+static void latency_sound(
+	void)
+{
+	unsigned long long times[4];
+	double queued, system, act_to_start, start_to_request;
+	long buffer_frames;
+	unsigned long dropouts;
+
+	if (!dsound_sdl_latency_take(times, &queued, &system, &buffer_frames, &dropouts))
+		return;
+	/* (the voice may start while the request it is mixed for waits) */
+	act_to_start = latency_ms(times[0], times[1]);
+	start_to_request = times[2] >= times[1] ? latency_ms(times[1], times[2]) : -latency_ms(times[2], times[1]);
+	fprintf(latency_log.file, "sound %.3f %.3f %.3f %.3f %.3f %.3f %ld %lu\n", act_to_start, start_to_request,
+		latency_ms(times[2], times[3]), queued, system, act_to_start + start_to_request + queued +
+		(system > 0.0 ? system : 0.0), buffer_frames, dropouts);
+	fflush(latency_log.file);
+}
+
 void latency_log_frame_presented(
 	void)
 {
@@ -516,4 +562,5 @@ void latency_log_frame_presented(
 		if (event->in_use && event->rendered)
 			latency_end(event);
 	}
+	latency_sound();
 }
