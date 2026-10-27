@@ -257,8 +257,10 @@ Frame"):
   latency; set `display.vsync = true` to show one frame for each refresh,
   following the refresh rate and the frame limit of Quick Access >
   Performance (40 to 60 Hz on the LCD model, up to 90 Hz on the OLED model),
-  which spends less of the battery. The world is calculated at 30 Hz at all
-  rates. Refer to "Frame rate". For a longer battery, set Video Setup >
+  which spends less of the battery; with it, `display.low_latency` starts
+  each frame just in time for its refresh, so that a press is on screen
+  about 15 ms later at 60 Hz, not about 90 (refer to "Low latency with
+  vsync"). The world is calculated at 30 Hz at all rates. Refer to "Frame rate". For a longer battery, set Video Setup >
   Battery Saver to Auto (on while the Deck is not charging) or On: 30
   frames each second at 60 or 90 Hz, 40 with the screen at 40 or 80 Hz, and
   the Classic look (refer to "Battery saver").
@@ -666,7 +668,8 @@ the setting for one start of the game. It has priority over the file.
 | `display.resolution_scaling` | `"native"` | `HALO_RESOLUTION_SCALING` | `"native"`: the game draws at the resolution of the window, or of the display (or `display.resolution`) fullscreen. `"original"`: the game draws the 640x480 picture of the Xbox and scales it up to the window or the display, whatever `display.mode` is. Video Setup sets it. |
 | `display.window_size` | `""` | `HALO_WINDOW_SIZE` | The size of the window, as `"<width>x<height>"`, such as `"1920x1080"`, 640x480 or more. You can change the size of the window; the game's picture takes its shape. Empty: `display.window_scale` decides. Video Setup's Window Size sets it, from sizes of each shape (4:3, 16:10, 16:9 and 21:9) that fit the desktop; it shows with Windowed. |
 | `display.window_scale` | `2` | `HALO_WINDOW_SCALE` | Used when `display.window_size` is empty: the size of the window, as a multiple of 640x480. |
-| `display.vsync` | `false` (Linux, Windows, macOS); `true` (iOS, Android) | `HALO_NO_VSYNC=1` sets `false` | `true`: each frame waits for the display. `false`: as many frames as `display.max_fps` allows (twice the refresh rate by default). With Vulkan, `false` presents in mailbox mode where the display has it (no tearing), else immediately. On macOS, `false` shows the newest frame at each refresh, with the older one dropped (no tearing). The VR mode's headset paces itself. |
+| `display.vsync` | `false` (Linux, Windows, macOS); `true` (iOS, Android) | `HALO_NO_VSYNC=1` sets `false` | `true`: each frame waits for the display. `false`: as many frames as `display.max_fps` allows (twice the refresh rate by default). With Vulkan, `false` presents in mailbox mode where the display has it (no tearing), else immediately. On macOS, `false` shows the newest frame at each refresh, with the older one dropped (no tearing). The VR mode's headset paces itself. With Vulkan and `true`, `display.low_latency` starts each frame just in time for its refresh. |
+| `display.low_latency` | `"auto"` | `HALO_LOW_LATENCY` | With vsync on (Vulkan: Linux, the Steam Deck, Windows, Android), the game starts each frame as late as it can and still have it on screen at the next refresh, its input read then, and never queues frames ahead of the display. `"on"`, `"off"`, or `"auto"`: on where it was measured, Linux and the Steam Deck (Windows and Android: off until measured there). It needs a driver that says when each frame reaches the screen (`VK_KHR_present_wait`, or `VK_GOOGLE_display_timing`); without one it does nothing. The Mac's frames are paced by its display already. Refer to "Low latency with vsync". |
 | `display.max_fps` | `0` | `HALO_MAX_FPS` | With vsync off, the most frames each second. `0`: twice the display's refresh rate. `-1`: no limit, which can hang some Intel graphics (Raptor Lake), resetting the desktop's graphics too. A press while a frame waits for its time (a key, a mouse or controller button, a trigger or stick pushed or let go, the mouse moved after it was still) begins the next frame at once, so that it is read then: one frame more for each press, at most one an interval; the frame after waits for its time as before. Not the Mac's, whose frames wait for the display. |
 | `display.battery_saver` | `"off"` | `HALO_BATTERY_SAVER` | Draw less, for a longer battery and a cooler machine. `"on"`: each frame stays on screen for a whole number of the display's refreshes, 30 to 60 frames each second (60 at 60 or 120 Hz, 45 at 90 Hz), and the settings `display.graphics` chooses that are commented out are drawn at their Classic values; those set keep their own. `"auto"`: on while the machine runs on its battery, off on its charger, as SDL says (a machine without a battery, or one that cannot tell, is taken to be on its charger). `"off"`: never. Not in VR. The game plays the same. Video Setup > Battery Saver. Refer to "Battery saver". |
 | `display.graphics` | `"enhanced"` | `HALO_GRAPHICS` | The look of the 3D view, as one choice. `"classic"`: as the Xbox drew it. `"enhanced"`: the port's improvements together, each as far as the machine's GPU does it well. It chooses `display.anti_aliasing`, `display.anisotropic_filtering`, `display.shadow_resolution`, `display.per_pixel_lighting`, `display.model_detail` and `display.dynamic_lights` where they are commented out; each of them set wins over it. Video Setup > Graphics > Preset. Refer to "Classic and Enhanced". |
@@ -875,7 +878,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.log_addresses` | `false` | `HALO_LOG_ADDRESSES=1` sets `true` | `true`: other machines' internet addresses are written whole in `debug.txt` and the console, for debugging your own network. `false`: a public address is written as a tag (`addr#3f2a9c`) that matches up only within one run; local network addresses are always whole. Do not post a `debug.txt` written with this on. |
 | `debug.network_latency`, `debug.network_loss`, `debug.network_corrupt`, `debug.network_corrupt_stream`, `debug.network_corrupt_after` | `0` | `HALO_NETWORK_LATENCY`, `HALO_NETWORK_LOSS`, `HALO_NETWORK_CORRUPT`, `HALO_NETWORK_CORRUPT_STREAM`, `HALO_NETWORK_CORRUPT_AFTER` | The game holds all the data that it receives for this number of milliseconds, ignores this percentage of the datagrams, and damages this percentage of the datagrams it receives, and this percentage of its reads of streams, at random (bytes changed, cut short, stretched or replaced), from this many seconds after the start. Use the first two to test the netcode as on the internet, and the others to test that nothing another machine sends can crash the game (a damaged stream is closed, so a little goes a long way; a host's messages to its own client are damaged too, so start damaging once the game has started). |
 | `debug.voice_test` | `false` | `HALO_VOICE_TEST` | Automatic tests of voice chat: a tone replaces the microphone, and each voice that the game hears is written to the log once each second. |
-| `debug.latency_log` | `""` | `HALO_LATENCY_LOG` | A file to write a line to for each press of the fire control and each move from standing of the first player, on the controller (`fire`, `move`) and on the mouse (`click`), and each turn of the mouse from still (`turn`), in milliseconds: the press to the reading of the controller or the mouse, the reading to the simulation step that acts on it (the weapon fires, the unit moves; for a turn, the view takes it), that step to the first frame drawn after it, that frame to the first frame that shows it (the frames draw a tick behind: "Frame rate"), and that frame's drawing and handing on (`game/latency_log.c`). A press in a menu (the D-pad, A or the left stick, `menu`) is acted on when the menu takes it (the selection moved, an item chosen). A rumble from rest gets a `rumble` line: the step that made it to the first write of the motors (the SDL call), its time on, and the time the game gave it. `tools/latency_summary.py` gives each stage's median and 95th percentile. A shot's sound gets a line of its own, from the step to the sound heard ("Sound delay"). `debug.test_input = "latency:<seed>"` pulls the fire control, pushes the stick, clicks the mouse and moves it in turn on the real clock, so the presses fall anywhere in a tick (`"latency:<seed>:fire,click,turn"` plays those kinds only, and `"latency:<seed>:menu"` the D-pad down and up in a menu; the mouse's come as its events do); with `debug.network_test = "local:bloodgulch:swat"` the player holds SWAT's pistol, which fires as the control is pulled (the plasma pistol a multiplayer game starts with otherwise fires as it is let go). The way to the screen after that is the renderer's (`HALO_METAL_STATS` on the Mac). |
+| `debug.latency_log` | `""` | `HALO_LATENCY_LOG` | A file to write a line to for each press of the fire control and each move from standing of the first player, on the controller (`fire`, `move`) and on the mouse (`click`), and each turn of the mouse from still (`turn`), in milliseconds: the press to the reading of the controller or the mouse, the reading to the simulation step that acts on it (the weapon fires, the unit moves; for a turn, the view takes it), that step to the first frame drawn after it, that frame to the first frame that shows it (the frames draw a tick behind: "Frame rate"), and that frame's drawing and handing on (`game/latency_log.c`). A press in a menu (the D-pad, A or the left stick, `menu`) is acted on when the menu takes it (the selection moved, an item chosen). A rumble from rest gets a `rumble` line: the step that made it to the first write of the motors (the SDL call), its time on, and the time the game gave it. `tools/latency_summary.py` gives each stage's median and 95th percentile. A shot's sound gets a line of its own, from the step to the sound heard ("Sound delay"). `debug.test_input = "latency:<seed>"` pulls the fire control, pushes the stick, clicks the mouse and moves it in turn on the real clock, so the presses fall anywhere in a tick (`"latency:<seed>:fire,click,turn"` plays those kinds only, and `"latency:<seed>:menu"` the D-pad down and up in a menu; the mouse's come as its events do); with `debug.network_test = "local:bloodgulch:swat"` the player holds SWAT's pistol, which fires as the control is pulled (the plasma pistol a multiplayer game starts with otherwise fires as it is let go). The way to the screen after that is the renderer's (`HALO_METAL_STATS` on the Mac; with Vulkan, `HALO_VULKAN_FRAME_LOG`, which `tools/latency_summary.py --frames` joins to the presses by the two times each line ends with, the press and the showing frame's input read in nanoseconds of `CLOCK_MONOTONIC`, for the press to that frame's present and to its time on screen). |
 | `debug.determinism_log` | `""` | `HALO_DETERMINISM_LOG` | A file to write a line a tick to: a hash of the game state as the tick left it, the random seeds, and every taker of a seed since the line before by its call site (in the tick, in the frames, on other threads). Two runs of the same input compared with `tools/determinism_compare.py` first differ where something besides the input reached the game. |
 | `debug.determinism_dump` | `0` | `HALO_DETERMINISM_DUMP` | With `debug.determinism_log`, the tick after which to write the game state too, counted as logged from 1 (its allocations in order, to `<log>.<count>.bin`), to find where two runs' game states differ (`tools/determinism_compare.py --dump`), and that tick's first frame as `<log>.<count>.bmp`; `0` none. |
 | `debug.trace`, `debug.trace_seconds`, `debug.trace_mutation` | `""`, `0.0`, `""` | `HALO_TRACE`, `HALO_TRACE_SECONDS`, `HALO_TRACE_MUTATION` | A file to write a line a simulation step to (`game/sim_trace.c`): the players' place, velocity and aim, each projectile's, and the step's shots, projectiles made, strikes and detonations, timed in seconds from the scenario's start; quit once the scenario has run `debug.trace_seconds`; `debug.trace_mutation` puts a known bug in on purpose (`head_start`, `jump`, `speed`), which the scorecard must catch (`tools/scorecard`). Off, it costs a test a call. `HALO_GUEST_IMAGE` (the environment only) runs another guest image in the game's place: StageKit's map writer (`tools/stagekit`). |
@@ -1188,6 +1191,69 @@ gives it from then; the game writes the motors as they change and every
 loading) leaves them stopped (`rumble` lines).
 
 To get 30 frames each second, set `display.interpolation = false`.
+
+### Low latency with vsync
+
+With vsync on, the display shows a frame at each refresh, and a game left
+to itself draws ahead of it: the Vulkan swapchain (FIFO) holds two or three
+finished frames, each waiting for its refresh, and the game starts the next
+as soon as an image is free. Its input is read when it starts, so what is
+on screen was read two or three refreshes (33 to 50 ms at 60 Hz) before.
+
+`display.low_latency` (`"auto"`, on for Linux and the Steam Deck) paces the
+game by the display instead (`vulkan/xgpu_vulkan_pacing.c`,
+`src/frame_pacing.h`, the command stream's `display_wait`):
+
+- Each present has a number, and a thread waits for each in turn
+  (`VK_KHR_present_wait`): it comes back when the display (or the
+  compositor: gamescope, on the Deck, takes its frames about 4.6 ms before
+  the refresh) has taken the frame. Where the driver also says when each
+  frame reached the screen and how far apart the refreshes are
+  (`VK_GOOGLE_display_timing`: gamescope's, Android's), that time is the
+  frame's time on screen; without present wait (Android) the thread asks it
+  each millisecond.
+- The game starts a frame only while at most one of its frames waits for
+  the display, so the swapchain has three images: one on screen, one
+  waiting, one drawn into.
+- And not before the time it takes ahead of the refresh it is for: the
+  most a frame took of the last 128, from its input read to its work done
+  on the GPU, and a margin. A frame that started at its time and was done
+  that margin early, but still missed its refresh, widens the margin by
+  1 ms (a display that takes its frames sooner than the margin gives); 120
+  frames in time narrow it by 0.1 ms, down to 0.25 ms over the margin
+  that last missed, which itself comes down 0.1 ms a minute. The margin
+  starts at 1.5 ms.
+
+The game plays the same; only when each frame starts changes. On a GPU
+that cannot draw a frame each refresh, the frames start at once, as before.
+`HALO_VULKAN_STATS=1` logs, every 600 frames, the refreshes that showed a
+frame again, the frames shown after the refresh they were started for (and
+how many of those took longer than any before them), the margin and the
+input to screen time; `HALO_VULKAN_FRAME_LOG=<file>` writes each frame's
+times (`vulkan/README.md`), which `tools/latency_summary.py --frames` joins
+to `debug.latency_log`'s presses.
+
+Measured on Linux (an RTX 4090) in gamescope's headless backend (the Steam
+Deck's compositor, without a screen), 1280x720, a local SWAT game on Blood
+Gulch with `debug.test_input = "latency:7:fire,move,click,turn"`, 150 s a
+run: the press to the first frame that shows it on screen (display
+timing's time), median / 95th percentile in ms, off then on:
+
+| display, `game.sim_rate` | fire | move | click | turn |
+|---|---|---|---|---|
+| 60 Hz, 30 | 91.0 / 115.5 → 18.3 / 36.0 | 90.6 / 113.7 → 23.0 / 37.7 | 95.9 / 119.5 → 23.0 / 36.9 | 90.8 / 116.8 → 15.5 / 22.8 |
+| 60 Hz, 60 | 91.4 / 115.8 → 16.6 / 23.3 | 93.6 / 114.5 → 15.0 / 22.6 | 96.2 / 119.4 → 13.4 / 20.6 | 88.9 / 116.0 → 14.9 / 22.6 |
+| 60 Hz, 120 | 95.4 / 115.5 → 13.9 / 22.3 | 85.3 / 115.3 → 14.4 / 23.3 | 90.0 / 111.4 → 15.9 / 22.1 | 96.1 / 118.2 → 16.3 / 23.2 |
+| 120 Hz, 120 | 51.2 / 61.7 → 10.5 / 14.5 | 49.5 / 61.1 → 11.9 / 19.3 | 50.7 / 60.9 → 11.1 / 14.6 | 52.8 / 60.7 → 10.9 / 14.3 |
+
+Off, a frame waited 54.4 ms from its present to the screen at 60 Hz (three
+frames queued, and gamescope's 4.6 ms), 29.4 ms at 120 Hz; on, 5.9 to
+6.5 ms. What is left is mostly the wait for the next frame's input read (up
+to a refresh) and, at 30 steps a second, for the step. The refreshes that
+showed a frame again, from the first press on, in about 7,870 frames a run
+at 60 Hz: none off; 0, 1 and 1 on at 30, 60 and 120 steps (one frame that
+took 2.5 ms, three times the others, at the same moment of each run), and
+2 in 15,740 at 120 Hz.
 
 ### Battery saver
 

@@ -72,7 +72,7 @@ def test_gpu_timestamps_without_waiting(tmp_path):
         cc, "-std=gnu11", "-Wall", "-Werror", "-Wno-unused-function", "-O1", "-D_GNU_SOURCE",
         "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
         f"-I{ROOT / 'port/android/include'}", f"-I{ROOT / 'port/android/host'}", f"-I{headers}",
-        str(ROOT / "port/linux/tests/vulkan_gpu_time_test.c"), "-pthread", "-ldl", "-lm", "-o", str(binary),
+        f"-I{ROOT / 'port/linux/src'}", str(ROOT / "port/linux/tests/vulkan_gpu_time_test.c"), "-pthread", "-ldl", "-lm", "-o", str(binary),
     ], check=True)
     result = subprocess.run([str(binary)], capture_output=True, text=True)
     assert result.returncode == 0 and result.stdout.strip() == "ok", result.stdout + result.stderr

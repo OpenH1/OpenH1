@@ -28,6 +28,16 @@ more between the player's hand and the picture.
   ready for the display (its renderer done) of the last FRAME_PACING_COSTS,
   and FRAME_PACING_MARGIN_NS more: frame_pacing_cost_add,
   frame_pacing_budget.
+- A display that says when each frame reached the screen (Vulkan's,
+  xgpu_vulkan_pacing.c) has the margin learned: a frame shown a refresh or
+  more after the one it was started for, though it started at its time,
+  widens it by FRAME_PACING_MARGIN_STEP_NS (frame_pacing_margin_missed);
+  frames shown in time narrow it again, slowly, but not below the margin
+  that last missed and a little more, which itself comes down more slowly
+  still (frame_pacing_margin_kept). So a frame misses its refresh once in
+  minutes at most, where the display's own lead (a compositor that takes
+  its frames a few milliseconds before the refresh) and the frames' spikes
+  call for more.
 - Battery saver (display.battery_saver, battery_saver.c) shows each frame
   for a whole number of the display's refreshes, each on screen as long as
   the others, so that the game draws BATTERY_SAVER_MOST frames a second or
@@ -62,6 +72,14 @@ fullscreen) must not stop the game */
 time added to it */
 #define FRAME_PACING_COSTS 128
 #define FRAME_PACING_MARGIN_NS 1500000ull
+/* the learned margin (frame_pacing_margin_missed, frame_pacing_margin_kept):
+widened by a step for each miss, to at most half a refresh; narrowed by a
+decay each DECAY_FRAMES frames shown in time, down to the margin that last
+missed and a quarter step, which comes down by a decay each HOLD_FRAMES */
+#define FRAME_PACING_MARGIN_STEP_NS 1000000ull
+#define FRAME_PACING_MARGIN_DECAY_NS 100000ull
+#define FRAME_PACING_MARGIN_DECAY_FRAMES 120u
+#define FRAME_PACING_MARGIN_HOLD_FRAMES 3600u
 /* the input to screen times kept between looks */
 #define FRAME_PACING_SAMPLES 1024
 /* battery saver's frames a second, at least and at most (frame_pacing_divisor) */
@@ -83,6 +101,11 @@ struct frame_pacing_costs
 {
 	uint64_t nanoseconds[FRAME_PACING_COSTS];
 	uint32_t next;
+	/* the margin added (0: FRAME_PACING_MARGIN_NS), the least it narrows
+	to (the margin that last missed and a quarter step), and the frames
+	shown in time since it or the least last changed; the misses counted */
+	uint64_t margin, hold;
+	uint32_t kept, held, misses;
 };
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -121,7 +144,51 @@ static FRAME_PACING_UNUSED uint64_t frame_pacing_budget(const struct frame_pacin
 		if (costs->nanoseconds[index] > most && (!period || costs->nanoseconds[index] <= period * 3 / 2))
 			most = costs->nanoseconds[index];
 	}
-	return most + FRAME_PACING_MARGIN_NS;
+	return most + (costs->margin ? costs->margin : FRAME_PACING_MARGIN_NS);
+}
+
+/* a frame started at its time was shown a refresh or more late (period:
+the refreshes', 0 unknown): the margin widened by a step, to at most half
+a refresh, and the least it narrows to held above the margin that missed */
+static FRAME_PACING_UNUSED void frame_pacing_margin_missed(struct frame_pacing_costs *costs, uint64_t period)
+{
+	uint64_t margin = costs->margin ? costs->margin : FRAME_PACING_MARGIN_NS;
+	uint64_t most = period ? period / 2 : 8000000ull;
+
+	costs->misses++;
+	costs->hold = margin + FRAME_PACING_MARGIN_STEP_NS / 4;
+	margin += FRAME_PACING_MARGIN_STEP_NS;
+	if (most < FRAME_PACING_MARGIN_NS)
+		most = FRAME_PACING_MARGIN_NS;
+	if (costs->hold > most)
+		costs->hold = most;
+	costs->margin = margin < most ? margin : most;
+	costs->kept = costs->held = 0;
+}
+
+/* a frame shown at the refresh it was started for: the margin narrowed
+by a decay once in FRAME_PACING_MARGIN_DECAY_FRAMES of them, not below the
+least (nor FRAME_PACING_MARGIN_NS), which comes down by one once in
+FRAME_PACING_MARGIN_HOLD_FRAMES */
+static FRAME_PACING_UNUSED void frame_pacing_margin_kept(struct frame_pacing_costs *costs)
+{
+	uint64_t least;
+
+	if (!costs->margin)
+		return;
+	if (++costs->held >= FRAME_PACING_MARGIN_HOLD_FRAMES)
+	{
+		costs->held = 0;
+		costs->hold = costs->hold > FRAME_PACING_MARGIN_NS + FRAME_PACING_MARGIN_DECAY_NS ?
+			costs->hold - FRAME_PACING_MARGIN_DECAY_NS : FRAME_PACING_MARGIN_NS;
+	}
+	if (++costs->kept < FRAME_PACING_MARGIN_DECAY_FRAMES)
+		return;
+	costs->kept = 0;
+	least = costs->hold > FRAME_PACING_MARGIN_NS ? costs->hold : FRAME_PACING_MARGIN_NS;
+	if (costs->margin > least)
+		costs->margin = costs->margin - least > FRAME_PACING_MARGIN_DECAY_NS ?
+			costs->margin - FRAME_PACING_MARGIN_DECAY_NS : least;
 }
 
 /* when the game should start its next frame: latch, the display's last

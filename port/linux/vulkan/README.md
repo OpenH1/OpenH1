@@ -93,6 +93,9 @@ four multiview views and fragment storage-buffer atomics.
 | `HALO_VULKAN_SHADERS=<dir>` | Each shader module written there as it is made (`.spv`); as `debug.gpu_dump_shaders`, over which it wins |
 | `HALO_VULKAN_STATS=1` | Every 600 frames, submissions, passes, attachment loads/clears, clears drawn, draws, pipeline creation count/time, upload ring bytes and textures made; as `debug.gpu_stats` |
 | `HALO_NO_VSYNC=1` | `display.vsync = false`: presented without waiting for the display (mailbox where the surface has it, else immediate) instead of FIFO |
+| `HALO_VULKAN_FRAME_LOG=<file>` | A line for each frame, paced or not (`xgpu_vulkan_pacing.c`): `frame <input> <queued> <finished> <shown> <refreshes> <paced> <earliest> <present_margin> <returned>`, nanoseconds of `CLOCK_MONOTONIC`: the frame's input read, its present's return, its work done on the GPU, its time on screen (display timing's, else present wait's return), the refreshes since the frame before reached the screen (more than one: a refresh showed a frame again), whether the game was paced, display timing's earliest time and margin, and present wait's return (0: not known). `tools/latency_summary.py --frames` joins it to `debug.latency_log` |
+| `HALO_VULKAN_NO_PRESENT_WAIT=1`, `HALO_VULKAN_NO_DISPLAY_TIMING=1` | `display.low_latency` without `VK_KHR_present_wait` (as on Android: display timing asked each millisecond), or without `VK_GOOGLE_display_timing` (the frames' times present wait's returns) |
+| `HALO_FRAME_PACING_MARGIN_MS=<ms>` | `display.low_latency`'s margin fixed (not learned), to find a display's lead: the frames miss their refresh when it is too small |
 
 The game's settings for finding problems in the graphics (`port/linux/README.md`)
 reach the host with the window (`host_vulkan_window_open`: the host does not
@@ -120,6 +123,21 @@ a refresh, so the frame is presented that many times
 (`xgpu_vulkan_frame_end`), and the render thread, and with it the game,
 waits for the display. The VR build's headset is presented through OpenXR,
 where none of this applies.
+
+With FIFO, `display.low_latency` (`xgpu_vulkan_pacing.c`; "Low latency
+with vsync" in `port/linux/README.md`) paces the game by the display: the
+device is made with `VK_KHR_present_id` and `VK_KHR_present_wait`, and
+`VK_GOOGLE_display_timing`, where it has them; each present gets a number
+(`VkPresentIdKHR`, `VkPresentTimesInfoGOOGLE`), and a thread of its own
+waits for the frame's work (the timeline) and then for its present, in
+order, and tells the command stream (`host_render_stream_frame_displayed`)
+when the display took it and when it was shown. The game then starts a
+frame only while one at most waits for the display, its budget before the
+refresh it is for, and the swapchain has three images (the least the
+surface allows, if more). A swapchain made again lets go of its presents
+first: those not yet shown count as shown, and the thread no longer waits
+for them. A frame that presents nothing (the window hidden, the app in the
+background, a held frame) is taken at once.
 
 The surface is made again when the driver reports it lost
 (`VK_ERROR_SURFACE_LOST_KHR`, from the acquire, the present or the

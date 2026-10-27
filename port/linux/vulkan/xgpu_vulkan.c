@@ -39,6 +39,8 @@ that changes.
 */
 
 #include "xgpu_vulkan.h"
+#include "xgpu_vulkan_loading.h"
+#include "xgpu_vulkan_pacing.h"
 #include "xgpu_vulkan_post_shaders.h"
 #include "host.h"
 #include "host_load_trace.h"
@@ -493,6 +495,12 @@ static struct
 	each frame is shown for (FIFO; the swapchain's present mode is made for
 	0 or more) */
 	int interval;
+	/* display.low_latency (any thread, atomic: 0 auto, 1 on, 2 off), and
+	whether the game is paced by the display now (xgpu_vulkan_pacing.c);
+	the device has VK_KHR_present_id and VK_KHR_present_wait, and
+	VK_GOOGLE_display_timing */
+	uint32_t low_latency;
+	int paced, present_wait, display_timing;
 
 	/* display.hdr: the input attachments' set layout (the pipeline
 	layout's third set, where draws can read their colour attachment);
@@ -3638,6 +3646,7 @@ static void swapchain_forget(void)
 			vkDestroySemaphore(vk.device, vk.presentable[index], NULL);
 		vk.presentable[index] = VK_NULL_HANDLE;
 	}
+	xgpu_vulkan_pacing_swapchain(VK_NULL_HANDLE);
 	vkDestroySwapchainKHR(vk.device, vk.swapchain, NULL);
 	vk.swapchain = VK_NULL_HANDLE;
 	vk.swapchain_image_count = 0;
@@ -4008,7 +4017,12 @@ static int swapchain_make(void)
 	memset(&info, 0, sizeof(info));
 	info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	info.surface = vk.surface;
+	/* (paced by the display, at most one frame waits for it while the
+	next is drawn: three images, one on screen, one waiting, one drawn
+	into; else one more than the least, for the frames queued ahead) */
 	info.minImageCount = capabilities.minImageCount + 1;
+	if (vk.paced && vk.interval <= 1)
+		info.minImageCount = capabilities.minImageCount > 3 ? capabilities.minImageCount : 3;
 	if (capabilities.maxImageCount && info.minImageCount > capabilities.maxImageCount)
 		info.minImageCount = capabilities.maxImageCount;
 	if (info.minImageCount > 8)
@@ -4043,6 +4057,7 @@ static int swapchain_make(void)
 	{
 		vk.swapchain = VK_NULL_HANDLE;
 		vk.swapchain_image_count = 0;
+		xgpu_vulkan_pacing_swapchain(VK_NULL_HANDLE);
 		if (old)
 			vkDestroySwapchainKHR(vk.device, old, NULL);
 		if (result == VK_ERROR_SURFACE_LOST_KHR)
@@ -4051,6 +4066,8 @@ static int swapchain_make(void)
 			check(result, "vkCreateSwapchainKHR");
 		return 0;
 	}
+	/* (the presents to the one before no longer waited for) */
+	xgpu_vulkan_pacing_swapchain(vk.swapchain);
 	if (old)
 		vkDestroySwapchainKHR(vk.device, old, NULL);
 	vk.swapchain_image_count = 8;
@@ -4080,6 +4097,11 @@ void xgpu_vulkan_window_resized(uint32_t width, uint32_t height)
 void xgpu_vulkan_window_hidden(int hidden)
 {
 	__atomic_store_n(&vk.window_hidden, hidden ? 1 : 0, __ATOMIC_RELEASE);
+}
+
+void xgpu_vulkan_window_low_latency(int mode)
+{
+	__atomic_store_n(&vk.low_latency, (uint32_t)(mode >= 0 && mode <= 2 ? mode : 0), __ATOMIC_RELEASE);
 }
 
 void xgpu_vulkan_window_interval(int interval)
@@ -4189,7 +4211,7 @@ static struct xgpu_vulkan_image *present_encoded(struct xgpu_vulkan_image *image
 (cleared black), then presented. 0 if nothing is presented: no surface (the
 app in the background, the window not back yet), a swapchain that cannot
 be made; the caller then submits the frame's work itself. */
-static uint64_t present(struct xgpu_vulkan_image *image)
+static uint64_t present(struct xgpu_vulkan_image *image, int frame)
 {
 	int trace = host_load_trace_detail_enabled();
 	VkSemaphore acquired;
@@ -4312,7 +4334,7 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 	info.pImageIndices = &index;
 	if (trace)
 		host_load_trace("vulkan.queue_present.begin", "");
-	result = vkQueuePresentKHR(vk.queue, &info);
+	result = xgpu_vulkan_pacing_present(vkQueuePresentKHR, vk.queue, &info, frame, serial);
 	if (trace)
 		host_load_trace("vulkan.queue_present.end", "result=%d", result);
 	host_load_trace("vulkan.present.return", "result=%d image=%d", result, image != NULL);
@@ -4527,10 +4549,26 @@ struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presenta
 void xgpu_vulkan_loading_present(struct xgpu_vulkan_image *image)
 {
 	pass_end();
-	if (!present(image))
+	if (!present(image, 0))
 		xgpu_vulkan_fence();
 	completed_serial();
 	garbage_collect();
+}
+
+/* display.low_latency: the game paced by the display, or not, from this
+frame on (xgpu_vulkan_pacing.c); the swapchain made again for its images */
+static void frame_pacing_update(void)
+{
+	int fifo, paced;
+
+	window_changes();
+	/* (FIFO: vsync's, or the only mode a surface has) */
+	fifo = vk.swapchain ? vk.present_mode == VK_PRESENT_MODE_FIFO_KHR : vk.interval > 0;
+	paced = xgpu_vulkan_pacing_mode((int)__atomic_load_n(&vk.low_latency, __ATOMIC_ACQUIRE), vk.interval, fifo,
+		vk.frame % 120 ? 0 : host_vulkan_display_period());
+	if (paced != vk.paced && vk.swapchain && vk.interval <= 1)
+		vk.swapchain_stale = 1;
+	vk.paced = paced;
 }
 
 void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
@@ -4544,16 +4582,19 @@ void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
 	if (vk.queries && vk.queries->counter_count)
 		barrier(main_commands(), VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 			VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+	frame_pacing_update();
 	/* (the frame's last work, its tests' queries with it: the present's
 	submission, or one of its own) */
-	serial = present_window ? present(image) : 0;
+	serial = present_window ? present(image, 1) : 0;
+	if (!serial)
+		xgpu_vulkan_pacing_unshown();
 	/* (a swap interval of more than one, battery saver's: the frame
 	presented again for each refresh after its first, FIFO showing one a
 	refresh, so that it stays on screen as long as every other; the render
 	thread, and so the game, waits for the display meanwhile) */
 	for (repeat = 1; serial && repeat < vk.interval && vk.present_mode == VK_PRESENT_MODE_FIFO_KHR; repeat++)
 	{
-		uint64_t again = present(image);
+		uint64_t again = present(image, 0);
 
 		if (!again)
 			break;
@@ -4897,7 +4938,7 @@ static int device_make(const struct xgpu_vulkan_options *options)
 	VkPhysicalDeviceRasterizationOrderAttachmentAccessFeaturesEXT available_order, order;
 	VkDeviceQueueCreateInfo queue;
 	VkDeviceCreateInfo info;
-	const char *extensions[8];
+	const char *extensions[16];
 	uint32_t extension_count = 0;
 	float priority = 1.0f;
 	int custom_border = device_has_extension(VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME);
@@ -4907,6 +4948,12 @@ static int device_make(const struct xgpu_vulkan_options *options)
 	int local_reads = HDR_POSSIBLE && device_has_extension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME);
 	int ordered = local_reads && device_has_extension(VK_EXT_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_EXTENSION_NAME);
 	int metadata = HDR_POSSIBLE && vk.colorspaces && device_has_extension(VK_EXT_HDR_METADATA_EXTENSION_NAME);
+	/* (display.low_latency: when each present reaches the screen) */
+	int present_ids = device_has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
+		device_has_extension(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
+	int display_timing = device_has_extension(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
+	VkPhysicalDevicePresentIdFeaturesKHR available_id, present_id;
+	VkPhysicalDevicePresentWaitFeaturesKHR available_wait, present_wait;
 	void **chain;
 
 	memset(&available, 0, sizeof(available));
@@ -4945,7 +4992,19 @@ static int device_make(const struct xgpu_vulkan_options *options)
 		chain = &available_local_read.pNext;
 	}
 	if (ordered)
+	{
 		*chain = &available_order;
+		chain = &available_order.pNext;
+	}
+	memset(&available_id, 0, sizeof(available_id));
+	available_id.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR;
+	memset(&available_wait, 0, sizeof(available_wait));
+	available_wait.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR;
+	if (present_ids)
+	{
+		*chain = &available_id;
+		available_id.pNext = &available_wait;
+	}
 	vkGetPhysicalDeviceFeatures2(vk.physical, &available);
 	if (!required_features(&available, &available12, &available13) || !depth_format_choose())
 		return 0;
@@ -5037,6 +5096,27 @@ static int device_make(const struct xgpu_vulkan_options *options)
 	{
 		extensions[extension_count++] = VK_EXT_HDR_METADATA_EXTENSION_NAME;
 		vk.hdr_metadata = 1;
+	}
+	vk.present_wait = vk.display_timing = 0;
+	if ((vk.surface || vk.surface_create) && present_ids && available_id.presentId && available_wait.presentWait)
+	{
+		memset(&present_id, 0, sizeof(present_id));
+		present_id.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR;
+		present_id.presentId = VK_TRUE;
+		memset(&present_wait, 0, sizeof(present_wait));
+		present_wait.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR;
+		present_wait.presentWait = VK_TRUE;
+		present_id.pNext = &present_wait;
+		*chain = &present_id;
+		chain = &present_wait.pNext;
+		extensions[extension_count++] = VK_KHR_PRESENT_ID_EXTENSION_NAME;
+		extensions[extension_count++] = VK_KHR_PRESENT_WAIT_EXTENSION_NAME;
+		vk.present_wait = 1;
+	}
+	if ((vk.surface || vk.surface_create) && display_timing && !getenv("HALO_VULKAN_NO_DISPLAY_TIMING"))
+	{
+		extensions[extension_count++] = VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME;
+		vk.display_timing = 1;
 	}
 
 	memset(&queue, 0, sizeof(queue));
@@ -5469,6 +5549,20 @@ int xgpu_vulkan_initialize(const struct xgpu_vulkan_options *options)
 	if (!check(vkCreateSemaphore(vk.device, &semaphore, NULL, &vk.timeline), "vkCreateSemaphore"))
 		return 0;
 	semaphore.pNext = NULL;
+	vk.low_latency = (uint32_t)(options->low_latency >= 0 && options->low_latency <= 2 ? options->low_latency : 0);
+	if (vk.present_wait || vk.display_timing)
+	{
+		struct xgpu_vulkan_pacing_device pacing;
+
+		memset(&pacing, 0, sizeof(pacing));
+		pacing.device = vk.device;
+		pacing.get_device_proc_addr = vkGetDeviceProcAddr;
+		pacing.timeline = vk.timeline;
+		pacing.present_wait = vk.present_wait && !getenv("HALO_VULKAN_NO_PRESENT_WAIT");
+		pacing.display_timing = vk.display_timing;
+		pacing.statistics = options->statistics;
+		xgpu_vulkan_pacing_start(&pacing);
+	}
 	vk.serial = 1;
 	memset(&pool, 0, sizeof(pool));
 	pool.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -5543,6 +5637,7 @@ void xgpu_vulkan_shutdown(void)
 	if (vk.recording)
 		xgpu_vulkan_fence();
 	vkDeviceWaitIdle(vk.device);
+	xgpu_vulkan_pacing_stop();
 	xgpu_vulkan_pipeline_cache_save();
 	if (vk.validation)
 		host_logf(HOST_LOG_INFO, "vulkan: %u validation messages", vk.validation_messages);
@@ -5558,6 +5653,7 @@ void xgpu_vulkan_initialize_undo(void)
 	if (vk.device)
 	{
 		vkDeviceWaitIdle(vk.device);
+		xgpu_vulkan_pacing_stop();
 		if (vkDestroyDevice)
 			vkDestroyDevice(vk.device, NULL);
 	}

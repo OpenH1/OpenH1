@@ -972,6 +972,20 @@ static struct
 	uint32_t frames_taken;
 	uint64_t latch, period;
 	struct frame_pacing_costs costs;
+	/* the refresh each of the last frames was started for (by its number,
+	as frames_submitted counts it), and whether it waited for its start;
+	the frames played when the stream opened, and frames_submitted then */
+	struct
+	{
+		uint32_t frame;
+		int waited;
+		uint64_t target, margin;
+	} targets[8];
+	uint32_t played_at_open, submitted_at_open;
+	/* the margin fixed by HALO_FRAME_PACING_MARGIN_MS (milliseconds; for
+	tests of a display's lead: not learned then) */
+	int margin_fixed;
+	struct host_render_pacing_statistics pacing_statistics;
 	/* (the render thread's) when the frame played was ready, if the
 	backend said (host_render_stream_frame_ready); when each of the last
 	frames was submitted (by the frames submitted, and played, since the
@@ -1244,6 +1258,13 @@ int host_render_stream_open(uint32_t ring_address)
 	render.retired_frames = ring->frames_retired = ring->frames_submitted;
 	ring->released = ring->committed;
 	render.frames_taken = ring->frames_submitted;
+	render.played_at_open = render.frames_played;
+	render.submitted_at_open = ring->frames_submitted;
+	if (getenv("HALO_FRAME_PACING_MARGIN_MS") && atof(getenv("HALO_FRAME_PACING_MARGIN_MS")) > 0.0)
+	{
+		render.costs.margin = (uint64_t)(atof(getenv("HALO_FRAME_PACING_MARGIN_MS")) * 1e6);
+		render.margin_fixed = 1;
+	}
 	ring->error = 0;
 	render.stopping = 0;
 	if (backend->open)
@@ -1317,6 +1338,91 @@ void host_render_stream_display_latched(uint64_t latch, uint64_t period)
 	pthread_mutex_lock(&render.lock);
 	render.latch = latch;
 	render.period = period;
+	pthread_mutex_unlock(&render.lock);
+}
+
+void host_render_stream_frames_taken_reset(void)
+{
+	pthread_mutex_lock(&render.lock);
+	render.frames_taken = render.submitted_at_open + (render.frames_played - render.played_at_open);
+	pthread_cond_broadcast(&render.done);
+	pthread_mutex_unlock(&render.lock);
+}
+
+void host_render_stream_frame_displayed(uint64_t input, uint64_t finished, uint64_t latched, uint64_t shown,
+	uint64_t period)
+{
+	uint32_t frame;
+
+	pthread_mutex_lock(&render.lock);
+	/* (never more than the frames played, and the one playing: after
+	display_wait's own count, of a display that took nothing for
+	FRAME_PACING_WAIT_MAXIMUM_NS) */
+	frame = render.submitted_at_open + (render.frames_played - render.played_at_open) + 1;
+	if ((int32_t)(frame - render.frames_taken) <= 0)
+		render.frames_taken = frame - 1;
+	frame = ++render.frames_taken;
+	if (!latched)
+		latched = shown;
+	if (latched)
+	{
+		/* (taken a refresh or more after the one it was started for: a
+		miss. The margin is widened for a frame that started at its time and
+		whose work was done by the margin before that refresh (or not
+		known): the display wants its frames sooner than the margin gives.
+		A frame whose work ran past it took longer than any of the last
+		ones, which its cost, now counted, gives the frames after it) */
+		if (render.targets[frame % 8].frame == frame && render.targets[frame % 8].target && period &&
+			latched < render.targets[frame % 8].target + 4 * period)
+		{
+			if (latched > render.targets[frame % 8].target + period / 2)
+			{
+				render.pacing_statistics.missed++;
+				if (render.targets[frame % 8].waited && (!finished || finished + render.targets[frame % 8].margin <=
+					render.targets[frame % 8].target + FRAME_PACING_MARGIN_STEP_NS / 4))
+				{
+					/* (once for the margin it started with: the frames started
+					before a miss widened it, already on their way, miss too) */
+					if (!render.margin_fixed && render.targets[frame % 8].margin >=
+						(render.costs.margin ? render.costs.margin : FRAME_PACING_MARGIN_NS))
+						frame_pacing_margin_missed(&render.costs, period);
+				}
+				else
+				{
+					render.pacing_statistics.overran++;
+				}
+			}
+			else
+			{
+				render.pacing_statistics.kept++;
+				if (!render.margin_fixed)
+					frame_pacing_margin_kept(&render.costs);
+			}
+		}
+		render.latch = latched;
+		if (period)
+			render.period = period;
+	}
+	pthread_cond_broadcast(&render.done);
+	pthread_mutex_unlock(&render.lock);
+	if (shown)
+		frame_pacing_latency_add(&latency, input, shown);
+}
+
+void host_render_stream_frame_finished(uint64_t input, uint64_t finished)
+{
+	pthread_mutex_lock(&render.lock);
+	frame_pacing_cost_add(&render.costs, input, finished);
+	pthread_mutex_unlock(&render.lock);
+}
+
+void host_render_stream_pacing_statistics(struct host_render_pacing_statistics *statistics)
+{
+	pthread_mutex_lock(&render.lock);
+	*statistics = render.pacing_statistics;
+	statistics->margin = render.costs.margin ? render.costs.margin : FRAME_PACING_MARGIN_NS;
+	statistics->budget = frame_pacing_budget(&render.costs, render.period);
+	memset(&render.pacing_statistics, 0, sizeof(render.pacing_statistics));
 	pthread_mutex_unlock(&render.lock);
 }
 
@@ -1418,6 +1524,19 @@ static void display_wait(uint64_t *start)
 	start_time = frame_pacing_start_time(render.latch, render.period,
 		render.ring->frames_submitted - render.frames_taken, frame_pacing_budget(&render.costs, render.period));
 	now = monotonic_nanoseconds();
+	/* (the refresh the next frame is for: host_render_stream_frame_displayed
+	tells a miss by it) */
+	{
+		uint32_t next = render.ring->frames_submitted + 1;
+		uint64_t budget = frame_pacing_budget(&render.costs, render.period);
+
+		render.targets[next % 8].frame = next;
+		render.targets[next % 8].target = start_time ? start_time + budget : 0;
+		render.targets[next % 8].waited = start_time > now && start_time - now < 4 * render.period;
+		render.targets[next % 8].margin = render.costs.margin ? render.costs.margin : FRAME_PACING_MARGIN_NS;
+		if (start_time && !render.targets[next % 8].waited)
+			render.pacing_statistics.late_starts++;
+	}
 	/* (a start further off than a few refreshes is a stale latch: the
 	display has stopped) */
 	if (start_time > now && start_time - now < 4 * render.period)
