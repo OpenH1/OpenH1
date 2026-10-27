@@ -78,7 +78,8 @@ static struct browser_sort_entry entry(char const *name, boolean openh1, boolean
 	return result;
 }
 
-/* the games a tab lists, their names in order, separated by spaces */
+/* the games a tab lists, their names in order, separated by spaces, those
+shown as favorites (the first browser_found_favorites) marked with a * */
 static void listed(short tab, char *names, size_t size, short *offline)
 {
 	struct browser_sort_entry entries[5];
@@ -98,8 +99,8 @@ static void listed(short tab, char *names, size_t size, short *offline)
 	names[0] = 0;
 	for (index = 0; index < count; index++)
 	{
-		strncat(names, entries[order[index]].name, size - strlen(names) - 2);
-		strncat(names, " ", size - strlen(names) - 1);
+		strncat(names, entries[order[index]].name, size - strlen(names) - 3);
+		strncat(names, index < browser_found_favorites ? "* " : " ", size - strlen(names) - 1);
 	}
 	*offline = browser_offline_count;
 }
@@ -121,21 +122,21 @@ int main(int argc, char **argv)
 		/* (the favorites first, bravo then echo by players; the rest by
 		players, the dedicated server first) */
 		listed(_browser_tab_all, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "bravo echo coop delta alpha "), "ALL lists %s", names);
+		CHECK(!strcmp(names, "bravo* echo* coop delta alpha "), "ALL lists %s", names);
 		CHECK(offline == 2, "ALL lists no favorites offline");
 		listed(_browser_tab_dedicated, names, sizeof(names), &offline);
 		CHECK(!strcmp(names, "coop "), "DEDICATED lists %s", names);
 		CHECK(offline == 0, "DEDICATED lists the favorites offline");
 		listed(_browser_tab_openh1, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "echo delta alpha "), "OPENH1 lists %s", names);
+		CHECK(!strcmp(names, "echo* delta alpha "), "OPENH1 lists %s", names);
 		CHECK(offline == 0, "OPENH1 lists the favorites offline");
 		listed(_browser_tab_legacy, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "bravo coop "), "LEGACY lists %s", names);
+		CHECK(!strcmp(names, "bravo* coop "), "LEGACY lists %s", names);
 		listed(_browser_tab_coop, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "echo coop "), "CO-OP lists %s", names);
+		CHECK(!strcmp(names, "echo* coop "), "CO-OP lists %s", names);
 		CHECK(offline == 0, "CO-OP lists the favorites offline");
 		listed(_browser_tab_favorites, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "bravo echo "), "FAVORITES lists %s", names);
+		CHECK(!strcmp(names, "bravo* echo* "), "FAVORITES lists %s", names);
 		CHECK(offline == 2, "FAVORITES lists no favorites offline");
 		return 0;
 	}

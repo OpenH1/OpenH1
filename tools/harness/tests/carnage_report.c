@@ -44,7 +44,13 @@ static struct player_datum players[8];
 static boolean splitscreen_local = FALSE;
 
 #define player_get(index) (&players[(index)])
-#define network_game_is_splitscreen_local() (splitscreen_local)
+
+/* whether this machine plays alone (split screen, bots): a function, so the
+fake world reads it even when the code under test does not */
+static boolean network_game_is_splitscreen_local(void)
+{
+	return splitscreen_local;
+}
 
 #include "config.inc"
 #include "under_test.inc"

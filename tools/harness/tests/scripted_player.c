@@ -34,9 +34,11 @@ typedef struct
 
 /* the fake world: debug.test_input, the clock, the menus' map loaded */
 static char const *test_input_setting = "";
-static double clock_seconds;
+static double clock_seconds, clock_start;
 static boolean menus_loaded;
 static int menu_script_plays;
+/* the clock, in milliseconds since the menus' script began, at its first read */
+static long long menu_script_first_read = -1;
 
 static char const *config_string(char const *name)
 {
@@ -64,7 +66,8 @@ static void test_latency_gamepad(XINPUT_GAMEPAD *pad) { (void)pad; }
 
 static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 {
-	menu_script_plays++;
+	if (menu_script_plays++ == 0)
+		menu_script_first_read = (long long)(SDL_GetTicks() - test_input_menu_since);
 	pad->bAnalogButtons[XINPUT_GAMEPAD_A] = 255;
 }
 
@@ -95,7 +98,7 @@ static void play(boolean loaded, int *touched, int *pressed_a)
 		XINPUT_GAMEPAD pad;
 
 		memset(&pad, 0, sizeof(pad));
-		clock_seconds = step * 0.05;
+		clock_seconds = clock_start + step * 0.05;
 		test_input_gamepad(&pad);
 		*touched += pad_touched(&pad);
 		*pressed_a += pad.bAnalogButtons[XINPUT_GAMEPAD_A] != 0;
@@ -157,11 +160,15 @@ int main(int argc, char **argv)
 	}
 	CASE("menu_script")
 	{
-		/* (debug.test_input "menu:", whose buttons are the menus') */
+		/* (debug.test_input "menu:", whose buttons are the menus', timed from
+		when it is read: here 5 s into the game) */
 		test_input_setting = "menu:a";
+		clock_start = 5;
 		play(TRUE, &touched, &pressed_a);
 		CHECK(menu_script_plays == 400 && pressed_a == 400, "the menus' script did not play in the menus: %d",
 			menu_script_plays);
+		CHECK(menu_script_first_read == 0, "the menus' script began %lld ms before it was read",
+			menu_script_first_read);
 		return 0;
 	}
 	CHECK(FALSE, "no such case: %s", case_name);
