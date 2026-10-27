@@ -1227,6 +1227,9 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 		platform_log("cannot draw the window with Metal");
 		return FALSE;
 	}
+	/* (display.vsync and battery saver from the first frame: the window
+	opens paced by the display, and the Vulkan host takes them as it opens) */
+	platform_frame_rate_apply();
 #else
 	if (!host_vulkan_window_open((unsigned int)(uintptr_t)platform_window,
 		(config_boolean("debug.gpu_stats") ? HOST_VULKAN_DEBUG_STATISTICS : 0) |
