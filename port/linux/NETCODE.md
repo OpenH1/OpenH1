@@ -730,6 +730,19 @@ controls as each sub-step runs (`network_substeps.c`'s live controls):
 
 None of it is sent at 30, in a Legacy game or to an OpenCE machine.
 
+Still at the tick (the next stages, OpenH1 issue #287): the host takes a
+client's input and prediction at its next tick, so a client's press reaches
+the host's simulation, and its states every client's corrections of a
+player, a tick and a phase's wait behind (2b: the input taken at the tick it
+is of, the prediction at the tick's start); a client moves its copy of a
+player it drives ahead on the latest input toward the host's older state
+(2c: corrected against its own history at the client's tick the host names,
+as its own player is); the host's states go once a tick (2d); and each
+machine's tick keeps the phase it began with (2e). The prediction's ack and
+the host's history of where the players were stay a tick's: the host takes
+positions once a tick, and a sub-step's pose is within a tick's movement of
+a tick's, far inside the hit check's 2 world units.
+
 ### OpenCE players in an OpenH1 game
 
 An OpenH1 game's host takes OpenCE players too (`network.allow_opence`,
@@ -1688,20 +1701,44 @@ of its own (`unshare -rn`, then `tc qdisc add dev lo root netem delay 20ms
 3ms`), which delays every datagram and every segment of the connections
 each way.
 
-Press to sight from one client to another (`press seen, client to
-client`), the pooled mean in ms (the worst 95th percentile in brackets),
-before forwarded input and with it:
+Pooled means in ms (the worst 95th percentile in brackets): before
+forwarded input, with it (protocol version 6), and with the sub-steps as
+they run too (version 7).
+
+Press to sight from one client to another (`press seen, client to client`):
 
 | Network | 30 | 60 | 120 |
 | --- | --- | --- | --- |
-| LAN | 33 (64) → 17 (32) | 67 (69) → 34 (40) | 67 (71) → 37 (83) |
-| 20 ms ±3 | 73 (105) → 67 (71) | 129 (149) → 84 (103) | 133 (136) → 93 (102) |
-| 50 ms ±5 | 139 (167) → 129 (161) | 183 (201) → 142 (172) | 184 (203) → 150 (175) |
-| 20 ms ±3, 1% loss | 76 (120) → 68 (99) | 128 (140) → 90 (103) | 137 (151) → 92 (144) |
+| LAN | 33 (64), 17 (32), 20 (34) | 67 (69), 34 (40), 8 (15) | 67 (71), 37 (83), 4 (6) |
+| 20 ms ±3 | 73 (105), 67 (71), 67 (69) | 129 (149), 84 (103), 60 (81) | 133 (136), 93 (102), 56 (67) |
+| 50 ms ±5 | 139 (167), 129 (161), 129 (139) | 183 (201), 142 (172), 120 (133) | 184 (203), 150 (175), 115 (135) |
+| 20 ms ±3, 1% loss | 76 (120), 68 (99), 69 (104) | 128 (140), 90 (103), 62 (77) | 137 (151), 95 (144), 57 (73) |
 
-The host's presses to a client, a client's to the host, the meter's round
-trip and a hit's report to the host's dealing it are as before (the host
-takes and relays its own as it did): a LAN's round trip reads 17 ms at 30,
-20 to 30 at 60 and 31 at 120, and a hit reaches the host a tick after it is
-made on a LAN (it goes with the tick's end), the network's delay more
-over one.
+The host's player's press to a client (`host to client`):
+
+| Network | 30 | 60 | 120 |
+| --- | --- | --- | --- |
+| LAN | 16, 17, 33 | 47, 37, 16 | 36, 36, 4 |
+| 20 ms ±3 | 41, 35, 35 | 65, 68, 34 | 65, 62, 30 |
+| 50 ms ±5 | 70, 70, 67 | 92, 95, 65 | 91, 93, 59 |
+| 20 ms ±3, 1% loss | 37, 34, 34 | 65, 61, 34 | 67, 65, 30 |
+
+A hit reported to the host's dealing it (`hit made to dealt`):
+
+| Network | 30 | 60 | 120 |
+| --- | --- | --- | --- |
+| LAN | 33, 33, 33 | 33, 32, 16 | 33, 32, 8 |
+| 20 ms ±3 | 57, 57, 60 | 56, 59, 43 | 57, 58, 34 |
+| 50 ms ±5 | 88, 89, 88 | 90, 90, 71 | 89, 89, 63 |
+| 20 ms ±3, 1% loss | 67, 73, 55 | 60, 68, 42 | 57, 55, 32 |
+
+A client's press to the host (`client to host`) and the meter's round trip
+are the same in all three (the host takes a client's input at its tick): a
+LAN's round trip reads 17 ms at 30, 18 to 30 at 60 and 30 to 31 at 120, 58
+to 62 at 30, 87 to 90 at 60 and 93 to 94 at 120 over 20 ms each way, and
+121 to 123, 146 to 149 and 146 to 151 over 50. A LAN's figures at 30 are of
+one phase each (their spread is the phase's, not the builds'). With 1% of
+the datagrams lost, a hit's report (reliable) waits for its resending now
+and then: a worst 95th percentile of 310 to 340 ms. The tables of every
+figure are kept by `--json`; the remaining stages are in "Sub-steps as they
+run" (above).
