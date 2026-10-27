@@ -50,9 +50,9 @@ void platform_log(const char *format, ...);
 
 pthread_mutex_t p2p_lock = PTHREAD_MUTEX_INITIALIZER;
 
-#define SPARE_LINK "halo://party/5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
+#define SPARE_LINK "openh1://party/5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a"
 #define SPARE_ID "c0ffeec0ffeec0ffeec0ffeec0ffee00"
-#define PARTY_LINK "halo://party/00112233445566778899aabbccddeeff"
+#define PARTY_LINK "openh1://party/00112233445566778899aabbccddeeff"
 #define PARTY_ID "abcdefabcdefabcdefabcdefabcdef12"
 /* a game's code: its host's key hash, then its token */
 #define CODE "0123456789abcdef0123456789abcdef00112233445566778899aabbccddeeff"
@@ -398,7 +398,7 @@ static void case_states(void)
 	/* (a game joined: its invite, as its code) */
 	memset(&party_now, 0, sizeof(party_now));
 	p2p_discord_set_hosting(NULL, 0, 0);
-	p2p_discord_set_game(0, 1, "Legacy \xC2\xB7 CTF on Hang 'Em High", "join me: halo://join/" OTHER_CODE, 3, 8);
+	p2p_discord_set_game(0, 1, "Legacy \xC2\xB7 CTF on Hang 'Em High", "join me: openh1://join/" OTHER_CODE, 3, 8);
 	run(4000);
 	json = last_activity();
 	CHECK(has(json, "\"details\":\"Legacy \xC2\xB7 CTF on Hang 'Em High\",\"state\":\"Playing\"") &&

@@ -44,12 +44,14 @@ def test_info_plist():
 
 
 def test_info_plist_takes_the_games_links():
-    """the app is the handler of halo:// links (invites, parties' links), the scheme p2p.h's links have"""
+    """the app is the handler of openh1:// links (invites, parties' links), the scheme p2p.h's links have, and
+    not of halo:// ones, OpenCE's"""
     plist = ios_app.info_plist(IOS_BUNDLE_ID, 0, IOS_MINIMUM)
     (url_type,) = plist["CFBundleURLTypes"]
-    assert url_type["CFBundleURLSchemes"] == ["halo"] and url_type["CFBundleURLName"] == IOS_BUNDLE_ID
+    assert url_type["CFBundleURLSchemes"] == ["openh1"] and url_type["CFBundleURLName"] == IOS_BUNDLE_ID
     header = (ROOT / "port/linux/src/p2p.h").read_text()
-    assert '#define P2P_PARTY_LINK_PREFIX "halo://party/"' in header
+    assert '#define P2P_LINK_SCHEME "openh1"' in header
+    assert '#define P2P_PARTY_LINK_PREFIX "openh1://party/"' in header
 
 
 def test_entitlements_ask_for_no_jit():

@@ -33,9 +33,12 @@ void host_app_update_tick(void);
 #pragma weak host_app_update_tick
 #endif
 #ifdef __APPLE__
-/* port/macos/host_links.c: the links the app is opened with (halo://...),
+/* port/macos/host_links.c: the links the app is opened with (openh1://...),
 which SDL sends as drop events, kept for the guest */
 void host_links_watch(void);
+#endif
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
+#include <CoreAudio/CoreAudio.h>
 #endif
 #if defined(__APPLE__) && !TARGET_OS_IPHONE
 /* port/macos/host_raw_mouse.m: the mouse's unaccelerated counts */
@@ -398,6 +401,12 @@ static void *audio_thread(void *context)
 {
 	struct audio_binding *binding = context;
 
+#ifndef __ANDROID__
+	/* (SDL's audio thread waits on this one while the guest mixes: at its
+	priority, so that a busy computer, a build running, keeps the mix in
+	time, as SDL keeps its own; a small audio.buffer_frames needs it) */
+	SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_TIME_CRITICAL);
+#endif
 	pthread_mutex_lock(&binding->lock);
 	for (;;)
 	{
@@ -565,6 +574,99 @@ void host_sdl_destroy_audio_stream(uint32_t stream)
 		pthread_cond_signal(&binding->requested);
 		pthread_mutex_unlock(&binding->lock);
 	}
+}
+
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
+/* the latency CoreAudio reports for the default output device (microseconds;
+-1 not known): the device's own and its stream's, the safety offset, and
+its I/O buffer, which is filled a cycle ahead of the hardware */
+static int system_output_latency(void)
+{
+	AudioObjectPropertyAddress address = { kAudioHardwarePropertyDefaultOutputDevice,
+		kAudioObjectPropertyScopeGlobal, 0 };
+	AudioDeviceID device = kAudioObjectUnknown;
+	AudioStreamID streams[8];
+	UInt32 size = sizeof(device), value, frames = 0;
+	Float64 rate = 0.0;
+
+	if (AudioObjectGetPropertyData(kAudioObjectSystemObject, &address, 0, NULL, &size, &device) != noErr ||
+		device == kAudioObjectUnknown)
+		return -1;
+	address.mScope = kAudioObjectPropertyScopeOutput;
+	address.mSelector = kAudioDevicePropertyNominalSampleRate;
+	size = sizeof(rate);
+	if (AudioObjectGetPropertyData(device, &address, 0, NULL, &size, &rate) != noErr || rate <= 0.0)
+		return -1;
+	address.mSelector = kAudioDevicePropertyLatency;
+	size = sizeof(value);
+	if (AudioObjectGetPropertyData(device, &address, 0, NULL, &size, &value) == noErr)
+		frames += value;
+	address.mSelector = kAudioDevicePropertySafetyOffset;
+	size = sizeof(value);
+	if (AudioObjectGetPropertyData(device, &address, 0, NULL, &size, &value) == noErr)
+		frames += value;
+	address.mSelector = kAudioDevicePropertyBufferFrameSize;
+	size = sizeof(value);
+	if (AudioObjectGetPropertyData(device, &address, 0, NULL, &size, &value) == noErr)
+		frames += value;
+	address.mSelector = kAudioDevicePropertyStreams;
+	size = sizeof(streams);
+	if (AudioObjectGetPropertyData(device, &address, 0, NULL, &size, streams) == noErr && size >= sizeof(streams[0]))
+	{
+		address.mSelector = kAudioStreamPropertyLatency;
+		address.mScope = kAudioObjectPropertyScopeGlobal;
+		size = sizeof(value);
+		if (AudioObjectGetPropertyData(streams[0], &address, 0, NULL, &size, &value) == noErr)
+			frames += value;
+	}
+	return (int)((double)frames * 1.0e6 / rate);
+}
+#else
+static int system_output_latency(void)
+{
+	return -1;
+}
+#endif
+
+/* (debug.latency_log, dsound_sdl.c) the device a stream plays on: its
+driver's name into driver (size bytes), and into timing: [0] its buffer
+(sample frames), [1] its rate, [2] the time SDL's driver keeps queued
+ahead of the buffer it asks for (microseconds), [3] the system's own
+latency after that, as it reports it (microseconds; -1 not known). The
+queue is SDL 3.4's: CoreAudio's AudioQueue keeps three buffers, or as many
+pairs as make 15 ms (all but the one asked for ahead); PipeWire's stream
+(not on its real-time thread) a quantum, the buffer; PulseAudio's target
+length is the buffer, as are WASAPI's and ALSA's periods. 1 on success */
+int host_sdl_audio_stream_timing(uint32_t stream, char *driver, int driver_size, int *timing)
+{
+	SDL_AudioStream *object = host_sdl_handle_get(stream, _handle_audio);
+	const char *name = SDL_GetCurrentAudioDriver();
+	SDL_AudioSpec spec;
+	int frames = 0;
+	double queued = 0.0;
+
+	if (!object || !timing || !SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(object), &spec, &frames) ||
+		spec.freq <= 0 || frames <= 0)
+		return 0;
+	if (driver && driver_size > 0)
+		SDL_strlcpy(driver, name ? name : "", (size_t)driver_size);
+	if (name && !SDL_strcmp(name, "coreaudio"))
+	{
+		double milliseconds = (double)frames * 1000.0 / spec.freq;
+		int buffers = milliseconds < 15.0 ? (int)SDL_ceil(15.0 / milliseconds) * 2 : 3;
+
+		queued = (double)(buffers - 1) * frames;
+	}
+	else if (name && (!SDL_strcmp(name, "pipewire") || !SDL_strcmp(name, "pulseaudio") ||
+		!SDL_strcmp(name, "wasapi") || !SDL_strcmp(name, "alsa") || !SDL_strcmp(name, "aaudio")))
+	{
+		queued = frames;
+	}
+	timing[0] = frames;
+	timing[1] = spec.freq;
+	timing[2] = (int)(queued * 1.0e6 / spec.freq);
+	timing[3] = name && !SDL_strcmp(name, "coreaudio") ? system_output_latency() : -1;
+	return 1;
 }
 
 /* ---------- the clipboard (internet play's invite links) */

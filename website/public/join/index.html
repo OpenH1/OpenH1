@@ -282,8 +282,8 @@ function joinLink(hash, search) {
       const named = /^(party|join)=([0-9a-fA-F]+)$/.exec(pair);
       const kind = named ? named[1] : "";
       const digits = (named ? named[2] : /^[0-9a-fA-F]+$/.test(pair) ? pair : "").toLowerCase();
-      if (digits.length === 32 && kind !== "join") return { kind: "party", link: "halo://party/" + digits };
-      if (digits.length === 64 && kind !== "party") return { kind: "game", link: "halo://join/" + digits };
+      if (digits.length === 32 && kind !== "join") return { kind: "party", link: "openh1://party/" + digits };
+      if (digits.length === 64 && kind !== "party") return { kind: "game", link: "openh1://join/" + digits };
     }
   }
   return null;
@@ -306,7 +306,7 @@ function joinLink(hash, search) {
   const install = () => { $("install").hidden = false; };
   // (an older address's ?join=, which the site was sent: the address shown without it)
   if (found && location.search && history.replaceState)
-    history.replaceState(null, "", location.pathname + "#" + (found.kind === "party" ? "party=" : "join=") + found.link.replace(/^halo:\/\/\w+\//, ""));
+    history.replaceState(null, "", location.pathname + "#" + (found.kind === "party" ? "party=" : "join=") + found.link.replace(/^openh1:\/\/\w+\//, ""));
   if (!found) {
     $("eyebrow").textContent = "An invite · Not complete";
     $("title-top").textContent = "This link is";
@@ -350,7 +350,7 @@ function joinLink(hash, search) {
     }, 1600);
   };
   $("open").addEventListener("click", attempt);
-  // (at once, everywhere: OpenH1 is the halo:// links' handler on Windows,
+  // (at once, everywhere: OpenH1 is the openh1:// links' handler on Windows,
   // Linux, Android, the Mac and the iPhone)
   attempt();
   location.href = found.link;

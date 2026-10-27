@@ -10,7 +10,7 @@ message published on a topic to every other machine subscribed to it, but
 to a machine out of reach (whose own messages are lost too). The cases,
 each run by its name:
 
-- make: a party made, its link (halo://party/ and 32 hex digits) on the
+- make: a party made, its link (openh1://party/ and 32 hex digits) on the
   clipboard and parsed back, this machine its leader alone;
 - join: two machines join by the link; every machine lists the three in
   the order they joined, the maker leading; the notices say so;
@@ -204,12 +204,12 @@ void p2p_offer_clipboard(const char *text)
 
 int p2p_parse_invite(const char *text, unsigned char *host_hash, unsigned char *token)
 {
-	const char *start = strstr(text, "halo://join/");
+	const char *start = strstr(text, P2P_JOIN_LINK_PREFIX);
 	int index;
 
-	if (!start || strlen(start + 12) < 2 * (P2P_KEY_HASH_SIZE + P2P_TOKEN_SIZE))
+	if (!start || strlen(start + 14) < 2 * (P2P_KEY_HASH_SIZE + P2P_TOKEN_SIZE))
 		return 0;
-	start += 12;
+	start += 14;
 	for (index = 0; index < P2P_KEY_HASH_SIZE + P2P_TOKEN_SIZE; index++)
 	{
 		unsigned int byte;
@@ -351,8 +351,8 @@ static void check(int good, const char *what)
 	}
 }
 
-static const char *invite_a = "halo://join/0123456789abcdef0123456789abcdef00112233445566778899aabbccddeeff";
-static const char *invite_b = "halo://join/fedcba9876543210fedcba9876543210ffeeddccbbaa99887766554433221100";
+static const char *invite_a = "openh1://join/0123456789abcdef0123456789abcdef00112233445566778899aabbccddeeff";
+static const char *invite_b = "openh1://join/fedcba9876543210fedcba9876543210ffeeddccbbaa99887766554433221100";
 
 /* a party of count machines, the first its leader, named A, B, C...: the
 others joined by its link, in order */
@@ -390,13 +390,15 @@ static void case_make(void)
 	name(0, "Keyes");
 	switch_to(0);
 	check(p2p_party_make(), "a party is made");
-	check(!strncmp(machines[0].clipboard, "halo://party/", 13) && strlen(machines[0].clipboard) == 13 + 32,
-		"its link is halo://party/ and 32 hex digits, on the clipboard");
+	check(!strncmp(machines[0].clipboard, "openh1://party/", 15) && strlen(machines[0].clipboard) == 15 + 32,
+		"its link is openh1://party/ and 32 hex digits, on the clipboard");
 	check(p2p_party_parse_link(machines[0].clipboard, token), "its link is a party's");
+	check(p2p_party_parse_link("halo://party/00112233445566778899aabbccddeeff", token) && token[0] == 0x00 &&
+		token[15] == 0xff, "an older build's link (halo://party/) is a party's too");
 	check(p2p_party_parse_link("join me: https://example.org/?party=00112233445566778899aabbccddeeff ok", token) &&
 		token[15] == 0xff, "a link's ?party= is taken in other text");
-	check(!p2p_party_parse_link("halo://party/0011", token), "a short token is no link");
-	check(!p2p_party_parse_link("halo://party/00112233445566778899aabbccddeeff00", token),
+	check(!p2p_party_parse_link("openh1://party/0011", token), "a short token is no link");
+	check(!p2p_party_parse_link("openh1://party/00112233445566778899aabbccddeeff00", token),
 		"a long token is no link");
 	check(!p2p_party_parse_link(invite_a, token), "a game's invite is no party's link");
 	status_of(0, &status);
@@ -743,7 +745,7 @@ static void case_joinless(void)
 
 	add_machine();
 	switch_to(0);
-	p2p_party_join_link("halo://party/00112233445566778899aabbccddeeff");
+	p2p_party_join_link("openh1://party/00112233445566778899aabbccddeeff");
 	status_of(0, &status);
 	check(status.state == _p2p_party_joining && status.count == 1 && status.members[0].self,
 		"a joiner shows itself while it joins");
@@ -756,7 +758,7 @@ static void case_joinless(void)
 		"and gives up, saying so");
 	/* (out of the brokers' reach meanwhile: it waits on) */
 	switch_to(0);
-	p2p_party_join_link("halo://party/00112233445566778899aabbccddeeff");
+	p2p_party_join_link("openh1://party/00112233445566778899aabbccddeeff");
 	brokers_up = 0;
 	run(JOIN_WAIT + 5000);
 	brokers_up = 1;

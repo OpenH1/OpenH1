@@ -142,7 +142,7 @@ command stream of the renderer, the SDL functions), and
 | `host/host_memory_watch_win.c` | A vectored exception handler for the write tracking, the crash report in the log, and a function table that lets the unwinder of Windows walk the frames of the guest. |
 | `host/host_crash_win.c` | The crash reports. Refer to "Crash reports". |
 | `host/posix/`, `host/host_posix_win.c` | The POSIX functions that the shared host files use, with the functions of Windows. |
-| `src/win32_files.c`, `src/win32_net.c`, `src/win32_p2p.c`, `src/win32_upnp.c` | The functions of `port/linux/src/posix.h`: files, sockets, the command line, the `halo://` links, Discord, UPnP. |
+| `src/win32_files.c`, `src/win32_net.c`, `src/win32_p2p.c`, `src/win32_upnp.c` | The functions of `port/linux/src/posix.h`: files, sockets, the command line, the `openh1://` links, Discord, UPnP. |
 | `src/win32_update.c` | The download and the file replacement of the self-updater (`port/linux/src/update.h`), with WinHTTP. |
 
 The guest calls the host through thunks (`tools/android_imports.py

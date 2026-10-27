@@ -20,7 +20,7 @@ static struct p2p_listing game(short playlist, short players, short most, short 
 	struct p2p_listing listing;
 
 	memset(&listing, 0, sizeof(listing));
-	strcpy(listing.invite, "halo://join/00");
+	strcpy(listing.invite, "openh1://join/00");
 	listing.playlist = (unsigned char)playlist;
 	listing.player_count = (unsigned char)players;
 	listing.maximum_player_count = (unsigned char)most;

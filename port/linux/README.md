@@ -712,7 +712,7 @@ the setting for one start of the game. It has priority over the file.
 | `audio.volume` | `1.0` | `HALO_VOLUME` | The master volume. |
 | `audio.music_volume` | `1.0` | `HALO_MUSIC_VOLUME` | The music's volume, of the master volume. |
 | `audio.effects_volume` | `1.0` | `HALO_EFFECTS_VOLUME` | The volume of the other sounds (effects and speech), of the master volume. |
-| `audio.buffer_frames` | `1024` | `HALO_AUDIO_BUFFER_FRAMES` | The audio device's buffer, in sample frames at 48 kHz, from `64` to `8192`. Larger rides out stalls that would cut the sound out; smaller has less delay (1024 is 21 ms, 2048 is 43 ms). Not on Android. |
+| `audio.buffer_frames` | `0` | `HALO_AUDIO_BUFFER_FRAMES` | The frames the sound device asks for at a time, at 48 kHz, from `64` to `8192`: smaller is heard sooner, larger rides out stalls that would cut the sound out (256 is 5.3 ms, 1024 is 21 ms). `0`: automatic, `256` to start (`512` on Windows), doubled up to `2048` each time the device runs dry, which the log says. Refer to "Sound delay". Not on Android or iOS (1024). |
 | `audio.channels` | `"auto"` | `HALO_AUDIO_CHANNELS` | `"stereo"`, or `"5.1"` for surround sound as with Dolby Digital on the Xbox: the world's sounds panned around the five speakers (VBAP), the game's 2D sounds on the speakers it sends them to, nothing on the LFE (the game sends it none). `"auto"`: 5.1 if the sound device has 6 or more channels (the host's SDL says how many the device plays: a 5.1 or 7.1 receiver or headset), else stereo. Read when the game starts. Not on Android. 5.1 is always panned, never the HRTF (`vr.hrtf` too). |
 | `audio.reverb` | `true` | `HALO_REVERB` | `true`: the sounds of the world reverberate as the place the player is in does: the sound environments of the maps (a corridor, a cave, a large hall, outdoors) set the reverberation, as the I3DL2 reverb of the Xbox did. A sound behind a wall or a door is muffled in it too. `false`: no reverberation (sounds behind a wall are still muffled). |
 | `audio.doppler` | `true` | `HALO_DOPPLER` | `true`: a sound of the world moving towards the player rises in pitch and one moving away falls (a Banshee or a Ghost passing by, a plasma bolt), from the velocities the game gives each sound, as the Xbox's DirectSound shifted them (the speed of sound 343 m/s, the shift held to an octave either way). `false`: each keeps its pitch. |
@@ -784,7 +784,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.coop_public` | `false` | `HALO_NET_COOP_PUBLIC` | `true`: an online co-op game (Create Game > ONLINE CO-OP, or Internet with a SINGLEPLAYER map) starts as PUBLIC. `false`: it starts as PRIVATE. LISTING in co-op's Server Setup writes its choice here. Refer to "Server browser". |
 | `network.brokers_file` | `"brokers.txt"` | `HALO_NET_BROKERS_FILE` | The file of the public MQTT brokers that let the machines of an invite find each other, and that carry the listings of the server browser: next to `config.toml` (else the release's, `share/openh1/brokers.txt`), unless a full path. One `host:port` on each line, up to 4; `#` starts a comment. |
 | `network.stun_servers` | Google and Cloudflare | `HALO_NET_STUN` | The public STUN servers (`host:port`, with commas between them) that give the internet address of a machine. |
-| `discord.application_id` | OpenCE's application (until OpenH1 has its own: refer to "OpenH1's Discord application") | `HALO_DISCORD_APPLICATION` | The Discord application for your status, invites and asks to join. Its name is what Discord shows you playing. Empty: no Discord. |
+| `discord.application_id` | OpenH1's application (`1561963518344036434`; refer to "OpenH1's Discord application") | `HALO_DISCORD_APPLICATION` | The Discord application for your status, invites and asks to join. Its name is what Discord shows you playing. Empty: no Discord. |
 | `discord.rich_presence` | `true` | `HALO_DISCORD_RICH_PRESENCE` | `true`: Discord shows what you do: in the menus, in a party, the game you host or play. Refer to "Discord". `false`: Discord shows nothing, and no one joins you through Discord. |
 | `discord.allow_join_requests` | `true` | `HALO_DISCORD_ALLOW_JOIN_REQUESTS` | `true`: Discord friends can ask to join your party or game (the game asks you), and you can invite them with Discord's Invite to Join. `false`: Discord shows no Join buttons, and declines asks; send your invite instead. |
 | `update.auto` | `true` | `HALO_UPDATE_AUTO` | `true`: at start-up, the game looks for a new version. Refer to "Updates". `false`: the game does not look. |
@@ -829,13 +829,13 @@ the setting for one start of the game. It has priority over the file.
 | `debug.log_addresses` | `false` | `HALO_LOG_ADDRESSES=1` sets `true` | `true`: other machines' internet addresses are written whole in `debug.txt` and the console, for debugging your own network. `false`: a public address is written as a tag (`addr#3f2a9c`) that matches up only within one run; local network addresses are always whole. Do not post a `debug.txt` written with this on. |
 | `debug.network_latency`, `debug.network_loss`, `debug.network_corrupt`, `debug.network_corrupt_stream`, `debug.network_corrupt_after` | `0` | `HALO_NETWORK_LATENCY`, `HALO_NETWORK_LOSS`, `HALO_NETWORK_CORRUPT`, `HALO_NETWORK_CORRUPT_STREAM`, `HALO_NETWORK_CORRUPT_AFTER` | The game holds all the data that it receives for this number of milliseconds, ignores this percentage of the datagrams, and damages this percentage of the datagrams it receives, and this percentage of its reads of streams, at random (bytes changed, cut short, stretched or replaced), from this many seconds after the start. Use the first two to test the netcode as on the internet, and the others to test that nothing another machine sends can crash the game (a damaged stream is closed, so a little goes a long way; a host's messages to its own client are damaged too, so start damaging once the game has started). |
 | `debug.voice_test` | `false` | `HALO_VOICE_TEST` | Automatic tests of voice chat: a tone replaces the microphone, and each voice that the game hears is written to the log once each second. |
-| `debug.latency_log` | `""` | `HALO_LATENCY_LOG` | A file to write a line to for each press of the fire control and each move from standing of the first player, on the controller (`fire`, `move`) and on the mouse (`click`), and each turn of the mouse from still (`turn`), in milliseconds: the press to the reading of the controller or the mouse (the mouse's press from its event's own time, SDL's timestamp: the system's on the Mac, the first count's for the raw mouse), the reading to the simulation step that acts on it (the weapon fires, the unit moves; for a turn, the view takes it), that step to the first frame drawn after it, that frame to the first frame that shows it (the frames draw a tick behind: "Frame rate"), and that frame's drawing and handing on (`game/latency_log.c`). `tools/latency_summary.py` gives each stage's median and 95th percentile. `debug.test_input = "latency:<seed>"` pulls the fire control, pushes the stick, clicks the mouse and moves it in turn on the real clock, so the presses fall anywhere in a tick (`"latency:<seed>:fire,click,turn"` plays those kinds only; the mouse's are SDL events stamped with their time, read as a person's are); with `debug.network_test = "local:bloodgulch:swat"` the player holds SWAT's pistol, which fires as the control is pulled (the plasma pistol a multiplayer game starts with otherwise fires as it is let go). The way to the screen after that is the renderer's (`HALO_METAL_STATS` on the Mac). |
+| `debug.latency_log` | `""` | `HALO_LATENCY_LOG` | A file to write a line to for each press of the fire control and each move from standing of the first player, on the controller (`fire`, `move`) and on the mouse (`click`), and each turn of the mouse from still (`turn`), in milliseconds: the press to the reading of the controller or the mouse (the mouse's press from its event's own time, SDL's timestamp: the system's on the Mac, the first count's for the raw mouse), the reading to the simulation step that acts on it (the weapon fires, the unit moves; for a turn, the view takes it), that step to the first frame drawn after it, that frame to the first frame that shows it (the frames draw a tick behind: "Frame rate"), and that frame's drawing and handing on (`game/latency_log.c`). `tools/latency_summary.py` gives each stage's median and 95th percentile. A shot's sound gets a line of its own, from the step to the sound heard ("Sound delay"). `debug.test_input = "latency:<seed>"` pulls the fire control, pushes the stick, clicks the mouse and moves it in turn on the real clock, so the presses fall anywhere in a tick (`"latency:<seed>:fire,click,turn"` plays those kinds only; the mouse's are SDL events stamped with their time, read as a person's are); with `debug.network_test = "local:bloodgulch:swat"` the player holds SWAT's pistol, which fires as the control is pulled (the plasma pistol a multiplayer game starts with otherwise fires as it is let go). The way to the screen after that is the renderer's (`HALO_METAL_STATS` on the Mac). |
 | `debug.determinism_log` | `""` | `HALO_DETERMINISM_LOG` | A file to write a line a tick to: a hash of the game state as the tick left it, the random seeds, and every taker of a seed since the line before by its call site (in the tick, in the frames, on other threads). Two runs of the same input compared with `tools/determinism_compare.py` first differ where something besides the input reached the game. |
 | `debug.determinism_dump` | `0` | `HALO_DETERMINISM_DUMP` | With `debug.determinism_log`, the tick after which to write the game state too, counted as logged from 1 (its allocations in order, to `<log>.<count>.bin`), to find where two runs' game states differ (`tools/determinism_compare.py --dump`), and that tick's first frame as `<log>.<count>.bmp`; `0` none. |
 | `debug.trace`, `debug.trace_seconds`, `debug.trace_mutation` | `""`, `0.0`, `""` | `HALO_TRACE`, `HALO_TRACE_SECONDS`, `HALO_TRACE_MUTATION` | A file to write a line a simulation step to (`game/sim_trace.c`): the players' place, velocity and aim, each projectile's, and the step's shots, projectiles made, strikes and detonations, timed in seconds from the scenario's start; quit once the scenario has run `debug.trace_seconds`; `debug.trace_mutation` puts a known bug in on purpose (`head_start`, `jump`, `speed`), which the scorecard must catch (`tools/scorecard`). Off, it costs a test a call. `HALO_GUEST_IMAGE` (the environment only) runs another guest image in the game's place: StageKit's map writer (`tools/stagekit`). |
 | `debug.frame_time` | `0.0` | `HALO_FRAME_TIME` | Seconds of game time each frame runs, whatever time it took, so that two runs of the same input run the same frames (the determinism check, with `debug.determinism_log`); `0` the time each frame took. |
 | `debug.random_seed` | `0` | `HALO_RANDOM_SEED` | The random seed of the network games this machine hosts, so that a test plays the same game again (where players spawn, the weapons' spread, the AI's choices); `0` a new one for each game, from the clock. |
-| `debug.audio_log` | `false` | `HALO_AUDIO_LOG` | Write to the log, five times a second, each sound placed in the world that plays: where it is from the listener (metres ahead, right and up), its gain in each ear (through the HRTF, its delays and filters too), and the time the mixing takes. |
+| `debug.audio_log` | `false` | `HALO_AUDIO_LOG` | Write to the log, five times a second, each sound placed in the world that plays: where it is from the listener (metres ahead, right and up), its gain in each ear (through the HRTF, its delays and filters too), the time the mixing takes, how long the sound device waited for its frames of the time it had queued, and its dropouts ("Sound delay"). |
 | `debug.audio_record` | `""` | `HALO_AUDIO_RECORD` | Record the game's sound as it plays (with a device or without) to this WAV file, 48 kHz 16-bit stereo, for automatic tests. Empty: none. |
 | `debug.sample_seconds` | `0.0` | `HALO_SAMPLE` | The builds with a host only (Linux, Android, macOS). The host writes to the log, this often in seconds, where each game thread is: its program counter and frame chain, to find where the game spends its time or stops. `0`: never. |
 | `debug.memory_watch` | `true` | `HALO_MEMORY_WATCH` | The builds with a host only (Linux, Android, macOS). `true`: the host notices the game's writes to cached textures and vertices by page protection. `false`: it compares page contents once a frame instead, which is slower. |
@@ -1229,6 +1229,64 @@ mode's HRTF took 4.7% before it had a pass of its own); a game on Blood
 Gulch with bots, 2.0% and 1.4%. `test_mixer.py circle out.wav hrtf` (or
 `pan`) writes a sound going round the listener, to listen to.
 
+## Sound delay
+
+A sound is heard some time after the game starts it: the game's sound update
+in the next frame; the wait for the sound device's next request for frames,
+at most `audio.buffer_frames`; the frames queued on the device ahead of that
+request's, which SDL's driver keeps; and the system's own latency after (its
+output buffer; a MacBook's built-in speakers add 27 ms of their own
+processing). The log says the last two as the device opens ("sound: the
+device (coreaudio) asks for 256 frames at a time at 48000 Hz ...; 26.7 ms
+queued ahead of them, the system's latency after 40.3 ms"), and
+`debug.latency_log` times a shot's sound from the step the weapon fires in
+(`game/latency_log.c`).
+
+A smaller buffer is heard sooner, but each request has to be answered
+sooner too, or the device runs dry: it plays silence, a click or a crackle.
+The mixer runs on a thread of the host's that SDL's audio thread hands each
+request to (`port/android/host/host_sdl.c`), at the same priority as SDL's
+(but on Android). The game times each answer against what the device had
+queued (`src/dsound_sdl.c`, "the device's timing"), counts a dropout when it
+waited longer, and logs it ("sound: the device ran dry ..."). With
+`audio.buffer_frames = 0`, the default, the buffer starts at 256 frames (512
+on Windows) and doubles, up to 2048, each time the device runs dry (not
+counting the first 5 seconds after it opens, the game starting up); the
+device opens again at the new size, a moment of silence. A number keeps
+that size.
+
+What the drivers queue (SDL 3.4):
+
+- macOS (CoreAudio, an AudioQueue): three buffers, or as many pairs as make
+  15 ms, all but the one asked for ahead: 26.7 ms at 256 frames (the least),
+  29.3 ms at 128, 32 ms at 512 and 768, 42.7 ms at 1024.
+- Linux (PipeWire): one buffer ahead, and the graph's cycle (its quantum)
+  becomes the buffer, for the other programs on the device too. PulseAudio
+  (without PipeWire) targets the buffer in all.
+- Windows (WASAPI, shared): the buffer rounded to the steps the system's
+  audio engine allows, within the driver's range: most drivers allow only
+  10 ms (480 frames), so 512 is the engine's own period on most computers,
+  and a driver that allows less gets 512 frames. Not measured here: no
+  Windows computer to measure on.
+
+Measured on an Apple M2 MacBook Air (its speakers) and a Ryzen 9 5900X
+(PipeWire, a null sink: its device's own latency is not in it), with the
+menus' music, Blood Gulch with 15 bots at 120 ticks through the HRTF and in
+5.1, and that with the processor kept busy beside it (8 and 24 busy loops):
+a shot to its sound (the median of `debug.latency_log`'s), and the
+dropouts:
+
+| `audio.buffer_frames` | macOS: queued + system | macOS: shot to sound | Linux: queued | Linux: shot to sound | Dropouts |
+|---|---|---|---|---|---|
+| 128 | 29.3 + 40.3 ms | 82 ms | 2.7 ms | 4.4 ms | Linux, busy: 53 (PipeWire counted 160) |
+| 256 | 26.7 + 40.3 ms | 75 ms | 5.3 ms | 8 ms | macOS, busy: 1, as the game started |
+| 512 | 32 + 40.3 ms | 82 ms | 10.7 ms | 15 ms | none |
+| 768 | 32 + 40.3 ms | 80 ms | 16 ms | 26 ms | none |
+| 1024 | 42.7 + 40.3 ms | 97 ms | 21.3 ms | 31 ms | none |
+
+256 is the least the Mac queues, and the least that never ran dry on Linux
+with the processor busy; hence the automatic start.
+
 ## Field of view
 
 Video Setup's FOV AND VIEWMODELS screen sets the field of view of the
@@ -1349,14 +1407,19 @@ Machines with an invite link can play system link on the internet. This
 project has no server.
 
 When a copy of the game starts to host a system link game, it makes an
-invite link: `halo://join/<64 hexadecimal digits>`. The game writes the link
+invite link: `openh1://join/<64 hexadecimal digits>`. The game writes the link
 to the standard error and puts it on the clipboard. The links of older
 versions of the game (44 digits) do not operate. The game writes a message
 when it gets one.
 
 To join a game, do one of these steps:
 
-- Open the link. The game is the handler of `halo://` links. If the game
+- Open the link. The game is the handler of `openh1://` links: at each
+  start it registers the scheme (a desktop entry on Linux, the registry on
+  Windows). `halo://` is OpenCE's scheme, which older versions of OpenH1
+  registered too: the game removes a `halo://` registration that runs its
+  own executable, and leaves OpenCE's. The game still takes the `halo://`
+  links of older versions, from any of these steps. If the game
   already operates, the new copy gives the link to it and stops. A key in a
   file that only the user can read (`halo-ce-universal.key` in
   `$XDG_RUNTIME_DIR`, else `~/.halo-ce-universal.key`; on Windows in
@@ -1384,7 +1447,7 @@ Friends can group up before a game and go from game to game together
 
 - Multiplayer > PLAY ONLINE > PARTY opens the Party screen. MAKE PARTY makes a party
   of up to 16 players, you its leader, and puts its link on the clipboard:
-  `halo://party/<32 hexadecimal digits>`. COPY INVITE copies an invite to
+  `openh1://party/<32 hexadecimal digits>`. COPY INVITE copies an invite to
   paste in any chat (refer to "Invites from anywhere").
   Friends join it as they join an invite: they open the link, copy it and
   go to the game, use JOIN BY LINK, or PASTE LINK on the Party screen. The
@@ -1965,27 +2028,28 @@ In the game, each machine has an address in 100.64.0.0/10:
 ### Invites from anywhere
 
 Steam's chat, and most other apps, make only `https://` links clickable,
-not `halo://`. COPY INVITE (on the Party screen, and in the lobby's footer)
+not `openh1://`. COPY INVITE (on the Party screen, and in the lobby's footer)
 copies a short message for any chat (`p2p_invite_message`):
 
 ```
 Join my OpenH1 party: https://openh1.com/join/#party=<32 hexadecimal digits>
-Or paste this into OpenH1's Join by Link: halo://party/<32 hexadecimal digits>
+Or paste this into OpenH1's Join by Link: openh1://party/<32 hexadecimal digits>
 ```
 
 In a party it is the party's invite: a friend joins the party, then follows
 its leader into the lobby or the game. Out of a party, in an internet game,
-it is the game's (`#join=` and `halo://join/`, 64 digits).
+it is the game's (`#join=` and `openh1://join/`, 64 digits).
 
 The address opens the join page (`website/public/join`, on openh1.com). The
 code is after `#`, which a browser never sends to the site. The page opens
-the `halo://` link (the game is its handler on Windows, Linux, Android,
+the `openh1://` link (the game is its handler on Windows, Linux, Android,
 macOS and iOS), shows the link to copy into JOIN BY LINK (or the Party
 screen's PASTE LINK; the game also joins a link that it finds on the
 clipboard when it comes to the front), and shows the downloads for a friend who does not
 have OpenH1 yet. The game takes the join page's addresses, as it takes every
-other form of the links (`halo://join/`, `halo://party/`, a bare code,
-`?join=`, `?party=`).
+other form of the links (`openh1://join/`, `openh1://party/`, older
+versions' `halo://join/` and `halo://party/`, a bare code, `?join=`,
+`?party=`).
 
 ### Discord
 
@@ -2024,36 +2088,25 @@ it. The game connects only to a Discord client of the same user.
 #### OpenH1's Discord application
 
 Discord shows the name of the application (`discord.application_id`) as
-the game that you play, and its pictures. Until OpenH1 has an application
-of its own, the game uses OpenCE's: Discord shows "OpenCE", and the logo
-alone. To make OpenH1's (a few minutes; only with the Discord account that
-is to own it):
+the game that you play, and its pictures. OpenH1's application is
+`1561963518344036434`, made at
+<https://discord.com/developers/applications> with the App Icon
+`port/assets/icon/openh1-icon.png` and these three images in **Rich
+Presence** > **Art Assets**, with these names exactly (the game sends the
+names; Discord can take a few minutes to show new art):
 
-1. Go to <https://discord.com/developers/applications> and click
-   **New Application**. Name it `OpenH1`.
-2. In **General Information**, set the **App Icon** to
-   `port/assets/icon/openh1-icon.png` and a short description (for example,
-   "Halo: Combat Evolved, open source, on every platform"). Copy the
-   **Application ID** (only digits).
-3. In **Rich Presence** > **Art Assets**, add these three images, with
-   these names exactly (the game sends the names; Discord can take a few
-   minutes to show new art):
+| Name | File | Where Discord shows it |
+| --- | --- | --- |
+| `logo` | `port/assets/discord/logo.png` | The large picture, always |
+| `party` | `port/assets/discord/party.png` | The small picture in its corner, in a party |
+| `host` | `port/assets/discord/host.png` | The small picture, when you host |
 
-   | Name | File | Where Discord shows it |
-   | --- | --- | --- |
-   | `logo` | `port/assets/discord/logo.png` | The large picture, always |
-   | `party` | `port/assets/discord/party.png` | The small picture in its corner, in a party |
-   | `host` | `port/assets/discord/host.png` | The small picture, when you host |
-
-   The SVG files beside them are their sources (1024 × 1024 pixels).
-4. Put the id in `port/linux/src/port_config.c` as the default of
-   `discord.application_id` (and in the settings table above), in place of
-   OpenCE's (`1553978809840050229`). To try it first on one computer, put
-   it in `config.toml`: `application_id = "<id>"` under `[discord]`.
-
-The game sends the small pictures only with an application other than
-OpenCE's, whose art has `logo` alone. Ask to Join, Join and Invite to Join
-need no other setting of the application.
+The SVG files beside them are their sources (1024 × 1024 pixels). To try
+another application on one computer, put it in `config.toml`:
+`application_id = "<id>"` under `[discord]`. The game sends the small
+pictures only with an application other than OpenCE's
+(`1553978809840050229`), whose art has `logo` alone. Ask to Join, Join and
+Invite to Join need no other setting of the application.
 
 ## Mods
 
