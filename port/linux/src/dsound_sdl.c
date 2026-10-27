@@ -2596,19 +2596,40 @@ static SDL_AudioStream *audio_open(void)
 (port/macos/host_audio_output.c: another default device, the device's rate
 or channels changed): its timing read again, and the dropout of the change
 (the unit stops meanwhile) kept from growing the buffer, as at the device's
-opening */
+opening. And the system's latency, where it is known,
+read again as it changes (Bluetooth headphones', or iOS's route: AirPods
+connected, the speaker after): logged, and used by the sound's latency log
+from then on; SDL's drivers asked once a second */
+#define DEVICE_LATENCY_CHECK_MS 1000
 static void device_timing_changed(void)
 {
+	static Uint64 checked_at;
 	int timing_now[5] = { 0 };
 	char driver[sizeof(device_driver)];
+	BOOL unit;
+	Uint64 now = SDL_GetTicks();
 
-	if (!device_timing_valid || strcmp(device_driver, "coreaudio unit") ||
-		!host_sdl_audio_stream_timing((unsigned int)(uintptr_t)audio_stream, driver, (int)sizeof(driver), timing_now) ||
-		timing_now[4] == device_timing[4])
+	if (!device_timing_valid || device_timing[3] < 0)
 		return;
-	platform_log("sound: the output device changed");
-	device_timing_read(audio_stream);
-	audio_opened_at = SDL_GetTicks();
+	unit = !strcmp(device_driver, "coreaudio unit");
+	if (!unit && now - checked_at < DEVICE_LATENCY_CHECK_MS)
+		return;
+	checked_at = now;
+	if (!host_sdl_audio_stream_timing((unsigned int)(uintptr_t)audio_stream, driver, (int)sizeof(driver), timing_now))
+		return;
+	if (unit && timing_now[4] != device_timing[4])
+	{
+		platform_log("sound: the output device changed");
+		device_timing_read(audio_stream);
+		audio_opened_at = now;
+		return;
+	}
+	/* (a change of a millisecond or more) */
+	if (timing_now[3] < 0 || abs(timing_now[3] - device_timing[3]) < 1000)
+		return;
+	platform_log("sound: the system's latency is now %.1f ms (was %.1f ms)", timing_now[3] / 1000.0,
+		device_timing[3] / 1000.0);
+	device_timing[3] = timing_now[3];
 }
 
 /* (the event thread, each frame) the device's dropouts since the log last

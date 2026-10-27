@@ -71,6 +71,12 @@ def info_plist(bundle_id: str, build: int, minimum: str, simulator: bool = False
         "UIDeviceFamily": [1, 2],
         "UIRequiredDeviceCapabilities": ["arm64", "metal"],
         "LSApplicationCategoryType": "public.app-category.games",
+        # (Game Mode while the game is fullscreen, as it always is here:
+        # the processor and the GPU for the game, and Bluetooth's doubled
+        # rate for AirPods and controllers. LSSupportsGameMode from iOS
+        # 18.6, GCSupportsGameMode in 18.0 to 18.5, which it replaces)
+        "LSSupportsGameMode": True,
+        "GCSupportsGameMode": True,
         "NSHumanReadableCopyright": COPYRIGHT,
         # (the game fills the screen, sideways, without the status bar;
         # UIKit's scenes, which SDL's delegate takes)

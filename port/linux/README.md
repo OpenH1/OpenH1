@@ -1334,6 +1334,33 @@ latency, safety offset and stream latency (the MacBook Air M2's speakers:
 which no program can change. Headphones on the jack, a USB or HDMI device or
 AirPods report their own (AirPods over Bluetooth far more).
 
+Bluetooth headphones (AirPods) and controllers, on the Mac and iOS:
+
+- The radio's buffering is the device's latency. The log names the
+  connection and gives the time after the buffer as the device opens
+  ("sound: CoreAudio's output unit on AirPods Pro (Bluetooth): ... (N ms
+  after the buffer)"), and says when it changes ("sound: the system's
+  latency is now N ms"). On iOS that is the audio session's output latency
+  and I/O buffer.
+- Game Mode (macOS 14 on Apple silicon, iOS 18) doubles Bluetooth's rate
+  for AirPods and controllers, which Apple says lowers both delays. It turns
+  on while a game is fullscreen in the system's own way: the app's
+  `Info.plist` has the games category and `LSSupportsGameMode` (and iOS's
+  `GCSupportsGameMode`). On the Mac that is the default fullscreen (and
+  `display.mode = "borderless"`), which SDL puts in a Space of its own;
+  `"fullscreen"` (the display taken) is not, so Game Mode probably stays
+  off there (not tested). The menu bar shows a controller while it is on,
+  and `log stream --predicate 'process == "gamepolicyd"'` says "Game mode
+  status is now on".
+- Voice chat's microphone is the only one the game opens, and only in a
+  network game whose host has voice on: for all of it with open mic, and
+  from the first press with push to talk. On Bluetooth headphones it moves
+  them to their headset mode (lower quality, 16 or 24 kHz) until the game
+  ends; the log says so as the sound moves with them.
+- The dropout counter's slack is the I/O buffer alone, not the device's
+  latency, so a Bluetooth device's long latency neither hides a dropout nor
+  grows the buffer.
+
 Measured on an Apple M2 MacBook Air (its speakers) and a Ryzen 9 5900X
 (PipeWire, a null sink: its device's own latency is not in it), with the
 menus' music, Blood Gulch with 15 bots at 120 ticks through the HRTF and in
