@@ -5,6 +5,51 @@ until its last submission completes, without a GPU wait or an early reset. */
 #include "../vulkan/xgpu_vulkan_post_shaders.c"
 #include <assert.h>
 
+/* display.low_latency's pacing (xgpu_vulkan_pacing.c), with the command
+stream's and the host's calls it makes: never started here (the fake
+device has neither present wait nor display timing) */
+#include "../vulkan/xgpu_vulkan_pacing.c"
+
+void host_render_stream_display_paced(int paced)
+{
+	(void)paced;
+}
+
+void host_render_stream_frames_taken_reset(void)
+{
+}
+
+void host_render_stream_frame_displayed(uint64_t input, uint64_t finished, uint64_t latched, uint64_t shown,
+	uint64_t period)
+{
+	(void)input;
+	(void)finished;
+	(void)latched;
+	(void)shown;
+	(void)period;
+}
+
+void host_render_stream_frame_finished(uint64_t input, uint64_t finished)
+{
+	(void)input;
+	(void)finished;
+}
+
+void host_render_stream_pacing_statistics(struct host_render_pacing_statistics *statistics)
+{
+	memset(statistics, 0, sizeof(*statistics));
+}
+
+uint64_t host_render_stream_frame_input(void)
+{
+	return 0;
+}
+
+uint64_t host_vulkan_display_period(void)
+{
+	return 16666667;
+}
+
 static uint64_t completed, start_value, end_value;
 static unsigned creates, resets, writes, reads;
 static int available = 1;
