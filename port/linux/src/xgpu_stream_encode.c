@@ -80,6 +80,9 @@ frames in flight */
 #define FRAMES_IN_FLIGHT_DEFAULT 2u
 #define TARGET_MAXIMUM 4096
 #define ASIDE_MAXIMUM 64
+/* a map's preparation's records handed to the render thread this often
+(preparation_commit) */
+#define PREPARATION_SUBMIT (64u << 10)
 
 /* the interface's pieces the format copies as their bytes */
 _Static_assert(sizeof(struct xgpu_vertex_instruction) == XGPU_STREAM_VERTEX_INSTRUCTION_SIZE, "vertex instruction");
@@ -111,11 +114,15 @@ struct numbering
 	uint16_t *slots;    /* numbers, 0 empty */
 	unsigned char *definitions;
 	uint32_t last;      /* the number found last */
+	uint32_t rounds;    /* the times the numbers have begun again */
 };
 
 static struct
 {
 	BOOL open;
+	/* a map's preparation is being written (xgpu_backend_prepare to
+	xgpu_backend_prepared): preparation_commit */
+	BOOL preparing;
 	struct xgpu_stream_ring *ring;
 	unsigned char *buffer;
 	uint32_t size, mask;
@@ -238,6 +245,19 @@ static void commit(unsigned int flags)
 }
 
 static void vertices_keep(uint32_t size);
+
+/* A map's preparation (render_enumerate.c) writes hundreds of megabytes of
+records in one frame, and waits for the render thread to have played them
+each time the texture cache makes room (xgpu_backend_consume, a few hundred
+times). Handed over only then, they were played while the game waited, and
+the render thread waited while the game wrote the next; handed over each
+PREPARATION_SUBMIT bytes, they are played as the game writes more. Called
+only where a submit may come (before a record that begins a draw's state). */
+static void preparation_commit(void)
+{
+	if (stream.preparing && stream.position - stream.ring->committed >= PREPARATION_SUBMIT)
+		commit(0);
+}
 
 /* waits until size bytes from position are free */
 static void room(uint32_t size)
@@ -501,6 +521,7 @@ static uint32_t numbering_find(struct numbering *numbering, const void *definiti
 		memset(numbering->slots, 0, sizeof(*numbering->slots) * (numbering->slot_mask + 1));
 		numbering->next = 1;
 		numbering->last = 0;
+		numbering->rounds++;
 		forget_sent();
 		return numbering_find(numbering, definition, made);
 	}
@@ -737,6 +758,7 @@ void xgpu_backend_set_targets(xgpu_target color, int hud_group, xgpu_target dept
 
 	if (!stream.open)
 		return;
+	preparation_commit();
 	record_body = record(XGPU_STREAM_SET_TARGETS, sizeof(*record_body));
 	record_body->color = color;
 	record_body->depth = depth;
@@ -1071,6 +1093,12 @@ BOOL xgpu_backend_pipeline(const struct xgpu_pipeline_key *key)
 	return __atomic_load_n(&stream.pipelines[id], __ATOMIC_RELAXED) != XGPU_STREAM_PIPELINE_FAILED;
 }
 
+unsigned long xgpu_backend_pipeline_number(void)
+{
+	/* (XGPU_STREAM_PIPELINES: 14 bits) */
+	return (unsigned long)stream.pipeline | (unsigned long)stream.pipeline_keys.rounds << 16;
+}
+
 static void dynamic_state_describe(const struct xgpu_dynamic_state *dynamic, struct xgpu_stream_dynamic_state *wire)
 {
 	int index;
@@ -1233,6 +1261,7 @@ void xgpu_backend_set_vertices(const struct xgpu_vertex_input *input)
 
 	if (!stream.open)
 		return;
+	preparation_commit();
 	if (element_count > XGPU_VERTEX_ATTRIBUTE_COUNT)
 		element_count = XGPU_VERTEX_ATTRIBUTE_COUNT;
 	memset(stream.layout, 0, sizeof(stream.layout));
@@ -1673,8 +1702,10 @@ BOOL xgpu_backend_vr_supported(void)
 
 void xgpu_backend_prepare(void)
 {
-	if (stream.open)
-		record(XGPU_STREAM_PREPARE, sizeof(struct xgpu_stream_record));
+	if (!stream.open)
+		return;
+	record(XGPU_STREAM_PREPARE, sizeof(struct xgpu_stream_record));
+	stream.preparing = TRUE;
 }
 
 void xgpu_backend_loading_art(const unsigned char *rgba)
@@ -1743,6 +1774,7 @@ double xgpu_backend_prepared(void)
 
 	if (!stream.open)
 		return 0.0;
+	stream.preparing = FALSE;
 	record_body = record(XGPU_STREAM_PREPARED, sizeof(*record_body));
 	record_body->reply = STREAM_ADDRESS(&stream.replies->value);
 	stream.replies->value = 0;

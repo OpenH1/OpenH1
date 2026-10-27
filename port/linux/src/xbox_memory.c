@@ -49,6 +49,9 @@ typedef char caches_fit_the_window[HALO_PORT_GAME_STATE_BASE_ADDRESS + HALO_PORT
 first page of a block also records the block length */
 static DWORD page_protection[CONTIGUOUS_PAGE_COUNT];
 static unsigned long block_page_count[CONTIGUOUS_PAGE_COUNT];
+/* each page in use: its block's first page (platform_contiguous_alloc's
+search passes a block at once) */
+static unsigned long block_first_page[CONTIGUOUS_PAGE_COUNT];
 static BOOL arena_reserved = FALSE;
 static pthread_mutex_t arena_lock = PTHREAD_MUTEX_INITIALIZER;
 static void *custom_edition_tag_cache = NULL;
@@ -156,6 +159,19 @@ static BOOL pages_free(unsigned long first, unsigned long count)
 	return TRUE;
 }
 
+/* the highest page of [first, first + count) in use; -1 if they are all free */
+static long pages_used_highest(unsigned long first, unsigned long count)
+{
+	unsigned long page;
+
+	for (page = first + count; page > first; page--)
+	{
+		if (page_protection[page - 1])
+			return (long)(page - 1);
+	}
+	return -1;
+}
+
 void *platform_contiguous_alloc(unsigned long size, unsigned long alignment,
 	unsigned long physical_address, DWORD protect)
 {
@@ -186,20 +202,27 @@ void *platform_contiguous_alloc(unsigned long size, unsigned long alignment,
 	}
 	else if (count <= CONTIGUOUS_PAGE_COUNT)
 	{
-		/* top-down first fit, like the Xbox contiguous allocator */
+		/* top-down first fit, like the Xbox contiguous allocator. A place
+		with a page in use is passed with every place below it that would
+		still hold a page of that page's block: none of them fits (the
+		menus' hundreds of pictures each walked the caches' blocks a page at
+		a time, a tenth of a second) */
 		unsigned long candidate = CONTIGUOUS_PAGE_COUNT - count;
 
 		for (;;)
 		{
+			long used;
+
 			candidate -= candidate % alignment_pages;
-			if (pages_free(candidate, count))
+			used = pages_used_highest(candidate, count);
+			if (used < 0)
 			{
 				first = candidate;
 				break;
 			}
-			if (candidate == 0)
+			if (block_first_page[used] < count)
 				break;
-			candidate--;
+			candidate = block_first_page[used] - count;
 		}
 	}
 	if (first == CONTIGUOUS_PAGE_COUNT)
@@ -218,7 +241,10 @@ void *platform_contiguous_alloc(unsigned long size, unsigned long alignment,
 		return NULL;
 	}
 	for (page = first; page < first + count; page++)
+	{
 		page_protection[page] = protect;
+		block_first_page[page] = first;
+	}
 	block_page_count[first] = count;
 	pthread_mutex_unlock(&arena_lock);
 	return address;

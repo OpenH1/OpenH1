@@ -34,7 +34,7 @@ def test_vulkan_passes(tmp_path):
     subprocess.run([
         cc, "-std=gnu11", "-O1", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
         f"-I{headers}", f"-I{ROOT / 'port/android/host'}", f"-I{ROOT / 'port/android/include'}",
-        str(ROOT / "port/linux/vulkan/tests/passes_test.c"), "-o", str(binary), "-ldl", "-lm", "-pthread",
+        f"-I{ROOT / 'port/linux/src'}", str(ROOT / "port/linux/vulkan/tests/passes_test.c"), "-o", str(binary), "-ldl", "-lm", "-pthread",
     ], check=True)
     run = subprocess.run([str(binary)], capture_output=True, text=True)
     assert run.returncode == 0, run.stdout + run.stderr

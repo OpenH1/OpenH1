@@ -27,6 +27,51 @@ depth or stencil, ended by a draw or clear that writes them.
 #include <stdarg.h>
 #include <unistd.h>
 
+/* display.low_latency's pacing (xgpu_vulkan_pacing.c), with the command
+stream's and the host's calls it makes: never started here (the fake
+device has neither present wait nor display timing) */
+#include "../xgpu_vulkan_pacing.c"
+
+void host_render_stream_display_paced(int paced)
+{
+	(void)paced;
+}
+
+void host_render_stream_frames_taken_reset(void)
+{
+}
+
+void host_render_stream_frame_displayed(uint64_t input, uint64_t finished, uint64_t latched, uint64_t shown,
+	uint64_t period)
+{
+	(void)input;
+	(void)finished;
+	(void)latched;
+	(void)shown;
+	(void)period;
+}
+
+void host_render_stream_frame_finished(uint64_t input, uint64_t finished)
+{
+	(void)input;
+	(void)finished;
+}
+
+void host_render_stream_pacing_statistics(struct host_render_pacing_statistics *statistics)
+{
+	memset(statistics, 0, sizeof(*statistics));
+}
+
+uint64_t host_render_stream_frame_input(void)
+{
+	return 0;
+}
+
+uint64_t host_vulkan_display_period(void)
+{
+	return 16666667;
+}
+
 static struct xgpu_vulkan_image color_target, depth_target, stand_in;
 static struct slot recording;
 static unsigned int begins, clears, created_views;
@@ -1438,7 +1483,7 @@ static struct xgpu_vulkan_image *window_rotate(struct xgpu_vulkan_image *image, 
 static uint64_t window_present_frame(void)
 {
 	window_blit_source = VK_NULL_HANDLE;
-	return present(&window_frame);
+	return present(&window_frame, 1);
 }
 
 static void window_reset(void)

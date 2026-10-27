@@ -256,6 +256,9 @@ static void vulkan_exiting(void *context)
 debug.gpu_validation (or debug.gl_debug) */
 #define DEBUG_STATISTICS 1
 #define DEBUG_VALIDATION 2
+/* and display.low_latency's: on, off (neither: auto) */
+#define LOW_LATENCY_ON 4
+#define LOW_LATENCY_OFF 8
 
 /* a folder the guest names (its address), or the environment variable's
 (set, it wins: NULL, none), copied; NULL for none */
@@ -273,7 +276,8 @@ static const char *debug_folder(uint32_t address, const char *variable, char *fo
 
 /* (a host import: the guest's sdl_platform.c, on its main thread; the
 folders are guest addresses of strings; again with the same window when
-display.vsync or battery saver changes, for its swap interval) */
+display.vsync or battery saver changes, for its swap interval and
+display.low_latency, debug's LOW_LATENCY_* then alone) */
 int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_folder, uint32_t texture_folder,
 	int interval, int battery_saver)
 {
@@ -303,6 +307,7 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 		if (object != vulkan_window)
 			return 0;
 		xgpu_vulkan_window_interval(interval);
+		xgpu_vulkan_window_low_latency(debug & LOW_LATENCY_ON ? 1 : debug & LOW_LATENCY_OFF ? 2 : 0);
 		return 1;
 	}
 	if (getenv("HALO_VULKAN_STATS"))
@@ -353,6 +358,7 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 		host_logf(HOST_LOG_INFO, "vulkan: the window is not one SDL draws with Vulkan: its frames are not shown");
 	}
 	options.interval = interval;
+	options.low_latency = debug & LOW_LATENCY_ON ? 1 : debug & LOW_LATENCY_OFF ? 2 : 0;
 #ifdef HALO_VR
 	if (host_vr_vulkan_requested() && host_vr_vulkan_prepare())
 	{
@@ -369,6 +375,7 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 #endif
 	options.cache_path = cache_path(path, sizeof(path));
 	options.validation = (debug & DEBUG_VALIDATION) != 0;
+	options.statistics = (debug & DEBUG_STATISTICS) != 0;
 	if (!xgpu_vulkan_initialize(&options))
 	{
 #ifdef HALO_VR

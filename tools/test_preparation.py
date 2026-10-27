@@ -231,7 +231,8 @@ static void checkpoint(void *const *textures)
 ''' + code + r'''
 int main(void)
 {
-    struct xgpu_pipeline_key pipeline = {{0}};
+    /* (the pipeline key's number: xgpu_backend_pipeline_number) */
+    unsigned long pipeline = 1;
     struct xgpu_dynamic_state dynamic = {{0}};
     struct declaration declaration;
     struct surface target = {1, 2, 3};
@@ -255,46 +256,46 @@ int main(void)
     assert(consumed == 1 && checkpointed == 1);
     preparation_draw_complete();
     assert(consumed == 1 && checkpointed == 1);
-    assert(!preparation_seen(&pipeline, &dynamic, FALSE, 4));
-    assert(preparation_seen(&pipeline, &dynamic, FALSE, 4));
+    assert(!preparation_seen(pipeline, &dynamic, FALSE, 4));
+    assert(preparation_seen(pipeline, &dynamic, FALSE, 4));
     /* Force equal stored hash but unequal bytes; never accept a hash alone. */
     for (index = 0; index < PREPARATION_BUCKETS; index++)
-        if (preparation.entries[index]) preparation.entries[index]->pipeline.state[1]++;
-    assert(!preparation_seen(&pipeline, &dynamic, FALSE, 4));
-    assert(preparation_seen(&pipeline, &dynamic, FALSE, 4));
+        if (preparation.entries[index]) preparation.entries[index]->pipeline += 0x10000;
+    assert(!preparation_seen(pipeline, &dynamic, FALSE, 4));
+    assert(preparation_seen(pipeline, &dynamic, FALSE, 4));
     declaration.elements[0].format++;
-    assert(!preparation_seen(&pipeline, &dynamic, FALSE, 4));
+    assert(!preparation_seen(pipeline, &dynamic, FALSE, 4));
     device.streams[0].data = 16;
     device.streams[0].stride = 32;
-    assert(!preparation_seen(&pipeline, &dynamic, FALSE, 4));
+    assert(!preparation_seen(pipeline, &dynamic, FALSE, 4));
     preparation.key.texture_generation[0]++;
-    assert(!preparation_seen(&pipeline, &dynamic, FALSE, 4));
+    assert(!preparation_seen(pipeline, &dynamic, FALSE, 4));
     preparation.key.palette_generation[0]++;
-    assert(!preparation_seen(&pipeline, &dynamic, FALSE, 4));
+    assert(!preparation_seen(pipeline, &dynamic, FALSE, 4));
     halo_gpu_preparation_sky(1);
-    assert(!preparation_seen(&pipeline, &dynamic, FALSE, 4));
+    assert(!preparation_seen(pipeline, &dynamic, FALSE, 4));
     target.Format++;
-    assert(!preparation_seen(&pipeline, &dynamic, FALSE, 4));
-    assert(preparation_seen(&pipeline, &dynamic, FALSE, 4));
+    assert(!preparation_seen(pipeline, &dynamic, FALSE, 4));
+    assert(preparation_seen(pipeline, &dynamic, FALSE, 4));
     device.immediate_written = 3;
-    assert(!preparation_seen(&pipeline, &dynamic, TRUE, 4));
+    assert(!preparation_seen(pipeline, &dynamic, TRUE, 4));
     device.immediate_written = 7;
-    assert(!preparation_seen(&pipeline, &dynamic, TRUE, 4));
+    assert(!preparation_seen(pipeline, &dynamic, TRUE, 4));
     preparation.trackable = FALSE;
-    assert(!preparation_seen(&pipeline, &dynamic, TRUE, 4));
+    assert(!preparation_seen(pipeline, &dynamic, TRUE, 4));
     preparation.trackable = TRUE;
     /* More unique entries than buckets: collision never means equal. */
     for (index = 1; index < PREPARATION_BUCKETS * 3; index++)
     {
-        pipeline.state[0] = index;
-        assert(!preparation_seen(&pipeline, &dynamic, TRUE, 4));
-        assert(preparation_seen(&pipeline, &dynamic, TRUE, 4));
+        pipeline = index + 1;
+        assert(!preparation_seen(pipeline, &dynamic, TRUE, 4));
+        assert(preparation_seen(pipeline, &dynamic, TRUE, 4));
     }
     preparation_clear();
     preparation_time_add(0, preparation_time());
-    assert(!preparation_seen(&pipeline, &dynamic, TRUE, 4));
+    assert(!preparation_seen(pipeline, &dynamic, TRUE, 4));
     preparation.active = FALSE;
-    assert(!preparation_seen(&pipeline, &dynamic, TRUE, 4));
+    assert(!preparation_seen(pipeline, &dynamic, TRUE, 4));
     preparation_clear();
     return 0;
 }

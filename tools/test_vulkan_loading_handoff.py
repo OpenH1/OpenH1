@@ -25,6 +25,7 @@ def test_held_frames_retire_without_acquiring_or_presenting(tmp_path):
 #define VK_ACCESS_SHADER_WRITE_BIT 2
 #define VK_PIPELINE_STAGE_HOST_BIT 4
 #define VK_ACCESS_HOST_READ_BIT 8
+#define VK_PRESENT_MODE_FIFO_KHR 2
 struct xgpu_vulkan_image { int value; } image;
 struct query { unsigned counter_count; uint64_t serial; } query;
 static struct {
@@ -32,6 +33,7 @@ static struct {
     struct query *queries;
     uint64_t frame;
     struct { unsigned frames; } statistics;
+    int interval, present_mode;
 } vk;
 static unsigned acquisitions, presentations, blank, submissions, recordings;
 static unsigned barriers, completions, garbage, texture_frames;
@@ -40,13 +42,17 @@ static int held;
 static int main_commands(void) { return 7; }
 static void barrier(int command, int a, int b, int c, int d)
 { assert(command == 7 && a == 1 && b == 2 && c == 4 && d == 8); barriers++; }
-static uint64_t present(struct xgpu_vulkan_image *shown)
+static uint64_t present(struct xgpu_vulkan_image *shown, int frame)
 {
     acquisitions++; presentations++;
     if (!shown) blank++;
     else assert(shown == &image);
+    assert(frame == 1);
     return ++next_serial;
 }
+static unsigned paced_updates, unshown;
+static void frame_pacing_update(void) { paced_updates++; }
+static void xgpu_vulkan_pacing_unshown(void) { unshown++; }
 static void recording_begin(void) { recordings++; }
 static uint64_t submit(int acquired, int shown)
 { assert(!acquired && !shown); submissions++; return ++next_serial; }
@@ -87,6 +93,9 @@ int main(void)
     assert(acquisitions == 2 && presentations == 2 && blank == 1);
     assert(submissions == 1 && vk.frame == 5 && vk.statistics.frames == 3);
     assert(completions == 3 && garbage == 3 && texture_frames == 3);
+    /* (display.low_latency: each frame's pacing looked at, and the held
+    frame, which shows nothing, taken at once) */
+    assert(paced_updates == 3 && unshown == 1);
     return 0;
 }
 '''

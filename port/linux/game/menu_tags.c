@@ -813,9 +813,103 @@ static char const *widget_name(long index) { return build.menus->widgets[index].
 static char const *bitmap_name(long index) { return build.menus->bitmaps[index].name; }
 static char const *strings_name(long index) { return build.menus->string_lists[index].name; }
 
+/* The widgets', bitmaps' and string lists' names, found by their hash: each
+name's first index, as find has it. The files are read once
+(halo_menus_load), and each of their thousands of names is looked up as
+each map loads, by name (each widget's own, its children's, its
+handlers'), which a walk of all of them made a fifth of a second. Made the
+first time; empty (find walks them instead) if there is no memory. */
+struct name_index
+{
+	unsigned long mask;
+	long *slots; /* index + 1; 0: empty */
+};
+
+static struct
+{
+	struct halo_menus const *menus;
+	struct name_index widgets, bitmaps, strings;
+} name_indices;
+
+static unsigned long name_hash(char const *name)
+{
+	unsigned long hash = 2166136261UL;
+
+	while (*name)
+		hash = (hash ^ (unsigned char)*name++) * 16777619UL;
+	return hash;
+}
+
+static void name_index_make(struct name_index *index, long count, char const *(*name_of)(long))
+{
+	unsigned long size = 16, slot;
+	long entry;
+
+	while (size < (unsigned long)count * 2)
+		size *= 2;
+	/* (the game's allocator: cseries.h, which has no calloc and refuses to
+	free NULL) */
+	if (index->slots)
+		free(index->slots);
+	index->slots = malloc(size * sizeof(*index->slots));
+	index->mask = size - 1;
+	if (!index->slots)
+		return;
+	memset(index->slots, 0, size * sizeof(*index->slots));
+	for (entry = 0; entry < count; entry++)
+	{
+		if (!name_of(entry))
+			continue;
+		for (slot = name_hash(name_of(entry)) & index->mask; index->slots[slot]; slot = (slot + 1) & index->mask)
+		{
+			/* (a name again: the first keeps it) */
+			if (!strcmp(name_of(index->slots[slot] - 1), name_of(entry)))
+				break;
+		}
+		if (!index->slots[slot])
+			index->slots[slot] = entry + 1;
+	}
+}
+
+static void name_indices_make(void)
+{
+	if (name_indices.menus == build.menus)
+		return;
+	name_indices.menus = build.menus;
+	name_index_make(&name_indices.widgets, build.menus->widget_count, widget_name);
+	name_index_make(&name_indices.bitmaps, build.menus->bitmap_count, bitmap_name);
+	name_index_make(&name_indices.strings, build.menus->string_list_count, strings_name);
+}
+
+static long named(struct name_index const *index, char const *name, long count, char const *(*name_of)(long))
+{
+	unsigned long slot;
+
+	if (!index->slots || name_indices.menus != build.menus)
+		return find(name, count, name_of);
+	if (!name)
+		return NONE;
+	for (slot = name_hash(name) & index->mask; index->slots[slot]; slot = (slot + 1) & index->mask)
+	{
+		if (!strcmp(name_of(index->slots[slot] - 1), name))
+			return index->slots[slot] - 1;
+	}
+	return NONE;
+}
+
 static long widget_named(char const *name)
 {
-	return find(name, build.menus->widget_count, widget_name);
+	return named(&name_indices.widgets, name, build.menus->widget_count, widget_name);
+}
+
+static long bitmap_named(char const *name)
+{
+	return named(&name_indices.bitmaps, name, build.menus->bitmap_count, bitmap_name);
+}
+
+static long strings_named(char const *name)
+{
+	return named(&name_indices.strings, name, build.menus->string_list_count, strings_name);
 }
 
 static long map_tag(long group_tag, char const *name, char const *file, long line)
@@ -842,11 +936,11 @@ static long tag_named(long group_tag, char const *name, char const *file, long l
 		index = index == NONE ? NONE : build.widget_tags[index];
 		break;
 	case BITMAP_GROUP_TAG:
-		index = find(name, build.menus->bitmap_count, bitmap_name);
+		index = bitmap_named(name);
 		index = index == NONE ? NONE : build.bitmap_tags[index];
 		break;
 	case UNICODE_STRING_LIST_TAG:
-		index = find(name, build.menus->string_list_count, strings_name);
+		index = strings_named(name);
 		index = index == NONE ? NONE : build.strings_tags[index];
 		break;
 	}
@@ -1971,7 +2065,7 @@ static void pause_box_redraw(struct ui_widget_definition const *box, long button
 	for (piece = 0; piece < 3; piece++)
 	{
 		struct ui_widget_definition *definition = tag_get(UI_WIDGET_DEFINITION_TAG, pieces[piece].widget_tag.index);
-		long bitmap = find(names[piece], build.menus->bitmap_count, bitmap_name);
+		long bitmap = bitmap_named(names[piece]);
 		struct bitmap_group *group;
 		struct bitmap_group_sequence *sequence;
 
@@ -2173,7 +2267,7 @@ static void pause_campaign_grow_box(struct ui_widget_definition *widget, short s
 		piece_here = TRUE;
 		{
 			/* (bitmap_name is the lookup, not piece_bitmap: find calls it) */
-			long bitmap = find(piece_bitmap, build.menus->bitmap_count, bitmap_name);
+			long bitmap = bitmap_named(piece_bitmap);
 			short height = (short)(child_widget->bounds.y1 - child_widget->bounds.y0);
 			short frame = NONE, size;
 
@@ -2356,6 +2450,7 @@ void menu_tags_loaded(
 	memset(&build, 0, sizeof(build));
 	build.menus = menus;
 	build.game_map = game_map;
+	name_indices_make();
 	/* Settings must not pause the simulation in a network campaign. */
 	build.campaign = campaign && game_connection() == _game_connection_local &&
 		!network_game_is_active() && !game_is_cooperative();

@@ -36,7 +36,7 @@ the newest step (display.direct_camera), shows it in the first frame drawn
 after it, and a turn the drawn view took late in the frame that took it.
 
     # latency log 1 rate <R>
-    <kind> <press_to_read> <read_to_act> <act_to_frame> <frame_to_shown> <render> <present> <total> <fraction> <frame> <seat>
+    <kind> <press_to_read> <read_to_act> <act_to_frame> <frame_to_shown> <render> <present> <total> <fraction> <frame> <press_clock> <input_clock> <seat>
 
     kind            fire (the controller's fire control), move (its stick),
                     click (the mouse's fire), turn (the mouse's motion) or
@@ -57,6 +57,12 @@ after it, and a turn the drawn view took late in the frame that took it.
     total           the press to that return
     fraction        the interpolation fraction the showing frame drew at
     frame           the mean time between frames since the line before
+    press_clock     the press, in nanoseconds of CLOCK_MONOTONIC (the
+                    renderer's clock)
+    input_clock     the input read of the frame that shows it, likewise:
+                    the Vulkan renderer's HALO_VULKAN_FRAME_LOG has the
+                    frame by it, with its present and its time on screen
+                    (tools/latency_summary.py --frames)
     seat            1 when the player was in a vehicle's seat as the step
                     took the event, 0 on foot
 
@@ -64,7 +70,8 @@ An event read with no unit to act on, or a move while the unit moves, is
 left out; one not acted on within a second (the weapon empty) is counted,
 not logged; tools/latency_summary.py takes the lines' median and
 95th percentile. The frame's own way to the screen is the renderer's: the
-Metal backend's HALO_METAL_STATS logs its input to screen.
+Metal backend's HALO_METAL_STATS logs its input to screen, the Vulkan
+backend's HALO_VULKAN_FRAME_LOG each frame's (xgpu_vulkan_pacing.c).
 
 The sound of a shot (a fire event's step) gets a line of its own once its
 first frames are handed to the sound device (port/linux/src/dsound_sdl.c,
@@ -122,6 +129,10 @@ float render_interpolation_fraction(void);
 /* SDL's clock, the game's (port/linux/src: the frame's pacing, the
 controllers' reading) */
 unsigned long long SDL_GetTicksNS(void);
+/* port/linux/src/d3d8_device.c: when the frame drawn read its input, in
+nanoseconds of CLOCK_MONOTONIC (frame_pacing.h) */
+unsigned long long d3d_frame_input_time(void);
+unsigned long long d3d_frame_clock_now(void);
 /* port/linux/src/dsound_sdl.c: the sound of a shot */
 void dsound_sdl_latency_arm(unsigned long long act_ns);
 int dsound_sdl_latency_take(unsigned long long *times, double *queued_ms, double *system_ms, long *buffer_frames,
@@ -173,6 +184,8 @@ struct latency_event
 	boolean seated;
 	/* the first frame begun after the step, the first that shows it */
 	unsigned long long frame_ns, shown_ns, rendered_ns;
+	/* the input read of the frame that shows it (CLOCK_MONOTONIC) */
+	unsigned long long shown_input;
 	real fraction;
 	boolean framed, shown, rendered;
 };
@@ -272,18 +285,23 @@ static void latency_end(
 	static char const *const names[NUMBER_OF_LATENCY_KINDS] = { "fire", "move", "click", "turn", "menu" };
 	short kind;
 	long logged = 0;
+	unsigned long long clock_ns, ticks_ns;
 
+	/* (SDL's clock to CLOCK_MONOTONIC, now: SDL's may be another clock,
+	CLOCK_MONOTONIC_RAW, which drifts from it) */
+	ticks_ns = latency_now();
+	clock_ns = d3d_frame_clock_now();
 	for (kind = 0; kind < NUMBER_OF_LATENCY_KINDS; kind++)
 		logged += latency_log.logged[kind];
 	if (!logged)
 		fprintf(latency_log.file, "# latency log 1 rate %ld\n", sim_rate_get());
-	fprintf(latency_log.file, "%s %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %d\n", names[event->kind],
+	fprintf(latency_log.file, "%s %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %llu %llu %d\n", names[event->kind],
 		latency_ms(event->press_ns, event->read_ns), latency_ms(event->read_ns, event->act_ns),
 		latency_ms(event->act_ns, event->frame_ns), latency_ms(event->frame_ns, event->shown_ns),
 		latency_ms(event->shown_ns, event->rendered_ns), latency_ms(event->rendered_ns, latency_log.frame_ns),
 		latency_ms(event->press_ns, latency_log.frame_ns), event->fraction,
 		latency_log.frames ? latency_ms(latency_log.frames_since_ns, latency_log.frame_ns) / latency_log.frames : 0.0,
-		event->seated ? 1 : 0);
+		event->press_ns + clock_ns - ticks_ns, event->shown_input, event->seated ? 1 : 0);
 	latency_log.frames = 0;
 	latency_log.frames_since_ns = latency_log.frame_ns;
 	fflush(latency_log.file);
@@ -355,6 +373,7 @@ static void latency_turned(
 		{
 			event->framed = event->shown = TRUE;
 			event->frame_ns = event->shown_ns = now;
+			event->shown_input = d3d_frame_input_time();
 			event->fraction = render_interpolation_fraction();
 		}
 	}
@@ -568,6 +587,7 @@ void latency_log_frame_begin(
 		{
 			event->shown = TRUE;
 			event->shown_ns = latency_log.frame_ns;
+			event->shown_input = d3d_frame_input_time();
 			event->fraction = render_interpolation_fraction();
 		}
 	}
