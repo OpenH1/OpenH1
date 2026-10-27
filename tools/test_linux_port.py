@@ -316,6 +316,10 @@ def config_check_build(tmp_path, defines):
         " access_time; } SDL_PathInfo;\n"
         "_Bool SDL_GetPathInfo(const char *path, SDL_PathInfo *info);\n")
     (stubs / "platform.h").write_text("void platform_log(const char *format, ...);\n")
+    # (the command line's and a dedicated server's: tools/config_check.c's stand-ins)
+    (stubs / "posix.h").write_text("int posix_command_line_argument(int index, char *buffer, unsigned long size);\n"
+                                   "typedef unsigned long posix_ulong;\n")
+    (stubs / "posix_server.h").write_text("int posix_server_private_file(const char *path);\n")
     for name in ("port_config.c", "port_config.h", "install_layout.h"):
         shutil.copy(root / "port/linux/src" / name, stubs / name)
     program = tmp_path / "config_check"
