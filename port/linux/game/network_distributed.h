@@ -176,6 +176,11 @@ enum
 	the host's list, to the machines that told it they can party (each
 	client tells its own in its party status) */
 	_distributed_message_friend_players = 130,
+	/* a client's players' input (and its sub-steps) that the host sends on
+	to its other OpenH1 clients as it comes, not at its next tick: those
+	near the player, aiming at them, or whose buttons changed (unreliable,
+	keyed by that client's tick; network_distributed.c) */
+	_distributed_message_forwarded_inputs = 131,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };
@@ -300,6 +305,10 @@ void distributed_count_correction(void);
 /* a tick begun (network_substeps_tick_begun, at every rate): the tests'
 reports take the input each player's unit takes in it */
 void network_distributed_tick_begun(void);
+/* (the host, each frame once its datagrams are read: main.c) the input its
+clients sent this frame sent on to its other OpenH1 clients at once (an
+OpenH1 game's forwarded input) */
+void network_distributed_frame_received(void);
 /* (the host) the client machines in the game, but for its own; their count */
 short distributed_client_machines(long *machine_indices, short maximum);
 /* (the host) how long a message takes that client and its answer back, in

@@ -35,6 +35,18 @@ to the host; the host's of the players it relays to a client this tick (by
 absolute index), with the update their input is of */
 void network_substeps_client_send(void);
 void network_substeps_host_send(long machine_index, long update_number, short const *player_indices, short count);
+/* a client's player's input forwarded as it comes (network_distributed.c):
+(the host) the sub-steps it heard of the player's tick with it, their count
+then the relayed record's bytes (a count of 0 alone for none); the bytes
+written, at most 1 + RELAYED_SUBSTEP_SIZE * (MAXIMUM_SIM_SUBSTEPS - 1) (31).
+(a client) the same read and kept, no further than end, of that tick: the
+bytes read, 0 for too few */
+enum
+{
+	NETWORK_SUBSTEPS_FORWARD_MAXIMUM_SIZE = 31,
+};
+word network_substeps_forward_write(short player_index, long key, byte *buffer);
+word network_substeps_forward_read(short player_index, long key, byte const *data, byte const *end);
 
 /* the messages (network_distributed.c's handling, before its own) */
 boolean network_substeps_handles_message(word const *message, word size);

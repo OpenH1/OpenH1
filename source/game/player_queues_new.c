@@ -131,6 +131,11 @@ enum
 	the player's input is held: after them it stands still
 	(update_server_next_update) */
 	DISTRIBUTED_INPUT_SILENCE_TICKS = 10,
+	/* (a client) the ticks after another client's player's last forwarded
+	action came that it is driven by those; after them, by the host's relayed
+	ones again (the host forwards only near players' and those aimed at, at
+	least every second tick, and relays the rest at its ticks) */
+	FORWARDED_INPUT_FRESH_TICKS = 4,
 
 	/* the one-shot buttons: they fire on the tick they are first seen and stay latched until released */
 	LATCHED_CONTROL_FLAGS =
@@ -258,6 +263,21 @@ static struct
 	struct player_action action;
 	unsigned long pending_control_flags;
 } update_client_relayed_actions[MAXIMUM_NUMBER_OF_PLAYERS];
+
+/* ... an OpenH1 game's: the latest action of another client's player that
+the host sent on as it came (port/linux/game/network_distributed.c), of
+that client's tick, the buttons of every one since this client's last tick,
+and this client's tick it came at; and which of the two each player's last
+tick took (TRUE: the forwarded) */
+static struct
+{
+	boolean valid;
+	long tick;
+	struct player_action action;
+	unsigned long pending_control_flags;
+	long heard_time;
+	boolean taken;
+} update_client_forwarded_actions[MAXIMUM_NUMBER_OF_PLAYERS];
 
 /* ... the host: the last tick of each client machine's player's it has
 had (their buttons of that tick and before it are in), and the host's game
@@ -715,10 +735,31 @@ static boolean update_client_dequeue_distributed(
 				update_client_local_inputs[local_player_index].control_flags[0] = (unsigned short)action.control_flags;
 			}
 		}
-		else if (queue_index < MAXIMUM_NUMBER_OF_PLAYERS && update_client_relayed_actions[queue_index].valid)
+		else if (queue_index < MAXIMUM_NUMBER_OF_PLAYERS)
 		{
-			action = update_client_relayed_actions[queue_index].action;
-			action.control_flags |= update_client_relayed_actions[queue_index].pending_control_flags;
+			/* port: the forwarded action while they come (an OpenH1 game's:
+			sooner than the host's tick relays it), else the relayed. Each
+			source's buttons are its own: those of the one not taken are let
+			go, and on a change of source the new one's are too (the presses
+			they hold came the other way already) */
+			boolean forwarded = update_client_forwarded_actions[queue_index].valid &&
+				game_time_get() - update_client_forwarded_actions[queue_index].heard_time <= FORWARDED_INPUT_FRESH_TICKS;
+			boolean changed = forwarded != update_client_forwarded_actions[queue_index].taken;
+
+			update_client_forwarded_actions[queue_index].taken = forwarded;
+			if (forwarded)
+			{
+				action = update_client_forwarded_actions[queue_index].action;
+				if (!changed)
+					action.control_flags |= update_client_forwarded_actions[queue_index].pending_control_flags;
+			}
+			else if (update_client_relayed_actions[queue_index].valid)
+			{
+				action = update_client_relayed_actions[queue_index].action;
+				if (!changed)
+					action.control_flags |= update_client_relayed_actions[queue_index].pending_control_flags;
+			}
+			update_client_forwarded_actions[queue_index].pending_control_flags = 0;
 			update_client_relayed_actions[queue_index].pending_control_flags = 0;
 		}
 		actions[queue_index].control_flags = action.control_flags & ~queue->latched_control_flags;
@@ -981,6 +1022,7 @@ void update_queues_distributed_reset(
 {
 	csmemset(update_server_pending_control_flags, 0, sizeof(update_server_pending_control_flags));
 	csmemset(update_client_relayed_actions, 0, sizeof(update_client_relayed_actions));
+	csmemset(update_client_forwarded_actions, 0, sizeof(update_client_forwarded_actions));
 	csmemset(update_server_distributed_inputs, 0, sizeof(update_server_distributed_inputs));
 	csmemset(update_client_local_inputs, 0, sizeof(update_client_local_inputs));
 }
@@ -1115,7 +1157,7 @@ static boolean distributed_add_new_ticks(
 	return TRUE;
 }
 
-void update_server_handle_distributed_input(
+boolean update_server_handle_distributed_input(
 	long player_index,
 	long tick,
 	struct player_action const *action,
@@ -1128,20 +1170,21 @@ void update_server_handle_distributed_input(
 	if (!update_server_globals.initialized || absolute_index < 0 || absolute_index >= MAXIMUM_NUMBER_OF_PLAYERS ||
 		count <= 0 || !distributed_action_valid(action))
 	{
-		return;
+		return FALSE;
 	}
 	queue = (struct update_server_queue_datum *)datum_try_and_get(update_server_globals.queues, player_index);
 	if (!queue)
-		return;
+		return FALSE;
 	if (!distributed_add_new_ticks(&update_server_distributed_inputs[absolute_index].valid,
 		&update_server_distributed_inputs[absolute_index].tick, tick, control_flags, count,
 		&update_server_pending_control_flags[absolute_index]))
 	{
-		return;
+		return FALSE;
 	}
 	update_server_distributed_inputs[absolute_index].received_time =
 		game_time_initialized() ? game_time_get() : 0;
 	queue->current_action = *action;
+	return TRUE;
 }
 
 /* port: the tick (the host's, of a client's player: the client's tick) or
@@ -1159,6 +1202,8 @@ long update_queues_distributed_input_key(
 		return update_server_distributed_inputs[absolute_player_index].valid ?
 			update_server_distributed_inputs[absolute_player_index].tick : NONE;
 	case _game_connection_network_client:
+		if (update_client_forwarded_actions[absolute_player_index].taken)
+			return update_client_forwarded_actions[absolute_player_index].tick;
 		return update_client_relayed_actions[absolute_player_index].valid ?
 			update_client_relayed_actions[absolute_player_index].update_number : NONE;
 	default:
@@ -1223,6 +1268,38 @@ void update_client_handle_relayed_action(
 	{
 		update_client_relayed_actions[player_index].action = *action;
 	}
+}
+
+void update_client_handle_forwarded_action(
+	short player_index,
+	long tick,
+	struct player_action const *action,
+	unsigned short const *control_flags,
+	short count)
+{
+	if (player_index < 0 || player_index >= MAXIMUM_NUMBER_OF_PLAYERS || count <= 0 || !distributed_action_valid(action))
+		return;
+	/* (a tick far behind the last: that client's game began again) */
+	if (update_client_forwarded_actions[player_index].valid &&
+		tick < update_client_forwarded_actions[player_index].tick - 10 * TICKS_PER_SECOND)
+	{
+		update_client_forwarded_actions[player_index].valid = FALSE;
+	}
+	if (distributed_add_new_ticks(&update_client_forwarded_actions[player_index].valid,
+		&update_client_forwarded_actions[player_index].tick, tick, control_flags, count,
+		&update_client_forwarded_actions[player_index].pending_control_flags))
+	{
+		update_client_forwarded_actions[player_index].action = *action;
+		update_client_forwarded_actions[player_index].heard_time = game_time_initialized() ? game_time_get() : 0;
+	}
+}
+
+boolean update_client_input_forwarded(
+	long absolute_player_index)
+{
+	return absolute_player_index >= 0 && absolute_player_index < MAXIMUM_NUMBER_OF_PLAYERS &&
+		game_connection() == _game_connection_network_client &&
+		update_client_forwarded_actions[absolute_player_index].taken;
 }
 
 boolean update_client_distributed_input(

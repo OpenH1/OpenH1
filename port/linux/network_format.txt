@@ -7,7 +7,10 @@ bound DISTRIBUTED_CLIENT_BUILD_MODS_SIZE 512
 bound DISTRIBUTED_CLIENT_BUILD_NUMBER_SIZE 12
 bound DISTRIBUTED_CLIENT_BUILD_REPOSITORY_SIZE 144
 bound DISTRIBUTED_CLIENT_BUILD_VERSION_SIZE 64
+bound DISTRIBUTED_FORWARDED_INPUT_MAXIMUM_SIZE DISTRIBUTED_RELAYED_ACTION_MAXIMUM_SIZE + 4 + NETWORK_SUBSTEPS_FORWARD_MAXIMUM_SIZE
+bound DISTRIBUTED_FORWARDED_INPUT_MINIMUM_SIZE DISTRIBUTED_RELAYED_ACTION_MINIMUM_SIZE + 4 + 1
 bound DISTRIBUTED_INPUT_HISTORY 4
+bound DISTRIBUTED_PREDICTION_MAXIMUM_SIZE DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE + 12
 bound DISTRIBUTED_RELAYED_ACTION_MAXIMUM_SIZE 14 + 2 * (DISTRIBUTED_INPUT_HISTORY - 1)
 bound DISTRIBUTED_RELAYED_ACTION_MINIMUM_SIZE 14
 bound DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE 3 + 4 + (4 + 2) + (12 + 3 * 6) + 2 + 2 * 2 + 4 * 2 + 2 * NUMBER_OF_PLAYER_POWERUPS + 2 + 1
@@ -32,6 +35,7 @@ bound MAXIMUM_SIM_SUBSTEPS 4
 bound MAXIMUM_STATISTICS_PER_MESSAGE 64
 bound MAXIMUM_TRACKED_PLAYERS HALO_PORT_MAXIMUM_NETWORK_PLAYERS
 bound MAXIMUM_WEAPONS_PER_UNIT 4
+bound NETWORK_SUBSTEPS_FORWARD_MAXIMUM_SIZE 31
 bound NUMBER_OF_ANGLES enum f0ce7d0319b6
 bound NUMBER_OF_OBJECT_CHANGE_COLORS enum b00724872e2d
 bound NUMBER_OF_PLAYER_POWERUPS enum 43075f42087c
@@ -82,6 +86,7 @@ enum _distributed_message_coop_skip_vote 70
 enum _distributed_message_coop_sounds_retired 67
 enum _distributed_message_damage_animations 75
 enum _distributed_message_damage_events 10
+enum _distributed_message_forwarded_inputs 131
 enum _distributed_message_friend_players 130
 enum _distributed_message_game_state 7
 enum _distributed_message_hit_reports 11
@@ -137,6 +142,7 @@ enum _distributed_unit_friendly_fire_bit 2
 enum _distributed_unit_killed_by_vehicle_bit 3
 enum _distributed_unit_part_camouflage_bit 4
 enum _distributed_unit_part_damage_bit 2
+enum _distributed_unit_part_fine_velocity_bit 6
 enum _distributed_unit_part_killer_bit 5
 enum _distributed_unit_part_powerups_bit 3
 enum _distributed_unit_part_riding_bit 0

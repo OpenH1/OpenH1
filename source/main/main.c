@@ -695,6 +695,8 @@ typedef char screenshot_and_framerate_globals_size_assert[
 	sizeof(struct _screenshot_and_framerate_globals) == 0x38B ? 1 : -1];
 
 void network_test_update(boolean main_menu_loaded, real seconds);
+/* port: port/linux/game/network_distributed.c */
+void network_distributed_frame_received(void);
 /* port: port/linux/src/port_config.c */
 double config_real(const char *name);
 #ifdef HALO_VR
@@ -3716,6 +3718,11 @@ void main_loop(
 					error(_error_silent, "the game host went down");
 					network_game_abort();
 				}
+				/* port: the clients' input read this frame sent on to the
+				others at once, not with the next tick's messages
+				(port/linux/game/network_distributed.c) */
+				else
+					network_distributed_frame_received();
 			}
 			else if (connection==_game_connection_film_playback)
 			{

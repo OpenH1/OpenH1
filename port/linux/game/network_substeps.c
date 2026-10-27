@@ -122,6 +122,8 @@ struct distributed_substep_input
 	struct distributed_substep_input_control controls[MAXIMUM_LATER_SUBSTEPS];
 };
 
+typedef char forward_maximum_size_assert[
+	1 + RELAYED_SUBSTEP_SIZE * MAXIMUM_LATER_SUBSTEPS == NETWORK_SUBSTEPS_FORWARD_MAXIMUM_SIZE ? 1 : -1];
 typedef char distributed_substep_input_size_assert[
 	sizeof(struct distributed_substep_input) == 8 + 24 * MAXIMUM_LATER_SUBSTEPS ? 1 : -1];
 
@@ -133,6 +135,10 @@ static struct
 	client's players, keyed by the client's tick; a client's of the others,
 	by the host's update */
 	struct substep_record heard[MAXIMUM_TRACKED_PLAYERS];
+	/* ... and a client's of the other clients' players, as the host sent
+	them on with their input as they came (network_distributed.c's forwarded
+	input), keyed by their client's tick */
+	struct substep_record forwarded[MAXIMUM_TRACKED_PLAYERS];
 	/* this tick's: the record replayed, and what the tick ran (a local
 	player's as given, a remote one's as replayed) */
 	struct substep_record replaying[MAXIMUM_TRACKED_PLAYERS];
@@ -196,12 +202,13 @@ static short network_substeps_count(
 	return sim_substep_count();
 }
 
-/* a heard record kept, if newer than the one kept */
+/* a heard record kept (of heard, or of forwarded), if newer than the one kept */
 static void substep_record_heard(
+	struct substep_record *records,
 	short player_index,
 	struct substep_record const *record)
 {
-	struct substep_record *kept = &network_substeps_globals.heard[player_index];
+	struct substep_record *kept = &records[player_index];
 
 	if (kept->valid && record->key <= kept->key &&
 		/* (a key far behind: the sender's game began again) */
@@ -261,21 +268,18 @@ static void network_substeps_handle_inputs(
 			control->facing.yaw = substep_pin(wire->yaw, -4.0f * _pi, 4.0f * _pi);
 			control->facing.pitch = substep_pin(wire->pitch, -_pi, _pi);
 		}
-		substep_record_heard(input.player_index, &record);
+		substep_record_heard(network_substeps_globals.heard, input.player_index, &record);
 	}
 }
 
-/* a relayed record's bytes (at most RELAYED_RECORD_MAXIMUM_SIZE) */
-static word relayed_record_write(
-	short player_index,
+/* a record's later sub-steps' bytes, as compact as the relayed input
+(RELAYED_SUBSTEP_SIZE each) */
+static byte *substep_controls_write(
 	struct substep_record const *record,
-	byte *buffer)
+	byte *cursor)
 {
-	byte *cursor = buffer;
 	short index;
 
-	*cursor++ = (byte)player_index;
-	*cursor++ = (byte)record->count;
 	for (index = 0; index < record->count - 1; index++)
 	{
 		struct substep_control const *control = &record->controls[index];
@@ -297,6 +301,55 @@ static word relayed_record_write(
 		csmemcpy(cursor, &pitch, sizeof(pitch));
 		cursor += sizeof(pitch);
 	}
+	return cursor;
+}
+
+/* ... and read (record->count set), no further than end: the bytes past
+them, NULL for too few */
+static byte const *substep_controls_read(
+	struct substep_record *record,
+	byte const *data,
+	byte const *end)
+{
+	short substep;
+
+	if (record->count < 2 || record->count > MAXIMUM_SIM_SUBSTEPS ||
+		end - data < (long)(RELAYED_SUBSTEP_SIZE * (record->count - 1)))
+	{
+		return NULL;
+	}
+	for (substep = 0; substep < record->count - 1; substep++)
+	{
+		struct substep_control *control = &record->controls[substep];
+		word held;
+		short yaw, pitch;
+
+		csmemcpy(&held, data, sizeof(held));
+		control->held_flags = held & SUBSTEP_HELD_FLAGS;
+		control->turned = data[2] != 0;
+		control->throttle.i = PIN((real)(signed char)data[3] / 127.0f, -1.0f, 1.0f);
+		control->throttle.j = PIN((real)(signed char)data[4] / 127.0f, -1.0f, 1.0f);
+		control->primary_trigger = (real)data[5] / 255.0f;
+		csmemcpy(&yaw, data + 6, sizeof(yaw));
+		csmemcpy(&pitch, data + 8, sizeof(pitch));
+		control->facing.yaw = distributed_angle_unpack(yaw, FALSE);
+		control->facing.pitch = distributed_angle_unpack(pitch, TRUE);
+		data += RELAYED_SUBSTEP_SIZE;
+	}
+	return data;
+}
+
+/* a relayed record's bytes (at most RELAYED_RECORD_MAXIMUM_SIZE) */
+static word relayed_record_write(
+	short player_index,
+	struct substep_record const *record,
+	byte *buffer)
+{
+	byte *cursor = buffer;
+
+	*cursor++ = (byte)player_index;
+	*cursor++ = (byte)record->count;
+	cursor = substep_controls_write(record, cursor);
 	return (word)(cursor - buffer);
 }
 
@@ -317,7 +370,6 @@ static void network_substeps_handle_relayed(
 	{
 		struct substep_record record;
 		short player_index;
-		short substep;
 
 		if (end - data < 2)
 			return;
@@ -326,34 +378,13 @@ static void network_substeps_handle_relayed(
 		record.key = update_number;
 		record.count = data[1];
 		record.unit_index = NONE;
-		data += 2;
-		if (record.count < 2 || record.count > MAXIMUM_SIM_SUBSTEPS ||
-			end - data < (long)(RELAYED_SUBSTEP_SIZE * (record.count - 1)))
-		{
+		data = substep_controls_read(&record, data + 2, end);
+		if (!data)
 			return;
-		}
-		for (substep = 0; substep < record.count - 1; substep++)
-		{
-			struct substep_control *control = &record.controls[substep];
-			word held;
-			short yaw, pitch;
-
-			csmemcpy(&held, data, sizeof(held));
-			control->held_flags = held & SUBSTEP_HELD_FLAGS;
-			control->turned = data[2] != 0;
-			control->throttle.i = PIN((real)(signed char)data[3] / 127.0f, -1.0f, 1.0f);
-			control->throttle.j = PIN((real)(signed char)data[4] / 127.0f, -1.0f, 1.0f);
-			control->primary_trigger = (real)data[5] / 255.0f;
-			csmemcpy(&yaw, data + 6, sizeof(yaw));
-			csmemcpy(&pitch, data + 8, sizeof(pitch));
-			control->facing.yaw = distributed_angle_unpack(yaw, FALSE);
-			control->facing.pitch = distributed_angle_unpack(pitch, TRUE);
-			data += RELAYED_SUBSTEP_SIZE;
-		}
 		/* (a count other than the game's, or a player not tracked: passed
 		over, its bytes read) */
 		if (player_index < MAXIMUM_TRACKED_PLAYERS && record.count == network_substeps_count())
-			substep_record_heard(player_index, &record);
+			substep_record_heard(network_substeps_globals.heard, player_index, &record);
 	}
 }
 
@@ -391,7 +422,8 @@ void network_substeps_tick_begun(
 	{
 		struct substep_record *replaying = &network_substeps_globals.replaying[player_index];
 		struct substep_record *ran = &network_substeps_globals.ran[player_index];
-		struct substep_record const *heard = &network_substeps_globals.heard[player_index];
+		struct substep_record const *heard = update_client_input_forwarded(player_index) ?
+			&network_substeps_globals.forwarded[player_index] : &network_substeps_globals.heard[player_index];
 		struct player_datum *player = active ? distributed_player(player_index) : NULL;
 		long unit_index = player ? player->unit_index : NONE;
 
@@ -611,6 +643,51 @@ void network_substeps_host_send(
 		used = (word)(used + relayed_record_write(player_index, ran, message.entries + used));
 		entries++;
 	}
+}
+
+word network_substeps_forward_write(
+	short player_index,
+	long key,
+	byte *buffer)
+{
+	struct substep_record const *heard;
+
+	buffer[0] = 0;
+	if (!network_substeps_active() || player_index < 0 || player_index >= MAXIMUM_TRACKED_PLAYERS)
+		return 1;
+	heard = &network_substeps_globals.heard[player_index];
+	if (!heard->valid || heard->key != key || heard->count != network_substeps_count() || heard->count < 2)
+		return 1;
+	buffer[0] = (byte)heard->count;
+	return (word)(substep_controls_write(heard, buffer + 1) - buffer);
+}
+
+word network_substeps_forward_read(
+	short player_index,
+	long key,
+	byte const *data,
+	byte const *end)
+{
+	struct substep_record record;
+	byte const *after;
+
+	if (end - data < 1)
+		return 0;
+	if (!data[0])
+		return 1;
+	csmemset(&record, 0, sizeof(record));
+	record.key = key;
+	record.count = data[0];
+	record.unit_index = NONE;
+	after = substep_controls_read(&record, data + 1, end);
+	if (!after)
+		return 0;
+	if (network_substeps_active() && player_index >= 0 && player_index < MAXIMUM_TRACKED_PLAYERS &&
+		record.count == network_substeps_count())
+	{
+		substep_record_heard(network_substeps_globals.forwarded, player_index, &record);
+	}
+	return (word)(after - data);
 }
 
 boolean network_substeps_handles_message(

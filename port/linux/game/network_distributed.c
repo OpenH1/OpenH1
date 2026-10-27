@@ -279,6 +279,12 @@ enum
 	_distributed_unit_part_camouflage_bit,
 	/* (dead) who killed it, when anyone */
 	_distributed_unit_part_killer_bit,
+	/* (alive, placed: an OpenH1 game's client's prediction) how fast it
+	moves at full precision, after the rest: the host's tick moves the
+	player on from it, as the client's did (in 16 bits a part, a
+	1024th of a world unit a tick, the host's moves of a client's player
+	at 120 came apart from the client's in a tick of twenty) */
+	_distributed_unit_part_fine_velocity_bit,
 };
 
 /* world units: how far apart the host's run of a client's player and the
@@ -367,6 +373,10 @@ struct distributed_unit_state
 	word recent_shield_damage;
 	/* the player's powerups: how long each has left */
 	short powerup_durations[NUMBER_OF_PLAYER_POWERUPS];
+	/* (_distributed_unit_part_fine_velocity_bit) how fast it moves, at full
+	precision, and whether it is sent so */
+	real_vector3d fine_velocity;
+	boolean fine;
 };
 
 /* a client's player's input at one of its ticks, with the buttons of the
@@ -426,8 +436,20 @@ enum
 	DISTRIBUTED_UNIT_STATE_MINIMUM_SIZE = 3,
 	DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE = 3 + 4 + (4 + 2) + (12 + 3 * 6) + 2 + 2 * 2 + 4 * 2 +
 		2 * NUMBER_OF_PLAYER_POWERUPS + 2 + 1,
+	/* ... and an OpenH1 game's client's prediction, with its velocity at
+	full precision (_distributed_unit_part_fine_velocity_bit) */
+	DISTRIBUTED_PREDICTION_MAXIMUM_SIZE = DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE + 12,
 	DISTRIBUTED_RELAYED_ACTION_MINIMUM_SIZE = 14,
 	DISTRIBUTED_RELAYED_ACTION_MAXIMUM_SIZE = 14 + 2 * (DISTRIBUTED_INPUT_HISTORY - 1),
+	/* ... and a forwarded input's: a relayed action, its client's tick and
+	its sub-steps (network_substeps_forward_write) */
+	DISTRIBUTED_FORWARDED_INPUT_MINIMUM_SIZE = DISTRIBUTED_RELAYED_ACTION_MINIMUM_SIZE + 4 + 1,
+	DISTRIBUTED_FORWARDED_INPUT_MAXIMUM_SIZE = DISTRIBUTED_RELAYED_ACTION_MAXIMUM_SIZE + 4 +
+		NETWORK_SUBSTEPS_FORWARD_MAXIMUM_SIZE,
+	/* the host's ticks after it forwarded a player's input to a client that
+	its tick relays the client none of the same tick or before (the forward
+	was it; past them, a client gone silent, the tick's relays go again) */
+	FORWARDED_INPUT_RELAY_TICKS = 2,
 };
 
 struct distributed_pickup
@@ -666,6 +688,25 @@ static struct distributed_relayed_action distributed_host_actions[MAXIMUM_TRACKE
 static long distributed_host_update_number;
 static byte distributed_sends[HALO_PORT_MAXIMUM_NETWORK_MACHINES][MAXIMUM_TRACKED_PLAYERS];
 static long distributed_player_machines[MAXIMUM_TRACKED_PLAYERS];
+/* the host of an OpenH1 game: a client's players' input sent on to its other
+OpenH1 clients as it comes (_distributed_message_forwarded_inputs), not at
+its next tick: each player's latest input heard this frame, of its client's
+tick (pending: not yet sent on), and whether its buttons or choices changed
+in the ticks it carries; how often the last tick's plan sends each player to
+each client (0: never forwarded: its own, or none); and the client's tick of
+the latest of each player's input forwarded to each client, and the host's
+tick then (the host's tick relays no input it has forwarded lately) */
+static struct
+{
+	boolean pending;
+	boolean valid;
+	long tick;
+	struct distributed_relayed_action action;
+	boolean changed;
+} distributed_forwards[MAXIMUM_TRACKED_PLAYERS];
+static byte distributed_forward_periods[HALO_PORT_MAXIMUM_NETWORK_MACHINES][MAXIMUM_TRACKED_PLAYERS];
+static long distributed_forwarded_ticks[HALO_PORT_MAXIMUM_NETWORK_MACHINES][MAXIMUM_TRACKED_PLAYERS];
+static long distributed_forwarded_times[HALO_PORT_MAXIMUM_NETWORK_MACHINES][MAXIMUM_TRACKED_PLAYERS];
 /* the host: each player's statistics as last sent (only a change is sent,
 and once a second a few players' whatever they are, round them all) */
 static unsigned long distributed_sent_statistics[MAXIMUM_TRACKED_PLAYERS];
@@ -1940,6 +1981,11 @@ static word distributed_unit_state_write(
 			cursor = distributed_put(cursor, &state->unit_flags, sizeof(state->unit_flags));
 			cursor = distributed_put(cursor, &state->active_camouflage, sizeof(state->active_camouflage));
 		}
+		if (state->fine && TEST_FLAG(flags, _distributed_unit_placed_bit))
+		{
+			SET_FLAG(parts, _distributed_unit_part_fine_velocity_bit, TRUE);
+			cursor = distributed_put(cursor, &state->fine_velocity, sizeof(state->fine_velocity));
+		}
 	}
 	else if (state->killing_player_index != NO_PLAYER)
 	{
@@ -2022,6 +2068,17 @@ static word distributed_unit_state_read(
 		{
 			return 0;
 		}
+		if (TEST_FLAG(parts, _distributed_unit_part_fine_velocity_bit))
+		{
+			if (!distributed_take(&cursor, end, &state->fine_velocity, sizeof(state->fine_velocity)))
+				return 0;
+			/* (finite, and no faster than the 16 bits' velocity can be) */
+			state->fine = TEST_FLAG(state->flags, _distributed_unit_placed_bit) &&
+				distributed_real_valid(state->fine_velocity.i) && distributed_real_valid(state->fine_velocity.j) &&
+				distributed_real_valid(state->fine_velocity.k) &&
+				fabs(state->fine_velocity.i) <= 32.0f && fabs(state->fine_velocity.j) <= 32.0f &&
+				fabs(state->fine_velocity.k) <= 32.0f;
+		}
 	}
 	else if (TEST_FLAG(parts, _distributed_unit_part_killer_bit) &&
 		!distributed_take(&cursor, end, &state->killing_player_index, sizeof(state->killing_player_index)))
@@ -2050,7 +2107,10 @@ static boolean distributed_apply_state(
 	real_vector3d forward;
 	real_vector3d up;
 
-	distributed_vector_unpack(&state->velocity, DISTRIBUTED_VELOCITY_SCALE, &velocity);
+	if (state->fine)
+		velocity = state->fine_velocity;
+	else
+		distributed_vector_unpack(&state->velocity, DISTRIBUTED_VELOCITY_SCALE, &velocity);
 	distributed_vector_unpack(&state->forward, DISTRIBUTED_UNIT_SCALE, &forward);
 	distributed_vector_unpack(&state->up, DISTRIBUTED_UNIT_SCALE, &up);
 	if (!distributed_point_valid(position, UNIT_WORLD_BOUND) || !distributed_axes_make_valid(&forward, &up))
@@ -2239,7 +2299,7 @@ static void distributed_client_send_predictions(
 	{
 		long unit_index = distributed_living_unit(player);
 		struct distributed_unit_state state;
-		byte entry[DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE];
+		byte entry[DISTRIBUTED_PREDICTION_MAXIMUM_SIZE];
 
 		/* a client speaks for its own players only, where they are */
 		if (player->local_player_index == NONE || unit_index == NONE ||
@@ -2248,6 +2308,9 @@ static void distributed_client_send_predictions(
 			continue;
 		}
 		distributed_state_from_player((short)DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index), &state);
+		/* (an OpenH1 game's: its velocity at full precision too) */
+		state.fine = network_standard_agreed_rate() != 0;
+		state.fine_velocity = object_get(unit_index)->object.translational_velocity;
 		distributed_packer_add(&distributed_packer, entry, distributed_unit_state_write(&state, TRUE, entry));
 	}
 	distributed_packer_flush(&distributed_packer);
@@ -2911,6 +2974,9 @@ static void distributed_client_send_inputs(
 	}
 }
 
+static void distributed_forward_note(short player_index, long tick, struct player_action const *action,
+	unsigned short const *control_flags);
+
 /* (the host, in co-op) where each client player's input last faced, by
 absolute index: how far it turns between inputs is its looking around */
 static struct
@@ -2977,8 +3043,13 @@ static void distributed_handle_inputs(
 		network_coop_note_player_structure_bsp(input->player_index, input->structure_bsp_index);
 		network_coop_note_player_friendly_fire(DATUM_INDEX_NEW(input->player_index, player->identifier),
 			!input->coop_no_friendly_fire);
-		update_server_handle_distributed_input(DATUM_INDEX_NEW(input->player_index, player->identifier), input->tick,
-			&action, input->control_flags, DISTRIBUTED_INPUT_HISTORY);
+		/* (an OpenH1 game's: sent on to the other clients as it came, the
+		latest of the frame's, network_distributed_frame_received) */
+		if (update_server_handle_distributed_input(DATUM_INDEX_NEW(input->player_index, player->identifier),
+			input->tick, &action, input->control_flags, DISTRIBUTED_INPUT_HISTORY))
+		{
+			distributed_forward_note(input->player_index, input->tick, &action, input->control_flags);
+		}
 		/* (for the tests' reports: the newest, as the input taken is, or one
 		a second or more older, the client's clock set back; the subtraction
 		kept from overflowing, as the tick is the client's word; the next tick
@@ -3161,6 +3232,177 @@ static word distributed_relayed_action_read(
 	return (word)(cursor - buffer);
 }
 
+/* ---------- forwarded input
+An OpenH1 game's host sends a client's players' input on to its other OpenH1
+clients as it comes (NETCODE.md, "Forwarded input"), not at its next tick:
+the frame's inputs heard, after its datagrams are read
+(network_distributed_frame_received), each the latest of its player's, with
+its sub-steps, in one datagram a client. A client drives the player from them
+while they come (player_queues_new.c's forwarded actions). Only to clients
+its last tick's plan sends the player every tick or every second tick (near,
+or aimed at), every second of the player's ticks, and at once whose buttons
+or choices changed; the host's tick relays the input to the others as before,
+and to these too once none has been forwarded for a while (its client gone
+silent). The host's own simulation takes the input at its tick, as before. */
+
+/* (the host) a client's player's input taken as it came: to send on */
+static void distributed_forward_note(
+	short player_index,
+	long tick,
+	struct player_action const *action,
+	unsigned short const *control_flags)
+{
+	struct player_action const *recent[DISTRIBUTED_INPUT_HISTORY];
+	struct player_action history[DISTRIBUTED_INPUT_HISTORY];
+	short counts[DISTRIBUTED_INPUT_HISTORY];
+	short index;
+
+	if (!network_standard_hosting() || player_index < 0 || player_index >= MAXIMUM_TRACKED_PLAYERS)
+		return;
+	/* (the relayed action as distributed_relayed_action_from makes it from
+	each tick's actions, from this input and its ticks' buttons: the
+	player's alone, at index 0 of each) */
+	for (index = 0; index < DISTRIBUTED_INPUT_HISTORY; index++)
+	{
+		history[index] = *action;
+		history[index].control_flags = control_flags[index];
+		recent[index] = &history[index];
+		counts[index] = 1;
+	}
+	{
+		struct distributed_relayed_action relayed;
+		boolean changed = distributed_relayed_action_from(0, recent, counts, &relayed);
+
+		relayed.player_index = (byte)player_index;
+		/* (a choice changed since the last forwarded) */
+		if (distributed_forwards[player_index].valid &&
+			(distributed_forwards[player_index].action.desired_weapon_index != relayed.desired_weapon_index ||
+			distributed_forwards[player_index].action.desired_grenade_index != relayed.desired_grenade_index ||
+			distributed_forwards[player_index].action.desired_zoom_level != relayed.desired_zoom_level))
+		{
+			changed = TRUE;
+		}
+		/* (several in a frame: their changes kept for the one sent) */
+		if (distributed_forwards[player_index].pending)
+			changed |= distributed_forwards[player_index].changed;
+		distributed_forwards[player_index].pending = TRUE;
+		distributed_forwards[player_index].valid = TRUE;
+		distributed_forwards[player_index].tick = tick;
+		distributed_forwards[player_index].action = relayed;
+		distributed_forwards[player_index].changed = changed;
+	}
+}
+
+/* whether the host's tick has forwarded the player's input it ran to the
+client lately (then it relays it none) */
+static boolean distributed_forward_covers(
+	long machine_index,
+	short player_index)
+{
+	long input_time = distributed_divergence.input_time[player_index];
+
+	return input_time != NONE && distributed_forwarded_times[machine_index][player_index] != NONE &&
+		game_time_get() - distributed_forwarded_times[machine_index][player_index] <= FORWARDED_INPUT_RELAY_TICKS &&
+		distributed_forwarded_ticks[machine_index][player_index] >= input_time;
+}
+
+/* (the host, each frame after reading its datagrams: main.c) the inputs
+heard this frame sent on, to each OpenH1 client in one datagram */
+void network_distributed_frame_received(
+	void)
+{
+	long machine_indices[HALO_PORT_MAXIMUM_NETWORK_MACHINES];
+	short machine_count;
+	short machine_number;
+	short player_index;
+	boolean any = FALSE;
+
+	if (game_connection() != _game_connection_network_server || !game_in_progress() || !network_standard_hosting())
+		return;
+	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS && !any; player_index++)
+		any = distributed_forwards[player_index].pending;
+	if (!any)
+		return;
+	machine_count = distributed_client_machines(machine_indices, HALO_PORT_MAXIMUM_NETWORK_MACHINES);
+	for (machine_number = 0; machine_number < machine_count; machine_number++)
+	{
+		long machine_index = machine_indices[machine_number];
+
+		if (!network_standard_machine_is_openh1(machine_index))
+			continue;
+		distributed_packer_begin(&distributed_packer, (short)machine_index, _distributed_message_forwarded_inputs,
+			NULL, 0);
+		for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+		{
+			byte entry[DISTRIBUTED_FORWARDED_INPUT_MAXIMUM_SIZE];
+			byte period = distributed_forward_periods[machine_index][player_index];
+			word size;
+			long tick = distributed_forwards[player_index].tick;
+
+			if (!distributed_forwards[player_index].pending || !period ||
+				distributed_machine_has_player(machine_index, player_index) ||
+				!(period == 1 || distributed_forwards[player_index].changed || ((tick + player_index) & 1) == 0))
+			{
+				continue;
+			}
+			size = distributed_relayed_action_write(&distributed_forwards[player_index].action, entry);
+			csmemcpy(entry + size, &tick, sizeof(tick));
+			size += sizeof(tick);
+			size += network_substeps_forward_write(player_index, tick, entry + size);
+			distributed_packer_add(&distributed_packer, entry, size);
+			distributed_forwarded_ticks[machine_index][player_index] = tick;
+			distributed_forwarded_times[machine_index][player_index] = game_time_get();
+		}
+		distributed_packer_flush(&distributed_packer);
+		/* (at once: not with the next tick's) */
+		distributed_batch_flush((short)machine_index);
+	}
+	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+		distributed_forwards[player_index].pending = FALSE;
+}
+
+/* (a client) the other clients' players' input the host sent on as it came */
+static void distributed_handle_forwards(
+	byte const *data,
+	byte const *end,
+	short count)
+{
+	short index;
+
+	for (index = 0; index < count; index++)
+	{
+		struct distributed_relayed_action relayed;
+		struct player_action action;
+		word size = distributed_relayed_action_read(data, end, &relayed);
+		long tick;
+
+		if (!size)
+			break;
+		data += size;
+		if (!distributed_take(&data, end, &tick, sizeof(tick)))
+			break;
+		size = network_substeps_forward_read(relayed.player_index, tick, data, end);
+		if (!size)
+			break;
+		data += size;
+		/* (never this machine's own: it has its own input) */
+		if (distributed_player_is_local(relayed.player_index))
+			continue;
+		csmemset(&action, 0, sizeof(action));
+		action.control_flags = relayed.control_flags[0];
+		action.desired_facing.yaw = distributed_angle_unpack(relayed.yaw, FALSE);
+		action.desired_facing.pitch = distributed_angle_unpack(relayed.pitch, TRUE);
+		action.throttle.i = PIN((real)relayed.throttle_i / 127.0f, -1.0f, 1.0f);
+		action.throttle.j = PIN((real)relayed.throttle_j / 127.0f, -1.0f, 1.0f);
+		action.primary_trigger = (real)relayed.primary_trigger / 255.0f;
+		action.desired_weapon_index = relayed.desired_weapon_index;
+		action.desired_grenade_index = relayed.desired_grenade_index;
+		action.desired_zoom_level = relayed.desired_zoom_level;
+		update_client_handle_forwarded_action(relayed.player_index, tick, &action, relayed.control_flags,
+			DISTRIBUTED_INPUT_HISTORY);
+	}
+}
+
 /* (the host) what each client is sent this tick of every player: their unit,
 and their input as its last tick ran it (with the buttons of the ticks
 before it). Those near the client's own players every tick, those further,
@@ -3305,6 +3547,7 @@ static void distributed_host_plan_players(
 			boolean seen = TRUE;
 			short period = 1;
 
+			distributed_forward_periods[machine_index][player_index] = 0;
 			if (!present[player_index] || (quit[player_index] && !own && !changed[player_index]))
 				continue;
 			if (!own && !placed[player_index])
@@ -3383,8 +3626,16 @@ static void distributed_host_plan_players(
 				SET_FLAG(*sends, _distributed_send_sees_bit, TRUE);
 			if (send || own)
 				SET_FLAG(*sends, _distributed_send_state_bit, TRUE);
-			if (!own && has_action[player_index] && (send || action_changed[player_index]))
+			/* (an OpenH1 game's: a near player's input, or one aimed at, sent
+			on as it comes; what the tick ran of it relayed only when not
+			forwarded lately) */
+			if (!own && placed[player_index] && period <= 2)
+				distributed_forward_periods[machine_index][player_index] = (byte)period;
+			if (!own && has_action[player_index] && (send || action_changed[player_index]) &&
+				!distributed_forward_covers(machine_index, player_index))
+			{
 				SET_FLAG(*sends, _distributed_send_action_bit, TRUE);
+			}
 		}
 	}
 }
@@ -3893,6 +4144,10 @@ void network_distributed_new_game(
 	csmemset(distributed_seen, 0, sizeof(distributed_seen));
 	csmemset(distributed_viewers, 0, sizeof(distributed_viewers));
 	csmemset(distributed_sends, 0, sizeof(distributed_sends));
+	csmemset(distributed_forwards, 0, sizeof(distributed_forwards));
+	csmemset(distributed_forward_periods, 0, sizeof(distributed_forward_periods));
+	csmemset(distributed_forwarded_ticks, 0xFF, sizeof(distributed_forwarded_ticks));
+	csmemset(distributed_forwarded_times, 0xFF, sizeof(distributed_forwarded_times));
 	/* (none sent: every player's the first time) */
 	csmemset(distributed_sent_statistics, 0, sizeof(distributed_sent_statistics));
 	distributed_statistics_cursor = 0;
@@ -5035,6 +5290,7 @@ void network_distributed_handle_message(
 	case _distributed_message_chat_config: entry_size = network_chat_config_entry_size(); break;
 	case _distributed_message_player_inputs: entry_size = sizeof(struct distributed_player_input); break;
 	case _distributed_message_relayed_actions: entry_size = DISTRIBUTED_RELAYED_ACTION_MINIMUM_SIZE; break;
+	case _distributed_message_forwarded_inputs: entry_size = DISTRIBUTED_FORWARDED_INPUT_MINIMUM_SIZE; break;
 	case _distributed_message_game_state:
 	case _distributed_message_objects_synchronized:
 	case _distributed_message_notice:
@@ -5110,8 +5366,10 @@ void network_distributed_handle_message(
 		return;
 	}
 	/* (a client: the host's latest tick, which its input messages tell it
-	back; and when it came, the latency meter's) */
-	if (machine_index == NONE &&
+	back; and when it came, the latency meter's. Not a forwarded input's,
+	sent between the host's ticks: the round trips are timed by when each
+	tick's own messages went) */
+	if (machine_index == NONE && header.type != _distributed_message_forwarded_inputs &&
 		(distributed_host_time == NONE || header.game_time > distributed_host_time))
 	{
 		distributed_host_time = header.game_time;
@@ -5348,6 +5606,9 @@ void network_distributed_handle_message(
 		break;
 	case _distributed_message_relayed_actions:
 		distributed_handle_actions((byte const *)entries, (byte const *)message + size, header.count);
+		break;
+	case _distributed_message_forwarded_inputs:
+		distributed_handle_forwards((byte const *)entries, (byte const *)message + size, header.count);
 		break;
 	case _distributed_message_pickups:
 	{
