@@ -258,6 +258,37 @@ void host_render_stream_display_latched(uint64_t latch, uint64_t period);
 timed wait there can end tens of milliseconds late) */
 void host_render_stream_sleep_until(uint64_t when);
 void host_render_stream_frame_shown(uint64_t input, uint64_t shown);
+/* A backend that knows when each frame reached the screen (Vulkan's,
+xgpu_vulkan_pacing.c) says so in place of host_render_stream_frame_taken,
+host_render_stream_display_latched and host_render_stream_frame_shown:
+once for each frame it ends, in order, its input time, when its work was
+done (0: not known), when the display latched it (took it for the refresh
+it is shown at, which a compositor does some milliseconds before: 0, not
+known, then shown's), when it was shown (0: not shown, or not known) and
+the refreshes' period (0: not known). The stream then learns the margin it
+starts the frames with (frame_pacing.h's frame_pacing_margin_missed), by
+the refresh each was started for. Before
+it paces the game (host_render_stream_display_paced(1)) it counts the
+frames played so far as taken (host_render_stream_frames_taken_reset), and
+the next frame it ends is its to say. */
+void host_render_stream_frames_taken_reset(void);
+void host_render_stream_frame_displayed(uint64_t input, uint64_t finished, uint64_t latched, uint64_t shown,
+	uint64_t period);
+/* (any thread) a frame's work done, its GPU's included, at finished: its
+cost, from its input read (frame_pacing_cost_add), with the render
+thread's own */
+void host_render_stream_frame_finished(uint64_t input, uint64_t finished);
+/* the pacing's counts since the last call: frames shown at the refresh
+they were started for (kept) or after it (missed; overran: of those, the
+frames whose work ran past the margin), frames that started after their
+time (late_starts: the game or the frame before ran long); and the margin
+and budget now, in nanoseconds */
+struct host_render_pacing_statistics
+{
+	uint32_t kept, missed, overran, late_starts;
+	uint64_t margin, budget;
+};
+void host_render_stream_pacing_statistics(struct host_render_pacing_statistics *statistics);
 /* (the render thread, as it plays a frame's records) the frame is ready
 for the display now: its cost (frame_pacing_cost_add) ends here, not as its
 records end (a backend that then waits for the display to take it) */

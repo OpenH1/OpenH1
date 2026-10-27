@@ -1148,6 +1148,20 @@ int host_vulkan_window_open(unsigned int window, unsigned int debug, const char 
 /* (host_vulkan.c's) debug.gpu_stats, debug.gpu_validation (or debug.gl_debug) */
 #define HOST_VULKAN_DEBUG_STATISTICS 1
 #define HOST_VULKAN_DEBUG_VALIDATION 2
+/* display.low_latency, with the debugging settings: on, off (neither: auto) */
+#define HOST_VULKAN_LOW_LATENCY_ON 4
+#define HOST_VULKAN_LOW_LATENCY_OFF 8
+
+static unsigned int platform_low_latency_flags(void)
+{
+	const char *mode = config_string("display.low_latency");
+
+	if (mode && !strcmp(mode, "on"))
+		return HOST_VULKAN_LOW_LATENCY_ON;
+	if (mode && !strcmp(mode, "off"))
+		return HOST_VULKAN_LOW_LATENCY_OFF;
+	return 0;
+}
 #define PLATFORM_WINDOW_DRAWING SDL_WINDOW_VULKAN
 #endif
 
@@ -1241,8 +1255,9 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 #else
 	if (!host_vulkan_window_open((unsigned int)(uintptr_t)platform_window,
 		(config_boolean("debug.gpu_stats") ? HOST_VULKAN_DEBUG_STATISTICS : 0) |
-		(config_boolean("debug.gpu_validation") || config_boolean("debug.gl_debug") ? HOST_VULKAN_DEBUG_VALIDATION : 0),
-		config_string("debug.gpu_dump_shaders"), config_string("debug.texture_dump_directory"),
+		(config_boolean("debug.gpu_validation") || config_boolean("debug.gl_debug") ? HOST_VULKAN_DEBUG_VALIDATION : 0) |
+		platform_low_latency_flags(), config_string("debug.gpu_dump_shaders"),
+		config_string("debug.texture_dump_directory"),
 		config_boolean("display.vsync") ? 1 : 0, battery_saver_active()))
 	{
 		platform_log("cannot draw the window with Vulkan");
@@ -1364,8 +1379,9 @@ void platform_frame_rate_apply(void)
 	host_metal_vsync(platform_vsync());
 	host_metal_battery_saver(saving);
 #elif defined(HALO_VULKAN)
-	/* (the window open already: only its swap interval is taken) */
-	host_vulkan_window_open((unsigned int)(uintptr_t)platform_window, 0, "", "",
+	/* (the window open already: only its swap interval and
+	display.low_latency are taken) */
+	host_vulkan_window_open((unsigned int)(uintptr_t)platform_window, platform_low_latency_flags(), "", "",
 		config_boolean("display.vsync") ? 1 : 0, saving);
 #endif
 }

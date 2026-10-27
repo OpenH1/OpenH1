@@ -91,6 +91,8 @@ struct xgpu_vulkan_options
 	/* the swap interval at the start (1 or more waits for the display, 0
 	does not: xgpu_vulkan_window_interval) */
 	int interval;
+	/* display.low_latency at the start: xgpu_vulkan_window_low_latency */
+	int low_latency;
 	/* The present step's turn for a surface the display turns (a phone held
 	sideways: xgpu_vulkan_post.c's): rotation_prepare makes its pipeline at
 	the start, where the surface can be turned (1 if it can); rotate draws
@@ -104,6 +106,9 @@ struct xgpu_vulkan_options
 	/* the validation layers (VK_LAYER_KHRONOS_validation) and their
 	messages logged */
 	int validation;
+	/* debug.gpu_stats: display.low_latency's statistics logged too
+	(xgpu_vulkan_pacing.c) */
+	int statistics;
 	/* OpenXR owns device selection and augments device creation. NULL for
 	the desktop path. These callbacks run before the render thread starts. */
 	VkResult (*create_instance)(PFN_vkGetInstanceProcAddr, const VkInstanceCreateInfo *,
@@ -573,6 +578,13 @@ IMMEDIATE); the swapchain is made again when that changes. More than 1
 (battery saver's, at most 8) shows each frame for that many refreshes: it
 is presented that many times (xgpu_vulkan_frame_end) */
 void xgpu_vulkan_window_interval(int interval);
+/* display.low_latency (any thread): 0 auto, 1 on, 2 off. On, with vsync
+(the swap interval 1 or more, FIFO) and a device that says when each
+present reaches the screen, the game starts each frame just in time for
+the refresh it is shown at, with at most one frame waiting for the display
+(xgpu_vulkan_pacing.c); auto is on where that was measured (the Linux
+desktop's and the Steam Deck's drivers); from the next frame */
+void xgpu_vulkan_window_low_latency(int mode);
 /* The app goes to the background (1) or comes back (0), on the render
 thread. Going: the GPU waited for, the swapchain and the surface let go of
 (Android takes the window away), the pipeline cache saved; frames are then

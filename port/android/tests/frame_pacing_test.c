@@ -23,6 +23,59 @@ static void check(float refresh_rate, uint32_t expected)
 	}
 }
 
+static void margin_expect(const char *what, uint64_t margin, uint64_t expected)
+{
+	if (margin != expected)
+	{
+		printf("FAIL %s: margin %llu ns, not %llu\n", what, (unsigned long long)margin, (unsigned long long)expected);
+		failures++;
+	}
+}
+
+/* the learned margin (frame_pacing_margin_missed, frame_pacing_margin_kept):
+a miss widens it by a step, to at most half a refresh; frames in time
+narrow it slowly, not below the margin that missed and a quarter step,
+which itself comes down more slowly still */
+static void margin_check(void)
+{
+	struct frame_pacing_costs costs;
+	const uint64_t period = 16666667ull;
+	uint32_t frame;
+
+	memset(&costs, 0, sizeof(costs));
+	/* (never missed: the fixed margin, and frames in time leave it) */
+	for (frame = 0; frame < 10000; frame++)
+		frame_pacing_margin_kept(&costs);
+	margin_expect("never missed", frame_pacing_budget(&costs, period), FRAME_PACING_MARGIN_NS);
+	frame_pacing_margin_missed(&costs, period);
+	margin_expect("a miss", costs.margin, FRAME_PACING_MARGIN_NS + FRAME_PACING_MARGIN_STEP_NS);
+	margin_expect("a miss's hold", costs.hold, FRAME_PACING_MARGIN_NS + FRAME_PACING_MARGIN_STEP_NS / 4);
+	if (costs.misses != 1)
+	{
+		printf("FAIL a miss counted %u times\n", costs.misses);
+		failures++;
+	}
+	/* (narrowed by a decay each DECAY_FRAMES, to the hold) */
+	for (frame = 0; frame < FRAME_PACING_MARGIN_DECAY_FRAMES; frame++)
+		frame_pacing_margin_kept(&costs);
+	margin_expect("a decay", costs.margin,
+		FRAME_PACING_MARGIN_NS + FRAME_PACING_MARGIN_STEP_NS - FRAME_PACING_MARGIN_DECAY_NS);
+	for (frame = 0; frame < FRAME_PACING_MARGIN_DECAY_FRAMES * 20; frame++)
+		frame_pacing_margin_kept(&costs);
+	margin_expect("held", costs.margin, FRAME_PACING_MARGIN_NS + FRAME_PACING_MARGIN_STEP_NS / 4);
+	/* (the hold comes down too, to the fixed margin) */
+	for (frame = 0; frame < FRAME_PACING_MARGIN_HOLD_FRAMES * 4; frame++)
+		frame_pacing_margin_kept(&costs);
+	margin_expect("hold let go", costs.margin, FRAME_PACING_MARGIN_NS);
+	/* (misses widen it to half a refresh at most) */
+	for (frame = 0; frame < 40; frame++)
+		frame_pacing_margin_missed(&costs, period);
+	margin_expect("at most half a refresh", costs.margin, period / 2);
+	/* (and the budget is the costs' most and the margin) */
+	costs.nanoseconds[3] = 4000000ull;
+	margin_expect("the budget", frame_pacing_budget(&costs, period), 4000000ull + period / 2);
+}
+
 int main(void)
 {
 	float rate;
@@ -76,6 +129,7 @@ int main(void)
 			failures++;
 		}
 	}
+	margin_check();
 	if (failures)
 		return 1;
 	printf("PASS\n");

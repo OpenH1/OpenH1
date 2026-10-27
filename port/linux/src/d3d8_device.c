@@ -4767,6 +4767,15 @@ uint64_t d3d_frame_input_time(void)
 	return frame_input_time;
 }
 
+/* now, in that clock (debug.latency_log's, game/latency_log.c) */
+uint64_t d3d_frame_clock_now(void)
+{
+	struct timespec now;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (uint64_t)now.tv_sec * 1000000000u + (uint64_t)now.tv_nsec;
+}
+
 /* port/linux/game/sim_trace.c: the simulation's clock, seconds from the
 scenario's start (negative before it starts) */
 extern double sim_trace_scenario_seconds(void);
