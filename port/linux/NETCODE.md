@@ -631,7 +631,10 @@ past 3) and the others' (a remote player within 0.05 of the host's word is
 left as it is) never show. From protocol version 6 an OpenH1 game's client
 also sends the velocity at full precision
 (`_distributed_unit_part_fine_velocity_bit`, 12 bytes a tick), and the host
-moves the player on from it: {DRIFT} The datagrams' bytes a second (`network test: bandwidth`), with
+moves the player on from it: in the
+same games, 0.0% to 0.7% of the ticks apart at 60 and 0.6% to 1.1% at 120
+(against 3.5% to 14% and 0% to 12% without, three copies on bloodgulch and
+beavercreek). The datagrams' bytes a second (`network test: bandwidth`), with
 one player on each machine:
 
 | Rate | Host to client | Client to host |
@@ -1641,4 +1644,20 @@ of its own (`unshare -rn`, then `tc qdisc add dev lo root netem delay 20ms
 3ms`), which delays every datagram and every segment of the connections
 each way.
 
-{LATENCY}
+Press to sight from one client to another (`press seen, client to
+client`), the pooled mean in ms (the worst 95th percentile in brackets),
+before forwarded input and with it:
+
+| Network | 30 | 60 | 120 |
+| --- | --- | --- | --- |
+| LAN | 33 (64) → 17 (32) | 67 (69) → 34 (40) | 67 (71) → 37 (83) |
+| 20 ms ±3 | 73 (105) → 67 (71) | 129 (149) → 84 (103) | 133 (136) → 93 (102) |
+| 50 ms ±5 | 139 (167) → 129 (161) | 183 (201) → 142 (172) | 184 (203) → 150 (175) |
+| 20 ms ±3, 1% loss | 76 (120) → 68 (99) | 128 (140) → 90 (103) | 137 (151) → 92 (144) |
+
+The host's presses to a client, a client's to the host, the meter's round
+trip and a hit's report to the host's dealing it are as before (the host
+takes and relays its own as it did): a LAN's round trip reads 17 ms at 30,
+20 to 30 at 60 and 31 at 120, and a hit reaches the host a tick after it is
+made on a LAN (it goes with the tick's end), the network's delay more
+over one.
