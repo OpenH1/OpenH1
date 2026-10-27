@@ -14,14 +14,17 @@ port/linux/src/xinput_sdl.c) first has the fire control pulled, or the left
 stick pushed while the player's unit stands still; or the mouse's fire
 binding held (controls.fire), or the mouse moved after it was still for
 LATENCY_STILL_NS (a reading of the mouse: the frame's, or the drawn view's
-own late one, halo_linux_mouse_look_late). A press the scripted player made
+own late one, halo_linux_mouse_look_late); or, while a menu is up, the D-pad,
+A or the left stick pressed (a menu event). A press the scripted player made
 (debug.test_input "latency:") began when the script pressed it, which a
 reading takes up to a frame later. A press of either fire control or a move
 is acted on by the simulation step (a tick at game.sim_rate 30, a sub-step
 at 60 and 120: game_time.c) in which the unit's weapon fires (weapons.c), or
 the unit has moved from where it stood; a turn by the view's taking it (the
 player's facing turned by the frame's input, player_control.c, or the drawn
-view by the late reading), at the end of the step after it. Its result is
+view by the late reading), at the end of the step after it; a menu event by
+the menus' taking it (ui_widget.c: the selection moved, an item chosen or
+the screen left, as its sound plays), which the next frame drawn shows. Its result is
 shown by the first frame whose drawn time has reached that step: the frames
 draw between the last two ticks (render_interpolation.c), the latest tick's
 end less one tick plus the fraction the clock has run into the next
@@ -34,7 +37,8 @@ after it, and a turn the drawn view took late in the frame that took it.
     <kind> <press_to_read> <read_to_act> <act_to_frame> <frame_to_shown> <render> <present> <total> <fraction> <frame>
 
     kind            fire (the controller's fire control), move (its stick),
-                    click (the mouse's fire) or turn (the mouse's motion)
+                    click (the mouse's fire), turn (the mouse's motion) or
+                    menu (the D-pad, A or the stick in a menu)
     press_to_read   the scripted press to the reading that first has it (0
                     for a person's: the reading is when it is known)
     read_to_act     the reading to the step that acts on it: the wait for
@@ -78,6 +82,20 @@ first frames are handed to the sound device (port/linux/src/dsound_sdl.c,
                       start_to_request, queued and system
     buffer            the device's buffer (frames; audio.buffer_frames)
     dropouts          the times the device ran dry since it opened
+
+A rumble begun from rest by an impulse to the first local player
+(player_rumble.c: a shot, a hit, a grenade) gets a line once its motors
+stop:
+
+    rumble <step_to_call> <on> <duration>
+
+    step_to_call      the impulse made, in its step, to the first write of
+                      motors not at rest to the first controller
+                      (XInputSetState, port/linux/src/xinput_sdl.c: the SDL
+                      call), however the game writes them
+    on                that write to the write that stops them
+    duration          the impulse's own (its longer motor's), which the time
+                      on matches but for the impulses after it
 */
 
 #include "cseries.h"
@@ -88,6 +106,7 @@ first frames are handed to the sound device (port/linux/src/dsound_sdl.c,
 #include "units/units.h"
 #include "sim_rate.h"
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -112,6 +131,7 @@ enum
 	_latency_move,
 	_latency_click,
 	_latency_turn,
+	_latency_menu,
 	NUMBER_OF_LATENCY_KINDS,
 
 	LATENCY_EVENTS = 8,
@@ -121,6 +141,9 @@ enum
 	LATENCY_STICK_DOWN = 16000,
 	LATENCY_STICK_UP = 4000,
 };
+
+/* (an event acted on before any step: a menu's) */
+#define LATENCY_ACT_TIME_NOW -1.0e9
 
 #define LATENCY_TIMEOUT_NS 1000000000ull
 /* how long the mouse is still before its motion is a turn */
@@ -152,7 +175,7 @@ static struct
 {
 	boolean checked;
 	FILE *file;
-	boolean fire_down, move_down, click_down;
+	boolean fire_down, move_down, click_down, menu_down;
 	/* when the mouse last moved */
 	unsigned long long moved_ns;
 	struct latency_event events[LATENCY_EVENTS];
@@ -230,6 +253,8 @@ static void latency_begin(
 			event->read_ns = latency_now();
 			event->press_ns = latency_log.pressed_ns && latency_log.pressed_ns <= event->read_ns &&
 				event->read_ns - latency_log.pressed_ns < LATENCY_PRESS_NS ? latency_log.pressed_ns : event->read_ns;
+			/* (a menu's has no unit to wait for: latency_log_substep_begin) */
+			event->begun = kind == _latency_menu;
 			return;
 		}
 	}
@@ -238,7 +263,7 @@ static void latency_begin(
 static void latency_end(
 	struct latency_event *event)
 {
-	static char const *const names[NUMBER_OF_LATENCY_KINDS] = { "fire", "move", "click", "turn" };
+	static char const *const names[NUMBER_OF_LATENCY_KINDS] = { "fire", "move", "click", "turn", "menu" };
 	short kind;
 	long logged = 0;
 
@@ -358,6 +383,36 @@ void latency_log_read(
 	else if (stick <= LATENCY_STICK_UP)
 		latency_log.move_down = FALSE;
 	latency_sweep();
+}
+
+void latency_log_menu_read(
+	int pressed,
+	int menus)
+{
+	if (!latency_log_check())
+		return;
+	if (pressed && menus && !latency_log.menu_down)
+		latency_begin(_latency_menu);
+	latency_log.menu_down = pressed != 0;
+}
+
+void latency_log_menu_acted(
+	void)
+{
+	unsigned long long now = latency_now();
+	short index;
+
+	for (index = 0; index < LATENCY_EVENTS; index++)
+	{
+		struct latency_event *event = &latency_log.events[index];
+
+		if (event->in_use && event->kind == _latency_menu && !event->acted)
+		{
+			event->acting = event->acted = TRUE;
+			event->act_ns = now;
+			event->act_time = LATENCY_ACT_TIME_NOW;
+		}
+	}
 }
 
 void latency_log_mouse_read(
@@ -522,6 +577,60 @@ void latency_log_frame_rendered(
 			event->rendered_ns = now;
 		}
 	}
+}
+
+/* a rumble from rest: the impulse that began it, and its motors' writes
+(the first controller's, from the thread that writes them) */
+static struct
+{
+	pthread_mutex_t lock;
+	boolean caused, on;
+	unsigned long long caused_ns, on_ns;
+	double duration_ms;
+} latency_rumble = { PTHREAD_MUTEX_INITIALIZER };
+
+void latency_log_rumble_caused(
+	short local_player_index,
+	real duration_seconds)
+{
+	if (local_player_index != 0 || duration_seconds <= 0.0f)
+		return;
+	pthread_mutex_lock(&latency_rumble.lock);
+	if (!latency_rumble.on && !latency_rumble.caused)
+	{
+		latency_rumble.caused = TRUE;
+		latency_rumble.caused_ns = latency_now();
+		latency_rumble.duration_ms = duration_seconds * 1000.0;
+	}
+	pthread_mutex_unlock(&latency_rumble.lock);
+}
+
+void latency_log_rumble_written(
+	unsigned left,
+	unsigned right)
+{
+	unsigned long long now;
+
+	if (!latency_log_on)
+		return;
+	now = latency_now();
+	pthread_mutex_lock(&latency_rumble.lock);
+	if (!latency_rumble.on && (left || right) && latency_rumble.caused)
+	{
+		latency_rumble.on = TRUE;
+		latency_rumble.on_ns = now;
+	}
+	else if (latency_rumble.on && !left && !right)
+	{
+		fprintf(latency_log.file, "rumble %.3f %.3f %.3f\n", latency_ms(latency_rumble.caused_ns, latency_rumble.on_ns),
+			latency_ms(latency_rumble.on_ns, now), latency_rumble.duration_ms);
+		fflush(latency_log.file);
+		latency_rumble.on = latency_rumble.caused = FALSE;
+	}
+	/* (one written as nothing: the profile's vibration off) */
+	else if (!latency_rumble.on && latency_rumble.caused && now - latency_rumble.caused_ns > LATENCY_TIMEOUT_NS)
+		latency_rumble.caused = FALSE;
+	pthread_mutex_unlock(&latency_rumble.lock);
 }
 
 /* the sound of a shot, once handed to the device */

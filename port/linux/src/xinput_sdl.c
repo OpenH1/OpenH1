@@ -97,6 +97,10 @@ turned by it, by the frame's input or by the drawn view's own late reading
 extern void latency_log_mouse_read(int fire, float dx, float dy);
 extern void latency_log_mouse_turned(void);
 extern void latency_log_mouse_late(float dx, float dy);
+/* ... a press in a menu (the D-pad, A or the left stick, a menu up), and the
+first controller's motors written */
+extern void latency_log_menu_read(int pressed, int menus);
+extern void latency_log_rumble_written(unsigned left, unsigned right);
 
 /* ---------- device tables */
 
@@ -1745,7 +1749,11 @@ enum
 	_test_latency_move,
 	_test_latency_click,
 	_test_latency_turn,
-	NUMBER_OF_TEST_LATENCY_KINDS
+	_test_latency_menu,
+	NUMBER_OF_TEST_LATENCY_KINDS,
+
+	/* the kinds played with none named: not the menu's D-pad */
+	TEST_LATENCY_DEFAULT_KINDS = (1u << _test_latency_menu) - 1
 };
 
 static struct
@@ -1766,7 +1774,7 @@ static BOOL test_latency_on(void)
 {
 	if (!test_latency.state)
 	{
-		static const char *const names[NUMBER_OF_TEST_LATENCY_KINDS] = { "fire", "move", "click", "turn" };
+		static const char *const names[NUMBER_OF_TEST_LATENCY_KINDS] = { "fire", "move", "click", "turn", "menu" };
 		const char *setting = config_string("debug.test_input");
 		const char *kinds;
 		int kind;
@@ -1779,11 +1787,11 @@ static BOOL test_latency_on(void)
 		kinds = strchr(setting + 8, ':');
 		for (kind = 0; kind < NUMBER_OF_TEST_LATENCY_KINDS; kind++)
 		{
-			if (!kinds || strstr(kinds + 1, names[kind]))
+			if (kinds && strstr(kinds + 1, names[kind]))
 				test_latency.kinds |= 1u << kind;
 		}
 		if (!test_latency.kinds)
-			test_latency.kinds = (1u << NUMBER_OF_TEST_LATENCY_KINDS) - 1;
+			test_latency.kinds = TEST_LATENCY_DEFAULT_KINDS;
 		test_latency.kind = -1;
 		test_latency.turn_direction = 1;
 	}
@@ -1824,6 +1832,9 @@ static void test_latency_gamepad(XINPUT_GAMEPAD *pad)
 		pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER] = 255;
 	else if (kind == _test_latency_move)
 		pad->sThumbLY = 32000;
+	/* (down and up in turn, which keeps to a menu's first items) */
+	else if (kind == _test_latency_menu)
+		pad->wButtons |= test_latency.pressed & 1 ? XINPUT_GAMEPAD_DPAD_DOWN : XINPUT_GAMEPAD_DPAD_UP;
 }
 
 /* (sdl_platform.c's platform_pump_events, its input lock held, after the
@@ -2379,6 +2390,10 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 			state->Gamepad.sThumbLY);
 		latency_log_mouse_read(!input.menus && (held & (1UL << HALO_KEYBOARD_FIRE)) != 0,
 			input.mouse_released ? 0.0f : input.mouse_dx, input.mouse_released ? 0.0f : input.mouse_dy);
+		latency_log_menu_read((state->Gamepad.wButtons & (XINPUT_GAMEPAD_DPAD_UP | XINPUT_GAMEPAD_DPAD_DOWN |
+			XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT)) != 0 ||
+			state->Gamepad.bAnalogButtons[XINPUT_GAMEPAD_A] >= 128 || abs(state->Gamepad.sThumbLX) >= 29490 ||
+			abs(state->Gamepad.sThumbLY) >= 29490, input.menus);
 #ifdef HALO_TOUCH_CONTROLS
 		touch_input_controls(&state->Gamepad, input.menus);
 #endif
@@ -2439,6 +2454,9 @@ DWORD WINAPI XInputSetState(HANDLE device, PXINPUT_FEEDBACK feedback)
 	feedback->Header.dwStatus = ERROR_SUCCESS;
 	if (port < 0)
 		return ERROR_DEVICE_NOT_CONNECTED;
+	/* (debug.latency_log: the impulse's step to here) */
+	if (port == 0)
+		latency_log_rumble_written(feedback->Rumble.wLeftMotorSpeed, feedback->Rumble.wRightMotorSpeed);
 #ifdef HALO_TOUCH_CONTROLS
 	/* the phone vibrates for the touch controls' player */
 	if (port == 0)

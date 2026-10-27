@@ -262,6 +262,9 @@ static void input_update_keyboard_devices(
 	void);
 static void input_flush_rumble(
 	void);
+static void input_port_write_rumble(
+	short gamepad_index,
+	boolean refresh);
 static DWORD WINAPI input_keyboard_thread(
 	void *context);
 
@@ -270,6 +273,18 @@ static DWORD WINAPI input_keyboard_thread(
 static struct input_globals input_globals = {0};
 static long gamepad_button_down_times[MAXIMUM_GAMEPADS][NUMBER_OF_GAMEPAD_BUTTONS];
 static long key_down_times[NUMBER_OF_KEYS];
+/* port: the motors last written to each gamepad, and when
+(input_port_write_rumble) */
+static word input_port_rumble_written[MAXIMUM_GAMEPADS][2];
+static unsigned long input_port_rumble_written_milliseconds[MAXIMUM_GAMEPADS];
+
+enum
+{
+	/* port: how often motors left running are written again: SDL runs them
+	for 100 ms from each write (port/linux/src/xinput_sdl.c), so a stalled
+	game (a hitch, a map loading) leaves none running */
+	INPUT_PORT_RUMBLE_REFRESH_MILLISECONDS = 33
+};
 
 static const byte gamepad_analog_button_indices[NUMBER_OF_GAMEPAD_ANALOG_BUTTONS] =
 {
@@ -557,11 +572,15 @@ void input_set_gamepad_rumbler_state(
 		0x198,
 		gamepad_index>=0 && gamepad_index<MAXIMUM_GAMEPADS);
 
-	if (!player_ui_rumble_disabled(gamepad_index))
-	{
-		input_globals.gamepad_rumbler_states[gamepad_index].left_frequency = left_speed;
-		input_globals.gamepad_rumbler_states[gamepad_index].right_frequency = right_speed;
-	}
+	/* port: with the profile's vibration off, the motors stop (they kept
+	what they had, which the game wrote again once unpaused) */
+	if (player_ui_rumble_disabled(gamepad_index))
+		left_speed = right_speed = 0;
+	input_globals.gamepad_rumbler_states[gamepad_index].left_frequency = left_speed;
+	input_globals.gamepad_rumbler_states[gamepad_index].right_frequency = right_speed;
+	/* port: written now, in the step (or the frame) that set them, not by
+	the vertical blank's thread at its next 30 Hz wake */
+	input_port_write_rumble(gamepad_index, FALSE);
 
 	return;
 }
@@ -631,11 +650,10 @@ boolean input_get_key(
 void input_vertical_blank_interrupt(
 	void)
 {
-	if (input_globals.update_event_pending)
-	{
-		SetEvent(input_globals.update_event_handle);
-	}
-
+	/* port: the update thread, woken every other vertical blank, wrote the
+	motors 30 times a second, up to a tick after the step that set them:
+	the game's thread writes them (input_set_gamepad_rumbler_state,
+	input_frame_begin) */
 	input_globals.update_event_pending = !input_globals.update_event_pending;
 
 	return;
@@ -705,6 +723,9 @@ void input_frame_begin(
 	void)
 {
 	input_get_device_states();
+	/* port: the motors kept running, or stopped for a pause or the
+	console, once a frame on this thread (input_vertical_blank_interrupt) */
+	input_flush_rumble();
 	acquire_input_mutex();
 	input_globals.frame_active = TRUE;
 
@@ -1131,35 +1152,53 @@ static void input_update_keyboard_devices(
 static void input_flush_rumble(
 	void)
 {
+	short gamepad_index;
+
+	for (gamepad_index = 0; gamepad_index < MAXIMUM_GAMEPADS; gamepad_index++)
+		input_port_write_rumble(gamepad_index, TRUE);
+
+	return;
+}
+
+/* port: a gamepad's motors written (XInputSetState) when they change, and,
+to refresh them, once INPUT_PORT_RUMBLE_REFRESH_MILLISECONDS have passed
+while they run; nothing while paused, in the console or out of a game */
+static void input_port_write_rumble(
+	short gamepad_index,
+	boolean refresh)
+{
 	boolean suppress_rumble =
 		input_globals.suppressed ||
 		console_is_active() ||
 		game_time_get_paused() ||
 		!game_in_progress();
-	short gamepad_index;
+	XINPUT_FEEDBACK *feedback = &input_globals.gamepad_feedbacks[gamepad_index];
+	word left = suppress_rumble ? 0 : input_globals.gamepad_rumbler_states[gamepad_index].left_frequency;
+	word right = suppress_rumble ? 0 : input_globals.gamepad_rumbler_states[gamepad_index].right_frequency;
+	unsigned long now;
 
-	for (gamepad_index = 0; gamepad_index < MAXIMUM_GAMEPADS; gamepad_index++)
+	if (input_globals.gamepad_handles[gamepad_index] == NULL)
+		return;
+	if (feedback->Header.dwStatus != ERROR_SUCCESS)
 	{
-		if (input_globals.gamepad_handles[gamepad_index] != NULL)
-		{
-			if (input_globals.gamepad_feedbacks[gamepad_index].Header.dwStatus == ERROR_SUCCESS)
-			{
-				input_globals.gamepad_feedbacks[gamepad_index].Rumble.wLeftMotorSpeed = suppress_rumble
-					? 0
-					: input_globals.gamepad_rumbler_states[gamepad_index].left_frequency;
-				input_globals.gamepad_feedbacks[gamepad_index].Rumble.wRightMotorSpeed = suppress_rumble
-					? 0
-					: input_globals.gamepad_rumbler_states[gamepad_index].right_frequency;
-				XInputSetState(
-					input_globals.gamepad_handles[gamepad_index],
-					&input_globals.gamepad_feedbacks[gamepad_index]);
-			}
-			else if (input_globals.gamepad_feedbacks[gamepad_index].Header.dwStatus != ERROR_IO_PENDING)
-			{
-				input_globals.gamepad_feedbacks[gamepad_index].Header.dwStatus = ERROR_SUCCESS;
-			}
-		}
+		if (feedback->Header.dwStatus != ERROR_IO_PENDING)
+			feedback->Header.dwStatus = ERROR_SUCCESS;
+		return;
 	}
+	now = system_milliseconds();
+	if (left == input_port_rumble_written[gamepad_index][0] &&
+		right == input_port_rumble_written[gamepad_index][1] &&
+		(!refresh || (!left && !right) ||
+			now - input_port_rumble_written_milliseconds[gamepad_index] < INPUT_PORT_RUMBLE_REFRESH_MILLISECONDS))
+	{
+		return;
+	}
+	feedback->Rumble.wLeftMotorSpeed = left;
+	feedback->Rumble.wRightMotorSpeed = right;
+	XInputSetState(input_globals.gamepad_handles[gamepad_index], feedback);
+	input_port_rumble_written[gamepad_index][0] = left;
+	input_port_rumble_written[gamepad_index][1] = right;
+	input_port_rumble_written_milliseconds[gamepad_index] = now;
 
 	return;
 }
