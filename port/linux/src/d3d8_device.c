@@ -1572,12 +1572,24 @@ static BOOL picture_top(void)
 #endif
 }
 
+#ifdef HALO_ANDROID
+/* the picture's place last sent to the backend (-1: none yet) */
+static int picture_top_sent = -1;
+#endif
+
 /* (between frames: halo_screen_commit) where the picture goes, to the
-backend's present: each frame, as a backend made again starts centered */
+backend's present, when it changes (Android's: elsewhere it is centered) */
 static void picture_position_send(void)
 {
-	if (device.gl_ready)
-		xgpu_backend_picture_top(picture_top());
+#ifdef HALO_ANDROID
+	int top = picture_top() ? 1 : 0;
+
+	if (device.gl_ready && top != picture_top_sent)
+	{
+		xgpu_backend_picture_top(top);
+		picture_top_sent = top;
+	}
+#endif
 }
 
 /* a point in the window, as SDL reports it, in the menus' coordinates: the

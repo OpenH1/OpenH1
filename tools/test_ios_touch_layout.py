@@ -26,9 +26,6 @@ ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "port/ios/touch_controls.m"
 
 GRID_WIDTH, GRID_HEIGHT = 960.0, 540.0
-# the lines a taller display adds its height between (touch_controls.m's TOP_ROW and LOWER_PART)
-TOP_ROW, LOWER_PART = (float(re.search(rf"#define {name} ([0-9.]+)f", SOURCE.read_text()).group(1))
-                       for name in ("TOP_ROW", "LOWER_PART"))
 MINIMUM_RADIUS_POINTS = 24.0
 MAX_MINIMUM_RADIUS = 34.0
 STICK = 16
@@ -64,19 +61,6 @@ def read_layout():
     return places, sizes, toolbar
 
 
-def display_y(line, height):
-    """a line of the grid on a display this high (touch_controls.m's display_y): the top row keeps its distance
-    from the top of a taller display, the rest its distance from the bottom"""
-    extra = height - GRID_HEIGHT
-    if extra <= 0:
-        return line * height / GRID_HEIGHT
-    if line <= TOP_ROW:
-        return line
-    if line >= LOWER_PART:
-        return line + extra
-    return TOP_ROW + (line - TOP_ROW) * (LOWER_PART - TOP_ROW + extra) / (LOWER_PART - TOP_ROW)
-
-
 def placed(screen, places, radii, toolbar):
     """each control's centre and radius, and the toolbar's, in screen points"""
     _, width, height, left, right = screen
@@ -90,7 +74,7 @@ def placed(screen, places, radii, toolbar):
             continue
         radius = max(radius, minimum)
         x = x * logical_width / GRID_WIDTH
-        y = display_y(y, logical_height)
+        y = y * logical_height / GRID_HEIGHT
         x = max(radius, min(logical_width - radius, x))
         y = max(radius, min(logical_height - radius, y))
         circles.append((f"control {index}", left + x * scale, y * scale, radius * scale))
