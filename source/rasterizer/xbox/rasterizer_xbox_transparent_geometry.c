@@ -1115,7 +1115,11 @@ static void numeric_mirrored_map(
 water shader's (their reflections, a surface's specular light), and the
 first-person weapon's own transparent parts (its displays and glows), a
 number or a meter among them: not its effects' particles (a muzzle flash is
-light), nor its shields' plasma (port/linux/src/d3d8_device.c, xgpu_hdr.h) */
+light), nor its shields' plasma; and, in the world (not the sky's), a
+surface that is light: a generic or chicago shader the map gives radiosity
+power (it lights the level: a teleporter's field, a light fixture), a
+plasma shader (an energy shield) (port/linux/src/d3d8_device.c,
+xgpu_hdr.h) */
 static int transparent_hdr_kind(
 	struct transparent_geometry_group const *group)
 {
@@ -1139,6 +1143,14 @@ static int transparent_hdr_kind(
 			TEST_FLAG(((struct shader_transparent_chicago_definition *)shader_get_and_verify_type(
 				group->shader, _shader_type_transparent_chicago))->chicago.flags, _shader_transparent_flag_numeric_bit))
 			kind |= HALO_HDR_KIND_NUMERIC;
+	}
+	else if (!TEST_FLAG(group->geometry_flags, _rasterizer_geometry_first_person_bit) &&
+		!TEST_FLAG(group->geometry_flags, _rasterizer_geometry_sky_bit) &&
+		(type == _shader_type_transparent_plasma ||
+			((type == _shader_type_transparent_generic || type == _shader_type_transparent_chicago) &&
+				group->shader->base.radiosity.power > 0.0f)))
+	{
+		kind |= HALO_HDR_KIND_LIGHT;
 	}
 	return kind;
 }

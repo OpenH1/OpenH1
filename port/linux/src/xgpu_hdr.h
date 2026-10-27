@@ -29,15 +29,19 @@ The draws' tags (nv2a_pixel_shader_key.hdr, decided by xgpu_hdr_classify):
   surfaces and the HUD whose blend could go past white (a double
   multiply, the specular passes, the fog screens, the HUD's additive art),
   so that they stay where the SDR frame has them without dimming the light
-  already there; a glow's ceiling for the deliberate glows. The backend
+  already there; a glow's ceiling (XGPU_HDR_GLOW) for the deliberate glows
+  and the surfaces of light. The backend
   blends such a draw itself in its pixel shader (reading the pixel it
   draws over), with the key's blend (XGPU_HDR_BLEND_*), and its
   fixed-function blending off. The destination's colour as a blend factor
   is the pixel's value, but one less it is never below 0.
-- XGPU_HDR_EXPAND: a glow (the first-person weapon's displays and glows, the
-  HUD's flashes and the motion tracker's blips) brightened toward its
-  ceiling where it is bright, by more of the light the draw added (its own
-  colour: what was under it is not brightened): xgpu_hdr_expand.
+- a glow's ceiling (XGPU_HDR_GLOW: the first-person weapon's displays and
+  glows; the HUD's flashes and the motion tracker's blips; the surfaces
+  that are light, the light of the world the game draws in [0, 1]: a
+  teleporter's field, a light fixture, a Covenant energy shield, a plasma
+  bolt's light volume) brightened toward the ceiling where it is bright, by
+  more of the light the draw added (its own colour: what was under it is
+  not brightened): xgpu_hdr_expand.
 - XGPU_HDR_ALPHA_LIMIT: destination alpha, which the game reads back as a
   blend factor, stays at most 1 (blended in the shader as above, its colour
   unlimited where no ceiling is set).
@@ -104,31 +108,39 @@ XGPU_HDR_ALPHA_LIMIT */
 #define XGPU_HDR_BLEND_SOURCE(hdr) ((hdr) & 15)
 #define XGPU_HDR_BLEND_DESTINATION(hdr) (((hdr) >> 4) & 15)
 #define XGPU_HDR_BLEND_OPERATION(hdr) (((hdr) >> 8) & 7)
-#define XGPU_HDR_EXPAND 0x0800
-#define XGPU_HDR_CEILING(ceiling) ((unsigned short)(((ceiling) & 3) << 12))
-#define XGPU_HDR_CEILING_OF(hdr) (((hdr) >> 12) & 3)
+#define XGPU_HDR_CEILING(ceiling) ((unsigned short)(((ceiling) & 7) << 11))
+#define XGPU_HDR_CEILING_OF(hdr) (((hdr) >> 11) & 7)
 #define XGPU_HDR_ALPHA_LIMIT 0x4000
 #define XGPU_HDR_LIGHTS 0x8000
 /* the shader blends the draw itself (its fixed-function blend is off) */
 #define XGPU_HDR_SHADER_BLENDS(hdr) (XGPU_HDR_CEILING_OF(hdr) != 0 || ((hdr) & XGPU_HDR_ALPHA_LIMIT) != 0)
+/* the draw is a glow, brightened toward its ceiling (xgpu_hdr_expand) */
+#define XGPU_HDR_GLOW(hdr) (XGPU_HDR_CEILING_OF(hdr) >= XGPU_HDR_CEILING_WEAPON)
 
 /* the ceilings, in the frame's values (sRGB's curve, extended): paper
-white; the first-person weapon's glows, 1.75 times paper white's light;
-the HUD's, 1.5 times */
+white; then the glows': the first-person weapon's, 1.75 times paper
+white's light; the HUD's, 1.5 times; the light of the world's, 3 times
+(a teleporter's field fills much of the screen: well past the surfaces,
+short of an explosion's core) */
 enum
 {
 	XGPU_HDR_CEILING_NONE,
 	XGPU_HDR_CEILING_PAPER_WHITE,
 	XGPU_HDR_CEILING_WEAPON,
 	XGPU_HDR_CEILING_HUD,
+	XGPU_HDR_CEILING_LIGHT,
 };
 #define XGPU_HDR_CEILING_PAPER_WHITE_VALUE 1.0f
 #define XGPU_HDR_CEILING_WEAPON_VALUE 1.277043f
 #define XGPU_HDR_CEILING_HUD_VALUE 1.194177f
+#define XGPU_HDR_CEILING_LIGHT_VALUE 1.612451f
 
 /* a glow's expansion: from this brightest channel of the blended pixel
-(the frame's values) up, smoothly to the ceiling at 1 */
+(the frame's values) up, smoothly to the ceiling at 1; the light of the
+world's from lower (a teleporter's field, a bolt's volume are drawn
+dimmer than the weapon's displays) */
 #define XGPU_HDR_EXPAND_KNEE 0.6f
+#define XGPU_HDR_EXPAND_LIGHT_KNEE 0.4f
 /* ... the light the draw added at most this many times more */
 #define XGPU_HDR_EXPAND_MOST 2.0f
 
@@ -204,7 +216,13 @@ static inline float xgpu_hdr_encoded(float linear)
 static inline float xgpu_hdr_ceiling_value(int ceiling)
 {
 	return ceiling == XGPU_HDR_CEILING_WEAPON ? XGPU_HDR_CEILING_WEAPON_VALUE :
-		ceiling == XGPU_HDR_CEILING_HUD ? XGPU_HDR_CEILING_HUD_VALUE : XGPU_HDR_CEILING_PAPER_WHITE_VALUE;
+		ceiling == XGPU_HDR_CEILING_HUD ? XGPU_HDR_CEILING_HUD_VALUE :
+		ceiling == XGPU_HDR_CEILING_LIGHT ? XGPU_HDR_CEILING_LIGHT_VALUE : XGPU_HDR_CEILING_PAPER_WHITE_VALUE;
+}
+
+static inline float xgpu_hdr_expand_knee(int ceiling)
+{
+	return ceiling == XGPU_HDR_CEILING_LIGHT ? XGPU_HDR_EXPAND_LIGHT_KNEE : XGPU_HDR_EXPAND_KNEE;
 }
 
 static inline float xgpu_hdr_smoothstep(float edge0, float edge1, float x)
@@ -229,7 +247,7 @@ static inline void xgpu_hdr_expand(float rgb[3], const float had[3], int ceiling
 	added_most = fmaxf(added[0], fmaxf(added[1], added[2]));
 	if (added_most <= 0.0f)
 		return;
-	more = fminf((xgpu_hdr_ceiling_value(ceiling) - 1.0f) * xgpu_hdr_smoothstep(XGPU_HDR_EXPAND_KNEE, 1.0f, most) *
+	more = fminf((xgpu_hdr_ceiling_value(ceiling) - 1.0f) * xgpu_hdr_smoothstep(xgpu_hdr_expand_knee(ceiling), 1.0f, most) *
 		most / added_most, XGPU_HDR_EXPAND_MOST);
 	for (channel = 0; channel < 3; channel++)
 		rgb[channel] += added[channel] * more;
@@ -410,6 +428,11 @@ them too) */
 #define HALO_HDR_KIND_SPECULAR 8
 /* a deliberate glow of the HUD's: a meter flashing, the motion tracker */
 #define HALO_HDR_KIND_HUD_GLOW 16
+/* a surface that is light (in the 3D view): a transparent shader the map
+says emits light (its radiosity power: a teleporter's field, a light
+fixture), a plasma shader (an energy shield), a light's volume (a plasma
+bolt's) */
+#define HALO_HDR_KIND_LIGHT 32
 #endif
 
 /* the tag (nv2a_pixel_shader_key.hdr) of a draw into the HDR back buffer */

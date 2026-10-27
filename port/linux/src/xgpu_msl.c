@@ -1393,7 +1393,8 @@ static const char *hdr_factor(int factor)
 static float hdr_ceiling(int ceiling)
 {
 	return ceiling == XGPU_HDR_CEILING_WEAPON ? XGPU_HDR_CEILING_WEAPON_VALUE :
-		ceiling == XGPU_HDR_CEILING_HUD ? XGPU_HDR_CEILING_HUD_VALUE : XGPU_HDR_CEILING_PAPER_WHITE_VALUE;
+		ceiling == XGPU_HDR_CEILING_HUD ? XGPU_HDR_CEILING_HUD_VALUE :
+		ceiling == XGPU_HDR_CEILING_LIGHT ? XGPU_HDR_CEILING_LIGHT_VALUE : XGPU_HDR_CEILING_PAPER_WHITE_VALUE;
 }
 
 /* the colour written for a tagged draw, from its source (source: the
@@ -1435,16 +1436,17 @@ static void hdr_output(struct xgpu_text *text, unsigned short hdr)
 	xgpu_text_append(text, "\t\tv = max(v, float4(0.0));\n");
 	/* (a glow: more of the light the draw added, where it is bright:
 	xgpu_hdr_expand) */
-	if (hdr & XGPU_HDR_EXPAND)
+	if (XGPU_HDR_GLOW(hdr))
 		xgpu_text_append(text,
 			"\t\tfloat3 added = max(v.rgb - d.rgb, float3(0.0));\n"
 			"\t\tfloat added_most = max(added.r, max(added.g, added.b)), most = max(v.r, max(v.g, v.b));\n"
 			"\t\tif (added_most > 0.0)\n"
 			"\t\t\tv.rgb += added * min(%.6f * smoothstep(%.6f, 1.0, most) * most / added_most, %.6f);\n",
-			hdr_ceiling(ceiling) - 1.0f, XGPU_HDR_EXPAND_KNEE, XGPU_HDR_EXPAND_MOST);
+			hdr_ceiling(ceiling) - 1.0f,
+			ceiling == XGPU_HDR_CEILING_LIGHT ? XGPU_HDR_EXPAND_LIGHT_KNEE : XGPU_HDR_EXPAND_KNEE, XGPU_HDR_EXPAND_MOST);
 	/* (a glow's ceiling keeps its hue: its brightest channel's; any other's
 	each channel's) */
-	if (ceiling && (hdr & XGPU_HDR_EXPAND))
+	if (XGPU_HDR_GLOW(hdr))
 		xgpu_text_append(text,
 			"\t\tfloat limit = max(max(d.r, max(d.g, d.b)), %.6f), brightest = max(v.r, max(v.g, v.b));\n"
 			"\t\tif (brightest > limit)\n"

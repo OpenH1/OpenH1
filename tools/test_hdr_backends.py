@@ -138,10 +138,10 @@ def test_draws_agree_on_the_gpu(harness):
     out = folder / "draws"
     subprocess.run([str(tool), str(out)], check=True)
     names = [line.split()[0] for line in (out / "index.txt").read_text().splitlines()[1:]]
-    assert len(names) == 55
+    assert len(names) == 66
     for name in names:
         _cross(out / f"{name}.spv", out / f"{name}.vk.metal", "frag", "xgpu_vk_fragment", fetch=True)
         for stem in (f"{name}.vk", name):
             (out / f"{stem}.vertex.metal").write_text(_vertex((out / f"{stem}.metal").read_text()))
     output = _run(binary, "draws", str(out))
-    assert "draws: 55 draws, 112640 values compared" in output, output
+    assert "draws: 66 draws, 135168 values compared" in output, output

@@ -22,8 +22,12 @@ fog screens) and everything drawn over the tone mapped view (the HUD, the
 menus, screen flashes) stops at paper white, or where the pixel already
 was, as the SDR frame has it. The deliberate glows the game's code names
 (halo_hdr_draw_kind: the first-person weapon's displays, meters and
-additive parts; the HUD's flashing meters and the motion tracker) are
-brightened toward their ceilings and stop there. Destination alpha, which
+additive parts; the HUD's flashing meters and the motion tracker; the
+additive surfaces that are light, which the game draws in [0, 1] though
+they stand for light brighter than any surface: a transparent shader the
+map gives radiosity power, as a teleporter's field and the light fixtures,
+a plasma shader, a light's volume, as a plasma bolt's) are brightened
+toward their ceilings and stop there. Destination alpha, which
 the game reads as a blend factor (the specular passes, the fog screens), is
 never let past 1.
 */
@@ -162,8 +166,10 @@ unsigned short xgpu_hdr_classify(const struct xgpu_hdr_draw *draw)
 	else if ((draw->kind & HALO_HDR_KIND_FIRST_PERSON) &&
 		((draw->kind & (HALO_HDR_KIND_NUMERIC | HALO_HDR_KIND_METER)) || additive))
 		glow = XGPU_HDR_CEILING_WEAPON;
+	else if ((draw->kind & HALO_HDR_KIND_LIGHT) && additive && !draw->interface)
+		glow = XGPU_HDR_CEILING_LIGHT;
 	if (glow != XGPU_HDR_CEILING_NONE && colour)
-		hdr = XGPU_HDR_EXPAND | XGPU_HDR_CEILING(glow);
+		hdr = XGPU_HDR_CEILING(glow);
 	else if (out_of_range && (surface(draw) || underflows(source, destination, operation)))
 		hdr = XGPU_HDR_CEILING(XGPU_HDR_CEILING_PAPER_WHITE);
 	if ((draw->color_mask & XGPU_WRITE_ALPHA) && overflows(source, destination, operation, TRUE))
