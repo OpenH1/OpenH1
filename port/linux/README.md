@@ -784,7 +784,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.coop_public` | `false` | `HALO_NET_COOP_PUBLIC` | `true`: an online co-op game (Create Game > ONLINE CO-OP, or Internet with a SINGLEPLAYER map) starts as PUBLIC. `false`: it starts as PRIVATE. LISTING in co-op's Server Setup writes its choice here. Refer to "Server browser". |
 | `network.brokers_file` | `"brokers.txt"` | `HALO_NET_BROKERS_FILE` | The file of the public MQTT brokers that let the machines of an invite find each other, and that carry the listings of the server browser: next to `config.toml` (else the release's, `share/openh1/brokers.txt`), unless a full path. One `host:port` on each line, up to 4; `#` starts a comment. |
 | `network.stun_servers` | Google and Cloudflare | `HALO_NET_STUN` | The public STUN servers (`host:port`, with commas between them) that give the internet address of a machine. |
-| `discord.application_id` | OpenCE's application (until OpenH1 has its own: refer to "OpenH1's Discord application") | `HALO_DISCORD_APPLICATION` | The Discord application for your status, invites and asks to join. Its name is what Discord shows you playing. Empty: no Discord. |
+| `discord.application_id` | OpenH1's application (`1561963518344036434`; refer to "OpenH1's Discord application") | `HALO_DISCORD_APPLICATION` | The Discord application for your status, invites and asks to join. Its name is what Discord shows you playing. Empty: no Discord. |
 | `discord.rich_presence` | `true` | `HALO_DISCORD_RICH_PRESENCE` | `true`: Discord shows what you do: in the menus, in a party, the game you host or play. Refer to "Discord". `false`: Discord shows nothing, and no one joins you through Discord. |
 | `discord.allow_join_requests` | `true` | `HALO_DISCORD_ALLOW_JOIN_REQUESTS` | `true`: Discord friends can ask to join your party or game (the game asks you), and you can invite them with Discord's Invite to Join. `false`: Discord shows no Join buttons, and declines asks; send your invite instead. |
 | `update.auto` | `true` | `HALO_UPDATE_AUTO` | `true`: at start-up, the game looks for a new version. Refer to "Updates". `false`: the game does not look. |
@@ -2078,36 +2078,25 @@ it. The game connects only to a Discord client of the same user.
 #### OpenH1's Discord application
 
 Discord shows the name of the application (`discord.application_id`) as
-the game that you play, and its pictures. Until OpenH1 has an application
-of its own, the game uses OpenCE's: Discord shows "OpenCE", and the logo
-alone. To make OpenH1's (a few minutes; only with the Discord account that
-is to own it):
+the game that you play, and its pictures. OpenH1's application is
+`1561963518344036434`, made at
+<https://discord.com/developers/applications> with the App Icon
+`port/assets/icon/openh1-icon.png` and these three images in **Rich
+Presence** > **Art Assets**, with these names exactly (the game sends the
+names; Discord can take a few minutes to show new art):
 
-1. Go to <https://discord.com/developers/applications> and click
-   **New Application**. Name it `OpenH1`.
-2. In **General Information**, set the **App Icon** to
-   `port/assets/icon/openh1-icon.png` and a short description (for example,
-   "Halo: Combat Evolved, open source, on every platform"). Copy the
-   **Application ID** (only digits).
-3. In **Rich Presence** > **Art Assets**, add these three images, with
-   these names exactly (the game sends the names; Discord can take a few
-   minutes to show new art):
+| Name | File | Where Discord shows it |
+| --- | --- | --- |
+| `logo` | `port/assets/discord/logo.png` | The large picture, always |
+| `party` | `port/assets/discord/party.png` | The small picture in its corner, in a party |
+| `host` | `port/assets/discord/host.png` | The small picture, when you host |
 
-   | Name | File | Where Discord shows it |
-   | --- | --- | --- |
-   | `logo` | `port/assets/discord/logo.png` | The large picture, always |
-   | `party` | `port/assets/discord/party.png` | The small picture in its corner, in a party |
-   | `host` | `port/assets/discord/host.png` | The small picture, when you host |
-
-   The SVG files beside them are their sources (1024 × 1024 pixels).
-4. Put the id in `port/linux/src/port_config.c` as the default of
-   `discord.application_id` (and in the settings table above), in place of
-   OpenCE's (`1553978809840050229`). To try it first on one computer, put
-   it in `config.toml`: `application_id = "<id>"` under `[discord]`.
-
-The game sends the small pictures only with an application other than
-OpenCE's, whose art has `logo` alone. Ask to Join, Join and Invite to Join
-need no other setting of the application.
+The SVG files beside them are their sources (1024 × 1024 pixels). To try
+another application on one computer, put it in `config.toml`:
+`application_id = "<id>"` under `[discord]`. The game sends the small
+pictures only with an application other than OpenCE's
+(`1553978809840050229`), whose art has `logo` alone. Ask to Join, Join and
+Invite to Join need no other setting of the application.
 
 ## Mods
 

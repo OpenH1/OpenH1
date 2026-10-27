@@ -1140,11 +1140,11 @@ static const struct config_setting config_settings[] =
 		"HALO_NET_STUN", _environment_value, _platform_all,
 		"Public STUN servers that tell this machine its internet address;\n"
 		"comma-separated host:port." },
-	{ "discord.application_id", _config_string, "\"1553978809840050229\"", "HALO_DISCORD_APPLICATION",
+	{ "discord.application_id", _config_string, "\"1561963518344036434\"", "HALO_DISCORD_APPLICATION",
 		_environment_value, _platform_desktop,
 		"The Discord application your status, invites and asks to join go\n"
 		"through while the Discord desktop client runs (its name is what Discord\n"
-		"shows you playing): OpenCE's until OpenH1 has its own; empty for none." },
+		"shows you playing): OpenH1's; empty for none." },
 	{ "discord.rich_presence", _config_boolean, "true", "HALO_DISCORD_RICH_PRESENCE", _environment_value,
 		_platform_desktop,
 		"Show what you are doing in Discord: in the menus, in a party, the game\n"
