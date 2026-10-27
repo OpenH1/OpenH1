@@ -620,11 +620,13 @@ static struct d3d8_device device;
 
 /* A preparation draw is needed once for each pipeline, vertex layout and
 texture revision. Geometry mirrors are still refreshed for every range:
-their contents, unlike transient draw uploads, are needed during play. */
+their contents, unlike transient draw uploads, are needed during play. The
+pipeline is its key's number (xgpu_backend_pipeline_number), not the key's
+bytes: a map's preparation looks up a key for each of its million draws. */
 #define PREPARATION_BUCKETS 4096
 struct preparation_key
 {
-	struct xgpu_pipeline_key pipeline;
+	unsigned long pipeline;
 	struct xgpu_dynamic_state dynamic;
 	struct xgpu_texture_source textures[4];
 	struct xgpu_vertex_element elements[XGPU_VERTEX_ATTRIBUTE_COUNT];
@@ -751,8 +753,8 @@ static uint32_t preparation_hash(const unsigned char *bytes, unsigned long size)
 	return hash;
 }
 
-static BOOL preparation_seen(const struct xgpu_pipeline_key *pipeline,
-	const struct xgpu_dynamic_state *dynamic, BOOL immediate, unsigned long primitive)
+static BOOL preparation_seen(unsigned long pipeline, const struct xgpu_dynamic_state *dynamic, BOOL immediate,
+	unsigned long primitive)
 {
 	struct preparation_key *key = &preparation.key;
 	const unsigned char *bytes = (const unsigned char *)key;
@@ -761,7 +763,7 @@ static BOOL preparation_seen(const struct xgpu_pipeline_key *pipeline,
 
 	if (!preparation.active || !preparation.trackable)
 		return FALSE;
-	key->pipeline = *pipeline;
+	key->pipeline = pipeline;
 	key->dynamic = *dynamic;
 	key->primitive = primitive;
 	key->sky = preparation.sky;
@@ -3450,7 +3452,9 @@ static BOOL prepare_draw(BOOL immediate, unsigned long primitive)
 	xgpu_manifest_note_pipeline(&pipeline_key);
 	preparation_time_add(2, traced);
 	traced = preparation_time();
-	preparation.duplicate = preparation_seen(&pipeline_key, &dynamic, immediate, primitive);
+	/* (the number of the key of xgpu_backend_pipeline's last call, above:
+	pipeline_key's) */
+	preparation.duplicate = preparation_seen(xgpu_backend_pipeline_number(), &dynamic, immediate, primitive);
 	preparation_time_add(1, traced);
 	if (preparation.duplicate)
 		return TRUE;
