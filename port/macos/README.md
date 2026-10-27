@@ -441,6 +441,34 @@ The process is marked latency critical while the window is open.
 `HALO_METAL_RATE=<Hz>` runs the link at that rate (another display's
 pacing tested on this one).
 
+**Fullscreen and the window server.** In a window, the window server
+composites the frame first: from the link's deadline to the screen is two
+refreshes. A fullscreen layer that covers its display can go to the display
+without compositing (direct to display): one refresh less. The layer is
+eligible as it is (opaque, `framebufferOnly`, BGRA8, its drawables at the
+window's pixel size, no other layers over it), at the display's native
+mode and at scaled ones (the display scales it). Measured on an M2 MacBook
+Air at 60 Hz (its notch, a desktop that looks like 1710x1107: 3420x2214
+pixels scaled to the panel's 2880x1864), vsync off, 120 tick, the frames'
+input to screen (`HALO_METAL_STATS`, the median of 5 s medians, ms):
+
+| Mode | Drawable | Input to screen |
+|---|---|---|
+| Window (640x480) | 1280x960 | 39 to 41 |
+| `fullscreen`, `display.resolution = "2880x1864"` (the panel's own mode) | 2880x1864 | 24 to 25 |
+| `fullscreen` at the desktop's mode | 3420x2214 | 23 to 25 |
+| `borderless` with `SDL_VIDEO_MAC_FULLSCREEN_SPACES=0` (no Space) | 3420x2214 | 24 to 25 |
+| `borderless` (the default fullscreen: a fullscreen Space, below the notch) | 3420x2146 | 24 to 25 in the menus; 40 to 43 in the game |
+| the same, the mouse not captured (a local test) | 3420x2146 | 24 to 27 |
+
+In a fullscreen Space, the window server composites the game again once the
+game captures the mouse (SDL's relative mode: the cursor hidden and kept
+from moving, `CGAssociateMouseAndMouseCursorPosition`), and the direct path
+is lost; outside a Space, the same capture keeps it. The press to its frame
+is the same in every mode (the game's side). Game Mode (on for an app in
+the games category in a fullscreen Space; not for the bare executable,
+which has no `Info.plist`) was not measured here.
+
 That pacing is `display.vsync = true`'s (iOS's default). With vsync off,
 the Mac's default (taken as the window opens, and as Settings change it),
 the display does not pace the game: it draws as many frames as
