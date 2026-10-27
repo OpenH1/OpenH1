@@ -20,6 +20,9 @@ CASES = ["tabs", "empty", "ellipsis", "ping"]
 NEGATIVE_CONTROLS = {
     "favorites-on-every-tab": (("\tcase _browser_tab_favorites:\n\t\treturn favorite;\n", ""), "tabs"),
     "legacy-as-openh1": (("\t\treturn !entry->openh1;", "\t\treturn entry->openh1;"), "tabs"),
+    "dedicated-tab-lists-all": (("\tcase _browser_tab_dedicated:\n\t\treturn entry->dedicated;\n", ""), "tabs"),
+    "dedicated-not-first": (("browser_sort_descending && a->dedicated != b->dedicated)",
+                             "browser_sort_descending && a->dedicated != b->dedicated && FALSE)"), "tabs"),
     "offline-on-every-tab": (("\tif (!browser_tab_lists_offline())\n\t\tbrowser_offline_count = 0;\n", ""), "tabs"),
     "lan-says-nothing-to-do": (("L\"No games on your network yet.\\r\\nHost one from Create Game.\"",
                                 "L\"No games.\""), "empty"),
@@ -119,9 +122,9 @@ def test_browser_layout():
                             ("right_trigger", "port browser refresh"), ("b", "gamespy back handler")):
         assert f'<on event="{event}" run="{run_name}"/>' in screen, event
     tabs = re.findall(rf'<widget name="{MT}/join_game/(tab_\w+)"[^>]*text="([^"]*)"', text)
-    assert tabs == port_settings.BROWSER_TABS == [("tab_all", "ALL"), ("tab_openh1", "OPENH1"),
-                                                 ("tab_legacy", "LEGACY"), ("tab_coop", "CO-OP"),
-                                                 ("tab_favorites", "FAVORITES")]
+    assert tabs == port_settings.BROWSER_TABS == [("tab_all", "ALL"), ("tab_dedicated", "DEDICATED"),
+                                                 ("tab_openh1", "OPENH1"), ("tab_legacy", "LEGACY"),
+                                                 ("tab_coop", "CO-OP"), ("tab_favorites", "FAVORITES")]
     # (the tabs in menu_functions.c's order)
     menus = read("port/linux/game/menu_functions.c")
     order = re.findall(r"_browser_tab_(\w+),", enum_with(menus, "_browser_tab_all"))

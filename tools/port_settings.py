@@ -3258,8 +3258,8 @@ def part_dot(size: int) -> str:
 # the list's left and width, its rows, the details panel beside it, and each
 # column's place and width in a row (menu_functions.c's browser_row_show
 # places the tick badge and the lock after the name)
-BROWSER_TABS = [("tab_all", "ALL"), ("tab_openh1", "OPENH1"), ("tab_legacy", "LEGACY"), ("tab_coop", "CO-OP"),
-                ("tab_favorites", "FAVORITES")]
+BROWSER_TABS = [("tab_all", "ALL"), ("tab_dedicated", "DEDICATED"), ("tab_openh1", "OPENH1"),
+                ("tab_legacy", "LEGACY"), ("tab_coop", "CO-OP"), ("tab_favorites", "FAVORITES")]
 BROWSER_LIST_X, BROWSER_LIST_WIDTH = 28, 404
 BROWSER_HEADERS_TOP = 104
 BROWSER_ROWS_TOP, BROWSER_ROW_HEIGHT, BROWSER_ROW_STEP, BROWSER_ROWS = 124, 18, 19, 14
@@ -4623,7 +4623,7 @@ def touch_pictures() -> list:
 
 # the chips' widths for a strip of so many (the browser's five, Host
 # Controls' three beside BACK), TOUCH_GAP + 2 apart
-TOUCH_CHIP_WIDTHS = {5: 112, 3: 116}
+TOUCH_CHIP_WIDTHS = {6: 92, 5: 112, 3: 116}
 
 
 def _touch_chips(base: str, strip: str, tabs: list, handlers: list, span: int) -> list:

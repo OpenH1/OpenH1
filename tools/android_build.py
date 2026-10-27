@@ -30,13 +30,13 @@ from typing import Any, Dict, List, Optional
 
 from .guest_arch import ARM64_32, GuestArch
 from .guest_toolchain import LLVM_VERSION, guest_toolchain
-from .build_common import (LINUX_PROFILE, MINIUPNPC_DEFINES, MINIUPNPC_DIR, MUSL_MATH_DIR, OWN_CODE_ERRORS,
+from .build_common import (LINUX_PROFILE, MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, MUSL_MATH_DIR, OWN_CODE_ERRORS,
                            PLATFORM_SEMANTICS_HEADER, QUIET_OWN_CODE_FLAGS, SEMANTICS_HEADER, STB_VORBIS_SOURCE,
                            XDK_INCLUDE, compile_launcher, configuration_defines, download, game_defines_and_includes,
                            game_sources, miniupnpc_sources, musl_math_sources, opus_cflags, opus_sources, pgo_profile,
                            profile_use_flags, updater_defines, xdk_headers)
 from . import check_host_imports
-from .embed_assets import hud_assets_build, hud_configure_inputs
+from .embed_assets import hud_assets_build, hud_configure_inputs, server_ui_build
 from .linux_package import ROOT as REPO_ROOT, notices as release_notices
 from .ninja_syntax import Writer
 from .vulkan_build import VULKAN_DIR, fetch_vulkan_headers, host_vulkan_renderer
@@ -555,15 +555,25 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     platform_cflags = platform_unit_cflags(QUIET_OWN_CODE_FLAGS)
     third_party_cflags = platform_unit_cflags(["-w"])
     guest_host_only = {"memory_watch.c"}  # replaced by guest_memory_watch.c
+    # (the posix_*.c are the host's, which the guest calls through
+    # guest_posix.c; but a dedicated server's signals, standard input and
+    # files are the guest's own calls: posix_server.c)
+    guest_posix = {"posix_server.c"}
     for source in sorted((LINUX_DIR / "src").glob("*.c")):
-        if source.name.startswith("posix_") or source.name in guest_host_only:
+        if (source.name.startswith("posix_") and source.name not in guest_posix) or source.name in guest_host_only:
             continue
-        if source.name == "updater.c" and updater_cflags:
+        # (the build's number: the updater's, and a dedicated server's
+        # --version and status)
+        if source.name in ("updater.c", "server_mode.c") and updater_cflags:
             objects.append(guest_object(source, f"{platform_cflags} {updater_cflags}"))
         else:
             objects.append(guest_object(source, platform_cflags))
     # the high-res HUD's textures (port/assets/hud; port/linux/src/hud_hires.c)
     for source in hud_assets_build(n, prefix, gen_dir / "hud_hires_assets.c"):
+        objects.append(guest_object(source, platform_cflags))
+    # a dedicated server's admin page (port/assets/server_ui;
+    # port/linux/src/server_http.c)
+    for source in server_ui_build(n, prefix, gen_dir / "server_ui_assets.c"):
         objects.append(guest_object(source, platform_cflags))
     # the settings file's parser (port/third_party/tomlc17)
     objects.append(guest_object(TOML_DIR / "tomlc17.c", third_party_cflags))
@@ -801,6 +811,18 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     host_objects += host_vulkan_renderer(n, "android", "ANDROID", BUILD, "android_host_cc",
                                          host_cflags, vulkan_headers, texture_decoding=True,
                                          astc_cxx="android_host_cxx")
+    # the server browser's requests to the master servers (host_https.c),
+    # with posix_update.c's HTTPS client and port/third_party/mbedtls, as the
+    # other posix_*.c in the host (with Mbed TLS's own locks: the browser's
+    # fetches are threads of their own)
+    mbedtls_cflags = " ".join([host_cflags, f"-I{MBEDTLS_DIR / 'include'}", f"-I{MBEDTLS_DIR / 'library'}",
+                               "-DMBEDTLS_THREADING_C", "-DMBEDTLS_THREADING_PTHREAD"])
+    for source in [LINUX_DIR / "src" / "posix_update.c", *sorted((MBEDTLS_DIR / "library").glob("*.c"))]:
+        obj = host_obj_dir / ("mbedtls_" + source.name + ".o" if source.parent.parent == MBEDTLS_DIR
+                              else source.name + ".o")
+        n.build(outputs=obj, rule="android_host_cc", inputs=source,
+                variables={"cflags": mbedtls_cflags + (" -w" if source.parent.parent == MBEDTLS_DIR else "")})
+        host_objects.append(obj)
     table_obj = host_obj_dir / "host_import_table.c.o"
     n.build(outputs=table_obj, rule="android_host_cc", inputs=host_table_c, variables={"cflags": host_cflags})
     host_objects.append(table_obj)

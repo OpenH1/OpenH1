@@ -1332,3 +1332,37 @@ void updater_poll(SDL_Window *window)
 #endif
 
 #endif
+
+/* a dedicated server's own updates (server.auto_update, OpenCE's
+updater_server_*: port/linux/game/server_director.c): not in OpenH1's
+builds yet, whose updater asks the player in a window of its own. A server
+cannot look (updater_server_check's 0: it says so once and stops looking),
+and installs nothing: what runs it updates it */
+int updater_server_check(void)
+{
+	return 0;
+}
+
+long updater_server_available(void)
+{
+	return 0;
+}
+
+int updater_server_install_start(void)
+{
+	return 0;
+}
+
+int updater_server_install_poll(char *error, int size)
+{
+	if (error && size > 0)
+	{
+		const char *why = "this build does not update itself as a server";
+		int index;
+
+		for (index = 0; why[index] && index < size - 1; index++)
+			error[index] = why[index];
+		error[index] = 0;
+	}
+	return -1;
+}

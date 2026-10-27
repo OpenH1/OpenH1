@@ -29,6 +29,17 @@ static FILE *test_fopen(const char *path, const char *mode)
 #define remove(path) remove(old_path)
 #define rename(from, to) rename(log_path, old_path)
 
+/* (a player's game, not a dedicated server's: port/linux/src/server_mode.c) */
+static int halo_server_mode(void)
+{
+	return 0;
+}
+
+static int halo_server_debug_echo(void)
+{
+	return 0;
+}
+
 #include "under_test.inc"
 
 #undef fopen

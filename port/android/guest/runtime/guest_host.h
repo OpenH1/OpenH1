@@ -146,4 +146,18 @@ void host_touch_scene(int scene);
 for the overlay's labels */
 void host_touch_bindings(const int *controls);
 
+/* ---------- HTTPS (host_https.c): the server browser's master servers, a
+dedicated server's publishing to them */
+
+/* the headers' room at the start of host_https_request's response */
+#define HOST_HTTPS_HEADERS_SIZE 4096
+/* a request (port/linux/src/update.h's update_https_request, which
+guest_https.c makes of it): "METHOD\nURL\n" and its header lines, and its
+body; into response the answer's headers (HOST_HTTPS_HEADERS_SIZE bytes,
+ended) and then its body (up to response_size - HOST_HTTPS_HEADERS_SIZE - 1
+bytes, ended), and into results its status and the body's size. 0 if no
+answer came, why in response */
+int host_https_request(const char *request, const void *body, int body_size, char *response, int response_size,
+	int *results);
+
 #endif

@@ -21,6 +21,22 @@ tests of config.toml: built with stand-ins for SDL, the platform layer
 
 static char folder[1024];
 
+/* (the platform layer's command line: none here, so no --config, --server
+or --version; and a dedicated server's private file, which none is) */
+int posix_command_line_argument(int index, char *buffer, unsigned long size)
+{
+	(void)index;
+	(void)buffer;
+	(void)size;
+	return 0;
+}
+
+int posix_server_private_file(const char *path)
+{
+	(void)path;
+	return 1;
+}
+
 /* (install_layout.c's: the folder of config.toml) */
 const char *install_config_folder(void)
 {

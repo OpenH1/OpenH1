@@ -81,7 +81,7 @@ WINDOWS_GUEST_DEFINES = ["-DHALO_WINDOWS=1", "-DHALO_VULKAN=1", "-mno-red-zone",
 # the host's files of port/android/host (the rest is port/windows/host's: the
 # memory below 4 GB, threads on low stacks, Windows's system calls, the
 # exception handlers, the entry point)
-SHARED_HOST_SOURCES = ["host_audio_route.c", "host_common.c", "host_loader.c", "host_memory_watch.c",
+SHARED_HOST_SOURCES = ["host_audio_route.c", "host_common.c", "host_https.c", "host_loader.c", "host_memory_watch.c",
                        "host_render_record.c", "host_render_stream.c", "host_screenshot.c", "host_sdl.c",
                        "host_watch_hash.c"]
 # the posix.h and update.h functions the guest's platform layer calls, on
@@ -360,5 +360,9 @@ def _generate_host(n: Writer, sln: Any, guest: Dict[str, Path]) -> None:
     n.build(outputs=sdl_dll, rule="windows_copy", inputs=SDL_DIR / "lib" / "x64" / "SDL3.dll")
     brokers = BUILD / "brokers.txt"
     n.build(outputs=brokers, rule="windows_copy", inputs=Path("port/assets/network/brokers.txt"))
-    n.build(outputs="windows", rule="phony", inputs=[output, sdl_dll, brokers])
+    # the master servers of dedicated servers, a file beside the game too
+    # (network.masters_file, server.masters_file)
+    masters = BUILD / "masters.txt"
+    n.build(outputs=masters, rule="windows_copy", inputs=Path("port/assets/network/masters.txt"))
+    n.build(outputs="windows", rule="phony", inputs=[output, sdl_dll, brokers, masters])
     n.newline()

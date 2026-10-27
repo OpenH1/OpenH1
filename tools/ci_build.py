@@ -255,6 +255,10 @@ def main() -> int:
     # internet play's MQTT brokers, a file beside the game (network.brokers_file;
     # Android's APK and the macOS app have their own copies)
     shutil.copy2(ROOT / "port/assets/network/brokers.txt", dist / "brokers.txt")
+    # the master servers that list dedicated servers, for the server browser
+    # and the dedicated server (network.masters_file, server.masters_file:
+    # docs/dedicated_server.md)
+    shutil.copy2(ROOT / "port/assets/network/masters.txt", dist / "masters.txt")
     return 0
 
 

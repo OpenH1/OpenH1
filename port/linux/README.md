@@ -743,6 +743,8 @@ the setting for one start of the game. It has priority over the file.
 | `bots.fill_to` | `16` | `HALO_BOTS_FILL_TO` | With `bots.make_room`, the players and bots a system link or internet game is filled to (2 to 128; no more than its most players). FILL TO on Server Setup's BOTS screen writes it. |
 | `paths.data` | `""` | `HALO_DATA_ROOT` | The data root. Refer to "Start the game". |
 | `paths.saves` | `""` | `HALO_SAVE_ROOT` | The save root. Refer to "Files and folders". |
+| `paths.logs` | `""` | `HALO_LOG_ROOT` | The folder of `debug.txt`, `bans.txt` and `cheaters.txt`. Empty: the data root. With it, the data root can be read-only (a dedicated server's maps mounted so). |
+| `paths.custom_maps` | `""` | `HALO_CUSTOM_MAPS_ROOT` | The `custom_maps` folder (Custom Edition maps, with their `bitmaps.map`, `sounds.map` and `loc.map`). Empty: the one in the data root. |
 | `network.address` | `""` | `HALO_NET_ADDRESS` | The IPv4 address of this machine for system link. Refer to "Play on one computer". |
 | `network.broadcast` | `""` | `HALO_NET_BROADCAST` | IPv4 addresses, with commas between them, that get the broadcasts of the game. Empty: 255.255.255.255. |
 | `network.port` | `5150` | `HALO_NET_PORT` | The UDP port of system link games (the Xbox's); the clients' is the next. Another port lets copies of the game host side by side on one computer (tests, dedicated setups). A LAN game on another port is found only by machines set to the same port. Refer to "Play on one computer". |
@@ -770,7 +772,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.voice_mode` | `"team_global_enemy_proximity"` | `HALO_NET_VOICE_MODE` | When you host: who hears whom during a game. `"off"`; `"team_proximity"` (teammates who are near); `"team_enemy_proximity"` (all players who are near); `"team_global"` (all teammates); `"team_global_enemy_proximity"` (all teammates, and enemies who are near). Refer to "Voice chat". |
 | `network.voice_kbps` | `24` | `HALO_NET_VOICE_KBPS` | When you host: the voice quality in the lobby and in a game, in kilobits per second, `8` to `64`. |
 | `network.voice_proximity` | `15.0` | `HALO_NET_VOICE_PROXIMITY` | When you host: the distance in world units (1 unit is approximately 3 metres) at which players are near, for voice chat. `5` to `100`. |
-| `network.text_chat` | `"on"` | `HALO_NET_TEXT_CHAT` | When you host: the text chat. `"on"`, lines with links refused; `"links"`, links allowed; `"off"`, no chat (in either case). Always off in a game listed in the server browser. TEXT CHAT in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. Refer to "Text chat". |
+| `network.text_chat` | `"on"` | `HALO_NET_TEXT_CHAT` | When you host: the text chat. `"on"`, lines with links refused; `"links"`, links allowed; `"off"`, no chat (in either case). Always off in a game a player hosts that is listed in the server browser; a dedicated server's follows it, listed or not. TEXT CHAT in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. Refer to "Text chat". |
 | `network.votekick` | `true` | `HALO_NET_VOTEKICK` | When you host: `true`, the players can vote to kick a player. Refer to "Security". `false`: no votes. VOTE KICK in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. |
 | `network.votekick_minutes` | `5` | `HALO_NET_VOTEKICK_MINUTES` | When you host: the minutes that a player must play on the server before the player can start a vote to kick (`0` to `60`). To vote, a player must play for 2 minutes, or for this time if it is less. |
 | `network.votekick_ban_minutes` | `30` | `HALO_NET_VOTEKICK_BAN_MINUTES` | When you host: the minutes that a player who is kicked by a vote cannot join again (`1` to `1440`). |
@@ -784,6 +786,50 @@ the setting for one start of the game. It has priority over the file.
 | `network.coop_public` | `false` | `HALO_NET_COOP_PUBLIC` | `true`: an online co-op game (Create Game > ONLINE CO-OP, or Internet with a SINGLEPLAYER map) starts as PUBLIC. `false`: it starts as PRIVATE. LISTING in co-op's Server Setup writes its choice here. Refer to "Server browser". |
 | `network.brokers_file` | `"brokers.txt"` | `HALO_NET_BROKERS_FILE` | The file of the public MQTT brokers that let the machines of an invite find each other, and that carry the listings of the server browser: next to `config.toml` (else the release's, `share/openh1/brokers.txt`), unless a full path. One `host:port` on each line, up to 4; `#` starts a comment. |
 | `network.stun_servers` | Google and Cloudflare | `HALO_NET_STUN` | The public STUN servers (`host:port`, with commas between them) that give the internet address of a machine. |
+| `network.client_timeout_seconds` | `15` | `HALO_NET_CLIENT_TIMEOUT_SECONDS` | Hosting: the seconds the host waits for a machine it hears nothing from before it drops it (5 to 300; the stock game waits 15). The same seconds are how long each machine's reliable stream waits for its peer to read before it gives up, and how long a host in a game waits for its own network to come back (an address renewed, a wifi drop) before it ends the game; each machine reads its own setting. A longer wait keeps players whose connection stalls (a browser tab in the background), but a machine that is really gone leaves its players frozen for longer. |
+| `network.public_address` | `""` | `HALO_NET_PUBLIC_ADDRESS` | Hosting: the internet address the joiners reach this machine at, `host[:port]` (the port forwarded to `network.tunnel_port`), for a server behind a NAT with one forwarded port. It is offered first, and its name is looked up again every 5 minutes. Empty: what STUN and UPnP find. |
+| `network.listings` | `"both"` | `HALO_NET_LISTINGS` | What the server browser lists. `"both"`: the dedicated servers of the master servers first, then the games players host (from the brokers). `"masters"`: the master servers' only. `"brokers"`: the brokers' only. Refer to "Server browser". |
+| `network.masters_file` | `"masters.txt"` | `HALO_NET_MASTERS_FILE` | The file of the master servers the server browser asks for dedicated servers, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`), 4 at most. A file that names none (missing, or comments alone, as the release's) leaves the official master, built in (`https://master.opencommunityedition.com`). Refer to "Dedicated server". |
+| `server.enabled` | `false` | `HALO_SERVER` | `true`: run as a dedicated server, as `halo --server` does. Refer to "Dedicated server". The `server.*` settings are written to `config.toml` only by a dedicated server. |
+| `server.name` | `"OpenH1 Server"` | `HALO_SERVER_NAME` | The game's name in the lobby and the server browser: 15 characters of printable ASCII. |
+| `server.max_players` | `16` | `HALO_SERVER_MAX_PLAYERS` | The most players (2 to 127). |
+| `server.min_players` | `1` | `HALO_SERVER_MIN_PLAYERS` | The players in the lobby before it counts down to a game (1 to 16). |
+| `server.password` | `""` | `HALO_SERVER_PASSWORD` | The password the server browser asks for (an invite link joins without it). Empty: none. It is never logged. `HALO_SERVER_PASSWORD_FILE` names a file whose first line is it instead (a container's secret; pinned, as the variable would be). |
+| `server.public` | `true` | `HALO_SERVER_PUBLIC` | `true`: the server is in everyone's server browser (on the master servers, with `network.online`). `false`: players join with its invite link, or on the LAN. |
+| `server.rotation` | `"bloodgulch:ctf, sidewinder:team_slayer, prisoner:slayer"` | `HALO_SERVER_ROTATION` | The games, played one after another: `map[:gametype[+rule=value...]]`, separated by commas, semicolons or new lines, 64 at most (an entry 255 characters, the whole 4096); a line that begins with `#` is a comment. A map is a multiplayer map's name (`bloodgulch`), `custom_maps\<name>` or a level's path; a gametype is a built-in gametype's name (`slayer`, `team_slayer`, `ctf`...), an OpenCE gametype's (`swat`...), a gametype file's (`gametypes/<name>.toml`) or `file=<saved gametype>`. An entry that cannot be played is left out with a warning. A change of the rotation (a command, the web page, `sv_reload`) keeps its place: the next game is the entry after the one played last. Refer to `docs/dedicated_server.md`, "The rotation". |
+| `server.rotation_fallback` | `false` | `HALO_SERVER_ROTATION_FALLBACK` | `true`: with no entry of `server.rotation` that can be played, play `bloodgulch:slayer`. `false`: stop (exit code 3). |
+| `server.lobby_seconds` | `15` | `HALO_SERVER_LOBBY_SECONDS` | The seconds the lobby counts down once `server.min_players` are in (0 to 300; `0`: the game starts at once). |
+| `server.postgame_seconds` | `12` | `HALO_SERVER_POSTGAME_SECONDS` | The seconds the scores show after a game (0 to 300). |
+| `server.empty_seconds` | `30` | `HALO_SERVER_EMPTY_SECONDS` | The seconds a game with nobody in it goes on before it ends. `0`: it does not end. A game whose last player leaves ends at once, as the game ends it. |
+| `server.idle_minutes` | `0` | `HALO_SERVER_IDLE_MINUTES` | The minutes a game goes on with no score before it ends. `0`: it does not end. |
+| `server.team_start` | `"one"` | `HALO_SERVER_TEAM_START` | A team game. `"one"`: it starts with the players of one team (the next players to join balance the teams). `"both"`: it waits, saying nothing, for a player on each team. `"skip"`: while one player waits, a team game (not one `sv_map` asked for) gives way to the rotation's next entry without teams, if it has one; checked when the lobby opens and again when its countdown would begin. |
+| `server.motd` | `""` | `HALO_SERVER_MOTD` | A notice each machine sees when it joins (127 characters). Empty: none. |
+| `server.frame_rate` | `60` | `HALO_SERVER_FRAME_RATE` | The frames a second (30 to 120); the game's ticks stay at 30 a second. A server with no other machine runs 10 frames a second. |
+| `server.console`, `server.console_exit_on_eof` | `true`, `false` | `HALO_SERVER_CONSOLE`, `HALO_SERVER_CONSOLE_EXIT_ON_EOF` | `true`: the server takes commands from the standard input; it stops when the standard input ends if `server.console_exit_on_eof` is `true` (a panel can close it), after running the last line, whether or not a line's end ended it. |
+| `server.init_file` | `"init.txt"` | `HALO_SERVER_INIT_FILE` | The commands run once at the start, one on each line: in the data root unless a full path. Empty: none. |
+| `server.web_port`, `server.web_bind` | `8080`, `"127.0.0.1"` | `HALO_SERVER_WEB_PORT`, `HALO_SERVER_WEB_BIND` | The TCP port and IPv4 address of the web page, its API and the remote console (RCON). `0`: none. With an address beyond loopback, each web password that is set must have 8 characters or more, else the server stops (exit code 3, as for a port it may not bind or an address the machine does not have; a port in use: exit code 4); put a reverse proxy with TLS in front of it. Each server on a machine needs its own port. Read at the start only. |
+| `server.web_password` | `""` | `HALO_SERVER_WEB_PASSWORD` | The admin password of the web page (8 characters or more). Empty: the server makes one at the first start, shows it once and writes it here. |
+| `server.web_owner_password` | `""` | `HALO_SERVER_WEB_OWNER_PASSWORD` | A password with the owner role, for a supervisor on the server's own machine (a fleet's agent, a panel): over the API and the RCON it does what the standard input does (`quit`, `sv_stop`, `sv_restart`, the owner's settings, the game's console commands, the players' addresses). It signs in from `127.0.0.0/8` alone, never through `server.web_trusted_proxy`; from another address it is refused (`403 forbidden`) and counted as a wrong password. 8 characters or more (else the server exits with code 3). Empty: none. `sv_set` does not change it (`config.toml` and `sv_reload`). |
+| `server.web_moderator_password`, `server.web_viewer_password` | `""` | `HALO_SERVER_WEB_MODERATOR_PASSWORD`, `HALO_SERVER_WEB_VIEWER_PASSWORD` | Other passwords: the moderator role (kick, mute, say, the next map, bans of one day at most) and the viewer role (the status, the players and the log; no changes). 8 characters or more when the web port is bound beyond loopback (else the server exits with code 3; on loopback, a warning). Empty: none. `sv_set` changes the moderator password, not the viewer password (`config.toml` and `sv_reload`). Each web password's variable has a `_FILE` form (`HALO_SERVER_WEB_PASSWORD_FILE`, `HALO_SERVER_WEB_OWNER_PASSWORD_FILE`...): when the variable is not set, the file's first line is the password, pinned as the variable would be; read at the start. |
+| `server.web_ui` | `true` | `HALO_SERVER_WEB_UI` | `false`: the web port serves the API and RCON, but not the admin page. |
+| `server.web_trusted_proxy` | `""` | `HALO_SERVER_WEB_TRUSTED_PROXY` | The address of a reverse proxy in front of the web port: its `X-Forwarded-For` (the last entry, the one the proxy added, an IPv4 or IPv6 address with or without a port), `-Host` and `-Proto` headers are believed, and a sign-in through it with `X-Forwarded-Proto: https` gets a `Secure` cookie. Empty: none. |
+| `server.metrics` | `true` | `HALO_SERVER_METRICS` | `true`: the web port serves `/metrics` (Prometheus) without a password. |
+| `server.log_format` | `"text"` | `HALO_SERVER_LOG_FORMAT` | The standard output's lines: `"text"` or `"json"`. |
+| `server.log_addresses` | `false` | `HALO_SERVER_LOG_ADDRESSES` | `true`: the players' internet addresses and hardware IDs are in the log, the events and the API for every role (the owner's console always has them). |
+| `server.log_debug_echo` | `false` | `HALO_SERVER_LOG_DEBUG_ECHO` | `true`: the lines of `debug.txt` are also written to the standard error. |
+| `server.status_file` | `""` | `HALO_SERVER_STATUS_FILE` | A file the status (as `/api/status` gives it) is written to every 2 seconds, for a panel without HTTP. Empty: none. |
+| `server.auto_update` | `"off"` | `HALO_SERVER_AUTO_UPDATE` | `"check"`: every 6 hours, the server looks for a newer release and logs it. `"install"`: it also installs it once the server has been empty for 10 minutes (on a thread of its own, the server playing on meanwhile), and stops with exit code 5, once it is empty, to be started again; an install that fails is tried again at the next check. `"off"`: neither. |
+| `server.upnp` | `false` | `HALO_SERVER_UPNP` | `true`: ask the router (UPnP) to forward the tunnel's port (as `network.allow_upnp`, for a server at home). |
+| `server.coop_difficulty` | `"normal"` | `HALO_SERVER_COOP_DIFFICULTY` | The difficulty of co-op entries of the rotation (`<level>:coop`): `"easy"`, `"normal"`, `"hard"` or `"impossible"`. |
+| `server.list_on_brokers` | `false` | `HALO_SERVER_LIST_ON_BROKERS` | `true`: the server is also listed with the games players host (through the brokers), for server browsers without master servers. |
+| `server.master_publish` | `true` | `HALO_SERVER_MASTER_PUBLISH` | `true`: a public server is published to the master servers, signed with the publisher key. |
+| `server.masters_file` | `"masters.txt"` | `HALO_SERVER_MASTERS_FILE` | The master servers the server is published to, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`). None named: the official master, built in. |
+| `server.publisher_key_file` | `"publisher.key"` | `HALO_SERVER_PUBLISHER_KEY_FILE` | The operator's Ed25519 key for the master servers (`halo --server --keygen` makes it), next to `config.toml` unless a full path. In a container, `HALO_SERVER_PUBLISHER_KEY` can hold the key itself. |
+| `server.instance` | `""` | `HALO_SERVER_INSTANCE` | A short name that tells this server from the operator's other servers on the master servers (letters, digits, `-` and `_`). Empty: made from `server.name`. |
+| `server.region` | `""` | `HALO_SERVER_REGION` | A region the server browser shows (`eu`, `na-east`...): 16 characters. Empty: none. |
+| `server.chat_filter` | `"off"` | `HALO_SERVER_CHAT_FILTER` | The words the server keeps out of its chat and its players' names (streamer mode's list): `"off"`; `"censor"`, a line's words shown as stars; `"block"`, a line with them refused (its sender told why) and a player whose name has them refused at the door. Links are `network.text_chat`'s. |
+| `server.chat_filter_slurs`, `server.chat_filter_swearing`, `server.chat_filter_insults` | `"mild"`, `"off"`, `"off"` | `HALO_SERVER_CHAT_FILTER_SLURS`, `_SWEARING`, `_INSULTS` | With `server.chat_filter`, each group's words kept out: `"off"`, `"severe"` (the worst), `"strong"` or `"mild"` (all). |
+| `server.master_publish_address` | `false` | `HALO_SERVER_MASTER_PUBLISH_ADDRESS` | `true`: the master servers can give this server's address to players. `false`: only their probe uses it. |
 | `discord.application_id` | OpenH1's application (`1561963518344036434`; refer to "OpenH1's Discord application") | `HALO_DISCORD_APPLICATION` | The Discord application for your status, invites and asks to join. Its name is what Discord shows you playing. Empty: no Discord. |
 | `discord.rich_presence` | `true` | `HALO_DISCORD_RICH_PRESENCE` | `true`: Discord shows what you do: in the menus, in a party, the game you host or play. Refer to "Discord". `false`: Discord shows nothing, and no one joins you through Discord. |
 | `discord.allow_join_requests` | `true` | `HALO_DISCORD_ALLOW_JOIN_REQUESTS` | `true`: Discord friends can ask to join your party or game (the game asks you), and you can invite them with Discord's Invite to Join. `false`: Discord shows no Join buttons, and declines asks; send your invite instead. |
@@ -798,7 +844,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.update_from` | `""` | `HALO_UPDATE_FROM` | A release's zip file to update to, for tests of updates: the game offers it as a new version without asking GitHub, also when the build has no build number, but not in the version that the update starts. Empty: the game asks GitHub. |
 | `debug.load_trace` | `false` | `HALO_LOAD_TRACE` | Log map loading checkpoints with absolute monotonic wall, thread and process CPU seconds. Subtract timestamps to measure phases; process CPU includes worker threads. Set `HALO_LOAD_TRACE_DETAIL=1` to add sampled preparation CPU timings and detailed renderer traces; measure final loading times without these extra diagnostics. |
 | `debug.fixed_step` | `false` | `HALO_FIXED_STEP` | `true`: a game of this computer alone runs one step a frame (a tick at `game.sim_rate` 30, a sub-step at 60 and 120), whatever time has passed, so that it plays the same every time (tests). |
-| `debug.exit_after` | `0.0` | `HALO_EXIT_AFTER` | The game stops after this number of seconds (from when its window opens; with `debug.null_renderer`, or no display, from its first frame). `0`: never. |
+| `debug.exit_after` | `0.0` | `HALO_EXIT_AFTER` | The game stops after this number of seconds (from when its window opens; with `debug.null_renderer`, or no display, from its first frame; a dedicated server stops as `quit` stops it). `0`: never. |
 | `debug.screenshot_directory`, `debug.screenshot_every` | `""`, `0` | `HALO_SCREENSHOT_DIR`, `HALO_SCREENSHOT_EVERY` | The game writes each Nth frame to this folder as a BMP file. |
 | `debug.screenshot_stream` | `""` | `HALO_SCREENSHOT_STREAM` | With `debug.screenshot_every`, a file each frame's pixels are appended to instead of the folder's BMP files: BGRA, the top row first, no header (a named pipe an encoder reads, `ffmpeg -f rawvideo -pix_fmt bgra -s <width>x<height>`), so that a long run's frames never reach the disk. |
 | `debug.screenshot_from`, `debug.screenshot_until` | `0`, `0` | `HALO_SCREENSHOT_FROM`, `HALO_SCREENSHOT_UNTIL` | With `debug.screenshot_every`, only the frames between these seconds of the scenario's simulation (the clock of `debug.trace` and `debug.test_input`'s scripts; `0`: no bound) are written: a part of a long run, run again the same way. |
@@ -1631,14 +1677,18 @@ ON (the default: a line with a link, such as `discord.gg/...`,
 `example.com`, `www.`, an address, or `example [dot] com`, is refused),
 WITH LINKS, or OFF. A domain that is a word as well (`.me`, `.to`, `.is`)
 counts only with a path after it (`youtu.be/...`), so that `go.to` and
-`he.is` are not refused. A game listed in
+`he.is` are not refused. A game a player hosts that is listed in
 the server browser (a public internet game) never has the text chat,
 whatever it says (TEXT CHAT shows OFF there, and cannot be changed, while
 LISTING is PUBLIC); a private game, joined by its invite, and a LAN game have
-it as chosen. A player who joins a game from the server browser has no text
-chat in it even if its host turns it on: their game takes no line from that
-host and sends none. Pressing T where the chat is off says so, and a refused line
-tells its sender why.
+it as chosen. A player who joins such a game from the server browser has no
+text chat in it even if its host turns it on: their game takes no line from
+that host and sends none. A dedicated server is the exception: its own
+`network.text_chat` decides (on by default, and its operator can turn it
+off, or allow links), listed or not, and a player who joins it from the
+server browser's dedicated servers (a master server's list, which names
+approved operators alone) has the chat as it says. Pressing T where the chat
+is off says so, and a refused line tells its sender why.
 
 On the scoreboard (right-click, then click the player), Mute voice and chat
 mutes a player for you alone: you no longer see their lines or hear their
@@ -1769,6 +1819,74 @@ Sorting and the tabs, in all three lists, for this run of the game:
   Legacy ones only, co-op games, or the favorites.
 - Favorites stay at the top, sorted the same way among themselves; those
   not found stay at the bottom of All and Favorites, grey.
+
+The browser lists two kinds of games: the dedicated servers that the
+master servers list (`masters.txt`, `network.masters_file`; the official
+master, `https://master.opencommunityedition.com`, built in, when the file
+names none), and the games
+that players host, which come through the brokers. `network.listings`
+chooses the kinds that the browser asks for: both (the default), only the
+master servers, or only the brokers.
+
+- The top-left tab chooses the games that the list shows: DEDICATED (at
+  first), P2P GAMES or ALL GAMES (left and right, `network.browser_source`).
+  When `network.listings` is `"masters"`, the tab shows DEDICATED only;
+  when it is `"brokers"`, P2P GAMES only.
+  PLAYERS, the sum of the players in the games shown, is in the middle tab.
+- The column titles sort the list (A or Enter on a title, or a click).
+  The titles are: server name, map, game, players, the lock (the games
+  with a password first) and the dedicated icon (dedicated servers first).
+  A second choice of the same title reverses the order, and an arrow on
+  the title shows the direction. The default order is dedicated servers
+  first, then the games with the most players, then by name. The browser
+  keeps the order in `network.browser_sort`.
+- FILTERS opens the Filters screen of Custom Edition. It has SHOW EMPTY
+  SERVERS, SHOW FULL SERVERS, GAME TYPE (ANY or one game engine) and SHOW
+  MISSING MAPS (NO, YES, or IF DOWNLOADABLE, for a Custom Edition map that
+  Map Sharing can download when you join). OK writes the
+  `network.browser_*` settings. Settings > Network Setup > SERVER BROWSER
+  writes the same settings, and also shows LISTS, SORT BY (DEDICATED FIRST,
+  PLAYERS, NAME, MAP, GAME TYPE or LOCKED FIRST; an order that a title reversed
+  shows as the same choice) and MASTER SERVERS
+  (the number of master servers that answered the last request of the
+  browser, for example `2 OF 2`). The PING and TEAMPLAY OPTIONS rows of
+  Custom Edition are not on the Filters screen.
+- A dedicated server's row shows the dedicated icon of Custom Edition.
+  Instead of a ping, a dedicated server shows its region (EU, NA-E),
+  because the browser does not ping the servers that the master servers
+  list. The row shows JOINING while a join runs. A game of another network
+  version stays in the list in grey, after the other games, with NEWER or
+  OLDER. Its row does not join the game: it shows the message about the
+  version. The server count above the list adds the number of dedicated
+  servers (`SERVERS: 8 (5 dedicated)`) when the list shows all the games on
+  one page. PAGE shows only when the list has more than one page.
+- The two lines below the list describe the selected game. The first line
+  shows its players, map, game and region. The second line shows where the
+  game comes from: "Dedicated server by <publisher>, listed on N master
+  servers" (the operator's name comes from the master server, and only this
+  line shows it), "Hosted by a player (anonymous listing)", "Password
+  required", or, for a game of another version, the update that it needs.
+  During a join, the second line shows the steps of the join, and how many
+  seconds it has taken. The steps are: the request to the brokers for the
+  host, the answer of the host and the connection attempt (UDP hole
+  punching), and the connection to the host. If the join fails, the line
+  shows the reason:
+  - the host did not answer;
+  - no route to the host (the line says strict NAT when that is the cause);
+  - the host refused the join: the game is full or closed, this machine is
+    banned, the password is wrong, the version is different, or the invite
+    changed.
+  The browser shows a refusal when it opens again after the main menu
+  error.
+- If no master server answers but the brokers do, the second line shows "No
+  master server answered: showing player-hosted games only", and the list
+  shows the games from the brokers. An error panel covers the list in two
+  cases: internet play is off, or nothing answers (no master server and no
+  broker) after 15 seconds. OK, Enter or B closes the panel.
+- In the lobby of a dedicated server, the panel at the right shows the
+  name of the server and "dedicated" on its first line. It shows "Waiting
+  for players" while the server waits for enough players
+  (`server.min_players`) to start its countdown.
 
 How it operates (`src/p2p_lobby.c`):
 
@@ -2103,6 +2221,101 @@ another application on one computer, put it in `config.toml`:
 pictures only with an application other than OpenCE's
 (`1553978809840050229`), whose art has `logo` alone. Ask to Join, Join and
 Invite to Join need no other setting of the application.
+
+## Dedicated server
+
+`halo --server` (or `server.enabled = true`) runs the game as a host with no
+window, sound or player of its own, for a VPS, a container or a game panel.
+It hosts the games of `server.rotation` one after another: the lobby counts
+down when `server.min_players` are in, the game is played, its scores show,
+and the lobby opens with the next entry. Players join it as they join any
+host: on the LAN, with its invite link, or from the server browser.
+`docs/dedicated_server.md` is the reference: the command line, the exit
+codes, the commands, the HTTP API, the remote console, the events and the
+files.
+
+```sh
+./halo --server                                  # the settings of config.toml
+HALO_SERVER_ROTATION="bloodgulch:ctf, prisoner:slayer+score=25" ./halo --server
+./halo --server --config /srv/opence/config.toml
+```
+
+The server needs the game data (`maps/`, as for the game); without
+`maps/ui.map` it stops at once with exit code 2. At the first start it
+writes the `server.*` settings to `config.toml` (they are written only by a
+server) and a web password if there is none. It writes one line for each
+event to the standard output (`server.log_format = "json"` for JSON
+lines), and the game's own log to `debug.txt` as the game does
+(`paths.logs` moves it, so that the data root can be read-only).
+
+- **Commands.** The standard input, `init.txt` (`server.init_file`) and the
+  web page take the same commands: `sv_status`, `sv_players`, `say`, `tell`,
+  `kick`, `ban <player> 2h <reason>`, `unban`, `mute`, `sv_map`,
+  `sv_map_next`, `sv_end_game`, `sv_rotation_set`, `sv_set <setting>
+  <value>`, `sv_reload`, `sv_ban_address <address|hardware id>`,
+  `sv_stop [now|game|empty] [notice]`, `sv_restart`, `quit`. `help` lists
+  them. `sv_stop game` (or `empty`) withdraws the listings, refuses new
+  players and stops once the game is over (or nobody plays), without
+  cutting a game short; `sv_stop cancel` undoes it. The game's own console
+  commands need the owner role: the standard input and `init.txt` take
+  them, and the web page and the remote console with
+  `server.web_owner_password` from the machine itself; with another
+  password they do not (and `kick` and `ban` are always the server's).
+- **Web page.** `server.web_port` (8080, on `127.0.0.1`) serves an admin
+  page, a JSON API, a remote console over WebSocket, `/healthz` and
+  `/metrics`. Sign in with `server.web_password` (the admin); the moderator
+  and viewer passwords give fewer rights, and `server.web_owner_password`,
+  from the machine itself alone, the owner's. To reach it from another
+  computer, use an SSH tunnel, or a reverse proxy with TLS,
+  `server.web_bind` and `server.web_trusted_proxy`; bound beyond loopback,
+  every web password must have 8 characters or more.
+- **Signals.** SIGTERM and SIGINT stop the server cleanly (a game in
+  progress shows its scores, every machine is told, the listings are
+  withdrawn); SIGHUP reads the settings and the rotation again.
+- **Listing.** A public server (`server.public`) with `network.online` is
+  published to the master servers of `masters.txt`, signed with the
+  operator's key: `halo --server --keygen` makes `publisher.key` and prints
+  the public key, which the operator gives to a master server's Discord
+  bot: `/apply` in the master's Discord server (the master's `/apply` page
+  links to it), with `halo --server --sign <nonce>`'s proof of key. Until a
+  master approves it, the server is not listed
+  there (its log says so), but players can join it with its invite link
+  and on the LAN. A change the lists show (public or private, the
+  players, the name, the map) is published within 5 seconds; made
+  private, the server makes a new invite and takes itself off the
+  masters' lists, as `network.public_lobby = false` does
+  (`docs/dedicated_server.md`, "The listing"). `server.list_on_brokers`
+  also lists it with the games players host. A player's public game is published to the masters too
+  when `publisher.key` is next to `config.toml` (not as a dedicated
+  server), and withdrawn when it ends. `docs/master_protocol.md` is the
+  protocol.
+- **Ports.** The tunnel's UDP port (`network.tunnel_port`, 2302 for a
+  server) must be reachable from the internet; `network.public_address`
+  names the address and forwarded port behind a NAT. The web port is TCP
+  and best kept private.
+- **Updates.** `server.auto_update = "install"` installs a new release once
+  the server has been empty for 10 minutes (on a thread of its own: the
+  server goes on meanwhile), and stops with exit code 5, once it is empty,
+  so that what runs it (systemd, Docker, a panel) starts the new build. An
+  install that fails is tried again at the next check, 6 hours later.
+- **Probe.** `halo --probe <invite>` prints the state of the invite's game
+  (a server's name, map, gametype and players) as one line of JSON, for a
+  list site, and exits: the game of the invite's host alone. It never
+  starts a server, whatever the settings say, and writes nothing to
+  `config.toml`.
+
+OpenCE's `deploy/` folder (a systemd unit, a Docker image, a Helm chart, panels'
+templates, example gametype files and `init.txt`) is not in OpenH1; its
+files work with OpenH1's server too, run as `bin/openh1 --server`.
+
+**Fleets.** For many servers on many machines, beside the panels,
+`opence-fleet`
+([github.com/OpenCommunityEdition/opence-fleet](https://github.com/OpenCommunityEdition/opence-fleet))
+is one control plane over them all: an agent on each machine runs its
+servers and drives each through the API as the owner, from the machine
+itself (`server.web_owner_password`), drains a server before an update
+(`sv_stop game`, `POST /api/stop`) and bans an address on every server at
+once (`POST /api/bans`); `docs/dedicated_server.md`, "Panels and fleets".
 
 ## Mods
 

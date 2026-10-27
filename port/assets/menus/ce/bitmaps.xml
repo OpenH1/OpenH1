@@ -642,6 +642,12 @@
 		<frame png="ce/port/main_menu/parts/button_164x26__0.png" width="164" height="26"/>
 		<frame png="ce/port/main_menu/parts/button_164x26__1.png" width="164" height="26"/>
 	</bitmap>
+	<bitmap name="main_menu/parts/chip_92x52">
+		<frame png="ce/port/main_menu/parts/chip_92x52__0.png" width="92" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_92x52__1.png" width="92" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_92x52__2.png" width="92" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_92x52__3.png" width="92" height="52"/>
+	</bitmap>
 	<bitmap name="main_menu/parts/chip_112x52">
 		<frame png="ce/port/main_menu/parts/chip_112x52__0.png" width="112" height="52"/>
 		<frame png="ce/port/main_menu/parts/chip_112x52__1.png" width="112" height="52"/>

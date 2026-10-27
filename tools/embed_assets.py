@@ -127,6 +127,20 @@ def write_output(output: Path, lines: List[str]) -> None:
     text = "\n".join(lines) + "\n"
     if not output.is_file() or output.read_text() != text:
         output.write_text(text)
+def server_ui_build(n: Any, prefix: str, output: Path) -> List[Path]:
+    """Emits the rule that generates a dedicated server's admin page as C
+    (tools/server_ui_embed.py, port/assets/server_ui); returns [output]"""
+    ui = Path("port/assets/server_ui")
+    inputs = sorted(path for path in (ROOT / ui).glob("*") if path.is_file())
+    n.rule(
+        name=f"{prefix}_server_ui",
+        command="$python tools/server_ui_embed.py $out",
+        description=f"{prefix.upper()} EMBED $out",
+    )
+    n.build(outputs=output, rule=f"{prefix}_server_ui",
+            implicit=[Path("tools/server_ui_embed.py"), Path("tools/server_sim.py"),
+                      *(ui / path.name for path in inputs)])
+    return [output]
 
 
 def png_size(data: bytes, name: str) -> tuple:

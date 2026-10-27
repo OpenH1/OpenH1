@@ -5,8 +5,10 @@
 
 /* The server browsers' tabs, their words with no games, and the menus'
 shared text fitting (port/linux/game/menu_functions.c, in Settings' look:
-tools/port_settings.py's _browser): a tab lists its kind of game (OpenH1's,
-Legacy, co-op) or the favorites, the favorites first and the rest sorted,
+tools/port_settings.py's _browser): a tab lists its kind of game (dedicated
+servers', OpenH1's, Legacy, co-op) or the favorites, the favorites first and
+the rest sorted (in the order the list opens in, the dedicated servers
+first),
 the favorites offline only on ALL and FAVORITES; a list with no games says
 why, and the local network's what to do; a name too long for its column is
 cut short with "..." where it fits, and one that fits is kept whole */
@@ -69,6 +71,8 @@ static struct browser_sort_entry entry(char const *name, boolean openh1, boolean
 	snprintf(result.name, sizeof(result.name), "%s", name);
 	result.openh1 = openh1;
 	result.coop = coop;
+	/* (the co-op game a dedicated server's: a Legacy one, OpenCE's) */
+	result.dedicated = !strcmp(name, "coop");
 	result.players = players;
 	result.rate = openh1 ? 60 : 30;
 	return result;
@@ -115,10 +119,13 @@ int main(int argc, char **argv)
 		short offline;
 
 		/* (the favorites first, bravo then echo by players; the rest by
-		players) */
+		players, the dedicated server first) */
 		listed(_browser_tab_all, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "bravo echo delta alpha coop "), "ALL lists %s", names);
+		CHECK(!strcmp(names, "bravo echo coop delta alpha "), "ALL lists %s", names);
 		CHECK(offline == 2, "ALL lists no favorites offline");
+		listed(_browser_tab_dedicated, names, sizeof(names), &offline);
+		CHECK(!strcmp(names, "coop "), "DEDICATED lists %s", names);
+		CHECK(offline == 0, "DEDICATED lists the favorites offline");
 		listed(_browser_tab_openh1, names, sizeof(names), &offline);
 		CHECK(!strcmp(names, "echo delta alpha "), "OPENH1 lists %s", names);
 		CHECK(offline == 0, "OPENH1 lists the favorites offline");
@@ -155,6 +162,9 @@ int main(int argc, char **argv)
 		browser_empty_text(_multiplayer_mode_server_browser, _browser_tab_coop, TRUE, TRUE, FALSE, 0, text,
 			NUMBEROF(text));
 		CHECK(contains(text, L"No co-op games"), "CO-OP's says %ls", text);
+		browser_empty_text(_multiplayer_mode_server_browser, _browser_tab_dedicated, TRUE, TRUE, FALSE, 0, text,
+			NUMBEROF(text));
+		CHECK(contains(text, L"No dedicated server games"), "DEDICATED's says %ls", text);
 		browser_empty_text(_multiplayer_mode_server_browser, _browser_tab_all, TRUE, TRUE, FALSE, 3, text,
 			NUMBEROF(text));
 		CHECK(contains(text, L"3 games are on a newer version"), "newer says %ls", text);
