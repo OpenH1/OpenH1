@@ -4,7 +4,7 @@ P2P.C
 Internet play: machines that shared an invite reach each other's system
 link games as if they were on one LAN, without a server of this project's.
 
-- An invite is a link, halo://join/<host><token>: the hash of the X25519
+- An invite is a link, openh1://join/<host><token>: the hash of the X25519
   public key the hosting machine makes each run (16 bytes of it, which no
   other key can be found to have; the first 6 are the machine's identifier,
   which its XNADDR also carries) and a random 16-byte token. A machine
@@ -54,7 +54,7 @@ link games as if they were on one LAN, without a server of this project's.
   p2p_probe_keep). The game sees nothing of a probe's peer; a join of its
   host takes its tunnel up.
 - A party (p2p_party.c) is friends grouped through the brokers alone, by a
-  link of its own (halo://party/...), which p2p_join_invite takes as it
+  link of its own (openh1://party/...), which p2p_join_invite takes as it
   takes invites; its leader's game, as an invite, is what the others join.
 - A join asks the brokers at once, beside STUN, and sends its request as
   soon as one STUN server has answered. A host takes a joiner's new proven
@@ -573,6 +573,19 @@ void p2p_register_url_scheme(const char *scheme, const char *description)
 	/* it may run a program and wait for it */
 	pthread_mutex_unlock(&p2p_lock);
 	posix_register_url_scheme(scheme, description);
+	pthread_mutex_lock(&p2p_lock);
+}
+
+void p2p_forget_url_scheme(const char *scheme)
+{
+	if (config_real("debug.exit_after") > 0.0 || config_boolean("debug.hidden_window") ||
+		config_boolean("debug.null_renderer"))
+		return;
+	/* (as p2p_register_url_scheme) */
+	pthread_mutex_unlock(&p2p_lock);
+	if (posix_forget_url_scheme(scheme))
+		p2p_log("Internet play: this game no longer opens %s:// links (OpenCE's): its own are %s://", scheme,
+			P2P_LINK_SCHEME);
 	pthread_mutex_lock(&p2p_lock);
 }
 
@@ -2817,7 +2830,8 @@ static int parse_invite(const char *text, unsigned char *host_hash, unsigned cha
 	{
 		/* (a link, or an address with one: ?join=, or the join page's
 		#join=, the part a browser never sends) */
-		static const char *const prefixes[] = { "halo://join/", "?join=", "&join=", "#join=" };
+		static const char *const prefixes[] = { P2P_JOIN_LINK_PREFIX, P2P_OLD_JOIN_LINK_PREFIX,
+			"?join=", "&join=", "#join=" };
 		int prefix;
 
 		for (prefix = 0; prefix < (int)(sizeof(prefixes) / sizeof(*prefixes)) && !start; prefix++)
@@ -2885,7 +2899,7 @@ int p2p_invite_message(const char *text, char *message, int size)
 	memcpy(bytes + P2P_KEY_HASH_SIZE, token, P2P_TOKEN_SIZE);
 	p2p_hex(bytes, sizeof(bytes), hex);
 	snprintf(message, (size_t)size, "Join my OpenH1 game: %s#join=%s\n"
-		"Or paste this into OpenH1's Join by Link: halo://join/%s", P2P_JOIN_PAGE, hex, hex);
+		"Or paste this into OpenH1's Join by Link: " P2P_JOIN_LINK_PREFIX "%s", P2P_JOIN_PAGE, hex, hex);
 	return 1;
 }
 
@@ -2983,7 +2997,7 @@ const char *p2p_invite_log_text(const char *invite, char *text, int size)
 	const char *search;
 	size_t kept;
 
-	/* (after "halo://join/" or "halo://key/", if there is one) */
+	/* (after "openh1://join/", or another scheme's, if there is one) */
 	for (search = invite; *search; search++)
 	{
 		if (!strncmp(search, "://", 3))
@@ -3236,7 +3250,7 @@ static void make_invite(void)
 	p2p_key_hash(p2p_public_key(), bytes);
 	memcpy(bytes + P2P_KEY_HASH_SIZE, p2p.token, P2P_TOKEN_SIZE);
 	p2p_hex(bytes, sizeof(bytes), text);
-	snprintf(p2p.invite, sizeof(p2p.invite), "halo://join/%s", text);
+	snprintf(p2p.invite, sizeof(p2p.invite), P2P_JOIN_LINK_PREFIX "%s", text);
 }
 
 void p2p_token_listed(const unsigned char *token)
@@ -3319,7 +3333,7 @@ static void update_hosting(void)
 		{
 			p2p.reported_player_count = count;
 			p2p.reported_player_maximum = maximum;
-			p2p_discord_set_hosting(p2p.invite + strlen("halo://join/"), count, maximum);
+			p2p_discord_set_hosting(p2p.invite + strlen(P2P_JOIN_LINK_PREFIX), count, maximum);
 		}
 	}
 }
@@ -3567,7 +3581,7 @@ int p2p_game_invite(unsigned long host_address, char *link, int size)
 			memcpy(bytes, p2p.join_host_hash, P2P_KEY_HASH_SIZE);
 			memcpy(bytes + P2P_KEY_HASH_SIZE, p2p.join_token, P2P_TOKEN_SIZE);
 			p2p_hex(bytes, sizeof(bytes), text);
-			snprintf(link, (size_t)size, "halo://join/%s", text);
+			snprintf(link, (size_t)size, P2P_JOIN_LINK_PREFIX "%s", text);
 			found = 1;
 		}
 	}
@@ -3894,7 +3908,7 @@ static void poll_invite_file(void)
 
 #ifdef HALO_MACOS
 /* port/macos/host_links.c: the links the Mac or iPhone app was opened with
-(halo://..., the join page's addresses), at its launch or since: macOS and
+(openh1://..., the join page's addresses), at its launch or since: macOS and
 iOS give a running app the links it handles, and start no second copy */
 int host_app_take_link(char *link, int size);
 
@@ -3908,6 +3922,19 @@ static void poll_app_links(void)
 #endif
 
 /* ---------- the thread */
+
+#ifndef HALO_ANDROID
+/* the desktop's links (Linux's and Windows'; the Mac's, iOS's and
+Android's apps declare theirs): the game's scheme, openh1, and not older
+builds' halo, which is OpenCE's: a registration of it this executable made
+is dropped, so that OpenCE's copies have their links, and the game's are
+never opened by OpenCE (the game still takes a halo:// link it is given) */
+static void register_link_schemes(void)
+{
+	p2p_register_url_scheme(P2P_LINK_SCHEME, "OpenH1 invite");
+	p2p_forget_url_scheme(P2P_OLD_LINK_SCHEME);
+}
+#endif
 
 static void *p2p_thread(void *unused)
 {
@@ -3940,7 +3967,7 @@ static void *p2p_thread(void *unused)
 	pthread_mutex_lock(&p2p_lock);
 #ifndef HALO_ANDROID
 	/* (here: it may wait for a program) */
-	p2p_register_url_scheme("halo", "Halo: Combat Evolved invite");
+	register_link_schemes();
 #endif
 	for (;;)
 	{

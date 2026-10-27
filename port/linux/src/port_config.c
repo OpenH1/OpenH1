@@ -335,11 +335,13 @@ static const struct config_setting config_settings[] =
 	{ "audio.effects_volume", _config_real, "1.0", "HALO_EFFECTS_VOLUME", _environment_value, _platform_all,
 		"The volume of every other sound (effects and speech), 0.0 to 1.0 (of\n"
 		"audio.volume)." },
-	{ "audio.buffer_frames", _config_integer, "1024", "HALO_AUDIO_BUFFER_FRAMES", _environment_value,
+	{ "audio.buffer_frames", _config_integer, "0", "HALO_AUDIO_BUFFER_FRAMES", _environment_value,
 		_platform_desktop,
-		"The audio device's buffer, in sample frames at 48 kHz (64 to 8192): larger\n"
-		"rides out stalls that cut the sound out, smaller has less delay (1024\n"
-		"is 21 ms, 2048 is 43 ms)." },
+		"The frames the sound device asks for at a time, at 48 kHz (64 to 8192):\n"
+		"smaller is heard sooner, larger rides out stalls that would cut the\n"
+		"sound out (256 is 5.3 ms, 1024 is 21 ms). 0: automatic, 256 to start\n"
+		"(512 on Windows), doubled up to 2048 each time the device runs dry,\n"
+		"which the log says." },
 	{ "audio.channels", _config_string, "\"auto\"", "HALO_AUDIO_CHANNELS", _environment_value, _platform_desktop,
 		"\"stereo\", \"5.1\" (surround, as the Xbox's Dolby Digital), or \"auto\"\n"
 		"for 5.1 when the sound device has six or more channels (a 5.1 or 7.1\n"
@@ -1177,11 +1179,11 @@ static const struct config_setting config_settings[] =
 		"HALO_NET_STUN", _environment_value, _platform_all,
 		"Public STUN servers that tell this machine its internet address;\n"
 		"comma-separated host:port." },
-	{ "discord.application_id", _config_string, "\"1553978809840050229\"", "HALO_DISCORD_APPLICATION",
+	{ "discord.application_id", _config_string, "\"1561963518344036434\"", "HALO_DISCORD_APPLICATION",
 		_environment_value, _platform_desktop,
 		"The Discord application your status, invites and asks to join go\n"
 		"through while the Discord desktop client runs (its name is what Discord\n"
-		"shows you playing): OpenCE's until OpenH1 has its own; empty for none." },
+		"shows you playing): OpenH1's; empty for none." },
 	{ "discord.rich_presence", _config_boolean, "true", "HALO_DISCORD_RICH_PRESENCE", _environment_value,
 		_platform_desktop,
 		"Show what you are doing in Discord: in the menus, in a party, the game\n"

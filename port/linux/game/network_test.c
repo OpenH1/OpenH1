@@ -44,8 +44,9 @@ so (port/linux/NETCODE.md, "Comparing two builds", has the line's format).
 Scripted play for the netcode's parts the bots' wandering does not reach:
 debug.network_test_kill (the host kills the last player every so often),
 debug.network_test_shoot (every so often each machine's player hits the
-next with their weapon's projectile: a client's through its report to the
-host) and debug.network_test_vehicle (the host seats the last player as a
+next with their weapon's projectile, when the level's structure leaves a
+line from their eye to the target, as the host checks: a client's through
+its report to the host) and debug.network_test_vehicle (the host seats the last player as a
 vehicle's driver that many seconds in, takes them out 15 seconds on, and 5
 seconds later stands them at a vehicle's driver's entrance, where a joining
 machine's player holds the action button, as getting in does; with
@@ -84,6 +85,7 @@ Called from the main loop every frame (main.c).
 #include "items/projectile_definitions.h"
 #include "items/items.h"
 #include "objects/damage.h"
+#include "physics/collisions.h"
 #include "scenario/scenario.h"
 #include "tag_files/tag_files.h"
 #include "camera/observer.h"
@@ -628,6 +630,21 @@ static void network_test_shoot(
 			real dz = target_object->object.position.z - unit->object.position.z;
 
 			if (dx * dx + dy * dy + dz * dz > 0.9f * reach * 0.9f * reach)
+				continue;
+		}
+		/* (a shot needs a line to the target, as the host checks:
+		network_damage.c's distributed_report_line_of_sight, whose flags
+		these are) */
+		if (!melee)
+		{
+			unsigned long flags = FLAG(_collision_test_structure_bit) |
+				FLAG(_collision_test_front_facing_surfaces_bit) | FLAG(_collision_test_ignore_invisible_surfaces_bit) |
+				FLAG(_collision_test_ignore_breakable_surfaces_bit) | FLAG(_collision_test_ignore_two_sided_surfaces_bit);
+			real_point3d eye;
+			struct collision_result collision;
+
+			unit_get_camera_position(player->unit_index, &eye);
+			if (collision_test_line(flags, &eye, &target_object->object.bounding_sphere_center, NONE, &collision))
 				continue;
 		}
 		damage_data_new(&damage, damage_index);

@@ -152,6 +152,10 @@ posix_ulong posix_process_id(void);
 scheme (scheme://...); returns 0 where there is no such thing (Android,
 whose app declares its links in its manifest). May wait for a program */
 int posix_register_url_scheme(const char *scheme, const char *description);
+/* drops the desktop's registration of links with this scheme if it is this
+executable's (as posix_register_url_scheme makes it), leaving another
+program's alone; returns 1 if it dropped one */
+int posix_forget_url_scheme(const char *scheme);
 /* a random secret of this user's, the same for all their processes, from a
 file that only they can read (made the first time); 1 on success, 0 where
 there is none (always, on Android) */

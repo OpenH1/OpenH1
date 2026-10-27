@@ -355,7 +355,7 @@ shows a notice.
 
 To join a game, do one of these steps:
 
-- Open the link. The app is the handler of `halo://join/...` links. If the
+- Open the link. The app is the handler of `openh1://join/...` links. If the
   game does not operate, the app starts it. The app writes the link to
   `files/join_link.txt`, and the game reads it.
 - Copy the link and go to the game.

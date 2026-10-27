@@ -38,12 +38,15 @@ def test_info_plist_asks_for_game_mode_and_names_the_build():
 
 
 def test_info_plist_takes_the_games_links():
-    """the app is the handler of halo:// links (invites, parties' links), the scheme p2p.h's links have"""
+    """the app is the handler of openh1:// links (invites, parties' links), the scheme p2p.h's links have, and
+    not of halo:// ones, OpenCE's"""
     plist = macos_app.info_plist(MACOS_BUNDLE_ID, 0, MACOS_MINIMUM)
     (url_type,) = plist["CFBundleURLTypes"]
-    assert url_type["CFBundleURLSchemes"] == ["halo"] and url_type["CFBundleURLName"] == MACOS_BUNDLE_ID
+    assert url_type["CFBundleURLSchemes"] == ["openh1"] and url_type["CFBundleURLName"] == MACOS_BUNDLE_ID
     assert url_type["CFBundleTypeRole"] == "Viewer"
-    assert '#define P2P_PARTY_LINK_PREFIX "halo://party/"' in (ROOT / "port/linux/src/p2p.h").read_text()
+    header = (ROOT / "port/linux/src/p2p.h").read_text()
+    assert '#define P2P_LINK_SCHEME "openh1"' in header
+    assert '#define P2P_PARTY_LINK_PREFIX "openh1://party/"' in header
 
 
 @pytest.mark.skipif(not shutil.which("clang") or not (SDL_INCLUDE / "SDL3/SDL.h").is_file(),
@@ -79,7 +82,7 @@ def test_app_contents():
     with open(contents / "Info.plist", "rb") as file:
         plist = plistlib.load(file)
     assert plist["LSSupportsGameMode"] is True
-    assert plist["CFBundleURLTypes"][0]["CFBundleURLSchemes"] == ["halo"]
+    assert plist["CFBundleURLTypes"][0]["CFBundleURLSchemes"] == ["openh1"]
     commands = subprocess.run(["otool", "-l", str(contents / "MacOS/halo")], capture_output=True, text=True,
                               check=True).stdout
     assert "path @executable_path/../Frameworks " in commands

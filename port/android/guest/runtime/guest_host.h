@@ -99,6 +99,10 @@ int host_sdl_resume_audio_stream_device(unsigned int stream);
 int host_sdl_get_audio_stream_data(unsigned int stream, void *data, int length);
 int host_sdl_get_audio_stream_available(unsigned int stream);
 void host_sdl_destroy_audio_stream(unsigned int stream);
+/* (debug.latency_log) the device a stream plays on: its driver's name, its
+buffer (frames), rate, the time SDL queues ahead of it and the system's
+latency after (microseconds; -1 not known) into timing[4]; 1 on success */
+int host_sdl_audio_stream_timing(unsigned int stream, char *driver, int driver_size, int *timing);
 
 /* ---------- the sound's output (host_audio_route.c)
 

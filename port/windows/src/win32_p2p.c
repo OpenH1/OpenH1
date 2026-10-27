@@ -3,8 +3,9 @@ WIN32_P2P.C
 
 The process and desktop half of port/linux/src/posix.h for Windows, which
 internet play uses (p2p.c; the Linux versions are in posix_net.c): the
-command line, the registry entry that makes this executable open halo://
-links, the user's secret, and Discord's local pipe.
+command line, the registry entry that makes this executable open openh1://
+links (and the drop of an older build's halo:// one), the user's secret,
+and Discord's local pipe.
 */
 
 #include <windows.h>
@@ -79,6 +80,34 @@ int posix_register_url_scheme(const char *scheme, const char *description)
 	ok &= RegSetValueExA(key, NULL, 0, REG_SZ, (const BYTE *)command, (DWORD)strlen(command) + 1) == ERROR_SUCCESS;
 	RegCloseKey(key);
 	return ok ? 1 : 0;
+}
+
+int posix_forget_url_scheme(const char *scheme)
+{
+	/* HKEY_CURRENT_USER\Software\Classes\<scheme>, if it opens this
+	executable as posix_register_url_scheme has it: OpenCE's copies set one
+	for their own, which is left alone */
+	char executable[MAX_PATH], key_name[256], command[MAX_PATH + 16], existing[MAX_PATH + 16];
+	DWORD size = sizeof(existing) - 1, type = 0;
+	HKEY key;
+	LONG result;
+
+	if (!GetModuleFileNameA(NULL, executable, sizeof(executable)))
+		return 0;
+	snprintf(key_name, sizeof(key_name), "Software\\Classes\\%s\\shell\\open\\command", scheme);
+	if (RegOpenKeyExA(HKEY_CURRENT_USER, key_name, 0, KEY_QUERY_VALUE, &key) != ERROR_SUCCESS)
+		return 0;
+	result = RegQueryValueExA(key, NULL, NULL, &type, (BYTE *)existing, &size);
+	RegCloseKey(key);
+	if (result != ERROR_SUCCESS || type != REG_SZ)
+		return 0;
+	existing[size < sizeof(existing) ? size : sizeof(existing) - 1] = '\0';
+	snprintf(command, sizeof(command), "\"%s\" \"%%1\"", executable);
+	/* (Windows' paths are the same in any case) */
+	if (_stricmp(existing, command))
+		return 0;
+	snprintf(key_name, sizeof(key_name), "Software\\Classes\\%s", scheme);
+	return RegDeleteTreeA(HKEY_CURRENT_USER, key_name) == ERROR_SUCCESS;
 }
 
 int posix_user_secret(unsigned char *secret, int size)

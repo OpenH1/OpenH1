@@ -50,6 +50,7 @@ host_sdl_resume_audio_stream_device
 host_sdl_get_audio_stream_data
 host_sdl_get_audio_stream_available
 host_sdl_destroy_audio_stream
+host_sdl_audio_stream_timing
 host_render_stream_open
 host_render_stream_submit
 host_render_stream_wait

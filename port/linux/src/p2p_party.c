@@ -5,7 +5,7 @@ Parties (p2p.h): friends grouped before any game, who go from game to game
 together. A party lives on the signalling brokers alone (p2p_signal.c),
 not on the tunnel: its machines need not reach each other until they play.
 
-- A party is a link, halo://party/<token>: 16 random bytes in hexadecimal,
+- A party is a link, openh1://party/<token>: 16 random bytes in hexadecimal,
   which the machine that makes the party (its first leader) puts on the
   clipboard. Its machines talk on one topic, hceu/3/<HMAC(token, "party")>,
   each message sealed with HMAC(token, "party seal") and signed with the
@@ -1120,9 +1120,11 @@ static void begin(const unsigned char *token)
 
 int p2p_party_parse_link(const char *text, unsigned char *token)
 {
-	/* (the link; a web address with it, the join page's (#party=: the part
-	a browser never sends) or ?party=) */
-	static const char *const prefixes[] = { P2P_PARTY_LINK_PREFIX, "?party=", "&party=", "#party=" };
+	/* (the link, or an older build's (halo://party/); a web address with
+	it, the join page's (#party=: the part a browser never sends) or
+	?party=) */
+	static const char *const prefixes[] = { P2P_PARTY_LINK_PREFIX, P2P_OLD_PARTY_LINK_PREFIX,
+		"?party=", "&party=", "#party=" };
 	const char *search;
 
 	for (search = text; *search; search++)
@@ -1446,7 +1448,7 @@ int p2p_party_follow(char *invite, int size, unsigned long *order)
 			char hex[2 * INVITE_SIZE + 1];
 
 			p2p_hex(party.target_invite, INVITE_SIZE, hex);
-			snprintf(invite, (size_t)size, "halo://join/%s", hex);
+			snprintf(invite, (size_t)size, P2P_JOIN_LINK_PREFIX "%s", hex);
 		}
 		else if (size > 0)
 			invite[0] = 0;

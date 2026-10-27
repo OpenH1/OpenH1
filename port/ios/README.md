@@ -131,7 +131,7 @@ landscape only, full screen without the status bar, `UILaunchScreen`
 `LSSupportsOpeningDocumentsInPlace` (the Files app shows the app's
 Documents), `GCSupportsControllerUserInteraction`, the microphone's
 (voice chat) and the local network's (system link) explanations, and
-`CFBundleURLTypes`: the app is the handler of `halo://` links (invites and
+`CFBundleURLTypes`: the app is the handler of `openh1://` links (invites and
 parties' links), as the Mac app is. UIKit gives SDL's scene delegate the
 link (`scene:openURLContexts:`, or the scene's options when the link starts
 the app), which SDL sends on as a drop event, and `port/macos/host_links.c`

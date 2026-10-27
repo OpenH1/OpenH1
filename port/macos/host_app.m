@@ -25,7 +25,7 @@ HALO_SAVE_ROOT) and config.toml's paths.data and paths.saves are kept.
   of the window (host_app_choose_game_data). So the player is never left
   with a dialog alone, behind other windows or in another Space, and a
   window that shows nothing.
-- Links: the app is the handler of halo:// links (Info.plist,
+- Links: the app is the handler of openh1:// links (Info.plist,
   tools/macos_app.py). macOS gives SDL's application delegate the link
   (the GetURL Apple event), running or started by it, and host_links.c
   keeps it for the guest's internet play.
