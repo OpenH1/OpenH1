@@ -37,7 +37,7 @@ import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 /**
- * Writes and reads the back-up of the player's saved games and settings, for
+ * Writes and reads the backup of the player's saved games and settings, for
  * BackupActivity: one zip, made with java.util.zip only, whose entry names
  * mirror the data root (the app's external files folder). It holds each
  * profile under save/u/UDATA/<12 hex digits>/ (its name file, its profile or
@@ -67,6 +67,8 @@ final class BackupArchive {
     /** What an archive holds, from a scan or a write. */
     static final class Summary {
         final List<String> profileNames;
+        /** each profile's folder name (its hash), in the order of profileNames */
+        final List<String> profileHashes;
         final int profiles;
         final boolean settings;
         final boolean favorites;
@@ -77,9 +79,11 @@ final class BackupArchive {
         final String layoutText;
         final int skipped;
 
-        Summary(List<String> profileNames, int profiles, boolean settings, boolean favorites,
-                boolean touchLayout, int build, String made, long bytes, String layoutText, int skipped) {
+        Summary(List<String> profileNames, List<String> profileHashes, int profiles, boolean settings,
+                boolean favorites, boolean touchLayout, int build, String made, long bytes, String layoutText,
+                int skipped) {
             this.profileNames = profileNames;
+            this.profileHashes = profileHashes;
             this.profiles = profiles;
             this.settings = settings;
             this.favorites = favorites;
@@ -260,10 +264,12 @@ final class BackupArchive {
         // the plan comes first so that the marker can say how many entries follow it
         List<Planned> plan = new ArrayList<>();
         List<String> names = new ArrayList<>();
+        List<String> hashes = new ArrayList<>();
         for (File directory : directories) {
             String prefix = PROFILE_PREFIX + directory.getName() + "/";
             File meta = new File(directory, META_NAME);
             names.add(profileName(readSmallFile(meta, META_CAP_BYTES)));
+            hashes.add(directory.getName());
             plan.add(new Planned(prefix + META_NAME, meta, META_CAP_BYTES));
             for (String name : new String[] {SAVE_NAME, LIST_NAME}) {
                 File file = new File(directory, name);
@@ -302,7 +308,7 @@ final class BackupArchive {
             addBytes(zip, LAYOUT_NAME, layout, counter);
         zip.finish();
         out.flush();
-        return new Summary(names, directories.size(), hasConfig, hasFavorites, layout != null, build, made,
+        return new Summary(names, hashes, directories.size(), hasConfig, hasFavorites, layout != null, build, made,
             counter.total, null, skipped[0]);
     }
 
@@ -326,7 +332,7 @@ final class BackupArchive {
     /**
      * Moves each staged profile directory into dataRoot/save/u/UDATA, replacing one of the same name whole,
      * keeping the others; then config.toml and favorites.txt by rename if staged. A replaced profile's
-     * friends.txt stays when the back-up has none for it (one made before friends, or before the key was).
+     * friends.txt stays when the backup has none for it (one made before friends, or before the key was).
      */
     static void swapIn(File dataRoot, File staging) throws IOException {
         File profiles = new File(dataRoot, "save/u/UDATA");
@@ -437,7 +443,7 @@ final class BackupArchive {
                 note(done, "deleted an unfinished restore");
             }
         } catch (IOException e) {
-            note(done, "could not take the back-up lock: " + e.getMessage());
+            note(done, "could not take the backup lock: " + e.getMessage());
         }
         return done.toString();
     }
@@ -446,6 +452,44 @@ final class BackupArchive {
         if (done.length() > 0)
             done.append("; ");
         done.append(text);
+    }
+
+    /**
+     * The profiles in dataRoot that a restore of the scanned backup's profiles replaces whole (swapIn's test:
+     * a folder of the same hash), by the names this phone has for them; a profile whose name file cannot be
+     * read is shown by its hash.
+     */
+    static List<String> replacedProfiles(File dataRoot, Summary scanned) {
+        List<String> replaced = new ArrayList<>();
+        for (String hash : scanned.profileHashes) {
+            File directory = new File(dataRoot, PROFILE_PREFIX + hash);
+            if (!directory.exists())
+                continue;
+            String name = "";
+            try {
+                name = profileName(readSmallFile(new File(directory, META_NAME), META_CAP_BYTES)).trim();
+            } catch (IOException e) {
+                // a half-made profile: its hash is all there is to show
+            }
+            replaced.add(name.isEmpty() ? hash : name);
+        }
+        return replaced;
+    }
+
+    /**
+     * Whether another process, or another holder in this one, has the lock right now: a restore moving files
+     * or a recovery, which the game and the backup screen wait out. A data root where no restore ever ran has
+     * no lock file and is not made one.
+     */
+    static boolean locked(File dataRoot) {
+        if (!new File(dataRoot, LOCK_NAME).isFile())
+            return false;
+        try (Lock lock = tryLock(dataRoot)) {
+            return lock == null;
+        } catch (IOException e) {
+            // a lock that cannot be looked at is no sign of a restore
+            return false;
+        }
     }
 
     /**
@@ -575,7 +619,7 @@ final class BackupArchive {
                 current = label;
                 if (marker == null) {
                     if (!MARKER_NAME.equals(name))
-                        throw new IOException("This file is not an OpenH1 back-up: its first entry is "
+                        throw new IOException("This file is not an OpenH1 backup: its first entry is "
                             + label + ", not " + MARKER_NAME + ".");
                     marker = parseMarker(drain(zip, name, MARKER_CAP_BYTES, null, buffer, counter)
                         .toByteArray());
@@ -592,9 +636,9 @@ final class BackupArchive {
                 }
                 entriesSeen++;
                 if (MARKER_NAME.equals(name))
-                    throw new IOException("The back-up has a second marker entry, " + label + ".");
+                    throw new IOException("The backup has a second marker entry, " + label + ".");
                 if (entry.isDirectory() || name.endsWith("/"))
-                    throw new IOException("The entry " + label + " is a folder, which a back-up never holds.");
+                    throw new IOException("The entry " + label + " is a folder, which a backup never holds.");
                 if (name.startsWith("/") || name.contains("\\") || name.contains("..")
                         || name.indexOf(':') >= 0)
                     throw new IOException("The entry " + label + " has an unsafe name.");
@@ -602,16 +646,16 @@ final class BackupArchive {
                 boolean profileEntry = match.matches();
                 if (!profileEntry && !CONFIG_NAME.equals(name) && !FAVORITES_NAME.equals(name)
                         && !LAYOUT_NAME.equals(name))
-                    throw new IOException("The entry " + label + " is not part of an OpenH1 back-up.");
+                    throw new IOException("The entry " + label + " is not part of an OpenH1 backup.");
                 if (!seen.add(name))
-                    throw new IOException("The entry " + label + " appears twice in the back-up.");
+                    throw new IOException("The entry " + label + " appears twice in the backup.");
                 if (profileEntry) {
                     String hash = match.group(1);
                     String file = match.group(2);
                     Profile profile = profiles.get(hash);
                     if (profile == null) {
                         if (profiles.size() >= PROFILE_CAP)
-                            throw new IOException("The back-up holds more than " + PROFILE_CAP
+                            throw new IOException("The backup holds more than " + PROFILE_CAP
                                 + " profiles; the entry " + label + " is one too many.");
                         profile = new Profile();
                         profiles.put(hash, profile);
@@ -646,40 +690,42 @@ final class BackupArchive {
             }
         } catch (ZipException | EOFException | IllegalArgumentException e) {
             // IllegalArgumentException is what the zip reader throws for an entry name that is not UTF-8
-            throw new IOException("The back-up is damaged or ends early, near " + current + ".", e);
+            throw new IOException("The backup is damaged or ends early, near " + current + ".", e);
         }
         if (marker == null)
-            throw new IOException("This file is not an OpenH1 back-up: it has no " + MARKER_NAME + " entry.");
+            throw new IOException("This file is not an OpenH1 backup: it has no " + MARKER_NAME + " entry.");
         if (profiles.size() != expectedProfiles)
-            throw new IOException("The back-up ends early: it should hold " + expectedProfiles
+            throw new IOException("The backup ends early: it should hold " + expectedProfiles
                 + " profiles but holds " + profiles.size() + ".");
         if (sawConfig != expectedSettings)
-            throw new IOException("The back-up ends early: " + CONFIG_NAME
+            throw new IOException("The backup ends early: " + CONFIG_NAME
                 + (expectedSettings ? " is missing." : " is there but the marker does not list it."));
         if (sawFavorites != expectedFavorites)
-            throw new IOException("The back-up ends early: " + FAVORITES_NAME
+            throw new IOException("The backup ends early: " + FAVORITES_NAME
                 + (expectedFavorites ? " is missing." : " is there but the marker does not list it."));
         if (sawLayout != expectedLayout)
-            throw new IOException("The back-up ends early: " + LAYOUT_NAME
+            throw new IOException("The backup ends early: " + LAYOUT_NAME
                 + (expectedLayout ? " is missing." : " is there but the marker does not list it."));
         List<String> names = new ArrayList<>();
+        List<String> hashes = new ArrayList<>();
         for (Map.Entry<String, Profile> each : profiles.entrySet()) {
             Profile profile = each.getValue();
             if (!profile.meta)
-                throw new IOException("The profile " + each.getKey() + " in the back-up is incomplete: "
+                throw new IOException("The profile " + each.getKey() + " in the backup is incomplete: "
                     + META_NAME + " is missing.");
             if (profile.blam != 1)
-                throw new IOException("The profile " + profile.name + " in the back-up is incomplete: it needs"
+                throw new IOException("The profile " + profile.name + " in the backup is incomplete: it needs"
                     + " exactly one of " + SAVE_NAME + " and " + LIST_NAME + ".");
             names.add(profile.name);
+            hashes.add(each.getKey());
         }
         if (entriesSeen < expectedEntries)
-            throw new IOException("The back-up ends early: " + entriesSeen + " of " + expectedEntries
+            throw new IOException("The backup ends early: " + entriesSeen + " of " + expectedEntries
                 + " entries.");
         if (entriesSeen > expectedEntries)
-            throw new IOException("The back-up holds more entries than its marker lists: " + entriesSeen
+            throw new IOException("The backup holds more entries than its marker lists: " + entriesSeen
                 + " of " + expectedEntries + ".");
-        return new Summary(names, profiles.size(), sawConfig, sawFavorites, sawLayout, build, made,
+        return new Summary(names, hashes, profiles.size(), sawConfig, sawFavorites, sawLayout, build, made,
             counter.total, layoutText, 0);
     }
 
@@ -689,29 +735,29 @@ final class BackupArchive {
             marker.load(new ByteArrayInputStream(bytes));
         } catch (IllegalArgumentException e) {
             // a malformed unicode escape in the marker text
-            throw new IOException("The back-up's marker is damaged.", e);
+            throw new IOException("The backup's marker is damaged.", e);
         }
         if (!FORMAT.equals(marker.getProperty("format")))
-            throw new IOException("This file is not an OpenH1 back-up: the marker does not say " + FORMAT + ".");
+            throw new IOException("This file is not an OpenH1 backup: the marker does not say " + FORMAT + ".");
         int version;
         try {
             version = Integer.parseInt(marker.getProperty("version", "").trim());
         } catch (NumberFormatException e) {
-            throw new IOException("The back-up marker has no readable version.");
+            throw new IOException("The backup marker has no readable version.");
         }
         if (version > VERSION)
-            throw new IOException("This back-up was made by a newer version of the app (format " + version
+            throw new IOException("This backup was made by a newer version of the app (format " + version
                 + "). Update the app to restore it.");
         markerCount(marker, "profiles", PROFILE_CAP);
         markerCount(marker, "entries", ENTRY_CAP);
         for (String key : new String[] {"settings", "touch-layout"}) {
             String value = marker.getProperty(key, "").trim();
             if (!"true".equals(value) && !"false".equals(value))
-                throw new IOException("The back-up marker has no readable " + key + " field.");
+                throw new IOException("The backup marker has no readable " + key + " field.");
         }
         String favorites = marker.getProperty("favorites", "false").trim();
         if (!"true".equals(favorites) && !"false".equals(favorites))
-            throw new IOException("The back-up marker has no readable favorites field.");
+            throw new IOException("The backup marker has no readable favorites field.");
         return marker;
     }
 
@@ -721,10 +767,10 @@ final class BackupArchive {
         try {
             count = Integer.parseInt(marker.getProperty(key, "").trim());
         } catch (NumberFormatException e) {
-            throw new IOException("The back-up marker has no readable " + key + " count.");
+            throw new IOException("The backup marker has no readable " + key + " count.");
         }
         if (count < 0 || count > limit)
-            throw new IOException("The back-up marker lists " + count + " " + key + "; at most " + limit
+            throw new IOException("The backup marker lists " + count + " " + key + "; at most " + limit
                 + " are allowed.");
         return count;
     }
@@ -753,9 +799,9 @@ final class BackupArchive {
             counter.total += n;
             if (size > cap)
                 throw new IOException("The entry " + name + " is larger than " + cap
-                    + " bytes, so the back-up looks damaged.");
+                    + " bytes, so the backup looks damaged.");
             if (counter.total > totalCapForTests)
-                throw new IOException("The back-up is larger than it can be (more than " + totalCapForTests
+                throw new IOException("The backup is larger than it can be (more than " + totalCapForTests
                     + " bytes inflated), at the entry " + name + ".");
             if (kept != null)
                 kept.write(buffer, 0, n);

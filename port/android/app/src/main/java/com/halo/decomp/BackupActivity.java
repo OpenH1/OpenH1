@@ -53,7 +53,7 @@ import java.util.Locale;
  * process ends when the screen is closed and nothing is at work, or when
  * the work ends after the screen was closed; a run the player backed out of
  * shows no result (it is logged). The limit that remains: the preferences
- * are read when a back-up or a restore runs, so a layout the game changes
+ * are read when a backup or a restore runs, so a layout the game changes
  * after that, while this screen stays open or stopped in the background, is
  * not seen until the screen is opened fresh (MODE_MULTI_PROCESS is
  * deprecated and not used).
@@ -75,10 +75,10 @@ public class BackupActivity extends Activity {
     private static final String TITLE = "Saved games and settings";
     private static final String GAME_RUNNING = "The game is running. Quit it from its main menu first.";
 
-    /** true while a back-up or a restore is at work in this process, so that no one sweeps its staging folder */
+    /** true while a backup or a restore is at work in this process, so that no one sweeps its staging folder */
     static volatile boolean working;
 
-    /** the text of the last finished back-up or restore, until an instance on screen shows it (UI thread only) */
+    /** the text of the last finished backup or restore, until an instance on screen shows it (UI thread only) */
     private static String lastResult;
 
     /** the instances of this screen alive in this process, between onCreate and onDestroy (UI thread only) */
@@ -86,6 +86,9 @@ public class BackupActivity extends Activity {
 
     /** the instance between onResume and onPause, which shows a result at once (UI thread only) */
     private static BackupActivity resumed;
+
+    /** true while a thread finishes or undoes a restore that was cut short; the buttons wait (UI thread only) */
+    private static boolean recovering;
 
     private File dataRoot;
     private TextView status;
@@ -100,14 +103,11 @@ public class BackupActivity extends Activity {
         super.onCreate(savedInstanceState);
         alive++;
         dataRoot = getExternalFilesDir(null);
-        if (dataRoot != null && !working) {
-            String recovered = BackupArchive.recover(dataRoot);
-            if (!recovered.isEmpty())
-                android.util.Log.i("halo", "backup: " + recovered);
-        }
         if (savedInstanceState != null) {
             pendingAction = savedInstanceState.getInt("pending-backup-action", ACTION_NONE);
-            document = savedInstanceState.getParcelable("backup-document");
+            // (kept as text: Bundle.getParcelable(String) is deprecated)
+            String saved = savedInstanceState.getString("backup-document");
+            document = saved != null ? Uri.parse(saved) : null;
             boolean[] parts = savedInstanceState.getBooleanArray("backup-parts");
             if (parts != null && parts.length == 3)
                 chosen = parts;
@@ -125,19 +125,54 @@ public class BackupActivity extends Activity {
             setBusy(true);
             status.setText("Working...");
         } else if (document != null && pendingAction != ACTION_NONE) {
-            // never started again by itself: a back-up that did finish would
+            // never started again by itself: a backup that did finish would
             // be overwritten or deleted by a run from this old state
             status.setText(pendingAction == ACTION_EXPORT
-                ? "The last back-up may not have finished. Press Back up to make it again."
-                : "The last restore may not have finished. Press Restore to choose the back-up again.");
+                ? "The last backup may not have finished. Press Back up to make it again."
+                : "The last restore may not have finished. Press Restore to choose the backup again.");
             finishAction();
         }
+        // a restore that was cut short is finished or undone before anything
+        // else, off the UI thread: a large leftover takes a while to delete
+        if (!working && !recovering)
+            recover(dataRoot);
+        if (recovering)
+            setBusy(true);
+    }
+
+    /** Runs BackupArchive.recover on a thread of its own; the instance on screen gets its buttons when it ends. */
+    private static void recover(File root) {
+        recovering = true;
+        new Thread(() -> {
+            String recovered = BackupArchive.recover(root);
+            if (!recovered.isEmpty())
+                android.util.Log.i("halo", "backup: " + recovered);
+            // the launcher's recovery, in the main process, has the lock and
+            // does the same work: the buttons wait for it to end
+            while (BackupArchive.locked(root)) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            MAIN.post(() -> {
+                recovering = false;
+                if (resumed != null)
+                    resumed.setBusy(false);
+                endProcessWhenIdle();
+            });
+        }, "halo-backup-recover").start();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         resumed = this;
+        // (an instance that was not on screen when the recovery ended)
+        if (!recovering && !working && pendingAction == ACTION_NONE && dataRoot != null)
+            setBusy(false);
         showLastResult();
     }
 
@@ -162,7 +197,7 @@ public class BackupActivity extends Activity {
 
     /** the end check; every close and every finished worker posts it anew, so the last one sets the delay */
     private static final Runnable END_CHECK = () -> {
-        if (alive == 0 && !working) {
+        if (alive == 0 && !working && !recovering) {
             // a run the player backed out of has no screen to show its result
             if (lastResult != null)
                 android.util.Log.i("halo", "backup: " + lastResult);
@@ -205,7 +240,7 @@ public class BackupActivity extends Activity {
         layout.addView(title);
 
         TextView message = new TextView(this);
-        message.setText("A back-up holds your profiles with their saved games, the settings (config.toml "
+        message.setText("A backup holds your profiles with their saved games, the settings (config.toml "
             + "and the server browser's favorites) and the touch layout. It does not hold the maps: the disc "
             + "image gives those back. Quit the game from its main menu before you back up or restore.");
         message.setTextColor(Color.rgb(200, 205, 210));
@@ -213,6 +248,17 @@ public class BackupActivity extends Activity {
         message.setGravity(Gravity.CENTER);
         message.setPadding(0, dp(16), 0, dp(16));
         layout.addView(message);
+
+        // friends.txt holds each profile's private friend key (p2p_friends.c)
+        TextView warning = new TextView(this);
+        warning.setText("A backup holds your profiles' friend identity, so keep the file private and do not "
+            + "share it: anyone with it can act as you to your friends. Restoring it on a second phone gives "
+            + "both phones the same friend code.");
+        warning.setTextColor(Color.rgb(230, 190, 110));
+        warning.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        warning.setGravity(Gravity.CENTER);
+        warning.setPadding(0, 0, 0, dp(16));
+        layout.addView(warning);
 
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
@@ -268,14 +314,14 @@ public class BackupActivity extends Activity {
     private void gameRunningDialog(Runnable again) {
         new AlertDialog.Builder(this)
             .setTitle("The game is running")
-            .setMessage("Quit Halo from its main menu first, then try again.")
+            .setMessage("Quit the game from its main menu first, then try again.")
             .setPositiveButton("Check again", (dialog, which) -> again.run())
             .setNegativeButton("Cancel", null)
             .show();
     }
 
     private void chooseExport() {
-        if (working)
+        if (working || recovering)
             return;
         if (gameRunning()) {
             gameRunningDialog(this::chooseExport);
@@ -290,7 +336,7 @@ public class BackupActivity extends Activity {
     }
 
     private void chooseRestore() {
-        if (working)
+        if (working || recovering)
             return;
         if (gameRunning()) {
             gameRunningDialog(this::chooseRestore);
@@ -320,7 +366,7 @@ public class BackupActivity extends Activity {
     protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
         state.putInt("pending-backup-action", pendingAction);
-        state.putParcelable("backup-document", document);
+        state.putString("backup-document", document != null ? document.toString() : null);
         state.putBooleanArray("backup-parts", chosen);
     }
 
@@ -354,12 +400,12 @@ public class BackupActivity extends Activity {
         if (working)
             return;
         setBusy(true);
-        status.setText("Writing the back-up...");
+        status.setText("Writing the backup...");
         working = true;
         new Thread(() -> {
             boolean opened = false;
             try {
-                // checked before the document is opened, so a refused back-up
+                // checked before the document is opened, so a refused backup
                 // leaves the picked file as it was
                 if (gameRunning())
                     throw new IOException(GAME_RUNNING);
@@ -375,11 +421,11 @@ public class BackupActivity extends Activity {
                         new Date());
                 }
                 // a game started during the write may have changed the files
-                // under it, so the back-up cannot be trusted
+                // under it, so the backup cannot be trusted
                 if (gameRunning())
-                    throw new IOException("The game was started while the back-up was written, so the back-up "
+                    throw new IOException("The game was started while the backup was written, so the backup "
                         + "was removed. Quit the game and back up again.");
-                String text = "The back-up is written" + partsText(summary.profiles, summary.settings,
+                String text = "The backup is written" + partsText(summary.profiles, summary.settings,
                     summary.touchLayout, true) + ".";
                 if (summary.skipped == 1)
                     text += " One profile folder could not be read and was left out.";
@@ -387,7 +433,7 @@ public class BackupActivity extends Activity {
                     text += " " + summary.skipped + " profile folders could not be read and were left out.";
                 finished(text);
             } catch (Exception e) {
-                // a half-written back-up is worse than none, but a file this
+                // a half-written backup is worse than none, but a file this
                 // screen never wrote to is not its to delete
                 if (opened) {
                     try {
@@ -404,17 +450,18 @@ public class BackupActivity extends Activity {
         if (working)
             return;
         setBusy(true);
-        status.setText("Reading the back-up...");
+        status.setText("Reading the backup...");
         new Thread(() -> {
             try {
                 BackupArchive.Summary summary;
                 try (InputStream in = openArchive(source)) {
                     summary = BackupArchive.scan(in);
                 }
+                List<String> replaced = BackupArchive.replacedProfiles(dataRoot, summary);
                 runOnUiThread(() -> {
                     status.setText("");
                     setBusy(false);
-                    confirmRestore(source, summary);
+                    confirmRestore(source, summary, replaced);
                 });
             } catch (Exception e) {
                 failed(e);
@@ -429,13 +476,13 @@ public class BackupActivity extends Activity {
         return in;
     }
 
-    private void confirmRestore(Uri source, BackupArchive.Summary summary) {
+    private void confirmRestore(Uri source, BackupArchive.Summary summary, List<String> replaced) {
         if (isFinishing() || isDestroyed())
             return;
         boolean[] present = {summary.profiles > 0, summary.settings, summary.touchLayout};
         if (!present[PART_PROFILES] && !present[PART_SETTINGS] && !present[PART_LAYOUT]) {
             finishAction();
-            doneDialog("This back-up is empty: it holds no profiles, no settings and no touch layout.");
+            doneDialog("This backup is empty: it holds no profiles, no settings and no touch layout.");
             return;
         }
         StringBuilder text = new StringBuilder();
@@ -453,6 +500,24 @@ public class BackupActivity extends Activity {
             text.append("\n\nMade by build ").append(summary.build).append('.');
         else if (!summary.made.isEmpty())
             text.append("\n\nMade on ").append(summary.made).append('.');
+        // what a restore overwrites on this phone, said before Restore is pressed
+        if (summary.profiles > 0 && replaced.isEmpty()) {
+            text.append("\n\nNone of these profiles is on this phone, so restoring them replaces no profile.");
+        } else if (summary.profiles > 0) {
+            text.append(replaced.size() == 1
+                ? "\n\nRestoring the profiles replaces this profile on this phone whole:"
+                : "\n\nRestoring the profiles replaces these profiles on this phone whole:");
+            for (String name : replaced)
+                text.append('\n').append(name);
+            text.append(replaced.size() == 1
+                ? "\nAnything newer in it on this phone, such as campaign progress, is lost."
+                : "\nAnything newer in them on this phone, such as campaign progress, is lost.");
+        }
+        if (summary.settings)
+            text.append("\n\nRestoring the settings overwrites config.toml")
+                .append(summary.favorites ? " and the server browser's favorites" : "").append(" on this phone.");
+        if (summary.touchLayout)
+            text.append("\n\nRestoring the touch layout overwrites the one on this phone.");
 
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         Context context = builder.getContext();
@@ -482,7 +547,7 @@ public class BackupActivity extends Activity {
         scroll.addView(content);
 
         builder
-            .setTitle("Restore from this back-up?")
+            .setTitle("Restore from this backup?")
             .setView(scroll)
             .setPositiveButton("Restore", (dialog, which) -> startRestore(source, summary))
             .setNegativeButton("Cancel", (dialog, which) -> finishAction())
@@ -510,7 +575,7 @@ public class BackupActivity extends Activity {
                 String text = "Restored" + partsText(profiles ? scanned.profiles : 0, settings, touchLayout, false)
                     + ".";
                 if (profiles)
-                    text += " Profiles with the same name here were replaced; the others stay.";
+                    text += " The profiles that were already on this phone were replaced; the others stay.";
                 finished(text);
             } catch (Exception e) {
                 failed(e);
@@ -524,7 +589,7 @@ public class BackupActivity extends Activity {
             throw new IOException(GAME_RUNNING);
         long free = new StatFs(dataRoot.getPath()).getAvailableBytes();
         if (free < scanned.bytes + SPARE_BYTES)
-            throw new IOException("Not enough space: the back-up needs " + ((scanned.bytes + SPARE_BYTES) >> 20)
+            throw new IOException("Not enough space: the backup needs " + ((scanned.bytes + SPARE_BYTES) >> 20)
                 + " MB and the phone has " + (free >> 20) + " MB free.");
         // held from before the staging folder is made until the swap is done,
         // so the launcher's sweep (another process) never takes it half made
@@ -547,7 +612,7 @@ public class BackupActivity extends Activity {
                     try {
                         TouchLayout.importConfiguration(layoutText);
                     } catch (RuntimeException e) {
-                        throw new IOException("The touch layout in this back-up cannot be read. "
+                        throw new IOException("The touch layout in this backup cannot be read. "
                             + "Untick Touch layout and restore again.", e);
                     }
                 }
@@ -626,7 +691,7 @@ public class BackupActivity extends Activity {
         lastResult = null;
         finishAction();
         status.setText("");
-        setBusy(dataRoot == null);
+        setBusy(dataRoot == null || recovering);
         doneDialog(text);
     }
 }

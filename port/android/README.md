@@ -43,7 +43,7 @@ signing key (the builds before it were signed with keys that changed): such
 an app cannot be updated, and Android refuses to install the new APK over it.
 Uninstall it first. Uninstalling deletes its data folder, so first make a
 copy of `maps/` and `save/u` (refer to "Game data"), or extract `maps/` from
-the disc image again afterwards. A build that has the back-up screen can
+the disc image again afterwards. A build that has the backup screen can
 also back up the saves and settings first (long-press the app's icon and
 choose Back up saves; refer to "Back up and restore"); the builds from
 before the key have no such screen.
@@ -88,7 +88,7 @@ Your own builds all have the same signature (the debug key of WSL,
 `~/.android`), so they install over each other and keep the data
 (`adb install -r`).
 
-Before you remove the app, make a back-up: long-press the app's icon and
+Before you remove the app, make a backup: long-press the app's icon and
 choose Back up saves (refer to "Back up and restore"). Or use adb. To keep
 the saved games, enter
 `adb pull /sdcard/Android/data/com.openh1.openh1/files/save/u` (the profiles).
@@ -168,43 +168,51 @@ files of `save/z`, which adb cannot read.
 
 ## Back up and restore
 
-Removing the app deletes its data folder, so the app can make a back-up of
-your data first. A back-up holds your profiles with their saved games and
+Removing the app deletes its data folder, so the app can make a backup of
+your data first. A backup holds your profiles with their saved games and
 their friends (`friends.txt`, the profile's key and friends list), the
 settings (`config.toml`), the server browser's favorite games
 (`favorites.txt`) and the touch layout. It does not hold the maps: the disc
 image gives those back.
 
-To make a back-up:
+To make a backup:
 
-1. Quit the game from its main menu. The back-up does not operate while the
+1. Quit the game from its main menu. The backup does not operate while the
    game runs.
 2. Long-press the app's icon and choose Back up saves.
 3. Push "Back up". The file picker of the system opens.
 4. Choose where to keep the file, and save it.
 
-The back-up is a zip file named `openh1-saves-<date>.zip`. Keep it
-anywhere: on the phone, on a computer or in a cloud folder.
+The backup is a zip file named `openh1-saves-<date>.zip`. Keep it on the
+phone, on a computer or in a cloud folder that only you can open.
 
-To restore a back-up:
+Keep the backup private and do not share it. It holds each profile's
+friend identity (the key in `friends.txt`), so anyone with the file can act
+as you to your friends. Restoring the same backup on a second phone gives
+both phones the same friend code.
+
+To restore a backup:
 
 1. Quit the game from its main menu.
 2. Long-press the app's icon, choose Back up saves, and push "Restore". On
    a fresh install, push "Restore saves and settings" on the first screen
    of the app instead.
-3. Select the zip file. The app reads it, and shows what it holds.
+3. Select the zip file. The app reads it, and shows what it holds and
+   what it replaces on the phone.
 4. Tick what you want back: the profiles and their saved games, the
    settings and the touch layout. Then push "Restore".
 
-A profile that has the same name as one in the back-up is replaced. It keeps
-its friends when the back-up has none for it (a back-up made before the
-profile had a friend code). The other profiles on the phone stay. The
+A profile in the backup that is also on the phone (the same profile, not
+only the same name; the app lists them before you restore) is replaced
+whole: anything newer in it on the phone, such as campaign progress, is
+lost. It keeps its friends when the backup has none for it (a backup made
+before the profile had a friend code). The other profiles on the phone stay. The
 settings and the touch layout are each a choice, and they replace the ones
-on the phone. The app refuses a file that is not a back-up of OpenH1, and
+on the phone. The app refuses a file that is not a backup of OpenH1, and
 says why. After a restore on a fresh install, the app still needs the disc
 image for the maps.
 
-Android TV has no icon shortcuts, so the back-up needs a phone or a tablet
+Android TV has no icon shortcuts, so the backup needs a phone or a tablet
 launcher.
 
 ## Controls
@@ -438,7 +446,7 @@ signed with others, so an app installed before it cannot update: remove it
 once and install the new APK (refer to "Install"). If you installed a build
 that has a different signature, remove that build before you install a new
 build. Removing the app deletes its data folder: first make a copy of
-`maps/` and `save/u`, or, on a build that has it, a back-up of the saves
+`maps/` and `save/u`, or, on a build that has it, a backup of the saves
 and settings (long-press the app's icon, Back up saves), and a copy of
 `maps/`.
 

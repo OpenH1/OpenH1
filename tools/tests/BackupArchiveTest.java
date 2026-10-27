@@ -15,7 +15,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
-/** Standalone regression checks of the back-up archive; no phone required. */
+/** Standalone regression checks of the backup archive; no phone required. */
 public final class BackupArchiveTest {
     private interface Case {
         void run() throws Exception;
@@ -49,6 +49,8 @@ public final class BackupArchiveTest {
             run("extract choices", BackupArchiveTest::choices);
             run("skipped profile folders", BackupArchiveTest::skipped);
             run("a swap that fails after a profile moved", BackupArchiveTest::swapFailsLate);
+            run("the profiles a restore replaces", BackupArchiveTest::replaced);
+            run("the lock seen from outside", BackupArchiveTest::locked);
         } finally {
             delete(temp);
         }
@@ -276,7 +278,7 @@ public final class BackupArchiveTest {
         check(!new File(other, profilePath(HASH_B, "savegame.bin")).exists(),
             "a replaced profile is replaced whole");
         check(Arrays.equals(text("old key\n"), read(new File(other, profilePath(HASH_B, "friends.txt")))),
-            "a replaced profile keeps its friends.txt when the back-up has none for it");
+            "a replaced profile keeps its friends.txt when the backup has none for it");
         check(Arrays.equals(read(new File(root, profilePath(HASH_A, "friends.txt"))),
             read(new File(other, profilePath(HASH_A, "friends.txt")))), "friends.txt must come back byte for byte");
         check(Arrays.equals(utf16("Gamma"), read(new File(other, profilePath(HASH_C, "SaveMeta.xbx")))),
@@ -330,10 +332,10 @@ public final class BackupArchiveTest {
         refused(renamed(zip("openh1-backup.properties", text(GOOD_MARKER),
             "openh1-backup.propertieX", text(GOOD_MARKER)),
             "openh1-backup.propertieX", "openh1-backup.properties"), "second marker", "a second marker");
-        refused(new byte[] {1, 2, 3, 4, 5, 6, 7, 8}, "not an OpenH1 back-up", "bytes that are not a zip");
+        refused(new byte[] {1, 2, 3, 4, 5, 6, 7, 8}, "not an OpenH1 backup", "bytes that are not a zip");
         BackupArchive.Summary ok = BackupArchive.scan(new ByteArrayInputStream(
             zip("openh1-backup.properties", text(GOOD_MARKER))));
-        check(ok.profiles == 0 && ok.build == 7 && !ok.settings, "an empty but valid back-up must scan");
+        check(ok.profiles == 0 && ok.build == 7 && !ok.settings, "an empty but valid backup must scan");
         BackupArchive.Summary first = BackupArchive.scan(new ByteArrayInputStream(
             zip("openh1-backup.properties", text(marker(0, true, false, 1)), "config.toml", config)));
         check(first.settings && !first.favorites, "a marker without the favorites key must read as none");
@@ -415,8 +417,8 @@ public final class BackupArchiveTest {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         BackupArchive.write(out, root, "layout=1\n", 1, new Date(0));
         byte[] whole = out.toByteArray();
-        refused(Arrays.copyOf(whole, whole.length / 2), "back-up", "a zip cut in half");
-        refused(Arrays.copyOf(whole, 100), "back-up", "a zip cut inside its first entries");
+        refused(Arrays.copyOf(whole, whole.length / 2), "backup", "a zip cut in half");
+        refused(Arrays.copyOf(whole, 100), "backup", "a zip cut inside its first entries");
 
         // cut at an entry boundary: the zip reads as a clean end, so the marker's counts must catch it
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
@@ -553,6 +555,59 @@ public final class BackupArchiveTest {
         check(again != null, "the lock must be free again after close");
         again.close();
         check(new File(root, "save/.backup-lock").isFile(), "the lock file is never deleted");
+    }
+
+    private static void replaced() throws Exception {
+        File root = dataRootWithTwoProfiles();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        BackupArchive.Summary written = BackupArchive.write(out, root, null, 1, new Date(0));
+        check(written.profileHashes.equals(Arrays.asList(HASH_B, HASH_A)),
+            "write must list the profile hashes in archive order: " + written.profileHashes);
+        BackupArchive.Summary scanned = BackupArchive.scan(new ByteArrayInputStream(out.toByteArray()));
+        check(scanned.profileHashes.equals(Arrays.asList(HASH_B, HASH_A)),
+            "scan must list the profile hashes beside their names: " + scanned.profileHashes);
+
+        // the phone has HASH_B under another name, a half-made HASH_A and a HASH_C the backup does not hold
+        File phone = folder();
+        put(phone, profilePath(HASH_B, "SaveMeta.xbx"), utf16("Newer\0\0"));
+        put(phone, profilePath(HASH_B, "blam.lst"), pattern(8, 1));
+        put(phone, profilePath(HASH_A, "blam.sav"), pattern(8, 2));
+        put(phone, profilePath(HASH_C, "SaveMeta.xbx"), utf16("Gamma"));
+        put(phone, profilePath(HASH_C, "blam.sav"), pattern(8, 3));
+        List<String> names = BackupArchive.replacedProfiles(phone, scanned);
+        check(names.equals(Arrays.asList("Newer", HASH_A)),
+            "the replaced profiles must be named as the phone names them, a nameless one by its hash: " + names);
+
+        // the list is what swapIn does: exactly those folders are replaced
+        File staging = new File(phone, "save/u.restoring");
+        BackupArchive.extract(new ByteArrayInputStream(out.toByteArray()), staging, true, false, false);
+        BackupArchive.swapIn(phone, staging);
+        check(Arrays.equals(utf16("Beéta\0\0"), read(new File(phone, profilePath(HASH_B, "SaveMeta.xbx"))))
+            && Arrays.equals(utf16("Alpha"), read(new File(phone, profilePath(HASH_A, "SaveMeta.xbx"))))
+            && Arrays.equals(utf16("Gamma"), read(new File(phone, profilePath(HASH_C, "SaveMeta.xbx")))),
+            "swapIn must replace the listed profiles and keep the other");
+
+        File empty = folder();
+        check(BackupArchive.replacedProfiles(empty, scanned).isEmpty(), "a phone with no profiles loses none");
+    }
+
+    private static void locked() throws Exception {
+        File fresh = folder();
+        check(!BackupArchive.locked(fresh), "a fresh install has no lock held");
+        check(!new File(fresh, "save").exists(), "looking at the lock must not create folders on a fresh install");
+        File root = folder();
+        BackupArchive.Lock held = BackupArchive.tryLock(root);
+        check(held != null, "the lock must be free at first");
+        try {
+            check(BackupArchive.locked(root), "a held lock must be seen");
+            check(BackupArchive.locked(root), "looking must not release a lock another holder has");
+        } finally {
+            held.close();
+        }
+        check(!BackupArchive.locked(root), "a released lock must not be seen as held");
+        BackupArchive.Lock again = BackupArchive.tryLock(root);
+        check(again != null, "looking must leave the lock free");
+        again.close();
     }
 
     private static void damaged() throws Exception {

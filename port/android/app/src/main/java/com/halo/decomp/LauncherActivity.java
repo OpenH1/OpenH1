@@ -49,15 +49,8 @@ public class LauncherActivity extends Activity {
         dataRoot = getExternalFilesDir(null);
         // created by the app, so that files pushed into it with adb stay
         // readable (a directory adb creates there belongs to the shell user)
-        if (dataRoot != null) {
+        if (dataRoot != null)
             new File(dataRoot, "maps").mkdirs();
-            // a restore of saved games that was cut short is finished or
-            // undone (BackupArchive); a restore at work right now, in the
-            // back-up screen's own process, holds a lock and is left alone
-            String recovered = BackupArchive.recover(dataRoot);
-            if (!recovered.isEmpty())
-                android.util.Log.i("halo", "backup: " + recovered);
-        }
         passOnHardwareId();
         passOnInvite(getIntent());
         // (a phone without the renderer's Vulkan 1.3 is told so, rather than
@@ -66,6 +59,26 @@ public class LauncherActivity extends Activity {
             VulkanSupport.explain(this, this::finish);
             return;
         }
+        if (dataRoot == null) {
+            buildInterface();
+            return;
+        }
+        // a restore of saved games that was cut short is finished or undone
+        // (BackupArchive) before the game or the backup screen can start, off
+        // the UI thread: a large leftover takes a while to delete; a restore
+        // at work right now, in the backup screen's own process, holds a lock
+        // and is left alone
+        new Thread(() -> {
+            String recovered = BackupArchive.recover(dataRoot);
+            if (!recovered.isEmpty())
+                android.util.Log.i("halo", "backup: " + recovered);
+            handler.post(this::recovered);
+        }, "halo-backup-recover").start();
+    }
+
+    private void recovered() {
+        if (isFinishing() || isDestroyed())
+            return;
         if (haveData()) {
             startGame();
             return;
@@ -130,6 +143,13 @@ public class LauncherActivity extends Activity {
     }
 
     private void startGame() {
+        // never under a restore that is moving the profiles: the backup
+        // screen shows it until it ends
+        if (dataRoot != null && BackupArchive.locked(dataRoot)) {
+            startActivity(new Intent(this, BackupActivity.class));
+            finish();
+            return;
+        }
         startActivity(new Intent(this, HaloActivity.class));
         finish();
     }
@@ -178,7 +198,7 @@ public class LauncherActivity extends Activity {
         layout.addView(pick, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        // saved games and settings from a back-up (BackupActivity); the
+        // saved games and settings from a backup (BackupActivity); the
         // maps still come from the disc image
         restore = new Button(this);
         restore.setText("Restore saves and settings");
