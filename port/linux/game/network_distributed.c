@@ -124,6 +124,8 @@ unsigned long p2p_peer_endpoint_address(unsigned long virtual_address);
 boolean network_connection_last_read_was_unreliable(void);
 unsigned long system_milliseconds(void);
 void platform_log(char const *format, ...);
+/* xbox_kernel.c's */
+unsigned long long platform_shared_clock_microseconds(void);
 /* main.c's and port_mods.c's: this build, and the mods it plays */
 void main_build_identity(long *number, char *flavor, size_t flavor_size, char *repository, size_t repository_size,
 	char *version, size_t version_size);
@@ -450,6 +452,10 @@ enum
 	its tick relays the client none of the same tick or before (the forward
 	was it; past them, a client gone silent, the tick's relays go again) */
 	FORWARDED_INPUT_RELAY_TICKS = 2,
+	/* ... and sends what came on no sooner than this after it last did
+	(milliseconds: a host drawing hundreds of frames a second sent a datagram
+	to each client nearly every frame) */
+	FORWARDED_INPUT_INTERVAL_MILLISECONDS = 8,
 };
 
 struct distributed_pickup
@@ -3306,59 +3312,117 @@ static boolean distributed_forward_covers(
 		distributed_forwarded_ticks[machine_index][player_index] >= input_time;
 }
 
-/* (the host, each frame after reading its datagrams: main.c) the inputs
-heard this frame sent on, to each OpenH1 client in one datagram */
-void network_distributed_frame_received(
+/* (the host) the inputs heard since last sent on (and the live controls of
+the sub-steps, network_substeps.c's), to each OpenH1 client in one datagram */
+static void distributed_forward_flush(
 	void)
 {
 	long machine_indices[HALO_PORT_MAXIMUM_NETWORK_MACHINES];
 	short machine_count;
 	short machine_number;
 	short player_index;
-	boolean any = FALSE;
+	boolean inputs = FALSE;
+	boolean live = network_substeps_live_pending();
+	static unsigned long long last_sent;
+	/* (not system_milliseconds, which the determinism log notes in a tick:
+	the host's own players' controls are sent on from a sub-step) */
+	unsigned long long now = platform_shared_clock_microseconds() / 1000ull;
 
 	if (game_connection() != _game_connection_network_server || !game_in_progress() || !network_standard_hosting())
 		return;
-	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS && !any; player_index++)
-		any = distributed_forwards[player_index].pending;
-	if (!any)
+	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS && !inputs; player_index++)
+		inputs = distributed_forwards[player_index].pending;
+	if ((!inputs && !live) || now - last_sent < FORWARDED_INPUT_INTERVAL_MILLISECONDS)
 		return;
+	last_sent = now;
 	machine_count = distributed_client_machines(machine_indices, HALO_PORT_MAXIMUM_NETWORK_MACHINES);
 	for (machine_number = 0; machine_number < machine_count; machine_number++)
 	{
 		long machine_index = machine_indices[machine_number];
+		boolean any = FALSE;
 
 		if (!network_standard_machine_is_openh1(machine_index))
 			continue;
-		distributed_packer_begin(&distributed_packer, (short)machine_index, _distributed_message_forwarded_inputs,
-			NULL, 0);
-		for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+		if (inputs)
 		{
-			byte entry[DISTRIBUTED_FORWARDED_INPUT_MAXIMUM_SIZE];
-			byte period = distributed_forward_periods[machine_index][player_index];
-			word size;
-			long tick = distributed_forwards[player_index].tick;
-
-			if (!distributed_forwards[player_index].pending || !period ||
-				distributed_machine_has_player(machine_index, player_index) ||
-				!(period == 1 || distributed_forwards[player_index].changed || ((tick + player_index) & 1) == 0))
+			distributed_packer_begin(&distributed_packer, (short)machine_index, _distributed_message_forwarded_inputs,
+				NULL, 0);
+			for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
 			{
-				continue;
+				byte entry[DISTRIBUTED_FORWARDED_INPUT_MAXIMUM_SIZE];
+				byte period = distributed_forward_periods[machine_index][player_index];
+				word size;
+				long tick = distributed_forwards[player_index].tick;
+
+				if (!distributed_forwards[player_index].pending || !period ||
+					distributed_machine_has_player(machine_index, player_index) ||
+					!(period == 1 || distributed_forwards[player_index].changed || ((tick + player_index) & 1) == 0))
+				{
+					continue;
+				}
+				size = distributed_relayed_action_write(&distributed_forwards[player_index].action, entry);
+				csmemcpy(entry + size, &tick, sizeof(tick));
+				size += sizeof(tick);
+				size += network_substeps_forward_write(player_index, tick, entry + size);
+				distributed_packer_add(&distributed_packer, entry, size);
+				distributed_forwarded_ticks[machine_index][player_index] = tick;
+				distributed_forwarded_times[machine_index][player_index] = game_time_get();
+				any = TRUE;
 			}
-			size = distributed_relayed_action_write(&distributed_forwards[player_index].action, entry);
-			csmemcpy(entry + size, &tick, sizeof(tick));
-			size += sizeof(tick);
-			size += network_substeps_forward_write(player_index, tick, entry + size);
-			distributed_packer_add(&distributed_packer, entry, size);
-			distributed_forwarded_ticks[machine_index][player_index] = tick;
-			distributed_forwarded_times[machine_index][player_index] = game_time_get();
+			distributed_packer_flush(&distributed_packer);
 		}
-		distributed_packer_flush(&distributed_packer);
+		/* (each sub-step's controls of the players near, or aimed at) */
+		if (live)
+		{
+			distributed_packer_begin(&distributed_packer, (short)machine_index,
+				_distributed_message_forwarded_live_controls, NULL, 0);
+			for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+			{
+				byte entry[LIVE_CONTROL_FORWARD_SIZE];
+				word size;
+
+				if (!distributed_forward_periods[machine_index][player_index] ||
+					distributed_machine_has_player(machine_index, player_index))
+				{
+					continue;
+				}
+				size = network_substeps_live_forward_write(player_index, entry);
+				if (size)
+				{
+					distributed_packer_add(&distributed_packer, entry, size);
+					any = TRUE;
+				}
+			}
+			distributed_packer_flush(&distributed_packer);
+		}
 		/* (at once: not with the next tick's) */
-		distributed_batch_flush((short)machine_index);
+		if (any)
+			distributed_batch_flush((short)machine_index);
 	}
 	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
 		distributed_forwards[player_index].pending = FALSE;
+	if (live)
+		network_substeps_live_forwarded();
+}
+
+/* (the host, each frame after reading its datagrams: main.c) */
+void network_distributed_frame_received(
+	void)
+{
+	distributed_forward_flush();
+}
+
+void network_distributed_forward_now(
+	void)
+{
+	distributed_forward_flush();
+}
+
+void distributed_flush_to_host(
+	void)
+{
+	if (game_connection() == _game_connection_network_client)
+		distributed_batch_flush(HOST_SENDER);
 }
 
 /* (a client) the other clients' players' input the host sent on as it came */

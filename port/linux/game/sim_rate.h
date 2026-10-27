@@ -57,6 +57,7 @@ enum sim_substep_slot
 	_sim_substep_items, /* thrown items and grenades */
 	_sim_substep_projectiles,
 	_sim_substep_vr, /* the VR mode's throws and grabs */
+	_sim_substep_network, /* an OpenH1 game's sends of each sub-step (network_substeps.c) */
 	_sim_substep_render_interpolation, /* a pose kept after each sub-step */
 	_sim_substep_trace, /* the scorecard's trace (debug.trace) */
 	_sim_substep_network_test, /* the network test's presses (debug.network_test) */

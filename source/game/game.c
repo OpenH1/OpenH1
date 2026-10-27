@@ -193,6 +193,8 @@ struct game_options;
 boolean network_game_distributed_client(void);
 /* port: a client drives the host's actors' units as the host sent them (port/linux/game/network_actors.c) */
 void network_actors_drive(void);
+/* port: port/linux/game/network_substeps.c */
+void network_substeps_actions_given(void);
 
 /* ---------- constants */
 
@@ -368,6 +370,10 @@ static void game_tick_macro_step(
 	else
 		profile_scope(game_tick_actors_drive_section, network_actors_drive();)
 	profile_scope(game_tick_players_before_section, players_update_before_game();)
+	/* port: an OpenH1 game's client: the other players' controls of their
+	later sub-steps, as they ran, where they are later than the input just
+	given (port/linux/game/network_substeps.c) */
+	network_substeps_actions_given();
 
 	seconds_per_tick = game_globals->players_are_double_speed
 		? 1.0f / (2 * TICKS_PER_SECOND)

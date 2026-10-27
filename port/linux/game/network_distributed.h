@@ -181,6 +181,13 @@ enum
 	near the player, aiming at them, or whose buttons changed (unreliable,
 	keyed by that client's tick; network_distributed.c) */
 	_distributed_message_forwarded_inputs = 131,
+	/* an OpenH1 game's controls as each sub-step runs (network_substeps.c), at
+	60 and 120 only: a client's own players' at the end of each sub-step that
+	changed them, at once (unreliable); and those the host sends on as they
+	come, with its own players', to its OpenH1 clients near them
+	(unreliable) */
+	_distributed_message_player_live_controls = 132,
+	_distributed_message_forwarded_live_controls = 133,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };
@@ -309,6 +316,11 @@ void network_distributed_tick_begun(void);
 clients sent this frame sent on to its other OpenH1 clients at once (an
 OpenH1 game's forwarded input) */
 void network_distributed_frame_received(void);
+/* (the host) the same now, in a sub-step (network_substeps.c's own players'
+controls); (a client) its messages to the host so far sent now, not with
+the tick's */
+void network_distributed_forward_now(void);
+void distributed_flush_to_host(void);
 /* (the host) the client machines in the game, but for its own; their count */
 short distributed_client_machines(long *machine_indices, short maximum);
 /* (the host) how long a message takes that client and its answer back, in
