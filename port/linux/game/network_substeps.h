@@ -48,6 +48,26 @@ enum
 word network_substeps_forward_write(short player_index, long key, byte *buffer);
 word network_substeps_forward_read(short player_index, long key, byte const *data, byte const *end);
 
+/* An OpenH1 game's controls as each sub-step runs (NETCODE.md, "Sub-steps as
+they run"): each machine's own players' at each sub-step's end where they
+changed (a client's to the host at once, with the hits the sub-step made),
+which the host sends on to its clients as they come, with its own players'
+(network_distributed.c's forwarded input), and a client gives another
+player's unit while they are later than the input its tick took. Not at 30.
+
+(the host) a player's latest not yet sent on, in LIVE_CONTROL_FORWARD_SIZE
+bytes (0: none), and all of them sent; whether any is to send */
+enum
+{
+	LIVE_CONTROL_FORWARD_SIZE = 19,
+};
+word network_substeps_live_forward_write(short player_index, byte *buffer);
+void network_substeps_live_forwarded(void);
+boolean network_substeps_live_pending(void);
+/* (a client, after each tick's actions are given to the units: game.c) the
+other players' latest controls given their units where they are later */
+void network_substeps_actions_given(void);
+
 /* the messages (network_distributed.c's handling, before its own) */
 boolean network_substeps_handles_message(word const *message, word size);
 void network_substeps_handle_message(long machine_index, word const *message, word size);

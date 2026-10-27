@@ -87,6 +87,7 @@ enum _distributed_message_coop_sounds_retired 67
 enum _distributed_message_damage_animations 75
 enum _distributed_message_damage_events 10
 enum _distributed_message_forwarded_inputs 131
+enum _distributed_message_forwarded_live_controls 133
 enum _distributed_message_friend_players 130
 enum _distributed_message_game_state 7
 enum _distributed_message_hit_reports 11
@@ -109,6 +110,7 @@ enum _distributed_message_party_up 123
 enum _distributed_message_pickups 13
 enum _distributed_message_pings 19
 enum _distributed_message_player_inputs 14
+enum _distributed_message_player_live_controls 132
 enum _distributed_message_player_prediction 1
 enum _distributed_message_player_statistics 3
 enum _distributed_message_player_substeps 120
@@ -300,6 +302,7 @@ struct distributed_infection_player d8b98eecf26b
 struct distributed_infection_state 8a01c46945ad
 struct distributed_inventory 05a279a76ba5
 struct distributed_inventory_message 11825a84dc29
+struct distributed_live_control 641fd545d05f
 struct distributed_map_share_offer 4bea857123c2
 struct distributed_map_share_offer_file 204a3b73d193
 struct distributed_map_share_progress 2c3831013302
