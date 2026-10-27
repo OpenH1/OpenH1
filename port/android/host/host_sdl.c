@@ -39,6 +39,15 @@ void host_links_watch(void);
 #endif
 #if defined(__APPLE__) && !TARGET_OS_IPHONE
 #include <CoreAudio/CoreAudio.h>
+/* port/macos/host_audio_output.c: the sound played through CoreAudio's
+output unit rather than SDL's AudioQueue, with less delay */
+#define HOST_AUDIO_OUTPUT 1
+SDL_AudioStream *host_audio_output_open(SDL_AudioDeviceID device, const SDL_AudioSpec *spec,
+	SDL_AudioStreamCallback callback, void *userdata);
+int host_audio_output_resume(SDL_AudioStream *stream);
+int host_audio_output_close(SDL_AudioStream *stream);
+int host_audio_output_timing(SDL_AudioStream *stream, int *timing);
+void host_audio_output_thread(SDL_AudioStream *stream, int *state);
 #endif
 #if defined(__APPLE__) && !TARGET_OS_IPHONE
 /* port/macos/host_raw_mouse.m: the mouse's unaccelerated counts */
@@ -382,6 +391,12 @@ struct audio_binding
 	unsigned char *buffer;
 	int buffer_length;
 	int buffer_size;
+#ifdef HOST_AUDIO_OUTPUT
+	/* the stream, and the output unit's set-up the thread was last made
+	ready for (host_audio_output_thread) */
+	SDL_AudioStream *stream;
+	int output_setups;
+#endif
 };
 
 /* the binding whose callback this thread is running, if any */
@@ -397,6 +412,8 @@ static void *audio_thread(void *context)
 	time, as SDL keeps its own; a small audio.buffer_frames needs it) */
 	SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_TIME_CRITICAL);
 #endif
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
+#endif
 	pthread_mutex_lock(&binding->lock);
 	for (;;)
 	{
@@ -409,6 +426,9 @@ static void *audio_thread(void *context)
 		additional = binding->additional;
 		total = binding->total;
 		pthread_mutex_unlock(&binding->lock);
+#ifdef HOST_AUDIO_OUTPUT
+		host_audio_output_thread(binding->stream, &binding->output_setups);
+#endif
 		calling_back = binding;
 		host_call_guest(binding->callback, binding->userdata, binding->handle, (uint32_t)additional, (uint32_t)total);
 		calling_back = NULL;
@@ -465,6 +485,16 @@ static int audio_keep(struct audio_binding *binding, const void *data, int lengt
 	return 1;
 }
 
+/* (returns once a callback that is running has finished) */
+static void audio_stream_destroy(SDL_AudioStream *stream)
+{
+#ifdef HOST_AUDIO_OUTPUT
+	if (host_audio_output_close(stream))
+		return;
+#endif
+	SDL_DestroyAudioStream(stream);
+}
+
 uint32_t host_sdl_open_audio_stream(uint32_t device, const void *spec, uint32_t callback, uint32_t userdata)
 {
 	struct audio_binding *binding;
@@ -485,18 +515,25 @@ uint32_t host_sdl_open_audio_stream(uint32_t device, const void *spec, uint32_t 
 	pthread_mutex_init(&binding->lock, NULL);
 	pthread_cond_init(&binding->requested, NULL);
 	pthread_cond_init(&binding->done, NULL);
-	stream = SDL_OpenAudioDeviceStream((SDL_AudioDeviceID)device, spec,
-		callback ? audio_callback : NULL, binding);
+	stream = NULL;
+#ifdef HOST_AUDIO_OUTPUT
+	stream = host_audio_output_open((SDL_AudioDeviceID)device, spec, audio_callback, binding);
+#endif
+	if (!stream)
+		stream = SDL_OpenAudioDeviceStream((SDL_AudioDeviceID)device, spec, audio_callback, binding);
 	if (!stream)
 	{
 		SDL_free(binding);
 		return 0;
 	}
+#ifdef HOST_AUDIO_OUTPUT
+	binding->stream = stream;
+#endif
 	/* the device starts paused, so no callback can run before this */
 	binding->handle = host_sdl_handle_new(_handle_audio, stream);
 	if (!binding->handle)
 	{
-		SDL_DestroyAudioStream(stream);
+		audio_stream_destroy(stream);
 		pthread_cond_destroy(&binding->done);
 		pthread_cond_destroy(&binding->requested);
 		pthread_mutex_destroy(&binding->lock);
@@ -526,6 +563,12 @@ int host_sdl_resume_audio_stream_device(uint32_t stream)
 {
 	SDL_AudioStream *object = host_sdl_handle_get(stream, _handle_audio);
 
+#ifdef HOST_AUDIO_OUTPUT
+	int resumed = host_audio_output_resume(object);
+
+	if (resumed >= 0)
+		return resumed;
+#endif
 	return object ? SDL_ResumeAudioStreamDevice(object) : 0;
 }
 
@@ -556,7 +599,7 @@ void host_sdl_destroy_audio_stream(uint32_t stream)
 	if (!object)
 		return;
 	/* (returns once a callback that is running has finished) */
-	SDL_DestroyAudioStream(object);
+	audio_stream_destroy(object);
 	if (binding)
 	{
 		pthread_mutex_lock(&binding->lock);
@@ -622,11 +665,14 @@ static int system_output_latency(void)
 driver's name into driver (size bytes), and into timing: [0] its buffer
 (sample frames), [1] its rate, [2] the time SDL's driver keeps queued
 ahead of the buffer it asks for (microseconds), [3] the system's own
-latency after that, as it reports it (microseconds; -1 not known). The
+latency after that, as it reports it (microseconds; -1 not known), [4] the
+times the Mac's output unit was set up for a device (0 otherwise). The
 queue is SDL 3.4's: CoreAudio's AudioQueue keeps three buffers, or as many
 pairs as make 15 ms (all but the one asked for ahead); PipeWire's stream
 (not on its real-time thread) a quantum, the buffer; PulseAudio's target
-length is the buffer, as are WASAPI's and ALSA's periods. 1 on success */
+length is the buffer, as are WASAPI's and ALSA's periods. On the Mac the
+stream plays through CoreAudio's output unit instead (driver "coreaudio
+unit", port/macos/host_audio_output.c), which queues nothing. 1 on success */
 int host_sdl_audio_stream_timing(uint32_t stream, char *driver, int driver_size, int *timing)
 {
 	SDL_AudioStream *object = host_sdl_handle_get(stream, _handle_audio);
@@ -635,6 +681,14 @@ int host_sdl_audio_stream_timing(uint32_t stream, char *driver, int driver_size,
 	int frames = 0;
 	double queued = 0.0;
 
+#ifdef HOST_AUDIO_OUTPUT
+	if (object && timing && host_audio_output_timing(object, timing))
+	{
+		if (driver && driver_size > 0)
+			SDL_strlcpy(driver, "coreaudio unit", (size_t)driver_size);
+		return 1;
+	}
+#endif
 	if (!object || !timing || !SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(object), &spec, &frames) ||
 		spec.freq <= 0 || frames <= 0)
 		return 0;
@@ -656,6 +710,7 @@ int host_sdl_audio_stream_timing(uint32_t stream, char *driver, int driver_size,
 	timing[1] = spec.freq;
 	timing[2] = (int)(queued * 1.0e6 / spec.freq);
 	timing[3] = name && !SDL_strcmp(name, "coreaudio") ? system_output_latency() : -1;
+	timing[4] = 0;
 	return 1;
 }
 

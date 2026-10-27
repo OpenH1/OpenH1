@@ -2165,9 +2165,10 @@ logs the dropouts and, with audio.buffer_frames 0, grows the buffer
 /* the device the sound plays on (device_timing_read): its driver, its
 buffer (frames) and rate, the time SDL's driver keeps queued ahead of the
 buffer it asks for and the system's latency after (microseconds; -1 not
-known) */
+known), and the times the Mac's output unit was set up for it (0 for SDL's
+drivers: device_timing_changed) */
 static char device_driver[32];
-static int device_timing[4];
+static int device_timing[5];
 static BOOL device_timing_valid;
 
 static struct
@@ -2204,8 +2205,11 @@ static void timing_reset(void)
 	pthread_mutex_unlock(&timing_lock);
 }
 
-/* (the device opened, not yet playing) its slack; none for SDL's dummy and
-disk drivers (the tests'), which have no device to run dry */
+/* (the device opened, not yet playing) its slack: what it keeps queued, or
+with nothing queued (the Mac's CoreAudio output unit, which asks for each
+buffer as its I/O cycle comes) the buffer itself, at the device's rate;
+none for SDL's dummy and disk drivers (the tests'), which have no device to
+run dry */
 static void timing_slack(void)
 {
 	if (device_timing_valid && (!strcmp(device_driver, "dummy") || !strcmp(device_driver, "disk")))
@@ -2214,7 +2218,7 @@ static void timing_slack(void)
 		timing.slack_ns = (Sint64)device_timing[2] * 1000;
 	else
 		timing.slack_ns = (Sint64)((double)(device_timing_valid ? device_timing[0] : 1024) *
-			(1.0e9 / OUTPUT_RATE));
+			(1.0e9 / (device_timing_valid && device_timing[1] > 0 ? device_timing[1] : OUTPUT_RATE)));
 }
 
 /* (the mixer's thread) a request, at now */
@@ -2547,7 +2551,10 @@ static void device_timing_read(SDL_AudioStream *stream)
 
 	device_timing_valid = host_sdl_audio_stream_timing((unsigned int)(uintptr_t)stream, device_driver,
 		(int)sizeof(device_driver), device_timing) != 0;
+	/* (the mixer's thread may be answering: device_timing_changed) */
+	pthread_mutex_lock(&timing_lock);
 	timing_slack();
+	pthread_mutex_unlock(&timing_lock);
 	if (!device_timing_valid)
 		return;
 	if (device_timing[3] >= 0)
@@ -2583,6 +2590,25 @@ static SDL_AudioStream *audio_open(void)
 	device_timing_read(stream);
 	SDL_ResumeAudioStreamDevice(stream);
 	return stream;
+}
+
+/* (the event thread, each frame) the Mac's output unit set up again
+(port/macos/host_audio_output.c: another default device, the device's rate
+or channels changed): its timing read again, and the dropout of the change
+(the unit stops meanwhile) kept from growing the buffer, as at the device's
+opening */
+static void device_timing_changed(void)
+{
+	int timing_now[5] = { 0 };
+	char driver[sizeof(device_driver)];
+
+	if (!device_timing_valid || strcmp(device_driver, "coreaudio unit") ||
+		!host_sdl_audio_stream_timing((unsigned int)(uintptr_t)audio_stream, driver, (int)sizeof(driver), timing_now) ||
+		timing_now[4] == device_timing[4])
+		return;
+	platform_log("sound: the output device changed");
+	device_timing_read(audio_stream);
+	audio_opened_at = SDL_GetTicks();
 }
 
 /* (the event thread, each frame) the device's dropouts since the log last
@@ -2686,6 +2712,7 @@ void dsound_sdl_output_device_check(void)
 {
 	if (!audio_stream)
 		return;
+	device_timing_changed();
 	timing_check();
 	if (!audio_stream || audio_device_read_at == config_changes())
 		return;

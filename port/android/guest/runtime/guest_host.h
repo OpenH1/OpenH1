@@ -101,7 +101,9 @@ int host_sdl_get_audio_stream_available(unsigned int stream);
 void host_sdl_destroy_audio_stream(unsigned int stream);
 /* (debug.latency_log) the device a stream plays on: its driver's name, its
 buffer (frames), rate, the time SDL queues ahead of it and the system's
-latency after (microseconds; -1 not known) into timing[4]; 1 on success */
+latency after (microseconds; -1 not known), and the times the Mac's output
+unit was set up for a device (0 for SDL's drivers) into timing[5]; 1 on
+success */
 int host_sdl_audio_stream_timing(unsigned int stream, char *driver, int driver_size, int *timing);
 
 /* ---------- the sound's output (host_audio_route.c)
