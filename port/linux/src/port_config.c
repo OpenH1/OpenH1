@@ -1502,7 +1502,8 @@ static const struct config_setting config_settings[] =
 		"input each tick at any frame rate); \"pad\" turns, looks, fires, throws, holds Back and walks in\n"
 		"turn, logging each (the VR mode's vr.aim = \"gamepad\"); \"latency:<seed>\" pulls the fire\n"
 		"control, pushes the stick, clicks the mouse and moves it in turn on the real\n"
-		"clock (debug.latency_log; \"latency:<seed>:fire,click,turn\" plays those only);\n"
+		"clock (debug.latency_log; \"latency:<seed>:fire,click,turn\" plays those only,\n"
+		"\"latency:<seed>:menu\" the D-pad down and up in a menu);\n"
 		"\"menu:<buttons>\" presses menu\n"
 		"buttons one a second (a, b, x, y, up, down, left, right, start, back or\n"
 		"wait, or click:<x>:<y>, a click of the pointer there, 0 to 1 of the\n"
@@ -1571,7 +1572,8 @@ static const struct config_setting config_settings[] =
 		"and each turn of the mouse: the milliseconds from the reading of the\n"
 		"controller or the mouse to the step that acts on it, to the first frame\n"
 		"drawn after it, to the first frame that shows it (the frames draw a\n"
-		"tick behind), and that frame's drawing and handing on\n"
+		"tick behind), and that frame's drawing and handing on; a press in a\n"
+		"menu to the frame that shows it; a rumble's step to the motors' write\n"
 		"(port/linux/game/latency_log.c, tools/latency_summary.py); empty for\n"
 		"none." },
 	{ "debug.determinism_log", _config_string, "\"\"", "HALO_DETERMINISM_LOG", _environment_value, _platform_all,

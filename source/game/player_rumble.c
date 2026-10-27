@@ -40,6 +40,7 @@ symbols in this file:
 
 #include "game/player_rumble.h"
 
+#include "game/game.h"
 #include "game/players.h"
 #include "input/input.h"
 #include "interface/player_ui.h"
@@ -85,10 +86,15 @@ struct rumble_motor_values
 
 static struct rumble_motor_values rumble_calculate(
 	struct rumble_player *player);
+static void rumble_port_write_motors(
+	void);
 
 /* ---------- globals */
 
 static struct rumble_globals *rumble_globals;
+/* port: the tick whose rumble_update has run, NONE for none
+(rumble_player_impulse) */
+static long rumble_port_updated_tick = NONE;
 
 /* ---------- public code */
 
@@ -113,6 +119,7 @@ void rumble_initialize_for_new_map(
 	void)
 {
 	csmemset(rumble_globals, 0, sizeof(*rumble_globals));
+	rumble_port_updated_tick = NONE;
 
 	return;
 }
@@ -194,9 +201,19 @@ void rumble_player_impulse(
 	impulse->motors[1].scale *= motor_scale;
 	impulse->motors[0].duration *= duration_scale;
 	impulse->motors[1].duration *= duration_scale;
+	/* port: debug.latency_log, the impulse's step to its motors' write */
+	LATENCY_LOG(latency_log_rumble_caused(local_player_index, MAX(
+		impulse->motors[0].scale > 0.0f ? impulse->motors[0].duration : 0.0f,
+		impulse->motors[1].scale > 0.0f ? impulse->motors[1].duration : 0.0f)));
 
 	impulse_index = impulse - player->impulses;
-	player->impulse_time[impulse_index] = 0.0f;
+	/* port: the motors are written at the end of the step that made the
+	impulse (rumble_port_step_end), at its start; rumble_update ages it a
+	tick before it writes them, so one made after this tick's update is
+	a tick on at the next, and one made before it (the effects' update)
+	starts at the update, as they did: the impulse lasts its duration from
+	the step, not from the next tick's update a tick later */
+	player->impulse_time[impulse_index] = rumble_port_updated_tick == game_time_get() ? 0.0f : -1.0f / 30.0f;
 
 	return;
 }
@@ -241,9 +258,15 @@ void rumble_player_continuous(
 	real right_motor)
 {
 	struct rumble_player *player = &rumble_globals->players[local_player_index];
+	/* port: a change written in the frame that makes it (the camera's
+	effects, from the looping sounds' continuous effects: a vehicle's
+	engine), not at the next tick's update */
+	boolean changed = player->continuous_left != left_motor || player->continuous_right != right_motor;
 
 	player->continuous_left = left_motor;
 	player->continuous_right = right_motor;
+	if (changed)
+		rumble_port_write_motors();
 
 	return;
 }
@@ -280,6 +303,50 @@ void rumble_update(
 	short local_player_index;
 	long impulse_index;
 
+	/* port: the impulses aged a tick, then the motors written
+	(rumble_port_write_motors), where the motors were written at each
+	impulse's age before it was aged (rumble_player_impulse) */
+	for (local_player_index = 0;
+		local_player_index < MAXIMUM_LOCAL_PLAYERS;
+		local_player_index++)
+	{
+		struct rumble_player *player =
+			&rumble_globals->players[local_player_index];
+
+		for (impulse_index = 0;
+			impulse_index < MAXIMUM_RUMBLE_IMPULSES;
+			impulse_index++)
+		{
+			player->impulse_time[impulse_index] += 1.0f / 30.0f;
+		}
+	}
+	rumble_port_updated_tick = game_time_get();
+	rumble_port_write_motors();
+
+	return;
+}
+
+/* port: the end of a simulation step (game_tick_substep: a tick at
+game.sim_rate 30, a sub-step at 60 and 120): the motors written for the
+impulses, scripted rumble and clears it made, in the step itself, not at the
+next tick's update (rumble_update) */
+void rumble_port_step_end(
+	void)
+{
+	rumble_port_write_motors();
+
+	return;
+}
+
+/* ---------- private code */
+
+/* port: each local player's motors at their impulses' ages, written to
+their controller (rumble_update's, apart from its aging the impulses) */
+static void rumble_port_write_motors(
+	void)
+{
+	short local_player_index;
+
 	for (local_player_index = 0;
 		local_player_index < MAXIMUM_LOCAL_PLAYERS;
 		local_player_index++)
@@ -288,13 +355,6 @@ void rumble_update(
 			&rumble_globals->players[local_player_index];
 		struct rumble_motor_values motors = rumble_calculate(player);
 		long player_index;
-
-		for (impulse_index = 0;
-			impulse_index < MAXIMUM_RUMBLE_IMPULSES;
-			impulse_index++)
-		{
-			player->impulse_time[impulse_index] += 1.0f / 30.0f;
-		}
 
 		player_index = local_player_get_player_index(local_player_index);
 		if (player_index != NONE)
@@ -329,8 +389,6 @@ void rumble_update(
 
 	return;
 }
-
-/* ---------- private code */
 
 static struct rumble_motor_values rumble_calculate(
 	struct rumble_player *player)

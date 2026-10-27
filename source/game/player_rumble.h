@@ -66,5 +66,8 @@ void rumble_dispose_from_old_map(
 	void);
 void rumble_update(
 	void);
+/* port: at the end of each simulation step */
+void rumble_port_step_end(
+	void);
 
 #endif // __PLAYER_RUMBLE_H

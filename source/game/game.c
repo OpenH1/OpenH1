@@ -438,6 +438,9 @@ boolean game_tick_substep(
 	tick_ended = sim_substep_next() == 0;
 	if (tick_ended)
 		game_tick_after_substeps();
+	/* port: the controllers' motors for what the step did (a shot, a hit),
+	as it ends, not at the next tick's rumble_update (player_rumble.c) */
+	rumble_port_step_end();
 
 	profile_exit(game_update_section);
 	collision_log_end_period();

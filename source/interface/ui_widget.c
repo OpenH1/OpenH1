@@ -1266,8 +1266,9 @@ struct widget_instance
 		struct
 		{
 			short selected_index;
-			/* counted back toward zero one step per rendered frame; the two
-			tab functions start it at +15 and -15 and the column list renderer
+			/* counted back toward zero one step per rendered frame (port: per
+			30 Hz tick of real time, ui_widget_port_frame_ticks); the two tab
+			functions start it at +15 and -15 and the column list renderer
 			clears it */
 			short last_list_tab_direction;
 			void *list_items;
@@ -1476,6 +1477,13 @@ static wchar_t *spinner_string_list_get_string(
 	short string_index);
 
 /* ---------- globals */
+
+/* port: the 30 Hz ticks of real time begun between the last two frames'
+widgets (process_ui_widgets), which a spinner's arrow is lit for
+(widget_instance_render_spinner_list). The menus take presses and are drawn
+each frame, as the Xbox's were at its 30 frames a second, and their other
+timers (a press held, a fade) run on the clock */
+static short ui_widget_port_frame_ticks;
 
 /* port: text boxes' string list indices from here are the descriptions of
 spinners' extra items (kills_to_win_extra_descriptions), above the Custom
@@ -3162,6 +3170,9 @@ static void play_sound_tag(
 void ui_play_audio_feedback_sound(
 	short audio_feedback)
 {
+	/* port: debug.latency_log, a press the menus took */
+	if (audio_feedback != _ui_audio_feedback_none)
+		LATENCY_LOG(latency_log_menu_acted());
 	switch (audio_feedback)
 	{
 	case _ui_audio_feedback_cursor:
@@ -5690,19 +5701,22 @@ static void widget_instance_render_spinner_list(
 	if (!widget->visible)
 		return;
 	last_list_tab_direction = widget->parameters.list.last_list_tab_direction;
+	/* port: the arrow lit for its 15 steps of the Xbox's 30 frames a second
+	(half a second) at any frame rate: counted down in the ticks of real
+	time the frame took, not one a frame (a tenth of a second at 144) */
 	if (last_list_tab_direction)
 	{
 		switch (SIGN(last_list_tab_direction))
 		{
 		case -1:
 			widget->parameters.list.last_list_tab_direction =
-				last_list_tab_direction + 1;
+				(short)MIN(last_list_tab_direction + ui_widget_port_frame_ticks, 0);
 			header_frame_index = 1;
 			break;
 
 		case 1:
 			widget->parameters.list.last_list_tab_direction =
-				last_list_tab_direction - 1;
+				(short)MAX(last_list_tab_direction - ui_widget_port_frame_ticks, 0);
 			footer_frame_index = 1;
 			break;
 		}
@@ -8896,6 +8910,18 @@ void process_ui_widgets(
 		644,
 		widget_globals.initialized);
 	widget_globals.current_system_milliseconds = system_milliseconds();
+	/* port: (ui_widget_port_frame_ticks) the 30 Hz ticks of real time
+	begun since the last frame's */
+	{
+		static unsigned long previous_tick;
+		static boolean ticked = FALSE;
+		unsigned long milliseconds = widget_globals.current_system_milliseconds;
+		unsigned long tick = milliseconds / 1000 * TICKS_PER_SECOND + milliseconds % 1000 * TICKS_PER_SECOND / 1000;
+
+		ui_widget_port_frame_ticks = ticked ? (short)MIN(tick - previous_tick, SHORT_MAX) : 0;
+		previous_tick = tick;
+		ticked = TRUE;
+	}
 	ui_widgets_process_mouse();
 	if (ui_widget_port_press_controller != NONE)
 	{

@@ -103,7 +103,8 @@ void sim_trace_frame(short local_player_index, void const *camera_position, void
 /* debug.latency_log (port/linux/game/latency_log.c): the first local
 player's input to the frame that shows it, each call made only while the
 log is on (LATENCY_LOG): a weapon fired (weapons.c), each simulation step
-(game_time.c), each frame drawn (main.c) */
+(game_time.c), each frame drawn (main.c), a menu's taking a press
+(ui_widget.c) and a rumble impulse to a local player (player_rumble.c) */
 extern int latency_log_on;
 #define LATENCY_LOG(call) do { if (latency_log_on) { call; } } while (0)
 void latency_log_fire(long owner_object_index);
@@ -112,6 +113,8 @@ void latency_log_substep_end(void);
 void latency_log_frame_begin(void);
 void latency_log_frame_rendered(void);
 void latency_log_frame_presented(void);
+void latency_log_menu_acted(void);
+void latency_log_rumble_caused(short local_player_index, float duration_seconds);
 /* the Custom Edition tag cache window, or NULL unless the
 game.custom_edition setting reserved it (port/linux/src/xbox_memory.c) */
 void *halo_custom_edition_tag_cache(void);
