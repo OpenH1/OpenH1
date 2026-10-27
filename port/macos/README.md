@@ -420,12 +420,22 @@ goes on.
 The display paces the game, by the policy every renderer shares
 (`port/linux/src/frame_pacing.h`, in the command stream's host for this
 one): the game starts a frame only while at most one of its frames waits
-for the display, and then not before its budget (the most a frame took
-from its input read to ready for the display, of the last 128, and
-1.5 ms) ahead of the refresh it is for. Each refresh's link callback is
-its latch: the link calls about two refreshes before the frame is on
-screen, and a frame taken later in the callback, nearer the link's
-deadline, missed its refresh (an M1 Max at 120 Hz). So the game reads its
+for the display, and then not before its budget ahead of the refresh it
+is for. The budget is the most a frame took from its input read to its GPU
+work done, of the last 128 (`host_metal_present_signal`'s
+`host_render_stream_frame_finished`), and a margin that starts at 1.5 ms
+and that the stream learns: a frame the refresh it was started for did not
+find widens it, once for each margin (`host_render_stream_frame_displayed`,
+as Vulkan's pacing, `display.low_latency`). Each refresh's latch is the
+link's deadline for it (its update's `targetTimestamp`), and its frame is
+taken 3 ms before it, not as the link calls, a refresh earlier. On an M2 at
+60 Hz in a window (vsync on, 120 tick, 240 s each): input to screen went
+from 73 ms (median; 61 at 60 tick, 70 with battery saver) to 63 to 65 ms
+(63 with battery saver), and the refreshes that showed a frame again from
+15 to 52 in 12,000 to 4 to 11. `HALO_METAL_STATS` logs the pacing as
+Vulkan's line does (refreshes that showed a frame again, frames taken at
+their refresh or after it, the margin and the budget), and
+`HALO_FRAME_PACING_MARGIN_MS` holds the margin, for tests. So the game reads its
 input as late as it can and still has the frame on screen at the refresh
 it is for: on an M1 Max in Blood Gulch, input to screen went from 55 ms
 (median; 69 ms 95th percentile) to 18 ms (19 to 25 ms) at 120 Hz, and
