@@ -1,7 +1,7 @@
 """COPY INVITE's message (port/linux/src/p2p.c's p2p_invite_message): a line with the join page's https address of
-a party's or a game's link, which chat apps make clickable, and a line with the halo:// link; and every form of
+a party's or a game's link, which chat apps make clickable, and a line with the openh1:// link; and every form of
 either link the game takes (p2p.c's parse_invite, p2p_party.c's p2p_party_parse_link, sdl_platform.c's look at the
-clipboard), old and new (invite_links.c)."""
+clipboard), old and new, older builds' halo:// links among them (invite_links.c)."""
 
 import pytest
 
@@ -38,7 +38,22 @@ FAULTS = {
                           "\"\", P2P_JOIN_PAGE, hex);"), "party"),
     "game-as-party": (('"Join my OpenH1 game: %s#join=%s\\n"', '"Join my OpenH1 game: %s#party=%s\\n"'), "game"),
     "address-not-seen": ((', "openh1.com/join/#" };', " };"), "party"),
-    "old-forms-dropped": (('{ "halo://join/", "?join=", "&join=", "#join=" };', '{ "#join=" };'), "forms"),
+    "old-forms-dropped": (('"?join=", "&join=", "#join=" };', '"#join=" };'), "forms"),
+    # (the game makes openh1:// links, takes older builds' halo:// ones, and sees either on the clipboard)
+    "makes-halo-links": (("\"Or paste this into OpenH1's Join by Link: \" P2P_JOIN_LINK_PREFIX \"%s\"",
+                          "\"Or paste this into OpenH1's Join by Link: \" P2P_OLD_JOIN_LINK_PREFIX \"%s\""), "game"),
+    "makes-halo-party-links": (("\"Or paste this into OpenH1's Join by Link: \" P2P_PARTY_LINK_PREFIX \"%s\"",
+                                "\"Or paste this into OpenH1's Join by Link: \" P2P_OLD_PARTY_LINK_PREFIX \"%s\""),
+                               "party"),
+    "halo-join-not-taken": (("{ P2P_JOIN_LINK_PREFIX, P2P_OLD_JOIN_LINK_PREFIX,", "{ P2P_JOIN_LINK_PREFIX,"), "forms"),
+    "halo-party-not-taken": (("{ P2P_PARTY_LINK_PREFIX, P2P_OLD_PARTY_LINK_PREFIX,", "{ P2P_PARTY_LINK_PREFIX,"),
+                             "forms"),
+    "openh1-join-not-taken": (("{ P2P_JOIN_LINK_PREFIX, P2P_OLD_JOIN_LINK_PREFIX,", "{ P2P_OLD_JOIN_LINK_PREFIX,"),
+                              "forms"),
+    "openh1-party-not-taken": (("{ P2P_PARTY_LINK_PREFIX, P2P_OLD_PARTY_LINK_PREFIX,", "{ P2P_OLD_PARTY_LINK_PREFIX,"),
+                               "forms"),
+    "halo-not-seen": (("P2P_PARTY_LINK_PREFIX, P2P_OLD_JOIN_LINK_PREFIX,\n\t\tP2P_OLD_PARTY_LINK_PREFIX, ",
+                       "P2P_PARTY_LINK_PREFIX, "), "forms"),
 }
 
 

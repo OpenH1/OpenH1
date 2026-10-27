@@ -708,7 +708,7 @@ static void listing_take(const struct queued *queued, const struct listing *list
 		memcpy(bytes, queued->key_hash, P2P_KEY_HASH_SIZE);
 		memcpy(bytes + P2P_KEY_HASH_SIZE, listing->token, P2P_TOKEN_SIZE);
 		p2p_hex(bytes, sizeof(bytes), text);
-		snprintf(shown->invite, sizeof(shown->invite), "halo://join/%s", text);
+		snprintf(shown->invite, sizeof(shown->invite), P2P_JOIN_LINK_PREFIX "%s", text);
 	}
 	p2p_identifier_from_hash(queued->key_hash, shown->identifier);
 	memcpy(shown->name, listing->name, sizeof(shown->name));
@@ -1121,7 +1121,7 @@ int p2p_listing_unlock(struct p2p_listing *listing, const char *password)
 	if (opened)
 	{
 		p2p_hex(bytes, sizeof(bytes), text);
-		snprintf(listing->invite, sizeof(listing->invite), "halo://join/%s", text);
+		snprintf(listing->invite, sizeof(listing->invite), P2P_JOIN_LINK_PREFIX "%s", text);
 	}
 	memset(key, 0, sizeof(key));
 	memset(bytes, 0, sizeof(bytes));

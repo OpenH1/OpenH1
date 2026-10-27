@@ -18,15 +18,15 @@ GAME = "0123456789abcdef0123456789abcdef00112233445566778899aabbccddeeff"
 
 # (the address's hash, its search) and the link it holds (None: none)
 CASES = [
-    (("#party=" + PARTY, ""), {"kind": "party", "link": "halo://party/" + PARTY}),
-    (("#join=" + GAME, ""), {"kind": "game", "link": "halo://join/" + GAME}),
-    (("#" + PARTY, ""), {"kind": "party", "link": "halo://party/" + PARTY}),
-    (("#" + GAME, ""), {"kind": "game", "link": "halo://join/" + GAME}),
-    (("#party=" + PARTY.upper(), ""), {"kind": "party", "link": "halo://party/" + PARTY}),
-    (("#utm=x&join=" + GAME, ""), {"kind": "game", "link": "halo://join/" + GAME}),
-    (("#party=" + PARTY + "&from=steam", ""), {"kind": "party", "link": "halo://party/" + PARTY}),
-    (("", "?join=" + GAME), {"kind": "game", "link": "halo://join/" + GAME}),
-    (("", "?x=1&party=" + PARTY), {"kind": "party", "link": "halo://party/" + PARTY}),
+    (("#party=" + PARTY, ""), {"kind": "party", "link": "openh1://party/" + PARTY}),
+    (("#join=" + GAME, ""), {"kind": "game", "link": "openh1://join/" + GAME}),
+    (("#" + PARTY, ""), {"kind": "party", "link": "openh1://party/" + PARTY}),
+    (("#" + GAME, ""), {"kind": "game", "link": "openh1://join/" + GAME}),
+    (("#party=" + PARTY.upper(), ""), {"kind": "party", "link": "openh1://party/" + PARTY}),
+    (("#utm=x&join=" + GAME, ""), {"kind": "game", "link": "openh1://join/" + GAME}),
+    (("#party=" + PARTY + "&from=steam", ""), {"kind": "party", "link": "openh1://party/" + PARTY}),
+    (("", "?join=" + GAME), {"kind": "game", "link": "openh1://join/" + GAME}),
+    (("", "?x=1&party=" + PARTY), {"kind": "party", "link": "openh1://party/" + PARTY}),
     (("#party=" + GAME, ""), None),
     (("#join=" + PARTY, ""), None),
     (("#party=" + PARTY[:-1], ""), None),
@@ -86,8 +86,21 @@ def test_join_link_negative_control():
 
 
 def test_page_opens_the_link_on_every_system():
-    """the page opens the halo:// link at once on every system: the Mac's and the iPhone's apps are its handler too
+    """the page opens the openh1:// link at once on every system: the Mac's and the iPhone's apps are its handler too
     (tools/macos_app.py, tools/ios_app.py)"""
     script = PAGE.read_text().split("<script>")[1]
     assert re.search(r"\n  attempt\(\);\n  location\.href = found\.link;\n", script)
     assert not re.search(r"\bapple\b", script) and "iPhone|iPad|Mac" not in script
+
+
+def test_page_opens_the_games_scheme():
+    """the page opens the game's own links (p2p.h's prefixes, openh1://), never OpenCE's halo://, which the game no
+    longer registers"""
+    header = (ROOT / "port/linux/src/p2p.h").read_text()
+    prefixes = {name: re.search(rf'#define {name} "([^"]*)"', header).group(1)
+                for name in ("P2P_PARTY_LINK_PREFIX", "P2P_JOIN_LINK_PREFIX")}
+    assert prefixes == {"P2P_PARTY_LINK_PREFIX": "openh1://party/", "P2P_JOIN_LINK_PREFIX": "openh1://join/"}
+    function = page_function()
+    for prefix in prefixes.values():
+        assert f'link: "{prefix}" + digits' in function
+    assert "halo:" not in PAGE.read_text()

@@ -1403,14 +1403,19 @@ Machines with an invite link can play system link on the internet. This
 project has no server.
 
 When a copy of the game starts to host a system link game, it makes an
-invite link: `halo://join/<64 hexadecimal digits>`. The game writes the link
+invite link: `openh1://join/<64 hexadecimal digits>`. The game writes the link
 to the standard error and puts it on the clipboard. The links of older
 versions of the game (44 digits) do not operate. The game writes a message
 when it gets one.
 
 To join a game, do one of these steps:
 
-- Open the link. The game is the handler of `halo://` links. If the game
+- Open the link. The game is the handler of `openh1://` links: at each
+  start it registers the scheme (a desktop entry on Linux, the registry on
+  Windows). `halo://` is OpenCE's scheme, which older versions of OpenH1
+  registered too: the game removes a `halo://` registration that runs its
+  own executable, and leaves OpenCE's. The game still takes the `halo://`
+  links of older versions, from any of these steps. If the game
   already operates, the new copy gives the link to it and stops. A key in a
   file that only the user can read (`halo-ce-universal.key` in
   `$XDG_RUNTIME_DIR`, else `~/.halo-ce-universal.key`; on Windows in
@@ -1438,7 +1443,7 @@ Friends can group up before a game and go from game to game together
 
 - Multiplayer > PLAY ONLINE > PARTY opens the Party screen. MAKE PARTY makes a party
   of up to 16 players, you its leader, and puts its link on the clipboard:
-  `halo://party/<32 hexadecimal digits>`. COPY INVITE copies an invite to
+  `openh1://party/<32 hexadecimal digits>`. COPY INVITE copies an invite to
   paste in any chat (refer to "Invites from anywhere").
   Friends join it as they join an invite: they open the link, copy it and
   go to the game, use JOIN BY LINK, or PASTE LINK on the Party screen. The
@@ -2019,27 +2024,28 @@ In the game, each machine has an address in 100.64.0.0/10:
 ### Invites from anywhere
 
 Steam's chat, and most other apps, make only `https://` links clickable,
-not `halo://`. COPY INVITE (on the Party screen, and in the lobby's footer)
+not `openh1://`. COPY INVITE (on the Party screen, and in the lobby's footer)
 copies a short message for any chat (`p2p_invite_message`):
 
 ```
 Join my OpenH1 party: https://openh1.com/join/#party=<32 hexadecimal digits>
-Or paste this into OpenH1's Join by Link: halo://party/<32 hexadecimal digits>
+Or paste this into OpenH1's Join by Link: openh1://party/<32 hexadecimal digits>
 ```
 
 In a party it is the party's invite: a friend joins the party, then follows
 its leader into the lobby or the game. Out of a party, in an internet game,
-it is the game's (`#join=` and `halo://join/`, 64 digits).
+it is the game's (`#join=` and `openh1://join/`, 64 digits).
 
 The address opens the join page (`website/public/join`, on openh1.com). The
 code is after `#`, which a browser never sends to the site. The page opens
-the `halo://` link (the game is its handler on Windows, Linux, Android,
+the `openh1://` link (the game is its handler on Windows, Linux, Android,
 macOS and iOS), shows the link to copy into JOIN BY LINK (or the Party
 screen's PASTE LINK; the game also joins a link that it finds on the
 clipboard when it comes to the front), and shows the downloads for a friend who does not
 have OpenH1 yet. The game takes the join page's addresses, as it takes every
-other form of the links (`halo://join/`, `halo://party/`, a bare code,
-`?join=`, `?party=`).
+other form of the links (`openh1://join/`, `openh1://party/`, older
+versions' `halo://join/` and `halo://party/`, a bare code, `?join=`,
+`?party=`).
 
 ### Discord
 

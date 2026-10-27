@@ -104,10 +104,10 @@ own projects only, never to a site that offers the game.
 `public/join/index.html`, at `/join/`, is where the game's COPY INVITE
 sends friends (`P2P_JOIN_PAGE` in `port/linux/src/p2p.h`; "Invites from
 anywhere" in `port/linux/README.md`): chat apps such as Steam's make
-`https://` addresses clickable, not `halo://` links. The invite's code is
+`https://` addresses clickable, not `openh1://` links. The invite's code is
 after `#` (`#party=<32 hex digits>` for a party, `#join=<64>` for a game),
 which a browser never sends to the site; the page also takes an older
-address's `?join=` and `?party=`. The page opens the `halo://` link at once
+address's `?join=` and `?party=`. The page opens the `openh1://` link at once
 (OpenH1 is its handler on every system, the Mac and the iPhone too), shows
 the link to copy into JOIN BY LINK, and, when OpenH1 did not open (the page
 kept the focus) or the code is missing, the downloads, as the home page's

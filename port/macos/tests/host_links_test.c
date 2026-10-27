@@ -4,8 +4,8 @@ HOST_LINKS_TEST.C
 port/macos/host_links.c, with SDL's event watches stood in for: the links
 SDL's application delegate sends as drop events (macOS's GetURL event,
 UIKit's openURLContexts) are kept for the guest (host_app_take_link),
-oldest first, and nothing else is. tools/test_macos_app.py builds and runs
-it.
+oldest first, older builds' halo:// links among them, and nothing else is.
+tools/test_macos_app.py builds and runs it.
 */
 
 #include <SDL3/SDL.h>
@@ -76,8 +76,10 @@ static const char *taken(void)
 	return host_app_take_link(link, sizeof(link)) ? link : NULL;
 }
 
-#define PARTY "halo://party/00112233445566778899aabbccddeeff"
-#define GAME "halo://join/0123456789abcdef0123456789abcdef00112233445566778899aabbccddeeff"
+#define PARTY "openh1://party/00112233445566778899aabbccddeeff"
+#define GAME "openh1://join/0123456789abcdef0123456789abcdef00112233445566778899aabbccddeeff"
+/* an older build's (OpenCE's scheme, which the app no longer registers) */
+#define OLD_GAME "halo://join/0123456789abcdef0123456789abcdef00112233445566778899aabbccddeeff"
 #define PAGE "https://openh1.com/join/#party=00112233445566778899aabbccddeeff"
 
 int main(void)
@@ -92,17 +94,20 @@ int main(void)
 	CHECK(watch_count == 1, "one watch, however often SDL starts (%d)", watch_count);
 	CHECK(!taken(), "no link before one comes");
 
-	/* a party's link, a game's, the join page's address, in any case */
+	/* a party's link, a game's, an older build's, in any case */
 	opened(SDL_EVENT_DROP_FILE, PARTY);
 	opened(SDL_EVENT_DROP_FILE, GAME);
-	opened(SDL_EVENT_DROP_FILE, "HALO://Party/00112233445566778899aabbccddeeff");
+	opened(SDL_EVENT_DROP_FILE, "OpenH1://Party/00112233445566778899aabbccddeeff");
+	opened(SDL_EVENT_DROP_FILE, OLD_GAME);
 	link = taken();
 	CHECK(link && !strcmp(link, PARTY), "the party's link first: %s", link ? link : "(none)");
 	link = taken();
 	CHECK(link && !strcmp(link, GAME), "the game's link next: %s", link ? link : "(none)");
 	link = taken();
-	CHECK(link && !strcmp(link, "HALO://Party/00112233445566778899aabbccddeeff"), "a link in capitals: %s",
+	CHECK(link && !strcmp(link, "OpenH1://Party/00112233445566778899aabbccddeeff"), "a link in capitals: %s",
 		link ? link : "(none)");
+	link = taken();
+	CHECK(link && !strcmp(link, OLD_GAME), "an older build's link: %s", link ? link : "(none)");
 	CHECK(!taken(), "each link taken once");
 
 	/* not links: a file dropped on the window, another site, text dragged
@@ -113,7 +118,7 @@ int main(void)
 	opened(SDL_EVENT_DROP_TEXT, PARTY);
 	opened(SDL_EVENT_DROP_COMPLETE, NULL);
 	memset(long_link, 'a', sizeof(long_link));
-	memcpy(long_link, "halo://party/", 13);
+	memcpy(long_link, "openh1://party/", 15);
 	long_link[sizeof(long_link) - 1] = 0;
 	opened(SDL_EVENT_DROP_FILE, long_link);
 	CHECK(!taken(), "nothing else is kept");
@@ -126,14 +131,14 @@ int main(void)
 	{
 		char text[64];
 
-		snprintf(text, sizeof(text), "halo://party/%032d", index);
+		snprintf(text, sizeof(text), "openh1://party/%032d", index);
 		opened(SDL_EVENT_DROP_FILE, text);
 	}
 	for (index = 2; index < 6; index++)
 	{
 		char text[64];
 
-		snprintf(text, sizeof(text), "halo://party/%032d", index);
+		snprintf(text, sizeof(text), "openh1://party/%032d", index);
 		link = taken();
 		CHECK(link && !strcmp(link, text), "link %d of the last four: %s", index, link ? link : "(none)");
 	}
@@ -142,7 +147,7 @@ int main(void)
 	/* the guest's room is never overrun */
 	opened(SDL_EVENT_DROP_FILE, PARTY);
 	memset(small, 'x', sizeof(small));
-	CHECK(host_app_take_link(small, sizeof(small)) && !strcmp(small, "halo://"), "cut to the room: %.8s", small);
+	CHECK(host_app_take_link(small, sizeof(small)) && !strcmp(small, "openh1:"), "cut to the room: %.8s", small);
 	CHECK(!host_app_take_link(NULL, 0), "no room, nothing taken");
 
 	if (failures)

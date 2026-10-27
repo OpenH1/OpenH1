@@ -12,7 +12,7 @@ as the player plays, input.button_prompts), for PARTY_PROMPT_MILLISECONDS;
 let go, it fades. A player asked sees "Bob wants to join your party", whose
 key sends Bob the invite, which Bob's machine then takes without asking (it
 asked). Joining is a party link's (p2p_party_join_link): the same as opening
-halo://party/<token>. The scoreboard's menu has the accept too.
+openh1://party/<token>. The scoreboard's menu has the accept too.
 
 The link goes only to the player it is for, through the game's connection
 (port/linux/NETCODE.md), in messages of OpenH1's own (120 and after), of a
@@ -129,7 +129,7 @@ boolean hud_key_prompt_draw_key(char const *name, rectangle2d *bounds, rectangle
 /* ---------- constants */
 
 /* a party's link: this, then its token in hexadecimal (p2p.h's) */
-#define PARTY_LINK_PREFIX "halo://party/"
+#define PARTY_LINK_PREFIX "openh1://party/"
 
 enum
 {

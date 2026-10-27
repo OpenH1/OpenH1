@@ -33,7 +33,7 @@ void host_app_update_tick(void);
 #pragma weak host_app_update_tick
 #endif
 #ifdef __APPLE__
-/* port/macos/host_links.c: the links the app is opened with (halo://...),
+/* port/macos/host_links.c: the links the app is opened with (openh1://...),
 which SDL sends as drop events, kept for the guest */
 void host_links_watch(void);
 #endif

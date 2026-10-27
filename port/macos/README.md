@@ -86,9 +86,11 @@ Support's OpenH1 folder whatever the app is called, so an earlier
   `CAMetalDisplayLink` is 14.0), `NSMicrophoneUsageDescription` (voice
   chat), `NSLocalNetworkUsageDescription` (system link), and the project's
   disclaimer as its copyright.
-- `CFBundleURLTypes`: the app is the handler of `halo://` links (invites,
-  `halo://join/...`, and parties' links, `halo://party/...`), which the join
-  page opens (`website/public/join`). macOS gives SDL's application
+- `CFBundleURLTypes`: the app is the handler of `openh1://` links (invites,
+  `openh1://join/...`, and parties' links, `openh1://party/...`), which the
+  join page opens (`website/public/join`); not of `halo://` links, OpenCE's,
+  which older versions' links have (the game still takes one that reaches
+  it). macOS gives SDL's application
   delegate the link (the GetURL Apple event), whether the app is running
   or the link starts it, and SDL sends it on as a drop event;
   `host_links.c` keeps it for the guest's internet play, which joins it as

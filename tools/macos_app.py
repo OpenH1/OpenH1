@@ -47,8 +47,9 @@ EXECUTABLE = "halo"
 SDL_LIBRARY = "libSDL3.0.dylib"
 SPARKLE = "Sparkle.framework"
 ICON = "openh1-icon"
-# the scheme of the game's links (port/linux/src/p2p.h)
-URL_SCHEME = "halo"
+# the scheme of the game's links (port/linux/src/p2p.h's P2P_LINK_SCHEME); not OpenCE's, halo, which older builds'
+# links have
+URL_SCHEME = "openh1"
 # what the README says of the project
 COPYRIGHT = ("OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox "
              "Game Studios, Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft "
@@ -80,7 +81,7 @@ def info_plist(bundle_id: str, build: int, minimum: str, feed: str = None, key: 
     names itself ("OpenH1 macOS | build <n>"), and as Sparkle compares it
     with the appcast's sparkle:version. The games category and Game
     Mode's key make macOS turn Game Mode on while the game is fullscreen.
-    The app is the handler of halo:// links (invites, parties' links:
+    The app is the handler of openh1:// links (invites, parties' links:
     port/macos/host_links.c).
     A release's app has Sparkle's appcast and public key (feed, key): it
     looks for a new version at each start and every four hours after
@@ -121,8 +122,8 @@ def info_plist(bundle_id: str, build: int, minimum: str, feed: str = None, key: 
 
 
 def url_types(bundle_id: str) -> list:
-    """CFBundleURLTypes: the scheme of the game's links (halo://join/...,
-    halo://party/...), which the system then opens the app with; the iOS
+    """CFBundleURLTypes: the scheme of the game's links (openh1://join/...,
+    openh1://party/...), which the system then opens the app with; the iOS
     app's too (tools/ios_app.py)"""
     return [{"CFBundleURLName": bundle_id, "CFBundleTypeRole": "Viewer", "CFBundleURLSchemes": [URL_SCHEME]}]
 

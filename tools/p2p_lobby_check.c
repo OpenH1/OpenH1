@@ -276,7 +276,7 @@ static void lobby_checks(void)
 		p2p_key_hash(x25519_public, bytes);
 		memcpy(bytes + P2P_KEY_HASH_SIZE, token, P2P_TOKEN_SIZE);
 		p2p_hex(bytes, sizeof(bytes), text);
-		snprintf(expected_invite, sizeof(expected_invite), "halo://join/%s", text);
+		snprintf(expected_invite, sizeof(expected_invite), "openh1://join/%s", text);
 	}
 	check(count == 1 && !strcmp(listing.invite, expected_invite), "the listing's invite is the host's");
 	{

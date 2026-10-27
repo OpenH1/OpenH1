@@ -60,14 +60,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
-            <!-- internet play invite links, halo://join/..., and parties'
-                 links, halo://party/... (the join page opens either) -->
+            <!-- internet play invite links, openh1://join/..., and parties'
+                 links, openh1://party/... (the join page opens either);
+                 not halo://, OpenCE's, which older builds' links have -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="halo" android:host="join" />
-                <data android:scheme="halo" android:host="party" />
+                <data android:scheme="openh1" android:host="join" />
+                <data android:scheme="openh1" android:host="party" />
             </intent-filter>
         </activity>
 
