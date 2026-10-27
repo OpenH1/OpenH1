@@ -436,15 +436,13 @@ static void network_substeps_handle_relayed(
 }
 
 /* whether a live control of key and sub-step is later than one of the
-other's (a key far behind: its sender's game began again) */
+other's */
 static boolean live_control_later(
 	long key,
 	short substep,
 	long other_key,
 	short other_substep)
 {
-	if (key < other_key - TICKS_PER_SECOND * 10)
-		return TRUE;
 	return key > other_key || (key == other_key && substep > other_substep);
 }
 
@@ -478,7 +476,9 @@ static boolean live_control_heard(
 	struct live_control *kept = &network_substeps_globals.live[player_index];
 
 	if (kept->valid && kept->host_update == live->host_update &&
-		!live_control_later(live->key, live->substep, kept->key, kept->substep))
+		!live_control_later(live->key, live->substep, kept->key, kept->substep) &&
+		/* (a key far behind: its sender's game began again) */
+		live->key >= kept->key - TICKS_PER_SECOND * 10)
 	{
 		return FALSE;
 	}
