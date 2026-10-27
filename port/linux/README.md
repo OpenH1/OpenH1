@@ -1280,19 +1280,20 @@ Gulch with bots, 2.0% and 1.4%. `test_mixer.py circle out.wav hrtf` (or
 A sound is heard some time after the game starts it: the game's sound update
 in the next frame; the wait for the sound device's next request for frames,
 at most `audio.buffer_frames`; the frames queued on the device ahead of that
-request's, which SDL's driver keeps; and the system's own latency after (its
-output buffer; a MacBook's built-in speakers add 27 ms of their own
-processing). The log says the last two as the device opens ("sound: the
-device (coreaudio) asks for 256 frames at a time at 48000 Hz ...; 26.7 ms
-queued ahead of them, the system's latency after 40.3 ms"), and
-`debug.latency_log` times a shot's sound from the step the weapon fires in
-(`game/latency_log.c`).
+request's, which SDL's driver keeps (none on the Mac: below); and the
+system's own latency after (its output buffer; a MacBook's built-in speakers
+add 27 ms of their own processing). The log says the last two as the device
+opens ("sound: the device (coreaudio unit) asks for 256 frames at a time at
+48000 Hz ...; 0.0 ms queued ahead of them, the system's latency after 35.0
+ms"), and `debug.latency_log` times a shot's sound from the step the weapon
+fires in (`game/latency_log.c`).
 
 A smaller buffer is heard sooner, but each request has to be answered
 sooner too, or the device runs dry: it plays silence, a click or a crackle.
 The mixer runs on a thread of the host's that SDL's audio thread hands each
 request to (`port/android/host/host_sdl.c`), at the same priority as SDL's
-(but on Android). The game times each answer against what the device had
+(but on Android; on the Mac a real-time thread, its period the device's
+I/O cycle). The game times each answer against what the device had
 queued (`src/dsound_sdl.c`, "the device's timing"), counts a dropout when it
 waited longer, and logs it ("sound: the device ran dry ..."). With
 `audio.buffer_frames = 0`, the default, the buffer starts at 256 frames (512
@@ -1303,9 +1304,21 @@ that size.
 
 What the drivers queue (SDL 3.4):
 
-- macOS (CoreAudio, an AudioQueue): three buffers, or as many pairs as make
-  15 ms, all but the one asked for ahead: 26.7 ms at 256 frames (the least),
-  29.3 ms at 128, 32 ms at 512 and 768, 42.7 ms at 1024.
+- macOS: the game plays through CoreAudio's own output unit (AUHAL,
+  `port/macos/host_audio_output.c`), not SDL's driver, and nothing is
+  queued: the device asks for each buffer one I/O buffer
+  (`audio.buffer_frames`, this program's own: other programs keep theirs)
+  and its safety offset before it plays it, as the log measures ("the
+  device asked for each buffer 6.83 to 6.89 ms before it played it ...; its
+  I/O buffer and safety offset: 6.88 ms"). It follows the system's default
+  output, or `audio.output_device`, as devices come and go or change rate
+  (a moment of silence, logged, which does not grow the buffer).
+  `HALO_AUDIO_QUEUE=1` plays through SDL's driver instead, an AudioQueue:
+  three buffers, or as many pairs as make 15 ms (`SDL_coreaudio.m`, for
+  Bluetooth headsets that record and play at once), all but the one asked
+  for ahead, and then its own I/O buffer of 512 frames: 26.7 + 10.7 ms at
+  256 frames (the least), 29.3 ms queued at 128, 32 ms at 512 and 768,
+  42.7 ms at 1024.
 - Linux (PipeWire): one buffer ahead, and the graph's cycle (its quantum)
   becomes the buffer, for the other programs on the device too. PulseAudio
   (without PipeWire) targets the buffer in all.
@@ -1314,6 +1327,12 @@ What the drivers queue (SDL 3.4):
   10 ms (480 frames), so 512 is the engine's own period on most computers,
   and a driver that allows less gets 512 frames. Not measured here: no
   Windows computer to measure on.
+
+On the Mac, what is left after the I/O buffer is the device's: its
+latency, safety offset and stream latency (the MacBook Air M2's speakers:
+70 + 74 + 1280 frames, 29.7 ms, most of it the speakers' own processing),
+which no program can change. Headphones on the jack, a USB or HDMI device or
+AirPods report their own (AirPods over Bluetooth far more).
 
 Measured on an Apple M2 MacBook Air (its speakers) and a Ryzen 9 5900X
 (PipeWire, a null sink: its device's own latency is not in it), with the
@@ -1324,14 +1343,23 @@ dropouts:
 
 | `audio.buffer_frames` | macOS: queued + system | macOS: shot to sound | Linux: queued | Linux: shot to sound | Dropouts |
 |---|---|---|---|---|---|
-| 128 | 29.3 + 40.3 ms | 82 ms | 2.7 ms | 4.4 ms | Linux, busy: 53 (PipeWire counted 160) |
-| 256 | 26.7 + 40.3 ms | 75 ms | 5.3 ms | 8 ms | macOS, busy: 1, as the game started |
-| 512 | 32 + 40.3 ms | 82 ms | 10.7 ms | 15 ms | none |
-| 768 | 32 + 40.3 ms | 80 ms | 16 ms | 26 ms | none |
-| 1024 | 42.7 + 40.3 ms | 97 ms | 21.3 ms | 31 ms | none |
+| 128 | 0 + 32.3 ms | 40 ms | 2.7 ms | 4.4 ms | Linux, busy: 53 (PipeWire counted 160) |
+| 256 | 0 + 35.0 ms | 43 ms | 5.3 ms | 8 ms | macOS, busy: once in 3 runs of 4 (it grew to 512) |
+| 512 | 0 + 40.3 ms | 52 ms | 10.7 ms | 15 ms | none |
+| 768 | | | 16 ms | 26 ms | none |
+| 1024 | 0 + 51.0 ms | | 21.3 ms | 31 ms | none |
 
-256 is the least the Mac queues, and the least that never ran dry on Linux
-with the processor busy; hence the automatic start.
+Through SDL's AudioQueue (`HALO_AUDIO_QUEUE=1`) the Mac had 26.7 + 40.3 ms
+at 256 frames and 76 to 79 ms from a shot to its sound; 42.7 + 40.3 ms and
+97 ms at 1024, the default before.
+
+256 never ran dry on Linux with the processor busy, nor on the Mac in the
+menus, the fights and the map loads; hence the automatic start. With the
+Mac's processor kept busy by eight loops, the mixer at times waits 5 to 35
+ms for the lock the game's thread shares with it (a thread holding it put
+aside for others), which 256 frames (5.3 ms) does not ride out and the
+AudioQueue's 26.7 ms mostly did: the buffer grows to 512 once, still 30 ms
+sooner than the AudioQueue.
 
 ## Field of view
 
