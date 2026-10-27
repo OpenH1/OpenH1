@@ -2,7 +2,7 @@
 rotation played by a joined client (lobby, game, postgame and the next entry), the HTTP API (status, players, kick,
 ban and unban, say, the rotation), the events, standard input's commands, the owner's sign-in from loopback, a ban of
 an address, drains (sv_stop empty, sv_restart game), and its shutdown by quit, SIGTERM and SIGINT. Needs the retail
-maps in assets/maps and ninja linux's build/linux/halo; every machine runs from a folder of its own under pytest's
+maps in assets/maps and ninja linux_x86_64's build/linux_x86_64/halo (HALO_TEST_MAPS, HALO_TEST_GAME); every machine runs from a folder of its own under pytest's
 tmp_path (its config.toml, data root, saves and home), on loopback addresses of its own, offline (system link), with
 no window, sound, update check or Discord."""
 
@@ -22,9 +22,12 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-RETAIL_MAPS = ROOT / "assets/maps"
-GAME = ROOT / "build/linux/halo"
-SDL = ROOT / "build/linux/libSDL3.so.0"
+# (OpenH1's: the 64-bit x86 build, its SDL beside it; HALO_TEST_GAME and
+# HALO_TEST_MAPS name others, and HALO_TEST_NET_PORT a system link port of
+# the run's own, to keep off another game's on the computer)
+RETAIL_MAPS = Path(os.environ.get("HALO_TEST_MAPS", ROOT / "assets/maps"))
+GAME = Path(os.environ.get("HALO_TEST_GAME", ROOT / "build/linux_x86_64/halo"))
+SDL = GAME.parent / "libSDL3.so.0"
 SERVER_ADDRESS = "127.0.0.201"
 CLIENT_ADDRESSES = ("127.0.0.202", "127.0.0.203")
 PASSWORD = "test-password-1"
@@ -32,7 +35,7 @@ PASSWORD = "test-password-1"
 
 def _needs_game(*maps):
     if not GAME.is_file():
-        pytest.skip("needs ninja linux's build/linux/halo")
+        pytest.skip("needs ninja linux_x86_64's build/linux_x86_64/halo")
     for name in maps:
         if not (RETAIL_MAPS / f"{name}.map").is_file():
             pytest.skip(f"needs {name}.map in assets/maps")
@@ -67,9 +70,12 @@ class Machine:
             "HALO_TEST_MARKER": f"test_dedicated_server-{self.name}",
             "HALO_DATA_ROOT": str(self.folder / "data"), "HALO_SAVE_ROOT": str(self.folder / "saves"),
             "HOME": str(self.folder / "home"), "XDG_DATA_HOME": str(self.folder / "xdg"),
-            "SDL_VIDEO_DRIVER": "dummy", "SDL_AUDIO_DRIVER": "dummy", "HALO_UPDATE_AUTO": "false",
+            "SDL_VIDEO_DRIVER": "dummy", "SDL_AUDIO_DRIVER": "dummy", "HALO_NO_AUDIO": "1",
+            "HALO_UPDATE_AUTO": "false",
             "HALO_NET_ONLINE": "false", "HALO_DISCORD_APPLICATION": "", "HALO_NET_JOIN_FROM_CLIPBOARD": "0",
         })
+        if os.environ.get("HALO_TEST_NET_PORT"):
+            environment["HALO_NET_PORT"] = os.environ["HALO_TEST_NET_PORT"]
         environment.update({key: str(value) for key, value in settings.items()})
         return environment
 
@@ -326,7 +332,7 @@ def test_rotation_moderation_and_shutdown(machines):
     # its machine's build, as the client told it (after its ready, reliably), and said once in the server's log
     _until(lambda: api.call("GET", "/api/players")[1]["players"][0].get("client"), 30, "the client's build", server)
     told = api.call("GET", "/api/players")[1]["players"][0]["client"]
-    assert told["version"].startswith("OpenCE Linux | ") and isinstance(told["build"], int), told
+    assert told["version"].startswith("OpenH1 Linux | ") and isinstance(told["build"], int), told
     assert told["flavor"] and re.fullmatch(r"([\w.-]+/[\w.-]+)?", told["repository"]), told
     assert told["mods"] == ["testmod 1.2"], told
     assert server.text().count("plays " + told["version"]) == 1, "the client's build not logged once"
