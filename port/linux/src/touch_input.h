@@ -62,6 +62,12 @@ call to yaw and pitch and to gyro_yaw and gyro_pitch, in radians at `scale`
 radians per pixel */
 void touch_input_look(float scale, float *yaw, float *pitch, float *gyro_yaw, float *gyro_pitch);
 
+/* the same turn come since that call, for the drawn view to take late in the
+frame (display.direct_camera): read, but kept for the next call to
+touch_input_look, which adds it, so the player turns by it as before; set,
+not added to */
+void touch_input_look_late(float scale, float *yaw, float *pitch, float *gyro_yaw, float *gyro_pitch);
+
 /* whether the swipe gets the stick's aim assist (input.touch_aim_assist) */
 int touch_input_aim_assist(void);
 

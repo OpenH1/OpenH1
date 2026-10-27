@@ -11,20 +11,22 @@ latency_log_on (LATENCY_LOG, halo_linux_source_fixups.h).
 
 An event begins when a reading of the first controller (XInputGetState,
 port/linux/src/xinput_sdl.c) first has the fire control pulled, or the left
-stick pushed while the player's unit stands still; or the mouse's fire
-binding held (controls.fire), or the mouse moved after it was still for
-LATENCY_STILL_NS (a reading of the mouse: the frame's, or the drawn view's
-own late one, halo_linux_mouse_look_late); or, while a menu is up, the D-pad,
-A or the left stick pressed (a menu event). A press the scripted player made
-(debug.test_input "latency:") began when the script pressed it, which a
-reading takes up to a frame later. A press of either fire control or a move
-is acted on by the simulation step (a tick at game.sim_rate 30, a sub-step
-at 60 and 120: game_time.c) in which the unit's weapon fires (weapons.c), or
-the unit has moved from where it stood; a turn by the view's taking it (the
-player's facing turned by the frame's input, player_control.c, or the drawn
-view by the late reading), at the end of the step after it; a menu event by
-the menus' taking it (ui_widget.c: the selection moved, an item chosen or
-the screen left, as its sound plays), which the next frame drawn shows. Its result is
+stick pushed while the player's unit (or the vehicle it rides) stands still;
+or the mouse's fire binding held (controls.fire), or the mouse moved after
+it was still for LATENCY_STILL_NS (a reading of the mouse: the frame's, or
+the drawn view's own late one, halo_linux_mouse_look_late); or, while a menu
+is up, the D-pad, A or the left stick pressed (a menu event). A press the
+scripted player made (debug.test_input "latency:") began when the script
+pressed it, which a reading takes up to a frame later. A press of either
+fire control or a move is acted on by the simulation step (a tick at
+game.sim_rate 30, a sub-step at 60 and 120: game_time.c) in which the
+unit's weapon fires (weapons.c), or the gun of the vehicle it rides, or the
+unit (the vehicle) has moved from where it stood; a turn by the view's
+taking it (the player's facing turned by the frame's input,
+player_control.c, or the drawn view by the late reading), at the end of the
+step after it; a menu event by the menus' taking it (ui_widget.c: the
+selection moved, an item chosen or the screen left, as its sound plays),
+which the next frame drawn shows. Its result is
 shown by the first frame whose drawn time has reached that step: the frames
 draw between the last two ticks (render_interpolation.c), the latest tick's
 end less one tick plus the fraction the clock has run into the next
@@ -34,7 +36,7 @@ the newest step (display.direct_camera), shows it in the first frame drawn
 after it, and a turn the drawn view took late in the frame that took it.
 
     # latency log 1 rate <R>
-    <kind> <press_to_read> <read_to_act> <act_to_frame> <frame_to_shown> <render> <present> <total> <fraction> <frame>
+    <kind> <press_to_read> <read_to_act> <act_to_frame> <frame_to_shown> <render> <present> <total> <fraction> <frame> <seat>
 
     kind            fire (the controller's fire control), move (its stick),
                     click (the mouse's fire), turn (the mouse's motion) or
@@ -55,6 +57,8 @@ after it, and a turn the drawn view took late in the frame that took it.
     total           the press to that return
     fraction        the interpolation fraction the showing frame drew at
     frame           the mean time between frames since the line before
+    seat            1 when the player was in a vehicle's seat as the step
+                    took the event, 0 on foot
 
 An event read with no unit to act on, or a move while the unit moves, is
 left out; one not acted on within a second (the weapon empty) is counted,
@@ -165,6 +169,8 @@ struct latency_event
 	unsigned long long act_ns;
 	double act_time;
 	real_point3d stood;
+	/* in a vehicle's seat as the step took it */
+	boolean seated;
 	/* the first frame begun after the step, the first that shows it */
 	unsigned long long frame_ns, shown_ns, rendered_ns;
 	real fraction;
@@ -271,12 +277,13 @@ static void latency_end(
 		logged += latency_log.logged[kind];
 	if (!logged)
 		fprintf(latency_log.file, "# latency log 1 rate %ld\n", sim_rate_get());
-	fprintf(latency_log.file, "%s %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f\n", names[event->kind],
+	fprintf(latency_log.file, "%s %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %d\n", names[event->kind],
 		latency_ms(event->press_ns, event->read_ns), latency_ms(event->read_ns, event->act_ns),
 		latency_ms(event->act_ns, event->frame_ns), latency_ms(event->frame_ns, event->shown_ns),
 		latency_ms(event->shown_ns, event->rendered_ns), latency_ms(event->rendered_ns, latency_log.frame_ns),
 		latency_ms(event->press_ns, latency_log.frame_ns), event->fraction,
-		latency_log.frames ? latency_ms(latency_log.frames_since_ns, latency_log.frame_ns) / latency_log.frames : 0.0);
+		latency_log.frames ? latency_ms(latency_log.frames_since_ns, latency_log.frame_ns) / latency_log.frames : 0.0,
+		event->seated ? 1 : 0);
 	latency_log.frames = 0;
 	latency_log.frames_since_ns = latency_log.frame_ns;
 	fflush(latency_log.file);
@@ -339,6 +346,7 @@ static void latency_turned(
 			continue;
 		}
 		event->begun = event->acting = event->acted = TRUE;
+		event->seated = object_get(unit_index)->object.parent_object_index != NONE;
 		event->act_ns = now;
 		/* (the end of the step after it, as the unit takes it, for a view
 		drawn between the ticks) */
@@ -451,7 +459,9 @@ void latency_log_fire(
 	long unit_index = latency_unit();
 	short index;
 
-	if (unit_index == NONE || object_get_ultimate_parent(owner_object_index) != unit_index)
+	/* (the unit's own weapon, or the vehicle's it rides: a gunner's, a
+	Ghost's) */
+	if (unit_index == NONE || object_get_ultimate_parent(owner_object_index) != object_get_ultimate_parent(unit_index))
 		return;
 	for (index = 0; index < LATENCY_EVENTS; index++)
 	{
@@ -475,11 +485,11 @@ void latency_log_substep_begin(
 
 	latency_log.substep_index = sim_substep_next();
 	/* (an event read since the last step: the unit it is for, where it
-	stands; a move from standing only) */
+	stands, or the vehicle it rides; a move from standing only) */
 	for (index = 0; index < LATENCY_EVENTS; index++)
 	{
 		struct latency_event *event = &latency_log.events[index];
-		struct unit_datum *unit;
+		struct object_datum *mover;
 
 		if (!event->in_use || event->begun)
 			continue;
@@ -488,14 +498,15 @@ void latency_log_substep_begin(
 			event->in_use = FALSE;
 			continue;
 		}
-		unit = unit_get(unit_index);
-		if (event->kind == _latency_move && magnitude3d(&unit->object.translational_velocity) >= LATENCY_STILL)
+		mover = object_get(object_get_ultimate_parent(unit_index));
+		if (event->kind == _latency_move && magnitude3d(&mover->object.translational_velocity) >= LATENCY_STILL)
 		{
 			event->in_use = FALSE;
 			continue;
 		}
 		event->begun = TRUE;
-		event->stood = unit->object.position;
+		event->stood = mover->object.position;
+		event->seated = object_get(unit_index)->object.parent_object_index != NONE;
 	}
 }
 
@@ -516,7 +527,8 @@ void latency_log_substep_end(
 			continue;
 		if (event->kind == _latency_move && unit_index != NONE)
 		{
-			if (distance3d(&event->stood, &unit_get(unit_index)->object.position) > LATENCY_MOVED)
+			if (distance3d(&event->stood, &object_get(object_get_ultimate_parent(unit_index))->object.position) >
+				LATENCY_MOVED)
 			{
 				event->acting = TRUE;
 				event->act_ns = now;

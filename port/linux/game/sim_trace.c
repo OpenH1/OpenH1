@@ -82,6 +82,18 @@ Lines:
                                                    weapon's nodes' mean place
                                                    along its forward, left
                                                    and up
+    c <seconds> <t> <x> <y> <z> <fx> <fy> <fz> <rx> <ry> <rz> <seat>
+                                                   each frame drawn, as it
+                                                   takes the first local
+                                                   player's view: the frames'
+                                                   time since the first, the
+                                                   newest step's t, the view's
+                                                   place and forward, the
+                                                   drawn place of what the
+                                                   player's unit rides (its
+                                                   root node: the vehicle's,
+                                                   or on foot the unit's),
+                                                   1 in a vehicle's seat
 
 An event's line comes after the step's s line it happened in. Identifiers
 are object datum indexes in hexadecimal; a player is its absolute index, or
@@ -106,6 +118,7 @@ uncorrected 60 Hz jump does); "speed", a projectile starts 1% slow.
 */
 
 #include "cseries.h"
+#include "camera/observer.h"
 #include "game/game.h"
 #include "game/players.h"
 #include "main/main.h"
@@ -672,6 +685,37 @@ void sim_trace_frame(
 	}
 	fprintf(sim_trace.file, "f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n", frames_seconds,
 		sim_trace_seconds(), position->x, position->y, position->z, along[0], along[1], along[2]);
+}
+
+/* (main.c, each frame, as it takes the first local player's view) the view
+as drawn and where what the player rides is drawn (object_get_node_matrices
+gives the drawn pose while a frame is drawn), after the frames' time since
+the last one: how evenly the view moves, and the vehicle in it, frame to
+frame */
+void sim_trace_view(
+	short local_player_index,
+	void const *observer_result)
+{
+	static double views_seconds = -1.0;
+	struct observer_result const *observer = observer_result;
+	long player_index = local_player_get_player_index(0);
+	long unit_index = player_index == NONE ? NONE : player_get(player_index)->unit_index;
+	real_point3d ridden = { 0.0f, 0.0f, 0.0f };
+	int seated = 0;
+
+	if (local_player_index != 0 || !observer || !sim_trace_logging())
+		return;
+	views_seconds = views_seconds < 0.0 ? 0.0 : views_seconds + main_get_seconds_elapsed();
+	if (unit_index != NONE)
+	{
+		long root_index = object_get_ultimate_parent(unit_index);
+
+		ridden = object_get_node_matrices(root_index)[0].position;
+		seated = root_index != unit_index;
+	}
+	fprintf(sim_trace.file, "c %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %d\n", views_seconds,
+		sim_trace_seconds(), observer->position.x, observer->position.y, observer->position.z, observer->forward.i,
+		observer->forward.j, observer->forward.k, ridden.x, ridden.y, ridden.z, seated);
 }
 
 /* debug.test_input "script:"'s aim (port/linux/src/xinput_sdl.c): the first

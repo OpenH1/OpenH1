@@ -1374,6 +1374,56 @@ static void player_control_scale_look(
 	return;
 }
 
+/* port: the touch controls' swipe and gyroscope come since this frame's
+input took them, for the drawn view's own late reading
+(port/linux/game/render_interpolation.c, display.direct_camera): radians of
+yaw and pitch, as the next frame's input turns the player by them (the
+swipe inverted as the stick is, the zoom's and the stun's scale), which only
+the view drawn takes now. FALSE, and nothing read, while the camera takes no
+input, or the aim assist's magnetism or the stick's look acceleration would
+turn the player otherwise (the view would step back) */
+boolean player_control_touch_look_late(
+	short local_player_index,
+	real *yaw,
+	real *pitch)
+{
+	extern int halo_linux_touch_look_late(short gamepad_index, real *yaw, real *pitch, real *gyro_yaw,
+		real *gyro_pitch);
+	long player_index = local_player_get_player_index(local_player_index);
+	struct player_control *control;
+	struct player_datum *player;
+	short gamepad_index;
+	real_euler_angles2d look_delta;
+	real touch_yaw;
+	real touch_pitch;
+	real gyro_yaw;
+	real gyro_pitch;
+
+	*yaw = 0.f;
+	*pitch = 0.f;
+	if (player_index == NONE || !player_control_camera_control_is_active())
+		return FALSE;
+	control = player_control_get(local_player_index);
+	player = player_get(player_index);
+	gamepad_index = player->local_player_index;
+	if (gamepad_index == NONE || (player_magnetism_flag && control->magnetism_level > 0.f) ||
+		control->look_acceleration_time > 0.f ||
+		!halo_linux_touch_look_late(gamepad_index, &touch_yaw, &touch_pitch, &gyro_yaw, &gyro_pitch))
+	{
+		return FALSE;
+	}
+	if (input_abstraction_port_look_inverted(gamepad_index))
+	{
+		touch_pitch = -touch_pitch;
+	}
+	look_delta.yaw = touch_yaw + gyro_yaw;
+	look_delta.pitch = touch_pitch + gyro_pitch;
+	player_control_scale_look(player->unit_index, control->zoom_level, &look_delta);
+	*yaw = look_delta.yaw;
+	*pitch = look_delta.pitch;
+	return TRUE;
+}
+
 static void get_local_player_input_blob(
 	short local_player_index,
 	real time_delta_sec,

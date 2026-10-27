@@ -566,6 +566,31 @@ int halo_linux_touch_look(short gamepad_index, float *yaw, float *pitch, float *
 #endif
 }
 
+/* The drawn view's own reading of the touch controls' swipe and gyroscope
+(player_control.c's player_control_touch_look_late, for render_interpolation.c,
+display.direct_camera), late in the frame: what has come since the frame's
+input took them (halo_linux_touch_look), in its units. Only the view drawn
+turns by it: the next frame's input takes it as its own (touch_input_look_late
+keeps it), so the game is as it was. Nothing but on Android and iOS. */
+int halo_linux_touch_look_late(short gamepad_index, float *yaw, float *pitch, float *gyro_yaw, float *gyro_pitch)
+{
+	*yaw = 0.0f;
+	*pitch = 0.0f;
+	*gyro_yaw = 0.0f;
+	*gyro_pitch = 0.0f;
+	if (gamepad_index != 0)
+		return FALSE;
+#ifdef HALO_TOUCH_CONTROLS
+	/* (none while the chat's on-screen keyboard is up, whose frames drop it) */
+	if (network_chat_keyboard_open())
+		return FALSE;
+	touch_input_look_late(0.0022f, yaw, pitch, gyro_yaw, gyro_pitch);
+	return *yaw != 0.0f || *pitch != 0.0f || *gyro_yaw != 0.0f || *gyro_pitch != 0.0f;
+#else
+	return FALSE;
+#endif
+}
+
 /* whether port 0's player aims with the touch controls without their aim
 assist (input.touch_aim_assist false): no magnetism, as for the mouse
 (player_control.c), until a stick moves the aim again */

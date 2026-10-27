@@ -329,6 +329,11 @@ get the default values again, delete the file.
 
 The settings are the settings of Linux, without the window, the mouse and
 the paths. Refer to [port/linux/README.md](../linux/README.md#settings).
+`display.direct_camera` (on by default) draws the player's own view as the
+newest step left it, on foot and in a vehicle's seat, aimed with the swipe
+and the gyroscope read again as the frame takes its view (refer to "Frame
+rate" in [port/linux/README.md](../linux/README.md#frame-rate)); `false`
+draws it between the ticks, a tick behind, as before.
 `display.battery_saver` (Video Setup > Battery Saver) saves the phone's
 battery and heat: `"auto"` turns it on while the phone is not charging (the
 battery broadcast, through SDL). On, each frame stays on screen for a whole

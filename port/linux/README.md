@@ -673,7 +673,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.anti_aliasing` | `display.graphics`'s | `HALO_ANTI_ALIASING` | The smoothing of jagged edges, which the Xbox did not have. `"off"`: none, as on the Xbox. `"fxaa"` or `"smaa"`: a pass over the 3D view after the game draws it. The HUD and the menus stay sharp. SMAA is the sharper and costs more. `"ssaa2x"`: the game draws at two times the resolution in each direction (at most the GPU's largest texture), and the picture is scaled down. The GPU does four times the work. Not with `display.resolution_scaling = "original"`. `"msaa2x"`, `"msaa4x"` or `"msaa8x"`: each pixel of the 3D view has that many samples (at most the GPU's). On Android, macOS and iOS `"ssaa2x"` gives none. On iOS `display.graphics = "enhanced"` gives `"msaa4x"` (port/ios/README.md). The VR mode's eyes have neither pass. A change applies from the next frame. Refer to "Anti-aliasing" in "What operates". Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
 | `display.prepare_shaders` | `true` | `HALO_PREPARE_SHADERS` | `true`: as a map loads, its first frame (and the first of each of its structures) is drawn unseen through every shader its tags hold, in each way the game's code draws them, so that the renderer makes their shaders and pipelines during the loading screen, not in play (`port/assets/render/README.md`, "A map's enumeration"). `false`: each is made the first time a draw needs it, which the draw waits for. |
 | `display.interpolation` | `true` | `HALO_INTERPOLATION` | `true`: one frame for each refresh of the display. `false`: 30 frames each second, as on the Xbox. Refer to "Frame rate". |
-| `display.direct_camera` | `true` | `HALO_DIRECT_CAMERA` | `true`: in first person, on foot, the view points where the player aims in each frame, not where the last tick left it; and (not in the VR mode) the view stands where the newest step left the player, and the gun and hands show the newest step's pose (a shot, a step, a reload seen 33 ms sooner). Refer to "Frame rate". |
+| `display.direct_camera` | `true` | `HALO_DIRECT_CAMERA` | `true`: in first person, on foot, the view points where the player aims in each frame, not where the last tick left it; and (not in the VR mode) the view stands where the newest step left the player, and the gun and hands show the newest step's pose (a shot, a step, a reload seen 33 ms sooner). In a vehicle's seat (first or third person, not in the VR mode) the vehicle, its riders and the view from it are drawn as the vehicle's newest step left it, the view aimed where the player aims. On Android and iOS too, with the touch controls' swipe and gyroscope. Refer to "Frame rate". |
 | `display.fov` | `0.0` | `HALO_FOV` | The first-person view's field of view on foot, in degrees across at 16:9, from 20 to 150. `0`: the stock view. Refer to "Field of view". |
 | `display.viewmodel_fov` | `0.0` | `HALO_VIEWMODEL_FOV` | The first-person weapon's and hands' field of view, in degrees across at 16:9, from 20 to 150. `0`: the weapon's stock view, also when `display.fov` widens the world. Refer to "Field of view". |
 | `display.viewmodel_visible` | `true` | `HALO_VIEWMODEL_VISIBLE` | `true`: the first-person weapon, hands and what is attached to them are drawn. `false`: they are not; firing, animation, sound and lights go on, and other players' models are drawn. |
@@ -875,7 +875,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.log_addresses` | `false` | `HALO_LOG_ADDRESSES=1` sets `true` | `true`: other machines' internet addresses are written whole in `debug.txt` and the console, for debugging your own network. `false`: a public address is written as a tag (`addr#3f2a9c`) that matches up only within one run; local network addresses are always whole. Do not post a `debug.txt` written with this on. |
 | `debug.network_latency`, `debug.network_loss`, `debug.network_corrupt`, `debug.network_corrupt_stream`, `debug.network_corrupt_after` | `0` | `HALO_NETWORK_LATENCY`, `HALO_NETWORK_LOSS`, `HALO_NETWORK_CORRUPT`, `HALO_NETWORK_CORRUPT_STREAM`, `HALO_NETWORK_CORRUPT_AFTER` | The game holds all the data that it receives for this number of milliseconds, ignores this percentage of the datagrams, and damages this percentage of the datagrams it receives, and this percentage of its reads of streams, at random (bytes changed, cut short, stretched or replaced), from this many seconds after the start. Use the first two to test the netcode as on the internet, and the others to test that nothing another machine sends can crash the game (a damaged stream is closed, so a little goes a long way; a host's messages to its own client are damaged too, so start damaging once the game has started). |
 | `debug.voice_test` | `false` | `HALO_VOICE_TEST` | Automatic tests of voice chat: a tone replaces the microphone, and each voice that the game hears is written to the log once each second. |
-| `debug.latency_log` | `""` | `HALO_LATENCY_LOG` | A file to write a line to for each press of the fire control and each move from standing of the first player, on the controller (`fire`, `move`) and on the mouse (`click`), and each turn of the mouse from still (`turn`), in milliseconds: the press to the reading of the controller or the mouse, the reading to the simulation step that acts on it (the weapon fires, the unit moves; for a turn, the view takes it), that step to the first frame drawn after it, that frame to the first frame that shows it (the frames draw a tick behind: "Frame rate"), and that frame's drawing and handing on (`game/latency_log.c`). A press in a menu (the D-pad, A or the left stick, `menu`) is acted on when the menu takes it (the selection moved, an item chosen). A rumble from rest gets a `rumble` line: the step that made it to the first write of the motors (the SDL call), its time on, and the time the game gave it. `tools/latency_summary.py` gives each stage's median and 95th percentile. A shot's sound gets a line of its own, from the step to the sound heard ("Sound delay"). `debug.test_input = "latency:<seed>"` pulls the fire control, pushes the stick, clicks the mouse and moves it in turn on the real clock, so the presses fall anywhere in a tick (`"latency:<seed>:fire,click,turn"` plays those kinds only, and `"latency:<seed>:menu"` the D-pad down and up in a menu; the mouse's come as its events do); with `debug.network_test = "local:bloodgulch:swat"` the player holds SWAT's pistol, which fires as the control is pulled (the plasma pistol a multiplayer game starts with otherwise fires as it is let go). The way to the screen after that is the renderer's (`HALO_METAL_STATS` on the Mac). |
+| `debug.latency_log` | `""` | `HALO_LATENCY_LOG` | A file to write a line to for each press of the fire control and each move from standing of the first player, on the controller (`fire`, `move`) and on the mouse (`click`), and each turn of the mouse from still (`turn`), in milliseconds: the press to the reading of the controller or the mouse, the reading to the simulation step that acts on it (the weapon fires, the unit moves; for a turn, the view takes it), that step to the first frame drawn after it, that frame to the first frame that shows it (the frames draw a tick behind: "Frame rate"), and that frame's drawing and handing on, and whether the player sat in a vehicle (a move of the vehicle, a shot of its gun: `game/latency_log.c`). A press in a menu (the D-pad, A or the left stick, `menu`) is acted on when the menu takes it (the selection moved, an item chosen). A rumble from rest gets a `rumble` line: the step that made it to the first write of the motors (the SDL call), its time on, and the time the game gave it. `tools/latency_summary.py` gives each stage's median and 95th percentile, those in a vehicle apart. A shot's sound gets a line of its own, from the step to the sound heard ("Sound delay"). `debug.test_input = "latency:<seed>"` pulls the fire control, pushes the stick, clicks the mouse and moves it in turn on the real clock, so the presses fall anywhere in a tick (`"latency:<seed>:fire,click,turn"` plays those kinds only, and `"latency:<seed>:menu"` the D-pad down and up in a menu; the mouse's come as its events do); with `debug.network_test = "local:bloodgulch:swat"` the player holds SWAT's pistol, which fires as the control is pulled (the plasma pistol a multiplayer game starts with otherwise fires as it is let go). The way to the screen after that is the renderer's (`HALO_METAL_STATS` on the Mac). |
 | `debug.determinism_log` | `""` | `HALO_DETERMINISM_LOG` | A file to write a line a tick to: a hash of the game state as the tick left it, the random seeds, and every taker of a seed since the line before by its call site (in the tick, in the frames, on other threads). Two runs of the same input compared with `tools/determinism_compare.py` first differ where something besides the input reached the game. |
 | `debug.determinism_dump` | `0` | `HALO_DETERMINISM_DUMP` | With `debug.determinism_log`, the tick after which to write the game state too, counted as logged from 1 (its allocations in order, to `<log>.<count>.bin`), to find where two runs' game states differ (`tools/determinism_compare.py --dump`), and that tick's first frame as `<log>.<count>.bmp`; `0` none. |
 | `debug.trace`, `debug.trace_seconds`, `debug.trace_mutation` | `""`, `0.0`, `""` | `HALO_TRACE`, `HALO_TRACE_SECONDS`, `HALO_TRACE_MUTATION` | A file to write a line a simulation step to (`game/sim_trace.c`): the players' place, velocity and aim, each projectile's, and the step's shots, projectiles made, strikes and detonations, timed in seconds from the scenario's start; quit once the scenario has run `debug.trace_seconds`; `debug.trace_mutation` puts a known bug in on purpose (`head_start`, `jump`, `speed`), which the scorecard must catch (`tools/scorecard`). Off, it costs a test a call. `HALO_GUEST_IMAGE` (the environment only) runs another guest image in the game's place: StageKit's map writer (`tools/stagekit`). |
@@ -1156,13 +1156,16 @@ Other things the game moves once a tick are drawn between ticks as well:
   flash, a plasma pistol's charge, a vehicle's lights), and the light of an
   explosion or an impact fades in each frame.
 
-The direction of the view is an exception. The game reads the mouse and the
-sticks in each frame. In first person, on foot, each frame points the view
-where the player aims at that time (`display.direct_camera`), with the
-mouse's motion that came while the frame was calculated: the view reads the
-mouse again as the frame takes it, after the simulation, and turns on by
-that motion, which the next frame's input then gives the player (only the
-view drawn takes it early: nothing sent or simulated changes). Thus the view
+The direction of the view is an exception. The game reads the mouse, the
+sticks and the touch controls in each frame. In first person, on foot, each
+frame points the view where the player aims at that time
+(`display.direct_camera`), with the mouse's motion (and on Android and iOS
+the touch controls' swipe and gyroscope) that came while the frame was
+calculated: the view reads them again as the frame takes it, after the
+simulation, and turns on by that motion, which the next frame's input then
+gives the player (only the view drawn takes it early: nothing sent or
+simulated changes; the touch controls' not while the aim assist's
+magnetism slows them, which would turn the player otherwise). Thus the view
 turns in the frame that the mouse moves. The view also stands where the
 newest step left the player, carried on by the player's velocity for the
 time since that step, and the gun and hands are posed from it with their
@@ -1170,10 +1173,35 @@ animations sampled at the frame's time (each between its frame and the
 next, which the game advances a frame a tick, and the sway's springs where
 their velocity has them): the player's own movement, shots and
 reloads are seen in the first frame after the step that made them, not a
-tick (33 ms) later (`debug.latency_log` measures it). Everything else, other
-players included, is drawn between the ticks as before. In a vehicle and in
-cinematics, the view mixes as the other things do, and the VR mode's eyes
-stand where they did. On Android, the view mixes as before.
+tick (33 ms) later (`debug.latency_log` measures it).
+
+In a vehicle's seat (a driver's, a passenger's or a gunner's, in the first
+person or following the vehicle), the vehicle and what it carries (its
+riders, the player in the seat, its gun) are drawn as the vehicle's newest
+step left it, carried on as that step moved and turned it for the time
+since, their pose (the wheels, the turret's aim, a rider's animation)
+still between the ticks; and the view stands at the seat's camera point on
+the vehicle so drawn, aimed where the player aims at that time, with the
+late motion as on foot: in the first person turned and rolled with the
+vehicle as the seat's camera turns it; following it, swung about the seat's
+point as the frames between the ticks swing it (its pull in where it would
+pass through something, which the game finds a frame at a time, stays
+smooth), turned with the player's aim (not by the late motion in a
+passenger's following view, `display.passenger_third_person`, which keeps
+to the firing arc). A
+correction of the netcode glides the vehicle and the view together, as it
+glided the vehicle before; and as a player gets in or out (or dies, or
+respawns in one) the vehicle glides from the one drawing to the other, with
+no jump of the tick of motion between them. Carried on, a vehicle that
+hits something, lands or bounces on its suspension is drawn a little past
+where its next step has it, for the frames until that step (at 30 a tick,
+at 60 and 120 a sub-step: the faster the rate, the less). A seat whose view
+is the vehicle's gun's (which aims once a tick) is drawn as before.
+
+Everything else, other players and their vehicles included, is drawn
+between the ticks as before. In cinematics the view mixes as the other
+things do, and the VR mode's eyes, on foot and in a seat, stand where they
+did.
 
 The menus read the controller, the keyboard and the mouse each frame, and
 a press moves the selection or chooses an item in the frame that reads it;
@@ -5630,7 +5658,7 @@ Other changes:
 | --- | --- |
 | `scenario/scenario.c` | The BSP connection tables have names, not MSVC offsets. |
 | `rasterizer/xbox/rasterizer_xbox_environment_fog.c` | A local pointer gets its value from the file-scope array with the same name. |
-| `game/player_control.c` | The mouse aims the player on controller 1 directly, its zoomed turn as `input.zoom_sensitivity` chooses (`view_fov.c`). |
+| `game/player_control.c` | The mouse aims the player on controller 1 directly, its zoomed turn as `input.zoom_sensitivity` chooses (`view_fov.c`). The touch controls' swipe and gyroscope come since the frame's input are read again for the drawn view, as the input would turn the player by them (`player_control_touch_look_late`, `display.direct_camera`). |
 | `sound/game_sound.c` | The game calculates the obstruction of each sound one time for each tick, not for each frame. |
 | `sound/sound_manager.c` | A track of a looping sound that is gone stops, even in the millisecond it started (`refresh_sound`). The Xbox never drew three frames in one millisecond; the port can (the null renderer, no frame limit), and then read the deleted looping sound and crashed. |
 | `cseries/errors.c` | `debug.txt` stays open between lines. A line, or a run of up to four lines, that comes twice in a row is counted, not written again, until another line comes or the game ends (`last line repeated N times`, `last 2 lines repeated N times`). At 64 MB, `debug.txt` becomes `debug.old.txt` and a new `debug.txt` starts. |
@@ -5644,7 +5672,7 @@ Other changes:
 | `game/game_engine.c`, `game/game_engine.h`, `game/game_engine_slayer.c`, `game/game.c`, `game/aim_assist.c`, `game/players.c`, `objects/damage.c`, `objects/objects.c`, `units/units.c`, `items/weapons.c`, `saved games/playlist_profile.c`, `saved games/saved_game_files.c` | OpenCE's gametypes (`game/game_modes.c`, "OpenCE gametypes"): the gametype's PC options carry a mode and Hardcore with their options; the built-in ones are written after the Xbox's default gametypes; Infection's and Gun Game's game engines are Slayer's with their rules; SWAT's headshots, Hardcore's motion sensor, aim assist and restore of the killer; Infection's zombies' skulls, grenades, powerups, seats and melee. |
 | `game/game.c` | Each tick takes its rate (`game.sim_rate`), and runs the fast phase's sub-steps after the objects' update (`game/sim_rate.c`; "Simulation rate"). |
 | `game/game_time.c`, `main/main.c` | With `debug.fixed_step`, a game of one machine runs a step a frame (a tick, or a sub-step of `game.sim_rate`), each frame taking a step's time, so that it plays the same every time (`tools/stagekit`). |
-| `game/game_time.c`, `items/projectiles.c`, `items/weapons.c` | `debug.trace` (`game/sim_trace.c`, `tools/scorecard`): a call after each simulation step, and a call each where a projectile is made, strikes and detonates and a weapon fires, made only while the trace is on (`SIM_TRACE`). |
+| `game/game_time.c`, `items/projectiles.c`, `items/weapons.c`, `main/main.c` | `debug.trace` (`game/sim_trace.c`, `tools/scorecard`): a call after each simulation step, a call each where a projectile is made, strikes and detonates and a weapon fires, and one as each frame takes the first player's view, made only while the trace is on (`SIM_TRACE`). |
 | `game/game_time.c`, `items/weapons.c`, `main/main.c`, `interface/ui_widget.c`, `game/player_rumble.c` | `debug.latency_log` (`game/latency_log.c`): a call around each simulation step, where a weapon fires, as each frame begins, is drawn and is handed on, where the menus take a press and where a rumble impulse is made, made only while the log is on (`LATENCY_LOG`); the controller's and the mouse's readings and the motors' writes call it from `src/xinput_sdl.c`. |
 | `game/player_rumble.c`, `game/game.c`, `input/input_xbox.c` | The rumble is written at the end of each simulation step and when a vehicle's changes, on the game's thread, as the motors change and every 33 ms while they run, not 30 times a second by the vertical blank's thread a tick after the step; an impulse's time counts from the step that made it. With the profile's vibration off, the motors stop. |
 | `interface/ui_widget.c` | A spinner's arrow is lit for 15 ticks of real time, not 15 frames. |

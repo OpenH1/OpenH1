@@ -89,6 +89,14 @@ the vehicle's frame, at each tick: render_interpolation_camera_anchors). The
 view's snapshot is taken back to where the tick left that point, not moved
 and turned by the next tick's sub-steps run since, and a frame draws it
 moved with that point onto the vehicle's path.
+
+The local player's own view (display.direct_camera) is drawn from the
+newest step instead, not a tick behind: on foot, where the newest step left
+the player, carried on by the player's velocity; in a vehicle's seat, the
+vehicle and what it carries are drawn as the vehicle's newest step left it,
+carried on as that step moved and turned it, and the view from the seat with
+it (render_interpolation_newest_vehicles). Each aims where the player aims as
+the frame takes its view.
 */
 
 #include "cseries.h"
@@ -107,7 +115,9 @@ moved with that point onto the vehicle's path.
 #include "render/render.h"
 #include "render/render_cameras_internal.h"
 #include "units/units.h"
+#include "units/unit_definitions.h"
 #include "units/bipeds.h"
+#include "passenger_camera.h"
 #include "sim_rate.h"
 
 /* port/linux/src/port_config.c */
@@ -117,6 +127,10 @@ unsigned long config_changes(void);
 boolean render_objects_port_last_lighting(long object_index, struct render_lighting *lighting);
 /* player_control.c */
 struct player_control *player_control_get(short local_player_index);
+/* ... the touch controls' swipe and gyroscope come since the frame's input
+took them, as radians of the player's facing (the drawn view's own late
+reading) */
+boolean player_control_touch_look_late(short local_player_index, real *yaw, real *pitch);
 /* view_fov.c: the mouse's turn zoomed (input.zoom_sensitivity) */
 real mouse_zoom_look_scale(short local_player_index, long unit_index, short zoom_level);
 /* port/linux/src/xinput_sdl.c: the mouse's motion come since the frame's
@@ -174,6 +188,17 @@ and the nodes each may have */
 between the tick's snapshots before it is taken for a jump, not a path:
 past a fast projectile's bounce, short of a teleport */
 #define SUBSTEP_OFFSET_MAXIMUM 2.0f
+/* the most a local player's vehicle drawn from its newest step turns on in
+the time since that step (radians): past a tumble's, short of a spin not a
+number */
+#define NEWEST_TURN_MAXIMUM 0.5f
+/* ... the most its steps' acceleration carries it on by (world units a tick
+a tick, and radians): a hard turn's, a crash's or a landing's less, which
+would throw it on a step past where its motion took it */
+#define NEWEST_ACCELERATION_MAXIMUM 0.1f
+#define NEWEST_SPIN_ACCELERATION_MAXIMUM 0.05f
+/* ... and the longest its steps may be apart (ticks) to be its motion */
+#define NEWEST_HISTORY_GAP 2
 
 /* ---------- structures */
 
@@ -271,6 +296,52 @@ struct interpolated_camera
 	real_point3d anchor;
 };
 
+/* a local player's vehicle's last three steps (render_interpolation_newest_
+motion): when each ended, in sub-steps of count (the clock's ticks times
+count, and the sub-steps since), and where each left its root node; [0] the
+newest */
+struct newest_history
+{
+	long vehicle_index;
+	short count; /* the steps kept, 0 to 3 */
+	short substep_count;
+	long steps[3];
+	real_point3d positions[3];
+	struct interpolation_quaternion rotations[3];
+};
+
+/* a local player's vehicle, which their view from its seat is drawn from as
+its newest step left it (render_interpolation_newest_vehicles), with what it
+carries */
+struct newest_vehicle
+{
+	boolean valid; /* FALSE: none this frame */
+	/* whether the player's aim in the seat is the world's, not turned to
+	the vehicle's up (render_interpolation_seat) */
+	boolean aim_in_world;
+	long vehicle_index;
+	long unit_index; /* the player's, in its seat */
+	/* its root node as the newest step left it, and as drawn: carried on as
+	that step moved and turned it, for the time since
+	(render_interpolation_newest_motion) */
+	real_matrix4x3 root;
+	real_matrix4x3 drawn;
+	/* its axes (the object's), as drawn */
+	real_vector3d forward;
+	real_vector3d up;
+	/* where the view hangs on it (the unit's camera position) as the newest
+	step left it, in the root's frame */
+	real_point3d anchor;
+	/* ... and where the frames between the ticks would draw that point: what
+	the view following the vehicle swings about, between the ticks
+	(render_interpolation_seat_camera) */
+	real_point3d anchor_between;
+	/* how far its root is drawn from where the frames between the ticks
+	would draw it (its place), for the glide from one to the other */
+	boolean ahead_valid;
+	real_vector3d ahead;
+};
+
 /* a particle held back */
 struct later_particle
 {
@@ -320,6 +391,11 @@ struct interpolation_ghost
 
 static struct interpolated_object *interpolated_objects;
 static struct interpolated_camera interpolated_cameras[MAXIMUM_LOCAL_PLAYERS];
+/* each local player's vehicle drawn from its newest step this frame
+(render_interpolation_newest_vehicles) */
+static struct newest_vehicle newest_vehicles[MAXIMUM_LOCAL_PLAYERS];
+/* ... and its last steps */
+static struct newest_history newest_histories[MAXIMUM_LOCAL_PLAYERS];
 static struct interpolated_first_person interpolated_first_person[MAXIMUM_LOCAL_PLAYERS];
 /* an object to be drawn from a place of this tick's choosing rather than
 from where it was the tick before (render_interpolation_object_from) */
@@ -933,6 +1009,9 @@ void render_interpolation_reset(void)
 	memset(interpolated_cameras, 0, sizeof(interpolated_cameras));
 	for (index = 0; index < MAXIMUM_LOCAL_PLAYERS; index++)
 		interpolated_cameras[index].anchor_vehicle_index = NONE;
+	/* (and nothing of the last map's to glide from, or carry on) */
+	memset(newest_vehicles, 0, sizeof(newest_vehicles));
+	memset(newest_histories, 0, sizeof(newest_histories));
 	/* (the particles held back and the ghosts are the last map's) */
 	later_particle_count = 0;
 	for (index = 0; index < MAXIMUM_GHOSTS; index++)
@@ -1314,11 +1393,21 @@ void render_interpolation_ghosts_draw(void)
 
 /* ---------- frames */
 
+static void render_interpolation_newest_vehicles(boolean rendering);
+static boolean render_interpolation_newest_frame(
+	long object_index,
+	real_matrix4x3 const **frames,
+	real_matrix4x3 const **drawn,
+	real_vector3d *correction);
+
 void render_interpolation_frame_begin(void)
 {
+	boolean rendering = halo_interpolation_enabled();
 	short index;
 
-	interpolation_rendering = halo_interpolation_enabled();
+	/* (not drawn between the ticks until the local players' vehicles are
+	taken as their newest step left them, below) */
+	interpolation_rendering = FALSE;
 	interpolation_frame++;
 	interpolation_fraction = game_time_get_tick_fraction();
 	/* (the sub-step drawn: at 30 the tick's one, as far as the fraction) */
@@ -1331,6 +1420,8 @@ void render_interpolation_frame_begin(void)
 		if (ghosts[index].in_use && ghosts[index].tick == NONE)
 			ghosts[index].in_use = FALSE;
 	}
+	render_interpolation_newest_vehicles(rendering);
+	interpolation_rendering = rendering;
 }
 
 void render_interpolation_frame_end(void)
@@ -1450,7 +1541,9 @@ real_matrix4x3 *render_interpolation_object_node_matrices(long object_index)
 		boolean jumped = !(distance_squared(&previous[0].position, &latest[0].position) <=
 			OBJECT_SNAP_DISTANCE * OBJECT_SNAP_DISTANCE);
 		boolean snap = jumped;
+		boolean newest;
 		real_vector3d offset;
+		real_vector3d newest_correction;
 		real_matrix4x3 const *frames[2];
 		real_matrix4x3 const *frame;
 
@@ -1465,9 +1558,17 @@ real_matrix4x3 *render_interpolation_object_node_matrices(long object_index)
 			matrix4x3_inverse_transform_point(&latest[0], &latest[node_index].position, &latest_local);
 			snap = !(distance_squared(&previous_local, &latest_local) <= NODE_SNAP_DISTANCE * NODE_SNAP_DISTANCE);
 		}
+		newest = !jumped && render_interpolation_newest_frame(object_index, frames, &frame, &newest_correction);
+		/* a local player's vehicle, or what it carries, with their view
+		from its seat drawn from its newest step: posed in its frame as
+		between the ticks, placed where that step left it, carried on */
+		if (newest)
+		{
+			render_interpolation_blend_in_frame(record, snap, frames, frame);
+		}
 		/* a vehicle's of the micro lane, or what it carries: posed in its
 		frame as between the ticks, placed where its sub-steps' frame has it */
-		if (!jumped && render_interpolation_substep_frame(object_index, frames, &frame))
+		else if (!jumped && render_interpolation_substep_frame(object_index, frames, &frame))
 		{
 			render_interpolation_blend_in_frame(record, snap, frames, frame);
 		}
@@ -1515,11 +1616,16 @@ real_matrix4x3 *render_interpolation_object_node_matrices(long object_index)
 				}
 			}
 		}
-		if (correction_significant(&record->correction) || correction_significant(&record->correction_pending))
+		/* (what the vehicle carries glides with it, by the vehicle's glide) */
+		if (newest || correction_significant(&record->correction) ||
+			correction_significant(&record->correction_pending))
 		{
 			real_vector3d drawn;
 
-			correction_drawn(&record->correction, &record->correction_pending, &drawn);
+			if (newest)
+				drawn = newest_correction;
+			else
+				correction_drawn(&record->correction, &record->correction_pending, &drawn);
 			for (node_index = 0; node_index < record->node_count; node_index++)
 			{
 				blended[node_index].position.x += drawn.i;
@@ -1718,6 +1824,26 @@ void render_interpolation_correct_object(long object_index, real_vector3d const 
 			correction_add(&camera->correction, &camera->correction_pending, offset);
 		}
 	}
+	/* ... and the steps of a local player's vehicle drawn from its newest,
+	where they would have been */
+	{
+		short local_player_index;
+
+		for (local_player_index = 0; local_player_index < MAXIMUM_LOCAL_PLAYERS; local_player_index++)
+		{
+			struct newest_history *history = &newest_histories[local_player_index];
+			short index;
+
+			if (history->vehicle_index != object_index)
+				continue;
+			for (index = 0; index < history->count; index++)
+			{
+				history->positions[index].x -= offset->i;
+				history->positions[index].y -= offset->j;
+				history->positions[index].z -= offset->k;
+			}
+		}
+	}
 	object = object_get(object_index);
 	for (child_index = object->object.first_child_object_index; child_index != NONE;
 		child_index = object_get(child_index)->object.next_object_index)
@@ -1733,56 +1859,116 @@ static struct observer_result direct_cameras[MAXIMUM_LOCAL_PLAYERS];
 (render_interpolation_view_newest) */
 static boolean newest_views[MAXIMUM_LOCAL_PLAYERS];
 
+/* the views display.direct_camera takes (render_interpolation_direct) */
+enum
+{
+	_direct_none,
+	/* in the first person, on foot */
+	_direct_on_foot,
+	/* in a vehicle's seat, in the first person or following it */
+	_direct_seat
+};
+
 static struct observer_result const *render_interpolation_blended_camera(
 	short local_player_index,
 	struct observer_result const *observer);
 
-/* display.direct_camera: TRUE while the local player's view is their own,
-in first person on foot (not in a vehicle's seat, whose view is the seat's,
-nor in a cinematic, the script's), and its facing is theirs. Desktop only:
-display.direct_camera is not an Android setting, and its default would
-otherwise apply there. */
-static boolean render_interpolation_direct(
-	short local_player_index,
-	struct observer_result const *observer)
+/* display.direct_camera: which view of the local player's is drawn as the
+newest step left it, their own and its facing theirs (not a cinematic's, nor
+the script's): in the first person on foot (_direct_on_foot), or (not in the
+VR mode, whose seats stay as they were) in a seat of a vehicle that rides
+nothing, in the first person or following it (_direct_seat); _direct_none
+for any other. Android's too, as iOS's: the touch controls' aim is taken in
+each frame's input, as the mouse's and the sticks' (player_control.c) */
+static short render_interpolation_direct(
+	short local_player_index)
 {
-#ifdef HALO_ANDROID
-	(void)local_player_index;
-	(void)observer;
-	return FALSE;
-#else
 	static int enabled;
 	static unsigned long read_at = (unsigned long)-1;
+	short perspective;
 	long unit_index;
+	struct object_datum *vehicle;
 
 	if (read_at != config_changes())
 	{
 		read_at = config_changes();
 		enabled = config_boolean("display.direct_camera");
 	}
-	if (!enabled || !observer ||
-		director_get_perspective(local_player_index) != _director_perspective_first_person ||
+	perspective = director_get_perspective(local_player_index);
+	if (!enabled ||
+		(perspective != _director_perspective_first_person && perspective != _director_perspective_third_person) ||
 		director_inhibited_facing(local_player_index) ||
 		cinematic_in_progress())
 	{
-		return FALSE;
+		return _direct_none;
 	}
 	unit_index = player_control_get_unit_index(local_player_index);
-	return unit_index != NONE && object_try_and_get_and_verify_type(unit_index, _object_mask_unit) &&
-		object_get(unit_index)->object.parent_object_index == NONE;
+	if (unit_index == NONE || !object_try_and_get_and_verify_type(unit_index, _object_mask_unit))
+		return _direct_none;
+	if (object_get(unit_index)->object.parent_object_index == NONE)
+		return perspective == _director_perspective_first_person ? _direct_on_foot : _direct_none;
+#ifdef HALO_VR
+	if (halo_vr_running())
+		return _direct_none;
 #endif
+	vehicle = (struct object_datum *)object_try_and_get_and_verify_type(
+		object_get(unit_index)->object.parent_object_index, _object_mask_vehicle);
+	return vehicle && vehicle->object.parent_object_index == NONE ? _direct_seat : _direct_none;
+}
+
+/* The aim's motion come since the frame's input took it, which the view
+drawn takes as late as it can: the mouse's (halo_linux_mouse_look_late, the
+first player's, as the input turns it: by the zoom's scale) and the touch
+controls' swipe and gyroscope (player_control_touch_look_late, as the input
+turns them), read as the frame takes its view rather than at its start.
+Only the view drawn takes it: the next frame's input turns the player by it
+(none in the VR mode, whose head aims). FALSE for none. Once a frame */
+static boolean render_interpolation_look_late(
+	short local_player_index,
+	real *yaw,
+	real *pitch)
+{
+	float mouse_yaw, mouse_pitch;
+	real touch_yaw, touch_pitch;
+	boolean turned = FALSE;
+
+	*yaw = 0.0f;
+	*pitch = 0.0f;
+#ifdef HALO_VR
+	if (halo_vr_running())
+		return FALSE;
+#endif
+	if (halo_linux_mouse_look_late(local_player_index, &mouse_yaw, &mouse_pitch))
+	{
+		struct player_control const *control = player_control_get(local_player_index);
+
+		if (control->zoom_level != NONE)
+		{
+			real zoom_scale = mouse_zoom_look_scale(local_player_index,
+				player_control_get_unit_index(local_player_index), control->zoom_level);
+
+			mouse_yaw *= zoom_scale;
+			mouse_pitch *= zoom_scale;
+		}
+		*yaw += mouse_yaw;
+		*pitch += mouse_pitch;
+		turned = TRUE;
+	}
+	if (player_control_touch_look_late(local_player_index, &touch_yaw, &touch_pitch))
+	{
+		*yaw += touch_yaw;
+		*pitch += touch_pitch;
+		turned = TRUE;
+	}
+	return turned;
 }
 
 /* A first-person view is posed from the player's facing, which the input
 turns every frame (player_control.c), but the observer keeps it as of the
 last tick and the blend above draws it a tick later still. On foot, the view
 points where the player aims now (display.direct_camera): the facing the
-frame's input gave the player, turned on by the mouse's motion come since
-(halo_linux_mouse_look_late, the first player's, as the input turns it: by
-the zoom's scale, the pitch within the player's limits), read as the frame
-takes its view rather than at its start, as late as the view can take it.
-Only the view drawn takes that motion: the next frame's input turns the
-player by it (not in the VR mode, whose head aims). */
+frame's input gave the player, turned on by the aim's motion come since
+(render_interpolation_look_late), the pitch within the player's limits. */
 static struct observer_result const *render_interpolation_direct_camera(
 	short local_player_index,
 	struct observer_result const *observer)
@@ -1791,26 +1977,15 @@ static struct observer_result const *render_interpolation_direct_camera(
 	real_euler_angles2d angles;
 	real yaw, pitch;
 
-	if (!render_interpolation_direct(local_player_index, observer))
+	if (!observer || render_interpolation_direct(local_player_index) != _direct_on_foot)
 		return observer;
 	direct = &direct_cameras[local_player_index];
 	*direct = *observer;
 	angles = *player_control_get_facing_angles(local_player_index);
-#ifdef HALO_VR
-	if (!halo_vr_running())
-#endif
-	if (halo_linux_mouse_look_late(local_player_index, &yaw, &pitch))
+	if (render_interpolation_look_late(local_player_index, &yaw, &pitch))
 	{
 		struct player_control const *control = player_control_get(local_player_index);
-		long unit_index = player_control_get_unit_index(local_player_index);
 
-		if (control->zoom_level != NONE)
-		{
-			real zoom_scale = mouse_zoom_look_scale(local_player_index, unit_index, control->zoom_level);
-
-			yaw *= zoom_scale;
-			pitch *= zoom_scale;
-		}
 		angles.yaw += yaw;
 		angles.pitch = PIN(angles.pitch + pitch, control->pitch_minimum, control->pitch_maximum);
 	}
@@ -1865,6 +2040,676 @@ static void render_interpolation_newest_camera(
 	}
 }
 
+/* the vector turned about a unit axis by an angle (radians, the right
+hand's way round) */
+static void vector_turned(
+	real_vector3d const *vector,
+	real_vector3d const *axis,
+	real angle,
+	real_vector3d *result)
+{
+	real_vector3d v = *vector;
+	real c = (real)cos(angle);
+	real s = (real)sin(angle);
+	real along = (axis->i * v.i + axis->j * v.j + axis->k * v.k) * (1.0f - c);
+
+	result->i = v.i * c + (axis->j * v.k - axis->k * v.j) * s + axis->i * along;
+	result->j = v.j * c + (axis->k * v.i - axis->i * v.k) * s + axis->j * along;
+	result->k = v.k * c + (axis->i * v.j - axis->j * v.i) * s + axis->k * along;
+}
+
+/* The newest step that moved the vehicle, as the frames count them: its end,
+in sub-steps of the tick (count) from the clock's start. One of the micro
+lane moves a sub-step at a time (at 30, a tick); one of the macro lane a
+whole tick's motion at once, in the tick's first sub-step (game.c's
+game_tick_substep): at 60 and 120, past that sub-step, the next tick's end */
+static long render_interpolation_newest_step(
+	long vehicle_index)
+{
+	short count = interpolation_substep_count;
+	short next = sim_substep_next();
+
+	if (count > 1 && object_get_lane(vehicle_index) != _object_lane_micro)
+		return (interpolation_tick + (next >= 1 ? 1 : 0)) * count;
+	return interpolation_tick * count + next;
+}
+
+/* The seat the unit rides in: whether its first-person view is the
+vehicle's gun's (first_person_camera.c: its "primary trigger" marker, which
+aims once a tick), and whether the player's aim in it is the world's
+(players.c's player_aiming_vector_from_facing turns another seat's from the
+world's up to the vehicle's) */
+static void render_interpolation_seat(
+	long unit_index,
+	boolean *gun_view,
+	boolean *aim_in_world)
+{
+	struct unit_datum *unit = (struct unit_datum *)object_get(unit_index);
+	long vehicle_index = unit->object.parent_object_index;
+	struct unit_definition *definition = unit_definition_get(object_get(vehicle_index)->definition_index);
+	struct unit_seat const *seat;
+	struct object_marker marker;
+
+	*gun_view = FALSE;
+	*aim_in_world = FALSE;
+	if (unit->unit.parent_seat_index < 0 || unit->unit.parent_seat_index >= definition->unit.seats.count)
+		return;
+	seat = TAG_BLOCK_GET_ELEMENT(&definition->unit.seats, unit->unit.parent_seat_index, struct unit_seat);
+	*gun_view = TEST_FLAG(seat->flags, _unit_seat_first_person_camera_bit) &&
+		object_get_marker_by_name(vehicle_index, "primary trigger", &marker, 1) > 0;
+	*aim_in_world = TEST_FLAG(seat->flags, _unit_seat_third_person_camera_bit);
+}
+
+/* the turn from one rotation to another, as a vector: about its axis, as
+long as its angle (radians), the shorter way round */
+static void rotation_turn(
+	struct interpolation_quaternion const *from,
+	struct interpolation_quaternion const *to,
+	real_vector3d *turn)
+{
+	struct interpolation_quaternion q;
+	real length, angle;
+
+	/* (to's, by the inverse of from's) */
+	q.w = to->w * from->w + to->i * from->i + to->j * from->j + to->k * from->k;
+	q.i = -to->w * from->i + to->i * from->w - to->j * from->k + to->k * from->j;
+	q.j = -to->w * from->j + to->j * from->w - to->k * from->i + to->i * from->k;
+	q.k = -to->w * from->k + to->k * from->w - to->i * from->j + to->j * from->i;
+	if (q.w < 0.0f)
+	{
+		q.w = -q.w;
+		q.i = -q.i;
+		q.j = -q.j;
+		q.k = -q.k;
+	}
+	length = (real)sqrt(q.i * q.i + q.j * q.j + q.k * q.k);
+	angle = 2.0f * (real)atan2(length, q.w);
+	*turn = *global_zero_vector3d;
+	if (length > 1e-7f)
+	{
+		turn->i = q.i / length * angle;
+		turn->j = q.j / length * angle;
+		turn->k = q.k / length * angle;
+	}
+}
+
+/* (render_interpolation_newest_vehicle) the vehicle's newest step kept, as
+it ends (step) and where it left its root node: after the steps before, or
+again from it (another vehicle, another rate, the clock gone back or long
+stopped, a jump); the same step's again (a frame more in it) taken as it is
+now */
+static void render_interpolation_newest_history(
+	struct newest_history *history,
+	long vehicle_index,
+	long step,
+	real_matrix4x3 const *root)
+{
+	struct interpolation_quaternion rotation;
+	short count = interpolation_substep_count;
+	short index;
+
+	quaternion_from_basis(root, &rotation);
+	if (history->vehicle_index != vehicle_index || history->count <= 0 || history->substep_count != count ||
+		step < history->steps[0] || step - history->steps[0] > NEWEST_HISTORY_GAP * count ||
+		/* (so written that a position not a number is a jump) */
+		!(distance_squared(&root->position, &history->positions[0]) <=
+			CAMERA_CUT_DISTANCE * CAMERA_CUT_DISTANCE * NEWEST_HISTORY_GAP * NEWEST_HISTORY_GAP))
+	{
+		history->vehicle_index = vehicle_index;
+		history->substep_count = count;
+		history->count = 0;
+	}
+	if (history->count <= 0 || step > history->steps[0])
+	{
+		for (index = 2; index > 0; index--)
+		{
+			history->steps[index] = history->steps[index - 1];
+			history->positions[index] = history->positions[index - 1];
+			history->rotations[index] = history->rotations[index - 1];
+		}
+		history->count = (short)MIN(history->count + 1, 3);
+	}
+	history->steps[0] = step;
+	history->positions[0] = root->position;
+	history->rotations[0] = rotation;
+}
+
+/* a vector at most so long (so written that one not a number is none) */
+static void vector_at_most(real_vector3d *vector, real maximum)
+{
+	real length_squared = vector->i * vector->i + vector->j * vector->j + vector->k * vector->k;
+
+	if (!(length_squared <= maximum * maximum))
+	{
+		real scale = length_squared > maximum * maximum ? maximum / (real)sqrt(length_squared) : 0.0f;
+
+		vector->i *= scale;
+		vector->j *= scale;
+		vector->k *= scale;
+	}
+}
+
+/* The vehicle carried on from its newest step for the time since (ticks:
+less than none for the macro lane's next tick's end), as its steps moved and
+turned it: by where its last steps left its root node (the steps' own
+motion, which the frames drew, and not the physics' velocity, which a tick
+keeps apart from its sub-steps' by half a sub-step's acceleration and runs
+half a step behind the motion), at the velocity and spin it had at the
+newest step and on with the acceleration of its last three (so that a
+vehicle speeding up, braking or turning harder does not step back at each
+step, the motion carried on falling short), the acceleration no more than
+a hard turn's: shift, the place's change, and turn, about an axis as long
+as its angle. The physics' velocity and spin while the steps before are not
+known (its first steps) */
+static void render_interpolation_newest_motion(
+	struct newest_history const *history,
+	struct object_datum const *vehicle,
+	real since,
+	real_vector3d *shift,
+	real_vector3d *turn)
+{
+	real_vector3d velocity = vehicle->object.translational_velocity;
+	real_vector3d spin = vehicle->object.angular_velocity;
+	real_vector3d acceleration = *global_zero_vector3d;
+	real_vector3d spin_acceleration = *global_zero_vector3d;
+
+	if (history->count >= 2)
+	{
+		real step = (real)(history->steps[0] - history->steps[1]) / (real)history->substep_count;
+
+		velocity.i = (history->positions[0].x - history->positions[1].x) / step;
+		velocity.j = (history->positions[0].y - history->positions[1].y) / step;
+		velocity.k = (history->positions[0].z - history->positions[1].z) / step;
+		rotation_turn(&history->rotations[1], &history->rotations[0], &spin);
+		spin.i /= step;
+		spin.j /= step;
+		spin.k /= step;
+		if (history->count >= 3)
+		{
+			real step_before = (real)(history->steps[1] - history->steps[2]) / (real)history->substep_count;
+			real between = 0.5f * (step + step_before);
+			real_vector3d spin_before;
+
+			acceleration.i = (velocity.i - (history->positions[1].x - history->positions[2].x) / step_before) / between;
+			acceleration.j = (velocity.j - (history->positions[1].y - history->positions[2].y) / step_before) / between;
+			acceleration.k = (velocity.k - (history->positions[1].z - history->positions[2].z) / step_before) / between;
+			rotation_turn(&history->rotations[2], &history->rotations[1], &spin_before);
+			spin_acceleration.i = (spin.i - spin_before.i / step_before) / between;
+			spin_acceleration.j = (spin.j - spin_before.j / step_before) / between;
+			spin_acceleration.k = (spin.k - spin_before.k / step_before) / between;
+			vector_at_most(&acceleration, NEWEST_ACCELERATION_MAXIMUM);
+			vector_at_most(&spin_acceleration, NEWEST_SPIN_ACCELERATION_MAXIMUM);
+			/* (the newest step's mean, half a step on: at its end) */
+			velocity.i += acceleration.i * 0.5f * step;
+			velocity.j += acceleration.j * 0.5f * step;
+			velocity.k += acceleration.k * 0.5f * step;
+			spin.i += spin_acceleration.i * 0.5f * step;
+			spin.j += spin_acceleration.j * 0.5f * step;
+			spin.k += spin_acceleration.k * 0.5f * step;
+		}
+	}
+	shift->i = velocity.i * since + 0.5f * acceleration.i * since * since;
+	shift->j = velocity.j * since + 0.5f * acceleration.j * since * since;
+	shift->k = velocity.k * since + 0.5f * acceleration.k * since * since;
+	turn->i = spin.i * since + 0.5f * spin_acceleration.i * since * since;
+	turn->j = spin.j * since + 0.5f * spin_acceleration.j * since * since;
+	turn->k = spin.k * since + 0.5f * spin_acceleration.k * since * since;
+}
+
+/* (render_interpolation_newest_vehicles) the local player's vehicle as its
+newest step left it, carried on: FALSE when it cannot be drawn so (no
+snapshots of the tick drawn and the one before, a jump between them, a root
+node no rotation; a seat whose view is the gun's, which aims once a tick:
+its view would turn a tick at a time, and is drawn between the ticks as
+before) */
+static boolean render_interpolation_newest_vehicle(
+	short local_player_index,
+	struct newest_vehicle *newest)
+{
+	long unit_index = player_control_get_unit_index(local_player_index);
+	long vehicle_index = object_get(unit_index)->object.parent_object_index;
+	long absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(vehicle_index);
+	struct object_datum *vehicle = object_get(vehicle_index);
+	struct newest_history *history = &newest_histories[local_player_index];
+	real_vector3d shift, turn;
+	struct interpolated_object *record;
+	real_matrix4x3 const *root;
+	real_matrix4x3 const *frames[2];
+	real_matrix4x3 const *frame;
+	real_point3d anchor;
+	real_point3d line;
+	real since;
+	real angle;
+	long step;
+	boolean gun_view;
+	boolean aim_in_world;
+
+	if (!interpolated_objects || absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
+		return FALSE;
+	record = &interpolated_objects[absolute_index];
+	if (record->object_index != vehicle_index || record->tick != interpolation_tick || !record->has_previous)
+		return FALSE;
+	frames[0] = record->nodes + (record->latest ^ 1) * record->node_capacity;
+	frames[1] = record->nodes + record->latest * record->node_capacity;
+	/* (as the newest step left it: no frame is drawn yet) */
+	root = (real_matrix4x3 const *)object_header_block_get(vehicle_index, &vehicle->object.node_matrices);
+	/* (so written that a position not a number is a jump) */
+	if (!basis_is_rotation(root) || !basis_is_rotation(frames[0]) || !basis_is_rotation(frames[1]) ||
+		!(distance_squared(&frames[0]->position, &frames[1]->position) <= OBJECT_SNAP_DISTANCE * OBJECT_SNAP_DISTANCE))
+	{
+		return FALSE;
+	}
+	render_interpolation_seat(unit_index, &gun_view, &aim_in_world);
+	if (gun_view)
+		return FALSE;
+	/* (the frame's time, from the newest step's end, in ticks) */
+	step = render_interpolation_newest_step(vehicle_index);
+	since = (interpolation_fraction * (real)interpolation_substep_count -
+		(real)(step - interpolation_tick * interpolation_substep_count)) / (real)interpolation_substep_count;
+	render_interpolation_newest_history(history, vehicle_index, step, root);
+	render_interpolation_newest_motion(history, vehicle, since, &shift, &turn);
+	newest->vehicle_index = vehicle_index;
+	newest->unit_index = unit_index;
+	newest->aim_in_world = aim_in_world;
+	newest->root = *root;
+	newest->drawn = *root;
+	newest->forward = vehicle->object.forward;
+	newest->up = vehicle->object.up;
+	/* carried on (so written that a shift not a number, or a teleport's, is
+	none) */
+	if (shift.i * shift.i + shift.j * shift.j + shift.k * shift.k <= CAMERA_CUT_DISTANCE * CAMERA_CUT_DISTANCE)
+	{
+		newest->drawn.position.x += shift.i;
+		newest->drawn.position.y += shift.j;
+		newest->drawn.position.z += shift.k;
+	}
+	/* ... and turned on, about its root node (so written that a turn not a
+	number is none) */
+	angle = (real)sqrt(turn.i * turn.i + turn.j * turn.j + turn.k * turn.k);
+	if (angle > 1e-6f && angle <= NEWEST_TURN_MAXIMUM)
+	{
+		real_vector3d axis;
+
+		axis.i = turn.i / angle;
+		axis.j = turn.j / angle;
+		axis.k = turn.k / angle;
+		vector_turned(&root->forward, &axis, angle, &newest->drawn.forward);
+		vector_turned(&root->left, &axis, angle, &newest->drawn.left);
+		vector_turned(&root->up, &axis, angle, &newest->drawn.up);
+		vector_turned(&vehicle->object.forward, &axis, angle, &newest->forward);
+		vector_turned(&vehicle->object.up, &axis, angle, &newest->up);
+	}
+	unit_get_camera_position(unit_index, &anchor);
+	point_in_frame(root, &anchor, &newest->anchor);
+	/* how far ahead of where the frames between the ticks would draw it,
+	and that point on it (as render_interpolation_blended_camera has it: on
+	its sub-steps' path, or between the ticks' places of it) */
+	if (render_interpolation_substep_frame(vehicle_index, frames, &frame))
+	{
+		line = frame->position;
+		point_from_frame(frame, &newest->anchor, &newest->anchor_between);
+	}
+	else
+	{
+		real_point3d previous_anchor, latest_anchor;
+
+		point_lerp(&frames[0]->position, &frames[1]->position, interpolation_fraction, &line);
+		point_from_frame(frames[0], &newest->anchor, &previous_anchor);
+		point_from_frame(frames[1], &newest->anchor, &latest_anchor);
+		point_lerp(&previous_anchor, &latest_anchor, interpolation_fraction, &newest->anchor_between);
+	}
+	newest->ahead.i = newest->drawn.position.x - line.x;
+	newest->ahead.j = newest->drawn.position.y - line.y;
+	newest->ahead.k = newest->drawn.position.z - line.z;
+	/* (so written that a difference not a number is none) */
+	newest->ahead_valid = newest->ahead.i * newest->ahead.i + newest->ahead.j * newest->ahead.j +
+		newest->ahead.k * newest->ahead.k <= CORRECTION_MAXIMUM * CORRECTION_MAXIMUM;
+	return TRUE;
+}
+
+/* (render_interpolation_newest_vehicles) the object, and what it carries,
+drawn from another place than the frame before drew it: the difference
+(offset: where it was drawn, from where it is drawn now) glides away, as a
+correction's does. Drawing only */
+static void render_interpolation_glide(
+	long object_index,
+	real_vector3d const *offset)
+{
+	long absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(object_index);
+	long child_index;
+
+	if (!interpolated_objects || absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
+		return;
+	if (interpolated_objects[absolute_index].object_index == object_index)
+	{
+		struct interpolated_object *record = &interpolated_objects[absolute_index];
+
+		correction_add(&record->correction, &record->correction_pending, offset);
+		record->blended_frame = NONE;
+	}
+	for (child_index = object_get(object_index)->object.first_child_object_index; child_index != NONE;
+		child_index = object_get(child_index)->object.next_object_index)
+	{
+		render_interpolation_glide(child_index, offset);
+	}
+}
+
+/* whether one of the local players' vehicles drawn from the newest step
+(of those given, before the count given) is this one */
+static boolean render_interpolation_newest_among(
+	struct newest_vehicle const *vehicles,
+	short count,
+	long vehicle_index)
+{
+	short local_player_index;
+
+	for (local_player_index = 0; local_player_index < count; local_player_index++)
+	{
+		if (vehicles[local_player_index].valid && vehicles[local_player_index].vehicle_index == vehicle_index)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+/* whether the vehicle is drawn between the ticks it moved in, not cut to
+where the last left it (a teleport, a new vehicle: no glide to it) */
+static boolean render_interpolation_vehicle_continues(
+	long vehicle_index)
+{
+	struct interpolated_object const *record;
+	real_matrix4x3 const *previous, *latest;
+	long absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(vehicle_index);
+
+	if (!interpolated_objects || absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS || !object_try_and_get(vehicle_index))
+		return FALSE;
+	record = &interpolated_objects[absolute_index];
+	if (record->object_index != vehicle_index || record->tick != interpolation_tick || !record->has_previous)
+		return FALSE;
+	previous = record->nodes + (record->latest ^ 1) * record->node_capacity;
+	latest = record->nodes + record->latest * record->node_capacity;
+	/* (so written that a position not a number is a cut) */
+	return distance_squared(&previous->position, &latest->position) <= OBJECT_SNAP_DISTANCE * OBJECT_SNAP_DISTANCE;
+}
+
+/* (render_interpolation_frame_begin, before any object is drawn between the
+ticks: rendering, whether the frame is) A local player's view from a seat of
+their vehicle (render_interpolation_direct, while frames are drawn between
+the ticks) stands where the vehicle's newest step left it, as on foot, and
+aims where the player aims (render_interpolation_seat_camera). So the
+vehicle, and what it carries (its riders, the player in the seat, its gun),
+is drawn as that step left it, carried on as that step moved and turned it
+(render_interpolation_newest_motion) for the time since that step
+(render_interpolation_newest_step), or the view
+would leave the vehicle drawn a step behind it (out through a Warthog's
+windshield at speed). Its pose (its wheels, its turret's aim, a rider's
+animation) is blended between the ticks as before, in its frame
+(render_interpolation_newest_frame). Everything else, another player's
+vehicle too, is drawn between the ticks as before. As a vehicle comes to be
+drawn so, or no longer (a player gets in or out, dies, rides another), the
+difference glides away as a correction's does, rather than a jump: the
+vehicle, what it carries, and the player who left it. Drawing only: the game
+is as it was */
+static void render_interpolation_newest_vehicles(
+	boolean rendering)
+{
+	struct newest_vehicle was[MAXIMUM_LOCAL_PLAYERS];
+	short local_player_index;
+
+	memcpy(was, newest_vehicles, sizeof(was));
+	for (local_player_index = 0; local_player_index < MAXIMUM_LOCAL_PLAYERS; local_player_index++)
+	{
+		struct newest_vehicle *newest = &newest_vehicles[local_player_index];
+
+		newest->valid = rendering && render_interpolation_direct(local_player_index) == _direct_seat &&
+			render_interpolation_newest_vehicle(local_player_index, newest);
+	}
+	for (local_player_index = 0; local_player_index < MAXIMUM_LOCAL_PLAYERS; local_player_index++)
+	{
+		struct newest_vehicle const *before = &was[local_player_index];
+		struct newest_vehicle const *newest = &newest_vehicles[local_player_index];
+
+		/* drawn between the ticks again, from where it was drawn (once, for
+		the first player who rode it; not cut away meanwhile) */
+		if (before->valid && before->ahead_valid &&
+			!render_interpolation_newest_among(newest_vehicles, MAXIMUM_LOCAL_PLAYERS, before->vehicle_index) &&
+			!render_interpolation_newest_among(was, local_player_index, before->vehicle_index) &&
+			render_interpolation_vehicle_continues(before->vehicle_index))
+		{
+			render_interpolation_glide(before->vehicle_index, &before->ahead);
+			/* (and the player who left it) */
+			if (object_try_and_get(before->unit_index) &&
+				object_get_ultimate_parent(before->unit_index) != before->vehicle_index &&
+				!render_interpolation_newest_among(newest_vehicles, MAXIMUM_LOCAL_PLAYERS,
+					object_get_ultimate_parent(before->unit_index)))
+			{
+				render_interpolation_glide(before->unit_index, &before->ahead);
+			}
+		}
+		/* drawn from the newest step, from where the frames between the
+		ticks drew it (once) */
+		if (newest->valid && newest->ahead_valid &&
+			!render_interpolation_newest_among(was, MAXIMUM_LOCAL_PLAYERS, newest->vehicle_index) &&
+			!render_interpolation_newest_among(newest_vehicles, local_player_index, newest->vehicle_index))
+		{
+			real_vector3d back;
+
+			back.i = -newest->ahead.i;
+			back.j = -newest->ahead.j;
+			back.k = -newest->ahead.k;
+			render_interpolation_glide(newest->vehicle_index, &back);
+		}
+	}
+}
+
+/* the glide drawn this frame of a vehicle drawn from its newest step, which
+what it carries, and the view from its seat, glide by with it: its
+correction's (render_interpolation_correct_object, and
+render_interpolation_glide's) */
+static void render_interpolation_newest_correction(
+	long vehicle_index,
+	real_vector3d *correction)
+{
+	struct interpolated_object const *record = &interpolated_objects[DATUM_INDEX_TO_ABSOLUTE_INDEX(vehicle_index)];
+
+	*correction = *global_zero_vector3d;
+	if (correction_significant(&record->correction) || correction_significant(&record->correction_pending))
+		correction_drawn(&record->correction, &record->correction_pending, correction);
+}
+
+/* (render_interpolation_object_node_matrices) the frame an object of a local
+player's vehicle drawn from its newest step (the vehicle, or what it
+carries) is drawn in: the vehicle's root node as that step left it, carried
+on (render_interpolation_newest_vehicles), with the frames of its two
+snapshots, which the object's nodes are blended in (as
+render_interpolation_substep_frame's), and the vehicle's glide (correction).
+FALSE for any other object */
+static boolean render_interpolation_newest_frame(
+	long object_index,
+	real_matrix4x3 const **frames,
+	real_matrix4x3 const **drawn,
+	real_vector3d *correction)
+{
+	long vehicle_index;
+	short local_player_index;
+
+	if (!interpolated_objects || object_index == NONE)
+		return FALSE;
+	vehicle_index = object_get_ultimate_parent(object_index);
+	for (local_player_index = 0; local_player_index < MAXIMUM_LOCAL_PLAYERS; local_player_index++)
+	{
+		struct newest_vehicle const *newest = &newest_vehicles[local_player_index];
+		struct interpolated_object const *record;
+
+		if (!newest->valid || newest->vehicle_index != vehicle_index)
+			continue;
+		record = &interpolated_objects[DATUM_INDEX_TO_ABSOLUTE_INDEX(vehicle_index)];
+		frames[0] = record->nodes + (record->latest ^ 1) * record->node_capacity;
+		frames[1] = record->nodes + record->latest * record->node_capacity;
+		*drawn = &newest->drawn;
+		render_interpolation_newest_correction(vehicle_index, correction);
+		return TRUE;
+	}
+	return FALSE;
+}
+
+/* a view's axes from its forward (its up square to it, toward the world's:
+observer_up_from_forward, as the following camera has it) */
+static void view_frame(
+	real_vector3d const *forward,
+	real_matrix4x3 *frame)
+{
+	frame->forward = *forward;
+	observer_up_from_forward(forward, &frame->up);
+	cross_product3d(&frame->up, &frame->forward, &frame->left);
+}
+
+/* The local player's view from a seat of their vehicle drawn from its newest
+step (render_interpolation_newest_vehicles), gliding with the vehicle. It
+aims where the player aims now: the frame's facing, turned on by the aim's
+motion come since (render_interpolation_look_late). In the first person, as
+first_person_camera.c poses it, the observer (taken after the frame's steps)
+moved with the point it hangs on, the unit's camera position, from where the
+newest step left it to where the vehicle is drawn: the facing turned from
+the world's up to the vehicle's in a seat whose aim is the vehicle's
+(players.c's player_aiming_vector_from_facing), its up square to it in the
+vehicle's frame (the vehicle's roll), of the vehicle as drawn. Following
+it, about that point as drawn, swung as the frames between the ticks swing
+it (blended: the camera's pull in at what it would pass through and its
+track, which step a frame at a time as the observer finds them, blended from
+a tick's to the next), turned with the aim: the player's (none of the
+vehicle's turn), with the late motion but a passenger's (passenger_camera.c),
+whose aim keeps to its firing arc. NULL for any other view */
+static struct observer_result const *render_interpolation_seat_camera(
+	short local_player_index,
+	struct observer_result const *observer,
+	struct observer_result const *blended)
+{
+	struct newest_vehicle const *newest = &newest_vehicles[local_player_index];
+	struct observer_result *direct;
+	real_point3d anchor_now, anchor_drawn;
+	real_vector3d correction;
+	real yaw, pitch;
+
+	if (!interpolation_rendering || !observer || !blended || !newest->valid ||
+		player_control_get_unit_index(local_player_index) != newest->unit_index)
+	{
+		return NULL;
+	}
+	direct = &direct_cameras[local_player_index];
+	*direct = *observer;
+	point_from_frame(&newest->root, &newest->anchor, &anchor_now);
+	point_from_frame(&newest->drawn, &newest->anchor, &anchor_drawn);
+	if (director_get_perspective(local_player_index) == _director_perspective_first_person)
+	{
+		real_euler_angles2d angles = *player_control_get_facing_angles(local_player_index);
+		real_matrix4x3 frame;
+		real_vector3d forward, up;
+
+		direct->position.x = anchor_drawn.x + observer->position.x - anchor_now.x;
+		direct->position.y = anchor_drawn.y + observer->position.y - anchor_now.y;
+		direct->position.z = anchor_drawn.z + observer->position.z - anchor_now.z;
+		if (render_interpolation_look_late(local_player_index, &yaw, &pitch))
+		{
+			struct player_control const *control = player_control_get(local_player_index);
+
+			angles.yaw += yaw;
+			angles.pitch = PIN(angles.pitch + pitch, control->pitch_minimum, control->pitch_maximum);
+		}
+		vector3d_from_euler_angles2d(&direct->forward, &angles);
+		if (!newest->aim_in_world)
+		{
+			/* (players.c's: forward across the vehicle's up and the world's
+			right, up the vehicle's) */
+			frame.up = newest->up;
+			cross_product3d(&newest->up, global_right3d, &frame.forward);
+			if (normalize3d(&frame.forward) == 0.0f)
+			{
+				cross_product3d(&newest->up, global_down3d, &frame.forward);
+				normalize3d(&frame.forward);
+			}
+			cross_product3d(&frame.up, &frame.forward, &frame.left);
+			vector_from_frame(&frame, &direct->forward, &direct->forward);
+		}
+		/* (first_person_camera.c's: up square to forward in the vehicle's
+		frame) */
+		frame.forward = newest->forward;
+		frame.up = newest->up;
+		cross_product3d(&frame.up, &frame.forward, &frame.left);
+		vector_in_frame(&frame, &direct->forward, &forward);
+		observer_up_from_forward(&forward, &up);
+		vector_from_frame(&frame, &up, &direct->up);
+	}
+	else
+	{
+		struct interpolated_camera const *camera = &interpolated_cameras[local_player_index];
+		real_matrix4x3 swung, aimed;
+		real_vector3d swing, local;
+
+		/* the swing between the ticks (without the camera's glide: the
+		vehicle's is drawn), or the observer's own, from the point as the
+		newest step left it, when the frames do not blend it (a cut) */
+		if (blended == &camera->blended)
+		{
+			swing.i = blended->position.x - newest->anchor_between.x;
+			swing.j = blended->position.y - newest->anchor_between.y;
+			swing.k = blended->position.z - newest->anchor_between.z;
+			if (correction_significant(&camera->correction) || correction_significant(&camera->correction_pending))
+			{
+				correction_drawn(&camera->correction, &camera->correction_pending, &correction);
+				swing.i -= correction.i;
+				swing.j -= correction.j;
+				swing.k -= correction.k;
+			}
+		}
+		else
+		{
+			swing.i = observer->position.x - anchor_now.x;
+			swing.j = observer->position.y - anchor_now.y;
+			swing.k = observer->position.z - anchor_now.z;
+		}
+		if (!passenger_camera_enabled(local_player_index) &&
+			render_interpolation_look_late(local_player_index, &yaw, &pitch))
+		{
+			struct player_control const *control = player_control_get(local_player_index);
+			real pitch_now = player_control_get_facing_angles(local_player_index)->pitch;
+			real_vector3d axis;
+			real length;
+
+			/* (as far as the player's pitch may go) */
+			pitch = PIN(pitch_now + pitch, control->pitch_minimum, control->pitch_maximum) - pitch_now;
+			/* the yaw about the world's up, the pitch about the view's right */
+			axis.i = 0.0f;
+			axis.j = 0.0f;
+			axis.k = 1.0f;
+			vector_turned(&direct->forward, &axis, yaw, &direct->forward);
+			axis.i = direct->forward.j;
+			axis.j = -direct->forward.i;
+			axis.k = 0.0f;
+			length = vector_length(&axis);
+			if (length > 1e-6f)
+			{
+				axis.i /= length;
+				axis.j /= length;
+				vector_turned(&direct->forward, &axis, pitch, &direct->forward);
+			}
+		}
+		/* (turned from the aim it was swung for to the view's) */
+		view_frame(&blended->forward, &swung);
+		view_frame(&direct->forward, &aimed);
+		vector_in_frame(&swung, &swing, &local);
+		vector_from_frame(&aimed, &local, &swing);
+		direct->position.x = anchor_drawn.x + swing.i;
+		direct->position.y = anchor_drawn.y + swing.j;
+		direct->position.z = anchor_drawn.z + swing.k;
+		observer_up_from_forward(&direct->forward, &direct->up);
+	}
+	render_interpolation_newest_correction(newest->vehicle_index, &correction);
+	direct->position.x += correction.i;
+	direct->position.y += correction.j;
+	direct->position.z += correction.k;
+	return direct;
+}
+
 struct observer_result const *render_interpolation_camera(
 	short local_player_index,
 	struct observer_result const *observer)
@@ -1875,6 +2720,13 @@ struct observer_result const *render_interpolation_camera(
 	if (local_player_index < 0 || local_player_index >= MAXIMUM_LOCAL_PLAYERS)
 		return observer;
 	blended = render_interpolation_blended_camera(local_player_index, observer);
+	/* (in a seat of the player's vehicle drawn from its newest step) */
+	direct = render_interpolation_seat_camera(local_player_index, observer, blended);
+	if (direct)
+	{
+		newest_views[local_player_index] = TRUE;
+		return direct;
+	}
 	direct = render_interpolation_direct_camera(local_player_index, blended);
 	newest_views[local_player_index] = interpolation_rendering && direct == &direct_cameras[local_player_index];
 #ifdef HALO_VR

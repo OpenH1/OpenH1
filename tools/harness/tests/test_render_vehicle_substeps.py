@@ -32,8 +32,8 @@ NEGATIVE_CONTROLS = {
     "previous-in-latest-frame": (("matrix_in_frame(frames[0], &previous[node_index], &previous_local);",
                                   "matrix_in_frame(frames[1], &previous[node_index], &previous_local);"), "substeps"),
     # what the vehicle carries left as a biped's carried things are: moved by its place alone, not turned with it
-    "carried-unturned": (("\t\tif (!jumped && render_interpolation_substep_frame(object_index, frames, &frame))",
-                          "\t\tif (!jumped && object_get(object_index)->object.parent_object_index == NONE &&\n"
+    "carried-unturned": (("\t\telse if (!jumped && render_interpolation_substep_frame(object_index, frames, &frame))",
+                          "\t\telse if (!jumped && object_get(object_index)->object.parent_object_index == NONE &&\n"
                           "\t\t\trender_interpolation_substep_frame(object_index, frames, &frame))"), "substeps"),
     # rotations nlerped the long way round when their quaternions' signs differ
     "long-way": (("\t\tif (qa.i * qb.i + qa.j * qb.j + qa.k * qb.k + qa.w * qb.w < 0.0f)", "\t\tif (0)"), "substeps"),
