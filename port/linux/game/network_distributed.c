@@ -3386,8 +3386,11 @@ static void distributed_handle_forwards(
 			break;
 		data += size;
 		/* (never this machine's own: it has its own input) */
-		if (distributed_player_is_local(relayed.player_index))
+		if (distributed_player(relayed.player_index) &&
+			distributed_player(relayed.player_index)->local_player_index != NONE)
+		{
 			continue;
+		}
 		csmemset(&action, 0, sizeof(action));
 		action.control_flags = relayed.control_flags[0];
 		action.desired_facing.yaw = distributed_angle_unpack(relayed.yaw, FALSE);
