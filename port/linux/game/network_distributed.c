@@ -450,6 +450,10 @@ enum
 	its tick relays the client none of the same tick or before (the forward
 	was it; past them, a client gone silent, the tick's relays go again) */
 	FORWARDED_INPUT_RELAY_TICKS = 2,
+	/* ... and sends what came on no sooner than this after it last did
+	(milliseconds: a host drawing hundreds of frames a second sent a datagram
+	to each client nearly every frame) */
+	FORWARDED_INPUT_INTERVAL_MILLISECONDS = 8,
 };
 
 struct distributed_pickup
@@ -3317,12 +3321,16 @@ void network_distributed_frame_received(
 	short player_index;
 	boolean any = FALSE;
 
+	static unsigned long last_sent;
+	unsigned long now = system_milliseconds();
+
 	if (game_connection() != _game_connection_network_server || !game_in_progress() || !network_standard_hosting())
 		return;
 	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS && !any; player_index++)
 		any = distributed_forwards[player_index].pending;
-	if (!any)
+	if (!any || now - last_sent < FORWARDED_INPUT_INTERVAL_MILLISECONDS)
 		return;
+	last_sent = now;
 	machine_count = distributed_client_machines(machine_indices, HALO_PORT_MAXIMUM_NETWORK_MACHINES);
 	for (machine_number = 0; machine_number < machine_count; machine_number++)
 	{
