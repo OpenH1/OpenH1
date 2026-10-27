@@ -598,7 +598,8 @@ static void network_substeps_handle_forwarded_live(
 		csmemcpy(&aim, data + 13, sizeof(aim));
 		distributed_unit_vector_unpack(&aim, &live.aim);
 		if (player_index >= MAXIMUM_TRACKED_PLAYERS || live.count != network_substeps_count() ||
-			live.substep >= live.count || distributed_player_is_local(player_index) ||
+			live.substep >= live.count ||
+			(distributed_player(player_index) && distributed_player(player_index)->local_player_index != NONE) ||
 			normalize3d(&live.aim) == 0.0f)
 		{
 			continue;
