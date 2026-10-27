@@ -59,6 +59,7 @@ enum sim_substep_slot
 	_sim_substep_vr, /* the VR mode's throws and grabs */
 	_sim_substep_render_interpolation, /* a pose kept after each sub-step */
 	_sim_substep_trace, /* the scorecard's trace (debug.trace) */
+	_sim_substep_network_test, /* the network test's presses (debug.network_test) */
 	NUMBER_OF_SIM_SUBSTEP_SLOTS
 };
 

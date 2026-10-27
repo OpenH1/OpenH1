@@ -658,6 +658,17 @@ static unsigned long long platform_clock_nanoseconds(void)
 	return value - __atomic_load_n(&start, __ATOMIC_RELAXED);
 }
 
+/* the computer's own monotonic clock in microseconds, not counted from the
+game's start: the same in every process on the computer, for the network
+tests' latency figures (port/linux/game/network_test.c) */
+unsigned long long platform_shared_clock_microseconds(void)
+{
+	struct timespec now;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (unsigned long long)now.tv_sec * 1000000ULL + (unsigned long long)now.tv_nsec / 1000ULL;
+}
+
 DWORD WINAPI GetTickCount(void)
 {
 	return (DWORD)(platform_clock_nanoseconds() / 1000000ULL);

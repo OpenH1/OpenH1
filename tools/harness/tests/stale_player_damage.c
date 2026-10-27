@@ -76,6 +76,7 @@ static boolean static_target_damage(struct damage_data const *damage) { return F
 static void distributed_damage_from_data(struct damage_data const *damage, struct damage_data *result) { *result = *damage; }
 static void object_get_origin(long index, real_point3d *point) { memset(point, 0, sizeof(*point)); }
 static long distributed_latest_host_time(void) { return 10; }
+static void network_test_note_hit(char const *what, long object_index) { (void)what; (void)object_index; }
 static void distributed_damage_material(struct damage_data *damage, long index, short material) { material_calls++; }
 #define csmemset memset
 #include "under_test.inc"
