@@ -370,6 +370,8 @@ int main(int argc, char **argv)
 	}
 	network_game_reset_for_next_round(&client_game, TRUE);
 	CHECK(ui_loads == 1 && main_menu_is_loaded(), "the lobby's map: loads %d", ui_loads);
+	CHECK(load_trace_first_frame == 1 && !strcmp(load_trace_map, "levels\\ui\\ui"),
+		"the lobby's map load not measured to its first frame: %d, %s", load_trace_first_frame, load_trace_map);
 	CHECK(connection == (hosting ? _game_connection_network_server : _game_connection_network_client),
 		"the connection changed: %d", connection);
 	CHECK(sim_substep_next() == 0, "the ended game's tick left open in the lobby: next %d", sim_substep_next());
