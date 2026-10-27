@@ -5,4 +5,8 @@
 host_metal_window_open
 host_metal_battery_saver
 host_metal_vsync
+host_metal_frame_phase
+host_metal_frame_period
+host_metal_frame_budget
+host_metal_sleep_until
 host_app_take_link

@@ -253,6 +253,10 @@ void host_render_stream_frame_taken(void);
 its refreshes are period apart: the game then starts each frame its
 budget before the latch it is for (frame_pacing_start_time) */
 void host_render_stream_display_latched(uint64_t latch, uint64_t period);
+/* sleeps until a time of CLOCK_MONOTONIC, woken within a millisecond or so
+(on Apple's systems a time constraint thread while it sleeps: an ordinary
+timed wait there can end tens of milliseconds late) */
+void host_render_stream_sleep_until(uint64_t when);
 void host_render_stream_frame_shown(uint64_t input, uint64_t shown);
 /* (the render thread, as it plays a frame's records) the frame is ready
 for the display now: its cost (frame_pacing_cost_add) ends here, not as its

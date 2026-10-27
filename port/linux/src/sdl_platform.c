@@ -1125,6 +1125,14 @@ void host_metal_battery_saver(int on);
 /* port/macos/host_metal.m: display.vsync, the game paced by the display or
 drawn as fast as display.max_fps lets it (frame_interval_ns) */
 void host_metal_vsync(int on);
+/* port/macos/host_metal.m: with vsync off, a start time for the game's
+frames on CLOCK_MONOTONIC (0: none), and the display's refreshes' period
+in nanoseconds (platform_frame_slot) */
+unsigned long long host_metal_frame_phase(void);
+unsigned int host_metal_frame_period(void);
+unsigned int host_metal_frame_budget(void);
+/* port/macos/host_metal.m: sleeps until a time of CLOCK_MONOTONIC, on time */
+void host_metal_sleep_until(unsigned long long when);
 /* the window's kind of drawing */
 #define PLATFORM_WINDOW_DRAWING SDL_WINDOW_METAL
 #elif defined(HALO_VULKAN)
@@ -1227,6 +1235,9 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 		platform_log("cannot draw the window with Metal");
 		return FALSE;
 	}
+	/* (display.vsync and battery saver from the first frame: the window
+	opens paced by the display, and the Vulkan host takes them as it opens) */
+	platform_frame_rate_apply();
 #else
 	if (!host_vulkan_window_open((unsigned int)(uintptr_t)platform_window,
 		(config_boolean("debug.gpu_stats") ? HOST_VULKAN_DEBUG_STATISTICS : 0) |
@@ -1326,6 +1337,20 @@ static float platform_refresh_rate(void)
 #endif
 }
 
+/* whether the display paces the frames: display.vsync, and on the Mac
+battery saver too, whose display link then runs at a whole fraction of the
+display's rate (frame_pacing.h). Frames spaced by the clock alone come at
+the link's rate but not in step with it: on a 60 Hz M2, 15% of the
+refreshes showed no new frame. */
+static BOOL platform_vsync(void)
+{
+#ifdef HALO_METAL
+	if (battery_saver_active())
+		return TRUE;
+#endif
+	return config_boolean("display.vsync");
+}
+
 /* display.vsync's swap interval, with battery saver's frames a second
 (battery_saver.c): the Vulkan host shows each frame for a whole number of
 refreshes, and the Metal host's display link runs at that rate */
@@ -1336,7 +1361,7 @@ void platform_frame_rate_apply(void)
 	if (!platform_window)
 		return;
 #if defined(HALO_METAL)
-	host_metal_vsync(config_boolean("display.vsync"));
+	host_metal_vsync(platform_vsync());
 	host_metal_battery_saver(saving);
 #elif defined(HALO_VULKAN)
 	/* (the window open already: only its swap interval is taken) */
@@ -1364,10 +1389,11 @@ static Uint64 frame_interval_ns(void)
 	static unsigned long read_at = (unsigned long)-1;
 	float rate = 0.0f;
 
+	/* (battery saver turning on or off moves config_changes) */
 	if (read_at != config_changes())
 	{
 		read_at = config_changes();
-		vsync = config_boolean("display.vsync");
+		vsync = platform_vsync();
 #ifdef HALO_ANDROID
 		maximum = -1;
 #else
@@ -1441,10 +1467,79 @@ static BOOL platform_frame_wait(Uint64 until)
 }
 #endif
 
+#ifdef HALO_METAL
+/* the last of a frame's wait for its start on the display's grid that is
+the host's precise sleep (host_metal_sleep_until) */
+#define PLATFORM_SLOT_PRECISE_NS 2000000u
+
+/* (vsync off on the Mac) the next frame's start, as SDL_GetTicksNS counts,
+on the display's grid (host_metal_frame_phase): as many times a refresh as
+the interval allows, the refresh's shown one (*shown) its budget before the
+refresh's take, the others a whole step after it, but none before the take
+(a frame started there could be ready for the take and shown instead: it
+starts at the take). The first time half a step after the last frame's
+start (last); one already passed is skipped but for a shown one, which
+starts at once (else the refresh would show the frame before it, a step
+older), and after a frame over a refresh late the grid is joined again
+from now. *step: the times' spacing; *calm: the refresh's take, before
+which a press must not start a frame (it could be shown in place of the
+shown one; the next take shows the press anyway, the shown frame having
+read the input before it). 0 where the host gives no grid. */
+static Uint64 platform_frame_slot(Uint64 interval, Uint64 now, Uint64 last, BOOL *shown, Uint64 *step, Uint64 *calm)
+{
+	unsigned long long phase = host_metal_frame_phase();
+	Uint64 period = host_metal_frame_period(), budget = host_metal_frame_budget(), count, index;
+	Sint64 anchor, earliest, refresh, slot;
+	struct timespec monotonic;
+
+	if (!phase || !period || !interval)
+		return 0;
+	/* (a period a little under two intervals is two) */
+	count = (period + interval / 16u) / interval;
+	if (!count)
+		count = 1;
+	*step = period / count;
+	clock_gettime(CLOCK_MONOTONIC, &monotonic);
+	anchor = (Sint64)phase - ((Sint64)monotonic.tv_sec * 1000000000 + monotonic.tv_nsec) + (Sint64)now;
+	earliest = last ? (Sint64)(last + *step / 2u) : (Sint64)now - (Sint64)(*step / 4u);
+	if (earliest < (Sint64)now - (Sint64)period)
+		earliest = (Sint64)now - (Sint64)(*step / 4u);
+	/* (the refresh whose times may hold the first: one before earliest's) */
+	refresh = (earliest - anchor) / (Sint64)period - 1;
+	if (earliest < anchor)
+		refresh--;
+	for (;; refresh++)
+	{
+		for (index = 0; index < count; index++)
+		{
+			/* (none but the shown one where the budget leaves no room after
+			the take) */
+			if (index && budget + *step / 2u > period)
+				break;
+			slot = anchor + refresh * (Sint64)period + (Sint64)(index * *step);
+			if (index && slot < anchor + refresh * (Sint64)period + (Sint64)budget)
+				slot = anchor + refresh * (Sint64)period + (Sint64)budget;
+			*shown = index == 0;
+			*calm = (Uint64)(anchor + refresh * (Sint64)period + (Sint64)budget);
+			if (slot < earliest)
+				continue;
+			if (slot >= (Sint64)now || *shown)
+				return (Uint64)slot;
+		}
+	}
+}
+#endif
+
 void platform_video_swap(void)
 {
 	Uint64 swap_start = SDL_GetTicks(), swap_time;
 	static Uint64 next_frame;
+#ifdef HALO_METAL
+	/* the last frame's start on the display's grid (platform_frame_slot) */
+	static Uint64 slot_last;
+	Uint64 slot, step = 0, calm = 0;
+	BOOL shown = FALSE;
+#endif
 	/* a press began a frame before next_frame (platform_frame_wait): the
 	frame after it waits for next_frame without a wake */
 	static BOOL woken;
@@ -1459,6 +1554,53 @@ void platform_video_swap(void)
 	if (!interval)
 		return;
 	now = SDL_GetTicksNS();
+#ifdef HALO_METAL
+	slot = platform_frame_slot(interval, now, slot_last, &shown, &step, &calm);
+	if (slot)
+	{
+		/* (a press wakes the wait, but not in the half step before a
+		refresh's shown frame: a frame begun then would only start that
+		one late, and the refresh shows that one, which reads the press
+		too) */
+		if (slot > now)
+		{
+			Uint64 wake_until = shown ? slot - step / 2u : slot;
+			struct timespec monotonic;
+
+			/* (the window's events are waited for in whole milliseconds,
+			which can end late: the last of the wait is the host's, on
+			time) */
+			if (wake_until > slot - PLATFORM_SLOT_PRECISE_NS)
+				wake_until = slot - PLATFORM_SLOT_PRECISE_NS;
+			/* (no wake before the take: a frame begun there could be ready
+			for it, and shown in place of the shown one) */
+			if (!shown && calm > now && calm < wake_until)
+			{
+				clock_gettime(CLOCK_MONOTONIC, &monotonic);
+				host_metal_sleep_until((unsigned long long)monotonic.tv_sec * 1000000000ull +
+					(unsigned long long)monotonic.tv_nsec + (calm - now));
+				now = SDL_GetTicksNS();
+			}
+			else if (!shown && calm > now)
+				wake_until = now;
+			if (!woken && wake_until > now && platform_frame_wait(wake_until))
+			{
+				woken = TRUE;
+				return;
+			}
+			now = SDL_GetTicksNS();
+			if (slot > now)
+			{
+				clock_gettime(CLOCK_MONOTONIC, &monotonic);
+				host_metal_sleep_until((unsigned long long)monotonic.tv_sec * 1000000000ull +
+					(unsigned long long)monotonic.tv_nsec + (slot - now));
+			}
+		}
+		woken = FALSE;
+		slot_last = slot;
+		return;
+	}
+#endif
 	if (next_frame > now)
 	{
 #ifdef HALO_ANDROID

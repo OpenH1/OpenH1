@@ -1373,6 +1373,11 @@ static void sleep_until(uint64_t when)
 #endif
 }
 
+void host_render_stream_sleep_until(uint64_t when)
+{
+	sleep_until(when);
+}
+
 /* (render.lock held) the game waits until the display has taken its frames
 but FRAME_PACING_QUEUED (FRAME_PACING_WAIT_MAXIMUM_NS at most: a display
 that takes none must not stop the game), then until its frame's start

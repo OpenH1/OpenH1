@@ -28,7 +28,7 @@ inputs no stream feeds only when they change.
 #include "xgpu_shader.h"
 #include "xgpu_stream.h"
 #include "xgpu_stream_describe.h"
-#if !defined(HALO_METAL) && !defined(XGPU_STREAM_TEST)
+#ifndef XGPU_STREAM_TEST
 #include "sdl_platform.h"
 #endif
 #ifdef HALO_VR
@@ -1579,9 +1579,10 @@ void xgpu_backend_frame_end(void)
 	xgpu_images_frame_end();
 	xgpu_texture_cache_begin_frame();
 #endif
-#if !defined(HALO_METAL) && !defined(XGPU_STREAM_TEST)
+#ifndef XGPU_STREAM_TEST
 	/* (the frames paced by display.max_fps while the host shows this one:
-	sdl_platform.c) */
+	sdl_platform.c; with vsync on, the Metal host's display paces them
+	instead, frame_pacing.h) */
 	platform_video_swap();
 #endif
 }
