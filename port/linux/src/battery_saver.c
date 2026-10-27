@@ -13,7 +13,8 @@ While it is on:
   window is shown (platform_frame_rate_apply, sdl_platform.c): the Vulkan
   host presents each frame that many times, the Metal host's display link
   runs at that rate; without vsync, the frames are spaced by the clock
-  (platform_video_swap);
+  (platform_video_swap), but on the Mac, whose display link paces them
+  (sdl_platform.c's platform_vsync);
 - the settings display.graphics chooses that the player has not set are
   read at their "classic" values (port_config.c, config_battery_saver_set).
 The game's ticks are as they were (30 a second, or game.sim_rate's): only

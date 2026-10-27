@@ -1329,6 +1329,20 @@ static float platform_refresh_rate(void)
 #endif
 }
 
+/* whether the display paces the frames: display.vsync, and on the Mac
+battery saver too, whose display link then runs at a whole fraction of the
+display's rate (frame_pacing.h). Frames spaced by the clock alone come at
+the link's rate but not in step with it: on a 60 Hz M2, 15% of the
+refreshes showed no new frame. */
+static BOOL platform_vsync(void)
+{
+#ifdef HALO_METAL
+	if (battery_saver_active())
+		return TRUE;
+#endif
+	return config_boolean("display.vsync");
+}
+
 /* display.vsync's swap interval, with battery saver's frames a second
 (battery_saver.c): the Vulkan host shows each frame for a whole number of
 refreshes, and the Metal host's display link runs at that rate */
@@ -1339,7 +1353,7 @@ void platform_frame_rate_apply(void)
 	if (!platform_window)
 		return;
 #if defined(HALO_METAL)
-	host_metal_vsync(config_boolean("display.vsync"));
+	host_metal_vsync(platform_vsync());
 	host_metal_battery_saver(saving);
 #elif defined(HALO_VULKAN)
 	/* (the window open already: only its swap interval is taken) */
@@ -1367,10 +1381,11 @@ static Uint64 frame_interval_ns(void)
 	static unsigned long read_at = (unsigned long)-1;
 	float rate = 0.0f;
 
+	/* (battery saver turning on or off moves config_changes) */
 	if (read_at != config_changes())
 	{
 		read_at = config_changes();
-		vsync = config_boolean("display.vsync");
+		vsync = platform_vsync();
 #ifdef HALO_ANDROID
 		maximum = -1;
 #else

@@ -453,9 +453,11 @@ or fullscreen. The newest frame is taken 3 ms before the link's deadline
 for the refresh (`HALO_METAL_TAKE_MARGIN_MS` sets another), not as the link
 calls, a refresh earlier: on an M2 at 60 Hz in a window, the link calls
 16.6 ms before its deadline and 49.9 ms before the frame is on screen. With
-battery saver on, the frames are capped at the link's slower rate. When the
-window moves to a display of another rate, the link runs at that display's
-highest.
+battery saver on, the display link paces the game at its slower rate, vsync
+or not (frames spaced by the clock alone came at the link's rate but not in
+step with it: on a 60 Hz M2, 15% of the refreshes showed no new frame).
+When the window moves to a display of another rate, the link runs at that
+display's highest.
 
 Until frames come, each refresh clears the drawable to black and presents
 it (the window opens before the game draws).
