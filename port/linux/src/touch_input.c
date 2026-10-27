@@ -405,15 +405,39 @@ int touch_input_move(float *forward, float *strafe)
 	return TRUE;
 }
 
+/* the swipe's and the gyroscope's turn read late in a frame, for the drawn
+view (touch_input_look_late), which the next frame's input takes as its own */
+static float look_carried[4];
+
 void touch_input_look(float scale, float *yaw, float *pitch, float *gyro_yaw, float *gyro_pitch)
 {
 	float delta[4];
+	int index;
 
 	host_touch_look_read(delta);
+	for (index = 0; index < 4; index++)
+	{
+		delta[index] += look_carried[index];
+		look_carried[index] = 0.0f;
+	}
 	*yaw -= delta[0] * scale;
 	*pitch -= delta[1] * scale;
 	*gyro_yaw -= delta[2] * scale;
 	*gyro_pitch -= delta[3] * scale;
+}
+
+void touch_input_look_late(float scale, float *yaw, float *pitch, float *gyro_yaw, float *gyro_pitch)
+{
+	float delta[4];
+	int index;
+
+	host_touch_look_read(delta);
+	for (index = 0; index < 4; index++)
+		look_carried[index] += delta[index];
+	*yaw = -look_carried[0] * scale;
+	*pitch = -look_carried[1] * scale;
+	*gyro_yaw = -look_carried[2] * scale;
+	*gyro_pitch = -look_carried[3] * scale;
 }
 
 int touch_input_aim_assist(void)

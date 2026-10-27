@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The median and 95th percentile of each stage of debug.latency_log's lines (port/linux/game/latency_log.c), for
 each kind of event (fire, move: the controller's; click, turn: the mouse's; menu: a press in a menu; the sound of a
-shot; and a rumble's start), in milliseconds.
+shot; and a rumble's start), in milliseconds; those the player made in a vehicle's seat apart (fire+v, move+v...).
 
     python tools/latency_summary.py latency.txt [more logs...] [--frames frames.txt ...]
 
@@ -64,6 +64,8 @@ def main():
                 rate = words[words.index("rate") + 1]
             elif words and words[0] in KINDS and len(words) >= 1 + len(STAGES):
                 row = [float(word) for word in words[1:1 + len(STAGES)]]
+                # (in a vehicle's seat: the column after the clocks, in a log that has it)
+                seated = len(words) > 3 + len(STAGES) and words[3 + len(STAGES)] == "1"
                 if frames is not None:
                     # (the press to the showing frame's present and screen, by its input read)
                     shown = None
@@ -73,7 +75,7 @@ def main():
                     if not shown or not shown[1] or not press:
                         continue
                     row += [(shown[0] - press) / 1e6, (shown[1] - press) / 1e6, (shown[1] - shown[0]) / 1e6]
-                events.setdefault(words[0], []).append(row)
+                events.setdefault(words[0] + ("+v" if seated else ""), []).append(row)
             elif words and words[0] == "sound" and len(words) >= 1 + len(SOUND_STAGES):
                 events.setdefault("sound", []).append([float(word) for word in words[1:1 + len(SOUND_STAGES)]])
             elif words and words[0] == "rumble" and len(words) >= 1 + len(RUMBLE_STAGES):
@@ -82,25 +84,26 @@ def main():
         print(f"{log} (game.sim_rate {rate or '?'})")
         if frames is not None:
             print(f"  frames: {counted} timed, {repeated} refreshes showed a frame again")
-        print(f"  {'':5} {'n':>3}  " + "  ".join(f"{stage:>18}" for stage in stages))
-        for kind, rows in sorted(events.items(), key=lambda item: KINDS.index(item[0]) if item[0] in KINDS else len(KINDS)):
+        print(f"  {'':7} {'n':>3}  " + "  ".join(f"{stage:>18}" for stage in stages))
+        for kind, rows in sorted(events.items(), key=lambda item: (
+                KINDS.index(item[0].split("+")[0]) if item[0].split("+")[0] in KINDS else len(KINDS), item[0])):
             if kind in ("sound", "rumble"):
                 continue
             cells = []
             for index in range(len(stages)):
                 values = [row[index] for row in rows]
                 cells.append(f"{statistics.median(values):7.1f} / {percentile(values, 0.95):6.1f}  ")
-            print(f"  {kind:5} {len(rows):>3}  " + "  ".join(f"{cell:>18}" for cell in cells))
+            print(f"  {kind:7} {len(rows):>3}  " + "  ".join(f"{cell:>18}" for cell in cells))
         for kind, stages in (("sound", SOUND_STAGES), ("rumble", RUMBLE_STAGES)):
             if kind not in events:
                 continue
             rows = events[kind]
-            print(f"  {'':6} {'n':>3}  " + "  ".join(f"{stage:>18}" for stage in stages))
+            print(f"  {'':7} {'n':>3}  " + "  ".join(f"{stage:>18}" for stage in stages))
             cells = []
             for index in range(len(stages)):
                 values = [row[index] for row in rows]
                 cells.append(f"{statistics.median(values):7.1f} / {percentile(values, 0.95):6.1f}  ")
-            print(f"  {kind:6} {len(rows):>3}  " + "  ".join(f"{cell:>18}" for cell in cells))
+            print(f"  {kind:7} {len(rows):>3}  " + "  ".join(f"{cell:>18}" for cell in cells))
         print("  (each: median / 95th percentile, ms)")
 
 

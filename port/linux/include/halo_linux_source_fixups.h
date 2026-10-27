@@ -100,6 +100,9 @@ void sim_trace_weapon_fire(long weapon_index, long owner_object_index, short tri
 weapon's nodes (first_person_weapons.c) */
 void sim_trace_frame(short local_player_index, void const *camera_position, void const *camera_forward,
 	void const *camera_up, void const *node_matrices, short node_count);
+/* ... and the first local player's view as drawn, and what they ride as
+drawn (main.c, as the frame takes the view: render_interpolation_camera) */
+void sim_trace_view(short local_player_index, void const *observer_result);
 /* debug.latency_log (port/linux/game/latency_log.c): the first local
 player's input to the frame that shows it, each call made only while the
 log is on (LATENCY_LOG): a weapon fired (weapons.c), each simulation step

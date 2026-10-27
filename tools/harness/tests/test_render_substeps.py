@@ -52,7 +52,31 @@ NEGATIVE_CONTROLS = {
 }
 
 
-def generated(fault=None):
+# the camera's code of the view from a local player's vehicle drawn from its newest step
+# (test_render_newest_vehicle.py), which the other tests stub: no vehicle is drawn so
+NEWEST = ("vector_turned", "render_interpolation_newest_step", "rotation_turn", "render_interpolation_newest_history",
+          "vector_at_most", "render_interpolation_newest_motion", "newest_motion_carried", "quaternion_turned",
+          "newest_blend_left", "newest_blends_left",
+          "render_interpolation_newest_blend", "render_interpolation_direct",
+          "render_interpolation_look_late", "render_interpolation_direct_camera",
+          "render_interpolation_newest_camera", "render_interpolation_newest_vehicle", "render_interpolation_glide",
+          "render_interpolation_newest_among", "render_interpolation_vehicle_continues",
+          "render_interpolation_newest_vehicles",
+          "render_interpolation_newest_correction", "render_interpolation_newest_frame",
+          "render_interpolation_seat_pitch", "view_frame",
+          "render_interpolation_seat_camera", "render_interpolation_correct_object", "render_interpolation_camera",
+          "render_interpolation_view_newest")
+NEWEST_STUBS = """static void render_interpolation_newest_vehicles(boolean rendering) { (void)rendering; }
+static boolean render_interpolation_newest_frame(long object_index, real_matrix4x3 const **frames,
+	real_matrix4x3 const **drawn, real_vector3d *correction)
+{
+	(void)object_index; (void)frames; (void)drawn; (void)correction;
+	return FALSE;
+}
+"""
+
+
+def generated(fault=None, newest=False):
     header = read("port/linux/game/sim_rate.h")
     clock = read("port/linux/game/sim_rate.c")
     code = read("port/linux/game/render_interpolation.c")
@@ -64,7 +88,8 @@ def generated(fault=None):
     # the constants and structures
     text = code[code.index("/* ---------- constants */"):code.index("/* ---------- structures */")] + "\n"
     for name in ("interpolation_quaternion", "interpolation_rotation", "interpolated_object", "interpolated_substeps",
-                 "interpolated_camera"):
+                 "interpolated_camera", "newest_history", "newest_motion",
+                 "newest_vehicle"):
         text += structure(code, name) + "\n"
     # the globals, but for the first-person weapon's, the particles' and the ghosts' (the test's own)
     globals_text = code[code.index("static struct interpolated_object *interpolated_objects;"):
@@ -75,6 +100,16 @@ def generated(fault=None):
     text += function(clock, "sim_substep_blend").replace("sim_rate_globals.substep_count", "fake_substep_count") + "\n"
     text += "static void render_interpolation_substep(short substep_index, short substep_count, real seconds);\n"
     text += "static void render_interpolation_camera_anchors(void);\n"
+    if newest:
+        enum_start = code.index("/* the views display.direct_camera takes")
+        text += code[enum_start:code.index("static struct observer_result const *render_interpolation_blended_camera(")]
+        text += ("static struct observer_result const *render_interpolation_blended_camera(short, "
+                 "struct observer_result const *);\n")
+        text += "static void render_interpolation_newest_vehicles(boolean rendering);\n"
+        text += ("static boolean render_interpolation_newest_frame(long object_index, real_matrix4x3 const **frames, "
+                 "real_matrix4x3 const **drawn, real_vector3d *correction);\n")
+    else:
+        text += NEWEST_STUBS
     for name in ("lerp", "point_lerp", "vector_length", "vector_nlerp", "basis_is_rotation", "quaternion_from_basis",
                  "basis_from_quaternion", "rotation_from_matrix", "matrix_blend_rotations", "correction_significant",
                  "correction_advance", "correction_drawn", "correction_add", "distance_squared", "vector_in_frame",
@@ -91,6 +126,12 @@ def generated(fault=None):
                  "render_interpolation_camera_at_tick_in_vehicle", "render_interpolation_camera_vehicle_offset",
                  "render_interpolation_blended_camera"):
         text += function(code, name) + "\n"
+    if newest:
+        globals_text = code[code.index("static struct observer_result direct_cameras["):
+                            code.index("/* the views display.direct_camera takes")]
+        text += globals_text + "\n"
+        for name in NEWEST:
+            text += function(code, name) + "\n"
     if fault:
         text = mutated(text, *fault)
     return (("decls.inc", decls), ("under_test.inc", text))

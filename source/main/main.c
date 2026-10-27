@@ -3433,6 +3433,7 @@ static void main_game_render(
 			window->local_player_index = last_local_player_index;
 			observer = observer_get_camera(window->local_player_index);
 			observer = render_interpolation_camera(window->local_player_index, observer);
+			SIM_TRACE(sim_trace_view(window->local_player_index, observer)); /* port: debug.trace */
 		}
 		else
 		{
