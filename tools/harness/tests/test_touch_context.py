@@ -1,6 +1,7 @@
 """What the Android touch controls' buttons show of player 1 (touch_game.c): the HUD's action prompt glows the action
 button (not the vehicle's exit), a magazine under a quarter loaded with a reserve pulses reload (never a plasma
-weapon, nor while reloading), none of the current grenade type dims the grenade, and a vehicle's seat is told."""
+weapon, nor while reloading), none of the current grenade type dims the grenade, a vehicle's seat is told, and so is
+a living player (a crouch tapped on stands up at death)."""
 
 import sys
 from pathlib import Path
@@ -24,6 +25,7 @@ NEGATIVE_CONTROLS = {
     "grenade-past-counts": (("grenade < NUMBER_OF_UNIT_GRENADE_TYPES && ", ""),
                             "touch_game_context", "grenades"),
     "carried-is-seated": ((" && unit->unit.parent_seat_index != NONE", ""), "touch_game_context", "vehicle"),
+    "never-alive": (("\tcontext |= _touch_context_alive;\n", ""), "touch_game_context", "on-foot"),
 }
 
 

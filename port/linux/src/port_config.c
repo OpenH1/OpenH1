@@ -716,6 +716,11 @@ static const struct config_setting config_settings[] =
 		"The touch controls' swipe aiming gets a controller's aim assist: the\n"
 		"aim slows over a target and follows a moving one. false: none, as a\n"
 		"mouse (the bullets' own autoaim stays)." },
+	{ "input.touch_crouch", _config_string, "\"toggle\"", "HALO_TOUCH_CROUCH", _environment_value,
+		_platform_android | _platform_ios,
+		"The touch controls' Crouch: \"toggle\" crouches at a tap until Crouch\n"
+		"is tapped again, Jump is pressed, a vehicle's seat is taken or the\n"
+		"player dies; \"hold\" crouches while it is held." },
 	{ "input.mouse_sensitivity", _config_real, "5.73", "HALO_MOUSE_SENSITIVITY", _environment_value, _platform_desktop,
 		"How far the view turns for the mouse's movement, on " CONFIG_MOUSE_MARK " scale:\n"
 		"0.022 degrees a count of the mouse times this, with no acceleration,\n"
@@ -2802,6 +2807,7 @@ static const struct
 	{ "audio.spatial", { "auto", "headphones", "speakers", NULL }, "auto" },
 	{ "audio.voice_chat", { "push_to_talk", "open_mic", "off", NULL }, NULL },
 	{ "input.touch_controls", { "auto", "on", "off", NULL }, NULL },
+	{ "input.touch_crouch", { "toggle", "hold", NULL }, NULL },
 	{ "input.button_prompts", { "auto", "controller", "keyboard", NULL }, NULL },
 	{ "input.zoom_sensitivity", { "cs2", "halo", NULL }, "cs2" },
 	{ "game.console_log", { "important", "all", "none", NULL }, NULL },

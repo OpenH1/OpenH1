@@ -141,6 +141,8 @@ public final class TouchControls extends View implements SensorEventListener, In
     /** display.hud_button_style (0 classic, 1 gems, 2 menu_gems) and input.touch_captions */
     private static final int SCENE_STYLE_SHIFT = 5;
     private static final int SCENE_CAPTIONS = 128;
+    /** input.touch_crouch "toggle" (none: "hold") */
+    private static final int SCENE_CROUCH_TOGGLE = 1 << 19;
 
     private static final String PREFERENCES = "touch-layout-v1";
     private static final String KEY_CONFIGURATION = "configuration";
@@ -307,10 +309,11 @@ public final class TouchControls extends View implements SensorEventListener, In
     private float lookY;
     /**
      * the kind of control that crouches (the one bound to Crouch), tapped
-     * on: it stays down while the stick moves, until it is tapped again,
-     * Jump is pressed or a vehicle's seat is taken; -1 standing. (Crouch
-     * sits under the left thumb beside the stick, where it cannot be held
-     * while moving; the Xbox's is the stick's own click.)
+     * on with input.touch_crouch "toggle": it stays down while the stick
+     * moves, until it is tapped again, Jump is pressed, a vehicle's seat is
+     * taken or the player dies; -1 standing (TouchContext.crouchPressed,
+     * crouchKept). (Crouch sits under the left thumb beside the stick, where
+     * it cannot be held while moving; the Xbox's is the stick's own click.)
      */
     private int crouchedKind = -1;
     /** a floating stick's centre while a thumb holds it (logical units) */
@@ -395,6 +398,12 @@ public final class TouchControls extends View implements SensorEventListener, In
                     || TouchContext.fromScene(was) != TouchContext.fromScene(scene)
                     || (showing && !hidden && TouchContext.animating(TouchContext.fromScene(scene))))
                 invalidate();
+            // (a crouch tapped on stands up at death or in a seat, with no finger down)
+            if (((was ^ scene) & SCENE_CROUCH_TOGGLE) != 0
+                    || TouchContext.fromScene(was) != TouchContext.fromScene(scene)) {
+                publish();
+                invalidate();
+            }
             fadeWhenIdle();
             updateShowing();
             readBindings();
@@ -701,13 +710,13 @@ public final class TouchControls extends View implements SensorEventListener, In
         axes[5] = 0;
         for (int i = 0; i < owners.size(); i++) {
             int control = owners.valueAt(i);
-            if (control < 0 || control >= layout.size() || crouches(layout.type(control)))
+            if (control < 0 || control >= layout.size() || (crouchToggles() && crouches(layout.type(control))))
                 continue;
             bits = press(KINDS[layout.type(control)], bits);
         }
         // (crouch: tapped on, held by no finger)
-        if (crouchedKind >= 0 && (!crouches(crouchedKind) || hiddenNow(crouchedKind)))
-            crouchedKind = -1;
+        if (crouchedKind >= 0)
+            crouchedKind = TouchContext.crouchKept(crouchedKind, gameControl(crouchedKind), context(), crouchToggles());
         if (crouchedKind >= 0)
             bits = press(KINDS[crouchedKind], bits);
         nativeState(axes[0], axes[1], axes[2], axes[3], axes[4], axes[5], bits);
@@ -718,6 +727,11 @@ public final class TouchControls extends View implements SensorEventListener, In
         if (kind.trigger >= 0)
             axes[kind.trigger] = 32767;
         return kind.bit >= 0 ? bits | 1 << kind.bit : bits;
+    }
+
+    /** input.touch_crouch: whether Crouch is tapped on and off, not held */
+    private boolean crouchToggles() {
+        return (scene & SCENE_CROUCH_TOGGLE) != 0;
     }
 
     /** whether a kind of control crouches (is bound to Crouch) */
@@ -907,10 +921,7 @@ public final class TouchControls extends View implements SensorEventListener, In
             } else {
                 buttonTouches.put(id, new float[] {px, py});
                 int type = layout.type(target);
-                if (crouches(type))
-                    crouchedKind = crouchedKind == type ? -1 : type;
-                else if (gameControl(type) == TouchContext.CONTROL_JUMP)
-                    crouchedKind = -1;
+                crouchedKind = TouchContext.crouchPressed(crouchedKind, type, gameControl(type), crouchToggles());
                 tap();
             }
         } else if (!hidden && lookPointer < 0 && !inGestureZone(px, py, false)) {

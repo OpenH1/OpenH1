@@ -140,8 +140,9 @@ struct platform_ui_pointer
 	/* the mouse's left button is held (a slider dragged); never the
 	touchscreen's, whose drags scroll */
 	BOOL left_held;
-	/* the touchscreen's: a finger is down, x and y where it is now (when
-	no tap moved the pointer): a slider it went down on follows it */
+	/* the touchscreen's: a finger is down and went sideways first, x and y
+	where it is now (when no tap moved the pointer): a slider it went down
+	on follows it */
 	BOOL finger_held;
 };
 /* says whether a menu is up; the mouse is released for the menus (desktop),

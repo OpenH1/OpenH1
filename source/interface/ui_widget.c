@@ -5900,9 +5900,10 @@ static void widget_instance_render_spinner_list(
 /* port/linux/game/menu_functions.c's: a text box drawn, at the bounds its
 text was drawn in (the lobby's speaker icons) */
 void menu_functions_text_box_drawn(struct widget_instance *widget, rectangle2d const *bounds);
-/* port/linux/game/menu_functions.c's: a finger put down on the item at x
-taken by it (a settings slider's track: the finger, held, drags it) */
-boolean menu_functions_finger_down(struct widget_instance *item, short x);
+/* port/linux/game/menu_functions.c's: a finger that went down on the item
+at x and then sideways taken by it (a settings slider's track: the finger,
+held, drags it), the item's row to choose, or NULL */
+struct widget_instance *menu_functions_finger_down(struct widget_instance *item, short x);
 
 /* ---------- the mouse (desktop builds)
 
@@ -7074,7 +7075,10 @@ static short ui_widget_port_click_x, ui_widget_port_click_y;
 static unsigned long ui_widget_port_click_time;
 static boolean ui_widget_port_click_taken = TRUE;
 /* port: the finger is a slider's (menu_functions_finger_down): its drag
-steps no list until it lifts and its steps have all come */
+steps no list until it lifts and its steps have all come. A finger is the
+slider's only once its first move is sideways (touch_menu.h's held), so
+that one on the track that goes up or down scrolls the list and changes
+no value; a tap is a click, which chooses the row first */
 static boolean ui_widget_port_finger_taken;
 
 boolean ui_widget_port_pointer(
@@ -7146,6 +7150,7 @@ static void ui_widgets_process_mouse(
 	short controller_index = 0;
 	boolean pointer_active;
 	boolean keyboard_active;
+	boolean was_held = ui_widget_port_pointer_held;
 
 	ui_debug_frame++;
 	pointer_active = halo_ui_pointer_update(ui_mouse_menus_active(), &pointer) != 0;
@@ -7201,12 +7206,18 @@ static void ui_widgets_process_mouse(
 		}
 		if (pointer.right_clicks)
 			ui_mouse_press(_widget_event_b_button);
-		/* port: (ui_widget_port_finger_taken) */
-		if (pointer.touch && pointer.downs)
+		/* port: (ui_widget_port_finger_taken) at the finger's first move
+		sideways, by where it went down */
+		if (pointer.touch && pointer.left_held && !was_held)
 		{
+			struct widget_instance *row;
+
 			target = ui_mouse_target_at(pointer.down_x, pointer.down_y);
-			ui_widget_port_finger_taken = target && target->kind == _ui_mouse_target_item &&
-				menu_functions_finger_down(target->widget, pointer.down_x);
+			row = target && target->kind == _ui_mouse_target_item ?
+				menu_functions_finger_down(target->widget, pointer.down_x) : NULL;
+			ui_widget_port_finger_taken = row != NULL;
+			if (row)
+				ui_mouse_give_focus(row);
 		}
 		else if (!pointer.left_held && !pointer.wheel_steps)
 		{

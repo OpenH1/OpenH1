@@ -74,6 +74,9 @@ enum
 	_touch_context_no_grenades = 1 << 2,
 	/* in a vehicle's seat: jump and crouch hide, the action button exits */
 	_touch_context_vehicle = 1 << 3,
+	/* player 1 has a unit (not dead, nor between lives): a crouch tapped
+	on stands up without it */
+	_touch_context_alive = 1 << 4,
 };
 
 /* hud.c's, which weapon_build_weapon_interface_state fills in (weapons.c) */
@@ -127,6 +130,7 @@ int touch_game_context(void)
 	player = player_get(player_index);
 	if (player->unit_index == NONE)
 		return 0;
+	context |= _touch_context_alive;
 	unit = unit_get(player->unit_index);
 	/* (in a seat the action is to exit, which the vehicle bit shows) */
 	if (player->action_result != _player_action_result_reload &&

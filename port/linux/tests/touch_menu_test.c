@@ -1118,9 +1118,12 @@ static void test_reset_and_cancel_drop_a_zone_finger(void)
 	CHECK(out.clicks == 1);
 }
 
-/* a finger down is held where it is now, through its drag, until it lifts
-(a slider follows it); a finger from the bottom zone that moves on is not */
-static void test_a_finger_is_held_where_it_is(void)
+/* a finger is held, where it is now, once its first move beyond the slop is
+sideways, through its drag, until it lifts (a slider follows it); not at its
+down nor within the slop (a tap, or a list scrolled from a slider's track,
+changes no value), not when it goes up or down first, and not from the
+bottom zone */
+static void test_a_finger_is_held_once_it_goes_sideways(void)
 {
 	struct touch_menu menu;
 	struct touch_menu_output out;
@@ -1130,27 +1133,47 @@ static void test_a_finger_is_held_where_it_is(void)
 	CHECK(out.held == 0);
 	touch_menu_down(&menu, 1, 500.0f, 500.0f);
 	touch_menu_read(&menu, &out);
-	CHECK(out.held == 1 && out.held_x == 500.0f && out.held_y == 500.0f);
+	CHECK(out.held == 0);
 	/* (within the slop, and beyond it, sideways) */
 	touch_menu_move(&menu, 1, 510.0f, 500.0f);
 	touch_menu_read(&menu, &out);
-	CHECK(out.held == 1 && out.held_x == 510.0f);
+	CHECK(out.held == 0);
 	touch_menu_move(&menu, 1, 700.0f, 505.0f);
 	touch_menu_read(&menu, &out);
 	CHECK(out.held == 1 && out.held_x == 700.0f && out.held_y == 505.0f);
+	/* (then any way: it stays held) */
+	touch_menu_move(&menu, 1, 690.0f, 800.0f);
+	touch_menu_read(&menu, &out);
+	CHECK(out.held == 1 && out.held_x == 690.0f && out.held_y == 800.0f);
 	/* (another finger moves nothing) */
 	touch_menu_move(&menu, 2, 900.0f, 505.0f);
 	touch_menu_read(&menu, &out);
-	CHECK(out.held_x == 700.0f);
-	touch_menu_up(&menu, 1, 700.0f, 505.0f);
+	CHECK(out.held_x == 690.0f);
+	touch_menu_up(&menu, 1, 690.0f, 800.0f);
+	touch_menu_read(&menu, &out);
+	CHECK(out.held == 0 && out.clicks == 0);
+	/* a finger that goes down first scrolls, and is never held, even
+	going sideways later */
+	touch_menu_down(&menu, 3, 500.0f, 500.0f);
+	touch_menu_move(&menu, 3, 505.0f, 700.0f);
+	touch_menu_read(&menu, &out);
+	CHECK(out.held == 0 && out.wheel_steps > 0);
+	touch_menu_move(&menu, 3, 800.0f, 700.0f);
 	touch_menu_read(&menu, &out);
 	CHECK(out.held == 0);
-	touch_menu_down(&menu, 3, 500.0f, 1050.0f);
-	touch_menu_move(&menu, 3, 500.0f, 900.0f);
-	touch_menu_read(&menu, &out);
-	CHECK(out.held == 0);
-	touch_menu_up(&menu, 3, 500.0f, 900.0f);
+	touch_menu_up(&menu, 3, 800.0f, 700.0f);
+	/* a tap is never held */
 	touch_menu_down(&menu, 4, 500.0f, 500.0f);
+	touch_menu_up(&menu, 4, 502.0f, 501.0f);
+	touch_menu_read(&menu, &out);
+	CHECK(out.held == 0 && out.clicks == 1);
+	touch_menu_down(&menu, 5, 500.0f, 1050.0f);
+	touch_menu_move(&menu, 5, 700.0f, 1050.0f);
+	touch_menu_read(&menu, &out);
+	CHECK(out.held == 0);
+	touch_menu_up(&menu, 5, 700.0f, 1050.0f);
+	touch_menu_down(&menu, 6, 500.0f, 500.0f);
+	touch_menu_move(&menu, 6, 700.0f, 500.0f);
 	touch_menu_cancel(&menu);
 	touch_menu_read(&menu, &out);
 	CHECK(out.held == 0);
@@ -1220,7 +1243,7 @@ int main(void)
 	test_zones_changed_between_fingers_apply_at_the_next_down();
 	test_zones_changed_under_a_finger_do_not_touch_it();
 	test_reset_and_cancel_drop_a_zone_finger();
-	test_a_finger_is_held_where_it_is();
+	test_a_finger_is_held_once_it_goes_sideways();
 	if (failures)
 		printf("%d failures\n", failures);
 	else

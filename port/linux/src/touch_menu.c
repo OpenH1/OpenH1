@@ -56,7 +56,7 @@ void touch_menu_down(struct touch_menu *menu, unsigned long long finger, float x
 	menu->output.downs++;
 	menu->output.down_x = x;
 	menu->output.down_y = y;
-	menu->output.held = 1;
+	menu->output.held = 0;
 	menu->output.held_x = x;
 	menu->output.held_y = y;
 	menu->scrolling = 0;
@@ -89,13 +89,15 @@ void touch_menu_move(struct touch_menu *menu, unsigned long long finger, float x
 		if (menu->no_scroll)
 		{
 			menu->void_tap = 1;
-			menu->output.held = 0;
 			return;
 		}
 		/* the steps count from the slop's edge on the axis: the slop is not
 		a step, and a fast first sample is not lost */
 		menu->scrolling = 1;
 		menu->axis = fabsf(dx) > fabsf(dy);
+		/* (a finger that went sideways first may drag a slider it went down
+		on; one that went up or down scrolls the list over it) */
+		menu->output.held = menu->axis;
 		if (menu->axis)
 			menu->last_x = menu->down_x + (dx > 0.0f ? menu->settings.slop : -menu->settings.slop);
 		else
