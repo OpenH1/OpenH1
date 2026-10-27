@@ -47,4 +47,5 @@ def test_the_late_reading_only_the_views():
     control = read("source/game/player_control.c")
     late = function(control, "player_control_touch_look_late")
     assert "input->facing_delta" not in late
-    assert read("port/linux/game/render_interpolation.c").count("player_control_touch_look_late(local_player_index") == 1
+    code = read("port/linux/game/render_interpolation.c")
+    assert code.count("player_control_touch_look_late(local_player_index") == 1

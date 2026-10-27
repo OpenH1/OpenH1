@@ -1192,11 +1192,15 @@ to the firing arc). A
 correction of the netcode glides the vehicle and the view together, as it
 glided the vehicle before; and as a player gets in or out (or dies, or
 respawns in one) the vehicle glides from the one drawing to the other, with
-no jump of the tick of motion between them. Carried on, a vehicle that
-hits something, lands or bounces on its suspension is drawn a little past
-where its next step has it, for the frames until that step (at 30 a tick,
-at 60 and 120 a sub-step: the faster the rate, the less). A seat whose view
-is the vehicle's gun's (which aims once a tick) is drawn as before.
+no jump of the tick of motion between them. Where the vehicle's next step
+is not where its motion carried on put it (a wheel touching down, a
+landing, a bounce, a crash), it moves on from where it was drawn, the
+difference blended away over a tick, easing out and in, rather than jumped
+(a start from standing is drawn at once). While the player's aim is held
+at the seat's pitch limit, which the game eases toward the vehicle's tilt
+a step at a time, the view's pitch is the mean of the last step's frames,
+so that it moves evenly. A seat whose view is the vehicle's gun's (which
+aims once a tick) is drawn as before.
 
 Everything else, other players and their vehicles included, is drawn
 between the ticks as before. In cinematics the view mixes as the other

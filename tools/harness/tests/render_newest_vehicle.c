@@ -367,6 +367,11 @@ static real const spin_rate = 0.08f;
 /* ... speeding up, and turning faster (world units a tick a tick, radians a tick a tick): none while steady */
 static real_vector3d acceleration;
 static real spin_acceleration;
+/* ... standing until this tick (0: from the start), and from this tick on climbing this much faster (world units a
+tick: a ramp's lip, a bounce), which no motion carried on foresees */
+static real start_tick;
+static real kink_tick = 1e9f;
+static real kink_climb;
 static real_vector3d spin_axis(void)
 {
 	real_vector3d axis = { 0.3f, 0.2f, 0.93f };
@@ -379,15 +384,24 @@ static real_vector3d path_jump;
 
 static real_point3d vehicle_place_at(real t)
 {
+	real climbed = t > kink_tick ? kink_climb * (t - kink_tick) : 0.0f;
+
+	t -= start_tick > 0.0f ? start_tick : 0.0f;
+	if (t < 0.0f)
+		t = 0.0f;
 	return at(2.0f + velocity.i * t + 0.5f * acceleration.i * t * t + path_jump.i,
 		-1.0f + velocity.j * t + 0.5f * acceleration.j * t * t + path_jump.j,
-		0.5f + velocity.k * t + 0.5f * acceleration.k * t * t + path_jump.k);
+		0.5f + velocity.k * t + 0.5f * acceleration.k * t * t + path_jump.k + climbed);
 }
 
 static quat vehicle_rotation_at(real t)
 {
 	real_vector3d axis = spin_axis();
 	quat start = q_mul(q_axis(0, 0, 1, 0.4f), q_mul(q_axis(0, 1, 0, 0.15f), q_axis(1, 0, 0, 0.2f)));
+
+	t -= start_tick > 0.0f ? start_tick : 0.0f;
+	if (t < 0.0f)
+		t = 0.0f;
 
 	return q_mul(q_axis(axis.i, axis.j, axis.k, spin_rate * t + 0.5f * spin_acceleration * t * t), start);
 }
@@ -439,6 +453,10 @@ static void world_pose(long tick, real t)
 	object_get(VEHICLE)->object.position = p;
 	object_get(VEHICLE)->object.forward = frame.forward;
 	object_get(VEHICLE)->object.up = frame.up;
+	if (t < start_tick)
+	{
+		axis.i = axis.j = axis.k = 0.0f;
+	}
 	object_get(VEHICLE)->object.translational_velocity.i = velocity.i * physics_apart;
 	object_get(VEHICLE)->object.translational_velocity.j = velocity.j * physics_apart;
 	object_get(VEHICLE)->object.translational_velocity.k = velocity.k * physics_apart;
@@ -811,6 +829,144 @@ static real_point3d drawn_root(void)
 	return drawn->position;
 }
 
+/* The vehicle climbs faster all at once (a ramp's lip, a bounce), which the motion carried on did not foresee: at 30,
+the tick after it meets the vehicle a tick's misjudged climb from where it was drawn. It moves on from where it was
+drawn, blended to the new path over the next tick, never jumping a tick's misjudged climb: a frame's move apart
+from the frame before's by less than three quarters of that */
+static void case_kinked(void)
+{
+	long frame;
+	real worst = 0.0f;
+	real_point3d last_root;
+	real_vector3d last_move;
+	long kept = 0;
+
+	kink_tick = (real)SETTLED + 4.0f;
+	kink_climb = 0.6f;
+	world_new(1, TRUE, _director_perspective_first_person);
+	for (frame = 0; frame < 3 * (SETTLED + 10); frame++)
+	{
+		struct observer_result observer;
+		real_point3d root;
+		real_vector3d move;
+
+		if (frame % 3 == 0)
+			world_substep();
+		if (ticks_ended < 2)
+			continue;
+		frame_begin((real)(frame % 3) / 3.0f);
+		observer = observer_now();
+		render_interpolation_camera(0, &observer);
+		root = drawn_root();
+		if (ticks_ended >= SETTLED)
+		{
+			if (kept >= 1)
+			{
+				move.i = root.x - last_root.x;
+				move.j = root.y - last_root.y;
+				move.k = root.z - last_root.z;
+				if (kept >= 2 && vector_distance(move, last_move) > worst)
+					worst = vector_distance(move, last_move);
+				last_move = move;
+			}
+			kept++;
+		}
+		last_root = root;
+		render_interpolation_frame_end();
+	}
+	CHECK(worst < 0.75f * kink_climb, "a frame's move %f apart from the frame before's (a climb of %f a tick)", worst,
+		kink_climb);
+	kink_tick = 1e9f;
+}
+
+/* The vehicle starts from standing: the first frame after the step that moved it shows it moved (the step's latency
+not given back to a blend from where it stood) */
+static void case_start(void)
+{
+	long frame;
+	boolean seen = FALSE;
+	real_point3d stood;
+
+	start_tick = (real)SETTLED + 2.0f;
+	world_new(1, TRUE, _director_perspective_first_person);
+	stood = vehicle_place_at(0.0f);
+	for (frame = 0; frame < 3 * (SETTLED + 6) && !seen; frame++)
+	{
+		struct observer_result observer;
+		real_point3d root;
+
+		if (frame % 3 == 0)
+			world_substep();
+		if (ticks_ended < 2)
+			continue;
+		frame_begin((real)(frame % 3) / 3.0f + 0.1f);
+		observer = observer_now();
+		render_interpolation_camera(0, &observer);
+		root = drawn_root();
+		if ((real)ticks_ended >= start_tick + 1.0f)
+		{
+			real moved = distance(&root, &stood);
+			real speed = (real)sqrt(dot(velocity, velocity));
+
+			CHECK(moved > 0.5f * speed, "the first frame after the start drawn %f from where the vehicle stood (a "
+				"step's motion %f)", moved, speed);
+			seen = TRUE;
+		}
+		render_interpolation_frame_end();
+	}
+	CHECK(seen, "no frame after the start");
+	start_tick = 0.0f;
+}
+
+/* Following the vehicle, the player's aim held at the seat's pitch limit, which the game eases a sub-step at a time
+(the aim steps with it, then holds): the view's pitch moves evenly, a frame's change as much as the next's */
+static void case_pitch_held(void)
+{
+	long frame;
+	real last_pitch = 0.0f, last_change = 0.0f;
+	long checked = 0;
+	real saved_minimum = control.pitch_minimum, saved_pitch = facing.pitch;
+
+	world_new(2, TRUE, _director_perspective_third_person);
+	control.pitch_minimum = -0.5f;
+	facing.pitch = control.pitch_minimum;
+	for (frame = 0; frame < 3 * 2 * (SETTLED + 8); frame++)
+	{
+		struct observer_result observer;
+		struct observer_result const *camera;
+		real pitch;
+
+		if (frame % 3 == 0)
+		{
+			world_substep();
+			/* (the limit eased on, as the vehicle tilts, the aim held at it) */
+			control.pitch_minimum += 0.012f;
+			facing.pitch = control.pitch_minimum;
+		}
+		if (ticks_ended < 2)
+			continue;
+		frame_begin((real)(frame % 3) / 3.0f);
+		observer = observer_now();
+		camera = render_interpolation_camera(0, &observer);
+		pitch = (real)asin(camera->forward.k);
+		if (ticks_ended >= SETTLED)
+		{
+			real change = pitch - last_pitch;
+
+			if (checked > 0)
+				CHECK(fabs(change - last_change) < 0.25f * 0.004f, "frame %ld: the view's pitch changed %f, %f the "
+					"frame before (held at a limit easing 0.012 a sub-step)", frame, change, last_change);
+			last_change = change;
+			checked++;
+		}
+		last_pitch = pitch;
+		render_interpolation_frame_end();
+	}
+	CHECK(checked > 20, "too few frames");
+	control.pitch_minimum = saved_minimum;
+	facing.pitch = saved_pitch;
+}
+
 /* The player leaves the vehicle's newest step (dies, or as they get out), or comes to it (gets in, or respawns in
 it), at speed: the vehicle is drawn from one to the other gliding, as a correction is, never jumping the tick of
 motion between them (a frame's move no further from the vehicle's own than the glide's share) */
@@ -1060,6 +1216,12 @@ int main(int argc, char **argv)
 		glide_case(4, FALSE);
 	else if (!strcmp(argv[1], "coming_30"))
 		glide_case(1, FALSE);
+	else if (!strcmp(argv[1], "kinked"))
+		case_kinked();
+	else if (!strcmp(argv[1], "start"))
+		case_start();
+	else if (!strcmp(argv[1], "pitch_held"))
+		case_pitch_held();
 	else if (!strcmp(argv[1], "leaving_teleported"))
 		case_leaving_teleported();
 	else if (!strcmp(argv[1], "correction"))

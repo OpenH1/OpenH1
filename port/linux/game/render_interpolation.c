@@ -199,6 +199,17 @@ would throw it on a step past where its motion took it */
 #define NEWEST_SPIN_ACCELERATION_MAXIMUM 0.05f
 /* ... and the longest its steps may be apart (ticks) to be its motion */
 #define NEWEST_HISTORY_GAP 2
+/* ... and slower than this (world units a tick) at its step before, it was
+standing: a step's start from it is drawn at once, not blended in */
+#define NEWEST_STANDING 0.002f
+/* ... and how long a difference from where it was drawn takes to blend
+away (ticks: a tick at every rate, over which the frames before drew the
+vehicle's steps), and the most blended at once */
+#define NEWEST_BLEND_TIME 1.0f
+#define NEWEST_BLENDS 4
+/* the frames' pitches kept for the view's pitch held at the seat's limit:
+more than a step's at any rate's (a tick's at 30, at 240 Hz) */
+#define NEWEST_PITCH_FRAMES 16
 
 /* ---------- structures */
 
@@ -308,6 +319,40 @@ struct newest_history
 	long steps[3];
 	real_point3d positions[3];
 	struct interpolation_quaternion rotations[3];
+	/* the motion carried on in the frame before, from its newest step
+	(model_step: where it left the root node), and the vehicle drawn's
+	difference from the motion carried on now, gliding away since a step
+	(render_interpolation_newest_blend) */
+	boolean model_valid;
+	long model_step;
+	real_point3d model_position;
+	struct interpolation_quaternion model_rotation;
+	real_vector3d model_velocity;
+	real_vector3d model_acceleration;
+	real_vector3d model_spin;
+	real_vector3d model_spin_acceleration;
+	short blend_count;
+	real_vector3d blend_places[NEWEST_BLENDS];
+	real_vector3d blend_turns[NEWEST_BLENDS];
+	real blend_ages[NEWEST_BLENDS]; /* ticks */
+	double frame_time; /* the frame before's, in ticks */
+	/* the view's pitch held at the seat's limit (render_interpolation_seat_
+	pitch): the frames' pitches of the last step or so, and their times
+	(ticks), the newest at pitch_next - 1 */
+	short pitch_count;
+	short pitch_next;
+	double pitch_times[NEWEST_PITCH_FRAMES];
+	real pitches[NEWEST_PITCH_FRAMES];
+};
+
+/* the motion of a vehicle's last steps, a tick's worth: at its newest step's
+end, and its change a tick (render_interpolation_newest_motion) */
+struct newest_motion
+{
+	real_vector3d velocity;
+	real_vector3d acceleration;
+	real_vector3d spin;
+	real_vector3d spin_acceleration;
 };
 
 /* a local player's vehicle, which their view from its seat is drawn from as
@@ -321,6 +366,10 @@ struct newest_vehicle
 	boolean aim_in_world;
 	long vehicle_index;
 	long unit_index; /* the player's, in its seat */
+	/* its newest step (render_interpolation_newest_step) and the frame's
+	time since, in ticks */
+	long step;
+	real since;
 	/* its root node as the newest step left it, and as drawn: carried on as
 	that step moved and turned it, for the time since
 	(render_interpolation_newest_motion) */
@@ -1842,6 +1891,9 @@ void render_interpolation_correct_object(long object_index, real_vector3d const 
 				history->positions[index].y -= offset->j;
 				history->positions[index].z -= offset->k;
 			}
+			history->model_position.x -= offset->i;
+			history->model_position.y -= offset->j;
+			history->model_position.z -= offset->k;
 		}
 	}
 	object = object_get(object_index);
@@ -2204,9 +2256,7 @@ known (its first steps) */
 static void render_interpolation_newest_motion(
 	struct newest_history const *history,
 	struct object_datum const *vehicle,
-	real since,
-	real_vector3d *shift,
-	real_vector3d *turn)
+	struct newest_motion *motion)
 {
 	real_vector3d velocity = vehicle->object.translational_velocity;
 	real_vector3d spin = vehicle->object.angular_velocity;
@@ -2248,12 +2298,222 @@ static void render_interpolation_newest_motion(
 			spin.k += spin_acceleration.k * 0.5f * step;
 		}
 	}
-	shift->i = velocity.i * since + 0.5f * acceleration.i * since * since;
-	shift->j = velocity.j * since + 0.5f * acceleration.j * since * since;
-	shift->k = velocity.k * since + 0.5f * acceleration.k * since * since;
-	turn->i = spin.i * since + 0.5f * spin_acceleration.i * since * since;
-	turn->j = spin.j * since + 0.5f * spin_acceleration.j * since * since;
-	turn->k = spin.k * since + 0.5f * spin_acceleration.k * since * since;
+	motion->velocity = velocity;
+	motion->acceleration = acceleration;
+	motion->spin = spin;
+	motion->spin_acceleration = spin_acceleration;
+}
+
+/* the motion carried on for the time since (ticks): shift, the place's
+change, and turn, about an axis as long as its angle */
+static void newest_motion_carried(
+	struct newest_motion const *motion,
+	real since,
+	real_vector3d *shift,
+	real_vector3d *turn)
+{
+	real half_squared = 0.5f * since * since;
+
+	shift->i = motion->velocity.i * since + motion->acceleration.i * half_squared;
+	shift->j = motion->velocity.j * since + motion->acceleration.j * half_squared;
+	shift->k = motion->velocity.k * since + motion->acceleration.k * half_squared;
+	turn->i = motion->spin.i * since + motion->spin_acceleration.i * half_squared;
+	turn->j = motion->spin.j * since + motion->spin_acceleration.j * half_squared;
+	turn->k = motion->spin.k * since + motion->spin_acceleration.k * half_squared;
+}
+
+/* a rotation turned on, about the turn's axis by its length (radians) */
+static void quaternion_turned(
+	struct interpolation_quaternion const *rotation,
+	real_vector3d const *turn,
+	struct interpolation_quaternion *result)
+{
+	real angle = (real)sqrt(turn->i * turn->i + turn->j * turn->j + turn->k * turn->k);
+	struct interpolation_quaternion q, r = *rotation;
+	real s;
+
+	if (!(angle > 1e-7f))
+	{
+		*result = r;
+		return;
+	}
+	s = (real)sin(0.5f * angle) / angle;
+	q.w = (real)cos(0.5f * angle);
+	q.i = turn->i * s;
+	q.j = turn->j * s;
+	q.k = turn->k * s;
+	result->w = q.w * r.w - q.i * r.i - q.j * r.j - q.k * r.k;
+	result->i = q.w * r.i + q.i * r.w + q.j * r.k - q.k * r.j;
+	result->j = q.w * r.j - q.i * r.k + q.j * r.w + q.k * r.i;
+	result->k = q.w * r.k + q.i * r.j - q.j * r.i + q.k * r.w;
+}
+
+/* how much of a difference blended away is left at its age (ticks): all of
+it as it begins, none a tick on (NEWEST_BLEND_TIME), easing out and in, so
+that the vehicle's motion as drawn never jumps where it begins or ends */
+static real newest_blend_left(real age)
+{
+	real x = age / NEWEST_BLEND_TIME;
+
+	if (!(x < 1.0f))
+		return 0.0f;
+	if (x <= 0.0f)
+		return 1.0f;
+	return 1.0f - x * x * (3.0f - 2.0f * x);
+}
+
+/* the differences being blended away, as left now: their places' sum and
+their turns' (small turns, added) */
+static void newest_blends_left(
+	struct newest_history const *history,
+	real_vector3d *place,
+	real_vector3d *turn)
+{
+	short index;
+
+	*place = *global_zero_vector3d;
+	*turn = *global_zero_vector3d;
+	for (index = 0; index < history->blend_count; index++)
+	{
+		real left = newest_blend_left(history->blend_ages[index]);
+
+		place->i += history->blend_places[index].i * left;
+		place->j += history->blend_places[index].j * left;
+		place->k += history->blend_places[index].k * left;
+		turn->i += history->blend_turns[index].i * left;
+		turn->j += history->blend_turns[index].j * left;
+		turn->k += history->blend_turns[index].k * left;
+	}
+}
+
+/* (render_interpolation_newest_vehicle) The vehicle carried on from its
+newest step meets the next step where that step left it, which the motion
+carried on did not foresee as it changed (a wheel touching down, a landing,
+a bounce, a crash): drawn so, it would jump there in a frame, at 30 up to a
+tick's misjudged motion. The difference, from where the frame before's
+motion carried on puts it now (with what was left of the one before) to
+where the new step's does, is drawn and blended away over a tick, easing
+out and in, on top of those blended still (at 60 and 120 a step's comes
+before the last's is done), so that
+the vehicle moves on from where it was drawn, its motion never jumping; but not for one
+that stood (a start is drawn at once, a step's latency not given back), nor
+a jump. Its place (residual) and rotation (residual_turn) as left now */
+static void render_interpolation_newest_blend(
+	struct newest_history *history,
+	long vehicle_index,
+	long step,
+	real since,
+	real_matrix4x3 const *root,
+	struct newest_motion const *motion,
+	real_vector3d *residual,
+	real_vector3d *residual_turn)
+{
+	double frame_time = (double)interpolation_tick + (double)interpolation_fraction;
+	real_vector3d shift, turn;
+	struct interpolation_quaternion rotation, now_rotation;
+	short index;
+
+	quaternion_from_basis(root, &rotation);
+	if (!history->model_valid || history->vehicle_index != vehicle_index || history->count < 2 ||
+		!(frame_time >= history->frame_time) || frame_time - history->frame_time > NEWEST_HISTORY_GAP)
+	{
+		history->blend_count = 0;
+	}
+	else
+	{
+		short kept = 0;
+
+		/* (the blends aged to now; those done let go) */
+		for (index = 0; index < history->blend_count; index++)
+		{
+			history->blend_ages[index] += (real)(frame_time - history->frame_time);
+			if (newest_blend_left(history->blend_ages[index]) > 0.0f)
+			{
+				history->blend_places[kept] = history->blend_places[index];
+				history->blend_turns[kept] = history->blend_turns[index];
+				history->blend_ages[kept] = history->blend_ages[index];
+				kept++;
+			}
+		}
+		history->blend_count = kept;
+		if (step != history->model_step)
+		{
+			struct newest_motion before;
+			real since_model = (real)(frame_time * history->substep_count - (double)history->model_step) /
+				(real)history->substep_count;
+			real_point3d drawn_before;
+			struct interpolation_quaternion before_rotation;
+			real_vector3d difference, turned;
+			real velocity_before;
+
+			/* where the frame before's motion carries it now (the blends
+			under way go on as they were, on top) ... */
+			before.velocity = history->model_velocity;
+			before.acceleration = history->model_acceleration;
+			before.spin = history->model_spin;
+			before.spin_acceleration = history->model_spin_acceleration;
+			newest_motion_carried(&before, since_model, &shift, &turn);
+			drawn_before.x = history->model_position.x + shift.i;
+			drawn_before.y = history->model_position.y + shift.j;
+			drawn_before.z = history->model_position.z + shift.k;
+			quaternion_turned(&history->model_rotation, &turn, &before_rotation);
+			/* ... and where the new step's does */
+			newest_motion_carried(motion, since, &shift, &turn);
+			quaternion_turned(&rotation, &turn, &now_rotation);
+			difference.i = drawn_before.x - (root->position.x + shift.i);
+			difference.j = drawn_before.y - (root->position.y + shift.j);
+			difference.k = drawn_before.z - (root->position.z + shift.k);
+			rotation_turn(&now_rotation, &before_rotation, &turned);
+			velocity_before = (real)sqrt(before.velocity.i * before.velocity.i + before.velocity.j * before.velocity.j +
+				before.velocity.k * before.velocity.k);
+			/* (so written that a difference not a number is a jump) */
+			if (!(velocity_before >= NEWEST_STANDING) ||
+				!(difference.i * difference.i + difference.j * difference.j + difference.k * difference.k <=
+					CAMERA_CUT_DISTANCE * CAMERA_CUT_DISTANCE) ||
+				!(turned.i * turned.i + turned.j * turned.j + turned.k * turned.k <=
+					NEWEST_TURN_MAXIMUM * NEWEST_TURN_MAXIMUM))
+			{
+				history->blend_count = 0;
+			}
+			else
+			{
+				/* (no room: the oldest's rest taken into the new one) */
+				if (history->blend_count >= NEWEST_BLENDS)
+				{
+					real left = newest_blend_left(history->blend_ages[0]);
+
+					difference.i += history->blend_places[0].i * left;
+					difference.j += history->blend_places[0].j * left;
+					difference.k += history->blend_places[0].k * left;
+					turned.i += history->blend_turns[0].i * left;
+					turned.j += history->blend_turns[0].j * left;
+					turned.k += history->blend_turns[0].k * left;
+					for (index = 1; index < history->blend_count; index++)
+					{
+						history->blend_places[index - 1] = history->blend_places[index];
+						history->blend_turns[index - 1] = history->blend_turns[index];
+						history->blend_ages[index - 1] = history->blend_ages[index];
+					}
+					history->blend_count--;
+				}
+				history->blend_places[history->blend_count] = difference;
+				history->blend_turns[history->blend_count] = turned;
+				history->blend_ages[history->blend_count] = 0.0f;
+				history->blend_count++;
+			}
+		}
+	}
+	newest_blends_left(history, residual, residual_turn);
+	/* (the motion carried on, from this step, for the next frame) */
+	history->model_valid = TRUE;
+	history->model_step = step;
+	history->model_position = root->position;
+	history->model_rotation = rotation;
+	history->model_velocity = motion->velocity;
+	history->model_acceleration = motion->acceleration;
+	history->model_spin = motion->spin;
+	history->model_spin_acceleration = motion->spin_acceleration;
+	history->frame_time = frame_time;
 }
 
 /* (render_interpolation_newest_vehicles) the local player's vehicle as its
@@ -2271,7 +2531,8 @@ static boolean render_interpolation_newest_vehicle(
 	long absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(vehicle_index);
 	struct object_datum *vehicle = object_get(vehicle_index);
 	struct newest_history *history = &newest_histories[local_player_index];
-	real_vector3d shift, turn;
+	real_vector3d shift, turn, residual, residual_turn;
+	struct newest_motion motion;
 	struct interpolated_object *record;
 	real_matrix4x3 const *root;
 	real_matrix4x3 const *frames[2];
@@ -2307,9 +2568,13 @@ static boolean render_interpolation_newest_vehicle(
 	since = (interpolation_fraction * (real)interpolation_substep_count -
 		(real)(step - interpolation_tick * interpolation_substep_count)) / (real)interpolation_substep_count;
 	render_interpolation_newest_history(history, vehicle_index, step, root);
-	render_interpolation_newest_motion(history, vehicle, since, &shift, &turn);
+	render_interpolation_newest_motion(history, vehicle, &motion);
+	newest_motion_carried(&motion, since, &shift, &turn);
+	render_interpolation_newest_blend(history, vehicle_index, step, since, root, &motion, &residual, &residual_turn);
 	newest->vehicle_index = vehicle_index;
 	newest->unit_index = unit_index;
+	newest->step = step;
+	newest->since = since;
 	newest->aim_in_world = aim_in_world;
 	newest->root = *root;
 	newest->drawn = *root;
@@ -2322,6 +2587,19 @@ static boolean render_interpolation_newest_vehicle(
 		newest->drawn.position.x += shift.i;
 		newest->drawn.position.y += shift.j;
 		newest->drawn.position.z += shift.k;
+	}
+	/* (with the blend away from where it was drawn) */
+	newest->drawn.position.x += residual.i;
+	newest->drawn.position.y += residual.j;
+	newest->drawn.position.z += residual.k;
+	{
+		struct interpolation_quaternion at_root, turned;
+
+		/* (the turn as drawn, from the root as the step left it) */
+		quaternion_from_basis(root, &at_root);
+		quaternion_turned(&at_root, &turn, &turned);
+		quaternion_turned(&turned, &residual_turn, &turned);
+		rotation_turn(&at_root, &turned, &turn);
 	}
 	/* ... and turned on, about its root node (so written that a turn not a
 	number is none) */
@@ -2346,8 +2624,13 @@ static boolean render_interpolation_newest_vehicle(
 	its sub-steps' path, or between the ticks' places of it) */
 	if (render_interpolation_substep_frame(vehicle_index, frames, &frame))
 	{
+		struct interpolated_camera const *camera = &interpolated_cameras[local_player_index];
+
 		line = frame->position;
-		point_from_frame(frame, &newest->anchor, &newest->anchor_between);
+		/* (the point the frames between the ticks hang the view on, as the
+		tick left it on the vehicle: render_interpolation_camera_anchors) */
+		point_from_frame(frame, camera->anchor_vehicle_index == vehicle_index && camera->anchor_tick ==
+			interpolation_tick ? &camera->anchor : &newest->anchor, &newest->anchor_between);
 	}
 	else
 	{
@@ -2552,6 +2835,62 @@ static boolean render_interpolation_newest_frame(
 	return FALSE;
 }
 
+/* The view's pitch while the player's aim is held at the seat's pitch limit
+(player_control.c's player_control_modify_desired_angles eases the limit
+toward the vehicle's tilt, which changes a step at a time, at most so far a
+frame: the aim held at it steps with it, a step's easing in a frame or two,
+then holds). Drawn as the mean of the frames' pitches over the last step
+(the frame's time back by a step), which a step's staircase makes a ramp and
+an easing that runs on keeps as it was, a half a step behind; the aim's own
+pitch, at once, when it is not held there (the player's turn is never put
+off). The difference from the aim's pitch */
+static real render_interpolation_seat_pitch(
+	short local_player_index)
+{
+	struct newest_history *history = &newest_histories[local_player_index];
+	struct player_control const *control = player_control_get(local_player_index);
+	real pitch = player_control_get_facing_angles(local_player_index)->pitch;
+	boolean held = pitch <= control->pitch_minimum + 1e-4f || pitch >= control->pitch_maximum - 1e-4f;
+	double now = (double)interpolation_tick + (double)interpolation_fraction;
+	double window = 1.0 / (double)interpolation_substep_count;
+	double from = now - window;
+	double weighed = 0.0, until = now;
+	short index, at;
+
+	if (!held || (history->pitch_count > 0 &&
+		!(now >= history->pitch_times[(history->pitch_next + NEWEST_PITCH_FRAMES - 1) % NEWEST_PITCH_FRAMES])))
+	{
+		history->pitch_count = 0;
+	}
+	if (!held)
+		return 0.0f;
+	history->pitch_times[history->pitch_next] = now;
+	history->pitches[history->pitch_next] = pitch;
+	history->pitch_next = (short)((history->pitch_next + 1) % NEWEST_PITCH_FRAMES);
+	if (history->pitch_count < NEWEST_PITCH_FRAMES)
+		history->pitch_count++;
+	/* (each frame's pitch held from the frame before's time to its own:
+	the window's mean, as far back as the frames kept go) */
+	for (index = 0, at = history->pitch_next; index < history->pitch_count; index++)
+	{
+		double since_time;
+
+		at = (short)((at + NEWEST_PITCH_FRAMES - 1) % NEWEST_PITCH_FRAMES);
+		since_time = index + 1 < history->pitch_count ?
+			history->pitch_times[(at + NEWEST_PITCH_FRAMES - 1) % NEWEST_PITCH_FRAMES] : from;
+		if (since_time < from)
+			since_time = from;
+		if (until > since_time)
+			weighed += (until - since_time) * (double)history->pitches[at];
+		until = since_time;
+		if (until <= from)
+			break;
+	}
+	if (now - until <= 1e-9)
+		return 0.0f;
+	return (real)(weighed / (now - until)) - pitch;
+}
+
 /* a view's axes from its forward (its up square to it, toward the world's:
 observer_up_from_forward, as the following camera has it) */
 static void view_frame(
@@ -2615,6 +2954,8 @@ static struct observer_result const *render_interpolation_seat_camera(
 			angles.yaw += yaw;
 			angles.pitch = PIN(angles.pitch + pitch, control->pitch_minimum, control->pitch_maximum);
 		}
+		/* (held at the seat's pitch limit, evenly) */
+		angles.pitch += render_interpolation_seat_pitch(local_player_index);
 		vector3d_from_euler_angles2d(&direct->forward, &angles);
 		if (!newest->aim_in_world)
 		{
@@ -2667,16 +3008,28 @@ static struct observer_result const *render_interpolation_seat_camera(
 			swing.j = observer->position.y - anchor_now.y;
 			swing.k = observer->position.z - anchor_now.z;
 		}
-		if (!passenger_camera_enabled(local_player_index) &&
-			render_interpolation_look_late(local_player_index, &yaw, &pitch))
+		/* (held at the seat's pitch limit, evenly; and the late motion) */
+		yaw = 0.0f;
+		pitch = render_interpolation_seat_pitch(local_player_index);
+		if (!passenger_camera_enabled(local_player_index))
 		{
-			struct player_control const *control = player_control_get(local_player_index);
-			real pitch_now = player_control_get_facing_angles(local_player_index)->pitch;
+			real late_yaw, late_pitch;
+
+			if (render_interpolation_look_late(local_player_index, &late_yaw, &late_pitch))
+			{
+				struct player_control const *control = player_control_get(local_player_index);
+				real pitch_now = player_control_get_facing_angles(local_player_index)->pitch;
+
+				yaw = late_yaw;
+				/* (as far as the player's pitch may go) */
+				pitch += PIN(pitch_now + late_pitch, control->pitch_minimum, control->pitch_maximum) - pitch_now;
+			}
+		}
+		if (yaw != 0.0f || pitch != 0.0f)
+		{
 			real_vector3d axis;
 			real length;
 
-			/* (as far as the player's pitch may go) */
-			pitch = PIN(pitch_now + pitch, control->pitch_minimum, control->pitch_maximum) - pitch_now;
 			/* the yaw about the world's up, the pitch about the view's right */
 			axis.i = 0.0f;
 			axis.j = 0.0f;

@@ -1,12 +1,14 @@
 """The view from a local player's vehicle drawn from its newest step (port/linux/game/render_interpolation.c,
 display.direct_camera): the vehicle, and what it carries, drawn where its newest step left it, carried on by its
 velocity and its spin for the time since (less than none past a macro lane vehicle's first sub-step at 60 and 120),
-its pose blended between the ticks in its frame; the view from its seat at the seat's camera point there, aimed
-where the player aims (in the first person turned to the vehicle's up and rolled with it, as the first-person camera
-poses it; following it, the player's aim), turned on by the aim's motion come since the frame's input, read once a
-frame. A correction glides the vehicle and the view the same; getting in or out (dying, respawning in it) glides
-the vehicle from one drawing to the other. Off (display.direct_camera false), or a seat whose view is the gun's, it
-is drawn between the ticks as before."""
+its pose blended between the ticks in its frame; the view from its seat at the seat's camera point there, aimed where
+the player aims (in the first person turned to the vehicle's up and rolled with it, as the first-person camera poses
+it; following it, the player's aim), turned on by the aim's motion come since the frame's input, read once a frame. A
+step that the motion carried on did not foresee (a climb begun at once) is blended in from where the vehicle was
+drawn, never jumped to, but a start from standing is drawn at once; the view's pitch held at the seat's easing limit
+moves evenly. A correction glides the vehicle and the view the same; getting in or out (dying, respawning in it)
+glides the vehicle from one drawing to the other. Off (display.direct_camera false), or a seat whose view is the
+gun's, it is drawn between the ticks as before."""
 
 import sys
 from pathlib import Path
@@ -20,8 +22,8 @@ from test_render_substeps import generated  # noqa: E402
 
 CASES = ["steady_30", "steady_60", "steady_120", "steady_macro_60", "steady_macro_120", "physics_apart",
          "physics_apart_30", "accelerating", "accelerating_30", "accelerating_macro", "following", "following_30",
-         "aim_in_world", "late", "following_late", "following_pulled", "leaving", "leaving_30", "leaving_teleported", "coming", "coming_30", "correction", "off",
-         "gun_view"]
+         "aim_in_world", "late", "following_late", "following_pulled", "leaving", "leaving_30", "leaving_teleported",
+         "kinked", "start", "pitch_held", "coming", "coming_30", "correction", "off", "gun_view"]
 
 # a fault in the code, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -57,7 +59,8 @@ NEGATIVE_CONTROLS = {
     "late-unread": (("\t\tif (render_interpolation_look_late(local_player_index, &yaw, &pitch))", "\t\tif (0)"),
                     "late"),
     # ... or following it, the swing not turned with the aim
-    "swing-unturned": (("\t\tvector_from_frame(&aimed, &local, &swing);", "\t\tvector_from_frame(&swung, &local, &swing);"),
+    "swing-unturned": (("\t\tvector_from_frame(&aimed, &local, &swing);",
+                        "\t\tvector_from_frame(&swung, &local, &swing);"),
                        "following_late"),
     # the following view's swing the frame's own (the camera's pull in stepping each frame), not between the ticks
     "swing-unblended": (("\t\tif (blended == &camera->blended)", "\t\tif (0)"), "following_pulled"),
@@ -66,6 +69,15 @@ NEGATIVE_CONTROLS = {
     # ... or, teleported as the player leaves, is drawn gliding from far off
     "glide-over-a-cut": (("\t\t\trender_interpolation_vehicle_continues(before->vehicle_index))", "\t\t\tTRUE)"),
                          "leaving_teleported"),
+    # the next step's misjudged motion jumped to, not blended in from where the vehicle was drawn
+    "unblended": (("\t\t\t\thistory->blend_places[history->blend_count] = difference;",
+                   "\t\t\t\thistory->blend_places[history->blend_count] = *global_zero_vector3d;"), "kinked"),
+    # ... a start from standing blended in too, its latency given back
+    "start-blended": (("velocity_before >= NEWEST_STANDING", "velocity_before >= -1.0f"), "start"),
+    # the view's pitch held at the easing limit stepping with it
+    "pitch-steps": (("\treturn (real)(weighed / (now - until)) - pitch;",
+                     "\treturn (real)(0.0 * weighed / (now - until));"),
+                    "pitch_held"),
     # ... and taken by it jumps ahead
     "no-glide-ahead": (("\t\t\trender_interpolation_glide(newest->vehicle_index, &back);", ""), "coming"),
     # the view in the seat not gliding with the corrected vehicle
