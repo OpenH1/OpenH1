@@ -2033,8 +2033,9 @@ static int config_write_file(const char *path, const char *text)
 	written = fwrite(text, 1, strlen(text), file) == strlen(text);
 	if (fclose(file) != 0 || !written)
 		return 0;
-#ifndef HALO_ANDROID
-	/* (a dedicated server's holds its passwords: its user's to read alone) */
+#if !defined(HALO_ANDROID) && !defined(HALO_IOS)
+	/* (a dedicated server's holds its passwords: its user's to read alone;
+	the apps have none: server_mode.h's HALO_SERVER_BUILD) */
 	if (config_server_mode)
 		posix_server_private_file(path);
 #endif
