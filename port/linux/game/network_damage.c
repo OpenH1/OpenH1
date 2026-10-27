@@ -89,6 +89,8 @@ boolean tag_index_is_group(long tag_index, long group_tag);
 long game_engine_network_player_score(long player_index);
 /* physics.c's (world units a tick, each tick) */
 extern real global_gravity;
+/* network_test.c's: a hit's times, for the tests' latency figures */
+void network_test_note_hit(char const *what, long object_index);
 
 enum
 {
@@ -726,6 +728,7 @@ boolean network_damage_deals(
 				report->object_normal = *object_normal;
 				report->has_normal = TRUE;
 			}
+			network_test_note_hit("made", object_index);
 		}
 		distributed_damage_material((struct damage_data *)damage, object_index, material_index);
 		return FALSE;
@@ -2331,6 +2334,7 @@ void network_damage_handle_reports(
 			continue;
 		}
 		damage_dealt_reports++;
+		network_test_note_hit("dealt", report->object_index);
 		damage_dealing_report = TRUE;
 		object_cause_damage(&damage, report->object_index, report->node_index, report->region_index,
 			report->material_index, report->has_normal ? &report->object_normal : NULL);
@@ -2573,6 +2577,7 @@ void network_damage_handle_events(
 			if (network_objects_client_has(event->object_index) &&
 				object_try_and_get_and_verify_type(event->object_index, _object_mask_unit))
 			{
+				network_test_note_hit("shown", event->object_index);
 				/* (what harm it did the units' states bring: no death from here) */
 				damage_replay_aftermath(event->object_index, &damage,
 					event->being_damaged_flags &

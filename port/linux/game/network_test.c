@@ -61,6 +61,14 @@ debug.network_test_cues: console lines the host (or a game of one machine)
 runs at their ticks, counted from the first tick every player of
 debug.network_test_cue_players has a unit (tools/stagekit's scenarios).
 
+The latency figures (NETCODE.md, "Measuring latency"), on the computer's own
+clock (CLOCK_MONOTONIC, in microseconds, which every copy on one computer
+shares): each machine logs when each player's unit first takes a pull of
+the trigger or a push of the stick, at the sub-step that takes it ("press",
+local on the player's own machine, remote on the others), and when a hit of
+its own player's is reported, dealt by the host and its damage shown;
+tools/net_compare.py --latency pairs them up.
+
 Called from the main loop every frame (main.c).
 */
 
@@ -113,15 +121,20 @@ long config_integer(char const *name);
 int config_write(char const *name, char const *value);
 void platform_log(char const *format, ...);
 unsigned long system_milliseconds(void);
+/* xbox_kernel.c's: the computer's monotonic clock, shared by its processes */
+unsigned long long platform_shared_clock_microseconds(void);
 /* damage.c's */
 void damage_kill_object_for_player(long object_index, long player_index);
 /* network_distributed.c's */
 void network_distributed_statistics(long *sent, long *received, long *corrections);
 void network_distributed_batch_bytes(long *to_host, long *to_clients, short *clients);
+void network_distributed_batch_datagrams(long *to_host, long *to_clients);
 void network_distributed_divergence(long *samples, long *apart, real *mean, real *largest);
 void network_distributed_player_divergence(short player_index, long *samples, long *apart);
 void network_distributed_item_statistics(long *creates, long *deletes, long *failures, long *removed);
 void network_damage_statistics(long *sent_reports, long *dealt_reports, long *rejected_reports, long *replayed_events);
+long distributed_own_ping(void);
+long distributed_player_measured_ping(short player_index);
 /* xinput_sdl.c's */
 void test_input_hold_action(int hold);
 void test_input_press(unsigned long buttons);
@@ -212,6 +225,22 @@ static struct
 	long cue_players;
 	long cues_start;
 } network_test;
+
+/* the latency figures' presses: each player's unit at the last sub-step,
+and what of it was down (a bit a kind of press) */
+enum
+{
+	_network_test_press_fire,
+	_network_test_press_move,
+	NUMBER_OF_NETWORK_TEST_PRESSES
+};
+static struct
+{
+	long unit_index[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+	byte down[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+} network_test_presses;
+
+static void network_test_presses_substep(short substep_index, short substep_count, real seconds);
 
 /* the variant at the index of the list (copied to name), FALSE past its end */
 static boolean network_test_variant(
@@ -333,6 +362,89 @@ static void network_test_read_settings(
 	}
 	if (network_test.mode != _network_test_off)
 		platform_log("network test: %s", setting);
+	/* (the latency figures' presses, each sub-step: none without a test) */
+	if (network_test.mode != _network_test_off && network_test.mode != _network_test_probe)
+	{
+		short player_index;
+
+		for (player_index = 0; player_index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS; player_index++)
+			network_test_presses.unit_index[player_index] = NONE;
+		sim_substep_register(_sim_substep_network_test, network_test_presses_substep);
+	}
+}
+
+/* the computer's own clock, in microseconds: the same in every copy on one
+computer, so that a press on one and its sight on another are timed alike */
+static unsigned long long network_test_microseconds(
+	void)
+{
+	return platform_shared_clock_microseconds();
+}
+
+/* (each sub-step, _sim_substep_network_test) each player's unit's pull of
+the trigger and push of the stick, as the sub-step's units took them: on the
+player's own machine their press, on the others its sight */
+static void network_test_presses_substep(
+	short substep_index,
+	short substep_count,
+	real seconds)
+{
+	static char const *const names[NUMBER_OF_NETWORK_TEST_PRESSES] = { "fire", "move" };
+	short connection = game_connection();
+	struct data_iterator iterator;
+	struct player_datum *player;
+
+	(void)substep_index;
+	(void)substep_count;
+	(void)seconds;
+	if (connection != _game_connection_network_client && connection != _game_connection_network_server)
+		return;
+	data_iterator_new(&iterator, player_data);
+	while ((player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
+	{
+		long absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index);
+		struct unit_datum *unit;
+		byte down = 0;
+		byte pressed;
+		short kind;
+
+		if (absolute_index < 0 || absolute_index >= HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
+			continue;
+		if (player->unit_index == NONE)
+		{
+			network_test_presses.unit_index[absolute_index] = NONE;
+			continue;
+		}
+		unit = unit_get(player->unit_index);
+		if (TEST_FLAG(unit->unit.control_flags, _unit_control_weapon_primary_trigger_bit))
+			down |= FLAG(_network_test_press_fire);
+		if (unit->unit.throttle.i * unit->unit.throttle.i + unit->unit.throttle.j * unit->unit.throttle.j > 0.25f)
+			down |= FLAG(_network_test_press_move);
+		pressed = network_test_presses.unit_index[absolute_index] == player->unit_index ?
+			(byte)(down & ~network_test_presses.down[absolute_index]) : 0;
+		network_test_presses.unit_index[absolute_index] = player->unit_index;
+		network_test_presses.down[absolute_index] = down;
+		for (kind = 0; kind < NUMBER_OF_NETWORK_TEST_PRESSES; kind++)
+		{
+			if (TEST_FLAG(pressed, kind))
+			{
+				platform_log("network test: press %s player %ld %s at %llu", names[kind], absolute_index,
+					player->local_player_index != NONE ? "local" : "remote", network_test_microseconds());
+			}
+		}
+	}
+}
+
+/* (network_damage.c) a hit of this machine's player made (reported), dealt
+by the host, or its damage shown on this machine */
+void network_test_note_hit(
+	char const *what,
+	long object_index)
+{
+	if (network_test.mode == _network_test_off || network_test.mode == _network_test_probe)
+		return;
+	platform_log("network test: hit %s object %lx at %llu", what, (unsigned long)object_index,
+		network_test_microseconds());
 }
 
 /* appends to a line, cut short when it is full */
@@ -498,6 +610,28 @@ static void network_test_log_players(
 			network_distributed_batch_bytes(&to_host, &to_clients, &clients);
 			platform_log("network test: bandwidth to host %ld to clients %ld (%d clients, %ld each) bytes a second",
 				to_host, to_clients, (int)clients, clients ? to_clients / clients : 0L);
+			network_distributed_batch_datagrams(&to_host, &to_clients);
+			platform_log("network test: datagrams to host %ld to clients %ld a second", to_host, to_clients);
+		}
+		/* (the latency meter's round trips, with display.latency_meter on:
+		a client's own, and each player's as this machine times it) */
+		{
+			char pings[512];
+			int pings_length = 0;
+			struct data_iterator players;
+
+			pings[0] = 0;
+			data_iterator_new(&players, player_data);
+			while (data_iterator_next(&players))
+			{
+				short absolute_index = (short)DATUM_INDEX_TO_ABSOLUTE_INDEX(players.datum_index);
+				long ping = distributed_player_measured_ping(absolute_index);
+
+				if (ping != NONE)
+					network_test_append(pings, (int)sizeof(pings), &pings_length, " %d:%ld", (int)absolute_index, ping);
+			}
+			platform_log("network test: ping own %ld | players%s", distributed_own_ping(),
+				pings_length ? pings : " none");
 		}
 		/* (mixed games, network_standard.c: this machine's rate, the players it
 		steps at 30 as OpenCE's, and, a client that joined as OpenCE does, what

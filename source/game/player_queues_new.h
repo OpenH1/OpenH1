@@ -69,8 +69,9 @@ enum
 	DISTRIBUTED_INPUT_HISTORY = 4,
 };
 
-/* (the host) a client machine's player's action at the client's tick */
-void update_server_handle_distributed_input(
+/* (the host) a client machine's player's action at the client's tick:
+whether it was taken (valid, and of a tick after the last taken) */
+boolean update_server_handle_distributed_input(
 	long player_index,
 	long tick,
 	struct player_action const *action,
@@ -98,6 +99,21 @@ void update_client_handle_relayed_action(
 	struct player_action const *action,
 	unsigned short const *control_flags,
 	short count);
+/* (a client of an OpenH1 game) another client's player's action as the host
+sent it on as it came (network_distributed.c's forwarded input), of that
+client's tick: while one comes, the player is driven by these rather than by
+the host's relayed actions */
+void update_client_handle_forwarded_action(
+	short player_index,
+	long tick,
+	struct player_action const *action,
+	unsigned short const *control_flags,
+	short count);
+/* (a client) whether the player's action this tick took was a forwarded one
+(its key, update_queues_distributed_input_key, a tick of its client's), not
+the host's relayed one (an update of the host's) */
+boolean update_client_input_forwarded(
+	long absolute_player_index);
 /* (a client) a local player's last tick, its action and the buttons of the
 ticks up to it; FALSE before its first */
 boolean update_client_distributed_input(

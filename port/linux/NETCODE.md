@@ -307,7 +307,10 @@ sends each player's sub-steps at 60 and 120 (below, "Sub-step inputs");
 version 3 lets OpenCE players into an OpenH1 game (below, "OpenCE players in
 an OpenH1 game"); version 4 moves a player to the other team in a game (below,
 "The host's controls"); version 5 is the first on network version 39, whose
-dedicated server's flag it carries, and changes nothing else of its own. With no new version, each client then tells the
+dedicated server's flag it carries, and changes nothing else of its own;
+version 6 sends a client's players' input on to the other OpenH1 clients as
+it comes (below, "Forwarded input"), and a client's prediction's velocity at
+full precision (below, "Sub-step inputs"). With no new version, each client then tells the
 host its build (distributed message 92, `_distributed_message_client_build`,
 reliably once a game after its ready, over its connection alone): its
 number, configuration, the label it shows ("OpenH1 Linux | build 120
@@ -612,10 +615,26 @@ an OpenH1 game at 30), and every number in either is checked: the player
 values finite and within a controller's reach.
 
 Checked with `net_compare` (bloodgulch, the scripted bot, 30 s, each copy
-hosting in turn). The host's copy of the client's player moves as the
-client moved it: 0.4% to 4.8% of the ticks apart at 60, 5.8% to 13% at 120.
-With the host's replay turned off (a build made for the test), 33% at 60 and
-39% at 120. The datagrams' bytes a second (`network test: bandwidth`), with
+hosting in turn). The host's copy of the client's player moved as the
+client moved it but in 0.4% to 4.8% of the ticks at 60, 5.8% to 13% at 120;
+with the host's replay turned off (a build made for the test), 33% at 60 and
+39% at 120. The ticks apart at 120 were neither lost nor late records (the
+host replayed every record a client sent, and ticks without one were as
+often apart) nor the relayed encoding (the host's copy is moved by the
+client's own full-precision record), but the velocity in the client's
+prediction, in 16 bits a part (a 1024th of a world unit a tick): the host
+moved the player on from the rounded velocity, which a quarter tick's
+sub-step keeps more of than a half tick's. The moves were at most 0.0007
+world units apart, which the host's tolerance (it takes a client's player
+where it says within 3.5 world units, and a client corrects its own only
+past 3) and the others' (a remote player within 0.05 of the host's word is
+left as it is) never show. From protocol version 6 an OpenH1 game's client
+also sends the velocity at full precision
+(`_distributed_unit_part_fine_velocity_bit`, 12 bytes a tick), and the host
+moves the player on from it: in the
+same games, 0.0% to 0.7% of the ticks apart at 60 and 0.6% to 1.1% at 120
+(against 3.5% to 14% and 0% to 12% without, three copies on bloodgulch and
+beavercreek). The datagrams' bytes a second (`network test: bandwidth`), with
 one player on each machine:
 
 | Rate | Host to client | Client to host |
@@ -627,6 +646,45 @@ one player on each machine:
 A client's record is 80 bytes whatever the rate. A relayed record is 2
 bytes plus 10 for each later sub-step (12 at 60, 32 at 120), sent only for
 a player whose sub-steps changed something.
+
+### Forwarded input
+
+In an OpenH1 game the host sends each client's players' input on to its
+other OpenH1 clients as it comes (protocol version 6; `network_distributed.c`,
+`_distributed_message_forwarded_inputs`, 131, unreliable), not at its next
+tick. Before, a client's press waited for the host's next tick (half a tick
+on average) and, at 60 and 120, for that tick's last sub-step (most of a
+tick more) before the host relayed it, as the tick ran it; the host's own
+simulation still takes the input at its tick, as before.
+
+- After reading its datagrams each frame (`network_distributed_frame_received`,
+  from `main.c`), the host sends each OpenH1 client, in one datagram, the
+  latest input heard that frame of each player its last tick's plan sends
+  that client every tick or every second tick (near it, or aimed at:
+  "Transport", below), with the sub-steps heard of the same tick, in the
+  relayed input's encoding with the client's tick it is of. A player sent
+  every second tick is forwarded every second of their client's ticks, and
+  at once when their buttons or choices changed in the ticks the input
+  carries.
+- A client drives that player by the forwarded input (keyed by their
+  client's tick, its own record beside the relayed one:
+  `player_queues_new.c`'s forwarded actions) while one has come in the last
+  4 ticks, and by the host's relayed input otherwise. Each keeps its own
+  buttons, taken once; a change of source lets the new one's go (they came
+  the other way already).
+- The host's tick relays no input it forwarded to that client in the last 2
+  ticks of the tick its update ran or later; one of a client gone silent
+  (its player stood still at the host's tick) goes as before.
+- A client takes no forwarded input as the host's latest tick (the round
+  trips are timed by the host's ticks' own messages).
+- Nothing changes for an OpenCE machine (it is sent no message of 120 and
+  after) or in a Legacy game. An OpenCE player's input is forwarded to the
+  OpenH1 clients like any other.
+
+Where its unit is is still the host's word, at its ticks: a client's copy of
+a player it drives by forwarded input reacts to a change of input sooner,
+and is moved toward the host's state of the player (`REMOTE_BLEND_DISTANCE`)
+as before. Measured below ("Measuring latency").
 
 ### OpenCE players in an OpenH1 game
 
@@ -1309,7 +1367,9 @@ Unity's Netcode for Entities, lightyear, netfox and the Ares source):
   a newer of its kind is dropped, so a late datagram never puts anything
   back.
 - **Taken at the tick.** The host takes a client's players' and vehicles'
-  positions (the latest of each) at its next tick, not as each arrives.
+  positions (the latest of each) at its next tick, not as each arrives. (An
+  OpenH1 game's host sends a client's input on to the others as it comes:
+  "Forwarded input", above.)
 - **Fewer bytes.** Vectors travel in 16 bits a part, shields and health in
   16 bits; a unit's state goes without the parts that are their defaults
   (the vehicle and seat of one that rides nothing, the position of one that
@@ -1551,3 +1611,53 @@ changes only the ticks in the air, as gravity does, is within what
 identical builds show, and not caught. Positions agree to 0.04 world units
 on average, 0.24 at most, in every game, perturbed or not: the netcode
 corrects them.
+
+### Measuring latency
+
+`tools/net_compare.py --latency` times how long a press takes to reach the
+other machines, on the computer's own clock (`CLOCK_MONOTONIC`, which every
+copy on one computer shares: `platform_shared_clock_microseconds`). Each
+copy's player pulls the trigger for 60 ms and pushes the stick for 200 ms in
+turn, 410 to 710 ms apart, on the real clock (`debug.test_input`
+`latency:<seed>:fire,move`), so the presses fall anywhere in a tick. With
+`debug.network_test` each machine logs, at each sub-step, when each player's
+unit first takes a pull or a push (`network test: press fire player 1
+local at <microseconds>` on the player's own machine, `remote` on the
+others: `network_test.c`'s `_sim_substep_network_test` slot), each hit its
+player reports, the host deals and its damage is shown (`network test: hit
+made|dealt|shown object <index> at <microseconds>`) and, with
+`display.latency_meter` (which `--latency` turns on), the meter's round
+trips once a second (`network test: ping own <ms> | players <player>:<ms>...`).
+The tool pairs each press with its first sight on each other machine (within
+400 ms), each report with the host's dealing of it and the shooter's showing
+of its damage, and prints their median, mean and 95th percentile (`--json`
+keeps them). `--c` plays a third copy, so that a press goes from one client
+to another; `--events` adds the hits. The latency player stands still but
+for its pushes, so the drift figures are not judged.
+
+A network's delay sets each machine's phase against the others' ticks (a
+client's clock is the host's, from the first update it heard), so each
+delay gives waits of its own: the figures below pool three delays a third of
+a tick apart for each network (20, 25.5 and 31 ms each way for 20 ms; 50,
+55.5 and 61 for 50), with `tc netem` on the loopback of a network namespace
+of its own (`unshare -rn`, then `tc qdisc add dev lo root netem delay 20ms
+3ms`), which delays every datagram and every segment of the connections
+each way.
+
+Press to sight from one client to another (`press seen, client to
+client`), the pooled mean in ms (the worst 95th percentile in brackets),
+before forwarded input and with it:
+
+| Network | 30 | 60 | 120 |
+| --- | --- | --- | --- |
+| LAN | 33 (64) → 17 (32) | 67 (69) → 34 (40) | 67 (71) → 37 (83) |
+| 20 ms ±3 | 73 (105) → 67 (71) | 129 (149) → 84 (103) | 133 (136) → 93 (102) |
+| 50 ms ±5 | 139 (167) → 129 (161) | 183 (201) → 142 (172) | 184 (203) → 150 (175) |
+| 20 ms ±3, 1% loss | 76 (120) → 68 (99) | 128 (140) → 90 (103) | 137 (151) → 92 (144) |
+
+The host's presses to a client, a client's to the host, the meter's round
+trip and a hit's report to the host's dealing it are as before (the host
+takes and relays its own as it did): a LAN's round trip reads 17 ms at 30,
+20 to 30 at 60 and 31 at 120, and a hit reaches the host a tick after it is
+made on a LAN (it goes with the tick's end), the network's delay more
+over one.

@@ -217,6 +217,121 @@ def parse_log(path):
     return samples, names, errors
 
 
+# ---------- latency (NETCODE.md, "Measuring latency")
+#
+# Every copy logs, on the computer's own clock (microseconds, which the copies
+# on one computer share), when each player's unit first takes a pull of the
+# trigger or a push of the stick: "local" on the player's own machine, at the
+# sub-step that took it, "remote" on the others, as their copies take it; and
+# a hit's report made, dealt by the host and its damage shown.
+
+PRESS_RE = re.compile(r"network test: press (\w+) player (\d+) (local|remote) at (\d+)")
+HIT_RE = re.compile(r"network test: hit (made|dealt|shown) object ([0-9a-f]+) at (\d+)")
+PING_RE = re.compile(r"network test: ping own (-?\d+) \| players((?: \d+:\d+)+| none)")
+# a press seen later than this is no sight of it (the presses come 410 ms apart at least)
+PRESS_WINDOW_US = 400000
+HIT_WINDOW_US = 1000000
+
+
+def parse_latency_lines(path):
+    """a copy's presses [(kind, player, local, time)], hits [(what, object, time)] and pings: its own round trip
+    and each player's as it times them, a list of each second's"""
+    presses, hits, own, players = [], [], [], {}
+    try:
+        with open(path, errors="replace") as log:
+            for line in log:
+                found = PRESS_RE.search(line)
+                if found:
+                    presses.append((found[1], int(found[2]), found[3] == "local", int(found[4])))
+                    continue
+                found = HIT_RE.search(line)
+                if found:
+                    hits.append((found[1], found[2], int(found[3])))
+                    continue
+                found = PING_RE.search(line)
+                if found:
+                    if int(found[1]) >= 0:
+                        own.append(int(found[1]))
+                    for pair in found[2].split():
+                        if ":" in pair:
+                            player, ping = pair.split(":")
+                            players.setdefault(int(player), []).append(int(ping))
+    except OSError:
+        pass
+    return presses, hits, {"own": own, "players": players}
+
+
+def spread(values):
+    """the median, mean, 95th percentile and count of milliseconds"""
+    if not values:
+        return None
+    ordered = sorted(values)
+    return {"median": ordered[len(ordered) // 2], "mean": sum(ordered) / len(ordered),
+            "p95": ordered[min(len(ordered) - 1, int(len(ordered) * 0.95))], "count": len(ordered)}
+
+
+def latency_figures(logs, roles, skip_us=3000000):
+    """press to sight and hit report to damage, in milliseconds, between the copies' logs; roles names each log's
+    copy (host, client)"""
+    parsed = [parse_latency_lines(log) for log in logs]
+    starts = [min((press[3] for press in presses), default=0) for presses, _, _ in parsed]
+    begin = (max(starts) if starts else 0) + skip_us
+    seen, missed = {}, {}
+    for source, (presses, _, _) in enumerate(parsed):
+        for kind, player, local, time in presses:
+            if not local or time < begin:
+                continue
+            for target, (others, _, _) in enumerate(parsed):
+                if target == source:
+                    continue
+                key = f"{roles[source]} to {roles[target]}"
+                sight = min((other[3] for other in others if other[0] == kind and other[1] == player and
+                             not other[2] and time - 2000 <= other[3] < time + PRESS_WINDOW_US), default=None)
+                if sight is None:
+                    missed[key] = missed.get(key, 0) + 1
+                else:
+                    seen.setdefault(key, []).append(max(0, sight - time) / 1000.0)
+    figures = {"press": {key: spread(values) for key, values in sorted(seen.items())},
+               "press_missed": missed}
+    host = roles.index("host") if "host" in roles else None
+    dealt, shown = [], []
+    if host is not None:
+        host_dealt = [(obj, time) for what, obj, time in parsed[host][1] if what == "dealt"]
+        for number, (_, hits, _) in enumerate(parsed):
+            if number == host:
+                continue
+            for what, obj, time in hits:
+                if what != "made" or time < begin:
+                    continue
+                deal = min((when for other, when in host_dealt if other == obj and time <= when < time + HIT_WINDOW_US),
+                           default=None)
+                if deal is None:
+                    continue
+                dealt.append((deal - time) / 1000.0)
+                show = min((when for other_what, other, when in hits if other_what == "shown" and other == obj and
+                            deal <= when < deal + HIT_WINDOW_US), default=None)
+                if show is not None:
+                    shown.append((show - time) / 1000.0)
+    figures["hit_dealt"] = spread(dealt)
+    figures["hit_shown"] = spread(shown)
+    own = [ping for number, (_, _, pings) in enumerate(parsed) if roles[number] != "host" for ping in pings["own"]]
+    figures["round_trip"] = spread(own)
+    return figures
+
+
+def describe_latency(figures):
+    def text(spread_):
+        return "none" if not spread_ else \
+            f"median {spread_['median']:.1f} mean {spread_['mean']:.1f} p95 {spread_['p95']:.1f} ms ({spread_['count']})"
+    lines = [f"  press seen, {key}: {text(value)}" for key, value in figures["press"].items()]
+    if figures["press_missed"]:
+        lines.append(f"  presses not seen: {figures['press_missed']}")
+    lines.append(f"  round trip (latency meter, clients): {text(figures['round_trip'])}")
+    lines.append(f"  hit made to dealt on the host: {text(figures['hit_dealt'])}")
+    lines.append(f"  hit made to its damage shown: {text(figures['hit_shown'])}")
+    return lines
+
+
 # ---------- comparing
 
 
@@ -482,11 +597,15 @@ def copy_environment(copy, address, broadcast, test, seed, args, extra):
         "HALO_UPDATE_AUTO": "false",
         "HALO_NETWORK_TEST": test,
         "HALO_NETWORK_TEST_START": str(args.start),
-        "HALO_TEST_INPUT": f"bot:{seed}",
+        # (--latency: the trigger pulled and the stick pushed on the real clock, presses anywhere in a tick)
+        "HALO_TEST_INPUT": f"latency:{seed}:fire,move" if getattr(args, "latency", False) else f"bot:{seed}",
         # (a safety: the tool stops the copies itself)
         "HALO_EXIT_AFTER": str(args.start + args.skip + args.seconds + 120),
         "SDL_AUDIO_DRIVER": "dummy",
     })
+    if getattr(args, "latency", False):
+        # (the latency meter's round trips logged each second)
+        environment["HALO_LATENCY_METER"] = "true"
     port = getattr(args, "port", 0)
     if port:
         # (the game's port, the host's and its clients' alike: --port)
@@ -734,7 +853,7 @@ def judge_run(host_log, client_log, args, tolerances, drift_judged=True):
     if drift_judged:
         result["divergences"].extend(judge_drift(drift, tolerances, client_players[0] if client_players else None))
     result["drift"] = {key: value for key, value in drift.items() if key != "seconds"}
-    if drift_judged and drift["samples"] < tolerances["drift_samples"]:
+    if drift_judged and drift["samples"] < tolerances["drift_samples"] and not getattr(args, "latency", False):
         result["problems"].append(f"only {drift['samples']} ticks of the client's player on foot to judge the "
                                   f"drift by (fewer than {tolerances['drift_samples']})")
     corrections = [client[tick].get("corrected") for tick in sorted(client) if "corrected" in client[tick]]
@@ -893,6 +1012,8 @@ def describe(result):
                      f"{summary['mean']:.6f}, largest {summary['largest']:.6f} world units")
     if "client_corrections" in result:
         lines.append(f"  client corrections: {result['client_corrections']}")
+    if "latency" in result:
+        lines.extend(describe_latency(result["latency"]))
     for name, figure in result.get("mixed", {}).items():
         lines.append(f"  {name}: {figure}")
     for problem in result["problems"]:
@@ -1005,6 +1126,11 @@ def main():
     parser.add_argument("--tolerance", action="append", default=[], metavar="NAME=VALUE",
                         help="change a tolerance (" + ", ".join(TOLERANCES) + ")")
     parser.add_argument("--json", help="write the results to this file as JSON")
+    parser.add_argument("--latency", action="store_true",
+                        help="time presses from one machine to the others, hits to their damage and the latency "
+                             "meter's round trips: each copy's player pulls the trigger and pushes the stick on the "
+                             "real clock (debug.test_input \"latency\") instead of the bot's play (NETCODE.md, "
+                             "\"Measuring latency\"); with --events, hits too")
     parser.add_argument("--compare", nargs=2, metavar=("HOST_LOG", "CLIENT_LOG"),
                         help="only compare two logs already written")
     args = parser.parse_args()
@@ -1104,6 +1230,9 @@ def play_all(args, tolerances):
                     result["divergences"].extend(divergences)
                     result["problems"].extend(problems)
                     result["mixed"] = figures
+                if args.latency:
+                    result["latency"] = latency_figures([host_log] + client_logs,
+                                                        ["host"] + ["client"] * len(client_logs), args.skip * 1000000)
                 if any(code not in (None, 0) for code in exits):
                     result["problems"].append(f"a copy ended early (exit statuses {exits})")
                 verdict = "FAIL" if result["divergences"] else ("ERROR" if result["problems"] else "PASS")
