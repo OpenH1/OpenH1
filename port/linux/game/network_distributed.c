@@ -124,6 +124,8 @@ unsigned long p2p_peer_endpoint_address(unsigned long virtual_address);
 boolean network_connection_last_read_was_unreliable(void);
 unsigned long system_milliseconds(void);
 void platform_log(char const *format, ...);
+/* xbox_kernel.c's */
+unsigned long long platform_shared_clock_microseconds(void);
 /* main.c's and port_mods.c's: this build, and the mods it plays */
 void main_build_identity(long *number, char *flavor, size_t flavor_size, char *repository, size_t repository_size,
 	char *version, size_t version_size);
@@ -3321,8 +3323,10 @@ void network_distributed_frame_received(
 	short player_index;
 	boolean any = FALSE;
 
-	static unsigned long last_sent;
-	unsigned long now = system_milliseconds();
+	static unsigned long long last_sent;
+	/* (not system_milliseconds, which the determinism log notes in a tick:
+	the host's own players' controls are sent on from a sub-step) */
+	unsigned long long now = platform_shared_clock_microseconds() / 1000ull;
 
 	if (game_connection() != _game_connection_network_server || !game_in_progress() || !network_standard_hosting())
 		return;
