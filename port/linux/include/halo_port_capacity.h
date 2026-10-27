@@ -48,13 +48,18 @@ fills before it lets go of a texture (lruv_block_new), so a map uses as much
 of it as its textures take, up to the size it plays with
 (texture_cache_size_for_map, xbox_texture_cache.c):
 
-- the desktop builds (x86-64, Windows): the whole, for every map;
-- the AArch64 guests (Android, iOS, macOS, 64-bit ARM Linux and the Steam
+- the desktop builds (x86-64, Windows, and macOS, whose Macs all have the
+  8 GB that gives a Custom Edition map the whole below): the whole, for every
+  map. A map's first frame is drawn through all of its textures as it loads
+  (render_enumerate.c); in 22 MB an Xbox campaign level's were read and sent
+  to the GPU again pass after pass (a10's 518 textures, 570 MB read), which
+  took most of a second of its loading and left more of them on the GPU;
+- the other AArch64 guests (Android, iOS, 64-bit ARM Linux and the Steam
   Frame): an Xbox map the Xbox's 22 MB, which it was made for, so it uses no
   more memory than it did when the cache was that size; a Custom Edition
   map, or one a mod's bitmaps are played over (mod_bitmaps.c), a 32nd of the
   computer's memory, at least 64 MB and at most the whole: 64 MB at 2 GB,
-  128 at 4, 192 at 6, the whole 256 from 8 GB (every Mac, the Steam Frame).
+  128 at 4, 192 at 6, the whole 256 from 8 GB (the Steam Frame).
   The GPU holds what the cache does once more (as BC or ASTC blocks, the
   same size or twice it: xgpu_vulkan_textures.c, xgpu_metal_textures.c), so
   a 32nd keeps the two under a tenth of a phone's memory; at 4 GB it is
@@ -72,8 +77,13 @@ games load whatever these sizes. */
 least to the whole */
 #define HALO_PORT_TEXTURE_CACHE_MEMORY_SHARE 32
 #if defined(HALO_GUEST) && defined(__aarch64__)
+#if defined(HALO_MACOS) && !defined(HALO_IOS)
+#define HALO_PORT_TEXTURE_CACHE_XBOX_MAP_PAGE_COUNT HALO_PORT_TEXTURE_CACHE_PAGE_COUNT
+#define HALO_PORT_TEXTURE_CACHE_LEAST_PAGE_COUNT HALO_PORT_TEXTURE_CACHE_PAGE_COUNT
+#else
 #define HALO_PORT_TEXTURE_CACHE_XBOX_MAP_PAGE_COUNT 0x580 /* (0x580) */
 #define HALO_PORT_TEXTURE_CACHE_LEAST_PAGE_COUNT 0x1000
+#endif
 #else
 #define HALO_PORT_TEXTURE_CACHE_XBOX_MAP_PAGE_COUNT HALO_PORT_TEXTURE_CACHE_PAGE_COUNT
 #define HALO_PORT_TEXTURE_CACHE_LEAST_PAGE_COUNT HALO_PORT_TEXTURE_CACHE_PAGE_COUNT

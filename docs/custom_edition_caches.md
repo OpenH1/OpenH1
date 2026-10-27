@@ -143,11 +143,11 @@ Every build's Xbox memory window is 512 MB, in which the texture cache is
 256 MB: Custom Edition maps draw more texture than the Xbox's 22 MB cache
 holds, and their geometry is made into Direct3D buffers in the same memory
 (`port/linux/include/halo_port_capacity.h`). The desktop builds give every
-map the whole cache. Android, iOS, macOS and 64-bit ARM Linux give an Xbox
-map the Xbox's 22 MB, and a Custom Edition map (or one with mods' bitmaps)
-a 32nd of the device's memory, from 64 MB to the whole: its pages are
-backed only as textures fill them, so an Xbox map uses no more memory than
-it did with the Xbox's cache.
+map the whole cache, macOS's among them. Android, iOS and 64-bit ARM Linux
+give an Xbox map the Xbox's 22 MB, and a Custom Edition map (or one with
+mods' bitmaps) a 32nd of the device's memory, from 64 MB to the whole: its
+pages are backed only as textures fill them, so an Xbox map uses no more
+memory than it did with the Xbox's cache.
 
 ## Loading and conversion
 
@@ -348,8 +348,8 @@ changed:
 - **Texture memory.** A frame of `Elite_Alpha_Siege.map` draws more than the
   22 MB of textures the Xbox texture cache holds, and textures that did not
   fit were drawn as the default one. The texture cache is 256 MB, in a
-  512 MB memory window (`halo_port_capacity.h`): the desktop builds give
-  every map all of it; Android, iOS, macOS and 64-bit ARM Linux give a
+  512 MB memory window (`halo_port_capacity.h`): the desktop builds (macOS's
+  too) give every map all of it; Android, iOS and 64-bit ARM Linux give a
   Custom Edition map a 32nd of the device's memory, from 64 MB to 256 MB,
   and an Xbox map the Xbox's 22 MB.
 - **Scripts.** A compiled script names each function it calls, and each
