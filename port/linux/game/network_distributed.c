@@ -827,6 +827,24 @@ static struct
 /* the bytes of the datagrams sent to each machine (to the host, a client's
 HOST_SENDER) since the tests last asked (network_distributed_batch_bytes) */
 static long distributed_batch_bytes[MAXIMUM_SENDERS];
+/* ... and how many datagrams (network_distributed_batch_datagrams) */
+static long distributed_batch_datagrams[MAXIMUM_SENDERS];
+
+void network_distributed_batch_datagrams(
+	long *to_host,
+	long *to_clients)
+{
+	short sender;
+
+	*to_host = distributed_batch_datagrams[HOST_SENDER];
+	*to_clients = 0;
+	for (sender = 0; sender < MAXIMUM_SENDERS; sender++)
+	{
+		if (sender != HOST_SENDER)
+			*to_clients += distributed_batch_datagrams[sender];
+		distributed_batch_datagrams[sender] = 0;
+	}
+}
 
 void network_distributed_batch_bytes(
 	long *to_host,
@@ -1102,6 +1120,7 @@ static void distributed_batch_flush(
 	else
 		network_distributed_server_send_to_machine(sender, batch->data, batch->size);
 	distributed_batch_bytes[sender] += batch->size;
+	distributed_batch_datagrams[sender]++;
 	batch->size = 0;
 }
 

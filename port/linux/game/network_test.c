@@ -128,6 +128,7 @@ void damage_kill_object_for_player(long object_index, long player_index);
 /* network_distributed.c's */
 void network_distributed_statistics(long *sent, long *received, long *corrections);
 void network_distributed_batch_bytes(long *to_host, long *to_clients, short *clients);
+void network_distributed_batch_datagrams(long *to_host, long *to_clients);
 void network_distributed_divergence(long *samples, long *apart, real *mean, real *largest);
 void network_distributed_player_divergence(short player_index, long *samples, long *apart);
 void network_distributed_item_statistics(long *creates, long *deletes, long *failures, long *removed);
@@ -609,6 +610,8 @@ static void network_test_log_players(
 			network_distributed_batch_bytes(&to_host, &to_clients, &clients);
 			platform_log("network test: bandwidth to host %ld to clients %ld (%d clients, %ld each) bytes a second",
 				to_host, to_clients, (int)clients, clients ? to_clients / clients : 0L);
+			network_distributed_batch_datagrams(&to_host, &to_clients);
+			platform_log("network test: datagrams to host %ld to clients %ld a second", to_host, to_clients);
 		}
 		/* (the latency meter's round trips, with display.latency_meter on:
 		a client's own, and each player's as this machine times it) */
