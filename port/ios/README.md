@@ -129,7 +129,10 @@ mapping runs there, but proves nothing of the device's.
 landscape only, full screen without the status bar, `UILaunchScreen`
 (black), UIKit's scenes (SDL's scene delegate), `UIFileSharingEnabled` and
 `LSSupportsOpeningDocumentsInPlace` (the Files app shows the app's
-Documents), `GCSupportsControllerUserInteraction`, the microphone's
+Documents), `GCSupportsControllerUserInteraction`, Game Mode's keys (the
+games category, `LSSupportsGameMode` from iOS 18.6 and `GCSupportsGameMode`
+before it: the system turns Game Mode on while the game is fullscreen, with
+Bluetooth's lower latency for AirPods and controllers), the microphone's
 (voice chat) and the local network's (system link) explanations, and
 `CFBundleURLTypes`: the app is the handler of `openh1://` links (invites and
 parties' links), as the Mac app is. UIKit gives SDL's scene delegate the

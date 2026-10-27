@@ -28,7 +28,14 @@ default), its rate or channels changed (another program, Bluetooth
 headphones switching to their headset mode for a microphone). Each of those
 stops the unit, sets it up for the device as it is now and starts it again,
 on one serial queue with opening and closing it. While the computer
-sleeps the device stops, and the unit plays on when it wakes.
+sleeps the device stops, and the unit plays on when it wakes. A change of
+the device's latency alone (Bluetooth's) is read again and logged, the unit
+playing on.
+
+Bluetooth headphones' latency (their radio's buffering) is the device's,
+which the log gives in ms as it opens. Only the system lowers it: Game
+Mode (the app fullscreen) doubles Bluetooth's rate for headphones and
+controllers, by Apple's account.
 
 HALO_AUDIO_QUEUE=1 (or no output unit to be had) plays through SDL's
 driver instead. */
@@ -75,6 +82,9 @@ struct audio_output
 	UInt32 frames;
 	UInt32 device_latency, safety_offset, stream_latency;
 	Float64 unit_latency;
+	/* how the device is connected (kAudioDevicePropertyTransportType:
+	Bluetooth's adds its radio's buffering to its latency) */
+	UInt32 transport;
 	/* whether it was started (resumed), and is set up for its device */
 	int started;
 	int configured;
@@ -165,6 +175,34 @@ static int device_name(AudioDeviceID device, char *name, size_t size)
 	return length > 0;
 }
 
+/* a device's connection as a word for the log (Bluetooth, built-in, USB...) */
+static const char *transport_name(UInt32 transport, char *code, size_t size)
+{
+	switch (transport)
+	{
+	case kAudioDeviceTransportTypeBuiltIn: return "built-in";
+	case kAudioDeviceTransportTypeBluetooth: return "Bluetooth";
+	case kAudioDeviceTransportTypeBluetoothLE: return "Bluetooth LE";
+	case kAudioDeviceTransportTypeUSB: return "USB";
+	case kAudioDeviceTransportTypeHDMI: return "HDMI";
+	case kAudioDeviceTransportTypeDisplayPort: return "DisplayPort";
+	case kAudioDeviceTransportTypeThunderbolt: return "Thunderbolt";
+	case kAudioDeviceTransportTypeAirPlay: return "AirPlay";
+	case kAudioDeviceTransportTypeAggregate: return "aggregate";
+	case kAudioDeviceTransportTypeVirtual: return "virtual";
+	case kAudioDeviceTransportTypeUnknown: return "unknown";
+	default:
+		snprintf(code, size, "'%c%c%c%c'", (char)(transport >> 24), (char)(transport >> 16), (char)(transport >> 8),
+			(char)transport);
+		return code;
+	}
+}
+
+static int transport_bluetooth(UInt32 transport)
+{
+	return transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE;
+}
+
 /* the output device SDL names name; kAudioObjectUnknown when none */
 static AudioDeviceID device_named(const char *name)
 {
@@ -205,9 +243,12 @@ static AudioDeviceID output_device_choose(struct audio_output *output)
 
 /* ---------- the device's notifications */
 
+/* (its latency and safety offset too, which a Bluetooth device may change
+as it plays: re-read without setting the unit up again) */
 static const AudioObjectPropertySelector device_watched[] = {
 	kAudioDevicePropertyDeviceIsAlive, kAudioDevicePropertyNominalSampleRate,
 	kAudioDevicePropertyStreamConfiguration, kAudioDeviceProcessorOverload,
+	kAudioDevicePropertyLatency, kAudioDevicePropertySafetyOffset,
 };
 
 static void output_change(void *context);
@@ -355,6 +396,37 @@ static AudioChannelLayoutTag layout_tag(int channels)
 	}
 }
 
+/* the device's latency, safety offset and stream latency (frames) read
+into the output; 1 when any changed */
+static int output_latency_read(struct audio_output *output, AudioDeviceID device)
+{
+	AudioObjectPropertyAddress address = { kAudioDevicePropertyStreams, kAudioObjectPropertyScopeOutput,
+		kAudioObjectPropertyElementMain };
+	AudioStreamID streams[16];
+	UInt32 size = sizeof(streams);
+	UInt32 device_latency = device_u32(device, kAudioDevicePropertyLatency, kAudioObjectPropertyScopeOutput, 0);
+	UInt32 safety_offset = device_u32(device, kAudioDevicePropertySafetyOffset, kAudioObjectPropertyScopeOutput, 0);
+	UInt32 stream_latency = 0;
+	int changed;
+
+	if (AudioObjectGetPropertyData(device, &address, 0, NULL, &size, streams) == noErr && size >= sizeof(streams[0]))
+		stream_latency = device_u32(streams[0], kAudioStreamPropertyLatency, kAudioObjectPropertyScopeGlobal, 0);
+	changed = device_latency != output->device_latency || safety_offset != output->safety_offset ||
+		stream_latency != output->stream_latency;
+	output->device_latency = device_latency;
+	output->safety_offset = safety_offset;
+	output->stream_latency = stream_latency;
+	return changed;
+}
+
+/* the time the device adds after the I/O buffer (ms): its latency, safety
+offset and stream latency, and the unit's */
+static double output_after_ms(const struct audio_output *output, double rate)
+{
+	return (double)(output->device_latency + output->safety_offset + output->stream_latency) * 1000.0 / rate +
+		output->unit_latency * 1000.0;
+}
+
 /* the unit set up for device as it is now and started (if it was): 1 on
 success */
 static int output_configure(struct audio_output *output, AudioDeviceID device)
@@ -363,12 +435,11 @@ static int output_configure(struct audio_output *output, AudioDeviceID device)
 		kAudioObjectPropertyElementMain };
 	AudioStreamBasicDescription description;
 	AudioValueRange range = { 0.0, 0.0 };
-	AudioStreamID streams[16];
 	Float64 rate = 0.0;
 	UInt32 size, frames;
 	int channels = device_channels(device);
 	OSStatus result;
-	char name[256] = "?";
+	char name[256] = "?", code[8];
 
 	size = sizeof(rate);
 	if (device == kAudioObjectUnknown || channels <= 0 ||
@@ -410,14 +481,9 @@ static int output_configure(struct audio_output *output, AudioDeviceID device)
 	if (AudioUnitGetProperty(output->unit, kAudioDevicePropertyBufferFrameSize, kAudioUnitScope_Global, 0,
 			&output->frames, &size) != noErr)
 		output->frames = frames;
-	output->device_latency = device_u32(device, kAudioDevicePropertyLatency, kAudioObjectPropertyScopeOutput, 0);
-	output->safety_offset = device_u32(device, kAudioDevicePropertySafetyOffset, kAudioObjectPropertyScopeOutput, 0);
-	output->stream_latency = 0;
-	address.mSelector = kAudioDevicePropertyStreams;
-	address.mScope = kAudioObjectPropertyScopeOutput;
-	size = sizeof(streams);
-	if (AudioObjectGetPropertyData(device, &address, 0, NULL, &size, streams) == noErr && size >= sizeof(streams[0]))
-		output->stream_latency = device_u32(streams[0], kAudioStreamPropertyLatency, kAudioObjectPropertyScopeGlobal, 0);
+	output_latency_read(output, device);
+	output->transport = device_u32(device, kAudioDevicePropertyTransportType, kAudioObjectPropertyScopeGlobal,
+		kAudioDeviceTransportTypeUnknown);
 
 	/* the mix converted to the device's channels and rate by SDL, which the
 	unit takes as it is */
@@ -475,10 +541,17 @@ static int output_configure(struct audio_output *output, AudioDeviceID device)
 		output->device = device;
 	}
 	device_name(device, name, sizeof(name));
-	host_logf(HOST_LOG_INFO, "sound: CoreAudio's output unit on %s: %d channels at %.0f Hz, an I/O buffer of %u "
-		"frames (%u asked for, %.0f to %.0f); the device's latency %u, safety offset %u and stream latency %u frames",
-		name, channels, rate, (unsigned)output->frames, (unsigned)frames, range.mMinimum, range.mMaximum,
-		(unsigned)output->device_latency, (unsigned)output->safety_offset, (unsigned)output->stream_latency);
+	host_logf(HOST_LOG_INFO, "sound: CoreAudio's output unit on %s (%s): %d channels at %.0f Hz, an I/O buffer of %u "
+		"frames (%u asked for, %.0f to %.0f); the device's latency %u, safety offset %u and stream latency %u frames "
+		"(%.1f ms after the buffer)", name, transport_name(output->transport, code, sizeof(code)), channels, rate,
+		(unsigned)output->frames, (unsigned)frames, range.mMinimum, range.mMaximum, (unsigned)output->device_latency,
+		(unsigned)output->safety_offset, (unsigned)output->stream_latency, output_after_ms(output, rate));
+	/* (Bluetooth headphones play at 44.1 or 48 kHz; at 24 kHz or less they
+	are in their headset (hands-free) mode, which a microphone open on
+	them, ours or another program's, keeps them in) */
+	if (transport_bluetooth(output->transport) && rate <= 24000.0)
+		host_logf(HOST_LOG_INFO, "sound: %s plays at %.0f Hz, probably its headset mode while a microphone is open on "
+			"it (voice chat, or another program); its usual quality comes back once that closes", name, rate);
 	if (output->started)
 	{
 		result = AudioOutputUnitStart(output->unit);
@@ -510,11 +583,21 @@ static void output_change(void *context)
 	device = output_device_choose(output);
 	AudioObjectGetPropertyData(device, &address, 0, NULL, &size, &rate);
 	/* (several notifications come for one change: once it is as set up,
-	nothing to do) */
+	nothing to do but read its latency again, which the unit plays on
+	through; dsound_sdl.c logs the new figure) */
 	if (output->configured && device == output->device && (int)rate == output->format.freq &&
 		SDL_min(device_channels(device), 8) == output->format.channels &&
 		device_u32(device, kAudioDevicePropertyDeviceIsAlive, kAudioObjectPropertyScopeGlobal, 0))
+	{
+		UInt32 latency = output->device_latency, safety = output->safety_offset, stream = output->stream_latency;
+
+		if (output_latency_read(output, device))
+			host_logf(HOST_LOG_INFO, "sound: the device's latency %u, safety offset %u and stream latency %u frames "
+				"(were %u, %u and %u): %.1f ms after the buffer", (unsigned)output->device_latency,
+				(unsigned)output->safety_offset, (unsigned)output->stream_latency, (unsigned)latency, (unsigned)safety,
+				(unsigned)stream, output_after_ms(output, rate));
 		return;
+	}
 	output_stop(output);
 	output->configured = output_configure(output, device);
 	if (!output->configured)

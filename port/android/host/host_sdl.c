@@ -25,6 +25,8 @@ so the audio callback is handed to a thread that has one.
 fraction of the screen's pixels the game draws at */
 void host_app_background_wait(void);
 float host_app_render_scale(void);
+/* the audio session's output latency now (microseconds; -1 not known) */
+int host_app_audio_output_latency(void);
 #endif
 #if defined(__APPLE__) && !TARGET_OS_IPHONE
 /* port/macos/host_app.m: the updater's (weak: the Metal tests and the
@@ -653,6 +655,13 @@ static int system_output_latency(void)
 			frames += value;
 	}
 	return (int)((double)frames * 1.0e6 / rate);
+}
+#elif defined(__APPLE__) && TARGET_OS_IPHONE
+/* iOS's: the audio session's output latency and I/O buffer
+(port/ios/host_app.m) */
+static int system_output_latency(void)
+{
+	return host_app_audio_output_latency();
 }
 #else
 static int system_output_latency(void)

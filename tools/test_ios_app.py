@@ -37,6 +37,9 @@ def test_info_plist():
     assert plist["UIRequiresFullScreen"] is True
     assert plist["UIFileSharingEnabled"] is True and plist["LSSupportsOpeningDocumentsInPlace"] is True
     assert plist["GCSupportsControllerUserInteraction"] is True
+    assert plist["LSApplicationCategoryType"] == "public.app-category.games"
+    assert plist["LSSupportsGameMode"] is True
+    assert plist["GCSupportsGameMode"] is True
     assert plist["NSMicrophoneUsageDescription"] and plist["NSLocalNetworkUsageDescription"]
     assert "not endorsed" in plist["NSHumanReadableCopyright"]
     simulator = ios_app.info_plist(IOS_BUNDLE_ID, 0, IOS_MINIMUM, simulator=True)

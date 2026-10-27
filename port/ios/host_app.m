@@ -125,6 +125,21 @@ int host_app_audio_headphones(void)
 	}
 }
 
+/* (port/android/host/host_sdl.c: host_sdl_audio_stream_timing) the latency
+the audio session reports for its output now (microseconds): the route's
+(AirPods' and other Bluetooth headphones' radio included) and the session's
+I/O buffer, as macOS's figure counts the device's */
+int host_app_audio_output_latency(void)
+{
+	@autoreleasepool
+	{
+		AVAudioSession *session = [AVAudioSession sharedInstance];
+		NSTimeInterval seconds = session.outputLatency + session.IOBufferDuration;
+
+		return seconds > 0.0 && seconds < 10.0 ? (int)(seconds * 1.0e6) : -1;
+	}
+}
+
 /* ---------- the render scale and the device's temperature */
 
 /* display.render_scale (HALO_RENDER_SCALE): the game draws at this fraction
