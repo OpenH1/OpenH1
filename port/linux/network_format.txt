@@ -23,6 +23,7 @@ bound MAXIMUM_DEVICE_GROUPS 1024
 bound MAXIMUM_DEVICE_STATES_PER_MESSAGE 64
 bound MAXIMUM_ENTRIES_PER_MESSAGE 64
 bound MAXIMUM_LATER_SUBSTEPS MAXIMUM_SIM_SUBSTEPS - 1
+bound MAXIMUM_LOCAL_PLAYERS 4
 bound MAXIMUM_OBJECT_LOOKS_PER_MESSAGE 64
 bound MAXIMUM_OBJECT_NAMES_PER_SCENARIO 0x200
 bound MAXIMUM_OBJECT_TRANSFORMS_PER_MESSAGE 64
@@ -86,6 +87,7 @@ enum _distributed_message_coop_skip_vote 70
 enum _distributed_message_coop_sounds_retired 67
 enum _distributed_message_damage_animations 75
 enum _distributed_message_damage_events 10
+enum _distributed_message_fire_origins 93
 enum _distributed_message_forwarded_inputs 131
 enum _distributed_message_forwarded_live_controls 133
 enum _distributed_message_friend_players 130
@@ -293,6 +295,8 @@ struct distributed_damage_animation ae158e21c915
 struct distributed_damage_animations_message 863e25ca3614
 struct distributed_damage_event 659e4d49733b
 struct distributed_damage_event_message c954363dcf26
+struct distributed_fire_origin 700dfdb20582
+struct distributed_fire_origin_message 7613e8f9d43e
 struct distributed_friend_player 22c5ecf4b16f
 struct distributed_friend_players_message 481fa2c84002
 struct distributed_hit_report 9a44ca43a88b
