@@ -172,6 +172,11 @@ void host_render_stream_display_latched(uint64_t latch, uint64_t period)
 	(void)period;
 }
 
+void host_render_stream_sleep_until(uint64_t when)
+{
+	(void)when;
+}
+
 void host_render_stream_frame_shown(uint64_t input, uint64_t shown)
 {
 	(void)input;

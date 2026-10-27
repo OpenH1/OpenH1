@@ -452,7 +452,19 @@ link still presents only at its refreshes, so nothing tears, in a window
 or fullscreen. The newest frame is taken 3 ms before the link's deadline
 for the refresh (`HALO_METAL_TAKE_MARGIN_MS` sets another), not as the link
 calls, a refresh earlier: on an M2 at 60 Hz in a window, the link calls
-16.6 ms before its deadline and 49.9 ms before the frame is on screen. With
+16.6 ms before its deadline and 49.9 ms before the frame is on screen. The
+game starts its frames at fixed phases of those takes
+(`host_metal_frame_phase`, `platform_frame_slot`): one its budget (as the
+paced game's, `frame_pacing.h`) before each take, the others whole
+fractions of a refresh before it, so that the frame each refresh shows is
+always as old and the game's time on screen steps evenly. Frames on a clock
+of their own beat against the display's: the frame shown was then one just
+drawn or one an interval older, and up to 20% of the refreshes stepped by
+more than 4 ms. The budget's changes move the phase by 0.5 ms a refresh at
+most; the last 2 ms of each wait are a time constraint thread's sleep (an
+ordinary timed wait ended up to 8 ms late); a press wakes the wait at once
+(#264), but not in the half step before a shown frame, which it would only
+make late. With
 battery saver on, the display link paces the game at its slower rate, vsync
 or not (frames spaced by the clock alone came at the link's rate but not in
 step with it: on a 60 Hz M2, 15% of the refreshes showed no new frame).
