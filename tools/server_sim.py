@@ -55,6 +55,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 UI_DIR = ROOT / "port" / "assets" / "server_ui"
+# an invite link's start, as the game makes it (port/linux/src/p2p.h's P2P_JOIN_LINK_PREFIX)
+JOIN_LINK_PREFIX = re.search(r'#define P2P_JOIN_LINK_PREFIX "([^"]+)"',
+                             (ROOT / "port/linux/src/p2p.h").read_text()).group(1)
 
 ROLES = ["viewer", "moderator", "admin", "owner"]
 SUBPROTOCOL = "opence-rcon-1"
@@ -817,7 +820,7 @@ class Sim:
             {"url": "https://master2.example.net", "listed": False, "probe": "pending", "code": "", "message": "",
              "updated": int(time.time())},
         ]
-        self.invite = "halo://join/" + secrets.token_hex(32)
+        self.invite = JOIN_LINK_PREFIX + secrets.token_hex(32)
         self.script_tick = 0
         # a stop that waits (sv_stop, sv_restart: game or empty): {"after", "restart", "since"}, or None
         self.drain = None

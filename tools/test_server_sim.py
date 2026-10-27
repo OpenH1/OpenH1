@@ -229,7 +229,7 @@ def test_roles(fresh):
     assert (status, body["error"]) == (403, {"code": "forbidden", "message": "needs the moderator role"})
     assert sim.request("GET", "/api/players", headers=viewer)[0] == 200
     assert sim.request("GET", "/api/status", headers=viewer)[2]["listing"]["invite"] == ""
-    assert sim.request("GET", "/api/status", headers=sim.browser())[2]["listing"]["invite"].startswith("halo://join/")
+    assert sim.request("GET", "/api/status", headers=sim.browser())[2]["listing"]["invite"].startswith("openh1://join/")
     status, _, body = sim.request("PUT", "/api/rotation", {"entries": ["bloodgulch:ctf"]}, headers=moderator)
     assert (status, body["error"]["code"]) == (403, "forbidden")
     assert sim.request("GET", "/api/bans", headers=moderator)[0] == 403

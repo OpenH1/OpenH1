@@ -467,7 +467,7 @@ events) before they were asked for.
  "build":"build-206","network_version":38,"uptime":3600,"games_hosted":4,
  "map":"bloodgulch","level":"levels\\test\\bloodgulch\\bloodgulch","gametype":"ctf","variant":"CTF","teams":true,
  "players":5,"max_players":16,"machines":5,"countdown":-1,"game_seconds":312,"team_scores":[2,1],
- "listing":{"online":true,"public":true,"password":false,"invite":"halo://join/…"},
+ "listing":{"online":true,"public":true,"password":false,"invite":"openh1://join/…"},
  "rotation":{"index":0,"count":3,"next":{"text":"sidewinder:team_slayer","map":"sidewinder","gametype":"team_slayer"}},
  "frame_ms_max":4.1,"frame_ms_avg":1.2,"tick_ms_avg":1.2,
  "masters":[{"url":"https://master1.example.org","listed":true,"probe":"ok","code":"","message":"","updated":1760899990}],
