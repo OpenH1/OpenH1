@@ -38,6 +38,7 @@ matched case-insensitively, like the Xbox's FATX volumes.
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -618,6 +619,47 @@ HANDLE WINAPI CreateFileA(LPCSTR file_name, DWORD desired_access, DWORD share_mo
 
 #define READ_BOUNCE_SIZE 0x40000UL
 
+/* The bounce buffer (read_at), kept: one allocated for each read is a block
+of its own pages, mapped and unmapped each time, which cost more than the
+reads of a map's textures as it loads. A second reader at the same time
+allocates one of its own. */
+static pthread_mutex_t bounce_lock = PTHREAD_MUTEX_INITIALIZER;
+static char *bounce_kept;
+static BOOL bounce_kept_taken;
+
+static char *bounce_take(size_t size)
+{
+	char *buffer = NULL;
+
+	pthread_mutex_lock(&bounce_lock);
+	if (!bounce_kept_taken)
+	{
+		if (!bounce_kept)
+			bounce_kept = malloc(READ_BOUNCE_SIZE);
+		if (bounce_kept)
+		{
+			bounce_kept_taken = TRUE;
+			buffer = bounce_kept;
+		}
+	}
+	pthread_mutex_unlock(&bounce_lock);
+	return buffer ? buffer : malloc(size);
+}
+
+static void bounce_give(char *buffer)
+{
+	if (!buffer)
+		return;
+	if (buffer != bounce_kept)
+	{
+		free(buffer);
+		return;
+	}
+	pthread_mutex_lock(&bounce_lock);
+	bounce_kept_taken = FALSE;
+	pthread_mutex_unlock(&bounce_lock);
+}
+
 /* The per-request record separates time in the kernel from bounce copies.
 Only debug.load_trace reads these clocks. The caller's errno is preserved. */
 static double load_io_now(void)
@@ -664,7 +706,7 @@ static BOOL read_at(struct platform_file *file, LPVOID buffer, DWORD count, LPDW
 	so a texture uploaded while the read is in flight is refreshed. */
 	BOOL bounce = platform_is_contiguous(buffer) ||
 		platform_is_contiguous((char *)buffer + (count ? count - 1 : 0));
-	char *staging = bounce ? malloc(count < READ_BOUNCE_SIZE ? count : READ_BOUNCE_SIZE) : NULL;
+	char *staging = bounce ? bounce_take(count < READ_BOUNCE_SIZE ? count : READ_BOUNCE_SIZE) : NULL;
 
 	if (bounce && !staging)
 	{
@@ -687,7 +729,7 @@ static BOOL read_at(struct platform_file *file, LPVOID buffer, DWORD count, LPDW
 			platform_set_last_error_from_errno(errno);
 			if (bytes_read)
 				*bytes_read = total;
-			free(staging);
+			bounce_give(staging);
 			return FALSE;
 		}
 		if (result == 0)
@@ -701,7 +743,7 @@ static BOOL read_at(struct platform_file *file, LPVOID buffer, DWORD count, LPDW
 		}
 		total += (DWORD)result;
 	}
-	free(staging);
+	bounce_give(staging);
 	if (tracing)
 	{
 		double ended = load_io_now();
