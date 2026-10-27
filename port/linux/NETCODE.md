@@ -662,7 +662,10 @@ simulation still takes the input at its tick, as before.
   latest input heard that frame of each player its last tick's plan sends
   that client every tick or every second tick (near it, or aimed at:
   "Transport", below), with the sub-steps heard of the same tick, in the
-  relayed input's encoding with the client's tick it is of. A player sent
+  relayed input's encoding with the client's tick it is of; no sooner than
+  8 ms after it last did (`FORWARDED_INPUT_INTERVAL_MILLISECONDS`: a host
+  drawing hundreds of frames a second would send each client a datagram
+  nearly every frame). A player sent
   every second tick is forwarded every second of their client's ticks, and
   at once when their buttons or choices changed in the ticks the input
   carries.
