@@ -441,6 +441,43 @@ The process is marked latency critical while the window is open.
 `HALO_METAL_RATE=<Hz>` runs the link at that rate (another display's
 pacing tested on this one).
 
+**Fullscreen and the window server.** In a window, the window server
+composites the frame first: from the link's deadline to the screen is two
+refreshes. A fullscreen layer that covers its display can go to the display
+without compositing (direct to display): one refresh less. The layer is
+eligible as it is (opaque, `framebufferOnly`, BGRA8, its drawables at the
+window's pixel size, no other layers over it), at the display's native
+mode and at scaled ones (the display scales it). But in a fullscreen Space
+(the default fullscreen and `borderless`) a hidden cursor makes the window
+server composite again: `[NSCursor hide]`, as SDL's relative mode hides it,
+or an invisible cursor image, as `SDL_HideCursor` does. So while the mouse
+is captured in fullscreen, the cursor stays shown, as one black point
+parked in the window's bottom right corner, 4 points in (not in it, where a
+hot corner would act), where the relative mode holds it
+(`host_raw_mouse_cursor`, `host_raw_mouse.m`); let go, it is put back in
+the window's middle.
+
+Measured on an M2 MacBook Air at 60 Hz (its notch, a desktop that looks
+like 1710x1107: 3420x2214 pixels scaled to the panel's 2880x1864), vsync
+off, 120 tick: the frames' input to screen in the game (`HALO_METAL_STATS`,
+5 s medians, ms), and Game Mode (gamepolicyd's log, the app only: it comes
+with the games category of the app's `Info.plist`):
+
+| Mode | Drawable | Input to screen | Game Mode |
+|---|---|---|---|
+| Window | 1280x960 | 39 to 41 | (not run in the app) |
+| `borderless` (the default fullscreen: a Space, below the notch), the cursor hidden (before) | 3420x2146 | 39 to 43 | on |
+| the same, the cursor parked | 3420x2146 | 22 to 25 | on |
+| `fullscreen` (exclusive) at the desktop's mode | 3420x2214 | 23 to 25 | on |
+| `fullscreen`, `display.resolution = "2880x1864"` (the panel's own mode) | 2880x1864 | 24 to 25 | (not run in the app) |
+| `borderless`, `SDL_VIDEO_MAC_FULLSCREEN_SPACES=0` (no Space) | 3420x2214 | 24 to 25 | (not run in the app) |
+
+In a Space, the capture's parts tried alone: the cursor hidden alone
+(`SDL_HideCursor`), or `[NSCursor hide]` with the cursor held, composited;
+the cursor held alone (`CGAssociateMouseAndMouseCursorPosition(NO)`), or
+held with an opaque point for a cursor, kept the direct path; an image of
+one pixel almost transparent (alpha 1/255) composited too.
+
 That pacing is `display.vsync = true`'s (iOS's default). With vsync off,
 the Mac's default (taken as the window opens, and as Settings change it),
 the display does not pace the game: it draws as many frames as

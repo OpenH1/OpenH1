@@ -56,6 +56,7 @@ void host_audio_output_thread(SDL_AudioStream *stream, int *state);
 #define HOST_RAW_MOUSE 1
 void host_raw_mouse_start(void);
 int host_raw_mouse_take(float *x, float *y);
+void host_raw_mouse_cursor(void);
 #endif
 
 #define HANDLE_COUNT 256
@@ -252,6 +253,9 @@ int host_sdl_poll_event(void *event)
 	tests, which link no host_app.m) */
 	if (host_app_update_tick)
 		host_app_update_tick();
+#endif
+#ifdef HOST_RAW_MOUSE
+	host_raw_mouse_cursor();
 #endif
 	if (!SDL_PollEvent(&host_event))
 	{
