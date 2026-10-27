@@ -3631,12 +3631,14 @@ of frames): a SUBOPTIMAL that making the swapchain again cannot mend is
 not asked about every frame */
 #define SUBOPTIMAL_CHECKS 60
 
-/* presents after the window's size changes at which the surface is asked
-again, each (about two seconds of frames): Android can tell the new size a
-little after the event (split screen on a folding phone), and a swapchain
-made for the old one is scaled into the window, squashed or stretched, with
-no SUBOPTIMAL or OUT_OF_DATE to say so */
+/* presents after the window's size changes in which the surface is asked
+again (about two seconds of frames), at every RESIZE_CHECK_EVERY of them,
+until it has the window's new size: Android can tell the new size a little
+after the event (split screen on a folding phone), and a swapchain made for
+the old one is scaled into the window, squashed or stretched, with no
+SUBOPTIMAL or OUT_OF_DATE to say so */
 #define RESIZE_CHECKS 120
+#define RESIZE_CHECK_EVERY 4
 
 static void swapchain_forget(void)
 {
@@ -3952,6 +3954,17 @@ static void window_changes(void)
 	}
 }
 
+/* the surface's extent the size the window was last told (either way
+round: Android's is the display's way up), or none, the swapchain's then */
+static int resize_told(VkExtent2D extent)
+{
+	uint64_t size = __atomic_load_n(&vk.window_size, __ATOMIC_ACQUIRE);
+	uint32_t width = (uint32_t)(size >> 32), height = (uint32_t)size;
+
+	return extent.width == 0xffffffffu || (extent.width == width && extent.height == height) ||
+		(extent.width == height && extent.height == width);
+}
+
 static int swapchain_make(void)
 {
 	VkSurfaceCapabilitiesKHR capabilities;
@@ -4111,6 +4124,9 @@ static int swapchain_make(void)
 	vk.swapchain_stale = 0;
 	vk.swapchain_turns = turns;
 	vk.surface_extent = capabilities.currentExtent;
+	/* (the window's new size come: RESIZE_CHECKS done) */
+	if (resize_told(capabilities.currentExtent))
+		vk.resize_checks = 0;
 	vk.surface_transform = capabilities.currentTransform;
 	vk.suboptimal_presents = 0;
 	hdr_metadata_set();
@@ -4263,9 +4279,8 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 		return 0;
 	window_changes();
 	/* (a resize's new size, told late: RESIZE_CHECKS) */
-	if (vk.resize_checks && vk.swapchain && !vk.swapchain_stale)
+	if (vk.resize_checks && vk.swapchain && !vk.swapchain_stale && !(--vk.resize_checks % RESIZE_CHECK_EVERY))
 	{
-		vk.resize_checks--;
 		if (surface_changed())
 			vk.swapchain_stale = 1;
 		if (!vk.surface)

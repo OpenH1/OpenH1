@@ -1277,6 +1277,7 @@ static unsigned int window_swapchains, window_surfaces_made, window_surfaces_des
 static unsigned int window_presents, window_capability_queries, window_turns, window_rotations;
 static int window_gone;
 static VkImage window_blit_source;
+static VkImageBlit window_blit_region;
 static struct xgpu_vulkan_image window_frame, window_turned;
 
 static VkResult VKAPI_CALL window_get_capabilities(VkPhysicalDevice physical, VkSurfaceKHR surface,
@@ -1421,9 +1422,9 @@ static void VKAPI_CALL window_blit(VkCommandBuffer commands, VkImage source, VkI
 	VkImage destination, VkImageLayout destination_layout, uint32_t count, const VkImageBlit *regions,
 	VkFilter filter)
 {
-	(void)commands; (void)source_layout; (void)destination; (void)destination_layout; (void)count; (void)regions;
-	(void)filter;
+	(void)commands; (void)source_layout; (void)destination; (void)destination_layout; (void)count; (void)filter;
 	window_blit_source = source;
+	window_blit_region = regions[0];
 }
 
 static struct xgpu_vulkan_image *window_rotate(struct xgpu_vulkan_image *image, int quarter_turns)
@@ -1501,7 +1502,7 @@ static void window_test(void)
 	static const VkPresentModeKHR no_mailbox[2] = { VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR };
 	static const VkPresentModeKHR all[3] = { VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_MAILBOX_KHR,
 		VK_PRESENT_MODE_FIFO_KHR };
-	unsigned int index, queries;
+	unsigned int index, queries, swapchains;
 
 	/* the swap interval's present mode: FIFO waits; else MAILBOX, else
 	IMMEDIATE, else FIFO */
@@ -1617,6 +1618,27 @@ static void window_test(void)
 		assert(window_present_frame() && !vk.swapchain_stale);
 	assert(window_capability_queries - queries == 2);
 
+	/* a resize told before the surface has the new size (split screen on
+	a folding phone): the surface asked again at every RESIZE_CHECK_EVERY
+	presents, not at each, until it has it; then the swapchain made again
+	for it, and the surface not asked again */
+	window_present_result = VK_SUCCESS;
+	swapchains = window_swapchains;
+	xgpu_vulkan_window_resized(1080, 1200);
+	assert(window_present_frame() && window_swapchains == swapchains + 1 && window_made.imageExtent.height == 2400);
+	queries = window_capability_queries;
+	for (index = 0; index < 8; index++)
+		assert(window_present_frame());
+	assert(window_capability_queries - queries == 2 && window_swapchains == swapchains + 1);
+	window_capabilities.currentExtent.height = 1200;
+	for (index = 0; index < 4; index++)
+		assert(window_present_frame());
+	assert(window_swapchains == swapchains + 2 && window_made.imageExtent.height == 1200);
+	queries = window_capability_queries;
+	for (index = 0; index < 120; index++)
+		assert(window_present_frame());
+	assert(window_capability_queries == queries && window_swapchains == swapchains + 2);
+
 	/* without a way to turn the frames: the window's way up, which the
 	compositor turns */
 	window_reset();
@@ -1626,6 +1648,32 @@ static void window_test(void)
 	window_capabilities.currentExtent.height = 1080;
 	assert(window_present_frame() && window_made.preTransform == VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR);
 	assert(window_made.imageExtent.width == 2400 && !window_rotations && window_blit_source == window_frame.image);
+
+	/* display.picture_position: the 4:3 frame in a taller window (a
+	folding phone's inner screen) centered, or at the top with all the
+	black below it */
+	window_reset();
+	window_capabilities.currentExtent.width = 1000;
+	window_capabilities.currentExtent.height = 1200;
+	assert(window_present_frame() && window_blit_region.dstOffsets[0].x == 0 &&
+		window_blit_region.dstOffsets[0].y == 225 && window_blit_region.dstOffsets[1].y == 975);
+	xgpu_vulkan_picture_top(0);
+	assert(window_present_frame() && window_blit_region.dstOffsets[0].x == 0 &&
+		window_blit_region.dstOffsets[0].y == 0 && window_blit_region.dstOffsets[1].y == 750);
+	/* ... turned with the frame, held sideways: the top of the window is
+	the swapchain's right edge */
+	window_reset();
+	vk.rotate = window_rotate;
+	window_capabilities.currentExtent.width = 1200;
+	window_capabilities.currentExtent.height = 1000;
+	window_capabilities.currentTransform = VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR;
+	window_capabilities.supportedTransforms |= VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR;
+	assert(window_present_frame() && window_blit_source == window_turned.image);
+	assert(window_blit_region.dstOffsets[0].x == 50 && window_blit_region.dstOffsets[1].x == 950);
+	xgpu_vulkan_picture_top(0);
+	assert(window_present_frame() && window_blit_region.dstOffsets[0].x == 100 &&
+		window_blit_region.dstOffsets[1].x == 1000 && window_blit_region.dstOffsets[0].y == 0 &&
+		window_blit_region.dstOffsets[1].y == 1200);
 	reset();
 }
 

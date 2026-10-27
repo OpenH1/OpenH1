@@ -1588,6 +1588,9 @@ static BOOL picture_top(void)
 #ifdef HALO_ANDROID
 /* port/android/guest/runtime/guest_host.h */
 int host_touch_picture_top(void);
+
+/* the picture's place last sent to the backend (-2: none yet) */
+static int picture_top_sent = -2;
 #endif
 
 /* where the picture's top is in a window of these pixels, in its pixels
@@ -1612,16 +1615,23 @@ static int picture_top_in(int pixel_width, int pixel_height)
 }
 
 /* (between frames: halo_screen_commit) where the picture goes, to the
-backend's present: each frame, as a backend made again starts centered,
-and the window's shape may have changed */
+backend's present, when it changes (the window's shape may have): Android's,
+elsewhere it is centered */
 static void picture_position_send(void)
 {
-	int pixel_width = 0, pixel_height = 0;
+#ifdef HALO_ANDROID
+	int pixel_width = 0, pixel_height = 0, top;
 
 	if (!device.gl_ready)
 		return;
 	platform_video_drawable_size(&pixel_width, &pixel_height);
-	xgpu_backend_picture_top(picture_top_in(pixel_width, pixel_height));
+	top = picture_top_in(pixel_width, pixel_height);
+	if (top != picture_top_sent)
+	{
+		xgpu_backend_picture_top(top);
+		picture_top_sent = top;
+	}
+#endif
 }
 
 /* a point in the window, as SDL reports it, in the menus' coordinates: the
