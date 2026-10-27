@@ -91,6 +91,12 @@ control's pull and left stick (debug.latency_log) */
 extern void latency_log_read(int trigger, int stick_x, int stick_y);
 /* ... and when the scripted player pressed what it reads ("latency:") */
 extern void latency_log_pressed(unsigned long long when_ns);
+/* ... and the mouse's: its fire binding held, its motion read; the view
+turned by it, by the frame's input or by the drawn view's own late reading
+(halo_linux_mouse_look_late) */
+extern void latency_log_mouse_read(int fire, float dx, float dy);
+extern void latency_log_mouse_turned(void);
+extern void latency_log_mouse_late(float dx, float dy);
 
 /* ---------- device tables */
 
@@ -116,6 +122,10 @@ static BOOL gamepad_idle(SDL_Gamepad *gamepad);
 
 static pthread_mutex_t mouse_lock = PTHREAD_MUTEX_INITIALIZER;
 static float mouse_pending_x, mouse_pending_y;
+/* the motion the frame's input took for the player's facing
+(halo_linux_mouse_look), since the first controller was read last: the
+drawn view may then take what has come since (halo_linux_mouse_look_late) */
+static BOOL mouse_look_taken;
 static unsigned long mouse_polls_unconsumed = 0;
 static float mouse_wheel_accumulated = 0.0f;
 /* the wheel's switch (wheel_update): when the wheel last moved, until when
@@ -187,12 +197,59 @@ int halo_linux_mouse_look(short gamepad_index, float *yaw, float *pitch)
 	mouse_pending_x = 0.0f;
 	mouse_pending_y = 0.0f;
 	mouse_polls_unconsumed = 0;
+	mouse_look_taken = TRUE;
 	pthread_mutex_unlock(&mouse_lock);
 	if (x == 0.0f && y == 0.0f)
 		return FALSE;
 	radians = mouse_radians_per_count(mouse_sensitivity());
 	*yaw = -x * radians;
 	*pitch = (invert ? y : -y) * radians * vertical_sensitivity;
+	latency_log_mouse_turned();
+	return TRUE;
+}
+
+/* The drawn view's own reading of the mouse (render_interpolation.c, as the
+frame takes the player's view, in first person on foot: display.direct_camera),
+late in the frame: the radians of yaw and pitch of the motion come since the
+frame's input took it (halo_linux_mouse_look), as that would turn them. Only
+the view drawn turns by them: the motion stays the next frame's input, which
+turns the player's facing by it then, so the game is as it was (nothing sent,
+nothing simulated changes). FALSE, and no turn, when the frame's input took
+no motion (the mouse not aiming the player: a menu, the console, the
+scoreboard's pointer, F12) or nothing has come. Once a frame. */
+int halo_linux_mouse_look_late(short gamepad_index, float *yaw, float *pitch)
+{
+	static unsigned long read_at = (unsigned long)-1;
+	static int invert;
+	struct platform_input_state input;
+	BOOL taken;
+	float radians;
+
+	*yaw = 0.0f;
+	*pitch = 0.0f;
+	if (gamepad_index != 0)
+		return FALSE;
+	pthread_mutex_lock(&mouse_lock);
+	taken = mouse_look_taken;
+	mouse_look_taken = FALSE;
+	pthread_mutex_unlock(&mouse_lock);
+	if (!taken)
+		return FALSE;
+	if (read_at != config_changes())
+	{
+		read_at = config_changes();
+		invert = config_boolean("input.invert_mouse");
+	}
+	/* (the window's events come now, as the next frame's reading would
+	take them) */
+	platform_pump_events();
+	platform_input_read(&input, FALSE);
+	if (input.mouse_released || (input.mouse_dx == 0.0f && input.mouse_dy == 0.0f))
+		return FALSE;
+	latency_log_mouse_late(input.mouse_dx, input.mouse_dy);
+	radians = mouse_radians_per_count(mouse_sensitivity());
+	*yaw = -input.mouse_dx * radians;
+	*pitch = (invert ? input.mouse_dy : -input.mouse_dy) * radians * vertical_sensitivity;
 	return TRUE;
 }
 
@@ -1666,41 +1723,144 @@ static void test_script_gamepad(XINPUT_GAMEPAD *pad)
 	}
 }
 
-/* debug.test_input "latency:<seed>": the fire control pulled for 60 ms, or
-the left stick pushed forward for 200 ms, in turn, each 350 to 650 ms after
-the last let go, on the real clock: presses that fall anywhere in a tick, as
-a person's do, for debug.latency_log (port/linux/game/latency_log.c). The
-player otherwise stands still. (A weapon that fires as the control is
-pulled: SWAT's pistol, debug.network_test "local:<map>:swat"; the plasma
-pistol, a multiplayer game's otherwise, fires as it is let go) */
-static void test_latency_gamepad(XINPUT_GAMEPAD *pad, int seed)
-{
-	static Uint64 next_ns, until_ns;
-	static unsigned long random_state;
-	static int firing;
-	Uint64 now = SDL_GetTicksNS();
+/* debug.test_input "latency:<seed>[:<kinds>]": in turn, the controller's
+fire control pulled for 60 ms (fire), its left stick pushed forward for
+200 ms (move), the mouse's left button held for 60 ms (click) and the mouse
+moved LATENCY_TURN_COUNTS counts at once, left and right by turns (turn),
+each 350 to 650 ms after the last let go, on the real clock: presses that
+fall anywhere in a tick, as a person's do, for debug.latency_log
+(port/linux/game/latency_log.c). <kinds> names those played, separated by
+commas (all four by default). The player otherwise stands still. (A weapon
+that fires as the control is pulled: SWAT's pistol, debug.network_test
+"local:<map>:swat"; the plasma pistol, a multiplayer game's otherwise,
+fires as it is let go.) The mouse's come with the window's events
+(halo_test_input_pump), the controller's with its reading; each ends the
+frame's wait for the clock at its time, as a person's event does
+(halo_test_input_next_ns, sdl_platform.c) */
+#define LATENCY_TURN_COUNTS 200.0f
 
-	if (!next_ns)
+enum
+{
+	_test_latency_fire,
+	_test_latency_move,
+	_test_latency_click,
+	_test_latency_turn,
+	NUMBER_OF_TEST_LATENCY_KINDS
+};
+
+static struct
+{
+	/* 0: not read yet; 1: on; -1: off */
+	int state;
+	unsigned kinds;
+	unsigned long random_state;
+	/* the press under way (until until_ns), and when the next comes */
+	int kind;
+	Uint64 next_ns, until_ns;
+	/* the presses begun, and the last the mouse played (halo_test_input_pump) */
+	unsigned long pressed, mouse_played;
+	int turn_direction;
+} test_latency;
+
+static BOOL test_latency_on(void)
+{
+	if (!test_latency.state)
 	{
-		random_state = 12345u + (unsigned long)seed * 7919u;
-		next_ns = now + 1000000000ull;
+		static const char *const names[NUMBER_OF_TEST_LATENCY_KINDS] = { "fire", "move", "click", "turn" };
+		const char *setting = config_string("debug.test_input");
+		const char *kinds;
+		int kind;
+
+		test_latency.state = -1;
+		if (strncmp(setting, "latency:", 8))
+			return FALSE;
+		test_latency.state = 1;
+		test_latency.random_state = 12345u + (unsigned long)atoi(setting + 8) * 7919u;
+		kinds = strchr(setting + 8, ':');
+		for (kind = 0; kind < NUMBER_OF_TEST_LATENCY_KINDS; kind++)
+		{
+			if (!kinds || strstr(kinds + 1, names[kind]))
+				test_latency.kinds |= 1u << kind;
+		}
+		if (!test_latency.kinds)
+			test_latency.kinds = (1u << NUMBER_OF_TEST_LATENCY_KINDS) - 1;
+		test_latency.kind = -1;
+		test_latency.turn_direction = 1;
 	}
-	if (now >= next_ns)
+	return test_latency.state > 0;
+}
+
+/* the press under way at this time (its kind), or -1 */
+static int test_latency_advance(Uint64 now)
+{
+	if (!test_latency_on())
+		return -1;
+	if (!test_latency.next_ns)
+		test_latency.next_ns = now + 1000000000ull;
+	if (now >= test_latency.next_ns)
 	{
-		firing = !firing;
+		do
+			test_latency.kind = (test_latency.kind + 1) % NUMBER_OF_TEST_LATENCY_KINDS;
+		while (!(test_latency.kinds & (1u << test_latency.kind)));
 		/* (pressed when its time came, which this reading may be a frame
 		after) */
-		latency_log_pressed(next_ns);
-		until_ns = next_ns + (firing ? 60000000ull : 200000000ull);
-		random_state = random_state * 1103515245u + 12345u;
-		next_ns = until_ns + 350000000ull + (Uint64)((random_state >> 8) % 300000u) * 1000ull;
+		latency_log_pressed(test_latency.next_ns);
+		test_latency.pressed++;
+		test_latency.until_ns = test_latency.next_ns +
+			(test_latency.kind == _test_latency_move ? 200000000ull :
+			test_latency.kind == _test_latency_turn ? 1000000ull : 60000000ull);
+		test_latency.random_state = test_latency.random_state * 1103515245u + 12345u;
+		test_latency.next_ns = test_latency.until_ns + 350000000ull +
+			(Uint64)((test_latency.random_state >> 8) % 300000u) * 1000ull;
 	}
-	if (now >= until_ns)
-		return;
-	if (firing)
+	return now < test_latency.until_ns ? test_latency.kind : -1;
+}
+
+static void test_latency_gamepad(XINPUT_GAMEPAD *pad)
+{
+	int kind = test_latency_advance(SDL_GetTicksNS());
+
+	if (kind == _test_latency_fire)
 		pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER] = 255;
-	else
+	else if (kind == _test_latency_move)
 		pad->sThumbLY = 32000;
+}
+
+/* (sdl_platform.c's platform_pump_events, its input lock held, after the
+window's events) the scripted mouse's own, as its events would bring them:
+its button held or let go, its motion; nonzero for a press come (the
+mouse's, or the controller's, which its reading takes) */
+int halo_test_input_pump(struct platform_input_state *state, unsigned char *buttons_pressed)
+{
+	unsigned long pressed;
+	int kind;
+
+	if (test_latency.state < 0 || !test_latency_on())
+		return 0;
+	pressed = test_latency.pressed;
+	kind = test_latency_advance(SDL_GetTicksNS());
+	if (kind == _test_latency_click)
+	{
+		if (test_latency.mouse_played != test_latency.pressed)
+			buttons_pressed[SDL_BUTTON_LEFT] = 1;
+		state->mouse_buttons[SDL_BUTTON_LEFT] = 1;
+	}
+	else if (test_latency.kind == _test_latency_click && state->mouse_buttons[SDL_BUTTON_LEFT])
+		state->mouse_buttons[SDL_BUTTON_LEFT] = 0;
+	if (test_latency.kind == _test_latency_turn && test_latency.mouse_played != test_latency.pressed)
+	{
+		state->mouse_dx += LATENCY_TURN_COUNTS * (float)test_latency.turn_direction;
+		test_latency.turn_direction = -test_latency.turn_direction;
+	}
+	test_latency.mouse_played = test_latency.pressed;
+	return test_latency.pressed != pressed;
+}
+
+/* when the scripted player presses next (debug.test_input "latency:"), 0
+for none */
+Uint64 halo_test_input_next_ns(void)
+{
+	return test_latency.state > 0 ? test_latency.next_ns : 0;
 }
 
 static void test_input_gamepad(XINPUT_GAMEPAD *pad)
@@ -1715,7 +1875,6 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 	static int looking;
 	static int walking;
 	static int pad_test;
-	static int latency_test;
 	double t;
 	int index;
 
@@ -1769,10 +1928,7 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 			pad_test = 1;
 		}
 		else if (!strncmp(setting, "latency:", 8))
-		{
-			seed = atoi(setting + 8);
-			latency_test = 1;
-		}
+			seed = 0;
 		else if (!strncmp(setting, "script:", 7))
 			test_script_parse(setting + 7);
 	}
@@ -1793,9 +1949,9 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 		test_pad_gamepad(pad);
 		return;
 	}
-	if (latency_test)
+	if (test_latency_on())
 	{
-		test_latency_gamepad(pad, seed);
+		test_latency_gamepad(pad);
 		return;
 	}
 	/* (a game's player alone, never the menus': its stick and its A every
@@ -2159,6 +2315,9 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		platform_input_read(&input, TRUE);
 		mouse_poll(&input);
 		wheel_update();
+		pthread_mutex_lock(&mouse_lock);
+		mouse_look_taken = FALSE;
+		pthread_mutex_unlock(&mouse_lock);
 		keyboard_actions_held = 0;
 		scoreboard_hold = scoreboard_pad_port_hold(0, input.menus);
 		keys_held_over_switch(&input, scoreboard_hold == HALO_SCOREBOARD_PAD_HOLDS);
@@ -2218,6 +2377,8 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		/* (debug.latency_log: when the input was read) */
 		latency_log_read(state->Gamepad.bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER], state->Gamepad.sThumbLX,
 			state->Gamepad.sThumbLY);
+		latency_log_mouse_read(!input.menus && (held & (1UL << HALO_KEYBOARD_FIRE)) != 0,
+			input.mouse_released ? 0.0f : input.mouse_dx, input.mouse_released ? 0.0f : input.mouse_dy);
 #ifdef HALO_TOUCH_CONTROLS
 		touch_input_controls(&state->Gamepad, input.menus);
 #endif

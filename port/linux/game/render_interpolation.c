@@ -115,6 +115,14 @@ int config_boolean(const char *name);
 unsigned long config_changes(void);
 /* render_objects.c */
 boolean render_objects_port_last_lighting(long object_index, struct render_lighting *lighting);
+/* player_control.c */
+struct player_control *player_control_get(short local_player_index);
+/* view_fov.c: the mouse's turn zoomed (input.zoom_sensitivity) */
+real mouse_zoom_look_scale(short local_player_index, long unit_index, short zoom_level);
+/* port/linux/src/xinput_sdl.c: the mouse's motion come since the frame's
+input took it, as radians of the player's facing (the drawn view's own
+late reading) */
+int halo_linux_mouse_look_late(short gamepad_index, float *yaw, float *pitch);
 #ifdef HALO_VR
 /* port/linux/src/vr.c: the VR mode is on */
 int halo_vr_running(void);
@@ -1768,18 +1776,45 @@ static boolean render_interpolation_direct(
 /* A first-person view is posed from the player's facing, which the input
 turns every frame (player_control.c), but the observer keeps it as of the
 last tick and the blend above draws it a tick later still. On foot, the view
-points where the player aims now (display.direct_camera). */
+points where the player aims now (display.direct_camera): the facing the
+frame's input gave the player, turned on by the mouse's motion come since
+(halo_linux_mouse_look_late, the first player's, as the input turns it: by
+the zoom's scale, the pitch within the player's limits), read as the frame
+takes its view rather than at its start, as late as the view can take it.
+Only the view drawn takes that motion: the next frame's input turns the
+player by it (not in the VR mode, whose head aims). */
 static struct observer_result const *render_interpolation_direct_camera(
 	short local_player_index,
 	struct observer_result const *observer)
 {
 	struct observer_result *direct;
+	real_euler_angles2d angles;
+	real yaw, pitch;
 
 	if (!render_interpolation_direct(local_player_index, observer))
 		return observer;
 	direct = &direct_cameras[local_player_index];
 	*direct = *observer;
-	player_control_get_facing_direction(local_player_index, &direct->forward);
+	angles = *player_control_get_facing_angles(local_player_index);
+#ifdef HALO_VR
+	if (!halo_vr_running())
+#endif
+	if (halo_linux_mouse_look_late(local_player_index, &yaw, &pitch))
+	{
+		struct player_control const *control = player_control_get(local_player_index);
+		long unit_index = player_control_get_unit_index(local_player_index);
+
+		if (control->zoom_level != NONE)
+		{
+			real zoom_scale = mouse_zoom_look_scale(local_player_index, unit_index, control->zoom_level);
+
+			yaw *= zoom_scale;
+			pitch *= zoom_scale;
+		}
+		angles.yaw += yaw;
+		angles.pitch = PIN(angles.pitch + pitch, control->pitch_minimum, control->pitch_maximum);
+	}
+	player_aiming_vector_from_facing(local_player_get_player_index(local_player_index), &direct->forward, &angles);
 	observer_up_from_forward(&direct->forward, &direct->up);
 	return direct;
 }
