@@ -35,8 +35,11 @@ after it, and a turn the drawn view took late in the frame that took it.
 
     kind            fire (the controller's fire control), move (its stick),
                     click (the mouse's fire) or turn (the mouse's motion)
-    press_to_read   the scripted press to the reading that first has it (0
-                    for a person's: the reading is when it is known)
+    press_to_read   the press to the reading that first has it: the
+                    scripted controller's press, the mouse's event's own
+                    time (SDL's timestamp: a person's too, on the Mac the
+                    system's time of it), 0 for a person's controller (SDL
+                    stamps its reports as it reads them)
     read_to_act     the reading to the step that acts on it: the wait for
                     the step, and the step itself
     act_to_frame    the step to the start of the first frame drawn after it
@@ -136,8 +139,9 @@ static struct
 	/* this frame's drawn time (ticks) */
 	double frame_drawn;
 	unsigned long long frame_ns;
-	/* the scripted player's last press */
-	unsigned long long pressed_ns;
+	/* the scripted player's last press (the controller's), and the mouse's
+last press and motion from still, as their events say */
+	unsigned long long pressed_ns, click_pressed_ns, turn_pressed_ns;
 	/* frames handed on since the last line, and since when */
 	long frames;
 	unsigned long long frames_since_ns;
@@ -199,12 +203,17 @@ static void latency_begin(
 
 		if (!event->in_use)
 		{
+			/* (the press's own time: the scripted controller's, or the
+			mouse's event's) */
+			unsigned long long pressed_ns = kind == _latency_click ? latency_log.click_pressed_ns :
+				kind == _latency_turn ? latency_log.turn_pressed_ns : latency_log.pressed_ns;
+
 			memset(event, 0, sizeof(*event));
 			event->in_use = TRUE;
 			event->kind = kind;
 			event->read_ns = latency_now();
-			event->press_ns = latency_log.pressed_ns && latency_log.pressed_ns <= event->read_ns &&
-				event->read_ns - latency_log.pressed_ns < LATENCY_PRESS_NS ? latency_log.pressed_ns : event->read_ns;
+			event->press_ns = pressed_ns && pressed_ns <= event->read_ns &&
+				event->read_ns - pressed_ns < LATENCY_PRESS_NS ? pressed_ns : event->read_ns;
 			return;
 		}
 	}
@@ -308,6 +317,16 @@ void latency_log_pressed(
 	unsigned long long when_ns)
 {
 	latency_log.pressed_ns = when_ns;
+}
+
+void latency_log_mouse_pressed(
+	int turn,
+	unsigned long long when_ns)
+{
+	if (turn)
+		latency_log.turn_pressed_ns = when_ns;
+	else
+		latency_log.click_pressed_ns = when_ns;
 }
 
 void latency_log_read(

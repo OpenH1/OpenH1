@@ -1733,10 +1733,11 @@ fall anywhere in a tick, as a person's do, for debug.latency_log
 commas (all four by default). The player otherwise stands still. (A weapon
 that fires as the control is pulled: SWAT's pistol, debug.network_test
 "local:<map>:swat"; the plasma pistol, a multiplayer game's otherwise,
-fires as it is let go.) The mouse's come with the window's events
-(halo_test_input_pump), the controller's with its reading; each ends the
-frame's wait for the clock at its time, as a person's event does
-(halo_test_input_next_ns, sdl_platform.c) */
+fires as it is let go.) The mouse's are SDL's events, stamped with their
+time (halo_test_input_mouse_event), read as a person's are; the
+controller's come with its reading. Each ends the frame's wait for the
+clock at its time, as a person's event does (halo_test_input_next_ns,
+sdl_platform.c) */
 #define LATENCY_TURN_COUNTS 200.0f
 
 enum
@@ -1757,8 +1758,11 @@ static struct
 	/* the press under way (until until_ns), and when the next comes */
 	int kind;
 	Uint64 next_ns, until_ns;
-	/* the presses begun, and the last the mouse played (halo_test_input_pump) */
+	/* the presses begun, the last begun's time, the last the mouse played
+(halo_test_input_mouse_event), and its button to let go */
 	unsigned long pressed, mouse_played;
+	Uint64 pressed_ns;
+	BOOL release_due;
 	int turn_direction;
 } test_latency;
 
@@ -1806,6 +1810,7 @@ static int test_latency_advance(Uint64 now)
 		after) */
 		latency_log_pressed(test_latency.next_ns);
 		test_latency.pressed++;
+		test_latency.pressed_ns = test_latency.next_ns;
 		test_latency.until_ns = test_latency.next_ns +
 			(test_latency.kind == _test_latency_move ? 200000000ull :
 			test_latency.kind == _test_latency_turn ? 1000000ull : 60000000ull);
@@ -1826,34 +1831,48 @@ static void test_latency_gamepad(XINPUT_GAMEPAD *pad)
 		pad->sThumbLY = 32000;
 }
 
-/* (sdl_platform.c's platform_pump_events, its input lock held, after the
-window's events) the scripted mouse's own, as its events would bring them:
-its button held or let go, its motion; nonzero for a press come (the
-mouse's, or the controller's, which its reading takes) */
-int halo_test_input_pump(struct platform_input_state *state, unsigned char *buttons_pressed)
+/* (sdl_platform.c's platform_pump_events, before it reads the window's
+events) the scripted mouse's next event come by now, for SDL's queue, so
+that it is read as a person's is: 1 with it (*button 1 for the left button
+down, -1 for up, 0 for none; *dx the motion; *when its time), else 0. And
+*pressed, nonzero when a press (the mouse's or the controller's, which its
+reading takes) began since the last call */
+int halo_test_input_mouse_event(int *button, float *dx, Uint64 *when, int *pressed)
 {
-	unsigned long pressed;
-	int kind;
+	unsigned long before = test_latency.pressed;
 
+	*button = 0;
+	*dx = 0.0f;
+	*pressed = 0;
 	if (test_latency.state < 0 || !test_latency_on())
 		return 0;
-	pressed = test_latency.pressed;
-	kind = test_latency_advance(SDL_GetTicksNS());
-	if (kind == _test_latency_click)
+	test_latency_advance(SDL_GetTicksNS());
+	*pressed = test_latency.pressed != before;
+	if (test_latency.mouse_played != test_latency.pressed)
 	{
-		if (test_latency.mouse_played != test_latency.pressed)
-			buttons_pressed[SDL_BUTTON_LEFT] = 1;
-		state->mouse_buttons[SDL_BUTTON_LEFT] = 1;
+		test_latency.mouse_played = test_latency.pressed;
+		*when = test_latency.pressed_ns;
+		if (test_latency.kind == _test_latency_click)
+		{
+			*button = 1;
+			test_latency.release_due = TRUE;
+			return 1;
+		}
+		if (test_latency.kind == _test_latency_turn)
+		{
+			*dx = LATENCY_TURN_COUNTS * (float)test_latency.turn_direction;
+			test_latency.turn_direction = -test_latency.turn_direction;
+			return 1;
+		}
 	}
-	else if (test_latency.kind == _test_latency_click && state->mouse_buttons[SDL_BUTTON_LEFT])
-		state->mouse_buttons[SDL_BUTTON_LEFT] = 0;
-	if (test_latency.kind == _test_latency_turn && test_latency.mouse_played != test_latency.pressed)
+	if (test_latency.release_due && SDL_GetTicksNS() >= test_latency.until_ns)
 	{
-		state->mouse_dx += LATENCY_TURN_COUNTS * (float)test_latency.turn_direction;
-		test_latency.turn_direction = -test_latency.turn_direction;
+		test_latency.release_due = FALSE;
+		*button = -1;
+		*when = test_latency.until_ns;
+		return 1;
 	}
-	test_latency.mouse_played = test_latency.pressed;
-	return test_latency.pressed != pressed;
+	return 0;
 }
 
 /* when the scripted player presses next (debug.test_input "latency:"), 0
