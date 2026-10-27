@@ -33,6 +33,7 @@ executable (host_loader.c).
 */
 
 #include "host.h"
+#include "host_load_trace.h"
 #include "install_layout.h"
 
 #include <SDL3/SDL.h>
@@ -170,6 +171,7 @@ static void *game_main(void *unused)
 	snprintf(path, sizeof(path), "%sconfig.toml", install_config_folder());
 #endif
 	host_apply_debug_settings(path, NULL);
+	host_load_trace("host.guest_main", "");
 	host_run_guest_main(host_make_boot(&environment, "halo"));
 }
 
@@ -191,6 +193,8 @@ static int apple_main(int argc, char *argv[])
 		char *stack;
 
 		host_log_set_sink(log_to_stderr);
+		/* (start-up's measurement: debug.load_trace) */
+		host_load_trace("host.main", "");
 		host_app_start();
 		host_install_signal_handlers();
 		host_signal_stack_install();
@@ -219,6 +223,8 @@ int main(int argc, char *argv[])
 	return apple_main(argc, argv);
 #endif
 	host_log_set_sink(log_to_stderr);
+	/* (start-up's measurement: debug.load_trace) */
+	host_load_trace("host.main", "");
 	host_install_signal_handlers();
 	host_signal_stack_install();
 	if (host_native_thread_create(game_main, NULL, MAIN_STACK_SIZE) != 0)

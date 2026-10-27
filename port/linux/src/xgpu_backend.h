@@ -415,6 +415,10 @@ FALSE if its shaders do not build. Answered now (a draw lit for each pixel
 falls back to the vertex's lighting when its shaders fail); it could wait:
 the backend would fall back itself and say so for the frames after. */
 BOOL xgpu_backend_pipeline(const struct xgpu_pipeline_key *key);
+/* the number of the key xgpu_backend_pipeline was given last: one key's
+alone (with the times the numbers have begun again), so that the front
+end's map preparation tells draws apart by it, not by the key's bytes */
+unsigned long xgpu_backend_pipeline_number(void);
 /* the pipeline's state, the dynamic state and the uniforms (converted
 anew when uniforms_serial changes) set for the draws that follow */
 void xgpu_backend_draw_state(const struct xgpu_dynamic_state *dynamic, const struct xgpu_draw_uniforms *uniforms,

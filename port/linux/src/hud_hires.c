@@ -72,7 +72,11 @@ static struct
 } textures[MAXIMUM_TEXTURES];
 
 #ifdef HUD_HIRES_DECODE_AHEAD
-/* (the thread, detached, is waited for by its decode_running) */
+/* (the threads, detached, are waited for by decode_running, their count). A
+map's hundred or so pictures take about half a second of one core, which
+the map's first frame waited for, decoding what one thread had not reached
+yet: they are decoded by several. */
+#define DECODE_THREADS 4
 static pthread_mutex_t decode_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t decode_finished = PTHREAD_COND_INITIALIZER;
 static int decode_running, decode_stopping;
@@ -760,7 +764,7 @@ static void *decode_thread_main(void *unused)
 		pthread_mutex_unlock(&decode_lock);
 	}
 	pthread_mutex_lock(&decode_lock);
-	decode_running = 0;
+	decode_running--;
 	pthread_cond_broadcast(&decode_finished);
 	pthread_mutex_unlock(&decode_lock);
 	return NULL;
@@ -811,17 +815,25 @@ void hud_hires_map_loaded(const long *assets, long count)
 	if (!queued)
 		return;
 	decode_stopping = 0;
-	decode_running = 1;
-	if (pthread_create(&thread, NULL, decode_thread_main, NULL) == 0)
+	/* (each thread takes the next picture queued: no more threads than
+	pictures) */
+	pthread_mutex_lock(&decode_lock);
+	for (index = 0; index < DECODE_THREADS && index < queued; index++)
 	{
+		decode_running++;
+		if (pthread_create(&thread, NULL, decode_thread_main, NULL) != 0)
+		{
+			decode_running--;
+			break;
+		}
 		pthread_detach(thread);
 	}
-	else
+	if (!decode_running)
 	{
-		decode_running = 0;
 		for (index = 0; index < MAXIMUM_TEXTURES; index++)
 			textures[index].decode_state = _decode_none;
 	}
+	pthread_mutex_unlock(&decode_lock);
 #else
 	(void)assets;
 	(void)count;
