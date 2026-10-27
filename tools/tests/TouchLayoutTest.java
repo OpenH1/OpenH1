@@ -170,6 +170,11 @@ public final class TouchLayoutTest {
         check(fold.x(0) == cornerX && fold.y(0) == cornerY,
               "A control in a corner comes back to it after folding and unfolding");
         check(fold.savedX(0) == placeX && fold.savedY(0) == placeY, "Folding does not move a saved place");
+        fold.setSize(0, 2f);
+        check(fold.x(0) + fold.radius(0) <= 960 && fold.savedX(0) == placeX && fold.savedY(0) == placeY,
+              "A control in a corner made larger is pushed inward, its place kept");
+        fold.setSize(0, 1f);
+        check(fold.x(0) == cornerX && fold.y(0) == cornerY, "Made smaller again, it goes back to the corner");
         // A taller display keeps the top row at the top and the rest as far
         // from the bottom as on a 16:9 one (a folding phone's inner screen,
         // a 4:3 tablet, a tall window).

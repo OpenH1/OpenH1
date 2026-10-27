@@ -176,7 +176,8 @@ final class TouchLayout {
         if (!Float.isFinite(size) || size < MIN_SIZE || size > MAX_SIZE)
             throw new IllegalArgumentException("Button size must be between 50% and 200%");
         controls.get(control).size = size;
-        move(control, x(control), y(control));
+        // (pushed inward if it must be, its place kept: made smaller again, it goes back)
+        keepAllInside();
     }
 
     boolean shown(int control) {
