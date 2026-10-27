@@ -17,16 +17,31 @@ before the game reads its input this frame turns this frame's view.
 A pointer GCMouse does not report (a trackpad, which is no GCMouse) keeps
 SDL's motion: while no count has come for RAW_MOUSE_IDLE_NS, SDL's
 deltas pass as they are. Not on iOS, whose SDL reads GCMouse itself.
+
+The cursor while the mouse is captured in fullscreen
+(host_raw_mouse_cursor): a hidden cursor ([NSCursor hide], as SDL's
+relative mode hides it, or an invisible cursor image, SDL_HideCursor's) in a
+fullscreen Space has the window server composite the window again, where
+the game's frames otherwise go to the display directly, a refresh sooner
+(on an M2 at 60 Hz, input to screen 40 ms instead of 24; a fullscreen
+window outside a Space, or a visible cursor, kept the direct path). So the
+cursor stays shown there, as one black point, parked in the window's
+bottom right corner, where the relative mode holds it
+(CGAssociateMouseAndMouseCursorPosition).
 */
 
 #include <TargetConditionals.h>
 
 #if !TARGET_OS_IPHONE
 
+#import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
 #import <GameController/GameController.h>
+#include <SDL3/SDL.h>
 
+#include <math.h>
 #include <pthread.h>
+#include <string.h>
 #include <time.h>
 
 /* how long after the last count the mouse is taken to be still, and SDL's
@@ -69,6 +84,73 @@ void host_raw_mouse_start(void)
 		queue:nil usingBlock:^(NSNotification *note) {
 			raw_mouse_watch(note.object);
 		}];
+}
+
+/* how often the captured cursor is looked at (host_raw_mouse_cursor), and
+how far inside the window's corner it is parked, in points (not in it: a
+hot corner there would act) */
+#define RAW_CURSOR_CHECK_NS 100000000ull
+#define RAW_CURSOR_INSET 4.0f
+
+/* (the main thread, at each poll of the events) the cursor while the mouse
+is captured in fullscreen: shown, one black point, parked (above) */
+void host_raw_mouse_cursor(void)
+{
+	static SDL_Cursor *point;
+	static int parked;
+	static unsigned long long checked_ns;
+	SDL_Window *focus = SDL_GetKeyboardFocus();
+	int wanted = focus && SDL_GetWindowRelativeMouseMode(focus) &&
+		(SDL_GetWindowFlags(focus) & SDL_WINDOW_FULLSCREEN);
+	unsigned long long now;
+	int x = 0, y = 0, width = 0, height = 0, shows = 0;
+	float at_x, at_y;
+
+	if (wanted != parked)
+	{
+		parked = wanted;
+		checked_ns = 0;
+		SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_CURSOR_VISIBLE, wanted ? "1" : "0");
+		if (wanted && !point)
+		{
+			SDL_Surface *surface = SDL_CreateSurface(1, 1, SDL_PIXELFORMAT_RGBA32);
+
+			if (surface)
+			{
+				/* (opaque: an invisible image hides the cursor too) */
+				memset(surface->pixels, 0, 3);
+				((Uint8 *)surface->pixels)[3] = 255;
+				point = SDL_CreateColorCursor(surface, 0, 0);
+				SDL_DestroySurface(surface);
+			}
+		}
+		SDL_SetCursor(wanted && point ? point : SDL_GetDefaultCursor());
+		/* (let go: back in the window's middle, where SDL's relative mode
+		leaves it, not in the corner) */
+		if (!wanted && focus)
+		{
+			SDL_GetWindowSize(focus, &width, &height);
+			SDL_WarpMouseInWindow(focus, width / 2.0f, height / 2.0f);
+		}
+	}
+	if (!parked)
+		return;
+	now = raw_now_ns();
+	if (checked_ns && now - checked_ns < RAW_CURSOR_CHECK_NS)
+		return;
+	checked_ns = now;
+	/* (SDL's relative mode hides it as it turns on, each time) */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+	while (!CGCursorIsVisible() && shows++ < 8)
+		[NSCursor unhide];
+#pragma clang diagnostic pop
+	SDL_GetWindowPosition(focus, &x, &y);
+	SDL_GetWindowSize(focus, &width, &height);
+	SDL_GetGlobalMouseState(&at_x, &at_y);
+	if (width > 2 * RAW_CURSOR_INSET && height > 2 * RAW_CURSOR_INSET &&
+		(fabsf(at_x - (x + width - RAW_CURSOR_INSET)) > 1.0f || fabsf(at_y - (y + height - RAW_CURSOR_INSET)) > 1.0f))
+		CGWarpMouseCursorPosition(CGPointMake(x + width - RAW_CURSOR_INSET, y + height - RAW_CURSOR_INSET));
 }
 
 /* the counts since the last call, if the mouse has moved lately (else 0:
