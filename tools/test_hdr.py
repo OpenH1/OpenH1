@@ -93,16 +93,39 @@ int main(void)
 	CHECK(classify(1, XGPU_BLEND_SOURCE_ALPHA, XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA, ADD, RGB, -1, 1, 0, F) == 0,
 		"the menus' alpha blend is untagged");
 	tag = classify(1, XGPU_BLEND_ONE, XGPU_BLEND_ONE, ADD, RGB, 2, 0, HALO_HDR_KIND_FIRST_PERSON | HALO_HDR_KIND_NUMERIC, F);
-	CHECK((tag & XGPU_HDR_EXPAND) && XGPU_HDR_CEILING_OF(tag) == XGPU_HDR_CEILING_WEAPON,
+	CHECK(XGPU_HDR_GLOW(tag) && XGPU_HDR_CEILING_OF(tag) == XGPU_HDR_CEILING_WEAPON,
 		"the assault rifle's ammunition counter glows to the weapon's ceiling: %04x", tag);
 	tag = classify(1, XGPU_BLEND_SOURCE_ALPHA, XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA, ADD, RGB, 22, 0,
 		HALO_HDR_KIND_FIRST_PERSON | HALO_HDR_KIND_NUMERIC, F);
-	CHECK((tag & XGPU_HDR_EXPAND) && XGPU_HDR_CEILING_OF(tag) == XGPU_HDR_CEILING_WEAPON, "... whatever its blend");
+	CHECK(XGPU_HDR_GLOW(tag) && XGPU_HDR_CEILING_OF(tag) == XGPU_HDR_CEILING_WEAPON, "... whatever its blend");
 	CHECK(classify(1, XGPU_BLEND_SOURCE_ALPHA, XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA, ADD, RGB, 22, 0,
 		HALO_HDR_KIND_FIRST_PERSON, F) == 0, "a first-person part's alpha blend is no glow");
 	tag = classify(1, XGPU_BLEND_ONE, XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA, ADD, RGB, 27, 1, HALO_HDR_KIND_HUD_GLOW, F);
-	CHECK((tag & XGPU_HDR_EXPAND) && XGPU_HDR_CEILING_OF(tag) == XGPU_HDR_CEILING_HUD, "the motion tracker glows to "
+	CHECK(XGPU_HDR_GLOW(tag) && XGPU_HDR_CEILING_OF(tag) == XGPU_HDR_CEILING_HUD, "the motion tracker glows to "
 		"the HUD's ceiling: %04x", tag);
+	/* the light of the world: a surface that is light (a teleporter's
+	field, a light fixture, an energy shield, a bolt's volume) glows to its
+	ceiling where it is additive, in Faithful and Punchy alike */
+	tag = classify(1, XGPU_BLEND_ONE, XGPU_BLEND_ONE, ADD, RGB, 22, 0, HALO_HDR_KIND_LIGHT, F);
+	CHECK(XGPU_HDR_GLOW(tag) && XGPU_HDR_CEILING_OF(tag) == XGPU_HDR_CEILING_LIGHT &&
+		XGPU_HDR_BLEND_SOURCE(tag) == XGPU_BLEND_ONE && XGPU_HDR_BLEND_DESTINATION(tag) == XGPU_BLEND_ONE,
+		"a teleporter's field glows to the light's ceiling, blended in the shader: %04x", tag);
+	tag = classify(1, XGPU_BLEND_SOURCE_ALPHA, XGPU_BLEND_ONE, ADD, RGB, 22, 0, HALO_HDR_KIND_LIGHT, P);
+	CHECK(XGPU_HDR_CEILING_OF(tag) == XGPU_HDR_CEILING_LIGHT, "a plasma shield's or a bolt's volume too: %04x", tag);
+	tag = classify(1, XGPU_BLEND_ONE, XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA, ADD, ALL, 16, 0, HALO_HDR_KIND_LIGHT, F);
+	CHECK(XGPU_HDR_CEILING_OF(tag) == XGPU_HDR_CEILING_LIGHT && !(tag & XGPU_HDR_ALPHA_LIMIT),
+		"an alpha multiply add too, its alpha (the over operator's) under 1 as it was: %04x", tag);
+	CHECK(classify(1, XGPU_BLEND_SOURCE_ALPHA, XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA, ADD, RGB, 16, 0, HALO_HDR_KIND_LIGHT,
+		F) == 0, "a light's alpha blend is no glow (it cannot leave [0, 1])");
+	CHECK(classify(1, XGPU_BLEND_ONE, XGPU_BLEND_ONE, XGPU_BLEND_MAX, RGB, 16, 0, HALO_HDR_KIND_LIGHT, F) == 0,
+		"nor its maximum (a hologram's)");
+	CHECK(XGPU_HDR_CEILING_OF(classify(1, XGPU_BLEND_ONE, XGPU_BLEND_ONE, ADD, RGB, 27, 1, HALO_HDR_KIND_LIGHT, F)) ==
+		XGPU_HDR_CEILING_PAPER_WHITE, "nor anything over the tone mapped view");
+	CHECK(classify(1, XGPU_BLEND_ONE, XGPU_BLEND_ONE, ADD, 0, 22, 0, HALO_HDR_KIND_LIGHT, F) == 0,
+		"nor a draw writing no colour");
+	CHECK(XGPU_HDR_CEILING_LIGHT_VALUE > XGPU_HDR_CEILING_WEAPON_VALUE && XGPU_HDR_CEILING(XGPU_HDR_CEILING_LIGHT) <
+		XGPU_HDR_ALPHA_LIMIT && !(XGPU_HDR_CEILING(7) & (XGPU_HDR_BLEND(15, 15, 7) | XGPU_HDR_ALPHA_LIMIT |
+		XGPU_HDR_LIGHTS)), "the ceilings' field is its own bits");
 	tag = classify(1, XGPU_BLEND_ONE, XGPU_BLEND_ONE, XGPU_BLEND_REVERSE_SUBTRACT, RGB, 22, 0, 0, F);
 	CHECK(XGPU_HDR_CEILING_OF(tag) != 0, "a subtraction is kept from going below 0");
 	tag = classify(1, XGPU_BLEND_ONE_MINUS_DESTINATION_COLOR, XGPU_BLEND_ZERO, ADD, RGB, 28, 1, 0, F);
@@ -183,6 +206,26 @@ int main(void)
 		CHECK(rgb[0] - 0.6f < rgb[2] - 1.0f, "by its own light (its colour)");
 	}
 	{
+		/* a teleporter's field: its bright swirls past paper white, toward
+		the light's ceiling and no further, its hue kept; its dim body as it
+		was; nothing added where the draw added nothing */
+		float had[3] = { 0.05f, 0.08f, 0.05f }, swirl[3] = { 0.30f, 1.05f, 0.25f }, body[3] = { 0.10f, 0.35f, 0.08f },
+			dark[3] = { 0.05f, 0.08f, 0.05f }, weapon[3] = { 0.30f, 1.05f, 0.25f };
+		float most;
+
+		xgpu_hdr_expand(swirl, had, XGPU_HDR_CEILING_LIGHT);
+		xgpu_hdr_expand(weapon, had, XGPU_HDR_CEILING_WEAPON);
+		xgpu_hdr_expand(body, had, XGPU_HDR_CEILING_LIGHT);
+		xgpu_hdr_expand(dark, had, XGPU_HDR_CEILING_LIGHT);
+		most = swirl[1];
+		CHECK(xgpu_hdr_linear(most) > 2.0f && weapon[1] < most, "a swirl well past paper white, past a weapon's glow: "
+			"%.3f (%.2f times), the weapon's %.3f", most, xgpu_hdr_linear(most), weapon[1]);
+		CHECK(swirl[0] / swirl[1] < 0.30f / 1.05f && swirl[0] > 0.30f, "its green kept: %.3f %.3f %.3f", swirl[0],
+			swirl[1], swirl[2]);
+		CHECK(body[1] < 0.36f, "its dim body nearly as it was: %.3f", body[1]);
+		CHECK(dark[0] == 0.05f && dark[1] == 0.08f && dark[2] == 0.05f, "nothing where it added nothing");
+	}
+	{
 		/* the dynamic lights: the same under white, more past it */
 		CHECK(xgpu_hdr_lights(0.2f, 0.1f, 1) == xgpu_hdr_lights(0.2f, 0.1f, 0), "the lights' shoulder under white");
 		CHECK(xgpu_hdr_lights(0.8f, 3.0f, 1) > 1.2f && xgpu_hdr_lights(0.8f, 3.0f, 0) <= 1.0f,
@@ -256,3 +299,8 @@ def test_hooks_in_the_game():
         (rasterizer / "rasterizer_xbox_transparent_geometry.c").read_text()
     assert "HALO_HDR_KIND_HUD_GLOW" in (rasterizer / "rasterizer_xbox_motion_sensor.c").read_text()
     assert "HALO_HDR_KIND_HUD_GLOW" in (rasterizer / "rasterizer_xbox_dynavobgeom.c").read_text()
+    transparent = (rasterizer / "rasterizer_xbox_transparent_geometry.c").read_text()
+    assert "kind |= HALO_HDR_KIND_LIGHT;" in transparent and "base.radiosity.power > 0.0f" in transparent
+    light_volumes = (ROOT / "source/objects/widgets/light_volumes.c").read_text()
+    assert light_volumes.count("halo_hdr_draw_kind(HALO_HDR_KIND_LIGHT);") == 1
+    assert light_volumes.count("halo_hdr_draw_kind(HALO_HDR_KIND_NONE);") == 1

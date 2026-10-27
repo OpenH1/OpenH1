@@ -25,6 +25,10 @@ highlights it cannot show.
   paper white; the HUD's deliberate glows (a meter's flash, the motion
   tracker) up to 1.5 times. The rest of the HUD and the menus stay at
   paper white.
+- **The light of the world**: the surfaces that are light, which the game
+  can only draw up to white, glow past it up to 3 times paper white:
+  the teleporters' fields, the levels' light fixtures and Covenant lights,
+  energy shields, and the plasma bolts' and needles' glowing volumes.
 - **Settings**: `display.hdr` (`auto`, `on`, `off`), `display.hdr_mode`
   (`faithful`, `punchy`), `display.hdr_paper_white` (50 to 250 percent of
   the system's SDR white). Video Setup's Extra Effects screen has a row for
@@ -63,7 +67,10 @@ The front end tags each draw into the HDR back buffer
 - what the drawing code knows (`halo_hdr_draw_kind`): a transparent group of
   the first-person weapon's own shaders (generic, chicago, meter; numeric
   ones are the ammunition counters), glass and water (a surface's specular
-  light), a HUD meter while it flashes, the motion tracker;
+  light), a HUD meter while it flashes, the motion tracker; in the world
+  (not the sky), a surface that is light: a generic or chicago shader
+  the map gives radiosity power (the power it lights the level's
+  lightmaps with), a plasma shader, a light's volume;
 - whether the 3D view is being drawn or the HUD over it (after the tone
   map).
 
@@ -75,6 +82,7 @@ The front end tags each draw into the HDR back buffer
 | Over the tone mapped view | the HUD's bitmaps and meters, screen flashes, screen effects, menus | ceiling at paper white |
 | The first-person weapon's glows | the ammunition counter (whatever its blend), meters, additive display parts | expanded, ceiling 1.75 times paper white |
 | The HUD's glows | a meter flashing, the motion tracker | expanded, ceiling 1.5 times paper white |
+| The light of the world (additive) | teleporters' fields, light fixtures, Covenant lights, energy shields, plasma bolts' and needles' volumes | expanded from lower, ceiling 3 times paper white |
 | Destination alpha | any draw writing alpha whose blend could take it past 1 (a double multiply's) | alpha limited to 1 (the game reads it as a blend factor) |
 | The enhanced dynamic lights | a structure's lightmap pass | their shoulder goes on past white (below white, unchanged) |
 
@@ -91,10 +99,15 @@ fixed-function blending off. One less the destination's colour is never
 below 0 there.
 
 **Expansion** brightens a glow where it is bright (its brightest channel
-from 0.6 up) by more of the light the draw added (its own colour: what was
+from 0.6 up; the light of the world's from 0.4, which the game draws
+dimmer) by more of the light the draw added (its own colour: what was
 under it is not brightened), up to its ceiling, which keeps its hue
 (`xgpu_hdr_expand`). The counter's digits, cyan, reach about 1.5 times paper
-white in their blue (MaxRGB).
+white in their blue (MaxRGB). A teleporter's field keeps its dim body as
+the SDR picture has it and its bright swirls pass white; a light fixture's
+panel, near white in SDR, reaches the ceiling. The ceilings are one field
+of the tag (`XGPU_HDR_CEILING_OF`); a glow is a ceiling past paper white's
+(`XGPU_HDR_GLOW`).
 
 ## The tone map and the encoding
 
@@ -182,8 +195,8 @@ the stream's ring carries it, written by the host). A backend declares
   Vulkan device, made Metal's by SPIRV-Cross and run on a Mac's GPU: its
   tone map and encoding as shipped (`xgpu_vulkan_post_shaders.c`) over the
   same golden colours against the reference (scRGB's and HDR10's encodings
-  too); and each tagged draw (every ceiling, a glow's expansion, the alpha
-  limit, over each of eleven blends) as the SPIR-V emitter writes it and as
+  too); and each tagged draw (every ceiling, the three glows' expansion,
+  the alpha limit, over each of eleven blends) as the SPIR-V emitter writes it and as
   the MSL emitter writes it, over the same 512 pixels: the two backends
   leave the same values, none past its tag's limit. Everywhere: the two
   backends' tone map and encoding are one GLSL source but for the
@@ -199,6 +212,21 @@ the stream's ring carries it, written by the host). A backend declares
 
 ## Choices, and where they depart from the plan
 
+- **The light of the world is what the map says is light.** A transparent
+  shader with radiosity power lights the level (the tool's lightmaps take
+  its light), so the map's own author called it a light: the
+  teleporters' fields (power 10) and cones, the levels' fixtures and
+  Covenant lights. That is a property of the shader, not its name, so a
+  Custom Edition map's teleporters and lights glow too. Of those, only the
+  additive draws glow (an alpha blend, the monitor's glass, cannot leave
+  [0, 1]; nor can the holograms' maximum). The plasma shaders (energy
+  shields) and the lights' volumes (the plasma bolts', the needles', a
+  Ghost's bolts) are light by their kind. Additive shaders without power
+  (powerups, the warthog's dials, the KOTH hill) stay as the game blends
+  them; the effects' particles, contrails and lens flares too, whose
+  layers already pile up past white (explosions, muzzle flashes): a
+  ceiling would stop that. The first-person weapon's own glows keep their
+  ceiling.
 - **Ceilings blend in the shader, not by clamping after.** A clamp after a
   draw (a second draw taking the minimum) would dim light that was already
   past white under it: a specular pass over a wall a plasma bolt lights

@@ -2748,7 +2748,9 @@ static unsigned int hdr_output(struct module *m, unsigned short hdr, unsigned in
 {
 	int ceiling = XGPU_HDR_CEILING_OF(hdr);
 	float ceiling_value = ceiling == XGPU_HDR_CEILING_WEAPON ? XGPU_HDR_CEILING_WEAPON_VALUE :
-		ceiling == XGPU_HDR_CEILING_HUD ? XGPU_HDR_CEILING_HUD_VALUE : XGPU_HDR_CEILING_PAPER_WHITE_VALUE;
+		ceiling == XGPU_HDR_CEILING_HUD ? XGPU_HDR_CEILING_HUD_VALUE :
+		ceiling == XGPU_HDR_CEILING_LIGHT ? XGPU_HDR_CEILING_LIGHT_VALUE : XGPU_HDR_CEILING_PAPER_WHITE_VALUE;
+	float knee = ceiling == XGPU_HDR_CEILING_LIGHT ? XGPU_HDR_EXPAND_LIGHT_KNEE : XGPU_HDR_EXPAND_KNEE;
 	unsigned int d = hdr_destination(m, options), v, rgb, had, alpha;
 	unsigned int source = fmul(m, 4, s, hdr_factor(m, XGPU_HDR_BLEND_SOURCE(hdr), s, d));
 	unsigned int destination = fmul(m, 4, d, hdr_factor(m, XGPU_HDR_BLEND_DESTINATION(hdr), s, d));
@@ -2766,13 +2768,13 @@ static unsigned int hdr_output(struct module *m, unsigned short hdr, unsigned in
 	had = xyz(m, d);
 	/* (a glow: more of the light the draw added, where it is bright:
 	xgpu_hdr_expand) */
-	if (hdr & XGPU_HDR_EXPAND)
+	if (XGPU_HDR_GLOW(hdr))
 	{
 		unsigned int added = fmax_scalar(m, 3, fsub(m, 3, rgb, had), 0.0f);
 		unsigned int added_most = brightest_of(m, added), most = brightest_of(m, rgb), more;
 
 		more = ext2(m, GLSL_F_MIN, m->t_float, fdiv(m, 1, fmul(m, 1, fmul(m, 1, constant_float(m, ceiling_value - 1.0f),
-			ext3(m, GLSL_SMOOTH_STEP, m->t_float, constant_float(m, XGPU_HDR_EXPAND_KNEE), constant_float(m, 1.0f), most)),
+			ext3(m, GLSL_SMOOTH_STEP, m->t_float, constant_float(m, knee), constant_float(m, 1.0f), most)),
 			most), fmax_scalar(m, 1, added_most, 1.0e-6f)), constant_float(m, XGPU_HDR_EXPAND_MOST));
 		more = op3(m, OP_SELECT, m->t_float, compare(m, OP_F_ORD_GREATER_THAN, added_most, constant_float(m, 0.0f)),
 			more, constant_float(m, 0.0f));
@@ -2780,7 +2782,7 @@ static unsigned int hdr_output(struct module *m, unsigned short hdr, unsigned in
 	}
 	/* (a glow's ceiling keeps its hue: its brightest channel's; any other's
 	each channel's) */
-	if (ceiling && (hdr & XGPU_HDR_EXPAND))
+	if (XGPU_HDR_GLOW(hdr))
 	{
 		unsigned int limit = fmax_scalar(m, 1, brightest_of(m, had), ceiling_value), brightest = brightest_of(m, rgb);
 

@@ -407,12 +407,12 @@ static void draws_test(NSString *dir)
 				/* (a ceiling: no channel past what the pixel had or the
 				ceiling; the alpha limit: alpha not past 1) */
 				if (channel < 3 && ceiling && v > fmaxf(had[pixel * 4 + channel], ceiling_value) * 1.002f + 0.002f &&
-					!(tag & XGPU_HDR_EXPAND))
+					!XGPU_HDR_GLOW(tag))
 					FAIL("%s: pixel %d channel %d past its ceiling: %.5f", name, pixel, channel, (double)v);
 				if (channel == 3 && (tag & XGPU_HDR_ALPHA_LIMIT) && v > 1.0f)
 					FAIL("%s: pixel %d's alpha past 1: %.5f", name, pixel, (double)v);
 			}
-			if (ceiling && (tag & XGPU_HDR_EXPAND))
+			if (XGPU_HDR_GLOW(tag))
 			{
 				/* (a glow's ceiling is its brightest channel's) */
 				float most = fmaxf(vulkan[pixel * 4], fmaxf(vulkan[pixel * 4 + 1], vulkan[pixel * 4 + 2]));
@@ -424,8 +424,8 @@ static void draws_test(NSString *dir)
 		}
 	}
 	printf("draws: %d draws, %d values compared between the backends\n", draws, compared);
-	if (draws != 55)
-		FAIL("draws: %d drawn, not 55", draws);
+	if (draws != 66)
+		FAIL("draws: %d drawn, not 66", draws);
 }
 
 int main(int argc, char **argv)
