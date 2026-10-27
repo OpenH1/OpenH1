@@ -21,14 +21,18 @@ picture becomes one of two presentation images when the frame ends
 place the image it replaces takes for the next frame (xgpu_metal.m).
 
 The game is paced by the display (frame_pacing.h, in the command stream's
-host): each frame is told taken as the link takes it (or drops it), and
-each refresh's callback is its latch, with the refreshes' period (the least
-interval between the link's targets), so that the game starts each frame
-its budget before the latch it is for, with at most one frame waiting.
-The link calls about two refreshes ahead of the frame on screen; taking
-the frame later in the callback, nearer the link's deadline, missed
-refreshes (measured on an M1 Max at 120 Hz). Each frame's time on screen
-goes back with its input time, for the input to screen statistics.
+host): each refresh takes the oldest frame queued TAKE_MARGIN_MS
+before the link's deadline for it (its update's targetTimestamp), not as
+the link calls, a refresh earlier. The deadline is the refresh's latch,
+with the refreshes' period (the least interval between the link's
+targets): the game starts each frame its budget before the latch it is
+for, with at most one frame waiting. The budget is the most of the last
+frames' costs, from their input read to their GPU work done
+(host_metal_present_signal's host_render_stream_frame_finished: the
+presentation waits for that work), and a margin the stream learns from the
+frames a take found missing (host_render_stream_frame_displayed). Each
+frame's time on screen goes back with its input time, for the input to
+screen statistics.
 
 With display.vsync off (host_metal_vsync, the Mac's default), the game is
 not paced by the display: it draws as many frames as display.max_fps lets
@@ -37,7 +41,7 @@ default, a press starting the next frame at once), and each refresh shows
 the newest frame queued, the older one dropped. The link still presents
 only at the refreshes, so nothing tears, in a window or fullscreen. The
 newest frame is taken just before the link's deadline for the refresh (its
-update's targetTimestamp, UNPACED_TAKE_MARGIN_MS before it), not as the
+update's targetTimestamp, TAKE_MARGIN_MS before it), not as the
 link calls: the link calls a refresh before that deadline (on an M2 at
 60 Hz in a window: the deadline 16.6 ms after the call, the frame on
 screen 49.9 ms after it), so the frame shown is a refresh newer. The game
@@ -126,13 +130,14 @@ static void drawn_size(int *width, int *height);
 /* the longest a frame waits for an image before the oldest queued frame is
 dropped (100 ms: six refreshes at 60 Hz) */
 #define PRESENT_WAIT_MAXIMUM_NS 100000000L
-/* (vsync off) how long before the link's deadline for a refresh the newest
-frame is taken for it: the presentation's GPU work is about 0.1 ms, and
-waits for the frame's own if it is still drawing. Measured on an M2 at
-60 Hz in a window: 2 to 6 ms missed no refresh (the link's deadline has
-room), and the frames' input to screen (median) fell from 75 ms, taken as
-the link calls, to 36 to 43 ms. */
-#define UNPACED_TAKE_MARGIN_MS 3.0
+/* how long before the link's deadline for a refresh its frame is taken
+(the newest with vsync off, the oldest queued with it on): the
+presentation's GPU work is about 0.1 ms, and waits for the frame's own if
+it is still drawing. Measured on an M2 at 60 Hz in a window, vsync off:
+2 to 6 ms missed no refresh (the link's deadline has room), and the
+frames' input to screen (median) fell from 75 ms, taken as the link calls,
+to 36 to 43 ms. */
+#define TAKE_MARGIN_MS 3.0
 /* (vsync off) the most the frames' start moves a refresh as their budget
 changes (host_metal_frame_phase): the budget, the most of the last frames'
 costs, moved by up to 8 ms at once as a long frame came or left */
@@ -207,7 +212,7 @@ static struct
 	the link's rate is set again at its next refresh */
 	_Atomic int rate_changed;
 	/* (unpaced) the newest frame is taken this long before the link's
-	deadline (seconds: UNPACED_TAKE_MARGIN_MS, HALO_METAL_TAKE_MARGIN_MS),
+	deadline (seconds: TAKE_MARGIN_MS, HALO_METAL_TAKE_MARGIN_MS),
 	and the latest a wait for it ended since the last log (microseconds) */
 	double take_margin;
 	_Atomic uint64_t take_late_most_us;
@@ -263,6 +268,10 @@ static struct
 	/* each queued image's frame's input time (host_render_stream_frame_input) */
 	uint64_t frame_input[PRESENT_IMAGES];
 	uint64_t frame_ready[PRESENT_IMAGES];
+	/* (paced) the game's frames' GPU work done, on the game's clock, by
+	their number (host_metal_present_signal), for the take that finds
+	them (host_render_stream_frame_displayed) */
+	_Atomic uint64_t frame_finished_ns[8], frame_finished_number[8];
 } presentation = {
 	.lock = PTHREAD_MUTEX_INITIALIZER,
 	.freed = PTHREAD_COND_INITIALIZER,
@@ -713,7 +722,24 @@ int host_metal_present_initialize(void)
 No presentation wait can therefore depend on a future uncommitted frame. */
 void host_metal_present_signal(id<MTLCommandBuffer> buffer, uint64_t frame)
 {
+	uint64_t input = host_render_stream_frame_input();
+
 	[buffer encodeSignalEvent:presentation.render_event value:frame];
+	/* (the frame's cost, its GPU's work included: the paced game's budget,
+	host_render_stream_frame_finished) */
+	[buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
+		struct timespec monotonic;
+		uint64_t finished;
+
+		if (!(done.GPUEndTime > 0.0))
+			return;
+		clock_gettime(CLOCK_MONOTONIC, &monotonic);
+		finished = (uint64_t)((done.GPUEndTime + (double)monotonic.tv_sec + monotonic.tv_nsec / 1e9 - CACurrentMediaTime()) * 1e9);
+		atomic_store(&presentation.frame_finished_ns[frame % 8], finished);
+		atomic_store(&presentation.frame_finished_number[frame % 8], frame);
+		if (input && !presentation.unpaced)
+			host_render_stream_frame_finished(input, finished);
+	}];
 }
 
 id<MTLCommandBuffer> host_metal_present_buffer(uint64_t producer_frame)
@@ -807,6 +833,18 @@ static void pacing_log(double now)
 	if (presentation.unpaced)
 		host_logf(HOST_LOG_INFO, "metal: vsync off: the newest frame taken %.1f ms before the link's deadline, at most %.2f ms late",
 			presentation.take_margin * 1000.0, atomic_exchange(&presentation.take_late_most_us, 0) / 1000.0);
+	else
+	{
+		/* (as Vulkan's pacing line, xgpu_vulkan_pacing.c) */
+		struct host_render_pacing_statistics pacing;
+
+		host_render_stream_pacing_statistics(&pacing);
+		host_logf(HOST_LOG_INFO, "metal: pacing on: %u refreshes showed a frame again; %u frames taken at their refresh, "
+			"%u after it (%u ran long), %u started late; margin %.2f ms, budget %.2f ms; taken %.1f ms before the "
+			"link's deadline, at most %.2f ms late", presentation.skipped, pacing.kept,
+			pacing.missed, pacing.overran, pacing.late_starts, (double)pacing.margin / 1e6, (double)pacing.budget / 1e6,
+			presentation.take_margin * 1000.0, atomic_exchange(&presentation.take_late_most_us, 0) / 1000.0);
+	}
 	host_logf(HOST_LOG_INFO,
 		"metal: %.1f s: %u refreshes (%.1f Hz), %u presented (%u frames, %u cleared), %u on screen (%.1f a second), "
 		"intervals %.2f ms mean, %.2f min, %.2f max, %u late, %u hitches over 33 ms; %u refreshes without a new frame (the GPU %u, an image %u, "
@@ -965,6 +1003,9 @@ static void take_wait(double when)
 		BOOL idle;
 		struct xgpu_metal_compile_totals compiled = { 0 };
 		uint64_t input = 0, producer_frame = 0;
+		/* (paced) the take's time and the refreshes' period, on the game's
+		clock */
+		uint64_t latch_ns = 0, period_ns = 0;
 		struct loading_presentation_frame loading_frame;
 
 		(void)link;
@@ -1011,7 +1052,7 @@ static void take_wait(double when)
 			struct timespec monotonic;
 			double offset, period = 0.0;
 			uint32_t interval;
-			/* (vsync off) the newest frame is taken UNPACED_TAKE_MARGIN_MS
+			/* (vsync off) the newest frame is taken TAKE_MARGIN_MS
 			before the link's deadline for this refresh, not as the link
 			calls, a refresh before it: the frame on screen is that much
 			newer */
@@ -1030,7 +1071,13 @@ static void take_wait(double when)
 			offset = (double)monotonic.tv_sec + monotonic.tv_nsec / 1e9 - seconds_now();
 			if (!presentation.unpaced)
 			{
-				host_render_stream_display_latched((uint64_t)((now + offset) * 1e9), (uint64_t)(period * 1e9));
+				/* (the refresh's latch is the link's deadline, its frame's
+				work to be done by it: its GPU's too, which the presentation
+				waits for. The frame is taken a little before, below) */
+				if (presentation.frames_seen && take > now && take - now < 0.1)
+					take_wait(take);
+				latch_ns = (uint64_t)((update.targetTimestamp + offset) * 1e9);
+				period_ns = (uint64_t)(period * 1e9);
 			}
 			else
 			{
@@ -1118,8 +1165,20 @@ static void take_wait(double when)
 		pthread_mutex_unlock(&presentation.lock);
 		while (discarded-- > 0)
 			host_render_stream_frame_taken();
-		if (image)
+		/* (paced: the frame taken at the take, which tells the stream whether
+		it came in time for the refresh it was started for; or the take
+		alone, nothing new queued) */
+		if (image && latch_ns)
+		{
+			uint64_t finished = atomic_load(&presentation.frame_finished_number[producer_frame % 8]) == producer_frame ?
+				atomic_load(&presentation.frame_finished_ns[producer_frame % 8]) : 0;
+
+			host_render_stream_frame_displayed(input, finished, latch_ns, 0, period_ns);
+		}
+		else if (image)
 			host_render_stream_frame_taken();
+		else if (latch_ns)
+			host_render_stream_display_latched(latch_ns, period_ns);
 		if (!image && !idle && !loading_frame.active)
 		{
 			/* (the frame shown stays: nothing new to present) */
@@ -1684,7 +1743,7 @@ int host_metal_window_open(uint32_t window)
 	SDL_AddEventWatch(window_event, NULL);
 	presentation.stats_interval = stats ? atof(stats) : 0.0;
 	presentation.take_margin = (getenv("HALO_METAL_TAKE_MARGIN_MS") ? atof(getenv("HALO_METAL_TAKE_MARGIN_MS")) :
-		UNPACED_TAKE_MARGIN_MS) / 1000.0;
+		TAKE_MARGIN_MS) / 1000.0;
 	presentation.unpaced = presentation.unpaced_forced =
 		getenv("HALO_METAL_UNPACED") && atoi(getenv("HALO_METAL_UNPACED"));
 	/* (the game starts each frame as the display takes the last: frame_pacing.h) */

@@ -177,6 +177,27 @@ void host_render_stream_sleep_until(uint64_t when)
 	(void)when;
 }
 
+void host_render_stream_frame_finished(uint64_t input, uint64_t finished)
+{
+	(void)input;
+	(void)finished;
+}
+
+void host_render_stream_frame_displayed(uint64_t input, uint64_t finished, uint64_t latched, uint64_t shown,
+	uint64_t period)
+{
+	(void)input;
+	(void)finished;
+	(void)latched;
+	(void)shown;
+	(void)period;
+}
+
+void host_render_stream_pacing_statistics(struct host_render_pacing_statistics *statistics)
+{
+	memset(statistics, 0, sizeof(*statistics));
+}
+
 void host_render_stream_frame_shown(uint64_t input, uint64_t shown)
 {
 	(void)input;
