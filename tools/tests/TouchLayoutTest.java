@@ -237,6 +237,21 @@ public final class TouchLayoutTest {
             high.bounds(960, 540);
             high.bounds(960, tall);
             check(Math.abs(high.y(0) - middle) < 0.01f, "A control put in the middle of a tall display comes back there");
+            // (white, black and the second fire, moved toward their places
+            // beside the D-pad, dragged to each edge stay at it)
+            for (int kind : new int[] {TouchLayout.WHITE, TouchLayout.BLACK, TouchLayout.FIRE_LEFT}) {
+                for (float[] edge : new float[][] {{-99999, tall / 2}, {99999, tall / 2}, {480, -99999}, {480, 99999}}) {
+                    TouchLayout dragged = new TouchLayout();
+                    dragged.bounds(960, tall);
+                    dragged.move(kind, edge[0], edge[1]);
+                    float x = dragged.x(kind), y = dragged.y(kind);
+                    dragged.bounds(960, 540);
+                    dragged.bounds(960, tall);
+                    check(Math.abs(dragged.x(kind) - x) < 0.01f && Math.abs(dragged.y(kind) - y) < 0.01f,
+                          "A control dragged to an edge of a tall display comes back there (" + kind + ", "
+                          + edge[0] + ", " + edge[1] + " at " + tall + ")");
+                }
+            }
         }
         // The portrait layout: its own grid and defaults, apart at every
         // portrait shape (a 16:9 phone, 20:9, the Fold7's cover, a split
@@ -356,8 +371,20 @@ public final class TouchLayoutTest {
         uprightCopy.layout.bounds(865, 960);
         check(Math.abs(uprightCopy.layout.x(4) - portraitX) < 0.01f && Math.abs(uprightCopy.layout.y(4) - portraitY) < 0.01f,
               "A portrait layout comes back from its file");
-        check(!new TouchLayout().exportConfiguration(1f).contains("orientation"),
+        check(!new TouchLayout().exportConfiguration(1f).contains("orientation")
+              && new TouchLayout().exportConfiguration(1f).contains("version=3"),
               "A landscape layout's file is as it was");
+        // (a portrait layout's file has a version the builds before portrait, and iOS's, refuse)
+        String portraitFile = portraitWide.exportConfiguration(1f);
+        check(portraitFile.contains("version=4"), "A portrait layout's file is version 4");
+        for (String mismatched : new String[] {portraitFile.replace("version=4", "version=3"),
+                new TouchLayout().exportConfiguration(1f).replace("version=3", "version=4")}) {
+            try {
+                TouchLayout.importConfiguration(mismatched);
+                check(false, "Version 4 is a portrait layout's, and only its");
+            } catch (IllegalArgumentException expected) {
+            }
+        }
         check(!TouchLayout.importConfiguration(new TouchLayout().exportConfiguration(1f)).layout.portrait,
               "A layout file without an orientation is landscape");
         String sideways = portraitWide.exportConfiguration(1f).replace("orientation=portrait", "orientation=sideways");

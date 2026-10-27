@@ -42,6 +42,9 @@ final class TouchLayout {
     private static final float GRID_WIDTH = 960;
     private static final float GRID_HEIGHT = 540;
     private static final int VERSION = 3;
+    /** a portrait layout's file's version, and only its: one the builds before portrait (and iOS's, at 3) refuse,
+     * rather than read it as a landscape layout */
+    private static final int PORTRAIT_VERSION = 4;
     /**
      * on a display taller than the grid (a folding phone's inner screen, a
      * tablet) the top row (the grid's lines down to TOP_ROW) keeps its
@@ -406,7 +409,7 @@ final class TouchLayout {
     /** a place on this layout's grid on the display, each way, and back */
     private float displayX(int type, float placeX) {
         return portrait ? edgeKept(placeX, width, PORTRAIT_GRID_WIDTH, LEFT_PART, RIGHT_PART) + gatherShift(type)
-            : placeX * width / GRID_WIDTH + tallShift(type, height, 0);
+            : placeX * width / GRID_WIDTH + tallShift(type, placeX, height, 0);
     }
 
     private float displayY(int type, float placeY) {
@@ -416,7 +419,8 @@ final class TouchLayout {
 
     private float gridX(int type, float x) {
         return portrait ? edgeKeptBack(x - gatherShift(type), width, PORTRAIT_GRID_WIDTH, LEFT_PART, RIGHT_PART)
-            : Math.max(0, Math.min(GRID_WIDTH, (x - tallShift(type, height, 0)) * GRID_WIDTH / width));
+            : tallShifted(type, height) ? tallLineBack(type, x, width, height, 0)
+            : Math.max(0, Math.min(GRID_WIDTH, x * GRID_WIDTH / width));
     }
 
     private float gridY(int type, float y) {
@@ -466,12 +470,13 @@ final class TouchLayout {
     /** a kind of control's line of the landscape grid on a display this high (white and black: WHITE_BLACK_ROW; TALL_PLACES) */
     static float displayY(int type, float placeY, float height) {
         return (type == WHITE || type == BLACK ? edgeKept(placeY, height, GRID_HEIGHT, 0, WHITE_BLACK_ROW)
-            : displayY(placeY, height)) + tallShift(type, height, 1);
+            : displayY(placeY, height)) + tallShift(type, placeY, height, 1);
     }
 
     /** the kind's line at this height: displayY's inverse */
     static float gridY(int type, float y, float height) {
-        y -= tallShift(type, height, 1);
+        if (tallShifted(type, height))
+            return tallLineBack(type, y, 0, height, 1);
         return Math.max(0, type == WHITE || type == BLACK ? edgeKeptBack(y, height, GRID_HEIGHT, 0, WHITE_BLACK_ROW)
             : gridY(y, height));
     }
@@ -485,20 +490,56 @@ final class TouchLayout {
     }
 
     /**
-     * how far a kind of TALL_KINDS moves from its place toward its
+     * how far a kind of TALL_KINDS at a line of the grid moves toward its
      * TALL_PLACES place on a landscape display this high, across (axis 0)
-     * or down (1): none up to 16:9, all of it from TALL_EXTRA taller; 0 for
-     * the other kinds
+     * or down (1): none up to 16:9, all of it from TALL_EXTRA taller; all
+     * of that at the kind's own line, less toward the grid's edges and none
+     * at them, so that one dragged to an edge keeps to it; 0 for the other
+     * kinds
      */
-    static float tallShift(int type, float height, int axis) {
+    static float tallShift(int type, float line, float height, int axis) {
         for (int i = 0; i < TALL_KINDS.length; i++) {
             if (TALL_KINDS[i] != type)
                 continue;
             float share = Math.max(0, Math.min(1, (height - GRID_HEIGHT) / TALL_EXTRA));
             float from = axis == 0 ? DEFAULTS[type][0] : type == FIRE_LEFT ? DEFAULTS[type][1] : WHITE_BLACK_ROW;
-            return share * (TALL_PLACES[i][axis] - from);
+            float end = axis == 0 ? GRID_WIDTH : GRID_HEIGHT;
+            float edge = Math.max(0, Math.min(1, line <= from ? line / from : (end - line) / (end - from)));
+            return share * edge * (TALL_PLACES[i][axis] - from);
         }
         return 0;
+    }
+
+    /** whether a kind moves on a landscape display this high (tallShift) */
+    private static boolean tallShifted(int type, float height) {
+        if (!(height > GRID_HEIGHT))
+            return false;
+        for (int kind : TALL_KINDS) {
+            if (kind == type)
+                return true;
+        }
+        return false;
+    }
+
+    /**
+     * the grid's line, across (axis 0) or down (1), that a kind of
+     * TALL_KINDS is placed at this point from, on a landscape display this
+     * wide and high: displayX's and displayY's inverse, found by halving
+     * (the placing goes one way, as tallShift's edges fall less steeply
+     * than the grid's lines rise), the grid's edge beyond it
+     */
+    private static float tallLineBack(int type, float at, float width, float height, int axis) {
+        float low = 0, high = axis == 0 ? GRID_WIDTH : GRID_HEIGHT;
+        for (int i = 0; i < 40; i++) {
+            float middle = (low + high) / 2;
+            float placed = axis == 0 ? middle * width / GRID_WIDTH + tallShift(type, middle, height, 0)
+                : displayY(type, middle, height);
+            if (placed < at)
+                low = middle;
+            else
+                high = middle;
+        }
+        return (low + high) / 2;
     }
 
     /** the layout as a layout file's text, with the look sensitivity */
@@ -507,7 +548,7 @@ final class TouchLayout {
             throw new IllegalArgumentException("Invalid sensitivity");
         Properties values = new Properties();
         values.setProperty("format", "halo-touch-layout");
-        values.setProperty("version", Integer.toString(VERSION));
+        values.setProperty("version", Integer.toString(portrait ? PORTRAIT_VERSION : VERSION));
         values.setProperty("rumble", Boolean.toString(rumbleEnabled));
         values.setProperty("gyroscope", Boolean.toString(gyroscopeEnabled));
         values.setProperty("opacity", Float.toString(opacity));
@@ -547,7 +588,8 @@ final class TouchLayout {
             if (count < BASE_COUNT || count > MAX_CONTROLS || !validSensitivity(sensitivity))
                 throw new IllegalArgumentException("Invalid layout settings");
             String orientation = values.getProperty("orientation", "landscape");
-            if (!"landscape".equals(orientation) && !"portrait".equals(orientation))
+            if (!"landscape".equals(orientation) && !"portrait".equals(orientation)
+                    || "portrait".equals(orientation) != (version == PORTRAIT_VERSION))
                 throw new IllegalArgumentException("Invalid orientation");
             TouchLayout layout = new TouchLayout("portrait".equals(orientation));
             layout.controls.clear();
@@ -574,7 +616,7 @@ final class TouchLayout {
         if (!"halo-touch-layout".equals(values.getProperty("format")))
             throw new IllegalArgumentException("Unsupported layout file");
         String version = values.getProperty("version");
-        for (int known = 1; known <= VERSION; known++) {
+        for (int known = 1; known <= PORTRAIT_VERSION; known++) {
             if (Integer.toString(known).equals(version))
                 return known;
         }

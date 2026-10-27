@@ -128,15 +128,17 @@ void host_gesture_insets(int *insets)
 }
 
 /* the guest's, display.orientation (sdl_platform.c's orientation_apply): 0
-landscape, 1 portrait (either way up), 2 whichever way the device is held,
-as its own rotation lock allows; Activity.setRequestedOrientation, which
-turns the window in place (HaloActivity's configChanges); SDL asks only as
-it makes the window. Logged, so the log shows each request. */
+landscape and 1 portrait, either way up (turned over with the device
+whatever its rotation lock, as the manifest's sensorLandscape), 2
+whichever way the device is held, as its own rotation lock allows;
+Activity.setRequestedOrientation, which turns the window in place
+(HaloActivity's configChanges); SDL asks only as it makes the window.
+Logged, so the log shows each request. */
 void host_orientation(int which)
 {
-	/* ActivityInfo's SCREEN_ORIENTATION_USER_LANDSCAPE, _USER_PORTRAIT and
-	_FULL_USER */
-	static const jint requests[] = { 11, 12, 13 };
+	/* ActivityInfo's SCREEN_ORIENTATION_SENSOR_LANDSCAPE, _SENSOR_PORTRAIT
+	and _FULL_USER */
+	static const jint requests[] = { 6, 7, 13 };
 	static const char *const names[] = { "landscape", "portrait", "auto" };
 	JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
 	jobject activity = (jobject)SDL_GetAndroidActivity();

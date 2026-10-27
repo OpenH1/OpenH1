@@ -498,6 +498,8 @@ public final class TouchControls extends View implements SensorEventListener, In
     private void loadLayout(Context context) {
         String configuration = preferences.getString(KEY_CONFIGURATION, null);
         String portrait = preferences.getString(KEY_PORTRAIT_CONFIGURATION, null);
+        // (each read apart: one that cannot be read leaves the other as saved)
+        boolean unreadable = false;
         try {
             if (configuration != null) {
                 TouchLayout.Configuration saved = TouchLayout.importConfiguration(configuration);
@@ -506,17 +508,23 @@ public final class TouchControls extends View implements SensorEventListener, In
                     sensitivity = saved.sensitivity;
                 }
             }
-            // (none saved yet: the portrait defaults, with the settings the landscape layout has)
-            portraitLayout.takeSettings(landscapeLayout);
+        } catch (IllegalArgumentException e) {
+            unreadable = true;
+        }
+        // (none saved yet: the portrait defaults, with the settings the landscape layout has)
+        portraitLayout.takeSettings(landscapeLayout);
+        try {
             if (portrait != null) {
                 TouchLayout.Configuration saved = TouchLayout.importConfiguration(portrait);
                 if (saved.layout.portrait)
                     portraitLayout = saved.layout;
             }
         } catch (IllegalArgumentException e) {
+            unreadable = true;
+        }
+        if (unreadable)
             Toast.makeText(context, "The saved touch layout could not be read. Using the default one.",
                 Toast.LENGTH_LONG).show();
-        }
         layout = landscapeLayout;
     }
 
