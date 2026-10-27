@@ -510,7 +510,7 @@ static boolean live_control_apply(
 		return FALSE;
 	}
 	player = distributed_player(player_index);
-	if (!player || player->unit_index == NONE || player->local_player_index != NONE)
+	if (!player || player->local_player_index != NONE || distributed_living_unit(player) == NONE)
 		return FALSE;
 	unit = unit_get(player->unit_index);
 	before = unit->unit.control_flags;
