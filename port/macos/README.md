@@ -401,8 +401,8 @@ drawables presented to it never reach the screen).
 Presentation has a thread of its own (at the user-interactive QoS, as the
 render thread is), run by a `CAMetalDisplayLink`: at
 each refresh of the display, the link hands over a drawable, and the
-thread draws the oldest frame queued into it, letterboxed to the frame's
-shape, and presents it. A ProMotion display's rate follows the frames, up
+thread draws the oldest frame queued (with vsync off, the newest) into it,
+letterboxed to the frame's shape, and presents it. A ProMotion display's rate follows the frames, up
 to its highest; a fixed display's is its own. With battery saver on
 (`display.battery_saver`, `host_metal_battery_saver`), the link runs at a
 whole fraction of the display's rate, 30 to 60 frames a second (60 at
@@ -440,6 +440,22 @@ thread is a time constraint thread while it waits for a frame's start.
 The process is marked latency critical while the window is open.
 `HALO_METAL_RATE=<Hz>` runs the link at that rate (another display's
 pacing tested on this one).
+
+That pacing is `display.vsync = true`'s (iOS's default). With vsync off,
+the Mac's default (taken as the window opens, and as Settings change it),
+the display does not pace the game: it draws as many frames as
+`display.max_fps` allows (twice the window's display's refresh rate by
+default, following the window to another display), as on Linux and
+Windows (`platform_video_swap`, a press starting the next frame at once),
+and each refresh shows the newest frame queued, the older one dropped. The
+link still presents only at its refreshes, so nothing tears, in a window
+or fullscreen. The newest frame is taken 3 ms before the link's deadline
+for the refresh (`HALO_METAL_TAKE_MARGIN_MS` sets another), not as the link
+calls, a refresh earlier: on an M2 at 60 Hz in a window, the link calls
+16.6 ms before its deadline and 49.9 ms before the frame is on screen. With
+battery saver on, the frames are capped at the link's slower rate. When the
+window moves to a display of another rate, the link runs at that display's
+highest.
 
 Until frames come, each refresh clears the drawable to black and presents
 it (the window opens before the game draws).
@@ -483,7 +499,8 @@ presentation's GPU time and its wait from commit to the GPU's start. A
 line before it gives the input to screen times: from each frame's input
 read (D3DDevice_Present's event pump, which the main loop's input_update
 reads at once) to the frame on screen (the drawable's presented time),
-their median and 95th percentile, in milliseconds and refreshes. A second line
+their median and 95th percentile, in milliseconds and refreshes; with vsync
+off, another gives how late the waits for the newest frame ended. A second line
 gives a frame's mean costs: the time the GPU was busy (with the game's
 command buffers or the presentation's: the union of their times, which
 overlap) and its share of the time, the GPU's time on the frame's command

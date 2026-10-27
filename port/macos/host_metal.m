@@ -30,6 +30,18 @@ the frame later in the callback, nearer the link's deadline, missed
 refreshes (measured on an M1 Max at 120 Hz). Each frame's time on screen
 goes back with its input time, for the input to screen statistics.
 
+With display.vsync off (host_metal_vsync, the Mac's default), the game is
+not paced by the display: it draws as many frames as display.max_fps lets
+it (sdl_platform.c's platform_video_swap, twice the display's rate by
+default, a press starting the next frame at once), and each refresh shows
+the newest frame queued, the older one dropped. The link still presents
+only at the refreshes, so nothing tears, in a window or fullscreen. The
+newest frame is taken just before the link's deadline for the refresh (its
+update's targetTimestamp, UNPACED_TAKE_MARGIN_MS before it), not as the
+link calls: the link calls a refresh before that deadline (on an M2 at
+60 Hz in a window: the deadline 16.6 ms after the call, the frame on
+screen 49.9 ms after it), so the frame shown is a refresh newer.
+
 Until frames come (the null renderer draws none), each refresh clears the
 drawable to black and presents it.
 
@@ -100,6 +112,9 @@ from: port/ios/README.md).
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <mach/mach.h>
+#include <mach/mach_time.h>
+#include <mach/thread_policy.h>
 
 static void drawn_size(int *width, int *height);
 
@@ -108,6 +123,13 @@ static void drawn_size(int *width, int *height);
 /* the longest a frame waits for an image before the oldest queued frame is
 dropped (100 ms: six refreshes at 60 Hz) */
 #define PRESENT_WAIT_MAXIMUM_NS 100000000L
+/* (vsync off) how long before the link's deadline for a refresh the newest
+frame is taken for it: the presentation's GPU work is about 0.1 ms, and
+waits for the frame's own if it is still drawing. Measured on an M2 at
+60 Hz in a window: 2 to 6 ms missed no refresh (the link's deadline has
+room), and the frames' input to screen (median) fell from 75 ms, taken as
+the link calls, to 36 to 43 ms. */
+#define UNPACED_TAKE_MARGIN_MS 3.0
 
 enum
 {
@@ -174,6 +196,14 @@ static struct
 	link's rate was last set for it (the link's thread's) */
 	_Atomic int battery_saver;
 	int battery_saver_set;
+	/* the window went to a display of another rate (display_rate_read):
+	the link's rate is set again at its next refresh */
+	_Atomic int rate_changed;
+	/* (unpaced) the newest frame is taken this long before the link's
+	deadline (seconds: UNPACED_TAKE_MARGIN_MS, HALO_METAL_TAKE_MARGIN_MS),
+	and the latest a wait for it ended since the last log (microseconds) */
+	double take_margin;
+	_Atomic uint64_t take_late_most_us;
 	/* (iOS) the app is in the background: no GPU work, which iOS refuses
 	there (host_metal_background) */
 	_Atomic int background;
@@ -746,6 +776,9 @@ static void pacing_log(double now)
 				"95th percentile (%.2f and %.2f refreshes), %u frames", median, high,
 				median * presentation.refresh_rate / 1000.0f, high * presentation.refresh_rate / 1000.0f, frames);
 	}
+	if (presentation.unpaced)
+		host_logf(HOST_LOG_INFO, "metal: vsync off: the newest frame taken %.1f ms before the link's deadline, at most %.2f ms late",
+			presentation.take_margin * 1000.0, atomic_exchange(&presentation.take_late_most_us, 0) / 1000.0);
 	host_logf(HOST_LOG_INFO,
 		"metal: %.1f s: %u refreshes (%.1f Hz), %u presented (%u frames, %u cleared), %u on screen (%.1f a second), "
 		"intervals %.2f ms mean, %.2f min, %.2f max, %u late, %u hitches over 33 ms; %u refreshes without a new frame (the GPU %u, an image %u, "
@@ -804,6 +837,36 @@ static void pacing_log(double now)
 
 static CAFrameRateRange link_rate_range(int saving);
 
+/* (the link's thread, unpaced) until a time of CACurrentMediaTime. An
+ordinary timed wait ends up to 10 ms late here (macOS coalesces timers:
+measured on an M2), so the thread is a time constraint thread while it
+waits, as the game's is (host_render_stream.c's sleep_until) */
+static void take_wait(double when)
+{
+	static mach_timebase_info_data_t timebase;
+	thread_port_t thread = pthread_mach_thread_np(pthread_self());
+	thread_time_constraint_policy_data_t constraint;
+	thread_standard_policy_data_t standard;
+	uint64_t late;
+
+	if (!timebase.denom)
+		mach_timebase_info(&timebase);
+	/* (a refresh's period at 120 Hz, a little of it computing, woken
+	within a millisecond: in the time base's units) */
+	constraint.period = (uint32_t)(8333333ull * timebase.denom / timebase.numer);
+	constraint.computation = (uint32_t)(500000ull * timebase.denom / timebase.numer);
+	constraint.constraint = (uint32_t)(1000000ull * timebase.denom / timebase.numer);
+	constraint.preemptible = 1;
+	thread_policy_set(thread, THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&constraint,
+		THREAD_TIME_CONSTRAINT_POLICY_COUNT);
+	mach_wait_until((uint64_t)(when * 1e9 * timebase.denom / timebase.numer));
+	memset(&standard, 0, sizeof(standard));
+	thread_policy_set(thread, THREAD_STANDARD_POLICY, (thread_policy_t)&standard, THREAD_STANDARD_POLICY_COUNT);
+	late = (uint64_t)((seconds_now() - when) * 1e6);
+	if (late > atomic_load(&presentation.take_late_most_us))
+		atomic_store(&presentation.take_late_most_us, late);
+}
+
 @interface HaloDisplayLinkTarget : NSObject <CAMetalDisplayLinkDelegate>
 @end
 
@@ -826,12 +889,15 @@ static CAFrameRateRange link_rate_range(int saving);
 {
 	CAMetalDisplayLink *link = presentation.link;
 
-	/* (battery saver turned on or off: the link's rate, from its next
-	refresh) */
-	if (atomic_load(&presentation.battery_saver) != presentation.battery_saver_set)
+	/* (battery saver turned on or off, or the window on a display of
+	another rate: the link's rate, from its next refresh, and its period
+	measured again) */
+	if (atomic_load(&presentation.battery_saver) != presentation.battery_saver_set ||
+		atomic_exchange(&presentation.rate_changed, 0))
 	{
 		presentation.battery_saver_set = atomic_load(&presentation.battery_saver);
 		link.preferredFrameRateRange = link_rate_range(presentation.battery_saver_set);
+		memset(presentation.target_intervals, 0, sizeof(presentation.target_intervals));
 	}
 
 	@autoreleasepool
@@ -909,6 +975,16 @@ static CAFrameRateRange link_rate_range(int saving);
 			offset = (double)monotonic.tv_sec + monotonic.tv_nsec / 1e9 - seconds_now();
 			host_render_stream_display_latched((uint64_t)((now + offset) * 1e9), (uint64_t)(period * 1e9));
 		}
+		else if (presentation.frames_seen)
+		{
+			/* (vsync off) the newest frame is taken UNPACED_TAKE_MARGIN_MS before
+			the link's deadline for this refresh, not as the link calls, a
+			refresh before it: the frame on screen is that much newer */
+			double wake = update.targetTimestamp - presentation.take_margin;
+
+			if (wake > now && wake - now < 0.1)
+				take_wait(wake);
+		}
 		/* (a new size is the next drawable's) */
 		if (width && height && (width != presentation.drawable_width || height != presentation.drawable_height))
 		{
@@ -943,6 +1019,16 @@ static CAFrameRateRange link_rate_range(int saving);
 				presentation.image_states[presentation.queue[--presentation.queued]] = _image_free;
 				discarded++;
 			}
+			pthread_cond_broadcast(&presentation.freed);
+		}
+		/* (vsync off: the newest frame, those queued before it dropped) */
+		while (presentation.unpaced && presentation.queued > 1)
+		{
+			presentation.image_states[presentation.queue[0]] = _image_free;
+			memmove(presentation.queue, presentation.queue + 1, sizeof(int) * (size_t)(presentation.queued - 1));
+			presentation.queued--;
+			presentation.dropped++;
+			discarded++;
 			pthread_cond_broadcast(&presentation.freed);
 		}
 		if (presentation.queued)
@@ -1208,6 +1294,27 @@ static bool SDLCALL window_event(void *userdata, SDL_Event *event)
 	return true;
 }
 
+#if !TARGET_OS_IPHONE
+/* (the main thread, as the window moves to another screen) the screen's
+highest rate: the link's (link_rate_range), from its next refresh. The
+guest's frames follow SDL's rate for the window's display by themselves
+(sdl_platform.c's frame_interval_ns). */
+static void display_rate_read(void)
+{
+	NSWindow *native = (__bridge NSWindow *)SDL_GetPointerProperty(SDL_GetWindowProperties(presentation.window),
+		SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
+	NSScreen *screen = native.screen;
+	float rate = screen ? (float)screen.maximumFramesPerSecond : 0.0f;
+
+	if (rate <= 0.0f || rate == presentation.refresh_rate)
+		return;
+	host_logf(HOST_LOG_INFO, "metal: the window is on %s, at up to %.0f Hz%s", screen.localizedName.UTF8String, rate,
+		screen.minimumRefreshInterval < screen.maximumRefreshInterval ? " (variable)" : "");
+	presentation.refresh_rate = rate;
+	atomic_store(&presentation.rate_changed, 1);
+}
+#endif
+
 /* the shaders built ahead of time (tools/macos_build.py): the app's
 resource, or the file beside a bare executable (HALO_METAL_LIBRARY: another,
 "" none) */
@@ -1285,10 +1392,10 @@ void host_metal_battery_saver(int on)
 	atomic_store(&presentation.battery_saver, on ? 1 : 0);
 }
 
-/* (a host import: the guest's sdl_platform.c, as display.vsync is read or
-changes) on, the game is paced by the link's refreshes; off, it draws as fast
-as its own clock lets it (display.max_fps, sdl_platform.c's
-frame_interval_ns) and each refresh shows the newest frame, the one queued
+/* (a host import: the guest's sdl_platform.c, as the window opens and as
+display.vsync changes) on, the game is paced by the link's refreshes; off,
+it draws as fast as its own clock lets it (display.max_fps, sdl_platform.c's
+platform_video_swap) and each refresh shows the newest frame, those queued
 before it dropped (as HALO_METAL_UNPACED): no tearing, the least latency */
 void host_metal_vsync(int on)
 {
@@ -1440,7 +1547,11 @@ int host_metal_window_open(uint32_t window)
 	display_hdr_read();
 #if !TARGET_OS_IPHONE
 	[[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidChangeScreenNotification object:nil
-		queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) { (void)note; display_hdr_read(); }];
+		queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
+			(void)note;
+			display_hdr_read();
+			display_rate_read();
+		}];
 #endif
 	sampler = [MTLSamplerDescriptor new];
 	sampler.minFilter = MTLSamplerMinMagFilterLinear;
@@ -1456,6 +1567,8 @@ int host_metal_window_open(uint32_t window)
 		reason:@"The game draws a frame for each of the display's refreshes"];
 	SDL_AddEventWatch(window_event, NULL);
 	presentation.stats_interval = stats ? atof(stats) : 0.0;
+	presentation.take_margin = (getenv("HALO_METAL_TAKE_MARGIN_MS") ? atof(getenv("HALO_METAL_TAKE_MARGIN_MS")) :
+		UNPACED_TAKE_MARGIN_MS) / 1000.0;
 	presentation.unpaced = presentation.unpaced_forced =
 		getenv("HALO_METAL_UNPACED") && atoi(getenv("HALO_METAL_UNPACED"));
 	/* (the game starts each frame as the display takes the last: frame_pacing.h) */
