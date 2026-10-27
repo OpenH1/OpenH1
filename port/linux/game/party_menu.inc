@@ -208,12 +208,15 @@ p2p_identifier_from_hash of the invite's key hash): FALSE if it is no
 invite link */
 static boolean party_link_host(char const *link, byte *host)
 {
-	char const *start = strstr(link, "halo://join/");
+	char const *start = strstr(link, P2P_JOIN_LINK_PREFIX);
 	short index;
 
-	if (!start)
+	if (start)
+		start += strlen(P2P_JOIN_LINK_PREFIX);
+	else if ((start = strstr(link, P2P_OLD_JOIN_LINK_PREFIX)) != NULL)
+		start += strlen(P2P_OLD_JOIN_LINK_PREFIX);
+	else
 		return FALSE;
-	start += strlen("halo://join/");
 	for (index = 0; index < 12; index++)
 	{
 		int digit = start[index];

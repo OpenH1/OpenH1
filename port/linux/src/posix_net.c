@@ -811,6 +811,28 @@ static int run_program(char *const arguments[])
 }
 #endif
 
+#ifndef __ANDROID__
+/* this executable, and the folder of the user's desktop entries (as the
+desktop reads them); 0 if either is not known */
+static int desktop_entries(char *executable, int executable_size, char *directory, int directory_size)
+{
+	const char *data_home = getenv("XDG_DATA_HOME");
+	const char *home = getenv("HOME");
+	ssize_t length = readlink("/proc/self/exe", executable, (size_t)executable_size - 1);
+
+	if (length <= 0)
+		return 0;
+	executable[length] = '\0';
+	if (data_home && *data_home)
+		snprintf(directory, (size_t)directory_size, "%s/applications", data_home);
+	else if (home && *home)
+		snprintf(directory, (size_t)directory_size, "%s/.local/share/applications", home);
+	else
+		return 0;
+	return 1;
+}
+#endif
+
 int posix_register_url_scheme(const char *scheme, const char *description)
 {
 #ifdef __ANDROID__
@@ -821,20 +843,10 @@ int posix_register_url_scheme(const char *scheme, const char *description)
 	/* a desktop entry declaring the executable as the scheme's handler, and
 	the scheme's default application set to it (as xdg-open reads it) */
 	char executable[1024], directory[1024], path[1200], name[128], entry[2048], existing[2048];
-	const char *data_home = getenv("XDG_DATA_HOME");
-	const char *home = getenv("HOME");
-	ssize_t length = readlink("/proc/self/exe", executable, sizeof(executable) - 1);
 	FILE *file;
 	size_t existing_length = 0;
 
-	if (length <= 0)
-		return 0;
-	executable[length] = '\0';
-	if (data_home && *data_home)
-		snprintf(directory, sizeof(directory), "%s/applications", data_home);
-	else if (home && *home)
-		snprintf(directory, sizeof(directory), "%s/.local/share/applications", home);
-	else
+	if (!desktop_entries(executable, sizeof(executable), directory, sizeof(directory)))
 		return 0;
 	snprintf(name, sizeof(name), "halo-ce-universal-%s.desktop", scheme);
 	snprintf(path, sizeof(path), "%s/%s", directory, name);
@@ -870,6 +882,36 @@ int posix_register_url_scheme(const char *scheme, const char *description)
 		run_program(arguments);
 	}
 	return 1;
+#endif
+}
+
+int posix_forget_url_scheme(const char *scheme)
+{
+#ifdef __ANDROID__
+	(void)scheme;
+	return 0;
+#else
+	/* the desktop entry posix_register_url_scheme made, if it runs this
+	executable: OpenCE's copies make one of the same name for their own
+	(the scheme's default application stays its name, which is no one's
+	until a program makes it again) */
+	char executable[1024], directory[1024], path[1200], line[1100], existing[2048];
+	FILE *file;
+	size_t length;
+
+	if (!desktop_entries(executable, sizeof(executable), directory, sizeof(directory)))
+		return 0;
+	snprintf(path, sizeof(path), "%s/halo-ce-universal-%s.desktop", directory, scheme);
+	file = fopen(path, "r");
+	if (!file)
+		return 0;
+	length = fread(existing, 1, sizeof(existing) - 1, file);
+	fclose(file);
+	existing[length] = '\0';
+	snprintf(line, sizeof(line), "\nExec=\"%s\" %%u\n", executable);
+	if (!strstr(existing, line))
+		return 0;
+	return remove(path) == 0;
 #endif
 }
 

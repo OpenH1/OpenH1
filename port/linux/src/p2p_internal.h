@@ -25,9 +25,9 @@ enum
 	P2P_TOKEN_SIZE = 16,
 	/* the addresses a machine offers to be reached at */
 	P2P_MAXIMUM_CANDIDATES = 4,
-	/* an invite link's text: "halo://join/", the host's key hash and the
-	token in hexadecimal, and a terminator */
-	P2P_LINK_SIZE = 12 + 2 * (P2P_KEY_HASH_SIZE + P2P_TOKEN_SIZE) + 1,
+	/* an invite link's text: P2P_JOIN_LINK_PREFIX, the host's key hash and
+	the token in hexadecimal, and a terminator */
+	P2P_LINK_SIZE = 14 + 2 * (P2P_KEY_HASH_SIZE + P2P_TOKEN_SIZE) + 1,
 	/* the most machines one tunnels to: a host and the rest of a system
 	link game's 128 machines (include/halo_port_limits.h) */
 	P2P_MAXIMUM_PEERS = 127,
@@ -55,6 +55,8 @@ enum
 };
 
 typedef char p2p_listing_invite_size_assert[P2P_LISTING_INVITE_SIZE == P2P_LINK_SIZE ? 1 : -1];
+typedef char p2p_link_size_assert[P2P_LINK_SIZE == sizeof(P2P_JOIN_LINK_PREFIX) + 2 * (P2P_KEY_HASH_SIZE +
+	P2P_TOKEN_SIZE) ? 1 : -1];
 
 /* the prefix of a public game's slot (a key hash in hex follows), and the
 topic of queries (p2p_lobby.c) */
@@ -87,6 +89,9 @@ unless it is an automated run (debug.exit_after, a hidden window, no
 renderer), which must not take the links over. The p2p thread's: it lets
 go of the p2p lock while it may wait for a program */
 void p2p_register_url_scheme(const char *scheme, const char *description);
+/* drops the desktop's registration of this executable for links of scheme
+(posix_forget_url_scheme), under the same conditions; the p2p thread's */
+void p2p_forget_url_scheme(const char *scheme);
 /* formats bytes as lower-case hexadecimal (text holds 2 * size + 1) */
 void p2p_hex(const unsigned char *bytes, int size, char *text);
 /* the addresses this machine can be reached at; returns their count */

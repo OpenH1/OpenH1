@@ -1588,11 +1588,13 @@ bool SDL_ShowAndroidToast(const char *message, int duration, int gravity, int xo
 #endif
 
 /* whether the text has an invite link in it (its prefix, in any case), a
-party's link (p2p_party.c), or the join page's address of either (COPY
+party's link (p2p_party.c), an older build's of either (halo://), or the
+join page's address of either (COPY
 INVITE's message: p2p_invite_message) */
 static BOOL platform_text_has_invite_link(const char *text)
 {
-	static const char *const prefixes[] = { "halo://join/", P2P_PARTY_LINK_PREFIX, "openh1.com/join/#" };
+	static const char *const prefixes[] = { P2P_JOIN_LINK_PREFIX, P2P_PARTY_LINK_PREFIX, P2P_OLD_JOIN_LINK_PREFIX,
+		P2P_OLD_PARTY_LINK_PREFIX, "openh1.com/join/#" };
 
 	for (; *text; text++)
 	{
