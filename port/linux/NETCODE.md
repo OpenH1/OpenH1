@@ -310,7 +310,9 @@ an OpenH1 game"); version 4 moves a player to the other team in a game (below,
 dedicated server's flag it carries, and changes nothing else of its own;
 version 6 sends a client's players' input on to the other OpenH1 clients as
 it comes (below, "Forwarded input"), and a client's prediction's velocity at
-full precision (below, "Sub-step inputs"). With no new version, each client then tells the
+full precision (below, "Sub-step inputs"); version 7 sends each sub-step's
+controls as it runs, and a client's hits at the end of the sub-step that
+made them (below, "Sub-steps as they run"). With no new version, each client then tells the
 host its build (distributed message 92, `_distributed_message_client_build`,
 reliably once a game after its ready, over its connection alone): its
 number, configuration, the label it shows ("OpenH1 Linux | build 120
@@ -688,6 +690,45 @@ Where its unit is is still the host's word, at its ticks: a client's copy of
 a player it drives by forwarded input reacts to a change of input sooner,
 and is moved toward the host's state of the player (`REMOTE_BLEND_DISTANCE`)
 as before. Measured below ("Measuring latency").
+
+### Sub-steps as they run
+
+At 60 and 120 a client's input and sub-steps go to the host as its tick
+ends, so a press in a tick's first sub-step waited most of a tick before it
+was sent, and another client took the forwarded input only at its own next
+tick. From protocol version 7 each machine also sends its own players'
+controls as each sub-step runs (`network_substeps.c`'s live controls):
+
+- At the end of each sub-step (`_sim_substep_network`, after the weapons,
+  projectiles and items), where a local player's unit's controls changed
+  since the sub-step before: the held controls (crouch, jump, the triggers,
+  the grenade), the movement, the trigger's pull and where the unit aims,
+  keyed by the player's tick (the host's update, for the host's own
+  players) and the sub-step. A client sends them to the host at once in a
+  datagram of their own (`_distributed_message_player_live_controls`, 132,
+  unreliable, 36 bytes a player at full precision), and with them the hits
+  the sub-step made (`network_damage_client_tick`, reliably), which went with
+  the tick's end before. The last sub-step's go with the tick's own
+  messages.
+- The host sends them on to its OpenH1 clients as they come, with its own
+  players' (`_distributed_message_forwarded_live_controls`, 133,
+  unreliable, 19 bytes a player: the sticks of 127, the trigger of 255, the
+  aim in 16 bits a part), to those its last tick's plan sends the player
+  every tick or every second tick, as the forwarded input (above). Its own
+  simulation takes a client's input at its tick, as before.
+- A client gives another player's unit the latest it has of them, where it
+  is later than the sub-step of the input its tick took (of the same kind
+  of key: a client's player's while the forwarded input drives them, the
+  host's own player's while the relayed input does): after each tick's
+  actions are given (`network_substeps_actions_given`, from `game.c`'s
+  macro step, before the objects move) and at each sub-step in place of the
+  record's. A press given so is seen at the sub-step it is given in, as a
+  replayed one is (`network_substeps_pressed_flags`). Once the input its
+  tick takes is later, the input and its record drive the player again.
+- A lost datagram costs nothing that does not come again: the next change,
+  the tick's input with its buttons of the ticks before, or its record.
+
+None of it is sent at 30, in a Legacy game or to an OpenCE machine.
 
 ### OpenCE players in an OpenH1 game
 
