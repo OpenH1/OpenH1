@@ -170,6 +170,11 @@ public final class TouchLayoutTest {
         check(fold.x(0) == cornerX && fold.y(0) == cornerY,
               "A control in a corner comes back to it after folding and unfolding");
         check(fold.savedX(0) == placeX && fold.savedY(0) == placeY, "Folding does not move a saved place");
+        fold.setSize(0, 2f);
+        check(fold.x(0) + fold.radius(0) <= 960 && fold.savedX(0) == placeX && fold.savedY(0) == placeY,
+              "A control in a corner made larger is pushed inward, its place kept");
+        fold.setSize(0, 1f);
+        check(fold.x(0) == cornerX && fold.y(0) == cornerY, "Made smaller again, it goes back to the corner");
         // Sizes follow use: fire the largest, then jump and the grenade, then reload,
         // swap and melee; the seldom used (stick clicks, white, black, back, the
         // D-pad) smaller than all of those.
