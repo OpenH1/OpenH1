@@ -539,7 +539,11 @@ static void live_control_give(
 
 /* (a client) the player's latest live control, given its unit at this
 sub-step when it is later than the sub-step of the input the tick took
-(sub-step NONE: the tick's own, its actions just given); whether it was */
+(sub-step NONE: the tick's own, its actions just given), or of that input's
+own tick at all when no record of it came (a client's input goes as its
+tick's first sub-step ends, with its controls of that sub-step, so the rest
+of its tick's controls come after it, and its record after them); whether
+it was */
 static boolean live_control_apply(
 	short player_index,
 	short substep_index)
@@ -553,7 +557,8 @@ static boolean live_control_apply(
 		/* (of the kind of key the tick's input was: a client's player's
 		while its forwarded input drives it, the host's own player's) */
 		live->host_update == network_substeps_globals.tick_forwarded[player_index] ||
-		!live_control_later(live->key, live->substep, key, substep_index == NONE ? 0 : substep_index))
+		(!live_control_later(live->key, live->substep, key, substep_index == NONE ? 0 : substep_index) &&
+			(live->key != key || substep_index == NONE || network_substeps_globals.replaying[player_index].valid)))
 	{
 		return FALSE;
 	}
