@@ -329,6 +329,7 @@ static void server_gametype_rule(
 	else if (!strcmp(key, "secondary_weapon")) options->secondary_weapon = (byte)value;
 	else if (!strcmp(key, "no_map_weapons")) options->no_map_weapons = (boolean)(value != 0);
 	else if (!strcmp(key, "hardcore")) options->hardcore = (boolean)(value != 0);
+	else if (!strcmp(key, "force_team_spawns")) options->force_team_spawns = (boolean)(value != 0);
 	else if (!strcmp(key, "team_vehicles"))
 	{
 		byte set = value == 1 ? VARIANT_VEHICLE_SET_PC : value == 2 ? VARIANT_VEHICLE_SET_CUSTOM :
@@ -342,10 +343,13 @@ static void server_gametype_rule(
 	else if (!strcmp(key, "flag_must_reset")) variant->game_engine_variant.ctf.flag_must_reset = (boolean)(value != 0);
 	else if (!strcmp(key, "flag_at_home_to_score")) variant->game_engine_variant.ctf.flag_at_home_to_score = (boolean)(value != 0);
 	else if (!strcmp(key, "single_flag_time")) variant->game_engine_variant.ctf.single_flag_time = value * TICKS_PER_SECOND;
+	else if (!strcmp(key, "kills_score")) variant->game_engine_variant.ctf.kills_score = value != 0;
+	else if (!strcmp(key, "points_per_capture")) variant->game_engine_variant.ctf.points_per_capture = value;
 	else if (!strcmp(key, "no_death_bonus")) variant->game_engine_variant.slayer.no_death_bonus = (boolean)(value != 0);
 	else if (!strcmp(key, "no_kill_penalty")) variant->game_engine_variant.slayer.no_kill_penalty = (boolean)(value != 0);
 	else if (!strcmp(key, "kill_in_order")) variant->game_engine_variant.slayer.kill_in_order = (boolean)(value != 0);
 	else if (!strcmp(key, "moving_hill")) variant->game_engine_variant.king.moving_hill = (boolean)(value != 0);
+	else if (!strcmp(key, "multi_hill")) variant->game_engine_variant.king.multi_hill = (byte)value;
 	else if (!strcmp(key, "random_start")) variant->game_engine_variant.oddball.random_start = (boolean)(value != 0);
 	else if (!strcmp(key, "ball_spawn_delay")) variant->game_engine_variant.oddball.ball_spawn_delay = (boolean)(value != 0);
 	else if (!strcmp(key, "speed_with_ball")) variant->game_engine_variant.oddball.speed_with_ball = value;
