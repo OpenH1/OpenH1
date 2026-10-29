@@ -848,6 +848,14 @@ static struct
 	long sent;
 	long received;
 	long corrections;
+	/* (a client) of the other players' units: put where the host has them
+	(as a whole), of those against its history of them
+	(distributed_correct_remote_unit), and states of them within the
+	tolerance of that history but not of where its copy is: pulled back
+	before #287's stage 2c */
+	long remote_corrections;
+	long remote_history_corrections;
+	long remote_history_kept;
 } distributed_statistics;
 /* ... and (the host) how far apart a client's player moved in a tick on the
 client and on the host, where the host took the client's last prediction
@@ -947,6 +955,16 @@ void network_distributed_statistics(
 	*sent = distributed_statistics.sent;
 	*received = distributed_statistics.received;
 	*corrections = distributed_statistics.corrections;
+}
+
+void network_distributed_remote_statistics(
+	long *corrections,
+	long *history_corrections,
+	long *history_kept)
+{
+	*corrections = distributed_statistics.remote_corrections;
+	*history_corrections = distributed_statistics.remote_history_corrections;
+	*history_kept = distributed_statistics.remote_history_kept;
 }
 
 void distributed_count_correction(
@@ -3067,6 +3085,12 @@ static void distributed_handle_unit_state(
 			distributed_correct_own_unit(player, unit_index, state);
 		else
 		{
+			/* (the tests' reports) */
+			if (distance_squared3d(&state->position, &object_get(unit_index)->object.position) >
+				REMOTE_CORRECTION_TOLERANCE * REMOTE_CORRECTION_TOLERANCE)
+			{
+				distributed_statistics.remote_corrections++;
+			}
 			distributed_apply_state(unit_index, state, &state->position, REMOTE_CORRECTION_TOLERANCE,
 				REMOTE_BLEND_DISTANCE, 0.0f, 0.0f);
 		}
