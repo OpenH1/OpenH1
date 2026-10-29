@@ -119,10 +119,11 @@ int main(int argc, char **argv)
 		char names[128];
 		short offline;
 
-		/* (the favorites first, bravo then echo by players; the rest by
-		players, the dedicated server first) */
+		/* (the favorites first, OpenH1's echo before Legacy's bravo; the
+		rest the OpenH1 games first, by players, then the Legacy ones, the
+		dedicated server first) */
 		listed(_browser_tab_all, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "bravo* echo* coop delta alpha "), "ALL lists %s", names);
+		CHECK(!strcmp(names, "echo* bravo* delta alpha coop "), "ALL lists %s", names);
 		CHECK(offline == 2, "ALL lists no favorites offline");
 		listed(_browser_tab_dedicated, names, sizeof(names), &offline);
 		CHECK(!strcmp(names, "coop "), "DEDICATED lists %s", names);
@@ -136,7 +137,7 @@ int main(int argc, char **argv)
 		CHECK(!strcmp(names, "echo* coop "), "CO-OP lists %s", names);
 		CHECK(offline == 0, "CO-OP lists the favorites offline");
 		listed(_browser_tab_favorites, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "bravo* echo* "), "FAVORITES lists %s", names);
+		CHECK(!strcmp(names, "echo* bravo* "), "FAVORITES lists %s", names);
 		CHECK(offline == 2, "FAVORITES lists no favorites offline");
 		return 0;
 	}
