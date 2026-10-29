@@ -384,6 +384,8 @@ static boolean host_game_apply_limits_to_lobby(
 	player_ui_set_game_variant(&variant);
 	player_ui_set_game_variant_options(&options);
 	network_game_server_change_game_variant(server, &variant);
+	error(_error_log, "host: the lobby's game plays to %ld, for %d minutes", game->variant.universal_variant.score_to_win,
+		(int)game->variant_options.time_limit);
 	return TRUE;
 }
 

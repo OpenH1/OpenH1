@@ -1465,8 +1465,8 @@ static void host_panel_show(struct widget_instance *list, short chosen)
 			usnprintf(status, NUMBEROF(status) - 1, L"Press PLAY NOW again: this game ends, with no scores, and "
 				L"this one starts.");
 		else
-			usnprintf(status, NUMBEROF(status) - 1, lobby ? L"Play it in this lobby, or add it to the playlist." :
-				L"Play it now (this game ends), after this game, or add it to the playlist.");
+			usnprintf(status, NUMBEROF(status) - 1, lobby ? L"Play it here, or add it to the playlist." :
+				L"Play it now, next, or add it to the playlist.");
 		break;
 	}
 	case _host_tab_playlist:

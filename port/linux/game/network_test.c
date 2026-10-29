@@ -227,6 +227,8 @@ static struct
 	short next_cue;
 	long cue_players;
 	long cues_start;
+	/* debug.network_test_lobby_cues: the next one's place in its text */
+	short next_lobby_cue;
 } network_test;
 
 /* the latency figures' presses: each player's unit at the last sub-step,
@@ -1276,6 +1278,38 @@ static void network_test_second_weapon(
 	}
 }
 
+/* debug.network_test_lobby_cues: the host's console lines in its first
+lobby, each at its second of the lobby's setup ("<second> <line>|..."), the
+next once its second has come */
+static void network_test_run_lobby_cues(
+	void)
+{
+	char const *cues = config_string("debug.network_test_lobby_cues");
+	char const *cue = cues;
+	short index;
+
+	for (index = 0; *cue && index < network_test.next_lobby_cue; index++)
+	{
+		cue = strchr(cue, '|');
+		cue = cue ? cue + 1 : cues + strlen(cues);
+	}
+	if (*cue)
+	{
+		char *line;
+		char text[256];
+		double second = strtod(cue, &line);
+		char const *end = strchr(cue, '|');
+		int length = end ? (int)(end - line) : (int)strlen(line);
+
+		if (network_test.setup_seconds < second)
+			return;
+		snprintf(text, sizeof(text), "%.*s", MAX(length, 0), line);
+		platform_log("network test: lobby cue at %.1f s: %s", network_test.setup_seconds, text);
+		hs_compile_and_evaluate(text);
+		network_test.next_lobby_cue++;
+	}
+}
+
 /* debug.network_test_cues: from the first tick every player waited for has a
 unit (logged, cues or not: where a test's seconds start), each line at its
 tick (the host's, or a game of one machine: a client runs none) */
@@ -1985,6 +2019,9 @@ void network_test_update(
 						network_game_client_add_player(global_network_game_client_get(), local_player_index);
 				}
 			}
+			/* (the host's first lobby: its cues) */
+			if (network_test.map_set && !network_test.variant_index)
+				network_test_run_lobby_cues();
 			if (network_test.setup_seconds >= network_test.start_delay)
 			{
 				network_test.started = TRUE;

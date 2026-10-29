@@ -43,6 +43,11 @@ decides, and everything here takes the host's own ways of deciding:
 - The bans are bans.txt's lines, each taken out by Unban with the server's
   keeping out of its address (network_distributed_unban).
 
+In the lobby (the host's, before the game starts) Host Controls lists the
+game record's players, and its changes of map, teams, limits and the
+playlist are network_host_game.c's; after a game, the next game it has
+(a change asked for, the playlist's) is set in the lobby and started here.
+
 Clients never see it (network_host_controls_available). The pure parts
 (network_host_controls_*_for, _step, _parse) are
 tools/harness/tests/test_host_controls.py's.

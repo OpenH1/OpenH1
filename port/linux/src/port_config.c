@@ -1494,6 +1494,11 @@ static const struct config_setting config_settings[] =
 		"every player of debug.network_test_cue_players has a unit:\n"
 		"\"<second> <line>|<second> <line>...\" (the host's, or a game of one\n"
 		"machine)." },
+	{ "debug.network_test_lobby_cues", _config_string, "\"\"", "HALO_NETWORK_TEST_LOBBY_CUES", _environment_value,
+		_platform_all,
+		"Console lines an automated test's host runs in its first lobby, at their\n"
+		"second of its setup, before debug.network_test_start starts the game:\n"
+		"\"<second> <line>|<second> <line>...\"." },
 	{ "debug.network_test_cue_players", _config_integer, "1", "HALO_NETWORK_TEST_CUE_PLAYERS", _environment_value,
 		_platform_all,
 		"The players debug.network_test_cues waits for." },
