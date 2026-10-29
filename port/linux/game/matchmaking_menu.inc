@@ -85,7 +85,7 @@ static void matchmaking_status_text(struct matchmaking_status const *status, wch
 		{
 		case _matchmaking_problem_offline:
 			usnprintf(headline, headline_size - 1, L"INTERNET PLAY IS OFF");
-			usnprintf(detail, detail_size - 1, L"Turn it on in Settings, Network Setup.");
+			usnprintf(detail, detail_size - 1, L"Turn it on in Settings, Online.");
 			break;
 		case _matchmaking_problem_member:
 			usnprintf(headline, headline_size - 1, L"YOUR LEADER SEARCHES");
@@ -100,8 +100,8 @@ static void matchmaking_status_text(struct matchmaking_status const *status, wch
 			usnprintf(detail, detail_size - 1, L"Make a profile in Settings first.");
 			break;
 		case _matchmaking_problem_hosting:
-			usnprintf(headline, headline_size - 1, L"COULD NOT HOST");
-			usnprintf(detail, detail_size - 1, L"The game could not be hosted. Try again.");
+			usnprintf(headline, headline_size - 1, L"COULDN'T START A GAME");
+			usnprintf(detail, detail_size - 1, L"No game for the search could be started. Search again.");
 			break;
 		case _matchmaking_problem_cancelled:
 			usnprintf(headline, headline_size - 1, L"SEARCH CANCELLED");

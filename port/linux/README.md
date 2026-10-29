@@ -1746,9 +1746,10 @@ Friends can group up before a game and go from game to game together
 - When the leader hosts an internet game, or joins one (by a link or from
   the Server Browser), every member joins it too: the Party screen opens
   over the main menu or Multiplayer, and joins the game. A member who
-  cannot join (the game is full, another version of OpenH1, a Legacy game
-  that this version cannot join, a host that cannot be reached, or a LAN
-  game) sees why, and stays in the party; the leader sees it too. JOIN
+  cannot join (the game is full, a different version of OpenH1, a Legacy
+  game that this version cannot join, a host that cannot be reached, or a
+  LAN game) sees why in plain words ("Couldn't join your leader's game: the
+  game is full."), and stays in the party; the leader sees it too. JOIN
   LEADER tries again. A member in another game joins when it goes back to
   the menus.
 - In the Server Browser, the leader sees whether a game has room for the
@@ -1757,8 +1758,8 @@ Friends can group up before a game and go from game to game together
   a slot for each member for 20 seconds while they follow, so that no one
   else takes them and splits the party; in a team game it puts the party on
   one team when that team has room. A Legacy game's host, or an older
-  OpenH1's, holds nothing: the browser says "No room guarantee", and the
-  members join as they can.
+  OpenH1's, holds nothing: the browser says "Room for your party (4), but
+  places aren't held", and the members join as they can.
 - After a game the party is where it was. When the host leaves, the party
   is in the menus again, and the leader takes it to the next game.
 - LEAVE PARTY leaves; the leader's party passes to the next member (also
@@ -2025,10 +2026,25 @@ mode too long for its column ends in "..."; the panel shows all of it. A
 click selects a game, and a click on the selected game, a double click, A,
 Enter or JOIN GAME joins it. The game joins the invite of the game, as for a
 link. When it reaches the host, it opens the lobby. If it cannot reach the
-host in 30 seconds, it marks the game failed, and the panel says why; when
-this machine's NAT gives each destination its own port and no router
-forwards `network.tunnel_port`, it says so (turn on UPnP on the router, or
-forward the port: refer to "Connection").
+host in 10 seconds, it marks the game failed, and the panel says why in
+words for anyone, with no technical terms ("Couldn't join. Your network is
+blocking it."; with the game's name when another game is chosen); the log
+has the cause (`menus: could not reach
+...`: whether a signalling broker answered, whether the host did, and
+whether this network's NAT or the host's is strict). The connecting box
+that a link (PASTE LINK) or a game opens says the same, with what to try:
+
+| The box says | When |
+| --- | --- |
+| INTERNET PLAY IS OFF | `network.online` is off |
+| CAN'T GET ONLINE: check your internet connection | No signalling broker is reached |
+| GAME NOT FOUND: the game may have ended, or its host is offline (ask the host for a new invite link; a server browser's game: try another) | The host never answered (an invite works only while the copy of the game that made it runs) |
+| NETWORK BLOCKED: your network is blocking the connection | This machine's NAT gives each destination its own port and no router forwards `network.tunnel_port`: it says to turn on OPEN ROUTER PORT (`network.allow_upnp`) if that is off, else to try another network (on a phone, Wi-Fi instead of mobile data) or have someone else host |
+| CAN'T REACH THE HOST: the host's network is blocking the connection | The host's addresses show that its NAT is the strict one: the host is asked to turn on OPEN ROUTER PORT |
+| CAN'T REACH THE HOST: a network is blocking the connection | The host answered, but no path opened, and neither side is known to be strict |
+
+Port forwarding (a fixed `network.tunnel_port` forwarded on the router)
+helps too, on a computer: refer to "Connection".
 
 The Ping column shows the round trip to each host in milliseconds, coloured
 by how good it is, with bars before it. The browser times it as a join would

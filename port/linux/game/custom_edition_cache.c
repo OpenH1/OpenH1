@@ -1012,7 +1012,8 @@ boolean custom_edition_cache_present(
 			error(_error_silent, "custom edition: '%s' is another version of the host's map (the host's %08lx)", path,
 				version);
 			snprintf(message, message_size,
-				"Your %.64s.map is a different version from the host's. Copy the host's into custom_maps.", name);
+				"Your copy of the map %.64s is different from the host's. Put the host's copy in custom_maps to "
+				"join.", name);
 			return FALSE;
 		}
 		snprintf(message, message_size, "You don't have the map %.*s.map. If you have it, copy it into custom_maps.",

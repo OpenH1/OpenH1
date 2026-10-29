@@ -142,8 +142,9 @@ static boolean download_file_open(struct download_file *file, short index)
 	return TRUE;
 }
 
-static void download_fail(char const *reason)
+static void download_fail(char const *cause, char const *reason)
 {
+	(void)cause;
 	(void)reason;
 }
 

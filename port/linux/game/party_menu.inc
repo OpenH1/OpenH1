@@ -567,15 +567,15 @@ static wchar_t const *party_result_text(int result)
 	case _p2p_party_follow_full:
 		return L"the game is full";
 	case _p2p_party_follow_version:
-		return L"another version of OpenH1";
+		return L"a different version of OpenH1";
 	case _p2p_party_follow_legacy:
-		return L"a Legacy game this version can't join";
+		return L"an older Halo game OpenH1 can't join";
 	case _p2p_party_follow_local:
 		return L"a local network game";
 	case _p2p_party_follow_busy:
 		return L"in another game";
 	case _p2p_party_follow_refused:
-		return L"the host didn't let them in";
+		return L"the host turned the join away";
 	}
 	return L"";
 }
@@ -631,10 +631,10 @@ static void party_notice_text(struct p2p_party_notice const *notice, wchar_t *te
 		usnprintf(text, size - 1, L"That party is full.");
 		break;
 	case _p2p_party_notice_unreachable:
-		usnprintf(text, size - 1, L"Couldn't reach that party.\r\nIt may have ended.");
+		usnprintf(text, size - 1, L"Couldn't reach that party.\r\nIt may have ended: ask for\r\na new party link.");
 		break;
 	case _p2p_party_notice_version:
-		usnprintf(text, size - 1, L"%s has another version\r\nof OpenH1: update to play\r\ntogether.", name);
+		usnprintf(text, size - 1, L"%s is on a different\r\nversion of OpenH1. Update\r\nboth to play together.", name);
 		break;
 	case _p2p_party_notice_follow_failed:
 		usnprintf(text, size - 1, L"%s couldn't join:\r\n%s.", name, party_result_text(notice->result));
@@ -670,7 +670,7 @@ static wchar_t const *party_member_where(struct p2p_party_status const *status,
 	case _p2p_party_follow_version:
 		return L"Another version";
 	case _p2p_party_follow_legacy:
-		return L"Can't join Legacy";
+		return L"Older Halo game";
 	case _p2p_party_follow_local:
 		return L"A local game";
 	case _p2p_party_follow_refused:
@@ -700,7 +700,7 @@ or what a party is */
 static void party_status_text(struct p2p_party_status const *status, wchar_t *text, short size)
 {
 	if (!config_boolean("network.online"))
-		usnprintf(text, size - 1, L"Internet play is off. Turn it on in Settings, Network Setup.");
+		usnprintf(text, size - 1, L"Internet play is off. Turn it on in Settings, Online.");
 	else if (status->state == _p2p_party_none)
 		usnprintf(text, size - 1, L"Make a party, then send your friends its link.");
 	else if (status->state == _p2p_party_joining)
@@ -889,7 +889,7 @@ static void party_hub_status(wchar_t *headline, short headline_size, wchar_t *de
 	if (!config_boolean("network.online"))
 	{
 		usnprintf(headline, headline_size - 1, L"INTERNET PLAY IS OFF");
-		usnprintf(detail, detail_size - 1, L"Turn it on in Settings,\r\nNetwork Setup.");
+		usnprintf(detail, detail_size - 1, L"Turn it on in Settings,\r\nOnline.");
 	}
 	else if (status.state == _p2p_party_none)
 	{

@@ -181,8 +181,9 @@ static boolean custom_edition_cache_present(char const *level_name, unsigned lon
 	return fake_playable;
 }
 
-static void download_fail(char const *reason)
+static void download_fail(char const *cause, char const *reason)
 {
+	(void)cause;
 	(void)reason;
 	fake_failed++;
 	map_share_globals.download.state = _download_failed;
