@@ -28,9 +28,14 @@ What a bot does each tick, in a player's terms:
   at the feet, the rest at the body; the less skilled go for the head less
   often), leads a moving target by its weapon's projectile speed, and fires
   in bursts while its aim is near the target (released between bursts, so
-  semi-automatic weapons fire too); it throws
-  a grenade now and then at middle range and strikes with its weapon close
-  up. It strafes while fighting, jumps now and then, and keeps its distance.
+  semi-automatic weapons fire too). It plays as players do close up
+  (bots_bot_fight_close): opens on a whole shield at middle range with a
+  grenade now and then, goes in with a grenade and a blow, shoots the
+  shield down with the pistol and strikes, and strikes at a blow's reach
+  (the engine's). It strafes one way while its target's aim is off it and
+  turns about once it reacts to the aim on it (a jump with it now and
+  then), crouches at range while no one aims at it, and keeps its
+  distance.
 - Otherwise it goes where an enemy was last seen, else about the map (the
   player starting locations, the weapon and item spawns), most often to the
   place nearest a living enemy, as a player reads the motion tracker; now
@@ -170,6 +175,23 @@ enum
 	NUMBER_OF_BOTS_FAMILIES,
 };
 
+/* how far a player's blow reaches (world units from the head: the rays of
+unit_cause_player_melee_damage), to the target's surface */
+#define BOTS_MELEE_REACH 0.8f
+
+/* the play a bot is in the middle of, close up (bots_bot_fight) */
+enum
+{
+	_bots_combo_none = 0,
+	/* a grenade, then shooting */
+	_bots_combo_grenade_shoot,
+	/* a grenade, then in for a blow */
+	_bots_combo_grenade_blow,
+	/* shooting the shield down (the pistol), then in for a blow; or in
+	for a blow with a weapon that only strikes */
+	_bots_combo_shoot_blow,
+};
+
 /* where on its target a bot aims (bots_aim_point_kind) */
 enum
 {
@@ -217,8 +239,9 @@ struct bots_skill_definition
 	real fire_cone;
 	/* how much of a moving target's lead it takes (0 none, 1 all) */
 	real lead;
-	/* the chance a second of throwing a grenade at middle range, and of
-	jumping while fighting */
+	/* the chance it opens a fight with a grenade (at middle range, the
+	target's shield up), and goes in with a grenade and a blow close up; the
+	chance it jumps as it dodges */
 	real grenade_chance;
 	real jump_chance;
 	/* the ticks of a burst, and of a pause between bursts */
@@ -228,18 +251,22 @@ struct bots_skill_definition
 	sniper rifle, the pistol, on a target whose shield is down), taken for
 	each target and every two seconds (bots_aim_head_wanted) */
 	real head_chance;
+	/* aimed at, the seconds until it strafes the other way, and the chance
+	it does (bots_strafe) */
+	real dodge_reaction_seconds;
+	real dodge_chance;
 };
 
 static struct bots_skill_definition const bots_skills[NUMBER_OF_BOTS_SKILLS] =
 {
-	{ "easy", 0.75f, 22.0f, 100.0f, 12.0f, 1.4f, 8.0f, 7.0f, 0.45f, 1.8f, 4.0f, 0.70f, 1.5f, 0.6f, 2.2f, 0.3f, 0.04f, 0.00f,
-		6, 14, 0.35f },
-	{ "normal", 0.45f, 32.0f, 120.0f, 7.0f, 0.9f, 13.0f, 9.0f, 0.6f, 1.1f, 3.0f, 0.80f, 2.2f, 0.4f, 1.8f, 0.7f, 0.10f, 0.05f,
-		9, 9, 0.6f },
-	{ "heroic", 0.30f, 42.0f, 140.0f, 4.0f, 0.6f, 20.0f, 15.0f, 0.65f, 0.5f, 1.8f, 0.88f, 3.0f, 0.15f, 1.5f, 0.8f, 0.16f, 0.15f,
-		12, 6, 0.85f },
-	{ "legendary", 0.18f, 55.0f, 160.0f, 2.2f, 0.35f, 30.0f, 20.0f, 1.0f, 0.25f, 1.2f, 0.95f, 4.0f, 0.05f, 1.25f, 1.0f, 0.22f,
-		0.25f, 16, 4, 1.0f },
+	{ "easy", 0.75f, 22.0f, 100.0f, 12.0f, 1.4f, 8.0f, 7.0f, 0.45f, 1.8f, 4.0f, 0.70f, 1.5f, 0.6f, 2.2f, 0.3f, 0.20f, 0.10f,
+		6, 14, 0.35f, 0.60f, 0.40f },
+	{ "normal", 0.45f, 32.0f, 120.0f, 7.0f, 0.9f, 13.0f, 9.0f, 0.6f, 1.1f, 3.0f, 0.80f, 2.2f, 0.4f, 1.8f, 0.7f, 0.40f, 0.25f,
+		9, 9, 0.6f, 0.40f, 0.65f },
+	{ "heroic", 0.30f, 42.0f, 140.0f, 4.0f, 0.6f, 20.0f, 15.0f, 0.65f, 0.5f, 1.8f, 0.88f, 3.0f, 0.15f, 1.5f, 0.8f, 0.60f, 0.40f,
+		12, 6, 0.85f, 0.30f, 0.85f },
+	{ "legendary", 0.18f, 55.0f, 160.0f, 2.2f, 0.35f, 30.0f, 20.0f, 1.0f, 0.25f, 1.2f, 0.95f, 4.0f, 0.05f, 1.25f, 1.0f, 0.75f,
+		0.50f, 16, 4, 1.0f, 0.20f, 1.00f },
 };
 
 struct bots_bot
@@ -344,9 +371,20 @@ struct bots_bot
 	long unstick_until_tick;
 	real unstick_direction;
 
-	/* fighting: the side it strafes to and until when; bursts */
+	/* fighting: the side it strafes to and until when (no one aiming at
+	it); since when its target aims at it (NONE: not), whether it dodges
+	that and when next; bursts */
 	real strafe_sign;
 	long strafe_until_tick;
+	long aimed_since_tick;
+	boolean dodging;
+	long dodge_tick;
+	/* the play it is in close up (_bots_combo_*), until when, and not again
+	before when; the target it opened on with a grenade */
+	short combo;
+	long combo_until_tick;
+	long combo_next_tick;
+	long opened_player_index;
 	long burst_until_tick;
 	long pause_until_tick;
 	long grenade_tick;
@@ -415,6 +453,13 @@ static struct
 	long aim_hits[NUMBER_OF_BOTS_FAMILIES];
 	long aim_head_shots;
 	long aim_scan_tick;
+	/* the fights' habits: combos (_bots_combo_*), blows, dodges of an aim,
+	jumps with them, crouches */
+	long combos[4];
+	long blows;
+	long dodges;
+	long dodge_jumps;
+	long crouches;
 } bots_globals;
 
 /* the walkable surfaces the bots' searches read: a copy of the structure's
@@ -768,6 +813,10 @@ struct bots_weapon_kind
 	short value;
 	short tap_ticks;
 	short family;
+	/* a blow may be struck with it (not one whose tag prevents it), and it
+	only strikes (it fires nothing: a flag, a ball) */
+	boolean can_strike;
+	boolean strikes_only;
 	real range;
 	real projectile_speed;
 };
@@ -796,6 +845,14 @@ static struct bots_weapon_kind const *bots_weapon_kind(long definition_index)
 	kind->value = bots_weapon_value_compute(definition_index);
 	kind->tap_ticks = bots_weapon_tap_ticks_compute(definition_index);
 	kind->family = bots_weapon_family_compute(definition_index);
+	{
+		struct weapon_definition *definition = weapon_definition_get(definition_index);
+		struct weapon_trigger_definition *trigger = definition->weapon.triggers.count > 0 ?
+			TAG_BLOCK_GET_ELEMENT(&definition->weapon.triggers, 0, struct weapon_trigger_definition) : NULL;
+
+		kind->can_strike = !TEST_FLAG(definition->weapon.flags, _weapon_prevents_melee_attack_bit);
+		kind->strikes_only = kind->can_strike && (!trigger || trigger->projectile.index == NONE);
+	}
 	kind->range = bots_weapon_range_compute(definition_index);
 	kind->projectile_speed = bots_projectile_speed_compute(definition_index);
 	return kind;
@@ -1432,6 +1489,11 @@ void bots_initialize_for_new_map(void)
 	csmemset(bots_globals.aim_hits, 0, sizeof(bots_globals.aim_hits));
 	bots_globals.aim_head_shots = 0;
 	bots_globals.aim_scan_tick = 0;
+	csmemset(bots_globals.combos, 0, sizeof(bots_globals.combos));
+	bots_globals.blows = 0;
+	bots_globals.dodges = 0;
+	bots_globals.dodge_jumps = 0;
+	bots_globals.crouches = 0;
 	/* (the first line a minute into the game) */
 	bots_globals.last_report_tick = 0;
 	/* (the weapon definitions are the new map's) */
@@ -2237,6 +2299,8 @@ static void bots_bot_reset(struct bots_bot *bot, long player_index, long bot_ind
 	bot->random = 0x2545F491UL * (unsigned long)(bot_index + 1) ^ (unsigned long)network_game_get_random_seed();
 	bot->strafe_sign = 1.0f;
 	bot->motion_change_tick = NONE;
+	bot->aimed_since_tick = NONE;
+	bot->opened_player_index = NONE;
 	bot->tally_weapon_index = NONE;
 	bot->throw_tick = bot->blow_tick = -TICKS_PER_SECOND * 10;
 	bot->form = 1.0f + bots_random_signed(bot) * 0.2f;
@@ -2424,6 +2488,62 @@ static boolean bots_aim_head_wanted(struct bots_bot *bot, struct bots_skill_defi
 	return bot->head_wanted;
 }
 
+/* ---------- the fight's habits */
+
+/* whether an aim from an eye (along the vector, any length) passes within
+radius of a point ahead of it */
+static boolean bots_aimed_at(real_point3d const *eye, real_vector3d const *aim, real_point3d const *point, real radius)
+{
+	real dx = point->x - eye->x, dy = point->y - eye->y, dz = point->z - eye->z;
+	real along = dx * aim->i + dy * aim->j + dz * aim->k;
+	real length = aim->i * aim->i + aim->j * aim->j + aim->k * aim->k;
+
+	if (along <= 0.0f || length <= 0.0f)
+		return FALSE;
+	return dx * dx + dy * dy + dz * dz - along * along / length < radius * radius;
+}
+
+/* the side a fighting bot strafes to (1 its left, -1 its right): kept while
+its target does not aim at it (another way, by its random numbers, after
+two to three and a half seconds: a player tires of one way); aimed at, the
+other way once it reacts (its skill's dodge reaction, if it dodges this
+aim at all: its dodge chance), and again every half second or so while the
+aim stays on it. TRUE on a dodge */
+static boolean bots_strafe(struct bots_bot *bot, struct bots_skill_definition const *skill, boolean aimed, long now)
+{
+	if (!aimed)
+	{
+		bot->aimed_since_tick = NONE;
+		if (now >= bot->strafe_until_tick)
+		{
+			bot->strafe_sign = bots_random_real(bot) < 0.5f ? -1.0f : 1.0f;
+			bot->strafe_until_tick = now + TICKS_PER_SECOND * 2 + (long)(bots_random(bot) % (TICKS_PER_SECOND * 3 / 2));
+		}
+		return FALSE;
+	}
+	if (bot->aimed_since_tick == NONE)
+	{
+		bot->aimed_since_tick = now;
+		bot->dodge_tick = now + (long)(skill->dodge_reaction_seconds * TICKS_PER_SECOND);
+		bot->dodging = bots_random_real(bot) < skill->dodge_chance;
+	}
+	if (!bot->dodging || now < bot->dodge_tick)
+		return FALSE;
+	bot->strafe_sign = -bot->strafe_sign;
+	bot->dodge_tick = now + TICKS_PER_SECOND * 2 / 5 + (long)(bots_random(bot) % (TICKS_PER_SECOND * 3 / 5));
+	bot->strafe_until_tick = now + TICKS_PER_SECOND * 2;
+	return TRUE;
+}
+
+/* how near (eye to the target's middle) a blow reaches: the blow's reach
+to the target's surface, its bounding sphere's radius in (a biped's
+surface within it), and further while the bot charges in (the blow lands
+a few ticks after the press) */
+static real bots_strike_reach(real target_radius, boolean charging)
+{
+	return BOTS_MELEE_REACH + MIN(target_radius, 0.4f) + (charging ? 0.3f : 0.0f);
+}
+
 /* (the aim's tally) the rounds the bot's weapon fired since the last tick,
 by its family, and its sniper's with the aim on the head */
 static void bots_tally_shots(struct bots_bot *bot, long weapon_index)
@@ -2537,6 +2657,8 @@ struct bots_tick
 	boolean fighting;
 	real target_distance;
 	struct player_action *action;
+	/* it crouches in its fight this tick (bots_bot_fight's) */
+	boolean crouching;
 };
 
 /* the unit's eyes: its head marker, as unit_get_head_position finds it
@@ -2597,8 +2719,106 @@ static void bots_bot_look(struct bots_bot *bot, struct bots_tick *tick)
 	}
 }
 
+/* close up, and the grenades: the plays a player makes, each started by
+the fight's situation and the bot's random numbers, and the blow at a
+blow's reach (bots_strike_reach) with a weapon that strikes:
+- a grenade, then shooting: a target newly fought at middle range (6 to 20
+  units) whose shield is whole, now and then (the skill's grenade chance);
+- a grenade, then in for a blow: a target 2 to 5.5 units off whose shield
+  is up (the same chance, every six seconds at most);
+- shooting, then in for a blow: the pistol on a target within 3 units,
+  in once the shield is down; a weapon that only strikes (a flag, a ball),
+  in at once.
+debug.bot_player_grenades' plasma: a stick now and then, closer and often */
+static void bots_bot_fight_close(struct bots_bot *bot, struct bots_tick *tick, struct bots_weapon_kind const *kind,
+	real close, long reaction_ticks)
+{
+	struct bots_skill_definition const *skill = tick->skill;
+	struct object_datum *target_object = object_get(player_get(bot->target_player_index)->unit_index);
+	real shield = target_object->object.shield_vitality;
+	long now = tick->now;
+	boolean reacted = now - bot->target_first_seen_tick >= reaction_ticks;
+	boolean grenades = tick->unit->unit.grenade_counts[0] > 0 || tick->unit->unit.grenade_counts[1] > 0;
+	boolean on_foot = tick->object->object.parent_object_index == NONE;
+	boolean charging;
+	short combo = _bots_combo_none;
+
+	if (now >= bot->combo_until_tick)
+		bot->combo = _bots_combo_none;
+	if (bot->smooth)
+	{
+		boolean sticking = !strcmp(config_string("debug.bot_player_grenades"), "plasma");
+		real nearest = sticking ? 4.0f : 6.0f, furthest = sticking ? 18.0f : 22.0f;
+		real chance = (sticking ? 0.6f : 0.15f) / TICKS_PER_SECOND;
+
+		if (close > nearest && close < furthest && now >= bot->grenade_tick && grenades && reacted &&
+			bots_random_real(bot) < chance)
+		{
+			tick->flags |= FLAG(_unit_control_throw_grenade_bit);
+			if (sticking && tick->unit->unit.grenade_counts[1] > 0)
+				tick->action->desired_grenade_index = 1;
+			else if (tick->unit->unit.grenade_counts[(long)tick->unit->unit.current_grenade_index] <= 0)
+				tick->action->desired_grenade_index = tick->unit->unit.grenade_counts[0] > 0 ? 0 : 1;
+			bot->grenade_tick = now + (sticking ? TICKS_PER_SECOND * 5 / 2 : TICKS_PER_SECOND * 4);
+		}
+	}
+	else if (bot->combo == _bots_combo_none && reacted && on_foot)
+	{
+		/* (an opener: once a target, at middle range, its shield whole) */
+		if (bot->opened_player_index != bot->target_player_index && close > 6.0f && close < 20.0f && shield > 0.9f &&
+			grenades && now >= bot->grenade_tick)
+		{
+			bot->opened_player_index = bot->target_player_index;
+			if (bots_random_real(bot) < skill->grenade_chance)
+				combo = _bots_combo_grenade_shoot;
+		}
+		/* (in close, its shield up: a grenade and the blow) */
+		else if (close > 2.0f && close < 5.5f && shield > 0.5f && grenades && now >= bot->combo_next_tick &&
+			kind && kind->can_strike)
+		{
+			bot->combo_next_tick = now + TICKS_PER_SECOND * 6;
+			if (bots_random_real(bot) < skill->grenade_chance)
+				combo = _bots_combo_grenade_blow;
+		}
+		/* (the pistol's shot then the blow; a weapon that only strikes) */
+		else if (kind && kind->can_strike && close < 3.0f &&
+			(kind->strikes_only || (kind->family == _bots_family_pistol && shield <= 0.05f)))
+		{
+			combo = _bots_combo_shoot_blow;
+		}
+		if (combo != _bots_combo_none)
+		{
+			bot->combo = combo;
+			bot->combo_until_tick = now + TICKS_PER_SECOND * 3 / 2;
+			bots_globals.combos[combo]++;
+			if (combo != _bots_combo_shoot_blow)
+			{
+				tick->flags |= FLAG(_unit_control_throw_grenade_bit);
+				tick->flags &= ~FLAG(_unit_control_weapon_primary_trigger_bit);
+				if (tick->unit->unit.grenade_counts[(long)tick->unit->unit.current_grenade_index] <= 0)
+					tick->action->desired_grenade_index = tick->unit->unit.grenade_counts[0] > 0 ? 0 : 1;
+				bot->grenade_tick = now + TICKS_PER_SECOND * 4;
+			}
+		}
+	}
+	/* the blow, at its reach (further charging in) */
+	charging = now < bot->combo_until_tick &&
+		(bot->combo == _bots_combo_grenade_blow || bot->combo == _bots_combo_shoot_blow);
+	if (kind && kind->can_strike && on_foot && now >= bot->melee_tick &&
+		close < bots_strike_reach(target_object->object.bounding_sphere_radius, charging))
+	{
+		tick->flags |= FLAG(_unit_control_use_equipment_bit);
+		tick->flags &= ~FLAG(_unit_control_weapon_primary_trigger_bit);
+		bot->melee_tick = now + TICKS_PER_SECOND;
+		bots_globals.blows++;
+		if (bot->combo == _bots_combo_grenade_blow || bot->combo == _bots_combo_shoot_blow)
+			bot->combo_until_tick = now;
+	}
+}
+
 /* fighting the target seen in the last half second: aim (turning at its
-speed, leading, an error that settles), fire, a grenade, a blow, strafing */
+speed, leading, an error that settles), fire, a grenade, a blow, strafing,
+a crouch */
 static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 {
 	struct bots_skill_definition const *skill = tick->skill;
@@ -2610,12 +2830,41 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 	real desired_yaw, desired_pitch, dx, dy, dz, horizontal, turn, yaw_off, pitch_off, cone;
 	boolean new_target = bot->target_aim_tick != now - 1 || bot->target_first_seen_tick == now;
 	short part;
+	struct bots_weapon_kind const *kind = tick->weapon_index != NONE ?
+		bots_weapon_kind(weapon_get(tick->weapon_index)->definition_index) : NULL;
+	struct unit_datum *target_unit = unit_get(target_player->unit_index);
+	real close;
+	boolean aimed;
 	short family = tick->weapon_index != NONE ?
 		bots_weapon_kind(weapon_get(tick->weapon_index)->definition_index)->family : (short)_bots_family_other;
 
 	tick->fighting = TRUE;
 	bots_tick_eye(tick);
+	if (new_target)
+		bot->aimed_since_tick = NONE;
 	tick->target_distance = bots_distance3d(&tick->eye, &aim_point);
+	/* (how near its middle is, for a blow; whether it aims at the bot: its
+	aim passing within half a unit of the bot's middle, more far off) */
+	close = bots_distance3d(&tick->eye, &target_object->object.bounding_sphere_center);
+	{
+		real_point3d eye;
+
+		unit_get_head_position(target_player->unit_index, &eye);
+		aimed = bots_aimed_at(&eye, &target_unit->unit.aiming_vector, &tick->object->object.bounding_sphere_center,
+			0.5f + close * 0.03f);
+	}
+	/* (a crouch at range, its target's aim not on it, with a weapon that
+	reaches: a steadier aim, smaller to be seen, slower to move) */
+	tick->crouching = !bot->smooth && !aimed && kind && tick->object->object.parent_object_index == NONE &&
+		(kind->family == _bots_family_sniper || kind->family == _bots_family_pistol ||
+			kind->family == _bots_family_assault_rifle) &&
+		close > kind->range * 0.9f && now >= bot->combo_until_tick;
+	if (tick->crouching)
+	{
+		if (!TEST_FLAG(bot->previous_control_flags, _unit_control_crouch_modifier_bit))
+			bots_globals.crouches++;
+		tick->flags |= FLAG(_unit_control_crouch_modifier_bit);
+	}
 	/* (the target's motion as the bot has taken it in: aimed where that
 	would have it) */
 	bots_aim_target_motion(bot, skill, &target_object->object.translational_velocity, now, new_target);
@@ -2656,8 +2905,8 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 	{
 		real_vector3d const *own = &tick->object->object.translational_velocity;
 		struct biped_datum *biped = biped_try_and_get(tick->player->unit_index);
-		real disturbance = 1.0f + (real)sqrt(own->i * own->i + own->j * own->j) * 3.0f +
-			(biped && TEST_FLAG(biped->biped.flags, _biped_airborne_bit) ? 1.5f : 0.0f);
+		real disturbance = (1.0f + (real)sqrt(own->i * own->i + own->j * own->j) * 3.0f +
+			(biped && TEST_FLAG(biped->biped.flags, _biped_airborne_bit) ? 1.5f : 0.0f)) * (tick->crouching ? 0.75f : 1.0f);
 
 		bots_aim_settle(bot, skill, disturbance);
 	}
@@ -2754,37 +3003,20 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 			tick->flags |= FLAG(_unit_control_weapon_primary_trigger_bit);
 		}
 	}
-	/* a blow close up */
-	if (tick->target_distance < 1.1f && now >= bot->melee_tick)
+	/* the plays close up, and the blow */
+	bots_bot_fight_close(bot, tick, kind, close, reaction_ticks);
+	/* strafing: one way while the target does not aim at the bot, the
+	other once it reacts to its aim (and a jump with it now and then);
+	nearer or further to keep its weapon's distance, straight in for a
+	blow; crouched, slowly */
+	if (bots_strafe(bot, skill, aimed, now) && !bot->smooth)
 	{
-		tick->flags |= FLAG(_unit_control_use_equipment_bit);
-		bot->melee_tick = now + TICKS_PER_SECOND;
-	}
-	/* a grenade at middle range, now and then (debug.bot_player_grenades'
-	plasma: closer, for a stick, and often) */
-	{
-		boolean sticking = bot->smooth && !strcmp(config_string("debug.bot_player_grenades"), "plasma");
-		real nearest = sticking ? 4.0f : 6.0f, furthest = sticking ? 18.0f : 22.0f;
-		real chance = skill->grenade_chance / TICKS_PER_SECOND * (sticking ? 18.0f : 3.0f);
-
-		if (tick->target_distance > nearest && tick->target_distance < furthest && now >= bot->grenade_tick &&
-			(tick->unit->unit.grenade_counts[0] > 0 || tick->unit->unit.grenade_counts[1] > 0) &&
-			bots_random_real(bot) < chance && now - bot->target_first_seen_tick >= reaction_ticks)
+		bots_globals.dodges++;
+		if (!tick->crouching && bots_random_real(bot) < skill->jump_chance)
 		{
-			tick->flags |= FLAG(_unit_control_throw_grenade_bit);
-			if (sticking && tick->unit->unit.grenade_counts[1] > 0)
-				tick->action->desired_grenade_index = 1;
-			else if (tick->unit->unit.grenade_counts[(long)tick->unit->unit.current_grenade_index] <= 0)
-				tick->action->desired_grenade_index = tick->unit->unit.grenade_counts[0] > 0 ? 0 : 1;
-			bot->grenade_tick = now + (sticking ? TICKS_PER_SECOND * 5 / 2 : TICKS_PER_SECOND * 4);
+			tick->flags |= FLAG(_unit_control_jump_bit);
+			bots_globals.dodge_jumps++;
 		}
-	}
-	/* strafing, to a side for a while; nearer or further to keep its
-	weapon's distance; a jump now and then */
-	if (now >= bot->strafe_until_tick)
-	{
-		bot->strafe_sign = bots_random_real(bot) < 0.5f ? -1.0f : 1.0f;
-		bot->strafe_until_tick = now + TICKS_PER_SECOND / 3 + (long)(bots_random(bot) % (TICKS_PER_SECOND));
 	}
 	{
 		real to_target = (real)atan2(dy, dx);
@@ -2792,13 +3024,17 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 		real forward = tick->target_distance > range * 1.3f ? 0.8f : tick->target_distance < range * 0.6f ? -0.5f : 0.0f;
 		real side = bot->strafe_sign;
 
+		if (now < bot->combo_until_tick &&
+			(bot->combo == _bots_combo_grenade_blow || bot->combo == _bots_combo_shoot_blow))
+		{
+			forward = 1.0f;
+			side *= 0.3f;
+		}
 		tick->move_direction = (real)atan2((real)sin(to_target) * forward + (real)sin(to_target + BOTS_PI * 0.5f) * side,
 			(real)cos(to_target) * forward + (real)cos(to_target + BOTS_PI * 0.5f) * side);
 		tick->moving = TRUE;
-		tick->throttle_scale = 1.0f;
+		tick->throttle_scale = tick->crouching ? 0.5f : 1.0f;
 	}
-	if (bots_random_real(bot) < skill->jump_chance / TICKS_PER_SECOND)
-		tick->flags |= FLAG(_unit_control_jump_bit);
 }
 
 /* walking to the goal, looking where it goes; there, a look about (and the
@@ -3252,6 +3488,13 @@ static void bots_report(void)
 		}
 		platform_log("bots: tick %ld, aim (%s): hits/rounds%s", now, bots_skills[bots_globals.skill].name,
 			aim[0] ? aim : ", none");
+		platform_log("bots: tick %ld, habits: combos %ld (grenade-shoot %ld, grenade-blow %ld, shoot-blow %ld), "
+			"blows %ld, dodges %ld (jumps %ld), crouches %ld", now,
+			bots_globals.combos[_bots_combo_grenade_shoot] + bots_globals.combos[_bots_combo_grenade_blow] +
+				bots_globals.combos[_bots_combo_shoot_blow],
+			bots_globals.combos[_bots_combo_grenade_shoot], bots_globals.combos[_bots_combo_grenade_blow],
+			bots_globals.combos[_bots_combo_shoot_blow], bots_globals.blows, bots_globals.dodges,
+			bots_globals.dodge_jumps, bots_globals.crouches);
 	}
 }
 

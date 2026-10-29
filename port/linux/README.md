@@ -632,7 +632,13 @@ fires while its aim still closes on the target, so some shots miss. It aims
 where its weapon is best: the sniper rifle and the pistol at the body to
 bring the shield down and at the head once it is down, the rocket launcher and the fuel rod
 gun at the feet, anything else at the body; the lower the skill, the less
-often it goes for the head.
+often it goes for the head. In a fight they play as people do: a grenade
+to open on a whole shield, a grenade then in for a blow, the pistol's
+shots to bring the shield down then a blow, a blow at the reach the game's
+melee has; they strafe one way while the enemy's aim is off them and turn
+about when it comes on them (as quickly as their skill reacts, the easy
+ones not always), now and then with a jump, and crouch to fire at range
+while no one aims at them.
 halo.log has a line each minute with each weapon family's rounds that hit
 someone of those the bots fired, and `debug.bots_weapon` gives every bot
 one weapon, to measure it.
