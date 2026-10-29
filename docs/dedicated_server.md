@@ -669,7 +669,12 @@ a rotation that long is saved whole and read back after a restart.
 - A rule is a gametype rule's name or its short name (`score`, `time`,
   `weapons`, `ff`...; `GET /api/gametypes`'s schema lists them), with a
   value it takes; a rule of another game engine than the gametype's is
-  refused. 48 rules at most; a rule given twice is the last.
+  refused. 48 rules at most; a rule given twice is the last. OpenCE's
+  gametype options are rules too: `kills_score` and `points_per_capture`
+  (CTF: a kill scores a point and a capture that many, the score to win
+  still in captures), `multi_hill` (King of the Hill: 2 to 5 hills at
+  once) and `force_team_spawns` (a team game's players spawn at their own
+  team's CTF spawn points): `bloodgulch:ctf+kills_score=true`.
 
 An entry that cannot be played (a map that is not there, a bad gametype
 file, a rule out of range) is left out with a warning, at the start and at

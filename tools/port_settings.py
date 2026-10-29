@@ -794,12 +794,24 @@ CONTROL_ROWS = 7
 WIDE_SETTINGS = {"audio.output_device", "audio.input_device", "streamer.slurs", "streamer.swearing",
                  "streamer.insults"}
 
-# the host's voice chat and vote kicks, on Teamplay Options
-# (_teamplay_options_extras): each row's key, its label, its choices' words
-# (menu_functions.c's gametype_options give their settings' values) and
-# their helps
+# Teamplay Options' rows of the port's (_teamplay_options_extras): the
+# gametype's FORCE TEAM SPAWNS, then the host's voice chat and vote kicks;
+# each row's key, its label, its choices' words (menu_functions.c's
+# gametype_options give their values) and their helps
 TEAMPLAY_EDIT = "main_menu/settings_select/multiplayer_setup/teamplay_options_edit"
 VOICE_QUALITIES = (8, 12, 16, 24, 32, 48, 64)
+# (the rows' step: closer than the PC's 30px, so that all of Server Setup's
+# fit above the help text, which moves down to TEAMPLAY_HELP_TOP)
+TEAMPLAY_STEP = 26
+TEAMPLAY_HELP_TOP = 351
+# (game_engine.c's game_engine_force_team_spawns: the gametype's own, so
+# shown in Edit Gametypes' copy too, and not on Server Setup's VOICE OPTIONS)
+TEAMPLAY_GAMETYPE_ROWS = [
+    ("force_team_spawns", "FORCE TEAM SPAWNS:", ["OFF", "ON"], [
+        "Players will spawn at any spawn point the\\ngametype allows.",
+        "Players will only spawn at their own team's\\nCapture the Flag spawn points.",
+    ]),
+]
 TEAMPLAY_ROWS = [
     ("voice_mode", "VOICE CHAT:", ["OFF", "TEAM NEAR", "ANYONE NEAR", "TEAM", "TEAM, ENEMIES NEAR"], [
         "No voice chat during the game.",
@@ -829,6 +841,8 @@ TEAMPLAY_ROWS = [
         "No text chat in the game.",
     ]),
 ]
+# (Teamplay Options' rows of the port's, in order)
+TEAMPLAY_EXTRA_ROWS = TEAMPLAY_GAMETYPE_ROWS + TEAMPLAY_ROWS
 
 # the profile menu's words for what its items now open
 STRING_OVERRIDES = {
@@ -1588,6 +1602,44 @@ OPENCE_ROWS = [
 ]
 OPENCE_ITEM = f"{PLAYLIST_EDIT}/playlist_edit_opence_item"
 
+# Capture the Flag's KILLS SCORE and KILLS PER CAPTURE (game_engine_ctf.c)
+# and King of the Hill's MULTI-HILL (game_engine_king.c), OpenCE's (#467):
+# rows after each editor's own (_gametype_rules_extras), with their labels
+# after the PC version's and their helps before TIME LIMIT's (STRING_INSERTS),
+# and TIME LIMIT moved below them (ce_menus.py's CHILD_OFFSETS). Each screen:
+# its rows (each its key, its label, its spinner's words and their helps;
+# menu_functions.c's gametype_options give their values), its list, where
+# the first row goes, the index of its first label and of TIME LIMIT's first
+# help, and the PC version's look of its rows, which differs: the prefix of
+# its labels' and spinners' names (op_ and var_ have the key alone), its
+# labels' width and its spinners' words' offset
+CTF_EDIT = f"{PLAYLIST_EDIT}/ctf_edit"
+KOTH_EDIT = f"{PLAYLIST_EDIT}/koth_edit"
+CTF_KILLS_PER_CAPTURE = (5, 10, 15, 20, 25, 30, 40, 50, 75, 100)
+GAMETYPE_RULES_EXTRAS = {
+    CTF_EDIT: {"list": "ctf_options_menu", "labels": "ctf_labels", "helps": "cap_ctf", "y": 223,
+               "label_index": 6, "help_index": 17, "prefix": "", "label_width": 320, "text_y": 4, "rows": [
+        ("kills_score", "KILLS SCORE:", ["YES", "NO"], [
+            "Each kill scores a point for the killer's team (a\\nbetrayal takes one away), and each capture is "
+            "worth\\nKills per Capture. The limit is in captures.",
+            "Only flag captures score."]),
+        ("kills_per_capture", "KILLS PER CAPTURE:", [str(points) for points in CTF_KILLS_PER_CAPTURE], [
+            f"With Kills Score on, each flag capture is worth\\n{points} points (a kill is worth 1)."
+            for points in CTF_KILLS_PER_CAPTURE]),
+    ]},
+    KOTH_EDIT: {"list": "koth_options_menu", "labels": "koth_labels", "helps": "cap_koth", "y": 163,
+                "label_index": 3, "help_index": 9, "prefix": "koth_", "label_width": 300, "text_y": None, "rows": [
+        ("multi_hill", "MULTI-HILL:", ["OFF", "2", "3", "4", "5"], [
+            "There will be only one Hill at a time.",
+            "There will be two Hills at once. Holding either one\\nscores.",
+            "There will be three Hills at once. Holding any of\\nthem scores.",
+            "There will be four Hills at once. Holding any of\\nthem scores.",
+            "There will be five Hills at once. Holding any of\\nthem scores."]),
+    ]},
+}
+# (the rows' step, the PC version's)
+GAMETYPE_RULES_STEP = 30
+
 STRING_INSERTS = {
     # (the gametype editor's OPENCE OPTIONS' words, after the PC version's:
     # menu_functions.c's playlist_edit_description)
@@ -1597,9 +1649,15 @@ STRING_INSERTS = {
     f"{PLAYER_EDIT}/cap_player_options": [(28, AIM_ASSIST_HELP + SHIELD_EFFECTS_HELP)],
     # (Teamplay Options' voice chat and vote kick rows, after its own:
     # TEAMPLAY_ROWS)
-    f"{TEAMPLAY_EDIT}/teamplay_options_labels": [(3, [label for _, label, *_ in TEAMPLAY_ROWS])],
-    f"{TEAMPLAY_EDIT}/cap_teamplay_options": [(10, [text for *_, helps in TEAMPLAY_ROWS for text in helps])],
+    f"{TEAMPLAY_EDIT}/teamplay_options_labels": [(3, [label for _, label, *_ in TEAMPLAY_EXTRA_ROWS])],
+    f"{TEAMPLAY_EDIT}/cap_teamplay_options": [(10, [text for *_, helps in TEAMPLAY_EXTRA_ROWS for text in helps])],
     f"{SLAYER_EDIT}/var_kills_to_win": [(5, ["75", "100", "150", "200", "250", "500"])],
+    # (Capture the Flag's and King of the Hill's rows: GAMETYPE_RULES_EXTRAS)
+    **{f"{folder}/{screen['labels']}": [(screen["label_index"], [label for _, label, *_ in screen["rows"]])]
+       for folder, screen in GAMETYPE_RULES_EXTRAS.items()},
+    **{f"{folder}/{screen['helps']}": [(screen["help_index"], [text for *_, helps in screen["rows"]
+                                                               for text in helps])]
+       for folder, screen in GAMETYPE_RULES_EXTRAS.items()},
     f"{VEHICLE_EDIT}/var_vehicle_set": [(8, ["PC"])],
     f"{VEHICLE_EDIT}/cap_vehicle_options": [(17, [
         "Every vehicle the map places will spawn, as in\\nHalo PC.",
@@ -1880,12 +1938,21 @@ WIDGET_PATCHES = {
             f'<child widget="main_menu/settings_select/multiplayer_setup/item_options_edit/op_primary_weapon" x="54" y="223"/>',
             f'<child widget="main_menu/settings_select/multiplayer_setup/item_options_edit/op_secondary_weapon" x="54" y="253"/>',
         ]}},
-    # (Teamplay Options' voice chat and vote kick rows, over its buttons:
-    # Server Setup's only, _teamplay_options_extras)
+    # (Teamplay Options' FORCE TEAM SPAWNS, then its voice chat and vote kick
+    # rows, Server Setup's only, over its buttons: _teamplay_options_extras)
     f"{TEAMPLAY_EDIT}/teamplay_options_menu": {"insert_before": {
         f"{TEAMPLAY_EDIT}/teamplay_button_bar": [
-            f'<child widget="{TEAMPLAY_EDIT}/op_{key}" x="54" y="{163 + 30 * index}"/>'
-            for index, (key, *_) in enumerate(TEAMPLAY_ROWS)]}},
+            f'<child widget="{TEAMPLAY_EDIT}/op_{key}" x="54" y="{163 + TEAMPLAY_STEP * index}"/>'
+            for index, (key, *_) in enumerate(TEAMPLAY_EXTRA_ROWS)]}},
+    f"{TEAMPLAY_EDIT}/teamplay_options_help": {"set": {"top": TEAMPLAY_HELP_TOP,
+                                                       "height": 414 - TEAMPLAY_HELP_TOP}},
+    # (Capture the Flag's and King of the Hill's rows, before TIME LIMIT,
+    # which King of the Hill's list has of Capture the Flag's:
+    # _gametype_rules_extras)
+    **{f"{folder}/{screen['list']}": {"insert_before": {f"{CTF_EDIT}/op_time_limit": [
+        f'<child widget="{folder}/op_{key}" x="54" y="{screen["y"] + GAMETYPE_RULES_STEP * index}"/>'
+        for index, (key, *_) in enumerate(screen["rows"])]}}
+       for folder, screen in GAMETYPE_RULES_EXTRAS.items()},
 
     # (VR Setup, below About, in VR only: _vr_item)
     f"{PE}/profile_edit_select_list": {"insert_before": {
@@ -3083,13 +3150,42 @@ def _opence_options() -> list:
     return lines
 
 
+def _gametype_rules_extras(folder: str) -> list:
+    """Capture the Flag's or King of the Hill's rows of the port's
+    (GAMETYPE_RULES_EXTRAS), as the PC version's rows of the screen are"""
+    screen = GAMETYPE_RULES_EXTRAS[folder]
+    lines = []
+    for index, (key, _, strings, _) in enumerate(screen["rows"]):
+        name = f"{folder}/{screen['prefix']}{key}"
+        lines += _widget(f"{name}_label", [("type", "text"), ("controller", 1), ("width", screen["label_width"]),
+                                           ("height", 22), ("string_list", f"{folder}/{screen['labels']}"),
+                                           ("string_index", screen["label_index"] + index),
+                                           ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("text_x", 13),
+                                           ("text_y", 4)], [])
+        lines += _widget(f"{name}_spinner",
+                         [("type", "spinner"), ("left", 2), ("top", 2), ("width", 148), ("height", 20),
+                          ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
+                          ("string_list", f"{folder}/var_{key}"), ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
+                          ("align", "center"), ("text_y", screen["text_y"]), ("list_flags", "items_from_strings"),
+                          ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
+                          ("header_bounds", "7 -6 19 0"), ("footer_bounds", "7 150 19 156")],
+                         ['<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+        lines += _widget(f"{folder}/op_{key}", [("width", 512), ("height", 28),
+                                                ("flags", "pass_unhandled_to_focused_child"),
+                                                ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
+                         [f'<child widget="{name}_label"/>', f'<child widget="{name}_spinner" x="320" y="1"/>'])
+        lines += _strings(f"{folder}/var_{key}", strings)
+    return lines
+
+
 def _teamplay_options_extras() -> list:
-    """Teamplay Options' rows of the port's: the host's voice chat
+    """Teamplay Options' rows of the port's: the gametype's FORCE TEAM
+    SPAWNS (game_engine.c), in both copies, then the host's voice chat
     (port/linux/game/network_voice.c) and vote kicks (network_votekick.c),
     in Server Setup's copy only (menu_functions.c's gametype_options_init),
     kept in config.toml"""
     lines = []
-    for index, (key, label, strings, _) in enumerate(TEAMPLAY_ROWS):
+    for index, (key, label, strings, _) in enumerate(TEAMPLAY_EXTRA_ROWS):
         lines += _widget(f"{TEAMPLAY_EDIT}/op_{key}", [("width", 512), ("height", 28),
                                                        ("flags", "pass_unhandled_to_focused_child"),
                                                        ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
@@ -5183,6 +5279,8 @@ def multiplayer_files() -> dict:
         "main_menu/settings_select/multiplayer_setup/item_options_edit".replace("/", ".") + ".port.xml": head + _item_options_extras() + ["</menus>", ""],
         PLAYER_EDIT.replace("/", ".") + ".port.xml": head + _player_options_extras() + ["</menus>", ""],
         TEAMPLAY_EDIT.replace("/", ".") + ".port.xml": head + _teamplay_options_extras() + ["</menus>", ""],
+        **{folder.replace("/", ".") + ".port.xml": head + _gametype_rules_extras(folder) + ["</menus>", ""]
+           for folder in GAMETYPE_RULES_EXTRAS},
         OPENCE_EDIT.replace("/", ".") + ".port.xml": head + _opence_options() + ["</menus>", ""],
         MODS.replace("/", ".") + ".xml": [head[0], "<!-- The port's Mods screen, in the PC version's style "
                                           "(tools/port_settings.py) -->", head[2]] + _mods() + ["</menus>", ""],

@@ -261,16 +261,22 @@ SCHEMA = [
     _field("options", "gun_turrets", "integer", "Gun turrets of each team, with team_vehicles custom", low=0, high=4),
     _field("options", "hardcore", "boolean", "Hardcore: no motion sensor, no aim assist, a kill restores the "
            "killer's health and shields"),
+    _field("options", "force_team_spawns", "boolean", "A team game spawns its players only at their own team's CTF "
+           "spawn points"),
     _field("ctf", "assault", "boolean", "One team defends the flag, the other attacks", engine="ctf"),
     _field("ctf", "reset_on_capture", "boolean", "Both flags go home at a capture", engine="ctf"),
     _field("ctf", "flag_must_reset", "boolean", "A dropped flag goes home only by its timer", engine="ctf"),
     _field("ctf", "flag_at_home_to_score", "boolean", "A team's own flag must be home to score", engine="ctf"),
     _field("ctf", "single_flag_time", "integer", "Seconds of each side's turn in a single flag game", engine="ctf",
            low=0, high=600),
+    _field("ctf", "kills_score", "boolean", "A kill scores a point for the killer's team, and a capture "
+           "points_per_capture; score_to_win is in captures", engine="ctf"),
+    _field("ctf", "points_per_capture", "integer", "A capture's points with kills_score", engine="ctf", low=1, high=100),
     _field("slayer", "no_death_bonus", "boolean", "No point for a kill after a death", engine="slayer"),
     _field("slayer", "no_kill_penalty", "boolean", "No point taken for a suicide", engine="slayer"),
     _field("slayer", "kill_in_order", "boolean", "Players must be killed in order", engine="slayer"),
     _field("king", "moving_hill", "boolean", "The hill moves", engine="king"),
+    _field("king", "multi_hill", "integer", "Hills at once, 2 to 5; 0 or 1 for one", engine="king", low=0, high=5),
     _field("oddball", "random_start", "boolean", "The ball starts at a random place", engine="oddball"),
     _field("oddball", "ball_spawn_delay", "boolean", "The ball respawns after a delay", engine="oddball"),
     _field("oddball", "speed_with_ball", "integer", "The ball carrier's speed", engine="oddball", low=0, high=3),

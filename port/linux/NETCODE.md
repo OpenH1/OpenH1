@@ -287,6 +287,21 @@ browser shows. The listing's flag is its host's word, which any host can
 set, so a browser counts a game a dedicated server's on a master server's
 word alone, not on that flag.
 
+Version 39 also carries, as OpenCE's does (its pull request #467), three
+gametype options in space the earlier builds sent empty, so it was not
+raised: Capture the Flag's Kills Score and a capture's points in its
+variant's union (`struct ctf_variant`), King of the Hill's Multi-Hill in
+its (`struct king_variant`), and Force Team Spawns in the PC options (a
+reserved byte of `struct game_variant_options`, still 0x2C bytes). Only the
+host spawns players and scores, and a client takes Capture the Flag's team
+scores from the game type's state as before. With Multi-Hill on, the host's
+King of the Hill state is followed by the other hills
+(`struct king_extra_hills_network_state`: their count and their ids, whose
+points each machine finds on its map); a game of one hill sends the state
+alone, as before. A build without them plays a game of one hill and plain
+Capture the Flag with these; a Multi-Hill game's state, longer than it
+takes, it does not take.
+
 OpenH1's own games ("OpenH1 60 Tick" and the like, below; Standard games in
 the code) have a protocol version of their own,
 `HALO_PORT_STANDARD_NETWORK_VERSION` (`halo_port_limits.h`), separate from
