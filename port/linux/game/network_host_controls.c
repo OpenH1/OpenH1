@@ -229,6 +229,31 @@ short network_host_controls_restart_step(
 	}
 }
 
+boolean network_host_controls_same_player(
+	struct host_controls_player const *player,
+	long player_index,
+	long slot,
+	long machine_index,
+	wchar_t const *name)
+{
+	short index;
+
+	/* (a game's player by datum; a lobby's by its slot, machine and name, as
+	another may take the slot one left) */
+	if (player->player_index != NONE)
+		return player->player_index == player_index;
+	if (player_index != NONE || player->slot != slot || player->machine_index != machine_index)
+		return FALSE;
+	for (index = 0; index < (short)NUMBEROF(player->name); index++)
+	{
+		if (player->name[index] != name[index])
+			return FALSE;
+		if (!name[index])
+			break;
+	}
+	return TRUE;
+}
+
 short network_host_controls_maximum_step(
 	short const *values,
 	short count,

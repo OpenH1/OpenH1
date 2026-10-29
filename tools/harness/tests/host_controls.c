@@ -756,6 +756,26 @@ static void case_end(void)
 	CHECK(world.taken == 1, "and only once");
 }
 
+/* the player chosen: a game's by datum, a lobby's by its slot, machine
+and name, so that one who takes the slot another left is not the one chosen */
+static void case_same(void)
+{
+	struct host_controls_player player;
+
+	memset(&player, 0, sizeof(player));
+	player.player_index = NONE;
+	player.slot = 3;
+	player.machine_index = 2;
+	wcscpy(player.name, L"Alice");
+	CHECK(network_host_controls_same_player(&player, NONE, 3, 2, L"Alice"), "the one chosen");
+	CHECK(!network_host_controls_same_player(&player, NONE, 3, 5, L"Alice"), "another machine in the slot");
+	CHECK(!network_host_controls_same_player(&player, NONE, 3, 2, L"Bob"), "another name in the slot");
+	CHECK(!network_host_controls_same_player(&player, NONE, 4, 2, L"Alice"), "another slot");
+	player.player_index = 0x10002;
+	CHECK(network_host_controls_same_player(&player, 0x10002, NONE, NONE, L""), "a game's by its datum");
+	CHECK(!network_host_controls_same_player(&player, 0x20002, 3, 2, L"Alice"), "another datum");
+}
+
 /* a game over, its lobby reached by the host's A on the scores: the next
 game (a change asked for, the playlist's) set there and started; none, and
 the host picks it as before */
@@ -925,6 +945,7 @@ int main(int argc, char **argv)
 	else CASE("lock") case_lock();
 	else CASE("end") case_end();
 	else CASE("next") case_next();
+	else CASE("same") case_same();
 	else CASE("maximum") case_maximum();
 	else CASE("bans") case_bans();
 	else CASE("players") case_players();

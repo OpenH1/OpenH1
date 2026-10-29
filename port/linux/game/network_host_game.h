@@ -30,7 +30,7 @@ enum
 {
 	/* a map's name, and the maps listed at most */
 	HOST_GAME_MAP_SIZE = SERVER_MAP_SIZE,
-	MAXIMUM_HOST_GAME_MAPS = 128,
+	MAXIMUM_HOST_GAME_MAPS = 512,
 	/* the gametypes listed at most: the built-in and OpenCE's, then those
 	this machine's player saved (server_gametype_saved_list) */
 	MAXIMUM_HOST_GAME_GAMETYPES = 160,
@@ -46,6 +46,16 @@ enum
 	/* as many on each, as few moved as can be; by their scores where they
 	have some */
 	_host_game_balance,
+};
+
+/* what a lobby takes after a game (network_host_game_lobby_takes: a bit
+each) */
+enum
+{
+	/* the change asked for */
+	_host_game_take_change,
+	/* the playlist's next (or, the change failing, in its place) */
+	_host_game_take_playlist,
 };
 
 /* ---------- structures */
@@ -75,6 +85,22 @@ struct host_game_gametype
 entry after the one at index (NONE: before the first) that can be played,
 NONE if none can */
 long network_host_game_playlist_after(struct server_rotation const *playlist, long index);
+/* ... the first of those after it that playable takes (each tried once),
+NONE if none does; whether an entry's text fits the playlist (its games
+and its text, joined, as network.host_playlist holds them) */
+/* what the lobby after a game takes (_host_game_take_*): none in co-op;
+a change asked for (on a restart, one asked for now alone); the playlist's
+next, but on a restart */
+unsigned long network_host_game_lobby_takes(boolean cooperative, boolean has_next, boolean next_now,
+	boolean restarting);
+long network_host_game_playlist_try(struct server_rotation const *playlist, long index,
+	boolean (*playable)(struct server_entry const *entry, void *context), void *context);
+boolean network_host_game_playlist_fits(struct server_rotation const *playlist, char const *text);
+/* the console's ban line: the player's name (quoted, or up to a length with
+its unit), the length in seconds (0 for ever, none given) and the reason
+(its quotes off); FALSE without a name */
+boolean network_host_game_ban_parse(char const *text, char *name, long name_size, long *seconds, char *reason,
+	long reason_size);
 /* a duration's text ("30m", "2h", "7d", "1w", "forever"; a number alone:
 minutes) in seconds: 0 for ever, NONE if it is none */
 long network_host_game_duration_parse(char const *text);
@@ -87,7 +113,10 @@ void network_host_game_teams_plan(short count, long const *scores, char const *c
 /* whether this machine is a player's host of a network game, in its lobby or
 playing it (not a dedicated server, not a game of this machine alone) */
 boolean network_host_game_hosting(void);
-/* ... and in the lobby, the game's start not yet sent */
+/* ... of a co-op game (its levels in the campaign's order: no change, no
+playlist; network_host_game_hosting is FALSE for it) */
+boolean network_host_game_cooperative(void);
+/* ... and in the lobby, the game's start not yet sent (co-op's too) */
 boolean network_host_game_in_lobby(void);
 /* (the host) the game of the entry text (the rotation's: map[:gametype
 [+rule=value...]]) played now or after this game (_host_game_*), from the
@@ -122,6 +151,8 @@ void network_host_game_entry_shown(struct server_entry const *entry, wchar_t *te
 /* the multiplayer maps there are, and the gametypes the rotation names
 (the built-in ones, OpenCE's), read once a while; their counts */
 short network_host_game_maps(struct host_game_map const **maps);
+/* the maps past MAXIMUM_HOST_GAME_MAPS the list leaves out */
+long network_host_game_maps_left_out(void);
 short network_host_game_gametypes(struct host_game_gametype const **gametypes);
 /* each frame (network_host_controls_update): the next game said to every
 machine as a game's scores show */

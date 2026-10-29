@@ -15688,6 +15688,10 @@ static boolean hs_compile_and_evaluate_command(
 
 		if (!text && (text = hs_host_player_command(expression, "kick")) != NULL)
 			kick = TRUE;
+		/* port: a ban's whole line (a quoted name, its length and reason:
+		network_host_game_ban_command), its closing parenthesis off */
+		if (text && !kick)
+			return network_host_game_ban_command(text);
 		if (text)
 		{
 			char name[64];
@@ -15700,7 +15704,7 @@ static boolean hs_compile_and_evaluate_command(
 			while (length > 0 && (name[length - 1] == ' ' || name[length - 1] == '\t'))
 				length--;
 			name[length] = 0;
-			return kick ? network_game_server_kick_player(name) : network_host_game_ban_command(name);
+			return network_game_server_kick_player(name);
 		}
 	}
 	csstrncpy(buffer, expression, sizeof(buffer));

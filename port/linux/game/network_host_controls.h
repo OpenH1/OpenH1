@@ -160,6 +160,10 @@ short network_host_controls_restart_step(short stage, struct host_controls_resta
 short network_host_controls_maximum_step(short const *values, short count, short current, short present,
 	short step);
 boolean network_host_controls_ban_parse(char const *line, struct host_controls_ban *ban);
+/* whether a listed player is the one chosen: a game's by its datum index, a
+lobby's (player_index NONE) by its slot, machine and name (12 characters) */
+boolean network_host_controls_same_player(struct host_controls_player const *player, long player_index, long slot,
+	long machine_index, wchar_t const *name);
 
 /* whether this machine hosts a network game under way, or is in its lobby
 (Host Controls is its, its pause menu's, the lobby's and the scoreboard's) */

@@ -28,7 +28,8 @@ NEGATIVE_CONTROLS = {
     "long-map-cut": (("if (map_length >= sizeof(entry->map))", "if (map_length > sizeof(entry->map))"), "long"),
     "long-gametype-cut": (("gametype_length >= sizeof(entry->gametype)", "gametype_length > sizeof(entry->gametype)"),
                           "gametypes"),
-    "file-names-unchecked": (('!plain_name(!strncmp(gametype, "file=", 5) ? gametype + 5 : gametype)',
+    "file-names-unchecked": (('!plain_name(!strncmp(gametype, "file=", 5) ? gametype + 5 :\n'
+                              '\t\t\t\t!strncmp(gametype, "saved=", 6) ? gametype + 6 : gametype)',
                               '!plain_name(gametype)'), "gametypes"),
     "ui-played": (('if (!strcmp(entry->map_name, "ui"))', "if (0)"), "ui"),
     "rule-twice-counted": (("&& strcmp(entry->rules[existing].key, definition->key);", ";"), "rules"),

@@ -10,6 +10,9 @@ other's), the teams' colours kept for the most players */
 
 #define PIN(value, low, high) ((value) < (low) ? (low) : (value) > (high) ? (high) : (value))
 #define csstrcmp strcmp
+#define SET_FLAG(flags, bit, on) ((on) ? ((flags) |= FLAG(bit)) : ((flags) &= ~FLAG(bit)))
+
+#include <wchar.h>
 
 #include "config.inc"
 #include "under_test.inc"
@@ -132,9 +135,143 @@ static void case_balance(void)
 	CHECK(moved(teams, stacked, 6) <= 3, "the colours kept for the most players");
 }
 
+/* the lobby after a game: none in co-op (its next level is the campaign's),
+a change asked for (a restart's only when asked for now), the playlist's
+next but on a restart */
+static void case_takes(void)
+{
+	CHECK(network_host_game_lobby_takes(TRUE, TRUE, TRUE, FALSE) == 0, "co-op: nothing over its next level");
+	CHECK(network_host_game_lobby_takes(TRUE, FALSE, FALSE, FALSE) == 0, "co-op: no playlist either");
+	CHECK(network_host_game_lobby_takes(FALSE, TRUE, FALSE, FALSE) ==
+		(FLAG(_host_game_take_change) | FLAG(_host_game_take_playlist)), "a change, the playlist behind it");
+	CHECK(network_host_game_lobby_takes(FALSE, FALSE, FALSE, FALSE) == FLAG(_host_game_take_playlist),
+		"no change: the playlist");
+	CHECK(network_host_game_lobby_takes(FALSE, FALSE, FALSE, TRUE) == 0, "a restart replays its game");
+	CHECK(network_host_game_lobby_takes(FALSE, TRUE, FALSE, TRUE) == 0, "a restart keeps a change for after it");
+	CHECK(network_host_game_lobby_takes(FALSE, TRUE, TRUE, TRUE) == FLAG(_host_game_take_change),
+		"a change asked for now: taken by its restart");
+}
+
+/* the entries playable() was asked of, and which it takes ('y') */
+static char const *takes_these;
+static int asked;
+
+static boolean playable(struct server_entry const *entry, void *context)
+{
+	(void)context;
+	asked++;
+	/* (a try that goes round for ever stopped, for its check to see it) */
+	if (asked > 64)
+		return TRUE;
+	return takes_these[entry->rule_count] == 'y';
+}
+
+static void playlist_numbered(struct server_rotation *playlist, int count)
+{
+	int index;
+
+	playlist_of(playlist, count, NULL);
+	for (index = 0; index < count; index++)
+		playlist->entries[index].rule_count = index;
+}
+
+static void case_try(void)
+{
+	static struct server_rotation playlist;
+
+	playlist_numbered(&playlist, 4);
+	takes_these = "yyyy";
+	asked = 0;
+	CHECK(network_host_game_playlist_try(&playlist, 0, playable, NULL) == 1 && asked == 1, "the next, taken");
+	takes_these = "yn.y";
+	asked = 0;
+	CHECK(network_host_game_playlist_try(&playlist, 0, playable, NULL) == 3, "past those it can't play");
+	takes_these = "nnnn";
+	asked = 0;
+	CHECK(network_host_game_playlist_try(&playlist, 0, playable, NULL) == NONE && asked == 4,
+		"none it can play: each tried once, none taken");
+	playlist_of(&playlist, 0, NULL);
+	CHECK(network_host_game_playlist_try(&playlist, NONE, playable, NULL) == NONE, "an empty playlist");
+}
+
+static void case_fits(void)
+{
+	static struct server_rotation playlist;
+	char entry[SERVER_ENTRY_TEXT_SIZE];
+	int index;
+
+	memset(entry, 'a', sizeof(entry) - 1);
+	entry[sizeof(entry) - 1] = 0;
+	playlist_of(&playlist, 0, NULL);
+	CHECK(network_host_game_playlist_fits(&playlist, "bloodgulch:ctf"), "an empty one takes an entry");
+	/* (long entries: the text full before the entries) */
+	for (index = 0; network_host_game_playlist_fits(&playlist, entry); index++)
+	{
+		strcpy(playlist.entries[playlist.count].text, entry);
+		playlist.count++;
+		CHECK(index < SERVER_ROTATION_MAXIMUM_ENTRIES, "no end");
+	}
+	{
+		long length = 0;
+
+		for (index = 0; index < playlist.count; index++)
+			length += (long)strlen(playlist.entries[index].text) + 2;
+		CHECK(length - 2 < SERVER_ROTATION_MAXIMUM_TEXT, "its text kept whole (%ld)", length);
+		CHECK(playlist.count < SERVER_ROTATION_MAXIMUM_ENTRIES, "the text full first");
+	}
+	/* (short entries: the entries full) */
+	playlist_of(&playlist, SERVER_ROTATION_MAXIMUM_ENTRIES - 1, NULL);
+	CHECK(network_host_game_playlist_fits(&playlist, "a"), "one more");
+	playlist.count = SERVER_ROTATION_MAXIMUM_ENTRIES;
+	CHECK(!network_host_game_playlist_fits(&playlist, "a"), "no more than the entries");
+}
+
+static void case_ban(void)
+{
+	char name[64], reason[96];
+	long seconds;
+
+	CHECK(network_host_game_ban_parse("\"Some Name\" 2h spam in chat)", name, sizeof(name), &seconds, reason,
+		sizeof(reason)), "a quoted name");
+	CHECK(!strcmp(name, "Some Name") && seconds == 2 * 60 * 60 && !strcmp(reason, "spam in chat"),
+		"its name, length and reason: \"%s\" %ld \"%s\"", name, seconds, reason);
+	CHECK(network_host_game_ban_parse("Player 2 7d \"griefing, twice\" )", name, sizeof(name), &seconds, reason,
+		sizeof(reason)) && !strcmp(name, "Player 2") && seconds == 7 * 24 * 60 * 60 &&
+		!strcmp(reason, "griefing, twice"), "a name with a number, a quoted reason: \"%s\" \"%s\"", name, reason);
+	CHECK(network_host_game_ban_parse("Bob", name, sizeof(name), &seconds, reason, sizeof(reason)) &&
+		!strcmp(name, "Bob") && seconds == 0 && !reason[0], "a name alone: for ever");
+	CHECK(network_host_game_ban_parse("\"Bob\" forever cheating", name, sizeof(name), &seconds, reason,
+		sizeof(reason)) && seconds == 0 && !strcmp(reason, "cheating"), "for ever, with why");
+	CHECK(!network_host_game_ban_parse("\"Bob", name, sizeof(name), &seconds, reason, sizeof(reason)),
+		"a quote left open");
+	CHECK(!network_host_game_ban_parse(")", name, sizeof(name), &seconds, reason, sizeof(reason)), "no name");
+}
+
+static void case_saved(void)
+{
+	char key[58];
+
+	CHECK(server_gametype_saved_key(L"My CTF  #2", key, sizeof(key)) && !strcmp(key, "my_ctf_2"), "%s", key);
+	CHECK(server_gametype_saved_key(L"-- Rockets! --", key, sizeof(key)) && !strcmp(key, "rockets"), "%s", key);
+	CHECK(!server_gametype_saved_key(L"!!!", key, sizeof(key)) && !key[0], "none of letters or digits");
+	CHECK(server_gametype_saved_key(L"abcdefghij", key, 6) && !strcmp(key, "abcde"), "kept to its size");
+}
+
 int main(int argc, char **argv)
 {
 	char const *case_name = argc > 1 ? argv[1] : "";
+
+	if (!strcmp(case_name, "takes"))
+		case_takes();
+	else if (!strcmp(case_name, "try"))
+		case_try();
+	else if (!strcmp(case_name, "fits"))
+		case_fits();
+	else if (!strcmp(case_name, "ban"))
+		case_ban();
+	else if (!strcmp(case_name, "saved"))
+		case_saved();
+	else
 
 	if (!strcmp(case_name, "playlist"))
 		case_playlist();

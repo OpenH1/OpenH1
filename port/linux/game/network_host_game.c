@@ -48,6 +48,8 @@ is tools/harness/tests/test_host_game.py's.
 #include "network_standard.h"
 #include "network_host_controls.h"
 #include "game_modes.h"
+#include "network_coop.h"
+#include "custom_edition_maps.h"
 #include "bots.h"
 #include "network_host_game.h"
 #include "server_gametypes.h"
@@ -109,6 +111,7 @@ static struct
 	/* the maps and gametypes, and when they were read */
 	struct host_game_map maps[MAXIMUM_HOST_GAME_MAPS];
 	short map_count;
+	long maps_left_out;
 	struct host_game_gametype gametypes[MAXIMUM_HOST_GAME_GAMETYPES];
 	short gametype_count;
 	short builtin_gametype_count;
@@ -282,12 +285,191 @@ void network_host_game_teams_plan(
 	}
 }
 
+unsigned long network_host_game_lobby_takes(
+	boolean cooperative,
+	boolean has_next,
+	boolean next_now,
+	boolean restarting)
+{
+	unsigned long takes = 0;
+
+	/* (co-op's lobby has the campaign's next level: nothing over it) */
+	if (cooperative)
+		return 0;
+	/* (a restart replays its game, but for a change asked for now) */
+	if (has_next && (!restarting || next_now))
+		SET_FLAG(takes, _host_game_take_change, TRUE);
+	if (!restarting)
+		SET_FLAG(takes, _host_game_take_playlist, TRUE);
+	return takes;
+}
+
+long network_host_game_playlist_try(
+	struct server_rotation const *playlist,
+	long index,
+	boolean (*playable)(struct server_entry const *entry, void *context),
+	void *context)
+{
+	long tried;
+
+	/* (each entry once at most: a playlist of none that can be played
+	gives none) */
+	for (tried = 0; tried < playlist->count; tried++)
+	{
+		long next = network_host_game_playlist_after(playlist, index);
+
+		if (next == NONE)
+			return NONE;
+		if (playable(&playlist->entries[next], context))
+			return next;
+		index = next;
+	}
+	return NONE;
+}
+
+boolean network_host_game_playlist_fits(
+	struct server_rotation const *playlist,
+	char const *text)
+{
+	long length = (long)strlen(text);
+	long index;
+
+	if (playlist->count >= SERVER_ROTATION_MAXIMUM_ENTRIES)
+		return FALSE;
+	/* (as server_rotation_text joins them: ", " between) */
+	for (index = 0; index < playlist->count; index++)
+		length += (long)strlen(playlist->entries[index].text) + 2;
+	return length < SERVER_ROTATION_MAXIMUM_TEXT;
+}
+
+boolean network_host_game_ban_parse(
+	char const *text,
+	char *name,
+	long name_size,
+	long *seconds,
+	char *reason,
+	long reason_size)
+{
+	char line[256];
+	char *rest, *word;
+	long length;
+
+	name[0] = reason[0] = 0;
+	*seconds = 0;
+	while (*text == ' ' || *text == '\t')
+		text++;
+	snprintf(line, sizeof(line), "%s", text);
+	/* (the expression's closing parenthesis off, and the spaces before it) */
+	length = (long)strlen(line);
+	while (length > 0 && (line[length - 1] == ' ' || line[length - 1] == '\t'))
+		line[--length] = 0;
+	if (length > 0 && line[length - 1] == ')')
+		line[--length] = 0;
+	while (length > 0 && (line[length - 1] == ' ' || line[length - 1] == '\t'))
+		line[--length] = 0;
+	rest = NULL;
+	if (line[0] == '"')
+	{
+		/* (a quoted name: the rest after it) */
+		char *closing = strchr(line + 1, '"');
+
+		if (!closing)
+			return FALSE;
+		*closing = 0;
+		snprintf(name, (size_t)name_size, "%s", line + 1);
+		rest = closing + 1;
+	}
+	else
+	{
+		/* (the name: up to the first word after it that is a length with
+		its unit, a number alone being a name's, "Player 2") */
+		rest = line + strlen(line);
+		for (word = strchr(line, ' '); word; word = strchr(word + 1, ' '))
+		{
+			char *end = word + 1;
+			char saved;
+			boolean unit;
+
+			while (*end && *end != ' ')
+				end++;
+			saved = *end;
+			*end = 0;
+			unit = end - word > 1 && (end[-1] < '0' || end[-1] > '9') &&
+				network_host_game_duration_parse(word + 1) != NONE;
+			*end = saved;
+			if (unit)
+			{
+				*word = 0;
+				rest = word + 1;
+				break;
+			}
+		}
+		snprintf(name, (size_t)name_size, "%s", line);
+	}
+	while (*rest == ' ' || *rest == '\t')
+		rest++;
+	/* (a length, then the reason: its quotes off) */
+	if (*rest)
+	{
+		char *end = rest;
+		char saved;
+		long parsed;
+
+		while (*end && *end != ' ')
+			end++;
+		saved = *end;
+		*end = 0;
+		parsed = network_host_game_duration_parse(rest);
+		*end = saved;
+		if (parsed != NONE)
+		{
+			*seconds = parsed;
+			rest = end;
+		}
+	}
+	while (*rest == ' ' || *rest == '\t' || *rest == '"')
+		rest++;
+	snprintf(reason, (size_t)reason_size, "%s", rest);
+	length = (long)strlen(reason);
+	while (length > 0 && (reason[length - 1] == '"' || reason[length - 1] == ' '))
+		reason[--length] = 0;
+	/* (no tab in a ban's line, whose parts tabs part) */
+	for (length = 0; reason[length]; length++)
+	{
+		if (reason[length] == '\t')
+			reason[length] = ' ';
+	}
+	length = (long)strlen(name);
+	while (length > 0 && name[length - 1] == ' ')
+		name[--length] = 0;
+	return name[0] != 0;
+}
+
 /* ---------- where the host is */
+
+/* a player's host of a network game, co-op's too */
+static boolean host_game_hosting_any(
+	void)
+{
+	return global_network_game_server_get() && !network_game_is_splitscreen_local() && !halo_server_mode();
+}
+
+boolean network_host_game_cooperative(
+	void)
+{
+	struct network_game_server *server = global_network_game_server_get();
+
+	/* (a co-op game played, or one whose lobby has a campaign level: the
+	record's variant, which has no game engine in co-op, has none either as
+	a lobby is set up again after any game) */
+	return server && (network_coop_active() ||
+		custom_edition_maps_level_campaign(network_game_server_get_game(server)->map.name));
+}
 
 boolean network_host_game_hosting(
 	void)
 {
-	return global_network_game_server_get() && !network_game_is_splitscreen_local() && !halo_server_mode();
+	return host_game_hosting_any() && !network_host_game_cooperative();
 }
 
 boolean network_host_game_in_lobby(
@@ -295,7 +477,7 @@ boolean network_host_game_in_lobby(
 {
 	struct network_game_server *server = global_network_game_server_get();
 
-	return network_host_game_hosting() && main_menu_is_loaded() && !network_game_server_playing(server) &&
+	return host_game_hosting_any() && main_menu_is_loaded() && !network_game_server_playing(server) &&
 		!network_game_server_port_start_sent(server);
 }
 
@@ -350,12 +532,25 @@ static boolean host_game_apply(
 	struct game_variant_options options;
 	char reason[SERVER_REASON_SIZE];
 
+	struct server_entry checked = *entry;
+
 	if (!server || network_game_server_playing(server) || network_game_server_port_start_sent(server))
 		return FALSE;
+	/* (its map and gametype again: either may have gone since it was read) */
+	checked.rejected[0] = 0;
+	checked.map_missing = 0;
+	server_rotation_resolve(&checked);
+	if (checked.rejected[0])
+	{
+		console_warning("host: %s cannot be played: %s", entry->text, checked.rejected);
+		error(_error_log, "host: %s cannot be played: %s", entry->text, checked.rejected);
+		return FALSE;
+	}
 	if (!server_gametype_build(entry->gametype, entry->rules, entry->rule_count, &variant, &options, reason,
 		sizeof(reason)))
 	{
 		console_warning("host: %s cannot be played: %s", entry->text, reason);
+		error(_error_log, "host: %s cannot be played: %s", entry->text, reason);
 		return FALSE;
 	}
 	host_game_apply_limits(&variant, &options);
@@ -366,6 +561,15 @@ static boolean host_game_apply(
 	network_game_server_change_game_variant(server, &variant);
 	error(_error_log, "host: the lobby's game is %s (%s)", entry->map_name, entry->gametype);
 	return TRUE;
+}
+
+/* (network_host_game_playlist_try's) */
+static boolean host_game_apply_entry(
+	struct server_entry const *entry,
+	void *context)
+{
+	(void)context;
+	return host_game_apply(entry);
 }
 
 /* the limits asked for set on the lobby's game as it is */
@@ -453,6 +657,12 @@ boolean network_host_game_playlist_set(
 		snprintf(reason, (size_t)reason_size, "no entry in \"%s\"", text);
 		return FALSE;
 	}
+	if (playlist.truncated)
+	{
+		snprintf(reason, (size_t)reason_size, "a playlist holds %d games, %d characters, at most",
+			SERVER_ROTATION_MAXIMUM_ENTRIES, SERVER_ROTATION_MAXIMUM_TEXT - 1);
+		return FALSE;
+	}
 	/* (the same playlist again goes on where it was; another starts at its
 	first) */
 	{
@@ -476,9 +686,10 @@ boolean network_host_game_playlist_add(
 	if (!host_game_entry(text, &entry, reason, reason_size))
 		return FALSE;
 	playlist = *network_host_game_playlist();
-	if (playlist.count >= SERVER_ROTATION_MAXIMUM_ENTRIES)
+	if (!network_host_game_playlist_fits(&playlist, entry.text))
 	{
-		snprintf(reason, (size_t)reason_size, "the playlist holds %d games", SERVER_ROTATION_MAXIMUM_ENTRIES);
+		snprintf(reason, (size_t)reason_size, "the playlist is full (%d games, %d characters at most)",
+			SERVER_ROTATION_MAXIMUM_ENTRIES, SERVER_ROTATION_MAXIMUM_TEXT - 1);
 		return FALSE;
 	}
 	playlist.entries[playlist.count++] = entry;
@@ -519,6 +730,9 @@ boolean network_host_game_next(
 	long next;
 
 	*now = FALSE;
+	/* (co-op's next is the campaign's next level) */
+	if (network_host_game_cooperative())
+		return FALSE;
 	if (host_game.has_next)
 	{
 		*entry = host_game.next;
@@ -541,6 +755,31 @@ void network_host_game_cancel(
 	host_game.next_index = NONE;
 }
 
+/* an entry's map and gametype as shown, in printable ASCII for a notice
+("Blood Gulch, Host CTF"; what is not ASCII "?") */
+static void host_game_notice_text(
+	struct server_entry const *entry,
+	char *text,
+	long size)
+{
+	wchar_t wide[96];
+	long index, length = 0;
+
+	network_host_game_entry_shown(entry, wide, NUMBEROF(wide));
+	for (index = 0; wide[index] && length < size - 2; index++)
+	{
+		if (wide[index] == 0x00B7)
+		{
+			while (length > 0 && text[length - 1] == ' ')
+				length--;
+			text[length++] = ',';
+		}
+		else
+			text[length++] = wide[index] >= 32 && wide[index] < 127 ? (char)wide[index] : '?';
+	}
+	text[length] = 0;
+}
+
 boolean network_host_game_change(
 	char const *text,
 	short when,
@@ -550,10 +789,12 @@ boolean network_host_game_change(
 {
 	struct server_entry entry;
 	char notice[128];
+	char shown[96];
 
 	if (!network_host_game_hosting())
 	{
 		snprintf(reason, (size_t)reason_size, halo_server_mode() ? "a dedicated server's is sv_map" :
+			host_game_hosting_any() ? "co-op plays the campaign's levels in their order: no map changes" :
 			"only the host of a network game changes its map");
 		return FALSE;
 	}
@@ -589,7 +830,8 @@ boolean network_host_game_change(
 			snprintf(reason, (size_t)reason_size, "after this game (it is over)");
 			return TRUE;
 		}
-		snprintf(notice, sizeof(notice), "The host changed the game: %s, %s", entry.map_name, entry.gametype);
+		host_game_notice_text(&entry, shown, sizeof(shown));
+		snprintf(notice, sizeof(notice), "The host changed the game: %s", shown);
 		distributed_send_notice(notice);
 		snprintf(reason, (size_t)reason_size, "now: this game ends");
 		return TRUE;
@@ -606,31 +848,34 @@ boolean network_host_game_lobby_take(
 	long index = NONE;
 	boolean applied = FALSE;
 
-	if (!network_host_game_hosting())
+	unsigned long takes = network_host_game_lobby_takes(network_host_game_cooperative(), host_game.has_next,
+		host_game.next_now, restarting);
+
+	if (!host_game_hosting_any())
 		return FALSE;
-	if (host_game.has_next && (!restarting || host_game.next_now))
+	if (TEST_FLAG(takes, _host_game_take_change))
 	{
 		entry = host_game.next;
 		index = host_game.next_index;
 		network_host_game_cancel();
 		applied = host_game_apply(&entry);
+		if (!applied)
+			index = NONE;
 	}
-	else if (!restarting)
+	/* (no change, or one that can no longer be played: the playlist's
+	next that can, each tried once) */
+	if (!applied && TEST_FLAG(takes, _host_game_take_playlist))
 	{
 		playlist = network_host_game_playlist();
-		index = network_host_game_playlist_after(playlist, host_game.index);
-		if (index != NONE)
-		{
-			entry = playlist->entries[index];
-			applied = host_game_apply(&entry);
-		}
+		index = network_host_game_playlist_try(playlist, host_game.index, host_game_apply_entry, NULL);
+		applied = index != NONE;
 	}
 	/* (the playlist goes on after the entry played; a change asked for
 	that is no entry of it leaves its place as it was) */
 	if (applied && index != NONE)
 		host_game.index = index;
 	/* (limits asked for, with no new game: on the lobby's as it is) */
-	if (!applied && (host_game.score != NONE || host_game.minutes != NONE))
+	if (!applied && !network_host_game_cooperative() && (host_game.score != NONE || host_game.minutes != NONE))
 		host_game_apply_limits_to_lobby();
 	return applied;
 }
@@ -735,7 +980,10 @@ static void host_game_map_listed(
 	struct host_game_map *map;
 
 	if (host_game.map_count >= MAXIMUM_HOST_GAME_MAPS)
+	{
+		host_game.maps_left_out++;
 		return;
+	}
 	map = &host_game.maps[host_game.map_count++];
 	snprintf(map->name, sizeof(map->name), "%s", name);
 	snprintf(map->level, sizeof(map->level), "%s", level);
@@ -754,7 +1002,13 @@ static void host_game_lists_read(
 	host_game.lists_read = TRUE;
 	host_game.lists_time = now;
 	host_game.map_count = 0;
+	host_game.maps_left_out = 0;
 	server_maps_each(host_game_map_listed, NULL);
+	if (host_game.maps_left_out)
+	{
+		error(_error_log, "host: %ld maps past the first %d left out of Host Controls' MAPS", host_game.maps_left_out,
+			MAXIMUM_HOST_GAME_MAPS);
+	}
 	/* (the built-in and OpenCE's once, then those this machine's player has
 	saved, read again with the maps) */
 	if (!host_game.builtin_gametype_count)
@@ -794,6 +1048,12 @@ short network_host_game_maps(
 	return host_game.map_count;
 }
 
+long network_host_game_maps_left_out(
+	void)
+{
+	return host_game.maps_left_out;
+}
+
 short network_host_game_gametypes(
 	struct host_game_gametype const **gametypes)
 {
@@ -830,12 +1090,13 @@ short network_host_game_lobby_players(
 {
 	struct network_game *game = host_game_lobby_game();
 	long own_machine = network_game_client_get_local_machine_index();
-	boolean teams = host_game_lobby_teams(game);
+	boolean teams;
 	short count = 0;
 	short slot;
 
 	if (!game)
 		return 0;
+	teams = host_game_lobby_teams(game);
 	for (slot = 0; slot < HALO_PORT_MAXIMUM_NETWORK_PLAYERS && count < maximum; slot++)
 	{
 		struct network_player const *player = &game->players[slot];
@@ -1089,7 +1350,7 @@ boolean network_host_game_announce(
 	while (length > 0 && notice[length - 1] == ' ')
 		length--;
 	notice[length] = 0;
-	if (!network_host_game_hosting())
+	if (!host_game_hosting_any())
 	{
 		console_warning("host_say: only the host of a network game says this");
 		return FALSE;
@@ -1112,44 +1373,16 @@ boolean network_host_game_announce(
 boolean network_host_game_ban_command(
 	char const *text)
 {
-	char words[256];
 	char name[64];
-	char const *reason = "";
-	long seconds = 0;
-	long length = 0;
-	char *word;
+	char reason[96];
+	long seconds;
 	boolean banned;
 
-	snprintf(words, sizeof(words), "%s", text);
-	/* (the name: up to the first word after it that is a duration; the
-	reason the rest) */
-	for (word = strchr(words, ' '); word; word = strchr(word + 1, ' '))
+	if (!network_host_game_ban_parse(text, name, sizeof(name), &seconds, reason, sizeof(reason)))
 	{
-		char *end = word + 1;
-		char saved;
-		long parsed;
-
-		while (*end && *end != ' ')
-			end++;
-		saved = *end;
-		*end = 0;
-		/* (with its unit: a number alone may be a name's, "Player 2") */
-		parsed = end - word > 1 && (end[-1] < '0' || end[-1] > '9') ? network_host_game_duration_parse(word + 1) :
-			NONE;
-		*end = saved;
-		if (parsed != NONE)
-		{
-			length = (long)(word - words);
-			seconds = parsed;
-			reason = end;
-			while (*reason == ' ')
-				reason++;
-			break;
-		}
+		console_warning("ban: give a player's name, then a length (30m, 2h, 7d, 1w, forever) and why");
+		return FALSE;
 	}
-	if (!length)
-		length = (long)strlen(words);
-	snprintf(name, sizeof(name), "%.*s", (int)MIN(length, (long)sizeof(name) - 1), words);
 	network_distributed_ban_details(reason[0] ? reason : "banned by the host",
 		seconds > 0 ? (unsigned long)time(NULL) + (unsigned long)seconds : 0);
 	banned = network_game_server_ban_player(name);
@@ -1243,10 +1476,15 @@ void network_host_game_update(
 	struct server_entry entry;
 	boolean now;
 	char notice[128];
+	char shown[96];
 	boolean postgame = network_host_game_hosting() && game_engine_running() && game_engine_showing_postgame();
 
 	if (!global_network_game_server_get())
+	{
 		network_host_game_cancel();
+		host_game.score = NONE;
+		host_game.minutes = NONE;
+	}
 	if (!postgame)
 	{
 		host_game.over_said = FALSE;
@@ -1257,7 +1495,8 @@ void network_host_game_update(
 	host_game.over_said = TRUE;
 	if (network_host_game_next(&entry, &now) && !now)
 	{
-		snprintf(notice, sizeof(notice), "Next game: %s, %s", entry.map_name, entry.gametype);
+		host_game_notice_text(&entry, shown, sizeof(shown));
+		snprintf(notice, sizeof(notice), "Next game: %s", shown);
 		distributed_send_notice(notice);
 	}
 }
@@ -1397,7 +1636,10 @@ boolean network_host_game_command(
 		if (*result)
 			console_printf(FALSE, "next: %s (%s)", entry, reason);
 		else
+		{
 			console_warning("host_map: %s", reason);
+			error(_error_log, "host: host_map %s: %s", entry, reason);
+		}
 		return TRUE;
 	}
 	if ((text = host_game_command_text(expression, "host_playlist_add")) != NULL)

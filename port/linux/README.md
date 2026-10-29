@@ -506,8 +506,10 @@ with five tabs:
   MAKE ROOM FOR PLAYERS and (with it on) FILL TO, each written to
   `config.toml` as it changes, which the game takes at once (refer to
   "Bots").
-- MAPS: the gametype (left and right step it: the built-in gametypes and
-  OpenCE's), then every multiplayer map, the Xbox's and Custom Edition's
+- MAPS: the gametype (left and right step it: the built-in gametypes,
+  OpenCE's and those you saved, Create Game's CUSTOM, which entries name
+  `saved=<name>`: its letters and digits, lowered, `_` between them, as
+  `saved=my_ctf_2` for "My CTF #2"), then every multiplayer map, the Xbox's and Custom Edition's
   (`custom_maps`; map sharing gives them to the players without them). For
   the map chosen: PLAY NOW (in a game, pressed twice: the game ends with no
   scores, and every machine goes through the lobby to the new one), AFTER
@@ -532,7 +534,9 @@ chat's `/say <words>`) tells everyone, `host_shuffle_teams` and
 `host_balance_teams` arrange the teams, `host_score_limit <score>` and
 `host_time_limit <minutes>` set the limits, and `ban <player> [30m|2h|7d|1w|forever]
 [reason]` bans for a while and says why (the duration with its unit).
-Nothing new goes to the other machines: a map change is the lobby's own, a
+A co-op game has none of the map changes and no playlist: its next game is
+the campaign's next level. A list of more than 512 maps leaves the rest out,
+and MAPS says how many. Nothing new goes to the other machines: a map change is the lobby's own, a
 notice OpenCE knows, so OpenCE players in a Legacy game see it all as any
 host's.
 

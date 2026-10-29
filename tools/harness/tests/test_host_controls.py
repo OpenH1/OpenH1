@@ -18,8 +18,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, ROOT, build, constant, mutated, read, run  # noqa: E402
 
-CASES = ["seats", "actions", "team_moves", "kick", "move", "lock", "end", "next", "maximum", "bans", "players",
-         "bots"]
+CASES = ["seats", "actions", "team_moves", "kick", "move", "lock", "end", "next", "same", "maximum", "bans",
+         "players", "bots"]
 
 # a fault in network_host_controls.c, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -64,6 +64,10 @@ NEGATIVE_CONTROLS = {
     "next-not-taken": (("\t\tif (network_host_game_lobby_take(FALSE))", "\t\tif (FALSE)"), "next"),
     "next-every-frame": (("\t\thost_controls.played = FALSE;\n\t\tif (network_host_game_lobby_take(FALSE))",
                           "\t\tif (network_host_game_lobby_take(FALSE))"), "next"),
+    # (a lobby's player chosen by slot alone: one who took the slot banned in their place)
+    "slot-alone": (("\tif (player_index != NONE || player->slot != slot || player->machine_index != machine_index)\n"
+                    "\t\treturn FALSE;\n\tfor (index = 0;", "\tif (player_index != NONE || player->slot != slot)\n"
+                    "\t\treturn FALSE;\n\treturn TRUE;\n\tfor (index = 0;"), "same"),
     "restart-takes-nothing": (("\t\tnetwork_host_game_lobby_take(TRUE);\n", ""), "end"),
     "maximum-below-players": (("if (values[index] < current && values[index] >= present)",
                                "if (values[index] < current)"), "maximum"),

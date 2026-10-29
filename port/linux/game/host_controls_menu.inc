@@ -147,6 +147,8 @@ static struct
 	change), a ban's line */
 	long chosen_player;
 	long chosen_slot;
+	long chosen_machine;
+	wchar_t chosen_name[12];
 	short chosen_game_row;
 	char chosen_map[HOST_GAME_MAP_SIZE];
 	short chosen_entry;
@@ -313,8 +315,19 @@ static wchar_t const *host_tag_name(short tag)
 slot) */
 static boolean host_player_chosen(struct host_controls_player const *player)
 {
-	return player->player_index != NONE ? player->player_index == host_menu.chosen_player :
-		host_menu.chosen_player == NONE && player->slot == host_menu.chosen_slot;
+	return network_host_controls_same_player(player, host_menu.chosen_player, host_menu.chosen_slot,
+		host_menu.chosen_machine, host_menu.chosen_name);
+}
+
+/* the player chosen, as the entry is */
+static void host_player_choose(struct host_controls_player const *player)
+{
+	host_menu.chosen_player = player ? player->player_index : NONE;
+	host_menu.chosen_slot = player ? player->slot : NONE;
+	host_menu.chosen_machine = player ? player->machine_index : NONE;
+	csmemset(host_menu.chosen_name, 0, sizeof(host_menu.chosen_name));
+	if (player)
+		csmemcpy(host_menu.chosen_name, player->name, sizeof(host_menu.chosen_name));
 }
 
 /* (the chosen player's entry, else NULL) */
@@ -881,8 +894,7 @@ static boolean host_controls_initialize(void)
 {
 	host_menu.tab = _host_tab_players;
 	host_menu.first = 0;
-	host_menu.chosen_player = NONE;
-	host_menu.chosen_slot = NONE;
+	host_player_choose(NULL);
 	host_menu.chosen_game_row = NONE;
 	host_menu.chosen_map[0] = 0;
 	host_menu.chosen_entry = NONE;
@@ -961,8 +973,7 @@ static void host_choose(short entry)
 			host_menu.choosing = NONE;
 			host_menu.reason[0] = 0;
 		}
-		host_menu.chosen_player = host_menu.players[entry].player_index;
-		host_menu.chosen_slot = host_menu.players[entry].slot;
+		host_player_choose(&host_menu.players[entry]);
 		break;
 	case _host_tab_game:
 		if (host_menu.game_rows[entry] != host_menu.chosen_game_row)
@@ -1217,7 +1228,8 @@ static short host_buttons_of(struct host_controls_player const *player, short ch
 		}
 		break;
 	case _host_tab_maps:
-		if (!host_chosen_map())
+		/* (co-op plays the campaign's levels: no change) */
+		if (!host_chosen_map() || network_host_game_cooperative())
 			break;
 		buttons[shown++] = _host_button_map_now;
 		if (!lobby)
@@ -1225,7 +1237,7 @@ static short host_buttons_of(struct host_controls_player const *player, short ch
 		buttons[shown++] = _host_button_map_add;
 		break;
 	case _host_tab_playlist:
-		if (chosen == NONE)
+		if (chosen == NONE || network_host_game_cooperative())
 			break;
 		if (host_menu.chosen_entry == HOST_PLAYLIST_CHANGE)
 		{
@@ -1454,8 +1466,12 @@ static void host_panel_show(struct widget_instance *list, short chosen)
 		{
 			usnprintf(title, NUMBEROF(title) - 1, L"Maps");
 			usnprintf(where, NUMBEROF(where) - 1, L"%s", gametype ? gametype->shown : L"");
-			usnprintf(status, NUMBEROF(status) - 1, L"Choose the gametype (left and right), then a map: play it "
-				L"now, after this game, or add it to the playlist.");
+			if (network_host_game_maps_left_out())
+				usnprintf(status, NUMBEROF(status) - 1, L"%ld more maps aren't listed: the list holds %d.",
+					network_host_game_maps_left_out(), MAXIMUM_HOST_GAME_MAPS);
+			else
+				usnprintf(status, NUMBEROF(status) - 1, L"Choose the gametype (left and right), then a map: play "
+					L"it now, after this game, or add it to the playlist.");
 			break;
 		}
 		lobby_board_map_text(map->level, title, NUMBEROF(title));
@@ -1563,11 +1579,21 @@ static void host_controls_update(struct widget_instance *list)
 	if (network_host_controls_take_opening(&opening_player, &opening_tab))
 	{
 		host_tab_set(opening_tab);
+		host_player_choose(NULL);
 		host_menu.chosen_player = opening_player;
-		host_menu.chosen_slot = NONE;
 		host_menu.focus_chosen = opening_player != NONE;
 	}
 	host_entries_read();
+	/* (the player a ban's or mute's length, or a ban's reason, was being
+	chosen for gone: none of it kept for whoever comes next) */
+	if (host_menu.tab == _host_tab_players && !host_chosen_player() &&
+		(host_menu.choosing != NONE || host_menu.reason[0]))
+	{
+		if (text_field_editing(NULL))
+			text_field_end(FALSE);
+		host_menu.choosing = NONE;
+		host_menu.reason[0] = 0;
+	}
 	count = host_entry_count();
 	rows = (short)MIN(count, shown);
 	/* (a list of more entries than rows: the focus kept off its ends while

@@ -153,6 +153,10 @@ static boolean server_gametype_saved(
 			return FALSE;
 		if (!playlist_profile_get_options(indices[index], options))
 			game_variant_options_default(variant, options);
+		/* (its name the one it was saved by, as Create Game shows it) */
+		csmemset(variant->human_readable_game_description, 0, sizeof(variant->human_readable_game_description));
+		ustrncpy(variant->human_readable_game_description, name,
+			NUMBEROF(variant->human_readable_game_description) - 1);
 		return TRUE;
 	}
 	return FALSE;
