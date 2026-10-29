@@ -910,7 +910,8 @@ static const struct config_setting config_settings[] =
 		"to throw and reload, and a player turns with the aim while throwing\n"
 		"and in the air (so shots after a turn in a jump go to the crosshair);\n"
 		"false: the original animations, which freeze the legs and stand a\n"
-		"rider up." },
+		"rider up (the turning, which moves where shots go, stays on in a\n"
+		"network game for every player)." },
 	{ "game.sim_rate", _config_integer, "60", "HALO_SIM_RATE", _environment_value, _platform_all,
 		"The steps a second of what a player feels in their hands: their own\n"
 		"movement and aim, projectiles and thrown items: 30 (as the game was\n"
