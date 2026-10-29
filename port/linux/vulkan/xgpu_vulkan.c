@@ -484,6 +484,9 @@ static struct
 	them) */
 	int swapchain_turns;
 	struct xgpu_vulkan_image *(*rotate)(struct xgpu_vulkan_image *image, int quarter_turns);
+	/* display.picture_position: the picture at the top of a taller window
+	(xgpu_vulkan_picture_top; any thread) */
+	int picture_top;
 	VkImage swapchain_images[8];
 	uint32_t swapchain_image_count;
 	VkSemaphore acquired[SLOTS], presentable[8];
@@ -3825,6 +3828,39 @@ void xgpu_vulkan_window_hdr(int enabled, float sdr_white, float headroom)
 	__atomic_store_n(&vk.window_hdr_changed, 1u, __ATOMIC_RELEASE);
 }
 
+void xgpu_vulkan_picture_top(int top)
+{
+	__atomic_store_n(&vk.picture_top, top ? 1 : 0, __ATOMIC_RELEASE);
+}
+
+/* a rectangle in the window, its way up, as it lies in a swapchain turned
+quarter_turns clockwise from it (the frame's turn: present_turned) */
+static void rectangle_turned(int quarter_turns, uint32_t window_width, uint32_t window_height, uint32_t *x,
+	uint32_t *y, uint32_t *width, uint32_t *height)
+{
+	uint32_t left = *x, top = *y, across = *width, down = *height;
+
+	switch (quarter_turns & 3)
+	{
+	case 1:
+		*x = window_height - (top + down);
+		*y = left;
+		*width = down;
+		*height = across;
+		break;
+	case 2:
+		*x = window_width - (left + across);
+		*y = window_height - (top + down);
+		break;
+	case 3:
+		*x = top;
+		*y = window_width - (left + across);
+		*width = down;
+		*height = across;
+		break;
+	}
+}
+
 void xgpu_vulkan_hdr_state(int active, int mode, int paper_white)
 {
 	vk.hdr_active = active != 0;
@@ -4256,7 +4292,8 @@ static uint64_t present(struct xgpu_vulkan_image *image, int frame)
 	VkImageBlit blit;
 	VkPresentInfoKHR info;
 	VkResult result;
-	uint32_t index, width, height, x, y;
+	uint32_t index, width, height, x, y, window_width, window_height, image_width, image_height;
+	int turns = 0;
 
 	uint64_t serial;
 
@@ -4277,7 +4314,11 @@ static uint64_t present(struct xgpu_vulkan_image *image, int frame)
 			return 0;
 	}
 	if (image && vk.swapchain_turns && vk.rotate)
+	{
 		image = present_turned(image);
+		/* (none if it could not be turned: vk.rotate is let go of) */
+		turns = vk.rotate ? vk.swapchain_turns : 0;
+	}
 	if (image && vk.hdr_output != XGPU_HDR_OUTPUT_SDR && vk.encode)
 	{
 		image = present_encoded(image);
@@ -4331,16 +4372,24 @@ static uint64_t present(struct xgpu_vulkan_image *image, int frame)
 		VK_ACCESS_TRANSFER_WRITE_BIT);
 	if (image)
 	{
-		/* letterboxed to the image's shape */
-		width = vk.swapchain_extent.width;
-		height = (uint32_t)((uint64_t)width * image->description.height / image->description.width);
-		if (height > vk.swapchain_extent.height)
+		/* letterboxed to the image's shape, in the window as it is seen
+		(the swapchain and the image turned back): centered, or at the top
+		of a taller window (display.picture_position); then turned with
+		the frame */
+		window_width = turns & 1 ? vk.swapchain_extent.height : vk.swapchain_extent.width;
+		window_height = turns & 1 ? vk.swapchain_extent.width : vk.swapchain_extent.height;
+		image_width = turns & 1 ? image->description.height : image->description.width;
+		image_height = turns & 1 ? image->description.width : image->description.height;
+		width = window_width;
+		height = (uint32_t)((uint64_t)width * image_height / image_width);
+		if (height > window_height)
 		{
-			height = vk.swapchain_extent.height;
-			width = (uint32_t)((uint64_t)height * image->description.width / image->description.height);
+			height = window_height;
+			width = (uint32_t)((uint64_t)height * image_width / image_height);
 		}
-		x = (vk.swapchain_extent.width - width) / 2;
-		y = (vk.swapchain_extent.height - height) / 2;
+		x = (window_width - width) / 2;
+		y = __atomic_load_n(&vk.picture_top, __ATOMIC_ACQUIRE) ? 0 : (window_height - height) / 2;
+		rectangle_turned(turns, window_width, window_height, &x, &y, &width, &height);
 		memset(&blit, 0, sizeof(blit));
 		blit.srcSubresource.aspectMask = blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		blit.srcSubresource.layerCount = blit.dstSubresource.layerCount = 1;

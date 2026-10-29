@@ -2384,6 +2384,12 @@ swapchain; and the tone map of each window's 3D view, a draw in the pass
 that drew it (its multisampled attachments where it is drawn into them)
 before the anti-aliasing and the HUD. */
 
+static void stream_picture_top(void *context, uint32_t top)
+{
+	(void)context;
+	xgpu_vulkan_picture_top(top != 0);
+}
+
 static void stream_hdr(void *context, const struct xgpu_stream_hdr *record)
 {
 	(void)context;
@@ -2669,6 +2675,7 @@ const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 		backend.anti_alias = stream_anti_alias;
 		backend.hdr = stream_hdr;
 		backend.tone_map = stream_tone_map;
+		backend.picture_top = stream_picture_top;
 #ifdef HALO_VR
 		host_vulkan_vr_backend(&backend);
 #endif

@@ -290,6 +290,12 @@ as the phone turns, never inverted). The setting `input.touch_aim_assist`
 turns the aim assist off. "Look sensitivity" sets how far a swipe turns;
 the mouse settings do not apply.
 
+On a screen taller than 16:9 (the inner screen of a folding phone, a
+tablet) the controls under the thumbs keep the distance from the bottom
+that they have on a phone, and the top row stays at the top; the space
+between them is left to the game. On a wider screen they spread to the
+sides.
+
 The touch controls show only in a game. In the menus and during
 cinematics they hide, and the touchscreen operates the menus as described
 above. They also hide when a controller is connected, for example the
@@ -360,6 +366,7 @@ These settings are only for Android:
 | `debug.sample_seconds` | Refer to "Find problems". |
 | `debug.memory_watch` | `true` (the default): the app notices the game's writes to textures and vertices by page protection. `false`: it compares page contents once a frame instead, which is slower. Refer to "Limits". |
 | `display.astc_textures` | `"auto"` (the default): on a GPU without BC's formats (Mali, PowerVR) that samples ASTC, the maps' DXT textures are transcoded to ASTC 4x4, a quarter of the memory and bandwidth of the decoded textures; their few blocks that need encoding are encoded on worker threads the first time and kept in the app's cache folder. `"off"`: decoded, as before. Checked on a Pixel 11 Pro (PowerVR); the emulator, whose ASTC is emulated, draws those textures black. The log says which (`vulkan: DXT textures as ...`). Refer to [port/linux/README.md](../linux/README.md#settings). |
+| `display.picture_position` | Where the picture sits on a screen taller than it, such as the inner screen of a folding phone, a tablet or a window in split screen. `"center"` (the default) leaves black above and below it. `"top"` puts all the black below it, where the touch controls under the thumbs are. |
 
 ## Internet play
 

@@ -410,6 +410,11 @@ PAGES = {
             ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
              "How wide you see on foot, in degrees across a 16:9 screen. Default keeps the Xbox's view; wider shows "
              "more around you.", None),
+            # (display.picture_position: Android's, on a screen taller than the
+            # picture; d3d8_device.c's picture_top, the backend's present)
+            ("PICTURE POSITION", "display.picture_position", [("CENTER", "center"), ("TOP", "top")],
+             "Where the picture sits on a screen taller than it, such as a folding phone's inner screen or a "
+             "tablet. Top puts all the black space below it, where the touch controls are.", "android"),
             ("FIRST PERSON ›", None, _page_screen(*FIRST_PERSON),
              "Your weapon's field of view and whether it is drawn, your legs and arms, your shield's color, and the "
              "view from a vehicle's passenger seat.", None),

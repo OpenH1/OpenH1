@@ -1562,6 +1562,38 @@ HRESULT WINAPI Direct3D_CreateDevice(UINT adapter, D3DDEVTYPE device_type, void 
 
 /* ---------- the menus' pointer */
 
+/* display.picture_position (Android): a picture of another shape than the
+window letterboxed at its top, not centered (the backend's presentation,
+picture_position_send, and the pointer's inverse of it below) */
+static BOOL picture_top(void)
+{
+#ifdef HALO_ANDROID
+	return !strcmp(config_string("display.picture_position"), "top");
+#else
+	return FALSE;
+#endif
+}
+
+#ifdef HALO_ANDROID
+/* the picture's place last sent to the backend (-1: none yet) */
+static int picture_top_sent = -1;
+#endif
+
+/* (between frames: halo_screen_commit) where the picture goes, to the
+backend's present, when it changes (Android's: elsewhere it is centered) */
+static void picture_position_send(void)
+{
+#ifdef HALO_ANDROID
+	int top = picture_top() ? 1 : 0;
+
+	if (device.gl_ready && top != picture_top_sent)
+	{
+		xgpu_backend_picture_top(top);
+		picture_top_sent = top;
+	}
+#endif
+}
+
 /* a point in the window, as SDL reports it, in the menus' coordinates: the
 inverse of the letterboxed display blit at presentation, the screen's
 width and the menus' centering (halo_screen_ui_offset); or, not centered,
@@ -1588,7 +1620,7 @@ static void ui_point_from_window_on(float window_x, float window_y, int centered
 		width = (int)((long)pixel_height * back_buffer->target.pixel_width / back_buffer->target.pixel_height);
 	}
 	left = (pixel_width - width) / 2;
-	top = (pixel_height - height) / 2;
+	top = picture_top() ? 0 : (pixel_height - height) / 2;
 	screen_x = (window_x * pixel_width / window_width - left) * (float)back_buffer->target.width / (float)width;
 	screen_y = (window_y * pixel_height / window_height - top) * (float)back_buffer->target.height / (float)height;
 	*x = (short)floorf(screen_x - (centered ? (float)(halo_screen_width() - 640) / 2.0f : 0.0f));
@@ -1710,6 +1742,8 @@ long halo_screen_commit(void)
 	anti_aliasing_read();
 	/* (display.hdr, and the display: the back buffer's format) */
 	hdr_read();
+	/* (display.picture_position) */
+	picture_position_send();
 	/* display.shadow_resolution, if it has changed: the maps' entries at
 	the old scale are freed (render_targets_evict), new ones made at the new */
 	if (shadow_scale && shadow_scale_read_at != config_changes())

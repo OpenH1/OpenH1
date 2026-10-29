@@ -1322,6 +1322,7 @@ static unsigned int window_swapchains, window_surfaces_made, window_surfaces_des
 static unsigned int window_presents, window_capability_queries, window_turns, window_rotations;
 static int window_gone;
 static VkImage window_blit_source;
+static VkImageBlit window_blit_region;
 static struct xgpu_vulkan_image window_frame, window_turned;
 
 static VkResult VKAPI_CALL window_get_capabilities(VkPhysicalDevice physical, VkSurfaceKHR surface,
@@ -1466,9 +1467,9 @@ static void VKAPI_CALL window_blit(VkCommandBuffer commands, VkImage source, VkI
 	VkImage destination, VkImageLayout destination_layout, uint32_t count, const VkImageBlit *regions,
 	VkFilter filter)
 {
-	(void)commands; (void)source_layout; (void)destination; (void)destination_layout; (void)count; (void)regions;
-	(void)filter;
+	(void)commands; (void)source_layout; (void)destination; (void)destination_layout; (void)count; (void)filter;
 	window_blit_source = source;
+	window_blit_region = regions[0];
 }
 
 static struct xgpu_vulkan_image *window_rotate(struct xgpu_vulkan_image *image, int quarter_turns)
@@ -1692,6 +1693,32 @@ static void window_test(void)
 	window_capabilities.currentExtent.height = 1080;
 	assert(window_present_frame() && window_made.preTransform == VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR);
 	assert(window_made.imageExtent.width == 2400 && !window_rotations && window_blit_source == window_frame.image);
+
+	/* display.picture_position: the 4:3 frame in a taller window (a
+	folding phone's inner screen) centered, or at the top with all the
+	black below it */
+	window_reset();
+	window_capabilities.currentExtent.width = 1000;
+	window_capabilities.currentExtent.height = 1200;
+	assert(window_present_frame() && window_blit_region.dstOffsets[0].x == 0 &&
+		window_blit_region.dstOffsets[0].y == 225 && window_blit_region.dstOffsets[1].y == 975);
+	xgpu_vulkan_picture_top(1);
+	assert(window_present_frame() && window_blit_region.dstOffsets[0].x == 0 &&
+		window_blit_region.dstOffsets[0].y == 0 && window_blit_region.dstOffsets[1].y == 750);
+	/* ... turned with the frame, held sideways: the top of the window is
+	the swapchain's right edge */
+	window_reset();
+	vk.rotate = window_rotate;
+	window_capabilities.currentExtent.width = 1200;
+	window_capabilities.currentExtent.height = 1000;
+	window_capabilities.currentTransform = VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR;
+	window_capabilities.supportedTransforms |= VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR;
+	assert(window_present_frame() && window_blit_source == window_turned.image);
+	assert(window_blit_region.dstOffsets[0].x == 50 && window_blit_region.dstOffsets[1].x == 950);
+	xgpu_vulkan_picture_top(1);
+	assert(window_present_frame() && window_blit_region.dstOffsets[0].x == 100 &&
+		window_blit_region.dstOffsets[1].x == 1000 && window_blit_region.dstOffsets[0].y == 0 &&
+		window_blit_region.dstOffsets[1].y == 1200);
 	reset();
 }
 

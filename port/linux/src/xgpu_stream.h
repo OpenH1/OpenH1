@@ -232,6 +232,9 @@ enum
 	XGPU_STREAM_TONE_MAP,
 	/* the screenshot key's picture (controls.screenshot) */
 	XGPU_STREAM_SCREENSHOT,            /* synchronous */
+	/* display.picture_position: where a picture of another shape than the
+	window sits in it (value: 0 centered, 1 at the top) */
+	XGPU_STREAM_PICTURE_POSITION,
 	XGPU_STREAM_RECORD_TYPES,
 };
 
@@ -253,7 +256,7 @@ struct xgpu_stream_frame_end
 };
 
 /* a record of one value: ANTI_ALIASING_PREPARE (smaa), TARGET_DELETE,
-TARGET_RESOLVE, PRESENT (the back buffer's target), VR_PASS, VR_TIMING
+TARGET_RESOLVE, PRESENT (the back buffer's target), PICTURE_POSITION, VR_PASS, VR_TIMING
 (mark), PIPELINE (the id, XGPU_STREAM_PIPELINE_DEFINE's), VR_SKY (sky) */
 struct xgpu_stream_value
 {

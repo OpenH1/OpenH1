@@ -605,6 +605,9 @@ HDR (a half-float back buffer), the mode, paper white (percent of SDR
 white). */
 void xgpu_vulkan_window_hdr(int enabled, float sdr_white, float headroom);
 void xgpu_vulkan_hdr_state(int active, int mode, int paper_white);
+/* display.picture_position: a picture of another shape than the window at
+its top (nonzero) or centered (present), from the next present on */
+void xgpu_vulkan_picture_top(int top);
 /* the tone map's and the encoding's parameters now (xgpu_hdr.h): the
 swapchain's output, paper white in its units, the peak in paper whites (1
 and SDR where the swapchain is SDR) */
