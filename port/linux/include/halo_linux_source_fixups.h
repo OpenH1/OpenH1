@@ -232,6 +232,14 @@ void server_console_output(const char *text);
 int halo_server_debug_echo(void);
 /* ... the level its rotation plays next, NULL if none (game_engine.c) */
 char const *server_director_first_level(void);
+/* the cache slots' sources (port/linux/src/xbox_files.c): the size and
+modification time of the map file a slot was copied from, kept beside it,
+so that a slot whose map file has been replaced is not used
+(cache_files_windows.c) */
+void cache_slot_source_load(short slot);
+void cache_slot_source_record(short slot, const char *map_path);
+void cache_slot_source_forget(short slot);
+int cache_slot_source_matches(short slot, const char *map_path);
 /* the mouse in the menus (source/interface/ui_widget.c) */
 #include "halo_ui_pointer.h"
 

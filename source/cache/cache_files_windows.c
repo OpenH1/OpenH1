@@ -585,9 +585,30 @@ boolean cache_files_precache_map_loaded(
 	/* port: a Halo Custom Edition map (custom_maps\<name>) is read in place
 	and never copied to the cache partition; it is never the game's own map
 	of that file name (port/linux/game/custom_edition_cache.c) */
+	short map_file_index;
+	char path[256];
+
 	if (custom_edition_level_name(map_name))
 		return custom_edition_cache_playable(map_name);
-	return cached_map_files_find_map(tag_name_strip_path(map_name)) != NONE;
+	map_file_index = cached_map_files_find_map(tag_name_strip_path(map_name));
+	/* port: a slot whose map file has been replaced since it was copied
+	(cache_slot_source_matches) is freed, and the map copied again; never
+	the open map's slot, or one being copied to */
+	if (map_file_index != NONE &&
+		map_file_index != cache_file_globals.open_map_file_index &&
+		!(cache_file_globals.copy_in_progress && map_file_index == cache_file_globals.copying_to_map_file_index))
+	{
+		cache_file_get_map_path(tag_name_strip_path(map_name), path);
+		if (!cache_slot_source_matches(map_file_index, path))
+		{
+			error(_error_silent, "map '%s' has changed since it was cached: copied again", map_name);
+			cache_slot_source_forget(map_file_index);
+			memset(&cached_map_file_get(map_file_index)->header, 0, sizeof(struct cache_file_header));
+			memset(&cached_map_file_get(map_file_index)->last_modification_date, 0, sizeof(FILETIME));
+			map_file_index = NONE;
+		}
+	}
+	return map_file_index != NONE;
 }
 
 /* (the port's, port/linux/src/sdl_platform.c) */
@@ -664,6 +685,7 @@ boolean cache_files_precache_map_begin(
 				&map_file->header,
 				0,
 				sizeof(struct cache_file_header));
+			cache_slot_source_forget(map_file_index); /* port: (cache_slot_source_record) */
 			cache_file_globals.copy_in_progress = TRUE;
 			cache_file_globals.copying_to_map_file_index = map_file_index;
 			strncpy(
@@ -732,6 +754,14 @@ void cache_files_precache_map_end(
 	texture_cache_return_memory();
 	cached_map_file_set_modification_date(cache_file_globals.copying_to_map_file_index);
 	cached_map_file_read_header(cache_file_globals.copying_to_map_file_index);
+	/* port: the map file the copy came from (cache_slot_source_matches) */
+	if (cached_map_file_get(cache_file_globals.copying_to_map_file_index)->header.name[0])
+	{
+		char path[256];
+
+		cache_file_get_map_path(cache_file_globals.copying_to_map_file_name, path);
+		cache_slot_source_record(cache_file_globals.copying_to_map_file_index, path);
+	}
 	cache_file_globals.copy_in_progress = FALSE;
 	cache_file_globals.copying_to_map_file_index = NONE;
 
@@ -1022,6 +1052,7 @@ static void cache_files_open_cache_files(
 	struct cache_file_header blank_header;
 	struct cache_file_header dvd_header;
 	char path[256];
+	char map_path[256]; /* port: the slot's source (cache_slot_source_matches) */
 	OVERLAPPED overlapped;
 	boolean deleted_stale_cache_files = FALSE;
 	volatile boolean completion_flag;
@@ -1111,14 +1142,22 @@ static void cache_files_open_cache_files(
 			char *cache_map_name = cached_map_file_get(map_file_index)->header.name;
 
 			cached_map_file_read_header(map_file_index);
+			/* port: and the map file the slot was copied from is still the
+			one in the maps folder, not another of the same name and header
+			(a modded map, which keeps the checksum): the Xbox's disc never
+			changed */
+			cache_slot_source_load(map_file_index);
+			cache_file_get_map_path(cache_map_name, map_path);
 			if (cache_file_read_header_from_dvd(cache_map_name, &dvd_header) &&
 				map_file->header.checksum == dvd_header.checksum &&
+				cache_slot_source_matches(map_file_index, map_path) &&
 				valid)
 			{
 				continue;
 			}
 		}
 
+		cache_slot_source_forget(map_file_index); /* port: (above) */
 		memset(
 			&map_file->header,
 			0,
