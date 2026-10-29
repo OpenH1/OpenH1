@@ -1102,6 +1102,11 @@ static const struct config_setting config_settings[] =
 		"Hosting: the text chat: \"on\" (links in lines are refused), \"links\"\n"
 		"(links allowed) or \"off\", in either case; listed in the server\n"
 		"browser or not." },
+	{ "network.host_playlist", _config_string, "\"\"", "HALO_NET_HOST_PLAYLIST", _environment_value, _platform_all,
+		"Hosting: the games played one after another when you host, each after\n"
+		"the last one's scores (Host Controls' PLAYLIST): map[:gametype\n"
+		"[+rule=value...]], separated by commas, as server.rotation has them.\n"
+		"Empty: you pick each game." },
 	{ "network.votekick", _config_boolean, "true", "HALO_NET_VOTEKICK", _environment_value, _platform_all,
 		"Hosting: let the players vote to kick a player (the scoreboard's\n"
 		"right-click, or the console's votekick). More than half of the players\n"
@@ -1488,6 +1493,11 @@ static const struct config_setting config_settings[] =
 		"every player of debug.network_test_cue_players has a unit:\n"
 		"\"<second> <line>|<second> <line>...\" (the host's, or a game of one\n"
 		"machine)." },
+	{ "debug.network_test_lobby_cues", _config_string, "\"\"", "HALO_NETWORK_TEST_LOBBY_CUES", _environment_value,
+		_platform_all,
+		"Console lines an automated test's host runs in its first lobby, at their\n"
+		"second of its setup, before debug.network_test_start starts the game:\n"
+		"\"<second> <line>|<second> <line>...\"." },
 	{ "debug.network_test_cue_players", _config_integer, "1", "HALO_NETWORK_TEST_CUE_PLAYERS", _environment_value,
 		_platform_all,
 		"The players debug.network_test_cues waits for." },

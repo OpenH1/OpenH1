@@ -9,7 +9,9 @@ Automated system link sessions for testing the netcode without the menus
   (slayer by default; game_engine_get_variant_by_name), as the pregame
   screen's fast setup does, and starts it debug.network_test_start seconds
   later; with more variants, once a game is over (debug.network_test_score
-  makes it short) the next, as the host's button on the scores does. A map
+  makes it short) the next, as the host's button on the scores does (also
+  when the host's playlist or a change has a next game: network_host_game.c,
+  which sets it up in the lobby and starts it). A map
   with a path is that level (custom_maps\a30, a Custom Edition map's), and
   the variant "coop" makes the game network co-op on it, at normal
   difficulty, as the Map screen does for a campaign level;
@@ -105,6 +107,7 @@ Called from the main loop every frame (main.c).
 #include "network_voice.h"
 #include "sim_rate.h"
 #include "network_standard.h"
+#include "network_host_game.h"
 #include "halo_keyboard.h"
 
 #include <math.h>
@@ -224,6 +227,8 @@ static struct
 	short next_cue;
 	long cue_players;
 	long cues_start;
+	/* debug.network_test_lobby_cues: the next one's place in its text */
+	short next_lobby_cue;
 } network_test;
 
 /* the latency figures' presses: each player's unit at the last sub-step,
@@ -1273,6 +1278,38 @@ static void network_test_second_weapon(
 	}
 }
 
+/* debug.network_test_lobby_cues: the host's console lines in its first
+lobby, each at its second of the lobby's setup ("<second> <line>|..."), the
+next once its second has come */
+static void network_test_run_lobby_cues(
+	void)
+{
+	char const *cues = config_string("debug.network_test_lobby_cues");
+	char const *cue = cues;
+	short index;
+
+	for (index = 0; *cue && index < network_test.next_lobby_cue; index++)
+	{
+		cue = strchr(cue, '|');
+		cue = cue ? cue + 1 : cues + strlen(cues);
+	}
+	if (*cue)
+	{
+		char *line;
+		char text[256];
+		double second = strtod(cue, &line);
+		char const *end = strchr(cue, '|');
+		int length = end ? (int)(end - line) : (int)strlen(line);
+
+		if (network_test.setup_seconds < second)
+			return;
+		snprintf(text, sizeof(text), "%.*s", MAX(length, 0), line);
+		platform_log("network test: lobby cue at %.1f s: %s", network_test.setup_seconds, text);
+		hs_compile_and_evaluate(text);
+		network_test.next_lobby_cue++;
+	}
+}
+
 /* debug.network_test_cues: from the first tick every player waited for has a
 unit (logged, cues or not: where a test's seconds start), each line at its
 tick (the host's, or a game of one machine: a client runs none) */
@@ -1743,8 +1780,12 @@ void network_test_update(
 		network_test.game_over = TRUE;
 		if (game_engine_showing_postgame() && global_network_game_server_get())
 		{
+			struct server_entry next;
+			boolean now;
+
 			network_test.postgame_seconds += seconds;
-			if (network_test.postgame_seconds >= 3.0f && network_test_variant(network_test.variant_index + 1, NULL, 0))
+			if (network_test.postgame_seconds >= 3.0f && (network_test_variant(network_test.variant_index + 1, NULL, 0) ||
+				network_host_game_next(&next, &now)))
 			{
 				network_test.postgame_seconds = 0.0f;
 				network_game_server_reset_to_pregame(global_network_game_server_get());
@@ -1978,6 +2019,9 @@ void network_test_update(
 						network_game_client_add_player(global_network_game_client_get(), local_player_index);
 				}
 			}
+			/* (the host's first lobby: its cues) */
+			if (network_test.map_set && !network_test.variant_index)
+				network_test_run_lobby_cues();
 			if (network_test.setup_seconds >= network_test.start_delay)
 			{
 				network_test.started = TRUE;

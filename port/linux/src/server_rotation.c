@@ -419,7 +419,8 @@ int server_rotation_parse_entry(const char *text, int length, struct server_entr
 		while (gametype_length && is_space(gametype[gametype_length - 1]))
 			gametype[--gametype_length] = 0;
 		if (!gametype_length || gametype_length >= sizeof(entry->gametype) ||
-			!plain_name(!strncmp(gametype, "file=", 5) ? gametype + 5 : gametype))
+			!plain_name(!strncmp(gametype, "file=", 5) ? gametype + 5 :
+				!strncmp(gametype, "saved=", 6) ? gametype + 6 : gametype))
 		{
 			snprintf(entry->rejected, sizeof(entry->rejected), "\"%s\" is not a gametype's name", gametype);
 			return 1;

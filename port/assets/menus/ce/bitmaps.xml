@@ -645,6 +645,12 @@
 		<frame png="ce/port/main_menu/parts/button_164x26__0.png" width="164" height="26"/>
 		<frame png="ce/port/main_menu/parts/button_164x26__1.png" width="164" height="26"/>
 	</bitmap>
+	<bitmap name="main_menu/parts/chip_68x52">
+		<frame png="ce/port/main_menu/parts/chip_68x52__0.png" width="68" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_68x52__1.png" width="68" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_68x52__2.png" width="68" height="52"/>
+		<frame png="ce/port/main_menu/parts/chip_68x52__3.png" width="68" height="52"/>
+	</bitmap>
 	<bitmap name="main_menu/parts/chip_92x52">
 		<frame png="ce/port/main_menu/parts/chip_92x52__0.png" width="92" height="52"/>
 		<frame png="ce/port/main_menu/parts/chip_92x52__1.png" width="92" height="52"/>
@@ -656,12 +662,6 @@
 		<frame png="ce/port/main_menu/parts/chip_112x52__1.png" width="112" height="52"/>
 		<frame png="ce/port/main_menu/parts/chip_112x52__2.png" width="112" height="52"/>
 		<frame png="ce/port/main_menu/parts/chip_112x52__3.png" width="112" height="52"/>
-	</bitmap>
-	<bitmap name="main_menu/parts/chip_116x52">
-		<frame png="ce/port/main_menu/parts/chip_116x52__0.png" width="116" height="52"/>
-		<frame png="ce/port/main_menu/parts/chip_116x52__1.png" width="116" height="52"/>
-		<frame png="ce/port/main_menu/parts/chip_116x52__2.png" width="116" height="52"/>
-		<frame png="ce/port/main_menu/parts/chip_116x52__3.png" width="116" height="52"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/touch_row_364x52">
 		<frame png="ce/port/main_menu/parts/touch_row_364x52__0.png" width="364" height="52"/>

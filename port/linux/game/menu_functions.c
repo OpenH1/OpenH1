@@ -99,6 +99,7 @@ their handlers open opens.
 #include "network_voice.h"
 #include "network_chat.h"
 #include "network_host_controls.h"
+#include "network_host_game.h"
 #include "sim_rate.h"
 #include "network_standard.h"
 #include "bots.h"
@@ -9778,6 +9779,12 @@ static void gametype_engine_name(struct widget_instance *text_box)
 
 /* ---------- public code */
 
+/* (network_host_game.c's) a map's name as the lobby shows it */
+void menu_map_shown(char const *level, wchar_t *text, short size)
+{
+	lobby_board_map_text(level, text, size);
+}
+
 boolean pc_menu_event_function_invoke(
 	struct widget_instance *widget,
 	struct event_record *event,
@@ -10148,6 +10155,10 @@ boolean pc_menu_event_function_invoke(
 		else if (!strcmp(name, "port host action"))
 		{
 			return host_controls_action(widget);
+		}
+		else if (!strcmp(name, "port host back"))
+		{
+			return host_controls_back();
 		}
 		/* (the computer's lobby: lobby_menu.inc) */
 		else if (!strcmp(name, "port lobby team red") || !strcmp(name, "port lobby team blue") ||

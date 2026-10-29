@@ -500,7 +500,7 @@ static char const *const port_function_names[] =
 	"port friends code init", "port friends code edit", "port friends code send", "port friends code back",
 	/* (the pause menu's HOST CONTROLS and its screen: host_controls_menu.inc) */
 	"port host open", "port host init", "port host tab", "port host tab next", "port host tab previous",
-	"port host row", "port host left", "port host right", "port host action",
+	"port host row", "port host left", "port host right", "port host action", "port host back",
 	/* (the computer's lobby: lobby_menu.inc) */
 	"port lobby team red", "port lobby team blue", "port lobby team toggle", "port lobby team click",
 	"port lobby start", "port lobby invite", "port lobby settings",

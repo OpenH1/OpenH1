@@ -79,6 +79,9 @@ struct host_controls_seat
 	short connection;
 	/* a game's map is loaded and its game under way (not the menus) */
 	boolean playing;
+	/* the lobby of this machine's network game (network_host_game_in_lobby):
+	the players there, before it starts */
+	boolean lobby;
 };
 
 /* what the host knows of a player, for what it may do to them */
@@ -133,8 +136,12 @@ struct host_controls_ban
 /* a player of the game as Host Controls lists them */
 struct host_controls_player
 {
-	/* its datum index */
+	/* its datum index (NONE: a lobby's player, which has none) */
 	long player_index;
+	/* its slot of the game's record, and its machine (NONE: the host's own,
+	in a game) */
+	long slot;
+	long machine_index;
 	wchar_t name[12];
 	short team;
 	long ping;
@@ -153,10 +160,16 @@ short network_host_controls_restart_step(short stage, struct host_controls_resta
 short network_host_controls_maximum_step(short const *values, short count, short current, short present,
 	short step);
 boolean network_host_controls_ban_parse(char const *line, struct host_controls_ban *ban);
+/* whether a listed player is the one chosen: a game's by its datum index, a
+lobby's (player_index NONE) by its slot, machine and name (12 characters) */
+boolean network_host_controls_same_player(struct host_controls_player const *player, long player_index, long slot,
+	long machine_index, wchar_t const *name);
 
-/* whether this machine hosts a network game under way (Host Controls is
-its, its pause menu's and scoreboard's) */
+/* whether this machine hosts a network game under way, or is in its lobby
+(Host Controls is its, its pause menu's, the lobby's and the scoreboard's) */
 boolean network_host_controls_available(void);
+/* ... in the lobby (its players those of the game's record) */
+boolean network_host_controls_in_lobby(void);
 /* the game's players (but those who quit), their count */
 short network_host_controls_players(struct host_controls_player *players, short maximum);
 /* what the host may do to the player (datum index): a bit of each
@@ -171,6 +184,7 @@ game's OpenH1 machines alone hear it (network_host_controls_team_moves) */
 boolean network_host_controls_move_team(long player_index);
 /* whether teams may move in this game */
 boolean network_host_controls_team_moves(void);
+
 /* (the host) the players' own team changes in the lobby refused (but the
 host machine's) */
 boolean network_host_controls_teams_locked(void);
@@ -202,7 +216,7 @@ void network_host_controls_bot_row_step(short row, short step);
 for the local player (the scoreboard's "Host controls...", the console's
 host_controls) */
 boolean network_host_controls_open(long player_index, short tab);
-/* the console's host_controls: its tab ("players", "game", "bans"; none:
+/* the console's host_controls: its tab ("players", "game", "maps", "playlist", "bans"; none:
 Players) and a player chosen by their name's start; or "end" and "restart",
 Game's End game now and Restart round; or "unban <players or address>" */
 boolean network_host_controls_open_command(char const *text);

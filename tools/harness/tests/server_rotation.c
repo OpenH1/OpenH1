@@ -272,6 +272,9 @@ int main(int argc, char **argv)
 		CHECK(rejected_with("bloodgulch:file=", "is not a gametype's name"), "file= with no name was taken");
 		CHECK(rejected_with("bloodgulch:file=../x", "is not a gametype's name"), "file=../x was taken");
 		CHECK(rejected_with("bloodgulch:file=.x", "is not a gametype's name"), "file=.x was taken");
+		CHECK(playable("bloodgulch:saved=My_CTF_2"), "saved=<name> was rejected: %s", entry.rejected);
+		CHECK(!strcmp(entry.gametype, "saved=my_ctf_2"), "gametype %s", entry.gametype);
+		CHECK(rejected_with("bloodgulch:saved=../x", "is not a gametype's name"), "saved=../x was taken");
 		CHECK(rejected_with("bloodgulch:ctf:slayer", "is not a gametype's name"), "a second colon was taken");
 		CHECK(rejected_with("bloodgulch:team slayer", "is not a gametype's name"), "a gametype with a space was taken");
 		CHECK(rejected_with("bloodgulch:x=y", "is not a gametype's name"), "a gametype with '=' was taken");
