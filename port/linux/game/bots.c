@@ -36,11 +36,20 @@ What a bot does each tick, in a player's terms:
   turns about once it reacts to the aim on it (a jump with it now and
   then), crouches at range while no one aims at it, and keeps its
   distance.
+- Its shield down in a fight it cannot win soon, it backs off to cover
+  (out of the enemy's sight, a health pack when hurt) to let the shield
+  come back; badly hurt, it goes for a health pack.
 - Otherwise it goes where an enemy was last seen, else about the map (the
   player starting locations, the weapon and item spawns), most often to the
-  place nearest a living enemy, as a player reads the motion tracker; now
-  and then it picks up a better weapon lying near (the action button, as a
-  player holds it), and swaps to its other weapon when this one is empty.
+  place nearest where an enemy it knows of was (bots_knowledge.h: what it
+  and, a callout's delay later, its team saw; no motion tracker of others'
+  places), now and then near a teammate; it goes for the power weapons and
+  powerups, timing their spawns by the game's clock as a player does and
+  believing an item is there as it last saw the spawn; now and then it
+  picks up a better weapon lying near (the action button, as a player holds
+  it), swaps to the weapon better for the range in a fight, and to its
+  other weapon when this one is empty. With bots.tactics a team's bots
+  also play together (bots_tactics.h).
 - It walks the paths the campaign's AI finds: the engine's own pathfinding
   over the level's walkable surfaces (source/ai/path.c), which every stock
   multiplayer map carries (tool builds it with the structure BSP: Blood
@@ -106,6 +115,9 @@ and each bot's kills and deaths; debug.bot_trace logs each bot's state.
 #include "cache/cache_files.h"
 
 #include "bots.h"
+#include "math/real_math.h"
+#include "bots_knowledge.h"
+#include "bots_tactics.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -158,6 +170,13 @@ enum
 	_bots_goal_item,
 	/* a vehicle to board (debug.bot_player_vehicle) */
 	_bots_goal_vehicle,
+	/* cover, to let its shield come back */
+	_bots_goal_cover,
+	/* a power item's spawn, to be there as it comes back */
+	_bots_goal_power,
+	/* where its team asks it to be (bots_tactics.h): after a teammate's
+	killer, closing in, falling back, with a human, back to a teammate */
+	_bots_goal_tactic,
 };
 
 /* a weapon's family, as the bots aim it (bots_weapon_kind) */
@@ -397,6 +416,30 @@ struct bots_bot
 	/* (debug.bot_trace) its path searches */
 	long searches;
 
+	/* its number (bots_globals.bots', BOTS_MAXIMUM for debug.bot_player's);
+	it fought last tick; its next look at every enemy and item spawn in its
+	view (bots_bot_survey) */
+	long index;
+	boolean fighting;
+	long survey_tick;
+	/* looking about where it stays: the way it turns to, until when */
+	real watch_yaw;
+	long watch_tick;
+	/* falling back to let its shield come back, until then (and not again
+	before the next); where to */
+	long recharge_until_tick;
+	long recharge_next_tick;
+	real_point3d cover_point;
+	long cover_surface_index;
+	/* the power item it goes for (its spawn, bots_knowledge_item), when it
+	looked for one last */
+	long power_item_index;
+	long power_check_tick;
+	/* when it last swapped to the weapon better for the range */
+	long range_swap_tick;
+	/* (_bots_goal_tactic) the team's point it goes to */
+	real_point3d tactic_point;
+
 	/* the aim's tally (bots_tally_shots): the weapon in its hands last tick,
 	its family and when it last fired; its aim on the target's head as it
 	pressed the trigger (the sniper's); when it last threw a grenade and
@@ -460,6 +503,18 @@ static struct
 	long dodges;
 	long dodge_jumps;
 	long crouches;
+	/* the bots' own choices: falling back to recharge, going for health,
+	for a power item (and waiting for one to come back), roaming to a
+	teammate */
+	long recharges;
+	long health_fetches;
+	long power_fetches;
+	long power_waits;
+	long regroups;
+	/* the power items the bots go for: the bot (its number plus one; 0 none)
+	and until when, so that two of a team do not */
+	long power_claims[BOTS_KNOWLEDGE_MAXIMUM_ITEMS];
+	long power_claim_ticks[BOTS_KNOWLEDGE_MAXIMUM_ITEMS];
 } bots_globals;
 
 /* the walkable surfaces the bots' searches read: a copy of the structure's
@@ -1494,6 +1549,16 @@ void bots_initialize_for_new_map(void)
 	bots_globals.dodges = 0;
 	bots_globals.dodge_jumps = 0;
 	bots_globals.crouches = 0;
+	bots_globals.recharges = 0;
+	bots_globals.health_fetches = 0;
+	bots_globals.power_fetches = 0;
+	bots_globals.power_waits = 0;
+	bots_globals.regroups = 0;
+	csmemset(bots_globals.power_claims, 0, sizeof(bots_globals.power_claims));
+	csmemset(bots_globals.power_claim_ticks, 0, sizeof(bots_globals.power_claim_ticks));
+	/* (what the bots saw and their teams knew is the last map's) */
+	bots_knowledge_reset();
+	bots_tactics_reset();
 	/* (the first line a minute into the game) */
 	bots_globals.last_report_tick = 0;
 	/* (the weapon definitions are the new map's) */
@@ -1502,6 +1567,8 @@ void bots_initialize_for_new_map(void)
 
 void bots_dispose_from_old_map(void)
 {
+	bots_knowledge_reset();
+	bots_tactics_reset();
 	bots_paths_release();
 	bots_globals.map_ready = FALSE;
 }
@@ -1835,6 +1902,9 @@ static boolean bots_target_score(struct bots_bot *bot, struct player_datum *play
 	candidate->player_index = player_index;
 	candidate->unit_index = other->unit_index;
 	candidate->score = distance + bearing * 4.0f - (player_index == bot->target_player_index ? 6.0f : 0.0f);
+	/* (its team's: the enemy a teammate hurts, a teammate's killer) */
+	if (bot != &bots_globals.player_bot)
+		candidate->score -= bots_tactics_target_bonus(bot->index, player_index);
 	/* (debug.bot_player's rocket launcher: the enemy with the most others
 	about them, a group for one rocket) */
 	if (bot->smooth && bots_holding(player) == _bots_family_explosive)
@@ -2000,6 +2070,20 @@ boolean bots_hunt(float *forward, float *strafe)
 
 /* ---------- moving */
 
+/* the power item the bot went for (bots_choose_power's claim) left to its
+teammates */
+static void bots_release_power_claim(struct bots_bot *bot)
+{
+	long item_index = bot->power_item_index;
+
+	if (item_index >= 0 && item_index < BOTS_KNOWLEDGE_MAXIMUM_ITEMS &&
+		bots_globals.power_claims[item_index] == bot->index + 1)
+	{
+		bots_globals.power_claims[item_index] = 0;
+	}
+	bot->power_item_index = NONE;
+}
+
 static void bots_set_goal(struct bots_bot *bot, short kind, real_point3d const *point, long surface_index)
 {
 	/* (the same goal, near enough: the path stands) */
@@ -2008,6 +2092,10 @@ static void bots_set_goal(struct bots_bot *bot, short kind, real_point3d const *
 	{
 		return;
 	}
+	/* (a goal other than the power item it went for: the item left to its
+	teammates) */
+	if (kind != _bots_goal_item && kind != _bots_goal_power)
+		bots_release_power_claim(bot);
 	bot->goal_kind = kind;
 	bot->goal_point = *point;
 	bot->goal_surface_index = surface_index;
@@ -2017,9 +2105,11 @@ static void bots_set_goal(struct bots_bot *bot, short kind, real_point3d const *
 	bot->climb_until_tick = 0;
 }
 
-/* the next place to roam to: most often towards an enemy (the roaming place
-nearest a living enemy, as a player knows where the other team's base is
-and reads the motion tracker), else anywhere */
+/* the next place to roam to: now and then near a teammate; most often
+towards an enemy it knows of (the roaming place nearest where the one seen
+last was, by itself or, bots.share_sightings, its team: bots_knowledge.h;
+never where an enemy it does not know of is, which no motion tracker would
+show of a crouched or walking player); else anywhere */
 static void bots_pick_roam_goal(struct bots_bot *bot, real_point3d const *position)
 {
 	long tries;
@@ -2027,36 +2117,84 @@ static void bots_pick_roam_goal(struct bots_bot *bot, real_point3d const *positi
 	if (bots_globals.roam_point_count <= 0)
 		return;
 	bot->hunting = FALSE;
-	if (bots_random_real(bot) < 0.65f)
+	/* (now and then near a teammate, a player's most: a team that keeps
+	together) */
+	if (game_engine_has_teams() && bots_random_real(bot) < 0.3f)
 	{
 		struct player_datum *player = player_get(bot->player_index);
 		struct data_iterator iterator;
 		struct player_datum *other;
-		long enemies[BOTS_MAXIMUM + MAXIMUM_LOCAL_PLAYERS];
-		long enemy_count = 0;
+		struct object_datum *mate = NULL;
+		real mate_score = REAL_MAX;
 
 		data_iterator_new(&iterator, player_data);
-		while ((other = (struct player_datum *)data_iterator_next(&iterator)) != NULL &&
-			enemy_count < (long)NUMBEROF(enemies))
+		while ((other = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
 		{
-			if (bots_is_enemy(player, other))
-				enemies[enemy_count++] = other->unit_index;
+			struct object_datum *object;
+			real score;
+
+			if (other == player || other->unit_index == NONE || other->team_index != player->team_index)
+				continue;
+			object = object_get(other->unit_index);
+			score = bots_distance2d(&object->object.position, position) *
+				(bots_player_is_bot(iterator.datum_index) ? 1.0f : 0.5f);
+			if (score < mate_score)
+			{
+				mate_score = score;
+				mate = object;
+			}
 		}
-		if (enemy_count > 0)
+		if (mate)
 		{
-			struct object_datum *enemy = object_get(enemies[bots_random(bot) % (unsigned long)enemy_count]);
 			long index, nearest = NONE;
 			real nearest_distance = REAL_MAX;
 
 			for (index = 0; index < bots_globals.roam_point_count; index++)
 			{
-				real distance = bots_distance2d(&bots_globals.roam_points[index], &enemy->object.position) +
-					bots_random_real(bot) * 6.0f;
+				real distance = bots_distance2d(&bots_globals.roam_points[index], &mate->object.position) +
+					bots_random_real(bot) * 4.0f;
 
 				if (distance < nearest_distance && bots_distance2d(&bots_globals.roam_points[index], position) > 4.0f)
 				{
 					nearest_distance = distance;
 					nearest = index;
+				}
+			}
+			if (nearest != NONE)
+			{
+				bots_globals.regroups++;
+				bot->roam_index = (short)nearest;
+				bots_set_goal(bot, _bots_goal_roam, &bots_globals.roam_points[nearest], bots_globals.roam_surfaces[nearest]);
+				return;
+			}
+		}
+	}
+	if (bots_random_real(bot) < 0.65f && bot != &bots_globals.player_bot)
+	{
+		struct bots_known_enemy known[BOTS_KNOWLEDGE_MAXIMUM_KNOWN];
+		short count = bots_knowledge_known(bot->index, known, BOTS_KNOWLEDGE_MAXIMUM_KNOWN), index, latest = NONE;
+
+		for (index = 0; index < count; index++)
+		{
+			if (latest == NONE || known[index].tick > known[latest].tick)
+				latest = index;
+		}
+		if (latest != NONE)
+		{
+			real_point3d const *enemy = &known[latest].position;
+			long nearest = NONE;
+			real nearest_distance = REAL_MAX;
+			long point;
+
+			for (point = 0; point < bots_globals.roam_point_count; point++)
+			{
+				real distance = bots_distance2d(&bots_globals.roam_points[point], enemy) +
+					bots_random_real(bot) * 6.0f;
+
+				if (distance < nearest_distance && bots_distance2d(&bots_globals.roam_points[point], position) > 4.0f)
+				{
+					nearest_distance = distance;
+					nearest = point;
 				}
 			}
 			if (nearest != NONE)
@@ -2121,11 +2259,218 @@ static long bots_find_vehicle(real_point3d const *position)
 	return best_index;
 }
 
+/* whether the unit holds a weapon whose tag's name has that in it */
+static boolean bots_unit_holds_named(struct unit_datum *unit, char const *part)
+{
+	short slot;
+
+	for (slot = 0; slot < MAXIMUM_WEAPONS_PER_UNIT; slot++)
+	{
+		long held = unit->unit.weapon_object_indices[slot];
+		char const *name = held != NONE ? tag_get_name(weapon_get(held)->definition_index) : NULL;
+
+		if (name && *part && strstr(name, part))
+			return TRUE;
+	}
+	return FALSE;
+}
+
+/* the item at a spawn of the map as the bot's goal (the last bit straight
+onto it, the action button for a weapon); FALSE for none under it */
+static boolean bots_set_item_goal(struct bots_bot *bot, long object_index)
+{
+	real_point3d ground;
+	long surface_index = bots_surface_below(&object_get(object_index)->object.position, &ground);
+
+	if (surface_index == NONE)
+		return FALSE;
+	bots_set_goal(bot, _bots_goal_item, &ground, surface_index);
+	bot->item_index = object_index;
+	return TRUE;
+}
+
+/* an item's spawn as the bot's goal: the item, if it lies there (the bot
+going there believes it does, and will see it), else the spawn */
+static boolean bots_set_spawn_goal(struct bots_bot *bot, long item_index, short kind)
+{
+	struct bots_item item;
+	long object_index;
+	real_point3d ground;
+	long surface_index;
+
+	if (!bots_knowledge_item(item_index, &item, &object_index))
+		return FALSE;
+	if (object_index != NONE && kind == _bots_goal_item)
+		return bots_set_item_goal(bot, object_index);
+	surface_index = bots_surface_below(&item.position, &ground);
+	if (surface_index == NONE)
+		return FALSE;
+	bots_set_goal(bot, kind, &ground, surface_index);
+	return TRUE;
+}
+
+/* hurt: the nearest health pack within reach the bot believes lies at its
+spawn (bots_knowledge_item_believed), as its goal; FALSE for none */
+static boolean bots_choose_health(struct bots_bot *bot, real_point3d const *position, real maximum_distance)
+{
+	short count = bots_knowledge_item_count(), index, best = NONE;
+	real best_distance = maximum_distance;
+
+	for (index = 0; index < count; index++)
+	{
+		struct bots_item item;
+		long object_index;
+		real distance;
+
+		if (!bots_knowledge_item(index, &item, &object_index) || item.kind != _bots_item_health ||
+			!bots_knowledge_item_believed(bot->index, index, NULL) ||
+			(object_index != NONE && bots_item_unreachable(bot, object_index)))
+		{
+			continue;
+		}
+		distance = bots_distance3d(&item.position, position);
+		if (distance < best_distance)
+		{
+			best_distance = distance;
+			best = index;
+		}
+	}
+	if (best == NONE || !bots_set_spawn_goal(bot, best, _bots_goal_item))
+		return FALSE;
+	/* (gone from it as it comes: _bots_goal_power waits on there no
+	longer than a health pack is worth) */
+	bot->power_item_index = NONE;
+	bots_globals.health_fetches++;
+	return TRUE;
+}
+
+/* whether a teammate of the bot goes for the power item now */
+static boolean bots_power_claimed(struct bots_bot *bot, long item_index, long now)
+{
+	long claimant = bots_globals.power_claims[item_index] - 1;
+	struct player_datum *player, *other;
+
+	if (claimant < 0 || claimant >= BOTS_MAXIMUM || claimant == bot->index ||
+		now >= bots_globals.power_claim_ticks[item_index])
+	{
+		return FALSE;
+	}
+	player = player_try_and_get(bot->player_index);
+	other = bots_globals.bots[claimant].player_index != NONE ? player_try_and_get(bots_globals.bots[claimant].player_index) : NULL;
+	return player && other && other->unit_index != NONE &&
+		(!game_engine_has_teams() || other->team_index == player->team_index);
+}
+
+/* a power weapon or powerup (bots_knowledge_item's power) the bot goes for:
+within 50 units, one it believes lies there (it saw it there, or the spawn
+has turned since it saw it gone: bots_knowledge_item_believed), or coming
+back by the time the bot is there (at the spawn's next turn, which a player
+times too), one it does not hold already, that a teammate does not go for;
+the nearest, the one there favoured. Its goal the item's spawn (the item
+once it sees it there), to take it or wait there; FALSE for none */
+static boolean bots_choose_power(struct bots_bot *bot, struct unit_datum *unit, real_point3d const *position,
+	boolean fighting, long now)
+{
+	short count = bots_knowledge_item_count(), index;
+	long best_index = NONE, best_ticks = 0;
+	boolean best_there = FALSE;
+	real best_score = REAL_MAX;
+
+	for (index = 0; index < count && index < BOTS_KNOWLEDGE_MAXIMUM_ITEMS; index++)
+	{
+		struct bots_item item;
+		long object_index, ticks_until;
+		real distance, score;
+		boolean there;
+
+		if (!bots_knowledge_item(index, &item, &object_index) || !item.power || bots_power_claimed(bot, index, now))
+			continue;
+		distance = bots_distance3d(&item.position, position);
+		if (distance > (fighting ? 8.0f : 50.0f) ||
+			(item.kind == _bots_item_weapon && bots_unit_holds_named(unit, item.name)))
+		{
+			continue;
+		}
+		there = bots_knowledge_item_believed(bot->index, index, &ticks_until);
+		if (there)
+		{
+			if (object_index != NONE && bots_item_unreachable(bot, object_index))
+				continue;
+			score = distance - 20.0f;
+			ticks_until = 0;
+		}
+		else
+		{
+			/* (about 2 units a second there, and 5 seconds to spare) */
+			long travel_ticks = (long)(distance / 2.0f * TICKS_PER_SECOND);
+
+			if (fighting || ticks_until == NONE || ticks_until > travel_ticks + TICKS_PER_SECOND * 5)
+				continue;
+			score = distance + (real)MAX(ticks_until - travel_ticks, 0) / TICKS_PER_SECOND;
+		}
+		/* (a teammate better placed for it takes it) */
+		if (score >= best_score || !bots_tactics_may_claim(bot->index, index))
+			continue;
+		best_score = score;
+		best_index = index;
+		best_ticks = ticks_until;
+		best_there = there;
+	}
+	if (best_index == NONE || !bots_set_spawn_goal(bot, best_index, best_there ? _bots_goal_item : _bots_goal_power))
+		return FALSE;
+	if (bot->goal_kind == _bots_goal_item)
+		bots_globals.power_fetches++;
+	else
+		bots_globals.power_waits++;
+	bot->power_item_index = best_index;
+	bots_globals.power_claims[best_index] = bot->index + 1;
+	bots_globals.power_claim_ticks[best_index] = now + MAX(best_ticks, 0) + TICKS_PER_SECOND * 20;
+	return TRUE;
+}
+
+/* the team's point (bots_tactics_goal's) as the bot's goal: the ground
+under it, else the roaming place nearest it within 10 units; FALSE for
+none */
+static boolean bots_set_tactic_goal(struct bots_bot *bot, real_point3d const *point)
+{
+	real_point3d ground;
+	long surface_index;
+
+	/* (the same point, near enough: the goal stands) */
+	if (bot->goal_kind == _bots_goal_tactic && bots_distance3d(&bot->tactic_point, point) < 1.5f)
+		return TRUE;
+	surface_index = bots_surface_below(point, &ground);
+	if (surface_index == NONE)
+	{
+		long index, nearest = NONE;
+		real nearest_distance = 10.0f;
+
+		for (index = 0; index < bots_globals.roam_point_count; index++)
+		{
+			real distance = bots_distance3d(&bots_globals.roam_points[index], point);
+
+			if (distance < nearest_distance)
+			{
+				nearest_distance = distance;
+				nearest = index;
+			}
+		}
+		if (nearest == NONE)
+			return FALSE;
+		ground = bots_globals.roam_points[nearest];
+		surface_index = bots_globals.roam_surfaces[nearest];
+	}
+	bots_set_goal(bot, _bots_goal_tactic, &ground, surface_index);
+	bot->tactic_point = *point;
+	return TRUE;
+}
+
 static void bots_choose_goal(struct bots_bot *bot, long player_index, real_point3d const *position, boolean fighting)
 {
 	struct unit_datum *own_unit = unit_get(player_get(player_index)->unit_index);
-
 	long now = game_time_get();
+	short tactic;
+	real_point3d tactic_point;
 
 	/* (debug.bot_player_vehicle: the player's bot boards one first, and
 	drives it after) */
@@ -2150,6 +2495,22 @@ static void bots_choose_goal(struct bots_bot *bot, long player_index, real_point
 	}
 	if (bot->goal_kind == _bots_goal_vehicle && own_unit->object.parent_object_index == NONE)
 		return;
+	/* (its team's ask, bots_tactics.h: none, a goal of it left) */
+	tactic = bot->smooth ? (short)_bots_tactic_none : bots_tactics_goal(bot->index, position, &tactic_point);
+	if (tactic == _bots_tactic_none && bot->goal_kind == _bots_goal_tactic)
+		bot->goal_kind = _bots_goal_none;
+	/* (badly hurt: a health pack first, before a chase) */
+	if (!bot->smooth && own_unit->object.body_vitality < 0.35f && bot->goal_kind != _bots_goal_item &&
+		now >= bot->item_check_tick)
+	{
+		bot->item_check_tick = now + TICKS_PER_SECOND;
+		if (bots_choose_health(bot, position, fighting ? 8.0f : 30.0f))
+			return;
+	}
+	/* (after a teammate's killer, falling back with the team: before its
+	own chase) */
+	if ((tactic == _bots_tactic_trade || tactic == _bots_tactic_fall_back) && bots_set_tactic_goal(bot, &tactic_point))
+		return;
 	if (!fighting && bot->target_player_index != NONE && bot->target_last_surface_index != NONE &&
 		now - bot->target_seen_tick < TICKS_PER_SECOND * 8)
 	{
@@ -2161,7 +2522,7 @@ static void bots_choose_goal(struct bots_bot *bot, long player_index, real_point
 	if (bot->goal_kind == _bots_goal_item)
 	{
 		struct item_datum *item = (struct item_datum *)object_try_and_get_and_verify_type(bot->item_index,
-			_object_mask_weapon);
+			_object_mask_item);
 
 		if (item && item->object.parent_object_index == NONE && now - bot->goal_tick < TICKS_PER_SECOND * 15 &&
 			(bot->item_first_press_tick < bot->goal_tick || now - bot->item_first_press_tick < TICKS_PER_SECOND * 3))
@@ -2174,11 +2535,41 @@ static void bots_choose_goal(struct bots_bot *bot, long player_index, real_point
 		bot->goal_kind = _bots_goal_none;
 		bot->item_check_tick = now + TICKS_PER_SECOND * 2;
 	}
+	/* (at a power item's spawn: on to it once it sees it there; waiting
+	there a while for it to come back) */
+	if (bot->goal_kind == _bots_goal_power)
+	{
+		long object_index;
+
+		if (bots_knowledge_item_believed(bot->index, bot->power_item_index, NULL) &&
+			bots_knowledge_item(bot->power_item_index, NULL, &object_index) && object_index != NONE &&
+			bots_set_item_goal(bot, object_index))
+		{
+			return;
+		}
+		if (!fighting && now - bot->goal_tick < TICKS_PER_SECOND * 45)
+			return;
+		bot->goal_kind = _bots_goal_none;
+	}
 	if (now >= bot->item_check_tick)
 	{
-		long item_index = bots_find_item(bot, unit_get(player_get(player_index)->unit_index), position, fighting ? 8.0f : 20.0f);
+		long item_index;
 
 		bot->item_check_tick = now + TICKS_PER_SECOND;
+		/* (hurt: a health pack near; a power item, looked for every two
+		seconds) */
+		if (!bot->smooth && own_unit->object.body_vitality < 0.5f &&
+			bots_choose_health(bot, position, fighting ? 8.0f : 25.0f))
+		{
+			return;
+		}
+		if (!bot->smooth && now >= bot->power_check_tick)
+		{
+			bot->power_check_tick = now + TICKS_PER_SECOND * 2;
+			if (bots_choose_power(bot, own_unit, position, fighting, now))
+				return;
+		}
+		item_index = bots_find_item(bot, unit_get(player_get(player_index)->unit_index), position, fighting ? 8.0f : 20.0f);
 		if (item_index != NONE)
 		{
 			real_point3d ground;
@@ -2191,6 +2582,14 @@ static void bots_choose_goal(struct bots_bot *bot, long player_index, real_point
 				return;
 			}
 		}
+	}
+	/* (closing in on the team's kill, with a human; too far from every
+	teammate, back to one: after a power item, health or a better weapon,
+	which an escort or a bot closing in still takes) */
+	if ((tactic == _bots_tactic_collapse || tactic == _bots_tactic_escort || tactic == _bots_tactic_support) &&
+		bots_set_tactic_goal(bot, &tactic_point))
+	{
+		return;
 	}
 	if (bot->goal_kind != _bots_goal_roam || bots_distance2d(&bot->goal_point, position) < 1.5f ||
 		now - bot->goal_tick > TICKS_PER_SECOND * (bot->hunting ? 12 : 40))
@@ -2298,6 +2697,13 @@ static void bots_bot_reset(struct bots_bot *bot, long player_index, long bot_ind
 	bot->goal_surface_index = NONE;
 	bot->random = 0x2545F491UL * (unsigned long)(bot_index + 1) ^ (unsigned long)network_game_get_random_seed();
 	bot->strafe_sign = 1.0f;
+	bot->index = bot_index;
+	bot->power_item_index = NONE;
+	bot->cover_surface_index = NONE;
+	bot->survey_tick = bot_index % 10;
+	/* (never hurt yet: not 0, which is "hurt at the game's start" for its
+	first two seconds) */
+	bot->hurt_tick = -TICKS_PER_SECOND * 10;
 	bot->motion_change_tick = NONE;
 	bot->aimed_since_tick = NONE;
 	bot->opened_player_index = NONE;
@@ -2659,7 +3065,14 @@ struct bots_tick
 	struct player_action *action;
 	/* it crouches in its fight this tick (bots_bot_fight's) */
 	boolean crouching;
+	/* it stays where it is, looking about (its fall back's cover reached);
+	it keeps to its goal's path while it fights (cover, its team's falling
+	back) */
+	boolean stay;
+	boolean goal_in_fight;
 };
+
+static void bots_bot_watch(struct bots_bot *bot, struct bots_tick *tick);
 
 /* the unit's eyes: its head marker, as unit_get_head_position finds it
 (the marker's matrix from the object's node matrices, which nothing in the
@@ -2672,6 +3085,53 @@ static real_point3d const *bots_tick_eye(struct bots_tick *tick)
 		tick->eye_found = TRUE;
 	}
 	return &tick->eye;
+}
+
+/* what the bot sees, a look every third of a second (bots_knowledge.h):
+every enemy in its sight's reach and view whom its sight test reaches (its
+view's cone always, even hurt: a hurt player sees no more behind them than
+the one who shot them, which its look finds), and the item spawns there
+whose place its sight test reaches, the item there or not */
+static void bots_bot_survey(struct bots_bot *bot, struct bots_tick *tick)
+{
+	real_point3d const *eye = bots_tick_eye(tick);
+	real half_view = 0.5f * tick->skill->field_of_view_degrees * BOTS_DEGREES;
+	short count = bots_knowledge_item_count(), index;
+	struct data_iterator iterator;
+	struct player_datum *other;
+
+	data_iterator_new(&iterator, player_data);
+	while ((other = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
+	{
+		struct bots_target_candidate candidate;
+
+		if (iterator.datum_index != bot->target_player_index &&
+			bots_target_score(bot, tick->player, other, iterator.datum_index, eye, tick->skill, FALSE, &candidate) &&
+			bots_line_of_sight(tick->player->unit_index, eye, &candidate.point, candidate.unit_index))
+		{
+			bots_knowledge_saw(bot->index, iterator.datum_index, &object_get(other->unit_index)->object.position);
+		}
+	}
+	for (index = 0; index < count; index++)
+	{
+		struct bots_item item;
+		long object_index;
+		real_point3d point;
+		real distance, bearing;
+
+		if (!bots_knowledge_item(index, &item, &object_index))
+			continue;
+		point = item.position;
+		point.z += 0.25f;
+		distance = bots_distance3d(eye, &point);
+		if (distance > tick->skill->sight_distance)
+			continue;
+		bearing = (real)fabs(bots_angle_difference((real)atan2(point.y - eye->y, point.x - eye->x), bot->yaw));
+		if (bearing > half_view && distance > 3.0f)
+			continue;
+		if (bots_line_of_sight(tick->player->unit_index, eye, &point, object_index))
+			bots_knowledge_saw_item(bot->index, index, object_index != NONE);
+	}
 }
 
 /* looking for enemies (every third tick, the bots in turn), and forgetting
@@ -2705,7 +3165,14 @@ static void bots_bot_look(struct bots_bot *bot, struct bots_tick *tick)
 			surface_index = bots_unit_surface(target_player->unit_index, &ground);
 			if (surface_index != NONE)
 				bot->target_last_surface_index = surface_index;
+			if (bot != &bots_globals.player_bot)
+				bots_knowledge_saw(bot->index, target, &target_object->object.position);
 		}
+	}
+	if (bot != &bots_globals.player_bot && tick->now >= bot->survey_tick)
+	{
+		bot->survey_tick = tick->now + 10;
+		bots_bot_survey(bot, tick);
 	}
 	if (bot->target_player_index != NONE)
 	{
@@ -2717,6 +3184,39 @@ static void bots_bot_look(struct bots_bot *bot, struct bots_tick *tick)
 			bot->target_player_index = NONE;
 		}
 	}
+}
+
+/* the way to where the enemy it knows of that was seen last
+(bots_knowledge_known: by itself, or by its team, a callout's while late)
+was, seen within four seconds and within its sight's reach, while it has
+none in sight: it looks that way, as a player turns to a callout. Its aim
+is its own sight's: nothing here fires. FALSE for none */
+static boolean bots_known_threat(struct bots_bot *bot, struct bots_tick *tick, real *yaw)
+{
+	struct bots_known_enemy known[BOTS_KNOWLEDGE_MAXIMUM_KNOWN];
+	short count, index, latest = NONE;
+
+	if (bot == &bots_globals.player_bot ||
+		(bot->target_player_index != NONE && tick->now - bot->target_seen_tick <= TICKS_PER_SECOND))
+	{
+		return FALSE;
+	}
+	count = bots_knowledge_known(bot->index, known, BOTS_KNOWLEDGE_MAXIMUM_KNOWN);
+	for (index = 0; index < count; index++)
+	{
+		if (tick->now - known[index].tick > TICKS_PER_SECOND * 4 ||
+			bots_distance3d(&known[index].position, &tick->position) > tick->skill->sight_distance ||
+			bots_distance2d(&known[index].position, &tick->position) < 1.0f)
+		{
+			continue;
+		}
+		if (latest == NONE || known[index].tick > known[latest].tick)
+			latest = index;
+	}
+	if (latest == NONE)
+		return FALSE;
+	*yaw = (real)atan2(known[latest].position.y - tick->position.y, known[latest].position.x - tick->position.x);
+	return TRUE;
 }
 
 /* close up, and the grenades: the plays a player makes, each started by
@@ -3009,6 +3509,16 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 	other once it reacts to its aim (and a jump with it now and then);
 	nearer or further to keep its weapon's distance, straight in for a
 	blow; crouched, slowly */
+	/* (no one aiming at it: its team's side, away from a teammate close
+	by or round the enemy from a teammate on it too) */
+	if (!aimed && !bot->smooth)
+	{
+		real side = bots_tactics_strafe_side(bot->index, bot->target_player_index, &tick->position,
+			&target_object->object.position);
+
+		if (side != 0.0f)
+			bot->strafe_sign = side;
+	}
 	if (bots_strafe(bot, skill, aimed, now) && !bot->smooth)
 	{
 		bots_globals.dodges++;
@@ -3047,13 +3557,32 @@ static void bots_bot_walk(struct bots_bot *bot, struct bots_tick *tick)
 	{
 		real turn = 12.0f * BOTS_DEGREES;
 		real off = bots_angle_difference(direction, bot->yaw);
+		real threat_yaw;
 
+		/* (an enemy it knows of, not behind it: looking that way as it
+		walks) */
+		if (!bot->smooth && bots_known_threat(bot, tick, &threat_yaw) &&
+			(real)fabs(bots_angle_difference(threat_yaw, direction)) < 100.0f * BOTS_DEGREES)
+		{
+			off = bots_angle_difference(threat_yaw, bot->yaw);
+		}
 		tick->move_direction = direction;
 		tick->moving = TRUE;
+		/* (not on a teammate's heels) */
+		if (!bot->smooth)
+			bots_tactics_steer(bot->index, &tick->position, &tick->move_direction, &tick->throttle_scale);
 		/* (looking where it walks: an easier hand than fighting's) */
 		bots_turn(bot, off, -bot->pitch, turn, 6.0f, 1.0f, 0.0f, 0.0f);
 		if (bot->climb_until_tick && tick->now < bot->climb_until_tick && (bot->climb_until_tick - tick->now) % 20 == 0)
 			tick->flags |= FLAG(_unit_control_jump_bit);
+	}
+	else if (bot->goal_kind == _bots_goal_power || bot->goal_kind == _bots_goal_cover ||
+		bot->goal_kind == _bots_goal_tactic)
+	{
+		/* (at a power item's spawn, its cover, its team's place: looking
+		about there) */
+		bots_bot_watch(bot, tick);
+		return;
 	}
 	else
 	{
@@ -3155,6 +3684,39 @@ static void bots_bot_weapons(struct bots_bot *bot, struct bots_tick *tick)
 			}
 		}
 	}
+	/* fighting: the weapon it holds better for the range (the pistol far
+	off, the shotgun close up), at most every second and a half */
+	if (!bot->smooth && tick->fighting && tick->weapon_index != NONE && !bots_weapon_empty(tick->weapon_index) &&
+		tick->now - bot->range_swap_tick > TICKS_PER_SECOND * 3 / 2 && tick->now >= bot->combo_until_tick)
+	{
+		struct bots_weapon_kind const *held = bots_weapon_kind(weapon_get(tick->weapon_index)->definition_index);
+		real best = (real)held->value - (real)fabs(tick->target_distance - held->range) * 0.4f + 1.5f;
+		short slot, best_slot = NONE;
+
+		for (slot = 0; slot < MAXIMUM_WEAPONS_PER_UNIT; slot++)
+		{
+			long other = tick->unit->unit.weapon_object_indices[slot];
+			struct bots_weapon_kind const *kind;
+			real fit;
+
+			if (slot == tick->unit->unit.current_weapon_index || other == NONE || bots_weapon_empty(other))
+				continue;
+			kind = bots_weapon_kind(weapon_get(other)->definition_index);
+			if (kind->value < 0)
+				continue;
+			fit = (real)kind->value - (real)fabs(tick->target_distance - kind->range) * 0.4f;
+			if (fit > best)
+			{
+				best = fit;
+				best_slot = slot;
+			}
+		}
+		if (best_slot != NONE)
+		{
+			tick->action->desired_weapon_index = best_slot;
+			bot->range_swap_tick = tick->now;
+		}
+	}
 	if (tick->weapon_index != NONE && bots_weapon_empty(tick->weapon_index))
 	{
 		short slot;
@@ -3239,6 +3801,195 @@ static void bots_bot_unstick(struct bots_bot *bot, struct bots_tick *tick)
 	}
 }
 
+/* ---------- falling back */
+
+/* staying where it is: looking about (another way every second or two, by
+its random numbers), or where an enemy it knows of was; a reload when no
+one is about */
+static void bots_bot_watch(struct bots_bot *bot, struct bots_tick *tick)
+{
+	real threat_yaw;
+
+	if (bots_known_threat(bot, tick, &threat_yaw))
+		bot->watch_yaw = threat_yaw;
+	else if (tick->now >= bot->watch_tick)
+	{
+		bot->watch_yaw = bot->yaw + bots_random_signed(bot) * BOTS_PI * 0.75f;
+		bot->watch_tick = tick->now + TICKS_PER_SECOND + (long)(bots_random(bot) % TICKS_PER_SECOND);
+	}
+	bots_turn(bot, bots_angle_difference(bot->watch_yaw, bot->yaw), -bot->pitch, 6.0f * BOTS_DEGREES, 5.0f, 1.0f,
+		0.0f, 0.0f);
+	if (tick->weapon_index != NONE && bots_weapon_loaded(tick->weapon_index) < 0.4f &&
+		tick->now - bot->target_seen_tick > TICKS_PER_SECOND * 2)
+	{
+		tick->flags |= FLAG(_unit_control_weapon_reload_bit);
+	}
+}
+
+/* a place to fall back to from a threat (an enemy's last place), of the
+roaming places and the health packs it believes are there, 4 to 45 units
+off and not towards the threat: the one of the least of its way there less
+how far it is from the threat, less more for being out of the threat's
+sight (the best three looked at) and for a health pack when hurt. FALSE for
+none */
+#define BOTS_COVER_CANDIDATES 3
+static boolean bots_find_cover(struct bots_bot *bot, struct bots_tick *tick, real_point3d const *threat,
+	real_point3d *point, long *surface_index)
+{
+	struct
+	{
+		real score;
+		real_point3d point;
+		long surface_index;
+	} best[BOTS_COVER_CANDIDATES];
+	long best_count = 0, index, count, chosen;
+	short item_count = bots_knowledge_item_count();
+	boolean hurt = tick->object->object.body_vitality < 0.7f;
+	real threat_distance = bots_distance2d(threat, &tick->position);
+
+	count = bots_globals.roam_point_count + item_count;
+	for (index = 0; index < count; index++)
+	{
+		real_point3d candidate;
+		long candidate_surface, at;
+		real distance, score, away;
+		boolean health = FALSE;
+
+		if (index < bots_globals.roam_point_count)
+		{
+			candidate = bots_globals.roam_points[index];
+			candidate_surface = bots_globals.roam_surfaces[index];
+		}
+		else
+		{
+			struct bots_item item;
+
+			if (!bots_knowledge_item(index - bots_globals.roam_point_count, &item, NULL) ||
+				item.kind != _bots_item_health ||
+				!bots_knowledge_item_believed(bot->index, index - bots_globals.roam_point_count, NULL))
+			{
+				continue;
+			}
+			candidate_surface = bots_surface_below(&item.position, &candidate);
+			if (candidate_surface == NONE)
+				continue;
+			health = TRUE;
+		}
+		distance = bots_distance2d(&candidate, &tick->position);
+		if (distance < 4.0f || distance > 45.0f)
+			continue;
+		away = bots_distance2d(&candidate, threat);
+		if (away < threat_distance + 2.0f)
+			continue;
+		score = distance * 0.4f - MIN(away, 40.0f) * 0.6f;
+		if (health && hurt)
+			score -= 10.0f;
+		/* (in its place among the best, by score) */
+		for (at = best_count; at > 0 && best[at - 1].score > score; at--)
+		{
+			if (at < BOTS_COVER_CANDIDATES)
+				best[at] = best[at - 1];
+		}
+		if (at < BOTS_COVER_CANDIDATES)
+		{
+			best[at].score = score;
+			best[at].point = candidate;
+			best[at].surface_index = candidate_surface;
+			if (best_count < BOTS_COVER_CANDIDATES)
+				best_count++;
+		}
+	}
+	if (!best_count)
+		return FALSE;
+	{
+		real_point3d eye = *threat;
+
+		eye.z += 0.6f;
+		for (index = 0; index < best_count; index++)
+		{
+			real_point3d target = best[index].point;
+
+			target.z += 0.6f;
+			if (!bots_line_of_sight(NONE, &eye, &target, NONE))
+				best[index].score -= 12.0f;
+		}
+	}
+	chosen = 0;
+	for (index = 1; index < best_count; index++)
+	{
+		if (best[index].score < best[chosen].score)
+			chosen = index;
+	}
+	*point = best[chosen].point;
+	*surface_index = best[chosen].surface_index;
+	return TRUE;
+}
+
+/* fighting, its team falling back (bots_tactics.h): towards the rally
+point, still facing the enemy, as the bots near the fight fall back
+together */
+static void bots_bot_fall_back(struct bots_bot *bot, struct bots_tick *tick)
+{
+	real_point3d point;
+	short tactic = bot->smooth ? (short)_bots_tactic_none : bots_tactics_goal(bot->index, &tick->position, &point);
+
+	if (tactic == _bots_tactic_fall_back && bots_set_tactic_goal(bot, &point))
+		tick->goal_in_fight = TRUE;
+	else if (bot->goal_kind == _bots_goal_tactic)
+		bot->goal_kind = _bots_goal_none;
+}
+
+/* its shield down in a fight with no kill near (the enemy not low itself):
+back to cover to let it come back, four seconds at most and not again for
+ten; TRUE while it does (its goal the cover) */
+static boolean bots_bot_recharge(struct bots_bot *bot, struct bots_tick *tick)
+{
+	struct player_datum *target_player;
+	struct object_datum *target_object;
+	long now = tick->now;
+
+	if (now < bot->recharge_until_tick)
+	{
+		if (tick->object->object.shield_vitality < 0.9f &&
+			bots_distance2d(&bot->cover_point, &tick->position) > 1.0f)
+		{
+			bots_set_goal(bot, _bots_goal_cover, &bot->cover_point, bot->cover_surface_index);
+			tick->goal_in_fight = TRUE;
+			return TRUE;
+		}
+		/* (there, or back up: on) */
+		if (tick->object->object.shield_vitality >= 0.9f)
+			bot->recharge_until_tick = 0;
+		else
+		{
+			tick->stay = TRUE;
+			return TRUE;
+		}
+	}
+	if (bot->smooth || now < bot->recharge_next_tick || bot->target_player_index == NONE ||
+		now - bot->target_seen_tick > TICKS_PER_SECOND / 2 || tick->object->object.shield_vitality > 0.15f ||
+		tick->object->object.parent_object_index != NONE || !game_engine_has_shield(bot->player_index))
+	{
+		return FALSE;
+	}
+	target_player = player_try_and_get(bot->target_player_index);
+	if (!target_player || target_player->unit_index == NONE)
+		return FALSE;
+	target_object = object_get(target_player->unit_index);
+	/* (a kill near: on with the fight) */
+	if (target_object->object.shield_vitality < 0.25f && target_object->object.body_vitality < 0.6f)
+		return FALSE;
+	bot->recharge_next_tick = now + TICKS_PER_SECOND * 2;
+	if (!bots_find_cover(bot, tick, &bot->target_last_position, &bot->cover_point, &bot->cover_surface_index))
+		return FALSE;
+	bot->recharge_until_tick = now + TICKS_PER_SECOND * 4;
+	bot->recharge_next_tick = now + TICKS_PER_SECOND * 10;
+	bots_globals.recharges++;
+	bots_set_goal(bot, _bots_goal_cover, &bot->cover_point, bot->cover_surface_index);
+	tick->goal_in_fight = TRUE;
+	return TRUE;
+}
+
 /* (debug.bot_trace = <seconds>) each bot's state that often */
 static void bots_bot_trace(struct bots_bot *bot, long bot_index, struct bots_tick *tick)
 {
@@ -3296,6 +4047,10 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 		bot->path.valid = FALSE;
 		bot->goal_kind = _bots_goal_none;
 		bot->previous_control_flags = 0;
+		bot->fighting = FALSE;
+		bot->recharge_until_tick = 0;
+		bot->combo_until_tick = 0;
+		bots_release_power_claim(bot);
 		return;
 	}
 	tick.unit = unit_get(tick.player->unit_index);
@@ -3369,24 +4124,34 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 	bots_tally_shots(bot, tick.weapon_index);
 	if (bot->target_player_index != NONE && tick.now - bot->target_seen_tick <= TICKS_PER_SECOND / 2)
 		bots_bot_fight(bot, &tick);
-	/* the goal, and the path to it (while fighting, only a weapon close by:
+	/* the goal, and the path to it: its fall back to recharge, else its own
+	(while fighting, only a weapon close by or its team's falling back:
 	towards it, still facing the enemy) */
-	if (!tick.fighting || bot->goal_kind == _bots_goal_item || bot->smooth)
-		bots_choose_goal(bot, bot->player_index, &tick.position, tick.fighting);
-	if (!tick.fighting)
+	if (!bots_bot_recharge(bot, &tick))
+	{
+		if (!tick.fighting || bot->goal_kind == _bots_goal_item || bot->smooth)
+			bots_choose_goal(bot, bot->player_index, &tick.position, tick.fighting);
+		else
+			bots_bot_fall_back(bot, &tick);
+	}
+	if (tick.stay && !tick.fighting)
+		bots_bot_watch(bot, &tick);
+	else if (!tick.fighting)
 	{
 		bots_bot_walk(bot, &tick);
 		bots_bot_yield(bot_index, &tick);
 	}
-	/* (a weapon close by, or debug.bot_player_vehicle's vehicle: towards
-	it, still facing the enemy) */
-	else if (bot->goal_kind == _bots_goal_item || bot->goal_kind == _bots_goal_vehicle)
+	/* (a weapon close by, debug.bot_player_vehicle's vehicle, its cover or
+	its team's falling back: towards it, still facing the enemy) */
+	else if (!tick.stay && (bot->goal_kind == _bots_goal_item || bot->goal_kind == _bots_goal_vehicle ||
+		(tick.goal_in_fight && bot->goal_kind != _bots_goal_none)))
 	{
 		real direction;
 
 		if (bots_follow_path(bot, tick.player->unit_index, &tick.position, &direction))
 			tick.move_direction = direction;
 	}
+	bot->fighting = tick.fighting;
 	bots_bot_weapons(bot, &tick);
 	bots_bot_unstick(bot, &tick);
 
@@ -3435,6 +4200,8 @@ static void bots_report(void)
 	long now = game_time_get();
 	long count = 0, index;
 	char line[400];
+	char knowledge[80];
+	char tactics[400];
 	int length = 0;
 
 	if (bots_globals.last_report_tick != NONE && now - bots_globals.last_report_tick < TICKS_PER_SECOND * 60)
@@ -3455,6 +4222,11 @@ static void bots_report(void)
 	}
 	if (!count)
 		return;
+	bots_knowledge_report(knowledge, sizeof(knowledge));
+	bots_tactics_report(tactics, sizeof(tactics));
+	platform_log("bots: tick %ld, %ld bots (%s): recharges %ld, health %ld, power %ld (waited %ld), regroups %ld%s%s",
+		now, count, bots_skills[bots_globals.skill].name, bots_globals.recharges, bots_globals.health_fetches,
+		bots_globals.power_fetches, bots_globals.power_waits, bots_globals.regroups, knowledge, tactics);
 	platform_log("bots: tick %ld, %ld bots (%s): searches %ld (%ld failed, %ld short, %ld full, %ld unavoided, "
 		"%ld unsmoothed), stuck %ld (goals given up %ld), kills/deaths%s", now, count,
 		bots_skills[bots_globals.skill].name, bots_globals.searches, bots_globals.search_failures,
@@ -3544,12 +4316,22 @@ void bots_update_actions(struct player_action *actions)
 			bots_globals.tick_searches = 0;
 			bots_paths_scan();
 			bots_tally_hits(game_time_get());
+			/* (what the bots know: their players, the reports on their
+			way, the items at their spawns; what the teams know: the
+			deaths since the last tick) */
+			bots_knowledge_tick_begin();
+			bots_tactics_tick_begin();
 		}
 		if (bot->player_index != iterator.datum_index)
 			bots_bot_reset(bot, iterator.datum_index, bot_index);
 		if (absolute_index >= 0 && absolute_index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
 		{
 			bots_bot_update(bot, bot_index, &actions[absolute_index]);
+			if (bot != &bots_globals.player_bot)
+			{
+				bots_tactics_bot_done(bot_index, iterator.datum_index, bot->fighting ? bot->target_player_index : NONE,
+					TEST_FLAG(actions[absolute_index].control_flags, _unit_control_weapon_primary_trigger_bit));
+			}
 			/* (a network game's: the clients are given it as the input the
 			host's tick ran, which they replay the bot by) */
 			if (bot != &bots_globals.player_bot)

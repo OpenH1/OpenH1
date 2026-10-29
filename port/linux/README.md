@@ -639,6 +639,24 @@ melee has; they strafe one way while the enemy's aim is off them and turn
 about when it comes on them (as quickly as their skill reacts, the easy
 ones not always), now and then with a jump, and crouch to fire at range
 while no one aims at them.
+
+A bot knows only what a player in its place could (`game/bots_knowledge.c`):
+the enemies its own sight saw and, with `bots.share_sightings`, those its
+teammates saw, a callout's delay later (`bots.share_delay`); it goes and
+looks where they were, but has no motion tracker of others' places and fires
+only at what it sees. It knows the map's item spawns and times them by the
+game's clock as a player can, and believes an item is there as it last saw
+the spawn. So it backs off to cover to let its shield come back when a fight
+goes against it, goes for a health pack when hurt, goes for the power
+weapons and powerups (and waits at a spawn for one about to come back,
+leaving it to a teammate who goes for it), swaps to the weapon better for
+the range, keeps near its teammates now and then, and looks towards an
+enemy it knows of as it walks. With `bots.tactics` (off by default) a team's
+bots also play together (`game/bots_tactics.c`): spacing, crossfire, focus
+fire, trading for a fallen teammate, closing in and falling back together,
+and sharing out the power items and the escort of a human teammate. Measured
+on Team Slayer with bots alone, the team play slowed the fights and did not
+win more, so it is a choice, not the default.
 halo.log has a line each minute with each weapon family's rounds that hit
 someone of those the bots fired, and `debug.bots_weapon` gives every bot
 one weapon, to measure it.
@@ -813,6 +831,9 @@ the setting for one start of the game. It has priority over the file.
 | `bots.teams` | `"even"` | `HALO_BOT_TEAMS` | In a team game: `"even"` puts the bots on both teams, evening them with the players; `"against"` puts them all on the team the players are not on. BOT TEAMS (EVEN or AGAINST YOU) in Server Setup of Multiplayer > PLAY WITH BOTS writes it. |
 | `bots.make_room` | `true` | `HALO_BOTS_MAKE_ROOM` | In a system link or internet game with bots: a bot leaves as a player joins, so that the game has no more than `bots.fill_to` players and bots, and comes back as a player leaves. `false`: the bots stay, and the game's most players are its players' alone. MAKE ROOM on Server Setup's BOTS screen writes it. Refer to "Bots". |
 | `bots.fill_to` | `16` | `HALO_BOTS_FILL_TO` | With `bots.make_room`, the players and bots a system link or internet game is filled to (2 to 128; no more than its most players). FILL TO on Server Setup's BOTS screen writes it. |
+| `bots.tactics` | `false` | `HALO_BOTS_TACTICS` | In team games, a team's bots play together: they keep apart (about five metres) and within reach of each other, fire at the enemy a teammate is hurting and take angles apart on one enemy, go after a teammate's killer while that player's shields are down, close in together after a kill and fall back together when the fight goes against them, and share out the power weapons and the escort of a human teammate (the best placed bot takes each). `false`: each bot plays on its own; measured, the team play slows the fights and wins no more (refer to "Bots"). |
+| `bots.share_sightings` | `true` | `HALO_BOTS_SHARE_SIGHTINGS` | A team's bots share the enemies they see, each sighting reaching the team's other bots `bots.share_delay` after it, as a callout would; it counts for where they go and look, never for their aim (a bot fires only at what it sees). `false`: a bot knows only what it saw itself. |
+| `bots.share_delay` | `1.0` | `HALO_BOTS_SHARE_DELAY` | With `bots.share_sightings`: the seconds from a bot's sighting of an enemy to its teammates' knowing of it (0 to 5). |
 | `paths.data` | `""` | `HALO_DATA_ROOT` | The data root. Refer to "Start the game". |
 | `paths.saves` | `""` | `HALO_SAVE_ROOT` | The save root. Refer to "Files and folders". |
 | `paths.logs` | `""` | `HALO_LOG_ROOT` | The folder of `debug.txt`, `bans.txt` and `cheaters.txt`. Empty: the data root. With it, the data root can be read-only (a dedicated server's maps mounted so). |
@@ -956,6 +977,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.determinism_dump` | `0` | `HALO_DETERMINISM_DUMP` | With `debug.determinism_log`, the tick after which to write the game state too, counted as logged from 1 (its allocations in order, to `<log>.<count>.bin`), to find where two runs' game states differ (`tools/determinism_compare.py --dump`), and that tick's first frame as `<log>.<count>.bmp`; `0` none. |
 | `debug.trace`, `debug.trace_seconds`, `debug.trace_mutation` | `""`, `0.0`, `""` | `HALO_TRACE`, `HALO_TRACE_SECONDS`, `HALO_TRACE_MUTATION` | A file to write a line a simulation step to (`game/sim_trace.c`): the players' place, velocity and aim, each projectile's, and the step's shots, projectiles made, strikes and detonations, timed in seconds from the scenario's start; quit once the scenario has run `debug.trace_seconds`; `debug.trace_mutation` puts a known bug in on purpose (`head_start`, `jump`, `speed`), which the scorecard must catch (`tools/scorecard`). Off, it costs a test a call. `HALO_GUEST_IMAGE` (the environment only) runs another guest image in the game's place: StageKit's map writer (`tools/stagekit`). |
 | `debug.frame_time` | `0.0` | `HALO_FRAME_TIME` | Seconds of game time each frame runs, whatever time it took, so that two runs of the same input run the same frames (the determinism check, with `debug.determinism_log`); `0` the time each frame took. |
+| `debug.bots_tactics_team` | `-1` | `HALO_BOTS_TACTICS_TEAM` | With `bots.tactics`, only this team's bots (`0` red, `1` blue) play together, the other team's each on its own, to measure what the team play is worth (the bots' minute line gives each team's kills); `-1` both teams'. |
 | `debug.random_seed` | `0` | `HALO_RANDOM_SEED` | The random seed of the network games this machine hosts, so that a test plays the same game again (where players spawn, the weapons' spread, the AI's choices); `0` a new one for each game, from the clock. |
 | `debug.audio_log` | `false` | `HALO_AUDIO_LOG` | Write to the log, five times a second, each sound placed in the world that plays: where it is from the listener (metres ahead, right and up), its gain in each ear (through the HRTF, its delays and filters too), the time the mixing takes, how long the sound device waited for its frames of the time it had queued, and its dropouts ("Sound delay"). |
 | `debug.audio_record` | `""` | `HALO_AUDIO_RECORD` | Record the game's sound as it plays (with a device or without) to this WAV file, 48 kHz 16-bit stereo, for automatic tests. Empty: none. |

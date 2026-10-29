@@ -939,6 +939,21 @@ static const struct config_setting config_settings[] =
 	{ "bots.fill_to", _config_integer, "16", "HALO_BOTS_FILL_TO", _environment_value, _platform_all,
 		"With bots.make_room, the players and bots a system link or internet\n"
 		"game is filled to (2 to 128; no more than its most players)." },
+	{ "bots.tactics", _config_boolean, "false", "HALO_BOTS_TACTICS", _environment_value, _platform_all,
+		"In team games, a team's bots play together: they keep apart and within\n"
+		"reach of each other, fire at the enemy a teammate hurts and take angles\n"
+		"apart on one enemy, go after a teammate's killer, close in after a kill\n"
+		"and fall back together, and share out the power weapons and the escort\n"
+		"of a human teammate. false: each bot plays on its own (measured, the\n"
+		"team play slows the fights and wins no more)." },
+	{ "bots.share_sightings", _config_boolean, "true", "HALO_BOTS_SHARE_SIGHTINGS", _environment_value, _platform_all,
+		"A team's bots share the enemies they see, each sighting reaching the\n"
+		"team's other bots bots.share_delay after it, as a callout would; it\n"
+		"counts for where they go and look, never their aim (a bot fires only\n"
+		"at what it sees). false: a bot knows only what it saw itself." },
+	{ "bots.share_delay", _config_real, "1.0", "HALO_BOTS_SHARE_DELAY", _environment_value, _platform_all,
+		"With bots.share_sightings: the seconds from a bot's sighting of an\n"
+		"enemy to its teammates' knowing of it (0 to 5)." },
 	{ "display.viewmodel_shield", _config_boolean, "false", "HALO_VIEWMODEL_SHIELD", _environment_value, _platform_all,
 		"The energy shield's flare on the first-person arms too, as on the body\n"
 		"(the stock game draws it on the body only)." },
@@ -1649,6 +1664,10 @@ static const struct config_setting config_settings[] =
 		"Seconds of game time each frame runs, whatever time it took, so that two\n"
 		"runs of the same input run the same frames (the determinism check); 0\n"
 		"the time each frame took." },
+	{ "debug.bots_tactics_team", _config_integer, "-1", "HALO_BOTS_TACTICS_TEAM", _environment_value, _platform_all,
+		"With bots.tactics, only this team's bots (0 red, 1 blue) play together,\n"
+		"the other's each on its own, to measure what the team play is worth;\n"
+		"-1 both teams'." },
 	{ "debug.random_seed", _config_integer, "0", "HALO_RANDOM_SEED", _environment_value, _platform_all,
 		"The random seed of the network games this machine hosts, so that a test\n"
 		"plays the same game again (the spawns, the weapons' spread); 0 a new\n"
