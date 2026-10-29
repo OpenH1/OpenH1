@@ -6026,7 +6026,10 @@ static boolean browser_sort_before(struct browser_sort_entry const *a, struct br
 {
 	int difference = 0;
 
-	/* (the order the lists open in: the dedicated servers first) */
+	/* (the order the lists open in: the OpenH1 games first, the better
+	game and the fewer, then the dedicated servers first in each) */
+	if (browser_sort_column == _browser_sort_players && browser_sort_descending && a->openh1 != b->openh1)
+		return a->openh1;
 	if (browser_sort_column == _browser_sort_players && browser_sort_descending && a->dedicated != b->dedicated)
 		return a->dedicated;
 	switch (browser_sort_column)
@@ -9073,18 +9076,6 @@ static struct gametype_option const gametype_options[] =
 		{ 0, 30, 60, 90, 120, 180, 300 } },
 };
 
-/* TEXT CHAT's (network.text_chat) OFF, which it shows while the game is
-listed in the server browser, and its host cannot change: a listed game has
-no text chat whatever the setting (network_chat.c), which is kept for a
-private game or a LAN one */
-#define TEXT_CHAT_SPINNER "text_chat_spinner"
-#define TEXT_CHAT_OFF 2
-
-static boolean text_chat_locked(struct gametype_option const *option)
-{
-	return !strcmp(option->spinner, TEXT_CHAT_SPINNER) && p2p_hosting_listed();
-}
-
 /* an option of the host's own setting: the value shown for it (the one
 set, else the nearest) */
 static short gametype_option_setting_index(struct gametype_option const *option)
@@ -9220,10 +9211,9 @@ static void gametype_options_each(struct widget_instance *list, boolean save)
 					continue;
 				if (!save)
 				{
-					spinner->parameters.list.selected_index = text_chat_locked(option) ? TEXT_CHAT_OFF :
-						gametype_option_setting_index(option);
+					spinner->parameters.list.selected_index = gametype_option_setting_index(option);
 				}
-				else if (!text_chat_locked(option) && index != gametype_option_setting_index(option) &&
+				else if (index != gametype_option_setting_index(option) &&
 					!setting_write(option->setting, option->setting_values[index]))
 				{
 					platform_log("menus: could not set %s", option->setting);
@@ -9264,10 +9254,9 @@ static void setting_options_each(struct widget_instance *list, boolean save)
 			index = (short)PIN(spinner->parameters.list.selected_index, 0, option->count - 1);
 			if (!save)
 			{
-				spinner->parameters.list.selected_index = text_chat_locked(option) ? TEXT_CHAT_OFF :
-					gametype_option_setting_index(option);
+				spinner->parameters.list.selected_index = gametype_option_setting_index(option);
 			}
-			else if (!text_chat_locked(option) && index != gametype_option_setting_index(option) &&
+			else if (index != gametype_option_setting_index(option) &&
 				!setting_write(option->setting, option->setting_values[index]))
 			{
 				platform_log("menus: could not set %s", option->setting);
@@ -9665,9 +9654,6 @@ static void gametype_option_help(struct widget_instance *list)
 		visible_set(named(list, "op_bot_fill_to", 0),
 			named(list, "bot_make_room_spinner", 0)->parameters.list.selected_index == 0);
 	}
-	/* (TEXT CHAT held at OFF while the game is listed: text_chat_locked) */
-	if (named(list, TEXT_CHAT_SPINNER, 0) && p2p_hosting_listed())
-		named(list, TEXT_CHAT_SPINNER, 0)->parameters.list.selected_index = TEXT_CHAT_OFF;
 	/* CO-OP OPTIONS: enemies, pickups and vehicles share the amount rows.
 	Mixed modes may need both rows at once. */
 	if (named(list, "coop_extra_enemies_spinner", 0))
