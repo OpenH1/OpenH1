@@ -41,6 +41,7 @@ round the listener to a WAV file, to listen to.
 
 #include <math.h>
 #include <pthread.h>
+#include <stddef.h>
 
 typedef int BOOL;
 typedef unsigned long DWORD;
@@ -92,6 +93,17 @@ static void voice_audio_mix(float *output, unsigned long frames)
 
 /* ---------- voices */
 
+/* a voice's one packet, as the game submitted it and the mixer took it over
+(dsound_sdl.c's hand-off: mix takes the game's side over first) */
+static void voice_packet_taken(struct sdl_stream *stream)
+{
+	stream->packets[0] = stream->mixing[0];
+	stream->packet_count = 1;
+	stream->submitted = 1;
+	stream->mixing_count = 1;
+	stream->mixing_next = 1;
+}
+
 /* a voice of frames frames of channels channels at rate, played at frequency
 (0: its rate), a 2D voice heard at full volume in both speakers */
 static struct sdl_stream *voice_new(const short *samples, unsigned long frames, unsigned long channels,
@@ -105,17 +117,41 @@ static struct sdl_stream *voice_new(const short *samples, unsigned long frames, 
 	stream->volume = 1.0f;
 	stream->mix_left = stream->mix_right = 1.0f;
 	stream->room = stream->room_hf = DSBVOLUME_MIN;
-	stream->packets[0].samples = malloc(frames * channels * sizeof(short));
-	memcpy(stream->packets[0].samples, samples, frames * channels * sizeof(short));
-	stream->packets[0].frames = frames;
-	stream->packet_count = 1;
+	stream->mixing[0].samples = malloc(frames * channels * sizeof(short));
+	memcpy(stream->mixing[0].samples, samples, frames * channels * sizeof(short));
+	stream->mixing[0].frames = frames;
+	voice_packet_taken(stream);
 	resampler_reset(stream);
 	return stream;
 }
 
+/* a game thread holding the voices' lock for 300 ms, set aside by the
+scheduler (hand-off-never-waits) */
+static struct
+{
+	pthread_mutex_t lock;
+	pthread_cond_t condition;
+	BOOL holding;
+} hand_off_test = { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, FALSE };
+
+static void *hand_off_holder(void *parameter)
+{
+	struct timespec pause = { 0, 300000000L };
+
+	(void)parameter;
+	pthread_mutex_lock(&voices_lock);
+	pthread_mutex_lock(&hand_off_test.lock);
+	hand_off_test.holding = TRUE;
+	pthread_cond_signal(&hand_off_test.condition);
+	pthread_mutex_unlock(&hand_off_test.lock);
+	nanosleep(&pause, NULL);
+	pthread_mutex_unlock(&voices_lock);
+	return NULL;
+}
+
 static void voice_delete(struct sdl_stream *stream)
 {
-	free(stream->packets[0].samples);
+	free(stream->mixing[0].samples);
 	free(stream);
 }
 
@@ -415,11 +451,12 @@ static void scene(unsigned long voices, unsigned long silent, BOOL indoor, doubl
 			stream->room_hf = 0;
 		}
 		/* a packet as long as the scene */
-		free(stream->packets[0].samples);
-		stream->packets[0].frames = (unsigned long)(seconds * 50000);
-		stream->packets[0].samples = malloc(stream->packets[0].frames * stream->channels * sizeof(short));
-		for (n = 0; n < stream->packets[0].frames * stream->channels; n++)
-			stream->packets[0].samples[n] = (v == 0 ? stereo : mono)[n % frames];
+		free(stream->mixing[0].samples);
+		stream->mixing[0].frames = (unsigned long)(seconds * 50000);
+		stream->mixing[0].samples = malloc(stream->mixing[0].frames * stream->channels * sizeof(short));
+		for (n = 0; n < stream->mixing[0].frames * stream->channels; n++)
+			stream->mixing[0].samples[n] = (v == 0 ? stereo : mono)[n % frames];
+		voice_packet_taken(stream);
 		stream->next = streams;
 		streams = stream;
 	}
@@ -452,7 +489,7 @@ static void bench(unsigned long voices, unsigned long silent, BOOL indoor, doubl
 	scene(voices, silent, indoor, seconds);
 	clock_gettime(CLOCK_MONOTONIC, &start);
 	for (chunk = 0; chunk < chunks; chunk++)
-		mix(output, CHUNK);
+		mix(output, CHUNK, TRUE);
 	clock_gettime(CLOCK_MONOTONIC, &end);
 	elapsed = (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) * 1e-9;
 	printf("%lu voices (%lu out of earshot)%s: %.2f%% of a core, %.1f ns a frame\n", voices, silent,
@@ -934,7 +971,7 @@ int main(int argc, char **argv)
 		render(loud, heard, 20000, TRUE);
 		render(quiet, skipped, 20000, TRUE);
 		CHECK(quiet->center == loud->center && quiet->silence == loud->silence &&
-			quiet->packets[0].finished == loud->packets[0].finished, "turned down, the voice ends at %lu (%lu), "
+			quiet->mixing[0].finished == loud->mixing[0].finished, "turned down, the voice ends at %lu (%lu), "
 			"heard at %lu (%lu)", quiet->center, quiet->silence, loud->center, loud->silence);
 		voice_delete(loud);
 		voice_delete(quiet);
@@ -1127,7 +1164,7 @@ int main(int argc, char **argv)
 		streams = first;
 		for (chunk = 0; chunk < OUTPUT_RATE / 2 / CHUNK; chunk++)
 		{
-			mix(mixed, CHUNK);
+			mix(mixed, CHUNK, TRUE);
 			for (n = 0; chunk && n < CHUNK * 2; n++)
 				alone = fabsf(mixed[n]) > alone ? fabsf(mixed[n]) : alone;
 		}
@@ -1137,7 +1174,7 @@ int main(int argc, char **argv)
 		streams = second;
 		for (chunk = 0; chunk < OUTPUT_RATE / 2 / CHUNK; chunk++)
 		{
-			mix(mixed, CHUNK);
+			mix(mixed, CHUNK, TRUE);
 			for (n = 0; chunk && n < CHUNK * 2; n++)
 				both = fabsf(mixed[n]) > both ? fabsf(mixed[n]) : both;
 		}
@@ -1679,9 +1716,74 @@ int main(int argc, char **argv)
 		{
 			if (index == OUTPUT_RATE / CHUNK)
 				scene_approach();
-			mix(mixed, CHUNK);
+			mix(mixed, CHUNK, TRUE);
 			fwrite(mixed, sizeof(float), CHUNK * 2, stdout);
 		}
+		return 0;
+	}
+	/* the hand-off: while a game thread holds the voices' lock (set aside by
+	the scheduler), the device's mix does not wait for it, mixes what it took
+	last, and takes the game's change at the next mix */
+	CASE("hand-off-never-waits")
+	{
+		static float mixed[CHUNK * 2];
+		static short samples[48000];
+		struct sdl_stream *stream = voice_new(samples, 48000, 1, 48000, 0);
+		pthread_t holder;
+		struct timespec start, end;
+		double waited;
+
+		streams = stream;
+		mix(mixed, CHUNK, FALSE);
+		pthread_mutex_lock(&hand_off_test.lock);
+		pthread_create(&holder, NULL, hand_off_holder, NULL);
+		while (!hand_off_test.holding)
+			pthread_cond_wait(&hand_off_test.condition, &hand_off_test.lock);
+		pthread_mutex_unlock(&hand_off_test.lock);
+		/* (the game sets the voice's volume as it holds the lock) */
+		stream->pending = (struct voice_settings){ 0 };
+		stream->pending.frequency = 48000;
+		stream->pending.volume = 0.25f;
+		stream->pending_changed = TRUE;
+		clock_gettime(CLOCK_MONOTONIC, &start);
+		mix(mixed, CHUNK, FALSE);
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		waited = (double)(end.tv_sec - start.tv_sec) + (double)(end.tv_nsec - start.tv_nsec) * 1e-9;
+		CHECK(waited < 0.1, "the mix waited %.0f ms for the game's thread", waited * 1000.0);
+		CHECK(hand_offs_skipped == 1 && stream->volume == 1.0f, "the mix took the game's side while it was held");
+		pthread_join(holder, NULL);
+		mix(mixed, CHUNK, FALSE);
+		CHECK(stream->volume == 0.25f && !stream->pending_changed, "the next mix did not take the game's change");
+		streams = NULL;
+		voice_delete(stream);
+		return 0;
+	}
+	/* the hand-off takes every setting the game gives a voice to the mixer's
+	side, and nothing else: the game's side all one byte, the mixer's that
+	byte in as many bytes */
+	CASE("hand-off-settings")
+	{
+		struct sdl_stream *stream = calloc(1, sizeof(*stream));
+		const unsigned char *bytes = (const unsigned char *)stream;
+		size_t offset, taken = 0;
+
+		memset(&stream->pending, 0x5a, sizeof(stream->pending));
+		stream->pending_changed = TRUE;
+		streams = stream;
+		voices_hand_off(TRUE);
+		for (offset = 0; offset < sizeof(*stream); offset++)
+		{
+			if (offset >= offsetof(struct sdl_stream, pending) &&
+				offset < offsetof(struct sdl_stream, pending) + sizeof(stream->pending))
+			{
+				continue;
+			}
+			taken += bytes[offset] == 0x5a;
+		}
+		CHECK(taken == sizeof(struct voice_settings), "%zu bytes of the settings taken, of %zu", taken,
+			sizeof(struct voice_settings));
+		streams = NULL;
+		free(stream);
 		return 0;
 	}
 	/* "bench [voices] [out of earshot] [indoor|outdoor] [hrtf]": through the

@@ -62,7 +62,8 @@ typedef void (*LPFNXMEDIAOBJECTCALLBACK)(void *, void *, unsigned long);
                  "XMEDIAPACKET_STATUS_FAILURE", "XMEDIAPACKET_STATUS_PENDING"]:
         # These SDK status expressions include casts, unlike integer capacities.
         text += next(line for line in statuses.splitlines() if line.startswith("#define " + name + " ")) + "\n"
-    for name in ["MAXIMUM_STREAM_PACKETS", "RESAMPLER_HISTORY", "HRTF_FRAMES", "MAXIMUM_OUTPUT_CHANNELS"]:
+    for name in ["MAXIMUM_STREAM_PACKETS", "RESAMPLER_HISTORY", "HRTF_FRAMES", "MAXIMUM_OUTPUT_CHANNELS",
+                 "VOICE_FLUSHING", "VOICE_FLUSHED"]:
         text += f"#define {name} {constant(backend, name)}\n"
     for name in ["MAXIMUM_SOUND_CHANNELS", "NUMBER_OF_SOUND_CHANNEL_TYPES"]:
         text += f"#define {name} {constant(game, name)}\n"
@@ -77,6 +78,14 @@ typedef struct _DSCAPS DSCAPS;
     text += structure(read("source/sound/sound_environment_definitions.h"), "sound_environment_definition") + "\n"
     for name in ["sound_virtual_channel", "sound_channel", "dsound_globals"]:
         text += structure(game, name) + "\n"
-    for name in ["voice_packet", "hrtf_parameters", "sdl_stream"]:
+    for name in ["voice_packet", "hrtf_parameters", "voice_settings", "sdl_stream"]:
         text += structure(backend, name) + "\n"
     return text
+
+
+def hand_off_state():
+    """dsound_sdl.c's hand-off's state (its counts, the retired memory, the sound's latency, debug.audio_log's
+    report), as the mixer and the game's side share it, taken from the sources."""
+    backend = read("port/linux/src/dsound_sdl.c")
+    start = backend.index("/* (voices_lock) the hand-offs the mixer has taken")
+    return backend[start:backend.index("/* (the mixer's thread, voices_lock) the settings the game gave the voice */")]

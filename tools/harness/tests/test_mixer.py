@@ -2,7 +2,8 @@
 double precision, sines through it as the ear hears them, voices out of earshot, mono voices, the linear
 resampler, the Xbox ADPCM decoder against reference vectors, the Doppler shift, the limiter, audio.channels' choice
 and the 5.1 pan, and 3D audio: audio.spatial's choice, the HRTF's cues against the pan's, its distance,
-occlusion, reverb and Doppler, the crossfade when the choice changes, and 2D voices left as they are.
+occlusion, reverb and Doppler, the crossfade when the choice changes, and 2D voices left as they are; and the
+hand-off of the game's side of the voices to the mixer, which never waits for a game thread.
 
     python tools/harness/tests/test_mixer.py metrics   the figures
     python tools/harness/tests/test_mixer.py bench [voices] [out of earshot] [indoor|outdoor] [hrtf]   a game's worth of
@@ -22,7 +23,8 @@ from harness import CHECK_FAILED, build, mutated, read, run  # noqa: E402
 
 SOURCE = "port/linux/src/dsound_sdl.c"
 CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "limiter",
-         "channels", "surround", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch", "dry-2d"]
+         "channels", "surround", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch", "dry-2d",
+         "hand-off-never-waits", "hand-off-settings"]
 
 # a fault in the mixer, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -84,6 +86,14 @@ NEGATIVE_CONTROLS = {
     "hrtf-2d": (("\t*hrtf_on = FALSE;\n\tif (stream->has_3d && stream->mode != DS3DMODE_DISABLE)",
                  "\t*hrtf_on = FALSE;\n\tif (stream->channels == 1 || (stream->has_3d && stream->mode != DS3DMODE_DISABLE))"),
                 "dry-2d"),
+    # the hand-off: the device's mix waiting for the game's thread to take its side over, or to say what it
+    # finished; a setting left on the game's side
+    "hand-off-waits": (("else if (pthread_mutex_trylock(&voices_lock))\n\t{\n\t\thand_offs_skipped++;",
+                        "else if (pthread_mutex_lock(&voices_lock))\n\t{\n\t\thand_offs_skipped++;"),
+                       "hand-off-never-waits"),
+    "publish-waits": (("else if (pthread_mutex_trylock(&voices_lock))\n\t\treturn;",
+                       "else if (pthread_mutex_lock(&voices_lock))\n\t\treturn;"), "hand-off-never-waits"),
+    "setting-not-taken": (("\tstream->room_hf = settings->room_hf;\n", ""), "hand-off-settings"),
 }
 
 

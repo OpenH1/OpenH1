@@ -513,7 +513,11 @@ void voice_audio_mix(float *output, unsigned long frames)
 {
 	int index;
 
-	pthread_mutex_lock(&voice_lock);
+	/* (the mixer never waits for another thread, which the scheduler may
+	have set aside with the lock held: if one holds it, the voices wait in
+	their rings for the next mix) */
+	if (pthread_mutex_trylock(&voice_lock))
+		return;
 	for (index = 0; index < VOICE_SLOTS; index++)
 	{
 		struct voice_slot *slot = &voice_slots[index];
