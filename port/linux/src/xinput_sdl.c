@@ -1041,6 +1041,12 @@ static unsigned long keyboard_bound_actions(const struct platform_input_state *i
 				held |= 1UL << action;
 		}
 	}
+#ifdef HALO_ANDROID
+	/* the system back key (gesture or button) pauses the game, as Escape
+	does; in the menus it is B (keyboard_gamepad) */
+	if (input->keys[SDL_SCANCODE_AC_BACK])
+		held |= 1UL << HALO_KEYBOARD_PAUSE;
+#endif
 	return held;
 }
 

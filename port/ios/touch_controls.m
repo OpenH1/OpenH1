@@ -422,6 +422,8 @@ enum
 	SCENE_STYLE_SHIFT = 5,
 	SCENE_CAPTIONS = 128,
 	SCENE_CONTEXT_SHIFT = 8,
+	/* input.touch_crouch "toggle" (none: "hold") */
+	SCENE_CROUCH_TOGGLE = 1 << 19,
 };
 
 /* player 1's state (TouchContext.java) */
@@ -431,6 +433,7 @@ enum
 	CONTEXT_RELOAD = 2,
 	CONTEXT_NO_GRENADES = 4,
 	CONTEXT_VEHICLE = 8,
+	CONTEXT_ALIVE = 16,
 };
 #define CONTROL_JUMP 0
 #define CONTROL_ACTION 2
@@ -450,6 +453,25 @@ static float context_pulse(double seconds)
 static BOOL context_hidden(int control, int context)
 {
 	return (context & CONTEXT_VEHICLE) && (control == CONTROL_JUMP || control == CONTROL_CROUCH);
+}
+
+/* the kind of control crouched (tapped on, -1 standing) once a button of a
+kind goes down, doing a game control: with input.touch_crouch "toggle"
+Crouch's tap crouches or stands up; Jump stands up */
+static int context_crouch_pressed(int crouched, int kind, int control, BOOL toggle)
+{
+	if (toggle && control == CONTROL_CROUCH)
+		return crouched == kind ? -1 : kind;
+	return control == CONTROL_JUMP ? -1 : crouched;
+}
+
+/* the kind crouched as it stays, its button doing a game control: it stands
+up once Crouch is held instead ("hold"), the button no longer crouches (the
+profile changed) or hides (a vehicle's seat), or the player dies */
+static int context_crouch_kept(int crouched, int control, int context, BOOL toggle)
+{
+	return crouched >= 0 && toggle && control == CONTROL_CROUCH && !context_hidden(control, context) &&
+		(context & CONTEXT_ALIVE) ? crouched : -1;
 }
 
 static float context_alpha(int control, int context)
@@ -551,6 +573,11 @@ static UIColor *hud_color(float alpha)
 	__weak UITouch *drag_touch;
 	int drag_control;
 	float drag_offset_x, drag_offset_y;
+	/* the kind of control that crouches (the one bound to Crouch), tapped
+	on with input.touch_crouch "toggle": it stays down while the stick
+	moves, until it is tapped again, Jump is pressed, a vehicle's seat is
+	taken or the player dies; -1 standing (TouchControls.java's crouchedKind) */
+	int crouched_kind;
 
 	/* points per logical unit, the layout's origin (the safe area's) and the
 	display in logical units */
@@ -646,6 +673,7 @@ static NSString *const KEY_HIDDEN = @"touch-layout-v2.hidden";
 	logical_width = GRID_WIDTH;
 	logical_height = GRID_HEIGHT;
 	drag_control = -1;
+	crouched_kind = -1;
 	shown_since = -1.0;
 	touch_mouse = -1;
 	last_touch = CACurrentMediaTime();
@@ -803,6 +831,12 @@ static BOOL other_input_connected(void)
 	{
 		[self setNeedsDisplay];
 	}
+	/* (a crouch tapped on stands up at death or in a seat, with no finger down) */
+	if (((was ^ scene) & SCENE_CROUCH_TOGGLE) || [self contextOf:was] != [self context])
+	{
+		[self publish];
+		[self setNeedsDisplay];
+	}
 	[self fadeWhenIdle];
 	[self updateShowing];
 	serial = host_touch_bindings_read(read);
@@ -829,6 +863,7 @@ static BOOL other_input_connected(void)
 	[toolbar_fingers removeAllObjects];
 	look_touch = nil;
 	stick_floating = NO;
+	crouched_kind = -1;
 	gyro_previous_orientation = -1;
 	host_touch_look_reset();
 	memset(axes, 0, sizeof(axes));
@@ -849,9 +884,27 @@ static BOOL other_input_connected(void)
 			int control = [owners objectForKey:touch].intValue;
 			const struct kind *kind;
 
-			if (control < 0 || control >= layout.count)
+			if (control < 0 || control >= layout.count ||
+				([self crouchToggles] && [self crouches:layout.controls[control].type]))
+			{
 				continue;
+			}
 			kind = &KINDS[layout.controls[control].type];
+			if (kind->bit >= 0)
+				bits |= 1 << kind->bit;
+			if (kind->trigger >= 0)
+				axes[kind->trigger] = 32767;
+		}
+		/* (crouch: tapped on, held by no finger) */
+		if (crouched_kind >= 0)
+		{
+			crouched_kind = context_crouch_kept(crouched_kind, [self gameControl:crouched_kind], [self context],
+				[self crouchToggles]);
+		}
+		if (crouched_kind >= 0)
+		{
+			const struct kind *kind = &KINDS[crouched_kind];
+
 			if (kind->bit >= 0)
 				bits |= 1 << kind->bit;
 			if (kind->trigger >= 0)
@@ -861,6 +914,24 @@ static BOOL other_input_connected(void)
 		state[6] = bits;
 	}
 	host_touch_set_state(state);
+}
+
+/* input.touch_crouch: whether Crouch is tapped on and off, not held */
+- (BOOL)crouchToggles
+{
+	return (scene & SCENE_CROUCH_TOGGLE) != 0;
+}
+
+/* whether a kind of control crouches (is bound to Crouch) */
+- (BOOL)crouches:(int)type
+{
+	return [self gameControl:type] == CONTROL_CROUCH;
+}
+
+/* held by a finger, or a crouch tapped on */
+- (BOOL)pressed:(int)control
+{
+	return [self held:control] || (crouched_kind >= 0 && layout.controls[control].type == crouched_kind);
 }
 
 - (BOOL)held:(int)control
@@ -945,9 +1016,14 @@ static BOOL other_input_connected(void)
 	return type == KIND_LEFT ? @"Move stick" : [self label:type];
 }
 
+- (int)contextOf:(int)bits
+{
+	return (bits >> SCENE_CONTEXT_SHIFT) & 31;
+}
+
 - (int)context
 {
-	return (scene >> SCENE_CONTEXT_SHIFT) & 15;
+	return [self contextOf:scene];
 }
 
 - (BOOL)hiddenNow:(int)type
@@ -1086,7 +1162,10 @@ static BOOL inside(float x, float y, float cx, float cy, float radius)
 		}
 		else
 		{
+			int type = layout.controls[target].type;
+
 			[button_touches setObject:[NSValue valueWithCGPoint:pixels] forKey:touch];
+			crouched_kind = context_crouch_pressed(crouched_kind, type, [self gameControl:type], [self crouchToggles]);
 			[self tap];
 		}
 	}
@@ -1635,7 +1714,7 @@ held; with a glow (the HUD's colour) of strength glow */
 			{
 				continue;
 			}
-			[self drawControl:index active:[self held:index] || drag_control == index opacity:opacity];
+			[self drawControl:index active:[self pressed:index] || drag_control == index opacity:opacity];
 		}
 	}
 	[self drawToolbar];

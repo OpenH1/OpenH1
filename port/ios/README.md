@@ -208,7 +208,8 @@ at the left between the messages and the tracker; crouch by zoom), which
 shapes; the same pictures
 (the HUD's buttons in `display.hud_button_style`, Kenney's line icons) and
 captions (`input.touch_captions`), copied from the Android app's resources
-into the app's `touch/`; the buttons that follow the player's state; the
+into the app's `touch/`; the buttons that follow the player's state; Crouch
+tapped on and off or held (`input.touch_crouch`); the
 move stick (fixed or floating), swipe aiming (with the stick's aim assist,
 `input.touch_aim_assist`) and gyroscope aiming (CoreMotion); the toolbar's
 hide and options, and the layout editor. The options are a panel of
@@ -238,7 +239,8 @@ or types in the text chat (`touch_input.c`).
 The settings are the desktop builds' (`config.toml` in the app's Documents;
 refer to [port/linux/README.md](../linux/README.md)), with the touch
 controls' (`input.touch_controls`, `input.touch_captions`,
-`input.touch_aim_assist`: [port/android/README.md](../android/README.md)),
+`input.touch_aim_assist`, `input.touch_crouch`:
+[port/android/README.md](../android/README.md)),
 and these of iOS's own:
 
 | Setting | Meaning |

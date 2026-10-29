@@ -53,8 +53,9 @@ import java.util.Locale;
  * It shows only in a game, never at the main menu, over a menu (which
  * takes taps itself, port/linux/src/touch_input.c) or during a cinematic,
  * only on a touchscreen, and with input.touch_controls = "auto" only while
- * no controller, mouse or keyboard is connected. While it is not shown it
- * lets every finger through to the game.
+ * no controller is connected and no mouse or keyboard is plugged in or
+ * paired (the phone's own keys and touchpad do not count). While it is not
+ * shown it lets every finger through to the game.
  */
 public final class TouchControls extends View implements SensorEventListener, InputManager.InputDeviceListener {
     /** what a finger holds besides a control: the view swipe */
@@ -141,6 +142,8 @@ public final class TouchControls extends View implements SensorEventListener, In
     /** display.hud_button_style (0 classic, 1 gems, 2 menu_gems) and input.touch_captions */
     private static final int SCENE_STYLE_SHIFT = 5;
     private static final int SCENE_CAPTIONS = 128;
+    /** input.touch_crouch "toggle" (none: "hold") */
+    private static final int SCENE_CROUCH_TOGGLE = 1 << 19;
 
     private static final String PREFERENCES = "touch-layout-v1";
     private static final String KEY_CONFIGURATION = "configuration";
@@ -305,6 +308,15 @@ public final class TouchControls extends View implements SensorEventListener, In
     private int lookPointer = -1;
     private float lookX;
     private float lookY;
+    /**
+     * the kind of control that crouches (the one bound to Crouch), tapped
+     * on with input.touch_crouch "toggle": it stays down while the stick
+     * moves, until it is tapped again, Jump is pressed, a vehicle's seat is
+     * taken or the player dies; -1 standing (TouchContext.crouchPressed,
+     * crouchKept). (Crouch sits under the left thumb beside the stick, where
+     * it cannot be held while moving; the Xbox's is the stick's own click.)
+     */
+    private int crouchedKind = -1;
     /** a floating stick's centre while a thumb holds it (logical units) */
     private boolean stickFloating;
     private float stickX;
@@ -389,6 +401,12 @@ public final class TouchControls extends View implements SensorEventListener, In
                     || TouchContext.fromScene(was) != TouchContext.fromScene(scene)
                     || (showing && !hidden && TouchContext.animating(TouchContext.fromScene(scene))))
                 invalidate();
+            // (a crouch tapped on stands up at death or in a seat, with no finger down)
+            if (((was ^ scene) & SCENE_CROUCH_TOGGLE) != 0
+                    || TouchContext.fromScene(was) != TouchContext.fromScene(scene)) {
+                publish();
+                invalidate();
+            }
             fadeWhenIdle();
             updateShowing();
             readBindings();
@@ -595,18 +613,40 @@ public final class TouchControls extends View implements SensorEventListener, In
             || device.getMotionRange(MotionEvent.AXIS_HAT_X, InputDevice.SOURCE_JOYSTICK) != null;
     }
 
-    /** a physical mouse (or a trackpad): a non-virtual SOURCE_MOUSE device */
+    /**
+     * a mouse (or a trackpad) plugged in or paired: an external SOURCE_MOUSE
+     * device, not a phone's own touchpad (a Galaxy's sec_touchpad says
+     * SOURCE_MOUSE too)
+     */
     private static boolean isMouse(InputDevice device) {
-        if (device == null || device.isVirtual())
+        if (device == null || device.isVirtual() || !isExternal(device))
             return false;
         return (device.getSources() & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE;
     }
 
-    /** a physical keyboard: a non-virtual SOURCE_KEYBOARD device */
+    /**
+     * a keyboard plugged in or paired: an external SOURCE_KEYBOARD device
+     * with letters, not a phone's own keys (power, volume) or touchscreen,
+     * which say SOURCE_KEYBOARD too
+     */
     private static boolean isKeyboard(InputDevice device) {
-        if (device == null || device.isVirtual())
+        if (device == null || device.isVirtual() || !isExternal(device))
             return false;
-        return (device.getSources() & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD;
+        return (device.getSources() & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD
+            && device.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC;
+    }
+
+    /**
+     * not built into the device: InputDevice.isExternal() from Android 10;
+     * on Android 9, anything without a touchscreen or touchpad source (a
+     * touchpad paired on Android 9 does not hide the controls)
+     */
+    private static boolean isExternal(InputDevice device) {
+        if (Build.VERSION.SDK_INT >= 29)
+            return device.isExternal();
+        int sources = device.getSources();
+        return (sources & InputDevice.SOURCE_TOUCHSCREEN) != InputDevice.SOURCE_TOUCHSCREEN
+            && (sources & InputDevice.SOURCE_TOUCHPAD) != InputDevice.SOURCE_TOUCHPAD;
     }
 
     private void refreshInputDevices() {
@@ -668,6 +708,7 @@ public final class TouchControls extends View implements SensorEventListener, In
         toolbarFingers.clear();
         lookPointer = -1;
         stickFloating = false;
+        crouchedKind = -1;
         gyroAim.reset();
         nativeLookReset();
         Arrays.fill(axes, 0);
@@ -685,15 +726,38 @@ public final class TouchControls extends View implements SensorEventListener, In
         axes[5] = 0;
         for (int i = 0; i < owners.size(); i++) {
             int control = owners.valueAt(i);
-            if (control < 0 || control >= layout.size())
+            if (control < 0 || control >= layout.size() || (crouchToggles() && crouches(layout.type(control))))
                 continue;
-            Kind kind = KINDS[layout.type(control)];
-            if (kind.bit >= 0)
-                bits |= 1 << kind.bit;
-            if (kind.trigger >= 0)
-                axes[kind.trigger] = 32767;
+            bits = press(KINDS[layout.type(control)], bits);
         }
+        // (crouch: tapped on, held by no finger)
+        if (crouchedKind >= 0)
+            crouchedKind = TouchContext.crouchKept(crouchedKind, gameControl(crouchedKind), context(), crouchToggles());
+        if (crouchedKind >= 0)
+            bits = press(KINDS[crouchedKind], bits);
         nativeState(axes[0], axes[1], axes[2], axes[3], axes[4], axes[5], bits);
+    }
+
+    /** a kind of control pressed: its trigger pulled (axes), and the buttons with its bit */
+    private int press(Kind kind, int bits) {
+        if (kind.trigger >= 0)
+            axes[kind.trigger] = 32767;
+        return kind.bit >= 0 ? bits | 1 << kind.bit : bits;
+    }
+
+    /** input.touch_crouch: whether Crouch is tapped on and off, not held */
+    private boolean crouchToggles() {
+        return (scene & SCENE_CROUCH_TOGGLE) != 0;
+    }
+
+    /** whether a kind of control crouches (is bound to Crouch) */
+    private boolean crouches(int type) {
+        return gameControl(type) == TouchContext.CONTROL_CROUCH;
+    }
+
+    /** held by a finger, or a crouch tapped on */
+    private boolean pressed(int control) {
+        return held(control) || (crouchedKind >= 0 && layout.type(control) == crouchedKind);
     }
 
     private boolean held(int control) {
@@ -872,6 +936,8 @@ public final class TouchControls extends View implements SensorEventListener, In
                 moveStick(target, x, y);
             } else {
                 buttonTouches.put(id, new float[] {px, py});
+                int type = layout.type(target);
+                crouchedKind = TouchContext.crouchPressed(crouchedKind, type, gameControl(type), crouchToggles());
                 tap();
             }
         } else if (!hidden && lookPointer < 0 && !inGestureZone(px, py, false)) {
@@ -1687,7 +1753,7 @@ public final class TouchControls extends View implements SensorEventListener, In
             for (int i = 0; i < layout.size(); i++) {
                 if (!layout.shown(i) || layout.type(i) == TouchLayout.LEFT || (!editing && hiddenNow(layout.type(i))))
                     continue;
-                control(canvas, i, held(i) || dragControl == i, opacity);
+                control(canvas, i, pressed(i) || dragControl == i, opacity);
             }
         }
         drawToolbar(canvas);

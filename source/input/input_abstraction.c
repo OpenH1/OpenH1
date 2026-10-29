@@ -283,6 +283,14 @@ static void keyboard_controls_apply(
 
 		if (halo_linux_touch_move((short)controller_index, &forward, &strafe))
 		{
+			/* port: crouched (the touch Crouch tapped on, or any crouch
+			held), below the full stick's 0.98 too, as the keys' crouch
+			walk above: a full push stood the player up while it lasted */
+			if (state->buttons[_game_control_crouch])
+			{
+				forward *= 0.97f;
+				strafe *= 0.97f;
+			}
 			state->forward_movement = forward;
 			state->strafe = strafe;
 		}

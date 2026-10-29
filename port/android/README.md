@@ -185,7 +185,7 @@ with the positions on the Xbox controller:
 | Create | back | |
 
 The controller gets the rumble. The back gesture of Android is the B
-button. A Bluetooth or USB keyboard operates as on Linux.
+button in the menus (back out) and pauses a game. A Bluetooth or USB keyboard operates as on Linux.
 
 The touchscreen operates the menus: tap an item to select it (on a
 setting with values, tap its left or right half), tap a button of the key
@@ -196,7 +196,9 @@ and the Party screen are laid out for a finger: tiles, rows and buttons
 words; a tap on a row chooses it and shows it in the panel beside, a second
 tap opens or joins it. Drag a list to scroll it (down or right steps back,
 up or left steps forward). A drag stops at the first and the last item, and it does not change a setting's
-value. Touches that start in the edge-gesture zones of Android do not tap
+value. A slider moves with a finger that drags sideways along it; a drag
+that starts up or down scrolls the list, even on a slider, and a tap on
+the chosen row's slider sets it there. Touches that start in the edge-gesture zones of Android do not tap
 or scroll at the sides, and do not scroll at the top and bottom, because the
 first swipe from an edge in full screen only shows the system bars.
 
@@ -265,6 +267,11 @@ controls' scene (`port/linux/game/touch_game.c`, `TouchContext.java`):
 - With none of the current grenade type, the grenade button is dimmed.
 - In a vehicle's seat (driver, passenger or gunner), Jump and Crouch hide
   and the action button's caption says EXIT; Fire stays.
+- Crouch is tapped on and off by default, not held: it sits under the left
+  thumb beside the stick, so a tap crouches until Crouch is tapped again,
+  Jump is pressed, a vehicle's seat is taken or the player dies, and the
+  button shows held meanwhile. The setting `input.touch_crouch` makes it a
+  button to hold instead.
 - Each button press gives a short, light tap of the vibrator, with the
   vibration on ("General"), on top of the game's own rumble.
 
@@ -285,12 +292,13 @@ the mouse settings do not apply.
 
 The touch controls show only in a game. In the menus and during
 cinematics they hide, and the touchscreen operates the menus as described
-above. They also hide when a controller, a physical mouse or a physical
-keyboard is connected, for example the built-in controller of a handheld:
-the game says which controllers it sees, as SDL finds a pad the app's own
-device list can miss (one paired while the game runs). A device without a
-touchscreen (a TV) never shows them. The setting `input.touch_controls`
-changes this (refer to "Settings").
+above. They also hide when a controller is connected, for example the
+built-in controller of a handheld (the game says which controllers it
+sees, as SDL finds a pad the app's own device list can miss: one paired
+while the game runs), and when a mouse or a keyboard with letters is
+plugged in or paired; the phone's own buttons, touchscreen and touchpad do
+not count. A device without a touchscreen (a TV) never shows them. The
+setting `input.touch_controls` changes this (refer to "Settings").
 
 The buttons at the top of the screen:
 
@@ -347,6 +355,7 @@ These settings are only for Android:
 | --- | --- |
 | `input.touch_captions` | (Android and iOS) `true` (the default): what each of the touch controls' controller buttons does in the profile (JUMP, MELEE, FIRE) is written under it, in the HUD's font and colour. `false`: the buttons alone. The buttons are drawn in `display.hud_button_style`. |
 | `input.touch_aim_assist` | (Android, iOS and the web) `true` (the default): the touch controls' swipe aiming gets the aim assist of a controller (the aim slows over a target and follows a moving one). `false`: none, as with a mouse; the bullets' own autoaim stays. |
+| `input.touch_crouch` | (Android and iOS) `"toggle"` (the default): a tap on the touch controls' Crouch crouches until Crouch is tapped again, Jump is pressed, a vehicle's seat is taken or the player dies. `"hold"`: you crouch while you hold it. |
 | `input.touch_controls` | (Android, iOS and the web) The touch controls in a game. `"auto"` (the default): shown on a touchscreen while no controller is connected. `"on"`: also shown with a controller. `"off"`: never shown. A device without a touchscreen never shows them. The menus take taps in any case. |
 | `debug.sample_seconds` | Refer to "Find problems". |
 | `debug.memory_watch` | `true` (the default): the app notices the game's writes to textures and vertices by page protection. `false`: it compares page contents once a frame instead, which is slower. Refer to "Limits". |

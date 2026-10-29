@@ -8,12 +8,38 @@ public final class TouchContextTest {
 
     public static void main(String[] args) {
         // The state comes from bit 8 of the scene up, past the other bits: known, menus,
-        // on, off, a controller (bit 4), the button style (bits 5 and 6), the captions (bit 7).
-        int others = 1 | 2 | 4 | 8 | 16 | (3 << 5) | 128;
-        int scene = others | (TouchContext.ACTION | TouchContext.VEHICLE) << 8;
-        check(TouchContext.fromScene(scene) == (TouchContext.ACTION | TouchContext.VEHICLE),
+        // on, off, a controller (bit 4), the button style (bits 5 and 6), the captions (bit 7),
+        // and above it the crouch's toggle (bit 16).
+        int others = 1 | 2 | 4 | 8 | 16 | (3 << 5) | 128 | 1 << 16;
+        int scene = others | (TouchContext.ACTION | TouchContext.VEHICLE | TouchContext.ALIVE) << 8;
+        check(TouchContext.fromScene(scene) == (TouchContext.ACTION | TouchContext.VEHICLE | TouchContext.ALIVE),
               "The state is read from bit 8 up");
         check(TouchContext.fromScene(others) == 0, "The other bits are not state");
+
+        // input.touch_crouch "toggle": a tap on Crouch crouches until the next, and Jump stands up;
+        // the other buttons leave it. "hold": no tap crouches (the finger holds it, as any button).
+        int crouch = TouchContext.CONTROL_CROUCH;
+        int crouchKind = 10;
+        int crouched = TouchContext.crouchPressed(-1, crouchKind, crouch, true);
+        check(crouched == crouchKind, "A tap on Crouch crouches");
+        check(TouchContext.crouchPressed(crouched, 4, 7, true) == crouchKind, "Fire leaves the crouch");
+        check(TouchContext.crouchPressed(crouched, crouchKind, crouch, true) == -1, "A second tap stands up");
+        check(TouchContext.crouchPressed(crouched, 0, TouchContext.CONTROL_JUMP, true) == -1, "Jump stands up");
+        check(TouchContext.crouchPressed(-1, crouchKind, crouch, false) == -1, "Held, a tap does not stay crouched");
+
+        // A crouch tapped on stays while the player lives on foot; it stands up at death (and so
+        // respawns standing), in a vehicle's seat, once the button is not Crouch, or with "hold".
+        int alive = TouchContext.ALIVE;
+        check(TouchContext.crouchKept(crouched, crouch, alive, true) == crouched, "The crouch stays");
+        check(TouchContext.crouchKept(crouched, crouch, alive | TouchContext.ACTION, true) == crouched,
+              "The crouch stays through a prompt");
+        int dead = TouchContext.crouchKept(crouched, crouch, 0, true);
+        check(dead == -1, "Death stands up");
+        check(TouchContext.crouchKept(dead, crouch, alive, true) == -1, "The player respawns standing");
+        check(TouchContext.crouchKept(crouched, crouch, alive | TouchContext.VEHICLE, true) == -1,
+              "A vehicle's seat stands up");
+        check(TouchContext.crouchKept(crouched, 7, alive, true) == -1, "A button no longer Crouch stands up");
+        check(TouchContext.crouchKept(crouched, crouch, alive, false) == -1, "\"hold\" keeps no tapped crouch");
 
         // In a vehicle jump and crouch hide, and the action button exits.
         int vehicle = TouchContext.VEHICLE;

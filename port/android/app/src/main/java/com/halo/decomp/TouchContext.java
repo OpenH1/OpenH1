@@ -8,13 +8,14 @@ package com.halo.decomp;
  * _game_control_*), so the state follows the button layout.
  */
 final class TouchContext {
-    /** the bits: the HUD prompts an action, the magazine wants reloading, no grenades, in a vehicle */
+    /** the bits: the HUD prompts an action, the magazine wants reloading, no grenades, in a vehicle, alive */
     static final int ACTION = 1;
     static final int RELOAD = 2;
     static final int NO_GRENADES = 4;
     static final int VEHICLE = 8;
+    static final int ALIVE = 16;
     private static final int SHIFT = 8;
-    private static final int MASK = 15;
+    private static final int MASK = 31;
 
     /** the game controls the state changes */
     static final int CONTROL_JUMP = 0;
@@ -40,6 +41,28 @@ final class TouchContext {
     /** jump and crouch hide in a vehicle's seat: they do nothing there */
     static boolean hidden(int control, int context) {
         return (context & VEHICLE) != 0 && (control == CONTROL_JUMP || control == CONTROL_CROUCH);
+    }
+
+    /**
+     * the kind of control crouched (tapped on, -1 standing) once a button of
+     * a kind goes down, doing a game control: with input.touch_crouch
+     * "toggle" Crouch's tap crouches or stands up; Jump stands up
+     */
+    static int crouchPressed(int crouched, int kind, int control, boolean toggle) {
+        if (toggle && control == CONTROL_CROUCH)
+            return crouched == kind ? -1 : kind;
+        return control == CONTROL_JUMP ? -1 : crouched;
+    }
+
+    /**
+     * the kind crouched as it stays, its button doing a game control: it
+     * stands up once Crouch is held instead ("hold"), the button no longer
+     * crouches (the profile changed) or hides (a vehicle's seat), or the
+     * player dies
+     */
+    static int crouchKept(int crouched, int control, int context, boolean toggle) {
+        return crouched >= 0 && toggle && control == CONTROL_CROUCH && !hidden(control, context)
+            && (context & ALIVE) != 0 ? crouched : -1;
     }
 
     /** the action button's caption in a vehicle: it gets out; the others' as they are */

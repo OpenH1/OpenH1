@@ -175,6 +175,12 @@ void touch_input_menu_read(struct platform_ui_pointer *pointer)
 	pointer->down_y = output.down_y;
 	pointer->touch = TRUE;
 	pointer->left_held = FALSE;
+	pointer->finger_held = output.held ? TRUE : FALSE;
+	if (output.held && !output.moved)
+	{
+		pointer->x = output.held_x;
+		pointer->y = output.held_y;
+	}
 }
 
 /* port/linux/game/network_chat.c: its on-screen keyboard is up, which
@@ -261,16 +267,19 @@ enum
 	_touch_scene_captions = 1 << 7,
 	/* player 1's state, which the overlay's buttons show (touch_game.c's
 	_touch_context_* bits: an action prompted, a magazine to reload, no
-	grenades, in a vehicle), from this bit up */
+	grenades, in a vehicle, alive), from this bit up to bit 15 */
 	_touch_scene_context_shift = 8,
+	/* input.touch_crouch "toggle": a tap on Crouch crouches until the next
+	(none: "hold") */
+	_touch_scene_crouch_toggle = 1 << 19,
 };
 
 /* the touch controls' stick at port 0's last read, -1..1, y down */
 static float move_x, move_y;
 
 /* the settings the overlay reads: input.touch_controls as
-_touch_scene_on, _touch_scene_off or 0, display.hud_button_style and
-input.touch_captions */
+_touch_scene_on, _touch_scene_off or 0, display.hud_button_style,
+input.touch_captions and input.touch_crouch */
 static int touch_controls_setting(void)
 {
 	static int setting;
@@ -293,6 +302,9 @@ static int touch_controls_setting(void)
 			setting |= 2 << _touch_scene_style_shift;
 		if (config_boolean("input.touch_captions"))
 			setting |= _touch_scene_captions;
+		value = config_string("input.touch_crouch");
+		if (!value || strcmp(value, "hold"))
+			setting |= _touch_scene_crouch_toggle;
 	}
 	return setting;
 }
