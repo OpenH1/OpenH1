@@ -895,6 +895,22 @@ machine:
   presses the scores' A for the host (every machine to the lobby, as
   `network_game_server_reset_to_pregame` sends it) and starts the lobby's
   countdown on the same map and gametype.
+- A change of map and gametype, the host's playlist (`network_host_game.c`)
+  and the score and time limits are the lobby's own messages (the game's
+  record with its map and variant, as Server Setup sends them): a change
+  asked for now ends the game as Restart round does and sets the new one in
+  the lobby; one after this game, or the playlist's next, waits for the
+  scores and the host's A, then is set in the lobby and its countdown
+  started. The limits change only in the lobby (no machine of the Xbox's
+  game changes them in a game), so during a game they wait for the next.
+  The lobby's team changes (Host Controls in the lobby, Shuffle and Balance
+  teams there) are the host's game record sent again, which every machine
+  takes, OpenCE's too; in a game, Shuffle and Balance are team moves (below)
+  and offered only where those are. The host's announcements and the next
+  game are the notice (`_distributed_message_notice`) the dedicated server's
+  `say` sends, which OpenCE machines show; in the lobby no machine hears a
+  notice, so there are none. None of it needed a new message or a new
+  network version.
 - Lock teams refuses, on the host, a client's change of its players' team in
   the lobby (the player settings it sends): the client sees its team stay. Max
   players, the listing and Allow OpenCE players change only what the host

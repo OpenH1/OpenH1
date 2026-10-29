@@ -473,28 +473,68 @@ END GAME ends the game as its time limit does: the players stay, and after
 the carnage report the host picks the next map and gametype (PICK GAME).
 
 HOST CONTROLS is the host's of a network game (internet or LAN), laid out as
-the server browser is, over the game dimmed and without its HUD, with three
-tabs:
+the server browser is, over the game dimmed and without its HUD, and in the
+lobby too (its HOST CONTROLS, in the details panel, before the game starts),
+with five tabs:
 
 - PLAYERS: everyone in the game, with their team, score, ping and a tag
   (HOST, BOT, OPENH1 or OPENCE; in a Legacy game the host cannot tell OpenH1's
-  players from OpenCE's). For the player chosen: KICK, BAN (pressed twice),
-  MOVE TO RED or BLUE, and MUTE FOR ALL (their text chat and voice, for
-  everyone). The host's own players are never kicked, banned or muted; KICK
-  on a bot takes it out, one bot fewer (`bots.count`). A team
-  move is offered in an OpenH1 game of teams with no OpenCE player: the
-  player dies (no death counted) and respawns on the other team.
+  players from OpenCE's). For the player chosen: KICK, BAN... (then BAN FOR
+  AN HOUR, BAN FOR A DAY or BAN FOR GOOD, with ADD A REASON to type why
+  first), MOVE TO RED or BLUE, and MUTE... (then for 10 minutes, an hour or
+  a day; their text chat and voice, for everyone) or UNMUTE. The host's own
+  players are never kicked, banned or muted; KICK on a bot takes it out, one
+  bot fewer (`bots.count`). In the lobby every player can be moved, OpenCE's
+  too. In a game a team move is offered in an OpenH1 game of teams with no
+  OpenCE player: the player dies (no death counted) and respawns on the
+  other team.
 - GAME: END GAME NOW and RESTART ROUND (each pressed twice; a restart starts
-  the same map and gametype again after a few seconds in the lobby), LOCK
-  TEAMS (players cannot switch teams in the lobby; the host still moves
-  them), ALLOW VOTEKICK (`network.votekick`), LISTING (a public internet
-  game's PUBLIC or PRIVATE), MAX PLAYERS (left and right; never fewer than
-  are in the game) and ALLOW OPENCE PLAYERS (an OpenH1 game's, for new
-  joins), then, in a gametype the bots play, the bots' rows: BOTS, BOT
-  SKILL, BOT TEAMS, MAKE ROOM FOR PLAYERS and (with it on) FILL TO, each
-  written to `config.toml` as it changes, which the game takes at once
-  (refer to "Bots").
+  the same map and gametype again after a few seconds in the lobby), CHANGE
+  MAP... (the MAPS tab; its value the game that plays next), SHUFFLE TEAMS
+  (at random, as many on each) and BALANCE TEAMS (as many on each, moving as
+  few as it can; in a game, by score too), each pressed twice in a game,
+  where those moved die and respawn; ANNOUNCE... (type a message every
+  player sees, as a dedicated server's notice; in a game only), SCORE LIMIT
+  and TIME LIMIT (left and right: in the lobby they change its game at once;
+  during a game they wait for the next one, which the row says), PASSWORD (a
+  public internet game's, typed: at once, for new joins), LOCK TEAMS
+  (players cannot switch teams in the lobby; the host still moves them),
+  ALLOW VOTEKICK (`network.votekick`), LISTING (a public internet game's
+  PUBLIC or PRIVATE), MAX PLAYERS (left and right; never fewer than are in
+  the game) and ALLOW OPENCE PLAYERS (an OpenH1 game's, for new joins), then,
+  in a gametype the bots play, the bots' rows: BOTS, BOT SKILL, BOT TEAMS,
+  MAKE ROOM FOR PLAYERS and (with it on) FILL TO, each written to
+  `config.toml` as it changes, which the game takes at once (refer to
+  "Bots").
+- MAPS: the gametype (left and right step it: the built-in gametypes and
+  OpenCE's), then every multiplayer map, the Xbox's and Custom Edition's
+  (`custom_maps`; map sharing gives them to the players without them). For
+  the map chosen: PLAY NOW (in a game, pressed twice: the game ends with no
+  scores, and every machine goes through the lobby to the new one), AFTER
+  THIS GAME (its scores, then the lobby with it, which starts by itself)
+  and ADD TO PLAYLIST. In the lobby PLAY IN THIS LOBBY sets the lobby's game.
+- PLAYLIST: the games `network.host_playlist` holds, the next marked, and
+  first a change asked for (NEXT, with CANCEL CHANGE). After each game's
+  scores the next one is set in the lobby and its countdown starts; a change
+  asked for comes first, and the playlist goes on after it. For the game
+  chosen: PLAY NOW, AFTER THIS GAME, REMOVE and CLEAR PLAYLIST (pressed
+  twice). The lobby shows the game after the next one (THEN), and every
+  player is told the next game as the scores show.
 - BANS: `bans.txt`'s players, when they were banned and why, and UNBAN.
+
+The host's console has the same: `host_map <map> [gametype]` plays a game
+now (as PLAY NOW; in the lobby, at once), `host_map_next <map> [gametype]`
+after this game, `host_playlist [entries]` shows or replaces the playlist,
+`host_playlist_add <map> [gametype]`, `host_playlist_remove <number>` and
+`host_playlist_clear` change it (entries as `server.rotation`'s:
+`bloodgulch:ctf+score=5`, `custom_maps\<name>`), `host_say <words>` (and the
+chat's `/say <words>`) tells everyone, `host_shuffle_teams` and
+`host_balance_teams` arrange the teams, `host_score_limit <score>` and
+`host_time_limit <minutes>` set the limits, and `ban <player> [30m|2h|7d|1w|forever]
+[reason]` bans for a while and says why (the duration with its unit).
+Nothing new goes to the other machines: a map change is the lobby's own, a
+notice OpenCE knows, so OpenCE players in a Legacy game see it all as any
+host's.
 
 The scoreboard's player menu (a right click on a name) offers the host the
 same: Mute for everyone, Kick, Ban (picked twice), Move to the other team,
@@ -780,6 +820,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.voice_kbps` | `24` | `HALO_NET_VOICE_KBPS` | When you host: the voice quality in the lobby and in a game, in kilobits per second, `8` to `64`. |
 | `network.voice_proximity` | `15.0` | `HALO_NET_VOICE_PROXIMITY` | When you host: the distance in world units (1 unit is approximately 3 metres) at which players are near, for voice chat. `5` to `100`. |
 | `network.text_chat` | `"on"` | `HALO_NET_TEXT_CHAT` | When you host: the text chat. `"on"`, lines with links refused; `"links"`, links allowed; `"off"`, no chat (in either case). Always off in a game a player hosts that is listed in the server browser; a dedicated server's follows it, listed or not. TEXT CHAT in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. Refer to "Text chat". |
+| `network.host_playlist` | `""` | `HALO_NET_HOST_PLAYLIST` | When you host: the games played one after another, each after the last one's scores: `map[:gametype[+rule=value...]]`, separated by commas, as a dedicated server's `server.rotation` (`docs/dedicated_server.md`). Host Controls' PLAYLIST and MAPS write it, and the console's `host_playlist`. Empty: you pick each game. Refer to "Host Controls". |
 | `network.votekick` | `true` | `HALO_NET_VOTEKICK` | When you host: `true`, the players can vote to kick a player. Refer to "Security". `false`: no votes. VOTE KICK in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. |
 | `network.votekick_minutes` | `5` | `HALO_NET_VOTEKICK_MINUTES` | When you host: the minutes that a player must play on the server before the player can start a vote to kick (`0` to `60`). To vote, a player must play for 2 minutes, or for this time if it is less. |
 | `network.votekick_ban_minutes` | `30` | `HALO_NET_VOTEKICK_BAN_MINUTES` | When you host: the minutes that a player who is kicked by a vote cannot join again (`1` to `1440`). |

@@ -692,11 +692,34 @@ void network_host_game_entry_shown(
 	wchar_t *text,
 	short size)
 {
+	/* (the menus show them each frame: the last few kept, as a gametype
+	file's name is read from its file) */
+	static struct
+	{
+		char text[SERVER_ENTRY_TEXT_SIZE];
+		wchar_t shown[96];
+	} kept[16];
+	static short next_kept;
 	wchar_t map[64], gametype[HOST_GAME_GAMETYPE_SHOWN_SIZE];
+	short index;
 
+	for (index = 0; index < NUMBEROF(kept); index++)
+	{
+		if (kept[index].text[0] && !strcmp(kept[index].text, entry->text))
+		{
+			ustrncpy(text, kept[index].shown, size - 1);
+			text[size - 1] = 0;
+			return;
+		}
+	}
 	menu_map_shown(entry->level[0] ? entry->level : entry->map_name, map, NUMBEROF(map));
 	host_game_gametype_shown(entry->gametype, entry->rules, entry->rule_count, gametype, NUMBEROF(gametype));
-	usnprintf(text, size - 1, L"%s \x00B7 %s", map, gametype);
+	index = next_kept;
+	next_kept = (short)((next_kept + 1) % NUMBEROF(kept));
+	snprintf(kept[index].text, sizeof(kept[index].text), "%s", entry->text);
+	usnprintf(kept[index].shown, NUMBEROF(kept[index].shown) - 1, L"%s \x00B7 %s", map, gametype);
+	kept[index].shown[NUMBEROF(kept[index].shown) - 1] = 0;
+	ustrncpy(text, kept[index].shown, size - 1);
 	text[size - 1] = 0;
 }
 
