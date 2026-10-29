@@ -811,7 +811,8 @@ static boolean host_controls_unban_named(
 boolean network_host_controls_open_command(
 	char const *text)
 {
-	static char const *const tabs[] = { "players", "game", "bans" };
+	/* (host_controls_menu.inc's tabs, in their order) */
+	static char const *const tabs[] = { "players", "game", "maps", "playlist", "bans" };
 	struct data_iterator iterator;
 	struct player_datum *player;
 	long chosen = NONE;

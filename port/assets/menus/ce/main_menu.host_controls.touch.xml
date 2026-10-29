@@ -50,7 +50,7 @@
 		<on event="start" run="port host tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/host_controls/touch/tab_playlist" type="text" controller="1" width="68" height="52" wide="-28 26" bitmap="main_menu/parts/chip_68x52" text="PLAYLIST" font="ui\small_ui" color="#FF2896FF" align="center" text_y="19">
+	<widget name="main_menu/host_controls/touch/tab_playlist" type="text" controller="1" width="68" height="52" wide="-28 26" bitmap="main_menu/parts/chip_68x52" text="UP NEXT" font="ui\small_ui" color="#FF2896FF" align="center" text_y="19">
 		<on event="a" run="port host tab"/>
 		<on event="start" run="port host tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>

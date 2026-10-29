@@ -5098,7 +5098,9 @@ def _touch_host_controls() -> tuple:
                      ['<data input="port host update"/>', '<on event="created" run="port host init"/>',
                       f'<child widget="{touch}/host_tabs" y="{TOUCH_CHIPS_TOP}"/>', *rows, *actions,
                       f'<child widget="{touch}/host_prompts" y="{TOUCH_FOOTER_TOP}"/>'])
-    lines += _touch_chips(touch, "host_tabs", HOST_TABS, ['<on event="a" run="port host tab"/>',
+    # (PLAYLIST as UP NEXT, which a chip a fifth of the list wide holds)
+    tabs = [(name, "UP NEXT" if name == "tab_playlist" else words) for name, words in HOST_TABS]
+    lines += _touch_chips(touch, "host_tabs", tabs, ['<on event="a" run="port host tab"/>',
                                                           '<on event="start" run="port host tab"/>'],
                           TOUCH_LIST_WIDTH, TOUCH_HOST_CHIP_WIDTH)
     lines += _touch_prompts(touch, "host_prompts", [("prompt_back", "BACK", back_x, back_w,

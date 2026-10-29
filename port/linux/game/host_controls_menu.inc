@@ -1418,16 +1418,15 @@ static void host_panel_show(struct widget_instance *list, short chosen)
 				host_team_name(player->team));
 		}
 		if (host_menu.choosing == _host_controls_ban)
-			usnprintf(status, NUMBEROF(status) - 1, L"For how long? They can't join your games until then, or "
-				L"until you unban them.");
+			usnprintf(status, NUMBEROF(status) - 1, L"For how long? They can't join until then.");
 		else if (host_menu.choosing == _host_controls_mute)
-			usnprintf(status, NUMBEROF(status) - 1, L"For how long? Nobody sees their chat or hears their voice.");
+			usnprintf(status, NUMBEROF(status) - 1, L"For how long? No chat or voice.");
 		else if (!lobby && game_engine_running() && game_engine_has_teams() &&
 			!TEST_FLAG(player->actions, _host_controls_move_team))
 		{
 			usnprintf(status, NUMBEROF(status) - 1, network_standard_hosting() ?
-				L"Players move teams in a game only when everyone is on OpenH1. In the lobby they always can." :
-				L"Players can't move teams in a Legacy game. In the lobby they can.");
+				L"Players move teams only when everyone is on OpenH1." :
+				L"Players can't move teams in a Legacy game.");
 		}
 		break;
 	case _host_tab_game:
@@ -1503,12 +1502,12 @@ static void host_panel_show(struct widget_instance *list, short chosen)
 			network_host_game_entry_shown(entry, where, NUMBEROF(where));
 			text_to_wide(entry->rejected, reason, NUMBEROF(reason));
 			if (host_confirming((short)(_host_button_playlist_clear + HOST_CONFIRM_BUTTON)))
-				usnprintf(status, NUMBEROF(status) - 1, L"Press CLEAR PLAYLIST again to take every game out.");
+				usnprintf(status, NUMBEROF(status) - 1, L"Press again to take every game out.");
 			else if (reason[0])
 				usnprintf(status, NUMBEROF(status) - 1, L"%s", reason);
 			else
 				usnprintf(status, NUMBEROF(status) - 1, lobby ? L"Play it in this lobby, or take it out." :
-					L"Play it now (this game ends) or after this game, or take it out.");
+					L"Play it now or next, or take it out.");
 		}
 		break;
 	}
