@@ -316,6 +316,29 @@ void distributed_count_correction(void);
 /* a tick begun (network_substeps_tick_begun, at every rate): the tests'
 reports take the input each player's unit takes in it */
 void network_distributed_tick_begun(void);
+/* (the host) whether it takes a client's player's input and prediction as
+its tick begins, the prediction applied before the objects move (an OpenH1
+game of several sub-steps a tick, a player of an OpenH1 client machine:
+NETCODE.md, "Input at its tick"), not its prediction as the tick ends */
+boolean distributed_prediction_at_tick_start(short player_index);
+/* (a client) whether it sends its own players' input of a tick as the tick's
+first sub-step ends, with its live controls (the same games), not as the
+tick ends */
+boolean distributed_input_at_tick_start(void);
+/* (each tick's actions given to the units, before the objects move:
+network_substeps_actions_given) the host: the predictions of the players it
+takes at its tick's start, its own copies of them and of the vehicles they
+drive put where their clients had them as their tick before ended */
+void network_distributed_host_actions_given(void);
+/* (the host) the client's tick whose input its tick runs, for a player whose
+prediction it takes as the tick begins: the input heard, or the tick after
+the prediction taken where that is later (the input's own message follows
+the prediction by a sub-step: its controls come as they run); else the input
+heard (update_queues_distributed_input_key) */
+long distributed_host_run_time(short player_index);
+/* (a client, as its tick's first sub-step ends: network_substeps.c) its own
+players' input of the tick to the host */
+void network_distributed_client_substep_inputs(void);
 /* (the host, each frame once its datagrams are read: main.c) the input its
 clients sent this frame sent on to its other OpenH1 clients at once (an
 OpenH1 game's forwarded input) */
@@ -524,8 +547,10 @@ void network_objects_handle_inventories(void const *entries, short count);
 /* (a client) its own player picked up the weapon, to ready once its unit has it */
 void network_objects_client_picked_up_weapon(short local_player_index, long unit_index, long definition_index);
 void network_objects_handle_vehicle_prediction(long machine_index, void const *entries, short count);
-/* (the host) the vehicle predictions come in since the last tick, taken */
-void network_objects_apply_vehicle_predictions(void);
+/* (the host) the vehicle predictions come in since the last tick, taken: as
+the tick ends, or (at_tick_start) as it begins, of the drivers
+distributed_prediction_at_tick_start names */
+void network_objects_apply_vehicle_predictions(boolean at_tick_start);
 word network_objects_entry_size(byte type);
 /* whether this client has the host's object at this index */
 boolean network_objects_client_has(long object_index);

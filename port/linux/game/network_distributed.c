@@ -126,6 +126,8 @@ unsigned long system_milliseconds(void);
 void platform_log(char const *format, ...);
 /* xbox_kernel.c's */
 unsigned long long platform_shared_clock_microseconds(void);
+/* player_queues_new.c's */
+long update_queues_distributed_input_key(long absolute_player_index);
 /* main.c's and port_mods.c's: this build, and the mods it plays */
 void main_build_identity(long *number, char *flavor, size_t flavor_size, char *repository, size_t repository_size,
 	char *version, size_t version_size);
@@ -222,6 +224,9 @@ enum
 	/* the host: the ticks after it took a client's player's position that it
 	still tells the client which of its ticks it has them at */
 	PREDICTION_ECHO_TICKS = 3,
+	/* ... and a client: how far past its own latest tick it takes the host's
+	word to name (distributed_correct_own_unit) */
+	PREDICTION_ECHO_LEAD_TICKS = 2,
 	/* ... and the client's ticks it takes as run since the anchor beyond
 	the host's (its messages delayed, then bunched) */
 	PREDICTION_JITTER_TICKS = 6,
@@ -603,6 +608,10 @@ static struct
 	long time;
 	struct distributed_unit_state state;
 } distributed_predictions_heard[MAXIMUM_TRACKED_PLAYERS];
+/* ... and (distributed_prediction_at_tick_start) the client's tick after the
+latest prediction it took as a tick began: the input that tick runs, at
+least (distributed_host_run_time) */
+static long distributed_host_run_times[MAXIMUM_TRACKED_PLAYERS];
 /* the host: the anchor, where it took each client's player to be (one
 taken, a newer once a second: the next may be no further from it than the
 player moves in the client's ticks since), at which of the client's ticks
@@ -863,6 +872,12 @@ static struct
 	the next tick takes */
 	long input_heard_time[MAXIMUM_TRACKED_PLAYERS];
 	long input_time[MAXIMUM_TRACKED_PLAYERS];
+	/* ... where the host takes a client's player's input and prediction as
+	its tick begins (distributed_prediction_at_tick_start): the client's tick
+	of the input its last tick ran (NONE: none new, the input before it held),
+	and of the input its tick before took */
+	long ran_time[MAXIMUM_TRACKED_PLAYERS];
+	long last_input_time[MAXIMUM_TRACKED_PLAYERS];
 	/* ... and each player's ticks compared and apart (a mixed game's OpenCE
 	and OpenH1 players told apart: network_standard.c) */
 	long player_samples[MAXIMUM_TRACKED_PLAYERS];
@@ -953,10 +968,12 @@ void network_distributed_tick_begun(
 	short player_index;
 
 	/* (the host: each client's player's latest prediction heard, taken as
-	the tick ends) */
+	the tick ends; a player whose prediction its tick takes as it begins,
+	network_distributed_host_actions_given, not here) */
 	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
 	{
-		if (distributed_predictions_heard[player_index].valid)
+		if (distributed_predictions_heard[player_index].valid &&
+			!distributed_prediction_at_tick_start(player_index))
 		{
 			distributed_predictions[player_index].valid = TRUE;
 			distributed_predictions[player_index].time = distributed_predictions_heard[player_index].time;
@@ -967,6 +984,80 @@ void network_distributed_tick_begun(
 	/* (the tests' reports: the input each player's unit takes this tick) */
 	csmemcpy(distributed_divergence.input_time, distributed_divergence.input_heard_time,
 		sizeof(distributed_divergence.input_time));
+}
+
+boolean distributed_prediction_at_tick_start(
+	short player_index)
+{
+	long machine_index;
+
+	if (game_connection() != _game_connection_network_server || !network_substeps_active())
+		return FALSE;
+	machine_index = distributed_player_machine(player_index);
+	return machine_index != NONE && network_standard_machine_is_openh1(machine_index);
+}
+
+boolean distributed_input_at_tick_start(
+	void)
+{
+	return game_connection() == _game_connection_network_client && network_substeps_active();
+}
+
+static void distributed_apply_predictions(boolean at_tick_start);
+static void distributed_client_send_inputs(void);
+
+long distributed_host_run_time(
+	short player_index)
+{
+	long key;
+	long time;
+
+	if (player_index < 0 || player_index >= MAXIMUM_TRACKED_PLAYERS)
+		return NONE;
+	key = update_queues_distributed_input_key(player_index);
+	time = distributed_host_run_times[player_index];
+	if (!distributed_prediction_at_tick_start(player_index) || time == NONE)
+		return key;
+	/* (its prediction of the tick before the input heard: that input's own
+	message follows it by a sub-step. The client's word, kept from
+	overflowing: a time far from the input's is the game begun again) */
+	return key == NONE || (time > key && time - key <= TICKS_PER_SECOND) ? time : key;
+}
+
+void network_distributed_host_actions_given(
+	void)
+{
+	short player_index;
+
+	if (game_connection() != _game_connection_network_server || !network_substeps_active())
+		return;
+	profile_scope(distributed_tick_apply_predictions_section, distributed_apply_predictions(TRUE);)
+	profile_scope(distributed_tick_apply_vehicle_predictions_section,
+		network_objects_apply_vehicle_predictions(TRUE);)
+	/* (the tests' reports: the input this tick runs, NONE where it holds the
+	one its tick before ran) */
+	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+	{
+		long key = distributed_host_run_time(player_index);
+
+		distributed_divergence.ran_time[player_index] =
+			key != NONE && key != distributed_divergence.last_input_time[player_index] ? key : NONE;
+		distributed_divergence.last_input_time[player_index] = key;
+	}
+}
+
+void network_distributed_client_substep_inputs(
+	void)
+{
+	long next_time = game_time_get() + 1;
+
+	if (!distributed_input_at_tick_start())
+		return;
+	profile_scope(distributed_tick_send_inputs_section, distributed_client_send_inputs();)
+	/* (when it went: the host's word names the tick after for the input it
+	ran, and the latency meter's round trip is timed from here) */
+	distributed_tick_sent_times[next_time & (TICK_SENT_TIMES - 1)].time = next_time;
+	distributed_tick_sent_times[next_time & (TICK_SENT_TIMES - 1)].milliseconds = system_milliseconds();
 }
 
 void network_distributed_player_divergence(
@@ -1897,7 +1988,8 @@ static void distributed_state_from_player(
 		its ticks (with the ticks run since) */
 		if (game_connection() == _game_connection_network_server && player_index < MAXIMUM_TRACKED_PLAYERS &&
 			distributed_predictions[player_index].taken_host_time != NONE &&
-			game_time_get() - distributed_predictions[player_index].taken_host_time < PREDICTION_ECHO_TICKS)
+			game_time_get() - distributed_predictions[player_index].taken_host_time <
+				PREDICTION_ECHO_TICKS + (distributed_prediction_at_tick_start(player_index) ? 1 : 0))
 		{
 			SET_FLAG(state->flags, _distributed_unit_predicted_bit, TRUE);
 			state->predicted_time = (short)(word)(distributed_predictions[player_index].taken_time +
@@ -2228,9 +2320,18 @@ static void distributed_correct_own_unit(
 	{
 		long now = game_time_get();
 		long time = now - (long)(word)((word)now - (word)state->predicted_time);
-		struct distributed_own_position *own =
-			&distributed_own_positions[local_player_index][time & (OWN_POSITION_TICKS - 1)];
+		struct distributed_own_position *own;
 
+		/* (a tick this machine has not ended yet: the host, taking its input
+		as its own tick begins, ran it as this machine runs it, which on a
+		network quicker than the sub-steps ends first. Where this machine
+		had the player last, PREDICTION_ECHO_LEAD_TICKS at most) */
+		if ((short)(word)((word)state->predicted_time - (word)now) > 0 &&
+			(short)(word)((word)state->predicted_time - (word)now) <= PREDICTION_ECHO_LEAD_TICKS)
+		{
+			time = now;
+		}
+		own = &distributed_own_positions[local_player_index][time & (OWN_POSITION_TICKS - 1)];
 		if (own->time == time && own->unit_index == unit_index)
 		{
 			struct object_datum *object = object_get(unit_index);
@@ -2640,11 +2741,15 @@ static void distributed_take_prediction(
 	/* (for the tests' reports: a tick on from the last taken, on both, with
 	the input the client's tick ran: an input's tick is the client's time
 	before it ran, a prediction's after; the prediction's time is the
-	client's word, kept from overflowing) */
+	client's word, kept from overflowing. Taken as the tick begins, the
+	host's tick before ran the input of the client's tick after the last
+	prediction taken, from it) */
 	if (distributed_divergence.taken_host_time[player_index] == now - 1 &&
 		distributed_predictions[player_index].time != LONG_MIN &&
 		distributed_divergence.taken_time[player_index] == distributed_predictions[player_index].time - 1 &&
-		distributed_divergence.input_time[player_index] == distributed_predictions[player_index].time - 1)
+		(distributed_prediction_at_tick_start(player_index) ?
+			distributed_divergence.ran_time[player_index] == distributed_predictions[player_index].time - 1 :
+			distributed_divergence.input_time[player_index] == distributed_predictions[player_index].time - 1))
 	{
 		real_point3d const *client_from = &distributed_divergence.taken_position[player_index];
 		real_point3d const *host_from = &distributed_divergence.taken_host_position[player_index];
@@ -2732,9 +2837,12 @@ more), those no more than the host's since and a little jitter, no higher
 than it climbs or jumps; its velocity is no faster. A teleporter moves the
 host's own unit too, further than it moves since the last taken: it is
 measured from where the host has it only, a new anchor (as it is after a
-new life, or a ride). */
+new life, or a ride). At the tick's end, or (at_tick_start) as it begins,
+for the players distributed_prediction_at_tick_start names: the latest
+prediction heard then, of the end of the client's tick before the one the
+host's tick runs (distributed_host_run_time). */
 static void distributed_apply_predictions(
-	void)
+	boolean at_tick_start)
 {
 	short player_index;
 
@@ -2744,6 +2852,16 @@ static void distributed_apply_predictions(
 		struct distributed_on_foot_bound bound;
 		long unit_index;
 
+		if (distributed_prediction_at_tick_start(player_index) != at_tick_start)
+			continue;
+		if (at_tick_start && distributed_predictions_heard[player_index].valid)
+		{
+			distributed_predictions[player_index].valid = TRUE;
+			distributed_predictions[player_index].time = distributed_predictions_heard[player_index].time;
+			distributed_predictions[player_index].state = distributed_predictions_heard[player_index].state;
+			distributed_predictions_heard[player_index].valid = FALSE;
+			distributed_host_run_times[player_index] = distributed_predictions[player_index].time;
+		}
 		if (!distributed_predictions[player_index].valid && !distributed_accepted[player_index].valid &&
 			distributed_host_speeds[player_index].unit_index == NONE)
 		{
@@ -4276,6 +4394,9 @@ void network_distributed_new_game(
 		distributed_divergence.taken_host_time[player_index] = NONE;
 		distributed_divergence.input_heard_time[player_index] = NONE;
 		distributed_divergence.input_time[player_index] = NONE;
+		distributed_divergence.ran_time[player_index] = NONE;
+		distributed_divergence.last_input_time[player_index] = NONE;
+		distributed_host_run_times[player_index] = NONE;
 	}
 	/* (each player's latest input: player_queues_new.c) */
 	update_queues_distributed_reset();
@@ -4321,8 +4442,9 @@ void network_distributed_tick(
 		decided first: the damage goes where the players it hurt do), and a
 		kill's statistics before the kill, so that a client announcing it
 		counts it (a double kill, a killing spree) */
-		profile_scope(distributed_tick_apply_predictions_section, distributed_apply_predictions();)
-		profile_scope(distributed_tick_apply_vehicle_predictions_section, network_objects_apply_vehicle_predictions();)
+		profile_scope(distributed_tick_apply_predictions_section, distributed_apply_predictions(FALSE);)
+		profile_scope(distributed_tick_apply_vehicle_predictions_section,
+			network_objects_apply_vehicle_predictions(FALSE);)
 		profile_scope(distributed_tick_objects_host_tick_section, network_objects_host_tick();)
 		profile_scope(distributed_tick_plan_players_section, distributed_host_plan_players();)
 		profile_scope(distributed_tick_damage_host_tick_section, network_damage_host_tick();)
@@ -4357,7 +4479,10 @@ void network_distributed_tick(
 		profile_scope(distributed_tick_note_own_positions_section, distributed_note_own_positions();)
 		if (game_time_get() % PING_REFRESH_TICKS == 0 && latency_meter_enabled())
 			distributed_refresh_pings();
-		profile_scope(distributed_tick_send_inputs_section, distributed_client_send_inputs();)
+		/* (an OpenH1 game's of several sub-steps went as the tick's first
+		ended: network_distributed_client_substep_inputs) */
+		if (!distributed_input_at_tick_start())
+			profile_scope(distributed_tick_send_inputs_section, distributed_client_send_inputs();)
 		/* (an OpenH1 game's sub-steps of the same tick, in the same datagram) */
 		network_substeps_client_send();
 		profile_scope(distributed_tick_send_predictions_section, distributed_client_send_predictions();)
@@ -4366,9 +4491,14 @@ void network_distributed_tick(
 		profile_scope(distributed_tick_coop_client_tick_section, network_coop_client_tick();)
 	}
 	/* (when this tick's messages were sent: the round trips that name it
-	are timed by it) */
-	distributed_tick_sent_times[game_time_get() & (TICK_SENT_TIMES - 1)].time = game_time_get();
-	distributed_tick_sent_times[game_time_get() & (TICK_SENT_TIMES - 1)].milliseconds = system_milliseconds();
+	are timed by it; a client that sent its input as the tick's first
+	sub-step ended, by that: the host's word names this tick for the input
+	it ran, network_distributed_client_substep_inputs) */
+	if (!(connection == _game_connection_network_client && distributed_input_at_tick_start()))
+	{
+		distributed_tick_sent_times[game_time_get() & (TICK_SENT_TIMES - 1)].time = game_time_get();
+		distributed_tick_sent_times[game_time_get() & (TICK_SENT_TIMES - 1)].milliseconds = system_milliseconds();
+	}
 	profile_scope(distributed_tick_batches_flush_section, distributed_batches_flush();)
 	distributed_machines.in_tick = FALSE;
 	distributed_machines.valid = FALSE;

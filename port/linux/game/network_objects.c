@@ -1930,9 +1930,12 @@ by it (its gravity on a copy said to hover and fall). A teleporter moves
 the host's copy too, further than it goes since the last taken: it is
 measured from where the host has it only, a new anchor. In the air it is
 no higher than network_objects_vehicle_below_ceiling says. Which of the
-client's ticks the host has it at is noted, to tell the client. */
+client's ticks the host has it at is noted, to tell the client. As the tick
+ends, or (at_tick_start) as it begins for the drivers whose input and
+prediction the host takes then (distributed_prediction_at_tick_start), as a
+player's (distributed_apply_predictions). */
 void network_objects_apply_vehicle_predictions(
-	void)
+	boolean at_tick_start)
 {
 	long now = game_time_get();
 	short player_index;
@@ -1947,6 +1950,8 @@ void network_objects_apply_vehicle_predictions(
 		real speed;
 		boolean anchored;
 
+		if (distributed_prediction_at_tick_start(player_index) != at_tick_start)
+			continue;
 		network_objects_note_vehicle_ground(player_index);
 		if (!objects_host_vehicle_predictions[player_index].valid)
 			continue;
