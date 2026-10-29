@@ -327,7 +327,12 @@ version 6 sends a client's players' input on to the other OpenH1 clients as
 it comes (below, "Forwarded input"), and a client's prediction's velocity at
 full precision (below, "Sub-step inputs"); version 7 sends each sub-step's
 controls as it runs, and a client's hits at the end of the sub-step that
-made them (below, "Sub-steps as they run"). With no new version, each client then tells the
+made them (below, "Sub-steps as they run"); version 8 sends a client's input
+as its tick's first sub-step ends and has the host take it, with the
+client's prediction of the tick before, as its own tick begins (below,
+"Input at its tick"); version 9 sends every OpenH1 client the client's tick
+the host has each client's player at (below, "Remote players against their
+history"). With no new version, each client then tells the
 host its build (distributed message 92, `_distributed_message_client_build`,
 reliably once a game after its ready, over its connection alone): its
 number, configuration, the label it shows ("OpenH1 Linux | build 120
@@ -754,18 +759,94 @@ controls as each sub-step runs (`network_substeps.c`'s live controls):
 
 None of it is sent at 30, in a Legacy game or to an OpenCE machine.
 
-Still at the tick (the next stages, OpenH1 issue #287): the host takes a
-client's input and prediction at its next tick, so a client's press reaches
-the host's simulation, and its states every client's corrections of a
-player, a tick and a phase's wait behind (2b: the input taken at the tick it
-is of, the prediction at the tick's start); a client moves its copy of a
-player it drives ahead on the latest input toward the host's older state
-(2c: corrected against its own history at the client's tick the host names,
-as its own player is); the host's states go once a tick (2d); and each
-machine's tick keeps the phase it began with (2e). The prediction's ack and
-the host's history of where the players were stay a tick's: the host takes
-positions once a tick, and a sub-step's pose is within a tick's movement of
-a tick's, far inside the hit check's 2 world units.
+The prediction's ack and the host's history of where the players were stay a
+tick's: the host takes positions once a tick, and a sub-step's pose is
+within a tick's movement of a tick's, far inside the hit check's 2 world
+units.
+
+### Input at its tick
+
+Until protocol version 8 the host took a client's input and prediction at
+its next tick: a client's input of tick t went as its tick ended, with where
+its player was after t, and the host's next tick ran that input from its own
+copy and put the copy where the client had it as the tick ended. Its copy,
+and the states every other client corrects its own copies toward, stood a
+tick and a phase's wait behind the client. From version 8, in an OpenH1 game
+of several sub-steps a tick (`network_distributed.c`,
+`distributed_prediction_at_tick_start`):
+
+- A client sends its input of a tick as the tick's first sub-step ends,
+  with the live controls of that sub-step (`network_distributed_client_substep_inputs`),
+  not as the tick ends. Its prediction (where its player is after the tick)
+  goes as the tick ends, as before, so a prediction of the end of tick t-1
+  is followed by the input of tick t a sub-step later.
+- The host takes the latest prediction heard as its tick begins, after the
+  tick's actions are given and before the objects move
+  (`network_distributed_host_actions_given`, from `network_substeps_actions_given`
+  in `game.c`'s macro step), and the vehicles' predictions with it
+  (`network_objects_apply_vehicle_predictions`). The tick runs the client's
+  tick after that prediction (`distributed_host_run_time`): each later
+  sub-step gives the player's unit the client's controls of that sub-step
+  of it as they came (the latest at or before the sub-step, kept for the
+  last 4 ticks: `host_live_apply`), or the tick's record if it came, else
+  holds the latest. A tick that runs no new client tick (its input late or
+  lost) holds the latest controls it has.
+- Where the input of the tick after the latest prediction has not come
+  when the host's tick begins (the two machines' ticks less than a sub-step
+  apart, once the network's delay is counted, as on a LAN), the controls of
+  that tick's sub-steps would each come just after the host's own sub-step
+  ran without them. The tick then takes the prediction heard before the
+  latest (`distributed_predictions_earlier`), whose input has come, and
+  runs that input as the client did, the latest kept for the next tick; in
+  that phase the host's copy is as fresh as before version 8 (taking the
+  latest, the host's moves of a client's player in bot games on the
+  loopback came apart from the client's in 36% to 51% of the ticks).
+- At the end of the tick the host's copy is its own run of the client's
+  tick, so its word on the player names the tick after
+  (`predicted_time`, one later than the prediction it took). The client
+  compares that with where it had its player then, as before; on a network
+  quicker than the sub-steps the host can end its run of the tick first, and
+  a word on a tick the client has not ended is taken as of its latest
+  (`PREDICTION_ECHO_LEAD_TICKS`). The latency meter's round trip is timed
+  from when the input went.
+- The drift figures compare the host's run of a tick, from the prediction
+  it took, with the client's next prediction, as before.
+- A client gives another player the latest live control of the input its
+  tick took at any later sub-step too, unless that tick's record came: the
+  input now comes before the rest of its tick's controls.
+
+The host's checks count host ticks from the take as before (the on-foot
+bounds' ticks since the anchor, the ceiling's round trip, the seats'
+disagreement, the clock check): each counts from and to the same point, now
+the tick's start. The client's elevator phase tolerance (4 world units) is
+unchanged: the host's word is a tick fresher, so the phases are nearer.
+
+Nothing changes in a Legacy game, an OpenH1 game at 30, or for an OpenCE
+player in a mixed game (the host takes that player's prediction as its tick
+ends). Bots have no client input (`update_server_take_bot_action`), and the
+host gives them nothing of this. Measured below ("Measuring latency").
+
+### Remote players against their history
+
+A client drives another client's player by its forwarded input and live
+controls, ahead of the host's states of that player, and moved its copy
+toward the host's state when the two were more than
+`REMOTE_CORRECTION_TOLERANCE` (0.05 world units) apart: after a start, a
+stop or a jump the copy was pulled back for the ticks the host's state
+lagged. From protocol version 9, in an OpenH1 game of several sub-steps a
+tick, the host sends every OpenH1 client, in each client player's state,
+the client's tick the host has the player at (`predicted_time`, 2 bytes,
+which only the player's own client had before). Each client notes where its
+copy of each other client's player was as each of its ticks ended, by the
+tick of their client whose forwarded input that tick ran (32 ticks:
+`distributed_note_remote_positions`), and compares the host's state with
+where it had the copy after running the input of the tick named
+(`distributed_correct_remote_unit`). Within the tolerance the copy is left
+as it is, however far ahead its fresher input took it; further, it is moved
+by the difference (its speed by the host's difference of it, its facing its
+own), and the ticks noted since with it. A player the relayed input drives,
+the host's own players and bots, and a state without the tick are put where
+the host has them, as before.
 
 ### OpenCE players in an OpenH1 game
 
