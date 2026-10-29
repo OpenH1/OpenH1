@@ -29,6 +29,14 @@ so each machine needs each player's sub-steps too, not only their ticks:
   as compact as the relayed input (angles in 16 bits, the sticks of 127, the
   trigger of 255), and none for a player whose sub-steps changed nothing.
 
+- Taken at the tick (NETCODE.md, "Input at its tick"): a client sends its
+  input of a tick as the tick's first sub-step ends, with its live controls
+  (below), and the host's tick takes it, with the client's prediction of the
+  tick before, as it begins (network_distributed.c). The tick then runs
+  that input: each later sub-step gives the player's unit the client's
+  controls of that sub-step of it as they came (host_live_apply), or holds
+  the latest; a tick that took no new input holds the latest it has.
+
 Nothing here runs in a game of one sub-step a tick (a Legacy game, an OpenH1
 game at 30), nor sends anything: those games' traffic is as it was.
 Anything another machine sends is checked: its player (the sender's own, to
@@ -64,6 +72,10 @@ enum
 	RELAYED_RECORD_MAXIMUM_SIZE = 2 + RELAYED_SUBSTEP_SIZE * MAXIMUM_LATER_SUBSTEPS,
 	/* a relayed message's entries, at most, in bytes (well within a datagram) */
 	RELAYED_MESSAGE_ENTRIES_SIZE = 640,
+	/* (the host) the ticks of each client player's live controls it keeps,
+	by their sub-step (a power of two): the input its tick runs, and the
+	ticks after it that came meanwhile */
+	HOST_LIVE_TICKS = 4,
 };
 
 /* the unit controls a sub-step's reading changes (player_control.c's
@@ -197,6 +209,18 @@ static struct
 	boolean tick_forwarded[MAXIMUM_TRACKED_PLAYERS];
 	/* this machine's own players' controls at their last sub-step's end */
 	struct live_control own[MAXIMUM_LOCAL_PLAYERS];
+	/* (the host) each client player's live controls of its last ticks, by
+	the tick (key & (HOST_LIVE_TICKS - 1)) and the sub-step (given: a bit
+	each); the input its tick before took, and whether this tick's is new
+	(it runs that input's sub-steps) or the same (it holds the latest) */
+	struct host_live_tick
+	{
+		long key;
+		word given;
+		struct live_control controls[MAXIMUM_SIM_SUBSTEPS];
+	} host_live[MAXIMUM_TRACKED_PLAYERS][HOST_LIVE_TICKS];
+	long host_previous_key[MAXIMUM_TRACKED_PLAYERS];
+	boolean host_fresh[MAXIMUM_TRACKED_PLAYERS];
 	long bytes_sent;
 } network_substeps_globals;
 
@@ -487,33 +511,17 @@ static boolean live_control_heard(
 	return TRUE;
 }
 
-/* (a client) the player's latest live control, given its unit at this
-sub-step when it is later than the sub-step of the input the tick took
-(sub-step NONE: the tick's own, its actions just given); whether it was */
-static boolean live_control_apply(
+/* a live control given the player's unit at this sub-step (NONE: the tick's
+own, its actions just given), a press in it seen there */
+static void live_control_give(
 	short player_index,
+	struct player_datum const *player,
+	struct live_control const *live,
 	short substep_index)
 {
-	struct live_control const *live = &network_substeps_globals.live[player_index];
-	struct player_datum *player;
-	struct unit_datum *unit;
-	unsigned long before;
-	long key = network_substeps_globals.tick_key[player_index];
+	struct unit_datum *unit = unit_get(player->unit_index);
+	unsigned long before = unit->unit.control_flags;
 
-	if (game_connection() != _game_connection_network_client || !live->valid || key == NONE ||
-		live->count != network_substeps_count() ||
-		/* (of the kind of key the tick's input was: a client's player's
-		while its forwarded input drives it, the host's own player's) */
-		live->host_update == network_substeps_globals.tick_forwarded[player_index] ||
-		!live_control_later(live->key, live->substep, key, substep_index == NONE ? 0 : substep_index))
-	{
-		return FALSE;
-	}
-	player = distributed_player(player_index);
-	if (!player || player->local_player_index != NONE || distributed_living_unit(player) == NONE)
-		return FALSE;
-	unit = unit_get(player->unit_index);
-	before = unit->unit.control_flags;
 	unit->unit.control_flags = (before & ~SUBSTEP_HELD_FLAGS) | (live->held_flags & SUBSTEP_HELD_FLAGS);
 	unit->unit.throttle.i = live->throttle.i;
 	unit->unit.throttle.j = live->throttle.j;
@@ -526,6 +534,109 @@ static boolean live_control_apply(
 	{
 		network_substeps_globals.pressed_unit[player_index] = player->unit_index;
 		network_substeps_globals.pressed_flags[player_index] = live->held_flags & ~before & SUBSTEP_HELD_FLAGS;
+	}
+}
+
+/* (a client) the player's latest live control, given its unit at this
+sub-step when it is later than the sub-step of the input the tick took
+(sub-step NONE: the tick's own, its actions just given), or of that input's
+own tick at all when no record of it came (a client's input goes as its
+tick's first sub-step ends, with its controls of that sub-step, so the rest
+of its tick's controls come after it, and its record after them); whether
+it was */
+static boolean live_control_apply(
+	short player_index,
+	short substep_index)
+{
+	struct live_control const *live = &network_substeps_globals.live[player_index];
+	struct player_datum *player;
+	long key = network_substeps_globals.tick_key[player_index];
+
+	if (game_connection() != _game_connection_network_client || !live->valid || key == NONE ||
+		live->count != network_substeps_count() ||
+		/* (of the kind of key the tick's input was: a client's player's
+		while its forwarded input drives it, the host's own player's) */
+		live->host_update == network_substeps_globals.tick_forwarded[player_index] ||
+		(!live_control_later(live->key, live->substep, key, substep_index == NONE ? 0 : substep_index) &&
+			(live->key != key || substep_index == NONE || network_substeps_globals.replaying[player_index].valid)))
+	{
+		return FALSE;
+	}
+	player = distributed_player(player_index);
+	if (!player || player->local_player_index != NONE || distributed_living_unit(player) == NONE)
+		return FALSE;
+	live_control_give(player_index, player, live, substep_index);
+	return TRUE;
+}
+
+/* (the host) a client's player whose input its tick took as it began
+(distributed_prediction_at_tick_start): in a tick that runs a new input of
+its (distributed_host_run_time), that input's controls of each sub-step as
+the client sent them as it ran (the latest of it at or before the sub-step;
+none: held), unless its record came; in a tick that took none new (its input late, or
+lost), the latest it has, at its tick's start too, as a client gives the
+other players' (live_control_apply). The sub-step's, the tick's record for
+the clients it relays the player to. Whether one was given. */
+static boolean host_live_apply(
+	short player_index,
+	short substep_index)
+{
+	long key = network_substeps_globals.tick_key[player_index];
+	struct live_control const *live = NULL;
+	struct player_datum *player;
+
+	if (game_connection() != _game_connection_network_server || key == NONE ||
+		!distributed_prediction_at_tick_start(player_index))
+	{
+		return FALSE;
+	}
+	if (network_substeps_globals.host_fresh[player_index])
+	{
+		struct host_live_tick const *tick =
+			&network_substeps_globals.host_live[player_index][key & (HOST_LIVE_TICKS - 1)];
+		short substep;
+
+		if (tick->key != key || network_substeps_globals.replaying[player_index].valid)
+			return FALSE;
+		for (substep = substep_index == NONE ? 0 : substep_index; substep >= 0 && !live; substep--)
+		{
+			if (TEST_FLAG(tick->given, substep))
+				live = &tick->controls[substep];
+		}
+	}
+	else
+	{
+		live = &network_substeps_globals.live[player_index];
+		if (!live->valid || live->host_update ||
+			!live_control_later(live->key, live->substep, key, substep_index == NONE ? 0 : substep_index))
+		{
+			live = NULL;
+		}
+	}
+	if (!live || live->count != network_substeps_count())
+		return FALSE;
+	player = distributed_player(player_index);
+	if (!player || player->local_player_index != NONE || distributed_living_unit(player) == NONE)
+		return FALSE;
+	{
+		struct unit_datum *unit = unit_get(player->unit_index);
+		real_vector3d aim = unit->unit.desired_aiming_vector;
+		struct substep_record *ran = &network_substeps_globals.ran[player_index];
+
+		live_control_give(player_index, player, live, substep_index);
+		/* (what the tick ran, for the host to relay: the facing of an aim
+		turned on foot, where the aim is the facing's) */
+		if (substep_index >= 1 && substep_index < ran->count && ran->unit_index == player->unit_index)
+		{
+			struct substep_control *control = &ran->controls[substep_index - 1];
+
+			substep_control_from_unit(unit, control);
+			control->turned = unit->object.parent_object_index == NONE &&
+				(aim.i != live->aim.i || aim.j != live->aim.j || aim.k != live->aim.k);
+			if (control->turned)
+				euler_angles2d_from_vector3d(&control->facing, &live->aim);
+			ran->given |= (word)FLAG(substep_index);
+		}
 	}
 	return TRUE;
 }
@@ -564,6 +675,21 @@ static void network_substeps_handle_live(
 		/* (a unit vector, or none taken) */
 		if (normalize3d(&live.aim) == 0.0f)
 			continue;
+		/* (each sub-step's of the latest ticks, for the host's own run of
+		them: host_live_apply) */
+		{
+			struct host_live_tick *tick =
+				&network_substeps_globals.host_live[entry.player_index][live.key & (HOST_LIVE_TICKS - 1)];
+
+			if (tick->key != live.key)
+			{
+				tick->key = live.key;
+				tick->given = 0;
+			}
+			tick->controls[live.substep] = live;
+			tick->controls[live.substep].valid = TRUE;
+			tick->given |= (word)FLAG(live.substep);
+		}
 		live.pending = TRUE;
 		live_control_heard(entry.player_index, &live);
 	}
@@ -629,8 +755,13 @@ void network_substeps_new_game(
 	csmemset(&network_substeps_globals, 0, sizeof(network_substeps_globals));
 	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
 	{
+		short tick;
+
 		network_substeps_globals.pressed_unit[player_index] = NONE;
 		network_substeps_globals.tick_key[player_index] = NONE;
+		network_substeps_globals.host_previous_key[player_index] = NONE;
+		for (tick = 0; tick < HOST_LIVE_TICKS; tick++)
+			network_substeps_globals.host_live[player_index][tick].key = NONE;
 	}
 	sim_substep_register(_sim_substep_network, network_substeps_substep_end);
 }
@@ -660,7 +791,8 @@ void network_substeps_tick_begun(
 		ran->unit_index = unit_index;
 		network_substeps_globals.start_valid[player_index] = FALSE;
 		network_substeps_globals.pressed_unit[player_index] = NONE;
-		network_substeps_globals.tick_key[player_index] = update_queues_distributed_input_key(player_index);
+		network_substeps_globals.tick_key[player_index] = game_connection() == _game_connection_network_server ?
+			distributed_host_run_time(player_index) : update_queues_distributed_input_key(player_index);
 		network_substeps_globals.tick_forwarded[player_index] = update_client_input_forwarded(player_index);
 		if (unit_index == NONE)
 			continue;
@@ -668,7 +800,7 @@ void network_substeps_tick_begun(
 		network_substeps_globals.start_valid[player_index] = TRUE;
 		/* (a remote player's: the record of the input this tick took) */
 		if (player->local_player_index == NONE && heard->valid && heard->count == substep_count &&
-			heard->key == update_queues_distributed_input_key(player_index))
+			heard->key == network_substeps_globals.tick_key[player_index])
 		{
 			*replaying = *heard;
 			replaying->unit_index = unit_index;
@@ -699,6 +831,35 @@ void network_substeps_replay(
 		on as they came: the latest) */
 		if (live_control_apply(player_index, substep_index))
 			continue;
+		/* (the host, of a client's player whose input it took as its tick
+		began: the record of that input, if it came since, else the controls
+		of the sub-step as they came; neither, held) */
+		if (distributed_prediction_at_tick_start(player_index) && !replaying->valid)
+		{
+			struct substep_record const *heard = &network_substeps_globals.heard[player_index];
+
+			player = distributed_player(player_index);
+			if (network_substeps_globals.host_fresh[player_index] && player && player->local_player_index == NONE &&
+				player->unit_index != NONE && heard->valid && heard->count == substep_count &&
+				heard->key == network_substeps_globals.tick_key[player_index])
+			{
+				network_substeps_globals.replaying[player_index] = *heard;
+				network_substeps_globals.replaying[player_index].unit_index = player->unit_index;
+			}
+			else
+			{
+				if (!host_live_apply(player_index, substep_index) && player &&
+					player->local_player_index == NONE && distributed_living_unit(player) != NONE &&
+					ran->unit_index == player->unit_index && substep_index < ran->count)
+				{
+					/* (held: as the sub-step before) */
+					substep_control_from_unit(unit_get(player->unit_index), &ran->controls[substep_index - 1]);
+					ran->controls[substep_index - 1].turned = FALSE;
+					ran->given |= (word)FLAG(substep_index);
+				}
+				continue;
+			}
+		}
 		if (!replaying->valid || replaying->count != substep_count)
 			continue;
 		player = distributed_player(player_index);
@@ -991,7 +1152,27 @@ void network_substeps_actions_given(
 {
 	short player_index;
 
-	if (!network_substeps_active() || game_connection() != _game_connection_network_client)
+	if (!network_substeps_active())
+		return;
+	if (game_connection() == _game_connection_network_server)
+	{
+		/* (the predictions of the tick before the input the tick takes,
+		before the input runs: network_distributed.c) */
+		network_distributed_host_actions_given();
+		for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+		{
+			long key = distributed_host_run_time(player_index);
+
+			network_substeps_globals.tick_key[player_index] = key;
+			network_substeps_globals.tick_forwarded[player_index] = FALSE;
+			network_substeps_globals.host_fresh[player_index] =
+				key != NONE && key != network_substeps_globals.host_previous_key[player_index];
+			network_substeps_globals.host_previous_key[player_index] = key;
+			host_live_apply(player_index, NONE);
+		}
+		return;
+	}
+	if (game_connection() != _game_connection_network_client)
 		return;
 	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
 	{
@@ -1091,6 +1272,10 @@ static void network_substeps_substep_end(
 			distributed_send(&message, _distributed_message_player_live_controls, count, size, _distributed_to_host);
 			network_substeps_globals.bytes_sent += size;
 		}
+		/* (an OpenH1 game's input of the tick, as its first sub-step ends,
+		which the host's tick takes as it begins: network_distributed.c) */
+		if (substep_index == 0)
+			network_distributed_client_substep_inputs();
 		/* (the hits its sub-step made, at once: network_damage.c) */
 		network_damage_client_tick();
 		/* (now, but for the last sub-step's, which the tick's own messages
@@ -1152,6 +1337,17 @@ boolean network_substeps_live_pending(
 			return TRUE;
 	}
 	return FALSE;
+}
+
+long network_substeps_forwarded_key(
+	short player_index)
+{
+	if (game_connection() != _game_connection_network_client || player_index < 0 ||
+		player_index >= MAXIMUM_TRACKED_PLAYERS || !network_substeps_globals.tick_forwarded[player_index])
+	{
+		return NONE;
+	}
+	return network_substeps_globals.tick_key[player_index];
 }
 
 long network_substeps_bytes_sent(

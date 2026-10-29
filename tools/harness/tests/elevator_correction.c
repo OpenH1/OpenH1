@@ -59,7 +59,15 @@ int main(int argc, char **argv) {
     if (!strcmp(case_name,"far")) s.position.z = -10;
     if (!strcmp(case_name,"unpredicted")) {s.flags = 0; s.position.z = 0;}
     if (!strcmp(case_name,"no-history")) {own->time = NONE; s.position.z = 0;}
+    /* (the host's word on a tick this machine has not ended: of its latest,
+    where it stands on the floor, its own height kept) */
+    if (!strcmp(case_name,"echo-ahead")) {now = 100; s.predicted_time = 101; objects[1].object.position.z = 14;}
     distributed_correct_own_unit(&p,1,&s);
+    if (!strcmp(case_name,"echo-ahead")) {
+        CHECK(fabsf(objects[1].object.position.z-14) < .0001f,
+            "an echo of the tick not ended moved the rider to %f", objects[1].object.position.z);
+        return 0;
+    }
     if (protected) CHECK(fabsf(objects[1].object.position.z-10) < .0001f,
         "%ld ms echo placed the rider at %f under its floor", delay*1000/30, objects[1].object.position.z);
     else CHECK(objects[1].object.position.z < 7, "%s wrongly suppressed an ordinary correction", case_name);

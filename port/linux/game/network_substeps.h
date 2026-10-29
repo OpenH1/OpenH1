@@ -68,6 +68,11 @@ boolean network_substeps_live_pending(void);
 other players' latest controls given their units where they are later */
 void network_substeps_actions_given(void);
 
+/* (a client) the tick of another client's player whose forwarded input its
+last tick ran (the input's client's), NONE for none: the relayed input, or
+none, drove it */
+long network_substeps_forwarded_key(short player_index);
+
 /* the messages (network_distributed.c's handling, before its own) */
 boolean network_substeps_handles_message(word const *message, word size);
 void network_substeps_handle_message(long machine_index, word const *message, word size);

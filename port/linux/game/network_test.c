@@ -130,6 +130,7 @@ unsigned long long platform_shared_clock_microseconds(void);
 void damage_kill_object_for_player(long object_index, long player_index);
 /* network_distributed.c's */
 void network_distributed_statistics(long *sent, long *received, long *corrections);
+void network_distributed_remote_statistics(long *corrections, long *history_corrections, long *history_kept);
 void network_distributed_batch_bytes(long *to_host, long *to_clients, short *clients);
 void network_distributed_batch_datagrams(long *to_host, long *to_clients);
 void network_distributed_divergence(long *samples, long *apart, real *mean, real *largest);
@@ -617,6 +618,17 @@ static void network_test_log_players(
 				to_host, to_clients, (int)clients, clients ? to_clients / clients : 0L);
 			network_distributed_batch_datagrams(&to_host, &to_clients);
 			platform_log("network test: datagrams to host %ld to clients %ld a second", to_host, to_clients);
+		}
+		/* (a client: its corrections of the other players' units, all and
+		against its history of them, and the host's states within that
+		history's tolerance it would have pulled them back to before: since
+		the game began) */
+		{
+			long remote_corrections, history_corrections, history_kept;
+
+			network_distributed_remote_statistics(&remote_corrections, &history_corrections, &history_kept);
+			platform_log("network test: remote corrected %ld history %ld kept %ld", remote_corrections,
+				history_corrections, history_kept);
 		}
 		/* (the latency meter's round trips, with display.latency_meter on:
 		a client's own, and each player's as this machine times it) */

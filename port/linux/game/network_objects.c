@@ -71,6 +71,8 @@ same datum index (identifier and all), so that any message can name one:
 
 /* physics.c's */
 extern real global_gravity;
+/* player_queues_new.c's */
+long update_queues_distributed_input_key(long absolute_player_index);
 
 /* units.c's */
 void unit_network_add_weapon(long unit_index, long weapon_index, short slot);
@@ -402,6 +404,11 @@ static struct
 	boolean valid;
 	long machine_index;
 	struct distributed_object_state state;
+	/* (distributed_prediction_at_tick_start) the one heard before it, not
+	yet taken, as a player's (network_distributed.c's
+	distributed_predictions_earlier) */
+	boolean earlier_valid;
+	struct distributed_object_state earlier;
 	long accepted_vehicle_index;
 	word accepted_time;
 	long accepted_host_time;
@@ -1839,6 +1846,13 @@ void network_objects_handle_vehicle_prediction(
 		{
 			continue;
 		}
+		/* (one not taken yet, kept: network_objects_apply_vehicle_predictions) */
+		if (objects_host_vehicle_predictions[player_index].valid &&
+			(short)(word)((word)state->time - (word)objects_host_vehicle_predictions[player_index].state.time) > 0)
+		{
+			objects_host_vehicle_predictions[player_index].earlier_valid = TRUE;
+			objects_host_vehicle_predictions[player_index].earlier = objects_host_vehicle_predictions[player_index].state;
+		}
 		objects_host_vehicle_predictions[player_index].valid = TRUE;
 		objects_host_vehicle_predictions[player_index].machine_index = machine_index;
 		objects_host_vehicle_predictions[player_index].state = *state;
@@ -1930,9 +1944,12 @@ by it (its gravity on a copy said to hover and fall). A teleporter moves
 the host's copy too, further than it goes since the last taken: it is
 measured from where the host has it only, a new anchor. In the air it is
 no higher than network_objects_vehicle_below_ceiling says. Which of the
-client's ticks the host has it at is noted, to tell the client. */
+client's ticks the host has it at is noted, to tell the client. As the tick
+ends, or (at_tick_start) as it begins for the drivers whose input and
+prediction the host takes then (distributed_prediction_at_tick_start), as a
+player's (distributed_apply_predictions). */
 void network_objects_apply_vehicle_predictions(
-	void)
+	boolean at_tick_start)
 {
 	long now = game_time_get();
 	short player_index;
@@ -1940,6 +1957,7 @@ void network_objects_apply_vehicle_predictions(
 	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
 	{
 		struct distributed_object_state const *state = &objects_host_vehicle_predictions[player_index].state;
+		struct distributed_object_state earlier;
 		struct unit_datum *vehicle;
 		struct unit_datum *driver;
 		real_vector3d forward, up, velocity, angular_velocity;
@@ -1947,10 +1965,28 @@ void network_objects_apply_vehicle_predictions(
 		real speed;
 		boolean anchored;
 
+		if (distributed_prediction_at_tick_start(player_index) != at_tick_start)
+			continue;
 		network_objects_note_vehicle_ground(player_index);
 		if (!objects_host_vehicle_predictions[player_index].valid)
 			continue;
 		objects_host_vehicle_predictions[player_index].valid = FALSE;
+		/* (as a player's: the input of the client's tick after the latest
+		not come yet, the one before it, whose input has, the latest kept) */
+		if (at_tick_start)
+		{
+			long key = update_queues_distributed_input_key(player_index);
+
+			if (key != NONE && (short)(word)((word)state->time - (word)key) > 0 &&
+				objects_host_vehicle_predictions[player_index].earlier_valid &&
+				(short)(word)((word)objects_host_vehicle_predictions[player_index].earlier.time - (word)key) <= 0)
+			{
+				earlier = objects_host_vehicle_predictions[player_index].earlier;
+				state = &earlier;
+				objects_host_vehicle_predictions[player_index].valid = TRUE;
+			}
+			objects_host_vehicle_predictions[player_index].earlier_valid = FALSE;
+		}
 		vehicle = (struct unit_datum *)object_try_and_get_and_verify_type(state->object_index, _object_mask_vehicle);
 		if (!vehicle || vehicle->unit.driver_object_index == NONE || vehicle->object.parent_object_index != NONE)
 			continue;

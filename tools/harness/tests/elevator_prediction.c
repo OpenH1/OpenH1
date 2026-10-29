@@ -113,6 +113,8 @@ static struct
 
 /* (every move within the limits; no higher than a player may be) */
 #define distributed_on_foot_move_valid(bound, from, to, ticks) TRUE
+/* (the take point, #287's stage 2b: the drift figures' choice of the input run; the elevator's the same) */
+#define distributed_prediction_at_tick_start(player_index) FALSE
 #define distributed_on_foot_ceiling(player_index, bound) ((bound)->rise)
 #define distributed_on_foot_fall_speed(bound, height) 0.0f
 
