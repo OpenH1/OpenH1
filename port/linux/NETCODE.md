@@ -1861,5 +1861,28 @@ to 62 at 30, 87 to 90 at 60 and 93 to 94 at 120 over 20 ms each way, and
 one phase each (their spread is the phase's, not the builds'). With 1% of
 the datagrams lost, a hit's report (reliable) waits for its resending now
 and then: a worst 95th percentile of 310 to 340 ms. The tables of every
-figure are kept by `--json`; the remaining stages are in "Sub-steps as they
-run" (above).
+figure are kept by `--json`.
+
+With the input taken at its tick (version 8, "Input at its tick") and the
+other players corrected against their history (version 9), over the same
+20 ms ±3 network (three copies on one computer, pooled over the three
+delays; the means in ms, the worst 95th percentile in brackets), before,
+with version 8 and with version 9:
+
+| Path | 60 | 120 |
+| --- | --- | --- |
+| Client press to the host's simulation | 62 (70), 39 (59), 40 (66) | 66 (76), 39 (71), 37 (43) |
+| Client press to another client | 64 (135), 61 (79), 62 (78) | 57 (76), 58 (73), 59 (100) |
+| Host's press to a client | 37 (67), 37 (48), 36 (51) | 33 (57), 33 (46), 32 (43) |
+
+A client's press reaches the host's simulation a network trip and about a
+sub-step after it, where it took a trip, a tick and a phase's wait. The
+other paths were near their floor already (forwarded input and live
+controls) and are unchanged. In bot games (three copies, bloodgulch and
+beavercreek, on the loopback and over 20 ms ±3, at 30, 60 and 120) every
+game passes; the host's moves of a client's player come apart from the
+client's in 0.4% to 0.8% of the ticks before and 8% to 12% with version 8
+at 60 and 120 (a sub-step's controls that come after the host's sub-step
+ran without them), and the clients' corrections and the positions apart
+are as before. The remaining stages of OpenH1 issue #287, the host's
+states at the sub-step rate and the clock's phase, are not done.
