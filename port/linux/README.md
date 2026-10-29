@@ -622,6 +622,17 @@ them, and walk the paths that the campaign's AI finds on the maps' walkable
 surfaces (`game/bots.c`). They play no other gametypes (but SWAT, Infection
 and Gun Game, which are Slayer's: below).
 
+They aim as people do, not as a machine: a bot's aim turns as a hand moves
+it (an easy bot flicks past its target and comes back, a legendary one
+settles on it), never settles to a perfect shot (a slow wobble of its
+skill's size, and good and bad stretches), flinches when it is hit (more
+when its shield pops), is caught out for a moment when its target strafes
+the other way or jumps, trails a target that crosses its view fast, and
+fires while its aim still closes on the target, so some shots miss.
+halo.log has a line each minute with each weapon family's rounds that hit
+someone of those the bots fired, and `debug.bots_weapon` gives every bot
+one weapon, to measure it.
+
 Bots play system link and internet games too, OpenH1 and Legacy, public or
 private: Create Game's Server Setup has a BOTS row after the gametype's
 rows, its value what they are ("10, NORMAL, FILL TO 16", NONE, or NOT IN
@@ -922,6 +933,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.bot_trace` | `0` | `HALO_BOT_TRACE` | Every this many seconds, each bot's state is written to the log: where it is and where it goes, its path, its target and its weapon. `0`: never. |
 | `debug.bot_player` | `false` | `HALO_BOT_PLAYER` (set) | In a local game with bots (`bots.count`), a bot of its own plays the first player too, and its view is drawn as the player's: footage of a fighter without a person at the controls. |
 | `debug.bot_player_weapon` | `""` | `HALO_BOT_PLAYER_WEAPON` | With `debug.bot_player`, a weapon (part of its tag's name: `sniper`, `rocket`) the player's bot goes for wherever on the map it lies, and keeps; with a sniper rifle it looks through the scope at a distance. |
+| `debug.bots_weapon` | `""` | `HALO_BOTS_WEAPON` | A weapon (part of its tag's name: `assault rifle`, `\pistol`, `sniper`) every bot spawns with and keeps while it has rounds, to measure the bots' aim with one weapon: halo.log's `bots: ... aim` line, each minute, gives each weapon family's rounds that struck someone of those fired. |
 | `debug.bot_player_grenades` | `""` | `HALO_BOT_PLAYER_GRENADES` | With `debug.bot_player`, `plasma`: the player's bot spawns with four plasma grenades and no frags, and throws them at 4 to 18 world units, six times as often as a bot, for sticks. |
 | `debug.bot_player_vehicle` | `""` | `HALO_BOT_PLAYER_VEHICLE` | With `debug.bot_player`, a vehicle (part of its tag's name: `warthog`, `ghost`) the player's bot walks to and boards whenever it is on foot, a free one nearest first, and drives: along its paths, and full ahead at the enemies it fights. |
 | `debug.touch_menus` | `false` | `HALO_TOUCH_MENUS` | Lays the menus out as the touchscreen's builds (Android, iOS) do: their `touch` screens (Multiplayer's tiles, the server browser, the lobby, Host Controls and the Party screen with every tap target a finger's size, the tabs as chips and the footer's key prompts as buttons), for looking at them on a computer. Read as the menus load. |
