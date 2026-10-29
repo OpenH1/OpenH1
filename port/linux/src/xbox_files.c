@@ -1355,3 +1355,126 @@ BOOL WINAPI FindNextFileA(HANDLE find_file, LPWIN32_FIND_DATAA data)
 }
 
 /* FindClose is an XDK macro for CloseHandle */
+
+/* ---------- the cache slots' sources
+
+Each cache slot (z:\cacheNNN.map, cache_files_windows.c) holds a map copied
+from the maps folder, and the game finds a slot by the name in its header.
+The Xbox's disc never changed under it; a maps folder can (a modded map,
+another region's, a corrected file), so the slot's copy remembers the size
+and modification time of the file it came from, in z:\cacheNNN.source, and
+a slot whose map file is not that one any more is not used. */
+
+/* (cache_files_windows.c's NUMBER_OF_CACHED_MAP_FILES) */
+#define MAXIMUM_CACHE_SLOT_SOURCES 6
+
+struct cache_slot_source
+{
+	BOOL known;
+	posix_ulong size_low, size_high, seconds, nanoseconds;
+};
+
+static struct cache_slot_source cache_slot_sources[MAXIMUM_CACHE_SLOT_SOURCES];
+
+static void cache_slot_source_path(short slot, char *path, unsigned long size)
+{
+	char xbox_path[32];
+
+	snprintf(xbox_path, sizeof(xbox_path), "z:\\cache%03d.source", slot);
+	platform_translate_path(xbox_path, path, size);
+}
+
+static BOOL cache_slot_source_stat(const char *map_path, struct cache_slot_source *source)
+{
+	struct posix_file_information information;
+	char path[1024];
+
+	memset(source, 0, sizeof(*source));
+	platform_translate_path(map_path, path, sizeof(path));
+	if (!path[0] || posix_stat(path, &information) != 0)
+		return FALSE;
+	source->known = TRUE;
+	source->size_low = information.size_low;
+	source->size_high = information.size_high;
+	source->seconds = information.modification_seconds;
+	source->nanoseconds = information.modification_nanoseconds;
+	return TRUE;
+}
+
+void cache_slot_source_load(short slot)
+{
+	struct cache_slot_source *source;
+	unsigned long size_low, size_high, seconds, nanoseconds;
+	char path[1024];
+	FILE *file;
+
+	if (slot < 0 || slot >= MAXIMUM_CACHE_SLOT_SOURCES)
+		return;
+	source = &cache_slot_sources[slot];
+	memset(source, 0, sizeof(*source));
+	cache_slot_source_path(slot, path, sizeof(path));
+	file = fopen(path, "rb");
+	if (!file)
+		return;
+	if (fscanf(file, "openh1-cache-source 1 %lu %lu %lu %lu", &size_low, &size_high, &seconds, &nanoseconds) == 4)
+	{
+		source->known = TRUE;
+		source->size_low = size_low;
+		source->size_high = size_high;
+		source->seconds = seconds;
+		source->nanoseconds = nanoseconds;
+	}
+	fclose(file);
+}
+
+void cache_slot_source_forget(short slot)
+{
+	char path[1024];
+
+	if (slot < 0 || slot >= MAXIMUM_CACHE_SLOT_SOURCES)
+		return;
+	memset(&cache_slot_sources[slot], 0, sizeof(cache_slot_sources[slot]));
+	cache_slot_source_path(slot, path, sizeof(path));
+	remove(path);
+}
+
+void cache_slot_source_record(short slot, const char *map_path)
+{
+	struct cache_slot_source *source;
+	char path[1024];
+	FILE *file;
+
+	if (slot < 0 || slot >= MAXIMUM_CACHE_SLOT_SOURCES)
+		return;
+	cache_slot_source_forget(slot);
+	source = &cache_slot_sources[slot];
+	if (!cache_slot_source_stat(map_path, source))
+		return;
+	cache_slot_source_path(slot, path, sizeof(path));
+	file = fopen(path, "wb");
+	if (!file)
+	{
+		source->known = FALSE;
+		return;
+	}
+	if (fprintf(file, "openh1-cache-source 1 %lu %lu %lu %lu\n", (unsigned long)source->size_low,
+		(unsigned long)source->size_high, (unsigned long)source->seconds, (unsigned long)source->nanoseconds) < 0)
+		source->known = FALSE;
+	if (fclose(file) != 0)
+		source->known = FALSE;
+	if (!source->known)
+		remove(path);
+}
+
+int cache_slot_source_matches(short slot, const char *map_path)
+{
+	struct cache_slot_source now;
+	const struct cache_slot_source *source;
+
+	if (slot < 0 || slot >= MAXIMUM_CACHE_SLOT_SOURCES)
+		return FALSE;
+	source = &cache_slot_sources[slot];
+	return source->known && cache_slot_source_stat(map_path, &now) && now.size_low == source->size_low &&
+		now.size_high == source->size_high && now.seconds == source->seconds &&
+		now.nanoseconds == source->nanoseconds;
+}
