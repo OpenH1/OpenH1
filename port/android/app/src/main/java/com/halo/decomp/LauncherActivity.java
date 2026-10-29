@@ -40,6 +40,7 @@ public class LauncherActivity extends Activity {
     private TextView status;
     private ProgressBar progress;
     private Button pick;
+    private Button restore;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -58,6 +59,26 @@ public class LauncherActivity extends Activity {
             VulkanSupport.explain(this, this::finish);
             return;
         }
+        if (dataRoot == null) {
+            buildInterface();
+            return;
+        }
+        // a restore of saved games that was cut short is finished or undone
+        // (BackupArchive) before the game or the backup screen can start, off
+        // the UI thread: a large leftover takes a while to delete; a restore
+        // at work right now, in the backup screen's own process, holds a lock
+        // and is left alone
+        new Thread(() -> {
+            String recovered = BackupArchive.recover(dataRoot);
+            if (!recovered.isEmpty())
+                android.util.Log.i("halo", "backup: " + recovered);
+            handler.post(this::recovered);
+        }, "halo-backup-recover").start();
+    }
+
+    private void recovered() {
+        if (isFinishing() || isDestroyed())
+            return;
         if (haveData()) {
             startGame();
             return;
@@ -122,6 +143,13 @@ public class LauncherActivity extends Activity {
     }
 
     private void startGame() {
+        // never under a restore that is moving the profiles: the backup
+        // screen shows it until it ends
+        if (dataRoot != null && BackupArchive.locked(dataRoot)) {
+            startActivity(new Intent(this, BackupActivity.class));
+            finish();
+            return;
+        }
         startActivity(new Intent(this, HaloActivity.class));
         finish();
     }
@@ -170,6 +198,16 @@ public class LauncherActivity extends Activity {
         layout.addView(pick, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT));
 
+        // saved games and settings from a backup (BackupActivity); the
+        // maps still come from the disc image
+        restore = new Button(this);
+        restore.setText("Restore saves and settings");
+        restore.setOnClickListener(v -> startActivity(new Intent(this, BackupActivity.class)));
+        LinearLayout.LayoutParams restoreLayout = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        restoreLayout.topMargin = dp(8);
+        layout.addView(restore, restoreLayout);
+
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(1000);
         progress.setVisibility(View.GONE);
@@ -202,10 +240,15 @@ public class LauncherActivity extends Activity {
         if (requestCode != PICK_IMAGE || resultCode != RESULT_OK || data == null || data.getData() == null)
             return;
         Uri image = data.getData();
-        pick.setEnabled(false);
+        setBusy(true);
         progress.setVisibility(View.VISIBLE);
         status.setText("Reading the disc image...");
         new Thread(() -> importImage(image)).start();
+    }
+
+    private void setBusy(boolean busy) {
+        pick.setEnabled(!busy);
+        restore.setEnabled(!busy);
     }
 
     private void report(String text, int permille) {
@@ -220,7 +263,7 @@ public class LauncherActivity extends Activity {
         handler.post(() -> {
             status.setText(text);
             progress.setVisibility(View.GONE);
-            pick.setEnabled(true);
+            setBusy(false);
             pick.requestFocus();
         });
     }
