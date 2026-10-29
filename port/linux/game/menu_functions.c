@@ -109,6 +109,10 @@ their handlers open opens.
 /* (internet play's server browser: the platform layer's) */
 #include "../src/p2p.h"
 #include "../src/browser_favorites.h"
+/* (the server browser's master servers, and Server Setup's publisher key) */
+#include "../src/master_list.h"
+#include "../src/player_link.h" /* port: port/linux/src/player_link.c */
+#include "../src/server_master.h"
 #include "text_filter.h"
 /* (the party: party_menu.inc) */
 #include "party.h"
@@ -371,6 +375,12 @@ static boolean setting_text(char const *name, char *text, unsigned int size, boo
 {
 	short index;
 
+	/* (DISCORD ACCOUNT's LINK: no change, until one is chosen) */
+	if (!strcmp(name, "link.action"))
+	{
+		snprintf(text, size, "none");
+		return TRUE;
+	}
 	if (strncmp(name, "profile.", 8))
 	{
 		if (!(default_value ? config_default(name, text, size) : config_text(name, text, size)))
@@ -427,6 +437,16 @@ static boolean setting_write(char const *name, char const *value)
 {
 	short index;
 
+	/* (DISCORD ACCOUNT's LINK: done, not written: the master's page opened
+	in the browser, or the account forgotten, player_link.c) */
+	if (!strcmp(name, "link.action"))
+	{
+		if (!strcmp(value, "link"))
+			player_link_begin();
+		else if (!strcmp(value, "unlink"))
+			player_link_unlink();
+		return TRUE;
+	}
 	if (strncmp(name, "profile.", 8))
 		return config_write(name, value);
 	for (index = 0; index < NUMBEROF(profile_settings); index++)
