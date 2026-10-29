@@ -573,7 +573,7 @@ static boolean live_control_apply(
 (distributed_prediction_at_tick_start): in a tick that runs a new input of
 its (distributed_host_run_time), that input's controls of each sub-step as
 the client sent them as it ran (the latest of it at or before the sub-step;
-none: held), unless its record came; in a tick that took none new (its input late, or
+none: the latest of the input it took, or held), unless its record came; in a tick that took none new (its input late, or
 lost), the latest it has, at its tick's start too, as a client gives the
 other players' (live_control_apply). The sub-step's, the tick's record for
 the clients it relays the player to. Whether one was given. */
@@ -596,12 +596,34 @@ static boolean host_live_apply(
 			&network_substeps_globals.host_live[player_index][key & (HOST_LIVE_TICKS - 1)];
 		short substep;
 
-		if (tick->key != key || network_substeps_globals.replaying[player_index].valid)
+		if (network_substeps_globals.replaying[player_index].valid)
 			return FALSE;
-		for (substep = substep_index == NONE ? 0 : substep_index; substep >= 0 && !live; substep--)
+		for (substep = substep_index == NONE ? 0 : substep_index; tick->key == key && substep >= 0 && !live;
+			substep--)
 		{
 			if (TEST_FLAG(tick->given, substep))
 				live = &tick->controls[substep];
+		}
+		/* (none of the tick it runs come by the sub-step, in a tick that runs
+		the client's tick after the input it took (its prediction came before
+		that tick's input): the unit was given that input's actions as the
+		tick began, though the tick before ran its later sub-steps' controls.
+		Held, the latest of that input or after it, before the tick run) */
+		if (!live)
+		{
+			long input_key = update_queues_distributed_input_key(player_index);
+			long earlier;
+
+			for (earlier = key - 1; input_key != NONE && earlier >= input_key && earlier > key - HOST_LIVE_TICKS &&
+				!live; earlier--)
+			{
+				tick = &network_substeps_globals.host_live[player_index][earlier & (HOST_LIVE_TICKS - 1)];
+				for (substep = MAXIMUM_SIM_SUBSTEPS - 1; tick->key == earlier && substep >= 0 && !live; substep--)
+				{
+					if (TEST_FLAG(tick->given, substep))
+						live = &tick->controls[substep];
+				}
+			}
 		}
 	}
 	else
