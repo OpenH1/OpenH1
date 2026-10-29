@@ -157,6 +157,14 @@ static struct
 	long countdown;
 	boolean lobby_shown;
 	boolean screen_loaded;
+	/* the host in its lobby (network_host_game.c's), the lobby's players it
+	lists, and a next game waiting for the lobby (taken: how many times, the
+	last a restart's) */
+	boolean lobby;
+	short lobby_players;
+	boolean next_waiting;
+	short taken;
+	boolean taken_restarting;
 	char ban_text[4][HOST_CONTROLS_BAN_LINE_SIZE];
 } world;
 
@@ -258,6 +266,30 @@ static char const *pc_menus_screen(char const *name)
 		name;
 }
 static void console_warning(const char *format, ...) { (void)format; }
+/* network_host_game.c's: the lobby, its players, the next game */
+static boolean network_host_game_in_lobby(void) { return world.lobby; }
+static short network_host_game_lobby_players(struct host_controls_player *players, short maximum)
+{
+	short index;
+
+	for (index = 0; index < world.lobby_players && index < maximum; index++)
+	{
+		memset(&players[index], 0, sizeof(players[index]));
+		players[index].player_index = NONE;
+		players[index].slot = index;
+	}
+	return index;
+}
+static void network_host_game_update(void) { }
+static boolean network_host_game_lobby_take(boolean restarting)
+{
+	boolean taken = world.next_waiting && (!restarting || world.next_waiting);
+
+	world.taken++;
+	world.taken_restarting = restarting;
+	world.next_waiting = FALSE;
+	return taken;
+}
 static unsigned long system_milliseconds(void) { return 1000; }
 static int bots_machine_is_bot(long machine_index) { return machine_index >= BOTS_FIRST_MACHINE; }
 /* the bots' settings (bots.c's, config.toml's) and the host's removal of one */
@@ -470,7 +502,7 @@ static void world_reset(void)
 /* who has Host Controls: the host of a network game under way alone */
 static void case_seats(void)
 {
-	struct host_controls_seat seat = { TRUE, _game_connection_network_server, TRUE };
+	struct host_controls_seat seat = { TRUE, _game_connection_network_server, TRUE, FALSE };
 
 	CHECK(network_host_controls_shown_for(&seat), "the host of a network game under way");
 	seat.connection = _game_connection_network_client;
@@ -482,7 +514,13 @@ static void case_seats(void)
 	CHECK(!network_host_controls_shown_for(&seat), "a game of this machine alone (split screen, bots)");
 	seat.connection = _game_connection_network_server;
 	seat.playing = FALSE;
-	CHECK(!network_host_controls_shown_for(&seat), "the host in the lobby");
+	CHECK(!network_host_controls_shown_for(&seat), "the host between games");
+	seat.lobby = TRUE;
+	CHECK(network_host_controls_shown_for(&seat), "the host in its lobby");
+	seat.server = FALSE;
+	CHECK(!network_host_controls_shown_for(&seat), "a client in a lobby");
+	seat.server = TRUE;
+	seat.lobby = FALSE;
 	/* (and the world's) */
 	world_reset();
 	CHECK(network_host_controls_available(), "the host, in its game");
@@ -497,6 +535,16 @@ static void case_seats(void)
 	world_reset();
 	world.menu_loaded = TRUE;
 	CHECK(!network_host_controls_available(), "the menus");
+	world.lobby = TRUE;
+	world.lobby_players = 3;
+	CHECK(network_host_controls_available() && network_host_controls_in_lobby(), "the host's lobby");
+	{
+		struct host_controls_player players[8];
+
+		CHECK(network_host_controls_players(players, 8) == 3 && players[0].player_index == NONE,
+			"the lobby's players, its record's");
+	}
+	world.lobby = FALSE;
 	CHECK(!network_host_controls_open(NONE, 0) && !world.screen_loaded, "not opened for one who has none");
 }
 
@@ -702,7 +750,45 @@ static void case_end(void)
 	world.menu_loaded = TRUE;
 	network_host_controls_update();
 	CHECK(world.lobby_shown && !world.countdown_paused && world.countdown > 0, "the lobby, its countdown going");
+	CHECK(world.taken == 1 && world.taken_restarting, "a change asked for now set in its lobby");
 	CHECK(!network_host_controls_restarting(), "done");
+	network_host_controls_update();
+	CHECK(world.taken == 1, "and only once");
+}
+
+/* a game over, its lobby reached by the host's A on the scores: the next
+game (a change asked for, the playlist's) set there and started; none, and
+the host picks it as before */
+static void case_next(void)
+{
+	world_reset();
+	world.next_waiting = TRUE;
+	network_host_controls_update();
+	CHECK(!world.taken, "not while the game is played");
+	world.playing = FALSE;
+	network_host_controls_update();
+	CHECK(!world.taken, "not before the lobby's map is loaded");
+	world.menu_loaded = TRUE;
+	network_host_controls_update();
+	CHECK(world.taken == 1 && !world.taken_restarting, "the next game taken in the lobby");
+	CHECK(world.lobby_shown && !world.countdown_paused && world.countdown > 0, "the lobby, its countdown going");
+	network_host_controls_update();
+	CHECK(world.taken == 1, "once a game");
+	/* (no next game: the host's map choice stays, held) */
+	world_reset();
+	world.playing = TRUE;
+	network_host_controls_update();
+	world.playing = FALSE;
+	world.menu_loaded = TRUE;
+	network_host_controls_update();
+	CHECK(world.taken == 1 && !world.lobby_shown && world.countdown_paused, "none: the host picks it");
+	/* (a lobby the host never played from: nothing) */
+	world_reset();
+	world.playing = FALSE;
+	world.menu_loaded = TRUE;
+	world.next_waiting = TRUE;
+	network_host_controls_update();
+	CHECK(!world.taken, "no game played: nothing taken");
 }
 
 /* Max players: the list's next either way, never fewer than are in it */
@@ -838,6 +924,7 @@ int main(int argc, char **argv)
 	else CASE("move") case_move();
 	else CASE("lock") case_lock();
 	else CASE("end") case_end();
+	else CASE("next") case_next();
 	else CASE("maximum") case_maximum();
 	else CASE("bans") case_bans();
 	else CASE("players") case_players();

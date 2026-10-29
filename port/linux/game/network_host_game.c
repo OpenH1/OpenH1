@@ -450,7 +450,15 @@ boolean network_host_game_playlist_set(
 		snprintf(reason, (size_t)reason_size, "no entry in \"%s\"", text);
 		return FALSE;
 	}
-	host_game.index = NONE;
+	/* (the same playlist again goes on where it was; another starts at its
+	first) */
+	{
+		static char written[SERVER_ROTATION_MAXIMUM_TEXT];
+
+		server_rotation_text(&playlist, written, sizeof(written));
+		if (strcmp(written, config_string("network.host_playlist")))
+			host_game.index = NONE;
+	}
 	return host_game_playlist_write(&playlist);
 }
 

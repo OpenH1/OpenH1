@@ -9,7 +9,9 @@ Automated system link sessions for testing the netcode without the menus
   (slayer by default; game_engine_get_variant_by_name), as the pregame
   screen's fast setup does, and starts it debug.network_test_start seconds
   later; with more variants, once a game is over (debug.network_test_score
-  makes it short) the next, as the host's button on the scores does. A map
+  makes it short) the next, as the host's button on the scores does (also
+  when the host's playlist or a change has a next game: network_host_game.c,
+  which sets it up in the lobby and starts it). A map
   with a path is that level (custom_maps\a30, a Custom Edition map's), and
   the variant "coop" makes the game network co-op on it, at normal
   difficulty, as the Map screen does for a campaign level;
@@ -105,6 +107,7 @@ Called from the main loop every frame (main.c).
 #include "network_voice.h"
 #include "sim_rate.h"
 #include "network_standard.h"
+#include "network_host_game.h"
 #include "halo_keyboard.h"
 
 #include <math.h>
@@ -1743,8 +1746,12 @@ void network_test_update(
 		network_test.game_over = TRUE;
 		if (game_engine_showing_postgame() && global_network_game_server_get())
 		{
+			struct server_entry next;
+			boolean now;
+
 			network_test.postgame_seconds += seconds;
-			if (network_test.postgame_seconds >= 3.0f && network_test_variant(network_test.variant_index + 1, NULL, 0))
+			if (network_test.postgame_seconds >= 3.0f && (network_test_variant(network_test.variant_index + 1, NULL, 0) ||
+				network_host_game_next(&next, &now)))
 			{
 				network_test.postgame_seconds = 0.0f;
 				network_game_server_reset_to_pregame(global_network_game_server_get());

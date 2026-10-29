@@ -18,12 +18,13 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, ROOT, build, constant, mutated, read, run  # noqa: E402
 
-CASES = ["seats", "actions", "team_moves", "kick", "move", "lock", "end", "maximum", "bans", "players", "bots"]
+CASES = ["seats", "actions", "team_moves", "kick", "move", "lock", "end", "next", "maximum", "bans", "players",
+         "bots"]
 
 # a fault in network_host_controls.c, and the case that must catch it
 NEGATIVE_CONTROLS = {
-    "client-has-them": (("seat->server && seat->connection == _game_connection_network_server && seat->playing",
-                         "seat->server && seat->playing"), "seats"),
+    "client-has-them": (("seat->server && ((seat->connection == _game_connection_network_server && seat->playing) || "
+                         "seat->lobby)", "seat->server && (seat->playing || seat->lobby)"), "seats"),
     "local-game-has-them": (("seat->connection == _game_connection_network_server && seat->playing",
                              "seat->connection != _game_connection_network_client && seat->playing"), "seats"),
     "menus-have-them": (("seat.playing = server && game_in_progress() && !main_menu_is_loaded();",
@@ -57,7 +58,13 @@ NEGATIVE_CONTROLS = {
                        "if (!game_engine_running() || !game_engine_can_score())"), "end"),
     "restart-skips-scores": (("\t\tif (!view->postgame)\n\t\t\treturn stage;", ""), "end"),
     "restart-skips-lobby": (("\t\tif (!view->menu_loaded || !view->pregame)\n\t\t\treturn stage;", ""), "end"),
-    "restart-held": (("\t\tnetwork_game_server_pause_countdown(server, FALSE);\n", ""), "end"),
+    "restart-held": (("\tnetwork_game_server_pause_countdown(server, FALSE);\n", ""), "end"),
+    "lobby-not-theirs": (("(seat->connection == _game_connection_network_server && seat->playing) || seat->lobby",
+                          "seat->connection == _game_connection_network_server && seat->playing"), "seats"),
+    "next-not-taken": (("\t\tif (network_host_game_lobby_take(FALSE))", "\t\tif (FALSE)"), "next"),
+    "next-every-frame": (("\t\thost_controls.played = FALSE;\n\t\tif (network_host_game_lobby_take(FALSE))",
+                          "\t\tif (network_host_game_lobby_take(FALSE))"), "next"),
+    "restart-takes-nothing": (("\t\tnetwork_host_game_lobby_take(TRUE);\n", ""), "end"),
     "maximum-below-players": (("if (values[index] < current && values[index] >= present)",
                                "if (values[index] < current)"), "maximum"),
     "ban-key-anywhere": (("found != line && found[-1] != '\\t'", "0"), "bans"),
