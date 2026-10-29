@@ -19,7 +19,6 @@ bad gametype never reaches the wire, where the clients play by it.
 #include "game_modes.h"
 #include "server_gametypes.h"
 
-#include "../src/server_mode.h" /* port: port/linux/src/server_mode.c */
 #include "../src/server_toml.h" /* port: port/linux/src/server_toml.c */
 #include "../src/server_json.h" /* port: port/linux/src/server_json.c */
 #include "../src/posix.h" /* port: port/linux/src/posix_files.c */
@@ -27,7 +26,8 @@ bad gametype never reaches the wire, where the clients play by it.
 #include <stdio.h>
 #include <string.h>
 
-#if HALO_SERVER_BUILD
+/* (every build: a player host's map changes and playlist are of the same
+grammar, network_host_game.c) */
 
 /* the built-in gametypes, by name, and what the lobby and the server
 browser call them (11 characters) */
@@ -483,26 +483,3 @@ void server_gametype_check_entry(
 	}
 }
 
-#else
-
-boolean server_gametype_build(char const *gametype, struct server_rule const *rules, long rule_count,
-	struct game_variant *variant, struct game_variant_options *options, char *reason, long reason_size)
-{
-	return FALSE;
-}
-
-void server_gametype_check_entry(struct server_entry *entry)
-{
-}
-
-char const *server_gametype_builtin_name(long index)
-{
-	return NULL;
-}
-
-char const *server_gametype_engine_name(long game_engine_index)
-{
-	return "none";
-}
-
-#endif

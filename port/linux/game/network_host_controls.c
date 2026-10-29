@@ -68,6 +68,7 @@ tools/harness/tests/test_host_controls.py's.
 #include "network_votekick.h"
 #include "network_chat.h"
 #include "network_host_controls.h"
+#include "network_host_game.h"
 #include "latency_meter.h"
 #include "bots.h"
 
@@ -109,6 +110,8 @@ enum
 	/* the lobby's countdown before a restarted round (milliseconds, as
 	network_server_manager.c's NETWORK_GAME_COUNTDOWN_TIME) */
 	HOST_CONTROLS_RESTART_COUNTDOWN = 5999,
+	/* ... before the next game a change or the playlist set, after a game */
+	HOST_CONTROLS_NEXT_COUNTDOWN = 9999,
 };
 
 /* ---------- structures */
@@ -142,7 +145,9 @@ static struct
 	boolean other_format_noted;
 	/* when the screen last showed (its update: host_controls_menu.inc) */
 	unsigned long screen_time;
-} host_controls = { FALSE, _host_controls_restart_none, FALSE, NONE, 0, FALSE, 0 };
+	/* the host's game was played since it was last in its lobby */
+	boolean played;
+} host_controls = { FALSE, _host_controls_restart_none, FALSE, NONE, 0, FALSE, 0, FALSE };
 
 /* ---------- the pure parts */
 
@@ -151,7 +156,7 @@ boolean network_host_controls_shown_for(
 {
 	/* (a game of this machine alone, split screen or with bots, has a
 	server too, but no other machine: its pause menu keeps END GAME) */
-	return seat->server && seat->connection == _game_connection_network_server && seat->playing;
+	return seat->server && ((seat->connection == _game_connection_network_server && seat->playing) || seat->lobby);
 }
 
 unsigned long network_host_controls_actions_for(
@@ -314,7 +319,14 @@ boolean network_host_controls_available(
 	seat.server = server != NULL;
 	seat.connection = (short)game_connection();
 	seat.playing = server && game_in_progress() && !main_menu_is_loaded();
+	seat.lobby = server && network_host_game_in_lobby();
 	return network_host_controls_shown_for(&seat);
+}
+
+boolean network_host_controls_in_lobby(
+	void)
+{
+	return network_host_controls_available() && network_host_game_in_lobby();
 }
 
 /* the player's machine's index in the game (the game record's) */
@@ -412,6 +424,9 @@ short network_host_controls_players(
 	struct player_datum *player;
 	short count = 0;
 
+	/* (the lobby's: its record's players, network_host_game.c) */
+	if (network_host_controls_in_lobby())
+		return network_host_game_lobby_players(players, maximum);
 	if (!network_host_controls_available())
 		return 0;
 	data_iterator_new(&iterator, player_data);
@@ -424,6 +439,8 @@ short network_host_controls_players(
 		if (player->quit_out_of_game)
 			continue;
 		entry->player_index = iterator.datum_index;
+		entry->slot = player->network_player_data.player_list_index;
+		entry->machine_index = machine_index;
 		ustrncpy(entry->name, player->name, NUMBEROF(entry->name) - 1);
 		entry->name[NUMBEROF(entry->name) - 1] = 0;
 		entry->team = (short)player->team_index;
@@ -873,16 +890,48 @@ boolean network_host_controls_take_opening(
 
 /* ---------- each frame */
 
+/* the lobby shown in the map choice's place (which holds the countdown),
+and its countdown let go (milliseconds) */
+static void host_controls_lobby_start(
+	struct network_game_server *server,
+	long countdown)
+{
+	ui_widgets_close_all();
+	if (!ui_widget_load_by_name_or_tag(pc_menus_screen(HOST_CONTROLS_LOBBY), NONE, NULL, 0, NONE, NONE, NONE))
+		error(_error_log, "host controls: could not show the lobby");
+	network_game_server_pause_countdown(server, FALSE);
+	network_game_server_begin_game_start_countdown(server, countdown);
+}
+
 void network_host_controls_update(
 	void)
 {
 	struct network_game_server *server = global_network_game_server_get();
 	struct host_controls_restart_view view;
+	boolean playing = server && network_game_server_playing(server);
 	short action;
 
 	/* (the lock is the server's: a new one starts unlocked) */
 	if (!server)
 		host_controls.teams_locked = FALSE;
+	network_host_game_update();
+	/* (a game played, its lobby reached after it by the host's A on its
+	scores: the next game, a change asked for or the playlist's, set there
+	and started; none, and the host picks it as before) */
+	if (playing)
+		host_controls.played = TRUE;
+	else if (!server)
+		host_controls.played = FALSE;
+	else if (host_controls.played && host_controls.restart_stage == _host_controls_restart_none &&
+		main_menu_is_loaded())
+	{
+		host_controls.played = FALSE;
+		if (network_host_game_lobby_take(FALSE))
+		{
+			host_controls_lobby_start(server, HOST_CONTROLS_NEXT_COUNTDOWN);
+			error(_error_log, "host controls: the next game starts from the lobby");
+		}
+	}
 	if (host_controls.restart_stage == _host_controls_restart_none)
 		return;
 	view.server = server != NULL;
@@ -899,12 +948,11 @@ void network_host_controls_update(
 		break;
 	case _host_controls_restart_start:
 		/* (the lobby in the map choice's place, which held the countdown:
-		the game's map and gametype again, in a few seconds) */
-		ui_widgets_close_all();
-		if (!ui_widget_load_by_name_or_tag(pc_menus_screen(HOST_CONTROLS_LOBBY), NONE, NULL, 0, NONE, NONE, NONE))
-			error(_error_log, "host controls: could not show the lobby to restart the round");
-		network_game_server_pause_countdown(server, FALSE);
-		network_game_server_begin_game_start_countdown(server, HOST_CONTROLS_RESTART_COUNTDOWN);
+		the game's map and gametype again, or the one a change asked for
+		now, in a few seconds) */
+		host_controls.played = FALSE;
+		network_host_game_lobby_take(TRUE);
+		host_controls_lobby_start(server, HOST_CONTROLS_RESTART_COUNTDOWN);
 		error(_error_log, "host controls: the round starts again from the lobby");
 		break;
 	default:

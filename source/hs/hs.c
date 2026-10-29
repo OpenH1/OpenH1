@@ -2807,6 +2807,7 @@ symbols in this file:
 #include "networking/network_server_manager.h"
 #include "network_votekick.h" /* port: port/linux/game/network_votekick.c */
 #include "network_host_controls.h" /* port: port/linux/game/network_host_controls.c */
+#include "network_host_game.h" /* port: port/linux/game/network_host_game.c */
 #include "server_director.h" /* port: port/linux/game/server_director.c */
 #include "objects/damage.h"
 #include "objects/object_lights.h"
@@ -15625,6 +15626,15 @@ static boolean hs_compile_and_evaluate_command(
 		if (text)
 			return network_host_controls_open_command(text);
 	}
+	/* port: the host's host_map, host_playlist, host_say, host_shuffle_teams,
+	host_balance_teams, host_score_limit and host_time_limit
+	(network_host_game.c) */
+	{
+		boolean host_result;
+
+		if (network_host_game_console(expression, &host_result))
+			return host_result;
+	}
 	/* port: profile_reset_campaign, which clears the first player's
 	profile's campaign progress (player_ui_reset_campaign_progress) once
 	confirmed: "profile_reset_campaign yes" */
@@ -15670,7 +15680,8 @@ static boolean hs_compile_and_evaluate_command(
 	}
 	/* port: the host's ban and kick commands ("ban <player name>", "kick
 	<player name>", or the name's start: Tab completes it), which are no
-	script's */
+	script's; a ban for a while and why after the name ("ban <player name>
+	2h <reason>": network_host_game_ban_command) */
 	{
 		char const *text = hs_host_player_command(expression, "ban");
 		boolean kick = FALSE;
@@ -15689,7 +15700,7 @@ static boolean hs_compile_and_evaluate_command(
 			while (length > 0 && (name[length - 1] == ' ' || name[length - 1] == '\t'))
 				length--;
 			name[length] = 0;
-			return kick ? network_game_server_kick_player(name) : network_game_server_ban_player(name);
+			return kick ? network_game_server_kick_player(name) : network_host_game_ban_command(name);
 		}
 	}
 	csstrncpy(buffer, expression, sizeof(buffer));

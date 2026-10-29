@@ -5,9 +5,6 @@ A dedicated server's gametype files (server_toml.h).
 */
 
 #include "server_toml.h"
-#include "server_mode.h"
-
-#if HALO_SERVER_BUILD
 
 #include "platform.h"
 #include "port_config.h"
@@ -269,5 +266,3 @@ int server_gametype_file_read(const char *name, struct server_gametype_file *fil
 	free(text);
 	return ok;
 }
-
-#endif

@@ -87,6 +87,7 @@ mutes. The host's welcome to OpenCE players is a notice too
 #include "text_filter.h"
 #include "halo_keyboard.h"
 #include "server_director.h"
+#include "network_host_game.h"
 
 #include <stdio.h>
 
@@ -1465,8 +1466,19 @@ static boolean chat_host_command(
 	struct player_datum *player;
 	short minutes;
 	short command = chat_command_parse(text, typed, sizeof(typed), &minutes);
+	char const *said = chat_command_word(text, "/say");
 	short found;
 
+	/* ("/say <words>": the host's notice to every machine, as its console's
+	host_say: network_host_game.c) */
+	if (said)
+	{
+		if (!said[0])
+			chat_add_notice("Say /say <words> to tell everyone");
+		else if (!network_host_game_announce(said))
+			chat_add_notice("Nobody else sees that now");
+		return TRUE;
+	}
 	if (command == _chat_command_none)
 		return FALSE;
 	if (command == _chat_command_usage)

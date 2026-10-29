@@ -1103,6 +1103,11 @@ static const struct config_setting config_settings[] =
 		"(links allowed) or \"off\", in either case. Always off in a game a\n"
 		"player hosts that is listed in the server browser (a public internet\n"
 		"game); a dedicated server's follows this setting, listed or not." },
+	{ "network.host_playlist", _config_string, "\"\"", "HALO_NET_HOST_PLAYLIST", _environment_value, _platform_all,
+		"Hosting: the games played one after another when you host, each after\n"
+		"the last one's scores (Host Controls' PLAYLIST): map[:gametype\n"
+		"[+rule=value...]], separated by commas, as server.rotation has them.\n"
+		"Empty: you pick each game." },
 	{ "network.votekick", _config_boolean, "true", "HALO_NET_VOTEKICK", _environment_value, _platform_all,
 		"Hosting: let the players vote to kick a player (the scoreboard's\n"
 		"right-click, or the console's votekick). More than half of the players\n"
