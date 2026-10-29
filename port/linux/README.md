@@ -1482,7 +1482,13 @@ sooner too, or the device runs dry: it plays silence, a click or a crackle.
 The mixer runs on a thread of the host's that SDL's audio thread hands each
 request to (`port/android/host/host_sdl.c`), at the same priority as SDL's
 (but on Android; on the Mac a real-time thread, its period the device's
-I/O cycle). The game times each answer against what the device had
+I/O cycle). The mixer never waits for the game's threads: what the game
+sets and submits goes to its own side of each voice, and the mixer takes
+it over at the start of each mix only if no game thread holds its lock,
+else at the next (`src/dsound_sdl.c`, "the hand-off"; `debug.audio_log`
+counts the mixes that left it). A game thread the scheduler sets aside
+with the lock held used to make the mix wait up to 50 ms, and the device
+run dry. The game times each answer against what the device had
 queued (`src/dsound_sdl.c`, "the device's timing"), counts a dropout when it
 waited longer, and logs it ("sound: the device ran dry ..."). With
 `audio.buffer_frames = 0`, the default, the buffer starts at 256 frames (512

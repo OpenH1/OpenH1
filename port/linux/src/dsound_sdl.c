@@ -44,6 +44,12 @@ Packets the mixer has finished are completed from DirectSoundDoWork, which
 the game calls every frame, and from Flush, never from the audio thread:
 the game's completion callback is not meant to run concurrently with it.
 
+The mixer never waits for the game's threads (the hand-off): what the game
+sets and submits goes to its own side of each voice, under voices_lock, and
+the mixer takes it over to its side at the start of each mix, if the lock is
+free; if a game thread holds it, the mixer mixes what it took last time and
+takes the changes at the next mix.
+
 Without an audio device, a clock thread runs the same mixer into a scratch
 buffer, so streams still drain at their real rate.
 
@@ -129,6 +135,7 @@ struct voice_packet
 	short *samples;           /* interleaved, source channel count */
 	unsigned long frames;
 	BOOL finished;            /* played out by the mixer, not yet completed */
+	BOOL restart;             /* submitted to a stream with none: it starts over (stream_process) */
 };
 
 /* a mono 3D voice's way to each ear through the HRTF (hrtf_place), which
@@ -150,6 +157,35 @@ struct hrtf_parameters
 	float gain;
 };
 
+/* what the game sets on a voice, on its side (the stream's pending), which
+the mixer takes over to its own, the stream's fields of the same names
+(voice_settings_take) */
+struct voice_settings
+{
+	BOOL paused;
+	DWORD frequency;
+	float volume;
+	float mix_left, mix_right;
+	BOOL stereo_positioned;
+	float stereo_pan, stereo_distance, stereo_distance_fade;
+	float surround_bins[2][MAXIMUM_OUTPUT_CHANNELS];
+	DWORD mode;
+	float position[3], velocity[3];
+	float minimum_distance, maximum_distance;
+	LONG direct, direct_hf, room, room_hf;
+	float room_rolloff_factor;
+};
+
+/* a voice's flush (sdl_stream) */
+#define VOICE_FLUSHING 1
+#define VOICE_FLUSHED 2
+
+/* A voice has two sides (the hand-off). The game's, under voices_lock: next,
+the reference count, the settings it gives (pending), and its packets
+(packets, packet_head and packet_count: submitted and not yet completed,
+submitted counting them all, flush set by Flush). The mixer's: the rest, the
+settings and the packets as it took them (mixing) at its last hand-off. The
+format does not change once the voice is made. */
 struct sdl_stream
 {
 	/* must be first: in C an IDirectSoundStream is just { lpVtbl } */
@@ -158,6 +194,18 @@ struct sdl_stream
 	ULONG reference_count;
 	LPFNXMEDIAOBJECTCALLBACK callback;
 	LPVOID context;
+
+	/* (voices_lock) the game's side */
+	struct voice_settings pending;
+	BOOL pending_changed;
+	struct voice_packet packets[MAXIMUM_STREAM_PACKETS];
+	unsigned long packet_head;
+	unsigned long packet_count;
+	unsigned long submitted;
+	/* VOICE_FLUSHING while Flush completes the packets (the mixer takes none
+	meanwhile), VOICE_FLUSHED once it has: the mixer lets go of those it holds
+	and starts over */
+	int flush;
 
 	/* format */
 	BOOL adpcm;
@@ -197,9 +245,15 @@ struct sdl_stream
 	LONG room, room_hf;
 	float room_rolloff_factor;
 
-	struct voice_packet packets[MAXIMUM_STREAM_PACKETS];
-	unsigned long packet_head;
-	unsigned long packet_count;
+	/* the voices the mixer mixes, as it took them (mixing_streams) */
+	struct sdl_stream *mixing_link;
+	/* the packets it holds: those submitted that the game had not completed
+	at its last hand-off, the finished ones too, and the count of the
+	packets submitted up to the last it holds */
+	struct voice_packet mixing[MAXIMUM_STREAM_PACKETS];
+	unsigned long mixing_head;
+	unsigned long mixing_count;
+	unsigned long mixing_next;
 	/* the next frame to take from the first packet not finished */
 	unsigned long cursor;
 	/* the resampler's (resampler_reset): the last RESAMPLER_HISTORY frames
@@ -240,11 +294,15 @@ struct sdl_stream
 	float hrtf_shadow[2][2];
 };
 
-static pthread_mutex_t mixer_lock = PTHREAD_MUTEX_INITIALIZER;
+/* the game's side of the voices (the hand-off), which the mixer only tries,
+and the game's voices, the newest first; the mixer's, as it took them */
+static pthread_mutex_t voices_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct sdl_stream *streams;
+static struct sdl_stream *mixing_streams;
 
-/* the listener, in DirectSound's left-handed +y up space */
-static struct
+/* the listener, in DirectSound's left-handed +y up space: the mixer's, and
+the game's (voices_lock), which the mixer takes when it has changed */
+static struct listener_state
 {
 	float position[3];
 	float front[3];
@@ -256,7 +314,9 @@ static struct
 	/* (units a second; the game gives each voice's velocity relative to the
 	listener, and the listener none) */
 	float velocity[3];
-} listener = { { 0, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 }, 1.0f, 1.0f, { 0, 0, 0 } };
+} listener = { { 0, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 }, 1.0f, 1.0f, { 0, 0, 0 } },
+	listener_set = { { 0, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 }, 1.0f, 1.0f, { 0, 0, 0 } };
+static BOOL listener_changed;
 
 static float master_volume = 1.0f;
 /* audio.doppler */
@@ -270,12 +330,18 @@ static unsigned long output_channels = 2;
 
 /* the I3DL2 listener properties (SetI3DL2Listener), which the reverb models:
 DirectSound's defaults until the game sets an environment, their room level
-leaving it silent; serial counts the changes */
+leaving it silent; serial counts the changes. The mixer's, and the game's
+(voices_lock), which the mixer takes when it has changed */
 static DSI3DL2LISTENER environment =
 {
 	DSBVOLUME_MIN, 0, 0.0f, 1.49f, 0.83f, -2602, 0.007f, 200, 0.011f, 100.0f, 100.0f, 5000.0f
 };
 static unsigned long environment_serial;
+static DSI3DL2LISTENER environment_set =
+{
+	DSBVOLUME_MIN, 0, 0.0f, 1.49f, 0.83f, -2602, 0.007f, 200, 0.011f, 100.0f, 100.0f, 5000.0f
+};
+static BOOL environment_changed;
 /* audio.reverb */
 static BOOL reverb_enabled = TRUE;
 
@@ -1201,9 +1267,9 @@ static BOOL take_frame(struct sdl_stream *stream, float *frame)
 		struct voice_packet *packet = NULL;
 		unsigned long position;
 
-		for (position = 0; position < stream->packet_count; position++)
+		for (position = 0; position < stream->mixing_count; position++)
 		{
-			struct voice_packet *candidate = &stream->packets[(stream->packet_head + position) % MAXIMUM_STREAM_PACKETS];
+			struct voice_packet *candidate = &stream->mixing[(stream->mixing_head + position) % MAXIMUM_STREAM_PACKETS];
 
 			if (!candidate->finished)
 			{
@@ -1231,9 +1297,9 @@ static BOOL voice_has_frames(struct sdl_stream *stream)
 {
 	unsigned long position;
 
-	for (position = 0; position < stream->packet_count; position++)
+	for (position = 0; position < stream->mixing_count; position++)
 	{
-		struct voice_packet *packet = &stream->packets[(stream->packet_head + position) % MAXIMUM_STREAM_PACKETS];
+		struct voice_packet *packet = &stream->mixing[(stream->mixing_head + position) % MAXIMUM_STREAM_PACKETS];
 
 		if (packet->finished)
 			continue;
@@ -1274,7 +1340,7 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	float ramp_surround[2][MAXIMUM_OUTPUT_CHANNELS];
 	unsigned long speaker;
 
-	if (stream->paused || !stream->packet_count || !stream->sample_rate)
+	if (stream->paused || !stream->mixing_count || !stream->sample_rate)
 		return;
 	/* (at most MIX_CHUNK_FRAMES at a time: the HRTF's direct path) */
 	if (frames > MIX_CHUNK_FRAMES)
@@ -2046,34 +2112,346 @@ static void record(const float *output, unsigned long frames)
 	}
 }
 
+/* ---------- the hand-off
+
+The mixer runs on the device's thread, which must answer each request
+within the buffer (5.3 ms at 256 frames), and the game's threads run at an
+ordinary priority: a game thread holding a lock the mixer waits on can be
+set aside by the scheduler for tens of milliseconds, and the device runs
+dry. So the mixer never waits on the game's threads. What the game sets
+(each voice's settings, the listener, the environment) and submits (packets,
+flushes, voices made and released) goes to its own side, under voices_lock,
+held only to set it. At the start of each mix the mixer tries the lock and,
+if it is free, takes the game's side over to its own (voices_hand_off), as
+the lock held for the whole mix used to give it; if a game thread holds it,
+the mixer mixes what it took last time and takes the changes at the next
+mix, a buffer later. After the mix it tries the lock again to say which
+packets it finished (voices_publish), for the game to complete. The packets
+the game lets go of while the mixer may still hold them (flushed, or a
+voice released) are freed once the mixer has taken a hand-off since
+(retire). Without a device (silent_clock_thread, and a mix paced by the
+frames drawn) the mixer waits for the lock, as it did. */
+
+/* (voices_lock) the hand-offs the mixer has taken; (the mixer's thread)
+those it left for the next mix, a game thread holding the lock */
+static unsigned long hand_offs;
+static unsigned long hand_offs_skipped;
+
+/* (voices_lock) memory the mixer may still read, freed once it has taken a
+hand-off since (retired_free) */
+static struct retired_memory
+{
+	void *memory;
+	unsigned long hand_off;
+} *retired;
+static unsigned long retired_count, retired_size;
+
+/* debug.latency_log (the sound's latency, below): (voices_lock) the next
+voice started is measured, from the step at armed_ns; the voice measured,
+from act_ns, started at start_ns; the device's request whose buffer first
+had it (the mixer's thread sets mixed), and when that buffer was handed
+back (handed_ns) */
+static struct
+{
+	Uint64 armed_ns;
+	struct sdl_stream *stream;
+	Uint64 act_ns, start_ns, request_ns, handed_ns;
+	BOOL mixed;
+} sound_latency;
+/* (the mixer's thread) the device's request whose buffer is being mixed,
+until its first mix; the voice measured is in that buffer; the buffer it was
+in handed back, for the next hand-off to say if the lock was not free */
+static Uint64 sound_latency_request_ns;
+static BOOL sound_latency_handing;
+static Uint64 sound_latency_handed_ns;
+
+/* debug.audio_log: (voices_lock) each 3D voice playing, where it is from the
+listener and its gains as the mixer has them, which the mixer makes at a
+hand-off once the game's thread wants them (voices_log) */
+#define VOICES_REPORTED 128
+struct voice_report
+{
+	const struct sdl_stream *stream;
+	float ahead, right, up, minimum_distance;
+	float left_gain, right_gain;
+	BOOL hrtf_on;
+	struct hrtf_parameters parameters;
+	float doppler;
+};
+static struct
+{
+	BOOL wanted, ready;
+	unsigned long count;
+	struct voice_report voices[VOICES_REPORTED];
+} voices_report;
+
+/* (the mixer's thread, voices_lock) the settings the game gave the voice */
+static void voice_settings_take(struct sdl_stream *stream)
+{
+	const struct voice_settings *settings = &stream->pending;
+
+	stream->paused = settings->paused;
+	stream->frequency = settings->frequency;
+	stream->volume = settings->volume;
+	stream->mix_left = settings->mix_left;
+	stream->mix_right = settings->mix_right;
+	stream->stereo_positioned = settings->stereo_positioned;
+	stream->stereo_pan = settings->stereo_pan;
+	stream->stereo_distance = settings->stereo_distance;
+	stream->stereo_distance_fade = settings->stereo_distance_fade;
+	memcpy(stream->surround_bins, settings->surround_bins, sizeof(stream->surround_bins));
+	stream->mode = settings->mode;
+	memcpy(stream->position, settings->position, sizeof(stream->position));
+	memcpy(stream->velocity, settings->velocity, sizeof(stream->velocity));
+	stream->minimum_distance = settings->minimum_distance;
+	stream->maximum_distance = settings->maximum_distance;
+	stream->direct = settings->direct;
+	stream->direct_hf = settings->direct_hf;
+	stream->room = settings->room;
+	stream->room_hf = settings->room_hf;
+	stream->room_rolloff_factor = settings->room_rolloff_factor;
+}
+
+/* (the mixer's thread, voices_lock) the packets the mixer has finished,
+marked on the game's side for it to complete: they lead the voice's */
+static void voice_finished_publish(struct sdl_stream *stream)
+{
+	unsigned long first = stream->submitted - stream->packet_count;
+	unsigned long position;
+
+	for (position = 0; position < stream->mixing_count; position++)
+	{
+		const struct voice_packet *packet = &stream->mixing[(stream->mixing_head + position) % MAXIMUM_STREAM_PACKETS];
+		unsigned long offset = stream->mixing_next - stream->mixing_count + position - first;
+
+		if (!packet->finished)
+			break;
+		if (offset < stream->packet_count)
+			stream->packets[(stream->packet_head + offset) % MAXIMUM_STREAM_PACKETS].finished = TRUE;
+	}
+}
+
+/* (the mixer's thread, voices_lock) the game's side of a voice taken over:
+a flush, the packets it has completed let go of, those it has submitted
+since, and its settings */
+static void voice_hand_off(struct sdl_stream *stream)
+{
+	unsigned long first = stream->submitted - stream->packet_count;
+	unsigned long sequence;
+
+	/* flushed: the packets it held let go of, and the voice starts over */
+	if (stream->flush)
+	{
+		stream->mixing_count = 0;
+		stream->cursor = 0;
+		resampler_reset(stream);
+		if (stream->flush == VOICE_FLUSHED)
+			stream->flush = 0;
+	}
+	/* (the packets numbered from the first submitted: those before the
+	game's first it has completed, which were finished) */
+	while (stream->mixing_count && (long)(first - (stream->mixing_next - stream->mixing_count)) > 0)
+	{
+		stream->mixing_head = (stream->mixing_head + 1) % MAXIMUM_STREAM_PACKETS;
+		stream->mixing_count--;
+	}
+	voice_finished_publish(stream);
+	if (stream->flush != VOICE_FLUSHING)
+	{
+		sequence = (long)(first - stream->mixing_next) > 0 ? first : stream->mixing_next;
+		for (; sequence != stream->submitted && stream->mixing_count < MAXIMUM_STREAM_PACKETS; sequence++)
+		{
+			const struct voice_packet *packet =
+				&stream->packets[(stream->packet_head + (sequence - first)) % MAXIMUM_STREAM_PACKETS];
+
+			/* (a stream that ran dry starts over) */
+			if (packet->restart)
+			{
+				stream->cursor = 0;
+				resampler_reset(stream);
+				stream->gains_valid = FALSE;
+			}
+			stream->mixing[(stream->mixing_head + stream->mixing_count) % MAXIMUM_STREAM_PACKETS] = *packet;
+			stream->mixing[(stream->mixing_head + stream->mixing_count) % MAXIMUM_STREAM_PACKETS].finished = FALSE;
+			stream->mixing_count++;
+		}
+		stream->mixing_next = sequence;
+	}
+	if (stream->pending_changed)
+	{
+		voice_settings_take(stream);
+		stream->pending_changed = FALSE;
+	}
+}
+
+/* (the mixer's thread, voices_lock) debug.audio_log's voices, as the mixer
+has them now */
+static void voices_report_make(void)
+{
+	struct sdl_stream *stream;
+
+	voices_report.count = 0;
+	for (stream = mixing_streams; stream && voices_report.count < VOICES_REPORTED; stream = stream->mixing_link)
+	{
+		struct voice_report *report = &voices_report.voices[voices_report.count];
+		float offset[3], right_axis[3], room, direct_lowpass, room_lowpass;
+		int axis;
+
+		if (!stream->has_3d || stream->mode == DS3DMODE_DISABLE || stream->paused || !stream->mixing_count)
+			continue;
+		for (axis = 0; axis < 3; axis++)
+		{
+			offset[axis] = stream->position[axis] -
+				(stream->mode == DS3DMODE_HEADRELATIVE ? 0.0f : listener.position[axis]);
+		}
+		right_axis[0] = listener.top[1] * listener.front[2] - listener.top[2] * listener.front[1];
+		right_axis[1] = listener.top[2] * listener.front[0] - listener.top[0] * listener.front[2];
+		right_axis[2] = listener.top[0] * listener.front[1] - listener.top[1] * listener.front[0];
+		report->stream = stream;
+		report->ahead = dot3(offset, listener.front) * listener.distance_factor;
+		report->right = dot3(offset, right_axis) * listener.distance_factor;
+		report->up = dot3(offset, listener.top) * listener.distance_factor;
+		report->minimum_distance = stream->minimum_distance * listener.distance_factor;
+		voice_gains(stream, &report->left_gain, &report->right_gain, &room, &direct_lowpass, &room_lowpass,
+			&report->hrtf_on, &report->parameters);
+		/* (through the HRTF, each ear's gain is its own, the pan's not
+		heard) */
+		if (report->hrtf_on && hrtf_enabled && output_channels == 2)
+			report->left_gain = report->right_gain = report->parameters.gain;
+		report->doppler = doppler_ratio(stream);
+		voices_report.count++;
+	}
+	voices_report.ready = TRUE;
+	voices_report.wanted = FALSE;
+}
+
+/* (the mixer's thread) the game's side taken over, at the start of a mix:
+waiting for the lock (wait: without a device), or only if it is free */
+static void voices_hand_off(BOOL wait)
+{
+	struct sdl_stream *stream;
+
+	if (wait)
+		pthread_mutex_lock(&voices_lock);
+	else if (pthread_mutex_trylock(&voices_lock))
+	{
+		hand_offs_skipped++;
+		return;
+	}
+	for (stream = streams; stream; stream = stream->next)
+	{
+		voice_hand_off(stream);
+		stream->mixing_link = stream->next;
+	}
+	mixing_streams = streams;
+	if (listener_changed)
+	{
+		listener = listener_set;
+		listener_changed = FALSE;
+	}
+	if (environment_changed)
+	{
+		environment = environment_set;
+		environment_serial++;
+		environment_changed = FALSE;
+	}
+	/* (debug.latency_log: the voice measured, in this buffer from its start) */
+	if (sound_latency_request_ns && sound_latency.stream && !sound_latency.mixed && !sound_latency.stream->paused &&
+		sound_latency.stream->sample_rate && voice_has_frames(sound_latency.stream))
+	{
+		sound_latency.mixed = TRUE;
+		sound_latency.request_ns = sound_latency_request_ns;
+		sound_latency_handing = TRUE;
+	}
+	if (sound_latency_handed_ns)
+	{
+		if (sound_latency.mixed && !sound_latency.handed_ns)
+			sound_latency.handed_ns = sound_latency_handed_ns;
+		sound_latency_handed_ns = 0;
+	}
+	if (voices_report.wanted)
+		voices_report_make();
+	hand_offs++;
+	pthread_mutex_unlock(&voices_lock);
+}
+
+/* (the mixer's thread) after a mix, the packets it finished said to the
+game, if the lock is free (else at the next hand-off) */
+static void voices_publish(BOOL wait)
+{
+	struct sdl_stream *stream;
+
+	if (wait)
+		pthread_mutex_lock(&voices_lock);
+	else if (pthread_mutex_trylock(&voices_lock))
+		return;
+	for (stream = mixing_streams; stream; stream = stream->mixing_link)
+		voice_finished_publish(stream);
+	pthread_mutex_unlock(&voices_lock);
+}
+
+/* (the game's thread, voices_lock) memory the mixer may still read freed
+once it has taken a hand-off since, which lets go of it (a flushed packet's
+samples, a voice released); kept, never freed, if there is no room to keep
+it */
+static void retire(void *memory)
+{
+	if (!memory)
+		return;
+	if (retired_count == retired_size)
+	{
+		unsigned long size = retired_size ? retired_size * 2 : 64;
+		struct retired_memory *grown = realloc(retired, size * sizeof(*retired));
+
+		if (!grown)
+			return;
+		retired = grown;
+		retired_size = size;
+	}
+	retired[retired_count].memory = memory;
+	retired[retired_count].hand_off = hand_offs;
+	retired_count++;
+}
+
+/* (the game's thread) what the mixer has let go of, freed */
+static void retired_free(void)
+{
+	unsigned long index, kept = 0;
+
+	pthread_mutex_lock(&voices_lock);
+	for (index = 0; index < retired_count; index++)
+	{
+		if (retired[index].hand_off != hand_offs)
+			free(retired[index].memory);
+		else
+			retired[kept++] = retired[index];
+	}
+	retired_count = kept;
+	pthread_mutex_unlock(&voices_lock);
+}
+
 /* debug.audio_log: the time the mixes took (nanoseconds) and the frames
 they mixed, since the log last said */
 static Uint64 mix_nanoseconds;
 static unsigned long mix_frames;
 
-static void mix(float *output, unsigned long frames)
+/* a mix of frames into output: the game's side taken over first, waiting
+for it only without a device (wait) */
+static void mix(float *output, unsigned long frames, BOOL wait)
 {
 	struct sdl_stream *stream;
-	DSI3DL2LISTENER properties;
-	BOOL enabled = reverb_enabled, changed = FALSE;
-	unsigned long serial = 0;
+	BOOL enabled = reverb_enabled;
 	Uint64 started = SDL_GetTicksNS();
 
 	memset(output, 0, frames * output_channels * sizeof(float));
 	memset(reverb.send, 0, frames * sizeof(float));
-	pthread_mutex_lock(&mixer_lock);
-	for (stream = streams; stream; stream = stream->next)
+	voices_hand_off(wait);
+	for (stream = mixing_streams; stream; stream = stream->mixing_link)
 		mix_voice(stream, output, reverb.send, frames);
+	voices_publish(wait);
 	/* a new environment, once the fade to the last is over */
 	if (reverb.serial != environment_serial && !reverb.fade)
-	{
-		properties = environment;
-		serial = environment_serial;
-		changed = TRUE;
-	}
-	pthread_mutex_unlock(&mixer_lock);
-	if (changed)
-		reverb_update(&properties, serial);
+		reverb_update(&environment, environment_serial);
 	/* the reverb runs while something reverberates, and stops once it is
 	turned off and faded out, or quiet */
 	if (!reverb.silent || (enabled && reverb_sent(reverb.send, frames)))
@@ -2187,6 +2565,12 @@ static struct
 	Sint64 block_ns;
 	unsigned long block_requests;
 	BOOL late;
+	/* (the mixer's thread) what it has counted since it last added them to
+	those below: the mixer never waits for timing_lock (the hand-off) */
+	unsigned long counted_dropouts;
+	double counted_silence_ms;
+	unsigned long counted_pauses;
+	Sint64 counted_latest_ns;
 	/* (timing_lock) since the device opened: its dropouts and their silence
 	(the lateness beyond the slack), its pauses; the latest answer since the
 	game's thread last took it */
@@ -2261,27 +2645,39 @@ static void timing_answered(unsigned long frames, Sint64 now)
 	Sint64 lateness = timing.lag_ns - timing.baseline_ns + (now - timing.request_ns);
 
 	timing.frames += frames;
-	pthread_mutex_lock(&timing_lock);
-	if (lateness > timing.latest_ns)
-		timing.latest_ns = lateness;
+	if (lateness > timing.counted_latest_ns)
+		timing.counted_latest_ns = lateness;
 	if (lateness > timing.slack_ns && !timing.late)
 	{
 		timing.late = TRUE;
 		if (lateness - timing.slack_ns > TIMING_PAUSE_NS)
 		{
-			timing.pauses++;
+			timing.counted_pauses++;
 		}
 		else
 		{
-			timing.dropouts++;
-			timing.silence_ms += (double)(lateness - timing.slack_ns) / 1.0e6;
+			timing.counted_dropouts++;
+			timing.counted_silence_ms += (double)(lateness - timing.slack_ns) / 1.0e6;
 		}
 	}
 	else if (lateness < timing.slack_ns / 2)
 	{
 		timing.late = FALSE;
 	}
+	/* (added for the game's thread if the lock is free, else after the
+	next answer) */
+	if (pthread_mutex_trylock(&timing_lock))
+		return;
+	if (timing.counted_latest_ns > timing.latest_ns)
+		timing.latest_ns = timing.counted_latest_ns;
+	timing.dropouts += timing.counted_dropouts;
+	timing.silence_ms += timing.counted_silence_ms;
+	timing.pauses += timing.counted_pauses;
 	pthread_mutex_unlock(&timing_lock);
+	timing.counted_latest_ns = 0;
+	timing.counted_dropouts = 0;
+	timing.counted_silence_ms = 0.0;
+	timing.counted_pauses = 0;
 }
 
 /* ---------- the sound's latency (debug.latency_log)
@@ -2294,20 +2690,8 @@ its buffer), and the frames queued on the device ahead of that buffer and
 the system's latency after (device_timing: what SDL's driver keeps queued,
 and what the system reports). The time to answer the request is not added:
 the buffer plays after those queued ahead, however soon it is handed back,
-unless so late that the device runs dry (timing). */
-static struct
-{
-	/* (mixer_lock) the next voice started is measured, from the step at
-	armed_ns; the voice measured, from act_ns, started at start_ns; the
-	device's request whose buffer first had it (the mixer's thread sets
-	mixed), and when that buffer was handed back (handed_ns) */
-	Uint64 armed_ns;
-	struct sdl_stream *stream;
-	Uint64 act_ns, start_ns, request_ns, handed_ns;
-	BOOL mixed;
-} sound_latency;
-/* (the mixer's thread) the voice measured is in the buffer being mixed */
-static BOOL sound_latency_handing;
+unless so late that the device runs dry (timing). The mixer marks the voice
+as it takes it over (voices_hand_off: sound_latency). */
 
 /* (the host: port/android/host/host_sdl.c) */
 int host_sdl_audio_stream_timing(unsigned int stream, char *driver, int driver_size, int *timing);
@@ -2323,7 +2707,7 @@ BOOL dsound_sdl_latency_take(unsigned long long *times, double *queued_ms, doubl
 {
 	BOOL taken = FALSE;
 
-	pthread_mutex_lock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
 	if (sound_latency.handed_ns)
 	{
 		times[0] = sound_latency.act_ns;
@@ -2333,7 +2717,7 @@ BOOL dsound_sdl_latency_take(unsigned long long *times, double *queued_ms, doubl
 		memset(&sound_latency, 0, sizeof(sound_latency));
 		taken = TRUE;
 	}
-	pthread_mutex_unlock(&mixer_lock);
+	pthread_mutex_unlock(&voices_lock);
 	if (!taken)
 		return FALSE;
 	*queued_ms = device_timing_valid ? device_timing[2] / 1000.0 : 0.0;
@@ -2349,10 +2733,10 @@ BOOL dsound_sdl_latency_take(unsigned long long *times, double *queued_ms, doubl
 step in which the weapon fired), unless one is being measured */
 void dsound_sdl_latency_arm(unsigned long long act_ns)
 {
-	pthread_mutex_lock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
 	if (!sound_latency.stream && !sound_latency.handed_ns)
 		sound_latency.armed_ns = act_ns;
-	pthread_mutex_unlock(&mixer_lock);
+	pthread_mutex_unlock(&voices_lock);
 }
 
 /* audio.output_device ("default": the system's; none on Android) */
@@ -2374,20 +2758,9 @@ static void SDLCALL audio_callback(void *userdata, SDL_AudioStream *stream, int 
 	if (additional_amount <= 0)
 		return;
 	timing_request((Sint64)SDL_GetTicksNS());
-	/* (debug.latency_log: the voice measured, in this buffer from its start;
-	the game's thread marks it, mixer_lock held) */
-	if (sound_latency.stream)
-	{
-		pthread_mutex_lock(&mixer_lock);
-		if (sound_latency.stream && !sound_latency.mixed && !sound_latency.stream->paused &&
-			sound_latency.stream->sample_rate && voice_has_frames(sound_latency.stream))
-		{
-			sound_latency.mixed = TRUE;
-			sound_latency.request_ns = (Uint64)timing.request_ns;
-			sound_latency_handing = TRUE;
-		}
-		pthread_mutex_unlock(&mixer_lock);
-	}
+	/* (debug.latency_log: the voice measured, in this buffer from its start,
+	as the first mix's hand-off takes it) */
+	sound_latency_request_ns = (Uint64)timing.request_ns;
 	while (additional_amount > 0)
 	{
 		unsigned long frames = (unsigned long)additional_amount / (output_channels * sizeof(float));
@@ -2396,20 +2769,29 @@ static void SDLCALL audio_callback(void *userdata, SDL_AudioStream *stream, int 
 			frames = MIX_CHUNK_FRAMES;
 		if (!frames)
 			frames = 1;
-		mix(buffer, frames);
+		mix(buffer, frames, FALSE);
+		sound_latency_request_ns = 0;
 		SDL_PutAudioStreamData(stream, buffer, (int)(frames * output_channels * sizeof(float)));
 		additional_amount -= (int)(frames * output_channels * sizeof(float));
 		handed += frames;
 	}
 	now = (Sint64)SDL_GetTicksNS();
 	timing_answered(handed, now);
+	/* (the time it was handed back; at the next hand-off if a game thread
+	holds the lock) */
 	if (sound_latency_handing)
 	{
 		sound_latency_handing = FALSE;
-		pthread_mutex_lock(&mixer_lock);
-		if (sound_latency.mixed)
-			sound_latency.handed_ns = (Uint64)now;
-		pthread_mutex_unlock(&mixer_lock);
+		if (!pthread_mutex_trylock(&voices_lock))
+		{
+			if (sound_latency.mixed)
+				sound_latency.handed_ns = (Uint64)now;
+			pthread_mutex_unlock(&voices_lock);
+		}
+		else
+		{
+			sound_latency_handed_ns = (Uint64)now;
+		}
 	}
 }
 
@@ -2436,7 +2818,7 @@ static void *silent_clock_thread(void *parameter)
 		while (paced_owed < 480.0)
 			pthread_cond_wait(&paced_condition, &paced_lock);
 		pthread_mutex_unlock(&paced_lock);
-		mix(buffer, 480);
+		mix(buffer, 480, TRUE);
 		pthread_mutex_lock(&paced_lock);
 		paced_owed -= 480.0;
 		pthread_cond_broadcast(&paced_condition);
@@ -2445,7 +2827,7 @@ static void *silent_clock_thread(void *parameter)
 	clock_gettime(CLOCK_MONOTONIC, &next);
 	for (;;)
 	{
-		mix(buffer, 480);
+		mix(buffer, 480, TRUE);
 		next.tv_nsec += 10000000L;
 		if (next.tv_nsec >= 1000000000L)
 		{
@@ -2760,9 +3142,15 @@ void dsound_sdl_output_device_check(void)
 
 /* ---------- completion */
 
+/* (voices_lock) a packet's samples let go of: freed if the mixer finished it
+(it reads them no more), else once it has taken a hand-off since (it may
+hold the packet until then) */
 static void packet_release(struct voice_packet *entry)
 {
-	free(entry->samples);
+	if (entry->finished)
+		free(entry->samples);
+	else
+		retire(entry->samples);
 	entry->samples = NULL;
 }
 
@@ -2773,10 +3161,6 @@ static void stream_complete_head(struct sdl_stream *stream, DWORD status, DWORD 
 	struct voice_packet *entry = &stream->packets[stream->packet_head];
 	XMEDIAPACKET packet = entry->packet;
 
-	/* (one not played to its end, flushed: the cursor was its place, and the
-	mixer may take the next while the lock is let go below) */
-	if (!entry->finished)
-		stream->cursor = 0;
 	packet_release(entry);
 	entry->finished = FALSE;
 	stream->packet_head = (stream->packet_head + 1) % MAXIMUM_STREAM_PACKETS;
@@ -2787,9 +3171,9 @@ static void stream_complete_head(struct sdl_stream *stream, DWORD status, DWORD 
 		*packet.pdwStatus = status;
 	if (stream->callback)
 	{
-		pthread_mutex_unlock(&mixer_lock);
+		pthread_mutex_unlock(&voices_lock);
 		stream->callback(stream->context, packet.pContext, status);
-		pthread_mutex_lock(&mixer_lock);
+		pthread_mutex_lock(&voices_lock);
 	}
 	else if (packet.hCompletionEvent)
 	{
@@ -2801,13 +3185,13 @@ static void streams_complete_finished(void)
 {
 	struct sdl_stream *stream;
 
-	pthread_mutex_lock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
 	for (stream = streams; stream; stream = stream->next)
 	{
 		while (stream->packet_count && stream->packets[stream->packet_head].finished)
 			stream_complete_head(stream, XMEDIAPACKET_STATUS_SUCCESS, stream->packets[stream->packet_head].packet.dwMaxSize);
 	}
-	pthread_mutex_unlock(&mixer_lock);
+	pthread_mutex_unlock(&voices_lock);
 }
 
 /* ---------- stream interface */
@@ -2822,9 +3206,9 @@ static ULONG STDMETHODCALLTYPE stream_add_reference(IDirectSoundStream *object)
 	struct sdl_stream *stream = stream_from_interface(object);
 	ULONG count;
 
-	pthread_mutex_lock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
 	count = ++stream->reference_count;
-	pthread_mutex_unlock(&mixer_lock);
+	pthread_mutex_unlock(&voices_lock);
 	return count;
 }
 
@@ -2836,14 +3220,14 @@ static ULONG STDMETHODCALLTYPE stream_release(IDirectSoundStream *object)
 	struct sdl_stream **link;
 	ULONG count;
 
-	pthread_mutex_lock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
 	count = --stream->reference_count;
-	pthread_mutex_unlock(&mixer_lock);
+	pthread_mutex_unlock(&voices_lock);
 	if (count)
 		return count;
 
 	stream_flush(object);
-	pthread_mutex_lock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
 	if (sound_latency.stream == stream)
 		memset(&sound_latency, 0, sizeof(sound_latency));
 	for (link = &streams; *link; link = &(*link)->next)
@@ -2854,8 +3238,9 @@ static ULONG STDMETHODCALLTYPE stream_release(IDirectSoundStream *object)
 			break;
 		}
 	}
-	pthread_mutex_unlock(&mixer_lock);
-	free(stream);
+	/* (the mixer may hold it until its next hand-off) */
+	retire(stream);
+	pthread_mutex_unlock(&voices_lock);
 	return 0;
 }
 
@@ -2873,9 +3258,9 @@ static HRESULT STDMETHODCALLTYPE stream_get_status(IDirectSoundStream *object, L
 {
 	struct sdl_stream *stream = stream_from_interface(object);
 
-	pthread_mutex_lock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
 	*status = stream->packet_count < MAXIMUM_STREAM_PACKETS ? XMO_STATUSF_ACCEPT_INPUT_DATA : 0;
-	pthread_mutex_unlock(&mixer_lock);
+	pthread_mutex_unlock(&voices_lock);
 	return S_OK;
 }
 
@@ -2893,10 +3278,10 @@ static HRESULT STDMETHODCALLTYPE stream_process(IDirectSoundStream *object, LPCX
 	samples = stream->adpcm ?
 		decode_adpcm(input->pvBuffer, input->dwMaxSize, stream->channels, &frames) :
 		decode_pcm(input->pvBuffer, input->dwMaxSize, stream->channels, &frames);
-	pthread_mutex_lock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
 	if (stream->packet_count == MAXIMUM_STREAM_PACKETS)
 	{
-		pthread_mutex_unlock(&mixer_lock);
+		pthread_mutex_unlock(&voices_lock);
 		free(samples);
 		return E_OUTOFMEMORY;
 	}
@@ -2905,16 +3290,15 @@ static HRESULT STDMETHODCALLTYPE stream_process(IDirectSoundStream *object, LPCX
 	entry->samples = samples;
 	entry->frames = samples ? frames : 0;
 	entry->finished = FALSE;
+	/* a stream that ran dry starts over, as the mixer takes the packet
+	(voice_hand_off) */
+	entry->restart = !stream->packet_count;
 	if (input->pdwStatus)
 		*input->pdwStatus = XMEDIAPACKET_STATUS_PENDING;
 	if (input->pdwCompletedSize)
 		*input->pdwCompletedSize = 0;
 	if (!stream->packet_count)
 	{
-		/* a stream that ran dry starts over */
-		stream->cursor = 0;
-		resampler_reset(stream);
-		stream->gains_valid = FALSE;
 		/* (debug.latency_log: the voice started after the weapon fired) */
 		if (sound_latency.armed_ns && !sound_latency.stream)
 		{
@@ -2925,7 +3309,8 @@ static HRESULT STDMETHODCALLTYPE stream_process(IDirectSoundStream *object, LPCX
 		}
 	}
 	stream->packet_count++;
-	pthread_mutex_unlock(&mixer_lock);
+	stream->submitted++;
+	pthread_mutex_unlock(&voices_lock);
 	return S_OK;
 }
 
@@ -2939,7 +3324,11 @@ static HRESULT STDMETHODCALLTYPE stream_flush(IDirectSoundStream *object)
 {
 	struct sdl_stream *stream = stream_from_interface(object);
 
-	pthread_mutex_lock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
+	/* (the mixer takes none of the packets while they are completed, the
+	lock let go for the game's callback; once they are, it lets go of those
+	it holds and starts the voice over: voice_hand_off) */
+	stream->flush = VOICE_FLUSHING;
 	while (stream->packet_count)
 	{
 		struct voice_packet *head = &stream->packets[stream->packet_head];
@@ -2949,11 +3338,11 @@ static HRESULT STDMETHODCALLTYPE stream_flush(IDirectSoundStream *object)
 		stream_complete_head(stream, XMEDIAPACKET_STATUS_FLUSHED,
 			head->finished ? head->packet.dwMaxSize : 0);
 	}
-	stream->cursor = 0;
-	resampler_reset(stream);
+	stream->flush = VOICE_FLUSHED;
 	/* (the next sound on the channel says where it is) */
-	stream->stereo_positioned = FALSE;
-	pthread_mutex_unlock(&mixer_lock);
+	stream->pending.stereo_positioned = FALSE;
+	stream->pending_changed = TRUE;
+	pthread_mutex_unlock(&voices_lock);
 	return S_OK;
 }
 
@@ -2969,15 +3358,16 @@ void dsound_sdl_stream_set_stereo_position(IDirectSoundStream *object, BOOL posi
 {
 	struct sdl_stream *stream = stream_from_interface(object);
 
-	pthread_mutex_lock(&mixer_lock);
-	stream->stereo_positioned = positioned && stream->channels == 2;
-	stream->stereo_pan = pan < -1.0f ? -1.0f : (pan > 1.0f ? 1.0f : pan);
-	stream->stereo_distance = distance > 0.0f ? distance : 0.0f;
-	stream->stereo_distance_fade = distance_fade < 0.0f ? 0.0f : (distance_fade > 1.0f ? 1.0f : distance_fade);
+	pthread_mutex_lock(&voices_lock);
+	stream->pending.stereo_positioned = positioned && stream->channels == 2;
+	stream->pending.stereo_pan = pan < -1.0f ? -1.0f : (pan > 1.0f ? 1.0f : pan);
+	stream->pending.stereo_distance = distance > 0.0f ? distance : 0.0f;
+	stream->pending.stereo_distance_fade = distance_fade < 0.0f ? 0.0f : (distance_fade > 1.0f ? 1.0f : distance_fade);
 	/* (as the game gives a 3D channel: no maximum) */
-	stream->minimum_distance = minimum_distance > 0.0f ? minimum_distance : 0.0f;
-	stream->maximum_distance = 3.4e38f;
-	pthread_mutex_unlock(&mixer_lock);
+	stream->pending.minimum_distance = minimum_distance > 0.0f ? minimum_distance : 0.0f;
+	stream->pending.maximum_distance = 3.4e38f;
+	stream->pending_changed = TRUE;
+	pthread_mutex_unlock(&voices_lock);
 }
 
 static IDirectSoundStreamVtbl stream_vtable =
@@ -3017,11 +3407,13 @@ ULONG WINAPI IDirectSound_Release(LPDIRECTSOUND sound)
 }
 
 /* debug.audio_log: each 3D voice playing (a sound placed in the world),
-where it is from the listener and its gains, as the mixer has them now */
+where it is from the listener and its gains, as the mixer had them at its
+last hand-off (voices_report_make), logged without the lock */
 static void voices_log(void)
 {
 	static Uint64 logged_at;
-	struct sdl_stream *stream;
+	static struct voice_report reported[VOICES_REPORTED];
+	unsigned long count = 0, index;
 	Uint64 now = SDL_GetTicks();
 
 	if (now - logged_at < 200)
@@ -3045,56 +3437,47 @@ static void voices_log(void)
 		silence_ms = timing.silence_ms;
 		pthread_mutex_unlock(&timing_lock);
 		platform_log("audio: mixing took %.2f%% of the time it mixed (the HRTF %s)%s; the device waited %.2f ms "
-			"at most of the %.2f ms it had queued, %lu dropouts (%.1f ms) since it opened", 100.0 *
+			"at most of the %.2f ms it had queued, %lu dropouts (%.1f ms) since it opened; %lu hand-offs left for "
+			"the next mix (a game thread held the lock)", 100.0 *
 			(double)mix_nanoseconds / ((double)mix_frames * 1.0e9 / OUTPUT_RATE), hrtf_enabled ? "on" : "off",
-			recorded, (double)latest_ns / 1.0e6, (double)timing.slack_ns / 1.0e6, dropouts, silence_ms);
+			recorded, (double)latest_ns / 1.0e6, (double)timing.slack_ns / 1.0e6, dropouts, silence_ms,
+			hand_offs_skipped);
 		mix_nanoseconds = 0;
 		mix_frames = 0;
 	}
-	pthread_mutex_lock(&mixer_lock);
-	for (stream = streams; stream; stream = stream->next)
+	pthread_mutex_lock(&voices_lock);
+	if (voices_report.ready)
 	{
-		float offset[3], right_axis[3], left, right, room, direct_lowpass, room_lowpass;
-		BOOL hrtf_on;
-		struct hrtf_parameters parameters;
+		count = voices_report.count;
+		memcpy(reported, voices_report.voices, count * sizeof(reported[0]));
+		voices_report.ready = FALSE;
+	}
+	voices_report.wanted = TRUE;
+	pthread_mutex_unlock(&voices_lock);
+	for (index = 0; index < count; index++)
+	{
+		const struct voice_report *report = &reported[index];
+		const struct hrtf_parameters *parameters = &report->parameters;
 		char heard[160] = "";
-		int axis;
 
-		if (!stream->has_3d || stream->mode == DS3DMODE_DISABLE || stream->paused || !stream->packet_count)
-			continue;
-		for (axis = 0; axis < 3; axis++)
-		{
-			offset[axis] = stream->position[axis] -
-				(stream->mode == DS3DMODE_HEADRELATIVE ? 0.0f : listener.position[axis]);
-		}
-		right_axis[0] = listener.top[1] * listener.front[2] - listener.top[2] * listener.front[1];
-		right_axis[1] = listener.top[2] * listener.front[0] - listener.top[0] * listener.front[2];
-		right_axis[2] = listener.top[0] * listener.front[1] - listener.top[1] * listener.front[0];
-		voice_gains(stream, &left, &right, &room, &direct_lowpass, &room_lowpass, &hrtf_on, &parameters);
-		/* (through the HRTF, each ear's gain is its own, the pan's not
-		heard) */
-		if (hrtf_on && hrtf_enabled && output_channels == 2)
-			left = right = parameters.gain;
-		if (hrtf_on)
+		if (report->hrtf_on)
 		{
 			/* (the shadows' gains at the highest frequencies: (b0 - b1) /
 			(1 - a1)) */
 			snprintf(heard, sizeof(heard), "; HRTF: the right ear %+.0f us after the left, high frequencies left "
 				"%+.1f dB, right %+.1f dB, notch %.0f Hz, behind %+.1f dB",
-				(parameters.delay[1] - parameters.delay[0]) * 1.0e6f / OUTPUT_RATE,
-				20.0f * log10f((parameters.shadow_b0[0] - parameters.shadow_b1[0]) / (1.0f - hrtf.shadow_a1)),
-				20.0f * log10f((parameters.shadow_b0[1] - parameters.shadow_b1[1]) / (1.0f - hrtf.shadow_a1)),
-				parameters.notch_frequency, 20.0f * log10f(1.0f - parameters.rear * (1.0f - (1.0f - hrtf.rear_lowpass) /
+				(parameters->delay[1] - parameters->delay[0]) * 1.0e6f / OUTPUT_RATE,
+				20.0f * log10f((parameters->shadow_b0[0] - parameters->shadow_b1[0]) / (1.0f - hrtf.shadow_a1)),
+				20.0f * log10f((parameters->shadow_b0[1] - parameters->shadow_b1[1]) / (1.0f - hrtf.shadow_a1)),
+				parameters->notch_frequency, 20.0f * log10f(1.0f - parameters->rear * (1.0f - (1.0f - hrtf.rear_lowpass) /
 				(1.0f + hrtf.rear_lowpass))));
 		}
 		platform_log("audio: voice %p: %.2f m ahead, %.2f right, %.2f up (minimum distance %.2f m); gains left %.1f "
-			"dB, right %.1f dB; Doppler x%.3f%s", (void *)stream, dot3(offset, listener.front) * listener.distance_factor,
-			dot3(offset, right_axis) * listener.distance_factor, dot3(offset, listener.top) * listener.distance_factor,
-			stream->minimum_distance * listener.distance_factor,
-			left > 0.0f ? 20.0f * log10f(left) : -999.0f, right > 0.0f ? 20.0f * log10f(right) : -999.0f,
-			doppler_ratio(stream), heard);
+			"dB, right %.1f dB; Doppler x%.3f%s", (const void *)report->stream, report->ahead, report->right,
+			report->up, report->minimum_distance,
+			report->left_gain > 0.0f ? 20.0f * log10f(report->left_gain) : -999.0f,
+			report->right_gain > 0.0f ? 20.0f * log10f(report->right_gain) : -999.0f, report->doppler, heard);
 	}
-	pthread_mutex_unlock(&mixer_lock);
 }
 
 #ifdef HALO_VR
@@ -3159,6 +3542,7 @@ VOID WINAPI DirectSoundDoWork(void)
 	if (log_voices)
 		voices_log();
 	streams_complete_finished();
+	retired_free();
 }
 
 VOID WINAPI DirectSoundUseFullHRTF(void)
@@ -3201,10 +3585,10 @@ HRESULT WINAPI IDirectSound_SetI3DL2Listener(LPDIRECTSOUND sound, LPCDSI3DL2LIST
 {
 	(void)sound;
 	(void)apply;
-	pthread_mutex_lock(&mixer_lock);
-	environment = *listener_properties;
-	environment_serial++;
-	pthread_mutex_unlock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
+	environment_set = *listener_properties;
+	environment_changed = TRUE;
+	pthread_mutex_unlock(&voices_lock);
 	return DS_OK;
 }
 
@@ -3212,9 +3596,10 @@ HRESULT WINAPI IDirectSound_SetDistanceFactor(LPDIRECTSOUND sound, FLOAT factor,
 {
 	(void)sound;
 	(void)apply;
-	pthread_mutex_lock(&mixer_lock);
-	listener.distance_factor = factor > 0.0f ? factor : 1.0f;
-	pthread_mutex_unlock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
+	listener_set.distance_factor = factor > 0.0f ? factor : 1.0f;
+	listener_changed = TRUE;
+	pthread_mutex_unlock(&voices_lock);
 	return DS_OK;
 }
 
@@ -3222,9 +3607,10 @@ HRESULT WINAPI IDirectSound_SetRolloffFactor(LPDIRECTSOUND sound, FLOAT factor, 
 {
 	(void)sound;
 	(void)apply;
-	pthread_mutex_lock(&mixer_lock);
-	listener.rolloff_factor = factor >= 0.0f ? factor : 1.0f;
-	pthread_mutex_unlock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
+	listener_set.rolloff_factor = factor >= 0.0f ? factor : 1.0f;
+	listener_changed = TRUE;
+	pthread_mutex_unlock(&voices_lock);
 	return DS_OK;
 }
 
@@ -3232,11 +3618,12 @@ HRESULT WINAPI IDirectSound_SetPosition(LPDIRECTSOUND sound, FLOAT x, FLOAT y, F
 {
 	(void)sound;
 	(void)apply;
-	pthread_mutex_lock(&mixer_lock);
-	listener.position[0] = x;
-	listener.position[1] = y;
-	listener.position[2] = z;
-	pthread_mutex_unlock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
+	listener_set.position[0] = x;
+	listener_set.position[1] = y;
+	listener_set.position[2] = z;
+	listener_changed = TRUE;
+	pthread_mutex_unlock(&voices_lock);
 	return DS_OK;
 }
 
@@ -3244,11 +3631,12 @@ HRESULT WINAPI IDirectSound_SetVelocity(LPDIRECTSOUND sound, FLOAT x, FLOAT y, F
 {
 	(void)sound;
 	(void)apply;
-	pthread_mutex_lock(&mixer_lock);
-	listener.velocity[0] = x;
-	listener.velocity[1] = y;
-	listener.velocity[2] = z;
-	pthread_mutex_unlock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
+	listener_set.velocity[0] = x;
+	listener_set.velocity[1] = y;
+	listener_set.velocity[2] = z;
+	listener_changed = TRUE;
+	pthread_mutex_unlock(&voices_lock);
 	return DS_OK;
 }
 
@@ -3269,16 +3657,17 @@ HRESULT WINAPI IDirectSound_SetOrientation(LPDIRECTSOUND sound, FLOAT x_front, F
 {
 	(void)sound;
 	(void)apply;
-	pthread_mutex_lock(&mixer_lock);
-	listener.front[0] = x_front;
-	listener.front[1] = y_front;
-	listener.front[2] = z_front;
-	listener.top[0] = x_top;
-	listener.top[1] = y_top;
-	listener.top[2] = z_top;
-	normalize3(listener.front);
-	normalize3(listener.top);
-	pthread_mutex_unlock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
+	listener_set.front[0] = x_front;
+	listener_set.front[1] = y_front;
+	listener_set.front[2] = z_front;
+	listener_set.top[0] = x_top;
+	listener_set.top[1] = y_top;
+	listener_set.top[2] = z_top;
+	normalize3(listener_set.front);
+	normalize3(listener_set.top);
+	listener_changed = TRUE;
+	pthread_mutex_unlock(&voices_lock);
 	return DS_OK;
 }
 
@@ -3299,23 +3688,25 @@ HRESULT WINAPI IDirectSound_CreateSoundStream(LPDIRECTSOUND sound, LPCDSSTREAMDE
 	stream->adpcm = format && format->wFormatTag == WAVE_FORMAT_XBOX_ADPCM;
 	stream->channels = format && format->nChannels == 2 ? 2 : 1;
 	stream->sample_rate = format ? format->nSamplesPerSec : 0;
-	stream->frequency = stream->sample_rate;
-	stream->volume = 1.0f;
+	stream->pending.frequency = stream->sample_rate;
+	stream->pending.volume = 1.0f;
 	/* DirectSound's default mix bins: a mono voice to both fronts, a
 	stereo voice's channels to the front left and right */
-	stream->mix_left = 1.0f;
-	stream->mix_right = 1.0f;
-	stream->surround_bins[0][0] = 1.0f;
-	stream->surround_bins[stream->channels - 1][1] = 1.0f;
+	stream->pending.mix_left = 1.0f;
+	stream->pending.mix_right = 1.0f;
+	stream->pending.surround_bins[0][0] = 1.0f;
+	stream->pending.surround_bins[stream->channels - 1][1] = 1.0f;
 	stream->has_3d = (description->dwFlags & DSSTREAMCAPS_CTRL3D) != 0;
-	stream->mode = DS3DMODE_NORMAL;
-	stream->minimum_distance = DS3D_DEFAULTMINDISTANCE;
-	stream->maximum_distance = DS3D_DEFAULTMAXDISTANCE;
+	stream->pending.mode = DS3DMODE_NORMAL;
+	stream->pending.minimum_distance = DS3D_DEFAULTMINDISTANCE;
+	stream->pending.maximum_distance = DS3D_DEFAULTMAXDISTANCE;
+	/* (the mixer's side the same, before the mixer can see it) */
+	voice_settings_take(stream);
 	resampler_reset(stream);
-	pthread_mutex_lock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
 	stream->next = streams;
 	streams = stream;
-	pthread_mutex_unlock(&mixer_lock);
+	pthread_mutex_unlock(&voices_lock);
 	*result = &stream->object;
 	return DS_OK;
 }
@@ -3333,22 +3724,24 @@ unsigned long __stdcall DirectSoundGetStreamVoiceStatus(LPDIRECTSOUNDSTREAM stre
 	struct sdl_stream *record = stream_from_interface(stream);
 	unsigned long active;
 
-	pthread_mutex_lock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
 	active = record->packet_count != 0;
-	pthread_mutex_unlock(&mixer_lock);
+	pthread_mutex_unlock(&voices_lock);
 	return active;
 }
 
+/* (the voice's settings on the game's side, record) */
 #define STREAM_SETTER(body) \
-	struct sdl_stream *record = stream_from_interface(stream); \
-	pthread_mutex_lock(&mixer_lock); \
+	struct voice_settings *record = &stream_from_interface(stream)->pending; \
+	pthread_mutex_lock(&voices_lock); \
 	body; \
-	pthread_mutex_unlock(&mixer_lock); \
+	stream_from_interface(stream)->pending_changed = TRUE; \
+	pthread_mutex_unlock(&voices_lock); \
 	return DS_OK;
 
 HRESULT WINAPI IDirectSoundStream_SetFrequency(LPDIRECTSOUNDSTREAM stream, DWORD frequency)
 {
-	STREAM_SETTER(record->frequency = frequency ? frequency : record->sample_rate)
+	STREAM_SETTER(record->frequency = frequency ? frequency : stream_from_interface(stream)->sample_rate)
 }
 
 HRESULT WINAPI IDirectSoundStream_SetVolume(LPDIRECTSOUNDSTREAM stream, LONG volume)
@@ -3361,7 +3754,8 @@ voice sends its left channel to the first, third, ... and its right to the
 second, fourth, ... (the game's stereo voices on AC-3 take front left, front
 right, back left, back right). The crosstalk, reverb and effect sends are not
 speakers. volumes is NULL for 0 dB. */
-static void stream_set_surround_bins(struct sdl_stream *record, DWORD mix_bin_mask, const LONG *volumes, BOOL clear)
+static void stream_set_surround_bins(struct voice_settings *record, unsigned long channels, DWORD mix_bin_mask,
+	const LONG *volumes, BOOL clear)
 {
 	unsigned long bit, index = 0;
 
@@ -3373,7 +3767,7 @@ static void stream_set_surround_bins(struct sdl_stream *record, DWORD mix_bin_ma
 			continue;
 		if ((1UL << bit) & DSMIXBIN_SPEAKER_MASK)
 		{
-			record->surround_bins[record->channels == 2 ? index & 1 : 0][bit] =
+			record->surround_bins[channels == 2 ? index & 1 : 0][bit] =
 				volumes ? gain_from_millibels(volumes[index]) : 1.0f;
 		}
 		index++;
@@ -3385,16 +3779,16 @@ HRESULT WINAPI IDirectSoundStream_SetMixBins(LPDIRECTSOUNDSTREAM stream, DWORD m
 	STREAM_SETTER(
 		record->mix_left = (mix_bin_mask & DSMIXBIN_FRONT_LEFT) ? 1.0f : 0.0f;
 		record->mix_right = (mix_bin_mask & DSMIXBIN_FRONT_RIGHT) ? 1.0f : 0.0f;
-		stream_set_surround_bins(record, mix_bin_mask, NULL, TRUE))
+		stream_set_surround_bins(record, stream_from_interface(stream)->channels, mix_bin_mask, NULL, TRUE))
 }
 
 /* volumes come in the order of the set bits of the mask */
 HRESULT WINAPI IDirectSoundStream_SetMixBinVolumes(LPDIRECTSOUNDSTREAM stream, DWORD mix_bin_mask, const LONG *volumes)
 {
-	struct sdl_stream *record = stream_from_interface(stream);
+	struct voice_settings *record = &stream_from_interface(stream)->pending;
 	unsigned long bit, index = 0;
 
-	pthread_mutex_lock(&mixer_lock);
+	pthread_mutex_lock(&voices_lock);
 	for (bit = 0; bit < 32; bit++)
 	{
 		if (!(mix_bin_mask & (1UL << bit)))
@@ -3405,8 +3799,9 @@ HRESULT WINAPI IDirectSoundStream_SetMixBinVolumes(LPDIRECTSOUNDSTREAM stream, D
 			record->mix_right = gain_from_millibels(volumes[index]);
 		index++;
 	}
-	stream_set_surround_bins(record, mix_bin_mask, volumes, FALSE);
-	pthread_mutex_unlock(&mixer_lock);
+	stream_set_surround_bins(record, stream_from_interface(stream)->channels, mix_bin_mask, volumes, FALSE);
+	stream_from_interface(stream)->pending_changed = TRUE;
+	pthread_mutex_unlock(&voices_lock);
 	return DS_OK;
 }
 
