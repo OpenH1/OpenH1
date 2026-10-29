@@ -414,6 +414,13 @@ shape and scaled to those pixels:
 
 All the ports draw this way.
 
+The game also runs in a window: in split screen (with a video or notes
+beside it), in a pop-up window and in Samsung DeX, and on a folding phone
+folded or unfolded mid-game. The window can have any shape and size from
+320 x 240 dp; it changes in place, and the touch controls are laid out
+again. A window taller than 4:3 has the 640 columns across its width, with
+black above and below. In full screen the game stays in landscape.
+
 The old Android-only `display.screen_width` setting is removed. The
 drawable determines both the aspect ratio and the render resolution,
 including after a surface size change.

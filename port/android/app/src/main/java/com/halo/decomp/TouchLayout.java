@@ -62,8 +62,16 @@ final class TouchLayout {
 
     private static final class Control {
         final int type;
+        /** where it is on the display, in logical units: its place, kept inside */
         float x;
         float y;
+        /**
+         * where the player put it, on the GRID_WIDTH x GRID_HEIGHT grid: a
+         * display that pushes it inward (a shorter one, a larger finger)
+         * leaves this alone, so it comes back when the display does
+         */
+        float placeX;
+        float placeY;
         boolean shown = true;
         float size = 1f;
 
@@ -71,6 +79,8 @@ final class TouchLayout {
             this.type = type;
             this.x = x;
             this.y = y;
+            placeX = x;
+            placeY = y;
         }
     }
 
@@ -106,10 +116,6 @@ final class TouchLayout {
     void bounds(float width, float height) {
         if (!Float.isFinite(width) || !Float.isFinite(height) || width <= 0 || height <= 0)
             throw new IllegalArgumentException("Invalid display dimensions");
-        for (Control control : controls) {
-            control.x *= width / this.width;
-            control.y *= height / this.height;
-        }
         this.width = width;
         this.height = height;
         keepAllInside();
@@ -142,11 +148,11 @@ final class TouchLayout {
     }
 
     float savedX(int control) {
-        return x(control) * GRID_WIDTH / width;
+        return controls.get(control).placeX;
     }
 
     float savedY(int control) {
-        return y(control) * GRID_HEIGHT / height;
+        return controls.get(control).placeY;
     }
 
     float radius(int control) {
@@ -161,7 +167,8 @@ final class TouchLayout {
         if (!Float.isFinite(size) || size < MIN_SIZE || size > MAX_SIZE)
             throw new IllegalArgumentException("Button size must be between 50% and 200%");
         controls.get(control).size = size;
-        move(control, x(control), y(control));
+        // (pushed inward if it must be, its place kept: made smaller again, it goes back)
+        keepAllInside();
     }
 
     boolean shown(int control) {
@@ -182,7 +189,7 @@ final class TouchLayout {
     void resetDefaults() {
         controls.clear();
         for (int i = 0; i < DEFAULTS.length; i++) {
-            Control control = new Control(i, DEFAULTS[i][0] * width / GRID_WIDTH, DEFAULTS[i][1] * height / GRID_HEIGHT);
+            Control control = new Control(i, DEFAULTS[i][0], DEFAULTS[i][1]);
             control.shown = !hiddenByDefault(i);
             controls.add(control);
         }
@@ -218,26 +225,40 @@ final class TouchLayout {
         return duplicate(type);
     }
 
-    /** moves a control, keeping all of it on the display */
+    /** moves a control, keeping all of it on the display; where it lands is its place */
     void move(int control, float x, float y) {
         if (!Float.isFinite(x) || !Float.isFinite(y))
             return;
+        Control moved = controls.get(control);
         float radius = radius(control);
-        controls.get(control).x = Math.max(radius, Math.min(width - radius, x));
-        controls.get(control).y = Math.max(radius, Math.min(height - radius, y));
+        moved.x = Math.max(radius, Math.min(width - radius, x));
+        moved.y = Math.max(radius, Math.min(height - radius, y));
+        moved.placeX = moved.x * GRID_WIDTH / width;
+        moved.placeY = moved.y * GRID_HEIGHT / height;
     }
 
     /** puts a control at a saved place on the grid, if it is a valid one */
     void restore(int control, float x, float y) {
         if (Float.isFinite(x) && Float.isFinite(y) && x >= 0 && x <= GRID_WIDTH && y >= 0 && y <= GRID_HEIGHT) {
-            controls.get(control).x = x;
-            controls.get(control).y = y;
+            Control restored = controls.get(control);
+            restored.placeX = x;
+            restored.placeY = y;
+            restored.x = x * width / GRID_WIDTH;
+            restored.y = y * height / GRID_HEIGHT;
         }
     }
 
+    /**
+     * puts every control at its place on this display, pushed inward as far
+     * as it must be to stay on it; the places stay as they are
+     */
     private void keepAllInside() {
-        for (int i = 0; i < size(); i++)
-            move(i, x(i), y(i));
+        for (int i = 0; i < size(); i++) {
+            Control control = controls.get(i);
+            float radius = radius(i);
+            control.x = Math.max(radius, Math.min(width - radius, control.placeX * width / GRID_WIDTH));
+            control.y = Math.max(radius, Math.min(height - radius, control.placeY * height / GRID_HEIGHT));
+        }
     }
 
     /** the layout as a layout file's text, with the look sensitivity */

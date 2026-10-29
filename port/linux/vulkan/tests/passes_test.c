@@ -1546,7 +1546,7 @@ static void window_test(void)
 	static const VkPresentModeKHR no_mailbox[2] = { VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR };
 	static const VkPresentModeKHR all[3] = { VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_MAILBOX_KHR,
 		VK_PRESENT_MODE_FIFO_KHR };
-	unsigned int index, queries;
+	unsigned int index, queries, swapchains;
 
 	/* the swap interval's present mode: FIFO waits; else MAILBOX, else
 	IMMEDIATE, else FIFO */
@@ -1661,6 +1661,27 @@ static void window_test(void)
 	for (index = 0; index < 120; index++)
 		assert(window_present_frame() && !vk.swapchain_stale);
 	assert(window_capability_queries - queries == 2);
+
+	/* a resize told before the surface has the new size (split screen on
+	a folding phone): the surface asked again at every RESIZE_CHECK_EVERY
+	presents, not at each, until it has it; then the swapchain made again
+	for it, and the surface not asked again */
+	window_present_result = VK_SUCCESS;
+	swapchains = window_swapchains;
+	xgpu_vulkan_window_resized(1080, 1200);
+	assert(window_present_frame() && window_swapchains == swapchains + 1 && window_made.imageExtent.height == 2400);
+	queries = window_capability_queries;
+	for (index = 0; index < 8; index++)
+		assert(window_present_frame());
+	assert(window_capability_queries - queries == 2 && window_swapchains == swapchains + 1);
+	window_capabilities.currentExtent.height = 1200;
+	for (index = 0; index < 4; index++)
+		assert(window_present_frame());
+	assert(window_swapchains == swapchains + 2 && window_made.imageExtent.height == 1200);
+	queries = window_capability_queries;
+	for (index = 0; index < 120; index++)
+		assert(window_present_frame());
+	assert(window_capability_queries == queries && window_swapchains == swapchains + 2);
 
 	/* without a way to turn the frames: the window's way up, which the
 	compositor turns */
