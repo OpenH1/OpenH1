@@ -644,6 +644,17 @@ struct xgpu_vulkan_statistics
 	/* display.hdr's draws that read their colour attachment after a
 	barrier (none where the device orders the reads itself) */
 	uint32_t local_reads;
+	/* HALO_VULKAN_DISCARDS (xgpu_vulkan.c): aspects of attachments not
+	stored (those at frames' ends among them), multisampled images
+	resolved in the pass that drew them, and resolves of samples resolved
+	already (not made again) */
+	uint32_t stores_discarded, frame_end_discards, resolves_in_pass, resolves_skipped;
+	/* debug.gpu_stats (not the VR mode's): the frames' GPU time (from each
+	frame's first work to its last, waits between its submissions
+	included) and the frames it is of; the time between frames' ends and
+	the frames it is of */
+	double gpu_milliseconds, frame_seconds;
+	uint32_t gpu_frames, frames_timed;
 	uint64_t ring_bytes;
 	double pipeline_seconds;
 	uint64_t waits;
