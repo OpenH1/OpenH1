@@ -21,6 +21,8 @@ NEGATIVE_CONTROLS = {
     "favorites-on-every-tab": (("\tcase _browser_tab_favorites:\n\t\treturn favorite;\n", ""), "tabs"),
     "legacy-as-openh1": (("\t\treturn !entry->openh1;", "\t\treturn entry->openh1;"), "tabs"),
     "dedicated-tab-lists-all": (("\tcase _browser_tab_dedicated:\n\t\treturn entry->dedicated;\n", ""), "tabs"),
+    "openh1-not-first": (("browser_sort_descending && a->openh1 != b->openh1)",
+                          "browser_sort_descending && a->openh1 != b->openh1 && FALSE)"), "tabs"),
     "dedicated-not-first": (("browser_sort_descending && a->dedicated != b->dedicated)",
                              "browser_sort_descending && a->dedicated != b->dedicated && FALSE)"), "tabs"),
     "offline-on-every-tab": (("\tif (!browser_tab_lists_offline())\n\t\tbrowser_offline_count = 0;\n", ""), "tabs"),
