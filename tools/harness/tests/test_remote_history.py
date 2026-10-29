@@ -20,9 +20,7 @@ NEGATIVE_CONTROLS = {
     "against-now": (("error.i = state->position.x - noted->position.x;",
                      "error.i = state->position.x - object->object.position.x;"), "ahead"),
     # a disagreement left as it is
-    "never-corrected": (("REMOTE_CORRECTION_TOLERANCE * REMOTE_CORRECTION_TOLERANCE))\n\t{\n\t\treturn TRUE;",
-                         "REMOTE_CORRECTION_TOLERANCE * REMOTE_CORRECTION_TOLERANCE) || TRUE)\n\t{\n\t\treturn TRUE;"),
-                        "apart"),
+    "never-corrected": (("distributed_statistics.remote_history_corrections++;", "return TRUE;"), "apart"),
     # the ticks since not moved with it, to be corrected again
     "history-kept": (("other->position.x += error.i;", "(void)0;"), "apart"),
 }

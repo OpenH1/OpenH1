@@ -27,6 +27,11 @@ static void distributed_vector_unpack(struct distributed_vector const *v, real s
 static void distributed_vector_pack(real_vector3d const *v, real scale, struct distributed_vector *r) {
     r->i = (short)(v->i * scale); r->j = (short)(v->j * scale); r->k = (short)(v->k * scale);
 }
+static real distance_squared3d(real_point3d const *a, real_point3d const *b) {
+    return (a->x - b->x) * (a->x - b->x) + (a->y - b->y) * (a->y - b->y) + (a->z - b->z) * (a->z - b->z);
+}
+/* (the tests' reports) */
+static struct { long remote_corrections, remote_history_corrections, remote_history_kept; } distributed_statistics;
 static int applied;
 static real_vector3d applied_velocity;
 static boolean distributed_apply_state(long i, struct distributed_unit_state const *s, real_point3d const *p,
@@ -81,6 +86,7 @@ int main(int argc, char **argv) {
         CHECK(handled, "%s: the copy's own tick was not found", name);
         CHECK(!applied && objects[1].object.position.x == 10.0f, "%s: a copy running ahead was pulled back to %f",
             name, objects[1].object.position.x);
+        CHECK(distributed_statistics.remote_history_kept == 1, "%s: the pull-back avoided not counted", name);
     } else if (!strcmp(name, "apart")) {
         /* (0.3 behind where it had them: moved by that, keeping what it did
         since; the ticks since moved with it) */
