@@ -1695,8 +1695,9 @@ static void window_test(void)
 	assert(window_made.imageExtent.width == 2400 && !window_rotations && window_blit_source == window_frame.image);
 
 	/* display.picture_position: the 4:3 frame in a taller window (a
-	folding phone's inner screen) centered, or at the top with all the
-	black below it */
+	folding phone's inner screen) centered, at the top with all the black
+	below it, or at the bottom (d3d8_device.c sends the window's height,
+	brought up to the lowest place) with all the black above it */
 	window_reset();
 	window_capabilities.currentExtent.width = 1000;
 	window_capabilities.currentExtent.height = 1200;
@@ -1705,6 +1706,9 @@ static void window_test(void)
 	xgpu_vulkan_picture_top(0);
 	assert(window_present_frame() && window_blit_region.dstOffsets[0].x == 0 &&
 		window_blit_region.dstOffsets[0].y == 0 && window_blit_region.dstOffsets[1].y == 750);
+	xgpu_vulkan_picture_top(1200);
+	assert(window_present_frame() && window_blit_region.dstOffsets[0].x == 0 &&
+		window_blit_region.dstOffsets[0].y == 450 && window_blit_region.dstOffsets[1].y == 1200);
 	/* ... turned with the frame, held sideways: the top of the window is
 	the swapchain's right edge */
 	window_reset();
@@ -1718,6 +1722,11 @@ static void window_test(void)
 	xgpu_vulkan_picture_top(0);
 	assert(window_present_frame() && window_blit_region.dstOffsets[0].x == 100 &&
 		window_blit_region.dstOffsets[1].x == 1000 && window_blit_region.dstOffsets[0].y == 0 &&
+		window_blit_region.dstOffsets[1].y == 1200);
+	/* (the bottom of the window: the swapchain's left edge) */
+	xgpu_vulkan_picture_top(1200);
+	assert(window_present_frame() && window_blit_region.dstOffsets[0].x == 0 &&
+		window_blit_region.dstOffsets[1].x == 900 && window_blit_region.dstOffsets[0].y == 0 &&
 		window_blit_region.dstOffsets[1].y == 1200);
 	reset();
 }

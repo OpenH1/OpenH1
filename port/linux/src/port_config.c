@@ -338,8 +338,9 @@ static const struct config_setting config_settings[] =
 		_platform_android,
 		"Where the game's picture sits on a screen taller than it (a folding\n"
 		"phone's inner screen, a tablet, a window in split screen): \"center\",\n"
-		"with black above and below, or \"top\", with all the black below it,\n"
-		"where the touch controls under the thumbs are. A window taller than it\n"
+		"with black above and below, \"top\", with all the black below it,\n"
+		"where the touch controls under the thumbs are, or \"bottom\", with all\n"
+		"the black above it. A window taller than it\n"
 		"is wide (portrait) has the picture under the touch controls' top strip\n"
 		"(lowered into the space above the controls when there is room)." },
 	{ "display.orientation", _config_string, "\"landscape\"", "HALO_ORIENTATION", _environment_value,
@@ -3124,7 +3125,7 @@ static const struct
 	{ "display.resolution_scaling", { "native", "original", NULL }, NULL },
 	{ "display.anti_aliasing", { "off", "fxaa", "smaa", "ssaa2x", "msaa2x", "msaa4x", "msaa8x", NULL }, NULL },
 	{ "display.astc_textures", { "auto", "always", "off", NULL }, NULL },
-	{ "display.picture_position", { "center", "top", NULL }, NULL },
+	{ "display.picture_position", { "center", "top", "bottom", NULL }, NULL },
 	{ "display.orientation", { "landscape", "portrait", "auto", NULL }, NULL },
 	{ "display.picture_shape", { "4:3", "16:9", NULL }, NULL },
 	{ "display.frame_style", { "plain", "halo", "xbox", NULL }, NULL },

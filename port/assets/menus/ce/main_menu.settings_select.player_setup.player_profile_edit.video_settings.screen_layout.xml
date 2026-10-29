@@ -49,7 +49,7 @@
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/picture_position_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/labels" string_index="1" color="#FF2896FF" text_x="10" text_y="2" wide="0 120" font="ui\small_ui">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/picture_position_spinner" type="spinner" top="2" width="140" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="CENTER|TOP" setting="display.picture_position" values="center|top" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 140 14 146" wide="120 0">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/picture_position_spinner" type="spinner" top="2" width="140" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="CENTER|TOP|BOTTOM" setting="display.picture_position" values="center|top|bottom" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 140 14 146" wide="120 0">
 		<on event="created" run="port setting load"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/op_picture_shape" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" platform="android" wide="-106 120">
@@ -85,7 +85,7 @@
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/help_strings">
 		<string text=""/>
 		<string text=""/>
-		<string text="Where the picture sits on a screen taller than it, such as a folding phone's inner screen or a tablet. Top puts all the black space below it, where the touch controls are. Portrait always has it near the top, under the strip of buttons."/>
+		<string text="Where the picture sits on a screen taller than it, such as a folding phone's inner screen or a tablet. Top puts all the black space below it, where the touch controls are; Bottom puts it all above. Portrait always has it near the top, under the strip of buttons."/>
 		<string text="The picture's shape on a screen taller than it. 4:3 is the Xbox's; 16:9 sees more to the sides and leaves more of the screen to the touch controls."/>
 		<string text=""/>
 		<string text="The look of the screen around the picture when you play in portrait: plain black, Halo's blue lines and rings, or Xbox green. It is never drawn over the picture."/>

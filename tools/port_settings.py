@@ -733,9 +733,11 @@ PAGES = {
             (SECTION, "PICTURE"),
             # (display.picture_position: Android's, on a screen taller than the
             # picture; d3d8_device.c's picture_top, the backend's present)
-            ("PICTURE POSITION", "display.picture_position", [("CENTER", "center"), ("TOP", "top")],
+            ("PICTURE POSITION", "display.picture_position",
+             [("CENTER", "center"), ("TOP", "top"), ("BOTTOM", "bottom")],
              "Where the picture sits on a screen taller than it, such as a folding phone's inner screen or a "
-             "tablet. Top puts all the black space below it, where the touch controls are. Portrait always has it "
+             "tablet. Top puts all the black space below it, where the touch controls are; Bottom puts it all "
+             "above. Portrait always has it "
              "near the top, under the strip of buttons.", "android"),
             ("PICTURE SHAPE", "display.picture_shape", [("4:3", "4:3"), ("16:9", "16:9")],
              "The picture's shape on a screen taller than it. 4:3 is the Xbox's; 16:9 sees more to the sides and "
