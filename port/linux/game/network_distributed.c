@@ -608,6 +608,15 @@ static struct
 	long time;
 	struct distributed_unit_state state;
 } distributed_predictions_heard[MAXIMUM_TRACKED_PLAYERS];
+/* ... and (distributed_prediction_at_tick_start) the one heard before it,
+not yet taken: a tick that begins after a prediction came but before the
+input of the client's tick after it takes this one, of the input it has */
+static struct
+{
+	boolean valid;
+	long time;
+	struct distributed_unit_state state;
+} distributed_predictions_earlier[MAXIMUM_TRACKED_PLAYERS];
 /* ... and (distributed_prediction_at_tick_start) the client's tick after the
 latest prediction it took as a tick began: the input that tick runs, at
 least (distributed_host_run_time) */
@@ -2449,6 +2458,16 @@ static void distributed_handle_predictions(
 		{
 			continue;
 		}
+		/* (one not taken yet, kept: distributed_apply_predictions) */
+		if (distributed_predictions_heard[state.player_index].valid &&
+			distributed_predictions_heard[state.player_index].time < time)
+		{
+			distributed_predictions_earlier[state.player_index].valid = TRUE;
+			distributed_predictions_earlier[state.player_index].time =
+				distributed_predictions_heard[state.player_index].time;
+			distributed_predictions_earlier[state.player_index].state =
+				distributed_predictions_heard[state.player_index].state;
+		}
 		distributed_predictions_heard[state.player_index].valid = TRUE;
 		distributed_predictions_heard[state.player_index].time = time;
 		distributed_predictions_heard[state.player_index].state = state;
@@ -2839,8 +2858,10 @@ host's own unit too, further than it moves since the last taken: it is
 measured from where the host has it only, a new anchor (as it is after a
 new life, or a ride). At the tick's end, or (at_tick_start) as it begins,
 for the players distributed_prediction_at_tick_start names: the latest
-prediction heard then, of the end of the client's tick before the one the
-host's tick runs (distributed_host_run_time). */
+prediction heard then whose next tick's input has come too, or else the one
+before it (distributed_predictions_earlier) if that one's has, or else the
+latest; the host's tick runs the client's tick after the one it took
+(distributed_host_run_time). */
 static void distributed_apply_predictions(
 	boolean at_tick_start)
 {
@@ -2856,10 +2877,32 @@ static void distributed_apply_predictions(
 			continue;
 		if (at_tick_start && distributed_predictions_heard[player_index].valid)
 		{
-			distributed_predictions[player_index].valid = TRUE;
-			distributed_predictions[player_index].time = distributed_predictions_heard[player_index].time;
-			distributed_predictions[player_index].state = distributed_predictions_heard[player_index].state;
-			distributed_predictions_heard[player_index].valid = FALSE;
+			long key = update_queues_distributed_input_key(player_index);
+			long time = distributed_predictions_heard[player_index].time;
+
+			/* (the input of the tick after the latest not come yet, the one
+			before it, whose input has: the tick runs that input from it as
+			the client did, the latest kept for the next. Taking the latest,
+			it would run a tick whose sub-steps' controls come just after the
+			host's own sub-steps ran without them. The client's word kept
+			from overflowing: a key far behind is its game begun again) */
+			if (key != NONE && time > key && time - key <= TICKS_PER_SECOND &&
+				distributed_predictions_earlier[player_index].valid &&
+				distributed_predictions_earlier[player_index].time <= key &&
+				key - distributed_predictions_earlier[player_index].time <= TICKS_PER_SECOND)
+			{
+				distributed_predictions[player_index].valid = TRUE;
+				distributed_predictions[player_index].time = distributed_predictions_earlier[player_index].time;
+				distributed_predictions[player_index].state = distributed_predictions_earlier[player_index].state;
+			}
+			else
+			{
+				distributed_predictions[player_index].valid = TRUE;
+				distributed_predictions[player_index].time = time;
+				distributed_predictions[player_index].state = distributed_predictions_heard[player_index].state;
+				distributed_predictions_heard[player_index].valid = FALSE;
+			}
+			distributed_predictions_earlier[player_index].valid = FALSE;
 			distributed_host_run_times[player_index] = distributed_predictions[player_index].time;
 		}
 		if (!distributed_predictions[player_index].valid && !distributed_accepted[player_index].valid &&
@@ -4310,6 +4353,7 @@ void network_distributed_new_game(
 	csmemset(distributed_seat_disagreements, 0, sizeof(distributed_seat_disagreements));
 	csmemset(distributed_predictions, 0, sizeof(distributed_predictions));
 	csmemset(distributed_predictions_heard, 0, sizeof(distributed_predictions_heard));
+	csmemset(distributed_predictions_earlier, 0, sizeof(distributed_predictions_earlier));
 	csmemset(distributed_accepted, 0, sizeof(distributed_accepted));
 	csmemset(distributed_host_speeds, 0, sizeof(distributed_host_speeds));
 	csmemset(distributed_round_trips, 0, sizeof(distributed_round_trips));
