@@ -375,10 +375,17 @@ static boolean setting_text(char const *name, char *text, unsigned int size, boo
 {
 	short index;
 
-	/* (DISCORD ACCOUNT's LINK: no change, until one is chosen) */
+	/* (DISCORD ACCOUNT's LINK: no change, until one is chosen; the master a
+	server that refused this machine for its VPN is listed by, chosen
+	already, player_link.c) */
 	if (!strcmp(name, "link.action"))
 	{
-		snprintf(text, size, "none");
+		int needed = default_value ? -1 : player_link_needed_master();
+
+		if (needed >= 0)
+			snprintf(text, size, "link_%d", needed + 1);
+		else
+			snprintf(text, size, "none");
 		return TRUE;
 	}
 	if (strncmp(name, "profile.", 8))
@@ -441,8 +448,8 @@ static boolean setting_write(char const *name, char const *value)
 	in the browser, or the account forgotten, player_link.c) */
 	if (!strcmp(name, "link.action"))
 	{
-		if (!strcmp(value, "link"))
-			player_link_begin();
+		if (!strncmp(value, "link_", 5))
+			player_link_begin(atoi(value + 5) - 1);
 		else if (!strcmp(value, "unlink"))
 			player_link_unlink();
 		return TRUE;
