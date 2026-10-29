@@ -178,6 +178,12 @@ WIRED = {
     "controls screen init", "controls begin binding", "controls screen change set", "controls screen defaults",
     "controls update menu", "profile manager select", "direct ip connect go", "ss edit server password",
     "gamespy select header",
+    # (Create Game's map and gametype lists, Server Setup, and the gametype
+    # editor's teamplay and vehicle options: menu_functions.c)
+    "mp map list update", "gt select list update", "gt edit list update", "server settings init",
+    "server settings update", "ss edit server name", "ss start game", "mp prof init teamplay options",
+    "mp prof save teamplay options", "mp prof init vehicle options", "mp prof save vehicle options",
+    "mp prof vehicles update",
 }
 
 # ---------- HEK tags

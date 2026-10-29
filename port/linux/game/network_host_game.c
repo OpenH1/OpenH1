@@ -1088,7 +1088,9 @@ boolean network_host_game_ban_command(
 			end++;
 		saved = *end;
 		*end = 0;
-		parsed = network_host_game_duration_parse(word + 1);
+		/* (with its unit: a number alone may be a name's, "Player 2") */
+		parsed = end - word > 1 && (end[-1] < '0' || end[-1] > '9') ? network_host_game_duration_parse(word + 1) :
+			NONE;
 		*end = saved;
 		if (parsed != NONE)
 		{

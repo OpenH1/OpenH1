@@ -35,7 +35,17 @@ struct widget_instance
 
 struct event_record { int type; };
 struct player_profile { wchar_t player_name[12]; };
-struct network_game { wchar_t name[64]; short maximum_players, player_count; };
+struct network_game
+{
+	wchar_t name[64];
+	short maximum_players, player_count;
+	struct { long game_engine_index; struct { long score_to_win; boolean teams; } universal_variant; } variant;
+	struct { short time_limit; } variant_options;
+};
+/* a next game (network_host_game.h's) */
+struct server_entry { char text[64]; };
+#define PASSWORD_LENGTH 32
+#define HOST_CONTROLS_ANNOUNCE_LENGTH 100
 enum { SOUND_CURSOR, SOUND_ERROR, SOUND_FORWARD };
 enum { _friendly_fire_off, _friendly_fire_on, _friendly_fire_shields_only, _friendly_fire_explosives_only };
 
@@ -90,7 +100,7 @@ static boolean listed(void)
 }
 
 /* the game hosted, its record */
-static struct network_game game = { L"Host", 16, 1 };
+static struct network_game game = { L"Host", 16, 1, { 2, { 25, FALSE } }, { 0 } };
 static int server_made;
 
 static void *global_network_game_server_get(void) { return server_made ? &game : NULL; }
@@ -121,6 +131,14 @@ static boolean ui_widget_port_host_local(struct widget_instance *widget, struct 
 }
 static boolean text_field_editing(void *row) { (void)row; return FALSE; }
 static void text_field_end(boolean keep) { (void)keep; }
+static void text_field_begin(void *row, char const *text, short maximum, void (*done)(char const *text))
+{
+	(void)row; (void)text; (void)maximum; (void)done;
+}
+static void text_field_begin_masked(void *row, char const *text, short maximum, void (*done)(char const *text))
+{
+	(void)row; (void)text; (void)maximum; (void)done;
+}
 static void gametype_setup_begin(void) {}
 static void gametype_setup_end(void) {}
 static boolean gametype_setup_apply(void) { return TRUE; }
@@ -186,13 +204,42 @@ static short network_host_controls_maximum_step(short const *values, short count
 	return current;
 }
 
+/* the host's next game, players and limits (network_host_game.c's) */
+static boolean network_host_controls_in_lobby(void) { return FALSE; }
+static boolean network_host_game_hosting(void) { return server_made; }
+static boolean network_host_game_teams_arrangeable(void) { return FALSE; }
+static short network_host_game_teams_arrange(short how) { (void)how; return NONE; }
+static boolean network_host_game_next(struct server_entry *entry, boolean *now)
+{
+	(void)entry;
+	*now = FALSE;
+	return FALSE;
+}
+static void network_host_game_entry_shown(struct server_entry const *entry, wchar_t *text, short size)
+{
+	(void)entry; (void)size;
+	text[0] = 0;
+}
+static boolean network_host_game_limits_waiting(long *score, short *minutes)
+{
+	*score = NONE;
+	*minutes = NONE;
+	return FALSE;
+}
+static boolean network_host_game_set_limits(long score, short minutes) { (void)score; (void)minutes; return TRUE; }
+static boolean network_host_game_announce(char const *text) { (void)text; return TRUE; }
+
 /* Host Controls' screen state (host_controls_menu.inc's host_menu) */
 static struct
 {
+	short tab, first;
+	boolean focus_first;
 	short game_rows[MAXIMUM_HOST_GAME_ROWS];
 	short game_row_count;
 	short confirm;
 	unsigned long confirm_time;
+	wchar_t notice[160];
+	unsigned long notice_time;
 } host_menu = { .confirm = NONE };
 
 #include "under_test.inc"
@@ -244,7 +291,7 @@ static boolean listing_row(wchar_t *value, short size)
 /* the listing's row chosen (A: 0) or stepped (left -1, right 1) */
 static void listing_changed(short step)
 {
-	host_game_row_change(_host_game_listing, step);
+	host_game_row_change(NULL, _host_game_listing, step);
 }
 
 int main(int argc, char **argv)

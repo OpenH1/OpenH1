@@ -50,9 +50,10 @@ SCREENS = {
               ["board_players", "board_row_1_12", "board_name_0_0", "board_panel", "board_gametype", "board_map",
                "board_limits", "board_kind", "board_status", "board_waiting", "board_section_bots", "board_bots_count",
                "board_bots_count_spinner", "board_bots_teams_spinner", "board_settings", "board_start", "board_prompts",
-               "prompt_team", "prompt_invite", "prompt_add", "prompt_leave", "board_subtitle"]),
+               "prompt_team", "prompt_invite", "prompt_add", "prompt_leave", "board_subtitle", "board_host",
+               "board_after", "board_after_label"]),
     "host controls": ("main_menu/host_controls/host_controls_screen",
-                      ["host_tabs", "tab_players", "tab_bans", "host_item_1", "host_item_label", "host_item_team",
+                      ["host_tabs", "tab_players", "tab_maps", "tab_playlist", "tab_bans", "host_item_1", "host_item_label", "host_item_team",
                        "host_item_score", "host_item_ping", "host_item_tag", "host_item_value", "host_action_0",
                        "host_action_3", "host_panel", "panel_title", "panel_where", "panel_status", "header_label",
                        "header_value", "host_empty", "host_counts"]),
@@ -162,6 +163,11 @@ def test_touch_targets(screen, width):
             # (a footer's alternatives in one place, the game showing one: PASTE LINK for REFRESH, COPY LINK
             # for MAKE PARTY)
             if box[1:5] == other[1:5] and box.path == other.path and box.name.startswith("prompt_"):
+                continue
+            # (the lobby's alternatives in one place, never shown together: the bots' rows a game of this machine
+            # alone's, HOST CONTROLS a network game's host's: lobby_menu.inc)
+            if {box.name, other.name} & {"board_host"} and any(name.startswith("board_bots_")
+                                                                  for name in (box.name, other.name)):
                 continue
             assert not box.overlaps(other), f"{screen} at {width}: {name} {box} is over {other_name} {other}"
 

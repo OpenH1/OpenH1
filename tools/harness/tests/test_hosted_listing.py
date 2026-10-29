@@ -42,13 +42,18 @@ def generated(fault=None):
     host = read("port/linux/game/host_controls_menu.inc")
     config = enum_with(menus, "_multiplayer_mode_host_internet,") + "\n"
     config += enum_with(host, "_host_game_listing,") + "\n"
+    config += enum_with(host, "_host_tab_maps,") + "\n"
+    config += enum_with(read("port/linux/game/network_host_game.h"), "_host_game_shuffle,") + ";\n"
+    config += re.search(r"static long const host_score_steps\[\] = \{[^}]*\};", host).group(0) + "\n"
+    config += re.search(r"static short const host_time_steps\[\] = \{[^}]*\};", host).group(0) + "\n"
     config += re.search(r"static short const maximum_players\[\] = \{[^}]*\};", menus).group(0) + "\n"
     config += re.search(r"static short const cooperative_friendly_fire_modes\[\] =\s*\{[^}]*\};", menus).group(0)
     config += "\n"
     code = "\n\n".join([function(menus, name) for name in (
         "multiplayer_mode_set", "multiplayer_host", "server_settings_private", "server_settings_private_set",
         "server_settings_initialize", "server_start")] + [function(host, name) for name in (
-        "host_confirming", "host_confirmed", "host_game", "host_game_rows_read", "host_game_row_text",
+        "host_notice", "host_confirming", "host_confirmed", "host_game", "host_game_teams", "host_game_rows_read",
+        "host_game_limits", "host_game_row_text", "host_step_value", "host_password_done", "host_announce_done",
         "host_game_row_change")])
     if fault:
         code = mutated(code, *fault)
