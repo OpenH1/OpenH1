@@ -275,6 +275,7 @@ int main(void)
     set(stages);
     for (index = 0; index < 4; index++)
         assert(looked_up[index] == 1 && stream.textures[index].image == &images[index]);
+    assert(samplers == 4);
     /* one stage changed: it alone */
     stages[2].stage.sampler.minify = 2;
     set(stages);

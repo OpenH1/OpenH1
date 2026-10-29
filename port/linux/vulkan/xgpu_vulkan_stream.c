@@ -2498,15 +2498,19 @@ static void stream_frame_end(void *context)
 			xgpu_vulkan_textures_statistics(&textures);
 			host_logf(HOST_LOG_INFO, "vulkan: %u frames: %u submissions, %u passes, %u draws, %u clears (%u drawn), "
 				"%u attachment loads, %u attachment clears, %u texture sets written, %u reused, %u pipelines made "
-				"(%.1f ms), %u uploads ordered, %u early, %llu ring bytes; textures %u made, %u remade, %u images, "
-				"%u effects' thicknesses baked (%.1f ms)",
+				"(%.1f ms), %u uploads ordered, %u early, %llu ring bytes; %u stores discarded (%u at frames' ends), "
+				"%u resolves in passes, %u skipped; textures %u made, %u remade, %u images, %u effects' thicknesses baked (%.1f ms); "
+				"GPU %.3f ms a frame, %.3f ms between frames",
 				statistics.frames, statistics.submissions, statistics.passes, statistics.draws, statistics.clears,
 				statistics.clears_as_draws, statistics.attachment_loads, statistics.attachment_clears,
 				statistics.texture_sets_written,
 				statistics.texture_sets_reused,
 				statistics.pipelines_made, statistics.pipeline_seconds * 1000.0, statistics.uploads_ordered,
-				statistics.uploads_early, (unsigned long long)statistics.ring_bytes, textures.made, textures.remade,
-				textures.images, textures.thickness, textures.thickness_seconds * 1000.0);
+				statistics.uploads_early, (unsigned long long)statistics.ring_bytes, statistics.stores_discarded,
+				statistics.frame_end_discards, statistics.resolves_in_pass, statistics.resolves_skipped, textures.made, textures.remade,
+				textures.images, textures.thickness, textures.thickness_seconds * 1000.0,
+				statistics.gpu_frames ? statistics.gpu_milliseconds / statistics.gpu_frames : 0.0,
+				statistics.frames_timed ? statistics.frame_seconds * 1000.0 / statistics.frames_timed : 0.0);
 		}
 	}
 	/* (each stage's texture looked for at least once a frame, so that the
