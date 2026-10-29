@@ -12,7 +12,8 @@ to a game's variant and options, and checks each against its game engine.
     entry    := map [ ":" gametype { "+" rule } ]
     map      := name | "custom_maps\" name | a level's path
     gametype := a built-in's name | an OpenCE gametype's | a gametype file's name
-                | "file=" a saved gametype's name | "coop"
+                | "file=" a saved gametype's name | "saved=" one this machine's
+                player saved (server_gametype_saved_key) | "coop"
     rule     := key "=" value
 */
 

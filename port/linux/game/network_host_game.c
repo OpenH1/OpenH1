@@ -111,6 +111,7 @@ static struct
 	short map_count;
 	struct host_game_gametype gametypes[MAXIMUM_HOST_GAME_GAMETYPES];
 	short gametype_count;
+	short builtin_gametype_count;
 	unsigned long lists_time;
 	boolean lists_read;
 } host_game = { .index = NONE, .next_index = NONE, .score = NONE, .minutes = NONE };
@@ -754,15 +755,34 @@ static void host_game_lists_read(
 	host_game.lists_time = now;
 	host_game.map_count = 0;
 	server_maps_each(host_game_map_listed, NULL);
-	if (host_game.gametype_count)
-		return;
-	for (index = 0; (name = server_gametype_builtin_name(index)) != NULL &&
-		host_game.gametype_count < MAXIMUM_HOST_GAME_GAMETYPES; index++)
+	/* (the built-in and OpenCE's once, then those this machine's player has
+	saved, read again with the maps) */
+	if (!host_game.builtin_gametype_count)
 	{
-		struct host_game_gametype *gametype = &host_game.gametypes[host_game.gametype_count++];
+		for (index = 0; (name = server_gametype_builtin_name(index)) != NULL &&
+			host_game.builtin_gametype_count < MAXIMUM_HOST_GAME_GAMETYPES; index++)
+		{
+			struct host_game_gametype *gametype = &host_game.gametypes[host_game.builtin_gametype_count++];
 
-		snprintf(gametype->name, sizeof(gametype->name), "%s", name);
-		host_game_gametype_shown(name, NULL, 0, gametype->shown, NUMBEROF(gametype->shown));
+			snprintf(gametype->name, sizeof(gametype->name), "%s", name);
+			host_game_gametype_shown(name, NULL, 0, gametype->shown, NUMBEROF(gametype->shown));
+		}
+	}
+	host_game.gametype_count = host_game.builtin_gametype_count;
+	{
+		static char names[MAXIMUM_HOST_GAME_GAMETYPES][SERVER_GAMETYPE_SIZE];
+		static wchar_t shown[MAXIMUM_HOST_GAME_GAMETYPES][SERVER_GAMETYPE_SHOWN_SIZE];
+		short saved = server_gametype_saved_list(names, shown,
+			(short)(MAXIMUM_HOST_GAME_GAMETYPES - host_game.gametype_count));
+
+		for (index = 0; index < saved; index++)
+		{
+			struct host_game_gametype *gametype = &host_game.gametypes[host_game.gametype_count++];
+
+			snprintf(gametype->name, sizeof(gametype->name), "%s", names[index]);
+			ustrncpy(gametype->shown, shown[index], NUMBEROF(gametype->shown) - 1);
+			gametype->shown[NUMBEROF(gametype->shown) - 1] = 0;
+		}
 	}
 }
 

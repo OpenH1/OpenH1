@@ -29,6 +29,135 @@ bad gametype never reaches the wire, where the clients play by it.
 /* (every build: a player host's map changes and playlist are of the same
 grammar, network_host_game.c) */
 
+enum
+{
+	/* the gametypes the first player's profile has saved, at most (the
+	menus' MAXIMUM_GAMETYPES), and a saved one's name, at most (MAX_GAMENAME) */
+	SERVER_SAVED_GAMETYPES_MAXIMUM = 100,
+	SERVER_SAVED_NAME_SIZE = 128,
+};
+/* a saved gametype's profile index has it clear (menu_functions.c's: the
+built-in ones' have it) */
+#define SERVER_PLAYLIST_READ_ONLY_BIT 0x40000000UL
+
+boolean server_gametype_saved_key(
+	wchar_t const *name,
+	char *key,
+	long size)
+{
+	long length = 0;
+	long index;
+	boolean gap = FALSE;
+
+	key[0] = 0;
+	if (size < 2)
+		return FALSE;
+	for (index = 0; name[index] && index < SERVER_SAVED_NAME_SIZE; index++)
+	{
+		wchar_t character = name[index];
+
+		if (character >= 'A' && character <= 'Z')
+			character = (wchar_t)(character - 'A' + 'a');
+		if ((character >= 'a' && character <= 'z') || (character >= '0' && character <= '9'))
+		{
+			if (gap && length && length < size - 2)
+				key[length++] = '_';
+			gap = FALSE;
+			if (length < size - 1)
+				key[length++] = (char)character;
+		}
+		else
+			gap = TRUE;
+	}
+	key[length] = 0;
+	return length > 0;
+}
+
+/* the first player's saved gametypes (their profile indices, read-only
+built-in ones left out), their count */
+static short server_gametype_saved_indices(
+	long *indices,
+	short maximum)
+{
+	long all[SERVER_SAVED_GAMETYPES_MAXIMUM];
+	word count = (word)SERVER_SAVED_GAMETYPES_MAXIMUM;
+	short kept = 0;
+	short index;
+
+	playlist_profiles_enumerate_available_to_local_player_index(0, &count, all);
+	for (index = 0; index < (short)MIN(count, SERVER_SAVED_GAMETYPES_MAXIMUM) && kept < maximum; index++)
+	{
+		if (!((unsigned long)all[index] & SERVER_PLAYLIST_READ_ONLY_BIT))
+			indices[kept++] = all[index];
+	}
+	return kept;
+}
+
+/* a saved gametype's name, ended, and its key */
+static boolean server_gametype_saved_name(
+	long profile_index,
+	wchar_t *name,
+	char *key,
+	long key_size)
+{
+	csmemset(name, 0, SERVER_SAVED_NAME_SIZE * sizeof(wchar_t));
+	if (!playlist_profile_get_display_name(profile_index, name))
+		return FALSE;
+	name[SERVER_SAVED_NAME_SIZE - 1] = 0;
+	return server_gametype_saved_key(name, key, key_size);
+}
+
+short server_gametype_saved_list(
+	char (*names)[SERVER_GAMETYPE_SIZE],
+	wchar_t (*shown)[SERVER_GAMETYPE_SHOWN_SIZE],
+	short maximum)
+{
+	long indices[SERVER_SAVED_GAMETYPES_MAXIMUM];
+	short count = server_gametype_saved_indices(indices, SERVER_SAVED_GAMETYPES_MAXIMUM);
+	short listed = 0;
+	short index;
+
+	for (index = 0; index < count && listed < maximum; index++)
+	{
+		wchar_t name[SERVER_SAVED_NAME_SIZE + 1];
+		char key[SERVER_GAMETYPE_SIZE - 6];
+
+		if (!server_gametype_saved_name(indices[index], name, key, sizeof(key)))
+			continue;
+		snprintf(names[listed], SERVER_GAMETYPE_SIZE, "saved=%s", key);
+		ustrncpy(shown[listed], name, SERVER_GAMETYPE_SHOWN_SIZE - 1);
+		shown[listed][SERVER_GAMETYPE_SHOWN_SIZE - 1] = 0;
+		listed++;
+	}
+	return listed;
+}
+
+/* a saved gametype by its key: its variant and options (TRUE) */
+static boolean server_gametype_saved(
+	char const *key,
+	struct game_variant *variant,
+	struct game_variant_options *options)
+{
+	long indices[SERVER_SAVED_GAMETYPES_MAXIMUM];
+	short count = server_gametype_saved_indices(indices, SERVER_SAVED_GAMETYPES_MAXIMUM);
+	short index;
+
+	for (index = 0; index < count; index++)
+	{
+		wchar_t name[SERVER_SAVED_NAME_SIZE + 1];
+		char found[SERVER_GAMETYPE_SIZE - 6];
+
+		if (!server_gametype_saved_name(indices[index], name, found, sizeof(found)) || strcmp(found, key))
+			continue;
+		if (!playlist_profile_get(indices[index], variant))
+			return FALSE;
+		if (!playlist_profile_get_options(indices[index], options))
+			game_variant_options_default(variant, options);
+		return TRUE;
+	}
+	return FALSE;
+}
+
 /* the built-in gametypes, by name, and what the lobby and the server
 browser call them (11 characters) */
 static struct
@@ -310,6 +439,22 @@ boolean server_gametype_build(
 		if (variant->game_engine_index < game_engine_ctf || variant->game_engine_index > game_engine_race)
 		{
 			snprintf(reason, (size_t)reason_size, "gametypes/%s.gametype has no game engine", gametype + 5);
+			return FALSE;
+		}
+	}
+	else if (!strncmp(gametype, "saved=", 6))
+	{
+		/* a gametype the host's own profile saved (Create Game's CUSTOM),
+		checked as a file's */
+		if (!server_gametype_saved(gametype + 6, variant, options))
+		{
+			snprintf(reason, (size_t)reason_size, "no gametype saved by this machine's player is named %s",
+				gametype + 6);
+			return FALSE;
+		}
+		if (variant->game_engine_index < game_engine_ctf || variant->game_engine_index > game_engine_race)
+		{
+			snprintf(reason, (size_t)reason_size, "the saved gametype %s has no game engine", gametype + 6);
 			return FALSE;
 		}
 	}

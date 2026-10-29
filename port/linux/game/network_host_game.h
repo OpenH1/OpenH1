@@ -31,8 +31,9 @@ enum
 	/* a map's name, and the maps listed at most */
 	HOST_GAME_MAP_SIZE = SERVER_MAP_SIZE,
 	MAXIMUM_HOST_GAME_MAPS = 128,
-	/* the built-in and OpenCE gametypes listed at most */
-	MAXIMUM_HOST_GAME_GAMETYPES = 48,
+	/* the gametypes listed at most: the built-in and OpenCE's, then those
+	this machine's player saved (server_gametype_saved_list) */
+	MAXIMUM_HOST_GAME_GAMETYPES = 160,
 	/* a gametype's name as shown */
 	HOST_GAME_GAMETYPE_SHOWN_SIZE = 24,
 };
