@@ -104,6 +104,7 @@ their handlers open opens.
 #include "sim_rate.h"
 #include "network_standard.h"
 #include "bots.h"
+#include "network_map_vote.h"
 #include "text/draw_string.h"
 #include "halo_keyboard.h"
 /* (internet play's server browser: the platform layer's) */
@@ -176,6 +177,7 @@ void pc_menu_game_data_function_invoke(struct widget_instance *widget, long func
 #define BUTTON_A 0
 #define BUTTON_B 1
 #define BUTTON_X 2
+#define BUTTON_Y 3
 #define BUTTON_START 12
 
 enum
@@ -3005,6 +3007,8 @@ static struct
 	{ "controls.chat", L"CHAT", 3 },
 	{ "controls.team_chat", L"TEAM CHAT", 3 },
 	{ "controls.party_accept", L"ACCEPT INVITE", 3 },
+	{ "controls.vote_yes", L"VOTE YES", 3 },
+	{ "controls.vote_no", L"VOTE NO", 3 },
 };
 
 static struct

@@ -349,6 +349,8 @@ grenades switched with the left bumper (the flashlight moves to X).
 | type a chat line to everyone | T |
 | type a chat line to your team | Y |
 | accept a party invite from a player of the game | J |
+| vote yes in the vote running (to kick a player, to end the game) | F1 |
+| vote no in the vote running | F2 |
 | while typing a chat line: to everyone, the team or the vehicle, in turn | Tab |
 
 With a controller, or the touch controls' D-pad, D-pad Up opens the text
@@ -889,7 +891,7 @@ the setting for one start of the game. It has priority over the file.
 | `input.playstation_kernel_driver` | `false` | `HALO_PLAYSTATION_KERNEL_DRIVER` | Linux: `true` drives a PlayStation controller (DualSense, DualShock 4) through the kernel's driver of it (`hid-playstation` since Linux 5.12, `hid-sony`): its buttons, sticks, triggers and rumble, with no setup, but not its lightbar. `false`: SDL's own driver, which needs access to the controller's `/dev/hidraw` device, as Steam's udev rules give it (`steam-devices`, or Steam installed). Read at start-up. |
 | `input.invert_mouse` | `false` | `HALO_MOUSE_INVERT=1` sets `true` | `true`: the vertical mouse aim is inverted. |
 | `input.mouse_aim_assist` | `false` | `HALO_MOUSE_AIM_ASSIST` | `true`: the magnetism of the controller also operates for the mouse. `false`: when the mouse moved after the right stick, the view is not slowed or dragged by a target. The autoaim of the bullets operates in both cases. |
-| `controls.<action>` | (the table in "Controls") | `HALO_KEY_<ACTION>` | The keys and mouse buttons of an action, up to two, separated by a comma: `move_forward`, `move_backward`, `strafe_left`, `strafe_right`, `jump`, `crouch`, `fire`, `throw_grenade`, `melee`, `reload`, `zoom`, `switch_weapon`, `switch_grenade`, `action`, `flashlight`, `scoreboard`, `pause`, `screenshot`, `push_to_talk`, `chat`, `team_chat`, `party_accept`. Keys by their names on a US keyboard (`"W"`, `"Space"`, `"Left Ctrl"`, `"F1"`): a key is the one in that place on any keyboard, which Controls Setup shows by its own label (the US name on Android). Buttons: `"Mouse Left"`, `"Mouse Right"`, `"Mouse Middle"`, `"Mouse 4"`, `"Mouse 5"`, `"Wheel"` (either way), `"Wheel Up"`, `"Wheel Down"`. |
+| `controls.<action>` | (the table in "Controls") | `HALO_KEY_<ACTION>` | The keys and mouse buttons of an action, up to two, separated by a comma: `move_forward`, `move_backward`, `strafe_left`, `strafe_right`, `jump`, `crouch`, `fire`, `throw_grenade`, `melee`, `reload`, `zoom`, `switch_weapon`, `switch_grenade`, `action`, `flashlight`, `scoreboard`, `pause`, `screenshot`, `push_to_talk`, `chat`, `team_chat`, `party_accept`, `vote_yes`, `vote_no`. Keys by their names on a US keyboard (`"W"`, `"Space"`, `"Left Ctrl"`, `"F1"`): a key is the one in that place on any keyboard, which Controls Setup shows by its own label (the US name on Android). Buttons: `"Mouse Left"`, `"Mouse Right"`, `"Mouse Middle"`, `"Mouse 4"`, `"Mouse 5"`, `"Wheel"` (either way), `"Wheel Up"`, `"Wheel Down"`. |
 | `game.downloaded_maps` | `""` | `HALO_DOWNLOADED_MAPS` | Maps to play as downloaded maps, besides the maps that map sharing downloaded (it names them in `downloaded_maps.txt` in `custom_maps`): their names (`bloodgulch`, `hugeass`), separated by commas, or `"*"` for all the maps. The scripts of a downloaded map cannot change the settings of the player or the games of other players. `debug.txt` names what the game refused. |
 | `game.console_log` | `"important"` | `HALO_CONSOLE_LOG` | What the console shows on the screen. `"important"`: bans, players that the host drops for cheating, the reasons that the game refuses a command, and the asserts that stop the game. `"all"`: all the lines. `"none"`: only the asserts that stop the game. The output of a command always shows. `debug.txt` gets all the lines. |
 | `game.language` | `""` | `HALO_LANGUAGE` | The language of the menus: `ja`, `de`, `fr`, `es` or `it`. Empty: English. |
@@ -938,9 +940,10 @@ the setting for one start of the game. It has priority over the file.
 | `network.text_chat` | `"on"` | `HALO_NET_TEXT_CHAT` | When you host: the text chat. `"on"`, lines with links refused; `"links"`, links allowed; `"off"`, no chat (in either case). Listed in the server browser or not. TEXT CHAT in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. Refer to "Text chat". |
 | `network.host_playlist` | `""` | `HALO_NET_HOST_PLAYLIST` | When you host: the games played one after another, each after the last one's scores: `map[:gametype[+rule=value...]]`, separated by commas, as a dedicated server's `server.rotation` (`docs/dedicated_server.md`). Host Controls' PLAYLIST and MAPS write it, and the console's `host_playlist`. Empty: you pick each game. Refer to "Host Controls". |
 | `network.votekick` | `true` | `HALO_NET_VOTEKICK` | When you host: `true`, the players can vote to kick a player. Refer to "Security". `false`: no votes. VOTE KICK in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. |
+| `network.vote_end_game` | `true` | `HALO_NET_VOTE_END_GAME` | When you host: `true`, the players can vote to end the game (`!endgame` in the chat; F1 votes yes, F2 no), counted as a vote to kick. The game ends with its scores, as `sv_end_game` ends it. `false`: no such votes. |
 | `network.votekick_minutes` | `5` | `HALO_NET_VOTEKICK_MINUTES` | When you host: the minutes that a player must play on the server before the player can start a vote to kick (`0` to `60`). To vote, a player must play for 2 minutes, or for this time if it is less. |
 | `network.votekick_ban_minutes` | `30` | `HALO_NET_VOTEKICK_BAN_MINUTES` | When you host: the minutes that a player who is kicked by a vote cannot join again (`1` to `1440`). |
-| `network.shield_effects` | `stock` | `HALO_NET_SHIELD_EFFECTS` | Host: the shield effects every player of a network game sees, whatever their own settings, so that none sees what another does not: `stock`, `glow` (`display.shield_glow`), `light_show` (its Light Show intensity), `overshield` (`display.overshield_effect`), `glow_overshield` or `light_show_overshield`; or `players`, not synced: each player sees their own settings' (PLAYERS' OWN). Sent to each client when it is ready and when it changes (`network_shield_effects.c`); a client draws stock until it has it. SHIELD EFFECTS in Server Setup > Player Options writes its choice here. |
+| `network.shield_effects` | `stock` | `HALO_NET_SHIELD_EFFECTS` | Host: the shield effects every player of a network game sees, whatever their own settings, so that none sees what another does not: `stock`, `glow` (`display.shield_glow`), `light_show` (its Light Show intensity), `overshield` (`display.overshield_effect`), `glow_overshield` or `light_show_overshield`; or `players`, not synced: each player sees their own settings' (PLAYERS' OWN). Sent to each client when it is ready and when it changes (`network_shield_effects.c`); a client draws stock until it has it. An online co-op game is always each player's own, whatever the host chose: the players play together. SHIELD EFFECTS in Server Setup > Player Options writes its choice here. |
 | `network.fire_origins` | `true` | `HALO_NET_FIRE_ORIGINS` | Host: whether a client's reported hit that the shooter's camera had no line of sight to may still count from where the client says its player's shots leave, when that is not the camera (distributed message 93: a VR build's weapon hand, which may be past a corner the camera is behind). The hand must be within 0.4 world units of the camera, no more than 0.05 behind the eye along the line to the target, 0.2 to its side and 0.1 above it, with the line from the eye to it clear; the host logs how many hits counted only that way. `false`: from the camera and vehicles' guns only (`network_damage.c`). |
 | `network.block_mouse_aim_assist` | `false` | `HALO_NET_BLOCK_MOUSE_AIM_ASSIST` | Host: Player Options > Aim Assist, Allowed or Block M+KB. Block overrides optional mouse magnetism while mouse/keyboard aims, including on the host, without changing the saved preference. Controllers and touch retain their existing behavior; bullet autoaim is unchanged. |
 | `network.map_share` | `true` | `HALO_NET_MAP_SHARE` | When you host: send a player who joins without the game's Custom Edition map the map, and the resource maps that it needs and that the player does not have. SHARE MAPS in Server Setup > Map Sharing writes its choice here. Refer to "Map sharing". |
@@ -984,7 +987,9 @@ the setting for one start of the game. It has priority over the file.
 | `server.log_addresses` | `false` | `HALO_SERVER_LOG_ADDRESSES` | `true`: the players' internet addresses and hardware IDs are in the log, the events and the API for every role (the owner's console always has them). |
 | `server.log_debug_echo` | `false` | `HALO_SERVER_LOG_DEBUG_ECHO` | `true`: the lines of `debug.txt` are also written to the standard error. |
 | `server.status_file` | `""` | `HALO_SERVER_STATUS_FILE` | A file the status (as `/api/status` gives it) is written to every 2 seconds, for a panel without HTTP. Empty: none. |
-| `server.auto_update` | `"off"` | `HALO_SERVER_AUTO_UPDATE` | `"check"`: every 6 hours, the server looks for a newer release and logs it. `"install"`: it also installs it once the server has been empty for 10 minutes (on a thread of its own, the server playing on meanwhile), and stops with exit code 5, once it is empty, to be started again; an install that fails is tried again at the next check. `"off"`: neither. |
+| `server.auto_update` | `"install"` | `HALO_SERVER_AUTO_UPDATE` | `"check"`: every `server.update_check_minutes`, the server looks for a newer release and logs it (the Docker image's default: its image is updated instead). `"install"`: it also installs it at once (on a thread of its own, the server playing on meanwhile) and stops with exit code 5, to be started again: a release of the same network version once the server has been empty for 10 minutes; one of a new network version when the game ends (players are told "This server updates after this game"; in the lobby, after 30 seconds' notice), a game going on past `server.update_game_minutes` being ended with its scores. An install that fails is tried again at the next check. `"off"`: neither. Refer to `docs/dedicated_server.md`, "Updates". |
+| `server.update_check_minutes` | `30` | `HALO_SERVER_UPDATE_CHECK_MINUTES` | The minutes between checks for a newer release (`5` to `1440`; the first two minutes after the start). |
+| `server.update_game_minutes` | `30` | `HALO_SERVER_UPDATE_GAME_MINUTES` | After a new network version's install, the minutes a game may go on before it is ended for the update (`0`: until it ends; up to `240`). |
 | `server.upnp` | `false` | `HALO_SERVER_UPNP` | `true`: ask the router (UPnP) to forward the tunnel's port (as `network.allow_upnp`, for a server at home). |
 | `server.coop_difficulty` | `"normal"` | `HALO_SERVER_COOP_DIFFICULTY` | The difficulty of co-op entries of the rotation (`<level>:coop`): `"easy"`, `"normal"`, `"hard"` or `"impossible"`. |
 | `server.list_on_brokers` | `false` | `HALO_SERVER_LIST_ON_BROKERS` | `true`: the server is also listed with the games players host (through the brokers), for server browsers without master servers. |
@@ -1001,6 +1006,15 @@ the setting for one start of the game. It has priority over the file.
 | `server.vpn_check_lan` | `false` | `HALO_SERVER_VPN_CHECK_LAN` | Check the LAN's machines' addresses against the netlist too (tests). |
 | `server.link_min_age_days` | `365` | `HALO_SERVER_LINK_MIN_AGE_DAYS` | A machine joining over a VPN with a linked Discord account is refused when the account is younger than this many days (0: any age). |
 | `server.link_one_seat` | `true` | `HALO_SERVER_LINK_ONE_SEAT` | Refuse a second machine of a linked Discord account already in the game. |
+| `server.max_machines_per_address` | `0` | `HALO_SERVER_MAX_MACHINES_PER_ADDRESS` | The machines of one address (an internet play peer's real one) that may play at once; one more is refused ("too many players from your address"). `0`: no limit. |
+| `server.afk_kick_minutes` | `5` | `HALO_SERVER_AFK_KICK_MINUTES` | The minutes a player may be away from the controls in a game (no button, stick, trigger or turn of the view) before being kicked, told a minute before (`0`: never; up to `60`). The lobby, the postgame, cinematics and time dead do not count. |
+| `server.afk_kick_when_full` | `false` | `HALO_SERVER_AFK_KICK_WHEN_FULL` | `true`: players away are kicked only while the game is full, after `server.afk_kick_full_minutes`. |
+| `server.afk_kick_full_minutes` | `3` | `HALO_SERVER_AFK_KICK_FULL_MINUTES` | With `server.afk_kick_when_full`, the minutes away before a kick (`2` to `60`). |
+| `server.coop_bsp_switch` | `"majority"` | `HALO_SERVER_COOP_BSP_SWITCH` | A co-op loading zone: `"majority"`, it switches the level's part once more than half of the living players who are not away stand in zones to it (the others are told how many more must cross); `"anyone"`, the first player in one. A mission script's switch is not held. |
+| `server.coop_bsp_switch_cooldown_seconds` | `15` | `HALO_SERVER_COOP_BSP_SWITCH_COOLDOWN_SECONDS` | The seconds after a loading zone switched the level's part before another may (`0` to `300`). Each switch is told, logged and a `coop_bsp_switch` event. |
+| `server.map_vote` | `false` | `HALO_SERVER_MAP_VOTE` | `true`: as the lobby opens after a game, the players vote for the next game among `server.map_vote_choices` entries of the rotation at random, on a screen of their lobby; the rotation goes on after the winner. |
+| `server.map_vote_choices` | `4` | `HALO_SERVER_MAP_VOTE_CHOICES` | The entries a map vote offers (`2` to `8`). |
+| `server.map_vote_seconds` | `20` | `HALO_SERVER_MAP_VOTE_SECONDS` | How long a map vote runs (`5` to `120`); it ends sooner once every player has voted. |
 | `server.master_publish_address` | `false` | `HALO_SERVER_MASTER_PUBLISH_ADDRESS` | `true`: the master servers can give this server's address to players. `false`: only their probe uses it. |
 | `discord.application_id` | OpenH1's application (`1561963518344036434`; refer to "OpenH1's Discord application") | `HALO_DISCORD_APPLICATION` | The Discord application for your status, invites and asks to join. Its name is what Discord shows you playing. Empty: no Discord. |
 | `discord.rich_presence` | `true` | `HALO_DISCORD_RICH_PRESENCE` | `true`: Discord shows what you do: in the menus, in a party, the game you host or play. Refer to "Discord". `false`: Discord shows nothing, and no one joins you through Discord. |
@@ -2415,14 +2429,19 @@ Only machines with the invite can find the game:
   closes the scoreboard. In the menu, up and down pick an item, A (Enter)
   does it and B (Esc) goes back. In split screen each player picks on
   their own view with their own controller. Other players vote in the same way, and see the vote on
-  the scoreboard. `votekick <player name>` in the developer console does
+  the scoreboard. While a vote runs, every player sees its box at the
+  left of the screen: F1 votes yes, F2 no (`!yes` and `!no` in the chat do
+  the same). Players can also vote to end the game: say `!endgame` in the
+  chat (`network.vote_end_game`). `votekick <player name>` in the developer console does
   the same. The host also gets **Kick** and **Ban** in this menu: these do
   the same as the `kick` and `ban` commands (click **Ban** two times). The
   host counts the votes, and these rules prevent abuse:
-  - The vote passes when more than half of the players vote for it, and at
-    least two players. The player of the vote is counted, but cannot vote.
-    Thus, in a game of two equal teams, one team cannot kick a player of
-    the other team without help.
+  - The yes votes needed scale with the players: more than half of them up
+    to 8 players, then 40% (at least 5) up to 32, then 30% (at least 13),
+    and at least two; and there must be more yes than no. The player of
+    the vote is counted, but cannot vote. Thus, in a small game of two
+    equal teams, one team cannot kick a player of the other team without
+    help.
   - The host counts one vote for each internet address (for internet
     play, the real address of the player, not the address of the tunnel).
     Two machines at one address, or with one hardware id, have one vote.
@@ -2680,11 +2699,14 @@ lines), and the game's own log to `debug.txt` as the game does
   server) must be reachable from the internet; `network.public_address`
   names the address and forwarded port behind a NAT. The web port is TCP
   and best kept private.
-- **Updates.** `server.auto_update = "install"` installs a new release once
-  the server has been empty for 10 minutes (on a thread of its own: the
-  server goes on meanwhile), and stops with exit code 5, once it is empty,
-  so that what runs it (systemd, Docker, a panel) starts the new build. An
-  install that fails is tried again at the next check, 6 hours later.
+- **Updates.** `server.auto_update = "install"` (the default) installs a
+  new release as soon as a check finds it (every 30 minutes,
+  `server.update_check_minutes`; on a thread of its own: the server goes on
+  meanwhile), and stops with exit code 5, so that what runs it (systemd,
+  Docker, a panel) starts the new build: once it has been empty for 10
+  minutes, or, for a release of a new network version, when the game ends
+  (a game is ended after `server.update_game_minutes`, 30). An install that
+  fails is tried again at the next check.
 - **Probe.** `halo --probe <invite>` prints the state of the invite's game
   (a server's name, map, gametype and players) as one line of JSON, for a
   list site, and exits: the game of the invite's host alone. It never

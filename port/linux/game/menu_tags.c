@@ -504,6 +504,8 @@ static char const *const port_function_names[] =
 	/* (the computer's lobby: lobby_menu.inc) */
 	"port lobby team red", "port lobby team blue", "port lobby team toggle", "port lobby team click",
 	"port lobby start", "port lobby invite", "port lobby settings",
+	/* (a dedicated server's map vote: menu_functions.c) */
+	"port map vote open", "port map vote choose",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -546,6 +548,8 @@ static char const *const port_game_data_input_names[] =
 	"port host update",
 	/* (the computer's lobby: lobby_menu.inc) */
 	"port lobby board update",
+	/* (a dedicated server's map vote's screen) */
+	"port map vote update",
 };
 
 static struct

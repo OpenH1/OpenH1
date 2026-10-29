@@ -1348,6 +1348,18 @@ long updater_server_available(void)
 	return 0;
 }
 
+long updater_server_available_network_version(void)
+{
+	return 0;
+}
+
+int updater_server_install(char *error, int error_size)
+{
+	if (error_size > 0)
+		error[0] = 0;
+	return 0;
+}
+
 int updater_server_install_start(void)
 {
 	return 0;

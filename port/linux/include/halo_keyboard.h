@@ -45,6 +45,10 @@ enum halo_keyboard_action
 	/* (a party invite's, which the game itself does not read: accepting
 	the newest one a player of the game sent, port/linux/game/network_party.c) */
 	HALO_KEYBOARD_PARTY_ACCEPT,
+	/* (the players' votes', yes and no in the vote running: port/linux/game/
+	network_votekick.c, read with the chat's keys) */
+	HALO_KEYBOARD_VOTE_YES,
+	HALO_KEYBOARD_VOTE_NO,
 	NUMBER_OF_HALO_KEYBOARD_ACTIONS
 };
 

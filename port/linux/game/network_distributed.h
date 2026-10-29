@@ -149,6 +149,13 @@ enum
 	units' cameras (a VR build's hand), to the host, unreliably, every tick
 	while they do (network_damage.c): its line of sight check's */
 	_distributed_message_fire_origins = 93,
+	/* a dedicated server's vote for the next game (network_map_vote.c), in
+	the lobby too, reliably: the host's choices and their votes, to every
+	client, once a second and as they change, and the one that won; a
+	client's choice, to the host, which takes it only from the machine's own
+	stream */
+	_distributed_message_map_vote = 94,
+	_distributed_message_map_vote_choice = 95,
 
 	/* an OpenH1 game's sub-step inputs (network_substeps.c), at 60 and 120
 	only, numbered clear of the kinds upstream adds: a client's own players'

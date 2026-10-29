@@ -87,6 +87,8 @@ machine (their datum identifiers need not be).
 #include "network_substeps.h"
 #include "network_standard.h"
 #include "map_share.h"
+#include "network_afk.h"
+#include "network_map_vote.h"
 #include "latency_meter.h"
 #include "profile_sections.h"
 #include "server_director.h"
@@ -4728,6 +4730,8 @@ void network_distributed_new_game(
 	network_welcome_new_game();
 	network_substeps_new_game();
 	network_standard_new_game();
+	network_afk_new_game();
+	network_map_vote_reset();
 }
 
 /* after each tick (game_time.c) */
@@ -4791,6 +4795,7 @@ void network_distributed_tick(
 		network_welcome_host_tick();
 		/* (a mixed game's: its OpenCE players, to its OpenH1 clients) */
 		network_standard_host_tick();
+		network_afk_host_tick();
 	}
 	else if (connection == _game_connection_network_client)
 	{
@@ -5804,6 +5809,14 @@ void network_distributed_handle_message(
 	if (network_host_rules_handles_message(message, size))
 	{
 		network_host_rules_handle_message(machine_index, message, size, machine_index != NONE ?
+			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
+		return;
+	}
+	/* (a dedicated server's map vote's, in the lobby too, over the host's
+	connection alone: network_map_vote.c) */
+	if (network_map_vote_handles_message(message, size))
+	{
+		network_map_vote_handle_message(machine_index, message, size, machine_index != NONE ?
 			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
 		return;
 	}
