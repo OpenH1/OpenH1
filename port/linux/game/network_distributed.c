@@ -221,6 +221,10 @@ enum
 	/* a client: where its own players' units were, the last ticks (a power
 	of two, more than the longest round trip) */
 	OWN_POSITION_TICKS = 64,
+	/* ... and its copies of the other clients' players, by the input of
+	their client's tick each ran (a power of two: more than the ticks the
+	host's word on them comes after their forwarded input) */
+	REMOTE_POSITION_TICKS = 32,
 	/* the host: the ticks after it took a client's player's position that it
 	still tells the client which of its ticks it has them at */
 	PREDICTION_ECHO_TICKS = 3,
@@ -670,6 +674,17 @@ static struct distributed_own_position
 	long elevator_index;
 } distributed_own_positions[MAXIMUM_LOCAL_PLAYERS][OWN_POSITION_TICKS];
 static real distributed_own_round_trip;
+/* a client of an OpenH1 game of several sub-steps a tick: where its copy of
+each other client's player was as each of its ticks ended, by their
+client's tick whose input (forwarded) that tick ran, and how fast it went
+(distributed_correct_remote_unit) */
+static struct distributed_remote_position
+{
+	long key;
+	long unit_index;
+	real_point3d position;
+	real_vector3d velocity;
+} distributed_remote_positions[MAXIMUM_TRACKED_PLAYERS][REMOTE_POSITION_TICKS];
 /* the host: the players each machine had when it last told the host that it
 had loaded (a machine new at its index has none of the old one's state) */
 static long distributed_machine_players[HALO_PORT_MAXIMUM_NETWORK_MACHINES][MAXIMUM_LOCAL_PLAYERS];
@@ -2040,18 +2055,19 @@ its player, flags and parts, then (alive) its unit, the vehicle and seat it
 rides, (placed) where it is, how fast it moves and which way it faces,
 (predicted) the client's tick, its shields and health, the damage they
 show, its powerups and camouflage, or (dead) who killed it; what is its
-default is left out (distributed_unit_state_read). The predicted tick is
-its own client's alone (own). */
+default is left out (distributed_unit_state_read). The predicted tick only
+where predicted: to its own client, and in an OpenH1 game of several
+sub-steps a tick to the other OpenH1 clients. */
 static word distributed_unit_state_write(
 	struct distributed_unit_state const *state,
-	boolean own,
+	boolean predicted,
 	byte *buffer)
 {
 	byte flags = state->flags;
 	byte parts = 0;
 	byte *cursor = buffer + DISTRIBUTED_UNIT_STATE_MINIMUM_SIZE;
 
-	if (!own)
+	if (!predicted)
 		SET_FLAG(flags, _distributed_unit_predicted_bit, FALSE);
 	if (TEST_FLAG(flags, _distributed_unit_alive_bit))
 	{
@@ -2308,6 +2324,133 @@ static void distributed_note_own_positions(
 		if (unit_index != NONE)
 			own->position = object_get(unit_index)->object.position;
 	}
+}
+
+/* (a client) where its copies of the other clients' players are this tick,
+noted by the input of their client's tick the tick ran (an OpenH1 game of
+several sub-steps a tick, where the host's word on them names that tick:
+distributed_correct_remote_unit) */
+static void distributed_note_remote_positions(
+	void)
+{
+	short player_index;
+
+	if (!network_substeps_active())
+		return;
+	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+	{
+		struct player_datum *player = distributed_player(player_index);
+		long unit_index = distributed_living_unit(player);
+		long key = network_substeps_forwarded_key(player_index);
+		struct distributed_remote_position *noted;
+
+		if (unit_index == NONE || player->local_player_index != NONE || key == NONE ||
+			object_get(unit_index)->object.parent_object_index != NONE)
+		{
+			continue;
+		}
+		noted = &distributed_remote_positions[player_index][key & (REMOTE_POSITION_TICKS - 1)];
+		noted->key = key;
+		noted->unit_index = unit_index;
+		noted->position = object_get(unit_index)->object.position;
+		noted->velocity = object_get(unit_index)->object.translational_velocity;
+	}
+}
+
+/* (a client) another client's player's unit where the host has it, as its
+own player's is (distributed_correct_own_unit): the host's word names the
+end of their client's tick that its copy stands for, and this machine's
+copy is compared with where it had it after running the input of that tick
+(a forwarded input runs ahead of the host's word, which is not pulled back:
+NETCODE.md, "Remote players against their history"). Further apart than
+REMOTE_CORRECTION_TOLERANCE, moved by the difference, keeping what it has
+done since (and its facing); FALSE where it has no such tick (another kind
+of input drives it, or none noted), to be put where the host has it */
+static boolean distributed_correct_remote_unit(
+	short player_index,
+	long unit_index,
+	struct distributed_unit_state const *state)
+{
+	struct distributed_remote_position *noted;
+	struct distributed_unit_state corrected;
+	struct object_datum *object = object_get(unit_index);
+	real_point3d position;
+	real_vector3d error;
+	long key;
+	long time;
+	short index;
+
+	if (!TEST_FLAG(state->flags, _distributed_unit_predicted_bit) || !network_substeps_active() ||
+		player_index < 0 || player_index >= MAXIMUM_TRACKED_PLAYERS)
+	{
+		return FALSE;
+	}
+	key = network_substeps_forwarded_key(player_index);
+	if (key == NONE)
+		return FALSE;
+	/* (the tick named in 16 bits, near the input this machine runs: the
+	input of the tick before it) */
+	time = key + (short)(word)((word)state->predicted_time - (word)key) - 1;
+	noted = &distributed_remote_positions[player_index][time & (REMOTE_POSITION_TICKS - 1)];
+	if (noted->key != time || noted->unit_index != unit_index)
+		return FALSE;
+	error.i = state->position.x - noted->position.x;
+	error.j = state->position.y - noted->position.y;
+	error.k = state->position.z - noted->position.z;
+	if (!(error.i * error.i + error.j * error.j + error.k * error.k >
+		REMOTE_CORRECTION_TOLERANCE * REMOTE_CORRECTION_TOLERANCE))
+	{
+		/* (the tests' reports) */
+		if (distance_squared3d(&state->position, &object->object.position) >
+			REMOTE_CORRECTION_TOLERANCE * REMOTE_CORRECTION_TOLERANCE)
+		{
+			distributed_statistics.remote_history_kept++;
+		}
+		return TRUE;
+	}
+	distributed_statistics.remote_history_corrections++;
+	distributed_statistics.remote_corrections++;
+	/* (from where it is, by the difference; its speed by the host's
+	difference of it, and its facing its own, which its latest input gave) */
+	corrected = *state;
+	position.x = object->object.position.x + error.i;
+	position.y = object->object.position.y + error.j;
+	position.z = object->object.position.z + error.k;
+	{
+		real_vector3d velocity;
+
+		if (state->fine)
+			velocity = state->fine_velocity;
+		else
+			distributed_vector_unpack(&state->velocity, DISTRIBUTED_VELOCITY_SCALE, &velocity);
+		corrected.fine = TRUE;
+		corrected.fine_velocity.i = object->object.translational_velocity.i + velocity.i - noted->velocity.i;
+		corrected.fine_velocity.j = object->object.translational_velocity.j + velocity.j - noted->velocity.j;
+		corrected.fine_velocity.k = object->object.translational_velocity.k + velocity.k - noted->velocity.k;
+	}
+	distributed_vector_pack(&object->object.forward, DISTRIBUTED_UNIT_SCALE, &corrected.forward);
+	distributed_vector_pack(&object->object.up, DISTRIBUTED_UNIT_SCALE, &corrected.up);
+	{
+		real_point3d before = object->object.position;
+
+		distributed_apply_state(unit_index, &corrected, &position, 0.0f, REMOTE_BLEND_DISTANCE, 0.0f, 0.0f);
+		/* (the ticks noted since moved as it was, not corrected again) */
+		error.i = object->object.position.x - before.x;
+		error.j = object->object.position.y - before.y;
+		error.k = object->object.position.z - before.z;
+	}
+	for (index = 0; index < REMOTE_POSITION_TICKS; index++)
+	{
+		struct distributed_remote_position *other = &distributed_remote_positions[player_index][index];
+
+		if (other->unit_index == unit_index && other->key != NONE && other->key >= time)
+		{
+			other->position.x += error.i;
+			other->position.y += error.j;
+			other->position.z += error.k;
+		}
+	}
+	return TRUE;
 }
 
 /* (a client) its own player's unit where the host has it, if that is
@@ -3083,7 +3226,7 @@ static void distributed_handle_unit_state(
 
 		if (local)
 			distributed_correct_own_unit(player, unit_index, state);
-		else
+		else if (!distributed_correct_remote_unit(state->player_index, unit_index, state))
 		{
 			/* (the tests' reports) */
 			if (distance_squared3d(&state->position, &object_get(unit_index)->object.position) >
@@ -3939,9 +4082,16 @@ static void distributed_host_send_players(
 
 			if (TEST_FLAG(distributed_sends[machine_index][player_index], _distributed_send_state_bit))
 			{
+				/* (which of its client's ticks the host has a client's player
+				at: to its own client, and in an OpenH1 game of several
+				sub-steps a tick to its other OpenH1 clients too, which drive
+				the player ahead by its forwarded input:
+				distributed_correct_remote_unit) */
 				distributed_packer_add(&distributed_packer, entry,
 					distributed_unit_state_write(&distributed_host_states[player_index],
-						distributed_player_machines[player_index] == machine_index, entry));
+						distributed_player_machines[player_index] == machine_index ||
+							(network_substeps_active() && network_standard_machine_is_openh1(machine_index)),
+						entry));
 			}
 		}
 		distributed_packer_flush(&distributed_packer);
@@ -4438,6 +4588,14 @@ void network_distributed_new_game(
 		}
 	}
 	distributed_own_round_trip = 0.0f;
+	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+	{
+		for (type = 0; type < REMOTE_POSITION_TICKS; type++)
+		{
+			distributed_remote_positions[player_index][type].key = NONE;
+			distributed_remote_positions[player_index][type].unit_index = NONE;
+		}
+	}
 	csmemset(distributed_player_pings, 0xFF, sizeof(distributed_player_pings));
 	distributed_own_ping_valid = FALSE;
 	distributed_own_ping_milliseconds = 0.0f;
@@ -4545,6 +4703,7 @@ void network_distributed_tick(
 	else if (connection == _game_connection_network_client)
 	{
 		profile_scope(distributed_tick_note_own_positions_section, distributed_note_own_positions();)
+		distributed_note_remote_positions();
 		if (game_time_get() % PING_REFRESH_TICKS == 0 && latency_meter_enabled())
 			distributed_refresh_pings();
 		/* (an OpenH1 game's of several sub-steps went as the tick's first

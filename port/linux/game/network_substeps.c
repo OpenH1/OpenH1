@@ -1339,6 +1339,17 @@ boolean network_substeps_live_pending(
 	return FALSE;
 }
 
+long network_substeps_forwarded_key(
+	short player_index)
+{
+	if (game_connection() != _game_connection_network_client || player_index < 0 ||
+		player_index >= MAXIMUM_TRACKED_PLAYERS || !network_substeps_globals.tick_forwarded[player_index])
+	{
+		return NONE;
+	}
+	return network_substeps_globals.tick_key[player_index];
+}
+
 long network_substeps_bytes_sent(
 	void)
 {
