@@ -777,6 +777,23 @@ static void lobby_board_update(struct widget_instance *list)
 		if (controls.bots && setting)
 			setting_changed_save(spinner, setting);
 	}
+	/* (a network game's host: the game after this one, its playlist's, and
+	HOST CONTROLS, in the bots' place: network_host_game.c) */
+	{
+		struct server_entry after;
+		boolean now;
+		boolean hosting = game && host && !local && network_host_controls_available();
+		boolean then = hosting && network_host_game_next(&after, &now) && !now;
+
+		if (then)
+		{
+			network_host_game_entry_shown(&after, text, NUMBEROF(text));
+			menu_text_box_fit(named(panel, "board_after", 0), text, 0);
+		}
+		visible_set(named(panel, "board_after", 0), then);
+		visible_set(named(panel, "board_after_label", 0), then);
+		visible_set(named(list, "board_host", 0), hosting);
+	}
 	menu_prompts_show(bar, "prompt_team", controls.team_change);
 	menu_prompts_show(bar, "prompt_invite", controls.invite);
 	menu_prompts_show(bar, "prompt_add", controls.add_player);

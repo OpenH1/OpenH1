@@ -2,14 +2,14 @@
 <!-- The port's multiplayer screens, in the PC version's style (tools/port_settings.py) -->
 <menus>
 	<widget name="main_menu/host_controls/host_controls_screen" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/gradient">
-		<on event="b" back="true"/>
-		<on event="back" back="true"/>
+		<on event="b" run="port host back" back="true"/>
+		<on event="back" run="port host back" back="true"/>
 		<on event="white" run="port host tab previous"/>
 		<on event="black" run="port host tab next"/>
 		<child widget="main_menu/host_controls/header_host_controls"/>
 		<child widget="main_menu/host_controls/host_counts"/>
 		<child widget="main_menu/settings/tab_prompt_previous" x="24" y="76" platform="pointer"/>
-		<child widget="main_menu/settings/tab_prompt_next" x="322" y="76" platform="pointer"/>
+		<child widget="main_menu/settings/tab_prompt_next" x="498" y="76" platform="pointer"/>
 		<child widget="main_menu/host_controls/header_label" platform="pointer"/>
 		<child widget="main_menu/host_controls/header_team" platform="pointer"/>
 		<child widget="main_menu/host_controls/header_score" platform="pointer"/>
@@ -71,14 +71,26 @@
 	<widget name="main_menu/host_controls/host_tabs" type="column_list" width="640" height="22" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<child widget="main_menu/host_controls/tab_players" x="56"/>
 		<child widget="main_menu/host_controls/tab_game" x="144"/>
-		<child widget="main_menu/host_controls/tab_bans" x="232"/>
+		<child widget="main_menu/host_controls/tab_maps" x="232"/>
+		<child widget="main_menu/host_controls/tab_playlist" x="320"/>
+		<child widget="main_menu/host_controls/tab_bans" x="408"/>
 	</widget>
 	<widget name="main_menu/host_controls/tab_players" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="-106 0" bitmap="main_menu/parts/tab" text="PLAYERS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="a" run="port host tab"/>
 		<on event="start" run="port host tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/host_controls/tab_game" type="text" controller="1" width="86" height="22" flags="keep_ends" bitmap="main_menu/parts/tab" text="GAME" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/host_controls/tab_game" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="-53 0" bitmap="main_menu/parts/tab" text="GAME" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+		<on event="a" run="port host tab"/>
+		<on event="start" run="port host tab"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/host_controls/tab_maps" type="text" controller="1" width="86" height="22" flags="keep_ends" bitmap="main_menu/parts/tab" text="MAPS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+		<on event="a" run="port host tab"/>
+		<on event="start" run="port host tab"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/host_controls/tab_playlist" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="53 0" bitmap="main_menu/parts/tab" text="PLAYLIST" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="a" run="port host tab"/>
 		<on event="start" run="port host tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>

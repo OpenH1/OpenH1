@@ -2640,6 +2640,10 @@ def _lobby_board(base: str) -> tuple:
                                            ("text_flags", "no_focus_test")], [])
     panel.append(f'<child widget="{base}/board_section_bots" x="{inner_left}" y="{top + 134}"/>')
     lines += _section(f"{base}/board_section_bots", "BOTS", inner, grown)
+    # (a network game's host: the game after it, its playlist's or a change
+    # asked for, in the bots' place: lobby_board_update)
+    lines += text("board_after_label", 134, 16, "ui\\small_ui", PART_DIM, "THEN", wide_layout=None)
+    lines += text("board_after", 150, 16, "ui\\small_ui", SETTINGS_BLUE)
     # (how the game is: the countdown, waiting for players, how another
     # player joins; up in the bots' place when it has none:
     # lobby_board_update)
@@ -2689,9 +2693,19 @@ def _lobby_board(base: str) -> tuple:
                           ("wide", wide(panel_grown))],
                          ['<on event="created" run="port setting load"/>', start,
                           '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
-    items += [f'<child widget="{base}/board_settings" x="{inner_left}" y="{top + 256}"/>',
+    items += [f'<child widget="{base}/board_host" x="{inner_left}" y="{top + 176}"/>',
+              f'<child widget="{base}/board_settings" x="{inner_left}" y="{top + 256}"/>',
               f'<child widget="{base}/board_start" x="{inner_left}" y="{top + 284}"/>',
               f'<child widget="{base}/board_prompts" y="414"/>']
+    # (a network game's host: Host Controls over the lobby, its players,
+    # map and gametype, playlist and bans before the game starts)
+    lines += _widget(f"{base}/board_host", [("type", "text"), ("width", inner), ("height", LOBBY_CONTROL_HEIGHT),
+                                            ("bitmap", part_outline(inner, LOBBY_CONTROL_HEIGHT)),
+                                            ("wide", controls), ("text", "HOST CONTROLS"),
+                                            ("font", "ui\\small_ui"), ("color", "#FFCFE3FF"), ("align", "center"),
+                                            ("text_y", 4)],
+                     [f'<on event="a" run="port host open" open="{HOST_CONTROLS}/host_controls_screen" '
+                      'branch="true"/>', start, '<on event="left_mouse" run="mouse emit accept event"/>'])
     lines += _widget(f"{base}/board_settings", [("type", "text"), ("width", inner), ("height", LOBBY_CONTROL_HEIGHT),
                                                 ("bitmap", part_outline(inner, LOBBY_CONTROL_HEIGHT)),
                                                 ("wide", controls), ("text", "GAME SETTINGS"),
@@ -4301,7 +4315,8 @@ def _friends_add() -> list:
 # network game alone (menu_tags.c's pause_patch), laid out as the server
 # browser is (its rows, columns, panel and button: the menus' shared parts)
 HOST_CONTROLS = "main_menu/host_controls"
-HOST_TABS = [("tab_players", "PLAYERS"), ("tab_game", "GAME"), ("tab_bans", "BANS")]
+HOST_TABS = [("tab_players", "PLAYERS"), ("tab_game", "GAME"), ("tab_maps", "MAPS"), ("tab_playlist", "PLAYLIST"),
+             ("tab_bans", "BANS")]
 # the rows (the browser's), and each column's place and width in a row, with
 # its move and growth on a wide screen (the list BROWSER_WIDE_LIST wider): a
 # player's name, team, score, ping and tag (a pill: HOST, BOT, OPENH1,
@@ -4340,7 +4355,8 @@ def _host_controls() -> list:
     lines = _widget(f"{base}/host_controls_screen",
                     [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child"),
                      ("bitmap", "bitmaps/gradient")],
-                    ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                    ['<on event="b" run="port host back" back="true"/>',
+                     '<on event="back" run="port host back" back="true"/>',
                      '<on event="white" run="port host tab previous"/>',
                      '<on event="black" run="port host tab next"/>',
                      f'<child widget="{base}/header_host_controls"/>',
@@ -4601,7 +4617,8 @@ def touch_sizes() -> dict:
                for *_, width, _ in prompts}
     buttons |= {(panel_inner, TOUCH_TAP), (TOUCH_HOST_BACK[1], TOUCH_TAP)}
     return {
-        "chip": sorted({(TOUCH_CHIP_WIDTHS[count], TOUCH_TAP) for count in TOUCH_CHIP_WIDTHS}),
+        "chip": sorted({(TOUCH_CHIP_WIDTHS[count], TOUCH_TAP) for count in TOUCH_CHIP_WIDTHS} |
+                       {(TOUCH_HOST_CHIP_WIDTH, TOUCH_TAP)}),
         "row": [(TOUCH_LIST_WIDTH, TOUCH_TAP)],
         "tile": sorted({TOUCH_TILE, (TOUCH_HUB_WIDTH, TOUCH_TAP), (TOUCH_LOBBY_PANEL[2] - 28, TOUCH_TAP)}),
         "button": sorted(buttons),
@@ -4651,17 +4668,18 @@ def touch_pictures() -> list:
     return pictures
 
 
-# the chips' widths for a strip of so many (the browser's five, Host
-# Controls' three beside BACK), TOUCH_GAP + 2 apart
-TOUCH_CHIP_WIDTHS = {6: 92, 5: 112, 3: 116}
+# the chips' widths for a strip of so many (the browser's five), TOUCH_GAP + 2
+# apart; Host Controls' five over its list alone
+TOUCH_CHIP_WIDTHS = {6: 92, 5: 112}
+TOUCH_HOST_CHIP_WIDTH = 68
 
 
-def _touch_chips(base: str, strip: str, tabs: list, handlers: list, span: int) -> list:
+def _touch_chips(base: str, strip: str, tabs: list, handlers: list, span: int, width: int = None) -> list:
     """a strip of tabs as chips (a column list whose name ends "_tabs", as
     menu_tabs_show knows it): each its words, TOUCH_TAP tall, spread over
     span of the 640's width and each its part wider on a wide screen; a tap
     runs the handlers"""
-    width = TOUCH_CHIP_WIDTHS[len(tabs)]
+    width = width or TOUCH_CHIP_WIDTHS[len(tabs)]
     step = width + TOUCH_GAP + 2
     grown = span * WIDE_EXTRA // 584 // len(tabs)
     lines = _widget(f"{base}/{strip}", [("type", "column_list"), ("width", 640), ("height", TOUCH_TAP),
@@ -4985,6 +5003,8 @@ def _touch_lobby_board(base: str) -> tuple:
         panel.append(f'<child widget="{base}/{name}" x="{inner_left + x}" y="{top + y}"/>')
     panel.append(f'<child widget="{touch}/board_section_bots" x="{inner_left}" y="{top + 120}"/>')
     lines += _section(f"{touch}/board_section_bots", "BOTS", inner, grown)
+    lines += text("board_after_label", 120, 16, "ui\\small_ui", PART_DIM, "THEN")
+    lines += text("board_after", 136, 16, "ui\\small_ui", SETTINGS_BLUE)
     lines += text("board_status", height - 24, 24, "ui\\small_ui", SETTINGS_BLUE)
     lines += text("board_waiting", 142, LOBBY_START[1], "ui\\large_ui", SETTINGS_BLUE, align="center")
     lines += _widget(f"{touch}/board_panel", [("controller", 1), ("left", left), ("top", top), ("width", width),
@@ -5021,6 +5041,13 @@ def _touch_lobby_board(base: str) -> tuple:
                           ("wide", wide(0, panel_grown))],
                          ['<on event="created" run="port setting load"/>', start,
                           '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    items.append(f'<child widget="{touch}/board_host" x="{inner_left}" y="{top + 160}"/>')
+    lines += _widget(f"{touch}/board_host", [("type", "text"), ("width", inner), ("height", TOUCH_TAP),
+                                             ("bitmap", touch_tile(inner, TOUCH_TAP)), ("wide", controls),
+                                             ("text", "HOST CONTROLS"), ("font", "ui\\small_ui"),
+                                             ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 19)],
+                     [f'<on event="a" run="port host open" open="{HOST_CONTROLS}/host_controls_screen" '
+                      'branch="true"/>', start, '<on event="left_mouse" run="mouse emit accept event"/>'])
     items.append(f'<child widget="{touch}/board_prompts" y="{TOUCH_FOOTER_TOP}"/>')
     lines += _widget(f"{touch}/board_list", [("type", "column_list"), ("width", 640), ("height", 480),
                                              ("flags", "pass_unhandled_to_focused_child up_down_tabs_items")],
@@ -5073,7 +5100,7 @@ def _touch_host_controls() -> tuple:
                       f'<child widget="{touch}/host_prompts" y="{TOUCH_FOOTER_TOP}"/>'])
     lines += _touch_chips(touch, "host_tabs", HOST_TABS, ['<on event="a" run="port host tab"/>',
                                                           '<on event="start" run="port host tab"/>'],
-                          TOUCH_LIST_WIDTH)
+                          TOUCH_LIST_WIDTH, TOUCH_HOST_CHIP_WIDTH)
     lines += _touch_prompts(touch, "host_prompts", [("prompt_back", "BACK", back_x, back_w,
                                                      '<on event="a" run="mouse emit back event"/>')])
     for row in range(1, TOUCH_HOST_ROWS + 1):
