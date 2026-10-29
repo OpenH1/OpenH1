@@ -240,6 +240,70 @@ static void case_form(void)
 	CHECK(high - low > 0.3f, "the form kept within %.2f to %.2f", low, high);
 }
 
+/* where each weapon aims: the sniper rifle and the pistol the head once the
+shield is down, the body before, the rocket launcher and fuel rod gun the feet,
+anything else the body; the body when the bot does not go for the head, or
+on a target in a vehicle */
+static void case_aim_point(void)
+{
+	CHECK(bots_aim_point_kind(_bots_family_sniper, 0.0f, FALSE, TRUE) == _bots_aim_head,
+		"the sniper rifle not at the head of a target whose shield is down");
+	CHECK(bots_aim_point_kind(_bots_family_sniper, 1.0f, FALSE, TRUE) == _bots_aim_body,
+		"the sniper rifle at the head of a target whose shield is up");
+	CHECK(bots_aim_point_kind(_bots_family_sniper, 0.0f, FALSE, FALSE) == _bots_aim_body,
+		"the sniper rifle at the head when the bot does not go for it");
+	CHECK(bots_aim_point_kind(_bots_family_pistol, 1.0f, FALSE, TRUE) == _bots_aim_body,
+		"the pistol at the head of a target whose shield is up");
+	CHECK(bots_aim_point_kind(_bots_family_pistol, 0.4f, FALSE, TRUE) == _bots_aim_body,
+		"the pistol at the head of a target whose shield is half up");
+	CHECK(bots_aim_point_kind(_bots_family_pistol, 0.0f, FALSE, TRUE) == _bots_aim_head,
+		"the pistol not at the head of a target whose shield is down");
+	CHECK(bots_aim_point_kind(_bots_family_explosive, 1.0f, FALSE, TRUE) == _bots_aim_feet, "rockets not at the feet");
+	CHECK(bots_aim_point_kind(_bots_family_explosive, 0.0f, FALSE, FALSE) == _bots_aim_feet, "rockets not at the feet");
+	CHECK(bots_aim_point_kind(_bots_family_assault_rifle, 0.0f, FALSE, TRUE) == _bots_aim_body,
+		"the assault rifle not at the body");
+	CHECK(bots_aim_point_kind(_bots_family_plasma, 0.0f, FALSE, TRUE) == _bots_aim_body, "plasma not at the body");
+	CHECK(bots_aim_point_kind(_bots_family_other, 0.0f, FALSE, TRUE) == _bots_aim_body, "the others not at the body");
+	CHECK(bots_aim_point_kind(_bots_family_sniper, 0.0f, TRUE, TRUE) == _bots_aim_body,
+		"the head of a target in a vehicle");
+}
+
+/* how often each skill goes for the head: about its chance, the less
+skilled less often, the legendary always; the choice held two seconds */
+static void case_head_chance(void)
+{
+	real share[NUMBER_OF_BOTS_SKILLS];
+	short skill;
+
+	for (skill = 0; skill < NUMBER_OF_BOTS_SKILLS; skill++)
+	{
+		struct bots_skill_definition const *skill_definition = &bots_skills[skill];
+		long tick, heads = 0, choices = 0;
+		boolean held;
+
+		reset(31 + skill);
+		for (tick = 0; tick < 4000 * TICKS_PER_SECOND; tick += 2 * TICKS_PER_SECOND)
+		{
+			heads += bots_aim_head_wanted(&bot, skill_definition, tick, FALSE);
+			choices++;
+			held = bot.head_wanted;
+			CHECK(bots_aim_head_wanted(&bot, skill_definition, tick + TICKS_PER_SECOND, FALSE) == held,
+				"%s changed its mind within two seconds", skill_definition->name);
+		}
+		share[skill] = (real)heads / (real)choices;
+		printf("%s: the head %.0f%% of the time (chance %.0f%%)\n", skill_definition->name, share[skill] * 100.0f,
+			skill_definition->head_chance * 100.0f);
+		CHECK(fabsf(share[skill] - skill_definition->head_chance) < 0.05f, "%s goes for the head %.2f of the time",
+			skill_definition->name, share[skill]);
+		if (skill > 0)
+		{
+			CHECK(share[skill] > share[skill - 1] || share[skill] == 1.0f, "%s no more often at the head than %s",
+				skill_definition->name, bots_skills[skill - 1].name);
+		}
+	}
+	CHECK(share[0] < 0.5f, "the easy bot at the head %.2f of the time", share[0]);
+}
+
 int main(int argc, char **argv)
 {
 	char const *case_name = argc > 1 ? argv[1] : "";
@@ -250,6 +314,8 @@ int main(int argc, char **argv)
 	else CASE("motion") case_motion();
 	else CASE("flinch") case_flinch();
 	else CASE("form") case_form();
+	else CASE("aim-point") case_aim_point();
+	else CASE("head-chance") case_head_chance();
 	else
 	{
 		fprintf(stderr, "unknown case %s\n", case_name);

@@ -2,7 +2,9 @@
 easy bot flicks past a target and corrects while the legendary one settles cleanly, every skill within a second, and a
 tracked target is not trailed; the aim error settles to a wander of its skill's floor that never reaches zero; a change
 of the target's motion keeps the aim on the old motion for the bot's reaction time, then grows the error; a hit knocks
-the aim off (more for a shield popped); the bot's form wanders slowly within its bounds."""
+the aim off (more for a shield popped); the bot's form wanders slowly within its bounds. Where it aims: the sniper rifle
+and the pistol at the head once the shield is down, explosives at the feet, the rest at the body, the head as often as
+its skill's chance."""
 
 import re
 import sys
@@ -13,9 +15,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, constant, enum_with, function, mutated, read, run, structure  # noqa: E402
 
-CASES = ["spring", "tracks", "floor", "motion", "flinch", "form"]
+CASES = ["spring", "tracks", "floor", "motion", "flinch", "form", "aim-point", "head-chance"]
 FUNCTIONS = ("bots_random", "bots_random_real", "bots_random_signed", "bots_angle_difference", "bots_turn", "bots_aim_settle", "bots_aim_form",
-             "bots_aim_flinch", "bots_aim_target_motion")
+             "bots_aim_flinch", "bots_aim_target_motion", "bots_aim_point_kind", "bots_aim_head_wanted")
 
 # a fault, the function it is in (None: the skill table), and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -33,6 +35,16 @@ NEGATIVE_CONTROLS = {
     "no-flinch": (("(MIN(loss * 2.0f, 1.5f) + (popped ? 0.5f : 0.0f))", "0.0f"), "bots_aim_flinch", "flinch"),
     "popped-no-worse": (("(popped ? 0.5f : 0.0f)", "0.0f"), "bots_aim_flinch", "flinch"),
     "form-jumps": (("bots_random_signed(bot) * 0.1f", "bots_random_signed(bot) * 0.5f"), "bots_aim_form", "form"),
+    "pistol-head-through-shield": (("head_wanted && target_shield <= 0.05f", "head_wanted"), "bots_aim_point_kind",
+                                   "aim-point"),
+    "rockets-at-the-body": (("case _bots_family_explosive:\n\t\treturn _bots_aim_feet;",
+                             "case _bots_family_explosive:\n\t\treturn _bots_aim_body;"), "bots_aim_point_kind",
+                            "aim-point"),
+    "sniper-body-always": (("case _bots_family_sniper:\n", ""), "bots_aim_point_kind", "aim-point"),
+    "head-chance-ignored": (("bots_random_real(bot) < skill->head_chance", "TRUE"), "bots_aim_head_wanted",
+                            "head-chance"),
+    "head-every-tick": (("bot->head_tick = now + TICKS_PER_SECOND * 2;", "bot->head_tick = now;"),
+                        "bots_aim_head_wanted", "head-chance"),
 }
 
 
@@ -57,6 +69,7 @@ def generated(fault=None, faulty_function=None):
     config += f"#define TICKS_PER_SECOND {constant(read('source/cseries/cseries.h'), 'TICKS_PER_SECOND')}\n"
     config += enum_with(source, "_bots_skill_easy") + "\n"
     config += enum_with(source, "_bots_family_other") + "\n"
+    config += enum_with(source, "_bots_aim_body") + "\n"
     config += structure(source, "bots_skill_definition") + "\n"
     table = _skill_table(source)
     if fault and faulty_function is None:

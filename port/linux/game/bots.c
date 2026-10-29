@@ -23,7 +23,10 @@ What a bot does each tick, in a player's terms:
   the target and come back), with an aim error that settles while it keeps
   the target in sight but never to nothing ("the aim's hand": a wander, its
   form's streaks, a flinch when hit, a target's change of motion taken in
-  late), leads a moving target by its weapon's projectile speed, and fires
+  late), aims where its weapon is best (the sniper rifle and the pistol at
+  the head once the shield is down, rockets and the fuel rod gun
+  at the feet, the rest at the body; the less skilled go for the head less
+  often), leads a moving target by its weapon's projectile speed, and fires
   in bursts while its aim is near the target (released between bursts, so
   semi-automatic weapons fire too); it throws
   a grenade now and then at middle range and strikes with its weapon close
@@ -167,6 +170,15 @@ enum
 	NUMBER_OF_BOTS_FAMILIES,
 };
 
+/* where on its target a bot aims (bots_aim_point_kind) */
+enum
+{
+	_bots_aim_body = 0,
+	_bots_aim_head,
+	/* the ground at its feet (a blast's reach) */
+	_bots_aim_feet,
+};
+
 /* ---------- structures */
 
 struct bots_skill_definition
@@ -212,18 +224,22 @@ struct bots_skill_definition
 	/* the ticks of a burst, and of a pause between bursts */
 	short burst_ticks;
 	short pause_ticks;
+	/* the chance it goes for the head with a weapon that wants it (the
+	sniper rifle, the pistol, on a target whose shield is down), taken for
+	each target and every two seconds (bots_aim_head_wanted) */
+	real head_chance;
 };
 
 static struct bots_skill_definition const bots_skills[NUMBER_OF_BOTS_SKILLS] =
 {
 	{ "easy", 0.75f, 22.0f, 100.0f, 12.0f, 1.4f, 8.0f, 7.0f, 0.45f, 1.8f, 4.0f, 0.70f, 1.5f, 0.6f, 2.2f, 0.3f, 0.04f, 0.00f,
-		6, 14 },
+		6, 14, 0.35f },
 	{ "normal", 0.45f, 32.0f, 120.0f, 7.0f, 0.9f, 13.0f, 9.0f, 0.6f, 1.1f, 3.0f, 0.80f, 2.2f, 0.4f, 1.8f, 0.7f, 0.10f, 0.05f,
-		9, 9 },
+		9, 9, 0.6f },
 	{ "heroic", 0.30f, 42.0f, 140.0f, 4.0f, 0.6f, 20.0f, 15.0f, 0.65f, 0.5f, 1.8f, 0.88f, 3.0f, 0.15f, 1.5f, 0.8f, 0.16f, 0.15f,
-		12, 6 },
+		12, 6, 0.85f },
 	{ "legendary", 0.18f, 55.0f, 160.0f, 2.2f, 0.35f, 30.0f, 20.0f, 1.0f, 0.25f, 1.2f, 0.95f, 4.0f, 0.05f, 1.25f, 1.0f, 0.22f,
-		0.25f, 16, 4 },
+		0.25f, 16, 4, 1.0f },
 };
 
 struct bots_bot
@@ -276,6 +292,10 @@ struct bots_bot
 	real_vector3d motion_drift;
 	/* its shield last tick (a shield popped: a flinch) */
 	real last_shield;
+	/* it goes for the head (bots_aim_head_wanted), until it next thinks of
+	it */
+	boolean head_wanted;
+	long head_tick;
 	long next_look_tick;
 	/* the last time it was hurt, and its vitality then */
 	real last_vitality;
@@ -1689,20 +1709,16 @@ static boolean bots_is_enemy(struct player_datum *player, struct player_datum *o
 	return TRUE;
 }
 
-/* whether the player's unit has a weapon whose tag's name has that in it in
-its hands */
-static boolean bots_holding(struct player_datum *player, char const *part)
+/* the family of the weapon in the player's unit's hands (bots_weapon_kind),
+NONE for none */
+static short bots_holding(struct player_datum *player)
 {
-	struct unit_datum *unit;
 	long weapon_index;
-	char const *name;
 
 	if (player->unit_index == NONE)
-		return FALSE;
-	unit = unit_get(player->unit_index);
-	weapon_index = bots_current_weapon(unit);
-	name = weapon_index != NONE ? tag_get_name(weapon_get(weapon_index)->definition_index) : NULL;
-	return name && strstr(name, part);
+		return NONE;
+	weapon_index = bots_current_weapon(unit_get(player->unit_index));
+	return weapon_index != NONE ? bots_weapon_kind(weapon_get(weapon_index)->definition_index)->family : (short)NONE;
 }
 
 /* the enemy the bot sees best now, NONE for none: of the enemies in its
@@ -1759,7 +1775,7 @@ static boolean bots_target_score(struct bots_bot *bot, struct player_datum *play
 	candidate->score = distance + bearing * 4.0f - (player_index == bot->target_player_index ? 6.0f : 0.0f);
 	/* (debug.bot_player's rocket launcher: the enemy with the most others
 	about them, a group for one rocket) */
-	if (bot->smooth && bots_holding(player, "rocket"))
+	if (bot->smooth && bots_holding(player) == _bots_family_explosive)
 	{
 		struct data_iterator others;
 		struct player_datum *near;
@@ -2370,6 +2386,44 @@ static void bots_aim_target_motion(struct bots_bot *bot, struct bots_skill_defin
 	}
 }
 
+/* where on the target the bot's weapon (its family) is best aimed: the
+sniper rifle and the pistol at the head once the target's shield is down
+(shield: its vitality, 0 to 1, more with an overshield), when a headshot
+kills, and at the body, the larger target, to bring the shield down (a
+sniper going for the head through a whole shield missed four times as many
+kills: measured); the rocket launcher and the fuel rod gun at the feet, for
+the blast's reach on the ground; anything else at the body. The head only
+while the bot goes for it (head_wanted), and not on a target in a
+vehicle */
+static short bots_aim_point_kind(short family, real target_shield, boolean in_vehicle, boolean head_wanted)
+{
+	if (in_vehicle)
+		return _bots_aim_body;
+	switch (family)
+	{
+	case _bots_family_sniper:
+	case _bots_family_pistol:
+		return head_wanted && target_shield <= 0.05f ? _bots_aim_head : _bots_aim_body;
+	case _bots_family_explosive:
+		return _bots_aim_feet;
+	}
+	return _bots_aim_body;
+}
+
+/* whether the bot goes for the head now: its skill's chance, taken for
+each new target and every two seconds, so that a less skilled bot aims at
+the body more often */
+static boolean bots_aim_head_wanted(struct bots_bot *bot, struct bots_skill_definition const *skill, long now,
+	boolean new_target)
+{
+	if (new_target || now >= bot->head_tick)
+	{
+		bot->head_wanted = bots_random_real(bot) < skill->head_chance;
+		bot->head_tick = now + TICKS_PER_SECOND * 2;
+	}
+	return bot->head_wanted;
+}
+
 /* (the aim's tally) the rounds the bot's weapon fired since the last tick,
 by its family, and its sniper's with the aim on the head */
 static void bots_tally_shots(struct bots_bot *bot, long weapon_index)
@@ -2555,6 +2609,7 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 	long now = tick->now;
 	real desired_yaw, desired_pitch, dx, dy, dz, horizontal, turn, yaw_off, pitch_off, cone;
 	boolean new_target = bot->target_aim_tick != now - 1 || bot->target_first_seen_tick == now;
+	short part;
 	short family = tick->weapon_index != NONE ?
 		bots_weapon_kind(weapon_get(tick->weapon_index)->definition_index)->family : (short)_bots_family_other;
 
@@ -2564,16 +2619,16 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 	/* (the target's motion as the bot has taken it in: aimed where that
 	would have it) */
 	bots_aim_target_motion(bot, skill, &target_object->object.translational_velocity, now, new_target);
-	/* (debug.bot_player's sniper aims at the head, as a player snipes; its
-	rocket launcher at the feet, for the blast's reach) */
-	if (bot->smooth && tick->weapon_index != NONE)
+	/* (where its weapon is best aimed: the head, the feet, the body;
+	debug.bot_player's goes for the head always) */
+	part = bots_aim_point_kind(family, target_object->object.shield_vitality,
+		target_object->object.parent_object_index != NONE, bot->smooth || bots_aim_head_wanted(bot, skill, now, new_target));
+	if (part == _bots_aim_head)
+		unit_get_head_position(target_player->unit_index, &aim_point);
+	else if (part == _bots_aim_feet)
 	{
-		char const *name = tag_get_name(weapon_get(tick->weapon_index)->definition_index);
-
-		if (name && strstr(name, "sniper"))
-			unit_get_head_position(target_player->unit_index, &aim_point);
-		else if (name && strstr(name, "rocket"))
-			aim_point = target_object->object.position;
+		aim_point = target_object->object.position;
+		aim_point.z += 0.05f;
 	}
 	/* (leading a moving target by the projectile's flight) */
 	if (tick->weapon_index != NONE && skill->lead > 0.0f)
@@ -2638,17 +2693,18 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 
 	/* (debug.bot_player's sniper: through the scope, as a player snipes,
 	2x past 6 world units and 8x past 30) */
-	if (bot->smooth && tick->weapon_index != NONE && tag_get_name(weapon_get(tick->weapon_index)->definition_index) &&
-		strstr(tag_get_name(weapon_get(tick->weapon_index)->definition_index), "sniper") && tick->target_distance > 6.0f)
+	if (bot->smooth && family == _bots_family_sniper && tick->target_distance > 6.0f)
 	{
 		tick->action->desired_zoom_level = tick->target_distance > 30.0f ? 1 : 0;
 	}
 
 	/* fire: once it has reacted, while its aim is on the target (its size
-	at that distance) */
+	at that distance; going for the head, about the head and shoulders, as a
+	player fires when the reticle is near the head) */
 	yaw_off = (real)fabs(bots_angle_difference((real)atan2(dy, dx), bot->yaw));
 	pitch_off = (real)fabs((real)atan2(dz, horizontal) - bot->pitch);
-	cone = (real)atan(0.35f / MAX(tick->target_distance, 0.5f)) * skill->fire_cone + 0.01f;
+	cone = (real)atan((part == _bots_aim_head ? 0.3f : 0.35f) / MAX(tick->target_distance, 0.5f)) * skill->fire_cone +
+		0.01f;
 	/* (a weapon fired a shot a press, as a player fires a precise one: a
 	tighter cone, the aim let settle on the mark) */
 	if (tick->weapon_index != NONE && bots_weapon_tap_ticks(tick->weapon_index) > 0)
