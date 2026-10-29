@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The port's settings screen, in the PC version's style (tools/port_settings.py) -->
+<menus>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/screen_layout_screen" width="640" height="480" flags="pass_unhandled_to_focused_child pause_game" bitmap="bitmaps/gradient">
+		<on event="b" run="port settings page cancel" back="true"/>
+		<on event="back" run="port settings page cancel" back="true"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/header_screen_layout"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/options_menu"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/header_screen_layout" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/header_screen_layout" wide="-106 0">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/options_menu" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child up_down_tabs_children" description="main_menu/settings/page_panel">
+		<data input="port settings page"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/section_0" x="28" y="80" platform="android"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/op_picture_position" x="28" y="100" platform="android"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/op_picture_shape" x="28" y="121" platform="android"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/section_3" x="28" y="148" platform="android"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/op_frame_style" x="28" y="168" platform="android"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/button_bar" y="414"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/button_defaults" x="24" y="1"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/button_ok" x="358" y="1"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/button_cancel" x="488" y="1"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/button_defaults" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" string_list="strings/common_button_captions" string_index="3" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2" wide="-106 0">
+		<on event="a" run="port settings defaults"/>
+		<on event="start" run="port settings defaults"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/button_ok" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" string_list="strings/common_button_captions" string_index="1" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2" wide="106 0">
+		<on event="a" run="port settings keep" back="true"/>
+		<on event="start" run="port settings keep" back="true"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/button_cancel" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" string_list="strings/common_button_captions" string_index="2" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2" wide="106 0">
+		<on event="a" run="port settings page cancel" back="true"/>
+		<on event="start" run="port settings page cancel" back="true"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/section_0" width="344" height="18" bitmap="main_menu/settings/section" platform="android" wide="-106 120">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/section_0_title"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/section_0_title" type="text" controller="1" width="344" height="18" wide="0 120" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/labels" color="#FF6F9CD0" text_x="2" text_y="1" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/op_picture_position" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" platform="android" wide="-106 120">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/picture_position_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/picture_position_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/picture_position_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/labels" string_index="1" color="#FF2896FF" text_x="10" text_y="2" wide="0 120" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/picture_position_spinner" type="spinner" top="2" width="140" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="CENTER|TOP" setting="display.picture_position" values="center|top" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 140 14 146" wide="120 0">
+		<on event="created" run="port setting load"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/op_picture_shape" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" platform="android" wide="-106 120">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/picture_shape_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/picture_shape_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/picture_shape_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/labels" string_index="2" color="#FF2896FF" text_x="10" text_y="2" wide="0 120" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/picture_shape_spinner" type="spinner" top="2" width="140" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="4:3|16:9" setting="display.picture_shape" values="4:3|16:9" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 140 14 146" wide="120 0">
+		<on event="created" run="port setting load"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/section_3" width="344" height="18" bitmap="main_menu/settings/section" platform="android" wide="-106 120">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/section_3_title"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/section_3_title" type="text" controller="1" width="344" height="18" wide="0 120" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/labels" string_index="3" color="#FF6F9CD0" text_x="2" text_y="1" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/op_frame_style" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" platform="android" wide="-106 120">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/frame_style_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/frame_style_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/frame_style_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/labels" string_index="4" color="#FF2896FF" text_x="10" text_y="2" wide="0 120" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/frame_style_spinner" type="spinner" top="2" width="140" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="PLAIN|HALO|XBOX" setting="display.frame_style" values="plain|halo|xbox" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 140 14 146" wide="120 0">
+		<on event="created" run="port setting load"/>
+	</widget>
+	<strings name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/labels">
+		<string text="PICTURE"/>
+		<string text="PICTURE POSITION"/>
+		<string text="PICTURE SHAPE"/>
+		<string text="PORTRAIT"/>
+		<string text="PORTRAIT FRAME"/>
+	</strings>
+	<strings name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/help_strings">
+		<string text=""/>
+		<string text=""/>
+		<string text="Where the picture sits on a screen taller than it, such as a folding phone's inner screen or a tablet. Top puts all the black space below it, where the touch controls are. Portrait always has it near the top, under the strip of buttons."/>
+		<string text="The picture's shape on a screen taller than it. 4:3 is the Xbox's; 16:9 sees more to the sides and leaves more of the screen to the touch controls."/>
+		<string text=""/>
+		<string text="The look of the screen around the picture when you play in portrait: plain black, Halo's blue lines and rings, or Xbox green. It is never drawn over the picture."/>
+	</strings>
+</menus>

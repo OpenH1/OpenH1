@@ -88,20 +88,29 @@ def _check_apart(boxes, what):
 
 
 def _settings_screens():
+    """each tab and page, laid out as the desktop's, or as Android's where only Android has its rows (Screen
+    Layout)"""
     pe = port_settings.PE
-    return [(folder, f"{pe}/{folder}/{page['screen']}", "tab" in page) for folder, page in port_settings.PAGES.items()]
+
+    def platforms(page):
+        rows = [row for row in page["rows"] if row[0] != port_settings.SECTION]
+        android = all(row[4] and "android" in row[4].split() for row in rows)
+        return menu_layout.ANDROID if rows and android else menu_layout.DESKTOP
+
+    return [(folder, f"{pe}/{folder}/{page['screen']}", "tab" in page, platforms(page))
+            for folder, page in port_settings.PAGES.items()]
 
 
 @pytest.mark.parametrize("aspect", WIDTHS)
-@pytest.mark.parametrize("folder,root,tab", _settings_screens())
-def test_settings_layout(aspect, folder, root, tab):
+@pytest.mark.parametrize("folder,root,tab,platforms", _settings_screens())
+def test_settings_layout(aspect, folder, root, tab, platforms):
     """Each of Settings' tabs and pages: its rows from the screen's left (wider on a wide screen, each label before
     its value, the values in the rows), the panel beside them to its right (its words and pictures in it), the tabs
     spread across it, apart, between LB's and RB's prompts, DEFAULTS at its left and OK and CANCEL at its right;
     all on the screen, none over another; 21:9 as 16:9."""
     width = WIDTHS[aspect]
     area = inner(width)
-    boxes = layout(root, width)
+    boxes = layout(root, width, platforms)
     rows = [box for box in boxes if box.name.startswith("op_") and box.path[-1] == "options_menu"]
     sections = [box for box in boxes if re.fullmatch(r"section_\d+", box.name)]
     panel = one(boxes, "tab_panel" if tab else "page_panel")
@@ -139,10 +148,10 @@ def test_settings_layout(aspect, folder, root, tab):
     # (wider as the screen is: at 16:9 the rows and panel as wide as the usable screen, less the margins; 21:9's
     # 16:9's)
     if width >= port_settings.WIDE_WIDTH:
-        assert layout(root, width) == layout(root, port_settings.WIDE_WIDTH)
+        assert layout(root, width, platforms) == layout(root, port_settings.WIDE_WIDTH, platforms)
         assert rows[0].x0 - usable(width).x0 == 28 and usable(width).x1 - panel.x1 == 28
     if width > 640:
-        narrow = [box for box in layout(root, 640) if box.name in (rows[0].name, panel.name)]
+        narrow = [box for box in layout(root, 640, platforms) if box.name in (rows[0].name, panel.name)]
         assert rows[0].x1 - rows[0].x0 > narrow[0].x1 - narrow[0].x0
         assert panel.x1 - panel.x0 > narrow[1].x1 - narrow[1].x0
 

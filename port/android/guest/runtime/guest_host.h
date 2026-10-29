@@ -131,6 +131,9 @@ void host_android_path(int which, char *buffer, unsigned int size);
 /* the edges where Android keeps its gestures, as left, top, right, bottom
 in pixels of the current orientation, into insets[4]; all 0 when unknown */
 void host_gesture_insets(int *insets);
+/* display.orientation: asks the activity for the way up, 0 landscape, 1
+portrait (either way up), 2 whichever way the device is held */
+void host_orientation(int which);
 
 /* ---------- the on-screen touch controls (host_touch.c, android_imports.list) */
 
@@ -144,6 +147,9 @@ void host_touch_look_read(float *delta);
 void host_touch_rumble(unsigned int low, unsigned int high);
 /* tells the overlay when to show: touch_input.c's _touch_scene_* */
 void host_touch_scene(int scene);
+/* where the overlay wants the picture's top in a portrait window, in the
+window's pixels (under its top strip), or -1 if it has not said */
+int host_touch_picture_top(void);
 /* the game control on each of the 16 controller buttons (touch_game.c),
 for the overlay's labels */
 void host_touch_bindings(const int *controls);

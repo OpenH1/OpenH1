@@ -233,7 +233,8 @@ enum
 	/* the screenshot key's picture (controls.screenshot) */
 	XGPU_STREAM_SCREENSHOT,            /* synchronous */
 	/* display.picture_position: where a picture of another shape than the
-	window sits in it (value: 0 centered, 1 at the top) */
+	window sits in it (value: 0 centered, n + 1 n pixels from the top, no
+	lower than the bottom) */
 	XGPU_STREAM_PICTURE_POSITION,
 	XGPU_STREAM_RECORD_TYPES,
 };

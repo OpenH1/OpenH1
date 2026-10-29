@@ -177,30 +177,231 @@ public final class TouchLayoutTest {
         check(fold.x(0) == cornerX && fold.y(0) == cornerY, "Made smaller again, it goes back to the corner");
         // A taller display keeps the top row at the top and the rest as far
         // from the bottom as on a 16:9 one (a folding phone's inner screen,
-        // a 4:3 tablet, a tall window).
+        // a 4:3 tablet, a tall window); white and black (the flashlight and
+        // the grenade's type) come down with the rest, above the D-pad.
         TouchLayout flat = new TouchLayout();
+        TouchLayout notTaller = new TouchLayout();
+        notTaller.bounds(960, 540);
+        TouchLayout wider = new TouchLayout();
+        wider.bounds(1260, 540);
+        for (int kind : new int[] {TouchLayout.WHITE, TouchLayout.BLACK})
+            check(notTaller.x(kind) == flat.x(kind) && notTaller.y(kind) == flat.y(kind)
+                  && wider.y(kind) == flat.y(kind) && wider.x(kind) == flat.x(kind) * 1260 / 960,
+                  "White and black stay in the top row up to 16:9 and on wider displays");
         for (float tall : new float[] {600, 720, 865.05f, 926.1f, 2133.3f}) {
             TouchLayout high = new TouchLayout();
             high.bounds(960, tall);
             for (int i = 0; i < high.size(); i++) {
-                if (flat.y(i) <= TouchLayout.TOP_ROW)
+                boolean whiteOrBlack = high.type(i) == TouchLayout.WHITE || high.type(i) == TouchLayout.BLACK;
+                if (flat.y(i) <= TouchLayout.TOP_ROW && !whiteOrBlack)
                     check(high.y(i) == flat.y(i), "The top row stays at the top of a taller display");
-                else
+                else if (!whiteOrBlack)
                     check(Math.abs((tall - high.y(i)) - (540 - flat.y(i))) < 0.01f,
                           "The controls under the thumbs keep their distance from the bottom of a taller display");
-                check(high.x(i) == flat.x(i), "A taller display keeps each control's distance from the sides");
+                if (!whiteOrBlack && high.type(i) != TouchLayout.FIRE_LEFT)
+                    check(high.x(i) == flat.x(i), "A taller display keeps each control's distance from the sides");
             }
-            for (float line = 0; line <= 540; line += 0.5f) {
-                float y = TouchLayout.displayY(line, tall);
-                check(Math.abs(TouchLayout.gridY(y, tall) - line) < 0.001f, "A line of the grid comes back from the display");
-                check(line == 0 || y > TouchLayout.displayY(line - 0.5f, tall), "Lower lines of the grid stay lower on the display");
+            for (int kind : new int[] {0, TouchLayout.WHITE, TouchLayout.FIRE_LEFT}) {
+                for (float line = 0; line <= 540; line += 0.5f) {
+                    float y = TouchLayout.displayY(kind, line, tall);
+                    check(Math.abs(TouchLayout.gridY(kind, y, tall) - line) < 0.001f,
+                          "A line of the grid comes back from the display");
+                    check(line == 0 || y > TouchLayout.displayY(kind, line - 0.5f, tall),
+                          "Lower lines of the grid stay lower on the display");
+                }
             }
+            // (white and black beside the D-pad's right arrow, one above the other)
+            check(high.x(TouchLayout.WHITE) - high.radius(TouchLayout.WHITE) > high.x(15) + high.radius(15)
+                  && high.x(TouchLayout.BLACK) == high.x(TouchLayout.WHITE)
+                  && high.y(TouchLayout.WHITE) < high.y(15) && high.y(TouchLayout.BLACK) > high.y(15)
+                  && high.y(TouchLayout.WHITE) > high.y(12) - high.radius(12)
+                  && high.y(TouchLayout.BLACK) < high.y(13) + high.radius(13),
+                  "White and black are beside the D-pad, one above the other, on a taller display");
+            // (and at a finger's largest width, as in a small window: every control, the second fire too)
+            for (float finger : new float[] {0, TouchLayout.MAX_MINIMUM_RADIUS}) {
+                high.setMinimumRadius(finger);
+                for (int a = 0; a < high.size(); a++)
+                    for (int b = a + 1; b < high.size(); b++)
+                        check(Math.hypot(high.x(a) - high.x(b), high.y(a) - high.y(b)) >= high.radius(a) + high.radius(b),
+                              "Controls do not overlap on a taller display (" + a + ", " + b + " at " + tall + ")");
+            }
+            high.setMinimumRadius(0);
+            high.move(TouchLayout.WHITE, 480, tall / 3);
+            float whiteMiddle = high.y(TouchLayout.WHITE);
+            high.bounds(960, 540);
+            high.bounds(960, tall);
+            check(Math.abs(high.y(TouchLayout.WHITE) - whiteMiddle) < 0.01f,
+                  "White put high on a tall display comes back there");
             high.move(0, 480, tall / 2);
             float middle = high.y(0);
             high.bounds(960, 540);
             high.bounds(960, tall);
             check(Math.abs(high.y(0) - middle) < 0.01f, "A control put in the middle of a tall display comes back there");
+            // (white, black and the second fire, moved toward their places
+            // beside the D-pad, dragged to each edge stay at it)
+            for (int kind : new int[] {TouchLayout.WHITE, TouchLayout.BLACK, TouchLayout.FIRE_LEFT}) {
+                for (float[] edge : new float[][] {{-99999, tall / 2}, {99999, tall / 2}, {480, -99999}, {480, 99999}}) {
+                    TouchLayout dragged = new TouchLayout();
+                    dragged.bounds(960, tall);
+                    dragged.move(kind, edge[0], edge[1]);
+                    float x = dragged.x(kind), y = dragged.y(kind);
+                    dragged.bounds(960, 540);
+                    dragged.bounds(960, tall);
+                    check(Math.abs(dragged.x(kind) - x) < 0.01f && Math.abs(dragged.y(kind) - y) < 0.01f,
+                          "A control dragged to an edge of a tall display comes back there (" + kind + ", "
+                          + edge[0] + ", " + edge[1] + " at " + tall + ")");
+                }
+            }
         }
+        // The portrait layout: its own grid and defaults, apart at every
+        // portrait shape (a 16:9 phone, 20:9, the Fold7's cover, a split
+        // screen half, a folding phone's inner screen), as low as on 16:9 on
+        // a taller one and the right thumb's cluster at the right of a wider
+        // one; its file says it is portrait, a landscape one's is as it was.
+        TouchLayout upright = new TouchLayout(true);
+        check(upright.portrait && upright.gridWidth() == 540 && upright.gridHeight() == 960,
+              "A portrait layout is on its own grid");
+        check(upright.size() == 18 && !upright.shown(TouchLayout.FIRE_LEFT), "A portrait layout has every control");
+        for (float[] display : new float[][] {
+                {540, 960, 24 * 2.25f / 2.25f}, {540, 1200, 24 * 2.625f / 2f}, {540, 1260, 24 * 2.35f / 2f},
+                {901.5f, 960, 24 * 2.625f / 1.198f}, {865, 960, 24 * 2.35f / 2.275f}, {540, 960, 34}}) {
+            TouchLayout tall = new TouchLayout(true);
+            tall.bounds(display[0], display[1]);
+            tall.setMinimumRadius(display[2]);
+            for (int a = 0; a < tall.size(); a++) {
+                if (!tall.shown(a))
+                    continue;
+                check(tall.x(a) - tall.radius(a) >= 0 && tall.x(a) + tall.radius(a) <= display[0]
+                      && tall.y(a) - tall.radius(a) >= 0 && tall.y(a) + tall.radius(a) <= display[1],
+                      "A portrait control stays on the display");
+                for (int b = a + 1; b < tall.size(); b++) {
+                    if (tall.shown(b))
+                        check(Math.hypot(tall.x(a) - tall.x(b), tall.y(a) - tall.y(b)) >= tall.radius(a) + tall.radius(b),
+                              "Portrait controls do not overlap at " + display[0] + " x " + display[1]);
+                }
+            }
+        }
+        TouchLayout portraitBase = new TouchLayout(true);
+        TouchLayout portraitTall = new TouchLayout(true);
+        portraitTall.bounds(540, 1200);
+        TouchLayout portraitWide = new TouchLayout(true);
+        portraitWide.bounds(865, 960);
+        for (int i = 0; i < portraitBase.size(); i++) {
+            if (portraitBase.y(i) <= TouchLayout.PORTRAIT_STRIP)
+                check(portraitTall.y(i) == portraitBase.y(i) && portraitTall.x(i) == portraitBase.x(i),
+                      "The portrait strip's controls keep their distance from the top of a taller display");
+            else
+                check(Math.abs((1200 - portraitTall.y(i)) - (960 - portraitBase.y(i))) < 0.01f
+                      && portraitTall.x(i) == portraitBase.x(i),
+                      "Portrait controls keep their distance from the bottom of a taller display");
+            if (portraitBase.x(i) >= TouchLayout.RIGHT_PART)
+                check(Math.abs((865 - portraitWide.x(i)) - (540 - portraitBase.x(i))) < 0.01f,
+                      "The right thumb's portrait controls keep their distance from the right of a wider display");
+            else if (portraitBase.x(i) <= TouchLayout.LEFT_PART)
+                check(portraitWide.x(i) == portraitBase.x(i),
+                      "The left thumb's portrait controls keep their distance from the left of a wider display");
+        }
+        // The strip: back and pause in it, at the top under a camera's
+        // cutout; the picture under it, lowered half way into the free space
+        // and clear of the default controls where there is room (20:9, the
+        // Fold7's cover), under the strip where there is none (16:9, a
+        // folding phone's inner screen); a moved control does not move it.
+        for (float[] display : new float[][] {{540, 960}, {540, 1200}, {540, 1260}, {865, 960}, {901.5f, 960}}) {
+            for (float inset : new float[] {0, 40}) {
+                TouchLayout strip = new TouchLayout(true);
+                strip.bounds(display[0], display[1]);
+                strip.setTopInset(inset);
+                for (int i : new int[] {10, 11})
+                    check(strip.y(i) + strip.radius(i) <= strip.stripBottom() && strip.y(i) - strip.radius(i) >= inset,
+                          "Back and pause are in the strip, under the cutout");
+                float lowest = display[1];
+                for (int i = 0; i < strip.size(); i++)
+                    if (strip.shown(i) && strip.y(i) > strip.stripBottom())
+                        lowest = Math.min(lowest, strip.y(i) - strip.radius(i));
+                for (boolean sixteenNine : new boolean[] {false, true}) {
+                    float high = TouchLayout.pictureHeight(display[0], sixteenNine);
+                    float top = strip.pictureTop(high);
+                    float room = lowest - 10 - strip.stripBottom() - high;
+                    if (room >= 0)
+                        check(top >= strip.stripBottom() && top + high <= lowest
+                              && Math.abs((top - strip.stripBottom()) - (lowest - 10 - top - high)) < 0.01f,
+                              "A lowered picture is half way between the strip and the controls, clear of them");
+                    else
+                        check(top == Math.max(inset, lowest - 10 - high) && top < strip.stripBottom(),
+                              "Without room the picture moves up as far as it must to clear the controls, to the top");
+                    // (and with the picture behind the strip, pause moves to its middle, off the HUD's
+                    // ammunition, and back to its place when the picture is lowered again; one dragged
+                    // there stays where it was put)
+                    TouchLayout plain = new TouchLayout(true);
+                    plain.bounds(display[0], display[1]);
+                    plain.setTopInset(inset);
+                    strip.setPictureTop(top);
+                    if (room >= 0)
+                        check(!strip.stripGathered() && strip.x(TouchLayout.PAUSE) == plain.x(TouchLayout.PAUSE),
+                              "Pause stays at its place with the picture under the strip");
+                    else
+                        check(strip.stripGathered()
+                              && strip.x(TouchLayout.PAUSE) == display[0] / 2 - TouchLayout.GATHERED_APART
+                              && strip.y(TouchLayout.PAUSE) == plain.y(TouchLayout.PAUSE),
+                              "Pause is in the strip's middle with the picture behind the strip");
+                    strip.move(TouchLayout.PAUSE, display[0] / 2 - 90, strip.y(TouchLayout.PAUSE));
+                    float dragged = strip.x(TouchLayout.PAUSE);
+                    strip.setPictureTop(strip.stripBottom());
+                    strip.setPictureTop(top);
+                    check(Math.abs(strip.x(TouchLayout.PAUSE) - dragged) < 0.01f, "A dragged pause stays where it was put");
+                    strip.setPictureTop(strip.stripBottom());
+                    check(!strip.stripGathered(), "A picture under the strip leaves pause at its place");
+                    strip.resetDefaults();
+                    TouchLayout moved = new TouchLayout(true);
+                    moved.bounds(display[0], display[1]);
+                    moved.setTopInset(inset);
+                    moved.move(TouchLayout.WHITE, 30, moved.stripBottom() + 5);
+                    check(moved.pictureTop(high) == top, "A moved control does not move the picture");
+                }
+            }
+        }
+        TouchLayout tallStrip = new TouchLayout(true);
+        tallStrip.bounds(540, 1200);
+        check(tallStrip.pictureTop(TouchLayout.pictureHeight(540, false)) > TouchLayout.PORTRAIT_STRIP + 100,
+              "On a 20:9 phone the picture is lowered");
+        portraitWide.move(4, 600, 300);
+        float portraitX = portraitWide.x(4), portraitY = portraitWide.y(4);
+        TouchLayout.Configuration uprightCopy = TouchLayout.importConfiguration(portraitWide.exportConfiguration(1.5f));
+        check(uprightCopy.layout.portrait, "A portrait layout's file says it is portrait");
+        uprightCopy.layout.bounds(865, 960);
+        check(Math.abs(uprightCopy.layout.x(4) - portraitX) < 0.01f && Math.abs(uprightCopy.layout.y(4) - portraitY) < 0.01f,
+              "A portrait layout comes back from its file");
+        check(!new TouchLayout().exportConfiguration(1f).contains("orientation")
+              && new TouchLayout().exportConfiguration(1f).contains("version=3"),
+              "A landscape layout's file is as it was");
+        // (a portrait layout's file has a version the builds before portrait, and iOS's, refuse)
+        String portraitFile = portraitWide.exportConfiguration(1f);
+        check(portraitFile.contains("version=4"), "A portrait layout's file is version 4");
+        for (String mismatched : new String[] {portraitFile.replace("version=4", "version=3"),
+                new TouchLayout().exportConfiguration(1f).replace("version=3", "version=4")}) {
+            try {
+                TouchLayout.importConfiguration(mismatched);
+                check(false, "Version 4 is a portrait layout's, and only its");
+            } catch (IllegalArgumentException expected) {
+            }
+        }
+        check(!TouchLayout.importConfiguration(new TouchLayout().exportConfiguration(1f)).layout.portrait,
+              "A layout file without an orientation is landscape");
+        String sideways = portraitWide.exportConfiguration(1f).replace("orientation=portrait", "orientation=sideways");
+        try {
+            TouchLayout.importConfiguration(sideways);
+            check(false, "An unknown orientation must be refused");
+        } catch (IllegalArgumentException expected) {
+        }
+        TouchLayout settingsFrom = new TouchLayout();
+        settingsFrom.rumbleEnabled = false;
+        settingsFrom.gyroscopeEnabled = true;
+        settingsFrom.floatingStick = true;
+        settingsFrom.setOpacity(0.5f);
+        TouchLayout settingsTo = new TouchLayout(true);
+        settingsTo.takeSettings(settingsFrom);
+        check(!settingsTo.rumbleEnabled && settingsTo.gyroscopeEnabled && settingsTo.floatingStick
+              && settingsTo.opacity == 0.5f, "The settings follow from one layout to the other");
         // Sizes follow use: fire the largest, then jump and the grenade, then reload,
         // swap and melee; the seldom used (stick clicks, white, black, back, the
         // D-pad) smaller than all of those.

@@ -673,10 +673,11 @@ void xgpu_backend_hdr(BOOL active, int mode, int paper_white)
 	record_body->paper_white = (uint32_t)paper_white;
 }
 
-void xgpu_backend_picture_top(BOOL top)
+void xgpu_backend_picture_top(int top)
 {
+	/* (0 centered, n + 1 at n pixels from the top) */
 	if (stream.open)
-		record_value(XGPU_STREAM_PICTURE_POSITION, top ? 1 : 0);
+		record_value(XGPU_STREAM_PICTURE_POSITION, top < 0 ? 0 : (uint32_t)top + 1);
 }
 
 void xgpu_backend_tone_map(xgpu_target target, const long corners[4])

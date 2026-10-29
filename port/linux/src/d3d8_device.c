@@ -248,9 +248,21 @@ static unsigned short hdr_tag(const struct xgpu_pipeline_key *key)
 static BOOL vr_screen_mode(long *width, float scale[2]);
 #endif
 
+/* the narrowest picture, in columns of the 480 lines: a display narrower
+than it letterboxes it (display.picture_shape on Android: 4:3 or 16:9, the
+even width a 16:9 display already has, so it adds no bars there) */
+static long screen_narrowest_width(void)
+{
+#ifdef HALO_ANDROID
+	if (!strcmp(config_string("display.picture_shape"), "16:9"))
+		return 852;
+#endif
+	return 640;
+}
+
 static void screen_mode_choose(long *width, float scale[2])
 {
-	long display_width, display_height;
+	long display_width, display_height, narrowest;
 
 #ifdef HALO_VR
 	/* the menus' 640x480, at the scale of the HUD's image (each VR pass sets
@@ -265,7 +277,8 @@ static void screen_mode_choose(long *width, float scale[2])
 	{
 		long wanted = (SCREEN_HEIGHT * display_width + display_height / 2) / display_height;
 
-		*width = wanted < 640 ? 640 : wanted > SCREEN_MAXIMUM_WIDTH ? SCREEN_MAXIMUM_WIDTH : wanted & ~1L;
+		narrowest = screen_narrowest_width();
+		*width = wanted < narrowest ? narrowest : wanted > SCREEN_MAXIMUM_WIDTH ? SCREEN_MAXIMUM_WIDTH : wanted & ~1L;
 		scale[0] = (float)display_width / (float)*width;
 		scale[1] = (float)display_height / (float)SCREEN_HEIGHT;
 		/* a display narrower or wider than the game can be: the picture
@@ -1575,18 +1588,47 @@ static BOOL picture_top(void)
 }
 
 #ifdef HALO_ANDROID
-/* the picture's place last sent to the backend (-1: none yet) */
-static int picture_top_sent = -1;
+/* port/android/guest/runtime/guest_host.h */
+int host_touch_picture_top(void);
+
+/* the picture's place last sent to the backend (-2: none yet) */
+static int picture_top_sent = -2;
 #endif
 
+/* where the picture's top is in a window of these pixels, in its pixels
+(-1: centered): at the top as the setting has it, and always near it in a
+portrait-shaped one (Android), whose space below is the touch controls':
+where the overlay wants it, under its top strip (host_touch_picture_top),
+or at the top until it says; the game decides it, the backend's present
+places the picture so (picture_position_send) */
+static int picture_top_in(int pixel_width, int pixel_height)
+{
+#ifdef HALO_ANDROID
+	if (pixel_height > pixel_width)
+	{
+		int top = host_touch_picture_top();
+
+		return top > 0 ? top : 0;
+	}
+#endif
+	(void)pixel_width;
+	(void)pixel_height;
+	return picture_top() ? 0 : -1;
+}
+
 /* (between frames: halo_screen_commit) where the picture goes, to the
-backend's present, when it changes (Android's: elsewhere it is centered) */
+backend's present, when it changes (the window's shape may have): Android's,
+elsewhere it is centered */
 static void picture_position_send(void)
 {
 #ifdef HALO_ANDROID
-	int top = picture_top() ? 1 : 0;
+	int pixel_width = 0, pixel_height = 0, top;
 
-	if (device.gl_ready && top != picture_top_sent)
+	if (!device.gl_ready)
+		return;
+	platform_video_drawable_size(&pixel_width, &pixel_height);
+	top = picture_top_in(pixel_width, pixel_height);
+	if (top != picture_top_sent)
 	{
 		xgpu_backend_picture_top(top);
 		picture_top_sent = top;
@@ -1620,7 +1662,9 @@ static void ui_point_from_window_on(float window_x, float window_y, int centered
 		width = (int)((long)pixel_height * back_buffer->target.pixel_width / back_buffer->target.pixel_height);
 	}
 	left = (pixel_width - width) / 2;
-	top = picture_top() ? 0 : (pixel_height - height) / 2;
+	/* (as the present places it: no lower than the window's bottom) */
+	top = picture_top_in(pixel_width, pixel_height);
+	top = top < 0 ? (pixel_height - height) / 2 : top < pixel_height - height ? top : pixel_height - height;
 	screen_x = (window_x * pixel_width / window_width - left) * (float)back_buffer->target.width / (float)width;
 	screen_y = (window_y * pixel_height / window_height - top) * (float)back_buffer->target.height / (float)height;
 	*x = (short)floorf(screen_x - (centered ? (float)(halo_screen_width() - 640) / 2.0f : 0.0f));

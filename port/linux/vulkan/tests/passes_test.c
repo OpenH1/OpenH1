@@ -1702,7 +1702,7 @@ static void window_test(void)
 	window_capabilities.currentExtent.height = 1200;
 	assert(window_present_frame() && window_blit_region.dstOffsets[0].x == 0 &&
 		window_blit_region.dstOffsets[0].y == 225 && window_blit_region.dstOffsets[1].y == 975);
-	xgpu_vulkan_picture_top(1);
+	xgpu_vulkan_picture_top(0);
 	assert(window_present_frame() && window_blit_region.dstOffsets[0].x == 0 &&
 		window_blit_region.dstOffsets[0].y == 0 && window_blit_region.dstOffsets[1].y == 750);
 	/* ... turned with the frame, held sideways: the top of the window is
@@ -1715,7 +1715,7 @@ static void window_test(void)
 	window_capabilities.supportedTransforms |= VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR;
 	assert(window_present_frame() && window_blit_source == window_turned.image);
 	assert(window_blit_region.dstOffsets[0].x == 50 && window_blit_region.dstOffsets[1].x == 950);
-	xgpu_vulkan_picture_top(1);
+	xgpu_vulkan_picture_top(0);
 	assert(window_present_frame() && window_blit_region.dstOffsets[0].x == 100 &&
 		window_blit_region.dstOffsets[1].x == 1000 && window_blit_region.dstOffsets[0].y == 0 &&
 		window_blit_region.dstOffsets[1].y == 1200);

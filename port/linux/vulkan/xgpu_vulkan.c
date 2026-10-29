@@ -484,8 +484,8 @@ static struct
 	them) */
 	int swapchain_turns;
 	struct xgpu_vulkan_image *(*rotate)(struct xgpu_vulkan_image *image, int quarter_turns);
-	/* display.picture_position: the picture at the top of a taller window
-	(xgpu_vulkan_picture_top; any thread) */
+	/* display.picture_position: the picture's top in a taller window, in
+	its pixels, plus 1; 0 centered (xgpu_vulkan_picture_top; any thread) */
 	int picture_top;
 	VkImage swapchain_images[8];
 	uint32_t swapchain_image_count;
@@ -3830,7 +3830,7 @@ void xgpu_vulkan_window_hdr(int enabled, float sdr_white, float headroom)
 
 void xgpu_vulkan_picture_top(int top)
 {
-	__atomic_store_n(&vk.picture_top, top ? 1 : 0, __ATOMIC_RELEASE);
+	__atomic_store_n(&vk.picture_top, top < 0 ? 0 : top + 1, __ATOMIC_RELEASE);
 }
 
 /* a rectangle in the window, its way up, as it lies in a swapchain turned
@@ -4293,7 +4293,7 @@ static uint64_t present(struct xgpu_vulkan_image *image, int frame)
 	VkPresentInfoKHR info;
 	VkResult result;
 	uint32_t index, width, height, x, y, window_width, window_height, image_width, image_height;
-	int turns = 0;
+	int turns = 0, top;
 
 	uint64_t serial;
 
@@ -4374,8 +4374,9 @@ static uint64_t present(struct xgpu_vulkan_image *image, int frame)
 	{
 		/* letterboxed to the image's shape, in the window as it is seen
 		(the swapchain and the image turned back): centered, or at the top
-		of a taller window (display.picture_position); then turned with
-		the frame */
+		of a taller window, as the game says (d3d8_device.c's
+		picture_top_in: display.picture_position, a portrait window); then
+		turned with the frame */
 		window_width = turns & 1 ? vk.swapchain_extent.height : vk.swapchain_extent.width;
 		window_height = turns & 1 ? vk.swapchain_extent.width : vk.swapchain_extent.height;
 		image_width = turns & 1 ? image->description.height : image->description.width;
@@ -4388,7 +4389,9 @@ static uint64_t present(struct xgpu_vulkan_image *image, int frame)
 			width = (uint32_t)((uint64_t)height * image_width / image_height);
 		}
 		x = (window_width - width) / 2;
-		y = __atomic_load_n(&vk.picture_top, __ATOMIC_ACQUIRE) ? 0 : (window_height - height) / 2;
+		top = __atomic_load_n(&vk.picture_top, __ATOMIC_ACQUIRE);
+		y = !top ? (window_height - height) / 2 : (uint32_t)(top - 1) < window_height - height ?
+			(uint32_t)(top - 1) : window_height - height;
 		rectangle_turned(turns, window_width, window_height, &x, &y, &width, &height);
 		memset(&blit, 0, sizeof(blit));
 		blit.srcSubresource.aspectMask = blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;

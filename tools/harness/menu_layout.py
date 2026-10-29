@@ -18,6 +18,8 @@ import port_settings  # noqa: E402
 CE = ROOT / "port/assets/menus/ce"
 # the platforms of a desktop computer's build (the menus' MENU_PLATFORMS a desktop has)
 DESKTOP = frozenset({"desktop", "pointer", "computer", "hdr"})
+# Android's (menu_files.c's MENU_PLATFORM and MENU_TOUCH)
+ANDROID = frozenset({"android", "touch"})
 
 
 class Box(NamedTuple):

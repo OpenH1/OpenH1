@@ -5,7 +5,8 @@ The on-screen touch controls' state between an overlay and the game
 (host_touch.c): Android's (TouchControls.java, through JNI) and iOS's
 (port/ios/touch_controls.m). The overlay's side; the game's is the host
 imports host_touch_read, host_touch_look_read, host_touch_rumble,
-host_touch_scene and host_touch_bindings (guest/runtime/guest_host.h).
+host_touch_scene, host_touch_bindings and host_touch_picture_top
+(guest/runtime/guest_host.h).
 */
 
 #ifndef HOST_TOUCH_H
@@ -31,5 +32,9 @@ int host_touch_bindings_read(int32_t *controls);
 /* the game's scene bits (port/linux/src/touch_input.c's _touch_scene_*);
 0 until the game has read its controller once */
 int host_touch_scene_read(void);
+/* where the overlay wants the picture's top in a portrait window, in the
+window's pixels (-1: none, the picture at the top), which the game reads
+every frame through the host import host_touch_picture_top */
+void host_touch_set_picture_top(int top);
 
 #endif

@@ -3,8 +3,10 @@
 # host_main.c and host_touch.c), beyond host_imports.list's.
 host_android_path
 host_gesture_insets
+host_orientation
 host_touch_read
 host_touch_look_read
 host_touch_rumble
 host_touch_scene
 host_touch_bindings
+host_touch_picture_top
