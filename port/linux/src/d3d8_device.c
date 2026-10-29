@@ -1576,15 +1576,20 @@ HRESULT WINAPI Direct3D_CreateDevice(UINT adapter, D3DDEVTYPE device_type, void 
 /* ---------- the menus' pointer */
 
 /* display.picture_position (Android): a picture of another shape than the
-window letterboxed at its top, not centered (the backend's presentation,
-picture_position_send, and the pointer's inverse of it below) */
-static BOOL picture_top(void)
+window letterboxed at its top or its bottom, not centered (the backend's
+presentation, picture_position_send, and the pointer's inverse of it below):
+-1 centered, 0 the top, 1 the bottom */
+static int picture_place(void)
 {
 #ifdef HALO_ANDROID
-	return !strcmp(config_string("display.picture_position"), "top");
-#else
-	return FALSE;
+	const char *value = config_string("display.picture_position");
+
+	if (!strcmp(value, "top"))
+		return 0;
+	if (!strcmp(value, "bottom"))
+		return 1;
 #endif
+	return -1;
 }
 
 #ifdef HALO_ANDROID
@@ -1596,7 +1601,9 @@ static int picture_top_sent = -2;
 #endif
 
 /* where the picture's top is in a window of these pixels, in its pixels
-(-1: centered): at the top as the setting has it, and always near it in a
+(-1: centered): at the top or the bottom as the setting has it (the bottom
+as the window's height, which the present and the pointer bring up to the
+picture's lowest place), and always near the top in a
 portrait-shaped one (Android), whose space below is the touch controls':
 where the overlay wants it, under its top strip (host_touch_picture_top),
 or at the top until it says; the game decides it, the backend's present
@@ -1612,8 +1619,15 @@ static int picture_top_in(int pixel_width, int pixel_height)
 	}
 #endif
 	(void)pixel_width;
-	(void)pixel_height;
-	return picture_top() ? 0 : -1;
+	switch (picture_place())
+	{
+	case 0:
+		return 0;
+	case 1:
+		return pixel_height;
+	default:
+		return -1;
+	}
 }
 
 /* (between frames: halo_screen_commit) where the picture goes, to the
