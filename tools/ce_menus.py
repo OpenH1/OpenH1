@@ -91,6 +91,13 @@ CHILD_OFFSETS = {
     **{("ui\\shell\\main_menu\\settings_select\\multiplayer_setup\\player_options_edit\\player_options_menu",
         f"ui\\shell\\main_menu\\settings_select\\multiplayer_setup\\player_options_edit\\op_{row}"): (54, 73 + 27 * index)
        for index, row in enumerate(port_settings.PLAYER_OPTIONS_ROWS)},
+    # Capture the Flag's and King of the Hill's TIME LIMIT (King of the Hill's
+    # list has Capture the Flag's) below the rows the port puts before it
+    # (port_settings.GAMETYPE_RULES_EXTRAS)
+    **{("ui\\shell\\" + f"{folder}/{screen['list']}".replace("/", "\\"),
+        "ui\\shell\\" + f"{port_settings.CTF_EDIT}/op_time_limit".replace("/", "\\")):
+       (54, screen["y"] + port_settings.GAMETYPE_RULES_STEP * len(screen["rows"]))
+       for folder, screen in port_settings.GAMETYPE_RULES_EXTRAS.items()},
     ("ui\\shell\\main_menu\\main_menu_select_list", "ui\\shell\\main_menu\\main_menu_item_quit_game"):
         port_settings.QUIT_ITEM_PLACE,
     ("ui\\shell\\main_menu\\multiplayer_type_select\\multiplayer_type_select_list",
@@ -570,8 +577,13 @@ def widget_xml(tag: str, widget: dict, tags: Tags, functions: list, inputs: list
          if widget["extended description widget"] else None),
     ]
     patch = port_settings.WIDGET_PATCHES.get(our_name(tag), {})
+    # (a value the tag has is changed where it is, one it has not is added
+    # after the others)
     for key, value in patch.get("set", {}).items():
-        pairs = [(k, v) for k, v in pairs if k != key] + [(key, value)]
+        if any(k == key and v is not None for k, v in pairs):
+            pairs = [(k, value if k == key else v) for k, v in pairs]
+        else:
+            pairs = [(k, v) for k, v in pairs if k != key] + [(key, value)]
     lines = [f"{indent}<widget{attributes(pairs)}>"]
     inner = indent + "\t"
     for data in widget["game data inputs"]:

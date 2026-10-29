@@ -708,22 +708,6 @@
 		<string text="KILLS SCORE:"/>
 		<string text="KILLS PER CAPTURE:"/>
 	</strings>
-	<strings name="main_menu/settings_select/multiplayer_setup/playlist_edit/ctf_edit/var_kills_score">
-		<string text="YES"/>
-		<string text="NO"/>
-	</strings>
-	<strings name="main_menu/settings_select/multiplayer_setup/playlist_edit/ctf_edit/var_kills_per_capture">
-		<string text="5"/>
-		<string text="10"/>
-		<string text="15"/>
-		<string text="20"/>
-		<string text="25"/>
-		<string text="30"/>
-		<string text="40"/>
-		<string text="50"/>
-		<string text="75"/>
-		<string text="100"/>
-	</strings>
 	<strings name="main_menu/settings_select/multiplayer_setup/playlist_edit/ctf_edit/var_assault" map="ui\shell\main_menu\settings_select\multiplayer_setup\playlist_edit\ctf_edit\var_assault">
 		<string text="YES" map="0"/>
 		<string text="NO" map="1"/>
@@ -808,13 +792,6 @@
 	<strings name="main_menu/settings_select/multiplayer_setup/playlist_edit/koth_edit/var_moving_hill" map="ui\shell\main_menu\settings_select\multiplayer_setup\playlist_edit\koth_edit\var_moving_hill">
 		<string text="YES" map="0"/>
 		<string text="NO" map="1"/>
-	</strings>
-	<strings name="main_menu/settings_select/multiplayer_setup/playlist_edit/koth_edit/var_multi_hill">
-		<string text="OFF"/>
-		<string text="2"/>
-		<string text="3"/>
-		<string text="4"/>
-		<string text="5"/>
 	</strings>
 	<strings name="main_menu/settings_select/multiplayer_setup/playlist_edit/koth_edit/var_score_to_win" map="ui\shell\main_menu\settings_select\multiplayer_setup\playlist_edit\koth_edit\var_score_to_win">
 		<string text="1 MINUTE" map="0"/>
