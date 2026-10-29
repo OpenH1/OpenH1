@@ -4515,6 +4515,23 @@ void players_handle_deleted_object(
 				player_died(iterator.datum_index);
 		}
 	}
+	/* port: a player's action on the object let go with it, as
+	player_reset_action_result leaves it. The action is chosen once a tick
+	(players_update_after_game), and an object deleted before the next tick
+	chooses again (an item another unit takes, a weapon whose rounds a unit
+	takes, garbage) left the action naming it; the HUD drew the action's
+	prompt with object_get of the deleted object, a null pointer
+	(hud_show_action_response). network_objects.c does the same for a
+	client's deletes */
+	data_iterator_new(&iterator, player_data);
+	while (player = data_iterator_next(&iterator))
+	{
+		if (player->action_object_index == deleted_object_index)
+		{
+			player->action_result = _player_action_result_reload;
+			player->action_object_index = NONE;
+		}
+	}
 
 	return;
 }

@@ -409,6 +409,12 @@ static void hud_show_action_response(
 		return;
 	}
 
+	/* port: no prompt for an action whose object is gone (object_get of it
+	was a null pointer); players_handle_deleted_object lets such an action
+	go, and this keeps the HUD safe from any way round it */
+	if (player->action_object_index != NONE && !object_try_and_get(player->action_object_index))
+		return;
+
 	if (player->action_object_index == NONE)
 	{
 		item_name_index = NONE;
