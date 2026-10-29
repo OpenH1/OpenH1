@@ -775,6 +775,11 @@ static void director_choose_camera_game(
 			else if (director->camera_proc == (director_camera_update_proc)dead_camera_update)
 			{
 				director_choose_game_perspective(local_player_index, TRUE);
+				/* port: respawned, the view is in the new unit's eye at once, not
+				eased there from the dead camera (an observer not cleared since
+				the dead camera's commands keeps their timers, up to 2 seconds of
+				a glide from beside the body into the head) */
+				observer_obsolete_position(local_player_index);
 			}
 		}
 	}

@@ -1100,9 +1100,8 @@ static const struct config_setting config_settings[] =
 		"to be heard by proximity voice chat (5 to 100)." },
 	{ "network.text_chat", _config_string, "\"on\"", "HALO_NET_TEXT_CHAT", _environment_value, _platform_all,
 		"Hosting: the text chat: \"on\" (links in lines are refused), \"links\"\n"
-		"(links allowed) or \"off\", in either case. Always off in a game a\n"
-		"player hosts that is listed in the server browser (a public internet\n"
-		"game); a dedicated server's follows this setting, listed or not." },
+		"(links allowed) or \"off\", in either case; listed in the server\n"
+		"browser or not." },
 	{ "network.host_playlist", _config_string, "\"\"", "HALO_NET_HOST_PLAYLIST", _environment_value, _platform_all,
 		"Hosting: the games played one after another when you host, each after\n"
 		"the last one's scores (Host Controls' PLAYLIST): map[:gametype\n"

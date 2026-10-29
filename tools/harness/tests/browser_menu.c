@@ -7,8 +7,8 @@
 shared text fitting (port/linux/game/menu_functions.c, in Settings' look:
 tools/port_settings.py's _browser): a tab lists its kind of game (dedicated
 servers', OpenH1's, Legacy, co-op) or the favorites, the favorites first and
-the rest sorted (in the order the list opens in, the dedicated servers
-first),
+the rest sorted (in the order the list opens in, the OpenH1 games first,
+and the dedicated servers first among them and among the Legacy ones),
 the favorites offline only on ALL and FAVORITES; a list with no games says
 why, and the local network's what to do; a name too long for its column is
 cut short with "..." where it fits, and one that fits is kept whole */
@@ -71,8 +71,9 @@ static struct browser_sort_entry entry(char const *name, boolean openh1, boolean
 	snprintf(result.name, sizeof(result.name), "%s", name);
 	result.openh1 = openh1;
 	result.coop = coop;
-	/* (the co-op game a dedicated server's: a Legacy one, OpenCE's) */
-	result.dedicated = !strcmp(name, "coop");
+	/* (the co-op game a dedicated server's: a Legacy one, OpenCE's; and
+	alpha an OpenH1 one's) */
+	result.dedicated = !strcmp(name, "coop") || !strcmp(name, "alpha");
 	result.players = players;
 	result.rate = openh1 ? 60 : 30;
 	return result;
@@ -119,16 +120,17 @@ int main(int argc, char **argv)
 		char names[128];
 		short offline;
 
-		/* (the favorites first, bravo then echo by players; the rest by
-		players, the dedicated server first) */
+		/* (the favorites first, OpenH1's echo before Legacy's bravo; the
+		rest the OpenH1 games first, the dedicated server alpha before
+		delta's more players, then the Legacy ones) */
 		listed(_browser_tab_all, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "bravo* echo* coop delta alpha "), "ALL lists %s", names);
+		CHECK(!strcmp(names, "echo* bravo* alpha delta coop "), "ALL lists %s", names);
 		CHECK(offline == 2, "ALL lists no favorites offline");
 		listed(_browser_tab_dedicated, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "coop "), "DEDICATED lists %s", names);
+		CHECK(!strcmp(names, "alpha coop "), "DEDICATED lists %s", names);
 		CHECK(offline == 0, "DEDICATED lists the favorites offline");
 		listed(_browser_tab_openh1, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "echo* delta alpha "), "OPENH1 lists %s", names);
+		CHECK(!strcmp(names, "echo* alpha delta "), "OPENH1 lists %s", names);
 		CHECK(offline == 0, "OPENH1 lists the favorites offline");
 		listed(_browser_tab_legacy, names, sizeof(names), &offline);
 		CHECK(!strcmp(names, "bravo* coop "), "LEGACY lists %s", names);
@@ -136,7 +138,7 @@ int main(int argc, char **argv)
 		CHECK(!strcmp(names, "echo* coop "), "CO-OP lists %s", names);
 		CHECK(offline == 0, "CO-OP lists the favorites offline");
 		listed(_browser_tab_favorites, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "bravo* echo* "), "FAVORITES lists %s", names);
+		CHECK(!strcmp(names, "echo* bravo* "), "FAVORITES lists %s", names);
 		CHECK(offline == 2, "FAVORITES lists no favorites offline");
 		return 0;
 	}

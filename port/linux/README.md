@@ -819,7 +819,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.voice_mode` | `"team_global_enemy_proximity"` | `HALO_NET_VOICE_MODE` | When you host: who hears whom during a game. `"off"`; `"team_proximity"` (teammates who are near); `"team_enemy_proximity"` (all players who are near); `"team_global"` (all teammates); `"team_global_enemy_proximity"` (all teammates, and enemies who are near). Refer to "Voice chat". |
 | `network.voice_kbps` | `24` | `HALO_NET_VOICE_KBPS` | When you host: the voice quality in the lobby and in a game, in kilobits per second, `8` to `64`. |
 | `network.voice_proximity` | `15.0` | `HALO_NET_VOICE_PROXIMITY` | When you host: the distance in world units (1 unit is approximately 3 metres) at which players are near, for voice chat. `5` to `100`. |
-| `network.text_chat` | `"on"` | `HALO_NET_TEXT_CHAT` | When you host: the text chat. `"on"`, lines with links refused; `"links"`, links allowed; `"off"`, no chat (in either case). Always off in a game a player hosts that is listed in the server browser; a dedicated server's follows it, listed or not. TEXT CHAT in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. Refer to "Text chat". |
+| `network.text_chat` | `"on"` | `HALO_NET_TEXT_CHAT` | When you host: the text chat. `"on"`, lines with links refused; `"links"`, links allowed; `"off"`, no chat (in either case). Listed in the server browser or not. TEXT CHAT in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. Refer to "Text chat". |
 | `network.host_playlist` | `""` | `HALO_NET_HOST_PLAYLIST` | When you host: the games played one after another, each after the last one's scores: `map[:gametype[+rule=value...]]`, separated by commas, as a dedicated server's `server.rotation` (`docs/dedicated_server.md`). Host Controls' PLAYLIST and MAPS write it, and the console's `host_playlist`. Empty: you pick each game. Refer to "Host Controls". |
 | `network.votekick` | `true` | `HALO_NET_VOTEKICK` | When you host: `true`, the players can vote to kick a player. Refer to "Security". `false`: no votes. VOTE KICK in Server Setup > Teamplay Options (in co-op, Voice and Voting) writes its choice here. |
 | `network.votekick_minutes` | `5` | `HALO_NET_VOTEKICK_MINUTES` | When you host: the minutes that a player must play on the server before the player can start a vote to kick (`0` to `60`). To vote, a player must play for 2 minutes, or for this time if it is less. |
@@ -1893,17 +1893,13 @@ ON (the default: a line with a link, such as `discord.gg/...`,
 `example.com`, `www.`, an address, or `example [dot] com`, is refused),
 WITH LINKS, or OFF. A domain that is a word as well (`.me`, `.to`, `.is`)
 counts only with a path after it (`youtu.be/...`), so that `go.to` and
-`he.is` are not refused. A game a player hosts that is listed in
-the server browser (a public internet game) never has the text chat,
-whatever it says (TEXT CHAT shows OFF there, and cannot be changed, while
-LISTING is PUBLIC); a private game, joined by its invite, and a LAN game have
-it as chosen. A player who joins such a game from the server browser has no
-text chat in it even if its host turns it on: their game takes no line from
-that host and sends none. A dedicated server is the exception: its own
-`network.text_chat` decides (on by default, and its operator can turn it
-off, or allow links), listed or not, and a player who joins it from the
-server browser's dedicated servers (a master server's list, which names
-approved operators alone) has the chat as it says. Pressing T where the chat
+`he.is` are not refused. Every game has the text chat its host chooses,
+public (listed in the server browser), private or LAN, a player's or a
+dedicated server's; it is on by default. An OpenCE player, or one on an
+older OpenH1, has none in a public game a player hosts: their game keeps
+the chat off there. The host can mute a player (`/mute`, or MUTE FOR ALL in
+Host Controls), and `display.text_chat` hides the chat on one machine.
+Pressing T where the chat
 is off says so, and a refused line tells its sender why.
 
 On the scoreboard (right-click, then click the player), Mute voice and chat
@@ -2053,8 +2049,9 @@ master servers, or only the brokers.
   The titles are: server name, map, game, players, the lock (the games
   with a password first) and the dedicated icon (dedicated servers first).
   A second choice of the same title reverses the order, and an arrow on
-  the title shows the direction. The default order is dedicated servers
-  first, then the games with the most players, then by name. The browser
+  the title shows the direction. The default order is OpenH1 games
+  first, the dedicated servers first among them and among the Legacy games
+  after them, then the games with the most players, then by name. The browser
   keeps the order in `network.browser_sort`.
 - FILTERS opens the Filters screen of Custom Edition. It has SHOW EMPTY
   SERVERS, SHOW FULL SERVERS, GAME TYPE (ANY or one game engine) and SHOW
@@ -5782,6 +5779,7 @@ Other changes:
 | `networking/`, `game/`, `interface/`, `bungie_net/network/` and the pools of objects, effects and sounds | The system link limits and the memory for them. |
 | `game/`, `objects/`, `units/`, `networking/` | The distributed netcode. Refer to `NETCODE.md`. |
 | `cache/cache_files.c` | When a map's tags load and unload, the port finds the bitmaps that the high-res HUD replaces (`game/hud_hires_tags.c`), adds the tags of the menus to the menus' map (`game/menu_tags.c`), and plays the mods' tags (`game/mods.c`). |
+| `cache/cache_files_windows.c` | Each cache slot (`z:\cacheNNN.map`) remembers the size and modification time of the map file it was copied from, in `z:\cacheNNN.source` (`src/xbox_files.c`). A slot whose map file has been replaced since, by a modded map that keeps the header's checksum, another region's or a corrected one, is copied again, at the start or the next time the map is loaded. The Xbox's disc never changed, so the name and checksum in the header were enough. |
 | `cache/xbox_sound_cache.c`, `cache/xbox_texture_cache.c` | The samples of a mod's sound are copied from memory, and the pixels of a mod's bitmap read from its file and laid out for the hardware, at once (`game/mod_sounds.c`, `game/mod_bitmaps.c`); a mod's linear bitmap need not have rows of whole steps of the pitch. |
 | `hs/hs.c` | The console's `mods_reload`, `mods_enable` and `mods_list`, which a client may run too. |
 | `interface/ui_widget.c`, `interface/ui_widget_event_handler_functions.c`, `interface/ui_widget_game_data_input_functions.c` | The main menu is the PC version's from `port/assets/menus` (`display.menus`); the menus' widgets can call the port's functions (`game/menu_functions.c`) and send the PC version's custom activation event; the widgets' memory is 256 KB, not 16 KB; the main menu and Multiplayer clear co-op's controllers, so that a gamepad going back to controller 1 is not a controller unplugged; the lobby's split screen players leave alone, and one who quits in game is not joined to the next game (`interface/player_ui.c`).; Multiplayer's PLAY WITH BOTS hosts a game that takes no other machine, as the Xbox's split screen does (`ui_widget_port_host_local`); the port's own screens are laid out for the view's width up to 16:9 (their widgets' `wide`: `game/menu_tags.c`'s `ui_widget_port_wide_layout`), a picture widened by stretching its middle (`draw_bitmap_widened_in_rect`); after a game of this machine alone the host's map select and the lobby open in place of the Xbox's split screen Select Map and Select Teams (`game/menu_tags.c`'s `pc_menus_screen`). |
