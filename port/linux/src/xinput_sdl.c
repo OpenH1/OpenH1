@@ -69,6 +69,8 @@ extern unsigned char network_chat_typing(void);
 /* ... and its on-screen keyboard is up, which takes the first controller
 and the touch controls' stick and look */
 extern unsigned char network_chat_keyboard_open(void);
+/* port/linux/game/network_votekick.c: the D-pad's left and right vote now */
+extern unsigned char network_vote_pad_open(void);
 /* port/linux/game/menu_functions.c: two or more players on this machine
 (co-op, or split screen in a network game) */
 extern unsigned char pc_menu_split_players(void);
@@ -507,6 +509,25 @@ unsigned long halo_scoreboard_pad(short controller_index, int hold)
 	pad->readings = 0;
 	pthread_mutex_unlock(&scoreboard_pad_lock);
 	return pressed;
+}
+
+/* the first controller's D-pad left and right held as a vote took them,
+which the game gets none of till each is let go: else a vote's end would
+hand it a press (the Fishsticks layout switches grenades with left) */
+static WORD vote_held_buttons;
+
+static void vote_pad_hold_over(XINPUT_GAMEPAD *pad)
+{
+	const WORD sides = XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT;
+
+	if (network_vote_pad_open())
+		vote_held_buttons |= (WORD)(pad->wButtons & sides);
+	else
+		vote_held_buttons &= pad->wButtons;
+	if (network_vote_pad_open())
+		pad->wButtons &= (WORD)~sides;
+	else
+		pad->wButtons &= (WORD)~vote_held_buttons;
 }
 
 /* the touch controls' stick as the player's movement (input_abstraction.c's
@@ -1267,6 +1288,13 @@ int halo_keyboard_prompts(void)
 	touch_controls = TRUE;
 #endif
 	return prompts_show_keys(setting, prompt_device, prompt_controller_connected, touch_controls);
+}
+
+/* whether the first player last used a controller: the prompts' device
+(prompt_device_update), which the vote's box follows too */
+int halo_gamepad_last_used(void)
+{
+	return prompt_device == PROMPT_DEVICE_CONTROLLER;
 }
 
 /* a binding's name as a prompt shows it: the mouse's buttons by their
@@ -2444,6 +2472,9 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		while it is up) */
 		chat_pad_record(&state->Gamepad);
 		chat_pad_hold_over(&state->Gamepad);
+		/* (and a vote running takes the D-pad's left and right:
+		network_votekick.c) */
+		vote_pad_hold_over(&state->Gamepad);
 		if (abs(state->Gamepad.sThumbRX) > STICK_AIMING_DEFLECTION ||
 			abs(state->Gamepad.sThumbRY) > STICK_AIMING_DEFLECTION)
 		{
