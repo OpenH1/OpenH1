@@ -675,6 +675,34 @@ the rest of the game. The lobby and Server Setup name the gametype's mode.
 `hardcore`, `hardcore_ctf`, `hardcore_oddball` and `hardcore_king`
 (`host:bloodgulch:infection`).
 
+Three more options of OpenCE's (its pull request #467, by s3anyboy) are in
+the gametype editor's own screens:
+
+- Capture the Flag's KILLS SCORE and KILLS PER CAPTURE: with Kills Score
+  on, each kill is a point for the killer's team (a betrayal takes one
+  away) and a capture is worth Kills per Capture (5 to 100, 25 by
+  default); CAPTURES TO WIN stays in captures, so a game of 3 captures at
+  25 is won at 75 points. Off, Capture the Flag scores captures alone. A
+  gametype of OpenCE's earlier CTF/Slayer type is Capture the Flag with
+  Kills Score on.
+- King of the Hill's MULTI-HILL: 2 to 5 hills at once (as many as the map
+  has), any of which a player holds scores; they move together with MOVING
+  HILL. OFF is the one hill.
+- Teamplay Options' FORCE TEAM SPAWNS: a team game other than Capture the
+  Flag spawns each player only at their own team's Capture the Flag spawn
+  points (not on a map without them for both teams).
+
+They are kept in the gametype (Kills Score and Multi-Hill in its game
+type's options, Force Team Spawns in its PC options), so a saved gametype
+and Host Controls' `saved=<name>` keep them, and the network game carries
+them to every machine in fields the earlier versions left empty: network
+version 39 is unchanged, and OpenCE's builds play them with this one. The
+host sends Multi-Hill's other hills after King of the Hill's state, as
+OpenCE's host does. A dedicated server's gametype files and the rotation
+take them as `kills_score`, `points_per_capture` (`[ctf]`), `multi_hill`
+(`[king]`) and `force_team_spawns` (`[options]`):
+`bloodgulch:ctf+kills_score=true+points_per_capture=10`.
+
 ## Settings
 
 The settings are in `config.toml` in the game's folder (the release's
