@@ -1367,9 +1367,10 @@ static void download_end(
 	csmemset(download, 0, sizeof(*download));
 }
 
-/* the download failed: the player told why when the main menu comes, and
-the game left */
+/* the download failed: the cause logged, the player told what happened
+and what to do (reason) when the main menu comes, and the game left */
 static void download_fail(
+	char const *cause,
 	char const *reason)
 {
 	struct download *download = &map_share_globals.download;
@@ -1377,7 +1378,7 @@ static void download_fail(
 	char message[512];
 	short index;
 
-	error(_error_silent, "map sharing: the download of %s failed: %s", download->level_name, reason);
+	error(_error_silent, "map sharing: the download of %s failed: %s", download->level_name, cause);
 	snprintf(message, sizeof(message), "%s\r\n\r\n%s", download->message, reason);
 	for (index = 0; message[index] && index < NUMBEROF(text) - 1; index++)
 		text[index] = (wchar_t)(unsigned char)message[index];
@@ -1576,12 +1577,14 @@ static void download_offered(
 		return;
 	if (offer->result == _offer_off)
 	{
-		download_fail("The host does not share its maps.");
+		download_fail("the host does not share its maps",
+			"The host doesn't share maps. Ask the host for the map.");
 		return;
 	}
 	if (offer->result != _offer_ok || !offer->file_count || offer->file_count > MAXIMUM_FILES)
 	{
-		download_fail("The host cannot share this map.");
+		download_fail("the host cannot share this map",
+			"The host can't share this map. Ask the host for it.");
 		return;
 	}
 	download->in_progress = TEST_FLAG(offer->flags, _offer_in_progress_bit);
@@ -1607,7 +1610,8 @@ static void download_offered(
 			(file->kind == _map_share_file_map && map_share_hash_version(file->hash) != download->version))
 		{
 			download->file_count = index;
-			download_fail("The host's offer was not of this map.");
+			download_fail("the host's offer was not of this map",
+				"The host sent a different map. Try joining again.");
 			return;
 		}
 		offered |= (byte)FLAG(file->kind);
@@ -1633,7 +1637,8 @@ static void download_offered(
 		if (!file->have || !file->asked)
 		{
 			download->file_count = index + 1;
-			download_fail("There is not enough memory to download the map.");
+			download_fail("not enough memory for the map's pieces",
+				"There isn't enough memory to download the map. Close other apps, then try again.");
 			return;
 		}
 		download->total_bytes += file->size;
@@ -1802,7 +1807,8 @@ static void download_piece_had(
 	if (!file->stream || fseek(file->stream, (long)offset, SEEK_SET) != 0 ||
 		fwrite(data, 1, bytes, file->stream) != bytes)
 	{
-		download_fail("The map could not be written (is the disk full?).");
+		download_fail("the map could not be written (is the disk full?)",
+			"The map couldn't be saved. Free some storage space, then try again.");
 		return;
 	}
 	file->have[piece >> 3] |= (byte)(1 << (piece & 7));
@@ -1983,7 +1989,9 @@ static void download_finish(
 		if (!MoveFileA(file->part_path, file->final_path))
 		{
 			download_unfinish(index);
-			download_fail("The downloaded map could not be put in custom_maps (a file of its name is there).");
+			download_fail("the downloaded map could not be put in custom_maps (a file of its name is there)",
+				"The map couldn't be saved: custom_maps has another file of its name. Move that file, then try "
+				"again.");
 			return;
 		}
 		if (!csstrcasecmp(map_share_globals.kept_part, file->part_path))
@@ -1996,7 +2004,8 @@ static void download_finish(
 	{
 		csstrncpy(download->message, message, sizeof(download->message) - 1);
 		download_unfinish(download->file_count);
-		download_fail("The map was downloaded, but cannot be played.");
+		download_fail("the map downloaded cannot be played",
+			"The map was downloaded, but it can't be played here.");
 		return;
 	}
 	error(_error_silent, "map sharing: downloaded %s (%lu bytes)", download->level_name, download->done_bytes);
@@ -2486,7 +2495,8 @@ static void frame_hashes(
 	file->piece_hashes = file->hashes_coming;
 	file->hashes_coming = NULL;
 	if (!download_file_open(file, connection->download_file[body[0]]))
-		download_fail("The map could not be written to custom_maps.");
+		download_fail("the map could not be written to custom_maps",
+			"The map couldn't be saved. Free some storage space, then try again.");
 }
 
 /* the frames read in, handled */
@@ -2938,7 +2948,8 @@ static void download_update(
 	if (download->state == _download_asking)
 	{
 		if (elapsed(download->asked_at, now, OFFER_TIMEOUT))
-			download_fail("The host did not answer the request for the map.");
+			download_fail("the host did not answer the request for the map",
+				"The host didn't send the map. Try joining again.");
 		return;
 	}
 	for (index = 0; index < download->file_count; index++)
@@ -2978,7 +2989,8 @@ static void download_update(
 			/* (unreadable, or changed meanwhile: made anew) */
 			else if (!download_file_create(file))
 			{
-				download_fail("The map could not be written to custom_maps.");
+				download_fail("the map could not be written to custom_maps",
+					"The map couldn't be saved. Free some storage space, then try again.");
 				return;
 			}
 			download->progress_at = now;
@@ -3000,7 +3012,8 @@ static void download_update(
 	}
 	if (elapsed(download->progress_at, now, STALL_TIMEOUT))
 	{
-		download_fail("The download stopped: no player sent any of the map for a minute.");
+		download_fail("no player sent any of the map for a minute",
+			"The download stalled for a minute. Try joining again.");
 		return;
 	}
 	download_reach_sources();

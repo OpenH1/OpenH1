@@ -229,7 +229,7 @@ def test_touch_words_fit():
     seconds)"""
     pytest.importorskip("PIL")
     given = {f"{MT}/join_game/touch/prompt_sort": "SORT: PLAYERS", f"{MT}/join_game/touch/panel_status":
-             "Room for your party (16). No room guarantee: some may not get in. It has a password.", f"{MT}/lobby/touch/board_start": "STARTING IN 9",
+             "Room for your party (16), but places aren't held. It has a password.", f"{MT}/lobby/touch/board_start": "STARTING IN 9",
              **{f"main_menu/host_controls/touch/host_action_{index}": "UNMUTE FOR ALL" for index in range(4)}}
     for path in sorted(CE.glob("*.touch.xml")):
         for element in ElementTree.parse(path).getroot().iter("widget"):

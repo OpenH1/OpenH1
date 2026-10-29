@@ -50,7 +50,7 @@
 		<string text=""/>
 		<string text="This game has a password. Type it, then press\nEnter to join."/>
 		<string text="That is not the game's password. Try again."/>
-		<string text="Could not join the game."/>
+		<string text="Couldn't join this game. Refresh the list, then\ntry again."/>
 	</strings>
 	<widget name="main_menu/multiplayer_type_select/join_game/header_server_browser" controller="1" left="35" top="11" width="363" height="59" bitmap="main_menu/multiplayer_type_select/join_game/header_server_browser">
 	</widget>

@@ -6255,8 +6255,8 @@ static void browser_empty_text(short mode, short tab, boolean online, boolean pu
 	else if (newer)
 	{
 		/* (an old build sees none of the games: it says why) */
-		usnprintf(text, size - 1, L"%d %s on a newer version:\r\nupdate the game to join.", newer,
-			newer == 1 ? L"game is" : L"games are");
+		usnprintf(text, size - 1, L"%d %s on a newer version.\r\nUpdate OpenH1 to join %s.", newer,
+			newer == 1 ? L"game is" : L"games are", newer == 1 ? L"it" : L"them");
 	}
 	else
 		usnprintf(text, size - 1, L"No public games found.");
@@ -6674,7 +6674,7 @@ static void browser_status_text(struct browser_row const *row, wchar_t *text, sh
 		usnprintf(party, NUMBEROF(party) - 1, L"Room for your party (%d). ", row->party_size);
 		break;
 	case _browser_party_unheld:
-		usnprintf(party, NUMBEROF(party) - 1, L"Room for your party (%d). No room guarantee: some may not get in. ",
+		usnprintf(party, NUMBEROF(party) - 1, L"Room for your party (%d), but places aren't held. ",
 			row->party_size);
 		break;
 	case _browser_party_no_room:
@@ -6802,9 +6802,8 @@ static struct
 	char failed_name[P2P_LISTING_NAME_SIZE + 1];
 	unsigned long failed_time;
 	boolean failed_nat_strict;
-	/* why (connect_failure_text) */
-	wchar_t failed_headline[32];
-	wchar_t failed_detail[160];
+	/* why, in a sentence (connect_failure_text's line: CONNECT_LINE_LENGTH) */
+	wchar_t failed_line[64];
 	/* a game with a password chosen: the password screen's (its own copy:
 	the rows' are read again each frame), and a join it began, which the
 	browser takes up again as it comes back */
@@ -6833,6 +6832,14 @@ gives the join up */
 #define CONNECT_TIMEOUT 10000
 #define CONNECT_HEADLINE_LENGTH 32
 #define CONNECT_DETAIL_LENGTH 160
+#define CONNECT_LINE_LENGTH 64
+/* a phone's or a tablet's: what it is told to try when a network blocks a
+join (connect_failure_text) */
+#if defined(HALO_ANDROID) || defined(HALO_IOS)
+#define CONNECT_ON_PHONE TRUE
+#else
+#define CONNECT_ON_PHONE FALSE
+#endif
 
 static struct
 {
@@ -6863,45 +6870,63 @@ static void connect_stage_text(struct p2p_join_status const *status, wchar_t *te
 }
 
 /* why a join gave up, as far as internet play can tell, and what would
-help */
-static void connect_failure_text(struct p2p_join_status const *status, wchar_t *headline, wchar_t *detail)
+help, in words for anyone (the cause in the log: connect_failure_log): the
+box's headline and its lines (broken for it), and the server browser's
+panel's sentence. Where the cause is known, the advice is for it: internet
+play off, no internet (no signalling broker), no answer (the game ended, or
+its host offline: a server browser's game, or an invite's), this network
+(its NAT gives each destination its own port, and no router forwards one),
+the host's, or one between them. A phone (on_phone) is told to try Wi-Fi
+rather than mobile data, where such networks mostly are; no one is told of
+ports, only of the setting that asks the router for one */
+static void connect_failure_text(struct p2p_join_status const *status, boolean listing, boolean on_phone,
+	wchar_t *headline, wchar_t *detail, wchar_t *line)
 {
 	if (!status->online)
 	{
 		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"INTERNET PLAY IS OFF");
 		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1, L"Turn it on in Settings,\r\nOnline.");
+		usnprintf(line, CONNECT_LINE_LENGTH - 1, L"Internet play is off.");
 	}
 	else if (!status->brokers)
 	{
-		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"NO CONNECTION");
-		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1,
-			L"Could not reach internet\r\nplay's servers. Check your\r\nconnection.");
+		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"CAN'T GET ONLINE");
+		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1, L"Check your internet\r\nconnection, then RETRY.");
+		usnprintf(line, CONNECT_LINE_LENGTH - 1, L"Check your internet connection.");
 	}
 	else if (status->stage != _p2p_join_opening)
 	{
-		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"NO ANSWER");
-		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1,
-			L"The game may have ended,\r\nor the host may be offline.");
+		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"GAME NOT FOUND");
+		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1, listing ?
+			L"The game may have ended,\r\nor its host is offline.\r\nTry another game." :
+			L"The game may have ended,\r\nor its host is offline.\r\nAsk the host for a new\r\ninvite link.");
+		usnprintf(line, CONNECT_LINE_LENGTH - 1, L"The game may have ended.");
 	}
 	else if (status->nat_strict)
 	{
-		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"STRICT NETWORK");
-		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1, config_boolean("network.allow_upnp") ?
-			L"Your router opened no port.\r\nAsk the host to turn on\r\nOPEN ROUTER PORT." :
-			L"Turn on OPEN ROUTER PORT\r\nin Network Setup, or ask\r\nthe host to.");
+		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"NETWORK BLOCKED");
+		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1, !config_boolean("network.allow_upnp") ?
+			L"Your network is blocking\r\nthe connection. Turn on\r\nOPEN ROUTER PORT in\r\nSettings, Online." : on_phone ?
+			L"Your network is blocking\r\nthe connection. Try\r\nanother network (Wi-Fi\r\ninstead of mobile data)." :
+			L"Your network is blocking\r\nthe connection. Try\r\nanother network, or ask\r\nsomeone else to host.");
+		usnprintf(line, CONNECT_LINE_LENGTH - 1, L"Your network is blocking it.");
 	}
 	else if (status->host_strict)
 	{
-		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"HOST'S NETWORK STRICT");
-		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1, L"Ask the host to turn on\r\nOPEN ROUTER PORT in\r\nNetwork Setup.");
+		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"CAN'T REACH THE HOST");
+		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1,
+			L"The host's network is\r\nblocking the connection.\r\nAsk the host to turn on\r\nOPEN ROUTER PORT.");
+		usnprintf(line, CONNECT_LINE_LENGTH - 1, L"The host's network is blocking it.");
 	}
 	else
 	{
-		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"NO PATH TO HOST");
-		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1,
-			L"A network between you is\r\nstrict. Ask the host to turn\r\non OPEN ROUTER PORT.");
+		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"CAN'T REACH THE HOST");
+		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1, on_phone ?
+			L"A network is blocking the\r\nconnection. Try Wi-Fi\r\ninstead of mobile data,\r\nthen RETRY." :
+			L"A network is blocking the\r\nconnection. RETRY, or ask\r\nthe host to turn on\r\nOPEN ROUTER PORT.");
+		usnprintf(line, CONNECT_LINE_LENGTH - 1, L"A network is blocking it.");
 	}
-	headline[CONNECT_HEADLINE_LENGTH - 1] = detail[CONNECT_DETAIL_LENGTH - 1] = 0;
+	headline[CONNECT_HEADLINE_LENGTH - 1] = detail[CONNECT_DETAIL_LENGTH - 1] = line[CONNECT_LINE_LENGTH - 1] = 0;
 }
 
 /* the log's line of a join given up */
@@ -6949,8 +6974,10 @@ static void connect_update(struct widget_instance *screen)
 		else if (status.stage == _p2p_join_idle || now - connect_dialog.start_time > CONNECT_TIMEOUT)
 		{
 			char name[P2P_LISTING_NAME_SIZE + 1];
+			wchar_t line[CONNECT_LINE_LENGTH];
 
-			connect_failure_text(&status, connect_dialog.headline, connect_dialog.detail);
+			connect_failure_text(&status, connect_dialog.listing, CONNECT_ON_PHONE, connect_dialog.headline,
+				connect_dialog.detail, line);
 			snprintf(name, sizeof(name), "%s", connect_dialog.listing ? connect_dialog.game.name : "the invite's host");
 			connect_failure_log(name, &status);
 			p2p_join_cancel();
@@ -7298,10 +7325,11 @@ static void lobby_browser_update(struct widget_instance *list)
 		else if (now - lobby_browser.join_time > CONNECT_TIMEOUT)
 		{
 			struct p2p_join_status status;
+			wchar_t headline[CONNECT_HEADLINE_LENGTH], detail[CONNECT_DETAIL_LENGTH];
 
 			p2p_join_status(&status);
 			connect_failure_log(lobby_browser.name, &status);
-			connect_failure_text(&status, lobby_browser.failed_headline, lobby_browser.failed_detail);
+			connect_failure_text(&status, TRUE, CONNECT_ON_PHONE, headline, detail, lobby_browser.failed_line);
 			p2p_join_cancel();
 			p2p_lobby_mark_failed(lobby_browser.identifier);
 			csmemcpy(lobby_browser.failed_name, lobby_browser.name, sizeof(lobby_browser.failed_name));
@@ -7343,10 +7371,16 @@ static void lobby_browser_update(struct widget_instance *list)
 		else if (lobby_browser.failed_time && now - lobby_browser.failed_time < LOBBY_BROWSER_FAILED_TIME)
 		{
 			text_to_wide(lobby_browser.failed_name, name, NUMBEROF(name));
-			/* (and why, when this network's NAT is what stops it: the router's
-			UPnP, or a forwarded network.tunnel_port, lets it through) */
-			usnprintf(text, NUMBEROF(text) - 1, lobby_browser.failed_detail[0] ? L"Could not reach %s: %s" :
-				L"Could not reach %s.", name, lobby_browser.failed_headline);
+			/* (and why, in words for anyone: connect_failure_text; the game
+			named only when it is not the one the panel shows, for the
+			panel's three lines) */
+			if (chosen < lobby_browser.count &&
+				!memcmp(lobby_browser.games[chosen].identifier, lobby_browser.identifier, 6))
+			{
+				usnprintf(text, NUMBEROF(text) - 1, L"Couldn't join. %s", lobby_browser.failed_line);
+			}
+			else
+				usnprintf(text, NUMBEROF(text) - 1, L"Couldn't reach %s. %s", name, lobby_browser.failed_line);
 		}
 		else if (chosen >= lobby_browser.count && chosen < rows)
 		{
@@ -8134,9 +8168,13 @@ static void multiplayer_status_update(struct widget_instance *list)
 		}
 		else if (p2p_nat_strict())
 		{
-			usnprintf(headline, NUMBEROF(headline) - 1, L"YOUR NETWORK IS STRICT");
+			/* (this network's NAT gives each destination its own port, and no
+			router forwards one: players behind strict networks too cannot
+			reach the game) */
+			usnprintf(headline, NUMBEROF(headline) - 1, L"NOT EVERYONE CAN JOIN");
 			usnprintf(detail, NUMBEROF(detail) - 1, config_boolean("network.allow_upnp") ?
-				L"Some players may not reach\r\nyour game." : L"Turn on OPEN ROUTER PORT\r\nin Network Setup.");
+				L"Some players can't reach\r\nyou. Hosting on another\r\nnetwork may help." :
+				L"Some players can't reach\r\nyou. Turn on OPEN ROUTER\r\nPORT in Settings, Online.");
 		}
 		else if (item == _multiplayer_item_online_coop && multiplayer_status_next_level() != NONE)
 		{
@@ -8239,7 +8277,11 @@ static boolean direct_link_from_clipboard(void)
 		link[length - 1] = 0;
 	if (!*link || !p2p_join_invite(link))
 	{
-		platform_log("menus: the clipboard has no invite link");
+		/* (an older version's invite is logged as such: p2p.c) */
+		platform_log("menus: the clipboard has no invite link this version joins");
+		display_error_text_deferred(!*link ?
+			L"No link is copied. Copy\r\nthe invite link you were\r\nsent, then PASTE LINK." :
+			L"That link can't be joined.\r\nCopy the whole invite link\r\nagain, or ask the host for\r\na new one.", NONE);
 		return campaign_fail();
 	}
 	connect_dialog.listing = FALSE;
@@ -8530,7 +8572,7 @@ static boolean lobby_join_start(struct widget_instance *widget, short controller
 		return campaign_fail();
 	if (lobby_player_count >= game->maximum_players)
 	{
-		display_error_text_deferred(L"The game is full.", NONE);
+		display_error_text_deferred(L"The game is full: there's\r\nno room for another\r\nplayer.", NONE);
 		return campaign_fail();
 	}
 	lobby_join.controller = controller;
@@ -8811,7 +8853,7 @@ static boolean preview_add(struct widget_instance *widget, short controller, boo
 		return campaign_fail();
 	if (game->player_count + count >= game->maximum_player_count)
 	{
-		display_error_text_deferred(L"The game is full.", NONE);
+		display_error_text_deferred(L"The game is full: there's\r\nno room for another\r\nplayer.", NONE);
 		return campaign_fail();
 	}
 	lobby_join.controller = controller;
@@ -9862,7 +9904,7 @@ boolean pc_menu_event_function_invoke(
 				/* (said on the screen too: not a silent dead end) */
 				display_error_text_deferred(player_ui_get_active_player_profile_index(0) == NONE ?
 					L"Choose a player profile\r\nfirst (Profiles, on the\r\nmain menu)." :
-					L"The game could not be\r\nstarted: another program\r\nmay be using its network\r\nport.",
+					L"Couldn't start the game.\r\nClose any other copy of\r\nOpenH1 or Halo, then try\r\nagain.",
 					NONE);
 				return campaign_fail();
 			}

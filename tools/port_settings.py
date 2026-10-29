@@ -2112,7 +2112,7 @@ def _password_screen() -> list:
         "",
         "This game has a password. Type it, then press\\nEnter to join.",
         "That is not the game's password. Try again.",
-        "Could not join the game.",
+        "Couldn't join this game. Refresh the list, then\\ntry again.",
     ])
     lines = _screen(base, spec, [(f"{base}/op_password", None)], ["port password update"],
                     ['<on event="created" run="port password init"/>'], extra)

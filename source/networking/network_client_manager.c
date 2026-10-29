@@ -2386,6 +2386,32 @@ struct network_game_client *network_game_client_create(
 	return client;
 }
 
+/* port: what the player is told when a host turns the join away, by its
+rejection code: what happened, and what to do, in words for anyone (the code
+itself in the log: network_game_client_rejected_by_game) */
+static wchar_t const *network_game_client_rejection_text(
+	word rejection_code)
+{
+	switch (rejection_code)
+	{
+	case _rejection_code_version_too_old:
+		return L"This game is on a newer version of OpenH1. Update OpenH1 to join it.";
+	case _rejection_code_version_too_new:
+		return L"This game is on an older version of OpenH1. Ask the host to update to the latest version.";
+	case _rejection_code_bad_password:
+		return L"That isn't this game's password. Ask the host for it, then try again.";
+	case _rejection_code_game_is_full:
+		return L"This game is full. Try another game, or try again in a moment.";
+	case _rejection_code_game_is_closed:
+		return L"This game can't be joined right now: it's starting or ending. Try again in a moment.";
+	case _rejection_code_blacklisted_machine:
+		return L"The host of this game has blocked you from joining it.";
+	case _rejection_code_name_refused:
+		return L"This host doesn't allow a word in your player name. Change it in Settings, Profile.";
+	}
+	return L"Couldn't join this game. Try joining again, or ask the host for a new invite link.";
+}
+
 void network_game_client_rejected_by_game(
 	struct network_game_client *client,
 	struct transport_address *source_address,
@@ -2431,13 +2457,11 @@ void network_game_client_rejected_by_game(
 		break;
 
 	/* port: a dedicated server's word filter (server.chat_filter "block")
-	keeps out a word of this machine's player's name: the player told so,
-	which an older build took for a closed game */
+	keeps out a word of this machine's player's name: the player told so
+	(network_game_client_rejection_text), which an older build took for a
+	closed game */
 	case _rejection_code_name_refused:
 		reason = "_rejection_code_name_refused";
-		platform_show_message("Halo: cannot join this game",
-			"The host refused your player name: its word filter keeps out a word in it.\n\n"
-			"Change your name in Settings > Profile to join this host.");
 		break;
 	}
 
@@ -2450,11 +2474,9 @@ void network_game_client_rejected_by_game(
 	/* port: the join went to the pregame screen at once (and a machine
 	refused a game in progress, network_game_server_refuse_late_joiner, is in
 	it): with no game behind it, it is left for the main menu, which says
-	why, rather than sitting in a lobby that will never start */
-	display_error_when_main_menu_loaded(
-		rejection_code == _rejection_code_game_is_full || rejection_code == _rejection_code_game_is_closed ?
-			_error_network_join_game_closed :
-			_error_network_failed_to_join_game);
+	why, and what to do (rather than the game's "Failed to join the game."),
+	rather than sitting in a lobby that will never start */
+	display_error_text_when_main_menu_loaded(network_game_client_rejection_text(rejection_code));
 	network_game_abort();
 	network_game_client_reset(client, TRUE);
 
@@ -3271,16 +3293,16 @@ boolean network_game_client_advertised_game_compatible(
 				(unsigned int)network_game_client_advertised_versions[game_index].rate, theirs);
 			return TRUE;
 		}
+		/* port: (the versions in the log, the player told what to do) */
 		csprintf(message,
-			"The host's OpenH1 %u Tick game uses %s version of OpenH1's network code than yours.\n\n"
-			"You are on version %u. The host is on version %u.\n\n"
+			"This game is on %s version of OpenH1.\n\n"
 			"%s",
-			(unsigned int)network_game_client_advertised_versions[game_index].rate,
-			theirs > ours ? "a newer" : "an older", ours, theirs,
-			theirs > ours ? "Update the game to join this host." : "Ask the host to update the game.");
+			theirs > ours ? "a newer" : "an older",
+			theirs > ours ? "Update OpenH1 to join it." : "Ask the host to update to the latest version.");
 		if (tell)
 		{
-			network_event("not joining an OpenH1 host of protocol version %u (this machine's is %u)", theirs, ours);
+			network_event("not joining an OpenH1 %u Tick host of protocol version %u (this machine's is %u)",
+				(unsigned int)network_game_client_advertised_versions[game_index].rate, theirs, ours);
 			platform_show_message("Halo: cannot join this game", message);
 		}
 		return FALSE;
@@ -3314,7 +3336,8 @@ boolean network_game_client_advertised_game_compatible(
 }
 
 /* port: the player told why a host of this network version (and netcode)
-cannot be joined: an advertised game's, or a server browser's row's */
+cannot be joined: an advertised game's, or a server browser's row's, in
+words for anyone (the versions in the log) */
 void network_game_client_tell_version(
 	unsigned int theirs,
 	boolean distributed)
@@ -3325,24 +3348,20 @@ void network_game_client_tell_version(
 	if (theirs == ours)
 	{
 		csprintf(message,
-			"The host is using the lockstep network code, which this version no longer has.\n\n"
-			"Ask the host to update the game.");
+			"This server runs an older Halo version that OpenH1 can't join.\n\n"
+			"Join another game, or ask the host to update to the latest OpenH1.");
 	}
 	else if (theirs > ours)
 	{
 		csprintf(message,
-			"The host is using a newer version of the network code than you.\n\n"
-			"You are on version %u. The host is on version %u.\n\n"
-			"Update the game to join this host.",
-			ours, theirs);
+			"This game is on a newer version of OpenH1.\n\n"
+			"Update OpenH1 to join it.");
 	}
 	else
 	{
 		csprintf(message,
-			"The host is using an older version of the network code than you.\n\n"
-			"You are on version %u. The host is on version %u.\n\n"
-			"Ask the host to update the game.",
-			ours, theirs);
+			"This game is on an older version of OpenH1 or Halo that this one can't join.\n\n"
+			"Join another game, or ask the host to update to the latest OpenH1.");
 	}
 	network_event("not joining a host of network version %u%s (this machine's is %u)", theirs,
 		distributed ? "" : " with the lockstep netcode", ours);

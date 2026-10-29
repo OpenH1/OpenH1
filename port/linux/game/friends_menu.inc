@@ -38,6 +38,9 @@ has fewer: counted) */
 waits for its second press */
 #define FRIENDS_DONE_TIME 6000
 #define FRIENDS_CONFIRM_TIME 4000
+/* milliseconds: the friends list not reached (no signalling broker) in this
+long after the screen opens is said to be out of reach, and why to check */
+#define FRIENDS_CONNECT_TIME 10000
 #define FRIENDS_CODE_TEXT 20
 
 /* the prompts a row offers (a bit each) */
@@ -82,6 +85,9 @@ enum
 static struct
 {
 	unsigned long update_time;
+	/* when the screen opened (still not connected FRIENDS_CONNECT_TIME
+	after, it says so) */
+	unsigned long open_time;
 	/* the list as last read (the rows' entries: the row 0 is this
 	profile's code, row n the list's entry n - 1) */
 	struct p2p_friend entries[P2P_FRIENDS_LIST_MAXIMUM];
@@ -541,7 +547,7 @@ static void friends_panel_text(struct p2p_friend const *entry, char const *own_c
 		{
 			usnprintf(detail, detail_size - 1, entry->opence ?
 				L"An OpenCE player: OpenCE has no friend codes, so they can't be added." :
-				L"No friend code: an older OpenH1, or a Legacy game. They can't be added from here.");
+				L"No friend code: they played on an older version of OpenH1 or Halo, so they can't be added.");
 		}
 		else if (entry->relation == _p2p_friend_online)
 			usnprintf(detail, detail_size - 1, L"Already your friend. %s", game);
@@ -620,6 +626,7 @@ static boolean friends_screen_open(short controller)
 	friends_menu.controller = controller >= 0 && controller < 4 ? controller : 0;
 	friends_menu.prompts_kind = NONE;
 	friends_menu.confirm = NONE;
+	friends_menu.open_time = system_milliseconds();
 	return TRUE;
 }
 
@@ -752,8 +759,10 @@ static __declspec(noinline) void friends_screen_update(struct widget_instance *l
 		else
 		{
 			menu_text_box_wrap(named(panel, "panel_help", 0), !online ?
-				L"Internet play is off. Turn it on in Settings, Network Setup." : !state.connected ?
-				L"Connecting..." : !sharing ? L"You appear offline: friends can't see you." :
+				L"Internet play is off. Turn it on in Settings, Online." : !state.connected ?
+				(system_milliseconds() - friends_menu.open_time < FRIENDS_CONNECT_TIME ? L"Connecting..." :
+				L"Can't reach your friends. Check your internet.") :
+				!sharing ? L"You appear offline: friends can't see you." :
 				L"Only your friends see where you are.", 2);
 		}
 	}
@@ -1054,7 +1063,7 @@ static void friends_hub_status(wchar_t *headline, short headline_size, wchar_t *
 	else if (!config_boolean("network.online"))
 	{
 		usnprintf(headline, headline_size - 1, L"INTERNET PLAY IS OFF");
-		usnprintf(detail, detail_size - 1, L"Turn it on in Settings,\r\nNetwork Setup.");
+		usnprintf(detail, detail_size - 1, L"Turn it on in Settings,\r\nOnline.");
 	}
 	else if (!state.friends)
 	{
