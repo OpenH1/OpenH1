@@ -93,6 +93,7 @@ enum _distributed_message_forwarded_live_controls 133
 enum _distributed_message_friend_players 130
 enum _distributed_message_game_state 7
 enum _distributed_message_hit_reports 11
+enum _distributed_message_host_rules 134
 enum _distributed_message_host_team 126
 enum _distributed_message_inventories 4
 enum _distributed_message_map_share_offer 84
@@ -136,6 +137,12 @@ enum _distributed_object_predicted_bit 3
 enum _distributed_send_action_bit 1
 enum _distributed_send_sees_bit 2
 enum _distributed_send_state_bit 0
+enum _distributed_take_earlier 3
+enum _distributed_take_hold 5
+enum _distributed_take_late 2
+enum _distributed_take_latest 1
+enum _distributed_take_lost 4
+enum _distributed_take_none 0
 enum _distributed_to_clients 0
 enum _distributed_to_clients_reliably 1
 enum _distributed_to_host 2
