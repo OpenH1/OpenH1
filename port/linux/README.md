@@ -490,7 +490,8 @@ with six tabs (BOTS, the last, not in co-op):
   other team.
 - GAME: END GAME NOW and RESTART ROUND (each pressed twice; a restart starts
   the same map and gametype again after a few seconds in the lobby), CHANGE
-  MAP... (the MAPS tab; its value the game that plays next), SHUFFLE TEAMS
+  MAP... (the MAPS tab; its value the game that plays next), CHANGE
+  RULES... (RULES, below), SHUFFLE TEAMS
   (at random, as many on each) and BALANCE TEAMS (as many on each, moving as
   few as it can; in a game, by score too), each pressed twice in a game,
   where those moved die and respawn; ANNOUNCE... (type a message every
@@ -502,6 +503,26 @@ with six tabs (BOTS, the last, not in co-op):
   ALLOW VOTEKICK (`network.votekick`), LISTING (a public internet game's
   PUBLIC or PRIVATE), MAX PLAYERS (left and right; never fewer than are in
   the game) and ALLOW OPENCE PLAYERS (an OpenH1 game's, for new joins).
+- RULES (GAME's CHANGE RULES...; B goes back to GAME): the gametype's rules,
+  in the lobby (its game, for every machine) and during a game. VEHICLES (a
+  team game's RED VEHICLES and BLUE VEHICLES: default, none, Warthogs,
+  Ghosts, Scorpions, Rocket Warthogs, Banshees, Gun Turrets, all the map's,
+  and the gametype's own custom counts if it has them) swaps them at once:
+  every vehicle nobody rides goes and the new set's are placed at the map's
+  vehicle spawns, as the map places them when a game starts (a set the map
+  has no spawns for places none); a vehicle somebody rides stays until it is
+  empty, then goes, and the new vehicle whose spawn it holds comes once the
+  spawn is clear. STARTING WEAPONS (the map's, or CUSTOM's PRIMARY WEAPON and
+  SECONDARY WEAPON) and WEAPON SET take effect at each player's next spawn
+  (those alive keep theirs) and for the weapons that spawn on the map from
+  then. SHIELDS, MOTION TRACKER, INFINITE GRENADES and INVISIBLE PLAYERS
+  change at once in an OpenH1 game with no OpenCE player (every OpenH1
+  machine is told); in a Legacy game, or one with OpenCE players, they wait
+  for the next game, which the row says (NEXT GAME). SAVE AS GAMETYPE...
+  (type a name, Enter saves) keeps the rules as your gametype, which MAPS
+  and the playlist offer (`saved=<name>`). The game's record keeps the
+  changes: a player who joins plays by them, and the next game starts with
+  them unless the playlist has another. Not in co-op.
 - MAPS: the gametype (left and right step it: the built-in gametypes,
   OpenCE's and those you saved, Create Game's CUSTOM, which entries name
   `saved=<name>`: its letters and digits, lowered, `_` between them, as
@@ -547,7 +568,11 @@ after this game, `host_playlist [entries]` shows or replaces the playlist,
 chat's `/say <words>`) tells everyone, `host_shuffle_teams` and
 `host_balance_teams` arrange the teams, `host_score_limit <score>` and
 `host_time_limit <minutes>` set the limits, `host_bots [<0 to 15>]` shows or sets the bots'
-count and `host_bot_skill <easy|normal|heroic|legendary>` their skill (as BOTS's rows), and
+count and `host_bot_skill <easy|normal|heroic|legendary>` their skill (as BOTS's rows),
+`host_vehicles <default|none|warthog|ghost|scorpion|rocket_warthog|banshee|turret|pc> [red|blue]`
+sets the vehicles and `host_weapons map` or `host_weapons <primary> [<secondary>]` (`none`,
+`random`, `assault_rifle`, `pistol`, `shotgun`, `sniper_rifle`, `rocket_launcher`,
+`plasma_pistol`, `plasma_rifle`, `needler`) the starting weapons (as RULES's rows), and
 `ban <player> [30m|2h|7d|1w|forever]
 [reason]` bans for a while and says why (the duration with its unit).
 A co-op game has none of the map changes and no playlist: its next game is
@@ -560,7 +585,7 @@ The scoreboard's player menu (a right click on a name) offers the host the
 same: Mute for everyone, Kick, Ban (picked twice), Move to the other team,
 and Host controls..., which opens Host Controls with the player chosen. The
 console's `host_controls` opens it too (`host_controls game`, `host_controls
-bans`, `host_controls bots`, `host_controls players <name>`), and `host_controls end` and
+bans`, `host_controls bots`, `host_controls rules`, `host_controls players <name>`), and `host_controls end` and
 `host_controls restart` end or restart the round, and `host_controls unban
 <name>` unbans. Clients have none of it.
 

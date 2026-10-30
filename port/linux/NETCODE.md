@@ -332,7 +332,11 @@ as its tick's first sub-step ends and has the host take it, with the
 client's prediction of the tick before, as its own tick begins (below,
 "Input at its tick"); version 9 sends every OpenH1 client the client's tick
 the host has each client's player at (below, "Remote players against their
-history"). With no new version, each client then tells the
+history"); version 10 sends the variant's flags of a game under way that the
+host changed in Host Controls' RULES (distributed message 134,
+`_distributed_message_host_rules`, `network_host_rules.c`: shields, the motion
+sensor, infinite grenades, invisible players), reliably, to its OpenH1 clients
+in a game of no OpenCE machine (below, "The host's controls"). With no new version, each client then tells the
 host its build (distributed message 92, `_distributed_message_client_build`,
 reliably once a game after its ready, over its connection alone): its
 number, configuration, the label it shows ("OpenH1 Linux | build 120
@@ -1034,6 +1038,24 @@ machine:
   no OpenCE machine in it, whose machines all play the host's protocol (their
   join token says so): an OpenCE machine would keep the player on the old
   team. The player respawns on the new team; their score goes with them.
+- RULES (`network_host_rules.c`) changes the gametype's rules. In the lobby
+  it is the lobby's game record, which every machine takes. In a game it
+  changes the host's game and record (a player who joins takes the record).
+  The vehicles and starting weapons are the host's alone, in any game,
+  Legacy too: for a new vehicle set the host deletes every vehicle nobody
+  rides and makes the new set's at the map's vehicle placements
+  (`game_engine_vehicle_set_changed`), and every machine, OpenCE's too, sees
+  the host's objects come and go as it sees a respawned vehicle's; a ridden
+  vehicle stays until it is empty, and a new one whose pad it holds waits
+  for the pad. Starting weapons, the loadout and the weapon set take effect
+  at each player's next spawn, which only the host makes. The variant's flags
+  every machine draws by (shields, the motion sensor, infinite grenades,
+  invisible players) go to each OpenH1 client (`_distributed_message_host_rules`,
+  134, reliably: a format byte and the flags, which a client takes only from
+  the host's stream in an OpenH1 game under way, masked to those four). That
+  is OpenH1 protocol version 10. They change in a game only when no OpenCE
+  machine is in it, as a team move does; otherwise, and in a Legacy game,
+  they wait for the next game's lobby. A Legacy game is sent nothing new.
 
 ### Bots in network games
 

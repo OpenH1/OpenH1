@@ -88,7 +88,7 @@ NEGATIVE_CONTROLS = {
                               "return !network_host_game_cooperative();"), "bots_tab"),
     "bots-tab-in-coop": (("return network_host_controls_available() && !network_host_game_cooperative();",
                           "return network_host_controls_available();"), "bots_tab"),
-    "bots-tab-unnamed": (("\"bans\", \"bots\" };", "\"bans\" };"), "bots_tab"),
+    "bots-tab-unnamed": (("\"bans\", \"bots\", \"rules\" };", "\"bans\", \"rules\" };"), "bots_tab"),
     "bot-count-wraps": (("return stepped < 0 ? 0 : stepped > most ? most : stepped;",
                          "return stepped < 0 ? most : stepped > most ? 0 : stepped;"), "bot_count"),
     "bot-count-past-room": (("long most = MIN(BOTS_MAXIMUM, MAX(most_players - humans, 0));",

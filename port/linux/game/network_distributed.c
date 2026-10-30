@@ -80,6 +80,7 @@ machine (their datum identifiers need not be).
 #include "network_aim_assist.h"
 #include "network_party.h"
 #include "network_host_controls.h"
+#include "network_host_rules.h"
 #include "network_shield_effects.h"
 #include "network_substeps.h"
 #include "network_standard.h"
@@ -5737,6 +5738,13 @@ void network_distributed_handle_message(
 	if (network_host_controls_handles_message(message, size))
 	{
 		network_host_controls_handle_message(machine_index, message, size, machine_index != NONE ?
+			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
+		return;
+	}
+	/* (the host's rules of the game under way: network_host_rules.c) */
+	if (network_host_rules_handles_message(message, size))
+	{
+		network_host_rules_handle_message(machine_index, message, size, machine_index != NONE ?
 			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
 		return;
 	}

@@ -99,6 +99,7 @@ their handlers open opens.
 #include "network_voice.h"
 #include "network_chat.h"
 #include "network_host_controls.h"
+#include "network_host_rules.h"
 #include "network_host_game.h"
 #include "sim_rate.h"
 #include "network_standard.h"

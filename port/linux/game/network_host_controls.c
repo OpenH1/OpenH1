@@ -74,6 +74,7 @@ tools/harness/tests/test_host_controls.py's.
 #include "network_chat.h"
 #include "network_host_controls.h"
 #include "network_host_game.h"
+#include "network_host_rules.h"
 #include "latency_meter.h"
 #include "bots.h"
 
@@ -1022,7 +1023,7 @@ boolean network_host_controls_open_command(
 	char const *text)
 {
 	/* (host_controls_menu.inc's tabs, in their order) */
-	static char const *const tabs[] = { "players", "game", "maps", "playlist", "bans", "bots" };
+	static char const *const tabs[] = { "players", "game", "maps", "playlist", "bans", "bots", "rules" };
 	struct data_iterator iterator;
 	struct player_datum *player;
 	long chosen = NONE;
@@ -1126,6 +1127,7 @@ void network_host_controls_update(
 	if (!server)
 		host_controls.teams_locked = FALSE;
 	network_host_game_update();
+	network_host_rules_update();
 	/* (a game played, its lobby reached after it by the host's A on its
 	scores: the next game, a change asked for or the playlist's, set there
 	and started; none, and the host picks it as before) */

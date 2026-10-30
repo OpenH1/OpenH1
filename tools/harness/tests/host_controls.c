@@ -281,6 +281,8 @@ static short network_host_game_lobby_players(struct host_controls_player *player
 	return index;
 }
 static void network_host_game_update(void) { }
+/* network_host_rules.c's */
+static void network_host_rules_update(void) { }
 static boolean network_host_game_lobby_take(boolean restarting)
 {
 	boolean taken = world.next_waiting && (!restarting || world.next_waiting);

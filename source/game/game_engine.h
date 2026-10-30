@@ -404,6 +404,15 @@ void game_engine_vehicle_placement_begin(
 boolean game_engine_vehicle_placement_allowed(
 	struct scenario_object_datum const *placement,
 	struct tag_block *palette);
+/* port: (the host) the gametype's vehicle set changed in a game under way
+(game_variant_options' and the variant's, set first): the vehicles nobody
+rides gone, the new set's placed where the map places them (those whose pad
+a ridden vehicle holds once it is clear), the ridden ones gone once empty;
+how many went, were placed and wait */
+void game_engine_vehicle_set_changed(
+	short *removed,
+	short *placed,
+	short *waiting);
 /* port: the local player whose motion sensor is drawn (FRIENDS radar) */
 void game_engine_motion_sensor_viewer(
 	short local_player_index);
