@@ -552,6 +552,11 @@ void bots_set_matchmaking(long count, long fill_to)
 	bots_matchmaking.fill_to = fill_to;
 }
 
+int bots_matchmaking_on(void)
+{
+	return bots_matchmaking.count != NONE;
+}
+
 long bots_wanted_count(void)
 {
 	long count = bots_matchmaking.count != NONE ? bots_matchmaking.count : config_integer("bots.count");

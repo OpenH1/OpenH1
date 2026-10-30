@@ -475,7 +475,7 @@ the carnage report the host picks the next map and gametype (PICK GAME).
 HOST CONTROLS is the host's of a network game (internet or LAN), laid out as
 the server browser is, over the game dimmed and without its HUD, and in the
 lobby too (its HOST CONTROLS, in the details panel, before the game starts),
-with five tabs:
+with six tabs (BOTS, the last, not in co-op):
 
 - PLAYERS: everyone in the game, with their team, score, ping and a tag
   (HOST, BOT, OPENH1 or OPENCE; in a Legacy game the host cannot tell OpenH1's
@@ -484,7 +484,7 @@ with five tabs:
   first), MOVE TO RED or BLUE, and MUTE... (then for 10 minutes, an hour or
   a day; their text chat and voice, for everyone) or UNMUTE. The host's own
   players are never kicked, banned or muted; KICK on a bot takes it out, one
-  bot fewer (`bots.count`). In the lobby every player can be moved, OpenCE's
+  bot fewer (`bots.count`), as BOTS's REMOVE BOT does. In the lobby every player can be moved, OpenCE's
   too. In a game a team move is offered in an OpenH1 game of teams with no
   OpenCE player: the player dies (no death counted) and respawns on the
   other team.
@@ -501,11 +501,7 @@ with five tabs:
   (players cannot switch teams in the lobby; the host still moves them),
   ALLOW VOTEKICK (`network.votekick`), LISTING (a public internet game's
   PUBLIC or PRIVATE), MAX PLAYERS (left and right; never fewer than are in
-  the game) and ALLOW OPENCE PLAYERS (an OpenH1 game's, for new joins), then,
-  in a gametype the bots play, the bots' rows: BOTS, BOT SKILL, BOT TEAMS,
-  MAKE ROOM FOR PLAYERS and (with it on) FILL TO, each written to
-  `config.toml` as it changes, which the game takes at once (refer to
-  "Bots").
+  the game) and ALLOW OPENCE PLAYERS (an OpenH1 game's, for new joins).
 - MAPS: the gametype (left and right step it: the built-in gametypes,
   OpenCE's and those you saved, Create Game's CUSTOM, which entries name
   `saved=<name>`: its letters and digits, lowered, `_` between them, as
@@ -523,6 +519,24 @@ with five tabs:
   twice). The lobby shows the game after the next one (THEN), and every
   player is told the next game as the scores show.
 - BANS: `bans.txt`'s players, when they were banned and why, and UNBAN.
+- BOTS: the bots' settings, each written to `config.toml` as it changes
+  (as Server Setup's rows are), which the game takes at once (refer to
+  "Bots"), then the bots playing (their team and score), and for the bot
+  chosen REMOVE BOT (one bot fewer: `bots.count` one fewer than play).
+  BOTS (left and right, none to 15, no further either way): in the lobby
+  the bots join and leave at once; in a game a bot joins as a player who
+  joins a game in progress, one every few seconds, and leaves as a player
+  who quits. SKILL (Easy, Normal, Heroic, Legendary, `bots.skill`) and
+  TEAM TACTICS (`bots.tactics`) change every bot's play at once. TEAMS
+  (EVEN or AGAINST YOU, `bots.teams`) places the lobby's bots at once; in a
+  game, the bots that join from then, and BALANCE TEAMS (a team game's,
+  Game's own, pressed twice in a game) moves those playing. MAKE ROOM FOR
+  PLAYERS (`bots.make_room`) and, with it on, FILL TO (`bots.fill_to`)
+  take effect at once too: bots leave or come back to fill the game to it.
+  In a gametype the bots do not play the rows are there, and apply from
+  the next Slayer game, which the panel says. A matchmaking game's count,
+  room and fill are its playlist's, and stay; its bots are not removed.
+  Nothing new goes to the other machines: a bot is a player to them.
 
 The host's console has the same: `host_map <map> [gametype]` plays a game
 now (as PLAY NOW; in the lobby, at once), `host_map_next <map> [gametype]`
@@ -532,7 +546,9 @@ after this game, `host_playlist [entries]` shows or replaces the playlist,
 `bloodgulch:ctf+score=5`, `custom_maps\<name>`), `host_say <words>` (and the
 chat's `/say <words>`) tells everyone, `host_shuffle_teams` and
 `host_balance_teams` arrange the teams, `host_score_limit <score>` and
-`host_time_limit <minutes>` set the limits, and `ban <player> [30m|2h|7d|1w|forever]
+`host_time_limit <minutes>` set the limits, `host_bots [<0 to 15>]` shows or sets the bots'
+count and `host_bot_skill <easy|normal|heroic|legendary>` their skill (as BOTS's rows), and
+`ban <player> [30m|2h|7d|1w|forever]
 [reason]` bans for a while and says why (the duration with its unit).
 A co-op game has none of the map changes and no playlist: its next game is
 the campaign's next level. A list of more than 512 maps leaves the rest out,
@@ -544,7 +560,7 @@ The scoreboard's player menu (a right click on a name) offers the host the
 same: Mute for everyone, Kick, Ban (picked twice), Move to the other team,
 and Host controls..., which opens Host Controls with the player chosen. The
 console's `host_controls` opens it too (`host_controls game`, `host_controls
-bans`, `host_controls players <name>`), and `host_controls end` and
+bans`, `host_controls bots`, `host_controls players <name>`), and `host_controls end` and
 `host_controls restart` end or restart the round, and `host_controls unban
 <name>` unbans. Clients have none of it.
 
@@ -608,7 +624,8 @@ Game) hosts one: the map, the gametype, then Server Setup, which has three
 rows for them in the place of the network's rows (GAME, INVITE LINK, MAP
 SHARING), BOTS (NONE, 1 to 15), BOT SKILL and BOT TEAMS (EVEN or AGAINST
 YOU). Each row writes its setting to `config.toml` as it changes, so the
-next game starts with them too. For a gametype the bots do not play (CTF,
+next game starts with them too. The host of a network game changes them
+while it plays too, in Host Controls' BOTS tab (refer to "Host Controls"). For a gametype the bots do not play (CTF,
 Oddball, King, Race) the rows are dimmed and passed over, and the line
 below them says so. START GAME opens the lobby with the bots in it, and
 more players on this computer join it with START, as in a network game. In

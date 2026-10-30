@@ -185,7 +185,7 @@ host_playlist_add, host_playlist_remove, host_playlist_clear: TRUE if the
 expression was one (its result) */
 boolean network_host_game_command(char const *expression, boolean *result);
 /* ... and host_say, host_shuffle_teams, host_balance_teams,
-host_score_limit, host_time_limit (hs.c) */
+host_score_limit, host_time_limit, host_bots, host_bot_skill (hs.c) */
 boolean network_host_game_console(char const *expression, boolean *result);
 
 #endif // __NETWORK_HOST_GAME_H

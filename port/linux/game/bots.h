@@ -46,6 +46,8 @@ playlist: port/linux/game/matchmaking_menu.inc): count of them, making room
 for players, filling the game to fill_to players and bots; count NONE: the
 settings' again */
 void bots_set_matchmaking(long count, long fill_to);
+/* ... whether a matchmaking game's are set (Host Controls leaves them) */
+int bots_matchmaking_on(void);
 /* a machine is a bot's */
 int bots_machine_is_bot(long machine_index);
 /* a player (its datum) is a bot: on any machine of the game, as its machine

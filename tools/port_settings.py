@@ -4413,8 +4413,9 @@ def _friends_add() -> list:
 # network game alone (menu_tags.c's pause_patch), laid out as the server
 # browser is (its rows, columns, panel and button: the menus' shared parts)
 HOST_CONTROLS = "main_menu/host_controls"
+# (BOTS last: host_controls_menu.inc hides it in co-op, leaving no gap)
 HOST_TABS = [("tab_players", "PLAYERS"), ("tab_game", "GAME"), ("tab_maps", "MAPS"), ("tab_playlist", "PLAYLIST"),
-             ("tab_bans", "BANS")]
+             ("tab_bans", "BANS"), ("tab_bots", "BOTS")]
 # the rows (the browser's), and each column's place and width in a row, with
 # its move and growth on a wide screen (the list BROWSER_WIDE_LIST wider): a
 # player's name, team, score, ping and tag (a pill: HOST, BOT, OPENH1,
@@ -4435,8 +4436,8 @@ TITLES[f"{HOST_CONTROLS}/header_host_controls"] = "HOST CONTROLS"
 
 def _host_controls() -> list:
     """Host Controls (port/linux/game/host_controls_menu.inc), in the server
-    browser's look: its tabs (PLAYERS, GAME, BANS: LB and RB, Q and E, or a
-    click), the counts of the game's players and its kind, the column titles
+    browser's look: its tabs (PLAYERS, GAME, MAPS, PLAYLIST, BANS, BOTS: LB
+    and RB, Q and E, or a click), the counts of the game's players and its kind, the column titles
     over the rows (each tab's own: menu_functions.c fills them), the rows
     (the players, the game's settings, the bans), the row chosen's details in
     the panel beside them with its buttons, words in the rows' place while
@@ -4716,7 +4717,7 @@ def touch_sizes() -> dict:
     buttons |= {(panel_inner, TOUCH_TAP), (TOUCH_HOST_BACK[1], TOUCH_TAP)}
     return {
         "chip": sorted({(TOUCH_CHIP_WIDTHS[count], TOUCH_TAP) for count in TOUCH_CHIP_WIDTHS} |
-                       {(TOUCH_HOST_CHIP_WIDTH, TOUCH_TAP)}),
+                       {(width, TOUCH_TAP) for width in TOUCH_HOST_CHIP_WIDTHS}),
         "row": [(TOUCH_LIST_WIDTH, TOUCH_TAP)],
         "tile": sorted({TOUCH_TILE, (TOUCH_HUB_WIDTH, TOUCH_TAP), (TOUCH_LOBBY_PANEL[2] - 28, TOUCH_TAP)}),
         "button": sorted(buttons),
@@ -4767,24 +4768,27 @@ def touch_pictures() -> list:
 
 
 # the chips' widths for a strip of so many (the browser's five), TOUCH_GAP + 2
-# apart; Host Controls' five over its list alone
+# apart; Host Controls' six over its list alone, each as wide as its words
+# need (PLAYERS, GAME, MAPS, NEXT, BANS, BOTS: TOUCH_LIST_WIDTH in all)
 TOUCH_CHIP_WIDTHS = {6: 92, 5: 112}
-TOUCH_HOST_CHIP_WIDTH = 68
+TOUCH_HOST_CHIP_WIDTHS = [74, 52, 52, 52, 52, 52]
 
 
 def _touch_chips(base: str, strip: str, tabs: list, handlers: list, span: int, width: int = None) -> list:
     """a strip of tabs as chips (a column list whose name ends "_tabs", as
     menu_tabs_show knows it): each its words, TOUCH_TAP tall, spread over
     span of the 640's width and each its part wider on a wide screen; a tap
-    runs the handlers"""
+    runs the handlers (width: each chip's, or a list of them, one a chip)"""
     width = width or TOUCH_CHIP_WIDTHS[len(tabs)]
-    step = width + TOUCH_GAP + 2
+    widths = width if isinstance(width, list) else [width] * len(tabs)
+    lefts = [BROWSER_LIST_X + sum(widths[:index]) + index * (TOUCH_GAP + 2) for index in range(len(tabs))]
     grown = span * WIDE_EXTRA // 584 // len(tabs)
     lines = _widget(f"{base}/{strip}", [("type", "column_list"), ("width", 640), ("height", TOUCH_TAP),
                                        ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
-                    [f'<child widget="{base}/{name}" x="{BROWSER_LIST_X + index * step}"/>'
+                    [f'<child widget="{base}/{name}" x="{lefts[index]}"/>'
                      for index, (name, _) in enumerate(tabs)])
     for index, (name, words) in enumerate(tabs):
+        width = widths[index]
         lines += _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("width", width),
                                            ("height", TOUCH_TAP), ("wide", wide(-WIDE_HALF + index * grown, grown)),
                                            ("bitmap", touch_chip(width, TOUCH_TAP)), ("text", words),
@@ -5196,11 +5200,11 @@ def _touch_host_controls() -> tuple:
                      ['<data input="port host update"/>', '<on event="created" run="port host init"/>',
                       f'<child widget="{touch}/host_tabs" y="{TOUCH_CHIPS_TOP}"/>', *rows, *actions,
                       f'<child widget="{touch}/host_prompts" y="{TOUCH_FOOTER_TOP}"/>'])
-    # (PLAYLIST as UP NEXT, which a chip a fifth of the list wide holds)
-    tabs = [(name, "UP NEXT" if name == "tab_playlist" else words) for name, words in HOST_TABS]
+    # (PLAYLIST as NEXT: six chips over the list, PLAYERS's the widest)
+    tabs = [(name, "NEXT" if name == "tab_playlist" else words) for name, words in HOST_TABS]
     lines += _touch_chips(touch, "host_tabs", tabs, ['<on event="a" run="port host tab"/>',
                                                           '<on event="start" run="port host tab"/>'],
-                          TOUCH_LIST_WIDTH, TOUCH_HOST_CHIP_WIDTH)
+                          TOUCH_LIST_WIDTH, TOUCH_HOST_CHIP_WIDTHS)
     lines += _touch_prompts(touch, "host_prompts", [("prompt_back", "BACK", back_x, back_w,
                                                      '<on event="a" run="mouse emit back event"/>')])
     for row in range(1, TOUCH_HOST_ROWS + 1):

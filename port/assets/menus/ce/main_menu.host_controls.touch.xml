@@ -30,32 +30,38 @@
 	</widget>
 	<widget name="main_menu/host_controls/touch/host_tabs" type="column_list" width="640" height="52" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<child widget="main_menu/host_controls/touch/tab_players" x="28"/>
-		<child widget="main_menu/host_controls/touch/tab_game" x="102"/>
-		<child widget="main_menu/host_controls/touch/tab_maps" x="176"/>
-		<child widget="main_menu/host_controls/touch/tab_playlist" x="250"/>
-		<child widget="main_menu/host_controls/touch/tab_bans" x="324"/>
+		<child widget="main_menu/host_controls/touch/tab_game" x="108"/>
+		<child widget="main_menu/host_controls/touch/tab_maps" x="166"/>
+		<child widget="main_menu/host_controls/touch/tab_playlist" x="224"/>
+		<child widget="main_menu/host_controls/touch/tab_bans" x="282"/>
+		<child widget="main_menu/host_controls/touch/tab_bots" x="340"/>
 	</widget>
-	<widget name="main_menu/host_controls/touch/tab_players" type="text" controller="1" width="68" height="52" wide="-106 26" bitmap="main_menu/parts/chip_68x52" text="PLAYERS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="19">
+	<widget name="main_menu/host_controls/touch/tab_players" type="text" controller="1" width="74" height="52" wide="-106 22" bitmap="main_menu/parts/chip_74x52" text="PLAYERS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="19">
 		<on event="a" run="port host tab"/>
 		<on event="start" run="port host tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/host_controls/touch/tab_game" type="text" controller="1" width="68" height="52" wide="-80 26" bitmap="main_menu/parts/chip_68x52" text="GAME" font="ui\small_ui" color="#FF2896FF" align="center" text_y="19">
+	<widget name="main_menu/host_controls/touch/tab_game" type="text" controller="1" width="52" height="52" wide="-84 22" bitmap="main_menu/parts/chip_52x52" text="GAME" font="ui\small_ui" color="#FF2896FF" align="center" text_y="19">
 		<on event="a" run="port host tab"/>
 		<on event="start" run="port host tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/host_controls/touch/tab_maps" type="text" controller="1" width="68" height="52" wide="-54 26" bitmap="main_menu/parts/chip_68x52" text="MAPS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="19">
+	<widget name="main_menu/host_controls/touch/tab_maps" type="text" controller="1" width="52" height="52" wide="-62 22" bitmap="main_menu/parts/chip_52x52" text="MAPS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="19">
 		<on event="a" run="port host tab"/>
 		<on event="start" run="port host tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/host_controls/touch/tab_playlist" type="text" controller="1" width="68" height="52" wide="-28 26" bitmap="main_menu/parts/chip_68x52" text="UP NEXT" font="ui\small_ui" color="#FF2896FF" align="center" text_y="19">
+	<widget name="main_menu/host_controls/touch/tab_playlist" type="text" controller="1" width="52" height="52" wide="-40 22" bitmap="main_menu/parts/chip_52x52" text="NEXT" font="ui\small_ui" color="#FF2896FF" align="center" text_y="19">
 		<on event="a" run="port host tab"/>
 		<on event="start" run="port host tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/host_controls/touch/tab_bans" type="text" controller="1" width="68" height="52" wide="-2 26" bitmap="main_menu/parts/chip_68x52" text="BANS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="19">
+	<widget name="main_menu/host_controls/touch/tab_bans" type="text" controller="1" width="52" height="52" wide="-18 22" bitmap="main_menu/parts/chip_52x52" text="BANS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="19">
+		<on event="a" run="port host tab"/>
+		<on event="start" run="port host tab"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/host_controls/touch/tab_bots" type="text" controller="1" width="52" height="52" wide="4 22" bitmap="main_menu/parts/chip_52x52" text="BOTS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="19">
 		<on event="a" run="port host tab"/>
 		<on event="start" run="port host tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
