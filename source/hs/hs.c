@@ -15627,8 +15627,9 @@ static boolean hs_compile_and_evaluate_command(
 			return network_host_controls_open_command(text);
 	}
 	/* port: the host's host_map, host_playlist, host_say, host_shuffle_teams,
-	host_balance_teams, host_score_limit, host_time_limit, host_bots and
-	host_bot_skill (network_host_game.c) */
+	host_balance_teams, host_score_limit, host_time_limit, host_bots,
+	host_bot_skill (network_host_game.c), host_vehicles and host_weapons
+	(network_host_rules.c) */
 	{
 		boolean host_result;
 

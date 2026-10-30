@@ -185,6 +185,7 @@ static boolean game_engine_has_teams(void) { return FALSE; }
 static boolean game_engine_can_score(void) { return TRUE; }
 static boolean network_standard_hosting(void) { return TRUE; }
 static boolean network_host_controls_restarting(void) { return FALSE; }
+static boolean network_host_rules_available(void) { return FALSE; }
 static boolean network_host_controls_end_game(void) { return TRUE; }
 static boolean network_host_controls_restart(void) { return TRUE; }
 static boolean network_host_controls_teams_locked(void) { return FALSE; }

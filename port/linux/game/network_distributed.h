@@ -192,6 +192,11 @@ enum
 	(unreliable) */
 	_distributed_message_player_live_controls = 132,
 	_distributed_message_forwarded_live_controls = 133,
+	/* the variant's flags of a game under way the host changed
+	(network_host_rules.c: shields, the motion sensor, infinite grenades,
+	invisible players), reliably, to the host's OpenH1 clients in a game of
+	no OpenCE machine */
+	_distributed_message_host_rules = 134,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };

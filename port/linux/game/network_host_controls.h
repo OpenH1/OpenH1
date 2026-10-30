@@ -254,7 +254,7 @@ void network_host_controls_bots_one_fewer(void);
 for the local player (the scoreboard's "Host controls...", the console's
 host_controls) */
 boolean network_host_controls_open(long player_index, short tab);
-/* the console's host_controls: its tab ("players", "game", "maps", "playlist", "bans", "bots"; none:
+/* the console's host_controls: its tab ("players", "game", "maps", "playlist", "bans", "bots", "rules"; none:
 Players) and a player chosen by their name's start; or "end" and "restart",
 Game's End game now and Restart round; or "unban <players or address>" */
 boolean network_host_controls_open_command(char const *text);

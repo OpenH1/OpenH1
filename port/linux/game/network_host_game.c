@@ -52,6 +52,7 @@ is tools/harness/tests/test_host_game.py's.
 #include "custom_edition_maps.h"
 #include "bots.h"
 #include "network_host_game.h"
+#include "network_host_rules.h"
 #include "server_gametypes.h"
 
 #include <stdio.h>
@@ -520,6 +521,9 @@ static void host_game_apply_limits(
 		options->time_limit = host_game.minutes;
 	host_game.score = NONE;
 	host_game.minutes = NONE;
+	/* (and the rules' changes that waited for it: network_host_rules.c) */
+	network_host_rules_apply_waiting(variant, TRUE);
+	(void)options;
 }
 
 /* the lobby's game set to the entry's, as the director sets it
@@ -875,7 +879,8 @@ boolean network_host_game_lobby_take(
 	if (applied && index != NONE)
 		host_game.index = index;
 	/* (limits asked for, with no new game: on the lobby's as it is) */
-	if (!applied && !network_host_game_cooperative() && (host_game.score != NONE || host_game.minutes != NONE))
+	if (!applied && !network_host_game_cooperative() && (host_game.score != NONE || host_game.minutes != NONE ||
+		network_host_rules_waiting()))
 		host_game_apply_limits_to_lobby();
 	return applied;
 }
@@ -1416,6 +1421,9 @@ boolean network_host_game_console(
 	long length;
 
 	if (network_host_game_command(expression, result))
+		return TRUE;
+	/* (the rules: network_host_rules.c) */
+	if (network_host_rules_console(expression, result))
 		return TRUE;
 	if ((rest = host_game_word_text(expression, "host_say")) != NULL)
 	{
