@@ -336,7 +336,11 @@ history"); version 10 sends the variant's flags of a game under way that the
 host changed in Host Controls' RULES (distributed message 134,
 `_distributed_message_host_rules`, `network_host_rules.c`: shields, the motion
 sensor, infinite grenades, invisible players), reliably, to its OpenH1 clients
-in a game of no OpenCE machine (below, "The host's controls"). With no new version, each client then tells the
+in a game of no OpenCE machine (below, "The host's controls"); version 11 reaches a machine through a
+relay when the two cannot meet directly (below, "Relays"): the relays' packets on the tunnel's
+socket, the relay offers in signalling and a dedicated server's relay flag
+in its listing, none of which a Legacy game's machines or OpenCE's see
+otherwise. With no new version, each client then tells the
 host its build (distributed message 92, `_distributed_message_client_build`,
 reliably once a game after its ready, over its connection alone): its
 number, configuration, the label it shows ("OpenH1 Linux | build 120
@@ -1646,6 +1650,65 @@ Unity's Netcode for Entities, lightyear, netfox and the Ares source):
   meter on, the scoreboard shows these where the machine has them (the
   host every client's, a client its own players'), and the host's measure
   in ticks, which every machine is sent, for the others.
+
+### Relays
+
+Internet play's tunnel (`src/p2p.c`) meets another machine directly when it
+can. Two machines behind NATs that give each destination a port of their
+own cannot meet so, and reach each other through a relay
+(`src/p2p_relay.c`; the README's "Relays" says when, and the settings):
+
+- **Signalling.** A machine that has not reached its peer after 4 seconds
+  (1 when both NATs are known strict) sends it the relays it knows, every 2
+  seconds until reached: a message of its own (`R`, with a version of its
+  own) on the session's signalling topics, sealed as the join is and tagged
+  with an HMAC of the session's secret, so that only the peer can have sent
+  it. Each entry is a machine's identifier (zero for a server named by its
+  address), an address and port, and a kind: the game's host, a player of
+  the game, a dedicated server. A machine the receiver reaches directly is
+  bound at the address it reaches it at. OpenCE and older builds pass the
+  message over. The dedicated servers' are added after 7 seconds, or at once
+  when neither machine has a player of the game to offer
+  (`p2p_relay_stage`).
+- **Pairing.** Both machines bind to every relay offered (BIND: the token,
+  their side of the session and a nonce, every half second): the token is
+  HMAC-SHA-256(the session's secret, `"openh1 relay token 1"`), which gives
+  neither the secret nor the tunnel's keys (HMACs of it with other labels)
+  away. The relay pairs one bind of each side of a token, answers each
+  bind (BOUND: waiting, paired or refused, the nonce, and a random 8-byte
+  channel), and tells the side that waited at once.
+- **Carrying.** A machine wraps each tunnel packet with the channel (DATA);
+  the relay takes it only from one of the pair's two addresses, only if it
+  is a tunnel packet of a tunnel packet's sizes, and sends it on to the
+  other as DELIVERED, which it never forwards again. The receiver takes
+  only a delivered packet from the relay's address with its attempt's
+  channel, and only one whose sender is the peer that attempt is for; the
+  tunnel's own seal then proves it, as for any packet. The first relay
+  whose packets get through carries the session; the others are released
+  (RELEASE, with the token). A direct packet later takes over at once.
+- **Limits.** A relay answers an address's binds at most 10 (a player's) or
+  20 (a dedicated server's) times a second, holds 4 or `server.relay_pairs`
+  pairs (2 or 4 an address), passes on `network.relay_upload` or
+  `server.relay_upload` kilobytes a second in all, 128 or 256 a pair (and a
+  dedicated server 512 an address), ends a pair quiet for 30 seconds and one
+  never paired after 20. A player's machine relays only for pairs one side
+  of which its tunnel reaches directly. `debug.network_corrupt` damages the
+  relay's packets it receives too (the tunnel's own fail their seal).
+- **Versions.** OpenH1 protocol version 10. Nothing a Legacy game's
+  machines send each other changes, and an OpenCE machine never receives a
+  relay's packet or message: relays are tried only between machines that
+  offer them.
+
+A relayed session's round trip is the two legs' through the relay: the
+latency meter shows it as it shows any. On the test bed below (10 ms each
+way on each link) a join through a relay took 1.4 seconds, and the ping
+read 73 ms through a player's machine against 45 ms directly.
+`tools/relay_netns.py` plays the cases on one Linux computer without root
+(network namespaces in a user namespace, symmetric NATs from iptables'
+`MASQUERADE --random`, its own MQTT broker and STUN servers): direct fails,
+and the host's player and a dedicated server (`server.relay`) each relay.
+The relay's pairing, refusals, limits and expiry, malformed packets and the
+fallback order are `tools/harness/tests/test_p2p_relay.py`'s.
 
 ## Testing
 

@@ -28,7 +28,8 @@ false details:
 	which the players' count leaves out (port/linux/game/bots.c), zero for
 	none; then what the host does (_stamp_holds_party: it holds room for a
 	party joining it, port/linux/game/network_party.c; builds before it
-	wrote zero); then its matchmaking playlist (port/linux/game/
+	wrote zero; _stamp_relay: a dedicated server that relays for players
+	who cannot meet, server.relay, p2p_relay.c); then its matchmaking playlist (port/linux/game/
 	matchmaking_menu.inc's, zero for none: a game of its own); the rest
 	reserved, zero: none of it read by OpenCE), and the signature (64) of
 	"hceu-lobby-1" and all before it.
@@ -103,6 +104,14 @@ enum
 	/* the stamp's fourth byte: an OpenH1 host that holds room for a party
 	joining its game (port/linux/game/network_party.c) */
 	_stamp_holds_party = 1,
+	/* ... a dedicated server that relays (server.relay: p2p_relay.c), which
+	a master server's listing of it tells the players (a broker's, which
+	any host may publish, is not taken for it) */
+	_stamp_relay = 2,
+	/* the relay servers kept (p2p_lobby_relay_servers), each for
+	RELAY_SERVER_EXPIRY milliseconds after a master last listed it */
+	MAXIMUM_RELAY_SERVERS = 16,
+	RELAY_SERVER_EXPIRY = 600000,
 	/* the signed part's end: everything but the signature */
 	MAXIMUM_LISTING_SIZE = 2 + 1 + 2 + 1 + 4 + 4 + P2P_KEY_SIZE + P2P_SEALED_TOKEN_SIZE + 3 +
 		(1 + P2P_LISTING_NAME_SIZE) + (1 + P2P_LISTING_MAP_SIZE) + (1 + P2P_LISTING_GAMETYPE_SIZE) + STAMP_SIZE +
@@ -253,6 +262,15 @@ static struct
 		unsigned long heard_time;
 		int used;
 	} newer[MAXIMUM_GAMES];
+	/* the master servers' relay servers (_stamp_relay), kept whether the
+	browser is open or not: a join may need one */
+	struct
+	{
+		unsigned char key_hash[P2P_KEY_HASH_SIZE];
+		unsigned char token[P2P_TOKEN_SIZE];
+		unsigned long heard_time;
+		int used;
+	} relay_servers[MAXIMUM_RELAY_SERVERS];
 } lobby;
 
 static int elapsed(unsigned long since, unsigned long time)
@@ -375,9 +393,12 @@ static int listing_make_token(unsigned char *bytes, int flags, const unsigned ch
 	if (lobby.standard && lobby.mixed)
 		bytes[size + 2] = (unsigned char)HALO_PORT_STANDARD_NETWORK_VERSION;
 	bytes[size + 3] = (unsigned char)lobby.bots;
-	/* (an OpenH1 game's host of this build holds room for a party) */
+	/* (an OpenH1 game's host of this build holds room for a party; a
+	dedicated server may relay, in any game) */
 	if (lobby.standard)
 		bytes[size + 4] = _stamp_holds_party;
+	if (halo_server_mode() && config_boolean("server.relay"))
+		bytes[size + 4] |= _stamp_relay;
 	/* (a matchmaking game's playlist: an OpenH1 game's alone) */
 	if (lobby.standard)
 		bytes[size + 5] = (unsigned char)lobby.playlist;
@@ -950,6 +971,35 @@ int p2p_lobby_host_listing(unsigned char *bytes, int size)
 	return made;
 }
 
+/* a master server's relay server (its key's hash, its listing's token),
+kept: in its place, else a free one, else the one heard longest ago */
+static void relay_server_heard(const unsigned char *key_hash, const unsigned char *token)
+{
+	int chosen = -1;
+	int index;
+
+	pthread_mutex_lock(&p2p_lock);
+	for (index = 0; index < MAXIMUM_RELAY_SERVERS; index++)
+	{
+		if (lobby.relay_servers[index].used &&
+			!memcmp(lobby.relay_servers[index].key_hash, key_hash, P2P_KEY_HASH_SIZE))
+		{
+			chosen = index;
+			break;
+		}
+		if (chosen < 0 || (lobby.relay_servers[chosen].used && (!lobby.relay_servers[index].used ||
+			(long)(lobby.relay_servers[index].heard_time - lobby.relay_servers[chosen].heard_time) < 0)))
+		{
+			chosen = index;
+		}
+	}
+	memcpy(lobby.relay_servers[chosen].key_hash, key_hash, P2P_KEY_HASH_SIZE);
+	memcpy(lobby.relay_servers[chosen].token, token, P2P_TOKEN_SIZE);
+	lobby.relay_servers[chosen].heard_time = p2p_now();
+	lobby.relay_servers[chosen].used = 1;
+	pthread_mutex_unlock(&p2p_lock);
+}
+
 int p2p_lobby_take_master_listing(const unsigned char *payload, int size, const char *publisher, const char *region,
 	int network_version_shown, int dedicated)
 {
@@ -963,6 +1013,14 @@ int p2p_lobby_take_master_listing(const unsigned char *payload, int size, const 
 		(listing.flags & _listing_closed) || !signing_key_hash(listing.key, queued.key_hash))
 	{
 		return 0;
+	}
+	/* (a dedicated server that relays, of any version: kept for a join that
+	needs one, p2p.c, whatever the browser shows; its token is what reaches
+	it, so not a password's) */
+	if (dedicated && (listing.features & _stamp_relay) && !(listing.flags & _listing_password) &&
+		listing_signed(payload, &listing))
+	{
+		relay_server_heard(queued.key_hash, listing.token);
 	}
 	/* (as a broker's: a newer version's game counted, not shown; one of
 	another version this build cannot join left out) */
@@ -1012,6 +1070,28 @@ int p2p_lobby_take_master_listing(const unsigned char *payload, int size, const 
 	}
 	pthread_mutex_unlock(&p2p_lock);
 	return taken;
+}
+
+int p2p_lobby_relay_servers(unsigned char (*hashes)[P2P_KEY_HASH_SIZE], unsigned char (*tokens)[P2P_TOKEN_SIZE],
+	int maximum)
+{
+	int count = 0;
+	int index;
+
+	for (index = 0; index < MAXIMUM_RELAY_SERVERS && count < maximum; index++)
+	{
+		if (!lobby.relay_servers[index].used)
+			continue;
+		if (elapsed(lobby.relay_servers[index].heard_time, RELAY_SERVER_EXPIRY))
+		{
+			lobby.relay_servers[index].used = 0;
+			continue;
+		}
+		memcpy(hashes[count], lobby.relay_servers[index].key_hash, P2P_KEY_HASH_SIZE);
+		memcpy(tokens[count], lobby.relay_servers[index].token, P2P_TOKEN_SIZE);
+		count++;
+	}
+	return count;
 }
 
 void p2p_lobby_masters_heard(void)

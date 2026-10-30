@@ -288,6 +288,13 @@ friend's inbox, the own presence) on every broker, at most once: within
 each broker's bucket, or (urgent) at once */
 void p2p_signal_friends(const char (*topics)[P2P_TOPIC_SIZE], int count);
 void p2p_signal_friends_publish(const char *topic, const unsigned char *payload, int size, int urgent);
+/* the relays this machine offers a peer whose session has not met (p2p.c's
+offer: body, size bytes), sealed as its session's requests are: to the
+machine it asked (to_host: a join's host, or a player answering as one),
+or to its joiner; a message of its own ('R'), which OpenCE and older
+builds pass over. p2p_relay_offer_heard (p2p.c) is given the other's */
+void p2p_signal_relay_offer(const unsigned char *peer_identifier, int to_host, const unsigned char *body, int size);
+void p2p_relay_offer_heard(const unsigned char *body, int size);
 
 /* ---------- p2p_crypto.c */
 
@@ -387,6 +394,11 @@ written to the brokers at once; under p2p_lock */
 void p2p_lobby_quit(void);
 /* a key hash's slot */
 void p2p_lobby_slot_topic(const unsigned char *key_hash, char *topic, int size);
+/* the dedicated servers the master servers list as relaying (their
+listings' _stamp_relay), heard lately: each one's key hash and token, at
+most maximum; returns their count. Under p2p_lock */
+int p2p_lobby_relay_servers(unsigned char (*hashes)[P2P_KEY_HASH_SIZE], unsigned char (*tokens)[P2P_TOKEN_SIZE],
+	int maximum);
 
 /* ---------- p2p_discord.c: rich presence and invites through the Discord
 desktop client */
@@ -403,5 +415,132 @@ words (UTF-8, empty: none), whether it hosts it and it is under way, its
 players; under p2p_lock */
 void p2p_discord_game(int *hosting, int *playing, char *description, int size, int *player_count,
 	int *maximum_player_count);
+
+/* ---------- p2p_relay.c: relays, for two machines whose NATs keep them
+apart */
+
+enum
+{
+	/* the first byte of a relay's packets on the tunnel's socket, and of
+	the tunnel's own (p2p.c's TUNNEL_MAGIC), whose packets alone a relay
+	carries, of these sizes (its header, a tag and a byte at least; the
+	largest inner packet at most) */
+	P2P_RELAY_MAGIC = 0x6A,
+	P2P_TUNNEL_MAGIC = 0x69,
+	P2P_TUNNEL_MINIMUM_PACKET = 1 + P2P_IDENTIFIER_SIZE + 8 + 16 + 1,
+	P2P_TUNNEL_MAXIMUM_PACKET = 1 + P2P_IDENTIFIER_SIZE + 8 + 1400 + 16,
+	/* what both machines of a session show a relay (p2p_relay_token) */
+	P2P_RELAY_TOKEN_SIZE = 32,
+	/* the pairs a relay keeps at most, and the attempts a machine makes */
+	P2P_RELAY_MAXIMUM_PAIRS = 256,
+	P2P_RELAY_MAXIMUM_ATTEMPTS = 48,
+	/* the relays a machine offers its peer at once (p2p_signal_relay_offer) */
+	P2P_RELAY_MAXIMUM_OFFERED = 6,
+};
+
+/* what a relay is: the game's host (between two of its players), another
+player of a game, a dedicated server's */
+enum
+{
+	_p2p_relay_host = 1,
+	_p2p_relay_peer,
+	_p2p_relay_server,
+};
+
+/* a relay offered (by this machine or its peer): the machine's identifier
+(zero: a server named by its address), its address, and its kind */
+struct p2p_relay_offered
+{
+	unsigned char identifier[P2P_IDENTIFIER_SIZE];
+	struct p2p_candidate relay;
+	int kind;
+};
+
+/* how much this machine relays for others (p2p_relay_configure): on at all;
+only for pairs one side of which its tunnel reaches (a player's machine,
+for its game's); pairs in all and per address; binds a second per address;
+bytes a second in all, per pair, per address */
+struct p2p_relay_limits
+{
+	int enabled;
+	int peers_only;
+	int maximum_pairs;
+	int pairs_per_address;
+	int binds_per_second;
+	long upload;
+	long pair_upload;
+	long address_upload;
+};
+
+/* the relay's counts (logged, and the dedicated server's status) */
+struct p2p_relay_counts
+{
+	int pairs, paired;
+	unsigned long formed, ended, refused, dropped;
+	unsigned long forwarded_packets, forwarded_bytes;
+};
+
+/* an attempt's state (p2p_relay_attempt) */
+struct p2p_relay_attempt_state
+{
+	unsigned char peer[P2P_IDENTIFIER_SIZE];
+	unsigned char relay_identifier[P2P_IDENTIFIER_SIZE];
+	struct p2p_candidate relay;
+	int kind, side, paired, refused;
+	/* milliseconds, -1 until the relay answered */
+	long bind_round_trip;
+};
+
+/* the relays tried for a peer not reached directly, by how long since its
+session was made (milliseconds), whether both NATs are known strict, whether
+the peer offered relays and any of its game's machines among them, and how
+many of those this machine has: none yet, the game's host and players, or
+the dedicated servers' too. The order: directly (and UPnP: p2p.c), then
+the players', then the dedicated servers' */
+enum
+{
+	_p2p_relay_stage_none,
+	_p2p_relay_stage_players,
+	_p2p_relay_stage_servers,
+};
+int p2p_relay_stage(unsigned long age, int both_strict, int offered, int offered_players, int own_players);
+/* the token both machines of a session (its secret, P2P_SHA256_SIZE
+bytes) show a relay: an HMAC of the secret with the relay's label, which
+gives away neither the secret nor the tunnel's keys */
+void p2p_relay_token(const unsigned char *secret, unsigned char *token);
+/* the relay's limits (enabled 0: it relays nothing, its pairs ended) */
+void p2p_relay_configure(const struct p2p_relay_limits *limits);
+void p2p_relay_counts(struct p2p_relay_counts *counts);
+/* a packet of the tunnel's socket that starts with P2P_RELAY_MAGIC, from
+address and port (network byte order): 1 (it was a relay's, done with),
+else 0. The packet may be changed */
+int p2p_relay_received(unsigned char *packet, int size, unsigned long address, unsigned short port,
+	unsigned long now);
+/* the pass of the p2p thread: binds sent, pairs and attempts expired */
+void p2p_relay_update(unsigned long now);
+/* a relay tried for a peer's session (side: 0 the host's, 1 the
+joiner's): the attempt's index, -1 if there is no room (the same relay
+again: the same attempt) */
+int p2p_relay_attempt_start(const unsigned char *peer, const unsigned char *secret, int side,
+	const struct p2p_relay_offered *offered, unsigned long now);
+/* a peer's attempts given up but keep (-1: all), each pair released */
+void p2p_relay_forget_peer(const unsigned char *peer, int keep);
+/* a tunnel packet sent through a paired attempt: 0 if it is not one */
+int p2p_relay_send(int index, const unsigned char *packet, int size);
+/* an attempt's state: 0 if there is none of that index */
+int p2p_relay_attempt(int index, struct p2p_relay_attempt_state *state);
+/* a peer's attempts' indices; returns their count */
+int p2p_relay_peer_attempts(const unsigned char *peer, int *indices, int maximum);
+
+/* p2p.c's, which p2p_relay.c calls: a packet sent from the tunnel's
+socket; an attempt paired (the peer pinged through it at once); a tunnel
+packet a relay brought through an attempt; an attempt ended (a peer
+reached through it is reached no longer); whether a machine the tunnel
+reaches is at this address and port */
+void p2p_relay_sendto(unsigned long address, unsigned short port, const unsigned char *data, int size);
+void p2p_relay_paired(int index);
+void p2p_relay_delivered(int index, const unsigned char *packet, int size);
+void p2p_relay_released(int index);
+int p2p_relay_peer_address(unsigned long address, unsigned short port);
 
 #endif

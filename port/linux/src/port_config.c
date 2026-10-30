@@ -1064,6 +1064,24 @@ static const struct config_setting config_settings[] =
 		"networks whose NAT stops connections: when a player joins this\n"
 		"machine's game, and when joining a game takes too long. False never\n"
 		"asks." },
+	{ "network.use_relays", _config_boolean, "true", "HALO_NET_USE_RELAYS", _environment_value, _platform_all,
+		"When another machine is not reached directly in a few seconds (both\n"
+		"networks' NATs too strict), reach it through a relay: the game's host,\n"
+		"another player whose network takes connections, or a dedicated server\n"
+		"that relays. The relay cannot read the game's traffic. False: direct\n"
+		"connections only." },
+	{ "network.relay_for_others", _config_boolean, "true", "HALO_NET_RELAY_FOR_OTHERS", _environment_value,
+		_platform_all,
+		"Let this machine relay for the machines of its own games that cannot\n"
+		"reach each other directly (4 pairs at most, network.relay_upload);\n"
+		"it sees only their sealed packets. False relays for no one." },
+	{ "network.relay_upload", _config_integer, "256", "HALO_NET_RELAY_UPLOAD", _environment_value, _platform_all,
+		"Relaying for others: the most kilobytes a second this machine sends on\n"
+		"(16 to 100000), 128 at most for each pair." },
+	{ "network.relay_servers", _config_string, "\"\"", "HALO_NET_RELAY_SERVERS", _environment_value, _platform_all,
+		"Dedicated servers to relay through when nothing nearer does,\n"
+		"host[:port] (2302 when none) separated by commas, besides those the\n"
+		"master servers list as relaying (server.relay). Empty: those alone." },
 	{ "network.public_lobby", _config_boolean, "true", "HALO_NET_PUBLIC_LOBBY", _environment_value, _platform_all,
 		"The server browser: public games are listed through the signalling\n"
 		"brokers, and Join Game > Server Browser shows them. False lists no\n"
@@ -1382,6 +1400,18 @@ static const struct config_setting config_settings[] =
 	{ "server.upnp", _config_boolean, "false", "HALO_SERVER_UPNP", _environment_value, _platform_server,
 		"Ask the router (UPnP) to forward the tunnel's port (network.allow_upnp,\n"
 		"for a server at home)." },
+	{ "server.relay", _config_boolean, "false", "HALO_SERVER_RELAY", _environment_value, _platform_server,
+		"Relay for players whose networks keep them from meeting directly (any\n"
+		"two machines that show the same session's token: never a third),\n"
+		"and say so in the master servers' listing. The server sees only their\n"
+		"sealed packets." },
+	{ "server.relay_upload", _config_integer, "8192", "HALO_SERVER_RELAY_UPLOAD", _environment_value,
+		_platform_server,
+		"Relaying: the most kilobytes a second the server sends on in all (16\n"
+		"to 1000000); 256 for each pair, 512 for each address, at most." },
+	{ "server.relay_pairs", _config_integer, "64", "HALO_SERVER_RELAY_PAIRS", _environment_value, _platform_server,
+		"Relaying: the most pairs of machines at once (1 to 256), 4 for each\n"
+		"address." },
 	{ "server.coop_difficulty", _config_string, "\"normal\"", "HALO_SERVER_COOP_DIFFICULTY", _environment_value,
 		_platform_server,
 		"Co-op rotation entries' (<level>:coop) difficulty: \"easy\", \"normal\",\n"
@@ -1566,6 +1596,9 @@ static const struct config_setting config_settings[] =
 		"Seconds after the start before anything is damaged, so that a game can\n"
 		"be set up and started first (a host's messages to its own client are\n"
 		"damaged too)." },
+	{ "debug.relay_paths", _config_string, "\"all\"", "HALO_RELAY_PATHS", _environment_value, _platform_all,
+		"The relays this machine tries and offers (network.use_relays): \"all\",\n"
+		"or the kinds named of \"host\", \"peer\" and \"server\", to test each." },
 	{ "debug.test_input", _config_string, "\"\"", "HALO_TEST_INPUT", _environment_value, _platform_all,
 		"\"bot:<seed>\" plays controller 1 with a scripted pattern (automated\n"
 		"network tests); \"look:<seed>\" stands still, only turning and looking\n"

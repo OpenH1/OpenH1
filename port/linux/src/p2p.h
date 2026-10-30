@@ -466,8 +466,16 @@ struct p2p_join_status
 	/* this network's NAT is strict (p2p_nat_strict); the host's addresses
 	show that its is; the router was asked to forward a port and did not */
 	int nat_strict, host_strict, upnp_tried;
+	/* relays are being tried for the host (it was not reached directly in
+	a few seconds: p2p_relay.c); the host was reached through one */
+	int relaying, relayed;
 };
 void p2p_join_status(struct p2p_join_status *status);
+/* whether the host of the game joined is reached through a relay (the
+menus say so: "Connected through a relay") */
+int p2p_joined_through_relay(void);
+/* whether the machine with this identifier is reached through a relay */
+int p2p_peer_relayed(const unsigned char *identifier);
 /* gives the join up (the menus' Back, and their timeout), the host not
 reached */
 void p2p_join_cancel(void);
