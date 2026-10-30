@@ -9,7 +9,7 @@
 		<child widget="main_menu/host_controls/header_host_controls"/>
 		<child widget="main_menu/host_controls/host_counts"/>
 		<child widget="main_menu/settings/tab_prompt_previous" x="24" y="76" platform="pointer"/>
-		<child widget="main_menu/settings/tab_prompt_next" x="498" y="76" platform="pointer"/>
+		<child widget="main_menu/settings/tab_prompt_next" x="586" y="76" platform="pointer"/>
 		<child widget="main_menu/host_controls/header_label" platform="pointer"/>
 		<child widget="main_menu/host_controls/header_team" platform="pointer"/>
 		<child widget="main_menu/host_controls/header_score" platform="pointer"/>
@@ -74,28 +74,34 @@
 		<child widget="main_menu/host_controls/tab_maps" x="232"/>
 		<child widget="main_menu/host_controls/tab_playlist" x="320"/>
 		<child widget="main_menu/host_controls/tab_bans" x="408"/>
+		<child widget="main_menu/host_controls/tab_bots" x="496"/>
 	</widget>
 	<widget name="main_menu/host_controls/tab_players" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="-106 0" bitmap="main_menu/parts/tab" text="PLAYERS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="a" run="port host tab"/>
 		<on event="start" run="port host tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/host_controls/tab_game" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="-53 0" bitmap="main_menu/parts/tab" text="GAME" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/host_controls/tab_game" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="-64 0" bitmap="main_menu/parts/tab" text="GAME" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="a" run="port host tab"/>
 		<on event="start" run="port host tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/host_controls/tab_maps" type="text" controller="1" width="86" height="22" flags="keep_ends" bitmap="main_menu/parts/tab" text="MAPS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/host_controls/tab_maps" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="-21 0" bitmap="main_menu/parts/tab" text="MAPS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="a" run="port host tab"/>
 		<on event="start" run="port host tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/host_controls/tab_playlist" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="53 0" bitmap="main_menu/parts/tab" text="PLAYLIST" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/host_controls/tab_playlist" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="21 0" bitmap="main_menu/parts/tab" text="PLAYLIST" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="a" run="port host tab"/>
 		<on event="start" run="port host tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/host_controls/tab_bans" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="106 0" bitmap="main_menu/parts/tab" text="BANS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/host_controls/tab_bans" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="64 0" bitmap="main_menu/parts/tab" text="BANS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+		<on event="a" run="port host tab"/>
+		<on event="start" run="port host tab"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/host_controls/tab_bots" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="106 0" bitmap="main_menu/parts/tab" text="BOTS" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
 		<on event="a" run="port host tab"/>
 		<on event="start" run="port host tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>

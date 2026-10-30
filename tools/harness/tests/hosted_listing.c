@@ -184,12 +184,6 @@ static boolean game_engine_running(void) { return TRUE; }
 static boolean game_engine_has_teams(void) { return FALSE; }
 static boolean game_engine_can_score(void) { return TRUE; }
 static boolean network_standard_hosting(void) { return TRUE; }
-static short network_host_controls_bot_rows(void) { return 0; }
-static void network_host_controls_bot_row(short row, wchar_t *label, wchar_t *value, wchar_t *help, short size)
-{
-	(void)row; (void)label; (void)value; (void)help; (void)size;
-}
-static void network_host_controls_bot_row_step(short row, short step) { (void)row; (void)step; }
 static boolean network_host_controls_restarting(void) { return FALSE; }
 static boolean network_host_controls_end_game(void) { return TRUE; }
 static boolean network_host_controls_restart(void) { return TRUE; }

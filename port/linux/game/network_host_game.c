@@ -1116,7 +1116,7 @@ short network_host_game_lobby_players(
 		entry->ping = NONE;
 		view.bot = bots_machine_is_bot(machine_index) != 0;
 		view.own = !view.bot && machine_index == own_machine;
-		view.bot_removable = view.bot;
+		view.bot_removable = view.bot && !bots_matchmaking_on();
 		view.teams = teams;
 		view.team_moves = teams;
 		if (view.bot)
@@ -1187,15 +1187,10 @@ boolean network_host_game_kick_player(
 
 	if (!TEST_FLAG(actions, ban ? _host_controls_ban : _host_controls_kick))
 		return FALSE;
-	/* (a lobby's bot out, bots.count one less, as a game's) */
+	/* (a lobby's bot out, bots.count one fewer than play, as a game's) */
 	if (entry->player_index == NONE && bots_machine_is_bot(entry->machine_index))
 	{
-		char text[16];
-		long count = bots_wanted_count();
-
-		snprintf(text, sizeof(text), "%ld", count > 0 ? count - 1 : 0);
-		if (!config_write("bots.count", text))
-			console_warning("host_controls: could not set bots.count");
+		network_host_controls_bots_one_fewer();
 		return network_game_server_port_bots_remove(global_network_game_server_get(), entry->machine_index);
 	}
 	/* (the ban's line: its reason, and its end) */
@@ -1446,6 +1441,39 @@ boolean network_host_game_console(
 		}
 		else
 			console_printf(FALSE, "%d player%s moved", moved, moved == 1 ? "" : "s");
+		return TRUE;
+	}
+	/* (the BOTS tab's count and skill: network_host_controls.c) */
+	if ((rest = host_game_word_text(expression, "host_bots")) != NULL)
+	{
+		long count = atol(rest);
+
+		if (rest[0] < '0' || rest[0] > '9')
+		{
+			console_printf(FALSE, "%ld bots asked for, %s", bots_wanted_count(),
+				bots_matchmaking_on() ? "by the matchmaking playlist" : "bots.count");
+			*result = TRUE;
+			return TRUE;
+		}
+		*result = network_host_controls_set_bots(count);
+		if (*result)
+			console_printf(FALSE, "bots: %ld", count);
+		else
+		{
+			console_warning("host_bots: give 0 to %d, as the host of a network game (not co-op, not "
+				"matchmaking)", BOTS_MAXIMUM);
+		}
+		return TRUE;
+	}
+	if ((rest = host_game_word_text(expression, "host_bot_skill")) != NULL)
+	{
+		short skill = network_host_controls_bot_skill_named(rest);
+
+		*result = skill != NONE && network_host_controls_set_bot_skill(skill);
+		if (*result)
+			console_printf(FALSE, "bot skill set");
+		else
+			console_warning("host_bot_skill: give easy, normal, heroic or legendary, as the host of a network game");
 		return TRUE;
 	}
 	if ((rest = host_game_word_text(expression, "host_score_limit")) != NULL ||

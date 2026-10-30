@@ -54,7 +54,7 @@ def generated(fault=None):
         "server_settings_initialize", "server_start")] + [function(host, name) for name in (
         "host_notice", "host_confirming", "host_confirmed", "host_game", "host_game_teams", "host_game_rows_read",
         "host_game_limits", "host_game_row_text", "host_step_value", "host_password_done", "host_announce_done",
-        "host_game_row_change")])
+        "host_teams_arrange", "host_game_row_change")])
     if fault:
         code = mutated(code, *fault)
     return (("config.inc", config), ("under_test.inc", code))

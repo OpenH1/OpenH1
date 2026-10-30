@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, ROOT, build, constant, mutated, read, run  # noqa: E402
 
 CASES = ["seats", "actions", "team_moves", "kick", "move", "lock", "end", "next", "same", "maximum", "bans",
-         "players", "bots"]
+         "players", "bots", "bots_tab", "bot_count", "bot_skill"]
 
 # a fault in network_host_controls.c, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -75,13 +75,35 @@ NEGATIVE_CONTROLS = {
     "ban-of-nothing": (("if (!ban->address[0] && (!ban->hardware_id[0] || !strcmp(ban->hardware_id, \"none\")))",
                         "if (0)"), "bans"),
     "quit-listed": (("\t\tif (player->quit_out_of_game)\n\t\t\tcontinue;", ""), "players"),
-    "bot-out-kept-in-count": (("\tif (!config_write(\"bots.count\", text))", "\tif (0)"), "bots"),
+    "bot-out-kept-in-count": (("\thost_controls_bot_write(\"bots.count\", text);", "\t(void)text;"), "bots"),
+    "bot-out-of-asked-for": (("long left = MIN(count, playing) - 1;", "long left = count - 1;"), "bots"),
+    "bot-out-in-matchmaking": (("bots_player_is_bot(player_index) && !bots_matchmaking_on();",
+                                "bots_player_is_bot(player_index);"), "bots"),
+    "matchmaking-count-changed": (("bots_matchmaking_on() || count < 0", "count < 0"), "bots"),
+    "bots-play-any-gametype": (("return server && bots_play_game_engine(network_game_server_get_game(server)->variant"
+                                ".game_engine_index);", "return server != NULL;"), "bots"),
+    "tactics-not-written": (("return host_controls_bot_write(\"bots.tactics\"", "return TRUE || host_controls_bot_write("
+                             "\"bots.tactics\""), "bots"),
+    "bots-tab-for-clients": (("return network_host_controls_available() && !network_host_game_cooperative();",
+                              "return !network_host_game_cooperative();"), "bots_tab"),
+    "bots-tab-in-coop": (("return network_host_controls_available() && !network_host_game_cooperative();",
+                          "return network_host_controls_available();"), "bots_tab"),
+    "bots-tab-unnamed": (("\"bans\", \"bots\" };", "\"bans\" };"), "bots_tab"),
+    "bot-count-wraps": (("return stepped < 0 ? 0 : stepped > most ? most : stepped;",
+                         "return stepped < 0 ? most : stepped > most ? 0 : stepped;"), "bot_count"),
+    "bot-count-past-room": (("long most = MIN(BOTS_MAXIMUM, MAX(most_players - humans, 0));",
+                             "long most = BOTS_MAXIMUM;"), "bot_count"),
+    "bot-count-past-maximum": (("long most = MIN(BOTS_MAXIMUM, MAX(most_players - humans, 0));",
+                                "long most = MAX(most_players - humans, 0);"), "bot_count"),
+    "skill-not-written": (("return host_controls_bot_write(\"bots.skill\", host_controls_bot_skill_names[skill]);",
+                           "return TRUE;"), "bot_skill"),
+    "skill-any-name": (("\t\t\tif (character != name[index])\n\t\t\t\tbreak;", "\t\t\tif (0)\n\t\t\t\tbreak;"),
+                       "bot_skill"),
+    "skill-prefix": (("if (!name[index] && (!text[index] ||", "if (!name[index] && (1 ||"), "bot_skill"),
     "bot-out-by-a-client": (("return player && !player->quit_out_of_game && global_network_game_server_get() &&",
                              "return player && !player->quit_out_of_game &&"), "bots"),
-    "bot-rows-in-any-gametype": (("if (!server || !bots_play_game_engine(network_game_server_get_game(server)->variant"
-                                  ".game_engine_index))", "if (!server)"), "bots"),
-    "fill-row-always": (("return bots_make_room() ? NUMBER_OF_HOST_BOT_ROWS : _host_bot_row_fill_to;",
-                         "return NUMBER_OF_HOST_BOT_ROWS;"), "bots"),
+    "fill-row-always": (("(row == _host_bot_row_fill_to && !bots_make_room())", "0"), "bots"),
+    "balance-row-always": (("(row == _host_bot_row_balance && !network_host_game_teams_arrangeable())", "0"), "bots"),
     "legacy-told-apart": (("\t\telse if (network_standard_machine_is_openh1(machine_index))\n"
                            "\t\t\tentry->tag = _host_controls_tag_openh1;", ""), "players"),
 }
