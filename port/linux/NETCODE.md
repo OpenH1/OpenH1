@@ -823,7 +823,8 @@ of several sub-steps a tick (`network_distributed.c`,
   compares that with where it had its player then, as before; on a network
   quicker than the sub-steps the host can end its run of the tick first, and
   a word on a tick the client has not ended is taken as of its latest
-  (`PREDICTION_ECHO_LEAD_TICKS`). The latency meter's round trip is timed
+  (`PREDICTION_ECHO_LEAD_TICKS`; the vehicle it drives,
+  `OWN_VEHICLE_ECHO_LEAD_TICKS`). The latency meter's round trip is timed
   from when the input went.
 - The drift figures compare the host's run of a tick, from the prediction
   it took, with the client's next prediction, as before.
