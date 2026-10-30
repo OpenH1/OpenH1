@@ -49,6 +49,9 @@ int master_list_read_json(const char *text, unsigned long size, char (*urls)[MAS
 
 /* the server browser open (asked every 30 seconds) or closed */
 void master_list_browse(int on);
+/* ... and while a join wants a relay server (p2p.c: the masters' servers
+that relay), whether the browser is open or not */
+void master_list_want_relays(int on);
 /* Refresh: asked again now */
 void master_list_refresh(void);
 /* network.listings' choice */

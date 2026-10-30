@@ -915,6 +915,10 @@ the setting for one start of the game. It has priority over the file.
 | `network.join_from_clipboard` | `true` | `HALO_NET_JOIN_FROM_CLIPBOARD` | `true`: when the game comes to the front, it joins the game of an invite link on the clipboard. |
 | `network.tunnel_port` | `0` | `HALO_NET_TUNNEL_PORT` | The UDP port for internet play. `0`: the game selects a port. Refer to "Internet play". |
 | `network.allow_upnp` | `true` | `HALO_NET_ALLOW_UPNP` | `true`: internet play can ask the router to forward its port (UPnP). `false`: the game does not ask. Refer to "Internet play". |
+| `network.use_relays` | `true` | `HALO_NET_USE_RELAYS` | `true`: a machine not reached directly in a few seconds is reached through a relay (the game's host, another player whose network takes connections, or a dedicated server that relays). `false`: direct connections only. Refer to "Relays". |
+| `network.relay_for_others` | `true` | `HALO_NET_RELAY_FOR_OTHERS` | `true`: this machine relays for the machines of its own games that cannot reach each other (4 pairs at most, `network.relay_upload`). It sees only their sealed packets. `false`: it relays for no one. |
+| `network.relay_upload` | `256` | `HALO_NET_RELAY_UPLOAD` | Relaying for others: the most kilobytes per second that this machine sends on (`16` to `100000`), 128 at most for each pair. |
+| `network.relay_servers` | `""` | `HALO_NET_RELAY_SERVERS` | Dedicated servers to relay through, `host[:port]` (2302 when none) separated by commas, besides those that the master servers list as relaying. |
 | `network.public_lobby` | `true` | `HALO_NET_PUBLIC_LOBBY` | `true`: the server browser. Public games are listed, and Join Game > Server Browser shows them. `false`: no games are listed or shown. Refer to "Server browser". |
 | `friends.share_status` | `true` | `HALO_FRIENDS_SHARE_STATUS` | Show your friends that you are online, and where, and let them join you (Multiplayer > FRIENDS). Only your friends can read it. `false` appears offline: nothing is published, and you still see your friends. Refer to "Friends". |
 | `network.host_public` | `true` | `HALO_NET_HOST_PUBLIC` | `true`: a new game of Create Game > Internet starts as PUBLIC. `false`: it starts as PRIVATE. LISTING in Server Setup changes it for each game. Refer to "Server browser". |
@@ -985,6 +989,9 @@ the setting for one start of the game. It has priority over the file.
 | `server.status_file` | `""` | `HALO_SERVER_STATUS_FILE` | A file the status (as `/api/status` gives it) is written to every 2 seconds, for a panel without HTTP. Empty: none. |
 | `server.auto_update` | `"off"` | `HALO_SERVER_AUTO_UPDATE` | `"check"`: every 6 hours, the server looks for a newer release and logs it. `"install"`: it also installs it once the server has been empty for 10 minutes (on a thread of its own, the server playing on meanwhile), and stops with exit code 5, once it is empty, to be started again; an install that fails is tried again at the next check. `"off"`: neither. |
 | `server.upnp` | `false` | `HALO_SERVER_UPNP` | `true`: ask the router (UPnP) to forward the tunnel's port (as `network.allow_upnp`, for a server at home). |
+| `server.relay` | `false` | `HALO_SERVER_RELAY` | `true`: the server relays for players whose networks keep them from meeting directly, and its master servers' listing says so. It pairs only two machines that show the same session's token, and sees only their sealed packets. Refer to "Relays". |
+| `server.relay_upload` | `8192` | `HALO_SERVER_RELAY_UPLOAD` | Relaying: the most kilobytes per second that the server sends on in all (`16` to `1000000`); 256 for each pair and 512 for each address at most. |
+| `server.relay_pairs` | `64` | `HALO_SERVER_RELAY_PAIRS` | Relaying: the most pairs of machines at once (`1` to `256`), 4 for each address. |
 | `server.coop_difficulty` | `"normal"` | `HALO_SERVER_COOP_DIFFICULTY` | The difficulty of co-op entries of the rotation (`<level>:coop`): `"easy"`, `"normal"`, `"hard"` or `"impossible"`. |
 | `server.list_on_brokers` | `false` | `HALO_SERVER_LIST_ON_BROKERS` | `true`: the server is also listed with the games players host (through the brokers), for server browsers without master servers. |
 | `server.master_publish` | `true` | `HALO_SERVER_MASTER_PUBLISH` | `true`: a public server is published to the master servers, signed with the publisher key. |
@@ -1040,6 +1047,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.touch_menus` | `false` | `HALO_TOUCH_MENUS` | Lays the menus out as the touchscreen's builds (Android, iOS) do: their `touch` screens (Multiplayer's tiles, the server browser, the lobby, Host Controls and the Party screen with every tap target a finger's size, the tabs as chips and the footer's key prompts as buttons), for looking at them on a computer. Read as the menus load. |
 | `debug.touch_targets` | `false` | `HALO_TOUCH_TARGETS` | Outlines the tap targets of the menus (item green, value blue, list slot yellow, legend button red, the band beside the slots of a list orange, keys of the on-screen keyboard white), marks where the last finger went down and the last tap landed for 3 seconds, and logs each tap with the target that it hit (for a value, also where it splits into previous and next): to judge the accuracy of touch. |
 | `debug.log_addresses` | `false` | `HALO_LOG_ADDRESSES=1` sets `true` | `true`: other machines' internet addresses are written whole in `debug.txt` and the console, for debugging your own network. `false`: a public address is written as a tag (`addr#3f2a9c`) that matches up only within one run; local network addresses are always whole. Do not post a `debug.txt` written with this on. |
+| `debug.relay_paths` | `"all"` | `HALO_RELAY_PATHS` | The relays that this machine tries and offers: `"all"`, or the kinds named of `"host"`, `"peer"` and `"server"`, to test each (`tools/relay_netns.py`). |
 | `debug.network_latency`, `debug.network_loss`, `debug.network_corrupt`, `debug.network_corrupt_stream`, `debug.network_corrupt_after` | `0` | `HALO_NETWORK_LATENCY`, `HALO_NETWORK_LOSS`, `HALO_NETWORK_CORRUPT`, `HALO_NETWORK_CORRUPT_STREAM`, `HALO_NETWORK_CORRUPT_AFTER` | The game holds all the data that it receives for this number of milliseconds, ignores this percentage of the datagrams, and damages this percentage of the datagrams it receives, and this percentage of its reads of streams, at random (bytes changed, cut short, stretched or replaced), from this many seconds after the start. Use the first two to test the netcode as on the internet, and the others to test that nothing another machine sends can crash the game (a damaged stream is closed, so a little goes a long way; a host's messages to its own client are damaged too, so start damaging once the game has started). |
 | `debug.voice_test` | `false` | `HALO_VOICE_TEST` | Automatic tests of voice chat: a tone replaces the microphone, and each voice that the game hears is written to the log once each second. |
 | `debug.latency_log` | `""` | `HALO_LATENCY_LOG` | A file to write a line to for each press of the fire control and each move from standing of the first player, on the controller (`fire`, `move`) and on the mouse (`click`), and each turn of the mouse from still (`turn`), in milliseconds: the press to the reading of the controller or the mouse, the reading to the simulation step that acts on it (the weapon fires, the unit moves; for a turn, the view takes it), that step to the first frame drawn after it, that frame to the first frame that shows it (the frames draw a tick behind: "Frame rate"), and that frame's drawing and handing on, and whether the player sat in a vehicle (a move of the vehicle, a shot of its gun: `game/latency_log.c`). A press in a menu (the D-pad, A or the left stick, `menu`) is acted on when the menu takes it (the selection moved, an item chosen). A rumble from rest gets a `rumble` line: the step that made it to the first write of the motors (the SDL call), its time on, and the time the game gave it. `tools/latency_summary.py` gives each stage's median and 95th percentile, those in a vehicle apart. A shot's sound gets a line of its own, from the step to the sound heard ("Sound delay"). `debug.test_input = "latency:<seed>"` pulls the fire control, pushes the stick, clicks the mouse and moves it in turn on the real clock, so the presses fall anywhere in a tick (`"latency:<seed>:fire,click,turn"` plays those kinds only, and `"latency:<seed>:menu"` the D-pad down and up in a menu; the mouse's come as its events do); with `debug.network_test = "local:bloodgulch:swat"` the player holds SWAT's pistol, which fires as the control is pulled (the plasma pistol a multiplayer game starts with otherwise fires as it is let go). The way to the screen after that is the renderer's (`HALO_METAL_STATS` on the Mac; with Vulkan, `HALO_VULKAN_FRAME_LOG`, which `tools/latency_summary.py --frames` joins to the presses by the two times each line ends with, the press and the showing frame's input read in nanoseconds of `CLOCK_MONOTONIC`, for the press to that frame's present and to its time on screen). |
@@ -2131,7 +2139,7 @@ that a link (PASTE LINK) or a game opens says the same, with what to try:
 | INTERNET PLAY IS OFF | `network.online` is off |
 | CAN'T GET ONLINE: check your internet connection | No signalling broker is reached |
 | GAME NOT FOUND: the game may have ended, or its host is offline (ask the host for a new invite link; a server browser's game: try another) | The host never answered (an invite works only while the copy of the game that made it runs) |
-| NETWORK BLOCKED: your network is blocking the connection | This machine's NAT gives each destination its own port and no router forwards `network.tunnel_port`: it says to turn on OPEN ROUTER PORT (`network.allow_upnp`) if that is off, else to try another network (on a phone, Wi-Fi instead of mobile data) or have someone else host |
+| NETWORK BLOCKED: your network is blocking the connection | This machine's NAT gives each destination its own port, no router forwards `network.tunnel_port`, and no relay reached both machines: it says to turn on OPEN ROUTER PORT (`network.allow_upnp`) if that is off, else to try another network (on a phone, Wi-Fi instead of mobile data) or have someone else host |
 | CAN'T REACH THE HOST: the host's network is blocking the connection | The host's addresses show that its NAT is the strict one: the host is asked to turn on OPEN ROUTER PORT |
 | CAN'T REACH THE HOST: a network is blocking the connection | The host answered, but no path opened, and neither side is known to be strict |
 
@@ -2451,12 +2459,13 @@ Only machines with the invite can find the game:
 
 Each machine gets its public address from public STUN servers. Then the two
 machines send packets to each other until the packets get through (UDP hole
-punching). There is no relay.
+punching).
 
 Some networks give a different port for each destination (for example some
 mobile and company networks). Two machines behind such networks cannot
-connect. To connect, forward `network.tunnel_port` on the router of one of
-the machines.
+connect directly. They connect through a relay when one is there (refer to
+"Relays"), or when `network.tunnel_port` is forwarded on the router of one
+of the machines.
 
 The game can ask the router to forward the port (UPnP,
 `src/posix_upnp.c`, with `port/third_party/miniupnpc`):
@@ -2478,6 +2487,69 @@ The game can ask the router to forward the port (UPnP,
   does not ask.
 
 To stop all UPnP requests, set `network.allow_upnp` to `false`.
+
+### Relays
+
+When two machines do not reach each other directly (both networks give each
+destination a port of its own), they connect through a relay: a third
+machine that both can reach, which passes their packets on
+(`src/p2p_relay.c`). There is no server of the project's. The order:
+
+1. Directly, as above (and UPnP, as above).
+2. After 4 seconds (1 second when both networks are known to be strict):
+   a machine of the game. Between two players of a game (map sharing: the
+   players of an internet game otherwise talk to its host alone), the game's
+   host. Between a host and a player who joins it (by an invite, a link,
+   the server browser, or following a party's leader), up to 3 of the
+   host's players whose networks take connections (not strict, reached
+   directly), the nearest first. A party's members who are in the game
+   already are among them.
+3. After 7 seconds (at once when neither machine has a player to offer):
+   dedicated servers that relay (`server.relay`): those that the master
+   servers list as relaying, and those in `network.relay_servers`. A master
+   server gives no server's address, and the browser pings none of them
+   (that would tell every server the player's address): the game reaches up
+   to 3 of them only when a join needs one, as the browser reaches a game's
+   host, and takes the nearest first.
+
+Each machine offers the other the relays it knows (through the signalling
+brokers, sealed as the join is), and both try all of them at once; the
+first through which the two reach each other carries their packets, and the
+others are let go. A direct path found later takes over.
+
+The connecting box says "Trying a relay..." while relays are tried (it then
+waits 20 seconds instead of 10), and "Connected through a relay." once the
+host is reached through one; Join by Link's panel says "Connected through a
+relay." for such a host. The relay adds its round trip to the ping, which
+the latency meter (`display.latency_meter`) shows as for any game. Map
+sharing over a relay goes no faster than the relay's limits.
+
+Security:
+
+- A relay pairs two machines only when both show the same token: an HMAC of
+  their session's secret (which comes from their two keys and a random
+  number of each, and never travels) with a label of the relay's own. The
+  relay cannot work the secret or the session's keys out of it, and the
+  token is good for nothing but that pairing.
+- The relay passes on only the tunnel's packets, which are sealed with the
+  session's keys, and only between the two addresses that bound: it cannot
+  read or change the game's traffic, and it sends nothing to any other
+  address. Its answers are no larger than what they answer.
+- A player's machine relays (`network.relay_for_others`) only for pairs one
+  side of which is a machine of its own games, 4 pairs at most, at
+  `network.relay_upload` (256 KB/s) in all and 128 KB/s for each pair. A
+  dedicated server relays (`server.relay`) for any pair, `server.relay_pairs`
+  (64) at most, 4 for each address, at `server.relay_upload` (8 MB/s) in all,
+  256 KB/s for each pair and 512 KB/s for each address. Both answer an
+  address's binds at most 10 or 20 times a second, end a pair that is quiet
+  for 30 seconds (one never paired after 20), and check each packet's size
+  and fields before anything else.
+- The host knows a player reached through a relay by the address that the
+  player gave (its own word), not the relay's: bans and votes go by it and
+  by the hardware id.
+
+`tools/relay_netns.py` plays these on one Linux computer, in network
+namespaces with symmetric NATs.
 
 In the game, each machine has an address in 100.64.0.0/10:
 

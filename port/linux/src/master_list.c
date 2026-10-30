@@ -636,8 +636,14 @@ static void *list_thread_main(void *argument)
 	return NULL;
 }
 
-void master_list_browse(int on)
+/* the browser's wish and the relays' (master_list_want_relays): the lists
+are asked for while either wants them */
+static int browse_wanted, relays_wanted;
+
+static void list_run(void)
 {
+	int on = browse_wanted || relays_wanted;
+
 	if (on && (master_list_policy() == _master_listings_brokers || !config_boolean("network.online")))
 		on = 0;
 	pthread_mutex_lock(&list.lock);
@@ -662,6 +668,21 @@ void master_list_browse(int on)
 		pthread_cond_broadcast(&list.wake);
 	}
 	pthread_mutex_unlock(&list.lock);
+}
+
+void master_list_browse(int on)
+{
+	browse_wanted = on != 0;
+	list_run();
+}
+
+void master_list_want_relays(int on)
+{
+	/* (each pass of the p2p thread: only a change does anything) */
+	if ((on != 0) == relays_wanted)
+		return;
+	relays_wanted = on != 0;
+	list_run();
 }
 
 void master_list_refresh(void)

@@ -745,6 +745,24 @@ lists;
 `unknown_key`, `publisher_pending`, `application_denied` and
 `listing_taken` are logged once a minute while they last.
 
+### Relaying
+
+With `server.relay = true` the server relays for players whose networks
+keep them from meeting directly (both behind NATs that give each
+destination a port of its own: `port/linux/README.md`, "Relays"), on its
+tunnel's UDP port, and its listing says so (the stamp's relay bit,
+`docs/master_protocol.md`, "The listing"): players who cannot reach a host
+take the master servers' relaying servers, the nearest first. It pairs two
+machines only when both show the same session's token, passes on only
+their sealed tunnel packets between those two addresses, and reads none of
+them. `server.relay_pairs` (64) pairs at most, 4 for each address;
+`server.relay_upload` (8192 KB/s) in all, 256 KB/s for each pair and 512
+KB/s for each address; an address's binds answered 20 times a second at
+most; a pair quiet for 30 seconds ends. The log says when a pair is made and
+ends, with the bytes it passed on. A password's server is not taken as a
+relay from the lists (its listing's token is sealed); players can still
+name it in `network.relay_servers`.
+
 ## Files
 
 | File | What |

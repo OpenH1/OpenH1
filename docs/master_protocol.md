@@ -290,7 +290,7 @@ signature as `listing_signed` does.
 | | 1 + up to 32 | The game's name: a length byte, then that many bytes |
 | | 1 + up to 32 | The map's name |
 | | 1 + up to 24 | The gametype's name |
-| | 8 | The stamp: the game's kind (`game_modes_kind`: the OpenCE mode, 1 SWAT, 2 Infection, 3 Gun Game, or 0; with 0x80 for Hardcore), then 7 reserved bytes, zero |
+| | 8 | The stamp: the game's kind (`game_modes_kind`: the OpenCE mode, 1 SWAT, 2 Infection, 3 Gun Game, or 0; with 0x80 for Hardcore), then 7 bytes the game reads and a master passes on as they are (the fifth's bit 2: the server relays, below), zero in a plain listing |
 | | 64 | The Ed25519 signature, by the listing's key, of the 12 ASCII bytes `hceu-lobby-1` followed by every byte before the signature |
 
 | Flag | Meaning |
@@ -301,6 +301,17 @@ signature as `listing_signed` does.
 | 8 | Closed: a tombstone, the host stopped |
 | 16 | Password: the token is sealed |
 | 32 | Dedicated: a dedicated server (`halo --server` sets it, since network version 39) |
+
+The stamp's fifth byte says what the host does: bit 1, it holds room for a
+joining party (an OpenH1 game's); bit 2, a dedicated server that relays for
+players who cannot meet directly (`server.relay`: `port/linux/README.md`,
+"Relays"). The relay bit is version 1's (no field or path changes): a
+master stores and serves the listing's bytes as they came, so a master
+needs no change to carry it, and a client that does not know it passes it
+over. A client takes it only from a master's entry that is `dedicated`
+(a broker's listing, which any host may publish, is not taken for it), and
+only from a listing without a password (its token, which reaches the
+server, is sealed otherwise).
 
 A listing is 140 bytes at least (all names empty) and 268 at most (a
 password and every name at its length). A reader refuses one outside those
