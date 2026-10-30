@@ -162,6 +162,9 @@ enum
 	/* a client: where the vehicles its own players drive were, the last
 	ticks (a power of two, more than the longest round trip) */
 	OWN_VEHICLE_POSITION_TICKS = 64,
+	/* ... and how far past its own latest tick it takes the host's word to
+	name (network_distributed.c's PREDICTION_ECHO_LEAD_TICKS) */
+	OWN_VEHICLE_ECHO_LEAD_TICKS = 2,
 	/* the host: the client's ticks it takes as run since a client's vehicle's
 	anchor beyond its own (its messages delayed, then bunched) */
 	VEHICLE_PREDICTION_JITTER_TICKS = 6,
@@ -1971,19 +1974,34 @@ void network_objects_apply_vehicle_predictions(
 		if (!objects_host_vehicle_predictions[player_index].valid)
 			continue;
 		objects_host_vehicle_predictions[player_index].valid = FALSE;
-		/* (as a player's: the input of the client's tick after the latest
-		not come yet, the one before it, whose input has, the latest kept) */
+		/* (as a player's, distributed_host_take_choice: the input of the
+		client's tick after the latest not come yet, the one before it, whose
+		input has, the latest kept; none, the latest kept, where the
+		prediction of the input heard was lost, or for a tick held) */
 		if (at_tick_start)
 		{
 			long key = update_queues_distributed_input_key(player_index);
 
-			if (key != NONE && (short)(word)((word)state->time - (word)key) > 0 &&
-				objects_host_vehicle_predictions[player_index].earlier_valid &&
-				(short)(word)((word)objects_host_vehicle_predictions[player_index].earlier.time - (word)key) <= 0)
+			if (key != NONE)
 			{
-				earlier = objects_host_vehicle_predictions[player_index].earlier;
-				state = &earlier;
-				objects_host_vehicle_predictions[player_index].valid = TRUE;
+				long time = key + (short)(word)((word)state->time - (word)key);
+				long earlier_time = key +
+					(short)(word)((word)objects_host_vehicle_predictions[player_index].earlier.time - (word)key);
+				short take = distributed_host_take_choice(player_index, key, time,
+					objects_host_vehicle_predictions[player_index].earlier_valid, earlier_time);
+
+				if (take == _distributed_take_earlier)
+				{
+					earlier = objects_host_vehicle_predictions[player_index].earlier;
+					state = &earlier;
+					objects_host_vehicle_predictions[player_index].valid = TRUE;
+				}
+				else if (take == _distributed_take_lost || take == _distributed_take_hold)
+				{
+					objects_host_vehicle_predictions[player_index].valid = TRUE;
+					objects_host_vehicle_predictions[player_index].earlier_valid = FALSE;
+					continue;
+				}
 			}
 			objects_host_vehicle_predictions[player_index].earlier_valid = FALSE;
 		}
@@ -2569,6 +2587,15 @@ static boolean distributed_client_correct_own_vehicle(
 	real_point3d before, position;
 	short index;
 
+	/* (a tick this machine has not ended yet, as a player's
+	(distributed_correct_own_unit): the host, taking its input as its own
+	tick begins, ran it as this machine runs it. Where this machine had the
+	vehicle last, OWN_VEHICLE_ECHO_LEAD_TICKS at most) */
+	if ((short)(word)((word)state->time - (word)now) > 0 &&
+		(short)(word)((word)state->time - (word)now) <= OWN_VEHICLE_ECHO_LEAD_TICKS)
+	{
+		time = now;
+	}
 	if (!TEST_FLAG(state->flags, _distributed_object_predicted_bit) ||
 		local_player_index < 0 || local_player_index >= MAXIMUM_LOCAL_PLAYERS ||
 		objects_client_own_vehicles[local_player_index][time & (OWN_VEHICLE_POSITION_TICKS - 1)].time != time ||

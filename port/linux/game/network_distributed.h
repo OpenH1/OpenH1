@@ -336,6 +336,31 @@ the prediction taken where that is later (the input's own message follows
 the prediction by a sub-step: its controls come as they run); else the input
 heard (update_queues_distributed_input_key) */
 long distributed_host_run_time(short player_index);
+/* (the host) what a tick that begins takes of a client's player's predictions
+(distributed_prediction_at_tick_start), the latest heard (time) and the one
+heard before it, not yet taken: the latest, the latest while it is ahead of
+the input heard (late), the one before it whose input has come (earlier),
+none while the prediction of the input heard was lost (lost: the input runs
+from the host's own copy), or none for a tick (hold: the input heard ran the
+tick before, and the next prediction then finds this one not yet taken, the
+one before it). The vehicle the player drives takes as the player does
+(network_objects_apply_vehicle_predictions). */
+enum
+{
+	_distributed_take_none,
+	_distributed_take_latest,
+	_distributed_take_late,
+	_distributed_take_earlier,
+	_distributed_take_lost,
+	_distributed_take_hold,
+	NUMBER_OF_DISTRIBUTED_TAKES
+};
+short distributed_host_take_choice(short player_index, long key, long time, boolean earlier_valid,
+	long earlier_time);
+/* (the tests' reports: network_test.c) the host's ticks of each take of the
+client players' predictions since the game began, and of the drift samples
+of the ticks after each, those apart */
+void network_distributed_take_statistics(long *ticks, long *samples, long *apart);
 /* (a client, as its tick's first sub-step ends: network_substeps.c) its own
 players' input of the tick to the host */
 void network_distributed_client_substep_inputs(void);

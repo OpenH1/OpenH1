@@ -625,6 +625,20 @@ static struct
 latest prediction it took as a tick began: the input that tick runs, at
 least (distributed_host_run_time) */
 static long distributed_host_run_times[MAXIMUM_TRACKED_PLAYERS];
+/* ... the client's tick its tick before ran (distributed_host_run_time),
+whether that tick held (_distributed_take_hold), this tick's take, and that
+of the tick before, whose move this tick's drift sample measures; and (the
+tests' reports) the ticks of each take, and the drift samples after each */
+static struct
+{
+	long last_run[MAXIMUM_TRACKED_PLAYERS];
+	boolean held[MAXIMUM_TRACKED_PLAYERS];
+	short take[MAXIMUM_TRACKED_PLAYERS];
+	short sampled_take[MAXIMUM_TRACKED_PLAYERS];
+	long ticks[NUMBER_OF_DISTRIBUTED_TAKES];
+	long samples[NUMBER_OF_DISTRIBUTED_TAKES];
+	long apart[NUMBER_OF_DISTRIBUTED_TAKES];
+} distributed_host_takes;
 /* the host: the anchor, where it took each client's player to be (one
 taken, a newer once a second: the next may be no further from it than the
 player moves in the client's ticks since), at which of the client's ticks
@@ -1066,6 +1080,45 @@ long distributed_host_run_time(
 	return key == NONE || (time > key && time - key <= TICKS_PER_SECOND) ? time : key;
 }
 
+short distributed_host_take_choice(
+	short player_index,
+	long key,
+	long time,
+	boolean earlier_valid,
+	long earlier_time)
+{
+	/* (the input of the latest's tick come, or none heard: the latest. The
+	client's word kept from overflowing: a time far from the input's is its
+	game begun again) */
+	if (player_index < 0 || player_index >= MAXIMUM_TRACKED_PLAYERS || key == NONE ||
+		!(time > key && time - key <= TICKS_PER_SECOND))
+	{
+		return _distributed_take_latest;
+	}
+	/* (the one before it, of the input heard; one older, the prediction of
+	the input heard lost: the input runs from the host's own copy, which the
+	one before it would put a tick behind it) */
+	if (earlier_valid && earlier_time <= key && key - earlier_time <= TICKS_PER_SECOND)
+		return earlier_time == key ? _distributed_take_earlier : _distributed_take_lost;
+	/* (the input heard ran the tick before: the prediction comes before its
+	tick's input, a phase that taking it would keep, running each tick the
+	client's tick after the input heard. Held once, the next prediction
+	finds this one not yet taken) */
+	if (distributed_host_takes.last_run[player_index] == key && !distributed_host_takes.held[player_index])
+		return _distributed_take_hold;
+	return _distributed_take_late;
+}
+
+void network_distributed_take_statistics(
+	long *ticks,
+	long *samples,
+	long *apart)
+{
+	csmemcpy(ticks, distributed_host_takes.ticks, sizeof(distributed_host_takes.ticks));
+	csmemcpy(samples, distributed_host_takes.samples, sizeof(distributed_host_takes.samples));
+	csmemcpy(apart, distributed_host_takes.apart, sizeof(distributed_host_takes.apart));
+}
+
 void network_distributed_host_actions_given(
 	void)
 {
@@ -1085,6 +1138,10 @@ void network_distributed_host_actions_given(
 		distributed_divergence.ran_time[player_index] =
 			key != NONE && key != distributed_divergence.last_input_time[player_index] ? key : NONE;
 		distributed_divergence.last_input_time[player_index] = key;
+		/* (what the next tick's take is decided from) */
+		distributed_host_takes.last_run[player_index] = key;
+		distributed_host_takes.held[player_index] =
+			distributed_host_takes.take[player_index] == _distributed_take_hold;
 	}
 }
 
@@ -3036,35 +3093,52 @@ static void distributed_apply_predictions(
 
 		if (distributed_prediction_at_tick_start(player_index) != at_tick_start)
 			continue;
-		if (at_tick_start && distributed_predictions_heard[player_index].valid)
+		if (at_tick_start)
 		{
-			long key = update_queues_distributed_input_key(player_index);
-			long time = distributed_predictions_heard[player_index].time;
+			short take = _distributed_take_none;
 
-			/* (the input of the tick after the latest not come yet, the one
-			before it, whose input has: the tick runs that input from it as
-			the client did, the latest kept for the next. Taking the latest,
-			it would run a tick whose sub-steps' controls come just after the
-			host's own sub-steps ran without them. The client's word kept
-			from overflowing: a key far behind is its game begun again) */
-			if (key != NONE && time > key && time - key <= TICKS_PER_SECOND &&
-				distributed_predictions_earlier[player_index].valid &&
-				distributed_predictions_earlier[player_index].time <= key &&
-				key - distributed_predictions_earlier[player_index].time <= TICKS_PER_SECOND)
+			/* (the drift sample this tick takes measures the tick before's
+			move, from its take) */
+			distributed_host_takes.sampled_take[player_index] = distributed_host_takes.take[player_index];
+			if (distributed_predictions_heard[player_index].valid)
 			{
-				distributed_predictions[player_index].valid = TRUE;
-				distributed_predictions[player_index].time = distributed_predictions_earlier[player_index].time;
-				distributed_predictions[player_index].state = distributed_predictions_earlier[player_index].state;
+				long key = update_queues_distributed_input_key(player_index);
+				long time = distributed_predictions_heard[player_index].time;
+
+				/* (distributed_host_take_choice. Earlier: the input of the tick
+				after the latest not come yet, the one before it, whose input
+				has: the tick runs that input from it as the client did, the
+				latest kept for the next. Taking the latest, it would run a
+				tick whose sub-steps' controls come just after the host's own
+				sub-steps ran without them) */
+				take = distributed_host_take_choice(player_index, key, time,
+					distributed_predictions_earlier[player_index].valid,
+					distributed_predictions_earlier[player_index].time);
+				if (take == _distributed_take_earlier)
+				{
+					distributed_predictions[player_index].valid = TRUE;
+					distributed_predictions[player_index].time = distributed_predictions_earlier[player_index].time;
+					distributed_predictions[player_index].state = distributed_predictions_earlier[player_index].state;
+					distributed_host_run_times[player_index] = distributed_predictions[player_index].time;
+				}
+				else if (take == _distributed_take_lost)
+				{
+					/* (none taken: the input heard runs from the host's copy,
+					the latest kept for the next) */
+					distributed_host_run_times[player_index] = key;
+				}
+				else if (take != _distributed_take_hold)
+				{
+					distributed_predictions[player_index].valid = TRUE;
+					distributed_predictions[player_index].time = time;
+					distributed_predictions[player_index].state = distributed_predictions_heard[player_index].state;
+					distributed_predictions_heard[player_index].valid = FALSE;
+					distributed_host_run_times[player_index] = distributed_predictions[player_index].time;
+				}
+				distributed_predictions_earlier[player_index].valid = FALSE;
 			}
-			else
-			{
-				distributed_predictions[player_index].valid = TRUE;
-				distributed_predictions[player_index].time = time;
-				distributed_predictions[player_index].state = distributed_predictions_heard[player_index].state;
-				distributed_predictions_heard[player_index].valid = FALSE;
-			}
-			distributed_predictions_earlier[player_index].valid = FALSE;
-			distributed_host_run_times[player_index] = distributed_predictions[player_index].time;
+			distributed_host_takes.take[player_index] = take;
+			distributed_host_takes.ticks[take]++;
 		}
 		if (!distributed_predictions[player_index].valid && !distributed_accepted[player_index].valid &&
 			distributed_host_speeds[player_index].unit_index == NONE)
@@ -3094,7 +3168,19 @@ static void distributed_apply_predictions(
 				unit_get(unit_index)->unit.player_index != NONE &&
 				network_coop_player_has_structure_bsp(unit_get(unit_index)->unit.player_index))
 			{
+				long samples = distributed_divergence.player_samples[player_index];
+				long apart = distributed_divergence.player_apart[player_index];
+
 				distributed_take_prediction(player_index, unit_index, &bound);
+				/* (the tests' reports: the drift sample by the take of the
+				tick before, whose move it measures) */
+				if (at_tick_start)
+				{
+					short take = distributed_host_takes.sampled_take[player_index];
+
+					distributed_host_takes.samples[take] += distributed_divergence.player_samples[player_index] - samples;
+					distributed_host_takes.apart[take] += distributed_divergence.player_apart[player_index] - apart;
+				}
 			}
 		}
 		/* (what the host's next tick starts from) */
@@ -4624,6 +4710,9 @@ void network_distributed_new_game(
 		distributed_divergence.last_input_time[player_index] = NONE;
 		distributed_host_run_times[player_index] = NONE;
 	}
+	csmemset(&distributed_host_takes, 0, sizeof(distributed_host_takes));
+	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+		distributed_host_takes.last_run[player_index] = NONE;
 	/* (each player's latest input: player_queues_new.c) */
 	update_queues_distributed_reset();
 	network_objects_new_game();
