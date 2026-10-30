@@ -100,6 +100,7 @@ Called from the main loop every frame (main.c).
 #include "tag_files/tag_files.h"
 #include "camera/observer.h"
 #include "hs/hs.h"
+#include "network_distributed.h"
 
 #include "../src/p2p.h" /* port: port/linux/src/p2p.c, p2p_lobby.c */
 #include "network_chat.h"
@@ -629,6 +630,26 @@ static void network_test_log_players(
 			network_distributed_remote_statistics(&remote_corrections, &history_corrections, &history_kept);
 			platform_log("network test: remote corrected %ld history %ld kept %ld", remote_corrections,
 				history_corrections, history_kept);
+		}
+		/* (the host: its ticks of each take of its OpenH1 clients' players'
+		predictions as its ticks began, and the drift samples of the ticks
+		after each, apart of compared: since the game began) */
+		if (game_connection() == _game_connection_network_server)
+		{
+			long ticks[NUMBER_OF_DISTRIBUTED_TAKES];
+			long samples[NUMBER_OF_DISTRIBUTED_TAKES];
+			long apart[NUMBER_OF_DISTRIBUTED_TAKES];
+
+			network_distributed_take_statistics(ticks, samples, apart);
+			platform_log("network test: takes none %ld latest %ld late %ld earlier %ld lost %ld hold %ld"
+				" | drift after latest %ld/%ld late %ld/%ld earlier %ld/%ld lost %ld/%ld hold %ld/%ld",
+				ticks[_distributed_take_none], ticks[_distributed_take_latest], ticks[_distributed_take_late],
+				ticks[_distributed_take_earlier], ticks[_distributed_take_lost], ticks[_distributed_take_hold],
+				apart[_distributed_take_latest], samples[_distributed_take_latest],
+				apart[_distributed_take_late], samples[_distributed_take_late],
+				apart[_distributed_take_earlier], samples[_distributed_take_earlier],
+				apart[_distributed_take_lost], samples[_distributed_take_lost],
+				apart[_distributed_take_hold], samples[_distributed_take_hold]);
 		}
 		/* (the latency meter's round trips, with display.latency_meter on:
 		a client's own, and each player's as this machine times it) */

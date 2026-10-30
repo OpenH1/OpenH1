@@ -1971,19 +1971,34 @@ void network_objects_apply_vehicle_predictions(
 		if (!objects_host_vehicle_predictions[player_index].valid)
 			continue;
 		objects_host_vehicle_predictions[player_index].valid = FALSE;
-		/* (as a player's: the input of the client's tick after the latest
-		not come yet, the one before it, whose input has, the latest kept) */
+		/* (as a player's, distributed_host_take_choice: the input of the
+		client's tick after the latest not come yet, the one before it, whose
+		input has, the latest kept; none, the latest kept, where the
+		prediction of the input heard was lost, or for a tick held) */
 		if (at_tick_start)
 		{
 			long key = update_queues_distributed_input_key(player_index);
 
-			if (key != NONE && (short)(word)((word)state->time - (word)key) > 0 &&
-				objects_host_vehicle_predictions[player_index].earlier_valid &&
-				(short)(word)((word)objects_host_vehicle_predictions[player_index].earlier.time - (word)key) <= 0)
+			if (key != NONE)
 			{
-				earlier = objects_host_vehicle_predictions[player_index].earlier;
-				state = &earlier;
-				objects_host_vehicle_predictions[player_index].valid = TRUE;
+				long time = key + (short)(word)((word)state->time - (word)key);
+				long earlier_time = key +
+					(short)(word)((word)objects_host_vehicle_predictions[player_index].earlier.time - (word)key);
+				short take = distributed_host_take_choice(player_index, key, time,
+					objects_host_vehicle_predictions[player_index].earlier_valid, earlier_time);
+
+				if (take == _distributed_take_earlier)
+				{
+					earlier = objects_host_vehicle_predictions[player_index].earlier;
+					state = &earlier;
+					objects_host_vehicle_predictions[player_index].valid = TRUE;
+				}
+				else if (take == _distributed_take_lost || take == _distributed_take_hold)
+				{
+					objects_host_vehicle_predictions[player_index].valid = TRUE;
+					objects_host_vehicle_predictions[player_index].earlier_valid = FALSE;
+					continue;
+				}
 			}
 			objects_host_vehicle_predictions[player_index].earlier_valid = FALSE;
 		}

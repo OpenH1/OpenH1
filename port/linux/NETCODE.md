@@ -788,9 +788,12 @@ of several sub-steps a tick (`network_distributed.c`,
   tick after that prediction (`distributed_host_run_time`): each later
   sub-step gives the player's unit the client's controls of that sub-step
   of it as they came (the latest at or before the sub-step, kept for the
-  last 4 ticks: `host_live_apply`), or the tick's record if it came, else
-  holds the latest. A tick that runs no new client tick (its input late or
-  lost) holds the latest controls it has.
+  last 4 ticks: `host_live_apply`), or the tick's record if it came; with
+  none of the tick come by the sub-step, the latest of the input taken (the
+  tick runs past the input heard where the prediction came before it), else
+  it holds the latest. A tick that runs no new client tick (its input late
+  or lost) holds the latest controls it has, not the record of the input
+  before.
 - Where the input of the tick after the latest prediction has not come
   when the host's tick begins (the two machines' ticks less than a sub-step
   apart, once the network's delay is counted, as on a LAN), the controls of
@@ -801,6 +804,19 @@ of several sub-steps a tick (`network_distributed.c`,
   that phase the host's copy is as fresh as before version 8 (taking the
   latest, the host's moves of a client's player in bot games on the
   loopback came apart from the client's in 36% to 51% of the ticks).
+  That phase is found by the tick's own: where the latest prediction is
+  ahead of the input heard, the input heard ran the tick before and none
+  before it is kept, the tick takes none (holds, once), so that the next
+  prediction finds the latest not yet taken (`distributed_host_take_choice`).
+  Without it a game that began in that phase stayed in it: in bloodgulch
+  bot games on a steady loopback, the host took the latest ahead of the
+  input in 82% of the ticks at 120 and 100% at 60, of which 62% and 68%
+  came apart (net_compare failed at 60); holding, it held 2 to 7 ticks a
+  game and then took the one before the latest, 0% to 0.6% apart. Where the prediction of the input heard was lost (the one
+  kept is older), the tick takes none and runs the input from the host's
+  own copy, not from one a tick behind it. The vehicle a player drives
+  takes as the player does. `debug.network_test`'s host logs each take's
+  ticks and the drift after each (`network test: takes ...`).
 - At the end of the tick the host's copy is its own run of the client's
   tick, so its word on the player names the tick after
   (`predicted_time`, one later than the prediction it took). The client
