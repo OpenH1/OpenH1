@@ -820,9 +820,14 @@ void network_substeps_tick_begun(
 			continue;
 		substep_control_from_unit(unit_get(unit_index), &network_substeps_globals.start[player_index]);
 		network_substeps_globals.start_valid[player_index] = TRUE;
-		/* (a remote player's: the record of the input this tick took) */
+		/* (a remote player's: the record of the input this tick took. The
+		host's of a player whose input its tick takes as it begins, as the
+		actions are given (network_substeps_actions_given): a tick that took
+		none new holds the latest controls, not the record of the input
+		before) */
 		if (player->local_player_index == NONE && heard->valid && heard->count == substep_count &&
-			heard->key == network_substeps_globals.tick_key[player_index])
+			heard->key == network_substeps_globals.tick_key[player_index] &&
+			!distributed_prediction_at_tick_start(player_index))
 		{
 			*replaying = *heard;
 			replaying->unit_index = unit_index;
@@ -1190,6 +1195,23 @@ void network_substeps_actions_given(
 			network_substeps_globals.host_fresh[player_index] =
 				key != NONE && key != network_substeps_globals.host_previous_key[player_index];
 			network_substeps_globals.host_previous_key[player_index] = key;
+			/* (the record of a new input this tick runs, come already) */
+			if (network_substeps_globals.host_fresh[player_index] &&
+				distributed_prediction_at_tick_start(player_index))
+			{
+				struct substep_record const *heard = &network_substeps_globals.heard[player_index];
+				struct substep_record *replaying = &network_substeps_globals.replaying[player_index];
+				struct player_datum *player = distributed_player(player_index);
+
+				if (player && player->local_player_index == NONE && player->unit_index != NONE &&
+					player->unit_index == network_substeps_globals.ran[player_index].unit_index &&
+					heard->valid && heard->count == network_substeps_globals.ran[player_index].count &&
+					heard->key == key)
+				{
+					*replaying = *heard;
+					replaying->unit_index = player->unit_index;
+				}
+			}
 			host_live_apply(player_index, NONE);
 		}
 		return;
