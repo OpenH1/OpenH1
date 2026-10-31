@@ -271,6 +271,13 @@ The Metal backend is the macOS one. What differs:
   textures' bytes every 10 seconds.
 - The screen is a `UIScreen`: its refresh rate (ProMotion's 120 Hz), and
   its EDR headroom for `display.hdr`.
+- The back buffer stays RGBA16F with `display.hdr` (not a 32-bit
+  extended-range format): it holds the game's values in sRGB's curve past
+  1 (the tone map's input, and after it up to the display's headroom),
+  which `BGR10_XR`'s 1.25 (1.66 times paper white in linear light) does
+  not reach, and the destination alpha the game blends with, which
+  `BGR10_XR` has none of (`BGRA10_XR` has it, in 64 bits a pixel, as
+  RGBA16F).
 - The Simulator's GPU has no binary archives (the pipelines' archive is not
   used there) and its drawables say nothing of their presentation.
 - The 3D view and the HUD are drawn in one pass (the aside passes' break,

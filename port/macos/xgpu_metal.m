@@ -320,6 +320,10 @@ static struct
 	NSMutableArray<NSNumber *> *buffers_used;
 	/* the command buffer whose blits last wrote each (aside passes) */
 	NSMutableArray<NSNumber *> *buffers_written;
+	/* buffers renamed out (xgpu_metal_buffer_write), and the serials of the
+	command buffers that last used them */
+	NSMutableArray<id<MTLBuffer>> *buffer_spares;
+	NSMutableArray<NSNumber *> *buffer_spares_serials;
 
 	/* the visibility test going on: its entry in this pass, and its first
 	(its entries get the slot at its end) */
@@ -912,8 +916,11 @@ results are the same. A target the command buffer has read is given
 another texture first (renamed: its contents copied where the pass loads
 them), so that what read it reads what it had. HALO_METAL_ASIDE=0: none. */
 
-/* the open pass's targets this large, and a small target a quarter of
-that at most */
+/* the open pass's targets this large (the target put aside any size: a
+2048x2048 one, the game's, drawn in four passes between parts of the 3D
+view, ended the view's pass at every phone's resolution, its multisampled
+colour, depth and stencil stored and loaded again; the passes put aside
+cost what they did) */
 #define ASIDE_LARGE_PIXELS (512 * 512)
 #define ASIDE_SPARES 64
 
@@ -1009,7 +1016,7 @@ static void aside_close(void)
 /* whether a pass of these targets can be put aside */
 static BOOL aside_possible(struct texture_entry *color, uint32_t color_level, BOOL depth, int multisampled)
 {
-	uint64_t open, small;
+	uint64_t open;
 
 	if (aside_enabled < 0)
 		aside_enabled = !getenv("HALO_METAL_ASIDE") || atoi(getenv("HALO_METAL_ASIDE")) != 0;
@@ -1018,8 +1025,7 @@ static BOOL aside_possible(struct texture_entry *color, uint32_t color_level, BO
 		return NO;
 	open = metal.aside ? (uint64_t)metal.parked.target_width * metal.parked.target_height :
 		(uint64_t)metal.target_width * metal.target_height;
-	small = (uint64_t)(color->description.width >> color_level) * (color->description.height >> color_level);
-	return open >= ASIDE_LARGE_PIXELS && small * 4 <= open;
+	return open >= ASIDE_LARGE_PIXELS;
 }
 
 /* a buffer source the command buffer's blits have written */
@@ -2175,6 +2181,46 @@ const void *xgpu_metal_buffer_contents(uint32_t buffer)
 	return buffer && buffer <= metal.buffers.count ? metal.buffers[buffer - 1].contents : NULL;
 }
 
+/* a buffer written while the GPU's work still reads it is renamed (below)
+up to this size; the buffers it had are kept until that work is done, to
+be renamed into again */
+#define BUFFER_RENAME_LARGEST (4u << 20)
+#define BUFFER_SPARES 8
+
+static id<MTLBuffer> buffer_spare(NSUInteger length)
+{
+	NSUInteger index;
+
+	for (index = 0; index < metal.buffer_spares.count; index++)
+	{
+		id<MTLBuffer> spare = metal.buffer_spares[index];
+
+		if (spare.length == length && metal.buffer_spares_serials[index].unsignedLongLongValue <= xgpu_metal_frame_completed())
+		{
+			[metal.buffer_spares removeObjectAtIndex:index];
+			[metal.buffer_spares_serials removeObjectAtIndex:index];
+			return spare;
+		}
+	}
+	return [metal.device newBufferWithLength:length options:MTLResourceStorageModeShared];
+}
+
+static void buffer_retire(id<MTLBuffer> old, uint64_t used)
+{
+	if (!metal.buffer_spares)
+	{
+		metal.buffer_spares = [NSMutableArray new];
+		metal.buffer_spares_serials = [NSMutableArray new];
+	}
+	[metal.buffer_spares addObject:old];
+	[metal.buffer_spares_serials addObject:@(used)];
+	if (metal.buffer_spares.count > BUFFER_SPARES)
+	{
+		[metal.buffer_spares removeObjectAtIndex:0];
+		[metal.buffer_spares_serials removeObjectAtIndex:0];
+	}
+}
+
 void xgpu_metal_buffer_write(uint32_t buffer, uint32_t offset, const void *data, uint32_t size, int unused)
 {
 	id<MTLBuffer> object;
@@ -2194,6 +2240,27 @@ void xgpu_metal_buffer_write(uint32_t buffer, uint32_t offset, const void *data,
 		memcpy((unsigned char *)object.contents + offset, data, size);
 		statistics_add(&metal.statistics.uploads_direct, 1);
 		return;
+	}
+	/* (the GPU's writes to it all done: another buffer takes its place,
+with its contents and the bytes written, and the work that reads the old
+one reads what it had; a blit in the command buffer's order would end
+the pass, the screen's multisampled colour, depth and stencil stored and
+loaded again for a few kilobytes) */
+	if (metal.buffers_written[buffer - 1].unsignedLongLongValue <= xgpu_metal_frame_completed() &&
+		object.length <= BUFFER_RENAME_LARGEST)
+	{
+		id<MTLBuffer> renamed = buffer_spare(object.length);
+
+		if (renamed)
+		{
+			memcpy(renamed.contents, object.contents, object.length);
+			memcpy((unsigned char *)renamed.contents + offset, data, size);
+			buffer_retire(object, metal.buffers_used[buffer - 1].unsignedLongLongValue);
+			metal.buffers[buffer - 1] = renamed;
+			metal.buffers_used[buffer - 1] = @0;
+			statistics_add(&metal.statistics.uploads_direct, 1);
+			return;
+		}
 	}
 	/* in the command buffer's order: a blit from the ring */
 	source = xgpu_metal_stream(data, size);

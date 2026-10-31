@@ -717,6 +717,13 @@ command stream's backend table. They run on one thread, the render thread.
   GPUs have no 24-bit depth), depth kept reversed, 1 - the game's
   (`xgpu_backend.h`, "Reversed depth"). An upload writes a texture at once where no
   work the GPU still has reads it, else it is a blit in the frame's order.
+  A buffer (the mirrored vertices' segments) written while the GPU's work
+  still reads it, and no blit of the GPU's still writes, is renamed
+  instead: another buffer of its size (one the GPU is done with, kept for
+  it) takes its place, with its contents and the bytes written, and the
+  work already encoded reads the old one. A blit there would end the 3D
+  view's pass, as it did about once every four frames of a fight in Blood
+  Gulch.
   A multisampled target draws into a multisampled attachment resolved into
   it at each pass's end. A new target is cleared when it is made (black;
   depth the far plane, stencil 0): Apple's GPUs give a new private texture no contents
@@ -735,9 +742,11 @@ command stream's backend table. They run on one thread, the render thread.
   for an attachment that a clear of the whole of it came first for. Other
   clears are quads drawn through a clear pipeline (of the channels
   cleared).
-- **Aside passes.** A pass of a small target (a quarter of the open pass's
-  pixels at most, the open one at least 512x512: an object's shadow and its
-  blur, a mip chain) begun while the large pass is open would end it: its
+- **Aside passes.** A pass of another target (the open pass's at least
+  512x512: an object's shadow and its blur, a mip chain, and the game's
+  2048x2048 targets that it draws in four passes in the middle of the 3D
+  view, larger than the view at a phone's resolution) begun while the
+  large pass is open would end it: its
   colour, depth and stencil stored and loaded again when the game comes back,
   tens of megabytes at the screen's size each time. Where the small pass
   draws into nothing the frame's command buffer has written and its draws
@@ -753,7 +762,13 @@ command stream's backend table. They run on one thread, the render thread.
   `aside_continue`), the 3D view and the HUD then one pass, which a
   phone's GPU pays least for and MSAA needs to resolve its samples in tile
   memory: at 2796x1290 on an M1, MSAA 4x went from 9.1 to 5.2 ms of the
-  GPU a frame, and one or two pixels of a shot differ.
+  GPU a frame, and one or two pixels of a shot differ. A recording of a
+  fight in Blood Gulch (16 players, 3728x1720, MSAA 4x, HDR), replayed as
+  iOS plays it: with the 2048x2048 targets' passes put aside too, the 3D
+  view's pass was resumed (its samples, depth and stencil loaded again)
+  0.02 times a frame, from 1.3 (up to 8), and the GPU's time went from 12.8
+  to 6.8 ms a frame; up to 24 pixels of a shot differ, by at most 12 of
+  255 (with the Mac's break, none).
   `HALO_METAL_ASIDE_BREAK=1` or `0` chooses on either. `HALO_METAL_ASIDE=0`:
   no aside passes. HALO_METAL_STATS counts them.
 - **Frame-end discards.** A tile-based GPU (Apple's) stores each pass's
