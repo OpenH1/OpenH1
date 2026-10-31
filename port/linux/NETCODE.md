@@ -347,7 +347,11 @@ tick its inputs came (distributed message 135,
 `_distributed_message_clock_phase`, `network_clock.c`, reliably), by which
 the client leads its clock (below, "The client's clock"); version 13
 sends every player's presses as the host's sub-steps run them to the clients
-it does not send their every control to (below, "Presses to far clients"). With no new version, each client then tells the
+it does not send their every control to (below, "Presses to far clients");
+version 14 sends each OpenH1 client the states of the players near its own,
+or aimed at, as each of the host's sub-steps but a tick's last ends
+(distributed message 136, `_distributed_message_substep_states`,
+unreliable; below, "States at the sub-steps"). With no new version, each client then tells the
 host its build (distributed message 92, `_distributed_message_client_build`,
 reliably once a game after its ready, over its connection alone): its
 number, configuration, the label it shows ("OpenH1 Linux | build 120
@@ -762,6 +766,18 @@ simulation still takes the input at its tick, as before.
 - Nothing changes for an OpenCE machine (it is sent no message of 120 and
   after) or in a Legacy game. An OpenCE player's input is forwarded to the
   OpenH1 clients like any other.
+- A player aimed at is in the set every tick of the aim. Until the change
+  that made protocol version 14 (a change of the host's alone), the plan
+  looked at the aim only on the ticks the player's distance did not send
+  them, so a player aimed at from further than 60 world units (sent every
+  third or fourth tick by distance) left the set on every third or fourth
+  tick of the host's, and was driven by the relayed input on those. The
+  plan now takes the aim on every tick for the set; the ticks a player's
+  state and relayed input go on are as before (those of the distance and
+  those of the aim), so a Legacy game's bytes are unchanged
+  (`distributed_aimed_period`; `tools/harness/tests/test_plan_aim.py`).
+  There is no hysteresis: a player stays in the set while the aim holds,
+  as one near stays while within 60 world units.
 
 Where its unit is is still the host's word, at its ticks: a client's copy of
 a player it drives by forwarded input reacts to a change of input sooner,
@@ -1057,6 +1073,49 @@ A client's press reaches a far client a sub-step or so after the host runs
 it, where the near ones have it as it comes (two network trips and a frame);
 the host's bytes a second to each client were unchanged within the spread
 the players' places give (9.8 to 12.1 KB/s in either build).
+
+### States at the sub-steps
+
+A client drives the players near its own by their forwarded input and live
+controls, and corrects its copy of each against where it had it at the
+tick the host's state names ("Remote players against their history").
+Since version 8 the host's copy of a client's player runs that client's
+sub-steps as they come ("Input at its tick"), so its state changes at each
+sub-step, but went once a tick, as the tick ended. From protocol version 14,
+in an OpenH1 game of several sub-steps a tick (`network_distributed.c`,
+`network_distributed_host_substep_ended`):
+
+- As each of its sub-steps but a tick's last ends (the last's is the tick's
+  own state), the host sends each OpenH1 client the state of each player
+  its last tick's plan sends that client every tick or every second tick
+  (near it, or aimed at: the players whose forwarded input and live
+  controls it is sent), alive and on foot, of an OpenH1 client (whose
+  sub-steps the host runs as they come) or the host's own players and bots
+  (`distributed_substep_state_due`): `_distributed_message_substep_states`
+  (136, unreliable), the sub-step and the count, then each state as the
+  tick's are written (35 bytes on foot, 37 with the client's tick), in the
+  datagram of the sub-step's live controls where one goes then, else in
+  one of its own. A client player's names the client's tick the host's tick
+  is running, as the tick's own state will.
+- A client notes where its copy of each other client's player was as each
+  sub-step of its ticks but the last ended, by the same key as the tick's
+  (`distributed_note_remote_positions`), and compares a sub-step's state
+  with where it had the copy as the same sub-step of that tick of theirs
+  ended (`distributed_correct_remote_unit`): a disagreement is corrected up
+  to most of a tick sooner, and the ticks and sub-steps noted since move
+  with it. The host's own players and bots, and a player its notes do not
+  name, are moved toward the state as a tick's are.
+- A client takes only a player on foot, of the unit it has, and not its own;
+  a death, a spawn, a seat or the shields wait for the tick's state. It
+  takes no sub-step's state older than one it took of the player, or than
+  the host's latest tick's states, and a tick's state older than a
+  sub-step's state it took does not move the player back (the datagrams
+  came out of order).
+
+Each costs a client, at 120, 90 states a second for each player near it (30
+at 60), about 3.3 KB/s a player at 120 (1.1 at 60) and 10 bytes a message.
+Nothing changes in a Legacy game, at 30, or for an OpenCE machine (sent no
+message of 120 and after) or an OpenCE player's state.
 
 ### OpenCE players in an OpenH1 game
 
@@ -2174,5 +2233,5 @@ come before the host's sub-steps run), the clients' corrections are 4 to 31
 a game, and the positions apart are 0.017 to 0.057 world units on average,
 0.24 at most. The host took the prediction before the latest
 (`distributed_predictions_earlier`) or held in 0% to 4% of the ticks of the
-latency games, against up to 83% before. The remaining stage of OpenH1
-issue #287, the host's states at the sub-step rate, is not done.
+latency games, against up to 83% before. The host's states at the sub-step rate (version 14) are measured in "States
+at the sub-steps".

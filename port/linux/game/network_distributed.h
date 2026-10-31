@@ -208,6 +208,11 @@ enum
 	came (network_clock.c), reliably, once a second, to each OpenH1 client:
 	the client leads its clock by its trip to the host */
 	_distributed_message_clock_phase = 135,
+	/* an OpenH1 game's states of the players near a client, or aimed at, as
+	each of the host's sub-steps but a tick's last ends (network_distributed.c,
+	unreliable, to each OpenH1 client): the sub-step and the count, then
+	the states as the tick's */
+	_distributed_message_substep_states = 136,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };
@@ -384,10 +389,14 @@ void network_distributed_client_substep_inputs(void);
 clients sent this frame sent on to its other OpenH1 clients at once (an
 OpenH1 game's forwarded input) */
 void network_distributed_frame_received(void);
-/* (the host) the same now, in a sub-step (network_substeps.c's own players'
-controls); (a client) its messages to the host so far sent now, not with
-the tick's */
-void network_distributed_forward_now(void);
+/* (as each sub-step ends: network_substeps.c) the host: the states of the
+players near each OpenH1 client, or aimed at, of each sub-step but the
+tick's last, then the same (with the controls the sub-step ran) as
+network_distributed_frame_received; a client: where its copies of the other
+clients' players are, noted */
+void network_distributed_host_substep_ended(short substep_index, short substep_count);
+void network_distributed_client_substep_ended(short substep_index, short substep_count);
+/* (a client) its messages to the host so far sent now, not with the tick's */
 void distributed_flush_to_host(void);
 /* (the host) the client machines in the game, but for its own; their count */
 short distributed_client_machines(long *machine_indices, short maximum);
