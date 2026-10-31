@@ -29,6 +29,7 @@ joins (network_afk_machine_joined) and as each game starts.
 #include "network_distributed.h"
 #include "network_afk.h"
 #include "server_director.h"
+#include "bots.h"
 #include "../src/server_events.h" /* port: port/linux/src/server_events.c */
 #include "../src/server_json.h" /* port: port/linux/src/server_json.c */
 #include "../src/server_log.h" /* port: port/linux/src/server_log.c */
@@ -203,8 +204,9 @@ void network_afk_host_tick(
 		boolean changed;
 
 		machine_index = distributed_player_machine(absolute_index);
+		/* (nor the bots the host plays: bots.c's machines are no one's) */
 		if (player->quit_out_of_game || machine_index < 0 || machine_index >= MAXIMUM_AFK_MACHINES ||
-			absolute_index >= MAXIMUM_TRACKED_PLAYERS)
+			absolute_index >= MAXIMUM_TRACKED_PLAYERS || bots_machine_is_bot(machine_index))
 		{
 			continue;
 		}
