@@ -245,7 +245,7 @@ and these of iOS's own:
 
 | Setting | Meaning |
 | --- | --- |
-| `display.render_scale` | The fraction of the screen's pixels the game draws, each way, from 0.25 to 1.0 (the default): the game's frames and the presentation's drawables are that size, and the display scales them up. 0.67 draws less than half the pixels. Read at start (`HALO_RENDER_SCALE`). |
+| `display.render_scale` | The fraction of the screen's pixels the game draws, each way, from 0.25 to 1.0: the game's frames and the presentation's drawables are that size, and the display scales them up. 0.67 draws less than half the pixels. The default, 0, is the device's: 0.67 on an iPhone whose screen has 3 pixels to the point (it keeps the 120 Hz frame there, where all of them took 8 to 10 ms of GPU a frame on an iPhone 15 Pro Max and ran at 60 Hz), 1.0 on an iPad or a 2x iPhone. Read at start (`HALO_RENDER_SCALE`). |
 
 The host logs the device's thermal state at the start and as it changes
 (`thermal state: nominal`, `fair`, `serious`, `critical`): a hot phone

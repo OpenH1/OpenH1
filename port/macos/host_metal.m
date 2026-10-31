@@ -1366,7 +1366,9 @@ static void take_wait(double when)
 /* the link's rate: a ProMotion display's follows the frames, up to its
 highest; HALO_METAL_RATE, the link at a rate of its own (the pacing of
 another display, tested on this one); battery saver (saving), a whole
-fraction of the display's, 30 to 60 frames a second (frame_pacing.h) */
+fraction of the display's, 30 to 60 frames a second (frame_pacing.h). An
+iPhone's is its highest alone: given a range, iOS chose 80 Hz on an iPhone
+15 Pro Max that held 120 with its GPU half idle */
 static CAFrameRateRange link_rate_range(int saving)
 {
 	float rate = presentation.refresh_rate > 0.0f ? presentation.refresh_rate : 60.0f;
@@ -1379,8 +1381,12 @@ static CAFrameRateRange link_rate_range(int saving)
 		host_logf(HOST_LOG_INFO, "metal: battery saver: the display link at %.0f Hz", rate);
 		return CAFrameRateRangeMake(rate, rate, rate);
 	}
+#if TARGET_OS_IPHONE
+	return CAFrameRateRangeMake(rate, rate, rate);
+#else
 	return getenv("HALO_METAL_RATE") ? CAFrameRateRangeMake(rate, rate, rate) :
 		CAFrameRateRangeMake(rate < 60.0f ? rate : 30.0f, rate, rate);
+#endif
 }
 
 static void *presentation_thread(void *context)
