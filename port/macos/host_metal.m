@@ -811,6 +811,25 @@ static void presented(double when, double target, const struct xgpu_metal_compil
 		presentation.compiled_before = *compiled;
 }
 
+/* the device's thermal state, in the statistics: a phone that is hot runs
+the game's threads slower, on fewer of its fast cores */
+static const char *thermal_state(void)
+{
+	switch (NSProcessInfo.processInfo.thermalState)
+	{
+	case NSProcessInfoThermalStateNominal:
+		return "nominal";
+	case NSProcessInfoThermalStateFair:
+		return "fair";
+	case NSProcessInfoThermalStateSerious:
+		return "serious";
+	case NSProcessInfoThermalStateCritical:
+		return "critical";
+	default:
+		return "unknown";
+	}
+}
+
 static void pacing_log(double now)
 {
 	double seconds = now - presentation.stats_since;
@@ -857,7 +876,8 @@ static void pacing_log(double now)
 		"playing %u, the game %u), %u callbacks late (drawables all pending %u, some free %u; after another %u, after a slow one %u, target skipped %u, delivered late %u; the slowest %.2f ms), %u waits for an image, "
 		"%u frames dropped, %u shown after their refresh; "
 		"%u ended on the GPU within 1 ms of their target (the least slack %.2f ms); "
-		"drawable %ux%u, presentation's GPU %.3f ms a refresh, queued %.3f ms (the most %.3f); frames %u, draws %u, passes %u",
+		"drawable %ux%u, presentation's GPU %.3f ms a refresh, queued %.3f ms (the most %.3f); frames %u, draws %u, passes %u; "
+		"thermal state %s",
 		seconds, presentation.ticks, presentation.ticks / seconds, presentation.frames_presented + presentation.idle_presented,
 		presentation.frames_presented, presentation.idle_presented, shown, shown / seconds,
 		intervals ? (double)sum / 1000.0 / intervals : 0.0,
@@ -874,7 +894,7 @@ static void pacing_log(double now)
 		buffers ? atomic_exchange(&presentation.present_gpu_ns, 0) / 1e6 / buffers : 0.0,
 		buffers ? atomic_exchange(&presentation.present_queued_ns, 0) / 1e6 / buffers : 0.0,
 		atomic_exchange(&presentation.present_queued_most_ns, 0) / 1e6,
-		statistics.frames, statistics.draws, statistics.passes);
+		statistics.frames, statistics.draws, statistics.passes, thermal_state());
 	{
 		/* (the write tracking's faults: each a trip through the kernel) */
 		static uint64_t faults_before;
@@ -890,7 +910,7 @@ static void pacing_log(double now)
 			"metal: a frame: GPU busy %.2f ms (%.0f%% of the time); its command buffers' GPU time %.2f ms (%u), render thread CPU %.2f ms, %.1f draws, %.1f passes (%.1f put aside, %.1f targets renamed for it), "
 			"%.1f ordered uploads, %.1f copies of a target drawn into, %.1f pictures restored; the last played in %.2f ms, its stream %u KB "
 			"(the most %u KB); the game waited %u times (%.1f ms); textures made %u, made again %u, images %u, "
-			"%.1f MB read; shaders compiled %u (%.1f ms), %u from the library, %u the combiner's specialised; pipelines made %u (%u from the archive, %.1f ms); %u pipelines made while drawing (not prepared)",
+			"%.1f MB read; shaders compiled %u (%.1f ms), %u from the library, %u the combiner's specialised; pipelines made %u (%u from the archive, %.1f ms); %u pipelines made while drawing (not prepared); thermal state %s",
 			statistics.gpu_busy_seconds * 1000.0 / statistics.frames, statistics.gpu_busy_seconds * 100.0 / seconds,
 			statistics.gpu_seconds * 1000.0 / statistics.frames, statistics.command_buffers,
 			statistics.render_cpu_seconds * 1000.0 / statistics.frames, (double)statistics.draws / statistics.frames,
@@ -903,7 +923,7 @@ static void pacing_log(double now)
 			textures.bytes / 1048576.0, statistics.shaders_made, statistics.shader_seconds * 1000.0,
 			statistics.shaders_from_library, statistics.shaders_specialised,
 			statistics.pipelines_made, statistics.pipelines_from_archive,
-			statistics.pipeline_seconds * 1000.0, statistics.draws_waiting);
+			statistics.pipeline_seconds * 1000.0, statistics.draws_waiting, thermal_state());
 	waits_before = waits;
 	wait_nanoseconds_before = wait_nanoseconds;
 	presentation.stats_since = now;
