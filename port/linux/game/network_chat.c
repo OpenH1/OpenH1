@@ -1693,7 +1693,7 @@ static void chat_send(
 	}
 }
 
-void network_chat_host_notice(
+void network_chat_show_host_notice(
 	char const *text)
 {
 	long length = (long)csstrlen(text);

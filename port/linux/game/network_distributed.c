@@ -4943,7 +4943,7 @@ void distributed_send_notice(
 	csmemset(&message, 0, sizeof(message));
 	csmemcpy(message.text, text, length);
 	/* (the host's own players see it as the clients' do: network_chat.c) */
-	network_chat_host_notice(message.text);
+	network_chat_show_host_notice(message.text);
 	error(_error_log, "%s", message.text);
 	distributed_send(&message, _distributed_message_notice, 0, (word)(sizeof(message.header) + length + 1),
 		_distributed_to_clients_reliably);
@@ -4967,7 +4967,7 @@ void distributed_send_notice_to_machine(
 	csmemcpy(message.text, text, length);
 	if (machine_index == NONE)
 	{
-		network_chat_host_notice(message.text);
+		network_chat_show_host_notice(message.text);
 		return;
 	}
 	distributed_send_to_machine_reliably(machine_index, &message, _distributed_message_notice, 0,
@@ -6094,7 +6094,7 @@ void network_distributed_handle_message(
 		}
 		/* (shown whatever game.console_log says, which keeps the console's
 		own lines off the screen by default: the chat's notices) */
-		network_chat_host_notice(text);
+		network_chat_show_host_notice(text);
 		error(_error_log, "the host: %s", text);
 		break;
 	}
