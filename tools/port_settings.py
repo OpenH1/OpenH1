@@ -374,6 +374,18 @@ SCREEN_LAYOUT = ("video_settings/screen_layout", "screen_layout_screen")
 CONTROLLER = ("gamepad_setup", "gamepad_setup_screen")
 KEY_BINDINGS = ("controls_setup", "controls_settings_screen")
 STREAMER = ("interface_settings/streamer_mode", "streamer_mode_screen")
+# (Online's Discord account: port/linux/src/player_link.c)
+DISCORD_ACCOUNT = ("network_setup/discord_account", "discord_account_screen")
+# the rows with a value of their own in the spinners' column, which
+# menu_functions.c's discord_account_show fills in each frame: a link's (what
+# the page it opens is at), an action's (what it does, its state)
+SETTINGS_STATUS_ROWS = {"discord_account", "link_status", "link_unlink",
+                        *(f"link_master_{n}" for n in range(1, 5))}
+# the rows whose labels menu_functions.c writes (a master server's host): the
+# label's text its own, not its list's; their values the narrower column at
+# the spinners' column's right end ("CODE ABC-DEF")
+SETTINGS_NAMED_ROWS = {f"link_master_{n}" for n in range(1, 5)}
+SETTINGS_NAMED_VALUE_WIDTH = 110
 # (making a profile: as the main menu's items do, its name asked, then the
 # profile made and edited, menu_functions.c's settings_profile_new)
 CREATE_PROFILE = ("CREATE PROFILE ›", None, None,
@@ -542,6 +554,11 @@ PAGES = {
              "desktop android"),
             ("JOIN FROM CLIPBOARD", "network.join_from_clipboard", ON_OFF,
              "Joins a game when you switch to the game with its invite link copied.", "desktop android"),
+            # (its value the account's state: menu_functions.c's
+            # discord_account_show)
+            ("DISCORD ACCOUNT ›", None, _page_screen(*DISCORD_ACCOUNT),
+             "Link your Discord account, so that servers that block VPNs let you in while you use one.", None,
+             "discord_account"),
             # (port/linux/game/map_share.c: this machine's part in another's
             # game)
             (SECTION, "MAP SHARING"),
@@ -766,6 +783,35 @@ PAGES = {
              "Swearing and sexual words. Strong and Worse leaves the mildest showing.", None),
             ("INSULTS", "streamer.insults", STREAMER_LEVELS,
              "Name-calling and insults that are not slurs.", None),
+        ],
+    },
+    DISCORD_ACCOUNT[0]: {
+        "screen": DISCORD_ACCOUNT[1], "title": "DISCORD ACCOUNT",
+        "rows": [
+            # (a dedicated server that blocks VPNs lets a player in from one
+            # with a Discord account linked at a master server it publishes
+            # to: port/linux/src/player_link.c. The rows' values, the masters'
+            # hosts and the panel's words for them are menu_functions.c's
+            # discord_account_show and discord_account_panel)
+            (SECTION, "ACCOUNT"),
+            ("DISCORD", None, None,
+             "The Discord account linked to this game, and how many of the master servers it is linked with.",
+             None, "link_status"),
+            ("UNLINK", None, None,
+             "Forgets the linked account on this device. Select it twice: the first asks, the second unlinks.",
+             None, "link_unlink", "port discord unlink"),
+            # (a row for each master server of masters.txt, up to 4: its host,
+            # and the account's state with it; A or a click opens its link
+            # page in the browser at once)
+            (SECTION, "MASTER SERVERS"),
+            *[(f"MASTER {n}", None, None,
+               "A master server lists dedicated servers. Select it to link your Discord account with it in your "
+               "browser.", None, f"link_master_{n}", "port discord link") for n in range(1, 5)],
+            (SECTION, "PRIVACY"),
+            ("SHOW TO SERVERS", "network.link_share",
+             [("WHEN ASKED", "when_needed"), ("ALWAYS", "always"), ("NEVER", "never")],
+             "Which servers see your Discord name. When Asked: only a server that blocks VPNs, when you join it "
+             "from one. Never: such a server refuses you on a VPN.", None),
         ],
     },
 }
@@ -1159,10 +1205,18 @@ def _settings_page(folder: str, page: dict) -> list:
             y -= SETTINGS_ROW_STEP
         children.append(f'<child{attributes([("widget", row), ("x", SETTINGS_ROW_X), ("y", y), ("platform", platform)])}/>')
         y += SETTINGS_ROW_STEP
+        status = key in SETTINGS_STATUS_ROWS
+        # (a label menu_functions.c writes: no text of a list's, which a text
+        # box draws in place of its own; wider, its value narrower and at the
+        # values' right end: a host is longer than a label)
+        named_row = key in SETTINGS_NAMED_ROWS
+        value_x = SETTINGS_SPINNER_X + SETTINGS_SPINNER_WIDTH - SETTINGS_NAMED_VALUE_WIDTH if named_row else \
+            SETTINGS_SPINNER_X
+        label_text = [] if named_row else \
+            [("string_list", f"{base}/labels"), ("string_index", len(labels) or None)]
         label_widget = _settings_text(f"{base}/{key}_label",
-                                      [("width", SETTINGS_SPINNER_X - 4 if setting else SETTINGS_ROW_WIDTH - 12),
-                                       ("height", SETTINGS_ROW_HEIGHT), ("string_list", f"{base}/labels"),
-                                       ("string_index", len(labels) or None), ("color", SETTINGS_BLUE),
+                                      [("width", value_x - 4 if setting or status else SETTINGS_ROW_WIDTH - 12),
+                                       ("height", SETTINGS_ROW_HEIGHT), *label_text, ("color", SETTINGS_BLUE),
                                        ("text_x", 10), ("text_y", 2), ("wide", wide(0, SETTINGS_WIDE_ROWS))])
         row_pairs = [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_ROW_HEIGHT),
                      ("flags", "pass_unhandled_to_focused_child"), ("bitmap", f"{SETTINGS}/row"),
@@ -1228,8 +1282,17 @@ def _settings_page(folder: str, page: dict) -> list:
                 handlers.append('<on event="left_mouse" run="mouse emit accept event"/>')
                 if branch:
                     handlers.append(f'<conditional widget="{SETTINGS}/settings_creating_profile" if_failed="true"/>')
-            extra += _widget(row, row_pairs, handlers + [f'<child widget="{base}/{key}_label"/>'])
+            # (a status row's value where a spinner's would be)
+            value = [f'<child widget="{base}/{key}_value" x="{value_x}" y="2"/>'] if status else []
+            extra += _widget(row, row_pairs, handlers + [f'<child widget="{base}/{key}_label"/>'] + value)
             extra += label_widget
+            if status:
+                extra += _settings_text(f"{base}/{key}_value", [("width", SETTINGS_SPINNER_X + SETTINGS_SPINNER_WIDTH -
+                                                                 value_x), ("height", 16),
+                                                                ("color", SETTINGS_BLUE),
+                                                                ("align", "right" if named_row else "center"),
+                                                                ("text_y", 0), ("text_flags", "no_focus_test"),
+                                                                ("wide", wide(SETTINGS_WIDE_ROWS))])
         labels.append(label)
         helps.append(help_text)
     lines = []

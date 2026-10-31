@@ -1269,7 +1269,7 @@ static const struct config_setting config_settings[] =
 	{ "network.link_share", _config_string, "\"when_needed\"", "HALO_NET_LINK_SHARE", _environment_value,
 		_platform_all,
 		"When the game shows a server the Discord account linked to it\n"
-		"(Settings > Network Setup > Discord Account): \"when_needed\" (a server\n"
+		"(Settings > Online > Discord Account): \"when_needed\" (a server\n"
 		"that asks, to let you in from a VPN), \"always\" or \"never\"." },
 	{ "network.stun_servers", _config_string, "\"stun.l.google.com:19302,stun.cloudflare.com:3478\"",
 		"HALO_NET_STUN", _environment_value, _platform_all,

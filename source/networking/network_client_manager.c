@@ -2428,14 +2428,15 @@ static wchar_t const *network_game_client_rejection_text(
 		return L"The host of this game has blocked you from joining it.";
 	case _rejection_code_name_refused:
 		return L"This host doesn't allow a word in your player name. Change it in Settings, Profile.";
-	/* (a dedicated server's VPN policy and address limit, OpenCE's:
-	OpenH1's menus make no Discord link yet, so the way in is the VPN off) */
+	/* (a dedicated server's VPN policy and address limit, OpenCE's: the way
+	in is a Discord account linked at Settings > Online > Discord Account,
+	player_link.c, or the VPN off) */
 	case _rejection_code_vpn_link_required:
-		return L"This server blocks VPNs. Turn your VPN off to join it.";
+		return L"This server blocks VPNs. Link your Discord account in Settings > Online > Discord Account, or turn your VPN off.";
 	case _rejection_code_vpn_blocked:
 		return L"This server doesn't allow VPNs. Turn your VPN off to join it.";
 	case _rejection_code_vpn_link_invalid:
-		return L"This server couldn't check your Discord link. Turn your VPN off to join it.";
+		return L"This server couldn't check your Discord link. Link it again in Settings > Online > Discord Account, or turn your VPN off.";
 	case _rejection_code_vpn_link_too_new:
 		return L"This server needs a Discord account a year old to join over a VPN. Turn your VPN off to join it.";
 	case _rejection_code_vpn_link_in_use:
