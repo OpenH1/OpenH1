@@ -25,7 +25,8 @@ network_host_game.c's, by the host's own ways: this file only shows it.
   Allow votekick, Listing (an internet game's), Max players (left and
   right: never fewer than are in it), Allow OpenCE players (an OpenH1
   game's).
-- MAPS: the gametype (left and right), then the multiplayer maps, the
+- MAPS: the gametype (left and right: first CURRENT, the game's own with
+  its score, time and rules, then the gametypes), then the multiplayer maps, the
   Xbox's and Custom Edition's; for the map chosen the panel's PLAY NOW
   (pressed twice in a game: it ends), AFTER THIS GAME and ADD TO PLAYLIST.
 - PLAYLIST: a change asked for, then network.host_playlist's games, the next
@@ -182,7 +183,8 @@ static struct
 	NONE: not), and the ban's reason typed */
 	short choosing;
 	char reason[HOST_CONTROLS_REASON_LENGTH + 1];
-	/* the gametype the maps play (network_host_game_gametypes' index) */
+	/* the gametype the maps play (network_host_game_gametypes' index; NONE:
+	CURRENT, the game's own kept) */
 	short gametype;
 	/* the press a second confirms, and when it was asked */
 	short confirm;
@@ -722,6 +724,7 @@ static void host_game_row_change(struct widget_instance *row_widget, short row, 
 		if (step)
 			return;
 		host_menu.tab = row == _host_game_change_map ? _host_tab_maps : _host_tab_rules;
+		host_menu.gametype = NONE;
 		host_menu.first = 0;
 		host_menu.confirm = _host_confirm_none;
 		host_menu.focus_first = TRUE;
@@ -899,25 +902,91 @@ static struct host_controls_player *host_chosen_bot(void)
 
 /* ---- the maps and the playlist */
 
-/* the gametype the maps play (its rotation name) */
+/* the gametype the maps play (its rotation name; NULL: CURRENT, the
+game's own) */
 static struct host_game_gametype const *host_gametype(void)
 {
 	struct host_game_gametype const *gametypes;
 	short count = network_host_game_gametypes(&gametypes);
 
-	if (!count)
+	if (!count || host_menu.gametype == NONE)
+	{
+		host_menu.gametype = NONE;
 		return NULL;
+	}
 	host_menu.gametype = (short)PIN(host_menu.gametype, 0, count - 1);
 	return &gametypes[host_menu.gametype];
 }
 
-/* the map chosen with the gametype, as a playlist's entry's text */
-static boolean host_map_entry_text(struct host_game_map const *map, char *text, short size)
+/* the gametype stepped (left -1, right 1): CURRENT, then the list's */
+static void host_gametype_step(short step)
+{
+	struct host_game_gametype const *gametypes;
+	short count = network_host_game_gametypes(&gametypes);
+
+	host_gametype();
+	host_menu.gametype = (short)((host_menu.gametype + 1 + step + count + 1) % (count + 1) - 1);
+}
+
+/* the game's own gametype as shown (its variant's name) */
+static void host_current_gametype(wchar_t *text, short size)
+{
+	struct network_game *game = host_game();
+	short index;
+
+	for (index = 0; game && index < size - 1 &&
+		index < NUMBEROF(game->variant.human_readable_game_description) &&
+		game->variant.human_readable_game_description[index]; index++)
+	{
+		text[index] = game->variant.human_readable_game_description[index];
+	}
+	text[index] = 0;
+}
+
+/* the gametype as MAPS shows it ("CURRENT \x00B7 CTF", or the list's) */
+static void host_gametype_shown(wchar_t *text, short size)
+{
+	struct host_game_gametype const *gametype = host_gametype();
+	wchar_t current[HOST_GAME_GAMETYPE_SHOWN_SIZE];
+
+	if (gametype)
+		usnprintf(text, size - 1, L"%s", gametype->shown);
+	else
+	{
+		host_current_gametype(current, NUMBEROF(current));
+		usnprintf(text, size - 1, L"CURRENT \x00B7 %s", current);
+	}
+	text[size - 1] = 0;
+}
+
+/* the map chosen with the gametype, as an entry's text: CURRENT's the map
+alone (the game's gametype, score, time and rules kept: network_host_game_
+change), but a playlist's names the list's gametype the game's is (FALSE:
+none is) */
+static boolean host_map_entry_text(struct host_game_map const *map, boolean playlist, char *text, short size)
 {
 	struct host_game_gametype const *gametype = host_gametype();
 
-	if (!map || !gametype)
+	if (!map)
 		return FALSE;
+	if (!gametype && !playlist)
+	{
+		snprintf(text, size, "%s%s", map->custom ? "custom_maps\\" : "", map->name);
+		return TRUE;
+	}
+	if (!gametype)
+	{
+		struct host_game_gametype const *gametypes;
+		short count = network_host_game_gametypes(&gametypes);
+		wchar_t current[HOST_GAME_GAMETYPE_SHOWN_SIZE];
+		short index;
+
+		host_current_gametype(current, NUMBEROF(current));
+		index = network_host_game_gametype_find(gametypes, count, current);
+		if (index == NONE)
+			return FALSE;
+		gametype = &gametypes[index];
+	}
 	snprintf(text, size, "%s%s:%s", map->custom ? "custom_maps\\" : "", map->name, gametype->name);
 	return TRUE;
 }
@@ -954,7 +1023,7 @@ static boolean host_change_asked(struct server_entry *entry)
 
 	if (!network_host_game_next(entry, &now))
 		return FALSE;
-	return next == NONE || strcmp(entry->text, playlist->entries[next].text) || now;
+	return next == NONE || !entry->gametype[0] || strcmp(entry->text, playlist->entries[next].text) || now;
 }
 
 static short host_playlist_entries(void)
@@ -1018,6 +1087,9 @@ static void host_tab_set(short tab)
 	/* (BOTS, not the host's in co-op: PLAYERS) */
 	if (tab == _host_tab_bots && !network_host_controls_bots_tab())
 		tab = _host_tab_players;
+	/* (MAPS: CURRENT, the game's own gametype) */
+	if (tab == _host_tab_maps && host_menu.tab != _host_tab_maps)
+		host_menu.gametype = NONE;
 	host_menu.tab = tab;
 	host_menu.first = 0;
 	host_menu.confirm = _host_confirm_none;
@@ -1034,6 +1106,7 @@ static boolean host_controls_initialize(void)
 	host_player_choose(NULL);
 	host_menu.chosen_game_row = NONE;
 	host_menu.chosen_map[0] = 0;
+	host_menu.gametype = NONE;
 	host_menu.chosen_entry = NONE;
 	host_menu.chosen_ban[0] = 0;
 	host_menu.chosen_bot_row = NONE;
@@ -1319,10 +1392,11 @@ static void host_row_show(struct widget_instance *row, short row_index, short en
 	case _host_tab_maps:
 		if (entry == 0)
 		{
-			struct host_game_gametype const *gametype = host_gametype();
+			wchar_t gametype[HOST_CONTROLS_TEXT_LENGTH];
 
+			host_gametype_shown(gametype, NUMBEROF(gametype));
 			usnprintf(label, NUMBEROF(label) - 1, L"GAMETYPE");
-			usnprintf(value, NUMBEROF(value) - 1, L"\x2039 %s \x203A", gametype ? gametype->shown : L"");
+			usnprintf(value, NUMBEROF(value) - 1, L"\x2039 %s \x203A", gametype);
 		}
 		else
 		{
@@ -1683,23 +1757,25 @@ static void host_panel_show(struct widget_instance *list, short chosen)
 	case _host_tab_maps:
 	{
 		struct host_game_map const *map = host_chosen_map();
-		struct host_game_gametype const *gametype = host_gametype();
+		wchar_t gametype[HOST_CONTROLS_TEXT_LENGTH];
 
+		host_gametype_shown(gametype, NUMBEROF(gametype));
 		if (!map)
 		{
 			usnprintf(title, NUMBEROF(title) - 1, L"Maps");
-			usnprintf(where, NUMBEROF(where) - 1, L"%s", gametype ? gametype->shown : L"");
+			usnprintf(where, NUMBEROF(where) - 1, L"%s", gametype);
 			if (network_host_game_maps_left_out())
 				usnprintf(status, NUMBEROF(status) - 1, L"%ld more maps aren't listed: the list holds %d.",
 					network_host_game_maps_left_out(), MAXIMUM_HOST_GAME_MAPS);
 			else
-				usnprintf(status, NUMBEROF(status) - 1, L"Choose the gametype (left and right), then a map: play "
-					L"it now, after this game, or add it to the playlist.");
+				usnprintf(status, NUMBEROF(status) - 1, host_gametype() ? L"Choose the gametype (left and right), "
+					L"then a map: play it now, after this game, or add it to the playlist." :
+					L"CURRENT keeps this game's gametype, score, time and rules. Choose a map, or another gametype "
+					L"(left and right).");
 			break;
 		}
 		lobby_board_map_text(map->level, title, NUMBEROF(title));
-		usnprintf(where, NUMBEROF(where) - 1, L"%s%s", gametype ? gametype->shown : L"",
-			map->custom ? L"\r\nCustom Edition" : L"");
+		usnprintf(where, NUMBEROF(where) - 1, L"%s%s", gametype, map->custom ? L"\r\nCustom Edition" : L"");
 		if (host_confirming((short)(_host_button_map_now + HOST_CONFIRM_BUTTON)))
 			usnprintf(status, NUMBEROF(status) - 1, L"Press PLAY NOW again: this game ends, with no scores, and "
 				L"this one starts.");
@@ -2085,11 +2161,7 @@ static boolean host_controls_row(struct widget_instance *row)
 	}
 	if (host_menu.tab == _host_tab_maps && entry == 0)
 	{
-		struct host_game_gametype const *gametypes;
-		short gametype_count = network_host_game_gametypes(&gametypes);
-
-		if (gametype_count)
-			host_menu.gametype = (short)((host_menu.gametype + 1) % gametype_count);
+		host_gametype_step(1);
 		ui_play_audio_feedback_sound(SOUND_CURSOR);
 		return TRUE;
 	}
@@ -2110,12 +2182,7 @@ static boolean host_controls_step(struct widget_instance *row, short step)
 		return FALSE;
 	if (host_menu.tab == _host_tab_maps && entry == 0)
 	{
-		struct host_game_gametype const *gametypes;
-		short count = network_host_game_gametypes(&gametypes);
-
-		if (!count)
-			return FALSE;
-		host_menu.gametype = (short)((host_menu.gametype + step + count) % count);
+		host_gametype_step(step);
 		ui_play_audio_feedback_sound(SOUND_CURSOR);
 		return TRUE;
 	}
@@ -2274,7 +2341,7 @@ static boolean host_controls_action(struct widget_instance *button)
 		return TRUE;
 	case _host_button_map_now:
 	case _host_button_map_after:
-		if (!host_map_entry_text(map, text, sizeof(text)))
+		if (!host_map_entry_text(map, FALSE, text, sizeof(text)))
 			break;
 		/* (now, in a game: pressed twice, as it ends) */
 		if (action == _host_button_map_now && !network_host_controls_in_lobby() &&
@@ -2287,8 +2354,15 @@ static boolean host_controls_action(struct widget_instance *button)
 		ui_play_audio_feedback_sound(SOUND_FORWARD);
 		return TRUE;
 	case _host_button_map_add:
-		if (!host_map_entry_text(map, text, sizeof(text)))
+		if (!map)
 			break;
+		/* (a playlist's entry names its gametype: CURRENT's, if the list has
+		it) */
+		if (!host_map_entry_text(map, TRUE, text, sizeof(text)))
+		{
+			host_notice(L"Choose a gametype (left and right) to add this map to the playlist.", NULL);
+			break;
+		}
 		if (!network_host_game_playlist_add(text, reason, sizeof(reason)))
 		{
 			host_notice_text(reason);

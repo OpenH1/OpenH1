@@ -525,7 +525,9 @@ with six tabs (BOTS, the last, not in co-op):
   and the playlist offer (`saved=<name>`). The game's record keeps the
   changes: a player who joins plays by them, and the next game starts with
   them unless the playlist has another. Not in co-op.
-- MAPS: the gametype (left and right step it: the built-in gametypes,
+- MAPS: the gametype (left and right step it: first CURRENT, the game's
+  own gametype with its score to win, time limit and RULES' changes kept,
+  then the built-in gametypes,
   OpenCE's and those you saved, Create Game's CUSTOM, which entries name
   `saved=<name>`: its letters and digits, lowered, `_` between them, as
   `saved=my_ctf_2` for "My CTF #2"), then every multiplayer map, the Xbox's and Custom Edition's
@@ -533,7 +535,8 @@ with six tabs (BOTS, the last, not in co-op):
   the map chosen: PLAY NOW (in a game, pressed twice: the game ends with no
   scores, and every machine goes through the lobby to the new one), AFTER
   THIS GAME (its scores, then the lobby with it, which starts by itself)
-  and ADD TO PLAYLIST. In the lobby PLAY IN THIS LOBBY sets the lobby's game.
+  and ADD TO PLAYLIST (with CURRENT, the gametype of the list the game's
+  is, at its own settings). In the lobby PLAY IN THIS LOBBY sets the lobby's game.
 - PLAYLIST: the games `network.host_playlist` holds, the next marked, and
   first a change asked for (NEXT, with CANCEL CHANGE). After each game's
   scores the next one is set in the lobby and its countdown starts; a change
@@ -563,7 +566,8 @@ with six tabs (BOTS, the last, not in co-op):
 
 The host's console has the same: `host_map <map> [gametype]` plays a game
 now (as PLAY NOW; in the lobby, at once), `host_map_next <map> [gametype]`
-after this game, `host_playlist [entries]` shows or replaces the playlist,
+after this game (a map alone keeps the game's gametype, score, time and
+rules, as MAPS' CURRENT), `host_playlist [entries]` shows or replaces the playlist,
 `host_playlist_add <map> [gametype]`, `host_playlist_remove <number>` and
 `host_playlist_clear` change it (entries as `server.rotation`'s:
 `bloodgulch:ctf+score=5`, `custom_maps\<name>`), `host_say <words>` (and the
