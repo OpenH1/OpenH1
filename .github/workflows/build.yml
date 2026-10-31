@@ -1090,16 +1090,16 @@ jobs:
       # against port/assets/release-key.pub before anything is published: a
       # secret that is not that key's stops the release, rather than publish
       # a signature every updater would refuse. Without the secret the
-      # release goes out unsigned, which the updaters take while
-      # RELEASE_SIGNATURE_REQUIRED (port/linux/src/release_signature.h) is 0
+      # release stops too: the updaters refuse an unsigned release
+      # (RELEASE_SIGNATURE_REQUIRED, port/linux/src/release_signature.h)
       - name: Sums and signature
         env:
           OPENH1_RELEASE_KEY: ${{ secrets.OPENH1_RELEASE_KEY }}
         run: |
           python3 tools/release_sign.py sums release
           if [ -z "$OPENH1_RELEASE_KEY" ]; then
-            echo "::warning::no OPENH1_RELEASE_KEY secret: the release's SHA256SUMS is not signed"
-            exit 0
+            echo "::error::no OPENH1_RELEASE_KEY secret: the updaters would refuse an unsigned release"
+            exit 1
           fi
           python3 tools/release_sign.py sign release/SHA256SUMS
           python3 tools/release_sign.py verify release/SHA256SUMS
