@@ -127,6 +127,7 @@ enum _distributed_message_relayed_actions 15
 enum _distributed_message_relayed_substeps 121
 enum _distributed_message_shield_effects 91
 enum _distributed_message_structure_bsp 65
+enum _distributed_message_substep_states 136
 enum _distributed_message_unit_states 2
 enum _distributed_message_vehicle_prediction 12
 enum _distributed_message_voice_config 82

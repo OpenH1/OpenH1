@@ -1357,6 +1357,9 @@ static void network_substeps_substep_end(
 		which the host's tick takes as it begins: network_distributed.c) */
 		if (substep_index == 0)
 			network_distributed_client_substep_inputs();
+		/* (where its copies of the others are, which the host's states of
+		its sub-steps name: network_distributed.c) */
+		network_distributed_client_substep_ended(substep_index, substep_count);
 		/* (the hits its sub-step made, at once: network_damage.c) */
 		network_damage_client_tick();
 		/* (now, but for the last sub-step's, which the tick's own messages
@@ -1399,7 +1402,9 @@ static void network_substeps_substep_end(
 			*ran = now;
 			*far = pressed;
 		}
-		network_distributed_forward_now();
+		/* (the states of the players near each client, or aimed at, of
+		each sub-step but the last, with the controls) */
+		network_distributed_host_substep_ended(substep_index, substep_count);
 	}
 }
 
