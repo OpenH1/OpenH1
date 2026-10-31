@@ -1249,10 +1249,12 @@ as any other, with these differences, all on the host's side:
   `net_compare.py`'s checks): at 60 and 120 both OpenH1 clients in step, the
   server's drift of each one's player 0 of 1800 ticks, its takes 2 apart of
   3880 at 60 and of 3893 at 120. In a mixed game at 120 with an OpenCE-mode
-  client (`debug.join_legacy`) and scripted hits, the OpenCE client at 30
-  hearing none of OpenH1's messages, every hit both ways taken (15 each),
-  and drift of 1.8% and 13% (the players brought together to shoot, and
-  touching: a player host's game of the same play had 4% and 10%). OpenCE's
+  client (`debug.join_legacy`), the OpenCE client at 30 hearing none of
+  OpenH1's messages: without scripted hits, each player's drift 0 of 1800
+  ticks; with a hit every 8 seconds, every hit both ways taken, and drift of
+  9% to 10% and 2% to 3% in two runs (the players brought together to
+  shoot, and touching: a player host's game with a hit every 4 seconds had
+  4% and 10%). OpenCE's
   own release (build 335) as one client and OpenH1 as the other, without
   scripted hits: both in step with a Legacy server and with an OpenH1 120
   Tick one, 0 of 4800 ticks apart.
