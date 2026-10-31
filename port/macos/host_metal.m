@@ -1473,10 +1473,10 @@ static CAFrameRateRange link_rate_range(int saving)
 		return CAFrameRateRangeMake(rate, rate, rate);
 	}
 #if TARGET_OS_IPHONE
-	/* (60 at least: iOS slows the link within the range by itself as the
-	frames come, with no pause of the link that a change of its range makes;
-	rate_adapt's halving paused it, the game waiting out PRESENT_WAIT_MAXIMUM_NS) */
-	return CAFrameRateRangeMake(rate < 60.0f ? rate : 60.0f, rate, rate);
+	/* (its highest alone: given a range, iOS slows the link to save power,
+	to 80 Hz on an iPhone 15 Pro Max whose frames kept 120; rate_adapt's
+	halving is off by default, its changes pausing the link) */
+	return CAFrameRateRangeMake(rate, rate, rate);
 #else
 	return getenv("HALO_METAL_RATE") ? CAFrameRateRangeMake(rate, rate, rate) :
 		CAFrameRateRangeMake(rate < 60.0f ? rate : 30.0f, rate, rate);
