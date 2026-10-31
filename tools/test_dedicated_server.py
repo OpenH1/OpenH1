@@ -646,8 +646,8 @@ def _probe(prober):
 
 
 def test_probe_prints_the_server(machines):
-    """halo --probe, on the LAN: the server's game as one line of JSON, nothing joined; a Legacy game's (the
-    server's by default: server.game_mode) at 30, of no OpenH1 protocol"""
+    """halo --probe, on the LAN: the server's game as one line of JSON, nothing joined; an OpenH1 game's (the
+    server's by default: server.game_mode) at 120, of the OpenH1 protocol"""
     _needs_game("prisoner")
     server = machines("probed").start(["--server"], **_server_settings(
         0, HALO_SERVER_NAME="Probe Me", HALO_SERVER_ROTATION="prisoner:ctf"))
@@ -656,7 +656,7 @@ def test_probe_prints_the_server(machines):
     game = _probe(prober)
     assert game["ok"] and game["name"] == "Probe Me" and game["map"] == "prisoner", game
     assert game["gametype"] == "ctf" and game["dedicated"] and game["players"] == 0, game
-    assert game["tick_rate"] == 30 and game["openh1_version"] == 0, game
+    assert game["tick_rate"] == 120 and game["openh1_version"] > 0, game
     assert not (prober.folder / "bin" / "config.toml").exists(), "the probe wrote its settings"
 
 

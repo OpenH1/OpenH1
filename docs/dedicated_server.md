@@ -20,10 +20,10 @@ servers uses in every build) and `server_rotation.c` (the rotation's
 grammar and the gametype rules), which every build compiles.
 
 **In OpenH1.** The server is OpenCE's, brought in with its network side
-(OpenCE's own netcode: by default a dedicated server hosts Legacy games, at
-30 ticks a second, which OpenCE's players and OpenH1's join alike; with
-`server.game_mode` it hosts OpenH1 60 or 120 Tick games, "OpenH1 games"
-below). OpenH1's builds run
+(by default a dedicated server hosts OpenH1 120 Tick games, which OpenCE's
+players join too at 30; with `server.game_mode` it hosts OpenH1 60 Tick
+games, or Legacy games, OpenCE's own netcode at 30 ticks a second for
+everyone: "OpenH1 games" below). OpenH1's builds run
 the game as a guest of a 64-bit host (`port/linux/host`), so the server
 runs there too: `halo --server` on the Linux builds (and the macOS and
 Windows ones), its signals caught by the host for it
@@ -282,7 +282,7 @@ in either case, and is kept as the table spells it:
 | `server.lobby_seconds`, `server.postgame_seconds` | 0 to 300 |
 | `server.empty_seconds`, `server.idle_minutes` | 0 or more |
 | `server.frame_rate` | 30 to 120 |
-| `server.game_mode` | `legacy`, `openh1_30`, `openh1_60`, `openh1_120` |
+| `server.game_mode` | `openh1_120`, `openh1_60`, `openh1_30`, `legacy` |
 | `server.team_start` | `one`, `both`, `skip` |
 | `server.log_format` | `text`, `json` |
 | `server.auto_update` | `off`, `check`, `install` |
@@ -333,9 +333,9 @@ not a moderator: spaced letters and look-alikes get past it.
 
 | Value | The games |
 | --- | --- |
-| `legacy` (the default) | OpenCE's netcode at 30 ticks a second, which OpenCE's players and OpenH1's join alike |
-| `openh1_60`, `openh1_120` | An OpenH1 game at 60 or 120 ticks a second: each OpenH1 player's sub-steps go between the machines, and OpenCE players join it too, at 30, while `network.allow_opence` is on (the default) |
+| `openh1_120` (the default), `openh1_60` | An OpenH1 game at 120 or 60 ticks a second: each OpenH1 player's sub-steps go between the machines, and OpenCE players join it too, at 30, while `network.allow_opence` is on (the default) |
 | `openh1_30` | An OpenH1 game at 30, as a player's Server Setup offers it |
+| `legacy` | OpenCE's netcode at 30 ticks a second, which OpenCE's players and OpenH1's join alike |
 
 The server hosts an OpenH1 game as a player's game hosts one, with the
 differences of any dedicated server (`port/linux/NETCODE.md`, "Dedicated
@@ -364,13 +364,13 @@ the `game_started` and `game_ended` events say what is hosted.
 
 A server takes nothing of a player's host's `network.game_mode` and
 `network.sim_rate`. Before `server.game_mode`, a server took its kind of
-game from them, whose defaults host OpenH1 120 Tick games that OpenCE
-players join too; such a server hosts Legacy games now, unless
-`server.game_mode` says `openh1_120`. A server that finds either of them set
-(to another value than its default in `config.toml`, or by its environment
-variable) says so as it starts: `WARN server: network.sim_rate = 60 is a
+game from them; such a server hosts OpenH1 120 Tick games now, unless
+`server.game_mode` says otherwise (`openh1_60` for a `network.sim_rate`
+of 60, `legacy` for a `network.game_mode` of `legacy`). A server that
+finds either of them set (to another value than its default in
+`config.toml`, or by its environment variable) says so as it starts: `WARN server: network.sim_rate = 60 is a
 player's host's setting, which a dedicated server leaves aside:
-server.game_mode (legacy) says what it hosts`.
+server.game_mode (openh1_120) says what it hosts`.
 
 ### Votes, the map vote and players away
 
@@ -764,7 +764,7 @@ Every frame is text holding one JSON object. The server speaks first:
 
 ```
 → {"type":"hello","protocol":1,"server":"OpenCE Server","build":"build-206","network_version":38,
-   "openh1_version":11,"game_mode":"legacy",
+   "openh1_version":11,"game_mode":"openh1_120",
    "capabilities":["events","status","rotation","settings","bans","owner_web","ban_address","stop","event_addresses","identity","vpn","link","game_mode"]}
 ← {"type":"auth","password":"…","by":"sam"}        or {"type":"auth","token":"<session token>"}
 → {"type":"auth","ok":true,"role":"admin"}
