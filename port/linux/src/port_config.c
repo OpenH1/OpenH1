@@ -157,10 +157,11 @@ static const struct config_setting config_settings[] =
 		"\"native\" draws at the window's resolution (fullscreen, the display's or\n"
 		"display.resolution); \"original\" draws the Xbox's 640x480 and scales it\n"
 		"up." },
-	{ "display.render_scale", _config_real, "1.0", "HALO_RENDER_SCALE", _environment_value, _platform_ios,
+	{ "display.render_scale", _config_real, "0.0", "HALO_RENDER_SCALE", _environment_value, _platform_ios,
 		"iOS: the fraction of the screen's pixels the game draws, each way (0.25\n"
 		"to 1.0), which the display scales up: 0.67 draws less than half the\n"
-		"pixels, for a cooler phone and a steadier frame rate. Read at start." },
+		"pixels, for a cooler phone and a steadier frame rate. 0: the device's,\n"
+		"0.67 on an iPhone of 3x pixels, else 1.0. Read at start." },
 	{ "display.window_size", _config_string, "\"\"", "HALO_WINDOW_SIZE", _environment_value, _platform_desktop,
 		"The window's size, \"<width>x<height>\" (\"1920x1080\"), 640x480 or more (it\n"
 		"can be resized). Empty: display.window_scale's." },
