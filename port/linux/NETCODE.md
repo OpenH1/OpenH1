@@ -26,9 +26,11 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
   clients the control its actors gave their units (how they move, where
   they face, aim and look, their trigger and buttons, their animation
   impulses) with the units' state, those near a client's players every
-  tick and others less often; a client drives each unit with the latest
-  it has, as it drives a remote player's, until it hears nothing of it for
-  two seconds (`port/linux/game/network_actors.c`).
+  tick and others less often (in an OpenH1 game, a press of their control
+  and an aim at a client's player at once: "Actors to far clients"); a
+  client drives each unit with the latest it has, as it drives a remote
+  player's, until it hears nothing of it for two seconds
+  (`port/linux/game/network_actors.c`).
 - **Co-op.** A network game on a campaign level with no game engine
   (Create Game's Map screen, its SINGLEPLAYER maps, over LAN and the
   internet) is co-op. Only the host runs the
@@ -1116,6 +1118,41 @@ Each costs a client, at 120, 90 states a second for each player near it (30
 at 60), about 3.3 KB/s a player at 120 (1.1 at 60) and 10 bytes a message.
 Nothing changes in a Legacy game, at 30, or for an OpenCE machine (sent no
 message of 120 and after) or an OpenCE player's state.
+
+### Actors to far clients
+
+Only the host runs the AI. It sends each client its actors' units as it
+sends moving objects, by the distance from the client's nearest player
+(`network_objects_send_period`): within 25 world units every tick, then
+every second, third and fourth tick past 60 and 120, but a unit starting a
+one-tick action (a jump, a grenade, a melee, an impulse) to every client at
+once. A far enemy's start, stop, burst or turn reached the client up to
+three ticks late (100 ms, 50 on average past 120), the distance problem
+"Presses to far clients" solved for the players: a sniper's or a Banshee's
+shot left from where the client had it aimed some ticks before.
+
+In an OpenH1 game the host also sends an actor's unit, whatever its period,
+to:
+
+- every OpenH1 client, the tick its control makes a press against what it
+  last sent every client (`actor_state_pressed`): the control flags (the
+  trigger's, crouch, ...) or the animation state changed, the trigger or a
+  stick moved by a quarter of its reach (the trigger from none, by any),
+  or the aim turned by 1/32 of a turn (11 degrees). A steady turn or drift
+  adds up to a press and goes then;
+- an OpenH1 client every tick while the unit aims at one of its players
+  (the line of its aim within 2 world units of them, or 5 degrees), or one
+  of them at it (`network_objects_aims_with_machine`): a duel at range is
+  seen as the host has it, its aim and its shots.
+
+Nothing changes on the wire: the entries are the ones the host sent, only
+sooner, so no protocol version was needed; a client takes them as before.
+Nothing changes in a Legacy game or for an OpenCE machine. In a co-op game
+on b30 at 120 (the host and one client, 25 ms each way, the scripted player
+wandering the beach's fight, 51 seconds), the host sent the client 100.0 KB/s
+on average (`network test: bandwidth`), 63.3 KB/s of it actors' states
+(`network test: actors to clients`): the presses 1.0 KB/s of those, the aims
+1.8 KB/s, so 97.2 KB/s before (2.9% more).
 
 ### OpenCE players in an OpenH1 game
 

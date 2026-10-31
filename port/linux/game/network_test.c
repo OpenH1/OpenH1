@@ -620,6 +620,16 @@ static void network_test_log_players(
 				to_host, to_clients, (int)clients, clients ? to_clients / clients : 0L);
 			network_distributed_batch_datagrams(&to_host, &to_clients);
 			platform_log("network test: datagrams to host %ld to clients %ld a second", to_host, to_clients);
+			/* (the host's actors' states of those, and the entries a press or
+			an aim alone sent) */
+			if (game_connection() == _game_connection_network_server)
+			{
+				long all, pressed, aimed;
+
+				network_actors_bytes_sent(&all, &pressed, &aimed);
+				platform_log("network test: actors to clients %ld (pressed %ld aimed %ld) bytes a second", all,
+					pressed, aimed);
+			}
 		}
 		/* (a client: its corrections of the other players' units, all and
 		against its history of them, and the host's states within that
