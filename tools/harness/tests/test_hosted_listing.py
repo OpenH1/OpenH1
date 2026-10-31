@@ -51,7 +51,8 @@ def generated(fault=None):
     config += "\n"
     code = "\n\n".join([function(menus, name) for name in (
         "multiplayer_mode_set", "multiplayer_host", "server_settings_private", "server_settings_private_set",
-        "server_settings_initialize", "server_start")] + [function(host, name) for name in (
+        "server_settings_initialize", "ui_widget_port_cooperative_settings_apply",
+        "server_start")] + [function(host, name) for name in (
         "host_notice", "host_confirming", "host_confirmed", "host_game", "host_game_teams", "host_game_rows_read",
         "host_game_limits", "host_game_row_text", "host_step_value", "host_password_done", "host_announce_done",
         "host_teams_arrange", "host_game_row_change")])
