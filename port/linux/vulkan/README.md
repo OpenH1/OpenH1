@@ -53,8 +53,8 @@ preserve their pixels. By default every pass stores its attachments: later
 scope, cockpit and runtime-depth passes can read the depth.
 `HALO_VULKAN_STATS` includes attachment loads and clears.
 
-`HALO_VULKAN_DISCARDS=1` (off by default until it is measured on tile-based
-GPUs, #133) stores less from a tiler's tile memory, as the Metal backend
+Discards (on by default since they were measured on the Steam Frame,
+#335; `HALO_VULKAN_DISCARDS=0`: off) store less from a tiler's tile memory, as the Metal backend
 does (#131). Each pass's draws go into a secondary command buffer, and the
 pass's `vkCmdBeginRendering` is made at the submission, when what the
 later work does with its attachments is known (`xgpu_vulkan.c`, "the main
@@ -149,7 +149,7 @@ four multiview views and fragment storage-buffer atomics.
 | `HALO_VULKAN_PIPELINE_CACHE=<file>` | The pipeline cache's file (by default `$XDG_CACHE_HOME/openh1/vulkan_pipelines.bin`); empty: none |
 | `HALO_VULKAN_SHADERS=<dir>` | Each shader module written there as it is made (`.spv`); as `debug.gpu_dump_shaders`, over which it wins |
 | `HALO_VULKAN_STATS=1` | Every 600 frames, submissions, passes, attachment loads/clears, clears drawn, draws, pipeline creation count/time, upload ring bytes, stores discarded, resolves in passes, passes continued and put aside and buffers renamed (`HALO_VULKAN_DISCARDS`), textures made, and the frames' GPU time (from each frame's first work to its last) and time between frames (not in the VR mode, which times its own); as `debug.gpu_stats` |
-| `HALO_VULKAN_DISCARDS=1` | Attachments stored only where something later reads them, multisampled targets resolved in their pass and, with lazily allocated memory, transient (above); off by default |
+| `HALO_VULKAN_DISCARDS=0` | Every attachment stored, passes recorded in the main command buffer as drawn: discards off (they are on by default: attachments stored only where something later reads them, multisampled targets resolved in their pass and, with lazily allocated memory, transient, passes put aside; above) |
 | `HALO_VULKAN_ASIDE=0` | With `HALO_VULKAN_DISCARDS`: no passes put aside, no buffers renamed (above) |
 | `HALO_VULKAN_TRANSIENT=0`, `=force` | With `HALO_VULKAN_DISCARDS`: no transient multisampled targets, or transient ones in ordinary memory where the device has no lazily allocated memory |
 | `HALO_NO_VSYNC=1` | `display.vsync = false`: presented without waiting for the display (mailbox where the surface has it, else immediate) instead of FIFO |

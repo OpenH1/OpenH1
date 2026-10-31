@@ -1126,7 +1126,7 @@ image that is loaded is still correct: its lazily allocated memory is then
 committed (Vulkan's lazily allocated memory keeps what is stored in it,
 unlike Metal's memoryless textures).
 
-Without discards (the default), passes are recorded into the main command
+Without discards (HALO_VULKAN_DISCARDS=0), passes are recorded into the main command
 buffer as they are drawn, with every attachment stored. */
 
 /* frames whose first use of an image cleared it whole before its end is
@@ -6635,8 +6635,9 @@ VK_KHR_depth_stencil_resolve: else the depth is resolved by a pass of its
 own, as without discards), and lazily allocated memory for the transient
 multisampled images (else they are ordinary images: a desktop's GPU has
 none). HALO_VULKAN_TRANSIENT=0: no transient images; =force: transient
-images in ordinary memory, to try their path on a desktop's GPU. Off by
-default until it is measured on tile-based GPUs (#133). */
+images in ordinary memory, to try their path on a desktop's GPU. On by
+default (measured on the Steam Frame's Adreno, #335);
+HALO_VULKAN_DISCARDS=0: off. */
 static void discards_choose(void)
 {
 	const char *chosen = getenv("HALO_VULKAN_DISCARDS"), *transient = getenv("HALO_VULKAN_TRANSIENT");
@@ -6646,7 +6647,7 @@ static void discards_choose(void)
 	uint32_t index;
 	int lazily = 0;
 
-	vk.deferred = chosen && atoi(chosen) != 0;
+	vk.deferred = !chosen || !*chosen || atoi(chosen) != 0;
 	vk.depth_resolve = vk.transient = vk.aside = 0;
 	if (!vk.deferred)
 		return;
