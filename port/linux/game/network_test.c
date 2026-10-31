@@ -1488,11 +1488,11 @@ static void network_test_probe_answer(
 		map[length] = 0;
 		printf("{\"ok\":true,\"name\":\"%s\",\"map\":\"%s\",\"gametype\":\"%s\",\"players\":%d,"
 			"\"max_players\":%d,\"teams\":%s,\"in_progress\":%s,\"open\":%s,\"dedicated\":%s,"
-			"\"network_version\":%u,\"kind\":%u}\n", name, map,
+			"\"network_version\":%u,\"kind\":%u,\"tick_rate\":%d,\"openh1_version\":%u}\n", name, map,
 			game.engine_type >= 0 && game.engine_type < (short)NUMBEROF(engines) ? engines[game.engine_type] : "none",
 			game.player_count, game.maximum_player_count, game.has_teams ? "true" : "false",
 			game.in_progress ? "true" : "false", game.open ? "true" : "false", game.dedicated ? "true" : "false",
-			(unsigned)game.version, (unsigned)game.kind);
+			(unsigned)game.version, (unsigned)game.kind, (int)game.rate, (unsigned)game.openh1_version);
 		fflush(stdout);
 		exit(0);
 	}
@@ -1544,8 +1544,11 @@ void network_test_update(
 			network_test_shoot();
 		}
 		/* (the host brings the players near a second before they shoot;
-		not the last while the vehicle test has it) */
-		if (network_test.mode == _network_test_host && network_test.shoot_interval > 0.0f &&
+		not the last while the vehicle test has it. A dedicated server's
+		"log" too, which hosts with no player of its own) */
+		if ((network_test.mode == _network_test_host ||
+			(network_test.mode == _network_test_log && game_connection() == _game_connection_network_server)) &&
+			network_test.shoot_interval > 0.0f &&
 			(game_time_get() + TICKS_PER_SECOND) % MAX(1, (long)(network_test.shoot_interval * TICKS_PER_SECOND)) <
 				TICKS_PER_SECOND)
 		{

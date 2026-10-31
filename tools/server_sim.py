@@ -82,7 +82,11 @@ NOTICE_SIZE = 128
 NETWORK_VERSION = 38
 # the RCON's hello's capabilities, and the status's (server_http.c's server_http_capabilities)
 CAPABILITIES = ["events", "status", "rotation", "settings", "bans", "owner_web", "ban_address", "stop",
-                "event_addresses", "identity", "vpn", "link"]
+                "event_addresses", "identity", "vpn", "link", "game_mode"]
+# the OpenH1 protocol version (halo_port_limits.h's HALO_PORT_STANDARD_NETWORK_VERSION), and server.game_mode's
+# words with each one's tick rate
+OPENH1_VERSION = 11
+GAME_MODES = {"legacy": 30, "openh1_30": 30, "openh1_60": 60, "openh1_120": 120}
 # the VPN policy's netlist (server_netlist.c): a master's list the simulator holds, and the addresses it lists
 VPN_LISTED = ("198.51.100.0", "198.51.100.255")
 VPN_REASONS = ("vpn_link_required", "vpn_blocked", "vpn_link_invalid", "vpn_link_too_new", "vpn_link_in_use")
@@ -312,6 +316,8 @@ def default_settings():
     port_config.c's order), as GET /api/settings sends them: typed values,
     and choices, min and max where they are known (null otherwise)"""
     return [
+        _setting("network.allow_opence", "boolean", True, "Hosting an OpenH1 game: let OpenCE players join it too, "
+                 "at 30 ticks a second.", "HALO_NET_ALLOW_OPENCE"),
         _setting("network.shield_effects", "string", "stock", "Host: the shield effects every player of a network "
                  "game sees, whatever their own.", "HALO_NET_SHIELD_EFFECTS",
                  choices=["stock", "glow", "light_show", "overshield", "glow_overshield", "light_show_overshield",
@@ -376,8 +382,11 @@ def default_settings():
                  "HALO_SERVER_TEAM_START", choices=["one", "both", "skip"]),
         _setting("server.motd", "string", "", "A notice each machine is shown as it joins (127 characters); empty "
                  "for none.", "HALO_SERVER_MOTD"),
-        _setting("server.frame_rate", "integer", 60, "Frames a second (30 to 120); the game's ticks stay 30 a second.",
+        _setting("server.frame_rate", "integer", 60, "Frames a second (30 to 120); an OpenH1 game's at least its tick rate.",
                  "HALO_SERVER_FRAME_RATE", low=30, high=120),
+        _setting("server.game_mode", "string", "legacy", "The games hosted: \"legacy\", OpenCE's netcode at 30 ticks a "
+                 "second; or \"openh1_60\", \"openh1_120\" (or \"openh1_30\"), an OpenH1 game at that tick rate.",
+                 "HALO_SERVER_GAME_MODE", choices=list(GAME_MODES)),
         _setting("server.web_password", "string", "", "The web page's admin password (8 characters or more).",
                  "HALO_SERVER_WEB_PASSWORD", secret=True),
         _setting("server.web_moderator_password", "string", "", "A second password, with the moderator role; empty "
@@ -976,9 +985,15 @@ class Sim:
         admin = ROLES.index(role) >= ROLES.index("admin")
         frame = round(3.5 + self.random.random() * 2, 1)
         mean = round(1 + self.random.random() * 0.6, 2)
+        mode = self.value("server.game_mode")
+        opence = mode == "legacy" or bool(self.value("network.allow_opence"))
+        mode_name = "Legacy" if mode == "legacy" else \
+            f"OpenH1 {GAME_MODES.get(mode, 30)} Tick" + (", OpenCE can join" if opence else "")
         return {
             "ok": True, "time": now_ms(), "name": self.value("server.name"), "state": self.state,
-            "build": BUILD, "network_version": NETWORK_VERSION, "uptime": int(time.time() - self.started),
+            "build": BUILD, "network_version": NETWORK_VERSION, "openh1_version": OPENH1_VERSION,
+            "game_mode": mode, "game_mode_name": mode_name, "tick_rate": GAME_MODES.get(mode, 30), "opence": opence,
+            "uptime": int(time.time() - self.started),
             "games_hosted": self.games_hosted, "map": entry["map"], "level": entry["level"],
             "gametype": entry["gametype"], "variant": entry["variant"], "teams": entry["teams"],
             "players": len(self.players), "max_players": self.value("server.max_players"),
@@ -1302,7 +1317,8 @@ class Sim:
         if self.state == "starting":
             self.state = "waiting"
             self.emit("server_started", "server", name=self.value("server.name"), build=BUILD,
-                      network_version=NETWORK_VERSION, **self.identity(),
+                      network_version=NETWORK_VERSION, openh1_version=OPENH1_VERSION,
+                      game_mode=self.value("server.game_mode"), **self.identity(),
                       rotation=[entry["text"] for entry in self.rotation])
             self.log("info", "server", f"ready (tunnel 2302/udp, web 127.0.0.1:{self.options.port}, listing public)")
             for entry in self.rotation:
@@ -2866,7 +2882,8 @@ class WsConnection:
         if sim.options.drop:
             threading.Timer(sim.options.drop_after, self.cut).start()
         self.put({"type": "hello", "protocol": 1, "server": sim.value("server.name"), "build": BUILD,
-                  "network_version": NETWORK_VERSION, "capabilities": list(CAPABILITIES)})
+                  "network_version": NETWORK_VERSION, "openh1_version": OPENH1_VERSION,
+                  "game_mode": sim.value("server.game_mode"), "capabilities": list(CAPABILITIES)})
         if auto_session:
             self.role, self.by = auto_session.role, auto_session.by
             self.put({"type": "auth", "ok": True, "role": self.role})

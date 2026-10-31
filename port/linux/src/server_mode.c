@@ -59,6 +59,8 @@ static struct
 	/* the pace: the next frame's deadline, and whether the server is idle */
 	Uint64 deadline;
 	int idle;
+	/* (an OpenH1 game's tick rate: server_mode_set_minimum_frame_rate) */
+	long minimum_rate;
 	/* the frames' work this minute and the last: the longest and the sum */
 	Uint64 frame_began;
 	Uint64 minute_began;
@@ -409,6 +411,11 @@ void server_mode_set_idle(int idle)
 	server_mode.idle = idle;
 }
 
+void server_mode_set_minimum_frame_rate(long rate)
+{
+	server_mode.minimum_rate = rate;
+}
+
 void server_mode_pace_frame(void)
 {
 	long rate = server_mode.idle ? SERVER_IDLE_FRAME_RATE : config_integer("server.frame_rate");
@@ -416,6 +423,8 @@ void server_mode_pace_frame(void)
 	Uint64 period;
 	double work;
 
+	if (rate < server_mode.minimum_rate)
+		rate = server_mode.minimum_rate;
 	if (rate < 30)
 		rate = 30;
 	if (rate > 120)
@@ -497,6 +506,11 @@ void server_mode_pace_frame(void)
 void server_mode_set_idle(int idle)
 {
 	(void)idle;
+}
+
+void server_mode_set_minimum_frame_rate(long rate)
+{
+	(void)rate;
 }
 
 void server_mode_frame_times(double *longest, double *mean)

@@ -32,6 +32,12 @@ void network_standard_server_created(void);
 while no other machine has joined: a game's kind holds once one has */
 void network_standard_server_mode_read(void);
 boolean network_standard_hosting(void);
+/* the game this machine hosts, as a dedicated server's status tells it: its
+OpenH1 game's rate (as last read in the lobby, then the game's), 0 for a
+Legacy game; and whether OpenCE players join it now (a Legacy game, or a
+mixed one). A dedicated server that hosts nothing yet: what its
+server.game_mode says it will host */
+long network_standard_server_hosted(boolean *opence);
 /* the rate of the Standard game hosted: network.sim_rate as read in the
 lobby (in_lobby, before the game's start), the same from the start to the
 game's end. 0 hosting a Legacy game */

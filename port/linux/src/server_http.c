@@ -365,6 +365,9 @@ static struct
 	char *players_admin;
 	char *players_owner;
 	char state[16];
+	/* (the kind of game hosted, the status's game_mode, for the RCON's
+	hello) */
+	char game_mode[16];
 	Uint64 snapshot_time;
 	long metrics_players, metrics_max_players, metrics_machines, metrics_games;
 	double metrics_frame_longest, metrics_frame_mean;
@@ -2343,8 +2346,9 @@ void server_http_capabilities(struct server_json *json, const char *key)
 		/* (the fleets': the owner's password from this machine, a ban of an
 		address, a drain and stop, addresses in the events, the server's
 		identity in the status; the VPN policy's /api/vpn and join_refused,
-		and verified Discord accounts in the players and the bans) */
-		"owner_web", "ban_address", "stop", "event_addresses", "identity", "vpn", "link" };
+		and verified Discord accounts in the players and the bans; the kind
+		of game hosted, server.game_mode, and its tick rate) */
+		"owner_web", "ban_address", "stop", "event_addresses", "identity", "vpn", "link", "game_mode" };
 	int index;
 
 	server_json_array_begin(json, key);
@@ -2433,6 +2437,15 @@ static void handle_upgrade(struct connection *connection)
 		server_json_string(&json, "server", config_string("server.name"));
 		server_json_string(&json, "build", server_mode_build());
 		server_json_integer(&json, "network_version", HALO_PORT_NETWORK_VERSION);
+		server_json_integer(&json, "openh1_version", HALO_PORT_STANDARD_NETWORK_VERSION);
+		{
+			char game_mode[16];
+
+			SDL_LockMutex(http.lock);
+			snprintf(game_mode, sizeof(game_mode), "%s", http.game_mode[0] ? http.game_mode : "legacy");
+			SDL_UnlockMutex(http.lock);
+			server_json_string(&json, "game_mode", game_mode);
+		}
 		server_http_capabilities(&json, "capabilities");
 		server_json_object_end(&json);
 		ws_send(connection, server_json_text(&json));
@@ -3908,6 +3921,8 @@ static void refresh_snapshots(void)
 			http.metrics_machines = (long)value;
 		if (server_json_get_number(&document, server_json_member(&document, 0, "games_hosted"), &value))
 			http.metrics_games = (long)value;
+		server_json_get_string(&document, server_json_member(&document, 0, "game_mode"), http.game_mode,
+			sizeof(http.game_mode));
 		server_json_document_free(&document);
 	}
 	server_mode_frame_times(&http.metrics_frame_longest, &http.metrics_frame_mean);

@@ -37,6 +37,7 @@ Called from the main loop every frame (main.c).
 #include "game_modes.h"
 #include "network_distributed.h"
 #include "network_map_vote.h"
+#include "network_standard.h"
 #include "server_director.h"
 #include "server_gametypes.h"
 
@@ -49,6 +50,7 @@ Called from the main loop every frame (main.c).
 #include "../src/server_master.h" /* port: port/linux/src/server_master.c */
 #include "../src/server_netlist.h" /* port: port/linux/src/server_netlist.c */
 #include "../src/posix_server.h" /* port: port/linux/src/posix_server.c */
+#include "../src/port_config.h" /* port: port/linux/src/port_config.c */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -327,6 +329,91 @@ real server_director_game_seconds(
 	return server.state == _server_state_playing || server.state == _server_state_postgame ? server.game_seconds : 0.0f;
 }
 
+long server_director_game_mode(
+	char *word,
+	long word_size,
+	char *title,
+	long title_size,
+	boolean *opence)
+{
+	boolean joins;
+	long rate = network_standard_server_hosted(&joins);
+
+	if (word)
+	{
+		if (rate)
+			snprintf(word, (size_t)word_size, "openh1_%ld", rate);
+		else
+			snprintf(word, (size_t)word_size, "legacy");
+	}
+	if (title)
+	{
+		if (rate)
+			snprintf(title, (size_t)title_size, "OpenH1 %ld Tick%s", rate, joins ? ", OpenCE can join" : "");
+		else
+			snprintf(title, (size_t)title_size, "Legacy");
+	}
+	if (opence)
+		*opence = joins;
+	return rate ? rate : 30;
+}
+
+/* a player host's network.game_mode and network.sim_rate set (in
+config.toml or the environment), which a server leaves aside for
+server.game_mode: said once, as a server that took its kind of game from
+them (OpenH1 120 Tick by default, before server.game_mode) hosts Legacy
+games now unless server.game_mode says otherwise */
+static void server_warn_player_host_modes(
+	void)
+{
+	static char const *const names[] = { "network.game_mode", "network.sim_rate" };
+	long index;
+
+	for (index = 0; index < (long)NUMBEROF(names); index++)
+	{
+		struct config_setting_info info;
+		char value[64];
+		int setting;
+
+		for (setting = 0; config_setting_info(setting, &info) && strcmp(info.name, names[index]); setting++)
+		{
+		}
+		if (!info.name || strcmp(info.name, names[index]) || !config_text(names[index], value, sizeof(value)))
+			continue;
+		if (info.pinned || strcmp(value, info.default_text))
+		{
+			server_log(_server_log_warning, "server", "%s = %s is a player's host's setting, which a dedicated server "
+				"leaves aside: server.game_mode (%s) says what it hosts", names[index], value,
+				config_string("server.game_mode"));
+		}
+	}
+}
+
+/* the kind of game hosted taken again from server.game_mode (and
+network.allow_opence) in the lobby, while no other machine is in it and no
+start was sent (network_standard_server_mode_read: players keep the kind
+they joined, and a game its rate), and said when it changes; an OpenH1
+game's frames at least its rate */
+static void server_game_mode_update(
+	void)
+{
+	struct network_game_server *network_server = global_network_game_server_get();
+	char before[64], after[64];
+	long rate;
+
+	if (network_server && server_network_state() == SERVER_PREGAME &&
+		!network_game_server_port_start_sent(network_server))
+	{
+		server_director_game_mode(NULL, 0, before, sizeof(before), NULL);
+		network_standard_server_mode_read();
+		server_director_game_mode(NULL, 0, after, sizeof(after), NULL);
+		if (strcmp(before, after))
+			server_log(_server_log_info, "lobby", "hosting: %s (server.game_mode)", after);
+	}
+	rate = network_standard_server_hosted(NULL);
+	server_mode_set_minimum_frame_rate(network_server ? rate : 0);
+}
+
 /* ---------- events */
 
 /* a variant's name, as the lobby shows it, in printable ASCII */
@@ -370,6 +457,14 @@ static void server_game_event(
 		server_variant_name(&game->variant, variant, sizeof(variant));
 		server_json_string(&json, "variant", cooperative ? "Co-op" : variant);
 		server_json_boolean(&json, "teams", !cooperative && game->variant.universal_variant.teams);
+	}
+	/* (the kind of game, and its tick rate) */
+	{
+		char mode[16];
+		long rate = server_director_game_mode(mode, sizeof(mode), NULL, 0, NULL);
+
+		server_json_string(&json, "game_mode", mode);
+		server_json_integer(&json, "tick_rate", rate);
 	}
 	if (reason)
 	{
@@ -1615,7 +1710,12 @@ static void server_hosting(
 	server.lobby_seconds = 0.0f;
 	server.back_to_lobby = FALSE;
 	server_set_state(_server_state_lobby);
-	server_log(_server_log_info, "lobby", "hosting");
+	{
+		char title[64];
+
+		server_director_game_mode(NULL, 0, title, sizeof(title), NULL);
+		server_log(_server_log_info, "lobby", "hosting: %s (server.game_mode)", title);
+	}
 }
 
 /* whether the entry is a team game's */
@@ -2181,6 +2281,7 @@ void server_update(
 		for (index = 0; index < MAXIMUM_SLOTS; index++)
 			server.seen_machines[index] = NONE;
 		server_read_rotation(&server.rotation, config_string("server.rotation"));
+		server_warn_player_host_modes();
 		server.index = server.rotation.count - 1;
 		server.current_index = NONE;
 		server.last_countdown_seconds = NONE;
@@ -2194,6 +2295,13 @@ void server_update(
 			server_json_string(&json, "name", config_string("server.name"));
 			server_json_string(&json, "build", server_mode_build());
 			server_json_integer(&json, "network_version", HALO_PORT_NETWORK_VERSION);
+			server_json_integer(&json, "openh1_version", HALO_PORT_STANDARD_NETWORK_VERSION);
+			{
+				char mode[16];
+
+				server_director_game_mode(mode, sizeof(mode), NULL, 0, NULL);
+				server_json_string(&json, "game_mode", mode);
+			}
 			server_status_identity(&json);
 			server_json_array_begin(&json, "rotation");
 			for (entry = 0; entry < server.rotation.count; entry++)
@@ -2242,6 +2350,7 @@ void server_update(
 	server.state_seconds += seconds;
 	server_mode_set_idle(!network_server ||
 		(network_state == SERVER_PREGAME && !network_game_server_port_remote_machine_count(network_server, FALSE)));
+	server_game_mode_update();
 
 	if (!network_server)
 	{

@@ -1,7 +1,8 @@
 """The dedicated server (halo --server: docs/dedicated_server.md) with the game: its refusals and exit codes, a
 rotation played by a joined client (lobby, game, postgame and the next entry), the HTTP API (status, players, kick,
 ban and unban, say, the rotation), the events, standard input's commands, the owner's sign-in from loopback, a ban of
-an address, drains (sv_stop empty, sv_restart game), and its shutdown by quit, SIGTERM and SIGINT. Needs the retail
+an address, drains (sv_stop empty, sv_restart game), its shutdown by quit, SIGTERM and SIGINT, and OpenH1 60 and 120
+Tick games (server.game_mode) played by OpenH1 clients and an OpenCE-mode one in step with it. Needs the retail
 maps in assets/maps and ninja linux_x86_64's build/linux_x86_64/halo (HALO_TEST_MAPS, HALO_TEST_GAME); every machine runs from a folder of its own under pytest's
 tmp_path (its config.toml, data root, saves and home), on loopback addresses of its own, offline (system link), with
 no window, sound, update check or Discord."""
@@ -634,22 +635,235 @@ def test_settings_refuse_a_value_they_cannot_read(machines):
     assert server.wait(15) == 0, server.text()[-3000:]
 
 
-def test_probe_prints_the_server(machines):
-    """halo --probe, on the LAN: the server's game as one line of JSON, nothing joined"""
-    _needs_game("prisoner")
-    server = machines("probed").start(["--server"], **_server_settings(
-        0, HALO_SERVER_NAME="Probe Me", HALO_SERVER_ROTATION="prisoner:ctf"))
-    _until(lambda: "server: ready" in server.text(), 90, "server: ready", server)
-    prober = machines("prober")
+def _probe(prober):
+    """halo --probe on the LAN, from the prober's machine: the game it prints"""
     result = subprocess.run([str(prober.folder / "bin" / "halo"), "--probe"], cwd=prober.folder,
                             env=prober.environment(HALO_NET_ADDRESS=CLIENT_ADDRESSES[0],
                                                    HALO_NET_BROADCAST=SERVER_ADDRESS, HALO_NET_ONLINE="false"),
                             stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=90)
     assert result.returncode == 0, result.stdout + result.stderr[-2000:]
-    game = json.loads(result.stdout.strip().splitlines()[-1])
+    return json.loads(result.stdout.strip().splitlines()[-1])
+
+
+def test_probe_prints_the_server(machines):
+    """halo --probe, on the LAN: the server's game as one line of JSON, nothing joined; a Legacy game's (the
+    server's by default: server.game_mode) at 30, of no OpenH1 protocol"""
+    _needs_game("prisoner")
+    server = machines("probed").start(["--server"], **_server_settings(
+        0, HALO_SERVER_NAME="Probe Me", HALO_SERVER_ROTATION="prisoner:ctf"))
+    _until(lambda: "server: ready" in server.text(), 90, "server: ready", server)
+    prober = machines("prober")
+    game = _probe(prober)
     assert game["ok"] and game["name"] == "Probe Me" and game["map"] == "prisoner", game
     assert game["gametype"] == "ctf" and game["dedicated"] and game["players"] == 0, game
+    assert game["tick_rate"] == 30 and game["openh1_version"] == 0, game
     assert not (prober.folder / "bin" / "config.toml").exists(), "the probe wrote its settings"
+
+
+# ---------- OpenH1 games (server.game_mode)
+
+def _net_compare():
+    """tools/net_compare.py, whose judging of the network test's logs the OpenH1 games' tests take"""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("net_compare", ROOT / "tools" / "net_compare.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _rates(machine, net_compare):
+    """the rates a machine's network test logged it played at (each second's), its log's mixed-game lines"""
+    return [line["rate"] for line in net_compare.parse_rates(machine.output)]
+
+
+def _play_openh1_game(machines, rate, opence_client, shoot):
+    """a server of OpenH1 <rate> Tick games (server.game_mode) and two headless clients joining it from its
+    advertisement and playing it with the network test's bot: the second as OpenCE joins (debug.join_legacy, the
+    tests' stand-in for an OpenCE machine) when opence_client. Each machine logs every second (the server its
+    network test's "log", which hosts nothing), and with shoot (seconds; 0 for none) each client's player hits the
+    next every so often, the server bringing them together first. The probe, the status and the events are checked; the
+    server, the clients and the logs are returned once a minute of play is in them"""
+    _needs_game("bloodgulch")
+    port = _free_port()
+    mode = f"openh1_{rate}"
+    server = machines("server")
+    # (in config.toml, not its environment variable, which would pin it: sv_set changes it below)
+    (server.folder / "bin" / "config.toml").write_text(f'[server]\ngame_mode = "{mode}"\n')
+    server.start(["--server"], **_server_settings(
+        port, HALO_SERVER_ROTATION="bloodgulch:slayer+score=50", HALO_NETWORK_TEST="log",
+        HALO_NETWORK_TEST_SHOOT=shoot))
+    api = Api(port)
+    _until(lambda: "server: ready" in server.text(), 90, "server: ready", server)
+    api.login()
+    status = api.status()
+    assert (status["game_mode"], status["tick_rate"], status["opence"]) == (mode, rate, True), status
+    assert status["openh1_version"] >= 11 and "game_mode" in status["capabilities"], status
+    assert f"hosting: OpenH1 {rate} Tick, OpenCE can join (server.game_mode)" in server.text(), server.text()[-2000:]
+    started = next(event for event in api.events() if event["event"] == "server_started")
+    assert started["game_mode"] == mode, started
+    # (advertised as a mixed game is: OpenCE's network version, which OpenCE lists and joins, with the rate and the
+    # OpenH1 protocol beside it)
+    game = _probe(machines("prober"))
+    assert game["dedicated"] and game["tick_rate"] == rate, game
+    assert game["network_version"] == status["network_version"], game
+    assert game["openh1_version"] == status["openh1_version"], game
+    clients = []
+    for index, name in enumerate(("Alpha", "Bravo")):
+        settings = {"HALO_TEST_INPUT": f"bot:{index + 1}", "HALO_NETWORK_TEST_SHOOT": shoot}
+        if opence_client and index == 1:
+            settings["HALO_DEBUG_JOIN_LEGACY"] = "true"
+        clients.append(machines(name.lower()).start(
+            HALO_NULL_RENDERER=1, HALO_NETWORK_TEST="join", HALO_NETWORK_TEST_NAME=name,
+            HALO_NET_ADDRESS=CLIENT_ADDRESSES[index], HALO_NET_BROADCAST=SERVER_ADDRESS, **settings))
+    _until(lambda: len((api.call("GET", "/api/players")[1] or {}).get("players", [])) == 2 and
+           (api.status() or {}).get("state") == "playing", 150, "both clients in the game", server)
+    started = next(event for event in reversed(api.events()) if event["event"] == "game_started")
+    assert (started["game_mode"], started["tick_rate"]) == (mode, rate), started
+    # (a minute of both playing: the second client loads last)
+    _until(lambda: "local machine is loaded" in clients[1].debug(), 90, "the second client loaded", clients[1])
+    time.sleep(65)
+    assert api.status()["state"] == "playing", api.status()
+    return server, api, clients
+
+
+def _judge_openh1_game(server, clients, rate, opence_client, shoot):
+    """the logs of _play_openh1_game, judged as tools/net_compare.py judges a mixed game's (NETCODE.md, "OpenCE
+    players in an OpenH1 game", "Comparing two builds"): each client's view of the players against the server's,
+    the rate each machine played at, OpenH1's messages kept from an OpenCE client, the server's drift of each
+    client's player (its run of a tick against the client's), and with shoot the clients' hits, none refused"""
+    net_compare = _net_compare()
+    tolerances = dict(net_compare.TOLERANCES)
+    args = type("Args", (), {"seconds": 40, "skip": 5, "rate": rate, "events": bool(shoot), "latency": False})()
+    # (the server's drift of each client's player, net_compare's tolerance being far wider: none apart but where
+    # the player touched something, a few ticks in a hundred; brought together to shoot each other, they touch,
+    # and more part, as in a player's host's game of the same play: a mixed one at 120, net_compare --events with
+    # a hit every 4 seconds, had 4% and 10% apart. The hits come every 8 seconds here, so that they touch less)
+    allowed = 0.2 if shoot else 0.02
+    # (each machine's log under its own name, which net_compare's figures and messages give)
+    logs = {}
+    for machine in [server] + clients:
+        logs[machine.name] = machine.folder.parent / f"{machine.name}.log"
+        shutil.copy(machine.output, logs[machine.name])
+    problems = []
+    for client in clients:
+        result = net_compare.judge_run(logs[server.name], logs[client.name], args, tolerances, drift_judged=False)
+        problems += [f"{client.name}: {problem}" for problem in result["problems"]]
+        problems += [f"{client.name}: {divergence}" for divergence in result["divergences"]]
+        print(f"{client.name}: {result.get('figures', {}).get('position_max')} world units apart at most, "
+              f"{result.get('client_corrections')} corrections")
+    divergences, mixed_problems, figures = net_compare.judge_mixed(
+        logs[server.name], [logs[client.name] for client in clients], [False, opence_client], args, tolerances)
+    problems += mixed_problems + [str(divergence) for divergence in divergences]
+    assert not problems, "\n".join(problems) + f"\n{figures}"
+    drift = {}
+    for line in net_compare.parse_rates(logs[server.name])[args.skip:]:
+        for player, (apart, compared) in line["drift"].items():
+            drift.setdefault(player, [0, 0])
+            drift[player][0] += apart
+            drift[player][1] += compared
+    assert len(drift) == 2 and all(compared >= 300 and apart / compared <= allowed
+                                   for apart, compared in drift.values()), drift
+    # (the server played the game's rate, each OpenH1 client too, an OpenCE one 30)
+    assert set(_rates(server, net_compare)[-20:]) == {rate}, _rates(server, net_compare)
+    assert set(_rates(clients[0], net_compare)[-20:]) == {rate}
+    assert set(_rates(clients[1], net_compare)[-20:]) == {30 if opence_client else rate}
+    # (the server took its OpenH1 clients' predictions as its ticks began, at 60 and 120, and its runs of them
+    # drifted from the clients' as little)
+    takes = re.findall(r"network test: takes none \d+ latest (\d+) late \d+ earlier (\d+) .*\| drift after latest "
+                       r"(\d+)/(\d+) late \d+/\d+ earlier (\d+)/(\d+)", server.text())
+    assert takes, "the server logged no takes"
+    latest, earlier, latest_apart, latest_compared, earlier_apart, earlier_compared = map(int, takes[-1])
+    assert latest + earlier > 0, takes[-1]
+    apart, compared = latest_apart + earlier_apart, latest_compared + earlier_compared
+    assert compared > 0 and apart / compared <= allowed, takes[-1]
+    figures["drift"] = {player: f"{apart} of {compared}" for player, (apart, compared) in drift.items()}
+    figures["takes"] = takes[-1]
+    return figures
+
+
+@pytest.mark.parametrize("rate", [60, 120])
+def test_openh1_tick_game(machines, rate):
+    """server.game_mode openh1_60 and openh1_120: a dedicated server hosts an OpenH1 game at that tick rate, which
+    two OpenH1 clients join from its advertisement and play in step with it (net_compare's checks, the server's
+    drift of each one's player); then, with nobody on it, server.game_mode legacy is taken in its lobby"""
+    server, api, clients = _play_openh1_game(machines, rate, opence_client=False, shoot=0)
+    figures = _judge_openh1_game(server, clients, rate, opence_client=False, shoot=0)
+    print(figures)
+    # a change of kind waits for the server to be empty, in its lobby
+    server.send("sv_set server.game_mode legacy")
+    _until(lambda: "server.game_mode = legacy" in server.text(), 15, "sv_set's answer", server)
+    time.sleep(3)
+    assert api.status()["game_mode"] == f"openh1_{rate}", "the kind of game changed with players on the server"
+    for client in clients:
+        client.stop()
+    _until(lambda: (api.status() or {}).get("state") == "lobby" and api.status()["game_mode"] == "legacy", 90,
+           "the lobby's Legacy games once empty", server)
+    assert (api.status()["tick_rate"], api.status()["opence"]) == (30, True), api.status()
+    assert "hosting: Legacy (server.game_mode)" in server.text()
+    # a client then joins a Legacy game: at 30, its game record without the OpenH1 games' rate (the server's record
+    # lasts from game to game), and none of OpenH1's messages heard
+    net_compare = _net_compare()
+    late = machines("charlie").start(
+        HALO_NULL_RENDERER=1, HALO_NETWORK_TEST="join", HALO_NETWORK_TEST_NAME="Charlie", HALO_TEST_INPUT="bot:3",
+        HALO_NET_ADDRESS=CLIENT_ADDRESSES[0], HALO_NET_BROADCAST=SERVER_ADDRESS)
+    _until(lambda: len(net_compare.parse_rates(late.output)) >= 10, 150, "the client playing the Legacy game", late)
+    heard = net_compare.parse_rates(late.output)[-1]
+    assert (heard["rate"], heard["heard"], heard["record"]) == (30, 0, 0), heard
+    assert api.status()["game_mode"] == "legacy" and api.status()["state"] == "playing", api.status()
+    late.stop()
+    server.send("quit")
+    assert server.wait(15) == 0, server.text()[-3000:]
+    assert not re.search(r"EXCEPTION|assert", server.debug()), "an exception or assert in the server's debug.txt"
+
+
+def test_openh1_game_closed_to_opence(machines):
+    """an OpenH1 game that OpenCE players do not join (network.allow_opence false) is advertised with the OpenH1
+    protocol version and its top bit (0x8000), which OpenCE takes for a newer version and does not list, and the
+    status says so; sv_set network.allow_opence true opens it to them at once, advertised as a mixed game"""
+    _needs_game("bloodgulch")
+    port = _free_port()
+    server = machines("server")
+    (server.folder / "bin" / "config.toml").write_text('[server]\ngame_mode = "openh1_60"\n\n'
+                                                       '[network]\nallow_opence = false\n')
+    # (and a player host's network.sim_rate, which the server leaves aside, saying so)
+    server.start(["--server"], **_server_settings(port, HALO_SERVER_ROTATION="bloodgulch:slayer", HALO_NET_SIM_RATE=30))
+    api = Api(port)
+    _until(lambda: "server: ready" in server.text(), 90, "server: ready", server)
+    api.login()
+    status = api.status()
+    assert (status["game_mode"], status["tick_rate"], status["opence"]) == ("openh1_60", 60, False), status
+    assert status["game_mode_name"] == "OpenH1 60 Tick", status
+    assert "hosting: OpenH1 60 Tick (server.game_mode)" in server.text()
+    assert "network.sim_rate = 30 is a player's host's setting, which a dedicated server leaves aside: " \
+           "server.game_mode (openh1_60) says what it hosts" in server.text(), server.text()[-2000:]
+    prober = machines("prober")
+    game = _probe(prober)
+    assert game["network_version"] == 0x8000 | status["openh1_version"], game
+    assert (game["tick_rate"], game["openh1_version"], game["dedicated"]) == (60, status["openh1_version"], True), game
+    status, answer = api.call("POST", "/api/command", {"line": "sv_set network.allow_opence true"})
+    assert status == 200 and answer["ok"], answer
+    assert api.status()["opence"], api.status()
+    game = _probe(prober)
+    assert game["network_version"] == api.status()["network_version"] and game["tick_rate"] == 60, game
+    server.send("quit")
+    assert server.wait(15) == 0, server.text()[-3000:]
+
+
+@pytest.mark.parametrize("shoot", [0, 8])
+def test_openh1_game_with_an_opence_player(machines, shoot):
+    """a mixed game on a dedicated server (server.game_mode openh1_120, network.allow_opence): an OpenH1 client at
+    120 and one joining as OpenCE does at 30, each player stepped at their own rate, the OpenCE client hearing none
+    of OpenH1's messages, and both in step with the server: without hits, each player's drift 2% at most; with a
+    hit every 8 seconds, each one's hits taken"""
+    server, api, clients = _play_openh1_game(machines, 120, opence_client=True, shoot=shoot)
+    figures = _judge_openh1_game(server, clients, 120, opence_client=True, shoot=shoot)
+    print(figures)
+    # (the server steps the OpenCE client's player at 30: its machine's slot)
+    assert figures.get("bravo", "").startswith("OpenCE: at [30]"), figures
+    server.send("quit")
+    assert server.wait(15) == 0, server.text()[-3000:]
+    assert not re.search(r"EXCEPTION|assert", server.debug()), "an exception or assert in the server's debug.txt"
 
 
 # ---------- VPNs and linked Discord accounts (docs/dedicated_server.md; docs/master_protocol.md, "The netlist",

@@ -3530,6 +3530,9 @@ boolean network_game_client_port_advertised_game_summary(
 	summary->dedicated = network_game_client_advertised_game_dedicated(client, game);
 	summary->version = network_game_client_advertised_versions[index].version;
 	summary->kind = network_game_client_advertised_versions[index].kind;
+	summary->openh1_version = (word)network_game_client_advertised_openh1_version(index);
+	summary->rate = summary->openh1_version && network_game_client_advertised_versions[index].rate ?
+		network_game_client_advertised_versions[index].rate : 30;
 	return TRUE;
 }
 

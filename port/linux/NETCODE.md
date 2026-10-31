@@ -1228,6 +1228,36 @@ as any other, with these differences, all on the host's side:
   leaves).
 - **No ticks of its own player.** The host's own action queue may hold no
   action (`player_queues_new.c`), as a game with no local player has none.
+- **The kind of game.** A dedicated server hosts Legacy games unless its
+  `server.game_mode` says `openh1_60` or `openh1_120` (`openh1_30` too),
+  in place of a player host's `network.game_mode` and `network.sim_rate`
+  (`network_standard.c`); `network.allow_opence` is read as a player
+  host's. Its OpenH1 game is any host's: the advertisement, the listing,
+  the join tokens, the game record's rate, the sub-steps, forwarded input
+  and live controls, the predictions taken as its ticks begin, mixed
+  games. With no player of its own it sends no sub-steps or live controls
+  of its own; everything its ticks run of its clients' players is theirs.
+  The director takes the setting again in the lobby while no other
+  machine is in it (`network_standard_server_mode_read`), and frames an
+  OpenH1 game at least as often as its tick rate. Nothing on the wire is
+  new: a dedicated server's OpenH1 game is a player host's, but for the
+  dedicated flag every dedicated server sends.
+
+  Checked by `tools/test_dedicated_server.py` (bloodgulch, two headless
+  clients with the scripted bot, a minute; the server logs each second with
+  `debug.network_test` `log`, which a server keeps, and is judged with
+  `net_compare.py`'s checks): at 60 and 120 both OpenH1 clients in step, the
+  server's drift of each one's player 0 of 1800 ticks, its takes 2 apart of
+  3880 at 60 and of 3893 at 120. In a mixed game at 120 with an OpenCE-mode
+  client (`debug.join_legacy`), the OpenCE client at 30 hearing none of
+  OpenH1's messages: without scripted hits, each player's drift 0 of 1800
+  ticks; with a hit every 8 seconds, every hit both ways taken, and drift of
+  9% to 10% and 2% to 3% in two runs (the players brought together to
+  shoot, and touching: a player host's game with a hit every 4 seconds had
+  4% and 10%). OpenCE's
+  own release (build 335) as one client and OpenH1 as the other, without
+  scripted hits: both in step with a Legacy server and with an OpenH1 120
+  Tick one, 0 of 4800 ticks apart.
 - **The director.** `port/linux/game/server_director.c` drives the lobby as
   a player at the pregame screen would: it sets the map and gametype of the
   rotation's entry, starts the countdown once the server's own rule allows
