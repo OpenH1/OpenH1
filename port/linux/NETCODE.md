@@ -345,7 +345,9 @@ the AFK kicks as a Legacy game does, its OpenCE machines' too; version 12
 has the host tell each OpenH1 client, once a second, how long before its
 tick its inputs came (distributed message 135,
 `_distributed_message_clock_phase`, `network_clock.c`, reliably), by which
-the client leads its clock (below, "The client's clock"). With no new version, each client then tells the
+the client leads its clock (below, "The client's clock"); version 13
+sends every player's presses as the host's sub-steps run them to the clients
+it does not send their every control to (below, "Presses to far clients"). With no new version, each client then tells the
 host its build (distributed message 92, `_distributed_message_client_build`,
 reliably once a game after its ready, over its connection alone): its
 number, configuration, the label it shows ("OpenH1 Linux | build 120
@@ -789,8 +791,9 @@ controls as each sub-step runs (`network_substeps.c`'s live controls):
   players' (`_distributed_message_forwarded_live_controls`, 133,
   unreliable, 19 bytes a player: the sticks of 127, the trigger of 255, the
   aim in 16 bits a part), to those its last tick's plan sends the player
-  every tick or every second tick, as the forwarded input (above). Its own
-  simulation takes a client's input at its tick, as before.
+  every tick or every second tick, as the forwarded input (above); every
+  player's presses go to the others too (below, "Presses to far clients").
+  Its own simulation takes a client's input at its tick, as before.
 - A client gives another player's unit the latest it has of them, where it
   is later than the sub-step of the input its tick took (of the same kind
   of key: a client's player's while the forwarded input drives them, the
@@ -998,6 +1001,62 @@ Legacy game and an OpenCE machine in a mixed game keep the clock they had.
 `debug.network_test`'s clients log the latest report, the reports, the ticks
 skipped and the time moved by (`network test: clock early <us> reports <n>
 skipped <n> moved <us> us`). Measured below ("Measuring latency").
+
+### Presses to far clients
+
+Forwarded input and live controls go only to the clients whose players are
+near the player, or aim at them ("Forwarded input", above). A client further
+off drives the player by the host's relayed input, which goes with the
+host's update as its tick ends (at once where the buttons changed, else
+every 3, 4 or 6 ticks) and which the client's tick takes as it begins: a
+press waited for the rest of the host's tick, the network and the client's
+next tick, and a push of the stick (not a button) for the player's period
+too. In the latency games (three copies on bloodgulch, the scripted players
+standing where they spawned, 20 to 31 ms ±3 each way) the host's player's
+press reached a near client a network trip and a sub-step or two after it,
+33 to 36 ms at 60, and one more than 60 world units off 2 to 3 ticks later
+(48 to 72 ms for the trigger, 53 to 124 for the stick); a client's press
+reached another client near it in 63 to 71 ms, and one far off in 104 to
+131 ms.
+
+From protocol version 13 the host also sends each player's controls as its
+own sub-steps ran them (`ran_live` in `network_substeps.c`, keyed by its
+update, the relayed input's own key) to its OpenH1 clients its plan sends
+the player less often (or not at all, out of sight), when they make a press
+against what it last sent that client (`network_substeps_live_far_due`,
+`distributed_far_live`): the held controls changed, a stick moved by a
+quarter of its reach, or the trigger by a quarter. A start, a stop, a pull
+and a release go as they run; a turn of the aim or a stick's drift does not,
+and the relayed input brings it at its period as before. A client gives it
+the unit as it gives a near player's live control, until its tick takes a
+relayed input as late. A client's player's press goes so as the host's tick
+ran it (from their live controls as they came, "Input at its tick"), the
+host's own players' and the bots' as they ran; a bot, which has no live
+controls of its own, goes so to the near clients too. Each press costs a
+client 19 bytes, in the forwarded datagram of that frame or one of its own.
+The interval between forwarded datagrams
+(`FORWARDED_INPUT_INTERVAL_MILLISECONDS`) counts from the last one sent, not
+from a frame that had nothing to send.
+
+The same latency games, three delays at each rate (pooled means in ms, the
+worst 95th percentile in brackets), before and after, both before the
+client's clock (protocol version 12, which moves the client-to-host path
+and so the client-to-client one, not the presses' sends); far is a player the
+plan sent the client less often than every second tick:
+
+| Path | 60 | 120 |
+| --- | --- | --- |
+| Host's press to a client | 56 (166) → 35 (53) | 52 (127) → 32 (46) |
+| ... to a far client | 90 (166) → 35 (36) | 81 (127) → 31 (41) |
+| Client's press to another client | 83 (164) → 69 (117) | 90 (173) → 73 (104) |
+| ... to a far client | 117 (164) → 78 (116) | 107 (161) → 73 (104) |
+| Client's press to the host | 36 (51) → 39 (65) | 42 (62) → 41 (63) |
+
+A far client now sees the host's player's press as soon as a near one does.
+A client's press reaches a far client a sub-step or so after the host runs
+it, where the near ones have it as it comes (two network trips and a frame);
+the host's bytes a second to each client were unchanged within the spread
+the players' places give (9.8 to 12.1 KB/s in either build).
 
 ### OpenCE players in an OpenH1 game
 

@@ -755,7 +755,8 @@ OpenH1 clients as it comes (_distributed_message_forwarded_inputs), not at
 its next tick: each player's latest input heard this frame, of its client's
 tick (pending: not yet sent on), and whether its buttons or choices changed
 in the ticks it carries; how often the last tick's plan sends each player to
-each client (0: never forwarded: its own, or none); and the client's tick of
+each client (0: none, or its own; forwarded at 1 and 2, the presses its
+sub-steps ran at any: distributed_far_live); and the client's tick of
 the latest of each player's input forwarded to each client, and the host's
 tick then (the host's tick relays no input it has forwarded lately) */
 static struct
@@ -769,6 +770,10 @@ static struct
 static byte distributed_forward_periods[HALO_PORT_MAXIMUM_NETWORK_MACHINES][MAXIMUM_TRACKED_PLAYERS];
 static long distributed_forwarded_ticks[HALO_PORT_MAXIMUM_NETWORK_MACHINES][MAXIMUM_TRACKED_PLAYERS];
 static long distributed_forwarded_times[HALO_PORT_MAXIMUM_NETWORK_MACHINES][MAXIMUM_TRACKED_PLAYERS];
+/* the host: each player's presses as its sub-steps ran them, as last sent
+to each client its plan does not forward the player to (NETCODE.md,
+"Presses to far clients") */
+static struct live_control_far distributed_far_live[HALO_PORT_MAXIMUM_NETWORK_MACHINES][MAXIMUM_TRACKED_PLAYERS];
 /* the host: each player's statistics as last sent (only a change is sent,
 and once a second a few players' whatever they are, round them all) */
 static unsigned long distributed_sent_statistics[MAXIMUM_TRACKED_PLAYERS];
@@ -3768,7 +3773,6 @@ static void distributed_forward_flush(
 		inputs = distributed_forwards[player_index].pending;
 	if ((!inputs && !live) || now - last_sent < FORWARDED_INPUT_INTERVAL_MILLISECONDS)
 		return;
-	last_sent = now;
 	machine_count = distributed_client_machines(machine_indices, HALO_PORT_MAXIMUM_NETWORK_MACHINES);
 	for (machine_number = 0; machine_number < machine_count; machine_number++)
 	{
@@ -3788,7 +3792,7 @@ static void distributed_forward_flush(
 				word size;
 				long tick = distributed_forwards[player_index].tick;
 
-				if (!distributed_forwards[player_index].pending || !period ||
+				if (!distributed_forwards[player_index].pending || !period || period > 2 ||
 					distributed_machine_has_player(machine_index, player_index) ||
 					!(period == 1 || distributed_forwards[player_index].changed || ((tick + player_index) & 1) == 0))
 				{
@@ -3805,7 +3809,8 @@ static void distributed_forward_flush(
 			}
 			distributed_packer_flush(&distributed_packer);
 		}
-		/* (each sub-step's controls of the players near, or aimed at) */
+		/* (each sub-step's controls of the players near, or aimed at; of
+		those further, a press as the host's sub-step ran it) */
 		if (live)
 		{
 			distributed_packer_begin(&distributed_packer, (short)machine_index,
@@ -3813,14 +3818,19 @@ static void distributed_forward_flush(
 			for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
 			{
 				byte entry[LIVE_CONTROL_FORWARD_SIZE];
+				byte period = distributed_forward_periods[machine_index][player_index];
 				word size;
 
-				if (!distributed_forward_periods[machine_index][player_index] ||
-					distributed_machine_has_player(machine_index, player_index))
-				{
+				if (!period || distributed_machine_has_player(machine_index, player_index))
 					continue;
-				}
-				size = network_substeps_live_forward_write(player_index, entry);
+				/* (a player near of no controls sent of their own, a bot: their
+				presses as the host's sub-steps ran them, as a far one's) */
+				if (period <= 2 && network_substeps_live_own(player_index))
+					size = network_substeps_live_forward_write(player_index, entry);
+				else if (network_substeps_live_far_due(player_index, &distributed_far_live[machine_index][player_index]))
+					size = network_substeps_live_far_write(player_index, entry);
+				else
+					size = 0;
 				if (size)
 				{
 					distributed_packer_add(&distributed_packer, entry, size);
@@ -3829,9 +3839,14 @@ static void distributed_forward_flush(
 			}
 			distributed_packer_flush(&distributed_packer);
 		}
-		/* (at once: not with the next tick's) */
+		/* (at once: not with the next tick's; the next no sooner than the
+		interval after, where one went: a far player's controls that made
+		no press went nowhere) */
 		if (any)
+		{
 			distributed_batch_flush((short)machine_index);
+			last_sent = now;
+		}
 	}
 	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
 		distributed_forwards[player_index].pending = FALSE;
@@ -4130,9 +4145,10 @@ static void distributed_host_plan_players(
 			if (send || own)
 				SET_FLAG(*sends, _distributed_send_state_bit, TRUE);
 			/* (an OpenH1 game's: a near player's input, or one aimed at, sent
-			on as it comes; what the tick ran of it relayed only when not
+			on as it comes, and to the others its presses as the host's
+			sub-steps ran them; what the tick ran of it relayed only when not
 			forwarded lately) */
-			if (!own && placed[player_index] && period <= 2)
+			if (!own && placed[player_index])
 				distributed_forward_periods[machine_index][player_index] = (byte)period;
 			if (!own && has_action[player_index] && (send || action_changed[player_index]) &&
 				!distributed_forward_covers(machine_index, player_index))
@@ -4658,6 +4674,7 @@ void network_distributed_new_game(
 	csmemset(distributed_sends, 0, sizeof(distributed_sends));
 	csmemset(distributed_forwards, 0, sizeof(distributed_forwards));
 	csmemset(distributed_forward_periods, 0, sizeof(distributed_forward_periods));
+	csmemset(distributed_far_live, 0, sizeof(distributed_far_live));
 	csmemset(distributed_forwarded_ticks, 0xFF, sizeof(distributed_forwarded_ticks));
 	csmemset(distributed_forwarded_times, 0xFF, sizeof(distributed_forwarded_times));
 	/* (none sent: every player's the first time) */
