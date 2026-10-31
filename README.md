@@ -95,6 +95,13 @@ problems. The [Releases](https://github.com/OpenH1/OpenH1/releases) page
 keeps the last five releases: if the latest build has a problem, get an
 older build there.
 
+Each release also has `SHA256SUMS`, the SHA-256 of each of its files, and
+`SHA256SUMS.sig`, that file's Ed25519 signature by OpenH1's release key,
+whose public key is [port/assets/release-key.pub](port/assets/release-key.pub)
+(the self-updaters check both). `sha256sum -c --ignore-missing SHA256SUMS`
+checks the downloads, and `python3 tools/release_sign.py verify SHA256SUMS`
+(OpenSSL 3) the signature.
+
 - **macOS:** open the `.dmg` and drag OpenH1 to Applications. The app
   is signed with a Developer ID and notarized by Apple, so it opens like any
   other downloaded app.

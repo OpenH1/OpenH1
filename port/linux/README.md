@@ -1162,6 +1162,18 @@ the distribution (`src/posix_update.c`, with Mbed TLS); on Windows, the
 certificate store of Windows (WinHTTP). The game's folder must let the
 game write to it.
 
+Before it unpacks a download, the game checks it against the release's
+`SHA256SUMS` and that file's signature, `SHA256SUMS.sig`: an Ed25519
+signature by OpenH1's release key, whose public key the game carries
+(`port/assets/release-key.pub`; `src/release_signature.c`). A signature
+that is not the release key's, or a download whose SHA-256 is not the one
+`SHA256SUMS` lists, is refused, and the game stays as it is. A release
+with no signature is taken on HTTPS alone for now (its `SHA256SUMS` still
+checked), so that releases published before the release key was in the
+workflow still update; a build with `RELEASE_SIGNATURE_REQUIRED` set to 1
+(`src/release_signature.h`) refuses those too. `tools/release_sign.py
+verify SHA256SUMS` (OpenSSL 3) checks a signature by hand.
+
 Only a game in a release's tree (`bin/openh1`, refer to "Packaging"), or
 the Steam Frame's (below), updates itself. Builds that you make yourself
 have no build number, and a build's folder (`build/linux_x86_64`) is not a
