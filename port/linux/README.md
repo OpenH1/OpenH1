@@ -984,6 +984,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.stun_servers` | Google and Cloudflare | `HALO_NET_STUN` | The public STUN servers (`host:port`, with commas between them) that give the internet address of a machine. |
 | `network.client_timeout_seconds` | `15` | `HALO_NET_CLIENT_TIMEOUT_SECONDS` | Hosting: the seconds the host waits for a machine it hears nothing from before it drops it (5 to 300; the stock game waits 15). The same seconds are how long each machine's reliable stream waits for its peer to read before it gives up, and how long a host in a game waits for its own network to come back (an address renewed, a wifi drop) before it ends the game; each machine reads its own setting. A longer wait keeps players whose connection stalls (a browser tab in the background), but a machine that is really gone leaves its players frozen for longer. |
 | `network.public_address` | `""` | `HALO_NET_PUBLIC_ADDRESS` | Hosting: the internet address the joiners reach this machine at, `host[:port]` (the port forwarded to `network.tunnel_port`), for a server behind a NAT with one forwarded port. It is offered first, and its name is looked up again every 5 minutes. Empty: what STUN and UPnP find. |
+| `network.front` | `""` | `HALO_NET_FRONT` | Hosting behind a NAT that no one can connect through: a front, `host[:port]` (2302 if none), a relay of `halo --relay` with `server.front_ports` that gives this machine a public port. Joiners (OpenCE's too) are offered that port after `network.public_address`. The machine registers with its publisher key (`halo --keygen`), which the front must allow. Empty: none. Refer to "Fronts". |
 | `network.listings` | `"both"` | `HALO_NET_LISTINGS` | What the server browser lists. `"both"`: the dedicated servers of the master servers first, then the games players host (from the brokers). `"masters"`: the master servers' only. `"brokers"`: the brokers' only. Refer to "Server browser". |
 | `network.link_share` | `"when_needed"` | `HALO_NET_LINK_SHARE` | When the game shows a server the Discord account linked to it (Settings > Online > Discord Account > SHOW TO SERVERS): `"when_needed"` (a server that asks, to let you in from a VPN), `"always"` or `"never"`. Refer to "Discord account". |
 | `network.use_relays` | `true` | `HALO_NET_USE_RELAYS` | `true`: when another machine is not reached directly in a few seconds, reach it through a relay (a dedicated server, or `halo --relay`). `false`: direct connections only. Refer to "Relays". |
@@ -1030,6 +1031,8 @@ the setting for one start of the game. It has priority over the file.
 | `server.relay_pairs` | `64` | `HALO_SERVER_RELAY_PAIRS` | Relaying: the most pairs of machines at once (1 to 256), 8 for each address. `halo --relay` too. |
 | `server.relay_upload` | `8192` | `HALO_SERVER_RELAY_UPLOAD` | Relaying: the most kilobytes a second sent on in all (16 to 1000000); 256 for each pair, 1024 for each address. `halo --relay` too. |
 | `server.relays_file` | `"relays.txt"` | `HALO_SERVER_RELAYS_FILE` | The relays the server offers players who cannot reach it directly (a server at home), and tells its game's players of: `host[:port]` on each line. None by default. |
+| `server.front_ports` | `""` | `HALO_SERVER_FRONT_PORTS` | `halo --relay` as a front: the UDP ports, `first-last` (64 at most), it gives the servers that register with it (`network.front`), one each. Open them in the firewall. Empty: no front. Refer to "Fronts" in `docs/dedicated_server.md`. |
+| `server.front_operators_file` | `"front_operators.txt"` | `HALO_SERVER_FRONT_OPERATORS_FILE` | `halo --relay` as a front: the publisher keys it gives ports to, `ed25519:<hex>` (as `halo --keygen` prints) on each line, next to `config.toml` unless a full path. Read again every minute; a key taken off ends its registration. |
 | `server.masters_file` | `"masters.txt"` | `HALO_SERVER_MASTERS_FILE` | The master servers the server is published to, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`). None named: the official master, built in. |
 | `server.publisher_key_file` | `"publisher.key"` | `HALO_SERVER_PUBLISHER_KEY_FILE` | The operator's Ed25519 key for the master servers (`halo --server --keygen` makes it), next to `config.toml` unless a full path. In a container, `HALO_SERVER_PUBLISHER_KEY` can hold the key itself. |
 | `server.instance` | `""` | `HALO_SERVER_INSTANCE` | A short name that tells this server from the operator's other servers on the master servers (letters, digits, `-` and `_`). Empty: made from `server.name`. |
@@ -2600,6 +2603,21 @@ or a relay that runs alone (`halo --relay`, on a small server): refer to
   as before, and is sent 3 offers at most, which it ignores.
 
 To use no relays, set `network.use_relays` to `false`.
+
+#### Fronts
+
+A host behind a network that no one can connect through (carrier-grade NAT,
+a NAT that gives a port for each destination) cannot be joined by players
+whose game does not try relays (OpenCE, older OpenH1). A front fixes that:
+a relay of `halo --relay` with public ports (`server.front_ports`) gives the
+host one of them (`network.front` names the front; `src/p2p_front.c`). The
+host offers that port to joiners as one more of its addresses, and the
+front passes their packets to the host and its answers back. The joiner's
+game sees only an address of the host, and the packets stay encrypted and
+authenticated end to end, as on a direct connection; the front learns the
+addresses alone. The host registers with its publisher key (`halo
+--keygen`), which the front's operator must allow. Setting one up is in
+`docs/dedicated_server.md`, "Fronts".
 
 In the game, each machine has an address in 100.64.0.0/10:
 

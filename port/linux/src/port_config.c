@@ -1272,6 +1272,12 @@ static const struct config_setting config_settings[] =
 		"host[:port] (the port: the one forwarded to network.tunnel_port), for a\n"
 		"server behind a NAT with one forwarded port; offered first, its name\n"
 		"looked up again every 5 minutes. Empty: what STUN and UPnP find." },
+	{ "network.front", _config_string, "\"\"", "HALO_NET_FRONT", _environment_value, _platform_desktop,
+		"Hosting behind a NAT no one can connect through: a front, host[:port]\n"
+		"(2302 if none) of a relay (halo --relay with server.front_ports),\n"
+		"that gives this machine a public port joiners reach it at, OpenCE's\n"
+		"too. It registers with the publisher key (halo --keygen), whose public\n"
+		"key the front's operator allows. Empty: none." },
 	{ "network.listings", _config_string, "\"both\"", "HALO_NET_LISTINGS", _environment_value, _platform_all,
 		"What the server browser lists: \"both\" (dedicated servers from the\n"
 		"master servers first, then the games players host, from the brokers),\n"
@@ -1495,6 +1501,16 @@ static const struct config_setting config_settings[] =
 		"The relays this server offers players who cannot reach it directly\n"
 		"(a server at home), and tells its game's players of: host[:port]\n"
 		"on each line. None by default." },
+	{ "server.front_ports", _config_string, "\"\"", "HALO_SERVER_FRONT_PORTS", _environment_value,
+		_platform_server,
+		"halo --relay as a front: the UDP ports (first-last, 64 at most) it\n"
+		"gives servers that register with it (network.front), one each. Empty:\n"
+		"no front." },
+	{ "server.front_operators_file", _config_string, "\"front_operators.txt\"",
+		"HALO_SERVER_FRONT_OPERATORS_FILE", _environment_value, _platform_server,
+		"halo --relay as a front: the publisher keys it gives ports to\n"
+		"(ed25519:<hex>, as halo --keygen prints, one a line), beside this file\n"
+		"unless a full path; read again every minute." },
 	{ "server.masters_file", _config_string, "\"masters.txt\"", "HALO_SERVER_MASTERS_FILE", _environment_value,
 		_platform_server,
 		"The master servers published to, beside this file unless a full path:\n"

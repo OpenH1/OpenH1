@@ -16,7 +16,7 @@ from harness import CHECK_FAILED, build, function, mutated, read, run  # noqa: E
 
 CASES = [
     "pairing", "return-routability", "token-per-relay", "verified-address", "offers", "path", "demoted", "buckets",
-    "game-mode", "limits", "malformed",
+    "game-mode", "limits", "malformed", "front-path",
 ]
 
 # a fault in p2p_relay.c and the case that must catch it
@@ -67,8 +67,33 @@ NEGATIVE_CONTROLS = {
     "strangers-relayed": (("\tif (relay.limits.mode == _p2p_relay_game && !p2p_relay_peer_address(address, port))\n"
                            "\t{", "\tif (0)\n\t{"), "game-mode"),
     # no limit of relays for one peer
-    "peer-attempts-unlimited": (("if (!free_attempt || peer_attempts >= P2P_RELAY_PEER_RELAYS)",
-                                 "if (!free_attempt || peer_attempts >= MAXIMUM_ATTEMPTS)"), "limits"),
+    "peer-attempts-unlimited": (("if (!free_attempt || peer_attempts >= P2P_RELAY_PEER_RELAYS)\n\t\treturn -1;\n"
+                                 "\tmemset(free_attempt, 0, sizeof(*free_attempt));\n\tfree_attempt->used = 1;\n"
+                                 "\tmemcpy",
+                                 "if (!free_attempt || peer_attempts >= MAXIMUM_ATTEMPTS)\n\t\treturn -1;\n"
+                                 "\tmemset(free_attempt, 0, sizeof(*free_attempt));\n\tfree_attempt->used = 1;\n"
+                                 "\tmemcpy"), "limits"),
+    # a front's path released at the front as a relay's pair (a RELEASE to it)
+    "front-path-released": (("\t\tif (!attempt->front && (attempt->state == _attempt_waiting || "
+                             "attempt->state == _attempt_paired))",
+                             "\t\tif (attempt->state == _attempt_waiting || attempt->state == _attempt_paired)"),
+                            "front-path"),
+    # one client's path takes another peer's packets
+    "front-path-any-peer": (("\t\t\tif (memcmp(attempt->peer, peer, P2P_IDENTIFIER_SIZE) || "
+                             "attempt->relay.address != front->address ||",
+                             "\t\t\tif (attempt->relay.address != front->address ||"), "front-path"),
+    # a front's path answered by a relay's BOUND (its zero nonce)
+    "front-path-answered": (("\t\tif (attempt->used && !attempt->front && attempt->relay.address == address && "
+                             "attempt->relay.port == port &&",
+                             "\t\tif (attempt->used && attempt->relay.address == address && "
+                             "attempt->relay.port == port &&"), "front-path"),
+    # a front's paths for one peer unlimited
+    "front-paths-unlimited": (("\tif (!free_attempt || peer_attempts >= P2P_RELAY_PEER_RELAYS)\n\t\treturn -1;\n"
+                               "\tmemset(free_attempt, 0, sizeof(*free_attempt));\n\tfree_attempt->used = 1;\n"
+                               "\tfree_attempt->front = 1;",
+                               "\tif (!free_attempt || peer_attempts >= MAXIMUM_ATTEMPTS)\n\t\treturn -1;\n"
+                               "\tmemset(free_attempt, 0, sizeof(*free_attempt));\n\tfree_attempt->used = 1;\n"
+                               "\tfree_attempt->front = 1;"), "front-path"),
 }
 
 STUB_HEADERS = (

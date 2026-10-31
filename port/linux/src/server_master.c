@@ -217,6 +217,19 @@ int server_master_sign_text(const char *text)
 	return 1;
 }
 
+int server_master_sign(const void *message, int size, unsigned char *public_key, unsigned char *signature)
+{
+	unsigned char seed[SERVER_MASTER_SEED_SIZE];
+
+	if (!publisher_seed(seed))
+		return 0;
+	p2p_ed25519_public(seed, public_key, NULL);
+	if (message)
+		p2p_ed25519_sign(seed, public_key, message, size, signature);
+	memset(seed, 0, sizeof(seed));
+	return 1;
+}
+
 /* ---------- the masters */
 
 struct master
@@ -914,6 +927,15 @@ int server_master_keygen(void)
 int server_master_sign_text(const char *text)
 {
 	(void)text;
+	return 0;
+}
+
+int server_master_sign(const void *message, int size, unsigned char *public_key, unsigned char *signature)
+{
+	(void)message;
+	(void)size;
+	(void)public_key;
+	(void)signature;
 	return 0;
 }
 

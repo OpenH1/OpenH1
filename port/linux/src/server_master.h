@@ -31,6 +31,10 @@ int server_master_keygen(void);
 /* --sign <text>: the key's signature of the text printed in hex; 1 */
 int server_master_sign_text(const char *text);
 
+/* the publisher key's public key (SERVER_MASTER_PUBLIC_KEY_SIZE bytes) and,
+given a message, its signature (P2P_SIGNATURE_SIZE bytes): 0 if there is
+no key (a front's registration, p2p_front.c) */
+int server_master_sign(const void *message, int size, unsigned char *public_key, unsigned char *signature);
 /* the publisher key (HALO_SERVER_PUBLISHER_KEY, else the file): 1 with its
 public key and id (16 hex) */
 int server_master_publisher(unsigned char *public_key, char *key_id);

@@ -61,8 +61,13 @@ session (p2p_relay_attempt_start), this file binds and keeps the binding,
 and hands each tunnel packet the relay brings back to p2p.c
 (p2p_relay_delivered); p2p.c sends through a paired attempt
 (p2p_relay_send). Which path carries a peer, and when a direct one takes
-over, is p2p_relay_path's. Everything here runs on the p2p thread, under
-p2p_lock (or halo --relay's loop: p2p.c's p2p_relay_run).
+over, is p2p_relay_path's. A front's path to a client of this machine
+(p2p_front.c: a public port on a relay that passes the client's packets to
+this machine and its answers back) is an attempt too, paired from the first
+and never bound (p2p_relay_front_attempt): its sends go through the front,
+and the client's address as the front saw it is its peer_address.
+Everything here runs on the p2p thread, under p2p_lock (or halo --relay's
+loop: p2p.c's p2p_relay_run).
 */
 
 #include "platform.h"
@@ -230,6 +235,10 @@ struct attempt
 	unsigned long first_sent_time;
 	struct p2p_candidate peer_address;
 	int retried;
+	/* a front's path to a client of this machine (p2p_front.c): paired from
+	the first, with no binds; the client's number at the front */
+	int front;
+	unsigned long client;
 };
 
 static struct
@@ -708,7 +717,7 @@ static struct attempt *attempt_of_answer(unsigned long address, unsigned short p
 	{
 		struct attempt *attempt = &relay.attempts[index];
 
-		if (attempt->used && attempt->relay.address == address && attempt->relay.port == port &&
+		if (attempt->used && !attempt->front && attempt->relay.address == address && attempt->relay.port == port &&
 			!memcmp(attempt->nonce, nonce, RELAY_NONCE_SIZE))
 		{
 			return attempt;
@@ -847,7 +856,7 @@ static void delivered_received(const unsigned char *packet, int size, unsigned l
 	{
 		struct attempt *attempt = &relay.attempts[index];
 
-		if (attempt->used && attempt->state == _attempt_paired && attempt->relay.address == address &&
+		if (attempt->used && !attempt->front && attempt->state == _attempt_paired && attempt->relay.address == address &&
 			attempt->relay.port == port && !memcmp(attempt->channel, packet + 2, RELAY_CHANNEL_SIZE))
 		{
 			attempt->heard_time = now;
@@ -872,7 +881,8 @@ int p2p_relay_attempt_start(const unsigned char *peer, const unsigned char *secr
 
 		if (attempt->used && !memcmp(attempt->peer, peer, P2P_IDENTIFIER_SIZE))
 		{
-			if (attempt->relay.address == relay_address->address && attempt->relay.port == relay_address->port)
+			if (!attempt->front && attempt->relay.address == relay_address->address &&
+				attempt->relay.port == relay_address->port)
 				return index;
 			peer_attempts++;
 		}
@@ -911,9 +921,78 @@ void p2p_relay_forget_peer(const unsigned char *peer, int unpaired_only)
 		{
 			continue;
 		}
-		if (attempt->state == _attempt_waiting || attempt->state == _attempt_paired)
+		if (!attempt->front && (attempt->state == _attempt_waiting || attempt->state == _attempt_paired))
 			send_release(attempt);
 		attempt_free(attempt);
+	}
+}
+
+int p2p_relay_front_attempt(const unsigned char *peer, const struct p2p_candidate *front, unsigned long client,
+	const struct p2p_candidate *client_address, unsigned long now, int *created)
+{
+	struct attempt *free_attempt = NULL;
+	int peer_attempts = 0;
+	int index;
+
+	*created = 0;
+	for (index = 0; index < MAXIMUM_ATTEMPTS; index++)
+	{
+		struct attempt *attempt = &relay.attempts[index];
+
+		if (attempt->used && attempt->front && attempt->client == client)
+		{
+			/* (the same client at the front is the same machine: another
+			peer's packet through it is not taken) */
+			if (memcmp(attempt->peer, peer, P2P_IDENTIFIER_SIZE) || attempt->relay.address != front->address ||
+				attempt->relay.port != front->port)
+			{
+				return -1;
+			}
+			return index;
+		}
+		if (attempt->used && !memcmp(attempt->peer, peer, P2P_IDENTIFIER_SIZE))
+			peer_attempts++;
+		if (!attempt->used && !free_attempt)
+			free_attempt = attempt;
+	}
+	if (!free_attempt || peer_attempts >= P2P_RELAY_PEER_RELAYS)
+		return -1;
+	memset(free_attempt, 0, sizeof(*free_attempt));
+	free_attempt->used = 1;
+	free_attempt->front = 1;
+	free_attempt->client = client;
+	memcpy(free_attempt->peer, peer, P2P_IDENTIFIER_SIZE);
+	free_attempt->relay = *front;
+	free_attempt->peer_address = *client_address;
+	free_attempt->state = _attempt_paired;
+	free_attempt->state_time = now;
+	free_attempt->heard_time = now;
+	free_attempt->sent_time = now;
+	free_attempt->bind_round_trip = -1;
+	*created = 1;
+	return (int)(free_attempt - relay.attempts);
+}
+
+void p2p_relay_front_heard(int index, unsigned long now)
+{
+	if (index >= 0 && index < MAXIMUM_ATTEMPTS && relay.attempts[index].used && relay.attempts[index].front)
+		relay.attempts[index].heard_time = now;
+}
+
+void p2p_relay_front_drop(int index)
+{
+	if (index >= 0 && index < MAXIMUM_ATTEMPTS && relay.attempts[index].used && relay.attempts[index].front)
+		attempt_free(&relay.attempts[index]);
+}
+
+void p2p_relay_front_forget(void)
+{
+	int index;
+
+	for (index = 0; index < MAXIMUM_ATTEMPTS; index++)
+	{
+		if (relay.attempts[index].used && relay.attempts[index].front)
+			attempt_free(&relay.attempts[index]);
 	}
 }
 
@@ -930,6 +1009,8 @@ int p2p_relay_send(int index, const unsigned char *packet, int size)
 	attempt = &relay.attempts[index];
 	if (!attempt->used || attempt->state != _attempt_paired)
 		return 0;
+	if (attempt->front)
+		return p2p_front_send(attempt->client, packet, size);
 	data[0] = P2P_RELAY_MAGIC;
 	data[1] = _type_data;
 	memcpy(data + 2, attempt->channel, RELAY_CHANNEL_SIZE);
@@ -1206,6 +1287,14 @@ void p2p_relay_update(unsigned long now)
 
 		if (!attempt->used)
 			continue;
+		/* (a front's path: kept while its client is heard; the server's
+		registration keeps the way open) */
+		if (attempt->front)
+		{
+			if (relay_elapsed(now, attempt->heard_time, ATTEMPT_SILENCE))
+				attempt_free(attempt);
+			continue;
+		}
 		if (attempt->state == _attempt_paired)
 		{
 			if (relay_elapsed(now, attempt->heard_time, ATTEMPT_SILENCE))
