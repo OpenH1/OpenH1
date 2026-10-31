@@ -82,6 +82,33 @@ no lazily allocated memory: a desktop's GPU), that part is as without
 discards. `HALO_VULKAN_STATS` counts the stores discarded and the resolves
 made in passes, and times each frame on the GPU.
 
+With discards, passes are also put aside (#335, as the Metal backend's
+are; `HALO_VULKAN_ASIDE=0`: not). The game draws into other targets in the
+middle of its 3D view (the shadows, the motion sensor, the effects'
+targets), and each of those passes ended the view's pass, whose next piece
+loaded what the one before stored: on a tiler, the view written out of
+tile memory and read back each time (`xgpu_vulkan.c`, "aside passes"):
+
+- a pass that draws colour alone, not multisampled, into other targets
+  than the pass recorded before it, and the copies and image uploads about
+  it, are played before that pass;
+- the next pass of the interrupted pass's targets, area, layer and views,
+  which loads every attachment and stores as it, continues it: the pieces
+  are one rendering (each piece's secondary command buffer executed in it),
+  with the first's loads and the last's stores and resolves.
+
+The order changes only where neither side reads what the other writes:
+what is put aside may not sample, copy or resolve the interrupted pass's
+targets, nor write an image one of its pieces sampled; that, a pass with
+depth or multisampled, or other work outside passes (a buffer written in
+order, a readback, the lights' upload, the present) keeps the order drawn
+from there. A mirror's buffer that the submission reads, written again, is
+renamed instead of written in the frame's order (which ends the pass): a
+spare buffer of its size takes its place, its bytes copied from the old
+one by the submission's early commands, and the draws recorded before keep
+reading the old one. `HALO_VULKAN_STATS` counts the passes continued, those
+put aside and the buffers renamed.
+
 A clear of some of the colour's channels (the game's clear alpha alone: a
 fog screen's, with or without depth, and each window's end in a split
 screen) is drawn, as `vkCmdClearAttachments` cannot clear through a write
@@ -121,8 +148,9 @@ four multiview views and fragment storage-buffer atomics.
 | `HALO_VULKAN_VALIDATION=1` | The validation layers on, their messages logged (the layers must be installed, or found through `VK_ADD_LAYER_PATH`); as `debug.gpu_validation` |
 | `HALO_VULKAN_PIPELINE_CACHE=<file>` | The pipeline cache's file (by default `$XDG_CACHE_HOME/openh1/vulkan_pipelines.bin`); empty: none |
 | `HALO_VULKAN_SHADERS=<dir>` | Each shader module written there as it is made (`.spv`); as `debug.gpu_dump_shaders`, over which it wins |
-| `HALO_VULKAN_STATS=1` | Every 600 frames, submissions, passes, attachment loads/clears, clears drawn, draws, pipeline creation count/time, upload ring bytes, stores discarded and resolves in passes (`HALO_VULKAN_DISCARDS`), textures made, and the frames' GPU time (from each frame's first work to its last) and time between frames (not in the VR mode, which times its own); as `debug.gpu_stats` |
+| `HALO_VULKAN_STATS=1` | Every 600 frames, submissions, passes, attachment loads/clears, clears drawn, draws, pipeline creation count/time, upload ring bytes, stores discarded, resolves in passes, passes continued and put aside and buffers renamed (`HALO_VULKAN_DISCARDS`), textures made, and the frames' GPU time (from each frame's first work to its last) and time between frames (not in the VR mode, which times its own); as `debug.gpu_stats` |
 | `HALO_VULKAN_DISCARDS=1` | Attachments stored only where something later reads them, multisampled targets resolved in their pass and, with lazily allocated memory, transient (above); off by default |
+| `HALO_VULKAN_ASIDE=0` | With `HALO_VULKAN_DISCARDS`: no passes put aside, no buffers renamed (above) |
 | `HALO_VULKAN_TRANSIENT=0`, `=force` | With `HALO_VULKAN_DISCARDS`: no transient multisampled targets, or transient ones in ordinary memory where the device has no lazily allocated memory |
 | `HALO_NO_VSYNC=1` | `display.vsync = false`: presented without waiting for the display (mailbox where the surface has it, else immediate) instead of FIFO |
 | `HALO_VULKAN_FRAME_LOG=<file>` | A line for each frame, paced or not (`xgpu_vulkan_pacing.c`): `frame <input> <queued> <finished> <shown> <refreshes> <paced> <earliest> <present_margin> <returned>`, nanoseconds of `CLOCK_MONOTONIC`: the frame's input read, its present's return, its work done on the GPU, its time on screen (display timing's, else present wait's return), the refreshes since the frame before reached the screen (more than one: a refresh showed a frame again), whether the game was paced, display timing's earliest time and margin, and present wait's return (0: not known). `tools/latency_summary.py --frames` joins it to `debug.latency_log` |

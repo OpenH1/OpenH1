@@ -1969,8 +1969,10 @@ static void stream_draw_indexed(void *context, const struct xgpu_stream_draw_ind
 		input.index_range.buffer = xgpu_vulkan_buffer_handle(buffer);
 		input.index_range.offset = record->offset;
 		/* (a loop's indices, made into a list, are read from the mirror's
-		bytes) */
-		input.indices = (const uint16_t *)((const unsigned char *)xgpu_vulkan_buffer_contents(buffer) + record->offset);
+		bytes; others are not read) */
+		if (record->primitive == _primitive_line_loop)
+			input.indices = (const uint16_t *)((const unsigned char *)xgpu_vulkan_buffer_contents(buffer) +
+				record->offset);
 	}
 	else
 	{
@@ -2499,7 +2501,8 @@ static void stream_frame_end(void *context)
 			host_logf(HOST_LOG_INFO, "vulkan: %u frames: %u submissions, %u passes, %u draws, %u clears (%u drawn), "
 				"%u attachment loads, %u attachment clears, %u texture sets written, %u reused, %u pipelines made "
 				"(%.1f ms), %u uploads ordered, %u early, %llu ring bytes; %u stores discarded (%u at frames' ends), "
-				"%u resolves in passes, %u skipped; textures %u made, %u remade, %u images, %u effects' thicknesses baked (%.1f ms); "
+				"%u resolves in passes, %u skipped; %u passes continued, %u put aside, %u buffers renamed; "
+				"textures %u made, %u remade, %u images, %u effects' thicknesses baked (%.1f ms); "
 				"GPU %.3f ms a frame, %.3f ms between frames",
 				statistics.frames, statistics.submissions, statistics.passes, statistics.draws, statistics.clears,
 				statistics.clears_as_draws, statistics.attachment_loads, statistics.attachment_clears,
@@ -2507,7 +2510,8 @@ static void stream_frame_end(void *context)
 				statistics.texture_sets_reused,
 				statistics.pipelines_made, statistics.pipeline_seconds * 1000.0, statistics.uploads_ordered,
 				statistics.uploads_early, (unsigned long long)statistics.ring_bytes, statistics.stores_discarded,
-				statistics.frame_end_discards, statistics.resolves_in_pass, statistics.resolves_skipped, textures.made, textures.remade,
+				statistics.frame_end_discards, statistics.resolves_in_pass, statistics.resolves_skipped,
+				statistics.passes_continued, statistics.passes_aside, statistics.buffers_renamed, textures.made, textures.remade,
 				textures.images, textures.thickness, textures.thickness_seconds * 1000.0,
 				statistics.gpu_frames ? statistics.gpu_milliseconds / statistics.gpu_frames : 0.0,
 				statistics.frames_timed ? statistics.frame_seconds * 1000.0 / statistics.frames_timed : 0.0);

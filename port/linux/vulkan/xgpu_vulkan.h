@@ -646,6 +646,10 @@ struct xgpu_vulkan_statistics
 	resolved in the pass that drew them, and resolves of samples resolved
 	already (not made again) */
 	uint32_t stores_discarded, frame_end_discards, resolves_in_pass, resolves_skipped;
+	/* aside passes (xgpu_vulkan.c): passes that continued the one before
+	them in one rendering, passes put aside before it, and buffers renamed
+	rather than written in order */
+	uint32_t passes_continued, passes_aside, buffers_renamed;
 	/* debug.gpu_stats (not the VR mode's): the frames' GPU time (from each
 	frame's first work to its last, waits between its submissions
 	included) and the frames it is of; the time between frames' ends and
