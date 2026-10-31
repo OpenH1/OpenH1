@@ -117,6 +117,15 @@ static void mark_written(uint64_t page)
 	mprotect(address, host_page_size(), host_memory_window_protection((uintptr_t)address));
 }
 
+/* the write tracking's faults taken (host_memory_watch_faults): each a
+signal through the kernel, cheap on a Mac, dear on an iPhone */
+static volatile uint64_t faults_taken;
+
+uint64_t host_memory_watch_faults(void)
+{
+	return __atomic_load_n(&faults_taken, __ATOMIC_RELAXED);
+}
+
 int host_memory_watch_fault(uintptr_t address)
 {
 	uint64_t guest;
@@ -136,6 +145,7 @@ int host_memory_watch_fault(uintptr_t address)
 	}
 	mark_written(watch_page(guest));
 	pages_unlock();
+	__atomic_add_fetch(&faults_taken, 1, __ATOMIC_RELAXED);
 	return 1;
 }
 

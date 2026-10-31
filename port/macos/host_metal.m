@@ -875,6 +875,16 @@ static void pacing_log(double now)
 		buffers ? atomic_exchange(&presentation.present_queued_ns, 0) / 1e6 / buffers : 0.0,
 		atomic_exchange(&presentation.present_queued_most_ns, 0) / 1e6,
 		statistics.frames, statistics.draws, statistics.passes);
+	{
+		/* (the write tracking's faults: each a trip through the kernel) */
+		static uint64_t faults_before;
+		uint64_t faults = host_memory_watch_faults();
+
+		host_logf(HOST_LOG_INFO, "metal: %.1f s: %llu write-tracking faults (%.1f a frame)", seconds,
+			(unsigned long long)(faults - faults_before),
+			presentation.frames_presented ? (double)(faults - faults_before) / presentation.frames_presented : 0.0);
+		faults_before = faults;
+	}
 	if (statistics.frames)
 		host_logf(HOST_LOG_INFO,
 			"metal: a frame: GPU busy %.2f ms (%.0f%% of the time); its command buffers' GPU time %.2f ms (%u), render thread CPU %.2f ms, %.1f draws, %.1f passes (%.1f put aside, %.1f targets renamed for it), "
