@@ -652,7 +652,8 @@ def test_rcon_hello_auth_commands_and_events(sim):
     rcon = opence_rcon.Rcon(sim.url, password="opence-admin", by="tests")
     assert rcon.hello["type"] == "hello" and rcon.hello["protocol"] == 1
     assert rcon.hello["capabilities"] == ["events", "status", "rotation", "settings", "bans", "owner_web", "ban_address",
-                                          "stop", "event_addresses", "identity", "vpn", "link"]
+                                          "stop", "event_addresses", "identity", "vpn", "link", "game_mode"]
+    assert rcon.hello["openh1_version"] >= 1 and rcon.hello["game_mode"] == "legacy", rcon.hello
     assert rcon.role == "admin"
     reply = rcon.command("sv_status")
     assert reply["ok"] and reply["id"] == 1 and reply["lines"][0].startswith("OpenCE Server: playing")

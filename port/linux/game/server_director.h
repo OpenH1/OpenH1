@@ -79,6 +79,12 @@ struct server_entry const *server_director_next(void);
 /* games hosted since the start, and this game's seconds */
 long server_director_games_hosted(void);
 real server_director_game_seconds(void);
+/* the kind of game hosted (server.game_mode as it was taken: a change waits
+for the server to be empty in its lobby): its word ("legacy",
+"openh1_120"), its name as the server browser says it ("Legacy", "OpenH1
+120 Tick, OpenCE can join"), whether OpenCE players join it, and its tick
+rate, returned (30 a Legacy game's). Either text may be NULL */
+long server_director_game_mode(char *word, long word_size, char *title, long title_size, boolean *opence);
 
 /* the commands' (server_commands.c) */
 /* the game ended now: with its scores (end_game), or without (skip) */

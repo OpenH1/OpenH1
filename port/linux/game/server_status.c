@@ -365,6 +365,18 @@ void server_status_write(
 	server_json_string(json, "state", server_status_state_name(server_director_state()));
 	server_json_string(json, "build", server_mode_build());
 	server_json_integer(json, "network_version", HALO_PORT_NETWORK_VERSION);
+	server_json_integer(json, "openh1_version", HALO_PORT_STANDARD_NETWORK_VERSION);
+	/* (the kind of game hosted: server.game_mode as taken, its tick rate,
+	and whether OpenCE players join it) */
+	{
+		char mode[16];
+		boolean opence;
+		long rate = server_director_game_mode(mode, sizeof(mode), NULL, 0, &opence);
+
+		server_json_string(json, "game_mode", mode);
+		server_json_integer(json, "tick_rate", rate);
+		server_json_boolean(json, "opence", opence);
+	}
 	server_json_integer(json, "uptime", (long long)server_mode_uptime());
 	server_json_integer(json, "games_hosted", server_director_games_hosted());
 	server_json_string(json, "map", current ? current->map_name : "");

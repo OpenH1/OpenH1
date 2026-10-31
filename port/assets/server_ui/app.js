@@ -736,6 +736,7 @@ function startPage(root) {
       fact('Map', mapTitle(s.map)),
       fact('Gametype', `${s.variant || s.gametype} (${s.gametype})${s.teams ? ', teams' : ''}`),
       fact('State', stateLabel(s.state) + (s.countdown >= 0 ? `: starts in ${s.countdown} s` : '')),
+      s.game_mode && fact('Games', s.game_mode),
       /^(playing|postgame)$/.test(s.state) && fact('Game time', formatClock(s.game_seconds)),
       s.teams && (s.team_scores || []).length === 2 && fact('Score', `Red ${s.team_scores[0]}, Blue ${s.team_scores[1]}`),
       fact('Next', next ? next.text : 'None'),

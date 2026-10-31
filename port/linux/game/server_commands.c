@@ -25,6 +25,7 @@ password's command is never logged nor answered with the password.
 #include "network_chat.h"
 #include "network_distributed.h"
 #include "network_link.h"
+#include "network_standard.h"
 #include "server_director.h"
 #include "server_gametypes.h"
 
@@ -559,6 +560,14 @@ static boolean command_status(char const *line, long count, char **words)
 		server_status_state_name(server_director_state()), uptime / 3600, (uptime / 60) % 60,
 		server_director_games_hosted(), server_director_games_hosted() == 1 ? "" : "s", server_mode_build(),
 		HALO_PORT_NETWORK_VERSION);
+	{
+		char mode[16], title[64];
+
+		server_director_game_mode(mode, sizeof(mode), title, sizeof(title), NULL);
+		say("games: %s (%s; OpenH1 protocol version %d)", title, mode, HALO_PORT_STANDARD_NETWORK_VERSION);
+		if (strcmp(mode, config_string("server.game_mode")))
+			say("server.game_mode %s waits for the server to be empty in its lobby", config_string("server.game_mode"));
+	}
 	if (current)
 	{
 		long players = 0, slot;
@@ -733,9 +742,9 @@ static char const *const settable_settings[] =
 {
 	"server.name", "server.max_players", "server.min_players", "server.password", "server.public",
 	"server.rotation_fallback", "server.lobby_seconds", "server.postgame_seconds", "server.empty_seconds",
-	"server.idle_minutes", "server.team_start", "server.motd", "server.frame_rate", "server.web_password",
-	"server.web_moderator_password", "server.log_format", "server.log_addresses", "server.status_file",
-	"server.auto_update", "server.coop_difficulty", "server.region", "server.master_publish",
+	"server.idle_minutes", "server.team_start", "server.motd", "server.frame_rate", "server.game_mode",
+	"server.web_password", "server.web_moderator_password", "server.log_format", "server.log_addresses",
+	"server.status_file", "server.auto_update", "server.coop_difficulty", "server.region", "server.master_publish",
 	"server.master_publish_address", "server.metrics", "server.chat_filter", "server.chat_filter_slurs",
 	"server.chat_filter_swearing", "server.chat_filter_insults", "server.vpn_policy", "server.vpn_fail",
 	"server.vpn_check_lan", "server.link_min_age_days", "server.link_one_seat", "server.update_check_minutes",
@@ -746,6 +755,7 @@ static char const *const settable_settings[] =
 	"network.vote_end_game", "network.votekick_threshold", "network.votekick_percent", "network.votekick_minutes", "network.votekick_ban_minutes", "network.map_share", "network.map_share_upload",
 	"network.public_address", "network.coop_friendly_fire", "network.coop_player_collisions",
 	"network.coop_ally_friendly_fire", "network.shield_effects", "network.fire_origins",
+	"network.allow_opence",
 };
 
 /* those of them the owner's console alone changes (the standard input, the
@@ -801,6 +811,7 @@ static struct
 	{ "server.empty_seconds", NULL, "0", NULL },
 	{ "server.idle_minutes", NULL, "0", NULL },
 	{ "server.frame_rate", NULL, "30", "120" },
+	{ "server.game_mode", "legacy|openh1_30|openh1_60|openh1_120", NULL, NULL },
 	{ "server.team_start", "one|both|skip", NULL, NULL },
 	{ "server.log_format", "text|json", NULL, NULL },
 	{ "server.auto_update", "off|check|install", NULL, NULL },
@@ -1062,6 +1073,12 @@ boolean server_commands_set_setting(
 		server_log(_server_log_warning, "server", "config.toml cannot be written: %s holds for this run", name);
 	if (!strcmp(name, "server.log_format"))
 		server_log_set_json(!strcmp(value, "json"));
+	/* (an OpenH1 game opened to OpenCE's players, or closed to them, at once:
+	those in it stay, as Host Controls' Allow OpenCE players has it) */
+	if (!strcmp(name, "network.allow_opence"))
+		network_standard_set_opence_joins(!strcmp(value, "true"));
+	/* (server.game_mode is taken in the lobby once nobody is on the server:
+	server_director.c, which says so) */
 	if (!strncmp(name, "server.", 7))
 		server_director_apply_settings();
 	return TRUE;

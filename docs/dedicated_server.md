@@ -20,8 +20,10 @@ servers uses in every build) and `server_rotation.c` (the rotation's
 grammar and the gametype rules), which every build compiles.
 
 **In OpenH1.** The server is OpenCE's, brought in with its network side
-(OpenCE's own netcode: a dedicated server hosts Legacy games, at 30 ticks a
-second, which OpenCE's players and OpenH1's join alike). OpenH1's builds run
+(OpenCE's own netcode: by default a dedicated server hosts Legacy games, at
+30 ticks a second, which OpenCE's players and OpenH1's join alike; with
+`server.game_mode` it hosts OpenH1 60 or 120 Tick games, "OpenH1 games"
+below). OpenH1's builds run
 the game as a guest of a 64-bit host (`port/linux/host`), so the server
 runs there too: `halo --server` on the Linux builds (and the macOS and
 Windows ones), its signals caught by the host for it
@@ -31,7 +33,7 @@ master servers made in the host (`host_https_request`,
 OpenH1's releases (`server.auto_update`, "Updates" below) when it runs from
 the Linux release's tree or the Windows build's folder. Not in OpenH1:
 OpenCE's `deploy/` folder (Docker, Helm, systemd, the panels' eggs and
-their CI). The server hosts no OpenH1 60 or 120 Tick game yet.
+their CI).
 
 ## Panels and fleets
 
@@ -69,12 +71,18 @@ A probe's line:
 
 ```json
 {"ok":true,"name":"OpenCE Server","map":"bloodgulch","gametype":"ctf","players":5,"max_players":16,
- "teams":true,"in_progress":true,"open":true,"dedicated":true,"network_version":38,"kind":0}
+ "teams":true,"in_progress":true,"open":true,"dedicated":true,"network_version":38,"kind":0,
+ "tick_rate":30,"openh1_version":0}
 ```
 
 `gametype` is the game engine's name (`ctf`, `slayer`, `oddball`, `king`,
 `race`, or `none`), `kind` the OpenCE gametype's kind the host sends (0 for
-none), `open` whether it takes players now.
+none), `open` whether it takes players now. `network_version` is the
+version the game advertises: OpenCE's network version for a Legacy game and
+an OpenH1 game that OpenCE players join too, and an OpenH1 game's protocol
+version with its top bit set (`0x8000`) for one that only OpenH1 players
+join. `tick_rate` is the game's (30 for a Legacy game) and `openh1_version`
+the OpenH1 protocol version of an OpenH1 game (0 for a Legacy game).
 
 The release has a `halo-server` script beside `halo`, which runs
 `halo --server` with its arguments.
@@ -171,7 +179,7 @@ the game's console commands of those names.
 | Command | Role | What it does |
 | --- | --- | --- |
 | `help [command]` | viewer | The commands, or one command's use |
-| `sv_status [--json]` | viewer | The server's state, map, gametype, players, uptime, games played, network version, listing and next game |
+| `sv_status [--json]` | viewer | The server's state, map, gametype, players, uptime, games played, network version, the kind of game hosted (`server.game_mode`, "OpenH1 games" below), listing and next game |
 | `sv_players [--json]` | viewer | Each player's slot, name, team, score, kills, deaths, assists, ping and machine; with the owner role or `server.log_addresses`, their address and hardware id |
 | `sv_rotation` (`sv_mapcycle`), `sv_maps`, `sv_gametypes`, `sv_version`, `sv_log [n]` | viewer | Lists: the rotation, the maps there are, the gametypes, the build, the log's last n lines |
 | `sv_bans` (`sv_banlist`), `sv_settings` | admin | Lists: the bans of `bans.txt`, the settings `sv_set` changes |
@@ -232,7 +240,7 @@ these settings, which `sv_settings` and `GET /api/settings` list:
 `server.password`, `server.public`, `server.rotation_fallback`,
 `server.lobby_seconds`, `server.postgame_seconds`, `server.empty_seconds`,
 `server.idle_minutes`, `server.team_start`, `server.motd`,
-`server.frame_rate`, `server.web_password`,
+`server.frame_rate`, `server.game_mode`, `server.web_password`,
 `server.web_moderator_password`, `server.log_format`,
 `server.log_addresses`, `server.status_file`, `server.auto_update`,
 `server.coop_difficulty`, `server.region`, `server.master_publish`,
@@ -253,8 +261,8 @@ these settings, which `sv_settings` and `GET /api/settings` list:
 `network.votekick_ban_minutes`, `network.map_share`,
 `network.map_share_upload`, `network.public_address`,
 `network.coop_friendly_fire`, `network.coop_player_collisions`,
-`network.coop_ally_friendly_fire`, `network.shield_effects` and
-`network.fire_origins`. Of them,
+`network.coop_ally_friendly_fire`, `network.shield_effects`,
+`network.fire_origins` and `network.allow_opence`. Of them,
 `server.status_file`, `server.auto_update` and `server.log_addresses` need
 the owner role: from the web's admin, `sv_set` of one of them (`POST
 /api/command`) answers `403 forbidden`, and `PUT /api/settings` leaves it
@@ -274,6 +282,7 @@ in either case, and is kept as the table spells it:
 | `server.lobby_seconds`, `server.postgame_seconds` | 0 to 300 |
 | `server.empty_seconds`, `server.idle_minutes` | 0 or more |
 | `server.frame_rate` | 30 to 120 |
+| `server.game_mode` | `legacy`, `openh1_30`, `openh1_60`, `openh1_120` |
 | `server.team_start` | `one`, `both`, `skip` |
 | `server.log_format` | `text`, `json` |
 | `server.auto_update` | `off`, `check`, `install` |
@@ -316,6 +325,42 @@ them, which an updated game shows as "The host refused: your player name"
 `refusing a machine … its name has words the server's filter keeps out`).
 Links are `network.text_chat`'s, refused by default. A list of words is
 not a moderator: spaced letters and look-alikes get past it.
+
+### OpenH1 games
+
+`server.game_mode` picks the kind of game the server hosts
+(`port/linux/NETCODE.md`, "OpenH1 and Legacy games"):
+
+| Value | The games |
+| --- | --- |
+| `legacy` (the default) | OpenCE's netcode at 30 ticks a second, which OpenCE's players and OpenH1's join alike |
+| `openh1_60`, `openh1_120` | An OpenH1 game at 60 or 120 ticks a second: each OpenH1 player's sub-steps go between the machines, and OpenCE players join it too, at 30, while `network.allow_opence` is on (the default) |
+| `openh1_30` | An OpenH1 game at 30, as a player's Server Setup offers it |
+
+The server hosts an OpenH1 game as a player's game hosts one, with the
+differences of any dedicated server (`port/linux/NETCODE.md`, "Dedicated
+servers"): it has no player of its own, so its ticks give its clients'
+players their sub-steps as they came and send them on to the other
+clients, and it sends no live controls of its own. Its LAN advertisement
+and listing are an OpenH1 game's (OpenCE's network version with the rate
+and the OpenH1 protocol version beside it, which the server browser's
+OpenH1 tab lists as "OpenH1 120 Tick, OpenCE can join"; with
+`network.allow_opence` off, the OpenH1 protocol version alone, which OpenCE
+does not list), with the dedicated flag as ever. Every rotation entry,
+gametype file, vote and the map vote play as in a Legacy game; a co-op
+entry is played at the game's rate too. The frames of an OpenH1 game come
+at least as often as its tick rate (`server.frame_rate` is raised to it),
+so that each sub-step of a client's is read and sent on as it comes.
+
+A change of `server.game_mode` (`sv_set`, `PUT /api/settings`,
+`sv_reload`) is taken in the lobby once nobody is on the server: the
+players there keep the kind of game they joined (`sv_status` says it
+waits), and an OpenH1 game's rate changes from the next game, as a player's
+host changes it. `network.allow_opence` is taken at once: an OpenH1 game
+closed to OpenCE players keeps those in it. The status's `game_mode`,
+`tick_rate` and `opence`, the lobby's log line (`lobby: hosting: OpenH1 120
+Tick, OpenCE can join (server.game_mode)`) and the `game_started` and
+`game_ended` events say what is hosted.
 
 ### Votes, the map vote and players away
 
@@ -628,7 +673,8 @@ events) before they were asked for.
 
 ```json
 {"ok":true,"time":1760900000123,"name":"OpenCE Server","state":"playing",
- "build":"build-206","network_version":38,"uptime":3600,"games_hosted":4,
+ "build":"build-206","network_version":38,"openh1_version":11,"game_mode":"openh1_120","tick_rate":120,"opence":true,
+ "uptime":3600,"games_hosted":4,
  "map":"bloodgulch","level":"levels\\test\\bloodgulch\\bloodgulch","gametype":"ctf","variant":"CTF","teams":true,
  "players":5,"max_players":16,"machines":5,"countdown":-1,"game_seconds":312,"team_scores":[2,1],
  "listing":{"online":true,"public":true,"password":false,"invite":"openh1://join/…"},
@@ -647,7 +693,12 @@ events) before they were asked for.
 lobby's seconds left, `-1` when it is not counting. `team_scores` is `null`
 in a game without teams. `frame_ms_max` and `frame_ms_avg` are the longest
 and the mean frame of the last minute (`tick_ms_avg` is the mean again, for
-older readers). `invite` is given to admins only (empty for others). An entry of the rotation is
+older readers). `game_mode` is the kind of game hosted, as `server.game_mode`
+spells it (a change of the setting waits for the server to be empty: "OpenH1
+games"), `tick_rate` its tick rate (30 for a Legacy game), `opence` whether
+OpenCE players join it now, and `openh1_version` the build's OpenH1 protocol
+version (`network_version` its network version). `invite` is given to
+admins only (empty for others). An entry of the rotation is
 `{"text":"sidewinder:team_slayer+score=50","map":"sidewinder","gametype":"team_slayer","rules":{"score":50},"rejected":null}`
 (`rejected` is why it cannot be played, else `null`). `drain` is the
 drain waiting (`sv_stop game`...), `{"after":"game","restart":false,"since":<unix
@@ -700,7 +751,8 @@ Every frame is text holding one JSON object. The server speaks first:
 
 ```
 → {"type":"hello","protocol":1,"server":"OpenCE Server","build":"build-206","network_version":38,
-   "capabilities":["events","status","rotation","settings","bans","owner_web","ban_address","stop","event_addresses","identity","vpn","link"]}
+   "openh1_version":11,"game_mode":"legacy",
+   "capabilities":["events","status","rotation","settings","bans","owner_web","ban_address","stop","event_addresses","identity","vpn","link","game_mode"]}
 ← {"type":"auth","password":"…","by":"sam"}        or {"type":"auth","token":"<session token>"}
 → {"type":"auth","ok":true,"role":"admin"}
 → {"type":"auth","ok":false,"error":{"code":"denied"}}  and the connection closes (1008)
@@ -723,8 +775,10 @@ A connection signed in with the page's cookie (on the same origin) needs no
 The `capabilities` say what the server has beyond the first release's
 (`events`, `status`, `rotation`, `settings`, `bans`): `owner_web`,
 `ban_address`, `stop`, `event_addresses` and `identity` ("Panels and
-fleets"), `vpn` (the VPN policy, `/api/vpn`, `join_refused`) and `link`
-(verified Discord accounts: `discord_*` in players, bans by `discord_id`);
+fleets"), `vpn` (the VPN policy, `/api/vpn`, `join_refused`), `link`
+(verified Discord accounts: `discord_*` in players, bans by `discord_id`)
+and `game_mode` (the kind of game hosted and its tick rate in the status,
+the hello and the game's events: "OpenH1 games");
 a client checks for one before it uses it. The owner's password
 signs in from the server's own machine alone ("Signing in").
 A command is a `line`, or a `command` and its `args`, which the server
@@ -771,11 +825,11 @@ Every event has `seq` (rising, never reused while the server runs; a
 
 | Event | Fields |
 | --- | --- |
-| `server_started` | `name, build, network_version, pid, started, instance, region, tunnel_port, publisher_key_id, web_port` (as the status's), `rotation[]` (the entries' texts) |
+| `server_started` | `name, build, network_version, openh1_version, game_mode` (`server.game_mode` as the server starts), `pid, started, instance, region, tunnel_port, publisher_key_id, web_port` (as the status's), `rotation[]` (the entries' texts) |
 | `lobby_opened` | `map, gametype, variant` (the gametype's name as the game shows it), `teams, index` (the rotation's entry) |
 | `countdown` | `seconds` (-1: paused) |
-| `game_started` | `map, gametype, variant, teams, team_scores[]` (team games), `players[]` |
-| `game_ended` | `map, gametype, variant, teams, reason` (`score`, `time`, `idle`, `empty`, `command`, `next`, `update`: a new network version's install, `vote`: the players' vote to end it), `duration` (seconds), `team_scores[]` (team games), `players[]` |
+| `game_started` | `map, gametype, variant, teams, game_mode, tick_rate` (as the status's), `team_scores[]` (team games), `players[]` |
+| `game_ended` | `map, gametype, variant, teams, game_mode, tick_rate, reason` (`score`, `time`, `idle`, `empty`, `command`, `next`, `update`: a new network version's install, `vote`: the players' vote to end it), `duration` (seconds), `team_scores[]` (team games), `players[]` |
 | `postgame` | `seconds` |
 | `player_joined` | `slot, name, team, machine`; `address, hwid, discord_id, discord_name, discord_verified` for the owner, or every role with `server.log_addresses` |
 | `join_refused` | `name` (the machine's), `reason` (`vpn_link_required`, `vpn_blocked`, `vpn_link_invalid`, `vpn_link_too_new`, `vpn_link_in_use`, `address_full`); `address, hwid` as `player_joined`'s |

@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, constant, enum_with, function, mutated, read, run  # noqa: E402
 
 CASES = ["legacy-host", "openh1-host", "mixed-host", "record", "messages", "players", "players-unmixed",
-         "legacy-heard"]
+         "legacy-heard", "dedicated-server"]
 
 # a fault in network_standard.c, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -36,6 +36,10 @@ NEGATIVE_CONTROLS = {
                                     "network_standard_globals.opence_players[player_index] ="), "players"),
     "unmixed-players-at-30": (("\t\tif (!network_standard_hosting_mixed())\n\t\t\treturn FALSE;\n\t\tbreak;",
                                "\t\tbreak;"), "players-unmixed"),
+    "server-reads-network-game-mode": (("halo_server_mode() ? network_standard_server_setting() != 0 :", ""),
+                                       "dedicated-server"),
+    "server-legacy-setting-changes-rate": (("return rate ? rate : network_standard_globals.hosting_rate;",
+                                            "return rate ? rate : SIM_RATE_CLASSIC;"), "dedicated-server"),
 }
 
 

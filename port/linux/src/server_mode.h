@@ -47,6 +47,10 @@ void server_mode_pace_frame(void);
 /* whether the server is idle (no other machine connected): its frames
 slower */
 void server_mode_set_idle(int idle);
+/* the least frames a second while not idle, whatever server.frame_rate
+says: an OpenH1 game's tick rate (so that each sub-step is a frame's, and
+what its clients send is read and sent on at once), 0 for none */
+void server_mode_set_minimum_frame_rate(long rate);
 /* the frames' time (milliseconds): the longest of the last minute's and the
 mean, for the health line and the metrics */
 void server_mode_frame_times(double *longest, double *mean);

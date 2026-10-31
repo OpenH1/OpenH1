@@ -1344,9 +1344,17 @@ static const struct config_setting config_settings[] =
 	{ "server.motd", _config_string, "\"\"", "HALO_SERVER_MOTD", _environment_value, _platform_server,
 		"A notice each machine is shown as it joins (127 characters); empty for\n"
 		"none." },
+	{ "server.game_mode", _config_string, "\"legacy\"", "HALO_SERVER_GAME_MODE", _environment_value,
+		_platform_server,
+		"The games hosted: \"legacy\", OpenCE's netcode at 30 ticks a second for\n"
+		"everyone; or \"openh1_60\", \"openh1_120\" (or \"openh1_30\"), an OpenH1\n"
+		"game at that tick rate, which OpenCE players join too at 30 while\n"
+		"network.allow_opence is true. A change waits for the server to be empty\n"
+		"in its lobby (players in it keep the kind they joined)." },
 	{ "server.frame_rate", _config_integer, "60", "HALO_SERVER_FRAME_RATE", _environment_value, _platform_server,
-		"Frames a second (30 to 120); the game's ticks stay 30 a second. A\n"
-		"server with no other machine runs 10." },
+		"Frames a second (30 to 120); the game's ticks stay 30 a second. An\n"
+		"OpenH1 game's frames are at least its tick rate. A server with no\n"
+		"other machine runs 10." },
 	{ "server.console", _config_boolean, "true", "HALO_SERVER_CONSOLE", _environment_value, _platform_server,
 		"Take commands from the standard input." },
 	{ "server.console_exit_on_eof", _config_boolean, "false", "HALO_SERVER_CONSOLE_EXIT_ON_EOF", _environment_value,
@@ -3282,6 +3290,7 @@ static const struct
 	{ "game.console_log", { "important", "all", "none", NULL }, NULL },
 	{ "game.language", { "", "ja", "de", "fr", "es", "it", NULL }, NULL },
 	{ "network.game_mode", { "openh1", "legacy", "standard", NULL }, NULL },
+	{ "server.game_mode", { "legacy", "openh1_30", "openh1_60", "openh1_120", NULL }, NULL },
 	{ "network.text_chat", { "on", "links", "off", NULL }, NULL },
 	{ "server.chat_filter", { "off", "censor", "block", NULL }, NULL },
 	{ "server.chat_filter_slurs", { "off", "severe", "strong", "mild", NULL }, NULL },
@@ -3501,8 +3510,13 @@ static void config_apply_server_mode(void)
 	{
 		long found = config_setting_index(forced[index][0]);
 
-		if (found >= 0)
+		/* (but the network test's "log", which hosts and joins nothing: each
+		second's state of the game the server plays, the tests' figures) */
+		if (found >= 0 && !(!strcmp(forced[index][0], "debug.network_test") && config_values[found].string &&
+			!strcmp(config_values[found].string, "log")))
+		{
 			config_set_from_text(&config_values[found], config_settings[found].type, forced[index][1]);
+		}
 	}
 	/* (the tunnel's port fixed, Halo PC's 2302, unless one is given: a
 	server's players and firewall need to know it; a router asked to

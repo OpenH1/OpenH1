@@ -54,6 +54,8 @@ host tells its OpenH1 clients which players are OpenCE's
 #include "network_distributed.h"
 #include "halo_port_limits.h"
 
+#include <stdlib.h>
+
 /* port/linux/src/port_config.c */
 char const *config_string(char const *name);
 long config_integer(char const *name);
@@ -121,12 +123,36 @@ static struct
 
 /* ---------- private code */
 
-/* network.sim_rate, a rate sim_rate.c steps at, else 30 */
+/* a dedicated server's server.game_mode (docs/dedicated_server.md): the rate
+of the OpenH1 game it names ("openh1_<rate>"), 0 for a Legacy game ("legacy",
+its default, and anything else) */
+static long network_standard_server_setting(
+	void)
+{
+	char const *mode = config_string("server.game_mode");
+	long rate;
+
+	if (!mode || csstrncmp(mode, "openh1_", 7))
+		return 0;
+	rate = strtol(mode + 7, NULL, 10);
+	return sim_rate_supported(rate) ? rate : 0;
+}
+
+/* network.sim_rate (a dedicated server's server.game_mode), a rate
+sim_rate.c steps at, else 30 */
 static long network_standard_rate_setting(
 	void)
 {
-	long rate = config_integer("network.sim_rate");
+	long rate;
 
+	if (halo_server_mode())
+	{
+		/* (a Legacy setting while an OpenH1 game is hosted, which it is until
+		the server is empty: the rate it has) */
+		rate = network_standard_server_setting();
+		return rate ? rate : network_standard_globals.hosting_rate;
+	}
+	rate = config_integer("network.sim_rate");
 	return sim_rate_supported(rate) ? rate : SIM_RATE_CLASSIC;
 }
 
@@ -138,8 +164,10 @@ void network_standard_server_created(
 	char const *mode = config_string("network.game_mode");
 
 	/* (anything but "legacy" is the default, OpenH1's: "openh1", and
-	"standard", its first name) */
-	network_standard_globals.hosting = !(mode && !csstrcmp(mode, "legacy"));
+	"standard", its first name; a dedicated server's server.game_mode,
+	"legacy" by default) */
+	network_standard_globals.hosting = halo_server_mode() ? network_standard_server_setting() != 0 :
+		!(mode && !csstrcmp(mode, "legacy"));
 	network_standard_globals.hosting_rate = network_standard_rate_setting();
 	network_standard_globals.mixed = network_standard_globals.hosting && config_boolean("network.allow_opence");
 	network_standard_globals.mixed_since = network_standard_globals.mixed;
@@ -159,6 +187,15 @@ boolean network_standard_hosting(
 	void)
 {
 	return network_standard_globals.hosting;
+}
+
+long network_standard_server_hosted(
+	boolean *opence)
+{
+	/* (OpenCE joins a Legacy game; a mixed game while it takes them) */
+	if (opence)
+		*opence = !network_standard_globals.hosting || network_standard_globals.mixed;
+	return network_standard_globals.hosting ? network_standard_globals.hosting_rate : 0;
 }
 
 boolean network_standard_hosting_mixed(

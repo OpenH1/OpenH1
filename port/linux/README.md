@@ -975,7 +975,8 @@ the setting for one start of the game. It has priority over the file.
 | `server.idle_minutes` | `0` | `HALO_SERVER_IDLE_MINUTES` | The minutes a game goes on with no score before it ends. `0`: it does not end. |
 | `server.team_start` | `"one"` | `HALO_SERVER_TEAM_START` | A team game. `"one"`: it starts with the players of one team (the next players to join balance the teams). `"both"`: it waits, saying nothing, for a player on each team. `"skip"`: while one player waits, a team game (not one `sv_map` asked for) gives way to the rotation's next entry without teams, if it has one; checked when the lobby opens and again when its countdown would begin. |
 | `server.motd` | `""` | `HALO_SERVER_MOTD` | A notice each machine sees when it joins (127 characters). Empty: none. |
-| `server.frame_rate` | `60` | `HALO_SERVER_FRAME_RATE` | The frames a second (30 to 120); the game's ticks stay at 30 a second. A server with no other machine runs 10 frames a second. |
+| `server.game_mode` | `"legacy"` | `HALO_SERVER_GAME_MODE` | The games the server hosts: `"legacy"`, OpenCE's netcode at 30 ticks a second for everyone; `"openh1_60"` or `"openh1_120"` (or `"openh1_30"`), an OpenH1 game at that tick rate, which OpenCE players join too at 30 while `network.allow_opence` is `true`. A change waits for the server to be empty, in its lobby. Refer to "OpenH1 games" in `docs/dedicated_server.md`. |
+| `server.frame_rate` | `60` | `HALO_SERVER_FRAME_RATE` | The frames a second (30 to 120); the game's ticks stay at 30 a second. An OpenH1 game's frames come at least as often as its tick rate. A server with no other machine runs 10 frames a second. |
 | `server.console`, `server.console_exit_on_eof` | `true`, `false` | `HALO_SERVER_CONSOLE`, `HALO_SERVER_CONSOLE_EXIT_ON_EOF` | `true`: the server takes commands from the standard input; it stops when the standard input ends if `server.console_exit_on_eof` is `true` (a panel can close it), after running the last line, whether or not a line's end ended it. |
 | `server.init_file` | `"init.txt"` | `HALO_SERVER_INIT_FILE` | The commands run once at the start, one on each line: in the data root unless a full path. Empty: none. |
 | `server.web_port`, `server.web_bind` | `8080`, `"127.0.0.1"` | `HALO_SERVER_WEB_PORT`, `HALO_SERVER_WEB_BIND` | The TCP port and IPv4 address of the web page, its API and the remote console (RCON). `0`: none. With an address beyond loopback, each web password that is set must have 8 characters or more, else the server stops (exit code 3, as for a port it may not bind or an address the machine does not have; a port in use: exit code 4); put a reverse proxy with TLS in front of it. Each server on a machine needs its own port. Read at the start only. |
@@ -2689,6 +2690,12 @@ lines), and the game's own log to `debug.txt` as the game does
   them, and the web page and the remote console with
   `server.web_owner_password` from the machine itself; with another
   password they do not (and `kick` and `ban` are always the server's).
+- **OpenH1 games.** By default the server hosts Legacy games (OpenCE's
+  netcode, 30 ticks a second). `server.game_mode = "openh1_120"` (or
+  `"openh1_60"`) hosts OpenH1 120 (or 60) Tick games, listed in the server
+  browser's OpenH1 tab, which OpenCE players join too at 30 while
+  `network.allow_opence` is on. A change waits for the server to be empty,
+  in its lobby (`docs/dedicated_server.md`, "OpenH1 games").
 - **Web page.** `server.web_port` (8080, on `127.0.0.1`) serves an admin
   page, a JSON API, a remote console over WebSocket, `/healthz` and
   `/metrics`. Sign in with `server.web_password` (the admin); the moderator

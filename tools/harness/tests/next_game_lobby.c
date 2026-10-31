@@ -33,6 +33,9 @@ typedef word message_header;
 #define csmemcpy memcpy
 #define csmemcmp memcmp
 #define csstrcmp strcmp
+#define csstrncmp strncmp
+/* (a player's host: a dedicated server reads server.game_mode, network_standard.c) */
+#define halo_server_mode() 0
 #define csstrncpy strncpy
 #define match_vassert(file, line, condition, ...) ((void)0)
 #define MAXIMUM_LOCAL_PLAYERS 4
