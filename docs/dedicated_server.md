@@ -201,6 +201,11 @@ the game's console commands of those names.
 | `sv_set <setting> <value>` | admin | Changes one of the server's settings, now where it can be, and in `config.toml` (below); a setting its environment variable sets is refused. A value is 256 characters at most |
 | `sv_name <name>`, `sv_maxplayers <n>`, `sv_password [<password>]`, `sv_public <0\|1>`, `sv_motd <text>` | admin | `sv_set` of `server.name`, `server.max_players`, `server.password`, `server.public`, `server.motd` |
 | `sv_reload` | admin | Reads `config.toml`'s server settings, the rotation and the gametype files again (as SIGHUP) |
+| `sv_map_after <map> [<gametype>]`, `sv_map_after <entry>` | moderator | Plays that game once the game played (or the lobby's, about to be) is over; the rotation goes on after it |
+| `sv_team <player>` | moderator | Puts the player on the other team: in the lobby by its record (every machine sent it), in a game as Host Controls moves them (their unit killed first, without statistics; an OpenH1 game of OpenH1 machines alone) |
+| `sv_teams shuffle\|balance` | moderator | Shuffles or balances the teams of a team game being played, as Host Controls does (an OpenH1 game of OpenH1 machines alone) |
+| `sv_lock_teams [0\|1]` | moderator | Players keep the team they are on in the lobby (their changes refused); alone, says whether they do |
+| `sv_admin [list]`, `sv_admin add <player\|key> [<name>]`, `sv_admin remove <player\|key\|key id>` | owner | The admins in the game ("Admins in the game", below): `admins.txt`'s keys, `server.admins`, and each player's key id; a player here added by the key their game proved, or a key (64 hex digits) given |
 | `sv_stop [now\|game\|empty] [<notice>]`, `sv_stop cancel` | owner | Stops the server (exit code 0): `now` (the default) as `quit` does; `game` once the game being played is over, `empty` once nobody plays (a drain, below); `cancel` the drain waiting. The notice is said to every machine first |
 | `sv_restart [now\|game\|empty] [<notice>]`, `sv_restart cancel` | owner | As `sv_stop`, with exit code 5 (restart me) |
 | `quit` (`exit`) | owner | Stops the server (exit code 0) |
@@ -325,6 +330,87 @@ them, which an updated game shows as "The host refused: your player name"
 `refusing a machine … its name has words the server's filter keeps out`).
 Links are `network.text_chat`'s, refused by default. A list of words is
 not a moderator: spaced letters and look-alikes get past it.
+
+### Admins in the game
+
+The players the owner makes admins have the pause menu's and the
+scoreboard's HOST CONTROLS in the server's game, as a player who hosts has
+them, and the lobby's: the same screens, showing the server's game. What an
+admin does there is a request the server runs as its own command, at the
+admin role, as the web page's and the RCON's are; so it is logged and is an
+event as those are, and the players see what the command shows them (its
+notices, a kicked player's leaving). Several players may be admins.
+
+An admin is a key, not a password. Each OpenH1 game proves a key of its
+own for this server to the server as it joins (an OpenH1 game of this
+version, in an OpenH1 game: `server.game_mode` not `legacy`): the server
+sends it the server's id (`admin_id.txt`, beside `admins.txt`, made at
+random the first time: keep it, as the admins' keys come from it) and a
+nonce, and the game signs the nonce, bound to its connection, with a key
+it makes for that server id alone from a secret of its own (`admin.key`
+beside its `config.toml`, made the first time a server asks: not the
+player key a Discord link uses, which is never shown). A key is never taken
+on the game's word, and its proof is good for that connection alone.
+
+For the players' privacy, one player's key differs from server to server,
+and says nothing of their Discord account or player key: servers cannot
+tell, by it, that two of their players are one. A server that claimed
+another's id would learn the player's key there, not more; the key is no
+password, and a proof is bound to the nonce and the connection it was
+made for (an internet play tunnel's secret: on a LAN, where there is none,
+keep `server.admins` to the LAN's players). A player who moves to another
+computer, or loses `admin.key`, has a new key, which the owner makes an
+admin again.
+
+A game that proved a key listed in `admins.txt` (in
+`paths.logs`, else the data root, beside `bans.txt`: a key of 64 hex digits
+or a key id of 16 a line, anything after it on the line a name, `#`
+beginning a comment) or in `server.admins` (keys or key ids, separated by
+commas) is an admin's, from the next second; one taken out is no longer.
+
+The owner makes a player an admin:
+
+- on the web page (the owner's session): **Make admin** beside a player whose
+  game proved a key (the players' `key_id`, the owner's to see), and
+  **Remove admin**; the players list marks admins;
+- by `sv_admin add <player>` (standard input, the owner's RCON or `POST
+  /api/command`), which writes the key their game proved here to `admins.txt` with
+  their name; `sv_admin add <key>` adds a key given; `sv_admin remove
+  <player|key|key id>` takes it out; `sv_admin` lists `admins.txt`,
+  `server.admins` and each player's key id;
+- or in `server.admins`, or `admins.txt` by hand.
+
+A player finds their own key id for the server they play on with the
+console's `admin` (which says too whether that server has them an admin).
+
+What an admin's Host Controls do, and the command each runs:
+
+| Host Controls | Command |
+| --- | --- |
+| PLAYERS: KICK, BAN... (an hour, a day, for good; a reason), MUTE... (10 minutes, an hour, a day), UNMUTE, MOVE TO RED/BLUE | `kick`, `ban <slot> <duration> <reason>`, `mute`, `unmute`, `sv_team` |
+| GAME: END GAME NOW, RESTART ROUND (the game played again: its entry), SHUFFLE and BALANCE TEAMS, ANNOUNCE..., LOCK TEAMS | `sv_end_game`, `sv_map <the entry played>`, `sv_teams`, `say`, `sv_lock_teams` |
+| MAPS (the server's maps and gametypes): PLAY NOW, AFTER THIS GAME, ADD TO PLAYLIST | `sv_map`, `sv_map_after`, `sv_rotation_add` |
+| PLAYLIST (the server's rotation, its next marked): PLAY NOW, AFTER THIS GAME, REMOVE | `sv_map`, `sv_map_after`, `sv_rotation_del` |
+| BANS (`bans.txt`'s newest 128): UNBAN | `unban <number>` |
+| The scoreboard's Kick, Ban (for good), Move to the other team | `kick`, `ban`, `sv_team` |
+
+A player is named to the server by slot and by the name the admin's list had
+there: a request for a slot that holds another player now is refused, as the
+web's are. The owner's commands (the server's settings and passwords, the
+rotation replaced, stopping or updating the server, `sv_admin`) are never
+offered, nor are a player host's bots, rules, score and time limits,
+password, listing, maximum players and votekick, which on a dedicated server
+are its settings. An admin's game asks a few things a second at most (the
+server takes 4 a second, bursts of 8, and drops the rest).
+
+Each request run is logged (`admin <name> (key <id>) ran "<command>" from the
+game: done` or `refused`) and is an `admin_command` event; the command's own
+log line and event (`kick`, `ban`...) say `by` as `admin <name> (key <id>)`,
+and a ban's reason in `bans.txt` ends `(by admin <name> (key <id>))`.
+
+A Legacy game (`server.game_mode` `legacy`), whose machines play OpenCE's
+protocol, has no admins in the game: its OpenH1 machines are sent nothing
+new.
 
 ### OpenH1 games
 
@@ -727,7 +813,9 @@ and `web_port` `server.web_port`. `capabilities` is the RCON's hello's. The rota
 the entry after the one played last (the first while none has been).
 
 A player is
-`{"slot":0,"name":"Milenko","team":0,"score":3,"kills":3,"deaths":1,"assists":0,"ping":42,"machine":1,"joined":1760899000,"muted":false}`;
+`{"slot":0,"name":"Milenko","team":0,"score":3,"kills":3,"deaths":1,"assists":0,"ping":42,"machine":1,"joined":1760899000,"muted":false,"admin":false}`
+(`admin`: an admin in the game, "Admins in the game"; with the owner role,
+also `key_id`, the key their game proved to this server, `""` for none);
 with the owner role, or `server.log_addresses`, also
 `"address":"203.0.113.5","hwid":"…"`. `team` is 0 (red), 1 (blue) or -1
 (no teams); `ping` is in milliseconds, `null` when it is not known yet.
@@ -814,7 +902,7 @@ event groups are `player` (`player_joined`, `player_left`, `map_share`), `chat`
 (`chat`), `game` (`lobby_opened`, `countdown`, `game_started`,
 `game_ended`, `postgame`, `score`, `kill`, `afk_kick`, `coop_bsp_switch`,
 `map_vote_started`, `map_vote_ended`), `moderation` (`kick`, `ban`,
-`unban`, `mute`, `unmute`, `speed_hack`, `join_refused`), `status` (`status`), `log`
+`unban`, `mute`, `unmute`, `speed_hack`, `join_refused`, `admin_command`), `status` (`status`), `log`
 (`log`, each log line as `{"n","level","cat","text"}`), `master`
 (`master`), and `server` (`server_started`, `reloaded`, `warning`,
 `drain`, `shutdown`), which every subscriber gets.
@@ -854,7 +942,8 @@ Every event has `seq` (rising, never reused while the server runs; a
 | `chat` | `channel` (`everyone`, `team`, `vehicle`), `slot, name, text` (admins only; the lines the host sends on) |
 | `kill` | `killer, victim` (slots; -1 for none), `weapon` (the killer's weapon's or the killing object's tag name, or null), `friendly_fire` |
 | `score` | `map, gametype, variant, teams, team_scores[]` (team games), `players[]` (once a second at most, on a change) |
-| `kick`, `ban`, `unban`, `mute`, `unmute` | `name, by, reason?, until?` |
+| `kick`, `ban`, `unban`, `mute`, `unmute` | `name, by, reason?, until?` (`by`: the role, or `admin <name> (key <id>)` for an admin in the game) |
+| `admin_command` | `name, key_id, line, ok`: an admin's request from the game, the command it ran and whether it did ("Admins in the game") |
 | `speed_hack` | `machine, names, rate, ahead_ticks, action` (`kicked`, or `unverified`: its datagrams alone said so, and it stays) |
 | `map_share` | `machine, map, state` (`asked`, `downloading` at each tenth, `downloaded` or `failed` once for each request), `progress` (0 to 100: a percentage already) |
 | `warning` | `text` (a newer release, with `server.auto_update`) |
@@ -1007,6 +1096,7 @@ lists;
 | `publisher.key` | The publisher key for the master servers (beside `config.toml`). On Windows, a server's `config.toml` and `publisher.key` are given an access list of their owner alone (the entries inherited for Administrators and SYSTEM taken out) |
 | `masters.txt` | The master servers (`server.masters_file`: beside `config.toml`, else beside the executable); one that names none leaves the official master, built in |
 | `bans.txt`, `cheaters.txt`, `debug.txt` | In `paths.logs`, else the data root |
+| `admins.txt`, `admin_id.txt` | Beside `bans.txt`: the players' keys (or key ids) who are admins in the game, and the server's id their keys for it are made from ("Admins in the game") |
 | `vpn_allow.txt`, `vpn_block.txt`, `netlist-<master key id>.bin` | Beside `bans.txt`: ranges never refused as a VPN's, ranges refused besides, and the masters' netlists held ("VPNs and linked Discord accounts") |
 | `status.json` (`server.status_file`) | The status, written every 2 seconds |
 | A password's file (`HALO_SERVER_WEB_PASSWORD_FILE`, `HALO_SERVER_WEB_OWNER_PASSWORD_FILE`, `HALO_SERVER_WEB_MODERATOR_PASSWORD_FILE`, `HALO_SERVER_WEB_VIEWER_PASSWORD_FILE`, `HALO_SERVER_PASSWORD_FILE`) | A container's secret: when the plain variable is not set, the file's first line (its CR and LF off) is the setting's value, which is then pinned as the plain variable's would be (`sv_set` and `PUT /api/settings` refuse it, `409 pinned`). Read once, at the start; a file that cannot be read is logged, and the setting is `config.toml`'s |

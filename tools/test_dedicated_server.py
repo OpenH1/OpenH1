@@ -420,6 +420,55 @@ def test_word_filter_keeps_a_name_out(machines):
            "a player of a fine name in", server)
 
 
+def _console(port, line):
+    """a line run by a game's script console (debug.telnet_console)"""
+    with socket.create_connection(("127.0.0.1", port), timeout=10) as console:
+        console.settimeout(2)
+        try:
+            console.recv(4096)
+        except socket.timeout:
+            pass
+        console.sendall(line.encode() + b"\r\n")
+        time.sleep(1)
+
+
+def test_an_admin_changes_the_map_from_the_game(machines):
+    """a player's game proves its admin key for the server as it joins; its request to change the map is refused
+    while the key is no admin's, and done once the owner makes it one (sv_admin add): the server's own sv_map, logged
+    and an event with the admin's name and key id (docs/dedicated_server.md, "Admins in the game")"""
+    _needs_game("bloodgulch", "prisoner")
+    port = _free_port()
+    server = machines("server").start(["--server"], **_server_settings(port, HALO_SERVER_ROTATION="bloodgulch:slayer"))
+    api = Api(port)
+    _until(lambda: "server: ready" in server.text(), 90, "server: ready", server)
+    api.login()
+    console_port = _free_port()
+    client = machines("client").start(HALO_NULL_RENDERER=1, HALO_NETWORK_TEST="join", HALO_NETWORK_TEST_NAME="Boss",
+                                      HALO_NET_ADDRESS=CLIENT_ADDRESSES[0], HALO_NET_BROADCAST=SERVER_ADDRESS,
+                                      HALO_TELNET_CONSOLE=1, HALO_TELNET_CONSOLE_PORT=console_port)
+    _until(lambda: (api.status() or {}).get("state") == "playing", 120, "the game", server)
+    _until(lambda: "proved admin key" in server.text(), 30, "the client's key proven", server)
+    assert not api.call("GET", "/api/players")[1]["players"][0]["admin"], "an admin before the owner made one"
+
+    # (no admin yet: the request reaches the server, which does nothing)
+    _console(console_port, "admin map prisoner:slayer")
+    time.sleep(5)
+    assert api.status()["map"] == "bloodgulch" and "from the game" not in server.text(), "a player not an admin"
+
+    # the owner makes the player an admin by the key their game proved
+    server.send("sv_admin add Boss")
+    _until(lambda: (server.folder / "data" / "admins.txt").is_file(), 15, "admins.txt", server)
+    _until(lambda: api.call("GET", "/api/players")[1]["players"][0]["admin"], 15, "the player an admin", server)
+    _until(lambda: "the server made this machine an admin" in client.debug() + client.text(), 15,
+           "the admin's game told it is one", client)
+    _console(console_port, "admin map prisoner:slayer")
+    _until(lambda: (api.status() or {}).get("map") == "prisoner", 120, "the admin's map played", server)
+    assert re.search(r"admin Boss \(key [0-9a-f]{16}\) ran \"sv_map prisoner:slayer\" from the game: done",
+                     server.text()), server.text()[-3000:]
+    command = next(event for event in api.events() if event.get("event") == "admin_command")
+    assert command["name"] == "Boss" and command["ok"] and re.fullmatch(r"[0-9a-f]{16}", command["key_id"]), command
+
+
 def test_empty_game_ends_and_join_in_progress(machines):
     """a game whose players leave ends after server.empty_seconds and the lobby opens again; a second client joins a
     game in progress"""

@@ -577,6 +577,7 @@ symbols in this file:
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
 #include "network_party.h" /* port: port/linux/game/network_party.c */
 #include "network_host_controls.h" /* port: port/linux/game/network_host_controls.c */
+#include "network_admin.h" /* port: port/linux/game/network_admin.c */
 #include "halo_keyboard.h" /* port: port/linux/src/xinput_sdl.c */
 /* (network_server_manager_internal.h's: the host's game record) */
 struct network_game *network_game_server_get_game(struct network_game_server *server);
@@ -2117,7 +2118,8 @@ static void scoreboard_menu_items(
 	}
 	/* (the host's, as Host Controls has them for the player:
 	network_host_controls.c) */
-	if (network_host_controls_available())
+	/* port: and a dedicated server's admin's (network_admin.c) */
+	if (network_host_controls_available() || network_admin_remote())
 	{
 		unsigned long actions = network_host_controls_player_actions(scoreboard_menu->player_index);
 		struct player_datum *player = player_try_and_get(scoreboard_menu->player_index);

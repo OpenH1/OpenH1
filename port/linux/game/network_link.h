@@ -56,4 +56,9 @@ boolean network_link_machine_verified(
 	char *discord_name,
 	long discord_name_size);
 
+/* the machine's tunnel's peer's virtual address as it joined (network byte
+order), which its proofs are bound to; 0 for none (a LAN's, the host's own) */
+unsigned long network_link_machine_virtual_address(
+	long machine_index);
+
 #endif

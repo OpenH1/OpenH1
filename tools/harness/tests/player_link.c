@@ -349,6 +349,73 @@ static void case_next_pass(void)
 	CHECK(player_link_next_pass(keys, only_b, 3, NULL, 0, -1, &needed) == 1, "the held one for an invite");
 }
 
+/* a dedicated server's admin's proof (network_admin.c): the player key's
+signature of the label, the server's nonce and the connection's binding,
+taken for that nonce and binding and that key alone */
+static void case_admin_proof(void)
+{
+	unsigned char seed[32], key[32], other_key[32], nonce[PLAYER_LINK_NONCE_SIZE], binding[32], secret[32];
+	unsigned char message[PLAYER_LINK_ADMIN_MESSAGE_SIZE], signature[64];
+	char key_id[17], expected_id[17];
+	unsigned char digest[32];
+
+	from_hex(VECTOR_PLAYER_SEED, seed, 32);
+	p2p_ed25519_public(seed, key, NULL);
+	key_of(VECTOR_MASTER_PUBLIC_KEY, other_key);
+	memset(nonce, 0x5A, sizeof(nonce));
+	from_hex(VECTOR_PROOF_SESSION_SECRET, secret, 32);
+	player_link_binding(secret, binding);
+	player_link_admin_message(nonce, binding, message);
+	CHECK(!memcmp(message, "openh1-admin-proof-1", 20) && !memcmp(message + 20, nonce, PLAYER_LINK_NONCE_SIZE) &&
+		!memcmp(message + 20 + PLAYER_LINK_NONCE_SIZE, binding, 32), "the proof's message: the label, nonce, binding");
+	p2p_ed25519_sign(seed, key, message, (int)sizeof(message), signature);
+	CHECK(player_link_admin_check(key, nonce, binding, signature), "the key's proof does not check");
+	CHECK(!player_link_admin_check(other_key, nonce, binding, signature), "another key's claim checks");
+	nonce[3] ^= 1;
+	CHECK(!player_link_admin_check(key, nonce, binding, signature), "an old nonce's proof checks");
+	nonce[3] ^= 1;
+	binding[0] ^= 1;
+	CHECK(!player_link_admin_check(key, nonce, binding, signature), "another connection's proof checks");
+	binding[0] ^= 1;
+	signature[10] ^= 1;
+	CHECK(!player_link_admin_check(key, nonce, binding, signature), "a changed signature checks");
+	/* (its id: SHA-256's first 8 bytes, as hex) */
+	player_link_key_id(key, key_id);
+	p2p_sha256(key, 32, digest);
+	p2p_hex(digest, 8, expected_id);
+	CHECK(strlen(key_id) == 16 && !strcmp(key_id, expected_id), "the key's id %s", key_id);
+	/* (a key for each server, from the admin secret: one server's again the
+	same, two servers' two that are not the player key's) */
+	{
+		unsigned char secret[PLAYER_LINK_ADMIN_SECRET_SIZE], server_a[32], server_b[32];
+		unsigned char seed_a[32], seed_b[32], again[32], key_a[32], key_b[32];
+		char id_a[17], id_b[17];
+
+		memset(secret, 0x11, sizeof(secret));
+		memset(server_a, 0xA0, sizeof(server_a));
+		memset(server_b, 0xA0, sizeof(server_b));
+		server_b[31] = 0xA1;
+		player_link_admin_seed(secret, server_a, seed_a);
+		player_link_admin_seed(secret, server_a, again);
+		player_link_admin_seed(secret, server_b, seed_b);
+		CHECK(!memcmp(seed_a, again, 32), "one server's key changes");
+		p2p_ed25519_public(seed_a, key_a, NULL);
+		p2p_ed25519_public(seed_b, key_b, NULL);
+		player_link_key_id(key_a, id_a);
+		player_link_key_id(key_b, id_b);
+		CHECK(strcmp(id_a, id_b) && memcmp(key_a, key_b, 32), "two servers see one id: %s", id_a);
+		CHECK(memcmp(key_a, key, 32) && memcmp(seed_a, secret, 32), "a server sees the secret's own key");
+		secret[0] ^= 1;
+		player_link_admin_seed(secret, server_a, again);
+		CHECK(memcmp(seed_a, again, 32), "another machine's secret gives the same key");
+		/* (and its proof checks for that server's key) */
+		player_link_admin_message(nonce, binding, message);
+		p2p_ed25519_sign(seed_a, key_a, message, (int)sizeof(message), signature);
+		CHECK(player_link_admin_check(key_a, nonce, binding, signature), "a server's key's proof does not check");
+		CHECK(!player_link_admin_check(key_b, nonce, binding, signature), "another server's key's checks");
+	}
+}
+
 int main(int argc, char **argv)
 {
 	static const struct
@@ -367,6 +434,7 @@ int main(int argc, char **argv)
 		{ "netlists-refused", case_netlists_refused },
 		{ "ranges-text", case_ranges_text },
 		{ "next-pass", case_next_pass },
+		{ "admin-proof", case_admin_proof },
 	};
 	int index;
 

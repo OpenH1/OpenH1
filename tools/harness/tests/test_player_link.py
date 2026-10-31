@@ -17,14 +17,16 @@ from harness import CHECK_FAILED, build, constant, function, mutated, read, run 
 from harness.tests.test_master_protocol import c_string, crypto_includes, key_hex, vectors  # noqa: E402
 
 CASES = ["pass-read", "pass-signed", "proof", "check", "passes-refused", "link-texts", "netlist", "netlists-refused",
-         "ranges-text", "next-pass"]
+         "ranges-text", "next-pass", "admin-proof"]
 
 SOURCES = {
     "port/linux/src/p2p.c": ["p2p_hex"],
     "port/linux/src/player_link.c": ["get_u64", "player_link_pass_read", "player_link_pass_signed",
                                      "player_link_binding", "player_link_proof_message", "player_link_proof_check",
                                      "player_link_code", "player_link_request_text", "player_link_check",
-                                     "player_link_discord_created", "listed_by", "player_link_next_pass"],
+                                     "player_link_discord_created", "listed_by", "player_link_next_pass",
+                                     "player_link_key_id", "player_link_admin_message", "player_link_admin_seed",
+                                     "player_link_admin_check"],
     "port/linux/src/server_netlist.c": ["get_u32", "get_u64", "server_netlist_read", "server_netlist_ranges_contain",
                                         "read_address", "compare_pairs", "server_netlist_parse_ranges"],
 }
@@ -60,6 +62,15 @@ NEGATIVE_CONTROLS = {
     "next-pass-repeats": (("index = after < 0 ? 0 : after + 1;", "index = after < 0 ? 0 : after;"),
                           "player_link_next_pass", "next-pass"),
     "next-pass-names-none": (("*needed = index;", "*needed = -1;"), "player_link_next_pass", "next-pass"),
+    "admin-proof-unbound": (("memcpy(message + 20 + PLAYER_LINK_NONCE_SIZE, binding, PLAYER_LINK_BINDING_SIZE);",
+                             "memset(message + 20 + PLAYER_LINK_NONCE_SIZE, 0, PLAYER_LINK_BINDING_SIZE);"),
+                            "player_link_admin_message", "admin-proof"),
+    "admin-key-any-server": (("memcpy(data + 18, server_id, PLAYER_LINK_SERVER_ID_SIZE);",
+                              "memset(data + 18, 0, PLAYER_LINK_SERVER_ID_SIZE);"), "player_link_admin_seed",
+                             "admin-proof"),
+    "admin-proof-any-nonce": (("memcpy(message + 20, nonce, PLAYER_LINK_NONCE_SIZE);",
+                               "memset(message + 20, 0, PLAYER_LINK_NONCE_SIZE);"), "player_link_admin_message",
+                              "admin-proof"),
     "ranges-never-merged": (("if (first <= *previous_last || first - 1 == *previous_last)",
                              "if (first <= *previous_last)"), "server_netlist_parse_ranges", "ranges-text"),
 }

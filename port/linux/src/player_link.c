@@ -173,6 +173,39 @@ unsigned long long player_link_discord_created(unsigned long long discord_id)
 	return ((discord_id >> 22) + 1420070400000ULL) / 1000;
 }
 
+void player_link_key_id(const unsigned char *public_key, char *text)
+{
+	unsigned char digest[P2P_SHA256_SIZE];
+
+	p2p_sha256(public_key, PLAYER_LINK_KEY_SIZE, digest);
+	p2p_hex(digest, PLAYER_LINK_KEY_ID_SIZE, text);
+}
+
+void player_link_admin_message(const unsigned char *nonce, const unsigned char *binding, unsigned char *message)
+{
+	memcpy(message, "openh1-admin-proof-1", 20);
+	memcpy(message + 20, nonce, PLAYER_LINK_NONCE_SIZE);
+	memcpy(message + 20 + PLAYER_LINK_NONCE_SIZE, binding, PLAYER_LINK_BINDING_SIZE);
+}
+
+void player_link_admin_seed(const unsigned char *secret, const unsigned char *server_id, unsigned char *seed)
+{
+	unsigned char data[18 + PLAYER_LINK_SERVER_ID_SIZE];
+
+	memcpy(data, "openh1-admin-key-1", 18);
+	memcpy(data + 18, server_id, PLAYER_LINK_SERVER_ID_SIZE);
+	p2p_hmac_sha256(secret, PLAYER_LINK_ADMIN_SECRET_SIZE, data, (int)sizeof(data), seed);
+}
+
+int player_link_admin_check(const unsigned char *public_key, const unsigned char *nonce,
+	const unsigned char *binding, const unsigned char *signature)
+{
+	unsigned char message[PLAYER_LINK_ADMIN_MESSAGE_SIZE];
+
+	player_link_admin_message(nonce, binding, message);
+	return p2p_ed25519_verify(public_key, message, (int)sizeof(message), signature);
+}
+
 /* whether the key id is one of the server's masters' */
 static int listed_by(const unsigned char *key_id, const unsigned char (*server_key_ids)[PLAYER_LINK_KEY_ID_SIZE],
 	int server_count)
@@ -261,6 +294,16 @@ int player_link_server_check(const unsigned char *pass, const unsigned char *pro
 	*created = (unsigned long)player_link_discord_created(fields.discord_id);
 	why[0] = 0;
 	return 1;
+}
+
+int player_link_admin_server_check(const unsigned char *public_key, const unsigned char *nonce,
+	unsigned long virtual_address, const unsigned char *signature)
+{
+	unsigned char binding[PLAYER_LINK_BINDING_SIZE];
+
+	if (!virtual_address || !p2p_peer_binding(virtual_address, binding))
+		player_link_binding(NULL, binding);
+	return player_link_admin_check(public_key, nonce, binding, signature);
 }
 
 /* ---------- a player's machine */
@@ -921,4 +964,91 @@ int player_link_master_state(int master_index, char *host, int host_size, char *
 	}
 	pthread_mutex_unlock(&player.lock);
 	return state;
+}
+
+/* the admin secret (admin.key beside config.toml: 64 hex digits), read, or
+made the first time a dedicated server asks for a proof; 1 with it. Its own,
+not the player key's: what it proves to one server says nothing of the
+player elsewhere */
+static int admin_secret(unsigned char *secret)
+{
+	static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+	static unsigned char kept[PLAYER_LINK_ADMIN_SECRET_SIZE];
+	static int has_secret;
+	char path[1100];
+	int result = 0;
+
+	pthread_mutex_lock(&lock);
+	if (!has_secret)
+	{
+		size_t size;
+		char *text;
+
+		file_path("admin.key", path, sizeof(path));
+		text = config_file_read(path, &size);
+		if (text)
+		{
+			const char *line = text;
+			int index;
+
+			/* (its first line that is not a comment) */
+			while (*line == '#')
+				line += strcspn(line, "\n") + (line[strcspn(line, "\n")] ? 1 : 0);
+			for (index = 0; index < PLAYER_LINK_ADMIN_SECRET_SIZE; index++)
+			{
+				int high = hex_digit(line[2 * index]), low = high >= 0 ? hex_digit(line[2 * index + 1]) : -1;
+
+				if (high < 0 || low < 0)
+					break;
+				kept[index] = (unsigned char)(high << 4 | low);
+			}
+			has_secret = index == PLAYER_LINK_ADMIN_SECRET_SIZE;
+			memset(text, 0, size);
+			free(text);
+		}
+		if (!has_secret)
+		{
+			char hex[2 * PLAYER_LINK_ADMIN_SECRET_SIZE + 1];
+			char contents[512];
+
+			posix_random_bytes(kept, sizeof(kept));
+			p2p_hex(kept, PLAYER_LINK_ADMIN_SECRET_SIZE, hex);
+			snprintf(contents, sizeof(contents),
+				"# This machine's secret for dedicated servers' admins: each server is shown a key\n"
+				"# made from it for that server alone, which its owner may make an admin. Keep it.\n%s\n", hex);
+			has_secret = write_file(path, contents, (unsigned long)strlen(contents));
+			memset(hex, 0, sizeof(hex));
+			memset(contents, 0, sizeof(contents));
+			platform_log(has_secret ? "admin: made %s" : "admin: cannot write %s", path);
+		}
+	}
+	if (has_secret)
+	{
+		memcpy(secret, kept, PLAYER_LINK_ADMIN_SECRET_SIZE);
+		result = 1;
+	}
+	pthread_mutex_unlock(&lock);
+	return result;
+}
+
+int player_link_admin_sign(unsigned long host_virtual_address, const unsigned char *server_id,
+	const unsigned char *nonce, unsigned char *public_key, unsigned char *signature)
+{
+	unsigned char binding[PLAYER_LINK_BINDING_SIZE];
+	unsigned char message[PLAYER_LINK_ADMIN_MESSAGE_SIZE];
+	unsigned char secret[PLAYER_LINK_ADMIN_SECRET_SIZE];
+	unsigned char seed[P2P_SEED_SIZE];
+
+	if (!admin_secret(secret))
+		return 0;
+	if (!host_virtual_address || !p2p_peer_binding(host_virtual_address, binding))
+		player_link_binding(NULL, binding);
+	player_link_admin_message(nonce, binding, message);
+	/* (the key for this server alone) */
+	player_link_admin_seed(secret, server_id, seed);
+	p2p_ed25519_public(seed, public_key, NULL);
+	p2p_ed25519_sign(seed, public_key, message, (int)sizeof(message), signature);
+	memset(secret, 0, sizeof(secret));
+	memset(seed, 0, sizeof(seed));
+	return 1;
 }

@@ -357,7 +357,10 @@ it does not send their every control to (below, "Presses to far clients");
 version 14 sends each OpenH1 client the states of the players near its own,
 or aimed at, as each of the host's sub-steps but a tick's last ends
 (distributed message 136, `_distributed_message_substep_states`,
-unreliable; below, "States at the sub-steps"). With no new version, each client then tells the
+unreliable; below, "States at the sub-steps"); version 15 gives a dedicated
+server's admins Host Controls in the game (distributed messages 137 and 138,
+`_distributed_message_admin_down` and `_up`, reliably: below, "Dedicated
+servers"). With no new version, each client then tells the
 host its build (distributed message 92, `_distributed_message_client_build`,
 reliably once a game after its ready, over its connection alone): its
 number, configuration, the label it shows ("OpenH1 Linux | build 120
@@ -1559,6 +1562,39 @@ as any other, with these differences, all on the host's side:
   dedicated flag (32); a listing published to the master servers is the
   same signed listing (`docs/master_protocol.md`), and the master's probe
   is answered on the tunnel's socket (`p2p.c`, `server_master_probe`).
+- **Admins in the game.** From OpenH1 protocol version 15 a dedicated
+  server's admins (`port/linux/game/network_admin.c`;
+  `docs/dedicated_server.md`, "Admins in the game") have Host Controls. The
+  server sends each OpenH1 machine of its game, as it joins, its id (32
+  bytes, `admin_id.txt`) and a nonce of 32 random bytes
+  (`_distributed_message_admin_down`, 137, its challenge); the machine
+  signs `openh1-admin-proof-1`, the nonce and its connection's binding (the
+  internet play tunnel's session secret as a Discord pass's proof is bound,
+  32 zero bytes on a LAN: `player_link.c`) with a key for that server id
+  alone (its Ed25519 seed HMAC-SHA-256 of `openh1-admin-key-1` and the id,
+  keyed with the machine's own `admin.key`, not the player key), and
+  answers with the key and the signature (`_distributed_message_admin_up`,
+  138): two servers see two unrelated keys of one player. One answer is taken a
+  nonce; a key is never taken on the machine's word. A machine that proved
+  a key listed in `admins.txt` or `server.admins` is an admin: the server
+  tells it the game once a second (its flags, the entry played and the
+  next, then its players by slot, 32 a message) and the lists it asks for
+  (the maps, gametypes, rotation and bans, in pages of 3000 bytes). An
+  admin's request is a verb, a slot with the name its list had there, a
+  number and a text (156 bytes), taken only from the machine's own stream,
+  from a machine that proved an admin's key, 4 a second at most (bursts of
+  8); each field is checked (`network_admin_request_line`: the slot must
+  hold that name now, numbers in range, an entry one word of printable
+  ASCII) and the request is run as the server's own command at the admin
+  role (`kick`, `ban`, `mute`, `sv_team`, `sv_map`, `sv_map_after`,
+  `sv_rotation_add`...), its answer sent back. Each message carries a
+  format byte (1) and a kind; a size that is not its kind's is dropped. A
+  player host sends neither message, and an OpenCE machine is sent none.
+  Checked by `tools/harness/tests/test_network_admin.py` (the keys listed,
+  each request's command, those refused, the rate),
+  `test_player_link.py`'s `admin-proof` (the signature taken for its key,
+  nonce and binding alone; two servers' ids, two keys), and `tools/test_dedicated_server.py`'s
+  `test_an_admin_changes_the_map_from_the_game`.
 - **The timeout.** `network.client_timeout_seconds` (15 seconds by
   default) sets how long a host waits for a silent machine, and two more
   waits with it: how long a stream's writes may stall before its connection

@@ -795,7 +795,8 @@ static void lobby_board_update(struct widget_instance *list)
 		}
 		visible_set(named(panel, "board_after", 0), then);
 		visible_set(named(panel, "board_after_label", 0), then);
-		visible_set(named(list, "board_host", 0), hosting);
+		/* (and a dedicated server's admin's: network_admin.c) */
+		visible_set(named(list, "board_host", 0), hosting || (game && !host && network_admin_remote()));
 	}
 	menu_prompts_show(bar, "prompt_team", controls.team_change);
 	menu_prompts_show(bar, "prompt_invite", controls.invite);

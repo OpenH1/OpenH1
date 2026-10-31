@@ -456,6 +456,18 @@ static short network_distributed_ban_lines(char (*lines)[HOST_CONTROLS_BAN_LINE_
 	return count;
 }
 static boolean network_distributed_unban(char const *line) { (void)line; return TRUE; }
+/* a dedicated server's admin's (network_admin.c): this machine is none */
+static boolean network_admin_remote(void) { return FALSE; }
+static boolean network_admin_player(long player_index, struct host_controls_player *player)
+{
+	(void)player_index; (void)player;
+	return FALSE;
+}
+static boolean network_admin_send(short verb, long slot, wchar_t const *name, long number, char const *text)
+{
+	(void)verb; (void)slot; (void)name; (void)number; (void)text;
+	return FALSE;
+}
 
 #include "under_test.inc"
 

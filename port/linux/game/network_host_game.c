@@ -56,6 +56,7 @@ is tools/harness/tests/test_host_game.py's.
 #include "bots.h"
 #include "network_host_game.h"
 #include "network_host_rules.h"
+#include "network_admin.h"
 #include "server_gametypes.h"
 
 #include <stdio.h>
@@ -992,6 +993,14 @@ static void host_game_gametype_shown(
 	}
 }
 
+void network_host_game_gametype_text(
+	char const *name,
+	wchar_t *text,
+	short size)
+{
+	host_game_gametype_shown(name, NULL, 0, text, size);
+}
+
 void network_host_game_entry_shown(
 	struct server_entry const *entry,
 	wchar_t *text,
@@ -1491,6 +1500,9 @@ boolean network_host_game_console(
 	long length;
 
 	if (network_host_game_command(expression, result))
+		return TRUE;
+	/* (a dedicated server's admin's: network_admin.c) */
+	if (network_admin_console(expression, result))
 		return TRUE;
 	/* (the rules: network_host_rules.c) */
 	if (network_host_rules_console(expression, result))
