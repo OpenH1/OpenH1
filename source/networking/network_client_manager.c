@@ -2415,7 +2415,7 @@ static wchar_t const *network_game_client_rejection_text(
 	switch (rejection_code)
 	{
 	case _rejection_code_version_too_old:
-		return L"This game is on a newer version of OpenH1. Update OpenH1 to join it.";
+		return L"This game is on a newer version of OpenH1 or OpenCE. Update OpenH1 to join it, or if no update is out yet, try again soon.";
 	case _rejection_code_version_too_new:
 		return L"This game is on an older version of OpenH1. Ask the host to update to the latest version.";
 	case _rejection_code_bad_password:
@@ -3462,13 +3462,13 @@ void network_game_client_tell_version(
 	else if (theirs > ours)
 	{
 		csprintf(message,
-			"This game is on a newer version of OpenH1.\n\n"
-			"Update OpenH1 to join it.");
+			"This game is on a newer version of OpenH1 or OpenCE.\n\n"
+			"Update OpenH1 to join it. If no update is out yet, OpenH1 will catch up soon.");
 	}
 	else
 	{
 		csprintf(message,
-			"This game is on an older version of OpenH1 or Halo that this one can't join.\n\n"
+			"This game is on an older version of OpenH1, OpenCE or Halo that this one can't join.\n\n"
 			"Join another game, or ask the host to update to the latest OpenH1.");
 	}
 	network_event("not joining a host of network version %u%s (this machine's is %u)", theirs,
