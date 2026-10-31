@@ -70,7 +70,9 @@ put somewhere in a tick still open (render_interpolation_object_from: the
 VR mode's grenade let go of in a sub-step) is drawn there until the frames
 reach that tick. Kept here only, for the frames: the simulation never reads
 it. At 30 a tick is one sub-step, nothing is kept, and the frames are as
-they were.
+they were. In a network game, other players and the vehicles they drive are
+drawn between their newest two sub-steps instead, the open tick's, not a
+tick behind (render_interpolation_lead_wanted, below).
 
 A vehicle a player drives (of the micro lane too: vehicles.c) also turns in
 the sub-steps, and what it carries (its riders, its gunner, its turret, the
@@ -188,6 +190,10 @@ and the nodes each may have */
 between the tick's snapshots before it is taken for a jump, not a path:
 past a fast projectile's bounce, short of a teleport */
 #define SUBSTEP_OFFSET_MAXIMUM 2.0f
+/* how long (ticks) an object drawn from its newest sub-steps takes to glide
+to the tick drawn, or back (render_interpolation_lead_weight): a lift
+starting under a player, a local player getting into another's vehicle */
+#define LEAD_GLIDE_TICKS 4.0f
 /* the most a local player's vehicle drawn from its newest step turns on in
 the time since that step (radians): past a tumble's, short of a spin not a
 number */
@@ -282,6 +288,12 @@ struct interpolated_substeps
 	long frame_drawn_frame;
 	boolean frame_drawn_valid;
 	real_matrix4x3 frame_drawn;
+	/* how far (0 to 1) it is drawn from its newest sub-steps rather than
+	the tick drawn's (render_interpolation_lead_weight), as of the frame
+	lead_frame drew at lead_time (ticks) */
+	long lead_frame;
+	real lead_weight;
+	double lead_time;
 };
 
 struct interpolated_camera
@@ -1121,6 +1133,7 @@ static void render_interpolation_substep(short substep_index, short substep_coun
 			substeps->tick[1] = NONE;
 			substeps->drawn_frame = NONE;
 			substeps->frame_drawn_frame = NONE;
+			substeps->lead_frame = NONE;
 		}
 		/* (a tick given up and begun again begins again here) */
 		if (substep_index == 0)
@@ -1160,6 +1173,172 @@ static void render_interpolation_substep(short substep_index, short substep_coun
 	}
 }
 
+/* An object of the micro lane in a network game at 60 or 120 is drawn from
+its newest sub-steps, not a tick behind. A frame of the tick drawn is the
+tick's own fraction of the way from the tick before's end: a tick behind the
+clock, where the newest sub-steps the clock has run (the open tick's, which
+the frames would draw next) are a sub-step behind it at most. Another
+machine's player, the vehicle they drive and an actor were drawn 25 to 33
+ms (17 to 33 at 60) behind where this machine's simulation had them (where
+its shots hit them), and are drawn between its two newest sub-steps instead:
+0 to 8 ms behind (0 to 17 at 60), a sub-step's interpolation still, never
+past a step the simulation has run. Only where it is moves so (and a
+vehicle's frame): its pose, the aim of its head and gun, is still blended
+between the ticks, moved there as the sub-steps' path moves it. Not what a
+local player is or rides, whose view hangs on the tick drawn
+(render_interpolation_blended_camera, or the newest step's own:
+render_interpolation_newest_vehicles); not a projectile or an item (a
+projectile's head start, hold and the tick it is drawn on to what it hit,
+render_interpolation_object_deleted, are the tick drawn's); not in a
+cinematic; and not a biped riding a lift that moves, which is of the macro
+lane and drawn a tick behind. Single player, and at 30 (one sub-step a
+tick: the newest is the tick drawn's end), are as they were */
+
+/* whether the object's nodes moved between the ticks drawn, or since: a lift
+moving (or not known) */
+static boolean render_interpolation_nodes_moved(long object_index)
+{
+	struct object_datum *object = object_get(object_index);
+	struct interpolated_object const *record;
+	real_matrix4x3 const *previous, *latest, *now;
+	long absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(object_index);
+	short node_count = (short)(object->object.node_matrices.size / (short)sizeof(real_matrix4x3));
+	short node_index;
+
+	if (!interpolated_objects || absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
+		return TRUE;
+	record = &interpolated_objects[absolute_index];
+	if (record->object_index != object_index || record->tick != interpolation_tick || !record->has_previous ||
+		record->node_count != node_count)
+	{
+		return TRUE;
+	}
+	previous = record->nodes + (record->latest ^ 1) * record->node_capacity;
+	latest = record->nodes + record->latest * record->node_capacity;
+	/* (as it is now: object_get_node_matrices gives the drawn pose while a
+	frame is drawn) */
+	now = (real_matrix4x3 const *)object_header_block_get(object_index, &object->object.node_matrices);
+	for (node_index = 0; node_index < node_count; node_index++)
+	{
+		if (distance_squared(&previous[node_index].position, &latest[node_index].position) != 0.0f ||
+			distance_squared(&latest[node_index].position, &now[node_index].position) != 0.0f)
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+/* whether the object of the micro lane (by itself) is to be drawn from its
+newest sub-steps (above) */
+static boolean render_interpolation_lead_wanted(long root_index)
+{
+	struct object_datum *root = object_get(root_index);
+	short local_player_index;
+
+	if (!sim_rate_locked() || cinematic_in_progress() ||
+		!TEST_FLAG(_object_mask_biped | _object_mask_vehicle, root->object.type))
+	{
+		return FALSE;
+	}
+	for (local_player_index = 0; local_player_index < MAXIMUM_LOCAL_PLAYERS; local_player_index++)
+	{
+		long unit_index = player_control_get_unit_index(local_player_index);
+
+		if (unit_index != NONE && object_try_and_get(unit_index) && object_get_ultimate_parent(unit_index) == root_index)
+			return FALSE;
+	}
+	if (root->object.type == _object_type_biped)
+	{
+		long elevator_index = ((struct biped_datum *)root)->biped.elevator_object_index;
+
+		if (elevator_index != NONE && object_try_and_get(elevator_index) &&
+			render_interpolation_nodes_moved(elevator_index))
+		{
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
+/* (the frames) how far (0 to 1) the object is drawn from its newest
+sub-steps this frame: wanted or not, gliding there or back over
+LEAD_GLIDE_TICKS of the frames' time, rather than a jump of a sub-step's
+part of a tick's motion; at once when first drawn. Once a frame */
+static real render_interpolation_lead_weight(long root_index, struct interpolated_substeps *substeps)
+{
+	double now = (double)interpolation_tick + (double)interpolation_fraction;
+	real target;
+
+	if (substeps->lead_frame == interpolation_frame)
+		return substeps->lead_weight;
+	target = render_interpolation_lead_wanted(root_index) ? 1.0f : 0.0f;
+	/* (so written that a weight not a number is the target) */
+	if (substeps->lead_frame == NONE || !(now >= substeps->lead_time) ||
+		!(substeps->lead_weight >= 0.0f && substeps->lead_weight <= 1.0f))
+	{
+		substeps->lead_weight = target;
+	}
+	else
+	{
+		real step = (real)(now - substeps->lead_time) / LEAD_GLIDE_TICKS;
+
+		if (substeps->lead_weight < target)
+			substeps->lead_weight = substeps->lead_weight + step < target ? substeps->lead_weight + step : target;
+		else
+			substeps->lead_weight = substeps->lead_weight - step > target ? substeps->lead_weight - step : target;
+	}
+	substeps->lead_frame = interpolation_frame;
+	substeps->lead_time = now;
+	return substeps->lead_weight;
+}
+
+/* where the object's sub-steps left it (and, framed, its frame), counted
+from the tick drawn's first: up to count - 1 the tick drawn's, from count
+the open tick's (sim_substep_next), those it has run. FALSE for one not
+kept */
+static boolean render_interpolation_lead_step(
+	struct interpolated_substeps const *substeps,
+	short index,
+	boolean framed,
+	real_point3d *position,
+	struct interpolation_quaternion *rotation)
+{
+	short count = interpolation_substep_count;
+	short buffer = (short)(interpolation_tick & 1);
+
+	if (index < 0 || index >= 2 * count)
+		return FALSE;
+	if (index >= count)
+	{
+		buffer ^= 1;
+		index -= count;
+		if (substeps->tick[buffer] != interpolation_tick + 1 || substeps->count[buffer] != count ||
+			!TEST_FLAG(substeps->recorded[buffer], index) || (framed && !substeps->framed[buffer]))
+		{
+			return FALSE;
+		}
+	}
+	if (framed)
+	{
+		*position = substeps->frame_positions[buffer][index];
+		*rotation = substeps->frame_rotations[buffer][index];
+	}
+	else
+	{
+		*position = substeps->positions[buffer][index];
+	}
+	return TRUE;
+}
+
+/* the newer of the two sub-steps a frame is drawn between from the newest
+(the frame's sub-step of the tick drawn, count - 1 on: in the open tick from
+its second frame's), as render_interpolation_lead_step counts them */
+static short render_interpolation_lead_newest(void)
+{
+	return (short)(interpolation_substep_index + interpolation_substep_count - 1);
+}
+
 /* (the frames) how far from where the line between the drawn tick's
 snapshots has it (from where the tick left it, when its pose is drawn as
 that: snapped) the object is drawn this frame, by itself or with what
@@ -1174,6 +1353,8 @@ static boolean render_interpolation_substep_offset(long object_index, boolean sn
 	short buffer = (short)(interpolation_tick & 1);
 	short count = interpolation_substep_count;
 	real_point3d from;
+	real_point3d lead_from, lead_to;
+	real weight;
 	long root_index;
 	long absolute_index;
 
@@ -1210,6 +1391,18 @@ static boolean render_interpolation_substep_offset(long object_index, boolean sn
 			OBJECT_SNAP_DISTANCE * OBJECT_SNAP_DISTANCE;
 		point_lerp(before, &substeps->positions[buffer][interpolation_substep_index], interpolation_substep_fraction,
 			&substeps->drawn);
+		/* (from its newest sub-steps, as far as it is drawn from them) */
+		weight = render_interpolation_lead_weight(root_index, substeps);
+		if (weight > 0.0f &&
+			render_interpolation_lead_step(substeps, (short)(render_interpolation_lead_newest() - 1), FALSE, &lead_from,
+				NULL) &&
+			render_interpolation_lead_step(substeps, render_interpolation_lead_newest(), FALSE, &lead_to, NULL))
+		{
+			real_point3d lead;
+
+			point_lerp(&lead_from, &lead_to, interpolation_substep_fraction, &lead);
+			point_lerp(&substeps->drawn, &lead, weight, &substeps->drawn);
+		}
 		substeps->drawn_frame = interpolation_frame;
 	}
 	if (!substeps->drawn_valid)
@@ -1224,6 +1417,38 @@ static boolean render_interpolation_substep_offset(long object_index, boolean sn
 	/* (so written that an offset not a number is none) */
 	return offset->i * offset->i + offset->j * offset->j + offset->k * offset->k <=
 		SUBSTEP_OFFSET_MAXIMUM * SUBSTEP_OFFSET_MAXIMUM;
+}
+
+/* (render_interpolation_substep_frame) the vehicle's frame drawn moved from
+the tick drawn's sub-steps toward its newest, as far as it is drawn from
+them */
+static void render_interpolation_lead_frame(long vehicle_index, struct interpolated_substeps *substeps)
+{
+	real weight = render_interpolation_lead_weight(vehicle_index, substeps);
+	struct interpolation_quaternion from_rotation, to_rotation;
+	real_point3d from_position, to_position;
+	real_matrix4x3 lead;
+
+	if (!(weight > 0.0f) ||
+		!render_interpolation_lead_step(substeps, (short)(render_interpolation_lead_newest() - 1), TRUE, &from_position,
+			&from_rotation) ||
+		!render_interpolation_lead_step(substeps, render_interpolation_lead_newest(), TRUE, &to_position, &to_rotation))
+	{
+		return;
+	}
+	frame_blend(&from_position, &from_rotation, &to_position, &to_rotation, interpolation_substep_fraction, &lead);
+	if (weight < 1.0f)
+	{
+		struct interpolation_rotation drawn_rotation, lead_rotation;
+
+		rotation_from_matrix(&substeps->frame_drawn, &drawn_rotation);
+		rotation_from_matrix(&lead, &lead_rotation);
+		if (!drawn_rotation.is_rotation || !lead_rotation.is_rotation)
+			return;
+		frame_blend(&substeps->frame_drawn.position, &drawn_rotation.quaternion, &lead.position,
+			&lead_rotation.quaternion, weight, &lead);
+	}
+	substeps->frame_drawn = lead;
 }
 
 /* (the frames) the frame of a vehicle of the micro lane (its root node:
@@ -1286,6 +1511,7 @@ static boolean render_interpolation_substep_frame(
 				&substeps->frame_rotations[buffer][substep_index],
 				interpolation_substep_fraction,
 				&substeps->frame_drawn);
+			render_interpolation_lead_frame(vehicle_index, substeps);
 			point_lerp(&frames[0]->position, &frames[1]->position, interpolation_fraction, &line);
 			/* (so written that a position not a number is none) */
 			substeps->frame_drawn_valid = distance_squared(&substeps->frame_drawn.position, &line) <=

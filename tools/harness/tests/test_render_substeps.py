@@ -3,7 +3,9 @@ sim_substep_blend): an object of the micro lane, and the first-person view of a 
 the poses its sub-steps left (a frame in sub-step j of the tick drawn: between the end of j - 1, or of the tick
 before, and the end of j), what it carries with it; at 30 the frames are the line between the ticks' snapshots, as
 they were. A projectile's head start and hold, and the VR mode's grenade let go of in a sub-step, are drawn as
-before, from a tick's motion back or from the hand, with no dart and no pop."""
+before, from a tick's motion back or from the hand, with no dart and no pop. In a network game another machine's
+player is drawn between its two newest sub-steps (the open tick's), not a tick behind, gliding to the tick drawn's
+path and back when that is let go of and taken again; at 30 it is drawn as before."""
 
 import re
 import sys
@@ -15,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run, structure  # noqa: E402
 
 CASES = ["classic", "substeps", "substeps_60", "carried", "camera_slow", "projectile", "projectile_late", "vr_release",
-         "respawn", "respawn_120"]
+         "respawn", "respawn_120", "lead", "lead_60", "lead_glide", "lead_classic"]
 
 # a fault in the code, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -46,6 +48,15 @@ NEGATIVE_CONTROLS = {
                         "\t\tcamera->has_previous = camera->valid;"), "respawn"),
     "respawn-glides-120": (("\t\tcamera->has_previous = camera->valid && camera->unit_index == unit_index;",
                             "\t\tcamera->has_previous = camera->valid;"), "respawn_120"),
+    # another's player drawn from the tick drawn's sub-steps, a tick behind, not its newest
+    "lead-a-tick-behind": (("\treturn (short)(interpolation_substep_index + interpolation_substep_count - 1);",
+                            "\treturn interpolation_substep_index;"), "lead"),
+    # ... one sub-step later than the frame's time: past the newest the clock ran
+    "lead-past-newest": (("\treturn (short)(interpolation_substep_index + interpolation_substep_count - 1);",
+                          "\treturn (short)(interpolation_substep_index + interpolation_substep_count);"), "lead_60"),
+    # the lead let go of and taken at once: a jump of a sub-step's part of a tick's motion
+    "lead-jumps": (("\tif (substeps->lead_frame == NONE || !(now >= substeps->lead_time) ||",
+                    "\tif (1 ||"), "lead_glide"),
     # the grenade let go of in a sub-step drawn from the tick before's snapshot (the body's hand) until the tick ends
     "release-from-the-body": (("\tif ((pending = render_interpolation_pending_from(object_index)) != NULL)",
                                "\tif ((pending = NULL) != NULL)"), "vr_release"),
@@ -72,6 +83,16 @@ static boolean render_interpolation_newest_frame(long object_index, real_matrix4
 {
 	(void)object_index; (void)frames; (void)drawn; (void)correction;
 	return FALSE;
+}
+"""
+
+# whether an object is drawn from its newest sub-steps (in a network game, another's: render_interpolation_lead_wanted)
+# is the case's word; none is, but in the lead cases
+LEAD_STUB = """static boolean lead_wanted_fake;
+static boolean render_interpolation_lead_wanted(long root_index)
+{
+	(void)root_index;
+	return lead_wanted_fake;
 }
 """
 
@@ -110,6 +131,7 @@ def generated(fault=None, newest=False):
                  "real_matrix4x3 const **drawn, real_vector3d *correction);\n")
     else:
         text += NEWEST_STUBS
+    text += LEAD_STUB
     for name in ("lerp", "point_lerp", "vector_length", "vector_nlerp", "basis_is_rotation", "quaternion_from_basis",
                  "basis_from_quaternion", "rotation_from_matrix", "matrix_blend_rotations", "correction_significant",
                  "correction_advance", "correction_drawn", "correction_add", "distance_squared", "vector_in_frame",
@@ -117,6 +139,8 @@ def generated(fault=None, newest=False):
                  "frame_blend", "render_interpolation_previous_values", "render_interpolation_register",
                  "render_interpolation_tick",
                  "render_interpolation_object_from", "render_interpolation_substep",
+                 "render_interpolation_lead_weight", "render_interpolation_lead_step",
+                 "render_interpolation_lead_newest", "render_interpolation_lead_frame",
                  "render_interpolation_substep_offset", "render_interpolation_substep_frame",
                  "render_interpolation_frame_begin", "render_interpolation_frame_end",
                  "render_interpolation_pending_from", "render_interpolation_blend_in_frame",
