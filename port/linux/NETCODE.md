@@ -163,7 +163,11 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
   checks the report (the player's, a weapon they carry, fired from within
   its reach, the target where the host had it when the shooter saw it, no
   faster than weapons fire) and deals the damage. What the shooter saw
-  hit, hits.
+  hit, hits. In an OpenH1 game the shooter's machine shows the hit on
+  another player at once, as the host will deal it (the shield's flare and
+  break, the flinch, the death and the fall), and the host's word confirms
+  it a round trip later, announcing the kill, or undoes it (below, "Hits
+  shown at once").
 
 A host's game advertisement says that it plays this netcode. A client does
 not join a host that does not (one of network version 4 built before the
@@ -1754,6 +1758,65 @@ its name alone beside it, has its name given back as the map lists find it.
      them: the host's shields and health, which the client has, say
      whether the shield or the body took the hit, and how much is left of
      it (the host's own copies of a client's projectiles likewise).
+   - Hits shown at once (OpenH1 games but co-op's, `network.predict_hits`;
+     below).
+
+### Hits shown at once
+
+Without it, a client's own projectiles show their impact at once (the
+spark on a shield, the blood on a body: the material's response, which the
+host's shields and health choose), and its own weapon's shake; everything
+else a hit does comes with the host's word on it, a round trip after the
+shot (50 to 100 ms on most connections, more over a lossy one): the
+target's shield flare and its breaking (the units' states bring the damage
+they show), its flinch, pain sound and knockback (the replayed damage), its
+death, the body's fall and the dropped weapons (the replayed killing blow),
+the kill's message, and the score (the game type's state).
+
+In an OpenH1 game (not co-op's) a client shows its own players' hits on
+another player's living unit on foot at once (`network_damage.c`,
+`distributed_predict_hit`): it deals the damage to its copy of the unit as
+the host will, with the least damage the hit's roll can give (so that a
+kill it shows is one the host's roll gives too), and counts nothing of it
+(`damage.c`): the flare, the shield's breaking, blood, the flinch, pain
+sound and knockback, and, where it kills, the death and the body's fall at
+once. It reports the hit as before, and keeps what the hit took of the unit
+until the host's word on it comes:
+
+- The host's states of the unit, which do not have the hit yet, are taken
+  less what the hits not yet answered took (and their flare and shown
+  damage as this machine's hits left them), so a shot's effect is not put
+  back and the next shot's is judged against what is left.
+- The host's damage of the hit (its replayed damage, which goes to the
+  shooter's machine) answers it, and is not replayed again; the unit's next
+  state has it.
+- A kill shown is confirmed by the host's killing blow (or, its blow lost,
+  by the units' states saying the player is dead): the kill is announced
+  then, with the host's killer and their score after it, as before. The
+  body has been lying there a round trip already.
+- A hit whose word has not come a round trip and half a second on
+  (`PREDICTED_HIT_SLACK_TICKS`) is refused: its effect is the host's states'
+  again, and a unit it killed stands again where it fell (`unit_port_revive`:
+  alive, its player's, the shields, health, grenades and weapons it had),
+  so a refused kill shows as a fall and getting up, never as a kill.
+
+Not shown at once, as the game has no way back from them or the host
+decides them by what the client cannot know: hits on vehicles and their
+riders, on actors (co-op), fire (a burning death runs about), a body
+destroyed, the host's instant kills, telefrags, and pickups. A pickup is
+the host's: the item is the host's object, which only its word deletes or
+moves, and two players reaching for the same weapon (the case where a
+pickup is felt) is what a client cannot predict, so a weapon shown in hand
+at once would often vanish again; the HUD's message and the sound come
+with the host's word, a round trip after the walk over.
+
+With `debug.network_test`, each client logs how its shown hits went once a
+second (`network test: predicted hits <shown> answered <n> unanswered <n> |
+kills <shown> confirmed <n> refused <n>`). In a pair of 30-second bot games
+on bloodgulch at 120 Hz over 25 ms ±3 each way (`net_compare.py --events`,
+with `HALO_NETWORK_TEST_SHOOT=0.5`), the clients showed 55 hits: 52 answered
+by the host's damage, 3 by its killing blows, none unanswered, and one kill
+shown, confirmed (none refused).
 
 ## Transport
 

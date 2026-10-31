@@ -4328,6 +4328,23 @@ void unit_port_resurrect(
 	unit_scream(unit_index, _unit_scream_resurrection);
 }
 
+/* port: a player's unit a distributed client killed ahead of the host's word
+on its player's hit, which the host did not take: it stands again where it
+fell, its player's again (port/linux/game/network_damage.c) */
+void unit_port_revive(
+	long unit_index)
+{
+	struct unit_datum *unit = unit_get(unit_index);
+
+	SET_FLAG(unit->object.damage_flags, _object_dead_bit, FALSE);
+	object_set_garbage(unit_index, FALSE);
+	unit_set_actively_controlled(unit_index, TRUE);
+	unit_animation_set_state(unit_index, _unit_state_idle);
+	SET_FLAG(unit->unit.animation.flags, _unit_animation_ignore_translation_bit, FALSE);
+	if (unit->object.type == _object_type_biped)
+		biped_stop_limp_body_physics(unit_index);
+}
+
 /* how far into its own flinch or death animation a client's unit still
 switches to the host's pick */
 #define DAMAGE_ANIMATION_SWITCH_TICKS 10
