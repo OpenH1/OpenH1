@@ -489,6 +489,9 @@ static void lobby_board_update(struct widget_instance *list)
 
 	if (!game || state < _client_state_pregame)
 		game = NULL;
+	/* (a dedicated server's map vote begun: its screen, map_vote_lobby_check) */
+	if (game)
+		map_vote_lobby_check();
 	p2p_party_status(&party);
 	for (index = 0; game && index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS; index++)
 	{
