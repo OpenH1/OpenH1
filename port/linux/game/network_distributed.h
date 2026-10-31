@@ -548,6 +548,10 @@ word network_actors_entry_size(void);
 /* (a client, in its tick where the host runs its actors) each actor's unit
 given the control the host last sent for it */
 void network_actors_drive(void);
+/* (the host) the bytes of actors' states it sent its clients since it was
+last asked, and of those the entries that went only because their actor made
+a press or aimed at a client's player (the tests' bandwidth figures) */
+void network_actors_bytes_sent(long *all, long *pressed, long *aimed);
 
 /* ---------- prototypes/NETWORK_COOP.C */
 
@@ -623,6 +627,9 @@ void network_objects_set_seat(long unit_index, long vehicle_index, short seat_in
 /* (the host) the ticks between sends to a machine of a unit at position, by
 how near that machine's players are (network_actors.c) */
 short network_objects_send_period(long machine_index, real_point3d const *position);
+/* ... whether a unit at position aims (a unit vector) at one of that
+machine's players, or one of them at it (network_actors.c) */
+boolean network_objects_aims_with_machine(long machine_index, real_point3d const *position, real_vector3d const *aim);
 
 /* ---------- prototypes/NETWORK_DAMAGE.C */
 

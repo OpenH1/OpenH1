@@ -211,6 +211,12 @@ fourth (as it sends players, network_distributed.c) */
 #define NEAR_OBJECT_DISTANCE 25.0f
 #define MIDDLE_OBJECT_DISTANCE 60.0f
 #define FAR_OBJECT_DISTANCE 120.0f
+/* how near a unit the line of another's aim passes for the other to aim at
+it (network_objects_aims_with_machine): a unit's width and the AI's error
+and lead; or how little off the aim it is, a crosshair on something far
+(5 degrees) */
+#define AIMED_AT_DISTANCE 2.0f
+#define AIMED_AT_COSINE 0.996f
 
 /* a step of an unsteered vehicle's path (world units a tick). Further than
 this in one tick, the host moved it some other way (a teleport), which is
@@ -1488,6 +1494,59 @@ short network_objects_send_period(
 			return distributed_host_object_period(machine_number, position);
 	}
 	return 1;
+}
+
+/* whether the line from from along aim (a unit vector) passes within
+AIMED_AT_DISTANCE of to, or within AIMED_AT_COSINE of the way to it, ahead
+of from */
+static boolean distributed_aims_at(
+	real_point3d const *from,
+	real_vector3d const *aim,
+	real_point3d const *to)
+{
+	real dx = to->x - from->x;
+	real dy = to->y - from->y;
+	real dz = to->z - from->z;
+	real along = dx * aim->i + dy * aim->j + dz * aim->k;
+	real distance_squared = dx * dx + dy * dy + dz * dz;
+
+	/* (what is left of the distance across the line, squared; the cosine
+	compared squared, along / distance >= cosine) */
+	return along > 0.0f && (distance_squared - along * along < AIMED_AT_DISTANCE * AIMED_AT_DISTANCE ||
+		along * along >= AIMED_AT_COSINE * AIMED_AT_COSINE * distance_squared);
+}
+
+/* ... whether a unit at position aiming along aim (a unit vector) aims at
+one of the machine's players, or one of them aims at it */
+boolean network_objects_aims_with_machine(
+	long machine_index,
+	real_point3d const *position,
+	real_vector3d const *aim)
+{
+	short machine_number;
+
+	for (machine_number = 0; machine_number < objects_host_viewers.count; machine_number++)
+	{
+		short count = objects_host_viewers.machines[machine_number].unit_count;
+		short index;
+
+		if (objects_host_viewers.indices[machine_number] != machine_index)
+			continue;
+		for (index = 0; index < count; index++)
+		{
+			long unit_index = objects_host_viewers.machines[machine_number].unit_indices[index];
+			real_point3d const *origin = &objects_host_viewers.machines[machine_number].origins[index];
+
+			if (distributed_aims_at(position, aim, origin) ||
+				(object_try_and_get_and_verify_type(unit_index, _object_mask_unit) &&
+					distributed_aims_at(origin, &unit_get(unit_index)->unit.aiming_vector, position)))
+			{
+				return TRUE;
+			}
+		}
+		return FALSE;
+	}
+	return FALSE;
 }
 
 /* the kinds of states sent this tick */
