@@ -40,6 +40,9 @@ NEGATIVE_CONTROLS = {
                                        "dedicated-server"),
     "server-legacy-setting-changes-rate": (("return rate ? rate : network_standard_globals.hosting_rate;",
                                             "return rate ? rate : SIM_RATE_CLASSIC;"), "dedicated-server"),
+    "legacy-record-keeps-old-rate": (("network_standard_globals.hosting ? (short)network_standard_server_rate(in_lobby) : 0",
+                                      "network_standard_globals.hosting ? (short)network_standard_server_rate(in_lobby) : "
+                                      "game->standard_rate"), "dedicated-server"),
 }
 
 

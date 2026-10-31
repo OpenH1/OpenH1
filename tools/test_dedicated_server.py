@@ -801,6 +801,17 @@ def test_openh1_tick_game(machines, rate):
            "the lobby's Legacy games once empty", server)
     assert (api.status()["tick_rate"], api.status()["opence"]) == (30, True), api.status()
     assert "hosting: Legacy (server.game_mode)" in server.text()
+    # a client then joins a Legacy game: at 30, its game record without the OpenH1 games' rate (the server's record
+    # lasts from game to game), and none of OpenH1's messages heard
+    net_compare = _net_compare()
+    late = machines("charlie").start(
+        HALO_NULL_RENDERER=1, HALO_NETWORK_TEST="join", HALO_NETWORK_TEST_NAME="Charlie", HALO_TEST_INPUT="bot:3",
+        HALO_NET_ADDRESS=CLIENT_ADDRESSES[0], HALO_NET_BROADCAST=SERVER_ADDRESS)
+    _until(lambda: len(net_compare.parse_rates(late.output)) >= 10, 150, "the client playing the Legacy game", late)
+    heard = net_compare.parse_rates(late.output)[-1]
+    assert (heard["rate"], heard["heard"], heard["record"]) == (30, 0, 0), heard
+    assert api.status()["game_mode"] == "legacy" and api.status()["state"] == "playing", api.status()
+    late.stop()
     server.send("quit")
     assert server.wait(15) == 0, server.text()[-3000:]
     assert not re.search(r"EXCEPTION|assert", server.debug()), "an exception or assert in the server's debug.txt"

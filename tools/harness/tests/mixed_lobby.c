@@ -486,9 +486,15 @@ int main(int argc, char **argv)
 			advertised_version(reserved));
 		rate = network_standard_server_hosted(&opence);
 		CHECK(rate == 120 && !opence, "hosted %ld, opence %d", rate, opence);
+		network_standard_stamp_game(&server.game, TRUE);
+		CHECK(server.game.standard_rate == 120, "stamped %d", server.game.standard_rate);
 		snprintf(server_game_mode, sizeof(server_game_mode), "openh1_90");
 		host("openh1", TRUE);
 		CHECK(!network_standard_hosting(), "an unknown rate hosted");
+		/* (the server's record lasts from its OpenH1 games to its Legacy
+		ones: their rate goes from it) */
+		network_standard_stamp_game(&server.game, TRUE);
+		CHECK(server.game.standard_rate == 0, "a Legacy game's record kept the rate %d", server.game.standard_rate);
 		return 0;
 	}
 

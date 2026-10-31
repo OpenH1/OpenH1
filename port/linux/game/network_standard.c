@@ -506,8 +506,11 @@ void network_standard_stamp_game(
 	struct network_game *game,
 	boolean in_lobby)
 {
-	if (game && network_standard_globals.hosting)
-		game->standard_rate = (short)network_standard_server_rate(in_lobby);
+	/* (a Legacy game's 0, as the server made it: written too, so that a
+	dedicated server's switch from an OpenH1 game to a Legacy one, whose
+	record lasts, leaves no rate in it) */
+	if (game)
+		game->standard_rate = network_standard_globals.hosting ? (short)network_standard_server_rate(in_lobby) : 0;
 }
 
 void network_standard_join_token(
