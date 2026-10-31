@@ -10,7 +10,10 @@ every machine (OpenCE's too) understands: nothing new is sent.
   host_map) is an entry of the rotation's grammar (server_rotation.c:
   map[:gametype[+rule=value...]]), checked as the server checks it (its map
   on disk, a Custom Edition one's in custom_maps; its gametype built,
-  server_gametypes.c). In the lobby it is set at once, as the director sets
+  server_gametypes.c). A map alone (MAPS' CURRENT) keeps the game's
+  gametype, its score to win, time limit and rules (the lobby's record as it
+  is when the change is set); a playlist's entry without one is Slayer, as
+  the server's rotation's is. In the lobby it is set at once, as the director sets
   its entry (the map's name and the variant in the host's game record, sent
   to every machine; map sharing gives it to those without it). In a game,
   NOW ends the game and starts the new one as Restart round starts it
@@ -446,6 +449,47 @@ boolean network_host_game_ban_parse(
 	return name[0] != 0;
 }
 
+boolean network_host_game_entry_keeps(
+	char const *text)
+{
+	return text && !strchr(text, ':');
+}
+
+boolean network_host_game_variant_kept(
+	struct server_entry const *entry,
+	struct network_game const *game,
+	struct game_variant *variant,
+	struct game_variant_options *options)
+{
+	if (entry->gametype[0] || !game)
+		return FALSE;
+	*variant = game->variant;
+	*options = game->variant_options;
+	return TRUE;
+}
+
+short network_host_game_gametype_find(
+	struct host_game_gametype const *gametypes,
+	short count,
+	wchar_t const *shown)
+{
+	short index, at;
+
+	if (!shown || !shown[0])
+		return NONE;
+	for (index = 0; index < count; index++)
+	{
+		wchar_t const *listed = gametypes[index].shown;
+
+		for (at = 0; at < HOST_GAME_GAMETYPE_SHOWN_SIZE - 1 && listed[at] && listed[at] == shown[at]; at++)
+		{
+		}
+		if (at == HOST_GAME_GAMETYPE_SHOWN_SIZE - 1 ? !shown[at] : listed[at] == shown[at])
+			return index;
+	}
+	return NONE;
+}
+
 /* ---------- where the host is */
 
 /* a player's host of a network game, co-op's too */
@@ -550,7 +594,9 @@ static boolean host_game_apply(
 		error(_error_log, "host: %s cannot be played: %s", entry->text, checked.rejected);
 		return FALSE;
 	}
-	if (!server_gametype_build(entry->gametype, entry->rules, entry->rule_count, &variant, &options, reason,
+	/* (a map alone: the lobby's own gametype, score, time and rules kept) */
+	if (!network_host_game_variant_kept(entry, network_game_server_get_game(server), &variant, &options) &&
+		!server_gametype_build(entry->gametype, entry->rules, entry->rule_count, &variant, &options, reason,
 		sizeof(reason)))
 	{
 		console_warning("host: %s cannot be played: %s", entry->text, reason);
@@ -563,7 +609,8 @@ static boolean host_game_apply(
 	player_ui_set_game_variant(&variant);
 	player_ui_set_game_variant_options(&options);
 	network_game_server_change_game_variant(server, &variant);
-	error(_error_log, "host: the lobby's game is %s (%s)", entry->map_name, entry->gametype);
+	error(_error_log, "host: the lobby's game is %s (%s)", entry->map_name,
+		entry->gametype[0] ? entry->gametype : "its gametype kept");
 	return TRUE;
 }
 
@@ -804,6 +851,11 @@ boolean network_host_game_change(
 	}
 	if (!host_game_entry(text, &entry, reason, reason_size))
 		return FALSE;
+	/* (a map alone, not a playlist's: the game's gametype, score to win,
+	time limit and rules kept, as the lobby has them when it is set:
+	host_game_apply) */
+	if (playlist_index == NONE && network_host_game_entry_keeps(text))
+		entry.gametype[0] = 0;
 	/* (in the lobby: at once, whenever it was asked for) */
 	if (network_host_game_in_lobby())
 	{
@@ -956,6 +1008,24 @@ void network_host_game_entry_shown(
 	wchar_t map[64], gametype[HOST_GAME_GAMETYPE_SHOWN_SIZE];
 	short index;
 
+	/* (a map alone: the game's own gametype, as it is now) */
+	if (!entry->gametype[0])
+	{
+		struct network_game_server *server = global_network_game_server_get();
+		struct network_game *game = server ? network_game_server_get_game(server) : NULL;
+		wchar_t const *description = game ? game->variant.human_readable_game_description : L"";
+
+		menu_map_shown(entry->level[0] ? entry->level : entry->map_name, map, NUMBEROF(map));
+		for (index = 0; index < NUMBEROF(gametype) - 1 &&
+			index < NUMBEROF(game->variant.human_readable_game_description) && description[index]; index++)
+		{
+			gametype[index] = description[index];
+		}
+		gametype[index] = 0;
+		usnprintf(text, size - 1, L"%s \x00B7 %s", map, gametype);
+		text[size - 1] = 0;
+		return;
+	}
 	for (index = 0; index < NUMBEROF(kept); index++)
 	{
 		if (kept[index].text[0] && !strcmp(kept[index].text, entry->text))
@@ -1662,8 +1732,8 @@ boolean network_host_game_command(
 		host_game_command_entry(text, entry, sizeof(entry));
 		if (!entry[0])
 		{
-			console_warning("%s: give a map, and a gametype: %s bloodgulch ctf", next ? "host_map_next" : "host_map",
-				next ? "host_map_next" : "host_map");
+			console_warning("%s: give a map, and a gametype (none: the game's kept): %s bloodgulch ctf",
+				next ? "host_map_next" : "host_map", next ? "host_map_next" : "host_map");
 			*result = FALSE;
 			return TRUE;
 		}
