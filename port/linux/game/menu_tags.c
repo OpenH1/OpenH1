@@ -45,6 +45,7 @@ menu gets FRIENDLY FIRE too.
 #include "halo_menus.h"
 #include "custom_edition_cache.h"
 #include "network_admin.h"
+#include "basic_training.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -510,6 +511,8 @@ static char const *const port_function_names[] =
 	"port lobby start", "port lobby invite", "port lobby settings",
 	/* (a dedicated server's map vote: menu_functions.c) */
 	"port map vote open", "port map vote choose",
+	/* (Basic Training's chapters: menu_functions.c's training_*) */
+	"port training chapter", "port training open",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -554,6 +557,8 @@ static char const *const port_game_data_input_names[] =
 	"port lobby board update",
 	/* (a dedicated server's map vote's screen) */
 	"port map vote update",
+	/* (Basic Training's chapters) */
+	"port training update",
 };
 
 static struct
@@ -1853,7 +1858,8 @@ for the host of a network game HOST CONTROLS (menu_functions.c's
 host_controls_menu.inc: its players, the game, the bans; END GAME is its
 Game's), or for the host of a game of this machine alone END GAME, which
 ends the game as its time limit would: its players stay, and the host picks
-the next map after the carnage report.
+the next map after the carnage report; in Basic Training's game, CHAPTERS
+in its place, which opens its chapters (basic_training.c).
 They are copies of the map's LEAVE GAME button (its look), put before it.
 The map's pause screens move to fit them: on the Xbox's own (its box of
 pausebox2 pieces), the box is the port's taller one (pause/pausebox_*:
@@ -1864,6 +1870,8 @@ what is below the list moves down. */
 #define PAUSE_SETTINGS_SCREEN "main_menu/settings_select/player_setup/player_profile_edit/video_settings/video_settings_screen"
 /* (Host Controls: tools/port_settings.py's _host_controls) */
 #define PAUSE_HOST_CONTROLS_SCREEN "main_menu/host_controls/host_controls_screen"
+/* (Basic Training's chapters: tools/port_settings.py's _training) */
+#define PAUSE_TRAINING_SCREEN "main_menu/training/training_screen"
 #define PAUSE_BUTTON_SPACING 35
 #define PAUSE_BOX_FIRST_BUTTONS 3
 
@@ -1983,6 +1991,8 @@ static long pause_list_patch(struct cache_file_tag_instance *instances, struct u
 {
 	long host_controls_widget = widget_named(PAUSE_HOST_CONTROLS_SCREEN);
 	boolean host_controls = host && !network_game_is_splitscreen_local() && host_controls_widget != NONE;
+	long training_widget = widget_named(PAUSE_TRAINING_SCREEN);
+	boolean training = host && !build.coop && basic_training_active() && training_widget != NONE;
 	struct ui_widget_child_reference *children = list->child_widgets.address;
 	long count = list->child_widgets.count, added = host || build.coop ? 2 : 1, child;
 	struct ui_widget_child_reference *grown = allocate((count + added) * sizeof(struct ui_widget_child_reference));
@@ -2000,13 +2010,15 @@ static long pause_list_patch(struct cache_file_tag_instance *instances, struct u
 	tags[0] = next_tag();
 	buttons[0] = pause_button(instances, model, names[0], "SETTINGS",
 		function_index("port settings begin", "pause", 0), build.widget_tags[settings_widget], NULL, NONE);
-	names[1] = build.coop ? "pause/friendly_fire_button" : host_controls ? "pause/host_controls_button" :
-		"pause/end_game_button";
+	names[1] = build.coop ? "pause/friendly_fire_button" : training ? "pause/training_button" :
+		host_controls ? "pause/host_controls_button" : "pause/end_game_button";
 	tags[1] = added > 1 ? next_tag() : NONE;
 	buttons[1] = build.coop ?
 		pause_button(instances, model, names[1], "FRIENDLY FIRE ON",
 			function_index("port coop friendly fire", "pause", 0), NONE, "FRIENDLY FIRE OFF",
 			game_data_input_index("port coop friendly fire text", "pause", 0)) :
+		training ? pause_button(instances, model, names[1], "CHAPTERS",
+			function_index("port training open", "pause", 0), build.widget_tags[training_widget], NULL, NONE) :
 		host_controls ? pause_button(instances, model, names[1], "HOST CONTROLS",
 			function_index("port host open", "pause", 0), build.widget_tags[host_controls_widget], NULL, NONE) :
 		host ? pause_button(instances, model, names[1], "END GAME",

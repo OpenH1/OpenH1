@@ -112,6 +112,7 @@ symbols in this file:
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
 #include "network_party.h" /* port: port/linux/game/network_party.c */
 #include "network_votekick.h" /* port: port/linux/game/network_votekick.c */
+#include "basic_training.h" /* port: port/linux/game/basic_training.c */
 #include "text/font_group.h"
 #include "text/text_group.h"
 #include "units/unit_definitions.h"
@@ -1634,6 +1635,8 @@ void hud_draw_screen(
 		network_party_draw(render.local_player_index);
 		/* port: the players' vote running, its box (F1 yes, F2 no) */
 		network_votekick_draw(render.local_player_index);
+		/* port: Basic Training's step, its progress and its skip buttons */
+		basic_training_draw(render.local_player_index);
 	}
 
 	rasterizer_hud_end();
