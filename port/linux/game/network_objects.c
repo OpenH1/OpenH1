@@ -3390,6 +3390,39 @@ static void distributed_client_apply_inventory(
 		distributed_client_note_own_inventory(own, inventory->unit_index, FALSE);
 }
 
+/* a client: a unit it killed ahead of the host's word, standing again
+(network_damage.c), has the weapons it dropped back in their slots, those
+still loose here, and the one it held (the host's inventory follows) */
+void network_objects_client_restore_weapons(
+	long unit_index,
+	long const *weapon_indices,
+	short current_weapon_index)
+{
+	struct unit_datum *unit = (struct unit_datum *)object_try_and_get_and_verify_type(unit_index, _object_mask_unit);
+	short weapon_slot;
+
+	if (!unit)
+		return;
+	for (weapon_slot = 0; weapon_slot < MAXIMUM_WEAPONS_PER_UNIT; weapon_slot++)
+	{
+		long weapon_index = weapon_indices[weapon_slot];
+
+		if (unit->unit.weapon_object_indices[weapon_slot] != NONE || weapon_index == NONE ||
+			!distributed_client_weapon_here(weapon_index) ||
+			object_get(weapon_index)->object.parent_object_index != NONE)
+		{
+			continue;
+		}
+		distributed_client_release_item(weapon_index, FALSE);
+		unit_network_add_weapon(unit_index, weapon_index, weapon_slot);
+	}
+	if (current_weapon_index >= 0 && current_weapon_index < MAXIMUM_WEAPONS_PER_UNIT &&
+		unit->unit.weapon_object_indices[current_weapon_index] != NONE)
+	{
+		unit->unit.desired_weapon_index = current_weapon_index;
+	}
+}
+
 /* a client's own player picked up a weapon (network_player_show_pickup) */
 void network_objects_client_picked_up_weapon(
 	short local_player_index,

@@ -803,6 +803,13 @@ static const struct config_setting config_settings[] =
 		"that is not the camera (a VR build's hand: past a corner the camera is\n"
 		"behind), no further than a player leaning out and an arm, and in front\n"
 		"of the eye. false: from the camera and vehicles' guns only." },
+	{ "network.predict_hits", _config_boolean, "true", "HALO_NET_PREDICT_HITS", _environment_value, _platform_all,
+		"Client of an OpenH1 game: show your hits on other players at once\n"
+		"(the shield's flare and break, the flinch, the death), before the\n"
+		"host's word on them comes a round trip later. The host still decides:\n"
+		"the kill is announced when its word comes, and a hit it refuses is\n"
+		"undone (a player shown dead stands again). false: everything a hit\n"
+		"does is shown when the host's word comes." },
 	{ "input.mouse_aim_assist", _config_boolean, "false", "HALO_MOUSE_AIM_ASSIST", _environment_value, _platform_desktop,
 		"Magnetism while aiming with the mouse, as with a controller: the view\n"
 		"slowed and dragged along by a target. The last of the mouse and the\n"

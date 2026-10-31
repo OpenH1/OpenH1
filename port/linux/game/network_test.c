@@ -139,6 +139,8 @@ void network_distributed_divergence(long *samples, long *apart, real *mean, real
 void network_distributed_player_divergence(short player_index, long *samples, long *apart);
 void network_distributed_item_statistics(long *creates, long *deletes, long *failures, long *removed);
 void network_damage_statistics(long *sent_reports, long *dealt_reports, long *rejected_reports, long *replayed_events);
+void network_damage_prediction_statistics(long *shown, long *answered, long *unanswered, long *kills,
+	long *kills_confirmed, long *kills_refused);
 long distributed_own_ping(void);
 long distributed_player_measured_ping(short player_index);
 /* xinput_sdl.c's */
@@ -609,6 +611,17 @@ static void network_test_log_players(
 			camera ? camera->position.x : 0.0f, camera ? camera->position.y : 0.0f, camera ? camera->position.z : 0.0f,
 			local_player_index == NONE ? 0L : (long)player_get(local_player_index)->respawn_timer,
 			divergence_samples, divergence_apart, divergence_mean, divergence_largest);
+		/* (a client: its own players' hits it showed at once, and how the
+		host's word on them went: network_damage.c) */
+		if (game_connection() == _game_connection_network_client)
+		{
+			long shown, answered, unanswered, kills, kills_confirmed, kills_refused;
+
+			network_damage_prediction_statistics(&shown, &answered, &unanswered, &kills, &kills_confirmed,
+				&kills_refused);
+			platform_log("network test: predicted hits %ld answered %ld unanswered %ld | kills %ld confirmed %ld"
+				" refused %ld", shown, answered, unanswered, kills, kills_confirmed, kills_refused);
+		}
 		/* (the bytes of the second's datagrams, the per-tick stream: to the
 		host, and to the clients, each) */
 		{
