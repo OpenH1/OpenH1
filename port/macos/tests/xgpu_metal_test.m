@@ -109,6 +109,11 @@ uint32_t host_memory_watch_serial(void)
 	return watch_generation;
 }
 
+uint64_t host_memory_watch_faults(void)
+{
+	return 0;
+}
+
 #ifdef TEST_STREAM
 void host_render_stream_gpu_completed(void)
 {
