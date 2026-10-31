@@ -2981,6 +2981,9 @@ lights cost what lights each pixel, not their number. A plasma bolt's light
 backend has them (xgpu_backend_capabilities: Vulkan, Metal). */
 static struct
 {
+	/* the settings read, as config_changes() was then (0 too, before any
+	change: the flag says whether they have been read) */
+	BOOL read;
 	unsigned long read_at;
 	BOOL enhanced;
 	/* the look: [0] the lights' brightness, the core (1 / (1 + core x^2)),
@@ -3004,8 +3007,9 @@ static void dynamic_lights_read_settings(void)
 	static const float defaults[2][4] = { { 1.7f, 12.0f, 0.18f, 0.25f }, { 0.22f, 1.2f, 0.12f, 0.035f } };
 	const char *look;
 
-	if (dynamic_lights.read_at == config_changes() && dynamic_lights.read_at)
+	if (dynamic_lights.read && dynamic_lights.read_at == config_changes())
 		return;
+	dynamic_lights.read = TRUE;
 	dynamic_lights.read_at = config_changes();
 	dynamic_lights.enhanced = !strcmp(config_string("display.dynamic_lights"), "enhanced");
 	memcpy(dynamic_lights.look, defaults, sizeof(defaults));
@@ -3352,6 +3356,44 @@ static void unread_stage_fields_clear(DWORD *state, DWORD texture_modes)
 	state[D3DRS_PSCOMPAREMODE] = compare;
 }
 
+/* the combiners' part of a draw's pixel shader key, from the render states
+and the texture modes: most draws share them with the draw before, and so
+share the key's part (the same inputs, the same part) */
+static void combiner_state_describe(DWORD *state, DWORD texture_modes)
+{
+	static DWORD last_inputs[D3DRS_PS_MAX], last_state[D3DRS_PS_MAX];
+	static DWORD last_texture_modes;
+	static BOOL described;
+	int stage;
+
+	if (described && texture_modes == last_texture_modes &&
+		words_equal(D3D__RenderState, last_inputs, sizeof(last_inputs)))
+	{
+		memcpy(state, last_state, sizeof(last_state));
+		return;
+	}
+	memcpy(state, D3D__RenderState, D3DRS_PS_MAX * sizeof(DWORD));
+	/* constants are uniforms, not part of the program */
+	memset(&state[D3DRS_PSCONSTANT0_0], 0, 16 * sizeof(DWORD));
+	state[D3DRS_PSFINALCOMBINERCONSTANT0] = 0;
+	state[D3DRS_PSFINALCOMBINERCONSTANT1] = 0;
+	/* nor are the stages past the combiner count (what earlier draws left
+	in them): one program, one key */
+	for (stage = (int)(D3D__RenderState[D3DRS_PSCOMBINERCOUNT] & 0xff); stage < 8; stage++)
+	{
+		state[D3DRS_PSALPHAINPUTS0 + stage] = 0;
+		state[D3DRS_PSALPHAOUTPUTS0 + stage] = 0;
+		state[D3DRS_PSRGBINPUTS0 + stage] = 0;
+		state[D3DRS_PSRGBOUTPUTS0 + stage] = 0;
+	}
+	dead_portions_clear(state);
+	unread_stage_fields_clear(state, texture_modes);
+	memcpy(last_inputs, D3D__RenderState, sizeof(last_inputs));
+	memcpy(last_state, state, sizeof(last_state));
+	last_texture_modes = texture_modes;
+	described = TRUE;
+}
+
 /* the draw's description to the backend: its textures, its targets, its
 pipeline (shaders and fixed-function state), its dynamic state and its
 uniforms; FALSE if it is not drawn */
@@ -3392,23 +3434,8 @@ static BOOL prepare_draw(BOOL immediate, unsigned long primitive)
 		}
 	}
 	memset(&key, 0, sizeof(key));
-	memcpy(key.combiner_state, D3D__RenderState, sizeof(key.combiner_state));
-	/* constants are uniforms, not part of the program */
-	memset(&key.combiner_state[D3DRS_PSCONSTANT0_0], 0, 16 * sizeof(DWORD));
-	key.combiner_state[D3DRS_PSFINALCOMBINERCONSTANT0] = 0;
-	key.combiner_state[D3DRS_PSFINALCOMBINERCONSTANT1] = 0;
-	/* nor are the stages past the combiner count (what earlier draws left
-	in them): one program, one key */
-	for (stage = (int)(D3D__RenderState[D3DRS_PSCOMBINERCOUNT] & 0xff); stage < 8; stage++)
-	{
-		key.combiner_state[D3DRS_PSALPHAINPUTS0 + stage] = 0;
-		key.combiner_state[D3DRS_PSALPHAOUTPUTS0 + stage] = 0;
-		key.combiner_state[D3DRS_PSRGBINPUTS0 + stage] = 0;
-		key.combiner_state[D3DRS_PSRGBOUTPUTS0 + stage] = 0;
-	}
-	dead_portions_clear(key.combiner_state);
 	key.texture_modes = D3D__RenderState[D3DRS_PSTEXTUREMODES];
-	unread_stage_fields_clear(key.combiner_state, key.texture_modes);
+	combiner_state_describe(key.combiner_state, key.texture_modes);
 	/* the textures before the targets: a render target the draw samples
 	has its multisampled pixels resolved by the backend, and the back buffer
 	can be both sampled and drawn into */
@@ -3739,11 +3766,12 @@ static void trace_draw(const char *kind, D3DPRIMITIVETYPE type, unsigned long co
 	{
 		int reg;
 
+		/* (the registers written since Begin: immediate_emit keeps those alone) */
 		for (reg = 0; reg < XGPU_VERTEX_ATTRIBUTE_COUNT; reg++)
 		{
 			const float *v = first_vertex + reg * 4;
 
-			if (v[0] || v[1] || v[2] || v[3] != 1.0f)
+			if ((device.immediate_written & (1UL << reg)) && (v[0] || v[1] || v[2] || v[3] != 1.0f))
 				platform_log("    v%d = %g %g %g %g", reg, v[0], v[1], v[2], v[3]);
 		}
 	}
@@ -4049,12 +4077,27 @@ static int primitive_kind(D3DPRIMITIVETYPE type)
 	}
 }
 
-/* quads become two triangles each */
+/* quads become two triangles each, in a buffer kept for the next draw's
+(NULL if there is no memory for them) */
 static WORD *quad_indices(const WORD *indices, unsigned long count, unsigned long *out_count)
 {
+	static WORD *buffer;
+	static unsigned long capacity;
 	unsigned long quads = count / 4;
-	WORD *result = malloc(quads * 6 * sizeof(WORD) + 2);
+	WORD *result;
 	unsigned long quad;
+
+	*out_count = 0;
+	if (quads * 6 + 1 > capacity)
+	{
+		WORD *grown = realloc(buffer, (quads * 6 + 1) * sizeof(WORD));
+
+		if (!grown)
+			return NULL;
+		buffer = grown;
+		capacity = quads * 6 + 1;
+	}
+	result = buffer;
 
 	for (quad = 0; quad < quads; quad++)
 	{
@@ -4106,7 +4149,6 @@ void WINAPI D3DDevice_DrawVertices(D3DPRIMITIVETYPE primitive_type, UINT start_v
 		WORD *indices = quad_indices(NULL, vertex_count, &count);
 
 		xgpu_backend_draw_indices(XGPU_TRIANGLES, indices, count);
-		free(indices);
 	}
 	else
 	{
@@ -4157,7 +4199,6 @@ void WINAPI D3DDevice_DrawIndexedVertices(D3DPRIMITIVETYPE primitive_type, UINT 
 		source = indices;
 	}
 	xgpu_backend_draw_indexed(primitive_kind(primitive_type), source, count, minimum, -1, 0, indices != NULL);
-	free(indices);
 	preparation_draw_complete();
 }
 
@@ -4171,9 +4212,13 @@ void WINAPI D3DDevice_Begin(D3DPRIMITIVETYPE primitive_type)
 	device.immediate_written = 0;
 }
 
+/* the vertex the registers make: those written since Begin alone, the only
+ones the backend takes (xgpu_backend_draw_immediate) */
 static void immediate_emit(void)
 {
 	unsigned long floats = XGPU_VERTEX_ATTRIBUTE_COUNT * 4;
+	unsigned long written = device.immediate_written;
+	float *vertex;
 
 	if (device.immediate_count == device.immediate_capacity)
 	{
@@ -4186,7 +4231,14 @@ static void immediate_emit(void)
 		device.immediate_vertices = vertices;
 		device.immediate_capacity = capacity;
 	}
-	memcpy(device.immediate_vertices + device.immediate_count * floats, device.attributes, floats * sizeof(float));
+	vertex = device.immediate_vertices + device.immediate_count * floats;
+	while (written)
+	{
+		int reg = __builtin_ctzl(written);
+
+		memcpy(vertex + reg * 4, device.attributes[reg], 4 * sizeof(float));
+		written &= written - 1;
+	}
 	device.immediate_count++;
 }
 
@@ -4210,7 +4262,6 @@ void WINAPI D3DDevice_End(void)
 		indices = quad_indices(NULL, count, &index_count);
 	xgpu_backend_draw_immediate(type == D3DPT_QUADLIST ? XGPU_TRIANGLES : primitive_kind(type), device.immediate_vertices,
 		count, device.immediate_written, (const float (*)[4])device.attributes, indices, index_count);
-	free(indices);
 	preparation_draw_complete();
 }
 
@@ -4225,12 +4276,23 @@ static void set_attribute(INT reg, float a, float b, float c, float d)
 	}
 	if (reg < 0 || reg >= XGPU_VERTEX_ATTRIBUTE_COUNT)
 		return;
+	if (device.immediate_active && !(device.immediate_written & (1UL << reg)))
+	{
+		/* a register first written after some of the vertices: theirs is
+		the value it had (immediate_emit keeps only the written ones) */
+		unsigned long vertex;
+
+		for (vertex = 0; vertex < device.immediate_count; vertex++)
+		{
+			memcpy(device.immediate_vertices + (vertex * XGPU_VERTEX_ATTRIBUTE_COUNT + reg) * 4,
+				device.attributes[reg], 4 * sizeof(float));
+		}
+		device.immediate_written |= 1UL << reg;
+	}
 	device.attributes[reg][0] = a;
 	device.attributes[reg][1] = b;
 	device.attributes[reg][2] = c;
 	device.attributes[reg][3] = d;
-	if (device.immediate_active)
-		device.immediate_written |= 1UL << reg;
 	/* like the hardware, writing register 0 completes a vertex */
 	if (device.immediate_active && (emit || reg == 0))
 		immediate_emit();

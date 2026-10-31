@@ -147,6 +147,8 @@ MUSL_EXCLUDE = {
     "string/explicit_bzero.c",
     # eight bytes at a time (guest_string.c)
     "string/memcmp.c",
+    # the same sort, faster (guest_qsort.c)
+    "stdlib/qsort.c", "stdlib/qsort_nr.c",
 }
 # game files that call variadic functions without a prototype in scope, which
 # only works under x86's calling convention (tools/android_abi_check.py)
