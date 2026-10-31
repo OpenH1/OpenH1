@@ -1171,10 +1171,8 @@ signature by OpenH1's release key, whose public key the game carries
 (`port/assets/release-key.pub`; `src/release_signature.c`). A signature
 that is not the release key's, or a download whose SHA-256 is not the one
 `SHA256SUMS` lists, is refused, and the game stays as it is. A release
-with no signature is taken on HTTPS alone for now (its `SHA256SUMS` still
-checked), so that releases published before the release key was in the
-workflow still update; a build with `RELEASE_SIGNATURE_REQUIRED` set to 1
-(`src/release_signature.h`) refuses those too. `tools/release_sign.py
+with no signature is refused too (`RELEASE_SIGNATURE_REQUIRED`,
+`src/release_signature.h`): every release is signed. `tools/release_sign.py
 verify SHA256SUMS` (OpenSSL 3) checks a signature by hand.
 
 Only a game in a release's tree (`bin/openh1`, refer to "Packaging"), or

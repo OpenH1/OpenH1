@@ -107,9 +107,9 @@ def test_built_in_key_is_the_published_one():
         "release_signature.c does not carry port/assets/release-key.pub's key"
 
 
-def test_not_required_yet():
-    """Signatures stay optional until a signed release is out (release_signature.h): flip it on purpose."""
-    assert constant(read("port/linux/src/release_signature.h"), "RELEASE_SIGNATURE_REQUIRED") == 0
+def test_required():
+    """Every release is signed, so an unsigned one is refused (release_signature.h)."""
+    assert constant(read("port/linux/src/release_signature.h"), "RELEASE_SIGNATURE_REQUIRED") == 1
 
 
 def test_updater_checks_each_download():

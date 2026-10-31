@@ -13,22 +13,20 @@ tools/release_sign.sh), with OpenH1's key.
 - A signature that is there must be the release key's, and the download's
   SHA-256 must be SHA256SUMS's for its name: otherwise the release is
   refused, whatever RELEASE_SIGNATURE_REQUIRED says.
-- A release with no signature is refused once RELEASE_SIGNATURE_REQUIRED is
-  1. Until then it is taken on GitHub's HTTPS alone, as releases were before
-  they were signed, with its download still checked against its SHA256SUMS
-  when it has one: so the builds made before the release key's secret was
-  set, and the releases published without it, never strand an install.
+- A release with no signature is refused while RELEASE_SIGNATURE_REQUIRED
+  is 1, as it is from the first signed release on. A build of 0 takes one
+  on GitHub's HTTPS alone, with its download still checked against its
+  SHA256SUMS when it has one, as the builds before it did.
 */
 
 #ifndef __HALO_LINUX_RELEASE_SIGNATURE_H
 #define __HALO_LINUX_RELEASE_SIGNATURE_H
 
-/* whether a release without SHA256SUMS.sig is refused: 1 once every
-release is signed (the workflow's OPENH1_RELEASE_KEY secret is set and a
-signed release published). A build given -DRELEASE_SIGNATURE_REQUIRED=1
-requires them already */
+/* whether a release without SHA256SUMS.sig is refused: 1, as every release
+is signed (the workflow's OPENH1_RELEASE_KEY secret). A build given
+-DRELEASE_SIGNATURE_REQUIRED=0 takes unsigned ones */
 #ifndef RELEASE_SIGNATURE_REQUIRED
-#define RELEASE_SIGNATURE_REQUIRED 0
+#define RELEASE_SIGNATURE_REQUIRED 1
 #endif
 
 enum
