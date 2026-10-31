@@ -482,30 +482,47 @@ static BOOL numbering_initialize(struct numbering *numbering, uint32_t size, uin
 	return numbering->slots && numbering->definitions;
 }
 
-/* (of 4-byte words: the definitions are) */
+/* (of 4-byte words: the definitions are). Four chains of words, each its own
+multiplies, so that they run side by side: a pipeline key is some 400 bytes,
+hashed for each draw whose pipeline is not the last one's */
 static uint32_t hash_words(const void *data, uint32_t size)
 {
 	const unsigned char *bytes = data;
-	uint32_t hash = 2166136261u;
-	uint32_t index, word;
+	uint32_t a = 2166136261u, b = 2166136261u + 1u, c = 2166136261u + 2u, d = 2166136261u + 3u;
+	uint32_t index, word, hash;
 
-	for (index = 0; index + 4 <= size; index += 4)
+	for (index = 0; index + 16 <= size; index += 16)
+	{
+		memcpy(&word, bytes + index, 4);
+		a = (a ^ word) * 16777619u;
+		memcpy(&word, bytes + index + 4, 4);
+		b = (b ^ word) * 16777619u;
+		memcpy(&word, bytes + index + 8, 4);
+		c = (c ^ word) * 16777619u;
+		memcpy(&word, bytes + index + 12, 4);
+		d = (d ^ word) * 16777619u;
+	}
+	hash = a ^ ((b << 7) | (b >> 25)) ^ ((c << 13) | (c >> 19)) ^ ((d << 19) | (d >> 13));
+	for (; index + 4 <= size; index += 4)
 	{
 		memcpy(&word, bytes + index, 4);
 		hash = (hash ^ word) * 16777619u;
-		hash ^= hash >> 15;
 	}
+	hash ^= hash >> 15;
+	hash *= 0x85ebca6bu;
+	hash ^= hash >> 13;
 	return hash;
 }
 
-/* the definition's number; *made if it is new (then sent by the caller) */
-static uint32_t numbering_find(struct numbering *numbering, const void *definition, BOOL *made)
+/* the definition's number; *made if it is new (then sent by the caller).
+last_differs: the caller has found it is not the last one found */
+static uint32_t numbering_find(struct numbering *numbering, const void *definition, BOOL *made, BOOL last_differs)
 {
 	uint32_t slot;
 	uint32_t number;
 
 	*made = FALSE;
-	if (numbering->last &&
+	if (!last_differs && numbering->last &&
 		!memcmp(numbering->definitions + (size_t)numbering->last * numbering->size, definition, numbering->size))
 		return numbering->last;
 	for (slot = hash_words(definition, numbering->size) & numbering->slot_mask;
@@ -523,7 +540,7 @@ static uint32_t numbering_find(struct numbering *numbering, const void *definiti
 		numbering->last = 0;
 		numbering->rounds++;
 		forget_sent();
-		return numbering_find(numbering, definition, made);
+		return numbering_find(numbering, definition, made, FALSE);
 	}
 	number = numbering->next++;
 	numbering->slots[slot] = (uint16_t)number;
@@ -1076,7 +1093,9 @@ BOOL xgpu_backend_pipeline(const struct xgpu_pipeline_key *key)
 	made the stream's only when it is new) */
 	if (stream.pipeline && !memcmp(key, &stream.last_key, sizeof(*key)))
 		return __atomic_load_n(&stream.pipelines[stream.pipeline], __ATOMIC_RELAXED) != XGPU_STREAM_PIPELINE_FAILED;
-	id = numbering_find(&stream.pipeline_keys, key, &made);
+	/* (the last key found is last_key, unless the numbers began again) */
+	id = numbering_find(&stream.pipeline_keys, key, &made,
+		stream.pipeline && stream.pipeline_keys.last == stream.pipeline);
 	memcpy(&stream.last_key, key, sizeof(*key));
 	if (made)
 	{
@@ -1278,7 +1297,7 @@ void xgpu_backend_set_vertices(const struct xgpu_vertex_input *input)
 	memcpy(layout->elements, input->elements, element_count * sizeof(layout->elements[0]));
 	for (index = 0; index < element_count; index++)
 		fed |= 1u << (input->elements[index].reg & 15);
-	id = numbering_find(&stream.layouts, stream.layout, &made);
+	id = numbering_find(&stream.layouts, stream.layout, &made, FALSE);
 	if (made)
 	{
 		struct xgpu_stream_layout_define *define = record(XGPU_STREAM_LAYOUT_DEFINE,
