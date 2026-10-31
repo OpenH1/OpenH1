@@ -959,7 +959,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.client_timeout_seconds` | `15` | `HALO_NET_CLIENT_TIMEOUT_SECONDS` | Hosting: the seconds the host waits for a machine it hears nothing from before it drops it (5 to 300; the stock game waits 15). The same seconds are how long each machine's reliable stream waits for its peer to read before it gives up, and how long a host in a game waits for its own network to come back (an address renewed, a wifi drop) before it ends the game; each machine reads its own setting. A longer wait keeps players whose connection stalls (a browser tab in the background), but a machine that is really gone leaves its players frozen for longer. |
 | `network.public_address` | `""` | `HALO_NET_PUBLIC_ADDRESS` | Hosting: the internet address the joiners reach this machine at, `host[:port]` (the port forwarded to `network.tunnel_port`), for a server behind a NAT with one forwarded port. It is offered first, and its name is looked up again every 5 minutes. Empty: what STUN and UPnP find. |
 | `network.listings` | `"both"` | `HALO_NET_LISTINGS` | What the server browser lists. `"both"`: the dedicated servers of the master servers first, then the games players host (from the brokers). `"masters"`: the master servers' only. `"brokers"`: the brokers' only. Refer to "Server browser". |
-| `network.link_share` | `"when_needed"` | `HALO_NET_LINK_SHARE` | When the game shows a server the Discord account linked to it (Settings > Network Setup > Discord Account): `"when_needed"` (a server that asks, to let you in from a VPN), `"always"` or `"never"`. Refer to "Discord account". |
+| `network.link_share` | `"when_needed"` | `HALO_NET_LINK_SHARE` | When the game shows a server the Discord account linked to it (Settings > Online > Discord Account > SHOW TO SERVERS): `"when_needed"` (a server that asks, to let you in from a VPN), `"always"` or `"never"`. Refer to "Discord account". |
 | `network.masters_file` | `"masters.txt"` | `HALO_NET_MASTERS_FILE` | The file of the master servers the server browser asks for dedicated servers, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`), 4 at most. A file that names none (missing, or comments alone, as the release's) leaves the official master, built in (`https://master.opencommunityedition.com`). Refer to "Dedicated server". |
 | `server.enabled` | `false` | `HALO_SERVER` | `true`: run as a dedicated server, as `halo --server` does. Refer to "Dedicated server". The `server.*` settings are written to `config.toml` only by a dedicated server. |
 | `server.name` | `"OpenH1 Server"` | `HALO_SERVER_NAME` | The game's name in the lobby and the server browser: 15 characters of printable ASCII. |
@@ -2624,9 +2624,10 @@ Invite to Join need no other setting of the application.
 Dedicated servers refuse by default players who join from the address of a
 VPN, a Tor exit or a datacenter (`server.vpn_policy`), unless the player has
 linked a Discord account at a master server the server publishes to.
-Settings > Network Setup > Discord Account links one: a row for each master
-server of `masters.txt` (up to 4) says whether the account is linked with
-it; LINK: WITH MASTER n, then OK, opens that master's page in the browser
+Settings > Online > Discord Account links one (the Online tab's row shows
+the account's state): a row for each master server of `masters.txt` (up to
+4), named by its host, says whether the account is linked with it, and
+selecting it opens that master's page in the browser at once
 (`player_link.c`), which shows a code that the master's row shows too, and
 logs in with Discord (its username and id alone). The game then holds a
 pass that master signs, for 72 hours, and asks for a new one before it runs
@@ -2635,10 +2636,11 @@ joins again at once with the pass of the master it is linked with among
 those that list the server (any it holds, in turn, for a game joined by an
 invite): the server sees the account's username and id (SHOW TO SERVERS,
 `network.link_share`, also offers ALWAYS and NEVER). A server listed by none
-of the masters the game is linked with is refused for it with "link Discord
-with its master": the screen marks that master (A SERVER NEEDS IT) and LINK
-has it chosen. Masters share no links: linking with one master does not link
-with another. UNLINK ALL deletes the key and its passes; each master's page
+of the masters the game is linked with is refused for it, and the join's
+message points to the page, which marks that master (LINK NEEDED) and opens
+on its row. Masters share no links: linking with one master does not link
+with another. UNLINK, selected twice, deletes the key and its passes; each
+master's page
 `/link/manage` deletes its record of them.
 
 The game keeps its key in `player.key` and the passes in

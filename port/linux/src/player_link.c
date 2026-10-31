@@ -418,7 +418,7 @@ static int make_key(void)
 	p2p_hex(player.seed, P2P_SEED_SIZE, hex);
 	snprintf(text, sizeof(text),
 		"# This machine's player key for the OpenCE master servers: it holds the Discord account\n"
-		"# linked to it (Settings, Network Setup, Discord Account). Keep it secret: whoever has it\n"
+		"# linked to it (Settings, Online, Discord Account). Keep it secret: whoever has it\n"
 		"# joins servers as that account.\n%s\n", hex);
 	memset(hex, 0, sizeof(hex));
 	written = write_file(path, text, (unsigned long)strlen(text));
@@ -733,11 +733,11 @@ int player_link_join_refused(int rejection_code)
 			player.needed_master = needed;
 			if (needed >= 0)
 				platform_log("Discord link: the server blocks VPNs; it is listed by %s, which this machine is not "
-					"linked with: link Discord with it (Settings, Network Setup, Discord Account)",
+					"linked with: link Discord with it (Settings, Online, Discord Account)",
 					player.urls[needed]);
 			else
 				platform_log("Discord link: the server blocks VPNs; link a Discord account with a master server it "
-					"is listed by (Settings, Network Setup, Discord Account) or turn the VPN off");
+					"is listed by (Settings, Online, Discord Account) or turn the VPN off");
 		}
 	}
 	pthread_mutex_unlock(&player.lock);

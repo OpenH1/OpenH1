@@ -377,19 +377,6 @@ static boolean setting_text(char const *name, char *text, unsigned int size, boo
 {
 	short index;
 
-	/* (DISCORD ACCOUNT's LINK: no change, until one is chosen; the master a
-	server that refused this machine for its VPN is listed by, chosen
-	already, player_link.c) */
-	if (!strcmp(name, "link.action"))
-	{
-		int needed = default_value ? -1 : player_link_needed_master();
-
-		if (needed >= 0)
-			snprintf(text, size, "link_%d", needed + 1);
-		else
-			snprintf(text, size, "none");
-		return TRUE;
-	}
 	if (strncmp(name, "profile.", 8))
 	{
 		if (!(default_value ? config_default(name, text, size) : config_text(name, text, size)))
@@ -446,16 +433,6 @@ static boolean setting_write(char const *name, char const *value)
 {
 	short index;
 
-	/* (DISCORD ACCOUNT's LINK: done, not written: the master's page opened
-	in the browser, or the account forgotten, player_link.c) */
-	if (!strcmp(name, "link.action"))
-	{
-		if (!strncmp(value, "link_", 5))
-			player_link_begin(atoi(value + 5) - 1);
-		else if (!strcmp(value, "unlink"))
-			player_link_unlink();
-		return TRUE;
-	}
 	if (strncmp(name, "profile.", 8))
 		return config_write(name, value);
 	for (index = 0; index < NUMBEROF(profile_settings); index++)
@@ -2385,6 +2362,303 @@ static boolean settings_value_picture_show(struct widget_instance *panel, struct
 	return shown;
 }
 
+/* ---------- Online's DISCORD ACCOUNT (tools/port_settings.py's
+DISCORD_ACCOUNT; port/linux/src/player_link.c)
+
+The Online tab's row opens the page, its value the account's state. The page
+has the account's row (its state; the panel names the account and how many
+master servers it is linked with), UNLINK (shown while there is something to
+forget: a first press asks, a second within DISCORD_UNLINK_MILLISECONDS
+forgets it), a row for each master server of masters.txt (its host and the
+account's state with it; A or a click opens its link page in the browser at
+once, and a waiting row shows the page's code), and SHOW TO SERVERS
+(network.link_share). The page opens on the master a server that refused
+this machine for its VPN is listed by, if there is one. */
+
+#define DISCORD_UNLINK_MILLISECONDS 5000
+
+static struct
+{
+	/* the page's screen last seen (a new one: the needed master focused) */
+	long screen_tag;
+	long screen_time;
+	/* UNLINK's first press, 0: none */
+	unsigned long unlink_asked;
+} discord_account = { NONE, 0, 0 };
+
+static void discord_widen(char const *text, wchar_t *wide, short size)
+{
+	short length = 0;
+
+	for (; text && *text && length < size - 1; text++)
+		wide[length++] = (wchar_t)(unsigned char)*text;
+	wide[length] = 0;
+}
+
+static void discord_text_set(struct widget_instance *text_box, char const *text)
+{
+	wchar_t wide[ROW_TEXT_LENGTH];
+
+	discord_widen(text, wide, ROW_TEXT_LENGTH);
+	text_set(text_box, wide);
+}
+
+/* a state's word for a row's value */
+static char const *discord_state_word(int state)
+{
+	switch (state)
+	{
+	case _player_link_state_linked:
+		return "LINKED";
+	case _player_link_state_waiting:
+		return "WAITING";
+	case _player_link_state_revoked:
+		return "REVOKED";
+	case _player_link_state_expired:
+		return "EXPIRED";
+	case _player_link_state_needed:
+		return "LINK NEEDED";
+	}
+	return "NOT LINKED";
+}
+
+/* a master's host as its row and the panel show it: without "master.", to
+fit */
+static char const *discord_host_shown(char const *host)
+{
+	return strncmp(host, "master.", 7) || !host[7] ? host : host + 7;
+}
+
+static boolean discord_unlink_asked(void)
+{
+	return discord_account.unlink_asked &&
+		system_milliseconds() - discord_account.unlink_asked < DISCORD_UNLINK_MILLISECONDS;
+}
+
+/* the master's index of a row's name ("op_link_master_<n>"), NONE if not
+one */
+static int discord_master_of(char const *name)
+{
+	int master;
+
+	if (!name || strncmp(name, "op_link_master_", 15))
+		return NONE;
+	master = atoi(name + 15) - 1;
+	return master >= 0 && master < PLAYER_LINK_MAXIMUM_MASTERS ? master : NONE;
+}
+
+/* each frame of Online's list and of the page's: the rows' values, the
+masters' hosts, the rows shown */
+static void discord_account_show(struct widget_instance *list)
+{
+	struct widget_instance *screen = screen_of(list);
+	struct widget_instance *row;
+	char name[PLAYER_LINK_NAME_SIZE + 1], code[PLAYER_LINK_CODE_SIZE], host[80], text[ROW_TEXT_LENGTH];
+	int state, linked, masters, master, needed = player_link_needed_master();
+	boolean page = named(list, "op_link_status", 0) != NULL;
+
+	if (!named(list, "op_discord_account", 0) && !page)
+		return;
+	state = player_link_state(name, sizeof(name), code, sizeof(code), &linked, &masters);
+	if (state != _player_link_state_linked && state != _player_link_state_waiting && needed >= 0)
+		state = _player_link_state_needed;
+	discord_text_set(named(list, "discord_account_value", 0), discord_state_word(state));
+	if (!page)
+		return;
+	discord_text_set(named(list, "link_status_value", 0), discord_state_word(state));
+	if ((row = named(list, "op_link_unlink", 0)) != NULL)
+	{
+		row->visible = state != _player_link_state_none && state != _player_link_state_needed;
+		if (!row->visible)
+			discord_account.unlink_asked = 0;
+		discord_text_set(named(row, "link_unlink_value", 0), discord_unlink_asked() ? "SELECT AGAIN" : "");
+	}
+	for (master = 0; master < PLAYER_LINK_MAXIMUM_MASTERS; master++)
+	{
+		char row_name[32];
+		int master_state = player_link_master_state(master, host, sizeof(host), name, sizeof(name), code,
+			sizeof(code));
+
+		snprintf(row_name, sizeof(row_name), "op_link_master_%d", master + 1);
+		if (!(row = named(list, row_name, 0)))
+			continue;
+		row->visible = host[0] != 0;
+		snprintf(row_name, sizeof(row_name), "link_master_%d_label", master + 1);
+		discord_text_set(named(row, row_name, 0), discord_host_shown(host));
+		if (master_state == _player_link_state_waiting)
+			snprintf(text, sizeof(text), "CODE %s", code);
+		else
+			snprintf(text, sizeof(text), "%s", master_state == _player_link_state_none ? "LINK" :
+				discord_state_word(master_state));
+		snprintf(row_name, sizeof(row_name), "link_master_%d_value", master + 1);
+		discord_text_set(named(row, row_name, 0), text);
+	}
+	/* (a page opened: on the master to link with, if a server asked) */
+	if (screen && (screen->definition_tag_index != discord_account.screen_tag ||
+		screen->creation_time != discord_account.screen_time))
+	{
+		discord_account.screen_tag = screen->definition_tag_index;
+		discord_account.screen_time = screen->creation_time;
+		discord_account.unlink_asked = 0;
+		if (needed >= 0)
+		{
+			short index = 0;
+
+			for (row = list->child; row; row = row->next, index++)
+			{
+				if (discord_master_of(row->name) == needed && row->visible)
+				{
+					list->focused_child = row;
+					list->parameters.list.selected_index = index;
+				}
+			}
+		}
+	}
+}
+
+/* the panel's name, value and words for a row of the page (the others':
+FALSE) */
+static boolean discord_account_panel(struct widget_instance *row, wchar_t *name, wchar_t *value,
+	wchar_t const **help)
+{
+	static wchar_t words[SETTINGS_PANEL_TEXT_LENGTH];
+	char account[PLAYER_LINK_NAME_SIZE + 1], code[PLAYER_LINK_CODE_SIZE], host[80];
+	char text[SETTINGS_PANEL_TEXT_LENGTH], shown[ROW_TEXT_LENGTH];
+	int master = discord_master_of(row->name), state, linked, masters;
+
+	if (row->name && !strcmp(row->name, "op_discord_account"))
+	{
+		/* (Online's row: its words its own, the value the account's state) */
+		state = player_link_state(account, sizeof(account), code, sizeof(code), &linked, &masters);
+		if (state == _player_link_state_linked)
+			snprintf(shown, sizeof(shown), "%s", account);
+		else
+			snprintf(shown, sizeof(shown), "%s", discord_state_word(state != _player_link_state_waiting &&
+				player_link_needed_master() >= 0 ? _player_link_state_needed : state));
+		discord_widen(shown, value, ROW_TEXT_LENGTH);
+		return TRUE;
+	}
+	if (master != NONE)
+	{
+		state = player_link_master_state(master, host, sizeof(host), account, sizeof(account), code, sizeof(code));
+		discord_widen(discord_host_shown(host), name, ROW_TEXT_LENGTH);
+		snprintf(shown, sizeof(shown), "%s", discord_state_word(state));
+		/* (the panel's name is its host: the words say "this master server") */
+		switch (state)
+		{
+		case _player_link_state_linked:
+			snprintf(shown, sizeof(shown), "%s", account);
+			snprintf(text, sizeof(text), "Linked as %s. The servers this master server lists let you in while you "
+				"use a VPN. Select to link again.", account);
+			break;
+		case _player_link_state_waiting:
+			snprintf(shown, sizeof(shown), "CODE %s", code);
+			snprintf(text, sizeof(text), "Finish in your browser: check that the page shows the code %s, then "
+				"sign in with Discord. Select to open the page again.", code);
+			break;
+		case _player_link_state_revoked:
+			snprintf(text, sizeof(text), "This master server revoked the link. Select to link your Discord "
+				"account again in your browser.");
+			break;
+		case _player_link_state_expired:
+			snprintf(shown, sizeof(shown), "%s", account);
+			snprintf(text, sizeof(text), "Linked as %s, but this master server has not renewed the link. It "
+				"renews by itself when the master answers; select to link again.", account);
+			break;
+		case _player_link_state_needed:
+			snprintf(text, sizeof(text), "A server you tried to join blocks VPNs and is listed by this master "
+				"server. Select to link your Discord account with it in your browser, then join again.");
+			break;
+		default:
+			snprintf(text, sizeof(text), "Select to open this master server's link page in your browser and "
+				"sign in with Discord. The servers it lists then let you in while you use a VPN.");
+			break;
+		}
+	}
+	else if (row->name && !strcmp(row->name, "op_link_status"))
+	{
+		int needed = player_link_needed_master();
+
+		state = player_link_state(account, sizeof(account), code, sizeof(code), &linked, &masters);
+		snprintf(shown, sizeof(shown), "%s", discord_state_word(state));
+		if (state == _player_link_state_linked)
+		{
+			snprintf(shown, sizeof(shown), "%s", account);
+			snprintf(text, sizeof(text), "Linked as %s with %d of the %d master servers. The servers they list "
+				"let you in while you use a VPN.", account, linked, masters);
+		}
+		else if (state == _player_link_state_waiting)
+		{
+			snprintf(shown, sizeof(shown), "CODE %s", code);
+			snprintf(text, sizeof(text), "Finish in your browser: check that the page shows the code %s, then "
+				"sign in with Discord. This page shows the link once the master server confirms it.", code);
+		}
+		else if (state == _player_link_state_expired)
+		{
+			snprintf(text, sizeof(text), "Linked as %s, but no master server has renewed the link. It renews "
+				"by itself when one answers.", account);
+		}
+		else if (state == _player_link_state_revoked)
+		{
+			snprintf(text, sizeof(text), "A master server revoked the link. Select it below to link again.");
+		}
+		else if (needed >= 0 && player_link_master_state(needed, host, sizeof(host), account, sizeof(account),
+			code, sizeof(code)) == _player_link_state_needed)
+		{
+			snprintf(shown, sizeof(shown), "%s", discord_state_word(_player_link_state_needed));
+			snprintf(text, sizeof(text), "A server you tried to join blocks VPNs. Link your Discord account with "
+				"%s, below, to join it while you use one.", host);
+		}
+		else
+		{
+			snprintf(text, sizeof(text), "Not linked. Select a master server below to link your Discord account "
+				"with it in your browser: servers that block VPNs then let you in while you use one.");
+		}
+	}
+	else if (row->name && !strcmp(row->name, "op_link_unlink") && discord_unlink_asked())
+	{
+		snprintf(shown, sizeof(shown), "SELECT AGAIN");
+		snprintf(text, sizeof(text), "Select UNLINK again to forget the linked account on this device. You can "
+			"link it again at any time.");
+	}
+	else
+	{
+		return FALSE;
+	}
+	discord_widen(shown, value, ROW_TEXT_LENGTH);
+	discord_widen(text, words, SETTINGS_PANEL_TEXT_LENGTH);
+	*help = words;
+	return TRUE;
+}
+
+/* "port discord link" (a master's row): its link page opened in the browser */
+static boolean discord_link(struct widget_instance *row)
+{
+	int master = discord_master_of(row ? row->name : NULL);
+
+	if (master == NONE || !player_link_begin(master))
+	{
+		ui_play_audio_feedback_sound(SOUND_ERROR);
+		return FALSE;
+	}
+	return TRUE;
+}
+
+/* "port discord unlink": the first press asks, the second forgets */
+static boolean discord_unlink(void)
+{
+	if (!discord_unlink_asked())
+	{
+		discord_account.unlink_asked = system_milliseconds();
+		if (!discord_account.unlink_asked)
+			discord_account.unlink_asked = 1;
+		return TRUE;
+	}
+	discord_account.unlink_asked = 0;
+	player_link_unlink();
+	return TRUE;
+}
+
 /* the panel: the row chosen's name, its value in large type and its words
 (after a "|", a note under them); Quality's pictures, the preset shown
 framed, or a picture of the value shown (settings_value_picture_show); the
@@ -2462,6 +2736,8 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 				profile->primary_color_index, value);
 		}
 		help = settings_row_help(label);
+		/* (the Discord account's page: its words of the state now) */
+		discord_account_panel(row, name, value, &help);
 		row_spinner = spinner;
 		/* (Quality: CLASSIC or ENHANCED framed, neither for CUSTOM) */
 		if (!strcmp(row->name, "op_graphics") && spinner)
@@ -2560,6 +2836,7 @@ static void settings_page_update(struct widget_instance *list)
 	video_rows_show(list);
 	hud_button_style_row_show(list);
 	settings_rows_show(list);
+	discord_account_show(list);
 	graphics_preset_show(list);
 	sim_rate_row_show(list);
 	settings_each(screen, setting_stash);
@@ -10212,6 +10489,14 @@ boolean pc_menu_event_function_invoke(
 			&result))
 		{
 			return result;
+		}
+		else if (!strcmp(name, "port discord link"))
+		{
+			return discord_link(widget);
+		}
+		else if (!strcmp(name, "port discord unlink"))
+		{
+			return discord_unlink();
 		}
 		else if (!strcmp(name, "direct ip connect go"))
 		{

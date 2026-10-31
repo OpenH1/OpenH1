@@ -480,6 +480,9 @@ static char const *const port_function_names[] =
 	"port settings begin", "port settings tab", "port settings tab next", "port settings tab previous",
 	"port settings ok", "port settings cancel", "port settings keep", "port settings page cancel",
 	"port settings new profile",
+	/* (Online's Discord account: menu_functions.c's discord_link and
+	discord_unlink) */
+	"port discord link", "port discord unlink",
 	/* (Settings' sliders: menu_functions.c's settings_slider_*) */
 	"port slider left", "port slider right", "port slider edit",
 	/* (the server browsers' favorites: menu_functions.c's browser_favorite_toggle) */
