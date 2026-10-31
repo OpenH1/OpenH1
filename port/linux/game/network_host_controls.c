@@ -48,7 +48,10 @@ game record's players, and its changes of map, teams, limits and the
 playlist are network_host_game.c's; after a game, the next game it has
 (a change asked for, the playlist's) is set in the lobby and started here.
 
-Clients never see it (network_host_controls_available). The pure parts
+Clients never see it (network_host_controls_available), but a dedicated
+server's admins, whose Host Controls show the server's game and ask the
+server for each change (network_admin.c): the scoreboard's kick, ban and
+team move are asked of the server too. The pure parts
 (network_host_controls_*_for, _step, _parse) are
 tools/harness/tests/test_host_controls.py's.
 */
@@ -75,6 +78,7 @@ tools/harness/tests/test_host_controls.py's.
 #include "network_host_controls.h"
 #include "network_host_game.h"
 #include "network_host_rules.h"
+#include "network_admin.h"
 #include "latency_meter.h"
 #include "bots.h"
 
@@ -434,6 +438,14 @@ unsigned long network_host_controls_player_actions(
 	struct player_datum *player = player_index != NONE ? player_try_and_get(player_index) : NULL;
 	struct host_controls_player_view view;
 
+	/* (an admin's: the server's word, but its mute, which the scoreboard
+	would take for this machine's) */
+	if (!network_host_controls_available() && network_admin_remote())
+	{
+		struct host_controls_player entry;
+
+		return network_admin_player(player_index, &entry) ? entry.actions & ~FLAG(_host_controls_mute) : 0;
+	}
 	if (!player || player->quit_out_of_game || !network_host_controls_available())
 		return 0;
 	view.bot = host_controls_player_bot(player);
@@ -499,6 +511,14 @@ boolean network_host_controls_kick(
 
 	if (!TEST_FLAG(actions, ban ? _host_controls_ban : _host_controls_kick) || !player)
 		return FALSE;
+	/* (an admin's: asked of the server, a ban for ever as the host's) */
+	if (!network_host_controls_available())
+	{
+		struct host_controls_player entry;
+
+		return network_admin_player(player_index, &entry) && network_admin_send(ban ? _network_admin_ban :
+			_network_admin_kick, entry.slot, entry.name, 0, NULL);
+	}
 	if (host_controls_player_bot(player))
 		return host_controls_bot_remove(player_index);
 	/* (the console's kick and ban: network_server_manager.c) */
@@ -550,6 +570,14 @@ boolean network_host_controls_move_team(
 
 	if (!player || !TEST_FLAG(network_host_controls_player_actions(player_index), _host_controls_move_team))
 		return FALSE;
+	/* (an admin's: asked of the server) */
+	if (!network_host_controls_available())
+	{
+		struct host_controls_player entry;
+
+		return network_admin_player(player_index, &entry) &&
+			network_admin_send(_network_admin_move_team, entry.slot, entry.name, 0, NULL);
+	}
 	team = player->team_index == 1 ? 0 : 1;
 	/* (a living player dies first, as a player who quits does: no kill, no
 	death counted, every machine seeing it as the host's other deaths) */
@@ -975,7 +1003,7 @@ boolean network_host_controls_open(
 	long player_index,
 	short tab)
 {
-	if (!network_host_controls_available())
+	if (!network_host_controls_available() && !network_admin_remote())
 	{
 		console_warning("host_controls: only the host of a network game under way has them");
 		return FALSE;
@@ -1084,7 +1112,7 @@ boolean network_host_controls_shown(
 	void)
 {
 	return host_controls.screen_time && system_milliseconds() - host_controls.screen_time < HOST_CONTROLS_SHOWN_TIME &&
-		network_host_controls_available();
+		(network_host_controls_available() || network_admin_remote());
 }
 
 boolean network_host_controls_take_opening(

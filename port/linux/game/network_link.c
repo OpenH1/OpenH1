@@ -25,6 +25,7 @@ come from the wire.
 #include "networking/network_game_protocol.h"
 #include "networking/network_messages.h"
 #include "network_link.h"
+#include "network_admin.h"
 
 #include "../src/player_link.h" /* port: port/linux/src/player_link.c */
 #include "../src/server_netlist.h" /* port: port/linux/src/server_netlist.c */
@@ -54,6 +55,9 @@ static struct
 	unsigned long created;
 	/* why its pass did not check */
 	char why[160];
+	/* its tunnel's peer's virtual address (network byte order; 0: none, a
+	LAN's), which its proofs are bound to */
+	unsigned long virtual_address;
 } network_link_machines[HALO_PORT_MAXIMUM_NETWORK_MACHINES];
 
 void network_link_set_machine_pass(
@@ -73,6 +77,17 @@ void network_link_set_machine_pass(
 	network_link_machines[machine_index].discord_name[0] = 0;
 	network_link_machines[machine_index].created = 0;
 	network_link_machines[machine_index].why[0] = 0;
+	network_link_machines[machine_index].virtual_address = 0;
+	/* (a new machine in the slot: no admin's proof of the one before) */
+	network_admin_machine_joined(machine_index);
+}
+
+unsigned long network_link_machine_virtual_address(
+	long machine_index)
+{
+	if (machine_index < 0 || machine_index >= HALO_PORT_MAXIMUM_NETWORK_MACHINES)
+		return 0;
+	return network_link_machines[machine_index].virtual_address;
 }
 
 boolean network_link_machine_verified(
@@ -171,12 +186,13 @@ void network_link_check_pass(
 	if (!halo_server_mode() || machine_index < 0 || machine_index >= HALO_PORT_MAXIMUM_NETWORK_MACHINES)
 		return;
 	network_link_machines[machine_index].verified = FALSE;
-	if (!player_link_pass_shown(network_link_machines[machine_index].pass))
-		return;
 	/* (its tunnel's binding: an internet play peer's stand-in, in
-	100.64.0.0/10, in network byte order) */
+	100.64.0.0/10, in network byte order; kept for an admin's proof) */
 	virtual_address = (address & 0xFFC00000) == 0x64400000 ?
 		(address >> 24) | ((address >> 8) & 0xFF00) | ((address << 8) & 0xFF0000) | (address << 24) : 0;
+	network_link_machines[machine_index].virtual_address = virtual_address;
+	if (!player_link_pass_shown(network_link_machines[machine_index].pass))
+		return;
 	network_link_machines[machine_index].verified = player_link_server_check(network_link_machines[machine_index].pass,
 		network_link_machines[machine_index].proof, virtual_address,
 		network_link_machines[machine_index].discord_id, sizeof(network_link_machines[machine_index].discord_id),

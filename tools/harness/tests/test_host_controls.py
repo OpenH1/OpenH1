@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from harness import CHECK_FAILED, ROOT, build, constant, mutated, read, run  # noqa: E402
+from harness import enum_with, CHECK_FAILED, ROOT, build, constant, mutated, read, run  # noqa: E402
 
 CASES = ["seats", "actions", "team_moves", "kick", "move", "lock", "end", "next", "same", "maximum", "bans",
          "players", "bots", "bots_tab", "bot_count", "bot_skill"]
@@ -116,6 +116,7 @@ def generated(fault=None):
         "HALO_PORT_MAXIMUM_NETWORK_MACHINES", "HALO_PORT_MAXIMUM_NETWORK_PLAYERS"))
     value = re.search(r"\b_distributed_message_host_team = (\d+)", distributed).group(1)
     config += f"#define _distributed_message_host_team {value}\n"
+    config += enum_with(read("port/linux/game/network_admin.h"), "_network_admin_lists,") + "\n"
     header = read("port/linux/game/network_host_controls.h")
     # (the constants, structures and prototypes: the code's functions call each other in any order)
     config += header[header.index("/* ---------- constants */"):header.rindex("#endif")]
@@ -151,7 +152,10 @@ def test_pause_menu_is_the_network_hosts():
     menu = read("port/linux/game/host_controls_menu.inc")
     opened = menu[menu.index("static boolean host_controls_open(void)"):]
     opened = opened[:opened.index("\n}\n")]
-    assert "if (!network_host_controls_available())" in opened and "return FALSE;" in opened
+    assert "if (!host_available())" in opened and "return FALSE;" in opened
+    # (the host's, or a dedicated server's admin's: network_admin.c)
+    available = menu[menu.index("static boolean host_available(void)"):]
+    assert "return network_host_controls_available() || host_remote();" in available[:available.index("\n}\n")]
 
 
 def test_scoreboard_offers_host_controls():
@@ -163,7 +167,7 @@ def test_scoreboard_offers_host_controls():
     assert order == ["vote", "mute", "party_invite", "party_join", "party_accept", "party_friend", "host_mute", "kick",
                      "ban", "move_team", "host_controls", "cancel"]
     offered = engine[engine.index("static void scoreboard_menu_items("):engine.index("static long scoreboard_menu_first_row(")]
-    assert "if (network_host_controls_available())" in offered
+    assert "if (network_host_controls_available() || network_admin_remote())" in offered
     for item, action in (("host_mute", "mute"), ("kick", "kick"), ("ban", "ban"), ("move_team", "move_team")):
         assert re.search(rf"offered\[_scoreboard_item_{item}\] = TEST_FLAG\(actions, _host_controls_{action}\)",
                          offered), item

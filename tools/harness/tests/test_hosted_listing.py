@@ -44,6 +44,8 @@ def generated(fault=None):
     config += enum_with(host, "_host_game_listing,") + "\n"
     config += enum_with(host, "_host_tab_maps,") + "\n"
     config += enum_with(read("port/linux/game/network_host_game.h"), "_host_game_shuffle,") + ";\n"
+    admin = read("port/linux/game/network_admin.h")
+    config += enum_with(admin, "_network_admin_lists,") + "\n" + enum_with(admin, "_network_admin_flag_admin,") + "\n"
     config += re.search(r"static long const host_score_steps\[\] = \{[^}]*\};", host).group(0) + "\n"
     config += re.search(r"static short const host_time_steps\[\] = \{[^}]*\};", host).group(0) + "\n"
     config += re.search(r"static short const maximum_players\[\] = \{[^}]*\};", menus).group(0) + "\n"

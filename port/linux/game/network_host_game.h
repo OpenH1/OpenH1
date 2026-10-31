@@ -161,6 +161,9 @@ set in it (a change asked for; else, not restarting, the playlist's); TRUE
 if one was */
 boolean network_host_game_lobby_take(boolean restarting);
 /* an entry's map and gametype as shown ("Blood Gulch \x00B7 CTF") */
+/* a gametype's name (the rotation's) as shown: its variant's, else the name
+(an admin's Host Controls, of the server's gametypes: network_admin.c) */
+void network_host_game_gametype_text(char const *name, wchar_t *text, short size);
 void network_host_game_entry_shown(struct server_entry const *entry, wchar_t *text, short size);
 /* the multiplayer maps there are, and the gametypes the rotation names
 (the built-in ones, OpenCE's), read once a while; their counts */

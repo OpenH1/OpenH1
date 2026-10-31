@@ -44,6 +44,7 @@ menu gets FRIENDLY FIRE too.
 
 #include "halo_menus.h"
 #include "custom_edition_cache.h"
+#include "network_admin.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -2092,7 +2093,10 @@ static void pause_patch(struct cache_file_tag_instance *instances)
 {
 	long collection = tag_loaded('Soul', MULTIPLAYER_COLLECTION);
 	long quit_function = ui_function_named("mp game player quit");
-	boolean host = global_network_game_server_get() != NULL;
+	/* (a network game's host, or a dedicated server's admin, whose Host
+	Controls are the server's: network_admin.c) */
+	boolean host = global_network_game_server_get() != NULL ||
+		(network_admin_was_remote() && widget_named(PAUSE_HOST_CONTROLS_SCREEN) != NONE);
 	struct tag_block const *screens;
 	long patched_list = NONE, added = 0, buttons = 0, screen;
 	short grow = 0;

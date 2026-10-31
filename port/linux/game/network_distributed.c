@@ -91,6 +91,7 @@ machine (their datum identifiers need not be).
 #include "map_share.h"
 #include "network_afk.h"
 #include "network_map_vote.h"
+#include "network_admin.h"
 #include "latency_meter.h"
 #include "profile_sections.h"
 #include "server_director.h"
@@ -6130,6 +6131,14 @@ void network_distributed_handle_message(
 	if (network_clock_handles_message(message, size))
 	{
 		network_clock_handle_message(machine_index, message, size, machine_index != NONE ?
+			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
+		return;
+	}
+	/* (a dedicated server's admins', in the lobby too, over the host's
+	connection alone: network_admin.c) */
+	if (network_admin_handles_message(message, size))
+	{
+		network_admin_handle_message(machine_index, message, size, machine_index != NONE ?
 			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
 		return;
 	}

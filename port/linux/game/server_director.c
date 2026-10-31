@@ -37,6 +37,7 @@ Called from the main loop every frame (main.c).
 #include "game_modes.h"
 #include "network_distributed.h"
 #include "network_map_vote.h"
+#include "network_admin.h"
 #include "network_standard.h"
 #include "server_director.h"
 #include "server_gametypes.h"
@@ -832,8 +833,11 @@ boolean server_director_playing(
 		(cooperative ? game_in_progress() : game_engine_running() && game_engine_can_score());
 }
 
-boolean server_director_interpose(
+/* the entry played next: now (as soon as it can be), or once the game
+played (or the lobby's, about to be) is over */
+static boolean server_interpose(
 	char const *text,
+	boolean now,
 	char *reason,
 	long reason_size)
 {
@@ -862,7 +866,7 @@ boolean server_director_interpose(
 	/* (now: in the lobby the entry is set again, a game ends at once; once
 	the lobby's start was sent, its machines load the game, and this one is
 	the next) */
-	if (server.state == _server_state_lobby &&
+	if (now && server.state == _server_state_lobby &&
 		!network_game_server_port_start_sent(global_network_game_server_get()))
 	{
 		/* (the rotation's entry it takes the place of played after it) */
@@ -874,7 +878,7 @@ boolean server_director_interpose(
 		server.entry_applied = FALSE;
 		snprintf(reason, (size_t)reason_size, "now");
 	}
-	else if (server.state == _server_state_playing && server_director_end_game(_server_end_next, TRUE))
+	else if (now && server.state == _server_state_playing && server_director_end_game(_server_end_next, TRUE))
 	{
 		snprintf(reason, (size_t)reason_size, "now: this game ends");
 	}
@@ -883,6 +887,22 @@ boolean server_director_interpose(
 		snprintf(reason, (size_t)reason_size, "once this game is over");
 	}
 	return TRUE;
+}
+
+boolean server_director_interpose(
+	char const *text,
+	char *reason,
+	long reason_size)
+{
+	return server_interpose(text, TRUE, reason, reason_size);
+}
+
+boolean server_director_interpose_after(
+	char const *text,
+	char *reason,
+	long reason_size)
+{
+	return server_interpose(text, FALSE, reason, reason_size);
 }
 
 /* the entry of the rotation with the text that is nearest index (an entry
@@ -2313,6 +2333,8 @@ void server_update(
 		}
 	}
 	server_signals();
+	/* (the admins in the game: network_admin.c) */
+	network_admin_server_update();
 	server_console_frame();
 	while (server_console_next(line, sizeof(line), &origin))
 	{

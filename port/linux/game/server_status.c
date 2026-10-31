@@ -30,6 +30,7 @@ owner, or with server.log_addresses; the invite only for admins.
 #include "../src/server_http.h" /* port: port/linux/src/server_http.c */
 #include "../src/server_json.h" /* port: port/linux/src/server_json.c */
 #include "../src/server_master.h" /* port: port/linux/src/server_master.c */
+#include "network_admin.h"
 #include "../src/posix_server.h" /* port: port/linux/src/posix_server.c */
 #include "../src/port_config.h" /* port: port/linux/src/port_config.c */
 
@@ -256,6 +257,17 @@ void server_status_player(
 			server_json_string(json, "discord_name", discord_name);
 			server_json_boolean(json, "discord_verified", verified);
 		}
+	}
+	/* (an admin in the game: its player key proven, and listed; the key's id
+	the owner's to see, who makes admins: network_admin.c) */
+	{
+		char key_id[NETWORK_ADMIN_KEY_ID_TEXT_SIZE];
+		boolean admin = FALSE;
+		boolean proven = network_admin_machine_key(player->machine_index, NULL, key_id, &admin);
+
+		server_json_boolean(json, "admin", proven && admin);
+		if (role >= _server_role_owner)
+			server_json_string(json, "key_id", proven ? key_id : "");
 	}
 	server_json_object_end(json);
 }

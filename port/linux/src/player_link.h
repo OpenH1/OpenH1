@@ -89,6 +89,24 @@ listed by of which it holds no good pass (the one to link with), -1 if none */
 int player_link_next_pass(const unsigned char (*key_ids)[PLAYER_LINK_KEY_ID_SIZE], const int *usable, int count,
 	const unsigned char (*server_key_ids)[PLAYER_LINK_KEY_ID_SIZE], int server_count, int after, int *needed);
 
+/* a player key's id: the first 8 bytes of its SHA-256, as 16 hex digits
+(with its end: 17 characters) */
+void player_link_key_id(const unsigned char *public_key, char *text);
+/* a dedicated server's admins (network_admin.c; docs/dedicated_server.md,
+"Admins in the game"): the server sends each OpenH1 machine a nonce, and
+the machine signs "openh1-admin-proof-1", the nonce and the connection's
+binding (20 + 32 + 32 bytes) with its player key; whether a signature is
+the key's */
+enum
+{
+	PLAYER_LINK_NONCE_SIZE = 32,
+	PLAYER_LINK_SIGNATURE_SIZE = 64,
+	PLAYER_LINK_ADMIN_MESSAGE_SIZE = 20 + PLAYER_LINK_NONCE_SIZE + PLAYER_LINK_BINDING_SIZE,
+};
+void player_link_admin_message(const unsigned char *nonce, const unsigned char *binding, unsigned char *message);
+int player_link_admin_check(const unsigned char *public_key, const unsigned char *nonce,
+	const unsigned char *binding, const unsigned char *signature);
+
 /* ---------- a server (the game's side: network_link.c) */
 
 /* whether a pass is shown (any of its bytes not zero) */
@@ -101,6 +119,12 @@ username and its creation (Unix seconds); 0 if not, why in why */
 int player_link_server_check(const unsigned char *pass, const unsigned char *proof, unsigned long virtual_address,
 	char *discord_id, int discord_id_size, char *discord_name, int discord_name_size, unsigned long *created,
 	char *why, int why_size);
+
+/* (a server) the signature checked for the nonce it sent, with the binding
+of the machine's tunnel (its peer's virtual address, network byte order; 0:
+a LAN's): 1 if it is the key's */
+int player_link_admin_server_check(const unsigned char *public_key, const unsigned char *nonce,
+	unsigned long virtual_address, const unsigned char *signature);
 
 /* ---------- a player's machine */
 
@@ -154,5 +178,11 @@ int player_link_state(char *name, int name_size, char *code, int code_size, int 
 address's host and its state (none past the last master, with host empty) */
 int player_link_master_state(int master_index, char *host, int host_size, char *name, int name_size, char *code,
 	int code_size);
+
+/* (a player's machine) the server's nonce signed with the player key (made
+if there is none) for the connection to the host (its virtual address,
+network byte order; 0: a LAN's): the key and the signature, 1 */
+int player_link_admin_sign(unsigned long host_virtual_address, const unsigned char *nonce, unsigned char *public_key,
+	unsigned char *signature);
 
 #endif

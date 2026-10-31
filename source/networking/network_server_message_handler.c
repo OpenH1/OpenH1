@@ -283,6 +283,9 @@ void network_voice_handle_message(long machine_index, word const *message, word 
 boolean map_share_handles_message(word const *message, word size);
 boolean network_map_vote_handles_message(word const *message, word size);
 void network_map_vote_handle_message(long machine_index, word const *message, word size, boolean from_stream);
+/* port: network_admin.c's (a dedicated server's admins in the game) */
+boolean network_admin_handles_message(word const *message, word size);
+void network_admin_handle_message(long machine_index, word const *message, word size, boolean from_stream);
 void map_share_handle_message(long machine_index, word const *message, word size, boolean from_stream);
 void network_distributed_handle_stream_message(long machine_index, word const *message, word size);
 
@@ -1526,6 +1529,20 @@ boolean network_game_server_handle_client_message(
 					{
 						network_game_server_client_machine_heard(server, machine);
 						network_map_vote_handle_message(machine_index, message, message_buffer_size, TRUE);
+					}
+					break;
+				}
+				/* (port: a dedicated server's admins', in the lobby too, from
+				its stream alone: network_admin.c) */
+				if (network_admin_handles_message(message, message_buffer_size))
+				{
+					long machine_index;
+
+					if (network_game_server_client_machine_is_joined_to_game(server, machine) &&
+						network_game_server_get_client_machine(server, machine, &machine_index))
+					{
+						network_game_server_client_machine_heard(server, machine);
+						network_admin_handle_message(machine_index, message, message_buffer_size, TRUE);
 					}
 					break;
 				}

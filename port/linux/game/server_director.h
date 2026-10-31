@@ -95,6 +95,9 @@ boolean server_director_playing(void);
 ended at once if one runs; once the lobby's start was sent, after the game
 it starts): TRUE and when in reason, else FALSE and why */
 boolean server_director_interpose(char const *text, char *reason, long reason_size);
+/* ... once the game played (or the lobby's) is over, whenever it ends
+(sv_map_after) */
+boolean server_director_interpose_after(char const *text, char *reason, long reason_size);
 /* the rotation replaced (sv_rotation_set, PUT /api/rotation): FALSE with
 the rejected entries said, and nothing changed */
 boolean server_director_set_rotation(char const *text, boolean write, struct server_json *rejected);

@@ -173,6 +173,30 @@ unsigned long long player_link_discord_created(unsigned long long discord_id)
 	return ((discord_id >> 22) + 1420070400000ULL) / 1000;
 }
 
+void player_link_key_id(const unsigned char *public_key, char *text)
+{
+	unsigned char digest[P2P_SHA256_SIZE];
+
+	p2p_sha256(public_key, PLAYER_LINK_KEY_SIZE, digest);
+	p2p_hex(digest, PLAYER_LINK_KEY_ID_SIZE, text);
+}
+
+void player_link_admin_message(const unsigned char *nonce, const unsigned char *binding, unsigned char *message)
+{
+	memcpy(message, "openh1-admin-proof-1", 20);
+	memcpy(message + 20, nonce, PLAYER_LINK_NONCE_SIZE);
+	memcpy(message + 20 + PLAYER_LINK_NONCE_SIZE, binding, PLAYER_LINK_BINDING_SIZE);
+}
+
+int player_link_admin_check(const unsigned char *public_key, const unsigned char *nonce,
+	const unsigned char *binding, const unsigned char *signature)
+{
+	unsigned char message[PLAYER_LINK_ADMIN_MESSAGE_SIZE];
+
+	player_link_admin_message(nonce, binding, message);
+	return p2p_ed25519_verify(public_key, message, (int)sizeof(message), signature);
+}
+
 /* whether the key id is one of the server's masters' */
 static int listed_by(const unsigned char *key_id, const unsigned char (*server_key_ids)[PLAYER_LINK_KEY_ID_SIZE],
 	int server_count)
@@ -261,6 +285,16 @@ int player_link_server_check(const unsigned char *pass, const unsigned char *pro
 	*created = (unsigned long)player_link_discord_created(fields.discord_id);
 	why[0] = 0;
 	return 1;
+}
+
+int player_link_admin_server_check(const unsigned char *public_key, const unsigned char *nonce,
+	unsigned long virtual_address, const unsigned char *signature)
+{
+	unsigned char binding[PLAYER_LINK_BINDING_SIZE];
+
+	if (!virtual_address || !p2p_peer_binding(virtual_address, binding))
+		player_link_binding(NULL, binding);
+	return player_link_admin_check(public_key, nonce, binding, signature);
 }
 
 /* ---------- a player's machine */
@@ -921,4 +955,40 @@ int player_link_master_state(int master_index, char *host, int host_size, char *
 	}
 	pthread_mutex_unlock(&player.lock);
 	return state;
+}
+
+int player_link_admin_sign(unsigned long host_virtual_address, const unsigned char *nonce, unsigned char *public_key,
+	unsigned char *signature)
+{
+	unsigned char binding[PLAYER_LINK_BINDING_SIZE];
+	unsigned char message[PLAYER_LINK_ADMIN_MESSAGE_SIZE];
+	char key_id[2 * PLAYER_LINK_KEY_ID_SIZE + 1];
+	int made = 0;
+
+	if (!host_virtual_address || !p2p_peer_binding(host_virtual_address, binding))
+		player_link_binding(NULL, binding);
+	player_link_admin_message(nonce, binding, message);
+	pthread_mutex_lock(&player.lock);
+	/* (the key read if the link's thread has not read it yet; made if there
+	is none, as a link makes it: a server's owner names it to make its
+	player an admin) */
+	if (!player.has_key)
+		player.has_key = read_key();
+	if (!player.has_key)
+	{
+		player.has_key = make_key();
+		made = player.has_key;
+	}
+	if (!player.has_key)
+	{
+		pthread_mutex_unlock(&player.lock);
+		return 0;
+	}
+	memcpy(public_key, player.public_key, PLAYER_LINK_KEY_SIZE);
+	p2p_ed25519_sign(player.seed, player.public_key, message, (int)sizeof(message), signature);
+	pthread_mutex_unlock(&player.lock);
+	player_link_key_id(public_key, key_id);
+	if (made)
+		platform_log("admin: made a player key, id %s", key_id);
+	return 1;
 }

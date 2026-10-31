@@ -213,6 +213,13 @@ enum
 	unreliable, to each OpenH1 client): the sub-step and the count, then
 	the states as the tick's */
 	_distributed_message_substep_states = 136,
+	/* a dedicated server's admins in the game (network_admin.c), reliably,
+	over the host's connection alone: the host's to each OpenH1 client (its
+	nonce to sign; to an admin's, the game, its players, the lists, a
+	request's answer), and a client's to the host (its key's proof, an
+	admin's request) */
+	_distributed_message_admin_down = 137,
+	_distributed_message_admin_up = 138,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };
