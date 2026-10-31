@@ -77,6 +77,7 @@ mutes. The host's welcome to OpenCE players is a notice too
 #include "text/font_group.h"
 #include "text/text_group.h"
 #include "network_distributed.h"
+#include "network_votekick.h"
 #include "network_voice.h"
 #include "network_chat.h"
 #include "text_filter.h"
@@ -1665,6 +1666,20 @@ static void chat_send(
 
 	if (player_index == NONE || !chat_text_clean(text, typed, CHAT_TEXT_SIZE))
 		return;
+	/* (the votes' words, not said: "!endgame" starts a vote to end the game,
+	"!yes" and "!no" vote in the one running, as F1 and F2 do; the host's
+	notices tell everyone: network_votekick.c) */
+	if (chat_command_word(text, "!endgame"))
+	{
+		network_vote_end_game();
+		return;
+	}
+	if (chat_command_word(text, "!yes") || chat_command_word(text, "!no"))
+	{
+		if (!network_vote_choose(chat_command_word(text, "!yes") != NULL))
+			chat_add_notice("There is no vote you can vote in");
+		return;
+	}
 	/* (the host's commands, whatever its settings; a client's is not sent) */
 	if (chat_host() && chat_host_command(player_index, text))
 		return;
@@ -1955,6 +1970,29 @@ void network_chat_update(
 			chat_host_update_config();
 			chat_host_update_rates();
 		}
+	}
+	/* (the votes' keys, F1 and F2, and the first controller's D-pad left and
+	right while a vote it may vote in runs (network_vote_pad_open, which
+	xinput_sdl.c keeps from the game meanwhile): yes or no, whether the chat
+	is shown or not: network_votekick.c) */
+	{
+		static unsigned long vote_keys_held;
+		static unsigned long vote_pad_held;
+		unsigned long vote_keys = 0;
+		unsigned long vote_pad = 0;
+
+		if (chat_network_game() && game_in_progress() && !chat_hidden() && !chat_input.active && !console_is_active())
+		{
+			vote_keys = halo_keyboard_actions(0) & (FLAG(HALO_KEYBOARD_VOTE_YES) | FLAG(HALO_KEYBOARD_VOTE_NO));
+			if (network_vote_pad_open())
+				vote_pad = halo_chat_pad_buttons() & (FLAG(HALO_CHAT_PAD_LEFT) | FLAG(HALO_CHAT_PAD_RIGHT));
+		}
+		if (vote_keys & ~vote_keys_held)
+			network_vote_choose(TEST_FLAG(vote_keys & ~vote_keys_held, HALO_KEYBOARD_VOTE_YES));
+		else if (vote_pad & ~vote_pad_held)
+			network_vote_choose(TEST_FLAG(vote_pad & ~vote_pad_held, HALO_CHAT_PAD_LEFT));
+		vote_keys_held = vote_keys;
+		vote_pad_held = vote_pad;
 	}
 	if (!chat_network_game() || !game_in_progress() || chat_speaker() == NONE || !chat_shown() || chat_hidden())
 	{
