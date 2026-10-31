@@ -95,14 +95,16 @@ struct config_setting
 
 /* display.graphics = "enhanced": the values it gives the settings it
 chooses (config_graphics), which are their defaults, the same on every
-build: SMAA (on iOS MSAA 4x), 16x anisotropic filtering, 512 shadow maps,
+build: SMAA (on iOS MSAA 2x), 16x anisotropic filtering, 512 shadow maps,
 the models' detail by the display's lines and lit for each pixel, the
 enhanced dynamic lights */
 #ifdef HALO_IOS
 /* (an iPhone's tile-based GPU resolves MSAA in its tile memory, the 3D view
 drawn in one pass, port/macos/xgpu_metal.m: about the cost of SMAA's
-passes over the screen there, and smoother edges) */
-#define GRAPHICS_ANTI_ALIASING "\"msaa4x\""
+passes over the screen there, and smoother edges; 2x keeps a 16-player
+fight on an iPhone 15 Pro Max inside 120 Hz's 8.3 ms, 4 to 5.4 ms of GPU a
+frame where 4x took up to 10) */
+#define GRAPHICS_ANTI_ALIASING "\"msaa2x\""
 #else
 #define GRAPHICS_ANTI_ALIASING "\"smaa\""
 #endif
