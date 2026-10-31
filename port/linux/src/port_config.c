@@ -1344,13 +1344,13 @@ static const struct config_setting config_settings[] =
 	{ "server.motd", _config_string, "\"\"", "HALO_SERVER_MOTD", _environment_value, _platform_server,
 		"A notice each machine is shown as it joins (127 characters); empty for\n"
 		"none." },
-	{ "server.game_mode", _config_string, "\"legacy\"", "HALO_SERVER_GAME_MODE", _environment_value,
+	{ "server.game_mode", _config_string, "\"openh1_120\"", "HALO_SERVER_GAME_MODE", _environment_value,
 		_platform_server,
-		"The games hosted: \"legacy\", OpenCE's netcode at 30 ticks a second for\n"
-		"everyone; or \"openh1_60\", \"openh1_120\" (or \"openh1_30\"), an OpenH1\n"
-		"game at that tick rate, which OpenCE players join too at 30 while\n"
-		"network.allow_opence is true. A change waits for the server to be empty\n"
-		"in its lobby (players in it keep the kind they joined)." },
+		"The games hosted: \"openh1_120\" or \"openh1_60\" (or \"openh1_30\"), an\n"
+		"OpenH1 game at that tick rate, which OpenCE players join too at 30 while\n"
+		"network.allow_opence is true; or \"legacy\", OpenCE's netcode at 30 ticks\n"
+		"a second for everyone. A change waits for the server to be empty in its\n"
+		"lobby (players in it keep the kind they joined)." },
 	{ "server.frame_rate", _config_integer, "60", "HALO_SERVER_FRAME_RATE", _environment_value, _platform_server,
 		"Frames a second (30 to 120): how often the server reads what its\n"
 		"clients send, sends its own and runs what is due of the game's ticks\n"
@@ -3291,7 +3291,7 @@ static const struct
 	{ "game.console_log", { "important", "all", "none", NULL }, NULL },
 	{ "game.language", { "", "ja", "de", "fr", "es", "it", NULL }, NULL },
 	{ "network.game_mode", { "openh1", "legacy", "standard", NULL }, NULL },
-	{ "server.game_mode", { "legacy", "openh1_30", "openh1_60", "openh1_120", NULL }, NULL },
+	{ "server.game_mode", { "openh1_120", "openh1_60", "openh1_30", "legacy", NULL }, NULL },
 	{ "network.text_chat", { "on", "links", "off", NULL }, NULL },
 	{ "server.chat_filter", { "off", "censor", "block", NULL }, NULL },
 	{ "server.chat_filter_slurs", { "off", "severe", "strong", "mild", NULL }, NULL },

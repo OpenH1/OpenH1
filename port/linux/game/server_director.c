@@ -361,7 +361,7 @@ long server_director_game_mode(
 /* a player host's network.game_mode and network.sim_rate set (in
 config.toml or the environment), which a server leaves aside for
 server.game_mode: said once, as a server that took its kind of game from
-them (OpenH1 120 Tick by default, before server.game_mode) hosts Legacy
+them before server.game_mode (a sim_rate of 60, say) hosts OpenH1 120 Tick
 games now unless server.game_mode says otherwise */
 static void server_warn_player_host_modes(
 	void)
