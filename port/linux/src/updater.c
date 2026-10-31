@@ -38,6 +38,12 @@ menu, the game asks:
 The system side (the HTTPS download, the files, starting the new game) is
 update.h's: posix_update.c on Linux, win32_update.c on Windows.
 
+Every download is checked before it is unpacked (updater_verify): against
+the release's SHA256SUMS and that file's signature by OpenH1's release key,
+SHA256SUMS.sig (release_signature.h says what is refused: a signature that
+is not the key's always; a release with none once
+RELEASE_SIGNATURE_REQUIRED is 1).
+
 On Linux the release is a tree (bin/openh1, lib/openh1, share/...:
 install_layout.c, tools/linux_package.py), OpenH1-Linux[-debug].zip or
 OpenH1-Linux-ARM64[-debug].zip (tools/release_names.py), and the game's folder
@@ -106,6 +112,8 @@ build */
 
 #ifdef UPDATE_PLATFORM
 
+#include "p2p_internal.h"
+#include "release_signature.h"
 #include "zlib_prefixed.h"
 
 #include <SDL3/SDL.h>
@@ -506,6 +514,129 @@ static long updater_latest_release(void)
 	return build;
 }
 
+/* ---------- the release's signature (release_signature.c) */
+
+/* the latest release's file (SHA256SUMS or SHA256SUMS.sig) into memory
+(SDL_free'd by the caller): 1 when it is there, 0 when the release has none
+(GitHub answers 404), -1 when it could not be had (why in error) */
+static int updater_release_file(const char *name, int maximum, char **text, int *size, char *error,
+	size_t error_size)
+{
+	struct update_response response;
+	char url[512], path[1200];
+	size_t loaded = 0;
+
+	*text = NULL;
+	*size = 0;
+	snprintf(url, sizeof(url), "https://github.com/" UPDATE_REPOSITORY "/releases/download/build-%ld/%s",
+		updater_latest_build, name);
+	/* (whether there is one: GitHub redirects a release's file to its
+	storage, which update_https_request does not follow) */
+	memset(&response, 0, sizeof(response));
+	if (!update_https_request("GET", url, NULL, NULL, 0, (unsigned long)maximum, &response, error, (int)error_size))
+		return -1;
+	free(response.body);
+	if (response.status == 404)
+		return 0;
+	if (response.status != 200 && (response.status < 300 || response.status > 399))
+	{
+		snprintf(error, error_size, "GitHub answered %d for %s", response.status, name);
+		return -1;
+	}
+	updater_partial_path(path, sizeof(path), name);
+	if (!update_download(url, path, (unsigned long long)maximum, NULL, NULL, error, (int)error_size))
+	{
+		update_delete_file(path);
+		return -1;
+	}
+	*text = SDL_LoadFile(path, &loaded);
+	update_delete_file(path);
+	if (!*text || loaded > (size_t)maximum)
+	{
+		SDL_free(*text);
+		*text = NULL;
+		snprintf(error, error_size, "could not read %s", name);
+		return -1;
+	}
+	*size = (int)loaded;
+	return 1;
+}
+
+/* the SHA-256 of the file at path; 1 when it was read whole */
+static int updater_file_digest(const char *path, unsigned char *digest)
+{
+	SDL_IOStream *stream = SDL_IOFromFile(path, "rb");
+	Sint64 size = stream ? SDL_GetIOSize(stream) : -1;
+	Sint64 total = 0;
+	struct p2p_sha256 context;
+	unsigned char buffer[8192];
+	size_t count;
+
+	if (!stream)
+		return 0;
+	p2p_sha256_begin(&context);
+	while ((count = SDL_ReadIO(stream, buffer, sizeof(buffer))) > 0)
+	{
+		p2p_sha256_add(&context, buffer, (int)count);
+		total += (Sint64)count;
+	}
+	/* (all of it read: a guest's SDL bridges no SDL_GetIOStatus) */
+	if (size < 0 || total != size)
+	{
+		SDL_CloseIO(stream);
+		return 0;
+	}
+	SDL_CloseIO(stream);
+	p2p_sha256_end(&context, digest);
+	return 1;
+}
+
+/* the release's download (zip_path, UPDATE_ASSET) checked against its
+SHA256SUMS and their signature by the release key (release_signature.h:
+what is refused, and RELEASE_SIGNATURE_REQUIRED); 1 when it may be
+installed, else 0, the download deleted and why in error */
+static int updater_verify(const char *zip_path, char *error, size_t error_size)
+{
+	unsigned char digest[RELEASE_DIGEST_SIZE];
+	char *sums = NULL, *signature = NULL;
+	int sums_size = 0, signature_size = 0, has_sums, has_signature;
+	char reason[300] = "";
+	enum release_verdict verdict = _release_refused;
+
+	has_sums = updater_release_file("SHA256SUMS", RELEASE_SUMS_MAXIMUM_SIZE, &sums, &sums_size, error, error_size);
+	has_signature = has_sums < 0 ? -1 :
+		updater_release_file("SHA256SUMS.sig", RELEASE_SIGNATURE_MAXIMUM_SIZE, &signature, &signature_size, error,
+			error_size);
+	if (has_sums < 0 || has_signature < 0)
+	{
+		/* (one that is there but could not be had is never taken for one
+		that is not) */
+		snprintf(reason, sizeof(reason), "%s", error);
+		snprintf(error, error_size, "could not check build %ld's signature: %s", updater_latest_build, reason);
+	}
+	else if (!updater_file_digest(zip_path, digest))
+	{
+		snprintf(error, error_size, "could not read the download to check it");
+	}
+	else
+	{
+		verdict = release_check(has_sums ? sums : NULL, sums_size, has_signature ? signature : NULL, signature_size,
+			UPDATE_ASSET, digest, RELEASE_SIGNATURE_REQUIRED, reason, sizeof(reason));
+		if (verdict == _release_refused)
+			snprintf(error, error_size, "build %ld was refused: %s", updater_latest_build, reason);
+		else if (verdict == _release_unsigned)
+			platform_log("update: build %ld: %s", updater_latest_build, reason);
+		else
+			platform_log("update: build %ld is signed by OpenH1's release key, and its download checks",
+				updater_latest_build);
+	}
+	SDL_free(sums);
+	SDL_free(signature);
+	if (verdict == _release_refused)
+		update_delete_file(zip_path);
+	return verdict != _release_refused;
+}
+
 #ifndef UPDATER_PACKAGE
 /* whether the game runs under gamescope (the Steam Deck's Game Mode), where
 a system dialog such as SDL's message box crashes the game. gamescope sets
@@ -545,6 +676,12 @@ static int updater_download_background(void)
 	{
 		platform_log("update: could not download build %ld: %s", updater_latest_build, error);
 		update_delete_file(zip_path);
+		update_delete_file(partial);
+		return 0;
+	}
+	if (!updater_verify(zip_path, error, sizeof(error)))
+	{
+		platform_log("update: %s", error);
 		update_delete_file(partial);
 		return 0;
 	}
@@ -588,6 +725,11 @@ static int updater_prepare_package(void)
 		{
 			platform_log("update: could not download build %ld: %s", updater_latest_build, error);
 			update_delete_file(zip_path);
+			return 0;
+		}
+		if (!updater_verify(zip_path, error, sizeof(error)))
+		{
+			platform_log("update: %s", error);
 			return 0;
 		}
 	}
@@ -882,7 +1024,10 @@ static void updater_update(void)
 	{
 		snprintf(error, sizeof(error), "could not make %s (is the game's folder read-only?)", partial);
 	}
-	else if ((local_zip[0] || updater_downloaded || updater_download_zip(zip_path, error, sizeof(error))) &&
+	/* (a download checked against the release's signature: updater_verify;
+	the background's was when it came, a test's zip is not) */
+	else if ((local_zip[0] || updater_downloaded ||
+		(updater_download_zip(zip_path, error, sizeof(error)) && updater_verify(zip_path, error, sizeof(error)))) &&
 		updater_unpack(zip_path, !local_zip[0], names, &name_count, error, sizeof(error)))
 	{
 		/* (the files replaced, for the new version to delete) */

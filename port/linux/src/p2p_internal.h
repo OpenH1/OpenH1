@@ -304,6 +304,18 @@ enum
 };
 
 void p2p_sha256(const void *data, int size, unsigned char *digest);
+/* the same of data given a piece at a time (a release's download,
+updater.c) */
+struct p2p_sha256
+{
+	unsigned int state[8];
+	unsigned char block[64];
+	unsigned long long length;
+	int used;
+};
+void p2p_sha256_begin(struct p2p_sha256 *context);
+void p2p_sha256_add(struct p2p_sha256 *context, const void *data, int size);
+void p2p_sha256_end(struct p2p_sha256 *context, unsigned char *digest);
 void p2p_hmac_sha256(const unsigned char *key, int key_size, const void *data, int size, unsigned char *digest);
 /* ChaCha20-Poly1305: encrypts plaintext with a 32-byte key and a nonce used
 with that key once, and authenticates it and the additional data, into
