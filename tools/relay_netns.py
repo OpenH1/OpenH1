@@ -12,6 +12,13 @@ through the relay (both name it in relays.txt), both playing scripted bots (debu
 joiner reached the host, how long the join took, its pings (the latency meter's), the relay's lines, and
 net_compare.py's judgement of the two copies' logs. Exit status 0 when the joiner joined through the relay and
 net_compare.py passed.
+
+    python3 tools/relay_netns.py --front [--joiner-game <OpenCE's halo>] ...
+
+instead has the host register with the relay as its front (p2p_front.c: network.front, server.front_ports, its
+publisher key in the front's front_operators.txt), names no relays anywhere, and has the joiner (another build's,
+OpenCE's for one, given its invite as halo://join/...) reach the host at the front's public port; the host plays
+Legacy (OpenCE's netcode) then. Exit status 0 when the joiner joined at the front's port and net_compare.py passed.
 """
 
 import argparse
@@ -292,6 +299,85 @@ class Machine:
                 self.process.wait()
 
 
+def scenario_front(folder, game, maps, seconds, joiner_game):
+    """the host behind a symmetric NAT registers with a front (halo --relay with server.front_ports) on the
+    internet; a joiner behind another symmetric NAT, of joiner_game (OpenCE's, say), joins through the front's
+    public port, knowing nothing of fronts; both play seconds with scripted bots, judged by net_compare.py"""
+    internet = Internet()
+    services = [subprocess.Popen(["ip", "netns", "exec", "svc", sys.executable, __file__, flag, address])
+                for flag, address in (("--stun", BROKER), ("--stun", STUN_SECOND), ("--broker", BROKER))]
+    time.sleep(1)
+    machines = []
+    try:
+        internet.behind_nat("host", f"{BRIDGE_NET}.101", "10.1.0")
+        internet.behind_nat("joiner", f"{BRIDGE_NET}.102", "10.2.0")
+        internet.port("relay", [RELAY])
+        host = Machine("host", "host", folder, game, maps)
+        # (the host's publisher key, beside its config.toml; its public key goes to the front)
+        environment = {key: value for key, value in os.environ.items() if not key.startswith("HALO_")}
+        environment["HALO_CONFIG_FILE"] = str(host.folder / "config.toml")
+        keygen = subprocess.run([game, "--keygen"], capture_output=True, text=True, env=environment,
+                                cwd=host.folder)
+        key = re.search(r"public key: (ed25519:[0-9a-f]{64})", keygen.stdout)
+        if not key:
+            return {"error": "no publisher key", "keygen": (keygen.stdout + keygen.stderr).splitlines()}
+        relay = Machine("relay", "relay", folder, game, maps)
+        machines.append(relay)
+        (relay.folder / "front_operators.txt").write_text(f"# the host\n{key.group(1)}\n")
+        relay.start(["--relay"], HALO_NET_TUNNEL_PORT=2302, HALO_SERVER_FRONT_PORTS="2310-2311",
+                    HALO_SERVER_FRONT_OPERATORS_FILE=str(relay.folder / "front_operators.txt"))
+        if not relay.wait_for(r"Relay: front on UDP ports 2310 to 2311", 20):
+            return {"error": "the front did not start", "relay_tail": relay.text().splitlines()[-20:]}
+        bot = {"HALO_NETWORK_TEST_START": 8, "HALO_EXIT_AFTER": seconds + 200}
+        machines.append(host)
+        host.start(HALO_NETWORK_TEST="host:bloodgulch", HALO_TEST_INPUT="bot:1", HALO_NET_FRONT=f"{RELAY}:2302",
+                   HALO_NET_GAME_MODE="legacy", **bot)
+        if not host.wait_for(r"front \S+ registered this machine", 30):
+            return {"error": "the host did not register", "host_tail": host.text().splitlines()[-30:]}
+        invite = host.wait_for(r"network test: invite (\S+)", 60)
+        if not invite:
+            return {"error": "the host made no invite", "host_tail": host.text().splitlines()[-30:]}
+        link = invite.group(1)
+        if joiner_game != game:
+            link = link.replace("openh1://", "halo://")
+        joiner = Machine("joiner", "joiner", folder, joiner_game, maps)
+        machines.append(joiner)
+        joiner.start([link], HALO_NETWORK_TEST="join", HALO_TEST_INPUT="bot:2", HALO_NET_GAME_MODE="legacy", **bot)
+        match = joiner.wait_for(r"connected to host \w+ at (\S+)", 45)
+        result = {"reached": bool(match), "host_at": match.group(1) if match else None,
+                  "via_front": bool(match) and match.group(1).endswith(":2310")}
+        if match:
+            deadline = time.time() + seconds + 120
+            while time.time() < deadline and all(m.process.poll() is None for m in machines):
+                ticks = [int(value) for value in re.findall(r"network test: tick (\d+)", joiner.text())]
+                if ticks and (max(ticks) - min(ticks)) // 30 >= seconds + 4:
+                    break
+                time.sleep(1)
+        result["crashed"] = [m.name for m in machines if m.process.poll() not in (None, 0)]
+        result["front_log"] = [f"{m.name}: {line.split('Internet play: ', 1)[-1]}" for m in machines
+                               for line in m.text().splitlines()
+                               if ("Internet play: " in line and ("front" in line or "relay" in line or
+                                                                  "connected to" in line)) or "Relay:" in line][:20]
+        for machine in machines:
+            machine.stop()
+        result["relay_counts"] = relay.text().splitlines()[-3:]
+        if match:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            import net_compare
+            arguments = argparse.Namespace(seconds=seconds, skip=3, latency=False)
+            judged = net_compare.judge_run(host.log, joiner.log, arguments, dict(net_compare.TOLERANCES))
+            result["net_compare"] = "PASS" if not judged["divergences"] and not judged["problems"] else "FAIL"
+            result["net_compare_lines"] = net_compare.describe(judged)
+        return result
+    finally:
+        for machine in machines:
+            machine.stop()
+        for service in services:
+            service.kill()
+            service.wait()
+        internet.close()
+
+
 def scenario(folder, game, maps, seconds):
     """a host and a joiner, each behind a symmetric NAT, and a relay of halo --relay on the internet that both
     name in relays.txt: the joiner joins through it and both play seconds with scripted bots; then net_compare.py
@@ -360,7 +446,11 @@ def scenario(folder, game, maps, seconds):
 
 def inside(arguments):
     folder = Path(tempfile.mkdtemp(prefix="relay-", dir=arguments.work))
-    result = scenario(folder, arguments.game, arguments.maps, arguments.seconds)
+    if arguments.front:
+        result = scenario_front(folder, arguments.game, arguments.maps, arguments.seconds,
+                                arguments.joiner_game or arguments.game)
+    else:
+        result = scenario(folder, arguments.game, arguments.maps, arguments.seconds)
     for key, value in result.items():
         if isinstance(value, list):
             print(f"{key}:")
@@ -368,6 +458,8 @@ def inside(arguments):
                 print(f"  {line}")
         else:
             print(f"{key}: {value}")
+    if arguments.front:
+        return 0 if result.get("net_compare") == "PASS" and result.get("via_front") else 1
     return 0 if result.get("net_compare") == "PASS" and result.get("via") == "through a relay" else 1
 
 
@@ -377,6 +469,8 @@ def main():
     parser.add_argument("--maps", default=str(Path.home() / "halo-x86-maps/maps"))
     parser.add_argument("--seconds", type=int, default=30, help="seconds of play judged")
     parser.add_argument("--work", default=None)
+    parser.add_argument("--front", action="store_true", help="the host behind a front (p2p_front.c)")
+    parser.add_argument("--joiner-game", default=None, help="the joiner's executable (--front; OpenCE's, say)")
     parser.add_argument("--inside", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--broker", help=argparse.SUPPRESS)
     parser.add_argument("--stun", help=argparse.SUPPRESS)
@@ -389,13 +483,17 @@ def main():
         return 0
     arguments.game = str(Path(arguments.game).resolve())
     arguments.maps = str(Path(arguments.maps).expanduser().resolve())
+    if arguments.joiner_game:
+        arguments.joiner_game = str(Path(arguments.joiner_game).expanduser().resolve())
     if not arguments.inside:
         work = tempfile.mkdtemp(prefix="relay-netns-")
         try:
             return subprocess.call(["unshare", "-Urnm", "--propagation", "private", "sh", "-c",
                                     "mount -t tmpfs none /run && exec \"$@\"", "-", sys.executable, __file__,
                                     "--inside", "--game", arguments.game, "--maps", arguments.maps, "--work", work,
-                                    "--seconds", str(arguments.seconds)])
+                                    "--seconds", str(arguments.seconds)] +
+                                   (["--front"] if arguments.front else []) +
+                                   (["--joiner-game", arguments.joiner_game] if arguments.joiner_game else []))
         finally:
             if os.environ.get("RELAY_NETNS_KEEP"):
                 print(f"kept {work}")

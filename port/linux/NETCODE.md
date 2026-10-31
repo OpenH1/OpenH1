@@ -2131,6 +2131,25 @@ alike. OpenCE machines never offer relays, so they connect as before.
   the one the relay saw its binds come from and checked by its cookie: never
   one the player gave of itself. The relay tells only the host's side.
 
+### Fronts
+
+A relay needs both machines to take part, so it cannot help a player whose
+build never offers relays (OpenCE, an older OpenH1) reach a host behind a
+NAT that cannot be punched. A front can: a public UDP port on a relay of
+`halo --relay` (`server.front_ports`) that the host registers with
+(`network.front`; `port/linux/src/p2p_front.c`; the packets are in
+`docs/dedicated_server.md`, "Fronts"). The host lists the front's port as
+one more of its addresses in its signalling answer, and a joiner punches to
+it as to any other. Nothing a joiner sends or receives changes: the front
+passes its tunnel packets, still sealed end to end, to the host, and the
+host's answers back from the same port, so the joiner cannot tell it from
+the host. On the host, a joiner reached so is relayed through the front (a
+relay attempt of the front's, "front and client number"), with the address
+the front saw it at for its bans and votes; a direct path found later takes
+over as from a relay. The protocol between host and front is versioned on
+its own (version 1); the OpenH1 and Legacy protocols, and
+`HALO_PORT_NETWORK_VERSION`, are unchanged.
+
 ## Testing
 
 `debug.network_test` (`port/linux/game/network_test.c`) hosts or joins a

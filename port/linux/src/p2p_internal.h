@@ -538,6 +538,17 @@ each pair released */
 void p2p_relay_forget_peer(const unsigned char *peer, int unpaired_only);
 /* a tunnel packet sent through a paired attempt: 0 if it is not one */
 int p2p_relay_send(int index, const unsigned char *packet, int size);
+/* a front's path to a client of this machine (p2p_front.c): its attempt,
+always paired (front: the front's public address; client: its number
+there; client_address: where the front saw it, its peer_address). Found by
+the client's number (-1 if that one is another peer's), else made (created
+set; -1 if there is no room). Heard: a packet of the peer's came through
+it. Dropped: freed, unheard of. Forget: the front's paths all freed */
+int p2p_relay_front_attempt(const unsigned char *peer, const struct p2p_candidate *front, unsigned long client,
+	const struct p2p_candidate *client_address, unsigned long now, int *created);
+void p2p_relay_front_heard(int index, unsigned long now);
+void p2p_relay_front_drop(int index);
+void p2p_relay_front_forget(void);
 /* an attempt's state: 0 if there is none of that index */
 int p2p_relay_attempt(int index, struct p2p_relay_attempt_state *state);
 /* a peer's attempts' indices; returns their count */
@@ -597,5 +608,77 @@ void p2p_relay_paired(int index);
 void p2p_relay_delivered(int index, const unsigned char *packet, int size);
 void p2p_relay_lost(int index);
 int p2p_relay_peer_address(unsigned long address, unsigned short port);
+
+/* ---------- p2p_front.c: fronts, public ports on a relay of halo --relay
+that a server or host behind a NAT no one can punch through registers with
+(network.front), listed as one more of its addresses: a client, OpenCE's
+too, reaches it there as at any of its addresses */
+
+enum
+{
+	/* the first byte of a front's packets on the tunnel's socket */
+	P2P_FRONT_MAGIC = 0x6B,
+	/* public ports a front gives out at most (server.front_ports) */
+	P2P_FRONT_MAXIMUM_PORTS = 64,
+	/* operators' keys a front allows at most */
+	P2P_FRONT_MAXIMUM_OPERATORS = 64,
+	/* an operator's (publisher) key, Ed25519, and a signature */
+	P2P_FRONT_KEY_SIZE = 32,
+	P2P_FRONT_SIGNATURE_SIZE = 64,
+};
+
+/* the front's ports (port_count of them from first_port, host byte order;
+none: it is no front) and its bytes a second in all */
+struct p2p_front_limits
+{
+	int port_count;
+	unsigned short first_port;
+	long upload;
+};
+
+/* the front's counts (halo --relay logs them) */
+struct p2p_front_counts
+{
+	int registered, clients;
+	unsigned long registrations, ended, refused, challenged, dropped;
+	unsigned long forwarded_packets, forwarded_bytes;
+};
+
+/* the front's: its ports and rate; the operators' keys it allows (the
+registrations of any other end at once), from a file's text (one
+"ed25519:<64 hex>" or 64 hex digits a line: their count, maximum at most);
+its counts; a packet that arrived at its public port of that index */
+void p2p_front_configure(const struct p2p_front_limits *limits);
+void p2p_front_operators(const unsigned char (*keys)[P2P_FRONT_KEY_SIZE], int count);
+int p2p_front_operators_parse(const char *text, unsigned char (*keys)[P2P_FRONT_KEY_SIZE], int maximum);
+void p2p_front_counts(struct p2p_front_counts *counts);
+void p2p_front_public_received(int port_index, const unsigned char *packet, int size, unsigned long address,
+	unsigned short port, unsigned long now);
+/* both sides': a packet that starts with P2P_FRONT_MAGIC (the tunnel's
+socket, or the relay's), from address and port (network byte order): 1 if
+it was a front's, done with; the pass (registrations kept and expired) */
+int p2p_front_received(unsigned char *packet, int size, unsigned long address, unsigned short port,
+	unsigned long now);
+void p2p_front_update(unsigned long now);
+/* the server's: the front to register with (NULL or zeros: none); its
+public address once registered (1); a tunnel packet to one of its clients
+(0 if not registered) */
+void p2p_front_use(const struct p2p_candidate *front);
+int p2p_front_public(struct p2p_candidate *candidate);
+int p2p_front_send(unsigned long client, const unsigned char *packet, int size);
+
+/* p2p.c's, which p2p_front.c calls: a packet sent (port_index -1: from the
+tunnel's socket, or the relay's; else from the front's public port of that
+index); the operator's public key (P2P_FRONT_KEY_SIZE bytes) and, given a
+message, its signature: 0 if there is no key (server_master.c's publisher
+key); a tunnel packet a client sent to this machine's front (its number
+there, its address as the front saw it); this machine's registration
+ended (the paths through it gone) */
+void p2p_front_sendto(int port_index, unsigned long address, unsigned short port, const unsigned char *data,
+	int size);
+int p2p_front_sign(const unsigned char *message, int size, unsigned char *public_key, unsigned char *signature);
+void p2p_front_delivered(unsigned long client, const struct p2p_candidate *client_address,
+	const unsigned char *packet, int size);
+void p2p_front_lost(void);
 
 #endif

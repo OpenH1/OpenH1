@@ -116,6 +116,19 @@ void p2p_relay_lost(int index)
 	lost_index = index;
 }
 
+/* a front's path (p2p_front.c) sends through its front */
+static int front_sent_calls;
+static unsigned long front_sent_client;
+
+int p2p_front_send(unsigned long client, const unsigned char *packet, int size)
+{
+	(void)packet;
+	(void)size;
+	front_sent_calls++;
+	front_sent_client = client;
+	return 1;
+}
+
 int p2p_relay_peer_address(unsigned long address, unsigned short port)
 {
 	int index;
@@ -825,6 +838,83 @@ static int case_limits(void)
 
 /* anything at all: no crash, nothing sent to an address that never bound
 or spoke, nothing larger than what came */
+/* a front's path to a client (p2p_front.c's): paired from the first, one
+client's one peer, sent through the front, matched by no relay's answer,
+within the peer's attempts, freed in silence, never a release or a bind */
+static int case_front_path(void)
+{
+	static const unsigned char peer[P2P_IDENTIFIER_SIZE] = { 1, 2, 3, 4, 5, 6 };
+	static const unsigned char other[P2P_IDENTIFIER_SIZE] = { 9, 9, 9, 9, 9, 9 };
+	struct p2p_candidate front_address, client_address;
+	struct p2p_relay_attempt_state state;
+	unsigned char packet[100], answer[BOUND];
+	int index, created, before, count, client;
+
+	relay_at(RELAY, &front_address);
+	client_address.address = C;
+	client_address.port = PORT;
+	index = p2p_relay_front_attempt(peer, &front_address, 77, &client_address, now, &created);
+	REQUIRE(index >= 0 && created);
+	REQUIRE(p2p_relay_attempt(index, &state) && state.paired && state.peer_address.address == C);
+	REQUIRE(p2p_relay_front_attempt(peer, &front_address, 77, &client_address, now, &created) == index && !created);
+	/* (another peer's packet through that client: not taken) */
+	REQUIRE(p2p_relay_front_attempt(other, &front_address, 77, &client_address, now, &created) < 0);
+	/* (sent through the front, with the client's number) */
+	memset(packet, 0, sizeof(packet));
+	packet[0] = P2P_TUNNEL_MAGIC;
+	before = sent_count;
+	REQUIRE(p2p_relay_send(index, packet, sizeof(packet)) && front_sent_calls == 1 && front_sent_client == 77);
+	REQUIRE(sent_count == before);
+	/* (a relay's BOUND or delivery from its address, of zeros, is not its) */
+	memset(answer, 0, sizeof(answer));
+	answer[0] = P2P_RELAY_MAGIC;
+	answer[1] = 'K';
+	answer[2] = 2;
+	answer[3] = 2;
+	p2p_relay_received(answer, BOUND, RELAY, PORT, now);
+	REQUIRE(p2p_relay_attempt(index, &state) && state.paired);
+	{
+		unsigned char delivered_packet[10 + 60];
+
+		memset(delivered_packet, 0, sizeof(delivered_packet));
+		delivered_packet[0] = P2P_RELAY_MAGIC;
+		delivered_packet[1] = 'd';
+		delivered_packet[10] = P2P_TUNNEL_MAGIC;
+		p2p_relay_received(delivered_packet, sizeof(delivered_packet), RELAY, PORT, now);
+		REQUIRE(delivered_calls == 0);
+	}
+	/* (a peer's paths at most) */
+	for (count = 1, client = 100; client < 120; client++)
+		count += p2p_relay_front_attempt(peer, &front_address, (unsigned long)client, &client_address, now,
+			&created) >= 0;
+	REQUIRE(count == P2P_RELAY_PEER_RELAYS);
+	/* (forgotten: no release sent) */
+	before = sent_count;
+	p2p_relay_forget_peer(peer, 0);
+	REQUIRE(sent_count == before && !p2p_relay_attempt(index, NULL));
+	/* (kept while heard; never a bind; freed in silence, its loss told) */
+	index = p2p_relay_front_attempt(peer, &front_address, 78, &client_address, now, &created);
+	REQUIRE(index >= 0);
+	before = sent_count;
+	lost_calls = 0;
+	now += 11000;
+	p2p_relay_front_heard(index, now);
+	now += 11000;
+	p2p_relay_update(now);
+	REQUIRE(p2p_relay_attempt(index, NULL) && sent_count == before);
+	now += 1000;
+	p2p_relay_update(now);
+	REQUIRE(!p2p_relay_attempt(index, NULL) && lost_calls == 1);
+	/* (dropped unheard of; all a front's forgotten) */
+	index = p2p_relay_front_attempt(peer, &front_address, 79, &client_address, now, &created);
+	p2p_relay_front_drop(index);
+	REQUIRE(!p2p_relay_attempt(index, NULL));
+	index = p2p_relay_front_attempt(peer, &front_address, 80, &client_address, now, &created);
+	p2p_relay_front_forget();
+	REQUIRE(!p2p_relay_attempt(index, NULL));
+	return 0;
+}
+
 static int case_malformed(void)
 {
 	unsigned char token[P2P_RELAY_TOKEN_SIZE], channel[8], packet[2048], valid[2048];
@@ -905,6 +995,7 @@ int main(int argc, char **argv)
 		{ "game-mode", case_game_mode },
 		{ "limits", case_limits },
 		{ "malformed", case_malformed },
+		{ "front-path", case_front_path },
 	};
 	size_t index;
 

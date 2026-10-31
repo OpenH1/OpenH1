@@ -1149,6 +1149,73 @@ secret), taken one a second and 8 in all for a session. A dedicated server
 tells each player of its game its relays in a tunnel packet of its own
 (`_packet_relays`). These are OpenH1 protocol version 16's.
 
+## Fronts
+
+A server (or a player's host) behind a NAT that nothing can punch through
+(carrier-grade NAT, a NAT that gives each destination a port of its own)
+can still be joined by every player, OpenCE's too, through a front: a
+public UDP port on a relay of `halo --relay`
+(`port/linux/src/p2p_front.c`; `port/linux/NETCODE.md`, "Fronts"). The
+server keeps one session with the front, which gives it a port of its
+own; the server lists that port as one more of its addresses (after
+`network.public_address`, before its own), joiners punch to it as to any,
+and the front passes each tunnel packet that reaches the port down the
+session, and the server's answers back out of the port. The tunnel stays
+sealed end to end: a front sees the addresses of the server and of the
+players who reach it, never what they send.
+
+Setting one up:
+
+1. On a machine with a public address (a small VPS), in `config.toml`
+   beside `halo --relay`: `server.front_ports = "2310-2325"` (a port for
+   each server it serves, 64 at most). Open UDP `network.tunnel_port` (2302)
+   and those ports in its firewall.
+2. On each server, `halo --keygen` writes its publisher key (the
+   one the master servers know it by, if it publishes) and prints its
+   public key, `ed25519:<hex>`.
+3. On the front, put each server's public key on a line of
+   `front_operators.txt` beside `config.toml`
+   (`server.front_operators_file`; read again each minute), and start
+   `halo --relay`. It logs the ports and the keys it allows.
+4. On the server, `network.front = "<the front's address>:2302"`. It logs
+   "front ... registered this machine: joiners are offered ..." once the
+   front gives it a port; the server needs no port forwarded of its own.
+
+A port stays with a server's key while it is registered, and is given back
+to the same key when it registers again after a lapse, so its address
+stays the same. A registration lapses after 15 seconds without a renewal
+(the server renews every 4); the server gives the front up after 12 seconds
+without an answer and asks again every second, its listed address withdrawn
+meanwhile.
+
+**Limits.** REGISTERs answered: 200 a second in all; signatures checked: 50
+a second. A registration's clients: 64, 8 from one address; a client the
+server never answered is forgotten after 5 seconds and gives way first when
+the table is full (so a flood from forged addresses cannot keep players
+out), one answered after 20 seconds of silence. Bytes: 256 KB/s for each
+client, 2 MB/s for each registration (both ways), and `server.relay_upload`
+for the front in all. The front passes only tunnel packets of a tunnel
+packet's sizes, to a registered server's port alone, and sends a player
+only what its server sent it: nothing a front sends to an address it has
+not checked is larger than what that address sent it.
+
+The front's packets (UDP; the front's on its `network.tunnel_port`, the
+server's on its tunnel's socket; their first byte `0x6B`, version 1):
+
+| Packet | Bytes |
+| --- | --- |
+| REGISTER (server to front) | `0x6B`, `R`, 1, 0, the publisher key (32), nonce (8), cookie (16; zeros at first), Ed25519 signature (64) of "openh1 front register 1", the key, the nonce and the cookie |
+| CHALLENGE (front to server) | `0x6B`, `C`, 1, 0, the REGISTER's nonce (8), cookie (16: an HMAC by a secret of the front's of the address and port the REGISTER came from, its key and the 30-second period) |
+| REGISTERED (front to server) | `0x6B`, `G`, 1, state (0 registered, 1 refused: the key is not allowed, 2 full: no port free), the REGISTER's nonce (8), the session (8), the public port (2, network order), 2 zeros |
+| FROM (front to server) | `0x6B`, `F`, the session (8), the client's number (4), the client's IPv4 address and port as the front saw them (6), one tunnel packet |
+| TO (server to front) | `0x6B`, `T`, the session (8), the client's number (4), one tunnel packet, which the front sends to that client from the public port |
+
+A REGISTER is taken only with a cookie the front gave its address in this
+period or the last, and a key in the operators' file, and a good signature
+(the same REGISTER again, the keep-alive, is not checked again). The front
+takes TO only from the registered server's address with its session, and
+the server takes FROM only from its front's address with its session.
+
 ## Files
 
 | File | What |
