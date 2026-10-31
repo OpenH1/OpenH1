@@ -27,10 +27,11 @@ runs there too: `halo --server` on the Linux builds (and the macOS and
 Windows ones), its signals caught by the host for it
 (`port/linux/host/host_desktop.c`'s `host_server_*`), and its HTTPS to the
 master servers made in the host (`host_https_request`,
-`port/android/host/host_https.c`). Not in OpenH1: OpenCE's `deploy/`
-folder (Docker, Helm, systemd, the panels' eggs and their CI), and
-`server.auto_update`, which says this build does not update itself (what
-runs it updates it). The server hosts no OpenH1 60 or 120 Tick game yet.
+`port/android/host/host_https.c`). The server updates itself from
+OpenH1's releases (`server.auto_update`, "Updates" below) when it runs from
+the Linux release's tree or the Windows build's folder. Not in OpenH1:
+OpenCE's `deploy/` folder (Docker, Helm, systemd, the panels' eggs and
+their CI). The server hosts no OpenH1 60 or 120 Tick game yet.
 
 ## Panels and fleets
 
@@ -367,18 +368,45 @@ to everyone, logged and a `coop_bsp_switch` event names who crossed.
 
 ### Updates
 
-`server.auto_update` is `install` by default (the Docker image's, `check`:
-its image is updated instead). The server asks GitHub for the latest
-release `server.update_check_minutes` (30) after the last check (the first
-two minutes after it starts), and when there is a newer one says so (a
-`warning` event) and, with `install`, installs it on a thread of its own.
-The release's notes tell its network version: one of the same version
-restarts the server (exit code 5) once it has been empty for 10 minutes;
-one of a new version, which its players' games no longer join, tells the
-players "This server updates after this game" and restarts it once the game
-ends, in the lobby after 30 seconds' notice, and a game still going on
+`server.auto_update` is `install` by default (`check` only says when a
+release is out; `off` never looks). The server asks GitHub for OpenH1's
+latest release (`build-<n>`) `server.update_check_minutes` (30) after the
+last check (the first within two minutes of its start), and when there is
+a newer one says so (a `warning` event) and, with `install`, installs it
+on a thread of its own, the server playing on meanwhile: the release's zip
+for this build (`OpenH1-Linux.zip`, `OpenH1-Linux-ARM64.zip`,
+`OpenH1-Linux-VR.zip`, `OpenH1-Windows.zip`, or their `-debug` builds')
+downloaded into the game's folder (`update.partial-<network.port>`, so
+that servers that share a folder do not share it), checked against the
+release's `SHA256SUMS` and its signature by OpenH1's release key, as the
+game's own updates are (a download that does not match is deleted and
+refused), unpacked, and each of
+its files put in place of the running server's, which become `<name>.old`
+and are deleted when the new build starts. An install that fails (the
+download, its check, a file that cannot be replaced: the files replaced before it are
+put back) is logged and tried again at the next check.
+
+The release's notes give its network versions (`Network version: <n>` and
+`Standard network version: <n>`, written by the release job:
+`tools/ci_build.py notes`). One of the same versions restarts the server
+(exit code 5) once it has been empty for 10 minutes; one of a new version,
+which its players' games no longer join, tells the players "This server
+updates after this game" and restarts it once the game ends, in the lobby
+after 30 seconds' notice, and a game still going on
 `server.update_game_minutes` (30; 0: no limit) after the install is ended
-as `sv_end_game` ends it, its scores shown.
+as `sv_end_game` ends it, its scores shown. What runs the server must start
+it again on exit code 5 (systemd's `Restart=on-failure`, Docker's
+`--restart`, a panel's restart), and it starts the new build.
+
+Only a server that runs from files it may replace updates itself: the
+Linux release's tree (`bin/openh1` beside `share/openh1`, as the release's
+zip unpacks it, or as `install.sh` puts it in `~/Applications/OpenH1`) and
+the Windows build's folder, of a build CI numbered. A build without a
+number (one built from the sources), a tree a package manager installed
+(`share/openh1/packaged`) or that the server may not write, the Steam
+Frame's package, and the macOS, iOS and Android apps log once that
+`server.auto_update` is set but the build does not update itself, and why;
+what runs them updates them.
 
 ### VPNs and linked Discord accounts
 

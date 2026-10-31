@@ -918,3 +918,227 @@ def test_vpn_link_with_one_of_a_servers_masters(machines):
     finally:
         first.close()
         second.close()
+
+
+
+# ---------- updates (server.auto_update: port/linux/src/updater.c's updater_server_*)
+
+def _network_versions():
+    import sys
+
+    sys.path.insert(0, str(ROOT / "tools"))
+    import ci_build
+
+    versions = ci_build.network_versions()
+    return versions["HALO_PORT_NETWORK_VERSION"], versions["HALO_PORT_STANDARD_NETWORK_VERSION"]
+
+
+class FakeReleases:
+    """GitHub's releases on loopback (debug.update_url): the latest release's answer, its notes giving its network
+    versions as the release job writes them (tools/ci_build.py notes), its zip, whose first downloads may be refused,
+    and its SHA256SUMS (no signature: an unsigned release, whose sums are still checked: release_signature.c), wrong
+    for the zip's first wrong_sums downloads"""
+
+    def __init__(self, zip_bytes):
+        import http.server
+        import threading
+
+        self.build = 0
+        self.network_version, self.standard_version = _network_versions()
+        self.zip_bytes = zip_bytes
+        self.refusals = 0
+        self.wrong_sums = 0
+        self.downloads = []
+        releases = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *arguments):
+                pass
+
+            def answer(self, status, body, content_type="application/json"):
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                if self.path == "/repos/OpenH1/OpenH1/releases/latest":
+                    if not releases.build:
+                        self.answer(404, b'{"message": "Not Found"}')
+                        return
+                    # (a subject that names a network version, which the notes' own line comes after)
+                    notes = (f"Network version: 1 is not this\n\nCommit: x\nBuild: y\n"
+                             f"Network version: {releases.network_version}\n"
+                             f"Standard network version: {releases.standard_version}\n\nThe release builds...")
+                    self.answer(200, json.dumps({"tag_name": f"build-{releases.build}", "body": notes}).encode())
+                    return
+                prefix = f"/OpenH1/OpenH1/releases/download/build-{releases.build}/"
+                if releases.build and self.path == prefix + "SHA256SUMS":
+                    zips = len([name for name in releases.downloads if name.endswith(".zip")])
+                    digest = hashlib.sha256(releases.zip_bytes if zips > releases.wrong_sums else b"another").hexdigest()
+                    sums = "".join(f"{digest}  {name}\n" for name in ("OpenH1-Linux.zip", "OpenH1-Linux-debug.zip"))
+                    self.answer(200, sums.encode(), "text/plain")
+                    return
+                if releases.build and self.path.startswith(prefix) and self.path.endswith(".zip"):
+                    releases.downloads.append(self.path[len(prefix):])
+                    if releases.refusals > 0:
+                        releases.refusals -= 1
+                        self.answer(503, b"busy", "text/plain")
+                    else:
+                        self.answer(200, releases.zip_bytes, "application/zip")
+                    return
+                self.answer(404, b"", "text/plain")
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+NEW_GAME = b"#!/bin/sh\necho the new build\n"
+
+
+def _release_zip():
+    """the new build's tree: its game (a stand-in) and a file the old one has not"""
+    import io
+    import zipfile
+
+    data = io.BytesIO()
+    with zipfile.ZipFile(data, "w", zipfile.ZIP_DEFLATED) as archive:
+        game = zipfile.ZipInfo("bin/halo")
+        game.external_attr = 0o100755 << 16
+        game.compress_type = zipfile.ZIP_DEFLATED
+        archive.writestr(game, NEW_GAME)
+        archive.writestr("share/openh1/new-build.txt", "the new build\n")
+    return data.getvalue()
+
+
+def _tree(machine):
+    """the machine's folder as the Linux release's tree (bin/ beside share/openh1: install_layout.c), which a
+    server updates"""
+    (machine.folder / "share" / "openh1").mkdir(parents=True, exist_ok=True)
+    return machine
+
+
+def _update_settings(releases, **settings):
+    values = {"HALO_UPDATE_URL": releases.url, "HALO_UPDATE_TIME_SCALE": 100, "HALO_SERVER_AUTO_UPDATE": "install",
+              "HALO_SERVER_UPDATE_CHECK_MINUTES": 5}
+    values.update(settings)
+    return values
+
+
+def _installed(machine):
+    folder = machine.folder
+    return ((folder / "bin" / "halo").read_bytes() == NEW_GAME and (folder / "bin" / "halo.old").is_file() and
+            (folder / "share" / "openh1" / "new-build.txt").is_file())
+
+
+def test_update_of_the_same_network_version_once_empty(machines):
+    """a newer release of the same network versions is found, its download refused once (the install tried again
+    at the next check), installed while the server runs, and the server, empty, stops with exit code 5 (after 10
+    minutes, on debug.update_time_scale's clock)"""
+    _needs_game("bloodgulch")
+    releases = FakeReleases(_release_zip())
+    releases.build = 7
+    releases.refusals = 1
+    try:
+        port = _free_port()
+        server = _tree(machines("server")).start(["--server"], **_server_settings(
+            port, HALO_SERVER_ROTATION="bloodgulch:slayer", **_update_settings(releases)))
+        assert server.wait(150) == 5, server.text()[-3000:]
+        text = server.text()
+        assert "build 7 is out" in text and "a new network version" not in text, text[-3000:]
+        assert text.count("installing build 7") == 2, text[-3000:]
+        assert "build 7 could not be installed" in text and "server answered 503" in text, text[-3000:]
+        assert text.index("could not be installed") < text.index("build 7 installed: started once the server")
+        assert "stopping to be started again (empty for 10 minutes)" in text, text[-3000:]
+        assert len(releases.downloads) == 2 and all(name.startswith("OpenH1-Linux") and name.endswith(".zip")
+                                                    for name in releases.downloads), releases.downloads
+        assert _installed(server), sorted(str(path) for path in server.folder.rglob("*"))
+        assert "bin/halo.old" in (server.folder / "update-old.txt").read_text()
+        assert not list(server.folder.glob("update.partial*")), "the update's folder was left"
+    finally:
+        releases.close()
+
+
+def test_update_of_a_new_network_version_after_the_game(machines):
+    """a release of a new network version (the Standard games', the notes' second line) found during a game: the
+    players are told the server updates after this game, the game is ended after server.update_game_minutes, and
+    the server stops with exit code 5 after its postgame"""
+    _needs_game("bloodgulch")
+    releases = FakeReleases(_release_zip())
+    releases.standard_version += 1
+    try:
+        port = _free_port()
+        server = _tree(machines("server")).start(["--server"], **_server_settings(
+            port, HALO_SERVER_ROTATION="bloodgulch:slayer", HALO_SERVER_UPDATE_GAME_MINUTES=1,
+            **_update_settings(releases)))
+        api = Api(port)
+        _until(lambda: "server: ready" in server.text(), 90, "server: ready", server)
+        api.login()
+        _client(machines("client"), CLIENT_ADDRESSES[0], "Player")
+        _until(lambda: (api.status() or {}).get("state") == "playing", 120, "the game", server)
+        # (released once the game is under way: the next check finds it)
+        releases.build = 8
+        assert server.wait(90) == 5, server.text()[-3000:]
+        text = server.text()
+        assert "build 8 is out" in text and "a new network version" in text, text[-3000:]
+        assert "build 8 installed: a new network version, started once this game is over" in text, text[-3000:]
+        assert "since the update was installed" in text, text[-3000:]
+        assert "stopping to be started again (a new network version, after the game)" in text, text[-3000:]
+        assert text.index("game: ended") < text.index("stopping to be started again"), text[-3000:]
+        assert _installed(server)
+    finally:
+        releases.close()
+
+
+def test_a_build_outside_a_tree_does_not_update(machines):
+    """a server that is not in a release's tree says once that it does not update itself, and plays on"""
+    _needs_game("bloodgulch")
+    releases = FakeReleases(_release_zip())
+    releases.build = 9
+    try:
+        port = _free_port()
+        server = machines("server").start(["--server"], **_server_settings(
+            port, HALO_SERVER_ROTATION="bloodgulch:slayer", **_update_settings(releases)))
+        _until(lambda: "does not update itself" in server.text(), 90, "the refusal", server)
+        time.sleep(5)
+        text = server.text()
+        assert text.count("does not update itself") == 1 and "not in a release's tree" in text, text[-3000:]
+        assert server.process.poll() is None and not releases.downloads
+        server.send("quit")
+        assert server.wait(15) == 0, server.text()[-3000:]
+    finally:
+        releases.close()
+
+
+def test_update_whose_checksum_does_not_match_is_refused(machines):
+    """a release whose SHA256SUMS does not match its zip is refused before anything is unpacked: the server plays on,
+    and the next check downloads it again, whose sums match, installs it, and stops with exit code 5 once empty"""
+    _needs_game("bloodgulch")
+    releases = FakeReleases(_release_zip())
+    releases.build = 7
+    releases.wrong_sums = 1
+    try:
+        port = _free_port()
+        server = _tree(machines("server")).start(["--server"], **_server_settings(
+            port, HALO_SERVER_ROTATION="bloodgulch:slayer", **_update_settings(releases)))
+        _until(lambda: "build 7 could not be installed" in server.text(), 90, "the refusal", server)
+        text = server.text()
+        assert "build 7 was refused" in text, text[-3000:]
+        # (nothing of the refused download put in place, and the server plays on)
+        assert server.process.poll() is None
+        assert not (server.folder / "bin" / "halo.old").exists() and \
+            not (server.folder / "share" / "openh1" / "new-build.txt").exists()
+        assert server.wait(150) == 5, server.text()[-3000:]
+        text = server.text()
+        assert text.count("installing build 7") == 2, text[-3000:]
+        assert text.index("was refused") < text.index("build 7 installed: started once the server"), text[-3000:]
+        assert len(releases.downloads) == 2, releases.downloads
+        assert _installed(server)
+    finally:
+        releases.close()
