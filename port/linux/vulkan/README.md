@@ -110,8 +110,9 @@ by SHA-256) into `build/<build>/third_party` (`build/linux_x86_64/third_party`,
 timeline semaphores, host query reset), precise occlusion queries, and a
 combined depth/stencil format that supports both attachments and sampling
 (D32S8, or D24S8: depth is kept reversed, 1 - the game's, which a float holds
-finely at a distance; the VR build keeps the game's, in D24S8 first;
-`xgpu_backend.h`, "Reversed depth"). Its driver must expose these features. VR also requires
+finely at a distance, in the VR build's eyes as in the window, and in the
+depth the VR build gives the headset's compositor; `xgpu_backend.h`,
+"Reversed depth"). Its driver must expose these features. VR also requires
 stereo multiview and depth clamping for the sky; four-view foveation requires
 four multiview views and fragment storage-buffer atomics.
 

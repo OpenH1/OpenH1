@@ -1960,7 +1960,8 @@ static const struct config_setting config_settings[] =
 	{ "debug.vr_test_head_wall", _config_string, "\"\"", "HALO_VR_TEST_HEAD_WALL", _environment_value, _platform_desktop,
 		"Put the first VR player's eye at \"<x> <y> <z>\" (world units) once they\n"
 		"have been on foot 2 s, once, for automated tests of the head in a wall\n"
-		"(vr.head_in_wall) with debug.vr_test_hands, which logs the test." },
+		"(vr.head_in_wall) with debug.vr_test_hands, which logs the test; with\n"
+		"\" <x> <y>\" after it, turned to face that point (views from a known place)." },
 	{ "debug.vr_test_grab", _config_string, "\"\"", "HALO_VR_TEST_GRAB", _environment_value, _platform_desktop,
 		"Lay weapons on the ground before the first VR player 3 s after they\n"
 		"first aim, once a map, the level's AI erased, for automated tests of\n"
