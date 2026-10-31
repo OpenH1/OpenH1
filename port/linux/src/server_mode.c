@@ -19,6 +19,7 @@ without a display to wait for, and its exits.
 
 #if HALO_SERVER_BUILD
 
+#include "p2p.h"
 #include "posix_server.h"
 #include "server_console.h"
 #include "server_http.h"
@@ -164,13 +165,39 @@ void server_mode_fatal(const char *text)
 static void print_help(void)
 {
 	fprintf(stdout,
-		"halo [--server] [--config <file>] [--keygen] [--sign <text>] [--probe [<invite>]] [--version] [--help]\n"
+		"halo [--server] [--relay] [--config <file>] [--keygen] [--sign <text>] [--probe [<invite>]] [--version] "
+		"[--help]\n"
 		"  --server         a dedicated server (docs/dedicated_server.md)\n"
+		"  --relay          a relay alone, for players who cannot connect directly (docs/dedicated_server.md)\n"
 		"  --probe [<invite>]  prints the invite's game (or the LAN's first) as one line of JSON\n"
 		"  --config <file>  the settings file (else config.toml beside the executable)\n"
 		"  --keygen         writes a publisher key for the master servers and prints its public key\n"
 		"  --sign <text>    prints the publisher key's signature of the text (an application's proof)\n"
 		"  --version        prints the build and its network version\n");
+}
+
+/* halo --relay's end: SIGINT or SIGTERM */
+static int relay_stop(void)
+{
+	int quit_signal = 0;
+
+	return (posix_server_signals_take(&quit_signal) & _posix_server_signal_quit) != 0;
+}
+
+/* halo --relay: a relay alone (p2p.c's p2p_relay_run), no game, no data;
+until a signal ends it */
+static void run_relay(void)
+{
+	char config[1024];
+	int result;
+
+	posix_server_stdout_line_buffered();
+	posix_server_signals_install();
+	config_folder(config, sizeof(config));
+	fprintf(stdout, "OpenH1 %s, relay; settings in %s\n", server_mode_build(), config[0] ? config : "./");
+	result = p2p_relay_run(relay_stop);
+	fflush(NULL);
+	exit(result < 0 ? SERVER_EXIT_PORT_IN_USE : SERVER_EXIT_STOPPED);
 }
 
 /* the command line's arguments that are answered and end the process */
@@ -191,6 +218,8 @@ static void answer_command_line(void)
 			print_help();
 			exit(EXIT_SUCCESS);
 		}
+		if (!strcmp(argument, "--relay"))
+			run_relay();
 		if (!strcmp(argument, "--keygen"))
 			exit(server_master_keygen() ? EXIT_SUCCESS : SERVER_EXIT_CONFIGURATION);
 		if (!strcmp(argument, "--sign"))

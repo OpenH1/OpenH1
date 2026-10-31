@@ -360,7 +360,10 @@ or aimed at, as each of the host's sub-steps but a tick's last ends
 unreliable; below, "States at the sub-steps"); version 15 gives a dedicated
 server's admins Host Controls in the game (distributed messages 137 and 138,
 `_distributed_message_admin_down` and `_up`, reliably: below, "Dedicated
-servers"). With no new version, each client then tells the
+servers"); version 16 brings relays for machines whose NATs keep them
+apart (the relays' packets on the tunnel's socket, the signalling's relay
+offers, a dedicated server's relays told its players: below, "Relays").
+With no new version, each client then tells the
 host its build (distributed message 92, `_distributed_message_client_build`,
 reliably once a game after its ready, over its connection alone): its
 number, configuration, the label it shows ("OpenH1 Linux | build 120
@@ -2093,6 +2096,40 @@ Unity's Netcode for Entities, lightyear, netfox and the Ares source):
   meter on, the scoreboard shows these where the machine has them (the
   host every client's, a client its own players'), and the host's measure
   in ticks, which every machine is sent, for the others.
+
+### Relays
+
+Two machines whose NATs keep them apart (hole punching cannot meet them)
+connect through a relay: a dedicated server or a relay of `halo --relay`,
+never a player's machine (`port/linux/src/p2p_relay.c`; the packets and the
+limits are in `docs/dedicated_server.md`, "Relays"). This is OpenH1
+protocol version 16. Legacy games are unchanged; the relays are below
+the game, in the tunnel, and two OpenH1 machines in a Legacy game use them
+alike. OpenCE machines never offer relays, so they connect as before.
+
+- **Fallback only.** A pair tries relays only once hole punching has had 4
+  seconds (1.5 when both machines' addresses show strict NATs). Each offers
+  the other its relays through signalling (`relays.txt`, and the relays its
+  game's dedicated server told it of); both bind to all of them, and only
+  once the other has offered (so a machine that never offers holds no
+  relay's room). The first relay that carries a ping through makes the
+  session's path.
+- **Failover.** The other relays that paired stay paired (a keep-alive each
+  4 seconds). A path silent for 2.5 seconds is replaced by the first other
+  relay a packet comes through (both machines ping through every paired
+  relay meanwhile); with none paired, the relays are bound again. The
+  session ends only at its own 20 seconds of silence.
+- **Direct again, with hysteresis.** While relayed, both machines ping each
+  other's addresses every 3 seconds for a minute, then every 30. A direct
+  path takes over only once its packets have come for 5 seconds without a
+  gap of 2.5 (or at once if the relay is silent); the relays are kept 30
+  seconds more, to go back to.
+- **What a relay sees.** Both machines' addresses; never the game's
+  traffic, which the tunnel seals with keys only the two have, as on a
+  direct path. Nothing is less private than a direct connection but that.
+- **Bans.** A relayed player's address, for the host's bans and votes, is
+  the one the relay saw its binds come from and checked by its cookie: never
+  one the player gave of itself. The relay tells only the host's side.
 
 ## Testing
 

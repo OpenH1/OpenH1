@@ -179,6 +179,55 @@ int master_list_read_file(const char *setting, char (*urls)[MASTER_LIST_URL_SIZE
 	return count;
 }
 
+int master_list_read_relays(const char *setting, char (*hosts)[MASTER_LIST_RELAY_HOST_SIZE], unsigned short *ports,
+	int maximum)
+{
+	char path[1200];
+	char *text;
+	const char *line;
+	int count = 0;
+
+	if (!setting || !setting[0])
+		return 0;
+	text = masters_file(setting, path, sizeof(path));
+	if (!text)
+		return 0;
+	for (line = text; *line && count < maximum;)
+	{
+		const char *end = line + strcspn(line, "\n");
+		char copy[512];
+		char host[MASTER_LIST_RELAY_HOST_SIZE];
+		char *colon;
+		long port = 2302;
+
+		snprintf(copy, sizeof(copy), "%.*s", (int)(end - line), line);
+		copy[strcspn(copy, "#\r")] = 0;
+		line = *end ? end + 1 : end;
+		if (sscanf(copy, "%127s", host) != 1)
+			continue;
+		/* (host:port, IPv4's: an IPv6 address is no relay of the tunnel's) */
+		colon = strchr(host, ':');
+		if (colon && strchr(colon + 1, ':'))
+			continue;
+		if (colon)
+		{
+			char *digits_end;
+
+			*colon = 0;
+			port = strtol(colon + 1, &digits_end, 10);
+			if (*digits_end || port < 1 || port > 65535)
+				continue;
+		}
+		if (!host[0])
+			continue;
+		snprintf(hosts[count], MASTER_LIST_RELAY_HOST_SIZE, "%s", host);
+		ports[count] = (unsigned short)port;
+		count++;
+	}
+	free(text);
+	return count;
+}
+
 /* one master (a URL and its "ed25519:<hex>" key) checked and kept: 1 */
 static int master_keep(const char *url, const char *key, char (*urls)[MASTER_LIST_URL_SIZE],
 	unsigned char (*keys)[MASTER_LIST_KEY_SIZE], int index)

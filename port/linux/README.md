@@ -986,6 +986,8 @@ the setting for one start of the game. It has priority over the file.
 | `network.public_address` | `""` | `HALO_NET_PUBLIC_ADDRESS` | Hosting: the internet address the joiners reach this machine at, `host[:port]` (the port forwarded to `network.tunnel_port`), for a server behind a NAT with one forwarded port. It is offered first, and its name is looked up again every 5 minutes. Empty: what STUN and UPnP find. |
 | `network.listings` | `"both"` | `HALO_NET_LISTINGS` | What the server browser lists. `"both"`: the dedicated servers of the master servers first, then the games players host (from the brokers). `"masters"`: the master servers' only. `"brokers"`: the brokers' only. Refer to "Server browser". |
 | `network.link_share` | `"when_needed"` | `HALO_NET_LINK_SHARE` | When the game shows a server the Discord account linked to it (Settings > Online > Discord Account > SHOW TO SERVERS): `"when_needed"` (a server that asks, to let you in from a VPN), `"always"` or `"never"`. Refer to "Discord account". |
+| `network.use_relays` | `true` | `HALO_NET_USE_RELAYS` | `true`: when another machine is not reached directly in a few seconds, reach it through a relay (a dedicated server, or `halo --relay`). `false`: direct connections only. Refer to "Relays". |
+| `network.relays_file` | `"relays.txt"` | `HALO_NET_RELAYS_FILE` | The relays this machine offers when a direct connection fails, next to `config.toml` unless a full path, else next to the game: on each line `host[:port]` (2302 if none), 8 at most. The release's names none. Refer to "Relays". |
 | `network.masters_file` | `"masters.txt"` | `HALO_NET_MASTERS_FILE` | The file of the master servers the server browser asks for dedicated servers, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`), 4 at most. A file that names none (missing, or comments alone, as the release's) leaves the official master, built in (`https://master.opencommunityedition.com`). Refer to "Dedicated server". |
 | `server.enabled` | `false` | `HALO_SERVER` | `true`: run as a dedicated server, as `halo --server` does. Refer to "Dedicated server". The `server.*` settings are written to `config.toml` only by a dedicated server. |
 | `server.name` | `"OpenH1 Server"` | `HALO_SERVER_NAME` | The game's name in the lobby and the server browser: 15 characters of printable ASCII. |
@@ -1024,6 +1026,10 @@ the setting for one start of the game. It has priority over the file.
 | `server.coop_difficulty` | `"normal"` | `HALO_SERVER_COOP_DIFFICULTY` | The difficulty of co-op entries of the rotation (`<level>:coop`): `"easy"`, `"normal"`, `"hard"` or `"impossible"`. |
 | `server.list_on_brokers` | `false` | `HALO_SERVER_LIST_ON_BROKERS` | `true`: the server is also listed with the games players host (through the brokers), for server browsers without master servers. |
 | `server.master_publish` | `true` | `HALO_SERVER_MASTER_PUBLISH` | `true`: a public server is published to the master servers, signed with the publisher key. |
+| `server.relay` | `"game"` | `HALO_SERVER_RELAY` | Relay for players who cannot reach each other directly: `"game"`, the players of the server's own game (it tells them so); `"any"`, any two machines (a relay that players name in `relays.txt`); `"off"`. Refer to "Relays" in `docs/dedicated_server.md`. |
+| `server.relay_pairs` | `64` | `HALO_SERVER_RELAY_PAIRS` | Relaying: the most pairs of machines at once (1 to 256), 8 for each address. `halo --relay` too. |
+| `server.relay_upload` | `8192` | `HALO_SERVER_RELAY_UPLOAD` | Relaying: the most kilobytes a second sent on in all (16 to 1000000); 256 for each pair, 1024 for each address. `halo --relay` too. |
+| `server.relays_file` | `"relays.txt"` | `HALO_SERVER_RELAYS_FILE` | The relays the server offers players who cannot reach it directly (a server at home), and tells its game's players of: `host[:port]` on each line. None by default. |
 | `server.masters_file` | `"masters.txt"` | `HALO_SERVER_MASTERS_FILE` | The master servers the server is published to, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`). None named: the official master, built in. |
 | `server.publisher_key_file` | `"publisher.key"` | `HALO_SERVER_PUBLISHER_KEY_FILE` | The operator's Ed25519 key for the master servers (`halo --server --keygen` makes it), next to `config.toml` unless a full path. In a container, `HALO_SERVER_PUBLISHER_KEY` can hold the key itself. |
 | `server.instance` | `""` | `HALO_SERVER_INSTANCE` | A short name that tells this server from the operator's other servers on the master servers (letters, digits, `-` and `_`). Empty: made from `server.name`. |
@@ -2529,12 +2535,12 @@ Only machines with the invite can find the game:
 
 Each machine gets its public address from public STUN servers. Then the two
 machines send packets to each other until the packets get through (UDP hole
-punching). There is no relay.
+punching).
 
 Some networks give a different port for each destination (for example some
-mobile and company networks). Two machines behind such networks cannot
-connect. To connect, forward `network.tunnel_port` on the router of one of
-the machines.
+mobile and company networks, and carrier-grade NAT). Two machines behind such
+networks cannot connect directly. A relay (below) connects them; so does a
+forward of `network.tunnel_port` on the router of one of the machines.
 
 The game can ask the router to forward the port (UPnP,
 `src/posix_upnp.c`, with `port/third_party/miniupnpc`):
@@ -2556,6 +2562,44 @@ The game can ask the router to forward the port (UPnP,
   does not ask.
 
 To stop all UPnP requests, set `network.allow_upnp` to `false`.
+
+#### Relays
+
+When two machines do not connect directly in 4 seconds (1.5 seconds when
+both networks are known to give a port for each destination), they try
+relays (`src/p2p_relay.c`): a third machine that both can reach passes their
+packets on. A relay is never a player's machine. It is a dedicated server,
+or a relay that runs alone (`halo --relay`, on a small server): refer to
+"Relays" in `docs/dedicated_server.md`.
+
+- Each machine offers the other the relays it knows: those in `relays.txt`
+  (`network.relays_file`, next to `config.toml`, else next to the game: on
+  each line `host[:port]`, the port 2302 if none; the release's file names
+  none), and those the dedicated server of the game it plays in tells it of.
+  Both machines connect to every relay of both offers (6 at most). The
+  first relay that gets their packets through carries the connection; the
+  others stay ready. If that relay stops, another takes over in a few
+  seconds.
+- While relayed, the machines still try to connect directly now and then.
+  A direct connection takes over only when it has passed packets for 5
+  seconds without a gap; the relays are kept 30 seconds more, in case it
+  stops.
+- The connecting box says "Trying a relay..." and then "Connected through a
+  relay.", and waits 20 seconds instead of 10 while relays are tried. The
+  latency meter includes the relay.
+- What a relay learns: the addresses of the two machines. It cannot read
+  or change what they send: the packets are encrypted and authenticated with
+  keys that only the two machines have, as on a direct connection. The
+  relay tells the host the address it sees the player's packets come from,
+  and the host bans and votes by that address (as on a direct connection);
+  the relay tells the player nothing about the host.
+- A machine shows each relay a token of its own, made from the secret of
+  the session with the other machine. A relay cannot use it at another
+  relay, and cannot learn the secret from it.
+- An OpenCE machine, or an older OpenH1, never offers relays: it connects
+  as before, and is sent 3 offers at most, which it ignores.
+
+To use no relays, set `network.use_relays` to `false`.
 
 In the game, each machine has an address in 100.64.0.0/10:
 

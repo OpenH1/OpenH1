@@ -293,6 +293,9 @@ def main() -> int:
     # and the dedicated server (network.masters_file, server.masters_file:
     # docs/dedicated_server.md)
     shutil.copy2(ROOT / "port/assets/network/masters.txt", dist / "masters.txt")
+    # ... and the relays a machine offers when a direct connection fails
+    # (network.relays_file, server.relays_file: none in it)
+    shutil.copy2(ROOT / "port/assets/network/relays.txt", dist / "relays.txt")
     return 0
 
 

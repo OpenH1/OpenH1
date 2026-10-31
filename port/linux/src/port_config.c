@@ -1277,6 +1277,17 @@ static const struct config_setting config_settings[] =
 		"master servers first, then the games players host, from the brokers),\n"
 		"\"masters\" (the master servers' alone) or \"brokers\" (the brokers'\n"
 		"alone)." },
+	{ "network.use_relays", _config_boolean, "true", "HALO_NET_USE_RELAYS", _environment_value, _platform_all,
+		"When another machine is not reached directly in a few seconds (both\n"
+		"networks' NATs too strict), reach it through a relay: one of\n"
+		"network.relays_file's, or one the game's dedicated server offers. A\n"
+		"relay sees both machines' addresses, never what they send. False:\n"
+		"direct connections only." },
+	{ "network.relays_file", _config_string, "\"relays.txt\"", "HALO_NET_RELAYS_FILE", _environment_value,
+		_platform_all,
+		"The relays this machine offers when a direct connection fails\n"
+		"(dedicated servers, or halo --relay), host[:port] on each line, in a\n"
+		"file beside config.toml (else beside the game). None by default." },
 	{ "network.masters_file", _config_string, "\"masters.txt\"", "HALO_NET_MASTERS_FILE", _environment_value,
 		_platform_all,
 		"The file of the master servers the server browser asks for dedicated\n"
@@ -1466,6 +1477,24 @@ static const struct config_setting config_settings[] =
 		_platform_server,
 		"Publish a public server to the official master servers, signed with\n"
 		"the publisher key (publisher_key_file)." },
+	{ "server.relay", _config_string, "\"game\"", "HALO_SERVER_RELAY", _environment_value, _platform_server,
+		"Relay for players who cannot reach each other directly: \"game\", the\n"
+		"players of this server's own game (map sharing; it tells them so);\n"
+		"\"any\", any two machines (a relay players name in relays.txt);\n"
+		"\"off\". The server sees their addresses, never what they send." },
+	{ "server.relay_pairs", _config_integer, "64", "HALO_SERVER_RELAY_PAIRS", _environment_value, _platform_server,
+		"Relaying: the most pairs of machines at once (1 to 256), 8 for each\n"
+		"address (halo --relay's too)." },
+	{ "server.relay_upload", _config_integer, "8192", "HALO_SERVER_RELAY_UPLOAD", _environment_value,
+		_platform_server,
+		"Relaying: the most kilobytes a second sent on in all (16 to\n"
+		"1000000); 256 for each pair, 1024 for each address (halo --relay's\n"
+		"too)." },
+	{ "server.relays_file", _config_string, "\"relays.txt\"", "HALO_SERVER_RELAYS_FILE", _environment_value,
+		_platform_server,
+		"The relays this server offers players who cannot reach it directly\n"
+		"(a server at home), and tells its game's players of: host[:port]\n"
+		"on each line. None by default." },
 	{ "server.masters_file", _config_string, "\"masters.txt\"", "HALO_SERVER_MASTERS_FILE", _environment_value,
 		_platform_server,
 		"The master servers published to, beside this file unless a full path:\n"
@@ -3595,7 +3624,8 @@ static void config_load(void)
 	/* (a run that only answers its command line, halo --version, writes no
 	settings: the file read is left as it is) */
 	config_answer_only = config_argument("--help", NULL, 0) || config_argument("--version", NULL, 0) ||
-		config_argument("--keygen", NULL, 0) || config_argument("--sign", NULL, 0) || config_probe_mode;
+		config_argument("--keygen", NULL, 0) || config_argument("--sign", NULL, 0) || config_probe_mode ||
+		config_argument("--relay", NULL, 0);
 #endif
 	text = config_read_file(path, &size);
 	if (text)

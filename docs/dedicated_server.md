@@ -60,9 +60,10 @@ status's `pid`, `instance`...).
 | `--keygen` | Writes a new publisher key (`server.publisher_key_file`) unless one exists, prints its public key and key id, exits 0; exits 3 when the key cannot be made, read or written |
 | `--sign <text>` | Prints the publisher key's Ed25519 signature of the text, in hex (an application's proof of key), exits 0; exits 3 without a text or a usable key |
 | `--probe [<invite>]` | A look at a server, for a list site that shows its state: joins nothing and never starts a server (whatever `--server`, `HALO_SERVER` or `server.enabled` say). It finds the invite's game over its tunnel (without an invite, the LAN's first) and prints it as one line of JSON, the game of the invite's host alone (never another game that answers), and exits 0; when nothing answers in 30 seconds it prints `{"ok":false,"error":"no game answered in 30 seconds"}` and exits 1. Internet play is as set (`network.online`, on by default), which an invite needs |
+| `--relay` | A relay alone ("Relays", below): no game, no game data, no window; it relays on `network.tunnel_port` (2302 if none) until SIGTERM or SIGINT, and exits 0 (4 when the port is taken) |
 | `--help` | Prints these, exits 0 |
 
-`--version`, `--help`, `--keygen`, `--sign` and `--probe` write no settings: the
+`--version`, `--help`, `--keygen`, `--sign`, `--probe` and `--relay` write no settings: the
 settings file is read, never completed or made. `--probe` wins over
 `--server`, `HALO_SERVER` and `server.enabled`: a probe never writes to
 `config.toml`.
@@ -965,7 +966,8 @@ A ban is a line of `bans.txt` (in `paths.logs`, else the data root). A
 timed ban is kept out by its line's `until=` alone, and ends then. A ban
 for ever, and a machine dropped for cheating, also keep the machine out
 for the rest of the run by its address, its real address or its hardware
-id. `sv_ban_address` and `POST /api/bans` write such a line for an address
+id. A player reached through a relay is known by the address the relay saw
+its packets come from ("Relays"), never one it gave of itself. `sv_ban_address` and `POST /api/bans` write such a line for an address
 or a hardware id with no player of it needed (the part not given is
 `none`). `unban` takes the line out and readmits the machine by
 the line's address or hardware id, whether it joins on the LAN or by
@@ -1085,6 +1087,68 @@ lists;
 `unknown_key`, `publisher_pending`, `application_denied` and
 `listing_taken` are logged once a minute while they last.
 
+## Relays
+
+Players whose networks keep them apart (both behind NATs that give each
+destination a port of their own, which hole punching cannot meet: many
+mobile carriers, carrier-grade NAT, offices) connect through a relay
+(`port/linux/src/p2p_relay.c`; `port/linux/README.md`, "Relays"). Only
+servers relay, never a player's machine, and a pair uses a relay only once
+a direct connection has failed.
+
+- **A dedicated server** relays as `server.relay` says. `"game"` (the
+  default): only pairs one side of which is a player of its own game (map
+  sharing between its players), whom it tells that it relays. `"any"`: any
+  two machines, for a server that players name in their `relays.txt`.
+  `"off"`: none.
+- **A relay alone** (`halo --relay`): any two machines, on
+  `network.tunnel_port` (2302 if none), with no game data. It logs its
+  counts each minute they change (pairs, formed, ended, refused, challenged,
+  packets and bytes forwarded, packets dropped by its limits). A small VPS
+  serves: a pair of players takes their game's traffic both ways, some tens
+  of kilobytes a second.
+- **Where players learn of relays**: `relays.txt` beside `masters.txt`
+  (`network.relays_file`; a dedicated server's own, `server.relays_file`,
+  which it offers its joiners and tells its players of), none by default;
+  and what the dedicated server of their game tells them.
+- **Limits** (both): `server.relay_pairs` (64) pairs at once, 8 for each
+  address; `server.relay_upload` (8192 KB/s) in all, 256 KB/s for each pair
+  and 1 MB/s for each address; binds answered 20 times a second for each
+  address and 2000 in all. A side not heard for 15 seconds is let go, a
+  pair idle for 30 seconds ends, and one unpaired for 25.
+- **What a relay is shown.** Each machine binds with a token made from its
+  session's secret and the relay's address (HMAC-SHA256), so each relay has
+  a token of its own, which says nothing of the secret or of the tunnel's
+  keys, and which no relay can use at another. A bind is taken only with a
+  cookie the relay gave its address (an HMAC of the address, the port, the
+  token and the time, by a secret of the relay's), so a bind with a forged
+  source binds nothing and reflects only a smaller challenge. The relay
+  forwards only tunnel packets (sealed end to end, which it cannot read or
+  change), only between the two addresses it checked. It learns both
+  machines' addresses; it tells the host's side where the player's packets
+  come from (the address the host bans and votes by, as on a direct
+  connection), and the player's side nothing about the host.
+
+The relay's packets (the tunnel's UDP socket; their first byte `0x6A`,
+version 2):
+
+| Packet | Bytes |
+| --- | --- |
+| BIND (machine to relay) | `0x6A`, `B`, 2, side (0 the host's, 1 the joiner's), token (32), nonce (8), cookie (16; zeros at first) |
+| CHALLENGE (relay to machine) | `0x6A`, `C`, 2, 0, the bind's nonce (8), cookie (16) |
+| BOUND (relay to machine) | `0x6A`, `K`, 2, state (0 waiting, 1 paired, 2 refused), the bind's nonce (8), the pair's channel (8), the other side's IPv4 address and port (to side 0 once paired; else zeros), 2 zeros |
+| DATA | `0x6A`, `D` (machine to relay) or `d` (relay to machine), the channel (8), one tunnel packet |
+| RELEASE (machine to relay) | `0x6A`, `X`, 2, side, token (32): from that side's address alone |
+
+A machine binds every half second until paired, then every 4 seconds. The
+machines offer each other relays through signalling (a sealed `R` message,
+version 2, on the session's topics, which OpenCE and older builds pass
+over): the offering machine's identifier and side, a count (3 at most),
+each relay's address and port, and a tag (HMAC-SHA256 by the session's
+secret), taken one a second and 8 in all for a session. A dedicated server
+tells each player of its game its relays in a tunnel packet of its own
+(`_packet_relays`). These are OpenH1 protocol version 16's.
+
 ## Files
 
 | File | What |
@@ -1095,6 +1159,7 @@ lists;
 | `gametypes/<name>.gametype` | Gametypes saved by a player's game (`file=<name>` in the rotation): the same `gametypes` folder |
 | `publisher.key` | The publisher key for the master servers (beside `config.toml`). On Windows, a server's `config.toml` and `publisher.key` are given an access list of their owner alone (the entries inherited for Administrators and SYSTEM taken out) |
 | `masters.txt` | The master servers (`server.masters_file`: beside `config.toml`, else beside the executable); one that names none leaves the official master, built in |
+| `relays.txt` | The relays the server offers players who cannot reach it, and tells its players of (`server.relays_file`, found as `masters.txt` is): `host[:port]` on each line; none by default ("Relays") |
 | `bans.txt`, `cheaters.txt`, `debug.txt` | In `paths.logs`, else the data root |
 | `admins.txt`, `admin_id.txt` | Beside `bans.txt`: the players' keys (or key ids) who are admins in the game, and the server's id their keys for it are made from ("Admins in the game") |
 | `vpn_allow.txt`, `vpn_block.txt`, `netlist-<master key id>.bin` | Beside `bans.txt`: ranges never refused as a VPN's, ranges refused besides, and the masters' netlists held ("VPNs and linked Discord accounts") |

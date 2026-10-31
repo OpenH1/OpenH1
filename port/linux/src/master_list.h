@@ -34,6 +34,13 @@ unless a full path, else beside the executable): their URLs and Ed25519
 keys, up to maximum; how many (none: no file, or one with no master) */
 int master_list_read_file(const char *setting, char (*urls)[MASTER_LIST_URL_SIZE],
 	unsigned char (*keys)[MASTER_LIST_KEY_SIZE], int maximum);
+/* the relays of a relays.txt (network.relays_file, server.relays_file: found
+as masters.txt is; p2p.c's relays, p2p_relay.c): each one's host name or
+address and its port (2302 if the line names none), up to maximum; how
+many (none: no file, or one that names none). Nothing is looked up */
+enum { MASTER_LIST_RELAY_HOST_SIZE = 128 };
+int master_list_read_relays(const char *setting, char (*hosts)[MASTER_LIST_RELAY_HOST_SIZE], unsigned short *ports,
+	int maximum);
 /* ... the official master servers (built in): how many */
 int master_list_read_defaults(char (*urls)[MASTER_LIST_URL_SIZE], unsigned char (*keys)[MASTER_LIST_KEY_SIZE],
 	int maximum);
