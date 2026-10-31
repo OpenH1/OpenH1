@@ -1747,6 +1747,10 @@ static const struct config_setting config_settings[] =
 		"place for the latest release and its files (at the paths GitHub has\n"
 		"them under), by a dedicated server's server.auto_update, even when the\n"
 		"build has no build number; empty asks GitHub." },
+	{ "debug.update_key", _config_string, "\"\"", "HALO_UPDATE_KEY", _environment_value, _platform_server,
+		"A test's release key (its public key, 64 hex digits), trusted beside\n"
+		"OpenH1's to sign the releases of debug.update_url's server, and only\n"
+		"while debug.update_url is set; empty trusts OpenH1's alone." },
 	{ "debug.update_time_scale", _config_real, "1.0", "HALO_UPDATE_TIME_SCALE", _environment_value, _platform_server,
 		"How much faster than real time a dedicated server's server.auto_update\n"
 		"counts its minutes (between checks, empty, of a game), for tests." },

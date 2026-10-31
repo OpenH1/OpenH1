@@ -425,11 +425,11 @@ void p2p_sha256_end(struct p2p_sha256 *context, unsigned char *digest)
 }
 
 enum release_verdict release_check(const char *sums, int sums_size, const char *signature, int signature_size,
-	const char *asset, const unsigned char *digest, int required, char *error, int error_size)
+	const char *asset, const unsigned char *digest, int required, const char *test_key, char *error, int error_size)
 {
 	int refused = !strcmp(environment("FAKE_VERDICT"), "refused");
 
-	(void)sums_size, (void)signature_size, (void)digest;
+	(void)sums_size, (void)signature_size, (void)digest, (void)test_key;
 	printf("test: release check of %s: sums %d, signature %d, required %d: %s\n", asset, sums != NULL,
 		signature != NULL, required, refused ? "refused" : "unsigned");
 	snprintf(error, (size_t)error_size, "%s", refused ? "a test's refusal" : "a test's unsigned release");

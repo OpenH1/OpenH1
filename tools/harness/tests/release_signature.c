@@ -213,7 +213,7 @@ int main(int argc, char **argv)
 		CHECK(strstr(error, "not signed"), "%s", error);
 		CHECK(check(NULL, NULL, 1, TEST_KEYS) == _release_refused, "a release of no sums taken");
 		/* (the built-in check, required, as a build of RELEASE_SIGNATURE_REQUIRED) */
-		CHECK(release_check(sums, (int)strlen(sums), NULL, 0, ASSET, digest, 1, error, sizeof(error)) ==
+		CHECK(release_check(sums, (int)strlen(sums), NULL, 0, ASSET, digest, 1, NULL, error, sizeof(error)) ==
 			_release_refused, "an unsigned release taken");
 		return 0;
 	}
@@ -228,8 +228,16 @@ int main(int argc, char **argv)
 			"a signature taken with no key");
 		/* the release key built in is not the test's */
 		release(test_seed, test_key[0], "\n");
-		CHECK(release_check(sums, (int)strlen(sums), signature, (int)strlen(signature), ASSET, digest, 0, error,
+		CHECK(release_check(sums, (int)strlen(sums), signature, (int)strlen(signature), ASSET, digest, 0, NULL, error,
 			sizeof(error)) == _release_refused, "the test key taken for the release key");
+		/* a test's key given (debug.update_key) is trusted beside it; one that
+		is not 64 hex digits is not a key */
+		CHECK(release_check(sums, (int)strlen(sums), signature, (int)strlen(signature), ASSET, digest, 1,
+			VECTOR_PUBLIC_KEY, error, sizeof(error)) == _release_signed, "%s", error);
+		CHECK(release_check(sums, (int)strlen(sums), signature, (int)strlen(signature), ASSET, digest, 1,
+			VECTOR_PUBLIC_KEY "0", error, sizeof(error)) == _release_refused, "a key of 65 digits taken");
+		CHECK(release_check(sums, (int)strlen(sums), signature, (int)strlen(signature), ASSET, digest, 1,
+			OTHER_SEED, error, sizeof(error)) == _release_refused, "another key given taken for the test's");
 		return 0;
 	}
 	if (!strcmp(name, "listing"))

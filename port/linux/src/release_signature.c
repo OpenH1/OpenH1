@@ -185,9 +185,9 @@ enum release_verdict release_check_keys(const char *sums, int sums_size, const c
 }
 
 enum release_verdict release_check(const char *sums, int sums_size, const char *signature, int signature_size,
-	const char *asset, const unsigned char *digest, int required, char *error, int error_size)
+	const char *asset, const unsigned char *digest, int required, const char *test_key, char *error, int error_size)
 {
-	unsigned char keys[RELEASE_KEY_COUNT][RELEASE_KEY_SIZE];
+	unsigned char keys[RELEASE_KEY_COUNT + 1][RELEASE_KEY_SIZE];
 	int count = 0, index;
 
 	for (index = 0; index < RELEASE_KEY_COUNT; index++)
@@ -197,6 +197,12 @@ enum release_verdict release_check(const char *sums, int sums_size, const char *
 		{
 			count++;
 		}
+	}
+	/* (a test's key beside them, when it is one) */
+	if (test_key && strlen(test_key) == RELEASE_KEY_SIZE * 2 &&
+		release_hex_bytes(test_key, RELEASE_KEY_SIZE, keys[count]))
+	{
+		count++;
 	}
 	return release_check_keys(sums, sums_size, signature, signature_size, asset, digest, required,
 		(const unsigned char (*)[RELEASE_KEY_SIZE])keys, count, error, error_size);
