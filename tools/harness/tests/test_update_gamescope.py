@@ -48,7 +48,7 @@ NEGATIVE_CONTROLS = {
                                            "\tif (0)\n\t{\n\t\tif (!pc_menu_update_question_open())"),
                                "test_not_now"),
     # the new version started as a process of its own, as on the desktop
-    "restart-in-another-process": ("updater", ("\t\t\t\tupdate_restart(launch);", "\t\t\t\tupdate_launch(launch);"),
+    "restart-in-another-process": ("updater", ("\t\t\tupdate_restart(launch);", "\t\t\tupdate_launch(launch);"),
                                    "test_update"),
     # the old game's files left open in the new one
     "files-kept": ("posix", ("fcntl(descriptor, F_SETFD, flags | FD_CLOEXEC);", "(void)flags;"), "test_update"),

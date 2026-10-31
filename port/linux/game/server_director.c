@@ -71,8 +71,10 @@ extern void ui_widget_port_cooperative_settings_apply(void);
 int updater_server_check(void);
 long updater_server_available(void);
 long updater_server_available_network_version(void);
+long updater_server_available_standard_version(void);
 int updater_server_install_start(void);
 int updater_server_install_poll(char *error, int size);
+const char *updater_server_unable(void);
 
 #if HALO_SERVER_BUILD
 
@@ -1283,8 +1285,12 @@ static void server_auto_update(
 {
 	char const *mode = config_string("server.auto_update");
 	boolean install = !strcmp(mode, "install");
+	double time_scale = config_real("debug.update_time_scale");
 	long available;
 
+	/* (a test's faster clock: debug.update_time_scale) */
+	if (time_scale > 1.0)
+		seconds *= (real)time_scale;
 	/* (the install under way, or done: nothing else looked for) */
 	if (server.update_installing)
 	{
@@ -1346,7 +1352,7 @@ static void server_auto_update(
 			/* (never again: this build has no number to compare) */
 			server.update_check_seconds = 1e30f;
 			server_log(_server_log_warning, "update", "server.auto_update is %s, but this build does not update "
-				"itself: what runs it updates it", mode);
+				"itself (%s): what runs it updates it", mode, updater_server_unable());
 			return;
 		}
 	}
@@ -1354,8 +1360,12 @@ static void server_auto_update(
 	if (!available)
 		return;
 	{
+		/* (a new network version, or a new one of OpenH1's Standard games,
+		which the release's notes give: halo_port_limits.h) */
 		long network_version = updater_server_available_network_version();
-		boolean new_network = network_version > 0 && network_version != HALO_PORT_NETWORK_VERSION;
+		long standard_version = updater_server_available_standard_version();
+		boolean new_network = (network_version > 0 && network_version != HALO_PORT_NETWORK_VERSION) ||
+			(standard_version > 0 && standard_version != HALO_PORT_STANDARD_NETWORK_VERSION);
 
 		if (available != server.update_told)
 		{

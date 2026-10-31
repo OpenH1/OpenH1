@@ -1733,6 +1733,14 @@ static const struct config_setting config_settings[] =
 		"A release's zip file to update to, for testing updates: the game offers\n"
 		"it as a new version without asking GitHub, even when it has no build\n"
 		"number (not in the version it starts); empty asks GitHub." },
+	{ "debug.update_url", _config_string, "\"\"", "HALO_UPDATE_URL", _environment_value, _platform_server,
+		"A test's release server (http://127.0.0.1:<port>), asked in GitHub's\n"
+		"place for the latest release and its files (at the paths GitHub has\n"
+		"them under), by a dedicated server's server.auto_update, even when the\n"
+		"build has no build number; empty asks GitHub." },
+	{ "debug.update_time_scale", _config_real, "1.0", "HALO_UPDATE_TIME_SCALE", _environment_value, _platform_server,
+		"How much faster than real time a dedicated server's server.auto_update\n"
+		"counts its minutes (between checks, empty, of a game), for tests." },
 	{ "debug.fixed_step", _config_boolean, "false", "HALO_FIXED_STEP", _environment_set_is_true, _platform_all,
 		"A game of this machine alone runs one tick a frame, whatever time has\n"
 		"passed, so that it plays the same every time (tests); game_speed has no\n"

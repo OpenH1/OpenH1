@@ -311,6 +311,13 @@ static double config_real(const char *name)
 	return 0.0;
 }
 
+/* (a dedicated server's: its network.port, which names its update folder) */
+static long config_integer(const char *name)
+{
+	(void)name;
+	return 0;
+}
+
 static int config_write_boolean(const char *name, int value)
 {
 	printf("test: config.toml: %s = %s\n", name, value ? "true" : "false");

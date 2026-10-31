@@ -113,11 +113,19 @@ def test_not_required_yet():
 
 
 def test_updater_checks_each_download():
-    """Every path of updater.c that downloads a release's file checks it before it is unpacked."""
+    """Every path of updater.c that downloads a release's file checks it before it is unpacked: the background's
+    and the Frame's each after their download, and updater_install (the desktop's window and a dedicated server's)
+    once after either of its own."""
     updater = read("port/linux/src/updater.c")
-    downloads = updater.count("update_download(url, zip_path") + updater.count("updater_download_zip(zip_path")
-    assert downloads == 3, "updater.c downloads a release in another way now: check it is verified"
+    downloads = updater.count("updater_fetch(url, zip_path") + updater.count("updater_download_zip(zip_path")
+    assert downloads == 4, "updater.c downloads a release in another way now: check it is verified"
     assert updater.count("updater_verify(zip_path") == 3
+    install = updater[updater.index("static int updater_install("):]
+    install = install[:install.index("\n}\n")]
+    assert install.count("updater_download_zip(zip_path") == 1 and install.count("updater_fetch(url, zip_path") == 1
+    assert install.index("updater_verify(zip_path") > max(install.index("updater_download_zip(zip_path"),
+                                                          install.index("updater_fetch(url, zip_path"))
+    assert install.index("updater_verify(zip_path") < install.index("updater_unpack(zip_path")
 
 
 def openssl_or_skip():
