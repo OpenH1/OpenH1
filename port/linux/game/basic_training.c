@@ -254,7 +254,8 @@ network_test.c's local game has them */
 #define TRAINING_START_GO_SECONDS 3.0f
 #define TRAINING_MAP "levels\\test\\bloodgulch\\bloodgulch"
 #define TRAINING_MAP_NAME "bloodgulch"
-#define TRAINING_SCREEN "pc\\main_menu\\training\\fit_check_screen"
+/* the fit check's screen (tools/port_settings.py's VR_SCREENS["vr_fit_check"]) */
+#define TRAINING_FIT_SCREEN "pc\\main_menu\\settings_select\\player_setup\\player_profile_edit\\vr_fit_check\\vr_fit_check_screen"
 
 /* ---------- structures */
 
@@ -478,8 +479,9 @@ static struct
 	boolean bot_struck[TRAINING_BOTS];
 	/* vr_hands.c's foregrip */
 	real two_handed;
-	/* the fit check's screen opened (its step), and seen closed */
+	/* the fit check's screen opened (its step), or tried */
 	boolean fit_opened;
+	boolean fit_tried;
 	/* the D-pad's left and right, last frame */
 	boolean dpad_left;
 	boolean dpad_right;
@@ -978,6 +980,7 @@ static void basic_training_seen_reset(
 	basic_training.kills_base = player ? player->statistics.kills[0] : 0;
 	basic_training.enemy_kills_base = 0;
 	basic_training.fit_opened = FALSE;
+	basic_training.fit_tried = FALSE;
 	/* (the trainee's state taken again at the next tick: weapons given by
 	the set up are no switch, nor its full magazine a reload) */
 	basic_training.unit_index = NONE;
@@ -1602,10 +1605,17 @@ void basic_training_update(
 			basic_training_steps[basic_training.step].check == _training_check_fit && !basic_training.chapter_done)
 		{
 #ifdef HALO_VR
-			if (halo_vr_running() && !basic_training.fit_opened && !ui_widgets_active())
+			if (halo_vr_running() && !basic_training.fit_opened && !basic_training.fit_tried && !ui_widgets_active())
 			{
-				basic_training.fit_opened = ui_widget_load_by_name_or_tag(TRAINING_SCREEN, NONE, NULL, 0, NONE, NONE,
+				/* (once: a screen that cannot open passes the step) */
+				basic_training.fit_tried = TRUE;
+				basic_training.fit_opened = ui_widget_load_by_name_or_tag(TRAINING_FIT_SCREEN, NONE, NULL, 0, NONE, NONE,
 					NONE) != NULL;
+				if (!basic_training.fit_opened)
+				{
+					platform_log("training: the fit check's screen did not open");
+					basic_training.seen.fitted = TRUE;
+				}
 			}
 			else if (basic_training.fit_opened && !ui_widgets_active())
 				basic_training.seen.fitted = TRUE;
