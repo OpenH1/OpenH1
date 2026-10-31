@@ -128,8 +128,9 @@ static void drawn_size(int *width, int *height);
 #define PRESENT_IMAGES 2
 #define LOADING_UPLOADS 3
 /* the longest a frame waits for an image before the oldest queued frame is
-dropped (100 ms: six refreshes at 60 Hz) */
-#define PRESENT_WAIT_MAXIMUM_NS 100000000L
+dropped (34 ms: two refreshes at 60 Hz; 100 ms froze an iPhone's game, which
+runs on the main thread, for a fifth of a second each time its link paused) */
+#define PRESENT_WAIT_MAXIMUM_NS 34000000L
 /* how long before the link's deadline for a refresh its frame is taken
 (the newest with vsync off, the oldest queued with it on): the
 presentation's GPU work is about 0.1 ms, and waits for the frame's own if
@@ -992,8 +993,8 @@ static BOOL rate_adapt(BOOL shown, double now)
 	double share;
 
 	if (enabled < 0)
-		enabled = !getenv("HALO_METAL_RATE") && (!getenv("HALO_METAL_ADAPTIVE_RATE") ||
-			atoi(getenv("HALO_METAL_ADAPTIVE_RATE")) != 0);
+		enabled = !getenv("HALO_METAL_RATE") && getenv("HALO_METAL_ADAPTIVE_RATE") &&
+			atoi(getenv("HALO_METAL_ADAPTIVE_RATE")) != 0;
 	if (!enabled || presentation.battery_saver_set || presentation.refresh_rate < 90.0f)
 		return NO;
 	if (presentation.adapt_since == 0.0)
@@ -1472,7 +1473,10 @@ static CAFrameRateRange link_rate_range(int saving)
 		return CAFrameRateRangeMake(rate, rate, rate);
 	}
 #if TARGET_OS_IPHONE
-	return CAFrameRateRangeMake(rate, rate, rate);
+	/* (60 at least: iOS slows the link within the range by itself as the
+	frames come, with no pause of the link that a change of its range makes;
+	rate_adapt's halving paused it, the game waiting out PRESENT_WAIT_MAXIMUM_NS) */
+	return CAFrameRateRangeMake(rate < 60.0f ? rate : 60.0f, rate, rate);
 #else
 	return getenv("HALO_METAL_RATE") ? CAFrameRateRangeMake(rate, rate, rate) :
 		CAFrameRateRangeMake(rate < 60.0f ? rate : 30.0f, rate, rate);
