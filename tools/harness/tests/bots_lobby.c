@@ -86,6 +86,8 @@ static long joined_ingame;
 static boolean network_game_is_splitscreen_local(void) { return local_game; }
 static long bots_wanted_count(void) { return wanted; }
 static short bots_teams(void) { return teams_setting; }
+/* (Basic Training's teams: not playing, the team the setting chose) */
+static long bots_team(long bot_index, long players_team, long chosen_team) { return chosen_team; }
 static int bots_make_room(void) { return make_room; }
 static long bots_fill_to(void) { return fill_to; }
 static long game_time_get(void) { return game_time; }

@@ -1852,7 +1852,7 @@ void basic_training_draw(
 	struct font_header *font;
 	rectangle2d window = render.camera.window_bounds;
 	rectangle2d box, line;
-	short line_height, width, height, left, top, inner, index, word_lines;
+	short line_height, width, height, left, top, inner, index, word_lines, margin;
 	real scale;
 	real_argb_color color, white, dim, good, bad;
 	char text[256], button[64], words[256];
@@ -1892,8 +1892,10 @@ void basic_training_draw(
 
 	/* (the panel on the screen; within it, laid out unscaled from its top
 	left, which the scale draws about) */
-	box.x0 = (short)(window.x0 + width * 28 / 100);
-	box.x1 = (short)(window.x1 - width * 28 / 100);
+	/* (a wide screen's middle; the headset's HUD layer, about square, wider) */
+	margin = (short)(width * (width * 2 > height * 3 ? 28 : 16) / 100);
+	box.x0 = (short)(window.x0 + margin);
+	box.x1 = (short)(window.x1 - margin);
 	box.y0 = (short)(window.y0 + height * 12 / 100);
 	box.y1 = (short)(box.y0 + (TRAINING_PANEL_LINES * line_height + line_height / 2) * scale);
 	draw_quad(&box, 0x99000000);
@@ -1905,15 +1907,14 @@ void basic_training_draw(
 	line.x1 = (short)(line.x0 + inner);
 	line.y0 = (short)(top + line_height / 4);
 	line.y1 = (short)(line.y0 + line_height);
-	snprintf(text, sizeof(text), "BASIC TRAINING  -  %d  %s", basic_training.chapter,
-		basic_training_chapters[basic_training.chapter].name);
+	snprintf(text, sizeof(text), "%d  %s", basic_training.chapter, basic_training_chapters[basic_training.chapter].name);
 	basic_training_draw_line(font_index, &line, 0, text, &color);
 	if (basic_training.chapter_done)
-		snprintf(text, sizeof(text), "%s", basic_training.all_done ? "ALL DONE" : "CHAPTER COMPLETE");
+		snprintf(text, sizeof(text), "BASIC TRAINING  -  %s", basic_training.all_done ? "ALL DONE" : "CHAPTER COMPLETE");
 	else if (step->challenge)
-		snprintf(text, sizeof(text), "CHALLENGE");
+		snprintf(text, sizeof(text), "BASIC TRAINING  -  CHALLENGE");
 	else
-		snprintf(text, sizeof(text), "STEP %d OF %d", basic_training.step - first + 1, count);
+		snprintf(text, sizeof(text), "BASIC TRAINING  -  STEP %d OF %d", basic_training.step - first + 1, count);
 	line.y0 = (short)(line.y1);
 	line.y1 = (short)(line.y0 + line_height);
 	basic_training_draw_line(font_index, &line, 0, text, basic_training.chapter_done ? &good : &dim);

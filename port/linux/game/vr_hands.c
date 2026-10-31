@@ -1273,7 +1273,7 @@ static void highlight_draw(real_matrix4x3 const *seen, boolean const *visible, s
 	color.red = 0.35f + 0.5f * pulse;
 	color.green = 0.75f + 0.25f * pulse;
 	color.blue = 1.0f;
-	render_debug_sphere(FALSE, &point, (0.012f + 0.008f * pulse) * units, &color);
+	render_debug_sphere(FALSE, &point, (0.018f + 0.012f * pulse) * units, &color);
 }
 
 /* first_person_weapons.c, once the game has built the first-person nodes

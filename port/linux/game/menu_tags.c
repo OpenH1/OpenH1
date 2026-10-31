@@ -2183,8 +2183,8 @@ static void pause_patch(struct cache_file_tag_instance *instances)
 		}
 	}
 	if (patched_list != NONE)
-		platform_log("menus: the pause menu has SETTINGS%s", !host ? "" : network_game_is_splitscreen_local() ?
-			" and END GAME" : " and HOST CONTROLS");
+		platform_log("menus: the pause menu has SETTINGS%s", !host ? "" : basic_training_active() ? " and CHAPTERS" :
+			network_game_is_splitscreen_local() ? " and END GAME" : " and HOST CONTROLS");
 }
 
 /* ---------- the campaign's pause menu
