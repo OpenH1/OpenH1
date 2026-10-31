@@ -188,7 +188,7 @@ def test_update(tmp_path, tmp_path_factory):
     lines_in_order(output, "test: started", "test: download https://api.github.com/repos/OpenH1/OpenH1/releases/latest",
                    f"test: download https://github.com/OpenH1/OpenH1/releases/download/build-{BUILD + 1}/{ASSET}",
                    "test: asked for SHA256SUMS", "test: asked for SHA256SUMS.sig",
-                   f"test: release check of {ASSET}: sums 0, signature 0, required 0: unsigned",
+                   f"test: release check of {ASSET}: sums 0, signature 0, required 1: unsigned",
                    f"update: build {BUILD + 1} is downloaded",
                    "test: the update question opened over the main menu",
                    f"update: asking about build {BUILD + 1} at the main menu", "test: UPDATE",
