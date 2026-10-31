@@ -3790,13 +3790,22 @@ while, and draws that use it stream their data as before. */
 
 #define MIRROR_SEGMENT_SIZE XGPU_MIRROR_SEGMENT_SIZE
 #define MIRROR_SEGMENT_COUNT (PLATFORM_CONTIGUOUS_SIZE / MIRROR_SEGMENT_SIZE)
+/* (the protection's page: 16 KB on Apple's hardware, the Mac's and the
+iPhone's; a 4 KB page there shared its protection with three others, whose
+game-written vertices then faulted every frame) */
+#if defined(HALO_MACOS)
+#define MIRROR_PAGE_SIZE 0x4000UL
+#else
 #define MIRROR_PAGE_SIZE 0x1000UL
+#endif
 #define MIRROR_PAGE_COUNT (PLATFORM_CONTIGUOUS_SIZE / MIRROR_PAGE_SIZE)
 /* rewrites no more than this many frames apart ... */
 #define MIRROR_REWRITE_FRAMES 2
 /* ... this many times in a row make a page volatile ... */
 #define MIRROR_VOLATILE_REWRITES 4
-/* ... for this many frames */
+/* ... for this many frames, doubled each time the page turns volatile again
+(to 32 times as many): a page that keeps proving dynamic is not watched
+again, and faulted on, every few seconds */
 #define MIRROR_VOLATILE_FRAMES 600
 
 enum
@@ -3813,6 +3822,8 @@ static struct
 	/* the page's memory_watch generation when it was uploaded */
 	unsigned long generation[MIRROR_PAGE_COUNT];
 	unsigned long rewritten_frame[MIRROR_PAGE_COUNT];
+	/* the times the page has turned volatile (its period's doublings) */
+	unsigned char volatile_times[MIRROR_PAGE_COUNT];
 } mirror;
 
 /* uploads the pages of [first, last) that are absent or stale; FALSE if one
@@ -3851,6 +3862,8 @@ static BOOL mirror_refresh(unsigned long first, unsigned long last)
 			if (mirror.rewrites[page] >= MIRROR_VOLATILE_REWRITES)
 			{
 				mirror.state[page] = _mirror_page_volatile;
+				if (mirror.volatile_times[page] < 6)
+					mirror.volatile_times[page]++;
 				volatile_page = TRUE;
 			}
 		}
@@ -3919,7 +3932,8 @@ static BOOL mirror_range(unsigned long address, unsigned long size, long *segmen
 	{
 		if (mirror.state[page] == _mirror_page_volatile)
 		{
-			if (device.frame - mirror.rewritten_frame[page] < MIRROR_VOLATILE_FRAMES)
+			if (device.frame - mirror.rewritten_frame[page] <
+				(MIRROR_VOLATILE_FRAMES << (mirror.volatile_times[page] ? mirror.volatile_times[page] - 1 : 0)))
 				return FALSE;
 			mirror.state[page] = _mirror_page_absent;
 		}
