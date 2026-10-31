@@ -192,6 +192,16 @@ boolean network_standard_hosting(
 long network_standard_server_hosted(
 	boolean *opence)
 {
+	/* (a dedicated server not hosting yet: what it will host, as its
+	server.game_mode says) */
+	if (halo_server_mode() && !global_network_game_server_get())
+	{
+		long rate = network_standard_server_setting();
+
+		if (opence)
+			*opence = !rate || config_boolean("network.allow_opence");
+		return rate;
+	}
 	/* (OpenCE joins a Legacy game; a mixed game while it takes them) */
 	if (opence)
 		*opence = !network_standard_globals.hosting || network_standard_globals.mixed;

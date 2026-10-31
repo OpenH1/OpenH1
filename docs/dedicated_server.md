@@ -358,9 +358,19 @@ players there keep the kind of game they joined (`sv_status` says it
 waits), and an OpenH1 game's rate changes from the next game, as a player's
 host changes it. `network.allow_opence` is taken at once: an OpenH1 game
 closed to OpenCE players keeps those in it. The status's `game_mode`,
-`tick_rate` and `opence`, the lobby's log line (`lobby: hosting: OpenH1 120
-Tick, OpenCE can join (server.game_mode)`) and the `game_started` and
-`game_ended` events say what is hosted.
+`game_mode_name`, `tick_rate` and `opence`, the lobby's log line
+(`lobby: hosting: OpenH1 120 Tick, OpenCE can join (server.game_mode)`) and
+the `game_started` and `game_ended` events say what is hosted.
+
+A server takes nothing of a player's host's `network.game_mode` and
+`network.sim_rate`. Before `server.game_mode`, a server took its kind of
+game from them, whose defaults host OpenH1 120 Tick games that OpenCE
+players join too; such a server hosts Legacy games now, unless
+`server.game_mode` says `openh1_120`. A server that finds either of them set
+(to another value than its default in `config.toml`, or by its environment
+variable) says so as it starts: `WARN server: network.sim_rate = 60 is a
+player's host's setting, which a dedicated server leaves aside:
+server.game_mode (legacy) says what it hosts`.
 
 ### Votes, the map vote and players away
 
@@ -673,7 +683,8 @@ events) before they were asked for.
 
 ```json
 {"ok":true,"time":1760900000123,"name":"OpenCE Server","state":"playing",
- "build":"build-206","network_version":38,"openh1_version":11,"game_mode":"openh1_120","tick_rate":120,"opence":true,
+ "build":"build-206","network_version":38,"openh1_version":11,"game_mode":"openh1_120",
+ "game_mode_name":"OpenH1 120 Tick, OpenCE can join","tick_rate":120,"opence":true,
  "uptime":3600,"games_hosted":4,
  "map":"bloodgulch","level":"levels\\test\\bloodgulch\\bloodgulch","gametype":"ctf","variant":"CTF","teams":true,
  "players":5,"max_players":16,"machines":5,"countdown":-1,"game_seconds":312,"team_scores":[2,1],
@@ -695,7 +706,9 @@ in a game without teams. `frame_ms_max` and `frame_ms_avg` are the longest
 and the mean frame of the last minute (`tick_ms_avg` is the mean again, for
 older readers). `game_mode` is the kind of game hosted, as `server.game_mode`
 spells it (a change of the setting waits for the server to be empty: "OpenH1
-games"), `tick_rate` its tick rate (30 for a Legacy game), `opence` whether
+games"; before the server hosts, what the setting says), `game_mode_name`
+its name as the server browser says it (`Legacy`, `OpenH1 120 Tick, OpenCE
+can join`), `tick_rate` its tick rate (30 for a Legacy game), `opence` whether
 OpenCE players join it now, and `openh1_version` the build's OpenH1 protocol
 version (`network_version` its network version). `invite` is given to
 admins only (empty for others). An entry of the rotation is

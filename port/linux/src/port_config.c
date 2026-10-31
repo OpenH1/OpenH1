@@ -1352,9 +1352,10 @@ static const struct config_setting config_settings[] =
 		"network.allow_opence is true. A change waits for the server to be empty\n"
 		"in its lobby (players in it keep the kind they joined)." },
 	{ "server.frame_rate", _config_integer, "60", "HALO_SERVER_FRAME_RATE", _environment_value, _platform_server,
-		"Frames a second (30 to 120); the game's ticks stay 30 a second. An\n"
-		"OpenH1 game's frames are at least its tick rate. A server with no\n"
-		"other machine runs 10." },
+		"Frames a second (30 to 120): how often the server reads what its\n"
+		"clients send, sends its own and runs what is due of the game's ticks\n"
+		"(and an OpenH1 game's sub-steps). An OpenH1 game's frames are at least\n"
+		"its tick rate. A server with no other machine runs 10." },
 	{ "server.console", _config_boolean, "true", "HALO_SERVER_CONSOLE", _environment_value, _platform_server,
 		"Take commands from the standard input." },
 	{ "server.console_exit_on_eof", _config_boolean, "false", "HALO_SERVER_CONSOLE_EXIT_ON_EOF", _environment_value,

@@ -382,7 +382,7 @@ def default_settings():
                  "HALO_SERVER_TEAM_START", choices=["one", "both", "skip"]),
         _setting("server.motd", "string", "", "A notice each machine is shown as it joins (127 characters); empty "
                  "for none.", "HALO_SERVER_MOTD"),
-        _setting("server.frame_rate", "integer", 60, "Frames a second (30 to 120); the game's ticks stay 30 a second.",
+        _setting("server.frame_rate", "integer", 60, "Frames a second (30 to 120); an OpenH1 game's at least its tick rate.",
                  "HALO_SERVER_FRAME_RATE", low=30, high=120),
         _setting("server.game_mode", "string", "legacy", "The games hosted: \"legacy\", OpenCE's netcode at 30 ticks a "
                  "second; or \"openh1_60\", \"openh1_120\" (or \"openh1_30\"), an OpenH1 game at that tick rate.",
@@ -985,11 +985,14 @@ class Sim:
         admin = ROLES.index(role) >= ROLES.index("admin")
         frame = round(3.5 + self.random.random() * 2, 1)
         mean = round(1 + self.random.random() * 0.6, 2)
+        mode = self.value("server.game_mode")
+        opence = mode == "legacy" or bool(self.value("network.allow_opence"))
+        mode_name = "Legacy" if mode == "legacy" else \
+            f"OpenH1 {GAME_MODES.get(mode, 30)} Tick" + (", OpenCE can join" if opence else "")
         return {
             "ok": True, "time": now_ms(), "name": self.value("server.name"), "state": self.state,
             "build": BUILD, "network_version": NETWORK_VERSION, "openh1_version": OPENH1_VERSION,
-            "game_mode": self.value("server.game_mode"), "tick_rate": GAME_MODES.get(self.value("server.game_mode"), 30),
-            "opence": self.value("server.game_mode") == "legacy" or bool(self.value("network.allow_opence")),
+            "game_mode": mode, "game_mode_name": mode_name, "tick_rate": GAME_MODES.get(mode, 30), "opence": opence,
             "uptime": int(time.time() - self.started),
             "games_hosted": self.games_hosted, "map": entry["map"], "level": entry["level"],
             "gametype": entry["gametype"], "variant": entry["variant"], "teams": entry["teams"],

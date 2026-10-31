@@ -369,11 +369,12 @@ void server_status_write(
 	/* (the kind of game hosted: server.game_mode as taken, its tick rate,
 	and whether OpenCE players join it) */
 	{
-		char mode[16];
+		char mode[16], title[64];
 		boolean opence;
-		long rate = server_director_game_mode(mode, sizeof(mode), NULL, 0, &opence);
+		long rate = server_director_game_mode(mode, sizeof(mode), title, sizeof(title), &opence);
 
 		server_json_string(json, "game_mode", mode);
+		server_json_string(json, "game_mode_name", title);
 		server_json_integer(json, "tick_rate", rate);
 		server_json_boolean(json, "opence", opence);
 	}

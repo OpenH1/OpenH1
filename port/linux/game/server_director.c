@@ -50,6 +50,7 @@ Called from the main loop every frame (main.c).
 #include "../src/server_master.h" /* port: port/linux/src/server_master.c */
 #include "../src/server_netlist.h" /* port: port/linux/src/server_netlist.c */
 #include "../src/posix_server.h" /* port: port/linux/src/posix_server.c */
+#include "../src/port_config.h" /* port: port/linux/src/port_config.c */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -355,6 +356,37 @@ long server_director_game_mode(
 	if (opence)
 		*opence = joins;
 	return rate ? rate : 30;
+}
+
+/* a player host's network.game_mode and network.sim_rate set (in
+config.toml or the environment), which a server leaves aside for
+server.game_mode: said once, as a server that took its kind of game from
+them (OpenH1 120 Tick by default, before server.game_mode) hosts Legacy
+games now unless server.game_mode says otherwise */
+static void server_warn_player_host_modes(
+	void)
+{
+	static char const *const names[] = { "network.game_mode", "network.sim_rate" };
+	long index;
+
+	for (index = 0; index < (long)NUMBEROF(names); index++)
+	{
+		struct config_setting_info info;
+		char value[64];
+		int setting;
+
+		for (setting = 0; config_setting_info(setting, &info) && strcmp(info.name, names[index]); setting++)
+		{
+		}
+		if (!info.name || strcmp(info.name, names[index]) || !config_text(names[index], value, sizeof(value)))
+			continue;
+		if (info.pinned || strcmp(value, info.default_text))
+		{
+			server_log(_server_log_warning, "server", "%s = %s is a player's host's setting, which a dedicated server "
+				"leaves aside: server.game_mode (%s) says what it hosts", names[index], value,
+				config_string("server.game_mode"));
+		}
+	}
 }
 
 /* the kind of game hosted taken again from server.game_mode (and
@@ -2249,6 +2281,7 @@ void server_update(
 		for (index = 0; index < MAXIMUM_SLOTS; index++)
 			server.seen_machines[index] = NONE;
 		server_read_rotation(&server.rotation, config_string("server.rotation"));
+		server_warn_player_host_modes();
 		server.index = server.rotation.count - 1;
 		server.current_index = NONE;
 		server.last_countdown_seconds = NONE;
@@ -2263,7 +2296,12 @@ void server_update(
 			server_json_string(&json, "build", server_mode_build());
 			server_json_integer(&json, "network_version", HALO_PORT_NETWORK_VERSION);
 			server_json_integer(&json, "openh1_version", HALO_PORT_STANDARD_NETWORK_VERSION);
-			server_json_string(&json, "game_mode", config_string("server.game_mode"));
+			{
+				char mode[16];
+
+				server_director_game_mode(mode, sizeof(mode), NULL, 0, NULL);
+				server_json_string(&json, "game_mode", mode);
+			}
 			server_status_identity(&json);
 			server_json_array_begin(&json, "rotation");
 			for (entry = 0; entry < server.rotation.count; entry++)

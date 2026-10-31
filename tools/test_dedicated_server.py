@@ -826,13 +826,17 @@ def test_openh1_game_closed_to_opence(machines):
     server = machines("server")
     (server.folder / "bin" / "config.toml").write_text('[server]\ngame_mode = "openh1_60"\n\n'
                                                        '[network]\nallow_opence = false\n')
-    server.start(["--server"], **_server_settings(port, HALO_SERVER_ROTATION="bloodgulch:slayer"))
+    # (and a player host's network.sim_rate, which the server leaves aside, saying so)
+    server.start(["--server"], **_server_settings(port, HALO_SERVER_ROTATION="bloodgulch:slayer", HALO_NET_SIM_RATE=30))
     api = Api(port)
     _until(lambda: "server: ready" in server.text(), 90, "server: ready", server)
     api.login()
     status = api.status()
     assert (status["game_mode"], status["tick_rate"], status["opence"]) == ("openh1_60", 60, False), status
+    assert status["game_mode_name"] == "OpenH1 60 Tick", status
     assert "hosting: OpenH1 60 Tick (server.game_mode)" in server.text()
+    assert "network.sim_rate = 30 is a player's host's setting, which a dedicated server leaves aside: " \
+           "server.game_mode (openh1_60) says what it hosts" in server.text(), server.text()[-2000:]
     prober = machines("prober")
     game = _probe(prober)
     assert game["network_version"] == 0x8000 | status["openh1_version"], game
