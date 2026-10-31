@@ -168,6 +168,12 @@ uint32_t host_memory_watch_serial(void)
 	return atomic_load(&watch_serial);
 }
 
+/* (no write tracking here: no faults) */
+uint64_t host_memory_watch_faults(void)
+{
+	return 0;
+}
+
 static void pages_mark(uint32_t address, uint32_t size, int written)
 {
 	uint64_t page, last = ((uint64_t)address + size + page_size - 1) / page_size;

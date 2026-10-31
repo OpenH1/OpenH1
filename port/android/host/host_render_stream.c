@@ -39,6 +39,7 @@ frame on screen.
 #include <mach/mach_time.h>
 #include <mach/thread_policy.h>
 #undef host_page_size
+#include <dlfcn.h>
 #endif
 
 #include <errno.h>
@@ -1086,6 +1087,31 @@ static void stream_failed(void)
 
 static _Atomic int render_playing;
 
+#ifdef __APPLE__
+/* The render thread's autorelease pool (Apple's), drained after each run of
+records played. A thread of its own has none: what Metal's backend
+autoreleases (its encoders, buffers, the descriptors and keys it makes) was
+kept until the thread ended, some 9,000 objects a second on an M1 Max in
+a busy game. The runtime's functions are found as the thread starts (none
+where the Objective-C runtime is not loaded: the stream's tests). */
+static struct
+{
+	void *(*push)(void);
+	void (*pop)(void *pool);
+} autorelease;
+
+static void *autorelease_push(void)
+{
+	return autorelease.push ? autorelease.push() : NULL;
+}
+
+static void autorelease_pop(void *pool)
+{
+	if (pool)
+		autorelease.pop(pool);
+}
+#endif
+
 int host_render_stream_playing(void)
 {
 	return atomic_load(&render_playing);
@@ -1094,6 +1120,15 @@ int host_render_stream_playing(void)
 static void *render_thread(void *argument)
 {
 	const struct host_render_backend *backend = render_backend;
+#ifdef __APPLE__
+	void *pool;
+
+	autorelease.push = (void *(*)(void))dlsym(RTLD_DEFAULT, "objc_autoreleasePoolPush");
+	autorelease.pop = (void (*)(void *))dlsym(RTLD_DEFAULT, "objc_autoreleasePoolPop");
+	if (!autorelease.pop)
+		autorelease.push = NULL;
+	pool = autorelease_push();
+#endif
 
 	(void)argument;
 	pthread_mutex_lock(&render.lock);
@@ -1147,6 +1182,12 @@ static void *render_thread(void *argument)
 			atomic_store(&render_playing, 1);
 			reached = host_render_decode(render.decoder, from, to);
 			atomic_store(&render_playing, 0);
+#ifdef __APPLE__
+			/* (what the records, and the fences and calls since the last,
+			autoreleased) */
+			autorelease_pop(pool);
+			pool = autorelease_push();
+#endif
 			frame_ended = render.decoder->frame_ended;
 			if (frame_ended)
 			{
@@ -1212,6 +1253,9 @@ static void *render_thread(void *argument)
 	pthread_mutex_unlock(&render.lock);
 	if (loading.frame.active)
 		loading_set(loading.backend, 0);
+#ifdef __APPLE__
+	autorelease_pop(pool);
+#endif
 	return NULL;
 }
 
