@@ -484,11 +484,21 @@ struct p2p_join_status
 	/* this network's NAT is strict (p2p_nat_strict); the host's addresses
 	show that its is; the router was asked to forward a port and did not */
 	int nat_strict, host_strict, upnp_tried;
+	/* relays are being tried for the host (it was not reached directly in
+	a few seconds, and both machines offered relays: p2p_relay.c); the host
+	was reached through one */
+	int relaying, relayed;
 };
 void p2p_join_status(struct p2p_join_status *status);
 /* gives the join up (the menus' Back, and their timeout), the host not
 reached */
 void p2p_join_cancel(void);
+
+/* halo --relay (server_mode.c): this process a relay alone (p2p_relay.c),
+for any two machines that cannot meet directly, on network.tunnel_port
+(2302 if none), until stop returns nonzero; 0, or -1 if its port could not
+be opened. Nothing else of internet play runs */
+int p2p_relay_run(int (*stop)(void));
 
 /* BLAKE2b with a 32-byte digest (Monocypher's): a map's pieces
 (map_share.c) */

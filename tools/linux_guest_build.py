@@ -360,5 +360,8 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     # ... and the master servers of dedicated servers (network.masters_file)
     masters = build / "masters.txt"
     n.build(outputs=masters, rule=f"{prefix}_copy", inputs=Path("port/assets/network/masters.txt"))
-    n.build(outputs=target.name, rule="phony", inputs=[output, staged_sdl, sdl_license, brokers, masters])
+    # ... and the relays offered when a direct connection fails (network.relays_file)
+    relays = build / "relays.txt"
+    n.build(outputs=relays, rule=f"{prefix}_copy", inputs=Path("port/assets/network/relays.txt"))
+    n.build(outputs=target.name, rule="phony", inputs=[output, staged_sdl, sdl_license, brokers, masters, relays])
     n.newline()

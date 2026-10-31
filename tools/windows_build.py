@@ -364,5 +364,8 @@ def _generate_host(n: Writer, sln: Any, guest: Dict[str, Path]) -> None:
     # (network.masters_file, server.masters_file)
     masters = BUILD / "masters.txt"
     n.build(outputs=masters, rule="windows_copy", inputs=Path("port/assets/network/masters.txt"))
-    n.build(outputs="windows", rule="phony", inputs=[output, sdl_dll, brokers, masters])
+    # ... and the relays offered when a direct connection fails (network.relays_file)
+    relays = BUILD / "relays.txt"
+    n.build(outputs=relays, rule="windows_copy", inputs=Path("port/assets/network/relays.txt"))
+    n.build(outputs="windows", rule="phony", inputs=[output, sdl_dll, brokers, masters, relays])
     n.newline()

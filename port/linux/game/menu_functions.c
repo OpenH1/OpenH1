@@ -7145,8 +7145,13 @@ what internet play knows, and what would help; RETRY asks again, BACK (B)
 gives the join up */
 
 #define CONNECT_NAME "pc\\main_menu\\multiplayer_type_select\\join_game\\connect\\connect_screen"
-/* milliseconds: a host not reached in this long is given up */
+/* milliseconds: a host not reached in this long is given up; this long
+while relays are being tried for it (p2p_relay.c: they start a few
+seconds in) */
 #define CONNECT_TIMEOUT 10000
+#define CONNECT_RELAY_TIMEOUT 20000
+#define CONNECT_TIMED_OUT(status, elapsed) \
+	((elapsed) > ((status)->relaying ? CONNECT_RELAY_TIMEOUT : CONNECT_TIMEOUT))
 #define CONNECT_HEADLINE_LENGTH 32
 #define CONNECT_DETAIL_LENGTH 160
 #define CONNECT_LINE_LENGTH 64
@@ -7174,11 +7179,25 @@ static struct
 	wchar_t detail[CONNECT_DETAIL_LENGTH];
 } connect_dialog;
 
+/* whether the server browser's join has run past its time (longer while
+relays are tried) */
+static boolean lobby_browser_join_timed_out(unsigned long elapsed)
+{
+	struct p2p_join_status status;
+
+	if (elapsed <= CONNECT_TIMEOUT)
+		return FALSE;
+	p2p_join_status(&status);
+	return CONNECT_TIMED_OUT(&status, elapsed);
+}
+
 /* the step a join is at, for the box and the server browser's line */
 static void connect_stage_text(struct p2p_join_status const *status, wchar_t *text, short length)
 {
 	if (status->stage == _p2p_join_reached)
-		usnprintf(text, length - 1, L"Joining...");
+		usnprintf(text, length - 1, status->relayed ? L"Connected through a relay.\r\nJoining..." : L"Joining...");
+	else if (status->stage == _p2p_join_opening && status->relaying)
+		usnprintf(text, length - 1, L"Trying a relay...\r\n(try %d)", status->tries + 1);
 	else if (status->stage == _p2p_join_opening)
 		usnprintf(text, length - 1, L"Opening a path to the host...\r\n(try %d)", status->tries + 1);
 	else
@@ -7288,7 +7307,7 @@ static void connect_update(struct widget_instance *screen)
 			connect_dialog.proceed = TRUE;
 			ui_widget_port_post_button(connect_dialog.controller, BUTTON_A);
 		}
-		else if (status.stage == _p2p_join_idle || now - connect_dialog.start_time > CONNECT_TIMEOUT)
+		else if (status.stage == _p2p_join_idle || CONNECT_TIMED_OUT(&status, now - connect_dialog.start_time))
 		{
 			char name[P2P_LISTING_NAME_SIZE + 1];
 			wchar_t line[CONNECT_LINE_LENGTH];
@@ -7639,7 +7658,7 @@ static void lobby_browser_update(struct widget_instance *list)
 			lobby_browser.ready_time = now;
 			ui_widget_port_post_button(lobby_browser.controller, BUTTON_A);
 		}
-		else if (now - lobby_browser.join_time > CONNECT_TIMEOUT)
+		else if (lobby_browser_join_timed_out(now - lobby_browser.join_time))
 		{
 			struct p2p_join_status status;
 			wchar_t headline[CONNECT_HEADLINE_LENGTH], detail[CONNECT_DETAIL_LENGTH];
