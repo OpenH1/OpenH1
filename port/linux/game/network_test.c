@@ -100,6 +100,7 @@ Called from the main loop every frame (main.c).
 #include "tag_files/tag_files.h"
 #include "camera/observer.h"
 #include "hs/hs.h"
+#include "network_clock.h"
 #include "network_distributed.h"
 
 #include "../src/p2p.h" /* port: port/linux/src/p2p.c, p2p_lobby.c */
@@ -650,6 +651,19 @@ static void network_test_log_players(
 				apart[_distributed_take_earlier], samples[_distributed_take_earlier],
 				apart[_distributed_take_lost], samples[_distributed_take_lost],
 				apart[_distributed_take_hold], samples[_distributed_take_hold]);
+		}
+		/* (a client of an OpenH1 game: the host's latest word on how long
+		before its tick of their number this machine's inputs came, the
+		words taken, and the ticks its clock skipped and the time it moved
+		by to lead the host's, since the game began: network_clock.c) */
+		if (game_connection() == _game_connection_network_client)
+		{
+			long early, reports, skipped;
+			real moved;
+
+			network_clock_statistics(&early, &reports, &skipped, &moved);
+			platform_log("network test: clock early %ld reports %ld skipped %ld moved %ld us", early, reports,
+				skipped, (long)(moved * 1000000.0f));
 		}
 		/* (the latency meter's round trips, with display.latency_meter on:
 		a client's own, and each player's as this machine times it) */
@@ -1536,7 +1550,10 @@ void network_test_update(
 		network_test_run_cues();
 	if (game_in_progress() && !main_menu_loaded && game_time_get() - network_test.logged_time >= TICKS_PER_SECOND)
 	{
-		network_test.logged_time = game_time_get();
+		/* (each second's at the first frame on its first tick, so that every
+		machine logs the same ticks: an OpenH1 game's client skips ticks to
+		lead the host's, network_clock.c) */
+		network_test.logged_time = game_time_get() - game_time_get() % TICKS_PER_SECOND;
 		network_test_log_players();
 		if (network_test.shoot_interval > 0.0f &&
 			game_time_get() % MAX(1, (long)(network_test.shoot_interval * TICKS_PER_SECOND)) < TICKS_PER_SECOND)

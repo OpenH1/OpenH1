@@ -16,7 +16,8 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
   client no longer runs only the ticks the host has sent. A client's clock
   starts with the host's first game update and takes the host's time from
   it (at a game's start as at a late join), so every machine reads the
-  game's timers alike.
+  game's timers alike. In an OpenH1 game it then leads the host's by its
+  trip to the host (below, "The client's clock").
 - **Own player predicted.** A client drives its own player (and the
   vehicle it drives) from its local input at once. Remote players are
   driven by the inputs the host relays every tick, the latest one held
@@ -340,7 +341,11 @@ in a game of no OpenCE machine (below, "The host's controls"); version 11
 is the first on network version 41 (below: the join request's Discord pass,
 the votes' kinds and no votes, the dedicated server's map vote), and changes
 nothing else of its own: an OpenH1 game carries the votes, the map vote and
-the AFK kicks as a Legacy game does, its OpenCE machines' too. With no new version, each client then tells the
+the AFK kicks as a Legacy game does, its OpenCE machines' too; version 12
+has the host tell each OpenH1 client, once a second, how long before its
+tick its inputs came (distributed message 135,
+`_distributed_message_clock_phase`, `network_clock.c`, reliably), by which
+the client leads its clock (below, "The client's clock"). With no new version, each client then tells the
 host its build (distributed message 92, `_distributed_message_client_build`,
 reliably once a game after its ready, over its connection alone): its
 number, configuration, the label it shows ("OpenH1 Linux | build 120
@@ -905,6 +910,94 @@ by the difference (its speed by the host's difference of it, its facing its
 own), and the ticks noted since with it. A player the relayed input drives,
 the host's own players and bots, and a state without the tick are put where
 the host has them, as before.
+
+### The client's clock
+
+A client's clock takes the host's time from the host's first game update,
+so its ticks begin a trip from the host (and a sub-step) after the host's of
+the same number, at a phase against the host's ticks that the network's
+delay set for the whole game. The host takes a client's input at its own
+tick (as the tick begins: "Input at its tick"), so an input waited on the
+host from nothing to a whole tick, by the game: the spread of the 20 ms and
+50 ms figures in "Measuring latency". From protocol version 12, in an OpenH1
+game at any rate (`port/linux/game/network_clock.c`):
+
+- The host notes when each of its ticks begins, and when each OpenH1
+  client's input of each tick comes (its first; a client sends its input of
+  a tick as the tick's first sub-step ends, or at 30 as the tick ends: about
+  when the tick begins). For each input it times how long before the
+  host's tick of the same number began it came (negative: after), and once
+  a second (`CLOCK_REPORT_TICKS`) sends the client the second's figure:
+  the second earliest of its 30 or so (`CLOCK_REPORT_PERCENTILE`, so that one
+  datagram held up does not move the clock), with how many it had
+  (`_distributed_message_clock_phase`, 135, 8 bytes, reliably over the
+  client's connection, which no one else can send as the host).
+- The client moves its clock until the figure is 2 ms
+  (`CLOCK_EARLY_TARGET_MICROSECONDS`): its ticks then lead the host's of
+  the same number by the trip to the host and that margin, as other
+  engines' clients do, and the host's tick of each number takes the input
+  of the client's tick of that number, each sub-step's controls coming just
+  before the host's sub-step runs. Within 50 ms (`CLOCK_JUMP_MICROSECONDS`)
+  it moves by running its ticks up to 5% faster or slower (`CLOCK_SLEW`,
+  `game_time.c`'s `game_time_update`), no tick skipped or run twice: under
+  1 ms (`CLOCK_EARLY_LOW_MICROSECONDS`: late, or nearly) ahead to the
+  target at once, over 5 ms (`CLOCK_EARLY_HIGH_MICROSECONDS`) back by half
+  the difference a report (`CLOCK_GAIN`: the next report's second began
+  before the move), and between the two not at all. A host reads its
+  datagrams once a frame, and cannot tell when in the frame before its read
+  an input came: an input read in the frame its tick begins in, just
+  before the tick, is timed as the target, however long before the read it
+  came; one read in a frame before, from that read. (Timed from the read
+  alone, the clock was pushed a frame early and swung back; on a dedicated
+  server of 60 frames a second, so early that the prediction of the
+  client's next tick came before the host's tick too, and the host took the
+  one before it in about a third of the ticks.) Further behind (a game's start, a join, the round trip grown),
+  it skips the nearest whole ticks of the difference at a tick's end
+  (`game_time_port_advance`: renumbered, none run, as its clock already
+  jumps to the host's when it is a second behind) and runs the rest, under
+  half a tick, at once if it is behind, or slowly if ahead. Further ahead
+  (the round trip shortened) it slows down; it never goes back, which the
+  host would take for old messages (`distributed_add_new_ticks`).
+- A dedicated server of an OpenH1 game waits for its frame's time
+  (`server_mode_pace_frame`) before it reads its datagrams, not after
+  (`main.c`, `network_clock_server_pace_first`): what came while it waited is
+  read before the tick its frame runs. Read after, a client's input that
+  came in the wait missed the tick, and the clock above, seeing it read
+  just after the tick began, held it a frame early or swung across the
+  frame (in a server's game on the loopback, the host took the prediction
+  before the latest in 1,737 of 2,479 ticks: "Input at its tick"). A Legacy
+  game's server keeps its order.
+- Its ticks lead the host's latest it has heard by no more than 12
+  (`CLOCK_LEAD_LIMIT_TICKS`): the host's clock check drops a client whose
+  ticks run fast and more than 15 ahead (`CLIENT_CLOCK_AHEAD_TICKS`). Past
+  that (a round trip of about 400 ms) the clock keeps its phase but not its
+  numbers: the host takes the latest input heard whatever its number.
+
+A client's game at a given moment is where it was before: the remote
+players, the host's units and objects are driven and corrected as they
+come, so only the numbers of its ticks move, and its ticks' phase against
+the host's. What counts ticks across the machines counts from and to the
+same point on each, as before: the host's echo of a client's prediction
+names the client's tick, and the client compares it with where it had its
+player then; the round trips (the seats' disagreement, the ceiling's lead,
+the hit check's) are timed by the host's own ticks or by when messages
+went, and are a trip and the margin, not a trip and a phase's wait; the
+on-foot bounds' ticks since the anchor take the client's ticks no further
+than the host's since and the jitter, so a skip of the client's numbers
+gains it nothing; the host's clock check sees a client a tick or so ahead,
+not behind; the elevator's phase between the two machines is the trip
+there and back and the margin, under the 4 world units' tolerance as
+before. With the input there before the host's tick, the phase in which
+the host's tick began before a client's input came ("Input at its tick",
+`distributed_predictions_earlier`) is rare once the clock has settled (an
+input held up past the tick: below, "Measuring latency").
+
+The host reports only to OpenH1 clients of an OpenH1 game, and a client
+moves its clock only on the report: a Legacy game, an OpenH1 machine in a
+Legacy game and an OpenCE machine in a mixed game keep the clock they had.
+`debug.network_test`'s clients log the latest report, the reports, the ticks
+skipped and the time moved by (`network test: clock early <us> reports <n>
+skipped <n> moved <us> us`). Measured below ("Measuring latency").
 
 ### OpenCE players in an OpenH1 game
 
@@ -1920,8 +2013,9 @@ to another; `--events` adds the hits. The latency player stands still but
 for its pushes, so the drift figures are not judged.
 
 A network's delay sets each machine's phase against the others' ticks (a
-client's clock is the host's, from the first update it heard), so each
-delay gives waits of its own: the figures below pool three delays a third of
+client's clock was the host's, from the first update it heard, until
+protocol version 12: "The client's clock"), so each delay gives waits of
+its own: the figures below pool three delays a third of
 a tick apart for each network (20, 25.5 and 31 ms each way for 20 ms; 50,
 55.5 and 61 for 50), with `tc netem` on the loopback of a network namespace
 of its own (`unshare -rn`, then `tc qdisc add dev lo root netem delay 20ms
@@ -1990,5 +2084,36 @@ game passes; the host's moves of a client's player come apart from the
 client's in 0.4% to 0.8% of the ticks before and 8% to 12% with version 8
 at 60 and 120 (a sub-step's controls that come after the host's sub-step
 ran without them), and the clients' corrections and the positions apart
-are as before. The remaining stages of OpenH1 issue #287, the host's
-states at the sub-step rate and the clock's phase, are not done.
+are as before.
+
+With the client's clock led ahead of the host's (version 12, "The client's
+clock"), over 20, 25.5 and 31 ms ±3 each way (three copies, one game a
+delay; the means in ms of a client's press to the host's simulation, and in
+brackets what it takes past the one-way delay):
+
+| Rate | Before | With the clock led |
+| --- | --- | --- |
+| 30 | 36.3 (16.3), 31.8 (6.3), 36.3 (5.3) | 27.5 (7.5), 32.7 (7.2), 37.7 (6.7) |
+| 60 | 38.7 (18.7), 33.4 (7.9), 38.4 (7.4) | 27.5 (7.5), 32.3 (6.8), 37.9 (6.9) |
+| 120 | 38.9 (18.9), 37.6 (12.1), 38.4 (7.4) | 26.5 (6.5), 32.1 (6.6), 38.0 (7.0) |
+
+What a press takes past the network's delay was 5 to 19 ms, by the phase
+each delay set; it is 6.5 to 7.5 ms at every delay and rate (the input's
+datagram, the host's frame, the 2 ms margin and the sub-step it lands in).
+Pooled, 38.3, 36.8 and 34.8 ms become 32.2, 32.6 and 32.6 at 120, 60 and 30.
+The meter's round trip drops with it (83 to 72 ms pooled). The press from
+one client to another and from the host to a client are as before: their
+spread is the players' places (near or aimed at, forwarded; else relayed),
+which differ from game to game; in games where they were placed alike the
+two builds measured alike (56.6 and 56.9 ms, 62.7 and 62.7).
+
+In bot games (three copies, bloodgulch and beavercreek, on the loopback and
+over 20 ms ±3, at 30, 60 and 120) every game passes. The host's moves of a
+client's player come apart from the client's in 0.0% to 1.2% of the ticks
+at every rate (8% to 12% at 60 and 120 before: the sub-steps' controls now
+come before the host's sub-steps run), the clients' corrections are 4 to 31
+a game, and the positions apart are 0.017 to 0.057 world units on average,
+0.24 at most. The host took the prediction before the latest
+(`distributed_predictions_earlier`) or held in 0% to 4% of the ticks of the
+latency games, against up to 83% before. The remaining stage of OpenH1
+issue #287, the host's states at the sub-step rate, is not done.

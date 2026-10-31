@@ -204,6 +204,10 @@ enum
 	invisible players), reliably, to the host's OpenH1 clients in a game of
 	no OpenCE machine */
 	_distributed_message_host_rules = 134,
+	/* how long before the host's tick of their number a client's inputs
+	came (network_clock.c), reliably, once a second, to each OpenH1 client:
+	the client leads its clock by its trip to the host */
+	_distributed_message_clock_phase = 135,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };
