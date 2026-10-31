@@ -1150,14 +1150,20 @@ def _network_versions():
 class FakeReleases:
     """GitHub's releases on loopback (debug.update_url): the latest release's answer, its notes giving its network
     versions as the release job writes them (tools/ci_build.py notes), its zip, whose first downloads may be refused,
-    and its SHA256SUMS (no signature: an unsigned release, whose sums are still checked: release_signature.c), wrong
-    for the zip's first wrong_sums downloads"""
+    its SHA256SUMS, wrong for the zip's first wrong_sums downloads, and their signature, SHA256SUMS.sig, by
+    UPDATE_SEED, the key the server is given (debug.update_key: ed25519_ref signs, tools/ed25519_ref.py), unless
+    signed is False"""
 
     def __init__(self, zip_bytes):
         import http.server
+        import sys
         import threading
 
+        sys.path.insert(0, str(ROOT / "tools"))
+        import ed25519_ref
+
         self.build = 0
+        self.signed = True
         self.network_version, self.standard_version = _network_versions()
         self.zip_bytes = zip_bytes
         self.refusals = 0
@@ -1189,10 +1195,11 @@ class FakeReleases:
                     return
                 prefix = f"/OpenH1/OpenH1/releases/download/build-{releases.build}/"
                 if releases.build and self.path == prefix + "SHA256SUMS":
-                    zips = len([name for name in releases.downloads if name.endswith(".zip")])
-                    digest = hashlib.sha256(releases.zip_bytes if zips > releases.wrong_sums else b"another").hexdigest()
-                    sums = "".join(f"{digest}  {name}\n" for name in ("OpenH1-Linux.zip", "OpenH1-Linux-debug.zip"))
-                    self.answer(200, sums.encode(), "text/plain")
+                    self.answer(200, releases.sums().encode(), "text/plain")
+                    return
+                if releases.build and releases.signed and self.path == prefix + "SHA256SUMS.sig":
+                    signature = ed25519_ref.sign(UPDATE_SEED, releases.sums().encode()).hex()
+                    self.answer(200, (signature + "\n").encode(), "text/plain")
                     return
                 if releases.build and self.path.startswith(prefix) and self.path.endswith(".zip"):
                     releases.downloads.append(self.path[len(prefix):])
@@ -1208,11 +1215,20 @@ class FakeReleases:
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
+    def sums(self):
+        """the SHA256SUMS of the zip's latest download: wrong for its first wrong_sums"""
+        zips = len([name for name in self.downloads if name.endswith(".zip")])
+        digest = hashlib.sha256(self.zip_bytes if zips > self.wrong_sums else b"another").hexdigest()
+        return "".join(f"{digest}  {name}\n" for name in ("OpenH1-Linux.zip", "OpenH1-Linux-debug.zip"))
+
     def close(self):
         self.server.shutdown()
         self.server.server_close()
 
 
+# the test's release key, which signs FakeReleases' SHA256SUMS: the server trusts it beside OpenH1's
+# (debug.update_key) while its debug.update_url is set
+UPDATE_SEED = bytes(range(96, 128))
 NEW_GAME = b"#!/bin/sh\necho the new build\n"
 
 
@@ -1239,7 +1255,13 @@ def _tree(machine):
 
 
 def _update_settings(releases, **settings):
-    values = {"HALO_UPDATE_URL": releases.url, "HALO_UPDATE_TIME_SCALE": 100, "HALO_SERVER_AUTO_UPDATE": "install",
+    import sys
+
+    sys.path.insert(0, str(ROOT / "tools"))
+    import ed25519_ref
+
+    values = {"HALO_UPDATE_URL": releases.url, "HALO_UPDATE_KEY": ed25519_ref.public_key(UPDATE_SEED).hex(),
+              "HALO_UPDATE_TIME_SCALE": 100, "HALO_SERVER_AUTO_UPDATE": "install",
               "HALO_SERVER_UPDATE_CHECK_MINUTES": 5}
     values.update(settings)
     return values
@@ -1343,7 +1365,7 @@ def test_update_whose_checksum_does_not_match_is_refused(machines):
             port, HALO_SERVER_ROTATION="bloodgulch:slayer", **_update_settings(releases)))
         _until(lambda: "build 7 could not be installed" in server.text(), 90, "the refusal", server)
         text = server.text()
-        assert "build 7 was refused" in text, text[-3000:]
+        assert "build 7 was refused" in text and "its SHA256SUMS lists" in text, text[-3000:]
         # (nothing of the refused download put in place, and the server plays on)
         assert server.process.poll() is None
         assert not (server.folder / "bin" / "halo.old").exists() and \
@@ -1354,5 +1376,28 @@ def test_update_whose_checksum_does_not_match_is_refused(machines):
         assert text.index("was refused") < text.index("build 7 installed: started once the server"), text[-3000:]
         assert len(releases.downloads) == 2, releases.downloads
         assert _installed(server)
+    finally:
+        releases.close()
+
+
+def test_unsigned_update_is_refused(machines):
+    """a release with no SHA256SUMS.sig is refused before anything is unpacked (release_signature.h:
+    RELEASE_SIGNATURE_REQUIRED), and the server plays on"""
+    _needs_game("bloodgulch")
+    releases = FakeReleases(_release_zip())
+    releases.build = 7
+    releases.signed = False
+    try:
+        port = _free_port()
+        server = _tree(machines("server")).start(["--server"], **_server_settings(
+            port, HALO_SERVER_ROTATION="bloodgulch:slayer", **_update_settings(releases)))
+        _until(lambda: "build 7 could not be installed" in server.text(), 90, "the refusal", server)
+        text = server.text()
+        assert "build 7 was refused" in text and "not signed" in text, text[-3000:]
+        assert server.process.poll() is None
+        assert not (server.folder / "bin" / "halo.old").exists() and \
+            not (server.folder / "share" / "openh1" / "new-build.txt").exists()
+        server.send("quit")
+        assert server.wait(15) == 0, server.text()[-3000:]
     finally:
         releases.close()

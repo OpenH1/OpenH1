@@ -53,9 +53,11 @@ enum release_verdict
 /* the verdict on a release's download: sums, its SHA256SUMS (NULL: the
 release has none), signature, its SHA256SUMS.sig (NULL: none), asset, the
 download's name in them, digest, the download's SHA-256; required,
-RELEASE_SIGNATURE_REQUIRED (a test's own). With the release key built in */
+RELEASE_SIGNATURE_REQUIRED (a test's own); test_key, a test's public key
+(64 hex digits: debug.update_key) trusted beside the release key, or NULL.
+With the release key built in */
 enum release_verdict release_check(const char *sums, int sums_size, const char *signature, int signature_size,
-	const char *asset, const unsigned char *digest, int required, char *error, int error_size);
+	const char *asset, const unsigned char *digest, int required, const char *test_key, char *error, int error_size);
 /* ... with the keys given (a test's), any of which may have signed */
 enum release_verdict release_check_keys(const char *sums, int sums_size, const char *signature, int signature_size,
 	const char *asset, const unsigned char *digest, int required, const unsigned char (*keys)[RELEASE_KEY_SIZE],

@@ -50,6 +50,7 @@ NEGATIVE_CONTROLS = {
     "signature-without-sums": (("\t\tif (!sums)\n\t\t{\n\t\t\trelease_error(error, error_size, \"it has a signature",
                                 "\t\tif (0)\n\t\t{\n\t\t\trelease_error(error, error_size, \"it has a signature"),
                                "malformed"),
+    "test-key-ignored": (("\tif (test_key && strlen(test_key)", "\tif (0 && strlen(test_key)"), "wrong-key"),
 }
 
 
@@ -126,6 +127,12 @@ def test_updater_checks_each_download():
     assert install.index("updater_verify(zip_path") > max(install.index("updater_download_zip(zip_path"),
                                                           install.index("updater_fetch(url, zip_path"))
     assert install.index("updater_verify(zip_path") < install.index("updater_unpack(zip_path")
+
+
+def test_test_key_only_for_a_test_server():
+    """debug.update_key is trusted only while debug.update_url is set: never for GitHub's releases."""
+    updater = read("port/linux/src/updater.c")
+    assert 'config_string("debug.update_url")[0] ? config_string("debug.update_key") : NULL' in updater
 
 
 def openssl_or_skip():

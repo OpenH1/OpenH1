@@ -715,8 +715,12 @@ static int updater_verify(const char *zip_path, char *error, size_t error_size)
 	}
 	else
 	{
+		/* (a test's key, debug.update_key, is trusted only from a test's
+		release server, debug.update_url: never for GitHub's releases) */
+		const char *test_key = config_string("debug.update_url")[0] ? config_string("debug.update_key") : NULL;
+
 		verdict = release_check(has_sums ? sums : NULL, sums_size, has_signature ? signature : NULL, signature_size,
-			UPDATE_ASSET, digest, RELEASE_SIGNATURE_REQUIRED, reason, sizeof(reason));
+			UPDATE_ASSET, digest, RELEASE_SIGNATURE_REQUIRED, test_key, reason, sizeof(reason));
 		if (verdict == _release_refused)
 			snprintf(error, error_size, "build %ld was refused: %s", updater_latest_build, reason);
 		else if (verdict == _release_unsigned)
