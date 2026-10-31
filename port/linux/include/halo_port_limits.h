@@ -95,7 +95,7 @@ takes it for a newer version and does not join. Raise it with any change to
 what a Standard game's machines send each other, and with every raise of
 HALO_PORT_NETWORK_VERSION: HALO_PORT_STANDARD_BASE_VERSION is the network
 version it was last raised for, and the build fails until they agree. */
-#define HALO_PORT_STANDARD_NETWORK_VERSION 10
+#define HALO_PORT_STANDARD_NETWORK_VERSION 11
 /* (1: the rate agreed; 2: the players' sub-steps sent, network_substeps.c;
 3: OpenCE players in the game, network_standard.c's mixed games; 4: a
 player moved to the other team by the host, network_host_controls.c; 5:
@@ -107,8 +107,10 @@ prediction as the host's tick begins, network_distributed.c's
 distributed_prediction_at_tick_start; 9: every client player's state to
 every OpenH1 client with the client's tick the host has them at,
 network_distributed.c's distributed_correct_remote_unit; 10: the variant's
-flags of a game under way the host changed, network_host_rules.c) */
-#define HALO_PORT_STANDARD_BASE_VERSION 39
+flags of a game under way the host changed, network_host_rules.c; 11:
+network version 41, OpenCE's votes, map vote and join request with a
+Discord pass) */
+#define HALO_PORT_STANDARD_BASE_VERSION 41
 #define HALO_PORT_STANDARD_VERSION_BIT 0x8000
 #define HALO_PORT_STANDARD_ADVERTISED_VERSION (HALO_PORT_STANDARD_VERSION_BIT | HALO_PORT_STANDARD_NETWORK_VERSION)
 #if HALO_PORT_STANDARD_BASE_VERSION != HALO_PORT_NETWORK_VERSION

@@ -336,7 +336,11 @@ history"); version 10 sends the variant's flags of a game under way that the
 host changed in Host Controls' RULES (distributed message 134,
 `_distributed_message_host_rules`, `network_host_rules.c`: shields, the motion
 sensor, infinite grenades, invisible players), reliably, to its OpenH1 clients
-in a game of no OpenCE machine (below, "The host's controls"). With no new version, each client then tells the
+in a game of no OpenCE machine (below, "The host's controls"); version 11
+is the first on network version 41 (below: the join request's Discord pass,
+the votes' kinds and no votes, the dedicated server's map vote), and changes
+nothing else of its own: an OpenH1 game carries the votes, the map vote and
+the AFK kicks as a Legacy game does, its OpenCE machines' too. With no new version, each client then tells the
 host its build (distributed message 92, `_distributed_message_client_build`,
 reliably once a game after its ready, over its connection alone): its
 number, configuration, the label it shows ("OpenH1 Linux | build 120
@@ -572,7 +576,7 @@ matching builds so an older client cannot silently ignore the rule.
 A host plays one of two kinds of game (`network.game_mode`, read when it
 starts hosting; `port/linux/game/network_standard.c`):
 
-- **Legacy**: OpenCE's netcode at network version 39 and 30 ticks a second,
+- **Legacy**: OpenCE's netcode at network version 41 and 30 ticks a second,
   which OpenCE builds join. A Legacy game is unchanged in every byte: its
   advertisement, listing, join token and game record are as before.
 - **OpenH1** (`"openh1"`, the default when hosting; `"standard"`, its first
@@ -932,7 +936,7 @@ change:
   gets none of OpenH1's own messages (120 and above:
   `network_standard_message_goes_to`, checked where the distributed netcode
   queues a datagram's messages and a reliable one). Everything else in an
-  OpenH1 game is network version 39's already.
+  OpenH1 game is network version 41's already.
 - Each player is stepped at their own rate on every OpenH1 machine. An
   OpenCE player's biped, and the vehicle they drive, are of the macro lane
   (`objects.h`): they move once a tick, exactly as on the player's own
