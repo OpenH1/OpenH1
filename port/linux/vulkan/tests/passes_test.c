@@ -2921,7 +2921,7 @@ static void discards_test(void)
 	assert(discards_renderings[0].color.resolveMode == VK_RESOLVE_MODE_AVERAGE_BIT);
 	xgpu_vulkan_fence();
 
-	/* what the device has: discards off unless asked for; depth resolved in
+	/* what the device has: discards on unless turned off; depth resolved in
 	passes where it has SAMPLE_ZERO for both; transient images where it
 	has lazily allocated memory (HALO_VULKAN_TRANSIENT=0 none, =force
 	without it) */
@@ -2936,10 +2936,10 @@ static void discards_test(void)
 	unsetenv("HALO_VULKAN_DISCARDS");
 	unsetenv("HALO_VULKAN_TRANSIENT");
 	discards_choose();
-	assert(!vk.deferred && !vk.transient && !vk.depth_resolve);
+	assert(vk.deferred && vk.depth_resolve && vk.transient == 1);
 	setenv("HALO_VULKAN_DISCARDS", "0", 1);
 	discards_choose();
-	assert(!vk.deferred);
+	assert(!vk.deferred && !vk.transient && !vk.depth_resolve);
 	setenv("HALO_VULKAN_DISCARDS", "1", 1);
 	discards_choose();
 	assert(vk.deferred && vk.depth_resolve && vk.transient == 1);
