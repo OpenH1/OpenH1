@@ -807,11 +807,11 @@ function startPage(root) {
     } else if (action === 'unmute') {
       ask(`Unmute ${who}?`, para('Their chat and voice reach everyone again.'), 'Unmute', () => send());
     } else if (action === 'admin') {
-      ask(`Make ${who} an admin?`, para(`Their player key (${player.key_id}) is added to admins.txt: they get Host Controls ` +
+      ask(`Make ${who} an admin?`, para(`Their admin key for this server (${player.key_id}) is added to admins.txt: they get Host Controls ` +
         "in the game, which do what the admin role's commands do."), 'Make admin',
       () => call('POST', '/api/command', { line: `sv_admin add ${player.slot}` }));
     } else if (action === 'unadmin') {
-      ask(`Remove ${who} as an admin?`, para(`Their player key (${player.key_id}) is taken out of admins.txt.`), 'Remove admin',
+      ask(`Remove ${who} as an admin?`, para(`Their admin key for this server (${player.key_id}) is taken out of admins.txt.`), 'Remove admin',
         () => call('POST', '/api/command', { line: `sv_admin remove ${player.key_id}` }), true);
     } else {
       const text = h('input', { maxLength: 127, required: true, placeholder: 'A notice on their screen' });
@@ -842,7 +842,7 @@ function startPage(root) {
           }),
           act('kick', 'Kick', 'danger'), act('ban', 'Ban', 'danger'),
           player.muted ? act('unmute', 'Unmute') : act('mute', 'Mute'), act('tell', 'Tell'),
-          // (the owner's: an admin in the game, by the player key their game proved)
+          // (the owner's: an admin in the game, by the admin key their game proved here)
           page.role === 'owner' && player.key_id &&
             small(player.admin ? 'Remove admin' : 'Make admin', true, () => playerAction(player, player.admin ? 'unadmin' : 'admin')),
         ]), 'row-actions'),

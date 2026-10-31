@@ -93,17 +93,23 @@ int player_link_next_pass(const unsigned char (*key_ids)[PLAYER_LINK_KEY_ID_SIZE
 (with its end: 17 characters) */
 void player_link_key_id(const unsigned char *public_key, char *text);
 /* a dedicated server's admins (network_admin.c; docs/dedicated_server.md,
-"Admins in the game"): the server sends each OpenH1 machine a nonce, and
-the machine signs "openh1-admin-proof-1", the nonce and the connection's
-binding (20 + 32 + 32 bytes) with its player key; whether a signature is
-the key's */
+"Admins in the game"): the server sends each OpenH1 machine its id and a
+nonce, and the machine signs "openh1-admin-proof-1", the nonce and the
+connection's binding (20 + 32 + 32 bytes) with a key for that server alone:
+its seed HMAC-SHA-256 of "openh1-admin-key-1" and the server's id, keyed
+with the machine's admin secret (admin.key, not the player key), so that
+two servers see two keys of one player. The seed of a server's key; whether
+a signature is the key's */
 enum
 {
 	PLAYER_LINK_NONCE_SIZE = 32,
+	PLAYER_LINK_SERVER_ID_SIZE = 32,
+	PLAYER_LINK_ADMIN_SECRET_SIZE = 32,
 	PLAYER_LINK_SIGNATURE_SIZE = 64,
 	PLAYER_LINK_ADMIN_MESSAGE_SIZE = 20 + PLAYER_LINK_NONCE_SIZE + PLAYER_LINK_BINDING_SIZE,
 };
 void player_link_admin_message(const unsigned char *nonce, const unsigned char *binding, unsigned char *message);
+void player_link_admin_seed(const unsigned char *secret, const unsigned char *server_id, unsigned char *seed);
 int player_link_admin_check(const unsigned char *public_key, const unsigned char *nonce,
 	const unsigned char *binding, const unsigned char *signature);
 
@@ -179,10 +185,11 @@ address's host and its state (none past the last master, with host empty) */
 int player_link_master_state(int master_index, char *host, int host_size, char *name, int name_size, char *code,
 	int code_size);
 
-/* (a player's machine) the server's nonce signed with the player key (made
-if there is none) for the connection to the host (its virtual address,
-network byte order; 0: a LAN's): the key and the signature, 1 */
-int player_link_admin_sign(unsigned long host_virtual_address, const unsigned char *nonce, unsigned char *public_key,
-	unsigned char *signature);
+/* (a player's machine) the server's nonce signed with the key for the server
+of that id (the admin secret made if there is none) for the connection to
+the host (its virtual address, network byte order; 0: a LAN's): the key and
+the signature, 1 */
+int player_link_admin_sign(unsigned long host_virtual_address, const unsigned char *server_id,
+	const unsigned char *nonce, unsigned char *public_key, unsigned char *signature);
 
 #endif

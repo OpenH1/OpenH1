@@ -433,7 +433,7 @@ def _console(port, line):
 
 
 def test_an_admin_changes_the_map_from_the_game(machines):
-    """a player's game proves its player key to the server as it joins; its request to change the map is refused
+    """a player's game proves its admin key for the server as it joins; its request to change the map is refused
     while the key is no admin's, and done once the owner makes it one (sv_admin add): the server's own sv_map, logged
     and an event with the admin's name and key id (docs/dedicated_server.md, "Admins in the game")"""
     _needs_game("bloodgulch", "prisoner")
@@ -447,7 +447,7 @@ def test_an_admin_changes_the_map_from_the_game(machines):
                                       HALO_NET_ADDRESS=CLIENT_ADDRESSES[0], HALO_NET_BROADCAST=SERVER_ADDRESS,
                                       HALO_TELNET_CONSOLE=1, HALO_TELNET_CONSOLE_PORT=console_port)
     _until(lambda: (api.status() or {}).get("state") == "playing", 120, "the game", server)
-    _until(lambda: "proved player key" in server.text(), 30, "the client's key proven", server)
+    _until(lambda: "proved admin key" in server.text(), 30, "the client's key proven", server)
     assert not api.call("GET", "/api/players")[1]["players"][0]["admin"], "an admin before the owner made one"
 
     # (no admin yet: the request reaches the server, which does nothing)

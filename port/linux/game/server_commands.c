@@ -1931,7 +1931,7 @@ static boolean command_lock_teams(char const *line, long count, char **words)
 	return TRUE;
 }
 
-/* the admins in the game (network_admin.c): their player keys */
+/* the admins in the game (network_admin.c): their admin keys */
 static boolean command_admin(char const *line, long count, char **words)
 {
 	static char text[16384 + 512];
@@ -1981,7 +1981,7 @@ static boolean command_admin(char const *line, long count, char **words)
 		game = server_game();
 		if (!network_admin_machine_key(game->players[slot].machine_index, key_hex, key_id, &admin))
 		{
-			say("sv_admin: that player's game proved no player key (an OpenH1 game of this version, in an OpenH1 "
+			say("sv_admin: that player's game proved no admin key (an OpenH1 game of this version, in an OpenH1 "
 				"game, proves it as it joins)");
 			return FALSE;
 		}

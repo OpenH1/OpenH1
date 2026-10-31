@@ -1561,13 +1561,16 @@ as any other, with these differences, all on the host's side:
 - **Admins in the game.** From OpenH1 protocol version 15 a dedicated
   server's admins (`port/linux/game/network_admin.c`;
   `docs/dedicated_server.md`, "Admins in the game") have Host Controls. The
-  server sends each OpenH1 machine of its game, as it joins, a nonce of 32
-  random bytes (`_distributed_message_admin_down`, 137, its challenge); the
-  machine signs `openh1-admin-proof-1`, the nonce and its connection's
-  binding (the internet play tunnel's session secret as a Discord pass's
-  proof is bound, 32 zero bytes on a LAN: `player_link.c`) with its player
-  key (`player.key`, made if it has none) and answers with the key and the
-  signature (`_distributed_message_admin_up`, 138). One answer is taken a
+  server sends each OpenH1 machine of its game, as it joins, its id (32
+  bytes, `admin_id.txt`) and a nonce of 32 random bytes
+  (`_distributed_message_admin_down`, 137, its challenge); the machine
+  signs `openh1-admin-proof-1`, the nonce and its connection's binding (the
+  internet play tunnel's session secret as a Discord pass's proof is bound,
+  32 zero bytes on a LAN: `player_link.c`) with a key for that server id
+  alone (its Ed25519 seed HMAC-SHA-256 of `openh1-admin-key-1` and the id,
+  keyed with the machine's own `admin.key`, not the player key), and
+  answers with the key and the signature (`_distributed_message_admin_up`,
+  138): two servers see two unrelated keys of one player. One answer is taken a
   nonce; a key is never taken on the machine's word. A machine that proved
   a key listed in `admins.txt` or `server.admins` is an admin: the server
   tells it the game once a second (its flags, the entry played and the
@@ -1586,7 +1589,7 @@ as any other, with these differences, all on the host's side:
   Checked by `tools/harness/tests/test_network_admin.py` (the keys listed,
   each request's command, those refused, the rate),
   `test_player_link.py`'s `admin-proof` (the signature taken for its key,
-  nonce and binding alone), and `tools/test_dedicated_server.py`'s
+  nonce and binding alone; two servers' ids, two keys), and `tools/test_dedicated_server.py`'s
   `test_an_admin_changes_the_map_from_the_game`.
 - **The timeout.** `network.client_timeout_seconds` (15 seconds by
   default) sets how long a host waits for a silent machine, and two more

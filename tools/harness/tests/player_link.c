@@ -384,6 +384,36 @@ static void case_admin_proof(void)
 	p2p_sha256(key, 32, digest);
 	p2p_hex(digest, 8, expected_id);
 	CHECK(strlen(key_id) == 16 && !strcmp(key_id, expected_id), "the key's id %s", key_id);
+	/* (a key for each server, from the admin secret: one server's again the
+	same, two servers' two that are not the player key's) */
+	{
+		unsigned char secret[PLAYER_LINK_ADMIN_SECRET_SIZE], server_a[32], server_b[32];
+		unsigned char seed_a[32], seed_b[32], again[32], key_a[32], key_b[32];
+		char id_a[17], id_b[17];
+
+		memset(secret, 0x11, sizeof(secret));
+		memset(server_a, 0xA0, sizeof(server_a));
+		memset(server_b, 0xA0, sizeof(server_b));
+		server_b[31] = 0xA1;
+		player_link_admin_seed(secret, server_a, seed_a);
+		player_link_admin_seed(secret, server_a, again);
+		player_link_admin_seed(secret, server_b, seed_b);
+		CHECK(!memcmp(seed_a, again, 32), "one server's key changes");
+		p2p_ed25519_public(seed_a, key_a, NULL);
+		p2p_ed25519_public(seed_b, key_b, NULL);
+		player_link_key_id(key_a, id_a);
+		player_link_key_id(key_b, id_b);
+		CHECK(strcmp(id_a, id_b) && memcmp(key_a, key_b, 32), "two servers see one id: %s", id_a);
+		CHECK(memcmp(key_a, key, 32) && memcmp(seed_a, secret, 32), "a server sees the secret's own key");
+		secret[0] ^= 1;
+		player_link_admin_seed(secret, server_a, again);
+		CHECK(memcmp(seed_a, again, 32), "another machine's secret gives the same key");
+		/* (and its proof checks for that server's key) */
+		player_link_admin_message(nonce, binding, message);
+		p2p_ed25519_sign(seed_a, key_a, message, (int)sizeof(message), signature);
+		CHECK(player_link_admin_check(key_a, nonce, binding, signature), "a server's key's proof does not check");
+		CHECK(!player_link_admin_check(key_b, nonce, binding, signature), "another server's key's checks");
+	}
 }
 
 int main(int argc, char **argv)

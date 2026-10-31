@@ -1346,7 +1346,7 @@ static const struct config_setting config_settings[] =
 		"none." },
 	{ "server.admins", _config_string, "\"\"", "HALO_SERVER_ADMINS", _environment_value, _platform_server,
 		"The players who get Host Controls in the game (beside admins.txt's):\n"
-		"their player keys (64 hex digits) or key ids (16), separated by commas.\n"
+		"their admin keys (64 hex digits) or key ids (16), separated by commas.\n"
 		"sv_admin lists the players' key ids. Empty for none." },
 	{ "server.game_mode", _config_string, "\"openh1_120\"", "HALO_SERVER_GAME_MODE", _environment_value,
 		_platform_server,

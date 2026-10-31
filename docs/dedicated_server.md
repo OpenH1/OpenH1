@@ -341,13 +341,28 @@ admin role, as the web page's and the RCON's are; so it is logged and is an
 event as those are, and the players see what the command shows them (its
 notices, a kicked player's leaving). Several players may be admins.
 
-An admin is a player key, not a password. Each OpenH1 game proves its
-player key to the server as it joins (an OpenH1 game of this version, in an
-OpenH1 game: `server.game_mode` not `legacy`): the server sends it a nonce,
-and the game signs it, bound to its connection, with its key (`player.key`
-beside its `config.toml`, the key a Discord link uses, made if there is
-none). A key is never taken on the game's word, and its proof is good for
-that connection alone. A game that proved a key listed in `admins.txt` (in
+An admin is a key, not a password. Each OpenH1 game proves a key of its
+own for this server to the server as it joins (an OpenH1 game of this
+version, in an OpenH1 game: `server.game_mode` not `legacy`): the server
+sends it the server's id (`admin_id.txt`, beside `admins.txt`, made at
+random the first time: keep it, as the admins' keys come from it) and a
+nonce, and the game signs the nonce, bound to its connection, with a key
+it makes for that server id alone from a secret of its own (`admin.key`
+beside its `config.toml`, made the first time a server asks: not the
+player key a Discord link uses, which is never shown). A key is never taken
+on the game's word, and its proof is good for that connection alone.
+
+For the players' privacy, one player's key differs from server to server,
+and says nothing of their Discord account or player key: servers cannot
+tell, by it, that two of their players are one. A server that claimed
+another's id would learn the player's key there, not more; the key is no
+password, and a proof is bound to the nonce and the connection it was
+made for (an internet play tunnel's secret: on a LAN, where there is none,
+keep `server.admins` to the LAN's players). A player who moves to another
+computer, or loses `admin.key`, has a new key, which the owner makes an
+admin again.
+
+A game that proved a key listed in `admins.txt` (in
 `paths.logs`, else the data root, beside `bans.txt`: a key of 64 hex digits
 or a key id of 16 a line, anything after it on the line a name, `#`
 beginning a comment) or in `server.admins` (keys or key ids, separated by
@@ -359,15 +374,14 @@ The owner makes a player an admin:
   game proved a key (the players' `key_id`, the owner's to see), and
   **Remove admin**; the players list marks admins;
 - by `sv_admin add <player>` (standard input, the owner's RCON or `POST
-  /api/command`), which writes the key their game proved to `admins.txt` with
+  /api/command`), which writes the key their game proved here to `admins.txt` with
   their name; `sv_admin add <key>` adds a key given; `sv_admin remove
   <player|key|key id>` takes it out; `sv_admin` lists `admins.txt`,
   `server.admins` and each player's key id;
 - or in `server.admins`, or `admins.txt` by hand.
 
-A player finds their own key id with the console's `admin` (which says too
-whether the server they play on has them an admin), and the log says it as
-the game makes a key.
+A player finds their own key id for the server they play on with the
+console's `admin` (which says too whether that server has them an admin).
 
 What an admin's Host Controls do, and the command each runs:
 
@@ -801,7 +815,7 @@ the entry after the one played last (the first while none has been).
 A player is
 `{"slot":0,"name":"Milenko","team":0,"score":3,"kills":3,"deaths":1,"assists":0,"ping":42,"machine":1,"joined":1760899000,"muted":false,"admin":false}`
 (`admin`: an admin in the game, "Admins in the game"; with the owner role,
-also `key_id`, the player key their game proved, `""` for none);
+also `key_id`, the key their game proved to this server, `""` for none);
 with the owner role, or `server.log_addresses`, also
 `"address":"203.0.113.5","hwid":"…"`. `team` is 0 (red), 1 (blue) or -1
 (no teams); `ping` is in milliseconds, `null` when it is not known yet.
@@ -1082,7 +1096,7 @@ lists;
 | `publisher.key` | The publisher key for the master servers (beside `config.toml`). On Windows, a server's `config.toml` and `publisher.key` are given an access list of their owner alone (the entries inherited for Administrators and SYSTEM taken out) |
 | `masters.txt` | The master servers (`server.masters_file`: beside `config.toml`, else beside the executable); one that names none leaves the official master, built in |
 | `bans.txt`, `cheaters.txt`, `debug.txt` | In `paths.logs`, else the data root |
-| `admins.txt` | Beside `bans.txt`: the players' keys (or key ids) who are admins in the game ("Admins in the game") |
+| `admins.txt`, `admin_id.txt` | Beside `bans.txt`: the players' keys (or key ids) who are admins in the game, and the server's id their keys for it are made from ("Admins in the game") |
 | `vpn_allow.txt`, `vpn_block.txt`, `netlist-<master key id>.bin` | Beside `bans.txt`: ranges never refused as a VPN's, ranges refused besides, and the masters' netlists held ("VPNs and linked Discord accounts") |
 | `status.json` (`server.status_file`) | The status, written every 2 seconds |
 | A password's file (`HALO_SERVER_WEB_PASSWORD_FILE`, `HALO_SERVER_WEB_OWNER_PASSWORD_FILE`, `HALO_SERVER_WEB_MODERATOR_PASSWORD_FILE`, `HALO_SERVER_WEB_VIEWER_PASSWORD_FILE`, `HALO_SERVER_PASSWORD_FILE`) | A container's secret: when the plain variable is not set, the file's first line (its CR and LF off) is the setting's value, which is then pinned as the plain variable's would be (`sv_set` and `PUT /api/settings` refuse it, `409 pinned`). Read once, at the start; a file that cannot be read is logged, and the setting is `config.toml`'s |

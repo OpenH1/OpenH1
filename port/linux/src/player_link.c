@@ -188,6 +188,15 @@ void player_link_admin_message(const unsigned char *nonce, const unsigned char *
 	memcpy(message + 20 + PLAYER_LINK_NONCE_SIZE, binding, PLAYER_LINK_BINDING_SIZE);
 }
 
+void player_link_admin_seed(const unsigned char *secret, const unsigned char *server_id, unsigned char *seed)
+{
+	unsigned char data[18 + PLAYER_LINK_SERVER_ID_SIZE];
+
+	memcpy(data, "openh1-admin-key-1", 18);
+	memcpy(data + 18, server_id, PLAYER_LINK_SERVER_ID_SIZE);
+	p2p_hmac_sha256(secret, PLAYER_LINK_ADMIN_SECRET_SIZE, data, (int)sizeof(data), seed);
+}
+
 int player_link_admin_check(const unsigned char *public_key, const unsigned char *nonce,
 	const unsigned char *binding, const unsigned char *signature)
 {
@@ -957,38 +966,89 @@ int player_link_master_state(int master_index, char *host, int host_size, char *
 	return state;
 }
 
-int player_link_admin_sign(unsigned long host_virtual_address, const unsigned char *nonce, unsigned char *public_key,
-	unsigned char *signature)
+/* the admin secret (admin.key beside config.toml: 64 hex digits), read, or
+made the first time a dedicated server asks for a proof; 1 with it. Its own,
+not the player key's: what it proves to one server says nothing of the
+player elsewhere */
+static int admin_secret(unsigned char *secret)
+{
+	static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+	static unsigned char kept[PLAYER_LINK_ADMIN_SECRET_SIZE];
+	static int has_secret;
+	char path[1100];
+	int result = 0;
+
+	pthread_mutex_lock(&lock);
+	if (!has_secret)
+	{
+		size_t size;
+		char *text;
+
+		file_path("admin.key", path, sizeof(path));
+		text = config_file_read(path, &size);
+		if (text)
+		{
+			const char *line = text;
+			int index;
+
+			/* (its first line that is not a comment) */
+			while (*line == '#')
+				line += strcspn(line, "\n") + (line[strcspn(line, "\n")] ? 1 : 0);
+			for (index = 0; index < PLAYER_LINK_ADMIN_SECRET_SIZE; index++)
+			{
+				int high = hex_digit(line[2 * index]), low = high >= 0 ? hex_digit(line[2 * index + 1]) : -1;
+
+				if (high < 0 || low < 0)
+					break;
+				kept[index] = (unsigned char)(high << 4 | low);
+			}
+			has_secret = index == PLAYER_LINK_ADMIN_SECRET_SIZE;
+			memset(text, 0, size);
+			free(text);
+		}
+		if (!has_secret)
+		{
+			char hex[2 * PLAYER_LINK_ADMIN_SECRET_SIZE + 1];
+			char contents[512];
+
+			posix_random_bytes(kept, sizeof(kept));
+			p2p_hex(kept, PLAYER_LINK_ADMIN_SECRET_SIZE, hex);
+			snprintf(contents, sizeof(contents),
+				"# This machine's secret for dedicated servers' admins: each server is shown a key\n"
+				"# made from it for that server alone, which its owner may make an admin. Keep it.\n%s\n", hex);
+			has_secret = write_file(path, contents, (unsigned long)strlen(contents));
+			memset(hex, 0, sizeof(hex));
+			memset(contents, 0, sizeof(contents));
+			platform_log(has_secret ? "admin: made %s" : "admin: cannot write %s", path);
+		}
+	}
+	if (has_secret)
+	{
+		memcpy(secret, kept, PLAYER_LINK_ADMIN_SECRET_SIZE);
+		result = 1;
+	}
+	pthread_mutex_unlock(&lock);
+	return result;
+}
+
+int player_link_admin_sign(unsigned long host_virtual_address, const unsigned char *server_id,
+	const unsigned char *nonce, unsigned char *public_key, unsigned char *signature)
 {
 	unsigned char binding[PLAYER_LINK_BINDING_SIZE];
 	unsigned char message[PLAYER_LINK_ADMIN_MESSAGE_SIZE];
-	char key_id[2 * PLAYER_LINK_KEY_ID_SIZE + 1];
-	int made = 0;
+	unsigned char secret[PLAYER_LINK_ADMIN_SECRET_SIZE];
+	unsigned char seed[P2P_SEED_SIZE];
 
+	if (!admin_secret(secret))
+		return 0;
 	if (!host_virtual_address || !p2p_peer_binding(host_virtual_address, binding))
 		player_link_binding(NULL, binding);
 	player_link_admin_message(nonce, binding, message);
-	pthread_mutex_lock(&player.lock);
-	/* (the key read if the link's thread has not read it yet; made if there
-	is none, as a link makes it: a server's owner names it to make its
-	player an admin) */
-	if (!player.has_key)
-		player.has_key = read_key();
-	if (!player.has_key)
-	{
-		player.has_key = make_key();
-		made = player.has_key;
-	}
-	if (!player.has_key)
-	{
-		pthread_mutex_unlock(&player.lock);
-		return 0;
-	}
-	memcpy(public_key, player.public_key, PLAYER_LINK_KEY_SIZE);
-	p2p_ed25519_sign(player.seed, player.public_key, message, (int)sizeof(message), signature);
-	pthread_mutex_unlock(&player.lock);
-	player_link_key_id(public_key, key_id);
-	if (made)
-		platform_log("admin: made a player key, id %s", key_id);
+	/* (the key for this server alone) */
+	player_link_admin_seed(secret, server_id, seed);
+	p2p_ed25519_public(seed, public_key, NULL);
+	p2p_ed25519_sign(seed, public_key, message, (int)sizeof(message), signature);
+	memset(secret, 0, sizeof(secret));
+	memset(seed, 0, sizeof(seed));
 	return 1;
 }

@@ -258,7 +258,7 @@ void server_status_player(
 			server_json_boolean(json, "discord_verified", verified);
 		}
 	}
-	/* (an admin in the game: its player key proven, and listed; the key's id
+	/* (an admin in the game: its admin key for this server proven, and listed; the key's id
 	the owner's to see, who makes admins: network_admin.c) */
 	{
 		char key_id[NETWORK_ADMIN_KEY_ID_TEXT_SIZE];

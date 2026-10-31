@@ -595,8 +595,10 @@ bans`, `host_controls bots`, `host_controls rules`, `host_controls players <name
 `host_controls restart` end or restart the round, and `host_controls unban
 <name>` unbans. Clients have none of it, but a dedicated server's admins.
 
-A dedicated server's owner may make players admins, by the player key their
-game proves to the server as it joins (`docs/dedicated_server.md`, "Admins in
+A dedicated server's owner may make players admins, by the key their game
+proves to that server as it joins (a key for that server alone, made from
+`admin.key` beside `config.toml`, so that servers cannot tell one player
+apart from server to server) (`docs/dedicated_server.md`, "Admins in
 the game": the server's web page, `sv_admin`, `admins.txt`, `server.admins`).
 An admin has HOST CONTROLS in the server's game (the pause menu, the
 lobby's, the scoreboard's Kick, Ban and Move to the other team): PLAYERS,
@@ -605,7 +607,7 @@ TEAMS, ANNOUNCE..., LOCK TEAMS), MAPS, PLAYLIST (the server's rotation) and
 BANS, which show the server's game and ask the server for each change, which
 it runs as its own command (a refusal is said in the panel). The server's
 settings, bots and rules are its owner's. The console's `admin` says whether
-the server has you an admin and your player key's id (which the owner names
+the server has you an admin and your key's id there (which the owner names
 in `server.admins`), and `admin map <map[:gametype]>`, `admin map_after`,
 `admin rotation_add`, `admin end`, `admin restart` and `admin say <words>`
 ask the server as Host Controls does. The pause menu takes HOST CONTROLS as
@@ -995,7 +997,7 @@ the setting for one start of the game. It has priority over the file.
 | `server.empty_seconds` | `30` | `HALO_SERVER_EMPTY_SECONDS` | The seconds a game with nobody in it goes on before it ends. `0`: it does not end. A game whose last player leaves ends at once, as the game ends it. |
 | `server.idle_minutes` | `0` | `HALO_SERVER_IDLE_MINUTES` | The minutes a game goes on with no score before it ends. `0`: it does not end. |
 | `server.team_start` | `"one"` | `HALO_SERVER_TEAM_START` | A team game. `"one"`: it starts with the players of one team (the next players to join balance the teams). `"both"`: it waits, saying nothing, for a player on each team. `"skip"`: while one player waits, a team game (not one `sv_map` asked for) gives way to the rotation's next entry without teams, if it has one; checked when the lobby opens and again when its countdown would begin. |
-| `server.admins` | `""` | `HALO_SERVER_ADMINS` | The players who get Host Controls in the game, beside `admins.txt`'s: their player keys (64 hex digits) or key ids (16), separated by commas (`sv_admin` lists the players' key ids). Empty: none. docs/dedicated_server.md, "Admins in the game". |
+| `server.admins` | `""` | `HALO_SERVER_ADMINS` | The players who get Host Controls in the game, beside `admins.txt`'s: their keys for this server (64 hex digits) or key ids (16), separated by commas (`sv_admin` lists the players' key ids). Empty: none. docs/dedicated_server.md, "Admins in the game". |
 | `server.motd` | `""` | `HALO_SERVER_MOTD` | A notice each machine sees when it joins (127 characters). Empty: none. |
 | `server.game_mode` | `"openh1_120"` | `HALO_SERVER_GAME_MODE` | The games the server hosts: `"openh1_120"` or `"openh1_60"` (or `"openh1_30"`), an OpenH1 game at that tick rate, which OpenCE players join too at 30 while `network.allow_opence` is `true`; `"legacy"`, OpenCE's netcode at 30 ticks a second for everyone. A change waits for the server to be empty, in its lobby. Refer to "OpenH1 games" in `docs/dedicated_server.md`. |
 | `server.frame_rate` | `60` | `HALO_SERVER_FRAME_RATE` | The frames a second (30 to 120): how often the server reads what its clients send, sends its own and runs what is due of the game's ticks (and an OpenH1 game's sub-steps). An OpenH1 game's frames come at least as often as its tick rate. A server with no other machine runs 10 frames a second. |

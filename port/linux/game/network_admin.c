@@ -3,7 +3,7 @@ NETWORK_ADMIN.C
 
 A dedicated server's admins in the game (network_admin.h;
 docs/dedicated_server.md, "Admins in the game"; port/linux/NETCODE.md). A
-player who plays on a dedicated server whose owner made their player key an
+player who plays on a dedicated server whose owner made their admin key an
 admin (admins.txt, server.admins, sv_admin, the web page) gets the pause
 menu's and the scoreboard's HOST CONTROLS, as a player who hosts has them:
 its screens show the server's game, and what the admin does there is a
@@ -12,12 +12,15 @@ admin role, as the web page's and the RCON's are. Owner's commands (the
 server's settings and passwords, stopping it) are never asked.
 
 - The key is proven, never claimed: the server sends each OpenH1 machine of
-  its game a nonce of its own (_network_admin_down_challenge), and the
-  machine signs "openh1-admin-proof-1", the nonce and its connection's
-  binding (the internet play tunnel's session secret, as a Discord pass's
-  proof is bound: player_link.c) with its player key (made if it has none).
-  The server checks the signature; a machine that proved its key is an admin
-  while the key (or its id) is in admins.txt or server.admins.
+  its game its id (a random one it keeps, admin_id.txt) and a nonce of its
+  own (_network_admin_down_challenge), and the machine signs
+  "openh1-admin-proof-1", the nonce and its connection's binding (the
+  internet play tunnel's session secret, as a Discord pass's proof is bound:
+  player_link.c) with a key made for that server alone from its admin
+  secret (admin.key, made as the first server asks): no two servers see one
+  player's same key, and none sees the admin key. The server checks the
+  signature; a machine that proved its key is an admin while the key (or its
+  id) is in admins.txt or server.admins.
 - The server tells each admin's machine the game once a second
   (_network_admin_down_state, then its players), and the lists (maps,
   gametypes, the rotation, the bans) when it asks; and the answer to each
@@ -112,6 +115,7 @@ enum
 };
 
 #define ADMINS_FILE "d:\\admins.txt"
+#define ADMIN_ID_FILE "d:\\admin_id.txt"
 
 /* the messages' kinds */
 enum
@@ -139,6 +143,8 @@ struct admin_wire_challenge
 	byte format;
 	byte kind;
 	byte pad[2];
+	/* the server's id, which the machine's key for it is made from */
+	byte server_id[PLAYER_LINK_SERVER_ID_SIZE];
 	byte nonce[PLAYER_LINK_NONCE_SIZE];
 };
 
@@ -227,7 +233,7 @@ struct admin_wire_result
 	char text[NETWORK_ADMIN_RESULT_SIZE];
 };
 
-typedef char admin_wire_challenge_size_assert[sizeof(struct admin_wire_challenge) == 36 ? 1 : -1];
+typedef char admin_wire_challenge_size_assert[sizeof(struct admin_wire_challenge) == 68 ? 1 : -1];
 typedef char admin_wire_proof_size_assert[sizeof(struct admin_wire_proof) == 100 ? 1 : -1];
 typedef char admin_wire_request_size_assert[sizeof(struct admin_wire_request) == 156 ? 1 : -1];
 typedef char admin_wire_state_size_assert[sizeof(struct admin_wire_state) == 264 ? 1 : -1];
@@ -548,7 +554,55 @@ static struct
 	unsigned long told_at;
 	/* admins.txt as last read */
 	char file[ADMIN_FILE_SIZE];
+	/* the server's id (admin_id.txt), read or made once */
+	boolean has_id;
+	byte id[PLAYER_LINK_SERVER_ID_SIZE];
 } admin_server;
+
+/* the server's id: admin_id.txt's 64 hex digits, made at random the first
+time, so that each player's key for the server is the same from run to run */
+static void admin_server_id(
+	void)
+{
+	FILE *file;
+	char text[2 * PLAYER_LINK_SERVER_ID_SIZE + 8] = "";
+	short index;
+
+	if (admin_server.has_id)
+		return;
+	if ((file = fopen(ADMIN_ID_FILE, "r")) != NULL)
+	{
+		if (!fgets(text, sizeof(text), file))
+			text[0] = 0;
+		fclose(file);
+	}
+	for (index = 0; index < PLAYER_LINK_SERVER_ID_SIZE; index++)
+	{
+		char pair[3] = { text[2 * index], text[2 * index + 1], 0 };
+
+		if (!admin_hex_digit(pair[0]) || !admin_hex_digit(pair[1]))
+			break;
+		admin_server.id[index] = (byte)strtoul(pair, NULL, 16);
+	}
+	if (index < PLAYER_LINK_SERVER_ID_SIZE)
+	{
+		static char const digits[] = "0123456789abcdef";
+		char path[1024];
+
+		posix_random_bytes(admin_server.id, sizeof(admin_server.id));
+		for (index = 0; index < PLAYER_LINK_SERVER_ID_SIZE; index++)
+		{
+			text[2 * index] = digits[admin_server.id[index] >> 4];
+			text[2 * index + 1] = digits[admin_server.id[index] & 15];
+		}
+		text[2 * PLAYER_LINK_SERVER_ID_SIZE] = '\n';
+		text[2 * PLAYER_LINK_SERVER_ID_SIZE + 1] = 0;
+		platform_translate_path(ADMIN_ID_FILE, path, sizeof(path));
+		if (!posix_server_write_file(path, text, (unsigned long)strlen(text)))
+			server_log(_server_log_warning, "server", "admin_id.txt cannot be written: admins' keys change each run");
+	}
+	admin_server.has_id = TRUE;
+}
 
 void network_admin_machine_joined(
 	long machine_index)
@@ -646,6 +700,8 @@ static void admin_send_challenge(
 	admin_fill_header(&message.header, _distributed_message_admin_down, (word)sizeof(message));
 	message.challenge.format = ADMIN_FORMAT;
 	message.challenge.kind = _network_admin_down_challenge;
+	admin_server_id();
+	csmemcpy(message.challenge.server_id, admin_server.id, sizeof(message.challenge.server_id));
 	csmemcpy(message.challenge.nonce, admin_machines[machine_index].nonce, sizeof(message.challenge.nonce));
 	if (network_distributed_server_send_to_machine_reliably(machine_index, &message, (word)sizeof(message)))
 		admin_machines[machine_index].challenged = TRUE;
@@ -1042,7 +1098,7 @@ static void admin_server_proof(
 		network_link_machine_virtual_address(machine_index), proof->signature))
 	{
 		admin_machine_name(machine_index, name, sizeof(name));
-		server_log(_server_log_info, "player", "%s's player key proof does not check", name);
+		server_log(_server_log_info, "player", "%s's admin key proof does not check", name);
 		return;
 	}
 	admin_machines[machine_index].proven = TRUE;
@@ -1062,7 +1118,7 @@ static void admin_server_proof(
 	admin_machines[machine_index].admin = admin_key_listed(admin_machines[machine_index].key_hex,
 		admin_machines[machine_index].key_id);
 	admin_machine_name(machine_index, name, sizeof(name));
-	server_log(_server_log_info, "player", "%s proved player key %s%s", name, admin_machines[machine_index].key_id,
+	server_log(_server_log_info, "player", "%s proved admin key %s%s", name, admin_machines[machine_index].key_id,
 		admin_machines[machine_index].admin ? ": an admin" : "");
 	/* (told at once) */
 	admin_server.told_at = 0;
@@ -1173,14 +1229,14 @@ boolean network_admin_add(
 	why[0] = 0;
 	if (strlen(key_hex) != 64)
 	{
-		snprintf(why, (size_t)why_size, "a player key is 64 hex digits");
+		snprintf(why, (size_t)why_size, "a admin key is 64 hex digits");
 		return FALSE;
 	}
 	for (index = 0; index < 64; index++)
 	{
 		if (!admin_hex_digit(key_hex[index]))
 		{
-			snprintf(why, (size_t)why_size, "a player key is 64 hex digits");
+			snprintf(why, (size_t)why_size, "a admin key is 64 hex digits");
 			return FALSE;
 		}
 		lowered[index] = admin_lower(key_hex[index]);
@@ -1310,7 +1366,7 @@ static struct
 	boolean result_waiting;
 	boolean result_ok;
 	char result[NETWORK_ADMIN_RESULT_SIZE];
-	/* the player key's id this machine proved to the server */
+	/* the admin key's id this machine proved to the server */
 	char key_id[NETWORK_ADMIN_KEY_ID_TEXT_SIZE];
 } admin_client;
 
@@ -1526,8 +1582,8 @@ static void admin_client_challenge(
 	} message;
 
 	csmemset(&message, 0, sizeof(message));
-	if (!player_link_admin_sign(admin_host_virtual_address(), challenge->nonce, message.proof.key,
-		message.proof.signature))
+	if (!player_link_admin_sign(admin_host_virtual_address(), challenge->server_id, challenge->nonce,
+		message.proof.key, message.proof.signature))
 	{
 		return;
 	}
@@ -1569,7 +1625,7 @@ boolean network_admin_console(
 	/* (alone: whether this machine is an admin here, and its key's id) */
 	if (!*expression || *expression == ')')
 	{
-		console_printf(FALSE, "admin: %s (player key %s)", network_admin_remote() ? "an admin of this server" :
+		console_printf(FALSE, "admin: %s (admin key %s)", network_admin_remote() ? "an admin of this server" :
 			"not an admin here", admin_client.key_id[0] ? admin_client.key_id : "not proven to this host");
 		*result = TRUE;
 		return TRUE;
@@ -1825,8 +1881,8 @@ void network_admin_handle_message(
 				TEST_FLAG(admin_client.state.flags, _network_admin_flag_admin))
 			{
 				platform_log(TEST_FLAG(state.flags, _network_admin_flag_admin) ?
-					"admin: the server made this machine an admin (player key %s): Host Controls" :
-					"admin: the server no longer has this machine an admin (player key %s)", admin_client.key_id);
+					"admin: the server made this machine an admin (admin key %s): Host Controls" :
+					"admin: the server no longer has this machine an admin (admin key %s)", admin_client.key_id);
 			}
 			admin_client.state.flags = state.flags;
 			admin_client.state.rate = state.rate;
