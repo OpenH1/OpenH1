@@ -698,6 +698,9 @@ typedef char screenshot_and_framerate_globals_size_assert[
 void network_test_update(boolean main_menu_loaded, real seconds);
 /* port: port/linux/game/network_distributed.c */
 void network_distributed_frame_received(void);
+/* port: port/linux/game/network_clock.c */
+boolean network_clock_server_pace_first(void);
+boolean network_clock_server_paced(void);
 /* port: port/linux/src/port_config.c */
 double config_real(const char *name);
 #ifdef HALO_VR
@@ -3714,6 +3717,12 @@ void main_loop(
 				}
 				previous_network_frame_milliseconds = now;
 			}
+			/* port: a dedicated server of an OpenH1 game waits for its frame's
+			time before it reads its datagrams, not after: what came meanwhile
+			is read before the tick the frame runs, which its clients' clocks
+			time their input for (port/linux/game/network_clock.c) */
+			if (halo_server_mode() && network_clock_server_pace_first())
+				server_mode_pace_frame();
 			profile_scope_enter(main_network_start_frame_section)
 			connection = main_globals.connection;
 			if (connection==_game_connection_network_client)
@@ -3756,7 +3765,9 @@ void main_loop(
 			display to wait for (port/linux/src/server_mode.c) */
 			if (halo_server_mode())
 			{
-				server_mode_pace_frame();
+				/* port: (unless it waited before its reads, above) */
+				if (!network_clock_server_paced())
+					server_mode_pace_frame();
 				profile_scope(main_update_time_section, main_update_time_unthrottled();)
 			}
 			else

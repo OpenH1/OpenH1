@@ -74,6 +74,7 @@ machine (their datum identifiers need not be).
 #include "units/units.h"
 #include "units/biped_definitions.h"
 #include "units/bipeds.h"
+#include "network_clock.h"
 #include "network_coop.h"
 #include "network_distributed.h"
 #include "network_link.h"
@@ -142,10 +143,13 @@ void console_warning(const char *format, ...);
 /* the host: a client's game run faster than its clock (a speed hack, which
 speeds up the machine's own clock: nothing on it can tell), found by its
 ticks, which its messages are stamped with, going by faster than the
-host's own clock's time, and ahead of the host's (a client's clock never
-is: it starts at the host's, and only ever jumps forward to it, when it is
-behind; a host that stalled has every client ahead, their ticks going by as
-fast as time). Measured over each window this long (milliseconds)... */
+host's own clock's time, and ahead of the host's (a client's clock is not
+much: it starts at the host's, and only ever jumps forward to it, when it is
+behind; an OpenH1 game's leads it by its trip there, no more than
+CLOCK_LEAD_LIMIT_TICKS ahead of the host's latest it has heard,
+network_clock.c; a host that stalled has every client ahead, their ticks
+going by as fast as time). Measured over each window this long
+(milliseconds)... */
 #define CLIENT_CLOCK_WINDOW_MILLISECONDS 2000
 /* ... faster than this many times as fast as time, and this many ticks
 ahead of the host at its end: its players' predictions not taken (the
@@ -1045,6 +1049,9 @@ void network_distributed_tick_begun(
 	/* (the tests' reports: the input each player's unit takes this tick) */
 	csmemcpy(distributed_divergence.input_time, distributed_divergence.input_heard_time,
 		sizeof(distributed_divergence.input_time));
+	/* (the host: when its tick of each number began, which its OpenH1
+	clients' inputs are timed against: network_clock.c) */
+	network_clock_tick_begun();
 }
 
 boolean distributed_prediction_at_tick_start(
@@ -1765,6 +1772,7 @@ static boolean distributed_machine_loaded(
 	csmemset(distributed_viewers[machine_index], 0, sizeof(distributed_viewers[machine_index]));
 	csmemset(&distributed_client_clocks[machine_index], 0, sizeof(distributed_client_clocks[machine_index]));
 	distributed_client_clocks[machine_index].window_tick = NONE;
+	network_clock_machine_reset(machine_index);
 	csmemset(&distributed_client_identities[machine_index], 0, sizeof(distributed_client_identities[machine_index]));
 	csmemset(&distributed_client_builds[machine_index], 0, sizeof(distributed_client_builds[machine_index]));
 	distributed_client_build_known[machine_index] = FALSE;
@@ -3441,6 +3449,7 @@ static void distributed_handle_inputs(
 	short count)
 {
 	long host_time = NONE;
+	long heard_tick = NONE;
 	short index;
 
 	for (index = 0; index < count; index++)
@@ -3490,7 +3499,13 @@ static void distributed_handle_inputs(
 		}
 		if (input->host_time != NONE && (host_time == NONE || input->host_time > host_time))
 			host_time = input->host_time;
+		if (heard_tick == NONE || input->tick > heard_tick)
+			heard_tick = input->tick;
 	}
+	/* (an OpenH1 client's: how long before the host's tick of its number its
+	input came, network_clock.c) */
+	if (heard_tick != NONE)
+		network_clock_input_heard(machine_index, heard_tick);
 	if (host_time != NONE && machine_index >= 0 && machine_index < HALO_PORT_MAXIMUM_NETWORK_MACHINES)
 	{
 		long sample = game_time_get() - host_time;
@@ -3828,6 +3843,8 @@ static void distributed_forward_flush(
 void network_distributed_frame_received(
 	void)
 {
+	/* (the frame its clients' inputs were read in: network_clock.c) */
+	network_clock_frame_read();
 	distributed_forward_flush();
 }
 
@@ -4635,6 +4652,7 @@ void network_distributed_new_game(
 		for (machine_index = 0; machine_index < HALO_PORT_MAXIMUM_NETWORK_MACHINES; machine_index++)
 			distributed_client_clocks[machine_index].window_tick = NONE;
 	}
+	network_clock_new_game();
 	csmemset(distributed_seen, 0, sizeof(distributed_seen));
 	csmemset(distributed_viewers, 0, sizeof(distributed_viewers));
 	csmemset(distributed_sends, 0, sizeof(distributed_sends));
@@ -4796,6 +4814,8 @@ void network_distributed_tick(
 		/* (a mixed game's: its OpenCE players, to its OpenH1 clients) */
 		network_standard_host_tick();
 		network_afk_host_tick();
+		/* (each OpenH1 client's word on its clock, once a second) */
+		network_clock_host_tick();
 	}
 	else if (connection == _game_connection_network_client)
 	{
@@ -4826,6 +4846,9 @@ void network_distributed_tick(
 	profile_scope(distributed_tick_batches_flush_section, distributed_batches_flush();)
 	distributed_machines.in_tick = FALSE;
 	distributed_machines.valid = FALSE;
+	/* (a client: the ticks its clock skips to lead the host's, once this
+	tick's messages are sent: network_clock.c) */
+	network_clock_tick_ended();
 }
 
 /* whether a message's tick is near enough the latest had from its sender
@@ -5809,6 +5832,13 @@ void network_distributed_handle_message(
 	if (network_host_rules_handles_message(message, size))
 	{
 		network_host_rules_handle_message(machine_index, message, size, machine_index != NONE ?
+			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
+		return;
+	}
+	/* (the host's word on a client's clock: network_clock.c) */
+	if (network_clock_handles_message(message, size))
+	{
+		network_clock_handle_message(machine_index, message, size, machine_index != NONE ?
 			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
 		return;
 	}

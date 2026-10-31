@@ -81,6 +81,8 @@ symbols in this file:
 #include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 /* port/linux/game/network_distributed.c's */
 void network_distributed_tick(void);
+/* port: port/linux/game/network_clock.c */
+real network_clock_frame_seconds(real time_delta_sec);
 /* port: port/linux/game/determinism_log.c */
 void determinism_log_tick_begin(void);
 void determinism_log_tick_end(long tick);
@@ -228,6 +230,21 @@ void game_time_set_distributed(
 	game_time_globals->server_time = time;
 	game_time_globals->leftover_dt = 0.f;
 	game_time_port_drop_substeps();
+
+	return;
+}
+
+/* port: an OpenH1 game's client's clock moved on so many ticks between two,
+none of them run (port/linux/game/network_clock.c: its ticks lead the
+host's by its trip there); never back, which the host would take for old
+messages */
+void game_time_port_advance(
+	long ticks)
+{
+	if (!game_time_globals || !game_time_globals->initialized || ticks <= 0 || sim_substep_next())
+		return;
+	game_time_globals->local_time += ticks;
+	game_time_globals->server_time += ticks;
 
 	return;
 }
@@ -552,6 +569,10 @@ void game_time_update(
 			/* (the most ticks a frame runs, in sub-steps) */
 			connection *= substep_count;
 			game_time = time_delta_sec + game_time_globals->leftover_dt;
+			/* port: an OpenH1 game's client's clock run a little faster or
+			slower, or part of a tick at once, to lead the host's by its trip
+			there (port/linux/game/network_clock.c; none on another machine) */
+			game_time += network_clock_frame_seconds(time_delta_sec);
 			steps_elapsed_real = (real)floor(game_time*steps_per_second);
 			steps_elapsed = (long)(steps_elapsed_real <= (real)SOME_LARGE_NUMBER_OF_TICKS ?
 				steps_elapsed_real : (real)SOME_LARGE_NUMBER_OF_TICKS);
