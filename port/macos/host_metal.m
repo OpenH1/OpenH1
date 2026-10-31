@@ -208,6 +208,11 @@ static struct
 	link's rate was last set for it (the link's thread's) */
 	_Atomic int battery_saver;
 	int battery_saver_set;
+	/* (an iPhone) the link at half the display's rate while the frames do
+	not keep up with its full rate (rate_adapt, the link's thread's) */
+	int rate_halved;
+	uint32_t adapt_refreshes, adapt_repeats, adapt_good_windows;
+	double adapt_since, adapt_hold, adapt_hold_until;
 	/* the window went to a display of another rate (display_rate_read):
 	the link's rate is set again at its next refresh */
 	_Atomic int rate_changed;
@@ -959,6 +964,78 @@ static void take_wait(double when)
 @interface HaloDisplayLinkTarget : NSObject <CAMetalDisplayLinkDelegate>
 @end
 
+/* ---------- an iPhone's rate: 120 while the frames keep up, else 60
+
+A frame that misses its refresh at 120 Hz shows the one before for two
+refreshes: in a busy fight, a phone's GPU or its heat makes some of the
+frames late, and the picture judders between 8 and 17 ms steps. Half the
+rate shows every frame for two refreshes, evenly. Each second of play, the
+refreshes that showed no new frame (the game's own, not a loading screen)
+are counted: more than RATE_ADAPT_REPEATS of them at the full rate halves
+it; at half, the full rate is tried again after a hold that starts at
+RATE_ADAPT_HOLD seconds and doubles (to RATE_ADAPT_HOLD_MOST) at each
+try that fails, and starts again once the full rate has held for
+RATE_ADAPT_GOOD seconds. Battery saver's and HALO_METAL_RATE's rates are
+their own; HALO_METAL_ADAPTIVE_RATE=0: the full rate always. */
+
+#define RATE_ADAPT_REPEATS 0.10
+#define RATE_ADAPT_HOLD 5.0
+#define RATE_ADAPT_HOLD_MOST 80.0
+#define RATE_ADAPT_GOOD 10
+
+/* a refresh of the game's frames (shown: a new frame); whether the link's
+rate is to change */
+static BOOL rate_adapt(BOOL shown, double now)
+{
+#if TARGET_OS_IPHONE
+	static int enabled = -1;
+	double share;
+
+	if (enabled < 0)
+		enabled = !getenv("HALO_METAL_RATE") && (!getenv("HALO_METAL_ADAPTIVE_RATE") ||
+			atoi(getenv("HALO_METAL_ADAPTIVE_RATE")) != 0);
+	if (!enabled || presentation.battery_saver_set || presentation.refresh_rate < 90.0f)
+		return NO;
+	if (presentation.adapt_since == 0.0)
+		presentation.adapt_since = now;
+	presentation.adapt_refreshes++;
+	if (!shown)
+		presentation.adapt_repeats++;
+	if (now - presentation.adapt_since < 1.0)
+		return NO;
+	share = (double)presentation.adapt_repeats / (double)presentation.adapt_refreshes;
+	presentation.adapt_refreshes = presentation.adapt_repeats = 0;
+	presentation.adapt_since = now;
+	if (!presentation.rate_halved)
+	{
+		if (share <= RATE_ADAPT_REPEATS)
+		{
+			if (++presentation.adapt_good_windows >= RATE_ADAPT_GOOD)
+				presentation.adapt_hold = 0.0;
+			return NO;
+		}
+		presentation.adapt_good_windows = 0;
+		presentation.adapt_hold = presentation.adapt_hold > 0.0 ?
+			fmin(presentation.adapt_hold * 2.0, RATE_ADAPT_HOLD_MOST) : RATE_ADAPT_HOLD;
+		presentation.adapt_hold_until = now + presentation.adapt_hold;
+		presentation.rate_halved = 1;
+		host_logf(HOST_LOG_INFO, "metal: %.0f%% of a second's refreshes showed no new frame: the display link at %.0f Hz "
+			"(the full rate tried again in %.0f s)", share * 100.0, presentation.refresh_rate / 2.0f, presentation.adapt_hold);
+		return YES;
+	}
+	if (now < presentation.adapt_hold_until)
+		return NO;
+	presentation.rate_halved = 0;
+	presentation.adapt_good_windows = 0;
+	host_logf(HOST_LOG_INFO, "metal: the display link at %.0f Hz again", presentation.refresh_rate);
+	return YES;
+#else
+	(void)shown;
+	(void)now;
+	return NO;
+#endif
+}
+
 @implementation HaloDisplayLinkTarget
 
 - (void)metalDisplayLink:(CAMetalDisplayLink *)link needsUpdate:(CAMetalDisplayLinkUpdate *)update
@@ -1179,6 +1256,11 @@ static void take_wait(double when)
 			host_render_stream_frame_taken();
 		else if (latch_ns)
 			host_render_stream_display_latched(latch_ns, period_ns);
+		if (!idle && !loading_frame.active && rate_adapt(image != nil, now))
+		{
+			link.preferredFrameRateRange = link_rate_range(presentation.battery_saver_set);
+			memset(presentation.target_intervals, 0, sizeof(presentation.target_intervals));
+		}
 		if (!image && !idle && !loading_frame.active)
 		{
 			/* (the frame shown stays: nothing new to present) */
@@ -1372,6 +1454,14 @@ iPhone's is its highest alone: given a range, iOS chose 80 Hz on an iPhone
 static CAFrameRateRange link_rate_range(int saving)
 {
 	float rate = presentation.refresh_rate > 0.0f ? presentation.refresh_rate : 60.0f;
+
+#if TARGET_OS_IPHONE
+	if (presentation.rate_halved && !saving && !getenv("HALO_METAL_RATE"))
+	{
+		rate /= 2.0f;
+		return CAFrameRateRangeMake(rate, rate, rate);
+	}
+#endif
 
 	if (getenv("HALO_METAL_RATE"))
 		rate = (float)atof(getenv("HALO_METAL_RATE"));

@@ -270,7 +270,9 @@ The Metal backend is the macOS one. What differs:
   loading times say nothing of a device's; `HALO_METAL_STATS` logs the
   textures' bytes every 10 seconds.
 - The screen is a `UIScreen`: its refresh rate (ProMotion's 120 Hz), and
-  its EDR headroom for `display.hdr`.
+  its EDR headroom for `display.hdr`. The display link runs at 120 while
+  the frames keep up and at a steady 60 while they do not ("The window and
+  presentation" in [port/macos/README.md](../macos/README.md)).
 - The back buffer stays RGBA16F with `display.hdr` (not a 32-bit
   extended-range format): it holds the game's values in sRGB's curve past
   1 (the tone map's input, and after it up to the display's headroom),

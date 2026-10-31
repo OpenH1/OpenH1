@@ -403,7 +403,15 @@ render thread is), run by a `CAMetalDisplayLink`: at
 each refresh of the display, the link hands over a drawable, and the
 thread draws the oldest frame queued (with vsync off, the newest) into it,
 letterboxed to the frame's shape, and presents it. A ProMotion display's rate follows the frames, up
-to its highest; a fixed display's is its own. With battery saver on
+to its highest; a fixed display's is its own. An iPhone's link asks for
+its highest rate alone, and halves it while the frames do not keep up
+(`rate_adapt`): a second of play in which more than 10% of the refreshes
+showed no new frame (a fight the GPU or the phone's heat cannot hold at
+120) runs the link at 60, every frame then shown for two refreshes evenly,
+not some for one and some for two; the full rate is tried again after
+5 s, a hold that doubles (to 80 s) at each try that fails and starts again
+once 120 has held for 10 s. `HALO_METAL_ADAPTIVE_RATE=0`: the full rate
+always. With battery saver on
 (`display.battery_saver`, `host_metal_battery_saver`), the link runs at a
 whole fraction of the display's rate, 30 to 60 frames a second (60 at
 60 or 120 Hz: a ProMotion display slows to it). When a frame ends, its
