@@ -1466,16 +1466,15 @@ BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 	unsigned int position_out, point_size_out, color_outs[6], fog_out;
 	unsigned int world_normal_out = 0, world_position_out = 0, world_binormal_out = 0, world_tangent_out = 0;
 	unsigned int world_normal = 0, world_position = 0;
-	unsigned int clip_position = 0, view = 0, screen_points = 0;
+	unsigned int clip_position = 0, view = 0, screen_points = 0, centre_clip = 0, eye = 0;
 	BOOL environment = lighting && lighting->lights == XGPU_ENVIRONMENT_LIGHTING;
 	BOOL clip_captured = FALSE;
 	unsigned int one = 0;
 	int slot;
 	/* reversed depth: the point and the projection's rows its depth is the
-	dot products of (xgpu_vertex_program_depth_rows), in a draw of one view */
+	dot products of (xgpu_vertex_program_depth_rows) */
 	unsigned long depth_z = 0, depth_w = 0;
-	BOOL depth_rows = options->reversed_depth && !options->multiview &&
-		xgpu_vertex_program_depth_rows(program, &depth_z, &depth_w);
+	BOOL depth_rows = options->reversed_depth && xgpu_vertex_program_depth_rows(program, &depth_z, &depth_w);
 	unsigned int depth_point = 0, depth_z_row = 0, depth_w_row = 0;
 
 	module_begin(&m, EXECUTION_MODEL_VERTEX);
@@ -1638,14 +1637,17 @@ BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 
 	if (options->multiview)
 	{
-		unsigned int eye, correction, corrected;
+		unsigned int correction, corrected;
 		static const unsigned int xy_zw[4] = { 4, 5, 2, 3 };
 		static const unsigned int zw[2] = { 2, 3 };
 
 		view = view_number(&m, options->multiview, options->foveated);
 		eye = options->foveated ? op2(&m, OP_SHIFT_RIGHT_ARITHMETIC, m.t_int, view, constant_int(&m, 1)) : view;
 		if (clip_captured)
+		{
+			centre_clip = clip_position;
 			clip_position = eye_position(&m, eye, clip_position);
+		}
 		/* A point projected by the game follows its screen correction even
 		when the vertex program captured a clip position. */
 		screen_points = compare(&m, OP_F_UNORD_NOT_EQUAL, uniform(&m, U_SCREEN_POINTS, -1), constant_float(&m, 0.0f));
@@ -1725,6 +1727,30 @@ BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 					scale_parts[2]),
 					compare(&m, OP_F_ORD_EQUAL, extract(&m, vertex_constant(&m, constant_int(&m, XGPU_VERTEX_CONSTANT_BIAS - 37)), 2),
 					extract(&m, viewport_offset, 2)));
+				/* (an eye's: its correction's w row less its z row, e, times the
+				centre's clip position, with the centre's w - z for its z and w
+				parts, e.w (w - z) + (e.z + e.w) z + e.x x + e.y y: e is (0, 0,
+				-1, 1) but for the late latch's moves, whose terms are small; a
+				point the game projected to the screen itself keeps the
+				centre's depth) */
+				if (options->multiview && centre_clip)
+				{
+					unsigned int column = op2(&m, OP_I_MUL, m.t_int, eye, constant_int(&m, 4)), e[4], eye_z;
+					int part;
+
+					for (part = 0; part < 4; part++)
+					{
+						unsigned int correction = uniform_index(&m, U_EYE_CORRECTION, part ?
+							op2(&m, OP_I_ADD, m.t_int, column, constant_int(&m, part)) : column);
+
+						e[part] = fsub(&m, 1, extract(&m, correction, 3), extract(&m, correction, 2));
+					}
+					eye_z = fadd(&m, 1, fmul(&m, 1, e[3], rows_z), fmul(&m, 1, fadd(&m, 1, e[2], e[3]),
+						extract(&m, centre_clip, 2)));
+					eye_z = fadd(&m, 1, eye_z, fadd(&m, 1, fmul(&m, 1, e[0], extract(&m, centre_clip, 0)),
+						fmul(&m, 1, e[1], extract(&m, centre_clip, 1))));
+					rows_z = op3(&m, OP_SELECT, m.t_float, screen_points, rows_z, eye_z);
+				}
 				z = op3(&m, OP_SELECT, m.t_float, identity, rows_z, z);
 			}
 			z = fadd(&m, 1, z, fmul(&m, 1, uniform(&m, U_DEPTH_BIAS, -1), w));
@@ -2866,6 +2892,14 @@ static void effect_declare(struct module *m, struct pixel_state *state)
 	decorate1(m, state->effect_thickness, DECORATION_BINDING, XGPU_SPIRV_EFFECT_THICKNESS_BINDING);
 }
 
+/* a depth the target holds (gl_FragCoord's z, or the depth buffer's) as
+the game has it: the effects' unprojections are the game's (on reversed
+depth, 1 - it) */
+static unsigned int effect_game_depth(struct module *m, const struct xgpu_spirv_options *options, unsigned int depth)
+{
+	return options->reversed_depth ? fsub(m, 1, constant_float(m, 1.0f), depth) : depth;
+}
+
 /* the world point (a vec3) of a pixel's homogeneous unprojection */
 static unsigned int effect_point(struct module *m, unsigned int homogeneous)
 {
@@ -2919,7 +2953,7 @@ static unsigned int effect_prelude(struct module *m, struct pixel_state *state)
 			constant_int(m, column)) : first_column);
 	base = fadd(m, 4, fadd(m, 4, fscale(m, 4, columns[0], extract(m, frag, 0)), fscale(m, 4, columns[1],
 		extract(m, frag, 1))), columns[3]);
-	p = effect_point(m, fadd(m, 4, base, fscale(m, 4, columns[2], extract(m, frag, 2))));
+	p = effect_point(m, fadd(m, 4, base, fscale(m, 4, columns[2], effect_game_depth(m, options, extract(m, frag, 2)))));
 	/* the scene's depth behind the pixel, in the view's layer */
 	{
 		unsigned int sampled = load(m, type_sampled_image(m, DIM_2D, TRUE, FALSE, TRUE), state->effect_depth);
@@ -2931,7 +2965,7 @@ static unsigned int effect_prelude(struct module *m, struct pixel_state *state)
 		operands[1] = op(m, OP_COMPOSITE_CONSTRUCT, m->t_iv3, 2, parts);
 		operands[2] = IMAGE_OPERANDS_LOD;
 		operands[3] = constant_int(m, 0);
-		depth = extract(m, op(m, OP_IMAGE_FETCH, m->t_v4, 4, operands), 0);
+		depth = effect_game_depth(m, options, extract(m, op(m, OP_IMAGE_FETCH, m->t_v4, 4, operands), 0));
 	}
 	behind = fadd(m, 4, base, fscale(m, 4, columns[2], depth));
 	eye = xyz(m, uniform_index(m, U_EFFECT_EYE, view));
@@ -3027,7 +3061,8 @@ fade = clamp((to_scene - front) / span, 0.0, 1.0);    hidden = front >= to_scene
 static unsigned int effect_zsprite_fade(struct module *m, struct pixel_state *state, unsigned int *hidden)
 {
 	unsigned int frag = load(m, m->t_v4, state->frag_coord);
-	unsigned int front_depth = ext2(m, GLSL_F_MIN, m->t_float, state->replaced_depth, extract(m, frag, 2));
+	unsigned int front_depth = ext2(m, GLSL_F_MIN, m->t_float, state->replaced_depth,
+		effect_game_depth(m, state->options, extract(m, frag, 2)));
 	unsigned int front = ext1(m, GLSL_LENGTH, m->t_float, fsub(m, 3, effect_point(m, fadd(m, 4, state->effect_base,
 		fscale(m, 4, state->effect_column2, front_depth))), state->effect_eye));
 
@@ -3566,7 +3601,7 @@ static BOOL glow_pixel_shader(const struct xgpu_spirv_options *options, struct x
 		operands[1] = op(&m, OP_COMPOSITE_CONSTRUCT, m.t_iv3, 2, parts);
 		operands[2] = IMAGE_OPERANDS_LOD;
 		operands[3] = constant_int(&m, 0);
-		depth = extract(&m, op(&m, OP_IMAGE_FETCH, m.t_v4, 4, operands), 0);
+		depth = effect_game_depth(&m, options, extract(&m, op(&m, OP_IMAGE_FETCH, m.t_v4, 4, operands), 0));
 	}
 	behind = fadd(&m, 4, base, fscale(&m, 4, columns[2], depth));
 	far = op2(&m, OP_LOGICAL_OR, m.t_bool, compare(&m, OP_F_ORD_GREATER_THAN_EQUAL, depth, constant_float(&m, 1.0f)),

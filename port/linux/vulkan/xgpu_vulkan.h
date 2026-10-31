@@ -46,9 +46,10 @@ The core:
 - keeps depth reversed (xgpu_backend.h, "Reversed depth"), in a float
   format where the device has one (D32_SFLOAT_S8_UINT): the pipelines'
   depth functions mirrored, the clears and the depth range as 1 - them,
-  the constant depth bias the shaders' and the slope's turned; but in the
-  VR build (HALO_VR), whose eyes, effects, cockpit and compositor's depth
-  read depth as the game has it (XGPU_VULKAN_REVERSED_DEPTH 0).
+  the constant depth bias the shaders' and the slope's turned; in the VR
+  build (HALO_VR) too, whose eyes' passes, effects, cockpit, scope window,
+  rim and compositor's depth read and write it reversed
+  (host_vulkan_vr.c, xgpu_spirv.h's reversed_depth).
 
 Submissions are numbered by a timeline semaphore: xgpu_vulkan_fence ends the
 work recorded so far and returns its number, xgpu_vulkan_wait waits for it.
@@ -64,11 +65,7 @@ work recorded so far and returns its number, xgpu_vulkan_wait waits for it.
 #include <vulkan/vulkan_core.h>
 
 /* depth kept reversed (above) */
-#ifdef HALO_VR
-#define XGPU_VULKAN_REVERSED_DEPTH 0
-#else
 #define XGPU_VULKAN_REVERSED_DEPTH 1
-#endif
 
 /* ---------- the core's life */
 
