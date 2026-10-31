@@ -676,6 +676,92 @@ static void case_vr_release(void)
 	CHECK(distance(&last, &hand) > 0.5f, "the grenade never left the hand");
 }
 
+/* Another machine's player in a network game (render_interpolation_lead_wanted): drawn between its two newest
+sub-steps, the frame's part of a sub-step after the newer, not between the tick drawn's a tick behind: never more
+than a sub-step behind the newest the clock ran, and never past it. The carried weapon goes with it. With glide, the
+lead is let go of at tick 12 (a lift starting under it) and taken again at tick 20: the frames glide from one to the
+other over 4 ticks of their time, never a jump */
+static real_point3d biped_step(long tick_drawn, short index)
+{
+	return index < fake_substep_count ? biped_positions[tick_drawn][index] :
+		biped_positions[tick_drawn + 1][index - fake_substep_count];
+}
+
+static void lead_case(short substep_count, boolean glide)
+{
+	long frame;
+	real weight = 1.0f;
+	real last_time = 0.0f;
+	real largest_lead = 0.0f;
+	boolean released_seen = FALSE, taken_seen = FALSE;
+
+	world_new(substep_count);
+	object_add(WEAPON, _object_type_weapon, BIPED, 1);
+	carried_follow();
+	lead_wanted_fake = TRUE;
+	for (frame = 0; frame < 40 * substep_count; frame++)
+	{
+		real_matrix4x3 const *drawn, *weapon;
+		real_point3d path, lead, expected, held;
+		short newest;
+		real part, time;
+
+		world_substep();
+		if (frame % 5 == 0)
+			world_substep();
+		if (glide)
+			lead_wanted_fake = ticks_ended < 12 || ticks_ended >= 20;
+		part = random_part();
+		frame_begin(part);
+		if (ticks_ended < 3)
+		{
+			render_interpolation_frame_end();
+			continue;
+		}
+		/* (the frames' time, as the glide counts it) */
+		time = (real)ticks_ended + fake_fraction;
+		if (ticks_ended > 3)
+		{
+			real step = (time - last_time) / 4.0f;
+
+			weight = lead_wanted_fake ? (weight + step < 1.0f ? weight + step : 1.0f) :
+				(weight - step > 0.0f ? weight - step : 0.0f);
+		}
+		last_time = time;
+		drawn = render_interpolation_object_node_matrices(BIPED);
+		CHECK(drawn, "frame %ld: not drawn", frame);
+		path = biped_on_path();
+		newest = (short)(substeps_run + substep_count - 1);
+		{
+			real_point3d from = biped_step(ticks_ended, (short)(newest - 1));
+			real_point3d to = biped_step(ticks_ended, newest);
+
+			lead = point_between(&from, &to, part);
+		}
+		expected = point_between(&path, &lead, weight);
+		CHECK(distance(&drawn[0].position, &expected) < 1e-4f, "frame %ld (tick %ld, sub-step %d, weight %f): drawn "
+			"%f from its newest sub-steps' (%f from the tick drawn's path, %f from its lead)", frame, ticks_ended,
+			substeps_run, weight, distance(&drawn[0].position, &expected), distance(&drawn[0].position, &path),
+			distance(&drawn[0].position, &lead));
+		if (weight == 1.0f && distance(&lead, &path) > largest_lead)
+			largest_lead = distance(&lead, &path);
+		if (weight == 0.0f)
+			released_seen = TRUE;
+		if (released_seen && weight == 1.0f)
+			taken_seen = TRUE;
+		weapon = render_interpolation_object_node_matrices(WEAPON);
+		held = expected;
+		held.x += 0.2f;
+		held.z += 0.5f;
+		CHECK(weapon && distance(&weapon[0].position, &held) < 1e-4f, "frame %ld: the carried weapon %f off its "
+			"carrier", frame, weapon ? distance(&weapon[0].position, &held) : -1.0f);
+		render_interpolation_frame_end();
+	}
+	CHECK(largest_lead > 0.05f, "the lead never left the tick drawn's path (%f): the case shows nothing", largest_lead);
+	if (glide)
+		CHECK(released_seen && taken_seen, "the glide not seen both ways (%d %d)", released_seen, taken_seen);
+}
+
 int main(int argc, char **argv)
 {
 	CHECK(argc == 2, "usage: %s <case>", argv[0]);
@@ -700,6 +786,17 @@ int main(int argc, char **argv)
 		respawn_case(4);
 	else if (!strcmp(argv[1], "vr_release"))
 		case_vr_release();
+	else if (!strcmp(argv[1], "lead"))
+		lead_case(4, FALSE);
+	else if (!strcmp(argv[1], "lead_60"))
+		lead_case(2, FALSE);
+	else if (!strcmp(argv[1], "lead_glide"))
+		lead_case(4, TRUE);
+	else if (!strcmp(argv[1], "lead_classic"))
+	{
+		lead_wanted_fake = TRUE;
+		case_classic();
+	}
 	else
 		CHECK(0, "no case %s", argv[1]);
 	return 0;

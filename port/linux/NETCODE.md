@@ -1154,6 +1154,39 @@ on average (`network test: bandwidth`), 63.3 KB/s of it actors' states
 (`network test: actors to clients`): the presses 1.0 KB/s of those, the aims
 1.8 KB/s, so 97.2 KB/s before (2.9% more).
 
+### Remote players drawn from the newest sub-steps
+
+The frames are drawn between the ticks (`render_interpolation.c`): a frame
+is the tick's fraction of the way from the end of the tick before the latest
+to the end of the latest, a tick (33 ms) behind the clock. At 60 and 120 the
+clock runs a tick's sub-steps as their time comes, so the newest simulated
+sub-step is at most one sub-step behind the clock, and an object drawn a
+tick behind it was 25 to 33 ms behind what the machine's own simulation had
+(29 on average) at 120, and 17 to 33 (25) at 60. On a client that is where
+its shots meet the other players (its own simulation, against which it
+reports its hits: "Shooter's hits"), so a player aimed at what was drawn,
+not at where the shot was tested. The player's own view was already drawn
+from the newest step (`display.direct_camera`), as is the vehicle they ride.
+
+In a network game (`sim_rate_locked`: not split screen, not a film) at 60
+and 120, the objects of the micro lane that are other players' (another
+machine's player or a bot, the vehicle a player drives, and the host's
+actors) are drawn between their two newest sub-steps instead
+(`render_interpolation_lead_wanted`, `render_interpolation_lead_step`): a
+sub-step's interpolation, never past a step the simulation ran, 0 to 8 ms
+behind it at 120 (4 on average) and 0 to 17 at 60 (8). Only where each is
+moves so, and a vehicle's frame (its place and rotation); its pose (its
+animation, the aim of its head and its gun) is still blended between the
+ticks, as before. Not drawn so: what a local player is or rides (their view
+hangs on it), projectiles and items (a projectile's first two ticks and the
+tick it is drawn on to what it hit are drawn from the ticks), anything in a
+cinematic, and a player standing on a lift that moves (of the macro lane,
+drawn a tick behind). As an object comes to be drawn so, or no longer (a
+lift starts under a player, a local player gets into another's vehicle), it
+glides from one to the other over four ticks (`LEAD_GLIDE_TICKS`). Drawing
+only: nothing sent or simulated changes, and a Legacy game, an OpenH1 game
+at 30, single player and split screen are drawn as before.
+
 ### OpenCE players in an OpenH1 game
 
 An OpenH1 game's host takes OpenCE players too (`network.allow_opence`,

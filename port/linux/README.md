@@ -1324,6 +1324,11 @@ does not change. At `game.sim_rate` 60 and 120, the player's movement,
 the vehicle a player drives (and its turns, its riders and the view from its
 seats), projectiles and thrown items are drawn on the path of their
 sub-steps, not on the line between two ticks (refer to "Simulation rate").
+In a network game at 60 and 120, other players, bots and the vehicles they
+drive are drawn between their two newest sub-steps, not a tick behind: 0 to
+8 ms behind the simulation at 120 (0 to 17 at 60), where they were 25 to 33
+ms (17 to 33), so that they are drawn where shots meet them (`NETCODE.md`,
+"Remote players drawn from the newest sub-steps").
 
 Other things the game moves once a tick are drawn between ticks as well:
 
