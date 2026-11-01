@@ -1,6 +1,6 @@
-/* basic_training.h: the VR build's Basic Training (port/linux/game/basic_training.c)
+/* basic_training.h: the VR build's VR Tutorial (port/linux/game/basic_training.c)
 
-The main menu's BASIC TRAINING (the VR build's, in the headset) opens its
+The main menu's VR TUTORIAL (the VR build's, in the headset) opens its
 chapters; a chapter chosen starts a game of this machine alone on Blood
 Gulch with four bots, which the training drives. */
 #ifndef HALO_BASIC_TRAINING_H

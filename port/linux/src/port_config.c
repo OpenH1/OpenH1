@@ -653,7 +653,7 @@ static const struct config_setting config_settings[] =
 		"it." },
 	{ "vr.training_finished", _config_string, "\"\"", "HALO_VR_TRAINING_FINISHED", _environment_value,
 		_platform_all,
-		"The chapters of Basic Training you have finished (their numbers,\n"
+		"The chapters of the VR Tutorial you have finished (their numbers,\n"
 		"\"0,1,2\"), ticked on its list; the game writes it." },
 	{ "vr.turn", _config_string, "\"snap\"", "HALO_VR_TURN", _environment_value, _platform_desktop,
 		"How the right stick turns: \"snap\" in steps (vr.snap_turn_angle),\n"
@@ -1652,7 +1652,7 @@ static const struct config_setting config_settings[] =
 		"players join too (network.allow_opence) at 30 ticks a second, with the\n"
 		"Legacy game's join token. The tests' stand-in for an OpenCE machine." },
 	{ "debug.training", _config_string, "\"\"", "HALO_TRAINING", _environment_value, _platform_all,
-		"\"<chapter>[:<step>]\" starts Basic Training at that chapter (0 to 7)\n"
+		"\"<chapter>[:<step>]\" starts the VR Tutorial at that chapter (0 to 7)\n"
 		"and step of it (0 the first) from the main menu, for tests and\n"
 		"captures (port/linux/game/basic_training.c)." },
 	{ "debug.network_test", _config_string, "\"\"", "HALO_NETWORK_TEST", _environment_value, _platform_all,

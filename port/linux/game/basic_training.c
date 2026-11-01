@@ -1,11 +1,11 @@
 /*
 BASIC_TRAINING.C
 
-The VR build's Basic Training (port/linux/README.md, "Basic training";
+The VR build's VR Tutorial (port/linux/README.md, "VR Tutorial";
 issue #143): a drill on the player's own Blood Gulch, one thing at a time,
 each chapter ending in a small challenge that uses all of it so far.
 
-The main menu's BASIC TRAINING (the VR build's alone, while it plays in the
+The main menu's VR TUTORIAL (the VR build's alone, while it plays in the
 headset: tools/port_settings.py's _training) lists the chapters, a tick on
 each one finished; a chapter chosen starts a game of this machine alone
 (a local game, as Multiplayer's PLAY WITH BOTS: no other machine, nothing
@@ -342,7 +342,7 @@ static struct basic_training_chapter const basic_training_chapters[BASIC_TRAININ
 static struct basic_training_step const basic_training_steps[] =
 {
 	{ 0, _training_check_turn, 90, _training_setup_clear, _training_button_right_stick, FALSE,
-		"Welcome to Basic Training, recruit. Turn around with the right stick.",
+		"Welcome to the VR Tutorial, recruit. Turn around with the right stick.",
 		"Good. You can turn. We're making progress." },
 	{ 0, _training_check_fit, 0, _training_setup_clear, NONE, TRUE,
 		"Fit check. Pick what feels right: snap or smooth turns, the comfort vignette, seated or standing, "
@@ -390,7 +390,7 @@ static struct basic_training_step const basic_training_steps[] =
 		"He's down. Now let's make it a team." },
 	{ 7, _training_check_score, 5, _training_setup_team, NONE, TRUE,
 		"Two on two. You've got a bot on your side. First team to five.",
-		"Basic training complete. You'll do, Spartan." },
+		"Tutorial complete. You'll do, Spartan." },
 };
 
 #define TRAINING_STEP_COUNT ((short)NUMBEROF(basic_training_steps))
@@ -1967,11 +1967,11 @@ void basic_training_draw(
 	snprintf(text, sizeof(text), "%d  %s", basic_training.chapter, basic_training_chapters[basic_training.chapter].name);
 	basic_training_draw_line(font_index, &line, 0, text, &color);
 	if (basic_training.chapter_done)
-		snprintf(text, sizeof(text), "BASIC TRAINING  -  %s", basic_training.all_done ? "ALL DONE" : "CHAPTER COMPLETE");
+		snprintf(text, sizeof(text), "VR TUTORIAL  -  %s", basic_training.all_done ? "ALL DONE" : "CHAPTER COMPLETE");
 	else if (step->challenge)
-		snprintf(text, sizeof(text), "BASIC TRAINING  -  CHALLENGE");
+		snprintf(text, sizeof(text), "VR TUTORIAL  -  CHALLENGE");
 	else
-		snprintf(text, sizeof(text), "BASIC TRAINING  -  STEP %d OF %d", basic_training.step - first + 1, count);
+		snprintf(text, sizeof(text), "VR TUTORIAL  -  STEP %d OF %d", basic_training.step - first + 1, count);
 	line.y0 = (short)(line.y1);
 	line.y1 = (short)(line.y0 + line_height);
 	basic_training_draw_line(font_index, &line, 0, text, basic_training.chapter_done ? &good : &dim);

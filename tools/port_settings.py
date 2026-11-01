@@ -27,7 +27,7 @@ MODS = "main_menu/mods"
 MOD_ROWS = 11
 MODS_ITEM_PLACE = (192, 391)
 QUIT_ITEM_PLACE = (192, 427)
-# Basic Training (the VR build's, port/linux/game/basic_training.c): its main
+# The VR Tutorial (the VR build's, port/linux/game/basic_training.c): its main
 # menu item, in the headset only, a row above the first (_training), and its
 # screen of chapters
 TRAINING = "main_menu/training"
@@ -210,7 +210,7 @@ VR_SCREENS["vr_visor"] = {
          "How strong the shields' energy across the glass\nis, as they are hit and as they recharge.", None),
     ],
 }
-# Basic Training's fit check (chapter 0: basic_training.c opens it in the
+# The VR Tutorial's fit check (chapter 0: basic_training.c opens it in the
 # game): the comfort settings, in VR Controls' layout and under its title
 VR_SCREENS["vr_fit_check"] = {
     "screen": "vr_fit_check_screen",
@@ -1929,7 +1929,7 @@ WIDGET_PATCHES = {
         f'<on event="{event}" run="port settings begin" open="{PE}/video_settings/video_settings_screen"/>'
         for event in ("a", "start")] + ['<on event="left_mouse" run="mouse emit accept event"/>']},
     # (the main menu's MODS, before Quit: _mods)
-    # (and in the headset, BASIC TRAINING above the first: _training)
+    # (and in the headset, VR TUTORIAL above the first: _training)
     "main_menu/main_menu_select_list": {"insert_before": {
         "main_menu/main_menu_item_load_camp": [
             f'<child widget="main_menu/main_menu_item_training" x="{TRAINING_ITEM_PLACE[0]}" '
@@ -2081,7 +2081,7 @@ TITLES = {
     f"{PE}/vr_controls/header_vr_controls": "VR CONTROLS",
     f"{PE}/vr_display/header_vr_display": "VR DISPLAY",
     "main_menu/mods/header_mods": "MODS",
-    f"{TRAINING}/header_training": "BASIC TRAINING",
+    f"{TRAINING}/header_training": "VR TUTORIAL",
     f"{MT}/join_game/header_server_browser": "SERVER BROWSER",
     f"{MT}/join_game/header_direct_link": "JOIN BY LINK",
     f"{MT}/join_game/header_local_network": "LOCAL NETWORK",
@@ -5391,7 +5391,7 @@ def multiplayer_files() -> dict:
         OPENCE_EDIT.replace("/", ".") + ".port.xml": head + _opence_options() + ["</menus>", ""],
         MODS.replace("/", ".") + ".xml": [head[0], "<!-- The port's Mods screen, in the PC version's style "
                                           "(tools/port_settings.py) -->", head[2]] + _mods() + ["</menus>", ""],
-        TRAINING.replace("/", ".") + ".xml": [head[0], "<!-- The VR build's Basic Training, in the PC version's style "
+        TRAINING.replace("/", ".") + ".xml": [head[0], "<!-- The VR build's VR Tutorial, in the PC version's style "
                                               "(tools/port_settings.py) -->", head[2]] + _training() + ["</menus>", ""],
         UPDATE.replace("/", ".") + ".xml": [head[0], "<!-- The update question (the Steam Frame's, gamescope's), in "
                                             "the style of the PC version's Quit (tools/port_settings.py) -->",
@@ -5419,11 +5419,11 @@ MENU_ITEM_TOP, MENU_ITEM_SCALE, MENU_ITEM_MIDDLE = 6.57, 0.9037, 130.0
 # before the second, fitted (least squares) to the 53 pairs the redraws' items
 # and headers have (D-I, of the main menu's Credits, gives D's right side)
 MENU_ITEM_SPACES = {"MO": 3.17, "OD": 2.8, "DS": 2.3,
-                    # BASIC TRAINING's: those the redraws have (BA, AI, IN, NG), the others as their neighbours
-                    # are (AS as AC and AD, SI as SE, IC as IT and IG, TR as ER and PR, RA as OA and LA, NI as
-                    # NE), and a word's space as LOAD GAME's D to G, less D's side
-                    "BA": 0.66, "AS": 1.2, "SI": 1.8, "IC": 2.6, "C ": 6.0, " T": 6.0, "TR": 2.5, "RA": 0.2,
-                    "AI": 1.58, "IN": 4.7, "NI": 2.8, "NG": 2.84}
+                    # VR TUTORIAL's: those the redraws have (TU, TO, OR), the others as their neighbours are
+                    # (VR between VE and VI, UT as NT, RI as RN and RU, IA as EA and NA, AL as AD and AI), and
+                    # a word's space as LOAD GAME's D to G, less D's side
+                    "VR": 0.3, "R ": 6.0, " T": 6.0, "TU": 2.12, "UT": 1.66, "TO": 0.75, "OR": 3.0, "RI": 3.25,
+                    "IA": 1.3, "AL": 1.58}
 # a space's own width (none: the spaces about it are its pairs')
 MENU_ITEM_SPACE_WIDTH = 0.0
 # the mods' status icons (port/assets/icons/lucide): a mod out of the order it
@@ -5594,7 +5594,7 @@ def _mods() -> list:
 
 
 def _training() -> list:
-    """the VR build's BASIC TRAINING (port/linux/game/basic_training.c): the
+    """the VR build's VR TUTORIAL (port/linux/game/basic_training.c): the
     main menu's item (in the headset only: its child's platform, WIDGET_PATCHES)
     and the screen of its chapters, laid out as the Mods screen is: a row
     each, its number and name, and DONE once finished (or SOON, a chapter not

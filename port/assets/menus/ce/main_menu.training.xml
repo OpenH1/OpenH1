@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- The VR build's Basic Training, in the PC version's style (tools/port_settings.py) -->
+<!-- The VR build's VR Tutorial, in the PC version's style (tools/port_settings.py) -->
 <menus>
 	<widget name="main_menu/main_menu_item_training" type="text" width="256" height="33" bitmap="main_menu/menu_training">
 		<on event="a" open="main_menu/training/training_screen"/>

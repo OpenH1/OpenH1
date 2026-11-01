@@ -8659,7 +8659,7 @@ static boolean profile_save_changes(struct widget_instance *widget, boolean *wid
 }
 
 /* ---------- Basic Training's chapters (port/linux/game/basic_training.c;
-tools/port_settings.py's _training): the main menu's BASIC TRAINING, the
+tools/port_settings.py's _training): the main menu's VR TUTORIAL, the
 pause menu's CHAPTERS */
 
 /* the chapter of a row (op_chapter_1 is chapter 0), or of the widget in
