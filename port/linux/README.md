@@ -435,21 +435,23 @@ computer leaves it for all of them. When all the players are on the host's
 computer, START GAME starts the game without another computer, and a team
 game does not need a player on each team.
 
-The lobby, a network game's and a game of this computer alone's (PLAY WITH
-BOTS, split screen), is laid out as Multiplayer is (`game/lobby_menu.inc`).
+The lobby, a network game's and a game of this computer alone's (Create
+Game's OFFLINE, split screen), is laid out as Multiplayer is (`game/lobby_menu.inc`).
 The players are in a column for each team, red's and blue's, or in one list
 in a game without teams and in Infection, whose zombies are chosen as it
 starts. Each row has the player's team's dot, name and a tag: HOST, BOT,
 PARTY (a member of your party), OPENCE or OPENH1 (the host knows each
-computer's; a player knows only its own). Your own row is framed. In each
+computer's; a player knows only its own; a bot's BOT and the bots' skill,
+"BOT · HEROIC", where its name leaves room). Your own row is framed. In each
 column the host comes first, then your party's members together, then the
 others, the bots last; a column with more players than rows says how many
 more. Left and right (the arrow keys, the D-pad) put you on red's or blue's
 team, as does a click on a column. The panel beside them has the next
 game (its gametype, map, score to win and time; OPENH1 and its tick rate,
-or LEGACY; OPENCE CAN JOIN, which only the host knows), the bots' rows of a
-game of this computer alone (BOTS' COUNT, SKILL and TEAMS, as in Server
-Setup), the countdown and how another player joins, and the host's GAME
+or LEGACY; OPENCE CAN JOIN, which only the host knows; THEN, the game after
+it, a network game's host's), the host's bots in any game but co-op (BOTS,
+BOT SKILL and BOT TEAMS: refer to "Bots"), the countdown and how another
+player joins, and the host's HOST CONTROLS (a network game's), GAME
 SETTINGS (Server Setup, whose START GAME comes back to the lobby) and START
 GAME (Enter, or A on the players). A player sees "Waiting for the host"
 there instead. The footer has CHANGE TEAM, COPY INVITE (Y, or F: your
@@ -546,20 +548,19 @@ with six tabs (BOTS, the last, not in co-op):
   player is told the next game as the scores show.
 - BANS: `bans.txt`'s players, when they were banned and why, and UNBAN.
 - BOTS: the bots' settings, each written to `config.toml` as it changes
-  (as Server Setup's rows are), which the game takes at once (refer to
+  (as the lobby's rows are), which the game takes at once (refer to
   "Bots"), then the bots playing (their team and score), and for the bot
-  chosen REMOVE BOT (one bot fewer: `bots.count` one fewer than play).
-  BOTS (left and right, none to 15, no further either way): in the lobby
-  the bots join and leave at once; in a game a bot joins as a player who
-  joins a game in progress, one every few seconds, and leaves as a player
-  who quits. SKILL (Easy, Normal, Heroic, Legendary, `bots.skill`) and
+  chosen REMOVE BOT (one bot fewer: ADD as many as are left playing).
+  BOTS (the lobby's choices: NONE, ADD n, FILL TO n; left and right, no
+  further at either end): in the lobby the bots join and leave at once; in
+  a game a bot joins as a player who joins a game in progress, one every
+  few seconds, and leaves as a player who quits. A game the bots leave
+  goes on, a team left empty too, for bots added back or players who
+  join. SKILL (Easy, Normal, Heroic, Legendary, `bots.skill`) and
   TEAM TACTICS (`bots.tactics`) change every bot's play at once. TEAMS
   (EVEN or AGAINST YOU, `bots.teams`) places the lobby's bots at once; in a
   game, the bots that join from then, and BALANCE TEAMS (a team game's,
-  Game's own, pressed twice in a game) moves those playing. MAKE ROOM FOR
-  PLAYERS (`bots.make_room`) and, with it on, FILL TO (`bots.fill_to`)
-  take effect at once too: bots leave or come back to fill the game to it.
-  In a gametype the bots do not play the rows are there, and apply from
+  Game's own, pressed twice in a game) moves those playing. In a gametype the bots do not play the rows are there, and apply from
   the next Slayer game, which the panel says. A matchmaking game's count,
   room and fill are its playlist's, and stay; its bots are not removed.
   Nothing new goes to the other machines: a bot is a player to them.
@@ -573,8 +574,8 @@ rules, as MAPS' CURRENT), `host_playlist [entries]` shows or replaces the playli
 `bloodgulch:ctf+score=5`, `custom_maps\<name>`), `host_say <words>` (and the
 chat's `/say <words>`) tells everyone, `host_shuffle_teams` and
 `host_balance_teams` arrange the teams, `host_score_limit <score>` and
-`host_time_limit <minutes>` set the limits, `host_bots [<0 to 15>]` shows or sets the bots'
-count and `host_bot_skill <easy|normal|heroic|legendary>` their skill (as BOTS's rows),
+`host_time_limit <minutes>` set the limits, `host_bots [none|add <n>|fill <n>|<n>]` shows or sets the bots
+(as BOTS's choices, n up to 64; a number alone is ADD) and `host_bot_skill <easy|normal|heroic|legendary>` their skill (as BOTS's rows),
 `host_vehicles <default|none|warthog|ghost|scorpion|rocket_warthog|banshee|turret|pc> [red|blue]`
 sets the vehicles and `host_weapons map` or `host_weapons <primary> [<secondary>]` (`none`,
 `random`, `assault_rifle`, `pistol`, `shotgun`, `sniper_rifle`, `rocket_launcher`,
@@ -667,18 +668,30 @@ problem.
 
 ## Bots
 
-Computer players (bots) can play a local multiplayer game with you:
-`bots.count` (1 to 15) of them join the lobby of a Slayer game played on
-this computer. In the menus, Multiplayer > PLAY WITH BOTS (under Create
-Game) hosts one: the map, the gametype, then Server Setup, which has three
-rows for them in the place of the network's rows (GAME, INVITE LINK, MAP
-SHARING), BOTS (NONE, 1 to 15), BOT SKILL and BOT TEAMS (EVEN or AGAINST
-YOU). Each row writes its setting to `config.toml` as it changes, so the
-next game starts with them too. The host of a network game changes them
-while it plays too, in Host Controls' BOTS tab (refer to "Host Controls"). For a gametype the bots do not play (CTF,
-Oddball, King, Race) the rows are dimmed and passed over, and the line
-below them says so. START GAME opens the lobby with the bots in it, and
-more players on this computer join it with START, as in a network game. In
+Computer players (bots) can play every multiplayer game you host but
+co-op: a game of this computer alone (Multiplayer > CREATE GAME > OFFLINE,
+split screen), a system link or an internet one. The lobby's panel has
+their rows, the host's:
+
+- BOTS: NONE; ADD n (1 to 16, then by 4s to 64), as many bots beside the
+  players, who keep their own places (`bots.count` n, `bots.make_room`
+  false); or FILL TO n (2 to 16, then by 4s to 64), bots in the game's
+  empty places up to n players and bots, who leave as people join and come
+  back as they leave (`bots.make_room` true, `bots.fill_to` n, `bots.count`
+  64). Up to 64 bots play, as far as the game's MAXIMUM PLAYERS leaves
+  room.
+- SKILL (EASY, NORMAL, HEROIC, LEGENDARY: `bots.skill`) and TEAMS
+  (EVEN or AGAINST YOU: `bots.teams`).
+
+Each row writes its settings to `config.toml` as it changes, and the bots
+join or leave the lobby at once; the next game starts with them too. The
+host changes them while the game plays in Host Controls' BOTS tab, which
+has the same choices (refer to "Host Controls"). The menus' spinners stop
+at their ends, so BOTS never goes round from its most to NONE. For a
+gametype the bots do not play (CTF, Oddball, King, Race) the rows are
+dimmed and passed over, and the panel says "Bots play Slayer, SWAT,
+Infection and Gun Game only." More players on this computer join the
+lobby with START, as in a network game. In
 the Xbox's menus (`display.menus = "xbox"`), Multiplayer > Split Screen is
 the game, with the settings as `config.toml` has them (the Xbox's menus
 have no rows for them). They are players as you are: in the scores, the respawns
@@ -736,22 +749,21 @@ someone of those the bots fired, and `debug.bots_weapon` gives every bot
 one weapon, to measure it.
 
 Bots play system link and internet games too, OpenH1 and Legacy, public or
-private: Create Game's Server Setup has a BOTS row after the gametype's
-rows, its value what they are ("10, NORMAL, FILL TO 16", NONE, or NOT IN
-THIS GAMETYPE, dimmed, for a gametype they do not play), and A opens their
-screen: BOTS, BOT SKILL, BOT TEAMS, MAKE ROOM (ON or OFF) and, with it on,
-FILL TO (2 to 16), written to `config.toml` with OK. The host plays them:
+private, from the lobby's rows (above). The host plays them:
 each bot is a player of a machine of its own with no connection, whose
 input the host's tick gives the others with every other player's, so every
 machine sees an ordinary player, OpenCE's in a mixed game too, and an OpenH1
 game's bots move at its rate (NETCODE.md, "Bots in network games"). With
-MAKE ROOM on (`bots.make_room`, the default) the bots make room for people:
+FILL TO (`bots.make_room`, the default) the bots make room for people:
 no more of them play than leave the game `bots.fill_to` players and bots
 (and its MAXIMUM PLAYERS), so a player who joins a game the bots fill takes
 a bot's place at once, in the lobby or in the game (the bot of the team
 with more players, the lowest scoring), and a bot comes back a few seconds
-after a player leaves. With it off, the bots stay, and MAXIMUM PLAYERS
-counts the players alone: a game of 16 with 10 bots takes 16 people. The
+after a player leaves. With ADD, the bots stay, and MAXIMUM PLAYERS counts
+the players alone: a game of 16 with 10 bots takes 16 people. A dedicated
+server has the same in its settings: FILL TO 12 is `bots.make_room = true`
+and `bots.fill_to = 12` (with `bots.count = 64`), ADD 4 `bots.count = 4`
+and `bots.make_room = false`. The
 server browser and the local network's list count the people
 ("6/16", the panel "6/16 · 10 BOTS"), the scoreboard's ping column says BOT
 for a bot, and the carnage report names it "(Bot)". The bots stay from game
@@ -930,11 +942,11 @@ the setting for one start of the game. It has priority over the file.
 | `game.enhanced_animations` | `true` | `HALO_ENHANCED_ANIMATIONS` | `true`: the player bipeds' grenade throws keep their legs moving, blended by speed and direction (crouched throws stay crouched, throws in the air use the jump's legs), Warthog and Scorpion riders stay seated to throw and let go of the grips to throw and reload, and a player turns with the aim while throwing, as while meleeing, and in the air, as while running (the original froze the body in a jump and kept the aim within its aiming screen about it, so a shot after turning in the air went between the jump's facing and the crosshair). `false`: the original animations, which freeze the legs during a throw and stand a rider up and the body in the air. The turning with the aim (throwing, in the air) moves where shots go, so in a network game every player turns so whatever this says; `false` turns it off only in a game of one machine. Only in config.toml, not in the menus. |
 | `game.sim_rate` | `60` | `HALO_SIM_RATE` | How many steps a second the game takes for what a player feels in their hands: their own movement and aim, projectiles, thrown items, and the VR mode's throws and grabs. `30` (as the game was made), `60` or `120`: 1, 2 or 4 steps inside each of the game's 30 ticks a second. Everything else keeps the 30 ticks: the AI, scripts, cinematics, animations, timers, vehicles, saved games and the network. Any other value is `30` (refer to "Simulation rate" in "How the port operates"). It applies to games of this computer alone: the campaign, split screen and games with bots (a split screen game runs as a network game of one computer that takes no other). Network games with other computers use the rate the game agreed on, hosting or joining: `30` in a Legacy game (OpenCE's netcode steps at 30), and the host's `network.sim_rate` in an OpenH1 game. The playback of a saved film is always `30`. TICK RATE in Video Setup > Graphics > Advanced: ORIGINAL (30), 60 or 120. A change applies from the next tick. Where the game sets the setting aside (a network game with other computers, a film's playback), the row is locked: dimmed, at the game's rate (ORIGINAL (30) in a Legacy game), passed over, and OK leaves the setting as it was. |
 | `game.unlock_all_levels` | `false` | `HALO_UNLOCK_ALL_LEVELS` | `true`: a profile created afterward starts with all the campaign levels finished on all the difficulties. `false`: a new profile starts at The Pillar of Autumn, and each level opens when you finish the level before it, as on the Xbox. Existing profiles keep their progress. To start a profile over, type `profile_reset_campaign` in the console. |
-| `bots.count` | `0` | `HALO_BOTS` | Computer players (bots) in a Slayer game this computer hosts: `0` to `15` join its lobby with the players, as far as the game has room: a local (split screen) game, or a system link or internet one, where the host plays them and the other machines see them as players (`bots.make_room`). `0`: none, as in the stock game. BOTS in Server Setup (of Multiplayer > PLAY WITH BOTS, or its BOTS screen in a network game) writes it. Refer to "Bots". |
-| `bots.skill` | `"normal"` | `HALO_BOT_SKILL` | How well the bots play: `"easy"`, `"normal"`, `"heroic"` or `"legendary"`: how soon they react, how far and how wide they see, how large their aim error is and how fast it settles, how fast they turn. BOT SKILL in Server Setup of Multiplayer > PLAY WITH BOTS writes it. |
-| `bots.teams` | `"even"` | `HALO_BOT_TEAMS` | In a team game: `"even"` puts the bots on both teams, evening them with the players; `"against"` puts them all on the team the players are not on. BOT TEAMS (EVEN or AGAINST YOU) in Server Setup of Multiplayer > PLAY WITH BOTS writes it. |
-| `bots.make_room` | `true` | `HALO_BOTS_MAKE_ROOM` | In a system link or internet game with bots: a bot leaves as a player joins, so that the game has no more than `bots.fill_to` players and bots, and comes back as a player leaves. `false`: the bots stay, and the game's most players are its players' alone. MAKE ROOM on Server Setup's BOTS screen writes it. Refer to "Bots". |
-| `bots.fill_to` | `16` | `HALO_BOTS_FILL_TO` | With `bots.make_room`, the players and bots a system link or internet game is filled to (2 to 128; no more than its most players). FILL TO on Server Setup's BOTS screen writes it. |
+| `bots.count` | `0` | `HALO_BOTS` | Computer players (bots) in a Slayer game this computer hosts: `0` to `64` join its lobby with the players, as far as the game has room: a local (split screen) game, or a system link or internet one, where the host plays them and the other machines see them as players (`bots.make_room`). `0`: none, as in the stock game. The lobby's BOTS writes it (ADD n: n; FILL TO: 64). Refer to "Bots". |
+| `bots.skill` | `"normal"` | `HALO_BOT_SKILL` | How well the bots play: `"easy"`, `"normal"`, `"heroic"` or `"legendary"`: how soon they react, how far and how wide they see, how large their aim error is and how fast it settles, how fast they turn. The lobby's BOT SKILL writes it. |
+| `bots.teams` | `"even"` | `HALO_BOT_TEAMS` | In a team game: `"even"` puts the bots on both teams, evening them with the players; `"against"` puts them all on the team the players are not on. The lobby's BOT TEAMS (EVEN or AGAINST YOU) writes it. |
+| `bots.make_room` | `true` | `HALO_BOTS_MAKE_ROOM` | With bots: a bot leaves as a player joins, so that the game has no more than `bots.fill_to` players and bots, and comes back as a player leaves (the lobby's FILL TO). `false`: the bots stay, and a network game's most players are its players' alone (the lobby's ADD). Refer to "Bots". |
+| `bots.fill_to` | `16` | `HALO_BOTS_FILL_TO` | With `bots.make_room`, the players and bots a game is filled to (2 to 128; no more than its most players). The lobby's FILL TO writes it. |
 | `bots.tactics` | `false` | `HALO_BOTS_TACTICS` | In team games, a team's bots play together: they keep apart (about five metres) and within reach of each other, fire at the enemy a teammate is hurting and take angles apart on one enemy, go after a teammate's killer while that player's shields are down, close in together after a kill and fall back together when the fight goes against them, and share out the power weapons and the escort of a human teammate (the best placed bot takes each). `false`: each bot plays on its own; measured, the team play slows the fights and wins no more (refer to "Bots"). |
 | `bots.share_sightings` | `true` | `HALO_BOTS_SHARE_SIGHTINGS` | A team's bots share the enemies they see, each sighting reaching the team's other bots `bots.share_delay` after it, as a callout would; it counts for where they go and look, never for their aim (a bot fires only at what it sees). `false`: a bot knows only what it saw itself. |
 | `bots.share_delay` | `1.0` | `HALO_BOTS_SHARE_DELAY` | With `bots.share_sightings`: the seconds from a bot's sighting of an enemy to its teammates' knowing of it (0 to 5). |
@@ -6111,7 +6123,7 @@ Other changes:
 | `cache/cache_files_windows.c` | Each cache slot (`z:\cacheNNN.map`) remembers the size and modification time of the map file it was copied from, in `z:\cacheNNN.source` (`src/xbox_files.c`). A slot whose map file has been replaced since, by a modded map that keeps the header's checksum, another region's or a corrected one, is copied again, at the start or the next time the map is loaded. The Xbox's disc never changed, so the name and checksum in the header were enough. |
 | `cache/xbox_sound_cache.c`, `cache/xbox_texture_cache.c` | The samples of a mod's sound are copied from memory, and the pixels of a mod's bitmap read from its file and laid out for the hardware, at once (`game/mod_sounds.c`, `game/mod_bitmaps.c`); a mod's linear bitmap need not have rows of whole steps of the pitch. |
 | `hs/hs.c` | The console's `mods_reload`, `mods_enable` and `mods_list`, which a client may run too. |
-| `interface/ui_widget.c`, `interface/ui_widget_event_handler_functions.c`, `interface/ui_widget_game_data_input_functions.c` | The main menu is the PC version's from `port/assets/menus` (`display.menus`); the menus' widgets can call the port's functions (`game/menu_functions.c`) and send the PC version's custom activation event; the widgets' memory is 256 KB, not 16 KB; the main menu and Multiplayer clear co-op's controllers, so that a gamepad going back to controller 1 is not a controller unplugged; the lobby's split screen players leave alone, and one who quits in game is not joined to the next game (`interface/player_ui.c`).; Multiplayer's PLAY WITH BOTS hosts a game that takes no other machine, as the Xbox's split screen does (`ui_widget_port_host_local`); the port's own screens are laid out for the view's width up to 16:9 (their widgets' `wide`: `game/menu_tags.c`'s `ui_widget_port_wide_layout`), a picture widened by stretching its middle (`draw_bitmap_widened_in_rect`); after a game of this machine alone the host's map select and the lobby open in place of the Xbox's split screen Select Map and Select Teams (`game/menu_tags.c`'s `pc_menus_screen`). |
+| `interface/ui_widget.c`, `interface/ui_widget_event_handler_functions.c`, `interface/ui_widget_game_data_input_functions.c` | The main menu is the PC version's from `port/assets/menus` (`display.menus`); the menus' widgets can call the port's functions (`game/menu_functions.c`) and send the PC version's custom activation event; the widgets' memory is 256 KB, not 16 KB; a spinner of the port's menus with more than two values stops at its ends instead of going round (`ui_widget_port_spinner_stops`: a count's most never steps on to none); the main menu and Multiplayer clear co-op's controllers, so that a gamepad going back to controller 1 is not a controller unplugged; the lobby's split screen players leave alone, and one who quits in game is not joined to the next game (`interface/player_ui.c`).; Create Game's OFFLINE hosts a game that takes no other machine, as the Xbox's split screen does (`ui_widget_port_host_local`); the port's own screens are laid out for the view's width up to 16:9 (their widgets' `wide`: `game/menu_tags.c`'s `ui_widget_port_wide_layout`), a picture widened by stretching its middle (`draw_bitmap_widened_in_rect`); after a game of this machine alone the host's map select and the lobby open in place of the Xbox's split screen Select Map and Select Teams (`game/menu_tags.c`'s `pc_menus_screen`). |
 | `interface/player_ui.c` | Fast setup opens the pregame screen through the port's menus (the lobby), as `interface/ui_widget.c` does. Player 1's last used profile (`lastprof.txt`) is looked for once, not each time the menus and the party ask (each frame), which logged its absence again each time. |
 | `game/game_engine.c`, `game/game_engine.h`, `game/game_engine_slayer.c`, `game/game.c`, `game/aim_assist.c`, `game/players.c`, `objects/damage.c`, `objects/objects.c`, `units/units.c`, `items/weapons.c`, `saved games/playlist_profile.c`, `saved games/saved_game_files.c` | OpenCE's gametypes (`game/game_modes.c`, "OpenCE gametypes"): the gametype's PC options carry a mode and Hardcore with their options; the built-in ones are written after the Xbox's default gametypes; Infection's and Gun Game's game engines are Slayer's with their rules; SWAT's headshots, Hardcore's motion sensor, aim assist and restore of the killer; Infection's zombies' skulls, grenades, powerups, seats and melee. |
 | `game/game.c` | Each tick takes its rate (`game.sim_rate`), and runs the fast phase's sub-steps after the objects' update (`game/sim_rate.c`; "Simulation rate"). |
@@ -6130,6 +6142,7 @@ Other changes:
 | `render/render.c` | `render_initialize` reads the structure culling tests from `display.structure_culling`. |
 | `models/models.c` | A model's size, which chooses its level of detail and whether it is drawn, is scaled as `display.model_detail` says (`halo_model_detail_scale`, `src/d3d8_device.c`)., and each permutation draws the level `game/model_detail.c` chooses from the model's (stock: the model's). |
 | `interface/hud.c` | In multiplayer, players' names are drawn above their heads (`display.player_names`, `display.player_name_scale`), and fade out while the scoreboard shows. |
+| `game/game_engine.c` | A game that bots have left (`game/bots.c`: the host took them out, or asked for fewer) does not end when one team, or one player, is left alone, as the Xbox's did when the others quit: it goes on to its limits, for bots added back or players who join (`game_engine_should_end_game`). |
 | `game/game_engine.c` | The carnage report and the full-screen scoreboard are laid out as Settings is: the report's one table of the players' statistics with the teams' totals, the result and the game's line; the scoreboard's rules, lit row and footer, and no ping column in a game of one computer. Both are as wide as the menus' wide layout: the report's panel and columns across the screen up to 16:9, the scoreboard's names wider. |
 | `text/draw_string.c`, `interface/terminal.c`, `interface/virtual_keyboard.c` | Streamer mode's words are hidden in every string drawn or measured (`game/text_filter.c`), but in the console's line and the virtual keyboard's text being typed. |
 | `rasterizer/rasterizer_text.c`, `text/draw_string.c` | Text is drawn from an atlas of the fonts' glyphs, rasterized at the resolution the game draws at (`src/text_hires.c`), when the font has every character of the string. Text can be drawn scaled about a point (`rasterizer_text_set_scale`), as the players' names are. Each glyph's advance is centred on the font tag character's, so the layout is the same, and a glyph is cut at a text box only where the font tag's character visibly was. |

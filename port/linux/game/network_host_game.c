@@ -1537,21 +1537,34 @@ boolean network_host_game_console(
 	if ((rest = host_game_word_text(expression, "host_bots")) != NULL)
 	{
 		long count = atol(rest);
+		short kind = NONE;
+		long number;
 
-		if (rest[0] < '0' || rest[0] > '9')
+		/* (a number, or as the lobby's BOTS: none, add <n>, fill <n>) */
+		if (rest[0] >= '0' && rest[0] <= '9')
+			kind = count ? _host_bots_add : _host_bots_none;
+		else if (!strncmp(rest, "none", 4))
+			kind = _host_bots_none;
+		else if (!strncmp(rest, "add ", 4) && rest[4] >= '0' && rest[4] <= '9')
+			kind = _host_bots_add, count = atol(rest + 4);
+		else if (!strncmp(rest, "fill ", 5) && rest[5] >= '0' && rest[5] <= '9')
+			kind = _host_bots_fill, count = atol(rest + 5);
+		if (kind == NONE)
 		{
-			console_printf(FALSE, "%ld bots asked for, %s", bots_wanted_count(),
-				bots_matchmaking_on() ? "by the matchmaking playlist" : "bots.count");
+			kind = network_host_controls_bot_choice(network_host_controls_bots_chosen(), &number);
+			console_printf(FALSE, "bots: %s %ld, %s", kind == _host_bots_fill ? "fill to" :
+				kind == _host_bots_add ? "add" : "none", number,
+				bots_matchmaking_on() ? "the matchmaking playlist's" : "bots.count, bots.make_room, bots.fill_to");
 			*result = TRUE;
 			return TRUE;
 		}
-		*result = network_host_controls_set_bots(count);
+		*result = network_host_controls_bots_tab() && network_host_controls_choose_bots(kind, count);
 		if (*result)
-			console_printf(FALSE, "bots: %ld", count);
+			console_printf(FALSE, "bots set");
 		else
 		{
-			console_warning("host_bots: give 0 to %d, as the host of a network game (not co-op, not "
-				"matchmaking)", BOTS_MAXIMUM);
+			console_warning("host_bots: give none, add <1 to %d> or fill <2 to %d>, as the host of a network game "
+				"(not co-op, not matchmaking)", BOTS_MAXIMUM, BOTS_MAXIMUM);
 		}
 		return TRUE;
 	}

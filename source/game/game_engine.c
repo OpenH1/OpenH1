@@ -7196,6 +7196,23 @@ void game_engine_playlist_next(
 	return;
 }
 
+/* port: whether a bot left the game in progress (its player's datum stays
+for the scores, as a player's who quits: port/linux/game/bots.c) */
+static boolean game_engine_port_bot_left(
+	void)
+{
+	struct data_iterator iterator;
+	struct player_datum *player;
+
+	data_iterator_new(&iterator, player_data);
+	while ((player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
+	{
+		if (player->quit_out_of_game && bots_player_is_bot(iterator.datum_index))
+			return TRUE;
+	}
+	return FALSE;
+}
+
 boolean game_engine_should_end_game(
 	void)
 {
@@ -7204,7 +7221,12 @@ boolean game_engine_should_end_game(
 	/* port: Infection's round ends by its own rules (infection.c) */
 	if (infection_enabled())
 		return FALSE;
-	if (game_engine && !multiple_teams_alive())
+	/* port: not once bots have left it (the host took them out, or asked
+	for fewer), which may leave one team, or one player, alone: the game
+	goes on to its limits, for bots the host adds back or players who join
+	it in progress. The Xbox's game ended when the others quit, and a game
+	no bot left still does */
+	if (game_engine && !multiple_teams_alive() && !game_engine_port_bot_left())
 		should_end_game = TRUE;
 	/* port: the gametype's time limit (game_variant_options) */
 	if (game_engine && game_variant_options_get()->time_limit > 0 &&

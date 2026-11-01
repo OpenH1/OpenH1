@@ -18,10 +18,10 @@ RETAIL_MAPS = Path("assets/maps")
 GAME = next((path for path in (Path("build/linux_x86_64/halo"), Path("build/linux_arm64/halo")) if path.is_file()),
             Path("build/linux_x86_64/halo"))
 # a player's line of the network test's each second (network_test.c): alive or dead, its kills, deaths, team and
-# machine (a bot's is BOTS_FIRST_MACHINE, 113, and up)
+# machine (a bot's is bots.h's BOTS_FIRST_MACHINE, 64, and up)
 PLAYER = re.compile(r"player (\d+): (?:\((-?[\d.]+) (-?[\d.]+) -?[\d.]+\)|dead).*? s-?\d+ k(-?\d+) d(-?\d+) f-?\d+ "
                     r"t-?\d+ m(\d+)")
-BOTS_FIRST_MACHINE = 113
+BOTS_FIRST_MACHINE = 64
 
 
 def _game(map_name):
@@ -100,3 +100,15 @@ def test_bots_in_a_system_link_game(tmp_path):
     assert len(bots) == 6, f"{len(bots)} bots in the system link game, not 6"
     assert sum(bot["walked"] for bot in bots.values()) >= 6 * 30.0, "the bots stood still"
     assert "bots: tick" in output, "no bots line a minute into the game"
+
+
+def test_many_bots_in_a_system_link_game(tmp_path):
+    """up to bots.h's 64 bots in one game (ADD 48 in a game of 64), each a machine of its own from
+    BOTS_FIRST_MACHINE up, playing a minute"""
+    _game("bloodgulch")
+    status, output, debug = _play(tmp_path, "host:bloodgulch:slayer", 75, HALO_BOTS=48, HALO_BOTS_MAKE_ROOM="false",
+                                  HALO_NETWORK_TEST_MOST_PLAYERS=64)
+    assert status == 0, output[-2000:]
+    assert not re.search(r"assert|exception", output + debug, re.I), "an assert or exception in the game's log"
+    lines = re.findall(r"bots: tick \d+, (\d+) bots", output)
+    assert lines and int(lines[-1]) == 48, f"bots playing a minute in: {lines}"

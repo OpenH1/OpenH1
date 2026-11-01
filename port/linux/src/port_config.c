@@ -948,7 +948,7 @@ static const struct config_setting config_settings[] =
 		"as the game's own maps' are before they run; false refuses them\n"
 		"(docs/custom_edition_caches.md)." },
 	{ "bots.count", _config_integer, "0", "HALO_BOTS", _environment_value, _platform_all,
-		"Computer players (bots) in a Slayer game this computer hosts: 0 to 15\n"
+		"Computer players (bots) in a Slayer game this computer hosts: 0 to 64\n"
 		"join its lobby with the players, as far as the game has room: a local\n"
 		"(split screen) game, or a system link or internet one, where the host\n"
 		"plays them and the other machines see them as players (bots.make_room).\n"
@@ -960,13 +960,13 @@ static const struct config_setting config_settings[] =
 		"In team games: \"even\" puts the bots on both teams, evening them with\n"
 		"the players; \"against\" puts them all on the team the players are not on." },
 	{ "bots.make_room", _config_boolean, "true", "HALO_BOTS_MAKE_ROOM", _environment_value, _platform_all,
-		"In a system link or internet game with bots (bots.count): a bot leaves\n"
-		"as a player joins, so that the game has no more than bots.fill_to\n"
-		"players and bots, and comes back as a player leaves. false: the bots\n"
-		"stay, and the game's most players are its players' alone." },
+		"With bots (bots.count): a bot leaves as a player joins, so that the\n"
+		"game has no more than bots.fill_to players and bots, and comes back as\n"
+		"a player leaves (the lobby's FILL TO). false: the bots stay, and a\n"
+		"network game's most players are its players' alone (the lobby's ADD)." },
 	{ "bots.fill_to", _config_integer, "16", "HALO_BOTS_FILL_TO", _environment_value, _platform_all,
-		"With bots.make_room, the players and bots a system link or internet\n"
-		"game is filled to (2 to 128; no more than its most players)." },
+		"With bots.make_room, the players and bots a game is filled to (2 to\n"
+		"128; no more than its most players)." },
 	{ "bots.tactics", _config_boolean, "false", "HALO_BOTS_TACTICS", _environment_value, _platform_all,
 		"In team games, a team's bots play together: they keep apart and within\n"
 		"reach of each other, fire at the enemy a teammate hurts and take angles\n"

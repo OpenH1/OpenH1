@@ -180,7 +180,7 @@ def test_browser_layout():
 
 def test_hub_keeps_every_place():
     """Multiplayer's list, on the computer: PLAY ONLINE's items, HOST's (CREATE GAME's and CO-OP CAMPAIGN's pages
-    and PLAY WITH BOTS) and EDIT GAMETYPES, each opening what the PC version's list did (the same functions and
+    and Create Game's OFFLINE) and EDIT GAMETYPES, each opening what the PC version's list did (the same functions and
     screens; the touchscreen's tiles too: _touch_hub), its panel with ONLINE NOW and BEST FOR YOU, the panel's
     descriptions one for each of menu_functions.c's items, and REFRESH and BACK in its footer."""
     port_settings = _port_settings()
@@ -199,7 +199,8 @@ def test_hub_keeps_every_place():
         "hub_join_direct": "multiplayer_type_join_direct_item",
         "hub_create_inter": "multiplayer_type_create_internet_item",
         "hub_create_lan_item": "multiplayer_type_create_lan_item",
-        "hub_create_bots": "multiplayer_type_create_bots_item",
+        # (OFFLINE hosts a game of this machine alone, as the PC list's PLAY WITH BOTS did)
+        "hub_create_offline": "multiplayer_type_create_bots_item",
         "hub_online_coop": "multiplayer_type_online_coop_item",
         "hub_split_coop": "multiplayer_type_coop_item",
         "hub_gametypes": "multiplayer_type_gametypes_item",

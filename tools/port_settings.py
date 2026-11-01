@@ -2352,11 +2352,13 @@ def _server_settings() -> list:
     # which players from the server browser must type
     extra += _value_row(base, "password", 10 + len(COOP_SETUP_SCREENS), "ss edit server password")
     rows.append((f"{base}/op_password", None))
-    # the bots (a game of this machine alone's, in GAME's, INVITE LINK's and
-    # LISTING's places: _bots_rows)
-    bots_rows, bots_extra = _bots_rows(base, 13 + len(COOP_SETUP_SCREENS))
-    rows += bots_rows
-    extra += bots_extra
+    # (a game of this machine alone's line, in the network's rows' places,
+    # which it hides: menu_functions.c's server_settings_local)
+    extra += _widget(f"{base}/local_note", [("type", "text"), ("controller", 1), ("left", 67),
+                                            ("top", 73 + SERVER_SETTINGS_SPACING * LOCAL_NOTE_PLACE + 4),
+                                            ("width", 480), ("height", 44), ("text", LOCAL_NOTE),
+                                            ("font", "ui\\small_ui"), ("color", "#FF2896FF"),
+                                            ("text_flags", "no_focus_test")], [])
     # MAP SHARING (map_share.c), a screen of its own as co-op's options are,
     # for any game: SETUP_OPTIONS_PLACE below it
     key, _, _, _ = MAP_SHARE_SETUP
@@ -2409,26 +2411,6 @@ def _server_settings() -> list:
                                                  ("font", "ui\\small_ui"), ("color", "#FF2896FF"), ("align", "center"),
                                                  ("text_y", 5), ("text_flags", "no_focus_test")], [])
         rows.append((f"{base}/op_{key}", None, SETUP_OPTIONS_PLACE + index))
-    # BOTS (a network game's, after the gametype's rows: its bots, which the
-    # host plays, on a screen of their own, BOT_SETUP), its value what they
-    # are (menu_functions.c's server_settings_bots)
-    key, _, _, _ = BOT_SETUP
-    target = f"{base}/{key}/{key}_screen"
-    extra += _widget(f"{base}/op_{key}", [("width", 512), ("height", 28),
-                                         ("flags", "pass_unhandled_to_focused_child"),
-                                         ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
-                     [f'<on event="a" open="{target}"/>', f'<on event="start" open="{target}"/>',
-                      '<on event="left_mouse" run="mouse emit accept event"/>',
-                      f'<child widget="{base}/{key}_label"/>', f'<child widget="{base}/{key}_value" x="230" y="1"/>'])
-    extra += _widget(f"{base}/{key}_label", [("type", "text"), ("controller", 1), ("width", 230), ("height", 22),
-                                             ("string_list", f"{base}/labels"),
-                                             ("string_index", 13 + len(COOP_SETUP_SCREENS) + len(BOTS_ROWS)),
-                                             ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("text_x", 13),
-                                             ("text_y", 4)], [])
-    extra += _widget(f"{base}/{key}_value", [("type", "text"), ("controller", 1), ("width", 280), ("height", 22),
-                                             ("font", "ui\\small_ui"), ("color", "#FF2896FF"), ("align", "center"),
-                                             ("text_y", 5), ("text_flags", "no_focus_test")], [])
-    rows.append((f"{base}/op_{key}", None, SETUP_OPTIONS_PLACE + len(SETUP_OPTION_SCREENS)))
     extra += _button(f"{base}/button_defaults", 3, [])
     extra += _widget(f"{base}/button_ok", [("type", "text"), ("width", 128), ("height", 24),
                                            ("bitmap", "bitmaps/text_button_background"), ("text", "START GAME"),
@@ -2441,8 +2423,7 @@ def _server_settings() -> list:
                                          "PLAYER OPTIONS:", "ITEM OPTIONS:", "VEHICLE OPTIONS:", "INDICATOR OPTIONS:",
                                          "TEAMPLAY OPTIONS:", "LISTING:",
                                          *(f"{title}:" for _, title, _, _ in COOP_SETUP_SCREENS), "PASSWORD:",
-                                         f"{MAP_SHARE_SETUP[1]}:", "GAME:", *(label for _, label, _, _ in BOTS_ROWS),
-                                         f"{BOT_SETUP[1]}:"])
+                                         f"{MAP_SHARE_SETUP[1]}:", "GAME:"])
     extra += _strings(f"{base}/help_strings", [
         "",
         "The name the game shows in the lists of games.\\nEnter changes it.",
@@ -2465,27 +2446,16 @@ def _server_settings() -> list:
         MAP_SHARE_SETUP[2],
         # (GAME's, by its choice)
         *(help_text for _, help_text in GAME_MODES),
-        # (the bots' rows': menu_functions.c's BOTS_HELP)
-        *(help_text for _, _, _, help_text in BOTS_ROWS),
-        # (a network game's BOTS row's, and its line for a gametype the bots
-        # do not play: menu_functions.c's BOT_OPTIONS_HELP)
-        BOT_SETUP[2],
-        BOTS_HINT,
     ])
     lines = _screen(base, spec, rows, ["server settings update"],
                     ['<on event="created" run="server settings init"/>'], extra)
-    # (the bots' line, below their rows: _bots_rows)
+    # (a game of this machine alone's line: server_settings_local)
     lines = [line.replace(f'<child widget="{base}/options_menu"/>',
-                          f'<child widget="{base}/options_menu"/>\n\t\t<child widget="{base}/bots_hint"/>')
+                          f'<child widget="{base}/options_menu"/>\n\t\t<child widget="{base}/local_note"/>')
              for line in lines]
-    # (co-op's options' screens, map sharing's and the bots')
-    for key, title, _, screen_rows in [*COOP_SETUP_SCREENS, MAP_SHARE_SETUP, BOT_SETUP]:
+    # (co-op's options' screens and map sharing's)
+    for key, title, _, screen_rows in [*COOP_SETUP_SCREENS, MAP_SHARE_SETUP]:
         lines += _setup_option_screen(f"{base}/{key}", key, screen_rows)
-    # (the bots' screen under SERVER SETUP's title: a title of its own is a
-    # picture ce_menus.py draws, TITLES)
-    key = BOT_SETUP[0]
-    lines = [line.replace(f'bitmap="{base}/{key}/header_{key}"', f'bitmap="{base}/header_server_settings"')
-             for line in lines]
     # (no Defaults: the bar is START and CANCEL; B cancels the name's edit
     # first)
     lines = [line.replace(f'<child widget="{base}/button_defaults" y="1"/>', "") for line in lines]
@@ -2560,29 +2530,6 @@ MAP_SHARE_SETUP = ("map_share_options", "MAP SHARING",
     ("map_share_upload", "UPLOAD LIMIT:", [f"{kb} KB/S" if kb < 1024 else f"{kb // 1024} MB/S"
                                            for kb in MAP_SHARE_UPLOADS],
      ["The most you send of maps, so that the game\\nkeeps the rest of your upload."] * len(MAP_SHARE_UPLOADS)),
-])
-# Server Setup's bots in a network game (port/linux/game/bots.c: the host
-# plays them, as players of machines of their own), laid out as co-op's
-# options are (its key, its title, its row's help and its rows: menu_functions.c's
-# gametype_options give their settings' values, bots.count, bots.skill,
-# bots.teams, bots.make_room and bots.fill_to; FILL TO is shown with MAKE
-# ROOM FOR PLAYERS on). A local game's are BOTS_ROWS, on Server Setup itself
-BOT_FILLS = list(range(2, 17))
-BOT_SETUP = ("bot_options", "BOTS", "Computer players you host for this game, and\\nwhether they leave as players join.", [
-    ("bot_count", "BOTS:", ["NONE", *(str(count) for count in range(1, 16))],
-     ["No bots in this game."] + ["The most bots that play in this game. Your\\ncomputer plays them."] * 15),
-    ("bot_skill", "BOT SKILL:", ["EASY", "NORMAL", "HEROIC", "LEGENDARY"],
-     ["How well the bots play: how soon they react,\\nhow well they aim, how far they see."] * 4),
-    ("bot_teams", "BOT TEAMS:", ["EVEN", "AGAINST YOU"], [
-        "In a team game, bots go on both teams, evening\\nthem with the players.",
-        "In a team game, every bot goes on the team you\\nare not on.",
-    ]),
-    ("bot_make_room", "MAKE ROOM:", ["ON", "OFF"], [
-        "A bot leaves as a player joins, and comes back\\nas a player leaves.",
-        "The bots stay. MAXIMUM PLAYERS counts the\\nplayers alone.",
-    ]),
-    ("bot_fill_to", "FILL TO:", [str(count) for count in BOT_FILLS],
-     ["Bots fill the game up to this many players and\\nbots (no more than MAXIMUM PLAYERS)."] * len(BOT_FILLS)),
 ])
 # (Server Setup's place of its options' rows, co-op's or the gametype's: after
 # MAP SHARING's)
@@ -2746,14 +2693,15 @@ def _lobby_board(base: str) -> tuple:
                                                          ("wide", lobby_column_wide(column))],
                              [f'<child widget="{base}/board_dot_{key}" x="8" y="{(row_h - LOBBY_DOT) // 2}"/>',
                               f'<child widget="{base}/board_name_{key}" x="22"/>',
-                              f'<child widget="{base}/board_tag_{key}" x="{row_w - LOBBY_TAG_WIDTH - LOBBY_TAG_INSET}"/>'])
+                              f'<child widget="{base}/board_tag_{key}" '
+                              f'x="{row_w - LOBBY_BOT_TAG_WIDTH - LOBBY_TAG_INSET}"/>'])
             lines += _widget(f"{base}/board_dot_{key}", [("controller", 1), ("width", LOBBY_DOT),
                                                          ("height", LOBBY_DOT), ("bitmap", part_dot(LOBBY_DOT))], [])
             lines += _part_text(f"{base}/board_name_{key}", [("width", name_w), ("height", row_h),
                                                              ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
                                                              ("text_y", 2),
                                                              ("wide", wide(0, LOBBY_WIDE_PLAYERS // 2))])
-            lines += _part_text(f"{base}/board_tag_{key}", [("width", LOBBY_TAG_WIDTH), ("height", row_h),
+            lines += _part_text(f"{base}/board_tag_{key}", [("width", LOBBY_BOT_TAG_WIDTH), ("height", row_h),
                                                             ("font", "ui\\small_ui"), ("color", PART_DIM),
                                                             ("align", "right"), ("text_y", 2),
                                                             ("wide", wide(LOBBY_WIDE_PLAYERS // 2))])
@@ -2769,28 +2717,28 @@ def _lobby_board(base: str) -> tuple:
                                            ("text_flags", "no_focus_test")], [])
                 if words else _part_text(f"{base}/{name}", pairs))
 
-    lines += text("board_next_label", 12, 16, "ui\\small_ui", PART_DIM, "NEXT GAME", wide_layout=None)
-    lines += text("board_gametype", 28, 22, "ui\\large_ui", "#FFFFFFFF")
-    lines += text("board_map", 52, 16, "ui\\small_ui", SETTINGS_BLUE)
-    lines += text("board_limits", 68, 16, "ui\\small_ui", SETTINGS_BLUE)
-    for name, x, y, width in (("board_kind", 0, 90, BROWSER_PILL), ("board_tick", BROWSER_PILL + 4, 90, BROWSER_PILL),
-                              ("board_opence", 0, 110, BROWSER_WIDE_PILL)):
+    lines += text("board_next_label", 10, 16, "ui\\small_ui", PART_DIM, "NEXT GAME", wide_layout=None)
+    lines += text("board_gametype", 24, 22, "ui\\large_ui", "#FFFFFFFF")
+    lines += text("board_map", 46, 16, "ui\\small_ui", SETTINGS_BLUE)
+    lines += text("board_limits", 62, 16, "ui\\small_ui", SETTINGS_BLUE)
+    for name, x, y, width in (("board_kind", 0, 82, BROWSER_PILL), ("board_tick", BROWSER_PILL + 4, 82, BROWSER_PILL),
+                              ("board_opence", 0, 100, BROWSER_WIDE_PILL)):
         panel.append(f'<child widget="{base}/{name}" x="{inner_left + x}" y="{top + y}"/>')
         lines += _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("width", width),
                                            ("height", PART_PILL_HEIGHT), ("bitmap", part_pill(width)),
                                            ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
                                            ("text_flags", "no_focus_test")], [])
-    panel.append(f'<child widget="{base}/board_section_bots" x="{inner_left}" y="{top + 134}"/>')
-    lines += _section(f"{base}/board_section_bots", "BOTS", inner, grown)
     # (a network game's host: the game after it, its playlist's or a change
-    # asked for, in the bots' place: lobby_board_update)
-    lines += text("board_after_label", 134, 16, "ui\\small_ui", PART_DIM, "THEN", wide_layout=None)
-    lines += text("board_after", 150, 16, "ui\\small_ui", SETTINGS_BLUE)
+    # asked for, on a line: lobby_board_update)
+    lines += text("board_after_label", LOBBY_THEN, 16, "ui\\small_ui", PART_DIM, "THEN", width=42, wide_layout=None)
+    panel.append(f'<child widget="{base}/board_after" x="{inner_left + 44}" y="{top + LOBBY_THEN}"/>')
+    lines += _part_text(f"{base}/board_after", [("width", inner - 44), ("height", 16), ("font", "ui\\small_ui"),
+                                                ("color", SETTINGS_BLUE), ("wide", grown)])
     # (how the game is: the countdown, waiting for players, how another
-    # player joins; up in the bots' place when it has none:
-    # lobby_board_update)
-    lines += text("board_status", 226, 28, "ui\\small_ui", SETTINGS_BLUE)
-    lines += text("board_waiting", 284, LOBBY_START[1], "ui\\large_ui", SETTINGS_BLUE, align="center")
+    # player joins, why the bots do not play: lobby_board_update)
+    lines += text("board_status", LOBBY_STATUS, LOBBY_HOST - LOBBY_STATUS - 2, "ui\\small_ui", SETTINGS_BLUE)
+    lines += text("board_waiting", LOBBY_HOST + 2 * LOBBY_BUTTON_STEP, LOBBY_START[1], "ui\\large_ui", SETTINGS_BLUE,
+                  align="center")
     children.append(f'<child widget="{base}/board_panel"{pointer}/>')
     lines += _widget(f"{base}/board_panel", [("controller", 1), ("left", panel_left), ("top", top),
                                              ("width", panel_width), ("height", height),
@@ -2807,10 +2755,11 @@ def _lobby_board(base: str) -> tuple:
                      ['<on event="left" run="port lobby team red"/>', '<on event="right" run="port lobby team blue"/>',
                       '<on event="a" run="port lobby team click"/>', start,
                       '<on event="left_mouse" run="mouse emit accept event"/>'])
-    labels = ("COUNT", "SKILL", "TEAMS")
-    for index, ((key, _, choices, _), label) in enumerate(zip(BOTS_ROWS, labels)):
+    # (the host's bots, any game's but co-op's: _bot_spinner)
+    for index, (key, label, choices) in enumerate(BOTS_ROWS):
+        spinner_pairs, load = _bot_spinner(key, choices)
         items.append(f'<child widget="{base}/board_{key}" x="{inner_left}" '
-                     f'y="{top + 156 + LOBBY_CONTROL_HEIGHT * index}"/>')
+                     f'y="{top + LOBBY_BOTS + LOBBY_CONTROL_HEIGHT * index}"/>')
         spinner_x, spinner_w = 70, 84
         lines += _widget(f"{base}/board_{key}", [("width", inner), ("height", LOBBY_CONTROL_HEIGHT),
                                                  ("flags", "pass_unhandled_to_focused_child"),
@@ -2825,19 +2774,16 @@ def _lobby_board(base: str) -> tuple:
         lines += _widget(f"{base}/board_{key}_spinner",
                          [("type", "spinner"), ("top", 1), ("width", spinner_w), ("height", 20),
                           ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
-                          ("strings", "|".join(shown for shown, _ in choices)),
-                          ("setting", f"bots.{key.split('_', 1)[1]}"),
-                          ("values", "|".join(value for _, value in choices)), ("font", "ui\\small_ui"),
+                          *spinner_pairs, ("font", "ui\\small_ui"),
                           ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 3),
                           ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
                           ("header_bounds", "7 -6 19 0"),
                           ("footer_bounds", f"7 {spinner_w + 3} 19 {spinner_w + 9}"),
                           ("wide", wide(panel_grown))],
-                         ['<on event="created" run="port setting load"/>', start,
-                          '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
-    items += [f'<child widget="{base}/board_host" x="{inner_left}" y="{top + 176}"/>',
-              f'<child widget="{base}/board_settings" x="{inner_left}" y="{top + 256}"/>',
-              f'<child widget="{base}/board_start" x="{inner_left}" y="{top + 284}"/>',
+                         [load, start, '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    items += [f'<child widget="{base}/board_host" x="{inner_left}" y="{top + LOBBY_HOST}"/>',
+              f'<child widget="{base}/board_settings" x="{inner_left}" y="{top + LOBBY_HOST + LOBBY_BUTTON_STEP}"/>',
+              f'<child widget="{base}/board_start" x="{inner_left}" y="{top + LOBBY_HOST + 2 * LOBBY_BUTTON_STEP}"/>',
               f'<child widget="{base}/board_prompts" y="414"/>']
     # (a network game's host: Host Controls over the lobby, its players,
     # map and gametype, playlist and bans before the game starts)
@@ -3122,27 +3068,44 @@ def _coop() -> list:
     return lines
 
 
-# ---------- the bots (port/linux/game/bots.c): Multiplayer's PLAY WITH
-# BOTS hosts a game of this machine alone (menu_functions.c's
-# multiplayer_host), whose lobby the bots join; Server Setup has their rows
-# in it (menu_functions.c's server_settings_bots), in the places of the
-# network's rows, which it hides. Each row's key, its label, its setting's
-# [(shown, value)] and its help (menu_functions.c's BOTS_HELP on)
+# ---------- the bots (port/linux/game/bots.c): every lobby but co-op's has
+# the host's bots' rows (lobby_menu.inc's lobby_board_bots_rows), BOTS's
+# spinner the choices (network_host_controls.c's, in this order: NONE, ADD
+# n, FILL TO n; n one at a time to 16, then by 4s to bots.h's BOTS_MAXIMUM;
+# FILL TO from 2), which lobby_menu.inc writes, and BOT SKILL's and BOT
+# TEAMS' their settings'. Each row's key, its label and its [(shown, value)]
+BOTS_MAXIMUM = 64
+
+
+def _bot_numbers(least: int) -> list:
+    return [*range(least, 17), *range(20, BOTS_MAXIMUM + 1, 4)]
+
+
+BOT_CHOICES = ["NONE", *(f"ADD {n}" for n in _bot_numbers(1)), *(f"FILL TO {n}" for n in _bot_numbers(2))]
 BOTS_ROWS = [
-    ("bots_count", "BOTS:", [("NONE", "0"), *((str(count), str(count)) for count in range(1, 16))],
-     "How many computer players join the lobby, as\\nmany as the game has room for."),
-    ("bots_skill", "BOT SKILL:", [("EASY", "easy"), ("NORMAL", "normal"), ("HEROIC", "heroic"),
-                                  ("LEGENDARY", "legendary")],
-     "How well the bots play: how soon they react,\\nhow well they aim, how far they see."),
-    ("bots_teams", "BOT TEAMS:", [("EVEN", "even"), ("AGAINST YOU", "against")],
-     "In a team game: EVEN puts bots on both teams,\\nAGAINST YOU all on the team you are not on."),
+    ("bots_count", "BOTS", [(choice, None) for choice in BOT_CHOICES]),
+    ("bots_skill", "SKILL", [("EASY", "easy"), ("NORMAL", "normal"), ("HEROIC", "heroic"),
+                                 ("LEGENDARY", "legendary")]),
+    ("bots_teams", "TEAMS", [("EVEN", "even"), ("AGAINST YOU", "against")]),
 ]
-# (Server Setup's places of their rows: GAME's, INVITE LINK's and LISTING's;
-# the line saying why a gametype has none, PASSWORD's, below them)
-BOTS_FIRST_PLACE = 2
 # (Server Setup's rows' step)
 SERVER_SETTINGS_SPACING = 20
-BOTS_HINT = "Bots play Slayer, SWAT, Infection and Gun Game only."
+# Server Setup in a game of this machine alone: its line in the places of
+# the network's rows (GAME, INVITE LINK), which it hides
+LOCAL_NOTE_PLACE = 2
+LOCAL_NOTE = ("OFFLINE: this computer alone, no network. Add bots in the\\nlobby; more players join there with "
+              "another controller.")
+
+
+def _bot_spinner(key: str, choices: list) -> tuple:
+    """a bots' row's spinner's strings, and its setting and values
+    (bots.skill's, bots.teams'), or none (BOTS: lobby_menu.inc's), with how
+    it loads"""
+    pairs = [("strings", "|".join(shown for shown, _ in choices))]
+    if choices[0][1] is None:
+        return pairs, '<on event="created" run="port lobby bots load"/>'
+    pairs += [("setting", f"bots.{key.split('_', 1)[1]}"), ("values", "|".join(value for _, value in choices))]
+    return pairs, '<on event="created" run="port setting load"/>'
 
 
 def _bots() -> list:
@@ -3156,41 +3119,6 @@ def _bots() -> list:
                    ['<on event="a" run="join controller to mp game"/>',
                     f'<on event="a" run="mp type set mode" open="{MT}/connected/connected_map_select_wrapper"/>',
                     '<on event="left_mouse" run="mouse emit accept event"/>'])
-
-
-def _bots_rows(base: str, first_label: int) -> tuple:
-    """Server Setup's bots rows ((row, platform, place) and their widgets),
-    each a spinner of its setting (as a settings screen's: "port setting
-    load"), and the line below them for a gametype they do not play"""
-    rows, extra = [], []
-    for index, (key, _, choices, _) in enumerate(BOTS_ROWS):
-        extra += _widget(f"{base}/op_{key}", [("width", 512), ("height", 28),
-                                              ("flags", "pass_unhandled_to_focused_child"),
-                                              ("bitmap", "bitmaps/option_bkds"), ("color", "#FF2896FF")],
-                         [f'<child widget="{base}/{key}_label"/>',
-                          f'<child widget="{base}/{key}_spinner" x="320" y="1"/>'])
-        extra += _widget(f"{base}/{key}_label", [("type", "text"), ("controller", 1), ("width", 300),
-                                                 ("height", 22), ("string_list", f"{base}/labels"),
-                                                 ("string_index", first_label + index), ("font", "ui\\large_ui"),
-                                                 ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 4)], [])
-        extra += _widget(f"{base}/{key}_spinner",
-                         [("type", "spinner"), ("left", 3), ("top", 2), ("width", 147), ("height", 20),
-                          ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
-                          ("strings", "|".join(shown for shown, _ in choices)),
-                          ("setting", f"bots.{key.split('_', 1)[1]}"),
-                          ("values", "|".join(value for _, value in choices)), ("font", "ui\\large_ui"),
-                          ("color", "#FF2896FF"), ("align", "center"), ("text_y", 1),
-                          ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
-                          ("header_bounds", "7 -6 19 0"), ("footer_bounds", "7 150 19 156")],
-                         ['<on event="created" run="port setting load"/>',
-                          '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
-        rows.append((f"{base}/op_{key}", None, BOTS_FIRST_PLACE + index))
-    extra += _widget(f"{base}/bots_hint", [("type", "text"), ("controller", 1), ("left", 67),
-                                           ("top", 73 + SERVER_SETTINGS_SPACING * (BOTS_FIRST_PLACE + len(BOTS_ROWS)) + 4),
-                                           ("width", 480), ("height", 22), ("text", BOTS_HINT),
-                                           ("font", "ui\\small_ui"), ("color", "#FF2896FF"),
-                                           ("text_flags", "no_focus_test")], [])
-    return rows, extra
 
 
 def _item_options_extras() -> list:
@@ -3610,12 +3538,20 @@ LOBBY_WIDE_PANEL = (-WIDE_HALF + LOBBY_WIDE_PLAYERS, WIDE_EXTRA - LOBBY_WIDE_PLA
 LOBBY_ROWS, LOBBY_ROWS_TOP, LOBBY_ROW_STEP = 13, 36, 20
 LOBBY_ROW = (LOBBY_COLUMN_WIDTH - 16, 18)
 LOBBY_DOT, LOBBY_TAG_WIDTH = 8, 58
+# (a bot's tag, BOT and the bots' skill, wider than the name leaves room
+# for: lobby_menu.inc's lobby_board_bot_tag gives it what the name leaves)
+LOBBY_BOT_TAG_WIDTH = 100
 # (the tag kept in from its row's end, clear of your own row's frame)
 LOBBY_TAG_INSET = 10
 # the panel's words, controls and buttons, LOBBY_PANEL_INNER wide
 LOBBY_PANEL_INNER = LOBBY_PANEL[2] - 28
 LOBBY_CONTROL_HEIGHT = 22
 LOBBY_START = (LOBBY_PANEL_INNER, 26)
+# the details panel's places under its next game: THEN, the bots' rows
+# (LOBBY_CONTROL_HEIGHT apart), the status, then HOST CONTROLS, GAME
+# SETTINGS and START GAME each under the last
+LOBBY_THEN, LOBBY_BOTS, LOBBY_STATUS, LOBBY_HOST = 118, 136, 202, 242
+LOBBY_BUTTON_STEP = 23
 # the team colors: red's and blue's, their columns' edges, and a game
 # without teams' dot
 LOBBY_TEAM_COLORS = [("#FF6B5E", "#7A2A2A"), ("#5AA9FF", "#1F4F9A")]
@@ -3637,7 +3573,7 @@ HUB_DESCRIPTIONS = [
     "Host a game for players on your Wi-Fi or local network.",
     "Play the campaign together over the Internet: friends join with your invite link.",
     "Play the campaign with a friend on this screen. Player 2 uses a controller.",
-    "Play Slayer against computer players, alone or with friends on this screen.",
+    "Play on this computer, without the network: against bots, and with friends on this screen.",
     "Make your own gametypes: the rules, weapons and vehicles, kept for next time.",
     "Host a game on the Internet, or for players on your local network only.",
     "Play the campaign together: online, or split screen on this computer.",
@@ -4067,8 +4003,8 @@ def _hub() -> list:
     """Multiplayer, in Settings' look: PLAY ONLINE's items (the server
     browser, its games counted; the local network, its games found; a
     friend's link; the party, its players: _party), HOST's (CREATE GAME and
-    CO-OP CAMPAIGN, each a page of
-    two, and PLAY WITH BOTS), EDIT GAMETYPES under a line, the panel beside
+    CO-OP CAMPAIGN, each a page: INTERNET, LOCAL NETWORK and OFFLINE, and
+    the two co-ops), EDIT GAMETYPES under a line, the panel beside
     them (menu_functions.c's multiplayer_status_update: the games online
     and the best of them for the server browser, else what is live for the
     item, and its description), and the footer's key prompts. Each item
@@ -4098,7 +4034,6 @@ def _hub() -> list:
                                     for event in ("a", "start")], "friends_note"),
         "hub_create": ("CREATE GAME ›", [f'<on event="{event}" open="{HUB}/create_screen"/>'
                                               for event in ("a", "start")], None),
-        "hub_create_bots": ("PLAY WITH BOTS", creates, None),
         "hub_coop": ("CO-OP CAMPAIGN ›", [f'<on event="{event}" open="{HUB}/coop_screen"/>'
                                                for event in ("a", "start")], None),
         "hub_gametypes": ("EDIT GAMETYPES", [
@@ -4106,6 +4041,9 @@ def _hub() -> list:
             'gametype_select_screen"/>' for event in ("a", "start")], None),
         "hub_create_inter": ("INTERNET", creates, None),
         "hub_create_lan_item": ("LOCAL NETWORK", creates, None),
+        # (a game of this computer alone, split screen, with bots as any
+        # game's: menu_functions.c's multiplayer_mode_set)
+        "hub_create_offline": ("OFFLINE", creates, None),
         "hub_online_coop": ("ONLINE CO-OP", creates, None),
         "hub_split_coop": ("SPLIT-SCREEN CO-OP", [
             f'<on event="{event}" run="port coop begin" open="{MT}/coop/player_2_profile_screen"/>'
@@ -4134,7 +4072,7 @@ def _hub() -> list:
     lines = page_list("hub_list", [("section_online", "PLAY ONLINE", ["hub_matchmaking", "hub_join_internet",
                                                                       "hub_join_lan_item", "hub_join_direct",
                                                                       "hub_party", "hub_friends"]),
-                                   ("section_host", "HOST", ["hub_create", "hub_create_bots", "hub_coop"]),
+                                   ("section_host", "HOST", ["hub_create", "hub_coop"]),
                                    (None, None, ["hub_gametypes"])], "hub_prompts", HUB_LIST_STEP, HUB_SECTION_GAP)
     lines += _section(f"{HUB}/section_online", "PLAY ONLINE", item_w, wide(-WIDE_HALF, HUB_WIDE_ITEMS))
     lines += _section(f"{HUB}/section_host", "HOST", item_w, wide(-WIDE_HALF, HUB_WIDE_ITEMS))
@@ -4142,7 +4080,8 @@ def _hub() -> list:
                                             ("wide", wide(-WIDE_HALF, HUB_WIDE_ITEMS))], [])
     # (CREATE GAME's page and CO-OP CAMPAIGN's: their two items, the same
     # panel, B back to Multiplayer)
-    for page, words, names in (("create", "CREATE GAME", ["hub_create_inter", "hub_create_lan_item"]),
+    for page, words, names in (("create", "CREATE GAME", ["hub_create_inter", "hub_create_lan_item",
+                                                          "hub_create_offline"]),
                                ("coop", "CO-OP CAMPAIGN", ["hub_online_coop", "hub_split_coop"])):
         lines += _widget(f"{HUB}/{page}_screen", [("width", 640), ("height", 480),
                                                   ("flags", "pass_unhandled_to_focused_child"),
@@ -4749,8 +4688,8 @@ TOUCH_TILES = [
                                        ("hub_join_direct", "JOIN BY LINK", "invite_note"),
                                        ("hub_party", "PARTY", "party_note"),
                                        ("hub_friends", "FRIENDS", "friends_note")]),
-    ("section_host", "HOST", [("hub_create", "CREATE GAME ›", None), ("hub_create_bots", "PLAY WITH BOTS", None),
-                              ("hub_coop", "CO-OP ›", None), ("hub_gametypes", "GAMETYPES", None)]),
+    ("section_host", "HOST", [("hub_create", "CREATE GAME ›", None), ("hub_coop", "CO-OP ›", None),
+                              ("hub_gametypes", "GAMETYPES", None)]),
 ]
 # (the hint's place, width: beside the title, over the panel)
 TOUCH_HUB_HINT = (330, 46, 640 - 28 - 330)
@@ -4770,6 +4709,9 @@ TOUCH_LOBBY_PROMPTS = [
     ("prompt_leave", "LEAVE", 552, 60, '<on event="a" run="mouse emit back event"/>'),
 ]
 TOUCH_LOBBY_PANEL = (LOBBY_PANEL[0], LOBBY_TOP, LOBBY_PANEL[2], 324)
+# (BOT SKILL's and BOT TEAMS' tiles, beside each other across the panel: a
+# touch button's size)
+TOUCH_LOBBY_HALF = 84
 # Host Controls': the chips over the list alone, the column titles under
 # them, its rows (TOUCH_HOST_ROWS, TOUCH_HOST_STEP apart to end over the
 # footer's band), each a player's name with its tag under it and its team,
@@ -5073,11 +5015,11 @@ def _touch_hub() -> tuple:
         "hub_party": [f'<on event="{event}" open="{MT}/party/party_screen"/>' for event in ("a", "start")],
         "hub_friends": [f'<on event="{event}" open="{MT}/friends/friends_screen"/>' for event in ("a", "start")],
         "hub_create": [f'<on event="{event}" open="{HUB}/create_screen"/>' for event in ("a", "start")],
-        "hub_create_bots": creates,
         "hub_coop": [f'<on event="{event}" open="{HUB}/coop_screen"/>' for event in ("a", "start")],
         "hub_gametypes": [f'<on event="{event}" open="main_menu/settings_select/multiplayer_setup/playlist_select/'
                           'gametype_select_screen"/>' for event in ("a", "start")],
-        "hub_create_inter": creates, "hub_create_lan_item": creates, "hub_online_coop": creates,
+        "hub_create_inter": creates, "hub_create_lan_item": creates, "hub_create_offline": creates,
+        "hub_online_coop": creates,
         "hub_split_coop": [f'<on event="{event}" run="port coop begin" open="{MT}/coop/player_2_profile_screen"/>'
                            for event in ("a", "start")],
     })
@@ -5127,7 +5069,8 @@ def _touch_hub() -> tuple:
                             defined=tuple(name for name, *_ in TOUCH_HUB_PROMPTS))
     # (the pages: their two items as wide tiles under their title)
     for page, words, names in (("create", "CREATE GAME", [("hub_create_inter", "INTERNET"),
-                                                          ("hub_create_lan_item", "LOCAL NETWORK")]),
+                                                          ("hub_create_lan_item", "LOCAL NETWORK"),
+                                                          ("hub_create_offline", "OFFLINE")]),
                                ("coop", "CO-OP CAMPAIGN", [("hub_online_coop", "ONLINE CO-OP"),
                                                            ("hub_split_coop", "SPLIT-SCREEN CO-OP")])):
         y = HUB_PANEL[1]
@@ -5224,47 +5167,59 @@ def _touch_lobby_board(base: str) -> tuple:
     lines += text("board_limits", 62, 16, "ui\\small_ui", SETTINGS_BLUE)
     for name, x, y in (("board_kind", 0, 82), ("board_tick", BROWSER_PILL + 4, 82), ("board_opence", 0, 100)):
         panel.append(f'<child widget="{base}/{name}" x="{inner_left + x}" y="{top + y}"/>')
-    panel.append(f'<child widget="{touch}/board_section_bots" x="{inner_left}" y="{top + 120}"/>')
-    lines += _section(f"{touch}/board_section_bots", "BOTS", inner, grown)
-    lines += text("board_after_label", 120, 16, "ui\\small_ui", PART_DIM, "THEN")
-    lines += text("board_after", 136, 16, "ui\\small_ui", SETTINGS_BLUE)
+    # (THEN on a line, as the computer's)
+    panel.append(f'<child widget="{touch}/board_after_label" x="{inner_left}" y="{top + 116}"/>')
+    lines += _widget(f"{touch}/board_after_label", [("type", "text"), ("controller", 1), ("width", 42),
+                                                    ("height", 16), ("font", "ui\\small_ui"), ("color", PART_DIM),
+                                                    ("text", "THEN"), ("text_flags", "no_focus_test")], [])
+    panel.append(f'<child widget="{touch}/board_after" x="{inner_left + 44}" y="{top + 116}"/>')
+    lines += _part_text(f"{touch}/board_after", [("width", inner - 44), ("height", 16), ("font", "ui\\small_ui"),
+                                                 ("color", SETTINGS_BLUE), ("wide", grown)])
     lines += text("board_status", height - 24, 24, "ui\\small_ui", SETTINGS_BLUE)
-    lines += text("board_waiting", 142, LOBBY_START[1], "ui\\large_ui", SETTINGS_BLUE, align="center")
+    lines += text("board_waiting", 140, LOBBY_START[1], "ui\\large_ui", SETTINGS_BLUE, align="center")
     lines += _widget(f"{touch}/board_panel", [("controller", 1), ("left", left), ("top", top), ("width", width),
                                               ("height", height), ("bitmap", part_panel(width, height)),
                                               ("wide", wide(*LOBBY_WIDE_PANEL))], panel)
     controls = wide(panel_moved, panel_grown)
     start = '<on event="start" run="port lobby start"/>'
     items = [f'<child widget="{base}/board_players" x="{LOBBY_LIST_X}" y="{top}"/>']
-    # (each bots' row its label over its value, the value's arrows at the
-    # row's ends: a tap on either half steps it)
-    labels = ("BOTS", "BOT SKILL", "BOT TEAMS")
-    for index, ((key, _, choices, _), label) in enumerate(zip(BOTS_ROWS, labels)):
-        items.append(f'<child widget="{touch}/board_{key}" x="{inner_left}" '
-                     f'y="{top + 142 + (TOUCH_TAP + 2) * index}"/>')
-        lines += _widget(f"{touch}/board_{key}", [("width", inner), ("height", TOUCH_TAP),
+    # (each bots' row its value between its arrows over its label (the
+    # spinner draws its value at its top): a tap on either half steps it;
+    # BOTS across the panel, SKILL and TEAMS beside each other under it,
+    # their words shorter)
+    places = [(0, 136, inner, touch_tile(inner, TOUCH_TAP))] + [
+        (column * (TOUCH_LOBBY_HALF + 1) - 3, 136 + TOUCH_TAP + 2, TOUCH_LOBBY_HALF,
+         touch_button(TOUCH_LOBBY_HALF, TOUCH_TAP)) for column in range(2)]
+    for (key, label, choices), (x, y, row_w, bitmap) in zip(BOTS_ROWS, places):
+        if key == "bots_teams":
+            choices = [("EVEN", "even"), ("VS YOU", "against")]
+        spinner_pairs, load = _bot_spinner(key, choices)
+        grow = panel_grown if row_w == inner else panel_grown // 2
+        row_wide = controls if row_w == inner else wide(panel_moved + (panel_grown // 2 if x > 0 else 0),
+                                                        panel_grown // 2)
+        items.append(f'<child widget="{touch}/board_{key}" x="{inner_left + x}" y="{top + y}"/>')
+        lines += _widget(f"{touch}/board_{key}", [("width", row_w), ("height", TOUCH_TAP),
                                                   ("flags", "pass_unhandled_to_focused_child"),
-                                                  ("bitmap", touch_tile(inner, TOUCH_TAP)), ("wide", controls)],
-                         [f'<child widget="{touch}/board_{key}_label" x="10" y="5"/>',
-                          f'<child widget="{touch}/board_{key}_spinner"/>'])
-        lines += _widget(f"{touch}/board_{key}_label", [("type", "text"), ("controller", 1), ("width", inner - 20),
+                                                  ("bitmap", bitmap), ("wide", row_wide)],
+                         [f'<child widget="{touch}/board_{key}_spinner"/>',
+                          f'<child widget="{touch}/board_{key}_label" x="10" y="30"/>'])
+        lines += _widget(f"{touch}/board_{key}_label", [("type", "text"), ("controller", 1), ("width", row_w - 20),
                                                         ("height", 16), ("text", label), ("font", "ui\\small_ui"),
-                                                        ("color", PART_DIM), ("wide", wide(0, panel_grown)),
+                                                        ("color", PART_DIM), ("align", "center"),
+                                                        ("wide", wide(0, grow)),
                                                         ("text_flags", "no_focus_test")], [])
         lines += _widget(f"{touch}/board_{key}_spinner",
-                         [("type", "spinner"), ("width", inner), ("height", TOUCH_TAP),
+                         [("type", "spinner"), ("width", row_w), ("height", TOUCH_TAP),
                           ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
-                          ("strings", "|".join(shown for shown, _ in choices)),
-                          ("setting", f"bots.{key.split('_', 1)[1]}"),
-                          ("values", "|".join(value for _, value in choices)), ("font", "ui\\small_ui"),
-                          ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 27),
+                          *spinner_pairs, ("font", "ui\\small_ui"),
+                          ("color", "#FFFFFFFF"), ("align", "center"),
                           ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
-                          ("header_bounds", "28 8 40 14"),
-                          ("footer_bounds", f"28 {inner - 14} 40 {inner - 8}"),
-                          ("wide", wide(0, panel_grown))],
-                         ['<on event="created" run="port setting load"/>', start,
-                          '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
-    items.append(f'<child widget="{touch}/board_host" x="{inner_left}" y="{top + 160}"/>')
+                          ("header_bounds", "8 4 20 10" if row_w < inner else "8 8 20 14"),
+                          ("footer_bounds", f"8 {row_w - 10} 20 {row_w - 4}" if row_w < inner
+                           else f"8 {inner - 14} 20 {inner - 8}"),
+                          ("wide", wide(0, grow))],
+                         [load, start, '<on event="left_mouse" run="mouse spinner 1wide click"/>'])
+    items.append(f'<child widget="{touch}/board_host" x="{inner_left}" y="{top + 136 + 2 * (TOUCH_TAP + 2)}"/>')
     lines += _widget(f"{touch}/board_host", [("type", "text"), ("width", inner), ("height", TOUCH_TAP),
                                              ("bitmap", touch_tile(inner, TOUCH_TAP)), ("wide", controls),
                                              ("text", "HOST CONTROLS"), ("font", "ui\\small_ui"),

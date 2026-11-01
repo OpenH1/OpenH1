@@ -1624,14 +1624,14 @@ before a player is in (the lobby's own first player).
   bots.teams "against", all take the team the players are not on; the
   players may change teams, and the bots follow. They leave when fewer are
   asked for, or the game is another gametype.
-- A network game's players (not a local one's, which no one joins):
-  bots.make_room on, the bots make room for them: no more bots than leave
-  the game bots.fill_to players and bots (and its most players), so a bot
-  leaves as a player joins and comes back as one leaves, in the lobby and in
-  the game in progress. A player who joins a game the bots fill takes a
-  bot's place at once (network_game_server_port_bots_make_room). Off, the
-  bots stay, and the game's most players are its players' alone: the game
-  takes as many more as it has bots (network_game_server_port_bots_room).
+- bots.make_room on (the lobby's FILL TO), the bots make room for the
+  players: no more bots than leave the game bots.fill_to players and bots
+  (and its most players), so in a network game a bot leaves as a player
+  joins and comes back as one leaves, in the lobby and in the game in
+  progress. A player who joins a game the bots fill takes a bot's place at
+  once (network_game_server_port_bots_make_room). Off (ADD), the bots stay,
+  and a network game's most players are its players' alone: the game takes
+  as many more as it has bots (network_game_server_port_bots_room).
 - In a game in progress, a bot leaves (one at a time: of the team with more
   players, the lowest scoring), and comes back a few seconds after a player
   left, while no player waits to join.
@@ -1753,7 +1753,8 @@ static long network_game_server_port_bots_wanted(
 	if (!bots_play_game_engine(server->game.variant.game_engine_index) || !census->humans)
 		return 0;
 	wanted = PIN(bots_wanted_count(), 0, BOTS_MAXIMUM);
-	if (!network_game_is_splitscreen_local() && bots_make_room())
+	/* (a local game's are filled to it too: the lobby's FILL TO) */
+	if (bots_make_room())
 	{
 		long fill = MIN(bots_fill_to(), network_game_server_port_bots_human_maximum(server));
 

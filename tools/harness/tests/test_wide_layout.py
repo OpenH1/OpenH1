@@ -164,7 +164,7 @@ def test_hub_layout(aspect):
     with its items."""
     width = WIDTHS[aspect]
     area = inner(width)
-    for root, page_items in ((f"{MT}/multiplayer_type_select_screen", 10), (f"{MT}/hub/create_screen", 2),
+    for root, page_items in ((f"{MT}/multiplayer_type_select_screen", 9), (f"{MT}/hub/create_screen", 3),
                              (f"{MT}/hub/coop_screen", 2)):
         boxes = layout(root, width)
         items = [box for box in boxes if box.name.startswith("hub_") and box.path[-1].endswith("_list")

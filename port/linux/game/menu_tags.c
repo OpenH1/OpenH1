@@ -507,7 +507,7 @@ static char const *const port_function_names[] =
 	"port host row", "port host left", "port host right", "port host action", "port host back",
 	/* (the computer's lobby: lobby_menu.inc) */
 	"port lobby team red", "port lobby team blue", "port lobby team toggle", "port lobby team click",
-	"port lobby start", "port lobby invite", "port lobby settings",
+	"port lobby start", "port lobby invite", "port lobby settings", "port lobby bots load",
 	/* (a dedicated server's map vote: menu_functions.c) */
 	"port map vote open", "port map vote choose",
 };
