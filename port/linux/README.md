@@ -702,10 +702,17 @@ gun at the feet, anything else at the body; the lower the skill, the less
 often it goes for the head. In a fight they play as people do: a grenade
 to open on a whole shield, a grenade then in for a blow, the pistol's
 shots to bring the shield down then a blow, a blow at the reach the game's
-melee has; they strafe one way while the enemy's aim is off them and turn
-about when it comes on them (as quickly as their skill reacts, the easy
-ones not always), now and then with a jump, and crouch to fire at range
-while no one aims at them.
+melee has, a grenade at middle range now and then; they strafe one way and
+the other about every second and turn about when the enemy's aim comes on
+them (as quickly as their skill reacts, the easy ones not always), back
+away from an enemy too close or with their shield low, stand their ground
+to fire at range now and then (crouched now and then, held), and jump from
+a run some three seconds apart, never with a crouch. Each target's
+reaction is their own, spread as people's are, and until they have reacted
+they go on as they were. Walking, they hold their look and look about now
+and then, turning in sweeps. These habits follow a play log of an internet
+game (`debug.play_log`, `tools/play_log`): its people's reactions, turns,
+strafing rhythm, jumps and firing.
 
 A bot knows only what a player in its place could (`game/bots_knowledge.c`):
 the enemies its own sight saw and, with `bots.share_sightings`, those its
