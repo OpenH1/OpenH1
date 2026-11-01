@@ -14,7 +14,9 @@ Automated system link sessions for testing the netcode without the menus
   which sets it up in the lobby and starts it). A map
   with a path is that level (custom_maps\a30, a Custom Edition map's), and
   the variant "coop" makes the game network co-op on it, at normal
-  difficulty, as the Map screen does for a campaign level;
+  difficulty, as the Map screen does for a campaign level; a variant with
+  a rotation entry's rules (team_slayer+ghosts=2+banshees=1) is built as a
+  dedicated server builds that entry's;
 - "local:<map>[:<variant>...]" the same with a local (split screen) game of
   one player, as Multiplayer > Split Screen of the Xbox's menus sets one up
   (no other machine joins it; the bots of bots.count join it, as they join
@@ -105,6 +107,7 @@ Called from the main loop every frame (main.c).
 
 #include "../src/p2p.h" /* port: port/linux/src/p2p.c, p2p_lobby.c */
 #include "network_chat.h"
+#include "server_gametypes.h"
 #include "network_party.h"
 #include "network_voice.h"
 #include "sim_rate.h"
@@ -2064,8 +2067,26 @@ void network_test_update(
 				else
 				{
 					struct game_variant_options options;
-					/* (one of OpenCE's gametypes by its name: game_modes.c) */
+					/* (one of OpenCE's gametypes by its name: game_modes.c; a
+					gametype with a rotation entry's rules, "team_slayer+ghosts=2":
+					server_gametypes.c) */
 					boolean opence = game_modes_gametype_by_name(variant_name, &variant, &options);
+
+					if (!opence && strchr(variant_name, '+'))
+					{
+						static struct server_entry entry;
+						char text[160], reason[128];
+
+						snprintf(text, sizeof(text), "%s:%s", network_test.map_name, variant_name);
+						if (server_rotation_parse_entry(text, (int)strlen(text), &entry) && !entry.rejected[0] &&
+							server_gametype_build(entry.gametype, entry.rules, entry.rule_count, &variant, &options,
+								reason, (long)sizeof(reason)))
+						{
+							opence = TRUE;
+						}
+						else
+							platform_log("network test: the gametype %s cannot be built: %s", variant_name, entry.rejected);
+					}
 
 					network_game_server_change_map_name(global_network_game_server_get(), path);
 					/* the variant, as picking the game settings does */
