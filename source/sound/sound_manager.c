@@ -249,7 +249,7 @@ symbols in this file:
 /* port: a stereo channel's sound in the world panned towards it, muffled
 and reverberated as a 3D channel's is (sound_dsound_xbox.c; update_channels) */
 void dsound_port_set_channel_stereo_position(short virtual_channel_index, boolean positioned, real pan,
-	real distance, real minimum_distance, real distance_fade, real occlusion, real obstruction,
+	real distance, real minimum_distance, real distance_fade, real obstruction, real occlusion,
 	boolean attenuate_direct_path);
 
 #ifdef HALO_VR
