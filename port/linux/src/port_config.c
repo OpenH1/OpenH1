@@ -177,8 +177,8 @@ static const struct config_setting config_settings[] =
 		"With vsync on (Vulkan: Linux, the Steam Deck, Windows, Android), start\n"
 		"each frame just in time for the refresh it is shown at, its input read\n"
 		"then, with no frames queued ahead: \"on\", \"off\", or \"auto\", on where\n"
-		"it was measured (Linux and the Steam Deck). The Mac's frames are paced\n"
-		"by its display already." },
+		"it was measured (Linux, the Steam Deck and Android). The Mac's frames\n"
+		"are paced by its display already." },
 	{ "display.max_fps", _config_integer, "0", "HALO_MAX_FPS", _environment_value, _platform_desktop,
 		"With vsync off, the most frames a second: 0 for twice the display's\n"
 		"refresh rate, -1 for no limit (which can hang some Intel graphics)." },
@@ -957,7 +957,8 @@ static const struct config_setting config_settings[] =
 		"as the game's own maps' are before they run; false refuses them\n"
 		"(docs/custom_edition_caches.md)." },
 	{ "bots.count", _config_integer, "0", "HALO_BOTS", _environment_value, _platform_all,
-		"Computer players (bots) in a Slayer game this computer hosts: 0 to 64\n"
+		"Computer players (bots) in a game this computer hosts (any gametype\n"
+		"but Race): 0 to 64\n"
 		"join its lobby with the players, as far as the game has room: a local\n"
 		"(split screen) game, or a system link or internet one, where the host\n"
 		"plays them and the other machines see them as players (bots.make_room).\n"

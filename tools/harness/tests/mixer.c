@@ -1144,6 +1144,44 @@ int main(int argc, char **argv)
 		doppler_enabled = TRUE;
 		return 0;
 	}
+	/* the Doppler shift glides: a voice whose velocity jumps from mix to mix
+	between 5 and 15 units a second towards the listener (as the camera's
+	velocity did between the frames, sound_manager.c refresh_listener: its
+	shift from mix to mix 1.046 or 1.153, 170 cents apart) is heard steady,
+	at the shift in between, its pitch moving under 25 cents */
+	CASE("doppler-steady")
+	{
+		static short samples[22050];
+		static float output[CHUNK * 2], send[CHUNK];
+		struct sdl_stream *stream;
+		float lowest = 10.0f, highest = 0.0f, middle = 343.0f / (343.0f - 10.0f * 3.048f);
+		unsigned long mix;
+
+		resampler_mode = RESAMPLER_SINC;
+		listener.distance_factor = 3.048f;
+		stream = voice_new(samples, 22050, 1, 22050, 0);
+		stream->has_3d = TRUE;
+		stream->mode = DS3DMODE_NORMAL;
+		stream->position[2] = 10.0f;
+		stream->minimum_distance = 1.0f;
+		stream->maximum_distance = 1000.0f;
+		for (mix = 0; mix < 40; mix++)
+		{
+			stream->velocity[2] = mix & 1 ? -15.0f : -5.0f;
+			mix_voice(stream, output, send, CHUNK);
+			/* (after a quarter of a second) */
+			if (mix * CHUNK >= OUTPUT_RATE / 4)
+			{
+				lowest = stream->current_doppler < lowest ? stream->current_doppler : lowest;
+				highest = stream->current_doppler > highest ? stream->current_doppler : highest;
+			}
+		}
+		CHECK(1200.0 * log2((double)highest / lowest) < 25.0 && lowest < middle && highest > middle,
+			"heard from x%.4f to x%.4f (%.1f cents), around x%.4f", lowest, highest,
+			1200.0 * log2((double)highest / lowest), middle);
+		voice_delete(stream);
+		return 0;
+	}
 	/* the limiter leaves a mix up to full scale as it is (the menus' music
 	reaches it), and holds two such voices' sum to it */
 	CASE("limiter")
@@ -1641,6 +1679,55 @@ int main(int argc, char **argv)
 		free(samples);
 		free(panned);
 		free(through);
+		return 0;
+	}
+	/* audio.volume and a voice's own volume (SetVolume) scale every voice
+	alike, the 3D voices through the HRTF as well as the 2D ones: each
+	voice at a fifth of both is 2 x 13.98 dB down */
+	CASE("master-volume")
+	{
+		unsigned long frames = 24000, kind;
+		short *samples = noise_samples(frames * 2 + 4096);
+		float *output = malloc(frames * 2 * sizeof(float));
+
+		hrtf_initialize();
+		listener_reset();
+		for (kind = 0; kind < 5; kind++)
+		{
+			double power_db[2];
+			int pass;
+
+			for (pass = 0; pass < 2; pass++)
+			{
+				struct sdl_stream *stream;
+
+				if (kind == 0)
+					stream = voice_new(samples, frames + 2048, 2, 44100, 0);
+				else if (kind == 1)
+					stream = voice_new(samples, frames + 2048, 1, 22050, 0);
+				else if (kind == 2)
+				{
+					stream = voice_new(samples, frames + 2048, 2, 22050, 0);
+					stream->stereo_positioned = TRUE;
+					stream->stereo_pan = -0.6f;
+				}
+				else
+					stream = voice_placed(samples, frames + 2048, 22050, -3.0f, 1.0f, 0.0f);
+				hrtf_enabled = kind == 4;
+				master_volume = pass ? 0.2f : 1.0f;
+				stream->volume = pass ? 0.2f : 1.0f;
+				render(stream, output, frames, TRUE);
+				power_db[pass] = ears_power(output + CHUNK * 2, frames - CHUNK);
+				voice_delete(stream);
+			}
+			hrtf_enabled = FALSE;
+			master_volume = 1.0f;
+			CHECK(fabs(power_db[1] - power_db[0] + 27.96) < 0.05, "voice %lu (0 2D stereo, 1 2D mono, 2 stereo placed, "
+				"3 3D panned, 4 3D through the HRTF) at a fifth of the master volume and its own: %+.2f dB", kind,
+				power_db[1] - power_db[0]);
+		}
+		free(samples);
+		free(output);
 		return 0;
 	}
 	/* "circle <file.wav> hrtf|pan": a sound going round the listener, to

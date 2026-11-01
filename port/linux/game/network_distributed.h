@@ -396,6 +396,10 @@ void network_distributed_client_substep_inputs(void);
 clients sent this frame sent on to its other OpenH1 clients at once (an
 OpenH1 game's forwarded input) */
 void network_distributed_frame_received(void);
+/* (a dedicated server, waiting for its frame's time: main.c) its datagrams
+read as they come for up to milliseconds, and their input sent on; FALSE
+when it cannot wait for them */
+int network_distributed_server_receive(long milliseconds);
 /* (as each sub-step ends: network_substeps.c) the host: the states of the
 players near each OpenH1 client, or aimed at, of each sub-step but the
 tick's last, then the same (with the controls the sub-step ran) as

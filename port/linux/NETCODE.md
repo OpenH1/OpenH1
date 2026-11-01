@@ -763,7 +763,9 @@ simulation still takes the input at its tick, as before.
   relayed input's encoding with the client's tick it is of; no sooner than
   8 ms after it last did (`FORWARDED_INPUT_INTERVAL_MILLISECONDS`: a host
   drawing hundreds of frames a second would send each client a datagram
-  nearly every frame). A player sent
+  nearly every frame); a dedicated server reads its datagrams as they come,
+  between its frames, and sends them on no sooner than 2 ms after
+  ("Dedicated servers"). A player sent
   every second tick is forwarded every second of their client's ticks, and
   at once when their buttons or choices changed in the ticks the input
   carries.
@@ -981,7 +983,10 @@ game at any rate (`port/linux/game/network_clock.c`):
   datagrams once a frame, and cannot tell when in the frame before its read
   an input came: an input read in the frame its tick begins in, just
   before the tick, is timed as the target, however long before the read it
-  came; one read in a frame before, from that read. (Timed from the read
+  came; one read in a frame before, from that read. (A dedicated server
+  reads them as they come while it waits for its frame, each read counted
+  as a frame's: one read so is timed from when it came, and only those
+  that came in the last millisecond of the wait are taken for the target.) (Timed from the read
   alone, the clock was pushed a frame early and swung back; on a dedicated
   server of 60 frames a second, so early that the prediction of the
   client's next tick came before the host's tick too, and the host took the
@@ -1191,10 +1196,16 @@ behind it at 120 (4 on average) and 0 to 17 at 60 (8). Only where each is
 moves so, and a vehicle's frame (its place and rotation); its pose (its
 animation, the aim of its head and its gun) is still blended between the
 ticks, as before. Not drawn so: what a local player is or rides (their view
-hangs on it), projectiles and items (a projectile's first two ticks and the
-tick it is drawn on to what it hit are drawn from the ticks), anything in a
-cinematic, and a player standing on a lift that moves (of the macro lane,
-drawn a tick behind). As an object comes to be drawn so, or no longer (a
+hangs on it), items, anything in a cinematic, and a player standing on a
+lift that moves (of the macro lane, drawn a tick behind). Projectiles are
+drawn so in every game at 60 and 120 (`render_interpolation_projectile_lead`),
+the players' own too, so that another's shot leaves from where that player
+is drawn, and meets what it hits as its impact appears: from the frame
+after the sub-step that made it, from half a tick of its motion back to
+where its head start put it over the tick it holds, then between its two
+newest sub-steps; one that strikes in a sub-step is drawn through that
+sub-step's frames on to where it struck (`render_interpolation_object_deleted`),
+never past it. As an object comes to be drawn so, or no longer (a
 lift starts under a player, a local player gets into another's vehicle), it
 glides from one to the other over four ticks (`LEAD_GLIDE_TICKS`). Drawing
 only: nothing sent or simulated changes, and a Legacy game, an OpenH1 game
@@ -1537,7 +1548,15 @@ as any other, with these differences, all on the host's side:
   of its own; everything its ticks run of its clients' players is theirs.
   The director takes the setting again in the lobby while no other
   machine is in it (`network_standard_server_mode_read`), and frames an
-  OpenH1 game at least as often as its tick rate. Nothing on the wire is
+  OpenH1 game at least as often as its tick rate. While it waits for its
+  frame's time it waits on its game's socket, and reads the datagrams that
+  come as they come (as its frame's read does, and nothing else of the
+  frame: `network_distributed_server_receive`, from
+  `server_mode_pace_frame_receiving`), sending their input on to the other
+  clients at once, no sooner than 2 ms after the last
+  (`FORWARDED_INPUT_SERVER_INTERVAL_MILLISECONDS`), not at its next frame;
+  the last millisecond before the frame's time is a precise sleep, and the
+  frame's read takes what came in it. Nothing on the wire is
   new: a dedicated server's OpenH1 game is a player host's, but for the
   dedicated flag every dedicated server sends.
 
@@ -2017,6 +2036,12 @@ Unity's Netcode for Entities, lightyear, netfox and the Ares source):
   write at once (`TCP_NODELAY`, in `xnet.c` for the game's sockets and in
   `p2p.c` for internet play's): with Nagle's algorithm a small write waited
   for the other end's delayed acknowledgement, up to 200 ms on Windows.
+  Internet play's tunnel carries them with KCP, which sends only as its
+  interval passes (10 ms, the least it takes): the tunnel's thread flushes
+  each connection's KCP once a pass that something was written to it or
+  came for it, so a write and the acknowledgements of what came go at once,
+  a burst in as few datagrams as it fills, and the interval only times the
+  resending.
 - **Input every tick, unreliably, each tick's buttons several times.** A
   client sends the host its players' input after each tick, with the
   buttons of the three ticks before it, and the host sends every client

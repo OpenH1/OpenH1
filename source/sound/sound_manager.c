@@ -232,11 +232,13 @@ symbols in this file:
 #include "sound_environment_definitions.h"
 #include "game_sound.h"
 #include "sound_preferences.h"
+#include "camera/director.h" /* port: the listener's velocity (refresh_listener) */
 #include "camera/observer.h"
 #include "effects/player_effects.h"
 #include "game/game.h"
 #include "game/game_globals.h"
 #include "game/players.h"
+#include "objects/objects.h" /* port: the listener's velocity (refresh_listener) */
 #include "render/render_debug.h"
 #include "scenario/scenario.h"
 #include "tag_files/tag_files.h"
@@ -247,7 +249,7 @@ symbols in this file:
 /* port: a stereo channel's sound in the world panned towards it, muffled
 and reverberated as a 3D channel's is (sound_dsound_xbox.c; update_channels) */
 void dsound_port_set_channel_stereo_position(short virtual_channel_index, boolean positioned, real pan,
-	real distance, real minimum_distance, real distance_fade, real occlusion, real obstruction,
+	real distance, real minimum_distance, real distance_fade, real obstruction, real occlusion,
 	boolean attenuate_direct_path);
 
 #ifdef HALO_VR
@@ -4090,10 +4092,35 @@ static void refresh_listener(
 				}
 			}
 #endif
-			matrix4x3_inverse_transform_vector(
-				&listener->matrix,
-				&camera->velocity,
-				&listener->velocity);
+			/* port: the listener moves as the player's unit (or what it rides)
+			moves, its velocity a tick's, as every sound's is (update_channels),
+			when the view is the player's own, in the first or the third
+			person. The camera's velocity is its last frame's movement over the
+			frame's time, and the native ports draw several frames a tick (and
+			at game.sim_rate 60 and 120 move the view in sub-steps spread over
+			them): it jumped from frame to frame between none and several times
+			the player's speed, and with it every sound's Doppler shift: a
+			warble of up to a semitone while the player walked, of several
+			riding a Pelican. Other views (a cinematic's, a dead player's) keep
+			the camera's */
+			{
+				real_vector3d velocity = camera->velocity;
+				long player_index = local_player_get_player_index(local_player_index);
+				long unit_index = player_get(player_index)->unit_index;
+				director_perspective perspective = director_get_perspective(local_player_index);
+
+				if (unit_index != NONE &&
+					(perspective == _director_perspective_first_person ||
+					perspective == _director_perspective_third_person))
+				{
+					object_get_velocities(unit_index, &velocity, NULL);
+					scale_vector3d(&velocity, (real)TICKS_PER_SECOND, &velocity);
+				}
+				matrix4x3_inverse_transform_vector(
+					&listener->matrix,
+					&velocity,
+					&listener->velocity);
+			}
 		}
 		else
 		{

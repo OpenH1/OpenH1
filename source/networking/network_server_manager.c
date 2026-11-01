@@ -1271,6 +1271,31 @@ void network_game_server_port_release_kept_out(
 		csmemset(&network_game_server_kicked[index], 0, sizeof(network_game_server_kicked[index]));
 }
 
+/* port: a dedicated server waiting for its frame's time reads its datagrams
+as they come, as its frame's read does (network_connection_idle's datagrams,
+network_game_server_handle_public_endpoint), and nothing else of its frame:
+port/linux/game/network_distributed.c's network_distributed_server_receive.
+The socket they come to (NONE: no game in progress), and the read */
+long network_game_server_port_datagram_socket(
+	void)
+{
+	struct network_game_server *server = global_network_game_server_get();
+
+	if (!server || server->state != _network_game_server_state_ingame || !network_game_server_game_is_valid(server))
+		return NONE;
+	return network_connection_datagram_socket(server->connection);
+}
+
+void network_game_server_port_read_datagrams(
+	void)
+{
+	struct network_game_server *server = global_network_game_server_get();
+
+	/* (a failure is the frame's to find, as its own read runs next) */
+	if (network_game_server_port_datagram_socket() != NONE && network_connection_read_datagrams(server->connection))
+		network_game_server_handle_public_endpoint(server);
+}
+
 /* port: the distributed netcode asks that a client machine be dropped (its
 game ran faster than this one's: network_distributed.c); it is, once this
 server next looks at its machines, not while its messages are read. Its

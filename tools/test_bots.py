@@ -1,7 +1,8 @@
 """The bots (port/linux/game/bots.c, bots.count) in the game: a local Slayer game on a stock map, played without a
 person (debug.network_test "local:", the scripted controller 1 of debug.test_input) for a minute and more, in which
 every bot walks the map, the bots kill and die, and the game ends cleanly; and a system link game, whose host plays
-them as a local game's; and the bots in the vehicles. Needs the retail maps in assets/maps (and, for the Banshees,
+them as a local game's; the bots in the vehicles; and the objective games (bots_objectives.c): they capture flags, hold
+the ball and stay on the hill. Needs the retail maps in assets/maps (and, for the Banshees,
 bloodgulch_all_vehicles.map with the Custom Edition's shared maps in assets/custom_maps) and a Linux build (ninja
 linux_x86_64 or linux_arm64); the game draws offscreen (SDL's offscreen video driver), with no audio, internet play
 or update check."""
@@ -167,7 +168,8 @@ def test_bots_use_the_vehicles(tmp_path, variant, kind):
     if kind == "warthog":
         assert vehicles["gunned"] + vehicles["ridden"] >= 1, f"no bot rode a teammate's Warthog: {vehicles}"
     else:
-        assert vehicles["scorpion"] >= 1, f"no bot drove a Scorpion: {vehicles}"
+        # (the one Scorpion is taken, or not, by chance in two minutes: the PC's vehicles driven more than once)
+        assert vehicles["scorpion"] >= 1 or vehicles["ghost"] >= 2, f"no bot drove a Scorpion, nor Ghosts: {vehicles}"
     assert vehicles["kills"] >= 1, f"no kill from a vehicle: {vehicles}"
 
 
@@ -186,6 +188,59 @@ def test_bots_fly_the_banshee(tmp_path):
     vehicles = _vehicles(output)
     assert vehicles["banshee"] >= 1 and vehicles["flying"] >= 20, f"the bots hardly flew a Banshee: {vehicles}"
     assert vehicles["crashes"] == 0, f"a Banshee's pilot flew into the map: {vehicles}"
+
+
+# the bots' minute line's part of their game's objective (bots_objectives.c's bots_objectives_report)
+OBJECTIVES = re.compile(r"bots: tick \d+, \d+ bots .*?, (?:flags: grabs (\d+), captures (\d+), returns (\d+)|"
+                        r"ball: seconds held (\d+), carrier kills (\d+)|hill: seconds (\d+) \((\d+) hills\))")
+OBJECTIVE_FIELDS = ("grabs", "captures", "returns", "ball", "carrier_kills", "hill", "hills")
+
+
+def _objectives(output):
+    """the last minute line's objective: the bots' flag grabs, captures and returns, seconds with a ball, on a hill"""
+    lines = OBJECTIVES.findall(output)
+    assert lines, "no objective line a minute into the game"
+    return {field: int(value) for field, value in zip(OBJECTIVE_FIELDS, lines[-1]) if value}
+
+
+def _objective_game(tmp_path, test, seconds, count):
+    _game(test.split(":")[1])
+    status, output, debug = _play(tmp_path, test, seconds, HALO_BOTS=count)
+    assert status == 0, output[-2000:]
+    assert not re.search(r"assert|exception", output + debug, re.I), "an assert or exception in the game's log"
+    bots = {index: player for index, player in _players(output).items() if player["machine"] >= BOTS_FIRST_MACHINE}
+    assert len(bots) == count, f"{len(bots)} bots in the game, not {count}"
+    return _objectives(output)
+
+
+def test_bots_capture_the_flag(tmp_path):
+    """Capture the Flag on Chill Out: the bots take the enemy's flag, run it home and score, and return their own"""
+    flags = _objective_game(tmp_path, "local:chillout:ctf", 120, 6)
+    assert flags["grabs"] >= 2, f"the bots hardly took a flag: {flags}"
+    assert flags["captures"] >= 1, f"no bot captured a flag: {flags}"
+    assert flags["returns"] >= 1, f"no bot returned its flag: {flags}"
+
+
+def test_bots_take_the_flag_on_blood_gulch(tmp_path):
+    """Capture the Flag on Blood Gulch, three minutes with the vehicles: the bots cross the map and take a flag"""
+    flags = _objective_game(tmp_path, "local:bloodgulch:ctf", 180, 8)
+    assert flags["grabs"] >= 1, f"no bot took a flag: {flags}"
+
+
+@pytest.mark.parametrize("variant", ["oddball", "team_oddball"])
+def test_bots_play_oddball(tmp_path, variant):
+    """Oddball: the bots take the ball and hold it, and hunt its holder"""
+    ball = _objective_game(tmp_path, f"local:chillout:{variant}", 90, 6)
+    # (of the first minute's; most games 30 to 45, the holder hunted by every other bot)
+    assert ball["ball"] >= 15, f"the bots held the ball {ball['ball']} seconds: {ball}"
+
+
+@pytest.mark.parametrize("variant", ["king", "team_king"])
+def test_bots_play_king_of_the_hill(tmp_path, variant):
+    """King of the Hill: the bots get to the hill and stay in it"""
+    hill = _objective_game(tmp_path, f"local:chillout:{variant}", 90, 6)
+    assert hill["hills"] >= 1, f"no hill: {hill}"
+    assert hill["hill"] >= 30, f"the bots were on the hill {hill['hill']} seconds: {hill}"
 
 
 def test_bots_in_a_system_link_game(tmp_path):

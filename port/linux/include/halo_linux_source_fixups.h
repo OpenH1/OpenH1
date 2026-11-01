@@ -225,6 +225,7 @@ output, which it logs and captures for its commands' replies (terminal.c) */
 int halo_server_mode(void);
 void server_mode_start(void);
 void server_mode_pace_frame(void);
+void server_mode_pace_frame_receiving(int (*receive)(long milliseconds));
 void server_fatal(char const *text);
 void server_console_output(const char *text);
 /* ... whether debug.txt's lines go to the standard error too

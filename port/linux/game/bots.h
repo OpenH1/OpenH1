@@ -44,7 +44,8 @@ short bots_teams(void);
 int bots_make_room(void);
 long bots_fill_to(void);
 /* the bots play the game engine's games (Slayer's, and so SWAT, Infection
-and Gun Game) */
+and Gun Game; Capture the Flag's, Oddball's (Juggernaut's) and King of the
+Hill's: bots_objectives.h) */
 int bots_play_game_engine(long game_engine_index);
 
 /* a matchmaking game's bots in place of the settings' (the host's of its

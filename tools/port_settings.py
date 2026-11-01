@@ -309,6 +309,41 @@ SETTINGS_TAB_PROMPT_WIDTH = 30
 SETTINGS_PANEL_X, SETTINGS_PANEL_WIDTH, SETTINGS_PANEL_BOTTOM = 388, 224, 400
 # the value's column in a row, and the arrows either side of it
 SETTINGS_SPINNER_X, SETTINGS_SPINNER_WIDTH = 188, 140
+# small_ui's measures (ui.map's tag): draw_string puts the baseline its ascent
+# below a text box's top and text_y, and the capitals (the labels are all
+# capitals) rise its cap height above it; the ascent has room for accents
+# above the capitals, so a text_y that centres the ascent leaves them low
+SMALL_UI_ASCENT, SMALL_UI_CAPS = 14, 10
+# (large_ui's, the same way)
+LARGE_UI_ASCENT, LARGE_UI_CAPS = 17, 13
+# the spinner's arrows' pictures (bitmaps/arrow_sm_*: drawn at their size from
+# their bounds' corner, not fitted to them): the arrow is the top 11 and a
+# quarter rows of the 16 and 6 wide, its point 5.5 down
+ARROW_SM_WIDTH, ARROW_SM_HEIGHT, ARROW_SM_MIDDLE = 6, 12, 5.5
+
+
+def caps_text_y(height: int, top: int = 0, large: bool = False) -> int:
+    """the text_y that centres small_ui's capitals (large_ui's if large) in a
+    box height tall, for a text box top below the box's top (half a unit
+    high where whole units cannot centre them)"""
+    ascent, caps = (LARGE_UI_ASCENT, LARGE_UI_CAPS) if large else (SMALL_UI_ASCENT, SMALL_UI_CAPS)
+    return int((height - caps) // 2) - top - ascent + caps
+
+
+# (the spinner's box inside the row, from its top and bottom: a spinner
+# draws its value at its box's top, without a text_y, so its top is the
+# value's text_y)
+SETTINGS_SPINNER_TOP = caps_text_y(SETTINGS_ROW_HEIGHT)
+
+
+def arrows_bounds(height: int, left: int, right: int) -> tuple:
+    """a spinner's header_bounds and footer_bounds: its arrows outside its
+    sides left and right, their points at the middle of the row height tall
+    it is placed at the top of (the bounds are from the spinner's place, not
+    its box's top; a whole unit, so half a unit above the middle)"""
+    y = int(height / 2 - ARROW_SM_MIDDLE)
+    return (f"{y} {left - ARROW_SM_WIDTH} {y + ARROW_SM_HEIGHT} {left}",
+            f"{y} {right} {y + ARROW_SM_HEIGHT} {right + ARROW_SM_WIDTH}")
 # the Quality row's pictures in the panel (its stills: SETTINGS_STILLS)
 SETTINGS_STILL_WIDTH, SETTINGS_STILL_HEIGHT = 96, 60
 SETTINGS_BLUE = "#FF2896FF"
@@ -1248,7 +1283,8 @@ def _settings_page(folder: str, page: dict) -> list:
         label_widget = _settings_text(f"{base}/{key}_label",
                                       [("width", value_x - 4 if setting or status else SETTINGS_ROW_WIDTH - 12),
                                        ("height", SETTINGS_ROW_HEIGHT), *label_text, ("color", SETTINGS_BLUE),
-                                       ("text_x", 10), ("text_y", 2), ("wide", wide(0, SETTINGS_WIDE_ROWS))])
+                                       ("text_x", 10), ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT)),
+                                       ("wide", wide(0, SETTINGS_WIDE_ROWS))])
         row_pairs = [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_ROW_HEIGHT),
                      ("flags", "pass_unhandled_to_focused_child"), ("bitmap", f"{SETTINGS}/row"),
                      ("color", SETTINGS_BLUE), ("platform", platform),
@@ -1283,22 +1319,23 @@ def _settings_page(folder: str, page: dict) -> list:
                                                             ("height", SLIDER_VALUE_HEIGHT),
                                                             ("bitmap", f"{SETTINGS}/slider_field"),
                                                             ("color", SETTINGS_BLUE), ("align", "center"),
-                                                            ("text_y", 0),
+                                                            ("text_y", caps_text_y(SLIDER_VALUE_HEIGHT)),
                                                             ("text_flags", "no_focus_test"),
                                                             ("wide", wide(SETTINGS_WIDE_ROWS))])
         elif setting:
+            spinner_arrows = arrows_bounds(SETTINGS_ROW_HEIGHT, 0, SETTINGS_SPINNER_WIDTH)
             extra += _widget(row, row_pairs, [f'<child widget="{base}/{key}_label"/>',
                                               f'<child widget="{base}/{key}_spinner" x="{SETTINGS_SPINNER_X}"/>'])
             extra += label_widget
             extra += _widget(f"{base}/{key}_spinner",
-                             [("type", "spinner"), ("top", 2), ("width", SETTINGS_SPINNER_WIDTH), ("height", 16),
+                             [("type", "spinner"), ("top", SETTINGS_SPINNER_TOP), ("width", SETTINGS_SPINNER_WIDTH),
+                              ("height", SETTINGS_ROW_HEIGHT - 2 * SETTINGS_SPINNER_TOP),
                               ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
                               ("strings", "|".join(shown for shown, _ in choices)), ("setting", setting),
                               ("values", "|".join(value for _, value in choices)), ("font", "ui\\small_ui"),
                               ("color", SETTINGS_BLUE), ("align", "center"), ("text_y", 0),
                               ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
-                              ("header_bounds", "2 -6 14 0"),
-                              ("footer_bounds", f"2 {SETTINGS_SPINNER_WIDTH} 14 {SETTINGS_SPINNER_WIDTH + 6}"),
+                              ("header_bounds", spinner_arrows[0]), ("footer_bounds", spinner_arrows[1]),
                               ("wide", wide(SETTINGS_WIDE_ROWS))],
                              ['<on event="created" run="port setting load"/>'])
         else:
@@ -1322,7 +1359,8 @@ def _settings_page(folder: str, page: dict) -> list:
                                                                  value_x), ("height", 16),
                                                                 ("color", SETTINGS_BLUE),
                                                                 ("align", "right" if named_row else "center"),
-                                                                ("text_y", 0), ("text_flags", "no_focus_test"),
+                                                                ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT, 2)),
+                                                                ("text_flags", "no_focus_test"),
                                                                 ("wide", wide(SETTINGS_WIDE_ROWS))])
         labels.append(label)
         helps.append(help_text)
@@ -1371,7 +1409,7 @@ def _settings_page(folder: str, page: dict) -> list:
                                            ("bitmap", f"{SETTINGS}/{'tab_current' if current else 'tab'}"),
                                            ("string_list", f"{SETTINGS}/tab_names"), ("string_index", index or None),
                                            ("color", "#FFFFFFFF" if current else SETTINGS_BLUE),
-                                           ("align", "center"), ("text_y", 3)],
+                                           ("align", "center"), ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT))],
                                     ['<on event="a" run="port settings tab"/>',
                                      '<on event="start" run="port settings tab"/>',
                                      '<on event="left_mouse" run="mouse emit accept event"/>'])
@@ -1466,7 +1504,7 @@ def _settings_shared() -> list:
                                                                  ("height", SETTINGS_TAB_HEIGHT),
                                                                  ("wide", WIDE_RIGHT if name == "next" else WIDE_LEFT),
                                                                  ("text", f"%{icon}-button"), ("color", SETTINGS_BLUE), ("text_x", 2),
-                                                                 ("text_y", 3)])
+                                                                 ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT))])
     lines += _strings(f"{SETTINGS}/tab_names", [PAGES[folder]["tab"] for folder in SETTINGS_TAB_PAGES])
     lines += _strings(f"{SETTINGS}/tab_about", [PAGES[folder]["about"] for folder in SETTINGS_TAB_PAGES])
     lines += _strings(f"{SETTINGS}/button_help", SETTINGS_BUTTON_HELP["tab"] + SETTINGS_BUTTON_HELP["page"])
@@ -2753,6 +2791,7 @@ def _lobby_board(base: str) -> tuple:
         panel.append(f'<child widget="{base}/{name}" x="{inner_left + x}" y="{top + y}"/>')
         lines += _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("width", width),
                                            ("height", PART_PILL_HEIGHT), ("bitmap", part_pill(width)),
+                                           ("text_y", PILL_TEXT_Y),
                                            ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
                                            ("text_flags", "no_focus_test")], [])
     # (a network game's host: the game after it, its playlist's or a change
@@ -2850,7 +2889,7 @@ def _lobby_board(base: str) -> tuple:
                                                   ("wide", prompt_wide(x, width)),
                                                   ("bitmap", part_highlight(width, PART_PROMPT_HEIGHT)),
                                                   ("text", words), ("font", "ui\\small_ui"), ("color", PART_TEXT),
-                                                  ("text_x", 30), ("text_y", 4)],
+                                                  ("text_x", 30), ("text_y", caps_text_y(PART_PROMPT_HEIGHT))],
                      [handler, handler.replace('event="a"', 'event="start"'),
                       '<on event="left_mouse" run="mouse emit accept event"/>',
                       f'<child widget="{base}/prompt_team_left" x="8" y="5"/>',
@@ -3405,8 +3444,12 @@ PARTS = "main_menu/parts"
 PARTS_TAB = f"{PARTS}/tab"
 PART_TEXT = "#FFCFE3FF"
 PART_DIM = SETTINGS_DIM
-PART_PROMPT_HEIGHT = 22
+# (a prompt's highlight: tall enough for its key cap, hud_key_prompts.c's,
+# 19 units about the capitals' middle, inside the highlight's edges)
+PART_PROMPT_HEIGHT = 24
 PART_PILL_HEIGHT = 16
+# (a pill's words: their capitals on its middle)
+PILL_TEXT_Y = caps_text_y(PART_PILL_HEIGHT)
 
 
 def part_highlight(width: int, height: int) -> str:
@@ -3480,7 +3523,9 @@ BROWSER_TABS = [("tab_all", "ALL"), ("tab_dedicated", "DEDICATED"), ("tab_openh1
                 ("tab_legacy", "LEGACY"), ("tab_coop", "CO-OP"), ("tab_favorites", "FAVORITES")]
 BROWSER_LIST_X, BROWSER_LIST_WIDTH = 28, 404
 BROWSER_HEADERS_TOP = 104
-BROWSER_ROWS_TOP, BROWSER_ROW_HEIGHT, BROWSER_ROW_STEP, BROWSER_ROWS = 124, 18, 19, 14
+# (a row as tall as its step: the chosen row's frame clear of the
+# descenders of its words, centred on their capitals)
+BROWSER_ROWS_TOP, BROWSER_ROW_HEIGHT, BROWSER_ROW_STEP, BROWSER_ROWS = 124, 19, 19, 14
 BROWSER_PANEL = (440, 104, 172, 296)
 BROWSER_COLUMNS = {
     "favorite": (6, 16), "server_name": (26, 110), "map": (140, 78), "type": (222, 60), "players": (284, 56),
@@ -3724,7 +3769,7 @@ def _tab_strip(base: str, strip: str, tabs: list, handlers: list) -> list:
                                            ("wide", wide(wide_spread(index, len(tabs)))),
                                            ("bitmap", PARTS_TAB), ("text", words),
                                            ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE), ("align", "center"),
-                                           ("text_y", 3)],
+                                           ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT))],
                          handlers + ['<on event="left_mouse" run="mouse emit accept event"/>'])
     return lines
 
@@ -3742,7 +3787,7 @@ def _prompts(base: str, bar: str, prompts: list, defined: tuple = ()) -> list:
                                            ("wide", prompt_wide(x, width)),
                                            ("bitmap", part_highlight(width, PART_PROMPT_HEIGHT)), ("text", words),
                                            ("font", "ui\\small_ui"), ("color", PART_TEXT), ("text_x", 8),
-                                           ("text_y", 4)],
+                                           ("text_y", caps_text_y(PART_PROMPT_HEIGHT))],
                          [handler, handler.replace('event="a"', 'event="start"'),
                           '<on event="left_mouse" run="mouse emit accept event"/>'])
     return lines
@@ -3886,11 +3931,13 @@ def _browser() -> list:
                          [("type", "text"), ("width", BROWSER_COLUMNS[column][1]), ("height", BROWSER_ROW_HEIGHT),
                           ("font", "ui\\small_ui"),
                           ("color", "#FFFFFFFF" if column == "server_name" else "#FFC9DCF7"),
-                          ("align", "right" if column == "players" else None), ("text_y", 2),
+                          ("align", "right" if column == "players" else None),
+                          ("text_y", caps_text_y(BROWSER_ROW_HEIGHT)),
                           ("wide", wide(*BROWSER_WIDE_COLUMNS[column]))], [])
     lines += _widget(f"{base}/server_item_tick", [("type", "text"), ("width", BROWSER_TICK_BADGE),
                                                   ("height", PART_PILL_HEIGHT),
-                                                  ("bitmap", part_pill(BROWSER_TICK_BADGE)), ("font", "ui\\small_ui"),
+                                                  ("bitmap", part_pill(BROWSER_TICK_BADGE)),
+                                                  ("text_y", PILL_TEXT_Y), ("font", "ui\\small_ui"),
                                                   ("color", "#FFFFFFFF"), ("align", "center"),
                                                   ("text_flags", "no_focus_test")], [])
     lines += _widget(f"{base}/server_item_locked", [("width", 16), ("height", 16),
@@ -3902,7 +3949,8 @@ def _browser() -> list:
     # menu_functions.c's pc_menu_text_color)
     lines += _widget(f"{base}/server_item_ping_ms", [("type", "text"), ("width", BROWSER_COLUMNS["ping"][1]),
                                                      ("height", BROWSER_ROW_HEIGHT), ("font", "ui\\small_ui"),
-                                                     ("color", "#FFC9DCF7"), ("align", "right"), ("text_y", 2),
+                                                     ("color", "#FFC9DCF7"), ("align", "right"),
+                                                     ("text_y", caps_text_y(BROWSER_ROW_HEIGHT)),
                                                      ("text_flags", "no_focus_test"),
                                                      ("wide", wide(*BROWSER_WIDE_COLUMNS["ping"]))], [])
     # (the panel: the game chosen's name, map and mode, its kind, tick rate
@@ -3930,6 +3978,7 @@ def _browser() -> list:
         panel_children.append(f'<child widget="{base}/{name}" x="{inner_left + x}" y="{panel_top + y}"/>')
         lines += _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("width", width),
                                            ("height", PART_PILL_HEIGHT), ("bitmap", part_pill(width)),
+                                           ("text_y", PILL_TEXT_Y),
                                            ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
                                            ("text_flags", "no_focus_test")], [])
     lines += _widget(f"{base}/browser_panel", [("controller", 1), ("left", panel_left), ("top", panel_top),
@@ -3944,7 +3993,7 @@ def _browser() -> list:
                                              ("bitmap", part_button(join_w, join_h)),
                                              ("wide", wide(panel_moved, panel_grown)),
                                              ("text", "%a-button JOIN GAME"), ("font", "ui\\small_ui"),
-                                             ("color", "#FFFFFFFF"), ("text_x", 12), ("text_y", 5)],
+                                             ("color", "#FFFFFFFF"), ("text_x", 12), ("text_y", caps_text_y(join_h))],
                      ['<on event="a" run="gamespy select button"/>', '<on event="start" run="gamespy select button"/>',
                       '<on event="left_mouse" run="mouse emit accept event"/>'])
     lines += _prompts(base, "join_game_button_bar", BROWSER_PROMPTS)
@@ -4003,7 +4052,7 @@ def _hub_panel(folder: str, place: tuple, wide_panel: tuple) -> list:
         lines += _widget(f"{folder}/best_{row}_badge", [("type", "text"), ("controller", 1), ("left", x),
                                                      ("top", row_top + 3), ("width", BROWSER_PILL),
                                                      ("height", PART_PILL_HEIGHT),
-                                                     ("bitmap", part_pill(BROWSER_PILL)),
+                                                     ("bitmap", part_pill(BROWSER_PILL)), ("text_y", PILL_TEXT_Y),
                                                      ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
                                                      ("align", "center"), ("text_flags", "no_focus_test")], [])
         lines += text(f"best_{row}_about", x, row_top + 19, inner - 104 if compact else 176, 18, "ui\\small_ui",
@@ -4125,7 +4174,7 @@ def _hub() -> list:
                                            ("wide", wide(-WIDE_HALF, HUB_WIDE_ITEMS)),
                                            ("bitmap", part_highlight(item_w, item_h)), ("text", words),
                                            ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE), ("text_x", 10),
-                                           ("text_y", 5)],
+                                           ("text_y", caps_text_y(item_h, large=True))],
                          [*handlers, '<on event="left_mouse" run="mouse emit accept event"/>',
                           *([f'<child widget="{HUB}/{note}"/>'] if note else [])])
     # (at the items' ends: the server browser's games, the local network's
@@ -4138,7 +4187,7 @@ def _hub() -> list:
         lines += _widget(f"{HUB}/{name}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
                                            ("wide", wide(0, HUB_WIDE_ITEMS)),
                                            ("font", "ui\\small_ui"), ("color", color), ("align", "right"),
-                                           ("text_y", 8), ("text_flags", "no_focus_test")], [])
+                                           ("text_y", caps_text_y(item_h)), ("text_flags", "no_focus_test")], [])
     lines += _prompts(HUB, "hub_prompts", HUB_PROMPTS)
     lines += _prompts(HUB, "page_prompts", HUB_PAGE_PROMPTS, defined=tuple(name for name, *_ in HUB_PROMPTS))
     lines += _hub_panel(HUB, HUB_PANEL, HUB_WIDE_PANEL)
@@ -4203,7 +4252,8 @@ def _party() -> list:
                                                          ("left", HUB_LIST_X + item_w - BROWSER_PILL - 4),
                                                          ("top", y + 1), ("width", BROWSER_PILL),
                                                          ("height", PART_PILL_HEIGHT),
-                                                         ("bitmap", part_pill(BROWSER_PILL)), ("text", "LEADER"),
+                                                         ("bitmap", part_pill(BROWSER_PILL)),
+                                                         ("text_y", PILL_TEXT_Y), ("text", "LEADER"),
                                                          ("wide", wide(-WIDE_HALF + HUB_WIDE_ITEMS)),
                                                          ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
                                                          ("align", "center"), ("text_flags", "no_focus_test")], [])
@@ -4281,14 +4331,15 @@ def _matchmaking() -> list:
         lines += _widget(f"{base}/mm_row_{row}", [("type", "text"), ("width", item_w), ("height", item_h),
                                                   ("wide", items_wide), ("bitmap", part_highlight(item_w, item_h)),
                                                   ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE), ("text_x", 10),
-                                                  ("text_y", 5)],
+                                                  ("text_y", caps_text_y(item_h, large=True))],
                          ['<on event="a" run="port matchmaking button"/>',
                           '<on event="start" run="port matchmaking button"/>',
                           '<on event="left_mouse" run="mouse emit accept event"/>',
                           f'<child widget="{base}/mm_note_{row}"/>'])
         lines += _widget(f"{base}/mm_note_{row}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
                                                    ("wide", wide(0, HUB_WIDE_ITEMS)), ("font", "ui\\small_ui"),
-                                                   ("color", "#FF5ED38C"), ("align", "right"), ("text_y", 8),
+                                                   ("color", "#FF5ED38C"), ("align", "right"),
+                                                   ("text_y", caps_text_y(item_h)),
                                                    ("text_flags", "no_focus_test")], [])
     # (the panel, Multiplayer's: menu_functions.c's matchmaking_screen_update)
     x, inner = left + 14, width - 28
@@ -4443,7 +4494,7 @@ def _friends() -> list:
         lines += _widget(f"{base}/fr_row_{row}", [("type", "text"), ("width", item_w), ("height", item_h),
                                                   ("wide", items_wide), ("bitmap", part_highlight(item_w, item_h)),
                                                   ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE), ("text_x", 10),
-                                                  ("text_y", 5)],
+                                                  ("text_y", caps_text_y(item_h, large=True))],
                          ['<on event="a" run="port friends button"/>',
                           '<on event="start" run="port friends button"/>',
                           '<on event="left_mouse" run="mouse emit accept event"/>',
@@ -4451,7 +4502,7 @@ def _friends() -> list:
         for note, color in ((f"fr_note_{row}", "#FF7FB2FF"), (f"fr_live_{row}", "#FF5ED38C")):
             lines += _widget(f"{base}/{note}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
                                                 ("wide", wide(0, HUB_WIDE_ITEMS)), ("font", "ui\\small_ui"),
-                                                ("color", color), ("align", "right"), ("text_y", 8),
+                                                ("color", color), ("align", "right"), ("text_y", caps_text_y(item_h)),
                                                 ("text_flags", "no_focus_test")], [])
     lines += _friends_panel(base, HUB_PANEL, HUB_WIDE_PANEL, base)
     lines += _prompts(base, "friends_prompts", FRIENDS_PROMPTS)
@@ -4609,6 +4660,7 @@ def _host_controls() -> list:
         if column == "tag":
             lines += _widget(f"{base}/host_item_tag", [("type", "text"), ("width", width),
                                                        ("height", PART_PILL_HEIGHT), ("bitmap", part_pill(width)),
+                                                       ("text_y", PILL_TEXT_Y),
                                                        ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
                                                        ("align", "center"), ("text_flags", "no_focus_test"),
                                                        ("wide", wide(moved, grown))], [])
@@ -4616,7 +4668,8 @@ def _host_controls() -> list:
         lines += _widget(f"{base}/host_item_{column}",
                          [("type", "text"), ("width", width), ("height", BROWSER_ROW_HEIGHT), ("font", "ui\\small_ui"),
                           ("color", "#FFFFFFFF" if column == "label" else "#FFC9DCF7"),
-                          ("align", "right" if column in ("score", "ping", "value") else None), ("text_y", 2),
+                          ("align", "right" if column in ("score", "ping", "value") else None),
+                           ("text_y", caps_text_y(BROWSER_ROW_HEIGHT)),
                           ("text_flags", None if column == "label" else "no_focus_test"),
                           ("wide", wide(moved, grown))], [])
     # (the panel: the row chosen's name, what it is, and what its buttons
@@ -4639,7 +4692,7 @@ def _host_controls() -> list:
                                                          ("bitmap", part_button(join_w, join_h)),
                                                          ("wide", wide(panel_moved, panel_grown)),
                                                          ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
-                                                         ("text_x", 12), ("text_y", 5)],
+                                                         ("text_x", 12), ("text_y", caps_text_y(join_h))],
                          ['<on event="a" run="port host action"/>', '<on event="start" run="port host action"/>',
                           '<on event="left_mouse" run="mouse emit accept event"/>'])
     lines += _prompts(base, "host_prompts", HOST_PROMPTS)
@@ -4973,7 +5026,8 @@ def _touch_browser() -> tuple:
                           ("align", "right" if column == "players" else None), ("wide", wide(moved, grown))], [])
     lines += _widget(f"{touch}/server_item_tick", [("type", "text"), ("width", BROWSER_TICK_BADGE),
                                                    ("height", PART_PILL_HEIGHT),
-                                                   ("bitmap", part_pill(BROWSER_TICK_BADGE)), ("font", "ui\\small_ui"),
+                                                   ("bitmap", part_pill(BROWSER_TICK_BADGE)),
+                                                   ("text_y", PILL_TEXT_Y), ("font", "ui\\small_ui"),
                                                    ("color", "#FFFFFFFF"), ("align", "center"),
                                                    ("text_flags", "no_focus_test")], [])
     lines += _widget(f"{touch}/server_item_locked", [("width", 16), ("height", 16),
@@ -5322,7 +5376,8 @@ def _touch_host_controls() -> tuple:
     for column, (_, _, cell_w, cell_h, moved, grown) in TOUCH_HOST_CELLS.items():
         if column == "tag":
             lines += _widget(f"{touch}/host_item_tag", [("type", "text"), ("width", cell_w), ("height", cell_h),
-                                                        ("bitmap", part_pill(cell_w)), ("font", "ui\\small_ui"),
+                                                        ("bitmap", part_pill(cell_w)),
+                                                        ("text_y", PILL_TEXT_Y), ("font", "ui\\small_ui"),
                                                         ("color", "#FFFFFFFF"), ("align", "center"),
                                                         ("text_flags", "no_focus_test")], [])
             continue

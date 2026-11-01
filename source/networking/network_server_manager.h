@@ -157,6 +157,13 @@ boolean network_game_server_port_bots_remove(
 takes, and a slot free or a bot to make room (bots.make_room) */
 boolean network_game_server_has_room_for_player(
 	struct network_game_server *server);
+/* port: a dedicated server's datagrams read as they come, between its frames
+(port/linux/game/network_distributed.c): their socket (NONE: no game in
+progress), and the read */
+long network_game_server_port_datagram_socket(
+	void);
+void network_game_server_port_read_datagrams(
+	void);
 
 /* ---------- globals */
 
