@@ -2030,7 +2030,8 @@ static const struct config_setting config_settings[] =
 	{ "debug.vr_audio_log", _config_boolean, "false", "HALO_VR_AUDIO_LOG", _environment_value, _platform_desktop,
 		"Log, each VR frame, where the sounds were heard from (the listener: its\n"
 		"yaw, pitch, roll and place) against the head the frame was drawn from,\n"
-		"and the game's camera." },
+		"and the game's camera; and each tick debug.vr_test_sound's obstruction\n"
+		"and occlusion, and whether they were judged from the head." },
 	{ "debug.vr_test_sound", _config_string, "\"\"", "HALO_VR_TEST_SOUND", _environment_value, _platform_desktop,
 		"Play a sound of the map's at a point held in the world, for automated\n"
 		"tests of the listener: \"<text> <seconds>[ <distance> <degrees>]\", the\n"
