@@ -54,12 +54,12 @@ def test_every_native_build_takes_the_configuration_defines():
         assert '["-DHALO_RELEASE"] if' not in text, name
 
 
-def test_profile_refuses_pgo_training():
-    with pytest.raises(ValueError, match="--pgo=train"):
-        build_common.check_profile_options(True, "train")
+def test_profile_refuses_pgo_generate():
+    with pytest.raises(ValueError, match="--pgo=generate"):
+        build_common.check_profile_options(True, "generate")
     build_common.check_profile_options(True, "use")
     build_common.check_profile_options(True, "off")
-    build_common.check_profile_options(False, "train")
+    build_common.check_profile_options(False, "generate")
 
 
 def test_guest_build_compiles_with_the_profile_define(monkeypatch):

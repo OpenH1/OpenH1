@@ -254,6 +254,7 @@ Give these options to `configure.py`:
 | `--release` | A release build. The game does not examine assertions, as in the retail game. |
 | `--vr` | The VR mode (OpenXR) in the Linux build of the computer. Refer to "VR" in [port/linux/README.md](port/linux/README.md#vr). |
 | `--pgo=off` | No profile-guided optimization. |
+| `--pgo=generate` | A build that records a profile for profile-guided optimization. Refer to "Optimization profiles". |
 | `--profile` | A profiling build. It records CPU times. Refer to "Profiling builds". |
 | `--guest-llvm=system`, `--guest-llvm=FOLDER` | The guest builds (Linux arm64 and x86-64, Android, macOS, Windows) compile the guest with clang and the LLVM tools on the PATH, or with the LLVM in FOLDER, not with the pinned LLVM. Refer to "The guests' compiler". |
 | `--guest-llvm-cache FOLDER` | The folder for the pinned LLVM (else `~/.cache/openh1`, on macOS `~/Library/Caches/openh1`). |
@@ -287,18 +288,36 @@ with `--guest-llvm=system`.
 
 ### Optimization profiles
 
-The builds use profiles of the game to optimize the code:
+Every build uses one profile of the game to optimize the code:
+`pgo/halo_linux.profdata`. All the builds are guest builds (Linux, Android,
+macOS, iOS, Windows), and the profile is of the guest: the game and the
+platform layer. A function that has changed since the profile was recorded
+is compiled without it.
 
-- `pgo/halo_linux.profdata`, for every build (they are all guest builds:
-  Linux, Android, macOS, Windows).
+The profile needs clang 22 or later. With an older clang, the builds do not
+use it. The guest builds' pinned LLVM (refer to "The guests' compiler")
+reads it on all platforms. `--pgo-profile PROFDATA` uses another profile.
 
-The profiles need clang 22 or later. With an older clang, the builds do not
-use the profiles. The guest builds' pinned LLVM (refer to "The guests'
-compiler") reads them on all platforms.
+To record the profile again (after large changes to the game's hot code),
+use a guest build of your computer. On a Mac:
 
-The profile was recorded by the 32-bit Linux build, which is gone: the
-guest builds cannot record one yet, and use it as it is (code changed since
-then goes without).
+1. Enter `python configure.py --release --pgo=generate`, then
+   `ninja macos`. The guest is compiled with clang's instrumentation
+   (`-fprofile-generate`), and its own small profile runtime
+   (`port/android/guest/runtime/guest_profile.c`) writes the counters when
+   the game exits, to the file that `HALO_PGO_FILE` names.
+2. Enter `python tools/pgo_train.py --binary build/macos/halo --data
+   <game data>`. The tool plays three short system link games (a host with
+   bots and a joined client, both drawing in hidden windows) and the start
+   of a campaign level, silently, in approximately five minutes. Then it
+   merges the recordings into `pgo/halo_linux.profdata` with the pinned
+   LLVM's `llvm-profdata`.
+3. Configure the build again without `--pgo=generate`.
+
+On Linux, use `ninja linux_arm64` or `ninja linux_x86_64` and
+`build/linux_*/halo` with a display (a virtual one: Xvfb with
+`SDL_VIDEO_DRIVER=x11`). The profile was last recorded by the macOS
+build (`arm64_32`, as the Android, iOS and Linux arm64 builds are).
 
 ### Profiling builds
 
