@@ -1173,6 +1173,12 @@ static unsigned int platform_low_latency_flags(void)
 }
 #define PLATFORM_WINDOW_DRAWING SDL_WINDOW_VULKAN
 #endif
+/* (below) display.vsync's swap interval, with display.max_fps's in step;
+the one the window was given (-1: none yet), which the frames' limit goes
+by (frame_interval_ns) */
+static int platform_swap_interval(void);
+static int platform_interval_take(void);
+static int platform_interval = -1;
 
 BOOL platform_video_initialize(unsigned long width, unsigned long height)
 {
@@ -1267,7 +1273,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 		(config_boolean("debug.gpu_validation") || config_boolean("debug.gl_debug") ? HOST_VULKAN_DEBUG_VALIDATION : 0) |
 		platform_low_latency_flags(), config_string("debug.gpu_dump_shaders"),
 		config_string("debug.texture_dump_directory"),
-		config_boolean("display.vsync") ? 1 : 0, battery_saver_active()))
+		platform_interval_take(), battery_saver_active()))
 	{
 		platform_log("cannot draw the window with Vulkan");
 		/* (said where it can be seen, not only in the log: else the game
@@ -1361,6 +1367,58 @@ static float platform_refresh_rate(void)
 #endif
 }
 
+/* the refreshes each frame is shown for, 0 for none (vsync off):
+display.vsync's 1; and on the Linux builds, with vsync off, a display.max_fps
+of the display's refresh rate or a whole fraction of it (60 at 60 Hz, 30 or
+45 at 90), within a frame a second, so many: frames spaced by the clock at
+the display's own rate drift against its refreshes, and now and then one is
+shown twice and the next not at all (judder, while the frame rate counter
+says 60). In step with the display, display.low_latency starts each in time
+for its refresh, for less input lag than the clock's. (Not Windows', whose
+display.low_latency is off until measured, nor the Mac's, whose frames
+with vsync off are taken at the display link's refreshes already.) */
+static int platform_swap_interval(void)
+{
+#if defined(HALO_VULKAN) && !defined(HALO_ANDROID) && !defined(HALO_WINDOWS)
+	long maximum;
+	float refresh;
+	int interval;
+#endif
+
+	if (config_boolean("display.vsync"))
+		return 1;
+#if defined(HALO_VULKAN) && !defined(HALO_ANDROID) && !defined(HALO_WINDOWS)
+	maximum = config_integer("display.max_fps");
+	refresh = platform_refresh_rate();
+	if (maximum > 0 && refresh > 0.0f)
+	{
+		for (interval = 1; interval <= 4; interval++)
+		{
+			float apart = refresh / (float)interval - (float)maximum;
+
+			if (apart >= -1.0f && apart <= 1.0f)
+				return interval;
+		}
+	}
+#endif
+	return 0;
+}
+
+/* platform_swap_interval's, which the window is given (platform_interval),
+noted in the log as display.max_fps comes in step with the display */
+static int platform_interval_take(void)
+{
+	int interval = platform_swap_interval();
+
+	if (interval != platform_interval && interval > 0 && !config_boolean("display.vsync"))
+	{
+		platform_log("frame rate: display.max_fps %ld shown in step with the display's %.2f Hz, each frame for %d "
+			"refresh%s", config_integer("display.max_fps"), platform_refresh_rate(), interval, interval == 1 ? "" : "es");
+	}
+	platform_interval = interval;
+	return interval;
+}
+
 /* whether the display paces the frames: display.vsync, and on the Mac
 battery saver too, whose display link then runs at a whole fraction of the
 display's rate (frame_pacing.h). Frames spaced by the clock alone come at
@@ -1372,7 +1430,7 @@ static BOOL platform_vsync(void)
 	if (battery_saver_active())
 		return TRUE;
 #endif
-	return config_boolean("display.vsync");
+	return (platform_interval >= 0 ? platform_interval : platform_swap_interval()) > 0;
 }
 
 /* display.vsync's swap interval, with battery saver's frames a second
@@ -1381,9 +1439,11 @@ refreshes, and the Metal host's display link runs at that rate */
 void platform_frame_rate_apply(void)
 {
 	int saving = battery_saver_active();
+	int interval;
 
 	if (!platform_window)
 		return;
+	interval = platform_interval_take();
 #if defined(HALO_METAL)
 	host_metal_vsync(platform_vsync());
 	host_metal_battery_saver(saving);
@@ -1391,7 +1451,7 @@ void platform_frame_rate_apply(void)
 	/* (the window open already: only its swap interval and
 	display.low_latency are taken) */
 	host_vulkan_window_open((unsigned int)(uintptr_t)platform_window, platform_low_latency_flags(), "", "",
-		config_boolean("display.vsync") ? 1 : 0, saving);
+		interval, saving);
 #endif
 }
 
@@ -1414,17 +1474,26 @@ static Uint64 frame_interval_ns(void)
 	static unsigned long read_at = (unsigned long)-1;
 	float rate = 0.0f;
 
-	/* (battery saver turning on or off moves config_changes) */
+	/* (battery saver turning on or off moves config_changes; the swap
+	interval the window has, platform_frame_rate_apply's) */
 	if (read_at != config_changes())
 	{
 		read_at = config_changes();
-		vsync = platform_vsync();
 #ifdef HALO_ANDROID
 		maximum = -1;
 #else
 		maximum = config_integer("display.max_fps");
 #endif
 	}
+	/* (a display.max_fps in step with the display's refresh rate, or no
+	longer: the rate known only once the window is shown (gamescope's), the
+	window on another display, the display's mode changed) */
+	if (maximum > 0 && platform_interval >= 0 && !config_boolean("display.vsync") &&
+		platform_swap_interval() != platform_interval)
+	{
+		platform_frame_rate_apply();
+	}
+	vsync = platform_vsync();
 	if (!vsync && maximum >= 0)
 		rate = maximum ? (float)maximum : 2.0f * (platform_refresh_rate() > 0.0f ? platform_refresh_rate() : 60.0f);
 	if (battery_saver_active() && !vsync)

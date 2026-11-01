@@ -252,15 +252,20 @@ Frame"):
   password in Server Setup, and the password of a game in the server
   browser) open the keyboard of Steam. Type the text, then select Enter on
   that keyboard.
-- Frame rate: with `display.vsync` off (the default), the game draws up to
-  twice the display's refresh rate (`display.max_fps`), for the least
-  latency; set `display.vsync = true` to show one frame for each refresh,
-  following the refresh rate and the frame limit of Quick Access >
-  Performance (40 to 60 Hz on the LCD model, up to 90 Hz on the OLED model),
-  which spends less of the battery; with it, `display.low_latency` starts
-  each frame just in time for its refresh, so that a press is on screen
-  about 15 ms later at 60 Hz, not about 90 (refer to "Low latency with
-  vsync"). The world is calculated at 30 Hz at all rates. Refer to "Frame rate". For a longer battery, set Video Setup >
+- Frame rate: in Game Mode (under gamescope), `display.vsync` is on unless
+  it is set: the game shows one frame at each refresh, following the
+  refresh rate and the frame limit of Quick Access > Performance (40 to
+  60 Hz on the LCD model, 45 to 90 Hz on the OLED model), and
+  `display.low_latency` starts each frame just in time for its refresh, so
+  that a press is on screen about 15 ms later at 60 Hz. That is the
+  smoothest picture, with the least latency there, and spends the least of
+  the battery (refer to "Low latency with vsync", where it is measured
+  against vsync off). A `display.max_fps` saved by an earlier version
+  (Frame Rate Limit 60) does nothing with vsync on. Set
+  `display.vsync = false` to draw up to `display.max_fps` (twice the
+  refresh rate) instead; a limit of the refresh rate, or half of it, is then
+  shown in step with the display, as vsync shows it. The world is
+  calculated at 30 Hz at all rates. Refer to "Frame rate". For a longer battery, set Video Setup >
   Battery Saver to Auto (on while the Deck is not charging) or On: 30
   frames each second at 60 or 90 Hz, 40 with the screen at 40 or 80 Hz, and
   the Classic look (refer to "Battery saver").
@@ -906,9 +911,9 @@ the setting for one start of the game. It has priority over the file.
 | `display.resolution_scaling` | `"native"` | `HALO_RESOLUTION_SCALING` | `"native"`: the game draws at the resolution of the window, or of the display (or `display.resolution`) fullscreen. `"original"`: the game draws the 640x480 picture of the Xbox and scales it up to the window or the display, whatever `display.mode` is. Video Setup sets it. |
 | `display.window_size` | `""` | `HALO_WINDOW_SIZE` | The size of the window, as `"<width>x<height>"`, such as `"1920x1080"`, 640x480 or more. You can change the size of the window; the game's picture takes its shape. Empty: `display.window_scale` decides. Video Setup's Window Size sets it, from sizes of each shape (4:3, 16:10, 16:9 and 21:9) that fit the desktop; it shows with Windowed. |
 | `display.window_scale` | `2` | `HALO_WINDOW_SCALE` | Used when `display.window_size` is empty: the size of the window, as a multiple of 640x480. |
-| `display.vsync` | `false` (Linux, Windows, macOS); `true` (iOS, Android) | `HALO_NO_VSYNC=1` sets `false` | `true`: each frame waits for the display. `false`: as many frames as `display.max_fps` allows (twice the refresh rate by default). With Vulkan, `false` presents in mailbox mode where the display has it (no tearing), else immediately. On macOS, `false` shows the newest frame at each refresh, with the older one dropped (no tearing). The VR mode's headset paces itself. With Vulkan and `true`, `display.low_latency` starts each frame just in time for its refresh. |
+| `display.vsync` | `false` (Linux, Windows, macOS); `true` (iOS, Android, and the Linux builds under gamescope: the Steam Deck's Game Mode) | `HALO_NO_VSYNC=1` sets `false` | `true`: each frame waits for the display. `false`: as many frames as `display.max_fps` allows (twice the refresh rate by default). With Vulkan, `false` presents in mailbox mode where the display has it (no tearing), else immediately. On macOS, `false` shows the newest frame at each refresh, with the older one dropped (no tearing). The VR mode's headset paces itself. With Vulkan and `true`, `display.low_latency` starts each frame just in time for its refresh. |
 | `display.low_latency` | `"auto"` | `HALO_LOW_LATENCY` | With vsync on (Vulkan: Linux, the Steam Deck, Windows, Android), the game starts each frame as late as it can and still have it on screen at the next refresh, its input read then, and never queues frames ahead of the display. `"on"`, `"off"`, or `"auto"`: on for Linux, the Steam Deck and Android (Windows: off until measured there). It needs a driver that says when each frame reaches the screen (`VK_KHR_present_wait`, or `VK_GOOGLE_display_timing`); without one it does nothing. The Mac's frames are paced by its display already. Refer to "Low latency with vsync". |
-| `display.max_fps` | `0` | `HALO_MAX_FPS` | With vsync off, the most frames each second. `0`: twice the display's refresh rate. `-1`: no limit, which can hang some Intel graphics (Raptor Lake), resetting the desktop's graphics too. A press while a frame waits for its time (a key, a mouse or controller button, a trigger or stick pushed or let go, the mouse moved after it was still) begins the next frame at once, so that it is read then: one frame more for each press, at most one an interval; the frame after waits for its time as before. Not the Mac's, whose frames wait for the display. |
+| `display.max_fps` | `0` | `HALO_MAX_FPS` | With vsync off, the most frames each second. `0`: twice the display's refresh rate. `-1`: no limit, which can hang some Intel graphics (Raptor Lake), resetting the desktop's graphics too. On Linux, the display's refresh rate or a whole fraction of it (a half to a quarter), within one frame a second, is shown in step with the display, as vsync shows it, with `display.low_latency` (refer to "Frame rate"). Video Setup shows Frame Rate Limit while VSync is off. A press while a frame waits for its time (a key, a mouse or controller button, a trigger or stick pushed or let go, the mouse moved after it was still) begins the next frame at once, so that it is read then: one frame more for each press, at most one an interval; the frame after waits for its time as before. Not the Mac's, whose frames wait for the display. |
 | `display.battery_saver` | `"off"` | `HALO_BATTERY_SAVER` | Draw less, for a longer battery and a cooler machine. `"on"`: each frame stays on screen for a whole number of the display's refreshes, 30 to 60 frames each second (60 at 60 or 120 Hz, 45 at 90 Hz), and the settings `display.graphics` chooses that are commented out are drawn at their Classic values; those set keep their own. `"auto"`: on while the machine runs on its battery, off on its charger, as SDL says (a machine without a battery, or one that cannot tell, is taken to be on its charger). `"off"`: never. Not in VR. The game plays the same. Video Setup > Battery Saver. Refer to "Battery saver". |
 | `display.graphics` | `"enhanced"` | `HALO_GRAPHICS` | The look of the 3D view, as one choice. `"classic"`: as the Xbox drew it. `"enhanced"`: the port's improvements together, each as far as the machine's GPU does it well. It chooses `display.anti_aliasing`, `display.anisotropic_filtering`, `display.shadow_resolution`, `display.per_pixel_lighting`, `display.model_detail` and `display.dynamic_lights` where they are commented out; each of them set wins over it. Video Setup > Graphics > Preset. Refer to "Classic and Enhanced". |
 | `display.anti_aliasing` | `display.graphics`'s | `HALO_ANTI_ALIASING` | The smoothing of jagged edges, which the Xbox did not have. `"off"`: none, as on the Xbox. `"fxaa"` or `"smaa"`: a pass over the 3D view after the game draws it. The HUD and the menus stay sharp. SMAA is the sharper and costs more. `"ssaa2x"`: the game draws at two times the resolution in each direction (at most the GPU's largest texture), and the picture is scaled down. The GPU does four times the work. Not with `display.resolution_scaling = "original"`. `"msaa2x"`, `"msaa4x"` or `"msaa8x"`: each pixel of the 3D view has that many samples (at most the GPU's). On Android, macOS and iOS `"ssaa2x"` gives none. On iOS `display.graphics = "enhanced"` gives `"msaa4x"` (port/ios/README.md). The VR mode's eyes have neither pass. A change applies from the next frame. Refer to "Anti-aliasing" in "What operates". Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
@@ -1397,9 +1402,20 @@ The 64-bit ARM build downloads `OpenH1-Linux-ARM64.zip` (or
 
 The game calculates its world at 30 Hz, as on the Xbox. On the Xbox, the
 game showed one frame for each calculation (tick). This port shows more:
-on Linux, Windows and macOS, without vsync, up to twice the refresh rate (`display.max_fps`); with vsync (iOS, Android, or
-`display.vsync = true`), one frame for each
+on Linux, Windows and macOS, without vsync, up to twice the refresh rate (`display.max_fps`); with vsync (iOS, Android, the Steam
+Deck's Game Mode, or `display.vsync = true`), one frame for each
 refresh of the display, for example at 60, 120 or 240 Hz.
+
+On Linux, a `display.max_fps` with vsync off that is the display's refresh
+rate, or a whole fraction of it (a half to a quarter), within one frame a
+second (60 at 60 Hz, 30 at 60 Hz, 45 at 90 Hz), is shown in step with the
+display: each frame is shown for that many refreshes, and
+`display.low_latency` starts it just in time (`src/sdl_platform.c`'s
+`platform_swap_interval`). Frames spaced by the clock alone at the
+display's own rate drift against its refreshes, so now and then one is
+shown twice and the next not at all: judder, while the frame counter says
+60. (Windows and macOS space them by the clock, as before; the Mac's frames
+with vsync off are taken at the display link's refreshes already.)
 
 Each frame shows the world between the last two ticks
 (`game/render_interpolation.c`):
@@ -1603,6 +1619,32 @@ showed a frame again, from the first press on, in about 7,870 frames a run
 at 60 Hz: none off; 0, 1 and 1 on at 30, 60 and 120 steps (one frame that
 took 2.5 ms, three times the others, at the same moment of each run), and
 2 in 15,740 at 120 Hz.
+
+Against vsync off, which the Linux builds had under gamescope before (the
+Steam Deck's Game Mode, where `display.vsync` is now on unless it is set):
+the same runs, 75 s each, 1280x800, `game.sim_rate` 60, and the frames
+actually on screen (`HALO_VULKAN_FRAME_LOG`'s, a frame mailbox replaced
+never is). Press to screen in ms, median / 95th percentile; the refreshes
+that showed the frame before again; the frames drawn and never shown:
+
+| display, mode | fire | move | click | turn | shown again | never shown |
+|---|---|---|---|---|---|---|
+| 60 Hz, vsync on (low latency) | 14.9 / 23.6 | 14.8 / 22.5 | 14.9 | 18.6 / 25.3 | 2 of 3,598 | 0 |
+| 60 Hz, `display.max_fps = 60`, vsync off (in step: the same) | 15.6 / 23.4 | 15.5 / 23.3 | 15.7 | 17.4 / 23.6 | 1 of 3,599 | 0 |
+| 60 Hz, vsync off (120 a second, mailbox) | 24.0 / 34.0 | 23.7 / 33.8 | 28.0 | 23.1 / 28.3 | 77 of 3,600 | 3,671 (51%) |
+| 60 Hz, vsync off, 58 a second by the clock | 22.3 / 35.6 | 20.9 / 35.4 | 21.3 | 18.5 / 24.3 | 152 of 3,602 | 95 |
+| 90 Hz, vsync on (low latency) | 17.3 / 28.9 | 12.2 / 24.4 | 15.4 | 11.9 / 17.4 | 1 of 5,397 | 0 |
+| 90 Hz, vsync off (180 a second, mailbox) | 22.7 / 30.1 | 18.2 / 28.3 | 20.7 | 13.0 / 21.3 | 37 of 5,400 | 5,427 (51%) |
+
+(Each run also had one hitch of about 0.9 s as the test game started, which
+the click's 95th percentile takes; it is left out.) Vsync with low latency
+is the smoothest (each refresh a new frame, its content a refresh on from
+the last: 0.1 to 0.2% of the steps uneven by more than a quarter of a
+refresh, against 1.0 to 1.7% for mailbox and 6.3% for the clock's limit),
+has the least latency, and draws half the frames, for the battery. Mailbox
+draws twice the frames, gamescope shows the newest it has when it composes,
+and the content's age at each refresh wanders. A limit by the clock near the
+refresh rate drifts against it: a frame shown twice, the next not at all.
 
 ### Battery saver
 

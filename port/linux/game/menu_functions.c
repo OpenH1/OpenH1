@@ -1709,6 +1709,22 @@ static void hud_button_style_row_show(struct widget_instance *list)
 	row->visible = index >= 0 && index < setting->value_count && !strcmp(setting->values[index], "true");
 }
 
+/* Video's Frame Rate Limit, shown while VSync shows OFF (Defaults too):
+with vsync on, the display paces the frames and the limit does nothing;
+the rows below close the gap (settings_rows_pack) */
+static void max_fps_row_show(struct widget_instance *list)
+{
+	struct widget_instance *vsync = named(list, "vsync_spinner", 0);
+	struct widget_instance *row = named(list, "op_max_fps", 0);
+	struct pc_menu_setting *setting = vsync ? pc_menu_setting_get(vsync->definition_tag_index) : NULL;
+	short index;
+
+	if (!setting || !row)
+		return;
+	index = vsync->parameters.list.selected_index;
+	row->visible = index >= 0 && index < setting->value_count && !strcmp(setting->values[index], "false");
+}
+
 /* a setting's value as Settings shows it: the change kept, else
 config.toml's (or the profile's) */
 static boolean settings_value(char const *name, char *text, unsigned int size)
@@ -2837,6 +2853,7 @@ static void settings_page_update(struct widget_instance *list)
 	}
 	video_rows_show(list);
 	hud_button_style_row_show(list);
+	max_fps_row_show(list);
 	settings_rows_show(list);
 	discord_account_show(list);
 	graphics_preset_show(list);
