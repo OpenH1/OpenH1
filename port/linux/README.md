@@ -4638,6 +4638,13 @@ each 10 ms it mixes, with no step.
   it (your head's crouch, a vehicle's seat, the death's held eye) and by
   your head's place in the room. Turned as your head is this frame (as it
   is located when the frame begins, before it is drawn).
+- Muffled from there too: a sound's obstruction (the line of sight from
+  the listener to it, which dulls a voice behind a wall) and its occlusion
+  (the level's clusters between) are judged from your head, not the game's
+  eye: lean round a corner or stand up over cover and you hear plainly what
+  you now see. Not while your head is through a wall, a door or a crate
+  (the line from the game's eye to it blocked), nor outside the level: from
+  the game's eye, as on the flat screen.
 - The sounds placed about the listener rather than in the world (a
   looping sound's details: a bird, a gust, at random about you) are about
   your body, not your head: they stay where they are as your head turns.
@@ -4655,7 +4662,9 @@ each 10 ms it mixes, with no step.
 - Only the first player's, in the headset; on the flat screen, and played
   flat (`vr.enabled = false`), the sound is the flat game's.
 - `debug.vr_audio_log` logs, each frame, where the sounds were heard from
-  against the head the frame was drawn from; `debug.audio_log`, each sound
+  against the head the frame was drawn from (and, each tick,
+  `debug.vr_test_sound`'s obstruction and occlusion, and whether from the
+  head); `debug.audio_log`, each sound
   in the world playing (where it is from your head, its gains, and the
   HRTF's delays and filters); `debug.audio_record` records the mix to a
   WAV file; `debug.vr_test_sound` plays a sound held in the world (below).
@@ -4872,7 +4881,7 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_shake` | `""` | `HALO_VR_TEST_SHAKE` | Shake the controllers as a hand does, for automated tests of the aim steadied while zoomed: `"<degrees> [<millimetres>]"`, the right controller turned at random by about this much (RMS: half a slow wander, smoothed noise below 1.5 Hz, half a 9 Hz tremor), both moved by this much. |
 | `debug.vr_aim_log` | `false` | `HALO_VR_AIM_LOG` | Log the controller's aim once a tick: where its line meets the world (and what: the structure, or the object's tag), how far the game's aim was turned to meet it there from the game's eye, how far from that point the unit's aim passes, whether the reticle is red, and the aim assist's target's magnetism level and how many of 9 points of its body are in sight from the controller (with `debug.vr_test_target`, how far the target's middle is from both, and its head from the game's aim); with `debug.vr_test_hands`, each frame, the controller's direction and the aim's, steadied (`vr aim steady`). |
 | `debug.vr_throw_log` | `false` | `HALO_VR_THROW_LOG` | Log each step of a grenade thrown with the left hand (`vr.grenade_throw`): the grip taken (or why it holds nothing), the swing (or why a fast hand was none), the release's speed, power and direction, and the game's throw: when it began, its animations held or moved on to their release, and the grenade's place and speed. |
-| `debug.vr_audio_log` | `false` | `HALO_VR_AUDIO_LOG` | Log, each frame, where the sounds were heard from (the listener: its yaw, pitch, roll and place) against the head the frame was drawn from, and the game's camera ("Sound from your head"). |
+| `debug.vr_audio_log` | `false` | `HALO_VR_AUDIO_LOG` | Log, each frame, where the sounds were heard from (the listener: its yaw, pitch, roll and place) against the head the frame was drawn from, and the game's camera, and each tick `debug.vr_test_sound`'s obstruction and occlusion and whether they were judged from the head ("Sound from your head"). |
 | `debug.vr_test_sound` | `""` | `HALO_VR_TEST_SOUND` | Play a sound of the map's at a point held in the world, for automated tests of the listener: `"<text> <seconds>[ <distance> <degrees>]"`, the first sound whose tag name has the text in it, again every so many seconds, so many world units (2) from the player's eye, turned so many degrees left of the view's heading (0: ahead); placed again if the player is carried a tenth of a unit away (a level's ride in). |
 | `debug.vr_melee_log` | `false` | `HALO_VR_MELEE_LOG` | Log the right hand's swings that did not melee (`vr.melee_gesture`) too: how fast and how far each went, and why it was none (too slow, a holster, a throw, a reload, the tracking jumping). Each melee by a swing is logged whatever this is. |
 | `debug.vr_test_weapon` | `""` | `HALO_VR_TEST_WEAPON` | Put a weapon in the first player's hand, for automated tests of the reload by hand: `"<text> <seconds>"`, that many seconds into the level the player's weapons are taken and a new one is in hand, the first of the map's whose tag name has the text in it (`"shotgun 15"` on d20, `"rocket 15"` on b30). |
@@ -6209,7 +6218,7 @@ Other changes:
 | `scenario/scenario.c` | The BSP connection tables have names, not MSVC offsets. |
 | `rasterizer/xbox/rasterizer_xbox_environment_fog.c` | A local pointer gets its value from the file-scope array with the same name. |
 | `game/player_control.c` | The mouse aims the player on controller 1 directly, its zoomed turn as `input.zoom_sensitivity` chooses (`view_fov.c`). The touch controls' swipe and gyroscope come since the frame's input are read again for the drawn view, as the input would turn the player by them (`player_control_touch_look_late`, `display.direct_camera`). |
-| `sound/game_sound.c` | The game calculates the obstruction of each sound one time for each tick, not for each frame. |
+| `sound/game_sound.c` | The game calculates the obstruction of each sound one time for each tick, not for each frame. In the VR mode, from the head the first player hears from, unless the line from the game's eye to it is blocked. |
 | `sound/sound_manager.c` | A track of a looping sound that is gone stops, even in the millisecond it started (`refresh_sound`). The Xbox never drew three frames in one millisecond; the port can (the null renderer, no frame limit), and then read the deleted looping sound and crashed. |
 | `cseries/errors.c` | `debug.txt` stays open between lines. A line, or a run of up to four lines, that comes twice in a row is counted, not written again, until another line comes or the game ends (`last line repeated N times`, `last 2 lines repeated N times`). At 64 MB, `debug.txt` becomes `debug.old.txt` and a new `debug.txt` starts. |
 | `networking/`, `game/`, `interface/`, `bungie_net/network/` and the pools of objects, effects and sounds | The system link limits and the memory for them. |

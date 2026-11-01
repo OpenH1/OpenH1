@@ -403,11 +403,13 @@ struct sound_listener
 #ifdef HALO_VR
 /* port: in the VR mode, the first player's listener is the head
 (refresh_listener), and the game's camera it would have been, which the
-sounds placed about the listener are about (sound_vr_relative) */
+sounds placed about the listener are about (sound_vr_relative), and the
+head's place, which the sounds' obstruction is judged from (game_sound.c) */
 static struct
 {
 	boolean head;
 	real_matrix4x3 camera;
+	real_point3d position;
 } sound_vr_listener;
 #endif
 
@@ -3581,6 +3583,24 @@ static void sound_vr_relative(
 
 	return;
 }
+
+/* port: where a local player hears from while the listener is the head
+(refresh_listener), for the sounds' obstruction (game_sound.c); FALSE while
+it is the game's camera. The head's place as placed last, not the listener's
+matrix: a sound started while the listener is placed (debug.vr_test_sound's)
+would find it still the game's camera */
+boolean sound_vr_listener_head(
+	short local_player_index,
+	real_point3d *position)
+{
+	if (local_player_index != 0 || !sound_vr_listener.head || !listener_get(0)->valid)
+	{
+		return FALSE;
+	}
+	*position = sound_vr_listener.position;
+
+	return TRUE;
+}
 #endif
 
 static void update_channels(
@@ -4084,6 +4104,7 @@ static void refresh_listener(
 					&head_up);
 				if (sound_vr_listener.head)
 				{
+					sound_vr_listener.position = head_position;
 					matrix4x3_from_point_and_vectors(
 						&listener->matrix,
 						&head_position,
