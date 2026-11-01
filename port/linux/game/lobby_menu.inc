@@ -526,6 +526,11 @@ static void lobby_board_bots_choice(struct widget_instance *spinner, boolean loc
 /* "port lobby bots load" (BOTS' spinner made): the choice the settings make */
 static boolean lobby_board_bots_load(struct widget_instance *spinner)
 {
+	/* (one of the spinner's items, each made from the spinner's own
+	definition and so given its created event too: ui_widget.c's list
+	items, before the spinner's own) */
+	if (spinner->parameters.list.number_of_items == 0)
+		return TRUE;
 	if (spinner->parameters.list.number_of_items != network_host_controls_bot_choice_count())
 		platform_log("menus: the lobby's BOTS has %d choices, not %d", (int)spinner->parameters.list.number_of_items,
 			(int)network_host_controls_bot_choice_count());

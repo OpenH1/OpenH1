@@ -953,6 +953,22 @@ static boolean bots_weapon_empty(long weapon_index)
 	return weapon->weapon.magazines[0].rounds_loaded + weapon->weapon.magazines[0].rounds_total <= 0;
 }
 
+/* the unit has no rounds in any weapon it holds (one with none counts as
+empty; a flag or ball as none) */
+static boolean bots_unit_out_of_ammo(struct unit_datum *unit)
+{
+	short slot;
+
+	for (slot = 0; slot < MAXIMUM_WEAPONS_PER_UNIT; slot++)
+	{
+		long weapon_index = unit->unit.weapon_object_indices[slot];
+
+		if (weapon_index != NONE && !weapon_is_flag(weapon_index) && !bots_weapon_empty(weapon_index))
+			return FALSE;
+	}
+	return TRUE;
+}
+
 /* how full the weapon's magazine is, 0 to 1 (1 for one without) */
 static real bots_weapon_loaded(long weapon_index)
 {
@@ -1217,7 +1233,9 @@ static long bots_find_item(struct bots_bot *bot, struct unit_datum *unit, real_p
 	long best_index = NONE;
 	real best_score = REAL_MAX;
 	long current = bots_current_weapon(unit);
-	short current_value = current != NONE ? bots_weapon_value(weapon_get(current)->definition_index) : 0;
+	/* (an empty one is worth nothing: any other, or its own rounds) */
+	short current_value = current != NONE && !bots_weapon_empty(current) ?
+		bots_weapon_value(weapon_get(current)->definition_index) : 0;
 	/* (debug.bot_player_weapon: the first player's bot goes for that weapon
 	wherever it lies, and keeps it; debug.bots_weapon every bot) */
 	char const *preferred = bots_weapon_wanted(bot);
@@ -1225,7 +1243,7 @@ static long bots_find_item(struct bots_bot *bot, struct unit_datum *unit, real_p
 
 	short slot;
 
-	if (*preferred && current_name && strstr(current_name, preferred))
+	if (*preferred && current_name && strstr(current_name, preferred) && !bots_weapon_empty(current))
 		current_value += 20;
 	/* (holding it, in either hand: no other; walking over ammunition
 	takes it) */
@@ -1234,7 +1252,7 @@ static long bots_find_item(struct bots_bot *bot, struct unit_datum *unit, real_p
 		long held = unit->unit.weapon_object_indices[slot];
 		char const *held_name = held != NONE ? tag_get_name(weapon_get(held)->definition_index) : NULL;
 
-		if (held_name && strstr(held_name, preferred))
+		if (held_name && strstr(held_name, preferred) && !bots_weapon_empty(held))
 			return NONE;
 	}
 
@@ -1261,13 +1279,16 @@ static long bots_find_item(struct bots_bot *bot, struct unit_datum *unit, real_p
 		else if (distance > maximum_distance)
 			continue;
 		/* (one it holds already: only its ammunition, which walking over
-		takes) */
+		takes, wanted for one emptied) */
 		for (slot = 0; slot < MAXIMUM_WEAPONS_PER_UNIT; slot++)
 		{
 			long other = unit->unit.weapon_object_indices[slot];
 
-			if (other != NONE && weapon_get(other)->definition_index == item->definition_index)
+			if (other != NONE && weapon_get(other)->definition_index == item->definition_index &&
+				!bots_weapon_empty(other))
+			{
 				held = TRUE;
+			}
 		}
 		if (held || value <= current_value)
 			continue;
@@ -3366,6 +3387,17 @@ static void bots_choose_goal(struct bots_bot *bot, long player_index, real_point
 	flag to return or win back, a hill) */
 	if (has_objective && objective.urgent && bots_choose_objective(bot, position, &objective))
 		return;
+	/* (no rounds in any weapon: a weapon or its rounds, further off, before
+	anything but its game's flag or ball) */
+	if (!bot->smooth && bot->goal_kind != _bots_goal_item && now >= bot->item_check_tick &&
+		bots_unit_out_of_ammo(own_unit))
+	{
+		long item_index = bots_find_item(bot, own_unit, position, 40.0f);
+
+		bot->item_check_tick = now + TICKS_PER_SECOND;
+		if (item_index != NONE && bots_set_item_goal(bot, item_index))
+			return;
+	}
 	/* (after a teammate's killer, falling back with the team: before its
 	own chase) */
 	if ((tactic == _bots_tactic_trade || tactic == _bots_tactic_fall_back) && bots_set_tactic_goal(bot, &tactic_point))
@@ -6028,6 +6060,15 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 		}
 		else
 			bots_bot_fight(bot, &tick);
+		/* (an empty weapon: not fired, so that it can be put away for the
+		other (the unit does not change weapons while it tries to fire);
+		with none, a blow) */
+		if (!bot->smooth && tick.fighting && tick.weapon_index != NONE && tick.vehicle_index == NONE &&
+			bots_weapon_empty(tick.weapon_index))
+		{
+			tick.flags &= ~(FLAG(_unit_control_weapon_primary_trigger_bit) |
+				FLAG(_unit_control_weapon_secondary_trigger_bit));
+		}
 		/* (a flag or ball in hand: never fired, which drops it
 		(players.c's weapon_must_be_readied); struck with, as a blow) */
 		if (!bot->smooth && tick.fighting && bots_objectives_carrying(bot->player_index))
@@ -6046,7 +6087,7 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 		back: towards it, still facing the enemy) */
 		if (!bots_bot_recharge(bot, &tick))
 		{
-			if (!tick.fighting || bot->goal_kind == _bots_goal_item || bot->smooth)
+			if (!tick.fighting || bot->goal_kind == _bots_goal_item || bot->smooth || bots_unit_out_of_ammo(tick.unit))
 				bots_choose_goal(bot, bot->player_index, &tick.position, tick.fighting);
 			else if (!bots_bot_press_on(bot, &tick))
 				bots_bot_fall_back(bot, &tick);
