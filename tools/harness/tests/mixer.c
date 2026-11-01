@@ -1144,6 +1144,44 @@ int main(int argc, char **argv)
 		doppler_enabled = TRUE;
 		return 0;
 	}
+	/* the Doppler shift glides: a voice whose velocity jumps from mix to mix
+	between 5 and 15 units a second towards the listener (as the camera's
+	velocity did between the frames, sound_manager.c refresh_listener: its
+	shift from mix to mix 1.046 or 1.153, 170 cents apart) is heard steady,
+	at the shift in between, its pitch moving under 25 cents */
+	CASE("doppler-steady")
+	{
+		static short samples[22050];
+		static float output[CHUNK * 2], send[CHUNK];
+		struct sdl_stream *stream;
+		float lowest = 10.0f, highest = 0.0f, middle = 343.0f / (343.0f - 10.0f * 3.048f);
+		unsigned long mix;
+
+		resampler_mode = RESAMPLER_SINC;
+		listener.distance_factor = 3.048f;
+		stream = voice_new(samples, 22050, 1, 22050, 0);
+		stream->has_3d = TRUE;
+		stream->mode = DS3DMODE_NORMAL;
+		stream->position[2] = 10.0f;
+		stream->minimum_distance = 1.0f;
+		stream->maximum_distance = 1000.0f;
+		for (mix = 0; mix < 40; mix++)
+		{
+			stream->velocity[2] = mix & 1 ? -15.0f : -5.0f;
+			mix_voice(stream, output, send, CHUNK);
+			/* (after a quarter of a second) */
+			if (mix * CHUNK >= OUTPUT_RATE / 4)
+			{
+				lowest = stream->current_doppler < lowest ? stream->current_doppler : lowest;
+				highest = stream->current_doppler > highest ? stream->current_doppler : highest;
+			}
+		}
+		CHECK(1200.0 * log2((double)highest / lowest) < 25.0 && lowest < middle && highest > middle,
+			"heard from x%.4f to x%.4f (%.1f cents), around x%.4f", lowest, highest,
+			1200.0 * log2((double)highest / lowest), middle);
+		voice_delete(stream);
+		return 0;
+	}
 	/* the limiter leaves a mix up to full scale as it is (the menus' music
 	reaches it), and holds two such voices' sum to it */
 	CASE("limiter")
