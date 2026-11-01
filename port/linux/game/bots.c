@@ -18,8 +18,9 @@ What a bot does each tick, in a player's terms:
   sight's reach and field of view whom a line of sight reaches (the AI's own
   sight test: the level, vehicles, scenery and machines block it), nearer
   for one in active camouflage; and it notices who shot it.
-- It reacts after a moment (its skill's reaction time), then turns towards
-  the target as a player's hand does (a spring: the less skilled flick past
+- It reacts after a moment (its skill's reaction time, each target's its
+  own, spread as people's are: until then it goes on as it was), then turns
+  towards the target as a player's hand does (a spring: the less skilled flick past
   the target and come back), with an aim error that settles while it keeps
   the target in sight but never to nothing ("the aim's hand": a wander, its
   form's streaks, a flinch when hit, a target's change of motion taken in
@@ -32,10 +33,15 @@ What a bot does each tick, in a player's terms:
   (bots_bot_fight_close): opens on a whole shield at middle range with a
   grenade now and then, goes in with a grenade and a blow, shoots the
   shield down with the pistol and strikes, and strikes at a blow's reach
-  (the engine's). It strafes one way while its target's aim is off it and
-  turns about once it reacts to the aim on it (a jump with it now and
-  then), crouches at range while no one aims at it, and keeps its
-  distance.
+  (the engine's), and throws a grenade at middle range now and then. It
+  strafes one way and the other about every second while its target's aim
+  is off it and turns about once it reacts to the aim on it, now and then
+  stands its ground to fire at range (crouched now and then) while no one
+  aims at it, keeps its distance and backs away with its shield low. It
+  jumps as people do, from a run, some three seconds apart in a fight, now
+  and then out of one. Its presses are held a moment, as a finger holds a
+  button. Walking, it looks about as well as where it goes, turning in slow
+  sweeps.
 - Its shield down in a fight it cannot win soon, it backs off to cover
   (out of the enemy's sight, a health pack when hurt) to let the shield
   come back; badly hurt, it goes for a health pack.
@@ -148,6 +154,9 @@ void platform_log(char const *format, ...);
 #define BOTS_STEP_REACHED 0.35f
 /* a pathfinding surface's flag: walkable (path.c's) */
 #define BOTS_PATHFINDING_WALKABLE_BIT 6
+/* the ticks a press is held, as a player's finger holds a button (a tenth
+of a second) */
+#define BOTS_PRESS_TICKS 3
 /* the items a bot remembers it found no way to, at once */
 #define BOTS_UNREACHABLE_ITEMS 8
 
@@ -225,7 +234,8 @@ enum
 struct bots_skill_definition
 {
 	char const *name;
-	/* seconds from first seeing an enemy to firing */
+	/* seconds from first seeing an enemy to its hand moving to it, about
+	(the median: each target's is its own, bots_reaction_ticks) */
 	real reaction_seconds;
 	/* how far it sees an enemy (world units), and how wide (degrees) */
 	real sight_distance;
@@ -259,8 +269,9 @@ struct bots_skill_definition
 	/* how much of a moving target's lead it takes (0 none, 1 all) */
 	real lead;
 	/* the chance it opens a fight with a grenade (at middle range, the
-	target's shield up), and goes in with a grenade and a blow close up; the
-	chance it jumps as it dodges */
+	target's shield up), and goes in with a grenade and a blow close up (and
+	a quarter of it a second, a grenade in a fight at middle range); the
+	chance it takes a chance to jump (bots_bot_jump) */
 	real grenade_chance;
 	real jump_chance;
 	/* the ticks of a burst, and of a pause between bursts */
@@ -278,13 +289,13 @@ struct bots_skill_definition
 
 static struct bots_skill_definition const bots_skills[NUMBER_OF_BOTS_SKILLS] =
 {
-	{ "easy", 0.75f, 22.0f, 100.0f, 12.0f, 1.4f, 8.0f, 7.0f, 0.45f, 1.8f, 4.0f, 0.70f, 1.5f, 0.6f, 2.2f, 0.3f, 0.20f, 0.10f,
+	{ "easy", 0.55f, 30.0f, 100.0f, 12.0f, 1.4f, 8.0f, 7.0f, 0.45f, 1.8f, 4.0f, 0.70f, 1.5f, 0.6f, 2.2f, 0.3f, 0.20f, 0.10f,
 		6, 14, 0.35f, 0.60f, 0.40f },
-	{ "normal", 0.45f, 32.0f, 120.0f, 7.0f, 0.9f, 13.0f, 9.0f, 0.6f, 1.1f, 3.0f, 0.80f, 2.2f, 0.4f, 1.8f, 0.7f, 0.40f, 0.25f,
+	{ "normal", 0.36f, 42.0f, 120.0f, 7.0f, 0.9f, 13.0f, 9.0f, 0.6f, 1.1f, 3.0f, 0.80f, 2.2f, 0.4f, 1.8f, 0.7f, 0.40f, 0.25f,
 		9, 9, 0.6f, 0.40f, 0.65f },
-	{ "heroic", 0.30f, 42.0f, 140.0f, 4.0f, 0.6f, 20.0f, 15.0f, 0.65f, 0.5f, 1.8f, 0.88f, 3.0f, 0.15f, 1.5f, 0.8f, 0.60f, 0.40f,
+	{ "heroic", 0.28f, 50.0f, 140.0f, 4.0f, 0.6f, 20.0f, 15.0f, 0.65f, 0.5f, 1.8f, 0.88f, 3.0f, 0.15f, 1.5f, 0.8f, 0.60f, 0.40f,
 		12, 6, 0.85f, 0.30f, 0.85f },
-	{ "legendary", 0.18f, 55.0f, 160.0f, 2.2f, 0.35f, 30.0f, 20.0f, 1.0f, 0.25f, 1.2f, 0.95f, 4.0f, 0.05f, 1.25f, 1.0f, 0.75f,
+	{ "legendary", 0.22f, 60.0f, 160.0f, 2.2f, 0.35f, 30.0f, 20.0f, 1.0f, 0.25f, 1.2f, 0.95f, 4.0f, 0.05f, 1.25f, 1.0f, 0.75f,
 		0.50f, 16, 4, 1.0f, 0.20f, 1.00f },
 };
 
@@ -314,6 +325,9 @@ struct bots_bot
 	long target_player_index;
 	long target_seen_tick;
 	long target_first_seen_tick;
+	/* the ticks from first seeing this target to its hand moving to it
+	(bots_reaction_ticks) */
+	long reaction_ticks;
 	real_point3d target_last_position;
 	long target_last_surface_index;
 	real aim_error_yaw;
@@ -406,6 +420,26 @@ struct bots_bot
 	long opened_player_index;
 	long burst_until_tick;
 	long pause_until_tick;
+	/* a weapon fired a press a shot: its trigger held until then (a
+	player's click, not a tick's) */
+	long tap_release_tick;
+	/* standing its ground to fire (not aimed at, at range), until when, and
+	its next thought of it; crouched while it does, now and then; when it
+	last crouched */
+	long plant_until_tick;
+	long plant_next_tick;
+	boolean plant_crouch;
+	long crouch_tick;
+	/* its next chance to jump (bots_bot_jump), and that one a hop of a run */
+	long jump_tick;
+	boolean jump_chain;
+	/* walking: where it looks (radians), and its way then, until when */
+	real glance_yaw;
+	real glance_way;
+	long glance_tick;
+	/* its presses held until then (BOTS_PRESS_TICKS): the jump, the
+	grenade, the blow, the reload */
+	long press_until_ticks[4];
 	long grenade_tick;
 	long melee_tick;
 	long item_check_tick;
@@ -497,11 +531,11 @@ static struct
 	long aim_head_shots;
 	long aim_scan_tick;
 	/* the fights' habits: combos (_bots_combo_*), blows, dodges of an aim,
-	jumps with them, crouches */
+	jumps, crouches */
 	long combos[4];
 	long blows;
 	long dodges;
-	long dodge_jumps;
+	long jumps;
 	long crouches;
 	/* the bots' own choices: falling back to recharge, going for health,
 	for a power item (and waiting for one to come back), roaming to a
@@ -660,6 +694,17 @@ static real bots_random_real(struct bots_bot *bot)
 static real bots_random_signed(struct bots_bot *bot)
 {
 	return bots_random_real(bot) * 2.0f - 1.0f;
+}
+
+/* seconds about a median, spread as people's times are (a log-normal
+spread: the sum of three of its random numbers for the normal one, -3 to 3),
+between the least and the most */
+static real bots_random_seconds(struct bots_bot *bot, real median, real spread, real least, real most)
+{
+	real normal = (bots_random_real(bot) + bots_random_real(bot) + bots_random_real(bot) - 1.5f) * 2.0f;
+	real seconds = median * (real)exp(spread * normal);
+
+	return PIN(seconds, least, most);
 }
 
 static real bots_angle_difference(real a, real b)
@@ -821,7 +866,9 @@ static short bots_weapon_tap_ticks_compute(long definition_index)
 	return (short)PIN((long)((real)TICKS_PER_SECOND / rate + 0.5f), 2, TICKS_PER_SECOND * 2);
 }
 
-/* the distance a bot keeps from its enemy with the weapon */
+/* the distance a bot keeps from its enemy with the weapon (people fight
+further off than close range: in an internet game of pistols, half their
+shots from beyond 27 world units) */
 static real bots_weapon_range_compute(long definition_index)
 {
 	char const *name = tag_get_name(definition_index);
@@ -831,14 +878,14 @@ static real bots_weapon_range_compute(long definition_index)
 	if (strstr(name, "shotgun") || strstr(name, "flamethrower"))
 		return 2.0f;
 	if (strstr(name, "sniper"))
-		return 18.0f;
+		return 25.0f;
 	if (strstr(name, "rocket") || strstr(name, "fuel rod") || strstr(name, "plasma_cannon"))
-		return 12.0f;
+		return 14.0f;
 	if (strstr(name, "plasma pistol") || strstr(name, "needler"))
-		return 5.0f;
+		return 7.0f;
 	if (strstr(name, "pistol"))
-		return 9.0f;
-	return 7.0f;
+		return 16.0f;
+	return 9.0f;
 }
 
 /* the weapon's family (by its tag's name) */
@@ -1552,7 +1599,7 @@ void bots_initialize_for_new_map(void)
 	csmemset(bots_globals.combos, 0, sizeof(bots_globals.combos));
 	bots_globals.blows = 0;
 	bots_globals.dodges = 0;
-	bots_globals.dodge_jumps = 0;
+	bots_globals.jumps = 0;
 	bots_globals.crouches = 0;
 	bots_globals.recharges = 0;
 	bots_globals.health_fetches = 0;
@@ -2914,12 +2961,13 @@ static boolean bots_aimed_at(real_point3d const *eye, real_vector3d const *aim, 
 	return dx * dx + dy * dy + dz * dz - along * along / length < radius * radius;
 }
 
-/* the side a fighting bot strafes to (1 its left, -1 its right): kept while
-its target does not aim at it (another way, by its random numbers, after
-two to three and a half seconds: a player tires of one way); aimed at, the
-other way once it reacts (its skill's dodge reaction, if it dodges this
-aim at all: its dodge chance), and again every half second or so while the
-aim stays on it. TRUE on a dodge */
+/* the side a fighting bot strafes to (1 its left, -1 its right): while its
+target does not aim at it, the other way about every second (people's
+rhythm, measured in an internet game: the median 0.93 seconds between
+changes of way in a fight, a quarter under 0.53, a quarter over 1.6), never
+sooner than a third of a second; aimed at, the other way once it reacts (its
+skill's dodge reaction, if it dodges this aim at all: its dodge chance), and
+again every half second or so while the aim stays on it. TRUE on a dodge */
 static boolean bots_strafe(struct bots_bot *bot, struct bots_skill_definition const *skill, boolean aimed, long now)
 {
 	if (!aimed)
@@ -2927,8 +2975,9 @@ static boolean bots_strafe(struct bots_bot *bot, struct bots_skill_definition co
 		bot->aimed_since_tick = NONE;
 		if (now >= bot->strafe_until_tick)
 		{
-			bot->strafe_sign = bots_random_real(bot) < 0.5f ? -1.0f : 1.0f;
-			bot->strafe_until_tick = now + TICKS_PER_SECOND * 2 + (long)(bots_random(bot) % (TICKS_PER_SECOND * 3 / 2));
+			bot->strafe_sign = bot->strafe_sign > 0.0f ? -1.0f : bot->strafe_sign < 0.0f ? 1.0f :
+				bots_random_real(bot) < 0.5f ? -1.0f : 1.0f;
+			bot->strafe_until_tick = now + (long)(bots_random_seconds(bot, 0.95f, 0.5f, 0.35f, 2.5f) * TICKS_PER_SECOND);
 		}
 		return FALSE;
 	}
@@ -3068,7 +3117,9 @@ struct bots_tick
 	boolean fighting;
 	real target_distance;
 	struct player_action *action;
-	/* it crouches in its fight this tick (bots_bot_fight's) */
+	/* it stands its ground to fire this tick, and crouches there
+	(bots_bot_plant) */
+	boolean planted;
 	boolean crouching;
 	/* it stays where it is, looking about (its fall back's cover reached);
 	it keeps to its goal's path while it fights (cover, its team's falling
@@ -3139,6 +3190,17 @@ static void bots_bot_survey(struct bots_bot *bot, struct bots_tick *tick)
 	}
 }
 
+/* the ticks from first seeing a target to the bot's hand moving to it: its
+skill's reaction about, spread as people's are (measured in an internet
+game: from an enemy coming within 25 degrees of a person's aim to the aim
+within 4 of it, 0.5 seconds the median, a quarter under 0.13, a quarter over
+1; the turn's own time is the hand's, bots_turn), never under 0.12 seconds
+nor over 1.5 */
+static long bots_reaction_ticks(struct bots_bot *bot, struct bots_skill_definition const *skill)
+{
+	return (long)(bots_random_seconds(bot, skill->reaction_seconds, 0.5f, 0.12f, 1.5f) * TICKS_PER_SECOND + 0.5f);
+}
+
 /* looking for enemies (every third tick, the bots in turn), and forgetting
 the one gone a while */
 static void bots_bot_look(struct bots_bot *bot, struct bots_tick *tick)
@@ -3161,8 +3223,16 @@ static void bots_bot_look(struct bots_bot *bot, struct bots_tick *tick)
 				real error = tick->skill->aim_error_degrees * BOTS_DEGREES;
 
 				bot->target_first_seen_tick = tick->now;
+				bot->reaction_ticks = bots_reaction_ticks(bot, tick->skill);
 				bot->aim_error_yaw = bots_random_signed(bot) * error;
 				bot->aim_error_pitch = bots_random_signed(bot) * error * 0.6f;
+			}
+			/* (seen again after half a second out of sight: found again,
+			sooner than a new one) */
+			else if (tick->now - bot->target_seen_tick > TICKS_PER_SECOND / 2)
+			{
+				bot->target_first_seen_tick = tick->now;
+				bot->reaction_ticks = bots_reaction_ticks(bot, tick->skill) * 2 / 5;
 			}
 			bot->target_player_index = target;
 			bot->target_seen_tick = tick->now;
@@ -3291,6 +3361,13 @@ static void bots_bot_fight_close(struct bots_bot *bot, struct bots_tick *tick, s
 		{
 			combo = _bots_combo_shoot_blow;
 		}
+		/* (a grenade at middle range, now and then, as people throw them in
+		a fight: a quarter of its skill's chance a second) */
+		else if (close > 5.0f && close < 22.0f && grenades && now >= bot->grenade_tick &&
+			bots_random_real(bot) < skill->grenade_chance * 0.25f / TICKS_PER_SECOND)
+		{
+			combo = _bots_combo_grenade_shoot;
+		}
 		if (combo != _bots_combo_none)
 		{
 			bot->combo = combo;
@@ -3321,6 +3398,46 @@ static void bots_bot_fight_close(struct bots_bot *bot, struct bots_tick *tick, s
 	}
 }
 
+/* standing its ground to fire, as people do at range (measured: a fifth of
+their shots fired standing still, hardly any crouched): now and then, at
+range with a weapon that reaches (the sniper rifle, the pistol, the assault
+rifle) while its target's aim is not on it (or is, from 15 units and more:
+people trade shots there), it stops for half a second to a second and a
+half, crouched for the while now and then (held, not let go and taken again:
+no crouch flickering with its target's aim); its target's aim on it nearer,
+or in close, it moves again */
+static void bots_bot_plant(struct bots_bot *bot, struct bots_tick *tick, struct bots_weapon_kind const *kind,
+	real close, boolean aimed)
+{
+	long now = tick->now;
+	boolean reaches = kind && tick->object->object.parent_object_index == NONE &&
+		(kind->family == _bots_family_sniper || kind->family == _bots_family_pistol ||
+			kind->family == _bots_family_assault_rifle) &&
+		close > kind->range * 0.6f && now >= bot->combo_until_tick;
+	/* (aimed at, it moves, unless far off: there people trade shots) */
+	boolean dodge = aimed && close < 15.0f;
+
+	if (bot->smooth)
+		return;
+	if (now < bot->plant_until_tick && (!reaches || dodge))
+		bot->plant_until_tick = now;
+	if (now >= bot->plant_until_tick && now >= bot->plant_next_tick && reaches && !dodge)
+	{
+		bot->plant_next_tick = now + (long)(bots_random_seconds(bot, 1.6f, 0.4f, 0.8f, 4.0f) * TICKS_PER_SECOND);
+		if (bots_random_real(bot) < 0.6f)
+		{
+			bot->plant_until_tick = now + (long)(bots_random_seconds(bot, 0.9f, 0.35f, 0.5f, 1.6f) * TICKS_PER_SECOND);
+			bot->plant_crouch = bots_random_real(bot) < 0.2f;
+			if (bot->plant_crouch)
+				bots_globals.crouches++;
+		}
+	}
+	tick->planted = now < bot->plant_until_tick;
+	tick->crouching = tick->planted && bot->plant_crouch;
+	if (tick->crouching)
+		tick->flags |= FLAG(_unit_control_crouch_modifier_bit);
+}
+
 /* fighting the target seen in the last half second: aim (turning at its
 speed, leading, an error that settles), fire, a grenade, a blow, strafing,
 a crouch */
@@ -3330,7 +3447,7 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 	struct player_datum *target_player = player_get(bot->target_player_index);
 	struct object_datum *target_object = object_get(target_player->unit_index);
 	real_point3d aim_point = target_object->object.bounding_sphere_center;
-	long reaction_ticks = (long)(skill->reaction_seconds * TICKS_PER_SECOND);
+	long reaction_ticks = bot->reaction_ticks;
 	long now = tick->now;
 	real desired_yaw, desired_pitch, dx, dy, dz, horizontal, turn, yaw_off, pitch_off, cone;
 	boolean new_target = bot->target_aim_tick != now - 1 || bot->target_first_seen_tick == now;
@@ -3358,18 +3475,8 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 		aimed = bots_aimed_at(&eye, &target_unit->unit.aiming_vector, &tick->object->object.bounding_sphere_center,
 			0.5f + close * 0.03f);
 	}
-	/* (a crouch at range, its target's aim not on it, with a weapon that
-	reaches: a steadier aim, smaller to be seen, slower to move) */
-	tick->crouching = !bot->smooth && !aimed && kind && tick->object->object.parent_object_index == NONE &&
-		(kind->family == _bots_family_sniper || kind->family == _bots_family_pistol ||
-			kind->family == _bots_family_assault_rifle) &&
-		close > kind->range * 0.9f && now >= bot->combo_until_tick;
-	if (tick->crouching)
-	{
-		if (!TEST_FLAG(bot->previous_control_flags, _unit_control_crouch_modifier_bit))
-			bots_globals.crouches++;
-		tick->flags |= FLAG(_unit_control_crouch_modifier_bit);
-	}
+	/* (standing its ground to fire at range, now and then crouched) */
+	bots_bot_plant(bot, tick, kind, close, aimed);
 	/* (the target's motion as the bot has taken it in: aimed where that
 	would have it) */
 	bots_aim_target_motion(bot, skill, &target_object->object.translational_velocity, now, new_target);
@@ -3482,6 +3589,7 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 			{
 				tick->flags |= FLAG(_unit_control_weapon_primary_trigger_bit);
 				bot->burst_until_tick = now + tap_ticks + (long)(bots_random(bot) % (1 + skill->pause_ticks / 3));
+				bot->tap_release_tick = now + MIN(BOTS_PRESS_TICKS, tap_ticks - 1);
 				/* (the aim's tally: the sniper's round with its aim on the
 				head, a tenth of a unit across) */
 				if (family == _bots_family_sniper)
@@ -3497,6 +3605,9 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 						(real)fabs(head_pitch - bot->pitch) < reach;
 				}
 			}
+			/* (the click held a moment, released before the next) */
+			else if (now < bot->tap_release_tick)
+				tick->flags |= FLAG(_unit_control_weapon_primary_trigger_bit);
 		}
 		else if (now < bot->burst_until_tick)
 			tick->flags |= FLAG(_unit_control_weapon_primary_trigger_bit);
@@ -3510,35 +3621,41 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 	}
 	/* the plays close up, and the blow */
 	bots_bot_fight_close(bot, tick, kind, close, reaction_ticks);
-	/* strafing: one way while the target does not aim at the bot, the
-	other once it reacts to its aim (and a jump with it now and then);
-	nearer or further to keep its weapon's distance, straight in for a
-	blow; crouched, slowly */
-	/* (no one aiming at it: its team's side, away from a teammate close
-	by or round the enemy from a teammate on it too) */
+	/* strafing: one way and the other, about every second while the target
+	does not aim at the bot, the other way once it reacts to its aim; nearer
+	or further to keep its weapon's distance (backing away from one too
+	close, and with its shield low), straight in for a blow; standing its
+	ground to fire, or crouched there */
+	if (bots_strafe(bot, skill, aimed, now) && !bot->smooth)
+		bots_globals.dodges++;
+	/* (no one aiming at it: its team's side, away from a teammate close by
+	or round the enemy from a teammate on it too, kept longer, the other
+	side cut short) */
 	if (!aimed && !bot->smooth)
 	{
 		real side = bots_tactics_strafe_side(bot->index, bot->target_player_index, &tick->position,
 			&target_object->object.position);
 
-		if (side != 0.0f)
-			bot->strafe_sign = side;
-	}
-	if (bots_strafe(bot, skill, aimed, now) && !bot->smooth)
-	{
-		bots_globals.dodges++;
-		if (!tick->crouching && bots_random_real(bot) < skill->jump_chance)
-		{
-			tick->flags |= FLAG(_unit_control_jump_bit);
-			bots_globals.dodge_jumps++;
-		}
+		if (side != 0.0f && bot->strafe_sign != side && bot->strafe_until_tick > now + TICKS_PER_SECOND / 3)
+			bot->strafe_until_tick = now + TICKS_PER_SECOND / 3;
 	}
 	{
 		real to_target = (real)atan2(dy, dx);
 		real range = bots_weapon_range(tick->weapon_index);
-		real forward = tick->target_distance > range * 1.3f ? 0.8f : tick->target_distance < range * 0.6f ? -0.5f : 0.0f;
+		real forward = 0.0f;
 		real side = bot->strafe_sign;
 
+		if (tick->target_distance > range * 1.3f)
+			forward = 0.8f;
+		else if (tick->target_distance < range * 0.6f)
+			forward = -0.6f;
+		/* (its shield low and no kill near: backing away as it fights) */
+		if (!bot->smooth && tick->object->object.shield_vitality < 0.3f && game_engine_has_shield(bot->player_index) &&
+			target_object->object.shield_vitality > 0.25f)
+		{
+			forward = -0.8f;
+			side *= 0.7f;
+		}
 		if (now < bot->combo_until_tick &&
 			(bot->combo == _bots_combo_grenade_blow || bot->combo == _bots_combo_shoot_blow))
 		{
@@ -3547,21 +3664,55 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 		}
 		tick->move_direction = (real)atan2((real)sin(to_target) * forward + (real)sin(to_target + BOTS_PI * 0.5f) * side,
 			(real)cos(to_target) * forward + (real)cos(to_target + BOTS_PI * 0.5f) * side);
-		tick->moving = TRUE;
-		tick->throttle_scale = tick->crouching ? 0.5f : 1.0f;
+		tick->moving = !tick->planted;
+		tick->throttle_scale = 1.0f;
 	}
 }
 
-/* walking to the goal, looking where it goes; there, a look about (and the
-last bit straight onto an item); a reload when no one is about */
+/* where a walking bot looks (radians), as people look as they walk
+(measured in an internet game: their aim held still most of the time, half
+a second's turn under 3 degrees a second for half of it out of fights, and
+turned in sweeps now and then; a quarter of their walking more sideways to
+their aim than along it): a look held, taken again every one and a half to
+three and a half seconds, ahead or, a third of the time, off to a side by
+40 to 100 degrees; its way turned 80 degrees from where it was, ahead */
+static real bots_walk_look(struct bots_bot *bot, real direction, long now)
+{
+	if ((real)fabs(bots_angle_difference(direction, bot->glance_way)) > 80.0f * BOTS_DEGREES)
+	{
+		bot->glance_way = direction;
+		bot->glance_yaw = direction;
+	}
+	if (now >= bot->glance_tick)
+	{
+		/* (ahead: as it was, unless its way has turned 20 degrees) */
+		bot->glance_way = direction;
+		if ((real)fabs(bots_angle_difference(direction, bot->glance_yaw)) > 20.0f * BOTS_DEGREES)
+			bot->glance_yaw = direction;
+		if (bots_random_real(bot) < 0.35f)
+		{
+			bot->glance_yaw = direction + (bots_random_real(bot) < 0.5f ? -1.0f : 1.0f) *
+				(40.0f + 60.0f * bots_random_real(bot)) * BOTS_DEGREES;
+		}
+		bot->glance_tick = now + (long)(bots_random_seconds(bot, 2.2f, 0.35f, 1.5f, 3.5f) * TICKS_PER_SECOND);
+	}
+	return bot->glance_yaw;
+}
+
+/* walking to the goal, looking where it goes and about (slow sweeps, as
+people turn when no one is about: measured, nine turns of ten slower than
+53 degrees a second); there, a look about (and the last bit straight onto
+an item); a reload when no one is about */
 static void bots_bot_walk(struct bots_bot *bot, struct bots_tick *tick)
 {
 	real direction;
 
 	if (bots_follow_path(bot, tick->player->unit_index, &tick->position, &direction))
 	{
-		real turn = 12.0f * BOTS_DEGREES;
-		real off = bots_angle_difference(direction, bot->yaw);
+		real turn = (bot->smooth ? 12.0f : 6.0f) * BOTS_DEGREES;
+		/* (driving: its look steers) */
+		boolean ahead = bot->smooth || tick->object->object.parent_object_index != NONE;
+		real off = bots_angle_difference(ahead ? direction : bots_walk_look(bot, direction, tick->now), bot->yaw);
 		real threat_yaw;
 
 		/* (an enemy it knows of, not behind it: looking that way as it
@@ -3591,9 +3742,16 @@ static void bots_bot_walk(struct bots_bot *bot, struct bots_tick *tick)
 	}
 	else
 	{
-		bot->yaw += 2.0f * BOTS_DEGREES;
-		bot->yaw_rate = 2.0f * BOTS_DEGREES * TICKS_PER_SECOND;
-		bot->pitch_rate = 0.0f;
+		/* (nowhere to go: looking about, debug.bot_player's turning
+		steadily as the trailer's camera did) */
+		if (bot->smooth)
+		{
+			bot->yaw += 2.0f * BOTS_DEGREES;
+			bot->yaw_rate = 2.0f * BOTS_DEGREES * TICKS_PER_SECOND;
+			bot->pitch_rate = 0.0f;
+		}
+		else
+			bots_bot_watch(bot, tick);
 		if (bot->goal_kind == _bots_goal_roam || bot->goal_kind == _bots_goal_enemy)
 			bot->goal_kind = _bots_goal_none;
 		/* (at an item: on to it) */
@@ -3615,6 +3773,40 @@ static void bots_bot_walk(struct bots_bot *bot, struct bots_tick *tick)
 	{
 		tick->flags |= FLAG(_unit_control_weapon_reload_bit);
 	}
+}
+
+/* jumping as people jump (measured in an internet game: six a minute, half
+of them in fights, nearly all from a run, hardly any with a crouch, some
+three seconds apart): a chance about every three seconds, taken (its skill's
+jump chance; half of it out of a fight) while it runs on the ground, in a
+fight as it strafes, and now and then another a second or so after (a run
+of hops); never standing, crouched or within a second of a crouch */
+static void bots_bot_jump(struct bots_bot *bot, struct bots_tick *tick)
+{
+	real_vector3d const *velocity = &tick->object->object.translational_velocity;
+	real speed = (real)sqrt(velocity->i * velocity->i + velocity->j * velocity->j) * TICKS_PER_SECOND;
+	struct biped_datum *biped;
+
+	if (bot->smooth || tick->now < bot->jump_tick || tick->object->object.parent_object_index != NONE ||
+		!tick->moving || tick->throttle_scale < 0.9f || speed < 1.0f || tick->crouching ||
+		tick->now - bot->crouch_tick < TICKS_PER_SECOND)
+	{
+		return;
+	}
+	biped = biped_try_and_get(tick->player->unit_index);
+	if (!biped || TEST_FLAG(biped->biped.flags, _biped_airborne_bit))
+		return;
+	if (bot->jump_chain || bots_random_real(bot) < tick->skill->jump_chance * (tick->fighting ? 1.0f : 0.5f))
+	{
+		tick->flags |= FLAG(_unit_control_jump_bit);
+		bots_globals.jumps++;
+		/* (now and then another soon after: a run of hops) */
+		bot->jump_chain = !bot->jump_chain && bots_random_real(bot) < 0.4f;
+	}
+	else
+		bot->jump_chain = FALSE;
+	bot->jump_tick = tick->now + (long)((bot->jump_chain ? bots_random_seconds(bot, 1.4f, 0.3f, 0.9f, 2.5f) :
+		bots_random_seconds(bot, 3.2f, 0.4f, 1.2f, 9.0f)) * TICKS_PER_SECOND);
 }
 
 /* the bots in each other's way (a team's bots leaving their base by the same
@@ -3808,9 +4000,10 @@ static void bots_bot_unstick(struct bots_bot *bot, struct bots_tick *tick)
 
 /* ---------- falling back */
 
-/* staying where it is: looking about (another way every second or two, by
-its random numbers), or where an enemy it knows of was; a reload when no
-one is about */
+/* staying where it is: looking about (every one and a half to three and a
+half seconds, half the time another way 20 to 90 degrees off, held between:
+a sweep, as people look about), or where an enemy it knows of was; a reload
+when no one is about */
 static void bots_bot_watch(struct bots_bot *bot, struct bots_tick *tick)
 {
 	real threat_yaw;
@@ -3819,10 +4012,14 @@ static void bots_bot_watch(struct bots_bot *bot, struct bots_tick *tick)
 		bot->watch_yaw = threat_yaw;
 	else if (tick->now >= bot->watch_tick)
 	{
-		bot->watch_yaw = bot->yaw + bots_random_signed(bot) * BOTS_PI * 0.75f;
-		bot->watch_tick = tick->now + TICKS_PER_SECOND + (long)(bots_random(bot) % TICKS_PER_SECOND);
+		if (bots_random_real(bot) < 0.5f)
+		{
+			bot->watch_yaw = bot->yaw + (bots_random_real(bot) < 0.5f ? -1.0f : 1.0f) *
+				(20.0f + 70.0f * bots_random_real(bot)) * BOTS_DEGREES;
+		}
+		bot->watch_tick = tick->now + (long)(bots_random_seconds(bot, 2.2f, 0.35f, 1.5f, 3.5f) * TICKS_PER_SECOND);
 	}
-	bots_turn(bot, bots_angle_difference(bot->watch_yaw, bot->yaw), -bot->pitch, 6.0f * BOTS_DEGREES, 5.0f, 1.0f,
+	bots_turn(bot, bots_angle_difference(bot->watch_yaw, bot->yaw), -bot->pitch, 6.0f * BOTS_DEGREES, 6.0f, 1.0f,
 		0.0f, 0.0f);
 	if (tick->weapon_index != NONE && bots_weapon_loaded(tick->weapon_index) < 0.4f &&
 		tick->now - bot->target_seen_tick > TICKS_PER_SECOND * 2)
@@ -4127,8 +4324,13 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 	bots_bot_look(bot, &tick);
 	tick.weapon_index = bots_current_weapon(tick.unit);
 	bots_tally_shots(bot, tick.weapon_index);
-	if (bot->target_player_index != NONE && tick.now - bot->target_seen_tick <= TICKS_PER_SECOND / 2)
+	/* (its target in sight, once it has reacted to it: until then it goes
+	on as it was, as a player who has not yet taken in who is there) */
+	if (bot->target_player_index != NONE && tick.now - bot->target_seen_tick <= TICKS_PER_SECOND / 2 &&
+		(bot->smooth || tick.now - bot->target_first_seen_tick >= bot->reaction_ticks))
+	{
 		bots_bot_fight(bot, &tick);
+	}
 	/* the goal, and the path to it: its fall back to recharge, else its own
 	(while fighting, only a weapon close by or its team's falling back:
 	towards it, still facing the enemy) */
@@ -4158,6 +4360,7 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 	}
 	bot->fighting = tick.fighting;
 	bots_bot_weapons(bot, &tick);
+	bots_bot_jump(bot, &tick);
 	bots_bot_unstick(bot, &tick);
 
 	/* (driving, fighting: at the enemy, full ahead, as a Ghost's or a
@@ -4180,14 +4383,30 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 	action->desired_facing.yaw = bot->yaw;
 	action->desired_facing.pitch = bot->pitch;
 
-	/* a press is one tick held and the next released (the jump, the grenade,
-	the blow, the reload), as a player's buttons are; the trigger and the
-	swap button may be held */
+	/* a press is held a moment (BOTS_PRESS_TICKS) and then released a tick
+	(the jump, the grenade, the blow, the reload), as a player's buttons are;
+	the trigger let go while a grenade is thrown; the trigger and the swap
+	button may be held */
 	{
-		unsigned long pressed = FLAG(_unit_control_jump_bit) | FLAG(_unit_control_throw_grenade_bit) |
-			FLAG(_unit_control_use_equipment_bit) | FLAG(_unit_control_weapon_reload_bit);
+		static short const presses[NUMBEROF(bot->press_until_ticks)] = { _unit_control_jump_bit,
+			_unit_control_throw_grenade_bit, _unit_control_use_equipment_bit, _unit_control_weapon_reload_bit };
+		short press;
 
-		tick.flags &= ~(bot->previous_control_flags & pressed);
+		for (press = 0; press < (short)NUMBEROF(presses); press++)
+		{
+			unsigned long bit = FLAG(presses[press]);
+
+			if (tick.now < bot->press_until_ticks[press])
+				tick.flags |= bit;
+			else if (bot->previous_control_flags & bit)
+				tick.flags &= ~bit;
+			else if (tick.flags & bit)
+				bot->press_until_ticks[press] = tick.now + BOTS_PRESS_TICKS;
+		}
+		if (TEST_FLAG(tick.flags, _unit_control_throw_grenade_bit))
+			tick.flags &= ~FLAG(_unit_control_weapon_primary_trigger_bit);
+		if (TEST_FLAG(tick.flags, _unit_control_crouch_modifier_bit))
+			bot->crouch_tick = tick.now;
 		bot->previous_control_flags = tick.flags;
 		if (TEST_FLAG(tick.flags, _unit_control_throw_grenade_bit))
 			bot->throw_tick = tick.now;
@@ -4266,12 +4485,12 @@ static void bots_report(void)
 		platform_log("bots: tick %ld, aim (%s): hits/rounds%s", now, bots_skills[bots_globals.skill].name,
 			aim[0] ? aim : ", none");
 		platform_log("bots: tick %ld, habits: combos %ld (grenade-shoot %ld, grenade-blow %ld, shoot-blow %ld), "
-			"blows %ld, dodges %ld (jumps %ld), crouches %ld", now,
+			"blows %ld, dodges %ld, jumps %ld, crouches %ld", now,
 			bots_globals.combos[_bots_combo_grenade_shoot] + bots_globals.combos[_bots_combo_grenade_blow] +
 				bots_globals.combos[_bots_combo_shoot_blow],
 			bots_globals.combos[_bots_combo_grenade_shoot], bots_globals.combos[_bots_combo_grenade_blow],
 			bots_globals.combos[_bots_combo_shoot_blow], bots_globals.blows, bots_globals.dodges,
-			bots_globals.dodge_jumps, bots_globals.crouches);
+			bots_globals.jumps, bots_globals.crouches);
 	}
 }
 
