@@ -100,7 +100,7 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/hub/touch/best_0_name" type="text" controller="1" left="418" top="174" width="176" height="20" font="ui\large_ui" color="#FFFFFFFF" wide="0 132" text_flags="no_focus_test">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/hub/touch/best_0_badge" type="text" controller="1" left="418" top="177" width="64" height="16" bitmap="main_menu/parts/pill_64" font="ui\small_ui" color="#FFFFFFFF" align="center" text_flags="no_focus_test">
+	<widget name="main_menu/multiplayer_type_select/hub/touch/best_0_badge" type="text" controller="1" left="418" top="177" width="64" height="16" bitmap="main_menu/parts/pill_64" text_y="-1" font="ui\small_ui" color="#FFFFFFFF" align="center" text_flags="no_focus_test">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/hub/touch/best_0_about" type="text" controller="1" left="418" top="193" width="76" height="18" font="ui\small_ui" color="#FF2896FF" wide="0 132" text_flags="no_focus_test">
 	</widget>
@@ -110,7 +110,7 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/hub/touch/best_1_name" type="text" controller="1" left="418" top="214" width="176" height="20" font="ui\large_ui" color="#FFFFFFFF" wide="0 132" text_flags="no_focus_test">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/hub/touch/best_1_badge" type="text" controller="1" left="418" top="217" width="64" height="16" bitmap="main_menu/parts/pill_64" font="ui\small_ui" color="#FFFFFFFF" align="center" text_flags="no_focus_test">
+	<widget name="main_menu/multiplayer_type_select/hub/touch/best_1_badge" type="text" controller="1" left="418" top="217" width="64" height="16" bitmap="main_menu/parts/pill_64" text_y="-1" font="ui\small_ui" color="#FFFFFFFF" align="center" text_flags="no_focus_test">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/hub/touch/best_1_about" type="text" controller="1" left="418" top="233" width="76" height="18" font="ui\small_ui" color="#FF2896FF" wide="0 132" text_flags="no_focus_test">
 	</widget>
@@ -120,7 +120,7 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/hub/touch/best_2_name" type="text" controller="1" left="418" top="254" width="176" height="20" font="ui\large_ui" color="#FFFFFFFF" wide="0 132" text_flags="no_focus_test">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/hub/touch/best_2_badge" type="text" controller="1" left="418" top="257" width="64" height="16" bitmap="main_menu/parts/pill_64" font="ui\small_ui" color="#FFFFFFFF" align="center" text_flags="no_focus_test">
+	<widget name="main_menu/multiplayer_type_select/hub/touch/best_2_badge" type="text" controller="1" left="418" top="257" width="64" height="16" bitmap="main_menu/parts/pill_64" text_y="-1" font="ui\small_ui" color="#FFFFFFFF" align="center" text_flags="no_focus_test">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/hub/touch/best_2_about" type="text" controller="1" left="418" top="273" width="76" height="18" font="ui\small_ui" color="#FF2896FF" wide="0 132" text_flags="no_focus_test">
 	</widget>
