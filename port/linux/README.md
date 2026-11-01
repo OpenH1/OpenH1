@@ -1417,13 +1417,17 @@ Each frame shows the world between the last two ticks
 Thus the frames are one tick (33 ms) after the calculation. The calculation
 does not change. At `game.sim_rate` 60 and 120, the player's movement,
 the vehicle a player drives (and its turns, its riders and the view from its
-seats), projectiles and thrown items are drawn on the path of their
-sub-steps, not on the line between two ticks (refer to "Simulation rate").
-In a network game at 60 and 120, other players, bots and the vehicles they
-drive are drawn between their two newest sub-steps, not a tick behind: 0 to
-8 ms behind the simulation at 120 (0 to 17 at 60), where they were 25 to 33
-ms (17 to 33), so that they are drawn where shots meet them (`NETCODE.md`,
-"Remote players drawn from the newest sub-steps").
+seats) and thrown items are drawn on the path of their sub-steps, not on
+the line between two ticks (refer to "Simulation rate"). In a network game
+at 60 and 120, other players, bots and the vehicles they drive are drawn
+between their two newest sub-steps, not a tick behind: 0 to 8 ms behind the
+simulation at 120 (0 to 17 at 60), where they were 25 to 33 ms (17 to 33),
+so that they are drawn where shots meet them (`NETCODE.md`, "Remote players
+drawn from the newest sub-steps"). Projectiles (bolts, bullets, needles,
+rockets, grenades) are drawn so in every game at 60 and 120 (but in
+cinematics): a shot is drawn leaving the gun from the frame after the step
+that fired it, and on its way, a sub-step behind the simulation at most,
+where it was a tick behind.
 
 Other things the game moves once a tick are drawn between ticks as well:
 
@@ -1451,12 +1455,18 @@ Other things the game moves once a tick are drawn between ticks as well:
   trail) stays on the projectile in the frames between ticks, where it
   stayed behind until the next tick.
 - An object made moving (a bolt, a rocket, a grenade thrown) is drawn
-  from a tick of its motion back in its first tick, not standing a tick
-  at the muzzle. A projectile with a model (a rocket, a needle, a
+  from half a tick of its motion back in its first tick, not standing a
+  tick at the muzzle (a whole tick back is the eye, where a bolt's sprite
+  would fill the view). A projectile with a model (a rocket, a needle, a
   grenade) that hits something is drawn a tick longer, on to where it hit,
   as what it made there begins: it went a tick early, short of the wall,
   as the explosion appeared. That last tick is drawn only: nothing of the
-  game sees it.
+  game sees it. At 60 and 120, where projectiles are drawn from their
+  newest sub-steps, a projectile's head start and hold are drawn from half
+  a tick of its motion back to where the head start put it, over the tick
+  it holds, from the frame after it was fired; and one that hits something
+  is drawn through the sub-step it hit in, from where that sub-step began
+  to where it hit, never further.
 - An object's animated glows and colours (a weapon's charge or heat, a
   vehicle's lights, a shield's flare: the values and change colours its
   shaders read) and a unit's active camouflage change between ticks, as
@@ -6111,11 +6121,14 @@ mode's throws and grabs move in smaller steps.
   before, moved with the object. The first-person view on foot, and the
   first-person weapon with it, move in the same way. The frames are still
   one tick after the calculation. The tables are the frames' only: the
-  simulation never reads them. A projectile's first two ticks (its head
-  start and hold) and the VR mode's grenade let go of in a sub-step are
-  drawn between the ticks, as before. The grenade stays where the hand let
-  it go until the frames reach the tick of its release. At 30 nothing is
-  kept.
+  simulation never reads them. Projectiles are drawn between their two
+  newest sub-steps instead, a sub-step behind the newest (but in
+  cinematics): from the frame after the sub-step one is made in (or let
+  go of: the VR mode's grenade, from the hand), from half a tick of its
+  motion back (or the hand) to where its head start put it over the tick
+  it holds, then on its sub-steps. One deleted in a sub-step (it struck)
+  is drawn through the frames of that sub-step, from where the sub-step
+  before left it to where it was deleted. At 30 nothing is kept.
 - A vehicle that a player drives also turns in the sub-steps, so its frame
   (the place and rotation of its root node) is kept after each sub-step too.
   A frame draws it between two of them: the place is linear, the rotation
@@ -6199,7 +6212,7 @@ Other changes:
 | `render/render_objects.c`, `interface/first_person_weapons.c`, `rasterizer/xbox/rasterizer_xbox_plasma_energy.c` | A local player's shield plasma is drawn in the chosen armor color (`display.shield_color`, `shield_color.c`), on the body and on the first-person arms; in the VR build, the plasma over the weapon in its holster in its highlight's color, close to the weapon (`vr_holster.c`). |
 | `objects/object_lights.c` | A light attached to an object is as bright, and of the colour, that the object's function and change colour are between ticks, and an effect's light (an explosion's, an impact's) fades at the frame's time, not a step a tick (`game/render_interpolation.c`); the light's own colour and radius, which the game reads, are the tick's. |
 | `objects/object_lights.c` | An effect's light of no transition (the Scorpion's shell's) is at its end as it is made, not faded by 0/0: its colour was not a number, which the renderer's checks caught. |
-| `objects/objects.c`, `render/render_objects.c` | A projectile deleted in a tick is drawn through the frames after it, on to where it was deleted (`game/render_interpolation.c`), with the lighting it was last drawn with. |
+| `objects/objects.c`, `render/render_objects.c` | A projectile deleted in a tick is drawn through the frames after it (at 60 and 120, through the frames of the sub-step it was deleted in), on to where it was deleted (`game/render_interpolation.c`), with the lighting it was last drawn with. |
 | `game/game_engine.c`, `game/game_engine_ctf.c`, `game/game_engine_oddball.c`, `game/game_engine_slayer.c` | A goal over an object (a flag, the ball, a carrier, a target) notes the object, and its marker is drawn over the object as drawn between ticks (`game_engine_get_goal_drawn_position`); the goal's own position is the tick's. |
 | `interface/motion_sensor.c` | The motion sensor's newest blips are drawn from where their units and goals, and the player, are drawn between ticks (a copy of the drawing's own); the blips' history is the ticks'. |
 | `render/render_sprite.c` | In the VR mode's eyes, sprites that face the viewer (smoke, explosions, sparks, glows) face the centre of the head and stay upright in the world, where they were parallel to the view's plane and rolled with the head (`vr_render_eye_pass`); near straight above or below the head, upright toward a fixed axis of the world. A build whose largest sprite is at least 2 degrees wide on the screen is marked to be drawn thick ("Effects with depth"). |

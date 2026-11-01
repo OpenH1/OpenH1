@@ -135,7 +135,7 @@ static boolean cinematic_in_progress(void) { return FALSE; }
 static long fake_player_unit = BIPED;
 static long player_control_get_unit_index(short local_player_index) { return fake_player_unit; }
 static void unit_get_camera_position(long index, real_point3d *position) { *position = object_get(index)->object.position; }
-struct interpolation_ghost { boolean in_use; long tick; };
+struct interpolation_ghost { boolean in_use; long tick; long step; short substep_count; };
 static struct interpolation_ghost ghosts[64];
 static void render_interpolation_ghosts_tick(void) {}
 
@@ -524,8 +524,10 @@ static void respawn_case(short substep_count)
 
 /* A projectile made (in the tick's own work, or in sub-step 2 by the weapons' slot) at M with velocity v a tick:
 its head start puts it at M + v at once, and it holds for a tick of sub-steps, then moves v/k each (projectiles.c).
-Its first tick, and the next, are drawn on the line from half a tick's motion back, as at 30 (a whole tick back is
-M, for a bolt the eye): never darting out and waiting. From the tick after, on its sub-steps' path. */
+It is drawn from its newest sub-steps (render_interpolation_projectile_lead), not a tick behind: from the frame after
+the sub-step it was made in (kept first after), from half a tick's motion back (a whole tick back is M, for a bolt the
+eye), reaching M + v as its hold ends, over the tick it holds: never darting out and waiting; then between its two
+newest sub-steps, a sub-step behind the newest, never past it. */
 static long projectile_made_tick;
 static short projectile_made_substep;
 static short projectile_held;
@@ -560,48 +562,58 @@ static void projectile_substep(long tick, short substep_index)
 static void projectile_case(short made_substep, long checked_ticks)
 {
 	long frame;
-	real_point3d line_from, line_to;
+	short count = 4;
+	long made_step;
+	real head_start = 1.0f + PROJECTILE_SPEED;
+	boolean seen = FALSE;
 
-	world_new(4);
+	world_new(count);
 	projectile_made_tick = 5;
 	projectile_made_substep = made_substep;
+	/* (the sub-step it is first kept after, counted from the clock's first: the open tick's are ticks_ended + 1's) */
+	made_step = projectile_made_tick * count + (made_substep < 0 ? 0 : made_substep);
 	case_substep = projectile_substep;
-	for (frame = 0; frame < 4 * 12; frame++)
+	for (frame = 0; frame < count * 12; frame++)
 	{
 		real_matrix4x3 const *drawn;
-		real_point3d line;
-		long tick;
+		real part = random_part();
+		/* the frame's time on the projectile's path, in sub-steps from the clock's first: a sub-step behind the
+		newest run, the frame's part of a sub-step after the one before it */
+		real time;
+		real expected;
 
 		world_substep();
-		tick = ticks_ended;
-		if (tick < projectile_made_tick || tick >= projectile_made_tick + checked_ticks)
+		if (!valid(PROJECTILE) || ticks_ended >= projectile_made_tick + checked_ticks)
 			continue;
-		frame_begin(random_part());
+		frame_begin(part);
 		drawn = render_interpolation_object_node_matrices(PROJECTILE);
-		/* the line: from half a tick's motion back (made), else between the ticks' ends */
-		if (tick == projectile_made_tick)
+		time = (real)((ticks_ended + 1) * count + substeps_run - 2 - made_step) + part;
+		/* (from half a tick back over the tick it holds, then on at v a tick) */
+		if (time <= (real)(count - 1))
 		{
-			line_to = projectile_positions[tick][3];
-			line_from = line_to;
-			line_from.x -= 0.5f * PROJECTILE_SPEED;
+			expected = head_start - 0.5f * PROJECTILE_SPEED +
+				0.5f * PROJECTILE_SPEED * (time + 1.0f > 0.0f ? time + 1.0f : 0.0f) / (real)count;
 		}
 		else
 		{
-			line_from = projectile_positions[tick - 1][3];
-			line_to = projectile_positions[tick][3];
+			expected = head_start + PROJECTILE_SPEED * (time - (real)(count - 1)) / (real)count;
 		}
-		line = point_between(&line_from, &line_to, fake_fraction);
-		CHECK(drawn && distance(&drawn[0].position, &line) < 1e-5f,
-			"frame %ld (tick %ld, made at %ld:%d): off the line from where it was made by %f", frame, tick,
-			projectile_made_tick, made_substep, drawn ? distance(&drawn[0].position, &line) : -1.0f);
+		CHECK(drawn && fabs(drawn[0].position.x - expected) < 1e-5f && fabs(drawn[0].position.y - 5.0f) < 1e-5f,
+			"frame %ld (sub-step %ld, made at %ld:%d): drawn at %f, not %f", frame, ticks_ended * count + substeps_run,
+			projectile_made_tick, made_substep, drawn ? drawn[0].position.x : -1.0f, expected);
+		CHECK(drawn[0].position.x <= object_get(PROJECTILE)->object.position.x + 1e-5f,
+			"frame %ld: drawn past where the newest sub-step left it (%f, %f)", frame, drawn[0].position.x,
+			object_get(PROJECTILE)->object.position.x);
+		seen = TRUE;
 		render_interpolation_frame_end();
 	}
+	CHECK(seen, "the projectile never drawn");
 }
 
 /* The VR mode's grenade, in the biped's hand (the body's, not drawn in first person), let go of in sub-step 1 by
-the VR slot at the hand H (render_interpolation_object_from), its head start and hold begun (vr_grenade.c): the
-frames still drawing the tick before draw it at H, where the hand last drew it, and the tick of its release is drawn
-from H on. No frame jumps further than its motion allows. */
+the VR slot at the hand H (render_interpolation_object_from), its head start and hold begun (vr_grenade.c): drawn
+from its newest sub-steps, from H, where the hand last drew it, from the frame after its release. No frame jumps
+further than its motion allows. */
 static real_point3d hand = { 2.0f, -1.0f, 1.5f };
 static long release_tick;
 
@@ -612,7 +624,8 @@ static void vr_substep(long tick, short substep_index)
 		struct object_datum *grenade = object_get(GRENADE);
 
 		grenade->object.parent_object_index = NONE;
-		grenade->object.translational_velocity.i = 0.6f;
+		/* (slower than its head start went: the head start's drag) */
+		grenade->object.translational_velocity.i = 0.5f;
 		object_place(GRENADE, hand.x, hand.y, hand.z);
 		render_interpolation_object_from(GRENADE, &hand);
 		/* (its head start) */
@@ -641,20 +654,23 @@ static void case_vr_release(void)
 	for (frame = 0; frame < 4 * 9; frame++)
 	{
 		real_matrix4x3 const *drawn;
+		real part = random_part();
 
 		world_substep();
 		if (ticks_ended < release_tick - 1)
 			continue;
-		frame_begin(random_part());
+		frame_begin(part);
 		drawn = render_interpolation_object_node_matrices(GRENADE);
 		if (object_get(GRENADE)->object.parent_object_index == NONE)
 		{
 			CHECK(drawn, "frame %ld: the grenade let go of not drawn", frame);
-			if (ticks_ended == release_tick - 1)
+			if (!pending_seen)
 			{
-				/* (the tick of its release not yet drawn: where the hand let it go) */
-				CHECK(distance(&drawn[0].position, &hand) < 1e-5f, "frame %ld: the grenade let go of drawn %f from "
-					"the hand, before the frames reach its tick", frame, distance(&drawn[0].position, &hand));
+				/* (its first frame: the frame's part of a sub-step's share of the way from the hand to where its head
+				start put it) */
+				CHECK(fabs(drawn[0].position.x - (hand.x + 0.6f * part / 4.0f)) < 1e-5f, "frame %ld: the grenade let "
+					"go of first drawn %f from the hand, not %f", frame, distance(&drawn[0].position, &hand),
+					0.6f * part / 4.0f);
 				pending_seen = TRUE;
 			}
 			else
@@ -777,9 +793,9 @@ int main(int argc, char **argv)
 	else if (!strcmp(argv[1], "camera_slow"))
 		case_camera_slow();
 	else if (!strcmp(argv[1], "projectile"))
-		projectile_case(-1, 2);
+		projectile_case(-1, 8);
 	else if (!strcmp(argv[1], "projectile_late"))
-		projectile_case(2, 2);
+		projectile_case(2, 8);
 	else if (!strcmp(argv[1], "respawn"))
 		respawn_case(1);
 	else if (!strcmp(argv[1], "respawn_120"))
