@@ -5892,7 +5892,12 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 
 	/* (basic training's order: only what it says) */
 	if (bot_index < BOTS_MAXIMUM && bots_bot_ordered(bot, bot_index, &tick))
+	{
+		tick.vehicle_index = NONE;
+		tick.weapon_index = NONE;
+		bots_bot_trace(bot, bot_index, &tick);
 		return;
+	}
 
 	/* hurt: it turns to look for who did it, its aim knocked off */
 	vitality = tick.object->object.body_vitality + tick.object->object.shield_vitality;
