@@ -74,13 +74,15 @@ What a bot does each tick, in a player's terms:
   Bots in each other's way give way by their order.
 - On a map with open ground it uses the vehicles (bots.vehicles,
   bots_vehicles.h) as people do: it gets into a teammate's Warthog near it
-  (the gun first), and drives a Warthog or a Ghost it finds near (three
-  lives of four), its look steering as a player's does, along its paths'
-  steps it has room to drive straight to; it runs players down, circles a
-  fight for its Warthog's gunner, fires and strafes in a Ghost, puts an
-  overturned vehicle back on its wheels, and gets out of one overturned,
-  stuck, left without a driver or standing still, or badly hurt beside an
-  enemy.
+  (the gun first), and drives a Warthog, a Ghost or a Scorpion or flies a
+  Banshee it finds near (three lives of four), its look steering as a
+  player's does, along its paths' steps it has room to drive straight to;
+  it runs players down, circles a fight for its Warthog's gunner, fires and
+  strafes in a Ghost, keeps a Scorpion's range, makes strafing runs in a
+  Banshee and keeps it clear of the ground, the level and the map's edges,
+  puts an overturned vehicle back on its wheels, and gets out of one
+  overturned, stuck, left without a driver or standing still, or badly hurt
+  beside an enemy.
 
 Skill (bots.skill): easy, normal, heroic, legendary - how soon it reacts,
 how far and how wide it sees, how large its aim error is, how fast that
@@ -523,7 +525,10 @@ struct bots_bot
 	long vehicle_still_tick;
 	long vehicle_upright_tick;
 	boolean in_vehicle;
+	short in_vehicle_kind;
+	long vehicle_tally_tick;
 	long vehicle_kills;
+	long suicides;
 	/* driving: where its vehicle was at its last check (once a second), the
 	times since it found it stuck, backing out until then and the way it
 	turns as it does; the side it circles a fight to (1 left, -1 right) and
@@ -544,6 +549,11 @@ struct bots_bot
 	boolean drive_aim_valid;
 	long drive_aim_tick;
 	long drive_aim_path_tick;
+	/* flying: breaking off a run at its target until then, the way it
+	turns to; its next shot of a heavy weapon (the Banshee's fuel rod) */
+	long fly_break_until_tick;
+	real fly_break_yaw;
+	long heavy_shot_tick;
 
 	/* the aim's tally (bots_tally_shots): the weapon in its hands last tick,
 	its family and when it last fired; its aim on the target's head as it
@@ -640,6 +650,9 @@ static struct
 	tick */
 	boolean roam_outdoors[BOTS_MAXIMUM_ROAM_POINTS];
 	long roam_outdoors_count;
+	/* the roaming places' bounds: where a flyer keeps over */
+	real_point3d roam_low;
+	real_point3d roam_high;
 	boolean vehicles;
 	/* the vehicles' tally: seats taken by part (_bots_seat_*: none for
 	vehicles put back on their wheels), the ticks spent driving and riding,
@@ -649,6 +662,9 @@ static struct
 	long drives[NUMBER_OF_BOTS_VEHICLE_KINDS];
 	long drive_ticks;
 	long ride_ticks;
+	long fly_ticks;
+	long fly_deaths;
+	long fly_crashes;
 	long vehicle_kills;
 	long vehicle_deaths;
 	long exits_overturned;
@@ -1762,9 +1778,13 @@ static void bots_prepare_map(void)
 		{
 			low.x = MIN(low.x, bots_globals.roam_points[index].x);
 			low.y = MIN(low.y, bots_globals.roam_points[index].y);
+			low.z = MIN(low.z, bots_globals.roam_points[index].z);
 			high.x = MAX(high.x, bots_globals.roam_points[index].x);
 			high.y = MAX(high.y, bots_globals.roam_points[index].y);
+			high.z = MAX(high.z, bots_globals.roam_points[index].z);
 		}
+		bots_globals.roam_low = low;
+		bots_globals.roam_high = high;
 		platform_log("bots: %ld places to roam on this map (%ld under the open sky), over %.0f units",
 			bots_globals.roam_point_count, bots_globals.roam_outdoors_count,
 			bots_globals.roam_point_count > 0 ? (double)bots_distance2d(&low, &high) : 0.0);
@@ -1813,6 +1833,9 @@ void bots_initialize_for_new_map(void)
 	csmemset(bots_globals.drives, 0, sizeof(bots_globals.drives));
 	bots_globals.drive_ticks = 0;
 	bots_globals.ride_ticks = 0;
+	bots_globals.fly_ticks = 0;
+	bots_globals.fly_deaths = 0;
+	bots_globals.fly_crashes = 0;
 	bots_globals.vehicle_kills = 0;
 	bots_globals.vehicle_deaths = 0;
 	bots_globals.exits_overturned = 0;
@@ -2627,10 +2650,12 @@ static long bots_find_vehicle(real_point3d const *position)
 	return best_index;
 }
 
-/* the vehicles' kinds the bots use: the Warthog, the Ghost */
+/* the vehicles' kinds the bots use: the Warthog, the Ghost, the Scorpion,
+the Banshee */
 static boolean bots_vehicle_kind_used(short kind)
 {
-	return kind == _bots_vehicle_jeep || kind == _bots_vehicle_scout;
+	return kind == _bots_vehicle_jeep || kind == _bots_vehicle_scout || kind == _bots_vehicle_tank ||
+		kind == _bots_vehicle_flyer;
 }
 
 /* another bot is on its way to that seat of the vehicle (any of its seats
@@ -4787,8 +4812,7 @@ static void bots_bot_board(struct bots_bot *bot, struct bots_tick *tick)
 		((bot->vehicle_part == _bots_seat_none && tick->player->action_result == _player_action_result_flip_vehicle) ||
 			(bot->vehicle_part != _bots_seat_none &&
 				tick->player->action_result == _player_action_result_enter_vehicle &&
-				(bot->vehicle_part == _bots_seat_driver) ==
-					(bots_vehicle_seat_part(bot->vehicle_index, tick->player->action_seat_index) == _bots_seat_driver))))
+				bots_vehicle_seat_part(bot->vehicle_index, tick->player->action_seat_index) == bot->vehicle_part)))
 	{
 		tick->flags |= FLAG(_unit_control_action_bit);
 	}
@@ -4952,7 +4976,8 @@ static real bots_drive_clear(real_point3d const *position, real direction)
 	return direction;
 }
 
-/* driving (the Warthog, the Ghost): its look steers, as a player's does,
+/* driving (the Warthog, the Ghost, the Scorpion): its look steers, as a
+player's does,
 the throttle eased into a sharp turn. Out of a fight, to its goal (where an
 enemy was, the open places: bots_pick_drive_goal) along the path the
 searches find, the steps taken further off; a Warthog's driver waits a few
@@ -4961,7 +4986,8 @@ Warthog's driver with a gunner circles the enemy at its gun's range (closing
 from far off, wide close by, the side changed now and then), and without one
 runs a player on foot down (where they will be); a Ghost's driver, whose
 aim the fight turned, runs a player on foot down and closes from far off,
-else strafes. Stuck (its vehicle moved less than a unit in two seconds and
+else strafes; a Scorpion's closes from far off and backs away from one
+close, its machine gun on one in reach. Stuck (its vehicle moved less than a unit in two seconds and
 is still, driven two and a half seconds): it backs out a second and a half,
 turning, and gets out after three (bots_bot_vehicle) */
 static void bots_bot_drive(struct bots_bot *bot, struct bots_tick *tick)
@@ -5016,17 +5042,26 @@ static void bots_bot_drive(struct bots_bot *bot, struct bots_tick *tick)
 		real distance = bots_distance2d(&target->object.position, position);
 		real to_target = (real)atan2(target->object.position.y - position->y, target->object.position.x - position->x);
 
-		/* (the Ghost: its aim the fight's, its moves about it) */
+		/* (the Ghost, the Scorpion: its aim the fight's, its moves about it) */
 		if (tick->weapon_index != NONE)
 		{
 			real forward = 0.3f, side = bot->strafe_sign;
 
-			if ((on_foot && distance < 18.0f) || distance > 25.0f)
+			if (tick->vehicle_kind == _bots_vehicle_tank)
+			{
+				/* (the Scorpion keeps its range, its machine gun on one
+				close by as the cannon fires) */
+				forward = distance > 35.0f ? 1.0f : distance < 12.0f ? -0.7f : 0.0f;
+				side = 0.0f;
+				if (distance < 25.0f && TEST_FLAG(tick->flags, _unit_control_weapon_primary_trigger_bit))
+					tick->flags |= FLAG(_unit_control_weapon_secondary_trigger_bit);
+			}
+			else if ((on_foot && distance < 18.0f) || distance > 25.0f)
 			{
 				forward = 1.0f;
 				side = 0.0f;
 			}
-			tick->moving = TRUE;
+			tick->moving = forward != 0.0f || side != 0.0f;
 			tick->move_direction = bot->yaw + (real)atan2(side, forward);
 			tick->throttle_scale = 1.0f;
 			bot->drive_moving = forward > 0.5f;
@@ -5093,6 +5128,145 @@ static void bots_bot_drive(struct bots_bot *bot, struct bots_tick *tick)
 	bot->drive_moving = go;
 }
 
+/* how high the point is over the ground (or scenery) under it, as far as
+40 units */
+static real bots_height(real_point3d const *point)
+{
+	real_vector3d down = { 0.0f, 0.0f, -40.0f };
+
+	return bots_vehicle_room(point, &down);
+}
+
+/* the way (yaw and pitch, radians) has room ahead: that far clear of the
+level and scenery */
+static boolean bots_fly_room(real_point3d const *position, real yaw, real pitch, real distance)
+{
+	real_vector3d way;
+
+	way.i = (real)(cos(yaw) * cos(pitch)) * distance;
+	way.j = (real)(sin(yaw) * cos(pitch)) * distance;
+	way.k = (real)sin(pitch) * distance;
+	return bots_vehicle_room(position, &way) >= distance - 0.1f;
+}
+
+/* flying (the Banshee): its look flies it, as a player's does, full ahead.
+Out of a fight, to its goal (bots_pick_drive_goal) straight, seven units
+over it. In a fight, at its target as the fight aims (a strafing run: its
+plasma, and the fuel rod from 15 units off every three seconds), and from
+14 units off away and up for three seconds before it comes round again (a
+run, not a circle about its target). Over all that, what keeps it flying: up when it is within
+three and a half units of the ground, down above the map's highest place
+by 15, back over the map's places from ten units past them, and round
+what is ahead of it (the level, scenery: a second and a half of its speed,
+ten units at least), up first, else to a side, slowing when there is no
+room at all */
+static void bots_bot_fly(struct bots_bot *bot, struct bots_tick *tick)
+{
+	struct object_datum *vehicle = object_get(tick->vehicle_index);
+	real_point3d const *position = &vehicle->object.position;
+	real_vector3d const *velocity = &vehicle->object.translational_velocity;
+	real speed = (real)sqrt(velocity->i * velocity->i + velocity->j * velocity->j + velocity->k * velocity->k) *
+		TICKS_PER_SECOND;
+	real height = bots_height(position);
+	real lookahead = MAX(10.0f, speed * 1.5f);
+	long now = tick->now;
+	real yaw = bot->yaw, pitch = bot->pitch, throttle = 1.0f;
+	/* (the fight's aim stands: it turned the look at the target) */
+	boolean aimed = FALSE;
+
+	if (tick->fighting && bot->target_player_index != NONE)
+	{
+		struct object_datum *target = object_get(player_get(bot->target_player_index)->unit_index);
+		real distance = bots_distance3d(&target->object.position, position);
+
+		if (now >= bot->fly_break_until_tick && distance < 14.0f)
+		{
+			bot->fly_break_until_tick = now + TICKS_PER_SECOND * 3;
+			bot->fly_break_yaw = (real)atan2(position->y - target->object.position.y,
+				position->x - target->object.position.x) + bots_random_signed(bot) * 0.4f;
+		}
+		if (now < bot->fly_break_until_tick)
+		{
+			yaw = bot->fly_break_yaw;
+			pitch = 0.35f;
+		}
+		else
+		{
+			aimed = TRUE;
+			if (distance > 15.0f && now >= bot->heavy_shot_tick &&
+				TEST_FLAG(tick->flags, _unit_control_weapon_primary_trigger_bit))
+			{
+				tick->flags |= FLAG(_unit_control_weapon_secondary_trigger_bit);
+				bot->heavy_shot_tick = now + TICKS_PER_SECOND * 3;
+			}
+		}
+	}
+	else
+	{
+		real dx, dy, dz;
+
+		if ((bot->goal_kind != _bots_goal_roam && bot->goal_kind != _bots_goal_enemy) ||
+			now - bot->goal_tick > TICKS_PER_SECOND * 40 || bots_distance2d(&bot->goal_point, position) < 8.0f)
+		{
+			bots_pick_drive_goal(bot, position);
+		}
+		dx = bot->goal_point.x - position->x;
+		dy = bot->goal_point.y - position->y;
+		dz = bot->goal_point.z + 7.0f - position->z;
+		yaw = (real)atan2(dy, dx);
+		pitch = PIN((real)atan2(dz, (real)sqrt(dx * dx + dy * dy)), -0.45f, 0.45f);
+	}
+	/* (over the map) */
+	if (position->x < bots_globals.roam_low.x - 10.0f || position->x > bots_globals.roam_high.x + 10.0f ||
+		position->y < bots_globals.roam_low.y - 10.0f || position->y > bots_globals.roam_high.y + 10.0f)
+	{
+		yaw = (real)atan2((bots_globals.roam_low.y + bots_globals.roam_high.y) * 0.5f - position->y,
+			(bots_globals.roam_low.x + bots_globals.roam_high.x) * 0.5f - position->x);
+		aimed = FALSE;
+	}
+	/* (off the ground, under the ceiling) */
+	if (height < 3.5f && pitch < 0.3f)
+	{
+		pitch = 0.3f;
+		aimed = FALSE;
+	}
+	else if (position->z > bots_globals.roam_high.z + 15.0f && pitch > -0.2f)
+	{
+		pitch = -0.2f;
+		aimed = FALSE;
+	}
+	/* (round what is ahead) */
+	if (!bots_fly_room(position, yaw, pitch, lookahead))
+	{
+		static real const turns[][2] = { { 0.0f, 0.5f }, { 0.7f, 0.3f }, { -0.7f, 0.3f }, { 1.4f, 0.2f },
+			{ -1.4f, 0.2f }, { 2.4f, 0.3f }, { -2.4f, 0.3f } };
+		short index;
+
+		aimed = FALSE;
+		throttle = 0.5f;
+		for (index = 0; index < (short)NUMBEROF(turns); index++)
+		{
+			if (bots_fly_room(position, yaw + turns[index][0], PIN(pitch + turns[index][1], -1.0f, 1.0f), lookahead))
+			{
+				yaw += turns[index][0];
+				pitch = PIN(pitch + turns[index][1], -1.0f, 1.0f);
+				throttle = 1.0f;
+				break;
+			}
+		}
+		if (index >= (short)NUMBEROF(turns))
+			pitch = 0.8f;
+	}
+	if (!aimed)
+	{
+		bots_turn(bot, bots_angle_difference(yaw, bot->yaw), pitch - bot->pitch, 8.0f * BOTS_DEGREES, 6.0f, 1.0f, 0.0f,
+			0.0f);
+	}
+	tick->moving = TRUE;
+	tick->move_direction = bot->yaw;
+	tick->throttle_scale = throttle;
+}
+
 /* in a vehicle (bots.vehicles): out of it once it is overturned (a second
 on its side or roof, not a tilt on a slope); a rider
 once its driver is gone two and a half seconds (the gunner keeps on its gun
@@ -5100,7 +5274,8 @@ in a fight) or it has stood still fifteen seconds out of one; a driver stuck
 three times in twelve seconds (and not into that one again for a while),
 badly hurt with its shield down beside an enemy in a slow vehicle (out to
 fight), or the vehicle nearly destroyed (one that takes damage: the
-multiplayer vehicles' vitality is none). Else a driver drives (bots_bot_drive), a rider looks about. The
+multiplayer vehicles' vitality is none); a flyer's driver none of those
+but on the ground, and once it has stood five seconds there. Else a driver drives (bots_bot_drive), a rider looks about. The
 action button held a second and a half to get out, and not into a vehicle
 again for six */
 static void bots_bot_vehicle(struct bots_bot *bot, struct bots_tick *tick)
@@ -5111,6 +5286,8 @@ static void bots_bot_vehicle(struct bots_bot *bot, struct bots_tick *tick)
 	long now = tick->now;
 	long *exits = NULL;
 	boolean driver = tick->vehicle_part == _bots_seat_driver;
+	/* (a flyer's are left on the ground alone) */
+	boolean grounded = tick->vehicle_kind != _bots_vehicle_flyer || bots_height(&vehicle->object.position) < 2.5f;
 
 	if (!bot->in_vehicle)
 	{
@@ -5136,17 +5313,24 @@ static void bots_bot_vehicle(struct bots_bot *bot, struct bots_tick *tick)
 		tick->flags |= FLAG(_unit_control_action_bit);
 		return;
 	}
-	if (driver)
-		bots_globals.drive_ticks++;
-	else
-		bots_globals.ride_ticks++;
+	/* (the tally once a tick: the bots' update may run a tick's sub-steps) */
+	if (now != bot->vehicle_tally_tick)
+	{
+		bot->vehicle_tally_tick = now;
+		if (!driver)
+			bots_globals.ride_ticks++;
+		else if (tick->vehicle_kind == _bots_vehicle_flyer)
+			bots_globals.fly_ticks++;
+		else
+			bots_globals.drive_ticks++;
+	}
 	if (driver || vehicle->unit.driver_object_index != NONE)
 		bot->vehicle_driverless_tick = NONE;
 	else if (bot->vehicle_driverless_tick == NONE)
 		bot->vehicle_driverless_tick = now;
 	if (speed > 1.0f || tick->fighting)
 		bot->vehicle_still_tick = now;
-	if (bots_vehicle_upright(tick->vehicle_index))
+	if (bots_vehicle_upright(tick->vehicle_index) || !grounded)
 		bot->vehicle_upright_tick = now;
 	if (now - bot->vehicle_upright_tick > TICKS_PER_SECOND)
 		exits = &bots_globals.exits_overturned;
@@ -5158,15 +5342,16 @@ static void bots_bot_vehicle(struct bots_bot *bot, struct bots_tick *tick)
 	}
 	else if (!driver && now - bot->vehicle_still_tick > TICKS_PER_SECOND * 15)
 		exits = &bots_globals.exits_still;
-	else if (driver && bot->drive_stuck_count >= 3)
+	else if (driver && (bot->drive_stuck_count >= 3 ||
+		(tick->vehicle_kind == _bots_vehicle_flyer && grounded && now - bot->vehicle_still_tick > TICKS_PER_SECOND * 5)))
 	{
 		exits = &bots_globals.exits_stuck;
 		bot->vehicle_shunned_index = tick->vehicle_index;
 		bot->vehicle_shunned_until_tick = now + TICKS_PER_SECOND * 30;
 	}
-	else if ((driver && tick->fighting && tick->object->object.body_vitality < 0.3f &&
+	else if (grounded && ((driver && tick->fighting && tick->object->object.body_vitality < 0.3f &&
 		tick->object->object.shield_vitality < 0.05f && tick->target_distance < 10.0f && speed < 2.0f) ||
-		(vehicle->object.body_vitality > 0.0f && vehicle->object.body_vitality < 0.2f))
+		(vehicle->object.body_vitality > 0.0f && vehicle->object.body_vitality < 0.2f)))
 	{
 		exits = &bots_globals.exits_bail;
 	}
@@ -5178,7 +5363,9 @@ static void bots_bot_vehicle(struct bots_bot *bot, struct bots_tick *tick)
 		tick->flags |= FLAG(_unit_control_action_bit);
 		return;
 	}
-	if (driver)
+	if (driver && tick->vehicle_kind == _bots_vehicle_flyer)
+		bots_bot_fly(bot, tick);
+	else if (driver)
 		bots_bot_drive(bot, tick);
 	else if (!tick->fighting)
 		bots_bot_watch(bot, tick);
@@ -5257,7 +5444,17 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 		bot->combo_until_tick = 0;
 		bots_release_power_claim(bot);
 		if (bot->in_vehicle)
+		{
 			bots_globals.vehicle_deaths++;
+			/* (dead in a Banshee: shot down, or flown into the map) */
+			if (bot->in_vehicle_kind == _bots_vehicle_flyer)
+			{
+				bots_globals.fly_deaths++;
+				if (tick.player->statistics.suicides > bot->suicides)
+					bots_globals.fly_crashes++;
+			}
+		}
+		bot->suicides = tick.player->statistics.suicides;
 		bot->in_vehicle = FALSE;
 		bot->vehicle_exit_until_tick = 0;
 		return;
@@ -5358,6 +5555,9 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 		bot->in_vehicle = FALSE;
 		bot->vehicle_exit_until_tick = 0;
 	}
+	bot->suicides = tick.player->statistics.suicides;
+	if (tick.vehicle_index != NONE)
+		bot->in_vehicle_kind = tick.vehicle_kind;
 	/* (its kills in a vehicle, for the minute line) */
 	if (tick.vehicle_index != NONE && tick.player->statistics.kills[0] > bot->vehicle_kills)
 		bots_globals.vehicle_kills += tick.player->statistics.kills[0] - bot->vehicle_kills;
@@ -5560,14 +5760,16 @@ static void bots_report(void)
 	{
 		platform_log("bots: tick %ld, vehicles: driven %ld (Warthog %ld, Ghost %ld, Scorpion %ld, Banshee %ld), "
 			"gunned %ld, ridden %ld, flipped %ld; seconds driving %ld, riding %ld; kills %ld, deaths %ld; out overturned "
-			"%ld, stuck %ld, no driver %ld, standing %ld, bailing %ld", now, bots_globals.boards[_bots_seat_driver],
+			"%ld, stuck %ld, no driver %ld, standing %ld, bailing %ld; flying %ld seconds, deaths %ld (their own %ld)", now,
+			bots_globals.boards[_bots_seat_driver],
 			bots_globals.drives[_bots_vehicle_jeep], bots_globals.drives[_bots_vehicle_scout],
 			bots_globals.drives[_bots_vehicle_tank], bots_globals.drives[_bots_vehicle_flyer],
 			bots_globals.boards[_bots_seat_gunner],
 			bots_globals.boards[_bots_seat_passenger], bots_globals.boards[_bots_seat_none],
 			bots_globals.drive_ticks / TICKS_PER_SECOND, bots_globals.ride_ticks / TICKS_PER_SECOND,
 			bots_globals.vehicle_kills, bots_globals.vehicle_deaths, bots_globals.exits_overturned,
-			bots_globals.exits_stuck, bots_globals.exits_driverless, bots_globals.exits_still, bots_globals.exits_bail);
+			bots_globals.exits_stuck, bots_globals.exits_driverless, bots_globals.exits_still, bots_globals.exits_bail,
+			bots_globals.fly_ticks / TICKS_PER_SECOND, bots_globals.fly_deaths, bots_globals.fly_crashes);
 	}
 }
 

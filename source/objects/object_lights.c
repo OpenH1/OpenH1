@@ -1136,11 +1136,13 @@ void lights_preprocess_scene(
 			behind the tick's that the objects are, as it fades: not a step
 			a tick) */
 			real drawn_elapsed = (real)(current_time - light->parent_light_index) - render_interpolation_ticks_behind();
+			/* port: a light of no transition (the Scorpion's shell's) is at
+			its end as it is made, not 0/0 (a colour not a number) */
+			real duration = definition->transition_duration > 0.0f ? definition->transition_duration : 0.0f;
 
 			intensity = (1.0f - transition_function_evaluate(
 				definition->falloff_function,
-				(real)(current_time - light->parent_light_index)
-					/ definition->transition_duration))
+				duration > 0.0f ? (real)(current_time - light->parent_light_index) / duration : 1.0f))
 				* light->intensity_scale;
 			rgb_colors_interpolate(
 				&light->color,
@@ -1150,7 +1152,7 @@ void lights_preprocess_scene(
 				intensity);
 			drawn_intensity = (1.0f - transition_function_evaluate(
 				definition->falloff_function,
-				MAX(drawn_elapsed, 0.0f) / definition->transition_duration))
+				duration > 0.0f ? MAX(drawn_elapsed, 0.0f) / duration : 1.0f))
 				* light->intensity_scale;
 			rgb_colors_interpolate(
 				&drawn_color,
