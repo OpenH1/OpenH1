@@ -698,6 +698,7 @@ typedef char screenshot_and_framerate_globals_size_assert[
 void network_test_update(boolean main_menu_loaded, real seconds);
 /* port: port/linux/game/network_distributed.c */
 void network_distributed_frame_received(void);
+int network_distributed_server_receive(long milliseconds);
 /* port: port/linux/game/network_clock.c */
 boolean network_clock_server_pace_first(void);
 boolean network_clock_server_paced(void);
@@ -3720,9 +3721,11 @@ void main_loop(
 			/* port: a dedicated server of an OpenH1 game waits for its frame's
 			time before it reads its datagrams, not after: what came meanwhile
 			is read before the tick the frame runs, which its clients' clocks
-			time their input for (port/linux/game/network_clock.c) */
+			time their input for (port/linux/game/network_clock.c); and while it
+			waits it reads them as they come, sending their input on at once
+			(port/linux/game/network_distributed.c) */
 			if (halo_server_mode() && network_clock_server_pace_first())
-				server_mode_pace_frame();
+				server_mode_pace_frame_receiving(network_distributed_server_receive);
 			profile_scope_enter(main_network_start_frame_section)
 			connection = main_globals.connection;
 			if (connection==_game_connection_network_client)
