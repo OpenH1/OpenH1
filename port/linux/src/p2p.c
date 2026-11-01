@@ -386,6 +386,9 @@ struct stream
 	int remote_closed;
 	unsigned long created_time;
 	unsigned long closed_time;
+	/* something written to KCP or taken from it this pass (a message, a
+	peer's segments): flushed at the pass's end, not at KCP's next interval */
+	int flush;
 	unsigned char pending[STREAM_BUFFER_SIZE];
 	int pending_size;
 };
@@ -2549,6 +2552,7 @@ static void stream_message(struct stream *stream, unsigned char type, const void
 	message[0] = type;
 	memcpy(message + 1, data, (size_t)size);
 	ikcp_send(stream->kcp, (const char *)message, size + 1);
+	stream->flush = 1;
 }
 
 static void stream_local_closed(struct stream *stream)
@@ -2673,6 +2677,7 @@ static void stream_received(struct peer *peer, const unsigned char *data, int si
 		stream->state = _stream_awaiting_open;
 	}
 	ikcp_input(stream->kcp, (const char *)data, size);
+	stream->flush = 1;
 }
 
 static void stream_flush_pending(struct stream *stream)
@@ -2739,6 +2744,16 @@ static void stream_update(struct stream *stream)
 	stream_flush_pending(stream);
 	if (stream->remote_closed && !stream->pending_size && stream->socket >= 0)
 		stream_local_closed(stream);
+	/* (what the game wrote and the acknowledgements of what came, sent now:
+	KCP sends only as its interval passes, which held each reliable message
+	up to LOOP_INTERVAL on each machine it crossed, and the peer's resending
+	timed from its later acknowledgement. Once a pass, after every read, so
+	that a burst goes as few datagrams as it fills) */
+	if (stream->flush)
+	{
+		stream->flush = 0;
+		ikcp_flush(stream->kcp);
+	}
 	/* finished: both ends closed and everything delivered, or the tunnel
 	gave up on it */
 	if ((stream->local_closed && stream->remote_closed && !ikcp_waitsnd(stream->kcp)) ||

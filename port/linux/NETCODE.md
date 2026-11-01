@@ -2017,6 +2017,12 @@ Unity's Netcode for Entities, lightyear, netfox and the Ares source):
   write at once (`TCP_NODELAY`, in `xnet.c` for the game's sockets and in
   `p2p.c` for internet play's): with Nagle's algorithm a small write waited
   for the other end's delayed acknowledgement, up to 200 ms on Windows.
+  Internet play's tunnel carries them with KCP, which sends only as its
+  interval passes (10 ms, the least it takes): the tunnel's thread flushes
+  each connection's KCP once a pass that something was written to it or
+  came for it, so a write and the acknowledgements of what came go at once,
+  a burst in as few datagrams as it fills, and the interval only times the
+  resending.
 - **Input every tick, unreliably, each tick's buttons several times.** A
   client sends the host its players' input after each tick, with the
   buttons of the three ticks before it, and the host sends every client
