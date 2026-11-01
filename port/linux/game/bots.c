@@ -141,6 +141,7 @@ and each bot's kills and deaths; debug.bot_trace logs each bot's state.
 #include "bots_tactics.h"
 #include "bots_profile.h"
 #include "bots_vehicles.h"
+#include "bots_objectives.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -213,6 +214,9 @@ enum
 	/* where its team asks it to be (bots_tactics.h): after a teammate's
 	killer, closing in, falling back, with a human, back to a teammate */
 	_bots_goal_tactic,
+	/* its game's objective (bots_objectives.h): a flag or ball to take, its
+	flag home, a hill, its flag to defend, a carrier to hunt or escort */
+	_bots_goal_objective,
 };
 
 /* a weapon's family, as the bots aim it (bots_weapon_kind) */
@@ -510,6 +514,16 @@ struct bots_bot
 	long range_swap_tick;
 	/* (_bots_goal_tactic) the team's point it goes to */
 	real_point3d tactic_point;
+	/* (_bots_goal_objective) what it does for its game's objective
+	(_bots_objective_*), the point it was given, the object it takes, and
+	whether it keeps to it through a fight; the place it chose about that
+	point (a guard's, a hill's, a ball holder's) and until when */
+	short objective_kind;
+	real_point3d objective_point;
+	long objective_object_index;
+	boolean objective_press_on;
+	real_point3d objective_spot;
+	long objective_spot_until_tick;
 
 	/* vehicles (bots.vehicles): it would drive one this life; its next look
 	for one; not into one before then (it just left one), nor into that one
@@ -688,6 +702,8 @@ static struct
 	long exits_driverless;
 	long exits_still;
 	long exits_bail;
+	/* (out at a flag or ball to take) */
+	long exits_objective;
 } bots_globals;
 
 /* the walkable surfaces the bots' searches read: a copy of the structure's
@@ -775,7 +791,9 @@ long bots_fill_to(void)
 
 int bots_play_game_engine(long game_engine_index)
 {
-	return game_engine_index == game_engine_slayer;
+	/* (Slayer's, and the objectives', bots_objectives_play's: all but Race) */
+	return game_engine_index == game_engine_slayer || game_engine_index == game_engine_ctf ||
+		game_engine_index == game_engine_oddball || game_engine_index == game_engine_king;
 }
 
 int bots_machine_is_bot(long machine_index)
@@ -1893,10 +1911,12 @@ void bots_initialize_for_new_map(void)
 	bots_globals.exits_driverless = 0;
 	bots_globals.exits_still = 0;
 	bots_globals.exits_bail = 0;
+	bots_globals.exits_objective = 0;
 	bots_globals.vehicles = FALSE;
 	/* (what the bots saw and their teams knew is the last map's) */
 	bots_knowledge_reset();
 	bots_tactics_reset();
+	bots_objectives_reset();
 	/* (the first line a minute into the game) */
 	bots_globals.last_report_tick = 0;
 	/* (the weapon definitions are the new map's) */
@@ -1907,6 +1927,7 @@ void bots_dispose_from_old_map(void)
 {
 	bots_knowledge_reset();
 	bots_tactics_reset();
+	bots_objectives_reset();
 	bots_paths_release();
 	bots_globals.map_ready = FALSE;
 }
@@ -2349,7 +2370,11 @@ static boolean bots_target_score(struct bots_bot *bot, struct player_datum *play
 	candidate->score = distance + bearing * 4.0f - (player_index == bot->target_player_index ? 6.0f : 0.0f);
 	/* (its team's: the enemy a teammate hurts, a teammate's killer) */
 	if (bot != &bots_globals.player_bot)
+	{
 		candidate->score -= bots_tactics_target_bonus(bot->index, player_index);
+		/* (its game's: the carrier of its flag, of a ball; one in a hill) */
+		candidate->score -= bots_objectives_target_bonus(bot->player_index, player_index);
+	}
 	/* (debug.bot_player's rocket launcher: the enemy with the most others
 	about them, a group for one rocket) */
 	if (bot->smooth && bots_holding(player) == _bots_family_explosive)
@@ -3052,15 +3077,12 @@ static boolean bots_choose_power(struct bots_bot *bot, struct unit_datum *unit, 
 /* the team's point (bots_tactics_goal's) as the bot's goal: the ground
 under it, else the roaming place nearest it within 10 units; FALSE for
 none */
-static boolean bots_set_tactic_goal(struct bots_bot *bot, real_point3d const *point)
+/* the ground under a point to walk to, else the roaming place nearest it
+(within 10 units); NONE for neither */
+static long bots_point_ground(real_point3d const *point, real_point3d *ground)
 {
-	real_point3d ground;
-	long surface_index;
+	long surface_index = bots_surface_below(point, ground);
 
-	/* (the same point, near enough: the goal stands) */
-	if (bot->goal_kind == _bots_goal_tactic && bots_distance3d(&bot->tactic_point, point) < 1.5f)
-		return TRUE;
-	surface_index = bots_surface_below(point, &ground);
 	if (surface_index == NONE)
 	{
 		long index, nearest = NONE;
@@ -3077,12 +3099,199 @@ static boolean bots_set_tactic_goal(struct bots_bot *bot, real_point3d const *po
 			}
 		}
 		if (nearest == NONE)
-			return FALSE;
-		ground = bots_globals.roam_points[nearest];
+			return NONE;
+		*ground = bots_globals.roam_points[nearest];
 		surface_index = bots_globals.roam_surfaces[nearest];
 	}
+	return surface_index;
+}
+
+static boolean bots_set_tactic_goal(struct bots_bot *bot, real_point3d const *point)
+{
+	real_point3d ground;
+	long surface_index;
+
+	/* (the same point, near enough: the goal stands) */
+	if (bot->goal_kind == _bots_goal_tactic && bots_distance3d(&bot->tactic_point, point) < 1.5f)
+		return TRUE;
+	surface_index = bots_point_ground(point, &ground);
+	if (surface_index == NONE)
+		return FALSE;
 	bots_set_goal(bot, _bots_goal_tactic, &ground, surface_index);
 	bot->tactic_point = *point;
+	return TRUE;
+}
+
+/* the goal of its game's objective at a point, kept while the point given
+stays within reach of the last (a carrier moving: the path found again
+once it has gone that far) */
+static boolean bots_set_objective_goal(struct bots_bot *bot, real_point3d const *point, real reach)
+{
+	real_point3d ground;
+	long surface_index;
+
+	if (bot->goal_kind == _bots_goal_objective && bots_distance3d(&bot->objective_point, point) < reach)
+		return TRUE;
+	surface_index = bots_point_ground(point, &ground);
+	if (surface_index == NONE)
+		return FALSE;
+	bots_set_goal(bot, _bots_goal_objective, &ground, surface_index);
+	bot->objective_point = *point;
+	return TRUE;
+}
+
+/* a ball holder's place to run to: a roaming place 8 to 35 units off, the
+furthest from the enemies (each alive, as the HUD shows them the holder)
+for the way there; NONE for none */
+static long bots_evade_place(struct bots_bot *bot, real_point3d const *position)
+{
+	struct player_datum *player = player_get(bot->player_index);
+	real_point3d enemies[BOTS_MAXIMUM + MAXIMUM_LOCAL_PLAYERS];
+	long enemy_count = 0, index, best = NONE;
+	real best_score = -REAL_MAX;
+	struct data_iterator iterator;
+	struct player_datum *other;
+
+	data_iterator_new(&iterator, player_data);
+	while ((other = (struct player_datum *)data_iterator_next(&iterator)) != NULL &&
+		enemy_count < (long)NUMBEROF(enemies))
+	{
+		if (bots_is_enemy(player, other))
+			enemies[enemy_count++] = object_get(other->unit_index)->object.position;
+	}
+	for (index = 0; index < bots_globals.roam_point_count; index++)
+	{
+		real_point3d const *place = &bots_globals.roam_points[index];
+		real distance = bots_distance3d(place, position), nearest = 60.0f, score;
+		long enemy;
+
+		if (distance < 8.0f || distance > 35.0f)
+			continue;
+		for (enemy = 0; enemy < enemy_count; enemy++)
+		{
+			real_point3d middle;
+
+			/* (the place, and halfway there: not past them) */
+			middle.x = 0.5f * (place->x + position->x);
+			middle.y = 0.5f * (place->y + position->y);
+			middle.z = 0.5f * (place->z + position->z);
+			nearest = MIN(nearest, bots_distance3d(&enemies[enemy], place));
+			nearest = MIN(nearest, bots_distance3d(&enemies[enemy], &middle) * 1.5f);
+		}
+		score = nearest - distance * 0.2f;
+		if (score > best_score)
+		{
+			best_score = score;
+			best = index;
+		}
+	}
+	return best;
+}
+
+/* the goal of what it does for its game's objective (bots_objectives.h):
+TRUE once it has one */
+static boolean bots_choose_objective(struct bots_bot *bot, real_point3d const *position,
+	struct bots_objective const *objective)
+{
+	long now = game_time_get();
+	boolean driving = bot->in_vehicle;
+
+	/* (something else to do for it: a new goal) */
+	if (bot->goal_kind == _bots_goal_objective && bot->objective_kind != objective->kind)
+		bot->goal_kind = _bots_goal_none;
+	bot->objective_kind = objective->kind;
+	bot->objective_object_index = objective->object_index;
+	bot->objective_press_on = objective->press_on;
+	switch (objective->kind)
+	{
+	case _bots_objective_take:
+	case _bots_objective_carry:
+		return bots_set_objective_goal(bot, &objective->point, 1.0f);
+	case _bots_objective_hunt:
+		return bots_set_objective_goal(bot, &objective->point, 4.0f);
+	case _bots_objective_escort:
+	{
+		real_point3d point = objective->point;
+		real distance = bots_distance2d(position, &objective->point);
+
+		/* (near enough: where it is; else to the carrier's side, its
+		reach short of them) */
+		if (distance < objective->radius * 1.5f)
+			return bots_set_objective_goal(bot, position, objective->radius);
+		point.x += (position->x - point.x) * objective->radius / distance;
+		point.y += (position->y - point.y) * objective->radius / distance;
+		return bots_set_objective_goal(bot, &point, objective->radius);
+	}
+	case _bots_objective_guard:
+	case _bots_objective_hill:
+	case _bots_objective_evade:
+		break;
+	default:
+		return FALSE;
+	}
+	/* (a driver: the hill's centre) */
+	if (driving)
+		return objective->kind == _bots_objective_hill && bots_set_objective_goal(bot, &objective->point, 3.0f);
+	/* a place about the point, chosen again now and then (a ball holder's
+	sooner, or at it, or with an enemy nearer it than the holder) */
+	if (bot->goal_kind != _bots_goal_objective || now >= bot->objective_spot_until_tick ||
+		(objective->kind != _bots_objective_evade &&
+			bots_distance3d(&bot->objective_point, &objective->point) > MAX(objective->radius, 2.0f)) ||
+		(objective->kind == _bots_objective_evade && bots_distance2d(&bot->objective_spot, position) < 2.0f))
+	{
+		real_point3d spot = objective->point, ground;
+		long seconds, surface_index;
+
+		if (objective->kind == _bots_objective_guard)
+		{
+			/* (one of the roaming places within its ground, in turn) */
+			long index, count = 0, chosen;
+
+			for (index = 0; index < bots_globals.roam_point_count; index++)
+			{
+				if (bots_distance3d(&bots_globals.roam_points[index], &objective->point) < objective->radius)
+					count++;
+			}
+			chosen = count ? (bot->index * 7 + now / (TICKS_PER_SECOND * 10)) % count : NONE;
+			for (index = 0; chosen != NONE && index < bots_globals.roam_point_count; index++)
+			{
+				if (bots_distance3d(&bots_globals.roam_points[index], &objective->point) < objective->radius &&
+					chosen-- == 0)
+				{
+					spot = bots_globals.roam_points[index];
+					break;
+				}
+			}
+			seconds = 10 + bot->index % 4 * 2;
+		}
+		else if (objective->kind == _bots_objective_hill)
+		{
+			/* (about inside it, a way round from its centre) */
+			real angle = (real)(bot->index * 2.4f) + (real)(now / (TICKS_PER_SECOND * 4)) * 1.3f;
+			real out = objective->radius * ((now / (TICKS_PER_SECOND * 4) + bot->index) % 2 ? 0.8f : 0.35f);
+
+			spot.x += (real)cos(angle) * out;
+			spot.y += (real)sin(angle) * out;
+			seconds = 4;
+		}
+		else
+		{
+			long place = bots_evade_place(bot, position);
+
+			if (place != NONE)
+				spot = bots_globals.roam_points[place];
+			seconds = 3;
+		}
+		bot->objective_spot = spot;
+		bot->objective_spot_until_tick = now + TICKS_PER_SECOND * seconds;
+		surface_index = bots_point_ground(&spot, &ground);
+		if (surface_index == NONE)
+			return FALSE;
+		bots_set_goal(bot, _bots_goal_objective, &ground, surface_index);
+		/* (the point given, not the spot: the next look compares it) */
+		bot->objective_point = objective->point;
+		return TRUE;
+	}
 	return TRUE;
 }
 
@@ -3092,7 +3301,15 @@ static void bots_choose_goal(struct bots_bot *bot, long player_index, real_point
 	long now = game_time_get();
 	short tactic;
 	real_point3d tactic_point;
+	struct bots_objective objective;
+	boolean has_objective = !bot->smooth && bots_objectives_goal(bot->index, player_index, position, &objective);
 
+	if (!has_objective)
+	{
+		bot->objective_kind = _bots_objective_none;
+		if (bot->goal_kind == _bots_goal_objective)
+			bot->goal_kind = _bots_goal_none;
+	}
 	/* (debug.bot_player_vehicle: the player's bot boards one first, and
 	drives it after) */
 	if (bot->smooth && *config_string("debug.bot_player_vehicle") && own_unit->object.parent_object_index == NONE &&
@@ -3119,6 +3336,7 @@ static void bots_choose_goal(struct bots_bot *bot, long player_index, real_point
 	/* (a vehicle to get into, bots.vehicles: out of fights, no enemy seen
 	for three seconds) */
 	if (!bot->smooth && bots_globals.vehicles && own_unit->object.parent_object_index == NONE && !fighting &&
+		!(has_objective && (objective.urgent || objective.kind == _bots_objective_guard)) &&
 		now >= bot->vehicle_check_tick && (bot->target_player_index == NONE ||
 			now - bot->target_seen_tick > TICKS_PER_SECOND * 3))
 	{
@@ -3130,6 +3348,12 @@ static void bots_choose_goal(struct bots_bot *bot, long player_index, real_point
 	tactic = bot->smooth ? (short)_bots_tactic_none : bots_tactics_goal(bot->index, position, &tactic_point);
 	if (tactic == _bots_tactic_none && bot->goal_kind == _bots_goal_tactic)
 		bot->goal_kind = _bots_goal_none;
+	/* (carrying a flag home, running with a ball: before all else) */
+	if (has_objective && (objective.kind == _bots_objective_carry || objective.kind == _bots_objective_evade) &&
+		bots_choose_objective(bot, position, &objective))
+	{
+		return;
+	}
 	/* (badly hurt: a health pack first, before a chase) */
 	if (!bot->smooth && own_unit->object.body_vitality < 0.35f && bot->goal_kind != _bots_goal_item &&
 		now >= bot->item_check_tick)
@@ -3138,6 +3362,10 @@ static void bots_choose_goal(struct bots_bot *bot, long player_index, real_point
 		if (bots_choose_health(bot, position, fighting ? 8.0f : 30.0f))
 			return;
 	}
+	/* (its game's objective, urgently: a flag or ball near to take, its
+	flag to return or win back, a hill) */
+	if (has_objective && objective.urgent && bots_choose_objective(bot, position, &objective))
+		return;
 	/* (after a teammate's killer, falling back with the team: before its
 	own chase) */
 	if ((tactic == _bots_tactic_trade || tactic == _bots_tactic_fall_back) && bots_set_tactic_goal(bot, &tactic_point))
@@ -3214,6 +3442,10 @@ static void bots_choose_goal(struct bots_bot *bot, long player_index, real_point
 			}
 		}
 	}
+	/* (its game's objective: to the enemy's flag, escorting its carrier,
+	defending its own: after a power item, health or a better weapon) */
+	if (has_objective && bots_choose_objective(bot, position, &objective))
+		return;
 	/* (closing in on the team's kill, with a human; too far from every
 	teammate, back to one: after a power item, health or a better weapon,
 	which an escort or a bot closing in still takes) */
@@ -4343,7 +4575,8 @@ static void bots_bot_walk(struct bots_bot *bot, struct bots_tick *tick)
 			tick->flags |= FLAG(_unit_control_jump_bit);
 	}
 	else if (bot->goal_kind == _bots_goal_power || bot->goal_kind == _bots_goal_cover ||
-		bot->goal_kind == _bots_goal_tactic)
+		bot->goal_kind == _bots_goal_tactic ||
+		(bot->goal_kind == _bots_goal_objective && bot->objective_kind != _bots_objective_take))
 	{
 		/* (at a power item's spawn, its cover, its team's place: looking
 		about there) */
@@ -4364,10 +4597,11 @@ static void bots_bot_walk(struct bots_bot *bot, struct bots_tick *tick)
 			bots_bot_watch(bot, tick);
 		if (bot->goal_kind == _bots_goal_roam || bot->goal_kind == _bots_goal_enemy)
 			bot->goal_kind = _bots_goal_none;
-		/* (at an item: on to it) */
-		if (bot->goal_kind == _bots_goal_item)
+		/* (at an item, or a flag or ball to take: on to it) */
+		if (bot->goal_kind == _bots_goal_item || bot->goal_kind == _bots_goal_objective)
 		{
-			struct object_datum *item = object_try_and_get_and_verify_type(bot->item_index, _object_mask_item);
+			struct object_datum *item = object_try_and_get_and_verify_type(
+				bot->goal_kind == _bots_goal_item ? bot->item_index : bot->objective_object_index, _object_mask_item);
 
 			if (item && bots_distance2d(&item->object.position, &tick->position) > 0.3f)
 			{
@@ -4467,6 +4701,26 @@ static void bots_bot_weapons(struct bots_bot *bot, struct bots_tick *tick)
 	/* (in a vehicle's seat: its weapon as it is) */
 	if (!bot->smooth && tick->vehicle_index != NONE)
 		return;
+	/* (a flag or ball in hand: kept there, put away for no other) */
+	if (!bot->smooth && bots_objectives_carrying(bot->player_index))
+		return;
+	/* (at a flag or ball it goes to take or touch: the action button, half
+	of each second, the trigger let go, while the game offers it) */
+	if (bot->goal_kind == _bots_goal_objective && bot->objective_kind == _bots_objective_take)
+	{
+		struct object_datum *item = object_try_and_get_and_verify_type(bot->objective_object_index,
+			_object_mask_weapon);
+
+		if (item && item->object.parent_object_index == NONE &&
+			bots_distance2d(&item->object.position, &tick->position) < 1.0f &&
+			fabs(item->object.position.z - tick->position.z) < 1.2f &&
+			tick->player->action_object_index == bot->objective_object_index &&
+			tick->now % TICKS_PER_SECOND < TICKS_PER_SECOND / 2)
+		{
+			tick->flags |= FLAG(_unit_control_swap_weapons_bit);
+			tick->flags &= ~FLAG(_unit_control_weapon_primary_trigger_bit);
+		}
+	}
 	/* (debug.bot_player_weapon, debug.bots_weapon: in hand while it has
 	rounds) */
 	if (*bots_weapon_wanted(bot))
@@ -4744,6 +4998,27 @@ static boolean bots_find_cover(struct bots_bot *bot, struct bots_tick *tick, rea
 /* fighting, its team falling back (bots_tactics.h): towards the rally
 point, still facing the enemy, as the bots near the fight fall back
 together */
+/* fighting, its game's objective kept to (a flag carried home or near to
+take, a ball held or near, a hill near): its way there, still facing the
+enemy; TRUE while it does. Carrying a flag or ball with the enemy close:
+the fight's, for a blow */
+static boolean bots_bot_press_on(struct bots_bot *bot, struct bots_tick *tick)
+{
+	struct bots_objective objective;
+
+	if (bot->smooth || !bots_objectives_goal(bot->index, bot->player_index, &tick->position, &objective) ||
+		!objective.press_on)
+	{
+		return FALSE;
+	}
+	if (tick->target_distance < 3.0f && bots_objectives_carrying(bot->player_index))
+		return FALSE;
+	if (!bots_choose_objective(bot, &tick->position, &objective))
+		return FALSE;
+	tick->goal_in_fight = TRUE;
+	return TRUE;
+}
+
 static void bots_bot_fall_back(struct bots_bot *bot, struct bots_tick *tick)
 {
 	real_point3d point;
@@ -4784,7 +5059,8 @@ static boolean bots_bot_recharge(struct bots_bot *bot, struct bots_tick *tick)
 	}
 	if (bot->smooth || now < bot->recharge_next_tick || bot->target_player_index == NONE ||
 		now - bot->target_seen_tick > TICKS_PER_SECOND / 2 || tick->object->object.shield_vitality > 0.15f ||
-		tick->object->object.parent_object_index != NONE || !game_engine_has_shield(bot->player_index))
+		tick->object->object.parent_object_index != NONE || !game_engine_has_shield(bot->player_index) ||
+		bots_objectives_carrying(bot->player_index))
 	{
 		return FALSE;
 	}
@@ -4923,7 +5199,19 @@ static void bots_pick_drive_goal(struct bots_bot *bot, real_point3d const *posit
 {
 	long now = game_time_get();
 	long tries;
+	struct bots_objective objective;
 
+	/* (its game's objective: a flag to take or carry home, its carrier to
+	run down, a hill) */
+	if (bots_objectives_goal(bot->index, bot->player_index, position, &objective) &&
+		(objective.kind == _bots_objective_take || objective.kind == _bots_objective_carry ||
+			objective.kind == _bots_objective_hunt || objective.kind == _bots_objective_hill) &&
+		bots_choose_objective(bot, position, &objective))
+	{
+		return;
+	}
+	if (bot->goal_kind == _bots_goal_objective)
+		bot->goal_kind = _bots_goal_none;
 	if (bots_globals.roam_outdoors_count <= 0)
 	{
 		bots_pick_roam_goal(bot, position);
@@ -5494,6 +5782,12 @@ static void bots_bot_vehicle(struct bots_bot *bot, struct bots_tick *tick)
 	}
 	else if (!driver && now - bot->vehicle_still_tick > TICKS_PER_SECOND * 15)
 		exits = &bots_globals.exits_still;
+	/* (driven up to a flag or ball to take: out, for it) */
+	else if (driver && grounded && speed < 6.0f && bot->goal_kind == _bots_goal_objective &&
+		bot->objective_kind == _bots_objective_take && bots_distance2d(&vehicle->object.position, &bot->objective_point) < 5.0f)
+	{
+		exits = &bots_globals.exits_objective;
+	}
 	else if (driver && (bot->drive_stuck_count >= 4 ||
 		(tick->vehicle_kind == _bots_vehicle_flyer && grounded && now - bot->vehicle_still_tick > TICKS_PER_SECOND * 5)))
 	{
@@ -5532,10 +5826,10 @@ static void bots_bot_trace(struct bots_bot *bot, long bot_index, struct bots_tic
 		trace = MAX(config_integer("debug.bot_trace"), 0) * TICKS_PER_SECOND;
 	if (trace <= 0 || now % trace != bot_index)
 		return;
-	platform_log("bots: trace %ld bot %ld at (%.1f %.1f %.1f) goal %d (%.1f %.1f %.1f) s%ld path %s %d/%d%s "
+	platform_log("bots: trace %ld bot %ld at (%.1f %.1f %.1f) goal %d/%d (%.1f %.1f %.1f) s%ld path %s %d/%d%s "
 		"target %ld seen %ld ago%s stuck %d yaw %.0f throttle %.2f/%.2f flags %lx searches %ld failures %ld",
 		now, bot_index + 1, tick->position.x, tick->position.y, tick->position.z, (int)bot->goal_kind,
-		bot->goal_point.x, bot->goal_point.y, bot->goal_point.z, bot->goal_surface_index,
+		(int)bot->objective_kind, bot->goal_point.x, bot->goal_point.y, bot->goal_point.z, bot->goal_surface_index,
 		bot->path.valid ? "yes" : "no", (int)bot->path.step_index, (int)bot->path.step_count,
 		bot->path.steps_finish_path ? " (all)" : "",
 		bot->target_player_index == NONE ? -1L : (long)DATUM_INDEX_TO_ABSOLUTE_INDEX(bot->target_player_index),
@@ -5734,6 +6028,13 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 		}
 		else
 			bots_bot_fight(bot, &tick);
+		/* (a flag or ball in hand: never fired, which drops it
+		(players.c's weapon_must_be_readied); struck with, as a blow) */
+		if (!bot->smooth && tick.fighting && bots_objectives_carrying(bot->player_index))
+		{
+			tick.flags &= ~(FLAG(_unit_control_weapon_primary_trigger_bit) |
+				FLAG(_unit_control_weapon_secondary_trigger_bit));
+		}
 	}
 	/* (in a vehicle, bots.vehicles: driving or riding) */
 	if (!bot->smooth && tick.vehicle_index != NONE)
@@ -5747,7 +6048,7 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 		{
 			if (!tick.fighting || bot->goal_kind == _bots_goal_item || bot->smooth)
 				bots_choose_goal(bot, bot->player_index, &tick.position, tick.fighting);
-			else
+			else if (!bots_bot_press_on(bot, &tick))
 				bots_bot_fall_back(bot, &tick);
 		}
 		if (tick.stay && !tick.fighting)
@@ -5839,6 +6140,7 @@ static void bots_report(void)
 	char line[400];
 	char knowledge[80];
 	char tactics[400];
+	char objectives[120];
 	int length = 0;
 
 	if (bots_globals.last_report_tick != NONE && now - bots_globals.last_report_tick < TICKS_PER_SECOND * 60)
@@ -5861,9 +6163,10 @@ static void bots_report(void)
 		return;
 	bots_knowledge_report(knowledge, sizeof(knowledge));
 	bots_tactics_report(tactics, sizeof(tactics));
-	platform_log("bots: tick %ld, %ld bots (%s): recharges %ld, health %ld, power %ld (waited %ld), regroups %ld%s%s",
+	bots_objectives_report(objectives, sizeof(objectives));
+	platform_log("bots: tick %ld, %ld bots (%s): recharges %ld, health %ld, power %ld (waited %ld), regroups %ld%s%s%s",
 		now, count, bots_skills[bots_globals.skill].name, bots_globals.recharges, bots_globals.health_fetches,
-		bots_globals.power_fetches, bots_globals.power_waits, bots_globals.regroups, knowledge, tactics);
+		bots_globals.power_fetches, bots_globals.power_waits, bots_globals.regroups, knowledge, tactics, objectives);
 	platform_log("bots: tick %ld, %ld bots (%s): searches %ld (%ld failed, %ld short, %ld full, %ld unavoided, "
 		"%ld unsmoothed), stuck %ld (goals given up %ld), kills/deaths%s", now, count,
 		bots_skills[bots_globals.skill].name, bots_globals.searches, bots_globals.search_failures,
@@ -5986,6 +6289,7 @@ void bots_update_actions(struct player_action *actions)
 			deaths since the last tick) */
 			bots_knowledge_tick_begin();
 			bots_tactics_tick_begin();
+			bots_objectives_tick_begin();
 		}
 		if (bot->player_index != iterator.datum_index)
 			bots_bot_reset(bot, iterator.datum_index, bot_index);
