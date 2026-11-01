@@ -22,7 +22,7 @@ weapons and grenades, the bots at their posts with their orders.
 | 0 | Fit check | turning, the comfort vignette, seated or standing, height | the choices made |
 | 1 | Boots on the ground | look, move | three marked spots run to |
 | 2 | Weapons hot | aim, fire, reload | three still targets down on one magazine |
-| 3 | Loadout | switch, the foregrip, pick up and swap | the sniper rifle and the pistol each hitting the target |
+| 3 | Loadout | the foregrip, switch, pick up and swap | the sniper rifle and the pistol each hitting the target |
 | 4 | Hands on | the grenade's throw, the melee | a grenade on a group, then a blow |
 | 5 | Eyes up | the scope | (the next drop) |
 | 6 | Mount up | vehicles | (the next drop) |
@@ -104,6 +104,7 @@ int halo_vr_running(void);
 int halo_vr_button_name(int button, char *name, unsigned long size);
 void halo_vr_rumble(float left, float right);
 int halo_vr_left_handed(void);
+int halo_vr_head(float forward[3], float up[3], float position[3]);
 #endif
 
 /* ---------- constants */
@@ -325,7 +326,7 @@ static struct basic_training_chapter const basic_training_chapters[BASIC_TRAININ
 		12.0f, 0.0f, -90.0f, _training_loadout_rifle, 0 },
 	{ "WEAPONS HOT", "Learn: aim, fire, reload.\nEnds with: three targets down on one magazine.",
 		12.0f, 0.0f, -90.0f, _training_loadout_rifle, 0 },
-	{ "LOADOUT", "Learn: switch weapons, hold the foregrip, pick up and swap.\n"
+	{ "LOADOUT", "Learn: hold the foregrip, switch weapons, pick up and swap.\n"
 		"Ends with: a hit with the sniper rifle and one with the pistol.", 12.0f, 0.0f, -90.0f,
 		_training_loadout_rifle_plasma, 0 },
 	{ "HANDS ON", "Learn: throw a grenade, melee.\nEnds with: a grenade on a group, then a blow.",
@@ -365,18 +366,18 @@ static struct basic_training_step const basic_training_steps[] =
 	{ 2, _training_check_targets, 3, _training_setup_targets, NONE, TRUE,
 		"Challenge: three targets downrange. Drop all three before that magazine runs dry.",
 		"Three for three. Now that's shooting." },
-	{ 3, _training_check_switch, 1, _training_setup_range, _training_button_y, FALSE,
-		"Switch weapons with %s. Or reach over your shoulder for the rifle.",
-		"Quick hands. Keep it up." },
 	{ 3, _training_check_grip, 1, _training_setup_range, _training_button_left_grip, FALSE,
 		"Steady the rifle: put your left hand on its foregrip and squeeze %s.",
 		"Two hands, steady aim. That's how it's done." },
+	{ 3, _training_check_switch, 1, _training_setup_range, _training_button_y, FALSE,
+		"Switch weapons with %s. Or reach down to your hip for the sidearm.",
+		"Quick hands. Keep it up." },
 	{ 3, _training_check_loadout, 2, _training_setup_loadout, _training_button_x, TRUE,
 		"Challenge: a sniper rifle and a pistol lie ahead. Hold %s over each to swap, then hit the target "
 		"with both.",
 		"Sniper and sidearm. You're getting dangerous." },
 	{ 4, _training_check_grenade, 1, _training_setup_range, _training_button_left_trigger, FALSE,
-		"Grenade: %s. Squeeze the left grip, swing your arm, let go.",
+		"Grenade: hold %s, draw your hand back, swing and let go.",
 		"Fire in the hole! Good arm." },
 	{ 4, _training_check_melee, 1, _training_setup_dummy, _training_button_b, FALSE,
 		"Melee: swing the rifle hard, or press %s. Hit the dummy.",
@@ -845,11 +846,19 @@ static void basic_training_arm(
 		long weapon_index;
 
 		if (tag_index == NONE)
+		{
+			if (name)
+				platform_log("training: no %s on this map", name);
 			continue;
+		}
 		object_placement_data_new(&placement, tag_index, NONE);
 		weapon_index = object_new(&placement);
-		if (weapon_index != NONE && !unit_add_weapon_to_inventory(unit_index, weapon_index, 2))
+		/* (as a starting weapon: replacing would take the other) */
+		if (weapon_index != NONE && !unit_add_weapon_to_inventory(unit_index, weapon_index, _unit_add_weapon_starting))
+		{
+			platform_log("training: %s not given", name);
 			object_delete(weapon_index);
+		}
 	}
 	unit = unit_get(unit_index);
 	unit->unit.grenade_counts[0] = (char)grenades;
@@ -1215,6 +1224,20 @@ static void basic_training_watch(
 				basic_training.throw_tick = now;
 			}
 		}
+#ifdef HALO_VR
+		/* (in the headset the aim is the controller's: the head looking up
+		counts too) */
+		{
+			float head_forward[3], head_up[3], head_position[3];
+
+			if (seen->vr && halo_vr_head(head_forward, head_up, head_position))
+			{
+				real head_pitch = (real)asin(PIN(head_forward[2], -1.0f, 1.0f)) * 180.0f / TRAINING_PI;
+
+				pitch = MAX(pitch, head_pitch);
+			}
+		}
+#endif
 		if (pitch > seen->looked_up)
 			seen->looked_up = pitch;
 		if (TEST_FLAG(unit->unit.control_flags, _unit_control_use_equipment_bit) || unit->unit.melee_attack_state)
@@ -1414,6 +1437,30 @@ void basic_training_note_grip(
 	basic_training.two_handed = two_handed;
 }
 
+/* the step's button as it is pressed: a grenade is thrown with the left
+grip's swing in the headset (vr.grenade_throw "gesture" or "both"), and its
+words then; the left trigger by button */
+static short basic_training_step_button(
+	struct basic_training_step const *step)
+{
+#ifdef HALO_VR
+	if (step->button == _training_button_left_trigger && halo_vr_running() &&
+		strcmp(config_string("vr.grenade_throw"), "button") != 0)
+	{
+		return _training_button_left_grip;
+	}
+#endif
+	return step->button;
+}
+
+static char const *basic_training_step_words(
+	struct basic_training_step const *step)
+{
+	if (step->check == _training_check_grenade && basic_training_step_button(step) == _training_button_left_trigger)
+		return "Grenade: pull %s to throw one.";
+	return step->words;
+}
+
 boolean basic_training_highlight(
 	short *button,
 	real *pulse)
@@ -1428,7 +1475,7 @@ boolean basic_training_highlight(
 	step = &basic_training_steps[basic_training.step];
 	if (step->button == NONE)
 		return FALSE;
-	*button = step->button;
+	*button = basic_training_step_button(step);
 	/* (twice a second, never quite out) */
 	*pulse = 0.55f + 0.45f * (real)sin((real)(game_time_get() % TICKS_PER_SECOND) * 2.0f * TRAINING_PI /
 		TICKS_PER_SECOND * 2.0f);
@@ -1941,8 +1988,8 @@ void basic_training_draw(
 	}
 	else
 	{
-		basic_training_button_name(step->button, button, sizeof(button));
-		basic_training_words(step->words, button, words, sizeof(words));
+		basic_training_button_name(basic_training_step_button(step), button, sizeof(button));
+		basic_training_words(basic_training_step_words(step), button, words, sizeof(words));
 	}
 	word_lines = basic_training_wrap(font_index, words, inner, lines, TRAINING_WORD_LINES);
 	for (index = 0; index < word_lines; index++)

@@ -4730,7 +4730,7 @@ starts by itself.
 | 0 | Fit check | turning | the comfort settings, on a screen of their own: snap or smooth turning, the comfort vignette, seated or standing, your height |
 | 1 | Boots on the ground | look, move | a run to three marked spots (waypoints), the clock running |
 | 2 | Weapons hot | aim, fire, reload | three still targets down on one magazine (out of rounds first: again) |
-| 3 | Loadout | switch, the foregrip | a sniper rifle and a pistol on the ground, picked up, and a hit on a target going side to side with each |
+| 3 | Loadout | the foregrip, switch | a sniper rifle and a pistol on the ground, picked up, and a hit on a target going side to side with each |
 | 4 | Hands on | the grenade's throw, the melee (a bot standing close) | three bots behind a boulder, one peeking out: a grenade on two of them, then a blow on one |
 | 5 | Eyes up | the scope | (to come: a sniper duel) |
 | 6 | Mount up | vehicles | (to come: a bot drives the Warthog, you man its gun) |
