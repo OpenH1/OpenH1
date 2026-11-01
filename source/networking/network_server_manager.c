@@ -1905,7 +1905,10 @@ static void network_game_server_port_bots(
 	missing = wanted - census.bots;
 	for (bot_index = 0; bot_index < BOTS_MAXIMUM; bot_index++)
 	{
-		long team_index = network_game_server_port_bots_team(&census, census.human_team_counts);
+		/* port: (basic training's bots on the teams it wants: bots.c's
+		bots_team) */
+		long team_index = bots_team(bot_index, census.human_team,
+			network_game_server_port_bots_team(&census, census.human_team_counts));
 
 		if (census.slot_of_bot[bot_index] == NONE)
 		{

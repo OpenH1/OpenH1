@@ -539,6 +539,7 @@ symbols in this file:
 #include "cseries.h"
 #include "game_modes.h" /* port: port/linux/game/game_modes.c */
 #include "infection.h" /* port: port/linux/game/infection.c */
+#include "basic_training.h" /* port: port/linux/game/basic_training.c */
 #include "cseries_windows.h"
 #include "errors.h"
 #include "aim_assist.h"
@@ -7473,6 +7474,8 @@ short game_engine_player_get_custom_motion_sensor_positions(
 void game_engine_render_nav_points(
 	short local_player_index)
 {
+	/* port: Basic Training's spots to run to (port/linux/game/basic_training.c) */
+	basic_training_render_nav_points(local_player_index);
 	if (game_engine &&
 		global_variant.universal_variant.goal_radar == _radar_nav_point &&
 		local_player_index != NONE)
@@ -10958,6 +10961,9 @@ void game_engine_postspawn_player_update(
 	/* port: an OpenCE gametype's mode's equipment (Gun Game's weapon,
 	Infection's skull: port/linux/game/game_modes.c) */
 	game_modes_postspawn(player_index);
+	/* port: Basic Training's player put at its chapter's place, with its
+	weapons (port/linux/game/basic_training.c) */
+	basic_training_postspawn(player_index);
 
 	return;
 }
@@ -11083,6 +11089,12 @@ boolean game_engine_should_spawn_player(
 		struct player_datum *player = player_get(player_index);
 
 		if (player->quit_out_of_game == TRUE)
+		{
+			should_spawn = FALSE;
+		}
+		/* port: Basic Training's bots out of its chapter stay out
+		(port/linux/game/basic_training.c) */
+		else if (basic_training_player_held(player_index))
 		{
 			should_spawn = FALSE;
 		}

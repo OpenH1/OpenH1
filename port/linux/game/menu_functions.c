@@ -122,6 +122,7 @@ their handlers open opens.
 #include "matchmaking.h"
 /* (the lobby's bots: lobby_menu.inc) */
 #include "bots.h"
+#include "basic_training.h"
 #include "bungie_net/network/transport.h"
 
 #include <stdlib.h>
@@ -8657,6 +8658,111 @@ static boolean profile_save_changes(struct widget_instance *widget, boolean *wid
 	return TRUE;
 }
 
+/* ---------- Basic Training's chapters (port/linux/game/basic_training.c;
+tools/port_settings.py's _training): the main menu's VR TUTORIAL, the
+pause menu's CHAPTERS */
+
+/* the chapter of a row (op_chapter_1 is chapter 0), or of the widget in
+one; NONE */
+static short training_row_chapter(struct widget_instance *widget)
+{
+	for (; widget; widget = widget->parent)
+	{
+		if (!strncmp(widget->name, "op_chapter_", 11))
+			return (short)(atoi(widget->name + 11) - 1);
+	}
+	return NONE;
+}
+
+/* "port training chapter" (A on a row): the chapter played (from the main
+menu, a training game started at it; in one, jumped to); a chapter not made
+yet fails */
+static boolean training_chapter_choose(struct widget_instance *widget)
+{
+	short chapter = training_row_chapter(widget);
+
+	return chapter != NONE && basic_training_choose(chapter);
+}
+
+/* a narrow text as the menus' (Latin-1) */
+static void training_wide(char const *text, wchar_t *wide, short length)
+{
+	short index;
+
+	for (index = 0; index < length - 1 && text[index]; index++)
+		wide[index] = (wchar_t)(unsigned char)text[index];
+	wide[index] = 0;
+}
+
+/* "port training update": each row's number and name, DONE for a chapter
+finished, SOON for one not made yet (dimmed); the chapter chosen's name and
+what it is about in the frame */
+static void training_update(struct widget_instance *list)
+{
+	struct widget_instance *row;
+	struct widget_instance *details = list->parameters.list.extended_description;
+	short chosen = training_row_chapter(list->focused_child);
+
+	for (row = list->child; row; row = row->next)
+	{
+		short chapter = training_row_chapter(row);
+		wchar_t text[ROW_TEXT_LENGTH];
+		char narrow[ROW_TEXT_LENGTH];
+
+		if (chapter == NONE || strncmp(row->name, "op_chapter_", 11))
+			continue;
+		row->animation.current_frame_index = row == list->focused_child ? 1 : 0;
+		snprintf(narrow, sizeof(narrow), "%d   %s", chapter, basic_training_chapter_name(chapter));
+		training_wide(narrow, text, (short)NUMBEROF(text));
+		text_set(named(row, "chapter_name", 0), text);
+		text_set(named(row, "chapter_state", 0), !basic_training_chapter_ready(chapter) ? L"SOON" :
+			basic_training_chapter_finished(chapter) ? L"DONE" : L"");
+	}
+	if (details && chosen != NONE)
+	{
+		wchar_t text[SETTINGS_PANEL_TEXT_LENGTH];
+
+		training_wide(basic_training_chapter_name(chosen), text, (short)NUMBEROF(text));
+		menu_text_box_wrap(named(details, "chapter_details_name", 0), text, 2);
+		/* (each of its lines wrapped to the box, a blank line between) */
+		{
+			struct widget_instance *box = named(details, "chapter_details_text", 0);
+			char const *about = basic_training_chapter_about(chosen);
+			wchar_t all[SETTINGS_PANEL_TEXT_LENGTH];
+			short width, used = 0;
+			long font = ui_widget_port_text_box_font(box, &width);
+
+			all[0] = 0;
+			while (*about && used < (short)NUMBEROF(all) - 8)
+			{
+				char line[SETTINGS_PANEL_TEXT_LENGTH];
+				char const *end = strchr(about, '\n');
+				size_t count = end ? (size_t)(end - about) : strlen(about);
+				wchar_t wrapped[SETTINGS_PANEL_TEXT_LENGTH];
+				short index;
+
+				snprintf(line, sizeof(line), "%.*s", (int)count, about);
+				training_wide(line, text, (short)NUMBEROF(text));
+				settings_text_wrap(text, wrapped, (short)NUMBEROF(wrapped), font, width);
+				if (used)
+				{
+					all[used++] = '\r';
+					all[used++] = '\n';
+					all[used++] = '\r';
+					all[used++] = '\n';
+				}
+				for (index = 0; wrapped[index] && used < (short)NUMBEROF(all) - 1; index++)
+					all[used++] = wrapped[index];
+				all[used] = 0;
+				about += count;
+				if (*about == '\n')
+					about++;
+			}
+			text_set_length(box, all, (short)NUMBEROF(all));
+		}
+	}
+}
+
 /* "port pause end game" (the in-game pause menu's END GAME, the host's:
 menu_tags.c's pause_patch): the game ends as its time limit would, its
 players staying for the next (the carnage report, then the host's PICK GAME) */
@@ -10505,6 +10611,14 @@ boolean pc_menu_event_function_invoke(
 		{
 			return mods_save();
 		}
+		else if (!strcmp(name, "port training chapter"))
+		{
+			return training_chapter_choose(widget);
+		}
+		else if (!strcmp(name, "port training open"))
+		{
+			/* (the pause menu's CHAPTERS: its screen opened by the button) */
+		}
 		else if (!strcmp(name, "port update now"))
 		{
 			updater_update_now();
@@ -10796,6 +10910,8 @@ void pc_menu_game_data_function_invoke(
 		controls_update(widget);
 	else if (!strcmp(name, "port mods update"))
 		mods_update(widget);
+	else if (!strcmp(name, "port training update"))
+		training_update(widget);
 	else if (!strcmp(name, "port update question"))
 		update_question_note(widget);
 	else if (!strcmp(name, "port connect update"))

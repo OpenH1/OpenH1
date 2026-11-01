@@ -27,6 +27,12 @@ MODS = "main_menu/mods"
 MOD_ROWS = 11
 MODS_ITEM_PLACE = (192, 391)
 QUIT_ITEM_PLACE = (192, 427)
+# The VR Tutorial (the VR build's, port/linux/game/basic_training.c): its main
+# menu item, in the headset only, a row above the first (_training), and its
+# screen of chapters
+TRAINING = "main_menu/training"
+TRAINING_ITEM_PLACE = (192, 211)
+TRAINING_CHAPTERS = 8
 # the update question (the Steam Frame's, gamescope's), over the main menu (_update)
 UPDATE = "main_menu/update"
 YES_NO = [("YES", "true"), ("NO", "false")]
@@ -202,6 +208,21 @@ VR_SCREENS["vr_visor"] = {
         ("SHIELD ENERGY:", "vr.visor_energy",
          [(f"{round(energy * 100)}%", f"{energy:g}") for energy in (0.25, 0.5, 0.75, 1, 1.5, 2)],
          "How strong the shields' energy across the glass\nis, as they are hit and as they recharge.", None),
+    ],
+}
+# The VR Tutorial's fit check (chapter 0: basic_training.c opens it in the
+# game): the comfort settings, in VR Controls' layout and under its title
+VR_SCREENS["vr_fit_check"] = {
+    "screen": "vr_fit_check_screen",
+    "header": ("header_vr_controls", f"{PE}/vr_controls/header_vr_controls"),
+    "spacing": 28,
+    "help_top": 366,
+    "rows": [
+        *(row for row in VR_SCREENS["vr_controls"]["rows"]
+          if row[1] in ("vr.turn", "vr.snap_turn_angle", "vr.smooth_turn_speed")),
+        ("COMFORT VIGNETTE:", "vr.comfort_vignette", ON_OFF,
+         "The edges of your view dim a little as a vehicle\nturns you fast, speeds up or slows hard.", None),
+        *(row for row in VR_SCREENS["vr_display"]["rows"] if row[1] in ("vr.height", "vr.player_height")),
     ],
 }
 SCREENS.update(VR_SCREENS)
@@ -1946,8 +1967,13 @@ WIDGET_PATCHES = {
         f'<on event="{event}" run="port settings begin" open="{PE}/video_settings/video_settings_screen"/>'
         for event in ("a", "start")] + ['<on event="left_mouse" run="mouse emit accept event"/>']},
     # (the main menu's MODS, before Quit: _mods)
-    "main_menu/main_menu_select_list": {"insert_before": {"main_menu/main_menu_item_quit_game": [
-        f'<child widget="main_menu/main_menu_item_mods" x="{MODS_ITEM_PLACE[0]}" y="{MODS_ITEM_PLACE[1]}"/>']}},
+    # (and in the headset, VR TUTORIAL above the first: _training)
+    "main_menu/main_menu_select_list": {"insert_before": {
+        "main_menu/main_menu_item_load_camp": [
+            f'<child widget="main_menu/main_menu_item_training" x="{TRAINING_ITEM_PLACE[0]}" '
+            f'y="{TRAINING_ITEM_PLACE[1]}" platform="vr"/>'],
+        "main_menu/main_menu_item_quit_game": [
+            f'<child widget="main_menu/main_menu_item_mods" x="{MODS_ITEM_PLACE[0]}" y="{MODS_ITEM_PLACE[1]}"/>']}},
     f"{PLAYER_EDIT}/player_options_menu": {"insert_before": {
         f"{PLAYER_EDIT}/player_button_bar": [
             f'<child widget="{PLAYER_EDIT}/op_aim_assist" x="54" y="289"/>',
@@ -2093,6 +2119,7 @@ TITLES = {
     f"{PE}/vr_controls/header_vr_controls": "VR CONTROLS",
     f"{PE}/vr_display/header_vr_display": "VR DISPLAY",
     "main_menu/mods/header_mods": "MODS",
+    f"{TRAINING}/header_training": "VR TUTORIAL",
     f"{MT}/join_game/header_server_browser": "SERVER BROWSER",
     f"{MT}/join_game/header_direct_link": "JOIN BY LINK",
     f"{MT}/join_game/header_local_network": "LOCAL NETWORK",
@@ -5419,6 +5446,8 @@ def multiplayer_files() -> dict:
         OPENCE_EDIT.replace("/", ".") + ".port.xml": head + _opence_options() + ["</menus>", ""],
         MODS.replace("/", ".") + ".xml": [head[0], "<!-- The port's Mods screen, in the PC version's style "
                                           "(tools/port_settings.py) -->", head[2]] + _mods() + ["</menus>", ""],
+        TRAINING.replace("/", ".") + ".xml": [head[0], "<!-- The VR build's VR Tutorial, in the PC version's style "
+                                              "(tools/port_settings.py) -->", head[2]] + _training() + ["</menus>", ""],
         UPDATE.replace("/", ".") + ".xml": [head[0], "<!-- The update question (the Steam Frame's, gamescope's), in "
                                             "the style of the PC version's Quit (tools/port_settings.py) -->",
                                             head[2]]
@@ -5444,7 +5473,14 @@ MENU_ITEM_TOP, MENU_ITEM_SCALE, MENU_ITEM_MIDDLE = 6.57, 0.9037, 130.0
 # these pairs, so each is the sum of a space after the first letter and one
 # before the second, fitted (least squares) to the 53 pairs the redraws' items
 # and headers have (D-I, of the main menu's Credits, gives D's right side)
-MENU_ITEM_SPACES = {"MO": 3.17, "OD": 2.8, "DS": 2.3}
+MENU_ITEM_SPACES = {"MO": 3.17, "OD": 2.8, "DS": 2.3,
+                    # VR TUTORIAL's: those the redraws have (TU, TO, OR), the others as their neighbours are
+                    # (VR between VE and VI, UT as NT, RI as RN and RU, IA as EA and NA, AL as AD and AI), and
+                    # a word's space as LOAD GAME's D to G, less D's side
+                    "VR": 0.3, "R ": 6.0, " T": 6.0, "TU": 2.12, "UT": 1.66, "TO": 0.75, "OR": 3.0, "RI": 3.25,
+                    "IA": 1.3, "AL": 1.58}
+# a space's own width (none: the spaces about it are its pairs')
+MENU_ITEM_SPACE_WIDTH = 0.0
 # the mods' status icons (port/assets/icons/lucide): a mod out of the order it
 # asks for, and one that cannot be played (another mod says it cannot be
 # played with it, or this build cannot play it): menu_functions.c's
@@ -5475,6 +5511,9 @@ def menu_item_frames(text: str, redraws: Path) -> list:
     letters = redraw_letters(redraws)
     widths = []
     for letter in text:
+        if letter == " ":
+            widths.append(MENU_ITEM_SPACE_WIDTH)
+            continue
         pen = BoundsPen(None)
         parse_path(letters[letter], pen)
         widths.append(pen.bounds[2])
@@ -5482,9 +5521,11 @@ def menu_item_frames(text: str, redraws: Path) -> list:
     x = MENU_ITEM_MIDDLE - (sum(widths) + sum(spaces)) * MENU_ITEM_SCALE / 2
     uses = []
     for index, letter in enumerate(text):
-        uses.append(f'<use href="#g{letter}" transform="translate({x:.2f},{MENU_ITEM_TOP}) scale({MENU_ITEM_SCALE})"/>')
+        if letter != " ":
+            uses.append(f'<use href="#g{letter}" transform="translate({x:.2f},{MENU_ITEM_TOP}) '
+                        f'scale({MENU_ITEM_SCALE})"/>')
         x += (widths[index] + (spaces[index] if index < len(spaces) else 0)) * MENU_ITEM_SCALE
-    paths = [f'    <path id="g{letter}" d="{letters[letter]}"/>' for letter in sorted(set(text))]
+    paths = [f'    <path id="g{letter}" d="{letters[letter]}"/>' for letter in sorted(set(text) - {" "})]
     head = ['<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="256" '
             'height="64" viewBox="0 0 256 64">', "  <defs>", *paths]
     dim = [*head, "  </defs>", f'  <!-- "{text}" (normal state: dim blue) -->',
@@ -5604,6 +5645,68 @@ def _mods() -> list:
                                                               '<on event="start" run="port mods move down"/>'])
     lines += _button(f"{base}/button_ok", 1, ['<on event="a" run="port mods save" back="true"/>',
                                               '<on event="start" run="port mods save" back="true"/>'])
+    return lines
+
+
+def _training() -> list:
+    """the VR build's VR TUTORIAL (port/linux/game/basic_training.c): the
+    main menu's item (in the headset only: its child's platform, WIDGET_PATCHES)
+    and the screen of its chapters, laid out as the Mods screen is: a row
+    each, its number and name, and DONE once finished (or SOON, a chapter not
+    made yet); in the lobby's frame, the chapter chosen's name and what it
+    teaches and ends with. A on a chapter plays it: from the main menu a
+    training game starts there, in one (the pause menu's CHAPTERS) it is
+    jumped to, set up as if those before it had been played
+    (menu_functions.c's "port training" functions)"""
+    base = TRAINING
+    lines = _widget("main_menu/main_menu_item_training",
+                    [("type", "text"), ("width", 256), ("height", 33), ("bitmap", "main_menu/menu_training")],
+                    [f'<on event="a" open="{base}/training_screen"/>', f'<on event="start" open="{base}/training_screen"/>',
+                     '<on event="left_mouse" run="mouse emit accept event"/>'])
+    lines += _widget(f"{base}/training_screen", [("width", 640), ("height", 480),
+                                                 ("flags", "pass_unhandled_to_focused_child pause_game"),
+                                                 ("bitmap", "bitmaps/gradient")],
+                     ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                      '<child widget="main_menu/new_select/sel_list_desc_bkd"/>',
+                      f'<child widget="{base}/chapters_list"/>',
+                      f'<child widget="{base}/header_training"/>'])
+    lines += _header(f"{base}/header_training", f"{base}/header_training")
+    rows = [f'<child widget="{base}/op_chapter_{index + 1}" x="20" y="{73 + 30 * index}"/>'
+            for index in range(TRAINING_CHAPTERS)]
+    lines += _widget(f"{base}/chapters_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                               ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                                               ("description", f"{base}/chapter_details")],
+                     ['<data input="port training update"/>', *rows,
+                      f'<child widget="{base}/button_bar" y="414"/>'])
+    for index in range(TRAINING_CHAPTERS):
+        lines += _widget(f"{base}/op_chapter_{index + 1}",
+                         [("width", 390), ("height", 28), ("flags", "pass_unhandled_to_focused_child"),
+                          ("bitmap", "bitmaps/sel_list_item_bkd_top" if index == 0 else "bitmaps/sel_list_item_bkd"),
+                          ("color", "#FF2896FF")],
+                         ['<on event="a" run="port training chapter"/>',
+                          '<on event="start" run="port training chapter"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          f'<child widget="{base}/chapter_name" x="12"/>',
+                          f'<child widget="{base}/chapter_state" x="318"/>'])
+    lines += _widget(f"{base}/chapter_name",
+                     [("type", "text"), ("controller", 1), ("width", 300), ("height", 22), ("font", "ui\\large_ui"),
+                      ("color", "#FF2896FF"), ("text_y", 4)], [])
+    lines += _widget(f"{base}/chapter_state",
+                     [("type", "text"), ("controller", 1), ("width", 66), ("height", 22), ("font", "ui\\large_ui"),
+                      ("color", "#FF2896FF"), ("align", "center"), ("text_y", 4), ("text_flags", "no_focus_test")], [])
+    lines += _widget(f"{base}/chapter_details", [("width", 640), ("height", 480)],
+                     [f'<child widget="{base}/chapter_details_name"/>',
+                      f'<child widget="{base}/chapter_details_text"/>'])
+    lines += _widget(f"{base}/chapter_details_name",
+                     [("type", "text"), ("controller", 1), ("left", 412), ("top", 84), ("width", 200), ("height", 44),
+                      ("font", "ui\\large_ui"), ("color", "#FFFFFFFF")], [])
+    lines += _widget(f"{base}/chapter_details_text",
+                     [("type", "text"), ("controller", 1), ("left", 412), ("top", 130), ("width", 200),
+                      ("height", 272), ("font", "ui\\small_ui"), ("color", "#FF2896FF")], [])
+    lines += _widget(f"{base}/button_bar",
+                     [("type", "column_list"), ("width", 640), ("height", 28),
+                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     ['<child widget="common_button_cancel" x="510" y="1"/>'])
     return lines
 
 

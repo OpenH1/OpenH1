@@ -188,6 +188,7 @@ struct game_options;
 #endif
 #include "profile_sections.h" /* port: port/linux/include/profile_sections.h */
 #include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
+#include "basic_training.h" /* port: port/linux/game/basic_training.c */
 
 /* network_game_globals.c's */
 boolean network_game_distributed_client(void);
@@ -391,6 +392,8 @@ static void game_tick_macro_step(
 		first_person_weapons_update();
 		unlock_global_random_seed();)
 	profile_scope(game_tick_game_engine_section, game_engine_update();)
+	/* port: Basic Training's steps and chapters (port/linux/game/basic_training.c) */
+	basic_training_tick();
 	profile_scope(game_tick_editor_section, editor_update();)
 	/* port: in network co-op only the host runs the scripts. A client running
 	them would place the map's actors and objects a second time and make

@@ -1153,6 +1153,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.discord_socket` | `""` | `HALO_DISCORD_SOCKET` | The Discord client's socket (on Windows, its pipe) to connect to, and no other: a stand-in for Discord in a test, so that a test never reaches the Discord app of the person at the computer. Empty: Discord's own. |
 | `debug.gpu_skip_vertex_shaders`, `debug.gpu_debug_expression`, `debug.gpu_debug_flat`, `debug.gpu_debug_texture0` | off | `HALO_GPU_SKIP_VS`, `HALO_GPU_DEBUG_EXPR`, `HALO_GPU_DEBUG_FLAT`, `HALO_GPU_DEBUG_T0` | Tools to find problems in the graphics: skip the draws of a vertex shader, or replace the output of all pixel shaders with an expression (for example `t0.rgb`). `debug.gpu_debug_expression` is Metal's alone (`HALO_GPU_DEBUG_EXPR`, as MSL): it does nothing with Vulkan, whose shaders are SPIR-V written directly, with no source to put it in. |
 | `debug.dynamic_lights_look`, `debug.dynamic_lights_log` | `""`, `false` | `HALO_DYNAMIC_LIGHTS_LOOK`, `HALO_DYNAMIC_LIGHTS_LOG` | Tools for the enhanced dynamic lights: up to eight numbers in place of their look's (the lights' brightness, `1.7`; their core's inverse square in radii, `12`; the spill past white, `0.18`; the wrap on models, `0.25`; the glow's size in the light's radius, `0.22`, its brightness, `1.2`, its softness against what it meets in world units, `0.12`, and its least size, `0.035`), and a log of where the first projectile's light is drawn each frame beside where the game placed it at the tick, and once a second how many lights there are. |
+| `debug.training` | `""` | `HALO_TRAINING` | `"<chapter>[:<step>]"`: from the main menu, the VR Tutorial starts at that chapter (0 to 7, but 5 and 6) and step of it (0 its first), for tests and captures (`game/basic_training.c`; "Basic training" under "VR"). It runs in any build, but only the VR build offers it in its menus. |
 | `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_hitch`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_chat`, `debug.network_test_name`, `debug.network_test_players`, `debug.network_test_most_players`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_HITCH`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PLAYERS`, `HALO_NETWORK_TEST_MOST_PLAYERS`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link, or (`log`) a log of the game one machine plays (`game/network_test.c`); a `local:` game has `debug.network_test_players` players (split screen), and a hosted one takes `debug.network_test_most_players` at most (`0`: the game's own); a test game starts `debug.network_test_start` seconds (`15.0`) after the host opens it. Refer to `NETCODE.md`. `debug.test_input = "menu:a down down a"` presses menu buttons one a second (`a`, `b`, `x`, `y`, `up`, `down`, `left`, `right`, `start`, `back` or `wait`, `screenshot`, the Screenshot key's capture, or `click:<x>:<y>`, a click of the pointer there, `x` and `y` 0 to 1 of the window; `back+x` holds Back through its second and presses X half way through it), for testing the menus; `"script:0.5 jump; 1-2 move=0,1; 2 aim=90,10"` presses, holds and aims on the simulation's clock, in seconds from the scenario's start, the same at any simulation rate (`tools/scorecard`). |
 | `debug.network_test_cues`, `debug.network_test_cue_players` | none, `1` | `HALO_NETWORK_TEST_CUES`, `HALO_NETWORK_TEST_CUE_PLAYERS` | Console lines a test runs at their seconds, from the first tick that many players are in (`"<second> <line>\|..."`). |
 | `debug.network_test_lobby_cues` | none | `HALO_NETWORK_TEST_LOBBY_CUES` | Console lines a test's host runs in its first lobby, at their seconds of its setup, before `debug.network_test_start` starts the game (`"<second> <line>\|..."`). |
@@ -4737,6 +4738,42 @@ flat screen draws them as the game does):
 port/linux/vulkan/README.md ("The VR mode's effects") says how they are
 drawn and what they cost.
 
+### VR Tutorial
+
+In the headset, the main menu's first item, VR TUTORIAL, lists its
+chapters (a finished one says DONE); choose any to play it. Nothing opens
+by itself at the start. It plays a game of this computer alone, Team
+Slayer with no end on your own Blood Gulch, beside the red base, with four
+bots that the training orders about: three against you, one with you
+(`game/basic_training.c`, the bots' orders in `game/bots.c`). Each chapter
+teaches one thing in a minute or less and ends with a small challenge that
+uses all of it so far; the HUD gives its words in the HUD's font, names a
+button as the HUD's prompts do (the runtime's name of the input in your
+hand), lights that part of the controller in your hand with a pulsing
+ball of light and buzzes that hand. A step done gets a line and the
+countdown's beep, a chapter the countdown's end, and the next chapter
+starts by itself.
+
+| # | Chapter | Learn | Ends with |
+| --- | --- | --- | --- |
+| 0 | Fit check | turning | the comfort settings, on a screen of their own: snap or smooth turning, the comfort vignette, seated or standing, your height |
+| 1 | Boots on the ground | look, move | a run to three marked spots (waypoints), the clock running |
+| 2 | Weapons hot | aim, fire, reload | three still targets down on one magazine (out of rounds first: again) |
+| 3 | Loadout | the foregrip, switch | a sniper rifle and a pistol on the ground, picked up, and a hit on a target going side to side with each |
+| 4 | Hands on | the grenade's throw, the melee (a bot standing close) | three bots behind a boulder, one peeking out: a grenade on two of them, then a blow on one |
+| 5 | Eyes up | the scope | (to come: a sniper duel) |
+| 6 | Mount up | vehicles | (to come: a bot drives the Warthog, you man its gun) |
+| 7 | Live fire | all of it | one on one against a bot that fights back gently (first to two kills), then two on two with a bot on your side (first to five); the other side first: again |
+
+On the HUD, under the step, the D-pad's right skips to the next chapter
+and its left goes back one (past those still to come); the pause menu's
+CHAPTERS (in place of END GAME) lists them all. A chapter jumped to sets
+itself up as it would be had you played those before it: you at its place
+with its weapons and grenades, the bots at their posts. LEAVE GAME ends the
+training. The finished chapters are kept in `vr.training_finished`;
+`debug.training` starts at a chapter (and a step of it) from the main menu.
+It is only this computer's game: nothing is sent to another.
+
 ### Settings
 
 In the headset, Settings' VR Setup (below About; only there while the
@@ -4796,6 +4833,7 @@ headset's session is opened with, apply from the next start.
 | `vr.seat_motion` | `"still"` | `HALO_VR_SEAT_MOTION` | With `vr.vehicle_view = "first_person"`: `"still"`, you stay in the first person all the way in and out: the eye follows the body's head as it climbs in and out, smoothed (no faster than 3 m/s), and once seated stays put in the vehicle, riding with it but not with a turret's turning or flinches, with no cut to black; `"blink"`, the eye stays where you stood as the body climbs in, and in the seat as it climbs out, and blinks (darkens and lightens in a quarter second) where it moves between places; `"head"`, it follows the seated body's head as the game animates it. |
 | `vr.death_view` | `"crt"` | `HALO_VR_DEATH_VIEW` | As you die: `"crt"`, the helmet's view switches off as a CRT does and cuts to a death cam, a feed from beside your body (the right stick moves it about the body), until the game brings you back and the HUD boots (above, "Dying"); `"face"`, the view stays where your head was, the world dimmed and reddened, your body falling before and under you, and turns to the body in a blink if it lands out of sight, until the game brings you back out of the dark (above, "Dying"); `"still"`, the same, never turned; `"game"`, the game's camera pulling away from the body. |
 | `vr.head_in_wall` | `"off"` | `HALO_VR_HEAD_IN_WALL` | Your head leaned or stepped into a wall or a pillar, or through it: `"off"` (the default), you see through it, as a black view is worse; `"fade"`, the view fades to black as your eyes go in (where the wall before them comes within 25 cm, black at 20 cm, just short of the game's near plane; black once they are in it or past it) and back as they come out, the HUD saying to step back, a scope showing nothing; not in a vehicle's seat (above, "Your head in a wall"). |
+| `vr.training_finished` | `""` | `HALO_VR_TRAINING_FINISHED` | The chapters of the VR Tutorial finished, by their numbers (`"0,1,2"`), each DONE on its list; the game writes it ("Basic training"). |
 | `vr.turn` | `"snap"` | `HALO_VR_TURN` | `"snap"` or `"smooth"` (with `vr.aim = "gamepad"`, `vr.gamepad_view` instead). |
 | `vr.snap_turn_angle` | `30.0` | `HALO_VR_SNAP_TURN_ANGLE` | Degrees of each snap turn. |
 | `vr.smooth_turn_speed` | `150.0` | `HALO_VR_SMOOTH_TURN_SPEED` | Degrees each second of smooth turning. |
@@ -6183,6 +6221,7 @@ Other changes:
 | `interface/ui_widget.c`, `interface/ui_widget_event_handler_functions.c`, `interface/ui_widget_game_data_input_functions.c` | The main menu is the PC version's from `port/assets/menus` (`display.menus`); the menus' widgets can call the port's functions (`game/menu_functions.c`) and send the PC version's custom activation event; the widgets' memory is 256 KB, not 16 KB; a spinner of the port's menus with more than two values stops at its ends instead of going round (`ui_widget_port_spinner_stops`: a count's most never steps on to none); the main menu and Multiplayer clear co-op's controllers, so that a gamepad going back to controller 1 is not a controller unplugged; the lobby's split screen players leave alone, and one who quits in game is not joined to the next game (`interface/player_ui.c`).; Create Game's OFFLINE hosts a game that takes no other machine, as the Xbox's split screen does (`ui_widget_port_host_local`); the port's own screens are laid out for the view's width up to 16:9 (their widgets' `wide`: `game/menu_tags.c`'s `ui_widget_port_wide_layout`), a picture widened by stretching its middle (`draw_bitmap_widened_in_rect`); after a game of this machine alone the host's map select and the lobby open in place of the Xbox's split screen Select Map and Select Teams (`game/menu_tags.c`'s `pc_menus_screen`). |
 | `interface/player_ui.c` | Fast setup opens the pregame screen through the port's menus (the lobby), as `interface/ui_widget.c` does. Player 1's last used profile (`lastprof.txt`) is looked for once, not each time the menus and the party ask (each frame), which logged its absence again each time. |
 | `game/game_engine.c`, `game/game_engine.h`, `game/game_engine_slayer.c`, `game/game.c`, `game/aim_assist.c`, `game/players.c`, `objects/damage.c`, `objects/objects.c`, `units/units.c`, `items/weapons.c`, `saved games/playlist_profile.c`, `saved games/saved_game_files.c` | OpenCE's gametypes (`game/game_modes.c`, "OpenCE gametypes"): the gametype's PC options carry a mode and Hardcore with their options; the built-in ones are written after the Xbox's default gametypes; Infection's and Gun Game's game engines are Slayer's with their rules; SWAT's headshots, Hardcore's motion sensor, aim assist and restore of the killer; Infection's zombies' skulls, grenades, powerups, seats and melee. |
+| `game/game.c`, `game/game_engine.c`, `interface/hud.c`, `main/main.c`, `networking/network_server_manager.c` | The VR Tutorial (`game/basic_training.c`): its steps checked each tick after the game engine's, its parked bots kept from spawning and its player put at the chapter's place as they spawn, its spots among the nav points, its words on the HUD, its game started from the menus, and its bots' teams (`game/bots.c`'s `bots_team`). |
 | `game/game.c` | Each tick takes its rate (`game.sim_rate`), and runs the fast phase's sub-steps after the objects' update (`game/sim_rate.c`; "Simulation rate"). |
 | `game/game_time.c`, `main/main.c` | With `debug.fixed_step`, a game of one machine runs a step a frame (a tick, or a sub-step of `game.sim_rate`), each frame taking a step's time, so that it plays the same every time (`tools/stagekit`). |
 | `game/game_time.c`, `items/projectiles.c`, `items/weapons.c`, `main/main.c` | `debug.trace` (`game/sim_trace.c`, `tools/scorecard`): a call after each simulation step, a call each where a projectile is made, strikes and detonates and a weapon fires, and one as each frame takes the first player's view, made only while the trace is on (`SIM_TRACE`). |

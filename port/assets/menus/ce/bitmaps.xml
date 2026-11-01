@@ -381,6 +381,9 @@
 	<bitmap name="main_menu/settings_select/player_setup/player_profile_edit/vr_display/header_vr_display">
 		<frame png="ce/port/main_menu/settings_select/player_setup/player_profile_edit/vr_display/header_vr_display.png" width="512" height="64"/>
 	</bitmap>
+	<bitmap name="main_menu/training/header_training">
+		<frame png="ce/port/main_menu/training/header_training.png" width="512" height="64"/>
+	</bitmap>
 	<bitmap name="pause/pausebox_left">
 		<frame png="ce/port/pause/pausebox_left__0.png" width="16" height="256"/>
 		<frame png="ce/port/pause/pausebox_left__1.png" width="16" height="256"/>
@@ -418,6 +421,10 @@
 	<bitmap name="main_menu/menu_mods">
 		<frame png="ce/port/main_menu/menu_mods__0.png" width="256" height="64"/>
 		<frame png="ce/port/main_menu/menu_mods__1.png" width="256" height="64"/>
+	</bitmap>
+	<bitmap name="main_menu/menu_training">
+		<frame png="ce/port/main_menu/menu_training__0.png" width="256" height="64"/>
+		<frame png="ce/port/main_menu/menu_training__1.png" width="256" height="64"/>
 	</bitmap>
 	<bitmap name="mods/status">
 		<frame png="ce/port/mods/status__0.png" width="24" height="24"/>

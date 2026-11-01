@@ -741,6 +741,19 @@ static struct
 	long fill_to;
 } bots_matchmaking = { NONE, 0 };
 
+/* basic training's bots (bots_set_training): on or not, and each bot's
+order, the tick it was given and whether the bot has been put at its post
+since (its unit, NONE: not yet) */
+#define BOTS_TRAINING_COUNT 4
+#define BOTS_TRAINING_TEAMMATE 3
+static struct
+{
+	boolean on;
+	struct bots_order orders[BOTS_MAXIMUM];
+	long given_tick[BOTS_MAXIMUM];
+	long placed_unit[BOTS_MAXIMUM];
+} bots_training;
+
 void bots_set_matchmaking(long count, long fill_to)
 {
 	bots_matchmaking.count = count < 0 ? NONE : count;
@@ -754,7 +767,8 @@ int bots_matchmaking_on(void)
 
 long bots_wanted_count(void)
 {
-	long count = bots_matchmaking.count != NONE ? bots_matchmaking.count : config_integer("bots.count");
+	long count = bots_training.on ? BOTS_TRAINING_COUNT :
+		bots_matchmaking.count != NONE ? bots_matchmaking.count : config_integer("bots.count");
 
 	return count < 0 ? 0 : count > BOTS_MAXIMUM ? BOTS_MAXIMUM : count;
 }
@@ -779,6 +793,9 @@ short bots_teams(void)
 
 int bots_make_room(void)
 {
+	/* (basic training's four whatever bots.fill_to says) */
+	if (bots_training.on)
+		return FALSE;
 	return bots_matchmaking.count != NONE || config_boolean("bots.make_room") != 0;
 }
 
@@ -836,6 +853,103 @@ void bots_network_player(long bot_index, struct network_player *player)
 	player->controller_index = 0;
 	player->team_index = 0;
 	player->player_list_index = NONE;
+}
+
+/* ---------- basic training's orders (bots.h) */
+
+void bots_set_training(int on)
+{
+	long index;
+
+	bots_training.on = on != 0;
+	for (index = 0; index < BOTS_MAXIMUM; index++)
+		bots_set_order(index, NULL);
+}
+
+int bots_training_on(void)
+{
+	return bots_training.on;
+}
+
+long bots_team(long bot_index, long players_team, long chosen_team)
+{
+	if (!bots_training.on)
+		return chosen_team;
+	if (players_team != 0 && players_team != 1)
+		players_team = 0;
+	return bot_index == BOTS_TRAINING_TEAMMATE ? players_team : 1 - players_team;
+}
+
+void bots_set_order(long bot_index, struct bots_order const *order)
+{
+	if (bot_index < 0 || bot_index >= BOTS_MAXIMUM)
+		return;
+	csmemset(&bots_training.orders[bot_index], 0, sizeof(bots_training.orders[bot_index]));
+	bots_training.orders[bot_index].kind = _bots_order_free;
+	bots_training.orders[bot_index].skill = NONE;
+	if (order)
+		bots_training.orders[bot_index] = *order;
+	bots_training.given_tick[bot_index] = game_in_progress() ? game_time_get() : 0;
+	bots_training.placed_unit[bot_index] = NONE;
+}
+
+short bots_order_kind(long bot_index)
+{
+	return bot_index >= 0 && bot_index < BOTS_MAXIMUM ? bots_training.orders[bot_index].kind : _bots_order_free;
+}
+
+int bots_player_parked(long player_index)
+{
+	struct player_datum *player = player_index != NONE ? player_try_and_get(player_index) : NULL;
+
+	if (!bots_training.on || !player || player->local_player_index != NONE ||
+		!bots_machine_is_bot(player->network_player_data.machine_index))
+	{
+		return FALSE;
+	}
+	return bots_order_kind(player->network_player_data.machine_index - BOTS_FIRST_MACHINE) == _bots_order_park;
+}
+
+long bots_player_of_bot(long bot_index)
+{
+	struct data_iterator iterator;
+	struct player_datum *player;
+
+	if (bot_index < 0 || bot_index >= BOTS_MAXIMUM)
+		return NONE;
+	data_iterator_new(&iterator, player_data);
+	while ((player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
+	{
+		if (player->local_player_index == NONE && !player->quit_out_of_game &&
+			player->network_player_data.machine_index == BOTS_FIRST_MACHINE + bot_index)
+		{
+			return iterator.datum_index;
+		}
+	}
+	return NONE;
+}
+
+void bots_order_goal(struct bots_order const *order, long ticks, real_point3d *goal, boolean *exposed)
+{
+	long period = order->period_ticks > 0 ? order->period_ticks : TICKS_PER_SECOND * 2;
+	long phase = ticks < 0 ? 0 : ticks % (2 * period);
+
+	*goal = order->post;
+	*exposed = TRUE;
+	switch (order->kind)
+	{
+	case _bots_order_strafe:
+		/* (out to the second place, then back to the post) */
+		*goal = phase < period ? order->other : order->post;
+		break;
+	case _bots_order_peek:
+		/* (behind cover first, then out for a while) */
+		*exposed = phase >= period;
+		*goal = *exposed ? order->other : order->post;
+		break;
+	default:
+		break;
+	}
 }
 
 /* ---------- small helpers */
@@ -1888,6 +2002,9 @@ void bots_initialize_for_new_map(void)
 		bots_globals.bots[index].player_index = NONE;
 	csmemset(&bots_globals.player_bot, 0, sizeof(bots_globals.player_bot));
 	bots_globals.player_bot.player_index = NONE;
+	/* (basic training's orders are the last map's) */
+	for (index = 0; index < BOTS_MAXIMUM; index++)
+		bots_set_order(index, NULL);
 	bots_globals.map_ready = FALSE;
 	bots_globals.roam_point_count = 0;
 	bots_globals.teleporter_count = 0;
@@ -5891,6 +6008,96 @@ static void bots_bot_trace(struct bots_bot *bot, long bot_index, struct bots_tic
 	}
 }
 
+/* a bot under basic training's order (bots.h): put at its post once it has
+spawned (and once the order is given), and then, but free, standing there,
+going side to side or peeking out, turned to the first local player and
+holding its fire; parked, its unit killed. TRUE if the order made its
+controls this tick (the rest of bots_bot_update not run) */
+static boolean bots_bot_ordered(struct bots_bot *bot, long bot_index, struct bots_tick *tick)
+{
+	struct bots_order const *order = &bots_training.orders[bot_index];
+	long player_index;
+	struct player_datum *player;
+	real_point3d goal;
+	boolean exposed;
+
+	if (!bots_training.on)
+		return FALSE;
+	if (order->kind == _bots_order_park)
+	{
+		/* (silently and out of the scores: unit_kill_silent's and
+		unit_kill_no_statistics' bits; the game spawns it no more,
+		bots_player_parked) */
+		if (!TEST_FLAG(tick->object->object.damage_flags, _object_dead_bit))
+		{
+			SET_FLAG(tick->unit->object.damage_flags, _object_die_act_of_god_silent_bit, TRUE);
+			SET_FLAG(tick->unit->object.damage_flags, _object_die_act_of_god_no_statistics_bit, TRUE);
+		}
+		return TRUE;
+	}
+	if (order->has_post && bots_training.placed_unit[bot_index] != tick->player->unit_index &&
+		tick->object->object.parent_object_index == NONE)
+	{
+		real_vector3d forward;
+
+		forward.i = order->other.x - order->post.x;
+		forward.j = order->other.y - order->post.y;
+		forward.k = 0.0f;
+		if (normalize3d(&forward) == 0.0f)
+		{
+			forward.i = (real)cos(bot->yaw);
+			forward.j = (real)sin(bot->yaw);
+			forward.k = 0.0f;
+		}
+		object_set_position(tick->player->unit_index, &order->post, &forward, NULL);
+		bots_training.placed_unit[bot_index] = tick->player->unit_index;
+		bot->last_position = tick->position = order->post;
+		bot->stuck_position = order->post;
+		bot->path.valid = FALSE;
+	}
+	if (order->kind == _bots_order_free)
+		return FALSE;
+
+	/* where it goes: a step from it is near enough */
+	bots_order_goal(order, game_time_get() - bots_training.given_tick[bot_index], &goal, &exposed);
+	if (bots_distance2d(&tick->position, &goal) > 0.3f)
+	{
+		tick->moving = TRUE;
+		tick->move_direction = (real)atan2(goal.y - tick->position.y, goal.x - tick->position.x);
+		tick->throttle_scale = order->kind == _bots_order_strafe ? 0.6f : 1.0f;
+	}
+	/* turned to the first local player (their head, from its eyes) */
+	player_index = local_player_get_player_index(0);
+	player = player_index != NONE ? player_try_and_get(player_index) : NULL;
+	if (player && player->unit_index != NONE)
+	{
+		real_point3d head;
+		real_point3d eye = tick->position;
+
+		eye.z += 0.6f;
+		unit_get_head_position(player->unit_index, &head);
+		bot->yaw = (real)atan2(head.y - eye.y, head.x - eye.x);
+		bot->pitch = (real)atan2(head.z - eye.z, bots_distance2d(&eye, &head));
+	}
+	bot->target_player_index = NONE;
+	bot->fighting = FALSE;
+	if (tick->moving)
+	{
+		real relative = bots_angle_difference(tick->move_direction, bot->yaw);
+
+		tick->action->throttle.i = (real)cos(relative) * tick->throttle_scale;
+		tick->action->throttle.j = (real)sin(relative) * tick->throttle_scale;
+	}
+	bot->pitch = PIN(bot->pitch, -1.4f, 1.4f);
+	bot->yaw = bots_angle_difference(bot->yaw, 0.0f);
+	tick->action->desired_facing.yaw = bot->yaw;
+	tick->action->desired_facing.pitch = bot->pitch;
+	bot->previous_control_flags = 0;
+	tick->action->control_flags = 0;
+	tick->action->primary_trigger = 0.0f;
+	return TRUE;
+}
+
 static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_action *action)
 {
 	struct bots_tick tick;
@@ -5898,6 +6105,12 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 
 	csmemset(&tick, 0, sizeof(tick));
 	tick.skill = &bots_skills[bots_globals.skill];
+	/* (basic training's order may give it a skill of its own) */
+	if (bot_index < BOTS_MAXIMUM && bots_training.orders[bot_index].skill >= 0 &&
+		bots_training.orders[bot_index].skill < NUMBER_OF_BOTS_SKILLS)
+	{
+		tick.skill = &bots_skills[bots_training.orders[bot_index].skill];
+	}
 	tick.player = player_get(bot->player_index);
 	tick.now = game_time_get();
 	tick.throttle_scale = 1.0f;
@@ -6002,6 +6215,15 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 		bot->stuck_position = tick.position;
 	}
 	bot->last_position = tick.position;
+
+	/* (basic training's order: only what it says) */
+	if (bot_index < BOTS_MAXIMUM && bots_bot_ordered(bot, bot_index, &tick))
+	{
+		tick.vehicle_index = NONE;
+		tick.weapon_index = NONE;
+		bots_bot_trace(bot, bot_index, &tick);
+		return;
+	}
 
 	/* hurt: it turns to look for who did it, its aim knocked off */
 	vitality = tick.object->object.body_vitality + tick.object->object.shield_vitality;
@@ -6320,7 +6542,9 @@ void bots_update_actions(struct player_action *actions)
 			if (!bots_globals.map_ready)
 				bots_prepare_map();
 			bots_globals.skill = bots_skill();
-			bots_globals.vehicles = config_boolean("bots.vehicles") && bots_globals.roam_outdoors_count >= 4 &&
+			/* (none in basic training: its bots stay where it puts them) */
+			bots_globals.vehicles = !bots_training.on && config_boolean("bots.vehicles") &&
+				bots_globals.roam_outdoors_count >= 4 &&
 				bots_distance2d(&bots_globals.roam_low, &bots_globals.roam_high) >= 80.0f;
 			bots_globals.tick_searches = 0;
 			bots_paths_scan();

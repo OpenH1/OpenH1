@@ -744,6 +744,9 @@ def main() -> None:
     # (the main menu's MODS, in the redraws' own letters, and the mods'
     # status icons: Lucide's, port/assets/icons/lucide)
     lines.append(art.port_picture("main_menu/menu_mods", port_settings.menu_item_frames("MODS", art.redraws)))
+    # (the VR build's VR TUTORIAL, as MODS)
+    lines.append(art.port_picture("main_menu/menu_training",
+                                  port_settings.menu_item_frames("VR TUTORIAL", art.redraws)))
     lines.append(art.port_picture("mods/status", port_settings.mod_status_frames(ROOT / "port/assets/icons/lucide")))
     lines.append(art.port_picture("mods/status_small",
                                   port_settings.mod_status_frames(ROOT / "port/assets/icons/lucide", 16)))
