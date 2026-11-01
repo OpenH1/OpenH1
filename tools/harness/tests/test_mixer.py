@@ -23,8 +23,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, mutated, read, run  # noqa: E402
 
 SOURCE = "port/linux/src/dsound_sdl.c"
-CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "limiter",
-         "channels", "surround", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch", "dry-2d", "master-volume",
+CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "doppler-steady",
+         "limiter", "channels", "surround", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch", "dry-2d",
+         "master-volume",
          "hand-off-never-waits", "hand-off-settings"]
 
 # a fault in the mixer, and the case that must catch it
@@ -44,7 +45,10 @@ NEGATIVE_CONTROLS = {
     "adpcm-index-87": (("if (*index > 88) *index = 88;", "if (*index > 87) *index = 87;"), "adpcm"),
     "adpcm-not-interleaved": (("(group * channels + channel) * 4", "(channel * 8 + group) * 4"), "adpcm"),
     # the Doppler shift: left out, or the source's part with the wrong sign
-    "doppler-off": (("doppler_ratio(stream);\n\t/* (the step", "1.0;\n\t/* (the step"), "doppler"),
+    "doppler-off": (("doppler_smoothed(stream, frames);\n\t/* (the step", "1.0;\n\t/* (the step"), "doppler"),
+    # the Doppler shift a step at each mix, as the velocities give it
+    "doppler-unsmoothed": (("#define DOPPLER_SMOOTHING_SECONDS 0.08f", "#define DOPPLER_SMOOTHING_SECONDS 0.0001f"),
+                           "doppler-steady"),
     "doppler-source-sign": (("(DOPPLER_SPEED_OF_SOUND + listener_speed) / (DOPPLER_SPEED_OF_SOUND + source_speed)",
                              "(DOPPLER_SPEED_OF_SOUND + listener_speed) / (DOPPLER_SPEED_OF_SOUND - source_speed)"),
                             "doppler"),

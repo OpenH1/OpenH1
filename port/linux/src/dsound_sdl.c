@@ -100,6 +100,10 @@ voice is shifted either way (an octave) */
 #define DOPPLER_SPEED_OF_SOUND 343.0f
 #define DOPPLER_FACTOR 1.0f
 #define DOPPLER_MAXIMUM_RATIO 2.0f
+/* the time (seconds) a voice's shift takes to move most of the way (1 -
+1/e) to a new one: a velocity's change at a tick, a projectile's bounce,
+is a glide, not a step of pitch */
+#define DOPPLER_SMOOTHING_SECONDS 0.08f
 
 /* the HRTF (hrtf): the frames a voice keeps for its ears' delays, the head's
 radius (metres) and the speed of sound (metres a second), the head shadow's
@@ -272,6 +276,8 @@ struct sdl_stream
 	over the output rate) */
 	float current_left, current_right, current_room;
 	double current_step;
+	/* the Doppler shift heard, moving towards doppler_ratio's (doppler) */
+	float current_doppler;
 	float current_direct_lowpass, current_room_lowpass;
 	float current_surround[2][MAXIMUM_OUTPUT_CHANNELS];
 	BOOL gains_valid;
@@ -522,7 +528,11 @@ listener to the source in metres a second (the distance factor's metres a
 unit), the source's away from the listener, the listener's towards the
 source. Each part is held within half the speed of sound, and the shift to
 an octave either way, so that a projectile passing close by, or a velocity
-that jumps (a teleport), takes no voice up out of hearing. */
+that jumps (a teleport), takes no voice up out of hearing. The mixer moves
+each voice's shift towards the one its velocities give over
+DOPPLER_SMOOTHING_SECONDS, so that a velocity that changes in steps (once a
+tick, or the frames' share of a tick's movement) glides the pitch rather than
+warbling it (doppler_smoothed). */
 
 static float doppler_ratio(const struct sdl_stream *stream)
 {
@@ -551,6 +561,21 @@ static float doppler_ratio(const struct sdl_stream *stream)
 	if (ratio < 1.0f / DOPPLER_MAXIMUM_RATIO)
 		ratio = 1.0f / DOPPLER_MAXIMUM_RATIO;
 	return ratio;
+}
+
+/* the shift a voice plays in a mix of frames: its doppler_ratio approached
+as a one-pole low pass, from where it was at the voice's last mix, or at
+once for a voice starting (its gains not valid) */
+static float doppler_smoothed(struct sdl_stream *stream, unsigned long frames)
+{
+	float target = doppler_ratio(stream);
+
+	if (!stream->gains_valid)
+		stream->current_doppler = target;
+	else
+		stream->current_doppler += (target - stream->current_doppler) *
+			(1.0f - expf(-(float)frames / (DOPPLER_SMOOTHING_SECONDS * OUTPUT_RATE)));
+	return stream->current_doppler;
 }
 
 /* ---------- the HRTF
@@ -1356,7 +1381,7 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 		return;
 	}
 	target_step = (double)(stream->frequency ? stream->frequency : stream->sample_rate) / OUTPUT_RATE *
-		doppler_ratio(stream);
+		doppler_smoothed(stream, frames);
 	/* (the step ramps from the last mix's to it, as the gains do) */
 	step = stream->gains_valid ? stream->current_step : target_step;
 	scale = resampler_scale(step > target_step ? step : target_step);
@@ -2323,7 +2348,7 @@ static void voices_report_make(void)
 		heard) */
 		if (report->hrtf_on && hrtf_enabled && output_channels == 2)
 			report->left_gain = report->right_gain = report->parameters.gain;
-		report->doppler = doppler_ratio(stream);
+		report->doppler = stream->current_doppler;
 		voices_report.count++;
 	}
 	voices_report.ready = TRUE;
