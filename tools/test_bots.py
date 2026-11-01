@@ -136,9 +136,9 @@ def test_bots_play_a_local_slayer_game(tmp_path, map_name, variant, count, skill
 VEHICLES = re.compile(r"bots: tick \d+, vehicles: driven (\d+) \(Warthog (\d+), Ghost (\d+), Scorpion (\d+), "
                       r"Banshee (\d+)\), gunned (\d+), ridden (\d+), flipped (\d+); seconds driving (\d+), "
                       r"riding (\d+); kills (\d+), deaths (\d+);.*; flying (\d+) seconds, deaths (\d+) "
-                      r"\(their own (\d+)\)")
+                      r"\(their own (\d+)\); seconds getting unstuck (\d+)")
 VEHICLE_FIELDS = ("driven", "warthog", "ghost", "scorpion", "banshee", "gunned", "ridden", "flipped", "driving",
-                  "riding", "kills", "deaths", "flying", "flying_deaths", "crashes")
+                  "riding", "kills", "deaths", "flying", "flying_deaths", "crashes", "unstuck")
 
 
 def _vehicles(output):
@@ -162,6 +162,8 @@ def test_bots_use_the_vehicles(tmp_path, variant, kind):
     vehicles = _vehicles(output)
     assert vehicles[kind] >= 1, f"no bot drove a {kind}: {vehicles}"
     assert vehicles["driving"] >= 60, f"the bots drove {vehicles['driving']} seconds: {vehicles}"
+    # (backing out of and turning away from what they drove into: a small part of the driving)
+    assert vehicles["unstuck"] <= vehicles["driving"] * 0.15, f"the drivers were stuck a lot: {vehicles}"
     if kind == "warthog":
         assert vehicles["gunned"] + vehicles["ridden"] >= 1, f"no bot rode a teammate's Warthog: {vehicles}"
     else:
