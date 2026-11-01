@@ -20,7 +20,10 @@ What is a surface's look (a double multiply anywhere; in Faithful the
 structure's specular light and reflections and glass's and water's; the
 fog screens) and everything drawn over the tone mapped view (the HUD, the
 menus, screen flashes) stops at paper white, or where the pixel already
-was, as the SDR frame has it. The deliberate glows the game's code names
+was, as the SDR frame has it. The screen effects' passes that cannot blend
+past white (a scope's warp and mask, which copy the view through their
+target and back) carry the view's light past white through their pixel
+stage unclamped (XGPU_HDR_UNCLAMPED). The deliberate glows the game's code names
 (halo_hdr_draw_kind: the first-person weapon's displays, meters and
 additive parts; the HUD's flashing meters and the motion tracker; the
 additive surfaces that are light, which the game draws in [0, 1] though
@@ -172,6 +175,8 @@ unsigned short xgpu_hdr_classify(const struct xgpu_hdr_draw *draw)
 		hdr = XGPU_HDR_CEILING(glow);
 	else if (out_of_range && (surface(draw) || underflows(source, destination, operation)))
 		hdr = XGPU_HDR_CEILING(XGPU_HDR_CEILING_PAPER_WHITE);
+	else if (draw->category == _category_screen_effect && colour)
+		return XGPU_HDR_UNCLAMPED;
 	if ((draw->color_mask & XGPU_WRITE_ALPHA) && overflows(source, destination, operation, TRUE))
 		hdr |= XGPU_HDR_ALPHA_LIMIT;
 	if (XGPU_HDR_SHADER_BLENDS(hdr))

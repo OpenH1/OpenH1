@@ -49,6 +49,11 @@ The draws' tags (nv2a_pixel_shader_key.hdr, decided by xgpu_hdr_classify):
   lightmap pass) goes on past white: the same curve below white, and what
   the SDR shoulder squeezed under it rolled off toward
   XGPU_HDR_LIGHTS_WHITE instead (xgpu_hdr_lights).
+- XGPU_HDR_UNCLAMPED: the pixel stage carries values past 1 (no clamp
+  above, where the NV2A's are: the combiners' results and inputs, the
+  pixel's colour), for the screen effects' passes, which copy the tone
+  mapped view through their target and back (a scope's warp and mask): they
+  keep its light past white instead of cutting it at paper white.
 
 The tone map (xgpu_backend_tone_map) brings each window's 3D view into the
 display's range before the HUD is drawn over it: XGPU_HDR_MODE_FAITHFUL
@@ -135,6 +140,10 @@ XGPU_HDR_ALPHA_LIMIT */
 #define XGPU_HDR_SHADER_BLENDS(hdr) (XGPU_HDR_CEILING_OF(hdr) != 0 || ((hdr) & XGPU_HDR_ALPHA_LIMIT) != 0)
 /* the draw is a glow, brightened toward its ceiling (xgpu_hdr_expand) */
 #define XGPU_HDR_GLOW(hdr) (XGPU_HDR_CEILING_OF(hdr) >= XGPU_HDR_CEILING_WEAPON)
+/* the pixel stage unclamped above (a blend operation no draw has, without
+a ceiling or the alpha limit: no draw the shader blends) */
+#define XGPU_HDR_UNCLAMPED XGPU_HDR_BLEND(0, 0, 7)
+#define XGPU_HDR_IS_UNCLAMPED(hdr) ((hdr) == XGPU_HDR_UNCLAMPED)
 
 /* the ceilings, in the frame's values (sRGB's curve, extended): paper
 white; then the glows': the first-person weapon's, 1.75 times paper

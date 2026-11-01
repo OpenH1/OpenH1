@@ -4,7 +4,8 @@ SHADERS.C
 display.hdr's draws as both backends' emitters write them
 (tools/test_hdr_backends.py): one pixel program, its colour the diffuse
 colour (v0) as the game's shaders hand it to the blend, tagged with each
-blend the game's draws have and each tag (xgpu_hdr.h), written as the
+blend the game's draws have and each tag (xgpu_hdr.h), and a screen
+effect's pass unclamped (XGPU_HDR_UNCLAMPED), written as the
 Vulkan backend's SPIR-V (xgpu_spirv.c, reading the pixel drawn over as an
 input attachment) and the Metal backend's MSL (xgpu_msl.c, reading it as
 [[color(0)]]). The test makes the SPIR-V Metal's with SPIRV-Cross and runs
@@ -140,6 +141,35 @@ int main(int argc, char **argv)
 			fprintf(index, "%s %u\n", name, (unsigned)program.hdr);
 		}
 	}
+	/* a screen effect's pass (XGPU_HDR_UNCLAMPED): a combiner doubling the
+	diffuse colour into r0 (A v0 times B one, shifted left), the final
+	combiner's D r0, past 1 where the colour is past a half */
+	memset(&program, 0, sizeof(program));
+	program.combiner_count = 1;
+	program.combiners[0].portions[0].inputs[0].reg = XGPU_REGISTER_V0;
+	program.combiners[0].portions[0].inputs[1].mapping = XGPU_MAP_UNSIGNED_INVERT;
+	program.combiners[0].portions[0].output_mapping = XGPU_OUTPUT_SHIFT_LEFT_1;
+	program.combiners[0].portions[0].sum = XGPU_REGISTER_R0;
+	program.final.present = 1;
+	program.final.inputs[3].reg = XGPU_REGISTER_R0;
+	program.final.inputs[6].reg = XGPU_REGISTER_V0;
+	program.final.inputs[6].alpha = 1;
+	program.hdr = XGPU_HDR_UNCLAMPED;
+	snprintf(name, sizeof(name), "draw-unclamped");
+	if (!xgpu_spirv_pixel_shader(&program, &spirv, &module))
+		return 1;
+	snprintf(file, sizeof(file), "%s.spv", name);
+	if (!write_file(argv[1], file, module.words, module.count * 4))
+		return 1;
+	free(module.words);
+	source = xgpu_msl_pixel_shader(&program, &msl);
+	if (!source)
+		return 1;
+	snprintf(file, sizeof(file), "%s.metal", name);
+	if (!write_file(argv[1], file, source, strlen(source)))
+		return 1;
+	free(source);
+	fprintf(index, "%s %u\n", name, (unsigned)program.hdr);
 	fclose(index);
 	return 0;
 }
