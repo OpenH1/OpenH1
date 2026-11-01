@@ -76,7 +76,9 @@ What a bot does each tick, in a player's terms:
   bots_vehicles.h) as people do: it gets into a teammate's Warthog near it
   (the gun first), and drives a Warthog, a Ghost or a Scorpion or flies a
   Banshee it finds near (three lives of four), its look steering as a
-  player's does, along its paths' steps it has room to drive straight to;
+  player's does, along its paths' steps it has room to drive straight to
+  (its searches kept off surfaces with no vehicle's height of room above,
+  and off places drivers twice got stuck on the way to);
   it runs players down, circles a fight for its Warthog's gunner, fires and
   strafes in a Ghost, keeps a Scorpion's range, makes strafing runs in a
   Banshee and keeps it clear of the ground, the level and the map's edges,
@@ -545,6 +547,8 @@ struct bots_bot
 	real drive_check_distance;
 	long drive_turn_until_tick;
 	real drive_turn_yaw;
+	/* not to where its enemy was before then (stuck on the way there) */
+	long drive_enemy_blocked_until_tick;
 	long vehicle_unstick_tally_tick;
 	real drive_circle_sign;
 	long drive_circle_until_tick;
@@ -656,6 +660,10 @@ static struct
 	span 80 units: not Damnation's, Boarding Action's), read once a tick */
 	boolean roam_outdoors[BOTS_MAXIMUM_ROAM_POINTS];
 	long roam_outdoors_count;
+	/* the times a driver going to each of them got stuck on its way, since
+	one last got there (bots_drive_place_open: twice, and drivers go there
+	no more; a ledge, a base's inside, under the sky but no vehicle's) */
+	short roam_drive_failures[BOTS_MAXIMUM_ROAM_POINTS];
 	/* the roaming places' bounds: where a flyer keeps over */
 	real_point3d roam_low;
 	real_point3d roam_high;
@@ -699,6 +707,12 @@ static struct
 	boolean scan_done;
 	long roofed_count;
 	long scan_ticks;
+	/* the walkable surfaces closed to vehicles' searches (a vehicle's
+	height of room above them: a base's inside, a passage), how many, and
+	which of them a search closed (bots_search) */
+	long *undrivable;
+	byte *undrivable_closed;
+	long undrivable_count;
 } bots_paths;
 
 /* ---------- settings */
@@ -1274,6 +1288,10 @@ static void bots_paths_release(void)
 {
 	if (bots_paths.walkable)
 		free(bots_paths.walkable);
+	if (bots_paths.undrivable)
+		free(bots_paths.undrivable);
+	if (bots_paths.undrivable_closed)
+		free(bots_paths.undrivable_closed);
 	csmemset(&bots_paths, 0, sizeof(bots_paths));
 }
 
@@ -1373,8 +1391,14 @@ static boolean bots_paths_copy(void)
 		return TRUE;
 	count = structure->pathfinding_surfaces.count;
 	bots_paths.walkable = (byte *)malloc((size_t)count);
-	if (!bots_paths.walkable)
+	bots_paths.undrivable = (long *)malloc((size_t)count * sizeof(long));
+	bots_paths.undrivable_closed = (byte *)malloc((size_t)count);
+	bots_paths.undrivable_count = 0;
+	if (!bots_paths.walkable || !bots_paths.undrivable || !bots_paths.undrivable_closed)
+	{
+		bots_paths_release();
 		return FALSE;
+	}
 	csmemcpy(bots_paths.walkable, structure->pathfinding_surfaces.address, (size_t)count);
 	bots_paths.structure = *structure;
 	bots_paths.structure.pathfinding_surfaces.address = bots_paths.walkable;
@@ -1468,8 +1492,9 @@ static void bots_paths_scan(void)
 		if (surface_index >= bsp->surfaces.count || surface_index >= bots_paths.structure.pathfinding_surfaces.count)
 		{
 			bots_paths.scan_done = TRUE;
-			platform_log("bots: %ld walkable surfaces with no room above closed (%ld ticks, %d surfaces a tick)",
-				bots_paths.roofed_count, bots_paths.scan_ticks, BOTS_PATHS_SCAN_A_TICK);
+			platform_log("bots: %ld walkable surfaces with no room above closed, %ld to vehicles (%ld ticks, %d "
+				"surfaces a tick)", bots_paths.roofed_count, bots_paths.undrivable_count, bots_paths.scan_ticks,
+				BOTS_PATHS_SCAN_A_TICK);
 			return;
 		}
 		if (!bots_paths_walkable_surface(bsp, surface_index, corners, &corner_count, &middle, &reach))
@@ -1505,6 +1530,21 @@ static void bots_paths_scan(void)
 		{
 			bots_paths.walkable[surface_index] &= (byte)~FLAG(BOTS_PATHFINDING_WALKABLE_BIT);
 			bots_paths.roofed_count++;
+		}
+		/* (a vehicle's height, a unit and a half, of room above its middle:
+		else a way for those on foot alone) */
+		else
+		{
+			real_vector3d up = { 0.0f, 0.0f, 1.5f };
+			struct collision_result collision;
+			real_point3d point = middle;
+
+			point.z += 0.05f;
+			if (collision_test_vector(FLAG(_collision_test_structure_bit) | FLAG(_collision_test_front_facing_surfaces_bit) |
+				FLAG(_collision_test_back_facing_surfaces_bit), &point, &up, NONE, &collision))
+			{
+				bots_paths.undrivable[bots_paths.undrivable_count++] = surface_index;
+			}
 		}
 	}
 }
@@ -1773,6 +1813,7 @@ static void bots_prepare_map(void)
 	}
 	/* (those a vehicle may be driven to: under the open sky) */
 	bots_globals.roam_outdoors_count = 0;
+	csmemset(bots_globals.roam_drive_failures, 0, sizeof(bots_globals.roam_drive_failures));
 	for (index = 0; index < bots_globals.roam_point_count; index++)
 	{
 		bots_globals.roam_outdoors[index] = bots_vehicle_outdoors(&bots_globals.roam_points[index]);
@@ -2082,6 +2123,7 @@ static void bots_search(struct bots_bot *bot, long unit_index)
 	real_point3d start;
 	long start_surface_index;
 	boolean reached;
+	boolean drive;
 
 	real_point3d const *goal;
 	long goal_surface_index;
@@ -2127,6 +2169,23 @@ static void bots_search(struct bots_bot *bot, long unit_index)
 	large level is more surfaces than a search holds, and the bot searches
 	again from there) */
 	path_state_destination(state, goal, goal_surface_index, 1000.0f);
+	/* (a vehicle's: the surfaces with no room for it closed, but where it
+	is and where it goes) */
+	drive = TEST_FLAG(_object_mask_vehicle, object_get(unit_index)->object.type) && state->structure == &bots_paths.structure;
+	if (drive)
+	{
+		long index;
+
+		for (index = 0; index < bots_paths.undrivable_count; index++)
+		{
+			long surface = bots_paths.undrivable[index];
+
+			bots_paths.undrivable_closed[index] = surface != start_surface_index && surface != goal_surface_index &&
+				TEST_FLAG(bots_paths.walkable[surface], BOTS_PATHFINDING_WALKABLE_BIT);
+			if (bots_paths.undrivable_closed[index])
+				bots_paths.walkable[surface] &= (byte)~FLAG(BOTS_PATHFINDING_WALKABLE_BIT);
+		}
+	}
 	path_state_find(state);
 	reached = state->node_count > 0 && path_node_from_hash_table(state, goal_surface_index) != NONE;
 	if (state->node_count >= PATH_NODE_LIST_SIZE)
@@ -2150,6 +2209,17 @@ static void bots_search(struct bots_bot *bot, long unit_index)
 		bot->path.valid = FALSE;
 		bot->path_failures++;
 		bots_globals.search_failures++;
+	}
+	/* (the surfaces closed to the vehicle open again) */
+	if (drive)
+	{
+		long index;
+
+		for (index = 0; index < bots_paths.undrivable_count; index++)
+		{
+			if (bots_paths.undrivable_closed[index])
+				bots_paths.walkable[bots_paths.undrivable[index]] |= (byte)FLAG(BOTS_PATHFINDING_WALKABLE_BIT);
+		}
 	}
 	/* (a teleporter it finds no way to: the way without it) */
 	if (bot->via_teleporter != NONE && !reached)
@@ -4836,6 +4906,13 @@ static void bots_bot_board(struct bots_bot *bot, struct bots_tick *tick)
 	}
 }
 
+/* a roaming place a driver may go to: under the open sky, and not one two
+drivers got stuck on their way to (since one last got there) */
+static boolean bots_drive_place_open(long index)
+{
+	return bots_globals.roam_outdoors[index] && bots_globals.roam_drive_failures[index] < 2;
+}
+
 /* where a driver drives to: where its enemy was seen last (within eight
 seconds), else the roaming place under the open sky nearest where the enemy
 it knows of was last (seen in the last half minute; seen before, two times
@@ -4853,7 +4930,7 @@ static void bots_pick_drive_goal(struct bots_bot *bot, real_point3d const *posit
 		return;
 	}
 	if (bot->target_player_index != NONE && bot->target_last_surface_index != NONE &&
-		now - bot->target_seen_tick < TICKS_PER_SECOND * 8 &&
+		now - bot->target_seen_tick < TICKS_PER_SECOND * 8 && now >= bot->drive_enemy_blocked_until_tick &&
 		bots_distance2d(&bot->target_last_position, position) > 6.0f)
 	{
 		bots_set_goal(bot, _bots_goal_enemy, &bot->target_last_position, bot->target_last_surface_index);
@@ -4881,7 +4958,7 @@ static void bots_pick_drive_goal(struct bots_bot *bot, real_point3d const *posit
 				real distance = bots_distance2d(&bots_globals.roam_points[point], &known[latest].position) +
 					bots_random_real(bot) * 8.0f;
 
-				if (bots_globals.roam_outdoors[point] && distance < nearest_distance &&
+				if (bots_drive_place_open(point) && distance < nearest_distance &&
 					bots_distance2d(&bots_globals.roam_points[point], position) > 10.0f)
 				{
 					nearest_distance = distance;
@@ -4901,7 +4978,7 @@ static void bots_pick_drive_goal(struct bots_bot *bot, real_point3d const *posit
 	{
 		short index = (short)(bots_random(bot) % (unsigned long)bots_globals.roam_point_count);
 
-		if (!bots_globals.roam_outdoors[index] ||
+		if (!bots_drive_place_open(index) ||
 			(bots_distance2d(&bots_globals.roam_points[index], position) < 20.0f && tries < 11))
 		{
 			continue;
@@ -5058,7 +5135,15 @@ static void bots_bot_drive(struct bots_bot *bot, struct bots_tick *tick)
 				break;
 			case 2:
 				/* (another way: somewhere else, the steps it steered by
-				not again) */
+				not again; and where it went, one stuck on the way to less
+				readily: bots_drive_place_open) */
+				if (bot->goal_kind == _bots_goal_roam && bot->roam_index >= 0 &&
+					bot->roam_index < bots_globals.roam_point_count)
+				{
+					bots_globals.roam_drive_failures[bot->roam_index]++;
+				}
+				else if (bot->goal_kind == _bots_goal_enemy)
+					bot->drive_enemy_blocked_until_tick = now + TICKS_PER_SECOND * 10;
 				bot->goal_kind = _bots_goal_none;
 				bot->path.valid = FALSE;
 				bot->drive_aim_valid = FALSE;
@@ -5093,7 +5178,10 @@ static void bots_bot_drive(struct bots_bot *bot, struct bots_tick *tick)
 	if (tick->fighting && bot->target_player_index != NONE)
 	{
 		struct object_datum *target = object_get(player_get(bot->target_player_index)->unit_index);
-		boolean on_foot = target->object.parent_object_index == NONE;
+		/* (on foot, and on the vehicle's level: one on a roof or a ledge is
+		not run down) */
+		boolean on_foot = target->object.parent_object_index == NONE &&
+			(real)fabs(target->object.position.z - position->z) < 1.5f;
 		real distance = bots_distance2d(&target->object.position, position);
 		real to_target = (real)atan2(target->object.position.y - position->y, target->object.position.x - position->x);
 
@@ -5151,6 +5239,12 @@ static void bots_bot_drive(struct bots_bot *bot, struct bots_tick *tick)
 			now - bot->goal_tick > TICKS_PER_SECOND * (bot->hunting ? 25 : 12) ||
 			bots_distance2d(&bot->goal_point, position) < 4.0f)
 		{
+			/* (there: a place drivers reach) */
+			if (bot->goal_kind == _bots_goal_roam && bots_distance2d(&bot->goal_point, position) < 4.0f &&
+				bot->roam_index >= 0 && bot->roam_index < bots_globals.roam_point_count)
+			{
+				bots_globals.roam_drive_failures[bot->roam_index] = 0;
+			}
 			bots_pick_drive_goal(bot, position);
 		}
 		/* (a Warthog's driver, just in: a teammate on the way to its gun) */
@@ -5741,7 +5835,7 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 static void bots_report(void)
 {
 	long now = game_time_get();
-	long count = 0, index;
+	long count = 0, index, closed = 0;
 	char line[400];
 	char knowledge[80];
 	char tactics[400];
@@ -5812,14 +5906,20 @@ static void bots_report(void)
 			bots_globals.jumps, bots_globals.crouches, bots_globals.teleports);
 	}
 	/* the vehicles: the seats taken, the seconds driven and ridden, the
-	kills and deaths in them, and the ways out */
+	kills and deaths in them, the ways out, and the places drivers no longer
+	go to */
+	for (index = 0; index < bots_globals.roam_point_count; index++)
+	{
+		if (bots_globals.roam_outdoors[index] && !bots_drive_place_open(index))
+			closed++;
+	}
 	if (bots_globals.vehicles || bots_globals.boards[_bots_seat_driver] || bots_globals.boards[_bots_seat_gunner] ||
 		bots_globals.boards[_bots_seat_passenger])
 	{
 		platform_log("bots: tick %ld, vehicles: driven %ld (Warthog %ld, Ghost %ld, Scorpion %ld, Banshee %ld), "
 			"gunned %ld, ridden %ld, flipped %ld; seconds driving %ld, riding %ld; kills %ld, deaths %ld; out overturned "
 			"%ld, stuck %ld, no driver %ld, standing %ld, bailing %ld; flying %ld seconds, deaths %ld (their own %ld); "
-			"seconds getting unstuck %ld", now,
+			"seconds getting unstuck %ld; places closed to drivers %ld", now,
 			bots_globals.boards[_bots_seat_driver],
 			bots_globals.drives[_bots_vehicle_jeep], bots_globals.drives[_bots_vehicle_scout],
 			bots_globals.drives[_bots_vehicle_tank], bots_globals.drives[_bots_vehicle_flyer],
@@ -5829,7 +5929,7 @@ static void bots_report(void)
 			bots_globals.vehicle_kills, bots_globals.vehicle_deaths, bots_globals.exits_overturned,
 			bots_globals.exits_stuck, bots_globals.exits_driverless, bots_globals.exits_still, bots_globals.exits_bail,
 			bots_globals.fly_ticks / TICKS_PER_SECOND, bots_globals.fly_deaths, bots_globals.fly_crashes,
-			bots_globals.unstick_ticks / TICKS_PER_SECOND);
+			bots_globals.unstick_ticks / TICKS_PER_SECOND, closed);
 	}
 }
 

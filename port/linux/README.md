@@ -756,7 +756,9 @@ a bot jumps into a teammate's Warthog near it (the gun first, else beside the
 driver), and three lives of four drives a Warthog, a Ghost or a Scorpion or
 flies a Banshee it finds near, a Warthog's driver waiting a moment for a
 teammate on the way to its gun. A driver goes where the enemy was and about
-the open places, runs players on foot down, and with a gunner circles a fight
+the open places (by ways with a vehicle's height of room, not through a
+base, and no more to a place drivers twice got stuck on the way to), runs
+players on foot down (not one on a roof or a ledge), and with a gunner circles a fight
 at the gun's range; a Ghost's driver fires and strafes, a Scorpion's keeps
 its range and leads its shells. A Banshee's pilot flies over the open places,
 makes strafing runs (its fuel rod from afar) and pulls away to come round
