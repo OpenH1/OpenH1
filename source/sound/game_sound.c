@@ -1170,23 +1170,54 @@ void compute_sound_obstruction(
 			{
 				real_vector3d listener_to_source;
 				struct collision_result collision;
+				long ignore_object_index = NONE;
+				short attempt;
+				boolean blocked = TRUE;
 
 				source->obstruction = 0.45f;
 				vector_from_points3d(
 					&camera->position,
 					&source->location.position,
 					&listener_to_source);
-				if (!collision_test_vector(
-					FLAG(_collision_test_front_facing_surfaces_bit) |
-						FLAG(_collision_test_structure_bit) |
-						FLAG(_collision_test_media_bit) |
-						FLAG(_collision_test_objects_bit) |
-						FLAG(_collision_test_objects_scenery_bit) |
-						FLAG(_collision_test_objects_machines_bit),
-					&camera->position,
-					&listener_to_source,
-					NONE,
-					&collision))
+				/* port: the object that makes the sound does not stand in its way.
+				The test runs to the sound's own place, inside what makes it (a
+				marine's head, a Warthog's engine), and stopped at its surface: a
+				voice of someone in plain sight was obstructed, its high
+				frequencies down 5 dB, and as the speaker moved, the test hitting
+				and missing them muffled the voice on and off. An object hit with
+				the sound inside its bounding sphere is ignored and the test run
+				again, twice at most */
+				for (attempt = 0; attempt < 3 && blocked; attempt++)
+				{
+					real_point3d center;
+					real radius;
+
+					blocked = collision_test_vector(
+						FLAG(_collision_test_front_facing_surfaces_bit) |
+							FLAG(_collision_test_structure_bit) |
+							FLAG(_collision_test_media_bit) |
+							FLAG(_collision_test_objects_bit) |
+							FLAG(_collision_test_objects_scenery_bit) |
+							FLAG(_collision_test_objects_machines_bit),
+						&camera->position,
+						&listener_to_source,
+						ignore_object_index,
+						&collision);
+					if (!blocked ||
+						collision.type != _collision_result_object ||
+						collision.object_index == NONE ||
+						collision.object_index == ignore_object_index)
+					{
+						break;
+					}
+					object_get_bounding_sphere(collision.object_index, &center, &radius);
+					if (distance_squared3d(&center, &source->location.position) > radius * radius)
+					{
+						break;
+					}
+					ignore_object_index = collision.object_index;
+				}
+				if (!blocked)
 				{
 					source->obstruction = 0.0f;
 					source->occlusion = 0.0f;
