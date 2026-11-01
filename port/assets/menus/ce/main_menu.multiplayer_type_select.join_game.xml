@@ -63,32 +63,32 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/tab_coop" x="408"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/tab_favorites" x="496"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/tab_all" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="-106 0" bitmap="main_menu/parts/tab" text="ALL" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/tab_all" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="-106 0" bitmap="main_menu/parts/tab" text="ALL" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2">
 		<on event="a" run="port browser tab"/>
 		<on event="start" run="port browser tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/tab_dedicated" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="-64 0" bitmap="main_menu/parts/tab" text="DEDICATED" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/tab_dedicated" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="-64 0" bitmap="main_menu/parts/tab" text="DEDICATED" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2">
 		<on event="a" run="port browser tab"/>
 		<on event="start" run="port browser tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/tab_openh1" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="-21 0" bitmap="main_menu/parts/tab" text="OPENH1" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/tab_openh1" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="-21 0" bitmap="main_menu/parts/tab" text="OPENH1" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2">
 		<on event="a" run="port browser tab"/>
 		<on event="start" run="port browser tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/tab_legacy" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="21 0" bitmap="main_menu/parts/tab" text="LEGACY" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/tab_legacy" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="21 0" bitmap="main_menu/parts/tab" text="LEGACY" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2">
 		<on event="a" run="port browser tab"/>
 		<on event="start" run="port browser tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/tab_coop" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="64 0" bitmap="main_menu/parts/tab" text="CO-OP" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/tab_coop" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="64 0" bitmap="main_menu/parts/tab" text="CO-OP" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2">
 		<on event="a" run="port browser tab"/>
 		<on event="start" run="port browser tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/tab_favorites" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="106 0" bitmap="main_menu/parts/tab" text="FAVORITES" font="ui\small_ui" color="#FF2896FF" align="center" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/tab_favorites" type="text" controller="1" width="86" height="22" flags="keep_ends" wide="106 0" bitmap="main_menu/parts/tab" text="FAVORITES" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2">
 		<on event="a" run="port browser tab"/>
 		<on event="start" run="port browser tab"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
