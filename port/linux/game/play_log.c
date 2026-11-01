@@ -26,7 +26,7 @@ Lines:
 #include "cseries.h"
 #include "game/game.h"
 #include "game/players.h"
-#include "main/main.h"
+#include "scenario/scenario.h"
 #include "objects/objects.h"
 #include "units/units.h"
 #include "items/weapons.h"
@@ -150,7 +150,9 @@ void play_log_tick(struct player_action const *actions)
 	/* (a new game: its time starts again) */
 	if (tick <= play_log.last_tick || play_log.last_tick < 0)
 	{
-		char const *map_name = main_get_map_name();
+		/* (the scenario's tag: main_get_map_name's is the menus' last map,
+		not a network test's) */
+		char const *map_name = global_scenario_index != NONE ? tag_get_name(global_scenario_index) : NULL;
 
 		fprintf(play_log.file, "start %ld %ld %s\n", (long)TICKS_PER_SECOND, play_log_sample_ticks(),
 			map_name && map_name[0] ? map_name : "-");
