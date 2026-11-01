@@ -539,10 +539,16 @@ struct bots_bot
 	long drive_stuck_tick;
 	long drive_reverse_until_tick;
 	real drive_reverse_turn;
+	/* the distance to where it steered at its last check (REAL_MAX: none);
+	turning where it is until then, to that way; the tick of its last
+	tally of a way out */
+	real drive_check_distance;
+	long drive_turn_until_tick;
+	real drive_turn_yaw;
+	long vehicle_unstick_tally_tick;
 	real drive_circle_sign;
 	long drive_circle_until_tick;
 	boolean drive_moving;
-	long drive_moving_tick;
 	/* where it steers on its path (bots_drive_steer), when it looked, and
 	the path it looked on */
 	real_point3d drive_aim;
@@ -646,8 +652,8 @@ static struct
 
 	/* the roaming places under the open sky (bots_vehicle_outdoors: where a
 	vehicle is driven to), and how many; the bots use the vehicles
-	(bots.vehicles, on a map with four such places at least), read once a
-	tick */
+	(bots.vehicles, on a map with four such places at least whose places
+	span 80 units: not Damnation's, Boarding Action's), read once a tick */
 	boolean roam_outdoors[BOTS_MAXIMUM_ROAM_POINTS];
 	long roam_outdoors_count;
 	/* the roaming places' bounds: where a flyer keeps over */
@@ -663,6 +669,8 @@ static struct
 	long drive_ticks;
 	long ride_ticks;
 	long fly_ticks;
+	/* the ticks drivers spent backing out or turning where they were */
+	long unstick_ticks;
 	long fly_deaths;
 	long fly_crashes;
 	long vehicle_kills;
@@ -1834,6 +1842,7 @@ void bots_initialize_for_new_map(void)
 	bots_globals.drive_ticks = 0;
 	bots_globals.ride_ticks = 0;
 	bots_globals.fly_ticks = 0;
+	bots_globals.unstick_ticks = 0;
 	bots_globals.fly_deaths = 0;
 	bots_globals.fly_crashes = 0;
 	bots_globals.vehicle_kills = 0;
@@ -3156,8 +3165,10 @@ the search from where the vehicle is, its steps reached further off */
 static boolean bots_follow_path(struct bots_bot *bot, long unit_index, real_point3d const *position, real *direction)
 {
 	long now = game_time_get();
-	real reach = TEST_FLAG(_object_mask_vehicle, object_get(unit_index)->object.type) ? BOTS_DRIVE_STEP_REACHED :
-		BOTS_STEP_REACHED;
+	struct object_datum *object = object_get(unit_index);
+	boolean vehicle = TEST_FLAG(_object_mask_vehicle, object->object.type);
+	real reach = vehicle ? BOTS_DRIVE_STEP_REACHED : BOTS_STEP_REACHED;
+	real heading = (real)atan2(object->object.forward.j, object->object.forward.i);
 
 	if (bot->goal_kind == _bots_goal_none)
 		return FALSE;
@@ -3211,8 +3222,15 @@ static boolean bots_follow_path(struct bots_bot *bot, long unit_index, real_poin
 		{
 			struct path_step *step = &bot->path.steps[(long)bot->path.step_index];
 
-			if (bots_distance2d(&step->point, position) > reach)
+			/* (a vehicle's step close by and behind it: passed, not
+			circled round, which it would be at its turning's width) */
+			if (bots_distance2d(&step->point, position) > reach &&
+				(!vehicle || bots_distance2d(&step->point, position) > 6.0f ||
+					(real)fabs(bots_angle_difference((real)atan2(step->point.y - position->y,
+						step->point.x - position->x), heading)) < 1.75f))
+			{
 				break;
+			}
 			bot->path.step_index++;
 		}
 		if (bot->path.step_index >= bot->path.step_count)
@@ -4819,9 +4837,11 @@ static void bots_bot_board(struct bots_bot *bot, struct bots_tick *tick)
 }
 
 /* where a driver drives to: where its enemy was seen last (within eight
-seconds), else two times of three the roaming place under the open sky
-nearest where the enemy it knows of was last, else any of those places 20
-units off or more */
+seconds), else the roaming place under the open sky nearest where the enemy
+it knows of was last (seen in the last half minute; seen before, two times
+of three), else any of those places 20 units off or more. A driver looks
+again every 12 seconds (25 on its way to an enemy), so that a sighting
+its team reports turns it to the fight */
 static void bots_pick_drive_goal(struct bots_bot *bot, real_point3d const *position)
 {
 	long now = game_time_get();
@@ -4839,7 +4859,6 @@ static void bots_pick_drive_goal(struct bots_bot *bot, real_point3d const *posit
 		bots_set_goal(bot, _bots_goal_enemy, &bot->target_last_position, bot->target_last_surface_index);
 		return;
 	}
-	if (bots_random_real(bot) < 0.67f)
 	{
 		struct bots_known_enemy known[BOTS_KNOWLEDGE_MAXIMUM_KNOWN];
 		short count = bots_knowledge_known(bot->index, known, BOTS_KNOWLEDGE_MAXIMUM_KNOWN), index, latest = NONE;
@@ -4849,7 +4868,10 @@ static void bots_pick_drive_goal(struct bots_bot *bot, real_point3d const *posit
 			if (latest == NONE || known[index].tick > known[latest].tick)
 				latest = index;
 		}
-		if (latest != NONE)
+		/* (one seen in the last half minute always; an older one two
+		times of three) */
+		if (latest != NONE &&
+			(now - known[latest].tick < TICKS_PER_SECOND * 30 || bots_random_real(bot) < 0.67f))
 		{
 			long point, nearest = NONE;
 			real nearest_distance = REAL_MAX;
@@ -4892,9 +4914,10 @@ static void bots_pick_drive_goal(struct bots_bot *bot, real_point3d const *posit
 }
 
 /* the vehicle has room to drive straight from where it is to the point: a
-way a unit above the ground clear of the level and scenery, and its sides
+way a unit above the ground clear of the level, scenery and other vehicles,
+and its sides
 (a Warthog's width) */
-static boolean bots_drive_room(real_point3d const *position, real_point3d const *point)
+static boolean bots_drive_room(long vehicle_index, real_point3d const *position, real_point3d const *point)
 {
 	real dx = point->x - position->x, dy = point->y - position->y;
 	real length = (real)sqrt(dx * dx + dy * dy);
@@ -4913,7 +4936,7 @@ static boolean bots_drive_room(real_point3d const *position, real_point3d const 
 		start.x += -dy / length * 0.9f * side;
 		start.y += dx / length * 0.9f * side;
 		start.z += 0.6f;
-		if (bots_vehicle_room(&start, &way) < length - 0.3f)
+		if (bots_vehicle_room(&start, &way, vehicle_index) < length - 0.3f)
 			return FALSE;
 	}
 	return TRUE;
@@ -4924,7 +4947,7 @@ ahead (and its goal, at the path's end) it has room to drive straight to
 (bots_drive_room), looked for every fifth of a second; the next step's way
 when there is room to none. A biped's path keeps to walls and goes through
 gaps a vehicle does not, and cuts no corner a vehicle would */
-static real bots_drive_steer(struct bots_bot *bot, real_point3d const *position, real direction)
+static real bots_drive_steer(struct bots_bot *bot, long vehicle_index, real_point3d const *position, real direction)
 {
 	long now = game_time_get();
 
@@ -4937,14 +4960,14 @@ static real bots_drive_steer(struct bots_bot *bot, real_point3d const *position,
 		bot->drive_aim_tick = now;
 		bot->drive_aim_path_tick = bot->path_tick;
 		bot->drive_aim_valid = FALSE;
-		if (bot->path.steps_finish_path && bots_drive_room(position, &bot->goal_point))
+		if (bot->path.steps_finish_path && bots_drive_room(vehicle_index, position, &bot->goal_point))
 		{
 			bot->drive_aim = bot->goal_point;
 			bot->drive_aim_valid = TRUE;
 		}
 		for (step = bot->path.step_count - 1; step >= bot->path.step_index && !bot->drive_aim_valid; step--)
 		{
-			if (bots_drive_room(position, &bot->path.steps[step].point))
+			if (bots_drive_room(vehicle_index, position, &bot->path.steps[step].point))
 			{
 				bot->drive_aim = bot->path.steps[step].point;
 				bot->drive_aim_valid = TRUE;
@@ -4959,7 +4982,7 @@ static real bots_drive_steer(struct bots_bot *bot, real_point3d const *position,
 /* the way (radians) turned as little as it must for room ahead: eight
 units clear (bots_drive_room), else the nearest of half a radian, one and
 one and a half to either side that is; as it was when none is */
-static real bots_drive_clear(real_point3d const *position, real direction)
+static real bots_drive_clear(long vehicle_index, real_point3d const *position, real direction)
 {
 	static real const turns[] = { 0.0f, 0.5f, -0.5f, 1.0f, -1.0f, 1.5f, -1.5f };
 	short index;
@@ -4970,7 +4993,7 @@ static real bots_drive_clear(real_point3d const *position, real direction)
 
 		ahead.x += (real)cos(direction + turns[index]) * 8.0f;
 		ahead.y += (real)sin(direction + turns[index]) * 8.0f;
-		if (bots_drive_room(position, &ahead))
+		if (bots_drive_room(vehicle_index, position, &ahead))
 			return direction + turns[index];
 	}
 	return direction;
@@ -4987,9 +5010,12 @@ from far off, wide close by, the side changed now and then), and without one
 runs a player on foot down (where they will be); a Ghost's driver, whose
 aim the fight turned, runs a player on foot down and closes from far off,
 else strafes; a Scorpion's closes from far off and backs away from one
-close, its machine gun on one in reach. Stuck (its vehicle moved less than a unit in two seconds and
-is still, driven two and a half seconds): it backs out a second and a half,
-turning, and gets out after three (bots_bot_vehicle) */
+close, its machine gun on one in reach. Stuck (a second and a half as it
+drove with its vehicle no unit and a half on, nor a unit nearer where it
+steered), it tries one thing after another, each once: it backs out,
+turning; it goes another way, somewhere else; it turns where it is; and at
+the fourth it gets out (bots_bot_vehicle). Four seconds of going on and it
+starts again at the first */
 static void bots_bot_drive(struct bots_bot *bot, struct bots_tick *tick)
 {
 	long vehicle_index = tick->vehicle_index;
@@ -5002,37 +5028,66 @@ static void bots_bot_drive(struct bots_bot *bot, struct bots_tick *tick)
 	real direction = heading;
 	boolean go = FALSE;
 
-	/* (stuck: backing out, turning) */
-	if (!bot->drive_moving)
-		bot->drive_moving_tick = now;
-	if (now - bot->drive_check_tick >= TICKS_PER_SECOND * 2)
+	/* (no way on: a step further each time, never the same twice) */
 	{
-		if (bot->drive_check_tick && now - bot->drive_moving_tick > TICKS_PER_SECOND * 5 / 2 && speed < 1.0f &&
-			bots_distance2d(position, &bot->drive_check_position) < 1.0f)
+		real aim_distance = bot->drive_aim_valid && !tick->fighting ? bots_distance2d(&bot->drive_aim, position) :
+			REAL_MAX;
+
+		if (!bot->drive_moving || bots_distance2d(position, &bot->drive_check_position) > 1.5f ||
+			aim_distance < bot->drive_check_distance - 1.0f)
 		{
-			if (now - bot->drive_stuck_tick > TICKS_PER_SECOND * 12)
+			bot->drive_check_tick = now;
+			bot->drive_check_position = *position;
+			bot->drive_check_distance = aim_distance;
+			if (bot->drive_moving && now - bot->drive_stuck_tick > TICKS_PER_SECOND * 4)
 				bot->drive_stuck_count = 0;
+		}
+		else if (now - bot->drive_check_tick > TICKS_PER_SECOND * 3 / 2)
+		{
 			bot->drive_stuck_count++;
 			bot->drive_stuck_tick = now;
-			bot->drive_reverse_until_tick = now + TICKS_PER_SECOND * 3 / 2;
-			bot->drive_reverse_turn = (bots_random_real(bot) < 0.5f ? -1.0f : 1.0f) * 0.9f;
-			bot->path.valid = FALSE;
-			/* (stuck again: somewhere else) */
-			if (bot->drive_stuck_count >= 2)
-				bot->goal_kind = _bots_goal_none;
+			bot->drive_check_tick = now;
 			bots_globals.stuck_events++;
+			switch (bot->drive_stuck_count)
+			{
+			case 1:
+				/* (backing out, turning) */
+				bot->drive_reverse_until_tick = now + TICKS_PER_SECOND * 6 / 5;
+				bot->drive_reverse_turn = (bots_random_real(bot) < 0.5f ? -1.0f : 1.0f) * 0.9f;
+				bot->path.valid = FALSE;
+				break;
+			case 2:
+				/* (another way: somewhere else, the steps it steered by
+				not again) */
+				bot->goal_kind = _bots_goal_none;
+				bot->path.valid = FALSE;
+				bot->drive_aim_valid = FALSE;
+				break;
+			case 3:
+				/* (turning where it is, away from what it is against) */
+				bot->drive_turn_until_tick = now + TICKS_PER_SECOND * 3 / 2;
+				bot->drive_turn_yaw = heading + (bots_random_real(bot) < 0.5f ? -1.0f : 1.0f) * 1.6f;
+				bot->path.valid = FALSE;
+				break;
+			}
+			/* (a fourth: out, on foot: bots_bot_vehicle) */
 		}
-		bot->drive_check_position = *position;
-		bot->drive_check_tick = now;
 	}
-	if (now < bot->drive_reverse_until_tick)
+	if (now < bot->drive_reverse_until_tick || now < bot->drive_turn_until_tick)
 	{
-		bots_turn(bot, bots_angle_difference(heading + bot->drive_reverse_turn, bot->yaw), -bot->pitch,
-			10.0f * BOTS_DEGREES, 8.0f, 1.0f, 0.0f, 0.0f);
+		boolean reversing = now < bot->drive_reverse_until_tick;
+
+		bots_turn(bot, bots_angle_difference(reversing ? heading + bot->drive_reverse_turn : bot->drive_turn_yaw,
+			bot->yaw), -bot->pitch, 10.0f * BOTS_DEGREES, 8.0f, 1.0f, 0.0f, 0.0f);
 		tick->moving = TRUE;
-		tick->move_direction = bot->yaw + BOTS_PI;
-		tick->throttle_scale = 1.0f;
+		tick->move_direction = reversing ? bot->yaw + BOTS_PI : bot->yaw;
+		tick->throttle_scale = reversing ? 1.0f : 0.35f;
 		bot->drive_moving = FALSE;
+		if (now != bot->vehicle_unstick_tally_tick)
+		{
+			bot->vehicle_unstick_tally_tick = now;
+			bots_globals.unstick_ticks++;
+		}
 		return;
 	}
 	if (tick->fighting && bot->target_player_index != NONE)
@@ -5093,7 +5148,8 @@ static void bots_bot_drive(struct bots_bot *bot, struct bots_tick *tick)
 	if (!go)
 	{
 		if ((bot->goal_kind != _bots_goal_roam && bot->goal_kind != _bots_goal_enemy) ||
-			now - bot->goal_tick > TICKS_PER_SECOND * 40 || bots_distance2d(&bot->goal_point, position) < 4.0f)
+			now - bot->goal_tick > TICKS_PER_SECOND * (bot->hunting ? 25 : 12) ||
+			bots_distance2d(&bot->goal_point, position) < 4.0f)
 		{
 			bots_pick_drive_goal(bot, position);
 		}
@@ -5106,7 +5162,7 @@ static void bots_bot_drive(struct bots_bot *bot, struct bots_tick *tick)
 		}
 		if (bots_follow_path(bot, vehicle_index, position, &direction))
 		{
-			direction = bots_drive_steer(bot, position, direction);
+			direction = bots_drive_steer(bot, vehicle_index, position, direction);
 			go = TRUE;
 		}
 		else
@@ -5114,7 +5170,7 @@ static void bots_bot_drive(struct bots_bot *bot, struct bots_tick *tick)
 	}
 	/* (in a fight: round what is in the way) */
 	else
-		direction = bots_drive_clear(position, direction);
+		direction = bots_drive_clear(vehicle_index, position, direction);
 	if (go)
 	{
 		real off = (real)fabs(bots_angle_difference(direction, heading));
@@ -5134,19 +5190,19 @@ static real bots_height(real_point3d const *point)
 {
 	real_vector3d down = { 0.0f, 0.0f, -40.0f };
 
-	return bots_vehicle_room(point, &down);
+	return bots_vehicle_room(point, &down, NONE);
 }
 
 /* the way (yaw and pitch, radians) has room ahead: that far clear of the
 level and scenery */
-static boolean bots_fly_room(real_point3d const *position, real yaw, real pitch, real distance)
+static boolean bots_fly_room(long vehicle_index, real_point3d const *position, real yaw, real pitch, real distance)
 {
 	real_vector3d way;
 
 	way.i = (real)(cos(yaw) * cos(pitch)) * distance;
 	way.j = (real)(sin(yaw) * cos(pitch)) * distance;
 	way.k = (real)sin(pitch) * distance;
-	return bots_vehicle_room(position, &way) >= distance - 0.1f;
+	return bots_vehicle_room(position, &way, vehicle_index) >= distance - 0.1f;
 }
 
 /* flying (the Banshee): its look flies it, as a player's does, full ahead.
@@ -5206,7 +5262,8 @@ static void bots_bot_fly(struct bots_bot *bot, struct bots_tick *tick)
 		real dx, dy, dz;
 
 		if ((bot->goal_kind != _bots_goal_roam && bot->goal_kind != _bots_goal_enemy) ||
-			now - bot->goal_tick > TICKS_PER_SECOND * 40 || bots_distance2d(&bot->goal_point, position) < 8.0f)
+			now - bot->goal_tick > TICKS_PER_SECOND * (bot->hunting ? 25 : 12) ||
+			bots_distance2d(&bot->goal_point, position) < 8.0f)
 		{
 			bots_pick_drive_goal(bot, position);
 		}
@@ -5236,7 +5293,7 @@ static void bots_bot_fly(struct bots_bot *bot, struct bots_tick *tick)
 		aimed = FALSE;
 	}
 	/* (round what is ahead) */
-	if (!bots_fly_room(position, yaw, pitch, lookahead))
+	if (!bots_fly_room(tick->vehicle_index, position, yaw, pitch, lookahead))
 	{
 		static real const turns[][2] = { { 0.0f, 0.5f }, { 0.7f, 0.3f }, { -0.7f, 0.3f }, { 1.4f, 0.2f },
 			{ -1.4f, 0.2f }, { 2.4f, 0.3f }, { -2.4f, 0.3f } };
@@ -5246,7 +5303,7 @@ static void bots_bot_fly(struct bots_bot *bot, struct bots_tick *tick)
 		throttle = 0.5f;
 		for (index = 0; index < (short)NUMBEROF(turns); index++)
 		{
-			if (bots_fly_room(position, yaw + turns[index][0], PIN(pitch + turns[index][1], -1.0f, 1.0f), lookahead))
+			if (bots_fly_room(tick->vehicle_index, position, yaw + turns[index][0], PIN(pitch + turns[index][1], -1.0f, 1.0f), lookahead))
 			{
 				yaw += turns[index][0];
 				pitch = PIN(pitch + turns[index][1], -1.0f, 1.0f);
@@ -5271,7 +5328,7 @@ static void bots_bot_fly(struct bots_bot *bot, struct bots_tick *tick)
 on its side or roof, not a tilt on a slope); a rider
 once its driver is gone two and a half seconds (the gunner keeps on its gun
 in a fight) or it has stood still fifteen seconds out of one; a driver stuck
-three times in twelve seconds (and not into that one again for a while),
+four times running (and not into that one again for a while),
 badly hurt with its shield down beside an enemy in a slow vehicle (out to
 fight), or the vehicle nearly destroyed (one that takes damage: the
 multiplayer vehicles' vitality is none); a flyer's driver none of those
@@ -5304,6 +5361,7 @@ static void bots_bot_vehicle(struct bots_bot *bot, struct bots_tick *tick)
 		bot->drive_stuck_count = 0;
 		bot->drive_check_tick = 0;
 		bot->drive_reverse_until_tick = 0;
+		bot->drive_turn_until_tick = 0;
 		bot->unstick_until_tick = 0;
 		bot->vehicle_exit_until_tick = 0;
 	}
@@ -5342,7 +5400,7 @@ static void bots_bot_vehicle(struct bots_bot *bot, struct bots_tick *tick)
 	}
 	else if (!driver && now - bot->vehicle_still_tick > TICKS_PER_SECOND * 15)
 		exits = &bots_globals.exits_still;
-	else if (driver && (bot->drive_stuck_count >= 3 ||
+	else if (driver && (bot->drive_stuck_count >= 4 ||
 		(tick->vehicle_kind == _bots_vehicle_flyer && grounded && now - bot->vehicle_still_tick > TICKS_PER_SECOND * 5)))
 	{
 		exits = &bots_globals.exits_stuck;
@@ -5760,7 +5818,8 @@ static void bots_report(void)
 	{
 		platform_log("bots: tick %ld, vehicles: driven %ld (Warthog %ld, Ghost %ld, Scorpion %ld, Banshee %ld), "
 			"gunned %ld, ridden %ld, flipped %ld; seconds driving %ld, riding %ld; kills %ld, deaths %ld; out overturned "
-			"%ld, stuck %ld, no driver %ld, standing %ld, bailing %ld; flying %ld seconds, deaths %ld (their own %ld)", now,
+			"%ld, stuck %ld, no driver %ld, standing %ld, bailing %ld; flying %ld seconds, deaths %ld (their own %ld); "
+			"seconds getting unstuck %ld", now,
 			bots_globals.boards[_bots_seat_driver],
 			bots_globals.drives[_bots_vehicle_jeep], bots_globals.drives[_bots_vehicle_scout],
 			bots_globals.drives[_bots_vehicle_tank], bots_globals.drives[_bots_vehicle_flyer],
@@ -5769,7 +5828,8 @@ static void bots_report(void)
 			bots_globals.drive_ticks / TICKS_PER_SECOND, bots_globals.ride_ticks / TICKS_PER_SECOND,
 			bots_globals.vehicle_kills, bots_globals.vehicle_deaths, bots_globals.exits_overturned,
 			bots_globals.exits_stuck, bots_globals.exits_driverless, bots_globals.exits_still, bots_globals.exits_bail,
-			bots_globals.fly_ticks / TICKS_PER_SECOND, bots_globals.fly_deaths, bots_globals.fly_crashes);
+			bots_globals.fly_ticks / TICKS_PER_SECOND, bots_globals.fly_deaths, bots_globals.fly_crashes,
+			bots_globals.unstick_ticks / TICKS_PER_SECOND);
 	}
 }
 
@@ -5816,7 +5876,8 @@ void bots_update_actions(struct player_action *actions)
 			if (!bots_globals.map_ready)
 				bots_prepare_map();
 			bots_globals.skill = bots_skill();
-			bots_globals.vehicles = config_boolean("bots.vehicles") && bots_globals.roam_outdoors_count >= 4;
+			bots_globals.vehicles = config_boolean("bots.vehicles") && bots_globals.roam_outdoors_count >= 4 &&
+				bots_distance2d(&bots_globals.roam_low, &bots_globals.roam_high) >= 80.0f;
 			bots_globals.tick_searches = 0;
 			bots_paths_scan();
 			bots_tally_hits(game_time_get());

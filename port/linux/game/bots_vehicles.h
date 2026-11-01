@@ -55,9 +55,10 @@ long bots_vehicle_unit_weapon(long unit_index);
 long bots_vehicle_occupant(long vehicle_index, short part);
 /* the vehicle is on its wheels (not on its side or roof) */
 boolean bots_vehicle_upright(long vehicle_index);
-/* how far along the way from the point the level or scenery is (the way's
-length: nothing) */
-real bots_vehicle_room(real_point3d const *point, real_vector3d const *way);
+/* how far along the way from the point the level or scenery is, and the
+other vehicles than that one (NONE: not the vehicles); the way's length
+for nothing */
+real bots_vehicle_room(real_point3d const *point, real_vector3d const *way, long vehicle_index);
 /* the point is under the open sky (nothing of the level within 25 units
 above): a place a vehicle may be driven to */
 boolean bots_vehicle_outdoors(real_point3d const *point);

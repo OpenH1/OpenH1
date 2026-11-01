@@ -170,13 +170,14 @@ boolean bots_vehicle_upright(long vehicle_index)
 	return object_get(vehicle_index)->object.up.k > 0.5f;
 }
 
-real bots_vehicle_room(real_point3d const *point, real_vector3d const *way)
+real bots_vehicle_room(real_point3d const *point, real_vector3d const *way, long vehicle_index)
 {
 	struct collision_result collision;
 	real length = (real)sqrt(way->i * way->i + way->j * way->j + way->k * way->k);
 
 	if (collision_test_vector(FLAG(_collision_test_structure_bit) | FLAG(_collision_test_front_facing_surfaces_bit) |
-		FLAG(_collision_test_objects_bit) | FLAG(_collision_test_objects_scenery_bit), point, way, NONE, &collision))
+		FLAG(_collision_test_objects_bit) | FLAG(_collision_test_objects_scenery_bit) |
+		(vehicle_index != NONE ? FLAG(_collision_test_objects_vehicles_bit) : 0), point, way, vehicle_index, &collision))
 	{
 		return distance3d(point, &collision.point);
 	}

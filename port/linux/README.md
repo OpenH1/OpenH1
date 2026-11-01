@@ -750,7 +750,8 @@ and sharing out the power items and the escort of a human teammate. Measured
 on Team Slayer with bots alone, the team play slowed the fights and did not
 win more, so it is a choice, not the default.
 On maps with open ground (four of their roaming places under the open sky at
-least) the bots use the vehicles (`bots.vehicles`, `game/bots_vehicles.c`):
+least, the places spanning 80 units: Blood Gulch, Sidewinder, not Damnation)
+the bots use the vehicles (`bots.vehicles`, `game/bots_vehicles.c`):
 a bot jumps into a teammate's Warthog near it (the gun first, else beside the
 driver), and three lives of four drives a Warthog, a Ghost or a Scorpion or
 flies a Banshee it finds near, a Warthog's driver waiting a moment for a
