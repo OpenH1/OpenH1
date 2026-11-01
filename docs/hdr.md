@@ -30,8 +30,10 @@ highlights it cannot show.
   the teleporters' fields, the levels' light fixtures and Covenant lights,
   energy shields, and the plasma bolts' and needles' glowing volumes.
 - **Settings**: `display.hdr` (`auto`, `on`, `off`), `display.hdr_mode`
-  (`faithful`, `punchy`), `display.hdr_paper_white` (50 to 250 percent of
-  the system's SDR white). Video Setup's Extra Effects screen has a row for
+  (`faithful`, `punchy`), `display.hdr_paper_white_nits` (80 to 500 nits,
+  or 0, the default: the system's SDR white; the older
+  `display.hdr_paper_white`, in percent of the system's SDR white, is still
+  read while it is 0). Video Setup's Extra Effects screen has a row for
   each on a renderer that draws HDR (the menus' `platform="hdr"`).
 - **Fallback**: `auto` turns HDR on only on an HDR display; off, and on an
   SDR display, the frame is the 8-bit one, byte for byte. Highlights roll
@@ -137,9 +139,17 @@ at most *P*, times paper white, in the display's encoding:
 | Output | Values | Paper white |
 | --- | --- | --- |
 | SDR | the frame clamped to [0, 1] (the window's 8 bits) | the window's white |
-| EDR (macOS) | extended linear sRGB, 1.0 the system's SDR white | `display.hdr_paper_white` percent of 1.0, at most the headroom |
-| scRGB (Vulkan) | extended linear sRGB, 1.0 80 nits | the system's SDR white (SDL's), or 203 nits, times the setting |
-| HDR10 (Vulkan) | BT.2020 primaries (the same colours: no saturation added), PQ | the system's SDR white (SDL's), or 203 nits (BT.2408), times the setting |
+| EDR (macOS) | extended linear sRGB, 1.0 the system's SDR white | the setting's nits over 100 (macOS gives no nits: 1.0 taken as its reference modes' 100), at most the headroom |
+| scRGB (Vulkan) | extended linear sRGB, 1.0 80 nits | the setting's nits, at most the peak |
+| HDR10 (Vulkan) | BT.2020 primaries (the same colours: no saturation added), PQ | the setting's nits, at most the peak |
+
+The setting's nits (`xgpu_hdr_paper_white_nits`) are
+`display.hdr_paper_white_nits`, or, while it is 0, the system's SDR white
+(SDL's on Vulkan, or BT.2408's 203 nits where it gives none; EDR's 1.0 on
+macOS) times `display.hdr_paper_white`'s percent (100 by default): the
+picture of a config written before the nits, whatever its percent, is as
+it was. The peak, *P*, is the display's headroom over the system's SDR
+white divided by paper white over it.
 
 The curves are one GLSL source (`xgpu_hdr_functions_source`, the tone map's
 and the encoding's main functions in `xgpu_hdr.c`), compiled to SPIR-V by

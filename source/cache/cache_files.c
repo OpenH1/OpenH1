@@ -686,6 +686,21 @@ unsigned long tag_groups_checksum(
 	return cache_file_globals.tag_header->checksum;
 }
 
+/* port: the tags found by name, by the name's address: the HUD looks up
+its bitmaps by name for every element it draws, each frame
+(verify_tag_reference), and each look-up walked every tag. An entry is
+taken only while its tag still has that group and name; a cache file names
+each tag of a group once, so that tag is the walk's too */
+#define TAG_LOADED_CACHE_SIZE 256
+
+static struct
+{
+	char const *name;
+	long group_tag;
+	struct cache_file_tag_instance *instances;
+	long absolute_index;
+} tag_loaded_cache[TAG_LOADED_CACHE_SIZE];
+
 long tag_loaded(
 	long group_tag,
 	char const *name)
@@ -697,10 +712,24 @@ long tag_loaded(
 
 	if (cache_file_globals.tags_loaded)
 	{
+		/* port: (tag_loaded_cache) */
+		unsigned long slot = (((unsigned long)name >> 2) ^ (unsigned long)group_tag) % TAG_LOADED_CACHE_SIZE;
+
 		match_assert(
 			"c:\\halo\\SOURCE\\cache\\cache_files.c",
 			346,
 			global_tag_instances);
+
+		absolute_index = tag_loaded_cache[slot].absolute_index;
+		if (tag_loaded_cache[slot].name == name &&
+			tag_loaded_cache[slot].group_tag == group_tag &&
+			tag_loaded_cache[slot].instances == global_tag_instances &&
+			absolute_index < global_tag_count &&
+			group_tag == global_tag_instances[absolute_index].group_tag &&
+			!_stricmp(name, global_tag_instances[absolute_index].name))
+		{
+			return global_tag_instances[absolute_index].tag_index;
+		}
 
 		for (absolute_index = 0;
 			absolute_index < global_tag_count;
@@ -710,6 +739,10 @@ long tag_loaded(
 				!_stricmp(name, global_tag_instances[absolute_index].name))
 			{
 				result = global_tag_instances[absolute_index].tag_index;
+				tag_loaded_cache[slot].name = name;
+				tag_loaded_cache[slot].group_tag = group_tag;
+				tag_loaded_cache[slot].instances = global_tag_instances;
+				tag_loaded_cache[slot].absolute_index = absolute_index;
 				break;
 			}
 		}

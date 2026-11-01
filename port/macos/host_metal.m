@@ -128,8 +128,9 @@ static void drawn_size(int *width, int *height);
 #define PRESENT_IMAGES 2
 #define LOADING_UPLOADS 3
 /* the longest a frame waits for an image before the oldest queued frame is
-dropped (100 ms: six refreshes at 60 Hz) */
-#define PRESENT_WAIT_MAXIMUM_NS 100000000L
+dropped (34 ms: two refreshes at 60 Hz; 100 ms froze an iPhone's game, which
+runs on the main thread, for a fifth of a second each time its link paused) */
+#define PRESENT_WAIT_MAXIMUM_NS 34000000L
 /* how long before the link's deadline for a refresh its frame is taken
 (the newest with vsync off, the oldest queued with it on): the
 presentation's GPU work is about 0.1 ms, and waits for the frame's own if
@@ -167,10 +168,10 @@ static struct
 	id<MTLRenderPipelineState> loading_pipeline;
 	/* display.hdr: the presentation's encoding for an EDR layer (half
 	floats); the front end's state (drawn in HDR, the mode, paper white in
-	percent); the window's screen's potential headroom and headroom now (a
+	nits, or 0 and its percent of the system's white); the window's screen's potential headroom and headroom now (a
 	float's bits); the layer is EDR's; HALO_METAL_EDR_HEADROOM's (0: none) */
 	id<MTLRenderPipelineState> edr_pipeline, loading_edr_pipeline;
-	_Atomic int hdr_active, hdr_mode, hdr_paper_white;
+	_Atomic int hdr_active, hdr_mode, hdr_paper_white_nits, hdr_paper_white;
 	_Atomic uint32_t edr_potential, edr_current;
 	BOOL layer_edr;
 	uint32_t edr_ticks;
@@ -208,6 +209,11 @@ static struct
 	link's rate was last set for it (the link's thread's) */
 	_Atomic int battery_saver;
 	int battery_saver_set;
+	/* (an iPhone) the link at half the display's rate while the frames do
+	not keep up with its full rate (rate_adapt, the link's thread's) */
+	int rate_halved;
+	uint32_t adapt_refreshes, adapt_repeats, adapt_good_windows;
+	double adapt_since, adapt_hold, adapt_hold_until;
 	/* the window went to a display of another rate (display_rate_read):
 	the link's rate is set again at its next refresh */
 	_Atomic int rate_changed;
@@ -342,10 +348,11 @@ void host_metal_hdr_override(float headroom)
 	host_render_stream_display_hdr(headroom > XGPU_HDR_DISPLAY_HEADROOM, headroom > 1.0f ? headroom : 1.0f);
 }
 
-void host_metal_hdr_state(int active, int mode, int paper_white)
+void host_metal_hdr_state(int active, int mode, int paper_white_nits, int paper_white)
 {
 	atomic_store(&presentation.hdr_active, active);
 	atomic_store(&presentation.hdr_mode, mode);
+	atomic_store(&presentation.hdr_paper_white_nits, paper_white_nits);
 	atomic_store(&presentation.hdr_paper_white, paper_white);
 }
 
@@ -359,7 +366,9 @@ static BOOL edr_wanted(void)
 void host_metal_hdr_frame(struct xgpu_hdr_frame *frame)
 {
 	float current = bits_float(atomic_load(&presentation.edr_current));
-	float paper_white = (float)atomic_load(&presentation.hdr_paper_white) / 100.0f;
+	/* (paper white over the system's SDR white, EDR's 1.0) */
+	float paper_white = xgpu_hdr_paper_white_nits(atomic_load(&presentation.hdr_paper_white_nits),
+		atomic_load(&presentation.hdr_paper_white), XGPU_HDR_EDR_WHITE_NITS) / XGPU_HDR_EDR_WHITE_NITS;
 
 	if (presentation.edr_override > 0.0f && !presentation.window)
 		current = presentation.edr_override;
@@ -805,6 +814,25 @@ static void presented(double when, double target, const struct xgpu_metal_compil
 		presentation.compiled_before = *compiled;
 }
 
+/* the device's thermal state, in the statistics: a phone that is hot runs
+the game's threads slower, on fewer of its fast cores */
+static const char *thermal_state(void)
+{
+	switch (NSProcessInfo.processInfo.thermalState)
+	{
+	case NSProcessInfoThermalStateNominal:
+		return "nominal";
+	case NSProcessInfoThermalStateFair:
+		return "fair";
+	case NSProcessInfoThermalStateSerious:
+		return "serious";
+	case NSProcessInfoThermalStateCritical:
+		return "critical";
+	default:
+		return "unknown";
+	}
+}
+
 static void pacing_log(double now)
 {
 	double seconds = now - presentation.stats_since;
@@ -851,7 +879,8 @@ static void pacing_log(double now)
 		"playing %u, the game %u), %u callbacks late (drawables all pending %u, some free %u; after another %u, after a slow one %u, target skipped %u, delivered late %u; the slowest %.2f ms), %u waits for an image, "
 		"%u frames dropped, %u shown after their refresh; "
 		"%u ended on the GPU within 1 ms of their target (the least slack %.2f ms); "
-		"drawable %ux%u, presentation's GPU %.3f ms a refresh, queued %.3f ms (the most %.3f); frames %u, draws %u, passes %u",
+		"drawable %ux%u, presentation's GPU %.3f ms a refresh, queued %.3f ms (the most %.3f); frames %u, draws %u, passes %u; "
+		"thermal state %s",
 		seconds, presentation.ticks, presentation.ticks / seconds, presentation.frames_presented + presentation.idle_presented,
 		presentation.frames_presented, presentation.idle_presented, shown, shown / seconds,
 		intervals ? (double)sum / 1000.0 / intervals : 0.0,
@@ -868,13 +897,23 @@ static void pacing_log(double now)
 		buffers ? atomic_exchange(&presentation.present_gpu_ns, 0) / 1e6 / buffers : 0.0,
 		buffers ? atomic_exchange(&presentation.present_queued_ns, 0) / 1e6 / buffers : 0.0,
 		atomic_exchange(&presentation.present_queued_most_ns, 0) / 1e6,
-		statistics.frames, statistics.draws, statistics.passes);
+		statistics.frames, statistics.draws, statistics.passes, thermal_state());
+	{
+		/* (the write tracking's faults: each a trip through the kernel) */
+		static uint64_t faults_before;
+		uint64_t faults = host_memory_watch_faults();
+
+		host_logf(HOST_LOG_INFO, "metal: %.1f s: %llu write-tracking faults (%.1f a frame)", seconds,
+			(unsigned long long)(faults - faults_before),
+			presentation.frames_presented ? (double)(faults - faults_before) / presentation.frames_presented : 0.0);
+		faults_before = faults;
+	}
 	if (statistics.frames)
 		host_logf(HOST_LOG_INFO,
 			"metal: a frame: GPU busy %.2f ms (%.0f%% of the time); its command buffers' GPU time %.2f ms (%u), render thread CPU %.2f ms, %.1f draws, %.1f passes (%.1f put aside, %.1f targets renamed for it), "
 			"%.1f ordered uploads, %.1f copies of a target drawn into, %.1f pictures restored; the last played in %.2f ms, its stream %u KB "
 			"(the most %u KB); the game waited %u times (%.1f ms); textures made %u, made again %u, images %u, "
-			"%.1f MB read; shaders compiled %u (%.1f ms), %u from the library, %u the combiner's specialised; pipelines made %u (%u from the archive, %.1f ms); %u pipelines made while drawing (not prepared)",
+			"%.1f MB read; shaders compiled %u (%.1f ms), %u from the library, %u the combiner's specialised; pipelines made %u (%u from the archive, %.1f ms); %u pipelines made while drawing (not prepared); thermal state %s",
 			statistics.gpu_busy_seconds * 1000.0 / statistics.frames, statistics.gpu_busy_seconds * 100.0 / seconds,
 			statistics.gpu_seconds * 1000.0 / statistics.frames, statistics.command_buffers,
 			statistics.render_cpu_seconds * 1000.0 / statistics.frames, (double)statistics.draws / statistics.frames,
@@ -887,7 +926,7 @@ static void pacing_log(double now)
 			textures.bytes / 1048576.0, statistics.shaders_made, statistics.shader_seconds * 1000.0,
 			statistics.shaders_from_library, statistics.shaders_specialised,
 			statistics.pipelines_made, statistics.pipelines_from_archive,
-			statistics.pipeline_seconds * 1000.0, statistics.draws_waiting);
+			statistics.pipeline_seconds * 1000.0, statistics.draws_waiting, thermal_state());
 	waits_before = waits;
 	wait_nanoseconds_before = wait_nanoseconds;
 	presentation.stats_since = now;
@@ -958,6 +997,78 @@ static void take_wait(double when)
 
 @interface HaloDisplayLinkTarget : NSObject <CAMetalDisplayLinkDelegate>
 @end
+
+/* ---------- an iPhone's rate: 120 while the frames keep up, else 60
+
+A frame that misses its refresh at 120 Hz shows the one before for two
+refreshes: in a busy fight, a phone's GPU or its heat makes some of the
+frames late, and the picture judders between 8 and 17 ms steps. Half the
+rate shows every frame for two refreshes, evenly. Each second of play, the
+refreshes that showed no new frame (the game's own, not a loading screen)
+are counted: more than RATE_ADAPT_REPEATS of them at the full rate halves
+it; at half, the full rate is tried again after a hold that starts at
+RATE_ADAPT_HOLD seconds and doubles (to RATE_ADAPT_HOLD_MOST) at each
+try that fails, and starts again once the full rate has held for
+RATE_ADAPT_GOOD seconds. Battery saver's and HALO_METAL_RATE's rates are
+their own; HALO_METAL_ADAPTIVE_RATE=0: the full rate always. */
+
+#define RATE_ADAPT_REPEATS 0.10
+#define RATE_ADAPT_HOLD 5.0
+#define RATE_ADAPT_HOLD_MOST 80.0
+#define RATE_ADAPT_GOOD 10
+
+/* a refresh of the game's frames (shown: a new frame); whether the link's
+rate is to change */
+static BOOL rate_adapt(BOOL shown, double now)
+{
+#if TARGET_OS_IPHONE
+	static int enabled = -1;
+	double share;
+
+	if (enabled < 0)
+		enabled = !getenv("HALO_METAL_RATE") && getenv("HALO_METAL_ADAPTIVE_RATE") &&
+			atoi(getenv("HALO_METAL_ADAPTIVE_RATE")) != 0;
+	if (!enabled || presentation.battery_saver_set || presentation.refresh_rate < 90.0f)
+		return NO;
+	if (presentation.adapt_since == 0.0)
+		presentation.adapt_since = now;
+	presentation.adapt_refreshes++;
+	if (!shown)
+		presentation.adapt_repeats++;
+	if (now - presentation.adapt_since < 1.0)
+		return NO;
+	share = (double)presentation.adapt_repeats / (double)presentation.adapt_refreshes;
+	presentation.adapt_refreshes = presentation.adapt_repeats = 0;
+	presentation.adapt_since = now;
+	if (!presentation.rate_halved)
+	{
+		if (share <= RATE_ADAPT_REPEATS)
+		{
+			if (++presentation.adapt_good_windows >= RATE_ADAPT_GOOD)
+				presentation.adapt_hold = 0.0;
+			return NO;
+		}
+		presentation.adapt_good_windows = 0;
+		presentation.adapt_hold = presentation.adapt_hold > 0.0 ?
+			fmin(presentation.adapt_hold * 2.0, RATE_ADAPT_HOLD_MOST) : RATE_ADAPT_HOLD;
+		presentation.adapt_hold_until = now + presentation.adapt_hold;
+		presentation.rate_halved = 1;
+		host_logf(HOST_LOG_INFO, "metal: %.0f%% of a second's refreshes showed no new frame: the display link at %.0f Hz "
+			"(the full rate tried again in %.0f s)", share * 100.0, presentation.refresh_rate / 2.0f, presentation.adapt_hold);
+		return YES;
+	}
+	if (now < presentation.adapt_hold_until)
+		return NO;
+	presentation.rate_halved = 0;
+	presentation.adapt_good_windows = 0;
+	host_logf(HOST_LOG_INFO, "metal: the display link at %.0f Hz again", presentation.refresh_rate);
+	return YES;
+#else
+	(void)shown;
+	(void)now;
+	return NO;
+#endif
+}
 
 @implementation HaloDisplayLinkTarget
 
@@ -1179,6 +1290,11 @@ static void take_wait(double when)
 			host_render_stream_frame_taken();
 		else if (latch_ns)
 			host_render_stream_display_latched(latch_ns, period_ns);
+		if (!idle && !loading_frame.active && rate_adapt(image != nil, now))
+		{
+			link.preferredFrameRateRange = link_rate_range(presentation.battery_saver_set);
+			memset(presentation.target_intervals, 0, sizeof(presentation.target_intervals));
+		}
 		if (!image && !idle && !loading_frame.active)
 		{
 			/* (the frame shown stays: nothing new to present) */
@@ -1366,10 +1482,20 @@ static void take_wait(double when)
 /* the link's rate: a ProMotion display's follows the frames, up to its
 highest; HALO_METAL_RATE, the link at a rate of its own (the pacing of
 another display, tested on this one); battery saver (saving), a whole
-fraction of the display's, 30 to 60 frames a second (frame_pacing.h) */
+fraction of the display's, 30 to 60 frames a second (frame_pacing.h). An
+iPhone's is its highest alone: given a range, iOS chose 80 Hz on an iPhone
+15 Pro Max that held 120 with its GPU half idle */
 static CAFrameRateRange link_rate_range(int saving)
 {
 	float rate = presentation.refresh_rate > 0.0f ? presentation.refresh_rate : 60.0f;
+
+#if TARGET_OS_IPHONE
+	if (presentation.rate_halved && !saving && !getenv("HALO_METAL_RATE"))
+	{
+		rate /= 2.0f;
+		return CAFrameRateRangeMake(rate, rate, rate);
+	}
+#endif
 
 	if (getenv("HALO_METAL_RATE"))
 		rate = (float)atof(getenv("HALO_METAL_RATE"));
@@ -1379,8 +1505,15 @@ static CAFrameRateRange link_rate_range(int saving)
 		host_logf(HOST_LOG_INFO, "metal: battery saver: the display link at %.0f Hz", rate);
 		return CAFrameRateRangeMake(rate, rate, rate);
 	}
+#if TARGET_OS_IPHONE
+	/* (its highest alone: given a range, iOS slows the link to save power,
+	to 80 Hz on an iPhone 15 Pro Max whose frames kept 120; rate_adapt's
+	halving is off by default, its changes pausing the link) */
+	return CAFrameRateRangeMake(rate, rate, rate);
+#else
 	return getenv("HALO_METAL_RATE") ? CAFrameRateRangeMake(rate, rate, rate) :
 		CAFrameRateRangeMake(rate < 60.0f ? rate : 30.0f, rate, rate);
+#endif
 }
 
 static void *presentation_thread(void *context)
@@ -1479,6 +1612,7 @@ int host_metal_initialize(void)
 		return result;
 	atomic_store(&presentation.edr_potential, float_bits(1.0f));
 	atomic_store(&presentation.edr_current, float_bits(1.0f));
+	atomic_store(&presentation.hdr_paper_white_nits, 0);
 	atomic_store(&presentation.hdr_paper_white, 100);
 	if (edr && atof(edr) > 0.0)
 		host_metal_hdr_override((float)atof(edr));

@@ -692,8 +692,8 @@ void network_host_controls_set_opence_joins(
 }
 
 /* ---------- the bots: Host Controls' BOTS tab (its rows: their count,
-skill and teams, BALANCE TEAMS, MAKE ROOM and, with it on, FILL TO, TEAM
-TACTICS; then the bots that play), as Server Setup's BOTS screen has them.
+BOTS (NONE, ADD n or FILL TO n, as the lobby's BOTS), SKILL, TEAMS, BALANCE
+TEAMS, TEAM TACTICS; then the bots that play).
 Each row writes bots.c's setting to config.toml as it changes, which the
 host reads as it goes: the lobby's bots join and leave at once
 (network_server_manager.c's network_game_server_port_bots), a game in
@@ -704,12 +704,115 @@ fill are its playlist's (bots_set_matchmaking), and stay. */
 
 enum
 {
-	/* (bots.c's settings' ranges) */
+	/* (the BOTS choices' numbers: one at a time to HOST_BOT_CHOICE_STEPPED,
+	then HOST_BOT_CHOICE_STEP at a time to BOTS_MAXIMUM; ADD's from 1,
+	FILL TO's from 2) */
+	HOST_BOT_CHOICE_STEPPED = 16,
+	HOST_BOT_CHOICE_STEP = 4,
+	HOST_BOT_ADD_LEAST = 1,
 	HOST_BOT_FILL_LEAST = 2,
-	HOST_BOT_FILL_MOST = 16,
 };
 
 static char const *const host_controls_bot_skill_names[HOST_BOT_SKILLS] = { "easy", "normal", "heroic", "legendary" };
+
+/* how many numbers a kind's choices have, from least */
+static short host_controls_bot_numbers(
+	long least)
+{
+	return (short)(HOST_BOT_CHOICE_STEPPED - least + 1 +
+		(BOTS_MAXIMUM - HOST_BOT_CHOICE_STEPPED) / HOST_BOT_CHOICE_STEP);
+}
+
+/* the number of a kind's choices at index, from least */
+static long host_controls_bot_number(
+	long least,
+	short index)
+{
+	long stepped = HOST_BOT_CHOICE_STEPPED - least + 1;
+
+	return index < stepped ? least + index :
+		HOST_BOT_CHOICE_STEPPED + (index - stepped + 1) * HOST_BOT_CHOICE_STEP;
+}
+
+short network_host_controls_bot_choice_count(
+	void)
+{
+	return (short)(1 + host_controls_bot_numbers(HOST_BOT_ADD_LEAST) + host_controls_bot_numbers(HOST_BOT_FILL_LEAST));
+}
+
+short network_host_controls_bot_choice(
+	short choice,
+	long *number)
+{
+	short adds = host_controls_bot_numbers(HOST_BOT_ADD_LEAST);
+
+	*number = 0;
+	if (choice <= 0 || choice >= network_host_controls_bot_choice_count())
+		return _host_bots_none;
+	if (choice <= adds)
+	{
+		*number = host_controls_bot_number(HOST_BOT_ADD_LEAST, (short)(choice - 1));
+		return _host_bots_add;
+	}
+	*number = host_controls_bot_number(HOST_BOT_FILL_LEAST, (short)(choice - 1 - adds));
+	return _host_bots_fill;
+}
+
+void network_host_controls_bot_choice_words(
+	short choice,
+	wchar_t *text,
+	short size)
+{
+	long number;
+	short kind = network_host_controls_bot_choice(choice, &number);
+
+	if (kind == _host_bots_add)
+		usnprintf(text, size - 1, L"ADD %ld", number);
+	else if (kind == _host_bots_fill)
+		usnprintf(text, size - 1, L"FILL TO %ld", number);
+	else
+		usnprintf(text, size - 1, L"NONE");
+	text[size - 1] = 0;
+}
+
+short network_host_controls_bot_choice_of(
+	long count,
+	boolean make_room,
+	long fill_to)
+{
+	short adds = host_controls_bot_numbers(HOST_BOT_ADD_LEAST);
+	short choices = network_host_controls_bot_choice_count();
+	short kind = !count ? _host_bots_none :
+		make_room && count >= MIN(fill_to - 1, BOTS_MAXIMUM) ? _host_bots_fill : _host_bots_add;
+	long wanted = kind == _host_bots_fill ? fill_to : count;
+	short best = 0;
+	short choice;
+
+	/* (the kind's choice of the most not past it, else its least: settings
+	written by hand fall between the choices) */
+	for (choice = 1; kind != _host_bots_none && choice < choices; choice++)
+	{
+		long number;
+
+		if (network_host_controls_bot_choice(choice, &number) != kind)
+			continue;
+		if (!best || number <= wanted)
+			best = choice;
+	}
+	return best;
+}
+
+short network_host_controls_bot_choice_step(
+	short choice,
+	short step)
+{
+	/* (no wrapping round: the ends stay, so that a count stepped past its
+	most never becomes none) */
+	long stepped = (long)choice + step;
+	long last = network_host_controls_bot_choice_count() - 1;
+
+	return (short)(stepped < 0 ? 0 : stepped > last ? last : stepped);
+}
 
 long network_host_controls_bot_count_step(
 	long count,
@@ -801,13 +904,9 @@ short network_host_controls_bot_rows(
 		return 0;
 	for (row = 0; row < NUMBER_OF_HOST_BOT_ROWS && count < maximum; row++)
 	{
-		/* (BALANCE TEAMS in a team game whose teams may be arranged;
-		FILL TO with MAKE ROOM on) */
-		if ((row == _host_bot_row_balance && !network_host_game_teams_arrangeable()) ||
-			(row == _host_bot_row_fill_to && !bots_make_room()))
-		{
+		/* (BALANCE TEAMS in a team game whose teams may be arranged) */
+		if (row == _host_bot_row_balance && !network_host_game_teams_arrangeable())
 			continue;
-		}
 		rows[count++] = row;
 	}
 	return count;
@@ -823,26 +922,27 @@ void network_host_controls_bot_row(
 	static wchar_t const *const skills[HOST_BOT_SKILLS] = { L"EASY", L"NORMAL", L"HEROIC", L"LEGENDARY" };
 	boolean lobby = network_host_controls_in_lobby();
 	boolean matchmaking = bots_matchmaking_on() != 0;
-	long count = bots_wanted_count();
 	long playing = host_controls_bots_playing(NULL);
+	long number;
+	short kind = network_host_controls_bot_choice(network_host_controls_bots_chosen(), &number);
 
 	label[0] = value[0] = help[0] = 0;
 	switch (row)
 	{
 	case _host_bot_row_count:
 		usnprintf(label, size - 1, L"BOTS");
-		if (count)
-			usnprintf(value, size - 1, L"%ld", count);
-		else
-			usnprintf(value, size - 1, L"NONE");
+		network_host_controls_bot_choice_words(network_host_controls_bots_chosen(), value, size);
 		if (matchmaking)
 			usnprintf(help, size - 1, L"The playlist fills the game with bots. %ld play now.", playing);
-		else if (playing != count)
-			usnprintf(help, size - 1, L"The most bots that play: %ld play now. In a game they join and leave "
-				L"one at a time.", playing);
+		else if (kind == _host_bots_fill)
+			usnprintf(help, size - 1, L"Bots fill the game to %ld players, and leave as players join: %ld play "
+				L"now.", number, playing);
+		else if (kind == _host_bots_add)
+			usnprintf(help, size - 1, L"%ld bots play beside the players, who keep their places: %ld play now.",
+				number, playing);
 		else
-			usnprintf(help, size - 1, L"The most bots that play. Your computer plays them; in a game they join "
-				L"and leave one at a time.");
+			usnprintf(help, size - 1, L"No bots. ADD puts bots beside the players; FILL TO fills the empty "
+				L"places with bots, who leave as players join.");
 		break;
 	case _host_bot_row_skill:
 		usnprintf(label, size - 1, L"SKILL");
@@ -861,18 +961,6 @@ void network_host_controls_bot_row(
 		usnprintf(help, size - 1, lobby ? L"Evens the teams' numbers, moving as few players as it can." :
 			L"Evens the teams' numbers, and their scores. Those who move die and respawn.");
 		break;
-	case _host_bot_row_make_room:
-		usnprintf(label, size - 1, L"MAKE ROOM FOR PLAYERS");
-		usnprintf(value, size - 1, bots_make_room() ? L"ON" : L"OFF");
-		usnprintf(help, size - 1, matchmaking ? L"The playlist's bots always make room for players." :
-			L"A bot leaves as a player joins, and comes back as one leaves.");
-		break;
-	case _host_bot_row_fill_to:
-		usnprintf(label, size - 1, L"FILL TO");
-		usnprintf(value, size - 1, L"%ld", bots_fill_to());
-		usnprintf(help, size - 1, matchmaking ? L"The playlist's players and bots." :
-			L"The players and bots the bots fill the game to.");
-		break;
 	case _host_bot_row_tactics:
 		usnprintf(label, size - 1, L"TEAM TACTICS");
 		usnprintf(value, size - 1, config_boolean("bots.tactics") ? L"ON" : L"OFF");
@@ -883,7 +971,8 @@ void network_host_controls_bot_row(
 	label[size - 1] = value[size - 1] = help[size - 1] = 0;
 }
 
-/* (a value stepped round its range: -1 left, 1 right or A) */
+/* (a value stepped through its range: -1 left, 1 right or A; at its ends
+no further, as the menus' spinners) */
 static long host_controls_bot_step(
 	long value,
 	long least,
@@ -891,7 +980,7 @@ static long host_controls_bot_step(
 	short step)
 {
 	value += step;
-	return value < least ? most : value > most ? least : value;
+	return value < least ? least : value > most ? most : value;
 }
 
 /* a setting written: FALSE (said) if it could not be */
@@ -905,11 +994,42 @@ static boolean host_controls_bot_write(
 	return FALSE;
 }
 
+short network_host_controls_bots_chosen(
+	void)
+{
+	return network_host_controls_bot_choice_of(bots_wanted_count(), bots_make_room() != 0, bots_fill_to());
+}
+
+boolean network_host_controls_choose_bots(
+	short kind,
+	long number)
+{
+	char text[16];
+
+	if (bots_matchmaking_on() || (kind != _host_bots_none && (number < 1 || number > BOTS_MAXIMUM)) ||
+		(kind == _host_bots_fill && number < HOST_BOT_FILL_LEAST))
+	{
+		return FALSE;
+	}
+	/* (FILL TO: as many bots as fill the game, bots.count the most) */
+	snprintf(text, sizeof(text), "%ld", kind == _host_bots_add ? number : kind == _host_bots_fill ? (long)BOTS_MAXIMUM : 0L);
+	if (!host_controls_bot_write("bots.count", text))
+		return FALSE;
+	if (kind == _host_bots_none)
+		return TRUE;
+	if (kind == _host_bots_fill)
+	{
+		snprintf(text, sizeof(text), "%ld", number);
+		if (!host_controls_bot_write("bots.fill_to", text))
+			return FALSE;
+	}
+	return host_controls_bot_write("bots.make_room", kind == _host_bots_fill ? "true" : "false");
+}
+
 boolean network_host_controls_set_bots(
 	long count)
 {
 	long humans;
-	char text[16];
 
 	host_controls_bots_playing(&humans);
 	if (!network_host_controls_bots_tab() || bots_matchmaking_on() || count < 0 ||
@@ -917,8 +1037,7 @@ boolean network_host_controls_set_bots(
 	{
 		return FALSE;
 	}
-	snprintf(text, sizeof(text), "%ld", count);
-	return host_controls_bot_write("bots.count", text);
+	return network_host_controls_choose_bots(count ? _host_bots_add : _host_bots_none, count);
 }
 
 boolean network_host_controls_set_bot_skill(
@@ -933,35 +1052,28 @@ boolean network_host_controls_bot_row_step(
 	short row,
 	short step)
 {
-	char text[16];
-	long humans;
-
 	if (!network_host_controls_bots_tab())
 		return FALSE;
 	switch (row)
 	{
 	case _host_bot_row_count:
 	{
-		long count = bots_wanted_count();
-		long stepped;
+		/* (the lobby's BOTS' choices, at the ends no further) */
+		short chosen = network_host_controls_bots_chosen();
+		short stepped = network_host_controls_bot_choice_step(chosen, step);
+		long number;
+		short kind = network_host_controls_bot_choice(stepped, &number);
 
-		host_controls_bots_playing(&humans);
-		stepped = network_host_controls_bot_count_step(count, step, humans, HALO_PORT_MAXIMUM_NETWORK_PLAYERS);
-		return stepped != count && network_host_controls_set_bots(stepped);
+		return stepped != chosen && network_host_controls_choose_bots(kind, number);
 	}
 	case _host_bot_row_skill:
-		return network_host_controls_set_bot_skill((short)host_controls_bot_step(bots_skill(), 0, HOST_BOT_SKILLS - 1,
-			step));
+	{
+		short skill = (short)host_controls_bot_step(bots_skill(), 0, HOST_BOT_SKILLS - 1, step);
+
+		return skill != bots_skill() && network_host_controls_set_bot_skill(skill);
+	}
 	case _host_bot_row_teams:
 		return host_controls_bot_write("bots.teams", bots_teams() == _bots_teams_against ? "even" : "against");
-	case _host_bot_row_make_room:
-		return !bots_matchmaking_on() && host_controls_bot_write("bots.make_room", bots_make_room() ? "false" : "true");
-	case _host_bot_row_fill_to:
-		if (bots_matchmaking_on())
-			return FALSE;
-		snprintf(text, sizeof(text), "%ld", host_controls_bot_step(MIN(bots_fill_to(), HOST_BOT_FILL_MOST),
-			HOST_BOT_FILL_LEAST, HOST_BOT_FILL_MOST, step));
-		return host_controls_bot_write("bots.fill_to", text);
 	case _host_bot_row_tactics:
 		return host_controls_bot_write("bots.tactics", config_boolean("bots.tactics") ? "false" : "true");
 	default:
@@ -990,11 +1102,11 @@ short network_host_controls_bots(
 void network_host_controls_bots_one_fewer(
 	void)
 {
-	char text[16];
+	/* (ADD those left, FILL TO too: the bots no longer fill the game, or
+	the one taken out would come back) */
+	long left = network_host_controls_bot_count_removed(bots_wanted_count(), host_controls_bots_playing(NULL));
 
-	snprintf(text, sizeof(text), "%ld", network_host_controls_bot_count_removed(bots_wanted_count(),
-		host_controls_bots_playing(NULL)));
-	host_controls_bot_write("bots.count", text);
+	network_host_controls_choose_bots(left ? _host_bots_add : _host_bots_none, left);
 }
 
 /* ---------- opening */

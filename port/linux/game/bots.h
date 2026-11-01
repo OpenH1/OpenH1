@@ -17,9 +17,15 @@ The bots have no view and no controller: nothing is drawn for them. */
 struct player_action;
 struct network_player;
 
-/* the most bots in one game (with one player, the Xbox's 16) */
-#define BOTS_MAXIMUM 15
-/* the first bot's machine index (the last machine indices of the session) */
+/* the most bots in one game: half the session's machines, the other half
+the real machines' (64 machines joining a game, each with up to four
+players, more than the session's 128 players). A game takes no more bots
+than its most players leave room for */
+#define BOTS_MAXIMUM 64
+/* the first bot's machine index: the bots' are the session's last
+BOTS_MAXIMUM, which no real machine takes (network_server_manager.c numbers
+those that join below them), and every machine of a game tells a bot's
+player by it (bots_machine_is_bot: HALO_PORT_STANDARD_NETWORK_VERSION 17) */
 #define BOTS_FIRST_MACHINE (HALO_PORT_MAXIMUM_NETWORK_MACHINES - BOTS_MAXIMUM)
 
 enum
@@ -63,6 +69,8 @@ hosts the game (a network game's host gives them to its clients as it gives
 a remote player's: player_queues_new.c's update_server_take_bot_action);
 nothing on a client */
 void bots_update_actions(struct player_action *actions);
+/* debug.play_log's tick (port/linux/game/play_log.c) */
+void play_log_tick(struct player_action const *actions);
 /* the first local player's view turned toward the nearest enemy in sight
 (debug.test_input's "hunt"), and how it moves (forward and strafe, -1 to
 1); TRUE once on it, to fire */

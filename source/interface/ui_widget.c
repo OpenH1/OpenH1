@@ -2808,6 +2808,22 @@ static void widget_instance_give_focus_by_tag(
 	return;
 }
 
+/* port: whether a spinner of the port's menus is at the end it is stepped
+toward, where it stops: a spinner of more than two values (a count, a list
+of choices) does not wrap round from its last to its first, nor back, so
+that a count stepped past its most is never its least (the bots' BOTS once
+went from the most to none). Two values (ON and OFF) still toggle */
+static boolean ui_widget_port_spinner_stops(
+	struct widget_instance *widget,
+	boolean forward)
+{
+	long count = widget->parameters.list.number_of_items;
+
+	if (widget->type != _ui_widget_type_spinner_list || !pc_menu_tag(widget->definition_tag_index) || count <= 2)
+		return FALSE;
+	return forward ? widget->parameters.list.selected_index >= count - 1 : widget->parameters.list.selected_index <= 0;
+}
+
 boolean widget_event_function_list_widget_goto_next_item(
 	struct widget_instance *widget,
 	struct event_record *event,
@@ -2828,6 +2844,9 @@ boolean widget_event_function_list_widget_goto_next_item(
 		1233,
 		widget->type == _ui_widget_type_spinner_list || widget->type == _ui_widget_type_column_list,
 		"calling a list widget function on a non-list widget");
+	/* port: (a spinner at its end stops there: ui_widget_port_spinner_stops) */
+	if (ui_widget_port_spinner_stops(widget, TRUE))
+		return TRUE;
 	if (widget->parameters.list.list_items && widget->parameters.list.number_of_items > 0)
 	{
 		item_index = widget->parameters.list.selected_index + 1;
@@ -2966,6 +2985,9 @@ boolean widget_event_function_list_widget_goto_previous_item(
 		1362,
 		widget->type == _ui_widget_type_spinner_list || widget->type == _ui_widget_type_column_list,
 		"calling a list widget function on a non-list widget");
+	/* port: (a spinner at its end stops there: ui_widget_port_spinner_stops) */
+	if (ui_widget_port_spinner_stops(widget, FALSE))
+		return TRUE;
 	if (widget->parameters.list.list_items && widget->parameters.list.number_of_items > 0)
 	{
 		item_index = widget->parameters.list.selected_index - 1;

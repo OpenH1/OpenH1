@@ -177,10 +177,11 @@ frames (halo_screen_commit): the back buffer is made again when it changes. */
 
 static struct
 {
-	/* the frame is drawn in HDR; display.hdr_mode, display.hdr_paper_white
-	as last sent to the backend (sent: once at least) */
+	/* the frame is drawn in HDR; display.hdr_mode,
+	display.hdr_paper_white_nits and display.hdr_paper_white as last sent to
+	the backend (sent: once at least) */
 	BOOL active, sent;
-	int mode, paper_white;
+	int mode, paper_white_nits, paper_white;
 	/* the game's renderer's category, and what its code says of the draws
 	(halo_hdr_category, halo_hdr_draw_kind) */
 	int category, kind;
@@ -1745,6 +1746,7 @@ static void hdr_read(void)
 	float headroom = 1.0f;
 	BOOL display = FALSE, active = FALSE;
 	int setting = hdr_setting(), paper_white = (int)config_integer("display.hdr_paper_white");
+	int paper_white_nits = (int)config_integer("display.hdr_paper_white_nits");
 	int mode = config_string("display.hdr_mode") && !strcmp(config_string("display.hdr_mode"), "punchy") ?
 		XGPU_HDR_MODE_PUNCHY : XGPU_HDR_MODE_FAITHFUL;
 
@@ -1759,6 +1761,16 @@ static void hdr_read(void)
 	if (halo_vr_running())
 		active = FALSE;
 #endif
+	/* (display.hdr_paper_white, the percent of the system's white, only
+	while paper white is the system's) */
+	if (paper_white_nits > 0)
+	{
+		paper_white_nits = paper_white_nits < XGPU_HDR_PAPER_WHITE_NITS_LEAST ? XGPU_HDR_PAPER_WHITE_NITS_LEAST :
+			paper_white_nits > XGPU_HDR_PAPER_WHITE_NITS_MOST ? XGPU_HDR_PAPER_WHITE_NITS_MOST : paper_white_nits;
+		paper_white = 100;
+	}
+	else
+		paper_white_nits = 0;
 	if (paper_white <= 0)
 		paper_white = 100;
 	paper_white = paper_white < XGPU_HDR_PAPER_WHITE_LEAST ? XGPU_HDR_PAPER_WHITE_LEAST :
@@ -1775,11 +1787,13 @@ static void hdr_read(void)
 		hdr.active = active;
 		render_targets_evict();
 	}
-	if (!hdr.sent || mode != hdr.mode || paper_white != hdr.paper_white || active != hdr.active)
+	if (!hdr.sent || mode != hdr.mode || paper_white_nits != hdr.paper_white_nits || paper_white != hdr.paper_white ||
+		active != hdr.active)
 	{
-		xgpu_backend_hdr(active, mode, paper_white);
+		xgpu_backend_hdr(active, mode, paper_white_nits, paper_white);
 		hdr.sent = TRUE;
 		hdr.mode = mode;
+		hdr.paper_white_nits = paper_white_nits;
 		hdr.paper_white = paper_white;
 	}
 }
@@ -2981,6 +2995,9 @@ lights cost what lights each pixel, not their number. A plasma bolt's light
 backend has them (xgpu_backend_capabilities: Vulkan, Metal). */
 static struct
 {
+	/* the settings read, as config_changes() was then (0 too, before any
+	change: the flag says whether they have been read) */
+	BOOL read;
 	unsigned long read_at;
 	BOOL enhanced;
 	/* the look: [0] the lights' brightness, the core (1 / (1 + core x^2)),
@@ -3004,8 +3021,9 @@ static void dynamic_lights_read_settings(void)
 	static const float defaults[2][4] = { { 1.7f, 12.0f, 0.18f, 0.25f }, { 0.22f, 1.2f, 0.12f, 0.035f } };
 	const char *look;
 
-	if (dynamic_lights.read_at == config_changes() && dynamic_lights.read_at)
+	if (dynamic_lights.read && dynamic_lights.read_at == config_changes())
 		return;
+	dynamic_lights.read = TRUE;
 	dynamic_lights.read_at = config_changes();
 	dynamic_lights.enhanced = !strcmp(config_string("display.dynamic_lights"), "enhanced");
 	memcpy(dynamic_lights.look, defaults, sizeof(defaults));
@@ -3352,6 +3370,44 @@ static void unread_stage_fields_clear(DWORD *state, DWORD texture_modes)
 	state[D3DRS_PSCOMPAREMODE] = compare;
 }
 
+/* the combiners' part of a draw's pixel shader key, from the render states
+and the texture modes: most draws share them with the draw before, and so
+share the key's part (the same inputs, the same part) */
+static void combiner_state_describe(DWORD *state, DWORD texture_modes)
+{
+	static DWORD last_inputs[D3DRS_PS_MAX], last_state[D3DRS_PS_MAX];
+	static DWORD last_texture_modes;
+	static BOOL described;
+	int stage;
+
+	if (described && texture_modes == last_texture_modes &&
+		words_equal(D3D__RenderState, last_inputs, sizeof(last_inputs)))
+	{
+		memcpy(state, last_state, sizeof(last_state));
+		return;
+	}
+	memcpy(state, D3D__RenderState, D3DRS_PS_MAX * sizeof(DWORD));
+	/* constants are uniforms, not part of the program */
+	memset(&state[D3DRS_PSCONSTANT0_0], 0, 16 * sizeof(DWORD));
+	state[D3DRS_PSFINALCOMBINERCONSTANT0] = 0;
+	state[D3DRS_PSFINALCOMBINERCONSTANT1] = 0;
+	/* nor are the stages past the combiner count (what earlier draws left
+	in them): one program, one key */
+	for (stage = (int)(D3D__RenderState[D3DRS_PSCOMBINERCOUNT] & 0xff); stage < 8; stage++)
+	{
+		state[D3DRS_PSALPHAINPUTS0 + stage] = 0;
+		state[D3DRS_PSALPHAOUTPUTS0 + stage] = 0;
+		state[D3DRS_PSRGBINPUTS0 + stage] = 0;
+		state[D3DRS_PSRGBOUTPUTS0 + stage] = 0;
+	}
+	dead_portions_clear(state);
+	unread_stage_fields_clear(state, texture_modes);
+	memcpy(last_inputs, D3D__RenderState, sizeof(last_inputs));
+	memcpy(last_state, state, sizeof(last_state));
+	last_texture_modes = texture_modes;
+	described = TRUE;
+}
+
 /* the draw's description to the backend: its textures, its targets, its
 pipeline (shaders and fixed-function state), its dynamic state and its
 uniforms; FALSE if it is not drawn */
@@ -3392,23 +3448,8 @@ static BOOL prepare_draw(BOOL immediate, unsigned long primitive)
 		}
 	}
 	memset(&key, 0, sizeof(key));
-	memcpy(key.combiner_state, D3D__RenderState, sizeof(key.combiner_state));
-	/* constants are uniforms, not part of the program */
-	memset(&key.combiner_state[D3DRS_PSCONSTANT0_0], 0, 16 * sizeof(DWORD));
-	key.combiner_state[D3DRS_PSFINALCOMBINERCONSTANT0] = 0;
-	key.combiner_state[D3DRS_PSFINALCOMBINERCONSTANT1] = 0;
-	/* nor are the stages past the combiner count (what earlier draws left
-	in them): one program, one key */
-	for (stage = (int)(D3D__RenderState[D3DRS_PSCOMBINERCOUNT] & 0xff); stage < 8; stage++)
-	{
-		key.combiner_state[D3DRS_PSALPHAINPUTS0 + stage] = 0;
-		key.combiner_state[D3DRS_PSALPHAOUTPUTS0 + stage] = 0;
-		key.combiner_state[D3DRS_PSRGBINPUTS0 + stage] = 0;
-		key.combiner_state[D3DRS_PSRGBOUTPUTS0 + stage] = 0;
-	}
-	dead_portions_clear(key.combiner_state);
 	key.texture_modes = D3D__RenderState[D3DRS_PSTEXTUREMODES];
-	unread_stage_fields_clear(key.combiner_state, key.texture_modes);
+	combiner_state_describe(key.combiner_state, key.texture_modes);
 	/* the textures before the targets: a render target the draw samples
 	has its multisampled pixels resolved by the backend, and the back buffer
 	can be both sampled and drawn into */
@@ -3739,11 +3780,12 @@ static void trace_draw(const char *kind, D3DPRIMITIVETYPE type, unsigned long co
 	{
 		int reg;
 
+		/* (the registers written since Begin: immediate_emit keeps those alone) */
 		for (reg = 0; reg < XGPU_VERTEX_ATTRIBUTE_COUNT; reg++)
 		{
 			const float *v = first_vertex + reg * 4;
 
-			if (v[0] || v[1] || v[2] || v[3] != 1.0f)
+			if ((device.immediate_written & (1UL << reg)) && (v[0] || v[1] || v[2] || v[3] != 1.0f))
 				platform_log("    v%d = %g %g %g %g", reg, v[0], v[1], v[2], v[3]);
 		}
 	}
@@ -3762,13 +3804,22 @@ while, and draws that use it stream their data as before. */
 
 #define MIRROR_SEGMENT_SIZE XGPU_MIRROR_SEGMENT_SIZE
 #define MIRROR_SEGMENT_COUNT (PLATFORM_CONTIGUOUS_SIZE / MIRROR_SEGMENT_SIZE)
+/* (the protection's page: 16 KB on Apple's hardware, the Mac's and the
+iPhone's; a 4 KB page there shared its protection with three others, whose
+game-written vertices then faulted every frame) */
+#if defined(HALO_MACOS)
+#define MIRROR_PAGE_SIZE 0x4000UL
+#else
 #define MIRROR_PAGE_SIZE 0x1000UL
+#endif
 #define MIRROR_PAGE_COUNT (PLATFORM_CONTIGUOUS_SIZE / MIRROR_PAGE_SIZE)
 /* rewrites no more than this many frames apart ... */
 #define MIRROR_REWRITE_FRAMES 2
 /* ... this many times in a row make a page volatile ... */
 #define MIRROR_VOLATILE_REWRITES 4
-/* ... for this many frames */
+/* ... for this many frames, doubled each time the page turns volatile again
+(to 32 times as many): a page that keeps proving dynamic is not watched
+again, and faulted on, every few seconds */
 #define MIRROR_VOLATILE_FRAMES 600
 
 enum
@@ -3785,6 +3836,8 @@ static struct
 	/* the page's memory_watch generation when it was uploaded */
 	unsigned long generation[MIRROR_PAGE_COUNT];
 	unsigned long rewritten_frame[MIRROR_PAGE_COUNT];
+	/* the times the page has turned volatile (its period's doublings) */
+	unsigned char volatile_times[MIRROR_PAGE_COUNT];
 } mirror;
 
 /* uploads the pages of [first, last) that are absent or stale; FALSE if one
@@ -3823,6 +3876,8 @@ static BOOL mirror_refresh(unsigned long first, unsigned long last)
 			if (mirror.rewrites[page] >= MIRROR_VOLATILE_REWRITES)
 			{
 				mirror.state[page] = _mirror_page_volatile;
+				if (mirror.volatile_times[page] < 6)
+					mirror.volatile_times[page]++;
 				volatile_page = TRUE;
 			}
 		}
@@ -3891,7 +3946,8 @@ static BOOL mirror_range(unsigned long address, unsigned long size, long *segmen
 	{
 		if (mirror.state[page] == _mirror_page_volatile)
 		{
-			if (device.frame - mirror.rewritten_frame[page] < MIRROR_VOLATILE_FRAMES)
+			if (device.frame - mirror.rewritten_frame[page] <
+				(MIRROR_VOLATILE_FRAMES << (mirror.volatile_times[page] ? mirror.volatile_times[page] - 1 : 0)))
 				return FALSE;
 			mirror.state[page] = _mirror_page_absent;
 		}
@@ -4049,12 +4105,27 @@ static int primitive_kind(D3DPRIMITIVETYPE type)
 	}
 }
 
-/* quads become two triangles each */
+/* quads become two triangles each, in a buffer kept for the next draw's
+(NULL if there is no memory for them) */
 static WORD *quad_indices(const WORD *indices, unsigned long count, unsigned long *out_count)
 {
+	static WORD *buffer;
+	static unsigned long capacity;
 	unsigned long quads = count / 4;
-	WORD *result = malloc(quads * 6 * sizeof(WORD) + 2);
+	WORD *result;
 	unsigned long quad;
+
+	*out_count = 0;
+	if (quads * 6 + 1 > capacity)
+	{
+		WORD *grown = realloc(buffer, (quads * 6 + 1) * sizeof(WORD));
+
+		if (!grown)
+			return NULL;
+		buffer = grown;
+		capacity = quads * 6 + 1;
+	}
+	result = buffer;
 
 	for (quad = 0; quad < quads; quad++)
 	{
@@ -4106,7 +4177,6 @@ void WINAPI D3DDevice_DrawVertices(D3DPRIMITIVETYPE primitive_type, UINT start_v
 		WORD *indices = quad_indices(NULL, vertex_count, &count);
 
 		xgpu_backend_draw_indices(XGPU_TRIANGLES, indices, count);
-		free(indices);
 	}
 	else
 	{
@@ -4157,7 +4227,6 @@ void WINAPI D3DDevice_DrawIndexedVertices(D3DPRIMITIVETYPE primitive_type, UINT 
 		source = indices;
 	}
 	xgpu_backend_draw_indexed(primitive_kind(primitive_type), source, count, minimum, -1, 0, indices != NULL);
-	free(indices);
 	preparation_draw_complete();
 }
 
@@ -4171,9 +4240,13 @@ void WINAPI D3DDevice_Begin(D3DPRIMITIVETYPE primitive_type)
 	device.immediate_written = 0;
 }
 
+/* the vertex the registers make: those written since Begin alone, the only
+ones the backend takes (xgpu_backend_draw_immediate) */
 static void immediate_emit(void)
 {
 	unsigned long floats = XGPU_VERTEX_ATTRIBUTE_COUNT * 4;
+	unsigned long written = device.immediate_written;
+	float *vertex;
 
 	if (device.immediate_count == device.immediate_capacity)
 	{
@@ -4186,7 +4259,14 @@ static void immediate_emit(void)
 		device.immediate_vertices = vertices;
 		device.immediate_capacity = capacity;
 	}
-	memcpy(device.immediate_vertices + device.immediate_count * floats, device.attributes, floats * sizeof(float));
+	vertex = device.immediate_vertices + device.immediate_count * floats;
+	while (written)
+	{
+		int reg = __builtin_ctzl(written);
+
+		memcpy(vertex + reg * 4, device.attributes[reg], 4 * sizeof(float));
+		written &= written - 1;
+	}
 	device.immediate_count++;
 }
 
@@ -4210,7 +4290,6 @@ void WINAPI D3DDevice_End(void)
 		indices = quad_indices(NULL, count, &index_count);
 	xgpu_backend_draw_immediate(type == D3DPT_QUADLIST ? XGPU_TRIANGLES : primitive_kind(type), device.immediate_vertices,
 		count, device.immediate_written, (const float (*)[4])device.attributes, indices, index_count);
-	free(indices);
 	preparation_draw_complete();
 }
 
@@ -4225,12 +4304,23 @@ static void set_attribute(INT reg, float a, float b, float c, float d)
 	}
 	if (reg < 0 || reg >= XGPU_VERTEX_ATTRIBUTE_COUNT)
 		return;
+	if (device.immediate_active && !(device.immediate_written & (1UL << reg)))
+	{
+		/* a register first written after some of the vertices: theirs is
+		the value it had (immediate_emit keeps only the written ones) */
+		unsigned long vertex;
+
+		for (vertex = 0; vertex < device.immediate_count; vertex++)
+		{
+			memcpy(device.immediate_vertices + (vertex * XGPU_VERTEX_ATTRIBUTE_COUNT + reg) * 4,
+				device.attributes[reg], 4 * sizeof(float));
+		}
+		device.immediate_written |= 1UL << reg;
+	}
 	device.attributes[reg][0] = a;
 	device.attributes[reg][1] = b;
 	device.attributes[reg][2] = c;
 	device.attributes[reg][3] = d;
-	if (device.immediate_active)
-		device.immediate_written |= 1UL << reg;
 	/* like the hardware, writing register 0 completes a vertex */
 	if (device.immediate_active && (emit || reg == 0))
 		immediate_emit();

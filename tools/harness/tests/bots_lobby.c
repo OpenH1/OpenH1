@@ -569,13 +569,13 @@ int main(int argc, char **argv)
 		wanted = 15;
 		idle(1);
 		CHECK(bots() == 13 && server.game.player_count == 16, "%ld bots in a game of 16 with 3 players, not 13", bots());
-		/* (a local game's are as many as it has room for, whatever the fill) */
+		/* (a local game's are filled to it too: the lobby's FILL TO) */
 		lobby(game_engine_slayer, 16);
 		player(0, 0);
 		wanted = 10;
 		fill_to = 4;
 		idle(1);
-		CHECK(bots() == 10, "%ld bots in a local game, not 10", bots());
+		CHECK(bots() == 3, "%ld bots in a local game filled to 4, not 3", bots());
 		return 0;
 	}
 	/* a party's members on their way (network_party.c's holds): the bots

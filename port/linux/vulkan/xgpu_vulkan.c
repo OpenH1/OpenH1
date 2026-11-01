@@ -220,6 +220,9 @@ struct xgpu_vulkan_image
 	images' counts after it (xgpu_vulkan_image_resolve) */
 	uint32_t writes, resolved_writes, resolved_into_writes;
 	uint64_t resolved_into;
+	/* with aside passes: the chain of the passes put aside from whose
+	pieces sampled it (its chain_number) */
+	uint64_t aside_read;
 	uint8_t pass_slot, clears[2], discarded[2], transient;
 };
 
@@ -230,6 +233,11 @@ struct xgpu_vulkan_buffer
 	void *mapped;
 	uint32_t size;
 	uint64_t used;
+	/* with aside passes: the submission whose early commands copy its
+	bytes from the buffer it took the place of (buffer_rename), and the
+	last whose main commands wrote into it (which an early copy would
+	come before: not renamed in it) */
+	uint64_t renamed, ordered;
 };
 
 /* things let go of, freed once the GPU has passed their submission */
@@ -313,6 +321,11 @@ struct segment
 {
 	VkCommandBuffer commands;
 	int pass;
+	/* with aside passes: a pass that continues the chain's pass before it
+	(piece), and a chain's first pass, the last of its pieces (its index
+	plus one; segments_play) */
+	int piece;
+	uint32_t chain_last;
 	/* a pass's */
 	VkRect2D area;
 	uint32_t view_mask;
@@ -580,7 +593,7 @@ static struct
 	where the instance has VK_EXT_swapchain_colorspace and the options an
 	encode. */
 	uint32_t window_hdr, window_sdr_white, window_headroom, window_hdr_changed;
-	int hdr_active, hdr_mode, hdr_paper_white;
+	int hdr_active, hdr_mode, hdr_paper_white_nits, hdr_paper_white;
 	unsigned int surface_hdr;
 	int hdr_output;
 	int display_hdr_told;
@@ -609,6 +622,18 @@ static struct
 	uint32_t segment_count, segment_capacity;
 	int segment_open, discard_logged;
 	VkCommandBuffer pass_commands;
+	/* HALO_VULKAN_ASIDE (on with discards): passes put aside, before the
+	pass they interrupt, which goes on in one rendering ("aside passes",
+	below): the chain's first and last pieces (segment indices plus one;
+	0: no chain), its number (aside_read), its targets; the outside work
+	being recorded is a copy or an upload whose images are checked
+	(main_commands); renamed buffers' spares */
+	int aside, aside_allowed;
+	uint32_t chain_head, chain_last;
+	uint64_t chain_number;
+	struct xgpu_vulkan_image *chain_color, *chain_depth;
+	struct buffer_spare *spares;
+	uint32_t spare_count, spare_capacity;
 
 	struct xgpu_vulkan_statistics statistics;
 } vk;
@@ -1101,7 +1126,7 @@ image that is loaded is still correct: its lazily allocated memory is then
 committed (Vulkan's lazily allocated memory keeps what is stored in it,
 unlike Metal's memoryless textures).
 
-Without discards (the default), passes are recorded into the main command
+Without discards (HALO_VULKAN_DISCARDS=0), passes are recorded into the main command
 buffer as they are drawn, with every attachment stored. */
 
 /* frames whose first use of an image cleared it whole before its end is
@@ -1224,6 +1249,9 @@ static struct pass_attachment *segment_attachment(uint32_t segment, int slot)
 	return slot ? &vk.segments[segment].depth : &vk.segments[segment].color;
 }
 
+static void aside_image_read(struct xgpu_vulkan_image *image);
+static void aside_image_written(struct xgpu_vulkan_image *image);
+
 /* An image used other than as a pass's attachment (sampled, copied,
 resolved outside a pass, read back, presented, uploaded into): the last
 pass that drew into it in this submission stores it. */
@@ -1231,6 +1259,7 @@ static void image_use(struct xgpu_vulkan_image *image)
 {
 	if (!vk.deferred || !image)
 		return;
+	aside_image_read(image);
 	image_first_use(image, 0, "a use outside a pass");
 	if (image->pass_serial == vk.serial && image->pass_segment)
 	{
@@ -1248,6 +1277,7 @@ static void image_written(struct xgpu_vulkan_image *image)
 {
 	if (vk.deferred)
 		image->writes++;
+	aside_image_written(image);
 }
 
 /* An image an attachment of the pass of this segment (slot 0 colour, 1
@@ -1306,6 +1336,121 @@ static VkAttachmentStoreOp store_choose(uint32_t segment, struct pass_attachment
 	return attachment->info.storeOp;
 }
 
+/* ---------- aside passes
+
+The game draws into other targets in the middle of its 3D view (the
+shadows, the motion sensor, the effects' targets), each in a pass of its
+own, which ends the view's pass; the view's next pass then loads what the
+one before stored: on a tiler, the whole view written out of tile memory
+and read back each time (#335). With aside passes (on with discards;
+HALO_VULKAN_ASIDE=0: none), as the Metal backend puts passes aside
+(port/macos/xgpu_metal.m):
+
+- a pass that draws colour alone, not multisampled, into other targets
+  than the pass recorded before it, and the copies and image uploads
+  about it, are put aside: played before that pass, the chain's first;
+- the chain's next pass of the same targets, area, layer and views, which
+  loads every attachment and stores as the one before it, continues it:
+  its pieces are played as one rendering, each piece's secondary command
+  buffer executed in it, begun with the first's loads and ended with the
+  last's stores and resolves.
+
+What is put aside then comes before pieces drawn before it, which keeps
+the frame's pixels where neither reads what the other writes: what is put
+aside may not read the chain's targets (sample, copy, resolve them) or
+write an image a piece sampled (aside_read). That, a pass with depth or
+multisampled, or any other work outside passes (a buffer written in order,
+a readback, the lights' upload, the present) ends the chain: from there
+everything is played in the order drawn, and the next pass may begin
+another chain. A piece resolved in its pass is the chain's last. A buffer the
+submission reads that is written again is renamed (buffer_rename), not
+written in order, so that it ends no chain. */
+
+/* the chain ended: no more of its pieces, nothing more put aside */
+static void aside_break(void)
+{
+	vk.chain_head = vk.chain_last = 0;
+	vk.chain_color = vk.chain_depth = NULL;
+}
+
+/* the pass being recorded is the chain's last piece */
+static int aside_in_piece(void)
+{
+	return vk.chain_head && vk.pass_active && vk.chain_last == vk.segment_count;
+}
+
+/* an image read (sampled, copied from or into, resolved, read back): by a
+piece, marked; by anything else, not one of the chain's targets */
+static void aside_image_read(struct xgpu_vulkan_image *image)
+{
+	if (!vk.chain_head || !image)
+		return;
+	if (aside_in_piece())
+		image->aside_read = vk.chain_number;
+	else if (image == vk.chain_color || image == vk.chain_depth)
+		aside_break();
+}
+
+/* an image written outside a pass (a copy's, an upload's, a resolve's): not
+one of the chain's targets, nor one a piece sampled */
+static void aside_image_written(struct xgpu_vulkan_image *image)
+{
+	if (vk.chain_head && image && (image == vk.chain_color || image == vk.chain_depth ||
+		image->aside_read == vk.chain_number))
+		aside_break();
+}
+
+/* whether the pass of this segment continues the chain's last piece: its
+targets, area, layer and views, each attachment loaded and stored as the
+piece's, and the piece resolves nothing */
+static int aside_continues(const struct segment *segment)
+{
+	const struct segment *last = &vk.segments[vk.chain_last - 1];
+
+	if (segment->color.image != vk.chain_color || segment->depth.image != vk.chain_depth ||
+		segment->color.info.imageView != last->color.info.imageView ||
+		segment->depth.info.imageView != last->depth.info.imageView ||
+		memcmp(&segment->area, &last->area, sizeof(segment->area)) || segment->view_mask != last->view_mask ||
+		segment->layer != last->layer || segment->views != last->views ||
+		last->color.resolve_view || last->depth.resolve_view)
+		return 0;
+	if (segment->color.info.imageView && (segment->color.info.loadOp != VK_ATTACHMENT_LOAD_OP_LOAD ||
+		segment->color.info.storeOp != last->color.info.storeOp))
+		return 0;
+	if (segment->depth.info.imageView && (segment->depth.info.loadOp != VK_ATTACHMENT_LOAD_OP_LOAD ||
+		segment->depth.stencil_load != VK_ATTACHMENT_LOAD_OP_LOAD ||
+		segment->depth.info.storeOp != last->depth.info.storeOp))
+		return 0;
+	return 1;
+}
+
+/* the pass of this segment (its attachments known) begun: a piece of the
+chain, put aside, or another chain's first */
+static void aside_pass(uint32_t index, struct segment *segment)
+{
+	if (!vk.aside)
+		return;
+	if (vk.chain_head)
+	{
+		if (aside_continues(segment))
+		{
+			segment->piece = 1;
+			vk.chain_last = index + 1;
+			vk.segments[vk.chain_head - 1].chain_last = vk.chain_last;
+			vk.statistics.passes_continued++;
+			return;
+		}
+		if (segment->color.image && !segment->depth.image && segment->color.image->description.samples <= 1 &&
+			segment->color.image != vk.chain_color && segment->color.image->aside_read != vk.chain_number)
+			return;
+	}
+	vk.chain_number++;
+	vk.chain_head = vk.chain_last = index + 1;
+	vk.chain_color = segment->color.image;
+	vk.chain_depth = segment->depth.image;
+	segment->chain_last = index + 1;
+}
+
 /* the barrier after a pass: what it wrote (and resolved) before what comes
 after it */
 static void pass_barrier(VkCommandBuffer commands)
@@ -1315,66 +1460,105 @@ static void pass_barrier(VkCommandBuffer commands)
 		VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, AFTER_STAGES, AFTER_ACCESS);
 }
 
-/* the submission's segments into the main command buffer, in order: each
-pass begun with the stores chosen now */
+/* a pass played: the first piece's to the last's (the same segment where
+it has no other), begun with the first's loads, ended with the last's stores
+and resolves, the pieces between executed in it */
+static void pass_play(VkCommandBuffer main, uint32_t first, uint32_t last)
+{
+	struct segment *segment = &vk.segments[first], *end = &vk.segments[last];
+	VkRenderingAttachmentInfo color, depth, stencil;
+	VkRenderingInfo rendering;
+	uint32_t index;
+
+	memset(&rendering, 0, sizeof(rendering));
+	rendering.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+	rendering.flags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT;
+	rendering.renderArea = segment->area;
+	rendering.layerCount = 1;
+	rendering.viewMask = segment->view_mask;
+	if (segment->color.info.imageView)
+	{
+		color = segment->color.info;
+		color.storeOp = store_choose(last, &end->color, 0);
+		if (end->color.resolve_view)
+		{
+			color.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+			color.resolveImageView = end->color.resolve_view;
+			color.resolveImageLayout = VK_IMAGE_LAYOUT_GENERAL;
+		}
+		rendering.colorAttachmentCount = 1;
+		rendering.pColorAttachments = &color;
+	}
+	if (segment->depth.info.imageView)
+	{
+		depth = segment->depth.info;
+		stencil = segment->depth.info;
+		depth.storeOp = store_choose(last, &end->depth, 0);
+		stencil.storeOp = store_choose(last, &end->depth, 1);
+		stencil.loadOp = segment->depth.stencil_load;
+		if (end->depth.resolve_view)
+		{
+			depth.resolveMode = stencil.resolveMode = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
+			depth.resolveImageView = stencil.resolveImageView = end->depth.resolve_view;
+			depth.resolveImageLayout = stencil.resolveImageLayout = VK_IMAGE_LAYOUT_GENERAL;
+		}
+		rendering.pDepthAttachment = &depth;
+		rendering.pStencilAttachment = &stencil;
+	}
+	vkCmdBeginRendering(main, &rendering);
+	for (index = first; index <= last; index++)
+	{
+		if (index == first || vk.segments[index].piece)
+			vkCmdExecuteCommands(main, 1, &vk.segments[index].commands);
+	}
+	vkCmdEndRendering(main);
+	pass_barrier(main);
+}
+
+/* the submission's segments into the main command buffer, in order but for
+what was put aside (before the chain it was put aside from, whose pieces
+are then one pass): each pass begun with the stores chosen now */
 static void segments_play(void)
 {
 	VkCommandBuffer main = vk.slot->main;
-	uint32_t index;
+	uint32_t index, between;
 
 	segment_close();
 	for (index = 0; index < vk.segment_count; index++)
 	{
 		struct segment *segment = &vk.segments[index];
-		VkRenderingAttachmentInfo color, depth, stencil;
-		VkRenderingInfo rendering;
 
 		if (!segment->pass)
 		{
 			vkCmdExecuteCommands(main, 1, &segment->commands);
 			continue;
 		}
-		memset(&rendering, 0, sizeof(rendering));
-		rendering.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-		rendering.flags = VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT;
-		rendering.renderArea = segment->area;
-		rendering.layerCount = 1;
-		rendering.viewMask = segment->view_mask;
-		if (segment->color.info.imageView)
+		if (segment->chain_last > index + 1)
 		{
-			color = segment->color.info;
-			color.storeOp = store_choose(index, &segment->color, 0);
-			if (segment->color.resolve_view)
+			uint32_t last = segment->chain_last - 1;
+
+			for (between = index + 1; between < last; between++)
 			{
-				color.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
-				color.resolveImageView = segment->color.resolve_view;
-				color.resolveImageLayout = VK_IMAGE_LAYOUT_GENERAL;
+				struct segment *aside = &vk.segments[between];
+
+				if (aside->piece)
+					continue;
+				if (aside->pass)
+				{
+					pass_play(main, between, between);
+					vk.statistics.passes_aside++;
+				}
+				else
+					vkCmdExecuteCommands(main, 1, &aside->commands);
 			}
-			rendering.colorAttachmentCount = 1;
-			rendering.pColorAttachments = &color;
+			pass_play(main, index, last);
+			index = last;
+			continue;
 		}
-		if (segment->depth.info.imageView)
-		{
-			depth = segment->depth.info;
-			stencil = segment->depth.info;
-			depth.storeOp = store_choose(index, &segment->depth, 0);
-			stencil.storeOp = store_choose(index, &segment->depth, 1);
-			stencil.loadOp = segment->depth.stencil_load;
-			if (segment->depth.resolve_view)
-			{
-				depth.resolveMode = stencil.resolveMode = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT;
-				depth.resolveImageView = stencil.resolveImageView = segment->depth.resolve_view;
-				depth.resolveImageLayout = stencil.resolveImageLayout = VK_IMAGE_LAYOUT_GENERAL;
-			}
-			rendering.pDepthAttachment = &depth;
-			rendering.pStencilAttachment = &stencil;
-		}
-		vkCmdBeginRendering(main, &rendering);
-		vkCmdExecuteCommands(main, 1, &segment->commands);
-		vkCmdEndRendering(main);
-		pass_barrier(main);
+		pass_play(main, index, index);
 	}
 	vk.segment_count = 0;
+	aside_break();
 }
 
 /* the commands of work outside passes: the main command buffer's, or with
@@ -1398,6 +1582,11 @@ static VkCommandBuffer main_commands(void)
 {
 	recording_begin();
 	pass_end();
+	/* (put aside only where it is a copy or an image's upload, whose images
+	are checked: other work ends the chain) */
+	if (!vk.aside_allowed)
+		aside_break();
+	vk.aside_allowed = 0;
 	return outside_commands();
 }
 
@@ -2106,6 +2295,8 @@ void xgpu_vulkan_image_destroy(struct xgpu_vulkan_image *image)
 		if (vk.depth == image)
 			vk.depth = NULL;
 	}
+	if (image == vk.chain_color || image == vk.chain_depth)
+		aside_break();
 	/* (with discards: the submission's passes keep their views, which are
 	freed after it, and store what they drew as before) */
 	for (index = 0; index < vk.segment_count; index++)
@@ -2162,11 +2353,13 @@ const struct xgpu_vulkan_image_description *xgpu_vulkan_image_description(const 
 
 /* the commands an upload into an image goes in: the early ones where no
 work recorded so far in this submission uses it */
-static VkCommandBuffer upload_commands(uint64_t used)
+static VkCommandBuffer upload_commands(uint64_t used, int image)
 {
 	if (vk.recording && used == vk.serial)
 	{
 		vk.statistics.uploads_ordered++;
+		/* (an image's: put aside where the chain has not sampled it) */
+		vk.aside_allowed = image;
 		return main_commands();
 	}
 	vk.statistics.uploads_early++;
@@ -2215,7 +2408,7 @@ void xgpu_vulkan_image_upload(struct xgpu_vulkan_image *image, uint32_t level, u
 		return;
 	/* (the commands chosen first: the upload may have submitted the
 	recording) */
-	commands = upload_commands(image->used);
+	commands = upload_commands(image->used, 1);
 	image_use(image);
 	image_written(image);
 	for (slice = 0; slice < depth; slice++)
@@ -2245,7 +2438,7 @@ void xgpu_vulkan_image_upload(struct xgpu_vulkan_image *image, uint32_t level, u
 void xgpu_vulkan_image_make_levels(struct xgpu_vulkan_image *image, uint32_t from)
 {
 	const struct xgpu_vulkan_image_description *description = &image->description;
-	VkCommandBuffer commands = upload_commands(image->used);
+	VkCommandBuffer commands = upload_commands(image->used, 1);
 	uint32_t level, layers = description->type == XGPU_VULKAN_IMAGE_CUBE ? 6 :
 		description->type == XGPU_VULKAN_IMAGE_2D_ARRAY ? description->depth_or_layers : 1;
 
@@ -2281,12 +2474,15 @@ void xgpu_vulkan_image_make_levels(struct xgpu_vulkan_image *image, uint32_t fro
 void xgpu_vulkan_image_copy(struct xgpu_vulkan_image *source, uint32_t source_level, uint32_t source_layer,
 	struct xgpu_vulkan_image *destination, uint32_t destination_level, uint32_t destination_layer)
 {
-	VkCommandBuffer commands = main_commands();
+	VkCommandBuffer commands;
 	VkImageCopy copy;
 	uint32_t width = source->description.width >> source_level, height = source->description.height >> source_level;
 	uint32_t destination_width = destination->description.width >> destination_level;
 	uint32_t destination_height = destination->description.height >> destination_level;
 
+	/* (put aside where the chain neither drew nor sampled its images) */
+	vk.aside_allowed = 1;
+	commands = main_commands();
 	memset(&copy, 0, sizeof(copy));
 	copy.srcSubresource.aspectMask = source->aspect;
 	copy.srcSubresource.mipLevel = source_level;
@@ -2336,6 +2532,7 @@ void xgpu_vulkan_image_copy_rectangle(struct xgpu_vulkan_image *source, uint32_t
 	if (rectangle[0] < 0 || rectangle[1] < 0 || right <= rectangle[0] || bottom <= rectangle[1] ||
 		(source->aspect & VK_IMAGE_ASPECT_DEPTH_BIT) || source->transient || destination->transient)
 		return;
+	vk.aside_allowed = 1;
 	commands = main_commands();
 	memset(&copy, 0, sizeof(copy));
 	copy.srcSubresource.aspectMask = copy.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -2455,6 +2652,9 @@ static int resolve_in_pass(struct xgpu_vulkan_image *multisampled, struct xgpu_v
 	attachment->resolve_view = view;
 	multisampled->used = image->used = vk.serial;
 	image_use(image);
+	/* (a pass put aside resolving: what it writes checked; the chain's
+	last piece resolving is its last, aside_continues) */
+	aside_image_written(image);
 	vk.statistics.resolves_in_pass++;
 	return 1;
 }
@@ -2678,15 +2878,17 @@ int xgpu_vulkan_read_pixels(struct xgpu_vulkan_image *image, uint32_t layer, voi
 
 /* ---------- buffers */
 
+#define BUFFER_USAGE (VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | \
+	VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | \
+	VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
+
 struct xgpu_vulkan_buffer *xgpu_vulkan_buffer_create(uint32_t size)
 {
 	struct xgpu_vulkan_buffer *buffer = calloc(1, sizeof(*buffer));
 
 	if (!buffer)
 		return NULL;
-	if (!buffer_make(size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-		VK_BUFFER_USAGE_TRANSFER_SRC_BIT, 1, &buffer->buffer, &buffer->memory, &buffer->mapped))
+	if (!buffer_make(size, BUFFER_USAGE, 1, &buffer->buffer, &buffer->memory, &buffer->mapped))
 	{
 		free(buffer);
 		return NULL;
@@ -2707,7 +2909,110 @@ VkBuffer xgpu_vulkan_buffer_handle(struct xgpu_vulkan_buffer *buffer)
 
 const void *xgpu_vulkan_buffer_contents(const struct xgpu_vulkan_buffer *buffer)
 {
-	return buffer ? buffer->mapped : NULL;
+	if (!buffer)
+		return NULL;
+	/* (a renamed buffer's bytes are the GPU's copy, made as the submission
+	that renamed it begins: waited for) */
+	if (buffer->renamed > completed_serial())
+		xgpu_vulkan_wait(vk.recording && buffer->renamed == vk.serial ? xgpu_vulkan_fence() : buffer->renamed);
+	return buffer->mapped;
+}
+
+/* With aside passes: a buffer the submission being recorded reads, written
+again, is renamed rather than written in the main command buffer's order
+(which ends the pass, and the chain: "aside passes", above), as the Metal
+backend renames its mirror's segments: a spare buffer of its size, which no
+submission still reads (or a new one), takes its place, its bytes copied
+from the old one by the early commands, before this submission's work and
+after the earlier early writes into the old one; the write that follows
+goes in the early commands too, after the copy. What was recorded
+before keeps reading the old buffer, which is a spare from this
+submission on. 1 if it was renamed. */
+#define BUFFER_SPARES 16
+
+struct buffer_spare
+{
+	VkBuffer buffer;
+	struct allocation memory;
+	void *mapped;
+	uint32_t size;
+	/* the last submission that may read it */
+	uint64_t serial;
+};
+
+static int buffer_rename(struct xgpu_vulkan_buffer *buffer)
+{
+	struct buffer_spare old, fresh;
+	uint64_t done = completed_serial();
+	uint32_t index;
+	VkBufferCopy copy;
+	VkCommandBuffer commands;
+
+	memset(&fresh, 0, sizeof(fresh));
+	for (index = 0; index < vk.spare_count; index++)
+	{
+		if (vk.spares[index].size == buffer->size && vk.spares[index].serial <= done)
+		{
+			fresh = vk.spares[index];
+			vk.spares[index] = vk.spares[--vk.spare_count];
+			break;
+		}
+	}
+	if (!fresh.buffer && !buffer_make(buffer->size, BUFFER_USAGE, 1, &fresh.buffer, &fresh.memory, &fresh.mapped))
+		return 0;
+	if (vk.spare_count == vk.spare_capacity)
+	{
+		uint32_t capacity = vk.spare_capacity ? vk.spare_capacity * 2 : 8;
+		struct buffer_spare *grown = realloc(vk.spares, capacity * sizeof(*grown));
+
+		if (!grown)
+		{
+			struct garbage item;
+
+			memset(&item, 0, sizeof(item));
+			item.kind = _garbage_buffer;
+			item.serial = vk.serial;
+			item.buffer = fresh.buffer;
+			item.memory = fresh.memory;
+			garbage_add(&item);
+			return 0;
+		}
+		vk.spares = grown;
+		vk.spare_capacity = capacity;
+	}
+	old.buffer = buffer->buffer;
+	old.memory = buffer->memory;
+	old.mapped = buffer->mapped;
+	old.size = buffer->size;
+	old.serial = vk.serial;
+	commands = early_commands();
+	memset(&copy, 0, sizeof(copy));
+	copy.size = buffer->size;
+	vkCmdCopyBuffer(commands, old.buffer, fresh.buffer, 1, &copy);
+	transfer_done(commands);
+	buffer->buffer = fresh.buffer;
+	buffer->memory = fresh.memory;
+	buffer->mapped = fresh.mapped;
+	buffer->used = 0;
+	buffer->renamed = vk.serial;
+	/* (the spares beyond BUFFER_SPARES let go of, the oldest first, once
+	the GPU has passed them) */
+	if (vk.spare_count >= BUFFER_SPARES)
+	{
+		struct garbage item;
+
+		memset(&item, 0, sizeof(item));
+		item.kind = _garbage_buffer;
+		item.serial = vk.spares[0].serial;
+		item.buffer = vk.spares[0].buffer;
+		item.memory = vk.spares[0].memory;
+		garbage_add(&item);
+		memmove(vk.spares, vk.spares + 1, (vk.spare_count - 1) * sizeof(*vk.spares));
+		vk.spare_count--;
+	}
+	vk.spares[vk.spare_count++] = old;
+	vk.statistics.buffers_renamed++;
+	return 1;
 }
 
 void xgpu_vulkan_buffer_write(struct xgpu_vulkan_buffer *buffer, uint32_t offset, const void *data, uint32_t size,
@@ -2720,16 +3025,29 @@ void xgpu_vulkan_buffer_write(struct xgpu_vulkan_buffer *buffer, uint32_t offset
 
 	if (!buffer || !size || (uint64_t)offset + size > buffer->size)
 		return;
+	/* (bytes no work reads, written as they are, but into a renamed buffer
+	whose copy is still to be made, after which they go: also after it) */
 	if (unused)
 	{
 		memcpy((unsigned char *)buffer->mapped + offset, data, size);
-		return;
+		if (buffer->renamed <= completed_serial())
+			return;
 	}
 	staging = xgpu_vulkan_upload(size, 16, &range);
 	if (!staging)
 		return;
 	memcpy(staging, data, size);
-	commands = upload_commands(buffer->used);
+	if (unused)
+		commands = early_commands();
+	else if (vk.aside && vk.recording && buffer->used == vk.serial && buffer->ordered != vk.serial &&
+		buffer_rename(buffer))
+		commands = early_commands();
+	else
+	{
+		commands = upload_commands(buffer->used, 0);
+		if (commands != vk.slot->early)
+			buffer->ordered = vk.serial;
+	}
 	memset(&copy, 0, sizeof(copy));
 	copy.srcOffset = range.offset;
 	copy.dstOffset = offset;
@@ -3502,6 +3820,7 @@ static void pass_segment_begin(const VkRenderingInfo *rendering)
 			(rendering->pDepthAttachment->loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR) |
 			(rendering->pStencilAttachment->loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR) << 1);
 	}
+	aside_pass(index, segment);
 	segment->commands = secondary_begin(&inheritance);
 	vk.pass_commands = segment->commands;
 	/* (a secondary command buffer begins with no state bound) */
@@ -4563,10 +4882,11 @@ static void rectangle_turned(int quarter_turns, uint32_t window_width, uint32_t 
 	}
 }
 
-void xgpu_vulkan_hdr_state(int active, int mode, int paper_white)
+void xgpu_vulkan_hdr_state(int active, int mode, int paper_white_nits, int paper_white)
 {
 	vk.hdr_active = active != 0;
 	vk.hdr_mode = mode == XGPU_HDR_MODE_PUNCHY ? XGPU_HDR_MODE_PUNCHY : XGPU_HDR_MODE_FAITHFUL;
+	vk.hdr_paper_white_nits = paper_white_nits > 0 ? paper_white_nits : 0;
 	vk.hdr_paper_white = paper_white > 0 ? paper_white : 100;
 	/* (the swapchain made again where its output changes) */
 	if (vk.swapchain && hdr_output_choose() != vk.hdr_output)
@@ -4579,13 +4899,20 @@ static float sdr_white_nits(void)
 {
 	float sdr_white = float_of(__atomic_load_n(&vk.window_sdr_white, __ATOMIC_ACQUIRE));
 
-	return sdr_white > 1.0f ? sdr_white * 80.0f : 203.0f;
+	return sdr_white > 1.0f ? sdr_white * 80.0f : XGPU_HDR_REFERENCE_WHITE_NITS;
+}
+
+/* paper white in nits, as the front end's state says */
+static float paper_white_nits(void)
+{
+	return xgpu_hdr_paper_white_nits(vk.hdr_paper_white_nits, vk.hdr_paper_white, sdr_white_nits());
 }
 
 void xgpu_vulkan_hdr_frame(struct xgpu_hdr_frame *frame)
 {
 	float headroom = float_of(__atomic_load_n(&vk.window_headroom, __ATOMIC_ACQUIRE));
-	float setting = (float)vk.hdr_paper_white / 100.0f;
+	/* (paper white over the system's SDR white) */
+	float setting = paper_white_nits() / sdr_white_nits();
 	float nits;
 
 	memset(frame, 0, sizeof(*frame));
@@ -4631,7 +4958,7 @@ static void hdr_metadata_set(void)
 	metadata.maxLuminance = peak;
 	metadata.minLuminance = 0.0f;
 	metadata.maxContentLightLevel = peak;
-	metadata.maxFrameAverageLightLevel = sdr_white_nits() * (float)vk.hdr_paper_white / 100.0f;
+	metadata.maxFrameAverageLightLevel = paper_white_nits();
 	vkSetHdrMetadataEXT(vk.device, 1, &vk.swapchain, &metadata);
 }
 
@@ -6316,20 +6643,23 @@ VK_KHR_depth_stencil_resolve: else the depth is resolved by a pass of its
 own, as without discards), and lazily allocated memory for the transient
 multisampled images (else they are ordinary images: a desktop's GPU has
 none). HALO_VULKAN_TRANSIENT=0: no transient images; =force: transient
-images in ordinary memory, to try their path on a desktop's GPU. Off by
-default until it is measured on tile-based GPUs (#133). */
+images in ordinary memory, to try their path on a desktop's GPU. On by
+default (measured on the Steam Frame's Adreno, #335);
+HALO_VULKAN_DISCARDS=0: off. */
 static void discards_choose(void)
 {
 	const char *chosen = getenv("HALO_VULKAN_DISCARDS"), *transient = getenv("HALO_VULKAN_TRANSIENT");
+	const char *aside = getenv("HALO_VULKAN_ASIDE");
 	VkPhysicalDeviceDepthStencilResolveProperties resolve;
 	VkPhysicalDeviceProperties2 properties;
 	uint32_t index;
 	int lazily = 0;
 
-	vk.deferred = chosen && atoi(chosen) != 0;
-	vk.depth_resolve = vk.transient = 0;
+	vk.deferred = !chosen || !*chosen || atoi(chosen) != 0;
+	vk.depth_resolve = vk.transient = vk.aside = 0;
 	if (!vk.deferred)
 		return;
+	vk.aside = !aside || !*aside || atoi(aside) != 0;
 	memset(&resolve, 0, sizeof(resolve));
 	resolve.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES;
 	memset(&properties, 0, sizeof(properties));
@@ -6344,8 +6674,9 @@ static void discards_choose(void)
 		vk.transient = 2;
 	else if (lazily && !(transient && *transient && !atoi(transient)))
 		vk.transient = 1;
-	host_logf(HOST_LOG_INFO, "vulkan: discards on: stores chosen at the submission; depth resolved in passes: %s; "
-		"transient multisampled targets: %s", vk.depth_resolve ? "yes" : "no (no SAMPLE_ZERO resolve)",
+	host_logf(HOST_LOG_INFO, "vulkan: discards on: stores chosen at the submission; passes put aside: %s; "
+		"depth resolved in passes: %s; transient multisampled targets: %s",
+		vk.aside ? "yes" : "no (HALO_VULKAN_ASIDE=0)", vk.depth_resolve ? "yes" : "no (no SAMPLE_ZERO resolve)",
 		vk.transient == 1 ? "lazily allocated" : vk.transient == 2 ? "forced, in ordinary memory" :
 		lazily ? "no (HALO_VULKAN_TRANSIENT=0)" : "no (no lazily allocated memory)");
 }

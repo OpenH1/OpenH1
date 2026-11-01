@@ -197,6 +197,12 @@ int main(void)
 		CHECK(bright[0] > 2.4999f && bright[0] < 2.5001f, "EDR: at most the peak times paper white: %.5f", bright[0]);
 		CHECK(pq_white[0] > 0.5805f && pq_white[0] < 0.5809f, "PQ: 203 nits is 0.5807: %.5f", pq_white[0]);
 	}
+	/* paper white: display.hdr_paper_white_nits, else the system's white
+	times display.hdr_paper_white's percent (a config before the nits) */
+	CHECK(xgpu_hdr_paper_white_nits(300, 50, 203.0f) == 300.0f, "paper white in nits, the percent not read");
+	CHECK(xgpu_hdr_paper_white_nits(0, 100, 240.0f) == 240.0f, "0: the system's white");
+	CHECK(xgpu_hdr_paper_white_nits(0, 150, XGPU_HDR_EDR_WHITE_NITS) == 150.0f, "0: the percent of the system's");
+	CHECK(xgpu_hdr_paper_white_nits(0, 0, 203.0f) == 203.0f, "no percent: the system's white");
 	{
 		/* a glow brightened toward its ceiling by its own light, at most to it */
 		float had[3] = { 0.1f, 0.2f, 0.3f }, rgb[3] = { 0.6f, 0.95f, 1.0f };

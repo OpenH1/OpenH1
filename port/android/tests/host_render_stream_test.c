@@ -1831,41 +1831,49 @@ static void test_frames_in_flight(void)
 /* display.low_latency's pacing (host_render_stream_frame_displayed): a
 display that takes each frame as it ends paces the game, which never has
 more than FRAME_PACING_QUEUED of its frames untaken (nor waits the longest,
-100 ms, for one), and starts each in time for the refresh it is for */
+100 ms, for one), and starts each in time for the refresh it is for. A
+render thread kept off the processor misses refreshes whatever the pacing
+does (7 of 30 on a machine busy with builds), so a run with misses is tried
+again: the pacing's own fault misses in every one */
 static void test_display_paced(void)
 {
 	struct host_render_pacing_statistics statistics;
 	const struct xgpu_stream_ring *ring;
 	uint64_t started, elapsed;
-	int frame;
+	int attempt, frame;
 
-	random_state = 0xdecade;
-	pool.stream_bytes = 256;
-	pool.immediate_vertices = 16;
-	pool.large_every = 0;
-	pool_make();
-	stream_begin(8u << 20, 2, 0);
-	ring = xgpu_stream_encode_ring();
-	host_render_stream_pacing_statistics(&statistics);
-	display_period = 4000000u;
-	host_render_stream_frames_taken_reset();
-	host_render_stream_display_paced(1);
-	started = test_now();
-	for (frame = 0; frame < 30; frame++)
-		front_frame((uint32_t)frame, 4);
-	elapsed = test_now() - started;
-	host_render_stream_pacing_statistics(&statistics);
-	host_render_stream_display_paced(0);
-	display_period = 0;
-	printf("display paced: 30 frames in %.1f ms, %u at their refresh, %u after it, %u started late, budget %.2f ms\n",
-		(double)elapsed / 1e6, statistics.kept, statistics.missed, statistics.late_starts,
-		(double)statistics.budget / 1e6);
-	/* (no wait for a display that took nothing: 100 ms each) */
-	CHECK(elapsed < 1000000000u);
+	for (attempt = 0; attempt < 3; attempt++)
+	{
+		random_state = 0xdecade;
+		pool.stream_bytes = 256;
+		pool.immediate_vertices = 16;
+		pool.large_every = 0;
+		pool_make();
+		stream_begin(8u << 20, 2, 0);
+		ring = xgpu_stream_encode_ring();
+		host_render_stream_pacing_statistics(&statistics);
+		display_period = 4000000u;
+		host_render_stream_frames_taken_reset();
+		host_render_stream_display_paced(1);
+		started = test_now();
+		for (frame = 0; frame < 30; frame++)
+			front_frame((uint32_t)frame, 4);
+		elapsed = test_now() - started;
+		host_render_stream_pacing_statistics(&statistics);
+		host_render_stream_display_paced(0);
+		display_period = 0;
+		printf("display paced: 30 frames in %.1f ms, %u at their refresh, %u after it, %u started late, budget %.2f ms\n",
+			(double)elapsed / 1e6, statistics.kept, statistics.missed, statistics.late_starts,
+			(double)statistics.budget / 1e6);
+		/* (no wait for a display that took nothing: 100 ms each) */
+		CHECK(elapsed < 1000000000u);
+		CHECK(ring->frames_submitted >= 30);
+		stream_end("display paced");
+		if (statistics.missed == 0)
+			break;
+	}
 	CHECK(statistics.missed == 0);
 	CHECK(statistics.kept >= 20);
-	CHECK(ring->frames_submitted >= 30);
-	stream_end("display paced");
 }
 
 /* a ring and more of other records between a set_vertices and its draw:

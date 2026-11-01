@@ -93,12 +93,13 @@ void xgpu_backend_anti_alias(xgpu_target target, BOOL smaa, const long corners[4
 
 /* display.hdr (xgpu_hdr.h): the frame drawn in HDR (the back buffer
 RGBA16F) or not from now on, the mode (XGPU_HDR_MODE_*) and paper white
-(percent of the system's SDR white); a window's 3D view in the back buffer
+(in nits; 0: the system's SDR white, in percent of it:
+xgpu_hdr_paper_white_nits); a window's 3D view in the back buffer
 tone mapped over its corners (as xgpu_backend_anti_alias's); and the
 display, as the backend last looked (answered now, from what the backend
 writes where the front end reads it: the stream's ring): whether it shows
 HDR, and its headroom */
-void xgpu_backend_hdr(BOOL active, int mode, int paper_white);
+void xgpu_backend_hdr(BOOL active, int mode, int paper_white_nits, int paper_white);
 /* display.picture_position: the presented picture letterboxed this many
 pixels from the top of a window taller than it (no lower than its bottom),
 or centered (-1), from the next present on */

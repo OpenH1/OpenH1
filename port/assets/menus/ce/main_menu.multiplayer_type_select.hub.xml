@@ -12,8 +12,7 @@
 		<child widget="main_menu/multiplayer_type_select/hub/hub_friends" x="28" y="237"/>
 		<child widget="main_menu/multiplayer_type_select/hub/section_host" x="28" y="270"/>
 		<child widget="main_menu/multiplayer_type_select/hub/hub_create" x="28" y="292"/>
-		<child widget="main_menu/multiplayer_type_select/hub/hub_create_bots" x="28" y="319"/>
-		<child widget="main_menu/multiplayer_type_select/hub/hub_coop" x="28" y="346"/>
+		<child widget="main_menu/multiplayer_type_select/hub/hub_coop" x="28" y="319"/>
 		<child widget="main_menu/multiplayer_type_select/hub/hub_gametypes" x="28" y="381"/>
 		<child widget="main_menu/multiplayer_type_select/hub/hub_prompts" y="414"/>
 	</widget>
@@ -35,6 +34,7 @@
 		<child widget="main_menu/multiplayer_type_select/hub/section_create" x="28" y="80"/>
 		<child widget="main_menu/multiplayer_type_select/hub/hub_create_inter" x="28" y="102"/>
 		<child widget="main_menu/multiplayer_type_select/hub/hub_create_lan_item" x="28" y="130"/>
+		<child widget="main_menu/multiplayer_type_select/hub/hub_create_offline" x="28" y="158"/>
 		<child widget="main_menu/multiplayer_type_select/hub/page_prompts" y="414"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/hub/section_create" type="text" width="280" height="20" wide="-106 80" bitmap="main_menu/parts/section_280" text="CREATE GAME" font="ui\small_ui" color="#FF6F9CD0" text_x="4">
@@ -96,11 +96,6 @@
 		<on event="start" open="main_menu/multiplayer_type_select/hub/create_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/hub/hub_create_bots" type="text" width="280" height="26" wide="-106 80" bitmap="main_menu/parts/item_280x26" text="PLAY WITH BOTS" font="ui\large_ui" color="#FF2896FF" text_x="10" text_y="5">
-		<on event="a" run="join controller to mp game"/>
-		<on event="a" run="mp type set mode" open="main_menu/multiplayer_type_select/connected/connected_map_select_wrapper"/>
-		<on event="left_mouse" run="mouse emit accept event"/>
-	</widget>
 	<widget name="main_menu/multiplayer_type_select/hub/hub_coop" type="text" width="280" height="26" wide="-106 80" bitmap="main_menu/parts/item_280x26" text="CO-OP CAMPAIGN ›" font="ui\large_ui" color="#FF2896FF" text_x="10" text_y="5">
 		<on event="a" open="main_menu/multiplayer_type_select/hub/coop_screen"/>
 		<on event="start" open="main_menu/multiplayer_type_select/hub/coop_screen"/>
@@ -117,6 +112,11 @@
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/hub/hub_create_lan_item" type="text" width="280" height="26" wide="-106 80" bitmap="main_menu/parts/item_280x26" text="LOCAL NETWORK" font="ui\large_ui" color="#FF2896FF" text_x="10" text_y="5">
+		<on event="a" run="join controller to mp game"/>
+		<on event="a" run="mp type set mode" open="main_menu/multiplayer_type_select/connected/connected_map_select_wrapper"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/hub/hub_create_offline" type="text" width="280" height="26" wide="-106 80" bitmap="main_menu/parts/item_280x26" text="OFFLINE" font="ui\large_ui" color="#FF2896FF" text_x="10" text_y="5">
 		<on event="a" run="join controller to mp game"/>
 		<on event="a" run="mp type set mode" open="main_menu/multiplayer_type_select/connected/connected_map_select_wrapper"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -254,7 +254,7 @@
 		<string text="Host a game for players on your Wi-Fi or local network."/>
 		<string text="Play the campaign together over the Internet: friends join with your invite link."/>
 		<string text="Play the campaign with a friend on this screen. Player 2 uses a controller."/>
-		<string text="Play Slayer against computer players, alone or with friends on this screen."/>
+		<string text="Play on this computer, without the network: against bots, and with friends on this screen."/>
 		<string text="Make your own gametypes: the rules, weapons and vehicles, kept for next time."/>
 		<string text="Host a game on the Internet, or for players on your local network only."/>
 		<string text="Play the campaign together: online, or split screen on this computer."/>

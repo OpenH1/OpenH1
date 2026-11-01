@@ -67,6 +67,8 @@ offsets of chunk n starting at n << RING_CHUNK_SHIFT */
 #define RING_ALIGNMENT 256
 /* the guest's buffers: at most this many, each inside a granule */
 #define GUEST_REGION_MAXIMUM 512
+/* the render thread's last buffers found, looked at before the regions */
+#define GUEST_RECENT 4
 #define GUEST_GRANULE (4u << 20)
 /* the visibility result buffers' entries a frame (each a test in one
 pass), and their passes: each pass counts into a buffer of its own (Apple's
@@ -320,6 +322,10 @@ static struct
 	NSMutableArray<NSNumber *> *buffers_used;
 	/* the command buffer whose blits last wrote each (aside passes) */
 	NSMutableArray<NSNumber *> *buffers_written;
+	/* buffers renamed out (xgpu_metal_buffer_write), and the serials of the
+	command buffers that last used them */
+	NSMutableArray<id<MTLBuffer>> *buffer_spares;
+	NSMutableArray<NSNumber *> *buffer_spares_serials;
 
 	/* the visibility test going on: its entry in this pass, and its first
 	(its entries get the slot at its end) */
@@ -340,10 +346,29 @@ static struct
 	/* counts the guest's remappings: a buffer made while one happened may
 	be over the old pages */
 	uint64_t remap_generation;
+	/* the last depth-stencil state given, and its key: an encoder begun
+	again (each return to a parked pass) sets it without a lookup */
+	struct depth_stencil_key depth_stencil_key;
+	id<MTLDepthStencilState> depth_stencil_state;
+	/* (the render thread's, without the lock) the last regions found, each
+	good while no remapping has been counted since */
+	struct
+	{
+		uint32_t start, end;
+		id<MTLBuffer> buffer;
+		uint64_t generation;
+	} recent[GUEST_RECENT];
+	uint32_t recent_next;
 
 	struct xgpu_metal_statistics statistics;
 	struct xgpu_metal_compile_totals compile_totals;
 	pthread_mutex_t statistics_lock;
+	/* (the render thread's) the draws and passes since the last frame's
+	end, added to the statistics there: not each under the lock */
+	struct
+	{
+		uint32_t draws, passes, passes_aside;
+	} counted;
 } metal = {
 	.completed_lock = PTHREAD_MUTEX_INITIALIZER,
 	.completed_condition = PTHREAD_COND_INITIALIZER,
@@ -912,8 +937,11 @@ results are the same. A target the command buffer has read is given
 another texture first (renamed: its contents copied where the pass loads
 them), so that what read it reads what it had. HALO_METAL_ASIDE=0: none. */
 
-/* the open pass's targets this large, and a small target a quarter of
-that at most */
+/* the open pass's targets this large (the target put aside any size: a
+2048x2048 one, the game's, drawn in four passes between parts of the 3D
+view, ended the view's pass at every phone's resolution, its multisampled
+colour, depth and stencil stored and loaded again; the passes put aside
+cost what they did) */
 #define ASIDE_LARGE_PIXELS (512 * 512)
 #define ASIDE_SPARES 64
 
@@ -1009,7 +1037,7 @@ static void aside_close(void)
 /* whether a pass of these targets can be put aside */
 static BOOL aside_possible(struct texture_entry *color, uint32_t color_level, BOOL depth, int multisampled)
 {
-	uint64_t open, small;
+	uint64_t open;
 
 	if (aside_enabled < 0)
 		aside_enabled = !getenv("HALO_METAL_ASIDE") || atoi(getenv("HALO_METAL_ASIDE")) != 0;
@@ -1018,8 +1046,7 @@ static BOOL aside_possible(struct texture_entry *color, uint32_t color_level, BO
 		return NO;
 	open = metal.aside ? (uint64_t)metal.parked.target_width * metal.parked.target_height :
 		(uint64_t)metal.target_width * metal.target_height;
-	small = (uint64_t)(color->description.width >> color_level) * (color->description.height >> color_level);
-	return open >= ASIDE_LARGE_PIXELS && small * 4 <= open;
+	return open >= ASIDE_LARGE_PIXELS;
 }
 
 /* a buffer source the command buffer's blits have written */
@@ -2024,7 +2051,7 @@ void xgpu_metal_guest_remapped(uint32_t address, uint32_t size)
 	uint32_t index;
 
 	pthread_mutex_lock(&metal.region_lock);
-	metal.remap_generation++;
+	__atomic_store_n(&metal.remap_generation, metal.remap_generation + 1, __ATOMIC_RELEASE);
 	for (index = 0; index < metal.region_count;)
 	{
 		struct guest_region *region = &metal.regions[index];
@@ -2045,6 +2072,30 @@ void xgpu_metal_guest_remapped(uint32_t address, uint32_t size)
 	pthread_mutex_unlock(&metal.region_lock);
 }
 
+/* (the render thread) a region found, remembered for the next lookups */
+static void guest_recent_add(uint32_t start, uint32_t end, id<MTLBuffer> buffer, uint64_t generation)
+{
+	uint32_t index = metal.recent_next++ % GUEST_RECENT;
+
+	metal.recent[index].start = start;
+	metal.recent[index].end = end;
+	metal.recent[index].buffer = buffer;
+	metal.recent[index].generation = generation;
+}
+
+/* (the render thread, the region lock held) a region let go: not
+remembered either */
+static void guest_recent_forget(id<MTLBuffer> buffer)
+{
+	uint32_t index;
+
+	for (index = 0; index < GUEST_RECENT; index++)
+	{
+		if (metal.recent[index].buffer == buffer)
+			metal.recent[index].buffer = nil;
+	}
+}
+
 /* a buffer over the guest range and the range's offset in it, or nil */
 static id<MTLBuffer> guest_buffer(uint32_t address, uint32_t size, NSUInteger *offset)
 {
@@ -2054,6 +2105,20 @@ static id<MTLBuffer> guest_buffer(uint32_t address, uint32_t size, NSUInteger *o
 	struct guest_region *region;
 	id<MTLBuffer> buffer = nil;
 	uint64_t generation;
+
+	/* (most draws read where one of the last few did: no lock, no search,
+	while the guest has remapped nothing; a remapping after this look is
+	as one after the lock below is let go) */
+	generation = __atomic_load_n(&metal.remap_generation, __ATOMIC_ACQUIRE);
+	for (index = 0; index < GUEST_RECENT; index++)
+	{
+		if (metal.recent[index].buffer && metal.recent[index].generation == generation &&
+			metal.recent[index].start <= address && end <= metal.recent[index].end)
+		{
+			*offset = address - metal.recent[index].start;
+			return metal.recent[index].buffer;
+		}
+	}
 
 	pthread_mutex_lock(&metal.region_lock);
 	metal.region_clock++;
@@ -2066,6 +2131,7 @@ static id<MTLBuffer> guest_buffer(uint32_t address, uint32_t size, NSUInteger *o
 			region->used = metal.region_clock;
 			*offset = address - region->start;
 			buffer = region->buffer;
+			guest_recent_add(region->start, region->end, buffer, generation);
 			break;
 		}
 	}
@@ -2102,6 +2168,7 @@ static id<MTLBuffer> guest_buffer(uint32_t address, uint32_t size, NSUInteger *o
 			if (metal.regions[index].used < metal.regions[oldest].used)
 				oldest = index;
 		}
+		guest_recent_forget(metal.regions[oldest].buffer);
 		metal.region_count--;
 		metal.regions[oldest] = metal.regions[metal.region_count];
 		metal.regions[metal.region_count].buffer = nil;
@@ -2111,6 +2178,7 @@ static id<MTLBuffer> guest_buffer(uint32_t address, uint32_t size, NSUInteger *o
 	region->end = extent_end;
 	region->buffer = buffer;
 	region->used = metal.region_clock;
+	guest_recent_add(start, extent_end, buffer, generation);
 	pthread_mutex_unlock(&metal.region_lock);
 	*offset = address - start;
 	return buffer;
@@ -2175,6 +2243,46 @@ const void *xgpu_metal_buffer_contents(uint32_t buffer)
 	return buffer && buffer <= metal.buffers.count ? metal.buffers[buffer - 1].contents : NULL;
 }
 
+/* a buffer written while the GPU's work still reads it is renamed (below)
+up to this size; the buffers it had are kept until that work is done, to
+be renamed into again */
+#define BUFFER_RENAME_LARGEST (4u << 20)
+#define BUFFER_SPARES 8
+
+static id<MTLBuffer> buffer_spare(NSUInteger length)
+{
+	NSUInteger index;
+
+	for (index = 0; index < metal.buffer_spares.count; index++)
+	{
+		id<MTLBuffer> spare = metal.buffer_spares[index];
+
+		if (spare.length == length && metal.buffer_spares_serials[index].unsignedLongLongValue <= xgpu_metal_frame_completed())
+		{
+			[metal.buffer_spares removeObjectAtIndex:index];
+			[metal.buffer_spares_serials removeObjectAtIndex:index];
+			return spare;
+		}
+	}
+	return [metal.device newBufferWithLength:length options:MTLResourceStorageModeShared];
+}
+
+static void buffer_retire(id<MTLBuffer> old, uint64_t used)
+{
+	if (!metal.buffer_spares)
+	{
+		metal.buffer_spares = [NSMutableArray new];
+		metal.buffer_spares_serials = [NSMutableArray new];
+	}
+	[metal.buffer_spares addObject:old];
+	[metal.buffer_spares_serials addObject:@(used)];
+	if (metal.buffer_spares.count > BUFFER_SPARES)
+	{
+		[metal.buffer_spares removeObjectAtIndex:0];
+		[metal.buffer_spares_serials removeObjectAtIndex:0];
+	}
+}
+
 void xgpu_metal_buffer_write(uint32_t buffer, uint32_t offset, const void *data, uint32_t size, int unused)
 {
 	id<MTLBuffer> object;
@@ -2194,6 +2302,27 @@ void xgpu_metal_buffer_write(uint32_t buffer, uint32_t offset, const void *data,
 		memcpy((unsigned char *)object.contents + offset, data, size);
 		statistics_add(&metal.statistics.uploads_direct, 1);
 		return;
+	}
+	/* (the GPU's writes to it all done: another buffer takes its place,
+with its contents and the bytes written, and the work that reads the old
+one reads what it had; a blit in the command buffer's order would end
+the pass, the screen's multisampled colour, depth and stencil stored and
+loaded again for a few kilobytes) */
+	if (metal.buffers_written[buffer - 1].unsignedLongLongValue <= xgpu_metal_frame_completed() &&
+		object.length <= BUFFER_RENAME_LARGEST)
+	{
+		id<MTLBuffer> renamed = buffer_spare(object.length);
+
+		if (renamed)
+		{
+			memcpy(renamed.contents, object.contents, object.length);
+			memcpy((unsigned char *)renamed.contents + offset, data, size);
+			buffer_retire(object, metal.buffers_used[buffer - 1].unsignedLongLongValue);
+			metal.buffers[buffer - 1] = renamed;
+			metal.buffers_used[buffer - 1] = @0;
+			statistics_add(&metal.statistics.uploads_direct, 1);
+			return;
+		}
 	}
 	/* in the command buffer's order: a blit from the ring */
 	source = xgpu_metal_stream(data, size);
@@ -2395,6 +2524,10 @@ uint64_t xgpu_metal_frame_end(uint32_t present)
 		clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now);
 		seconds = (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
 		pthread_mutex_lock(&metal.statistics_lock);
+		metal.statistics.draws += metal.counted.draws;
+		metal.statistics.passes += metal.counted.passes;
+		metal.statistics.passes_aside += metal.counted.passes_aside;
+		memset(&metal.counted, 0, sizeof(metal.counted));
 		if (last > 0.0)
 			metal.statistics.render_cpu_seconds += seconds - last;
 		pthread_mutex_unlock(&metal.statistics_lock);
@@ -2685,12 +2818,12 @@ static id<MTLRenderCommandEncoder> encoder(void)
 	}
 	metal.encoder = [(metal.aside ? aside_buffer() : command_buffer()) renderCommandEncoderWithDescriptor:pass];
 	if (metal.aside)
-		statistics_add(&metal.statistics.passes_aside, 1);
+		metal.counted.passes_aside++;
 	/* (the clears are done: the pass goes on from what it stores) */
 	metal.color_load = metal.depth_load = metal.stencil_load = MTLLoadActionLoad;
 	metal.dirty = _dirty_all;
 	metal.visibility_pending = metal.visibility_active;
-	statistics_add(&metal.statistics.passes, 1);
+	metal.counted.passes++;
 	return metal.encoder;
 }
 
@@ -3050,10 +3183,16 @@ static id<MTLDepthStencilState> depth_stencil_state_get(const struct xgpu_metal_
 			key.stencil_write_mask = pipeline->stencil_write_mask;
 		}
 	}
+	if (metal.depth_stencil_state && !memcmp(&key, &metal.depth_stencil_key, sizeof(key)))
+		return metal.depth_stencil_state;
 	data = [NSData dataWithBytes:&key length:sizeof(key)];
 	state = metal.depth_stencil_states[data];
 	if (state)
+	{
+		metal.depth_stencil_key = key;
+		metal.depth_stencil_state = state;
 		return state;
+	}
 	descriptor = [MTLDepthStencilDescriptor new];
 	/* (depth reversed: xgpu_backend.h) */
 	descriptor.depthCompareFunction = key.depth_test ?
@@ -3075,6 +3214,8 @@ static id<MTLDepthStencilState> depth_stencil_state_get(const struct xgpu_metal_
 	state = [metal.device newDepthStencilStateWithDescriptor:descriptor];
 	metal.depth_stencil_states[data] = state;
 	statistics_add(&metal.statistics.depth_stencil_states_made, 1);
+	metal.depth_stencil_key = key;
+	metal.depth_stencil_state = state;
 	return state;
 }
 
@@ -3434,7 +3575,7 @@ void xgpu_metal_draw(uint32_t primitive, uint32_t count, uint32_t first_vertex, 
 	{
 		[render drawPrimitives:primitive_types[primitive] vertexStart:first_vertex vertexCount:count];
 	}
-	statistics_add(&metal.statistics.draws, 1);
+	metal.counted.draws++;
 	if (profile.current >= 0)
 	{
 		profile.passes[profile.current].draws++;

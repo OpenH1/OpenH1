@@ -362,7 +362,10 @@ server's admins Host Controls in the game (distributed messages 137 and 138,
 `_distributed_message_admin_down` and `_up`, reliably: below, "Dedicated
 servers"); version 16 brings relays for machines whose NATs keep them
 apart (the relays' packets on the tunnel's socket, the signalling's relay
-offers, a dedicated server's relays told its players: below, "Relays").
+offers, a dedicated server's relays told its players: below, "Relays");
+version 17 moves the bots' machines to the session's last 64 (113 to 127
+before), by which every OpenH1 machine tells a bot's player (below, "Bots
+in network games").
 With no new version, each client then tells the
 host its build (distributed message 92, `_distributed_message_client_build`,
 reliably once a game after its ready, over its connection alone): its
@@ -1392,8 +1395,12 @@ A host plays the bots of its system link and internet games
 new goes between the machines:
 
 - Each bot is the one player of a machine of its own, a machine index from
-  `BOTS_FIRST_MACHINE` (113) up that no real machine takes: the host numbers
-  the machines that join below it. The machine has no connection: the host
+  `BOTS_FIRST_MACHINE` (64) up that no real machine takes: the host numbers
+  the machines that join below it (64 machines, each with up to four
+  players: more than the session's 128 players). A game takes up to 64 bots,
+  as far as its most players leave room. Every OpenH1 machine tags a bot's
+  player by its machine (the lobby's and the scores' BOT), so the range is
+  part of the Standard version (17; 113 to 127 before, with 15 bots at most). The machine has no connection: the host
   plays its player, as it plays a remote player whose input comes at once.
 - The bots join the lobby as players do, in the game's settings record, and
   a game in progress as a late joiner's players do
@@ -1419,7 +1426,7 @@ new goes between the machines:
 Checked on one Mac (an internet game through a local broker, the host and
 a client each a hidden copy, 4 bots, 60 seconds): `net_compare --compare`
 passes at 120 and in a Legacy game, the client logging the bots as the
-host's players (machines 113 to 116), their positions 0.03 world units
+host's players (machines 113 to 116, the bots' range then), their positions 0.03 world units
 apart on average.
 
 ### Parties in public games

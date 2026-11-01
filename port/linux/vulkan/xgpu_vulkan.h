@@ -598,10 +598,10 @@ changes: SDL's): whether HDR is on, its SDR white in scRGB's units (1.0:
 80 nits; 1.0 also where the system does not say) and its headroom over SDR
 white; the swapchain is made again where its output changes. And the front
 end's state (the stream's record, render thread): whether the frames are
-HDR (a half-float back buffer), the mode, paper white (percent of SDR
-white). */
+HDR (a half-float back buffer), the mode, paper white (in nits; 0: the
+system's SDR white, in percent of it: xgpu_hdr_paper_white_nits). */
 void xgpu_vulkan_window_hdr(int enabled, float sdr_white, float headroom);
-void xgpu_vulkan_hdr_state(int active, int mode, int paper_white);
+void xgpu_vulkan_hdr_state(int active, int mode, int paper_white_nits, int paper_white);
 /* display.picture_position: a picture of another shape than the window
 this many pixels from its top (no lower than its bottom) or centered (-1)
 (present), from the next present on */
@@ -646,6 +646,10 @@ struct xgpu_vulkan_statistics
 	resolved in the pass that drew them, and resolves of samples resolved
 	already (not made again) */
 	uint32_t stores_discarded, frame_end_discards, resolves_in_pass, resolves_skipped;
+	/* aside passes (xgpu_vulkan.c): passes that continued the one before
+	them in one rendering, passes put aside before it, and buffers renamed
+	rather than written in order */
+	uint32_t passes_continued, passes_aside, buffers_renamed;
 	/* debug.gpu_stats (not the VR mode's): the frames' GPU time (from each
 	frame's first work to its last, waits between its submissions
 	included) and the frames it is of; the time between frames' ends and

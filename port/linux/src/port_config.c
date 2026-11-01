@@ -95,14 +95,16 @@ struct config_setting
 
 /* display.graphics = "enhanced": the values it gives the settings it
 chooses (config_graphics), which are their defaults, the same on every
-build: SMAA (on iOS MSAA 4x), 16x anisotropic filtering, 512 shadow maps,
+build: SMAA (on iOS MSAA 2x), 16x anisotropic filtering, 512 shadow maps,
 the models' detail by the display's lines and lit for each pixel, the
 enhanced dynamic lights */
 #ifdef HALO_IOS
 /* (an iPhone's tile-based GPU resolves MSAA in its tile memory, the 3D view
 drawn in one pass, port/macos/xgpu_metal.m: about the cost of SMAA's
-passes over the screen there, and smoother edges) */
-#define GRAPHICS_ANTI_ALIASING "\"msaa4x\""
+passes over the screen there, and smoother edges; 2x keeps a 16-player
+fight on an iPhone 15 Pro Max inside 120 Hz's 8.3 ms, 4 to 5.4 ms of GPU a
+frame where 4x took up to 10) */
+#define GRAPHICS_ANTI_ALIASING "\"msaa2x\""
 #else
 #define GRAPHICS_ANTI_ALIASING "\"smaa\""
 #endif
@@ -157,10 +159,11 @@ static const struct config_setting config_settings[] =
 		"\"native\" draws at the window's resolution (fullscreen, the display's or\n"
 		"display.resolution); \"original\" draws the Xbox's 640x480 and scales it\n"
 		"up." },
-	{ "display.render_scale", _config_real, "1.0", "HALO_RENDER_SCALE", _environment_value, _platform_ios,
+	{ "display.render_scale", _config_real, "0.0", "HALO_RENDER_SCALE", _environment_value, _platform_ios,
 		"iOS: the fraction of the screen's pixels the game draws, each way (0.25\n"
 		"to 1.0), which the display scales up: 0.67 draws less than half the\n"
-		"pixels, for a cooler phone and a steadier frame rate. Read at start." },
+		"pixels, for a cooler phone and a steadier frame rate. 0: the device's,\n"
+		"0.67 on an iPhone of 3x pixels, else 1.0. Read at start." },
 	{ "display.window_size", _config_string, "\"\"", "HALO_WINDOW_SIZE", _environment_value, _platform_desktop,
 		"The window's size, \"<width>x<height>\" (\"1920x1080\"), 640x480 or more (it\n"
 		"can be resized). Empty: display.window_scale's." },
@@ -317,11 +320,16 @@ static const struct config_setting config_settings[] =
 		"With HDR: \"faithful\" keeps the picture as the game draws it, only its\n"
 		"highlights brighter; \"punchy\" lifts the whole scene and its bright\n"
 		"parts, keeping each color's hue, for a brighter, remastered look." },
-	{ "display.hdr_paper_white", _config_integer, "100", "HALO_HDR_PAPER_WHITE", _environment_value, _platform_all,
+	{ "display.hdr_paper_white_nits", _config_integer, "0", "HALO_HDR_PAPER_WHITE_NITS", _environment_value,
+		_platform_all,
 		"With HDR, how bright paper white (white surfaces, the HUD, the menus) is,\n"
-		"in percent of the system's SDR white (macOS's; 203 nits where the system\n"
-		"has none), 50 to 250. The highlights keep the rest of the display's\n"
-		"headroom." },
+		"in nits, 80 to 500; 0 is the system's SDR white (its SDR content\n"
+		"brightness; 203 nits where the system gives none). macOS and iOS give\n"
+		"no nits: their SDR white is taken as 100. The highlights keep the rest\n"
+		"of the display's headroom." },
+	{ "display.hdr_paper_white", _config_integer, "100", "HALO_HDR_PAPER_WHITE", _environment_value, _platform_all,
+		"Deprecated: paper white in percent of the system's SDR white, 50 to 250,\n"
+		"before hdr_paper_white_nits; still read while that is 0." },
 	{ "display.astc_textures", _config_string, ASTC_TEXTURES_DEFAULT, "HALO_ASTC_TEXTURES", _environment_value,
 		_platform_android | _platform_guest,
 		"The maps' DXT textures on a GPU that cannot sample them (iPhones, most\n"
@@ -949,7 +957,7 @@ static const struct config_setting config_settings[] =
 		"as the game's own maps' are before they run; false refuses them\n"
 		"(docs/custom_edition_caches.md)." },
 	{ "bots.count", _config_integer, "0", "HALO_BOTS", _environment_value, _platform_all,
-		"Computer players (bots) in a Slayer game this computer hosts: 0 to 15\n"
+		"Computer players (bots) in a Slayer game this computer hosts: 0 to 64\n"
 		"join its lobby with the players, as far as the game has room: a local\n"
 		"(split screen) game, or a system link or internet one, where the host\n"
 		"plays them and the other machines see them as players (bots.make_room).\n"
@@ -961,13 +969,13 @@ static const struct config_setting config_settings[] =
 		"In team games: \"even\" puts the bots on both teams, evening them with\n"
 		"the players; \"against\" puts them all on the team the players are not on." },
 	{ "bots.make_room", _config_boolean, "true", "HALO_BOTS_MAKE_ROOM", _environment_value, _platform_all,
-		"In a system link or internet game with bots (bots.count): a bot leaves\n"
-		"as a player joins, so that the game has no more than bots.fill_to\n"
-		"players and bots, and comes back as a player leaves. false: the bots\n"
-		"stay, and the game's most players are its players' alone." },
+		"With bots (bots.count): a bot leaves as a player joins, so that the\n"
+		"game has no more than bots.fill_to players and bots, and comes back as\n"
+		"a player leaves (the lobby's FILL TO). false: the bots stay, and a\n"
+		"network game's most players are its players' alone (the lobby's ADD)." },
 	{ "bots.fill_to", _config_integer, "16", "HALO_BOTS_FILL_TO", _environment_value, _platform_all,
-		"With bots.make_room, the players and bots a system link or internet\n"
-		"game is filled to (2 to 128; no more than its most players)." },
+		"With bots.make_room, the players and bots a game is filled to (2 to\n"
+		"128; no more than its most players)." },
 	{ "bots.tactics", _config_boolean, "false", "HALO_BOTS_TACTICS", _environment_value, _platform_all,
 		"In team games, a team's bots play together: they keep apart and within\n"
 		"reach of each other, fire at the enemy a teammate hurts and take angles\n"
@@ -983,6 +991,13 @@ static const struct config_setting config_settings[] =
 	{ "bots.share_delay", _config_real, "1.0", "HALO_BOTS_SHARE_DELAY", _environment_value, _platform_all,
 		"With bots.share_sightings: the seconds from a bot's sighting of an\n"
 		"enemy to its teammates' knowing of it (0 to 5)." },
+	{ "bots.vehicles", _config_boolean, "true", "HALO_BOTS_VEHICLES", _environment_value, _platform_all,
+		"On maps with open ground, the bots use the vehicles as people do: they\n"
+		"ride a teammate's Warthog (the gun first), drive a Warthog, a Ghost or\n"
+		"a Scorpion and fly a Banshee they find near, run players down, circle a\n"
+		"fight for their gunner, make strafing runs in a Banshee, put an\n"
+		"overturned vehicle back on its wheels and get out of one stuck or\n"
+		"overturned. false: the bots stay on foot." },
 	{ "display.viewmodel_shield", _config_boolean, "false", "HALO_VIEWMODEL_SHIELD", _environment_value, _platform_all,
 		"The energy shield's flare on the first-person arms too, as on the body\n"
 		"(the stock game draws it on the body only)." },
@@ -1787,6 +1802,10 @@ static const struct config_setting config_settings[] =
 	{ "debug.bot_trace", _config_integer, "0", "HALO_BOT_TRACE", _environment_value, _platform_all,
 		"Log each bot's state (bots.count) every this many seconds: where it is\n"
 		"and goes, its path, target and weapon; 0 never." },
+	{ "debug.play_log", _config_string, "\"\"", "HALO_PLAY_LOG", _environment_value, _platform_all,
+		"A file to write every player's state to, about 60 times a second\n"
+		"(port/linux/game/play_log.c): where each is, how it moves and aims,\n"
+		"its controls, weapon and health; for studying how people play." },
 	{ "debug.bot_player", _config_boolean, "false", "HALO_BOT_PLAYER", _environment_set_is_true, _platform_all,
 		"In a local game with bots (bots.count), a bot of its own plays the first\n"
 		"player too, its view drawn as the player's (for recorded footage)." },
