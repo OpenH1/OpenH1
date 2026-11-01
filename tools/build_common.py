@@ -180,14 +180,17 @@ def configuration_defines(sln: Any) -> List[str]:
 
 def check_profile_options(profile: bool, pgo: str) -> None:
     """A profiling build is optimised with the committed profiles or none:
-    trained, a profile would record the profiling code's own paths."""
-    if profile and pgo == "train":
-        raise ValueError("--profile cannot be used with --pgo=train: train profiles with a normal build")
+    recorded by it, a profile would hold the profiling code's own paths."""
+    if profile and pgo == "generate":
+        raise ValueError("--profile cannot be used with --pgo=generate: record profiles with a normal build")
 
 
 # Units compiled with a profile (-fprofile-use) that does not quite match
-# them: new or changed functions simply go without.
+# them: new or changed functions simply go without. (Without value
+# profiling, as the profile was recorded: --pgo=generate's
+# PROFILE_GENERATE_FLAGS.)
 PROFILE_USE_FLAGS = [
+    "-mllvm", "-disable-vp",
     "-Wno-profile-instr-unprofiled",
     "-Wno-profile-instr-out-of-date",
     "-Wno-profile-instr-missing",
@@ -272,14 +275,20 @@ def sdl3_rule(n: Writer, sln: Any, *, name: str, description: str, source: Path,
 
 # ---------- profile-guided optimisation
 
-# Profiles recorded by playing the game (tools/pgo_train.py), kept in the
-# repository so that every build is optimised with them. They are in the
-# format of this LLVM version, which older compilers cannot read. The Linux
-# profile is every build's (they are all guests: Android, Linux, macOS,
-# Windows), whose game and platform code it was recorded from.
+# The profile recorded by playing an instrumented guest (configure.py
+# --pgo=generate, tools/pgo_train.py), kept in the repository so that every
+# build is optimised with it. It is in the format of this LLVM version,
+# which older compilers cannot read. It is every build's (they are all
+# guests: Android, Linux, macOS, iOS, Windows), whose game and platform code
+# it was recorded from.
 PGO_DIR = Path("pgo")
 LINUX_PROFILE = PGO_DIR / "halo_linux.profdata"
 PROFILE_LLVM_MAJOR = 22
+
+# An instrumented guest (--pgo=generate): clang's IR instrumentation, which
+# the committed profile is, without value profiling, which the guests'
+# profile runtime does not write (port/android/guest/runtime/guest_profile.c)
+PROFILE_GENERATE_FLAGS = ["-fprofile-generate", "-mllvm", "-disable-vp"]
 
 _clang_majors: Dict[str, Optional[int]] = {}
 
@@ -297,20 +306,20 @@ def clang_major(cc: str) -> Optional[int]:
 
 
 def pgo_mode(sln: Any) -> str:
-    """use, train or off (configure.py --pgo)"""
+    """use, generate or off (configure.py --pgo)"""
     return getattr(sln, "port_pgo", "use")
 
 
-def pgo_profile(sln: Any, own: Optional[Path], others: Sequence[Path], cc: str) -> Optional[Path]:
-    """The profile a native build is optimised with: --pgo-profile's; with
-    --pgo=train, the build's own profile (trained if it is missing: own is
-    None for a build that cannot train one); otherwise the first committed
-    profile there is, its own first. None with --pgo=off, or when cc is too
-    old to read the profiles."""
+def pgo_profile(sln: Any, others: Sequence[Path], cc: str) -> Optional[Path]:
+    """The profile a guest is optimised with: --pgo-profile's, or else the
+    first committed profile there is. None with --pgo=off or --pgo=generate,
+    or when cc is too old to read the profiles."""
+    mode = pgo_mode(sln)
+    if mode == "generate":
+        return None
     explicit = getattr(sln, "port_pgo_profile", None)
     if explicit:
         return explicit
-    mode = pgo_mode(sln)
     if mode == "off":
         return None
     major = clang_major(cc)
@@ -318,9 +327,7 @@ def pgo_profile(sln: Any, own: Optional[Path], others: Sequence[Path], cc: str) 
         print(f"{cc} is clang {major}; the profiles in {PGO_DIR} need clang {PROFILE_LLVM_MAJOR}: "
               "building without profile-guided optimisation", file=sys.stderr)
         return None
-    if mode == "train" and own is not None:
-        return own
-    for profile in ([own] if own else []) + list(others):
+    for profile in others:
         if profile.is_file():
             return profile
     return None

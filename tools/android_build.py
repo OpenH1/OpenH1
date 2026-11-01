@@ -33,8 +33,9 @@ from .guest_toolchain import LLVM_VERSION, guest_toolchain
 from .build_common import (LINUX_PROFILE, MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, MUSL_MATH_DIR, OWN_CODE_ERRORS,
                            PLATFORM_SEMANTICS_HEADER, QUIET_OWN_CODE_FLAGS, SEMANTICS_HEADER, STB_VORBIS_SOURCE,
                            XDK_INCLUDE, compile_launcher, configuration_defines, download, game_defines_and_includes,
-                           game_sources, miniupnpc_sources, musl_math_sources, opus_cflags, opus_sources, pgo_profile,
-                           profile_use_flags, updater_defines, xdk_headers)
+                           game_sources, miniupnpc_sources, musl_math_sources, opus_cflags, opus_sources,
+                           PROFILE_GENERATE_FLAGS, pgo_mode, pgo_profile, profile_use_flags, updater_defines,
+                           xdk_headers)
 from . import check_host_imports
 from .embed_assets import hud_assets_build, hud_configure_inputs, server_ui_build
 from .linux_package import ROOT as REPO_ROOT, notices as release_notices
@@ -480,11 +481,13 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
                      *generated_headers]
     if base_register:
         tool_implicit.append(Path("tools/guest_base_register.py"))
-    # profile-guided optimisation with the committed Linux profile: the game
-    # and platform code are the same, and functions that differ simply go
-    # without (the guests train none of their own)
-    profile = pgo_profile(sln, None, [LINUX_PROFILE], guest_cc)
-    profile_flags = " ".join(profile_use_flags(profile))
+    # profile-guided optimisation with the committed profile: the game and
+    # platform code are every guest's, and functions that differ simply go
+    # without; or, with --pgo=generate, instrumented to record it
+    # (guest_profile.c writes it at exit)
+    profile_generate = pgo_mode(sln) == "generate"
+    profile = pgo_profile(sln, [LINUX_PROFILE], guest_cc)
+    profile_flags = " ".join(PROFILE_GENERATE_FLAGS if profile_generate else profile_use_flags(profile))
     if profile:
         tool_implicit.append(profile)
 
@@ -620,6 +623,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     ])
     runtime_dir = PORT_DIR / "guest" / "runtime"
     for source in sorted(runtime_dir.glob("*.c")):
+        if source.name == "guest_profile.c" and not profile_generate:
+            continue
         if source.name in ("guest_thread.c", "guest_start.c"):
             objects.append(guest_object(source, runtime_internal_cflags))
         elif source.name == "guest_memory_watch.c":
