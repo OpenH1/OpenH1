@@ -374,7 +374,8 @@ struct xgpu_metal_capabilities
 int xgpu_metal_initialize(const struct xgpu_metal_options *options);
 /* saves the binary archive and lets go of everything */
 void xgpu_metal_shutdown(void);
-/* the process is ending: the binary archive saved (any thread; waits) */
+/* the process is ending: the binary archive saved (any thread; waits a
+second at most, then leaves it as it was) */
 void xgpu_metal_exiting(void);
 void xgpu_metal_capabilities(struct xgpu_metal_capabilities *capabilities);
 

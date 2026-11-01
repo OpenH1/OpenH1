@@ -216,8 +216,10 @@ static struct
 	NSMutableArray<MTLRenderPipelineDescriptor *> *archived;
 	BOOL archive_changed;
 	dispatch_queue_t archive_queue;
-	/* when a pipeline was last added to it */
+	/* when a pipeline was last added to it; the saves asked for (one that a
+	later one has replaced is not written: the later has its pipelines) */
 	double archive_changed_at;
+	_Atomic uint32_t archive_saves;
 
 	struct texture_entry textures[TEXTURE_MAXIMUM];
 	uint32_t texture_search;
@@ -1225,31 +1227,56 @@ static void archive_open(void)
 	}
 }
 
+/* how long after the last new pipeline the archive is written while
+playing, and how long quitting waits for it (it is only a cache: a save
+cut short leaves the archive as it was) */
+#define ARCHIVE_SETTLED_SECONDS 10.0
+#define ARCHIVE_EXIT_SECONDS 1.0
+
 /* writes the archive of the pipelines made or found this run, on the
-archive's queue (wait: and waits for it). It is a new archive each time:
-one that has been written, or read from a file, and has had pipelines
-added since is written without some of their stages (Metal's archiver
-says so, and the archive is not written). The pipelines of the archive
-read at the start that this run has not made are not kept. */
-static void archive_save(BOOL wait)
+archive's queue, and waits for it up to wait seconds (0: not at all,
+below 0: until it is written). It is a new archive each time: one that
+has been written, or read from a file, and has had pipelines added since
+is written without some of their stages (Metal's archiver says so, and
+the archive is not written). The pipelines of the archive read at the
+start that this run has not made are not kept. Writing it takes a few
+milliseconds for each pipeline, so it is written as the pipelines settle
+(a map's load, xgpu_metal_prepared; a while after the last made while
+drawing, xgpu_metal_frame_end), and quitting does not wait long for it. */
+static void archive_save(double wait)
 {
-	NSArray<MTLRenderPipelineDescriptor *> *pipelines;
+	NSArray<MTLRenderPipelineDescriptor *> *pipelines = nil;
 	NSString *path = metal.archive_path;
 	id<MTLDevice> device = metal.device;
-	void (^save)(void);
+	dispatch_semaphore_t done;
+	uint32_t save = 0;
 
-	if (!metal.archive_queue || !path || !metal.archive_changed)
+	if (!metal.archive_queue || !path)
 		return;
-	os_unfair_lock_lock(&metal.lock);
-	metal.archive_changed = NO;
-	pipelines = [metal.archived copy];
-	os_unfair_lock_unlock(&metal.lock);
-	save = ^{
+	if (metal.archive_changed)
+	{
+		os_unfair_lock_lock(&metal.lock);
+		metal.archive_changed = NO;
+		pipelines = [metal.archived copy];
+		os_unfair_lock_unlock(&metal.lock);
+		save = atomic_fetch_add(&metal.archive_saves, 1) + 1;
+	}
+	else if (wait == 0.0)
+		return;
+	done = dispatch_semaphore_create(0);
+	dispatch_async(metal.archive_queue, ^{
 		MTLBinaryArchiveDescriptor *descriptor = [MTLBinaryArchiveDescriptor new];
 		NSString *temporary = [path stringByAppendingString:@".new"];
 		id<MTLBinaryArchive> archive;
 		NSError *error = nil;
 
+		/* (nothing new: the save already asked for waited for; replaced by
+		a later one: not written) */
+		if (!pipelines || atomic_load(&metal.archive_saves) != save)
+		{
+			dispatch_semaphore_signal(done);
+			return;
+		}
 		archive = [device newBinaryArchiveWithDescriptor:descriptor error:&error];
 		for (MTLRenderPipelineDescriptor *pipeline in pipelines)
 		{
@@ -1264,11 +1291,11 @@ static void archive_save(BOOL wait)
 			rename(temporary.fileSystemRepresentation, path.fileSystemRepresentation) != 0)
 			metal_log(HOST_LOG_WARN, @"cannot write the pipeline archive %@: %@", path,
 				error ? error.localizedDescription : @(strerror(errno)));
-	};
-	if (wait)
-		dispatch_sync(metal.archive_queue, save);
-	else
-		dispatch_async(metal.archive_queue, save);
+		dispatch_semaphore_signal(done);
+	});
+	if (wait != 0.0 && dispatch_semaphore_wait(done, wait < 0.0 ? DISPATCH_TIME_FOREVER :
+		dispatch_time(DISPATCH_TIME_NOW, (int64_t)(wait * NSEC_PER_SEC))) != 0)
+		host_logf(HOST_LOG_INFO, "metal: the pipeline archive not written: not done after %.1f s", wait);
 }
 
 int xgpu_metal_initialize(const struct xgpu_metal_options *options)
@@ -1309,8 +1336,10 @@ int xgpu_metal_initialize(const struct xgpu_metal_options *options)
 	archive_open();
 	profile_initialize();
 	metal.archived = [NSMutableArray new];
+	/* (utility's, not background's: at background's the archive took ten
+	times as long to write) */
 	metal.archive_queue = dispatch_queue_create("OpenH1 pipeline archive", dispatch_queue_attr_make_with_qos_class(
-		DISPATCH_QUEUE_SERIAL, QOS_CLASS_BACKGROUND, 0));
+		DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0));
 
 	library_open(options->library_path);
 	library = metal.library;
@@ -1371,13 +1400,13 @@ void xgpu_metal_shutdown(void)
 	if (metal.command_buffer)
 		xgpu_metal_frame_wait(command_buffer_commit(nil));
 	xgpu_metal_frame_wait(metal.command_serial);
-	archive_save(YES);
+	archive_save(-1.0);
 }
 
 void xgpu_metal_exiting(void)
 {
 	if (metal.ready)
-		archive_save(YES);
+		archive_save(ARCHIVE_EXIT_SECONDS);
 }
 
 void xgpu_metal_capabilities(struct xgpu_metal_capabilities *capabilities)
@@ -2423,6 +2452,10 @@ uint64_t xgpu_metal_frame_end(uint32_t present)
 
 	if (!metal.in_frame)
 		xgpu_metal_frame_begin();
+	/* (the pipelines made while drawing written once no more have come for
+	a while, in the background) */
+	if (metal.archive_changed && seconds_now() - metal.archive_changed_at > ARCHIVE_SETTLED_SECONDS)
+		archive_save(0.0);
 	/* (the frame's last pass: its stores at the frame's end) */
 	metal.frame_ending = YES;
 	pass_end();
@@ -3077,6 +3110,7 @@ static void pipeline_make_later(const struct xgpu_metal_pipeline_state_key *key,
 			if (xgpu_metal_pipeline_archivable(&copy))
 				[metal.archived addObject:[descriptor copy]];
 			metal.archive_changed = YES;
+			metal.archive_changed_at = seconds_now();
 		}
 		os_unfair_lock_unlock(&metal.lock);
 		dispatch_group_leave(making);
@@ -3155,7 +3189,7 @@ double xgpu_metal_prepared(void)
 	dispatch_group_wait(metal.preparing, DISPATCH_TIME_FOREVER);
 	/* (a safe point: the user's archive written with the map's pipelines,
 	in the background) */
-	archive_save(NO);
+	archive_save(0.0);
 	return seconds_now() - start;
 }
 
