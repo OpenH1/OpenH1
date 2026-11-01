@@ -293,16 +293,20 @@ SETTINGS_SPINNER_X, SETTINGS_SPINNER_WIDTH = 188, 140
 # capitals) rise its cap height above it; the ascent has room for accents
 # above the capitals, so a text_y that centres the ascent leaves them low
 SMALL_UI_ASCENT, SMALL_UI_CAPS = 14, 10
+# (large_ui's, the same way)
+LARGE_UI_ASCENT, LARGE_UI_CAPS = 17, 13
 # the spinner's arrows' pictures (bitmaps/arrow_sm_*: drawn at their size from
 # their bounds' corner, not fitted to them): the arrow is the top 11 and a
 # quarter rows of the 16 and 6 wide, its point 5.5 down
 ARROW_SM_WIDTH, ARROW_SM_HEIGHT, ARROW_SM_MIDDLE = 6, 12, 5.5
 
 
-def caps_text_y(height: int, top: int = 0) -> int:
-    """the text_y that centres small_ui's capitals in a box height tall, for a
-    text box top below the box's top"""
-    return height // 2 - top - SMALL_UI_ASCENT + SMALL_UI_CAPS // 2
+def caps_text_y(height: int, top: int = 0, large: bool = False) -> int:
+    """the text_y that centres small_ui's capitals (large_ui's if large) in a
+    box height tall, for a text box top below the box's top (half a unit
+    high where whole units cannot centre them)"""
+    ascent, caps = (LARGE_UI_ASCENT, LARGE_UI_CAPS) if large else (SMALL_UI_ASCENT, SMALL_UI_CAPS)
+    return int((height - caps) // 2) - top - ascent + caps
 
 
 # (the spinner's box inside the row, from its top and bottom: a spinner
@@ -4143,7 +4147,7 @@ def _hub() -> list:
                                            ("wide", wide(-WIDE_HALF, HUB_WIDE_ITEMS)),
                                            ("bitmap", part_highlight(item_w, item_h)), ("text", words),
                                            ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE), ("text_x", 10),
-                                           ("text_y", 5)],
+                                           ("text_y", caps_text_y(item_h, large=True))],
                          [*handlers, '<on event="left_mouse" run="mouse emit accept event"/>',
                           *([f'<child widget="{HUB}/{note}"/>'] if note else [])])
     # (at the items' ends: the server browser's games, the local network's
@@ -4156,7 +4160,7 @@ def _hub() -> list:
         lines += _widget(f"{HUB}/{name}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
                                            ("wide", wide(0, HUB_WIDE_ITEMS)),
                                            ("font", "ui\\small_ui"), ("color", color), ("align", "right"),
-                                           ("text_y", 8), ("text_flags", "no_focus_test")], [])
+                                           ("text_y", caps_text_y(item_h)), ("text_flags", "no_focus_test")], [])
     lines += _prompts(HUB, "hub_prompts", HUB_PROMPTS)
     lines += _prompts(HUB, "page_prompts", HUB_PAGE_PROMPTS, defined=tuple(name for name, *_ in HUB_PROMPTS))
     lines += _hub_panel(HUB, HUB_PANEL, HUB_WIDE_PANEL)
@@ -4300,14 +4304,15 @@ def _matchmaking() -> list:
         lines += _widget(f"{base}/mm_row_{row}", [("type", "text"), ("width", item_w), ("height", item_h),
                                                   ("wide", items_wide), ("bitmap", part_highlight(item_w, item_h)),
                                                   ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE), ("text_x", 10),
-                                                  ("text_y", 5)],
+                                                  ("text_y", caps_text_y(item_h, large=True))],
                          ['<on event="a" run="port matchmaking button"/>',
                           '<on event="start" run="port matchmaking button"/>',
                           '<on event="left_mouse" run="mouse emit accept event"/>',
                           f'<child widget="{base}/mm_note_{row}"/>'])
         lines += _widget(f"{base}/mm_note_{row}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
                                                    ("wide", wide(0, HUB_WIDE_ITEMS)), ("font", "ui\\small_ui"),
-                                                   ("color", "#FF5ED38C"), ("align", "right"), ("text_y", 8),
+                                                   ("color", "#FF5ED38C"), ("align", "right"),
+                                                   ("text_y", caps_text_y(item_h)),
                                                    ("text_flags", "no_focus_test")], [])
     # (the panel, Multiplayer's: menu_functions.c's matchmaking_screen_update)
     x, inner = left + 14, width - 28
@@ -4462,7 +4467,7 @@ def _friends() -> list:
         lines += _widget(f"{base}/fr_row_{row}", [("type", "text"), ("width", item_w), ("height", item_h),
                                                   ("wide", items_wide), ("bitmap", part_highlight(item_w, item_h)),
                                                   ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE), ("text_x", 10),
-                                                  ("text_y", 5)],
+                                                  ("text_y", caps_text_y(item_h, large=True))],
                          ['<on event="a" run="port friends button"/>',
                           '<on event="start" run="port friends button"/>',
                           '<on event="left_mouse" run="mouse emit accept event"/>',
@@ -4470,7 +4475,7 @@ def _friends() -> list:
         for note, color in ((f"fr_note_{row}", "#FF7FB2FF"), (f"fr_live_{row}", "#FF5ED38C")):
             lines += _widget(f"{base}/{note}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
                                                 ("wide", wide(0, HUB_WIDE_ITEMS)), ("font", "ui\\small_ui"),
-                                                ("color", color), ("align", "right"), ("text_y", 8),
+                                                ("color", color), ("align", "right"), ("text_y", caps_text_y(item_h)),
                                                 ("text_flags", "no_focus_test")], [])
     lines += _friends_panel(base, HUB_PANEL, HUB_WIDE_PANEL, base)
     lines += _prompts(base, "friends_prompts", FRIENDS_PROMPTS)
