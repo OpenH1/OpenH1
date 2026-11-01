@@ -686,7 +686,7 @@ and the game's rules, on the teams that `bots.teams` asks for, and they
 follow the teams' changes in the lobby. They look for enemies, aim, fire,
 throw grenades and pick up better weapons, as well as `bots.skill` lets
 them, and walk the paths that the campaign's AI finds on the maps' walkable
-surfaces (`game/bots.c`). They play no other gametypes (but SWAT, Infection
+surfaces (`game/bots.c`), by a teleporter when that is the shorter way. They play no other gametypes (but SWAT, Infection
 and Gun Game, which are Slayer's: below).
 
 They aim as people do, not as a machine: a bot's aim turns as a hand moves

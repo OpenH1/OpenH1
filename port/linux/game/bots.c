@@ -69,7 +69,9 @@ What a bot does each tick, in a player's terms:
   no way past (Sidewinder's blast door between the bases) closed from then
   on. A goal on ground the walkable surfaces do not reach is gone to as near
   as they go and on with jumps; an item it finds no way to is left be a
-  while. Bots in each other's way give way by their order.
+  while. It goes by a teleporter when that is the shorter way (the searches
+  know nothing of them: the way to the entrance, then on from the exit).
+  Bots in each other's way give way by their order.
 
 Skill (bots.skill): easy, normal, heroic, legendary - how soon it reacts,
 how far and how wide it sees, how large its aim error is, how fast that
@@ -157,6 +159,8 @@ void platform_log(char const *format, ...);
 /* the ticks a press is held, as a player's finger holds a button (a tenth
 of a second) */
 #define BOTS_PRESS_TICKS 3
+/* the teleporters the bots know of on a map (each entrance, with its exit) */
+#define BOTS_MAXIMUM_TELEPORTERS 16
 /* the items a bot remembers it found no way to, at once */
 #define BOTS_UNREACHABLE_ITEMS 8
 
@@ -393,6 +397,11 @@ struct bots_bot
 	real climb_best_distance;
 	/* where it was last tick (a teleporter's jump) */
 	real_point3d last_position;
+	/* the teleporter it goes by, its way there shorter by it (NONE: none),
+	given up at that tick; not again before the next */
+	long via_teleporter;
+	long via_until_tick;
+	long via_next_tick;
 	/* an item it found no way to (on a ledge), not fetched again until then */
 	long unreachable_item_indices[BOTS_UNREACHABLE_ITEMS];
 	long unreachable_item_until_ticks[BOTS_UNREACHABLE_ITEMS];
@@ -494,6 +503,15 @@ static struct
 	long roam_point_count;
 	real_point3d roam_points[BOTS_MAXIMUM_ROAM_POINTS];
 	long roam_surfaces[BOTS_MAXIMUM_ROAM_POINTS];
+	/* the teleporters (bots_prepare_teleporters): each entrance, the ground
+	under it, and the exit the game sends a player to from it, and the turn
+	it gives the player's view (radians) */
+	long teleporter_count;
+	real_point3d teleporter_entrances[BOTS_MAXIMUM_TELEPORTERS];
+	long teleporter_entrance_surfaces[BOTS_MAXIMUM_TELEPORTERS];
+	real_point3d teleporter_exits[BOTS_MAXIMUM_TELEPORTERS];
+	real teleporter_turns[BOTS_MAXIMUM_TELEPORTERS];
+	long teleports;
 	struct bots_bot bots[BOTS_MAXIMUM];
 	/* the first local player's, with debug.bot_player (its index
 	BOTS_MAXIMUM: after the bots') */
@@ -1533,6 +1551,51 @@ static void bots_prepare_paths(void)
 
 /* the places a bot roams to: the item spawns and the player starting
 locations (once the level's BSP is in) */
+/* the map's teleporters: each entrance (a teleporter source flag) on ground
+the walkable surfaces reach, and the exit the game sends a player to from it
+(game_engine_update_teleporter: the first target flag of the entrance's
+team number) */
+static void bots_prepare_teleporters(struct scenario *scenario)
+{
+	long index;
+
+	bots_globals.teleporter_count = 0;
+	for (index = 0; index < scenario->netgame_flags.count; index++)
+	{
+		struct scenario_netgame_flag *source =
+			TAG_BLOCK_GET_ELEMENT(&scenario->netgame_flags, index, struct scenario_netgame_flag);
+		long target_index, surface_index;
+		real_point3d ground;
+
+		if (source->type != _netgame_flag_teleporter_source ||
+			bots_globals.teleporter_count >= BOTS_MAXIMUM_TELEPORTERS)
+		{
+			continue;
+		}
+		for (target_index = 0; target_index < scenario->netgame_flags.count; target_index++)
+		{
+			struct scenario_netgame_flag *target =
+				TAG_BLOCK_GET_ELEMENT(&scenario->netgame_flags, target_index, struct scenario_netgame_flag);
+
+			if (target->type == _netgame_flag_teleporter_target && target->team_index == source->team_index)
+			{
+				surface_index = bots_surface_below(&source->position, &ground);
+				if (surface_index != NONE)
+				{
+					long teleporter = bots_globals.teleporter_count++;
+
+					bots_globals.teleporter_entrances[teleporter] = source->position;
+					bots_globals.teleporter_entrance_surfaces[teleporter] = surface_index;
+					bots_globals.teleporter_exits[teleporter] = target->position;
+					bots_globals.teleporter_turns[teleporter] = target->facing - source->facing;
+				}
+				break;
+			}
+		}
+	}
+	platform_log("bots: %ld teleporters on this map", bots_globals.teleporter_count);
+}
+
 static void bots_prepare_map(void)
 {
 	struct scenario *scenario = global_scenario_get();
@@ -1543,6 +1606,7 @@ static void bots_prepare_map(void)
 	bots_prepare_paths();
 	if (!scenario)
 		return;
+	bots_prepare_teleporters(scenario);
 	for (index = 0; index < scenario->netgame_equipment.count; index++)
 	{
 		struct scenario_netgame_equipment *equipment =
@@ -1583,6 +1647,8 @@ void bots_initialize_for_new_map(void)
 	bots_globals.player_bot.player_index = NONE;
 	bots_globals.map_ready = FALSE;
 	bots_globals.roam_point_count = 0;
+	bots_globals.teleporter_count = 0;
+	bots_globals.teleports = 0;
 	bots_globals.ticks = 0;
 	bots_globals.searches = 0;
 	bots_globals.search_failures = 0;
@@ -1777,6 +1843,52 @@ static boolean bots_search_build(struct path_state *state, real_point3d const *s
 	return TRUE;
 }
 
+/* the teleporter a bot goes by to its goal, as people take one when it is
+the shorter way (measured in an internet game: 0.7 a minute a player): of
+those whose entrance is not where the bot stands, the one whose way, the
+straight line to the entrance and on from its exit to the goal, is shortest,
+if that and a seventh more and two units is shorter than the straight line
+to the goal (a teleporter's way is about as straight as the walk, and a
+detour to one costs); kept until it is used or for half a minute, then not
+again for twenty seconds */
+static void bots_choose_teleporter(struct bots_bot *bot, long unit_index)
+{
+	long now = game_time_get();
+	real_point3d const *position = &object_get(unit_index)->object.position;
+	real direct, best = REAL_MAX;
+	long index, best_index = NONE;
+
+	if (bot->via_teleporter != NONE)
+	{
+		if (now < bot->via_until_tick)
+			return;
+		bot->via_teleporter = NONE;
+		bot->via_next_tick = now + TICKS_PER_SECOND * 20;
+	}
+	if (bot->smooth || now < bot->via_next_tick || bot->goal_kind == _bots_goal_none ||
+		bots_globals.teleporter_count <= 0)
+	{
+		return;
+	}
+	direct = bots_distance3d(position, &bot->goal_point);
+	for (index = 0; index < bots_globals.teleporter_count; index++)
+	{
+		real to_entrance = bots_distance3d(position, &bots_globals.teleporter_entrances[index]);
+		real way = to_entrance + bots_distance3d(&bots_globals.teleporter_exits[index], &bot->goal_point);
+
+		if (to_entrance > 1.0f && way < best)
+		{
+			best = way;
+			best_index = index;
+		}
+	}
+	if (best_index != NONE && best * 1.15f + 2.0f < direct)
+	{
+		bot->via_teleporter = best_index;
+		bot->via_until_tick = now + TICKS_PER_SECOND * 30;
+	}
+}
+
 /* a path from where the bot's unit is to its goal, searched now (a few a
 tick: a bot past them asks again next tick), into the bot's path */
 static void bots_search(struct bots_bot *bot, long unit_index)
@@ -1788,8 +1900,16 @@ static void bots_search(struct bots_bot *bot, long unit_index)
 	long start_surface_index;
 	boolean reached;
 
+	real_point3d const *goal;
+	long goal_surface_index;
+
 	if (bots_globals.tick_searches >= BOTS_SEARCHES_A_TICK || bot->goal_surface_index == NONE)
 		return;
+	/* (by a teleporter: to its entrance) */
+	bots_choose_teleporter(bot, unit_index);
+	goal = bot->via_teleporter != NONE ? &bots_globals.teleporter_entrances[bot->via_teleporter] : &bot->goal_point;
+	goal_surface_index = bot->via_teleporter != NONE ?
+		bots_globals.teleporter_entrance_surfaces[bot->via_teleporter] : bot->goal_surface_index;
 	if (!bots_globals.search)
 	{
 		bots_globals.search = (struct path_state *)malloc(sizeof(struct path_state));
@@ -1823,15 +1943,15 @@ static void bots_search(struct bots_bot *bot, long unit_index)
 	/* (a path to as near the goal as the search reaches: a long way across a
 	large level is more surfaces than a search holds, and the bot searches
 	again from there) */
-	path_state_destination(state, &bot->goal_point, bot->goal_surface_index, 1000.0f);
+	path_state_destination(state, goal, goal_surface_index, 1000.0f);
 	path_state_find(state);
-	reached = state->node_count > 0 && path_node_from_hash_table(state, bot->goal_surface_index) != NONE;
+	reached = state->node_count > 0 && path_node_from_hash_table(state, goal_surface_index) != NONE;
 	if (state->node_count >= PATH_NODE_LIST_SIZE)
 		bots_globals.search_overflows++;
 	if (!reached)
 		bots_globals.search_partials++;
 	csmemset(&path, 0, sizeof(path));
-	if (bots_search_build(state, &start, &bot->goal_point, &path))
+	if (bots_search_build(state, &start, goal, &path))
 	{
 		if (bots_path_stalls(&path, &start) && bots_path_unsmoothed(state, &start, &path))
 			bots_globals.search_unsmoothed++;
@@ -1848,8 +1968,15 @@ static void bots_search(struct bots_bot *bot, long unit_index)
 		bot->path_failures++;
 		bots_globals.search_failures++;
 	}
+	/* (a teleporter it finds no way to: the way without it) */
+	if (bot->via_teleporter != NONE && !reached)
+	{
+		bot->via_teleporter = NONE;
+		bot->via_next_tick = game_time_get() + TICKS_PER_SECOND * 20;
+		bot->path.valid = FALSE;
+	}
 	/* (an item it finds no way to: another, and not this one a while) */
-	if (bot->goal_kind == _bots_goal_item && !reached)
+	else if (bot->goal_kind == _bots_goal_item && !reached)
 	{
 		bots_item_set_unreachable(bot, bot->item_index);
 		bot->goal_kind = _bots_goal_none;
@@ -2155,6 +2282,7 @@ static void bots_set_goal(struct bots_bot *bot, short kind, real_point3d const *
 	bot->path.valid = FALSE;
 	bot->path_failures = 0;
 	bot->climb_until_tick = 0;
+	bot->via_teleporter = NONE;
 }
 
 /* the next place to roam to: now and then near a teammate; most often
@@ -2687,6 +2815,15 @@ static boolean bots_follow_path(struct bots_bot *bot, long unit_index, real_poin
 			return FALSE;
 		}
 	}
+	/* (by a teleporter, near its entrance: straight onto it) */
+	if (bot->via_teleporter != NONE &&
+		bots_distance2d(&bots_globals.teleporter_entrances[bot->via_teleporter], position) < 1.5f)
+	{
+		real_point3d const *entrance = &bots_globals.teleporter_entrances[bot->via_teleporter];
+
+		*direction = (real)atan2(entrance->y - position->y, entrance->x - position->x);
+		return TRUE;
+	}
 	/* (a new path now and then: the objects about move, and the goal) */
 	if ((!bot->path.valid || now - bot->path_tick > TICKS_PER_SECOND * 4) &&
 		now - bot->path_tick > TICKS_PER_SECOND / 3)
@@ -2744,6 +2881,7 @@ static void bots_bot_reset(struct bots_bot *bot, long player_index, long bot_ind
 	csmemset(bot, 0, sizeof(*bot));
 	bot->player_index = player_index;
 	bot->unit_index = NONE;
+	bot->via_teleporter = NONE;
 	bot->target_player_index = NONE;
 	bot->target_last_surface_index = NONE;
 	bot->goal_surface_index = NONE;
@@ -4291,14 +4429,28 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 		bot->next_look_tick = tick.now + (bot_index % 3);
 		bot->climb_until_tick = 0;
 		bot->path_short = FALSE;
+		bot->via_teleporter = NONE;
 		bot->escape_until_tick = 0;
 		bot->last_position = tick.position;
 	}
-	/* (sent on by a teleporter it walked onto: a new path from where it came
-	out) */
-	if (bots_distance3d(&tick.position, &bot->last_position) > 3.0f && bot->goal_kind != _bots_goal_none &&
+	/* (sent on by a teleporter it walked onto: its view turned as the
+	game turns a player's, and a new path from where it came out) */
+	if (bots_distance3d(&tick.position, &bot->last_position) > 3.0f &&
 		tick.object->object.parent_object_index == NONE)
 	{
+		long index;
+
+		for (index = 0; index < bots_globals.teleporter_count; index++)
+		{
+			if (bots_distance3d(&bots_globals.teleporter_exits[index], &tick.position) < 1.0f &&
+				bots_distance3d(&bots_globals.teleporter_entrances[index], &bot->last_position) < 1.5f)
+			{
+				bot->yaw += bots_globals.teleporter_turns[index];
+				bots_globals.teleports++;
+				break;
+			}
+		}
+		bot->via_teleporter = NONE;
 		bot->path.valid = FALSE;
 		bot->path_tick = tick.now - TICKS_PER_SECOND;
 		bot->stuck_position = tick.position;
@@ -4485,12 +4637,12 @@ static void bots_report(void)
 		platform_log("bots: tick %ld, aim (%s): hits/rounds%s", now, bots_skills[bots_globals.skill].name,
 			aim[0] ? aim : ", none");
 		platform_log("bots: tick %ld, habits: combos %ld (grenade-shoot %ld, grenade-blow %ld, shoot-blow %ld), "
-			"blows %ld, dodges %ld, jumps %ld, crouches %ld", now,
+			"blows %ld, dodges %ld, jumps %ld, crouches %ld, teleports %ld", now,
 			bots_globals.combos[_bots_combo_grenade_shoot] + bots_globals.combos[_bots_combo_grenade_blow] +
 				bots_globals.combos[_bots_combo_shoot_blow],
 			bots_globals.combos[_bots_combo_grenade_shoot], bots_globals.combos[_bots_combo_grenade_blow],
 			bots_globals.combos[_bots_combo_shoot_blow], bots_globals.blows, bots_globals.dodges,
-			bots_globals.jumps, bots_globals.crouches);
+			bots_globals.jumps, bots_globals.crouches, bots_globals.teleports);
 	}
 }
 
