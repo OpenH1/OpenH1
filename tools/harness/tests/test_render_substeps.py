@@ -2,8 +2,8 @@
 sim_substep_blend): an object of the micro lane, and the first-person view of a player's biped, are drawn between
 the poses its sub-steps left (a frame in sub-step j of the tick drawn: between the end of j - 1, or of the tick
 before, and the end of j), what it carries with it; at 30 the frames are the line between the ticks' snapshots, as
-they were. A projectile's head start and hold, and the VR mode's grenade let go of in a sub-step, are drawn as
-before, from a tick's motion back or from the hand, with no dart and no pop. In a network game another machine's
+they were. A projectile is drawn from its newest sub-steps: its head start and hold from half a tick's motion back,
+and the VR mode's grenade let go of in a sub-step from the hand, with no dart and no pop. In a network game another machine's
 player is drawn between its two newest sub-steps (the open tick's), not a tick behind, gliding to the tick drawn's
 path and back when that is let go of and taken again; at 30 it is drawn as before."""
 
@@ -39,10 +39,18 @@ NEGATIVE_CONTROLS = {
     # the view's snapshot taken with the next tick's first sub-steps in it (a frame slower than a sub-step)
     "camera-unshifted": (("\t\t\trender_interpolation_camera_at_tick(substep_unit_index, &camera->latest);",
                           "\t\t\t;"), "camera_slow"),
-    # a projectile's head start and hold drawn as they run: it darts out and waits
-    "head-start-drawn": (("\t\t!substeps->continuing[buffer] ||", ""), "projectile"),
-    # ... and the hold's end in the tick after
-    "hold-drawn": (("\t\t!substeps->continuing[buffer] ||", ""), "projectile_late"),
+    # a projectile drawn a tick behind, not from its newest sub-steps
+    "projectile-a-tick-behind": (("\tif ((pending = render_interpolation_projectile_nodes(object_index)) != NULL)",
+                                  "\tif ((pending = NULL) != NULL)"), "projectile"),
+    # ... from where its head start put it at once: it darts out and waits
+    "head-start-drawn": (("\tif (to_step - substeps->made_step < count &&", "\tif (0 &&"), "projectile"),
+    # ... and the hold drawn from the eye, a whole tick back
+    "from-the-eye": (("\t\t\t\t\t1.0f : 0.5f;", "\t\t\t\t\t1.0f : 1.0f;"), "projectile_late"),
+    # ... or a sub-step later than the frame's time: past the newest the clock ran
+    "projectile-past-newest": (("\treturn interpolation_tick * interpolation_substep_count + "
+                                "render_interpolation_lead_newest();",
+                                "\treturn interpolation_tick * interpolation_substep_count + "
+                                "render_interpolation_lead_newest() + 1;"), "projectile_late"),
     # a respawn blended from the dead camera into the new unit's eye (nearer and turned less than a cut's)
     "respawn-glides": (("\t\tcamera->has_previous = camera->valid && camera->unit_index == unit_index;",
                         "\t\tcamera->has_previous = camera->valid;"), "respawn"),
@@ -57,9 +65,9 @@ NEGATIVE_CONTROLS = {
     # the lead let go of and taken at once: a jump of a sub-step's part of a tick's motion
     "lead-jumps": (("\tif (substeps->lead_frame == NONE || !(now >= substeps->lead_time) ||",
                     "\tif (1 ||"), "lead_glide"),
-    # the grenade let go of in a sub-step drawn from the tick before's snapshot (the body's hand) until the tick ends
-    "release-from-the-body": (("\tif ((pending = render_interpolation_pending_from(object_index)) != NULL)",
-                               "\tif ((pending = NULL) != NULL)"), "vr_release"),
+    # the grenade let go of in a sub-step drawn from half a tick back from its head start, not from the hand
+    "release-from-the-body": (("\t\t\tif (iterator.index == interpolation_from.object_index)",
+                               "\t\t\tif (0)"), "vr_release"),
 }
 
 
@@ -109,7 +117,7 @@ def generated(fault=None, newest=False):
     # the constants and structures
     text = code[code.index("/* ---------- constants */"):code.index("/* ---------- structures */")] + "\n"
     for name in ("interpolation_quaternion", "interpolation_rotation", "interpolated_object", "interpolated_substeps",
-                 "interpolated_camera", "newest_history", "newest_motion",
+                 "lead_projectile", "interpolated_camera", "newest_history", "newest_motion",
                  "newest_vehicle"):
         text += structure(code, name) + "\n"
     # the globals, but for the first-person weapon's, the particles' and the ghosts' (the test's own)
@@ -140,7 +148,10 @@ def generated(fault=None, newest=False):
                  "render_interpolation_tick",
                  "render_interpolation_object_from", "render_interpolation_substep",
                  "render_interpolation_lead_weight", "render_interpolation_lead_step",
-                 "render_interpolation_lead_newest", "render_interpolation_lead_frame",
+                 "render_interpolation_lead_newest", "render_interpolation_kept_position",
+                 "render_interpolation_lead_to_step", "render_interpolation_projectile_lead",
+                 "render_interpolation_projectile_nodes", "render_interpolation_ghost_part",
+                 "render_interpolation_lead_frame",
                  "render_interpolation_substep_offset", "render_interpolation_substep_frame",
                  "render_interpolation_frame_begin", "render_interpolation_frame_end",
                  "render_interpolation_pending_from", "render_interpolation_blend_in_frame",

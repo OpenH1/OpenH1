@@ -1196,10 +1196,16 @@ behind it at 120 (4 on average) and 0 to 17 at 60 (8). Only where each is
 moves so, and a vehicle's frame (its place and rotation); its pose (its
 animation, the aim of its head and its gun) is still blended between the
 ticks, as before. Not drawn so: what a local player is or rides (their view
-hangs on it), projectiles and items (a projectile's first two ticks and the
-tick it is drawn on to what it hit are drawn from the ticks), anything in a
-cinematic, and a player standing on a lift that moves (of the macro lane,
-drawn a tick behind). As an object comes to be drawn so, or no longer (a
+hangs on it), items, anything in a cinematic, and a player standing on a
+lift that moves (of the macro lane, drawn a tick behind). Projectiles are
+drawn so in every game at 60 and 120 (`render_interpolation_projectile_lead`),
+the players' own too, so that another's shot leaves from where that player
+is drawn, and meets what it hits as its impact appears: from the frame
+after the sub-step that made it, from half a tick of its motion back to
+where its head start put it over the tick it holds, then between its two
+newest sub-steps; one that strikes in a sub-step is drawn through that
+sub-step's frames on to where it struck (`render_interpolation_object_deleted`),
+never past it. As an object comes to be drawn so, or no longer (a
 lift starts under a player, a local player gets into another's vehicle), it
 glides from one to the other over four ticks (`LEAD_GLIDE_TICKS`). Drawing
 only: nothing sent or simulated changes, and a Legacy game, an OpenH1 game
