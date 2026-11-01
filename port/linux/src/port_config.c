@@ -123,8 +123,9 @@ structure_culling_set_camera_radius) */
 /* display.vsync: off on the Linux builds, Windows and macOS, whose players
 want the most frames and the least latency (display.max_fps still limits
 them, at twice the display's rate; the Mac shows the newest at each refresh,
-host_metal_vsync), the Steam Deck's too; on the phones, for their
-batteries */
+host_metal_vsync); on the phones, for their batteries. Under gamescope (the
+Steam Deck's Game Mode) on, with display.low_latency's pacing
+(config_default_of) */
 #if defined(HALO_WINDOWS) || (defined(HALO_VULKAN) && !defined(HALO_ANDROID)) || \
 	(defined(HALO_MACOS) && !defined(HALO_IOS))
 #define VSYNC_DEFAULT "false"
@@ -172,7 +173,9 @@ static const struct config_setting config_settings[] =
 		"640x480." },
 	{ "display.vsync", _config_boolean, VSYNC_DEFAULT, "HALO_NO_VSYNC", _environment_set_is_false, _platform_all,
 		"Wait for the display between frames; false draws as fast as possible\n"
-		"(up to display.max_fps)." },
+		"(up to display.max_fps). Commented out under gamescope (the Steam Deck's\n"
+		"Game Mode), true: each frame shown at a refresh, started just in time\n"
+		"for it (display.low_latency), the smoothest and least latency there." },
 	{ "display.low_latency", _config_string, "\"auto\"", "HALO_LOW_LATENCY", _environment_value, _platform_all,
 		"With vsync on (Vulkan: Linux, the Steam Deck, Windows, Android), start\n"
 		"each frame just in time for the refresh it is shown at, its input read\n"
@@ -181,7 +184,9 @@ static const struct config_setting config_settings[] =
 		"are paced by its display already." },
 	{ "display.max_fps", _config_integer, "0", "HALO_MAX_FPS", _environment_value, _platform_desktop,
 		"With vsync off, the most frames a second: 0 for twice the display's\n"
-		"refresh rate, -1 for no limit (which can hang some Intel graphics)." },
+		"refresh rate, -1 for no limit (which can hang some Intel graphics). On\n"
+		"Linux, the display's refresh rate or a whole fraction of it (60 at\n"
+		"60 Hz, 30) shows the frames in step with the display, as vsync does." },
 	{ "display.battery_saver", _config_string, "\"off\"", "HALO_BATTERY_SAVER", _environment_value, _platform_all,
 		"Draw less, for a longer battery and a cooler machine: \"on\", \"off\", or\n"
 		"\"auto\", on while the machine runs on its battery. On, each frame stays\n"
@@ -2420,6 +2425,46 @@ static char *config_copy(const char *text, size_t length)
 	return copy;
 }
 
+/* whether the game runs under gamescope (the Steam Deck's Game Mode, the
+Steam Frame's flat window), as first_start.c's first_start_gamescope */
+#if defined(HALO_VULKAN) && !defined(HALO_ANDROID) && !defined(HALO_WINDOWS)
+static int config_gamescope(void)
+{
+	static int known, gamescope;
+
+	if (!known)
+	{
+		const char *wayland_display = getenv("GAMESCOPE_WAYLAND_DISPLAY");
+		const char *desktop = getenv("XDG_CURRENT_DESKTOP");
+		const char *steam_deck = getenv("SteamDeck");
+		const char *gamepad_ui = getenv("SteamGamepadUI");
+
+		gamescope = (wayland_display && wayland_display[0]) || (desktop && strstr(desktop, "gamescope")) ||
+			(steam_deck && !strcmp(steam_deck, "1") && gamepad_ui && !strcmp(gamepad_ui, "1"));
+		known = 1;
+	}
+	return gamescope;
+}
+#endif
+
+/* a setting's default in this run: its table's, but display.vsync's under
+gamescope (VSYNC_DEFAULT), where it is on: gamescope shows one frame each
+refresh, and with display.low_latency each starts just in time for it.
+Measured in gamescope's headless backend at 60 and 90 Hz ("Low latency
+with vsync" in port/linux/README.md), vsync on showed a new frame at each
+refresh with the least latency (a press on screen 15 ms later at 60 Hz,
+against 24 off); off, mailbox drew twice the frames and showed half, and a
+limit near the refresh rate by the clock showed some twice and skipped
+others. Set in the file, the player's value wins. */
+static const char *config_default_of(const struct config_setting *setting)
+{
+#if defined(HALO_VULKAN) && !defined(HALO_ANDROID) && !defined(HALO_WINDOWS)
+	if (!strcmp(setting->name, "display.vsync") && config_gamescope())
+		return "true";
+#endif
+	return setting->default_value;
+}
+
 /* one setting as the file holds it: its comment, and its key at the
 default, commented out (CONFIG_DEFAULTS_NOTE) */
 static void config_append_setting(struct config_text *text, const struct config_setting *setting)
@@ -2457,7 +2502,7 @@ static void config_append_setting(struct config_text *text, const struct config_
 	}
 	config_append(text, buffer);
 #endif
-	snprintf(buffer, sizeof(buffer), "# %s = %s\n", dot + 1, setting->default_value);
+	snprintf(buffer, sizeof(buffer), "# %s = %s\n", dot + 1, config_default_of(setting));
 	config_append(text, buffer);
 }
 
@@ -3639,7 +3684,7 @@ static void config_load(void)
 
 	for (index = 0; index < NUMBER_OF_CONFIG_SETTINGS; index++)
 	{
-		const char *default_value = config_settings[index].default_value;
+		const char *default_value = config_default_of(&config_settings[index]);
 
 		if (config_settings[index].type == _config_string)
 		{
@@ -4246,7 +4291,7 @@ int config_reload(const char *prefix)
 		}
 		else
 		{
-			config_set_from_text(&value, setting->type, setting->default_value);
+			config_set_from_text(&value, setting->type, config_default_of(setting));
 		}
 		config_set_from_file(&value, setting, result.toptab);
 		/* (the old string kept, as config_set_from_text keeps it) */
@@ -4277,7 +4322,7 @@ int config_default(const char *name, char *text, size_t size)
 
 	if (index < 0)
 		return 0;
-	value = config_settings[index].default_value;
+	value = config_default_of(&config_settings[index]);
 	length = strlen(value);
 	/* (a string's without its quotes: the defaults have no escapes) */
 	if (config_settings[index].type == _config_string && length >= 2 && value[0] == '"')

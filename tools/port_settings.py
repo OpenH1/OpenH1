@@ -469,14 +469,17 @@ PAGES = {
              "computer"),
             ("WINDOW SIZE", "display.window_size", [("1280 x 960", "1280x960")],
              "The window's size: 4:3 first, then 16:10, 16:9 and 21:9. Its edges can also be dragged.", "computer"),
+            ("VSYNC", "display.vsync", ON_OFF,
+             "Shows each frame at a refresh of the display: even motion that never tears, at the display's "
+             "refresh rate. On Linux and the Steam Deck each frame starts just in time for its refresh, so it adds "
+             "almost no input lag; it is on in the Steam Deck's Game Mode.", None),
+            # (shown while VSync shows OFF: menu_functions.c's max_fps_row_show)
             ("FRAME RATE LIMIT", "display.max_fps",
              [("AUTO", "0"), ("30", "30"), ("60", "60"), ("120", "120"), ("144", "144"), ("165", "165"),
               ("240", "240"), ("NONE", "-1")],
-             "The most frames drawn a second while V-Sync is off. Auto is twice the display's refresh rate. More "
-             "feels smoother and uses more power; None draws as fast as it can.", "desktop"),
-            ("VSYNC", "display.vsync", ON_OFF,
-             "Waits for the display before showing each frame, so that the picture never tears. It adds a little "
-             "input lag, and holds the frame rate to the display's refresh rate.", None),
+             "The most frames drawn a second. Auto is twice the display's refresh rate. More feels smoother and "
+             "uses more power; None draws as fast as it can. On Linux, the display's refresh rate (or half of it) "
+             "is shown in step with the display, as V-Sync shows it.", "desktop"),
             ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
              "How wide you see on foot, in degrees across a 16:9 screen. Default keeps the Xbox's view; wider shows "
              "more around you.", None),
