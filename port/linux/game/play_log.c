@@ -9,7 +9,8 @@ reach it.
 
 Lines:
 
-    start <ticks a second> <sample every this many ticks>
+    start <ticks a second> <sample every this many ticks> <map>
+                                     at the first tick, and each new map
     p <tick> <player> <kind> <team> <x> <y> <z> <vx> <vy> <vz>
       <aim x> <aim y> <aim z> <throttle i> <throttle j> <control flags>
       <trigger> <body> <shield> <vehicle tag> <weapon tag> <name>
@@ -25,6 +26,7 @@ Lines:
 #include "cseries.h"
 #include "game/game.h"
 #include "game/players.h"
+#include "main/main.h"
 #include "objects/objects.h"
 #include "units/units.h"
 #include "items/weapons.h"
@@ -42,6 +44,7 @@ static struct
 	boolean opened;
 	FILE *file;
 	long last_flush_tick;
+	long last_tick;
 	long alive[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
 } play_log;
 
@@ -139,12 +142,21 @@ void play_log_tick(struct player_action const *actions)
 	if (!play_log.opened)
 	{
 		play_log_open();
-		if (play_log.file)
-			fprintf(play_log.file, "start %ld %ld\n", (long)TICKS_PER_SECOND, play_log_sample_ticks());
+		play_log.last_tick = -1;
 	}
 	if (!play_log.file)
 		return;
 	tick = game_time_get();
+	/* (a new game: its time starts again) */
+	if (tick <= play_log.last_tick || play_log.last_tick < 0)
+	{
+		char const *map_name = main_get_map_name();
+
+		fprintf(play_log.file, "start %ld %ld %s\n", (long)TICKS_PER_SECOND, play_log_sample_ticks(),
+			map_name && map_name[0] ? map_name : "-");
+		csmemset(play_log.alive, 0, sizeof(play_log.alive));
+	}
+	play_log.last_tick = tick;
 	sample = tick % play_log_sample_ticks() == 0;
 	data_iterator_new(&iterator, player_data);
 	while ((player = data_iterator_next(&iterator)) != NULL)
