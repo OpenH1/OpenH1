@@ -320,11 +320,16 @@ static const struct config_setting config_settings[] =
 		"With HDR: \"faithful\" keeps the picture as the game draws it, only its\n"
 		"highlights brighter; \"punchy\" lifts the whole scene and its bright\n"
 		"parts, keeping each color's hue, for a brighter, remastered look." },
-	{ "display.hdr_paper_white", _config_integer, "100", "HALO_HDR_PAPER_WHITE", _environment_value, _platform_all,
+	{ "display.hdr_paper_white_nits", _config_integer, "0", "HALO_HDR_PAPER_WHITE_NITS", _environment_value,
+		_platform_all,
 		"With HDR, how bright paper white (white surfaces, the HUD, the menus) is,\n"
-		"in percent of the system's SDR white (macOS's; 203 nits where the system\n"
-		"has none), 50 to 250. The highlights keep the rest of the display's\n"
-		"headroom." },
+		"in nits, 80 to 500; 0 is the system's SDR white (its SDR content\n"
+		"brightness; 203 nits where the system gives none). macOS and iOS give\n"
+		"no nits: their SDR white is taken as 100. The highlights keep the rest\n"
+		"of the display's headroom." },
+	{ "display.hdr_paper_white", _config_integer, "100", "HALO_HDR_PAPER_WHITE", _environment_value, _platform_all,
+		"Deprecated: paper white in percent of the system's SDR white, 50 to 250,\n"
+		"before hdr_paper_white_nits; still read while that is 0." },
 	{ "display.astc_textures", _config_string, ASTC_TEXTURES_DEFAULT, "HALO_ASTC_TEXTURES", _environment_value,
 		_platform_android | _platform_guest,
 		"The maps' DXT textures on a GPU that cannot sample them (iPhones, most\n"

@@ -56,11 +56,12 @@ void host_metal_present_queue(id<MTLTexture> image, uint64_t frame);
 
 struct xgpu_hdr_frame;
 /* display.hdr (port/linux/src/xgpu_hdr.h): the front end's state (drawn in
-HDR, the mode, paper white in percent of the system's SDR white: the
-render thread, as it plays the stream); and what the tone map and the
+HDR, the mode, paper white in nits, or 0 and its percent of the system's
+SDR white: xgpu_hdr_paper_white_nits; the render thread, as it plays the
+stream); and what the tone map and the
 encoding are given now: the mode, the layer's output (EDR's extended linear
 sRGB, or SDR), paper white and the peak in paper whites (any thread) */
-void host_metal_hdr_state(int active, int mode, int paper_white);
+void host_metal_hdr_state(int active, int mode, int paper_white_nits, int paper_white);
 /* the display's headroom stood in for (HALO_METAL_EDR_HEADROOM's: the tests,
 the replay) */
 void host_metal_hdr_override(float headroom);

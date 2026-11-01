@@ -42,8 +42,8 @@ VOLUMES = [(str(step), f"{step / 10:g}") for step in range(11)]
 # MENU_PLATFORM, "vr": the VR build, playing in the headset, and "hdr": a
 # renderer that draws display.hdr)
 MENU_PLATFORMS = ("desktop", "android", "vr", "hdr", "touch", "pointer", "computer")
-# display.hdr_paper_white's values, percent of the system's SDR white
-PAPER_WHITES = (50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200, 250)
+# display.hdr_paper_white_nits's values: the system's SDR white, or nits
+PAPER_WHITES = [("SYSTEM", "0")] + [(f"{nits} NITS", str(nits)) for nits in range(80, 501, 20)]
 
 # the old settings screens' layout (rows of a label and a spinner over their
 # row backgrounds, a line of help for the row chosen, Defaults, OK and Cancel),
@@ -689,9 +689,9 @@ PAGES = {
             ("HDR MODE", "display.hdr_mode", [("FAITHFUL", "faithful"), ("PUNCHY", "punchy")],
              "Faithful keeps the original picture and brightens its highlights. Punchy lifts the whole scene, as a "
              "remaster would.|The pictures are shown approximately: no SDR picture can show HDR.", "hdr"),
-            ("HDR BRIGHTNESS", "display.hdr_paper_white", [(f"{value}%", str(value)) for value in PAPER_WHITES],
-             "With HDR, how bright white surfaces and the HUD are, in percent of your system's white. Raise it in a "
-             "bright room.", "hdr"),
+            ("PAPER WHITE", "display.hdr_paper_white_nits", PAPER_WHITES,
+             "With HDR, how bright white surfaces and the HUD are, in nits. System matches your system's SDR "
+             "brightness. Raise it in a bright room.", "hdr"),
             # (OpenCE's OVERSHIELD and HDR DISPLAY rows are left out: OpenH1's
             # renderers do not draw the overshield's rise, and HDR output is
             # display.hdr's own; port/linux/README.md)

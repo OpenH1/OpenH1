@@ -593,7 +593,7 @@ static struct
 	where the instance has VK_EXT_swapchain_colorspace and the options an
 	encode. */
 	uint32_t window_hdr, window_sdr_white, window_headroom, window_hdr_changed;
-	int hdr_active, hdr_mode, hdr_paper_white;
+	int hdr_active, hdr_mode, hdr_paper_white_nits, hdr_paper_white;
 	unsigned int surface_hdr;
 	int hdr_output;
 	int display_hdr_told;
@@ -4882,10 +4882,11 @@ static void rectangle_turned(int quarter_turns, uint32_t window_width, uint32_t 
 	}
 }
 
-void xgpu_vulkan_hdr_state(int active, int mode, int paper_white)
+void xgpu_vulkan_hdr_state(int active, int mode, int paper_white_nits, int paper_white)
 {
 	vk.hdr_active = active != 0;
 	vk.hdr_mode = mode == XGPU_HDR_MODE_PUNCHY ? XGPU_HDR_MODE_PUNCHY : XGPU_HDR_MODE_FAITHFUL;
+	vk.hdr_paper_white_nits = paper_white_nits > 0 ? paper_white_nits : 0;
 	vk.hdr_paper_white = paper_white > 0 ? paper_white : 100;
 	/* (the swapchain made again where its output changes) */
 	if (vk.swapchain && hdr_output_choose() != vk.hdr_output)
@@ -4898,13 +4899,20 @@ static float sdr_white_nits(void)
 {
 	float sdr_white = float_of(__atomic_load_n(&vk.window_sdr_white, __ATOMIC_ACQUIRE));
 
-	return sdr_white > 1.0f ? sdr_white * 80.0f : 203.0f;
+	return sdr_white > 1.0f ? sdr_white * 80.0f : XGPU_HDR_REFERENCE_WHITE_NITS;
+}
+
+/* paper white in nits, as the front end's state says */
+static float paper_white_nits(void)
+{
+	return xgpu_hdr_paper_white_nits(vk.hdr_paper_white_nits, vk.hdr_paper_white, sdr_white_nits());
 }
 
 void xgpu_vulkan_hdr_frame(struct xgpu_hdr_frame *frame)
 {
 	float headroom = float_of(__atomic_load_n(&vk.window_headroom, __ATOMIC_ACQUIRE));
-	float setting = (float)vk.hdr_paper_white / 100.0f;
+	/* (paper white over the system's SDR white) */
+	float setting = paper_white_nits() / sdr_white_nits();
 	float nits;
 
 	memset(frame, 0, sizeof(*frame));
@@ -4950,7 +4958,7 @@ static void hdr_metadata_set(void)
 	metadata.maxLuminance = peak;
 	metadata.minLuminance = 0.0f;
 	metadata.maxContentLightLevel = peak;
-	metadata.maxFrameAverageLightLevel = sdr_white_nits() * (float)vk.hdr_paper_white / 100.0f;
+	metadata.maxFrameAverageLightLevel = paper_white_nits();
 	vkSetHdrMetadataEXT(vk.device, 1, &vk.swapchain, &metadata);
 }
 

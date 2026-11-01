@@ -439,9 +439,10 @@ is then RGBA16F, an input attachment too.
   paper white) into an image of its own, letterboxed into the swapchain as
   an SDR frame is, and `VK_EXT_hdr_metadata` gives the compositor the
   content's gamut (sRGB's) and light (the display's peak) where the device
-  has it. Paper white is SDL's SDR white (or BT.2408's 203 nits where the
-  system says none) times `display.hdr_paper_white`; the peak is SDL's
-  headroom. `HALO_VULKAN_HDR_HEADROOM` stands in for SDL's (HDR on, that
+  has it. Paper white is `display.hdr_paper_white_nits`, or with it 0
+  SDL's SDR white (or BT.2408's 203 nits where the system says none) times
+  `display.hdr_paper_white`'s percent, at most the peak; the peak is SDL's
+  headroom over its SDR white. `HALO_VULKAN_HDR_HEADROOM` stands in for SDL's (HDR on, that
   headroom). The front end's `"auto"` follows what the renderer tells it
   (`host_render_stream_display_hdr`): the display shows HDR and the surface
   can.

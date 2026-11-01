@@ -678,7 +678,7 @@ void xgpu_backend_anti_alias(xgpu_target target, BOOL smaa, const long corners[4
 		record_body->corners[index] = (int32_t)corners[index];
 }
 
-void xgpu_backend_hdr(BOOL active, int mode, int paper_white)
+void xgpu_backend_hdr(BOOL active, int mode, int paper_white_nits, int paper_white)
 {
 	struct xgpu_stream_hdr *record_body;
 
@@ -687,6 +687,7 @@ void xgpu_backend_hdr(BOOL active, int mode, int paper_white)
 	record_body = record(XGPU_STREAM_HDR, sizeof(*record_body));
 	record_body->active = active ? 1 : 0;
 	record_body->mode = (uint32_t)mode;
+	record_body->paper_white_nits = (uint32_t)paper_white_nits;
 	record_body->paper_white = (uint32_t)paper_white;
 }
 

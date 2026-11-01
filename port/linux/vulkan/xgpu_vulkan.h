@@ -598,10 +598,10 @@ changes: SDL's): whether HDR is on, its SDR white in scRGB's units (1.0:
 80 nits; 1.0 also where the system does not say) and its headroom over SDR
 white; the swapchain is made again where its output changes. And the front
 end's state (the stream's record, render thread): whether the frames are
-HDR (a half-float back buffer), the mode, paper white (percent of SDR
-white). */
+HDR (a half-float back buffer), the mode, paper white (in nits; 0: the
+system's SDR white, in percent of it: xgpu_hdr_paper_white_nits). */
 void xgpu_vulkan_window_hdr(int enabled, float sdr_white, float headroom);
-void xgpu_vulkan_hdr_state(int active, int mode, int paper_white);
+void xgpu_vulkan_hdr_state(int active, int mode, int paper_white_nits, int paper_white);
 /* display.picture_position: a picture of another shape than the window
 this many pixels from its top (no lower than its bottom) or centered (-1)
 (present), from the next present on */

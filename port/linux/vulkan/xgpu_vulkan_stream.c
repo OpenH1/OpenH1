@@ -2396,7 +2396,8 @@ static void stream_hdr(void *context, const struct xgpu_stream_hdr *record)
 {
 	(void)context;
 	stream.hdr_active = record->active != 0 && stream.capabilities.color_read;
-	xgpu_vulkan_hdr_state(stream.hdr_active, (int)record->mode, (int)record->paper_white);
+	xgpu_vulkan_hdr_state(stream.hdr_active, (int)record->mode, (int)record->paper_white_nits,
+		(int)record->paper_white);
 	/* (the tone map's pipeline for the back buffer's pass, made as HDR is
 	chosen, not in the middle of a frame) */
 	if (stream.hdr_active)
