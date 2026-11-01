@@ -2097,7 +2097,7 @@ static void host_panel_show(struct widget_instance *list, short chosen)
 		{
 			usnprintf(title, NUMBEROF(title) - 1, L"Bots");
 			usnprintf(status, NUMBEROF(status) - 1, !network_host_controls_bots_play() ?
-				L"Bots play Slayer games: these apply from the next one." : lobby ?
+				L"Bots do not play Race: these apply from the next game." : lobby ?
 				L"Change the bots before the game starts. Choose a bot to take it out." :
 				L"Change the bots while the game plays. Choose a bot to take it out.");
 		}

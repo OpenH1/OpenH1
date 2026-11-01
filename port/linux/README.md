@@ -688,9 +688,8 @@ join or leave the lobby at once; the next game starts with them too. The
 host changes them while the game plays in Host Controls' BOTS tab, which
 has the same choices (refer to "Host Controls"). The menus' spinners stop
 at their ends, so BOTS never goes round from its most to NONE. For a
-gametype the bots do not play (CTF, Oddball, King, Race) the rows are
-dimmed and passed over, and the panel says "Bots play Slayer, SWAT,
-Infection and Gun Game only." More players on this computer join the
+gametype the bots do not play (Race) the rows are dimmed and passed over,
+and the panel says "Bots play every gametype but Race." More players on this computer join the
 lobby with START, as in a network game. In
 the Xbox's menus (`display.menus = "xbox"`), Multiplayer > Split Screen is
 the game, with the settings as `config.toml` has them (the Xbox's menus
@@ -767,6 +766,25 @@ the map's edges. A bot puts an overturned vehicle back on its
 wheels, and gets out of one overturned, stuck, left without a driver or
 standing still, or, badly hurt beside an enemy, to fight on foot. The minute
 line counts the seats taken, the time in them and the kills and deaths there.
+The bots play the objective gametypes too (`game/bots_objectives.c`), as
+decent players do. In Capture the Flag a third of a team's players defend
+(its last bots) and keep about their flag; the others go for the enemy's
+flag, take it and run it home, the carrier running more than it fights
+(it never fires the flag, which would drop it, but strikes with it), its
+teammates escorting it. When their flag is taken the defenders and every
+bot nearer the carrier than the enemy's flag hunt the carrier; a flag
+dropped is touched back home by the defenders and the bots near it. With one
+flag (or Assault) the team without one attacks with every bot and the other
+defends. In Oddball every bot goes for a ball lying free; its holder runs to
+places away from its enemies and strikes those who close in, and the others
+hunt an enemy holder or escort a teammate holding one; in Juggernaut they
+hunt the juggernaut. In King of the Hill they go to the nearest hill (each of
+Multi-Hill's, a moving hill as it moves), move about inside it and fight
+from it. The carrier of a bot's flag, a ball holder and an enemy in a hill
+are its preferred targets. A driver takes the flag runs and the hill too,
+getting out at the flag to take it; defenders stay on foot. The minute line
+counts the bots' flag grabs, captures and returns, their seconds with a ball
+and on a hill.
 halo.log has a line each minute with each weapon family's rounds that hit
 someone of those the bots fired, and `debug.bots_weapon` gives every bot
 one weapon, to measure it.
@@ -966,7 +984,7 @@ the setting for one start of the game. It has priority over the file.
 | `game.enhanced_animations` | `true` | `HALO_ENHANCED_ANIMATIONS` | `true`: the player bipeds' grenade throws keep their legs moving, blended by speed and direction (crouched throws stay crouched, throws in the air use the jump's legs), Warthog and Scorpion riders stay seated to throw and let go of the grips to throw and reload, and a player turns with the aim while throwing, as while meleeing, and in the air, as while running (the original froze the body in a jump and kept the aim within its aiming screen about it, so a shot after turning in the air went between the jump's facing and the crosshair). `false`: the original animations, which freeze the legs during a throw and stand a rider up and the body in the air. The turning with the aim (throwing, in the air) moves where shots go, so in a network game every player turns so whatever this says; `false` turns it off only in a game of one machine. Only in config.toml, not in the menus. |
 | `game.sim_rate` | `60` | `HALO_SIM_RATE` | How many steps a second the game takes for what a player feels in their hands: their own movement and aim, projectiles, thrown items, and the VR mode's throws and grabs. `30` (as the game was made), `60` or `120`: 1, 2 or 4 steps inside each of the game's 30 ticks a second. Everything else keeps the 30 ticks: the AI, scripts, cinematics, animations, timers, vehicles, saved games and the network. Any other value is `30` (refer to "Simulation rate" in "How the port operates"). It applies to games of this computer alone: the campaign, split screen and games with bots (a split screen game runs as a network game of one computer that takes no other). Network games with other computers use the rate the game agreed on, hosting or joining: `30` in a Legacy game (OpenCE's netcode steps at 30), and the host's `network.sim_rate` in an OpenH1 game. The playback of a saved film is always `30`. TICK RATE in Video Setup > Graphics > Advanced: ORIGINAL (30), 60 or 120. A change applies from the next tick. Where the game sets the setting aside (a network game with other computers, a film's playback), the row is locked: dimmed, at the game's rate (ORIGINAL (30) in a Legacy game), passed over, and OK leaves the setting as it was. |
 | `game.unlock_all_levels` | `false` | `HALO_UNLOCK_ALL_LEVELS` | `true`: a profile created afterward starts with all the campaign levels finished on all the difficulties. `false`: a new profile starts at The Pillar of Autumn, and each level opens when you finish the level before it, as on the Xbox. Existing profiles keep their progress. To start a profile over, type `profile_reset_campaign` in the console. |
-| `bots.count` | `0` | `HALO_BOTS` | Computer players (bots) in a Slayer game this computer hosts: `0` to `64` join its lobby with the players, as far as the game has room: a local (split screen) game, or a system link or internet one, where the host plays them and the other machines see them as players (`bots.make_room`). `0`: none, as in the stock game. The lobby's BOTS writes it (ADD n: n; FILL TO: 64). Refer to "Bots". |
+| `bots.count` | `0` | `HALO_BOTS` | Computer players (bots) in a game this computer hosts (any gametype but Race): `0` to `64` join its lobby with the players, as far as the game has room: a local (split screen) game, or a system link or internet one, where the host plays them and the other machines see them as players (`bots.make_room`). `0`: none, as in the stock game. The lobby's BOTS writes it (ADD n: n; FILL TO: 64). Refer to "Bots". |
 | `bots.skill` | `"normal"` | `HALO_BOT_SKILL` | How well the bots play: `"easy"`, `"normal"`, `"heroic"` or `"legendary"`: how soon they react, how far and how wide they see, how large their aim error is and how fast it settles, how fast they turn. The lobby's BOT SKILL writes it. |
 | `bots.teams` | `"even"` | `HALO_BOT_TEAMS` | In a team game: `"even"` puts the bots on both teams, evening them with the players; `"against"` puts them all on the team the players are not on. The lobby's BOT TEAMS (EVEN or AGAINST YOU) writes it. |
 | `bots.make_room` | `true` | `HALO_BOTS_MAKE_ROOM` | With bots: a bot leaves as a player joins, so that the game has no more than `bots.fill_to` players and bots, and comes back as a player leaves (the lobby's FILL TO). `false`: the bots stay, and a network game's most players are its players' alone (the lobby's ADD). Refer to "Bots". |
@@ -2023,7 +2041,8 @@ the party's brokers.
   is) leads and hosts, and the others follow. The game is public, named
   after the playlist, on one of its maps with its gametype. Others searching
   the playlist find it. It starts by itself 3 seconds after it is full, or
-  after 90 seconds: with bots filling it in Slayer playlists, else with the
+  after 90 seconds: with bots filling it in playlists of a gametype the bots
+  play (all but Race), else with the
   players it has (2 at least).
 - It never joins a Legacy game, nor an OpenH1 game of another version. OpenCE
   players can join a game it hosts, as any OpenH1 game.
@@ -6193,7 +6212,7 @@ Other changes:
 | `cache/cache_files.c`, `networking/network_client_manager.c`, `networking/network_server_manager.c`, `networking/network_server_message_handler.c`, `main/main.c`, `interface/interface.c` | Map sharing (`game/map_share.c`): a client that does not have the game's Custom Edition map asks the host for it instead of leaving, is not given time to precache it until it has it, and adds its players to a game in progress only then; the host gives the game's map its own name and its version (its hash's start), takes the requests from any machine in the game, lobby too, and does not drop a machine that downloads; the transfers run each frame, and their progress is drawn over the screen. |
 | `cutscene/cinematics.c` | A scenario's titles (some Custom Edition maps show their name for the whole game) are not drawn over a menu, as the letterbox is not: the screen's overlays are drawn after the players' menus. |
 | `tag_files/tag_groups.h` | `TAG_BLOCK_GET_ELEMENT` returns an element in the block without a call, and calls `tag_block_get_element_with_size` for anything else. |
-| `game/players.c`, `game/player_queues_new.c`, `networking/network_server_manager.c` | Bots (`game/bots.c`, `bots.count`): the lobby of a Slayer game this machine hosts takes the bot players, each the one player of a machine of its own that no real machine is (joining machines are numbered below them), and every tick their actions come from `game/bots.c` instead of their empty queues, into the update the host relays (`update_server_take_bot_action`). A network game's bots make room for the players who join (`bots.make_room`), told the other machines by the game's own messages; the advertisement and the listing count the players apart from them. |
+| `game/players.c`, `game/player_queues_new.c`, `networking/network_server_manager.c` | Bots (`game/bots.c`, `bots.count`): the lobby of a game this machine hosts (any gametype but Race) takes the bot players, each the one player of a machine of its own that no real machine is (joining machines are numbered below them), and every tick their actions come from `game/bots.c` instead of their empty queues, into the update the host relays (`update_server_take_bot_action`). A network game's bots make room for the players who join (`bots.make_room`), told the other machines by the game's own messages; the advertisement and the listing count the players apart from them. |
 | `input/input_xbox.c`, `physics/collision_usage.c` | The clock is read only for a button held, and for collision tests only when their times are shown (a read of the clock was slow in a browser, for the web port). |
 | `math/random_math.c`, `game/game.c`, `game/game_time.c` | The local seed is set from the game's at a map's start, and is two: the ticks' and the frames' ("Determinism"). The seeds' takers and the game state's allocations go to the determinism check (`game/determinism_log.c`). |
 | `cseries/debug_memory.c` | The debug allocator fills a new allocation from a seed of its own, not the game's local seed. |

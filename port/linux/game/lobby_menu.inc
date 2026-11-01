@@ -789,7 +789,7 @@ static void lobby_board_update(struct widget_instance *list)
 		else if (lobby_board.copied_time && system_milliseconds() - lobby_board.copied_time < LOBBY_BOARD_COPIED_TIME)
 			usnprintf(text, NUMBEROF(text) - 1, L"Invite copied: paste it in a chat to your friends.");
 		else if (controls.bots_locked)
-			usnprintf(text, NUMBEROF(text) - 1, L"Bots play Slayer, SWAT, Infection and Gun Game only.");
+			usnprintf(text, NUMBEROF(text) - 1, L"Bots play every gametype but Race.");
 		else if (lobby_join.adding)
 			usnprintf(text, NUMBEROF(text) - 1, L"New player: press START.");
 		else if (mode == _game_mode_infection)

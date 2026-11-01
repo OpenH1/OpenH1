@@ -953,7 +953,8 @@ static const struct config_setting config_settings[] =
 		"as the game's own maps' are before they run; false refuses them\n"
 		"(docs/custom_edition_caches.md)." },
 	{ "bots.count", _config_integer, "0", "HALO_BOTS", _environment_value, _platform_all,
-		"Computer players (bots) in a Slayer game this computer hosts: 0 to 64\n"
+		"Computer players (bots) in a game this computer hosts (any gametype\n"
+		"but Race): 0 to 64\n"
 		"join its lobby with the players, as far as the game has room: a local\n"
 		"(split screen) game, or a system link or internet one, where the host\n"
 		"plays them and the other machines see them as players (bots.make_room).\n"
