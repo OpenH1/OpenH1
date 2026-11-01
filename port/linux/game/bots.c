@@ -672,11 +672,17 @@ int bots_player_is_bot(long player_index)
 
 void bots_network_player(long bot_index, struct network_player *player)
 {
-	/* (the Marines of Halo's campaign; eleven characters at most) */
+	/* (the Marines of Halo's campaign, then other Marines' names: one for
+	each bot, eleven characters at most) */
 	static char const *const names[BOTS_MAXIMUM] =
 	{
 		"Johnson", "Jenkins", "Mendoza", "Bisenti", "Stacker", "Polaski", "Chips", "Kojo",
 		"Rawley", "Riley", "Wellsley", "Hall", "Fitzgerald", "Locklear", "Mitchell",
+		"Baker", "Carter", "Diaz", "Evans", "Foster", "Garcia", "Hayes", "Ito", "Jensen", "Kowalski",
+		"Lopez", "Morales", "Nakamura", "Novak", "Okafor", "Park", "Quinn", "Reyes", "Santos", "Tanaka",
+		"Ueda", "Vasquez", "Walsh", "Young", "Zhang", "Abara", "Brooks", "Chen", "Dalton", "Ellis",
+		"Fischer", "Grant", "Holt", "Ivanov", "Kane", "Lindqvist", "Mbeki", "Nash", "Ortiz", "Petrov",
+		"Rhodes", "Sato", "Torres", "Vance", "Ward", "Yilmaz", "Adeyemi", "Byrne", "Castillo",
 	};
 	char const *name = names[bot_index % BOTS_MAXIMUM];
 	long index;

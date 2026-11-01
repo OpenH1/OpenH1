@@ -4061,7 +4061,8 @@ enum
 	_multiplayer_mode_direct_link,
 	_multiplayer_mode_host_internet,
 	_multiplayer_mode_host_lan,
-	/* a game of this machine alone, with bots (PLAY WITH BOTS) */
+	/* a game of this machine alone (Create Game's OFFLINE): split screen,
+	and bots as in every game */
 	_multiplayer_mode_host_local,
 };
 
@@ -4642,7 +4643,7 @@ static void multiplayer_mode_set(struct widget_instance *widget)
 	multiplayer.mode =
 		strstr(name, "create_inter") || multiplayer.campaign_first ? _multiplayer_mode_host_internet :
 		strstr(name, "create_lan") ? _multiplayer_mode_host_lan :
-		strstr(name, "create_bots") ? _multiplayer_mode_host_local :
+		strstr(name, "create_offline") || strstr(name, "create_bots") ? _multiplayer_mode_host_local :
 		strstr(name, "join_lan") ? _multiplayer_mode_lan :
 		strstr(name, "join_direct") ? _multiplayer_mode_direct_link : _multiplayer_mode_server_browser;
 }
@@ -4658,8 +4659,8 @@ static boolean multiplayer_player(short controller)
 }
 
 /* Create Game's ("join controller to mp game", first): player 1 in, and
-the server made: an internet one (an invite, Discord), a LAN one, or (PLAY
-WITH BOTS) one of this machine alone */
+the server made: an internet one (an invite, Discord), a LAN one, or
+(OFFLINE) one of this machine alone */
 static boolean multiplayer_host(struct widget_instance *widget, struct event_record *event, short controller,
 	boolean *widget_deleted)
 {
@@ -5107,12 +5108,6 @@ VOTING), PASSWORD's and MAP SHARING's (its help_strings, tools/port_settings.py)
 #define MAP_SHARE_OPTIONS_HELP 15
 /* ... and GAME's first choice's (each choice its own) */
 #define GAME_MODE_HELP 16
-/* ... and the bots' rows' (BOTS, BOT SKILL, BOT TEAMS), after GAME's four */
-#define BOTS_HELP 20
-/* ... and a network game's BOTS row's, then its line for a gametype the bots
-do not play */
-#define BOT_OPTIONS_HELP 23
-#define BOT_OPTIONS_LOCKED_HELP 24
 
 /* Server Setup's GAME: the kind of game hosted (network.game_mode) and its
 tick rate (network.sim_rate), as tools/port_settings.py's GAME_MODES have
@@ -5254,115 +5249,19 @@ static void wide_to_text(wchar_t const *wide, char *text, short size)
 	text[index] = 0;
 }
 
-/* Server Setup's bots (bots.count, bots.skill, bots.teams: bots.c), in a
-game of this machine alone (PLAY WITH BOTS), in the place of the rows of the
-network (GAME, INVITE LINK, MAP SHARING), which it hides; each row written to
-config.toml as it changes, so that the lobby's bots follow it. A gametype
-the bots do not play (not Slayer's: CTF, Oddball, King, Race) locks them,
-dimmed, passed over, and the line below them says why (tools/port_settings.py's
-BOTS_ROWS) */
+/* Server Setup in a game of this machine alone (Create Game's OFFLINE): the
+network's rows (GAME, INVITE LINK, MAP SHARING) hidden, and in their place a
+line saying what the game is (tools/port_settings.py's LOCAL_NOTE). Its bots
+are the lobby's, as every game's (lobby_menu.inc) */
 static char const *const server_settings_network_rows[] = { "op_game_mode", "op_invite", "op_map_share_options" };
-static char const *const server_settings_bots_rows[][2] =
-{
-	{ "op_bots_count", "bots_count_spinner" },
-	{ "op_bots_skill", "bots_skill_spinner" },
-	{ "op_bots_teams", "bots_teams_spinner" },
-};
 
-static void server_settings_bots(struct widget_instance *list, boolean local, boolean playable)
+static void server_settings_local(struct widget_instance *list, boolean local)
 {
-	struct widget_instance *help = list->parameters.list.extended_description;
-	boolean locked = local && !playable;
 	short index;
 
 	for (index = 0; index < NUMBEROF(server_settings_network_rows); index++)
 		visible_set(named(list, server_settings_network_rows[index], 0), !local);
-	for (index = 0; index < NUMBEROF(server_settings_bots_rows); index++)
-	{
-		struct widget_instance *row = named(list, server_settings_bots_rows[index][0], 0);
-		struct widget_instance *spinner = named(list, server_settings_bots_rows[index][1], 0);
-		struct pc_menu_setting *setting = spinner ? pc_menu_setting_get(spinner->definition_tag_index) : NULL;
-
-		if (!row || !spinner)
-			continue;
-		visible_set(row, local);
-		row->disabled = locked;
-		spinner->disabled = locked;
-		row->alpha_modifier = locked ? 0.4f : 1.0f;
-		/* (the focus on a row locked goes to the buttons) */
-		if (locked && list->focused_child == row)
-		{
-			struct widget_instance *child;
-			short child_index = 0;
-
-			for (child = list->child; child && strncmp(child->name, "button_bar", 10); child = child->next)
-				child_index++;
-			if (child)
-			{
-				list->focused_child = child;
-				list->parameters.list.selected_index = child_index;
-			}
-		}
-		/* (setting_changed_save passes over a locked spinner) */
-		if (local && setting)
-			setting_changed_save(spinner, setting);
-		if (help && local && list->focused_child == row)
-			help->parameters.text_box.string_list_index = (short)(BOTS_HELP + index);
-	}
-	visible_set(named(screen_of(list), "bots_hint", 0), locked);
-}
-
-/* Server Setup's BOTS in a network game (system link, internet: not co-op's),
-after the gametype's rows: its value what the bots are (bots.count,
-bots.skill, bots.make_room and bots.fill_to), and A opens their screen
-(tools/port_settings.py's BOT_SETUP), whose spinners write the settings. A
-gametype the bots do not play dims it, passed over, its value and its help
-saying why. bots_wanted_count and the others are what the lobby and the
-game in progress read (network_server_manager.c), each time */
-static void server_settings_network_bots(struct widget_instance *list, boolean shown, boolean playable)
-{
-	struct widget_instance *row = named(list, "op_bot_options", 0);
-	struct widget_instance *help = list->parameters.list.extended_description;
-	static wchar_t const *const skills[] = { L"EASY", L"NORMAL", L"HEROIC", L"LEGENDARY" };
-	wchar_t text[ROW_TEXT_LENGTH];
-	long count = bots_wanted_count();
-	boolean locked = shown && !playable;
-
-	if (!row)
-		return;
-	visible_set(row, shown);
-	row->disabled = locked;
-	row->alpha_modifier = locked ? 0.4f : 1.0f;
-	if (locked && list->focused_child == row)
-	{
-		struct widget_instance *child;
-		short child_index = 0;
-
-		for (child = list->child; child && strncmp(child->name, "button_bar", 10); child = child->next)
-			child_index++;
-		if (child)
-		{
-			list->focused_child = child;
-			list->parameters.list.selected_index = child_index;
-		}
-	}
-	if (!shown)
-		return;
-	if (locked)
-		usnprintf(text, NUMBEROF(text) - 1, L"NOT IN THIS GAMETYPE");
-	else if (!count)
-		usnprintf(text, NUMBEROF(text) - 1, L"NONE");
-	else if (bots_make_room())
-	{
-		usnprintf(text, NUMBEROF(text) - 1, L"%ld, %s, FILL TO %ld", count,
-			skills[PIN(bots_skill(), 0, (short)NUMBEROF(skills) - 1)], bots_fill_to());
-	}
-	else
-		usnprintf(text, NUMBEROF(text) - 1, L"%ld, %s", count, skills[PIN(bots_skill(), 0, (short)NUMBEROF(skills) - 1)]);
-	text[NUMBEROF(text) - 1] = 0;
-	text_set(named(list, "bot_options_value", 0), text);
-	if (help && list->focused_child == row)
-		help->parameters.text_box.string_list_index = locked ? BOT_OPTIONS_LOCKED_HELP : BOT_OPTIONS_HELP;
+	visible_set(named(screen_of(list), "local_note", 0), local);
 }
 
 /* "server settings update" */
@@ -5413,16 +5312,11 @@ static void server_settings_update(struct widget_instance *list)
 				help->parameters.text_box.string_list_index = MAP_SHARE_OPTIONS_HELP;
 		}
 	}
-	/* (a game of this machine alone: its bots, and none of the network's
-	rows) */
+	/* (a game of this machine alone: none of the network's rows) */
 	{
 		void *server = global_network_game_server_get();
-		boolean local = server && network_game_is_splitscreen_local();
 
-		server_settings_bots(list, local,
-			local && bots_play_game_engine(network_game_server_get_game(server)->variant.game_engine_index));
-		server_settings_network_bots(list, server && !local && !hosting_cooperative(),
-			server && bots_play_game_engine(network_game_server_get_game(server)->variant.game_engine_index));
+		server_settings_local(list, server && network_game_is_splitscreen_local());
 	}
 	/* LISTING (an internet game's): PUBLIC, listed in everyone's server
 	browser, or PRIVATE, for this game. Its help is its choice's */
@@ -8081,7 +7975,7 @@ enum
 	_multiplayer_item_create_local,
 	_multiplayer_item_online_coop,
 	_multiplayer_item_split_screen_coop,
-	_multiplayer_item_bots,
+	_multiplayer_item_offline,
 	_multiplayer_item_gametypes,
 	/* (CREATE GAME's and CO-OP CAMPAIGN's, which open their pages) */
 	_multiplayer_item_create,
@@ -8106,11 +8000,11 @@ static struct
 	{ "hub_join_lan_item", _multiplayer_item_join_local },
 	{ "hub_join_direct", _multiplayer_item_join_link },
 	{ "hub_create", _multiplayer_item_create },
-	{ "hub_create_bots", _multiplayer_item_bots },
 	{ "hub_coop", _multiplayer_item_coop },
 	{ "hub_gametypes", _multiplayer_item_gametypes },
 	{ "hub_create_inter", _multiplayer_item_create_internet },
 	{ "hub_create_lan_item", _multiplayer_item_create_local },
+	{ "hub_create_offline", _multiplayer_item_offline },
 	{ "hub_online_coop", _multiplayer_item_online_coop },
 	{ "hub_split_coop", _multiplayer_item_split_screen_coop },
 	{ "hub_party", _multiplayer_item_party },
@@ -8559,9 +8453,9 @@ static void multiplayer_status_update(struct widget_instance *list)
 	case _multiplayer_item_friends:
 		friends_hub_status(headline, NUMBEROF(headline), detail, NUMBEROF(detail));
 		break;
-	case _multiplayer_item_bots:
-		usnprintf(headline, NUMBEROF(headline) - 1, L"BOTS ON THIS COMPUTER");
-		usnprintf(detail, NUMBEROF(detail) - 1, L"Slayer, SWAT, Infection and\r\nGun Game. Set them up in\r\nServer Setup.");
+	case _multiplayer_item_offline:
+		usnprintf(headline, NUMBEROF(headline) - 1, L"THIS COMPUTER ONLY");
+		usnprintf(detail, NUMBEROF(detail) - 1, L"No network. Add bots in\r\nthe lobby; friends join\r\nwith a controller.");
 		break;
 	case _multiplayer_item_gametypes:
 	{
@@ -9591,15 +9485,6 @@ static struct gametype_option const gametype_options[] =
 	{ "map_share_spinner", _option_setting, 0, 0, 2, { 0 }, "network.map_share", { "true", "false" } },
 	{ "map_share_upload_spinner", _option_setting, 0, 0, 8, { 0 }, "network.map_share_upload",
 		{ "256", "512", "1024", "2048", "4096", "8192", "16384", "20480" } },
-	/* a network game's bots (Server Setup's BOTS: tools/port_settings.py's
-	BOT_SETUP; bots.c) */
-	{ "bot_count_spinner", _option_setting, 0, 0, 16, { 0 }, "bots.count",
-		{ "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15" } },
-	{ "bot_skill_spinner", _option_setting, 0, 0, 4, { 0 }, "bots.skill", { "easy", "normal", "heroic", "legendary" } },
-	{ "bot_teams_spinner", _option_setting, 0, 0, 2, { 0 }, "bots.teams", { "even", "against" } },
-	{ "bot_make_room_spinner", _option_setting, 0, 0, 2, { 0 }, "bots.make_room", { "true", "false" } },
-	{ "bot_fill_to_spinner", _option_setting, 0, 0, 15, { 0 }, "bots.fill_to",
-		{ "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16" } },
 	/* vehicle options (the side's set and counts: vehicles_update) */
 	{ "vehicles_respawn_spinner", _option_short, OPTIONS_FIELD(vehicle_respawn_time), 0, 7,
 		{ 0, 30, 60, 90, 120, 180, 300 } },
@@ -10179,12 +10064,6 @@ static void gametype_option_help(struct widget_instance *list)
 			}
 		}
 	}
-	/* (BOTS' FILL TO with MAKE ROOM on alone: its row last) */
-	if (named(list, "bot_make_room_spinner", 0))
-	{
-		visible_set(named(list, "op_bot_fill_to", 0),
-			named(list, "bot_make_room_spinner", 0)->parameters.list.selected_index == 0);
-	}
 	/* CO-OP OPTIONS: enemies, pickups and vehicles share the amount rows.
 	Mixed modes may need both rows at once. */
 	if (named(list, "coop_extra_enemies_spinner", 0))
@@ -10712,6 +10591,10 @@ boolean pc_menu_event_function_invoke(
 		else if (!strcmp(name, "port lobby start"))
 		{
 			return lobby_board_start();
+		}
+		else if (!strcmp(name, "port lobby bots load"))
+		{
+			return lobby_board_bots_load(widget);
 		}
 		else if (!strcmp(name, "port lobby invite"))
 		{

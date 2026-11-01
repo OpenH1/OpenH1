@@ -40,8 +40,8 @@ network_host_game.c's, by the host's own ways: this file only shows it.
   way or the lobby (network_host_rules.c), and SAVE AS GAMETYPE... (a name
   typed: Enter saves).
 - BOTS (not in co-op, where the tab is hidden): the bots' rows
-  (network_host_controls_bot_rows: BOTS, SKILL, TEAMS, BALANCE TEAMS, MAKE
-  ROOM FOR PLAYERS, FILL TO, TEAM TACTICS), each written to config.toml and
+  (network_host_controls_bot_rows: BOTS, the lobby's NONE, ADD n or FILL TO
+  n; SKILL, TEAMS, BALANCE TEAMS, TEAM TACTICS), each written to config.toml and
   taken by the game at once, then the bots playing (their name, team and
   score, as PLAYERS lists them), and for the bot chosen REMOVE BOT.
 
