@@ -2,7 +2,8 @@
 double precision, sines through it as the ear hears them, voices out of earshot, mono voices, the linear
 resampler, the Xbox ADPCM decoder against reference vectors, the Doppler shift, the limiter, audio.channels' choice
 and the 5.1 pan, and 3D audio: audio.spatial's choice, the HRTF's cues against the pan's, its distance,
-occlusion, reverb and Doppler, the crossfade when the choice changes, and 2D voices left as they are; and the
+occlusion, reverb and Doppler, the crossfade when the choice changes, and 2D voices left as they are; the master
+volume on every kind of voice; and the
 hand-off of the game's side of the voices to the mixer, which never waits for a game thread.
 
     python tools/harness/tests/test_mixer.py metrics   the figures
@@ -23,7 +24,7 @@ from harness import CHECK_FAILED, build, mutated, read, run  # noqa: E402
 
 SOURCE = "port/linux/src/dsound_sdl.c"
 CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "limiter",
-         "channels", "surround", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch", "dry-2d",
+         "channels", "surround", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch", "dry-2d", "master-volume",
          "hand-off-never-waits", "hand-off-settings"]
 
 # a fault in the mixer, and the case that must catch it
@@ -86,6 +87,8 @@ NEGATIVE_CONTROLS = {
     "hrtf-2d": (("\t*hrtf_on = FALSE;\n\tif (stream->has_3d && stream->mode != DS3DMODE_DISABLE)",
                  "\t*hrtf_on = FALSE;\n\tif (stream->channels == 1 || (stream->has_3d && stream->mode != DS3DMODE_DISABLE))"),
                 "dry-2d"),
+    # the HRTF's gain without the master volume and the voice's own (every 3D sound at full volume on headphones)
+    "hrtf-no-volume": (("\tif (*hrtf_on)\n\t\thrtf_out->gain *= stream->volume * master_volume;\n", ""), "master-volume"),
     # the hand-off: the device's mix waiting for the game's thread to take its side over, or to say what it
     # finished; a setting left on the game's side
     "hand-off-waits": (("else if (pthread_mutex_trylock(&voices_lock))\n\t{\n\t\thand_offs_skipped++;",

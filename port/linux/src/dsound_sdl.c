@@ -906,6 +906,11 @@ static void voice_gains(const struct sdl_stream *stream, float *left, float *rig
 	*left *= stream->volume * master_volume;
 	*right *= stream->volume * master_volume;
 	*room *= stream->volume * master_volume;
+	/* (the HRTF's gain too: without it every mono 3D voice on headphones
+	played at full volume, whatever audio.volume, audio.effects_volume and
+	the game's own gain said, and only the 2D voices followed them) */
+	if (*hrtf_on)
+		hrtf_out->gain *= stream->volume * master_volume;
 }
 
 /* the 5.1 speakers around the listener, clockwise from the center, and
