@@ -11,7 +11,9 @@ made Metal's by SPIRV-Cross and run on its GPU (tools/hdr_backends/harness.m):
   each blend) as the Vulkan backend's SPIR-V emitter writes it (reading the
   pixel drawn over as an input attachment) and as the Metal backend's MSL
   emitter writes it (reading it as [[color(0)]]), drawn over the same pixels:
-  the two must leave the same values, and none past what its tag allows.
+  the two must leave the same values, and none past what its tag allows;
+  and a screen effect's pass unclamped (XGPU_HDR_UNCLAMPED), its colour
+  past 1 in both.
 
 Everywhere: the tone map and the encoding the two backends compile are one
 GLSL source, but for where the uniforms are bound.
@@ -138,10 +140,10 @@ def test_draws_agree_on_the_gpu(harness):
     out = folder / "draws"
     subprocess.run([str(tool), str(out)], check=True)
     names = [line.split()[0] for line in (out / "index.txt").read_text().splitlines()[1:]]
-    assert len(names) == 66
+    assert len(names) == 67
     for name in names:
         _cross(out / f"{name}.spv", out / f"{name}.vk.metal", "frag", "xgpu_vk_fragment", fetch=True)
         for stem in (f"{name}.vk", name):
             (out / f"{stem}.vertex.metal").write_text(_vertex((out / f"{stem}.metal").read_text()))
     output = _run(binary, "draws", str(out))
-    assert "draws: 66 draws, 135168 values compared" in output, output
+    assert "draws: 67 draws, 137216 values compared" in output, output

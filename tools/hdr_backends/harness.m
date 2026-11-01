@@ -354,7 +354,7 @@ static void draws_test(NSString *dir)
 	NSArray<NSString *> *lines = [index componentsSeparatedByString:@"\n"];
 	static float colors[PIXELS * 4], had[PIXELS * 4], vulkan[PIXELS * 4], metal[PIXELS * 4];
 	unsigned spirv_offset = 0, msl_offset = 0, seed = 12345;
-	int pixel, channel, draws = 0, compared = 0;
+	int pixel, channel, draws = 0, compared = 0, unclamped = 0;
 	NSUInteger line;
 
 	if (!index || lines.count < 2 || sscanf(lines[0].UTF8String, "blend_constant %u %u", &spirv_offset, &msl_offset) != 2)
@@ -411,6 +411,17 @@ static void draws_test(NSString *dir)
 					FAIL("%s: pixel %d channel %d past its ceiling: %.5f", name, pixel, channel, (double)v);
 				if (channel == 3 && (tag & XGPU_HDR_ALPHA_LIMIT) && v > 1.0f)
 					FAIL("%s: pixel %d's alpha past 1: %.5f", name, pixel, (double)v);
+				/* (unclamped: the colour doubled, past 1 too, as drawn: no
+				blend) */
+				if (XGPU_HDR_IS_UNCLAMPED(tag))
+				{
+					float expected = channel < 3 ? 2.0f * colors[pixel * 4 + channel] : colors[pixel * 4 + 3];
+
+					if (fabsf(v - expected) > 0.002f + 0.002f * expected)
+						FAIL("%s: pixel %d channel %d clamped: %.5f, not %.5f", name, pixel, channel, (double)v,
+							(double)expected);
+					unclamped += channel < 3 && v > 1.0f;
+				}
 			}
 			if (XGPU_HDR_GLOW(tag))
 			{
@@ -423,9 +434,12 @@ static void draws_test(NSString *dir)
 			}
 		}
 	}
-	printf("draws: %d draws, %d values compared between the backends\n", draws, compared);
-	if (draws != 66)
-		FAIL("draws: %d drawn, not 66", draws);
+	printf("draws: %d draws, %d values compared between the backends, %d past 1 unclamped\n", draws, compared,
+		unclamped);
+	if (draws != 67)
+		FAIL("draws: %d drawn, not 67", draws);
+	if (unclamped < PIXELS)
+		FAIL("draws: %d values past 1 unclamped", unclamped);
 }
 
 int main(int argc, char **argv)

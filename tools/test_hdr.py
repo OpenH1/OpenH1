@@ -135,6 +135,18 @@ int main(void)
 		"an additive draw writing alpha keeps alpha at most 1, its colour unlimited: %04x", tag);
 	CHECK(classify(1, XGPU_BLEND_ONE, XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA, ADD, ALL, 22, 0, 0, F) == 0,
 		"the over operator's alpha cannot pass 1");
+	/* the screen effects' passes copy the tone mapped view through their
+	target and back (a scope's warp and mask): its light past white kept */
+	CHECK(classify(0, 0, 0, 0, RGB, 26, 1, 0, F) == XGPU_HDR_UNCLAMPED,
+		"a screen effect's copy of the view is unclamped");
+	CHECK(classify(1, XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA, XGPU_BLEND_ZERO, ADD, RGB, 26, 1, 0, F) == XGPU_HDR_UNCLAMPED,
+		"... and its last pass, blended by its mask");
+	CHECK(XGPU_HDR_CEILING_OF(classify(1, XGPU_BLEND_ONE, XGPU_BLEND_ONE, ADD, RGB, 26, 1, 0, F)) ==
+		XGPU_HDR_CEILING_PAPER_WHITE, "a screen effect adding light stops at paper white");
+	CHECK(classify(0, 0, 0, 0, RGB, 27, 1, 0, F) == 0, "the HUD's opaque draws are untagged");
+	CHECK(!XGPU_HDR_SHADER_BLENDS(XGPU_HDR_UNCLAMPED) && !XGPU_HDR_GLOW(XGPU_HDR_UNCLAMPED) &&
+		XGPU_HDR_BLEND_OPERATION(XGPU_HDR_UNCLAMPED) > XGPU_BLEND_MAX, "unclamped is no blend a draw has, "
+		"blended by the fixed function");
 
 	/* the reference: Faithful leaves under white as it is, and stays
 	under the peak, rising with the light, past it */

@@ -1124,6 +1124,16 @@ static struct render_target_entry *render_target_remember(const D3DSurface *surf
 	return entry;
 }
 
+/* a colour target of the screen's, drawn in HDR with the back buffer
+(display.hdr): the back buffer, and the screen effects' copy of it, which
+their passes copy the view through and back (a scope's warp and mask: the
+depth buffer's memory, as the Xbox's, rasterizer_xbox_screen_effect.c) */
+static BOOL render_target_screen_colour(const struct render_target_entry *entry)
+{
+	return !entry->target.depth && entry->kind == _render_target_screen && entry->target.layers == 1 &&
+		(entry->screen_buffer || entry->target.data == device.depth_buffer.Data);
+}
+
 static struct render_target_entry *render_target_get(const D3DSurface *surface)
 {
 	struct render_target_entry *entry;
@@ -1204,8 +1214,8 @@ static struct render_target_entry *render_target_get(const D3DSurface *surface)
 	entry->target.pixel_height = (unsigned long)(height * scale[1] + 0.5f);
 	entry->target.layers = layers;
 	entry->screen_buffer = surface->Data == (depth ? device.depth_buffer.Data : device.back_buffer.Data);
-	entry->target.format = depth ? XGPU_FORMAT_D24S8 : entry->screen_buffer && kind == _render_target_screen &&
-		layers == 1 ? hdr_back_buffer_format() : XGPU_FORMAT_BGRA8;
+	entry->target.format = depth ? XGPU_FORMAT_D24S8 : render_target_screen_colour(entry) ? hdr_back_buffer_format() :
+		XGPU_FORMAT_BGRA8;
 	description.width = entry->target.pixel_width;
 	description.height = entry->target.pixel_height;
 	description.depth = depth;
@@ -2517,8 +2527,7 @@ static BOOL render_target_stale(const struct render_target_entry *entry)
 	case _render_target_screen:
 		return entry->target.scale[0] != screen_scale[0] || entry->target.scale[1] != screen_scale[1] ||
 			(entry->target.height == SCREEN_HEIGHT && entry->target.width != (unsigned long)halo_screen_width()) ||
-			(entry->screen_buffer && !entry->target.depth && entry->target.layers == 1 &&
-				entry->target.format != hdr_back_buffer_format());
+			(render_target_screen_colour(entry) && entry->target.format != hdr_back_buffer_format());
 	case _render_target_shadow_map:
 		return entry->target.scale[0] != (float)halo_shadow_map_scale();
 	default:

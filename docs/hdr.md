@@ -81,7 +81,8 @@ The front end tags each draw into the HDR back buffer
 | Opaque, alpha blends, multiplies, min, max | the structure, models, fog, smoke, text | none: they cannot leave [0, 1] |
 | Additive light in the 3D view | effects, particles, contrails, plasma shaders, light volumes, lens flares, the sun, the game's dynamic lights (diffuse and specular passes), the port's glows, a sky's additive layers | none: their light keeps going past white |
 | A surface's look | double multiply decals and transparents; in Faithful the structure's specular lightmaps, reflections and mirrors, water's and glass's reflections; the fog screens | ceiling at paper white |
-| Over the tone mapped view | the HUD's bitmaps and meters, screen flashes, screen effects, menus | ceiling at paper white |
+| Over the tone mapped view | the HUD's bitmaps and meters, screen flashes, screen effects that add light, menus | ceiling at paper white |
+| The screen effects' passes | a scope's warp and mask, night vision: the view copied through the effect's target and back | unclamped: the view's light past white kept |
 | The first-person weapon's glows | the ammunition counter (whatever its blend), meters, additive display parts | expanded, ceiling 1.75 times paper white |
 | The HUD's glows | a meter flashing, the motion tracker | expanded, ceiling 1.5 times paper white |
 | The light of the world (additive) | teleporters' fields, light fixtures, Covenant lights, energy shields, plasma bolts' and needles' volumes | expanded from lower, ceiling 3 times paper white |
@@ -110,6 +111,15 @@ the SDR picture has it and its bright swirls pass white; a light fixture's
 panel, near white in SDR, reaches the ceiling. The ceilings are one field
 of the tag (`XGPU_HDR_CEILING_OF`); a glow is a ceiling past paper white's
 (`XGPU_HDR_GLOW`).
+
+**The screen effects** (a weapon's zoom: the sniper rifle's warp and mask;
+night vision; a script's) copy the tone mapped view into their own target
+and draw it back through the NV2A's pixel stage, whose every result is
+clamped to 1. Their target is RGBA16F with the back buffer, and their
+passes are tagged `XGPU_HDR_UNCLAMPED`: the combiners' results, the final
+combiner's inputs and the pixel's colour are not clamped above, so that the
+view through a scope keeps its light past white; under white they are what
+they were. The scope's reticle and frame are the HUD's, at paper white.
 
 ## The tone map and the encoding
 
@@ -208,7 +218,8 @@ the stream's ring carries it, written by the host). A backend declares
   too); and each tagged draw (every ceiling, the three glows' expansion,
   the alpha limit, over each of eleven blends) as the SPIR-V emitter writes it and as
   the MSL emitter writes it, over the same 512 pixels: the two backends
-  leave the same values, none past its tag's limit. Everywhere: the two
+  leave the same values, none past its tag's limit; and a screen effect's
+  pass, unclamped, its colour past 1 in both. Everywhere: the two
   backends' tone map and encoding are one GLSL source but for the
   uniforms' binding.
 - `port/linux/vulkan/tests/passes_test.c` (over a fake Vulkan): the local

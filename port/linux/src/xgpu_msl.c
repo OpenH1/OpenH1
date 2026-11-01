@@ -812,14 +812,18 @@ static void combiner_input(struct xgpu_text *text, const struct xgpu_combiner_in
 	}
 }
 
-/* final combiner inputs only have the unsigned identity and invert mappings */
-static void final_input(struct xgpu_text *text, const struct xgpu_combiner_input *input, BOOL alpha_portion)
+/* final combiner inputs only have the unsigned identity and invert mappings
+(the identity's colour not clamped above: display.hdr's XGPU_HDR_UNCLAMPED) */
+static void final_input(struct xgpu_text *text, const struct xgpu_combiner_input *input, BOOL alpha_portion,
+	BOOL unclamped)
 {
 	char value[64];
 
 	input_value(value, sizeof(value), register_expression(input->reg, -1, NULL), input, alpha_portion);
 	if (input->mapping == XGPU_MAP_UNSIGNED_INVERT)
 		xgpu_text_append(text, "(1.0 - saturate(%s))", value);
+	else if (unclamped && !alpha_portion)
+		xgpu_text_append(text, "max(%s, float3(0.0))", value);
 	else
 		xgpu_text_append(text, "saturate(%s)", value);
 }
@@ -871,7 +875,10 @@ static void combiner_stage(struct xgpu_text *text, const struct xgpu_pixel_progr
 		BOOL alpha = portion == 1;
 		const char *type = alpha ? "float" : "float3";
 		const char *prefix = alpha ? "a" : "c";
-		const char *bounds = alpha ? "-1.0, 1.0" : "float3(-1.0), float3(1.0)";
+		/* (display.hdr's XGPU_HDR_UNCLAMPED: the colour not above, a half
+		float's largest) */
+		const char *bounds = alpha ? "-1.0, 1.0" : XGPU_HDR_IS_UNCLAMPED(program->hdr) ?
+			"float3(-1.0), float3(65504.0)" : "float3(-1.0), float3(1.0)";
 		const char *mapping = output_mapping(part->output_mapping);
 		char mapped[64];
 
@@ -1473,6 +1480,8 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 	card's (depth(greater), depth reversed: the depth test before the shader
 	keeps what it can) */
 	BOOL replaces_depth = xgpu_pixel_program_depth_stage(program) != 0;
+	/* (display.hdr: a screen effect's pass, unclamped above) */
+	BOOL unclamped = XGPU_HDR_IS_UNCLAMPED(program->hdr);
 	int stage;
 
 	pixel_usage(program, &usage);
@@ -1608,9 +1617,9 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 		if (usage.ef_product)
 		{
 			xgpu_text_append(&text, "\tfloat4 ef_product = float4(");
-			final_input(&text, &final->inputs[4], FALSE);
+			final_input(&text, &final->inputs[4], FALSE, unclamped);
 			xgpu_text_append(&text, " * ");
-			final_input(&text, &final->inputs[5], FALSE);
+			final_input(&text, &final->inputs[5], FALSE, unclamped);
 			xgpu_text_append(&text, ", 0.0);\n");
 		}
 		if (usage.v1r0_sum)
@@ -1622,15 +1631,15 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 				xgpu_text_append(&text, "\tv1r0_sum = saturate(v1r0_sum);\n");
 		}
 		xgpu_text_append(&text, "\tfloat3 fA = ");
-		final_input(&text, &final->inputs[0], FALSE);
+		final_input(&text, &final->inputs[0], FALSE, unclamped);
 		xgpu_text_append(&text, ";\n\tfloat3 fB = ");
-		final_input(&text, &final->inputs[1], FALSE);
+		final_input(&text, &final->inputs[1], FALSE, unclamped);
 		xgpu_text_append(&text, ";\n\tfloat3 fC = ");
-		final_input(&text, &final->inputs[2], FALSE);
+		final_input(&text, &final->inputs[2], FALSE, unclamped);
 		xgpu_text_append(&text, ";\n\tfloat3 fD = ");
-		final_input(&text, &final->inputs[3], FALSE);
+		final_input(&text, &final->inputs[3], FALSE, unclamped);
 		xgpu_text_append(&text, ";\n\tfloat fG = ");
-		final_input(&text, &final->inputs[6], TRUE);
+		final_input(&text, &final->inputs[6], TRUE, unclamped);
 		xgpu_text_append(&text, ";\n\tfloat4 result = float4(fA * fB + (1.0 - fA) * fC + fD, fG);\n");
 	}
 
@@ -1703,6 +1712,12 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 		in the display's gamma: xgpu_hdr.h) */
 		xgpu_text_append(&text, "\toutput.color = float4(clamp(result.rgb, 0.0, %.6f), saturate(result.a));\n",
 			XGPU_HDR_LIGHTS_WHITE_VALUE);
+	}
+	else if (unclamped)
+	{
+		/* (display.hdr: a screen effect's pass, the view's light past white
+		kept) */
+		xgpu_text_append(&text, "\toutput.color = float4(max(result.rgb, 0.0), saturate(result.a));\n");
 	}
 	else if (program->hdr)
 	{

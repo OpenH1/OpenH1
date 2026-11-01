@@ -2309,7 +2309,8 @@ static unsigned int combiner_input(struct module *m, struct pixel_state *state, 
 	}
 }
 
-/* final combiner inputs only have the unsigned identity and invert mappings */
+/* final combiner inputs only have the unsigned identity and invert mappings
+(the identity's colour not clamped above: display.hdr's XGPU_HDR_UNCLAMPED) */
 static unsigned int final_input(struct module *m, struct pixel_state *state, const struct xgpu_combiner_input *input,
 	BOOL alpha_portion, unsigned int v1r0_sum, unsigned int ef_product)
 {
@@ -2319,6 +2320,8 @@ static unsigned int final_input(struct module *m, struct pixel_state *state, con
 
 	if (input->mapping == XGPU_MAP_UNSIGNED_INVERT)
 		return fsub(m, count, constant_splat(m, count, 1.0f), saturate(m, count, value));
+	if (XGPU_HDR_IS_UNCLAMPED(state->program->hdr) && !alpha_portion)
+		return fmax_scalar(m, count, value, 0.0f);
 	return saturate(m, count, value);
 }
 
@@ -2377,6 +2380,9 @@ static void combiner_stage(struct module *m, struct pixel_state *state, int stag
 		const struct xgpu_combiner_portion *part = &combiner->portions[portion];
 		BOOL alpha = portion == 1;
 		int count = alpha ? 1 : 3;
+		/* (display.hdr's XGPU_HDR_UNCLAMPED: the colour not above, a half
+		float's largest) */
+		float most = !alpha && XGPU_HDR_IS_UNCLAMPED(program->hdr) ? 65504.0f : 1.0f;
 		unsigned int a, b, c, d;
 
 		a = combiner_input(m, state, &part->inputs[0], alpha, stage, combiner);
@@ -2407,9 +2413,9 @@ static void combiner_stage(struct module *m, struct pixel_state *state, int stag
 		{
 			sum[portion] = fadd(m, count, ab[portion], cd[portion]);
 		}
-		ab[portion] = fclamp(m, count, output_mapping(m, count, part->output_mapping, ab[portion]), -1.0f, 1.0f);
-		cd[portion] = fclamp(m, count, output_mapping(m, count, part->output_mapping, cd[portion]), -1.0f, 1.0f);
-		sum[portion] = fclamp(m, count, output_mapping(m, count, part->output_mapping, sum[portion]), -1.0f, 1.0f);
+		ab[portion] = fclamp(m, count, output_mapping(m, count, part->output_mapping, ab[portion]), -1.0f, most);
+		cd[portion] = fclamp(m, count, output_mapping(m, count, part->output_mapping, cd[portion]), -1.0f, most);
+		sum[portion] = fclamp(m, count, output_mapping(m, count, part->output_mapping, sum[portion]), -1.0f, most);
 	}
 
 	/* write back only after both portions have read their inputs */
@@ -3363,6 +3369,9 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 	if (!program->source_blend && (program->hdr & XGPU_HDR_LIGHTS))
 		result = vec4_of(&m, fclamp(&m, 3, xyz(&m, result), 0.0f, XGPU_HDR_LIGHTS_WHITE_VALUE),
 			saturate(&m, 1, extract(&m, result, 3)));
+	/* (a screen effect's pass, the view's light past white kept) */
+	else if (!program->source_blend && XGPU_HDR_IS_UNCLAMPED(program->hdr))
+		result = vec4_of(&m, fmax_scalar(&m, 3, xyz(&m, result), 0.0f), saturate(&m, 1, extract(&m, result, 3)));
 	else
 		result = saturate(&m, 4, result);
 	if (effect)
