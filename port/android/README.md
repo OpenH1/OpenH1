@@ -410,6 +410,14 @@ number of the display's refreshes, 30 to 60 frames each second (60 at 60 or
 120 Hz, 45 at 90 Hz), and the Classic look is drawn where the graphics
 settings are not set (refer to "Battery saver" in
 [port/linux/README.md](../linux/README.md#battery-saver)).
+`display.low_latency` (`"auto"`: on) starts each frame just in time for the
+refresh it is shown at, with no frames queued ahead of the display, so that
+a touch is on screen a refresh or two sooner with vsync on (the phone's
+default). It reads when each frame reached the screen from
+`VK_GOOGLE_display_timing` (or `VK_KHR_present_wait`); on a device with
+neither it does nothing, and the frames queue as before (refer to "Low
+latency with vsync" in
+[port/linux/README.md](../linux/README.md#low-latency-with-vsync)).
 These settings are only for Android:
 
 | Setting | Function |
