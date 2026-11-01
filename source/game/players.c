@@ -4904,6 +4904,8 @@ void players_update_before_game(
 		/* port: the controls of a local game's bots this tick
 		(port/linux/game/bots.c), in place of what their queues held */
 		bots_update_actions(actions);
+		/* port: debug.play_log (port/linux/game/play_log.c) */
+		play_log_tick(actions);
 		data_iterator_new(&iterator, player_data);
 		while (player = data_iterator_next(&iterator))
 		{

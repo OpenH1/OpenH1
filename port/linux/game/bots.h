@@ -63,6 +63,8 @@ hosts the game (a network game's host gives them to its clients as it gives
 a remote player's: player_queues_new.c's update_server_take_bot_action);
 nothing on a client */
 void bots_update_actions(struct player_action *actions);
+/* debug.play_log's tick (port/linux/game/play_log.c) */
+void play_log_tick(struct player_action const *actions);
 /* the first local player's view turned toward the nearest enemy in sight
 (debug.test_input's "hunt"), and how it moves (forward and strafe, -1 to
 1); TRUE once on it, to fire */
