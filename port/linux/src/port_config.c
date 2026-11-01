@@ -1782,6 +1782,10 @@ static const struct config_setting config_settings[] =
 	{ "debug.bot_trace", _config_integer, "0", "HALO_BOT_TRACE", _environment_value, _platform_all,
 		"Log each bot's state (bots.count) every this many seconds: where it is\n"
 		"and goes, its path, target and weapon; 0 never." },
+	{ "debug.play_log", _config_string, "\"\"", "HALO_PLAY_LOG", _environment_value, _platform_all,
+		"A file to write every player's state to, about 60 times a second\n"
+		"(port/linux/game/play_log.c): where each is, how it moves and aims,\n"
+		"its controls, weapon and health; for studying how people play." },
 	{ "debug.bot_player", _config_boolean, "false", "HALO_BOT_PLAYER", _environment_set_is_true, _platform_all,
 		"In a local game with bots (bots.count), a bot of its own plays the first\n"
 		"player too, its view drawn as the player's (for recorded footage)." },
