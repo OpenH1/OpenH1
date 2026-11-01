@@ -982,6 +982,12 @@ static const struct config_setting config_settings[] =
 	{ "bots.share_delay", _config_real, "1.0", "HALO_BOTS_SHARE_DELAY", _environment_value, _platform_all,
 		"With bots.share_sightings: the seconds from a bot's sighting of an\n"
 		"enemy to its teammates' knowing of it (0 to 5)." },
+	{ "bots.vehicles", _config_boolean, "true", "HALO_BOTS_VEHICLES", _environment_value, _platform_all,
+		"On maps with open ground, the bots use the vehicles as people do: they\n"
+		"ride a teammate's Warthog (the gun first), drive a Warthog or a Ghost\n"
+		"they find near, run players down, circle a fight for their gunner, put\n"
+		"an overturned one back on its wheels and get out of one stuck or\n"
+		"overturned. false: the bots stay on foot." },
 	{ "display.viewmodel_shield", _config_boolean, "false", "HALO_VIEWMODEL_SHIELD", _environment_value, _platform_all,
 		"The energy shield's flare on the first-person arms too, as on the body\n"
 		"(the stock game draws it on the body only)." },

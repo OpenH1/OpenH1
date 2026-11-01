@@ -749,6 +749,17 @@ fire, trading for a fallen teammate, closing in and falling back together,
 and sharing out the power items and the escort of a human teammate. Measured
 on Team Slayer with bots alone, the team play slowed the fights and did not
 win more, so it is a choice, not the default.
+On maps with open ground (four of their roaming places under the open sky at
+least) the bots use the vehicles (`bots.vehicles`, `game/bots_vehicles.c`):
+a bot jumps into a teammate's Warthog near it (the gun first, else beside the
+driver), and three lives of four drives a Warthog or a Ghost it finds near,
+a Warthog's driver waiting a moment for a teammate on the way to its gun. A
+driver goes where the enemy was and about the open places, runs players on
+foot down, and with a gunner circles a fight at the gun's range; a Ghost's
+driver fires and strafes. A bot puts an overturned vehicle back on its
+wheels, and gets out of one overturned, stuck, left without a driver or
+standing still, or, badly hurt beside an enemy, to fight on foot. The minute
+line counts the seats taken, the time in them and the kills and deaths there.
 halo.log has a line each minute with each weapon family's rounds that hit
 someone of those the bots fired, and `debug.bots_weapon` gives every bot
 one weapon, to measure it.
@@ -955,6 +966,7 @@ the setting for one start of the game. It has priority over the file.
 | `bots.tactics` | `false` | `HALO_BOTS_TACTICS` | In team games, a team's bots play together: they keep apart (about five metres) and within reach of each other, fire at the enemy a teammate is hurting and take angles apart on one enemy, go after a teammate's killer while that player's shields are down, close in together after a kill and fall back together when the fight goes against them, and share out the power weapons and the escort of a human teammate (the best placed bot takes each). `false`: each bot plays on its own; measured, the team play slows the fights and wins no more (refer to "Bots"). |
 | `bots.share_sightings` | `true` | `HALO_BOTS_SHARE_SIGHTINGS` | A team's bots share the enemies they see, each sighting reaching the team's other bots `bots.share_delay` after it, as a callout would; it counts for where they go and look, never for their aim (a bot fires only at what it sees). `false`: a bot knows only what it saw itself. |
 | `bots.share_delay` | `1.0` | `HALO_BOTS_SHARE_DELAY` | With `bots.share_sightings`: the seconds from a bot's sighting of an enemy to its teammates' knowing of it (0 to 5). |
+| `bots.vehicles` | `true` | `HALO_BOTS_VEHICLES` | On maps with open ground, the bots use the vehicles as people do: they ride a teammate's Warthog (the gun first), drive a Warthog or a Ghost they find near, run players down, circle a fight for their gunner, put an overturned vehicle back on its wheels, and get out of one stuck or overturned (refer to "Bots"). `false`: the bots stay on foot. |
 | `paths.data` | `""` | `HALO_DATA_ROOT` | The data root. Refer to "Start the game". |
 | `paths.saves` | `""` | `HALO_SAVE_ROOT` | The save root. Refer to "Files and folders". |
 | `paths.logs` | `""` | `HALO_LOG_ROOT` | The folder of `debug.txt`, `bans.txt` and `cheaters.txt`. Empty: the data root. With it, the data root can be read-only (a dedicated server's maps mounted so). |

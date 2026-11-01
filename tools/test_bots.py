@@ -29,6 +29,13 @@ def _game(map_name):
         pytest.skip(f"needs {map_name}.map in assets/maps and a Linux build ({GAME})")
 
 
+def _address():
+    """the loopback address of this game: pytest-xdist's workers each their own, so that their games run at once"""
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "")
+    index = int(worker[2:]) if worker.startswith("gw") and worker[2:].isdigit() else 0
+    return f"127.0.0.{1 + index}"
+
+
 def _play(tmp_path, test, seconds, **settings):
     """the game played for that many seconds: (exit status, its output, debug.txt)"""
     (tmp_path / "data").mkdir()
@@ -39,7 +46,7 @@ def _play(tmp_path, test, seconds, **settings):
     env = {**os.environ, "SDL_VIDEODRIVER": "offscreen", "SDL_AUDIODRIVER": "dummy",
            "HALO_DATA_ROOT": str(tmp_path / "data"), "HALO_SAVE_ROOT": str(tmp_path / "save"),
            "HALO_HIDDEN_WINDOW": "1", "HALO_FULLSCREEN": "0", "HALO_NO_VSYNC": "1", "HALO_NO_AUDIO": "1",
-           "HALO_UPDATE_AUTO": "false", "HALO_NET_ONLINE": "false", "HALO_NET_ADDRESS": "127.0.0.1",
+           "HALO_UPDATE_AUTO": "false", "HALO_NET_ONLINE": "false", "HALO_NET_ADDRESS": _address(),
            "HALO_NET_BROADCAST": "127.255.255.255", "HALO_NETWORK_TEST": test, "HALO_NETWORK_TEST_START": "5",
            "HALO_NETWORK_TEST_SCORE": "500", "HALO_TEST_INPUT": "bot:1", "HALO_EXIT_AFTER": str(seconds + 20)}
     env.update({name: str(value) for name, value in settings.items()})
@@ -87,6 +94,40 @@ def test_bots_play_a_local_slayer_game(tmp_path, map_name, variant, count, skill
     deaths = sum(bot["deaths"] for bot in bots.values())
     assert kills >= count // 2 and deaths > 0, f"the bots killed {kills} and died {deaths} times"
     assert "bots: tick" in output, "no bots line a minute into the game"
+
+
+# the bots' minute line of the vehicles (bots.c's bots_report)
+VEHICLES = re.compile(r"bots: tick \d+, vehicles: driven (\d+) \(Warthog (\d+), Ghost (\d+), Scorpion (\d+), "
+                      r"Banshee (\d+)\), gunned (\d+), ridden (\d+), flipped (\d+); seconds driving (\d+), "
+                      r"riding (\d+); kills (\d+), deaths (\d+)")
+VEHICLE_FIELDS = ("driven", "warthog", "ghost", "scorpion", "banshee", "gunned", "ridden", "flipped", "driving",
+                  "riding", "kills", "deaths")
+
+
+def _vehicles(output):
+    """the last minute line's vehicles: seats taken, seconds in them, kills and deaths there"""
+    lines = VEHICLES.findall(output)
+    assert lines, "no vehicles line a minute into the game"
+    return dict(zip(VEHICLE_FIELDS, map(int, lines[-1])))
+
+
+@pytest.mark.parametrize("variant,kind", [
+    ("team_slayer", "warthog"),
+    ("team_slayer+team_vehicles=pc", "ghost"),
+])
+def test_bots_use_the_vehicles(tmp_path, variant, kind):
+    """bots.vehicles on Blood Gulch, two minutes of Team Slayer: the bots drive the Warthogs (and the Ghosts, with the
+    PC's vehicles), ride a teammate's Warthog's gun, and kill from them"""
+    _game("bloodgulch")
+    status, output, debug = _play(tmp_path, f"local:bloodgulch:{variant}", 120, HALO_BOTS=8)
+    assert status == 0, output[-2000:]
+    assert not re.search(r"assert|exception", output + debug, re.I), "an assert or exception in the game's log"
+    vehicles = _vehicles(output)
+    assert vehicles[kind] >= 1, f"no bot drove a {kind}: {vehicles}"
+    assert vehicles["driving"] >= 60, f"the bots drove {vehicles['driving']} seconds: {vehicles}"
+    if kind == "warthog":
+        assert vehicles["gunned"] >= 1, f"no bot rode a Warthog's gun: {vehicles}"
+    assert vehicles["kills"] >= 1, f"no kill from a vehicle: {vehicles}"
 
 
 def test_bots_in_a_system_link_game(tmp_path):
