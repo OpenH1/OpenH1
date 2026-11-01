@@ -478,10 +478,9 @@ void xgpu_vulkan_pacing_stop(void)
 
 int xgpu_vulkan_pacing_mode(int mode, int interval, int fifo, uint64_t period)
 {
-	/* (auto: on where it was measured: the Linux desktop's and the Steam
-	Deck's drivers; Android's and Windows' turn it on themselves until
-	theirs are) */
-#if defined(__ANDROID__) || defined(_WIN32)
+	/* (auto: on for the Linux desktop's, the Steam Deck's and Android's
+	drivers; Windows' turns it on itself until its are measured) */
+#if defined(_WIN32)
 	int automatic = 0;
 #else
 	int automatic = 1;
