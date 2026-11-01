@@ -437,7 +437,9 @@ does not list), with the dedicated flag as ever. Every rotation entry,
 gametype file, vote and the map vote play as in a Legacy game; a co-op
 entry is played at the game's rate too. The frames of an OpenH1 game come
 at least as often as its tick rate (`server.frame_rate` is raised to it),
-so that each sub-step of a client's is read and sent on as it comes.
+and between its frames the server waits on its socket and reads what comes
+as it comes, so that each sub-step of a client's is sent on to the others
+at once, not at the next frame.
 
 A change of `server.game_mode` (`sv_set`, `PUT /api/settings`,
 `sv_reload`) is taken in the lobby once nobody is on the server: the

@@ -445,7 +445,31 @@ void server_mode_set_minimum_frame_rate(long rate)
 	server_mode.minimum_rate = rate;
 }
 
+/* the rest of the frame waited out; with receive, the datagrams that come
+meanwhile read as they come (receive waits for them, up to whole
+milliseconds a millisecond short of the deadline, which the precise delay
+keeps), until it says it cannot */
+static void server_mode_wait(Uint64 deadline, int (*receive)(long milliseconds))
+{
+	for (;;)
+	{
+		Uint64 now = SDL_GetTicksNS();
+
+		if (now >= deadline)
+			return;
+		if (receive && deadline - now >= 2000000ULL && receive((long)((deadline - now) / 1000000ULL) - 1))
+			continue;
+		SDL_DelayPrecise(deadline - now);
+		return;
+	}
+}
+
 void server_mode_pace_frame(void)
+{
+	server_mode_pace_frame_receiving(NULL);
+}
+
+void server_mode_pace_frame_receiving(int (*receive)(long milliseconds))
 {
 	long rate = server_mode.idle ? SERVER_IDLE_FRAME_RATE : config_integer("server.frame_rate");
 	Uint64 now = SDL_GetTicksNS();
@@ -486,7 +510,7 @@ void server_mode_pace_frame(void)
 	if (now > server_mode.deadline + SERVER_RESYNCHRONISE_NANOSECONDS)
 		server_mode.deadline = now;
 	else if (server_mode.deadline > now)
-		SDL_DelayPrecise(server_mode.deadline - now);
+		server_mode_wait(server_mode.deadline, receive);
 	server_mode.frame_began = SDL_GetTicksNS();
 }
 
@@ -530,6 +554,11 @@ int server_mode_signals(int *quit_signal)
 
 void server_mode_pace_frame(void)
 {
+}
+
+void server_mode_pace_frame_receiving(int (*receive)(long milliseconds))
+{
+	(void)receive;
 }
 
 void server_mode_set_idle(int idle)

@@ -134,6 +134,11 @@ unsigned long system_milliseconds(void);
 void platform_log(char const *format, ...);
 /* xbox_kernel.c's */
 unsigned long long platform_shared_clock_microseconds(void);
+/* network_server_manager.c's and xnet.c's: a dedicated server's datagrams
+read between its frames */
+long network_game_server_port_datagram_socket(void);
+void network_game_server_port_read_datagrams(void);
+int xnet_socket_wait_readable(long socket, long milliseconds);
 /* player_queues_new.c's */
 long update_queues_distributed_input_key(long absolute_player_index);
 /* main.c's and port_mods.c's: this build, and the mods it plays */
@@ -474,8 +479,10 @@ enum
 	FORWARDED_INPUT_RELAY_TICKS = 2,
 	/* ... and sends what came on no sooner than this after it last did
 	(milliseconds: a host drawing hundreds of frames a second sent a datagram
-	to each client nearly every frame) */
+	to each client nearly every frame); a dedicated server, which reads its
+	datagrams as they come (network_distributed_server_receive), this */
 	FORWARDED_INPUT_INTERVAL_MILLISECONDS = 8,
+	FORWARDED_INPUT_SERVER_INTERVAL_MILLISECONDS = 2,
 };
 
 struct distributed_pickup
@@ -3913,8 +3920,11 @@ static void distributed_forward_flush(
 		return;
 	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS && !inputs; player_index++)
 		inputs = distributed_forwards[player_index].pending;
-	if ((!inputs && !live) || now - last_sent < FORWARDED_INPUT_INTERVAL_MILLISECONDS)
+	if ((!inputs && !live) || now - last_sent < (unsigned long long)(halo_server_mode() ?
+		FORWARDED_INPUT_SERVER_INTERVAL_MILLISECONDS : FORWARDED_INPUT_INTERVAL_MILLISECONDS))
+	{
 		return;
+	}
 	machine_count = distributed_client_machines(machine_indices, HALO_PORT_MAXIMUM_NETWORK_MACHINES);
 	for (machine_number = 0; machine_number < machine_count; machine_number++)
 	{
@@ -4003,6 +4013,46 @@ void network_distributed_frame_received(
 	/* (the frame its clients' inputs were read in: network_clock.c) */
 	network_clock_frame_read();
 	distributed_forward_flush();
+}
+
+/* (a dedicated server of an OpenH1 game, waiting for its frame's time:
+server_mode_pace_frame_receiving, from main.c) waits up to milliseconds for
+datagrams, reads those that come as its frame's read does and sends the
+input in them on at once, as the frame does after its read: a client's
+press goes on to the others as it comes, not at the server's next frame
+(at most 120 a second). FALSE when it cannot wait so (no game in progress,
+debug.network_latency holding datagrams back): the frame sleeps */
+int network_distributed_server_receive(
+	long milliseconds)
+{
+	long socket = network_game_server_port_datagram_socket();
+	boolean held = FALSE;
+	short player_index;
+	int ready;
+
+	if (socket == NONE)
+		return FALSE;
+	/* (what came and the interval held back, sent once the interval is up) */
+	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS && !held; player_index++)
+		held = distributed_forwards[player_index].pending;
+	if ((held || network_substeps_live_pending()) && milliseconds > FORWARDED_INPUT_SERVER_INTERVAL_MILLISECONDS)
+		milliseconds = FORWARDED_INPUT_SERVER_INTERVAL_MILLISECONDS;
+	ready = xnet_socket_wait_readable(socket, milliseconds);
+	if (ready < 0)
+		return FALSE;
+	if (ready)
+	{
+		network_game_server_port_read_datagrams();
+		/* (the clock's frames count the reads: an input read in this wait is
+		timed from when it came, not taken for one read just before its
+		tick: network_clock.c) */
+		network_distributed_frame_received();
+	}
+	else
+	{
+		distributed_forward_flush();
+	}
+	return TRUE;
 }
 
 /* ---------- states at the sub-steps

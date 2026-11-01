@@ -763,7 +763,9 @@ simulation still takes the input at its tick, as before.
   relayed input's encoding with the client's tick it is of; no sooner than
   8 ms after it last did (`FORWARDED_INPUT_INTERVAL_MILLISECONDS`: a host
   drawing hundreds of frames a second would send each client a datagram
-  nearly every frame). A player sent
+  nearly every frame); a dedicated server reads its datagrams as they come,
+  between its frames, and sends them on no sooner than 2 ms after
+  ("Dedicated servers"). A player sent
   every second tick is forwarded every second of their client's ticks, and
   at once when their buttons or choices changed in the ticks the input
   carries.
@@ -981,7 +983,10 @@ game at any rate (`port/linux/game/network_clock.c`):
   datagrams once a frame, and cannot tell when in the frame before its read
   an input came: an input read in the frame its tick begins in, just
   before the tick, is timed as the target, however long before the read it
-  came; one read in a frame before, from that read. (Timed from the read
+  came; one read in a frame before, from that read. (A dedicated server
+  reads them as they come while it waits for its frame, each read counted
+  as a frame's: one read so is timed from when it came, and only those
+  that came in the last millisecond of the wait are taken for the target.) (Timed from the read
   alone, the clock was pushed a frame early and swung back; on a dedicated
   server of 60 frames a second, so early that the prediction of the
   client's next tick came before the host's tick too, and the host took the
@@ -1537,7 +1542,15 @@ as any other, with these differences, all on the host's side:
   of its own; everything its ticks run of its clients' players is theirs.
   The director takes the setting again in the lobby while no other
   machine is in it (`network_standard_server_mode_read`), and frames an
-  OpenH1 game at least as often as its tick rate. Nothing on the wire is
+  OpenH1 game at least as often as its tick rate. While it waits for its
+  frame's time it waits on its game's socket, and reads the datagrams that
+  come as they come (as its frame's read does, and nothing else of the
+  frame: `network_distributed_server_receive`, from
+  `server_mode_pace_frame_receiving`), sending their input on to the other
+  clients at once, no sooner than 2 ms after the last
+  (`FORWARDED_INPUT_SERVER_INTERVAL_MILLISECONDS`), not at its next frame;
+  the last millisecond before the frame's time is a precise sleep, and the
+  frame's read takes what came in it. Nothing on the wire is
   new: a dedicated server's OpenH1 game is a player host's, but for the
   dedicated flag every dedicated server sends.
 
