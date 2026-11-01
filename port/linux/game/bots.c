@@ -777,6 +777,9 @@ short bots_teams(void)
 
 int bots_make_room(void)
 {
+	/* (basic training's four whatever bots.fill_to says) */
+	if (bots_training.on)
+		return FALSE;
 	return bots_matchmaking.count != NONE || config_boolean("bots.make_room") != 0;
 }
 
@@ -6190,7 +6193,9 @@ void bots_update_actions(struct player_action *actions)
 			if (!bots_globals.map_ready)
 				bots_prepare_map();
 			bots_globals.skill = bots_skill();
-			bots_globals.vehicles = config_boolean("bots.vehicles") && bots_globals.roam_outdoors_count >= 4 &&
+			/* (none in basic training: its bots stay where it puts them) */
+			bots_globals.vehicles = !bots_training.on && config_boolean("bots.vehicles") &&
+				bots_globals.roam_outdoors_count >= 4 &&
 				bots_distance2d(&bots_globals.roam_low, &bots_globals.roam_high) >= 80.0f;
 			bots_globals.tick_searches = 0;
 			bots_paths_scan();
