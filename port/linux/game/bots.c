@@ -126,6 +126,7 @@ and each bot's kills and deaths; debug.bot_trace logs each bot's state.
 #include "math/real_math.h"
 #include "bots_knowledge.h"
 #include "bots_tactics.h"
+#include "bots_profile.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -145,8 +146,9 @@ void platform_log(char const *format, ...);
 
 #define BOTS_PI 3.14159265f
 #define BOTS_DEGREES (BOTS_PI / 180.0f)
-/* the most places a bot roams to (player starting locations, item spawns) */
-#define BOTS_MAXIMUM_ROAM_POINTS 96
+/* the most places a bot roams to (player starting locations, item spawns,
+the map profile's places) */
+#define BOTS_MAXIMUM_ROAM_POINTS 160
 /* the path searches the bots make in one tick (each up to the engine's
 1024 surfaces); a bot whose search waits asks again next tick */
 #define BOTS_SEARCHES_A_TICK 3
@@ -512,6 +514,10 @@ static struct
 	real_point3d teleporter_exits[BOTS_MAXIMUM_TELEPORTERS];
 	real teleporter_turns[BOTS_MAXIMUM_TELEPORTERS];
 	long teleports;
+	/* each place's weight in the map's profile (0: not of it), and theirs
+	together */
+	real roam_weights[BOTS_MAXIMUM_ROAM_POINTS];
+	real roam_weight_total;
 	struct bots_bot bots[BOTS_MAXIMUM];
 	/* the first local player's, with debug.bot_player (its index
 	BOTS_MAXIMUM: after the bots') */
@@ -980,6 +986,19 @@ static struct bots_weapon_kind const *bots_weapon_kind(long definition_index)
 	}
 	kind->range = bots_weapon_range_compute(definition_index);
 	kind->projectile_speed = bots_projectile_speed_compute(definition_index);
+	/* (the map's profile, else the general one: wanted more for each fifth
+	of people's pickups it was, up to two more; kept at three quarters of
+	the distance people fired it from, a weapon not for close range, no
+	nearer than three quarters of its own and no further than 30 units) */
+	{
+		char const *name = tag_get_name(definition_index);
+		real range;
+
+		if (name && kind->value >= 0)
+			kind->value += (short)(bots_profile_want(name) * 2.0f + 0.5f);
+		if (name && kind->range > 3.0f && bots_profile_range(name, &range))
+			kind->range = PIN(range * 0.75f, kind->range * 0.75f, 30.0f);
+	}
 	return kind;
 }
 
@@ -1119,7 +1138,8 @@ static long bots_find_item(struct bots_bot *bot, struct unit_datum *unit, real_p
 
 /* ---------- the map */
 
-static void bots_add_roam_point(real_point3d const *point)
+/* a place to roam to, of that weight in the map's profile (0: not of it) */
+static void bots_add_roam_point(real_point3d const *point, real weight)
 {
 	real_point3d ground;
 	long surface_index;
@@ -1131,6 +1151,8 @@ static void bots_add_roam_point(real_point3d const *point)
 		return;
 	bots_globals.roam_points[bots_globals.roam_point_count] = ground;
 	bots_globals.roam_surfaces[bots_globals.roam_point_count] = surface_index;
+	bots_globals.roam_weights[bots_globals.roam_point_count] = weight;
+	bots_globals.roam_weight_total += weight;
 	bots_globals.roam_point_count++;
 }
 
@@ -1603,6 +1625,10 @@ static void bots_prepare_map(void)
 
 	bots_globals.map_ready = TRUE;
 	bots_globals.roam_point_count = 0;
+	bots_globals.roam_weight_total = 0.0f;
+	/* (how people played the map: before the weapons are known) */
+	bots_profile_load(global_scenario_index != NONE ? tag_get_name(global_scenario_index) : NULL);
+	bots_weapon_kinds.count = 0;
 	bots_prepare_paths();
 	if (!scenario)
 		return;
@@ -1612,14 +1638,25 @@ static void bots_prepare_map(void)
 		struct scenario_netgame_equipment *equipment =
 			TAG_BLOCK_GET_ELEMENT(&scenario->netgame_equipment, index, struct scenario_netgame_equipment);
 
-		bots_add_roam_point(&equipment->position);
+		bots_add_roam_point(&equipment->position, 0.0f);
 	}
 	for (index = 0; index < scenario->players.count; index += 2)
 	{
 		struct player_starting_location *location =
 			TAG_BLOCK_GET_ELEMENT(&scenario->players, index, struct player_starting_location);
 
-		bots_add_roam_point(&location->position);
+		bots_add_roam_point(&location->position, 0.0f);
+	}
+	/* (the map profile's: where people were, more where they fought, and
+	where they picked up weapons) */
+	{
+		real_point3d point;
+		real weight, fights;
+
+		for (index = 0; bots_profile_spot(index, &point, &weight, &fights); index++)
+			bots_add_roam_point(&point, weight * (1.0f + 2.0f * fights));
+		for (index = 0; bots_profile_pickup(index, &point, &weight); index++)
+			bots_add_roam_point(&point, weight * 5.0f);
 	}
 	{
 		real_point3d low = { REAL_MAX, REAL_MAX, REAL_MAX }, high = { -REAL_MAX, -REAL_MAX, -REAL_MAX };
@@ -1876,6 +1913,9 @@ static void bots_choose_teleporter(struct bots_bot *bot, long unit_index)
 		real to_entrance = bots_distance3d(position, &bots_globals.teleporter_entrances[index]);
 		real way = to_entrance + bots_distance3d(&bots_globals.teleporter_exits[index], &bot->goal_point);
 
+		/* (one people take, by the map's profile: more readily) */
+		if (bots_profile_teleporter_uses(&bots_globals.teleporter_entrances[index]) > 0.0f)
+			way *= 0.85f;
 		if (to_entrance > 1.0f && way < best)
 		{
 			best = way;
@@ -2384,6 +2424,30 @@ static void bots_pick_roam_goal(struct bots_bot *bot, real_point3d const *positi
 				bots_set_goal(bot, _bots_goal_roam, &bots_globals.roam_points[nearest], bots_globals.roam_surfaces[nearest]);
 				return;
 			}
+		}
+	}
+	/* (half the time, by the map's profile: where people go, and fight) */
+	if (bots_globals.roam_weight_total > 0.0f && bots_random_real(bot) < 0.5f)
+	{
+		for (tries = 0; tries < 6; tries++)
+		{
+			real choice = bots_random_real(bot) * bots_globals.roam_weight_total;
+			long index;
+
+			for (index = 0; index < bots_globals.roam_point_count - 1; index++)
+			{
+				choice -= bots_globals.roam_weights[index];
+				if (choice < 0.0f)
+					break;
+			}
+			if (bots_globals.roam_weights[index] <= 0.0f ||
+				bots_distance2d(&bots_globals.roam_points[index], position) < 6.0f)
+			{
+				continue;
+			}
+			bot->roam_index = (short)index;
+			bots_set_goal(bot, _bots_goal_roam, &bots_globals.roam_points[index], bots_globals.roam_surfaces[index]);
+			return;
 		}
 	}
 	for (tries = 0; tries < 6; tries++)

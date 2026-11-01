@@ -712,7 +712,12 @@ reaction is their own, spread as people's are, and until they have reacted
 they go on as they were. Walking, they hold their look and look about now
 and then, turning in sweeps. These habits follow a play log of an internet
 game (`debug.play_log`, `tools/play_log`): its people's reactions, turns,
-strafing rhythm, jumps and firing.
+strafing rhythm, jumps and firing. On a map with a profile of how people
+played it (`port/assets/bots`, made from play logs by
+`tools/play_log/profile.py`, which says how) they go where people went and
+fought, take the teleporters people took more readily, want the weapons
+people picked up and keep the distance people fired each weapon from;
+another map takes the general profile's weapons and distances.
 
 A bot knows only what a player in its place could (`game/bots_knowledge.c`):
 the enemies its own sight saw and, with `bots.share_sightings`, those its
