@@ -3377,7 +3377,7 @@ static void aside_test(void)
 		assert(vk.statistics.buffers_renamed == 1 && aside_buffers_made == 1);
 		assert(buffer.buffer != first && buffer.renamed == vk.serial && !buffer.used);
 		assert(aside_buffer_copies == 2 && aside_copy_commands == DISCARDS_EARLY);
-		assert(aside_copy_destination == buffer.buffer);
+		assert(aside_copy_destination == buffer.buffer && aside_copy_source != aside_copy_destination);
 		assert(vk.spare_count == 1 && vk.spares[0].buffer == first);
 		assert(!vk.statistics.uploads_ordered && vk.chain_head);
 		/* (not read since: written early, not renamed again) */
