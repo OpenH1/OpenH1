@@ -288,6 +288,37 @@ SETTINGS_TAB_PROMPT_WIDTH = 30
 SETTINGS_PANEL_X, SETTINGS_PANEL_WIDTH, SETTINGS_PANEL_BOTTOM = 388, 224, 400
 # the value's column in a row, and the arrows either side of it
 SETTINGS_SPINNER_X, SETTINGS_SPINNER_WIDTH = 188, 140
+# small_ui's measures (ui.map's tag): draw_string puts the baseline its ascent
+# below a text box's top and text_y, and the capitals (the labels are all
+# capitals) rise its cap height above it; the ascent has room for accents
+# above the capitals, so a text_y that centres the ascent leaves them low
+SMALL_UI_ASCENT, SMALL_UI_CAPS = 14, 10
+# the spinner's arrows' pictures (bitmaps/arrow_sm_*: drawn at their size from
+# their bounds' corner, not fitted to them): the arrow is the top 11 and a
+# quarter rows of the 16 and 6 wide, its point 5.5 down
+ARROW_SM_WIDTH, ARROW_SM_HEIGHT, ARROW_SM_MIDDLE = 6, 12, 5.5
+
+
+def caps_text_y(height: int, top: int = 0) -> int:
+    """the text_y that centres small_ui's capitals in a box height tall, for a
+    text box top below the box's top"""
+    return height // 2 - top - SMALL_UI_ASCENT + SMALL_UI_CAPS // 2
+
+
+# (the spinner's box inside the row, from its top and bottom: a spinner
+# draws its value at its box's top, without a text_y, so its top is the
+# value's text_y)
+SETTINGS_SPINNER_TOP = caps_text_y(SETTINGS_ROW_HEIGHT)
+
+
+def arrows_bounds(height: int, left: int, right: int) -> tuple:
+    """a spinner's header_bounds and footer_bounds: its arrows outside its
+    sides left and right, their points at the middle of the row height tall
+    it is placed at the top of (the bounds are from the spinner's place, not
+    its box's top; a whole unit, so half a unit above the middle)"""
+    y = int(height / 2 - ARROW_SM_MIDDLE)
+    return (f"{y} {left - ARROW_SM_WIDTH} {y + ARROW_SM_HEIGHT} {left}",
+            f"{y} {right} {y + ARROW_SM_HEIGHT} {right + ARROW_SM_WIDTH}")
 # the Quality row's pictures in the panel (its stills: SETTINGS_STILLS)
 SETTINGS_STILL_WIDTH, SETTINGS_STILL_HEIGHT = 96, 60
 SETTINGS_BLUE = "#FF2896FF"
@@ -1227,7 +1258,8 @@ def _settings_page(folder: str, page: dict) -> list:
         label_widget = _settings_text(f"{base}/{key}_label",
                                       [("width", value_x - 4 if setting or status else SETTINGS_ROW_WIDTH - 12),
                                        ("height", SETTINGS_ROW_HEIGHT), *label_text, ("color", SETTINGS_BLUE),
-                                       ("text_x", 10), ("text_y", 2), ("wide", wide(0, SETTINGS_WIDE_ROWS))])
+                                       ("text_x", 10), ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT)),
+                                       ("wide", wide(0, SETTINGS_WIDE_ROWS))])
         row_pairs = [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_ROW_HEIGHT),
                      ("flags", "pass_unhandled_to_focused_child"), ("bitmap", f"{SETTINGS}/row"),
                      ("color", SETTINGS_BLUE), ("platform", platform),
@@ -1262,22 +1294,23 @@ def _settings_page(folder: str, page: dict) -> list:
                                                             ("height", SLIDER_VALUE_HEIGHT),
                                                             ("bitmap", f"{SETTINGS}/slider_field"),
                                                             ("color", SETTINGS_BLUE), ("align", "center"),
-                                                            ("text_y", 0),
+                                                            ("text_y", caps_text_y(SLIDER_VALUE_HEIGHT)),
                                                             ("text_flags", "no_focus_test"),
                                                             ("wide", wide(SETTINGS_WIDE_ROWS))])
         elif setting:
+            spinner_arrows = arrows_bounds(SETTINGS_ROW_HEIGHT, 0, SETTINGS_SPINNER_WIDTH)
             extra += _widget(row, row_pairs, [f'<child widget="{base}/{key}_label"/>',
                                               f'<child widget="{base}/{key}_spinner" x="{SETTINGS_SPINNER_X}"/>'])
             extra += label_widget
             extra += _widget(f"{base}/{key}_spinner",
-                             [("type", "spinner"), ("top", 2), ("width", SETTINGS_SPINNER_WIDTH), ("height", 16),
+                             [("type", "spinner"), ("top", SETTINGS_SPINNER_TOP), ("width", SETTINGS_SPINNER_WIDTH),
+                              ("height", SETTINGS_ROW_HEIGHT - 2 * SETTINGS_SPINNER_TOP),
                               ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
                               ("strings", "|".join(shown for shown, _ in choices)), ("setting", setting),
                               ("values", "|".join(value for _, value in choices)), ("font", "ui\\small_ui"),
                               ("color", SETTINGS_BLUE), ("align", "center"), ("text_y", 0),
                               ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
-                              ("header_bounds", "2 -6 14 0"),
-                              ("footer_bounds", f"2 {SETTINGS_SPINNER_WIDTH} 14 {SETTINGS_SPINNER_WIDTH + 6}"),
+                              ("header_bounds", spinner_arrows[0]), ("footer_bounds", spinner_arrows[1]),
                               ("wide", wide(SETTINGS_WIDE_ROWS))],
                              ['<on event="created" run="port setting load"/>'])
         else:
@@ -1301,7 +1334,8 @@ def _settings_page(folder: str, page: dict) -> list:
                                                                  value_x), ("height", 16),
                                                                 ("color", SETTINGS_BLUE),
                                                                 ("align", "right" if named_row else "center"),
-                                                                ("text_y", 0), ("text_flags", "no_focus_test"),
+                                                                ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT, 2)),
+                                                                ("text_flags", "no_focus_test"),
                                                                 ("wide", wide(SETTINGS_WIDE_ROWS))])
         labels.append(label)
         helps.append(help_text)
@@ -1350,7 +1384,7 @@ def _settings_page(folder: str, page: dict) -> list:
                                            ("bitmap", f"{SETTINGS}/{'tab_current' if current else 'tab'}"),
                                            ("string_list", f"{SETTINGS}/tab_names"), ("string_index", index or None),
                                            ("color", "#FFFFFFFF" if current else SETTINGS_BLUE),
-                                           ("align", "center"), ("text_y", 3)],
+                                           ("align", "center"), ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT))],
                                     ['<on event="a" run="port settings tab"/>',
                                      '<on event="start" run="port settings tab"/>',
                                      '<on event="left_mouse" run="mouse emit accept event"/>'])
@@ -1445,7 +1479,7 @@ def _settings_shared() -> list:
                                                                  ("height", SETTINGS_TAB_HEIGHT),
                                                                  ("wide", WIDE_RIGHT if name == "next" else WIDE_LEFT),
                                                                  ("text", f"%{icon}-button"), ("color", SETTINGS_BLUE), ("text_x", 2),
-                                                                 ("text_y", 3)])
+                                                                 ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT))])
     lines += _strings(f"{SETTINGS}/tab_names", [PAGES[folder]["tab"] for folder in SETTINGS_TAB_PAGES])
     lines += _strings(f"{SETTINGS}/tab_about", [PAGES[folder]["about"] for folder in SETTINGS_TAB_PAGES])
     lines += _strings(f"{SETTINGS}/button_help", SETTINGS_BUTTON_HELP["tab"] + SETTINGS_BUTTON_HELP["page"])
@@ -3697,7 +3731,7 @@ def _tab_strip(base: str, strip: str, tabs: list, handlers: list) -> list:
                                            ("wide", wide(wide_spread(index, len(tabs)))),
                                            ("bitmap", PARTS_TAB), ("text", words),
                                            ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE), ("align", "center"),
-                                           ("text_y", 3)],
+                                           ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT))],
                          handlers + ['<on event="left_mouse" run="mouse emit accept event"/>'])
     return lines
 
