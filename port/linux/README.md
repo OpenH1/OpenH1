@@ -752,11 +752,15 @@ win more, so it is a choice, not the default.
 On maps with open ground (four of their roaming places under the open sky at
 least) the bots use the vehicles (`bots.vehicles`, `game/bots_vehicles.c`):
 a bot jumps into a teammate's Warthog near it (the gun first, else beside the
-driver), and three lives of four drives a Warthog or a Ghost it finds near,
-a Warthog's driver waiting a moment for a teammate on the way to its gun. A
-driver goes where the enemy was and about the open places, runs players on
-foot down, and with a gunner circles a fight at the gun's range; a Ghost's
-driver fires and strafes. A bot puts an overturned vehicle back on its
+driver), and three lives of four drives a Warthog, a Ghost or a Scorpion or
+flies a Banshee it finds near, a Warthog's driver waiting a moment for a
+teammate on the way to its gun. A driver goes where the enemy was and about
+the open places, runs players on foot down, and with a gunner circles a fight
+at the gun's range; a Ghost's driver fires and strafes, a Scorpion's keeps
+its range and leads its shells. A Banshee's pilot flies over the open places,
+makes strafing runs (its fuel rod from afar) and pulls away to come round
+again, and keeps clear of the ground, of the level and scenery ahead and of
+the map's edges. A bot puts an overturned vehicle back on its
 wheels, and gets out of one overturned, stuck, left without a driver or
 standing still, or, badly hurt beside an enemy, to fight on foot. The minute
 line counts the seats taken, the time in them and the kills and deaths there.
@@ -966,7 +970,7 @@ the setting for one start of the game. It has priority over the file.
 | `bots.tactics` | `false` | `HALO_BOTS_TACTICS` | In team games, a team's bots play together: they keep apart (about five metres) and within reach of each other, fire at the enemy a teammate is hurting and take angles apart on one enemy, go after a teammate's killer while that player's shields are down, close in together after a kill and fall back together when the fight goes against them, and share out the power weapons and the escort of a human teammate (the best placed bot takes each). `false`: each bot plays on its own; measured, the team play slows the fights and wins no more (refer to "Bots"). |
 | `bots.share_sightings` | `true` | `HALO_BOTS_SHARE_SIGHTINGS` | A team's bots share the enemies they see, each sighting reaching the team's other bots `bots.share_delay` after it, as a callout would; it counts for where they go and look, never for their aim (a bot fires only at what it sees). `false`: a bot knows only what it saw itself. |
 | `bots.share_delay` | `1.0` | `HALO_BOTS_SHARE_DELAY` | With `bots.share_sightings`: the seconds from a bot's sighting of an enemy to its teammates' knowing of it (0 to 5). |
-| `bots.vehicles` | `true` | `HALO_BOTS_VEHICLES` | On maps with open ground, the bots use the vehicles as people do: they ride a teammate's Warthog (the gun first), drive a Warthog or a Ghost they find near, run players down, circle a fight for their gunner, put an overturned vehicle back on its wheels, and get out of one stuck or overturned (refer to "Bots"). `false`: the bots stay on foot. |
+| `bots.vehicles` | `true` | `HALO_BOTS_VEHICLES` | On maps with open ground, the bots use the vehicles as people do: they ride a teammate's Warthog (the gun first), drive a Warthog, a Ghost or a Scorpion and fly a Banshee they find near, run players down, circle a fight for their gunner, make strafing runs in a Banshee, put an overturned vehicle back on its wheels, and get out of one stuck or overturned (refer to "Bots"). `false`: the bots stay on foot. |
 | `paths.data` | `""` | `HALO_DATA_ROOT` | The data root. Refer to "Start the game". |
 | `paths.saves` | `""` | `HALO_SAVE_ROOT` | The save root. Refer to "Files and folders". |
 | `paths.logs` | `""` | `HALO_LOG_ROOT` | The folder of `debug.txt`, `bans.txt` and `cheaters.txt`. Empty: the data root. With it, the data root can be read-only (a dedicated server's maps mounted so). |
@@ -6171,6 +6175,7 @@ Other changes:
 | `objects/object_lights.c`, `rasterizer/xbox/rasterizer_xbox_environment.c` | A light attached to an object is drawn where the object is drawn between ticks (its marker as drawn), not where the tick placed it: it no longer steps behind a bolt at 30 Hz (the light's own position, which the units' illumination reads, is kept). With `display.dynamic_lights = "enhanced"`, the frame's lights go to the renderer (`game/dynamic_lights.c`), a projectile's light that is only its lens flare's lights too, a muzzle flash's is moved to the first-person weapon, the structure's own pass for each light is left to the lightmap pass (but spotlights'), which tells the renderer when it is drawn. |
 | `render/render_objects.c`, `interface/first_person_weapons.c`, `rasterizer/xbox/rasterizer_xbox_plasma_energy.c` | A local player's shield plasma is drawn in the chosen armor color (`display.shield_color`, `shield_color.c`), on the body and on the first-person arms; in the VR build, the plasma over the weapon in its holster in its highlight's color, close to the weapon (`vr_holster.c`). |
 | `objects/object_lights.c` | A light attached to an object is as bright, and of the colour, that the object's function and change colour are between ticks, and an effect's light (an explosion's, an impact's) fades at the frame's time, not a step a tick (`game/render_interpolation.c`); the light's own colour and radius, which the game reads, are the tick's. |
+| `objects/object_lights.c` | An effect's light of no transition (the Scorpion's shell's) is at its end as it is made, not faded by 0/0: its colour was not a number, which the renderer's checks caught. |
 | `objects/objects.c`, `render/render_objects.c` | A projectile deleted in a tick is drawn through the frames after it, on to where it was deleted (`game/render_interpolation.c`), with the lighting it was last drawn with. |
 | `game/game_engine.c`, `game/game_engine_ctf.c`, `game/game_engine_oddball.c`, `game/game_engine_slayer.c` | A goal over an object (a flag, the ball, a carrier, a target) notes the object, and its marker is drawn over the object as drawn between ticks (`game_engine_get_goal_drawn_position`); the goal's own position is the tick's. |
 | `interface/motion_sensor.c` | The motion sensor's newest blips are drawn from where their units and goals, and the player, are drawn between ticks (a copy of the drawing's own); the blips' history is the ticks'. |

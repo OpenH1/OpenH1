@@ -1,19 +1,27 @@
 """The bots (port/linux/game/bots.c, bots.count) in the game: a local Slayer game on a stock map, played without a
 person (debug.network_test "local:", the scripted controller 1 of debug.test_input) for a minute and more, in which
 every bot walks the map, the bots kill and die, and the game ends cleanly; and a system link game, whose host plays
-them as a local game's. Needs the retail maps in assets/maps and a Linux build (ninja linux_x86_64 or linux_arm64); the game draws
-offscreen (SDL's offscreen video driver), with no audio, internet play or update check."""
+them as a local game's; and the bots in the vehicles. Needs the retail maps in assets/maps (and, for the Banshees,
+bloodgulch_all_vehicles.map with the Custom Edition's shared maps in assets/custom_maps) and a Linux build (ninja
+linux_x86_64 or linux_arm64); the game draws offscreen (SDL's offscreen video driver), with no audio, internet play
+or update check."""
 
 import math
 import os
 import re
 import shutil
+import socket
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import pytest
 
 RETAIL_MAPS = Path("assets/maps")
+# a Custom Edition map with every vehicle (its Banshees), and the Custom Edition's shared maps beside it
+CUSTOM_MAPS = Path("assets/custom_maps")
+ALL_VEHICLES = "bloodgulch_all_vehicles"
 # (the Linux build of this computer's processor)
 GAME = next((path for path in (Path("build/linux_x86_64/halo"), Path("build/linux_arm64/halo")) if path.is_file()),
             Path("build/linux_x86_64/halo"))
@@ -29,18 +37,38 @@ def _game(map_name):
         pytest.skip(f"needs {map_name}.map in assets/maps and a Linux build ({GAME})")
 
 
+def _worker():
+    """pytest-xdist's worker's number (0 without workers)"""
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "")
+    return int(worker[2:]) if worker.startswith("gw") and worker[2:].isdigit() else 0
+
+
 def _address():
     """the loopback address of this game: pytest-xdist's workers each their own, so that their games run at once"""
-    worker = os.environ.get("PYTEST_XDIST_WORKER", "")
-    index = int(worker[2:]) if worker.startswith("gw") and worker[2:].isdigit() else 0
-    return f"127.0.0.{1 + index}"
+    return f"127.0.0.{1 + _worker()}"
 
 
-def _play(tmp_path, test, seconds, **settings):
-    """the game played for that many seconds: (exit status, its output, debug.txt)"""
+def _console(port, commands):
+    """each (seconds, command) sent to the game's script console (debug.telnet_console) that many seconds in"""
+    start = time.monotonic()
+    for seconds, command in commands:
+        time.sleep(max(0.0, start + seconds - time.monotonic()))
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=5) as console:
+                console.sendall(f"{command}\r\n".encode())
+                time.sleep(0.5)
+        except OSError:
+            pass
+
+
+def _play(tmp_path, test, seconds, console=(), **settings):
+    """the game played for that many seconds, the script console sent console's (seconds, command) as it plays:
+    (exit status, its output, debug.txt)"""
     (tmp_path / "data").mkdir()
     (tmp_path / "save").mkdir()
     (tmp_path / "data" / "maps").symlink_to(RETAIL_MAPS.resolve())
+    if CUSTOM_MAPS.is_dir():
+        (tmp_path / "data" / "custom_maps").symlink_to(CUSTOM_MAPS.resolve())
     game = tmp_path / "halo"
     shutil.copy(GAME, game)
     env = {**os.environ, "SDL_VIDEODRIVER": "offscreen", "SDL_AUDIODRIVER": "dummy",
@@ -50,8 +78,16 @@ def _play(tmp_path, test, seconds, **settings):
            "HALO_NET_BROADCAST": "127.255.255.255", "HALO_NETWORK_TEST": test, "HALO_NETWORK_TEST_START": "5",
            "HALO_NETWORK_TEST_SCORE": "500", "HALO_TEST_INPUT": "bot:1", "HALO_EXIT_AFTER": str(seconds + 20)}
     env.update({name: str(value) for name, value in settings.items()})
+    sender = None
+    if console:
+        port = 2400 + _worker()
+        env.update(HALO_TELNET_CONSOLE="1", HALO_TELNET_CONSOLE_PORT=str(port))
+        sender = threading.Thread(target=_console, args=(port, console), daemon=True)
+        sender.start()
     result = subprocess.run([str(game)], cwd=tmp_path, env=env, capture_output=True, text=True,
                             errors="replace", timeout=seconds + 120)
+    if sender:
+        sender.join(timeout=1)
     debug = tmp_path / "data" / "debug.txt"
     return result.returncode, result.stdout + result.stderr, debug.read_text(errors="replace") if debug.is_file() else ""
 
@@ -99,9 +135,10 @@ def test_bots_play_a_local_slayer_game(tmp_path, map_name, variant, count, skill
 # the bots' minute line of the vehicles (bots.c's bots_report)
 VEHICLES = re.compile(r"bots: tick \d+, vehicles: driven (\d+) \(Warthog (\d+), Ghost (\d+), Scorpion (\d+), "
                       r"Banshee (\d+)\), gunned (\d+), ridden (\d+), flipped (\d+); seconds driving (\d+), "
-                      r"riding (\d+); kills (\d+), deaths (\d+)")
+                      r"riding (\d+); kills (\d+), deaths (\d+);.*; flying (\d+) seconds, deaths (\d+) "
+                      r"\(their own (\d+)\)")
 VEHICLE_FIELDS = ("driven", "warthog", "ghost", "scorpion", "banshee", "gunned", "ridden", "flipped", "driving",
-                  "riding", "kills", "deaths")
+                  "riding", "kills", "deaths", "flying", "flying_deaths", "crashes")
 
 
 def _vehicles(output):
@@ -116,8 +153,8 @@ def _vehicles(output):
     ("team_slayer+team_vehicles=pc", "ghost"),
 ])
 def test_bots_use_the_vehicles(tmp_path, variant, kind):
-    """bots.vehicles on Blood Gulch, two minutes of Team Slayer: the bots drive the Warthogs (and the Ghosts, with the
-    PC's vehicles), ride a teammate's Warthog's gun, and kill from them"""
+    """bots.vehicles on Blood Gulch, two minutes of Team Slayer: the bots drive the Warthogs (and the Ghosts and the
+    Scorpions, with the PC's vehicles), ride a teammate's Warthog, and kill from them"""
     _game("bloodgulch")
     status, output, debug = _play(tmp_path, f"local:bloodgulch:{variant}", 120, HALO_BOTS=8)
     assert status == 0, output[-2000:]
@@ -126,8 +163,27 @@ def test_bots_use_the_vehicles(tmp_path, variant, kind):
     assert vehicles[kind] >= 1, f"no bot drove a {kind}: {vehicles}"
     assert vehicles["driving"] >= 60, f"the bots drove {vehicles['driving']} seconds: {vehicles}"
     if kind == "warthog":
-        assert vehicles["gunned"] >= 1, f"no bot rode a Warthog's gun: {vehicles}"
+        assert vehicles["gunned"] + vehicles["ridden"] >= 1, f"no bot rode a teammate's Warthog: {vehicles}"
+    else:
+        assert vehicles["scorpion"] >= 1, f"no bot drove a Scorpion: {vehicles}"
     assert vehicles["kills"] >= 1, f"no kill from a vehicle: {vehicles}"
+
+
+def test_bots_fly_the_banshee(tmp_path):
+    """bots.vehicles on a Custom Edition Blood Gulch with every vehicle, each of them made by the script console
+    (cheat_all_vehicles) by the first player four times early on (once the game has started), three minutes of Team
+    Slayer: the bots fly the Banshees, and no Banshee's pilot flies into the map"""
+    _game("bloodgulch")
+    if not (CUSTOM_MAPS / f"{ALL_VEHICLES}.map").is_file():
+        pytest.skip(f"needs {ALL_VEHICLES}.map (and the Custom Edition's shared maps) in {CUSTOM_MAPS}")
+    status, output, debug = _play(tmp_path, f"local:custom_maps\\{ALL_VEHICLES}:team_slayer", 180,
+                                  console=[(seconds, "cheat_all_vehicles") for seconds in (25, 35, 45, 55)],
+                                  HALO_BOTS=10)
+    assert status == 0, output[-2000:]
+    assert not re.search(r"assert|exception", output + debug, re.I), "an assert or exception in the game's log"
+    vehicles = _vehicles(output)
+    assert vehicles["banshee"] >= 1 and vehicles["flying"] >= 20, f"the bots hardly flew a Banshee: {vehicles}"
+    assert vehicles["crashes"] == 0, f"a Banshee's pilot flew into the map: {vehicles}"
 
 
 def test_bots_in_a_system_link_game(tmp_path):

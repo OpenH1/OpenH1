@@ -176,8 +176,8 @@ static struct
 {
 	boolean checked;
 	short mode;
-	char map_name[64];
-	char variant_name[64];
+	char map_name[128];
+	char variant_name[128];
 	/* "local:": a local (split screen) game, not a system link one; its
 	players (debug.network_test_players: split screen's views, the first
 	controller's the first) */
@@ -2046,7 +2046,7 @@ void network_test_update(
 			if (!network_test.map_set && network_test.setup_seconds >= 1.0f && global_network_game_server_get())
 			{
 				char path[128];
-				char variant_name[64];
+				char variant_name[128];
 				struct game_variant variant;
 
 				/* (a level of its own path, else a multiplayer map's name) */
@@ -2075,7 +2075,7 @@ void network_test_update(
 					if (!opence && strchr(variant_name, '+'))
 					{
 						static struct server_entry entry;
-						char text[160], reason[128];
+						char text[288], reason[128];
 
 						snprintf(text, sizeof(text), "%s:%s", network_test.map_name, variant_name);
 						if (server_rotation_parse_entry(text, (int)strlen(text), &entry) && !entry.rejected[0] &&

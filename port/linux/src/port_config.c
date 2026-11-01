@@ -984,9 +984,10 @@ static const struct config_setting config_settings[] =
 		"enemy to its teammates' knowing of it (0 to 5)." },
 	{ "bots.vehicles", _config_boolean, "true", "HALO_BOTS_VEHICLES", _environment_value, _platform_all,
 		"On maps with open ground, the bots use the vehicles as people do: they\n"
-		"ride a teammate's Warthog (the gun first), drive a Warthog or a Ghost\n"
-		"they find near, run players down, circle a fight for their gunner, put\n"
-		"an overturned one back on its wheels and get out of one stuck or\n"
+		"ride a teammate's Warthog (the gun first), drive a Warthog, a Ghost or\n"
+		"a Scorpion and fly a Banshee they find near, run players down, circle a\n"
+		"fight for their gunner, make strafing runs in a Banshee, put an\n"
+		"overturned vehicle back on its wheels and get out of one stuck or\n"
 		"overturned. false: the bots stay on foot." },
 	{ "display.viewmodel_shield", _config_boolean, "false", "HALO_VIEWMODEL_SHIELD", _environment_value, _platform_all,
 		"The energy shield's flare on the first-person arms too, as on the body\n"
