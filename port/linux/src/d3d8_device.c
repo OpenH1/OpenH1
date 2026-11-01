@@ -177,10 +177,11 @@ frames (halo_screen_commit): the back buffer is made again when it changes. */
 
 static struct
 {
-	/* the frame is drawn in HDR; display.hdr_mode, display.hdr_paper_white
-	as last sent to the backend (sent: once at least) */
+	/* the frame is drawn in HDR; display.hdr_mode,
+	display.hdr_paper_white_nits and display.hdr_paper_white as last sent to
+	the backend (sent: once at least) */
 	BOOL active, sent;
-	int mode, paper_white;
+	int mode, paper_white_nits, paper_white;
 	/* the game's renderer's category, and what its code says of the draws
 	(halo_hdr_category, halo_hdr_draw_kind) */
 	int category, kind;
@@ -1745,6 +1746,7 @@ static void hdr_read(void)
 	float headroom = 1.0f;
 	BOOL display = FALSE, active = FALSE;
 	int setting = hdr_setting(), paper_white = (int)config_integer("display.hdr_paper_white");
+	int paper_white_nits = (int)config_integer("display.hdr_paper_white_nits");
 	int mode = config_string("display.hdr_mode") && !strcmp(config_string("display.hdr_mode"), "punchy") ?
 		XGPU_HDR_MODE_PUNCHY : XGPU_HDR_MODE_FAITHFUL;
 
@@ -1759,6 +1761,16 @@ static void hdr_read(void)
 	if (halo_vr_running())
 		active = FALSE;
 #endif
+	/* (display.hdr_paper_white, the percent of the system's white, only
+	while paper white is the system's) */
+	if (paper_white_nits > 0)
+	{
+		paper_white_nits = paper_white_nits < XGPU_HDR_PAPER_WHITE_NITS_LEAST ? XGPU_HDR_PAPER_WHITE_NITS_LEAST :
+			paper_white_nits > XGPU_HDR_PAPER_WHITE_NITS_MOST ? XGPU_HDR_PAPER_WHITE_NITS_MOST : paper_white_nits;
+		paper_white = 100;
+	}
+	else
+		paper_white_nits = 0;
 	if (paper_white <= 0)
 		paper_white = 100;
 	paper_white = paper_white < XGPU_HDR_PAPER_WHITE_LEAST ? XGPU_HDR_PAPER_WHITE_LEAST :
@@ -1775,11 +1787,13 @@ static void hdr_read(void)
 		hdr.active = active;
 		render_targets_evict();
 	}
-	if (!hdr.sent || mode != hdr.mode || paper_white != hdr.paper_white || active != hdr.active)
+	if (!hdr.sent || mode != hdr.mode || paper_white_nits != hdr.paper_white_nits || paper_white != hdr.paper_white ||
+		active != hdr.active)
 	{
-		xgpu_backend_hdr(active, mode, paper_white);
+		xgpu_backend_hdr(active, mode, paper_white_nits, paper_white);
 		hdr.sent = TRUE;
 		hdr.mode = mode;
+		hdr.paper_white_nits = paper_white_nits;
 		hdr.paper_white = paper_white;
 	}
 }

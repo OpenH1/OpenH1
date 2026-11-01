@@ -87,10 +87,29 @@ enum
 	XGPU_HDR_MODE_PUNCHY,
 };
 
-/* display.hdr_paper_white: percent of the system's SDR white, these at
+/* display.hdr_paper_white_nits: paper white in nits, these at most and
+least (0: the system's SDR white); display.hdr_paper_white, its percent of
+the system's SDR white while that is 0 (the setting before nits), these at
 most and least */
+#define XGPU_HDR_PAPER_WHITE_NITS_LEAST 80
+#define XGPU_HDR_PAPER_WHITE_NITS_MOST 500
 #define XGPU_HDR_PAPER_WHITE_LEAST 50
 #define XGPU_HDR_PAPER_WHITE_MOST 250
+/* the system's SDR white in nits where it gives none: BT.2408's reference
+white (Vulkan's, without SDL's), and EDR's 1.0 as macOS's reference modes
+show it (Metal's: macOS and iOS give no nits, their SDR white following the
+display's brightness) */
+#define XGPU_HDR_REFERENCE_WHITE_NITS 203.0f
+#define XGPU_HDR_EDR_WHITE_NITS 100.0f
+
+/* paper white in nits from the settings (xgpu_backend_hdr's) and the
+system's SDR white in nits */
+static inline float xgpu_hdr_paper_white_nits(int nits, int percent, float system_white)
+{
+	if (nits > 0)
+		return (float)nits;
+	return system_white * (float)(percent > 0 ? percent : 100) / 100.0f;
+}
 
 /* a display shows HDR (display.hdr "auto" turns it on) when its potential
 headroom is more than this: macOS gives an SDR panel up to twice by dimming
@@ -181,9 +200,9 @@ enum
 
 /* what the tone map and the encoding are given: the front end's settings,
 and what the backend's display says. Paper white and the peak are linear
-light: paper white in the output's units (the system's SDR white times
-display.hdr_paper_white for EDR; nits over 80 for scRGB; nits over 10 000
-for PQ), the peak in paper whites (the display's headroom over paper
+light: paper white in the output's units (over the system's SDR white for
+EDR, xgpu_hdr_paper_white_nits over XGPU_HDR_EDR_WHITE_NITS; nits over 80
+for scRGB; nits over 10 000 for PQ), the peak in paper whites (the display's headroom over paper
 white: 1 for SDR) */
 struct xgpu_hdr_frame
 {

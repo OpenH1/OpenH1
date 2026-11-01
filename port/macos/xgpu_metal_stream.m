@@ -1272,7 +1272,7 @@ static void stream_hdr(void *context, const struct xgpu_stream_hdr *record)
 {
 	(void)context;
 	host_metal_hdr_state(record->active != 0, record->mode == XGPU_HDR_MODE_PUNCHY ? XGPU_HDR_MODE_PUNCHY :
-		XGPU_HDR_MODE_FAITHFUL, (int)record->paper_white);
+		XGPU_HDR_MODE_FAITHFUL, (int)record->paper_white_nits, (int)record->paper_white);
 	/* (the tone map's function and its pipeline for the back buffer's pass,
 	made as HDR is chosen, not in the middle of a frame) */
 	if (record->active)

@@ -168,10 +168,10 @@ static struct
 	id<MTLRenderPipelineState> loading_pipeline;
 	/* display.hdr: the presentation's encoding for an EDR layer (half
 	floats); the front end's state (drawn in HDR, the mode, paper white in
-	percent); the window's screen's potential headroom and headroom now (a
+	nits, or 0 and its percent of the system's white); the window's screen's potential headroom and headroom now (a
 	float's bits); the layer is EDR's; HALO_METAL_EDR_HEADROOM's (0: none) */
 	id<MTLRenderPipelineState> edr_pipeline, loading_edr_pipeline;
-	_Atomic int hdr_active, hdr_mode, hdr_paper_white;
+	_Atomic int hdr_active, hdr_mode, hdr_paper_white_nits, hdr_paper_white;
 	_Atomic uint32_t edr_potential, edr_current;
 	BOOL layer_edr;
 	uint32_t edr_ticks;
@@ -348,10 +348,11 @@ void host_metal_hdr_override(float headroom)
 	host_render_stream_display_hdr(headroom > XGPU_HDR_DISPLAY_HEADROOM, headroom > 1.0f ? headroom : 1.0f);
 }
 
-void host_metal_hdr_state(int active, int mode, int paper_white)
+void host_metal_hdr_state(int active, int mode, int paper_white_nits, int paper_white)
 {
 	atomic_store(&presentation.hdr_active, active);
 	atomic_store(&presentation.hdr_mode, mode);
+	atomic_store(&presentation.hdr_paper_white_nits, paper_white_nits);
 	atomic_store(&presentation.hdr_paper_white, paper_white);
 }
 
@@ -365,7 +366,9 @@ static BOOL edr_wanted(void)
 void host_metal_hdr_frame(struct xgpu_hdr_frame *frame)
 {
 	float current = bits_float(atomic_load(&presentation.edr_current));
-	float paper_white = (float)atomic_load(&presentation.hdr_paper_white) / 100.0f;
+	/* (paper white over the system's SDR white, EDR's 1.0) */
+	float paper_white = xgpu_hdr_paper_white_nits(atomic_load(&presentation.hdr_paper_white_nits),
+		atomic_load(&presentation.hdr_paper_white), XGPU_HDR_EDR_WHITE_NITS) / XGPU_HDR_EDR_WHITE_NITS;
 
 	if (presentation.edr_override > 0.0f && !presentation.window)
 		current = presentation.edr_override;
@@ -1609,6 +1612,7 @@ int host_metal_initialize(void)
 		return result;
 	atomic_store(&presentation.edr_potential, float_bits(1.0f));
 	atomic_store(&presentation.edr_current, float_bits(1.0f));
+	atomic_store(&presentation.hdr_paper_white_nits, 0);
 	atomic_store(&presentation.hdr_paper_white, 100);
 	if (edr && atof(edr) > 0.0)
 		host_metal_hdr_override((float)atof(edr));

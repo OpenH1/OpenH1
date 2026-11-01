@@ -1870,7 +1870,7 @@ static void test_stream_hdr(void)
 			float *values;
 
 			host_metal_hdr_override(peaks[peak]);
-			state = (struct xgpu_stream_hdr){ 0, 1, (uint32_t)mode, 100 };
+			state = (struct xgpu_stream_hdr){ 0, 1, (uint32_t)mode, 0, 100 };
 			backend->hdr(NULL, &state);
 			host_metal_hdr_frame(&frame);
 			backend->set_targets(NULL, &targets);
@@ -2006,7 +2006,29 @@ static void test_stream_hdr(void)
 		free(values);
 		backend->target_delete(NULL, 42);
 	}
-	state = (struct xgpu_stream_hdr){ 0, 0, 0, 100 };
+	{
+		/* paper white in nits (EDR's 1.0 100 nits), whatever the percent;
+		the percent of the system's white while it is 0; never past the
+		headroom */
+		struct xgpu_hdr_frame frame;
+
+		host_metal_hdr_override(4.0f);
+		state = (struct xgpu_stream_hdr){ 0, 1, XGPU_HDR_MODE_FAITHFUL, 200, 50 };
+		backend->hdr(NULL, &state);
+		host_metal_hdr_frame(&frame);
+		CHECK(frame.paper_white == 2.0f && frame.peak == 2.0f, "paper white 200 nits: %.3f, the peak %.3f",
+			(double)frame.paper_white, (double)frame.peak);
+		state = (struct xgpu_stream_hdr){ 0, 1, XGPU_HDR_MODE_FAITHFUL, 0, 150 };
+		backend->hdr(NULL, &state);
+		host_metal_hdr_frame(&frame);
+		CHECK(frame.paper_white == 1.5f, "paper white 150 percent of the system's: %.3f", (double)frame.paper_white);
+		state = (struct xgpu_stream_hdr){ 0, 1, XGPU_HDR_MODE_FAITHFUL, 500, 100 };
+		backend->hdr(NULL, &state);
+		host_metal_hdr_frame(&frame);
+		CHECK(frame.paper_white == 4.0f && frame.peak == 1.0f, "paper white past the headroom: %.3f",
+			(double)frame.paper_white);
+	}
+	state = (struct xgpu_stream_hdr){ 0, 0, 0, 0, 100 };
 	backend->hdr(NULL, &state);
 	host_metal_hdr_override(0.0f);
 	backend->target_delete(NULL, 41);
