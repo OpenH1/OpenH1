@@ -30,7 +30,12 @@ additive surfaces that are light, which the game draws in [0, 1] though
 they stand for light brighter than any surface: a transparent shader the
 map gives radiosity power, as a teleporter's field and the light fixtures,
 a plasma shader, a light's volume, as a plasma bolt's) are brightened
-toward their ceilings and stop there. Destination alpha, which
+toward their ceilings and stop there. A surface's pass that adds its
+self-illumination to its light (halo_hdr_draw_kind: a model's, a
+structure's lightmap pass; a door's panel, a computer's screen) has that
+self-illumination brightened past white, toward a lower ceiling than the
+lights' (XGPU_HDR_SELF_ILLUMINATION), the rest as the SDR frame has it.
+Destination alpha, which
 the game reads as a blend factor (the specular passes, the fog screens), is
 never let past 1.
 */
@@ -181,6 +186,10 @@ unsigned short xgpu_hdr_classify(const struct xgpu_hdr_draw *draw)
 		hdr |= XGPU_HDR_ALPHA_LIMIT;
 	if (XGPU_HDR_SHADER_BLENDS(hdr))
 		hdr |= XGPU_HDR_BLEND(source, destination, operation);
+	/* (a self-illuminated surface's pass: what its own blend leaves past
+	white is its own, a ceiling or the alpha limit first) */
+	else if ((draw->kind & HALO_HDR_KIND_SELF_ILLUMINATION) && colour && !draw->interface)
+		hdr = XGPU_HDR_SELF_ILLUMINATION(draw->kind >> 8);
 	if (draw->dynamic_lights)
 		hdr |= XGPU_HDR_LIGHTS;
 	return hdr;

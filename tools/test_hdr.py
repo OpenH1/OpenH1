@@ -147,6 +147,44 @@ int main(void)
 	CHECK(!XGPU_HDR_SHADER_BLENDS(XGPU_HDR_UNCLAMPED) && !XGPU_HDR_GLOW(XGPU_HDR_UNCLAMPED) &&
 		XGPU_HDR_BLEND_OPERATION(XGPU_HDR_UNCLAMPED) > XGPU_BLEND_MAX, "unclamped is no blend a draw has, "
 		"blended by the fixed function");
+	/* a self-illuminated surface's pass (a door's panel, a screen: a
+	model's, a structure's lightmap pass): its self-illumination glows, in
+	Faithful and Punchy alike, the rest as the SDR frame has it */
+	tag = classify(0, 0, 0, 0, RGB, 2, 0, HALO_HDR_KIND_SELF_ILLUMINATION | HALO_HDR_KIND_SELF_ILLUMINATION_STAGES(1 << 1), F);
+	CHECK(tag == XGPU_HDR_SELF_ILLUMINATION(1 << 1) && XGPU_HDR_IS_SELF_ILLUMINATED(tag) &&
+		XGPU_HDR_SELF_ILLUMINATION_STAGES(tag) == (1 << 1), "a model's self-illumination (stage 1's colour): %04x", tag);
+	CHECK(!XGPU_HDR_SHADER_BLENDS(tag) && !XGPU_HDR_GLOW(tag) && !XGPU_HDR_IS_UNCLAMPED(tag),
+		"blended by the fixed function, no glow's ceiling, not unclamped");
+	CHECK(classify(0, 0, 0, 0, ALL, 1, 0, HALO_HDR_KIND_SELF_ILLUMINATION |
+		HALO_HDR_KIND_SELF_ILLUMINATION_STAGES((1 << 3) | (1 << 4)), P) == XGPU_HDR_SELF_ILLUMINATION((1 << 3) | (1 << 4)),
+		"a structure's lightmap pass (stages 3 and 4's colours), in Punchy too");
+	{
+		struct xgpu_hdr_draw draw;
+
+		memset(&draw, 0, sizeof(draw));
+		draw.color_mask = ALL;
+		draw.category = 1;
+		draw.kind = HALO_HDR_KIND_SELF_ILLUMINATION | HALO_HDR_KIND_SELF_ILLUMINATION_STAGES(0x18);
+		draw.dynamic_lights = 1;
+		tag = xgpu_hdr_classify(&draw);
+		CHECK(tag == (XGPU_HDR_SELF_ILLUMINATION(0x18) | XGPU_HDR_LIGHTS) && XGPU_HDR_IS_SELF_ILLUMINATED(tag),
+			"with the enhanced dynamic lights' shoulder too: %04x", tag);
+	}
+	CHECK(classify(1, XGPU_BLEND_SOURCE_ALPHA, XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA, ADD, RGB, 2, 0,
+		HALO_HDR_KIND_SELF_ILLUMINATION | HALO_HDR_KIND_SELF_ILLUMINATION_STAGES(2), F) == XGPU_HDR_SELF_ILLUMINATION(2),
+		"an alpha blended model's too");
+	tag = classify(1, XGPU_BLEND_DESTINATION_COLOR, XGPU_BLEND_SOURCE_COLOR, ADD, RGB, 2, 0,
+		HALO_HDR_KIND_SELF_ILLUMINATION | HALO_HDR_KIND_SELF_ILLUMINATION_STAGES(2), F);
+	CHECK(XGPU_HDR_CEILING_OF(tag) == XGPU_HDR_CEILING_PAPER_WHITE && !XGPU_HDR_IS_SELF_ILLUMINATED(tag),
+		"a double multiply keeps its ceiling: %04x", tag);
+	CHECK(classify(0, 0, 0, 0, RGB, 27, 1, HALO_HDR_KIND_SELF_ILLUMINATION | HALO_HDR_KIND_SELF_ILLUMINATION_STAGES(2), F) ==
+		0, "not over the tone mapped view");
+	CHECK(classify(0, 0, 0, 0, XGPU_WRITE_ALPHA, 2, 0, HALO_HDR_KIND_SELF_ILLUMINATION |
+		HALO_HDR_KIND_SELF_ILLUMINATION_STAGES(2), F) == 0, "nor a draw writing no colour");
+	CHECK(XGPU_HDR_BLEND_OPERATION(XGPU_HDR_SELF_ILLUMINATION(0xff)) > XGPU_BLEND_MAX &&
+		XGPU_HDR_SELF_ILLUMINATION(0xff) != XGPU_HDR_UNCLAMPED &&
+		!(XGPU_HDR_SELF_ILLUMINATION(0xff) & (XGPU_HDR_CEILING(7) | XGPU_HDR_ALPHA_LIMIT | XGPU_HDR_LIGHTS)),
+		"self-illumination is no blend a draw has, its stages their own bits");
 
 	/* the reference: Faithful leaves under white as it is, and stays
 	under the peak, rising with the light, past it */
@@ -244,6 +282,32 @@ int main(void)
 		CHECK(dark[0] == 0.05f && dark[1] == 0.08f && dark[2] == 0.05f, "nothing where it added nothing");
 	}
 	{
+		/* a self-illuminated panel: its bright self-illumination past paper
+		white, toward 2 times its light and no further, its hue kept; its
+		dim glyphs nearly as they were; its lit surface, where nothing is
+		self-illuminated, as it was */
+		float base[3] = { 0.25f, 0.25f, 0.28f }, screen[3] = { 0.45f, 0.95f, 1.0f }, glyph[3] = { 0.30f, 0.42f, 0.35f },
+			wall[3] = { 0.25f, 0.25f, 0.28f }, light[3] = { 0.45f, 0.95f, 1.0f };
+		float most;
+
+		xgpu_hdr_self_illuminate(screen, base);
+		xgpu_hdr_self_illuminate(glyph, base);
+		xgpu_hdr_self_illuminate(wall, base);
+		xgpu_hdr_expand(light, base, XGPU_HDR_CEILING_LIGHT);
+		most = fmaxf(screen[0], fmaxf(screen[1], screen[2]));
+		CHECK(most > 1.2f && most <= XGPU_HDR_SELF_ILLUMINATION_VALUE + 1.0e-5f && most < light[2],
+			"a screen past paper white, short of its ceiling and a light's: %.3f (%.2f times), a light's %.3f", most,
+			xgpu_hdr_linear(most), light[2]);
+		CHECK(screen[0] / screen[2] < 0.45f && screen[1] / screen[2] < 0.96f, "its hue kept: %.3f %.3f %.3f", screen[0],
+			screen[1], screen[2]);
+		CHECK(glyph[1] < 0.43f, "a dim glyph nearly as it was: %.3f", glyph[1]);
+		CHECK(wall[0] == 0.25f && wall[1] == 0.25f && wall[2] == 0.28f, "nothing where it has no self-illumination");
+		CHECK(fabsf(xgpu_hdr_linear(XGPU_HDR_SELF_ILLUMINATION_VALUE) - 2.0f) < 1.0e-3f &&
+			XGPU_HDR_SELF_ILLUMINATION_VALUE < XGPU_HDR_CEILING_LIGHT_VALUE &&
+			XGPU_HDR_SELF_ILLUMINATION_VALUE > XGPU_HDR_CEILING_WEAPON_VALUE,
+			"its ceiling 2 times paper white's light, under the lights'");
+	}
+	{
 		/* the dynamic lights: the same under white, more past it */
 		CHECK(xgpu_hdr_lights(0.2f, 0.1f, 1) == xgpu_hdr_lights(0.2f, 0.1f, 0), "the lights' shoulder under white");
 		CHECK(xgpu_hdr_lights(0.8f, 3.0f, 1) > 1.2f && xgpu_hdr_lights(0.8f, 3.0f, 0) <= 1.0f,
@@ -319,6 +383,12 @@ def test_hooks_in_the_game():
     assert "HALO_HDR_KIND_HUD_GLOW" in (rasterizer / "rasterizer_xbox_dynavobgeom.c").read_text()
     transparent = (rasterizer / "rasterizer_xbox_transparent_geometry.c").read_text()
     assert "kind |= HALO_HDR_KIND_LIGHT;" in transparent and "base.radiosity.power > 0.0f" in transparent
+    models = (rasterizer / "rasterizer_xbox_models.c").read_text()
+    assert "HALO_HDR_KIND_SELF_ILLUMINATION | HALO_HDR_KIND_SELF_ILLUMINATION_STAGES(1<<1)" in models
+    assert models.count("halo_hdr_draw_kind(HALO_HDR_KIND_NONE);") == 1
+    environment = (rasterizer / "rasterizer_xbox_environment.c").read_text()
+    assert "HALO_HDR_KIND_SELF_ILLUMINATION | HALO_HDR_KIND_SELF_ILLUMINATION_STAGES((1<<3) | (1<<4))" in environment
+    assert environment.count("halo_hdr_draw_kind(HALO_HDR_KIND_NONE);") == 1
     light_volumes = (ROOT / "source/objects/widgets/light_volumes.c").read_text()
     assert light_volumes.count("halo_hdr_draw_kind(HALO_HDR_KIND_LIGHT);") == 1
     assert light_volumes.count("halo_hdr_draw_kind(HALO_HDR_KIND_NONE);") == 1

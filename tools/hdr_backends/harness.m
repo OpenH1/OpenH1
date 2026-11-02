@@ -20,7 +20,10 @@ Metal backend's own and the reference (port/linux/src/xgpu_hdr.h).
     MSL emitter's), each with the vertex function the test wrote for its
     inputs (<name>.vk.vertex.metal, <name>.vertex.metal), over the same
     pixels drawn over and the same colours drawn: the two must agree, and
-    no channel may pass what the tag allows (its ceiling, alpha's 1).
+    no channel may pass what the tag allows (its ceiling, alpha's 1); a
+    self-illuminated surface's pass leaves the reference's values
+    (xgpu_hdr_self_illuminate), past 1 only by its self-illumination, and
+    the same pass untagged the SDR frame's.
 
 Prints a line for each failure and exits nonzero if any.
 */
@@ -294,8 +297,11 @@ static void post_test(NSString *dir)
 /* a draw's fragment function, with its vertex function, drawn as a point
 over each pixel (its colour) over the pixels drawn over (had): what it
 leaves */
+/* (the self-illuminated pass's colour: stage 0's constant) */
+static const float self_illumination_color[4] = { 0.9f, 0.7f, 0.4f, 0.0f };
+
 static int draw_run(NSString *dir, NSString *stem, NSString *name, NSUInteger uniforms_index, unsigned offset,
-	const float *colors, const float *had, float *left)
+	unsigned constants_offset, const float *colors, const float *had, float *left)
 {
 	id<MTLFunction> vertex = function_load([dir stringByAppendingPathComponent:[stem stringByAppendingString:@".vertex.metal"]],
 		@"hdr_test_vertex");
@@ -330,6 +336,7 @@ static int draw_run(NSString *dir, NSString *stem, NSString *name, NSUInteger un
 	uniforms[offset / 4 + 1] = 0.6f;
 	uniforms[offset / 4 + 2] = 0.3f;
 	uniforms[offset / 4 + 3] = 0.7f;
+	memcpy(&uniforms[constants_offset / 4], self_illumination_color, sizeof(self_illumination_color));
 	pass.colorAttachments[0].texture = target;
 	pass.colorAttachments[0].loadAction = MTLLoadActionLoad;
 	pass.colorAttachments[0].storeAction = MTLStoreActionStore;
@@ -353,11 +360,12 @@ static void draws_test(NSString *dir)
 		encoding:NSUTF8StringEncoding error:nil];
 	NSArray<NSString *> *lines = [index componentsSeparatedByString:@"\n"];
 	static float colors[PIXELS * 4], had[PIXELS * 4], vulkan[PIXELS * 4], metal[PIXELS * 4];
-	unsigned spirv_offset = 0, msl_offset = 0, seed = 12345;
-	int pixel, channel, draws = 0, compared = 0, unclamped = 0;
+	unsigned spirv_offset = 0, msl_offset = 0, spirv_constants = 0, msl_constants = 0, seed = 12345;
+	int pixel, channel, draws = 0, compared = 0, unclamped = 0, self_illuminated = 0;
 	NSUInteger line;
 
-	if (!index || lines.count < 2 || sscanf(lines[0].UTF8String, "blend_constant %u %u", &spirv_offset, &msl_offset) != 2)
+	if (!index || lines.count < 2 || sscanf(lines[0].UTF8String, "blend_constant %u %u ps_c0 %u %u", &spirv_offset,
+		&msl_offset, &spirv_constants, &msl_constants) != 4)
 	{
 		FAIL("draws: no index");
 		return;
@@ -386,9 +394,9 @@ static void draws_test(NSString *dir)
 			continue;
 		ceiling = XGPU_HDR_CEILING_OF(tag);
 		ceiling_value = xgpu_hdr_ceiling_value(ceiling);
-		if (!draw_run(dir, [NSString stringWithFormat:@"%s.vk", name], @"xgpu_vk_fragment", 1, spirv_offset, colors, had,
-			vulkan) || !draw_run(dir, [NSString stringWithUTF8String:name], @"xgpu_fragment", 17, msl_offset, colors, had,
-			metal))
+		if (!draw_run(dir, [NSString stringWithFormat:@"%s.vk", name], @"xgpu_vk_fragment", 1, spirv_offset, spirv_constants,
+			colors, had, vulkan) || !draw_run(dir, [NSString stringWithUTF8String:name], @"xgpu_fragment", 17, msl_offset,
+			msl_constants, colors, had, metal))
 			continue;
 		draws++;
 		for (pixel = 0; pixel < PIXELS; pixel++)
@@ -423,6 +431,33 @@ static void draws_test(NSString *dir)
 					unclamped += channel < 3 && v > 1.0f;
 				}
 			}
+			if (strncmp(name, "draw-self-illumination", 22) == 0)
+			{
+				/* (a self-illuminated pass: the diffuse colour, its light, and
+				the constant times its alpha, its self-illumination; tagged,
+				the reference's glow, past 1 by its self-illumination alone;
+				untagged, the SDR frame's) */
+				float base[3], lit[3];
+
+				for (channel = 0; channel < 3; channel++)
+				{
+					base[channel] = colors[pixel * 4 + channel];
+					lit[channel] = fminf(base[channel] + self_illumination_color[channel] * colors[pixel * 4 + 3], 1.0f);
+				}
+				if (tag)
+					xgpu_hdr_self_illuminate(lit, base);
+				for (channel = 0; channel < 3; channel++)
+				{
+					float v = vulkan[pixel * 4 + channel];
+
+					if (fabsf(v - lit[channel]) > 0.003f + 0.002f * lit[channel])
+						FAIL("%s: pixel %d channel %d: %.5f, the reference's %.5f", name, pixel, channel, (double)v,
+							(double)lit[channel]);
+					if (v > (tag ? XGPU_HDR_SELF_ILLUMINATION_VALUE * 1.002f : 1.0f))
+						FAIL("%s: pixel %d channel %d past its ceiling: %.5f", name, pixel, channel, (double)v);
+					self_illuminated += tag && v > 1.0f;
+				}
+			}
 			if (XGPU_HDR_GLOW(tag))
 			{
 				/* (a glow's ceiling is its brightest channel's) */
@@ -434,12 +469,14 @@ static void draws_test(NSString *dir)
 			}
 		}
 	}
-	printf("draws: %d draws, %d values compared between the backends, %d past 1 unclamped\n", draws, compared,
-		unclamped);
-	if (draws != 67)
-		FAIL("draws: %d drawn, not 67", draws);
+	printf("draws: %d draws, %d values compared between the backends, %d past 1 unclamped, %d past 1 self-illuminated\n",
+		draws, compared, unclamped, self_illuminated);
+	if (draws != 69)
+		FAIL("draws: %d drawn, not 69", draws);
 	if (unclamped < PIXELS)
 		FAIL("draws: %d values past 1 unclamped", unclamped);
+	if (self_illuminated < PIXELS / 4)
+		FAIL("draws: %d values past 1 self-illuminated", self_illuminated);
 }
 
 int main(int argc, char **argv)

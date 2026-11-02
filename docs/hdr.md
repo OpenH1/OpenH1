@@ -29,6 +29,12 @@ highlights it cannot show.
   can only draw up to white, glow past it up to 3 times paper white:
   the teleporters' fields, the levels' light fixtures and Covenant lights,
   energy shields, and the plasma bolts' and needles' glowing volumes.
+- **Self-illumination**: the surfaces that light themselves glow past paper
+  white up to 2 times it, short of the lights: door control panels,
+  computer screens and displays (the Pillar of Autumn's bridge and
+  corridors), Forerunner glyphs and panel lights, Covenant panels. Only
+  their self-illumination does: the lit surface around it stays where the
+  SDR picture has it.
 - **Settings**: `display.hdr` (`auto`, `on`, `off`), `display.hdr_mode`
   (`faithful`, `punchy`), `display.hdr_paper_white_nits` (80 to 500 nits,
   or 0, the default: the system's SDR white; the older
@@ -72,7 +78,10 @@ The front end tags each draw into the HDR back buffer
   light), a HUD meter while it flashes, the motion tracker; in the world
   (not the sky), a surface that is light: a generic or chicago shader
   the map gives radiosity power (the power it lights the level's
-  lightmaps with), a plasma shader, a light's volume;
+  lightmaps with), a plasma shader, a light's volume; a surface's pass that
+  adds its self-illumination to its light (a model's, a structure's
+  lightmap pass), and which of its combiner stages' constants are the
+  self-illumination's colours;
 - whether the 3D view is being drawn or the HUD over it (after the tone
   map).
 
@@ -86,6 +95,7 @@ The front end tags each draw into the HDR back buffer
 | The first-person weapon's glows | the ammunition counter (whatever its blend), meters, additive display parts | expanded, ceiling 1.75 times paper white |
 | The HUD's glows | a meter flashing, the motion tracker | expanded, ceiling 1.5 times paper white |
 | The light of the world (additive) | teleporters' fields, light fixtures, Covenant lights, energy shields, plasma bolts' and needles' volumes | expanded from lower, ceiling 3 times paper white |
+| Self-illumination (a model's pass, a structure's lightmap pass) | door control panels, computer screens and displays, the Pillar of Autumn's bridge screens, Forerunner glyphs and panel lights | its self-illumination expanded from lower, ceiling 2 times paper white; the rest of the pass as the SDR frame has it |
 | Destination alpha | any draw writing alpha whose blend could take it past 1 (a double multiply's) | alpha limited to 1 (the game reads it as a blend factor) |
 | The enhanced dynamic lights | a structure's lightmap pass | their shoulder goes on past white (below white, unchanged) |
 
@@ -111,6 +121,29 @@ the SDR picture has it and its bright swirls pass white; a light fixture's
 panel, near white in SDR, reaches the ceiling. The ceilings are one field
 of the tag (`XGPU_HDR_CEILING_OF`); a glow is a ceiling past paper white's
 (`XGPU_HDR_GLOW`).
+
+**Self-illumination** is not a pass of its own. A model's shader adds it to
+the light in its one pass, before the textures multiply that light
+(`rasterizer_xbox_models.c`: combiner stage 1 adds the multipurpose map's
+self-illumination mask times its colour, stage 1's constant, to the
+vertices' diffuse light; the base map, the change colour, the reflection
+and the fog follow); a structure's lightmap pass adds it to the lightmap's
+light (`rasterizer_xbox_environment.c`: stages 0 to 5 make it from the
+self-illumination map's primary, secondary and plasma masks, their
+animated colours stages 3's and 4's constants, and the final combiner adds
+it), and the textures' pass after multiplies the target by the diffuse
+texture, which a float target lets past white. The pass is tagged
+`XGPU_HDR_SELF_ILLUMINATION` with those stages (`HALO_HDR_KIND_SELF_ILLUMINATION`),
+and the backend's shader runs its combiners twice: as the game has them,
+and with those stages' constants 0, the pixel without its
+self-illumination. What the first has past the second is the
+self-illumination, brightened as a glow is, from the light of the world's
+knee, toward 2 times paper white (`xgpu_hdr_self_illuminate`); in a
+structure it is then multiplied by the surface's texture, as the game's
+light is. The rest of the pass, the lit surface, stays as the SDR frame has
+it, and a pixel without self-illumination is the SDR frame's. The
+animation (a panel's flicker, a screen's plasma) is the game's: its
+colours are the constants.
 
 **The screen effects** (a weapon's zoom: the sniper rifle's warp and mask;
 night vision; a script's) copy the tone mapped view into their own target
@@ -232,8 +265,10 @@ the stream's ring carries it, written by the host). A backend declares
   too); and each tagged draw (every ceiling, the three glows' expansion,
   the alpha limit, over each of eleven blends) as the SPIR-V emitter writes it and as
   the MSL emitter writes it, over the same 512 pixels: the two backends
-  leave the same values, none past its tag's limit; and a screen effect's
-  pass, unclamped, its colour past 1 in both. Everywhere: the two
+  leave the same values, none past its tag's limit; a screen effect's
+  pass, unclamped, its colour past 1 in both; and a self-illuminated
+  pass, the reference's values in both, past 1 only by its
+  self-illumination, and the same pass untagged the SDR frame's. Everywhere: the two
   backends' tone map and encoding are one GLSL source but for the
   uniforms' binding.
 - `port/linux/vulkan/tests/passes_test.c` (over a fake Vulkan): the local
@@ -262,6 +297,17 @@ the stream's ring carries it, written by the host). A backend declares
   layers already pile up past white (explosions, muzzle flashes): a
   ceiling would stop that. The first-person weapon's own glows keep their
   ceiling.
+- **Self-illumination is found by drawing the pass twice in its shader.**
+  A door's panel is one pass of an opaque model or structure, its
+  self-illumination one term of its combiners; the game draws no separate
+  pass of it to tag. Its combiners run again with the self-illumination's
+  colours 0 (only the stages after them are worked twice), so that the
+  difference is that term, whatever the combiners do after it (a model's
+  textures, reflection and fog); no combiner program is read for its
+  meaning. Its ceiling, 2 times paper white, is under the lights' 3: a
+  screen lights no room, and glows short of the fixture above it. It is
+  the game's own self-illumination, in Faithful and Punchy alike, as the
+  light of the world is; the sky's models are left as they are.
 - **Ceilings blend in the shader, not by clamping after.** A clamp after a
   draw (a second draw taking the minimum) would dim light that was already
   past white under it: a specular pass over a wall a plasma bolt lights
