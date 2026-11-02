@@ -248,6 +248,21 @@ SDL_OPTIONS = [
 SDL_RPATH_LDFLAGS = ["'-Wl,-rpath,$$ORIGIN:$$ORIGIN/../lib/openh1'", "-Wl,--disable-new-dtags"]
 
 
+def sdl3_desktop_check(sdl_build: Path) -> str:
+    """sdl3_rule's check for the Linux builds' SDL: that it has both of its
+    video drivers, X11's and Wayland's (with libdecor's decorations). CMake
+    leaves Wayland out without a word where a development file it needs is
+    missing (wayland-client, wayland-egl, wayland-cursor, egl, xkbcommon:
+    the releases before this check had no egl.pc, and so played under
+    XWayland on every Wayland desktop)."""
+    config = sdl_build / "include-config-release" / "build_config" / "SDL_build_config.h"
+    return (f"{{ {{ grep -q '^#define SDL_VIDEO_DRIVER_X11 1' {config} && "
+            f"grep -q '^#define SDL_VIDEO_DRIVER_WAYLAND 1' {config} && "
+            f"grep -q '^#define HAVE_LIBDECOR_H 1' {config}; }} || "
+            f"{{ echo 'SDL3 was configured without X11, Wayland or libdecor: see "
+            f"{sdl_build.parent}/sdl3-configure.log for the development files it lacks' >&2; exit 1; }}; }}")
+
+
 def sdl3_rule(n: Writer, sln: Any, *, name: str, description: str, source: Path, sdl_build: Path, log_dir: Path,
               cc: str, cmake_args: Sequence[str] = (), check: str = "") -> None:
     """The rule that builds SDL3 from source into sdl_build, as the Linux

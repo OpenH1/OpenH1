@@ -331,6 +331,11 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 		xgpu_vulkan_textures_astc_folder(chosen);
 	}
 	vulkan_window = object;
+	/* (which of SDL's window systems the window is in: on a Linux desktop
+	Wayland's where the session is Wayland's, which alone gives HDR, X11's
+	under XWayland and gamescope) */
+	host_logf(HOST_LOG_INFO, "vulkan: the window is SDL's %s", SDL_GetCurrentVideoDriver() ?
+		SDL_GetCurrentVideoDriver() : "(no video driver)");
 	memset(&options, 0, sizeof(options));
 	if (SDL_GetWindowFlags(object) & SDL_WINDOW_VULKAN)
 	{

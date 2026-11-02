@@ -600,7 +600,8 @@ static struct
 	int hdr_active, hdr_mode, hdr_paper_white_nits, hdr_paper_white;
 	unsigned int surface_hdr;
 	int hdr_output;
-	int display_hdr_told;
+	int display_hdr_told, display_window_told;
+	unsigned int display_surface_told;
 	float display_headroom_told;
 	int colorspaces, hdr_metadata;
 	void (*display_hdr)(int hdr, float headroom);
@@ -4782,6 +4783,15 @@ static float float_of(uint32_t bits)
 	return value;
 }
 
+/* the window's SDR white in nits: the system's, else BT.2408's reference
+white (where the system says nothing: 1.0, 80 nits) */
+static float sdr_white_nits(void)
+{
+	float sdr_white = float_of(__atomic_load_n(&vk.window_sdr_white, __ATOMIC_ACQUIRE));
+
+	return sdr_white > 1.0f ? sdr_white * 80.0f : XGPU_HDR_REFERENCE_WHITE_NITS;
+}
+
 /* the window's display shows HDR, and the swapchain can (the surface has
 an HDR colour space) */
 static int display_shows_hdr(void)
@@ -4816,24 +4826,49 @@ static int hdr_output_choose(void)
 }
 
 /* what the host is told of the display, where it changed (the front end's
-display.hdr "auto" follows it) */
+display.hdr "auto" follows it), and logged: the window system's word (SDL's:
+HDR on, its headroom) and the surface's HDR outputs (the driver's), which
+must both say HDR. The window system says nothing of HDR under X11 or
+XWayland, nor on a Wayland compositor without its colour management; the
+surface's outputs need the driver to have it as well. */
 static void display_hdr_tell(void)
 {
 	int hdr = display_shows_hdr();
+	int window = __atomic_load_n(&vk.window_hdr, __ATOMIC_ACQUIRE) != 0;
 	float headroom = float_of(__atomic_load_n(&vk.window_headroom, __ATOMIC_ACQUIRE));
+	int told;
+	char outputs[32];
 
 	if (!(headroom >= 1.0f))
 		headroom = 1.0f;
-	if (hdr == vk.display_hdr_told && headroom == vk.display_headroom_told)
+	/* (the host is told where HDR or the headroom changed; the log is also
+	written where only the reason for it did) */
+	told = hdr != vk.display_hdr_told || headroom != vk.display_headroom_told;
+	if (!told && window == vk.display_window_told && vk.surface_hdr == vk.display_surface_told)
 		return;
 	vk.display_hdr_told = hdr;
 	vk.display_headroom_told = headroom;
-	host_logf(HOST_LOG_INFO, "vulkan: the display %s HDR (headroom %.2f, SDR white %.0f nits; swapchain outputs: %s%s)",
-		hdr ? "shows" : "does not show", (double)headroom,
-		(double)(float_of(__atomic_load_n(&vk.window_sdr_white, __ATOMIC_ACQUIRE)) * 80.0f),
-		(vk.surface_hdr & (1u << XGPU_HDR_OUTPUT_SCRGB)) ? "scRGB " : "",
+	vk.display_window_told = window;
+	vk.display_surface_told = vk.surface_hdr;
+	snprintf(outputs, sizeof(outputs), "%s%s%s",
+		(vk.surface_hdr & (1u << XGPU_HDR_OUTPUT_SCRGB)) ? "scRGB" : "",
+		(vk.surface_hdr & (1u << XGPU_HDR_OUTPUT_SCRGB)) && (vk.surface_hdr & (1u << XGPU_HDR_OUTPUT_PQ)) ? ", " : "",
 		(vk.surface_hdr & (1u << XGPU_HDR_OUTPUT_PQ)) ? "HDR10" : "");
-	if (vk.display_hdr)
+	if (hdr)
+		host_logf(HOST_LOG_INFO, "vulkan: the display shows HDR (headroom %.2f over an SDR white of %.0f nits, "
+			"a peak of %.0f nits; swapchain outputs: %s)", (double)headroom, (double)sdr_white_nits(),
+			(double)(headroom * sdr_white_nits()), outputs);
+	else if (window)
+		host_logf(HOST_LOG_INFO, "vulkan: the display shows HDR (headroom %.2f), but the surface has no HDR "
+			"output (the driver's colour management): SDR", (double)headroom);
+	else if (vk.surface_hdr)
+		host_logf(HOST_LOG_INFO, "vulkan: the surface has HDR outputs (%s), but the window system says the "
+			"display is SDR (or has no HDR to say: X11 and XWayland have none, nor a Wayland compositor without "
+			"its colour management; HALO_VULKAN_HDR_HEADROOM gives a headroom): SDR", outputs);
+	else
+		host_logf(HOST_LOG_INFO, "vulkan: the display does not show HDR (no HDR state from the window system, "
+			"no HDR output on the surface)");
+	if (told && vk.display_hdr)
 		vk.display_hdr(hdr, headroom);
 }
 
@@ -4895,15 +4930,6 @@ void xgpu_vulkan_hdr_state(int active, int mode, int paper_white_nits, int paper
 	/* (the swapchain made again where its output changes) */
 	if (vk.swapchain && hdr_output_choose() != vk.hdr_output)
 		vk.swapchain_stale = 1;
-}
-
-/* the window's SDR white in nits: the system's, else BT.2408's reference
-white (where the system says nothing: 1.0, 80 nits) */
-static float sdr_white_nits(void)
-{
-	float sdr_white = float_of(__atomic_load_n(&vk.window_sdr_white, __ATOMIC_ACQUIRE));
-
-	return sdr_white > 1.0f ? sdr_white * 80.0f : XGPU_HDR_REFERENCE_WHITE_NITS;
 }
 
 /* paper white in nits, as the front end's state says */

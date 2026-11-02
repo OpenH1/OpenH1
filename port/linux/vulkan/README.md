@@ -446,6 +446,21 @@ is then RGBA16F, an input attachment too.
   headroom). The front end's `"auto"` follows what the renderer tells it
   (`host_render_stream_display_hdr`): the display shows HDR and the surface
   can.
+- On Linux only a Wayland window has an HDR state: SDL reads its display's
+  headroom from the compositor's colour management (`wp_color_manager_v1`:
+  the surface's preferred peak over its reference white; KDE Plasma 6,
+  GNOME 48 and later), and the driver gives the surface its HDR colour
+  spaces through the same protocol (NVIDIA's recent drivers, Mesa's). The
+  game is a Wayland window wherever SDL prefers one: in a Wayland session
+  whose compositor has `wp_fifo_manager_v1` (KDE 6.4 and later, Hyprland;
+  `SDL_VIDEO_DRIVER=wayland` or `x11` chooses). Under X11, XWayland and
+  gamescope (whose games are X11 windows) SDL says nothing of HDR, so the
+  game is SDR even where gamescope's layer gives the surface HDR colour
+  spaces, unless `HALO_VULKAN_HDR_HEADROOM` gives a headroom. The log says
+  which window system the window is in (`vulkan: the window is SDL's
+  wayland`) and what each side said (`vulkan: the display shows HDR
+  (headroom ..., a peak of ... nits; swapchain outputs: ...)`, or which
+  of them said no).
 - With HDR off, and with `"auto"` where the display shows none, nothing
   changes: the back buffer is BGRA8, no pipeline reads its attachment, and
   the swapchain is the 8-bit sRGB one.
