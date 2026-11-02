@@ -1390,7 +1390,9 @@ static int platform_swap_interval(void)
 #if defined(HALO_VULKAN) && !defined(HALO_ANDROID) && !defined(HALO_WINDOWS)
 	maximum = config_integer("display.max_fps");
 	refresh = platform_refresh_rate();
-	if (maximum > 0 && refresh > 0.0f)
+	/* (not until the Steam Deck's own gamescope shows the first frames with
+	vsync on: on a Deck in Game Mode none was ever shown) */
+	if (maximum > 0 && refresh > 0.0f && 0)
 	{
 		for (interval = 1; interval <= 4; interval++)
 		{

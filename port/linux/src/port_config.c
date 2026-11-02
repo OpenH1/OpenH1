@@ -2459,7 +2459,9 @@ others. Set in the file, the player's value wins. */
 static const char *config_default_of(const struct config_setting *setting)
 {
 #if defined(HALO_VULKAN) && !defined(HALO_ANDROID) && !defined(HALO_WINDOWS)
-	if (!strcmp(setting->name, "display.vsync") && config_gamescope())
+	/* (not until the Steam Deck's own gamescope shows the first frames with
+	vsync on: on a Deck in Game Mode none was ever shown) */
+	if (!strcmp(setting->name, "display.vsync") && config_gamescope() && 0)
 		return "true";
 #endif
 	return setting->default_value;
