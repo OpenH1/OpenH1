@@ -40,6 +40,31 @@ def test_vulkan_passes(tmp_path):
     assert run.returncode == 0, run.stdout + run.stderr
 
 
+def test_pacing_presents_before_the_display_answers(tmp_path):
+    # display.low_latency over a present wait that says nothing until a
+    # frame is shown, or nothing ever (the Steam Deck's gamescope, where
+    # build 940 showed no frame): the first frames go unpaced, no present
+    # waits, a silent display is given up on, an answering one paces the
+    # frames from the present after its first answer
+    cc = os.environ.get("CC") or shutil.which("clang") or shutil.which("cc")
+    if not cc or not sys.platform.startswith("linux"):
+        pytest.skip("needs a C compiler on Linux")
+    candidates = [ROOT / f"build/{name}/third_party/vulkan-headers" for name in ("linux_x86_64", "linux_arm64")]
+    headers = next((path for path in candidates + [Path("/usr/include")]
+                    if (path / "vulkan/vulkan_core.h").exists()), None)
+    if headers is None:
+        pytest.skip("needs Vulkan headers (configure.py fetches them for the Linux build)")
+    binary = tmp_path / "pacing"
+    subprocess.run([
+        cc, "-std=gnu11", "-O1", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
+        f"-I{headers}", f"-I{ROOT / 'port/android/host'}", f"-I{ROOT / 'port/android/include'}",
+        f"-I{ROOT / 'port/linux/src'}", str(ROOT / "port/linux/vulkan/tests/pacing_test.c"), "-o", str(binary),
+        "-pthread",
+    ], check=True)
+    run = subprocess.run([str(binary)], capture_output=True, text=True, timeout=60)
+    assert run.returncode == 0, run.stdout + run.stderr
+
+
 def test_vr_required_capabilities(tmp_path):
     cc = os.environ.get("CC") or shutil.which("clang") or shutil.which("cc")
     if not cc:

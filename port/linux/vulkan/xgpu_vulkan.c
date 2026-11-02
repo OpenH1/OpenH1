@@ -135,6 +135,10 @@ nothing more */
 
 /* submissions whose resources are kept until the GPU is done with them */
 #define SLOTS 8
+/* vkAcquireNextImageKHR's wait, in parts; the wait after which the stall is
+noted */
+#define ACQUIRE_PART_NS 100000000ull
+#define ACQUIRE_STALL_NS 2000000000ull
 /* the upload ring */
 #define RING_SIZE (128u * 1024 * 1024)
 /* images' memory, in blocks of this (larger images have their own) */
@@ -5364,7 +5368,27 @@ static uint64_t present(struct xgpu_vulkan_image *image, int frame)
 	acquired = vk.acquired[vk.serial % SLOTS];
 	if (trace)
 		host_load_trace("vulkan.acquire.begin", "");
-	result = vkAcquireNextImageKHR(vk.device, vk.swapchain, UINT64_MAX, acquired, VK_NULL_HANDLE, &index);
+	/* (in parts, never for good: a swapchain that gives no image for
+	seconds is noted, and display.low_latency's thread stops waiting for its
+	presents, which might be what holds it, xgpu_vulkan_pacing_silence) */
+	{
+		uint64_t waited = 0;
+
+		for (;;)
+		{
+			result = vkAcquireNextImageKHR(vk.device, vk.swapchain, ACQUIRE_PART_NS, acquired, VK_NULL_HANDLE,
+				&index);
+			if (result != VK_TIMEOUT && result != VK_NOT_READY)
+				break;
+			waited += ACQUIRE_PART_NS;
+			if (waited == ACQUIRE_STALL_NS)
+			{
+				host_logf(HOST_LOG_WARN, "vulkan: the swapchain has given no image for %llu ms",
+					(unsigned long long)(waited / 1000000ull));
+				xgpu_vulkan_pacing_silence();
+			}
+		}
+	}
 	if (trace)
 		host_load_trace("vulkan.acquire.end", "result=%d", result);
 	if (result == VK_ERROR_OUT_OF_DATE_KHR)
