@@ -60,5 +60,8 @@ VkResult xgpu_vulkan_pacing_present(PFN_vkQueuePresentKHR queue_present, VkQueue
 	int frame, uint64_t serial);
 /* (render thread) a frame ended with nothing presented */
 void xgpu_vulkan_pacing_unshown(void);
+/* (render thread) the swapchain has given no image for seconds: the thread
+stops waiting for presents, and the game is no longer paced */
+void xgpu_vulkan_pacing_silence(void);
 
 #endif
