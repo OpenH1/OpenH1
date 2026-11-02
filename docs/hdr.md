@@ -150,8 +150,22 @@ at most *P*, times paper white, in the display's encoding:
 | --- | --- | --- |
 | SDR | the frame clamped to [0, 1] (the window's 8 bits) | the window's white |
 | EDR (macOS) | extended linear sRGB, 1.0 the system's SDR white | the setting's nits over 100 (macOS gives no nits: 1.0 taken as its reference modes' 100), at most the headroom |
-| scRGB (Vulkan) | extended linear sRGB, 1.0 80 nits | the setting's nits, at most the peak |
-| HDR10 (Vulkan) | BT.2020 primaries (the same colours: no saturation added), PQ | the setting's nits, at most the peak |
+| scRGB (Vulkan) | extended linear sRGB, 1.0 80 nits | Windows: the setting's nits, at most the peak. Linux (Wayland): 1.0 times the setting over the system's SDR white, at most the headroom |
+| HDR10 (Vulkan) | BT.2020 primaries (the same colours: no saturation added), PQ | Windows: the setting's nits, at most the peak. Linux (Wayland): 203 nits times the setting over the system's SDR white, at most the headroom |
+
+Windows' compositor shows both encodings in absolute nits. A Wayland
+compositor (`wp_color_manager_v1`) maps the surface's reference white onto
+its own, its SDR brightness, and the Linux drivers give the surface no
+reference of their own, so the protocol's is the encoding's: 203 nits for
+PQ, 80 (scRGB's 1.0) for linear sRGB (KWin: `ColorDescription::toOther`).
+With KDE's SDR brightness at 500 nits and a 800-nit peak, paper white at
+the system's white is PQ's 203 nits, shown at 500, and the peak PQ's 325,
+shown at 800. The system's SDR white in nits is the compositor's reference
+luminance, which SDL 3.4 does not keep: the SDL the Linux builds bring is
+patched to give it as the window's property
+`openh1.wayland.reference_luminance`
+(`port/android/patches/sdl-wayland-reference-luminance.patch`), so that a
+paper white set in nits is those nits on the panel.
 
 The setting's nits (`xgpu_hdr_paper_white_nits`) are
 `display.hdr_paper_white_nits`, or, while it is 0, the system's SDR white

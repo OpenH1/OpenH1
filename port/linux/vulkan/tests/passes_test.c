@@ -2214,43 +2214,46 @@ static void hdr_window_test(void)
 
 	/* the frames HDR: HDR10 (A2B10G10R10, PQ) where the surface has both
 	(not Windows), the frame encoded for it and that blitted; paper white
-	200 nits (SDL's 2.5 times 80) in PQ's units, the peak the headroom */
+	the system's SDR white (SDL's 2.5 times 80, 200 nits), which a Wayland
+	compositor shows PQ's reference white at: BT.2408's 203 nits in PQ's
+	units; the peak the headroom */
 	xgpu_vulkan_hdr_state(1, XGPU_HDR_MODE_PUNCHY, 0, 100);
 	assert(window_present_frame() && window_swapchains == 2);
 	assert(window_made.imageFormat == VK_FORMAT_A2B10G10R10_UNORM_PACK32);
 	assert(window_made.imageColorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT);
 	assert(hdr_encodes == 1 && hdr_encoded_format == XGPU_VULKAN_FORMAT_RGB10A2 && window_blit_source == hdr_encoded.image);
 	assert(hdr_encoded_frame.output == XGPU_HDR_OUTPUT_PQ && hdr_encoded_frame.mode == XGPU_HDR_MODE_PUNCHY);
-	assert(fabsf(hdr_encoded_frame.paper_white - 0.02f) < 1e-6f && hdr_encoded_frame.peak == 4.0f);
+	assert(fabsf(hdr_encoded_frame.paper_white - 0.0203f) < 1e-6f && hdr_encoded_frame.peak == 4.0f);
 	assert(hdr_tells == 2);
 
 	/* paper white twice the system's: the peak in paper whites halved;
 	past the headroom, no brighter than it */
 	xgpu_vulkan_hdr_state(1, XGPU_HDR_MODE_FAITHFUL, 0, 200);
 	xgpu_vulkan_hdr_frame(&frame);
-	assert(fabsf(frame.paper_white - 0.04f) < 1e-6f && frame.peak == 2.0f && frame.mode == XGPU_HDR_MODE_FAITHFUL);
+	assert(fabsf(frame.paper_white - 0.0406f) < 1e-6f && frame.peak == 2.0f && frame.mode == XGPU_HDR_MODE_FAITHFUL);
 	xgpu_vulkan_hdr_state(1, XGPU_HDR_MODE_FAITHFUL, 0, 500);
 	xgpu_vulkan_hdr_frame(&frame);
-	assert(fabsf(frame.paper_white - 0.08f) < 1e-6f && frame.peak == 1.0f);
+	assert(fabsf(frame.paper_white - 0.0812f) < 1e-6f && frame.peak == 1.0f);
 	/* paper white in nits, whatever the system's white (the percent not
-	read); past the headroom, no brighter than it */
+	read: 300 nits is 1.5 of its 200, PQ's 304.5); past the headroom, no
+	brighter than it */
 	xgpu_vulkan_hdr_state(1, XGPU_HDR_MODE_FAITHFUL, 300, 50);
 	xgpu_vulkan_hdr_frame(&frame);
-	assert(fabsf(frame.paper_white - 0.03f) < 1e-6f && fabsf(frame.peak - 800.0f / 300.0f) < 1e-5f);
+	assert(fabsf(frame.paper_white - 0.03045f) < 1e-6f && fabsf(frame.peak - 800.0f / 300.0f) < 1e-5f);
 	xgpu_vulkan_hdr_state(1, XGPU_HDR_MODE_FAITHFUL, 1000, 100);
 	xgpu_vulkan_hdr_frame(&frame);
-	assert(fabsf(frame.paper_white - 0.08f) < 1e-6f && frame.peak == 1.0f);
+	assert(fabsf(frame.paper_white - 0.0812f) < 1e-6f && frame.peak == 1.0f);
 	assert(window_present_frame() && window_swapchains == 2);
 
-	/* scRGB asked for: half floats in extended linear sRGB, paper white in
-	its units (80 nits) */
+	/* scRGB asked for: half floats in extended linear sRGB, paper white its
+	1.0, the reference white a Wayland compositor maps onto its own */
 	setenv("HALO_VULKAN_HDR_OUTPUT", "scrgb", 1);
 	xgpu_vulkan_hdr_state(1, XGPU_HDR_MODE_FAITHFUL, 0, 100);
 	assert(window_present_frame() && window_swapchains == 3);
 	assert(window_made.imageFormat == VK_FORMAT_R16G16B16A16_SFLOAT);
 	assert(window_made.imageColorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT);
 	assert(hdr_encoded_format == XGPU_VULKAN_FORMAT_RGBA16F && hdr_encoded_frame.output == XGPU_HDR_OUTPUT_SCRGB);
-	assert(fabsf(hdr_encoded_frame.paper_white - 2.5f) < 1e-6f && hdr_encoded_frame.peak == 4.0f);
+	assert(fabsf(hdr_encoded_frame.paper_white - 1.0f) < 1e-6f && hdr_encoded_frame.peak == 4.0f);
 	unsetenv("HALO_VULKAN_HDR_OUTPUT");
 
 	/* the display's HDR off: told, and the swapchain SDR again, the frame

@@ -4855,9 +4855,10 @@ static void display_hdr_tell(void)
 		(vk.surface_hdr & (1u << XGPU_HDR_OUTPUT_SCRGB)) && (vk.surface_hdr & (1u << XGPU_HDR_OUTPUT_PQ)) ? ", " : "",
 		(vk.surface_hdr & (1u << XGPU_HDR_OUTPUT_PQ)) ? "HDR10" : "");
 	if (hdr)
-		host_logf(HOST_LOG_INFO, "vulkan: the display shows HDR (headroom %.2f over an SDR white of %.0f nits, "
+		host_logf(HOST_LOG_INFO, "vulkan: the display shows HDR (headroom %.2f over an SDR white of %.0f nits%s, "
 			"a peak of %.0f nits; swapchain outputs: %s)", (double)headroom, (double)sdr_white_nits(),
-			(double)(headroom * sdr_white_nits()), outputs);
+			float_of(__atomic_load_n(&vk.window_sdr_white, __ATOMIC_ACQUIRE)) > 1.0f ? "" :
+			" (none given: BT.2408's)", (double)(headroom * sdr_white_nits()), outputs);
 	else if (window)
 		host_logf(HOST_LOG_INFO, "vulkan: the display shows HDR (headroom %.2f), but the surface has no HDR "
 			"output (the driver's colour management): SDR", (double)headroom);
@@ -4938,12 +4939,45 @@ static float paper_white_nits(void)
 	return xgpu_hdr_paper_white_nits(vk.hdr_paper_white_nits, vk.hdr_paper_white, sdr_white_nits());
 }
 
-void xgpu_vulkan_hdr_frame(struct xgpu_hdr_frame *frame)
+/* the nits the swapchain's encoding gives the system's SDR white. Windows'
+compositor shows both encodings as they are, absolute: the SDR white's own
+nits. A Wayland compositor maps the surface's reference white onto its own
+(KWin's SDR brightness, which SDL gives as the SDR white: the patched
+SDL's reference luminance), and the Linux drivers say none, so it is the
+protocol's for the encoding: 203 nits for PQ (BT.2408's), scRGB's 1.0 (80
+nits) for linear sRGB (wp_color_manager_v1's ext_linear, as Mesa makes
+it). The highlights are the same ratio over it in either case. */
+static float encoding_white_nits(void)
+{
+#ifdef _WIN32
+	return sdr_white_nits();
+#else
+	return vk.hdr_output == XGPU_HDR_OUTPUT_SCRGB ? 80.0f : XGPU_HDR_REFERENCE_WHITE_NITS;
+#endif
+}
+
+/* paper white over the system's SDR white (the setting's nits over the
+SDR white's), no brighter than the display can show */
+static float paper_white_setting(float headroom)
+{
+	float setting = paper_white_nits() / sdr_white_nits();
+
+	if (!(setting > 0.0f))
+		setting = 1.0f;
+	return setting > headroom ? headroom : setting;
+}
+
+/* the window's headroom, at least 1 */
+static float window_headroom(void)
 {
 	float headroom = float_of(__atomic_load_n(&vk.window_headroom, __ATOMIC_ACQUIRE));
-	/* (paper white over the system's SDR white) */
-	float setting = paper_white_nits() / sdr_white_nits();
-	float nits;
+
+	return headroom >= 1.0f ? headroom : 1.0f;
+}
+
+void xgpu_vulkan_hdr_frame(struct xgpu_hdr_frame *frame)
+{
+	float headroom = window_headroom(), setting, nits;
 
 	memset(frame, 0, sizeof(*frame));
 	frame->mode = vk.hdr_mode;
@@ -4952,26 +4986,23 @@ void xgpu_vulkan_hdr_frame(struct xgpu_hdr_frame *frame)
 	frame->peak = 1.0f;
 	if (vk.hdr_output == XGPU_HDR_OUTPUT_SDR)
 		return;
-	if (!(headroom >= 1.0f))
-		headroom = 1.0f;
-	if (!(setting > 0.0f))
-		setting = 1.0f;
-	/* (paper white no brighter than the display can show) */
-	if (setting > headroom)
-		setting = headroom;
-	nits = sdr_white_nits() * setting;
+	setting = paper_white_setting(headroom);
+	/* (in the encoding's nits) */
+	nits = encoding_white_nits() * setting;
 	frame->output = vk.hdr_output;
 	frame->paper_white = vk.hdr_output == XGPU_HDR_OUTPUT_SCRGB ? nits / 80.0f : nits / 10000.0f;
 	frame->peak = headroom / setting;
 }
 
 /* the swapchain's HDR metadata (VK_EXT_hdr_metadata, where the device has
-it): the content's gamut sRGB's (the frame's primaries), its light at most
-the display's peak, on average about paper white */
+it), in the encoding's nits: the content's gamut sRGB's (the frame's
+primaries), its light at most the display's peak, on average about paper
+white */
 static void hdr_metadata_set(void)
 {
 	VkHdrMetadataEXT metadata;
-	float peak = sdr_white_nits() * float_of(__atomic_load_n(&vk.window_headroom, __ATOMIC_ACQUIRE));
+	float headroom = window_headroom();
+	float peak = encoding_white_nits() * headroom;
 
 	if (!vkSetHdrMetadataEXT || vk.hdr_output == XGPU_HDR_OUTPUT_SDR)
 		return;
@@ -4988,7 +5019,7 @@ static void hdr_metadata_set(void)
 	metadata.maxLuminance = peak;
 	metadata.minLuminance = 0.0f;
 	metadata.maxContentLightLevel = peak;
-	metadata.maxFrameAverageLightLevel = paper_white_nits();
+	metadata.maxFrameAverageLightLevel = encoding_white_nits() * paper_white_setting(headroom);
 	vkSetHdrMetadataEXT(vk.device, 1, &vk.swapchain, &metadata);
 }
 

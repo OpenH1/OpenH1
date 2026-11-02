@@ -451,6 +451,11 @@ is then RGBA16F, an input attachment too.
   the surface's preferred peak over its reference white; KDE Plasma 6,
   GNOME 48 and later), and the driver gives the surface its HDR colour
   spaces through the same protocol (NVIDIA's recent drivers, Mesa's). The
+  compositor shows the encoding's reference white (PQ's 203 nits, scRGB's
+  1.0) at its own SDR brightness, so the frame is encoded relative to it;
+  the SDR brightness's nits (for the log, and a paper white set in nits)
+  are the patched SDL's `openh1.wayland.reference_luminance`
+  ([docs/hdr.md](../../../docs/hdr.md)). The
   game is a Wayland window wherever SDL prefers one: in a Wayland session
   whose compositor has `wp_fifo_manager_v1` (KDE 6.4 and later, Hyprland;
   `SDL_VIDEO_DRIVER=wayland` or `x11` chooses). Under X11, XWayland and
