@@ -117,6 +117,10 @@ static void suspend_call(void *argument)
 	xgpu_vulkan_window_suspend(argument != NULL);
 }
 
+/* the Wayland compositor's reference white in nits, a window property of
+the SDL the Linux builds bring */
+#define WAYLAND_REFERENCE_LUMINANCE "openh1.wayland.reference_luminance"
+
 /* display.hdr: what the window's display says (SDL's), told the backend
 (any thread) */
 static void window_hdr_read(void)
@@ -133,6 +137,11 @@ static void window_hdr_read(void)
 	}
 	enabled = properties && SDL_GetBooleanProperty(properties, SDL_PROP_WINDOW_HDR_ENABLED_BOOLEAN, false);
 	sdr_white = properties ? SDL_GetFloatProperty(properties, SDL_PROP_WINDOW_SDR_WHITE_LEVEL_FLOAT, 1.0f) : 1.0f;
+	/* (on Wayland SDL's SDR white is 1.0, the compositor's reference white,
+	in no nits: its nits are the patched SDL's property,
+	port/android/patches/sdl-wayland-reference-luminance.patch) */
+	if (properties && SDL_GetFloatProperty(properties, WAYLAND_REFERENCE_LUMINANCE, 0.0f) > 0.0f)
+		sdr_white = SDL_GetFloatProperty(properties, WAYLAND_REFERENCE_LUMINANCE, 0.0f) / 80.0f;
 	headroom = properties ? SDL_GetFloatProperty(properties, SDL_PROP_WINDOW_HDR_HEADROOM_FLOAT, 1.0f) : 1.0f;
 	xgpu_vulkan_window_hdr(enabled, sdr_white, headroom);
 }

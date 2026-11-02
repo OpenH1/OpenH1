@@ -73,6 +73,12 @@ SDL_COMMIT = "fa2c02bb6e21974a89ea9824bc53c9932abe5f9c"
 SDL_DIR = THIRD_PARTY / "SDL3"
 SDL_URL = "https://github.com/libsdl-org/SDL.git"
 SDL_ANDROID_MOUSE_PATCH = Path("port/android/patches/sdl-relative-mouse.patch")
+# the Wayland compositor's reference white in cd/m² (its SDR brightness), as
+# the window's property openh1.wayland.reference_luminance: SDL 3.4 keeps
+# only the headroom over it, which gives the display's peak in no nits
+# (port/linux/vulkan/host_vulkan.c)
+SDL_WAYLAND_REFERENCE_PATCH = Path("port/android/patches/sdl-wayland-reference-luminance.patch")
+SDL_WAYLAND_REFERENCE_FILE = "src/video/wayland/SDL_waylandcolor.c"
 SDL_ANDROID_MOUSE_LISTENER = "android-project/app/src/main/java/org/libsdl/app/SDLControllerManager.java"
 ANDROID_API = 28
 # what Gradle builds the APK from beside what ninja stages: the app's Java,
@@ -259,6 +265,14 @@ def fetch_third_party(third_party: Path = THIRD_PARTY) -> None:
     if reverse.returncode != 0:
         subprocess.run(["git", "-C", str(sdl_dir), "checkout", "--", SDL_ANDROID_MOUSE_LISTENER], check=True)
         subprocess.run(["git", "-C", str(sdl_dir), "apply", str(SDL_ANDROID_MOUSE_PATCH.resolve())], check=True)
+    # (and the Wayland one, the same way)
+    reverse = subprocess.run(
+        ["git", "-C", str(sdl_dir), "apply", "--reverse", "--check", str(SDL_WAYLAND_REFERENCE_PATCH.resolve())],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    if reverse.returncode != 0:
+        subprocess.run(["git", "-C", str(sdl_dir), "checkout", "--", SDL_WAYLAND_REFERENCE_FILE], check=True)
+        subprocess.run(["git", "-C", str(sdl_dir), "apply", str(SDL_WAYLAND_REFERENCE_PATCH.resolve())], check=True)
 
 
 def _musl_sources(musl_dir: Path = MUSL_DIR) -> List[Path]:
@@ -299,7 +313,7 @@ def app_sources() -> List[Path]:
 def android_configure_inputs() -> List[Path]:
     # (app/src's folders, so that adding or removing a file there re-runs it)
     app_folders = [APP_SOURCES, *sorted(path for path in APP_SOURCES.rglob("*") if path.is_dir())]
-    return [Path(__file__), GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, SDL_ANDROID_MOUSE_PATCH, PORT_DIR / "guest" / "runtime", PORT_DIR / "host",
+    return [Path(__file__), GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, SDL_ANDROID_MOUSE_PATCH, SDL_WAYLAND_REFERENCE_PATCH, PORT_DIR / "guest" / "runtime", PORT_DIR / "host",
             LINUX_DIR / "src", Path("tools/vulkan_build.py"), VULKAN_DIR, *app_folders, *hud_configure_inputs()]
 
 
