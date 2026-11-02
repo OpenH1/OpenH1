@@ -36,7 +36,7 @@ From the top:
   pauses off screen, has a Pause button, and a visitor whose system asks
   for less motion sees the poster only.
 - **The headline features**: 128 players, online co-op, the Steam Frame
-  build, 64-bit, Vulkan and Metal, for any player.
+  build, 64-bit, Vulkan and Metal, and 3D audio, for any player.
 - **The picture sections**, each a comparison of the same moment captured
   twice, the Original (as the game drew it) and OpenH1:
   - 01, dynamic lights: a wipe, with callouts on the OpenH1 side;
@@ -45,7 +45,19 @@ From the top:
   - 04, frames between ticks: two clips side by side.
   The wipe and the lens play one short demo the first time it scrolls into view
   (none for less motion), and stops as soon as the visitor touches it.
-- **05, Responsive**: a headline and a line in plain words, always shown,
+- **05, 3D audio**: a wireframe head drawn with three.js (r128, MIT,
+  `public/vendor/three-r128.min.js`, as cdnjs and npm's `three@0.128.0`
+  publish `three.min.js`, SHA-256
+  `9274bbcec8d96168626c732b5d31c775aa8cfb7eaa0599bec0c175908a2c1ce2`), served from the site
+  as the fonts are, and loaded only as the section nears the screen. A sound
+  source circles the head, turns amber and muffled behind a wall, and the
+  readout shows its direction, the ear delay and each ear's level. Callouts
+  name what the game's mixer does; "Listen (headphones)" plays a tone placed
+  by the browser's own HRTF panner, and the caption says it is only a hint.
+  It draws only on screen with the tab shown; for less motion, one still
+  frame (it turns by dragging); without WebGL, the poster
+  (`media/audio-head-poster.webp`, a frame of the scene) and the callouts.
+- **06, Responsive**: a headline and a line in plain words, always shown,
   then the race: one click slowed 25 times on one time axis (0 to 60 ms).
   "You click" at the left; in each lane, the Original's (grey) and OpenH1
   120 Tick's (green, "Faster"), a dot travels from the click to a screen,
@@ -76,7 +88,9 @@ Rules for the content:
   Windows, the Mac, the Steam Deck and Android for now.
 - Every claim is in this repository's READMEs. Check a new one there first.
 - Every picture or clip is a real capture of the game in OpenH1, captioned
-  with what it compares. No Microsoft or Halo branding, logos or art.
+  with what it compares. The one drawing is the 3D audio's head, whose
+  caption says its sound is the browser's, not the game's. No Microsoft or
+  Halo branding, logos or art.
 - The footer keeps the credit to OpenCE and the disclaimer: an unofficial
   fan project, not endorsed by or affiliated with Microsoft; Halo is
   Microsoft's trademark; no game data included.
