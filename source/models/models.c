@@ -1081,8 +1081,9 @@ void render_model(
 			"c:\\halo\\SOURCE\\models\\models.c",
 			169,
 			geometry_detail_level_index>=0 && geometry_detail_level_index<NUMBER_OF_DETAIL_LEVELS_PER_MODEL);
-		/* port: stock, unless display.model_detail chose the level */
-		detail_rules = model_detail_rules(model, centroid, radius);
+		/* port: stock, unless display.model_detail chose the level; a
+		close-up's level only at the size the Xbox chose it at */
+		detail_rules = model_detail_rules(model, level_of_detail_pixels);
 
 		if (!TEST_FLAG(flags, _render_model_shadow_bit))
 		{
