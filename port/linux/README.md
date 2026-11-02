@@ -29,11 +29,14 @@ To build:
   The option `--linux-x86-64-cc` (or `--linux-arm64-cc`) of `configure.py`
   selects a different clang for the host and the guest, which then needs
   the `x32` (or `arm64_32`) target, `ld.lld`, `llvm-ar` and `llvm-objdump`.
-- CMake, and the development files that SDL3 uses for X11, Wayland and
-  sound. Refer to the SDL documentation, or to the `linux-x86_64` and
-  `linux-arm64` jobs in `.github/workflows/build.yml`. No OpenGL or Vulkan
-  development files are needed: the build downloads the Vulkan headers it
-  uses.
+- CMake, and the development files that SDL3 uses for X11, Wayland
+  (`wayland-client`, `wayland-egl`, `wayland-cursor`, `egl`, `xkbcommon`,
+  libdecor's) and sound. Refer to the SDL documentation, or to the packages
+  of the `linux-x86_64` and `linux-arm64` jobs, `.github/ci-image/packages.txt`.
+  The build stops if SDL was configured without X11, Wayland or libdecor
+  (`build/<name>/sdl3-configure.log` says what it lacked): without Wayland
+  the game would play under XWayland, without HDR. No Vulkan development
+  files are needed: the build downloads the Vulkan headers it uses.
 - A network connection for the first build. `configure.py` downloads musl
   1.2.5 (checked against its SHA-256), SDL 3.4.16 and the Khronos Vulkan
   headers (checked against their SHA-256) to `build/<name>/third_party`
@@ -56,8 +59,13 @@ To start the game:
   client libraries for sound. The game brings SDL 3 (`libSDL3.so.0`, next
   to the executable in a build, in `lib/openh1` in a release), which looks
   for X11, Wayland, libdecor, PipeWire, PulseAudio and ALSA when it starts,
-  so it starts with whichever of them the system has. On GNOME, a Wayland
-  window has borders only with libdecor.
+  so it starts with whichever of them the system has. In a Wayland session
+  the window is Wayland's where SDL prefers it (the compositor has
+  `wp_fifo_manager_v1`: KDE Plasma 6.4 and later, Hyprland), else X11's
+  under XWayland; `SDL_VIDEO_DRIVER=wayland` or `x11` chooses. HDR
+  (`display.hdr`) needs the Wayland window (the
+  [Vulkan README](vulkan/README.md#hdr)). On GNOME, a Wayland window has
+  borders only with libdecor.
 
 SteamOS has all of these. Its system is read-only, and the builds from
 GitHub Actions need no package: they bring their own SDL3

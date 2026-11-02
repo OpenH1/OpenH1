@@ -45,7 +45,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT,
                             SDL_TAG, TOML_DIR, fetch_third_party, generate_guest_image, host_memory_sources)
 from .build_common import (MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, OWN_CODE_ERRORS, SDL_RPATH_LDFLAGS,
-                           compile_launcher, download, miniupnpc_sources, sdl3_rule, updater_defines)
+                           compile_launcher, download, miniupnpc_sources, sdl3_desktop_check, sdl3_rule,
+                           updater_defines)
 from .guest_arch import ARM64_32, X32, GuestArch
 from .guest_toolchain import LLVM_VERSION, guest_toolchain
 from .ninja_syntax import Writer, escape
@@ -249,7 +250,7 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     sdl_build = build / "sdl3-build"
     libsdl = sdl_build / "libSDL3.so.0"
     sdl3_rule(n, sln, name=f"{prefix}_sdl3", description=f"{label} SDL3 {SDL_TAG}", source=sdl_dir,
-              sdl_build=sdl_build, log_dir=build, cc=f"${prefix}_cc")
+              sdl_build=sdl_build, log_dir=build, cc=f"${prefix}_cc", check=sdl3_desktop_check(sdl_build))
     n.build(outputs=libsdl, rule=f"{prefix}_sdl3", implicit=[sdl_dir / "CMakeLists.txt"])
 
     # ---------- the host
