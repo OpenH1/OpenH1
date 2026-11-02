@@ -195,6 +195,7 @@ symbols in this file:
 #include "structures/structure_bsp_definitions.h"
 #include "units/units.h"
 #include "structure_culling.h" /* port: port/linux/game/structure_culling.c */
+#include "structure_bsp_cache.h" /* port: port/linux/game/structure_bsp_cache.c */
 
 /* ---------- constants */
 
@@ -369,6 +370,8 @@ void scenario_unload(
 
 	/* port: release pointers into the bsp before its tags go away */
 	structure_culling_dispose();
+	/* port: and the copies of its bsps (port/linux/game/structure_bsp_cache.c) */
+	structure_bsp_cache_dispose();
 	scenario_tags_unload();
 	global_scenario_index = NONE;
 	global_structure_bsp_index = NONE;
@@ -1078,6 +1081,7 @@ boolean scenario_switch_structure_bsp(
 		old bsp before it is disconnected from; the game's last picture stays
 		up meanwhile, with no loading screen (a load zone is seamless) */
 		halo_loading_retire();
+		halo_load_trace("bsp.switch.begin", NULL); /* port: loading measurement */
 		reference = TAG_BLOCK_GET_ELEMENT(
 			&global_scenario->structure_bsp_references,
 			structure_bsp_index,
@@ -1159,6 +1163,7 @@ boolean scenario_switch_structure_bsp(
 			global_structure_bsp_index = structure_bsp_index;
 			/* port: cache buckets while the newly current bsp's tags are loaded */
 			structure_culling_structure_bsp_loaded();
+			halo_load_trace("bsp.culling.end", NULL); /* port: loading measurement */
 
 			if (had_old_structure_bsp)
 			{
@@ -1170,6 +1175,7 @@ boolean scenario_switch_structure_bsp(
 
 		collision_log_enable(TRUE);
 		main_start_time();
+		halo_load_trace("bsp.switch.end", NULL); /* port: loading measurement */
 	}
 
 	return result;
@@ -1221,6 +1227,9 @@ boolean scenario_load(
 		{
 			global_game_globals = game_globals_definition_get(
 				tag_loaded(GAME_GLOBALS_TAG, "globals\\globals"));
+			/* port: its every bsp read and checked now, under the loading
+			screen, not at a load zone (port/linux/game/structure_bsp_cache.c) */
+			scenario_structure_bsps_read_ahead();
 			if (scenario_switch_structure_bsp(0))
 				result = TRUE;
 		}
