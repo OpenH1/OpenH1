@@ -5165,6 +5165,11 @@ static int swapchain_make(void)
 	info.oldSwapchain = old;
 	if (old)
 	{
+		/* (display.low_latency's thread let go of the one before first: a
+		swapchain made from it must have it to itself, and the thread's
+		calls on it, display timing's, crashed gamescope's layer on the Steam
+		Deck as the new one was made) */
+		xgpu_vulkan_pacing_swapchain(VK_NULL_HANDLE);
 		vkDeviceWaitIdle(vk.device);
 		for (index = 0; index < vk.swapchain_image_count; index++)
 		{
@@ -5402,8 +5407,8 @@ static uint64_t present(struct xgpu_vulkan_image *image, int frame)
 
 		for (;;)
 		{
-			result = vkAcquireNextImageKHR(vk.device, vk.swapchain, ACQUIRE_PART_NS, acquired, VK_NULL_HANDLE,
-				&index);
+			result = xgpu_vulkan_pacing_acquire(vkAcquireNextImageKHR, vk.device, vk.swapchain, ACQUIRE_PART_NS,
+				acquired, &index);
 			if (result != VK_TIMEOUT && result != VK_NOT_READY)
 				break;
 			waited += ACQUIRE_PART_NS;
@@ -6313,7 +6318,14 @@ static int device_make(const struct xgpu_vulkan_options *options)
 		extensions[extension_count++] = VK_KHR_PRESENT_WAIT_EXTENSION_NAME;
 		vk.present_wait = 1;
 	}
-	if ((vk.surface || vk.surface_create) && display_timing && !getenv("HALO_VULKAN_NO_DISPLAY_TIMING"))
+	/* (display timing only where present wait is not, Android's, unless
+	asked for: gamescope's layer on the Steam Deck answered its past times
+	VK_INCOMPLETE without end, and crashed as a swapchain was made from one
+	whose times had been asked for; present wait alone paces the frames
+	there, its return gamescope's latch, HALO_VULKAN_DISPLAY_TIMING=1 asks
+	for both) */
+	if ((vk.surface || vk.surface_create) && display_timing && !getenv("HALO_VULKAN_NO_DISPLAY_TIMING") &&
+		(!vk.present_wait || getenv("HALO_VULKAN_NO_PRESENT_WAIT") || getenv("HALO_VULKAN_DISPLAY_TIMING")))
 	{
 		extensions[extension_count++] = VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME;
 		vk.display_timing = 1;

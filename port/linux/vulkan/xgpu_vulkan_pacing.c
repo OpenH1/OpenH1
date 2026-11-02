@@ -183,11 +183,15 @@ static void timings_take(void)
 {
 	VkPastPresentationTimingGOOGLE timings[16];
 	VkRefreshCycleDurationGOOGLE cycle;
-	uint32_t count, index;
+	uint32_t count, index, rounds = 0;
 	VkResult result;
 
 	if (!pacing.past_timing || !pacing.swapchain)
 		return;
+	/* (TIMINGS at most a call: gamescope's layer on the Steam Deck answers
+	VK_INCOMPLETE with 16 times at every call, without end. Asked again until
+	it said VK_SUCCESS, this thread never let go of the lock, and the next
+	present, which takes it, never came: the Deck showed no frame at all) */
 	do
 	{
 		count = 16;
@@ -204,7 +208,7 @@ static void timings_take(void)
 			pacing.timings[id % TIMINGS].margin = timings[index].presentMargin;
 		}
 	}
-	while (result == VK_INCOMPLETE);
+	while (result == VK_INCOMPLETE && ++rounds < TIMINGS / 16);
 	if (pacing.refresh_cycle && pacing.refresh_cycle(pacing.device.device, pacing.swapchain, &cycle) >= 0 &&
 		cycle.refreshDuration > 1000000ull && cycle.refreshDuration < 100000000ull)
 		pacing.refresh = cycle.refreshDuration;
@@ -638,6 +642,19 @@ VkResult xgpu_vulkan_pacing_present(PFN_vkQueuePresentKHR queue_present, VkQueue
 	pthread_mutex_unlock(&pacing.lock);
 	if (begin)
 		pacing_set(1);
+	return result;
+}
+
+VkResult xgpu_vulkan_pacing_acquire(PFN_vkAcquireNextImageKHR acquire, VkDevice device, VkSwapchainKHR swapchain,
+	uint64_t timeout, VkSemaphore semaphore, uint32_t *index)
+{
+	VkResult result;
+
+	if (!pacing.started)
+		return acquire(device, swapchain, timeout, semaphore, VK_NULL_HANDLE, index);
+	pthread_mutex_lock(&pacing.lock);
+	result = acquire(device, swapchain, timeout, semaphore, VK_NULL_HANDLE, index);
+	pthread_mutex_unlock(&pacing.lock);
 	return result;
 }
 
