@@ -2221,7 +2221,6 @@ static void main_save_map_private(
 static void main_switch_to_structure_bsp_private(
 	void)
 {
-	halo_loading_begin(); /* port: keep presentation independent while BSP resources change */
 	scenario_switch_structure_bsp(main_globals.switch_to_structure_bsp_index);
 	main_globals.switch_to_structure_bsp_index = NONE;
 	hud_load(0);

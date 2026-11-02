@@ -131,6 +131,8 @@ void platform_log(char const *format, ...);
 unsigned long system_milliseconds(void);
 /* xbox_kernel.c's: the computer's monotonic clock, shared by its processes */
 unsigned long long platform_shared_clock_microseconds(void);
+/* bsp_switch_test.c's */
+void bsp_switch_test_update(boolean main_menu_loaded);
 /* damage.c's */
 void damage_kill_object_for_player(long object_index, long player_index);
 /* network_distributed.c's */
@@ -1549,6 +1551,8 @@ void network_test_update(
 	boolean main_menu_loaded,
 	real seconds)
 {
+	/* debug.bsp_switch_test (bsp_switch_test.c) */
+	bsp_switch_test_update(main_menu_loaded);
 	if (!network_test.checked)
 		network_test_read_settings();
 	if (network_test.mode == _network_test_off)
