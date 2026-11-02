@@ -138,6 +138,9 @@ symbols in this file:
 #include "custom_edition_cache.h" /* port: port/linux/game/custom_edition_cache.c */
 #include "cache_file_formats.h" /* port: CUSTOM_EDITION_TAG_CACHE_BYTES */
 #include "map_share.h" /* port: port/linux/game/map_share.c */
+#include "structure_bsp_cache.h" /* port: port/linux/game/structure_bsp_cache.c */
+#include "scenario/scenario.h" /* port: global_scenario_get */
+#include "structure_culling.h" /* port: port/linux/game/structure_culling.c */
 
 /* ---------- constants */
 
@@ -1438,18 +1441,14 @@ long scenario_tags_load(
 	return result;
 }
 
-boolean scenario_structure_bsp_load(
+/* port: whether a bsp's reference may be read: the tag data's size was
+checked as the map loaded (cache_file_header_verify); the bsp's reference is
+the map's, and is checked before anything is read where it says (a Custom
+Edition map's by its own loader: its bsps load to the top of its own tag
+cache) */
+static boolean structure_bsp_reference_valid(
 	struct scenario_structure_bsp_reference *reference)
 {
-	struct cache_file_tag_instance *tag_instance;
-	byte *tag_cache_base_address;
-	/* port: the bsp's header, once read and checked */
-	struct cache_file_structure_bsp_header *structure_bsp_header;
-
-	/* port: the tag data's size was checked as the map loaded
-	(cache_file_header_verify); the bsp's reference is the map's, and is
-	checked before anything is read where it says (a Custom Edition map's
-	by its own loader: its bsps load to the top of its own tag cache) */
 	if (custom_edition_cache_tags_loaded())
 	{
 		if (!custom_edition_structure_bsp_reference_valid(reference))
@@ -1468,8 +1467,28 @@ boolean scenario_structure_bsp_load(
 		return FALSE;
 	}
 
+	return TRUE;
+}
+
+/* port: the bsp read to where it loads and checked, or put back from its
+copy (structure_bsp_cache.c), read and checked as the map loaded */
+static boolean structure_bsp_read(
+	struct scenario_structure_bsp_reference *reference)
+{
+	byte *tag_cache_base_address;
+	/* port: the bsp's header, once read and checked */
+	struct cache_file_structure_bsp_header *structure_bsp_header;
+
 	halo_load_trace("bsp.read.begin", NULL); /* port: loading measurement */
 	tag_cache_base_address = physical_memory_get_tag_cache_base_address();
+	if (structure_bsp_cache_restore(
+		reference,
+		custom_edition_cache_tags_loaded() ? NULL : tag_cache_base_address + cache_file_globals.header.tag_data_size,
+		custom_edition_cache_tags_loaded() ? 0 : 0x01600000 - cache_file_globals.header.tag_data_size))
+	{
+		halo_load_trace("bsp.restored", NULL); /* port: loading measurement */
+		return TRUE;
+	}
 	if (!custom_edition_cache_tags_loaded())
 	{
 		csmemset(
@@ -1542,6 +1561,56 @@ boolean scenario_structure_bsp_load(
 		return FALSE;
 	}
 	halo_load_trace("bsp.validate.end", NULL); /* port: loading measurement */
+	structure_bsp_cache_keep(reference);
+
+	return TRUE;
+}
+
+/* port: every bsp of the map read and checked as the map loads, before its
+first, and kept (structure_bsp_cache.c): a switch to one later (a load
+zone) reads and checks nothing */
+void scenario_structure_bsps_read_ahead(
+	void)
+{
+	struct scenario *scenario = global_scenario_get();
+	short index;
+
+	if (scenario->structure_bsp_references.count < 2)
+		return;
+	halo_load_trace("bsp.read_ahead.begin", NULL); /* port: loading measurement */
+	for (index = 0;
+		index < scenario->structure_bsp_references.count && structure_bsp_cache_room();
+		index++)
+	{
+		struct scenario_structure_bsp_reference *reference = TAG_BLOCK_GET_ELEMENT(
+			&scenario->structure_bsp_references,
+			index,
+			struct scenario_structure_bsp_reference);
+
+		/* (and its culling's buckets built: structure_culling.c; a Custom
+		Edition bsp's vertices are made as it loads) */
+		if (structure_bsp_reference_valid(reference) && structure_bsp_read(reference) &&
+			!custom_edition_cache_tags_loaded())
+		{
+			structure_culling_structure_bsp_read(
+				((struct cache_file_structure_bsp_header *)reference->base_address)->base_address,
+				index);
+		}
+	}
+	halo_load_trace("bsp.read_ahead.end", NULL); /* port: loading measurement */
+}
+
+boolean scenario_structure_bsp_load(
+	struct scenario_structure_bsp_reference *reference)
+{
+	struct cache_file_tag_instance *tag_instance;
+	/* port: the bsp's header, once read and checked */
+	struct cache_file_structure_bsp_header *structure_bsp_header;
+
+	/* port: (structure_bsp_reference_valid, structure_bsp_read) */
+	if (!structure_bsp_reference_valid(reference) || !structure_bsp_read(reference))
+		return FALSE;
+	structure_bsp_header = reference->base_address;
 	/* port: a Halo Custom Edition bsp has no Xbox vertex buffers: its
 	materials' vertices, as checked, are compressed and given buffers
 	(port/linux/game/custom_edition_geometry.c) */

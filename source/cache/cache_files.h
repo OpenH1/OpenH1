@@ -106,6 +106,9 @@ long scenario_tags_load(
 	char const *scenario_name);
 boolean scenario_structure_bsp_load(
 	struct scenario_structure_bsp_reference *reference);
+/* port: every bsp of the map read and checked ahead, as the map loads */
+void scenario_structure_bsps_read_ahead(
+	void);
 void tag_files_close(
 	void);
 void tag_files_open(
