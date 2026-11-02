@@ -54,6 +54,14 @@ The draws' tags (nv2a_pixel_shader_key.hdr, decided by xgpu_hdr_classify):
   pixel's colour), for the screen effects' passes, which copy the tone
   mapped view through their target and back (a scope's warp and mask): they
   keep its light past white instead of cutting it at paper white.
+- XGPU_HDR_SELF_ILLUMINATION: a surface whose own pass adds its
+  self-illumination to its light (a model's; a structure's lightmap pass,
+  which the textures' pass multiplies after) draws as the SDR frame has it
+  but for its self-illumination (a door's panel, a computer's screen, a
+  Forerunner glyph): the pixel less the same pixel without it (the
+  constants of the combiner stages the tag names, its colours, made 0) is
+  brightened toward XGPU_HDR_SELF_ILLUMINATION_VALUE as a glow is, where
+  it is bright (xgpu_hdr_self_illuminate).
 
 The tone map (xgpu_backend_tone_map) brings each window's 3D view into the
 display's range before the HUD is drawn over it: XGPU_HDR_MODE_FAITHFUL
@@ -144,6 +152,13 @@ XGPU_HDR_ALPHA_LIMIT */
 a ceiling or the alpha limit: no draw the shader blends) */
 #define XGPU_HDR_UNCLAMPED XGPU_HDR_BLEND(0, 0, 7)
 #define XGPU_HDR_IS_UNCLAMPED(hdr) ((hdr) == XGPU_HDR_UNCLAMPED)
+/* a self-illuminated surface's pass (another blend operation no draw has,
+without a ceiling or the alpha limit; XGPU_HDR_LIGHTS may be set too): the
+combiner stages whose constants are the self-illumination's colours, a bit
+each (stage n's 1 << n) */
+#define XGPU_HDR_SELF_ILLUMINATION(stages) ((unsigned short)(XGPU_HDR_BLEND(0, 0, 6) | ((stages) & 0xff)))
+#define XGPU_HDR_IS_SELF_ILLUMINATED(hdr) (!XGPU_HDR_SHADER_BLENDS(hdr) && XGPU_HDR_BLEND_OPERATION(hdr) == 6)
+#define XGPU_HDR_SELF_ILLUMINATION_STAGES(hdr) ((hdr) & 0xff)
 
 /* the ceilings, in the frame's values (sRGB's curve, extended): paper
 white; then the glows': the first-person weapon's, 1.75 times paper
@@ -171,6 +186,13 @@ dimmer than the weapon's displays) */
 #define XGPU_HDR_EXPAND_LIGHT_KNEE 0.4f
 /* ... the light the draw added at most this many times more */
 #define XGPU_HDR_EXPAND_MOST 2.0f
+
+/* a self-illuminated surface's glow (XGPU_HDR_SELF_ILLUMINATION): toward 2
+times paper white's light, from the light of the world's knee (a screen's
+light is drawn as dim as a fixture's): well past the surfaces, short of the
+lights and fixtures (a panel lights no room) */
+#define XGPU_HDR_SELF_ILLUMINATION_VALUE 1.353256f
+#define XGPU_HDR_SELF_ILLUMINATION_KNEE XGPU_HDR_EXPAND_LIGHT_KNEE
 
 /* the enhanced dynamic lights' white with XGPU_HDR_LIGHTS: the linear light
 (the lights' own gamma, 2.2) their shoulder rolls off toward, 8 times paper
@@ -261,11 +283,11 @@ static inline float xgpu_hdr_smoothstep(float edge0, float edge1, float x)
 	return t * t * (3.0f - 2.0f * t);
 }
 
-/* a glow's blended pixel (rgb) brightened toward its ceiling: its
-brightest channel by up to (ceiling - 1) times itself, where it is bright,
-by more of the light the draw added to what the pixel had (had), at most
+/* a pixel (rgb) brightened toward a ceiling (its value): its brightest
+channel by up to (ceiling - 1) times itself, where it is bright (from the
+knee), by more of the light added to what the pixel had (had), at most
 XGPU_HDR_EXPAND_MOST times more */
-static inline void xgpu_hdr_expand(float rgb[3], const float had[3], int ceiling)
+static inline void xgpu_hdr_expand_toward(float rgb[3], const float had[3], float ceiling, float knee)
 {
 	float added[3], most = fmaxf(rgb[0], fmaxf(rgb[1], rgb[2])), added_most, more;
 	int channel;
@@ -275,10 +297,24 @@ static inline void xgpu_hdr_expand(float rgb[3], const float had[3], int ceiling
 	added_most = fmaxf(added[0], fmaxf(added[1], added[2]));
 	if (added_most <= 0.0f)
 		return;
-	more = fminf((xgpu_hdr_ceiling_value(ceiling) - 1.0f) * xgpu_hdr_smoothstep(xgpu_hdr_expand_knee(ceiling), 1.0f, most) *
-		most / added_most, XGPU_HDR_EXPAND_MOST);
+	more = fminf((ceiling - 1.0f) * xgpu_hdr_smoothstep(knee, 1.0f, most) * most / added_most, XGPU_HDR_EXPAND_MOST);
 	for (channel = 0; channel < 3; channel++)
 		rgb[channel] += added[channel] * more;
+}
+
+/* a glow's blended pixel (rgb) brightened toward its ceiling, by more of
+the light the draw added to what the pixel had (had) */
+static inline void xgpu_hdr_expand(float rgb[3], const float had[3], int ceiling)
+{
+	xgpu_hdr_expand_toward(rgb, had, xgpu_hdr_ceiling_value(ceiling), xgpu_hdr_expand_knee(ceiling));
+}
+
+/* a self-illuminated surface's pixel (rgb, as its combiners leave it, in
+[0, 1]) brightened toward XGPU_HDR_SELF_ILLUMINATION_VALUE by more of its
+self-illumination: what it has past the same pixel without it (base) */
+static inline void xgpu_hdr_self_illuminate(float rgb[3], const float base[3])
+{
+	xgpu_hdr_expand_toward(rgb, base, XGPU_HDR_SELF_ILLUMINATION_VALUE, XGPU_HDR_SELF_ILLUMINATION_KNEE);
 }
 
 /* the soft shoulder: identity to the knee, then toward the peak, never
@@ -461,6 +497,12 @@ says emits light (its radiosity power: a teleporter's field, a light
 fixture), a plasma shader (an energy shield), a light's volume (a plasma
 bolt's) */
 #define HALO_HDR_KIND_LIGHT 32
+/* a surface's pass that adds its self-illumination to its light (a
+model's, a structure's lightmap pass), in the 3D view: the combiner stages
+whose constants are its colours, a bit each, in the bits above 8
+(HALO_HDR_KIND_SELF_ILLUMINATION_STAGES) */
+#define HALO_HDR_KIND_SELF_ILLUMINATION 64
+#define HALO_HDR_KIND_SELF_ILLUMINATION_STAGES(stages) ((stages) << 8)
 #endif
 
 /* the tag (nv2a_pixel_shader_key.hdr) of a draw into the HDR back buffer */

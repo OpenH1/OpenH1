@@ -746,12 +746,17 @@ static void pixel_usage(const struct xgpu_pixel_program *program, struct pixel_u
 
 /* ---------- pixel programs: combiner inputs */
 
-static const char *register_expression(unsigned long reg, int stage, const struct xgpu_combiner_stage *combiner)
+/* (zeroed: the stage's constants read as 0, display.hdr's self-illuminated
+surface without its self-illumination: XGPU_HDR_SELF_ILLUMINATION) */
+static const char *register_expression(unsigned long reg, int stage, const struct xgpu_combiner_stage *combiner,
+	BOOL zeroed)
 {
 	static char buffer[4][32];
 	static int next = 0;
 	char *result = buffer[next++ & 3];
 
+	if (zeroed && stage >= 0 && (reg == XGPU_REGISTER_C0 || reg == XGPU_REGISTER_C1))
+		return "float4(0.0)";
 	switch (reg)
 	{
 	case XGPU_REGISTER_C0:
@@ -793,12 +798,12 @@ static void input_value(char *value, unsigned long size, const char *source, con
 
 /* one combiner input as a float3 (rgb) or float (alpha) expression */
 static void combiner_input(struct xgpu_text *text, const struct xgpu_combiner_input *input, BOOL alpha_portion, int stage,
-	const struct xgpu_combiner_stage *combiner)
+	const struct xgpu_combiner_stage *combiner, BOOL zeroed)
 {
 	const char *zero = alpha_portion ? "0.0" : "float3(0.0)";
 	char value[64];
 
-	input_value(value, sizeof(value), register_expression(input->reg, stage, combiner), input, alpha_portion);
+	input_value(value, sizeof(value), register_expression(input->reg, stage, combiner, zeroed), input, alpha_portion);
 	switch (input->mapping)
 	{
 	case XGPU_MAP_UNSIGNED_IDENTITY: xgpu_text_append(text, "max(%s, %s)", value, zero); break;
@@ -819,7 +824,7 @@ static void final_input(struct xgpu_text *text, const struct xgpu_combiner_input
 {
 	char value[64];
 
-	input_value(value, sizeof(value), register_expression(input->reg, -1, NULL), input, alpha_portion);
+	input_value(value, sizeof(value), register_expression(input->reg, -1, NULL, FALSE), input, alpha_portion);
 	if (input->mapping == XGPU_MAP_UNSIGNED_INVERT)
 		xgpu_text_append(text, "(1.0 - saturate(%s))", value);
 	else if (unclamped && !alpha_portion)
@@ -863,7 +868,7 @@ static const char *output_mapping(unsigned char mapping)
 /* ---------- one general combiner stage */
 
 static void combiner_stage(struct xgpu_text *text, const struct xgpu_pixel_program *program, int stage,
-	const struct pixel_usage *usage)
+	const struct pixel_usage *usage, BOOL zeroed)
 {
 	const struct xgpu_combiner_stage *combiner = &program->combiners[stage];
 	int portion;
@@ -883,13 +888,13 @@ static void combiner_stage(struct xgpu_text *text, const struct xgpu_pixel_progr
 		char mapped[64];
 
 		xgpu_text_append(text, "\t\t%s %sA = ", type, prefix);
-		combiner_input(text, &part->inputs[0], alpha, stage, combiner);
+		combiner_input(text, &part->inputs[0], alpha, stage, combiner, zeroed);
 		xgpu_text_append(text, ";\n\t\t%s %sB = ", type, prefix);
-		combiner_input(text, &part->inputs[1], alpha, stage, combiner);
+		combiner_input(text, &part->inputs[1], alpha, stage, combiner, zeroed);
 		xgpu_text_append(text, ";\n\t\t%s %sC = ", type, prefix);
-		combiner_input(text, &part->inputs[2], alpha, stage, combiner);
+		combiner_input(text, &part->inputs[2], alpha, stage, combiner, zeroed);
 		xgpu_text_append(text, ";\n\t\t%s %sD = ", type, prefix);
-		combiner_input(text, &part->inputs[3], alpha, stage, combiner);
+		combiner_input(text, &part->inputs[3], alpha, stage, combiner, zeroed);
 		xgpu_text_append(text, ";\n");
 
 		if (part->ab_dot)
@@ -1465,9 +1470,56 @@ static void hdr_output(struct xgpu_text *text, unsigned short hdr)
 	xgpu_text_append(text, "\t\toutput.color = v;\n\t}\n");
 }
 
-char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const struct xgpu_msl_options *options)
+/* the combiners and the final combiner, which leave the pixel's colour in
+result (zeroed: the stages' constants of a self-illuminated surface's
+self-illumination read as 0, XGPU_HDR_SELF_ILLUMINATION) */
+static void combiners(struct xgpu_text *text, const struct xgpu_pixel_program *program, const struct pixel_usage *usage,
+	BOOL unclamped, unsigned int zeroed_stages)
 {
 	const struct xgpu_final_combiner *final = &program->final;
+	int stage;
+
+	for (stage = 0; stage < (int)program->combiner_count; stage++)
+		combiner_stage(text, program, stage, usage, (zeroed_stages >> stage) & 1);
+
+	if (!final->present)
+	{
+		xgpu_text_append(text, "\tfloat4 result = r0;\n");
+	}
+	else
+	{
+		if (usage->ef_product)
+		{
+			xgpu_text_append(text, "\tfloat4 ef_product = float4(");
+			final_input(text, &final->inputs[4], FALSE, unclamped);
+			xgpu_text_append(text, " * ");
+			final_input(text, &final->inputs[5], FALSE, unclamped);
+			xgpu_text_append(text, ", 0.0);\n");
+		}
+		if (usage->v1r0_sum)
+		{
+			xgpu_text_append(text, "\tfloat4 v1r0_sum = float4(%s + %s, 0.0);\n",
+				final->invert_v1 ? "(1.0 - saturate(v1.rgb))" : "saturate(v1.rgb)",
+				final->invert_r0 ? "(1.0 - saturate(r0.rgb))" : "saturate(r0.rgb)");
+			if (final->clamp_sum)
+				xgpu_text_append(text, "\tv1r0_sum = saturate(v1r0_sum);\n");
+		}
+		xgpu_text_append(text, "\tfloat3 fA = ");
+		final_input(text, &final->inputs[0], FALSE, unclamped);
+		xgpu_text_append(text, ";\n\tfloat3 fB = ");
+		final_input(text, &final->inputs[1], FALSE, unclamped);
+		xgpu_text_append(text, ";\n\tfloat3 fC = ");
+		final_input(text, &final->inputs[2], FALSE, unclamped);
+		xgpu_text_append(text, ";\n\tfloat3 fD = ");
+		final_input(text, &final->inputs[3], FALSE, unclamped);
+		xgpu_text_append(text, ";\n\tfloat fG = ");
+		final_input(text, &final->inputs[6], TRUE, unclamped);
+		xgpu_text_append(text, ";\n\tfloat4 result = float4(fA * fB + (1.0 - fA) * fC + fD, fG);\n");
+	}
+}
+
+char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const struct xgpu_msl_options *options)
+{
 	struct xgpu_text text = { 0 };
 	struct pixel_usage usage;
 	BOOL world_position, environment = program->dynamic_lights == XGPU_DYNAMIC_LIGHTS_ENVIRONMENT;
@@ -1480,8 +1532,10 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 	card's (depth(greater), depth reversed: the depth test before the shader
 	keeps what it can) */
 	BOOL replaces_depth = xgpu_pixel_program_depth_stage(program) != 0;
-	/* (display.hdr: a screen effect's pass, unclamped above) */
+	/* (display.hdr: a screen effect's pass, unclamped above; a
+	self-illuminated surface's) */
 	BOOL unclamped = XGPU_HDR_IS_UNCLAMPED(program->hdr);
+	BOOL self_illuminated = XGPU_HDR_IS_SELF_ILLUMINATED(program->hdr) && !program->source_blend;
 	int stage;
 
 	pixel_usage(program, &usage);
@@ -1605,43 +1659,46 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 	if (register_read(&usage, XGPU_REGISTER_R1))
 		xgpu_text_append(&text, "\tfloat4 r1 = float4(0.0);\n");
 
-	for (stage = 0; stage < (int)program->combiner_count; stage++)
-		combiner_stage(&text, program, stage, &usage);
+	/* (display.hdr: a self-illuminated surface's pixel without its
+	self-illumination, the registers as they were after) */
+	if (self_illuminated)
+	{
+		static const unsigned long saved[] =
+		{
+			XGPU_REGISTER_V0, XGPU_REGISTER_V1, XGPU_REGISTER_T0, XGPU_REGISTER_T1, XGPU_REGISTER_T2, XGPU_REGISTER_T3,
+			XGPU_REGISTER_R0, XGPU_REGISTER_R1,
+		};
+		unsigned int index;
 
-	if (!final->present)
-	{
-		xgpu_text_append(&text, "\tfloat4 result = r0;\n");
-	}
-	else
-	{
-		if (usage.ef_product)
+		xgpu_text_append(&text, "\tfloat3 self_illumination_base;\n\t{\n");
+		for (index = 0; index < sizeof(saved) / sizeof(saved[0]); index++)
 		{
-			xgpu_text_append(&text, "\tfloat4 ef_product = float4(");
-			final_input(&text, &final->inputs[4], FALSE, unclamped);
-			xgpu_text_append(&text, " * ");
-			final_input(&text, &final->inputs[5], FALSE, unclamped);
-			xgpu_text_append(&text, ", 0.0);\n");
+			if (register_read(&usage, saved[index]))
+				xgpu_text_append(&text, "\tfloat4 saved_%s = %s;\n", destination_name(saved[index], &usage),
+					destination_name(saved[index], &usage));
 		}
-		if (usage.v1r0_sum)
+		combiners(&text, program, &usage, unclamped, XGPU_HDR_SELF_ILLUMINATION_STAGES(program->hdr));
+		xgpu_text_append(&text, "\tself_illumination_base = saturate(result.rgb);\n");
+		for (index = 0; index < sizeof(saved) / sizeof(saved[0]); index++)
 		{
-			xgpu_text_append(&text, "\tfloat4 v1r0_sum = float4(%s + %s, 0.0);\n",
-				final->invert_v1 ? "(1.0 - saturate(v1.rgb))" : "saturate(v1.rgb)",
-				final->invert_r0 ? "(1.0 - saturate(r0.rgb))" : "saturate(r0.rgb)");
-			if (final->clamp_sum)
-				xgpu_text_append(&text, "\tv1r0_sum = saturate(v1r0_sum);\n");
+			if (register_read(&usage, saved[index]))
+				xgpu_text_append(&text, "\t%s = saved_%s;\n", destination_name(saved[index], &usage),
+					destination_name(saved[index], &usage));
 		}
-		xgpu_text_append(&text, "\tfloat3 fA = ");
-		final_input(&text, &final->inputs[0], FALSE, unclamped);
-		xgpu_text_append(&text, ";\n\tfloat3 fB = ");
-		final_input(&text, &final->inputs[1], FALSE, unclamped);
-		xgpu_text_append(&text, ";\n\tfloat3 fC = ");
-		final_input(&text, &final->inputs[2], FALSE, unclamped);
-		xgpu_text_append(&text, ";\n\tfloat3 fD = ");
-		final_input(&text, &final->inputs[3], FALSE, unclamped);
-		xgpu_text_append(&text, ";\n\tfloat fG = ");
-		final_input(&text, &final->inputs[6], TRUE, unclamped);
-		xgpu_text_append(&text, ";\n\tfloat4 result = float4(fA * fB + (1.0 - fA) * fC + fD, fG);\n");
+		xgpu_text_append(&text, "\t}\n");
 	}
+	combiners(&text, program, &usage, unclamped, 0);
+	/* (... and the light its self-illumination adds past white, toward its
+	ceiling where it is bright, as a glow's: xgpu_hdr_self_illuminate) */
+	if (self_illuminated)
+		xgpu_text_append(&text,
+			"\tfloat3 self_illumination = float3(0.0);\n"
+			"\t{\n"
+			"\t\tfloat3 lit = saturate(result.rgb), added = max(lit - self_illumination_base, float3(0.0));\n"
+			"\t\tfloat added_most = max(added.r, max(added.g, added.b)), most = max(lit.r, max(lit.g, lit.b));\n"
+			"\t\tif (added_most > 0.0)\n"
+			"\t\t\tself_illumination = added * min(%.6f * smoothstep(%.6f, 1.0, most) * most / added_most, %.6f);\n"
+			"\t}\n", XGPU_HDR_SELF_ILLUMINATION_VALUE - 1.0f, XGPU_HDR_SELF_ILLUMINATION_KNEE, XGPU_HDR_EXPAND_MOST);
 
 	if (environment)
 	{
@@ -1710,14 +1767,18 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 	{
 		/* (display.hdr: the dynamic lights' light past white, to their white
 		in the display's gamma: xgpu_hdr.h) */
-		xgpu_text_append(&text, "\toutput.color = float4(clamp(result.rgb, 0.0, %.6f), saturate(result.a));\n",
-			XGPU_HDR_LIGHTS_WHITE_VALUE);
+		xgpu_text_append(&text, "\toutput.color = float4(clamp(result.rgb, 0.0, %.6f)%s, saturate(result.a));\n",
+			XGPU_HDR_LIGHTS_WHITE_VALUE, self_illuminated ? " + self_illumination" : "");
 	}
 	else if (unclamped)
 	{
 		/* (display.hdr: a screen effect's pass, the view's light past white
 		kept) */
 		xgpu_text_append(&text, "\toutput.color = float4(max(result.rgb, 0.0), saturate(result.a));\n");
+	}
+	else if (self_illuminated)
+	{
+		xgpu_text_append(&text, "\toutput.color = float4(saturate(result.rgb) + self_illumination, saturate(result.a));\n");
 	}
 	else if (program->hdr)
 	{

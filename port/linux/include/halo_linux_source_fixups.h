@@ -214,6 +214,8 @@ void halo_hdr_draw_kind(int kind);
 #define HALO_HDR_KIND_SPECULAR 8
 #define HALO_HDR_KIND_HUD_GLOW 16
 #define HALO_HDR_KIND_LIGHT 32
+#define HALO_HDR_KIND_SELF_ILLUMINATION 64
+#define HALO_HDR_KIND_SELF_ILLUMINATION_STAGES(stages) ((stages) << 8)
 #endif
 /* network.client_timeout_seconds, in milliseconds (port/linux/src/port_config.c) */
 unsigned long network_client_timeout_milliseconds(void);

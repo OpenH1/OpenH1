@@ -1813,6 +1813,10 @@ struct pixel_state
 	unsigned int textures[4];
 	unsigned int v0, v1, t[4], dots[4], r0, r1, fog;
 	unsigned int zero4;
+	/* the combiner stages whose constants read as 0 (display.hdr's
+	self-illuminated surface without its self-illumination:
+	XGPU_HDR_SELF_ILLUMINATION), a bit each */
+	unsigned int zeroed_stages;
 	/* the VR mode's effects (xgpu_spirv.h): gl_FragCoord, the scene's depth
 	and the sprite's thickness, and texture 0's parallax (a vec2 added to its
 	coordinates; 0 none) */
@@ -2251,6 +2255,8 @@ combiner's */
 static unsigned int register_value(struct module *m, struct pixel_state *state, unsigned long reg, int stage,
 	const struct xgpu_combiner_stage *combiner, unsigned int v1r0_sum, unsigned int ef_product)
 {
+	if (stage >= 0 && ((state->zeroed_stages >> stage) & 1) && (reg == XGPU_REGISTER_C0 || reg == XGPU_REGISTER_C1))
+		return state->zero4;
 	switch (reg)
 	{
 	case XGPU_REGISTER_C0: return stage < 0 ? uniform(m, U_PS_FINAL_C0, -1) : uniform(m, U_PS_C0, combiner->c0 & 7);
@@ -2831,6 +2837,36 @@ static unsigned int hdr_output(struct module *m, unsigned short hdr, unsigned in
 
 /* ---------- the whole pixel shader */
 
+/* the combiners and the final combiner: the pixel's colour (state->
+zeroed_stages: the stages' constants that read as 0) */
+static unsigned int combiners(struct module *m, struct pixel_state *state)
+{
+	const struct xgpu_final_combiner *final = &state->program->final;
+	unsigned int ef_product, v1r0_sum, fa, fb, fc, fd, fg;
+	int stage;
+
+	for (stage = 0; stage < (int)state->program->combiner_count && stage < 8; stage++)
+		combiner_stage(m, state, stage);
+	if (!final->present)
+		return state->r0;
+	ef_product = vec4_of(m, fmul(m, 3, final_input(m, state, &final->inputs[4], FALSE, 0, 0),
+		final_input(m, state, &final->inputs[5], FALSE, 0, 0)), constant_float(m, 0.0f));
+	v1r0_sum = fadd(m, 3, final->invert_v1 ? fsub(m, 3, constant_splat(m, 3, 1.0f), saturate(m, 3, xyz(m, state->v1))) :
+		saturate(m, 3, xyz(m, state->v1)), final->invert_r0 ? fsub(m, 3, constant_splat(m, 3, 1.0f),
+		saturate(m, 3, xyz(m, state->r0))) : saturate(m, 3, xyz(m, state->r0)));
+	v1r0_sum = vec4_of(m, v1r0_sum, constant_float(m, 0.0f));
+	if (final->clamp_sum)
+		v1r0_sum = saturate(m, 4, v1r0_sum);
+	fa = final_input(m, state, &final->inputs[0], FALSE, v1r0_sum, ef_product);
+	fb = final_input(m, state, &final->inputs[1], FALSE, v1r0_sum, ef_product);
+	fc = final_input(m, state, &final->inputs[2], FALSE, v1r0_sum, ef_product);
+	fd = final_input(m, state, &final->inputs[3], FALSE, v1r0_sum, ef_product);
+	fg = final_input(m, state, &final->inputs[6], TRUE, v1r0_sum, ef_product);
+	/* vec4(fA * fB + (1.0 - fA) * fC + fD, fG) */
+	return vec4_of(m, fadd(m, 3, fadd(m, 3, fmul(m, 3, fa, fb),
+		fmul(m, 3, fsub(m, 3, constant_splat(m, 3, 1.0f), fa), fc)), fd), fg);
+}
+
 static unsigned int comparison_opcode(unsigned long function)
 {
 	switch (function)
@@ -3107,7 +3143,6 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 {
 	static const char *const coordinate_names[] = { "xT0", "xT1", "xT2", "xT3" };
 	static const char *const texture_names[] = { "tex0", "tex1", "tex2", "tex3" };
-	const struct xgpu_final_combiner *final = &program->final;
 	struct module m;
 	struct pixel_state state;
 	BOOL environment = program->dynamic_lights == XGPU_DYNAMIC_LIGHTS_ENVIRONMENT;
@@ -3123,6 +3158,10 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 	ever nearer than the card), or as a VR effect its fade measured from it */
 	BOOL replaces_depth = xgpu_pixel_program_depth_stage(program) != 0;
 	unsigned int frag_depth_out = 0, zsprite_hidden = 0;
+	/* (display.hdr: a self-illuminated surface's pass; its pixel without its
+	self-illumination, and the light that adds past white) */
+	BOOL self_illuminated = XGPU_HDR_IS_SELF_ILLUMINATED(program->hdr) && !program->source_blend;
+	unsigned int self_illumination_base = 0, self_illumination = 0;
 	int stage;
 
 	memset(&state, 0, sizeof(state));
@@ -3237,33 +3276,38 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 
 	state.r0 = vec4_of(&m, constant_splat(&m, 3, 0.0f), extract(&m, state.t[0], 3));
 	state.r1 = state.zero4;
-	for (stage = 0; stage < (int)program->combiner_count && stage < 8; stage++)
-		combiner_stage(&m, &state, stage);
-
-	if (!final->present)
+	/* (display.hdr: a self-illuminated surface's pixel without its
+	self-illumination, the registers as they were after) */
+	if (self_illuminated)
 	{
-		result = state.r0;
+		unsigned int v0 = state.v0, v1 = state.v1, t[4], r0 = state.r0, r1 = state.r1;
+
+		memcpy(t, state.t, sizeof(t));
+		state.zeroed_stages = XGPU_HDR_SELF_ILLUMINATION_STAGES(program->hdr);
+		self_illumination_base = saturate(&m, 3, xyz(&m, combiners(&m, &state)));
+		state.zeroed_stages = 0;
+		state.v0 = v0;
+		state.v1 = v1;
+		memcpy(state.t, t, sizeof(t));
+		state.r0 = r0;
+		state.r1 = r1;
 	}
-	else
+	result = combiners(&m, &state);
+	/* (... and the light its self-illumination adds past white, toward its
+	ceiling where it is bright, as a glow's: xgpu_hdr_self_illuminate) */
+	if (self_illuminated)
 	{
-		unsigned int ef_product, v1r0_sum, fa, fb, fc, fd, fg;
+		unsigned int lit = saturate(&m, 3, xyz(&m, result));
+		unsigned int added = fmax_scalar(&m, 3, fsub(&m, 3, lit, self_illumination_base), 0.0f);
+		unsigned int added_most = brightest_of(&m, added), most = brightest_of(&m, lit), more;
 
-		ef_product = vec4_of(&m, fmul(&m, 3, final_input(&m, &state, &final->inputs[4], FALSE, 0, 0),
-			final_input(&m, &state, &final->inputs[5], FALSE, 0, 0)), constant_float(&m, 0.0f));
-		v1r0_sum = fadd(&m, 3, final->invert_v1 ? fsub(&m, 3, constant_splat(&m, 3, 1.0f), saturate(&m, 3, xyz(&m, state.v1))) :
-			saturate(&m, 3, xyz(&m, state.v1)), final->invert_r0 ? fsub(&m, 3, constant_splat(&m, 3, 1.0f),
-			saturate(&m, 3, xyz(&m, state.r0))) : saturate(&m, 3, xyz(&m, state.r0)));
-		v1r0_sum = vec4_of(&m, v1r0_sum, constant_float(&m, 0.0f));
-		if (final->clamp_sum)
-			v1r0_sum = saturate(&m, 4, v1r0_sum);
-		fa = final_input(&m, &state, &final->inputs[0], FALSE, v1r0_sum, ef_product);
-		fb = final_input(&m, &state, &final->inputs[1], FALSE, v1r0_sum, ef_product);
-		fc = final_input(&m, &state, &final->inputs[2], FALSE, v1r0_sum, ef_product);
-		fd = final_input(&m, &state, &final->inputs[3], FALSE, v1r0_sum, ef_product);
-		fg = final_input(&m, &state, &final->inputs[6], TRUE, v1r0_sum, ef_product);
-		/* vec4(fA * fB + (1.0 - fA) * fC + fD, fG) */
-		result = vec4_of(&m, fadd(&m, 3, fadd(&m, 3, fmul(&m, 3, fa, fb),
-			fmul(&m, 3, fsub(&m, 3, constant_splat(&m, 3, 1.0f), fa), fc)), fd), fg);
+		more = ext2(&m, GLSL_F_MIN, m.t_float, fdiv(&m, 1, fmul(&m, 1, fmul(&m, 1,
+			constant_float(&m, XGPU_HDR_SELF_ILLUMINATION_VALUE - 1.0f), ext3(&m, GLSL_SMOOTH_STEP, m.t_float,
+			constant_float(&m, XGPU_HDR_SELF_ILLUMINATION_KNEE), constant_float(&m, 1.0f), most)), most),
+			fmax_scalar(&m, 1, added_most, 1.0e-6f)), constant_float(&m, XGPU_HDR_EXPAND_MOST));
+		more = op3(&m, OP_SELECT, m.t_float, compare(&m, OP_F_ORD_GREATER_THAN, added_most, constant_float(&m, 0.0f)),
+			more, constant_float(&m, 0.0f));
+		self_illumination = fscale(&m, 3, added, more);
 	}
 
 	if (environment)
@@ -3374,6 +3418,9 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 		result = vec4_of(&m, fmax_scalar(&m, 3, xyz(&m, result), 0.0f), saturate(&m, 1, extract(&m, result, 3)));
 	else
 		result = saturate(&m, 4, result);
+	/* (a self-illuminated surface's light past white) */
+	if (self_illuminated)
+		result = vec4_of(&m, fadd(&m, 3, xyz(&m, result), self_illumination), extract(&m, result, 3));
 	if (effect)
 		result = effect_fade(&m, options->effect_fade, result, effect_fade_value);
 	if (program->source_blend)
