@@ -1572,11 +1572,18 @@ paces the game by the display instead (`vulkan/xgpu_vulkan_pacing.c`,
 - Each present has a number, and a thread waits for each in turn
   (`VK_KHR_present_wait`): it comes back when the display (or the
   compositor: gamescope, on the Deck, takes its frames about 4.6 ms before
-  the refresh) has taken the frame. Where the driver also says when each
-  frame reached the screen and how far apart the refreshes are
-  (`VK_GOOGLE_display_timing`: gamescope's, Android's), that time is the
-  frame's time on screen; without present wait (Android) the thread asks it
-  each millisecond.
+  the refresh) has taken the frame. Without present wait (Android), the
+  thread asks display timing (`VK_GOOGLE_display_timing`) each millisecond
+  when each frame reached the screen and how far apart the refreshes are.
+  Where the driver has both, display timing is left alone
+  (`HALO_VULKAN_DISPLAY_TIMING=1` asks for it too): gamescope's layer on
+  the Steam Deck answered its times `VK_INCOMPLETE` without end, which held
+  the next present for good (the game showed no frame), and crashed as a
+  swapchain was made from one whose times had been asked for.
+- The game is paced only once the display has said when it took a
+  present; the first frames go out as they come. A display that says
+  nothing of 8 presents in a row is no longer waited for, and a swapchain
+  that gives no image for 2 seconds lets pacing go.
 - The game starts a frame only while at most one of its frames waits for
   the display, so the swapchain has three images: one on screen, one
   waiting, one drawn into.

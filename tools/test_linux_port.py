@@ -525,16 +525,16 @@ def test_vsync_default_by_build(tmp_path, monkeypatch, config_check_mac):
     assert "\n# vsync = false\n" in run.config.read_text()
     monkeypatch.setenv("SteamDeck", "1")
     monkeypatch.setenv("SteamGamepadUI", "1")
-    # (off there too until the Deck's gamescope shows vsync's first frames)
-    assert run("get", "display.vsync") == "false"
-    run("write", "display.vsync", "true")
     assert run("get", "display.vsync") == "true"
+    run("write", "display.vsync", "false")
+    assert run("get", "display.vsync") == "false"
     # (gamescope's own variable alone)
     monkeypatch.delenv("SteamDeck")
     monkeypatch.delenv("SteamGamepadUI")
     monkeypatch.setenv("GAMESCOPE_WAYLAND_DISPLAY", "gamescope-0")
     gamescope = config_check_build(tmp_path / "gamescope", ["-DHALO_VULKAN=1", "-DHALO_GUEST=1"])
-    assert gamescope("get", "display.vsync") == "false"
+    assert gamescope("get", "display.vsync") == "true"
+    assert "\n# vsync = true\n" in gamescope.config.read_text()
 
 
 def test_graphics_preset_on_a_headset(config_check):

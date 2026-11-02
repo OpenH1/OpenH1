@@ -2,21 +2,27 @@
 PACING_TEST.C
 
 display.low_latency's pacing (xgpu_vulkan_pacing.c) over a fake device
-whose present wait says nothing until a present is shown, or nothing ever
-(the Steam Deck's gamescope, where build 940 showed no frame at all): the
-first frames are presented unpaced, every present returns at once, a
+whose present wait says nothing until a present is shown, or nothing ever:
+the first frames are presented unpaced, every present returns at once, a
 display that never answers is given up on, and one that answers paces the
-frames from the present after its first answer.
+frames from the present after its first answer. And display timing that
+answers VK_INCOMPLETE without end (gamescope's layer on the Steam Deck,
+where build 940 showed no frame at all: the thread asked again and again
+holding the lock the next present takes): every present still returns at
+once. A present held for good fails the run by its alarm.
 */
 
 #include "../xgpu_vulkan_pacing.c"
 #include <assert.h>
 #include <stdarg.h>
+#include <unistd.h>
 
 static int stream_paced, paced_calls;
 /* the fake display: present wait answers (1), or never does (0) */
 static int answers;
 static uint64_t presents;
+/* display timing's calls (the fake's answer: VK_INCOMPLETE always) */
+static uint32_t past_calls;
 
 void host_logf(int priority, const char *format, ...)
 {
@@ -84,11 +90,45 @@ static VKAPI_ATTR VkResult VKAPI_CALL fake_queue_present(VkQueue queue, const Vk
 	return VK_SUCCESS;
 }
 
+static VKAPI_ATTR VkResult VKAPI_CALL fake_past_timing(VkDevice device, VkSwapchainKHR swapchain,
+	uint32_t *count, VkPastPresentationTimingGOOGLE *timings)
+{
+	uint32_t index;
+
+	(void)device;
+	(void)swapchain;
+	__atomic_add_fetch(&past_calls, 1, __ATOMIC_RELAXED);
+	if (!timings)
+	{
+		*count = 16;
+		return VK_SUCCESS;
+	}
+	for (index = 0; index < *count; index++)
+	{
+		memset(&timings[index], 0, sizeof(timings[index]));
+		timings[index].presentID = index + 1000;
+	}
+	return VK_INCOMPLETE;
+}
+
+static VKAPI_ATTR VkResult VKAPI_CALL fake_refresh_cycle(VkDevice device, VkSwapchainKHR swapchain,
+	VkRefreshCycleDurationGOOGLE *cycle)
+{
+	(void)device;
+	(void)swapchain;
+	cycle->refreshDuration = 16666667ull;
+	return VK_SUCCESS;
+}
+
 static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL fake_proc_addr(VkDevice device, const char *name)
 {
 	(void)device;
 	if (!strcmp(name, "vkWaitForPresentKHR"))
 		return (PFN_vkVoidFunction)fake_wait_for_present;
+	if (!strcmp(name, "vkGetPastPresentationTimingGOOGLE"))
+		return (PFN_vkVoidFunction)fake_past_timing;
+	if (!strcmp(name, "vkGetRefreshCycleDurationGOOGLE"))
+		return (PFN_vkVoidFunction)fake_refresh_cycle;
 	return NULL;
 }
 
@@ -109,7 +149,7 @@ static uint64_t present(void)
 	return now_ns() - start;
 }
 
-static void start(int answering)
+static void start(int answering, int display_timing)
 {
 	struct xgpu_vulkan_pacing_device device;
 
@@ -117,6 +157,7 @@ static void start(int answering)
 	device.device = (VkDevice)(uintptr_t)1;
 	device.get_device_proc_addr = fake_proc_addr;
 	device.present_wait = 1;
+	device.display_timing = display_timing;
 	answers = answering;
 	/* (present numbers go on from the last start) */
 	presents = pacing.next_id;
@@ -132,10 +173,12 @@ int main(void)
 {
 	int frame;
 
+	alarm(30);
+
 	/* a display that never says when it took a present: every present
 	returns at once, the game is never paced, and the presents are given up
 	on once SILENT_PRESENTS in a row went unanswered */
-	start(0);
+	start(0, 0);
 	for (frame = 0; frame < 40; frame++)
 	{
 		assert(present() < 5000000ull);
@@ -150,7 +193,7 @@ int main(void)
 
 	/* one that answers once a present is shown: the first present unpaced,
 	then paced from a present after the first answer */
-	start(1);
+	start(1, 0);
 	assert(present() < 5000000ull && !stream_paced);
 	for (frame = 0; frame < 20 && !stream_paced; frame++)
 	{
@@ -166,6 +209,18 @@ int main(void)
 	xgpu_vulkan_pacing_silence();
 	assert(!stream_paced);
 	assert(!xgpu_vulkan_pacing_mode(1, 1, 1, 16666667ull));
+	xgpu_vulkan_pacing_stop();
+
+	/* display timing that is never complete: asked a bounded number of
+	times, and the presents never held */
+	start(1, 1);
+	for (frame = 0; frame < 30; frame++)
+	{
+		assert(present() < 5000000ull);
+		sleep_ns(17000000ull);
+	}
+	assert(__atomic_load_n(&past_calls, __ATOMIC_RELAXED) > 0);
+	assert(stream_paced);
 	xgpu_vulkan_pacing_stop();
 	puts("pacing: ok");
 	return 0;
