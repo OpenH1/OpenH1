@@ -129,9 +129,29 @@ void camera_pose_place_object(char const *line)
 		return;
 	}
 	seat[0] = 0;
-	if (!line ||
-		(sscanf(line, "%255s seat %63s", name, seat) != 2 &&
-		 sscanf(line, "%255s %f %f %f %f %f %f", name, &x, &y, &z, &yaw, &pitch, &roll) < 5))
+	name[0] = 0;
+	if (line)
+	{
+		/* (the tag's name, which may have spaces in it ("scenery\plants\plant
+		fern\plant fern"), ends at " seat " or at a space before a number) */
+		char const *end = line;
+		size_t length;
+
+		while (*end && !(end[0] == ' ' && (strncmp(end, " seat ", 6) == 0 ||
+			(end[1] >= '0' && end[1] <= '9') || end[1] == '-' || end[1] == '+' || end[1] == '.')))
+		{
+			end++;
+		}
+		length = (size_t)(end - line);
+		if (length >= sizeof(name))
+			length = 0;
+		memcpy(name, line, length);
+		name[length] = 0;
+		line = end;
+	}
+	if (!line || !name[0] ||
+		(sscanf(line, " seat %63s", seat) != 1 &&
+		 sscanf(line, "%f %f %f %f %f %f", &x, &y, &z, &yaw, &pitch, &roll) < 4))
 	{
 		console_printf(FALSE, "debug_object_place \"<tag> <x> <y> <z> <yaw> [<pitch> <roll>] [color <r> <g> <b>]\", \"<tag> seat <label>\", or \"clear\"");
 		return;

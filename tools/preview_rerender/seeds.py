@@ -97,7 +97,7 @@ def search(a):
 
     def evaluate(game, params):
         x, y, z, yaw, pitch, roll, vfov, aspect = params
-        vfov = min(max(vfov, 5.0), VFOV_MAX)
+        vfov = min(max(vfov, a.vfov_min), VFOV_MAX)
         frame = game.render((x, y, z, yaw, pitch, roll, vfov))
         renders[0] += 1
         picture = S.frame_to_picture(frame, aspect, S.PICTURE)
@@ -135,7 +135,7 @@ def search(a):
                 scale = np.array([a.step, a.step, a.step / 2, 4, 3, 2, 5, 0.06])
                 es = cma.CMAEvolutionStrategy(np.zeros(8), 1.0, {
                     "CMA_stds": scale, "maxfevals": a.evals, "popsize": 12, "verbose": -9, "seed": 1,
-                    "bounds": [[None] * 6 + [8 - x[6], 1.12 - x[7]], [None] * 6 + [VFOV_MAX - x[6], 1.42 - x[7]]]})
+                    "bounds": [[None] * 6 + [a.vfov_min - x[6], 1.12 - x[7]], [None] * 6 + [VFOV_MAX - x[6], 1.42 - x[7]]]})
                 local = (s, x)
                 while not es.stop():
                     cands = es.ask()
@@ -174,7 +174,7 @@ def search(a):
     finally:
         game.close()
     x, y, z, yaw, pitch, roll, vfov, aspect = [float(v) for v in best[1]]
-    vfov = min(max(vfov, 5.0), VFOV_MAX)
+    vfov = min(max(vfov, a.vfov_min), VFOV_MAX)
     result = {
         "scenario": a.scenario, "target": a.target, "bsp": best[2],
         "picture": {"width": S.PICTURE[0], "height": S.PICTURE[1], "source_aspect": aspect, "masks": S.MASKS},
@@ -205,6 +205,8 @@ def main():
     p.add_argument("--top", type=int, default=6)
     p.add_argument("--evals", type=int, default=300)
     p.add_argument("--step", type=float, default=1.5)
+    p.add_argument("--vfov-min", type=float, default=8.0,
+                   help="the narrowest view searched (a picture known not to be zoomed far in)")
     p.add_argument("--no-fog", action="store_true")
     p.add_argument("--port", type=int, default=23641)
     a = ap.parse_args()
