@@ -12,4 +12,10 @@ degrees (the field of view the game's own, across at 4:3); the script's
 camera is taken and put there at once. "off" gives the camera back */
 void camera_pose_set(char const *pose);
 
+/* an object of a tag the map has, put at "<tag> <x> <y> <z> <yaw> [<pitch>
+<roll>]", or a unit made and put in a seat of the last one placed ("<tag>
+seat <label>"); either with "color <r> <g> <b>" (0 to 1: its change
+colours). "clear" deletes those placed */
+void camera_pose_place_object(char const *line);
+
 #endif

@@ -3388,7 +3388,7 @@ typedef void (*hs_token_enumerator)(
 
 struct hs_function_table_storage
 {
-	struct hs_function_definition const *functions[418 + 10];
+	struct hs_function_definition const *functions[418 + 11];
 	struct profile_section profile;
 	hs_token_enumerator token_enumerators[18];
 };
@@ -11849,7 +11849,25 @@ static struct hs_function_definition_with_1_parameter const debug_camera_set_def
 	},
 };
 
-long const hs_function_table_count= 418 + 10;
+/* port: an object put at an exact place, for a picture (port/linux/game/camera_pose.c) */
+HS_EVALUATE_VOID_STRING(hs_debug_object_place_evaluate, camera_pose_place_object)
+
+static struct hs_function_definition_with_1_parameter const debug_object_place_definition=
+{
+	{
+		_hs_type_void,
+		0,
+		"debug_object_place",
+		hs_macro_function_parse,
+		hs_debug_object_place_evaluate,
+		"puts an object of a loaded tag at \"<tag> <x> <y> <z> <yaw> [<pitch> <roll>]\", or a unit in the last one's seat (\"<tag> seat <label>\"), or deletes them (\"clear\").",
+		NULL,
+		1,
+		{ _hs_type_string },
+	},
+};
+
+long const hs_function_table_count= 418 + 11;
 
 struct hs_enum_definition const hs_enum_table[]=
 {
@@ -12291,6 +12309,7 @@ struct hs_function_table_storage hs_function_table=
 		&structure_culling_definition.definition, /* port: local structure culling switch */
 		&debug_structure_culling_definition.definition, /* port: local culling debug view */
 		&debug_camera_set_definition.definition, /* port: the camera at an exact place */
+		&debug_object_place_definition.definition, /* port: an object at an exact place */
 	},
 	{
 		"hs_update",
@@ -12808,6 +12827,7 @@ static boolean const hs_function_allowed_in_maps[]=
 
 	/* port: the camera at an exact place */
 	FALSE, /* debug_camera_set */
+	FALSE, /* debug_object_place */
 };
 typedef char verify_hs_function_allowed_in_maps_size[
 	NUMBEROF(hs_function_allowed_in_maps) == NUMBEROF(hs_function_table.functions) ? 1 : -1];
