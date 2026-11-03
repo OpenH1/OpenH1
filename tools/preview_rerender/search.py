@@ -47,6 +47,9 @@ def frame_to_picture(frame, aspect, size):
 # ---------- B: orientation from a panorama
 
 _target_coarse = None
+# (the orientation search's pitches tried, and its limit; set for pictures looking up)
+PITCHES = (-8, 0, 8)
+PITCH_CLIP = 25
 MASKS = []  # (rectangles of the picture, x0 y0 x1 y1 in its 140x114, left out of the score: what the map lacks)
 
 
@@ -81,7 +84,7 @@ def orient(job):
 
     results = []
     for yaw in np.arange(0, 360, 6):
-        for pitch in (-8, 0, 8):
+        for pitch in PITCHES:
             for vfov in (38, 50, 62):
                 results.append((score(yaw, pitch, vfov), yaw, pitch, vfov))
     results.sort(reverse=True)
@@ -98,7 +101,7 @@ def orient(job):
                     for sign in (-1, 1):
                         trial = x0.copy()
                         trial[k] += sign * steps[k]
-                        trial[1] = np.clip(trial[1], -25, 25)
+                        trial[1] = np.clip(trial[1], -PITCH_CLIP, PITCH_CLIP)
                         trial[2] = np.clip(trial[2], 20, 72)
                         t = score(*trial)
                         if t > current:

@@ -51,6 +51,12 @@ def thin(points, spacing, cap):
     return kept
 
 
+def _init_worker(target, masks, pitches, clip):
+    S.PITCHES = pitches
+    S.PITCH_CLIP = clip
+    S._init_worker(target, masks)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scenario", required=True)
@@ -67,6 +73,8 @@ def main():
     ap.add_argument("--wait-frames", type=int, default=400)
     ap.add_argument("--mask", nargs=4, type=float, action="append", default=[])
     ap.add_argument("--prepare", action="append", default=[])
+    ap.add_argument("--up", type=float, default=None,
+                    help="a second ring of views at this pitch, and pitches up to it searched (a picture looking up)")
     a = ap.parse_args()
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -90,7 +98,7 @@ def main():
     loaded_bsp = [0]
     starts_made = [0]
 
-    def start():
+    def start_game():
         """the game started afresh (at the scenario's first structure)"""
         if G[0] is not None:
             G[0].close()
@@ -110,7 +118,7 @@ def main():
         if b == current_bsp[0]:
             return
         if current_bsp[0] != loaded_bsp[0]:
-            start()
+            start_game()
         if b != current_bsp[0]:
             G[0].command("switch_bsp %d" % b, frames=30)
             current_bsp[0] = b
@@ -122,7 +130,7 @@ def main():
     game = _Game()
 
     try:
-        start()
+        start_game()
         timings["load_seconds"] = time.time() - t0
 
         # ----- the places, every structure
@@ -171,10 +179,12 @@ def main():
         t = time.time()
         pano_cache = out / "panoramas.npz"
         yaws = [360.0 * k / S.PANO_COUNT for k in range(S.PANO_COUNT)]
+        rings = [0.0] + ([a.up] if a.up else [])
+        ring = [(yaw, pitch) for pitch in rings for yaw in yaws]
         panoramas = []
         if pano_cache.exists():
             images = np.load(pano_cache)["images"]
-            panoramas = [[(images[i, k], yaws[k], 0.0, S.PANO_VFOV) for k in range(S.PANO_COUNT)]
+            panoramas = [[(images[i, k], ring[k][0], ring[k][1], S.PANO_VFOV) for k in range(len(ring))]
                          for i in range(len(places))]
             say("A: from the cache")
         else:
@@ -184,9 +194,9 @@ def main():
                     for b, x, y, z in places[start:start + 40]:
                         to_bsp(b)
                         views = []
-                        for yaw in yaws:
-                            frame = game.render((x, y, z, yaw, 0, 0, S.PANO_VFOV))
-                            views.append((cv2.resize(frame, (512, 288), interpolation=cv2.INTER_AREA), yaw, 0.0,
+                        for yaw, pitch in ring:
+                            frame = game.render((x, y, z, yaw, pitch, 0, S.PANO_VFOV))
+                            views.append((cv2.resize(frame, (512, 288), interpolation=cv2.INTER_AREA), yaw, pitch,
                                           S.PANO_VFOV))
                         panoramas.append(views)
                 time.sleep(0.5)
@@ -197,7 +207,10 @@ def main():
 
         # ----- B
         t = time.time()
-        with ProcessPoolExecutor(a.jobs, initializer=S._init_worker, initargs=(target, S.MASKS)) as pool:
+        pitches = (-8, 0, 8) + ((tuple(np.arange(16, a.up + 1, 8).tolist())) if a.up else ())
+        clip = max(25, (a.up or 0) + 10)
+        with ProcessPoolExecutor(a.jobs, initializer=_init_worker,
+                                 initargs=(target, S.MASKS, pitches, clip)) as pool:
             coarse = {i: tuple(float(v) for v in r) for i, r in pool.map(S.orient, enumerate(panoramas), chunksize=2)}
         ranked = sorted(((coarse[i][0], places[i], coarse[i][1:]) for i in range(len(places))), reverse=True)
         timings["B_orientation_seconds"] = time.time() - t
@@ -235,8 +248,9 @@ def main():
             b = int(p[0])
             x = [p[1], p[2], p[3], o[0], o[1], 0.0, o[2], S.PICTURE[0] / S.PICTURE[1]]
             scale = np.array([1.2, 1.2, 0.6, 4, 3, 2, 5, 0.06])
-            lo = [None, None, None, None, -30 - x[4], -15, 15 - x[6], 1.12 - x[7]]
-            hi = [None, None, None, None, 30 - x[4], 15, VFOV_MAX - x[6], 1.42 - x[7]]
+            pmax = max(30, (a.up or 0) + 15)
+            lo = [None, None, None, None, -pmax - x[4], -15, 15 - x[6], 1.12 - x[7]]
+            hi = [None, None, None, None, pmax - x[4], 15, VFOV_MAX - x[6], 1.42 - x[7]]
             es = cma.CMAEvolutionStrategy(np.zeros(8), 1.0, {
                 "CMA_stds": scale, "bounds": [lo, hi], "maxfevals": a.evals, "popsize": 12,
                 "verbose": -9, "seed": 1})
