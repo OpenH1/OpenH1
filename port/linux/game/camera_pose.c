@@ -20,6 +20,8 @@ script's camera; the HUD is show_hud's.
 #include "tag_files/tag_groups.h"
 #include "units/units.h"
 #include "ai/ai_scenario_definitions.h"
+#include "cache/cache_files.h"
+#include "tag_files/tag_files.h"
 #include "scenario/scenario.h"
 #include "scenario/scenario_definitions.h"
 
@@ -136,7 +138,21 @@ void camera_pose_place_object(char const *line)
 	tag_index = camera_pose_object_tag(name);
 	if (tag_index == NONE)
 	{
+		struct tag_iterator iterator;
+		long other;
+
+		/* (the map's vehicles and bipeds named, to choose from) */
 		console_printf(FALSE, "debug_object_place: no object tag %s in this map", name);
+		tag_iterator_new(&iterator, 'vehi');
+		while ((other = tag_iterator_next(&iterator)) != NONE)
+		{
+			console_printf(FALSE, "  vehicle %s", tag_get_name(other));
+		}
+		tag_iterator_new(&iterator, 'bipd');
+		while ((other = tag_iterator_next(&iterator)) != NONE)
+		{
+			console_printf(FALSE, "  biped %s", tag_get_name(other));
+		}
 		return;
 	}
 	if (placed_object_count >= MAXIMUM_PLACED_OBJECTS)
