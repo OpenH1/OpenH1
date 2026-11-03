@@ -2849,6 +2849,7 @@ symbols in this file:
 #include "profile_console.h" /* port: port/linux/game/profile_console.c */
 #endif
 #include "structure_culling.h" /* port: port/linux/game/structure_culling.c */
+#include "camera_pose.h" /* port: port/linux/game/camera_pose.c */
 
 /* ---------- constants */
 
@@ -3387,7 +3388,7 @@ typedef void (*hs_token_enumerator)(
 
 struct hs_function_table_storage
 {
-	struct hs_function_definition const *functions[418 + 9];
+	struct hs_function_definition const *functions[418 + 10];
 	struct profile_section profile;
 	hs_token_enumerator token_enumerators[18];
 };
@@ -11830,7 +11831,25 @@ static struct hs_function_definition_with_1_parameter const debug_structure_cull
 	},
 };
 
-long const hs_function_table_count= 418 + 9;
+/* port: the camera put at an exact place (port/linux/game/camera_pose.c) */
+HS_EVALUATE_VOID_STRING(hs_debug_camera_set_evaluate, camera_pose_set)
+
+static struct hs_function_definition_with_1_parameter const debug_camera_set_definition=
+{
+	{
+		_hs_type_void,
+		0,
+		"debug_camera_set",
+		hs_macro_function_parse,
+		hs_debug_camera_set_evaluate,
+		"puts the camera at \"<x> <y> <z> <yaw> <pitch> <roll> <field of view>\" (degrees) at once, or gives it back (\"off\").",
+		NULL,
+		1,
+		{ _hs_type_string },
+	},
+};
+
+long const hs_function_table_count= 418 + 10;
 
 struct hs_enum_definition const hs_enum_table[]=
 {
@@ -12271,6 +12290,7 @@ struct hs_function_table_storage hs_function_table=
 		&mods_list_definition,
 		&structure_culling_definition.definition, /* port: local structure culling switch */
 		&debug_structure_culling_definition.definition, /* port: local culling debug view */
+		&debug_camera_set_definition.definition, /* port: the camera at an exact place */
 	},
 	{
 		"hs_update",
@@ -12785,6 +12805,9 @@ static boolean const hs_function_allowed_in_maps[]=
 	/* port: local structure rendering */
 	FALSE, /* structure_culling: this machine's rendering */
 	FALSE, /* debug_structure_culling: this machine's rendering */
+
+	/* port: the camera at an exact place */
+	FALSE, /* debug_camera_set */
 };
 typedef char verify_hs_function_allowed_in_maps_size[
 	NUMBEROF(hs_function_allowed_in_maps) == NUMBEROF(hs_function_table.functions) ? 1 : -1];
