@@ -233,6 +233,9 @@ def main():
             frame = game.render((x, y, z, yaw, pitch, roll, vfov))
             renders += 1
             picture = S.frame_to_picture(frame, aspect, S.PICTURE)
+            # (a nearly blank frame, inside a wall or facing the dark, is no match)
+            if rr_view.gray(picture).std() < 6:
+                return 0.0
             return rr_view.score(target_full, rr_view.features(S.masked(picture), S.PICTURE))[0]
 
         starts = []

@@ -70,7 +70,8 @@ def main():
         game.connect()
         game.wait_frames(arguments.wait_frames, timeout=600)
         game.prepare_scene()
-        if found.get("bsp"):
+        # (always: a map may start in another structure than its first)
+        if found.get("bsp") is not None:
             game.command("switch_bsp %d" % found["bsp"], frames=30)
             game.render((0, 0, 0, 0, 0, 0, 50), settle=4)
         # (a picture's own console lines: the map's scripted state put back)
