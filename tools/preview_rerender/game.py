@@ -192,6 +192,30 @@ class Game:
         self.render((0, 0, 0, 0, 0, 0, 50), settle=4)
         return self.drain()
 
+    def place_objects(self, objects, frames=3, settle_seconds=3.0):
+        """a pose file's objects: {"tag", "x", "y", "z", "yaw", "pitch",
+        "roll"} each, or {"tag", "seat"} (into the last one placed), either
+        with "color": [r, g, b]; "clear" first"""
+        replies = [self.command('debug_object_place "clear"', frames=frames)]
+        for o in objects:
+            if "seat" in o:
+                words = [o["tag"], "seat", o["seat"]]
+            else:
+                words = [o["tag"]] + ["%.3f" % o[k] for k in ("x", "y", "z", "yaw", "pitch", "roll")]
+            if "color" in o:
+                words += ["color"] + ["%.3f" % c for c in o["color"]]
+            replies.append(self.command('debug_object_place "%s"' % " ".join(words),
+                                        frames=frames))
+        if objects and settle_seconds > 0:
+            # (the world let run a moment: a vehicle comes to rest on the
+            # ground, a rider takes its seat; then stopped again)
+            self.command("game_speed 1", frames=2)
+            end = time.time() + settle_seconds
+            while time.time() < end:
+                self.wait_frames(5)
+            self.command("game_speed 0", frames=3)
+        return "".join(replies)
+
     def close(self):
         self.reading.set()
         try:

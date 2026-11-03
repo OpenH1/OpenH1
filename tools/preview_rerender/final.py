@@ -70,6 +70,10 @@ def main():
         game.connect()
         game.wait_frames(arguments.wait_frames, timeout=600)
         game.prepare_scene()
+        if found.get("bsp"):
+            game.command("switch_bsp %d" % found["bsp"], frames=30)
+            game.render((0, 0, 0, 0, 0, 0, 50), settle=4)
+        game.place_objects(found.get("objects", []))
         load = time.time() - t0
         t = time.time()
         frame = game.render((p["x"], p["y"], p["z"], p["yaw"], p["pitch"], p["roll"], p["vfov"]), settle=3)
