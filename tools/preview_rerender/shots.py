@@ -23,6 +23,7 @@ def main():
     ap.add_argument("--poses", default=None)
     ap.add_argument("--objects", default=None)
     ap.add_argument("--places", action="store_true")
+    ap.add_argument("--prepare", action="append", default=[], help="console lines first (fog off, an object made)")
     ap.add_argument("--port", type=int, default=23491)
     ap.add_argument("--cols", type=int, default=4)
     ap.add_argument("--cell", type=int, default=320)
@@ -34,6 +35,8 @@ def main():
         game.connect()
         game.wait_frames(400, timeout=600)
         game.prepare_scene()
+        for line in a.prepare:
+            print("prepare:", line, game.command(line, frames=3).strip())
         if a.places:
             game.command('debug_scenario_places "places_0.txt"', frames=4)
             head = (out / "run" / "places_0.txt").read_text().splitlines()[0].split()
