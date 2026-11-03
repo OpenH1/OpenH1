@@ -20,13 +20,18 @@ from typing import NamedTuple
 from xml.sax.saxutils import quoteattr
 
 PE = "main_menu/settings_select/player_setup/player_profile_edit"
-# the mods' screen, and its rows (_mods); the main menu's items
-# (ce/main_menu.xml): MODS in Credits' place (Credits is left out:
-# tools/ce_menus.py's LEFT_OUT), Quit a row below it (its CHILD_OFFSETS)
+# the mods' screen, and its rows (_mods), which Settings' PROFILES tab opens
 MODS = "main_menu/mods"
 MOD_ROWS = 11
-MODS_ITEM_PLACE = (192, 391)
-QUIT_ITEM_PLACE = (192, 427)
+# the main menu's items (ce/main_menu.xml): CAMPAIGN, MULTIPLAYER, SETTINGS
+# and QUIT, a row apart (Profile and Credits are left out: tools/ce_menus.py's
+# LEFT_OUT; its CHILD_OFFSETS move Settings and Quit up into their rows)
+SETTINGS_ITEM_PLACE = (192, 319)
+QUIT_ITEM_PLACE = (192, 355)
+# the profile manager (the PC version's, which the main menu's Profile
+# opened): the profiles listed, the one chosen made player 1's, NEW and
+# DELETE; Settings' PROFILES tab opens it (MANAGE PROFILES)
+PROFILE_MANAGER = "main_menu/profile_manager/player_profile_manager"
 # The VR Tutorial (the VR build's, port/linux/game/basic_training.c): its main
 # menu item, in the headset only, a row above the first (_training), and its
 # screen of chapters
@@ -241,7 +246,7 @@ FRAMES_ADDED = {
 # ---------- Settings: its tabs and their pages (port/linux/game/menu_functions.c's
 # "port settings ..." functions)
 #
-# Settings opens straight to its tabs, VIDEO to PROFILE across the top (LB and
+# Settings opens straight to its tabs, VIDEO to PROFILES across the top (LB and
 # RB, Q and E, or a click switch them), each a page of rows under section
 # headers, and on the right a panel saying what the row chosen does: its name,
 # its value in large type and plain words. A row ending in "›" opens a page of
@@ -252,7 +257,7 @@ FRAMES_ADDED = {
 # them all; a page's Cancel forgets its own.
 #
 # Only the controller's settings, the name and the colour are the profile's
-# ("profile.<field>"): their page and the PROFILE tab, with no profile, offer
+# ("profile.<field>"): their page and the PROFILES tab, with no profile, offer
 # to make one there (CREATE PROFILE), and Settings opens without one.
 #
 # Each page is generated laid out for every row (its rows and section headers
@@ -430,6 +435,9 @@ STICK_DEAD_ZONES = [("DEFAULT (27%)", "-1")] + [(f"{percent}%", str(percent)) fo
 # degrees; any of 20 to 150 typed
 FIELDS_OF_VIEW = Slider(80, 150, 5, 20, 150,
                         stops=(("DEFAULT", "0"),) + tuple((str(n), str(n)) for n in range(80, 151, 5)))
+# display.viewmodel_offset_x's, _y's and _z's: centimeters, 0 the game's own
+# place; any of -20 to 20 typed
+VIEWMODEL_OFFSETS = Slider(-10, 10, 0.5, -20, 20)
 # display.vehicle_fov's: the game's own view ("default"), display.fov's
 # ("match"), or degrees; any of 20 to 150 typed
 VEHICLE_FIELDS_OF_VIEW = FIELDS_OF_VIEW._replace(
@@ -439,6 +447,9 @@ VEHICLE_FIELDS_OF_VIEW = FIELDS_OF_VIEW._replace(
 FRAME_RATE_LIMITS = Slider(30, 540, 1, 10, 1000, whole=True,
                            stops=(("AUTO", "0"),) + tuple((str(n), str(n)) for n in (
                                30, 60, 75, 90, 100, 120, 144, 165, 200, 240, 280, 360, 480, 540)) + (("NONE", "-1"),))
+# display.gamma's: Halo PC's gamma, past 1 brighter; 1 none (menu_functions.c's
+# settings_sliders, d3d8_device.c's GAMMA_LEAST and GAMMA_MOST)
+GAMMA = Slider(0.5, 2.0, 0.05, 0.5, 2.0)
 ANTI_ALIASING_HELP = "Smooths jagged edges. FXAA and SMAA cost little; {} sharper and {} more of the graphics card."
 STREAMER_LEVELS = [("OFF", "off"), ("SEVERE", "severe"), ("STRONG AND WORSE", "strong"), ("MILD AND WORSE", "mild")]
 SEED_UPLOADS = (64, 128, 256, 512, 1024, 2048, 4096, 8192, 10240)
@@ -453,8 +464,9 @@ def _page_screen(folder: str, screen: str) -> str:
 # (a <bitmap> name: TITLES), and for a tab its name
 ADVANCED = ("video_settings/advanced", "advanced_graphics_screen")
 FIRST_PERSON = ("video_settings/first_person", "first_person_screen")
-# (display.hdr's settings and the display's peak, on the renderers that draw it)
-HDR_PAGE = ("video_settings/hdr", "hdr_screen")
+# (display.gamma, and display.hdr's settings and the display's peak on the
+# renderers that draw it)
+BRIGHTNESS_PAGE = ("video_settings/brightness", "brightness_screen")
 # (Android's: the picture on a tall screen, and portrait's frame)
 SCREEN_LAYOUT = ("video_settings/screen_layout", "screen_layout_screen")
 CONTROLLER = ("gamepad_setup", "gamepad_setup_screen")
@@ -569,11 +581,11 @@ PAGES = {
             ("BATTERY SAVER", "display.battery_saver", [("OFF", "off"), ("ON", "on"), ("AUTO", "auto")],
              "Up to 60 frames a second and Classic graphics, for a longer battery and a cooler device. Auto turns "
              "it on while the device runs on its battery. Your own settings come back as it turns off.", None),
-            # (display.hdr's page, on the renderers that draw it: menu_files.c's
-            # "hdr")
-            ("HDR ›", None, _page_screen(*HDR_PAGE),
-             "Brighter highlights on an HDR display: whether HDR is on, its look, how bright white and the HUD "
-             "are, and the display's peak.", "hdr", "hdr_settings"),
+            # (display.gamma's page, and display.hdr's rows on the renderers
+            # that draw it: menu_files.c's "hdr")
+            ("BRIGHTNESS ›", None, _page_screen(*BRIGHTNESS_PAGE),
+             "How bright the picture is: its gamma, and on an HDR display, HDR's look, how bright white and the "
+             "HUD are, and the display's peak.", None, "brightness_settings"),
             ("ADVANCED GRAPHICS ›", None, _page_screen(*ADVANCED),
              "Anti-aliasing, texture filtering, model detail, shadows, the lighting and the shields' glow, smooth "
              "motion and the tick rate.", None),
@@ -757,12 +769,14 @@ PAGES = {
         ],
     },
     "profile_settings": {
-        "screen": "profile_settings_screen", "tab": "PROFILE",
-        "about": "Your player profile: your name and your color.",
+        "screen": "profile_settings_screen", "tab": "PROFILES",
+        "about": "Your player profiles, your name and color, and the mods.",
         "rows": [
-            # (with no profile, NAME and COLOR are hidden and CREATE PROFILE
-            # shown; in a game, those whose screens are ui.map's: the name's
-            # keyboard, the colours' pictures: settings_rows_show)
+            # (with no profile, NAME, COLOR and MANAGE PROFILES are hidden and
+            # CREATE PROFILE shown; in a game, those whose screens are
+            # ui.map's: the name's keyboard, the colours' pictures, and those
+            # that are the main menu's: the profiles, the mods:
+            # settings_rows_show)
             (SECTION, "PLAYER"),
             ("NAME ›", None, f"{PE}/name_edit/profile_name_screen",
              "The name the other players see, kept in your player profile.", None, "name",
@@ -770,6 +784,16 @@ PAGES = {
             ("COLOR ›", None, f"{PE}/color_edit/color_select_screen",
              "Your armor's color in free-for-all multiplayer games, kept in your player profile.", None, "color"),
             CREATE_PROFILE,
+            # (the changes kept first, and on its way back the profile
+            # chosen edited: menu_functions.c's settings_profiles)
+            ("MANAGE PROFILES ›", None, PROFILE_MANAGER,
+             "Switch to another player profile, make a new one or delete one. Your changes so far are kept.", None,
+             "profiles", "port settings profiles"),
+            # (port/linux/game/mods.c: this machine's, every profile's)
+            (SECTION, "MODS"),
+            ("MODS ›", None, f"{MODS}/mods_screen",
+             "Texture, sound, text and model packs from the mods folder: turn each on or off, and choose which "
+             "plays over which. They are this computer's, for every profile.", None, "mods"),
             (SECTION, "ABOUT"),
             ("OPENH1", None, None,
              "Halo: Combat Evolved, the Xbox game, on this computer, played from your own copy of its maps. OpenH1 "
@@ -835,9 +859,16 @@ PAGES = {
              "tick rate: an OpenH1 game's (OpenH1 60 Tick), a Legacy game's 30.", None),
         ],
     },
-    HDR_PAGE[0]: {
-        "screen": HDR_PAGE[1], "title": "HDR",
+    BRIGHTNESS_PAGE[0]: {
+        "screen": BRIGHTNESS_PAGE[1], "title": "BRIGHTNESS",
         "rows": [
+            (SECTION, "PICTURE"),
+            # (not the VR build's: menu_functions.c's gamma_row_show)
+            ("GAMMA", "display.gamma", GAMMA,
+             "How bright the picture is, the HUD and menus too, as Halo PC's gamma. Higher brightens the dark "
+             "parts; lower darkens them. 1.0 shows the game as it is drawn. With HDR on an HDR display, Paper "
+             "White sets the brightness instead.|Click the number (or press A) to type any from 0.5 to 2.0.",
+             None),
             (SECTION, "HDR"),
             ("HDR", "display.hdr", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
              "Brighter highlights on an HDR display. Auto turns it on while the display shows HDR; a display "
@@ -868,6 +899,15 @@ PAGES = {
             ("WEAPON FIELD OF VIEW", "display.viewmodel_fov", FIELDS_OF_VIEW,
              "How wide your weapon and hands are drawn, in degrees across a 16:9 screen. Default keeps the "
              "weapon's own view.|Click the number (or press A) to type any from 20 to 150.", None),
+            ("WEAPON HORIZONTAL", "display.viewmodel_offset_x", VIEWMODEL_OFFSETS,
+             "Moves your weapon and hands right, or left below 0, in centimeters, for every weapon. 0 keeps "
+             "them where the game puts them.|Click the number (or press A) to type any from -20 to 20.", None),
+            ("WEAPON VERTICAL", "display.viewmodel_offset_y", VIEWMODEL_OFFSETS,
+             "Moves your weapon and hands up, or down below 0, in centimeters. Lower it to see more of the "
+             "screen.|Click the number (or press A) to type any from -20 to 20.", None),
+            ("WEAPON DEPTH", "display.viewmodel_offset_z", VIEWMODEL_OFFSETS,
+             "Pushes your weapon and hands away from you, or closer below 0, in centimeters. Too close and they "
+             "cut off.|Click the number (or press A) to type any from -20 to 20.", None),
             ("VEHICLE FIELD OF VIEW", "display.vehicle_fov", VEHICLE_FIELDS_OF_VIEW,
              "How wide you see in a vehicle, in degrees across a 16:9 screen. Default keeps the game's view; Match "
              "uses your Field of View.|Click the number (or press A) to type any from 20 to 150.", None),
@@ -1404,8 +1444,9 @@ def _settings_platform(rows: list, start: int):
 # in Resolution's, Android's anti-aliasing in the desktop's
 SETTINGS_SAME_PLACE = {"window_size", "anti_aliasing_android"}
 # the rows menu_functions.c hides while VR Setup's row is shown (the game in
-# the headset), which takes their room: Mouse's Menu Cursor (menu_cursor_row_show)
-SETTINGS_NOT_IN_VR = {"menu_cursor"}
+# the headset), which takes their room: Mouse's Menu Cursor (menu_cursor_row_show);
+# and Brightness's Gamma, which the VR build hides always (gamma_row_show)
+SETTINGS_NOT_IN_VR = {"menu_cursor", "gamma"}
 
 
 def _settings_page(folder: str, page: dict) -> list:
@@ -1846,6 +1887,8 @@ SETTINGS_STILLS_MADE = [
 # ---------- multiplayer (PLAN.md section 11)
 
 MT = "main_menu/multiplayer_type_select"
+# (the campaign's screens: _campaign_menu)
+CAMPAIGN = "main_menu/campaign"
 
 # strings added to the PC version's lists: (at, strings) of each list. Slayer's
 # kills to win goes up to 500, for big games (the Xbox editor's are
@@ -2143,19 +2186,29 @@ WIDGET_PATCHES = {
     f"{MT}/connected/connected_map_select_wrapper": {"set": {
         "flags": "pass_unhandled_to_focused_child pause_game main_menu_if_no_history tag_controller_index force_handle_mouse",
     }},
+    # (CAMPAIGN opens the port's Campaign menu, CONTINUE, CHOOSE MISSION and
+    # CO-OP, and a new profile's campaign its difficulties, of the first
+    # mission: _campaign_menu, _difficulties)
+    "main_menu/main_menu_item_load_camp": {"handlers": [
+        f'<on event="{event}" run="new game if no plyr profiles" label="load_campaign" '
+        f'open="{CAMPAIGN}/campaign_screen" branch="true"/>' for event in ("a", "start")] +
+        ['<on event="left_mouse" run="mouse emit accept event"/>']},
+    "main_menu/new_campaign_saving_profile": {"handlers": [
+        '<on event="b" run="NULL"/>', '<on event="back" run="NULL"/>',
+        f'<on event="deleted" run="NULL" open="{CAMPAIGN}/difficulty_screen"/>']},
     # (Settings opens its first tab at once, with a profile or without one:
     # menu_functions.c's settings_begin)
     "main_menu/main_menu_item_settings": {"handlers": [
         f'<on event="{event}" run="port settings begin" open="{PE}/video_settings/video_settings_screen"/>'
         for event in ("a", "start")] + ['<on event="left_mouse" run="mouse emit accept event"/>']},
-    # (the main menu's MODS, before Quit: _mods)
-    # (and in the headset, VR TUTORIAL above the first: _training)
+    # (in the headset, VR TUTORIAL above the first: _training)
     "main_menu/main_menu_select_list": {"insert_before": {
         "main_menu/main_menu_item_load_camp": [
             f'<child widget="main_menu/main_menu_item_training" x="{TRAINING_ITEM_PLACE[0]}" '
-            f'y="{TRAINING_ITEM_PLACE[1]}" platform="vr"/>'],
-        "main_menu/main_menu_item_quit_game": [
-            f'<child widget="main_menu/main_menu_item_mods" x="{MODS_ITEM_PLACE[0]}" y="{MODS_ITEM_PLACE[1]}"/>']}},
+            f'y="{TRAINING_ITEM_PLACE[1]}" platform="vr"/>']}},
+    # (Quit's game data input notes the main menu shown, over which the
+    # update question opens: _update)
+    "main_menu/main_menu_item_quit_game": {"inputs": ["port update question"]},
     f"{PLAYER_EDIT}/player_options_menu": {"insert_before": {
         f"{PLAYER_EDIT}/player_button_bar": [
             f'<child widget="{PLAYER_EDIT}/op_aim_assist" x="54" y="289"/>',
@@ -2309,6 +2362,8 @@ TITLES = {
     f"{MT}/lobby/header_lobby": "GAME LOBBY",
     f"{MT}/coop/header_player_2": "PLAYER 2 PROFILE",
     f"{MT}/lobby/header_add_player": "ADD PLAYER",
+    "main_menu/campaign/header_campaign": "CAMPAIGN",
+    "main_menu/campaign/header_missions": "CHOOSE MISSION",
     **SETTINGS_TITLES,
 }
 
@@ -3292,7 +3347,7 @@ def _coop() -> list:
                       '<on event="created" run="port coop player 2 list initialize"/>',
                       '<on event="deleted" run="player profile list dispose"/>',
                       '<on event="custom_activation" run="port coop player 2" '
-                      'open="main_menu/solo_level_select/solo_level_select_screen" branch="true"/>',
+                      f'open="{CAMPAIGN}/mission_screen" branch="true"/>',
                       *rows, f'<child widget="{base}/player_2_button_bar" y="414"/>'])
     for index in range(11):
         lines += _widget(f"{base}/list_item_{index}",
@@ -5597,6 +5652,575 @@ def _touch_host_controls() -> tuple:
     return children, lines
 
 
+
+# ---------- the campaign (menu_functions.c's campaign_menu.inc): the main
+# menu's CAMPAIGN opens the Campaign menu (CONTINUE, shown while player 1's
+# profile has a saved game, CHOOSE MISSION, CO-OP and BACK, beside a panel of
+# the mission it would play), CHOOSE MISSION the missions as cards in a row
+# (the Xbox's level select, modernized: three shown, the one chosen larger and
+# outlined, arrows and a dot for each mission, the mission's details under
+# them; HALO's missions or the custom_maps folder's campaign maps, LB and RB
+# or a click), and a mission chosen the difficulties as four cards. Their
+# pictures are the player's ui.map's (sp_levels, difficulty_options and
+# difficulty_options_small, drawn scaled: <frame map=...>); nothing of the
+# game's art is shipped
+CAMPAIGN_ACCENT = "#FF4FB3FF"
+CAMPAIGN_TEXT = "#FFD6E9FF"
+CAMPAIGN_DIM = "#FF8FB3D3"
+CAMPAIGN_NEW = "#FFF2B34A"
+# the missions' names: the menus' heading font (menu_tags.c's pc\\heading, OpenCE)
+CAMPAIGN_TITLE_FONT = "heading"
+# CONTINUE's picture of the saved game's mission, at its left
+CONTINUE_ART_WIDTH = 50
+# the levels' pictures (ui.map's sp_levels: the ten levels', then a level
+# not reached), 2:1
+CAMPAIGN_PICTURES = "ui\\shell\\bitmaps\\sp_levels"
+CAMPAIGN_PICTURE_FRAMES = 11
+# (each level's picture is the top left 140 by 114 of its 256 by 128 frame,
+# as the PC version's 140 by 114 box shows it: drawn at a box's size, the
+# frame is scaled so that the picture fills the box)
+CAMPAIGN_PICTURE, CAMPAIGN_PICTURE_FRAME = (140, 114), (256, 128)
+
+
+def campaign_art_size(width: int) -> tuple:
+    """a level's picture's box at a width (the picture's shape)"""
+    return width, round(width * CAMPAIGN_PICTURE[1] / CAMPAIGN_PICTURE[0])
+
+
+def _level_pictures(name: str, width: int, height: int) -> list:
+    """sp_levels' frames scaled for their pictures to fill a box"""
+    return _map_frames(name, CAMPAIGN_PICTURES, CAMPAIGN_PICTURE_FRAMES,
+                       round(width * CAMPAIGN_PICTURE_FRAME[0] / CAMPAIGN_PICTURE[0]),
+                       round(height * CAMPAIGN_PICTURE_FRAME[1] / CAMPAIGN_PICTURE[1]))
+
+# a Custom Edition map's picture, drawn by the game in place of a frame of
+# this one (custom_edition_maps.c's LEVEL_PICTURES_TAG_NAME)
+CAMPAIGN_CUSTOM_PICTURES = "ui\\shell\\bitmaps\\mp_map_grafix"
+CAMPAIGN_BADGES_SMALL = "ui\\shell\\main_menu\\difficulty_select\\difficulty_options_small"
+CAMPAIGN_BADGES = "ui\\shell\\main_menu\\difficulty_select\\difficulty_options"
+# the Campaign menu's items (Multiplayer's: HUB_ITEM), CONTINUE taller for
+# its mission under its name, and its panel (Multiplayer's: HUB_PANEL)
+CAMPAIGN_CONTINUE = (HUB_ITEM[0], 46)
+CAMPAIGN_ITEMS_TOP = 92
+CAMPAIGN_ART = campaign_art_size(176)
+# the mission cards: the one chosen and the others, (width, height), their
+# pictures' size in them (4 in from the edges), the badges' size and step
+MISSION_BIG, MISSION_SMALL = (158, 240), (132, 211)
+MISSION_ART_INSET = 6
+# a picture's corners: rounded, by a picture over them of what is around it
+# (art_corners: the card's fill, resting or chosen; the panel's; CONTINUE's,
+# focused or not), so that its square corners never cross the card's curve
+ART_CORNER_RADIUS = 5
+MISSION_BADGE = {MISSION_BIG: (36, 38), MISSION_SMALL: (28, 31)}
+MISSION_CARDS_TOP = 84
+MISSION_CARD_GAP = 10
+MISSION_ARROW = (24, 64)
+# (the arrows' places, and their move to a wide screen's edges)
+MISSION_ARROW_X, MISSION_ARROW_WIDE = WIDE_MARGIN, 48
+MISSION_DOTS, MISSION_DOT, MISSION_DOT_STEP, MISSION_DOTS_TOP = 16, (16, 8), 20, 328
+# the details' panel under the cards, across a wide screen
+MISSION_PANEL = (28, 340, 584, 68)
+MISSION_PANEL_BADGE, MISSION_PANEL_BADGE_STEP = 30, 66
+# the difficulty cards: four across, each its big badge in a box at its top
+DIFFICULTY_CARD = (138, 300)
+DIFFICULTY_CARDS = (28, 96, 148)
+DIFFICULTY_BADGE_BOX, DIFFICULTY_BADGE = 122, 110
+DIFFICULTY_BLURBS = ["Fewer, weaker enemies.\\nFor learning the ropes.",
+                     "The challenge as\\nintended for most\\nplayers.",
+                     "Smarter, tougher\\nenemies who punish\\nmistakes.",
+                     "Brutal. Every fight\\nis a puzzle."]
+CAMPAIGN_PROMPT_BACK = ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="mouse emit back event"/>')
+CAMPAIGN_HINTS = ["Pick up where you left off: no mission or difficulty to choose.",
+                  "Play any mission, on any difficulty.",
+                  "",
+                  ""]
+
+
+def mission_card(size: tuple) -> str:
+    """a mission card's picture: resting, chosen (outlined in the accent),
+    and a mission not reached (fainter), by the frame menu_functions.c sets"""
+    return f"{CAMPAIGN}/card_{size[0]}x{size[1]}"
+
+
+def art_corners(width: int, height: int) -> str:
+    return f"{CAMPAIGN}/art_corners_{width}x{height}"
+
+
+def corners(width: int, height: int, fill: str, opacity: float) -> tuple:
+    """a picture's corners rounded: what is around it, outside a rounded
+    rectangle of its size"""
+    r = ART_CORNER_RADIUS
+    return (_svg(width, height, [
+        f'  <path fill-rule="evenodd" fill="{fill}" fill-opacity="{opacity:g}" d="M0 0H{width}V{height}H0Z '
+        f'M{r} 0H{width - r}A{r} {r} 0 0 1 {width} {r}V{height - r}A{r} {r} 0 0 1 {width - r} {height}H{r}'
+        f'A{r} {r} 0 0 1 0 {height - r}V{r}A{r} {r} 0 0 1 {r} 0Z"/>']), width, height)
+
+
+def campaign_pictures() -> list:
+    """(bitmap name, [(SVG, width, height)] for its frames) of the campaign's
+    own parts, in the shared parts' look (tools/ce_menus.py draws them)"""
+    def framed(width, height, fill, opacity, stroke, radius=10, stroke_width=2):
+        return (_svg(width, height, [_rounded(width, height, stroke_width / 2, radius, fill, opacity, stroke,
+                                              stroke_width)]), width, height)
+
+    def chevron(width, height, left, color):
+        x0, x1 = (width / 2 + 3, width / 2 - 4) if left else (width / 2 - 3, width / 2 + 4)
+        return (f'  <path d="M{x0:g} {height / 2 - 7:g} L{x1:g} {height / 2:g} L{x0:g} {height / 2 + 7:g}" '
+                f'fill="none" stroke="{color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>')
+
+    def shield(size, color):
+        scale = size / 32
+        return _svg(size, size, [f'  <g transform="scale({scale:g})" fill="none" stroke="{color}" stroke-width="1.8" '
+                                 'stroke-linejoin="round"><path d="M16 3l11 4v8c0 7-5 12-11 14C10 27 5 22 5 15V7z"/>'
+                                 '<path d="M11 15l4 4 7-8"/></g>'])
+
+    pictures = []
+    width, height = CAMPAIGN_CONTINUE
+    pictures.append((f"{CAMPAIGN}/continue_{width}x{height}", [
+        framed(width, height, "#0a1b2e", 0.9, "#1e3f5e", 8),
+        framed(width, height, "#0f2a44", 0.95, "#4fb3ff", 8)]))
+    for size in (MISSION_BIG, MISSION_SMALL):
+        pictures.append((mission_card(size), [framed(*size, "#0a1b2e", 0.85, "#1e3f5e"),
+                                              framed(*size, "#0f2a44", 0.95, "#4fb3ff", 10, 2.5),
+                                              framed(*size, "#08131f", 0.7, "#16324d")]))
+        art = campaign_art_size(size[0] - 2 * MISSION_ART_INSET)
+        pictures.append((f"{CAMPAIGN}/art_back_{art[0]}x{art[1]}", [framed(*art, "#12304a", 1.0, "none", 7, 0)]))
+    pictures.append((f"{CAMPAIGN}/art_back_{CAMPAIGN_ART[0]}x{CAMPAIGN_ART[1]}",
+                     [framed(*CAMPAIGN_ART, "#12304a", 1.0, "none", 7, 0)]))
+    # (the pictures' corners: the cards', resting and chosen; the panel's;
+    # CONTINUE's, as its frames)
+    for size in (MISSION_BIG, MISSION_SMALL):
+        art = campaign_art_size(size[0] - 2 * MISSION_ART_INSET)
+        pictures.append((art_corners(*art), [corners(*art, "#0a1b2e", 0.85), corners(*art, "#0f2a44", 0.95)]))
+    pictures.append((art_corners(*CAMPAIGN_ART), [corners(*CAMPAIGN_ART, "#000e23", 0.88)]))
+    continue_art = campaign_art_size(CONTINUE_ART_WIDTH)
+    pictures.append((art_corners(*continue_art), [corners(*continue_art, "#0a1b2e", 0.9),
+                                                  corners(*continue_art, "#0f2a44", 0.95)]))
+    arrow_w, arrow_h = MISSION_ARROW
+    for side in ("left", "right"):
+        pictures.append((f"{CAMPAIGN}/arrow_{side}", [
+            (_svg(arrow_w, arrow_h, [_rounded(arrow_w, arrow_h, 0.5, 6, "#0a1b2e", 0.9, "#24486b", 1),
+                                     chevron(arrow_w, arrow_h, side == "left", "#a9c6e0")]), arrow_w, arrow_h),
+            (_svg(arrow_w, arrow_h, [_rounded(arrow_w, arrow_h, 0.75, 6, "#0f2a44", 1.0, "#4fb3ff", 1.5),
+                                     chevron(arrow_w, arrow_h, side == "left", "#eaf5ff")]), arrow_w, arrow_h)]))
+    dot_w, dot_h = MISSION_DOT
+    pictures.append((f"{CAMPAIGN}/dot", [
+        (_svg(dot_w, dot_h, [f'  <circle cx="{dot_w / 2:g}" cy="{dot_h / 2:g}" r="{dot_h / 2 - 0.5:g}" '
+                             'fill="#2e5478"/>']), dot_w, dot_h),
+        (_svg(dot_w, dot_h, [_rounded(dot_w, dot_h, 0, dot_h / 2, "#4fb3ff", 1.0)]), dot_w, dot_h)]))
+    pictures.append((f"{CAMPAIGN}/panel", [framed(*MISSION_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5)]))
+    pictures.append((f"{CAMPAIGN}/difficulty_card", [framed(*DIFFICULTY_CARD, "#0a1b2e", 0.85, "#1e3f5e", 12),
+                                                     framed(*DIFFICULTY_CARD, "#0f2a44", 0.95, "#4fb3ff", 12, 2.5)]))
+    box = DIFFICULTY_BADGE_BOX
+    pictures.append((f"{CAMPAIGN}/badge_box", [framed(box, box, "#0b2238", 1.0, "none", 10, 0)]))
+    # (a badge where the player's ui.map has none: a shield, lit and not)
+    for size in (*{badge for badge, _ in MISSION_BADGE.values()}, MISSION_PANEL_BADGE, DIFFICULTY_BADGE):
+        pictures.append((f"{CAMPAIGN}/badge_shape_{size}", [(shield(size, "#2e5478"), size, size),
+                                                            (shield(size, "#4fb3ff"), size, size)]))
+    return pictures
+
+
+def _map_frames(name: str, tag: str, count: int, width: int, height: int, x: int = 0, y: int = 0) -> list:
+    """a bitmap of a ui.map bitmap's frames, each drawn scaled to width by
+    height from x and y in its widget"""
+    return [f"\t<bitmap{attributes([('name', name)])}>",
+            *(f"\t\t<frame{attributes([('map', tag), ('index', index), ('width', width), ('height', height), ('x', x or None), ('y', y or None)])}/>"
+              for index in range(count)),
+            "\t</bitmap>"]
+
+
+def _campaign_text(name: str, x: int, y: int, width: int, height: int, font: str, color: str, words=None,
+                   align=None, wide_layout=None, text_y=None) -> list:
+    """a text of the campaign's screens, filled by menu_functions.c (or, with
+    words, its own)"""
+    pairs = [("left", x), ("top", y), ("width", width), ("height", height), ("font", font), ("color", color),
+             ("align", align), ("wide", wide_layout), ("text_y", text_y)]
+    if words is None:
+        return _part_text(name, pairs)
+    return _widget(name, [("type", "text"), ("controller", 1), *pairs, ("text", words),
+                          ("text_flags", "no_focus_test")], [])
+
+
+def _campaign_menu() -> list:
+    """the Campaign menu: its items in Multiplayer's look down the left, the
+    panel beside them the mission CONTINUE plays (its picture, number, name,
+    difficulty and objective), or the one CHOOSE MISSION opens on, and what
+    the item chosen does"""
+    left, top, width, height = HUB_PANEL
+    item_w, item_h = HUB_ITEM
+    items_wide = wide(-WIDE_HALF, HUB_WIDE_ITEMS)
+    lines = _widget(f"{CAMPAIGN}/campaign_screen", [("width", 640), ("height", 480),
+                                                    ("flags", "pass_unhandled_to_focused_child"),
+                                                    ("bitmap", "bitmaps/gradient")],
+                    ['<on event="created" run="port campaign init"/>',
+                     '<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                     f'<child widget="{CAMPAIGN}/header_campaign"/>',
+                     f'<child widget="{CAMPAIGN}/campaign_list"/>'])
+    lines += _widget(f"{CAMPAIGN}/header_campaign", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
+                                                     ("height", 59), ("bitmap", f"{CAMPAIGN}/header_campaign"),
+                                                     ("wide", WIDE_LEFT)], [])
+    y = CAMPAIGN_ITEMS_TOP
+    children = [f'<child widget="{CAMPAIGN}/item_continue" x="{HUB_LIST_X}" y="{y}"/>']
+    y += CAMPAIGN_CONTINUE[1] + 4
+    for name in ("item_missions", "item_coop", "item_back"):
+        children.append(f'<child widget="{CAMPAIGN}/{name}" x="{HUB_LIST_X}" y="{y}"/>')
+        y += item_h + 2
+    lines += _widget(f"{CAMPAIGN}/campaign_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                                   ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                                                   ("description", f"{CAMPAIGN}/campaign_panel")],
+                     ['<data input="port campaign update"/>', *children,
+                      f'<child widget="{CAMPAIGN}/campaign_prompts" y="414"/>'])
+    cw, ch = CAMPAIGN_CONTINUE
+    lines += _widget(f"{CAMPAIGN}/item_continue", [("type", "text"), ("width", cw), ("height", ch),
+                                                   ("wide", items_wide), ("bitmap", f"{CAMPAIGN}/continue_{cw}x{ch}"),
+                                                   ("text", "CONTINUE"), ("font", "ui\\large_ui"),
+                                                   ("color", "#FFFFFFFF"), ("text_x", CONTINUE_ART_WIDTH + 14),
+                                                   ("text_y", 2)],
+                     [*(f'<on event="{event}" run="port campaign continue"/>' for event in ("a", "start")),
+                      '<on event="left_mouse" run="mouse emit accept event"/>',
+                      f'<child widget="{CAMPAIGN}/continue_art"/>', f'<child widget="{CAMPAIGN}/continue_corners"/>',
+                      f'<child widget="{CAMPAIGN}/continue_note"/>'])
+    art_w, art_h = campaign_art_size(CONTINUE_ART_WIDTH)
+    lines += _widget(f"{CAMPAIGN}/continue_art", [("controller", 1), ("left", 6), ("top", (ch - art_h) // 2),
+                                                  ("width", art_w), ("height", art_h),
+                                                  ("bitmap", f"{CAMPAIGN}/art_{art_w}x{art_h}")], [])
+    lines += _widget(f"{CAMPAIGN}/continue_corners", [("controller", 1), ("left", 6), ("top", (ch - art_h) // 2),
+                                                      ("width", art_w), ("height", art_h),
+                                                      ("bitmap", art_corners(art_w, art_h))], [])
+    lines += _level_pictures(f"{CAMPAIGN}/art_{art_w}x{art_h}", art_w, art_h)
+    lines += _campaign_text(f"{CAMPAIGN}/continue_note", CONTINUE_ART_WIDTH + 14, 24, cw - CONTINUE_ART_WIDTH - 22, 18,
+                            "ui\\small_ui", CAMPAIGN_TEXT, wide_layout=wide(0, HUB_WIDE_ITEMS))
+    for name, words, handlers in (
+            ("item_missions", "CHOOSE MISSION", [f'<on event="{event}" run="port campaign missions" '
+                                                 f'open="{CAMPAIGN}/mission_screen"/>' for event in ("a", "start")]),
+            ("item_coop", "CO-OP", [f'<on event="{event}" open="{HUB}/coop_screen"/>' for event in ("a", "start")]),
+            ("item_back", "BACK", [f'<on event="{event}" back="true"/>' for event in ("a", "start")])):
+        lines += _widget(f"{CAMPAIGN}/{name}", [("type", "text"), ("width", item_w), ("height", item_h),
+                                                ("wide", items_wide), ("bitmap", part_highlight(item_w, item_h)),
+                                                ("text", words), ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE),
+                                                ("text_x", 10), ("text_y", caps_text_y(item_h, large=True))],
+                         [*handlers, '<on event="left_mouse" run="mouse emit accept event"/>'])
+    # (the panel: Multiplayer's, its picture in the middle of a wider one)
+    art_w, art_h = CAMPAIGN_ART
+    x, inner = left + 14, width - 28
+    grown, middle = wide(0, HUB_WIDE_PANEL[1]), wide(HUB_WIDE_PANEL[1] // 2)
+    panel = []
+
+    def add(widget_lines, name):
+        panel.append(f'<child widget="{CAMPAIGN}/{name}"/>')
+        return widget_lines
+
+    lines += add(_widget(f"{CAMPAIGN}/panel_art_back", [("controller", 1), ("left", x + (inner - art_w) // 2), ("top", top + 12),
+                                                        ("width", art_w), ("height", art_h),
+                                                        ("bitmap", f"{CAMPAIGN}/art_back_{art_w}x{art_h}"),
+                                                        ("wide", middle)], []), "panel_art_back")
+    lines += add(_widget(f"{CAMPAIGN}/panel_art", [("controller", 1), ("left", x + (inner - art_w) // 2), ("top", top + 12),
+                                                   ("width", art_w), ("height", art_h),
+                                                   ("bitmap", f"{CAMPAIGN}/art_{art_w}x{art_h}"), ("wide", middle)],
+                         []), "panel_art")
+    lines += add(_widget(f"{CAMPAIGN}/panel_art_corners", [("controller", 1), ("left", x + (inner - art_w) // 2),
+                                                           ("top", top + 12), ("width", art_w), ("height", art_h),
+                                                           ("bitmap", art_corners(art_w, art_h)), ("wide", middle)],
+                         []), "panel_art_corners")
+    lines += add(_campaign_text(f"{CAMPAIGN}/panel_number", x, top + 158, inner, 16, "ui\\small_ui", CAMPAIGN_DIM,
+                                wide_layout=grown), "panel_number")
+    lines += add(_campaign_text(f"{CAMPAIGN}/panel_title", x, top + 173, inner, 24, CAMPAIGN_TITLE_FONT, "#FFFFFFFF",
+                                wide_layout=grown), "panel_title")
+    lines += add(_campaign_text(f"{CAMPAIGN}/panel_status", x, top + 197, inner, 18, "ui\\small_ui", CAMPAIGN_ACCENT,
+                                wide_layout=grown), "panel_status")
+    lines += add(_campaign_text(f"{CAMPAIGN}/panel_objective", x, top + 216, inner, 50, "ui\\small_ui",
+                                SETTINGS_BLUE, wide_layout=grown), "panel_objective")
+    lines += add(_campaign_text(f"{CAMPAIGN}/panel_hint", x, top + 270, inner, 44, "ui\\small_ui",
+                                CAMPAIGN_DIM, wide_layout=grown), "panel_hint")
+    lines += _widget(f"{CAMPAIGN}/campaign_panel", [("controller", 1), ("left", left), ("top", top), ("width", width),
+                                                    ("height", height), ("bitmap", part_panel(width, height)),
+                                                    ("wide", wide(*HUB_WIDE_PANEL))], panel)
+    lines += _prompts(CAMPAIGN, "campaign_prompts", [CAMPAIGN_PROMPT_BACK])
+    lines += _level_pictures(f"{CAMPAIGN}/art_{art_w}x{art_h}", art_w, art_h)
+    lines += _strings(f"{CAMPAIGN}/hints", CAMPAIGN_HINTS)
+    return lines
+
+
+def _mission_card(size: tuple, slot: int) -> list:
+    """a mission card in a slot of the row, at its size: its picture (a
+    level's, a Custom Edition map's, or a title card drawn for a map with
+    none), MISSION 0N, its name, the four difficulties' badges (lit: finished
+    on it), RESUME on the picture of the saved game's mission"""
+    width, height = size
+    kind = "big" if size == MISSION_BIG else "small"
+    base = f"{CAMPAIGN}/card_{kind}_{slot}"
+    art_w, art_h = campaign_art_size(width - 2 * MISSION_ART_INSET)
+    inset = MISSION_ART_INSET
+    badge, step = MISSION_BADGE[size]
+    text_top = inset + art_h + 6
+    # (the missions' names in the menus' heading font: OpenCE, the titles' face)
+    font = CAMPAIGN_TITLE_FONT if size == MISSION_BIG else "ui\\small_ui"
+    children = [f'<child widget="{CAMPAIGN}/{name}_{kind}"/>' for name in
+                ("card_art_back", "card_art", "card_custom_art", "card_art_corners", "card_card_tag",
+                 "card_card_title", "card_resume",
+                 "card_number", "card_title")]
+    # (the badges in a row under the name, across the card)
+    badges_x = (width - 3 * step - badge) // 2
+    children += [f'<child widget="{CAMPAIGN}/card_badge_shape_{kind}" x="{badges_x + step * index}"/>'
+                 for index in range(4)]
+    children += [f'<child widget="{CAMPAIGN}/card_badge_{kind}" x="{badges_x + step * index}"/>' for index in range(4)]
+    children.append(f'<child widget="{CAMPAIGN}/card_unbeaten_{kind}"/>')
+    lines = _widget(base, [("width", width), ("height", height), ("bitmap", mission_card(size))],
+                    [*(f'<on event="{event}" run="port campaign choose" open="{CAMPAIGN}/difficulty_screen"/>'
+                       for event in ("a", "start")),
+                     '<on event="left_mouse" run="mouse emit accept event"/>', *children])
+    if slot:
+        return lines
+    # (the cards' parts, shared by the three slots of a size)
+    lines += _widget(f"{CAMPAIGN}/card_art_back_{kind}", [("controller", 1), ("left", inset), ("top", inset),
+                                                          ("width", art_w), ("height", art_h),
+                                                          ("bitmap", f"{CAMPAIGN}/art_back_{art_w}x{art_h}")], [])
+    lines += _widget(f"{CAMPAIGN}/card_art_{kind}", [("controller", 1), ("left", inset), ("top", inset),
+                                                     ("width", art_w), ("height", art_h),
+                                                     ("bitmap", f"{CAMPAIGN}/art_{art_w}x{art_h}")], [])
+    lines += _widget(f"{CAMPAIGN}/card_custom_art_{kind}", [("controller", 1), ("left", inset), ("top", inset),
+                                                            ("width", art_w), ("height", art_h),
+                                                            ("bitmap", CAMPAIGN_CUSTOM_PICTURES)], [])
+    lines += _widget(f"{CAMPAIGN}/card_art_corners_{kind}", [("controller", 1), ("left", inset), ("top", inset),
+                                                             ("width", art_w), ("height", art_h),
+                                                             ("bitmap", art_corners(art_w, art_h))], [])
+    # (a map's title card, without a picture: CUSTOM over its name)
+    lines += _widget(f"{CAMPAIGN}/card_card_tag_{kind}", [("type", "text"), ("controller", 1), ("left", inset + 10),
+                                                          ("top", inset + art_h - 48), ("width", BROWSER_PILL),
+                                                          ("height", PART_PILL_HEIGHT),
+                                                          ("bitmap", part_pill(BROWSER_PILL)), ("text", "CUSTOM"),
+                                                          ("text_y", PILL_TEXT_Y), ("font", "ui\\small_ui"),
+                                                          ("color", "#FFFFFFFF"), ("align", "center"),
+                                                          ("text_flags", "no_focus_test")], [])
+    lines += _campaign_text(f"{CAMPAIGN}/card_card_title_{kind}", inset + 10, inset + art_h - 30, art_w - 20, 26,
+                            font, "#FFFFFFFF")
+    lines += _widget(f"{CAMPAIGN}/card_resume_{kind}", [("type", "text"), ("controller", 1), ("left", inset + 8),
+                                                        ("top", inset + 8), ("width", BROWSER_PILL),
+                                                        ("height", PART_PILL_HEIGHT),
+                                                        ("bitmap", part_pill(BROWSER_PILL)), ("text", "RESUME"),
+                                                        ("text_y", PILL_TEXT_Y), ("font", "ui\\small_ui"),
+                                                        ("color", "#FFFFFFFF"), ("align", "center"),
+                                                        ("text_flags", "no_focus_test")], [])
+    lines += _campaign_text(f"{CAMPAIGN}/card_number_{kind}", 10, text_top, width - 20, 16, "ui\\small_ui",
+                            CAMPAIGN_DIM)
+    lines += _campaign_text(f"{CAMPAIGN}/card_title_{kind}", 10, text_top + 16, width - 20, 46, font, "#FFFFFFFF")
+    for name, bitmap in (("card_badge_shape", f"{CAMPAIGN}/badge_shape_{badge}"),
+                         ("card_badge", f"{CAMPAIGN}/badges_{badge}")):
+        lines += _widget(f"{CAMPAIGN}/{name}_{kind}", [("controller", 1), ("top", text_top + 62),
+                                                        ("width", badge), ("height", badge), ("bitmap", bitmap)], [])
+    # (a mission not beaten on any difficulty says so, in the badges' place)
+    lines += _campaign_text(f"{CAMPAIGN}/card_unbeaten_{kind}", 10, text_top + 62 + (badge - 16) // 2, width - 20, 18,
+                            "ui\\small_ui", CAMPAIGN_NEW, words="NOT YET BEATEN")
+    lines += _level_pictures(f"{CAMPAIGN}/art_{art_w}x{art_h}", art_w, art_h)
+    lines += _map_frames(f"{CAMPAIGN}/badges_{badge}", CAMPAIGN_BADGES_SMALL, 4, badge, badge)
+    return lines
+
+
+def _missions() -> list:
+    """Choose Mission: HALO's or CUSTOM's missions (LB and RB, Q and E, or a
+    click on its chip), three cards of them in a row between their arrows
+    (left and right, the stick, A and D, the arrows or a pointer over a card
+    choose one: menu_functions.c lays the row out, the one chosen larger), a
+    dot for each, the panel of the one chosen under them (its name,
+    objective, where the player is with it, and the difficulties it has been
+    finished on), and the footer's key prompts; A on a card (or SELECT)
+    opens the difficulties, or goes on with the saved game in it (RESUME)"""
+    base = CAMPAIGN
+    lines = _widget(f"{base}/mission_screen", [("width", 640), ("height", 480),
+                                               ("flags", "pass_unhandled_to_focused_child"),
+                                               ("bitmap", "bitmaps/gradient")],
+                    ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                     '<on event="white" run="port campaign tab previous"/>',
+                     '<on event="black" run="port campaign tab next"/>',
+                     f'<child widget="{base}/mission_cards"/>',
+                     f'<child widget="{base}/header_missions"/>',
+                     f'<child widget="{base}/source_prompt_previous"/>',
+                     f'<child widget="{base}/source_prompt_next"/>',
+                     f'<child widget="{base}/source_tabs" x="{640 - 28 - 2 * SETTINGS_TAB_STEP - 26}" y="44"/>',
+                     *(f'<child widget="{base}/mission_dot_{index}"/>' for index in range(MISSION_DOTS)),
+                     f'<child widget="{base}/mission_empty"/>',
+                     f'<child widget="{base}/mission_prompts" y="414"/>'])
+    lines += _widget(f"{base}/header_missions", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
+                                                 ("height", 59), ("bitmap", f"{base}/header_missions"),
+                                                 ("wide", WIDE_LEFT)], [])
+    tabs_x = 640 - 28 - 2 * SETTINGS_TAB_STEP - 26
+    for name, icon, x in (("previous", "white", tabs_x - SETTINGS_TAB_PROMPT_WIDTH),
+                          ("next", "black", tabs_x + SETTINGS_TAB_STEP + SETTINGS_TAB_LAID + 4)):
+        lines += _campaign_text(f"{base}/source_prompt_{name}", x, 44, SETTINGS_TAB_PROMPT_WIDTH, SETTINGS_TAB_HEIGHT,
+                                "ui\\small_ui", SETTINGS_BLUE, words=f"%{icon}-button", wide_layout=WIDE_RIGHT,
+                                text_y=caps_text_y(SETTINGS_TAB_HEIGHT))
+    lines += _widget(f"{base}/source_tabs", [("type", "column_list"), ("width", 2 * SETTINGS_TAB_STEP),
+                                             ("height", SETTINGS_TAB_HEIGHT),
+                                             ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     [f'<child widget="{base}/{name}" x="{index * SETTINGS_TAB_STEP}"/>'
+                      for index, name in enumerate(("tab_halo", "tab_custom"))])
+    for name, words in (("tab_halo", "HALO"), ("tab_custom", "CUSTOM")):
+        lines += _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("width", SETTINGS_TAB_LAID),
+                                            ("height", SETTINGS_TAB_HEIGHT), ("flags", "keep_ends"),
+                                            ("wide", WIDE_RIGHT), ("bitmap", PARTS_TAB), ("text", words),
+                                            ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE), ("align", "center"),
+                                            ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT))],
+                         ['<on event="a" run="port campaign tab"/>', '<on event="start" run="port campaign tab"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>'])
+    # (the row: the arrows, then a card of each size in each of its three
+    # slots, menu_functions.c showing one of each slot's and placing them)
+    arrow_w, arrow_h = MISSION_ARROW
+    arrow_y = MISSION_CARDS_TOP + MISSION_BIG[1] // 2 - arrow_h // 2
+    cards = [f'<child widget="{base}/card_{kind}_{slot}" y="{MISSION_CARDS_TOP}"/>'
+             for slot in range(3) for kind in ("big", "small")]
+    lines += _widget(f"{base}/mission_cards", [("type", "column_list"), ("width", 640), ("height", 480),
+                                               ("flags", "pass_unhandled_to_focused_child"),
+                                               ("description", f"{base}/mission_panel")],
+                     ['<data input="port campaign missions update"/>',
+                      '<on event="created" run="port campaign missions init"/>',
+                      *(f'<on event="{event}" run="port campaign previous"/>' for event in ("left", "stick_left")),
+                      *(f'<on event="{event}" run="port campaign next"/>' for event in ("right", "stick_right")),
+                      *cards,
+                      f'<child widget="{base}/arrow_previous" x="{MISSION_ARROW_X}" y="{arrow_y}"/>',
+                      f'<child widget="{base}/arrow_next" x="{640 - MISSION_ARROW_X - arrow_w}" y="{arrow_y}"/>'])
+    for name, side, move in (("arrow_previous", "left", -MISSION_ARROW_WIDE), ("arrow_next", "right",
+                                                                               MISSION_ARROW_WIDE)):
+        lines += _widget(f"{base}/{name}", [("width", arrow_w), ("height", arrow_h),
+                                            ("bitmap", f"{base}/arrow_{side}"), ("wide", wide(move))],
+                         [f'<on event="{event}" run="port campaign {name[6:]}"/>' for event in ("a", "start")] +
+                         ['<on event="left_mouse" run="mouse emit accept event"/>'])
+    for slot in range(3):
+        for size in (MISSION_BIG, MISSION_SMALL):
+            lines += _mission_card(size, slot)
+    dots_x = 320 - (MISSION_DOTS * MISSION_DOT_STEP) // 2
+    for index in range(MISSION_DOTS):
+        lines += _widget(f"{base}/mission_dot_{index}", [("controller", 1), ("left", dots_x + MISSION_DOT_STEP * index),
+                                                         ("top", MISSION_DOTS_TOP), ("width", MISSION_DOT[0]),
+                                                         ("height", MISSION_DOT[1]), ("bitmap", f"{base}/dot")], [])
+    # (the panel: the mission's words at its left, BEATEN ON's badges at its
+    # right, across a wide screen)
+    left, top, width, height = MISSION_PANEL
+    spread = wide(-WIDE_HALF, WIDE_EXTRA)
+    badge = MISSION_PANEL_BADGE
+    step = MISSION_PANEL_BADGE_STEP
+    badges_x = left + width - 24 - 4 * step
+    panel = [f'<child widget="{base}/{name}"/>' for name in
+             ("detail_title", "detail_objective", "detail_status", "detail_status_new", "detail_beaten")]
+    panel += [f'<child widget="{base}/detail_{part}" x="{step * index}"/>' for index in range(4)
+              for part in ("badge_shape", "badge", "badge_name")]
+    lines += _campaign_text(f"{base}/detail_title", left + 14, top + 4, 276, 22, CAMPAIGN_TITLE_FONT, "#FFFFFFFF",
+                            wide_layout=wide(0, WIDE_EXTRA))
+    lines += _campaign_text(f"{base}/detail_objective", left + 14, top + 24, 276, 26, "ui\\small_ui", SETTINGS_BLUE,
+                            wide_layout=wide(0, WIDE_EXTRA))
+    lines += _campaign_text(f"{base}/detail_status", left + 14, top + 47, 276, 18, "ui\\small_ui", CAMPAIGN_ACCENT,
+                            wide_layout=wide(0, WIDE_EXTRA))
+    lines += _campaign_text(f"{base}/detail_status_new", left + 14, top + 47, 276, 18, "ui\\small_ui",
+                            CAMPAIGN_NEW, wide_layout=wide(0, WIDE_EXTRA))
+    lines += _campaign_text(f"{base}/detail_beaten", badges_x, top + 2, 4 * step, 16, "ui\\small_ui", CAMPAIGN_DIM,
+                            words="BEATEN ON", align="center", wide_layout=wide(WIDE_EXTRA))
+    badge_x = badges_x + (step - badge) // 2
+    for name, bitmap in (("detail_badge_shape", f"{base}/badge_shape_{badge}"),
+                         ("detail_badge", f"{base}/badges_{badge}")):
+        lines += _widget(f"{base}/{name}", [("controller", 1), ("left", badge_x), ("top", top + 18), ("width", badge),
+                                            ("height", badge), ("bitmap", bitmap), ("wide", wide(WIDE_EXTRA))], [])
+    lines += _campaign_text(f"{base}/detail_badge_name", badges_x - 8, top + 47, step + 16, 16, "ui\\small_ui", CAMPAIGN_DIM,
+                            align="center", wide_layout=wide(WIDE_EXTRA))
+    lines += _widget(f"{base}/mission_panel", [("controller", 1), ("left", left), ("top", top), ("width", width),
+                                               ("height", height), ("bitmap", f"{base}/panel"),
+                                               ("wide", spread)], panel)
+    lines += _map_frames(f"{base}/badges_{badge}", CAMPAIGN_BADGES_SMALL, 4, badge, badge)
+    # (the row's words while it has no missions: CUSTOM with no maps)
+    lines += _campaign_text(f"{base}/mission_empty", 80, 170, 480, 80, "ui\\large_ui", SETTINGS_BLUE, align="center")
+    # (the footer: SELECT, or RESUME on the saved game's mission, and BACK)
+    lines += _widget(f"{base}/mission_prompts", [("type", "column_list"), ("width", 640),
+                                                 ("height", PART_PROMPT_HEIGHT + 4),
+                                                 ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     [f'<child widget="{base}/prompt_select" x="388" y="1"/>',
+                      f'<child widget="{base}/prompt_back" x="516" y="1"/>'])
+    lines += _widget(f"{base}/prompt_select", [("type", "text"), ("width", 124), ("height", PART_PROMPT_HEIGHT),
+                                               ("wide", prompt_wide(388, 124)),
+                                               ("bitmap", part_highlight(124, PART_PROMPT_HEIGHT)),
+                                               ("font", "ui\\small_ui"), ("color", PART_TEXT), ("text_x", 8),
+                                               ("text_y", caps_text_y(PART_PROMPT_HEIGHT))],
+                     [*(f'<on event="{event}" run="port campaign choose" open="{base}/difficulty_screen"/>'
+                        for event in ("a", "start")),
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    return lines
+
+
+def _difficulties() -> list:
+    """Choose Difficulty, as the Xbox's: the mission's number and name over
+    four cards, each the difficulty's big badge, its name, a line about it
+    and BEATEN where the mission has been finished on it; A on one (or PLAY)
+    plays the mission on it (the old saved game, if it had another
+    difficulty, gone as the Xbox's warned)"""
+    base = CAMPAIGN
+    x0, top, step = DIFFICULTY_CARDS
+    width, height = DIFFICULTY_CARD
+    box, badge = DIFFICULTY_BADGE_BOX, DIFFICULTY_BADGE
+    lines = _widget(f"{base}/difficulty_screen", [("width", 640), ("height", 480),
+                                                  ("flags", "pass_unhandled_to_focused_child"),
+                                                  ("bitmap", "bitmaps/gradient")],
+                    ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                     f'<child widget="{base}/difficulty_list"/>',
+                     '<child widget="main_menu/difficulty_select/header_choose_difficulty"/>',
+                     f'<child widget="{base}/difficulty_mission"/>'])
+    lines += _campaign_text(f"{base}/difficulty_mission", 44, 74, 560, 18, "ui\\small_ui", CAMPAIGN_DIM,
+                            wide_layout=WIDE_LEFT)
+    cards = [f'<child widget="{base}/difficulty_{index}" x="{x0 + step * index}" y="{top}"/>' for index in range(4)]
+    lines += _widget(f"{base}/difficulty_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                                 ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     ['<data input="port campaign difficulty update"/>',
+                      '<on event="created" run="port campaign difficulty init"/>', *cards,
+                      f'<child widget="{base}/difficulty_prompts" y="414"/>'])
+    grown = (WIDE_EXTRA // 4)
+    for index in range(4):
+        lines += _widget(f"{base}/difficulty_{index}", [("width", width), ("height", height),
+                                                        ("bitmap", f"{base}/difficulty_card"),
+                                                        ("wide", wide(-WIDE_HALF + index * grown, grown))],
+                         [*(f'<on event="{event}" run="port campaign play"/>' for event in ("a", "start")),
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          *(f'<child widget="{base}/difficulty_{part}"/>'
+                            for part in ("badge_box", "badge_shape", "badge", "name", "blurb", "beaten"))])
+    inset = (width - box) // 2
+    lines += _widget(f"{base}/difficulty_badge_box", [("controller", 1), ("left", inset), ("top", inset),
+                                                      ("width", box), ("height", box),
+                                                      ("bitmap", f"{base}/badge_box"), ("wide", wide(grown // 2))], [])
+    badge_at = inset + (box - badge) // 2
+    lines += _widget(f"{base}/difficulty_badge_shape", [("controller", 1), ("left", badge_at), ("top", badge_at),
+                                                        ("width", badge), ("height", badge),
+                                                        ("bitmap", f"{base}/badge_shape_{badge}"),
+                                                        ("wide", wide(grown // 2))], [])
+    # (each card's badge its own frame of ui.map's difficulty_options: x is
+    # the card's index, which menu_functions.c reads back as the frame)
+    lines += _widget(f"{base}/difficulty_badge", [("controller", 1), ("left", badge_at - 0), ("top", badge_at),
+                                                  ("width", badge), ("height", badge),
+                                                  ("bitmap", f"{base}/difficulty_badges"),
+                                                  ("wide", wide(grown // 2))], [])
+    lines += _widget(f"{base}/difficulty_name", [("type", "text"), ("controller", 1), ("left", 10),
+                                                 ("top", inset + box + 10), ("width", width - 20), ("height", 24),
+                                                 ("string_list", "main_menu/difficulty_select/difficulty_options"),
+                                                 ("font", "ui\\large_ui"), ("color", "#FFFFFFFF"),
+                                                 ("wide", wide(0, grown)), ("text_flags", "no_focus_test")], [])
+    lines += _campaign_text(f"{base}/difficulty_blurb", 10, inset + box + 36, width - 14, height - inset - box - 44,
+                            "ui\\small_ui", SETTINGS_BLUE, wide_layout=wide(0, grown))
+    lines += _widget(f"{base}/difficulty_beaten", [("type", "text"), ("controller", 1), ("left", inset + 6),
+                                                   ("top", inset + 6), ("width", BROWSER_PILL), ("wide", wide(grown // 2)),
+                                                   ("height", PART_PILL_HEIGHT), ("bitmap", part_pill(BROWSER_PILL)),
+                                                   ("text", "BEATEN"), ("text_y", PILL_TEXT_Y),
+                                                   ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
+                                                   ("align", "center"), ("text_flags", "no_focus_test")], [])
+    lines += _map_frames(f"{base}/difficulty_badges", CAMPAIGN_BADGES, 4, badge, badge)
+    lines += _strings(f"{base}/difficulty_blurbs", DIFFICULTY_BLURBS)
+    lines += _prompts(base, "difficulty_prompts",
+                      [("prompt_play", "%a-button PLAY", 388, 124, '<on event="a" run="port campaign play"/>'),
+                       CAMPAIGN_PROMPT_BACK], defined=("prompt_back",))
+    return lines
+
+
+def campaign_files() -> dict:
+    head = ['<?xml version="1.0" encoding="UTF-8"?>',
+            "<!-- The campaign's screens: the Campaign menu, Choose Mission and Choose Difficulty "
+            "(tools/port_settings.py) -->", "<menus>"]
+    return {CAMPAIGN.replace("/", ".") + ".xml": head + _campaign_menu() + _missions() + _difficulties() +
+            ["</menus>", ""]}
+
+
 def multiplayer_files() -> dict:
     """the port's multiplayer widgets: the browser's additions, the server
     settings, the lobby, and the touchscreen's layouts of them (each folder's
@@ -5646,10 +6270,10 @@ def multiplayer_files() -> dict:
 REPLACED_FOLDERS = [f"{MT}/server_settings", f"{MT}/join_game"]
 
 
-# ---------- the mods (port/linux/game/mods.c, docs/mods.md): the main menu's
-# MODS, which opens the list of the mods folder's mods, in their load order,
-# each turned on or off and moved up or down (menu_functions.c's "port mods"
-# functions)
+# ---------- the mods (port/linux/game/mods.c, docs/mods.md): Settings'
+# PROFILES tab's MODS, which opens the list of the mods folder's mods, in
+# their load order, each turned on or off and moved up or down
+# (menu_functions.c's "port mods" functions)
 
 # the redraws' main menu items (svg/shell/main_menu/menu_*.svg): their
 # letters' top and scale, and where their middle is
@@ -5658,12 +6282,11 @@ MENU_ITEM_TOP, MENU_ITEM_SCALE, MENU_ITEM_MIDDLE = 6.57, 0.9037, 130.0
 # capitals are 21.5 high), for the pairs the port's items have: no redraw has
 # these pairs, so each is the sum of a space after the first letter and one
 # before the second, fitted (least squares) to the 53 pairs the redraws' items
-# and headers have (D-I, of the main menu's Credits, gives D's right side)
-MENU_ITEM_SPACES = {"MO": 3.17, "OD": 2.8, "DS": 2.3,
-                    # VR TUTORIAL's: those the redraws have (TU, TO, OR), the others as their neighbours are
-                    # (VR between VE and VI, UT as NT, RI as RN and RU, IA as EA and NA, AL as AD and AI), and
-                    # a word's space as LOAD GAME's D to G, less D's side
-                    "VR": 0.3, "R ": 6.0, " T": 6.0, "TU": 2.12, "UT": 1.66, "TO": 0.75, "OR": 3.0, "RI": 3.25,
+# and headers have. VR TUTORIAL's: those the redraws have (TU, TO, OR), the
+# others as their neighbours are (VR between VE and VI, UT as NT, RI as RN and
+# RU, IA as EA and NA, AL as AD and AI), and a word's space as LOAD GAME's D
+# to G, less D's side
+MENU_ITEM_SPACES = {"VR": 0.3, "R ": 6.0, " T": 6.0, "TU": 2.12, "UT": 1.66, "TO": 0.75, "OR": 3.0, "RI": 3.25,
                     "IA": 1.3, "AL": 1.58}
 # a space's own width (none: the spaces about it are its pairs')
 MENU_ITEM_SPACE_WIDTH = 0.0
@@ -5754,9 +6377,10 @@ def _text_button(name: str, text: str, handlers: list) -> list:
 
 
 def _mods() -> list:
-    """the main menu's MODS and its screen, laid out as the lobby is: on the
-    left two thirds the mods as a resource pack list has them (the one at the
-    top playing over those below it: the load order upside down), a row each
+    """the Mods screen, which Settings' PROFILES tab's MODS opens (OK, Cancel
+    and B go back to Settings), laid out as the lobby is: on the left two
+    thirds the mods as a resource pack list has them (the one at the top
+    playing over those below it: the load order upside down), a row each
     with its status icon, name and ON or OFF; on the right third, in the
     lobby's frame, the mod chosen: its name, what is wrong with it, whether it
     is on and its priority, and what its mod.toml says. A turns the mod chosen
@@ -5764,14 +6388,7 @@ def _mods() -> list:
     it; OK keeps it all (load_order.toml) and plays them, Cancel forgets it
     (menu_functions.c)"""
     base = MODS
-    # (its game data input notes the main menu shown, over which the update
-    # question opens: _update)
-    lines = _widget("main_menu/main_menu_item_mods",
-                    [("type", "text"), ("width", 256), ("height", 33), ("bitmap", "main_menu/menu_mods")],
-                    ['<data input="port update question"/>',
-                     f'<on event="a" open="{base}/mods_screen"/>', f'<on event="start" open="{base}/mods_screen"/>',
-                     '<on event="left_mouse" run="mouse emit accept event"/>'])
-    lines += _widget(f"{base}/mods_screen", [("width", 640), ("height", 480),
+    lines = _widget(f"{base}/mods_screen", [("width", 640), ("height", 480),
                                              ("flags", "pass_unhandled_to_focused_child pause_game"),
                                              ("bitmap", "bitmaps/gradient")],
                      ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
@@ -5941,7 +6558,7 @@ def main() -> None:
     from pathlib import Path
 
     folder = Path(__file__).resolve().parent.parent / "port/assets/menus/ce"
-    for name, lines in [*settings_files().items(), *multiplayer_files().items()]:
+    for name, lines in [*settings_files().items(), *multiplayer_files().items(), *campaign_files().items()]:
         (folder / name).write_text("\n".join(lines))
 
 

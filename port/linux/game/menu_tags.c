@@ -39,6 +39,7 @@ menu gets FRIENDLY FIRE too.
 #include "cache/cache_files.h"
 #include "game/game.h"
 #include "tag_files/tag_groups.h"
+#include "text/font_group.h"
 #include "text/text_group.h"
 #include "rasterizer/xbox/rasterizer_xbox_hardware_bitmaps.h"
 
@@ -80,6 +81,7 @@ char const *pc_menu_function_name(long function_index);
 char const *pc_menu_game_data_input_name(long function_index);
 boolean pc_menu_tag(long tag_index);
 boolean pc_menu_frame_placement(struct bitmap_data const *bitmap, short *x, short *y, short *width, short *height);
+boolean pc_menu_scaled_frame_at(unsigned long address, long width, long height);
 
 /* ---------- constants */
 
@@ -459,7 +461,7 @@ static char const *const port_function_names[] =
 	/* (a new profile's screens: Settings' is then being edited, which the
 	Xbox's leaves to its own screens) */
 	"new campaign decision",
-	/* (the main menu's Mods: menu_functions.c) */
+	/* (the Mods screen, Settings' PROFILES tab's MODS: menu_functions.c) */
 	"port mods init", "port mods close", "port mods toggle", "port mods move up", "port mods move down",
 	"port mods save",
 	/* (the update question, the Steam Frame's and gamescope's: menu_functions.c) */
@@ -469,7 +471,7 @@ static char const *const port_function_names[] =
 	/* (Settings' tabs and pages: menu_functions.c's settings_*) */
 	"port settings begin", "port settings tab", "port settings tab next", "port settings tab previous",
 	"port settings ok", "port settings cancel", "port settings keep", "port settings page cancel",
-	"port settings new profile",
+	"port settings new profile", "port settings profiles",
 	/* (Online's Discord account: menu_functions.c's discord_link and
 	discord_unlink) */
 	"port discord link", "port discord unlink",
@@ -506,6 +508,10 @@ static char const *const port_function_names[] =
 	"port training chapter", "port training open",
 	/* (Controller's Button Remapping: controller_remap_menu.inl) */
 	"port controller bind", "port controller left", "port controller right", "port controller clear",
+	/* (the campaign's screens: campaign_menu.inc) */
+	"port campaign init", "port campaign continue", "port campaign missions", "port campaign missions init",
+	"port campaign previous", "port campaign next", "port campaign tab", "port campaign tab previous",
+	"port campaign tab next", "port campaign choose", "port campaign difficulty init", "port campaign play",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -527,8 +533,8 @@ static char const *const port_game_data_input_names[] =
 	/* (the profile settings' picture: the Xbox's of the button settings,
 	on Gamepad Setup's row) */
 	"port gamepad layout preview",
-	/* (the main menu's Mods; its item notes the main menu shown, for the
-	update question) */
+	/* (the Mods screen's list; the main menu's Quit notes the main menu
+	shown, for the update question) */
 	"port mods update", "port update question",
 	/* (network co-op's pause menu's FRIENDLY FIRE: its text, ON or OFF) */
 	"port coop friendly fire text",
@@ -552,6 +558,8 @@ static char const *const port_game_data_input_names[] =
 	"port map vote update",
 	/* (Basic Training's chapters) */
 	"port training update",
+	/* (the campaign's screens: campaign_menu.inc) */
+	"port campaign update", "port campaign missions update", "port campaign difficulty update",
 };
 
 static struct
@@ -590,6 +598,9 @@ static struct
 	widget's own text's and strings' (NONE: none) */
 	long *widget_tags;
 	long *bitmap_tags;
+	/* the menus' heading font (pc\heading: large_ui's measures, drawn in
+	OpenCE by the high-res text, port/assets/fonts/fonts.json), else NONE */
+	long heading_tag;
 	long *strings_tags;
 	long *text_tags;
 	long *spinner_tags;
@@ -1464,13 +1475,19 @@ static void setting_add(struct halo_menu_widget const *source, long definition_i
 	setting->value_count = spinner_split(source, TRUE, setting->values);
 }
 
-/* a font: large, small, terminal, or the map's by its path */
+/* a font: large, small, terminal, heading (the port's: large where it has
+none), or the map's by its path */
 static long font_tag(char const *font, char const *file, long line)
 {
-	char const *path = !strcmp(font, "large") ? "ui\\large_ui" :
+	char const *path;
+	long index;
+
+	if (!strcmp(font, "heading") && build.heading_tag != NONE)
+		return build.heading_tag;
+	path = !strcmp(font, "large") || !strcmp(font, "heading") ? "ui\\large_ui" :
 		!strcmp(font, "small") ? "ui\\small_ui" :
 		!strcmp(font, "terminal") ? "ui\\interstate" : font;
-	long index = map_tag(FONT_TAG, path, file, line);
+	index = map_tag(FONT_TAG, path, file, line);
 
 	return index == NONE && build.game_map ? build.map_font : index;
 }
@@ -2494,7 +2511,7 @@ void menu_tags_loaded(
 {
 	struct halo_menus const *menus;
 	struct cache_file_tag_instance *instances;
-	long widget_count, own_lists = 0, total, index;
+	long widget_count, own_lists = 0, total, index, large_font;
 	boolean locale;
 
 	boolean game_map = strcmp(map_name, "ui") != 0;
@@ -2537,7 +2554,11 @@ void menu_tags_loaded(
 			problem(menus->widgets[index].file, menus->widgets[index].line, "two widgets are named",
 				menus->widgets[index].name);
 	}
-	total = widget_count + own_lists + menus->string_list_count + menus->bitmap_count +
+	/* (the heading font: a copy of large_ui's tag, which the high-res text
+	knows by its own name, and draws in OpenCE where it is on; the bitmap
+	font's letters, as large_ui's, where it is off) */
+	large_font = tag_loaded(FONT_TAG, "ui\\large_ui");
+	total = (large_font != NONE) + widget_count + own_lists + menus->string_list_count + menus->bitmap_count +
 		(game_map ? PAUSE_PATCH_TAGS : 0);
 	instances = build.failed ? NULL : instances_grow(total, &build.first_index, &build.first_salt);
 	if (!instances)
@@ -2556,6 +2577,18 @@ void menu_tags_loaded(
 		build.strings_tags[index] = next_tag();
 	for (index = 0; index < menus->bitmap_count; index++)
 		build.bitmap_tags[index] = next_tag();
+	build.heading_tag = NONE;
+	if (large_font != NONE)
+	{
+		struct font_header *heading = allocate(sizeof(*heading));
+
+		if (heading)
+		{
+			memcpy(heading, font_definition_get(large_font), sizeof(*heading));
+			build.heading_tag = next_tag();
+			instance_set(instances, FONT_TAG, build.heading_tag, "heading", "", heading);
+		}
+	}
 	/* the tags: the bitmaps and strings first, which the widgets name; the
 	widgets' names in the table before any is built, which they find there */
 	for (index = 0; index < menus->bitmap_count && !build.failed; index++)
@@ -2721,6 +2754,29 @@ boolean pc_menu_frame_placement(
 			*y = menu_tags.placements[index].y;
 			*width = menu_tags.placements[index].width;
 			*height = menu_tags.placements[index].height;
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+/* whether the texture at this address, this size, is a frame of ui.map's
+the menus draw scaled (the campaign's levels' pictures and badges), loaded:
+hud_hires_upscale_at upscales it, as the HUD's sheets without redraws are */
+boolean pc_menu_scaled_frame_at(
+	unsigned long address,
+	long width,
+	long height)
+{
+	long index;
+
+	for (index = 0; index < menu_tags.placement_count; index++)
+	{
+		struct bitmap_data const *bitmap = menu_tags.placements[index].bitmap;
+
+		if (bitmap->base_address && (unsigned long)bitmap->base_address == address && bitmap->width == width &&
+			bitmap->height == height)
+		{
 			return TRUE;
 		}
 	}

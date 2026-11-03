@@ -244,6 +244,17 @@ static const struct config_setting config_settings[] =
 		"The first-person weapon's and hands' field of view, in degrees across\n"
 		"at 16:9 (20 to 150); 0 keeps the weapon's stock view, also when\n"
 		"display.fov widens the world." },
+	{ "display.viewmodel_offset_x", _config_real, "0.0", "HALO_VIEWMODEL_OFFSET_X", _environment_value, _platform_all,
+		"The first-person weapon and hands moved right (negative: left) on\n"
+		"the screen, in centimeters (-20 to 20), for every weapon; 0 keeps them\n"
+		"where the game draws them. Not in VR." },
+	{ "display.viewmodel_offset_y", _config_real, "0.0", "HALO_VIEWMODEL_OFFSET_Y", _environment_value, _platform_all,
+		"The first-person weapon and hands moved up (negative: down), in\n"
+		"centimeters (-20 to 20); 0 keeps them where the game draws them." },
+	{ "display.viewmodel_offset_z", _config_real, "0.0", "HALO_VIEWMODEL_OFFSET_Z", _environment_value, _platform_all,
+		"The first-person weapon and hands moved forward, away from the view\n"
+		"(negative: closer), in centimeters (-20 to 20); 0 keeps them where\n"
+		"the game draws them." },
 	{ "display.viewmodel_visible", _config_boolean, "true", "HALO_VIEWMODEL_VISIBLE", _environment_value, _platform_all,
 		"Draw the first-person weapon, hands and what is attached to them.\n"
 		"Off, they are not drawn; firing, animation, sound and lights go on." },
@@ -364,6 +375,13 @@ static const struct config_setting config_settings[] =
 		"white. The HUD's glows stay as far above it as they are above paper\n"
 		"white; the weapon's displays stay with the scene. No brighter than the\n"
 		"display's peak." },
+	{ "display.gamma", _config_real, "1.0", "HALO_GAMMA", _environment_value, _platform_all,
+		"The picture's gamma, 0.5 to 2.0, as Halo PC's: above 1 brighter (the\n"
+		"dark parts lifted most), below 1 darker; white and black stay. The\n"
+		"whole picture, the HUD and the menus with it, each color channel\n"
+		"raised to one over it as the frame is shown. 1.0 changes nothing and\n"
+		"costs nothing. Not with HDR on an HDR display (paper white is its\n"
+		"brightness), nor in the VR build." },
 	{ "display.astc_textures", _config_string, ASTC_TEXTURES_DEFAULT, "HALO_ASTC_TEXTURES", _environment_value,
 		_platform_android | _platform_guest,
 		"The maps' DXT textures on a GPU that cannot sample them (iPhones, most\n"
@@ -1000,6 +1018,9 @@ static const struct config_setting config_settings[] =
 		"false: the original animations, which freeze the legs and stand a\n"
 		"rider up (the turning, which moves where shots go, stays on in a\n"
 		"network game for every player)." },
+	{ "game.campaign_difficulty", _config_integer, "1", "HALO_CAMPAIGN_DIFFICULTY", _environment_value, _platform_all,
+		"The difficulty Choose Difficulty opens on: the one chosen last (0 Easy,\n"
+		"1 Normal, 2 Heroic, 3 Legendary). The campaign's menus write it." },
 	{ "game.sim_rate", _config_integer, "60", "HALO_SIM_RATE", _environment_value, _platform_all,
 		"The steps a second of what a player feels in their hands: their own\n"
 		"movement and aim, projectiles and thrown items: 30 (as the game was\n"
@@ -1963,6 +1984,12 @@ static const struct config_setting config_settings[] =
 		"A game of this machine alone runs one tick a frame, whatever time has\n"
 		"passed, so that it plays the same every time (tests); game_speed has no\n"
 		"effect. The sound is timed by the frames too, mixed with no device." },
+	{ "debug.fatal_asserts", _config_boolean, "false", "HALO_FATAL_ASSERTS", _environment_set_is_true, _platform_all,
+		"Tests: a failed assertion ends the run, with its reason, place and\n"
+		"return addresses on stderr and in debug.txt, exit status 70 (a\n"
+		"release build otherwise carries on past it, as the retail game did,\n"
+		"and a debug build halts); a warning is counted only. Either way, a\n"
+		"run in which any failed sums them up on stderr when it exits." },
 	{ "debug.exit_after", _config_real, "0.0", "HALO_EXIT_AFTER", _environment_value, _platform_all,
 		"Quit this many seconds after the window opens (without a window, after\n"
 		"the first frame); 0 never." },
@@ -1990,6 +2017,13 @@ static const struct config_setting config_settings[] =
 		"state too, counted as logged from 1, to <log>.<count>.bin (and its first\n"
 		"frame to <log>.<count>.bmp), to find where two runs' game states differ;\n"
 		"0 none." },
+	{ "debug.fresh_memory_fill", _config_string, "\"\"", "HALO_FRESH_MEMORY_FILL", _environment_value, _platform_all,
+		"\"zero\" or \"pattern\" (0xAA): fill what the allocators give out\n"
+		"without clearing it (the game state's and the caches' memory, the\n"
+		"game's malloc and realloc, GlobalAlloc) with that, to find reads of\n"
+		"memory never written: two runs, one of each, compared with\n"
+		"tools/determinism_compare.py, part where one reaches the game; empty\n"
+		"as the game always has (the game's malloc fills with 0xCA)." },
 	{ "debug.frame_time", _config_real, "0.0", "HALO_FRAME_TIME", _environment_value, _platform_all,
 		"Seconds of game time each frame runs, whatever time it took, so that two\n"
 		"runs of the same input run the same frames (the determinism check),\n"
@@ -4523,6 +4557,19 @@ int halo_fixed_step(void)
 	if (fixed_step < 0)
 		fixed_step = config_boolean("debug.fixed_step") != 0;
 	return fixed_step;
+}
+
+int halo_fresh_memory_fill(void)
+{
+	static int fill = -2;
+
+	if (fill == -2)
+	{
+		const char *value = config_string("debug.fresh_memory_fill");
+
+		fill = !strcmp(value, "zero") ? 0x00 : !strcmp(value, "pattern") ? 0xAA : -1;
+	}
+	return fill;
 }
 
 long config_integer(const char *name)

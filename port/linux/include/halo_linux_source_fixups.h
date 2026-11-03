@@ -77,9 +77,19 @@ const char *log_address(const unsigned char *bytes, int length, int port, char *
 /* the port's menus' screen for one of ui.map's, by name, else the name
 (port/linux/game/menu_tags.c) */
 char const *pc_menus_screen(char const *name);
+/* every failed assertion and warning counted by its place, with how many
+times it has failed; then, once it is logged, under debug.fatal_asserts a
+failed assertion ends the run (port/linux/game/assert_report.c; cseries.c) */
+unsigned long assert_report_failed(char const *information, char const *file, long line, unsigned char fatal);
+void assert_report_logged(char const *information, char const *file, long line, unsigned char fatal);
+void assert_report_counts(unsigned long *failed, unsigned long *warned);
 /* debug.fixed_step: a game of this machine alone runs a tick a frame
 (port/linux/src/port_config.c; game_time.c, main.c) */
 int halo_fixed_step(void);
+/* debug.fresh_memory_fill: the byte (0x00, 0xAA) the allocators fill what
+they give out uncleared with, or -1 for the game's own fill
+(port/linux/src/port_config.c; debug_memory.c, xbox_memory.c, xbox_kernel.c) */
+int halo_fresh_memory_fill(void);
 /* the frames' clock, with each frame's time fixed (debug.frame_time,
 debug.fixed_step): whether, and the frames' time since the start in
 milliseconds; and each frame's time, which main.c gives it

@@ -65,7 +65,7 @@ campaign's New Game and difficulty start the game for both.
 
 The update question (the self-updater's, port/linux/src/updater.c, on the
 Steam Frame and under gamescope, where it can show no system dialog):
-"port update question", the main menu's MODS item's game data input, notes
+"port update question", the main menu's QUIT item's game data input, notes
 that the main menu is shown; pc_menu_update_question_open, from the updater
 between frames, then opens main_menu/update/update_screen over it, whose
 UPDATE runs "port update now" (updater_update_now: on the Frame, the game
@@ -751,6 +751,9 @@ struct campaign_level
 	/* finished on Normal, Heroic, Legendary (difficulty_options_small's
 	frames 1 to 3) */
 	boolean finished[3];
+	/* finished on each difficulty, Easy's the first bit (the profile's
+	single_player_map_flags: the campaign's cards, campaign_menu.inc) */
+	byte beaten;
 };
 
 struct campaign_saved_game
@@ -970,6 +973,7 @@ static void campaign_levels_read(struct player_profile const *profile)
 			short marker;
 
 			campaign.levels[level].available |= flags || level == highest_level + 1 || level == 0;
+			campaign.levels[level].beaten |= flags & 0xF;
 			for (marker = 0; marker < 3; marker++)
 				campaign.levels[level].finished[marker] |= (flags >> (marker + 1)) & 1;
 		}
@@ -1761,6 +1765,20 @@ static void menu_cursor_row_show(struct widget_instance *list)
 		row->visible = !named(list, "op_vr_setup", 0);
 }
 
+/* Brightness's Gamma (display.gamma), hidden in the VR build, whose frames
+are never curved (d3d8_device.c's gamma_send) */
+static void gamma_row_show(struct widget_instance *list)
+{
+#ifdef HALO_VR
+	struct widget_instance *row = named(list, "op_gamma", 0);
+
+	if (row)
+		row->visible = FALSE;
+#else
+	(void)list;
+#endif
+}
+
 /* Video's Frame Rate Limit, shown while VSync shows OFF (Defaults too):
 with vsync on, the display paces the frames and the limit does nothing;
 the rows below close the gap (settings_rows_pack) */
@@ -1962,7 +1980,10 @@ settings ok") writes every change kept, saves the profile's and applies the
 window's. A page a row opens writes them too at its OK ("port settings
 keep": an OK saves, wherever it is), and its Cancel ("port settings page
 cancel") puts back what was kept when it opened. "port settings new profile" (CREATE PROFILE) asks for a new
-profile's name, as the main menu's items do.
+profile's name, as the main menu's items do. "port settings profiles"
+(MANAGE PROFILES, before the profile manager opens) writes every change
+kept, as an OK does, and the PROFILES tab, shown again, edits player 1's
+profile then: the one chosen there, made or left after a delete.
 
 "port settings page" (a tab's or a page's list, each frame) shows the rows
 that are for this game (settings_rows_show), packs them at the steps
@@ -2005,11 +2026,12 @@ static struct
 
 /* the rows hidden in a game (not on the main menu): those that would drop
 it or are the main menu's (internet play, the router, the clipboard, the
-updates), and those whose screens are ui.map's (the name's keyboard, the
-colours' pictures) or make a profile */
+updates, the profiles, the mods), and those whose screens are ui.map's (the
+name's keyboard, the colours' pictures) or make a profile */
 static char const *const settings_in_game_hidden[] =
 {
 	"op_online", "op_allow_upnp", "op_join_from_clipboard", "op_auto", "op_name", "op_color", "op_create_profile",
+	"op_profiles", "op_mods",
 };
 
 static struct
@@ -2018,7 +2040,9 @@ static struct
 	struct widget_instance *screen;
 	long screen_tag;
 	long screen_time;
-} settings_page = { NULL, NONE, 0 };
+	/* MANAGE PROFILES opened: the profile to edit again, as a tab shows */
+	boolean profiles_opened;
+} settings_page = { NULL, NONE, 0, FALSE };
 
 static short settings_tab_of(struct widget_instance const *screen)
 {
@@ -2176,6 +2200,15 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 	{
 		*result = settings_profile_new(widget, event, widget_deleted);
 	}
+	else if (!strcmp(name, "profiles"))
+	{
+		/* (MANAGE PROFILES: the profile manager may change player 1's
+		profile, or delete the one edited, so the changes are written to
+		this one first) */
+		settings_each(screen, setting_stash);
+		settings_pending_write(TRUE);
+		settings_page.profiles_opened = TRUE;
+	}
 	else
 	{
 		return FALSE;
@@ -2184,12 +2217,12 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 }
 
 /* whether the row sets one of the profile's settings ("profile.<field>"),
-or opens what is the profile's (its name, its colour) */
+or opens what is the profile's (its name, its colour, the other profiles) */
 static boolean settings_row_profile(struct widget_instance *row)
 {
 	struct widget_instance *child;
 
-	if (!strcmp(row->name, "op_name") || !strcmp(row->name, "op_color"))
+	if (!strcmp(row->name, "op_name") || !strcmp(row->name, "op_color") || !strcmp(row->name, "op_profiles"))
 		return TRUE;
 	for (child = row->child; child; child = child->next)
 	{
@@ -2994,12 +3027,21 @@ static void settings_page_update(struct widget_instance *list)
 		settings_page.screen_time = screen->creation_time;
 		if (tab == NONE)
 			settings_snapshot = settings_pending;
+		/* (back from the profile manager: player 1's profile edited, the
+		one chosen there; none, if every profile was deleted) */
+		if (tab != NONE && settings_page.profiles_opened)
+		{
+			settings_page.profiles_opened = FALSE;
+			if (!player_ui_get_edit_player_profile())
+				pc_menu_profile_edit_begin();
+		}
 	}
 	video_rows_show(list);
 	refresh_rate_row_show(list);
 	hud_button_style_row_show(list);
 	max_fps_row_show(list);
 	menu_cursor_row_show(list);
+	gamma_row_show(list);
 	settings_rows_show(list);
 	discord_account_show(list);
 	hdr_display_show(list);
@@ -4158,7 +4200,7 @@ static struct
 	unsigned long main_menu_generation;
 } update_question = { FALSE, NONE, 0 };
 
-/* "port update question": the MODS item, drawn on the main menu */
+/* "port update question": the QUIT item, drawn on the main menu */
 static void update_question_note(struct widget_instance *widget)
 {
 	struct widget_instance *screen = widget;
@@ -4590,8 +4632,13 @@ static struct
 	{ "op_fov", "display.fov", 80.0, 150.0, 5.0, 20.0, 150.0, FALSE, SLIDER_STOPS(settings_fov_stops) },
 	{ "op_viewmodel_fov", "display.viewmodel_fov", 80.0, 150.0, 5.0, 20.0, 150.0, FALSE,
 		SLIDER_STOPS(settings_fov_stops) },
+	{ "op_viewmodel_offset_x", "display.viewmodel_offset_x", -10.0, 10.0, 0.5, -20.0, 20.0, FALSE, NULL, 0 },
+	{ "op_viewmodel_offset_y", "display.viewmodel_offset_y", -10.0, 10.0, 0.5, -20.0, 20.0, FALSE, NULL, 0 },
+	{ "op_viewmodel_offset_z", "display.viewmodel_offset_z", -10.0, 10.0, 0.5, -20.0, 20.0, FALSE, NULL, 0 },
 	{ "op_vehicle_fov", "display.vehicle_fov", 80.0, 150.0, 5.0, 20.0, 150.0, FALSE,
 		SLIDER_STOPS(settings_vehicle_fov_stops) },
+	/* (tools/port_settings.py's GAMMA) */
+	{ "op_gamma", "display.gamma", 0.5, 2.0, 0.05, 0.5, 2.0, FALSE, NULL, 0 },
 };
 
 /* the track and the thumb, as tools/port_settings.py lays them out
@@ -4771,6 +4818,14 @@ static double settings_slider_fraction(short slider, double value)
 	return (value - settings_sliders[slider].least) / (settings_sliders[slider].most - settings_sliders[slider].least);
 }
 
+/* a value to the nearest step, either side of 0 */
+static double settings_slider_round(double value, double step)
+{
+	double steps = value / step;
+
+	return (double)(long)(steps < 0.0 ? steps - 0.5 : steps + 0.5) * step;
+}
+
 /* the value at a place on the track (its range, in steps) */
 static void settings_slider_place(short slider, struct widget_instance *track, short x)
 {
@@ -4788,10 +4843,11 @@ static void settings_slider_place(short slider, struct widget_instance *track, s
 			settings_sliders[slider].stops[(short)(PIN(fraction, 0.0, 1.0) * (count - 1) + 0.5)].value);
 		return;
 	}
-	settings_slider_set(slider, PIN((double)(long)(value / step + 0.5) * step, least, most));
+	settings_slider_set(slider, PIN(settings_slider_round(value, step), least, most));
 }
 
-/* (the number typed: kept if it is one, past 0 or a word's; or a word) */
+/* (the number typed: kept if it is one, past 0 (or in a range that takes 0
+and below), or a word's; or a word) */
 static void settings_slider_typed(char const *text)
 {
 	short slider = settings_slider.typed;
@@ -4801,7 +4857,8 @@ static void settings_slider_typed(char const *text)
 	settings_slider.typed = NONE;
 	if (slider == NONE)
 		return;
-	if (text_is_number(text, &value) && (value > 0.0 || settings_slider_word(slider, value) != NONE))
+	if (text_is_number(text, &value) && (value > 0.0 || settings_sliders[slider].typed_least <= 0.0 ||
+		settings_slider_word(slider, value) != NONE))
 	{
 		settings_slider_set(slider, value);
 		return;
@@ -4857,7 +4914,7 @@ static boolean settings_slider_function(char const *name, struct widget_instance
 			ui_play_audio_feedback_sound(SOUND_CURSOR);
 			return TRUE;
 		}
-		value = (double)(long)(value / step + 0.5) * step + (!strcmp(name, "left") ? -step : step);
+		value = settings_slider_round(value, step) + (!strcmp(name, "left") ? -step : step);
 		settings_slider_set(slider, PIN(value, settings_sliders[slider].least, settings_sliders[slider].most));
 		ui_play_audio_feedback_sound(SOUND_CURSOR);
 		return TRUE;
@@ -10927,6 +10984,8 @@ static void gametype_engine_name(struct widget_instance *text_box)
 #include "matchmaking_menu.inc"
 #include "friends_menu.inc"
 #include "lobby_menu.inc"
+/* (the campaign's screens: the Campaign menu, Choose Mission, Choose Difficulty) */
+#include "campaign_menu.inc"
 
 /* ---------- Host Controls: the pause menu's HOST CONTROLS, the host's */
 
@@ -10966,6 +11025,8 @@ boolean pc_menu_event_function_invoke(
 			return FALSE;
 		if (!strncmp(name, "port controller ", 16))
 			return pad_editor_event(widget, name);
+		if (!strncmp(name, "port campaign ", 14))
+			return campaign_menu_event(widget, name + 14, controller);
 		if (!strcmp(name, "main menu quit game"))
 		{
 			platform_request_quit();
@@ -11523,7 +11584,9 @@ void pc_menu_game_data_function_invoke(
 	/* (a text field whose screen has gone: let go of) */
 	if (text_field.row && system_milliseconds() - text_field_shown_time > 500)
 		text_field_end(FALSE);
-	if (!strcmp(name, "solo map list update"))
+	if (!strncmp(name, "port campaign ", 14))
+		campaign_menu_update(widget, name + 14);
+	else if (!strcmp(name, "solo map list update"))
 		level_list_update(widget);
 	else if (!strcmp(name, "mp map list update"))
 		map_list_update(widget);
