@@ -19,6 +19,9 @@ script's camera; the HUD is show_hud's.
 #include "objects/objects.h"
 #include "tag_files/tag_groups.h"
 #include "units/units.h"
+#include "ai/ai_scenario_definitions.h"
+#include "scenario/scenario.h"
+#include "scenario/scenario_definitions.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -199,4 +202,79 @@ void camera_pose_place_object(char const *line)
 		unit_scripting_enter_vehicle(object_index, placed_objects[placed_object_count - 1], seat);
 	}
 	placed_objects[placed_object_count++] = object_index;
+}
+
+/* ---------- the scenario's places in the loaded structure (debug_scenario_places) */
+
+static void camera_pose_write_place(FILE *file, char const *kind, real_point3d const *position,
+	float yaw, float pitch, float roll, float field_of_view)
+{
+	struct location location;
+
+	scenario_location_from_point(&location, position);
+	if (location.cluster_index != NONE)
+	{
+		fprintf(file, "%s %.3f %.3f %.3f %.2f %.2f %.2f %.2f\n", kind, position->x, position->y, position->z,
+			yaw / DEGREES_TO_RADIANS, pitch / DEGREES_TO_RADIANS, roll / DEGREES_TO_RADIANS,
+			field_of_view / DEGREES_TO_RADIANS);
+	}
+}
+
+void camera_pose_write_places(char const *path)
+{
+	struct scenario *scenario = global_scenario_get();
+	FILE *file;
+	long i, j, k;
+
+	if (!scenario || !path || !*path || !(file = fopen(path, "w")))
+	{
+		console_printf(FALSE, "debug_scenario_places \"<file>\": no scenario, or the file not written");
+		return;
+	}
+	fprintf(file, "structure %d of %ld\n", global_structure_bsp_index_get(), scenario->structure_bsp_references.count);
+	for (i = 0; i < scenario->players.count && scenario->players.address; i++)
+	{
+		struct player_starting_location *location = TAG_BLOCK_GET_ELEMENT(&scenario->players, i, struct player_starting_location);
+
+		camera_pose_write_place(file, "player", &location->position, location->facing, 0.0f, 0.0f, 0.0f);
+	}
+	for (i = 0; i < scenario->cutscene_flags.count && scenario->cutscene_flags.address; i++)
+	{
+		struct scenario_cutscene_flag *flag = TAG_BLOCK_GET_ELEMENT(&scenario->cutscene_flags, i, struct scenario_cutscene_flag);
+
+		camera_pose_write_place(file, "flag", &flag->position, flag->facing.yaw, flag->facing.pitch, 0.0f, 0.0f);
+	}
+	for (i = 0; i < scenario->cutscene_camera_points.count && scenario->cutscene_camera_points.address; i++)
+	{
+		struct scenario_cutscene_camera_point *point = TAG_BLOCK_GET_ELEMENT(&scenario->cutscene_camera_points, i,
+			struct scenario_cutscene_camera_point);
+
+		camera_pose_write_place(file, "camera", &point->position, point->orientation.yaw, point->orientation.pitch,
+			point->orientation.roll, point->field_of_view);
+	}
+	for (i = 0; i < scenario->ai_encounters.count && scenario->ai_encounters.address; i++)
+	{
+		struct encounter_definition *encounter = TAG_BLOCK_GET_ELEMENT(&scenario->ai_encounters, i, struct encounter_definition);
+
+		for (j = 0; j < encounter->firing_positions.count && encounter->firing_positions.address; j++)
+		{
+			struct firing_position_definition *position = TAG_BLOCK_GET_ELEMENT(&encounter->firing_positions, j,
+				struct firing_position_definition);
+
+			camera_pose_write_place(file, "firing", &position->position, 0.0f, 0.0f, 0.0f, 0.0f);
+		}
+		for (j = 0; j < encounter->squads.count && encounter->squads.address; j++)
+		{
+			struct squad_definition *squad = TAG_BLOCK_GET_ELEMENT(&encounter->squads, j, struct squad_definition);
+
+			for (k = 0; k < squad->starting_locations.count && squad->starting_locations.address; k++)
+			{
+				struct actor_starting_location *location = TAG_BLOCK_GET_ELEMENT(&squad->starting_locations, k,
+					struct actor_starting_location);
+
+				camera_pose_write_place(file, "actor", &location->position, location->facing, 0.0f, 0.0f, 0.0f);
+			}
+		}
+	}
+	fclose(file);
 }

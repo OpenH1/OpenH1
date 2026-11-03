@@ -3388,7 +3388,7 @@ typedef void (*hs_token_enumerator)(
 
 struct hs_function_table_storage
 {
-	struct hs_function_definition const *functions[418 + 11];
+	struct hs_function_definition const *functions[418 + 12];
 	struct profile_section profile;
 	hs_token_enumerator token_enumerators[18];
 };
@@ -11867,7 +11867,25 @@ static struct hs_function_definition_with_1_parameter const debug_object_place_d
 	},
 };
 
-long const hs_function_table_count= 418 + 11;
+/* port: the scenario's places, for a picture's search (port/linux/game/camera_pose.c) */
+HS_EVALUATE_VOID_STRING(hs_debug_scenario_places_evaluate, camera_pose_write_places)
+
+static struct hs_function_definition_with_1_parameter const debug_scenario_places_definition=
+{
+	{
+		_hs_type_void,
+		0,
+		"debug_scenario_places",
+		hs_macro_function_parse,
+		hs_debug_scenario_places_evaluate,
+		"writes the scenario's places in the loaded structure to a file.",
+		NULL,
+		1,
+		{ _hs_type_string },
+	},
+};
+
+long const hs_function_table_count= 418 + 12;
 
 struct hs_enum_definition const hs_enum_table[]=
 {
@@ -12310,6 +12328,7 @@ struct hs_function_table_storage hs_function_table=
 		&debug_structure_culling_definition.definition, /* port: local culling debug view */
 		&debug_camera_set_definition.definition, /* port: the camera at an exact place */
 		&debug_object_place_definition.definition, /* port: an object at an exact place */
+		&debug_scenario_places_definition.definition, /* port: the scenario's places */
 	},
 	{
 		"hs_update",
@@ -12828,6 +12847,7 @@ static boolean const hs_function_allowed_in_maps[]=
 	/* port: the camera at an exact place */
 	FALSE, /* debug_camera_set */
 	FALSE, /* debug_object_place */
+	FALSE, /* debug_scenario_places */
 };
 typedef char verify_hs_function_allowed_in_maps_size[
 	NUMBEROF(hs_function_allowed_in_maps) == NUMBEROF(hs_function_table.functions) ? 1 : -1];

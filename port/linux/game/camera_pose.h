@@ -18,4 +18,9 @@ seat <label>"); either with "color <r> <g> <b>" (0 to 1: its change
 colours). "clear" deletes those placed */
 void camera_pose_place_object(char const *line);
 
+/* the scenario's places (players' starts, cutscene flags and cameras, the
+AI's firing positions and starts) in the loaded structure, written to a
+file: "<kind> <x> <y> <z> <yaw> <pitch> <roll> <field of view>" (degrees) */
+void camera_pose_write_places(char const *path);
+
 #endif
