@@ -15625,6 +15625,9 @@ boolean hs_compile_and_evaluate(
 	boolean result;
 
 	terminal_command_running = TRUE;
+	/* port: a stopped world's time does not pass, so the update never frees
+	the console's finished commands' nodes; freed here first (hs_runtime.c) */
+	hs_runtime_node_gc_idle();
 	result = hs_compile_and_evaluate_command(expression);
 	terminal_command_running = was_running;
 	return result;
