@@ -68,7 +68,7 @@ def main():
     game = Game(out / "run_final", found["scenario"], width, height, port=arguments.port)
     try:
         game.connect()
-        game.wait_frames(arguments.wait_frames)
+        game.wait_frames(arguments.wait_frames, timeout=600)
         game.prepare_scene()
         load = time.time() - t0
         t = time.time()
