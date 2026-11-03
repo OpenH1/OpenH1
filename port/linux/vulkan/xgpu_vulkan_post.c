@@ -719,15 +719,17 @@ after them, loading what it had drawn):
   distances, none where the mask leaves the pixel. */
 
 /* each quality's: the target's pixels to the occlusion's, the slices, the
-steps each side, the radius in world units, the strength and the power */
+steps each side, the radius in world units, the strength and the power,
+and the level's detail's radius (about a lightmap texel: finer creases than
+its lightmap holds) and strength */
 static const struct
 {
 	uint32_t scale;
-	float slices, steps, radius, strength, power;
+	float slices, steps, radius, strength, power, detail_radius, detail_strength;
 } occlusion_presets[2] =
 {
-	{ 2, 2.0f, 4.0f, 0.5f, 0.5f, 1.0f },
-	{ 2, 2.0f, 4.0f, 0.5f, 1.0f, 1.5f },
+	{ 2, 2.0f, 4.0f, 0.5f, 0.5f, 1.0f, 0.15f, 0.5f },
+	{ 2, 2.0f, 4.0f, 0.5f, 1.0f, 1.5f, 0.15f, 1.0f },
 };
 
 /* the pipelines' values of xgpu_backend.h's (the key's): XGPU_COMPARE_
@@ -993,6 +995,8 @@ void xgpu_vulkan_post_ambient_occlusion(struct xgpu_vulkan_image *target, struct
 	values.sampling[1] = occlusion_presets[preset].steps;
 	values.sampling[2] = occlusion_presets[preset].power;
 	values.sampling[3] = (float)scale;
+	values.hdr[0] = occlusion_presets[preset].detail_radius;
+	values.hdr[1] = occlusion_presets[preset].detail_strength;
 
 	occlusion_intermediate_description(XGPU_VULKAN_POST_OCCLUSION_DEPTH, &pipeline);
 	occlusion_draw(&pipeline, occlusion.distances, NULL, rectangle, depth_texture, NULL, NULL, &values);

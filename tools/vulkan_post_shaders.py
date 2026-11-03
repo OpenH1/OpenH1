@@ -247,7 +247,8 @@ ROTATE_SOURCE = (
 # y scales and offsets; occlusion, the camera's near and far planes, the
 # radius (world units) and the strength; sampling, the slices, the steps
 # each side, the power and the target's pixels to the occlusion's (1 or 2),
-# or the blur's direction (xy). The mask (the stencil's bits made a
+# or the blur's direction (xy); hdr, the level's detail (finer than its
+# lightmap's texels): its radius (world units) and strength. The mask (the stencil's bits made a
 # texture): red an object's pixel, green a pixel the occlusion leaves (the
 # first-person weapon's, a self-illuminated surface's).
 OCCLUSION_UNIFORMS = (
@@ -343,6 +344,7 @@ OCCLUSION_SOURCE = (
     "\tfloat falloff_multiply = -1.0 / falloff_range;\n"
     "\tfloat falloff_add = (radius - falloff_range) / falloff_range + 1.0;\n"
     "\tint slices = int(sampling.x), steps = int(sampling.y);\n"
+    "\tfloat detail_screen = hdr.x * 0.5 * (bounds.z - bounds.x) * camera.x / centre.z;\n"
     "\tfloat slice_noise = noise(texel), step_noise = noise(texel.yx + ivec2(1, 2));\n"
     "\tfloat visibility = 0.0, unoccluded = 0.0;\n"
     "\tfor (int slice = 0; slice < slices; slice++)\n"
@@ -378,6 +380,21 @@ OCCLUSION_SOURCE = (
     "\t\t\t}\n"
     "\t\t\t/* (its height over the plane made the slice's angle: exact for a\n"
     "\t\t\tsample in the slice, whose normal there is the projected one) */\n"
+    "\t\t\trise0 = max(rise0, weight0 * asin(clamp(dot(to0, normal) / (length0 * projected_length), 0.0, 1.0)));\n"
+    "\t\t\trise1 = max(rise1, weight1 * asin(clamp(dot(to1, normal) / (length1 * projected_length), 0.0, 1.0)));\n"
+    "\t\t}\n"
+    "\t\t/* (the level's creases finer than its lightmap's texels, which it does\n"
+    "\t\tnot hold: two samples each side within the detail's radius, of anything,\n"
+    "\t\tfalling off to none at it, at the detail's strength) */\n"
+    "\t\tfor (int taken = 0; taken < 2 && object < 0.5 && detail_screen >= 1.0; taken++)\n"
+    "\t\t{\n"
+    "\t\t\tivec2 offset = ivec2(round(omega * max((float(taken) + step_noise) * 0.5 * detail_screen,\n"
+    "\t\t\t\tfloat(taken) + 1.0)));\n"
+    "\t\t\tvec3 to0 = position_at(texel + offset) - centre;\n"
+    "\t\t\tvec3 to1 = position_at(texel - offset) - centre;\n"
+    "\t\t\tfloat length0 = max(length(to0), 1e-5), length1 = max(length(to1), 1e-5);\n"
+    "\t\t\tfloat weight0 = hdr.y * clamp(1.0 - length0 / hdr.x, 0.0, 1.0);\n"
+    "\t\t\tfloat weight1 = hdr.y * clamp(1.0 - length1 / hdr.x, 0.0, 1.0);\n"
     "\t\t\trise0 = max(rise0, weight0 * asin(clamp(dot(to0, normal) / (length0 * projected_length), 0.0, 1.0)));\n"
     "\t\t\trise1 = max(rise1, weight1 * asin(clamp(dot(to1, normal) / (length1 * projected_length), 0.0, 1.0)));\n"
     "\t\t}\n"

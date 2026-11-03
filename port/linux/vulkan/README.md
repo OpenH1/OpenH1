@@ -426,7 +426,9 @@ the first-person weapon's is the game's bit 0. The record
   directions see unoccluded, so that a flat surface is exactly 1. An
   object's pixel (one ambient sample lights it) counts every sample; the
   level's (its radiosity lightmap holds its own occlusion) only objects',
-  so that no corner is darkened twice;
+  so that no corner is darkened twice, but for its creases finer than the
+  lightmap's texels (a block's rim on the floor): two more samples each
+  side within 0.15 world units, of anything, falling off to none there;
 - a blur along x and then y, nine taps weighted by their distances'
   nearness, none across an object's edge;
 - a draw over the target multiplying its colour (not its alpha), filtered

@@ -388,16 +388,17 @@ the target's colour. Each is a pass of the backend's: the target's pass
 ends and begins again after them. A multisampled target has none. */
 
 /* each quality's: the target's pixels to the occlusion's, the slices, the
-steps each side, the radius in world units, the strength and the power (the
-Vulkan backend's) */
+steps each side, the radius in world units, the strength and the power,
+and the level's detail's radius (about a lightmap texel: finer creases than
+its lightmap holds) and strength (the Vulkan backend's) */
 static const struct
 {
 	uint32_t scale;
-	float slices, steps, radius, strength, power;
+	float slices, steps, radius, strength, power, detail_radius, detail_strength;
 } occlusion_presets[2] =
 {
-	{ 2, 2.0f, 4.0f, 0.5f, 0.5f, 1.0f },
-	{ 2, 2.0f, 4.0f, 0.5f, 1.0f, 1.5f },
+	{ 2, 2.0f, 4.0f, 0.5f, 0.5f, 1.0f, 0.15f, 0.5f },
+	{ 2, 2.0f, 4.0f, 0.5f, 1.0f, 1.5f, 0.15f, 1.0f },
 };
 
 enum
@@ -593,6 +594,8 @@ int xgpu_metal_post_ambient_occlusion(uint32_t target, uint8_t format, uint32_t 
 	values.sampling[1] = occlusion_presets[preset].steps;
 	values.sampling[2] = occlusion_presets[preset].power;
 	values.sampling[3] = (float)scale;
+	values.hdr[0] = occlusion_presets[preset].detail_radius;
+	values.hdr[1] = occlusion_presets[preset].detail_strength;
 
 	occlusion_pipeline(OCCLUSION_INTERMEDIATE, XGPU_METAL_POST_OCCLUSION_DEPTH, 0, 0, &pipeline);
 	occlusion_draw(&pipeline, occlusion.distances, 0, rectangle, depth, 0, 0, &values);
