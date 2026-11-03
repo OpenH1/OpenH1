@@ -185,7 +185,7 @@ class Game:
 
     def prepare_scene(self):
         """no HUD, no console text, no AI, the player's body gone"""
-        for line in ("terminal_render 0", "show_hud 0", "ai_erase_all", "cinematic_show_letterbox 0",
+        for line in ("terminal_render 0", "show_hud 0", "show_hud_help_text 0", "hud_clear_messages", "ai_erase_all", "cinematic_show_letterbox 0",
                      "object_destroy (unit (list_get (players) 0))", "game_speed 0"):
             self.command(line, frames=2)
         # (the first camera set takes the script's camera: a frame later)

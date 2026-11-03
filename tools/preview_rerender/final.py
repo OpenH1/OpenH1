@@ -73,6 +73,9 @@ def main():
         if found.get("bsp"):
             game.command("switch_bsp %d" % found["bsp"], frames=30)
             game.render((0, 0, 0, 0, 0, 0, 50), settle=4)
+        # (a picture's own console lines: the map's scripted state put back)
+        for line in found.get("prepare", []):
+            print("prepare:", line, game.command(line, frames=3).strip())
         game.place_objects(found.get("objects", []))
         load = time.time() - t0
         t = time.time()

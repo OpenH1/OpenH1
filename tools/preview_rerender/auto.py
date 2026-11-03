@@ -24,7 +24,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 import view as rr_view  # noqa: E402
 import search as S  # noqa: E402
 
-EYE = 0.62  # (a standing player's eye above the ground, world units)
+EYE = 0.62
+# (the game halts on a field of view past 90 degrees across at 4:3: 72.9 tall)
+VFOV_MAX = 72.0  # (a standing player's eye above the ground, world units)
 
 
 def read_places(path):
@@ -83,27 +85,50 @@ def main():
 
     from game import Game
     t0 = time.time()
-    game = Game(out / "run", a.scenario, *S.WINDOW, port=a.port)
+    G = [None]
     current_bsp = [0]
+    loaded_bsp = [0]
+    starts_made = [0]
+
+    def start():
+        """the game started afresh (at the scenario's first structure)"""
+        if G[0] is not None:
+            G[0].close()
+        G[0] = Game(out / "run", a.scenario, *S.WINDOW, port=a.port + 2 * starts_made[0])
+        starts_made[0] += 1
+        G[0].connect()
+        G[0].wait_frames(a.wait_frames, timeout=600)
+        G[0].prepare_scene()
+        for line in a.prepare:
+            say("prepare:", line, G[0].command(line, frames=3).strip())
+        current_bsp[0] = loaded_bsp[0]
 
     def to_bsp(b):
+        """the structure b loaded: switched to once from the first, else the
+        game started again (switching to and fro used up the device groups,
+        and the game halted)"""
+        if b == current_bsp[0]:
+            return
+        if current_bsp[0] != loaded_bsp[0]:
+            start()
         if b != current_bsp[0]:
-            game.command("switch_bsp %d" % b, frames=30)
+            G[0].command("switch_bsp %d" % b, frames=30)
             current_bsp[0] = b
-            game.render((0, 0, 0, 0, 0, 0, 50), settle=4)
+            G[0].render((0, 0, 0, 0, 0, 0, 50), settle=4)
+
+    class _Game:
+        def __getattr__(self, name):
+            return getattr(G[0], name)
+    game = _Game()
 
     try:
-        game.connect()
-        game.wait_frames(a.wait_frames, timeout=600)
-        game.prepare_scene()
-        for line in a.prepare:
-            say("prepare:", line, game.command(line, frames=3).strip())
+        start()
         timings["load_seconds"] = time.time() - t0
 
         # ----- the places, every structure
         game.command('debug_scenario_places "places_0.txt"', frames=4)
         first, count, _ = read_places(out / "run" / "places_0.txt")
-        current_bsp[0] = first
+        current_bsp[0] = loaded_bsp[0] = first
         bsps = a.bsps if a.bsps is not None else list(range(count))
         places = []  # (bsp, x, y, z)
         cache = out / "places.json"
@@ -191,6 +216,7 @@ def main():
         def evaluate(params):
             nonlocal renders
             x, y, z, yaw, pitch, roll, vfov, aspect = params
+            vfov = min(vfov, VFOV_MAX)
             frame = game.render((x, y, z, yaw, pitch, roll, vfov))
             renders += 1
             picture = S.frame_to_picture(frame, aspect, S.PICTURE)
@@ -210,7 +236,7 @@ def main():
             x = [p[1], p[2], p[3], o[0], o[1], 0.0, o[2], S.PICTURE[0] / S.PICTURE[1]]
             scale = np.array([1.2, 1.2, 0.6, 4, 3, 2, 5, 0.06])
             lo = [None, None, None, None, -30 - x[4], -15, 15 - x[6], 1.12 - x[7]]
-            hi = [None, None, None, None, 30 - x[4], 15, 80 - x[6], 1.42 - x[7]]
+            hi = [None, None, None, None, 30 - x[4], 15, VFOV_MAX - x[6], 1.42 - x[7]]
             es = cma.CMAEvolutionStrategy(np.zeros(8), 1.0, {
                 "CMA_stds": scale, "bounds": [lo, hi], "maxfevals": a.evals, "popsize": 12,
                 "verbose": -9, "seed": 1})
@@ -253,6 +279,7 @@ def main():
         timings["gpu_lock_seconds"] = game.lock_held
 
         x, y, z, yaw, pitch, roll, vfov, aspect = [float(v) for v in best[1]]
+        vfov = min(vfov, VFOV_MAX)
         with game.burst():
             frame = game.render((x, y, z, yaw, pitch, roll, vfov), settle=3)
         picture = S.frame_to_picture(frame, aspect, S.PICTURE)

@@ -47,9 +47,10 @@ void camera_pose_set(char const *pose)
 		return;
 	}
 	if (!pose || sscanf(pose, "%f %f %f %f %f %f %f", &x, &y, &z, &yaw, &pitch, &roll, &field_of_view) != 7 ||
-		field_of_view <= 0.0f || field_of_view >= 180.0f)
+		field_of_view <= 0.0f || field_of_view >= 90.0f)
 	{
-		console_printf(FALSE, "debug_camera_set \"<x> <y> <z> <yaw> <pitch> <roll> <field of view>\" (degrees), or \"off\"");
+		/* (the script's camera halts the game past 90 degrees: camera_scripting.c) */
+		console_printf(FALSE, "debug_camera_set \"<x> <y> <z> <yaw> <pitch> <roll> <field of view under 90>\" (degrees), or \"off\"");
 		return;
 	}
 	cy = cosf(yaw * DEGREES_TO_RADIANS);
