@@ -73,7 +73,7 @@ A probe's line:
 ```json
 {"ok":true,"name":"OpenCE Server","map":"bloodgulch","gametype":"ctf","players":5,"max_players":16,
  "teams":true,"in_progress":true,"open":true,"dedicated":true,"network_version":38,"kind":0,
- "tick_rate":30,"openh1_version":0}
+ "tick_rate":30,"openh1_version":0,"delta":true}
 ```
 
 `gametype` is the game engine's name (`ctf`, `slayer`, `oddball`, `king`,
@@ -82,8 +82,10 @@ none), `open` whether it takes players now. `network_version` is the
 version the game advertises: OpenCE's network version for a Legacy game and
 an OpenH1 game that OpenCE players join too, and an OpenH1 game's protocol
 version with its top bit set (`0x8000`) for one that only OpenH1 players
-join. `tick_rate` is the game's (30 for a Legacy game) and `openh1_version`
-the OpenH1 protocol version of an OpenH1 game (0 for a Legacy game).
+join. `tick_rate` is the game's (30 for a Legacy game), `openh1_version`
+the OpenH1 protocol version of an OpenH1 game (0 for a Legacy game), and
+`delta` whether its host speaks ChupathingyCE's Delta Peer (the tag at its
+advertisement's tail: `port/linux/NETCODE.md`, "Delta Peer").
 
 The release has a `halo-server` script beside `halo`, which runs
 `halo --server` with its arguments.

@@ -252,6 +252,7 @@ symbols in this file:
 #include "network_standard.h" /* port: port/linux/game/network_standard.c */
 #include "network_host_controls.h" /* port: port/linux/game/network_host_controls.c */
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
+#include "delta_peer_game.h" /* port: port/linux/game/delta_peer_game.c */
 #include "bungie_net/common/message_header.h"
 #include "bungie_net/network/transport.h"
 #include "bungie_net/network/transport_endpoint_winsock.h"
@@ -620,6 +621,8 @@ static void network_game_server_clean_name(
 	long count,
 	wchar_t const *default_name)
 {
+	long end;
+
 	if (!player_name_clean(name, count))
 	{
 		long index;
@@ -628,6 +631,14 @@ static void network_game_server_clean_name(
 			name[index] = default_name[index];
 		name[index] = 0;
 	}
+	/* port: and nothing kept past its end, which no machine reads (a
+	ChupathingyCE client's join mark to a host that speaks Delta Peer is
+	there: port/linux/game/delta_peer_game.c), so that the game record
+	carries none of it on */
+	for (end = 0; end < count && name[end]; end++)
+		;
+	for (; end < count; end++)
+		name[end] = 0;
 }
 
 /* port: a name as the host's ban command reads it: in ASCII
@@ -1952,6 +1963,10 @@ static boolean network_game_server_handle_message_client_broadcast_game_search(
 				&game->variant_options);
 			/* (and its bots, which OpenCE does not read) */
 			advertisement.reserved[HALO_PORT_ADVERTISED_BOTS_OFFSET] = (byte)MIN(bots, 255);
+			/* port: (and, at the bytes' tail, the Delta tag while this host
+			speaks Delta Peer in a game OpenCE joins, which OpenCE leaves and
+			ignores: port/linux/game/delta_peer_game.c) */
+			delta_peer_game_advertise(advertisement.reserved, sizeof(advertisement.reserved));
 			/* (open to joins: not while the machines load the game, nor
 			once it is over, nor in progress when no player can join it) */
 			if (network_game_server_get_state(server, NULL) == _network_game_server_state_ingame

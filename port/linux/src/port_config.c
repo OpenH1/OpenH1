@@ -1400,6 +1400,13 @@ static const struct config_setting config_settings[] =
 		"download it (and the resource maps it needs) from the game's players\n"
 		"into custom_maps, if its host shares it (network.map_share); false\n"
 		"leaves the game, saying which map is missing." },
+	{ "network.delta_peer", _config_boolean, "true", "HALO_NET_DELTA_PEER", _environment_value, _platform_all,
+		"Speak ChupathingyCE's Delta Peer handshake beside the game (its game\n"
+		"port + 10), so that OpenH1 and the ports that speak Delta know each\n"
+		"other in a game and the scoreboard shows the platform of a player whose\n"
+		"machine is not like this one. Nothing in the game waits for it, and a\n"
+		"machine that does not answer is played with as OpenCE's. False: no\n"
+		"Delta at all, as before." },
 	{ "network.coop_public", _config_boolean, "false", "HALO_NET_COOP_PUBLIC", _environment_value, _platform_all,
 		"Whether an online co-op game (Create Game > Internet, a SINGLEPLAYER\n"
 		"map) starts as PUBLIC or, false, PRIVATE: Server Setup's LISTING in\n"

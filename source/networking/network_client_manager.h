@@ -33,6 +33,8 @@ struct network_advertised_game_summary
 	0 for a Legacy game: port/linux/game/network_standard.c) */
 	short rate;
 	word openh1_version;
+	/* port: (its host speaks Delta Peer: port/linux/game/delta_peer_game.c) */
+	boolean delta;
 };
 
 struct network_advertised_game;
