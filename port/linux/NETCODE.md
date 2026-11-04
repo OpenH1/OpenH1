@@ -2215,7 +2215,9 @@ Control and Link (its site, accounts and moderation) are not.
   as it carries the game's datagrams, so on the internet it is sealed and
   bound to the invite's host like the game, with nothing new in `p2p.c`.
   A host whose port is taken (another copy on the same address) hosts
-  without Delta, and its advertisement says so.
+  without Delta, and its advertisement says so. (ChupathingyCE's hosts
+  listen on 5160 whatever their game's port, which is 5150 in its builds:
+  the same port at the default.)
 - **The advertisement's tag.** A host that listens puts a 9-byte tag at the
   tail of its advertisement's reserved bytes (17 to 25: `D`, `L`, Delta's
   major, the tag's version, its wire and its oldest wire, a check byte).

@@ -25,8 +25,10 @@ it off: no socket, no tag, plain OpenCE behaviour.
 
 #include "cseries.h"
 #include "bungie_net/network/transport.h"
+#include "bungie_net/network/transport_endpoint_winsock.h"
 #include "bungie_net/network/transport_address_constants.h"
 #include "networking/network_game_globals.h"
+#include "networking/network_messages.h"
 #include "networking/network_game_protocol.h"
 #include "networking/network_client_manager.h"
 #include "networking/network_connection.h"
