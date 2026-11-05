@@ -729,6 +729,9 @@ Without the box's bound, a field was fetched over its whole reach, and Blood Gul
 - b30's seven fields, 589 ms in all: the Warthog 41×33×33 at 0.125 (1.7 s of the threads' time, 357 KB); the
   Pelican 46×40×29 at 0.41 (2.9 s, 427 KB); the lifepod 6.0 s (766 triangles); the Covenant dropship 3.6 s.
 - Blood Gulch's three, 175 ms (Warthog, Scorpion, Ghost).
+- The first start's pass (every stock map's start BSP, behind the main menu): 72 vehicles' fields with the 27
+  fields, 12.92 s in all (7.40 before them), so the pass and its fields take 25.70 s (19.59). The most a BSP's
+  vehicles take: a10 645 ms (7 vehicles), b40 597, a30 573, b30 544. The cache is 47 MB (33).
 - The atlas: 3.5 MB on b30, 1.2 MB on Blood Gulch. The cache files: b30's 1.58 → 2.89 MB, Blood Gulch's 3.11 →
   3.63 MB.
 
