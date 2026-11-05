@@ -463,6 +463,14 @@ follow it line for line. p is the point, n its unit normal, all in world units.
   the ground about a Warthog the box is computed within about 6 wu, not 30. `tools/harness/tests/world_proxies.c`
   (`bound`) checks U is never under the occlusion at 20,000 random points.
 
+- **A sphere's and a capsule's bound** (`world_proxy_round_fade`): the box's bound of a box that holds it. The box
+  lies along its axis, with half its length plus its radius that way and its radius across, turned so one side
+  faces the pixel; its height above the tangent plane is bounded whatever the turn (`r sqrt(2 (1 - (n · u)²))` for
+  its two sides across u). A shape's occlusion is never more than one that holds it, so this bounds it too
+  (`tools/harness/tests/world_proxies.c`, `round_bound`). It's faded and skipped as a box's, times the reach's
+  fade. At b30's start it changes nothing measurable on the Radeon (+0.40 ms either way): there the capsules' cost
+  is their walk, not their arithmetic.
+
 - **The window's grid** (`world_ao_grid`, `world_ao_shading.c`). As the enhanced dynamic lights' grid: 16 × 16 × 8
   cells about the camera, boxes in the world (VR's eyes share it), their size log2(1 + |offset| / 1 wu) times each
   axis's scale, the outermost reaching 128 wu and holding whatever reaches past it. Each cell has a 64-bit mask of the
