@@ -587,6 +587,76 @@ static void bound_case(void)
 	}
 }
 
+/* a sphere's and a capsule's bound (world_proxy_round_fade, a box's that
+holds it): where it fades, its occlusion is under it (510 occlusion never
+more than 1 + fade), at 20,000 random shapes, points and normals; 1 inside */
+static void round_bound_case(void)
+{
+	int index, faded = 0, kept = 0, capsules = 0;
+	float worst = 0.0f;
+
+	for (index = 0; index < 20000; index++)
+	{
+		struct world_proxy proxy;
+		float point[3], normal[3], direction[3], occlusion, fade, distance, radius = 0.05f + (float)uniform();
+		int k;
+
+		memset(&proxy, 0, sizeof(proxy));
+		random_direction(direction);
+		for (k = 0; k < 3; k++)
+			proxy.v[0][k] = (float)uniform() * 4.0f - 2.0f;
+		if (index & 1)
+		{
+			float length = 3.0f * (float)uniform();
+
+			proxy.v[0][3] = (float)_world_proxy_capsule;
+			for (k = 0; k < 3; k++)
+				proxy.v[1][k] = proxy.v[0][k] + direction[k] * length;
+			capsules++;
+		}
+		else
+		{
+			proxy.v[0][3] = (float)_world_proxy_sphere;
+			memcpy(proxy.v[1], proxy.v[0], sizeof(float) * 3);
+		}
+		proxy.v[2][0] = radius;
+		/* (a point off it, near or far, facing anywhere) */
+		random_direction(direction);
+		distance = radius + 0.01f + 40.0f * (float)(uniform() * uniform());
+		for (k = 0; k < 3; k++)
+			point[k] = 0.5f * (proxy.v[0][k] + proxy.v[1][k]) + direction[k] * (distance + 0.5f *
+				(index & 1 ? 3.0f : 0.0f));
+		random_direction(normal);
+		occlusion = world_proxy_occlusion(&proxy, point, normal);
+		fade = world_proxy_round_fade(&proxy, point, normal);
+		if (fade < 1.0f)
+		{
+			float over = occlusion * 510.0f - (1.0f + fade);
+
+			worst = over > worst ? over : worst;
+			faded++;
+		}
+		else
+		{
+			kept++;
+		}
+	}
+	CHECK(worst <= 1.0e-3f, "a round shape's occlusion past its bound by %g / 510", worst);
+	CHECK(faded > 1000 && kept > 1000 && capsules > 1000, "both sides seen: %d faded, %d kept", faded, kept);
+	{
+		struct world_proxy proxy;
+		float up[3] = { 0.0f, 0.0f, 1.0f }, below[3] = { 0.0f, 0.0f, -3.0f };
+
+		memset(&proxy, 0, sizeof(proxy));
+		proxy.v[0][3] = (float)_world_proxy_sphere;
+		proxy.v[2][0] = 1.0f;
+		CHECK(world_proxy_round_fade(&proxy, proxy.v[0], up) == 1.0f, "inside");
+		/* (wholly below the tangent plane: none) */
+		below[2] = 3.0f;
+		CHECK(world_proxy_round_fade(&proxy, below, up) == 0.0f, "below its plane");
+	}
+}
+
 /* past 6 half diagonals a box is its faces' patches: where the form
 changes (just inside: the exact faces; just outside: the patches) the two
 are within 0.2/255, facing anywhere */
@@ -1133,6 +1203,8 @@ int main(int argc, char **argv)
 		reach_case();
 	else if (!strcmp(name, "bound"))
 		bound_case();
+	else if (!strcmp(name, "round_bound"))
+		round_bound_case();
 	else if (!strcmp(name, "far"))
 		far_case();
 	else if (!strcmp(name, "culling"))

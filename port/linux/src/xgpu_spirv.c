@@ -3090,6 +3090,62 @@ static unsigned int world_proxy_box_fade(struct module *m, const struct box_fram
 	return fselect(m, frame->empty, zero, fade);
 }
 
+/* a sphere's or a capsule's fade (world_proxies.c's world_proxy_round_fade):
+the box's of a box that holds it, along u (the segment's, or a sphere's
+from its centre to p) half its length and its radius, r across */
+static unsigned int world_proxy_round_fade(struct module *m, int kind, unsigned int p, unsigned int n, unsigned int v0,
+	unsigned int v1, unsigned int v2)
+{
+	unsigned int radius = extract(m, v2, 0), zero = constant_float(m, 0.0f), one = constant_float(m, 1.0f);
+	unsigned int middle, axis, half, offset, along, across, outside_x, outside_y, distance_squared, nu, height, faces;
+	unsigned int distance, bound, fade, toward;
+
+	if (kind == XGPU_WORLD_AO_CAPSULE)
+	{
+		unsigned int segment = fsub(m, 3, xyz(m, v1), xyz(m, v0)), length = flength(m, segment), long_enough;
+
+		middle = fscale(m, 3, fadd(m, 3, xyz(m, v0), xyz(m, v1)), constant_float(m, 0.5f));
+		toward = fsub(m, 3, p, middle);
+		long_enough = compare(m, OP_F_ORD_GREATER_THAN_EQUAL, length, constant_float(m, 1.0e-4f));
+		/* (a capsule of no length: its sphere's) */
+		{
+			/* (one or the other, by a weight of 1 or 0: a select of a vector
+			by one condition is SPIR-V 1.4's) */
+			unsigned int weight = fselect(m, long_enough, one, zero);
+
+			axis = fadd(m, 3, fscale(m, 3, segment, fdiv(m, 1, weight, fmax_scalar(m, 1, length, 1.0e-4f))),
+				fscale(m, 3, toward, fdiv(m, 1, fsub(m, 1, one, weight), fmax_scalar(m, 1, flength(m, toward), 1.0e-30f))));
+		}
+		half = fselect(m, long_enough, fmul(m, 1, constant_float(m, 0.5f), length), zero);
+	}
+	else
+	{
+		middle = xyz(m, v0);
+		toward = fsub(m, 3, p, middle);
+		axis = fscale(m, 3, toward, fdiv(m, 1, one, fmax_scalar(m, 1, flength(m, toward), 1.0e-30f)));
+		half = zero;
+	}
+	offset = fsub(m, 3, p, middle);
+	along = fdot(m, offset, axis);
+	across = fsub(m, 3, offset, fscale(m, 3, axis, along));
+	outside_x = fmax_scalar(m, 1, fsub(m, 1, ext1(m, GLSL_F_ABS, m->t_float, along), fadd(m, 1, half, radius)), 0.0f);
+	outside_y = fmax_scalar(m, 1, fsub(m, 1, flength(m, across), radius), 0.0f);
+	distance_squared = fadd(m, 1, fmul(m, 1, outside_x, outside_x), fmul(m, 1, outside_y, outside_y));
+	nu = fdot(m, n, axis);
+	height = fadd(m, 1, fadd(m, 1, fneg(m, 1, fdot(m, n, offset)), fmul(m, 1, fadd(m, 1, half, radius),
+		ext1(m, GLSL_F_ABS, m->t_float, nu))), fmul(m, 1, radius, fsqrt(m, fmul(m, 1, constant_float(m, 2.0f),
+		fmax_scalar(m, 1, fsub(m, 1, one, fmul(m, 1, nu, nu)), 0.0f)))));
+	faces = fadd(m, 1, fmul(m, 1, fmul(m, 1, radius, radius), outside_x), fmul(m, 1, fmul(m, 1, fadd(m, 1, half, radius),
+		radius), outside_y));
+	distance = fsqrt(m, distance_squared);
+	bound = fdiv(m, 1, fmul(m, 1, fmul(m, 1, constant_float(m, XGPU_WORLD_AO_LEAST * 4.0f / XGPU_WORLD_AO_PI), faces),
+		fselect(m, compare(m, OP_F_ORD_LESS_THAN, height, distance), height, distance)),
+		fmul(m, 1, distance_squared, distance_squared));
+	fade = fclamp_scalar(m, fsub(m, 1, bound, one), 0.0f, 1.0f);
+	fade = fselect(m, compare(m, OP_F_ORD_LESS_THAN_EQUAL, height, zero), zero, fade);
+	return fselect(m, compare(m, OP_F_ORD_LESS_THAN_EQUAL, distance_squared, zero), one, fade);
+}
+
 /* one shape of the pixel's cell, of a kind (XGPU_WORLD_AO_*): its factor
 multiplied into the product where it can shade p (world_ao.c's
 world_ao_proxy_factor): within its reach of its centre (a capsule's
@@ -3153,8 +3209,9 @@ static void world_proxy_shade(struct module *m, struct pixel_state *state, int k
 	}
 	else
 	{
-		store(m, fade_variable, saturate(m, 1, fdiv(m, 1, fsub(m, 1, reach, distance), fmul(m, 1, reach,
-			constant_float(m, XGPU_WORLD_AO_REACH_FADE)))));
+		/* (and by the bound of a box that holds it, as a box's) */
+		store(m, fade_variable, fmul(m, 1, saturate(m, 1, fdiv(m, 1, fsub(m, 1, reach, distance), fmul(m, 1, reach,
+			constant_float(m, XGPU_WORLD_AO_REACH_FADE)))), world_proxy_round_fade(m, kind, p, n, v0, v1, v2)));
 	}
 	/* if (!(fade <= 0.0)) product *= 1.0 - occlusion * fade; */
 	faded = compare(m, OP_F_ORD_LESS_THAN_EQUAL, load(m, m->t_float, fade_variable), constant_float(m, 0.0f));

@@ -472,6 +472,80 @@ float world_proxy_box_fade(struct world_proxy const *proxy, float const point[3]
 	return clampf(bound - 1.0f, 0.0f, 1.0f);
 }
 
+/* a sphere's or a capsule's fade (world_proxy_round_fade), the box's
+(world_proxy_box_fade) of a box that holds it: along its segment's
+direction u (a sphere's: from its centre to p) half its length and its
+radius, r across, turned about u so that one of its sides faces p. So, in
+that box's space, o_x = max(|s| - (L / 2 + r), 0), s p's place along u from
+the middle, and o_y = max(|w| - r, 0), w p's offset across u (o_z 0); its
+height above p's tangent plane at most n . (m - p) + (L / 2 + r) |n . u| +
+r sqrt(2 (1 - (n . u)^2)) (its two sides across u, whatever their turn:
+|a| + |b| <= sqrt(2 (a^2 + b^2))). A shape's occlusion is never more than
+a shape's that holds it, so U bounds the sphere's and the capsule's too */
+static float round_fade(float const middle[3], float const axis[3], float half_length, float radius, float const point[3],
+	float const normal[3])
+{
+	float offset[3], along, across[3], across_length, outside_x, outside_y, distance_squared, distance, height, nu, faces;
+	int k;
+
+	sub3(point, middle, offset);
+	along = dot3(offset, axis);
+	for (k = 0; k < 3; k++)
+		across[k] = offset[k] - along * axis[k];
+	across_length = length3(across);
+	outside_x = fabsf(along) - (half_length + radius);
+	outside_x = outside_x > 0.0f ? outside_x : 0.0f;
+	outside_y = across_length - radius;
+	outside_y = outside_y > 0.0f ? outside_y : 0.0f;
+	distance_squared = outside_x * outside_x + outside_y * outside_y;
+	if (distance_squared <= 0.0f)
+		return 1.0f;
+	nu = dot3(normal, axis);
+	height = -dot3(normal, offset) + (half_length + radius) * fabsf(nu) +
+		radius * sqrtf(2.0f * (1.0f - nu * nu > 0.0f ? 1.0f - nu * nu : 0.0f));
+	if (height <= 0.0f)
+		return 0.0f;
+	faces = radius * radius * outside_x + (half_length + radius) * radius * outside_y;
+	distance = sqrtf(distance_squared);
+	return clampf(WORLD_PROXIES_LEAST * 4.0f / WORLD_PROXIES_PI * faces * (distance < height ? distance : height) /
+		(distance_squared * distance_squared) - 1.0f, 0.0f, 1.0f);
+}
+
+float world_proxy_round_fade(struct world_proxy const *proxy, float const point[3], float const normal[3])
+{
+	float middle[3], axis[3], length;
+	int k;
+
+	if ((int)proxy->v[0][3] == _world_proxy_capsule)
+	{
+		for (k = 0; k < 3; k++)
+		{
+			middle[k] = 0.5f * (proxy->v[0][k] + proxy->v[1][k]);
+			axis[k] = proxy->v[1][k] - proxy->v[0][k];
+		}
+		length = length3(axis);
+		if (length >= 1.0e-4f)
+		{
+			for (k = 0; k < 3; k++)
+				axis[k] /= length;
+			return round_fade(middle, axis, 0.5f * length, proxy->v[2][0], point, normal);
+		}
+		/* (a capsule of no length: its sphere) */
+	}
+	/* (a sphere: u from its centre to p) */
+	for (k = 0; k < 3; k++)
+	{
+		middle[k] = proxy->v[0][k];
+		axis[k] = point[k] - proxy->v[0][k];
+	}
+	length = length3(axis);
+	if (length <= 0.0f)
+		return 1.0f;
+	for (k = 0; k < 3; k++)
+		axis[k] /= length;
+	return round_fade(middle, axis, 0.0f, proxy->v[2][0], point, normal);
+}
+
 float world_proxy_occlusion(struct world_proxy const *proxy, float const point[3], float const normal[3])
 {
 	switch ((int)proxy->v[0][3])

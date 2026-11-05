@@ -10,7 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, mutated, read, run  # noqa: E402
 
-CASES = ["sphere", "capsule", "box", "reach", "bound", "far", "culling", "skeleton", "owner", "baked", "field", "none"]
+CASES = ["sphere", "capsule", "box", "reach", "bound", "round_bound", "far", "culling", "skeleton", "owner", "baked", "field", "none"]
 HEADER = "port/linux/include/world_proxies.h"
 SOURCE = "port/linux/include/world_proxies_source.h"
 GAME = "port/linux/game/world_proxies.c"
@@ -41,6 +41,14 @@ CONTROLS = [
      "bound = WORLD_PROXIES_LEAST * 1.0f / WORLD_PROXIES_PI * faces", "bound"),
     ("faces * (height < distance ? height : distance) /", "faces * (height < distance ? height * height / distance : distance) /",
      "bound"),
+    # a round shape's bound: its faces' areas' 4 left out (under its occlusion), its sides across its axis
+    # without their sqrt(2), its length's half left out of its faces
+    ("return clampf(WORLD_PROXIES_LEAST * 4.0f / WORLD_PROXIES_PI * faces * (distance < height ? distance : height) /",
+     "return clampf(WORLD_PROXIES_LEAST * 1.0f / WORLD_PROXIES_PI * faces * (distance < height ? distance : height) /",
+     "round_bound"),
+    ("radius * sqrtf(2.0f * (1.0f - nu * nu > 0.0f ? 1.0f - nu * nu : 0.0f));", "0.0f;", "round_bound"),
+    ("faces = radius * radius * outside_x + (half_length + radius) * radius * outside_y;",
+     "faces = radius * radius * outside_x + radius * radius * outside_y;", "round_bound"),
     # culled by its centre, not its reach; the farthest kept first
     ("if (dot3(planes[plane], centre) - planes[plane][3] > reach)",
      "if (dot3(planes[plane], centre) - planes[plane][3] > 0.0f * reach)", "culling"),

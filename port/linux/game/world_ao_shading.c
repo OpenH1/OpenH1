@@ -268,7 +268,10 @@ static int world_ao_proxy_factor(struct world_proxy const *proxy, float const po
 	}
 	else
 	{
-		fade = saturate((reach - away) / (reach * WORLD_AO_REACH_FADE));
+		/* (and by the bound of a box that holds it, as a box's) */
+		fade = saturate((reach - away) / (reach * WORLD_AO_REACH_FADE)) * world_proxy_round_fade(proxy, point, normal);
+		if (fade <= 0.0f)
+			return 0;
 	}
 	*factor = 1.0f - world_proxy_occlusion(proxy, point, normal) * fade;
 	return 1;

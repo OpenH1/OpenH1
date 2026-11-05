@@ -30,8 +30,9 @@ pure arithmetic in port/linux/game/world_sdf_bake.c).
 /* the cache's version: bumped whenever the bake or the format changes, so
 that every field is baked again (2: sparse bricks, within the placements'
 reach; 3: the static scenery in the field, and its occlusion of the level
-in lightmap pages; 4: the vehicles' occlusion fields) */
-#define WORLD_SDF_VERSION 4
+in lightmap pages; 4: the vehicles' occlusion fields; 5: the spheres' and
+capsules' bound in the pages) */
+#define WORLD_SDF_VERSION 5
 /* the file's magic, "WSDF" */
 #define WORLD_SDF_MAGIC 0x46445357UL
 

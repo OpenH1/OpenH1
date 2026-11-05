@@ -1835,6 +1835,41 @@ static void world_ao_functions(struct xgpu_text *text, int light)
 		XGPU_WORLD_SDF_BRICK_SPAN, XGPU_WORLD_AO_STEP, XGPU_WORLD_AO_TAPS, XGPU_WORLD_AO_K);
 	xgpu_text_append(text, "%s", world_proxies_shapes);
 	xgpu_text_append(text,
+		/* a sphere's or a capsule's fade (world_proxies.c's
+		world_proxy_round_fade): the box's of a box that holds it */
+		"static inline float world_proxy_round_fade(float3 p, float3 n, float4 v0, float4 v1, float4 v2)\n"
+		"{\n"
+		"\tfloat radius = v2.x, half_length = 0.0;\n"
+		"\tfloat3 middle = v0.xyz, toward = p - v0.xyz;\n"
+		"\tfloat3 axis = toward * (1.0 / max(length(toward), 1.0e-30));\n"
+		"\tif (v0.w == %d.0)\n"
+		"\t{\n"
+		"\t\tfloat3 segment = v1.xyz - v0.xyz;\n"
+		"\t\tfloat segment_length = length(segment);\n"
+		"\t\tmiddle = (v0.xyz + v1.xyz) * 0.5;\n"
+		"\t\ttoward = p - middle;\n"
+		"\t\tbool long_enough = segment_length >= 1.0e-4;\n"
+		"\t\tfloat weight = long_enough ? 1.0 : 0.0;\n"
+		"\t\taxis = segment * (weight / max(segment_length, 1.0e-4)) + toward * ((1.0 - weight) / max(length(toward), 1.0e-30));\n"
+		"\t\thalf_length = long_enough ? 0.5 * segment_length : 0.0;\n"
+		"\t}\n"
+		"\tfloat3 offset = p - middle;\n"
+		"\tfloat along = dot(offset, axis);\n"
+		"\tfloat3 across = offset - axis * along;\n"
+		"\tfloat outside_x = max(abs(along) - (half_length + radius), 0.0), outside_y = max(length(across) - radius, 0.0);\n"
+		"\tfloat distance_squared = outside_x * outside_x + outside_y * outside_y;\n"
+		"\tif (distance_squared <= 0.0)\n"
+		"\t\treturn 1.0;\n"
+		"\tfloat nu = dot(n, axis);\n"
+		"\tfloat height = -dot(n, offset) + (half_length + radius) * abs(nu) + radius * sqrt(2.0 * max(1.0 - nu * nu, 0.0));\n"
+		"\tif (height <= 0.0)\n"
+		"\t\treturn 0.0;\n"
+		"\tfloat faces = radius * radius * outside_x + (half_length + radius) * radius * outside_y;\n"
+		"\tfloat distance = sqrt(distance_squared);\n"
+		"\treturn clamp(%.6f * faces * (height < distance ? height : distance) / (distance_squared * distance_squared) - 1.0,\n"
+		"\t\t0.0, 1.0);\n"
+		"}\n", XGPU_WORLD_AO_CAPSULE, XGPU_WORLD_AO_LEAST * 4.0f / XGPU_WORLD_AO_PI);
+	xgpu_text_append(text,
 		/* a vehicle's occlusion field (its shape and the next two:
 		xgpu_stream.h's XGPU_WORLD_AO_PROXY_FIELD), its occlusion faded out
 		over the last of its reach (world_ao_shading.c's
@@ -1917,11 +1952,11 @@ static void world_ao_functions(struct xgpu_text *text, int light)
 		"\t\t\t\tcontinue;\n"
 		"\t\t\tfloat fade = saturate((reach - away) / (reach * %.6f));\n"
 		"\t\t\tif (v0.w == %d.0)\n"
-		"\t\t\t{\n"
 		"\t\t\t\tfade = world_proxy_box_fade(p, n, v0.xyz, v1.xyz, v2.xyz, v2.w);\n"
-		"\t\t\t\tif (fade <= 0.0)\n"
-		"\t\t\t\t\tcontinue;\n"
-		"\t\t\t}\n"
+		"\t\t\telse\n"
+		"\t\t\t\tfade *= world_proxy_round_fade(p, n, v0, v1, v2);\n"
+		"\t\t\tif (fade <= 0.0)\n"
+		"\t\t\t\tcontinue;\n"
 		"\t\t\tfloat occlusion = 0.0;\n"
 		"\t\t\tif (v0.w == %d.0)\n"
 		"\t\t\t\tocclusion = world_proxy_sphere(p, n, v0.xyz, v2.x);\n"

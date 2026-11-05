@@ -117,5 +117,8 @@ on it is under 1/510 (computing it is not needed), 1 where the bound is
 1/255 or more (and inside), between the two a ramp, so the box never
 shows an edge where it stops being computed (the shaders' too) */
 float world_proxy_box_fade(struct world_proxy const *proxy, float const point[3], float const normal[3]);
+/* the same for a sphere or a capsule (the box's of a box that holds it):
+0 where its bound is under 1/510, 1 where it is 1/255 or more */
+float world_proxy_round_fade(struct world_proxy const *proxy, float const point[3], float const normal[3]);
 
 #endif
