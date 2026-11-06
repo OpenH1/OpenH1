@@ -2207,11 +2207,18 @@ static BYTE virtual_key_from_scancode(SDL_Scancode scancode)
 	}
 }
 
-static CHAR ascii_from_key(SDL_Keycode key, SDL_Keymod modifiers)
+/* a key's character as the keyboard's layout types it (typed: its key with
+the modifiers, SDL_GetKeyFromScancode's), where that is ASCII: Shift and
+the + key give ? on a Nordic layout, AltGr and 2 give @ (#726). Else, and
+for the keys that type no character (Return, Backspace, Tab, Escape), the
+key event's own, shifted as a US keyboard's */
+static CHAR ascii_from_key(SDL_Keycode key, SDL_Keycode typed, SDL_Keymod modifiers)
 {
 	BOOL shift = (modifiers & SDL_KMOD_SHIFT) != 0;
 	static const char shifted_digits[] = ")!@#$%^&*(";
 
+	if (typed >= ' ' && typed < 0x7f)
+		return (CHAR)typed;
 	if (key >= 'a' && key <= 'z')
 		return (CHAR)((shift ^ ((modifiers & SDL_KMOD_CAPS) != 0)) ? key - 32 : key);
 	if (key >= '0' && key <= '9')
@@ -2266,7 +2273,8 @@ static void queue_keystroke(const SDL_KeyboardEvent *event)
 	if (!event->down) flags |= 0x40;
 	if (event->repeat) flags |= 0x80;
 	keystroke->virtual_key = virtual_key_from_scancode(event->scancode);
-	keystroke->ascii = event->down ? ascii_from_key(event->key, event->mod) : 0;
+	keystroke->ascii = event->down ? ascii_from_key(event->key,
+		SDL_GetKeyFromScancode(event->scancode, event->mod, false), event->mod) : 0;
 	keystroke->flags = flags;
 	keystroke_count++;
 }

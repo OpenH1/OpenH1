@@ -74,6 +74,10 @@ int host_sdl_open_url(const char *url);
 /* the keyboard's keys by name (the controls' bindings, xinput_sdl.c) */
 void host_sdl_scancode_name(int scancode, char *buffer, unsigned int size);
 int host_sdl_scancode_from_name(const char *name);
+/* SDL_GetKeyFromScancode: the key the keyboard's layout gives a scancode
+with the modifiers (Shift, Caps Lock, AltGr), or a key event's (key_event:
+none applied) */
+int host_sdl_key_from_scancode(int scancode, int modifiers, int key_event);
 int host_sdl_show_toast(const char *message, int duration, int gravity, int x, int y);
 /* SDL_GetPowerInfo: the SDL_PowerState, and the seconds and percent of
 battery left (-1 unknown) */

@@ -50,6 +50,11 @@ SDL_Scancode SDL_GetScancodeFromName(const char *name)
 	return (SDL_Scancode)host_sdl_scancode_from_name(name);
 }
 
+SDL_Keycode SDL_GetKeyFromScancode(SDL_Scancode scancode, SDL_Keymod modstate, bool key_event)
+{
+	return (SDL_Keycode)host_sdl_key_from_scancode((int)scancode, (int)modstate, key_event ? 1 : 0);
+}
+
 Uint64 SDL_GetTicks(void)
 {
 	return (Uint64)host_sdl_ticks();
