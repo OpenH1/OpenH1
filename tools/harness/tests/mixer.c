@@ -1242,19 +1242,25 @@ int main(int argc, char **argv)
 		}
 		return 0;
 	}
-	/* the Doppler shift: a sound coming at 10 units a second (30.5 m/s) is
-	heard 343 / (343 - 30.5) times as high, going away 343 / (343 + 30.5); the
-	listener coming at it (343 + 30.5) / 343; head-relative, the voice's own
-	velocity alone; to an octave at most; none with audio.doppler false, nor
-	for a 2D voice */
+	/* the Doppler shift, the Xbox's first order one: a sound coming at 10
+	units a second (30.5 m/s) is heard 1 + 30.5 / 343 times as high, going
+	away 1 - 30.5 / 343; the listener coming at it 1 + 30.5 / 343; and both
+	coming, the two added; head-relative, the voice's own velocity alone; to
+	an octave at most; none with audio.doppler false, nor for a 2D voice.
+	Recorded on an Xbox, a source passing at 20 and 40 units a second was
+	shifted 1.178 and 1.356 coming, 0.822 and 0.644 going */
 	CASE("doppler")
 	{
 		static const struct { float velocity, listener_velocity; DWORD mode; double expected; } cases[] = {
 			{ 0.0f, 0.0f, DS3DMODE_NORMAL, 1.0 },
-			{ -10.0f, 0.0f, DS3DMODE_NORMAL, 343.0 / (343.0 - 30.48) },
-			{ 10.0f, 0.0f, DS3DMODE_NORMAL, 343.0 / (343.0 + 30.48) },
-			{ 0.0f, 10.0f, DS3DMODE_NORMAL, (343.0 + 30.48) / 343.0 },
-			{ -10.0f, 10.0f, DS3DMODE_HEADRELATIVE, 343.0 / (343.0 - 30.48) },
+			{ -10.0f, 0.0f, DS3DMODE_NORMAL, 1.0 + 30.48 / 343.0 },
+			{ 10.0f, 0.0f, DS3DMODE_NORMAL, 1.0 - 30.48 / 343.0 },
+			{ 0.0f, 10.0f, DS3DMODE_NORMAL, 1.0 + 30.48 / 343.0 },
+			{ -20.0f, 0.0f, DS3DMODE_NORMAL, 1.0 + 60.96 / 343.0 },
+			{ -40.0f, 0.0f, DS3DMODE_NORMAL, 1.0 + 121.92 / 343.0 },
+			{ -10.0f, 10.0f, DS3DMODE_NORMAL, 1.0 + 60.96 / 343.0 },
+			{ -10.0f, 10.0f, DS3DMODE_HEADRELATIVE, 1.0 + 30.48 / 343.0 },
+			{ 1000.0f, 0.0f, DS3DMODE_NORMAL, 0.5 },
 			{ -1000.0f, 0.0f, DS3DMODE_NORMAL, 2.0 },
 			{ -10.0f, 0.0f, DS3DMODE_DISABLE, 1.0 },
 		};
@@ -1276,6 +1282,44 @@ int main(int argc, char **argv)
 		doppler_enabled = TRUE;
 		return 0;
 	}
+	/* a voice's volume changed between mixes moves to the new one over
+	PARAMETER_RAMP_FRAMES (1.3 ms) and holds it, however many frames the mix
+	has, as an Xbox's settled from 10% to 90% within 1 to 2 ms (recorded: a
+	step of SetVolume, SetFrequency or the position); the mix of 512 frames
+	it took before (8 ms) */
+	CASE("parameter-ramp")
+	{
+		static short samples[48000];
+		static float output[CHUNK * 2], send[CHUNK];
+		struct sdl_stream *stream;
+		float before, ratio;
+		unsigned long n;
+
+		for (n = 0; n < 48000; n++)
+			samples[n] = 8000;
+		resampler_mode = RESAMPLER_SINC;
+		stream = voice_new(samples, 48000, 1, 48000, 0);
+		for (n = 0; n < 2; n++)
+		{
+			memset(output, 0, sizeof(output));
+			mix_voice(stream, output, send, CHUNK);
+		}
+		before = output[(CHUNK - 1) * 2];
+		stream->volume = 0.25f;
+		memset(output, 0, sizeof(output));
+		mix_voice(stream, output, send, CHUNK);
+		ratio = output[16 * 2] / before;
+		CHECK(before > 0.0f && ratio < 0.95f && ratio > 0.3f, "16 frames after the change at %.3f of the volume before",
+			ratio);
+		for (n = 64; n < CHUNK; n++)
+		{
+			ratio = output[n * 2] / before;
+			CHECK(fabsf(ratio - 0.25f) < 1.0e-4f, "%lu frames after the change at %.4f of the volume before, not "
+				"0.25", n, ratio);
+		}
+		voice_delete(stream);
+		return 0;
+	}
 	/* the Doppler shift glides: a voice whose velocity jumps from mix to mix
 	between 5 and 15 units a second towards the listener (as the camera's
 	velocity did between the frames, sound_manager.c refresh_listener: its
@@ -1286,7 +1330,7 @@ int main(int argc, char **argv)
 		static short samples[22050];
 		static float output[CHUNK * 2], send[CHUNK];
 		struct sdl_stream *stream;
-		float lowest = 10.0f, highest = 0.0f, middle = 343.0f / (343.0f - 10.0f * 3.048f);
+		float lowest = 10.0f, highest = 0.0f, middle = 1.0f + 10.0f * 3.048f / 343.0f;
 		unsigned long mix;
 
 		resampler_mode = RESAMPLER_SINC;
@@ -1685,13 +1729,14 @@ int main(int argc, char **argv)
 	/* the LFE on 5.1, through the whole mix: a 2D voice to the LFE alone,
 	a sine at each frequency, its level from the LFE against its level
 	from the front left (the same voice to it alone, which the low pass
-	leaves as it is): the bass whole, 120 Hz at -3 dB (the Dolby Digital
-	LFE's band), and above it falling 48 dB an octave; an Xbox's AC-3
-	carried a 1 kHz tone to the LFE more than 84 dB down */
+	leaves as it is): the bass whole, 86 Hz at -3 dB, and above it falling
+	24 dB an octave, as an Xbox's did (recorded: a sweep to the LFE alone,
+	-3 dB at 86 Hz, a 4th order's slope); its AC-3 carried a 1 kHz tone to
+	the LFE more than 84 dB down */
 	CASE("lfe")
 	{
 		static const struct { double hertz, lowest, highest; } expected[] = {
-			{ 30.0, -0.1, 0.1 }, { 60.0, -0.1, 0.1 }, { 120.0, -3.5, -2.5 }, { 240.0, -50.0, -46.0 },
+			{ 30.0, -0.1, 0.1 }, { 60.0, -0.4, -0.1 }, { 86.0, -3.5, -2.5 }, { 172.0, -26.0, -22.0 },
 			{ 1000.0, -400.0, -84.0 },
 		};
 		unsigned long frames = 48000, n, chunk;
@@ -1916,10 +1961,10 @@ int main(int argc, char **argv)
 
 			resampler_mode = RESAMPLER_SINC;
 			hrtf_enabled = TRUE;
-			doppler_figures(-10.0f, 0.0f, DS3DMODE_NORMAL, 343.0 / (343.0 - 30.48), &ratio, &rest_db);
+			doppler_figures(-10.0f, 0.0f, DS3DMODE_NORMAL, 1.0 + 30.48 / 343.0, &ratio, &rest_db);
 			hrtf_enabled = FALSE;
 			listener_reset();
-			CHECK(fabs(ratio - 343.0 / (343.0 - 30.48)) < 1.0e-5 && rest_db < -40.0, "through the HRTF, coming at 10 "
+			CHECK(fabs(ratio - (1.0 + 30.48 / 343.0)) < 1.0e-5 && rest_db < -40.0, "through the HRTF, coming at 10 "
 				"units a second: shifted %.5f, the rest %.1f dB", ratio, rest_db);
 		}
 		return 0;

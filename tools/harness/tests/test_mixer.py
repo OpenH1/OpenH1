@@ -24,6 +24,7 @@ from harness import CHECK_FAILED, build, function, mutated, read, run  # noqa: E
 
 SOURCE = "port/linux/src/dsound_sdl.c"
 CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "doppler-steady",
+         "parameter-ramp",
          "limiter", "obstruction", "channels", "surround", "lfe", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch",
          "dry-2d",
          "master-volume", "buffers", "sound-off",
@@ -50,9 +51,13 @@ NEGATIVE_CONTROLS = {
     # the Doppler shift a step at each mix, as the velocities give it
     "doppler-unsmoothed": (("#define DOPPLER_SMOOTHING_SECONDS 0.08f", "#define DOPPLER_SMOOTHING_SECONDS 0.0001f"),
                            "doppler-steady"),
-    "doppler-source-sign": (("(DOPPLER_SPEED_OF_SOUND + listener_speed) / (DOPPLER_SPEED_OF_SOUND + source_speed)",
-                             "(DOPPLER_SPEED_OF_SOUND + listener_speed) / (DOPPLER_SPEED_OF_SOUND - source_speed)"),
-                            "doppler"),
+    "doppler-source-sign": (("(listener_speed - source_speed) / DOPPLER_SPEED_OF_SOUND",
+                             "(listener_speed + source_speed) / DOPPLER_SPEED_OF_SOUND"), "doppler"),
+    # the Doppler shift as (c + v_listener) / (c + v_source), as it was: 1.216 and 0.849 where an Xbox gave 1.178
+    # and 0.822
+    "doppler-physical": (("ratio = 1.0f + (listener_speed - source_speed) / DOPPLER_SPEED_OF_SOUND;",
+                          "ratio = (DOPPLER_SPEED_OF_SOUND + listener_speed) / (DOPPLER_SPEED_OF_SOUND + "
+                          "source_speed);"), "doppler"),
     # the limiter's ceiling under full scale, as it was
     "limiter-ceiling": (("#define LIMITER_CEILING 1.0f", "#define LIMITER_CEILING 0.891f"), "limiter"),
     # the mix at full level (twice the Xbox's), as it was; or held to full scale before it is halved
@@ -93,6 +98,12 @@ NEGATIVE_CONTROLS = {
                                  "surround"),
     # the LFE on 5.1 full range, as it was (an Xbox's AC-3 carried only its bass)
     "lfe-full-range": (("\tlfe_lowpass(output, frames);\n", ""), "lfe"),
+    # a change ramped over the whole mix, as it was (8 ms at 512 frames, where an Xbox took 1 to 2 ms)
+    "parameter-ramp-whole-mix": (("#define PARAMETER_RAMP_FRAMES 64", "#define PARAMETER_RAMP_FRAMES 100000"),
+                                 "parameter-ramp"),
+    # the LFE's low pass at the Dolby Digital LFE's 120 Hz, 8th order, as it was
+    "lfe-120-hz": (("#define LFE_CUTOFF 86.0\n#define LFE_SECTIONS 2\n", "#define LFE_CUTOFF 120.0\n#define LFE_SECTIONS 4\n"),
+                   "lfe"),
     # audio.spatial: "auto" panned on stereo; "speakers" through the HRTF; the VR mode by audio.spatial
     "spatial-auto-panned": (('return strcmp(setting, "speakers") != 0;',
                              'return !strcmp(setting, "headphones");'), "spatial-choice"),

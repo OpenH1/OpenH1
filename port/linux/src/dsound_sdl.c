@@ -86,6 +86,11 @@ and gains (record, voices_log).
 #define MAXIMUM_STREAM_PACKETS 64
 #define MIX_CHUNK_FRAMES 1024
 
+/* the frames a voice's volume, pan, pitch and low passes take to move to new
+ones: 64 (1.3 ms), whatever frames a mix has. An Xbox's take 1 to 2 ms
+(recorded: a step of each settles from 10% to 90% within them) */
+#define PARAMETER_RAMP_FRAMES 64
+
 #define XBOX_ADPCM_BLOCK_BYTES 36
 #define XBOX_ADPCM_BLOCK_SAMPLES 64
 
@@ -520,13 +525,17 @@ static float distance_attenuation(const struct sdl_stream *stream, float distanc
 The game gives each 3D voice its velocity (units a second, relative to the
 listener: sound_manager.c update_channels) and the Xbox's DirectSound shifted
 its pitch by them, as a sound passing by is heard: a Banshee, a Ghost or a
-plasma bolt rising as it comes and falling as it goes. DirectSound's shift:
-the frequency times (c + D v_listener) / (c + D v_source), c the speed of
-sound, D the Doppler factor, the velocities' parts along the line from the
-listener to the source in metres a second (the distance factor's metres a
-unit), the source's away from the listener, the listener's towards the
-source. Each part is held within half the speed of sound, and the shift to
-an octave either way, so that a projectile passing close by, or a velocity
+plasma bolt rising as it comes and falling as it goes. An Xbox's shift is
+the first order one: the frequency times 1 + (D v_listener - D v_source) / c,
+c the speed of sound, D the Doppler factor, the velocities' parts along the
+line from the listener to the source in metres a second (the distance
+factor's metres a unit), the source's away from the listener, the
+listener's towards the source. Recorded on an Xbox, a source passing at 20
+units a second was shifted 1.178 coming and 0.822 going, and at 40, 1.356
+and 0.644: the same either way, and twice as far at twice the speed, where
+(c + D v_listener) / (c + D v_source) gives 1.216 and 0.849, then 1.551 and
+0.738. Each part is held within the speed of sound, and the shift to an
+octave either way, so that a projectile passing close by, or a velocity
 that jumps (a teleport), takes no voice up out of hearing. The mixer moves
 each voice's shift towards the one its velocities give over
 DOPPLER_SMOOTHING_SECONDS, so that a velocity that changes in steps (once a
@@ -535,7 +544,7 @@ warbling it (doppler_smoothed). */
 
 static float doppler_ratio(const struct sdl_stream *stream)
 {
-	float offset[3], distance, source_speed, listener_speed = 0.0f, ratio, limit = 0.5f * DOPPLER_SPEED_OF_SOUND;
+	float offset[3], distance, source_speed, listener_speed = 0.0f, ratio, limit = DOPPLER_SPEED_OF_SOUND;
 	int axis;
 
 	if (!doppler_enabled || !stream->has_3d || stream->mode == DS3DMODE_DISABLE)
@@ -554,7 +563,7 @@ static float doppler_ratio(const struct sdl_stream *stream)
 		listener_speed = DOPPLER_FACTOR * listener.distance_factor * dot3(listener.velocity, offset) / distance;
 	source_speed = source_speed < -limit ? -limit : source_speed > limit ? limit : source_speed;
 	listener_speed = listener_speed < -limit ? -limit : listener_speed > limit ? limit : listener_speed;
-	ratio = (DOPPLER_SPEED_OF_SOUND + listener_speed) / (DOPPLER_SPEED_OF_SOUND + source_speed);
+	ratio = 1.0f + (listener_speed - source_speed) / DOPPLER_SPEED_OF_SOUND;
 	if (ratio > DOPPLER_MAXIMUM_RATIO)
 		ratio = DOPPLER_MAXIMUM_RATIO;
 	if (ratio < 1.0f / DOPPLER_MAXIMUM_RATIO)
@@ -1654,7 +1663,7 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	float ramp_direct_lowpass, ramp_room_lowpass;
 	float direct_state[2], room_state;
 	long width;
-	unsigned long frame;
+	unsigned long frame, ramp_frames;
 	/* (a stereo voice panned towards its sound: voice_gains) */
 	BOOL positioned = stream->channels == 2 && stream->stereo_positioned;
 	/* (through the HRTF: whether it may take the voice, and whether its
@@ -1700,7 +1709,10 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 		scale = resampler_scale(step);
 		width = (long)ceilf(RESAMPLER_ZERO_CROSSINGS / scale);
 	}
-	ramp_step = (target_step - step) / (double)frames;
+	/* (the gains and the step move to the new ones over ramp_frames, then
+	hold) */
+	ramp_frames = frames < PARAMETER_RAMP_FRAMES ? frames : PARAMETER_RAMP_FRAMES;
+	ramp_step = (target_step - step) / (double)ramp_frames;
 	voice_gains(stream, &target_left, &target_right, pair, &target_room, &target_direct_lowpass,
 		&target_room_lowpass, &hrtf_on, &target_hrtf);
 	/* how much of the voice the HRTF plays: towards all of it while it is
@@ -1756,11 +1768,11 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	direct_state[0] = stream->direct_lowpass[0];
 	direct_state[1] = stream->direct_lowpass[1];
 	room_state = stream->room_lowpass;
-	ramp_left = (target_left - left) / (float)frames;
-	ramp_right = (target_right - right) / (float)frames;
-	ramp_room = (target_room - room) / (float)frames;
-	ramp_direct_lowpass = (target_direct_lowpass - direct_lowpass) / (float)frames;
-	ramp_room_lowpass = (target_room_lowpass - room_lowpass) / (float)frames;
+	ramp_left = (target_left - left) / (float)ramp_frames;
+	ramp_right = (target_right - right) / (float)ramp_frames;
+	ramp_room = (target_room - room) / (float)ramp_frames;
+	ramp_direct_lowpass = (target_direct_lowpass - direct_lowpass) / (float)ramp_frames;
+	ramp_room_lowpass = (target_room_lowpass - room_lowpass) / (float)ramp_frames;
 	hrtf_mix_start = hrtf_mix;
 	if (surround)
 	{
@@ -1768,8 +1780,10 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 		{
 			surround_gains[0][speaker] = stream->current_surround[0][speaker];
 			surround_gains[1][speaker] = stream->current_surround[1][speaker];
-			ramp_surround[0][speaker] = (target_surround[0][speaker] - surround_gains[0][speaker]) / (float)frames;
-			ramp_surround[1][speaker] = (target_surround[1][speaker] - surround_gains[1][speaker]) / (float)frames;
+			ramp_surround[0][speaker] = (target_surround[0][speaker] - surround_gains[0][speaker]) /
+				(float)ramp_frames;
+			ramp_surround[1][speaker] = (target_surround[1][speaker] - surround_gains[1][speaker]) /
+				(float)ramp_frames;
 			/* (a 2D voice may be heard from the center, the backs or the
 			LFE alone, its left and right gains 0) */
 			if (surround_gains[0][speaker] || surround_gains[1][speaker] || target_surround[0][speaker] ||
@@ -1947,6 +1961,23 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 		{
 			stream->phase -= 1.0;
 			stream->center++;
+		}
+		/* (at the ramp's end, exactly the new ones, held) */
+		if (frame + 1 == ramp_frames)
+		{
+			left = target_left;
+			right = target_right;
+			room = target_room;
+			direct_lowpass = target_direct_lowpass;
+			room_lowpass = target_room_lowpass;
+			step = target_step;
+			ramp_left = ramp_right = ramp_room = ramp_direct_lowpass = ramp_room_lowpass = 0.0f;
+			ramp_step = 0.0;
+			if (surround)
+			{
+				memcpy(surround_gains, target_surround, sizeof(surround_gains));
+				memset(ramp_surround, 0, sizeof(ramp_surround));
+			}
 		}
 	}
 	stream->direct_lowpass[0] = direct_state[0];
@@ -2462,14 +2493,17 @@ An Xbox set to Dolby Digital plays its LFE mix bin from the AC-3's LFE
 channel, which carries only the lowest frequencies: recorded (its AC-3
 decoded), a 1 kHz tone sent to the LFE alone came out at nothing over the
 capture's last bit, more than 84 dB down, where it played here whole. So on
-5.1 the LFE channel goes through a low pass at the Dolby Digital LFE's 120
-Hz: 8th order Butterworth (48 dB an octave, 147 dB down at 1 kHz), as four
-biquads (RBJ's, in double precision: their poles are close to 1). The
+5.1 the LFE channel goes through a low pass, the Xbox's own: a sweep sent to
+the LFE alone, recorded, fell 3 dB by 86 Hz and then as a 4th order filter
+does (a fit of 4.7), not as the Dolby Digital LFE's 120 Hz 8th order would.
+So a 4th order Butterworth at 86 Hz (24 dB an octave, 85 dB down at 1 kHz,
+as the tone was), as two biquads (RBJ's, in double
+precision: their poles are close to 1). The
 game itself sends nothing to the LFE bin; a sound given it (a mod's) is
 heard there as an Xbox played it. */
 
-#define LFE_CUTOFF 120.0
-#define LFE_SECTIONS 4
+#define LFE_CUTOFF 86.0
+#define LFE_SECTIONS 2
 
 static struct
 {
