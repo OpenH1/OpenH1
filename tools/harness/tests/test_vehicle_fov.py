@@ -113,8 +113,10 @@ def test_the_reticle_takes_it():
     # (and what is past the whole units, at the scale it is drawn at: hud_draw.c draws the reticle moved by it)
     assert "rest->i = (x - point->x) * reticle_scale;" in passenger
     assert "rasterizer_screen_offset_set(reticle_rest.i, reticle_rest.j);" in hud
-    # a scope's pieces are the items drawn only zoomed (the VR smart-link's zoomed layout's)
+    # a scope's pieces are the items drawn only zoomed (the VR smart-link's zoomed layout's), and, zoomed, the
+    # reticle too, which the tag draws with them (the pistol's circle under its range and diamond: #738)
     weapon = read("source/interface/hud_weapon.c")
+    assert "crosshair->states[_crosshair_state_zoom].value.reference_data > 0 ?\n" in weapon
     assert "HUD_CROSSHAIR_SCOPE_PIECE : TRUE);" in weapon
 
 

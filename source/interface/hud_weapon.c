@@ -1369,11 +1369,16 @@ static void crosshairs_draw(
 												(view_fov.c), but a piece of a scope's own
 												picture (drawn zoomed only) keeps to the view
 												as the picture does; the zoom's own picture
-												keeps its place */
+												keeps its place. Zoomed, the reticle is one of
+												the scope's pieces too: the tag draws it with
+												them (the pistol's circle under its range and
+												target diamond), so it takes their scale, not
+												the unzoomed view's (#738) */
 												state_index == _crosshair_state_zoom ||
 													custom_edition_hud_warning(state_index) ? FALSE :
 												TEST_FLAG(item->flags, _hud_crosshair_not_on_default_zoom_bit) ||
-													TEST_FLAG(item->flags, _hud_crosshair_show_sniper_data_bit) ?
+													TEST_FLAG(item->flags, _hud_crosshair_show_sniper_data_bit) ||
+													crosshair->states[_crosshair_state_zoom].value.reference_data > 0 ?
 													HUD_CROSSHAIR_SCOPE_PIECE : TRUE);
 										}
 									}
