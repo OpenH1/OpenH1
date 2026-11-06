@@ -15,6 +15,10 @@ real render_fov_vertical(short local_player_index, real native_vertical_field_of
 last local view's own projection against the game's): 1 for the stock view.
 A scope's own pieces, drawn zoomed over its picture, keep to it */
 real render_fov_reticle_scale(short local_player_index);
+/* a scope's own pieces' scale: the view's (render_fov_reticle_scale), but
+the picture's own (1) with display.scale_scoped_fov, whose zoomed view is
+wider than the picture was drawn for (#731) */
+real render_fov_scope_piece_scale(short local_player_index);
 /* the weapon's reticle's size: its scale at the unzoomed view (display.panini's
 magnification of the middle with it), kept through the zoom (the stock game
 draws its reticle one size at every zoom: display.fov sizes it, the zoom

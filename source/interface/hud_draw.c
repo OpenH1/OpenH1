@@ -1731,8 +1731,9 @@ static void hud_draw_bitmap_with_meter(
 	reticle_scale = 1.0f;
 	if (is_crosshair_bitmap && absolute_placement->corner == _hud_anchor_center)
 	{
+		/* port: a scope's piece keeps to its picture (render_fov_scope_piece_scale) */
 		reticle_scale = is_crosshair_bitmap == HUD_CROSSHAIR_SCOPE_PIECE ?
-			render_fov_reticle_scale(render.local_player_index) * panini_center_scale() :
+			render_fov_scope_piece_scale(render.local_player_index) * panini_center_scale() :
 			render_fov_reticle_size(render.local_player_index);
 	}
 	/* port: the crosshairs_draw scope moves only the weapon's reticle: to
