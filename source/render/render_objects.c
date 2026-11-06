@@ -595,8 +595,8 @@ static void render_object_list(
 	{
 		struct object_datum *object = object_get(object_index);
 		/* port: the player's own legs, seen looking down in first person
-		(port/linux/game/first_person_legs.c): its body drawn from the waist
-		down, nothing it carries */
+		(port/linux/game/first_person_legs.c): its body drawn but its head
+		and arms, nothing it carries */
 		boolean legs = !data->shadow && !render.camera.mirrored &&
 			object_is_first_person_camera(object_index) && first_person_legs_wanted(object_index);
 		real_matrix4x3 const *node_matrices = legs ?

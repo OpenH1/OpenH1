@@ -3,17 +3,25 @@ FIRST_PERSON_LEGS.C
 
 Your own legs in first person (Video Setup > FOV and Viewmodels > Legs): the
 player's own body, which the game animates as everyone else sees it but does
-not draw for its own player, drawn from the waist down. Look down while
-standing, running, strafing or crouching and the legs move as the body's
-animation moves them.
+not draw for its own player, drawn but its head and arms (the first-person
+arms are the weapon's). Look down while standing, running, strafing or
+crouching and the legs move as the body's animation moves them.
 
-Only the drawing is changed: a copy of the body's pose, all but its hips and
-legs folded into a lid over the waist, the whole set back a little behind
-the eye so the camera never looks out through the hips, and lowered where
-the near plane would cut it (first_person_legs_drop). The body itself, its
-hit boxes and markers, are the game's as ever. The legs are drawn in the
-world with the world's camera, so they keep their place and size at any
-field of view.
+Only the drawing is changed: a copy of the body's pose, its head folded into
+the top of its neck and its arms into its shoulders, its upper body leant
+back about its hips as far as keeps it clear of the eye
+(first_person_legs_lean), and what the near plane would still cut folded
+away (first_person_legs_fold_cut). The body itself, its hit boxes and
+markers, are the game's as ever. The legs are drawn in the world with the
+world's camera, so they keep their place and size at any field of view.
+
+The body is drawn where it stands: its hips and legs are never moved to
+keep them out of the eye's way, so its feet stay put on the ground however
+the view turns and tilts. Set back behind the eye as it looked down, to keep
+the open waist below the view, and lowered out of the near plane's cut, the
+legs slid across the ground as the view tilted (#724). Its chest closes its
+waist: looking down, it is seen under the eye, leant back as far as it must
+be.
 
 The body is drawn between the game's ticks, a tick behind, with the view
 between them; the view drawn on foot is the newest step's
@@ -29,18 +37,15 @@ The eye is not always as far above the hips as standing or crouching puts
 it. Crouching in the air (a crouch jump) brings the eye down to crouching
 height while the body keeps its airborne pose, its hips at the eye's height
 and its thighs beside and before it (#692). The near plane cuts them there,
-and a wide view, whose bottom and sides reach to beside the eye, shows the
-cut pieces, black slivers from the bottom of the screen. So the copy is
-lowered as far as keeps all of it, every triangle of its surface, out of
-the part of the view the near plane cuts away (FIRST_PERSON_LEGS_UNCUT
-beyond it), and down along the view's bottom where that faces up (looking
-down so far that the bottom edge of the view points back under the eye),
-so that the waist's rim stays as far below the view as it was set back to:
-none of it is cut, at
-any field of view, window shape, split screen's view or the Panini pass's
-(the view as drawn: its frustum, its near plane as near_clip.c brings it
-in). Standing, walking and crouching on the ground nothing is that near the
-eye, and the legs are drawn where they were.
+and a wide view, whose bottom and sides reach to beside the eye, showed the
+cut pieces, black slivers from the bottom of the screen. So each part of the
+body with any of its surface, any triangle, in the part of the view the
+near plane cuts away (FIRST_PERSON_LEGS_UNCUT beyond it) is folded away: into
+its joint below where the leg goes on below it (a thigh into its knee), else
+into the eye itself, where it is seen edge on, as nothing. That covers any
+field of view, window shape, split screen's view or the Panini pass's (the
+view as drawn: its frustum, its near plane as near_clip.c brings it in).
+Standing, walking and crouching on the ground nothing is folded.
 
 In the VR mode the whole body is drawn but its head and arms (the arms are
 the VR mode's own, from its shoulders to the controllers: vr_hands.c), and
@@ -51,11 +56,11 @@ upright and square over its hips (the game's leans into its aim, the chest
 turned to the gun while the feet stay planted), its neck under the real
 head, turned to the body's heading (vr.c's: the head's, which it follows
 only past a turn and slowly; the holsters' and the arms' shoulders' too),
-and it is not set back: the chest closes the waist, and looking down shows
+and, as on the flat screen, the chest closes the waist; looking down shows
 the chest, the legs and the feet below the head, as the arms reach from its
 shoulders. Its upper body leans back about the hips as far as keeps what
 the eyes see of it out of their near plane, and the collar's opening out of
-their view (first_person_legs_vr_lean): looking down, the eyes nod forward
+their view (first_person_legs_lean): looking down, the eyes nod forward
 over the chest. Its neck is a little behind the real one (the armour's
 chest is deeper than a person's).
 
@@ -104,31 +109,50 @@ int config_boolean(const char *name);
 unsigned long config_changes(void);
 /* port/linux/game/render_interpolation.c */
 boolean render_interpolation_view_body(long unit_index, real_matrix4x3 *move);
+/* port/linux/game/frames_clock.c */
+int frames_clock(unsigned long *milliseconds);
+unsigned long system_milliseconds(void);
 
 enum
 {
 	FIRST_PERSON_LEGS_MAXIMUM_NODES = 64,
-	FIRST_PERSON_LEGS_MAXIMUM_RIM = 64,
 };
 
-/* how far the body is set back behind the eye at least, world units (about
-12 cm), and at most (about 1 m) */
-#define FIRST_PERSON_LEGS_SET_BACK 0.04f
-#define FIRST_PERSON_LEGS_SET_BACK_MAXIMUM 0.33f
-/* how far out of the view the waist's rim is kept (world units: 3 cm) */
-#define FIRST_PERSON_LEGS_OUT_OF_VIEW 0.01f
 /* how far beyond the near plane the legs are kept where they are in view
-(world units: 3 cm; the points of their surface are weighed, so a little
-more, for the triangles between them), and the farthest they are lowered
-for it (world units: about 1.5 m) */
+(world units: 3 cm): a leg's part nearer, in the part of the view the near
+plane cuts away, is folded away (first_person_legs_fold_cut). The line along
+which a triangle's span is weighed reaches this far each way (world units:
+about 1.5 m: first_person_legs_point_span) */
 #define FIRST_PERSON_LEGS_UNCUT 0.01f
-#define FIRST_PERSON_LEGS_DROP_MAXIMUM 0.5f
-/* the point the upper body folds into: the middle of the waist's rim, a
-little above it (world units: about 3 cm), so the skin that joined hips to
-chest closes the waist as a low lid, flush with the belt (the body's model is
-a hollow shell: folded higher, it stood up as a cone before the eye; lower,
-it sank into a funnel) */
-#define FIRST_PERSON_LEGS_LID_UP 0.01f
+#define FIRST_PERSON_LEGS_SPAN_REACH 0.5f
+/* a part folded away: its node's scale (first_person_legs_fold_cut; the
+head and arms' too, folded into the neck and shoulders) */
+#define FIRST_PERSON_LEGS_FOLDED 0.001f
+
+/* the body's upper body leant back from the eye, or the VR mode's eyes
+(first_person_legs_lean): turned back about its hips in steps of this
+(radians), no farther than this, as far as keeps all of it that the eye sees
+(within FIRST_PERSON_LEGS_VIEW_MARGIN of its view's edges, world units:
+about 2 cm) at least the near plane's distance times
+FIRST_PERSON_LEGS_CLEAR_SCALE and FIRST_PERSON_LEGS_CLEAR_MORE (world units:
+about 2 cm) before it, and the top of its neck, if seen,
+FIRST_PERSON_LEGS_NECK_BEHIND behind the eye (world units, along its
+heading: about 27 cm); coming back upright no faster than
+FIRST_PERSON_LEGS_UPRIGHT_SPEED (radians a second). Of the body's surface, so
+many points at most are weighed (those that can come that near). The flat
+screen's leans back as far as FIRST_PERSON_LEGS_FLAT_LEAN_MAXIMUM (radians:
+about 86 degrees): looking down at a wide view, the view's bottom reaches
+back under the eye, and the chest, leant back no farther than the VR mode's,
+was still before the eye (the eye is over the hips, not before them) */
+#define FIRST_PERSON_LEGS_LEAN_STEP 0.025f
+#define FIRST_PERSON_LEGS_LEAN_MAXIMUM 0.9f
+#define FIRST_PERSON_LEGS_VIEW_MARGIN 0.007f
+#define FIRST_PERSON_LEGS_CLEAR_SCALE 1.1f
+#define FIRST_PERSON_LEGS_CLEAR_MORE 0.007f
+#define FIRST_PERSON_LEGS_NECK_BEHIND 0.09f
+#define FIRST_PERSON_LEGS_UPRIGHT_SPEED 1.0f
+#define FIRST_PERSON_LEGS_LEAN_POINTS 8192
+#define FIRST_PERSON_LEGS_FLAT_LEAN_MAXIMUM 1.5f
 
 #ifdef HALO_VR
 /* the VR mode's body: its neck this far behind the top of the real neck
@@ -140,24 +164,6 @@ hip and the pouch at the left (vr.c's, from the head) are still at the
 hips' sides, about 5 cm short of their front */
 #define FIRST_PERSON_LEGS_VR_BACK 0.016f
 
-/* the VR mode's body leant back from the eyes (first_person_legs_vr_lean):
-its upper body, turned back about its hips in steps of this (radians), no
-farther than this, as far as keeps all of it that either eye sees (within
-FIRST_PERSON_LEGS_VIEW_MARGIN of its view's edges, world units: about 2 cm)
-at least the eyes' near plane's distance times FIRST_PERSON_LEGS_CLEAR_SCALE
-and FIRST_PERSON_LEGS_CLEAR_MORE (world units: about 2 cm) before it, and
-the top of its neck, if seen, FIRST_PERSON_LEGS_NECK_BEHIND behind the eyes
-(world units, along its heading: about 27 cm); coming back upright no faster
-than FIRST_PERSON_LEGS_UPRIGHT_SPEED (radians a second). Of the body's
-surface, so many points at most are weighed (those that can come that near) */
-#define FIRST_PERSON_LEGS_LEAN_STEP 0.025f
-#define FIRST_PERSON_LEGS_LEAN_MAXIMUM 0.9f
-#define FIRST_PERSON_LEGS_VIEW_MARGIN 0.007f
-#define FIRST_PERSON_LEGS_CLEAR_SCALE 1.1f
-#define FIRST_PERSON_LEGS_CLEAR_MORE 0.007f
-#define FIRST_PERSON_LEGS_NECK_BEHIND 0.09f
-#define FIRST_PERSON_LEGS_UPRIGHT_SPEED 1.0f
-#define FIRST_PERSON_LEGS_LEAN_POINTS 8192
 /* the VR mode's body in a seat (first_person_legs_vr_seated): its upper
 body turned about its hips toward the real neck no farther than this
 (radians: as far as a person seated leans and twists) */
@@ -193,8 +199,6 @@ static struct
 #endif
 
 static real_matrix4x3 first_person_legs_matrices[FIRST_PERSON_LEGS_MAXIMUM_NODES];
-/* the body's pose seen from the view drawn (first_person_legs_node_matrices) */
-static real_matrix4x3 first_person_legs_seen[FIRST_PERSON_LEGS_MAXIMUM_NODES];
 static boolean first_person_legs_enabled(
 	void)
 {
@@ -274,96 +278,14 @@ static boolean first_person_legs_node(
 	return FALSE;
 }
 
-/* the middle of the waist's rim in the model's space: the hips' vertices
-on triangles that run up into the body above them (FALSE: none), kept for
-the mesh it was found in (a new map forgets it: first_person_legs_reset) */
-static real_point3d first_person_legs_rim[FIRST_PERSON_LEGS_MAXIMUM_RIM];
-static short first_person_legs_rim_count = 0;
-static long first_person_legs_waist_key = NONE;
-static long first_person_legs_waist_model = NONE;
-static boolean first_person_legs_waist_found = FALSE;
-static real_point3d first_person_legs_waist_middle;
-
-/* a new map: the waist found, and the mesh it was found in, forgotten (the
-new map's models have indices of their own) */
+/* a new map: the mesh read forgotten (the new map's models have indices of
+their own) */
 void first_person_legs_reset(
 	void)
 {
-	first_person_legs_waist_key = NONE;
-	first_person_legs_waist_model = NONE;
-	first_person_legs_rim_count = 0;
 	object_mesh_reset();
 }
 
-static boolean first_person_legs_waist(
-	struct object_mesh const *mesh,
-	struct model const *model,
-	short pelvis,
-	real_point3d *middle)
-{
-	real_point3d sum = { 0.f, 0.f, 0.f };
-	long found = 0;
-	long index;
-
-	if (mesh->key == first_person_legs_waist_key && mesh->model_index == first_person_legs_waist_model)
-	{
-		*middle = first_person_legs_waist_middle;
-		return first_person_legs_waist_found;
-	}
-	first_person_legs_rim_count = 0;
-	for (index = 0; index < mesh->triangle_count; index++)
-	{
-		boolean hips = FALSE;
-		boolean above = FALSE;
-		short corner;
-
-		for (corner = 0; corner < 3; corner++)
-		{
-			struct object_mesh_vertex const *vertex = &mesh->vertices[mesh->triangles[index][corner]];
-			short n;
-
-			if (vertex->nodes[0] == pelvis && (vertex->nodes[1] == pelvis || vertex->weight >= 32767))
-				hips = TRUE;
-			for (n = 0; n < 2; n++)
-			{
-				if (vertex->nodes[n] < model->nodes.count && (n == 0 || vertex->weight < 32767) &&
-					!first_person_legs_node(TAG_BLOCK_GET_ELEMENT(&model->nodes, vertex->nodes[n], struct model_node)->name))
-				{
-					above = TRUE;
-				}
-			}
-		}
-		if (!hips || !above)
-			continue;
-		for (corner = 0; corner < 3; corner++)
-		{
-			struct object_mesh_vertex const *vertex = &mesh->vertices[mesh->triangles[index][corner]];
-
-			if (vertex->nodes[0] == pelvis && (vertex->nodes[1] == pelvis || vertex->weight >= 32767))
-			{
-				sum.x += vertex->position.x;
-				sum.y += vertex->position.y;
-				sum.z += vertex->position.z;
-				found++;
-				if (first_person_legs_rim_count < FIRST_PERSON_LEGS_MAXIMUM_RIM)
-					first_person_legs_rim[first_person_legs_rim_count++] = vertex->position;
-			}
-		}
-	}
-	first_person_legs_waist_key = mesh->key;
-	first_person_legs_waist_model = mesh->model_index;
-	first_person_legs_waist_found = found > 0;
-	if (found > 0)
-	{
-		first_person_legs_waist_middle.x = sum.x / found;
-		first_person_legs_waist_middle.y = sum.y / found;
-		first_person_legs_waist_middle.z = sum.z / found + FIRST_PERSON_LEGS_LID_UP;
-	}
-	*middle = first_person_legs_waist_middle;
-	return first_person_legs_waist_found;
-}
-
-#ifdef HALO_VR
 /* a vector turned by the rotation from the frame from (forward, left, up)
 to the frame to */
 static void first_person_legs_turn(
@@ -429,7 +351,7 @@ static boolean first_person_legs_seen_within(
 skin: each node's from the model's space), split in two: the part on nodes
 that do not lean and the pivot (base), and the part turned about the pivot
 (arm); FALSE: not seen (the head and arms folded away) */
-static boolean first_person_legs_vr_lean_split(
+static boolean first_person_legs_lean_split(
 	struct object_mesh const *mesh,
 	long vertex_index,
 	long count,
@@ -476,7 +398,7 @@ static boolean first_person_legs_vr_lean_split(
 	return shown;
 }
 
-/* each vertex's split (first_person_legs_vr_lean_split) for one lean: made
+/* each vertex's split (first_person_legs_lean_split) for one lean: made
 the first time a triangle has the vertex as a corner, and kept for the
 others that share it (most vertices are corners of about six), which gives
 the same points as working each corner out again. NULL where the memory
@@ -505,7 +427,7 @@ static struct first_person_legs_split *first_person_legs_splits(
 }
 
 /* a triangle's corner's split, kept in splits (if any) */
-static boolean first_person_legs_vr_lean_corner(
+static boolean first_person_legs_lean_corner(
 	struct object_mesh const *mesh,
 	struct first_person_legs_split *splits,
 	long vertex_index,
@@ -519,11 +441,11 @@ static boolean first_person_legs_vr_lean_corner(
 	struct first_person_legs_split *split;
 
 	if (!splits || vertex_index < 0 || vertex_index >= mesh->vertex_count || vertex_index >= OBJECT_MESH_MAXIMUM_VERTICES)
-		return first_person_legs_vr_lean_split(mesh, vertex_index, count, skin, leans, pivot, base, arm);
+		return first_person_legs_lean_split(mesh, vertex_index, count, skin, leans, pivot, base, arm);
 	split = &splits[vertex_index];
 	if (!split->state)
 	{
-		split->state = first_person_legs_vr_lean_split(mesh, vertex_index, count, skin, leans, pivot, &split->base,
+		split->state = first_person_legs_lean_split(mesh, vertex_index, count, skin, leans, pivot, &split->base,
 			&split->arm) ? 2 : 1;
 	}
 	*base = split->base;
@@ -531,32 +453,40 @@ static boolean first_person_legs_vr_lean_corner(
 	return split->state == 2;
 }
 
-/* the VR mode's body leant back about its hips (pivot; the top of its neck;
-its heading's forward, and left), as little as keeps it clear of the eyes:
-the eyes nod forward over the chest as the head looks down (the neck stays
-under them), and the near plane, about 19 cm before them, would cut into
-the armour of its chest and collar, showing it hollow. Its hips and legs
-stand where they are, as do the holsters and the pouch about them; its
-upper body leans back, out of the eyes' way, as far as it must, and no
-farther. Only what the eyes see counts, as they look now: looking ahead,
-or down at the belt, it stands upright (the chest's armour below and behind
-the eyes, out of their view, the arms' shoulders over its own); looking
-down over the chest, it leans back, as little as it can about the hips (it
-leant farther about the waist, nearer the chest, the chest turned up into
-the view and the belly bulging before the feet). Nor
-do the eyes see the opening of its collar (the head folded away, the dark
-top of the neck, a pit before the eyes), which a chin would hide: seen,
-it is behind them. Each vertex of the upper body is where the game would
-draw it: its nodes' blend, the part on nodes that do not lean and the pivot
-(base), and the part turned about the pivot (arm) */
-static void first_person_legs_vr_lean(
+/* the body's upper body leant back about its hips (pivot; the top of its
+neck; its heading's forward, and left), as little as keeps it clear of the
+eye (the flat screen's: both eyes, its view) or the VR mode's eyes (eyes,
+their views as drawn, the nearer of their near planes' distances, and the
+time since the last frame, seconds; no farther than most, radians): the
+eyes nod forward over the chest
+as the head looks down (the neck stays under them), and the near plane,
+about 19 cm before them, would cut into the armour of its chest and collar,
+showing it hollow. Its hips and legs stand where they are, as do the
+holsters and the pouch about them; its upper body leans back, out of the
+eyes' way, as far as it must, and no farther. Only what the eyes see
+counts, as they look now: looking ahead, or down at the belt, it stands as
+it is (the chest's armour below and behind the eyes, out of their view, the
+arms' shoulders over its own); looking down over the chest, it leans back,
+as little as it can about the hips (it leant farther about the waist,
+nearer the chest, the chest turned up into the view and the belly bulging
+before the feet). Nor do the eyes see the opening of its collar (the head
+folded away, the dark top of the neck, a pit before the eyes), which a chin
+would hide: seen, it is behind them. Each vertex of the upper body is where
+the game would draw it: its nodes' blend, the part on nodes that do not
+lean and the pivot (base), and the part turned about the pivot (arm) */
+static void first_person_legs_lean(
 	long object_index,
 	struct model const *model,
 	long count,
 	real_point3d const *pivot,
 	real_point3d const *neck_top,
 	real_vector3d const *forward,
-	real_vector3d const *left)
+	real_vector3d const *left,
+	real_point3d const eyes[2],
+	struct render_frustum const *const views[2],
+	real near,
+	real seconds,
+	real most)
 {
 	static real_point3d base[FIRST_PERSON_LEGS_LEAN_POINTS];
 	static real_vector3d arm[FIRST_PERSON_LEGS_LEAN_POINTS];
@@ -564,15 +494,13 @@ static void first_person_legs_vr_lean(
 	struct object_mesh const *mesh = object_mesh_get(object_index);
 	real_matrix4x3 skin[FIRST_PERSON_LEGS_MAXIMUM_NODES];
 	boolean leans[FIRST_PERSON_LEGS_MAXIMUM_NODES];
-	real_point3d eyes[2];
-	struct render_frustum const *views[2];
 	real_vector3d from[3], to[3], move, neck;
-	real near, seconds, clear, seen_reach = 0.f, wanted, angle, eyes_ahead, neck_forward, neck_up;
+	real clear, seen_reach = 0.f, wanted, angle, eyes_ahead, neck_forward, neck_up;
 	long index, weighed = 0;
 	short eye, corner;
 	struct first_person_legs_split *splits;
 
-	if (!mesh || mesh->node_count < count || !vr_render_body_eyes(eyes, views, &near, &seconds))
+	if (!mesh || mesh->node_count < count)
 		return;
 	clear = near * FIRST_PERSON_LEGS_CLEAR_SCALE + FIRST_PERSON_LEGS_CLEAR_MORE;
 	/* (how far from an eye a point it sees less than clear before it may
@@ -617,7 +545,7 @@ static void first_person_legs_vr_lean(
 
 		for (corner = 0; corner < 3; corner++)
 		{
-			if (first_person_legs_vr_lean_corner(mesh, splits, mesh->triangles[index][corner], count, skin, leans, pivot,
+			if (first_person_legs_lean_corner(mesh, splits, mesh->triangles[index][corner], count, skin, leans, pivot,
 				&corner_base[corner], &corner_arm[corner]))
 			{
 				shown = TRUE;
@@ -671,7 +599,7 @@ static void first_person_legs_vr_lean(
 	/* (the least lean that keeps them all clear of what the eyes see;
 	leaning back at once, as far as needed, and coming upright again
 	smoothly: none less than it may come to this frame is tried) */
-	for (wanted = MAX(lean - FIRST_PERSON_LEGS_UPRIGHT_SPEED * seconds, 0.f); wanted < FIRST_PERSON_LEGS_LEAN_MAXIMUM;
+	for (wanted = MAX(lean - FIRST_PERSON_LEGS_UPRIGHT_SPEED * seconds, 0.f); wanted < most;
 		wanted += FIRST_PERSON_LEGS_LEAN_STEP)
 	{
 		real c = (real)cos(wanted), s = (real)sin(wanted);
@@ -710,8 +638,8 @@ static void first_person_legs_vr_lean(
 		if (!too_near)
 			break;
 	}
-	if (wanted > FIRST_PERSON_LEGS_LEAN_MAXIMUM)
-		wanted = FIRST_PERSON_LEGS_LEAN_MAXIMUM;
+	if (wanted > most)
+		wanted = most;
 	lean = wanted;
 	if (lean <= 0.f)
 		return;
@@ -735,6 +663,7 @@ static void first_person_legs_vr_lean(
 	}
 }
 
+#ifdef HALO_VR
 /* the VR mode's body's chest as it is drawn (chest: its node, the neck's
 parent; neck; hips: the root, the pelvis; the top of the real neck, and the
 heading's forward and left there), and how far its back is behind it, and
@@ -948,7 +877,7 @@ static real_matrix4x3 const *first_person_legs_vr_body(
 		if (up != NONE)
 		{
 			first_person_legs_matrices[index].position = first_person_legs_matrices[up].position;
-			first_person_legs_matrices[index].scale = 0.001f;
+			first_person_legs_matrices[index].scale = FIRST_PERSON_LEGS_FOLDED;
 		}
 	}
 
@@ -974,8 +903,18 @@ static real_matrix4x3 const *first_person_legs_vr_body(
 		first_person_legs_rotate(&first_person_legs_matrices[index], from, to, &collar, &move);
 	/* (and its upper body leant back about its hips, as far as keeps it
 	clear of the eyes) */
-	first_person_legs_vr_lean(object_index, model, count, &first_person_legs_matrices[pelvis].position,
-		&first_person_legs_matrices[head].position, &to[0], &to[1]);
+	{
+		real_point3d eyes[2];
+		struct render_frustum const *views[2];
+		real near, seconds;
+
+		if (vr_render_body_eyes(eyes, views, &near, &seconds))
+		{
+			first_person_legs_lean(object_index, model, count, &first_person_legs_matrices[pelvis].position,
+				&first_person_legs_matrices[head].position, &to[0], &to[1], eyes, views, near, seconds,
+				FIRST_PERSON_LEGS_LEAN_MAXIMUM);
+		}
+	}
 	/* (and its chest's frame and back noted, as drawn, for the long gun
 	slung across it, and its hips' side, for the pistol at the hip) */
 	if (TAG_BLOCK_GET_ELEMENT(&model->nodes, neck, struct model_node)->parent_node_index != NONE)
@@ -1047,7 +986,7 @@ the seat's eye, or its cabin's, whose seat and floor are where its hips and
 feet then are (tools/vr_cabin_model.py). Its upper body turns about its hips
 toward the real neck as the head moves (no farther than FIRST_PERSON_LEGS_
 SEAT_TURN_MOST), and leans back clear of the eyes, as on foot
-(first_person_legs_vr_lean); its head is folded into the top of its neck,
+(first_person_legs_lean); its head is folded into the top of its neck,
 and its arms into its shoulders where the VR mode draws its own */
 static real_matrix4x3 const *first_person_legs_vr_seated(
 	long object_index,
@@ -1185,34 +1124,43 @@ static real_matrix4x3 const *first_person_legs_vr_seated(
 		if (up != NONE)
 		{
 			first_person_legs_matrices[index].position = first_person_legs_matrices[up].position;
-			first_person_legs_matrices[index].scale = 0.001f;
+			first_person_legs_matrices[index].scale = FIRST_PERSON_LEGS_FOLDED;
 		}
 	}
 
 	/* (and its upper body leant back about its hips, as far as keeps it
 	clear of the eyes) */
-	first_person_legs_vr_lean(object_index, model, count, &first_person_legs_matrices[pelvis].position,
-		&first_person_legs_matrices[head].position, &seat.forward, &seat.left);
+	{
+		real_point3d eyes[2];
+		struct render_frustum const *views[2];
+		real near, seconds;
+
+		if (vr_render_body_eyes(eyes, views, &near, &seconds))
+		{
+			first_person_legs_lean(object_index, model, count, &first_person_legs_matrices[pelvis].position,
+				&first_person_legs_matrices[head].position, &seat.forward, &seat.left, eyes, views, near,
+				seconds, FIRST_PERSON_LEGS_LEAN_MAXIMUM);
+		}
+	}
 	return first_person_legs_matrices;
 }
 #endif
 
-/* the span of drops (world units) over which a point lowered is in the part
-of the view the near plane cuts away: within the view's sides and less than
-FIRST_PERSON_LEGS_UNCUT beyond its near plane (view: the frustum as drawn,
-its planes' distances outward; along: the way it is lowered, a drop of 1
-moving it along this, 1 down and maybe aside). That part is convex (between
-the eye and the near plane, within the sides), so the line the point moves
-along crosses it over one span, found from each plane's distance; FALSE:
-none */
+/* the span along a line (world units, d: the point moved by d along this)
+over which a point is in the part of the view the near plane cuts away:
+within the view's sides and less than FIRST_PERSON_LEGS_UNCUT beyond its
+near plane (view: the frustum as drawn, its planes' distances outward).
+That part is convex (between the eye and the near plane, within the
+sides), so the line crosses it over one span, found from each plane's
+distance; FALSE: none */
 static boolean first_person_legs_point_span(
 	struct render_frustum const *view,
 	real_vector3d const *along,
 	real_point3d const *point,
 	real span[2])
 {
-	real low = -FIRST_PERSON_LEGS_DROP_MAXIMUM - 1.f;
-	real high = FIRST_PERSON_LEGS_DROP_MAXIMUM + 1.f;
+	real low = -FIRST_PERSON_LEGS_SPAN_REACH - 1.f;
+	real high = FIRST_PERSON_LEGS_SPAN_REACH + 1.f;
 	short plane;
 
 	/* (lowered by d, a plane's distance outward is its distance less d
@@ -1282,7 +1230,7 @@ static boolean first_person_legs_cut_corners(
 	return TRUE;
 }
 
-/* the span of drops over which a triangle lowered along this meets the cut
+/* the span along a line over which a triangle moved along it meets the cut
 (corners: first_person_legs_cut_corners'; spans: each of the triangle's
 corners' first_person_legs_point_span, held: whether it has one). Both
 convex, they meet over one span, from where they first touch to where they
@@ -1297,8 +1245,8 @@ static boolean first_person_legs_triangle_span(
 	real span[2])
 {
 	static short const edges[8][2] = { { 0, 1 }, { 0, 2 }, { 0, 3 }, { 0, 4 }, { 1, 2 }, { 2, 3 }, { 3, 4 }, { 4, 1 } };
-	real low = FIRST_PERSON_LEGS_DROP_MAXIMUM + 1.f;
-	real high = -FIRST_PERSON_LEGS_DROP_MAXIMUM - 1.f;
+	real low = FIRST_PERSON_LEGS_SPAN_REACH + 1.f;
+	real high = -FIRST_PERSON_LEGS_SPAN_REACH - 1.f;
 	real_vector3d sides[3];
 	real_vector3d normal;
 	real toward;
@@ -1384,115 +1332,80 @@ static boolean first_person_legs_triangle_span(
 	return low < high;
 }
 
-/* how far to lower the legs (along this: a drop of 1 moves them 1 down, and
-maybe aside) so that none of their surface is in the part of the view the
-near plane cuts away: the least drop (world units, 0 or more) at which each
-of its triangles (each three of points' indices, triangles of them; NULL:
-each point on its own) is outside the view's sides or
-FIRST_PERSON_LEGS_UNCUT or more beyond its near plane. Lowered, each meets
-that part over one span of drops (first_person_legs_triangle_span); the
-least drop in none of the spans is the answer. Weighing the points alone
-missed what is between them: the legs' plates are broad triangles, and
-crouching in the air a thigh's reached from below the view's bottom, beside
-the eye, to beyond the near plane, its corners out of the cut and its
-middle in it (#692). cut holds a span for each point and triangle,
-point_spans one for each point */
-static real first_person_legs_drop(
+/* the triangles of the surface (each three of points' indices) that meet
+the part of the view the near plane cuts away (within the view's sides and
+less than FIRST_PERSON_LEGS_UNCUT beyond its near plane), each marked in
+cut, and how many. A triangle meets it where it is if its span along a line
+through it (first_person_legs_triangle_span) holds where it is. Its corners
+alone missed what is between them: the legs' plates are broad triangles,
+and crouching in the air a thigh's reached from below the view's bottom,
+beside the eye, to beyond the near plane, its corners out of the cut and its
+middle in it (#692). Those out of the cut's bounds are not weighed.
+point_spans holds a span for each point */
+static long first_person_legs_cut(
 	struct render_frustum const *view,
-	real_vector3d const *along,
 	real_point3d const *points,
 	long count,
 	unsigned short const (*triangles)[3],
 	long triangle_count,
 	real (*point_spans)[2],
-	real (*cut)[2])
+	boolean *cut)
 {
-	long spans = 0;
-	long index;
-	real drop = 0.f;
-	boolean moved;
+	static real_vector3d const along = { 0.f, 0.f, -1.f };
 	real_point3d corners[5];
 	real_point3d box[2];
+	long found = 0;
+	long index;
 
+	for (index = 0; index < triangle_count; index++)
+		cut[index] = FALSE;
+	if (!first_person_legs_cut_corners(view, corners))
+		return 0;
+	box[0] = box[1] = corners[0];
+	for (index = 1; index < 5; index++)
+	{
+		box[0].x = MIN(box[0].x, corners[index].x);
+		box[0].y = MIN(box[0].y, corners[index].y);
+		box[0].z = MIN(box[0].z, corners[index].z);
+		box[1].x = MAX(box[1].x, corners[index].x);
+		box[1].y = MAX(box[1].y, corners[index].y);
+		box[1].z = MAX(box[1].z, corners[index].z);
+	}
 	for (index = 0; index < count; index++)
+		first_person_legs_point_span(view, &along, &points[index], point_spans[index]);
+	for (index = 0; index < triangle_count; index++)
 	{
-		if (first_person_legs_point_span(view, along, &points[index], point_spans[index]) &&
-			point_spans[index][1] > 0.f && !triangles)
-		{
-			cut[spans][0] = point_spans[index][0];
-			cut[spans][1] = point_spans[index][1];
-			spans++;
-		}
-	}
-	/* (the triangles that can meet the cut lowered from none to the most:
-	those within its bounds and theirs moved back up by the most) */
-	if (triangles && first_person_legs_cut_corners(view, corners))
-	{
-		box[0] = box[1] = corners[0];
-		for (index = 0; index < 10; index++)
-		{
-			real_point3d corner = corners[index % 5];
+		real_point3d const *triangle[3];
+		real const *corner_spans[3];
+		boolean held[3];
+		real span[2];
+		short corner;
 
-			if (index >= 5)
-			{
-				corner.x -= along->i * FIRST_PERSON_LEGS_DROP_MAXIMUM;
-				corner.y -= along->j * FIRST_PERSON_LEGS_DROP_MAXIMUM;
-				corner.z -= along->k * FIRST_PERSON_LEGS_DROP_MAXIMUM;
-			}
-			box[0].x = MIN(box[0].x, corner.x);
-			box[0].y = MIN(box[0].y, corner.y);
-			box[0].z = MIN(box[0].z, corner.z);
-			box[1].x = MAX(box[1].x, corner.x);
-			box[1].y = MAX(box[1].y, corner.y);
-			box[1].z = MAX(box[1].z, corner.z);
-		}
-		for (index = 0; index < triangle_count; index++)
+		if (triangles[index][0] >= count || triangles[index][1] >= count || triangles[index][2] >= count)
+			continue;
+		for (corner = 0; corner < 3; corner++)
 		{
-			real_point3d const *triangle[3];
-			real const *corner_spans[3];
-			boolean held[3];
-			short corner;
-
-			if (triangles[index][0] >= count || triangles[index][1] >= count || triangles[index][2] >= count)
-				continue;
-			for (corner = 0; corner < 3; corner++)
-			{
-				triangle[corner] = &points[triangles[index][corner]];
-				corner_spans[corner] = point_spans[triangles[index][corner]];
-				held[corner] = corner_spans[corner][0] < corner_spans[corner][1];
-			}
-			if (MAX(MAX(triangle[0]->x, triangle[1]->x), triangle[2]->x) < box[0].x ||
-				MIN(MIN(triangle[0]->x, triangle[1]->x), triangle[2]->x) > box[1].x ||
-				MAX(MAX(triangle[0]->y, triangle[1]->y), triangle[2]->y) < box[0].y ||
-				MIN(MIN(triangle[0]->y, triangle[1]->y), triangle[2]->y) > box[1].y ||
-				MAX(MAX(triangle[0]->z, triangle[1]->z), triangle[2]->z) < box[0].z ||
-				MIN(MIN(triangle[0]->z, triangle[1]->z), triangle[2]->z) > box[1].z)
-			{
-				continue;
-			}
-			if (first_person_legs_triangle_span(along, corners, triangle, corner_spans, held, cut[spans]) &&
-				cut[spans][1] > 0.f)
-			{
-				spans++;
-			}
+			triangle[corner] = &points[triangles[index][corner]];
+			corner_spans[corner] = point_spans[triangles[index][corner]];
+			held[corner] = corner_spans[corner][0] < corner_spans[corner][1];
+		}
+		if (MAX(MAX(triangle[0]->x, triangle[1]->x), triangle[2]->x) < box[0].x ||
+			MIN(MIN(triangle[0]->x, triangle[1]->x), triangle[2]->x) > box[1].x ||
+			MAX(MAX(triangle[0]->y, triangle[1]->y), triangle[2]->y) < box[0].y ||
+			MIN(MIN(triangle[0]->y, triangle[1]->y), triangle[2]->y) > box[1].y ||
+			MAX(MAX(triangle[0]->z, triangle[1]->z), triangle[2]->z) < box[0].z ||
+			MIN(MIN(triangle[0]->z, triangle[1]->z), triangle[2]->z) > box[1].z)
+		{
+			continue;
+		}
+		if (first_person_legs_triangle_span(&along, corners, triangle, corner_spans, held, span) &&
+			span[0] <= 0.f && 0.f < span[1])
+		{
+			cut[index] = TRUE;
+			found++;
 		}
 	}
-	/* (the least drop past every span it falls in, each span left behind
-	for good: the drop only grows) */
-	do
-	{
-		moved = FALSE;
-		for (index = 0; index < spans; index++)
-		{
-			if (cut[index][0] <= drop && drop < cut[index][1])
-			{
-				drop = cut[index][1];
-				moved = TRUE;
-			}
-		}
-	}
-	while (moved && drop < FIRST_PERSON_LEGS_DROP_MAXIMUM);
-	return MIN(drop, FIRST_PERSON_LEGS_DROP_MAXIMUM);
+	return found;
 }
 
 /* the points of the body's surface as drawn with a pose (each node's matrix,
@@ -1503,7 +1416,7 @@ triangles' indices); how many (none: no mesh, or a vertex bound to a node
 the pose has not) */
 static real_point3d first_person_legs_points[OBJECT_MESH_MAXIMUM_VERTICES];
 static real first_person_legs_point_spans[OBJECT_MESH_MAXIMUM_VERTICES][2];
-static real first_person_legs_spans[MAX(OBJECT_MESH_MAXIMUM_VERTICES, OBJECT_MESH_MAXIMUM_TRIANGLES)][2];
+static boolean first_person_legs_cut_triangles[OBJECT_MESH_MAXIMUM_TRIANGLES];
 
 static long first_person_legs_surface(
 	struct object_mesh const *mesh,
@@ -1544,11 +1457,168 @@ static long first_person_legs_surface(
 	return mesh->vertex_count;
 }
 
-/* the pose to draw the legs with: the body's own (as it is drawn now, about
-the view drawn as it is about its own: render_interpolation_view_body), all
-but the legs folded into the hips, the whole set back behind the eye and
-lowered out of the near plane's cut (first_person_legs_drop); NULL: none (a
-body without named legs) */
+/* the parts of the body the near plane would cut, folded away, the body
+left where it is (eye: the eye's place). Crouching in the air (a crouch
+jump) brings the eye down to crouching height while the body keeps its
+airborne pose, its hips at the eye and its thighs beside and before it
+(#692), and a wide view, whose bottom and sides reach to beside the eye,
+showed the near plane's cut through them: black slivers, and the dark
+undersuit behind a cut plate. Each node with a triangle in the cut
+(first_person_legs_cut) is folded, and the surface weighed again, until none
+is in the cut but where folded skin meets the eye:
+
+- into its joint below, where a node of the legs below it is not folded (the
+  middle of those: a thigh into its knee, the hips into the hip joints), so
+  that the skin it shares with that node closes over the joint;
+- else into the eye itself: its triangles then meet the eye and are seen
+  edge on, as nothing, and the skin it shares with a node not folded lies
+  along the eye's lines of sight to where that node holds it, seen as that
+  node's, so that nothing is drawn stretched across the view between two
+  folds (the hips folded between two thighs folded into their knees, a
+  sliver from knee to knee).
+
+Moving the legs out of the cut instead (#699, #722: lowered, and set back
+from the eye as it looked down) moved the feet on the ground as the view
+turned (#724); folded, what is left stands where the body stands. Standing,
+walking and crouching on the ground nothing is that near the eye, and
+nothing is folded */
+static void first_person_legs_fold_cut(
+	long object_index,
+	struct model const *model,
+	long count,
+	real_point3d const *eye)
+{
+	struct object_mesh const *mesh = object_mesh_get(object_index);
+	real_matrix4x3 posed[FIRST_PERSON_LEGS_MAXIMUM_NODES];
+	boolean folded[FIRST_PERSON_LEGS_MAXIMUM_NODES];
+	boolean into_eye[FIRST_PERSON_LEGS_MAXIMUM_NODES];
+	boolean fixed[FIRST_PERSON_LEGS_MAXIMUM_NODES];
+	short index;
+	short pass;
+
+	if (!mesh || mesh->triangle_count > OBJECT_MESH_MAXIMUM_TRIANGLES)
+		return;
+	for (index = 0; index < count; index++)
+	{
+		posed[index] = first_person_legs_matrices[index];
+		/* (the head and arms, folded already into the neck and shoulders) */
+		fixed[index] = first_person_legs_matrices[index].scale < 0.01f;
+		folded[index] = FALSE;
+		into_eye[index] = FALSE;
+	}
+	for (pass = 0; pass < count; pass++)
+	{
+		long points = first_person_legs_surface(mesh, first_person_legs_matrices, count);
+		boolean more = FALSE;
+		long triangle;
+
+		if (!points || !first_person_legs_cut(&global_window_parameters.frustum, first_person_legs_points, points,
+			mesh->triangles, mesh->triangle_count, first_person_legs_point_spans, first_person_legs_cut_triangles))
+		{
+			break;
+		}
+		/* (the nodes each triangle in the cut is bound to, not folded yet;
+		none for one bound to a node folded into the eye, seen edge on or as
+		the other node's) */
+		for (triangle = 0; triangle < mesh->triangle_count; triangle++)
+		{
+			short bound[6];
+			short bound_count = 0;
+			boolean seen = TRUE;
+			short corner;
+
+			if (!first_person_legs_cut_triangles[triangle])
+				continue;
+			for (corner = 0; corner < 3; corner++)
+			{
+				struct object_mesh_vertex const *vertex = &mesh->vertices[mesh->triangles[triangle][corner]];
+				short n;
+
+				for (n = 0; n < 2; n++)
+				{
+					short node = vertex->nodes[n];
+
+					if ((n == 0 || vertex->weight < 32767) && node >= 0 && node < count)
+					{
+						if (into_eye[node])
+							seen = FALSE;
+						bound[bound_count++] = node;
+					}
+				}
+			}
+			for (corner = 0; seen && corner < bound_count; corner++)
+			{
+				if (!fixed[bound[corner]] && !folded[bound[corner]])
+				{
+					folded[bound[corner]] = TRUE;
+					more = TRUE;
+				}
+			}
+		}
+		if (!more)
+			break;
+		/* (each folded node into its joint below where a node of the legs
+		below it is not folded, else into the eye) */
+		for (index = 0; index < count; index++)
+		{
+			real_point3d into = *global_origin3d;
+			long below = 0;
+			short child;
+
+			if (!folded[index])
+				continue;
+			for (child = 0; child < count; child++)
+			{
+				struct model_node const *node = TAG_BLOCK_GET_ELEMENT(&model->nodes, child, struct model_node);
+
+				if (node->parent_node_index == index && first_person_legs_node(node->name) && !folded[child] &&
+					!fixed[child])
+				{
+					into.x += posed[child].position.x;
+					into.y += posed[child].position.y;
+					into.z += posed[child].position.z;
+					below++;
+				}
+			}
+			into_eye[index] = below == 0;
+			if (below > 0)
+			{
+				into.x /= below;
+				into.y /= below;
+				into.z /= below;
+			}
+			first_person_legs_matrices[index] = posed[index];
+			first_person_legs_matrices[index].position = below > 0 ? into : *eye;
+			first_person_legs_matrices[index].scale = FIRST_PERSON_LEGS_FOLDED;
+		}
+	}
+}
+
+/* the time from the last frame's pose to this one's (seconds): the frames'
+own where their time is fixed (frames_clock.c) */
+static real first_person_legs_seconds(
+	void)
+{
+	static unsigned long last = 0;
+	static boolean started = FALSE;
+	unsigned long now;
+	real seconds;
+
+	if (!frames_clock(&now))
+		now = system_milliseconds();
+	seconds = started ? (real)(now - last) / 1000.f : 0.f;
+	last = now;
+	started = TRUE;
+	return seconds < 0.f ? 0.f : MIN(seconds, 0.25f);
+}
+
+/* the pose to draw the body with: the body's own (as it is drawn now, about
+the view drawn as it is about its own: render_interpolation_view_body), its
+head folded into the top of its neck and its arms into its shoulders (the
+first-person arms are the weapon's), its upper body leant back clear of the
+eye (first_person_legs_lean), and the parts of its legs the near plane would
+cut folded away (first_person_legs_fold_cut); NULL: none (a body without
+named legs, spine, neck, head and upper arms) */
 real_matrix4x3 const *first_person_legs_node_matrices(
 	long object_index,
 	real_matrix4x3 const *nodes)
@@ -1557,13 +1627,12 @@ real_matrix4x3 const *first_person_legs_node_matrices(
 	struct object_definition *definition;
 	struct model const *model;
 	long count;
-	short pelvis = NONE;
+	short pelvis = NONE, neck = NONE, head = NONE, left_arm = NONE, right_arm = NONE;
 	short thighs = 0;
 	short index;
-	real_point3d fold;
-	real_vector3d back;
-	real_matrix4x3 skin;
-	real set_back;
+	real_vector3d forward, left;
+	real_matrix4x3 move;
+	boolean moved;
 
 	if (!object || !nodes)
 		return NULL;
@@ -1577,11 +1646,19 @@ real_matrix4x3 const *first_person_legs_node_matrices(
 
 	for (index = 0; index < count; index++)
 	{
-		struct model_node const *node = TAG_BLOCK_GET_ELEMENT(&model->nodes, index, struct model_node);
+		char const *name = TAG_BLOCK_GET_ELEMENT(&model->nodes, index, struct model_node)->name;
 
-		if (pelvis == NONE && first_person_legs_name_has(node->name, "pelvis"))
+		if (pelvis == NONE && first_person_legs_name_has(name, "pelvis"))
 			pelvis = index;
-		if (first_person_legs_name_has(node->name, "thigh"))
+		if (neck == NONE && first_person_legs_name_has(name, "neck"))
+			neck = index;
+		if (head == NONE && first_person_legs_name_has(name, "head"))
+			head = index;
+		if (left_arm == NONE && first_person_legs_name_has(name, "l upperarm"))
+			left_arm = index;
+		if (right_arm == NONE && first_person_legs_name_has(name, "r upperarm"))
+			right_arm = index;
+		if (first_person_legs_name_has(name, "thigh"))
 			thighs++;
 	}
 	if (pelvis == NONE || thighs == 0)
@@ -1597,121 +1674,54 @@ real_matrix4x3 const *first_person_legs_node_matrices(
 			return body;
 	}
 #endif
+	if (neck == NONE || head == NONE || left_arm == NONE || right_arm == NONE)
+		return NULL;
 	/* (the body as it is about its own view, between the ticks, about the
 	view drawn: that is the newest step's, a tick's motion on, aimed in the
 	frame; the legs trailed it, sliding and stepping against it, #697) */
-	{
-		real_matrix4x3 move;
-
-		if (render_interpolation_view_body(object_index, &move))
-		{
-			for (index = 0; index < count; index++)
-				matrix4x3_multiply(&move, &nodes[index], &first_person_legs_seen[index]);
-			nodes = first_person_legs_seen;
-		}
-	}
-	/* (the waist's middle as the hips are posed now) */
-	{
-		struct object_mesh const *mesh = object_mesh_get(object_index);
-		real_point3d middle;
-
-		if (!mesh || pelvis >= mesh->node_count || !first_person_legs_waist(mesh, model, pelvis, &middle))
-			return NULL;
-		matrix4x3_multiply(&nodes[pelvis], &mesh->inverse[pelvis], &skin);
-		matrix4x3_transform_point(&skin, &middle, &fold);
-	}
-
-	/* (set back away from the way the eye looks, level) */
-	back.i = -global_window_parameters.camera.forward.i;
-	back.j = -global_window_parameters.camera.forward.j;
-	back.k = 0.f;
-	if (normalize3d(&back) <= 0.f)
-		back = *global_zero_vector3d;
-
-	/* (as far back as keeps the waist's rim out of the bottom of the view,
-	as Halo 2 keeps its first person body's open top out of it: looking
-	ahead, the least; looking down, the legs stand behind the eye, the
-	thighs, knees and feet seen as they swing forward) */
-	set_back = FIRST_PERSON_LEGS_SET_BACK;
-	{
-		real_plane3d const *bottom = &global_window_parameters.frustum.world_planes[2];
-		real toward = dot_product3d(&bottom->n, &back);
-		short corner;
-
-		if (toward > 0.05f)
-		{
-			for (corner = 0; corner < first_person_legs_rim_count; corner++)
-			{
-				real_point3d p;
-				real distance;
-
-				matrix4x3_transform_point(&skin, &first_person_legs_rim[corner], &p);
-				distance = plane3d_distance_to_point(bottom, &p) + toward * FIRST_PERSON_LEGS_SET_BACK;
-				if (distance < FIRST_PERSON_LEGS_OUT_OF_VIEW)
-				{
-					real needed = FIRST_PERSON_LEGS_SET_BACK + (FIRST_PERSON_LEGS_OUT_OF_VIEW - distance) / toward;
-
-					if (needed > set_back)
-						set_back = needed;
-				}
-			}
-		}
-		if (set_back > FIRST_PERSON_LEGS_SET_BACK_MAXIMUM)
-			set_back = FIRST_PERSON_LEGS_SET_BACK_MAXIMUM;
-	}
-
+	moved = render_interpolation_view_body(object_index, &move);
 	for (index = 0; index < count; index++)
 	{
-		struct model_node const *node = TAG_BLOCK_GET_ELEMENT(&model->nodes, index, struct model_node);
-		real_matrix4x3 *matrix = &first_person_legs_matrices[index];
-
-		*matrix = nodes[index];
-		/* (the root kept: it is the body's frame, not a part of it) */
-		if (node->parent_node_index != NONE && !first_person_legs_node(node->name))
-		{
-			matrix->position = fold;
-			matrix->scale = 0.001f;
-		}
-		matrix->position.x += back.i * set_back;
-		matrix->position.y += back.j * set_back;
-		matrix->position.z += back.k * set_back;
+		if (moved)
+			matrix4x3_multiply(&move, &nodes[index], &first_person_legs_matrices[index]);
+		else
+			first_person_legs_matrices[index] = nodes[index];
 	}
-
-	/* (lowered as far as keeps all of it out of the near plane's cut: the
-	hips and thighs come up to the eye as it crouches in the air. Straight
-	down, while the view's bottom faces down: the waist's rim only goes
-	farther below it. Looking down by more than the view's lower half's
-	angle from level, the bottom faces up a little, and straight down
-	brought the rim up into the view, the open waist seen from above (#692):
-	then down along the bottom, the rim as far below it as it was set) */
+	/* (the head folded into the top of the neck, and each arm into its
+	shoulder, closing them, as in the VR mode) */
+	for (index = 0; index < count; index++)
 	{
-		struct object_mesh const *mesh = object_mesh_get(object_index);
-		long points = mesh ? first_person_legs_surface(mesh, first_person_legs_matrices, count) : 0;
-		real_vector3d const *bottom = &global_window_parameters.frustum.world_planes[2].n;
-		real_vector3d along = { 0.f, 0.f, -1.f };
-		real drop;
+		short up;
 
-		if (bottom->k > 0.f && bottom->k < 1.f)
+		for (up = index; up != NONE && up != head && up != left_arm && up != right_arm;
+			up = TAG_BLOCK_GET_ELEMENT(&model->nodes, up, struct model_node)->parent_node_index);
+		if (up != NONE)
 		{
-			/* (down less its part across the bottom, scaled to 1 down) */
-			real scale = 1.f / (1.f - bottom->k * bottom->k);
-
-			along.i = bottom->k * bottom->i * scale;
-			along.j = bottom->k * bottom->j * scale;
-			along.k = -1.f;
-		}
-		drop = first_person_legs_drop(&global_window_parameters.frustum, &along, first_person_legs_points, points,
-			mesh ? mesh->triangles : NULL, mesh ? mesh->triangle_count : 0, first_person_legs_point_spans,
-			first_person_legs_spans);
-		if (drop > 0.f)
-		{
-			for (index = 0; index < count; index++)
-			{
-				first_person_legs_matrices[index].position.x += along.i * drop;
-				first_person_legs_matrices[index].position.y += along.j * drop;
-				first_person_legs_matrices[index].position.z -= drop;
-			}
+			first_person_legs_matrices[index].position = first_person_legs_matrices[up].position;
+			first_person_legs_matrices[index].scale = FIRST_PERSON_LEGS_FOLDED;
 		}
 	}
+	/* (its upper body leant back about its hips clear of the eye, toward
+	the unit's facing, level, as the view drawn turns it) */
+	forward = object->object.forward;
+	if (moved)
+		matrix4x3_transform_vector(&move, &object->object.forward, &forward);
+	forward.k = 0.f;
+	if (normalize3d(&forward) > 0.f)
+	{
+		real_point3d eyes[2];
+		struct render_frustum const *views[2];
+
+		left.i = -forward.j;
+		left.j = forward.i;
+		left.k = 0.f;
+		eyes[0] = eyes[1] = global_window_parameters.camera.position;
+		views[0] = views[1] = &global_window_parameters.frustum;
+		first_person_legs_lean(object_index, model, count, &first_person_legs_matrices[pelvis].position,
+			&first_person_legs_matrices[head].position, &forward, &left, eyes, views,
+			global_window_parameters.frustum.z_near, first_person_legs_seconds(), FIRST_PERSON_LEGS_FLAT_LEAN_MAXIMUM);
+	}
+	/* (and what the near plane would cut of it folded away) */
+	first_person_legs_fold_cut(object_index, model, count, &global_window_parameters.camera.position);
 	return first_person_legs_matrices;
 }

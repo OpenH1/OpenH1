@@ -4,8 +4,8 @@ OBJECT_MESH.H
 An object's drawn surface, as the game draws it (port/linux/game/object_mesh.c):
 the triangles of its model's most detailed opaque geometry, in the
 permutations the object shows, in the model's own space, each vertex bound
-to the nodes that move it as the game draws it. first_person_legs.c finds
-the waist in it.
+to the nodes that move it as the game draws it. first_person_legs.c weighs
+it against the near plane.
 */
 
 #ifndef __OBJECT_MESH_H
