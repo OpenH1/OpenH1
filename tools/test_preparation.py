@@ -423,12 +423,15 @@ static void host_logf(int level, const char *format, ...)
     (void)level; (void)format;
 }
 ''' + code + r'''
-static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *description,
+static void pipeline_compiler_cache_make(int worker) { (void)worker; }
+static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *description, int worker,
     VkResult *result, double *elapsed)
 {
     struct timespec delay = {0, 2000000};
     uintptr_t value = description->value;
     assert(pthread_equal(pthread_self(), owner) == synchronous);
+    /* (the owner's in the shared cache, a compiler's in its own) */
+    assert((worker < 0) == synchronous);
     nanosleep(&delay, NULL);
     /* The job keeps its own description even if its source is overwritten. */
     assert(description->value == value);
@@ -490,6 +493,155 @@ int main(void)
 }
 '''
     subprocess.run([str(build(tmp_path, source))], check=True, timeout=15)
+
+
+def pipeline_compiler_probe(text):
+    """the compilers' code (xgpu_vulkan.c) in a probe: their counts, and which
+    of them take jobs in play and at a loading screen, each with its own cache"""
+    code = text[text.index("/* Preparation queues owned native descriptions."):
+                text.index("\n}\n", text.index("static void pipeline_compiler_stop(")) + 3]
+    entries = text[text.index("struct pipeline_entry\n"):text.index("struct shader_entry\n")]
+    accessors = text[text.index("static struct pipeline_entry *pipeline_find_apart("):
+                     text.index("uint64_t xgpu_vulkan_pipeline_count(")]
+    return r'''
+#include <assert.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <time.h>
+#include <stddef.h>
+#include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
+typedef uintptr_t VkPipeline;
+typedef int VkResult;
+#define VK_NULL_HANDLE 0
+#define PIPELINE_BUCKETS 64
+struct xgpu_vulkan_pipeline_description { uintptr_t value; };
+''' + entries + r'''
+static struct {
+    struct pipeline_entry *pipelines[PIPELINE_BUCKETS];
+    uint64_t pipeline_count, pipelines_made;
+    struct { unsigned pipelines_made; double pipeline_seconds; } statistics;
+} vk;
+static long processors = 24;
+#define sysconf(name) processors
+static int check(VkResult result, const char *what) { (void)what; return result == 0; }
+static uint32_t description_hash(const struct xgpu_vulkan_pipeline_description *description)
+{
+    return (uint32_t)description->value;
+}
+static void host_load_trace(const char *phase, const char *detail, ...) { (void)phase; (void)detail; }
+#define HOST_LOG_INFO 0
+static void host_logf(int level, const char *format, ...) { (void)level; (void)format; }
+static void service(void) {}
+''' + code + r'''
+/* each compiler's cache made once, before it runs; one compiler's cache
+never in two builds at once; the most at once, and the highest compiler
+that built in play and at the loading screen */
+static int made[64], busy[64], running, most, highest_play = -1, highest_loading = -1;
+static int loading_now;
+static void pipeline_compiler_cache_make(int worker)
+{
+    assert(worker >= 0 && worker < 64 && !made[worker]);
+    made[worker] = 1;
+}
+static void highest(int *value, int worker)
+{
+    int seen = __atomic_load_n(value, __ATOMIC_ACQUIRE);
+    while (worker > seen && !__atomic_compare_exchange_n(value, &seen, worker, 0, __ATOMIC_ACQ_REL,
+        __ATOMIC_ACQUIRE))
+        ;
+}
+static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *description, int worker,
+    VkResult *result, double *elapsed)
+{
+    struct timespec delay = {0, 3000000};
+    assert(worker >= 0 && made[worker]);
+    assert(__atomic_exchange_n(&busy[worker], 1, __ATOMIC_ACQ_REL) == 0);
+    highest(&most, __atomic_add_fetch(&running, 1, __ATOMIC_ACQ_REL));
+    highest(__atomic_load_n(&loading_now, __ATOMIC_ACQUIRE) ? &highest_loading : &highest_play, worker);
+    nanosleep(&delay, NULL);
+    __atomic_sub_fetch(&running, 1, __ATOMIC_ACQ_REL);
+    __atomic_store_n(&busy[worker], 0, __ATOMIC_RELEASE);
+    *result = 0;
+    *elapsed = 0.003;
+    return description->value;
+}
+''' + accessors + r'''
+int main(void)
+{
+    struct xgpu_vulkan_pipeline_description description;
+    int play, index;
+
+    /* the counts: all the processors but two at a loading screen, but four
+    (at most 4) in play */
+    assert(pipeline_compiler_workers(24, &play) == 22 && play == 4);
+    assert(pipeline_compiler_workers(8, &play) == 6 && play == 4);
+    assert(pipeline_compiler_workers(4, &play) == 2 && play == 1);
+    assert(pipeline_compiler_workers(1, &play) == 1 && play == 1);
+    assert(pipeline_compiler_workers(256, &play) == PIPELINE_WORKERS_MOST && play == 4);
+    /* in play (no preparation): a draw's pipelines made apart, on the first
+    compilers alone */
+    for (index = 1; index <= 200; index++)
+    {
+        description.value = index;
+        pipeline_find_apart(&description, 1);
+    }
+    assert(pipeline_compiler.started == 22 && pipeline_compiler.play == 4);
+    for (index = 0; index < 22; index++)
+        assert(made[index]);
+    pipeline_wait(NULL, 0);
+    assert(highest_play >= 0 && highest_play < 4 && most <= 4);
+    /* at a loading screen: every compiler */
+    __atomic_store_n(&loading_now, 1, __ATOMIC_RELEASE);
+    xgpu_vulkan_preparation_service(service);
+    most = 0;
+    for (index = 1001; index <= 1600; index++)
+    {
+        description.value = index;
+        assert(xgpu_vulkan_pipeline_prepare(&description));
+    }
+    xgpu_vulkan_preparation_service(NULL);
+    __atomic_store_n(&loading_now, 0, __ATOMIC_RELEASE);
+    assert(highest_loading >= 4 && most > 4);
+    /* after it: the first ones alone again */
+    most = 0;
+    highest_play = -1;
+    for (index = 2001; index <= 2200; index++)
+    {
+        description.value = index;
+        pipeline_find_apart(&description, 1);
+    }
+    pipeline_wait(NULL, 0);
+    assert(highest_play >= 0 && highest_play < 4 && most <= 4);
+    /* (every one published, in order, on the owner) */
+    assert(vk.statistics.pipelines_made == 1000);
+    pipeline_compiler_stop();
+    return 0;
+}
+'''
+
+
+def test_pipeline_compilers_all_cores_at_loading_screen_first_ones_in_play(tmp_path):
+    text = (ROOT / "port/linux/vulkan/xgpu_vulkan.c").read_text()
+    subprocess.run([str(build(tmp_path, pipeline_compiler_probe(text)))], check=True, timeout=60)
+
+
+def test_pipeline_compilers_negative_controls(tmp_path):
+    """the probe fails where the compilers' rules are broken: every compiler
+    in play, only the first ones at a loading screen, or one cache for all"""
+    text = (ROOT / "port/linux/vulkan/xgpu_vulkan.c").read_text()
+    rule = "(worker < pipeline_compiler.play || pipeline_compiler.loading)"
+    own = "pipeline_build(&pipeline_compiler.jobs[index].description, worker,"
+    assert rule in text and own in text
+    for name, broken in (("every-compiler-in-play", text.replace(rule, "1")),
+                         ("first-ones-at-loading", text.replace(rule, "(worker < pipeline_compiler.play)")),
+                         ("one-cache", text.replace(own, "pipeline_build(&pipeline_compiler.jobs[index].description, 0,"))):
+        folder = tmp_path / name
+        folder.mkdir()
+        result = subprocess.run([str(build(folder, pipeline_compiler_probe(broken)))], timeout=60,
+                                capture_output=True)
+        assert result.returncode != 0, name
 
 
 def test_texture_checkpoint_keeps_all_bound_stages_pinned(tmp_path):

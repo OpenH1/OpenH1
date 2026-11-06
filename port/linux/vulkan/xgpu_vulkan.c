@@ -93,7 +93,7 @@ options' gamma) first, where the setting is not 1.
 	F(vkCreateImage) F(vkDestroyImage) F(vkGetImageMemoryRequirements) F(vkBindImageMemory) \
 	F(vkCreateImageView) F(vkDestroyImageView) F(vkCreateSampler) \
 	F(vkCreateShaderModule) F(vkCreatePipelineCache) \
-	F(vkGetPipelineCacheData) F(vkCreateGraphicsPipelines) F(vkCreatePipelineLayout) \
+	F(vkGetPipelineCacheData) F(vkMergePipelineCaches) F(vkDestroyPipelineCache) F(vkCreateGraphicsPipelines) F(vkCreatePipelineLayout) \
 	F(vkCreateDescriptorSetLayout) \
 	F(vkCreateDescriptorPool) F(vkResetDescriptorPool) F(vkAllocateDescriptorSets) \
 	F(vkUpdateDescriptorSets) F(vkCreateSemaphore) F(vkDestroySemaphore) F(vkWaitSemaphores) \
@@ -461,6 +461,9 @@ static struct
 	int loading_stereo_drawn;
 
 	VkPipelineCache pipeline_cache;
+	/* (pipelineCreationCacheControl: each compiler makes its pipelines in a
+	cache of its own, the shared one only looked in) */
+	int cache_control;
 	uint64_t pipeline_count;
 	/* the pipelines made (their compilation finished), and their count
 	when the cache was last written */
@@ -3528,18 +3531,43 @@ behind each short burst. Jobs contain descriptions, never vertex/texture data. *
 #define PIPELINE_JOBS 512
 /* Compilers, each the driver's on one processor: one left the Steam Frame's
 eight cores idle while it made a map's 442 pipelines in 2 s, the game
-waiting 0.9 s of them. The game's and the render thread, and the VR
-runtime's, keep theirs. (A pipeline cache needs no lock of ours: Vulkan
-synchronizes one not made externally synchronized.) */
-#define PIPELINE_WORKERS_MOST 4
-static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *description,
+waiting 0.9 s of them.
+
+In play (a pipeline a draw first needs, made apart: pipeline_request_apart)
+the game's and the render thread, and the VR runtime's, keep theirs: at
+most PIPELINE_WORKERS_PLAY compilers take its jobs. While a preparation
+holds a loading screen (the service set: a map's load, the first start's
+"Preparing menu pictures" pass), nothing else is wanted of the machine
+while the player waits for it, and every compiler takes jobs, all the
+processors but the render thread's and the loading screen's
+(pipeline_compiler_workers).
+
+Each compiler makes its pipelines in a pipeline cache of its own, made
+externally synchronized (pipelineCreationCacheControl): a driver may hold a
+cache's lock for the whole of a pipeline's compilation, and with one cache
+for them all the compilers made one pipeline at a time, whatever their
+number (one processor busy, the others waiting on the lock). A compiler
+looks in the shared cache first (VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_
+REQUIRED_BIT: the pipelines the last game kept), and makes a pipeline not
+found there in its own. Theirs are merged into the shared one as it is
+written (xgpu_vulkan_pipeline_cache_save), when no compiler has a job.
+Without the feature, the shared cache serves them all, as before. */
+#define PIPELINE_WORKERS_MOST 64
+#define PIPELINE_WORKERS_PLAY 4
+static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *description, int worker,
 	VkResult *result, double *elapsed);
+/* (a compiler's own cache made, or made again empty once merged: after
+pipeline_build) */
+static void pipeline_compiler_cache_make(int worker);
 static struct
 {
 	pthread_t threads[PIPELINE_WORKERS_MOST];
 	pthread_mutex_t mutex;
 	pthread_cond_t changed;
 	int started, stop;
+	/* the compilers that take jobs in play (the first ones), and whether a
+	preparation holds the loading screen (every compiler takes jobs) */
+	int play, loading;
 	uint64_t submitted, claimed, published;
 	struct
 	{
@@ -3554,21 +3582,50 @@ static struct
 	void (*service)(void);
 } pipeline_compiler = { .mutex = PTHREAD_MUTEX_INITIALIZER, .changed = PTHREAD_COND_INITIALIZER };
 
-static void *pipeline_compile_worker(void *unused)
+/* the compilers for this many processors: all of them at a loading screen,
+the processors but two (the render thread's, which services the loading
+screen, and one for the system and the game's thread, waiting); in play the
+first of them alone, the processors but four (the game's, the render
+thread's, the VR runtime's and the system's), at most PIPELINE_WORKERS_PLAY */
+static int pipeline_compiler_workers(long processors, int *play)
 {
-	(void)unused;
+	int loading = processors > 2 ? (int)(processors - 2) : 1;
+	int playing = processors > 4 ? (int)(processors - 4) : 1;
+
+	if (loading > PIPELINE_WORKERS_MOST)
+		loading = PIPELINE_WORKERS_MOST;
+	if (playing > PIPELINE_WORKERS_PLAY)
+		playing = PIPELINE_WORKERS_PLAY;
+	if (playing > loading)
+		playing = loading;
+	*play = playing;
+	return loading;
+}
+
+/* (with the mutex held) whether a compiler may take a job now: the first
+ones always, the others only while a preparation holds the loading screen */
+static int pipeline_compiler_may_take(int worker)
+{
+	return pipeline_compiler.claimed != pipeline_compiler.submitted &&
+		(worker < pipeline_compiler.play || pipeline_compiler.loading);
+}
+
+static void *pipeline_compile_worker(void *argument)
+{
+	int worker = (int)(intptr_t)argument;
+
 	pthread_mutex_lock(&pipeline_compiler.mutex);
 	for (;;)
 	{
 		uint32_t index;
 
-		while (pipeline_compiler.claimed == pipeline_compiler.submitted && !pipeline_compiler.stop)
+		while (!pipeline_compiler_may_take(worker) && !pipeline_compiler.stop)
 			pthread_cond_wait(&pipeline_compiler.changed, &pipeline_compiler.mutex);
 		if (pipeline_compiler.stop)
 			break;
 		index = (uint32_t)(pipeline_compiler.claimed++ % PIPELINE_JOBS);
 		pthread_mutex_unlock(&pipeline_compiler.mutex);
-		pipeline_compiler.jobs[index].pipeline = pipeline_build(&pipeline_compiler.jobs[index].description,
+		pipeline_compiler.jobs[index].pipeline = pipeline_build(&pipeline_compiler.jobs[index].description, worker,
 			&pipeline_compiler.jobs[index].result, &pipeline_compiler.jobs[index].elapsed);
 		pthread_mutex_lock(&pipeline_compiler.mutex);
 		pipeline_compiler.jobs[index].done = 1;
@@ -3646,6 +3703,12 @@ void xgpu_vulkan_preparation_service(void (*service)(void))
 	if (!service)
 		pipeline_wait(NULL, 0);
 	pipeline_compiler.service = service;
+	/* (every compiler at the loading screen; the first ones alone after it,
+	none of the others holding a job: all were waited for) */
+	pthread_mutex_lock(&pipeline_compiler.mutex);
+	pipeline_compiler.loading = service != NULL;
+	pthread_cond_broadcast(&pipeline_compiler.changed);
+	pthread_mutex_unlock(&pipeline_compiler.mutex);
 }
 
 /* the compilers started (where they are not yet) */
@@ -3653,17 +3716,22 @@ static void pipeline_compilers_start(void)
 {
 	if (!pipeline_compiler.started)
 	{
-		long processors = sysconf(_SC_NPROCESSORS_ONLN);
-		int workers = processors > 4 ? (int)processors - 4 : 1;
+		int play, workers = pipeline_compiler_workers(sysconf(_SC_NPROCESSORS_ONLN), &play);
 
-		if (workers > PIPELINE_WORKERS_MOST)
-			workers = PIPELINE_WORKERS_MOST;
 		pipeline_compiler.stop = 0;
-		while (pipeline_compiler.started < workers &&
-			pthread_create(&pipeline_compiler.threads[pipeline_compiler.started], NULL, pipeline_compile_worker,
-				NULL) == 0)
+		pipeline_compiler.play = play;
+		while (pipeline_compiler.started < workers)
+		{
+			pipeline_compiler_cache_make(pipeline_compiler.started);
+			if (pthread_create(&pipeline_compiler.threads[pipeline_compiler.started], NULL, pipeline_compile_worker,
+				(void *)(intptr_t)pipeline_compiler.started) != 0)
+				break;
 			pipeline_compiler.started++;
-		host_logf(HOST_LOG_INFO, "vulkan: %d pipeline compilers", pipeline_compiler.started);
+		}
+		if (pipeline_compiler.play > pipeline_compiler.started)
+			pipeline_compiler.play = pipeline_compiler.started;
+		host_logf(HOST_LOG_INFO, "vulkan: %d pipeline compilers (%d in play)", pipeline_compiler.started,
+			pipeline_compiler.play);
 	}
 }
 
@@ -3681,7 +3749,7 @@ static void pipeline_request(struct pipeline_entry *entry)
 		pipeline_compilers_start();
 	if (!pipeline_compiler.service || !pipeline_compiler.started)
 	{
-		pipeline = pipeline_build(&entry->description, &result, &elapsed);
+		pipeline = pipeline_build(&entry->description, -1, &result, &elapsed);
 		pipeline_publish(entry, pipeline, result, elapsed);
 		return;
 	}
@@ -3751,7 +3819,54 @@ static uint32_t vertex_binding(uint32_t used, uint32_t source)
 	return binding;
 }
 
-static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *description,
+/* each compiler's own pipeline cache (VK_NULL_HANDLE: the shared one) */
+static VkPipelineCache pipeline_compiler_caches[PIPELINE_WORKERS_MOST];
+
+static void pipeline_compiler_cache_make(int worker)
+{
+	VkPipelineCacheCreateInfo info;
+
+	if (!vk.cache_control || !vk.device || pipeline_compiler_caches[worker])
+		return;
+	memset(&info, 0, sizeof(info));
+	info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+	/* (only its compiler uses it; the render owner merges it while that
+	compiler has no job) */
+	info.flags = VK_PIPELINE_CACHE_CREATE_EXTERNALLY_SYNCHRONIZED_BIT;
+	if (vkCreatePipelineCache(vk.device, &info, NULL, &pipeline_compiler_caches[worker]) != VK_SUCCESS)
+		pipeline_compiler_caches[worker] = VK_NULL_HANDLE;
+}
+
+/* (the render owner's, every job published) the compilers' caches merged
+into the shared one, each then made again empty, so that none holds a
+pipeline twice */
+static void pipeline_compiler_caches_merge(void)
+{
+	VkPipelineCache sources[PIPELINE_WORKERS_MOST];
+	uint32_t count = 0;
+	int worker;
+
+	pthread_mutex_lock(&pipeline_compiler.mutex);
+	for (worker = 0; worker < PIPELINE_WORKERS_MOST; worker++)
+	{
+		if (pipeline_compiler_caches[worker])
+			sources[count++] = pipeline_compiler_caches[worker];
+	}
+	if (count && vkMergePipelineCaches(vk.device, vk.pipeline_cache, count, sources) == VK_SUCCESS)
+	{
+		for (worker = 0; worker < PIPELINE_WORKERS_MOST; worker++)
+		{
+			if (!pipeline_compiler_caches[worker])
+				continue;
+			vkDestroyPipelineCache(vk.device, pipeline_compiler_caches[worker], NULL);
+			pipeline_compiler_caches[worker] = VK_NULL_HANDLE;
+			pipeline_compiler_cache_make(worker);
+		}
+	}
+	pthread_mutex_unlock(&pipeline_compiler.mutex);
+}
+
+static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *description, int worker,
 	VkResult *result, double *elapsed)
 {
 	VkPipelineShaderStageCreateInfo stages[2];
@@ -3913,7 +4028,23 @@ static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *
 	{
 		host_load_trace("vulkan.pipeline.driver.begin", "hash=%08x", description_hash(description));
 		started = seconds_now();
-		*result = vkCreateGraphicsPipelines(vk.device, vk.pipeline_cache, 1, &info, NULL, &pipeline);
+		/* (a compiler's: found in the shared cache, else made in its own) */
+		if (worker >= 0 && pipeline_compiler_caches[worker])
+		{
+			info.flags = VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT;
+			*result = vkCreateGraphicsPipelines(vk.device, vk.pipeline_cache, 1, &info, NULL, &pipeline);
+			if (*result == VK_PIPELINE_COMPILE_REQUIRED)
+			{
+				info.flags = 0;
+				pipeline = VK_NULL_HANDLE;
+				*result = vkCreateGraphicsPipelines(vk.device, pipeline_compiler_caches[worker], 1, &info, NULL,
+					&pipeline);
+			}
+		}
+		else
+		{
+			*result = vkCreateGraphicsPipelines(vk.device, vk.pipeline_cache, 1, &info, NULL, &pipeline);
+		}
 		*elapsed = seconds_now() - started;
 		host_load_trace("vulkan.pipeline.driver.end", "hash=%08x result=%d", description_hash(description), *result);
 	}
@@ -6613,6 +6744,7 @@ static int device_make(const struct xgpu_vulkan_options *options)
 	VkPhysicalDeviceTimelineSemaphoreFeatures timeline;
 	VkPhysicalDeviceHostQueryResetFeatures query_reset;
 	VkPhysicalDeviceDynamicRenderingFeatures rendering;
+	VkPhysicalDevicePipelineCreationCacheControlFeatures cache_control;
 	VkPhysicalDeviceCustomBorderColorFeaturesEXT border;
 	VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR available_local_read, local_read;
 	VkPhysicalDeviceRasterizationOrderAttachmentAccessFeaturesEXT available_order, order;
@@ -6730,6 +6862,17 @@ static int device_make(const struct xgpu_vulkan_options *options)
 	if (vk.surface || (vk.surface_create && device_has_extension(VK_KHR_SWAPCHAIN_EXTENSION_NAME)))
 		extensions[extension_count++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 	chain = &rendering.pNext;
+	/* (the pipeline compilers' own caches: pipeline_compiler_cache_make) */
+	vk.cache_control = 0;
+	if (available13.pipelineCreationCacheControl)
+	{
+		memset(&cache_control, 0, sizeof(cache_control));
+		cache_control.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_CREATION_CACHE_CONTROL_FEATURES;
+		cache_control.pipelineCreationCacheControl = VK_TRUE;
+		*chain = &cache_control;
+		chain = &cache_control.pNext;
+		vk.cache_control = 1;
+	}
 	if (custom_border && available_border.customBorderColors && available_border.customBorderColorWithoutFormat)
 	{
 		extensions[extension_count++] = VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME;
@@ -7216,6 +7359,7 @@ void xgpu_vulkan_pipeline_cache_save(void)
 	pipeline_wait(NULL, 0);
 	if (vk.pipelines_saved == vk.pipelines_made)
 		return;
+	pipeline_compiler_caches_merge();
 	if (vkGetPipelineCacheData(vk.device, vk.pipeline_cache, &size, NULL) != VK_SUCCESS || !size)
 		return;
 	data = malloc(size);
@@ -7476,6 +7620,8 @@ void xgpu_vulkan_initialize_undo(void)
 		xgpu_vulkan_pacing_stop();
 		if (vkDestroyDevice)
 			vkDestroyDevice(vk.device, NULL);
+		/* (the compilers' caches went with it) */
+		memset(pipeline_compiler_caches, 0, sizeof(pipeline_compiler_caches));
 	}
 	if (vk.instance)
 	{
