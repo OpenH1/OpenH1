@@ -365,13 +365,15 @@ real render_fov_scope_piece_scale(short local_player_index)
 	return render_fov_reticle_scale(local_player_index);
 }
 
-/* display.zoomed_reticle: TRUE where a zoomed reticle takes its scope's
-scale ("stock"), FALSE where it keeps the unzoomed view's ("unzoomed") */
-boolean render_fov_zoomed_reticle_stock(void)
+/* whether a zoomed reticle takes its scope's scale: with the Xbox's zoom
+(display.scale_scoped_fov off) the zoomed view is the stock one, and the
+reticle meets its scope's marks at its stock size, as on the Xbox; with
+display.scale_scoped_fov's, which keeps the player's wider view zoomed, it
+keeps the size the field of view gives it unzoomed (#738, #594) */
+boolean render_fov_zoomed_reticle_with_scope(short local_player_index)
 {
-	const char *setting = config_string("display.zoomed_reticle");
-
-	return !setting || strcmp(setting, "unzoomed") != 0;
+	return !(local_player_index >= 0 && local_player_index < MAXIMUM_LOCAL_PLAYERS &&
+		scaled_scopes[local_player_index]);
 }
 
 real render_fov_reticle_size(short local_player_index)
