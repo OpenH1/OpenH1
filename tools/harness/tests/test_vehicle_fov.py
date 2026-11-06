@@ -116,7 +116,13 @@ def test_the_reticle_takes_it():
     # a scope's pieces are the items drawn only zoomed (the VR smart-link's zoomed layout's), and, zoomed, the
     # reticle too, which the tag draws with them (the pistol's circle under its range and diamond: #738)
     weapon = read("source/interface/hud_weapon.c")
-    assert "crosshair->states[_crosshair_state_zoom].value.reference_data > 0 ?\n" in weapon
+    assert "crosshair->states[_crosshair_state_zoom].value.reference_data > 0 &&\n" in weapon
+    # (display.zoomed_reticle: "stock" by default, "unzoomed" keeps the unzoomed size, #594)
+    assert "render_fov_zoomed_reticle_stock() ?\n" in weapon
+    config = read("port/linux/src/port_config.c")
+    assert '{ "display.zoomed_reticle", _config_string, "\\"stock\\"", "HALO_ZOOMED_RETICLE",' in config
+    assert '{ "display.zoomed_reticle", { "stock", "unzoomed", NULL }, "stock" },' in config
+    assert 'return !setting || strcmp(setting, "unzoomed") != 0;' in read("port/linux/game/view_fov.c")
     assert "HUD_CROSSHAIR_SCOPE_PIECE : TRUE);" in weapon
 
 

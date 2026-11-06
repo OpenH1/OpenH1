@@ -19,6 +19,9 @@ real render_fov_reticle_scale(short local_player_index);
 the picture's own (1) with display.scale_scoped_fov, whose zoomed view is
 wider than the picture was drawn for (#731) */
 real render_fov_scope_piece_scale(short local_player_index);
+/* display.zoomed_reticle: whether a zoomed reticle takes its scope's scale
+("stock", the default) rather than keeping its unzoomed size (#738) */
+boolean render_fov_zoomed_reticle_stock(void);
 /* the weapon's reticle's size: its scale at the unzoomed view (display.panini's
 magnification of the middle with it), kept through the zoom (the stock game
 draws its reticle one size at every zoom: display.fov sizes it, the zoom

@@ -247,6 +247,12 @@ static const struct config_setting config_settings[] =
 		"Xbox's magnifies the stock view (the tangent of half the angle\n"
 		"scaled by the player's over the stock one's). false keeps the\n"
 		"Xbox's: every zoom level is the weapon's own, whatever the view." },
+	{ "display.zoomed_reticle", _config_string, "\"stock\"", "HALO_ZOOMED_RETICLE", _environment_value, _platform_all,
+		"The weapon's reticle in a scope's zoom at a field of view other than\n"
+		"the stock one (display.fov, display.vehicle_fov): \"stock\" draws it\n"
+		"at the scope's scale, as its range and target marks are (it grows back\n"
+		"to its stock size as the zoom comes in), \"unzoomed\" keeps the size\n"
+		"the field of view gives it unzoomed (it no longer meets those marks)." },
 	{ "display.panini", _config_real, "0.0", "HALO_PANINI", _environment_value, _platform_all,
 		"Draw the 3D view through the Panini projection, at this strength\n"
 		"(Panini's d), 0 to 1; 0 off. At a wide field of view what is at the\n"
@@ -3837,6 +3843,7 @@ static const struct
 	{ "display.resolution_scaling", { "native", "original", NULL }, NULL },
 	{ "display.anti_aliasing", { "off", "fxaa", "smaa", "ssaa2x", "msaa2x", "msaa4x", "msaa8x", NULL }, NULL },
 	{ "display.ambient_occlusion", { "off", "world", NULL }, "off" },
+	{ "display.zoomed_reticle", { "stock", "unzoomed", NULL }, "stock" },
 	{ "display.astc_textures", { "auto", "always", "off", NULL }, NULL },
 	{ "display.picture_position", { "center", "top", "bottom", NULL }, NULL },
 	{ "display.orientation", { "landscape", "portrait", "auto", NULL }, NULL },
