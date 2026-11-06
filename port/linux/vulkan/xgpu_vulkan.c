@@ -3539,8 +3539,8 @@ most PIPELINE_WORKERS_PLAY compilers take its jobs. While a preparation
 holds a loading screen (the service set: a map's load, the first start's
 "Preparing menu pictures" pass), nothing else is wanted of the machine
 while the player waits for it, and every compiler takes jobs, all the
-processors but the render thread's and the loading screen's
-(pipeline_compiler_workers).
+processors but the render thread's and the system's (and in VR the
+runtime's: pipeline_compiler_workers).
 
 Each compiler makes its pipelines in a pipeline cache of its own, made
 externally synchronized (pipelineCreationCacheControl): a driver may hold a
@@ -3554,6 +3554,14 @@ written (xgpu_vulkan_pipeline_cache_save), when no compiler has a job.
 Without the feature, the shared cache serves them all, as before. */
 #define PIPELINE_WORKERS_MOST 64
 #define PIPELINE_WORKERS_PLAY 4
+/* (the processors a loading screen leaves the compilers: the render
+thread's, which services it, and one for the system and the waiting game's
+thread; in VR the runtime's two too, whose frames the headset shows) */
+#ifdef HALO_VR
+#define PIPELINE_PROCESSORS_KEPT 4
+#else
+#define PIPELINE_PROCESSORS_KEPT 2
+#endif
 static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *description, int worker,
 	VkResult *result, double *elapsed);
 /* (a compiler's own cache made, or made again empty once merged: after
@@ -3583,13 +3591,12 @@ static struct
 } pipeline_compiler = { .mutex = PTHREAD_MUTEX_INITIALIZER, .changed = PTHREAD_COND_INITIALIZER };
 
 /* the compilers for this many processors: all of them at a loading screen,
-the processors but two (the render thread's, which services the loading
-screen, and one for the system and the game's thread, waiting); in play the
-first of them alone, the processors but four (the game's, the render
-thread's, the VR runtime's and the system's), at most PIPELINE_WORKERS_PLAY */
+the processors but PIPELINE_PROCESSORS_KEPT; in play the first of them
+alone, the processors but four (the game's, the render thread's, the VR
+runtime's and the system's), at most PIPELINE_WORKERS_PLAY */
 static int pipeline_compiler_workers(long processors, int *play)
 {
-	int loading = processors > 2 ? (int)(processors - 2) : 1;
+	int loading = processors > PIPELINE_PROCESSORS_KEPT ? (int)(processors - PIPELINE_PROCESSORS_KEPT) : 1;
 	int playing = processors > 4 ? (int)(processors - 4) : 1;
 
 	if (loading > PIPELINE_WORKERS_MOST)
