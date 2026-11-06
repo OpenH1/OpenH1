@@ -183,6 +183,13 @@ int32_t host_sdl_scancode_from_name(const char *name)
 	return (int32_t)SDL_GetScancodeFromName(name);
 }
 
+int32_t host_sdl_key_from_scancode(int32_t scancode, int32_t modifiers, int32_t key_event)
+{
+	if (scancode < 0 || scancode >= SDL_SCANCODE_COUNT)
+		return (int32_t)SDLK_UNKNOWN;
+	return (int32_t)SDL_GetKeyFromScancode((SDL_Scancode)scancode, (SDL_Keymod)modifiers, key_event != 0);
+}
+
 int64_t host_sdl_ticks(void)
 {
 	return (int64_t)SDL_GetTicks();
