@@ -98,9 +98,10 @@ def test_the_reticle_takes_it():
     # the HUD's own size, so that scaling it lands it there, at any vehicle field of view
     hud = read("source/interface/hud_draw.c")
     # (display.panini's magnification of the middle too: test_panini.py; the weapon's reticle at its size, which a
-    # zoom keeps, a scope's own pieces with the view: #594)
+    # zoom keeps, a scope's own pieces with the view, or with its picture under display.scale_scoped_fov: #594,
+    # #731)
     assert "\t\treticle_scale = is_crosshair_bitmap == HUD_CROSSHAIR_SCOPE_PIECE ?\n" \
-        "\t\t\trender_fov_reticle_scale(render.local_player_index) * panini_center_scale() :\n" \
+        "\t\t\trender_fov_scope_piece_scale(render.local_player_index) * panini_center_scale() :\n" \
         "\t\t\trender_fov_reticle_size(render.local_player_index);" in hud
     assert "\t\tcolor,\n\t\treticle_scale);" in hud
     # the passenger's and the lowered reticle's offsets are given at the scale the reticle is drawn at

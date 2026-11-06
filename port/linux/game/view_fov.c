@@ -69,6 +69,9 @@ static real reticle_sizes[MAXIMUM_LOCAL_PLAYERS];
 /* how much wider the unzoomed view is than the one drawn (1 unzoomed) */
 static real reticle_widenings[MAXIMUM_LOCAL_PLAYERS];
 static real authored_vertical[MAXIMUM_LOCAL_PLAYERS];
+/* whether the view is drawn with display.scale_scoped_fov on (its scope's
+pieces keep to the scope's picture: render_fov_scope_piece_scale) */
+static boolean scaled_scopes[MAXIMUM_LOCAL_PLAYERS];
 
 /* each local player's way between display.fov and display.vehicle_fov: the
 weight of the vehicle's (0 on foot, 1 seated) the view is drawn at, the
@@ -231,6 +234,8 @@ static real render_fov_adjust(short local_player_index, real native_vertical_fie
 	*reticle_size = 1.0f;
 	*unzoomed_drawn_tangent = 0.0f;
 	fov_requested_tangents(&foot_tangent, &vehicle_tangent, &scale_scoped);
+	if (local_player_index >= 0 && local_player_index < MAXIMUM_LOCAL_PLAYERS)
+		scaled_scopes[local_player_index] = scale_scoped && (foot_tangent || vehicle_tangent);
 	if (!foot_tangent && !vehicle_tangent)
 		return native_vertical_field_of_view;
 	unit = render_fov_unit(local_player_index, &unit_index);
@@ -342,6 +347,22 @@ real render_fov_reticle_scale(short local_player_index)
 		return 1.0f;
 	}
 	return reticle_scales[local_player_index];
+}
+
+/* a scope's own pieces keep to its picture, which the HUD draws at its own
+size: at the Xbox's full zoom the view is the stock zoomed one, its scale 1,
+but with display.scale_scoped_fov the zoomed view stays as much wider than
+the stock one as the player's own, and the pieces drawn at the view's scale
+shrank to the middle of the scope's frame, away from its edges and ticks
+(#731) */
+real render_fov_scope_piece_scale(short local_player_index)
+{
+	if (local_player_index >= 0 && local_player_index < MAXIMUM_LOCAL_PLAYERS &&
+		scaled_scopes[local_player_index])
+	{
+		return 1.0f;
+	}
+	return render_fov_reticle_scale(local_player_index);
 }
 
 real render_fov_reticle_size(short local_player_index)
