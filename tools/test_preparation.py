@@ -634,7 +634,7 @@ def test_pipeline_compilers_negative_controls(tmp_path):
     rule = "(worker < pipeline_compiler.play || pipeline_compiler.loading)"
     own = "pipeline_build(&pipeline_compiler.jobs[index].description, worker,"
     assert rule in text and own in text
-    for name, broken in (("every-compiler-in-play", text.replace(rule, "1")),
+    for name, broken in (("every-compiler-in-play", text.replace(rule, "(worker >= 0)")),
                          ("first-ones-at-loading", text.replace(rule, "(worker < pipeline_compiler.play)")),
                          ("one-cache", text.replace(own, "pipeline_build(&pipeline_compiler.jobs[index].description, 0,"))):
         folder = tmp_path / name
