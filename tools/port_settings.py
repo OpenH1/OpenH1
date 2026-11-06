@@ -1011,10 +1011,6 @@ PAGES = {
              "How far a scope zooms at your Field of View. Xbox zooms to the same view whatever yours is, as the "
              "Xbox did. Scaled zooms your own view by the same magnification, so a wider view stays wider zoomed.",
              None),
-            # (display.zoomed_reticle: hud_weapon.c, view_fov.c, #738)
-            ("ZOOMED RETICLE", "display.zoomed_reticle", [("STOCK", "stock"), ("UNZOOMED", "unzoomed")],
-             "Your reticle in a scope at a wider or narrower Field of View. Stock fits it to the scope's range and "
-             "target marks, as the Xbox drew it. Unzoomed keeps the size it has outside the scope.", None),
             # (display.panini, port/linux/game/panini.c, and its vertical
             # compression; none in the VR build: menu_functions.c's
             # panini_rows_show)
