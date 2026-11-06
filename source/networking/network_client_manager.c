@@ -392,6 +392,7 @@ symbols in this file:
 #include "networking/network_server_manager.h"
 #include "text/unicode.h"
 #include "map_share.h" /* port: port/linux/game/map_share.c */
+#include "delta_peer_game.h" /* port: port/linux/game/delta_peer_game.c */
 #include "network_standard.h" /* port: port/linux/game/network_standard.c */
 #include "custom_edition_cache.h" /* port: port/linux/game/custom_edition_cache.c */
 
@@ -844,6 +845,9 @@ static struct
 	/* (the bots the host plays, which its player count leaves out:
 	port/linux/game/bots.c) */
 	byte bots;
+	/* (its host speaks Delta Peer, by the tag at the reserved bytes' tail:
+	port/linux/game/delta_peer_game.c) */
+	boolean delta;
 } network_game_client_advertised_versions[MAXIMUM_NETWORK_ADVERTISED_GAMES];
 
 /* port: the OpenH1 protocol version of the advertised game at the index: a
@@ -2174,6 +2178,11 @@ boolean network_game_client_initiate_join_game(
 
 		network_standard_client_joining(standard, client->join_parameters.join_token,
 			sizeof(client->join_parameters.join_token));
+		/* (and whether its host speaks Delta Peer, for the handshake once
+		joined: a join again of the same host, as with a Discord pass, keeps
+		what its advertisement said) */
+		if (game_index >= 0 && game_index < MAXIMUM_NETWORK_ADVERTISED_GAMES)
+			delta_peer_game_joining(network_game_client_advertised_versions[game_index].delta);
 	}
 
 	success = network_connection_connect(client->connection, address, 0);
@@ -2743,6 +2752,8 @@ static boolean add_advertised_game(
 				advertisement->__unknown5A[HALO_PORT_ADVERTISED_OPENH1_VERSION_OFFSET];
 			network_game_client_advertised_versions[game_index].bots =
 				advertisement->__unknown5A[HALO_PORT_ADVERTISED_BOTS_OFFSET];
+			network_game_client_advertised_versions[game_index].delta = delta_peer_game_advertised(
+				advertisement->__unknown5A, sizeof(advertisement->__unknown5A));
 		}
 
 		if (advertisement->game_name[0] != L'\0')
@@ -3533,6 +3544,7 @@ boolean network_game_client_port_advertised_game_summary(
 	summary->openh1_version = (word)network_game_client_advertised_openh1_version(index);
 	summary->rate = summary->openh1_version && network_game_client_advertised_versions[index].rate ?
 		network_game_client_advertised_versions[index].rate : 30;
+	summary->delta = network_game_client_advertised_versions[index].delta;
 	return TRUE;
 }
 

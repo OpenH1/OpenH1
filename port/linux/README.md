@@ -192,6 +192,11 @@ CD's ISO 9660 file system, kept for a later loader of Halo PC's maps).
 `tools/test_cabinet.py` tests them on made-up cabinets, installers and CD
 images.
 
+Delta Peer's handshake (`network.delta_peer`; `NETCODE.md`, "Delta Peer")
+is ChupathingyCE's too, under GPL-3.0-or-later, cut to the handshake:
+`include/delta.h`, `src/delta_wire.c`, `src/delta_peer.c`, after its
+files of those names (and `delta_compat.c`'s tag).
+
 ### Steam Deck
 
 Do the set-up in Desktop Mode:
@@ -1248,6 +1253,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.map_seed` | `true` | `HALO_NET_MAP_SEED` | When you play in the game of another machine: help send its map to players who join without it. HELP SEND MAPS in Settings > Network Setup > Map Sharing. |
 | `network.map_seed_upload` | `256` | `HALO_NET_MAP_SEED_UPLOAD` | When you play in the game of another machine: the most kilobytes per second that the game sends of maps to other players (`16` to `10240`, 10 MB/s). UPLOAD LIMIT in Settings > Network Setup > Map Sharing. |
 | `network.map_download` | `true` | `HALO_NET_MAP_DOWNLOAD` | When you join a game on a Custom Edition map that you do not have: download it from the players of the game. `false`: leave the game and show which map is missing. DOWNLOAD MAPS in Settings > Network Setup > Map Sharing. |
+| `network.delta_peer` | `true` | `HALO_NET_DELTA_PEER` | ChupathingyCE's Delta Peer handshake beside the game, on the game's port + 10 (5160), so that OpenH1 and the ports that speak Delta (ChupathingyCE and the ports built on it) know each other in a game: the scoreboard shows, dim at the end of the name, the platform or port of a player whose machine is not like yours. Nothing in the game waits for it, and a machine that does not answer within 4 seconds is played with as before. `false`: no Delta at all (no port, nothing in the advertisement). Refer to "Delta Peer" in `NETCODE.md`. |
 | `network.coop_public` | `false` | `HALO_NET_COOP_PUBLIC` | `true`: an online co-op game (Create Game > ONLINE CO-OP, or Internet with a SINGLEPLAYER map) starts as PUBLIC. `false`: it starts as PRIVATE. LISTING in co-op's Server Setup writes its choice here. Refer to "Server browser". |
 | `network.brokers_file` | `"brokers.txt"` | `HALO_NET_BROKERS_FILE` | The file of the public MQTT brokers that let the machines of an invite find each other, and that carry the listings of the server browser: next to `config.toml` (else the release's, `share/openh1/brokers.txt`), unless a full path. One `host:port` on each line, up to 4; `#` starts a comment. |
 | `network.stun_servers` | Google and Cloudflare | `HALO_NET_STUN` | The public STUN servers (`host:port`, with commas between them) that give the internet address of a machine. |

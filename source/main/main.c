@@ -390,6 +390,7 @@ symbols in this file:
 #include "network_aim_assist.h" /* port: port/linux/game/network_aim_assist.c */
 #include "network_shield_effects.h" /* port: port/linux/game/network_shield_effects.c */
 #include "map_share.h" /* port: port/linux/game/map_share.c */
+#include "delta_peer_game.h" /* port: port/linux/game/delta_peer_game.c */
 #include "profile_sections.h" /* port: port/linux/include/profile_sections.h */
 #include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 #ifdef HALO_PROFILE
@@ -3863,6 +3864,9 @@ void main_loop(
 			network_shield_effects_update();
 			/* port: map sharing, in the lobby and in game (port/linux/game/map_share.c) */
 			map_share_update();
+			/* port: Delta Peer, ChupathingyCE's handshake beside the game, in
+			the lobby and in game (port/linux/game/delta_peer_game.c) */
+			delta_peer_game_update();
 			/* port: network games' text chat (port/linux/game/network_chat.c) */
 			network_chat_update();
 			/* port: the party, which follows its leader into its games

@@ -2196,6 +2196,80 @@ over as from a relay. The protocol between host and front is versioned on
 its own (version 1); the OpenH1 and Legacy protocols, and
 `HALO_PORT_NETWORK_VERSION`, are unchanged.
 
+## Delta Peer
+
+ChupathingyCE's ports speak Delta (its `docs/delta.md`): messages of their
+own beside OpenCE's game protocol. OpenH1 speaks the first part of Delta
+Peer, its handshake, so that OpenH1 and those ports know each other in a
+game and the scoreboard shows what the others are (`network.delta_peer`,
+on by default). The code is ChupathingyCE's, under GPL-3.0-or-later, cut to
+that part: `port/linux/include/delta.h`, `port/linux/src/delta_wire.c` (the
+format), `port/linux/src/delta_peer.c` (the sessions, no sockets),
+`port/linux/game/delta_peer_game.c` (the game's side). Delta List, Stats,
+Control and Link (its site, accounts and moderation) are not.
+
+- **Its own port.** A host listens on its game's port + 10 (5160), a client
+  sends from any port, so no message number can clash with OpenCE's. The
+  socket is the game's own (`xnet.c`): `network.address` binds it as it
+  binds the game's, and an invite's tunnel learns its port and carries it
+  as it carries the game's datagrams, so on the internet it is sealed and
+  bound to the invite's host like the game, with nothing new in `p2p.c`.
+  A host whose port is taken (another copy on the same address) hosts
+  without Delta, and its advertisement says so. (ChupathingyCE's hosts
+  listen on 5160 whatever their game's port, which is 5150 in its builds:
+  the same port at the default.)
+- **The advertisement's tag.** A host that listens puts a 9-byte tag at the
+  tail of its advertisement's reserved bytes (17 to 25: `D`, `L`, Delta's
+  major, the tag's version, its wire and its oldest wire, a check byte).
+  OpenCE writes and reads the first four of the 26 bytes, OpenH1 the next
+  three (`halo_port_limits.h`; the build fails if they ever reach the tag),
+  and OpenCE leaves the rest. Only a game that OpenCE's machines may join
+  (a Legacy or a mixed game, advertised with `HALO_PORT_NETWORK_VERSION`)
+  carries it: a ChupathingyCE client joins a host whose tag it reads by the
+  tag's wire, whatever version it announces, and could not play a Standard
+  game. The wire an OpenH1 host says is OpenCE's network version and `a`
+  (`DELTA_OPENH1_WIRE_LETTER`), the first Delta wire of that version, which
+  ChupathingyCE's builds of it join as they join that OpenCE host by its
+  number.
+- **The handshake.** Once the host has given a client its machine, a client
+  whose host's advertisement had a tag (of any major) says HELLO every half
+  second: Delta's major, its capabilities, its build (`OpenH1 build-N`), its
+  platform key, its machine and OpenCE's network version. The host answers
+  WELCOME with its own and the capabilities both have, or LEGACY to another
+  major, and then sends each Delta client a ROSTER of every machine of the
+  game (each one's platform where both agreed to it) when the room changes
+  and every 5 seconds. A host answers only a machine of its game, from that
+  machine's address, and takes 10 messages a second from one; a client
+  hears only its host's address and port, of its session. No answer in 4
+  seconds is legacy only for the rest of that game. Nothing in the game
+  waits on it: it runs from the main loop's frame, beside the ticks, reads
+  which machines are in the game, and nothing it hears reaches the game's
+  state (its sessions' numbers are the system's random bytes, not the
+  game's seeds).
+- **What OpenH1 offers.** The `platform` capability alone; ChupathingyCE's
+  `server_badge` is a draft it says is never set until built. OpenH1's
+  platform is `unknown` (0) until ChupathingyCE's maintainers give it a
+  number (`DELTA_OPENH1_PLATFORM`), so a ChupathingyCE scoreboard shows no
+  badge for it yet. OpenH1 says it takes no signed legacy tables
+  (TABLE_HAVE), so none is sent to it, and ignores every other message.
+- **The badge.** The scoreboard shows, dim at the end of a player's name, a
+  machine's platform where it shares one (Windows, Linux, Xbox...), else
+  its build's first word where it is known (a host knows every client's,
+  a client its host's: ChupathingyCE, Warthog), and nothing where that is
+  the viewer's own, so a game of OpenH1's alone shows none.
+- **Nothing else changes.** An OpenH1 client joins a host by OpenH1's rules
+  as before, and its join request is the same: it does not set Delta's
+  join mark. A host clears what a ChupathingyCE client marks past the end
+  of its machine's name. `HALO_PORT_NETWORK_VERSION` and the OpenH1
+  protocol version stay as they were: Delta has its own major, the game's
+  messages are unchanged, and OpenH1 builds before this one ignore the tag
+  and the port. A game of OpenCE's machines alone sends no Delta datagram.
+
+`tools/harness/tests/test_delta_peer.py` tests the format (the header,
+HELLO, WELCOME, LEGACY, the roster, the tag), the capabilities agreed, the
+fallback's timing, who is heard and the badges, each with negative
+controls.
+
 ## Testing
 
 `debug.network_test` (`port/linux/game/network_test.c`) hosts or joins a

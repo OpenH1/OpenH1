@@ -604,6 +604,7 @@ struct network_game *network_game_server_get_game(struct network_game_server *se
 #include "units/units.h"
 #include "custom_edition_cache.h" /* port: port/linux/game/custom_edition_cache.c */
 #include "latency_meter.h" /* port: port/linux/game/latency_meter.c */
+#include "delta_peer_game.h" /* port: port/linux/game/delta_peer_game.c */
 
 /* network_game_globals.c's */
 boolean network_game_distributed_client(void);
@@ -3043,6 +3044,7 @@ static void game_engine_rasterize_scoreboard(
 		long ping = NONE;
 		boolean ping_colored;
 		short column_left = (short)(left + column * (column_width + SCOREBOARD_COLUMN_GAP));
+		wchar_t badge_string[16];
 
 		if (row >= rows || position >= list_counts[list])
 			continue;
@@ -3195,6 +3197,35 @@ static void game_engine_rasterize_scoreboard(
 			top,
 			(short)(left + column * (column_width + SCOREBOARD_COLUMN_GAP)),
 			TRUE);
+		/* port: what the player's machine said it is over Delta Peer, its
+		platform or its port, where it is not what this machine is
+		(port/linux/game/delta_peer_game.c): dim, at the end of the name's
+		column, where the name (and a voice chat speaker after it) leaves
+		room for it */
+		if (network &&
+			delta_peer_game_badge(player->network_player_data.machine_index, badge_string, NUMBEROF(badge_string)))
+		{
+			rectangle2d text;
+			rectangle2d ink;
+			rectangle2d badge_ink;
+			rectangle2d cursor;
+			real_argb_color badge_color;
+			short right = (short)(column_left + SCOREBOARD_PLACE_WIDTH + name_width - 4);
+
+			text.x0 = (short)(column_left + SCOREBOARD_PLACE_WIDTH);
+			text.x1 = (short)(text.x0 + name_width);
+			text.y0 = (short)(top + (2 + row) * line_height);
+			text.y1 = (short)(text.y0 + line_height);
+			draw_string_set_draw_mode(font_index, NONE, 0, 0, row_color);
+			draw_unicode_string_compute_bounds(&text, player->name, &ink, &cursor);
+			draw_unicode_string_compute_bounds(&text, badge_string, &badge_ink, &cursor);
+			if (MAX(ink.x1, text.x0) + line_height + (badge_ink.x1 - badge_ink.x0) <= right)
+			{
+				badge_color.alpha = alpha * 0.8f;
+				badge_color.red = badge_color.green = badge_color.blue = 0.6f;
+				scoreboard_draw_row_right(badge_string, &badge_color, 2 + row, top, right);
+			}
+		}
 		if (ping_colored)
 		{
 			real_argb_color ping_color;

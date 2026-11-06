@@ -1530,11 +1530,12 @@ static void network_test_probe_answer(
 		map[length] = 0;
 		printf("{\"ok\":true,\"name\":\"%s\",\"map\":\"%s\",\"gametype\":\"%s\",\"players\":%d,"
 			"\"max_players\":%d,\"teams\":%s,\"in_progress\":%s,\"open\":%s,\"dedicated\":%s,"
-			"\"network_version\":%u,\"kind\":%u,\"tick_rate\":%d,\"openh1_version\":%u}\n", name, map,
+			"\"network_version\":%u,\"kind\":%u,\"tick_rate\":%d,\"openh1_version\":%u,\"delta\":%s}\n", name, map,
 			game.engine_type >= 0 && game.engine_type < (short)NUMBEROF(engines) ? engines[game.engine_type] : "none",
 			game.player_count, game.maximum_player_count, game.has_teams ? "true" : "false",
 			game.in_progress ? "true" : "false", game.open ? "true" : "false", game.dedicated ? "true" : "false",
-			(unsigned)game.version, (unsigned)game.kind, (int)game.rate, (unsigned)game.openh1_version);
+			(unsigned)game.version, (unsigned)game.kind, (int)game.rate, (unsigned)game.openh1_version,
+			game.delta ? "true" : "false");
 		fflush(stdout);
 		exit(0);
 	}
