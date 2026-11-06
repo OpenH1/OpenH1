@@ -1076,17 +1076,18 @@ jobs:
     # does not hold the release back: the last release's macOS disk images
     # and appcast are carried over ("Carry the macOS build over"), and the
     # next build with a macOS runner brings the Mac up to date. A macOS
-    # build that failed still stops the release. (always(), not !cancelled():
-    # the macOS job GitHub cancels makes cancelled() true for the run, which
-    # skipped the release whenever no runner came; every other job's success
-    # is still required, and master's runs are never cancelled by newer ones)
+    # build that failed still stops the release. (A job no runner took is
+    # "cancelled" in the run's page and its API, but "abandoned" in the
+    # needs context, a result GitHub's documentation does not list: the
+    # notify job's log showed MACOS: abandoned. Both are taken)
     needs: [linux-x86_64, tests, linux-arm64, android, windows, macos]
     if: >-
-      ${{ always() && github.ref == 'refs/heads/master' &&
+      ${{ !cancelled() && github.ref == 'refs/heads/master' &&
       needs['linux-x86_64'].result == 'success' && needs.tests.result == 'success' &&
       needs['linux-arm64'].result == 'success' &&
       needs.android.result == 'success' && needs.windows.result == 'success' &&
-      (needs.macos.result == 'success' || needs.macos.result == 'cancelled') }}
+      (needs.macos.result == 'success' || needs.macos.result == 'cancelled' ||
+      needs.macos.result == 'abandoned') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
