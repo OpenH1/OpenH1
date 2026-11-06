@@ -2227,13 +2227,21 @@ static long get_player_index_from_object_or_parents(
 
 	while (object_index != NONE)
 	{
+		struct object_datum *object;
+
 		if (unit_try_and_get(object_index))
 		{
 			player_index = player_index_from_unit_index(object_index);
 			break;
 		}
 
-		object_index = object_get(object_index)->object.parent_object_index;
+		/* port: object_try_and_get, not object_get: a damage's owner (a
+		projectile's shooter) or a parent can be gone, or its slot reused,
+		before the damage lands; then no player owns it (#725) */
+		object = object_try_and_get(object_index);
+		if (!object)
+			break;
+		object_index = object->object.parent_object_index;
 	}
 
 	return player_index;
