@@ -365,6 +365,15 @@ real render_fov_scope_piece_scale(short local_player_index)
 	return render_fov_reticle_scale(local_player_index);
 }
 
+/* display.zoomed_reticle: TRUE where a zoomed reticle takes its scope's
+scale ("stock"), FALSE where it keeps the unzoomed view's ("unzoomed") */
+boolean render_fov_zoomed_reticle_stock(void)
+{
+	const char *setting = config_string("display.zoomed_reticle");
+
+	return !setting || strcmp(setting, "unzoomed") != 0;
+}
+
 real render_fov_reticle_size(short local_player_index)
 {
 	/* (display.panini's magnification of the middle too, the unzoomed
