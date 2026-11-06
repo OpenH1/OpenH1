@@ -783,6 +783,16 @@ static BOOL write_at(struct platform_file *file, LPCVOID buffer, DWORD count, LP
 				*bytes_written = total;
 			return FALSE;
 		}
+		/* (nothing written of what is left, and no error: tried again it
+		would loop for good, so it fails as a write error, with what was
+		written) */
+		if (result == 0)
+		{
+			platform_set_last_error_from_errno(EIO);
+			if (bytes_written)
+				*bytes_written = total;
+			return FALSE;
+		}
 		total += (DWORD)result;
 	}
 	if (tracing)
