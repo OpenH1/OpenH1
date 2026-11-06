@@ -411,7 +411,7 @@ static void vertex_input_test(void)
 	description.strides[3] = 12;
 	description.strides[15] = 32;
 	vkCreateGraphicsPipelines = fake_pipeline;
-	draw.pipeline = pipeline_build(&description, &result, &elapsed);
+	draw.pipeline = pipeline_build(&description, -1, &result, &elapsed);
 	assert(draw.pipeline && result == VK_SUCCESS);
 	vk.bound_pipeline = draw.pipeline;
 	dynamic.viewport[2] = 64;
@@ -2190,14 +2190,14 @@ static void hdr_pipeline_test(void)
 	description.color_mask = 15;
 	description.color_format = XGPU_VULKAN_FORMAT_RGBA16F;
 	description.samples = 1;
-	assert(pipeline_build(&description, &result, &elapsed) && result == VK_SUCCESS);
+	assert(pipeline_build(&description, -1, &result, &elapsed) && result == VK_SUCCESS);
 	assert(hdr_blend_attachment.blendEnable && !hdr_blend.flags);
 	assert(hdr_color_format == VK_FORMAT_R16G16B16A16_SFLOAT);
 	description.color_read = 1;
-	assert(pipeline_build(&description, &result, &elapsed));
+	assert(pipeline_build(&description, -1, &result, &elapsed));
 	assert(!hdr_blend_attachment.blendEnable && !hdr_blend.flags && hdr_blend_attachment.colorWriteMask == 15);
 	vk.capabilities.raster_order = 1;
-	assert(pipeline_build(&description, &result, &elapsed));
+	assert(pipeline_build(&description, -1, &result, &elapsed));
 	assert(!hdr_blend_attachment.blendEnable &&
 		hdr_blend.flags == VK_PIPELINE_COLOR_BLEND_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_BIT_EXT);
 	recording.descriptor_pools = NULL;
