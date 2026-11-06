@@ -1097,7 +1097,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.viewmodel_visible` | `true` | `HALO_VIEWMODEL_VISIBLE` | `true`: the first-person weapon, hands and what is attached to them are drawn. `false`: they are not; firing, animation, sound and lights go on, and other players' models are drawn. |
 | `display.passenger_third_person` | `false` | `HALO_PASSENGER_THIRD_PERSON` | Third-person view for the Warthog's passenger and the Scorpion's four passengers. Uses the gunner's camera on the Warthog and the driver's on the Scorpion, within the passenger's firing arc. Smooth entry and exit; weapon zoom is disabled while riding. The reticle follows the shot's centre ray. Local view only. In the campaign and co-op only: not in multiplayer, where seeing around the vehicle would be an advantage. Never in VR, which stays in first person in every seat. |
 | `display.viewmodel_shield` | `false` | `HALO_VIEWMODEL_SHIELD` | `true`: the energy shield's flare is drawn on the first-person arms too, as on the body, with the unit's own shield shader, kept closer to the arms than to the body. The stock game draws it on the body only. The flare is the shield's hits: it shows as the shield takes damage and fades over the next second or two (the unit's recent shield damage), so a full shield that nothing hits shows none, on the arms as on the body. An overshield stays lit on the arms with `display.overshield_effect` (OVERSHIELD, on the same screen). |
-| `display.first_person_legs` | `false` | `HALO_FIRST_PERSON_LEGS` | `true`: your own body is drawn from the waist down in first person, so you see your legs when you look down, moving as the body's animation moves them. Refer to "Field of view". |
+| `display.first_person_legs` | `false` | `HALO_FIRST_PERSON_LEGS` | `true`: your own body is drawn in first person, but its head and arms, so you see your legs when you look down, moving as the body's animation moves them, its feet where they stand. Refer to "Field of view". |
 | `display.shield_color` | `default` | `HALO_SHIELD_COLOR` | Your energy shield's flare as this machine draws it: `default` (the shield's own) or a multiplayer armor color (`white`, `black`, `red`, `blue`, `gray`, `yellow`, `green`, `pink`, `purple`, `cyan`, `cobalt`, `orange`, `teal`, `sage`, `brown`, `tan`, `maroon`, `salmon`), whatever the armor's, on the body and, with `display.viewmodel_shield`, on the first-person arms. The shield's own shader is drawn with its two colors replaced at their brightness; the flare is added to what is behind it, so `black` is drawn a faint grey. Only this machine sees it. |
 | `display.high_res_hud` | `true` | `HALO_HIGH_RES_HUD` | `true`: the HUD (meters, counters, panels and their outlines, the motion sensor, reticles, waypoints, scopes) is drawn from the high-res assets in `port/assets/hud`, 8x the size of the maps' bitmaps; the message icons' pictures of the weapons and the skull from Aerocatia's and Jessie's art (`port/assets/hud/NOTICE.md`); the reticle's warnings ("Reload", "Battery Depleted") set in Overpass. Selected labels and messaging sheets (their text) are upscaled from the maps' own pixels without changing their layout. `false`: the maps' own bitmaps. |
 | `display.hud_button_style` | `classic` | `HALO_HUD_BUTTON_STYLE` | Gameplay controller icons while High-Res HUD is on: `classic` (plain Xbox faces), `gems` (shaded Xbox faces), or `menu_gems` (Dark Gems). |
@@ -2317,23 +2317,25 @@ the view's height (10 by default; Halo 2's is about 9, Halo 3's about 11).
   view changes: in a network game the aim travels as it always does. The VR
   mode's view is the head's, and its reticle where the controller points.
 
-LEGS (`display.first_person_legs`) draws your own body in first person
-from the waist down, so you see your legs when you look down, walking,
-running and crouching as everyone else sees them. It is the body others
-see, posed as they see it: the upper body is folded away, and the body is
-set back behind the eye as far as keeps the open waist below the view
-(the way Halo 2 keeps its first-person body's open top out of sight), more
-the further down you look. It is drawn with the world's camera, so it keeps
-its place and size at any field of view. Where the eye comes down to the
-hips (a crouch jump: the eye drops to crouching height while the body keeps
-its airborne pose), the body is lowered as far as keeps all of its surface
-(every triangle, not only every corner) out of the part of the view the
-near plane cuts away, so a wide view never shows the hips and thighs cut
-into slivers beside the eye; looking far down, it is lowered along the
-view's bottom, so the open waist stays below it. Standing and crouching on
-the ground it is where it was. Hit boxes, markers and everything
-the game does with the body are unchanged. In the VR mode the chest is drawn
-too, under the real head (VR, "Your body").
+LEGS (`display.first_person_legs`) draws your own body in first person,
+so you see your legs when you look down, walking, running and crouching as
+everyone else sees them. It is the body others see, posed as they see it
+and standing where they see it: its feet stay put on the ground however you
+turn and tilt the view. Its head is not drawn, nor its arms (yours are the
+weapon's). Looking down, you see its chest and belly under you, as you
+would your own; its upper body leans back from the eye, about its hips, as
+far as keeps it out of the near edge of the view, which would cut into the
+armour and show it hollow. It is drawn with the world's camera, so it keeps
+its place and size at any field of view. Where the eye comes down into the
+body (a crouch jump: the eye drops to crouching height while the body keeps
+its airborne pose, its hips at the eye), each part that the near edge of
+the view would cut (any part of its surface, every triangle, not only every
+corner) is folded away, so a wide view never shows the hips and thighs cut
+into slivers beside the eye: a thigh folds into its knee, and what is
+folded nearer the eye is not drawn; the rest stays where it is. Standing,
+walking and crouching on the ground nothing is folded. Hit boxes, markers
+and everything the game does with the body are unchanged. In the VR mode
+the body stands under the real head (VR, "Your body").
 
 Only this machine's view changes. Nothing the machines send each other
 changes, so players with different settings play together.
@@ -4983,10 +4985,9 @@ yours is, not where the game's eye is:
 - It stands upright and square over its hips, as you do: the game's body
   leans into its aim, its chest turned to the gun while its feet stay
   planted. Its legs walk, run and crouch as the game animates them.
-- It is not set back behind the eye as on the flat screen: its chest
-  closes its waist. Looking straight down, the Chief's broad chest hides
-  his feet below it; they show as they step forward, or looking less
-  steeply.
+- Its chest closes its waist, as on the flat screen. Looking straight
+  down, the Chief's broad chest hides his feet below it; they show as they
+  step forward, or looking less steeply.
 - Its upper body leans back from your eyes, about its hips, as far as
   keeps what your eyes see of it out of the near edge of the view (about
   19 cm before them), which would cut into the armour of the chest and
@@ -6915,7 +6916,7 @@ Other changes:
 | `interface/first_person_weapons.c` | The first-person weapon's and hands' node matrices are moved along the view's right, up and forward once they are posed and interpolated (`display.viewmodel_offset_x`, `_y`, `_z`; `game/view_fov.c`), but in the VR mode. |
 | `main/main.c`, `interface/hud_draw.c`, `interface/first_person_weapons.c` | With `display.lowered_reticle`, the view is turned above the observer's aim as the window's camera is set, the weapon's reticle is drawn where the aim lands on the screen, and the first-person weapon is posed at the view turned back to the aim (`game/lowered_reticle.c`). |
 | `interface/first_person_weapons.c` | With the player's own view drawn from the newest step (`display.direct_camera`), the gun's animations are sampled at the frame's time: the state and moving animations between their frame and the next, a state's blend in by its fraction, the sway's springs where their velocity has them (`game/render_interpolation.c`, `render_interpolation_first_person_phase`). |
-| `render/render_objects.c`, `objects/objects.c` | In first person, your own body is drawn from the waist down with the pose `first_person_legs.c` makes (`display.first_person_legs`); the waist it found and the mesh `object_mesh.c` read are forgotten on a new map. |
+| `render/render_objects.c`, `objects/objects.c` | In first person, your own body is drawn, but its head and arms, with the pose `first_person_legs.c` makes (`display.first_person_legs`); the mesh `object_mesh.c` read is forgotten on a new map. |
 | `objects/object_lights.c` | The local player's own flashlight in the first person on foot, where the first-person weapon does not carry it (none in hand, or zoomed), shines along the view drawn, from where the body has it (`game/render_interpolation.c`, `render_interpolation_view_flashlight`): on the head's marker it trailed the view drawn from the newest step and turned with the head's look, so its pool slid and jumped as the player turned. |
 | `objects/object_lights.c` | Glows the port lights itself (`shield_glow.c`): dynamic lights attached to an object's node, colored and sized each frame by their maker, drawn with a light definition the map has. |
 | `render/render_objects.c`, `interface/first_person_weapons.c`, `rasterizer/xbox/rasterizer_xbox_plasma_energy.c`, `items/projectiles.c` | An overshield as `overshield_effect.c` draws it (`display.overshield_effect`): in its own color, its intensity full, its energy slower, faded above the height it has risen to; a hit on it plays the projectile's effect for an Elite's energy shield in place of its own (only the effect: the projectile's response is its own). |
