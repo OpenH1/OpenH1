@@ -2479,6 +2479,12 @@ static const struct config_setting config_settings[] =
 	{ "debug.sample_seconds", _config_real, "0.0", "HALO_SAMPLE", _environment_value, _platform_android | _platform_guest,
 		"Log where every game thread is this often, in seconds (read by the\n"
 		"host, port/android/host/host_debug.c); 0 never." },
+	{ "debug.pass_times", _config_integer, "0", "HALO_PASS_TIMES", _environment_value, _platform_all,
+		"Every this many frames, time each of the frame's passes on the GPU and\n"
+		"log, every 30 timed frames, each kind of pass's milliseconds a frame and\n"
+		"share of the GPU's time (the shares hold whatever clock the GPU runs\n"
+		"at); 0 never. The Vulkan builds; read by the host from the file\n"
+		"(port/android/host/host_common.c)." },
 	{ "debug.memory_watch", _config_boolean, "true", "HALO_MEMORY_WATCH", _environment_value, _platform_android | _platform_guest,
 		"Notice the game's writes to cached textures and vertices by page\n"
 		"protection; false compares page contents once a frame instead, which is\n"

@@ -437,6 +437,7 @@ uint32_t host_make_boot(const struct host_environment *environment, const char *
 
 /* (display.astc_textures' default, as port_config.c's) */
 char host_astc_textures[16] = "auto";
+int host_pass_times;
 
 void host_apply_debug_settings(const char *path, const char *hashes_reason)
 {
@@ -449,6 +450,7 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 		toml_datum_t seconds = toml_seek(result.toptab, "debug.sample_seconds");
 		toml_datum_t watch = toml_seek(result.toptab, "debug.memory_watch");
 		toml_datum_t astc = toml_seek(result.toptab, "display.astc_textures");
+		toml_datum_t pass_times = toml_seek(result.toptab, "debug.pass_times");
 
 		sample_seconds = seconds.type == TOML_FP64 ? seconds.u.fp64 :
 			seconds.type == TOML_INT64 ? (double)seconds.u.int64 : 0.0;
@@ -456,12 +458,16 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 			memory_watch = watch.u.boolean ? 1 : 0;
 		if (astc.type == TOML_STRING)
 			snprintf(host_astc_textures, sizeof(host_astc_textures), "%s", astc.u.s);
+		if (pass_times.type == TOML_INT64)
+			host_pass_times = (int)pass_times.u.int64;
 		toml_free(result);
 	}
 	if (getenv("HALO_ASTC_TEXTURES") && *getenv("HALO_ASTC_TEXTURES"))
 		snprintf(host_astc_textures, sizeof(host_astc_textures), "%s", getenv("HALO_ASTC_TEXTURES"));
 	/* (the setting's variable, as the game's settings have one: the Linux
 	host's environment) */
+	if (getenv("HALO_PASS_TIMES") && *getenv("HALO_PASS_TIMES"))
+		host_pass_times = atoi(getenv("HALO_PASS_TIMES"));
 	if (getenv("HALO_SAMPLE"))
 		sample_seconds = atof(getenv("HALO_SAMPLE"));
 	if (getenv("HALO_MEMORY_WATCH") && *getenv("HALO_MEMORY_WATCH"))
