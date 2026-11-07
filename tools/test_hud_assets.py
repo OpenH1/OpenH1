@@ -100,3 +100,32 @@ def test_holes_finds_a_letter_and_not_a_plain_oval():
     cut = oval.copy()
     cut[70:130, 90:110] = 0
     assert holes(cut.astype(np.uint8)) > 500
+
+
+
+def label_setting(svg: Path) -> tuple:
+    """What a label's SVG says it is: (its text, font, spacing, weight)."""
+    import re
+
+    match = re.search(r'<!-- "([^"]+)" in (\S+), spacing (-?[\d.]+), weight ([\d.]+) -->', svg.read_text())
+    return match and (match[1], match[2], float(match[3]), float(match[4]))
+
+
+def test_zoom_labels_are_set_in_the_text_font_apart_and_at_one_weight(tmp_path):
+    """The sniper's 2x and 10x (issue 756): Cyborg Interface Gothic, the
+    high-res text's font, emboldened to one weight, their glyphs apart."""
+    from hud_assets import LABEL_FONT, LABEL_GAP, text_gap
+
+    scope = next(entry for entry in entries(HUD / "layout.json") if entry["name"] == "sniper__hud_reticles_scope__0")
+    settings = [label_setting(HUD / "svg" / cell["svg"]) for cell in scope["cells"] if "svg" in cell]
+    assert sorted(setting[0] for setting in settings) == ["10x", "2x"]
+    assert {setting[1] for setting in settings} == {LABEL_FONT.name} == {"CyborgInterfaceGothic-Regular.ttf"}
+    assert len({setting[3] for setting in settings}) == 1 and settings[0][3] > 0
+    for text, _, spacing, weight in settings:
+        assert text_gap(ROOT / LABEL_FONT, text, spacing, weight) >= LABEL_GAP, text
+    # (negative controls: the Overpass label before, which says no weight;
+    # and a spacing that runs the emboldened 2 into its x)
+    before = tmp_path / "before.svg"
+    before.write_text('<!-- "10x" in Overpass-900.ttf -->')
+    assert label_setting(before) is None
+    assert text_gap(ROOT / LABEL_FONT, "2x", -4, 6) < LABEL_GAP

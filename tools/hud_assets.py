@@ -42,8 +42,9 @@ layout: reads the Xbox map's HUD bitmaps (sizes, formats, sprite rectangles,
     port/assets/hud/art. A bitmap with a cell that the art does not match
     keeps its entry in layout.json as it was (its redraws). Needs a map and
     the restored tags; its output is committed.
-labels: sets the sniper's zoom labels (LABELS) in Overpass, each fitted to
-    the map's, into port/assets/hud/svg and their cells of layout.json.
+labels: sets the sniper's zoom labels (LABELS) in Cyborg Interface Gothic,
+    each fitted to the map's (size, place, spacing and weight), into
+    port/assets/hud/svg and their cells of layout.json.
 build: draws port/assets/hud/art and svg with layout.json into
     port/assets/hud/*.png (committed; the builds embed them).
 check: compares each PNG, reduced to the tag's size, with the map's bitmap
@@ -115,8 +116,8 @@ CORNERS = {
 }
 # the cells drawn from their redraw, not the restored art (the bitmap, the
 # Xbox cell): the sniper's zoom labels, the Xbox's 2x and 10x, where the
-# restored ones (Halo PC's) say 2x and 8x, set in Overpass together
-# (tools/hud_assets.py reticles: LABELS)
+# restored ones (Halo PC's) say 2x and 8x, set in Cyborg Interface Gothic
+# together (labels: LABELS)
 REDRAWN = {
     ("sniper__hud_reticles_scope__0", (0, 0, 31, 24)),
     ("sniper__hud_reticles_scope__0", (0, 24, 43, 48)),
@@ -138,13 +139,20 @@ MATCH = 0.25
 
 # the zoom labels beside the sniper's reticle, by sequence and sprite: the
 # restored art has Halo PC's (2x and 8x), not the Xbox's (2x and 10x), so they
-# are set in a font that matches them, with the spacing between their glyphs
-# that fits best
+# are set in the HUD's text font (issue 756: Overpass did not look like the
+# Xbox's), each with the spacing between its glyphs that fits it best, and
+# all at the weight that fits them best together: the Xbox's letters are
+# heavier than the font's one weight, so they are emboldened by an outline of
+# that width (hundredths of an em, mitred to keep the font's corners)
 LABELS = {
     HUD + "sniper\\hud_reticles_scope": {(1, 0): "2x", (1, 1): "10x"},
 }
-LABEL_FONT = Path("port/assets/fonts/Overpass-900.ttf")
-LABEL_SPACINGS = (-10, -8, -6, -4, -2, 0, 2, 4)
+LABEL_FONT = Path("port/assets/fonts/CyborgInterfaceGothic-Regular.ttf")
+LABEL_SPACINGS = (-6, -4, -2, 0, 2, 4, 6, 8, 10, 12)
+LABEL_WEIGHTS = (0, 2, 4, 6, 8, 10)
+# the least room between two glyphs' boxes (hundredths of an em): the Xbox's
+# run together in their blur, which drawn sharp would read as one shape
+LABEL_GAP = 3
 # render texels per Xbox texel while fitting one, and the scales tried
 # around the one its extent gives
 FIT_TEXELS = 8
@@ -675,15 +683,45 @@ def text_outlines(font: Path, text: str, spacing: float = 0) -> tuple:
             x * scale, (ascent - descent) * scale)
 
 
-def text_svg(font: Path, text: str, spacing: float = 0) -> str:
+def text_gap(font: Path, text: str, spacing: float = 0, weight: float = 0) -> float:
+    """The least room (hundredths of an em) between the boxes of text's
+    neighbouring glyphs, set as text_svg sets them."""
+    from fontTools.pens.boundsPen import BoundsPen
+    from fontTools.ttLib import TTFont
+
+    face = TTFont(str(font))
+    glyphs = face.getGlyphSet()
+    cmap = face.getBestCmap()
+    scale = 100 / face["head"].unitsPerEm
+    gaps, x, previous = [], 0, None
+    for character in text:
+        name = cmap[ord(character)]
+        pen = BoundsPen(glyphs)
+        glyphs[name].draw(pen)
+        if previous is not None:
+            gaps.append((x + pen.bounds[0] - previous) * scale - weight)
+        previous = x + pen.bounds[2]
+        x += face["hmtx"][name][0] + spacing / scale
+    return min(gaps, default=0)
+
+
+def text_svg(font: Path, text: str, spacing: float = 0, weight: float = 0) -> str:
     """text's outlines in a font, as an SVG (an em of 100 units), for a
     label that has no redraw: the glyphs as the font draws them, set with
-    its advances and spacing (in hundredths of an em) between them."""
+    its advances and spacing (in hundredths of an em) between them, and
+    emboldened by an outline weight hundredths of an em wide (half of it
+    outside the glyphs), the picture grown by that half on each side."""
     paths, transform, width, height = text_outlines(font, text, spacing)
+    pad = weight / 2
+    width, height = width + 2 * pad, height + 2 * pad
+    stroke = ""
+    if weight:
+        scale = float(transform.split("(")[1].split()[0])
+        stroke = f' stroke="#ffffff" stroke-width="{weight / scale:g}" stroke-linejoin="miter"'
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width:.2f}" height="{height:.2f}" '
             f'viewBox="0 0 {width:.2f} {height:.2f}">\n'
-            f'<!-- "{text}" in {font.name} -->\n'
-            f'<g fill="#ffffff" transform="{transform}">\n'
+            f'<!-- "{text}" in {font.name}, spacing {spacing:g}, weight {weight:g} -->\n'
+            f'<g fill="#ffffff"{stroke} transform="translate({pad:g} {pad:g}) {transform}">\n'
             + paths + "\n</g>\n</svg>\n")
 
 
@@ -736,10 +774,12 @@ def place(render: np.ndarray, alpha: np.ndarray, target: np.ndarray, zoom: float
 
 def labels(arguments) -> None:
     """The sniper's zoom labels (LABELS), set in LABEL_FONT at the size,
-    place and spacing between their glyphs that match the map's best, into
-    their cells of layout.json (REDRAWN: layout keeps them)."""
+    place and spacing between their glyphs that match the map's best, all
+    at the one weight that matches them best together (the Xbox's are one
+    weight), into their cells of layout.json (REDRAWN: layout keeps them)."""
     xbox_map = XboxMap(Path(arguments.map))
     description = json.loads(LAYOUT.read_text())
+    labelled = []
     for tag, texts in LABELS.items():
         group = xbox_map.bitmap_group(tag)
         for (sequence, sprite_index), text in sorted(texts.items()):
@@ -752,22 +792,29 @@ def labels(arguments) -> None:
             cell = pixel_rectangle(sprite, bitmap["width"], bitmap["height"])
             alpha = decode_bitmap(bitmap)[cell[1]:cell[3], cell[0]:cell[2], 3].astype(float)
             svg = f"label__{LABEL_FONT.stem}__{text}.svg"
-            best = None
-            for spacing in LABEL_SPACINGS:
-                (ASSETS / "svg" / svg).write_text(text_svg(LABEL_FONT, text, spacing))
-                fit = fit_reticle(ASSETS / "svg" / svg, alpha)
-                if best is None or fit[0] > best[0][0]:
-                    best = (fit, spacing)
-            (score, per_texel, corner), spacing = best
-            (ASSETS / "svg" / svg).write_text(text_svg(LABEL_FONT, text, spacing))
-            size = render_svg(ASSETS / "svg" / svg)[..., 3].shape
-            laid = {"xbox": cell, "svg": svg, "source_scale": round(per_texel, 5),
-                    "source": [round(corner[0], 4), round(corner[1], 4)],
-                    "clip": [0, 0, size[1], size[0]], "kind": "alpha", "score": round(score, 3)}
-            entry["cells"] = [c for c in entry["cells"] if c["xbox"] != cell] + [laid]
-            entry["cells"].sort(key=lambda c: c["xbox"])
-            print(f"{name} {cell}: \"{text}\" in {LABEL_FONT.name}, spacing {spacing}, "
-                  f"{per_texel:.4f} units a texel, likeness {score:.3f}")
+            # (each weight's best fit, over the spacings)
+            fits = {}
+            for weight in LABEL_WEIGHTS:
+                for spacing in LABEL_SPACINGS:
+                    if text_gap(LABEL_FONT, text, spacing, weight) < LABEL_GAP:
+                        continue
+                    (ASSETS / "svg" / svg).write_text(text_svg(LABEL_FONT, text, spacing, weight))
+                    fit = fit_reticle(ASSETS / "svg" / svg, alpha)
+                    if weight not in fits or fit[0] > fits[weight][0][0]:
+                        fits[weight] = (fit, spacing)
+            labelled.append((name, entry, cell, text, svg, fits))
+    weight = max(LABEL_WEIGHTS, key=lambda w: sum(fits[w][0][0] for *_, fits in labelled))
+    for name, entry, cell, text, svg, fits in labelled:
+        (score, per_texel, corner), spacing = fits[weight]
+        (ASSETS / "svg" / svg).write_text(text_svg(LABEL_FONT, text, spacing, weight))
+        size = render_svg(ASSETS / "svg" / svg)[..., 3].shape
+        laid = {"xbox": cell, "svg": svg, "source_scale": round(per_texel, 5),
+                "source": [round(corner[0], 4), round(corner[1], 4)],
+                "clip": [0, 0, size[1], size[0]], "kind": "alpha", "score": round(score, 3)}
+        entry["cells"] = [c for c in entry["cells"] if c["xbox"] != cell] + [laid]
+        entry["cells"].sort(key=lambda c: c["xbox"])
+        print(f"{name} {cell}: \"{text}\" in {LABEL_FONT.name}, spacing {spacing}, weight {weight}, "
+              f"{per_texel:.4f} units a texel, likeness {score:.3f}")
     LAYOUT.write_text(json.dumps(description, indent=1) + "\n")
 
 
