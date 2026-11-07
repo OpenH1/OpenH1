@@ -1931,6 +1931,12 @@ static const struct config_setting config_settings[] =
 	{ "debug.network_test_vehicle", _config_real, "0.0", "HALO_NETWORK_TEST_VEHICLE", _environment_value, _platform_all,
 		"This many seconds into an automated test game the host seats its last\n"
 		"player as a vehicle's driver (and out 15 seconds on); 0 never." },
+	{ "debug.network_test_vehicle_seat", _config_string, "\"\"", "HALO_NETWORK_TEST_VEHICLE_SEAT", _environment_value,
+		_platform_all,
+		"\"<vehicle>:<seat>\": debug.network_test_vehicle seats the player in the nearest\n"
+		"vehicle whose tag name has <vehicle> in it, in its first free seat whose\n"
+		"label has <seat> in it (\"warthog:passenger\", \"warthog:gunner\"); empty the\n"
+		"nearest vehicle's driver's seat." },
 	{ "debug.network_test_hitch", _config_real, "0.0", "HALO_NETWORK_TEST_HITCH", _environment_value, _platform_all,
 		"As debug.network_test_vehicle seats the player, the frame stops for this\n"
 		"many seconds, as a stall of the renderer or the VR runtime would; 0 never." },
