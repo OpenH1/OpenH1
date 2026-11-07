@@ -223,6 +223,8 @@ int main(int argc, char **argv)
 	{
 		static char const text[] =
 			"data root: /Users/keyes/Halo/maps\n"
+			"saves: /Volumes/Games/keyes/saves and /tmp/run-Users-keyes-dev/z\n"
+			"C:\\Users\\keyes\\Downloads\\OpenH1\\halo.exe; Keyes joined; the Keyesmith map\n"
 			"hosting: openh1://join/fba388a4deadbeef (the rest is left out)\n"
 			"joined 203.0.113.7:2302 and 10.0.0.5, local 127.0.0.1, any 0.0.0.0\n"
 			"vulkan: Vulkan 1.3.280, driver 24.1.3; version 300.1.2.3.4\n"
@@ -249,6 +251,10 @@ int main(int argc, char **argv)
 		printf("%s\n", out);
 		CHECK(strstr(out, "data root: ~/Halo/maps\n"), "the home folder as ~");
 		CHECK(!strstr(out, "keyes"), "the account's name left");
+		CHECK(strstr(out, "saves: /Volumes/Games/(user)/saves and /tmp/run-Users-(user)-dev/z\n"),
+			"the account's name in a path outside the home folder");
+		CHECK(strstr(out, "C:\\Users\\(user)\\Downloads") && strstr(out, "Keyes joined; the Keyesmith map"),
+			"a Windows path's name, or a word that is not a path's part");
 		CHECK(strstr(out, "hosting: openh1://(removed) (the rest"), "the link taken out");
 		CHECK(strstr(out, "joined x.x.x.x:2302 and x.x.x.x, local 127.0.0.1, any 0.0.0.0\n"), "the addresses");
 		CHECK(strstr(out, "Vulkan 1.3.280, driver 24.1.3; version 300.1.2.3.4\n"), "versions left as they are");

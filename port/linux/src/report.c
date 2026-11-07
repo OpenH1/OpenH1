@@ -737,10 +737,29 @@ char *report_scrub(const char *text, size_t size, const char *home, size_t *scru
 {
 	size_t room = size * 2 + 4096, used = 0, at = 0, home_length = home ? strlen(home) : 0;
 	char *out = malloc(room);
+	/* the account's name, the home folder's last part: written as (user)
+	where it is a part of a path outside the home folder too (a data
+	folder on another disk, "-Users-<name>-" in a folder's name) */
+	const char *account = NULL;
+	size_t account_length = 0;
 
 	*scrubbed_size = 0;
 	if (!out)
 		return NULL;
+	if (home_length)
+	{
+		size_t last = home_length;
+
+		while (last > 0 && (home[last - 1] == '/' || home[last - 1] == '\\'))
+			last--;
+		account_length = last;
+		while (last > 0 && home[last - 1] != '/' && home[last - 1] != '\\')
+			last--;
+		account = home + last;
+		account_length -= last;
+		if (account_length < 2)
+			account_length = 0;
+	}
 #define REPORT_PUT(data, length) 	do { if (used + (length) < room) { memcpy(out + used, (data), (length)); used += (length); } } while (0)
 	while (at < size)
 	{
@@ -800,6 +819,16 @@ char *report_scrub(const char *text, size_t size, const char *home, size_t *scru
 			{
 				REPORT_PUT("~", 1);
 				index += home_length;
+			}
+			/* (the account's name, a part of a path elsewhere) */
+			else if (account_length && index > at && (text[index - 1] == '/' || text[index - 1] == '\\' ||
+				text[index - 1] == '-') && end - index >= account_length &&
+				!memcmp(text + index, account, account_length) && (index + account_length == end ||
+				text[index + account_length] == '/' || text[index + account_length] == '\\' ||
+				text[index + account_length] == '-'))
+			{
+				REPORT_PUT("(user)", 6);
+				index += account_length;
 			}
 			/* (an invite's or a party's link) */
 			else if (end - index >= 9 && !memcmp(text + index, "openh1://", 9))

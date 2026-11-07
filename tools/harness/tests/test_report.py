@@ -43,6 +43,8 @@ NEGATIVE_CONTROLS = {
     "scrub-chat": ("scrub", "chat = text + index;", "chat = NULL;"),
     # a password written into settings.txt
     "private-password": ("scrub", 'if (strstr(name, "password") ||', 'if (0 ||'),
+    # the account's name kept where it is a part of a path outside the home folder
+    "scrub-account": ("scrub", "else if (account_length && index > at", "else if (0 && account_length && index > at"),
     # the body's characters left as they are: an & or a # ends it early
     "issue-unencoded": ("issue", "character == '~';", "character == '~' || character == '&' || character == '#';"),
     # the resource maps counted as maps
