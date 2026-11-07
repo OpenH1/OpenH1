@@ -218,6 +218,7 @@ python -m pytest -q tools/test_metal_post_shaders.py        # the Metal backend'
 python -m pytest -q tools/test_hdr.py                       # display.hdr's contract: the draws' classification, the reference curves (docs/hdr.md)
 python -m pytest -q tools/test_hdr_backends.py              # display.hdr across the backends: Vulkan's shaders (via SPIRV-Cross) on a Mac's GPU against the reference and Metal's
 python -m pytest -q tools/test_macos_app.py                 # the macOS app's Info.plist, entitlements, signature
+python -m pytest -q tools/test_hud_assets.py                # the high-res HUD's assets: their sources, credit, the classic buttons' cut-out letters
 python -m pytest -q tools/test_astc.py                      # the DXT textures as ASTC: the transcoding, the encoder's bounds, the disk cache
 python -m pytest -q tools/test_ios_app.py                   # the iOS app's Info.plist, entitlements, the guest's code section
 build/macos/halo_replay <recording> --shots <dir>           # a recorded render stream replayed (ninja macos_replay;
@@ -325,12 +326,14 @@ read `xbox/include`. To add a name, follow `port/include/xdk/README.md`.
 
 - Replacement HUD, title and menu art is made of hand-drawn redraws.
 - An explicit, credited exception to these rules (and to "never the game's
-  art" below), decided by the maintainers: the HUD message icons' pictures
-  of the weapons and the skull are Aerocatia's and Jessie's art from Halo
-  PC Restored (`port/assets/hud/art`, `port/assets/hud/NOTICE.md`), used as
-  that NOTICE says, with credit in `AUTHORS.md`. Keep it and its credit; do
-  not redraw or remove it, and take nothing else from that art without the
-  maintainers' decision.
+  art" below), decided by the maintainers: the high-res HUD (its meters,
+  panels, counters, reticles, scopes, waypoints, message icons and their
+  weapons, the reticle's warnings, and the classic style's controller
+  buttons) may be Aerocatia's and Jessie's art from Halo PC Restored
+  (`port/assets/hud/art`, `port/assets/hud/NOTICE.md`), used as that NOTICE
+  says, with credit in `AUTHORS.md`. Keep it and its credit; do not redraw
+  or remove it, and take nothing else from that art (beyond the HUD) without
+  the maintainers' decision.
 - Prefer an existing redraw (the ui-svg-handmade set), then a new redraw. A
   Custom Edition picture that cannot reasonably be redrawn (a 3D render, a
   screenshot, a logo) may be used only if it is listed in
