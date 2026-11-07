@@ -63,7 +63,6 @@ static struct
 	int failed;
 } performance = { PTHREAD_MUTEX_INITIALIZER };
 
-static int perfdebug_cpu_only;
 /* (performance.lock held) */
 static int performance_look_up(void)
 {
@@ -72,14 +71,6 @@ static int performance_look_up(void)
 	if (performance.looked_up)
 		return performance.manager != NULL;
 	performance.looked_up = 1;
-	{ /* PERFDEBUG */
-		FILE *f = fopen("/storage/emulated/0/Android/data/com.openh1.openh1/files/perf_hint_mode", "r");
-		int mode = 2;
-		if (f) { if (fscanf(f, "%d", &mode) != 1) mode = 2; fclose(f); }
-		host_logf(HOST_LOG_INFO, "PERFDEBUG hint mode %d", mode);
-		if (mode == 0) return 0;
-		if (mode == 1) perfdebug_cpu_only = 1;
-	}
 	library = dlopen("libandroid.so", RTLD_NOW | RTLD_LOCAL);
 	if (!library)
 		return 0;
@@ -108,7 +99,7 @@ static int performance_look_up(void)
 		"APerformanceHint_reportActualWorkDuration2");
 	if (performance.work_create && performance.work_release && performance.work_start && performance.work_total &&
 		performance.work_cpu && performance.work_gpu && performance.report_work)
-		performance.work = perfdebug_cpu_only ? NULL : performance.work_create();
+		performance.work = performance.work_create();
 	if (!performance.get_manager || !performance.create_session || !performance.update_target ||
 		!performance.report_actual || !performance.close_session)
 	{
