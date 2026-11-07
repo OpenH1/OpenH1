@@ -1198,12 +1198,21 @@ static char *report_text(const char *name, int crash)
 	/* (the mods and the map: a problem one of them makes not taken for the
 	game's; names only, never a folder's path) */
 	{
-		char *mods = malloc(4096), folder[1024];
+		char *mods = malloc(4096), folder[1024], *map_line;
 		long stock, custom;
 
 		if (mods)
 		{
 			report_game_mods_and_maps(mods, 4096);
+			/* (a crash's: not this run's map, the menus', which is not the
+			one that crashed) */
+			if (crash && (map_line = strstr(mods, "- Map: ")) != NULL)
+			{
+				char *rest = strchr(map_line, '\n');
+
+				rest = rest ? rest + 1 : map_line + strlen(map_line);
+				memmove(map_line, rest, strlen(rest) + 1);
+			}
 			REPORT_PRINT("\n## Mods and maps\n\n%s", mods);
 			free(mods);
 		}
