@@ -73,7 +73,6 @@ A frame's time costs a clock reading and six stores (report_frame_presented,
 on the render thread, as report_write is); a log line a copy into the ring.
 */
 
-#include "map_import.h"
 #include "platform.h"
 #include "port_config.h"
 #include "posix.h"
@@ -1210,7 +1209,12 @@ static char *report_text(const char *name, int crash)
 		}
 		snprintf(folder, sizeof(folder), "%s/maps", platform_data_root());
 		stock = report_maps_in(folder);
-		map_import_custom_maps_folder(platform_data_root(), folder, (int)sizeof(folder));
+		/* (map_import_custom_maps_folder's choice; map_import.c is the
+		desktop's, not Android's) */
+		if (config_string("paths.custom_maps")[0])
+			snprintf(folder, sizeof(folder), "%s", config_string("paths.custom_maps"));
+		else
+			snprintf(folder, sizeof(folder), "%s/custom_maps", platform_data_root());
 		custom = report_maps_in(folder);
 		REPORT_PRINT("- Maps: %ld in maps/, %ld in custom_maps/\n", stock > 0 ? stock : 0, custom > 0 ? custom : 0);
 	}
