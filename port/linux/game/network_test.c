@@ -211,6 +211,9 @@ static struct
 	real hitch_seconds;
 	real pickup_time;
 	char pickup_weapon[64];
+	/* debug.network_test_vehicle_seat's "<vehicle>:<seat>" */
+	char vehicle_name[64];
+	char seat_label[64];
 	/* debug.network_test_chat's, and the lines said this game */
 	real chat_time;
 	short chat_lines_said;
@@ -335,6 +338,21 @@ static void network_test_read_settings(
 	network_test.party_time = (real)config_real("debug.network_test_party");
 	snprintf(network_test.pickup_weapon, sizeof(network_test.pickup_weapon), "%s",
 		config_string("debug.network_test_pickup_weapon"));
+	{
+		char const *seat = config_string("debug.network_test_vehicle_seat");
+		char const *colon = strchr(seat, ':');
+
+		if (colon)
+		{
+			snprintf(network_test.vehicle_name, sizeof(network_test.vehicle_name), "%.*s", (int)(colon - seat), seat);
+			snprintf(network_test.seat_label, sizeof(network_test.seat_label), "%s", colon + 1);
+		}
+		else
+		{
+			network_test.vehicle_name[0] = 0;
+			snprintf(network_test.seat_label, sizeof(network_test.seat_label), "%s", seat);
+		}
+	}
 	network_test.score_to_win = (long)config_integer("debug.network_test_score");
 	network_test.maximum_players = (long)config_integer("debug.network_test_most_players");
 	network_test.cue_players = MAX(1, config_integer("debug.network_test_cue_players"));
@@ -970,6 +988,24 @@ static void network_test_gather(
 	}
 }
 
+/* the vehicle's first free seat whose label has debug.network_test_vehicle_seat's
+seat in it (W-passenger, W-gunner), or NONE */
+static short network_test_vehicle_seat_index(
+	long vehicle_index)
+{
+	struct unit_definition *definition = unit_definition_get(object_get(vehicle_index)->definition_index);
+	short seat_index;
+
+	for (seat_index = 0; seat_index < definition->unit.seats.count; seat_index++)
+	{
+		struct unit_seat *seat = TAG_BLOCK_GET_ELEMENT(&definition->unit.seats, seat_index, struct unit_seat);
+
+		if (strstr(seat->label, network_test.seat_label) && !unit_seat_filled(vehicle_index, seat_index))
+			return seat_index;
+	}
+	return NONE;
+}
+
 static void network_test_vehicle(
 	boolean enter)
 {
@@ -1004,6 +1040,15 @@ static void network_test_vehicle(
 			real_point3d const *vehicle_position = &object_get(vehicles.index)->object.position;
 			real distance = distance_squared3d(position, vehicle_position);
 
+			/* (debug.network_test_vehicle_seat: only a vehicle of that name
+			with a free seat of that label) */
+			if (network_test.vehicle_name[0] &&
+				!strstr(tag_get_name(object_get(vehicles.index)->definition_index), network_test.vehicle_name))
+			{
+				continue;
+			}
+			if (network_test.seat_label[0] && network_test_vehicle_seat_index(vehicles.index) == NONE)
+				continue;
 			if (nearest_index == NONE || distance < nearest_distance)
 			{
 				nearest_index = vehicles.index;
@@ -1013,6 +1058,20 @@ static void network_test_vehicle(
 		if (nearest_index == NONE)
 		{
 			platform_log("network test: no vehicle");
+			return;
+		}
+		if (network_test.seat_label[0])
+		{
+			seat_index = network_test_vehicle_seat_index(nearest_index);
+			if (unit_enter_seat(last->unit_index, nearest_index, seat_index))
+			{
+				platform_log("network test: the last player takes seat %d of vehicle %lx", seat_index, nearest_index);
+				network_test_hitch();
+			}
+			else
+			{
+				platform_log("network test: the last player cannot take seat %d of vehicle %lx", seat_index, nearest_index);
+			}
 			return;
 		}
 		for (seat_index = 0; seat_index < unit_definition_get(object_get(nearest_index)->definition_index)->unit.seats.count; seat_index++)
