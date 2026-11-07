@@ -21,7 +21,14 @@ debug.menu_open, pc_menus_root_name), and then:
 - F5 makes every label of the menus longer by half (each word's first
   letters again), to see where a longer one would not fit;
 - F6 outlines each widget's box and the problems the layout's checks find
-  (menu_layout.c's menu_layout_overlay: tools/menu_gallery.py's checks).
+  (menu_layout.c's menu_layout_overlay: tools/menu_gallery.py's checks);
+- F9 leaves a note: click a widget (or press A on the focused one; a click
+  on no widget notes the screen as a whole), type it, Enter saves and Escape
+  cancels. Each note is a JSON line in the notes file (debug.menu_notes:
+  halo_menus_notes_paths), with the screen, the widget's name, path, words
+  and box, the input and the window's shape, and a PNG of the screen with
+  the widget outlined; a widget with an open note is marked, and the line
+  counts them (tools/menu_notes.py lists them and marks them done).
 
 A line at the top says which, and the problems' count. The settings these
 change are this run's alone (config_set_for_run). In a build without
@@ -34,6 +41,8 @@ HALO_RELEASE the keys work in any game's menus too, without the setting.
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <time.h>
 
 int config_set_for_run(const char *name, const char *value);
 int config_boolean(char const *name);
@@ -54,6 +63,17 @@ char const *ui_widget_port_screen_name(void);
 long ui_widget_port_focus_path(short *path, long maximum);
 void ui_widget_port_focus_restore(short const *path, long count);
 boolean ui_widget_port_open_screen(char const *tag_name);
+void const *ui_widget_port_focused_widget(void);
+long halo_screen_width(void);
+void platform_menu_studio_typing(int typing);
+int platform_menu_studio_typed(char *typed, int size);
+void halo_screenshot_png(const char *directory);
+int halo_screenshot_png_taken(char *name, unsigned long size);
+int halo_frames_unseen(void);
+void halo_menus_notes_paths(char *notes, unsigned long notes_size, char *pictures, unsigned long pictures_size);
+int halo_menus_note_append(char const *path, char const *line);
+char *halo_menus_notes_read(char const *path);
+void halo_menus_notes_free(char *text);
 
 /* the frames between two looks at the files (twice a second at 60) */
 #define MENU_STUDIO_WATCH_FRAMES 30
@@ -101,6 +121,39 @@ static struct
 	long shot_in;
 	unsigned long reloaded_milliseconds;
 } menu_studio;
+
+/* ---------- notes (F9) */
+
+#define MENU_STUDIO_NOTE_LENGTH 200
+#define MENU_STUDIO_MAXIMUM_OPEN_NOTES 256
+
+enum
+{
+	_menu_studio_comment_off,
+	_menu_studio_comment_picking,
+	_menu_studio_comment_typing,
+	_menu_studio_comment_shooting
+};
+
+static struct
+{
+	short state;
+	/* the widget noted (its record in the kept frame; -1, the screen), and
+	what the note says of it, taken as it was picked */
+	long picked;
+	char picked_name[160];
+	char picked_json[2048];
+	char note[MENU_STUDIO_NOTE_LENGTH];
+	long length;
+	long saved;
+	/* the open notes: their screens' and widgets' tag names */
+	boolean read;
+	long open_count;
+	char (*open_screens)[160];
+	char (*open_widgets)[160];
+	char path[512];
+	char pictures[512];
+} menu_studio_notes;
 
 boolean menu_studio_on(
 	void)
@@ -165,6 +218,335 @@ static void menu_studio_input_apply(
 		menu_studio_reload("input");
 }
 
+/* a JSON string's characters, escaped, at the end of a buffer */
+static void menu_studio_json_string(
+	char *json,
+	long size,
+	char const *text)
+{
+	long length = (long)strlen(json);
+	long index;
+
+	for (index = 0; text[index] && length < size - 8; index++)
+	{
+		unsigned char character = (unsigned char)text[index];
+
+		if (character == '"' || character == '\\')
+		{
+			json[length++] = '\\';
+			json[length++] = (char)character;
+		}
+		else if (character < 0x20)
+		{
+			length += snprintf(json + length, (size_t)(size - length), "\\u%04x", character);
+		}
+		else
+		{
+			json[length++] = (char)character;
+		}
+	}
+	json[length] = 0;
+}
+
+/* a field's value ("screen":"...") in a line of the notes file, or "" */
+static void menu_studio_json_field(
+	char const *line,
+	char const *name,
+	char *value,
+	long size)
+{
+	char key[48];
+	char const *found;
+	long length = 0;
+
+	value[0] = 0;
+	snprintf(key, sizeof(key), "\"%s\":\"", name);
+	found = strstr(line, key);
+	if (!found)
+		return;
+	for (found += strlen(key); *found && *found != '"' && length < size - 1; found++)
+	{
+		if (*found == '\\' && found[1])
+			found++;
+		value[length++] = *found;
+	}
+	value[length] = 0;
+}
+
+/* the notes file's open notes, read again (the markers) */
+static void menu_studio_notes_read(
+	void)
+{
+	char *text, *line;
+
+	if (!menu_studio_notes.path[0])
+		halo_menus_notes_paths(menu_studio_notes.path, sizeof(menu_studio_notes.path), menu_studio_notes.pictures,
+			sizeof(menu_studio_notes.pictures));
+	if (!menu_studio_notes.open_screens)
+	{
+		menu_studio_notes.open_screens = malloc(MENU_STUDIO_MAXIMUM_OPEN_NOTES * sizeof(*menu_studio_notes.open_screens));
+		menu_studio_notes.open_widgets = malloc(MENU_STUDIO_MAXIMUM_OPEN_NOTES * sizeof(*menu_studio_notes.open_widgets));
+		if (!menu_studio_notes.open_screens || !menu_studio_notes.open_widgets)
+			return;
+	}
+	menu_studio_notes.read = TRUE;
+	menu_studio_notes.open_count = 0;
+	text = halo_menus_notes_read(menu_studio_notes.path);
+	for (line = text; line && *line && menu_studio_notes.open_count < MENU_STUDIO_MAXIMUM_OPEN_NOTES; )
+	{
+		char *end = strchr(line, '\n');
+
+		if (end)
+			*end = 0;
+		if (strstr(line, "\"status\":\"open\""))
+		{
+			menu_studio_json_field(line, "screen_tag", menu_studio_notes.open_screens[menu_studio_notes.open_count],
+				sizeof(menu_studio_notes.open_screens[0]));
+			menu_studio_json_field(line, "widget", menu_studio_notes.open_widgets[menu_studio_notes.open_count],
+				sizeof(menu_studio_notes.open_widgets[0]));
+			menu_studio_notes.open_count++;
+		}
+		line = end ? end + 1 : NULL;
+	}
+	if (text)
+		halo_menus_notes_free(text);
+}
+
+boolean menu_studio_commenting(
+	void)
+{
+	return menu_studio_notes.state != _menu_studio_comment_off;
+}
+
+boolean menu_studio_typing(
+	void)
+{
+	return menu_studio_notes.state == _menu_studio_comment_typing ||
+		menu_studio_notes.state == _menu_studio_comment_shooting;
+}
+
+boolean menu_studio_shooting(
+	void)
+{
+	return menu_studio_notes.state == _menu_studio_comment_shooting;
+}
+
+static void menu_studio_comment_toggle(
+	void)
+{
+	if (menu_studio_notes.state == _menu_studio_comment_off)
+	{
+		menu_studio_notes_read();
+		menu_studio_notes.state = _menu_studio_comment_picking;
+		platform_log("menus: studio: notes to %s", menu_studio_notes.path);
+	}
+	else if (menu_studio_notes.state != _menu_studio_comment_shooting)
+	{
+		platform_menu_studio_typing(FALSE);
+		menu_studio_notes.state = _menu_studio_comment_off;
+	}
+}
+
+/* a widget picked (its record in the kept frame; -1: the screen): its note
+typed */
+static void menu_studio_comment_pick(
+	long id)
+{
+	if (menu_studio_notes.state != _menu_studio_comment_picking)
+		return;
+	menu_studio_notes.picked = id;
+	snprintf(menu_studio_notes.picked_name, sizeof(menu_studio_notes.picked_name), "%s", menu_layout_widget_name(id));
+	menu_layout_widget_json(id, menu_studio_notes.picked_json, sizeof(menu_studio_notes.picked_json));
+	menu_studio_notes.note[0] = 0;
+	menu_studio_notes.length = 0;
+	menu_studio_notes.state = _menu_studio_comment_typing;
+	platform_menu_studio_typing(TRUE);
+}
+
+/* (ui_widget.c: a click in the menus while notes are picked, in their
+coordinates) */
+void menu_studio_pick_point(
+	short x,
+	short y)
+{
+	menu_studio_comment_pick(menu_layout_widget_at(x, y));
+}
+
+/* (ui_widget.c: A pressed while notes are picked) */
+void menu_studio_pick_focused(
+	void)
+{
+	menu_studio_comment_pick(menu_layout_widget_of(ui_widget_port_focused_widget()));
+}
+
+/* the note written: its line in the notes file, with its picture */
+static void menu_studio_comment_write(
+	char const *picture)
+{
+	static char line[4096];
+	char screen[256], value[256];
+	char const *tag = ui_widget_port_screen_name();
+	time_t now = time(NULL);
+	struct tm const *when;
+	long index;
+
+	snprintf(screen, sizeof(screen), "%s", strncmp(tag, "pc\\", 3) ? tag : tag + 3);
+	for (index = 0; screen[index]; index++)
+	{
+		if (screen[index] == '\\')
+			screen[index] = '/';
+	}
+	when = gmtime(&now);
+	snprintf(line, sizeof(line), "{\"id\":\"%08lx%03lx\",\"status\":\"open\",\"time\":\"", (unsigned long)now,
+		(unsigned long)(system_milliseconds() % 4096));
+	value[0] = 0;
+	if (when)
+		strftime(value, sizeof(value), "%Y-%m-%dT%H:%M:%SZ", when);
+	strncat(line, value, sizeof(line) - strlen(line) - 1);
+	strncat(line, "\",\"note\":\"", sizeof(line) - strlen(line) - 1);
+	menu_studio_json_string(line, sizeof(line), menu_studio_notes.note);
+	strncat(line, "\",\"screen\":\"", sizeof(line) - strlen(line) - 1);
+	menu_studio_json_string(line, sizeof(line), screen);
+	strncat(line, "\",\"screen_tag\":\"", sizeof(line) - strlen(line) - 1);
+	menu_studio_json_string(line, sizeof(line), tag);
+	strncat(line, "\",", sizeof(line) - strlen(line) - 1);
+	strncat(line, menu_studio_notes.picked_json, sizeof(line) - strlen(line) - 1);
+	snprintf(value, sizeof(value), ",\"input\":\"%s\",\"shape\":\"%s\",\"screen_width\":%ld,\"picture\":",
+		menu_studio_input_names[menu_studio.input], menu_studio_shapes[menu_studio.shape].name, halo_screen_width());
+	strncat(line, value, sizeof(line) - strlen(line) - 1);
+	if (picture[0])
+	{
+		strncat(line, "\"", sizeof(line) - strlen(line) - 1);
+		menu_studio_json_string(line, sizeof(line), menu_studio_notes.pictures);
+		strncat(line, "/", sizeof(line) - strlen(line) - 1);
+		menu_studio_json_string(line, sizeof(line), picture);
+		strncat(line, "\"}", sizeof(line) - strlen(line) - 1);
+	}
+	else
+	{
+		strncat(line, "null}", sizeof(line) - strlen(line) - 1);
+	}
+	if (halo_menus_note_append(menu_studio_notes.path, line))
+	{
+		menu_studio_notes.saved++;
+		platform_log("menus: studio: note saved to %s", menu_studio_notes.path);
+	}
+	else
+	{
+		platform_log("menus: studio: the note could not be written to %s", menu_studio_notes.path);
+	}
+	menu_studio_notes_read();
+}
+
+static void menu_studio_comment_update(
+	void)
+{
+	char typed[64], picture[128];
+	int count, index;
+
+	if (menu_studio_notes.state == _menu_studio_comment_shooting)
+	{
+		/* (the frame with the widget outlined alone, saved) */
+		if (halo_frames_unseen() || halo_screenshot_png_taken(picture, sizeof(picture)))
+		{
+			if (halo_frames_unseen())
+				picture[0] = 0;
+			menu_studio_comment_write(picture);
+			menu_studio_notes.state = _menu_studio_comment_picking;
+		}
+		return;
+	}
+	if (menu_studio_notes.state != _menu_studio_comment_typing)
+		return;
+	count = platform_menu_studio_typed(typed, sizeof(typed));
+	for (index = 0; index < count; index++)
+	{
+		char character = typed[index];
+
+		if (character == '\b')
+		{
+			if (menu_studio_notes.length)
+				menu_studio_notes.note[--menu_studio_notes.length] = 0;
+		}
+		else if (character == '\033')
+		{
+			platform_menu_studio_typing(FALSE);
+			menu_studio_notes.state = _menu_studio_comment_picking;
+			return;
+		}
+		else if (character == '\n')
+		{
+			platform_menu_studio_typing(FALSE);
+			if (!menu_studio_notes.length)
+			{
+				menu_studio_notes.state = _menu_studio_comment_picking;
+				return;
+			}
+			menu_studio_notes.state = _menu_studio_comment_shooting;
+			halo_screenshot_png(menu_studio_notes.pictures);
+			return;
+		}
+		else if ((unsigned char)character >= 0x20 && menu_studio_notes.length < MENU_STUDIO_NOTE_LENGTH - 1)
+		{
+			menu_studio_notes.note[menu_studio_notes.length++] = character;
+			menu_studio_notes.note[menu_studio_notes.length] = 0;
+		}
+	}
+}
+
+/* the notes' outlines: the widget being noted, and a mark on each widget of
+the screen with an open note (ui_widget.c's overlay) */
+void menu_studio_notes_overlay(
+	menu_layout_outline_proc outline)
+{
+	char const *tag = ui_widget_port_screen_name();
+	rectangle2d box;
+	long index;
+
+	if (menu_studio_notes.state == _menu_studio_comment_typing || menu_studio_notes.state == _menu_studio_comment_shooting)
+	{
+		if (menu_layout_widget_box(menu_layout_widget_named(menu_studio_notes.picked_name), &box))
+			outline(&box, _menu_layout_picked);
+	}
+	if (menu_studio_notes.state == _menu_studio_comment_shooting)
+		return;
+	if (!menu_studio_notes.read && menu_studio.on)
+		menu_studio_notes_read();
+	for (index = 0; index < menu_studio_notes.open_count; index++)
+	{
+		if (strcmp(menu_studio_notes.open_screens[index], tag) ||
+			!menu_layout_widget_box(menu_layout_widget_named(menu_studio_notes.open_widgets[index]), &box))
+		{
+			continue;
+		}
+		box.x0 = (short)MAX(box.x0, box.x1 - 10);
+		box.y1 = (short)MIN(box.y1, box.y0 + 10);
+		outline(&box, _menu_layout_note);
+	}
+}
+
+/* the line under the studio's while a note is typed: what it is on, and
+what it says */
+boolean menu_studio_note_field(
+	wchar_t *line,
+	long size)
+{
+	char text[320];
+	char const *name = menu_studio_notes.picked_name;
+	char const *last = strrchr(name, '\\');
+	long index;
+
+	if (menu_studio_notes.state != _menu_studio_comment_typing)
+		return FALSE;
+	snprintf(text, sizeof(text), "NOTE ON %s:  %s_      (Enter saves, Esc cancels)",
+		menu_studio_notes.picked >= 0 ? (last ? last + 1 : name) : "THE SCREEN", menu_studio_notes.note);
+	for (index = 0; text[index] && index < size - 1; index++)
+		line[index] = (unsigned char)text[index];
+	line[index] = 0;
+
+	return TRUE;
+}
+
 /* (each frame of the menus, as they update: ui_widget.c) */
 void menu_studio_update(
 	void)
@@ -198,13 +580,14 @@ void menu_studio_update(
 		if (keys & (1 << 2))
 			menu_studio.long_text = !menu_studio.long_text;
 		if (keys & (1 << 3))
-		{
 			menu_studio.overlay = !menu_studio.overlay;
-			menu_layout_keep(menu_studio.overlay);
-		}
 		if (keys & (1 << 4))
 			menu_studio_reload("F7");
+		if (keys & (1 << 6))
+			menu_studio_comment_toggle();
 	}
+	menu_layout_keep(menu_studio.overlay || menu_studio.on || menu_studio_notes.state != _menu_studio_comment_off);
+	menu_studio_comment_update();
 	if (menu_studio.on && ++menu_studio.frame % MENU_STUDIO_WATCH_FRAMES == 0 &&
 		halo_menus_files_stamp() != menu_studio.stamp)
 	{
@@ -228,10 +611,16 @@ void menu_studio_drawing(
 	menu_studio.drawing = drawing;
 }
 
+boolean menu_studio_boxes_on(
+	void)
+{
+	return menu_studio.overlay;
+}
+
 boolean menu_studio_overlay_on(
 	void)
 {
-	return menu_studio.overlay || menu_studio.on;
+	return menu_studio.overlay || menu_studio.on || menu_studio_notes.state != _menu_studio_comment_off;
 }
 
 /* a label the menus draw, made longer by half where F5 asks: each word's
@@ -286,13 +675,24 @@ void menu_studio_status(
 	long size,
 	long problems)
 {
-	char text[256];
+	char text[320];
 	long index;
+	long here = 0;
 
-	snprintf(text, sizeof(text), "STUDIO  %s  %s%s  |  F3 input  F4 shape  F5 long  F6 boxes  F7 reload%s",
-		menu_studio_input_names[menu_studio.input], menu_studio_shapes[menu_studio.shape].name,
-		menu_studio.long_text ? "  long labels" : "",
-		menu_studio.overlay ? (problems ? "  |  problems: " : "  |  no problems") : "");
+	for (index = 0; index < menu_studio_notes.open_count; index++)
+		here += !strcmp(menu_studio_notes.open_screens[index], ui_widget_port_screen_name());
+	if (menu_studio_notes.state != _menu_studio_comment_off)
+	{
+		snprintf(text, sizeof(text), "NOTES  click a widget or press A on it (none: the screen); F9 leaves  |  "
+			"open: %ld here, %ld in all%s", here, menu_studio_notes.open_count, menu_studio_notes.saved ? "  |  saved" : "");
+	}
+	else
+	{
+		snprintf(text, sizeof(text), "STUDIO  %s  %s%s  |  F3 input  F4 shape  F5 long  F6 boxes  F7 reload  F9 notes"
+			" (%ld)%s", menu_studio_input_names[menu_studio.input], menu_studio_shapes[menu_studio.shape].name,
+			menu_studio.long_text ? "  long labels" : "", menu_studio_notes.open_count,
+			menu_studio.overlay ? (problems ? "  |  problems: " : "  |  no problems") : "");
+	}
 	for (index = 0; text[index] && index < size - 16; index++)
 		line[index] = (unsigned char)text[index];
 	if (menu_studio.overlay && problems)

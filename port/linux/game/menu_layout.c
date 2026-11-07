@@ -670,3 +670,150 @@ long menu_layout_overlay(
 
 	return problems;
 }
+
+/* ---------- the widgets of the kept frame, for the menu studio's notes */
+
+long menu_layout_widget_at(
+	short x,
+	short y)
+{
+	long index;
+
+	/* (the last drawn that holds the point: the deepest, the one on top;
+	those over the whole screen passed over, as the screen's own) */
+	for (index = menu_layout.widget_count - 1; index >= 0; index--)
+	{
+		rectangle2d const *box = &menu_layout.widgets[index].box;
+
+		if (x >= box->x0 && x < box->x1 && y >= box->y0 && y < box->y1 &&
+			(box->x1 - box->x0 < 640 || box->y1 - box->y0 < 480))
+		{
+			return index;
+		}
+	}
+
+	return -1;
+}
+
+long menu_layout_widget_of(
+	void const *widget)
+{
+	return menu_layout_widget_id(widget);
+}
+
+long menu_layout_widget_named(
+	char const *name)
+{
+	long index;
+
+	for (index = 0; index < menu_layout.widget_count; index++)
+	{
+		if (!strcmp(menu_layout.widgets[index].name, name))
+			return index;
+	}
+
+	return -1;
+}
+
+boolean menu_layout_widget_box(
+	long id,
+	rectangle2d *box)
+{
+	if (id < 0 || id >= menu_layout.widget_count)
+		return FALSE;
+	*box = menu_layout.widgets[id].box;
+
+	return TRUE;
+}
+
+char const *menu_layout_widget_name(
+	long id)
+{
+	return id >= 0 && id < menu_layout.widget_count ? menu_layout.widgets[id].name : "";
+}
+
+/* (into a buffer, its end kept) */
+static void menu_layout_append(
+	char *json,
+	long size,
+	char const *text)
+{
+	long length = (long)strlen(json);
+
+	snprintf(json + length, (size_t)MAX(size - length, 0), "%s", text);
+}
+
+static void menu_layout_append_escaped(
+	char *json,
+	long size,
+	char const *text)
+{
+	char one[8];
+	long index;
+
+	for (index = 0; text[index]; index++)
+	{
+		unsigned char character = (unsigned char)text[index];
+
+		if (character == '"' || character == '\\')
+			snprintf(one, sizeof(one), "\\%c", character);
+		else if (character < 0x20)
+			snprintf(one, sizeof(one), "\\u%04x", character);
+		else
+			snprintf(one, sizeof(one), "%c", character);
+		menu_layout_append(json, size, one);
+	}
+}
+
+void menu_layout_widget_json(
+	long id,
+	char *json,
+	long size)
+{
+	char const *path[32];
+	char part[64];
+	long depth = 0, step, index;
+
+	json[0] = 0;
+	if (id < 0 || id >= menu_layout.widget_count)
+	{
+		menu_layout_append(json, size, "\"widget\":null,\"widget_path\":[],\"widget_text\":\"\",\"box\":null");
+		return;
+	}
+	menu_layout_append(json, size, "\"widget\":\"");
+	menu_layout_append_escaped(json, size, menu_layout.widgets[id].name);
+	menu_layout_append(json, size, "\",\"widget_path\":[");
+	for (step = id; step >= 0 && depth < 32; step = menu_layout.widgets[step].parent)
+		path[depth++] = menu_layout.widgets[step].name;
+	for (index = depth - 1; index >= 0; index--)
+	{
+		menu_layout_append(json, size, index == depth - 1 ? "\"" : ",\"");
+		menu_layout_append_escaped(json, size, path[index]);
+		menu_layout_append(json, size, "\"");
+	}
+	menu_layout_append(json, size, "],\"widget_text\":\"");
+	/* (the words it and its children draw) */
+	for (index = 0; index < menu_layout.text_count; index++)
+	{
+		long owner;
+		char narrow[MENU_LAYOUT_TEXT_LENGTH];
+		long character;
+
+		for (owner = menu_layout.texts[index].widget; owner >= 0 && owner != id; owner = menu_layout.widgets[owner].parent)
+			;
+		if (owner != id)
+			continue;
+		for (character = 0; menu_layout.texts[index].text[character]; character++)
+		{
+			wchar_t wide = menu_layout.texts[index].text[character];
+
+			narrow[character] = wide == '\r' || wide == '\n' ? ' ' : wide < 0x80 ? (char)wide : '?';
+		}
+		narrow[character] = 0;
+		menu_layout_append_escaped(json, size, narrow);
+		menu_layout_append(json, size, " ");
+	}
+	snprintf(part, sizeof(part), "\",\"box\":[%d,%d,%d,%d]", menu_layout.widgets[id].box.x0,
+		menu_layout.widgets[id].box.y0, menu_layout.widgets[id].box.x1, menu_layout.widgets[id].box.y1);
+	menu_layout_append(json, size, part);
+}

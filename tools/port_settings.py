@@ -13,6 +13,7 @@ settings defaults" shows the defaults. Controls Setup binds the keyboard and
 mouse's controls, by the functions the PC version names for it.
 """
 
+import math
 import re
 import sys
 from pathlib import Path
@@ -488,7 +489,8 @@ DRAW_DISTANCES = Slider(1024, 10000, 1, 1024, 10000, whole=True,
                         stops=(("DEFAULT", "1024"),) + tuple((str(n), str(n)) for n in (
                             1536, 2048, 3072, 4096, 6144, 8192, 10000)))
 ANTI_ALIASING_HELP = "Smooths jagged edges. FXAA and SMAA cost little; {} sharper and {} more of the graphics card."
-STREAMER_LEVELS = [("OFF", "off"), ("SEVERE", "severe"), ("STRONG AND WORSE", "strong"), ("MILD AND WORSE", "mild")]
+# (STRONG & WORSE: its row's spinner's 140 units, STRONG AND WORSE did not fit)
+STREAMER_LEVELS = [("OFF", "off"), ("SEVERE", "severe"), ("STRONG & WORSE", "strong"), ("MILD & WORSE", "mild")]
 SEED_UPLOADS = (64, 128, 256, 512, 1024, 2048, 4096, 8192, 10240)
 VR_CONTROLS = f"{PE}/vr_controls/vr_controls_screen"
 
@@ -4521,12 +4523,13 @@ def _prompts(base: str, bar: str, prompts: list, defined: tuple = (), text_x: in
     has the focus, and its function run by A or a click (those another
     footer has, by their names in defined, its)"""
     prompts = [_prompt_fitted(prompt, text_x, browser) for prompt in prompts]
+    wides = prompts_wide(prompts, text_x)
     lines = _widget(f"{base}/{bar}", [("type", "column_list"), ("width", 640), ("height", PART_PROMPT_HEIGHT + 4),
                                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
                     [f'<child widget="{base}/{name}" x="{x}" y="1"/>' for name, _, x, _, _ in prompts])
     for name, words, x, width, handler in (prompt for prompt in prompts if prompt[0] not in defined):
         lines += _widget(f"{base}/{name}", [("type", "text"), ("width", width), ("height", PART_PROMPT_HEIGHT),
-                                           ("wide", prompt_wide(x, width)),
+                                           ("wide", wides[name]),
                                            ("bitmap", part_highlight(width, PART_PROMPT_HEIGHT)), ("text", words),
                                            ("font", "ui\\small_ui"), ("color", PART_TEXT), ("text_x", text_x),
                                            ("text_y", caps_text_y(PART_PROMPT_HEIGHT))],
@@ -4578,6 +4581,63 @@ def prompt_words_end(words: str, browser: bool = False) -> int:
         key = (BROWSER_KEYS if browser else MENU_KEYS).get(button, "E")
         return key_cap_advance(key) + small_ui_width(" " + rest)
     return small_ui_width(words)
+
+
+# the controller's pictures of the buttons in a prompt, as the game draws
+# them in the classic style (measured from its layout, debug.menu_layout:
+# the triggers and sticks are a word, RIGHT or LEFT, and a picture); the
+# other buttons' are as wide as a letter
+CONTROLLER_PROMPT_ADVANCES = {"right-trigger": 69, "left-trigger": 62, "right-thumb": 65, "left-thumb": 62}
+CONTROLLER_PROMPT_ADVANCE = 9
+# the gap kept between two prompts laid out again for the controller's
+PROMPT_GAP = 2
+
+
+def controller_prompt_end(words: str) -> int:
+    """where a prompt's words end with the controller's picture of its button"""
+    if words.startswith("%"):
+        button, _, rest = words[1:].partition(" ")
+        return CONTROLLER_PROMPT_ADVANCES.get(button, CONTROLLER_PROMPT_ADVANCE) + small_ui_width(" " + rest)
+    return small_ui_width(words)
+
+
+def prompts_wide(prompts: list, text_x: int) -> dict:
+    """each prompt's wide attribute: at the screen's edge it is nearest
+    (prompt_wide), and, in a footer whose prompts with a controller's
+    pictures are wider than with the keyboard's keys (a trigger's or a
+    stick's: RIGHT and its picture), wider by as much on the Steam Deck's
+    16:10 (and more on 16:9), laid out again from the edges so that none
+    reaches the next: at 4:3 they keep the keyboard's widths"""
+    deck = (768 - 640) / WIDE_EXTRA
+    grown = {}
+    for name, words, x, width, _ in prompts:
+        needed = text_x + controller_prompt_end(words) + PROMPT_RIGHT_ROOM
+        grown[name] = width + (math.ceil((needed - width) / deck) if needed > width else 0)
+    if all(grown[name] == width for name, _, _, width, _ in prompts):
+        return {name: prompt_wide(x, width) for name, _, x, width, _ in prompts}
+    # (the prompts at one place are each other's, shown one at a time)
+    slots = {}
+    for name, _, x, width, _ in prompts:
+        slots.setdefault(x, []).append(name)
+    widths = {name: width for name, _, _, width, _ in prompts}
+    left = sorted(x for x in slots if x + max(widths[name] for name in slots[x]) / 2 < 320)
+    right = sorted((x for x in slots if x not in left), reverse=True)
+    placed = {}
+    cursor = left[0] - WIDE_HALF if left else 0
+    for x in left:
+        for name in slots[x]:
+            placed[name] = cursor
+        cursor += max(grown[name] for name in slots[x]) + PROMPT_GAP
+    left_end = cursor - PROMPT_GAP
+    cursor = max(x + max(widths[name] for name in slots[x]) for x in right) + WIDE_HALF if right else 0
+    for x in right:
+        cursor -= max(grown[name] for name in slots[x])
+        for name in slots[x]:
+            placed[name] = cursor
+        cursor -= PROMPT_GAP
+    if right and left and cursor + PROMPT_GAP < left_end:
+        raise ValueError(f"the prompts {', '.join(placed)} do not fit a 16:9 screen with a controller's pictures")
+    return {name: wide(placed[name] - x, grown[name] - width) for name, _, x, width, _ in prompts}
 
 
 def prompt_fit_width(words: str, width: int, text_x: int, browser: bool = False) -> int:
@@ -5201,12 +5261,12 @@ def _matchmaking() -> list:
     x, inner = left + 14, width - 28
     panel = []
 
-    def text(name, ty, h, font, color, words=None):
+    def text(name, ty, h, font, color, words=None, flags=None):
         panel.append(f'<child widget="{base}/{name}"/>')
         pairs = [("left", x), ("top", top + ty), ("width", inner), ("height", h), ("font", font), ("color", color),
                  ("wide", wide(0, HUB_WIDE_PANEL[1]))]
         return (_widget(f"{base}/{name}", [("type", "text"), ("controller", 1), *pairs, ("text", words),
-                                           ("text_flags", "no_focus_test")], [])
+                                           ("text_flags", "no_focus_test" + (f" {flags}" if flags else ""))], [])
                 if words else _part_text(f"{base}/{name}", pairs))
 
     lines += text("panel_title", 14, 24, "ui\\large_ui", "#FFFFFFFF")
@@ -5214,9 +5274,11 @@ def _matchmaking() -> list:
     lines += text("panel_status_label", 84, 16, "ui\\small_ui", PART_DIM, words="SEARCH")
     lines += text("panel_status", 100, 24, "ui\\large_ui", "#FFFFFFFF")
     lines += text("panel_detail", 126, 84, "ui\\small_ui", SETTINGS_BLUE)
-    lines += text("panel_help", height - 76, 64, "ui\\small_ui", SETTINGS_BLUE,
+    # (wrapped in its box, as a dialog's message is: one line it ran past the
+    # panel's edge; four lines tall for 4:3's narrower panel)
+    lines += text("panel_help", height - 90, 78, "ui\\small_ui", SETTINGS_BLUE,
                   words="Matchmaking finds a game with room for your whole party, by ping, or hosts one that "
-                        "players searching the same playlist join. Your party comes with you.")
+                        "players searching the same playlist join. Your party comes with you.", flags="wrap")
     lines += _widget(f"{base}/matchmaking_panel", [("controller", 1), ("left", left), ("top", top),
                                                    ("width", width), ("height", height),
                                                    ("bitmap", part_panel(width, height)),

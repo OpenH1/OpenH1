@@ -235,9 +235,14 @@ static struct platform_input_state input_state;
 /* keys pressed since the last read, so a press and release between two
 reads still counts as a press (input injected on Android, or a slow frame) */
 static unsigned char keys_pressed[SDL_SCANCODE_COUNT];
-/* F3 to F7 pressed since the menu studio last asked, a bit each
+/* F3 to F7, and F9, pressed since the menu studio last asked, a bit each
 (platform_menu_studio_keys) */
 static int menu_studio_keys;
+/* the menu studio's note being typed: the keys go to it, not the game
+(platform_menu_studio_typing), as characters, \b, \n and \033 */
+static BOOL menu_studio_typing;
+static char menu_studio_typed[256];
+static int menu_studio_typed_count;
 /* The bound Screenshot action requests capture at the next presentation. */
 static BOOL screenshot_requested;
 /* likewise the mouse buttons pressed since the last read, so that a click
@@ -2856,6 +2861,26 @@ BOOL platform_screenshot_take_request(void)
 	return requested;
 }
 
+void platform_menu_studio_typing(BOOL typing)
+{
+	pthread_mutex_lock(&input_lock);
+	menu_studio_typing = typing;
+	menu_studio_typed_count = 0;
+	pthread_mutex_unlock(&input_lock);
+}
+
+int platform_menu_studio_typed(char *typed, int size)
+{
+	int count;
+
+	pthread_mutex_lock(&input_lock);
+	count = menu_studio_typed_count < size ? menu_studio_typed_count : size;
+	memcpy(typed, menu_studio_typed, (size_t)count);
+	menu_studio_typed_count = 0;
+	pthread_mutex_unlock(&input_lock);
+	return count;
+}
+
 int platform_menu_studio_keys(void)
 {
 	int keys;
@@ -3023,6 +3048,24 @@ void platform_pump_events(void)
 				binding_captured_input = event.key.scancode;
 				break;
 			}
+			if (event.key.down && !event.key.repeat && event.key.scancode == SDL_SCANCODE_F9)
+				menu_studio_keys |= 1 << 6;
+			/* (a note typed: its keys the studio's alone) */
+			if (menu_studio_typing && event.key.scancode != SDL_SCANCODE_F9)
+			{
+				if (event.key.down && menu_studio_typed_count < (int)sizeof(menu_studio_typed))
+				{
+					char typed = event.key.scancode == SDL_SCANCODE_BACKSPACE ? '\b' :
+						event.key.scancode == SDL_SCANCODE_RETURN || event.key.scancode == SDL_SCANCODE_KP_ENTER ? '\n' :
+						event.key.scancode == SDL_SCANCODE_ESCAPE ? '\033' :
+						(char)ascii_from_key(event.key.key, SDL_GetKeyFromScancode(event.key.scancode, event.key.mod, false),
+							event.key.mod);
+
+					if (typed)
+						menu_studio_typed[menu_studio_typed_count++] = typed;
+				}
+				break;
+			}
 			queue_keystroke(&event.key);
 			if (SDL_GetTicks() < scoreboard_open_until_ms && event.key.down &&
 				(event.key.scancode == SDL_SCANCODE_PAGEUP || event.key.scancode == SDL_SCANCODE_PAGEDOWN))
@@ -3035,6 +3078,7 @@ void platform_pump_events(void)
 			{
 				menu_studio_keys |= 1 << (event.key.scancode - SDL_SCANCODE_F3);
 			}
+
 			/* F12 releases or recaptures the mouse */
 			if (event.key.down && !event.key.repeat && event.key.scancode == SDL_SCANCODE_F12)
 			{

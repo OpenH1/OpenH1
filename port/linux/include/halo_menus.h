@@ -159,6 +159,12 @@ changes when the menus folder's files do (the menu studio:
 port/linux/game/menu_studio.c) */
 void halo_menus_reload(void);
 unsigned long long halo_menus_files_stamp(void);
+/* the menu studio's notes (menu_studio.c): the notes file's path and its
+pictures' folder; a line added to it; the file read whole, and let go */
+void halo_menus_notes_paths(char *notes, unsigned long notes_size, char *pictures, unsigned long pictures_size);
+int halo_menus_note_append(char const *path, char const *line);
+char *halo_menus_notes_read(char const *path);
+void halo_menus_notes_free(char *text);
 /* text as UTF-16, its terminator included, "\n" written as the game's line
 breaks ("\r\n"): the number of characters written (at most capacity) */
 long halo_menus_utf16(char const *utf8, unsigned short *out, long capacity);

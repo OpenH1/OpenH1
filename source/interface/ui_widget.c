@@ -661,6 +661,14 @@ void menu_studio_update(void);
 void menu_studio_drawing(boolean drawing);
 boolean menu_studio_overlay_on(void);
 void menu_studio_status(wchar_t *line, long size, long problems);
+boolean menu_studio_boxes_on(void);
+boolean menu_studio_commenting(void);
+boolean menu_studio_typing(void);
+boolean menu_studio_shooting(void);
+void menu_studio_pick_point(short x, short y);
+void menu_studio_pick_focused(void);
+void menu_studio_notes_overlay(menu_layout_outline_proc outline);
+boolean menu_studio_note_field(wchar_t *line, long size);
 #include "interface/ui_widget_event_handler_functions.h"
 #include "interface/ui_widget_text_search_and_replace_functions.h"
 #include "interface/virtual_keyboard.h"
@@ -8404,9 +8412,13 @@ static void ui_widgets_process_mouse(
 			ui_debug_click_frame = ui_debug_frame;
 		}
 	}
+	/* port: the menu studio's notes take a click as the widget noted
+	(port/linux/game/menu_studio.c), as the virtual keyboard takes them */
+	if (pointer_active && menu_studio_commenting() && pointer.left_clicks)
+		menu_studio_pick_point(pointer.click_x, pointer.click_y);
 	/* the virtual keyboard takes the pointer's clicks itself; a click that
 	closes it (Done) is not also a click on the menu behind */
-	keyboard_active = virtual_keyboard_active();
+	keyboard_active = virtual_keyboard_active() || menu_studio_commenting();
 	if (pointer_active && keyboard_active && pointer.left_clicks)
 	{
 		long hit;
@@ -9071,6 +9083,14 @@ static void ui_widget_port_studio_outline(
 	case _menu_layout_touch_target:
 		color = 0xe040a0ff;
 		break;
+	case _menu_layout_note:
+		color = 0xffffe040;
+		thickness = 3;
+		break;
+	case _menu_layout_picked:
+		color = 0xffffff00;
+		thickness = 2;
+		break;
 	default:
 		color = 0xf0ff3030;
 		break;
@@ -9097,14 +9117,37 @@ static void ui_widget_port_studio_draw(
 	void)
 {
 	long counts[NUMBER_OF_MENU_LAYOUT_PROBLEMS];
-	long problems = menu_layout_overlay(ui_widget_port_studio_outline, counts);
-	wchar_t line[256];
+	long problems = 0;
+	wchar_t line[320];
 	rectangle2d bounds;
 	real_argb_color color = { 1.0f, 1.0f, 1.0f, 1.0f };
 	long font = tag_loaded(FONT_GROUP_TAG, "ui\\small_ui");
 
+	/* (a note's picture: the widget outlined alone) */
+	if (menu_studio_shooting())
+	{
+		menu_studio_notes_overlay(ui_widget_port_studio_outline);
+		return;
+	}
+	if (menu_studio_boxes_on())
+		problems = menu_layout_overlay(ui_widget_port_studio_outline, counts);
+	menu_studio_notes_overlay(ui_widget_port_studio_outline);
 	if (font == NONE)
 		return;
+	/* (the note being typed, at the foot) */
+	if (menu_studio_note_field(line, NUMBEROF(line)))
+	{
+		bounds.x0 = (short)(-(halo_screen_width() - 640) / 2);
+		bounds.x1 = (short)(640 + (halo_screen_width() - 640) / 2);
+		bounds.y0 = 452;
+		bounds.y1 = 472;
+		draw_quad(&bounds, 0xe0000000);
+		bounds.x0 += 4;
+		bounds.y0 += 1;
+		bounds.y1 = 494;
+		draw_string_set_draw_mode(font, NONE, _text_justification_left, 0, &color);
+		rasterizer_draw_unicode_string(&bounds, NULL, NULL, 0, line);
+	}
 	menu_studio_status(line, NUMBEROF(line), problems);
 	bounds.x0 = (short)(-(halo_screen_width() - 640) / 2);
 	bounds.x1 = (short)(640 + (halo_screen_width() - 640) / 2);
@@ -9118,6 +9161,19 @@ static void ui_widget_port_studio_draw(
 	rasterizer_draw_unicode_string(&bounds, NULL, NULL, 0, line);
 
 	return;
+}
+
+/* port: the widget with the focus, deepest down the open screen (the menu
+studio's notes: port/linux/game/menu_studio.c); NULL for none */
+void const *ui_widget_port_focused_widget(
+	void)
+{
+	struct widget_instance *widget = widget_globals.active_widgets[0];
+
+	while (widget && widget->focused_child)
+		widget = widget->focused_child;
+
+	return widget;
 }
 
 /* port: the open screen's name as the menu files name it (the menu studio's,
@@ -10578,7 +10634,17 @@ void process_ui_widgets(
 			{
 				do
 				{
-					if (!pause_pressed)
+					/* port: the menu studio's notes: A notes the widget with the
+					focus, B does nothing, and while a note is typed nothing
+					reaches the menus (port/linux/game/menu_studio.c) */
+					if (menu_studio_commenting() && (menu_studio_typing() ||
+						(event.type == _event_type_button && (event.data.button.index == _gamepad_analog_button_a ||
+						event.data.button.index == _gamepad_analog_button_b))))
+					{
+						if (!menu_studio_typing() && event.data.button.index == _gamepad_analog_button_a)
+							menu_studio_pick_focused();
+					}
+					else if (!pause_pressed)
 					{
 						widget_instance_process_one_event_recursive(
 							widget,

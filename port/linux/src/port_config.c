@@ -2439,6 +2439,12 @@ static const struct config_setting config_settings[] =
 		"16:9, 16:10, a phone's 20:9, 4:3, 21:9), F5 (every label longer), F6\n"
 		"(each widget's box, and the layout checks' problems) and F7 (reload)\n"
 		"(port/linux/game/menu_studio.c). Empty for none." },
+	{ "debug.menu_notes", _config_string, "\"\"", "HALO_MENU_NOTES", _environment_value, _platform_desktop,
+		"The menu studio's notes file (F9: a note on a widget or a screen), a\n"
+		"JSON line a note, its pictures in a menu_notes folder beside it. Empty:\n"
+		"<tree>/build/menu_notes.jsonl where debug.menu_files is a tree's\n"
+		"port/assets/menus, else menu_notes.jsonl beside config.toml\n"
+		"(tools/menu_notes.py lists them)." },
 	{ "debug.menu_files", _config_string, "\"\"", "HALO_MENU_FILES", _environment_value, _platform_desktop,
 		"A folder of menu files read in place of the menus folder beside\n"
 		"config.toml (a source tree's port/assets/menus, for the menu studio);\n"

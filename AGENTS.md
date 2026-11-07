@@ -232,6 +232,7 @@ python -m pytest -q tools/test_ios_touch_layout.py          # the iOS touch layo
 python tools/touch_assets.py --check                        # the touch controls' pictures as their SVGs draw them
 python tools/test_light_storage.py
 python tools/test_death_timing.py
+python -m pytest -q tools/test_menu_notes.py                # menu_notes.py's notes: listed, briefed, marked done
 python -m pytest -q tools/test_menu_gallery.py              # menu_gallery.py's screens, picture difference, layout checks, page
 python -m pytest -q tools/test_join_page.py                 # the website's join page: the links it reads (Node), nothing loaded from elsewhere
 python -m pytest -q tools/test_net_compare.py               # net_compare.py's judging of logs, its copies and their processes
@@ -268,7 +269,11 @@ Running the game without a person at it:
 - `debug.menu_studio=<screen>` with `debug.menu_files=<tree>/port/assets/menus`
   starts on that menu screen and reloads it within a second of a regenerate;
   F3 input, F4 window shape, F5 longer labels, F6 boxes and the layout
-  checks' problems, F7 reload (`port/linux/game/menu_studio.c`).
+  checks' problems, F7 reload, F9 a note on a widget or the screen
+  (`port/linux/game/menu_studio.c`). `python tools/menu_notes.py brief` turns
+  the notes (`build/menu_notes.jsonl`, out of git) into what to change;
+  `done <id>` marks one addressed; `menu_gallery.py --compare <ref> --notes`
+  shows their screens before | after.
 - `debug.network_test` (`HALO_NETWORK_TEST=host:<map>` or `join`) hosts or
   joins a game without the menus and logs each player's state every second;
   several copies play on one machine on different loopback addresses

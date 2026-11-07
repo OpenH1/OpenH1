@@ -71,7 +71,7 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_detail" type="text" controller="1" left="330" top="206" width="268" height="84" font="ui\small_ui" color="#FF2896FF" wide="0 132" text_flags="no_focus_test">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_help" type="text" controller="1" left="330" top="324" width="268" height="64" font="ui\small_ui" color="#FF2896FF" wide="0 132" text="Matchmaking finds a game with room for your whole party, by ping, or hosts one that players searching the same playlist join. Your party comes with you." text_flags="no_focus_test">
+	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_help" type="text" controller="1" left="330" top="310" width="268" height="78" font="ui\small_ui" color="#FF2896FF" wide="0 132" text="Matchmaking finds a game with room for your whole party, by ping, or hosts one that players searching the same playlist join. Your party comes with you." text_flags="no_focus_test wrap">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/matchmaking/matchmaking_panel" controller="1" left="316" top="80" width="296" height="320" bitmap="main_menu/parts/panel_296x320" wide="-26 132">
 		<child widget="main_menu/multiplayer_type_select/matchmaking/panel_title"/>
