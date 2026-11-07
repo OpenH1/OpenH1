@@ -35,6 +35,9 @@ enum halo_keyboard_action
 	HALO_KEYBOARD_SCOREBOARD,
 	HALO_KEYBOARD_PAUSE,
 	HALO_KEYBOARD_SCREENSHOT,
+	/* (Save Report's, which the game itself does not read: port/linux/src/
+	report.c) */
+	HALO_KEYBOARD_REPORT,
 	/* (voice chat's, which the game itself does not read:
 	halo_push_to_talk_held) */
 	HALO_KEYBOARD_PUSH_TO_TALK,

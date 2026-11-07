@@ -382,6 +382,7 @@ These files are in the data root:
 | `init.txt` | Console commands that the game does at start-up. For example, `map_name levels\a10\a10` starts the first campaign level. |
 | `tags/` | Sound tag files that replace the sounds of the maps (`audio.loose_sounds`). |
 | `menu_pictures/` | The menus' pictures of the missions and the multiplayer maps, drawn again from these maps (`display.menu_pictures`): a PNG and a note of each. Deleting it draws them again. |
+| `reports/` | The reports saved for the developers (F9, or Settings > Profiles > Report a Problem): a zip each. Refer to "Reports". |
 | `mods/` | Mods: folders of Halo PC tag files whose sounds, bitmaps, text and models play over the maps' on this machine, in the order of Settings > Mods > Manage Mods (`load_order.toml`). Refer to [docs/mods.md](../../docs/mods.md). |
 
 The settings are in `config.toml` in the game's folder (the release's
@@ -396,6 +397,36 @@ the registers and the frame chain to the standard error. Where the address
 is in the game's code, the report says so with the command that finds its
 function in the guest image: `addr2line -e build/linux_x86_64/halo_guest.elf
 <address>`.
+
+### Reports
+
+A report gathers what helps the developers find a problem, in a zip in
+`reports/` beside `maps/`, named `YYYY-MM-DD_HH.MM.SS.zip` in local time
+(`src/report.c`). The game saves it; it sends nothing itself.
+
+- **Settings > Profiles > Report a Problem** saves a report and opens a new
+  issue on OpenH1's GitHub repository in the browser, its title and body
+  filled in with the report's summary, and, on a computer, the `reports/`
+  folder. Say what happened at the top of the issue, drag the zip into it,
+  and submit it (a GitHub account is needed).
+- **F9** (`controls.report`, rebindable under Controls Setup > Actions)
+  saves a report at once, in a game too, with no browser: the picture is
+  the moment you pressed it. Send the zip later, with Report a Problem's
+  issue or anywhere else.
+
+The zip holds:
+
+| File | Contents |
+| --- | --- |
+| `report.md` | The summary, laid out as an issue's body: the build, the platform, the GPU, its API and driver, the processor, the map and the game, how long the game has run, the display's settings, and the frame times of the last 5 minutes (the average, the median, the 1% and 0.1% lows, the frames of 50 ms or more, and the longest frames with when they were). |
+| `log.txt` | This run's log (its last 512 KB), which on Linux and Android is not otherwise in a file. |
+| `halo.log` | The host's log file, where there is one: Windows's beside `halo.exe`, the macOS app's in `~/Library/Logs/OpenH1`. |
+| `debug.txt` | The game's own log. |
+| `config.toml` | Every setting. |
+| `screenshot.png` | The frame shown when the report was asked for (none in the VR mode). |
+
+Keeping the frame times costs a clock reading a frame; keeping the log, a
+copy of each line.
 
 ## Controls
 
@@ -450,6 +481,7 @@ the other way side to side. Refer to
 | show the scores (hold) | tab |
 | pause menu | escape |
 | screenshot | F10 |
+| save a report for the developers (refer to "Reports") | F9 |
 | talk in voice chat (hold) | V |
 | type a chat line to everyone | T |
 | type a chat line to your team | Y |
@@ -1175,7 +1207,7 @@ the setting for one start of the game. It has priority over the file.
 | `input.flick_stick` | `false` | `HALO_FLICK_STICK` | The right stick as a flick stick (with the default STICK LAYOUT, whose right stick looks): pushed to its rim, you turn to face where it points, relative to the view, over a tenth of a second (right, a quarter turn right; down, about face); turned round the rim, you turn as it does. The stick no longer looks up and down: the gyroscope does. Its turn is not zoomed, and no aim assist acts on it. |
 | `input.invert_mouse` | `false` | `HALO_MOUSE_INVERT=1` sets `true` | `true`: the vertical mouse aim is inverted. |
 | `input.mouse_aim_assist` | `false` | `HALO_MOUSE_AIM_ASSIST` | `true`: the magnetism of the controller also operates for the mouse. `false`: when the mouse moved after the right stick, the view is not slowed or dragged by a target. The autoaim of the bullets operates in both cases. |
-| `controls.<action>` | (the table in "Controls") | `HALO_KEY_<ACTION>` | The keys and mouse buttons of an action, up to two, separated by a comma: `move_forward`, `move_backward`, `strafe_left`, `strafe_right`, `jump`, `crouch`, `fire`, `throw_grenade`, `melee`, `reload`, `zoom`, `switch_weapon`, `switch_grenade`, `action`, `flashlight`, `scoreboard`, `pause`, `screenshot`, `push_to_talk`, `chat`, `team_chat`, `party_accept`, `vote_yes`, `vote_no`. Keys by their names on a US keyboard (`"W"`, `"Space"`, `"Left Ctrl"`, `"F1"`): a key is the one in that place on any keyboard, which Controls Setup shows by its own label (the US name on Android). Buttons: `"Mouse Left"`, `"Mouse Right"`, `"Mouse Middle"`, `"Mouse 4"`, `"Mouse 5"`, `"Wheel"` (either way), `"Wheel Up"`, `"Wheel Down"`. |
+| `controls.<action>` | (the table in "Controls") | `HALO_KEY_<ACTION>` | The keys and mouse buttons of an action, up to two, separated by a comma: `move_forward`, `move_backward`, `strafe_left`, `strafe_right`, `jump`, `crouch`, `fire`, `throw_grenade`, `melee`, `reload`, `zoom`, `switch_weapon`, `switch_grenade`, `action`, `flashlight`, `scoreboard`, `pause`, `screenshot`, `report`, `push_to_talk`, `chat`, `team_chat`, `party_accept`, `vote_yes`, `vote_no`. Keys by their names on a US keyboard (`"W"`, `"Space"`, `"Left Ctrl"`, `"F1"`): a key is the one in that place on any keyboard, which Controls Setup shows by its own label (the US name on Android). Buttons: `"Mouse Left"`, `"Mouse Right"`, `"Mouse Middle"`, `"Mouse 4"`, `"Mouse 5"`, `"Wheel"` (either way), `"Wheel Up"`, `"Wheel Down"`. |
 | `game.downloaded_maps` | `""` | `HALO_DOWNLOADED_MAPS` | Maps to play as downloaded maps, besides the maps that map sharing downloaded (it names them in `downloaded_maps.txt` in `custom_maps`): their names (`bloodgulch`, `hugeass`), separated by commas, or `"*"` for all the maps. The scripts of a downloaded map cannot change the settings of the player or the games of other players. `debug.txt` names what the game refused. |
 | `game.console_log` | `"important"` | `HALO_CONSOLE_LOG` | What the console shows on the screen. `"important"`: bans, players that the host drops for cheating, the reasons that the game refuses a command, and the asserts that stop the game. `"all"`: all the lines. `"none"`: only the asserts that stop the game. The output of a command always shows. `debug.txt` gets all the lines. |
 | `game.language` | `""` | `HALO_LANGUAGE` | The language of the menus: `ja`, `de`, `fr`, `es` or `it`. Empty: English. |
@@ -1369,7 +1401,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.dynamic_lights_look`, `debug.dynamic_lights_log` | `""`, `false` | `HALO_DYNAMIC_LIGHTS_LOOK`, `HALO_DYNAMIC_LIGHTS_LOG` | Tools for the enhanced dynamic lights: up to eight numbers in place of their look's (the lights' brightness, `1.7`; their core's inverse square in radii, `12`; the spill past white, `0.18`; the wrap on models, `0.25`; the glow's size in the light's radius, `0.22`, its brightness, `1.2`, its softness against what it meets in world units, `0.12`, and its least size, `0.035`), and a log of where the first projectile's light is drawn each frame beside where the game placed it at the tick, and once a second how many lights there are. |
 | `debug.doors_pass_light` | `false` | `HALO_DOORS_PASS_LIGHT` | The closed doors' portals left open to the dynamic lights, as the game had them (a light behind a closed door lights the near side), for comparing. |
 | `debug.training` | `""` | `HALO_TRAINING` | `"<chapter>[:<step>]"`: from the main menu, the VR Tutorial starts at that chapter (0 to 7, but 5 and 6) and step of it (0 its first), for tests and captures (`game/basic_training.c`; "Basic training" under "VR"). It runs in any build, but only the VR build offers it in its menus. |
-| `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_hitch`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_chat`, `debug.network_test_name`, `debug.network_test_players`, `debug.network_test_most_players`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_HITCH`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PLAYERS`, `HALO_NETWORK_TEST_MOST_PLAYERS`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link, or (`log`) a log of the game one machine plays (`game/network_test.c`); a `local:` game has `debug.network_test_players` players (split screen), and a hosted one takes `debug.network_test_most_players` at most (`0`: the game's own); a test game starts `debug.network_test_start` seconds (`15.0`) after the host opens it. Refer to `NETCODE.md`. `debug.test_input = "menu:a down down a"` presses menu buttons one a second (`a`, `b`, `x`, `y`, `up`, `down`, `left`, `right`, `start`, `back` or `wait`, `screenshot`, the Screenshot key's capture, `click:<x>:<y>`, a click of the pointer there, `x` and `y` 0 to 1 of the window, `mouse:<button>`, a click of that mouse button (SDL's numbering: `4` is the side Back button), `wheel:<notches>[*<events>]`, the wheel turned that far (away from you positive), in that many events (`1` by default; fractions, as a trackpad's), `type:<letters and digits>`, typed on the keyboard, or `enter`, the Return key; `back+x` holds Back through its second and presses X half way through it), for testing the menus; `"script:0.5 jump; 1-2 move=0,1; 2 aim=90,10"` presses, holds and aims on the simulation's clock, in seconds from the scenario's start, the same at any simulation rate (`tools/scorecard`); its `gyro=<x>,<y>,<z>` (degrees a second about a controller's axes, SDL's: x right, y up, z toward the player), `tilt=<x>,<y>,<z>` (the accelerometer's up in those axes), `gyro_button` and `gyro_calibrate` play a controller's gyroscope on controller 1, a thousand samples a second through the code a real one's go through (`input.gyro_aim`). |
+| `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_hitch`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_chat`, `debug.network_test_name`, `debug.network_test_players`, `debug.network_test_most_players`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_HITCH`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PLAYERS`, `HALO_NETWORK_TEST_MOST_PLAYERS`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link, or (`log`) a log of the game one machine plays (`game/network_test.c`); a `local:` game has `debug.network_test_players` players (split screen), and a hosted one takes `debug.network_test_most_players` at most (`0`: the game's own); a test game starts `debug.network_test_start` seconds (`15.0`) after the host opens it. Refer to `NETCODE.md`. `debug.test_input = "menu:a down down a"` presses menu buttons one a second (`a`, `b`, `x`, `y`, `up`, `down`, `left`, `right`, `start`, `back` or `wait`, `screenshot`, the Screenshot key's capture, `report`, Save Report's (`controls.report`), `click:<x>:<y>`, a click of the pointer there, `x` and `y` 0 to 1 of the window, `mouse:<button>`, a click of that mouse button (SDL's numbering: `4` is the side Back button), `wheel:<notches>[*<events>]`, the wheel turned that far (away from you positive), in that many events (`1` by default; fractions, as a trackpad's), `type:<letters and digits>`, typed on the keyboard, or `enter`, the Return key; `back+x` holds Back through its second and presses X half way through it), for testing the menus; `"script:0.5 jump; 1-2 move=0,1; 2 aim=90,10"` presses, holds and aims on the simulation's clock, in seconds from the scenario's start, the same at any simulation rate (`tools/scorecard`); its `gyro=<x>,<y>,<z>` (degrees a second about a controller's axes, SDL's: x right, y up, z toward the player), `tilt=<x>,<y>,<z>` (the accelerometer's up in those axes), `gyro_button` and `gyro_calibrate` play a controller's gyroscope on controller 1, a thousand samples a second through the code a real one's go through (`input.gyro_aim`). |
 | `debug.network_test_cues`, `debug.network_test_cue_players` | none, `1` | `HALO_NETWORK_TEST_CUES`, `HALO_NETWORK_TEST_CUE_PLAYERS` | Console lines a test runs at their seconds, from the first tick that many players are in (`"<second> <line>\|..."`). |
 | `debug.network_test_lobby_cues` | none | `HALO_NETWORK_TEST_LOBBY_CUES` | Console lines a test's host runs in its first lobby, at their seconds of its setup, before `debug.network_test_start` starts the game (`"<second> <line>\|..."`). |
 | `debug.bot_trace` | `0` | `HALO_BOT_TRACE` | Every this many seconds, each bot's state is written to the log: where it is and where it goes, its path, its target and its weapon. `0`: never. |

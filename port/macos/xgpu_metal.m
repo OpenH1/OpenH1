@@ -1608,6 +1608,9 @@ void xgpu_metal_capabilities(struct xgpu_metal_capabilities *capabilities)
 	capabilities->border_colors = 1;
 	capabilities->base_vertex = 1;
 	capabilities->fill_modes = 1;
+	snprintf(capabilities->device, sizeof(capabilities->device), "%s (Metal, %s)",
+		metal.device ? metal.device.name.UTF8String : "no device",
+		NSProcessInfo.processInfo.operatingSystemVersionString.UTF8String);
 }
 
 /* the GPU's time on a command buffer, of the game's or the presentation's:

@@ -317,6 +317,9 @@ struct xgpu_stream_capabilities
 	int32_t most_anisotropy;
 	uint8_t sample_counting, bgra_vertex_colors, base_vertex, sample_mask;
 	uint8_t mixed_constant_blend, dynamic_lights, dynamic_lights_preparable, hdr;
+	/* the GPU, its API and driver, in a few words (a report's:
+	port/linux/src/report.c), NUL terminated */
+	char device[96];
 };
 
 struct xgpu_stream_reply_record
@@ -1306,7 +1309,7 @@ struct xgpu_stream_vr_screen_corrections
 
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_ring, 104);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_frame_end, 12);
-XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_capabilities, 20);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_capabilities, 116);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_hdr, 24);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_tone_map, 24);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_panini, 56);

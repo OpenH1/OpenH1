@@ -1074,6 +1074,9 @@ static const struct config_setting config_settings[] =
 		"The pause menu (the controller's Start)." },
 	{ "controls.screenshot", _config_string, "\"F10\"", "HALO_KEY_SCREENSHOT", _environment_value, _platform_all,
 		"Save a PNG screenshot in screenshots/ beside maps/ (press once per capture)." },
+	{ "controls.report", _config_string, "\"F9\"", "HALO_KEY_REPORT", _environment_value, _platform_all,
+		"Save a report for the developers: a zip in reports/ beside maps/ with the\n"
+		"log, the settings, the GPU, the frame times and a screenshot. Nothing is sent." },
 	{ "controls.push_to_talk", _config_string, "\"V\"", "HALO_KEY_PUSH_TO_TALK", _environment_value, _platform_all,
 		"Voice chat: talk while it is held (audio.voice_chat \"push_to_talk\")." },
 	{ "controls.chat", _config_string, "\"T\"", "HALO_KEY_CHAT", _environment_value, _platform_all,

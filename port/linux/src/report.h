@@ -1,0 +1,49 @@
+/*
+REPORT.H
+
+Save Report (report.c): a zip of what helps find a problem, saved on this
+machine for the player to send.
+*/
+
+#ifndef REPORT_H
+#define REPORT_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+/* a frame presented (d3d8_device.c's present): its time kept, the last
+REPORT_FRAMES of them */
+void report_frame_presented(void);
+/* a line of the log (xbox_kernel.c's platform_log), kept: the last
+REPORT_LOG_SIZE bytes */
+void report_log_line(const char *line);
+/* a report asked for, saved at the next frame presented: report_request
+saves it (controls.report), report_request_send also sends it (Settings'
+REPORT A PROBLEM: report_write); and taken (0 none, 1 saved, 2 sent) */
+void report_request(void);
+void report_request_send(void);
+int report_take_request(void);
+/* the report saved: the target presented is its screenshot (0: none); send,
+a GitHub issue opened in the browser, filled in with report.md, and the
+reports folder, for its zip to be dragged in; what the player is told
+(where it is, or why it failed) into message; 1 if saved */
+int report_write(unsigned int target, int send, char *message, size_t message_size);
+
+/* ---------- report.c's parts (tools/harness/tests/test_report.py) */
+
+/* the frame times' summary, in report.md's words: micros, each frame's time
+(microseconds), at_ms, when it ended (milliseconds from the start), oldest
+first; now_ms, the report's time */
+void report_frame_summary(const uint32_t *micros, const uint32_t *at_ms, unsigned long count, uint32_t now_ms,
+	char *text, size_t size);
+/* a new GitHub issue's address on OpenH1's repository, its title and body
+filled in (percent-encoded; the body cut at a line to keep the address
+within most bytes); 1 if it fits */
+int report_issue_url(const char *title, const char *body, char *url, size_t most);
+/* the zip's CRC-32 (crc 0 to begin, then each part's) */
+uint32_t report_crc32(uint32_t crc, const unsigned char *data, size_t size);
+
+/* port/linux/game/report_game.c: the map and the game, in a few words */
+void report_game_describe(char *text, size_t size);
+
+#endif

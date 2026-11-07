@@ -1908,6 +1908,7 @@ static void stream_initialize(void *context, struct xgpu_stream_capabilities *ca
 	/* (display.hdr: the half floats, the draws' tags blended in their
 	shaders, reading the pixels they draw over, the tone map in place) */
 	capabilities->hdr = 1;
+	snprintf(capabilities->device, sizeof(capabilities->device), "%s", metal.device);
 }
 
 const struct host_render_backend *xgpu_metal_stream_backend(void)

@@ -52,6 +52,7 @@ extern unsigned char network_aim_assist_block_mouse(void);
 #include "controller_buttons.h"
 #include "controller_remap.h"
 #include "gyro_aim.h"
+#include "report.h"
 
 #include <SDL3/SDL.h>
 #include <math.h>
@@ -938,7 +939,7 @@ static const char *const binding_settings[NUMBER_OF_HALO_KEYBOARD_ACTIONS] =
 	"controls.jump", "controls.crouch", "controls.fire", "controls.throw_grenade", "controls.melee",
 	"controls.reload", "controls.zoom", "controls.switch_weapon", "controls.switch_grenade", "controls.action",
 	"controls.flashlight", "controls.scoreboard", "controls.pause", "controls.screenshot",
-	"controls.push_to_talk", "controls.chat", "controls.team_chat", "controls.party_accept",
+	"controls.report", "controls.push_to_talk", "controls.chat", "controls.team_chat", "controls.party_accept",
 	"controls.vote_yes", "controls.vote_no",
 };
 
@@ -1134,15 +1135,20 @@ static unsigned long keyboard_bound_actions(const struct platform_input_state *i
 	return held;
 }
 
-/* One capture per press, regardless of how long the binding is held. */
+/* One capture per press, regardless of how long the binding is held; and
+Save Report's report (controls.report: report.c) the same. */
 static void keyboard_screenshot(unsigned long held)
 {
-	static BOOL was_down;
+	static BOOL was_down, report_was_down;
 	BOOL down = (held & (1UL << HALO_KEYBOARD_SCREENSHOT)) != 0;
+	BOOL report_down = (held & (1UL << HALO_KEYBOARD_REPORT)) != 0;
 
 	if (down && !was_down)
 		platform_screenshot_request();
+	if (report_down && !report_was_down)
+		report_request();
 	was_down = down;
+	report_was_down = report_down;
 }
 
 /* in the game: the actions held, and Start/Back for pause/scores */
@@ -1610,6 +1616,18 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 			break;
 		step--;
 		token += length;
+	}
+	/* (Save Report's, as its key asks: one in its second) */
+	if (length == 6 && !strncmp(token, "report", 6))
+	{
+		static Uint64 report_second = (Uint64)-1;
+
+		if (report_second != elapsed / 1000 && into < 150)
+		{
+			report_request();
+			report_second = elapsed / 1000;
+		}
+		return;
 	}
 	if (length == 10 && !strncmp(token, "screenshot", 10))
 	{

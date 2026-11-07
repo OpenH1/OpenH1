@@ -6904,6 +6904,11 @@ static int device_make(const struct xgpu_vulkan_options *options)
 			(properties11.subgroupSupportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) &&
 			!getenv("HALO_VULKAN_NO_SUBGROUPS");
 		vk.nvidia = properties12.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY;
+		snprintf(vk.capabilities.device, sizeof(vk.capabilities.device), "%s (Vulkan %u.%u.%u, %s%s%s)",
+			vk.properties.deviceName, VK_API_VERSION_MAJOR(vk.properties.apiVersion),
+			VK_API_VERSION_MINOR(vk.properties.apiVersion), VK_API_VERSION_PATCH(vk.properties.apiVersion),
+			properties12.driverName[0] ? properties12.driverName : "driver", properties12.driverInfo[0] ? " " : "",
+			properties12.driverInfo);
 	}
 	host_logf(HOST_LOG_INFO, "vulkan: %s (Vulkan %u.%u.%u, driver %08x)%s%s%s%s%s%s", vk.properties.deviceName,
 		VK_API_VERSION_MAJOR(vk.properties.apiVersion), VK_API_VERSION_MINOR(vk.properties.apiVersion),

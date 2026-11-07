@@ -186,6 +186,9 @@ struct xgpu_vulkan_capabilities
 	subgroup arithmetic in the fragment stage): xgpu_spirv_options
 	subgroups */
 	int subgroups;
+	/* the device, its Vulkan version and driver, in a few words (a
+	report's: port/linux/src/report.c) */
+	char device[96];
 };
 void xgpu_vulkan_capabilities(struct xgpu_vulkan_capabilities *capabilities);
 
