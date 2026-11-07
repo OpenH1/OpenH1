@@ -152,6 +152,13 @@ void platform_screenshot_request(void);
 BOOL platform_screenshot_take_request(void);
 /* a snapshot of the input state; consume_motion resets the mouse deltas */
 void platform_input_read(struct platform_input_state *state, BOOL consume_motion);
+/* a gamepad's buttons pressed (bits by SDL_GamepadButton) and triggers pulled
+(bit 0 the left, 1 the right) since this was last asked of it, by its
+joystick ID: the controller's reading ORs them into what is held, so a tap
+between two readings still counts */
+/* a trigger past this (of SDL's 0 to 32767) is pulled */
+#define PLATFORM_GAMEPAD_TRIGGER_PRESSED 8000
+void platform_gamepad_presses_take(Uint32 id, Uint32 *buttons, unsigned int *triggers);
 /* the pointer in the menus (d3d8_device.c, halo_ui_pointer_update) */
 struct platform_ui_pointer
 {

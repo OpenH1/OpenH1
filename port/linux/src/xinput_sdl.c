@@ -2422,7 +2422,48 @@ static void merge_button(XINPUT_GAMEPAD *pad, int analog_index, BOOL down)
 		pad->bAnalogButtons[analog_index] = 0xff;
 }
 
-static void sdl_gamepad_state(SDL_Gamepad *gamepad, XINPUT_GAMEPAD *pad)
+/* a gamepad's buttons pressed and triggers pulled since its last reading
+(platform_gamepad_presses_take): a tap let go of before the reading */
+struct gamepad_taps
+{
+	Uint32 buttons;
+	unsigned int triggers;
+};
+
+/* the taps of one of sdl_gamepads' gamepads, taken: once a reading */
+static void gamepad_taps_take(SDL_Gamepad *gamepads[PORT_COUNT], int count, SDL_Gamepad *gamepad,
+	struct gamepad_taps *taps)
+{
+	int index;
+
+	taps->buttons = 0;
+	taps->triggers = 0;
+	for (index = 0; gamepad && index < count; index++)
+	{
+		if (gamepads[index] == gamepad)
+			platform_gamepad_presses_take(sdl_gamepad_ids[index], &taps->buttons, &taps->triggers);
+	}
+}
+
+/* a button held, or pressed and let go of since the last reading */
+static BOOL gamepad_button_down(SDL_Gamepad *gamepad, const struct gamepad_taps *taps, SDL_GamepadButton button)
+{
+	return SDL_GetGamepadButton(gamepad, button) || (taps && (taps->buttons & (1u << button)) != 0);
+}
+
+/* a trigger as 0 to 255; one pulled and let go of since the last reading
+fully pulled */
+static int gamepad_trigger(SDL_Gamepad *gamepad, const struct gamepad_taps *taps, SDL_GamepadAxis axis,
+	unsigned int bit)
+{
+	int value = SDL_GetGamepadAxis(gamepad, axis);
+
+	if (taps && (taps->triggers & bit) && value < PLATFORM_GAMEPAD_TRIGGER_PRESSED)
+		return 255;
+	return value * 255 / 32767;
+}
+
+static void sdl_gamepad_state(SDL_Gamepad *gamepad, const struct gamepad_taps *taps, XINPUT_GAMEPAD *pad)
 {
 	static const struct
 	{
@@ -2445,19 +2486,19 @@ static void sdl_gamepad_state(SDL_Gamepad *gamepad, XINPUT_GAMEPAD *pad)
 
 	for (index = 0; index < (int)(sizeof(digital) / sizeof(digital[0])); index++)
 	{
-		if (SDL_GetGamepadButton(gamepad, digital[index].button))
+		if (gamepad_button_down(gamepad, taps, digital[index].button))
 			pad->wButtons |= digital[index].mask;
 	}
-	merge_button(pad, XINPUT_GAMEPAD_A, SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_SOUTH));
-	merge_button(pad, XINPUT_GAMEPAD_B, SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST));
-	merge_button(pad, XINPUT_GAMEPAD_X, SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_WEST));
-	merge_button(pad, XINPUT_GAMEPAD_Y, SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_NORTH));
+	merge_button(pad, XINPUT_GAMEPAD_A, gamepad_button_down(gamepad, taps, SDL_GAMEPAD_BUTTON_SOUTH));
+	merge_button(pad, XINPUT_GAMEPAD_B, gamepad_button_down(gamepad, taps, SDL_GAMEPAD_BUTTON_EAST));
+	merge_button(pad, XINPUT_GAMEPAD_X, gamepad_button_down(gamepad, taps, SDL_GAMEPAD_BUTTON_WEST));
+	merge_button(pad, XINPUT_GAMEPAD_Y, gamepad_button_down(gamepad, taps, SDL_GAMEPAD_BUTTON_NORTH));
 	/* the Duke's white and black buttons sit where later pads have shoulders */
-	merge_button(pad, XINPUT_GAMEPAD_WHITE, SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER));
-	merge_button(pad, XINPUT_GAMEPAD_BLACK, SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER));
+	merge_button(pad, XINPUT_GAMEPAD_WHITE, gamepad_button_down(gamepad, taps, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER));
+	merge_button(pad, XINPUT_GAMEPAD_BLACK, gamepad_button_down(gamepad, taps, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER));
 
-	left_trigger = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) * 255 / 32767;
-	right_trigger = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) * 255 / 32767;
+	left_trigger = gamepad_trigger(gamepad, taps, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 1);
+	right_trigger = gamepad_trigger(gamepad, taps, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, 2);
 	if (left_trigger > pad->bAnalogButtons[XINPUT_GAMEPAD_LEFT_TRIGGER])
 		pad->bAnalogButtons[XINPUT_GAMEPAD_LEFT_TRIGGER] = (BYTE)left_trigger;
 	if (right_trigger > pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER])
@@ -2477,7 +2518,7 @@ static void sdl_gamepad_state(SDL_Gamepad *gamepad, XINPUT_GAMEPAD *pad)
 /* the back paddles held (controller_remap_paddles' bits: the left, the
 right, the second left, the second right; a Steam Deck's L4, R4, L5, R5),
 which only a custom layout's actions take (Button Remapping) */
-static unsigned int sdl_gamepad_paddles(SDL_Gamepad *gamepad)
+static unsigned int sdl_gamepad_paddles(SDL_Gamepad *gamepad, const struct gamepad_taps *taps)
 {
 	static const SDL_GamepadButton paddles[4] =
 	{
@@ -2489,7 +2530,7 @@ static unsigned int sdl_gamepad_paddles(SDL_Gamepad *gamepad)
 
 	for (index = 0; gamepad && index < 4; index++)
 	{
-		if (SDL_GetGamepadButton(gamepad, paddles[index]))
+		if (gamepad_button_down(gamepad, taps, paddles[index]))
 			held |= 1u << index;
 	}
 	return held;
@@ -3230,6 +3271,7 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 	int back = 0;
 #endif
 	XINPUT_GAMEPAD physical;
+	struct gamepad_taps taps;
 	int captured;
 
 	memset(state, 0, sizeof(*state));
@@ -3240,13 +3282,16 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 	controller_device_update((short)port, port_gamepad(gamepads, count, port));
 	/* Keep physical remapping separate from the keyboard and touch controls. */
 	memset(&physical, 0, sizeof(physical));
+	/* (what was pressed and let go of since the last reading counts once,
+	through the remapping as a held button does) */
+	gamepad_taps_take(gamepads, count, port_gamepad(gamepads, count, port), &taps);
 	if (port_gamepad(gamepads, count, port))
-		sdl_gamepad_state(port_gamepad(gamepads, count, port), &physical);
+		sdl_gamepad_state(port_gamepad(gamepads, count, port), &taps, &physical);
 	/* Keep the opening chat press so even B can open it without immediately closing it. */
 	chat_pad_record((short)port, &physical);
 	chat_physical_pad[port] = chat_pad[port];
 	controller_remap_reserve((short)port, remap_reserved(port));
-	controller_remap_paddles((short)port, sdl_gamepad_paddles(port_gamepad(gamepads, count, port)));
+	controller_remap_paddles((short)port, sdl_gamepad_paddles(port_gamepad(gamepads, count, port), &taps));
 	captured = controller_remap_input((short)port, &physical, port_gamepad(gamepads, count, port) != NULL);
 	if (port == 0)
 	{
@@ -3310,7 +3355,12 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 			for (other = 0; other < count; other++)
 			{
 				if (other > 0 || !port_gamepad(gamepads, count, 0))
-					sdl_gamepad_state(gamepads[other], &state->Gamepad);
+				{
+					struct gamepad_taps other_taps;
+
+					gamepad_taps_take(gamepads, count, gamepads[other], &other_taps);
+					sdl_gamepad_state(gamepads[other], &other_taps, &state->Gamepad);
+				}
 				back = back || SDL_GetGamepadButton(gamepads[other], SDL_GAMEPAD_BUTTON_BACK);
 			}
 		}

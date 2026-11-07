@@ -256,10 +256,121 @@ button or a finger down; and how many were seen */
 static unsigned long movie_skip_presses, movie_skip_presses_seen;
 /* a gamepad's stick or trigger past these is in use (the menus' cursor) */
 #define INPUT_AXIS_PRESSED 16000
-#define INPUT_TRIGGER_PRESSED 8000
+#define INPUT_TRIGGER_PRESSED PLATFORM_GAMEPAD_TRIGGER_PRESSED
 /* port/linux/src/xinput_sdl.c: the scripted player's mouse, as its events
 would bring it (debug.test_input "latency:") */
 void halo_test_input_pump(struct platform_input_state *state, unsigned char *buttons_pressed);
+
+/* (under input_lock) each gamepad's buttons pressed and triggers pulled since
+the controller's last reading of it (platform_gamepad_presses_take), as
+keys_pressed is the keyboard's: a tap pressed and let go of between two
+readings (a slow frame) still counts as a press. By the gamepad's joystick
+ID (never 0); triggers' bit 0 is the left, bit 1 the right; triggers_down,
+which are past INPUT_TRIGGER_PRESSED now, so that a pull counts once */
+#define GAMEPAD_PRESSES_COUNT 8
+typedef char gamepad_presses_buttons_fit[SDL_GAMEPAD_BUTTON_COUNT <= 32 ? 1 : -1];
+static struct gamepad_presses
+{
+	Uint32 id;
+	Uint32 buttons;
+	unsigned int triggers;
+	unsigned int triggers_down;
+} gamepad_presses[GAMEPAD_PRESSES_COUNT];
+
+/* a gamepad's presses, given a place first if it has none and add is set */
+static struct gamepad_presses *gamepad_presses_find(Uint32 id, BOOL add)
+{
+	struct gamepad_presses *empty = NULL;
+	int index;
+
+	if (!id)
+		return NULL;
+	for (index = 0; index < GAMEPAD_PRESSES_COUNT; index++)
+	{
+		if (gamepad_presses[index].id == id)
+			return &gamepad_presses[index];
+		if (!gamepad_presses[index].id && !empty)
+			empty = &gamepad_presses[index];
+	}
+	if (!add || !empty)
+		return NULL;
+	memset(empty, 0, sizeof(*empty));
+	empty->id = id;
+	return empty;
+}
+
+static void gamepad_button_pressed(Uint32 id, int button)
+{
+	struct gamepad_presses *presses = gamepad_presses_find(id, TRUE);
+
+	if (presses && button >= 0 && button < SDL_GAMEPAD_BUTTON_COUNT)
+		presses->buttons |= 1u << button;
+}
+
+static void gamepad_trigger_moved(Uint32 id, int axis, int value)
+{
+	struct gamepad_presses *presses;
+	unsigned int bit;
+
+	if (axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER)
+		bit = 1;
+	else if (axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER)
+		bit = 2;
+	else
+		return;
+	presses = gamepad_presses_find(id, value >= INPUT_TRIGGER_PRESSED);
+	if (!presses)
+		return;
+	if (value < INPUT_TRIGGER_PRESSED)
+		presses->triggers_down &= ~bit;
+	else if (!(presses->triggers_down & bit))
+	{
+		presses->triggers_down |= bit;
+		presses->triggers |= bit;
+	}
+}
+
+static void gamepad_presses_forget(Uint32 id)
+{
+	struct gamepad_presses *presses = gamepad_presses_find(id, FALSE);
+
+	if (presses)
+		memset(presses, 0, sizeof(*presses));
+}
+
+/* (the window's focus gone: what was pressed is dropped, as the keys are) */
+static void gamepad_presses_clear(void)
+{
+	int index;
+
+	for (index = 0; index < GAMEPAD_PRESSES_COUNT; index++)
+	{
+		gamepad_presses[index].buttons = 0;
+		gamepad_presses[index].triggers = 0;
+	}
+}
+
+static void gamepad_presses_take(Uint32 id, Uint32 *buttons, unsigned int *triggers)
+{
+	struct gamepad_presses *presses = gamepad_presses_find(id, FALSE);
+
+	*buttons = 0;
+	*triggers = 0;
+	if (presses)
+	{
+		*buttons = presses->buttons;
+		*triggers = presses->triggers;
+		presses->buttons = 0;
+		presses->triggers = 0;
+	}
+}
+
+void platform_gamepad_presses_take(Uint32 id, Uint32 *buttons, unsigned int *triggers)
+{
+	pthread_mutex_lock(&input_lock);
+	gamepad_presses_take(id, buttons, triggers);
+	pthread_mutex_unlock(&input_lock);
+}
 /* xinput_sdl.c: a gamepad's gyroscope or accelerometer sample */
 void halo_gyro_sensor_event(SDL_JoystickID which, int sensor, const float *data, Uint64 sensor_ns, Uint64 event_ns);
 /* rebinding (platform_binding_capture_begin), under input_lock: waiting for
@@ -3095,6 +3206,7 @@ void platform_pump_events(void)
 			memset(input_state.keys, 0, sizeof(input_state.keys));
 			memset(input_state.mouse_buttons, 0, sizeof(input_state.mouse_buttons));
 			memset(mouse_buttons_pressed, 0, sizeof(mouse_buttons_pressed));
+			gamepad_presses_clear();
 			input_state.menu_back = FALSE;
 #ifndef HALO_ANDROID
 			menu_back_pressed = FALSE;
@@ -3164,21 +3276,24 @@ void platform_pump_events(void)
 			break;
 		case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
 		case SDL_EVENT_GAMEPAD_BUTTON_UP:
+			if (event.gbutton.down)
+				gamepad_button_pressed(event.gbutton.which, event.gbutton.button);
 #ifdef PLATFORM_MENU_CURSOR
 			if (event.gbutton.down)
 				menu_cursor_controller_used(input_state.ui_pointer);
 #endif
 			break;
-#ifdef PLATFORM_MENU_CURSOR
 		case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+			gamepad_trigger_moved(event.gaxis.which, event.gaxis.axis, event.gaxis.value);
+#ifdef PLATFORM_MENU_CURSOR
 			/* (a stick or trigger past its rest) */
 			if (abs(event.gaxis.value) >= (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER ||
 				event.gaxis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER ? INPUT_TRIGGER_PRESSED : INPUT_AXIS_PRESSED))
 			{
 				menu_cursor_controller_used(input_state.ui_pointer);
 			}
-			break;
 #endif
+			break;
 		case SDL_EVENT_GAMEPAD_SENSOR_UPDATE:
 			halo_gyro_sensor_event(event.gsensor.which, event.gsensor.sensor, event.gsensor.data,
 				event.gsensor.sensor_timestamp, event.gsensor.timestamp);
@@ -3189,6 +3304,7 @@ void platform_pump_events(void)
 			{
 				SDL_Gamepad *gamepad = SDL_GetGamepadFromID(event.gdevice.which);
 
+				gamepad_presses_forget(event.gdevice.which);
 				if (gamepad)
 					SDL_CloseGamepad(gamepad);
 			}
