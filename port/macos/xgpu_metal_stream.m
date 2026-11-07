@@ -1848,6 +1848,8 @@ static void stream_frame_end(void *context)
 	xgpu_metal_frame_end(target_texture(stream.back_buffer));
 	stream.back_buffer = 0;
 	xgpu_metal_textures_frame_end();
+	/* (the GPU's time so far, for the guest: a report's) */
+	host_render_stream_gpu_time(xgpu_metal_gpu_busy_nanoseconds());
 	/* (each stage's texture looked for at least once a frame, so that the
 	cache sees it used and keeps it: the guest sends the stages only when
 	they change, and a frame of draws with the same ones sends none) */

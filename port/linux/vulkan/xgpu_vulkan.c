@@ -647,11 +647,13 @@ static struct
 	(segment_open); where the pass's commands go (the main command buffer
 	without discards); a discarded attachment read, logged once */
 	int deferred, depth_resolve, transient, frame_ending;
-	/* debug.gpu_stats (not the VR mode's, which times its own frames):
-	each frame's GPU time and the time between frames' ends counted into
-	the statistics; the last frame's end */
+	/* (not the VR mode's, which times its own frames) each frame's GPU
+	time and the time between frames' ends counted into the statistics
+	(debug.gpu_stats logs them), and the GPU's time so far (nanoseconds:
+	xgpu_vulkan_gpu_nanoseconds, a report's); the last frame's end */
 	int frame_timing;
 	double frame_ended;
+	uint64_t gpu_nanoseconds;
 	struct segment *segments;
 	uint32_t segment_count, segment_capacity;
 	int segment_open, discard_logged;
@@ -6398,6 +6400,7 @@ void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
 		{
 			vk.statistics.gpu_milliseconds += milliseconds;
 			vk.statistics.gpu_frames++;
+			vk.gpu_nanoseconds += (uint64_t)(milliseconds * 1e6);
 		}
 		if (vk.frame_ended > 0.0)
 		{
@@ -6408,6 +6411,12 @@ void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
 		/* (from the next frame's first work) */
 		xgpu_vulkan_gpu_time_begin();
 	}
+}
+
+uint64_t xgpu_vulkan_gpu_nanoseconds(int *measured)
+{
+	*measured = vk.frame_timing && vk.capabilities.gpu_timestamps && !vk.gpu_time_failed;
+	return vk.gpu_nanoseconds;
 }
 
 void xgpu_vulkan_statistics_peek(struct xgpu_vulkan_statistics *statistics)
@@ -7494,7 +7503,8 @@ int xgpu_vulkan_initialize(const struct xgpu_vulkan_options *options)
 		xgpu_vulkan_pacing_start(&pacing);
 	}
 #ifndef HALO_VR
-	vk.frame_timing = options->statistics;
+	/* (always: two timestamps a frame, for a report's GPU time) */
+	vk.frame_timing = 1;
 	draw_times_create();
 #endif
 	vk.serial = 1;

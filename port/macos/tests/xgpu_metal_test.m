@@ -146,6 +146,11 @@ const struct xgpu_stream_ring *host_render_stream_ring(void)
 	return NULL;
 }
 
+void host_render_stream_gpu_time(uint64_t nanoseconds)
+{
+	(void)nanoseconds;
+}
+
 int host_render_stream_playing(void)
 {
 	return 0;

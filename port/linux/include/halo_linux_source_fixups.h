@@ -316,6 +316,9 @@ int halo_frames_unseen(void);
 void unseen_frame_wait(void);
 /* network.client_timeout_seconds, in milliseconds (port/linux/src/port_config.c) */
 unsigned long network_client_timeout_milliseconds(void);
+/* the game halted on a fatal error, its report offered at the next start
+as a crash's (port/linux/src/report.c: main.c) */
+void report_session_halted(char const *reason);
 /* a dedicated server (halo --server: port/linux/src/server_mode.c,
 port/linux/game/server_director.c; docs/dedicated_server.md): whether this
 run is one; its start, before the game's (shell_xbox.c); its frames' pace

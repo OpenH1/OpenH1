@@ -3408,6 +3408,9 @@ void halt_and_catch_fire(
 	it ends with exit code 1 (port/linux/game/server_director.c) */
 	if (halo_server_mode())
 		server_fatal(error_get());
+	/* port: the halt offered as a crash's report at the next start
+	(port/linux/src/report.c) */
+	report_session_halted(error_get());
 	if (!global_screenshot_count.halt_recursion_lock)
 	{
 		scenario = global_scenario_try_and_get();

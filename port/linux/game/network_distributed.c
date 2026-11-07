@@ -5315,7 +5315,8 @@ void distributed_send_notice(
 	csmemcpy(message.text, text, length);
 	/* (the host's own players see it as the clients' do: network_chat.c) */
 	network_chat_show_host_notice(message.text);
-	error(_error_log, "%s", message.text);
+	/* (marked, for a report to leave out with its names: report.c) */
+	error(_error_log, "host notice: %s", message.text);
 	distributed_send(&message, _distributed_message_notice, 0, (word)(sizeof(message.header) + length + 1),
 		_distributed_to_clients_reliably);
 }
@@ -5837,7 +5838,7 @@ unsigned long network_distributed_ban(
 	else
 	{
 		console_warning("%s", notice);
-		error(_error_log, "%s", notice);
+		error(_error_log, "host notice: %s", notice);
 	}
 	return until;
 }
@@ -5859,7 +5860,7 @@ void network_distributed_kick(
 	else
 	{
 		console_warning("%s", notice);
-		error(_error_log, "%s", notice);
+		error(_error_log, "host notice: %s", notice);
 	}
 }
 

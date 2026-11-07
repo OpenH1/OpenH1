@@ -411,25 +411,98 @@ screenshot that moment, and opens a new issue on OpenH1's GitHub
 repository in the browser, its title and body filled in with the report's
 summary, and, on a computer, the `reports/` folder beside it. Say what
 happened at the top of the issue, drag the zip into it, and submit it (a
-GitHub account is needed). In a game nothing opens over it: the report is
-saved at once ("Report saved: its GitHub issue opens when you're back in
-the menus"), and its issue opens when you leave the game (or as the game
-quits). A second press
-within 5 seconds opens nothing more.
+GitHub account is needed). In a game nothing opens over it: F8 takes the
+screenshot and the frame times at once, and opens a line where the chat's
+is, "What happened?", for a note: type it and press Enter, or Escape to
+skip it (while it is open, the keys type, as the chat's line does). The
+note heads the issue. A line still open when the game ends, the map is
+left, a menu opens or a cinematic begins is finished with what was typed.
+REPORT A PROBLEM chosen from the pause menu asks for no note (nor does a
+report asked for behind a menu): it is saved at once. The report is then
+saved ("Report saved: its GitHub issue opens when you're back in the
+menus"), and its issue opens once the main menu is up (not at a game's
+end, nor on the loading screens between a rotation's games or a campaign's
+levels), or as the game quits; at most 4 wait, the oldest let go. A second
+press within 5 seconds opens nothing more.
+
+An issue is public, so what could say who you are is kept out of the zip
+and the issue's body: besides the settings left out (below), each text has
+your home folder written as `~`, invite and party links, IPv4 addresses
+(but 127.x) and IPv6 ones (but ::1), chat lines, the host's notices (which
+name players), the Discord account linked and its link's code, and
+`network.public_address` taken out. A log cut to its end starts at its
+first whole line.
 
 The zip holds:
 
 | File | Contents |
 | --- | --- |
-| `report.md` | The summary, laid out as an issue's body: the build, the platform, the GPU, its API and driver, the processor, the map and the game, how long the game has run, the display's settings, and the frame times of the last 5 minutes (the average, the median, the 1% and 0.1% lows, the frames of 50 ms or more, and the longest frames with when they were). |
+| `report.md` | The summary, laid out as an issue's body: the build, the platform, the GPU, its API and driver, the processor, the map and the game, how long the game has run, where the game was (below); the mods on, in their load order, with their `mod.toml`'s names and versions, the map loaded (stock or Custom Edition, its file's name and size and its cache header's CRC), whether `game.custom_edition` is on and how many maps `maps/` and `custom_maps/` hold (names only, never a folder's path); the display's settings, and the frame times of the last 5 minutes (the average, the median, the 1% and 0.1% lows, the frames of 50 ms or more, and the longest frames with when they were, and what held them back, below). |
 | `log.txt` | This run's log (its last 512 KB), which on Linux and Android is not otherwise in a file. |
 | `halo.log` | The host's log file, where there is one: Windows's beside `halo.exe`, the macOS app's in `~/Library/Logs/OpenH1`. |
+| `host.log` | Where there is no `halo.log` (Linux, Android, the macOS executable run by itself): the renderer's host's last 64 KB of lines (its Vulkan device, validation errors, the swapchain's problems), which otherwise go only to the standard error stream or logcat. |
 | `debug.txt` | The game's own log. |
-| `config.toml` | Every setting. |
+| `settings.txt` | The settings changed from their defaults: never `config.toml` itself, nor the passwords (`server.password` and the web ones), the addresses (`network.address`, `network.public_address`, `network.broadcast`, `network.front`, `server.master_publish_address`, `server.web_bind`), the names and words (`server.name`, `server.motd`, `server.admins`, `debug.friends`, the audio devices'), the keys and links (`debug.update_key`, `debug.update_url`, `debug.party`), nor any file's or folder's path (`paths.*`, every `_file`, `_folder` and `_directory`, the debug logs'). |
 | `screenshot.png` | The frame shown when the report was asked for (none in the VR mode). |
+| `crash.txt` | A crash's report (the next start's, above): what the host wrote at the crash and that run's log, or, if it wrote none, what that run's start recorded. |
+
+A crash ends the game before F8 can be pressed, so the next start asks,
+once, over the main menu: "OpenH1 closed unexpectedly last time. Report
+it?" **Report** saves a report headed by the crash and opens its issue, as
+Report a Problem does; **Skip** (or B) lets that crash go, never asked
+about again. The crash's section of `report.md` gives the build that
+crashed, when it started, the crash's first line (the signal and the
+address), the `reference address` of `debug.txt` that places the game's
+addresses in that build, the crash's lines (the registers and the frames)
+and the last lines of that run's log; `crash.txt` in the zip has them
+whole, with that run's log (its last 512 KB), and the macOS app's adds the
+host's log of that run (`halo.previous.log`). Each run writes
+`reports/.running` as it starts and removes it when it exits; at a crash,
+the host writes `reports/.crash.txt` (the crash's lines, then the log the
+game keeps in memory, with a signal handler's `write` calls alone); a
+fatal error's halt screen writes it too, and is asked about though the game
+is then closed as usual. On a
+computer a run that did not exit is asked about even with no crash
+written (it was killed, or ended by the system); on Android and iOS, which
+end an app in the background without a word, only a crash the host wrote
+is. A run nobody watches (`debug.no_clipboard`, `null_renderer`,
+`test_input`, `fixed_step`, `network_test` or `exit_after`) does not ask: it
+logs what the report would say, and `debug.crash_answer` answers for a
+test.
+
+What held the frames back is read from the times of each frame: the
+frame's own; the GPU's on it (Metal's: the time the GPU was busy, the
+presentation's included; Vulkan's: from the frame's first work on the GPU
+to its last, two timestamps the renderer writes each frame); the
+renderer's thread's, playing the frame's commands (the backend's calls
+included); and the game's waits for the renderer and the display (room in
+the command stream, a frame on the GPU finished, vsync's pacing and
+`display.max_fps`'s), and of those the pacing's. The summary gives the
+GPU's time a frame (its average and 99th percentile), how much of the
+time the GPU, the game (its thread: a frame's time less its waits) and
+the renderer's thread were busy, how much the game waited for vsync or
+the frame cap, and a verdict: **limited by vsync or the frame cap** if
+the game waited for them for 20% of the time or more and nothing was busy
+for 95% of it; else the busiest of the three, **GPU-bound**, **CPU-bound
+(the game)** or **CPU-bound (the renderer's thread)**.
+With fewer than 30 frames measured (the VR mode's renderer measures none)
+it says the GPU's time was not measured.
+
+Asked for in a game, `report.md` says where the game was, in its
+"Where" section: the level and its difficulty or gametype, the game's time
+and structure BSP, the first local player's place and aim (on foot, in a
+vehicle, or dead), and in a network game whether it was hosted or joined,
+OpenH1's rate or Legacy, the players' count, the round trip (a client's to
+the host, the host's slowest client's), whether the host has gone silent,
+and (the host's) the other machines' builds. No one's name or address is
+in it. It ends with the developer console's lines that look from the
+camera's place: `game_difficulty_set` (a campaign), `map_name`,
+`switch_bsp` and `debug_camera_set` (`debug_camera_set off` gives the
+camera back).
 
 Keeping the frame times costs a clock reading a frame; keeping the log, a
-copy of each line.
+copy of each line. The zip is written on a thread of its own, so that the
+game does not stall for it.
 
 ## Controls
 
@@ -1369,6 +1442,7 @@ the setting for one start of the game. It has priority over the file.
 | `streamer.insults` | `"off"` | `HALO_STREAMER_INSULTS` | With `streamer.enabled`, the insults that are not slurs hidden: `"off"`, `"severe"`, `"strong"` or `"mild"`. CENSOR INSULTS in Settings > Network Setup > Streamer Mode. |
 | `crash_reports.upload` | `"ask"` | `HALO_CRASH_REPORTS` | Windows only. `"yes"`: the game sends a report of each crash to the developers. `"no"`: the game sends no reports. `"ask"`: the game asks at the next crash and writes the answer here. Refer to "Crash reports" in [port/windows/README.md](../windows/README.md#crash-reports). |
 | `debug.first_start_input` | `""` | `HALO_FIRST_START_INPUT` | The buttons an automated test presses on the first start's screen (no game data), one each half second: `up`, `down`, `a` and `b`, separated by commas. Empty: the player's. |
+| `debug.crash_answer` | `""` | `HALO_CRASH_ANSWER` | The answer to the crash question (the last run closed unexpectedly; refer to "Reports"), for automatic tests: `yes` saves its report and opens (in a run nobody watches, logs) its issue, `no` lets it go, `ask` asks even in a run nobody watches (for `debug.test_input`'s buttons to answer). Empty: the game asks; a run nobody watches only logs what the report would say. |
 | `debug.update_answer` | `""` | `HALO_UPDATE_ANSWER` | The answer to the update question, for automatic tests: `yes`, `no` or `never`. Empty: the game asks. |
 | `debug.update_from` | `""` | `HALO_UPDATE_FROM` | A release's zip file to update to, for tests of updates: the game offers it as a new version without asking GitHub, also when the build has no build number, but not in the version that the update starts. Empty: the game asks GitHub. |
 | `debug.update_url` | `""` | `HALO_UPDATE_URL` | A test's release server (`http://127.0.0.1:<port>`), asked in GitHub's place for the latest release and its files, at the paths GitHub has them under, by a dedicated server's `server.auto_update`, also when the build has no build number (`tools/test_dedicated_server.py`). Empty: GitHub. |
