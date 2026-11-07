@@ -2837,8 +2837,20 @@ void xgpu_vulkan_image_upload(struct xgpu_vulkan_image *image, uint32_t level, u
 	/* (the commands chosen first: the upload may have submitted the
 	recording) */
 	commands = upload_commands(image->used, 1);
-	image_use(image);
-	image_written(image);
+	/* (an early upload is played before every pass of the submission: not
+	a use by the pass being recorded, which would mark it read by the
+	chain's piece and then the write after that read, ending the chain;
+	a draw of the submission samples it after) */
+	if (vk.deferred && commands == vk.slot->early)
+	{
+		image_first_use(image, 0, "an early upload");
+		image->writes++;
+	}
+	else
+	{
+		image_use(image);
+		image_written(image);
+	}
 	for (slice = 0; slice < depth; slice++)
 	{
 		for (row = 0; row < rows; row++)
