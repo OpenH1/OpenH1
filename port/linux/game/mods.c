@@ -255,6 +255,17 @@ long mods_bitmap_count(
 	return mods_globals.bitmap_count;
 }
 
+boolean mods_played_on_map(
+	long counts[4])
+{
+	counts[0] = mods_globals.string_count;
+	counts[1] = mods_globals.bitmap_count;
+	counts[2] = mods_globals.sound_count;
+	counts[3] = mods_globals.model_count;
+
+	return mods_globals.map_loaded && mods_globals.enabled;
+}
+
 /* (scenario_tags_load, once a map's tags are loaded) */
 void mods_tags_loaded(
 	char const *map_name)

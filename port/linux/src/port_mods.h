@@ -16,6 +16,12 @@ long port_mods_scan(void);
 its version if its mod.toml says one ("trollface 1.0"); how many fitted
 into text (a line that does not fit is left out whole) */
 int port_mods_list(char *text, unsigned long size);
+/* the mods played (as the last port_mods_scan found them), in the load
+order, a Markdown list's line each, its first `most` (those that fit whole):
+its name and its version if its mod.toml says them, and whether the map
+`map_name` ("a10") is not one it is for (a Save Report's report.md:
+port/linux/game/report_game.c); how many are played */
+int port_mods_report(char *text, unsigned long size, const char *map_name, int most);
 /* how many times the mods have been found (port_mods_scan) */
 unsigned long port_mods_scans(void);
 /* how many mods the last port_mods_scan found that are on */

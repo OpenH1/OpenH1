@@ -1,6 +1,6 @@
 """Save Report (port/linux/src/report.c): report.md's frame times (the average, the 1% and 0.1% lows, the frames of
 50 ms or more, the longest frames, stalls only) and the zip the report is saved as, opened with Python's zipfile;
-its key (controls.report, F8), its Settings row and its documentation."""
+the maps a maps folder counts; its key (controls.report, F8), its Settings row and its documentation."""
 
 import re
 import sys
@@ -33,11 +33,13 @@ NEGATIVE_CONTROLS = {
     "private-password": ("scrub", 'if (strstr(name, "password"))', 'if (0)'),
     # the body's characters left as they are: an & or a # ends it early
     "issue-unencoded": ("issue", "character == '~';", "character == '~' || character == '&' || character == '#';"),
+    # the resource maps counted as maps
+    "maps-resource": ("maps", "if (at == length && !resource[at])", "if (0)"),
 }
 
 FUNCTIONS = ("report_crc32", "report_compare_micros", "report_low_fps", "report_frame_summary", "report_put16",
              "report_put32", "report_zip_add", "report_zip_end", "report_percent_encode", "report_issue_url", "report_setting_private",
-             "report_address_length", "report_scrub")
+             "report_address_length", "report_scrub", "report_map_counted")
 
 
 def generated(fault=None):
@@ -50,7 +52,7 @@ def generated(fault=None):
     return (("under_test.inc", code + "\n"),)
 
 
-@pytest.mark.parametrize("case", ["crc", "frames", "steady", "issue", "scrub"])
+@pytest.mark.parametrize("case", ["crc", "frames", "steady", "issue", "scrub", "maps"])
 def test_case(case):
     status, output = run(build("report", generated()), case)
     assert status == 0, output
@@ -92,6 +94,8 @@ def test_key_row_and_documentation():
     assert "| report a problem to the developers (refer to \"Reports\") | F8 |" in readme
     assert "`screenshot`, `report`, `push_to_talk`" in readme
     assert "### Reports" in readme and '"What happened?"' in readme
+    # the mods and the map, by their names, never a folder's path
+    assert "## Mods and maps" in read("port/linux/src/report.c") and "the mods on, in their load order" in readme
     # the note's line: the chat's, in any game, its Enter and Escape giving it to the report
     chat = read("port/linux/game/network_chat.c")
     assert 'L"What happened?"' in chat and "report_note_done(chat_input.text);" in chat

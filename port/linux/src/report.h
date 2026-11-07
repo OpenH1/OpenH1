@@ -51,7 +51,16 @@ char *report_scrub(const char *text, size_t size, const char *home, size_t *scru
 /* the zip's CRC-32 (crc 0 to begin, then each part's) */
 uint32_t report_crc32(uint32_t crc, const unsigned char *data, size_t size);
 
-/* port/linux/game/report_game.c: the map and the game, in a few words; and
+/* whether a file of a maps folder (its name) is a map counted in report.md:
+a .map, not bitmaps.map, sounds.map nor loc.map */
+int report_map_counted(const char *name);
+
+/* port/linux/game/report_game.c: report.md's lines of the mods on, in the
+load order, by their mod.toml's names and versions, and of the map loaded:
+stock or Custom Edition, its file's name and size and its header's CRC; and
+whether game.custom_edition is on */
+void report_game_mods_and_maps(char *text, size_t size);
+/* ... the map and the game, in a few words; and
 whether a game is being played (not the menus: a report's issue waits) */
 void report_game_describe(char *text, size_t size);
 int report_game_playing(void);
