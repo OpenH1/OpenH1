@@ -32,7 +32,10 @@ signals:
 	  below against one above, a sound behind duller) and the pan's (none of
 	  above, below or behind); distance, occlusion, the room send and the
 	  Doppler shift through the HRTF as panned; the crossfade as the choice
-	  changes (no click); 2D voices as they were.
+	  changes (no click); 2D voices as they were;
+	- a voice's changes (its volume, pitch, low passes, room send, place
+	  through the pan, the HRTF and 5.1, Doppler shift and the HRTF's
+	  crossfade) the same whatever frames each mix has.
 "render" writes voices at each rate and a scene's whole mix as raw floats
 (test_mixer.py compares the resampler adding four taps at a time with it
 adding tap by tap), "metrics" prints the figures, "bench" times a game's
@@ -961,6 +964,177 @@ static int circle(const char *path, BOOL through_hrtf)
 	return 0;
 }
 
+/* ---------- the mix's frames a call (block-size)
+
+The same voice changed at the same frames, mixed in calls of different
+sizes (an audio device asks for its own, SDL's resampling for any), each call
+split where a change falls, so that it reaches the mix at the same frame
+whatever the calls: the ramps' times alone can differ */
+
+#define BLOCK_FRAMES 19200
+#define BLOCK_CHANGES 5
+#define BLOCK_SCENES 10
+#define BLOCK_PARTITIONS 9
+
+static const char *const block_scene_names[BLOCK_SCENES] = {
+	"volume", "pitch", "direct low pass", "room send", "position, panned", "position, HRTF",
+	"position, 5.1", "position, 5.1 HRTF", "Doppler", "HRTF choice",
+};
+/* (the second change 20 frames after the first, while it is ramping: a new
+one taken from where the ramp was) */
+static const unsigned long block_change_frames[BLOCK_CHANGES] = { 4800, 4820, 9600, 14400, 16000 };
+/* the calls' frames, round and round: 64, 256, 480 (the twin's), 1024 and
+4096, irregular ones, 16 and 1 */
+static const unsigned long block_partitions[BLOCK_PARTITIONS][10] = {
+	{ 64 }, { 256 }, { 480 }, { 1024 }, { 4096 }, { 17, 333, 5, 1024, 61, 2000, 1, 700, 128, 3000 },
+	{ 37, 3, 90, 41, 7 }, { 16 }, { 1 },
+};
+static const char *const block_partition_names[BLOCK_PARTITIONS] = {
+	"64", "256", "480", "1024", "4096", "irregular", "irregular small", "16", "1",
+};
+
+/* scene's change'th change, to stream (or the HRTF's choice) */
+static void block_change(int scene, struct sdl_stream *stream, int change)
+{
+	static const float volumes[BLOCK_CHANGES] = { 0.25f, 0.6f, 1.0f, 0.0f, 1.0f };
+	static const DWORD frequencies[BLOCK_CHANGES] = { 33075, 16000, 22050, 44100, 22050 };
+	static const LONG direct_hf[BLOCK_CHANGES] = { -2000, -500, 0, -4000, 0 };
+	static const LONG room[BLOCK_CHANGES][2] = { { -1000, -2000 }, { 0, -500 }, { -3000, -3000 }, { 0, 0 },
+		{ -600, -2500 } };
+	static const float positions[BLOCK_CHANGES][3] = { { 3, 0, 0.2f }, { -3, 0, 1 }, { 0.5f, 0, -3 }, { 0, 0, 3 },
+		{ 2, 1, 2 } };
+	static const float doppler[BLOCK_CHANGES][2] = { { -10, 40 }, { 10, 40 }, { 10, -40 }, { 3, 0 }, { -6, 20 } };
+
+	switch (scene)
+	{
+	case 0: stream->volume = volumes[change]; break;
+	case 1: stream->frequency = frequencies[change]; break;
+	case 2: stream->direct_hf = direct_hf[change]; break;
+	case 3: stream->room = room[change][0]; stream->room_hf = room[change][1]; break;
+	case 8:
+		stream->position[0] = doppler[change][0];
+		stream->velocity[0] = doppler[change][1];
+		break;
+	case 9: hrtf_enabled = change == 0 || change == 3; break;
+	default: memcpy(stream->position, positions[change], sizeof(stream->position)); break;
+	}
+}
+
+/* scene mixed in partition's calls: each output channel's frames (frames
+of 6 on 5.1, of 2 otherwise) and the room send; the output's channels */
+static unsigned long block_render(int scene, int partition, float *output, float *room)
+{
+	static float buffer[4096 * MAXIMUM_OUTPUT_CHANNELS], send[4096];
+	short *samples = noise_samples(BLOCK_FRAMES + 8192);
+	BOOL is_3d = scene >= 2, through_hrtf = scene == 5 || scene == 7;
+	struct sdl_stream *stream;
+	unsigned long done = 0, call = 0, channels, saved = output_channels;
+	int change = 0;
+
+	output_channels = scene == 6 || scene == 7 ? 6 : 2;
+	channels = output_channels;
+	hrtf_initialize();
+	listener_reset();
+	listener.distance_factor = 3.048f;
+	environment.lRoom = scene == 3 ? 0 : DSBVOLUME_MIN;
+	environment.lRoomHF = 0;
+	hrtf_enabled = through_hrtf;
+	if (is_3d)
+		stream = voice_placed(samples, BLOCK_FRAMES + 8192, scene == 8 ? 22050 : 48000, 1.0f, 0.0f, 2.0f);
+	else
+		stream = voice_new(samples, BLOCK_FRAMES + 8192, 1, scene == 1 ? 22050 : 48000, 0);
+	if (scene == 2 || scene == 3)
+	{
+		stream->direct = stream->direct_hf = 0;
+		stream->room = stream->room_hf = scene == 3 ? 0 : DSBVOLUME_MIN;
+	}
+	if (scene == 8)
+	{
+		stream->position[0] = -10.0f;
+		stream->position[2] = 1.0f;
+		stream->velocity[0] = 40.0f;
+		stream->minimum_distance = 4.0f;
+		stream->maximum_distance = 1000.0f;
+	}
+	while (done < BLOCK_FRAMES)
+	{
+		const unsigned long *sizes = block_partitions[partition];
+		unsigned long count, sizes_count = 0, frame, channel;
+
+		while (sizes_count < 10 && sizes[sizes_count])
+			sizes_count++;
+		while (change < BLOCK_CHANGES && block_change_frames[change] == done)
+			block_change(scene, stream, change++);
+		count = sizes[call++ % sizes_count];
+		if (count > BLOCK_FRAMES - done)
+			count = BLOCK_FRAMES - done;
+		if (change < BLOCK_CHANGES && done + count > block_change_frames[change])
+			count = block_change_frames[change] - done;
+		memset(buffer, 0, count * channels * sizeof(float));
+		memset(send, 0, count * sizeof(float));
+		mix_voice(stream, buffer, send, count);
+		for (frame = 0; frame < count; frame++)
+		{
+			for (channel = 0; channel < channels; channel++)
+				output[(done + frame) * channels + channel] = buffer[frame * channels + channel];
+			room[done + frame] = send[frame];
+		}
+		done += count;
+	}
+	output_channels = saved;
+	hrtf_enabled = FALSE;
+	environment.lRoom = DSBVOLUME_MIN;
+	voice_delete(stream);
+	free(samples);
+	return channels;
+}
+
+/* how far apart two renders of a scene are: the largest difference of a
+frame, against the largest frame, in dB (-400: the same) */
+static double block_difference(const float *a, const float *b, unsigned long count)
+{
+	double largest = 0.0, peak = 0.0;
+	unsigned long n;
+
+	for (n = 0; n < count; n++)
+	{
+		double difference = fabs((double)a[n] - b[n]);
+
+		largest = difference > largest ? difference : largest;
+		peak = fabs(a[n]) > peak ? fabs(a[n]) : peak;
+	}
+	return largest > 0.0 && peak > 0.0 ? 20.0 * log10(largest / peak) : -400.0;
+}
+
+/* each scene in each partition against the twin's (480 frames a call):
+differences[scene][partition] for the output and the room send */
+static void block_figures(double differences[BLOCK_SCENES][BLOCK_PARTITIONS][2])
+{
+	float *output[2], *room[2];
+	int scene, partition;
+
+	output[0] = malloc(BLOCK_FRAMES * MAXIMUM_OUTPUT_CHANNELS * sizeof(float));
+	output[1] = malloc(BLOCK_FRAMES * MAXIMUM_OUTPUT_CHANNELS * sizeof(float));
+	room[0] = malloc(BLOCK_FRAMES * sizeof(float));
+	room[1] = malloc(BLOCK_FRAMES * sizeof(float));
+	resampler_mode = RESAMPLER_SINC;
+	for (scene = 0; scene < BLOCK_SCENES; scene++)
+	{
+		unsigned long channels = block_render(scene, 2, output[0], room[0]);
+
+		for (partition = 0; partition < BLOCK_PARTITIONS; partition++)
+		{
+			block_render(scene, partition, output[1], room[1]);
+			differences[scene][partition][0] = block_difference(output[0], output[1], BLOCK_FRAMES * channels);
+			differences[scene][partition][1] = scene == 3 ? block_difference(room[0], room[1], BLOCK_FRAMES) : -400.0;
+		}
+	}
+	free(output[0]);
+	free(output[1]);
+	free(room[0]);
+	free(room[1]);
+}
+
 int main(int argc, char **argv)
 {
 	char const *case_name = argc > 1 ? argv[1] : "";
@@ -1084,9 +1258,10 @@ int main(int argc, char **argv)
 				quiet->history_count == loud->history_count && quiet->cursor == loud->cursor,
 				"played at %lu: turned down, the voice is at %lu + %f, heard at %lu + %f", frequency,
 				quiet->center, quiet->phase, loud->center, loud->phase);
-			/* (it fades in over a mix from 0; the loud one does the same) */
+			/* (it fades in from 0 over a ramp; the loud one does the same) */
 			quiet->volume = 1.0f;
 			loud->current_left = loud->current_right = 0.0f;
+			loud->ramp_frames = PARAMETER_RAMP_FRAMES;
 			render(quiet, skipped, 40000, TRUE);
 			render(loud, heard, 40000, TRUE);
 			for (n = 0; n < 40000 * 2; n++)
@@ -2438,6 +2613,60 @@ int main(int argc, char **argv)
 			sizeof(struct voice_settings));
 		streams = NULL;
 		free(stream);
+		return 0;
+	}
+	/* a voice's changes take the same frames however many a mix has (an
+	audio device asks for its own, SDL's resampling for any): each scene of
+	changes (block_render) mixed in calls of 64 to 4096 frames, irregular
+	ones and single frames, is the one mixed 480 at a time to float's
+	rounding, in every output channel and the room send. Before, a change
+	ramped over a call of fewer than 64 frames, and the HRTF's over the whole
+	call (8 ms at 480 frames, where an Xbox's settled within 1 ms) */
+	CASE("block-size")
+	{
+		static double differences[BLOCK_SCENES][BLOCK_PARTITIONS][2];
+		int scene, partition;
+
+		block_figures(differences);
+		for (scene = 0; scene < BLOCK_SCENES; scene++)
+		{
+			for (partition = 0; partition < BLOCK_PARTITIONS; partition++)
+			{
+				CHECK(differences[scene][partition][0] < -100.0 && differences[scene][partition][1] < -100.0,
+					"%s mixed %s frames a call: %.1f dB from 480 a call (the room send %.1f dB)",
+					block_scene_names[scene], block_partition_names[partition], differences[scene][partition][0],
+					differences[scene][partition][1]);
+			}
+		}
+		return 0;
+	}
+	/* "block-figures": block-size's differences, each scene's against 480
+	frames a call, in dB of its largest frame */
+	CASE("block-figures")
+	{
+		static double differences[BLOCK_SCENES][BLOCK_PARTITIONS][2];
+		int scene, partition;
+
+		block_figures(differences);
+		printf("%-20s", "dB from 480");
+		for (partition = 0; partition < BLOCK_PARTITIONS; partition++)
+			printf(" %9s", block_partition_names[partition][0] == 'i' ? (partition == 5 ? "irreg" : "irr-small") :
+				block_partition_names[partition]);
+		printf("\n");
+		for (scene = 0; scene < BLOCK_SCENES; scene++)
+		{
+			printf("%-20s", block_scene_names[scene]);
+			for (partition = 0; partition < BLOCK_PARTITIONS; partition++)
+				printf(" %9.1f", differences[scene][partition][0]);
+			printf("\n");
+			if (scene == 3)
+			{
+				printf("%-20s", "  (its send)");
+				for (partition = 0; partition < BLOCK_PARTITIONS; partition++)
+					printf(" %9.1f", differences[scene][partition][1]);
+				printf("\n");
+			}
+		}
 		return 0;
 	}
 	/* "bench [voices] [out of earshot] [indoor|outdoor] [hrtf]": through the
