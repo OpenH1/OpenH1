@@ -258,11 +258,13 @@ Running the game without a person at it:
   own; `--remote <host>` runs it on a Linux box over ssh (its clone,
   `--remote-tree`, built there; its maps, `--remote-data`) and brings the
   PNG files back.
-- `python tools/menu_gallery.py [--compare master] [--remote 5900x.fabric]`
-  renders every menu screen for keyboard (16:9), controller (16:10) and
-  touch (a phone) into `build/menu_gallery/index.html`, with layout checks
-  from the game's geometry (`debug.menu_layout`); `--compare` shows only the
-  screens that changed. Review menu changes with it; never commit its pictures.
+- `python tools/menu_gallery.py [--check] [--regenerate] [--compare master]`
+  walks every menu screen in one run of the game a variant (keyboard 16:9,
+  controller 16:10, touch on a phone) into `build/menu_gallery/index.html`,
+  with layout checks from the game's geometry; `--check` is the checks alone
+  in seconds, without pictures; menu files need no build (this tree's are
+  read over the build's); `--compare` shows only the screens that changed.
+  Review menu changes with it; never commit its pictures.
 - `debug.network_test` (`HALO_NETWORK_TEST=host:<map>` or `join`) hosts or
   joins a game without the menus and logs each player's state every second;
   several copies play on one machine on different loopback addresses
