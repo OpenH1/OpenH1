@@ -134,7 +134,8 @@ static real game_time_get_step_age(void)
 
 	return (steps - floorf(steps)) / (real)fake_substep_count;
 }
-static short director_get_perspective(short local_player_index) { return _director_perspective_first_person; }
+static short fake_perspective = _director_perspective_first_person;
+static short director_get_perspective(short local_player_index) { return fake_perspective; }
 static long scripted_camera_object_relative_to(void) { return NONE; }
 static boolean scripted_camera_object_is_first_person_camera(long index) { return FALSE; }
 static boolean cinematic_in_progress(void) { return FALSE; }
@@ -274,6 +275,7 @@ static void world_new(short substep_count)
 	substeps_run = 0;
 	case_substep = NULL;
 	fake_player_unit = BIPED;
+	fake_perspective = _director_perspective_first_person;
 	render_interpolation_register();
 	object_add(BIPED, _object_type_biped, NONE, 3);
 	object_place(BIPED, 0.0f, 0.0f, 0.0f);
@@ -785,6 +787,57 @@ static void lead_case(short substep_count, boolean glide)
 		CHECK(released_seen && taken_seen, "the glide not seen both ways (%d %d)", released_seen, taken_seen);
 }
 
+/* A cutscene's scripted camera on its way between two camera points, which the observer moves once a frame by the
+frame's time: the observer a frame leaves is the camera at the frame's moment, a slow move (a few tenths of a unit a
+tick). Frames come at any part of a tick, several in a tick or one every tick and a half; the camera is drawn where
+it was a tick before the frame's moment, as the objects are, at every frame rate (#805: blended from snapshots taken
+as if each were the tick's, it lurched ahead and back at each tick by the part of a tick its first frame came) */
+static real scripted_path(double moment)
+{
+	return (real)(0.3 * moment + 0.001 * moment * moment);
+}
+
+static void scripted_camera_case(short substep_count)
+{
+	double moment = 0.0;
+	long frame;
+
+	world_new(substep_count);
+	fake_perspective = _director_perspective_scripted;
+	for (frame = 0; frame < 300; frame++)
+	{
+		struct observer_result observer;
+		struct observer_result const *camera;
+		double drawn_moment;
+		real error;
+
+		/* (the next frame's moment: some frames close together, some more than a tick apart) */
+		moment += frame % 7 == 3 ? 1.0 + 0.6 * random_part() : 0.05 + 0.4 * random_part();
+		while ((double)(ticks_ended * substep_count + substeps_run + 1) <= moment * substep_count)
+			world_substep();
+		frame_begin((real)(moment * substep_count - (double)(ticks_ended * substep_count + substeps_run)));
+		memset(&observer, 0, sizeof(observer));
+		observer.position.x = scripted_path(moment);
+		observer.position.y = 5.0f;
+		observer.forward.i = 1.0f;
+		observer.up.k = 1.0f;
+		observer.field_of_view = 1.2f;
+		camera = render_interpolation_blended_camera(0, &observer);
+		drawn_moment = (double)ticks_ended + (double)fake_fraction - 1.0;
+		if (ticks_ended < 4)
+		{
+			render_interpolation_frame_end();
+			continue;
+		}
+		error = camera->position.x - scripted_path(drawn_moment);
+		CHECK(fabsf(error) < 2e-3f, "frame %ld (moment %.3f): the camera %f from where it was a tick before (%f): "
+			"%.2f of a tick's move", frame, moment, camera->position.x, scripted_path(drawn_moment),
+			error / 0.3f);
+		CHECK(camera->field_of_view == 1.2f, "frame %ld: the field of view %f", frame, camera->field_of_view);
+		render_interpolation_frame_end();
+	}
+}
+
 int main(int argc, char **argv)
 {
 	CHECK(argc == 2, "usage: %s <case>", argv[0]);
@@ -807,6 +860,10 @@ int main(int argc, char **argv)
 		respawn_case(1);
 	else if (!strcmp(argv[1], "respawn_120"))
 		respawn_case(4);
+	else if (!strcmp(argv[1], "scripted_camera"))
+		scripted_camera_case(1);
+	else if (!strcmp(argv[1], "scripted_camera_120"))
+		scripted_camera_case(4);
 	else if (!strcmp(argv[1], "vr_release"))
 		case_vr_release();
 	else if (!strcmp(argv[1], "lead"))
