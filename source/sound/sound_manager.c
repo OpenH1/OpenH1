@@ -4213,6 +4213,25 @@ static void detail_sound_random_offset(
 	return;
 }
 
+/* port: a multiplayer game draws none of its first ticks (main.c), and the
+listeners, placed as a frame is drawn, stayed where they were before the
+game: the sounds begun in those ticks were judged from there, and the ones
+heard close by dropped as out of range, the first weapon's ready sound among
+them (#740). The original's bug, fixed: the frames not drawn place them too */
+void sound_render_listeners(
+	void)
+{
+	if (sound_manager_globals.initialized && sound_manager_globals.enabled &&
+		!sound_manager_globals.paused)
+	{
+		sound_manager_globals.platform_definition->begin_scene();
+		refresh_listener();
+		sound_manager_globals.platform_definition->end_scene();
+	}
+
+	return;
+}
+
 void sound_render(
 	void)
 {
