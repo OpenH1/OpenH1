@@ -108,10 +108,6 @@ voice is shifted either way (an octave) */
 #define DOPPLER_SPEED_OF_SOUND 343.0f
 #define DOPPLER_FACTOR 1.0f
 #define DOPPLER_MAXIMUM_RATIO 2.0f
-/* the time (seconds) a voice's shift takes to move most of the way (1 -
-1/e) to a new one: a velocity's change at a tick, a projectile's bounce,
-is a glide, not a step of pitch */
-#define DOPPLER_SMOOTHING_SECONDS 0.08f
 
 /* the HRTF (hrtf): the frames each ear keeps for its delay, the distance
 within which a sound's direction fades out (world units), the bands each
@@ -278,7 +274,7 @@ struct sdl_stream
 	over the output rate) */
 	float current_left, current_right, current_room;
 	double current_step;
-	/* the Doppler shift heard, moving towards doppler_ratio's (doppler) */
+	/* the Doppler shift of the last mix (doppler) */
 	float current_doppler;
 	float current_direct_lowpass, current_room_lowpass;
 	float current_surround[2][MAXIMUM_OUTPUT_CHANNELS];
@@ -536,11 +532,13 @@ and 0.644: the same either way, and twice as far at twice the speed, where
 (c + D v_listener) / (c + D v_source) gives 1.216 and 0.849, then 1.551 and
 0.738. Each part is held within the speed of sound, and the shift to an
 octave either way, so that a projectile passing close by, or a velocity
-that jumps (a teleport), takes no voice up out of hearing. The mixer moves
-each voice's shift towards the one its velocities give over
-DOPPLER_SMOOTHING_SECONDS, so that a velocity that changes in steps (once a
-tick, or the frames' share of a tick's movement) glides the pitch rather than
-warbling it (doppler_smoothed). */
+that jumps (a teleport), takes no voice up out of hearing. A voice's shift
+is the one its position and velocities give at each mix, moved to over
+PARAMETER_RAMP_FRAMES as a change of its pitch is (doppler_heard): an
+Xbox's moved with each of the game's updates and settled within 2 ms.
+Recorded on an Xbox, a source passing at 40 units a second, its position set
+every 34 ms, stepped its pitch at each set; a glide over 80 ms (as the mixer
+had) was 166 cents off it, and 37 cents at 20 units a second. */
 
 static float doppler_ratio(const struct sdl_stream *stream)
 {
@@ -571,18 +569,11 @@ static float doppler_ratio(const struct sdl_stream *stream)
 	return ratio;
 }
 
-/* the shift a voice plays in a mix of frames: its doppler_ratio approached
-as a one-pole low pass, from where it was at the voice's last mix, or at
-once for a voice starting (its gains not valid) */
-static float doppler_smoothed(struct sdl_stream *stream, unsigned long frames)
+/* the shift a voice plays in a mix: its doppler_ratio, kept for the
+voices' report (the step ramps to it, mix_voice) */
+static float doppler_heard(struct sdl_stream *stream)
 {
-	float target = doppler_ratio(stream);
-
-	if (!stream->gains_valid)
-		stream->current_doppler = target;
-	else
-		stream->current_doppler += (target - stream->current_doppler) *
-			(1.0f - expf(-(float)frames / (DOPPLER_SMOOTHING_SECONDS * OUTPUT_RATE)));
+	stream->current_doppler = doppler_ratio(stream);
 	return stream->current_doppler;
 }
 
@@ -1691,7 +1682,7 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 		return;
 	}
 	target_step = (double)(stream->frequency ? stream->frequency : stream->sample_rate) / OUTPUT_RATE *
-		doppler_smoothed(stream, frames);
+		doppler_heard(stream);
 	/* (the step ramps from the last mix's to it, as the gains do) */
 	step = stream->gains_valid ? stream->current_step : target_step;
 	scale = resampler_scale(step > target_step ? step : target_step);
