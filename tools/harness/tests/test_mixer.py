@@ -26,7 +26,7 @@ from harness import skip_without_32_bit_abi  # noqa: E402
 SOURCE = "port/linux/src/dsound_sdl.c"
 CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "doppler-step",
          "parameter-ramp", "block-size",
-         "limiter", "obstruction", "room-send", "room-send-images", "quiet-levels", "quiet-levels-3d", "resampler-xbox", "channels", "surround", "lfe", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch",
+         "limiter", "obstruction", "room-send", "room-send-images", "quiet-levels", "quiet-levels-3d", "resampler-xbox", "resampler-xbox-images", "channels", "surround", "lfe", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch",
          "dry-2d",
          "master-volume", "buffers", "sound-off",
          "hand-off-never-waits", "hand-off-settings"]
@@ -94,22 +94,37 @@ NEGATIVE_CONTROLS = {
                                 "*left = voice_level(*left * stream->volume * master_volume);"), "quiet-levels"),
     "quiet-levels-hrtf": (("hrtf_out->gain *= scale;", "hrtf_out->gain *= stream->volume * master_volume;"),
                           "quiet-levels"),
-    "quiet-levels-room": (("*room *= scale;", "*room *= stream->volume * master_volume;"), "quiet-levels"),
+    "quiet-levels-room": (("*room *= room_scale;", "*room *= stream->volume * master_volume;"), "quiet-levels"),
     # a 3D voice's: each gain's whole level's (as #785 had it: 10 m away silent from -34 dB, not -44), its volume and
-    # rolloff's once over, not twice; its room send louder than its rolloff (the cave's reverb 10 m away 10 dB over
-    # the Xbox's)
+    # rolloff's once over, not twice; its direct path's without its direct level, its room send's with it; its room
+    # send capped at its rolloff (#790's), or its room level and rolloff once over
     # audio.resampler "xbox": the direct path through the send's six taps (#785's model), through three frames each
     # side, not four; the mixer's low pass by default, as it was
     "direct-six-taps": (("direct_phases[row], direct_deltas[row], blend);\n\t\t\tsample_right",
                          "send_phases[row], send_deltas[row], blend);\n\t\t\tsample_right"), "resampler-xbox"),
-    "direct-three-each-side": (("#define DIRECT_ZERO_CROSSINGS 4", "#define DIRECT_ZERO_CROSSINGS 3"),
+    "direct-three-each-side": (("else if (frame >= DIRECT_ZERO_CROSSINGS)", "else if (frame >= 3)"),
                                "resampler-xbox"),
+    # the direct path's low pass smooth (a Hann windowed sinc over its four frames each side: none of the Xbox's
+    # corners at the frames, its stop band's images and lobe), or its polynomials cut to cubics
+    "direct-smooth": (("\t\t\t\tdirect_phases[phase][tap] = (float)weight;",
+                       "\t\t\t\tdirect_phases[phase][tap] = (float)(sin(3.14159265358979 * distance) / "
+                       "(3.14159265358979 * distance) * (0.5 + 0.5 * cos(3.14159265358979 * distance / 4.0)));"),
+                      "resampler-xbox-images"),
+    "direct-cubic": (("for (power = DIRECT_KERNEL_ORDER; power >= 0; power--)", "for (power = 3; power >= 0; power--)"),
+                     "resampler-xbox-images"),
     "default-sinc": (("return setting && !strcmp(setting, \"linear\") ? RESAMPLER_LINEAR : RESAMPLER_XBOX;",
                       "return setting && !strcmp(setting, \"linear\") ? RESAMPLER_LINEAR : RESAMPLER_SINC;"),
                      "resampler-xbox"),
     "quiet-levels-3d-whole": (("\tif (level_3d < 0.0f)\n", "\tif (1)\n"), "quiet-levels-3d"),
     "quiet-levels-3d-once": (("#define VOICE_LEVEL_3D 2.0f", "#define VOICE_LEVEL_3D 1.0f"), "quiet-levels-3d"),
-    "room-past-rolloff": (("if (*room > distance_gain)", "if (0)"), "quiet-levels-3d"),
+    "direct-floor-without-direct": (("level_direct = level_3d * gain_from_millibels(stream->direct);",
+                                     "level_direct = level_3d;"), "quiet-levels-3d"),
+    "room-floor-with-direct": (("*room *= room_scale;", "*room *= scale;"), "quiet-levels-3d"),
+    "room-send-capped": (("*room = VOICE_LEVEL_3D * gain_from_millibels(level) * distance_gain;",
+                          "*room = gain_from_millibels(level) < distance_gain ? gain_from_millibels(level) : "
+                          "distance_gain;"), "quiet-levels-3d"),
+    "room-send-once": (("*room = VOICE_LEVEL_3D * gain_from_millibels(level) * distance_gain;",
+                        "*room = gain_from_millibels(level) * distance_gain;"), "quiet-levels-3d"),
     # audio.channels "auto" stereo whatever the device (as every build was before the host said its channels)
     "auto-always-stereo": (('!strcmp(setting, "auto") && device_channels >= 6', '!strcmp(setting, "auto") && 0'),
                            "channels"),
