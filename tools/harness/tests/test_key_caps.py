@@ -113,24 +113,25 @@ def test_icons_space_the_equals():
 def test_drawn_bounds_are_the_glyphs_places():
     """The letters' drawn bounds a cap is laid out about (draw_unicode_string_compute_drawn_bounds) are where the
     high-res text draws its glyphs: rasterizer_text_port_drawn_span places a glyph as rasterizer_draw_hires_glyph
-    does (its advance centred on the font tag character's), for the font it is drawn in; the cap and the legends'
-    rows measure with them."""
+    does (in its run: hires_text_glyph_offset, test_text_spacing.py), for the font it is drawn in; the cap and the
+    legends' rows measure with them."""
     text = read("source/rasterizer/rasterizer_text.c")
     span = function(text, "rasterizer_text_port_drawn_span")
     glyph = function(text, "rasterizer_draw_hires_glyph")
-    for placed in ("x0 - x + font_character->bitmap_origin_x", "(font_character->character_width - glyph.advance) * 0.5f + glyph.left"):
-        assert placed in span and placed in glyph, placed
+    assert "x0 - x + font_character->bitmap_origin_x" in span and "x0 - x + font_character->bitmap_origin_x" in glyph
+    assert "hires_text_glyph_offset(state, draw_string_port_font(state)" in span
+    assert "hires_text_glyph_offset(state, font, font_character, hires_text_font, glyph.advance) + glyph.left" in glyph
     assert "hires_text_font_get(draw_string_get_font(), MAX(text_scale, 1.0f))" in span
     assert "hires_text_font_get(draw_string_get_font(), MAX(text_scale, 1.0f))" in text.split("rasterizer_draw_string(", 2)[-1]
     bounds = function(read("source/text/draw_string.c"), "text_bounds_draw_character")
     drawn = bounds.split("if (text_bounds_globals.drawn)", 1)[1].split("if (x0 < text_bounds_globals.bounds.x0)")[0]
-    assert "rasterizer_text_port_drawn_span(character, x0, x, &x0, &x1);" in drawn
+    assert "rasterizer_text_port_drawn_span(state, character, x0, x, &x0, &x1);" in drawn
     # (and their outline in fractions of a unit, before x0 is the ink's: issue 596's caps centred on it)
-    assert drawn.index("rasterizer_text_port_drawn_span_real(character, x0, x, &left, &right);") < \
-        drawn.index("rasterizer_text_port_drawn_span(character, x0, x, &x0, &x1);")
+    assert drawn.index("rasterizer_text_port_drawn_span_real(state, character, x0, x, &left, &right);") < \
+        drawn.index("rasterizer_text_port_drawn_span(state, character, x0, x, &x0, &x1);")
     real = function(text, "rasterizer_text_port_drawn_span_real")
     for placed in ("x0 - x + font_character->bitmap_origin_x",
-                   "(font_character->character_width - glyph.advance) * 0.5f + glyph.left",
+                   "hires_text_glyph_offset(state, draw_string_port_font(state)",
                    "glyph.ink_left - glyph.left", "glyph.ink_right - glyph.left"):
         assert placed in real, placed
     assert "stbtt_GetGlyphBox(&face->info, index, &ink_x0, NULL, &ink_x1, NULL)" in read("port/linux/src/text_hires.c")

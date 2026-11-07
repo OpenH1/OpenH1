@@ -631,6 +631,37 @@ int text_hires_glyph(long font, unsigned long code, struct text_hires_glyph *gly
 	return 1;
 }
 
+float text_hires_advance(long font, unsigned long code)
+{
+	struct font_face *face;
+	int index, advance = 0, bearing = 0;
+
+	if (font < 0 || font >= font_count || fonts[font].faces[0].scale <= 0.0f)
+		return -1.0f;
+	index = font_glyph_face(font, code);
+	if (index < 0)
+		return -1.0f;
+	face = &fonts[font].faces[index];
+	stbtt_GetGlyphHMetrics(&face->info, stbtt_FindGlyphIndex(&face->info, (int)code), &advance, &bearing);
+	return advance * face->scale * face->narrowing;
+}
+
+float text_hires_kerning(long font, unsigned long first, unsigned long second)
+{
+	struct font_face *face;
+	int index;
+
+	if (font < 0 || font >= font_count || fonts[font].faces[0].scale <= 0.0f)
+		return 0.0f;
+	index = font_glyph_face(font, first);
+	if (index < 0 || index != font_glyph_face(font, second))
+		return 0.0f;
+	face = &fonts[font].faces[index];
+	if (!face->info.kern && !face->info.gpos)
+		return 0.0f;
+	return stbtt_GetCodepointKernAdvance(&face->info, (int)first, (int)second) * face->scale * face->narrowing;
+}
+
 void text_hires_register_atlas(const unsigned long *texture, unsigned long width, unsigned long height)
 {
 	placeholder_data = texture ? texture[1] : 0;

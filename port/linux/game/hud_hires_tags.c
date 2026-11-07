@@ -81,6 +81,12 @@ enum
 	MAXIMUM_HIRES_SPRITE_BITMAPS = 8,
 	/* a bitmap's pixels in rows, not swizzled (bitmaps.c: _bitmap_linear_bit) */
 	BITMAP_LINEAR_BIT = 4,
+	/* the message icons' A, B, X and Y sprites (the Xbox maps' and Custom
+	Edition's hud_msg_icons): 24 units wide, the button's face from their
+	third column; and an icon's flag (hud_messaging.c's hud_icon_flags) */
+	HUD_BUTTON_SPRITE_WIDTH = 24,
+	HUD_BUTTON_FACE_LEFT = 2,
+	HUD_ICON_ABSOLUTE_WIDTH_BIT = 2,
 };
 
 /* ---------- globals */
@@ -558,6 +564,21 @@ boolean hud_hires_button_draw(struct icon_hud_element_definition const *icon,
 	width = 21.0f * scale;
 	height = 26.0f * scale;
 	advance = (short)(cursor->x0 + (index < 4 ? 22.0f : 20.0f) * viewport);
+	/* A, B, X and Y where the Xbox draws them (hud_messaging.c's
+	render_state_bitmap): the message icons' sprite of the button, 24 units
+	wide, at the icon's offset, its face (21 units at half alpha) from its
+	third column, and the text on past the sprite less the icon's width
+	offset. Their places from the cursor alone (a face 6 units on and the
+	text 6 more) put a space and more either side of the button (issue 754). */
+	if (index < 4)
+	{
+		short sprite_x = (short)(icon->offset.x * viewport + cursor->x0);
+
+		x = sprite_x + HUD_BUTTON_FACE_LEFT * viewport;
+		advance = (icon->flags & FLAG(HUD_ICON_ABSOLUTE_WIDTH_BIT)) ?
+			(short)(icon->width_offset * viewport + sprite_x) :
+			(short)((HUD_BUTTON_SPRITE_WIDTH + icon->width_offset) * viewport + sprite_x);
+	}
 	y -= height;
 	hud_button_face_bounds(style, (short)index, &x, &y, &width, &height);
 	u = 21.0f / 32.0f;

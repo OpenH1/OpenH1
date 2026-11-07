@@ -4,7 +4,9 @@ TEXT_HIRES.H
 The game's text drawn with fonts at the display's resolution, in place of
 the bitmap fonts of the maps (port/assets/fonts, embedded by
 tools/embed_assets.py). The game lays its text out as before, from its font
-tags' character widths; each character is drawn from a glyph of the font
+tags' character widths, and each run of it is set with the font's own
+advances where the tag's is (rasterizer_text.c's hires_text_glyph_offset);
+each character is drawn from a glyph of the font
 that stands for its tag (fonts.json), rasterized with stb_truetype at as
 many pixels as the display gives the 480 lines, into an atlas that the game
 binds as a placeholder bitmap (source/rasterizer/rasterizer_text.c).
@@ -61,6 +63,13 @@ int text_hires_covers(long font, unsigned long code);
 /* the glyph of a character (rasterized into the atlas if it is not yet);
 0 if it has none */
 int text_hires_glyph(long font, unsigned long code, struct text_hires_glyph *glyph);
+/* a character's advance in units, as its glyph has it (whether or not it is
+rasterized yet, a space's too); negative if neither the font nor its
+fallback has it */
+float text_hires_advance(long font, unsigned long code);
+/* the font's kerning between two characters, in units (0 unless one face
+has both, with kerning) */
+float text_hires_kerning(long font, unsigned long first, unsigned long second);
 /* the atlas's placeholder: the D3D texture of the bitmap the game binds,
 and its size; NULL forgets it */
 void text_hires_register_atlas(const unsigned long *texture, unsigned long width, unsigned long height);
