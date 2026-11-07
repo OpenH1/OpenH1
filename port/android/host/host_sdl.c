@@ -28,6 +28,10 @@ float host_app_render_scale(void);
 /* the audio session's output latency now (microseconds; -1 not known) */
 int host_app_audio_output_latency(void);
 #endif
+#ifdef __ANDROID__
+/* host_main.c: the fraction of the screen's pixels the game draws at */
+float host_app_render_scale(void);
+#endif
 #if defined(__APPLE__) && !TARGET_OS_IPHONE
 /* port/macos/host_app.m: the updater's (weak: the Metal tests and the
 replay have no host_app.m) */
@@ -227,9 +231,10 @@ void host_sdl_window_size_in_pixels(uint32_t window, int *width, int *height)
 	*height = 0;
 	if (object)
 		SDL_GetWindowSizeInPixels(object, width, height);
-#if defined(__APPLE__) && TARGET_OS_IPHONE
+#if (defined(__APPLE__) && TARGET_OS_IPHONE) || defined(__ANDROID__)
 	/* (display.render_scale: the game draws smaller, host_metal.m's
-	drawables are that size, and the display scales them up) */
+	drawables and Android's swapchain are that size, and the display scales
+	them up) */
 	*width = (int)(*width * host_app_render_scale() + 0.5f) & ~1;
 	*height = (int)(*height * host_app_render_scale() + 0.5f) & ~1;
 #endif

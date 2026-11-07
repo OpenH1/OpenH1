@@ -27,6 +27,11 @@ JNI.
 #include <string.h>
 #include <time.h>
 
+#ifdef __ANDROID__
+/* host_main.c: the fraction of the screen's pixels the game draws at */
+float host_app_render_scale(void);
+#endif
+
 /* a press shorter than this still reaches the game: it reads the
 controller once a frame and acts at 30 ticks a second, and a quick tap can
 go down and up between two reads */
@@ -221,10 +226,17 @@ void host_touch_set_picture_top(int top)
 
 /* the guest's, every frame (port/linux/src/d3d8_device.c's picture_top_in):
 where the overlay wants the picture's top in a portrait window, in the
-window's pixels, or -1 if it has not said */
+game's pixels, or -1 if it has not said */
 int host_touch_picture_top(void)
 {
+#ifdef __ANDROID__
+	/* (in the game's pixels: display.render_scale's, host_main.c) */
+	int top = touch_picture_top - 1;
+
+	return top < 0 ? top : (int)(top * host_app_render_scale() + 0.5f);
+#else
 	return touch_picture_top - 1;
+#endif
 }
 
 #ifdef __ANDROID__

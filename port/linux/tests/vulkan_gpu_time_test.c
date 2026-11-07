@@ -56,6 +56,9 @@ static int available = 1;
 static VkResult create_result = VK_SUCCESS;
 static VkResult read_result = VK_SUCCESS;
 
+/* (debug.pass_times: never) */
+int host_pass_times;
+
 void host_logf(int priority, const char *format, ...)
 {
 	(void)priority;

@@ -66,6 +66,11 @@ options' gamma) first, where the setting is not 1.
 #include <time.h>
 #include <unistd.h>
 
+#ifdef __ANDROID__
+/* port/android/host/host_main.c: display.render_scale */
+float host_app_render_scale(void);
+#endif
+
 /* ---------- the functions (loaded at run time) */
 
 #define GLOBAL_FUNCTIONS(F) \
@@ -331,6 +336,8 @@ struct segment
 {
 	VkCommandBuffer commands;
 	int pass;
+	/* (debug.pass_times) the function that ended the pass */
+	const char *ended_by;
 	/* with aside passes: a pass that continues the chain's pass before it
 	(piece), and a chain's first pass, the last of its pieces (its index
 	plus one; segments_play) */
@@ -1137,7 +1144,11 @@ static VkCommandBuffer early_commands(void)
 	return vk.slot->early;
 }
 
-static void pass_end(void);
+static void pass_end_from(const char *caller);
+/* (each pass's ender named, for debug.pass_times) */
+#define pass_end() pass_end_from(__func__)
+static VkCommandBuffer main_commands_from(const char *caller);
+#define main_commands() main_commands_from(__func__)
 
 /* ---------- HALO_VULKAN_DISCARDS: the main command buffer in segments
 
@@ -1569,6 +1580,9 @@ static void pass_play(VkCommandBuffer main, uint32_t first, uint32_t last)
 	pass_barrier(main);
 }
 
+static void pass_times_mark(VkCommandBuffer main, const char *label);
+static const char *pass_times_label(const struct segment *segment, int aside);
+
 /* the submission's segments into the main command buffer, in order but for
 what was put aside (before the chain it was put aside from, whose pieces
 are then one pass): each pass begun with the stores chosen now */
@@ -1578,6 +1592,7 @@ static void segments_play(void)
 	uint32_t index, between;
 
 	segment_close();
+	pass_times_mark(main, NULL);
 	for (index = 0; index < vk.segment_count; index++)
 	{
 		struct segment *segment = &vk.segments[index];
@@ -1585,6 +1600,7 @@ static void segments_play(void)
 		if (!segment->pass)
 		{
 			vkCmdExecuteCommands(main, 1, &segment->commands);
+			pass_times_mark(main, "outside passes");
 			continue;
 		}
 		if (segment->chain_last > index + 1)
@@ -1601,15 +1617,21 @@ static void segments_play(void)
 				{
 					pass_play(main, between, between);
 					vk.statistics.passes_aside++;
+					pass_times_mark(main, pass_times_label(aside, 1));
 				}
 				else
+				{
 					vkCmdExecuteCommands(main, 1, &aside->commands);
+					pass_times_mark(main, "outside passes");
+				}
 			}
 			pass_play(main, index, last);
+			pass_times_mark(main, pass_times_label(segment, 0));
 			index = last;
 			continue;
 		}
 		pass_play(main, index, index);
+		pass_times_mark(main, pass_times_label(segment, 0));
 	}
 	vk.segment_count = 0;
 	aside_break();
@@ -1632,10 +1654,10 @@ static VkCommandBuffer outside_commands(void)
 }
 
 /* the main command buffer, outside a pass */
-static VkCommandBuffer main_commands(void)
+static VkCommandBuffer main_commands_from(const char *caller)
 {
 	recording_begin();
-	pass_end();
+	pass_end_from(caller);
 	/* (put aside only where it is a copy or an image's upload, whose images
 	are checked: other work ends the chain) */
 	if (!vk.aside_allowed)
@@ -1903,6 +1925,177 @@ static void draw_times_collect(void)
 		memset(draw_times.kind_milliseconds, 0, sizeof(draw_times.kind_milliseconds));
 		memset(draw_times.kind_draws, 0, sizeof(draw_times.kind_draws));
 		draw_times.other_milliseconds = draw_times.frames = 0.0;
+	}
+}
+
+/* ---------- each pass's GPU time (debug.pass_times)
+
+Every host_pass_times frames, a timestamp at the start of each of the
+frame's submissions and after each pass and each piece of work outside
+passes, played into the main command buffer (segments_play); once the
+frame is done, the time between each and the one before is its pass's,
+summed by what the pass draws into (its size, samples and attachments).
+On a tiler a pass's time is the time it took from its first draw to its
+stores, the cost to find. Every 30 timed frames the sums are logged as
+milliseconds a frame and shares of the timed frames' GPU time: the shares
+hold whatever clock the GPU ran at, which a phone's governor changes. */
+
+#define PASS_TIMES_MAXIMUM 512
+#define PASS_TIMES_LABELS 48
+#define PASS_TIMES_LABEL 96
+
+static struct
+{
+	VkQueryPool pool;
+	int pending;
+	uint32_t used;
+	uint64_t serial, frame;
+	/* each timestamp's: 0 a submission's start, else the work before it */
+	char labels[PASS_TIMES_MAXIMUM][PASS_TIMES_LABEL];
+	struct
+	{
+		char label[PASS_TIMES_LABEL];
+		double milliseconds, count;
+	} sums[PASS_TIMES_LABELS];
+	uint32_t sum_count;
+	double frames;
+} pass_times;
+
+static void pass_times_create(void)
+{
+	VkQueryPoolCreateInfo create;
+
+	if (host_pass_times <= 0 || !vk.capabilities.gpu_timestamps)
+	{
+		host_pass_times = 0;
+		return;
+	}
+	memset(&create, 0, sizeof(create));
+	create.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+	create.queryType = VK_QUERY_TYPE_TIMESTAMP;
+	create.queryCount = PASS_TIMES_MAXIMUM;
+	if (!check(vkCreateQueryPool(vk.device, &create, NULL, &pass_times.pool), "vkCreateQueryPool (pass times)"))
+		host_pass_times = 0;
+	else
+		host_logf(HOST_LOG_INFO, "vulkan: each pass timed every %d frames (debug.pass_times)", host_pass_times);
+}
+
+/* a timestamp in the main command buffer, after the work label names (NULL:
+a submission's start, which begins the frame's timing on a timed frame) */
+static void pass_times_mark(VkCommandBuffer main, const char *label)
+{
+	if (!host_pass_times || pass_times.pending)
+		return;
+	if (!label && !pass_times.used)
+	{
+		if (vk.frame % (uint64_t)host_pass_times)
+			return;
+		vkResetQueryPool(vk.device, pass_times.pool, 0, PASS_TIMES_MAXIMUM);
+		pass_times.frame = vk.frame;
+	}
+	if (!pass_times.used && label)
+		return;
+	if (pass_times.frame != vk.frame || pass_times.used >= PASS_TIMES_MAXIMUM)
+		return;
+	vkCmdWriteTimestamp(main, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, pass_times.pool, pass_times.used);
+	snprintf(pass_times.labels[pass_times.used], PASS_TIMES_LABEL, "%s", label ? label : "");
+	pass_times.used++;
+}
+
+/* a pass's label: what it draws into */
+static const char *pass_times_label(const struct segment *segment, int aside)
+{
+	static char label[PASS_TIMES_LABEL];
+	const struct xgpu_vulkan_image *image = segment->color.image ? segment->color.image : segment->depth.image;
+
+	snprintf(label, sizeof(label), "%s%ux%u%s%s%s, ended by %s", aside ? "aside " : "", segment->area.extent.width,
+		segment->area.extent.height, segment->color.image ? " colour" : "", segment->depth.image ? " depth" : "",
+		image && image->description.samples > 1 ? " msaa" : "", segment->ended_by ? segment->ended_by : "?");
+	return label;
+}
+
+static void pass_times_frame_end(void)
+{
+	if (pass_times.used && !pass_times.pending && pass_times.frame == vk.frame)
+		pass_times.pending = 1;
+}
+
+static void pass_times_collect(void)
+{
+	static uint64_t times[PASS_TIMES_MAXIMUM][2];
+	uint64_t mask = vk.timestamp_bits >= 64 ? UINT64_MAX : (UINT64_C(1) << vk.timestamp_bits) - 1;
+	uint32_t index, sum;
+	VkResult result;
+
+	if (!pass_times.pending || !pass_times.serial || pass_times.serial > completed_serial())
+		return;
+	result = vkGetQueryPoolResults(vk.device, pass_times.pool, 0, pass_times.used, sizeof(times[0]) * pass_times.used,
+		times, sizeof(times[0]), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+	if (result == VK_NOT_READY)
+		return;
+	for (index = 1; result == VK_SUCCESS && index < pass_times.used; index++)
+	{
+		double milliseconds;
+
+		if (!pass_times.labels[index][0] || !times[index][1] || !times[index - 1][1])
+			continue;
+		milliseconds = (double)((times[index][0] - times[index - 1][0]) & mask) *
+			(double)vk.properties.limits.timestampPeriod * 1e-6;
+		for (sum = 0; sum < pass_times.sum_count; sum++)
+		{
+			if (!strcmp(pass_times.sums[sum].label, pass_times.labels[index]))
+				break;
+		}
+		if (sum == pass_times.sum_count)
+		{
+			if (sum == PASS_TIMES_LABELS)
+				continue;
+			snprintf(pass_times.sums[sum].label, PASS_TIMES_LABEL, "%s", pass_times.labels[index]);
+			pass_times.sums[sum].milliseconds = pass_times.sums[sum].count = 0.0;
+			pass_times.sum_count++;
+		}
+		pass_times.sums[sum].milliseconds += milliseconds;
+		pass_times.sums[sum].count++;
+	}
+	pass_times.frames++;
+	pass_times.used = 0;
+	pass_times.pending = 0;
+	pass_times.serial = 0;
+	if (pass_times.frames >= 30)
+	{
+		char line[2048];
+		int length = 0;
+		double total = 0.0;
+
+		for (sum = 0; sum < pass_times.sum_count; sum++)
+			total += pass_times.sums[sum].milliseconds;
+		/* (the largest first) */
+		for (index = 0; index < pass_times.sum_count && length < (int)sizeof(line) - 96; index++)
+		{
+			uint32_t largest = index;
+
+			for (sum = index + 1; sum < pass_times.sum_count; sum++)
+			{
+				if (pass_times.sums[sum].milliseconds > pass_times.sums[largest].milliseconds)
+					largest = sum;
+			}
+			if (largest != index)
+			{
+				char swap[sizeof(pass_times.sums[0])];
+
+				memcpy(swap, &pass_times.sums[index], sizeof(swap));
+				memcpy(&pass_times.sums[index], &pass_times.sums[largest], sizeof(swap));
+				memcpy(&pass_times.sums[largest], swap, sizeof(swap));
+			}
+			length += snprintf(line + length, sizeof(line) - (size_t)length, "; %s %.3f ms (%.0f%%, %.1f a frame)",
+				pass_times.sums[index].label, pass_times.sums[index].milliseconds / pass_times.frames,
+				total > 0.0 ? 100.0 * pass_times.sums[index].milliseconds / total : 0.0,
+				pass_times.sums[index].count / pass_times.frames);
+		}
+		host_logf(HOST_LOG_INFO, "vulkan: pass times, %.3f ms a frame of %.0f frames%s", total / pass_times.frames,
+			pass_times.frames, line);
+		pass_times.sum_count = 0;
+		pass_times.frames = 0.0;
 	}
 }
 
@@ -2644,8 +2837,20 @@ void xgpu_vulkan_image_upload(struct xgpu_vulkan_image *image, uint32_t level, u
 	/* (the commands chosen first: the upload may have submitted the
 	recording) */
 	commands = upload_commands(image->used, 1);
-	image_use(image);
-	image_written(image);
+	/* (an early upload is played before every pass of the submission: not
+	a use by the pass being recorded, which would mark it read by the
+	chain's piece and then the write after that read, ending the chain;
+	a draw of the submission samples it after) */
+	if (vk.deferred && commands == vk.slot->early)
+	{
+		image_first_use(image, 0, "an early upload");
+		image->writes++;
+	}
+	else
+	{
+		image_use(image);
+		image_written(image);
+	}
 	for (slice = 0; slice < depth; slice++)
 	{
 		for (row = 0; row < rows; row++)
@@ -4215,7 +4420,7 @@ static int pass_begin(uint32_t clear_parts, const float clear_color[4], float cl
 	return 1;
 }
 
-static void pass_end(void)
+static void pass_end_body(void)
 {
 	if (!vk.pass_active)
 		return;
@@ -4231,6 +4436,13 @@ static void pass_end(void)
 	}
 	vk.pass_active = 0;
 	vk.pass_reads_depth = 0;
+}
+
+static void pass_end_from(const char *caller)
+{
+	if (vk.pass_active && vk.segment_count && vk.segments[vk.segment_count - 1].pass)
+		vk.segments[vk.segment_count - 1].ended_by = caller;
+	pass_end_body();
 }
 
 void xgpu_vulkan_set_target_views(struct xgpu_vulkan_image *color, struct xgpu_vulkan_image *depth,
@@ -5578,6 +5790,20 @@ static int swapchain_make(void)
 		vk.swapchain_extent.width = capabilities.currentExtent.height;
 		vk.swapchain_extent.height = capabilities.currentExtent.width;
 	}
+#ifdef __ANDROID__
+	/* display.render_scale: the swapchain smaller than the surface, which
+	Android's compositor scales up to it, as the game's frames are its size
+	(host_sdl.c's window size) */
+	if (capabilities.currentExtent.width != 0xffffffffu && host_app_render_scale() < 1.0f)
+	{
+		vk.swapchain_extent.width = (uint32_t)(vk.swapchain_extent.width * host_app_render_scale() + 0.5f) & ~1u;
+		vk.swapchain_extent.height = (uint32_t)(vk.swapchain_extent.height * host_app_render_scale() + 0.5f) & ~1u;
+		if (vk.swapchain_extent.width < capabilities.minImageExtent.width)
+			vk.swapchain_extent.width = capabilities.minImageExtent.width;
+		if (vk.swapchain_extent.height < capabilities.minImageExtent.height)
+			vk.swapchain_extent.height = capabilities.minImageExtent.height;
+	}
+#endif
 	if (!vk.swapchain_extent.width || !vk.swapchain_extent.height)
 		return 0;
 	memset(&info, 0, sizeof(info));
@@ -6378,6 +6604,10 @@ void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
 	vk.frame_ending = 0;
 	if (draw_times.pending && !draw_times.serial)
 		draw_times.serial = serial;
+	/* (after the present: its submission plays the frame's last passes) */
+	pass_times_frame_end();
+	if (pass_times.pending && !pass_times.serial)
+		pass_times.serial = serial;
 	if (vk.queries)
 	{
 		vk.queries->serial = serial;
@@ -6390,6 +6620,7 @@ void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
 	vk.statistics.frames++;
 	completed_serial();
 	draw_times_collect();
+	pass_times_collect();
 	garbage_collect();
 	vk.gpu_time_armed = gpu_time_armed;
 	if (vk.frame_timing)
@@ -7506,6 +7737,7 @@ int xgpu_vulkan_initialize(const struct xgpu_vulkan_options *options)
 	/* (always: two timestamps a frame, for a report's GPU time) */
 	vk.frame_timing = 1;
 	draw_times_create();
+	pass_times_create();
 #endif
 	vk.serial = 1;
 	memset(&pool, 0, sizeof(pool));

@@ -93,6 +93,9 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason);
 as it is written: "auto", "always" or "off" (port/linux/astc/xgpu_astc.h,
 xgpu_astc_chosen) */
 extern char host_astc_textures[16];
+/* debug.pass_times (HALO_PASS_TIMES): every how many frames the Vulkan
+backend times each of a frame's passes on the GPU; 0 never */
+extern int host_pass_times;
 
 /* ---------- the guest's addresses
 

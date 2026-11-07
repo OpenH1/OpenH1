@@ -27,6 +27,7 @@ frame on screen.
 #include "host_load_trace.h"
 #include "host_render_record.h"
 #include "host_render_stream.h"
+#include "host_performance.h"
 #include "frame_pacing.h"
 #ifdef HALO_VR
 #include "host_vr_render.h"
@@ -1078,6 +1079,9 @@ static struct
 	the display's pacing (the ring's render_microseconds and
 	paced_microseconds: a report's) */
 	uint64_t render_nanoseconds, paced_nanoseconds;
+	/* (the render thread's: the GPU's time so far, and at the last frame's
+	performance hint) */
+	uint64_t gpu_nanoseconds, gpu_reported;
 	/* (frame_pacing.h) the backend paces the game by its display; the
 	frames the display has taken (shown, or dropped); its last latch and its
 	refreshes' period (nanoseconds of the game's clock); the frames' costs,
@@ -1240,6 +1244,7 @@ static void *render_thread(void *argument)
 #endif
 
 	(void)argument;
+	host_performance_thread();
 	pthread_mutex_lock(&render.lock);
 	for (;;)
 	{
@@ -1306,7 +1311,7 @@ static void *render_thread(void *argument)
 			if (frame_ended)
 			{
 				uint64_t ready = render.frame_ready ? render.frame_ready : monotonic_nanoseconds();
-				uint64_t submitted, input = render.decoder->frame_input;
+				uint64_t submitted, input = render.decoder->frame_input, period, gpu;
 
 				/* (a frame's cost is its own work: the game's, and the render
 				thread's once it is free; not its wait for the thread, playing
@@ -1317,7 +1322,14 @@ static void *render_thread(void *argument)
 				if (input && submitted > input && render.frame_started > submitted)
 					input += render.frame_started - submitted;
 				frame_pacing_cost_add(&render.costs, input, ready);
+				period = render.period;
 				pthread_mutex_unlock(&render.lock);
+				/* (the frame's work, from its input to the frame handed to the
+				GPU, and the GPU's time since the last, against the display's
+				refresh: the clocks that keep it in time, Android's) */
+				gpu = render.gpu_nanoseconds - render.gpu_reported;
+				render.gpu_reported = render.gpu_nanoseconds;
+				host_performance_frame(input, input && ready > input ? ready - input : 0, gpu, period);
 				render.frame_ready = 0;
 				render.ring->decode_nanoseconds = (uint32_t)(monotonic_nanoseconds() - render.frame_started);
 				render.frame_started = 0;
@@ -1765,6 +1777,8 @@ void host_render_stream_submit(uint32_t flags)
 
 	if (!render.running)
 		return;
+	if (flags & XGPU_STREAM_SUBMIT_FRAME)
+		host_performance_thread();
 	pthread_mutex_lock(&render.lock);
 	render.committed = __atomic_load_n(&ring->committed, __ATOMIC_ACQUIRE);
 	if (flags & XGPU_STREAM_SUBMIT_FRAME)
@@ -1849,6 +1863,7 @@ void host_render_stream_gpu_time(uint64_t nanoseconds)
 
 	if (!ring)
 		return;
+	render.gpu_nanoseconds = nanoseconds;
 	__atomic_store_n(&ring->gpu_microseconds, (uint32_t)(nanoseconds / 1000u), __ATOMIC_RELEASE);
 	__atomic_store_n(&ring->gpu_measured, 1u, __ATOMIC_RELEASE);
 }

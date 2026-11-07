@@ -95,24 +95,40 @@ struct config_setting
 
 /* display.graphics = "enhanced": the values it gives the settings it
 chooses (config_graphics), which are their defaults, the same on every
-build: SMAA (on iOS MSAA 2x), 16x anisotropic filtering, 512 shadow maps,
+build: SMAA (on the phones MSAA 2x), 16x anisotropic filtering, 512 shadow maps,
 the models' detail by the display's lines and lit for each pixel, the
 enhanced dynamic lights; ambient occlusion off (below) */
-#ifdef HALO_IOS
+#if defined(HALO_IOS) || defined(HALO_ANDROID)
 /* (an iPhone's tile-based GPU resolves MSAA in its tile memory, the 3D view
 drawn in one pass, port/macos/xgpu_metal.m: about the cost of SMAA's
 passes over the screen there, and smoother edges; 2x keeps a 16-player
 fight on an iPhone 15 Pro Max inside 120 Hz's 8.3 ms, 4 to 5.4 ms of GPU a
-frame where 4x took up to 10) */
+frame where 4x took up to 10. Android's phones are tile GPUs too) */
 #define GRAPHICS_ANTI_ALIASING "\"msaa2x\""
 #else
 #define GRAPHICS_ANTI_ALIASING "\"smaa\""
 #endif
 #define GRAPHICS_ANISOTROPIC_FILTERING "16"
+/* (on the phones 256, half the desktop's: the shadow atlas at 512 is two
+2048x2048 targets, and drawing them took a Pixel 11 Pro from 94 to 79 frames
+a second, its GPU's 7.6 ms a frame to 8.9; 256 is still twice the Xbox's
+128 each way) */
+#if defined(HALO_ANDROID) || defined(HALO_IOS)
+#define GRAPHICS_SHADOW_RESOLUTION "256"
+#else
 #define GRAPHICS_SHADOW_RESOLUTION "512"
+#endif
 #define GRAPHICS_PER_PIXEL_LIGHTING "true"
 #define GRAPHICS_MODEL_DETAIL "\"native\""
+/* (classic on the phones: on a Pixel 11 Pro at 120 Hz the enhanced lights
+were most of the 3D view's GPU time, and a 3-minute game with 7 bots went
+from 90 to 102 frames a second, its 1% low from 18 to 28 and its frames of
+50 ms or more from 25 to the loading's few, with them classic) */
+#if defined(HALO_ANDROID) || defined(HALO_IOS)
+#define GRAPHICS_DYNAMIC_LIGHTS "\"classic\""
+#else
 #define GRAPHICS_DYNAMIC_LIGHTS "\"enhanced\""
+#endif
 /* (off in Enhanced too, for now: "world" is opt-in, Video Setup > Advanced
 Graphics > Ambient Occlusion, while its cost on the slower GPUs is measured
 and brought down, #671) */
@@ -168,11 +184,14 @@ static const struct config_setting config_settings[] =
 		"\"native\" draws at the window's resolution (fullscreen, the display's or\n"
 		"display.resolution); \"original\" draws the Xbox's 640x480 and scales it\n"
 		"up." },
-	{ "display.render_scale", _config_real, "0.0", "HALO_RENDER_SCALE", _environment_value, _platform_ios,
-		"iOS: the fraction of the screen's pixels the game draws, each way (0.25\n"
-		"to 1.0), which the display scales up: 0.67 draws less than half the\n"
-		"pixels, for a cooler phone and a steadier frame rate. 0: the device's,\n"
-		"0.67 on an iPhone of 3x pixels, else 1.0. Read at start." },
+	{ "display.render_scale", _config_real, "0.0", "HALO_RENDER_SCALE", _environment_value,
+		_platform_ios | _platform_android,
+		"The fraction of the screen's pixels the game draws, each way (0.25 to\n"
+		"1.0), which the display scales up: 0.67 draws less than half the\n"
+		"pixels, for a cooler phone and a steadier frame rate. 0: the device's:\n"
+		"0.67 on an iPhone of 3x pixels, 0.8 on another iPhone, 1.0 on an iPad;\n"
+		"on Android 0.8, or about 1080 rows where 0.8 would draw more. Read at\n"
+		"start." },
 	{ "display.window_size", _config_string, "\"\"", "HALO_WINDOW_SIZE", _environment_value, _platform_desktop,
 		"The window's size, \"<width>x<height>\" (\"1920x1080\"), 640x480 or more (it\n"
 		"can be resized). Empty: display.window_scale's." },
@@ -451,9 +470,9 @@ static const struct config_setting config_settings[] =
 		"samples ASTC (to try it on a Mac); \"off\" decodes them. The few blocks\n"
 		"that cannot be transcoded exactly are encoded on a worker thread the\n"
 		"first time a texture is drawn, the texture drawn decoded meanwhile, and\n"
-		"kept in the app's caches folder. \"auto\" by default on iOS; \"off\" on\n"
-		"Android, where it is yet to be checked on a device (try \"auto\"). Read\n"
-		"by the host from the file, at the start (port/linux/astc/xgpu_astc.h)." },
+		"kept in the app's caches folder. \"auto\" by default (seen right on a\n"
+		"Pixel's PowerVR and on iPhones). Read by the host from the file, at\n"
+		"the start (port/linux/astc/xgpu_astc.h)." },
 	{ "display.picture_position", _config_string, "\"center\"", "HALO_PICTURE_POSITION", _environment_value,
 		_platform_android,
 		"Where the game's picture sits on a screen taller than it (a folding\n"
@@ -2477,6 +2496,12 @@ static const struct config_setting config_settings[] =
 	{ "debug.sample_seconds", _config_real, "0.0", "HALO_SAMPLE", _environment_value, _platform_android | _platform_guest,
 		"Log where every game thread is this often, in seconds (read by the\n"
 		"host, port/android/host/host_debug.c); 0 never." },
+	{ "debug.pass_times", _config_integer, "0", "HALO_PASS_TIMES", _environment_value, _platform_all,
+		"Every this many frames, time each of the frame's passes on the GPU and\n"
+		"log, every 30 timed frames, each kind of pass's milliseconds a frame and\n"
+		"share of the GPU's time (the shares hold whatever clock the GPU runs\n"
+		"at); 0 never. The Vulkan builds; read by the host from the file\n"
+		"(port/android/host/host_common.c)." },
 	{ "debug.memory_watch", _config_boolean, "true", "HALO_MEMORY_WATCH", _environment_value, _platform_android | _platform_guest,
 		"Notice the game's writes to cached textures and vertices by page\n"
 		"protection; false compares page contents once a frame instead, which is\n"
