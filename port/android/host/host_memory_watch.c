@@ -36,6 +36,9 @@ cannot fault).
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#ifndef _WIN32
+#include <dlfcn.h>
+#endif
 
 /* the tracking's pages: the host's under page protection; the hashing's
 (WATCH_HASH_PAGE_SIZE) otherwise */
@@ -165,6 +168,11 @@ host_memory_watch_win.c) */
 #ifndef _WIN32
 
 static struct sigaction previous_segv, previous_bus, previous_ill;
+/* where the host's own code is loaded, and its file's name, found as the
+handlers are installed: a crash's frames in the host are placed in its file
+by it (tools/symbolize_crash.py) */
+static uintptr_t host_module_base;
+static char host_module_name[128];
 
 /* a line of a crash's report: to the log, and to the crash record
 (host_common.c) */
@@ -195,6 +203,12 @@ static void report_crash(int signal_number, siginfo_t *information, void *contex
 	if (host_guest_base)
 	{
 		snprintf(line, sizeof(line), "  guest memory at %016llx", (unsigned long long)host_guest_base);
+		crash_line(line);
+	}
+	if (host_module_base)
+	{
+		snprintf(line, sizeof(line), "  host image at %016llx: %s", (unsigned long long)host_module_base,
+			host_module_name);
 		crash_line(line);
 	}
 	if (host_in_guest(pc) && (uint32_t)pc >= host_image.base && (uint32_t)pc < host_image.end)
@@ -283,6 +297,16 @@ static void ill_handler(int signal_number, siginfo_t *information, void *context
 void host_install_signal_handlers(void)
 {
 	struct sigaction action;
+	Dl_info module;
+
+	if (dladdr((const void *)report_crash, &module) && module.dli_fbase)
+	{
+		const char *name = module.dli_fname ? strrchr(module.dli_fname, '/') : NULL;
+
+		host_module_base = (uintptr_t)module.dli_fbase;
+		snprintf(host_module_name, sizeof(host_module_name), "%s",
+			name ? name + 1 : module.dli_fname ? module.dli_fname : "");
+	}
 
 	memset(&action, 0, sizeof(action));
 	action.sa_flags = SA_SIGINFO | SA_NODEFER | SA_ONSTACK;

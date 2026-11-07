@@ -939,7 +939,10 @@ draw, and cleared.
   the data folder.
 - A crash prints the registers, the guest's base and the frame chain. The
   guest's addresses are the low 32 bits:
-  `llvm-symbolizer --obj=build/macos/halo_guest.elf 0x<address>`.
+  `llvm-symbolizer --obj=build/macos/halo_guest.debug.elf 0x<address>`
+  (the image with its source lines). `python tools/symbolize_crash.py
+  <report's zip, or crash.txt> build/macos` does it for every frame, the
+  host's too (with `atos`): refer to "Reports" in the Linux README.
 - `HALO_TRACE_SYSCALLS=1` logs the guest's system calls.
 
 ## Limits
