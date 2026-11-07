@@ -944,9 +944,10 @@ PAGES = {
              "Enhanced: plasma bolts, muzzle flashes and blasts light their surroundings smoothly, with a glow. "
              "Classic lights them as the Xbox did.", "desktop android"),
             ("AMBIENT OCCLUSION", "display.ambient_occlusion",
-             [("OFF", "off"), ("WORLD", "world")],
+             [("OFF", "off"), ("WORLD", "world"), ("RAY TRACED", "ray_traced")],
              "World: grounds characters, vehicles and scenery with soft shade where they meet the level and each "
-             "other, worked out from the level's shape. The levels keep their own lighting.", "desktop android"),
+             "other, worked out from the level's shape. The levels keep their own lighting. Ray Traced: the shade "
+             "of characters and vehicles traced by the graphics card, where it can (else World).", "desktop android"),
             ("SHIELD GLOW", "display.shield_glow", ON_OFF,
              "Shields light their surroundings as they flare, in the shield's own color. Online: the host's "
              "choice.", None),
