@@ -4,6 +4,11 @@ from pathlib import Path
 import pytest
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
 from harness import build,read,function,mutated,run,CHECK_FAILED
+from harness import skip_without_32_bit_abi
+
+# what only the game's 32-bit ABI shows (harness.NATIVE_64_BIT)
+ABI_DEPENDENT={c:"the policy message's wire size is the game's 12 bytes, with its 32-bit longs"
+               for c in ('replication','admission','reset')}
 
 def generated(fault=None):
     policy=re.sub(r'^#include "[^"\n]+"\n','',read('port/linux/game/network_aim_assist.c'),flags=re.M)
@@ -16,11 +21,13 @@ def generated(fault=None):
 
 @pytest.mark.parametrize('case',['allowed','devices','scope','replication','admission','reset'])
 def test_case(case):
+    skip_without_32_bit_abi(ABI_DEPENDENT,case)
     status,output=run(build('aim_assist',generated()),case)
     assert status==0,output
 
 @pytest.mark.parametrize('fault,case',[('authority','admission'),('override','devices')])
 def test_negative(fault,case):
+    skip_without_32_bit_abi(ABI_DEPENDENT,case)
     status,output=run(build('aim_assist',generated(fault)),case)
     assert status==CHECK_FAILED,output
 

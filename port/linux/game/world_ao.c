@@ -494,7 +494,10 @@ static void world_ao_counts_window(void)
 			(double)world_ao_counts.kinds[_world_proxy_field] / 600.0,
 			(double)world_ao_counts.paged / 600.0, (double)world_ao_counts.unpaged / 600.0);
 		fflush(stdout);
-		memset(&world_ao_counts.windows, 0, sizeof(world_ao_counts) - sizeof(world_ao_counts.wanted));
+		/* (the counts zeroed, whatever the padding after wanted) */
+		memset(world_ao_counts.kinds, 0, sizeof(world_ao_counts.kinds));
+		world_ao_counts.windows = world_ao_counts.shapes = world_ao_counts.dynamic = 0;
+		world_ao_counts.paged = world_ao_counts.unpaged = 0;
 	}
 }
 

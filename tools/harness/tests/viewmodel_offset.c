@@ -62,7 +62,7 @@ static int fake_lookups;
 
 static long viewmodel_weapon_definition(long weapon_index)
 {
-	return weapon_index == 5 ? 0xE1000005 : weapon_index == 6 ? 0xE2000006 : NONE;
+	return weapon_index == 5 ? (long)0xE1000005 : weapon_index == 6 ? (long)0xE2000006 : NONE;
 }
 
 static char const *viewmodel_weapon_path(long definition_index)

@@ -11,6 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, constant, enum_with, function, mutated, read, run, structure  # noqa: E402
+from harness import skip_without_32_bit_abi  # noqa: E402
 
 CASES = ["text-printable", "text-control-characters", "text-pipe", "text-bounds", "text-empty", "append", "rate-burst",
          "rate-refill", "rate-wrap", "hears", "hears-vehicle", "flags", "alpha", "command-mute", "command-unmute",
@@ -139,6 +140,12 @@ def generated(fault=None, faulty_function=None):
     return (("config.inc", config), ("under_test.inc", text))
 
 
+# what only the game's 32-bit ABI shows (harness.NATIVE_64_BIT)
+ABI_DEPENDENT = {
+    "mute-wrap-broken": "the clock is the game's 32-bit unsigned long, which wraps where the fault shows",
+}
+
+
 @pytest.mark.parametrize("case", CASES)
 def test_case(case):
     status, output = run(build("chat_logic", generated()), case)
@@ -148,5 +155,6 @@ def test_case(case):
 @pytest.mark.parametrize("control", NEGATIVE_CONTROLS)
 def test_negative_control(control):
     fault, faulty_function, case = NEGATIVE_CONTROLS[control]
+    skip_without_32_bit_abi(ABI_DEPENDENT, control, case)
     status, output = run(build("chat_logic", generated(fault, faulty_function)), case)
     assert status == CHECK_FAILED, f"network_chat.c with a fault ({control}) passed '{case}': the test cannot see it"

@@ -152,6 +152,7 @@ static int players_coop_waiting_to_start(long player){return 0;}
 static int coop_spectating(void){return 0;}
 static long coop_spectate_unit(short local){return NONE;}
 static void coop_spectate_camera(struct dead_camera *p){}
+static void observer_obsolete_position(short local){}
 ''' + function(director, 'director_choose_camera_game') + r'''
 int main(void) {
  int cycle;

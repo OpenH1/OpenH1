@@ -10,6 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, constant, function, mutated, read, run  # noqa: E402
+from harness import skip_without_32_bit_abi  # noqa: E402
 
 CASES = ["lines-fit", "once", "openh1-token", "delay", "rejoin", "replaced", "game-ends", "off", "client",
          "clock-wrap", "remember-full"]
@@ -46,6 +47,12 @@ def generated(fault=None):
     return (("config.inc", config), ("under_test.inc", text))
 
 
+# what only the game's 32-bit ABI shows (harness.NATIVE_64_BIT)
+ABI_DEPENDENT = {
+    "clock-wrap-broken": "the clock is the game's 32-bit unsigned long, which wraps where the fault shows",
+}
+
+
 @pytest.mark.parametrize("case", CASES)
 def test_case(case):
     status, output = run(build("welcome", generated()), case)
@@ -55,6 +62,7 @@ def test_case(case):
 @pytest.mark.parametrize("control", NEGATIVE_CONTROLS)
 def test_negative_control(control):
     fault, case = NEGATIVE_CONTROLS[control]
+    skip_without_32_bit_abi(ABI_DEPENDENT, control, case)
     status, output = run(build("welcome", generated(fault)), case)
     assert status == CHECK_FAILED, f"network_welcome.c with a fault ({control}) passed '{case}': the test cannot see it"
 
