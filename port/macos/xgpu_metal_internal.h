@@ -25,6 +25,8 @@ id<MTLLibrary> xgpu_metal_fixed_library(void);
 id<MTLLibrary> xgpu_metal_library(void);
 /* a command buffer's GPU start and end, counted in the GPU's busy time */
 void xgpu_metal_gpu_interval(double start, double end);
+/* the GPU's busy time so far (its intervals' union), in nanoseconds */
+uint64_t xgpu_metal_gpu_busy_nanoseconds(void);
 /* the render thread waits for the GPU to finish a frame (xgpu_metal_frame_wait) */
 int xgpu_metal_frame_waiting(void);
 /* a texture's Metal texture (nil for none) */

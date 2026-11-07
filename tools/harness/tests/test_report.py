@@ -1,6 +1,6 @@
 """Save Report (port/linux/src/report.c): report.md's frame times (the average, the 1% and 0.1% lows, the frames of
-50 ms or more, the longest frames, stalls only) and the zip the report is saved as, opened with Python's zipfile;
-its key (controls.report, F8), its Settings row and its documentation."""
+50 ms or more, the longest frames, stalls only), the GPU's time and what held the frames back, and the zip the report
+is saved as, opened with Python's zipfile; its key (controls.report, F8), its Settings row and its documentation."""
 
 import re
 import sys
@@ -23,6 +23,17 @@ NEGATIVE_CONTROLS = {
                      "if (micros[index] > REPORT_HITCH_MS * 1000)"),
     # every frame listed as one of the longest, a stall or not
     "longest-all": ("steady", "if (micros[best] < 2 * (uint64_t)sorted[count / 2])", "if (0)"),
+    # the game's waits counted as its work: a frame held by vsync read as CPU-bound
+    "cpu-waits": ("gpu", "game_total += micros[index] - waited;", "game_total += micros[index];"),
+    # any wait taken for the display's: a frame held by the game read as vsync's
+    "paced-any": ("gpu", "if (paced_share >= REPORT_PACED_PERCENT && busiest", "if (busiest"),
+    # the pacing taken as the verdict over a part busy all the time
+    "paced-saturated": ("gpu", "paced_share >= REPORT_PACED_PERCENT && busiest < REPORT_BUSY_PERCENT",
+                        "paced_share >= REPORT_PACED_PERCENT"),
+    # the GPU's median taken for its 99th percentile
+    "gpu-percentile": ("gpu", "sorted[(measured - 1) * 99 / 100]", "sorted[measured / 2]"),
+    # frames the GPU's time was not measured on counted in it
+    "gpu-unknown": ("gpu", "if (work[index].gpu == REPORT_GPU_UNKNOWN)\n\t\t\tcontinue;", ""),
     # the home folder kept: the account's name in a public issue
     "scrub-home": ("scrub", "if (home_length > 1 && end - index >= home_length", "if (0 && home_length > 1"),
     # this machine's own loopback taken for an address
@@ -35,22 +46,23 @@ NEGATIVE_CONTROLS = {
     "issue-unencoded": ("issue", "character == '~';", "character == '~' || character == '&' || character == '#';"),
 }
 
-FUNCTIONS = ("report_crc32", "report_compare_micros", "report_low_fps", "report_frame_summary", "report_put16",
-             "report_put32", "report_zip_add", "report_zip_end", "report_percent_encode", "report_issue_url", "report_setting_private",
+FUNCTIONS = ("report_crc32", "report_compare_micros", "report_low_fps", "report_frame_summary", "report_gpu_summary",
+             "report_put16", "report_put32", "report_zip_add", "report_zip_end", "report_percent_encode", "report_issue_url", "report_setting_private",
              "report_address_length", "report_scrub")
 
 
 def generated(fault=None):
     source = read("port/linux/src/report.c")
     issues = re.search(r"^#define REPORT_ISSUES .*$", source, re.M).group(0)
-    code = issues + "\n\n" + structure(source, "report_zip") + "\n\n" + \
+    code = issues + "\n\n" + structure(read("port/linux/src/report.h"), "report_frame_work") + "\n\n" + \
+        structure(source, "report_zip") + "\n\n" + \
         "\n\n".join(function(source, name) for name in FUNCTIONS)
     if fault:
         code = mutated(code, *NEGATIVE_CONTROLS[fault][1:])
     return (("under_test.inc", code + "\n"),)
 
 
-@pytest.mark.parametrize("case", ["crc", "frames", "steady", "issue", "scrub"])
+@pytest.mark.parametrize("case", ["crc", "frames", "steady", "gpu", "issue", "scrub"])
 def test_case(case):
     status, output = run(build("report", generated()), case)
     assert status == 0, output

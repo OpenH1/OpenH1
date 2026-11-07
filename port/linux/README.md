@@ -429,12 +429,30 @@ The zip holds:
 
 | File | Contents |
 | --- | --- |
-| `report.md` | The summary, laid out as an issue's body: the build, the platform, the GPU, its API and driver, the processor, the map and the game, how long the game has run, the display's settings, and the frame times of the last 5 minutes (the average, the median, the 1% and 0.1% lows, the frames of 50 ms or more, and the longest frames with when they were). |
+| `report.md` | The summary, laid out as an issue's body: the build, the platform, the GPU, its API and driver, the processor, the map and the game, how long the game has run, the display's settings, and the frame times of the last 5 minutes (the average, the median, the 1% and 0.1% lows, the frames of 50 ms or more, and the longest frames with when they were), and what held them back (below). |
 | `log.txt` | This run's log (its last 512 KB), which on Linux and Android is not otherwise in a file. |
 | `halo.log` | The host's log file, where there is one: Windows's beside `halo.exe`, the macOS app's in `~/Library/Logs/OpenH1`. |
 | `debug.txt` | The game's own log. |
 | `settings.txt` | The settings changed from their defaults: never `config.toml` itself, nor the passwords (`server.password` and the web ones), `network.public_address`, `server.master_publish_address` or `debug.update_key`. |
 | `screenshot.png` | The frame shown when the report was asked for (none in the VR mode). |
+
+What held the frames back is read from the times of each frame: the
+frame's own; the GPU's on it (Metal's: the time the GPU was busy, the
+presentation's included; Vulkan's: from the frame's first work on the GPU
+to its last, two timestamps the renderer writes each frame); the
+renderer's thread's, playing the frame's commands (the backend's calls
+included); and the game's waits for the renderer and the display (room in
+the command stream, a frame on the GPU finished, vsync's pacing and
+`display.max_fps`'s), and of those the pacing's. The summary gives the
+GPU's time a frame (its average and 99th percentile), how much of the
+time the GPU, the game (its thread: a frame's time less its waits) and
+the renderer's thread were busy, how much the game waited for vsync or
+the frame cap, and a verdict: **limited by vsync or the frame cap** if
+the game waited for them for 20% of the time or more and nothing was busy
+for 95% of it; else the busiest of the three, **GPU-bound**, **CPU-bound
+(the game)** or **CPU-bound (the renderer's thread)**.
+With fewer than 30 frames measured (the VR mode's renderer measures none)
+it says the GPU's time was not measured.
 
 Keeping the frame times costs a clock reading a frame; keeping the log, a
 copy of each line.

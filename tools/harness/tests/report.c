@@ -3,8 +3,10 @@ REPORT.C (test)
 
 Save Report (port/linux/src/report.c): report.md's frame times (the average,
 the 1% and 0.1% lows, the frames of 50 ms or more, the longest frames, a
-stall only) and the zip (its CRC-32, its local and central records), which
-test_report.py opens with Python's zipfile. test_report.py takes the code.
+stall only), the GPU's time and what held the frames back (GPU-bound,
+CPU-bound, vsync or the frame cap) and the zip (its CRC-32, its local and
+central records), which test_report.py opens with Python's zipfile.
+test_report.py takes the code.
 */
 
 #include "harness.h"
@@ -14,10 +16,31 @@ test_report.py opens with Python's zipfile. test_report.py takes the code.
 #define REPORT_HITCH_MS 50
 #define REPORT_LONGEST 8
 #define REPORT_ZIP_FILES 8
+#define REPORT_GPU_UNKNOWN 0xFFFFFFFFu
+#define REPORT_PACED_PERCENT 20
+#define REPORT_BUSY_PERCENT 95
+#define REPORT_GPU_FEWEST 30
 
 #include "under_test.inc"
 
 static uint32_t micros[2048], at_ms[2048];
+static struct report_frame_work work[2048];
+
+/* 600 frames of 10 ms, each with the GPU's time, the renderer's thread's,
+the game's waits and of them the pacing's */
+static void gpu_frames(uint32_t gpu, uint32_t render, uint32_t waited, uint32_t paced)
+{
+	unsigned long index;
+
+	for (index = 0; index < 600; index++)
+	{
+		micros[index] = 10000;
+		work[index].gpu = gpu;
+		work[index].render = render;
+		work[index].waited = waited;
+		work[index].paced = paced;
+	}
+}
 
 int main(int argc, char **argv)
 {
@@ -77,6 +100,70 @@ int main(int argc, char **argv)
 		CHECK(strstr(text, "Frames of 50 ms or more: 2\n"), "frames of 50 ms exactly");
 		report_frame_summary(micros, at_ms, 0, 0, text, sizeof(text));
 		CHECK(!strcmp(text, "No frames yet.\n"), "no frames");
+		return 0;
+	}
+	if (!strcmp(test, "gpu"))
+	{
+		unsigned long index;
+
+		/* (the GPU busy nearly all the frame, the game waiting for it) */
+		gpu_frames(9600, 3000, 6000, 0);
+		report_gpu_summary(micros, work, 600, text, sizeof(text));
+		printf("%s", text);
+		CHECK(strstr(text, "GPU time: 9.60 ms a frame, 9.60 ms at the 99th percentile\n"), "the GPU's time");
+		CHECK(strstr(text, "Busy: the GPU 96%, the game 40%, the renderer's thread 30% of the time\n"), "the shares");
+		CHECK(strstr(text, "Waiting for vsync or the frame cap: 0% of the time\n"), "the pacing's share");
+		CHECK(strstr(text, "Verdict: GPU-bound\n"), "GPU-bound");
+		/* (the game busy, the GPU and the renderer not) */
+		gpu_frames(3000, 2000, 600, 0);
+		report_gpu_summary(micros, work, 600, text, sizeof(text));
+		printf("%s", text);
+		CHECK(strstr(text, "the game 94%"), "the game's share");
+		CHECK(strstr(text, "Verdict: CPU-bound (the game)\n"), "CPU-bound, the game");
+		/* (the renderer's thread busy, the game waiting for it) */
+		gpu_frames(5000, 9000, 8000, 0);
+		report_gpu_summary(micros, work, 600, text, sizeof(text));
+		printf("%s", text);
+		CHECK(strstr(text, "Verdict: CPU-bound (the renderer's thread)\n"), "CPU-bound, the renderer's thread");
+		/* (neither: the game waits most of the frame for the display) */
+		gpu_frames(3000, 2000, 8500, 7000);
+		report_gpu_summary(micros, work, 600, text, sizeof(text));
+		printf("%s", text);
+		CHECK(strstr(text, "Waiting for vsync or the frame cap: 70% of the time\n"), "the pacing's share, paced");
+		CHECK(strstr(text, "Verdict: limited by vsync or the frame cap\n"), "vsync or the cap");
+		/* (at the frame cap, the GPU busy for most but not all of the time) */
+		gpu_frames(8600, 4400, 8800, 4800);
+		report_gpu_summary(micros, work, 600, text, sizeof(text));
+		CHECK(strstr(text, "Verdict: limited by vsync or the frame cap\n"), "the cap, the GPU busy");
+		/* (waits for the cap, but the GPU all but always busy: the GPU) */
+		gpu_frames(9700, 3000, 6000, 3000);
+		report_gpu_summary(micros, work, 600, text, sizeof(text));
+		CHECK(strstr(text, "Verdict: GPU-bound\n"), "the cap, the GPU saturated");
+		/* (few waits for the cap, none busy most of the time: the busiest) */
+		gpu_frames(6500, 5000, 8000, 1000);
+		report_gpu_summary(micros, work, 600, text, sizeof(text));
+		CHECK(strstr(text, "Verdict: GPU-bound\n"), "the busiest, the GPU");
+		gpu_frames(5000, 6500, 8000, 1000);
+		report_gpu_summary(micros, work, 600, text, sizeof(text));
+		CHECK(strstr(text, "Verdict: CPU-bound (the renderer's thread)\n"), "the busiest, the renderer's thread");
+		/* (the 99th percentile: 10 of the 600 frames of 20 ms) */
+		gpu_frames(3000, 2000, 8500, 7000);
+		for (index = 0; index < 600; index += 60)
+			work[index].gpu = 20000;
+		report_gpu_summary(micros, work, 600, text, sizeof(text));
+		CHECK(strstr(text, "ms a frame, 20.00 ms at the 99th percentile\n"), "the 99th percentile");
+		/* (frames not measured left out: half of them) */
+		gpu_frames(9600, 3000, 6000, 0);
+		for (index = 0; index < 600; index += 2)
+			work[index].gpu = REPORT_GPU_UNKNOWN;
+		report_gpu_summary(micros, work, 600, text, sizeof(text));
+		CHECK(strstr(text, "GPU time: 9.60 ms a frame, 9.60 ms at the 99th percentile\n"), "unmeasured frames left out");
+		CHECK(strstr(text, "Verdict: GPU-bound\n"), "GPU-bound with unmeasured frames");
+		/* (none measured: no verdict) */
+		for (index = 0; index < 600; index++)
+			work[index].gpu = REPORT_GPU_UNKNOWN;
+		report_gpu_summary(micros, work, 600, text, sizeof(text));
+		CHECK(!strcmp(text, "GPU time: not measured\n"), "no GPU time");
 		return 0;
 	}
 	if (!strcmp(test, "issue"))

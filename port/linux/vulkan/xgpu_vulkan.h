@@ -657,6 +657,9 @@ run on the renderer's thread, with end before the frame's fence. */
 void xgpu_vulkan_gpu_time_begin(void);
 void xgpu_vulkan_gpu_time_end(void);
 int xgpu_vulkan_gpu_time_read(double *milliseconds);
+/* the frames' GPU time so far (nanoseconds, a running total), and whether
+it is measured (the frames timed: not the VR mode's, which reads them) */
+uint64_t xgpu_vulkan_gpu_nanoseconds(int *measured);
 
 uint64_t xgpu_vulkan_fence(void);
 /* returns once the GPU has done the submission of that number and those
