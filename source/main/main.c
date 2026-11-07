@@ -4041,6 +4041,13 @@ void main_loop(
 					observer_update((real)main_globals.halt_time_scale*main_globals.seconds_elapsed);
 					collision_log_end_period();
 					game_engine_update_non_deterministic((real)main_globals.halt_time_scale*main_globals.seconds_elapsed);
+					/* port: the frames a multiplayer game's start leaves undrawn
+					place the sound's listeners at the cameras just placed, as a
+					drawn frame does: a sound of the first ticks (the first
+					weapon's ready sound) was judged from where they were before
+					the game, and dropped. The original's bug, fixed (#740) */
+					if (!render_frame && game_engine_running() && game_time_get()<3)
+						sound_render_listeners();
 					profile_scope_exit(main_non_deterministic_update_section)
 				}
 
