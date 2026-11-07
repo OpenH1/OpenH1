@@ -99,7 +99,7 @@ static long long report_last_ns;
 
 static void report_open_issue(const char *url);
 
-/* the issues waiting opened: the game left, or quit (atexit) */
+/* the issues waiting opened: the game left, or quit (report_at_exit) */
 static void report_open_pending(void)
 {
 	short index;
@@ -515,8 +515,6 @@ static char *report_text(const char *name)
 		return NULL;
 #define REPORT_PRINT(...) \
 	(used += (size_t)snprintf(text + (used < size ? used : size - 1), used < size ? size - used : 1, __VA_ARGS__))
-	REPORT_PRINT("**What happened:** \n\n(Say what you saw and what you expected. Then drag %s.zip, from the "
-		"reports folder that opened, into this box.)\n\n", name);
 	REPORT_PRINT("## System\n\n");
 	updater_build_text(build, sizeof(build));
 	REPORT_PRINT("- Build: %s\n", build);
@@ -692,33 +690,62 @@ static void report_open_issue(const char *url)
 
 /* ---------- the report */
 
-int report_write(unsigned int target, int send, char *message, size_t message_size)
+/* the report being finished: its name, its summary (report_text's, made as
+it was asked for), its screenshot's file in reports/ (or none), whether its
+issue is opened; between the key and the note typed in a game */
+static struct
 {
-	char folder[1024], path[1200], name[64], shot[96], file_path[1200];
+	int waiting;
+	char name[64];
+	char *text;
+	char shot[96];
+	int send;
+} report_capture;
+
+/* the zip written, and its issue opened or held for the menus: the note
+typed, NULL for none; what the player is told into message */
+static int report_finish(const char *note, char *message, size_t message_size)
+{
+	char folder[1024], path[1200], file_path[1200];
+	const char *name = report_capture.name;
 	struct report_zip zip;
-	time_t now = time(NULL);
 	struct tm local;
-	size_t size;
+	time_t now = time(NULL);
+	size_t size, issue_size;
 	char *data, *issue;
 	int saved;
 
-	localtime_r(&now, &local);
-	strftime(name, sizeof(name), "%Y-%m-%d_%H.%M.%S", &local);
 	snprintf(folder, sizeof(folder), "%s/reports", platform_data_root());
-	mkdir(folder, 0755);
 	snprintf(path, sizeof(path), "%s/%s.zip", folder, name);
+	localtime_r(&now, &local);
 	memset(&zip, 0, sizeof(zip));
 	zip.time = (unsigned short)(local.tm_hour << 11 | local.tm_min << 5 | local.tm_sec / 2);
 	zip.date = (unsigned short)((local.tm_year - 80) << 9 | (local.tm_mon + 1) << 5 | local.tm_mday);
+	/* (report.md: what happened, the player's note or where it goes, over
+	the summary) */
+	issue_size = (report_capture.text ? strlen(report_capture.text) : 0) + (note ? strlen(note) : 0) + 512;
+	issue = malloc(issue_size);
+	if (issue)
+	{
+		if (note && note[0])
+			snprintf(issue, issue_size, "**What happened:** %s\n\n(Drag %s.zip, from the reports folder that "
+				"opened, into this box.)\n\n%s", note, name, report_capture.text ? report_capture.text : "");
+		else
+			snprintf(issue, issue_size, "**What happened:** \n\n(Say what you saw and what you expected. Then drag "
+				"%s.zip, from the reports folder that opened, into this box.)\n\n%s", name,
+				report_capture.text ? report_capture.text : "");
+	}
+	free(report_capture.text);
+	report_capture.text = NULL;
+	report_capture.waiting = 0;
 	zip.file = fopen(path, "wb");
-	issue = NULL;
 	if (!zip.file)
 	{
+		free(issue);
 		snprintf(message, message_size, "Report failed: can't write in %s", folder);
 		platform_log("report: could not write %s", path);
 		return 0;
 	}
-	issue = report_text(name);
 	if (issue)
 		report_zip_add(&zip, "report.md", issue, strlen(issue));
 	data = report_log_text(&size);
@@ -758,11 +785,11 @@ int report_write(unsigned int target, int send, char *message, size_t message_si
 		report_zip_add(&zip, "config.toml", data, size);
 		free(data);
 	}
-	/* (the frame, written by the host beside the zip, then taken in) */
-	shot[0] = 0;
-	if (target && xgpu_backend_screenshot(target, folder, shot, sizeof(shot)) && shot[0])
+	/* (the frame, written by the host beside the zip as it was asked for,
+	then taken in) */
+	if (report_capture.shot[0])
 	{
-		snprintf(file_path, sizeof(file_path), "%s/%s", folder, shot);
+		snprintf(file_path, sizeof(file_path), "%s/%s", folder, report_capture.shot);
 		data = report_file_end(file_path, 64 * 1024 * 1024, &size);
 		if (data)
 		{
@@ -782,8 +809,8 @@ int report_write(unsigned int target, int send, char *message, size_t message_si
 		return 0;
 	}
 	snprintf(message, message_size, "Report saved: reports/%s.zip", name);
-	platform_log("report: saved %s (%d files)", path, zip.count);
-	if (send && issue)
+	platform_log("report: saved %s (%d files)%s", path, zip.count, note && note[0] ? ", with a note" : "");
+	if (report_capture.send && issue)
 	{
 		char *url = malloc(REPORT_URL_MOST + 1), title[160], build[120];
 		int made;
@@ -799,12 +826,7 @@ int report_write(unsigned int target, int send, char *message, size_t message_si
 		if (made && report_game_playing() && report_pending.count < REPORT_PENDING)
 		{
 			/* (in a game, nothing opened over it: the issue waits for the
-			menus, report_frame_presented) */
-			static int at_exit;
-
-			/* (opened as the game quits, if it is quit from the game) */
-			if (!at_exit)
-				at_exit = atexit(report_open_pending) == 0;
+			menus, report_frame_presented, or the game's end: report_at_exit) */
 			report_pending.urls[report_pending.count++] = url;
 			url = NULL;
 			snprintf(message, message_size, "Report saved: its GitHub issue opens when you're back in the menus");
@@ -823,4 +845,62 @@ int report_write(unsigned int target, int send, char *message, size_t message_si
 	}
 	free(issue);
 	return 1;
+}
+
+/* the game quit: a report waiting for its note finished without one, and
+the issues held for the menus opened */
+static void report_at_exit(void)
+{
+	char message[160];
+
+	if (report_capture.waiting)
+		report_finish(NULL, message, sizeof(message));
+	report_open_pending();
+}
+
+int report_write(unsigned int target, int send, char *message, size_t message_size)
+{
+	static int at_exit;
+	char folder[1024];
+	time_t now = time(NULL);
+	struct tm local;
+
+	message[0] = 0;
+	if (!at_exit)
+		at_exit = atexit(report_at_exit) == 0;
+	/* (a report still waiting for its note is finished first, without one) */
+	if (report_capture.waiting)
+	{
+		report_game_note_cancel();
+		report_finish(NULL, message, message_size);
+	}
+	localtime_r(&now, &local);
+	strftime(report_capture.name, sizeof(report_capture.name), "%Y-%m-%d_%H.%M.%S", &local);
+	snprintf(folder, sizeof(folder), "%s/reports", platform_data_root());
+	mkdir(folder, 0755);
+	/* (what is the moment's, now: the summary and the frame) */
+	report_capture.text = report_text(report_capture.name);
+	report_capture.shot[0] = 0;
+	if (target && !xgpu_backend_screenshot(target, folder, report_capture.shot, sizeof(report_capture.shot)))
+		report_capture.shot[0] = 0;
+	report_capture.send = send;
+	/* (in a game, a line for the player's note first: report_note_done
+	finishes it) */
+	if (report_game_playing() && report_game_note_begin())
+	{
+		report_capture.waiting = 1;
+		platform_log("report: %s asked for, waiting for its note", report_capture.name);
+		return 1;
+	}
+	return report_finish(NULL, message, message_size);
+}
+
+void report_note_done(const char *note)
+{
+	char message[160];
+
+	if (!report_capture.waiting)
+		return;
+	report_finish(note, message, sizeof(message));
+	report_game_say(message);
 }

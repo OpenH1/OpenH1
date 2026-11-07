@@ -4,8 +4,8 @@ REPORT_GAME.C
 What a Save Report's report.md says of the game (port/linux/src/report.c):
 the map loaded (its scenario's tag, as play_log.c names it) and, in a
 multiplayer game, its gametype's name (its variant's, where it has one);
-and whether a game is being played, not the menus (a report's issue waits
-until it is not).
+whether a game is being played, not the menus (a report's issue waits
+until it is not); and its note's line, the text chat's (network_chat.c).
 */
 
 #include "cseries.h"
@@ -13,6 +13,8 @@ until it is not).
 #include "game/game_engine.h"
 #include "scenario/scenario.h"
 #include "tag_files/tag_files.h"
+#include "main/console.h"
+#include "network_chat.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -57,4 +59,24 @@ void report_game_describe(char *text, size_t size)
 		snprintf(text, size, "%s, %s", map_name, gametype);
 	else
 		snprintf(text, size, "%s (%s)", map_name, variant ? "multiplayer" : "campaign");
+}
+
+/* the line for the note: the text chat's (network_chat.c) */
+int report_game_note_begin(void)
+{
+	if (!network_chat_report_note_begin())
+		return FALSE;
+	console_printf(FALSE, "Report captured: type what happened, then Enter (Esc skips)");
+	return TRUE;
+}
+
+void report_game_note_cancel(void)
+{
+	network_chat_report_note_cancel();
+}
+
+void report_game_say(const char *text)
+{
+	if (text && text[0])
+		console_printf(FALSE, "%s", text);
 }

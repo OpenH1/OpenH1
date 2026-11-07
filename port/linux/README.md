@@ -411,11 +411,14 @@ screenshot that moment, and opens a new issue on OpenH1's GitHub
 repository in the browser, its title and body filled in with the report's
 summary, and, on a computer, the `reports/` folder beside it. Say what
 happened at the top of the issue, drag the zip into it, and submit it (a
-GitHub account is needed). In a game nothing opens over it: the report is
-saved at once ("Report saved: its GitHub issue opens when you're back in
-the menus"), and its issue opens when you leave the game (or as the game
-quits). A second press
-within 5 seconds opens nothing more.
+GitHub account is needed). In a game nothing opens over it: F8 takes the
+screenshot and the frame times at once, and opens a line where the chat's
+is, "What happened?", for a note: type it and press Enter, or Escape to
+skip it (while it is open, the keys type, as the chat's line does). The
+note heads the issue. The report is then saved ("Report saved: its GitHub
+issue opens when you're back in the menus"), and its issue opens when you
+leave the game (or as the game quits; a note still open then is let go).
+A second press within 5 seconds opens nothing more.
 
 The zip holds:
 

@@ -82,4 +82,8 @@ def test_key_row_and_documentation():
     readme = read("port/linux/README.md")
     assert "| report a problem to the developers (refer to \"Reports\") | F8 |" in readme
     assert "`screenshot`, `report`, `push_to_talk`" in readme
-    assert "### Reports" in readme
+    assert "### Reports" in readme and '"What happened?"' in readme
+    # the note's line: the chat's, in any game, its Enter and Escape giving it to the report
+    chat = read("port/linux/game/network_chat.c")
+    assert 'L"What happened?"' in chat and "report_note_done(chat_input.text);" in chat
+    assert "report_note_done(NULL);" in chat

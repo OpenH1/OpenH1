@@ -24,8 +24,13 @@ int report_take_request(void);
 /* the report saved: the target presented is its screenshot (0: none); send,
 a GitHub issue opened in the browser, filled in with report.md, and the
 reports folder, for its zip to be dragged in; what the player is told
-(where it is, or why it failed) into message; 1 if saved */
+(where it is, or why it failed) into message (empty: nothing yet); 1 if
+saved. In a game the summary and the frame are taken now, and the zip
+written once the player's note is typed (report_note_done). */
 int report_write(unsigned int target, int send, char *message, size_t message_size);
+/* the note typed for a report asked for in a game (network_chat.c's line),
+NULL if it was let go: the report finished, as report_write does */
+void report_note_done(const char *note);
 
 /* ---------- report.c's parts (tools/harness/tests/test_report.py) */
 
@@ -45,5 +50,10 @@ uint32_t report_crc32(uint32_t crc, const unsigned char *data, size_t size);
 whether a game is being played (not the menus: a report's issue waits) */
 void report_game_describe(char *text, size_t size);
 int report_game_playing(void);
+/* the line for a report's note opened (network_chat.c: 1 if it is; it calls
+report_note_done), or closed unfinished; and the player told something */
+int report_game_note_begin(void);
+void report_game_note_cancel(void);
+void report_game_say(const char *text);
 
 #endif
