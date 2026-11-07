@@ -1,0 +1,44 @@
+/*
+MENU_LAYOUT.H
+
+debug.menu_layout: the open screen's geometry as the menus draw it, written
+as JSON for tools/menu_gallery.py's checks (menu_layout.c). Coordinates are
+the menus' (640 by 480 in the middle of the screen, x below 0 and past 640
+where the screen is wider), as drawn: offsets, anchors, the wide layout and
+a text's scale applied.
+*/
+
+#ifndef MENU_LAYOUT_H
+#define MENU_LAYOUT_H
+
+/* whether this render of the menus is being written (between
+menu_layout_frame_begin and menu_layout_frame_end of a frame that is due) */
+int menu_layout_recording(void);
+
+/* the first player's render of the menus begins and ends: the screen's
+width in the menus' units, the open screen's tag name */
+void menu_layout_frame_begin(long screen_width);
+void menu_layout_frame_end(char const *screen_name);
+
+/* a widget drawn (visible), its box and the clip it is drawn in; the text,
+glyphs and targets noted after it are its own until the next widget, or
+menu_layout_widget_none */
+void menu_layout_widget(void const *widget, void const *parent, char const *name, short type,
+	rectangle2d const *box, rectangle2d const *clip, int focused);
+void menu_layout_widget_none(void);
+
+/* a string drawn: the bounds it is laid out in, the clip it is cut by, the
+extent of its characters drawn and of all of them (the lines past the
+bounds' foot are not drawn), before the text's scale about its origin */
+void menu_layout_text(rectangle2d const *box, rectangle2d const *clip, rectangle2d const *extent,
+	rectangle2d const *whole, wchar_t const *text, real scale, real origin_x, real origin_y);
+
+/* a button's glyph drawn: a key's cap (key TRUE, its name) or a
+controller's button (its icon's name), from x0 to x1 on the line y0 to y1 */
+void menu_layout_glyph(int key, char const *name, short x0, short y0, short x1, short y1);
+void menu_layout_glyph_wide(int key, wchar_t const *name, short x0, short y0, short x1, short y1);
+
+/* a place the pointer acts on (ui_widget.c's ui_mouse_targets) */
+void menu_layout_target(void const *widget, short kind, rectangle2d const *box);
+
+#endif

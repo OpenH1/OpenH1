@@ -78,6 +78,7 @@ symbols in this file:
 #include "text/unicode.h"
 #include "tag_files/tag_files.h"
 #include "cache/cache_files.h" /* port: tag_iterator (hires_text_fonts_ahead) */
+#include "menu_layout.h" /* port: port/linux/game/menu_layout.c */
 
 /* port: the high-res text (port/linux/src/text_hires.c): the text drawn with
 fonts at the display's resolution, laid out as before. Characters are drawn
@@ -698,6 +699,20 @@ rasterizer_draw_unicode_string(
 				viewport_bounds.x1 = (short)(text_scale_origin_x + (viewport_bounds.x1 - text_scale_origin_x) / text_scale);
 				viewport_bounds.y0 = (short)(text_scale_origin_y + (viewport_bounds.y0 - text_scale_origin_y) / text_scale);
 				viewport_bounds.y1 = (short)(text_scale_origin_y + (viewport_bounds.y1 - text_scale_origin_y) / text_scale);
+			}
+			/* port: the string's bounds, clip and extent, and its extent in
+			bounds without a foot (the lines that run past the foot are not
+			drawn), for debug.menu_layout */
+			if (menu_layout_recording())
+			{
+				rectangle2d extent, whole, footless, cursor;
+
+				draw_unicode_string_compute_bounds(&window_bounds, string, &extent, &cursor);
+				footless = window_bounds;
+				footless.y1 = SHORT_MAX;
+				draw_unicode_string_compute_bounds(&footless, string, &whole, &cursor);
+				menu_layout_text(&window_bounds, &viewport_bounds, &extent, &whole, string, text_scale,
+					text_scale_origin_x, text_scale_origin_y);
 			}
 
 			memset(&parameters, 0, sizeof(parameters));

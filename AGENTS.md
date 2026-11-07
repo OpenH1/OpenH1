@@ -232,6 +232,7 @@ python -m pytest -q tools/test_ios_touch_layout.py          # the iOS touch layo
 python tools/touch_assets.py --check                        # the touch controls' pictures as their SVGs draw them
 python tools/test_light_storage.py
 python tools/test_death_timing.py
+python -m pytest -q tools/test_menu_gallery.py              # menu_gallery.py's screens, picture difference, layout checks, page
 python -m pytest -q tools/test_join_page.py                 # the website's join page: the links it reads (Node), nothing loaded from elsewhere
 python -m pytest -q tools/test_net_compare.py               # net_compare.py's judging of logs, its copies and their processes
 python -m pytest -q tools/test_determinism_compare.py       # determinism_compare.py's reading of the determinism logs
@@ -257,6 +258,11 @@ Running the game without a person at it:
   own; `--remote <host>` runs it on a Linux box over ssh (its clone,
   `--remote-tree`, built there; its maps, `--remote-data`) and brings the
   PNG files back.
+- `python tools/menu_gallery.py [--compare master] [--remote 5900x.fabric]`
+  renders every menu screen for keyboard (16:9), controller (16:10) and
+  touch (a phone) into `build/menu_gallery/index.html`, with layout checks
+  from the game's geometry (`debug.menu_layout`); `--compare` shows only the
+  screens that changed. Review menu changes with it; never commit its pictures.
 - `debug.network_test` (`HALO_NETWORK_TEST=host:<map>` or `join`) hosts or
   joins a game without the menus and logs each player's state every second;
   several copies play on one machine on different loopback addresses
