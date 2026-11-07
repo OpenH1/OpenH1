@@ -40,9 +40,9 @@ NEGATIVE_CONTROLS = {
     # this machine's own loopback taken for an address
     "scrub-loopback": ("scrub", "return loopback || zero ? 0 : at;", "return (loopback && 0) || zero ? 0 : at;"),
     # other players' chat lines kept
-    "scrub-chat": ("scrub", "if (chat && end - at >= 6)", "if (0)"),
+    "scrub-chat": ("scrub", "chat = text + index;", "chat = NULL;"),
     # a password written into settings.txt
-    "private-password": ("scrub", 'if (strstr(name, "password"))', 'if (0)'),
+    "private-password": ("scrub", 'if (strstr(name, "password") ||', 'if (0 ||'),
     # the body's characters left as they are: an & or a # ends it early
     "issue-unencoded": ("issue", "character == '~';", "character == '~' || character == '&' || character == '#';"),
     # the resource maps counted as maps
@@ -66,14 +66,43 @@ NEGATIVE_CONTROLS = {
     "where-difficulty": ("where", '"easy", "normal", "hard", "impossible"', '"easy", "normal", "heroic", "legendary"'),
     # a client's ping called the slowest client's
     "where-ping": ("where", 'where->network == 1 ? " (the slowest client\'s)" : ""', '" (the slowest client\'s)"'),
+    # a code block the cut leaves open left open: the rest of the issue in it
+    "fence-open": ("issue", "fences % 2 == 0 ||", "fences >= 0 ||"),
+    # a short chat line ("chat: a: hi") kept
+    "scrub-chat-short": ("scrub", "index + 6 <= end && !chat", "index + 12 <= end && !chat"),
+    # what the markers name (a Discord name, a host's notice) kept
+    "scrub-marker": ("scrub", "if (marker < sizeof", "if (0 && marker < sizeof"),
+    # IPv6 addresses kept
+    "scrub-ipv6": ("scrub", "(length = report_address6_length(text + index, end - index)) != 0",
+                   "(length = 0 * report_address6_length(text + index, end - index)) != 0"),
+    # a time (12:30:45) taken for an IPv6 address
+    "ipv6-times": ("scrub", "groups != 8 || colons != 7", "groups < 3 + 0 * colons"),
+    # a cut log's partial first line kept
+    "whole-lines-kept": ("scrub", "return at < size ? at + 1 : size;", "return 0;"),
+    # the chat's own lines, which name nobody, taken for players' chat lines
+    "scrub-chat-own": ("scrub", "if (colons == 2)", "if (colons >= 1)"),
+    # an audio device's name (its owner's) in settings.txt
+    "private-device": ("scrub", '"audio.output_device", "audio.input_device",', ""),
+    # the scrubbed text not ended as a string: the issue's body runs on into the heap
+    "scrub-unended": ("scrub", "out[used] = 0;\n\t*scrubbed_size", "out[used] = 'x';\n\t*scrubbed_size"),
+    # a folder's path in settings.txt (the account's name)
+    "private-paths": ("scrub", '!strncmp(name, "paths.", 6) ||', "0 ||"),
 }
 
 FUNCTIONS = ("report_crc32", "report_compare_micros", "report_low_fps", "report_frame_summary", "report_gpu_summary",
-             "report_put16", "report_put32", "report_zip_add", "report_zip_end", "report_percent_encode", "report_issue_url", "report_setting_private",
-             "report_address_length", "report_scrub", "report_session_value", "report_crash_line",
-             "report_crash_summary", "report_map_counted", "report_where_text")
+             "report_put16", "report_put32", "report_zip_add", "report_zip_end", "report_percent_encode", "report_issue_url",
+             "report_setting_private", "report_address_length", "report_hex_digit", "report_word_character",
+             "report_address6_length", "report_whole_lines", "report_session_value", "report_crash_line",
+             "report_crash_summary", "report_map_counted", "report_where_text", "report_scrub")
 # the host's record of a crash, written from its signal handler (port/android/host/host_common.c)
 HOST_FUNCTIONS = ("crash_record_write", "host_crash_record_line", "host_crash_record_end")
+
+
+def markers(source):
+    """report_markers, the table of what log lines go on to name"""
+    end = source.index("} report_markers[] = {")
+    start = source.rindex("static const struct", 0, end)
+    return source[start:source.index("\n};", end) + 3]
 
 
 def generated(fault=None):
@@ -89,7 +118,8 @@ def generated(fault=None):
     code = issues + "\n" + defines + "\n\n" + structure(header, "report_frame_work") + "\n\n" + \
         structure(source, "report_zip") + "\n\n" + enum_with(header, "REPORT_WHERE_BUILDS") + "\n\n" + \
         structure(header, "report_where") + "\n\n" + \
-        "\n\n".join(function(source, name) for name in FUNCTIONS) + "\n\n" + host_state + "\n\n" + \
+        "\n\n".join(function(source, name) for name in FUNCTIONS[:-1]) + "\n\n" + markers(source) + "\n\n" + \
+        function(source, FUNCTIONS[-1]) + "\n\n" + host_state + "\n\n" + \
         "\n\n".join(function(host, name) for name in HOST_FUNCTIONS)
     if fault:
         code = mutated(code, *NEGATIVE_CONTROLS[fault][1:])
@@ -144,3 +174,19 @@ def test_key_row_and_documentation():
     chat = read("port/linux/game/network_chat.c")
     assert 'L"What happened?"' in chat and "report_note_done(chat_input.text);" in chat
     assert "report_note_done(NULL);" in chat
+
+
+def test_note_and_issue_wait():
+    """the note asked for only with the keyboard's key (a menu's row has no keyboard to answer it); the issue held
+    for the main menu, not a loading screen; the note's line closed out of a game, its report mode with it"""
+    assert "report_request(1);" in read("port/linux/src/xinput_sdl.c")
+    assert "report_request(FALSE);" in read("port/linux/game/menu_functions.c")
+    report = read("port/linux/src/report.c")
+    assert "if (!report_capture.crash && report_asked_by_key && report_game_playing() && report_game_note_begin())" in report
+    assert "if (report_pending.count && report_game_menus())" in report
+    assert "if (report_job.url && !report_game_menus())" in report
+    assert "return report_game_map() == 2 && ui_widgets_active();" in read("port/linux/game/report_game.c")
+    chat = read("port/linux/game/network_chat.c")
+    end = function(chat, "chat_input_end")
+    assert "chat_input.report = FALSE;" in end
+    assert "if (!report_game_playing() || chat_hidden())" in function(chat, "chat_report_update")

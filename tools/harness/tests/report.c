@@ -47,6 +47,19 @@ static void gpu_frames(uint32_t gpu, uint32_t render, uint32_t waited, uint32_t 
 	}
 }
 
+/* how often word is in text */
+static int report_count(char const *text, char const *word)
+{
+	int count = 0;
+
+	while ((text = strstr(text, word)) != NULL)
+	{
+		count++;
+		text += strlen(word);
+	}
+	return count;
+}
+
 int main(int argc, char **argv)
 {
 	char const *test = argc > 1 ? argv[1] : "";
@@ -174,6 +187,8 @@ int main(int argc, char **argv)
 	if (!strcmp(test, "issue"))
 	{
 		static char url[300], body[400];
+		static char const fence[] = "%60%60%60", closed[] = "text%0A%60%60%60%0A",
+			whole[] = "&body=%60%60%60%0Aall%0A%60%60%60%0A";
 		unsigned long index;
 
 		CHECK(report_issue_url("Problem report (macOS, build-1)", "# Hi\n- a&b=c\n", url, sizeof(url)), "it fits");
@@ -188,6 +203,20 @@ int main(int argc, char **argv)
 		CHECK(strlen(url) < 150, "within its room");
 		CHECK(strlen(url) > 3 && !strcmp(url + strlen(url) - 3, "%0A"), "cut at a line's end");
 		CHECK(!report_issue_url("t", "no line ends here at all, and too long for the room", url, 70), "no line to cut at");
+		/* (a cut inside a code block: the block closed after it) */
+		body[0] = 0;
+		strcat(body, "## Frames\n\n```\n");
+		for (index = 0; index < 20; index++)
+			strcat(body, "line of text\n");
+		strcat(body, "```\n");
+		CHECK(report_issue_url("t", body, url, 200), "a long code block cut to fit");
+		printf("%s\n", url);
+		CHECK(strlen(url) < 200, "within its room, the fence too");
+		CHECK(report_count(url, fence) == 2, "the code block left open by the cut");
+		CHECK(strlen(url) > strlen(closed) && !strcmp(url + strlen(url) - strlen(closed), closed),
+			"closed after its last line");
+		CHECK(report_issue_url("t", "```\nall\n```\n", url, sizeof(url)) && strstr(url, whole) &&
+			report_count(url, fence) == 2, "a whole body's block closed twice");
 		return 0;
 	}
 	if (!strcmp(test, "scrub"))
@@ -199,13 +228,24 @@ int main(int argc, char **argv)
 			"vulkan: Vulkan 1.3.280, driver 24.1.3; version 300.1.2.3.4\n"
 			"11.06.26 22:55:20  chat (team): Johnson: meet at the warthog\n"
 			"11.06.26 22:55:21  chat: Cortana: hello\n"
-			"11.06.26 22:55:22  chat notice: Text chat is off in this game\n"
+			"11.06.26 22:55:22  chat notice: Johnson joined the game\n"
+			"chat: a: hi\n"
+			"chat: b: x\n"
+			"host notice: Keyes (Discord: keyes#1, 12345) banned by the host\n"
+			"Discord link: linked as keyes_discord at https://master.example\n"
+			"Discord link: opening https://master.example/link in the browser (the page shows the code K7Q2-ZX)\n"
+			"Internet play: cannot look up network.public_address home.keyes.example\n"
+			"Internet play: network.public_address [2001:db8::7]:2302 is IPv6, which the tunnel does not use\n"
+			"v6 2001:db8:85a3:0:0:8a2e:370:7334 and fe80::1c2b:3a4d%en0, mapped ::ffff:198.51.100.9, loopback ::1\n"
+			"times 12:30:45 and 12:30:45.250, std::vector, a deadbeef::cafe, build 1.2.3, aa:bb\n"
+			"chats are fine\n"
+			"11.06.26 22:55:23  chat: the on-screen keyboard opened\n"
 			"no newline at the end";
 		size_t size;
 		char *out = report_scrub(text, sizeof(text) - 1, "/Users/keyes", &size);
 
 		CHECK(out != NULL, "scrubbed");
-		out[size] = 0;
+		CHECK(strlen(out) == size, "the text ended as a string");
 		printf("%s\n", out);
 		CHECK(strstr(out, "data root: ~/Halo/maps\n"), "the home folder as ~");
 		CHECK(!strstr(out, "keyes"), "the account's name left");
@@ -214,14 +254,38 @@ int main(int argc, char **argv)
 		CHECK(strstr(out, "Vulkan 1.3.280, driver 24.1.3; version 300.1.2.3.4\n"), "versions left as they are");
 		CHECK(strstr(out, "22:55:20  chat: (a chat line, removed from the report)\n"), "a team chat line");
 		CHECK(!strstr(out, "warthog") && !strstr(out, "Cortana"), "a chat line left");
-		CHECK(strstr(out, "chat notice: Text chat is off"), "a notice taken out");
+		CHECK(strstr(out, "22:55:22  chat notice: (removed)\n") && !strstr(out, "Johnson joined"), "a notice's name");
+		CHECK(!strstr(out, "hi\n") && !strstr(out, "x\n") && strstr(out, "\nchat: (a chat line, removed from the "
+			"report)\nchat: (a chat line, removed from the report)\n"), "a short chat line");
+		CHECK(strstr(out, "host notice: (removed)\n") && !strstr(out, "12345"), "the host's notice, a Discord id");
+		CHECK(strstr(out, "Discord link: linked as (removed)\n"), "a Discord name");
+		CHECK(strstr(out, "(the page shows the code (removed))\n") && !strstr(out, "K7Q2"), "a link's code");
+		CHECK(strstr(out, "look up network.public_address (removed)\n"), "network.public_address's host name");
+		CHECK(strstr(out, "network.public_address (removed) is IPv6"), "network.public_address's IPv6 address");
+		CHECK(strstr(out, "v6 x::x and x::x%en0, mapped ::ffff:x.x.x.x, loopback ::1\n"), "the IPv6 addresses");
+		CHECK(strstr(out, "times 12:30:45 and 12:30:45.250, std::vector, a deadbeef::cafe, build 1.2.3, aa:bb\n"),
+			"times, versions and words taken for IPv6 addresses");
+		CHECK(strstr(out, "chats are fine\n"), "a word taken for a chat line");
+		CHECK(strstr(out, "chat: the on-screen keyboard opened\n"), "the chat's own line, of no player, taken out");
 		CHECK(size >= 21 && !memcmp(out + size - 21, "no newline at the end", 21), "the last line");
 		CHECK(report_setting_private("server.password") && report_setting_private("server.web_owner_password") &&
 			report_setting_private("network.public_address") && report_setting_private("debug.update_key"),
 			"a private setting not left out");
-		CHECK(!report_setting_private("display.vsync") && !report_setting_private("network.online"),
+		CHECK(report_setting_private("server.admins") && report_setting_private("server.name") &&
+			report_setting_private("server.motd") && report_setting_private("debug.friends") &&
+			report_setting_private("debug.update_url") && report_setting_private("paths.data") &&
+			report_setting_private("server.publisher_key_file") && report_setting_private("debug.friends_folder") &&
+			report_setting_private("audio.output_device") && report_setting_private("network.front") &&
+			report_setting_private("debug.screenshot_directory") && report_setting_private("debug.play_log"),
+			"a name, a path or an address not left out");
+		CHECK(!report_setting_private("display.vsync") && !report_setting_private("network.online") &&
+			!report_setting_private("server.max_players") && !report_setting_private("debug.network_test"),
 			"a setting left out that is not private");
 		free(out);
+		/* (a log's end cut mid-line: from its next line) */
+		CHECK(report_whole_lines("ohnson: hi\nnext\n", 16, 1) == 11, "a cut log's partial first line");
+		CHECK(report_whole_lines("whole\nnext\n", 11, 0) == 0, "a whole log's first line");
+		CHECK(report_whole_lines("no line end", 11, 1) == 11, "a cut log of no line's end");
 		return 0;
 	}
 	if (!strcmp(test, "crash"))

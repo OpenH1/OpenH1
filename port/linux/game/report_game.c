@@ -7,9 +7,10 @@ multiplayer game, its gametype's name (its variant's, where it has one);
 the mods played and the map's file, by their names; where the game is
 (report_game_where: the time, the BSP, the first local player's place and
 aim, its camera, the network game, as report_where_text writes them);
-whether a game is being played, not the menus (a report's issue waits
-until it is not); and its note's line, the text chat's (network_chat.c).
-Nothing that says who a player is: no names, no addresses.
+whether a game is being played (the note's line closes when it is not), or
+the main menu is up (a report's issue waits for it); and its note's line,
+the text chat's (network_chat.c). Nothing that says who a player is: no
+names, no addresses.
 */
 
 #include "cseries.h"
@@ -25,6 +26,7 @@ Nothing that says who a player is: no names, no addresses.
 #include "main/console.h"
 #include "custom_edition_cache.h"
 #include "mods.h"
+#include "interface/ui_widget.h"
 #include "network_chat.h"
 #include "network_distributed.h"
 #include "network_standard.h"
@@ -43,11 +45,26 @@ int config_boolean(const char *name);
 
 #define REPORT_DEGREES (180.0f / 3.14159265358979f)
 
-int report_game_playing(void)
+/* the map loaded and running: 1 for a game's, 2 for the ui map's (the
+menus), 0 for none (a loading screen, the time between levels) */
+static int report_game_map(void)
 {
 	char const *map_name = global_scenario_index != NONE ? tag_get_name(global_scenario_index) : NULL;
 
-	return map_name && map_name[0] && game_in_progress() && strcmp(map_name, "ui") && !strstr(map_name, "\\ui");
+	if (!map_name || !map_name[0] || !game_in_progress())
+		return 0;
+	return strcmp(map_name, "ui") && !strstr(map_name, "\\ui") ? 1 : 2;
+}
+
+int report_game_playing(void)
+{
+	return report_game_map() == 1;
+}
+
+/* (the ui map, its menus up: not its loading, nor the movie before them) */
+int report_game_menus(void)
+{
+	return report_game_map() == 2 && ui_widgets_active();
 }
 
 void report_game_describe(char *text, size_t size)

@@ -1797,6 +1797,9 @@ static void chat_input_end(
 	void)
 {
 	chat_input.active = FALSE;
+	/* (a report's note's line is shown whatever display.text_chat says:
+	the next lines, the chat's, are not) */
+	chat_input.report = FALSE;
 	chat_keyboard.open = FALSE;
 	chat_keyboard.opening_buttons = 0;
 	chat_keyboard.drawn = FALSE;
@@ -1926,7 +1929,9 @@ static boolean chat_hidden(void);
 boolean network_chat_report_note_begin(
 	void)
 {
-	if (local_player_get_next(NONE) == NONE)
+	/* (none behind a menu or a cinematic, where it would not be seen and
+	its keys would be the menu's) */
+	if (local_player_get_next(NONE) == NONE || chat_hidden())
 		return FALSE;
 	chat_input_end();
 	chat_input_begin(_chat_channel_everyone, NONE, FALSE);
@@ -1942,20 +1947,21 @@ void network_chat_report_note_cancel(
 }
 
 /* the note's keys, as the chat line's: Enter finishes the report with it,
-Escape without one; left (the game over, the map left), with what was
-typed. Each frame, before the chat's own (which needs a network game) */
+Escape without one; left (the game over, the map left, a menu opened or a
+cinematic begun over it), with what was typed. Each frame, before the
+chat's own (which needs a network game) */
 static void chat_report_update(
 	void)
 {
 	struct key_stroke key;
 
-	if (!game_in_progress())
+	if (!report_game_playing() || chat_hidden())
 	{
 		chat_input_end();
 		report_note_done(chat_input.text);
 		return;
 	}
-	if (console_is_active() || chat_hidden())
+	if (console_is_active())
 		return;
 	while (chat_input.active && input_get_key(&key))
 	{

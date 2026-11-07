@@ -490,12 +490,17 @@ static void party_notice(
 	wchar_t const *name)
 {
 	char text[80];
+	wchar_t logged[80];
 
 	usnprintf(party_globals.notice, NUMBEROF(party_globals.notice), format, name);
 	party_globals.notice[NUMBEROF(party_globals.notice) - 1] = 0;
 	party_globals.notice_time = system_milliseconds();
 	party_globals.notice_shown = TRUE;
-	party_name_ascii(party_globals.notice, text, sizeof(text));
+	/* (the log's without the player's name, which a report would carry:
+	port/linux/src/report.c) */
+	usnprintf(logged, NUMBEROF(logged), format, L"a player");
+	logged[NUMBEROF(logged) - 1] = 0;
+	party_name_ascii(logged, text, sizeof(text));
 	error(_error_log, "party: %s", text);
 }
 
@@ -620,13 +625,9 @@ static void party_heard(
 	csmemcpy(party_globals.prompt.token, request->token, PARTY_TOKEN_SIZE);
 	party_globals.prompt.time = now;
 	party_globals.notice_shown = FALSE;
-	{
-		char text[PARTY_NAME_SIZE + 1];
-
-		party_name_ascii(name, text, sizeof(text));
-		error(_error_log, "party: %s %s", text, request->kind == _party_request_invite ? "invites this machine" :
-			"asks to join this machine's party");
-	}
+	/* (not the player's name: a report would carry it, port/linux/src/report.c) */
+	error(_error_log, "party: a player %s", request->kind == _party_request_invite ? "invites this machine" :
+		"asks to join this machine's party");
 }
 
 /* (the host) an invite or ask sent on: to the machine of the player it is
