@@ -110,6 +110,9 @@ static void VKAPI_CALL fake_end_query(VkCommandBuffer command, VkQueryPool pool,
 	ended_queries++;
 }
 
+/* (debug.pass_times: never) */
+int host_pass_times;
+
 void host_logf(int priority, const char *format, ...)
 {
 	(void)format;
