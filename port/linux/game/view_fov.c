@@ -1,8 +1,9 @@
 /*
 VIEW_FOV.C
 
-The view's field of view (display.fov on foot, display.vehicle_fov in a
-vehicle's seat), the first-person weapon's (display.viewmodel_fov) and
+The view's field of view (display.fov on foot and in a seat seen in first
+person, a passenger's; display.vehicle_fov in a seat seen in third person,
+a driver's or gunner's), the first-person weapon's (display.viewmodel_fov) and
 whether the weapon is drawn (display.viewmodel_visible) and where
 (display.viewmodel_offset_x, _y and _z, display.viewmodel_pitch, _yaw and
 _roll, and each weapon's own: display.viewmodel_weapon), the local render
@@ -24,6 +25,7 @@ that draw the first-person weapon (rasterizer and render sources).
 #include "items/weapons.h"
 #include "objects/objects.h"
 #include "tag_files/tag_files.h"
+#include "tag_files/tag_groups.h"
 #include "rasterizer/rasterizer.h"
 #include "rasterizer/xbox/rasterizer_xbox_internal.h"
 #include "render/render.h"
@@ -35,6 +37,7 @@ that draw the first-person weapon (rasterizer and render sources).
 #include "mouse_sensitivity.h"
 #include "near_clip.h"
 #include "panini_projection.h"
+#include "passenger_camera.h"
 #include "zoom_fov.h"
 
 #include <math.h>
@@ -59,9 +62,10 @@ int config_viewmodel_weapon(const char *path, double values[CONFIG_WEAPON_VALUES
 /* ---------- the world's field of view */
 
 /* how long the view takes to go from one field of view to the other as the
-player gets into a vehicle's seat or out of it, when display.fov and
-display.vehicle_fov differ: about the time the director takes to fly the
-camera between the head and the seat's following camera */
+player gets into a third-person seat or out of it, or changes between one
+and a first-person seat, when display.fov and display.vehicle_fov differ:
+about the time the director takes to fly the camera between the head and
+the seat's following camera */
 #define VEHICLE_FOV_TRANSITION_MILLISECONDS 500
 
 static real reticle_scales[MAXIMUM_LOCAL_PLAYERS];
@@ -74,12 +78,13 @@ pieces keep to the scope's picture: render_fov_scope_piece_scale) */
 static boolean scaled_scopes[MAXIMUM_LOCAL_PLAYERS];
 
 /* each local player's way between display.fov and display.vehicle_fov: the
-weight of the vehicle's (0 on foot, 1 seated) the view is drawn at, the
-weight it set out from, when, and toward which */
+weight of the vehicle's (0 on foot or in a first-person seat, 1 in a
+third-person one) the view is drawn at, the weight it set out from, when,
+and toward which */
 static struct
 {
 	boolean valid;
-	boolean in_vehicle;
+	boolean third_person;
 	real from, weight;
 	unsigned long start;
 } vehicle_blends[MAXIMUM_LOCAL_PLAYERS];
@@ -159,18 +164,45 @@ struct unit_datum *render_fov_unit(short local_player_index, long *unit_index)
 	return unit;
 }
 
+/* whether the local player's seat is one seen in third person: a seat with
+the following camera (a driver's, a gunner's), getting in and out of it
+too, or a passenger's with display.passenger_third_person; not on foot, nor
+in a seat seen from the head (a passenger's, the Shade's turret), whose
+view is display.fov's as on foot (#775), the third-person shot of getting
+into it too */
+static boolean vehicle_fov_third_person(short local_player_index, struct unit_datum const *unit)
+{
+	struct unit_datum *vehicle;
+	struct unit_definition *definition;
+	short seat_index = unit->unit.parent_seat_index;
+
+	if (unit->object.parent_object_index == NONE)
+		return FALSE;
+	if (passenger_camera_enabled(local_player_index))
+		return TRUE;
+	vehicle = unit_try_and_get(unit->object.parent_object_index);
+	if (!vehicle)
+		return FALSE;
+	definition = unit_definition_get(vehicle->definition_index);
+	if (seat_index < 0 || seat_index >= definition->unit.seats.count)
+		return FALSE;
+	return TEST_FLAG(TAG_BLOCK_GET_ELEMENT(&definition->unit.seats, seat_index, struct unit_seat)->flags,
+		_unit_seat_third_person_camera_bit) ? TRUE : FALSE;
+}
+
 /* (each frame) the weight of display.vehicle_fov in the view, from 0 on
-foot to 1 in a seat. Seated is the unit in its seat: getting in and out
-too, while it is attached; once out, the view eases to display.fov while
-the director flies the camera back to the head. It eases the same way in
-(smoothly, VEHICLE_FOV_TRANSITION_MILLISECONDS), turning back from where
-it is if the player gets in or out again on the way. A view the fields of
-view leave alone (death, a cinematic) ends the way: the next view is
-wherever the player then is */
+foot or in a first-person seat to 1 in a third-person seat. A third-person
+seat is the unit in it: getting in and out too, while it is attached; once
+out, the view eases to display.fov while the director flies the camera back
+to the head. It eases the same way in and from one seat to another
+(smoothly, VEHICLE_FOV_TRANSITION_MILLISECONDS), turning back from where it
+is if the player changes again on the way. A view the fields of view leave
+alone (death, a cinematic) ends the way: the next view is wherever the
+player then is */
 static real vehicle_fov_weight(short local_player_index, struct unit_datum const *unit)
 {
 	unsigned long now = system_milliseconds();
-	boolean in_vehicle;
+	boolean third_person;
 	real progress;
 
 	if (local_player_index < 0 || local_player_index >= MAXIMUM_LOCAL_PLAYERS)
@@ -180,46 +212,46 @@ static real vehicle_fov_weight(short local_player_index, struct unit_datum const
 		vehicle_blends[local_player_index].valid = FALSE;
 		return 0.0f;
 	}
-	in_vehicle = unit->object.parent_object_index != NONE;
+	third_person = vehicle_fov_third_person(local_player_index, unit);
 	if (!vehicle_blends[local_player_index].valid)
 	{
 		vehicle_blends[local_player_index].valid = TRUE;
-		vehicle_blends[local_player_index].in_vehicle = in_vehicle;
-		vehicle_blends[local_player_index].weight = in_vehicle ? 1.0f : 0.0f;
+		vehicle_blends[local_player_index].third_person = third_person;
+		vehicle_blends[local_player_index].weight = third_person ? 1.0f : 0.0f;
 		vehicle_blends[local_player_index].from = vehicle_blends[local_player_index].weight;
 		vehicle_blends[local_player_index].start = now;
 		return vehicle_blends[local_player_index].weight;
 	}
-	if (in_vehicle != vehicle_blends[local_player_index].in_vehicle)
+	if (third_person != vehicle_blends[local_player_index].third_person)
 	{
-		vehicle_blends[local_player_index].in_vehicle = in_vehicle;
+		vehicle_blends[local_player_index].third_person = third_person;
 		vehicle_blends[local_player_index].from = vehicle_blends[local_player_index].weight;
 		vehicle_blends[local_player_index].start = now;
 	}
 	progress = (real)(now - vehicle_blends[local_player_index].start) / VEHICLE_FOV_TRANSITION_MILLISECONDS;
 	if (!(progress < 1.0f))
 	{
-		vehicle_blends[local_player_index].weight = in_vehicle ? 1.0f : 0.0f;
+		vehicle_blends[local_player_index].weight = third_person ? 1.0f : 0.0f;
 	}
 	else
 	{
 		real eased = progress * progress * (3.0f - 2.0f * progress);
 		real from = vehicle_blends[local_player_index].from;
 
-		vehicle_blends[local_player_index].weight = from + ((in_vehicle ? 1.0f : 0.0f) - from) * eased;
+		vehicle_blends[local_player_index].weight = from + ((third_person ? 1.0f : 0.0f) - from) * eased;
 	}
 	return vehicle_blends[local_player_index].weight;
 }
 
 /* the view's vertical angle for display.fov on foot and display.vehicle_fov
-seated, the weight of the vehicle's between them: the game's own dead, in a
-cinematic, a scripted camera or a view the director holds, and at a scope's
-full zoom (display.scale_scoped_fov off, the Xbox's: zoom_fov.h); between,
-the zoom's own transition. With it on, the zoom's views are the player's
-zoomed by the same magnification. A vehicle's seat, first or
-third person, and its entering and exiting take the vehicle's, so the view
-and its reticle keep one size in the seat ("default": the stock view, its
-reticle at the stock size). The reticle's size, the unzoomed view's scale
+in a third-person seat, the weight of the vehicle's between them: the game's
+own dead, in a cinematic, a scripted camera or a view the director holds,
+and at a scope's full zoom (display.scale_scoped_fov off, the Xbox's:
+zoom_fov.h); between, the zoom's own transition. With it on, the zoom's
+views are the player's zoomed by the same magnification. A third-person
+seat and its entering and exiting take the vehicle's, so the view and its
+reticle keep one size in the seat ("default": the stock view, its reticle
+at the stock size). The reticle's size, the unzoomed view's scale
 of it, is set too, and that view's tangent: 1 and 0 where the view is the
 game's own */
 static real render_fov_adjust(short local_player_index, real native_vertical_field_of_view, real vehicle_weight,
@@ -296,7 +328,8 @@ real render_fov_vertical(short local_player_index, real native_vertical_field_of
 	view and its reticle's scale below are of the same weight, so the
 	reticle is never a frame apart from the view it is drawn over) */
 	long unit_index;
-	real weight = vehicle_fov_weight(local_player_index, render_fov_unit(local_player_index, &unit_index));
+	struct unit_datum *unit = render_fov_unit(local_player_index, &unit_index);
+	real weight = vehicle_fov_weight(local_player_index, unit);
 	real reticle_size, unzoomed_drawn_tangent;
 	real adjusted = render_fov_adjust(local_player_index, native_vertical_field_of_view, weight, &reticle_size,
 		&unzoomed_drawn_tangent);
