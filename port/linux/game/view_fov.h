@@ -22,6 +22,11 @@ real render_fov_scope_piece_scale(short local_player_index);
 /* whether a zoomed reticle takes its scope's scale (the Xbox's zoom) rather
 than keeping its unzoomed size (display.scale_scoped_fov's: #738, #594) */
 boolean render_fov_zoomed_reticle_with_scope(short local_player_index);
+/* whether the view is still zoomed by the Xbox's zoom (display.scale_scoped_fov
+off): at a scope's zoom or along its transition, in or out. The zoom level
+is gone as a scope is let go, but the view eases back to the unzoomed one,
+and the reticle slides back with it as it slid in (#747) */
+boolean render_fov_zoom_easing(short local_player_index);
 /* the weapon's reticle's size: its scale at the unzoomed view (display.panini's
 magnification of the middle with it), kept through the zoom (the stock game
 draws its reticle one size at every zoom: display.fov sizes it, the zoom
