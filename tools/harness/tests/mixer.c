@@ -1904,6 +1904,24 @@ int main(int argc, char **argv)
 			20.0 * log10(fabs(sum) / room[peak] + 1e-30));
 		CHECK(largest < 0.01 * room[peak], "a frame the reverb takes beside the click at %.1f%% of it", 100.0 * largest /
 			room[peak]);
+		/* the source's Room HF does nothing (the test bed's ninth run: the
+		cave's reverb of a voice at a Room and Room HF of -1204, as the game
+		sets most of its 3D voices, 12 dB down at every frequency); the
+		listener's and occlusion's still muffle the send */
+		stream = voice_placed(samples, frames + 8192, 48000, 0.0f, 0.0f, 2.0f);
+		source.lRoom = -1204;
+		source.lRoomHF = -1204;
+		IDirectSoundStream_SetI3DL2Source(&stream->object, &source, 0);
+		CHECK(stream->pending.room == -1204 && stream->pending.room_hf == -1204,
+			"a Room and Room HF of -1204 send at %ld and %ld mB at high frequencies (the Xbox's: -1204 at both)",
+			(long)stream->pending.room, (long)stream->pending.room_hf);
+		source.Occlusion.lHFLevel = -2000;
+		source.Occlusion.flLFRatio = 0.2f;
+		IDirectSoundStream_SetI3DL2Source(&stream->object, &source, 0);
+		CHECK(stream->pending.room == -1604 && stream->pending.room_hf == -3204,
+			"occluded by -2000 (LF ratio 0.2), the send at %ld and %ld mB (the Xbox's: -1604 and -3204)",
+			(long)stream->pending.room, (long)stream->pending.room_hf);
+		voice_delete(stream);
 		environment.lRoom = DSBVOLUME_MIN;
 		free(left);
 		free(room);

@@ -2394,6 +2394,16 @@ menus). */
 #define REVERB_CHAIN 4
 #define REVERB_COMB_SIZE 720
 #define REVERB_FADE_FRAMES 96 /* 2 ms */
+/* a new environment's delays wait 100 ms (REVERB_DELAY_HOLD_FRAMES): recorded
+on an Xbox (the test bed's ninth run), a click played 2 or 25 ms after the
+hallway gave way to the cave echoed at the cave's levels but at the
+hallway's delays (its reflections from 7 ms, its late reverberation from
+18), and one played 100 ms after it as in the cave alone (fitted: a hold of
+4800 frames, the click trains' echoes within 4 to 7 dB rms of the
+recordings', 15 before; 4200 to 5400 fit alike) */
+#ifndef REVERB_DELAY_HOLD_FRAMES
+#define REVERB_DELAY_HOLD_FRAMES 4800
+#endif
 #define REVERB_LEVEL_FADE_FRAMES 4096 /* 85 ms */
 /* the input's delay, the chain and a loop, played out */
 #define REVERB_QUIET_FRAMES (2 * (REVERB_INPUT_SIZE * REVERB_CHAIN + REVERB_LOOP_SIZE))
@@ -2448,6 +2458,12 @@ static struct
 	(none: from is to) */
 	struct reverb_parameters from, to;
 	unsigned long fade;
+	/* the delays a change leaves in place (delays_from) for delay_hold
+	frames before they cross to the new environment's over
+	REVERB_FADE_FRAMES (delay_fade): the gains and filters are the new
+	environment's at once (fade), its delays only after the hold */
+	struct reverb_parameters delays_from;
+	unsigned long delay_hold, delay_fade;
 	/* the output's level, 1 while audio.reverb is on, moving to 0 when it
 	is turned off; whether the buffers are silent; and the frames since the
 	send or the output was last over REVERB_QUIET_PEAK */
@@ -2614,11 +2630,38 @@ same one again several times a second in some places (Derelict), which
 changes nothing */
 static void reverb_update(const DSI3DL2LISTENER *properties, unsigned long serial)
 {
+	BOOL reflections_off, held;
+
 	reverb.serial = serial;
 	if (!reverb.silent && !memcmp(properties, &reverb.properties, sizeof(*properties)))
 		return;
+	reflections_off = reverb.properties.lReflections <= DSBVOLUME_MIN;
 	reverb.properties = *properties;
+	/* the delays in use held, unless a hold is running already: then they
+	cross to whichever environment is the last when it ends (the game moves
+	from one to another a step each tick, scenario_get_sound_environment) */
+	held = reverb.delay_hold || reverb.delay_fade;
+	if (!held)
+	{
+		reverb.delays_from = reverb.to;
+		reverb.delay_hold = REVERB_DELAY_HOLD_FRAMES;
+		reverb.delay_fade = REVERB_FADE_FRAMES;
+	}
 	reverb_parameters_set(&reverb.to, properties);
+	/* (from a room with no reflections, Halo's outdoors, the reflections'
+	delays are the new room's at once: recorded, the cave's first
+	reflections came at its 15 ms while its late reverberation waited) */
+	if (!held && reflections_off)
+	{
+		int index;
+
+		reverb.delays_from.reflections_delay = reverb.to.reflections_delay;
+		for (index = 0; index < REVERB_CHANNELS; index++)
+		{
+			reverb.delays_from.reflection_taps[index] = reverb.to.reflection_taps[index];
+			reverb.delays_from.comb_delays[index] = reverb.to.comb_delays[index];
+		}
+	}
 	if (reverb.silent)
 		reverb.from = reverb.to;
 	reverb.fade = reverb.silent ? 0 : REVERB_FADE_FRAMES;
@@ -2647,6 +2690,24 @@ static void reverb_initialize(void)
 	reverb.silent = TRUE;
 	reverb.level = reverb_enabled ? 1.0f : 0.0f;
 	reverb_update(&environment, environment_serial);
+	reverb.delays_from = reverb.to;
+	reverb.delay_hold = reverb.delay_fade = 0;
+}
+
+/* the delays' hold and crossfade moved on frames (output frames) */
+static void reverb_delays_step(unsigned long frames)
+{
+	unsigned long step;
+
+	step = frames < reverb.delay_hold ? frames : reverb.delay_hold;
+	reverb.delay_hold -= step;
+	frames -= step;
+	if (!reverb.delay_hold && reverb.delay_fade)
+	{
+		reverb.delay_fade = frames < reverb.delay_fade ? reverb.delay_fade - frames : 0;
+		if (frames && !reverb.delay_fade)
+			reverb.delays_from = reverb.to;
+	}
 }
 
 static float reverb_blend(float from, float to, float fade)
@@ -2688,19 +2749,21 @@ static float reverb_filter(struct reverb_filter from, struct reverb_filter to, f
 channels */
 static void reverb_frame(float input, float fade, float *channels)
 {
-	const struct reverb_parameters *from = &reverb.from, *to = &reverb.to;
+	const struct reverb_parameters *from = &reverb.from, *to = &reverb.to, *dfrom = &reverb.delays_from;
+	/* (the delays' own crossfade: none while they are held) */
+	float dfade = reverb.delay_hold ? 0.0f : 1.0f - (float)reverb.delay_fade / REVERB_FADE_FRAMES;
 	float onset[2 * REVERB_LINES], taps[REVERB_LINES], chain[REVERB_CHAIN][2], sums[2], loops[2];
 	float reflections, network_input, loop_input, mean = 0.0f, late_gain;
 	int index;
 
 	/* the reflections: each channel's comb */
-	reflections = reverb_read(reverb.input, REVERB_INPUT_SIZE, from->reflections_delay, to->reflections_delay, fade);
+	reflections = reverb_read(reverb.input, REVERB_INPUT_SIZE, dfrom->reflections_delay, to->reflections_delay, dfade);
 	for (index = 0; index < REVERB_CHANNELS; index++)
 	{
 		float value = reflections + reverb_read(reverb.input, REVERB_INPUT_SIZE,
-			from->reflection_taps[index], to->reflection_taps[index], fade) +
+			dfrom->reflection_taps[index], to->reflection_taps[index], dfade) +
 			reverb_comb_gains[index] * reverb_read(reverb.combs[index], reverb_comb_sizes[index],
-			from->comb_delays[index], to->comb_delays[index], fade);
+			dfrom->comb_delays[index], to->comb_delays[index], dfade);
 
 		reverb_write(reverb.combs[index], reverb_comb_sizes[index], value);
 		channels[index] = value * reverb_blend(from->reflections_gains[index], to->reflections_gains[index], fade);
@@ -2711,7 +2774,7 @@ static void reverb_frame(float input, float fade, float *channels)
 	{
 		long tap = reverb_onset_taps[index % REVERB_LINES];
 
-		onset[index] = reverb_read(reverb.input, REVERB_INPUT_SIZE, from->late_delay + tap, to->late_delay + tap, fade);
+		onset[index] = reverb_read(reverb.input, REVERB_INPUT_SIZE, dfrom->late_delay + tap, to->late_delay + tap, dfade);
 	}
 	for (index = 0; index < REVERB_LINES; index++)
 	{
@@ -2726,8 +2789,8 @@ static void reverb_frame(float input, float fade, float *channels)
 	{
 		const float *line = index ? reverb.chain[index - 1] : reverb.input;
 
-		chain[index][0] = reverb_read(line, REVERB_INPUT_SIZE, from->chain[index][0], to->chain[index][0], fade);
-		chain[index][1] = reverb_read(line, REVERB_INPUT_SIZE, from->chain[index][1], to->chain[index][1], fade);
+		chain[index][0] = reverb_read(line, REVERB_INPUT_SIZE, dfrom->chain[index][0], to->chain[index][0], dfade);
+		chain[index][1] = reverb_read(line, REVERB_INPUT_SIZE, dfrom->chain[index][1], to->chain[index][1], dfade);
 	}
 	sums[0] = chain[0][1] + chain[1][0] + chain[2][0] + chain[3][1];
 	sums[1] = chain[0][0] + chain[1][1] + chain[2][1] + chain[3][0];
@@ -2736,7 +2799,7 @@ static void reverb_frame(float input, float fade, float *channels)
 	for (index = 0; index < 2; index++)
 	{
 		loops[index] = loop_input * sums[index] +
-			reverb_read(reverb.loops[index], REVERB_LOOP_SIZE, from->loop_length, to->loop_length, fade);
+			reverb_read(reverb.loops[index], REVERB_LOOP_SIZE, dfrom->loop_length, to->loop_length, dfade);
 		reverb_write(reverb.loops[index], REVERB_LOOP_SIZE,
 			reverb_filter(from->loop_filter, to->loop_filter, fade, &reverb.loop_state[index], loops[index]));
 	}
@@ -2800,6 +2863,7 @@ static void reverb_process(const float *send, float *output, unsigned long frame
 		peak = fabsf(send[frame]) > peak ? fabsf(send[frame]) : peak;
 		if (reverb.fade && !--reverb.fade)
 			reverb.from = reverb.to;
+		reverb_delays_step(1);
 		reverb.level = clamp_real(target_level, reverb.level - 1.0f / REVERB_LEVEL_FADE_FRAMES,
 			reverb.level + 1.0f / REVERB_LEVEL_FADE_FRAMES);
 	}
@@ -3567,6 +3631,9 @@ static void mix(float *output, unsigned long frames, BOOL wait)
 		reverb_update(&environment, environment_serial);
 	/* the reverb runs while something reverberates, and stops once it is
 	turned off and faded out, or quiet */
+	/* (a hold goes on while the reverb is silent) */
+	if (reverb.silent && !reverb_sent(reverb.send, frames))
+		reverb_delays_step(frames);
 	if (!reverb.silent || (enabled && reverb_sent(reverb.send, frames)))
 	{
 		reverb_process(reverb.send, output, frames, enabled ? 1.0f : 0.0f);
@@ -5048,7 +5115,15 @@ HRESULT WINAPI IDirectSoundStream_SetI3DL2Source(LPDIRECTSOUNDSTREAM stream, LPC
 	difference 38 dB down, the noise's), the reverb's tail as muffled as
 	the direct sound */
 	room = source->lRoom + (LONG)(source->Occlusion.lHFLevel * source->Occlusion.flLFRatio);
-	room_hf = source->lRoom + source->lRoomHF + source->Occlusion.lHFLevel +
+	/* the source's own Room HF does nothing: recorded on an Xbox (the test
+	bed's ninth run), the cave's reverb of a voice at a Room HF of -1204
+	was as loud at 10 kHz as at 250 Hz, and one at a Room and Room HF of
+	-1204 (the game's for most of its 3D sounds) or -2000 was 12 or 20 dB
+	down at every frequency, to 0.1 dB; the listener's Room HF (each
+	environment's) and occlusion's muffling reach the send as before. Taken
+	as the I3DL2 level it is, it muffled the reverberation of nearly every
+	3D sound by 12 dB more at the HF reference */
+	room_hf = source->lRoom + source->Occlusion.lHFLevel +
 		(source->Obstruction.lHFLevel - (LONG)(source->Obstruction.lHFLevel * source->Obstruction.flLFRatio));
 	{
 		STREAM_SETTER(
