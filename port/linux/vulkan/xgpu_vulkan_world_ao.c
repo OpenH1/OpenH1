@@ -338,3 +338,8 @@ uint64_t xgpu_vulkan_world_ao_number(void)
 {
 	return world_ao.number;
 }
+
+void xgpu_vulkan_world_ao_touch(void)
+{
+	world_ao.number++;
+}
