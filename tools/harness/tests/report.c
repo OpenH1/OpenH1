@@ -152,6 +152,17 @@ int main(int argc, char **argv)
 		CHECK(fclose(zip.file) == 0, "the zip closed");
 		return 0;
 	}
+	if (!strcmp(test, "maps"))
+	{
+		CHECK(report_map_counted("bloodgulch.map"), "a map");
+		CHECK(report_map_counted("Hugeass_1A2B3C4D.MAP"), "its extension in capitals");
+		CHECK(!report_map_counted("bitmaps.map") && !report_map_counted("Sounds.map") &&
+			!report_map_counted("loc.map"), "the resource maps");
+		CHECK(report_map_counted("bitmaps2.map") && report_map_counted("loc.map2.map"), "names that only begin as one does");
+		CHECK(!report_map_counted("hugeass.map.partial") && !report_map_counted("readme.txt") &&
+			!report_map_counted(".map") && !report_map_counted("._a10.map"), "what is not a map");
+		return 0;
+	}
 	fprintf(stderr, "no case %s\n", test);
 	return 2;
 }

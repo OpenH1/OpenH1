@@ -429,7 +429,7 @@ The zip holds:
 
 | File | Contents |
 | --- | --- |
-| `report.md` | The summary, laid out as an issue's body: the build, the platform, the GPU, its API and driver, the processor, the map and the game, how long the game has run, the display's settings, and the frame times of the last 5 minutes (the average, the median, the 1% and 0.1% lows, the frames of 50 ms or more, and the longest frames with when they were). |
+| `report.md` | The summary, laid out as an issue's body: the build, the platform, the GPU, its API and driver, the processor, the map and the game, how long the game has run; the mods on, in their load order, with their `mod.toml`'s names and versions, the map loaded (stock or Custom Edition, its file's name and size and its cache header's CRC), whether `game.custom_edition` is on and how many maps `maps/` and `custom_maps/` hold (names only, never a folder's path); the display's settings, and the frame times of the last 5 minutes (the average, the median, the 1% and 0.1% lows, the frames of 50 ms or more, and the longest frames with when they were). |
 | `log.txt` | This run's log (its last 512 KB), which on Linux and Android is not otherwise in a file. |
 | `halo.log` | The host's log file, where there is one: Windows's beside `halo.exe`, the macOS app's in `~/Library/Logs/OpenH1`. |
 | `debug.txt` | The game's own log. |

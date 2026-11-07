@@ -40,8 +40,10 @@ A frame's time costs a clock reading and two stores (report_frame_presented,
 on the render thread, as report_write is); a log line a copy into the ring.
 */
 
+#include "map_import.h"
 #include "platform.h"
 #include "port_config.h"
+#include "posix.h"
 #include "report.h"
 #include "xgpu_backend.h"
 
@@ -674,6 +676,50 @@ static void report_processor(char *text, size_t size)
 		snprintf(text, size, "unknown");
 }
 
+/* whether a file of a maps folder is a map counted (a cache file, not a
+resource map nor a download unfinished) */
+int report_map_counted(const char *name)
+{
+	static const char *const resource_maps[] = { "bitmaps.map", "sounds.map", "loc.map" };
+	size_t length = strlen(name), index, at;
+
+	if (length <= 4 || name[0] == '.')
+		return 0;
+	for (index = 0; index < 4; index++)
+	{
+		char character = name[length - 4 + index];
+
+		if ((character >= 'A' && character <= 'Z' ? character + 32 : character) != ".map"[index])
+			return 0;
+	}
+	for (index = 0; index < sizeof(resource_maps) / sizeof(resource_maps[0]); index++)
+	{
+		const char *resource = resource_maps[index];
+
+		for (at = 0; at < length && resource[at] &&
+			(name[at] >= 'A' && name[at] <= 'Z' ? name[at] + 32 : name[at]) == resource[at]; at++)
+			;
+		if (at == length && !resource[at])
+			return 0;
+	}
+	return 1;
+}
+
+/* how many maps a folder has (report_map_counted), -1 if it has none */
+static long report_maps_in(const char *folder)
+{
+	void *directory = posix_directory_open(folder);
+	char name[256];
+	long count = 0;
+
+	if (!directory)
+		return -1;
+	while (posix_directory_next(directory, name, sizeof(name)))
+		count += report_map_counted(name);
+	posix_directory_close(directory);
+	return count;
+}
+
 /* report.md: a GitHub issue's body (report_send pastes it) */
 static char *report_text(const char *name)
 {
@@ -708,6 +754,24 @@ static char *report_text(const char *name)
 	if (line[0])
 		REPORT_PRINT("- Network game: %s, %s, %d of %d players\n", line, hosting ? "hosting" : "joined", players, most);
 	REPORT_PRINT("- Report: %s\n", name);
+	/* (the mods and the map: a problem one of them makes not taken for the
+	game's; names only, never a folder's path) */
+	{
+		char *mods = malloc(4096), folder[1024];
+		long stock, custom;
+
+		if (mods)
+		{
+			report_game_mods_and_maps(mods, 4096);
+			REPORT_PRINT("\n## Mods and maps\n\n%s", mods);
+			free(mods);
+		}
+		snprintf(folder, sizeof(folder), "%s/maps", platform_data_root());
+		stock = report_maps_in(folder);
+		map_import_custom_maps_folder(platform_data_root(), folder, (int)sizeof(folder));
+		custom = report_maps_in(folder);
+		REPORT_PRINT("- Maps: %ld in maps/, %ld in custom_maps/\n", stock > 0 ? stock : 0, custom > 0 ? custom : 0);
+	}
 	REPORT_PRINT("\n## Settings\n\nThe display's (the others changed: settings.txt in the zip)\n\n```\n");
 	for (index = 0; index < sizeof(settings) / sizeof(settings[0]); index++)
 	{
