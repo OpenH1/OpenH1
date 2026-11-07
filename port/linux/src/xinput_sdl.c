@@ -1810,7 +1810,8 @@ scenario's start, so that one script plays alike at 30, 60 and 120 steps a
 second (tools/scorecard). An event is "<start>[-<end>] <action>":
 
     fire, throw, jump, melee, action (X), switch (Y), crouch, zoom,
-    flashlight (white)   the button held from start to end (0.1 seconds
+    flashlight (white), back, start
+                         the button held from start to end (0.1 seconds
                          without an end)
     move=<x>,<y>         the left stick (-1 to 1 each way), start to end
     look=<x>,<y>         the right stick, start to end
@@ -1875,6 +1876,8 @@ static void test_script_parse(const char *script)
 		{ "crouch", -1, XINPUT_GAMEPAD_LEFT_THUMB },
 		{ "zoom", -1, XINPUT_GAMEPAD_RIGHT_THUMB },
 		{ "flashlight", XINPUT_GAMEPAD_WHITE, 0 },
+		{ "back", -1, XINPUT_GAMEPAD_BACK },
+		{ "start", -1, XINPUT_GAMEPAD_START },
 	};
 
 	test_script_on = 1;

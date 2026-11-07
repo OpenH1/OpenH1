@@ -26,7 +26,7 @@ from harness import skip_without_32_bit_abi  # noqa: E402
 SOURCE = "port/linux/src/dsound_sdl.c"
 CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "doppler-step",
          "parameter-ramp", "block-size",
-         "limiter", "obstruction", "room-send", "channels", "surround", "lfe", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch",
+         "limiter", "obstruction", "room-send", "room-send-images", "quiet-levels", "quiet-levels-3d", "resampler-xbox", "channels", "surround", "lfe", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch",
          "dry-2d",
          "master-volume", "buffers", "sound-off",
          "hand-off-never-waits", "hand-off-settings"]
@@ -75,7 +75,41 @@ NEGATIVE_CONTROLS = {
                                  "obstruction"),
     # the room send of a voice at the output's rate through the resampler's low pass, as it was: the reverb's
     # frames fold its missing 23 to 24 kHz onto the reverb's low end (the cave's 4 dB under the Xbox's below 500 Hz)
-    "room-send-low-passed": (("if (step == 1.0 && !ramp_step && stream->phase == 0.0)", "if (0)"), "room-send"),
+    "room-send-low-passed": (("float mono = send_frame(stream);",
+                              "float mono = stream->channels == 1 ? sample_left : 0.5f * (sample_left + sample_right);"),
+                             "room-send"),
+    # the room send of a voice at another rate through the mixer's resampler, as it was (a 44.1 kHz click's reverb
+    # 3.6 dB under the Xbox's below 1 kHz, 6 dB pitched up 1.5 times); through the Xbox's four frames each side, not
+    # three; its phases not blended
+    "room-send-images-mixer": (("float mono = send_frame(stream);",
+                                "float mono = stream->channels == 1 ? sample_left : 0.5f * (sample_left + sample_right);"),
+                               "room-send-images"),
+    "room-send-images-wider": (("#define SEND_ZERO_CROSSINGS 3", "#define SEND_ZERO_CROSSINGS 4"), "room-send-images"),
+    "room-send-images-not-blended": (("send_deltas[phase][tap] = send_phases[phase + 1][tap] - send_phases[phase][tap];",
+                                      "send_deltas[phase][tap] = 0.0f;"), "room-send-images"),
+    # the Xbox's quietest levels: none (every level as it is, as it was); audio.volume in them; the HRTF's or the
+    # room send's left out
+    "quiet-levels-exact": (("if (size >= VOICE_LEVEL_KNEE)", "if (size >= 0.0f)"), "quiet-levels"),
+    "quiet-levels-volume-in": (("*left = voice_level(*left * stream->volume) * master_volume;",
+                                "*left = voice_level(*left * stream->volume * master_volume);"), "quiet-levels"),
+    "quiet-levels-hrtf": (("hrtf_out->gain *= scale;", "hrtf_out->gain *= stream->volume * master_volume;"),
+                          "quiet-levels"),
+    "quiet-levels-room": (("*room *= scale;", "*room *= stream->volume * master_volume;"), "quiet-levels"),
+    # a 3D voice's: each gain's whole level's (as #785 had it: 10 m away silent from -34 dB, not -44), its volume and
+    # rolloff's once over, not twice; its room send louder than its rolloff (the cave's reverb 10 m away 10 dB over
+    # the Xbox's)
+    # audio.resampler "xbox": the direct path through the send's six taps (#785's model), through three frames each
+    # side, not four; the mixer's low pass by default, as it was
+    "direct-six-taps": (("direct_phases[row], direct_deltas[row], blend);\n\t\t\tsample_right",
+                         "send_phases[row], send_deltas[row], blend);\n\t\t\tsample_right"), "resampler-xbox"),
+    "direct-three-each-side": (("#define DIRECT_ZERO_CROSSINGS 4", "#define DIRECT_ZERO_CROSSINGS 3"),
+                               "resampler-xbox"),
+    "default-sinc": (("return setting && !strcmp(setting, \"linear\") ? RESAMPLER_LINEAR : RESAMPLER_XBOX;",
+                      "return setting && !strcmp(setting, \"linear\") ? RESAMPLER_LINEAR : RESAMPLER_SINC;"),
+                     "resampler-xbox"),
+    "quiet-levels-3d-whole": (("\tif (level_3d < 0.0f)\n", "\tif (1)\n"), "quiet-levels-3d"),
+    "quiet-levels-3d-once": (("#define VOICE_LEVEL_3D 2.0f", "#define VOICE_LEVEL_3D 1.0f"), "quiet-levels-3d"),
+    "room-past-rolloff": (("if (*room > distance_gain)", "if (0)"), "quiet-levels-3d"),
     # audio.channels "auto" stereo whatever the device (as every build was before the host said its channels)
     "auto-always-stereo": (('!strcmp(setting, "auto") && device_channels >= 6', '!strcmp(setting, "auto") && 0'),
                            "channels"),
@@ -144,7 +178,7 @@ NEGATIVE_CONTROLS = {
                  "\t*hrtf_on = FALSE;\n\tif (stream->channels == 1 || (stream->has_3d && stream->mode != DS3DMODE_DISABLE))"),
                 "dry-2d"),
     # the HRTF's gain without the master volume and the voice's own (every 3D sound at full volume on headphones)
-    "hrtf-no-volume": (("\tif (*hrtf_on)\n\t\thrtf_out->gain *= stream->volume * master_volume;\n", ""), "master-volume"),
+    "hrtf-no-volume": (("\t\tif (*hrtf_on)\n\t\t\thrtf_out->gain *= scale;\n", ""), "master-volume"),
     # the hand-off: the device's mix waiting for the game's thread to take its side over, or to say what it
     # finished; a setting left on the game's side
     "hand-off-waits": (("else if (pthread_mutex_trylock(&voices_lock))\n\t{\n\t\thand_offs_skipped++;",

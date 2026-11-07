@@ -248,6 +248,15 @@ explains how to add a scenario: the real engine, with no retail assets.
 
 Running the game without a person at it:
 
+- `python tools/capture.py --scene <scene> --out <folder>` takes PNG
+  pictures of a hidden, muted run in a named situation (`--list`: spawn,
+  the HUD, the pause menu, the scoreboard, the sniper's zooms, a Warthog's
+  seats, split screen, `campaign:<level>`, `camera:<x y z yaw pitch>`), with
+  `--set`, `--crop`, `--frames`, and `--compare <build>` for a before | after.
+  On Linux it runs offscreen, or with `--xvfb` on an Xvfb display of its
+  own; `--remote <host>` runs it on a Linux box over ssh (its clone,
+  `--remote-tree`, built there; its maps, `--remote-data`) and brings the
+  PNG files back.
 - `debug.network_test` (`HALO_NETWORK_TEST=host:<map>` or `join`) hosts or
   joins a game without the menus and logs each player's state every second;
   several copies play on one machine on different loopback addresses
