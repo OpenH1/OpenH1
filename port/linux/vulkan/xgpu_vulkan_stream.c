@@ -3173,6 +3173,14 @@ static void stream_frame_end(void *context)
 	}
 	stream.back_buffer = 0;
 	xgpu_vulkan_textures_frame_end();
+	/* (the GPU's time so far, for the guest: a report's) */
+	{
+		int measured;
+		uint64_t gpu_nanoseconds = xgpu_vulkan_gpu_nanoseconds(&measured);
+
+		if (measured)
+			host_render_stream_gpu_time(gpu_nanoseconds);
+	}
 	if (stream.statistics)
 	{
 		static uint32_t frames;

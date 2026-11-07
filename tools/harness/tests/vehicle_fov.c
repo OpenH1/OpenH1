@@ -371,6 +371,36 @@ int main(int argc, char **argv)
 		CHECK(foot_scale == 1.f && render_fov_reticle_size(0) == 1.f, "stock: size %f",
 			render_fov_reticle_size(0));
 	}
+	CASE("unzooming")
+	{
+		/* (#747) let go, the zoom level is gone at once but the view eases
+		back out, and the reticle is drawn at its scale (as a scope's piece,
+		as zoomed) until the view is the unzoomed one: it slides back from
+		the stock size to display.fov's as it slid in, not snapping */
+		real foot_scale, angle, last;
+
+		on_foot(110.0, &foot_scale);
+		CHECK(!render_fov_zoom_easing(0), "unzoomed: easing");
+		frame(NONE, _director_perspective_first_person, DEGREES(35.f), &scale);
+		CHECK(render_fov_zoom_easing(0) && scale == 1.f, "full zoom: easing %d, scale %f",
+			render_fov_zoom_easing(0), scale);
+		last = scale;
+		for (angle = DEGREES(39.f); angle < DEGREES(69.f); angle += DEGREES(4.f))
+		{
+			frame(NONE, _director_perspective_first_person, angle, &scale);
+			CHECK(render_fov_zoom_easing(0) && scale < last && scale > foot_scale,
+				"easing out at %f: easing %d, scale %f (last %f, unzoomed %f)", angle,
+				render_fov_zoom_easing(0), scale, last, foot_scale);
+			last = scale;
+		}
+		frame(NONE, _director_perspective_first_person, DEGREES(70.f), &scale);
+		CHECK(!render_fov_zoom_easing(0) && SAME(scale, foot_scale) && SAME(render_fov_reticle_size(0), foot_scale),
+			"unzoomed again: easing %d, scale %f", render_fov_zoom_easing(0), scale);
+		/* the stock view never eases its reticle (one size at every zoom) */
+		on_foot(0.0, &foot_scale);
+		frame(NONE, _director_perspective_first_person, DEGREES(50.f), &scale);
+		CHECK(!render_fov_zoom_easing(0), "stock: easing");
+	}
 	CASE("dead")
 	{
 		settings(110.0, "match");

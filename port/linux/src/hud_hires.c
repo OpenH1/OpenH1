@@ -6,7 +6,7 @@ uploaded, and each one's image (xgpu_images.h).
 
 Which bitmap is at an address the game knows (from the loaded map's tags:
 port/linux/game/hud_hires_tags.c). Each texture is decoded from its PNG when
-first drawn and kept: up to 77 of the HUD's, about 232 MB with their mip
+first drawn and kept: up to 84 of the HUD's, about 79 MB with their mip
 levels, though a game draws only some (the scopes' only when zoomed), and
 the titles of the menus shown, about 3 MB each (11 MB for the carnage
 report's, a whole panel), and their button icons, about 0.3 MB each (5.3

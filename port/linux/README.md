@@ -411,25 +411,98 @@ screenshot that moment, and opens a new issue on OpenH1's GitHub
 repository in the browser, its title and body filled in with the report's
 summary, and, on a computer, the `reports/` folder beside it. Say what
 happened at the top of the issue, drag the zip into it, and submit it (a
-GitHub account is needed). In a game nothing opens over it: the report is
-saved at once ("Report saved: its GitHub issue opens when you're back in
-the menus"), and its issue opens when you leave the game (or as the game
-quits). A second press
-within 5 seconds opens nothing more.
+GitHub account is needed). In a game nothing opens over it: F8 takes the
+screenshot and the frame times at once, and opens a line where the chat's
+is, "What happened?", for a note: type it and press Enter, or Escape to
+skip it (while it is open, the keys type, as the chat's line does). The
+note heads the issue. A line still open when the game ends, the map is
+left, a menu opens or a cinematic begins is finished with what was typed.
+REPORT A PROBLEM chosen from the pause menu asks for no note (nor does a
+report asked for behind a menu): it is saved at once. The report is then
+saved ("Report saved: its GitHub issue opens when you're back in the
+menus"), and its issue opens once the main menu is up (not at a game's
+end, nor on the loading screens between a rotation's games or a campaign's
+levels), or as the game quits; at most 4 wait, the oldest let go. A second
+press within 5 seconds opens nothing more.
+
+An issue is public, so what could say who you are is kept out of the zip
+and the issue's body: besides the settings left out (below), each text has
+your home folder written as `~`, invite and party links, IPv4 addresses
+(but 127.x) and IPv6 ones (but ::1), chat lines, the host's notices (which
+name players), the Discord account linked and its link's code, and
+`network.public_address` taken out. A log cut to its end starts at its
+first whole line.
 
 The zip holds:
 
 | File | Contents |
 | --- | --- |
-| `report.md` | The summary, laid out as an issue's body: the build, the platform, the GPU, its API and driver, the processor, the map and the game, how long the game has run, the display's settings, and the frame times of the last 5 minutes (the average, the median, the 1% and 0.1% lows, the frames of 50 ms or more, and the longest frames with when they were). |
+| `report.md` | The summary, laid out as an issue's body: the build, the platform, the GPU, its API and driver, the processor, the map and the game, how long the game has run, where the game was (below); the mods on, in their load order, with their `mod.toml`'s names and versions, the map loaded (stock or Custom Edition, its file's name and size and its cache header's CRC), whether `game.custom_edition` is on and how many maps `maps/` and `custom_maps/` hold (names only, never a folder's path); the display's settings, and the frame times of the last 5 minutes (the average, the median, the 1% and 0.1% lows, the frames of 50 ms or more, and the longest frames with when they were, and what held them back, below). |
 | `log.txt` | This run's log (its last 512 KB), which on Linux and Android is not otherwise in a file. |
 | `halo.log` | The host's log file, where there is one: Windows's beside `halo.exe`, the macOS app's in `~/Library/Logs/OpenH1`. |
+| `host.log` | Where there is no `halo.log` (Linux, Android, the macOS executable run by itself): the renderer's host's last 64 KB of lines (its Vulkan device, validation errors, the swapchain's problems), which otherwise go only to the standard error stream or logcat. |
 | `debug.txt` | The game's own log. |
-| `config.toml` | Every setting. |
+| `settings.txt` | The settings changed from their defaults: never `config.toml` itself, nor the passwords (`server.password` and the web ones), the addresses (`network.address`, `network.public_address`, `network.broadcast`, `network.front`, `server.master_publish_address`, `server.web_bind`), the names and words (`server.name`, `server.motd`, `server.admins`, `debug.friends`, the audio devices'), the keys and links (`debug.update_key`, `debug.update_url`, `debug.party`), nor any file's or folder's path (`paths.*`, every `_file`, `_folder` and `_directory`, the debug logs'). |
 | `screenshot.png` | The frame shown when the report was asked for (none in the VR mode). |
+| `crash.txt` | A crash's report (the next start's, above): what the host wrote at the crash and that run's log, or, if it wrote none, what that run's start recorded. |
+
+A crash ends the game before F8 can be pressed, so the next start asks,
+once, over the main menu: "OpenH1 closed unexpectedly last time. Report
+it?" **Report** saves a report headed by the crash and opens its issue, as
+Report a Problem does; **Skip** (or B) lets that crash go, never asked
+about again. The crash's section of `report.md` gives the build that
+crashed, when it started, the crash's first line (the signal and the
+address), the `reference address` of `debug.txt` that places the game's
+addresses in that build, the crash's lines (the registers and the frames)
+and the last lines of that run's log; `crash.txt` in the zip has them
+whole, with that run's log (its last 512 KB), and the macOS app's adds the
+host's log of that run (`halo.previous.log`). Each run writes
+`reports/.running` as it starts and removes it when it exits; at a crash,
+the host writes `reports/.crash.txt` (the crash's lines, then the log the
+game keeps in memory, with a signal handler's `write` calls alone); a
+fatal error's halt screen writes it too, and is asked about though the game
+is then closed as usual. On a
+computer a run that did not exit is asked about even with no crash
+written (it was killed, or ended by the system); on Android and iOS, which
+end an app in the background without a word, only a crash the host wrote
+is. A run nobody watches (`debug.no_clipboard`, `null_renderer`,
+`test_input`, `fixed_step`, `network_test` or `exit_after`) does not ask: it
+logs what the report would say, and `debug.crash_answer` answers for a
+test.
+
+What held the frames back is read from the times of each frame: the
+frame's own; the GPU's on it (Metal's: the time the GPU was busy, the
+presentation's included; Vulkan's: from the frame's first work on the GPU
+to its last, two timestamps the renderer writes each frame); the
+renderer's thread's, playing the frame's commands (the backend's calls
+included); and the game's waits for the renderer and the display (room in
+the command stream, a frame on the GPU finished, vsync's pacing and
+`display.max_fps`'s), and of those the pacing's. The summary gives the
+GPU's time a frame (its average and 99th percentile), how much of the
+time the GPU, the game (its thread: a frame's time less its waits) and
+the renderer's thread were busy, how much the game waited for vsync or
+the frame cap, and a verdict: **limited by vsync or the frame cap** if
+the game waited for them for 20% of the time or more and nothing was busy
+for 95% of it; else the busiest of the three, **GPU-bound**, **CPU-bound
+(the game)** or **CPU-bound (the renderer's thread)**.
+With fewer than 30 frames measured (the VR mode's renderer measures none)
+it says the GPU's time was not measured.
+
+Asked for in a game, `report.md` says where the game was, in its
+"Where" section: the level and its difficulty or gametype, the game's time
+and structure BSP, the first local player's place and aim (on foot, in a
+vehicle, or dead), and in a network game whether it was hosted or joined,
+OpenH1's rate or Legacy, the players' count, the round trip (a client's to
+the host, the host's slowest client's), whether the host has gone silent,
+and (the host's) the other machines' builds. No one's name or address is
+in it. It ends with the developer console's lines that look from the
+camera's place: `game_difficulty_set` (a campaign), `map_name`,
+`switch_bsp` and `debug_camera_set` (`debug_camera_set off` gives the
+camera back).
 
 Keeping the frame times costs a clock reading a frame; keeping the log, a
-copy of each line.
+copy of each line. The zip is written on a thread of its own, so that the
+game does not stall for it.
 
 ## Controls
 
@@ -1134,8 +1207,8 @@ the setting for one start of the game. It has priority over the file.
 | `display.viewmodel_shield` | `false` | `HALO_VIEWMODEL_SHIELD` | `true`: the energy shield's flare is drawn on the first-person arms too, as on the body, with the unit's own shield shader, kept closer to the arms than to the body. The stock game draws it on the body only. The flare is the shield's hits: it shows as the shield takes damage and fades over the next second or two (the unit's recent shield damage), so a full shield that nothing hits shows none, on the arms as on the body. An overshield stays lit on the arms with `display.overshield_effect` (OVERSHIELD, on the same screen). |
 | `display.first_person_legs` | `false` | `HALO_FIRST_PERSON_LEGS` | `true`: your own body is drawn in first person, but its head and arms, so you see your legs when you look down, moving as the body's animation moves them, its feet where they stand. Refer to "Field of view". |
 | `display.shield_color` | `default` | `HALO_SHIELD_COLOR` | Your energy shield's flare as this machine draws it: `default` (the shield's own) or a multiplayer armor color (`white`, `black`, `red`, `blue`, `gray`, `yellow`, `green`, `pink`, `purple`, `cyan`, `cobalt`, `orange`, `teal`, `sage`, `brown`, `tan`, `maroon`, `salmon`), whatever the armor's, on the body and, with `display.viewmodel_shield`, on the first-person arms. The shield's own shader is drawn with its two colors replaced at their brightness; the flare is added to what is behind it, so `black` is drawn a faint grey. Only this machine sees it. |
-| `display.high_res_hud` | `true` | `HALO_HIGH_RES_HUD` | `true`: the HUD (meters, counters, panels and their outlines, the motion sensor, reticles, waypoints, scopes) is drawn from the high-res assets in `port/assets/hud`, 8x the size of the maps' bitmaps; the message icons' pictures of the weapons and the skull from Aerocatia's and Jessie's art (`port/assets/hud/NOTICE.md`); the reticle's warnings ("Reload", "Battery Depleted") set in Overpass. Selected labels and messaging sheets (their text) are upscaled from the maps' own pixels without changing their layout. `false`: the maps' own bitmaps. |
-| `display.hud_button_style` | `classic` | `HALO_HUD_BUTTON_STYLE` | Gameplay controller icons while High-Res HUD is on: `classic` (plain Xbox faces), `gems` (shaded Xbox faces), or `menu_gems` (Dark Gems). |
+| `display.high_res_hud` | `true` | `HALO_HIGH_RES_HUD` | `true`: the HUD (meters, counters, panels and their outlines, reticles, waypoints, scopes, the message icons and their pictures of the weapons, the reticle's warnings, the multiplayer icons) is drawn from the high-res assets in `port/assets/hud`, 4x the size of the maps' bitmaps: Aerocatia's and Jessie's art from Halo PC Restored (`port/assets/hud/NOTICE.md`); the motion sensor and the health meter's base, which it has no larger, from redraws at 8x. Another language's text (the message icons' words, the warnings, the seat plates) is upscaled from its maps' own pixels without changing their layout. `false`: the maps' own bitmaps. |
+| `display.hud_button_style` | `classic` | `HALO_HUD_BUTTON_STYLE` | Gameplay controller icons while High-Res HUD is on: `classic` (the Xbox's flat faces, their letters cut out: Aerocatia's and Jessie's stencils from Halo PC Restored), `gems` (shaded Xbox faces), or `menu_gems` (Dark Gems). |
 | `display.menu_pictures` | `true` | `HALO_MENU_PICTURES` | `true`: the menus' small pictures of the missions and the multiplayer maps (ui.map's 140x114 `sp_levels` and `mp_map_grafix`) are drawn again, sharp, from the player's own maps, once, as the main menu first shows ("Preparing menu pictures", about a second each), and kept in the data root's `menu_pictures/` ("Menu pictures"). `false`: the originals. |
 | `display.high_res_text` | `true` | `HALO_HIGH_RES_TEXT` | `true`: the menus', HUD's and console's text is drawn with the fonts in `port/assets/fonts` (Cyborg Interface Gothic by fizzy, in place of the maps' Interstate, Overpass for the few characters it lacks; Hack, a monospaced font, in place of the console's bitmap font) at the resolution the game draws at, laid out where the game puts it, each run of text with the font's own spacing; the menus' titles are drawn from the high-res pictures in `port/assets/titles`, and the controller button icons from those in `port/assets/buttons`. `false`: the maps' bitmap fonts, titles and button icons. |
 | `display.shadow_resolution` | `display.graphics`'s | `HALO_SHADOW_RESOLUTION` | The size of the maps that the shadows of the objects are drawn in, in pixels each way: `128`, `256`, `512` or `1024` (other values go down to one of these). The game draws the shadow of each object into a map of 128x128 pixels, blurs it and projects it onto the ground. On a large screen, the edges of these shadows show steps that move when the object moves. A larger map makes the edges smooth; the blur is made wider to match, so the shadows are as soft as on the Xbox. Each doubling adds two passes of the blur, which up to `512` are drawn once a frame for all the objects (the shadow atlas: 2048x2048 at `512`, two of them, and nine maps, 41 MB of the GPU's memory; 10 MB at `256`). `128`: as on the Xbox. Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
@@ -1369,6 +1442,7 @@ the setting for one start of the game. It has priority over the file.
 | `streamer.insults` | `"off"` | `HALO_STREAMER_INSULTS` | With `streamer.enabled`, the insults that are not slurs hidden: `"off"`, `"severe"`, `"strong"` or `"mild"`. CENSOR INSULTS in Settings > Network Setup > Streamer Mode. |
 | `crash_reports.upload` | `"ask"` | `HALO_CRASH_REPORTS` | Windows only. `"yes"`: the game sends a report of each crash to the developers. `"no"`: the game sends no reports. `"ask"`: the game asks at the next crash and writes the answer here. Refer to "Crash reports" in [port/windows/README.md](../windows/README.md#crash-reports). |
 | `debug.first_start_input` | `""` | `HALO_FIRST_START_INPUT` | The buttons an automated test presses on the first start's screen (no game data), one each half second: `up`, `down`, `a` and `b`, separated by commas. Empty: the player's. |
+| `debug.crash_answer` | `""` | `HALO_CRASH_ANSWER` | The answer to the crash question (the last run closed unexpectedly; refer to "Reports"), for automatic tests: `yes` saves its report and opens (in a run nobody watches, logs) its issue, `no` lets it go, `ask` asks even in a run nobody watches (for `debug.test_input`'s buttons to answer). Empty: the game asks; a run nobody watches only logs what the report would say. |
 | `debug.update_answer` | `""` | `HALO_UPDATE_ANSWER` | The answer to the update question, for automatic tests: `yes`, `no` or `never`. Empty: the game asks. |
 | `debug.update_from` | `""` | `HALO_UPDATE_FROM` | A release's zip file to update to, for tests of updates: the game offers it as a new version without asking GitHub, also when the build has no build number, but not in the version that the update starts. Empty: the game asks GitHub. |
 | `debug.update_url` | `""` | `HALO_UPDATE_URL` | A test's release server (`http://127.0.0.1:<port>`), asked in GitHub's place for the latest release and its files, at the paths GitHub has them under, by a dedicated server's `server.auto_update`, also when the build has no build number (`tools/test_dedicated_server.py`). Empty: GitHub. |
@@ -6464,7 +6538,7 @@ does; making the eye images from the four layers cost 0.2 ms more there.
 | --- | --- |
 | Game code | All 466 C files of the game. The changes are in "Game source changes". |
 | Graphics | Direct3D 8 on Vulkan 1.3, in the host, with SDL3's window. A front end (`src/d3d8_device.c`) keeps the Direct3D state and turns each draw into a description that any graphics API can draw (`src/xgpu_backend.h`: the pipeline's key, the textures and targets it binds, the draw's ranges, all plain data); the Vulkan backend (`vulkan/`) draws them in the host, building the pipeline for a key once and keeping it (on macOS and iOS the Metal backend). The port translates the NV2A vertex shaders and register combiners into a description of their operations (`src/xgpu_shader.h`), which `src/xgpu_spirv.c` writes as SPIR-V (and `src/xgpu_msl.c` as MSL, for Metal). It decodes all the Xbox texture formats. The vertex and index buffers come from a copy of the Xbox memory on the GPU. |
-| High-res HUD | The HUD is drawn from high-res assets: redraws at 8x the size of the maps' bitmaps (4x for the largest), in `port/assets/hud`. They cover the meters, counters, panels and their outlines, the motion sensor, reticles, waypoints and scopes, but no bitmap with English text. `tools/hud_assets.py` makes them from the SVG redraws (the weapons' reticles from those of the PC HUD sheet that match the Xbox's exactly, the sniper rifle's 2x and 10x set in Overpass), and the build embeds them in the executable. When the game uploads one of those bitmaps, `src/hud_hires.c` gives the high-res texture in its place, if the bitmap's pixels are those of the English maps: another language's maps keep their own. The message icons' pictures of the weapons and the skull (the prompts' "Hold to swap for" a weapon) are Aerocatia's and Jessie's art from Halo PC Restored (`port/assets/hud/NOTICE.md`), cut and placed by `tools/hud_assets.py` (pictures) at the art's 4x: the game draws those sprites alone from it, each checked on its own cell's texels, so that every language's maps draw them, beside the sheets' own text. The warnings beside the reticle ("Reload", "Low Ammo", "Low Battery", "Battery Depleted" and the others) are set in Overpass by `tools/hud_assets.py` (warnings), each line fitted to the map's lettering, and drawn the same way, sprite by sprite: another language's maps keep their own lettering, upscaled. The game sizes and places the HUD from its tags as before. `display.high_res_hud = false` turns this off. |
+| High-res HUD | The HUD is drawn from high-res assets in `port/assets/hud`: Aerocatia's and Jessie's high-res HUD art from Halo PC Restored r220 (`port/assets/hud/NOTICE.md`), at its own 4x the size of the maps' bitmaps, cut and placed by `tools/hud_assets.py` (layout) where the Xbox maps' sheets have each sprite, each Xbox sprite from the restored sprite whose shape matches it best, aligned by its content (the meters from the release's sheets in the Xbox channel order). Where it has nothing larger than the map's bitmap (the motion sensor's blips and sweeper, the health meter's base) the texture is drawn from an SVG redraw at 8x; the sniper rifle's zoom labels (2x, 10x: the restored ones say 8x) are set in Overpass. The build embeds them in the executable. When the game uploads one of those bitmaps, `src/hud_hires.c` gives the high-res texture in its place, if the bitmap's pixels are those of the English maps: another language's maps keep their own, upscaled. The sheets with text (the message icons, the reticle's warnings) are drawn sprite by sprite, each checked on its own cell's texels, so that every language's maps draw the pictures from the art beside their own lettering. The classic style's controller buttons (`display.hud_button_style`) are the art's button stencils in the buttons' colours, their letters cut out as the Xbox's are. The game sizes and places the HUD from its tags as before. `display.high_res_hud = false` turns this off. |
 | High-res text | The menus' and HUD's text is drawn with Cyborg Interface Gothic, by fizzy (`port/assets/fonts`, SIL Open Font License; a character it lacks with Overpass, under the same licence), in place of the maps' bitmap fonts, which are Interstate. `src/text_hires.c` rasterizes each glyph with stb_truetype (`port/third_party/stb`) at the resolution the game draws at, into an atlas that a placeholder bitmap of the game stands for, on a thread of its own: each map's fonts' ASCII as the map's first text is drawn (before the menus and the HUD draw with them), any other character as it is first drawn; a string is drawn from its font tag's bitmaps until all its glyphs are in the atlas, a frame or two. The console's text (and the debug text, in the same font tag) is drawn with Hack Bold (MIT and Bitstream Vera licenses), a monospaced font, in place of the maps' small bitmap font. The game lays the text out from its font tags as before: each font is as tall as its tag's capitals, and narrowed where the tag's letters are narrower than the Xbox maps' (the fonts of a Custom Edition `loc.map`), so that its letters do not run into each other. The tags' widths are whole units of the 480 lines, not the font's, so each run of text (a line up to a tab, an icon or a change of style) is set with the font's own advances (and its kerning, where it has any: Cyborg Interface Gothic has none), its letters all as much closer or further apart as makes the run's ink as wide as the tag's, on which it is laid (`source/rasterizer/rasterizer_text.c`, `hires_text_glyph_offset`): the font's spacing, evenly, and the text where the game puts it (issue 744). `tools/text_spacing.py` measures every string of the menus and the maps against both (`tools/test_text_spacing.py`, with the maps). The prompts' A, B, X and Y buttons ("Hold X to swap for") are drawn where the Xbox draws its sprites of them, the text going on past them as it does (issue 754). The menus' titles (the screens' headers and the main menu's items) are pictures of text in the maps, so they are drawn as the high-res HUD is: `tools/title_assets.py` sets each one again in OpenCE, Roger White's public-domain Newtown respaced to match the maps' commercial title typeface (`tools/title_font.py`), at 4x the bitmap's size over its own plate or glow, each letter placed where the map's letter is, in `port/assets/titles`. The postgame carnage report's title is set over a hand-made SVG redraw of its panel (`port/assets/titles/svg`) instead. The A, B, X and Y button icons beside the menus' key labels and in their text ("Press A to Join") are drawn from hand-made SVG redraws at 8x the size of the maps' bitmaps (`port/assets/buttons`, made by `tools/button_assets.py`), in the same sizes and places. `display.high_res_text = false` turns it off. |
 | Dynamic lights | `display.dynamic_lights = "enhanced"` (`src/d3d8_device.c`, `game/dynamic_lights.c`; Vulkan's `src/xgpu_spirv.c`, `vulkan/xgpu_vulkan_stream.c`): the frame's lights are a uniform block, and a 32 x 32 x 16 grid about the camera, its cells growing with the distance (out to 128 world units each way), a 128-bit mask of the lights that reach each cell (an integer 3D texture), and past the cells a mask for each of the structure's clusters of the lights that reach it (those the light's sphere floods into through the portals) and the structure's 3D BSP, from which each pixel finds its cluster, so that a light does not light through a wall (`game/dynamic_lights.c`, `src/xgpu.h`). The structure's lightmap pass and the models' per-pixel lighting (`display.per_pixel_lighting`'s, which this turns on) add the lights of their cell for each pixel, in place of the game's pass over the structure for each light and its two lights for each model. The vertex shaders hand on the world position: a model program's skinned position before it is projected, a structure's vertex as it is. The glows are a camera-facing quad each, projected as the game's programs are, faded against the scene's depth, sampled with the target drawn into without it. With Vulkan the block and the cells are its draw set's, written in the stream's order, and the glows' shaders are the SPIR-V emitter's. Metal draws them alike (`src/xgpu_msl.c`, `port/macos/xgpu_metal_stream.m`): the block and the cells (in buffers: the cells' masks in the texture's order) are copied into the frame's upload ring as the stream sends them and bound for the draws after them, and the glows' functions are the MSL emitter's, the SPIR-V emitter's operation for operation. A view that finds more lights than the 128 lit (512 on the desktop builds and the Mac, 256 on the Steam Frame: `include/halo_port_capacity.h`) lights the 128 that show most, each scored by its brightness times its radius over its distance as it was drawn last frame, those wholly behind the camera last (`game/dynamic_lights.c`, `dynamic_lights_rank`), classic lights too. |
 | Anti-aliasing | Off unless `display.anti_aliasing` is set (`src/d3d8_device.c`). FXAA (written in the port) and SMAA (`port/third_party/smaa`, MIT licensed, at its HIGH preset, compiled as GLSL) are passes over the 3D view of each window, after the lens flares and before the HUD and the menus (`render/render.c`). The Vulkan backend runs them, their GLSL (`tools/vulkan_post_shaders.py`) compiled to SPIR-V when the port is changed (`vulkan/xgpu_vulkan_post.c`), its pipelines made when the setting is chosen and as a map is prepared. The Metal backend runs them too, the same SPIR-V written as MSL by SPIRV-Cross (`port/macos/xgpu_metal_post.c`, `tools/metal_post_shaders.py`). Supersampling draws the render targets the size of the screen at two times the resolution in each direction, and the display blit scales them down. Multisampling draws the back buffer and its depth buffer into multisampled renderbuffers, and with them any target that is drawn together with one of them (a mirror's view, in the secondary target with the back buffer's depth buffer), so that the attachments of a framebuffer are all multisampled or none is. A target's pixels are resolved into its texture before something reads the texture (as a texture, or at the display blit). Visibility tests count samples, divided by the samples of a pixel. An alpha-tested surface (foliage, grates) covers the samples of a pixel in proportion to its alpha past the reference (the sample mask). |

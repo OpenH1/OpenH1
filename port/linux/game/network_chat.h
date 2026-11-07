@@ -44,6 +44,11 @@ void network_chat_say_unchecked(short channel, char const *text);
 /* whether a line is being typed: the keyboard types into it, and drives no
 player (xinput_sdl.c), as with the console */
 boolean network_chat_typing(void);
+/* the line for a report's note (F8: port/linux/src/report.c), in any game:
+opened (FALSE if there is no player to type it), and closed unfinished.
+Enter or Escape gives it to report_note_done. */
+boolean network_chat_report_note_begin(void);
+void network_chat_report_note_cancel(void);
 /* Physical controller owning the on-screen keyboard, or NONE. */
 short network_chat_controller(void);
 /* (hud_unit.c) where the local player's motion sensor was drawn: its left

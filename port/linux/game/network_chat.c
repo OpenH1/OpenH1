@@ -85,6 +85,7 @@ mutes. The host's welcome to OpenCE players is a notice too
 #include "halo_keyboard.h"
 #include "server_director.h"
 #include "network_host_game.h"
+#include "../src/report.h" /* port: port/linux/src/report.c */
 
 #include <stdio.h>
 
@@ -294,6 +295,9 @@ static struct
 	short channel, controller;
 	long player;
 	boolean physical;
+	/* a report's note (port/linux/src/report.c): in any game, network or
+	not, sent to the report, not the players */
+	boolean report;
 	char text[CHAT_TEXT_SIZE];
 } chat_input;
 
@@ -1793,6 +1797,9 @@ static void chat_input_end(
 	void)
 {
 	chat_input.active = FALSE;
+	/* (a report's note's line is shown whatever display.text_chat says:
+	the next lines, the chat's, are not) */
+	chat_input.report = FALSE;
 	chat_keyboard.open = FALSE;
 	chat_keyboard.opening_buttons = 0;
 	chat_keyboard.drawn = FALSE;
@@ -1915,6 +1922,87 @@ static void chat_keyboard_update(
 	}
 }
 
+/* ---------- a report's note (F8: port/linux/src/report.c) */
+
+static boolean chat_hidden(void);
+
+boolean network_chat_report_note_begin(
+	void)
+{
+	/* (none behind a menu or a cinematic, where it would not be seen and
+	its keys would be the menu's) */
+	if (local_player_get_next(NONE) == NONE || chat_hidden())
+		return FALSE;
+	chat_input_end();
+	chat_input_begin(_chat_channel_everyone, NONE, FALSE);
+	chat_input.report = chat_input.active;
+	return chat_input.report;
+}
+
+void network_chat_report_note_cancel(
+	void)
+{
+	if (chat_input.active && chat_input.report)
+		chat_input_end();
+}
+
+/* the note's keys, as the chat line's: Enter finishes the report with it,
+Escape without one; left (the game over, the map left, a menu opened or a
+cinematic begun over it), with what was typed. Each frame, before the
+chat's own (which needs a network game) */
+static void chat_report_update(
+	void)
+{
+	struct key_stroke key;
+
+	if (!report_game_playing() || chat_hidden())
+	{
+		chat_input_end();
+		report_note_done(chat_input.text);
+		return;
+	}
+	if (console_is_active())
+		return;
+	while (chat_input.active && input_get_key(&key))
+	{
+		switch (key.key_code)
+		{
+		case _key_escape:
+			chat_input_end();
+			report_note_done(NULL);
+			break;
+		case _key_return:
+		case _keypad_enter:
+			chat_input_end();
+			report_note_done(chat_input.text);
+			break;
+		case _key_backspace:
+			chat_input_delete();
+			break;
+		case _key_backquote:
+		case _key_tab:
+			break;
+		default:
+			if (TEST_FLAG(key.modifier_flags, CHAT_KEY_MODIFIER_CONTROL_BIT))
+			{
+				char clipboard[CHAT_TEXT_SIZE];
+
+				if (key.key_code == _key_v && platform_clipboard_get(clipboard, sizeof(clipboard)))
+					chat_text_append(chat_input.text, clipboard);
+			}
+			else if (key.ascii_code >= ' ' && key.ascii_code <= '~')
+			{
+				char typed[2];
+
+				typed[0] = key.ascii_code;
+				typed[1] = 0;
+				chat_text_append(chat_input.text, typed);
+			}
+			break;
+		}
+	}
+}
+
 unsigned char network_chat_keyboard_open(
 	void)
 {
@@ -2030,6 +2118,13 @@ void network_chat_update(
 			network_vote_choose(TEST_FLAG(vote_pad & ~vote_pad_held, HALO_CHAT_PAD_LEFT));
 		vote_keys_held = vote_keys;
 		vote_pad_held = vote_pad;
+	}
+	/* (a report's note: its own keys, in any game) */
+	if (chat_input.active && chat_input.report)
+	{
+		chat_actions_held = 0;
+		chat_report_update();
+		return;
 	}
 	if (!chat_network_game() || !game_in_progress() || chat_speaker(TRUE) == NONE || !chat_shown() || chat_hidden() ||
 		(chat_input.active && chat_input.physical && !controller_remap_connected(chat_input.controller)))
@@ -2613,8 +2708,9 @@ void network_chat_draw(
 	short rows;
 	short index;
 
-	if (!chat_network_game() || !chat_shown() || chat_hidden() || font_index == NONE || local_player_index < 0 ||
-		local_player_index >= MAXIMUM_LOCAL_PLAYERS || (!chat_line_count && !typing))
+	/* (a report's note is drawn in any game, the chat shown or not) */
+	if ((!chat_input.report && (!chat_network_game() || !chat_shown())) || chat_hidden() || font_index == NONE ||
+		local_player_index < 0 || local_player_index >= MAXIMUM_LOCAL_PLAYERS || (!chat_line_count && !typing))
 	{
 		return;
 	}
@@ -2654,7 +2750,8 @@ void network_chat_draw(
 		real_argb_color color;
 		struct chat_layout layout;
 		wchar_t text[CHAT_TEXT_SIZE + 2];
-		wchar_t const *prompt = chat_input.channel == _chat_channel_team ? L"Say to team:" :
+		wchar_t const *prompt = chat_input.report ? L"What happened?" :
+			chat_input.channel == _chat_channel_team ? L"Say to team:" :
 			chat_input.channel == _chat_channel_vehicle ? L"Say to vehicle:" : L"Say:";
 		short length;
 		short start = 0;

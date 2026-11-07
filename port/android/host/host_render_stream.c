@@ -1074,6 +1074,10 @@ static struct
 	uint32_t frames_unfenced;
 	uint32_t retired_frames;
 	uint64_t frame_started;
+	/* the render thread's time playing records, and the guest's waits for
+	the display's pacing (the ring's render_microseconds and
+	paced_microseconds: a report's) */
+	uint64_t render_nanoseconds, paced_nanoseconds;
 	/* (frame_pacing.h) the backend paces the game by its display; the
 	frames the display has taken (shown, or dropped); its last latch and its
 	refreshes' period (nanoseconds of the game's clock); the frames' costs,
@@ -1280,10 +1284,12 @@ static void *render_thread(void *argument)
 		{
 			uint32_t from = render.decoded, to = render.committed, reached;
 			int frame_ended;
+			uint64_t played;
 
 			pthread_mutex_unlock(&render.lock);
+			played = monotonic_nanoseconds();
 			if (!render.frame_started)
-				render.frame_started = monotonic_nanoseconds();
+				render.frame_started = played;
 			atomic_store(&render_playing, 1);
 			reached = host_render_decode(render.decoder, from, to);
 			atomic_store(&render_playing, 0);
@@ -1293,6 +1299,9 @@ static void *render_thread(void *argument)
 			autorelease_pop(pool);
 			pool = autorelease_push();
 #endif
+			render.render_nanoseconds += monotonic_nanoseconds() - played;
+			__atomic_store_n(&render.ring->render_microseconds, (uint32_t)(render.render_nanoseconds / 1000u),
+				__ATOMIC_RELEASE);
 			frame_ended = render.decoder->frame_ended;
 			if (frame_ended)
 			{
@@ -1771,7 +1780,17 @@ void host_render_stream_submit(uint32_t flags)
 			break;
 	}
 	if (flags & XGPU_STREAM_SUBMIT_FRAME)
+	{
+		/* (the time paced counted apart as well: a report's) */
+		uint64_t paced = render.display_paced ? monotonic_nanoseconds() : 0;
+
 		display_wait(&start);
+		if (paced)
+		{
+			render.paced_nanoseconds += monotonic_nanoseconds() - paced;
+			__atomic_store_n(&ring->paced_microseconds, (uint32_t)(render.paced_nanoseconds / 1000u), __ATOMIC_RELEASE);
+		}
+	}
 	guest_waited(start);
 	pthread_mutex_unlock(&render.lock);
 }
@@ -1822,6 +1841,16 @@ void host_render_stream_call(void (*function)(void *argument), void *argument)
 const struct xgpu_stream_ring *host_render_stream_ring(void)
 {
 	return render.running ? render.ring : NULL;
+}
+
+void host_render_stream_gpu_time(uint64_t nanoseconds)
+{
+	struct xgpu_stream_ring *ring = render.ring;
+
+	if (!ring)
+		return;
+	__atomic_store_n(&ring->gpu_microseconds, (uint32_t)(nanoseconds / 1000u), __ATOMIC_RELEASE);
+	__atomic_store_n(&ring->gpu_measured, 1u, __ATOMIC_RELEASE);
 }
 
 void host_render_stream_exiting(void)

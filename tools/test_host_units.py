@@ -55,6 +55,31 @@ def test_host_memory(tmp_path):
               HOST / "host_watch_hash.c"])
 
 
+def host_log_ring(broken=False):
+    """log_keep and host_log_recent, as host_common.c has them"""
+    text = (HOST / "host_common.c").read_text()
+    start = text.index("/* the host's last lines, each ended by a newline")
+    end = text.index("void host_log_set_sink(")
+    code = text[start:end]
+    if broken:
+        # the negative control: the first line kept may be part of one
+        code = code.replace("if (start && !(start > oldest", "if (0 && !(start > oldest")
+    return code
+
+
+@pytest.mark.parametrize("broken", [False, True])
+def test_host_log_ring(tmp_path, broken):
+    """the host's last lines, kept for Save Report's host.log (host_common.c):
+    whole lines, the newest kept, a small buffer's; the negative control
+    takes part of a line first"""
+    (tmp_path / "host_log_ring.inc").write_text(host_log_ring(broken))
+    if not broken:
+        run_test(tmp_path, "host_log_ring_test", [TESTS / "host_log_ring_test.c"], [tmp_path])
+        return
+    with pytest.raises(AssertionError):
+        run_test(tmp_path, "host_log_ring_test", [TESTS / "host_log_ring_test.c"], [tmp_path])
+
+
 def test_frame_pacing_divisor(tmp_path):
     """battery saver's frames a second at each display's refresh rate
     (port/linux/src/frame_pacing.h, frame_pacing_divisor)"""

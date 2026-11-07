@@ -376,6 +376,15 @@ boolean render_fov_zoomed_reticle_with_scope(short local_player_index)
 		scaled_scopes[local_player_index]);
 }
 
+boolean render_fov_zoom_easing(short local_player_index)
+{
+	/* (the zoom's view narrower than the unzoomed one: the transition in
+	or out, or the full zoom; a hair over 1 is the unzoomed view's own
+	arctangent and tangent) */
+	return local_player_index >= 0 && local_player_index < MAXIMUM_LOCAL_PLAYERS &&
+		!scaled_scopes[local_player_index] && reticle_widenings[local_player_index] > 1.0001f;
+}
+
 real render_fov_reticle_size(short local_player_index)
 {
 	/* (display.panini's magnification of the middle too, the unzoomed

@@ -5960,7 +5960,8 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 			char message[160];
 
 			report_write(back_buffer->target.number, TRUE, message, sizeof(message));
-			console_printf(FALSE, "%s", message);
+			if (message[0])
+				console_printf(FALSE, "%s", message);
 		}
 		/* (a menu picture's frame: kept, and not shown, the preparing
 		screen staying: port/linux/game/menu_pictures_render.c) */
@@ -5976,7 +5977,8 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 		char message[160];
 
 		report_write(0, TRUE, message, sizeof(message));
-		console_printf(FALSE, "%s", message);
+		if (message[0])
+			console_printf(FALSE, "%s", message);
 	}
 	device.frame++;
 	stats.presents++;

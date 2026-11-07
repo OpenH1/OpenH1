@@ -1133,6 +1133,52 @@ int port_mods_list(char *text, unsigned long size)
 	return count;
 }
 
+int port_mods_report(char *text, unsigned long size, const char *map_name, int most)
+{
+	long position;
+	int count = 0, shown = 0;
+	size_t length = 0;
+
+	if (size)
+		text[0] = 0;
+	for (position = 0; position < port_mods.mod_count; position++)
+	{
+		long index = port_mods.ordered[position];
+		const struct port_mod *mod;
+		int written;
+
+		if (index < 0 || index >= port_mods.mod_count || port_mods.mods[index].order < 0)
+			continue;
+		mod = &port_mods.mods[index];
+		count++;
+		if (shown >= most || !size)
+			continue;
+		written = snprintf(text + length, size - length, "  - %s%s%s%s\n", mod->name, mod->version[0] ? " " : "",
+			mod->version, !map_name || mod_for_map(mod, map_name) ? "" : " (not for this map)");
+		/* (a mod.toml's name or version is one line of report.md) */
+		if (written > 0 && (size_t)written < size - length)
+		{
+			char *at;
+
+			for (at = text + length; at < text + length + written - 1; at++)
+			{
+				if ((unsigned char)*at < 0x20 || *at == 0x7F)
+					*at = ' ';
+			}
+		}
+		/* (a line that does not fit is left out whole) */
+		if (written < 0 || (size_t)written >= size - length)
+		{
+			text[length] = 0;
+			shown = most;
+			continue;
+		}
+		length += (size_t)written;
+		shown++;
+	}
+	return count;
+}
+
 unsigned long port_mods_scans(void)
 {
 	return port_mods.scans;

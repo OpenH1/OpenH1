@@ -309,10 +309,11 @@ static const struct config_setting config_settings[] =
 		"Third-person Warthog and Scorpion passengers. Weapon zoom is disabled." },
 	{ "display.high_res_hud", _config_boolean, "true", "HALO_HIGH_RES_HUD", _environment_value, _platform_all,
 		"Draw the HUD (meters, counters, panels, motion sensor, reticles,\n"
-		"waypoints, scopes) from the high-res assets (8x the maps' bitmaps);\n"
+		"waypoints, scopes, message icons) from the high-res assets: Aerocatia's\n"
+		"and Jessie's art from Halo PC Restored, 4x the maps' bitmaps;\n"
 		"false draws the maps' own bitmaps." },
 	{ "display.hud_button_style", _config_string, "\"classic\"", "HALO_HUD_BUTTON_STYLE", _environment_value, _platform_all,
-		"High-res gameplay controller buttons: classic uses plain Xbox faces;\n"
+		"High-res gameplay controller buttons: classic uses the Xbox's stencils;\n"
 		"gems uses shaded Xbox faces; menu_gems uses the menu's button art.\n"
 		"Requires display.high_res_hud." },
 	{ "display.menu_pictures", _config_boolean, "true", "HALO_MENU_PICTURES", _environment_value, _platform_desktop,
@@ -2087,6 +2088,11 @@ static const struct config_setting config_settings[] =
 	{ "debug.update_answer", _config_string, "\"\"", "HALO_UPDATE_ANSWER", _environment_value, _platform_desktop,
 		"The answer to the new version question, for automated tests: \"yes\",\n"
 		"\"no\" or \"never\" (do not ask again, confirmed); empty asks." },
+	{ "debug.crash_answer", _config_string, "\"\"", "HALO_CRASH_ANSWER", _environment_value, _platform_all,
+		"The answer to the crash question (the last run closed unexpectedly),\n"
+		"for automated tests: \"yes\" saves its report, \"no\" lets it go, \"ask\"\n"
+		"asks even in a run nobody watches; empty asks (a run nobody watches only\n"
+		"logs what the report would say)." },
 	{ "debug.first_start_input", _config_string, "\"\"", "HALO_FIRST_START_INPUT", _environment_value, _platform_desktop,
 		"Linux: the buttons an automated test presses on the first start's screen\n"
 		"(no game data), one each half second: \"up\", \"down\", \"a\" and \"b\",\n"

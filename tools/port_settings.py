@@ -40,6 +40,9 @@ TRAINING_ITEM_PLACE = (192, 211)
 TRAINING_CHAPTERS = 8
 # the update question (the Steam Frame's, gamescope's), over the main menu (_update)
 UPDATE = "main_menu/update"
+# the crash question (the last run closed unexpectedly: report.c), over the
+# main menu (_crash)
+CRASH = "main_menu/crash"
 YES_NO = [("YES", "true"), ("NO", "false")]
 ON_OFF = [("ON", "true"), ("OFF", "false")]
 # the multiplayer armor colors, in the profile's order (player_profile.c)
@@ -7103,6 +7106,10 @@ def multiplayer_files() -> dict:
                                             "the style of the PC version's Quit (tools/port_settings.py) -->",
                                             head[2]]
         + _update() + ["</menus>", ""],
+        CRASH.replace("/", ".") + ".xml": [head[0], "<!-- The crash question (the last run closed unexpectedly), in "
+                                           "the style of the PC version's Quit (tools/port_settings.py) -->",
+                                           head[2]]
+        + _crash() + ["</menus>", ""],
     }
 
 
@@ -7388,6 +7395,43 @@ def _update() -> list:
                                                               '<on event="start" back="true"/>'])
     lines += _strings(f"{base}/update_prompt",
                       ["A new version is ready. Update now? The game will close, update and start again."])
+    return lines
+
+
+def _crash() -> list:
+    """the crash question (port/linux/src/report.c: the last run closed
+    unexpectedly, which the next start finds), laid out as the update
+    question is (_update), over the main menu (menu_functions.c's
+    pc_menu_crash_question_open opens it, once for each crash): REPORT
+    ("port crash report": a report of the crash saved and its GitHub issue
+    opened, as REPORT A PROBLEM does) and SKIP ("port crash dismiss": that
+    crash never asked of again); B is SKIP"""
+    base = CRASH
+    dismiss = 'run="port crash dismiss" back="true"'
+    lines = _widget(f"{base}/crash_screen",
+                    [("controller", 1), ("left", DIALOG_LEFT), ("top", DIALOG_TOP), ("width", DIALOG_WIDTH),
+                     ("height", DIALOG_HEIGHT), ("flags", "pass_unhandled_to_focused_child"),
+                     ("bitmap", "bitmaps/alert_bkd")],
+                    [f'<on event="b" {dismiss}/>', f'<on event="back" {dismiss}/>',
+                     f'<child widget="{base}/crash_message"/>',
+                     f'<child widget="{base}/button_bar" x="182" y="293"/>',
+                     f'<child widget="{base}/header_crash" x="182" y="164"/>'])
+    lines += _dialog_message(f"{base}/crash_message", [("string_list", f"{base}/crash_prompt")])
+    lines += _widget(f"{base}/header_crash",
+                     [("type", "text"), ("controller", 1), ("width", 200), ("height", 20), ("text", "CRASH REPORT"),
+                      ("font", "ui\\large_ui"), ("color", "#FF2896FF")], [])
+    lines += _widget(f"{base}/button_bar",
+                     [("type", "column_list"), ("width", 256), ("height", 20),
+                      ("flags", "pass_unhandled_to_focused_child up_down_tabs_items left_right_tabs_items")],
+                     [f'<child widget="{base}/button_report"/>', f'<child widget="{base}/button_skip" x="128"/>'])
+    lines += _text_button(f"{base}/button_report", "REPORT",
+                          ['<on event="a" run="port crash report" back="true"/>',
+                           '<on event="start" run="port crash report" back="true"/>'])
+    lines += _text_button(f"{base}/button_skip", "SKIP", [f'<on event="a" {dismiss}/>',
+                                                          f'<on event="start" {dismiss}/>'])
+    lines += _strings(f"{base}/crash_prompt",
+                      ["OpenH1 closed unexpectedly last time. Report it? A report is saved, and its GitHub issue "
+                       "opens for you to send."])
     return lines
 
 

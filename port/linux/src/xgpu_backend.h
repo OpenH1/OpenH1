@@ -78,6 +78,18 @@ extern struct xgpu_backend_capabilities xgpu_backend_capabilities;
 /* the GPU, its API and driver, as the backend's host names them ("" if
 unknown: a report's, port/linux/src/report.c) */
 const char *xgpu_backend_device(void);
+/* a report's times (report_frame_presented), running counts of
+microseconds modulo 2^32: the GPU's on the frames, as the backend's host
+measures it; the renderer's thread's, playing the frames' records; the
+game's waits for the renderer and the display; and of those waits, the
+display's pacing and display.max_fps's. The function's value: whether the
+GPU's is measured (0: the backend measures none, gpu not written) */
+struct xgpu_backend_frame_times
+{
+	unsigned long gpu, render, waited, paced;
+};
+
+int xgpu_backend_frame_times(struct xgpu_backend_frame_times *times);
 
 /* ---------- the backend's life
 

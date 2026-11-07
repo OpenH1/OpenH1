@@ -38,7 +38,7 @@ port/linux/README.md.
 #include <stdint.h>
 
 #define XGPU_STREAM_MAGIC 0x53504758u /* "XGPS" */
-#define XGPU_STREAM_VERSION 19
+#define XGPU_STREAM_VERSION 20
 #define XGPU_STREAM_LOADING_ART_BYTES (640u * 480u * 4u)
 
 /* ---------- the ring
@@ -116,6 +116,18 @@ struct xgpu_stream_ring
 	that the next frame will (a load zone's switch in it): the host starts
 	that frame so much earlier (display_wait) */
 	uint32_t frame_extra_microseconds;
+	/* the host's, running counts of microseconds modulo 2^32 (read by the
+	guest with acquire loads at each frame presented: a report's,
+	port/linux/src/report.c): the GPU's time on the frames, at each frame's
+	end (host_render_stream_gpu_time: Metal's, the time the GPU was busy;
+	Vulkan's, from each frame's first work to its last), and nonzero once
+	the backend measures it; the render thread's time playing records (the
+	backend's calls included); the guest's waits for the display's pacing
+	(display_wait, a part of wait_nanoseconds) */
+	uint32_t gpu_microseconds;
+	uint32_t gpu_measured;
+	uint32_t render_microseconds;
+	uint32_t paced_microseconds;
 };
 
 enum
@@ -1307,7 +1319,7 @@ struct xgpu_stream_vr_screen_corrections
 
 #define XGPU_STREAM_ASSERT_SIZE(type, size) _Static_assert(sizeof(type) == (size), #type "'s size")
 
-XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_ring, 104);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_ring, 120);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_frame_end, 12);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_capabilities, 116);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_hdr, 24);

@@ -8,7 +8,18 @@ config.toml that the host reads itself.
 
 The log's lines go to the sink the host's main chooses (host_log_set_sink).
 Signal handlers log through it too (host_memory.c, host_debug.c), so a sink
-writes with neither locks nor stdio.
+writes with neither locks nor stdio. The last HOST_LOG_KEPT bytes of them
+are kept as well, for the guest's Save Report (host_log_recent,
+port/linux/src/report.c: host.log), since on Linux and Android they go only
+to the standard error stream or logcat.
+
+The crash record (host_crash_record, the guest's report.c): a file the
+guest names, written at a crash (host_memory_watch.c's report, a fatal error,
+an abort) with what the host logged of it and then the guest's log as
+report.c keeps it in memory, oldest first, so that the next start can offer
+to report it. It is written with open() and write() alone, which a signal
+handler may call; not on Windows, whose crash reports are its own
+(port/windows/host/host_crash_win.c).
 */
 
 #include "host.h"
@@ -18,6 +29,7 @@ writes with neither locks nor stdio.
 
 #include <SDL3/SDL.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,6 +61,89 @@ static void default_sink(int priority, const char *line)
 
 static host_log_sink log_sink = default_sink;
 
+/* the host's last lines, each ended by a newline (a power of 2) */
+#define HOST_LOG_KEPT (64 * 1024)
+/* the spins a line waits for the ring before it is let go (a signal
+handler's line, on a thread that holds it, must not wait for ever) */
+#define HOST_LOG_SPINS 100000
+
+static struct
+{
+	char text[HOST_LOG_KEPT];
+	unsigned long long written;
+	volatile char busy;
+} log_kept;
+
+/* takes the ring with an atomic flag, not a lock: signal handlers log too */
+static int log_kept_take(void)
+{
+	int spins;
+
+	for (spins = 0; spins < HOST_LOG_SPINS; spins++)
+		if (!__atomic_test_and_set(&log_kept.busy, __ATOMIC_ACQUIRE))
+			return 1;
+	return 0;
+}
+
+static void log_kept_give(void)
+{
+	__atomic_clear(&log_kept.busy, __ATOMIC_RELEASE);
+}
+
+static void log_keep(int priority, const char *line)
+{
+	const char *level = priority >= HOST_LOG_FATAL ? "fatal: " : priority >= HOST_LOG_ERROR ? "error: " :
+		priority >= HOST_LOG_WARN ? "warning: " : "";
+	const char *parts[3];
+	int part;
+
+	if (!log_kept_take())
+		return;
+	parts[0] = level;
+	parts[1] = line;
+	parts[2] = "\n";
+	for (part = 0; part < 3; part++)
+	{
+		const char *character;
+
+		for (character = parts[part]; *character; character++)
+			log_kept.text[log_kept.written++ & (HOST_LOG_KEPT - 1)] = *character;
+	}
+	log_kept_give();
+}
+
+uint32_t host_log_recent(char *buffer, uint32_t size)
+{
+	unsigned long long oldest, start, index;
+	uint32_t length = 0;
+
+	if (!buffer || !size)
+		return 0;
+	if (!log_kept_take())
+	{
+		buffer[0] = 0;
+		return 0;
+	}
+	oldest = log_kept.written > HOST_LOG_KEPT ? log_kept.written - HOST_LOG_KEPT : 0;
+	start = oldest;
+	if (log_kept.written - start > size - 1)
+		start = log_kept.written - (size - 1);
+	/* (from the start of a line: the one after the oldest kept, the first
+	of which may be part of one, or after a newline the ring still has) */
+	if (start && !(start > oldest && log_kept.text[(start - 1) & (HOST_LOG_KEPT - 1)] == '\n'))
+	{
+		while (start < log_kept.written && log_kept.text[start & (HOST_LOG_KEPT - 1)] != '\n')
+			start++;
+		if (start < log_kept.written)
+			start++;
+	}
+	for (index = start; index < log_kept.written; index++)
+		buffer[length++] = log_kept.text[index & (HOST_LOG_KEPT - 1)];
+	log_kept_give();
+	buffer[length] = 0;
+	return length;
+}
+
 void host_log_set_sink(host_log_sink sink)
 {
 	log_sink = sink ? sink : default_sink;
@@ -56,6 +151,7 @@ void host_log_set_sink(host_log_sink sink)
 
 void host_log(int priority, const char *text)
 {
+	log_keep(priority, text ? text : "");
 	log_sink(priority, text ? text : "");
 }
 
@@ -67,7 +163,98 @@ void host_logf(int priority, const char *format, ...)
 	va_start(arguments, format);
 	vsnprintf(line, sizeof(line), format, arguments);
 	va_end(arguments);
+	log_keep(priority, line);
 	log_sink(priority, line);
+}
+
+/* ---------- the crash record */
+
+static char crash_record_path[1024];
+static const char *crash_record_log;
+static uint32_t crash_record_log_size;
+static const uint64_t *crash_record_log_written;
+static volatile int crash_record_taken;
+static int crash_record_file = -1;
+
+void host_crash_record(const char *path, const char *log, uint32_t log_size, const uint64_t *log_written)
+{
+	snprintf(crash_record_path, sizeof(crash_record_path), "%s", path ? path : "");
+	crash_record_log = log;
+	crash_record_log_size = log_size;
+	crash_record_log_written = log_written;
+}
+
+#ifndef _WIN32
+static void crash_record_write(const char *text, size_t length)
+{
+	while (length && crash_record_file >= 0)
+	{
+		ssize_t written = write(crash_record_file, text, length);
+
+		if (written <= 0)
+			return;
+		text += written;
+		length -= (size_t)written;
+	}
+}
+#endif
+
+int host_crash_record_begin(const char *reason)
+{
+#ifndef _WIN32
+	/* (the first thread to crash writes it; the others' crashes are left out) */
+	if (!crash_record_path[0] || __atomic_exchange_n(&crash_record_taken, 1, __ATOMIC_ACQ_REL))
+		return 0;
+	crash_record_file = open(crash_record_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (crash_record_file < 0)
+		return 0;
+	host_crash_record_line(reason);
+	return 1;
+#else
+	(void)reason;
+	return 0;
+#endif
+}
+
+void host_crash_record_line(const char *line)
+{
+#ifndef _WIN32
+	if (crash_record_file < 0 || !line)
+		return;
+	crash_record_write(line, strlen(line));
+	crash_record_write("\n", 1);
+#else
+	(void)line;
+#endif
+}
+
+void host_crash_record_end(void)
+{
+#ifndef _WIN32
+	static const char heading[] = "\n--- the log's last lines\n";
+	uint64_t written, kept, first;
+
+	if (crash_record_file < 0)
+		return;
+	if (crash_record_log && crash_record_log_size && crash_record_log_written)
+	{
+		written = *crash_record_log_written;
+		kept = written < crash_record_log_size ? written : crash_record_log_size;
+		first = (written - kept) % crash_record_log_size;
+		crash_record_write(heading, sizeof(heading) - 1);
+		/* (the ring's two parts: from the oldest byte kept to the end, then
+		from the start) */
+		if (first + kept > crash_record_log_size)
+		{
+			crash_record_write(crash_record_log + first, (size_t)(crash_record_log_size - first));
+			crash_record_write(crash_record_log, (size_t)(first + kept - crash_record_log_size));
+		}
+		else
+			crash_record_write(crash_record_log + first, (size_t)kept);
+	}
+	close(crash_record_file);
+	crash_record_file = -1;
+#endif
 }
 
 void host_fatal(const char *format, ...)
@@ -78,7 +265,13 @@ void host_fatal(const char *format, ...)
 	va_start(arguments, format);
 	vsnprintf(message, sizeof(message), format, arguments);
 	va_end(arguments);
+	log_keep(HOST_LOG_FATAL, message);
 	log_sink(HOST_LOG_FATAL, message);
+	if (host_crash_record_begin("fatal error"))
+	{
+		host_crash_record_line(message);
+		host_crash_record_end();
+	}
 	SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Halo", message, NULL);
 	_exit(1);
 }
@@ -86,6 +279,11 @@ void host_fatal(const char *format, ...)
 void host_abort(const char *reason)
 {
 	host_logf(HOST_LOG_FATAL, "guest abort: %s", reason ? reason : "");
+	if (host_crash_record_begin("abort"))
+	{
+		host_crash_record_line(reason);
+		host_crash_record_end();
+	}
 	abort();
 }
 
