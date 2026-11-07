@@ -27,16 +27,32 @@ two runs, and the two builds of --compare, spawn the player in one place.
 The scoreboard and pause menu scenes need a build whose "script:" has back
 and start, and the Warthog's other seats one with
 debug.network_test_vehicle_seat (a build without seats its driver).
+
+--remote <host> takes the pictures on another computer over ssh (a Linux
+box's GPU, from a Mac): this script is sent to it with the other options,
+and runs there in a folder of its own in the remote's /tmp against
+--remote-tree's clone (~/openh1-vulkan-check; its build folders, built
+there) and --remote-data's maps (~/halo-x86-maps/maps). --build and
+--compare are then the remote's paths, relative to that clone. The PNG files
+come back as a tar on ssh's output, into --out, and the remote folder is
+deleted. The commands go to the remote's bash on its input, so that its
+login shell (fish, say) reads none of them.
+
+    python tools/capture.py --remote 5900x.fabric --scene sniper-zoom-10x --xvfb
+    python tools/capture.py --remote 5900x.fabric --scene hud --compare ../master/build/linux_x86_64
 """
 import argparse
+import io
 import os
 import re
+import shlex
 import shutil
 import signal
 import socket
 import struct
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import time
@@ -163,14 +179,17 @@ def parse_setting(text: str):
     return name.strip(), value.strip()
 
 
-def setting_variables(source: Path = ROOT / "port" / "linux" / "src" / "port_config.c") -> dict:
+def setting_variables(tree: Path = ROOT) -> dict:
     """each setting's environment variable, from port_config.c's table"""
+    source = tree / "port" / "linux" / "src" / "port_config.c"
     pattern = re.compile(r'\{\s*"([a-z0-9_]+\.[a-z0-9_.]+)",\s*_config_\w+,\s*"(?:[^"\\]|\\.)*",\s*"(HALO_[A-Z0-9_]+)"')
     return dict(pattern.findall(source.read_text(errors="replace")))
 
 
 def make_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Pictures of the game in a named situation, without a person at it.")
+    # (no abbreviations: --remote passes on the options it does not know by their names)
+    parser = argparse.ArgumentParser(description="Pictures of the game in a named situation, without a person at it.",
+                                     allow_abbrev=False)
     parser.add_argument("--scene", help="the situation (--list lists them)")
     parser.add_argument("--list", action="store_true", help="print the scenes and exit")
     parser.add_argument("--out", type=Path, default=Path("shots"), help="the folder the PNG files go to")
@@ -194,7 +213,20 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=float, default=90.0, help="seconds a run may take")
     parser.add_argument("--keep", action="store_true", help="keep the run's folder (its debug.txt) and say where")
     parser.add_argument("--name", help="the files' name (the scene's)")
+    parser.add_argument("--tree", type=Path, default=ROOT,
+                        help="the source tree whose build folders and settings are used (this script's)")
+    parser.add_argument("--remote", metavar="HOST", help="take the pictures on that host over ssh (Linux)")
+    parser.add_argument("--remote-tree", default="~/openh1-vulkan-check", metavar="PATH",
+                        help="with --remote, the OpenH1 clone there (built)")
+    parser.add_argument("--remote-data", default="~/halo-x86-maps/maps", metavar="PATH",
+                        help="with --remote, the maps folder there")
     return parser
+
+
+# the options --remote does not pass on (each with its value): its own, and --out (the remote's is its folder's)
+REMOTE_OWN = ("--remote", "--remote-tree", "--remote-data", "--out")
+# those whose value is a path on the remote
+REMOTE_PATHS = ("--build", "--compare")
 
 
 def check_arguments(parser, arguments):
@@ -208,7 +240,12 @@ def check_arguments(parser, arguments):
         parser.error(str(error))
     if arguments.frames < 1 or arguments.every < 1:
         parser.error("--frames and --every must be 1 or more")
-    variables = setting_variables()
+    if arguments.remote:
+        if arguments.keep:
+            parser.error("--keep keeps a run's folder on this computer; not with --remote")
+        if arguments.data or arguments.tree != ROOT:
+            parser.error("with --remote, the maps and the clone are --remote-data's and --remote-tree's")
+    variables = setting_variables(arguments.tree)
     for name, _ in arguments.set:
         if name not in variables:
             parser.error(f"no setting {name!r} in port_config.c")
@@ -327,19 +364,19 @@ def side_by_side(left: Picture, right: Picture, gap: int = 8) -> Picture:
 
 # runs
 
-def default_build() -> Path:
+def default_build(tree: Path = ROOT) -> Path:
     if sys.platform == "darwin":
-        return ROOT / "build" / "macos"
+        return tree / "build" / "macos"
     for name in ("linux_x86_64", "linux_arm64"):
-        if (ROOT / "build" / name / "halo").is_file():
-            return ROOT / "build" / name
-    return ROOT / "build" / "linux_x86_64"
+        if (tree / "build" / name / "halo").is_file():
+            return tree / "build" / name
+    return tree / "build" / "linux_x86_64"
 
 
-def default_maps() -> Path:
+def default_maps(tree: Path = ROOT) -> Path:
     if sys.platform == "darwin" and (MAC_MAPS / "bloodgulch.map").is_file():
         return MAC_MAPS
-    return ROOT / "assets" / "maps"
+    return tree / "assets" / "maps"
 
 
 def free_port(kind=socket.SOCK_DGRAM) -> int:
@@ -348,11 +385,35 @@ def free_port(kind=socket.SOCK_DGRAM) -> int:
         return probe.getsockname()[1]
 
 
-def free_display() -> int:
-    for number in range(90, 400):
+def free_display(start: int = 90) -> int:
+    for number in range(start, 400):
         if not Path(f"/tmp/.X11-unix/X{number}").exists() and not Path(f"/tmp/.X{number}-lock").exists():
             return number
     raise RuntimeError("no free X display")
+
+
+def start_xvfb(size):
+    """/usr/bin/Xvfb on a free display, once its socket is there (another run, --compare's, may take the
+    display first: then the next): the process and the display's number"""
+    if not Path("/usr/bin/Xvfb").is_file():
+        raise RuntimeError("--xvfb needs /usr/bin/Xvfb")
+    width, height = size
+    number = 90
+    for _ in range(8):
+        number = free_display(number)
+        xvfb = subprocess.Popen(["/usr/bin/Xvfb", f":{number}", "-screen", "0", f"{width}x{height}x24",
+                                 "-nolisten", "tcp"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, start_new_session=True)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and xvfb.poll() is None:
+            if Path(f"/tmp/.X11-unix/X{number}").exists():
+                return xvfb, number
+            time.sleep(0.05)
+        if xvfb.poll() is None:
+            xvfb.kill()
+        xvfb.wait()
+        number += 1
+    raise RuntimeError("Xvfb did not start")
 
 
 def run_environment(scene: Scene, arguments, folder: Path, network_test: str, at: float) -> dict:
@@ -382,7 +443,7 @@ def run_environment(scene: Scene, arguments, folder: Path, network_test: str, at
     if scene.script:
         environment["HALO_TEST_INPUT"] = "script:" + scene.script
     environment.update(scene.environment)
-    variables = setting_variables()
+    variables = setting_variables(arguments.tree)
     for name, value in arguments.set:
         environment[variables[name]] = value
     return environment
@@ -411,18 +472,15 @@ def take(build: Path, scene: Scene, arguments, maps: Path, label: str):
         (folder / "data" / "maps").symlink_to(maps.resolve())
         if sys.platform != "darwin":
             if arguments.xvfb:
-                display = free_display()
-                width, height = arguments.size
-                xvfb = subprocess.Popen(["/usr/bin/Xvfb", f":{display}", "-screen", "0", f"{width}x{height}x24",
-                                         "-nolisten", "tcp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                time.sleep(1.0)
+                xvfb, display = start_xvfb(arguments.size)
                 environment.update({"DISPLAY": f":{display}", "SDL_VIDEO_DRIVER": "x11"})
             elif os.environ.get("DISPLAY") and os.environ.get("SDL_VIDEO_DRIVER") == "x11":
                 environment.update({"DISPLAY": os.environ["DISPLAY"], "SDL_VIDEO_DRIVER": "x11"})
             else:
                 environment["SDL_VIDEO_DRIVER"] = "offscreen"
         log = open(folder / "halo.log", "w")
-        process = subprocess.Popen([str(game / "halo")], cwd=game, env=environment, stdout=log,
+        process = subprocess.Popen([str(game / "halo")], cwd=game, env=environment, stdin=subprocess.DEVNULL,
+                                   stdout=log,
                                    stderr=subprocess.STDOUT, start_new_session=True)
         shots = folder / "shots"
         complete = []
@@ -469,8 +527,102 @@ def save(pictures, arguments, out: Path, stem: str):
     return paths
 
 
+# --remote
+
+def remote_path(text: str) -> str:
+    """a path for the remote's bash: ~ its HOME, the rest quoted"""
+    if text == "~":
+        return '"$HOME"'
+    if text.startswith("~/"):
+        return '"$HOME"/' + shlex.quote(text[2:])
+    return shlex.quote(text)
+
+
+def remote_arguments(argv) -> list:
+    """the command line's options for the remote's capture.py, quoted for its bash: --remote's own and --out
+    left out, --build's and --compare's paths the remote's"""
+    words, index = [], 0
+    while index < len(argv):
+        word = argv[index]
+        name, equals, value = word.partition("=")
+        index += 1
+        if name in REMOTE_OWN:
+            if not equals:
+                index += 1
+            continue
+        if name in REMOTE_PATHS:
+            if not equals:
+                value = argv[index] if index < len(argv) else ""
+                index += 1
+            words += [name, remote_path(value)]
+            continue
+        words.append(shlex.quote(word))
+    return words
+
+
+def remote_script(arguments, argv, source: str) -> str:
+    """the bash script that takes the pictures on the remote: this script written to a folder of its own in
+    /tmp, run from the clone, its output on stderr, the PNG files as a tar on stdout, the folder deleted. (A
+    function, read whole before it runs, so that what it runs cannot read the rest of the script from the
+    input.)"""
+    end = "CAPTURE_PY_END"
+    assert f"\n{end}\n" not in source
+    command = " ".join(["python3", '"$folder/capture.py"', "--tree", '"$tree"', "--data",
+                        remote_path(arguments.remote_data), "--out", '"$folder/out"']
+                       + remote_arguments(argv))
+    return f"""capture_remote() {{
+folder=$(mktemp -d /tmp/capture-remote-XXXXXX) || exit 1
+trap 'rm -rf "$folder"' EXIT
+mkdir "$folder/out"
+cat > "$folder/capture.py" <<'{end}'
+{source}
+{end}
+tree={remote_path(arguments.remote_tree)}
+cd "$tree" || exit 1
+{command} 1>&2
+status=$?
+COPYFILE_DISABLE=1 tar -C "$folder/out" -cf - .
+exit $status
+}}
+capture_remote < /dev/null
+"""
+
+
+def remote(arguments, argv) -> int:
+    """the pictures taken on --remote's host, its PNG files put in --out: the exit status"""
+    script = remote_script(arguments, argv, Path(__file__).read_text())
+    started = time.monotonic()
+    # (as a compare's two runs at most, and the copying)
+    limit = arguments.timeout * 2 + 300
+    try:
+        result = subprocess.run(["ssh", "-o", "BatchMode=yes", arguments.remote, "bash -s"],
+                                input=script.encode(), stdout=subprocess.PIPE, timeout=limit)
+    except subprocess.TimeoutExpired:
+        print(f"capture: {arguments.remote} took over {limit:g} s", file=sys.stderr)
+        return 1
+    arguments.out.mkdir(parents=True, exist_ok=True)
+    paths = []
+    try:
+        with tarfile.open(fileobj=io.BytesIO(result.stdout)) as archive:
+            for member in archive.getmembers():
+                name = member.name[2:] if member.name.startswith("./") else member.name
+                if not member.isfile() or not name.endswith(".png") or "/" in name or name.startswith("."):
+                    continue
+                path = arguments.out / name
+                path.write_bytes(archive.extractfile(member).read())
+                paths.append(path)
+    except tarfile.TarError:
+        print(f"capture: no pictures came back from {arguments.remote}", file=sys.stderr)
+        return result.returncode or 1
+    print(f"capture: {arguments.remote}: {time.monotonic() - started:.1f} s in all", file=sys.stderr)
+    for path in sorted(paths):
+        print(path)
+    return result.returncode
+
+
 def main(argv=None) -> int:
     parser = make_parser()
+    argv = sys.argv[1:] if argv is None else list(argv)
     arguments = parser.parse_args(argv)
     check_arguments(parser, arguments)
     if arguments.list:
@@ -479,9 +631,12 @@ def main(argv=None) -> int:
         for name, description in PATTERNS.items():
             print(f"{name:20} {description}")
         return 0
+    if arguments.remote:
+        return remote(arguments, argv)
     scene = scene_for(arguments.scene, arguments.map)
-    build = (arguments.build or default_build()).resolve()
-    maps = (arguments.data or default_maps()).resolve()
+    tree = arguments.tree.resolve()
+    build = (arguments.build or default_build(tree)).resolve()
+    maps = (arguments.data or default_maps(tree)).resolve()
     if not (maps / "bloodgulch.map").is_file() and not (maps / "ui.map").is_file():
         parser.error(f"no maps in {maps} (--data)")
     arguments.out.mkdir(parents=True, exist_ok=True)
