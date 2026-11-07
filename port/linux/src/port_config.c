@@ -95,15 +95,15 @@ struct config_setting
 
 /* display.graphics = "enhanced": the values it gives the settings it
 chooses (config_graphics), which are their defaults, the same on every
-build: SMAA (on iOS MSAA 2x), 16x anisotropic filtering, 512 shadow maps,
+build: SMAA (on the phones MSAA 2x), 16x anisotropic filtering, 512 shadow maps,
 the models' detail by the display's lines and lit for each pixel, the
 enhanced dynamic lights; ambient occlusion off (below) */
-#ifdef HALO_IOS
+#if defined(HALO_IOS) || defined(HALO_ANDROID)
 /* (an iPhone's tile-based GPU resolves MSAA in its tile memory, the 3D view
 drawn in one pass, port/macos/xgpu_metal.m: about the cost of SMAA's
 passes over the screen there, and smoother edges; 2x keeps a 16-player
 fight on an iPhone 15 Pro Max inside 120 Hz's 8.3 ms, 4 to 5.4 ms of GPU a
-frame where 4x took up to 10) */
+frame where 4x took up to 10. Android's phones are tile GPUs too) */
 #define GRAPHICS_ANTI_ALIASING "\"msaa2x\""
 #else
 #define GRAPHICS_ANTI_ALIASING "\"smaa\""
@@ -168,11 +168,13 @@ static const struct config_setting config_settings[] =
 		"\"native\" draws at the window's resolution (fullscreen, the display's or\n"
 		"display.resolution); \"original\" draws the Xbox's 640x480 and scales it\n"
 		"up." },
-	{ "display.render_scale", _config_real, "0.0", "HALO_RENDER_SCALE", _environment_value, _platform_ios,
-		"iOS: the fraction of the screen's pixels the game draws, each way (0.25\n"
-		"to 1.0), which the display scales up: 0.67 draws less than half the\n"
+	{ "display.render_scale", _config_real, "0.0", "HALO_RENDER_SCALE", _environment_value,
+		_platform_ios | _platform_android,
+		"The fraction of the screen's pixels the game draws, each way (0.25 to\n"
+		"1.0), which the display scales up: 0.67 draws less than half the\n"
 		"pixels, for a cooler phone and a steadier frame rate. 0: the device's,\n"
-		"0.67 on an iPhone of 3x pixels, else 1.0. Read at start." },
+		"0.67 on an iPhone of 3x pixels, about 1080 rows on an Android screen\n"
+		"whose shorter side has more than 1200 pixels, else 1.0. Read at start." },
 	{ "display.window_size", _config_string, "\"\"", "HALO_WINDOW_SIZE", _environment_value, _platform_desktop,
 		"The window's size, \"<width>x<height>\" (\"1920x1080\"), 640x480 or more (it\n"
 		"can be resized). Empty: display.window_scale's." },
@@ -451,9 +453,9 @@ static const struct config_setting config_settings[] =
 		"samples ASTC (to try it on a Mac); \"off\" decodes them. The few blocks\n"
 		"that cannot be transcoded exactly are encoded on a worker thread the\n"
 		"first time a texture is drawn, the texture drawn decoded meanwhile, and\n"
-		"kept in the app's caches folder. \"auto\" by default on iOS; \"off\" on\n"
-		"Android, where it is yet to be checked on a device (try \"auto\"). Read\n"
-		"by the host from the file, at the start (port/linux/astc/xgpu_astc.h)." },
+		"kept in the app's caches folder. \"auto\" by default (seen right on a\n"
+		"Pixel's PowerVR and on iPhones). Read by the host from the file, at\n"
+		"the start (port/linux/astc/xgpu_astc.h)." },
 	{ "display.picture_position", _config_string, "\"center\"", "HALO_PICTURE_POSITION", _environment_value,
 		_platform_android,
 		"Where the game's picture sits on a screen taller than it (a folding\n"

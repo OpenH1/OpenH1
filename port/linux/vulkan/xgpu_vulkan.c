@@ -66,6 +66,11 @@ options' gamma) first, where the setting is not 1.
 #include <time.h>
 #include <unistd.h>
 
+#ifdef __ANDROID__
+/* port/android/host/host_main.c: display.render_scale */
+float host_app_render_scale(void);
+#endif
+
 /* ---------- the functions (loaded at run time) */
 
 #define GLOBAL_FUNCTIONS(F) \
@@ -5578,6 +5583,20 @@ static int swapchain_make(void)
 		vk.swapchain_extent.width = capabilities.currentExtent.height;
 		vk.swapchain_extent.height = capabilities.currentExtent.width;
 	}
+#ifdef __ANDROID__
+	/* display.render_scale: the swapchain smaller than the surface, which
+	Android's compositor scales up to it, as the game's frames are its size
+	(host_sdl.c's window size) */
+	if (capabilities.currentExtent.width != 0xffffffffu && host_app_render_scale() < 1.0f)
+	{
+		vk.swapchain_extent.width = (uint32_t)(vk.swapchain_extent.width * host_app_render_scale() + 0.5f) & ~1u;
+		vk.swapchain_extent.height = (uint32_t)(vk.swapchain_extent.height * host_app_render_scale() + 0.5f) & ~1u;
+		if (vk.swapchain_extent.width < capabilities.minImageExtent.width)
+			vk.swapchain_extent.width = capabilities.minImageExtent.width;
+		if (vk.swapchain_extent.height < capabilities.minImageExtent.height)
+			vk.swapchain_extent.height = capabilities.minImageExtent.height;
+	}
+#endif
 	if (!vk.swapchain_extent.width || !vk.swapchain_extent.height)
 		return 0;
 	memset(&info, 0, sizeof(info));
