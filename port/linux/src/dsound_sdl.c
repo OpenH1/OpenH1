@@ -78,6 +78,7 @@ and gains (record, voices_log).
 
 #include <SDL3/SDL.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -224,6 +225,8 @@ struct sdl_stream
 	IDirectSoundStream object;
 	struct sdl_stream *next;
 	ULONG reference_count;
+	/* its number in debug.dsound_log (dsound_log) */
+	unsigned long log_number;
 	LPFNXMEDIAOBJECTCALLBACK callback;
 	LPVOID context;
 
@@ -3108,6 +3111,112 @@ static void limit(float *output, unsigned long frames)
 	}
 }
 
+/* ---------- debug.dsound_log
+
+Every DirectSound call the game makes, a line each in a text file with the
+time it was made (microseconds from the first), and the sound data of the
+packets it submits appended to the same name with .data added (each packet
+a line "P <time> <stream> <offset> <bytes>" of that file): what the audio
+test bed replays on an Xbox and through this mixer (its twin), to compare
+the two playing the same calls. The lines (stream numbers from 1, as they
+are created; mB, Hz, DirectSound's coordinates):
+  C t n <format tag> <channels> <rate> <3D>   a stream made
+  P t n <offset> <bytes>    a packet          F t n   flushed (stopped)
+  V t n <mB>  Q t n <Hz>  M t n <3D mode>  Z t n <pause>
+  X t n x y z (position)  W t n x y z (velocity)  N t n <min>  K t n <max>
+  S t n <direct> <direct HF> <room> <room HF> <room rolloff> <obstruction>
+        <its LF ratio> <occlusion> <its LF ratio>   its I3DL2 source
+  B t n <mix bins>  U t n <mix bins> <mB each>
+  LP t x y z  LV t x y z  LO t <front x y z> <top x y z>  LD t <distance factor>
+  LR t <rolloff factor>  LE t <the 12 I3DL2 listener values>
+(CommitDeferredSettings is not logged: the game makes it after each
+channel's changes, thousands of times a second, and this mixer takes
+every setting at once.)
+Buffered (a megabyte at a time); nothing at all is done while it is off. */
+
+static FILE *dsound_log_text, *dsound_log_data;
+static BOOL dsound_log_checked;
+static unsigned long dsound_log_streams;
+static unsigned long long dsound_log_start_ns, dsound_log_data_size;
+static pthread_mutex_t dsound_log_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static BOOL dsound_log_on(void)
+{
+	if (!dsound_log_checked)
+	{
+		const char *path = config_string("debug.dsound_log");
+
+		dsound_log_checked = TRUE;
+		if (path && path[0])
+		{
+			char data_path[1024];
+
+			snprintf(data_path, sizeof(data_path), "%s.data", path);
+			dsound_log_text = fopen(path, "w");
+			dsound_log_data = dsound_log_text ? fopen(data_path, "wb") : NULL;
+			if (!dsound_log_data)
+			{
+				if (dsound_log_text)
+					fclose(dsound_log_text);
+				dsound_log_text = NULL;
+				platform_log("sound: cannot write the DirectSound log %s", path);
+			}
+			else
+			{
+				setvbuf(dsound_log_text, NULL, _IOFBF, 1 << 20);
+				setvbuf(dsound_log_data, NULL, _IOFBF, 1 << 20);
+				dsound_log_start_ns = SDL_GetTicksNS();
+				platform_log("sound: logging the DirectSound calls to %s", path);
+			}
+		}
+	}
+	return dsound_log_text != NULL;
+}
+
+/* a line of the log: its code, the time, then the rest as format says */
+static void dsound_log(const char *code, const char *format, ...)
+{
+	va_list arguments;
+
+	if (!dsound_log_on())
+		return;
+	pthread_mutex_lock(&dsound_log_lock);
+	fprintf(dsound_log_text, "%s %llu ", code, (unsigned long long)((SDL_GetTicksNS() - dsound_log_start_ns) / 1000));
+	va_start(arguments, format);
+	vfprintf(dsound_log_text, format, arguments);
+	va_end(arguments);
+	fputc('\n', dsound_log_text);
+	pthread_mutex_unlock(&dsound_log_lock);
+}
+
+static void dsound_log_packet(unsigned long number, const void *data, unsigned long size)
+{
+	if (!dsound_log_on())
+		return;
+	pthread_mutex_lock(&dsound_log_lock);
+	fprintf(dsound_log_text, "P %llu %lu %llu %lu\n",
+		(unsigned long long)((SDL_GetTicksNS() - dsound_log_start_ns) / 1000), number, dsound_log_data_size, size);
+	fwrite(data, 1, size, dsound_log_data);
+	dsound_log_data_size += size;
+	pthread_mutex_unlock(&dsound_log_lock);
+}
+
+/* (the log written out, from DirectSoundDoWork once a second: a run stopped leaves it whole but its last second) */
+static void dsound_log_flush(void)
+{
+	pthread_mutex_lock(&dsound_log_lock);
+	if (dsound_log_text)
+	{
+		fflush(dsound_log_text);
+		fflush(dsound_log_data);
+	}
+	pthread_mutex_unlock(&dsound_log_lock);
+}
+
+#define DSLOG_ON (dsound_log_checked ? dsound_log_text != NULL : dsound_log_on())
+#define DSLOG_STREAM(code, format, ...) \
+	do { if (DSLOG_ON) dsound_log(code, "%lu " format, stream_from_interface(stream)->log_number, __VA_ARGS__); } while (0)
+
 /* ---------- recording
 
 debug.audio_record: the mix as it plays, to a WAV file of 16-bit stereo at
@@ -4539,6 +4648,8 @@ static HRESULT STDMETHODCALLTYPE stream_process(IDirectSoundStream *object, LPCX
 	(void)output;
 	if (!input)
 		return E_INVALIDARG;
+	if (DSLOG_ON && input->pvBuffer)
+		dsound_log_packet(stream->log_number, input->pvBuffer, input->dwMaxSize);
 	/* decode outside the lock */
 	samples = stream->adpcm ?
 		decode_adpcm(input->pvBuffer, input->dwMaxSize, stream->channels, &frames) :
@@ -4588,6 +4699,9 @@ static HRESULT STDMETHODCALLTYPE stream_discontinuity(IDirectSoundStream *object
 static HRESULT STDMETHODCALLTYPE stream_flush(IDirectSoundStream *object)
 {
 	struct sdl_stream *stream = stream_from_interface(object);
+
+	if (DSLOG_ON)
+		dsound_log("F", "%lu", stream->log_number);
 
 	pthread_mutex_lock(&voices_lock);
 	/* (the mixer takes none of the packets while they are completed, the
@@ -4762,7 +4876,14 @@ VOID WINAPI DirectSoundDoWork(void)
 #ifdef HALO_VR
 	static BOOL hrtf_setting;
 #endif
+	static unsigned long long log_flushed_ns;
 
+	/* (debug.dsound_log written out about once a second) */
+	if (dsound_log_text && SDL_GetTicksNS() - log_flushed_ns > 1000000000ull)
+	{
+		log_flushed_ns = SDL_GetTicksNS();
+		dsound_log_flush();
+	}
 	/* (audio.volume, audio.reverb, audio.doppler, audio.enabled and
 	audio.resampler read again when the settings change: on the game's thread, not the mixer's,
 	whose lock the config's file I/O would hold) */
@@ -4848,6 +4969,12 @@ HRESULT WINAPI IDirectSound_SetI3DL2Listener(LPDIRECTSOUND sound, LPCDSI3DL2LIST
 {
 	(void)sound;
 	(void)apply;
+	if (DSLOG_ON)
+		dsound_log("LE", "%ld %ld %.4f %.4f %.4f %ld %.4f %ld %.4f %.4f %.4f %.4f", (long)listener_properties->lRoom,
+			(long)listener_properties->lRoomHF, listener_properties->flRoomRolloffFactor, listener_properties->flDecayTime,
+			listener_properties->flDecayHFRatio, (long)listener_properties->lReflections,
+			listener_properties->flReflectionsDelay, (long)listener_properties->lReverb, listener_properties->flReverbDelay,
+			listener_properties->flDiffusion, listener_properties->flDensity, listener_properties->flHFReference);
 	pthread_mutex_lock(&voices_lock);
 	environment_set = *listener_properties;
 	environment_changed = TRUE;
@@ -4859,6 +4986,8 @@ HRESULT WINAPI IDirectSound_SetDistanceFactor(LPDIRECTSOUND sound, FLOAT factor,
 {
 	(void)sound;
 	(void)apply;
+	if (DSLOG_ON)
+		dsound_log("LD", "%.4f", factor);
 	pthread_mutex_lock(&voices_lock);
 	listener_set.distance_factor = factor > 0.0f ? factor : 1.0f;
 	listener_changed = TRUE;
@@ -4870,6 +4999,8 @@ HRESULT WINAPI IDirectSound_SetRolloffFactor(LPDIRECTSOUND sound, FLOAT factor, 
 {
 	(void)sound;
 	(void)apply;
+	if (DSLOG_ON)
+		dsound_log("LR", "%.4f", factor);
 	pthread_mutex_lock(&voices_lock);
 	listener_set.rolloff_factor = factor >= 0.0f ? factor : 1.0f;
 	listener_changed = TRUE;
@@ -4881,6 +5012,8 @@ HRESULT WINAPI IDirectSound_SetPosition(LPDIRECTSOUND sound, FLOAT x, FLOAT y, F
 {
 	(void)sound;
 	(void)apply;
+	if (DSLOG_ON)
+		dsound_log("LP", "%.4f %.4f %.4f", x, y, z);
 	pthread_mutex_lock(&voices_lock);
 	listener_set.position[0] = x;
 	listener_set.position[1] = y;
@@ -4894,6 +5027,8 @@ HRESULT WINAPI IDirectSound_SetVelocity(LPDIRECTSOUND sound, FLOAT x, FLOAT y, F
 {
 	(void)sound;
 	(void)apply;
+	if (DSLOG_ON)
+		dsound_log("LV", "%.4f %.4f %.4f", x, y, z);
 	pthread_mutex_lock(&voices_lock);
 	listener_set.velocity[0] = x;
 	listener_set.velocity[1] = y;
@@ -4920,6 +5055,8 @@ HRESULT WINAPI IDirectSound_SetOrientation(LPDIRECTSOUND sound, FLOAT x_front, F
 {
 	(void)sound;
 	(void)apply;
+	if (DSLOG_ON)
+		dsound_log("LO", "%.4f %.4f %.4f %.4f %.4f %.4f", x_front, y_front, z_front, x_top, y_top, z_top);
 	pthread_mutex_lock(&voices_lock);
 	listener_set.front[0] = x_front;
 	listener_set.front[1] = y_front;
@@ -4960,6 +5097,14 @@ HRESULT WINAPI IDirectSound_CreateSoundStream(LPDIRECTSOUND sound, LPCDSSTREAMDE
 	stream->pending.surround_bins[0][0] = 1.0f;
 	stream->pending.surround_bins[stream->channels - 1][1] = 1.0f;
 	stream->has_3d = (description->dwFlags & DSSTREAMCAPS_CTRL3D) != 0;
+	if (DSLOG_ON)
+	{
+		pthread_mutex_lock(&dsound_log_lock);
+		stream->log_number = ++dsound_log_streams;
+		pthread_mutex_unlock(&dsound_log_lock);
+		dsound_log("C", "%lu %u %u %lu %d", stream->log_number, format ? (unsigned)format->wFormatTag : 0u,
+			(unsigned)stream->channels, (unsigned long)stream->sample_rate, stream->has_3d ? 1 : 0);
+	}
 	stream->pending.mode = DS3DMODE_NORMAL;
 	stream->pending.minimum_distance = DS3D_DEFAULTMINDISTANCE;
 	stream->pending.maximum_distance = DS3D_DEFAULTMAXDISTANCE;
@@ -5004,11 +5149,13 @@ unsigned long __stdcall DirectSoundGetStreamVoiceStatus(LPDIRECTSOUNDSTREAM stre
 
 HRESULT WINAPI IDirectSoundStream_SetFrequency(LPDIRECTSOUNDSTREAM stream, DWORD frequency)
 {
+	DSLOG_STREAM("Q", "%lu", (unsigned long)frequency);
 	STREAM_SETTER(record->frequency = frequency ? frequency : stream_from_interface(stream)->sample_rate)
 }
 
 HRESULT WINAPI IDirectSoundStream_SetVolume(LPDIRECTSOUNDSTREAM stream, LONG volume)
 {
+	DSLOG_STREAM("V", "%ld", (long)volume);
 	STREAM_SETTER(record->volume = gain_from_millibels(volume))
 }
 
@@ -5039,6 +5186,7 @@ static void stream_set_surround_bins(struct voice_settings *record, unsigned lon
 
 HRESULT WINAPI IDirectSoundStream_SetMixBins(LPDIRECTSOUNDSTREAM stream, DWORD mix_bin_mask)
 {
+	DSLOG_STREAM("B", "%lu", (unsigned long)mix_bin_mask);
 	STREAM_SETTER(
 		record->mix_left = (mix_bin_mask & DSMIXBIN_FRONT_LEFT) ? 1.0f : 0.0f;
 		record->mix_right = (mix_bin_mask & DSMIXBIN_FRONT_RIGHT) ? 1.0f : 0.0f;
@@ -5051,6 +5199,20 @@ HRESULT WINAPI IDirectSoundStream_SetMixBinVolumes(LPDIRECTSOUNDSTREAM stream, D
 	struct voice_settings *record = &stream_from_interface(stream)->pending;
 	unsigned long bit, index = 0;
 
+	if (DSLOG_ON)
+	{
+		char text[400];
+		size_t used = 0;
+		unsigned long count = 0;
+
+		for (bit = 0; bit < 32; bit++)
+		{
+			if ((mix_bin_mask & (1ul << bit)) && used < sizeof(text) - 16)
+				used += (size_t)snprintf(text + used, sizeof(text) - used, " %ld", (long)volumes[count++]);
+		}
+		text[used] = 0;
+		DSLOG_STREAM("U", "%lu%s", (unsigned long)mix_bin_mask, text);
+	}
 	pthread_mutex_lock(&voices_lock);
 	for (bit = 0; bit < 32; bit++)
 	{
@@ -5071,24 +5233,28 @@ HRESULT WINAPI IDirectSoundStream_SetMixBinVolumes(LPDIRECTSOUNDSTREAM stream, D
 HRESULT WINAPI IDirectSoundStream_SetMode(LPDIRECTSOUNDSTREAM stream, DWORD mode, DWORD apply)
 {
 	(void)apply;
+	DSLOG_STREAM("M", "%lu", (unsigned long)mode);
 	STREAM_SETTER(record->mode = mode)
 }
 
 HRESULT WINAPI IDirectSoundStream_SetPosition(LPDIRECTSOUNDSTREAM stream, FLOAT x, FLOAT y, FLOAT z, DWORD apply)
 {
 	(void)apply;
+	DSLOG_STREAM("X", "%.4f %.4f %.4f", x, y, z);
 	STREAM_SETTER(record->position[0] = x; record->position[1] = y; record->position[2] = z)
 }
 
 HRESULT WINAPI IDirectSoundStream_SetMinDistance(LPDIRECTSOUNDSTREAM stream, FLOAT distance, DWORD apply)
 {
 	(void)apply;
+	DSLOG_STREAM("N", "%.4f", distance);
 	STREAM_SETTER(record->minimum_distance = distance)
 }
 
 HRESULT WINAPI IDirectSoundStream_SetMaxDistance(LPDIRECTSOUNDSTREAM stream, FLOAT distance, DWORD apply)
 {
 	(void)apply;
+	DSLOG_STREAM("K", "%.9g", distance);
 	STREAM_SETTER(record->maximum_distance = distance)
 }
 
@@ -5097,6 +5263,9 @@ HRESULT WINAPI IDirectSoundStream_SetI3DL2Source(LPDIRECTSOUNDSTREAM stream, LPC
 	LONG direct, direct_hf, room, room_hf;
 
 	(void)apply;
+	DSLOG_STREAM("S", "%ld %ld %ld %ld %.4f %ld %.4f %ld %.4f", (long)source->lDirect, (long)source->lDirectHF,
+		(long)source->lRoom, (long)source->lRoomHF, source->flRoomRolloffFactor, (long)source->Obstruction.lHFLevel,
+		source->Obstruction.flLFRatio, (long)source->Occlusion.lHFLevel, source->Occlusion.flLFRatio);
 	/* the direct path: at low frequencies obstruction and occlusion take
 	their LF ratio of their high frequency levels, which (with the source's
 	own) muffle it above the HF reference */
@@ -5137,12 +5306,14 @@ HRESULT WINAPI IDirectSoundStream_SetI3DL2Source(LPDIRECTSOUNDSTREAM stream, LPC
 
 HRESULT WINAPI IDirectSoundStream_Pause(LPDIRECTSOUNDSTREAM stream, DWORD pause)
 {
+	DSLOG_STREAM("Z", "%lu", (unsigned long)pause);
 	STREAM_SETTER(record->paused = pause == DSSTREAMPAUSE_PAUSE)
 }
 
 HRESULT WINAPI IDirectSoundStream_SetVelocity(LPDIRECTSOUNDSTREAM stream, FLOAT x, FLOAT y, FLOAT z, DWORD apply)
 {
 	(void)apply;
+	DSLOG_STREAM("W", "%.4f %.4f %.4f", x, y, z);
 	STREAM_SETTER(record->velocity[0] = x; record->velocity[1] = y; record->velocity[2] = z)
 }
 
