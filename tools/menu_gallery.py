@@ -244,11 +244,15 @@ def check_layout(layout: dict, variant: Variant) -> list:
         elif rectangle_area(box) > 0 and box[3] - box[1] >= 8 and extent[3] > box[3] + 4:
             add("overflow", f"{quoted(text['text'])} ({owner(text)}) runs {extent[3] - box[3]:.0f} units below"
                             " its box", extent)
-        whole = text.get("whole")
+        whole, wide = text.get("whole"), text.get("wide")
         if whole and whole[3] > extent[3] + 2:
             add("cut", f"{quoted(text['text'])} ({owner(text)}) runs past its box's foot: its last"
                        f" {whole[3] - extent[3]:.0f} units of lines are not drawn", [box[0], box[3], box[2],
                                                                                     whole[3]])
+        # (a line, laid out without the right edge, the same height and wider: its last letters not drawn)
+        elif wide and wide[3] == extent[3] and wide[2] - wide[0] > extent[2] - extent[0] + 2:
+            add("cut", f"{quoted(text['text'])} ({owner(text)}) runs past its box's right edge: its last"
+                       f" {wide[2] - wide[0] - (extent[2] - extent[0]):.0f} units of letters are not drawn", extent)
         if beyond(extent, screen) > 0:
             add("offscreen", f"{quoted(text['text'])} ({owner(text)}) is off the screen", extent)
 
@@ -407,7 +411,8 @@ def layout_shape(layout: dict) -> list:
             shape.append(("text", item["text"], tuple(item["extent"] or ()), tuple(item.get("whole") or ())))
         elif item["kind"] == "glyph":
             shape.append(("glyph", item["key"], item["name"], tuple(item["box"])))
-    return shape
+    # (in no order: a build may write the items in another)
+    return sorted(shape, key=repr)
 
 
 def regions_differ(a, b, layouts, threshold: int = 48, share: float = 0.25) -> bool:

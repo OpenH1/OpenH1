@@ -56,6 +56,7 @@ menu gets FRIENDLY FIRE too.
 void platform_log(char const *format, ...);
 char const *config_string(char const *name);
 int config_boolean(char const *name);
+unsigned long config_changes(void);
 int platform_display_resolutions(long *widths, long *heights, int maximum);
 int platform_display_refresh_rates(long *rates, int maximum);
 int platform_window_sizes(long *widths, long *heights, int maximum);
@@ -333,15 +334,19 @@ static char const *const widget_flag_names[] =
 #define WIDGET_FLAG_WHEEL_SIDEWAYS 21
 
 /* whether the menus are laid out for a touchscreen: the touchscreens'
-builds, or debug.touch_menus (read once, as the menus load: menu_files.c's
-MENU_TOUCH) */
+builds, or debug.touch_menus (read again when a setting changes: the menu
+studio's F5 changes it and reloads the menus, menu_files.c's MENU_TOUCH) */
 int ui_widget_port_touch_menus(void)
 {
 #if !defined(HALO_ANDROID) && !defined(HALO_IOS)
 	static int touch_menus = -1;
+	static unsigned long read_at;
 
-	if (touch_menus < 0)
+	if (touch_menus < 0 || read_at != config_changes())
+	{
+		read_at = config_changes();
 		touch_menus = config_boolean("debug.touch_menus") != 0;
+	}
 	return touch_menus;
 #else
 	return 1;
@@ -969,6 +974,13 @@ static void name_indices_make(void)
 	name_index_make(&name_indices.widgets, build.menus->widget_count, widget_name);
 	name_index_make(&name_indices.bitmaps, build.menus->bitmap_count, bitmap_name);
 	name_index_make(&name_indices.strings, build.menus->string_list_count, strings_name);
+}
+
+/* the files read again (the menu studio's reload: menu_studio.c): their
+names indexed again, though the description is in the same place */
+void menu_tags_files_changed(void)
+{
+	name_indices.menus = NULL;
 }
 
 static long named(struct name_index const *index, char const *name, long count, char const *(*name_of)(long))
@@ -3108,8 +3120,9 @@ char const *pc_menus_root_name(
 	void)
 {
 	/* (debug.menu_open: a screen to see, a profile being edited for the
-	settings' screens) */
-	char const *open = config_string("debug.menu_open");
+	settings' screens; or debug.menu_studio's, menu_studio.c) */
+	char const *open = config_string("debug.menu_open")[0] ? config_string("debug.menu_open") :
+		config_string("debug.menu_studio");
 
 	if (menu_tags.loaded && *open && build.menus == NULL)
 	{

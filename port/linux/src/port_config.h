@@ -28,6 +28,9 @@ int halo_fresh_memory_fill(void);
 /* sets a setting from its value as text ("true", "60", "1.5", "all"), and
 writes it into config.toml (only its line changes); 1 on success */
 int config_write(const char *name, const char *value);
+/* sets a setting for this run alone, from its value as text, config.toml
+left as it is (the menu studio's input and window: menu_studio.c) */
+int config_set_for_run(const char *name, const char *value);
 int config_write_boolean(const char *name, int value);
 /* a setting's value as text ("true", "60", "1.5", "all"); 0 if there is no
 such setting */

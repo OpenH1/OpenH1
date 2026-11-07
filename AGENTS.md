@@ -265,6 +265,10 @@ Running the game without a person at it:
   in seconds, without pictures; menu files need no build (this tree's are
   read over the build's); `--compare` shows only the screens that changed.
   Review menu changes with it; never commit its pictures.
+- `debug.menu_studio=<screen>` with `debug.menu_files=<tree>/port/assets/menus`
+  starts on that menu screen and reloads it within a second of a regenerate;
+  F3 input, F4 window shape, F5 longer labels, F6 boxes and the layout
+  checks' problems, F7 reload (`port/linux/game/menu_studio.c`).
 - `debug.network_test` (`HALO_NETWORK_TEST=host:<map>` or `join`) hosts or
   joins a game without the menus and logs each player's state every second;
   several copies play on one machine on different loopback addresses

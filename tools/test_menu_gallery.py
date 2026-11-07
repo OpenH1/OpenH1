@@ -213,3 +213,12 @@ def test_a_change_to_the_menus_alone_needs_no_build():
     assert menu_gallery.menus_only(["port/assets/menus/ce/main_menu.xml", "tools/port_settings.py", "AGENTS.md"])
     assert not menu_gallery.menus_only(["port/assets/menus/ce/main_menu.xml", "port/linux/game/menu_tags.c"])
     assert menu_gallery.menus_only([])
+
+
+def test_a_line_cut_at_its_right_edge():
+    cut = text(1, "SYSTEM DEFAULT", (230, 125, 370, 143), (233, 125, 370, 142))
+    cut["wide"] = [233, 125, 420, 142]
+    wrapped = text(2, "TWO LINES OF WORDS", (0, 200, 100, 240), (0, 200, 98, 238))
+    wrapped["wide"] = [0, 200, 170, 219]
+    found = menu_gallery.check_layout(layout(cut, wrapped), KEYBOARD)
+    assert checks(found) == ["cut"] and "right edge" in found[0]["message"]

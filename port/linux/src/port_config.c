@@ -2430,6 +2430,19 @@ static const struct config_setting config_settings[] =
 		"(port/linux/game/menu_tour.c, tools/menu_gallery.py). Empty for none." },
 	{ "debug.menu_tour_frames", _config_integer, "12", "HALO_MENU_TOUR_FRAMES", _environment_value, _platform_all,
 		"The frames debug.menu_tour shows each screen for before it is taken." },
+	{ "debug.menu_studio", _config_string, "\"\"", "HALO_MENU_STUDIO", _environment_value, _platform_desktop,
+		"The menu studio, for working on the menus: start on this screen of them\n"
+		"(main_menu/settings_select/..., as debug.menu_open; \"main_menu/main_menu\"\n"
+		"for the main menu), reload it within a second of its files changing\n"
+		"(debug.menu_files' folder, or the menus folder), where it was, and take\n"
+		"F3 (the input: keyboard, controller, touch), F4 (the window's shape:\n"
+		"16:9, 16:10, a phone's 20:9, 4:3, 21:9), F5 (every label longer), F6\n"
+		"(each widget's box, and the layout checks' problems) and F7 (reload)\n"
+		"(port/linux/game/menu_studio.c). Empty for none." },
+	{ "debug.menu_files", _config_string, "\"\"", "HALO_MENU_FILES", _environment_value, _platform_desktop,
+		"A folder of menu files read in place of the menus folder beside\n"
+		"config.toml (a source tree's port/assets/menus, for the menu studio);\n"
+		"empty for that folder." },
 	{ "debug.discord_socket", _config_string, "\"\"", "HALO_DISCORD_SOCKET", _environment_value, _platform_desktop,
 		"The Discord client's socket (on Windows its pipe) to connect to, and no\n"
 		"other: a test's stand-in for Discord. Empty: Discord's own." },
@@ -4119,6 +4132,7 @@ static void config_apply_probe_mode(void)
 		{ "debug.menu_open", "" },
 		{ "debug.menu_layout", "" },
 		{ "debug.menu_tour", "" },
+		{ "debug.menu_studio", "" },
 		{ "debug.exit_after", "45" },
 	};
 	size_t index;
@@ -4156,6 +4170,7 @@ static void config_apply_server_mode(void)
 		{ "debug.menu_open", "" },
 		{ "debug.menu_layout", "" },
 		{ "debug.menu_tour", "" },
+		{ "debug.menu_studio", "" },
 	};
 	const char *tunnel_port = getenv("HALO_NET_TUNNEL_PORT");
 	size_t index;
@@ -4748,6 +4763,22 @@ int config_write(const char *name, const char *value)
 	free(text);
 	free(line_text);
 	return succeeded;
+}
+
+int config_set_for_run(const char *name, const char *value)
+{
+	long index = config_setting_index(name);
+
+	if (index < 0 || strlen(value) > CONFIG_MAXIMUM_WRITTEN_STRING)
+		return 0;
+	/* (the file read first, as the other settings are, so that it does
+	not take the value back) */
+	config_value(name, config_settings[index].type);
+	pthread_mutex_lock(&config_lock);
+	config_set_from_text(&config_values[index], config_settings[index].type, value);
+	config_change_count++;
+	pthread_mutex_unlock(&config_lock);
+	return 1;
 }
 
 int config_write_boolean(const char *name, int value)

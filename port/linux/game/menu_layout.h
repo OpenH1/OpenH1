@@ -1,8 +1,9 @@
 /*
 MENU_LAYOUT.H
 
-debug.menu_layout: the open screen's geometry as the menus draw it, written
-as JSON for tools/menu_gallery.py's checks (menu_layout.c). Coordinates are
+The open screen's geometry as the menus draw it, written as JSON for
+tools/menu_gallery.py's checks (debug.menu_layout, the menu tour's) or kept
+for the menu studio's overlay (menu_layout.c). Coordinates are
 the menus' (640 by 480 in the middle of the screen, x below 0 and past 640
 where the screen is wider), as drawn: offsets, anchors, the wide layout and
 a text's scale applied.
@@ -32,10 +33,13 @@ void menu_layout_widget(void const *widget, void const *parent, char const *name
 void menu_layout_widget_none(void);
 
 /* a string drawn: the bounds it is laid out in, the clip it is cut by, the
-extent of its characters drawn and of all of them (the lines past the
-bounds' foot are not drawn), before the text's scale about its origin */
+extent of its characters drawn, of all of them in the bounds without their
+foot (the lines past it are not drawn) and in the bounds without their
+right edge (a line's letters past it are not drawn), before the text's
+scale about its origin */
 void menu_layout_text(rectangle2d const *box, rectangle2d const *clip, rectangle2d const *extent,
-	rectangle2d const *whole, wchar_t const *text, real scale, real origin_x, real origin_y);
+	rectangle2d const *whole, rectangle2d const *wide, wchar_t const *text, real scale, real origin_x,
+	real origin_y);
 
 /* a button's glyph drawn: a key's cap (key TRUE, its name) or a
 controller's button (its icon's name), from x0 to x1 on the line y0 to y1 */
@@ -44,5 +48,32 @@ void menu_layout_glyph_wide(int key, wchar_t const *name, short x0, short y0, sh
 
 /* a place the pointer acts on (ui_widget.c's ui_mouse_targets) */
 void menu_layout_target(void const *widget, short kind, rectangle2d const *box);
+
+/* each frame's layout kept for menu_layout_overlay (the menu studio's) */
+void menu_layout_keep(int keep);
+
+/* what menu_layout_overlay outlines: each widget's box, and each problem the
+layout's checks find (tools/menu_gallery.py's check_layout's) */
+enum
+{
+	_menu_layout_box,
+	_menu_layout_clipped,
+	_menu_layout_cut,
+	_menu_layout_overflow,
+	_menu_layout_overlap,
+	_menu_layout_offscreen,
+	_menu_layout_safe_area,
+	_menu_layout_touch_target,
+	_menu_layout_glyphs,
+	NUMBER_OF_MENU_LAYOUT_PROBLEMS
+};
+
+typedef void (*menu_layout_outline_proc)(rectangle2d const *rectangle, long kind);
+
+/* the last kept frame's widgets' boxes and problems, each outlined; the
+problems of each kind counted (NUMBER_OF_MENU_LAYOUT_PROBLEMS of them,
+_menu_layout_box's none); the problems in all. The phone's (its safe area,
+its touch targets) where the menus are the touchscreen's */
+long menu_layout_overlay(menu_layout_outline_proc outline, long *counts);
 
 #endif

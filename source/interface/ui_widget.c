@@ -656,6 +656,11 @@ struct widget_instance;
 #include "custom_edition_maps.h" /* port: port/linux/game/custom_edition_maps.c */
 #include "menu_layout.h" /* port: port/linux/game/menu_layout.c */
 void menu_tour_update(void); /* port: port/linux/game/menu_tour.c */
+/* port: port/linux/game/menu_studio.c */
+void menu_studio_update(void);
+void menu_studio_drawing(boolean drawing);
+boolean menu_studio_overlay_on(void);
+void menu_studio_status(wchar_t *line, long size, long problems);
 #include "interface/ui_widget_event_handler_functions.h"
 #include "interface/ui_widget_text_search_and_replace_functions.h"
 #include "interface/virtual_keyboard.h"
@@ -9041,6 +9046,159 @@ void render_ui_widgets_postgame(
 screen), noting and settling the first player's tap targets in the frame's
 first render that can, and draws the debug view of the targets and the
 virtual keyboard when they are up */
+/* port: a rectangle outlined for the menu studio's overlay, in menu
+coordinates (the centering offset on, as ui_debug_draw_outline's): each
+widget's box faintly, each problem of the layout's checks by its kind
+(menu_layout.h) */
+static void ui_widget_port_studio_outline(
+	rectangle2d const *bounds,
+	long kind)
+{
+	pixel32 color;
+	short thickness = kind == _menu_layout_box ? 1 : 2;
+	rectangle2d edge;
+
+	switch (kind)
+	{
+	case _menu_layout_box:
+		color = 0x5080ff80;
+		break;
+	case _menu_layout_offscreen:
+	case _menu_layout_safe_area:
+	case _menu_layout_glyphs:
+		color = 0xe0ffa020;
+		break;
+	case _menu_layout_touch_target:
+		color = 0xe040a0ff;
+		break;
+	default:
+		color = 0xf0ff3030;
+		break;
+	}
+	edge = *bounds;
+	edge.y1 = (short)(edge.y0 + thickness);
+	draw_quad(&edge, color);
+	edge = *bounds;
+	edge.y0 = (short)(edge.y1 - thickness);
+	draw_quad(&edge, color);
+	edge = *bounds;
+	edge.x1 = (short)(edge.x0 + thickness);
+	draw_quad(&edge, color);
+	edge = *bounds;
+	edge.x0 = (short)(edge.x1 - thickness);
+	draw_quad(&edge, color);
+
+	return;
+}
+
+/* port: the menu studio's overlay (F8: the boxes and problems of the frame
+just drawn, menu_layout.c) and its line at the top of the screen */
+static void ui_widget_port_studio_draw(
+	void)
+{
+	long counts[NUMBER_OF_MENU_LAYOUT_PROBLEMS];
+	long problems = menu_layout_overlay(ui_widget_port_studio_outline, counts);
+	wchar_t line[256];
+	rectangle2d bounds;
+	real_argb_color color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	long font = tag_loaded(FONT_GROUP_TAG, "ui\\small_ui");
+
+	if (font == NONE)
+		return;
+	menu_studio_status(line, NUMBEROF(line), problems);
+	bounds.x0 = (short)(-(halo_screen_width() - 640) / 2);
+	bounds.x1 = (short)(640 + (halo_screen_width() - 640) / 2);
+	bounds.y0 = 0;
+	bounds.y1 = 18;
+	draw_quad(&bounds, 0xc0000000);
+	/* (as tall as small_ui's line, or the line is not drawn) */
+	bounds.x0 += 4;
+	bounds.y1 = 40;
+	draw_string_set_draw_mode(font, NONE, _text_justification_left, 0, &color);
+	rasterizer_draw_unicode_string(&bounds, NULL, NULL, 0, line);
+
+	return;
+}
+
+/* port: the open screen's name as the menu files name it (the menu studio's,
+port/linux/game/menu_studio.c), its tag's; "" for none */
+char const *ui_widget_port_screen_name(
+	void)
+{
+	struct widget_instance *screen = widget_globals.active_widgets[0];
+
+	return screen ? tag_get_name(screen->definition_tag_index) : "";
+}
+
+/* port: the focus's way down from the open screen, as its children's
+places (the menu studio's, to put it back after a reload): their count */
+long ui_widget_port_focus_path(
+	short *path,
+	long maximum)
+{
+	struct widget_instance *widget = widget_globals.active_widgets[0];
+	long count = 0;
+
+	while (widget && widget->focused_child && count < maximum)
+	{
+		struct widget_instance *child;
+		short index = 0;
+
+		for (child = widget->child; child && child != widget->focused_child; child = child->next)
+			index++;
+		if (!child)
+			break;
+		path[count++] = index;
+		widget = child;
+	}
+
+	return count;
+}
+
+/* port: the focus put back down the open screen's children (a reload's:
+the same screen, so the same children where the files did not change them) */
+void ui_widget_port_focus_restore(
+	short const *path,
+	long count)
+{
+	struct widget_instance *widget = widget_globals.active_widgets[0];
+	long step;
+
+	for (step = 0; widget && step < count; step++)
+	{
+		struct widget_instance *child = widget->child;
+		short index;
+
+		for (index = 0; child && index < path[step]; index++)
+			child = child->next;
+		if (!child)
+			break;
+		widget->focused_child = child;
+		widget = child;
+	}
+
+	return;
+}
+
+/* port: the screen of a tag's name opened alone (the others closed, a
+profile being edited, as debug.menu_open opens one); NULL closes them all.
+The menu studio's (port/linux/game/menu_studio.c); FALSE where there is no
+such screen */
+boolean ui_widget_port_open_screen(
+	char const *tag_name)
+{
+	extern boolean pc_menu_profile_edit_begin(void);
+
+	if (virtual_keyboard_active())
+		virtual_keyboard_close();
+	ui_widgets_close_all();
+	if (!tag_name)
+		return TRUE;
+	pc_menu_profile_edit_begin();
+
+	return ui_widget_load_by_name_or_tag(tag_name, NONE, NULL, NONE, NONE, NONE, NONE) != NULL;
+}
+
 void render_ui_widgets(
 	short local_player_index,
 	rectangle2d const *window_bounds)
@@ -9067,6 +9225,8 @@ void render_ui_widgets(
 		/* port: the first player's menus written for debug.menu_layout */
 		if (first_players_render && widget_globals.active_widgets[0])
 			menu_layout_frame_begin(halo_screen_width());
+		/* port: (the menu studio's longer labels: theirs, not its own line) */
+		menu_studio_drawing(first_players_render);
 		local_player_index = PIN(
 			local_player_index,
 			0,
@@ -9185,6 +9345,11 @@ void render_ui_widgets(
 			menu_layout_frame_end(widget_globals.active_widgets[0] ?
 				tag_get_name(widget_globals.active_widgets[0]->definition_tag_index) : "");
 		}
+		menu_studio_drawing(FALSE);
+		/* port: the menu studio's line, and its overlay of the layout
+		(port/linux/game/menu_studio.c) */
+		if (first_players_render && menu_studio_overlay_on())
+			ui_widget_port_studio_draw();
 		/* port: a Discord friend's ask to join, over the menus, near the top
 		of the whole screen (port/linux/game/network_party.c; the HUD shows
 		it in the game) */
@@ -10301,6 +10466,8 @@ void process_ui_widgets(
 	/* port: debug.menu_tour's screens, one after another
 	(port/linux/game/menu_tour.c) */
 	menu_tour_update();
+	/* port: debug.menu_studio's reloads and keys (port/linux/game/menu_studio.c) */
+	menu_studio_update();
 	if (progress_bar_is_active())
 		return;
 	if (virtual_keyboard_active())
