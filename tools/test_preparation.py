@@ -1,5 +1,6 @@
 """Asset-free probes of the production preparation cache and compiler worker."""
 from pathlib import Path
+import re
 import subprocess
 
 from test_load_trace import build
@@ -82,7 +83,10 @@ int main(void) {
 def test_loading_retirement_repeats_inside_one_epoch(tmp_path):
     text = (ROOT / "port/linux/src/sdl_platform.c").read_text()
     functions = text[text.index("void halo_loading_begin(void)"):text.index("static struct platform_input_state input_state;")]
-    source = r'''
+    # (the caption's size, as loading_presentation.h sets it)
+    scale = re.search(r"#define LOADING_PRESENTATION_CAPTION_SCALE (\d+)",
+                      (ROOT / "port/linux/src/loading_presentation.h").read_text()).group(1)
+    source = f"#define LOADING_PRESENTATION_CAPTION_SCALE {scale}\n" + r'''
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
