@@ -12,6 +12,11 @@ signals:
 	  the band, and what else comes out (images and aliases) under the tone;
 	- a voice out of earshot, which is not resampled, moves on as one heard
 	  does, and is heard the same once it comes into earshot;
+	- the Xbox's quietest levels, as recorded: each step down to -56 dB,
+	  silence from -58 dB, a 2D voice, one through the HRTF and its room
+	  send, under audio.volume;
+	- the room send through the Xbox's resampler, as recorded, against it
+	  worked out in double precision (44.1 kHz voices' images and aliases);
 	- mono voices heard as stereo ones with both channels the same are;
 	- audio.resampler = "linear": each frame between the two around it;
 	- Xbox ADPCM decoded as a decoder written apart decodes it (two blocks'
@@ -1742,6 +1747,195 @@ int main(int argc, char **argv)
 		free(left);
 		free(room);
 		free(samples);
+		return 0;
+	}
+	/* a voice's room send through the Xbox's resampler, as recorded (issue
+	714's sixth run): the frames around its moment weighted by a sinc at the
+	source's Nyquist rate, Hann windowed three frames each side, worked out
+	here in double precision; never narrowed for a voice pitched up (44.1
+	kHz at 1.5), so its images and aliases near 24 kHz, which the reverb
+	folds onto its low end, are the Xbox's. Noise at 44.1 kHz at pitch 1,
+	1.5 and 0.75, at 22.05 kHz, and at 48 kHz at 0.75, each at the same
+	level */
+	CASE("room-send-images")
+	{
+		static const struct { unsigned long rate, frequency; } voices[] = {
+			{ 44100, 0 }, { 44100, 66150 }, { 44100, 33075 }, { 22050, 0 }, { 48000, 36000 },
+		};
+		unsigned long frames = 8192, source_frames = 32768, n;
+		double *signal = noise(source_frames), *exact = malloc(source_frames * sizeof(double)), first_gain = 0.0;
+		short *samples = malloc(source_frames * sizeof(short));
+		float *left = malloc(frames * sizeof(float)), *room = malloc(frames * sizeof(float));
+
+		quantize(signal, samples, exact, source_frames);
+		hrtf_initialize();
+		listener_reset();
+		environment.lRoom = 0;
+		environment.lRoomHF = 0;
+		for (index = 0; index < sizeof(voices) / sizeof(voices[0]); index++)
+		{
+			double step = (double)(voices[index].frequency ? voices[index].frequency : voices[index].rate) / 48000.0;
+			double along = 0.0, power = 0.0, rest = 0.0, gain;
+			DSI3DL2BUFFER source;
+			struct sdl_stream *stream = voice_placed(samples, source_frames, voices[index].rate, 0.0f, 0.0f, 2.0f);
+			double *expected = malloc(frames * sizeof(double));
+
+			stream->frequency = voices[index].frequency;
+			memset(&source, 0, sizeof(source));
+			IDirectSoundStream_SetI3DL2Source(&stream->object, &source, 0);
+			stream->direct = stream->pending.direct;
+			stream->direct_hf = stream->pending.direct_hf;
+			stream->room = stream->pending.room;
+			stream->room_hf = stream->pending.room_hf;
+			render_with_send(stream, frames, left, room);
+			voice_delete(stream);
+			/* (render_with_send leaves out the first mix) */
+			for (n = 0; n < frames; n++)
+			{
+				double time = (double)(CHUNK + n) * step, sum = 0.0;
+				long center = (long)floor(time), k;
+
+				for (k = center - 3; k <= center + 3; k++)
+				{
+					double distance = fabs(time - (double)k);
+
+					if (k < 0 || distance >= 3.0)
+						continue;
+					sum += exact[k] * (distance == 0.0 ? 1.0 : sin(PI * distance) / (PI * distance) *
+						(0.5 + 0.5 * cos(PI * distance / 3.0)));
+				}
+				expected[n] = sum;
+				along += room[n] * sum;
+				power += sum * sum;
+			}
+			gain = along / power;
+			for (n = 0; n < frames; n++)
+				rest += (room[n] - gain * expected[n]) * (room[n] - gain * expected[n]);
+			CHECK(gain > 0.0 && 10.0 * log10(rest / (gain * gain * power) + 1e-30) < -80.0,
+				"%lu Hz at %g: the room send differs from the Xbox's resampler by %.1f dB", voices[index].rate, step *
+				48000.0 / voices[index].rate, 10.0 * log10(rest / (gain * gain * power) + 1e-30));
+			if (!index)
+				first_gain = gain;
+			CHECK(fabs(20.0 * log10(gain / first_gain)) < 0.01, "%lu Hz at %g: the room send %+.3f dB from the first's",
+				voices[index].rate, step * 48000.0 / voices[index].rate, 20.0 * log10(gain / first_gain));
+			free(expected);
+		}
+		environment.lRoom = DSBVOLUME_MIN;
+		free(left);
+		free(room);
+		free(samples);
+		free(exact);
+		free(signal);
+		return 0;
+	}
+	/* the Xbox's quietest levels (voice_level), as recorded (issue 714's
+	sixth run: a 2D voice stepped down from -40 dB): each step's level, and
+	silence from -58 dB; louder never quieter; through the mixer a 2D voice,
+	a 3D one through the HRTF and its room send silent under the floor, and
+	audio.volume, which the Xbox did not have, under it, not in it */
+	CASE("quiet-levels")
+	{
+		static const double recorded[][2] = {
+			{ -40.0, -39.8 }, { -42.0, -42.1 }, { -44.0, -44.0 }, { -46.0, -45.4 }, { -48.0, -47.2 }, { -50.0, -49.4 },
+			{ -52.0, -52.3 }, { -54.0, -56.7 }, { -56.0, -66.2 },
+		};
+		static const double silent[] = { -58.0, -60.0, -70.0, -80.0, -100.0 };
+		unsigned long frames = 24000, n, hundredths;
+		short *samples = malloc((frames + 4096) * 2 * sizeof(short));
+		float *output = malloc(frames * 2 * sizeof(float)), *room = malloc(frames * sizeof(float));
+		double amplitude[3], rest_db, previous = 0.0;
+		int pass;
+
+		for (index = 0; index < sizeof(recorded) / sizeof(recorded[0]); index++)
+		{
+			double level = voice_level((float)pow(10.0, recorded[index][0] / 20.0));
+
+			CHECK(level > 0.0 && fabs(20.0 * log10(level) - recorded[index][1]) < 0.25,
+				"%g dB plays at %+.2f dB (the Xbox's: %g)", recorded[index][0], level > 0.0 ? 20.0 * log10(level) :
+				-999.0, recorded[index][1]);
+		}
+		for (index = 0; index < sizeof(silent) / sizeof(silent[0]); index++)
+		{
+			CHECK(voice_level((float)pow(10.0, silent[index] / 20.0)) == 0.0f, "%g dB is heard (the Xbox's: silent)",
+				silent[index]);
+		}
+		for (hundredths = 6000; hundredths >= 2000; hundredths--)
+		{
+			double level = voice_level((float)pow(10.0, -(double)hundredths / 2000.0));
+
+			CHECK(level >= previous, "-%.2f dB is quieter than -%.2f dB", hundredths / 100.0, (hundredths + 1) / 100.0);
+			CHECK(previous <= 0.0 || hundredths > 5500 || 20.0 * log10(level / previous) < 0.1,
+				"the level jumps %+.2f dB at -%.2f dB", 20.0 * log10(level / previous), hundredths / 100.0);
+			CHECK(voice_level((float)-level) == -voice_level((float)level), "-%.2f dB's sign not kept",
+				hundredths / 100.0);
+			previous = level;
+		}
+		/* through the mixer: a 1 kHz tone as a 2D stereo voice at 0 dB, -54
+		dB, and -40 dB under an audio.volume of -40 dB */
+		for (n = 0; n < frames + 4096; n++)
+			samples[2 * n] = samples[2 * n + 1] = (short)lround(16384.0 * sin(2.0 * PI * n / 48.0));
+		for (pass = 0; pass < 3; pass++)
+		{
+			struct sdl_stream *stream = voice_new(samples, frames + 4096, 2, 48000, 0);
+
+			stream->volume = pass == 1 ? (float)pow(10.0, -54.0 / 20.0) : pass == 2 ? 0.01f : 1.0f;
+			master_volume = pass == 2 ? 0.01f : 1.0f;
+			render(stream, output, frames, FALSE);
+			tone_fit(output, CHUNK, frames, 1.0 / 48.0, &amplitude[pass], &rest_db);
+			voice_delete(stream);
+		}
+		master_volume = 1.0f;
+		CHECK(fabs(20.0 * log10(amplitude[1] / amplitude[0]) + 56.7) < 0.25 &&
+			fabs(20.0 * log10(amplitude[2] / amplitude[0]) + 80.0) < 0.1,
+			"a 2D voice at -54 dB plays at %+.2f dB (the Xbox's: -56.7), at -40 dB under an audio.volume of -40 dB "
+			"at %+.2f dB", 20.0 * log10(amplitude[1] / amplitude[0] + 1e-30),
+			20.0 * log10(amplitude[2] / amplitude[0] + 1e-30));
+		/* a 3D voice through the HRTF 1 m ahead (each ear at -3 dB) at -52
+		dB, its ears at the level of -55 dB; at -58 dB, sending to the room,
+		silent */
+		hrtf_initialize();
+		listener_reset();
+		environment.lRoom = 0;
+		environment.lRoomHF = 0;
+		hrtf_enabled = TRUE;
+		{
+			short *mono = noise_samples(frames + 4096);
+			double power_db[2], expected;
+
+			for (pass = 0; pass < 3; pass++)
+			{
+				DSI3DL2BUFFER source;
+				struct sdl_stream *stream = voice_placed(mono, frames + 4096, 48000, 0.0f, 0.0f, 1.0f);
+
+				memset(&source, 0, sizeof(source));
+				IDirectSoundStream_SetI3DL2Source(&stream->object, &source, 0);
+				stream->room = stream->pending.room;
+				stream->room_hf = stream->pending.room_hf;
+				stream->volume = (float)pow(10.0, (pass == 0 ? 0.0 : pass == 1 ? -52.0 : -58.0) / 20.0);
+				render_with_send(stream, frames, output, room);
+				if (pass < 2)
+				{
+					/* (render_with_send's left channel only) */
+					power_db[pass] = ears_power(output, frames / 2);
+				}
+				for (n = 0; pass == 2 && n < frames; n++)
+				{
+					CHECK(output[n] == 0.0f && room[n] == 0.0f, "a 3D voice at -58 dB is heard at frame %lu (%g, "
+						"room %g)", n, output[n], room[n]);
+				}
+				voice_delete(stream);
+			}
+			expected = 20.0 * log10(voice_level((float)(0.70710678 * pow(10.0, -52.0 / 20.0))) / 0.70710678);
+			CHECK(fabs(power_db[1] - power_db[0] - expected) < 0.1 && expected < -56.0,
+				"through the HRTF a voice at -52 dB plays at %+.2f dB (at its ears' level, %+.2f)",
+				power_db[1] - power_db[0], expected);
+			free(mono);
+		}
+		hrtf_enabled = FALSE;
+		environment.lRoom = DSBVOLUME_MIN;
+		free(samples);
+		free(output);
+		free(room);
 		return 0;
 	}
 	/* audio.channels and the device's channels: "auto" is 5.1 on six or
