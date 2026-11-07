@@ -10,7 +10,10 @@ picture is its screenshot: the moment the key was pressed. Then a new issue
 on OpenH1's GitHub repository opens in the browser, its title and body
 filled in with report.md, and (on a computer) the reports folder: the
 player says what happened, drags the zip in and submits it. Nothing is
-sent by the game itself. Asked for in a game (report_game_playing), the
+sent by the game itself. Its issue is public, so what could say who the
+player is never goes in: settings.txt leaves the private settings out, and
+every text in it is scrubbed (report_scrub: the home folder, links,
+addresses, other players' chat lines). Asked for in a game (report_game_playing), the
 issue waits until the player is back in the menus, so that nothing is
 opened over the game. A second ask within REPORT_AGAIN_SECONDS of one is
 let go (a key pressed twice opens one issue).
@@ -29,7 +32,8 @@ The zip holds:
   halo.log       the host's log file, where it has one (Windows beside
                  halo.exe, the macOS app's in ~/Library/Logs/OpenH1), its end
   debug.txt      the game's own log, in the data folder
-  config.toml    the settings
+  settings.txt   the settings changed from their defaults (not config.toml:
+                 never the passwords, this machine's addresses, keys)
   screenshot.png the frame shown when it was asked for
 
 A frame's time costs a clock reading and two stores (report_frame_presented,
@@ -393,6 +397,181 @@ static int report_zip_end(struct report_zip *zip)
 	return !zip->failed && start >= 0 && !ferror(zip->file);
 }
 
+/* ---------- what is kept out of a report (its issue is public) */
+
+/* whether a setting ("server.password") is one a report leaves out: a
+password, an address of this machine's, a key */
+static int report_setting_private(const char *name)
+{
+	static const char *const named[] = {
+		"network.public_address", "server.master_publish_address", "debug.update_key",
+	};
+	size_t index;
+
+	if (strstr(name, "password"))
+		return 1;
+	for (index = 0; index < sizeof(named) / sizeof(named[0]); index++)
+	{
+		if (!strcmp(name, named[index]))
+			return 1;
+	}
+	return 0;
+}
+
+/* an IPv4 address at text (none of 127.0.0.0/8's, nor 0.0.0.0): its length,
+0 if it is not one */
+static size_t report_address_length(const char *text, size_t left)
+{
+	size_t at = 0;
+	int part, value, digits, loopback = 0, zero = 1;
+
+	for (part = 0; part < 4; part++)
+	{
+		if (part)
+		{
+			if (at >= left || text[at] != '.')
+				return 0;
+			at++;
+		}
+		for (value = 0, digits = 0; at < left && text[at] >= '0' && text[at] <= '9' && digits < 4; at++, digits++)
+			value = value * 10 + (text[at] - '0');
+		if (!digits || digits > 3 || value > 255)
+			return 0;
+		if (!part)
+			loopback = value == 127;
+		zero = zero && !value;
+	}
+	if (at < left && ((text[at] >= '0' && text[at] <= '9') || (text[at] == '.' && at + 1 < left &&
+		text[at + 1] >= '0' && text[at + 1] <= '9')))
+		return 0;
+	return loopback || zero ? 0 : at;
+}
+
+char *report_scrub(const char *text, size_t size, const char *home, size_t *scrubbed_size)
+{
+	size_t room = size * 2 + 4096, used = 0, at = 0, home_length = home ? strlen(home) : 0;
+	char *out = malloc(room);
+
+	*scrubbed_size = 0;
+	if (!out)
+		return NULL;
+#define REPORT_PUT(data, length) 	do { if (used + (length) < room) { memcpy(out + used, (data), (length)); used += (length); } } while (0)
+	while (at < size)
+	{
+		size_t end = at, index;
+		const char *line = text + at, *chat;
+
+		while (end < size && text[end] != '\n')
+			end++;
+		/* (another player's chat line, as debug.txt logs it) */
+		chat = NULL;
+		for (index = at; index + 5 <= end && !chat; index++)
+		{
+			if (!memcmp(text + index, "chat", 4) && (index == at || text[index - 1] == ' ') &&
+				(!memcmp(text + index + 4, ": ", end - index - 4 >= 2 ? 2 : 0) ||
+				!memcmp(text + index + 4, " (", end - index - 4 >= 2 ? 2 : 0)) &&
+				memcmp(text + index + 4, " notice", end - index - 4 >= 7 ? 7 : 0))
+			{
+				chat = text + index;
+			}
+		}
+		if (chat && end - at >= 6)
+		{
+			REPORT_PUT(line, (size_t)(chat - line));
+			REPORT_PUT("chat: (a chat line, removed from the report)", 44);
+			if (end < size)
+				REPORT_PUT("\n", 1);
+			at = end + 1;
+			continue;
+		}
+		for (index = at; index < end;)
+		{
+			size_t length;
+
+			/* (the home folder: the account's name) */
+			if (home_length > 1 && end - index >= home_length && !memcmp(text + index, home, home_length))
+			{
+				REPORT_PUT("~", 1);
+				index += home_length;
+			}
+			/* (an invite's or a party's link) */
+			else if (end - index >= 9 && !memcmp(text + index, "openh1://", 9))
+			{
+				REPORT_PUT("openh1://(removed)", 18);
+				index += 9;
+				while (index < end && text[index] != ' ' && text[index] != '\t' && text[index] != '"' &&
+					text[index] != ')')
+					index++;
+			}
+			else if ((index == at || !((text[index - 1] >= '0' && text[index - 1] <= '9') || text[index - 1] == '.')) &&
+				(length = report_address_length(text + index, end - index)) != 0)
+			{
+				REPORT_PUT("x.x.x.x", 7);
+				index += length;
+			}
+			else
+			{
+				REPORT_PUT(text + index, 1);
+				index++;
+			}
+		}
+		if (end < size)
+			REPORT_PUT("\n", 1);
+		at = end + 1;
+	}
+#undef REPORT_PUT
+	*scrubbed_size = used;
+	return out;
+}
+
+/* a text file's part of the zip, scrubbed (report_scrub) */
+static void report_zip_add_text(struct report_zip *zip, const char *name, const char *data, size_t size)
+{
+	const char *home = getenv("HOME");
+	size_t scrubbed_size;
+	char *scrubbed;
+
+#ifdef HALO_WINDOWS
+	if (getenv("USERPROFILE"))
+		home = getenv("USERPROFILE");
+#endif
+	scrubbed = report_scrub(data, size, home, &scrubbed_size);
+	if (scrubbed)
+	{
+		report_zip_add(zip, name, scrubbed, scrubbed_size);
+		free(scrubbed);
+	}
+}
+
+/* settings.txt: each setting changed from its default, as config.toml has
+it, but those report_setting_private names (never written); free() it */
+static char *report_settings_text(size_t *size)
+{
+	struct config_setting_info info;
+	size_t room = 64 * 1024, used = 0;
+	char *text = malloc(room), value[300];
+	int index;
+
+	*size = 0;
+	if (!text)
+		return NULL;
+	used = (size_t)snprintf(text, room, "# The settings changed from their defaults (config.toml), but the passwords, "
+		"this machine's addresses and keys, which a report leaves out\n");
+	for (index = 0; config_setting_info(index, &info) && used < room; index++)
+	{
+		if (!info.name || report_setting_private(info.name) || !config_text(info.name, value, sizeof(value)) ||
+			!strcmp(value, info.default_text))
+			continue;
+		/* (a number as its default, written another way: "0" for "0.0") */
+		if (info.type && (!strcmp(info.type, "real") || !strcmp(info.type, "integer")) &&
+			strtod(value, NULL) == strtod(info.default_text, NULL))
+			continue;
+		used += (size_t)snprintf(text + used, room - used, "%s = %s\n", info.name, value);
+	}
+	*size = used < room ? used : room - 1;
+	return text;
+}
+
 /* ---------- the report's parts */
 
 /* a file's end (its last most bytes), or NULL; free() it */
@@ -529,7 +708,7 @@ static char *report_text(const char *name)
 	if (line[0])
 		REPORT_PRINT("- Network game: %s, %s, %d of %d players\n", line, hosting ? "hosting" : "joined", players, most);
 	REPORT_PRINT("- Report: %s\n", name);
-	REPORT_PRINT("\n## Settings\n\nThe display's (every setting: config.toml in the zip)\n\n```\n");
+	REPORT_PRINT("\n## Settings\n\nThe display's (the others changed: settings.txt in the zip)\n\n```\n");
 	for (index = 0; index < sizeof(settings) / sizeof(settings[0]); index++)
 	{
 		if (config_text(settings[index], line, sizeof(line)))
@@ -747,11 +926,11 @@ static int report_finish(const char *note, char *message, size_t message_size)
 		return 0;
 	}
 	if (issue)
-		report_zip_add(&zip, "report.md", issue, strlen(issue));
+		report_zip_add_text(&zip, "report.md", issue, strlen(issue));
 	data = report_log_text(&size);
 	if (data)
 	{
-		report_zip_add(&zip, "log.txt", data, size);
+		report_zip_add_text(&zip, "log.txt", data, size);
 		free(data);
 	}
 	/* (the host's log file, where it has one) */
@@ -767,22 +946,21 @@ static int report_finish(const char *note, char *message, size_t message_size)
 #endif
 	if (data)
 	{
-		report_zip_add(&zip, "halo.log", data, size);
+		report_zip_add_text(&zip, "halo.log", data, size);
 		free(data);
 	}
 	snprintf(file_path, sizeof(file_path), "%s/debug.txt", platform_data_root());
 	data = report_file_end(file_path, REPORT_FILE_MOST, &size);
 	if (data)
 	{
-		report_zip_add(&zip, "debug.txt", data, size);
+		report_zip_add_text(&zip, "debug.txt", data, size);
 		free(data);
 	}
-	config_folder(file_path, sizeof(file_path));
-	snprintf(file_path + strlen(file_path), sizeof(file_path) - strlen(file_path), "config.toml");
-	data = report_file_end(file_path, REPORT_FILE_MOST, &size);
+	/* (not config.toml: the settings changed, the private ones never) */
+	data = report_settings_text(&size);
 	if (data)
 	{
-		report_zip_add(&zip, "config.toml", data, size);
+		report_zip_add_text(&zip, "settings.txt", data, size);
 		free(data);
 	}
 	/* (the frame, written by the host beside the zip as it was asked for,

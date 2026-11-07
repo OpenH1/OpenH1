@@ -98,6 +98,40 @@ int main(int argc, char **argv)
 		CHECK(!report_issue_url("t", "no line ends here at all, and too long for the room", url, 70), "no line to cut at");
 		return 0;
 	}
+	if (!strcmp(test, "scrub"))
+	{
+		static char const text[] =
+			"data root: /Users/keyes/Halo/maps\n"
+			"hosting: openh1://join/fba388a4deadbeef (the rest is left out)\n"
+			"joined 203.0.113.7:2302 and 10.0.0.5, local 127.0.0.1, any 0.0.0.0\n"
+			"vulkan: Vulkan 1.3.280, driver 24.1.3; version 300.1.2.3.4\n"
+			"11.06.26 22:55:20  chat (team): Johnson: meet at the warthog\n"
+			"11.06.26 22:55:21  chat: Cortana: hello\n"
+			"11.06.26 22:55:22  chat notice: Text chat is off in this game\n"
+			"no newline at the end";
+		size_t size;
+		char *out = report_scrub(text, sizeof(text) - 1, "/Users/keyes", &size);
+
+		CHECK(out != NULL, "scrubbed");
+		out[size] = 0;
+		printf("%s\n", out);
+		CHECK(strstr(out, "data root: ~/Halo/maps\n"), "the home folder as ~");
+		CHECK(!strstr(out, "keyes"), "the account's name left");
+		CHECK(strstr(out, "hosting: openh1://(removed) (the rest"), "the link taken out");
+		CHECK(strstr(out, "joined x.x.x.x:2302 and x.x.x.x, local 127.0.0.1, any 0.0.0.0\n"), "the addresses");
+		CHECK(strstr(out, "Vulkan 1.3.280, driver 24.1.3; version 300.1.2.3.4\n"), "versions left as they are");
+		CHECK(strstr(out, "22:55:20  chat: (a chat line, removed from the report)\n"), "a team chat line");
+		CHECK(!strstr(out, "warthog") && !strstr(out, "Cortana"), "a chat line left");
+		CHECK(strstr(out, "chat notice: Text chat is off"), "a notice taken out");
+		CHECK(size >= 21 && !memcmp(out + size - 21, "no newline at the end", 21), "the last line");
+		CHECK(report_setting_private("server.password") && report_setting_private("server.web_owner_password") &&
+			report_setting_private("network.public_address") && report_setting_private("debug.update_key"),
+			"a private setting not left out");
+		CHECK(!report_setting_private("display.vsync") && !report_setting_private("network.online"),
+			"a setting left out that is not private");
+		free(out);
+		return 0;
+	}
 	if (!strcmp(test, "zip") && getenv("REPORT_ZIP"))
 	{
 		struct report_zip zip;

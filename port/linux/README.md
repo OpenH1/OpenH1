@@ -420,6 +420,11 @@ issue opens when you're back in the menus"), and its issue opens when you
 leave the game (or as the game quits; a note still open then is let go).
 A second press within 5 seconds opens nothing more.
 
+An issue is public, so what could say who you are is kept out of the zip:
+besides the settings left out (below), each text in it has your home
+folder written as `~`, invite and party links, IP addresses (but 127.x)
+and other players' chat lines taken out.
+
 The zip holds:
 
 | File | Contents |
@@ -428,7 +433,7 @@ The zip holds:
 | `log.txt` | This run's log (its last 512 KB), which on Linux and Android is not otherwise in a file. |
 | `halo.log` | The host's log file, where there is one: Windows's beside `halo.exe`, the macOS app's in `~/Library/Logs/OpenH1`. |
 | `debug.txt` | The game's own log. |
-| `config.toml` | Every setting. |
+| `settings.txt` | The settings changed from their defaults: never `config.toml` itself, nor the passwords (`server.password` and the web ones), `network.public_address`, `server.master_publish_address` or `debug.update_key`. |
 | `screenshot.png` | The frame shown when the report was asked for (none in the VR mode). |
 
 Keeping the frame times costs a clock reading a frame; keeping the log, a

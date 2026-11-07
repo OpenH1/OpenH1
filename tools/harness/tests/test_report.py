@@ -23,12 +23,21 @@ NEGATIVE_CONTROLS = {
                      "if (micros[index] > REPORT_HITCH_MS * 1000)"),
     # every frame listed as one of the longest, a stall or not
     "longest-all": ("steady", "if (micros[best] < 2 * (uint64_t)sorted[count / 2])", "if (0)"),
+    # the home folder kept: the account's name in a public issue
+    "scrub-home": ("scrub", "if (home_length > 1 && end - index >= home_length", "if (0 && home_length > 1"),
+    # this machine's own loopback taken for an address
+    "scrub-loopback": ("scrub", "return loopback || zero ? 0 : at;", "return (loopback && 0) || zero ? 0 : at;"),
+    # other players' chat lines kept
+    "scrub-chat": ("scrub", "if (chat && end - at >= 6)", "if (0)"),
+    # a password written into settings.txt
+    "private-password": ("scrub", 'if (strstr(name, "password"))', 'if (0)'),
     # the body's characters left as they are: an & or a # ends it early
     "issue-unencoded": ("issue", "character == '~';", "character == '~' || character == '&' || character == '#';"),
 }
 
 FUNCTIONS = ("report_crc32", "report_compare_micros", "report_low_fps", "report_frame_summary", "report_put16",
-             "report_put32", "report_zip_add", "report_zip_end", "report_percent_encode", "report_issue_url")
+             "report_put32", "report_zip_add", "report_zip_end", "report_percent_encode", "report_issue_url", "report_setting_private",
+             "report_address_length", "report_scrub")
 
 
 def generated(fault=None):
@@ -41,7 +50,7 @@ def generated(fault=None):
     return (("under_test.inc", code + "\n"),)
 
 
-@pytest.mark.parametrize("case", ["crc", "frames", "steady", "issue"])
+@pytest.mark.parametrize("case", ["crc", "frames", "steady", "issue", "scrub"])
 def test_case(case):
     status, output = run(build("report", generated()), case)
     assert status == 0, output

@@ -43,6 +43,11 @@ void report_frame_summary(const uint32_t *micros, const uint32_t *at_ms, unsigne
 filled in (percent-encoded; the body cut at a line to keep the address
 within most bytes); 1 if it fits */
 int report_issue_url(const char *title, const char *body, char *url, size_t most);
+/* a text with what could say who the player is taken out, its issue being
+public: home (the account's folder) as ~, invite and party links, IPv4
+addresses (but 127.x and 0.0.0.0), other players' chat lines; malloc()'s,
+its size into scrubbed_size */
+char *report_scrub(const char *text, size_t size, const char *home, size_t *scrubbed_size);
 /* the zip's CRC-32 (crc 0 to begin, then each part's) */
 uint32_t report_crc32(uint32_t crc, const unsigned char *data, size_t size);
 
