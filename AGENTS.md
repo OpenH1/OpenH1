@@ -233,6 +233,7 @@ python tools/test_death_timing.py
 python -m pytest -q tools/test_join_page.py                 # the website's join page: the links it reads (Node), nothing loaded from elsewhere
 python -m pytest -q tools/test_net_compare.py               # net_compare.py's judging of logs, its copies and their processes
 python -m pytest -q tools/test_determinism_compare.py       # determinism_compare.py's reading of the determinism logs
+python -m pytest -q tools/test_symbolize_crash.py          # symbolize_crash.py: a crash's frames placed and named (made-up report and image)
 python tools/net_compare.py --a build/linux_x86_64/halo --b <other build> --data <game data> --swap
                                                             # two builds in one network game, in step (retail maps: local only)
 tools/wine_bench.sh run                                     # a Windows build under Wine, headless, on a Linux GPU

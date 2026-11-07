@@ -271,7 +271,7 @@ def main() -> int:
         if symbols.exists():
             shutil.rmtree(symbols)
         symbols.mkdir(parents=True)
-        for pdb in [ROOT / "build/windows/halo.pdb", ROOT / "build/windows/halo_guest.elf",
+        for pdb in [ROOT / "build/windows/halo.pdb", ROOT / "build/windows/halo_guest.debug.elf",
                     *sorted((ROOT / "build/windows/third_party").glob("SDL3-*/lib/x64/SDL3.pdb"))]:
             shutil.copy2(pdb, symbols)
             print(f"{pdb.relative_to(ROOT)} -> {symbols.relative_to(ROOT)}", flush=True)

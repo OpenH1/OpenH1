@@ -396,7 +396,7 @@ If the game stops because of a fatal signal, the host writes the address,
 the registers and the frame chain to the standard error. Where the address
 is in the game's code, the report says so with the command that finds its
 function in the guest image: `addr2line -e build/linux_x86_64/halo_guest.elf
-<address>`.
+<address>`. `tools/symbolize_crash.py` finds them all (refer to "Reports").
 
 ### Reports
 
@@ -469,6 +469,45 @@ is. A run nobody watches (`debug.no_clipboard`, `null_renderer`,
 `test_input`, `fixed_step`, `network_test` or `exit_after`) does not ask: it
 logs what the report would say, and `debug.crash_answer` answers for a
 test.
+
+`tools/symbolize_crash.py` gives each frame of a crash its function and
+source line, from a crash report's zip, its `crash.txt`, or a log with the
+crash's lines (`debug.txt`, `halo.log`, the terminal's), and the build that
+crashed:
+
+```
+python tools/symbolize_crash.py 2026-11-07_01.11.53.zip build/macos
+```
+
+```
+signal 10 at address 0x7100000000: pc 00000071a012106c lr 00000071a0319720 ...
+        pc: guest a012106c main_crash+0xc  source/main/main.c:1801:17
+        lr: guest a0319720 main_crash_evaluate+0x20  source/hs/hs.c:15236:46
+  ...
+  frame  3: return 00000071a0526774
+        guest a0526774 telnet_console_process+0x294  source/networking/telnet_console.c:399:10
+  ...
+  frame  7: return 0000000104c8ef0c
+        halo+0x2f0c host_enter_guest (in halo) (host_enter.S:37)
+```
+
+The crash's lines give each address as the host saw it. The guest's are
+its own 32-bit addresses (the x32 guest of the 64-bit x86 build, the arm64
+guests without the base register), or, with the base register (macOS, iOS,
+`configure.py --guest-base`), the `guest memory at` base plus them; the
+host's are placed by the `host image at` line. The guest's are looked up in
+`halo_guest.debug.elf`, the guest image with its source lines (the guest
+is compiled with line tables), which the build writes beside `halo`: the
+builds carry `halo_guest.elf`, the same image without them. Without either
+file the tool takes the image the executable or the APK carries (the
+macOS app's `Contents/MacOS/halo`, the Linux release's `lib/openh1/halo`,
+the APK), which names the functions only. The report's reference address
+must be the image's `write_to_error_file`, or the tool stops: the image is
+another build's. The host's frames are looked up in its executable (`halo`,
+Android's `libmain.so`): on macOS with `atos`, which finds the debugging
+information the build left, elsewhere with `llvm-symbolizer`, the guests'
+pinned LLVM's (`python tools/guest_toolchain.py`) or the PATH's.
+`tools/test_symbolize_crash.py` tests it, offline.
 
 What held the frames back is read from the times of each frame: the
 frame's own; the GPU's on it (Metal's: the time the GPU was busy, the

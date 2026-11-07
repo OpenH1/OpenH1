@@ -196,7 +196,9 @@ python tools/symbolize_crash.py halo.log <folder>
 ```
 
 Give the folder of the build that crashed: `halo.exe`, `halo.pdb` and
-`halo_guest.elf`. The tool needs `llvm-symbolizer` (LLVM).
+`halo_guest.debug.elf` (the guest image with its source lines; a release's
+before it was published has `halo_guest.elf`, which names the functions
+only). The tool needs `llvm-symbolizer` (LLVM).
 
 OpenH1 has no Sentry project yet: no build sends crash reports. To test the
 crash reports, set the `HALO_CRASH_REPORTS_ANY_BUILD` environment
