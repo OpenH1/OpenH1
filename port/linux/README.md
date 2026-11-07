@@ -873,7 +873,9 @@ the map's own pause menu, before LEAVE GAME, so the buttons of a custom map
 stay. The Xbox's pause box is drawn as tall as they need (a redraw,
 `port/assets/menus/port_svg/pause`), its rows spaced as the campaign's
 pause menu's are; a custom map's box keeps its size, and what is below its
-list moves down. Both pause boxes are as much wider as the keys' caps and
+list moves down. Both pause boxes keep the Xbox's width while a
+controller's buttons are drawn under them, and while the keyboard's keys
+are (`input.button_prompts`) are as much wider as the keys' caps and
 words of their legends ("Esc = CANCEL Enter = SELECT") are than the Xbox's
 pictures and words, so that the room either side of them is the Xbox's,
 and the legends' caps and capitals are in the middle of their band. The

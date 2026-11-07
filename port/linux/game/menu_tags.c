@@ -47,6 +47,7 @@ menu gets FRIENDLY FIRE too.
 #include "custom_edition_cache.h"
 #include "network_admin.h"
 #include "basic_training.h"
+#include "halo_keyboard.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -603,6 +604,18 @@ static char const *const port_game_data_input_names[] =
 	"port campaign restart update",
 };
 
+/* a pause box made wider while the keyboard plays (pause_boxes_fit) */
+#define PAUSE_BOXES 4
+struct pause_box_growth
+{
+	struct ui_widget_definition *box;
+	struct ui_widget_definition *screen;
+	struct ui_widget_definition *split_screen;
+	short growth;
+};
+
+static void pause_boxes_fit(void);
+
 static struct
 {
 	/* what is let go when the map unloads */
@@ -634,6 +647,13 @@ static struct
 	long radius_count;
 	struct menu_tag_value legend_rooms[MENU_TAG_VALUES];
 	long legend_room_count;
+	/* the pause boxes made wider for the keys' caps of the legends under
+	them while the keyboard plays (pause_boxes_fit), each with the screen
+	whose mission objectives move with it (or NULL), and whether they are
+	wider now */
+	struct pause_box_growth pause_boxes[PAUSE_BOXES];
+	long pause_box_count;
+	boolean pause_boxes_wide;
 } menu_tags;
 
 /* the build under way */
@@ -730,6 +750,7 @@ void ui_widget_port_wide_layout(long width)
 	short extra = ui_widget_port_wide_extra_of(width);
 	long index;
 
+	pause_boxes_fit();
 	if (extra == menu_tags.wide_extra || !menu_tags.wides)
 		return;
 	menu_tags.wide_extra = extra;
@@ -2089,9 +2110,10 @@ pausebox2 pieces), the rows are spaced as the campaign's pause menu's are
 (issue 690), and the box is the port's (pause/pausebox_*:
 tools/port_settings.py) as tall as they and the legends under them need,
 centred where the old one was; on a custom map's, what is below the list
-moves down. The Xbox's box is made as much wider as the legends under it
-are while the keyboard plays (pause_box_widen: issue 596), here and in the
-campaign's pause menu. */
+moves down. The Xbox's box keeps the Xbox's width while a controller's
+buttons are drawn under it (issue 751), and is made as much wider as the
+legends under it are only while the keyboard's keys are (pause_boxes_fit:
+issue 596), here and in the campaign's pause menu. */
 
 /* (Settings' first tab: tools/port_settings.py) */
 #define PAUSE_SETTINGS_SCREEN "main_menu/settings_select/player_setup/player_profile_edit/video_settings/video_settings_screen"
@@ -2364,13 +2386,14 @@ legends' row under it (ui_widget_port_key_legend_growth: its keys' caps
 wider than the controller's pictures, issue 596), half of it either side,
 so that the room either side of the row is the Xbox's; the objectives' box
 moves right by half of it, as the box's right does, and the screens move
-what is in it (pause_objectives_move) */
+what is in it (pause_objectives_move). A negative growth makes it narrower
+again (pause_boxes_fit) */
 static void pause_box_widen(struct ui_widget_definition *box, short growth)
 {
 	struct ui_widget_child_reference *pieces = box->child_widgets.address;
 	long piece;
 
-	if (growth <= 0)
+	if (!growth)
 		return;
 	for (piece = 0; piece < box->child_widgets.count; piece++)
 	{
@@ -2402,12 +2425,55 @@ static void pause_objectives_move(struct ui_widget_definition *screen, short gro
 	struct ui_widget_child_reference *children = screen->child_widgets.address;
 	long child;
 
-	for (child = 0; growth > 0 && child < screen->child_widgets.count; child++)
+	for (child = 0; growth && child < screen->child_widgets.count; child++)
 	{
 		long tag = children[child].widget_tag.index;
 
 		if (tag_name_ends(tag, "\\mission_objective_text") || tag_name_ends(tag, "\\mission_objectives_caption"))
 			children[child].horizontal_offset = (short)(children[child].horizontal_offset + growth / 2);
+	}
+}
+
+/* a pause box to be made `growth` units wider while the keyboard plays
+(pause_boxes_fit), with the screens whose mission objectives move with it
+(NULL for none) */
+static void pause_box_keep(struct ui_widget_definition *box, struct ui_widget_definition *screen,
+	struct ui_widget_definition *split_screen, short growth)
+{
+	struct pause_box_growth *kept;
+
+	if (growth <= 0 || menu_tags.pause_box_count >= PAUSE_BOXES)
+		return;
+	kept = &menu_tags.pause_boxes[menu_tags.pause_box_count++];
+	kept->box = box;
+	kept->screen = screen;
+	kept->split_screen = split_screen;
+	kept->growth = growth;
+}
+
+/* the pause boxes as wide as the legends under them are drawn: the Xbox's
+width while a controller's buttons are drawn in them (the pictures it had
+room for: issue 751), and as much wider as the keys' caps need while the
+keyboard's keys are (input.button_prompts: issue 596). Each frame the menus
+are drawn (ui_widget_port_wide_layout) */
+static void pause_boxes_fit(void)
+{
+	boolean wide = halo_keyboard_prompts() != 0;
+	long index;
+
+	if (wide == menu_tags.pause_boxes_wide)
+		return;
+	menu_tags.pause_boxes_wide = wide;
+	for (index = 0; index < menu_tags.pause_box_count; index++)
+	{
+		struct pause_box_growth const *kept = &menu_tags.pause_boxes[index];
+		short growth = (short)(wide ? kept->growth : -kept->growth);
+
+		pause_box_widen(kept->box, growth);
+		if (kept->screen)
+			pause_objectives_move(kept->screen, growth);
+		if (kept->split_screen)
+			pause_objectives_move(kept->split_screen, growth);
 	}
 }
 
@@ -2490,7 +2556,8 @@ static void pause_patch(struct cache_file_tag_instance *instances)
 		}
 		/* the stock box: the port's, its rows as the campaign's pause menu
 		spaces them, its legends under them, as tall as they need, centred
-		where the old one was, and as wide as the legends need; else only
+		where the old one was, and as wide as the legends need
+		(pause_boxes_fit); else only
 		what is below the list moves (as far as the list grew) */
 		if (box_child != NONE)
 		{
@@ -2524,7 +2591,7 @@ static void pause_patch(struct cache_file_tag_instance *instances)
 					children[box_child].widget_tag.index);
 
 				pause_box_redraw(box, buttons);
-				pause_box_widen(box, growth);
+				pause_box_keep(box, NULL, NULL, growth);
 				box_redrawn = TRUE;
 			}
 			continue;
@@ -2677,12 +2744,17 @@ static void pause_campaign_grow_box(struct ui_widget_definition *widget, short s
 }
 
 /* the campaign's pause box (the box of its pieces, which the split screen's
-pause screen shares) as wide as the legends under it need (pause_box_widen),
-the mission objectives' box and what is in it moved with its right */
+pause screen shares) as wide as the legends under it need while the
+keyboard plays (pause_box_keep), the mission objectives' box and what is in
+it moved with its right */
 static void pause_campaign_widen(struct ui_widget_definition *screen)
 {
 	struct ui_widget_child_reference *children = screen->child_widgets.address;
 	long split_screen = tag_loaded(UI_WIDGET_DEFINITION_TAG, CAMPAIGN_PAUSE_SPLIT_SCREEN);
+	/* (the objectives move with the first box: once) */
+	struct ui_widget_definition *moved = screen;
+	struct ui_widget_definition *split_moved = split_screen == NONE ? NULL :
+		tag_get(UI_WIDGET_DEFINITION_TAG, split_screen);
 	short growth = 0;
 	long child;
 
@@ -2705,14 +2777,12 @@ static void pause_campaign_widen(struct ui_widget_definition *screen)
 		{
 			if (tag_name_ends(pieces[piece].widget_tag.index, "\\pausebox2_left"))
 			{
-				pause_box_widen(box, growth);
+				pause_box_keep(box, moved, split_moved, growth);
+				moved = split_moved = NULL;
 				break;
 			}
 		}
 	}
-	pause_objectives_move(screen, growth);
-	if (split_screen != NONE)
-		pause_objectives_move(tag_get(UI_WIDGET_DEFINITION_TAG, split_screen), growth);
 }
 
 static void pause_campaign_patch(struct cache_file_tag_instance *instances)

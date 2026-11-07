@@ -54,9 +54,9 @@ def test_negative_control(control):
 
 
 def test_pause_boxes_made_wider():
-    """The pause boxes are made as much wider as their legends' row is (both pause menus), and the row is given the
-    room: measured by the drawing's own measure, half of it either side of the box, the mission objectives' box moved
-    with the box's right."""
+    """The pause boxes are made as much wider as their legends' row is (both pause menus, while the keyboard plays),
+    and the row is given the room: measured by the drawing's own measure, half of it either side of the box, the
+    mission objectives' box moved with the box's right."""
     tags = read("port/linux/game/menu_tags.c")
     growth = function(tags, "pause_legends_growth")
     assert "ui_widget_port_key_legend_growth(legends_tag)" in growth
@@ -65,7 +65,8 @@ def test_pause_boxes_made_wider():
     for piece in ("pausebox2_left", "pausebox2_left_center", "pausebox2_right", "pausebox_right_center"):
         assert f'"\\\\{piece}"' in widen, piece
     assert "center->bounds.x1 = (short)(center->bounds.x1 + growth);" in widen
-    assert "pause_box_widen(box, growth);" in function(tags, "pause_patch")
+    # (while the keyboard plays: test_pause_box_fit.py)
+    assert "pause_box_keep(box, NULL, NULL, growth);" in function(tags, "pause_patch")
     assert "pause_campaign_widen(definition);" in function(tags, "pause_campaign_patch")
     shift = function(read(SOURCE), "ui_widget_port_key_legend_shift")
     assert "pc_menu_legend_room(label->parent->definition_tag_index)" in shift
