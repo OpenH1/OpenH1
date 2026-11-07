@@ -3249,6 +3249,7 @@ static void stream_initialize(void *context, struct xgpu_stream_capabilities *ca
 	shaders, reading the pixels they draw over, the tone map in place:
 	where the device reads its colour attachments, the desktop's) */
 	capabilities->hdr = stream.capabilities.color_read != 0;
+	snprintf(capabilities->device, sizeof(capabilities->device), "%s", stream.capabilities.device);
 }
 
 static void stream_prepare(void *context)

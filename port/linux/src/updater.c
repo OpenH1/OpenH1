@@ -91,6 +91,8 @@ test's release server, debug.update_url).
 #include "port_config.h"
 #include "update.h"
 
+#include <stdio.h>
+
 /* the release's build that this one updates to (UPDATE_NAME[-debug].zip,
 as tools/release_names.py names the release's files; on Linux, the release's
 tree); a build without one never looks for updates */
@@ -136,6 +138,18 @@ generate_guest_image, windows_build.py; the commit, CI's) */
 #ifndef HALO_BUILD_COMMIT
 #define HALO_BUILD_COMMIT ""
 #endif
+
+/* the build in a few words (report.c's report.txt): its release, its
+flavour and commit */
+void updater_build_text(char *text, size_t size)
+{
+	if (HALO_BUILD_NUMBER > 0)
+		snprintf(text, size, "build-%d (%s%s%s)", HALO_BUILD_NUMBER, HALO_BUILD_FLAVOR,
+			HALO_BUILD_COMMIT[0] ? ", commit " : "", HALO_BUILD_COMMIT);
+	else
+		snprintf(text, size, "a local build, not a release (%s%s%s)", HALO_BUILD_FLAVOR,
+			HALO_BUILD_COMMIT[0] ? ", commit " : "", HALO_BUILD_COMMIT);
+}
 
 /* which build this is, first in the log as the game starts (updater_start):
 its release (build-1314), and the commit it was made from */

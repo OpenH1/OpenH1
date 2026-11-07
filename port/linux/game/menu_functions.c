@@ -121,6 +121,7 @@ their handlers open opens.
 #include "../src/master_list.h"
 #include "../src/player_link.h" /* port: port/linux/src/player_link.c */
 #include "../src/server_master.h"
+#include "../src/report.h"
 #include "text_filter.h"
 /* (the party: party_menu.inc) */
 #include "party.h"
@@ -2420,6 +2421,13 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 		gyro_calibrated = FALSE;
 		ui_play_audio_feedback_sound(SOUND_CURSOR);
 	}
+	else if (!strcmp(name, "report"))
+	{
+		/* (REPORT A PROBLEM: saved at the next frame and a GitHub issue
+		opened for it, port/linux/src/report.c, which says where) */
+		report_request_send();
+		ui_play_audio_feedback_sound(SOUND_FORWARD);
+	}
 	else if (!strcmp(name, "profiles"))
 	{
 		/* (MANAGE PROFILES: the profile manager may change player 1's
@@ -3792,6 +3800,7 @@ static struct
 	{ "controls.scoreboard", L"SHOW SCORES", 2, FALSE },
 	{ "controls.pause", L"PAUSE MENU", 2, TRUE },
 	{ "controls.screenshot", L"SCREENSHOT", 2, FALSE },
+	{ "controls.report", L"SAVE REPORT", 2, FALSE },
 	{ "controls.push_to_talk", L"PUSH TO TALK", 3, FALSE },
 	{ "controls.chat", L"CHAT", 3, FALSE },
 	{ "controls.team_chat", L"TEAM CHAT", 3, FALSE },

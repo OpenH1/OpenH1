@@ -37,6 +37,7 @@ Conventions carried over from the Xbox:
 #include "port_config.h"
 #include "battery_saver.h"
 #include "menu_pictures.h"
+#include "report.h"
 #include "bink_import.h"
 #include "halo_linux_source_fixups.h"
 #include "panini_projection.h"
@@ -5914,6 +5915,8 @@ unsigned char *d3d8_back_buffer_read(unsigned long *width, unsigned long *height
 void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destination_rectangle,
 	void *unused, void *unused2)
 {
+	int report_asked;
+
 	(void)source_rectangle;
 	(void)destination_rectangle;
 	(void)unused;
@@ -5953,6 +5956,14 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 		}
 		if (platform_screenshot_take_request())
 			write_key_screenshot(back_buffer);
+		/* (Save Report's zip, this frame its screenshot: report.c) */
+		if ((report_asked = report_take_request()) != 0)
+		{
+			char message[160];
+
+			report_write(back_buffer->target.number, report_asked == 2, message, sizeof(message));
+			console_printf(FALSE, "%s", message);
+		}
 		/* (a menu picture's frame: kept, and not shown, the preparing
 		screen staying: port/linux/game/menu_pictures_render.c) */
 		if (!menu_pictures_frame_kept())
@@ -5960,8 +5971,18 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 		memory_watch_begin_frame();
 		xgpu_backend_frame_end();
 	}
+	/* (a report asked for with no frame shown: the VR mode's, no renderer's;
+	no screenshot) */
+	if ((report_asked = report_take_request()) != 0)
+	{
+		char message[160];
+
+		report_write(0, report_asked == 2, message, sizeof(message));
+		console_printf(FALSE, "%s", message);
+	}
 	device.frame++;
 	stats.presents++;
+	report_frame_presented();
 	/* (display.hdr: a frame begins with no 3D view drawn) */
 	hdr.view = FALSE;
 	hdr.category = -1;

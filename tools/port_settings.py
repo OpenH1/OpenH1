@@ -872,6 +872,13 @@ PAGES = {
             # nearer: port/linux/src/map_cache.c, port/linux/game/map_cache_prefill.c)
             (SECTION, "STORAGE"),
             ("MAP STORAGE", "game.map_cache_megabytes", MAP_STORAGE, MAP_STORAGE_HELP, None),
+            # (port/linux/src/report.c: saved at the next frame, and a GitHub
+            # issue opened in the browser, filled in; the game sends nothing)
+            (SECTION, "HELP"),
+            ("REPORT A PROBLEM", None, None,
+             "Saves a report (the log, your settings and GPU, the frame rate and a screenshot) and opens a "
+             "GitHub issue filled in with it: say what happened, drag in the report's file, submit. F9 saves one "
+             "in a game, to send later.", None, "report", "port settings report"),
             (SECTION, "ABOUT"),
             ("OPENH1", None, None,
              "Halo: Combat Evolved, the Xbox game, on this computer, played from your own copy of its maps. OpenH1 "

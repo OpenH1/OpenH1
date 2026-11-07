@@ -75,6 +75,9 @@ struct xgpu_backend_capabilities
 };
 
 extern struct xgpu_backend_capabilities xgpu_backend_capabilities;
+/* the GPU, its API and driver, as the backend's host names them ("" if
+unknown: a report's, port/linux/src/report.c) */
+const char *xgpu_backend_device(void);
 
 /* ---------- the backend's life
 

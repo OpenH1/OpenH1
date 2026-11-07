@@ -383,6 +383,9 @@ struct xgpu_metal_capabilities
 	uint8_t base_vertex;
 	uint8_t fans, line_loops;
 	uint8_t fill_modes;
+	/* the GPU and the system, in a few words (a report's:
+	port/linux/src/report.c) */
+	char device[96];
 };
 
 /* 1 on success (a Metal device); host_metal.m calls it */
