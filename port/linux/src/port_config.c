@@ -120,7 +120,15 @@ a second, its GPU's 7.6 ms a frame to 8.9; 256 is still twice the Xbox's
 #endif
 #define GRAPHICS_PER_PIXEL_LIGHTING "true"
 #define GRAPHICS_MODEL_DETAIL "\"native\""
+/* (classic on the phones: on a Pixel 11 Pro at 120 Hz the enhanced lights
+were most of the 3D view's GPU time, and a 3-minute game with 7 bots went
+from 90 to 102 frames a second, its 1% low from 18 to 28 and its frames of
+50 ms or more from 25 to the loading's few, with them classic) */
+#if defined(HALO_ANDROID) || defined(HALO_IOS)
+#define GRAPHICS_DYNAMIC_LIGHTS "\"classic\""
+#else
 #define GRAPHICS_DYNAMIC_LIGHTS "\"enhanced\""
+#endif
 /* (off in Enhanced too, for now: "world" is opt-in, Video Setup > Advanced
 Graphics > Ambient Occlusion, while its cost on the slower GPUs is measured
 and brought down, #671) */

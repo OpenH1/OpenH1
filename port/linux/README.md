@@ -1591,7 +1591,7 @@ so that choosing Classic or Enhanced there chooses them all.
 | `display.shadow_resolution` | `128` | `512` (`256` on Android and iOS) |
 | `display.per_pixel_lighting` | `false` | `true` |
 | `display.model_detail` | `"auto"` | `"native"` |
-| `display.dynamic_lights` | `"classic"` | `"enhanced"` |
+| `display.dynamic_lights` | `"classic"` | `"enhanced"` (`"classic"` on Android and iOS) |
 | `display.ambient_occlusion` | `"off"` | `"off"` (opt-in for now) |
 | `game.enhanced_animations` | `false` | `true` |
 | `display.menu_fade` | `true` | `false` |
