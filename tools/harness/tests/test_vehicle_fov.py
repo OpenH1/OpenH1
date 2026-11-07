@@ -1,8 +1,10 @@
-"""display.vehicle_fov (view_fov.c's render_fov_vertical, render_fov_reticle_scale): a seat's view, first or third
-person, and the moments of entering and leaving it take the vehicle's field of view ("default": the game's own, its
-reticle at the stock size; "match": display.fov's; a number: its angle), on foot display.fov's. Getting in and out the
-view eases between them, and each frame's reticle is scaled from that frame's view (the Shade's turret, #441); death,
-the director's neutral view, a scripted camera and a scope's full zoom keep the game's."""
+"""display.vehicle_fov (view_fov.c's render_fov_vertical, render_fov_reticle_scale): a third-person seat's view (a
+driver's, a gunner's, display.passenger_third_person's passenger) and the moments of entering and leaving it take the
+vehicle's field of view ("default": the game's own, its reticle at the stock size; "match": display.fov's; a number:
+its angle); on foot and in a first-person seat (a passenger's, the Shade's turret: #775) display.fov's. Getting in and
+out, and from one kind of seat to the other, the view eases between them, and each frame's reticle is scaled from that
+frame's view (#441); each local player has their own; death, the director's neutral view, a scripted camera and a
+scope's full zoom keep the game's."""
 import sys
 from pathlib import Path
 
@@ -11,23 +13,34 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run  # noqa: E402
 
-CASES = ["turret_default", "turret_match", "turret_number", "third_person_seat", "turret_exit",
+CASES = ["seat_default", "seat_match", "seat_number", "third_person_seat", "first_person_seat", "turret_exit",
+         "passenger_camera", "seat_change", "split_screen",
          "leaving_third_person", "match_exit", "entering", "turned_back", "respawn", "scoped_in_seat", "dead",
          "neutral", "scripted", "wider_with_panini", "past_the_widest", "zoomed_reticle_size", "unzooming"]
 CONTROLS = [
     # display.vehicle_fov unread: the seat at display.fov's (#449's)
-    ("\t\trequested_tangent = vehicle_tangent;", "\t\trequested_tangent = foot_tangent;", "turret_default"),
-    ("\t\trequested_tangent = vehicle_tangent;", "\t\trequested_tangent = foot_tangent;", "turret_number"),
+    ("\t\trequested_tangent = vehicle_tangent;", "\t\trequested_tangent = foot_tangent;", "seat_default"),
+    ("\t\trequested_tangent = vehicle_tangent;", "\t\trequested_tangent = foot_tangent;", "seat_number"),
     # "match" read as "default"
-    ("\t\t\tvehicle_tangent = foot_tangent;", "\t\t\tvehicle_tangent = 0.0f;", "turret_match"),
+    ("\t\t\tvehicle_tangent = foot_tangent;", "\t\t\tvehicle_tangent = 0.0f;", "seat_match"),
     # a number unread
-    ("\t\t\tvehicle_tangent = fov_tangent(degrees);", "\t\t\tvehicle_tangent = 0.0f;", "turret_number"),
-    # no way between them: the view and its reticle jump as the player gets out or in
-    ("real eased = progress * progress * (3.0f - 2.0f * progress);", "real eased = 1.0f;", "turret_exit"),
+    ("\t\t\tvehicle_tangent = fov_tangent(degrees);", "\t\t\tvehicle_tangent = 0.0f;", "seat_number"),
+    # (#775) every seat display.vehicle_fov's, a passenger's seen from the head too (as before)
+    ("\treturn director_desired_perspective(unit_index, &perspective) || passenger_camera_enabled(local_player_index) ?",
+     "\treturn TRUE ?", "first_person_seat"),
+    # display.passenger_third_person's passenger taken for one seen from the head
+    ("\treturn director_desired_perspective(unit_index, &perspective) || passenger_camera_enabled(local_player_index) ?",
+     "\treturn director_desired_perspective(unit_index, &perspective) ?", "passenger_camera"),
+    # one way for every local player: a split screen's views take each other's
+    ("real weight = vehicle_fov_weight(local_player_index, unit_index, unit);",
+     "real weight = vehicle_fov_weight(0, unit_index, unit);", "split_screen"),
+    # no way between them: the view and its reticle jump as the player gets out or in, or changes seats
+    ("real eased = progress * progress * (3.0f - 2.0f * progress);", "real eased = 1.0f;", "leaving_third_person"),
     ("real eased = progress * progress * (3.0f - 2.0f * progress);", "real eased = 1.0f;", "entering"),
+    ("real eased = progress * progress * (3.0f - 2.0f * progress);", "real eased = 1.0f;", "seat_change"),
     # turning back from the way's end, not from where it is
     ("vehicle_blends[local_player_index].from = vehicle_blends[local_player_index].weight;\n\t\tvehicle_blends[local_player_index].start = now;\n\t}",
-     "vehicle_blends[local_player_index].from = in_vehicle ? 0.0f : 1.0f;\n\t\tvehicle_blends[local_player_index].start = now;\n\t}",
+     "vehicle_blends[local_player_index].from = third_person ? 0.0f : 1.0f;\n\t\tvehicle_blends[local_player_index].start = now;\n\t}",
      "turned_back"),
     # the way kept across death: a respawned view eases from the seat's
     ("\t\tvehicle_blends[local_player_index].valid = FALSE;\n", "\n", "respawn"),

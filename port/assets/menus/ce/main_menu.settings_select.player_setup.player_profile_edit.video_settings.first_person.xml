@@ -248,7 +248,7 @@
 		<string text=""/>
 		<string text="How wide your weapon and hands are drawn, in degrees across a 16:9 screen: wider draws them smaller. Default keeps the weapon's own view.|Click the number (or press A) to type any from 20 to 150."/>
 		<string text="Moves and turns your weapon and hands on the screen, for every weapon and, in a game, for the one you hold."/>
-		<string text="How wide you see in a vehicle, in degrees across a 16:9 screen. Default keeps the game's view; Match uses your Field of View. Above 150 needs Panini Projection.|Click the number (or press A) to type any from 20 to 160."/>
+		<string text="How wide you see from a vehicle's third-person seats (driver, gunner), in degrees across a 16:9 screen. Passenger seats use your Field of View. Default keeps the game's view; Match uses your Field of View. Above 150 needs Panini Projection.|Click the number (or press A) to type any from 20 to 160."/>
 		<string text="How far a scope zooms at your Field of View. Xbox zooms to the same view whatever yours is, as the Xbox did. Scaled zooms your own view by the same magnification, so a wider view stays wider zoomed."/>
 		<string text="Stops a wide field of view from stretching what is at the sides; you still see as far, and the middle is drawn larger. 1 keeps their shapes true. The HUD stays flat. Fields of view up to 160 need it.|Click the number (or press A) to type 0 to 1."/>
 		<string text="With Panini Projection on: straightens floors and ceilings above and below the middle, and stretches the sides taller. 0 keeps their shapes true.|Click the number (or press A) to type 0 to 1."/>

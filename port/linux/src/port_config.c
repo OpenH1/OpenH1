@@ -232,15 +232,17 @@ static const struct config_setting config_settings[] =
 		"VR mode) the vehicle and the view from it are drawn as its newest\n"
 		"step left it: not a tick (33 ms) behind." },
 	{ "display.fov", _config_real, "0.0", "HALO_FOV", _environment_value, _platform_all,
-		"The view's field of view on foot, in degrees across at 16:9 (20 to\n"
-		"150, or to 160 with display.panini on); 0 keeps the stock view.\n"
-		"Vehicles take display.vehicle_fov's. Cinematics and scripted cameras\n"
-		"keep their own." },
+		"The view's field of view on foot and in a passenger's seat seen in\n"
+		"first person, in degrees across at 16:9 (20 to 150, or to 160 with\n"
+		"display.panini on); 0 keeps the stock view. The third-person seats\n"
+		"take display.vehicle_fov's. Cinematics and scripted cameras keep\n"
+		"their own." },
 	{ "display.vehicle_fov", _config_string, "\"default\"", "HALO_VEHICLE_FOV", _environment_value, _platform_all,
-		"The view's field of view in a vehicle's seat, first or third person,\n"
-		"getting in and out too: \"default\" keeps the stock view, \"match\" takes\n"
-		"display.fov's, and a number is degrees across at 16:9 (20 to 150,\n"
-		"or to 160 with display.panini on)." },
+		"The view's field of view in a vehicle's seat seen in third person (a\n"
+		"driver's, a gunner's), getting in and out too: \"default\" keeps the\n"
+		"stock view, \"match\" takes display.fov's, and a number is degrees\n"
+		"across at 16:9 (20 to 150, or to 160 with display.panini on). A seat\n"
+		"seen in first person (a passenger's) takes display.fov's." },
 	{ "display.scale_scoped_fov", _config_boolean, "false", "HALO_SCALE_SCOPED_FOV", _environment_value, _platform_all,
 		"Zoom a scope from the view's own field of view (display.fov,\n"
 		"display.vehicle_fov): each zoom level magnifies it as much as the\n"

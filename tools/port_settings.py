@@ -625,8 +625,8 @@ PAGES = {
              "is shown in step with the display.|Click the number (or press A) to type 10 to 1000.", "desktop"),
             ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
              "How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini "
-             "Projection (First Person). In vehicles: First Person.|Click the number (or press A) to type 20 to "
-             "160.", None),
+             "Projection (First Person). Passenger seats use it too; driver and gunner: First Person.|Click the "
+             "number (or press A) to type 20 to 160.", None),
             ("ORIENTATION", "display.orientation",
              [("LANDSCAPE", "landscape"), ("PORTRAIT", "portrait"), ("AUTO", "auto")],
              "Which way up you hold the device. Portrait has a strip of buttons along the top, the picture under "
@@ -1013,8 +1013,9 @@ PAGES = {
              "Moves and turns your weapon and hands on the screen, for every weapon and, in a game, for the one "
              "you hold.", None),
             ("VEHICLE FIELD OF VIEW", "display.vehicle_fov", VEHICLE_FIELDS_OF_VIEW,
-             "How wide you see in a vehicle, in degrees across a 16:9 screen. Default keeps the game's view; Match "
-             "uses your Field of View. Above 150 needs Panini Projection.|Click the number (or press A) to type "
+             "How wide you see from a vehicle's third-person seats (driver, gunner), in degrees across a 16:9 "
+             "screen. Passenger seats use your Field of View. Default keeps the game's view; Match uses your Field "
+             "of View. Above 150 needs Panini Projection.|Click the number (or press A) to type "
              "any from 20 to 160.", None),
             # (display.scale_scoped_fov: view_fov.c, port/linux/include/zoom_fov.h)
             ("SCOPED FIELD OF VIEW", "display.scale_scoped_fov", [("XBOX", "false"), ("SCALED", "true")],
