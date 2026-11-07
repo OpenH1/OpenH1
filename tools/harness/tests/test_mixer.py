@@ -73,6 +73,10 @@ NEGATIVE_CONTROLS = {
     "obstruction-not-muffling": (("direct_hf = source->lDirect + source->lDirectHF + source->Obstruction.lHFLevel",
                                   "direct_hf = source->lDirect + source->lDirectHF + 0 * source->Obstruction.lHFLevel"),
                                  "obstruction"),
+    # the source's Room HF added to its Room, as I3DL2 reads it and as it was (the reverb of most 3D sounds 12 dB
+    # darker at 5 kHz than the Xbox's)
+    "room-hf-added": (("room_hf = source->lRoom + source->Occlusion.lHFLevel +",
+                       "room_hf = source->lRoom + source->lRoomHF + source->Occlusion.lHFLevel +"), "room-send"),
     # the room send of a voice at the output's rate through the resampler's low pass, as it was: the reverb's
     # frames fold its missing 23 to 24 kHz onto the reverb's low end (the cave's 4 dB under the Xbox's below 500 Hz)
     "room-send-low-passed": (("float mono = send_frame(stream);",
