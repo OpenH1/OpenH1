@@ -132,6 +132,7 @@ int main(int argc, char **argv)
 		{
 			"[display]\nambient_occlusion = \"off\"\n",
 			"[display]\nambient_occlusion = \"world\"\n",
+			"[display]\nambient_occlusion = \"ray_traced\"\n",
 			"[display]\n# ambient_occlusion = \"strong\"\n",
 			"[display]\nvsync = true\n",
 			"[other]\nambient_occlusion = \"strong\"\n",
@@ -150,8 +151,9 @@ int main(int argc, char **argv)
 				config_values[1].string);
 		CHECK(!strcmp(read_as("off"), "off"), "\"off\" was read as \"%s\"", config_values[1].string);
 		CHECK(!strcmp(read_as("World"), "world"), "\"World\" was read as \"%s\"", config_values[1].string);
+		CHECK(!strcmp(read_as("ray_traced"), "ray_traced"), "\"ray_traced\" was read as \"%s\"", config_values[1].string);
 		logged[0] = 0;
-		CHECK(!strcmp(read_as("bright"), "bright") && strstr(logged, "is not \"off\" or \"world\""),
+		CHECK(!strcmp(read_as("bright"), "bright") && strstr(logged, "is not \"off\", \"world\" or \"ray_traced\""),
 			"an unknown word: \"%s\", logged %s", config_values[1].string, logged);
 		return 0;
 	}
