@@ -499,6 +499,8 @@ static char const *const port_function_names[] =
 	"port mods save",
 	/* (the update question, the Steam Frame's and gamescope's: menu_functions.c) */
 	"port update now",
+	/* (the crash question, report.c's: menu_functions.c) */
+	"port crash report", "port crash dismiss",
 	/* (Multiplayer's panel: menu_functions.c's multiplayer_status) */
 	"port multiplayer status end", "port multiplayer refresh",
 	/* (Settings' tabs and pages: menu_functions.c's settings_*) */

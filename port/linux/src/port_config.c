@@ -2087,6 +2087,11 @@ static const struct config_setting config_settings[] =
 	{ "debug.update_answer", _config_string, "\"\"", "HALO_UPDATE_ANSWER", _environment_value, _platform_desktop,
 		"The answer to the new version question, for automated tests: \"yes\",\n"
 		"\"no\" or \"never\" (do not ask again, confirmed); empty asks." },
+	{ "debug.crash_answer", _config_string, "\"\"", "HALO_CRASH_ANSWER", _environment_value, _platform_all,
+		"The answer to the crash question (the last run closed unexpectedly),\n"
+		"for automated tests: \"yes\" saves its report, \"no\" lets it go, \"ask\"\n"
+		"asks even in a run nobody watches; empty asks (a run nobody watches only\n"
+		"logs what the report would say)." },
 	{ "debug.first_start_input", _config_string, "\"\"", "HALO_FIRST_START_INPUT", _environment_value, _platform_desktop,
 		"Linux: the buttons an automated test presses on the first start's screen\n"
 		"(no game data), one each half second: \"up\", \"down\", \"a\" and \"b\",\n"

@@ -3,13 +3,17 @@ REPORT.C (test)
 
 Save Report (port/linux/src/report.c): report.md's frame times (the average,
 the 1% and 0.1% lows, the frames of 50 ms or more, the longest frames, a
-stall only) and the zip (its CRC-32, its local and central records), which
-test_report.py opens with Python's zipfile. test_report.py takes the code.
+stall only), the zip (its CRC-32, its local and central records), which
+test_report.py opens with Python's zipfile, and the last run's crash: its
+heading of report.md (report_crash_summary) and the host's record of it,
+the log's ring oldest first (port/android/host/host_common.c).
+test_report.py takes the code.
 */
 
 #include "harness.h"
 
 #include <stdint.h>
+#include <unistd.h>
 
 #define REPORT_HITCH_MS 50
 #define REPORT_LONGEST 8
@@ -130,6 +134,77 @@ int main(int argc, char **argv)
 		CHECK(!report_setting_private("display.vsync") && !report_setting_private("network.online"),
 			"a setting left out that is not private");
 		free(out);
+		return 0;
+	}
+	if (!strcmp(test, "crash"))
+	{
+		static char const session[] =
+			"build number: 99\nbuild: build-1234 (abcdef0)\nplatform: macOS\nstarted: 2026-11-06 21:10:30\n"
+			"reference address: 4a1b2c\n";
+		static char record[8192];
+		static char summary[16384];
+		int index;
+
+		strcpy(record, "signal 11 at address 0x10: pc 0000000000401000 lr 0 sp 0 fp 0\n"
+			"  in the guest image: addr2line -e halo_guest.elf 0x401000 0x0\n"
+			"  x0 0000000000000000\n");
+		for (index = 0; index < 30; index++)
+			sprintf(record + strlen(record), "  frame %2d: return %016x\n", index, index);
+		strcat(record, REPORT_CRASH_LOG_HEADING);
+		for (index = 0; index < 20; index++)
+			sprintf(record + strlen(record), "log line %d\n", index);
+		strcat(record, "a quote: ```\n```\nlast `line`\n");
+		report_crash_summary(session, record, summary, sizeof(summary));
+		printf("%s", summary);
+		CHECK(strstr(summary, "- Build: build-1234 (abcdef0)\n"), "the build");
+		CHECK(strstr(summary, "- Started: 2026-11-06 21:10:30\n"), "when it started");
+		CHECK(strstr(summary, "- Crash: signal 11 at address 0x10: pc 0000000000401000 lr 0 sp 0 fp 0\n"),
+			"the crash's first line");
+		CHECK(strstr(summary, "- Reference address: 4a1b2c "), "the reference address");
+		CHECK(strstr(summary, "```\n  in the guest image: addr2line"), "the crash's lines in a block");
+		CHECK(strstr(summary, "  frame 21: return") && !strstr(summary, "  frame 22: return"),
+			"the crash's lines, at most REPORT_CRASH_LINES");
+		CHECK(strstr(summary, "(and more: crash.txt)\n"), "the lines left out said");
+		CHECK(!strstr(summary, "log line 12\n") && strstr(summary, "log line 13\nlog line 14\n"),
+			"the log's last lines only");
+		CHECK(strstr(summary, "a quote: '''\n'''\nlast 'line'\n```\n"), "a quoted line's backticks");
+		/* (no record: the session's alone) */
+		report_crash_summary(session, NULL, summary, sizeof(summary));
+		CHECK(strstr(summary, "- Crash: none written"), "no crash written");
+		CHECK(!strstr(summary, "```"), "no blocks without a record");
+		/* (a room too small: cut, and ended) */
+		report_crash_summary(session, record, summary, 100);
+		CHECK(strlen(summary) == 99, "cut to its room");
+		return 0;
+	}
+	if (!strcmp(test, "ring"))
+	{
+		static char ring[16], out[64];
+		static uint64_t written;
+		char const *expected = "\n--- the log's last lines\nGHIJKLMNOPQRSTUV";
+		int pipes[2];
+		ssize_t size;
+		unsigned long index;
+
+		/* (22 bytes written to a ring of 16: G to V kept, Q to V at its
+		start) */
+		for (index = 0; index < 22; index++)
+			ring[index % sizeof(ring)] = (char)('A' + index);
+		written = 22;
+		CHECK(pipe(pipes) == 0, "a pipe");
+		crash_record_file = pipes[1];
+		crash_record_log = ring;
+		crash_record_log_size = sizeof(ring);
+		crash_record_log_written = &written;
+		host_crash_record_line("signal 11");
+		host_crash_record_end();
+		CHECK(crash_record_file == -1, "the record closed");
+		size = read(pipes[0], out, sizeof(out) - 1);
+		CHECK(size > 0, "the record read");
+		out[size] = 0;
+		printf("%s\n", out);
+		CHECK(!strncmp(out, "signal 11\n", 10), "the line");
+		CHECK(!strcmp(out + 10, expected), "the log, oldest first");
 		return 0;
 	}
 	if (!strcmp(test, "zip") && getenv("REPORT_ZIP"))

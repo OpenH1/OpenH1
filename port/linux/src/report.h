@@ -32,6 +32,19 @@ int report_write(unsigned int target, int send, char *message, size_t message_si
 NULL if it was let go: the report finished, as report_write does */
 void report_note_done(const char *note);
 
+/* this session begun (sdl_platform.c, as the game starts; not a dedicated
+server's): the last run's crash found, if it did not exit, and this one's
+file written, and the host told where to write a crash */
+void report_session_start(void);
+/* the game halted on a fatal error (main.c's halt_and_catch_fire, its
+reason error_get's): reported at the next start as a crash is, though the
+player then closes the game */
+void report_session_halted(const char *reason);
+/* the crash question's answer (menu_functions.c's "port crash report", 1,
+and "port crash dismiss", 0): its report saved at the next frame, its issue
+opened, or the crash let go; neither asked of again */
+void report_crash_answer(int report);
+
 /* ---------- report.c's parts (tools/harness/tests/test_report.py) */
 
 /* the frame times' summary, in report.md's words: micros, each frame's time
@@ -48,6 +61,11 @@ public: home (the account's folder) as ~, invite and party links, IPv4
 addresses (but 127.x and 0.0.0.0), other players' chat lines; malloc()'s,
 its size into scrubbed_size */
 char *report_scrub(const char *text, size_t size, const char *home, size_t *scrubbed_size);
+/* report.md's heading of the last run's crash: session, its session's file
+("build: ...", "started: ...", "reference address: ..." lines); record, the
+host's (the crash's lines, then the log after host_common.c's heading), or
+NULL if it wrote none */
+void report_crash_summary(const char *session, const char *record, char *text, size_t size);
 /* the zip's CRC-32 (crc 0 to begin, then each part's) */
 uint32_t report_crc32(uint32_t crc, const unsigned char *data, size_t size);
 

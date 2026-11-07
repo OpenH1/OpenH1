@@ -166,6 +166,14 @@ host_memory_watch_win.c) */
 
 static struct sigaction previous_segv, previous_bus, previous_ill;
 
+/* a line of a crash's report: to the log, and to the crash record
+(host_common.c) */
+static void crash_line(const char *line)
+{
+	host_log(HOST_LOG_ERROR, line);
+	host_crash_record_line(line);
+}
+
 /* the guest's code, the stack and the frame records at a crash, through the
 log's sink (which neither locks nor uses stdio); the walk copies each record
 without faulting (host_arch_read_memory), as the frame pointer may hold
@@ -183,25 +191,29 @@ static void report_crash(int signal_number, siginfo_t *information, void *contex
 		signal_number, information->si_addr, (unsigned long long)pc, (unsigned long long)lr,
 		(unsigned long long)sp, (unsigned long long)fp);
 	host_log(HOST_LOG_ERROR, line);
+	host_crash_record_begin(line);
 	if (host_guest_base)
 	{
 		snprintf(line, sizeof(line), "  guest memory at %016llx", (unsigned long long)host_guest_base);
-		host_log(HOST_LOG_ERROR, line);
+		crash_line(line);
 	}
 	if (host_in_guest(pc) && (uint32_t)pc >= host_image.base && (uint32_t)pc < host_image.end)
 	{
 		snprintf(line, sizeof(line), "  in the guest image: addr2line -e halo_guest.elf 0x%llx 0x%llx",
 			(unsigned long long)(uint32_t)pc, (unsigned long long)(uint32_t)lr);
-		host_log(HOST_LOG_ERROR, line);
+		crash_line(line);
 	}
 	for (index = 0; host_arch_register_line(context, index, line, sizeof(line)); index++)
-		host_log(HOST_LOG_ERROR, line);
+		crash_line(line);
 	count = host_arch_walk_frames(fp, host_arch_read_memory, returns, (int)(sizeof(returns) / sizeof(returns[0])));
 	for (index = 0; index < count; index++)
 	{
 		snprintf(line, sizeof(line), "  frame %2d: return %016llx", index, (unsigned long long)returns[index]);
-		host_log(HOST_LOG_ERROR, line);
+		crash_line(line);
 	}
+	/* (the guest's log after the crash's lines: report.c's, for the next
+	start to offer to report) */
+	host_crash_record_end();
 }
 
 static void chain(struct sigaction *previous, int signal_number, siginfo_t *information, void *context)
@@ -217,7 +229,13 @@ static void chain(struct sigaction *previous, int signal_number, siginfo_t *info
 		previous->sa_handler(signal_number);
 	}
 	/* returning re-executes the faulting instruction under the previous
-	(or default) handler */
+	(or default) handler; under the default the signal is raised again too,
+	as one another process sent (kill -SEGV) has no instruction to fault
+	again (and macOS's si_code does not tell it from a fault) */
+	else if (previous->sa_handler == SIG_DFL)
+	{
+		raise(signal_number);
+	}
 }
 
 /* (each handler keeps the interrupted code's errno: a write tracking fault
