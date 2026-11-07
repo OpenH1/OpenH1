@@ -6,6 +6,7 @@
 # declarations.
 host_syscall
 host_log
+host_log_recent
 host_abort
 host_exit
 host_get_tp

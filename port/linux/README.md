@@ -432,6 +432,7 @@ The zip holds:
 | `report.md` | The summary, laid out as an issue's body: the build, the platform, the GPU, its API and driver, the processor, the map and the game, how long the game has run, the display's settings, and the frame times of the last 5 minutes (the average, the median, the 1% and 0.1% lows, the frames of 50 ms or more, and the longest frames with when they were). |
 | `log.txt` | This run's log (its last 512 KB), which on Linux and Android is not otherwise in a file. |
 | `halo.log` | The host's log file, where there is one: Windows's beside `halo.exe`, the macOS app's in `~/Library/Logs/OpenH1`. |
+| `host.log` | Where there is no `halo.log` (Linux, Android, the macOS executable run by itself): the renderer's host's last 64 KB of lines (its Vulkan device, validation errors, the swapchain's problems), which otherwise go only to the standard error stream or logcat. |
 | `debug.txt` | The game's own log. |
 | `settings.txt` | The settings changed from their defaults: never `config.toml` itself, nor the passwords (`server.password` and the web ones), `network.public_address`, `server.master_publish_address` or `debug.update_key`. |
 | `screenshot.png` | The frame shown when the report was asked for (none in the VR mode). |

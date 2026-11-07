@@ -37,6 +37,9 @@ void host_log_set_sink(host_log_sink sink);
 void host_logf(int priority, const char *format, ...) __attribute__((format(printf, 2, 3)));
 /* (also the guest's, host_imports.list) */
 void host_log(int priority, const char *text);
+/* (the guest's too) copies the host's last lines (whole ones, each with its
+newline) into buffer, ended by a 0; returns their length */
+uint32_t host_log_recent(char *buffer, uint32_t size);
 /* guest services also used inside the host (host_main.c) */
 void host_exit(int code) __attribute__((noreturn));
 void host_abort(const char *reason) __attribute__((noreturn));
