@@ -188,9 +188,10 @@ static const struct config_setting config_settings[] =
 		_platform_ios | _platform_android,
 		"The fraction of the screen's pixels the game draws, each way (0.25 to\n"
 		"1.0), which the display scales up: 0.67 draws less than half the\n"
-		"pixels, for a cooler phone and a steadier frame rate. 0: the device's,\n"
-		"0.67 on an iPhone of 3x pixels, about 1080 rows on an Android screen\n"
-		"whose shorter side has more than 1200 pixels, else 1.0. Read at start." },
+		"pixels, for a cooler phone and a steadier frame rate. 0: the device's:\n"
+		"0.67 on an iPhone of 3x pixels, 0.8 on another iPhone, 1.0 on an iPad;\n"
+		"on Android 0.8, or about 1080 rows where 0.8 would draw more. Read at\n"
+		"start." },
 	{ "display.window_size", _config_string, "\"\"", "HALO_WINDOW_SIZE", _environment_value, _platform_desktop,
 		"The window's size, \"<width>x<height>\" (\"1920x1080\"), 640x480 or more (it\n"
 		"can be resized). Empty: display.window_scale's." },

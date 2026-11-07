@@ -227,9 +227,11 @@ static int native_bridge_active(void)
 
 /* display.render_scale (HALO_RENDER_SCALE): the fraction of the screen's
 pixels the game draws each way, which the display scales up (the swapchain
-is that size, xgpu_vulkan.c's swapchain_make); 0, the device's: a screen
-whose shorter side has more than 1200 pixels (1440p's phones, the tablets)
-draws about 1080 of them, a 1080p-class screen all of its own. Read from
+is that size, xgpu_vulkan.c's swapchain_make); 0, the device's: 0.8, or
+less where that would still draw more than 1080 of the screen's shorter
+side (1440p's phones and the tablets draw about 1080): a phone's pixels are
+small enough that 0.8 stays sharp, and the GPU's time saved keeps its frames
+steady at 120 Hz. Read from
 config.toml here, before the guest starts, as the window's size and the
 display's density it is given depend on it. */
 static float render_scale_choose(const char *config, int shorter)
@@ -255,7 +257,7 @@ static float render_scale_choose(const char *config, int shorter)
 		}
 	}
 	if (scale == 0.0)
-		scale = shorter > 1200 ? 1080.0 / shorter : 1.0;
+		scale = shorter * 0.8 > 1080.0 ? 1080.0 / shorter : 0.8;
 	if (!(scale >= 0.25 && scale <= 1.0))
 		scale = 1.0;
 	return (float)scale;
