@@ -640,7 +640,7 @@ def test_chat_owner_identity_and_per_port_hold_over(tmp_path):
 #define csmemset memset
 #define DATUM_INDEX_TO_ABSOLUTE_INDEX(p) ((p)&65535)
 typedef int boolean;
-static struct {boolean active,physical;short channel,controller;long player;char text[256];} chat_input;
+static struct {boolean active,physical,report;short channel,controller;long player;char text[256];} chat_input;
 static struct {int open;unsigned long opening_buttons;} chat_keyboard;
 static struct {short local_player_index;} players[4]={{0},{1},{2},{3}};
 static long occupants[4]={0x10004,0x20005,0x30006,0x40007};
