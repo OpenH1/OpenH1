@@ -109,7 +109,15 @@ frame where 4x took up to 10. Android's phones are tile GPUs too) */
 #define GRAPHICS_ANTI_ALIASING "\"smaa\""
 #endif
 #define GRAPHICS_ANISOTROPIC_FILTERING "16"
+/* (on the phones 256, half the desktop's: the shadow atlas at 512 is two
+2048x2048 targets, and drawing them took a Pixel 11 Pro from 94 to 79 frames
+a second, its GPU's 7.6 ms a frame to 8.9; 256 is still twice the Xbox's
+128 each way) */
+#if defined(HALO_ANDROID) || defined(HALO_IOS)
+#define GRAPHICS_SHADOW_RESOLUTION "256"
+#else
 #define GRAPHICS_SHADOW_RESOLUTION "512"
+#endif
 #define GRAPHICS_PER_PIXEL_LIGHTING "true"
 #define GRAPHICS_MODEL_DETAIL "\"native\""
 #define GRAPHICS_DYNAMIC_LIGHTS "\"enhanced\""

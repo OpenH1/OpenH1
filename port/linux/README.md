@@ -1587,7 +1587,7 @@ so that choosing Classic or Enhanced there chooses them all.
 | --- | --- | --- |
 | `display.anti_aliasing` | `"off"` | `"smaa"` (iOS and Android: `"msaa2x"`) |
 | `display.anisotropic_filtering` | `0` | `16` |
-| `display.shadow_resolution` | `128` | `512` |
+| `display.shadow_resolution` | `128` | `512` (`256` on Android and iOS) |
 | `display.per_pixel_lighting` | `false` | `true` |
 | `display.model_detail` | `"auto"` | `"native"` |
 | `display.dynamic_lights` | `"classic"` | `"enhanced"` |
