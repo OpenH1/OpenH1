@@ -649,6 +649,7 @@ void xgpu_backend_initialize(void)
 	xgpu_backend_capabilities.mixed_constant_blend = stream.capabilities.mixed_constant_blend;
 	xgpu_backend_capabilities.dynamic_lights = stream.capabilities.dynamic_lights;
 	xgpu_backend_capabilities.hdr = stream.capabilities.hdr;
+	xgpu_backend_capabilities.ray_queries = stream.capabilities.ray_queries;
 	stream.capabilities.device[sizeof(stream.capabilities.device) - 1] = 0;
 }
 
@@ -897,6 +898,45 @@ void xgpu_backend_world_ao_cascades(unsigned long x, unsigned long y, unsigned l
 	record_body->size = size;
 	record_body->data = size ? carry_one(&place, data, size) : 0;
 	record_body->pad = 0;
+}
+
+void xgpu_backend_world_ao_mesh(unsigned long id, unsigned long count, const float *triangles)
+{
+	struct xgpu_stream_world_ao_mesh *record_body;
+	uint32_t size;
+	unsigned char *place;
+
+	if (!stream.open || id >= XGPU_STREAM_WORLD_AO_MESHES || count > XGPU_STREAM_WORLD_AO_MESH_TRIANGLES)
+		return;
+	if (!id || !triangles)
+		count = 0;
+	size = (uint32_t)(count * 36u);
+	record_body = record_data(XGPU_STREAM_WORLD_AO_MESH, sizeof(*record_body), size ? carried_one(size) : 0, &place);
+	record_body->id = (uint32_t)id;
+	record_body->count = (uint32_t)count;
+	record_body->size = size;
+	record_body->data = size ? carry_one(&place, triangles, size) : 0;
+	record_body->pad[0] = record_body->pad[1] = record_body->pad[2] = 0;
+}
+
+void xgpu_backend_world_ao_instances(const struct xgpu_world_ao_instance *instances, unsigned long count)
+{
+	struct xgpu_stream_world_ao_instances *record_body;
+	uint32_t size;
+	unsigned char *place;
+
+	if (!stream.open)
+		return;
+	if (count > XGPU_STREAM_WORLD_AO_INSTANCES_MAXIMUM)
+		count = XGPU_STREAM_WORLD_AO_INSTANCES_MAXIMUM;
+	if (!instances)
+		count = 0;
+	size = (uint32_t)(count * sizeof(struct xgpu_world_ao_instance));
+	record_body = record_data(XGPU_STREAM_WORLD_AO_INSTANCES, sizeof(*record_body), size ? carried_one(size) : 0,
+		&place);
+	record_body->count = (uint32_t)count;
+	record_body->size = size;
+	record_body->data = size ? carry_one(&place, instances, size) : 0;
 }
 
 /* (the host writes the ring's display_hdr and display_headroom as it looks

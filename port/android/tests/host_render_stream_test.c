@@ -1951,7 +1951,10 @@ static void test_vertices_kept(void)
 	}
 	ring = xgpu_stream_encode_ring();
 	printf("vertices kept: %u vertices sent again, %u waits\n", ring->vertices_again, ring->waits);
-	CHECK(ring->vertices_again >= 6);
+	/* (sent again where a wait for room came between them, which the
+	records' sizes decide: 6 rounds gave 6 with 580 bytes of uniforms, 5 with
+	584; what the host drew is checked against what was sent, above) */
+	CHECK(ring->vertices_again >= 5);
 	stream_end("vertices kept");
 }
 
@@ -2026,6 +2029,53 @@ static void test_malformed(void)
 		CHECK(host_render_decode(decoder, 0, 12) == 0);
 		CHECK(ring->error == XGPU_STREAM_ERROR_RECORD);
 		CHECK(loading_art_calls == calls);
+	}
+
+	/* display.ambient_occlusion "ray_traced"'s: a mesh's size not its
+	triangles', an id past the last, triangles for id 0 (every mesh let go
+	of), instances past the most or of another size */
+	{
+		struct xgpu_stream_world_ao_mesh *mesh = (void *)buffer;
+		struct xgpu_stream_world_ao_instances *instances = (void *)buffer;
+
+		memset(buffer, 0, 64);
+		mesh->header = XGPU_STREAM_HEADER(XGPU_STREAM_WORLD_AO_MESH, sizeof(*mesh));
+		mesh->id = 1;
+		mesh->count = 2;
+		mesh->size = 36;
+		ring->error = 0;
+		CHECK(host_render_decode(decoder, 0, sizeof(*mesh)) == 0);
+		CHECK(ring->error == XGPU_STREAM_ERROR_BOUNDS);
+		mesh->count = 0;
+		mesh->size = 0;
+		mesh->id = XGPU_STREAM_WORLD_AO_MESHES;
+		ring->error = 0;
+		CHECK(host_render_decode(decoder, 0, sizeof(*mesh)) == 0);
+		CHECK(ring->error == XGPU_STREAM_ERROR_BOUNDS);
+		mesh->id = 0;
+		mesh->count = 1;
+		mesh->size = 36;
+		ring->error = 0;
+		CHECK(host_render_decode(decoder, 0, sizeof(*mesh)) == 0);
+		CHECK(ring->error == XGPU_STREAM_ERROR_BOUNDS);
+		/* (and as it should be: every mesh let go of) */
+		mesh->count = 0;
+		mesh->size = 0;
+		ring->error = 0;
+		CHECK(host_render_decode(decoder, 0, sizeof(*mesh)) == sizeof(*mesh));
+		CHECK(ring->error == 0);
+		memset(buffer, 0, 64);
+		instances->header = XGPU_STREAM_HEADER(XGPU_STREAM_WORLD_AO_INSTANCES, sizeof(*instances));
+		instances->count = XGPU_STREAM_WORLD_AO_INSTANCES_MAXIMUM + 1;
+		instances->size = instances->count * (uint32_t)sizeof(struct xgpu_world_ao_instance);
+		ring->error = 0;
+		CHECK(host_render_decode(decoder, 0, sizeof(*instances)) == 0);
+		CHECK(ring->error == XGPU_STREAM_ERROR_BOUNDS);
+		instances->count = 1;
+		instances->size = 60;
+		ring->error = 0;
+		CHECK(host_render_decode(decoder, 0, sizeof(*instances)) == 0);
+		CHECK(ring->error == XGPU_STREAM_ERROR_BOUNDS);
 	}
 
 	/* a skip to the ring's end, and on from its start */
