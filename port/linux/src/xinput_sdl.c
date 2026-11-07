@@ -1147,7 +1147,7 @@ static void keyboard_screenshot(unsigned long held)
 	if (down && !was_down)
 		platform_screenshot_request();
 	if (report_down && !report_was_down)
-		report_request();
+		report_request(1);
 	was_down = down;
 	report_was_down = report_down;
 }
@@ -1625,7 +1625,7 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 
 		if (report_second != elapsed / 1000 && into < 150)
 		{
-			report_request();
+			report_request(1);
 			report_second = elapsed / 1000;
 		}
 		return;

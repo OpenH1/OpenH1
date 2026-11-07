@@ -4,8 +4,9 @@ REPORT_GAME.C
 What a Save Report's report.md says of the game (port/linux/src/report.c):
 the map loaded (its scenario's tag, as play_log.c names it) and, in a
 multiplayer game, its gametype's name (its variant's, where it has one);
-whether a game is being played, not the menus (a report's issue waits
-until it is not); and its note's line, the text chat's (network_chat.c).
+whether a game is being played (the note's line closes when it is not), or
+the main menu is up (a report's issue waits for it); and its note's line,
+the text chat's (network_chat.c).
 */
 
 #include "cseries.h"
@@ -14,16 +15,32 @@ until it is not); and its note's line, the text chat's (network_chat.c).
 #include "scenario/scenario.h"
 #include "tag_files/tag_files.h"
 #include "main/console.h"
+#include "interface/ui_widget.h"
 #include "network_chat.h"
 
 #include <stdio.h>
 #include <string.h>
 
-int report_game_playing(void)
+/* the map loaded and running: 1 for a game's, 2 for the ui map's (the
+menus), 0 for none (a loading screen, the time between levels) */
+static int report_game_map(void)
 {
 	char const *map_name = global_scenario_index != NONE ? tag_get_name(global_scenario_index) : NULL;
 
-	return map_name && map_name[0] && game_in_progress() && strcmp(map_name, "ui") && !strstr(map_name, "\\ui");
+	if (!map_name || !map_name[0] || !game_in_progress())
+		return 0;
+	return strcmp(map_name, "ui") && !strstr(map_name, "\\ui") ? 1 : 2;
+}
+
+int report_game_playing(void)
+{
+	return report_game_map() == 1;
+}
+
+/* (the ui map, its menus up: not its loading, nor the movie before them) */
+int report_game_menus(void)
+{
+	return report_game_map() == 2 && ui_widgets_active();
 }
 
 void report_game_describe(char *text, size_t size)

@@ -2425,7 +2425,7 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 	{
 		/* (REPORT A PROBLEM: saved at the next frame and a GitHub issue
 		opened for it, port/linux/src/report.c, which says where) */
-		report_request();
+		report_request(FALSE);
 		ui_play_audio_feedback_sound(SOUND_FORWARD);
 	}
 	else if (!strcmp(name, "profiles"))

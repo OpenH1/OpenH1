@@ -415,15 +415,23 @@ GitHub account is needed). In a game nothing opens over it: F8 takes the
 screenshot and the frame times at once, and opens a line where the chat's
 is, "What happened?", for a note: type it and press Enter, or Escape to
 skip it (while it is open, the keys type, as the chat's line does). The
-note heads the issue. The report is then saved ("Report saved: its GitHub
-issue opens when you're back in the menus"), and its issue opens when you
-leave the game (or as the game quits; a note still open then is let go).
-A second press within 5 seconds opens nothing more.
+note heads the issue. A line still open when the game ends, the map is
+left, a menu opens or a cinematic begins is finished with what was typed.
+REPORT A PROBLEM chosen from the pause menu asks for no note (nor does a
+report asked for behind a menu): it is saved at once. The report is then
+saved ("Report saved: its GitHub issue opens when you're back in the
+menus"), and its issue opens once the main menu is up (not at a game's
+end, nor on the loading screens between a rotation's games or a campaign's
+levels), or as the game quits; at most 4 wait, the oldest let go. A second
+press within 5 seconds opens nothing more.
 
-An issue is public, so what could say who you are is kept out of the zip:
-besides the settings left out (below), each text in it has your home
-folder written as `~`, invite and party links, IP addresses (but 127.x)
-and other players' chat lines taken out.
+An issue is public, so what could say who you are is kept out of the zip
+and the issue's body: besides the settings left out (below), each text has
+your home folder written as `~`, invite and party links, IPv4 addresses
+(but 127.x) and IPv6 ones (but ::1), chat lines, the host's notices (which
+name players), the Discord account linked and its link's code, and
+`network.public_address` taken out. A log cut to its end starts at its
+first whole line.
 
 The zip holds:
 
@@ -433,11 +441,12 @@ The zip holds:
 | `log.txt` | This run's log (its last 512 KB), which on Linux and Android is not otherwise in a file. |
 | `halo.log` | The host's log file, where there is one: Windows's beside `halo.exe`, the macOS app's in `~/Library/Logs/OpenH1`. |
 | `debug.txt` | The game's own log. |
-| `settings.txt` | The settings changed from their defaults: never `config.toml` itself, nor the passwords (`server.password` and the web ones), `network.public_address`, `server.master_publish_address` or `debug.update_key`. |
+| `settings.txt` | The settings changed from their defaults: never `config.toml` itself, nor the passwords (`server.password` and the web ones), the addresses (`network.address`, `network.public_address`, `network.broadcast`, `network.front`, `server.master_publish_address`, `server.web_bind`), the names and words (`server.name`, `server.motd`, `server.admins`, `debug.friends`, the audio devices'), the keys and links (`debug.update_key`, `debug.update_url`, `debug.party`), nor any file's or folder's path (`paths.*`, every `_file`, `_folder` and `_directory`, the debug logs'). |
 | `screenshot.png` | The frame shown when the report was asked for (none in the VR mode). |
 
 Keeping the frame times costs a clock reading a frame; keeping the log, a
-copy of each line.
+copy of each line. The zip is written on a thread of its own, so that the
+game does not stall for it.
 
 ## Controls
 
