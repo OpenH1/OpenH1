@@ -436,6 +436,31 @@ The zip holds:
 | `debug.txt` | The game's own log. |
 | `settings.txt` | The settings changed from their defaults: never `config.toml` itself, nor the passwords (`server.password` and the web ones), `network.public_address`, `server.master_publish_address` or `debug.update_key`. |
 | `screenshot.png` | The frame shown when the report was asked for (none in the VR mode). |
+| `crash.txt` | A crash's report (the next start's, above): what the host wrote at the crash and that run's log, or, if it wrote none, what that run's start recorded. |
+
+A crash ends the game before F8 can be pressed, so the next start asks,
+once, over the main menu: "OpenH1 closed unexpectedly last time. Report
+it?" **Report** saves a report headed by the crash and opens its issue, as
+Report a Problem does; **Skip** (or B) lets that crash go, never asked
+about again. The crash's section of `report.md` gives the build that
+crashed, when it started, the crash's first line (the signal and the
+address), the `reference address` of `debug.txt` that places the game's
+addresses in that build, the crash's lines (the registers and the frames)
+and the last lines of that run's log; `crash.txt` in the zip has them
+whole, with that run's log (its last 512 KB), and the macOS app's adds the
+host's log of that run (`halo.previous.log`). Each run writes
+`reports/.running` as it starts and removes it when it exits; at a crash,
+the host writes `reports/.crash.txt` (the crash's lines, then the log the
+game keeps in memory, with a signal handler's `write` calls alone); a
+fatal error's halt screen writes it too, and is asked about though the game
+is then closed as usual. On a
+computer a run that did not exit is asked about even with no crash
+written (it was killed, or ended by the system); on Android and iOS, which
+end an app in the background without a word, only a crash the host wrote
+is. A run nobody watches (`debug.no_clipboard`, `null_renderer`,
+`test_input`, `fixed_step`, `network_test` or `exit_after`) does not ask: it
+logs what the report would say, and `debug.crash_answer` answers for a
+test.
 
 Keeping the frame times costs a clock reading a frame; keeping the log, a
 copy of each line.
@@ -1378,6 +1403,7 @@ the setting for one start of the game. It has priority over the file.
 | `streamer.insults` | `"off"` | `HALO_STREAMER_INSULTS` | With `streamer.enabled`, the insults that are not slurs hidden: `"off"`, `"severe"`, `"strong"` or `"mild"`. CENSOR INSULTS in Settings > Network Setup > Streamer Mode. |
 | `crash_reports.upload` | `"ask"` | `HALO_CRASH_REPORTS` | Windows only. `"yes"`: the game sends a report of each crash to the developers. `"no"`: the game sends no reports. `"ask"`: the game asks at the next crash and writes the answer here. Refer to "Crash reports" in [port/windows/README.md](../windows/README.md#crash-reports). |
 | `debug.first_start_input` | `""` | `HALO_FIRST_START_INPUT` | The buttons an automated test presses on the first start's screen (no game data), one each half second: `up`, `down`, `a` and `b`, separated by commas. Empty: the player's. |
+| `debug.crash_answer` | `""` | `HALO_CRASH_ANSWER` | The answer to the crash question (the last run closed unexpectedly; refer to "Reports"), for automatic tests: `yes` saves its report and opens (in a run nobody watches, logs) its issue, `no` lets it go, `ask` asks even in a run nobody watches (for `debug.test_input`'s buttons to answer). Empty: the game asks; a run nobody watches only logs what the report would say. |
 | `debug.update_answer` | `""` | `HALO_UPDATE_ANSWER` | The answer to the update question, for automatic tests: `yes`, `no` or `never`. Empty: the game asks. |
 | `debug.update_from` | `""` | `HALO_UPDATE_FROM` | A release's zip file to update to, for tests of updates: the game offers it as a new version without asking GitHub, also when the build has no build number, but not in the version that the update starts. Empty: the game asks GitHub. |
 | `debug.update_url` | `""` | `HALO_UPDATE_URL` | A test's release server (`http://127.0.0.1:<port>`), asked in GitHub's place for the latest release and its files, at the paths GitHub has them under, by a dedicated server's `server.auto_update`, also when the build has no build number (`tools/test_dedicated_server.py`). Empty: GitHub. |

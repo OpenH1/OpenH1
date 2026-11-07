@@ -27,6 +27,7 @@ and the debug keyboard that the game's console reads.
 #include "server_mode.h"
 #include "server_master.h"
 #include "player_link.h"
+#include "report.h"
 #include "xiso.h"
 #include "map_unpack.h"
 #include "map_import.h"
@@ -502,6 +503,10 @@ BOOL platform_sdl_initialize(void)
 	again before they run out, player_link.c) */
 	if (!halo_server_mode())
 		player_link_start();
+	/* (the last run's crash found, to be offered at the main menu, and
+this run's marked as begun: report.c) */
+	if (!halo_server_mode())
+		report_session_start();
 	/* (the mods, and whether to play those that say they cannot be played
 	together, before the window opens: port_mods.c) */
 	port_mods_startup();

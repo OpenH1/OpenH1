@@ -40,6 +40,29 @@ The zip holds:
   settings.txt   the settings changed from their defaults (not config.toml:
                  never the passwords, this machine's addresses, keys)
   screenshot.png the frame shown when it was asked for
+  crash.txt      a crash's report: what the host wrote of it, with that
+                 run's log, or what is known of a run that did not exit
+
+A crash ends the game before F8 can be pressed, so the next start offers to
+report it. Each session writes reports/.running as it starts (its build,
+when it began, debug.txt's reference address: report_session_start) and
+removes it when the game exits (atexit: the window closed, Quit,
+debug.exit_after); a crash leaves it. The host, at a crash, writes
+reports/.crash.txt: the crash's lines as it logs them (the signal, the
+address, the registers, the frames) and then this run's log kept here, the
+ring below, which a signal handler can write as it is (host_crash_record,
+port/android/host/host_common.c); a fatal error's halt writes it too
+(report_session_halted, main.c), and keeps both at the exit that follows.
+The next start finds them, keeps them as
+reports/.crashed and .crashed.txt until they are answered, and at the main
+menu asks once, "OpenH1 closed unexpectedly last time. Report it?"
+(pc_menu_crash_question_open, menu_functions.c): REPORT saves a report
+headed by the crash (report_crash_summary), with crash.txt in its zip, and
+opens its issue; SKIP never asks of that crash again. On Android and iOS,
+whose systems end an app in the background without a word, a crash is one
+the host wrote; on a computer, a session that did not exit is one (killed,
+or a crash the host could not write). A run nobody watches does not ask: it
+logs what the report would say, and debug.crash_answer answers for a test.
 
 A frame's time costs a clock reading and two stores (report_frame_presented,
 on the render thread, as report_write is); a log line a copy into the ring.
@@ -60,9 +83,17 @@ on the render thread, as report_write is); a log line a copy into the ring.
 #include <unistd.h>
 
 int mkdir(const char *path, unsigned int mode);
+/* errors.c's: debug.txt's reference address is its own */
+void write_to_error_file(char *string, unsigned char date);
+/* menu_functions.c's: the crash question opened over the main menu, if it
+was drawn last; 1 when it was opened, or cannot be */
+int pc_menu_crash_question_open(void);
 #ifdef HALO_GUEST
-/* port/android/guest/runtime/guest_host.h: the host's last lines */
+/* port/android/guest/runtime/guest_host.h: the host's last lines, and its
+record of a crash */
 unsigned int host_log_recent(char *buffer, unsigned int size);
+void host_crash_record(const char *path, const char *log, unsigned int log_size,
+	const unsigned long long *log_written);
 #endif
 /* updater.c's: the build, in a few words */
 void updater_build_text(char *text, size_t size);
@@ -83,7 +114,7 @@ void p2p_discord_game(int *hosting, int *playing, char *description, int size, i
 #define REPORT_FILE_MOST (4 * 1024 * 1024)
 /* the most of the host's kept lines asked for (the host keeps 64 KB) */
 #define REPORT_HOST_LOG_MOST (64 * 1024)
-#define REPORT_ZIP_FILES 8
+#define REPORT_ZIP_FILES 10
 #define REPORT_AGAIN_SECONDS 5
 /* the most issues waiting for the game's end */
 #define REPORT_PENDING 4
@@ -115,6 +146,21 @@ static struct
 static long long report_last_ns;
 
 static void report_open_issue(const char *url);
+static int report_unattended(void);
+
+/* the crash of the last run, found as this one started (report_session_start):
+its session's file and the host's record of it (NULL if it wrote none),
+malloc()'s; whether it is to be asked, has been, and its report wanted */
+static struct
+{
+	int found;
+	char *session;
+	char *record;
+	int asked;
+	int wanted;
+} report_crash;
+
+static void report_crash_question(void);
 
 /* the issues waiting opened: the game left, or quit (report_at_exit) */
 static void report_open_pending(void)
@@ -146,6 +192,9 @@ void report_frame_presented(void)
 	/* (the issues of reports asked for in a game, once it is left) */
 	if (report_pending.count && !report_game_playing())
 		report_open_pending();
+	/* (the last run's crash, asked of at the main menu) */
+	if (report_crash.found && !report_crash.asked)
+		report_crash_question();
 
 	if (report_frames.last_ns)
 	{
@@ -537,18 +586,23 @@ char *report_scrub(const char *text, size_t size, const char *home, size_t *scru
 	return out;
 }
 
+/* the account's folder, which report_scrub writes as ~ */
+static const char *report_home(void)
+{
+#ifdef HALO_WINDOWS
+	if (getenv("USERPROFILE"))
+		return getenv("USERPROFILE");
+#endif
+	return getenv("HOME");
+}
+
 /* a text file's part of the zip, scrubbed (report_scrub) */
 static void report_zip_add_text(struct report_zip *zip, const char *name, const char *data, size_t size)
 {
-	const char *home = getenv("HOME");
 	size_t scrubbed_size;
 	char *scrubbed;
 
-#ifdef HALO_WINDOWS
-	if (getenv("USERPROFILE"))
-		home = getenv("USERPROFILE");
-#endif
-	scrubbed = report_scrub(data, size, home, &scrubbed_size);
+	scrubbed = report_scrub(data, size, report_home(), &scrubbed_size);
 	if (scrubbed)
 	{
 		report_zip_add(zip, name, scrubbed, scrubbed_size);
@@ -731,8 +785,10 @@ static long report_maps_in(const char *folder)
 	return count;
 }
 
-/* report.md: a GitHub issue's body (report_send pastes it) */
-static char *report_text(const char *name)
+/* report.md: a GitHub issue's body (report_send pastes it); a crash's has
+the system and settings alone, this run's time, game and frames being of no
+help (report_crash_summary heads it) */
+static char *report_text(const char *name, int crash)
 {
 	static const char *const settings[] = {
 		"display.graphics", "display.mode", "display.resolution", "display.window_size", "display.resolution_scaling",
@@ -758,12 +814,15 @@ static char *report_text(const char *name)
 	REPORT_PRINT("- GPU: %s\n", xgpu_backend_device()[0] ? xgpu_backend_device() : "unknown (no renderer)");
 	report_processor(line, sizeof(line));
 	REPORT_PRINT("- Processor: %s\n", line);
-	REPORT_PRINT("- Running for: %.0f seconds\n", report_frames.start_ns ? (now - report_frames.start_ns) / 1e9 : 0.0);
-	report_game_describe(line, sizeof(line));
-	REPORT_PRINT("- Where: %s\n", line);
-	p2p_discord_game(&hosting, &playing, line, (int)sizeof(line), &players, &most);
-	if (line[0])
-		REPORT_PRINT("- Network game: %s, %s, %d of %d players\n", line, hosting ? "hosting" : "joined", players, most);
+	if (!crash)
+	{
+		REPORT_PRINT("- Running for: %.0f seconds\n", report_frames.start_ns ? (now - report_frames.start_ns) / 1e9 : 0.0);
+		report_game_describe(line, sizeof(line));
+		REPORT_PRINT("- Where: %s\n", line);
+		p2p_discord_game(&hosting, &playing, line, (int)sizeof(line), &players, &most);
+		if (line[0])
+			REPORT_PRINT("- Network game: %s, %s, %d of %d players\n", line, hosting ? "hosting" : "joined", players, most);
+	}
 	REPORT_PRINT("- Report: %s\n", name);
 	/* (the mods and the map: a problem one of them makes not taken for the
 	game's; names only, never a folder's path) */
@@ -790,6 +849,8 @@ static char *report_text(const char *name)
 			REPORT_PRINT("%s = %s\n", settings[index], line);
 	}
 	REPORT_PRINT("```\n");
+	if (crash)
+		return text;
 	REPORT_PRINT("\n## Frame times\n\nThe last %d seconds, loading screens included\n\n```\n", REPORT_SECONDS);
 	count = report_frames.count < REPORT_FRAMES ? report_frames.count : REPORT_FRAMES;
 	first = report_frames.count - count;
@@ -821,6 +882,335 @@ static char *report_text(const char *name)
 	REPORT_PRINT("```\n");
 #undef REPORT_PRINT
 	return text;
+}
+
+/* ---------- the last run's crash */
+
+/* the most of the host's lines of a crash, and of the log's last lines,
+report.md shows (crash.txt has them all), and the longest line */
+#define REPORT_CRASH_LINES 24
+#define REPORT_CRASH_LOG_LINES 10
+#define REPORT_CRASH_LINE_MOST 200
+/* the record's heading of its log (port/android/host/host_common.c's
+host_crash_record_end) */
+#define REPORT_CRASH_LOG_HEADING "\n--- the log's last lines\n"
+
+/* a session file's value of name (its "name: value" line), into value (""
+if it has none) */
+static void report_session_value(const char *session, const char *name, char *value, size_t size)
+{
+	size_t length = strlen(name);
+	const char *line = session;
+
+	value[0] = 0;
+	while (line && *line)
+	{
+		const char *end = strchr(line, '\n');
+		size_t line_length = end ? (size_t)(end - line) : strlen(line);
+
+		if (line_length > length + 1 && !strncmp(line, name, length) && line[length] == ':')
+		{
+			size_t start = length + 1;
+
+			while (start < line_length && line[start] == ' ')
+				start++;
+			snprintf(value, size, "%.*s", (int)(line_length - start), line + start);
+			value[strcspn(value, "\r")] = 0;
+			return;
+		}
+		line = end ? end + 1 : NULL;
+	}
+}
+
+/* a line of text (its length), at most REPORT_CRASH_LINE_MOST of it, as
+report.md quotes it: its backticks made quotes, so that none closes a block
+early */
+static const char *report_crash_line(const char *line, size_t length, char quoted[REPORT_CRASH_LINE_MOST + 1])
+{
+	size_t index;
+
+	if (length > REPORT_CRASH_LINE_MOST)
+		length = REPORT_CRASH_LINE_MOST;
+	for (index = 0; index < length; index++)
+		quoted[index] = line[index] == '`' ? '\'' : line[index];
+	quoted[length] = 0;
+	return quoted;
+}
+
+void report_crash_summary(const char *session, const char *record, char *text, size_t size)
+{
+	char build[160], started[64], reference[32], quoted[REPORT_CRASH_LINE_MOST + 1];
+	const char *log = NULL, *crash_end = NULL, *line, *first_end = NULL;
+	size_t used = 0;
+	long count;
+
+	if (!size)
+		return;
+	text[0] = 0;
+	report_session_value(session ? session : "", "build", build, sizeof(build));
+	report_session_value(session ? session : "", "started", started, sizeof(started));
+	report_session_value(session ? session : "", "reference address", reference, sizeof(reference));
+	if (record)
+	{
+		log = strstr(record, REPORT_CRASH_LOG_HEADING);
+		crash_end = log ? log : record + strlen(record);
+		if (log)
+			log += sizeof(REPORT_CRASH_LOG_HEADING) - 1;
+		first_end = memchr(record, '\n', (size_t)(crash_end - record));
+		if (!first_end)
+			first_end = crash_end;
+	}
+#define REPORT_PRINT(...) \
+	(used += (size_t)snprintf(text + (used < size ? used : size - 1), used < size ? size - used : 1, __VA_ARGS__))
+	REPORT_PRINT("## The crash\n\nOpenH1 closed unexpectedly the last time it ran.\n\n");
+	REPORT_PRINT("- Build: %s\n", build[0] ? build : "unknown");
+	if (started[0])
+		REPORT_PRINT("- Started: %s\n", started);
+	if (record && first_end > record)
+		REPORT_PRINT("- Crash: %s\n", report_crash_line(record, (size_t)(first_end - record), quoted));
+	else
+		REPORT_PRINT("- Crash: none written (the game was ended from outside, or stopped before it could write one)\n");
+	if (reference[0])
+		REPORT_PRINT("- Reference address: %s (debug.txt's, which places the game's addresses in its build)\n", reference);
+	/* (the host's lines after the first, at most REPORT_CRASH_LINES) */
+	if (record && first_end < crash_end)
+	{
+		REPORT_PRINT("\nThe crash (crash.txt in the zip has it whole, with the run's log):\n\n```\n");
+		for (line = first_end + 1, count = 0; line < crash_end && count < REPORT_CRASH_LINES; count++)
+		{
+			const char *end = memchr(line, '\n', (size_t)(crash_end - line));
+			size_t length = end ? (size_t)(end - line) : (size_t)(crash_end - line);
+
+			REPORT_PRINT("%s\n", report_crash_line(line, length, quoted));
+			line = end ? end + 1 : crash_end;
+		}
+		if (line < crash_end)
+			REPORT_PRINT("(and more: crash.txt)\n");
+		REPORT_PRINT("```\n");
+	}
+	/* (the log's last REPORT_CRASH_LOG_LINES lines) */
+	if (log && *log)
+	{
+		const char *end = log + strlen(log);
+
+		while (end > log && end[-1] == '\n')
+			end--;
+		line = end;
+		for (count = 0; line > log && count < REPORT_CRASH_LOG_LINES; count++)
+		{
+			line--;
+			while (line > log && line[-1] != '\n')
+				line--;
+		}
+		REPORT_PRINT("\nThe log's last lines:\n\n```\n");
+		while (line < end)
+		{
+			const char *next = memchr(line, '\n', (size_t)(end - line));
+			size_t length = next ? (size_t)(next - line) : (size_t)(end - line);
+
+			REPORT_PRINT("%s\n", report_crash_line(line, length, quoted));
+			line = next ? next + 1 : end;
+		}
+		REPORT_PRINT("```\n");
+	}
+#undef REPORT_PRINT
+}
+
+/* a file (its last most bytes), NUL-terminated, or NULL; free() it */
+static char *report_file_text(const char *path, size_t most)
+{
+	size_t size;
+	char *data = report_file_end(path, most, &size), *text;
+
+	if (!data)
+		return NULL;
+	text = realloc(data, size + 1);
+	if (!text)
+	{
+		free(data);
+		return NULL;
+	}
+	text[size] = 0;
+	return text;
+}
+
+/* a file of the sessions' (in reports/) */
+static void report_crash_path(const char *name, char *path, size_t size)
+{
+	snprintf(path, size, "%s/reports/%s", platform_data_root(), name);
+}
+
+/* the crash answered: never asked of again */
+static void report_crash_forget(void)
+{
+	char path[1200];
+
+	report_crash_path(".crashed", path, sizeof(path));
+	remove(path);
+	report_crash_path(".crashed.txt", path, sizeof(path));
+	remove(path);
+	free(report_crash.session);
+	free(report_crash.record);
+	report_crash.session = report_crash.record = NULL;
+	report_crash.found = 0;
+}
+
+/* the session halted (report_session_halted): its files kept at the exit
+that follows, as a crash's */
+static int report_session_halt;
+
+/* the game exited (not a crash, nor a halt): this session's file removed */
+static void report_session_end(void)
+{
+	char path[1200];
+
+	if (report_session_halt)
+		return;
+	report_crash_path(".running", path, sizeof(path));
+	remove(path);
+	report_crash_path(".crash.txt", path, sizeof(path));
+	remove(path);
+}
+
+void report_session_start(void)
+{
+	static int started;
+	char folder[1024], running[1200], record[1200], crashed[1200], crashed_record[1200], build[160], when[64];
+	FILE *file;
+	time_t now = time(NULL);
+	struct tm local;
+
+	if (started)
+		return;
+	started = 1;
+	snprintf(folder, sizeof(folder), "%s/reports", platform_data_root());
+	mkdir(folder, 0755);
+	report_crash_path(".running", running, sizeof(running));
+	report_crash_path(".crash.txt", record, sizeof(record));
+	report_crash_path(".crashed", crashed, sizeof(crashed));
+	report_crash_path(".crashed.txt", crashed_record, sizeof(crashed_record));
+	/* (the last session did not exit: its files kept as the crash's until
+	it is answered, a crash not answered yet replaced by this newer one) */
+	file = fopen(running, "rb");
+	if (file)
+	{
+		fclose(file);
+		remove(crashed_record);
+		rename(record, crashed_record);
+		rename(running, crashed);
+	}
+	else
+		remove(record);
+	report_crash.session = report_file_text(crashed, 64 * 1024);
+	report_crash.record = report_crash.session ? report_file_text(crashed_record, REPORT_FILE_MOST) : NULL;
+#if defined(HALO_ANDROID) || defined(HALO_IOS)
+	/* (the system ends an app in the background without a word: only what
+	the host wrote at a crash is one) */
+	if (report_crash.session && !report_crash.record)
+		report_crash_forget();
+#endif
+	report_crash.found = report_crash.session != NULL;
+	if (report_crash.found)
+		platform_log("report: the last run closed unexpectedly%s", report_crash.record ? "" : " (no crash report written)");
+	/* (this session's: what the next start needs to report its crash) */
+	updater_build_text(build, sizeof(build));
+	localtime_r(&now, &local);
+	strftime(when, sizeof(when), "%Y-%m-%d %H:%M:%S", &local);
+	file = fopen(running, "wb");
+	if (file)
+	{
+		fprintf(file, "build: %s\nplatform: %s\nstarted: %s\nreference address: %x\n", build, report_platform(), when,
+			(unsigned int)(uintptr_t)write_to_error_file);
+		fclose(file);
+		atexit(report_session_end);
+	}
+#ifdef HALO_GUEST
+	host_crash_record(record, report_log.text, REPORT_LOG_SIZE, &report_log.written);
+#endif
+}
+
+void report_session_halted(const char *reason)
+{
+	char path[1200], *log;
+	size_t size;
+	FILE *file;
+
+	if (report_session_halt)
+		return;
+	report_session_halt = 1;
+	/* (as the host writes a crash, host_common.c's host_crash_record_end:
+	its lines, then the log after its heading) */
+	report_crash_path(".crash.txt", path, sizeof(path));
+	file = fopen(path, "wb");
+	if (!file)
+		return;
+	fprintf(file, "halt: %s\n", reason && reason[0] ? reason : "a fatal error");
+	log = report_log_text(&size);
+	if (log)
+	{
+		fputs(REPORT_CRASH_LOG_HEADING, file);
+		fwrite(log, 1, size, file);
+		free(log);
+	}
+	fclose(file);
+}
+
+/* (each frame, until it is asked) the crash question at the main menu; a run
+nobody watches logs what its report would say instead, and a test answers
+it with debug.crash_answer ("ask" opens it all the same) */
+static void report_crash_question(void)
+{
+	const char *answer = config_string("debug.crash_answer");
+	/* ("ask": the question opened though nobody watches, for a test to
+	answer in the menus) */
+	int ask = !strcmp(answer, "ask");
+
+	if (!ask && (report_unattended() || answer[0]))
+	{
+		char *summary = malloc(16 * 1024), *line, *next;
+
+		report_crash.asked = 1;
+		if (summary)
+		{
+			report_crash_summary(report_crash.session, report_crash.record, summary, 16 * 1024);
+			platform_log("report: not asking about the last run's crash (nobody is watching); its report would say:");
+			for (line = summary; *line; line = next)
+			{
+				next = strchr(line, '\n');
+				if (next)
+					*next++ = 0;
+				else
+					next = line + strlen(line);
+				platform_log("report:   %s", line);
+			}
+			free(summary);
+		}
+		if (answer[0])
+		{
+			platform_log("report: answering %s (debug.crash_answer)", answer);
+			report_crash_answer(!strcmp(answer, "yes"));
+		}
+		return;
+	}
+	if (!pc_menu_crash_question_open())
+		return;
+	report_crash.asked = 1;
+	platform_log("report: asking about the last run's crash at the main menu");
+}
+
+void report_crash_answer(int report)
+{
+	if (!report_crash.found)
+		return;
+	if (!report)
+	{
+		platform_log("report: the last run's crash not reported (not asked about again)");
+		report_crash_forget();
+		return;
+	}
+	/* (saved at the next frame, as REPORT A PROBLEM is: report_write) */
+	report_crash.wanted = 1;
+	report_requested = 1;
 }
 
 /* ---------- the issue */
@@ -954,6 +1344,8 @@ static struct
 	char *text;
 	char shot[96];
 	int send;
+	/* (the last run's crash's: report_crash) */
+	int crash;
 } report_capture;
 
 /* the zip written, and its issue opened or held for the menus: the note
@@ -981,7 +1373,11 @@ static int report_finish(const char *note, char *message, size_t message_size)
 	issue = malloc(issue_size);
 	if (issue)
 	{
-		if (note && note[0])
+		if (report_capture.crash)
+			snprintf(issue, issue_size, "**What happened:** OpenH1 closed unexpectedly.\n\n(Say what you were doing "
+				"when it closed, if you remember. Then drag %s.zip, from the reports folder that opened, into this "
+				"box.)\n\n%s", name, report_capture.text ? report_capture.text : "");
+		else if (note && note[0])
 			snprintf(issue, issue_size, "**What happened:** %s\n\n(Drag %s.zip, from the reports folder that "
 				"opened, into this box.)\n\n%s", note, name, report_capture.text ? report_capture.text : "");
 		else
@@ -1042,6 +1438,37 @@ static int report_finish(const char *note, char *message, size_t message_size)
 		report_zip_add_text(&zip, "debug.txt", data, size);
 		free(data);
 	}
+	/* (the last run's crash: what the host wrote of it, with that run's
+	log, or what its session's file says; and the macOS app's host log of
+	that run) */
+	if (report_capture.crash)
+	{
+		if (report_crash.record)
+			report_zip_add_text(&zip, "crash.txt", report_crash.record, strlen(report_crash.record));
+		else if (report_crash.session)
+		{
+			data = malloc(strlen(report_crash.session) + 200);
+			if (data)
+			{
+				sprintf(data, "%s\nNo crash report was written: the game was ended from outside, or stopped before "
+					"it could write one.\n", report_crash.session);
+				report_zip_add_text(&zip, "crash.txt", data, strlen(data));
+				free(data);
+			}
+		}
+#ifdef HALO_MACOS
+		if (getenv("HOME"))
+		{
+			snprintf(file_path, sizeof(file_path), "%s/Library/Logs/OpenH1/halo.previous.log", getenv("HOME"));
+			data = report_file_end(file_path, REPORT_FILE_MOST, &size);
+			if (data)
+			{
+				report_zip_add_text(&zip, "halo.previous.log", data, size);
+				free(data);
+			}
+		}
+#endif
+	}
 	/* (not config.toml: the settings changed, the private ones never) */
 	data = report_settings_text(&size);
 	if (data)
@@ -1073,7 +1500,11 @@ static int report_finish(const char *note, char *message, size_t message_size)
 		return 0;
 	}
 	snprintf(message, message_size, "Report saved: reports/%s.zip", name);
-	platform_log("report: saved %s (%d files)%s", path, zip.count, note && note[0] ? ", with a note" : "");
+	platform_log("report: saved %s (%d files)%s", path, zip.count, report_capture.crash ? ", of the last run's crash" :
+		note && note[0] ? ", with a note" : "");
+	/* (the crash reported: not asked of again) */
+	if (report_capture.crash)
+		report_crash_forget();
 	if (report_capture.send && issue)
 	{
 		char *url = malloc(REPORT_URL_MOST + 1), title[160], build[120];
@@ -1142,15 +1573,38 @@ int report_write(unsigned int target, int send, char *message, size_t message_si
 	strftime(report_capture.name, sizeof(report_capture.name), "%Y-%m-%d_%H.%M.%S", &local);
 	snprintf(folder, sizeof(folder), "%s/reports", platform_data_root());
 	mkdir(folder, 0755);
-	/* (what is the moment's, now: the summary and the frame) */
-	report_capture.text = report_text(report_capture.name);
+	/* (the last run's crash's, asked for at the crash question: its summary
+	heading the system's, and no screenshot, which would be of the menu) */
+	report_capture.crash = report_crash.wanted && report_crash.found;
+	report_crash.wanted = 0;
+	if (report_capture.crash)
+	{
+		char *system = report_text(report_capture.name, 1), *summary = malloc(16 * 1024);
+		size_t scrubbed_size;
+		char *scrubbed = NULL;
+
+		if (summary)
+		{
+			report_crash_summary(report_crash.session, report_crash.record, summary, 16 * 1024);
+			scrubbed = report_scrub(summary, strlen(summary), report_home(), &scrubbed_size);
+		}
+		report_capture.text = scrubbed && system ? malloc(scrubbed_size + strlen(system) + 2) : NULL;
+		if (report_capture.text)
+			sprintf(report_capture.text, "%.*s\n%s", (int)scrubbed_size, scrubbed, system);
+		free(scrubbed);
+		free(summary);
+		free(system);
+		target = 0;
+	}
+	else
+		report_capture.text = report_text(report_capture.name, 0);
 	report_capture.shot[0] = 0;
 	if (target && !xgpu_backend_screenshot(target, folder, report_capture.shot, sizeof(report_capture.shot)))
 		report_capture.shot[0] = 0;
 	report_capture.send = send;
 	/* (in a game, a line for the player's note first: report_note_done
 	finishes it) */
-	if (report_game_playing() && report_game_note_begin())
+	if (!report_capture.crash && report_game_playing() && report_game_note_begin())
 	{
 		report_capture.waiting = 1;
 		platform_log("report: %s asked for, waiting for its note", report_capture.name);

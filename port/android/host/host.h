@@ -45,6 +45,17 @@ void host_exit(int code) __attribute__((noreturn));
 void host_abort(const char *reason) __attribute__((noreturn));
 int host_errno(void);
 
+/* the crash record (host_common.c): the file a crash is written to, and the
+guest's log kept in memory (report.c's ring of log_size bytes, *log_written
+of them written in all); from the guest (host_imports.list) */
+void host_crash_record(const char *path, const char *log, uint32_t log_size, const uint64_t *log_written);
+/* at a crash (from a signal handler: open() and write() alone): the record
+begun with its reason's line (0 if there is none to write, or a crash on
+another thread wrote it), each line of the crash, and the log after them */
+int host_crash_record_begin(const char *reason);
+void host_crash_record_line(const char *line);
+void host_crash_record_end(void);
+
 /* logs, shows the message to the player and terminates */
 void host_fatal(const char *format, ...) __attribute__((format(printf, 1, 2), noreturn));
 

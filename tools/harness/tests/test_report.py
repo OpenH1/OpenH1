@@ -35,24 +35,43 @@ NEGATIVE_CONTROLS = {
     "issue-unencoded": ("issue", "character == '~';", "character == '~' || character == '&' || character == '#';"),
     # the resource maps counted as maps
     "maps-resource": ("maps", "if (at == length && !resource[at])", "if (0)"),
+    # the crash's first line (the signal and the address) not the one shown
+    "crash-first-line": ("crash", "first_end = memchr(record, '\\n', (size_t)(crash_end - record));",
+                         "first_end = memchr(record + 1, '\\n', (size_t)(crash_end - record - 1)) ? NULL : NULL;"),
+    # a backtick of a log line kept: a line of three ends report.md's block early
+    "crash-backticks": ("crash", "line[index] == '`' ? '\\'' : line[index];", "line[index];"),
+    # the session's value taken from a line that only begins with its name
+    "crash-session-name": ("crash", "&& line[length] == ':'", ""),
+    # the log's ring written in the order it is kept, not oldest first
+    "ring-order": ("ring", "if (first + kept > crash_record_log_size)", "if (0)"),
 }
 
 FUNCTIONS = ("report_crc32", "report_compare_micros", "report_low_fps", "report_frame_summary", "report_put16",
              "report_put32", "report_zip_add", "report_zip_end", "report_percent_encode", "report_issue_url", "report_setting_private",
-             "report_address_length", "report_scrub", "report_map_counted")
+             "report_address_length", "report_scrub", "report_session_value", "report_crash_line",
+             "report_crash_summary", "report_map_counted")
+# the host's record of a crash, written from its signal handler (port/android/host/host_common.c)
+HOST_FUNCTIONS = ("crash_record_write", "host_crash_record_line", "host_crash_record_end")
 
 
 def generated(fault=None):
     source = read("port/linux/src/report.c")
     issues = re.search(r"^#define REPORT_ISSUES .*$", source, re.M).group(0)
-    code = issues + "\n\n" + structure(source, "report_zip") + "\n\n" + \
-        "\n\n".join(function(source, name) for name in FUNCTIONS)
+    defines = "\n".join(re.search(r"^#define " + name + r" .*$", source, re.M).group(0) for name in
+                        ("REPORT_CRASH_LINES", "REPORT_CRASH_LOG_LINES", "REPORT_CRASH_LINE_MOST",
+                         "REPORT_CRASH_LOG_HEADING"))
+    host = read("port/android/host/host_common.c")
+    host_state = "\n".join(re.search(r"^static .*\bcrash_record_" + name + r"\b.*;$", host, re.M).group(0) for name in
+                           ("log", "log_size", "log_written", "file"))
+    code = issues + "\n" + defines + "\n\n" + structure(source, "report_zip") + "\n\n" + \
+        "\n\n".join(function(source, name) for name in FUNCTIONS) + "\n\n" + host_state + "\n\n" + \
+        "\n\n".join(function(host, name) for name in HOST_FUNCTIONS)
     if fault:
         code = mutated(code, *NEGATIVE_CONTROLS[fault][1:])
     return (("under_test.inc", code + "\n"),)
 
 
-@pytest.mark.parametrize("case", ["crc", "frames", "steady", "issue", "scrub", "maps"])
+@pytest.mark.parametrize("case", ["crc", "frames", "steady", "issue", "scrub", "maps", "crash", "ring"])
 def test_case(case):
     status, output = run(build("report", generated()), case)
     assert status == 0, output

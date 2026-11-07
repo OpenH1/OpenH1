@@ -75,6 +75,11 @@ UPDATE runs "port update now" (updater_update_now: on the Frame, the game
 quits, and its launcher installs the update; under gamescope, the game puts
 the update in place and starts it in its own process).
 
+The crash question (port/linux/src/report.c's: the last run closed
+unexpectedly), opened over the main menu as the update question is
+(pc_menu_crash_question_open, main_menu/crash/crash_screen): REPORT runs
+"port crash report", SKIP (and B) "port crash dismiss".
+
 The rest are the PC version's, which its menus (port/assets/menus/ce)
 name and the Xbox's has not: they do nothing yet, and succeed, so that what
 their handlers open opens.
@@ -4653,11 +4658,13 @@ static void mods_update(struct widget_instance *list)
 	mods_details_show(list->parameters.list.extended_description, count ? mods_screen.chosen : NONE, count);
 }
 
-/* ---------- the update question (updater.c's, the Steam Frame's and gamescope's) */
+/* ---------- the questions over the main menu: the update question
+(updater.c's, the Steam Frame's and gamescope's) and the crash question
+(report.c's) */
 
 static struct
 {
-	/* the main menu drawn since the updater last looked, its tag, and the
+	/* the main menu drawn since a question last looked, its tag, and the
 	tags' generation that is of (cache_files_tags_generation: a map loaded
 	since has numbered its tags again) */
 	boolean main_menu_shown;
@@ -4679,23 +4686,32 @@ static void update_question_note(struct widget_instance *widget)
 	party_screen_noted(screen);
 }
 
-/* the updater's, between frames (not while the widgets are drawn, which
-opening a screen would free): the question opened over the main menu, B
-going back to it, if the main menu was drawn last; 1 when it was opened,
-or cannot be */
-int pc_menu_update_question_open(void)
+/* between frames (not while the widgets are drawn, which opening a screen
+would free): a question's screen opened over the main menu, B going back to
+it, if the main menu was drawn last; 1 when it was opened, or cannot be */
+static int main_menu_question_open(char const *screen_name)
 {
 	boolean shown = update_question.main_menu_shown;
 
 	update_question.main_menu_shown = FALSE;
 	if (!shown || update_question.main_menu_generation != cache_files_tags_generation())
 		return 0;
-	if (!ui_widget_load_by_name_or_tag("pc\\main_menu\\update\\update_screen", NONE, NULL, NONE,
-		update_question.main_menu_tag, NONE, NONE))
-	{
-		platform_log("update: the menus have no update question (main_menu/update/update_screen)");
-	}
+	if (!ui_widget_load_by_name_or_tag(screen_name, NONE, NULL, NONE, update_question.main_menu_tag, NONE, NONE))
+		platform_log("menus: no screen %s for its question", screen_name);
 	return 1;
+}
+
+/* the updater's: the update question */
+int pc_menu_update_question_open(void)
+{
+	return main_menu_question_open("pc\\main_menu\\update\\update_screen");
+}
+
+/* report.c's: the crash question (the last run closed unexpectedly), whose
+REPORT runs "port crash report" and SKIP "port crash dismiss" */
+int pc_menu_crash_question_open(void)
+{
+	return main_menu_question_open("pc\\main_menu\\crash\\crash_screen");
 }
 
 /* updater.c's, the macOS app's: 1 while a game is played (its pause menu
@@ -12284,6 +12300,11 @@ boolean pc_menu_event_function_invoke(
 		else if (!strcmp(name, "port update now"))
 		{
 			updater_update_now();
+		}
+		else if (!strcmp(name, "port crash report") || !strcmp(name, "port crash dismiss"))
+		{
+			/* (the crash question's: report.c) */
+			report_crash_answer(!strcmp(name, "port crash report"));
 		}
 		else if (!strcmp(name, "port multiplayer status end"))
 		{

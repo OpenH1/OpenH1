@@ -5,6 +5,7 @@
   "ce/error.xml",
   "ce/main_menu.campaign.xml",
   "ce/main_menu.campaign_select.xml",
+  "ce/main_menu.crash.xml",
   "ce/main_menu.difficulty_select.xml",
   "ce/main_menu.gametype_select.xml",
   "ce/main_menu.host_controls.touch.xml",

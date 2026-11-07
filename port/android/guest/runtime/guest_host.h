@@ -28,6 +28,11 @@ void host_log(int priority, const char *text);
 /* the host's last lines, whole ones, into buffer (ended by a 0); returns
 their length (Save Report's host.log: port/linux/src/report.c) */
 unsigned int host_log_recent(char *buffer, unsigned int size);
+/* the file the host writes a crash to, with the log kept in memory after it
+(report.c's ring of log_size bytes, *log_written written in all):
+port/android/host/host_common.c */
+void host_crash_record(const char *path, const char *log, unsigned int log_size,
+	const unsigned long long *log_written);
 void host_abort(const char *reason) __attribute__((noreturn));
 void host_exit(int code) __attribute__((noreturn));
 /* the host's errno on this thread, after a call to a host function */

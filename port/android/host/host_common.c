@@ -12,6 +12,14 @@ writes with neither locks nor stdio. The last HOST_LOG_KEPT bytes of them
 are kept as well, for the guest's Save Report (host_log_recent,
 port/linux/src/report.c: host.log), since on Linux and Android they go only
 to the standard error stream or logcat.
+
+The crash record (host_crash_record, the guest's report.c): a file the
+guest names, written at a crash (host_memory_watch.c's report, a fatal error,
+an abort) with what the host logged of it and then the guest's log as
+report.c keeps it in memory, oldest first, so that the next start can offer
+to report it. It is written with open() and write() alone, which a signal
+handler may call; not on Windows, whose crash reports are its own
+(port/windows/host/host_crash_win.c).
 */
 
 #include "host.h"
@@ -21,6 +29,7 @@ to the standard error stream or logcat.
 
 #include <SDL3/SDL.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -158,6 +167,96 @@ void host_logf(int priority, const char *format, ...)
 	log_sink(priority, line);
 }
 
+/* ---------- the crash record */
+
+static char crash_record_path[1024];
+static const char *crash_record_log;
+static uint32_t crash_record_log_size;
+static const uint64_t *crash_record_log_written;
+static volatile int crash_record_taken;
+static int crash_record_file = -1;
+
+void host_crash_record(const char *path, const char *log, uint32_t log_size, const uint64_t *log_written)
+{
+	snprintf(crash_record_path, sizeof(crash_record_path), "%s", path ? path : "");
+	crash_record_log = log;
+	crash_record_log_size = log_size;
+	crash_record_log_written = log_written;
+}
+
+#ifndef _WIN32
+static void crash_record_write(const char *text, size_t length)
+{
+	while (length && crash_record_file >= 0)
+	{
+		ssize_t written = write(crash_record_file, text, length);
+
+		if (written <= 0)
+			return;
+		text += written;
+		length -= (size_t)written;
+	}
+}
+#endif
+
+int host_crash_record_begin(const char *reason)
+{
+#ifndef _WIN32
+	/* (the first thread to crash writes it; the others' crashes are left out) */
+	if (!crash_record_path[0] || __atomic_exchange_n(&crash_record_taken, 1, __ATOMIC_ACQ_REL))
+		return 0;
+	crash_record_file = open(crash_record_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (crash_record_file < 0)
+		return 0;
+	host_crash_record_line(reason);
+	return 1;
+#else
+	(void)reason;
+	return 0;
+#endif
+}
+
+void host_crash_record_line(const char *line)
+{
+#ifndef _WIN32
+	if (crash_record_file < 0 || !line)
+		return;
+	crash_record_write(line, strlen(line));
+	crash_record_write("\n", 1);
+#else
+	(void)line;
+#endif
+}
+
+void host_crash_record_end(void)
+{
+#ifndef _WIN32
+	static const char heading[] = "\n--- the log's last lines\n";
+	uint64_t written, kept, first;
+
+	if (crash_record_file < 0)
+		return;
+	if (crash_record_log && crash_record_log_size && crash_record_log_written)
+	{
+		written = *crash_record_log_written;
+		kept = written < crash_record_log_size ? written : crash_record_log_size;
+		first = (written - kept) % crash_record_log_size;
+		crash_record_write(heading, sizeof(heading) - 1);
+		/* (the ring's two parts: from the oldest byte kept to the end, then
+		from the start) */
+		if (first + kept > crash_record_log_size)
+		{
+			crash_record_write(crash_record_log + first, (size_t)(crash_record_log_size - first));
+			crash_record_write(crash_record_log, (size_t)(first + kept - crash_record_log_size));
+		}
+		else
+			crash_record_write(crash_record_log + first, (size_t)kept);
+	}
+	close(crash_record_file);
+	crash_record_file = -1;
+#endif
+}
+
 void host_fatal(const char *format, ...)
 {
 	char message[1024];
@@ -168,6 +267,11 @@ void host_fatal(const char *format, ...)
 	va_end(arguments);
 	log_keep(HOST_LOG_FATAL, message);
 	log_sink(HOST_LOG_FATAL, message);
+	if (host_crash_record_begin("fatal error"))
+	{
+		host_crash_record_line(message);
+		host_crash_record_end();
+	}
 	SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Halo", message, NULL);
 	_exit(1);
 }
@@ -175,6 +279,11 @@ void host_fatal(const char *format, ...)
 void host_abort(const char *reason)
 {
 	host_logf(HOST_LOG_FATAL, "guest abort: %s", reason ? reason : "");
+	if (host_crash_record_begin("abort"))
+	{
+		host_crash_record_line(reason);
+		host_crash_record_end();
+	}
 	abort();
 }
 
