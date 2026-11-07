@@ -240,14 +240,15 @@ int main(void) {
 def test_sweep_follows_progress_and_caption(tmp_path):
     """loading_art_follow: the band where the progress puts it, not the
     clock (the same phase at any time for the same progress, once settled);
-    loading_art_caption: a line drawn under the words, fading with the rest"""
+    loading_art_caption: a line under the words, drawn by the presenter over
+    the frame at the screen's pixels (loading_art_caption_shown)"""
     run(tmp_path, r'''
 int main(void) {
     struct loading_art *art = calloc(1, sizeof(*art));
     struct loading_presentation_frame frame;
     uint8_t *input = malloc(LOADING_ART_BYTES), caption[64 * 16];
-    const uint8_t *pixels;
-    unsigned int i, step, lit = 0, under = 0;
+    const uint8_t *pixels, *tile;
+    unsigned int i, step, lit = 0, under = 0, left, top, width, height;
     assert(art && input); memset(&frame, 0, sizeof(frame));
     memset(input, 120, LOADING_ART_BYTES);
     loading_art_set(art, input);
@@ -265,17 +266,24 @@ int main(void) {
     loading_art_caption(art, caption, 64, 16);
     frame.elapsed_ns += 16666667u;
     pixels = loading_art_render(art, &frame);
-    /* (64 by 16 at four times: 16 by 4 of the 480 lines, under the words) */
-    for (i = 0; i < 16; i++) {
-        const uint8_t *p = pixels + ((LOADING_ART_CAPTION_TOP + 1) * LOADING_ART_WIDTH + 312 + i) * 4;
-        under += p[0] == LOADING_ART_CAPTION_RED && p[2] == LOADING_ART_CAPTION_BLUE;
-    }
-    assert(under == 16);
-    loading_art_caption(art, NULL, 0, 0);
-    pixels = loading_art_render(art, &frame);
+    /* (not in the frame: the presenter draws it over the frame, at the
+    screen's pixels) */
     for (i = 0; i < LOADING_ART_FRAME_PIXELS; i++) lit += pixels[i*4] == LOADING_ART_CAPTION_RED &&
         pixels[i*4+1] == LOADING_ART_CAPTION_GREEN && pixels[i*4+2] == LOADING_ART_CAPTION_BLUE;
     assert(!lit);
+    /* (64 by 16 at eight times, shown at the 480 rows: 8 by 2 of them,
+    under the words, in the middle) */
+    tile = loading_art_caption_shown(art, pixels, 640, 480, &left, &top, &width, &height);
+    assert(tile && width == 8 && height == 2 && left == 316 && top == LOADING_ART_CAPTION_TOP);
+    for (i = 0; i < 16; i++)
+        under += tile[i * 4] == LOADING_ART_CAPTION_RED && tile[i * 4 + 2] == LOADING_ART_CAPTION_BLUE;
+    assert(under == 16);
+    /* (and twice as large on a screen of twice the rows) */
+    tile = loading_art_caption_shown(art, pixels, 1280, 960, &left, &top, &width, &height);
+    assert(tile && width == 16 && height == 4 && top == LOADING_ART_CAPTION_TOP * 2);
+    loading_art_caption(art, NULL, 0, 0);
+    pixels = loading_art_render(art, &frame);
+    assert(!loading_art_caption_shown(art, pixels, 640, 480, &left, &top, &width, &height));
     free(input); free(art); return 0;
 }
 ''')
