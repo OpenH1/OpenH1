@@ -10,6 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, constant, enum_with, function, mutated, read, run  # noqa: E402
+from harness import skip_without_32_bit_abi  # noqa: E402
 
 SOURCE = "source/saved games/game_state.c"
 CAPACITY = read("port/linux/include/halo_port_capacity.h")
@@ -55,8 +56,18 @@ def generated(fault=None, faulty_function=None):
     return (("types.inc", types), ("under_test.inc", text))
 
 
+# what only the game's 32-bit ABI shows (harness.NATIVE_64_BIT)
+ABI_DEPENDENT = {
+    "whole": "the game state and its image are laid out with the game's 32-bit pointers and longs",
+    "checked": "the game state and its image are laid out with the game's 32-bit pointers and longs",
+    "other-size": "the game state and its image are laid out with the game's 32-bit pointers and longs",
+    "taken-back": "the game state and its image are laid out with the game's 32-bit pointers and longs",
+}
+
+
 @pytest.mark.parametrize("case", CASES)
 def test_case(case):
+    skip_without_32_bit_abi(ABI_DEPENDENT, case)
     status, output = run(build("game_state_image", generated()), case)
     assert status == 0, output
 
@@ -64,5 +75,6 @@ def test_case(case):
 @pytest.mark.parametrize("control", NEGATIVE_CONTROLS)
 def test_negative_control(control):
     fault, faulty_function, case = NEGATIVE_CONTROLS[control]
+    skip_without_32_bit_abi(ABI_DEPENDENT, control, case)
     status, output = run(build("game_state_image", generated(fault, faulty_function)), case)
     assert status == CHECK_FAILED, f"the code with a fault ({control}) passed '{case}': the test cannot see it"

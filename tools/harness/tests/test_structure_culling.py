@@ -7,6 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, inline, mutated, read, run, structure
+from harness import skip_without_32_bit_abi
 
 CASES = ["outside-near", "outside-far", "outside-side", "crossing-kept",
          "facing-away", "facing-toward", "facing-sphere", "edge-on-kept", "degenerate-kept",
@@ -158,13 +159,22 @@ static void fixture_visibility_surface_walk(struct structure_bsp *structure)
                                    "\n".join(parts.values()) + "\n" + surface_walk))
 
 
+# what only the game's 32-bit ABI shows (harness.NATIVE_64_BIT)
+ABI_DEPENDENT = {
+    "load-small-group-scratch": "the scratch's size is counted in the game's 32-bit pointers and longs",
+    "compact-allocation-failure": "the compacted lists' size is counted in the game's 32-bit pointers and longs",
+}
+
+
 @pytest.mark.parametrize("case", CASES)
 def test_case(case):
+    skip_without_32_bit_abi(ABI_DEPENDENT, case)
     status, output = run(build("structure_culling", generated()), case)
     assert status == 0, output
 
 
 @pytest.mark.parametrize("control", CONTROLS)
 def test_negative_control(control):
+    skip_without_32_bit_abi(ABI_DEPENDENT, CONTROLS[control][2])
     status, output = run(build("structure_culling", generated(control)), CONTROLS[control][2])
     assert status == CHECK_FAILED and "check failed:" in output, f"{control} escaped its CHECK: {status}: {output}"

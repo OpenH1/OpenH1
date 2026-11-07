@@ -191,7 +191,8 @@ setting (`game.custom_edition`), checked at run time with
 ## Testing
 
 ```sh
-python -m pytest -q tools/harness tools/test_touch_menu.py   # the engine's functions in a fake world (clang -m32: gcc-multilib)
+python -m pytest -q tools/harness tools/test_touch_menu.py   # the engine's functions in a fake world (clang -m32: gcc-multilib;
+                                                            # on a Mac, 64-bit: tools/harness/README.md)
 python -m pytest -q tools/test_linux_port.py                # the build, the maps' checks (needs assets/maps; map_validate,
                                                             # tools/x86_game_abi.py, needs gcc-multilib on x86-64 Linux)
 python -m pytest -q tools/test_mods.py                      # mods played over a map (needs assets/maps)

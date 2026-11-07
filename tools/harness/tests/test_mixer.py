@@ -21,6 +21,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, function, mutated, read, run  # noqa: E402
+from harness import skip_without_32_bit_abi  # noqa: E402
 
 SOURCE = "port/linux/src/dsound_sdl.c"
 CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "doppler-step",
@@ -189,8 +190,15 @@ def rendered(scalar):
     return array.array("f", result.stdout)
 
 
+# what only the game's 32-bit ABI shows (harness.NATIVE_64_BIT)
+ABI_DEPENDENT = {
+    "hand-off-settings": "the voice settings handed off are the game's structure, sized with its 32-bit longs",
+}
+
+
 @pytest.mark.parametrize("case", CASES)
 def test_case(case):
+    skip_without_32_bit_abi(ABI_DEPENDENT, case)
     status, output = run(build("mixer", generated()), case)
     assert status == 0, output
 
@@ -207,6 +215,7 @@ def test_vectors_add_as_taps_do():
 @pytest.mark.parametrize("control", NEGATIVE_CONTROLS)
 def test_negative_control(control):
     fault, case = NEGATIVE_CONTROLS[control]
+    skip_without_32_bit_abi(ABI_DEPENDENT, control, case)
     status, output = run(build("mixer", generated(fault=fault)), case)
     assert status == CHECK_FAILED, f"the mixer with a fault ({control}) passed '{case}': the test cannot see it"
 

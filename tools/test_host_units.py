@@ -50,6 +50,9 @@ def test_host_arch(tmp_path):
 
 
 def test_host_memory(tmp_path):
+    if platform.system() != "Linux":
+        pytest.skip("host_memory.c is the Linux and Android hosts' (macOS's is host_memory_base.c and port/macos, "
+                    "Windows's port/windows/host)")
     run_test(tmp_path, "host_memory_test",
              [TESTS / "host_memory_test.c", HOST / "host_arch.c", HOST / "host_memory_watch.c",
               HOST / "host_watch_hash.c"])
@@ -171,7 +174,13 @@ def sdl_build():
     """an SDL3 the builds made (its headers and library), or None"""
     for headers in sorted(ROOT.glob("build/*/third_party/SDL3/include")):
         build = headers.parent.parent.parent
-        libraries = sorted([*build.glob("libSDL3.*dylib"), *build.glob("**/libSDL3.so*")])
+        # (one this machine runs: not the Android or iOS builds')
+        if build.name.startswith(("android", "ios")):
+            continue
+        if platform.system() == "Darwin":
+            libraries = sorted(build.glob("libSDL3.*dylib"))
+        else:
+            libraries = sorted(build.glob("**/libSDL3.so*"))
         if (headers / "SDL3" / "SDL.h").exists() and libraries:
             return headers, libraries[0]
     return None

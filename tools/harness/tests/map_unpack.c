@@ -29,8 +29,13 @@ static int posix_stat(const char *path, struct posix_file_information *informati
 		return -1;
 	information->size_low = (posix_ulong)status.st_size;
 	information->size_high = 0;
+#ifdef __APPLE__
+	information->modification_seconds = (posix_ulong)status.st_mtimespec.tv_sec;
+	information->modification_nanoseconds = (posix_ulong)status.st_mtimespec.tv_nsec;
+#else
 	information->modification_seconds = (posix_ulong)status.st_mtim.tv_sec;
 	information->modification_nanoseconds = (posix_ulong)status.st_mtim.tv_nsec;
+#endif
 	return 0;
 }
 

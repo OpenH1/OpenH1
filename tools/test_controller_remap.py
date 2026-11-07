@@ -9,20 +9,21 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from harness import function
+from harness import ABI_FLAGS, function
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def run_c(tmp_path, code):
-    """compiles the code as the game's 32-bit C (gnu89) and runs it"""
+    """compiles the code as the game's 32-bit C (gnu89) and runs it (as 64-bit C where the machine has no 32-bit
+    runtime: harness.NATIVE_64_BIT)"""
     compiler = shutil.which('clang')
     if not compiler:
         pytest.skip('clang required')
     source = tmp_path / 'remap.c'
     binary = tmp_path / 'remap.exe'
     source.write_text(code)
-    target = ['--target=i686-pc-windows-msvc'] if sys.platform == 'win32' else ['-m32']
+    target = ['--target=i686-pc-windows-msvc'] if sys.platform == 'win32' else ABI_FLAGS
     result = subprocess.run([compiler, *target, '-std=gnu89', '-O1', str(source), '-o', str(binary)],
                             capture_output=True, text=True)
     if result.returncode and 'm32' in ' '.join(target) and 'cannot find' in result.stderr:
