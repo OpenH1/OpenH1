@@ -5492,7 +5492,11 @@ void xgpu_write_bmp(const char *name, const unsigned char *pixels, unsigned long
 	char path[512];
 	FILE *file;
 
-	snprintf(path, sizeof(path), "%s/%s%05lu.bmp", directory, name, xgpu_screenshot_number());
+	/* (a name of its own, the menu tour's, as it is: halo_screenshot_named) */
+	if (name[0] == '=')
+		snprintf(path, sizeof(path), "%s/%s.bmp", directory, name + 1);
+	else
+		snprintf(path, sizeof(path), "%s/%s%05lu.bmp", directory, name, xgpu_screenshot_number());
 	file = fopen(path, "wb");
 	if (!file)
 		return;
@@ -5543,6 +5547,17 @@ static void write_screenshot_stream(const unsigned char *pixels, unsigned long w
 	fflush(stream);
 }
 
+/* the next frame saved as debug.screenshot_directory's <name>.bmp (the
+menu tour's: port/linux/game/menu_tour.c) */
+static char screenshot_name[128];
+
+void halo_screenshot_named(const char *name)
+{
+	snprintf(screenshot_name, sizeof(screenshot_name), "=%s", name ? name : "");
+	if (!name || !name[0])
+		screenshot_name[0] = 0;
+}
+
 static void write_screenshot(struct render_target_entry *target)
 {
 	unsigned long width = target->target.pixel_width, height = target->target.pixel_height;
@@ -5550,7 +5565,10 @@ static void write_screenshot(struct render_target_entry *target)
 	unsigned long index;
 
 	if (!*config_string("debug.screenshot_directory") && !*config_string("debug.screenshot_stream"))
+	{
+		screenshot_name[0] = 0;
 		return;
+	}
 	pixels = xgpu_backend_read_target(target->target.number, -1, FALSE);
 	if (!pixels)
 		return;
@@ -5573,7 +5591,8 @@ static void write_screenshot(struct render_target_entry *target)
 	if (*config_string("debug.screenshot_stream"))
 		write_screenshot_stream(pixels, width, height);
 	else
-		xgpu_write_bmp("frame", pixels, width, height, FALSE);
+		xgpu_write_bmp(screenshot_name[0] ? screenshot_name : "frame", pixels, width, height, FALSE);
+	screenshot_name[0] = 0;
 	free(pixels);
 }
 
@@ -5995,7 +6014,7 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 				back_buffer->target.number);
 		render_target_resolve(&back_buffer->target);
 		xgpu_backend_visibility_frame();
-		if (screenshot_this_frame())
+		if (screenshot_this_frame() || screenshot_name[0])
 			write_screenshot(back_buffer);
 		if (determinism_log_frames())
 		{

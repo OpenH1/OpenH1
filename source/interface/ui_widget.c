@@ -655,6 +655,7 @@ struct widget_instance;
 #include "interface/ui_widget_game_data_input_functions.h"
 #include "custom_edition_maps.h" /* port: port/linux/game/custom_edition_maps.c */
 #include "menu_layout.h" /* port: port/linux/game/menu_layout.c */
+void menu_tour_update(void); /* port: port/linux/game/menu_tour.c */
 #include "interface/ui_widget_event_handler_functions.h"
 #include "interface/ui_widget_text_search_and_replace_functions.h"
 #include "interface/virtual_keyboard.h"
@@ -10297,6 +10298,9 @@ void process_ui_widgets(
 
 		return;
 	}
+	/* port: debug.menu_tour's screens, one after another
+	(port/linux/game/menu_tour.c) */
+	menu_tour_update();
 	if (progress_bar_is_active())
 		return;
 	if (virtual_keyboard_active())

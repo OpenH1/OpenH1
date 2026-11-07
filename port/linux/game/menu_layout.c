@@ -43,7 +43,11 @@ void platform_log(char const *format, ...);
 static struct
 {
 	FILE *file;
-	char temporary[512];
+	/* the file being written, beside its path; and the path asked for
+	the next frame's (menu_layout_request) */
+	char path[512];
+	char temporary[520];
+	char requested[512];
 	long frame;
 	long frames;
 	long items;
@@ -175,15 +179,33 @@ static long menu_layout_widget_id(
 	return -1;
 }
 
+void menu_layout_request(
+	char const *path)
+{
+	snprintf(menu_layout.requested, sizeof(menu_layout.requested), "%s", path ? path : "");
+}
+
 void menu_layout_frame_begin(
 	long screen_width)
 {
 	char const *path = menu_layout_path();
 
-	if (menu_layout.file || !path[0])
+	if (menu_layout.file)
 		return;
-	if (menu_layout.frames++ % MENU_LAYOUT_EVERY != MENU_LAYOUT_EVERY - 1)
+	if (menu_layout.requested[0])
+	{
+		snprintf(menu_layout.path, sizeof(menu_layout.path), "%s", menu_layout.requested);
+		menu_layout.requested[0] = 0;
+	}
+	else if (!path[0] || menu_layout.frames++ % MENU_LAYOUT_EVERY != MENU_LAYOUT_EVERY - 1)
+	{
 		return;
+	}
+	else
+	{
+		snprintf(menu_layout.path, sizeof(menu_layout.path), "%s", path);
+	}
+	path = menu_layout.path;
 	snprintf(menu_layout.temporary, sizeof(menu_layout.temporary), "%s.part", path);
 	menu_layout.file = fopen(menu_layout.temporary, "w");
 	if (!menu_layout.file)
@@ -208,7 +230,7 @@ void menu_layout_frame_begin(
 void menu_layout_frame_end(
 	char const *screen_name)
 {
-	char const *path = menu_layout_path();
+	char const *path = menu_layout.path;
 	int written;
 
 	if (!menu_layout.file)
