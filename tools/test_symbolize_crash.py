@@ -227,7 +227,7 @@ def test_a_release_s_symbols_zip_is_read(tmp_path):
         archive.writestr("halo_guest.debug.elf", elf(FUNCTIONS))
     build = tmp_path / "OpenH1-Linux.zip"
     with zipfile.ZipFile(build, "w") as archive:
-        archive.writestr("OpenH1/lib/openh1/halo", elf([("main", 0)], base=0x1000, machine=62))
+        archive.writestr("OpenH1/bin/openh1", elf([("main", 0)], base=0x1000, machine=62))
     report = tmp_path / "crash.txt"
     report.write_text(CRASH)
     for given in ([symbols], [symbols, build]):
@@ -239,7 +239,9 @@ def test_a_release_s_symbols_zip_is_read(tmp_path):
     # (the build's zip unpacked beside the symbols: its single top folder left out)
     unpacked = symbolize_crash.unpack_zips([symbols, build, tmp_path / "other.apk"], tmp_path / "unpacked")
     assert unpacked == [tmp_path / "unpacked/build", tmp_path / "other.apk"]
-    assert (unpacked[0] / "halo_guest.debug.elf").is_file() and (unpacked[0] / "lib/openh1/halo").is_file()
+    assert (unpacked[0] / "halo_guest.debug.elf").is_file() and (unpacked[0] / "bin/openh1").is_file()
+    guest, image, host = symbolize_crash.find_build(unpacked[:1], None, None)
+    assert guest.name == "halo_guest.debug.elf" and host == unpacked[0] / "bin/openh1"
 
 
 @pytest.mark.parametrize("text, hint", [

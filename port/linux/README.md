@@ -500,7 +500,7 @@ host's are placed by the `host image at` line. The guest's are looked up in
 is compiled with line tables), which the build writes beside `halo`: the
 builds carry `halo_guest.elf`, the same image without them. Without either
 file the tool takes the image the executable or the APK carries (the
-macOS app's `Contents/MacOS/halo`, the Linux release's `lib/openh1/halo`,
+macOS app's `Contents/MacOS/halo`, the Linux release's `bin/openh1`,
 the APK), which names the functions only. The report's reference address
 must be the image's `write_to_error_file`, or the tool stops: the image is
 another build's. The host's frames are looked up in its executable (`halo`,

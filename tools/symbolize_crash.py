@@ -21,7 +21,7 @@ host's (the "host image at" line places it) in the host's executable (the
 macOS executable through atos, which reads its debugging information where
 the build left it; the others' through llvm-symbolizer). Without an image
 file the guest image the executable carries is used (the macOS app's
-Contents/MacOS/halo, the Linux release's lib/openh1/halo, the APK's
+Contents/MacOS/halo, the Linux release's bin/openh1, the APK's
 assets/halo_guest.elf). The game's reference address (debug.txt's, which
 report.md repeats: write_to_error_file's address) must be the image's, or
 the image is another build's and the tool stops.
@@ -326,7 +326,8 @@ def find_build(paths: List[Path], guest: Optional[Path], host: Optional[Path]) -
     for path in paths:
         if path.is_dir():
             candidates += [path / "halo_guest.debug.elf", path / "halo_guest.elf", path / "halo",
-                           path / "Contents/MacOS/halo", path / "lib/openh1/halo", path / "libmain.so",
+                           path / "Contents/MacOS/halo", path / "bin/openh1", path / "lib/openh1/halo",
+                           path / "libmain.so",
                            *sorted(path.glob("*.apk"))]
         else:
             candidates.append(path)
@@ -334,7 +335,7 @@ def find_build(paths: List[Path], guest: Optional[Path], host: Optional[Path]) -
     if guest is None:
         guest = next((path for path in candidates if path.name.startswith("halo_guest")), None)
     if host is None:
-        host = next((path for path in candidates if path.name in ("halo", "libmain.so")), None)
+        host = next((path for path in candidates if path.name in ("halo", "openh1", "libmain.so")), None)
     image = guest.read_bytes() if guest else None
     if image is None:
         for path in candidates + ([host] if host and host not in candidates else []):
