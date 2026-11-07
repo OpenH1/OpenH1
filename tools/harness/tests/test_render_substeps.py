@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run, structure  # noqa: E402
 
 CASES = ["classic", "substeps", "substeps_60", "carried", "camera_slow", "projectile", "projectile_late", "vr_release",
-         "respawn", "respawn_120", "lead", "lead_60", "lead_glide", "lead_classic"]
+         "respawn", "respawn_120", "scripted_camera", "scripted_camera_120", "lead", "lead_60", "lead_glide", "lead_classic"]
 
 # a fault in the code, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -56,6 +56,14 @@ NEGATIVE_CONTROLS = {
                         "\t\tcamera->has_previous = camera->valid;"), "respawn"),
     "respawn-glides-120": (("\t\tcamera->has_previous = camera->valid && camera->unit_index == unit_index;",
                             "\t\tcamera->has_previous = camera->valid;"), "respawn_120"),
+    # a scripted camera's snapshots blended as if each were taken at its tick's end: it lurches at each tick (#805)
+    "scripted-camera-untimed": (("\t\tcamera->latest_time = timed ? now : (double)interpolation_tick;",
+                                 "\t\tcamera->latest_time = (double)interpolation_tick;"), "scripted_camera"),
+    "scripted-camera-untimed-120": (("\t\tcamera->latest_time = timed ? now : (double)interpolation_tick;",
+                                     "\t\tcamera->latest_time = (double)interpolation_tick;"), "scripted_camera_120"),
+    # ... or the snapshot before the previous one not taken when the frame's moment falls before the previous
+    "scripted-camera-no-before": (("\t\tif (drawn_time < from_time && camera->has_before)",
+                                   "\t\tif (0)"), "scripted_camera"),
     # another's player drawn from the tick drawn's sub-steps, a tick behind, not its newest
     "lead-a-tick-behind": (("\treturn (short)(interpolation_substep_index + interpolation_substep_count - 1);",
                             "\treturn interpolation_substep_index;"), "lead"),
@@ -156,6 +164,7 @@ def generated(fault=None, newest=False):
                  "render_interpolation_frame_begin", "render_interpolation_frame_end",
                  "render_interpolation_pending_from", "render_interpolation_blend_in_frame",
                  "render_interpolation_object_node_matrices", "observer_blend", "observer_cut",
+                 "render_interpolation_camera_timed",
                  "render_interpolation_camera_substep_unit", "render_interpolation_camera_at_tick",
                  "render_interpolation_camera_anchors", "render_interpolation_camera_substep_vehicle",
                  "render_interpolation_camera_at_tick_in_vehicle", "render_interpolation_camera_vehicle_offset",

@@ -368,6 +368,16 @@ struct interpolated_camera
 	long anchor_tick;
 	long anchor_vehicle_index;
 	real_point3d anchor;
+	/* a view that moves in the frames' time (render_interpolation_camera_
+	timed): when each snapshot was taken (ticks, as interpolation_tick
+	counts them, and the fraction of the frame that took it), and the
+	snapshot before the previous one */
+	boolean timed;
+	boolean has_before;
+	struct observer_result before;
+	double before_time;
+	double previous_time;
+	double latest_time;
 };
 
 /* a local player's vehicle's last three steps (render_interpolation_newest_
@@ -4115,6 +4125,30 @@ static boolean observer_cut(
 		!(a->forward.i * b->forward.i + a->forward.j * b->forward.j + a->forward.k * b->forward.k >= CAMERA_CUT_COSINE);
 }
 
+/* A view that moves in the frames' time, not the ticks': a scripted camera
+(a cutscene's camera point and its transition, a camera animation, the dead
+camera), which the director and the observer move once a frame by the
+frame's time (main.c: director_update, observer_update), so that the
+observer as a frame leaves it is where the camera is at that frame's moment.
+Not a scripted first-person camera, which looks from its unit as the tick
+left it, as the player's own view does. The first frame after a tick (whose
+snapshot is taken) comes any part of a tick after it: at 30 a steady part,
+at other rates a part that changes from tick to tick (and more after a long
+frame), so that blended as if each snapshot were the tick's, the camera
+lurched at each tick, ahead and back by as much as a tick's motion, in every
+cutscene's slow move (#805). Its snapshots are kept with their times, and
+the view is drawn where they place it a tick before the frame's moment, as
+the objects are drawn */
+static boolean render_interpolation_camera_timed(short local_player_index)
+{
+	long relative_object_index;
+
+	if (director_get_perspective(local_player_index) != _director_perspective_scripted)
+		return FALSE;
+	relative_object_index = scripted_camera_object_relative_to();
+	return relative_object_index == NONE || !scripted_camera_object_is_first_person_camera(relative_object_index);
+}
+
 /* The first-person view of a unit of the micro lane (a player's biped on
 foot), which the observer poses from the unit as it is now: NONE for any
 other view (in a seat, a cinematic, another perspective), or at 30. The
@@ -4325,12 +4359,16 @@ static struct observer_result const *render_interpolation_blended_camera(
 	long substep_unit_index;
 	long substep_vehicle_index;
 	real_vector3d offset;
+	/* (the frame's moment, in ticks as interpolation_tick counts them) */
+	double now = (double)interpolation_tick + (double)interpolation_fraction;
+	boolean timed;
 
 	if (!interpolation_rendering || !observer)
 	{
 		return observer;
 	}
 	camera = &interpolated_cameras[local_player_index];
+	timed = render_interpolation_camera_timed(local_player_index);
 	substep_unit_index = render_interpolation_camera_substep_unit(local_player_index);
 	substep_vehicle_index = render_interpolation_camera_substep_vehicle(local_player_index);
 	/* A scripted camera that moves with an object (a cinematic's camera
@@ -4389,10 +4427,17 @@ static struct observer_result const *render_interpolation_blended_camera(
 		dead camera 2 to 6 units above the body, a spawn point near it; or
 		network co-op's spectating, 3.5 units behind the teammate a dead
 		player respawns beside) */
+		camera->has_before = camera->has_previous;
 		camera->has_previous = camera->valid && camera->unit_index == unit_index;
+		camera->has_before = camera->has_before && camera->has_previous;
 		camera->unit_index = unit_index;
+		camera->before = camera->previous;
+		camera->before_time = camera->previous_time;
 		camera->previous = camera->latest;
+		camera->previous_time = camera->latest_time;
 		camera->latest = *observer;
+		camera->latest_time = timed ? now : (double)interpolation_tick;
+		camera->timed = timed;
 		if (substep_unit_index != NONE)
 			render_interpolation_camera_at_tick(substep_unit_index, &camera->latest);
 		if (substep_vehicle_index != NONE)
@@ -4403,7 +4448,7 @@ static struct observer_result const *render_interpolation_blended_camera(
 		snapshot tells. (Blended across all the ticks since, the camera
 		moved further each frame than the world it is in, out through a
 		Pelican's hull for a frame.) A cut stays a cut. */
-		if (camera->has_previous && interpolation_tick - camera->tick > 1 &&
+		if (!timed && camera->has_previous && interpolation_tick - camera->tick > 1 &&
 			!observer_cut(&camera->previous, &camera->latest))
 		{
 			real ticks = (real)(interpolation_tick - camera->tick);
@@ -4419,7 +4464,42 @@ static struct observer_result const *render_interpolation_blended_camera(
 		return observer;
 	}
 
-	observer_blend(&camera->previous, &camera->latest, t, &camera->blended);
+	if (camera->timed)
+	{
+		/* a tick before the frame's moment, between the two snapshots taken
+		either side of it: the last two, or (the previous one taken later in
+		its tick than the latest in its) the two before; a cut between those
+		two drawn from the later */
+		double drawn_time = now - 1.0;
+		struct observer_result const *from = &camera->previous;
+		struct observer_result const *to = &camera->latest;
+		double from_time = camera->previous_time;
+		double to_time = camera->latest_time;
+
+		if (drawn_time < from_time && camera->has_before)
+		{
+			if (observer_cut(&camera->before, &camera->previous))
+			{
+				camera->blended = camera->previous;
+				return &camera->blended;
+			}
+			from = &camera->before;
+			to = &camera->previous;
+			from_time = camera->before_time;
+			to_time = camera->previous_time;
+		}
+		t = to_time > from_time ? (real)((drawn_time - from_time) / (to_time - from_time)) : 1.0f;
+		/* (so written that a part not a number is none) */
+		if (!(t > 0.0f))
+			t = 0.0f;
+		else if (t > 1.0f)
+			t = 1.0f;
+		observer_blend(from, to, t, &camera->blended);
+	}
+	else
+	{
+		observer_blend(&camera->previous, &camera->latest, t, &camera->blended);
+	}
 	if (correction_significant(&camera->correction) || correction_significant(&camera->correction_pending))
 	{
 		real_vector3d drawn;
