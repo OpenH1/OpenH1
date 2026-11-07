@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run  # noqa: E402
 
 CASES = ["seat_default", "seat_match", "seat_number", "third_person_seat", "first_person_seat", "turret_exit",
-         "passenger_camera", "seat_change", "split_screen",
+         "passenger_climbing_in", "passenger_camera", "seat_change", "split_screen",
          "leaving_third_person", "match_exit", "entering", "turned_back", "respawn", "scoped_in_seat", "dead",
          "neutral", "scripted", "wider_with_panini", "past_the_widest", "zoomed_reticle_size", "unzooming"]
 CONTROLS = [
@@ -26,14 +26,19 @@ CONTROLS = [
     # a number unread
     ("\t\t\tvehicle_tangent = fov_tangent(degrees);", "\t\t\tvehicle_tangent = 0.0f;", "seat_number"),
     # (#775) every seat display.vehicle_fov's, a passenger's seen from the head too (as before)
-    ("\treturn director_desired_perspective(unit_index, &perspective) || passenger_camera_enabled(local_player_index) ?",
-     "\treturn TRUE ?", "first_person_seat"),
+    ("\tif (unit->object.parent_object_index == NONE)\n\t\treturn FALSE;\n",
+     "\tif (unit->object.parent_object_index == NONE)\n\t\treturn FALSE;\n\treturn TRUE;\n", "first_person_seat"),
+    # a passenger's getting in, seen in third person, taken for a third-person seat: the view dips to the vehicle's
+    ("\treturn TEST_FLAG(TAG_BLOCK_GET_ELEMENT(&definition->unit.seats, seat_index, struct unit_seat)->flags,\n"
+     "\t\t_unit_seat_third_person_camera_bit) ? TRUE : FALSE;",
+     "\treturn TEST_FLAG(TAG_BLOCK_GET_ELEMENT(&definition->unit.seats, seat_index, struct unit_seat)->flags,\n"
+     "\t\t_unit_seat_third_person_camera_bit) || director_get_perspective(local_player_index) == "
+     "_director_perspective_third_person ? TRUE : FALSE;", "passenger_climbing_in"),
     # display.passenger_third_person's passenger taken for one seen from the head
-    ("\treturn director_desired_perspective(unit_index, &perspective) || passenger_camera_enabled(local_player_index) ?",
-     "\treturn director_desired_perspective(unit_index, &perspective) ?", "passenger_camera"),
+    ("\tif (passenger_camera_enabled(local_player_index))\n\t\treturn TRUE;\n", "", "passenger_camera"),
     # one way for every local player: a split screen's views take each other's
-    ("real weight = vehicle_fov_weight(local_player_index, unit_index, unit);",
-     "real weight = vehicle_fov_weight(0, unit_index, unit);", "split_screen"),
+    ("real weight = vehicle_fov_weight(local_player_index, unit);",
+     "real weight = vehicle_fov_weight(0, unit);", "split_screen"),
     # no way between them: the view and its reticle jump as the player gets out or in, or changes seats
     ("real eased = progress * progress * (3.0f - 2.0f * progress);", "real eased = 1.0f;", "leaving_third_person"),
     ("real eased = progress * progress * (3.0f - 2.0f * progress);", "real eased = 1.0f;", "entering"),
@@ -90,6 +95,7 @@ def generated(fault=None):
     config = "\n".join([
         enum_with(read("source/camera/director.h"), "_director_perspective_first_person"),
         enum_with(read("source/objects/objects.h"), "_object_dead_bit"),
+        enum_with(read("source/units/unit_definitions.h"), "_unit_seat_third_person_camera_bit"),
     ]) + "\n"
     text = "\n".join([
         function(read("source/render/render_cameras.c"), "render_camera_get_adjusted_field_of_view_tangent"),

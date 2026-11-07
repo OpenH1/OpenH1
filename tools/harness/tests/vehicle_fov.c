@@ -8,10 +8,10 @@ gunner's, display.passenger_third_person's passenger), and the moments of
 entering and leaving it, take display.vehicle_fov: "default" the game's own
 view (the reticle at its stock size), "match" display.fov's, a number its
 angle. A first-person seat (a passenger's, the Shade's turret) takes
-display.fov, as on foot (#775). Getting in or out, or from one kind of seat
-to the other, the view eases between the two, and the reticle drawn over
-each frame is scaled from that frame's view, so it never shows another
-frame's size. Each local player has their own. Death, a perspective the
+display.fov, as on foot, getting into it too (#775). Getting in or out,
+or from one kind of seat to the other, the view eases between the two, and
+the reticle drawn over each frame is scaled from that frame's view, so it
+never shows another frame's size. Each local player has their own. Death, a perspective the
 director holds (neutral) and a scope's full zoom keep the game's view.
 */
 
@@ -41,7 +41,13 @@ struct unit_datum
 	struct
 	{
 		short current_weapon_index;
+		short parent_seat_index;
 	} unit;
+};
+
+struct unit_seat
+{
+	unsigned long flags;
 };
 
 struct unit_definition
@@ -49,16 +55,34 @@ struct unit_definition
 	struct
 	{
 		real camera_field_of_view;
+		struct
+		{
+			long count;
+			struct unit_seat *elements;
+		} seats;
 	} unit;
 };
+
+#define TAG_BLOCK_GET_ELEMENT(block, index, type) (&(block)->elements[index])
 
 /* each local player's unit (player_control_get_unit_index: 7 on) */
 static struct unit_datum fake_units[MAXIMUM_LOCAL_PLAYERS];
 #define fake_unit (fake_units[0])
-/* the seats, as their parent objects: one the director follows in third
-person (a driver's), and one seen from the head (a passenger's) */
+/* the seats, as their parent objects: a vehicle whose seat 0 has the
+following camera (a driver's), and one whose seat 0 is seen from the head
+(a passenger's, its getting in seen in third person) */
 #define THIRD_PERSON_SEAT 12
 #define FIRST_PERSON_SEAT 14
+static struct unit_seat fake_third_person_seat = { FLAG(_unit_seat_third_person_camera_bit) };
+static struct unit_seat fake_first_person_seat = { FLAG(_unit_seat_driver_bit) };
+static struct unit_definition fake_vehicle_definitions[2] = {
+	{ { 0.0f, { 1, &fake_third_person_seat } } },
+	{ { 0.0f, { 1, &fake_first_person_seat } } },
+};
+static struct unit_datum fake_vehicles[2] = {
+	{ { NONE, 0 }, 1, { NONE, NONE } },
+	{ { NONE, 0 }, 2, { NONE, NONE } },
+};
 /* display.passenger_third_person's view, for each local player */
 static boolean fake_passenger_camera[MAXIMUM_LOCAL_PLAYERS];
 static struct unit_definition fake_definition;
@@ -89,16 +113,17 @@ static boolean director_inhibited_facing(short local_player_index) { (void)local
 static long player_control_get_unit_index(short local_player_index) { return 7 + local_player_index; }
 static struct unit_datum *unit_try_and_get(long unit_index)
 {
+	if (unit_index == THIRD_PERSON_SEAT)
+		return &fake_vehicles[0];
+	if (unit_index == FIRST_PERSON_SEAT)
+		return &fake_vehicles[1];
 	return unit_index < 7 || unit_index >= 7 + MAXIMUM_LOCAL_PLAYERS ? NULL : &fake_units[unit_index - 7];
 }
-/* (director.c's: the following camera in a third-person seat) */
-static short director_desired_perspective(long unit_index, director_perspective *perspective)
-{
-	*perspective = 0;
-	return unit_try_and_get(unit_index)->object.parent_object_index == THIRD_PERSON_SEAT;
-}
 static boolean passenger_camera_enabled(short local_player_index) { return fake_passenger_camera[local_player_index]; }
-static struct unit_definition *unit_definition_get(long index) { (void)index; return &fake_definition; }
+static struct unit_definition *unit_definition_get(long index)
+{
+	return index == 1 || index == 2 ? &fake_vehicle_definitions[index - 1] : &fake_definition;
+}
 static long unit_inventory_get_weapon(long unit_index, short index) { (void)unit_index; return index == NONE ? NONE : 3; }
 static real panini_strength(void) { return fake_panini; }
 /* (the projection's magnification: none here, test_panini.py has it) */
@@ -301,6 +326,24 @@ int main(int argc, char **argv)
 		drawn = seated_in(FIRST_PERSON_SEAT, _director_perspective_first_person, &scale);
 		CHECK(SAME(drawn, foot), "in the turret: %f, on foot %f", drawn, foot);
 		check_exit(_director_perspective_first_person, drawn, foot, foot_scale);
+	}
+	CASE("passenger_climbing_in")
+	{
+		/* (#775) getting into a passenger's seat, which the director shows
+		in third person: display.fov's view all the way, no dip to the
+		vehicle's and back */
+		int step;
+
+		settings(110.0, "default");
+		frame(NONE, _director_perspective_first_person, DEGREES(70.f), &scale);
+		for (step = 0; step <= 60; step++)
+		{
+			drawn = frame(FIRST_PERSON_SEAT, step < 30 ? _director_perspective_third_person :
+				_director_perspective_first_person, DEGREES(70.f), &scale);
+			CHECK(SAME(drawn, foot) && SAME(scale, foot_scale), "frame %d: %f (scale %f), on foot %f", step, drawn,
+				scale, foot);
+			fake_now += 16;
+		}
 	}
 	CASE("passenger_camera")
 	{

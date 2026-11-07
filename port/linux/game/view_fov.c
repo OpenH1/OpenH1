@@ -25,6 +25,7 @@ that draw the first-person weapon (rasterizer and render sources).
 #include "items/weapons.h"
 #include "objects/objects.h"
 #include "tag_files/tag_files.h"
+#include "tag_files/tag_groups.h"
 #include "rasterizer/rasterizer.h"
 #include "rasterizer/xbox/rasterizer_xbox_internal.h"
 #include "render/render.h"
@@ -163,21 +164,30 @@ struct unit_datum *render_fov_unit(short local_player_index, long *unit_index)
 	return unit;
 }
 
-/* whether the local player's seat is one the director follows in third
-person: a seat with the following camera (a driver's, a gunner's), one
-entered and left in it while the unit gets in or out
-(director_desired_perspective), or a passenger's with
-display.passenger_third_person; not on foot, nor in a seat seen from the
-head (a passenger's, the Shade's turret), whose view is display.fov's as on
-foot (#775) */
-static boolean vehicle_fov_third_person(short local_player_index, long unit_index, struct unit_datum const *unit)
+/* whether the local player's seat is one seen in third person: a seat with
+the following camera (a driver's, a gunner's), getting in and out of it
+too, or a passenger's with display.passenger_third_person; not on foot, nor
+in a seat seen from the head (a passenger's, the Shade's turret), whose
+view is display.fov's as on foot (#775), the third-person shot of getting
+into it too */
+static boolean vehicle_fov_third_person(short local_player_index, struct unit_datum const *unit)
 {
-	director_perspective perspective;
+	struct unit_datum *vehicle;
+	struct unit_definition *definition;
+	short seat_index = unit->unit.parent_seat_index;
 
 	if (unit->object.parent_object_index == NONE)
 		return FALSE;
-	return director_desired_perspective(unit_index, &perspective) || passenger_camera_enabled(local_player_index) ?
-		TRUE : FALSE;
+	if (passenger_camera_enabled(local_player_index))
+		return TRUE;
+	vehicle = unit_try_and_get(unit->object.parent_object_index);
+	if (!vehicle)
+		return FALSE;
+	definition = unit_definition_get(vehicle->definition_index);
+	if (seat_index < 0 || seat_index >= definition->unit.seats.count)
+		return FALSE;
+	return TEST_FLAG(TAG_BLOCK_GET_ELEMENT(&definition->unit.seats, seat_index, struct unit_seat)->flags,
+		_unit_seat_third_person_camera_bit) ? TRUE : FALSE;
 }
 
 /* (each frame) the weight of display.vehicle_fov in the view, from 0 on
@@ -189,7 +199,7 @@ to the head. It eases the same way in and from one seat to another
 is if the player changes again on the way. A view the fields of view leave
 alone (death, a cinematic) ends the way: the next view is wherever the
 player then is */
-static real vehicle_fov_weight(short local_player_index, long unit_index, struct unit_datum const *unit)
+static real vehicle_fov_weight(short local_player_index, struct unit_datum const *unit)
 {
 	unsigned long now = system_milliseconds();
 	boolean third_person;
@@ -202,7 +212,7 @@ static real vehicle_fov_weight(short local_player_index, long unit_index, struct
 		vehicle_blends[local_player_index].valid = FALSE;
 		return 0.0f;
 	}
-	third_person = vehicle_fov_third_person(local_player_index, unit_index, unit);
+	third_person = vehicle_fov_third_person(local_player_index, unit);
 	if (!vehicle_blends[local_player_index].valid)
 	{
 		vehicle_blends[local_player_index].valid = TRUE;
@@ -319,7 +329,7 @@ real render_fov_vertical(short local_player_index, real native_vertical_field_of
 	reticle is never a frame apart from the view it is drawn over) */
 	long unit_index;
 	struct unit_datum *unit = render_fov_unit(local_player_index, &unit_index);
-	real weight = vehicle_fov_weight(local_player_index, unit_index, unit);
+	real weight = vehicle_fov_weight(local_player_index, unit);
 	real reticle_size, unzoomed_drawn_tangent;
 	real adjusted = render_fov_adjust(local_player_index, native_vertical_field_of_view, weight, &reticle_size,
 		&unzoomed_drawn_tangent);
