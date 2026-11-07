@@ -2415,6 +2415,12 @@ static const struct config_setting config_settings[] =
 	{ "debug.menu_open", _config_string, "\"\"", "HALO_MENU_OPEN", _environment_value, _platform_all,
 		"Start on this screen of the menus (port/assets/menus) instead of the main\n"
 		"menu, a player profile being edited; empty for the main menu." },
+	{ "debug.menu_layout", _config_string, "\"\"", "HALO_MENU_LAYOUT", _environment_value, _platform_all,
+		"Write the open menu screen's geometry to this file (in the data root) as\n"
+		"JSON, every 30th frame of the menus: each widget's box, each text's box,\n"
+		"clip and drawn extent, the button glyphs drawn and the pointer's targets\n"
+		"(port/linux/game/menu_layout.c), for tools/menu_gallery.py's layout\n"
+		"checks; empty for none." },
 	{ "debug.discord_socket", _config_string, "\"\"", "HALO_DISCORD_SOCKET", _environment_value, _platform_desktop,
 		"The Discord client's socket (on Windows its pipe) to connect to, and no\n"
 		"other: a test's stand-in for Discord. Empty: Discord's own." },
@@ -4102,6 +4108,7 @@ static void config_apply_probe_mode(void)
 		{ "server.enabled", "false" },
 		{ "debug.test_input", "" },
 		{ "debug.menu_open", "" },
+		{ "debug.menu_layout", "" },
 		{ "debug.exit_after", "45" },
 	};
 	size_t index;
@@ -4137,6 +4144,7 @@ static void config_apply_server_mode(void)
 		{ "debug.network_test", "" },
 		{ "debug.test_input", "" },
 		{ "debug.menu_open", "" },
+		{ "debug.menu_layout", "" },
 	};
 	const char *tunnel_port = getenv("HALO_NET_TUNNEL_PORT");
 	size_t index;

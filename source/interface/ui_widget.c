@@ -654,6 +654,7 @@ struct widget_instance;
 #include "interface/progress_bar.h"
 #include "interface/ui_widget_game_data_input_functions.h"
 #include "custom_edition_maps.h" /* port: port/linux/game/custom_edition_maps.c */
+#include "menu_layout.h" /* port: port/linux/game/menu_layout.c */
 #include "interface/ui_widget_event_handler_functions.h"
 #include "interface/ui_widget_text_search_and_replace_functions.h"
 #include "interface/virtual_keyboard.h"
@@ -4534,6 +4535,8 @@ void draw_string_and_hack_in_icons(
 			short icon_index;
 			short key_icon_type;
 			real_argb_color key_color;
+			/* port: where the glyph begins (debug.menu_layout) */
+			short glyph_x0 = cursor_bounds.x0;
 
 			current = icon_spec + wcslen(icon_names[icon_type]);
 			/* port: a game control's key for the keyboard and mouse
@@ -4560,6 +4563,7 @@ void draw_string_and_hack_in_icons(
 				if (menu_key &&
 					hud_key_prompt_draw_key(menu_key, bounds, &cursor_bounds, real_argb_color_to_pixel32(&key_color)))
 				{
+					menu_layout_glyph(TRUE, menu_key, glyph_x0, cursor_bounds.y0, cursor_bounds.x0, cursor_bounds.y1);
 					key_drawn = TRUE;
 					continue;
 				}
@@ -4572,6 +4576,8 @@ void draw_string_and_hack_in_icons(
 						&cursor_bounds,
 						real_argb_color_to_pixel32(&key_color)))
 				{
+					menu_layout_glyph_wide(TRUE, icon_names[key_icon_type], glyph_x0, cursor_bounds.y0,
+						cursor_bounds.x0, cursor_bounds.y1);
 					key_drawn = TRUE;
 					continue;
 				}
@@ -4587,6 +4593,8 @@ void draw_string_and_hack_in_icons(
 					&cursor_bounds,
 					real_argb_color_to_pixel32(&key_color)))
 			{
+				menu_layout_glyph_wide(TRUE, icon_names[key_icon_type], glyph_x0, cursor_bounds.y0,
+					cursor_bounds.x0, cursor_bounds.y1);
 				key_drawn = TRUE;
 				continue;
 			}
@@ -4599,6 +4607,8 @@ void draw_string_and_hack_in_icons(
 					&cursor_bounds,
 					real_argb_color_to_pixel32(&key_color)))
 			{
+				menu_layout_glyph_wide(TRUE, icon_names[icon_type], glyph_x0, cursor_bounds.y0,
+					cursor_bounds.x0, cursor_bounds.y1);
 				key_drawn = TRUE;
 				continue;
 			}
@@ -4702,6 +4712,9 @@ void draw_string_and_hack_in_icons(
 					&cursor_bounds,
 					(real_argb_color_to_pixel32(&icon_color) & 0x00ffffff) | alpha,
 					icon);
+				/* port: (debug.menu_layout) */
+				menu_layout_glyph_wide(FALSE, icon_names[icon_index], glyph_x0, cursor_bounds.y0,
+					cursor_bounds.x0, cursor_bounds.y1);
 				bounds->x0++;
 				icon->flags = saved_flags;
 				icon->width_offset = saved_width_offset;
@@ -8677,6 +8690,16 @@ static void widget_instance_render_recursive(
 	if (!widget->visible)
 		return;
 	ui_mouse_note_target(widget, definition, offset);
+	/* port: the widget's box as drawn, for debug.menu_layout */
+	if (menu_layout_recording())
+	{
+		rectangle2d drawn = definition->bounds;
+
+		drawn.x1 = (short)(drawn.x1 + ui_widget_port_stretch(definition->flags));
+		offset_rectangle2d(&drawn, offset.x, offset.y);
+		menu_layout_widget(widget, widget->parent, tag_get_name(widget->definition_tag_index), widget->type,
+			&drawn, clip_rect, focus);
+	}
 	/* port: a Custom Edition map's picture, drawn over the whole widget, or
 	the unknown level's frame for a map without one
 	(port/linux/game/custom_edition_maps.c) */
@@ -8767,6 +8790,12 @@ static void widget_instance_render_recursive(
 		(ui_widget_port_key_label_text) */
 		if (!ui_widget_port_key_icon_hidden(widget))
 		{
+			/* port: (a controller button's picture, for debug.menu_layout) */
+			if (menu_layout_recording() && ui_mouse_key_button(widget) != NONE)
+			{
+				menu_layout_glyph_wide(FALSE, icon_names[ui_mouse_key_button(widget)], bounds.x0, bounds.y0,
+					bounds.x1, bounds.y1);
+			}
 			/* port: a frame of ui.map's that the menus scale (the Xbox's
 			picture of the button settings, in the profile settings' smaller
 			box): drawn at their size, from where they place it, in units of
@@ -9034,6 +9063,9 @@ void render_ui_widgets(
 	ui_mouse_rendering = TRUE;
 	if (!virtual_keyboard_active())
 	{
+		/* port: the first player's menus written for debug.menu_layout */
+		if (first_players_render && widget_globals.active_widgets[0])
+			menu_layout_frame_begin(halo_screen_width());
 		local_player_index = PIN(
 			local_player_index,
 			0,
@@ -9095,6 +9127,8 @@ void render_ui_widgets(
 					TRUE,
 					FALSE);
 				ui_mouse_noting_targets = FALSE;
+				/* port: (debug.menu_layout) */
+				menu_layout_widget_none();
 				if (widget_globals.debug_show_path)
 				{
 					real_argb_color color = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -9126,7 +9160,9 @@ void render_ui_widgets(
 			row-tall). A finger's targets only: the mouse clicks the
 			labels and values where CE's menus have them */
 			ui_mouse_fit_button_targets();
-			if (ui_mouse_pointer_is_touch)
+			/* port: (and a finger's for debug.menu_layout, with the
+			touchscreen's menus, debug.touch_menus) */
+			if (ui_mouse_pointer_is_touch || (menu_layout_recording() && ui_widget_port_touch_menus()))
 			{
 				ui_mouse_merge_setting_rows();
 				ui_mouse_widen_values();
@@ -9134,6 +9170,19 @@ void render_ui_widgets(
 			ui_mouse_targets_settled = TRUE;
 			/* port: (ui_mouse_targets_stale) the screen up is the one drawn */
 			ui_mouse_targets_stale = FALSE;
+		}
+		/* port: the pointer's targets, and the screen, for debug.menu_layout */
+		if (menu_layout_recording())
+		{
+			long target_index;
+
+			for (target_index = 0; target_index < ui_mouse_target_count; target_index++)
+			{
+				menu_layout_target(ui_mouse_targets[target_index].widget, ui_mouse_targets[target_index].kind,
+					&ui_mouse_targets[target_index].bounds);
+			}
+			menu_layout_frame_end(widget_globals.active_widgets[0] ?
+				tag_get_name(widget_globals.active_widgets[0]->definition_tag_index) : "");
 		}
 		/* port: a Discord friend's ask to join, over the menus, near the top
 		of the whole screen (port/linux/game/network_party.c; the HUD shows
@@ -10198,7 +10247,11 @@ void process_ui_widgets(
 		"c:\\halo\\SOURCE\\interface\\ui_widget.c",
 		644,
 		widget_globals.initialized);
-	widget_globals.current_system_milliseconds = system_milliseconds();
+	/* port: the frames' time where it is fixed (debug.frame_time:
+	port/linux/game/frames_clock.c), so that two runs draw the menus'
+	animations alike (tools/menu_gallery.py's pictures) */
+	if (!frames_clock(&widget_globals.current_system_milliseconds))
+		widget_globals.current_system_milliseconds = system_milliseconds();
 	/* port: (ui_widget_port_frame_ticks) the 30 Hz ticks of real time
 	begun since the last frame's */
 	{
