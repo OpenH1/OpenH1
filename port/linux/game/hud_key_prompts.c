@@ -38,6 +38,10 @@ machines of a network game agree on.
 #include "game/game_globals.h"
 #include "game/players.h"
 #include "input/input_abstraction.h"
+#include "interface/hud.h"
+#include "interface/hud_definitions.h"
+#include "interface/hud_draw.h"
+#include "interface/interface.h"
 #include "rasterizer/rasterizer.h"
 #include "scenario/scenario.h"
 #include "text/draw_string.h"
@@ -59,12 +63,18 @@ char const *config_string(char const *name);
 
 /* ---------- constants */
 
-/* the HUD's icons of the sticks (hud_messaging.c's _icon_left_stick and
-_icon_right_stick, and the controller buttons' indices before them) */
+/* the HUD's icons of the Back button and the sticks (hud_messaging.c's
+_icon_back_button, _icon_left_stick and _icon_right_stick, and the
+controller buttons' indices before them) */
 enum
 {
+	HUD_KEY_PROMPT_BACK_BUTTON = 13,
 	HUD_KEY_PROMPT_LEFT_STICK = 16,
-	HUD_KEY_PROMPT_RIGHT_STICK = 17
+	HUD_KEY_PROMPT_RIGHT_STICK = 17,
+	/* a message icon's sprite smaller than this many texels each way is
+	no picture: the Xbox's sheet marks the buttons it has none of (Start,
+	Back, the D-pad) with empty cells of 4 by 4 */
+	HUD_KEY_PROMPT_MINIMUM_SPRITE = 8
 };
 
 /* ---------- prototypes */
@@ -79,6 +89,7 @@ short hud_key_prompt_cap_advance(short name_left, short name_right);
 short hud_key_prompt_legend_advance(short name_left, short name_right, wchar_t const *words);
 long hud_key_prompt_draw_equals(rectangle2d *bounds, rectangle2d *cursor, wchar_t const *text);
 void hud_key_prompt_button_word(wchar_t *text, long length, wchar_t const *word, wchar_t const *icon);
+void hud_key_prompt_score_hint(short local_player_index, wchar_t *text, long length);
 
 /* ---------- private code */
 
@@ -485,7 +496,8 @@ static long wide_length(wchar_t const *text)
 score", the map's string) as its icon's name ("%back-button"), which the
 HUD's custom messages draw as the prompts draw the button
 (draw_string_and_hack_in_icons): the key bound while the keyboard and mouse
-play, else the controller's button. The first time the word stands alone (no
+play, else the controller's button (hud_key_prompt_score_hint: where there
+is a picture of it). The first time the word stands alone (no
 letter or digit either side), if the result fits in length characters with
 its terminator; else the text is left as it is */
 void hud_key_prompt_button_word(
@@ -554,6 +566,83 @@ boolean hud_key_prompt_text(
 	return TRUE;
 }
 
+/* the key a prompt draws in place of its controller button for the first
+player: while the keyboard and mouse play, the key (hud_key_prompt_text); in
+the headset, what presses the button (vr_prompt_text); FALSE when the prompt
+keeps the controller's button */
+static boolean prompt_key_text(
+	short local_player_index,
+	short game_control,
+	short gamepad_button,
+	wchar_t *text,
+	long length)
+{
+	if (local_player_index != 0)
+		return FALSE;
+#ifdef HALO_VR
+	if (halo_vr_running())
+		return vr_prompt_text(local_player_index, game_control, gamepad_button, text, length);
+#endif
+	return halo_keyboard_prompts() &&
+		hud_key_prompt_text(local_player_index, game_control, gamepad_button, text, length);
+}
+
+/* whether text draws a picture of a controller button: the message icons
+draw_string_and_hack_in_icons (ui_widget.c) takes its buttons from, the
+globals' third interface bitmap (the Xbox maps' and Halo PC's
+hud_msg_icons_sm), have a sprite of it no smaller than
+HUD_KEY_PROMPT_MINIMUM_SPRITE each way. Theirs of Start and Back are empty
+cells of 4 by 4 texels: the Xbox's messages wrote those buttons' names */
+static boolean button_sprite_drawn(
+	short gamepad_button)
+{
+	struct game_globals *game_globals = scenario_get_game_globals();
+	struct game_globals_interface_tag_references *references;
+	struct icon_hud_element_definition const *icon;
+	struct bitmap_data const *bitmap = NULL;
+	real_rectangle2d const *clip = NULL;
+	long bitmap_group_index;
+
+	if (!hud_globals || !game_globals || !game_globals->interface_tag_references.count ||
+		gamepad_button < 0 || gamepad_button >= hud_globals->messaging.button_icons.count)
+	{
+		return FALSE;
+	}
+	references = TAG_BLOCK_GET_ELEMENT(&game_globals->interface_tag_references, 0,
+		struct game_globals_interface_tag_references);
+	bitmap_group_index = references->interface_tag_references[_interface_bitmap_iface_map2].index;
+	if (bitmap_group_index == NONE)
+		return FALSE;
+	icon = TAG_BLOCK_GET_ELEMENT(&hud_globals->messaging.button_icons, gamepad_button,
+		struct icon_hud_element_definition);
+	hud_retrieve_bitmap_and_bounding_rect(bitmap_group_index, icon->sequence_index, 0, &bitmap, &clip);
+	return bitmap && clip &&
+		(clip->x1 - clip->x0) * bitmap->width >= HUD_KEY_PROMPT_MINIMUM_SPRITE &&
+		(clip->y1 - clip->y0) * bitmap->height >= HUD_KEY_PROMPT_MINIMUM_SPRITE;
+}
+
+/* the multiplayer start's score hint ("Hold BACK for score", the map's
+string, which game_engine_get_state_message gives) for a local player: its
+BACK the Back button's icon (hud_key_prompt_button_word) only where the HUD
+draws something for the icon, the scoreboard's key while the keyboard and
+mouse play (in the headset, what presses Back), or the map's picture of the
+button. The Xbox's and Halo PC's message icons have none of Back (and no
+button style draws one), so with a controller (or the touch controls) the
+word stays, as the Xbox's message wrote it, rather than leaving a gap */
+void hud_key_prompt_score_hint(
+	short local_player_index,
+	wchar_t *text,
+	long length)
+{
+	wchar_t key[64];
+
+	if (prompt_key_text(local_player_index, NONE, HUD_KEY_PROMPT_BACK_BUTTON, key, NUMBEROF(key)) ||
+		button_sprite_drawn(HUD_KEY_PROMPT_BACK_BUTTON))
+	{
+		hud_key_prompt_button_word(text, length, L"BACK", L"%back-button");
+	}
+}
+
 /* draws the prompt's key at the cursor, as the HUD draws a button there,
 and moves the cursor past it; FALSE (nothing drawn) when the prompt keeps
 the controller's button */
@@ -567,21 +656,8 @@ boolean hud_key_prompt_draw(
 {
 	wchar_t text[64];
 
-	if (local_player_index != 0)
+	if (!prompt_key_text(local_player_index, game_control, gamepad_button, text, NUMBEROF(text)))
 		return FALSE;
-#ifdef HALO_VR
-	if (halo_vr_running())
-	{
-		if (!vr_prompt_text(local_player_index, game_control, gamepad_button, text, NUMBEROF(text)))
-			return FALSE;
-	}
-	else
-#endif
-	if (!halo_keyboard_prompts() ||
-		!hud_key_prompt_text(local_player_index, game_control, gamepad_button, text, NUMBEROF(text)))
-	{
-		return FALSE;
-	}
 	return key_cap_draw(text, bounds, cursor, color);
 }
 

@@ -10994,9 +10994,9 @@ void game_engine_postspawn_player_update(
 
 
 
-/* port: port/linux/game/hud_key_prompts.c's: a button's word in a message
-as its icon's name, which the HUD draws as the prompts draw the button */
-void hud_key_prompt_button_word(wchar_t *text, long length, wchar_t const *word, wchar_t const *icon);
+/* port: port/linux/game/hud_key_prompts.c's: the score hint's BACK as the
+Back button's icon where the HUD draws something for it */
+void hud_key_prompt_score_hint(short local_player_index, wchar_t *text, long length);
 
 boolean game_engine_get_state_message(
 	long player_index,
@@ -11059,10 +11059,12 @@ boolean game_engine_get_state_message(
 				message_character_count);
 			/* port: its BACK the Back button's icon, which the HUD draws as
 			the prompts draw a button: the scoreboard's key while the
-			keyboard and mouse play, else the controller's Back (the string
-			is the map's, which names the button in words) */
+			keyboard and mouse play; with a controller the word stays where
+			the map's message icons have no picture of Back, as the Xbox's
+			have not (the string is the map's, which names the button in
+			words) */
 			if (result)
-				hud_key_prompt_button_word(message, message_character_count, L"BACK", L"%back-button");
+				hud_key_prompt_score_hint(player->local_player_index, message, message_character_count);
 		}
 		else if (player->state_message != NONE)
 		{
