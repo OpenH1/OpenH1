@@ -20,7 +20,6 @@ that draw the first-person weapon (rasterizer and render sources).
 #include "view_fov.h"
 #include "panini.h"
 #include "camera/director.h"
-#include "cutscene/cinematics.h"
 #include "game/players.h"
 #include "items/weapons.h"
 #include "objects/objects.h"
@@ -134,15 +133,19 @@ static void fov_requested_tangents(real *on_foot, real *seated, boolean *scale_s
 }
 
 /* the local player's unit, when its view is one the fields of view widen:
-not dead, in a cinematic, a scripted camera or a view the director holds
-(and its index); else NULL (the lowered reticle's too: lowered_reticle.c) */
+not dead, a scripted camera or a view the director holds (and its index);
+else NULL (the lowered reticle's too: lowered_reticle.c). A cinematic seen
+from the player's own eyes (a50's opening, before the player has control)
+is widened as the play after it is, so that a setting changed there shows
+at once and the view does not jump when play begins (#784); a cinematic's
+own camera is a scripted one */
 struct unit_datum *render_fov_unit(short local_player_index, long *unit_index)
 {
 	struct unit_datum *unit;
 	director_perspective perspective;
 
 	if (local_player_index < 0 || local_player_index >= MAXIMUM_LOCAL_PLAYERS ||
-		cinematic_in_progress() || (director_camera_scripted && *director_camera_scripted))
+		(director_camera_scripted && *director_camera_scripted))
 	{
 		return NULL;
 	}
@@ -197,7 +200,7 @@ out, the view eases to display.fov while the director flies the camera back
 to the head. It eases the same way in and from one seat to another
 (smoothly, VEHICLE_FOV_TRANSITION_MILLISECONDS), turning back from where it
 is if the player changes again on the way. A view the fields of view leave
-alone (death, a cinematic) ends the way: the next view is wherever the
+alone (death, a scripted camera) ends the way: the next view is wherever the
 player then is */
 static real vehicle_fov_weight(short local_player_index, struct unit_datum const *unit)
 {
@@ -245,7 +248,7 @@ static real vehicle_fov_weight(short local_player_index, struct unit_datum const
 
 /* the view's vertical angle for display.fov on foot and display.vehicle_fov
 in a third-person seat, the weight of the vehicle's between them: the game's
-own dead, in a cinematic, a scripted camera or a view the director holds,
+own dead, a scripted camera or a view the director holds,
 and at a scope's full zoom (display.scale_scoped_fov off, the Xbox's:
 zoom_fov.h); between, the zoom's own transition. With it on, the zoom's
 views are the player's zoomed by the same magnification. A third-person
@@ -515,12 +518,12 @@ static real viewmodel_vertical(void)
 }
 
 /* whether the local player's view draws the weapon with its own projection:
-the player's first-person aim, not a cinematic, a scripted camera or a view
-the director holds */
+the player's first-person aim (a cinematic seen from it too: #784), not a
+scripted camera or a view the director holds */
 static boolean viewmodel_projection_view(short local_player_index)
 {
 	return local_player_index >= 0 && local_player_index < MAXIMUM_LOCAL_PLAYERS &&
-		!cinematic_in_progress() && !(director_camera_scripted && *director_camera_scripted) &&
+		!(director_camera_scripted && *director_camera_scripted) &&
 		director_get_perspective(local_player_index) == _director_perspective_first_person &&
 		!director_inhibited_facing(local_player_index);
 }

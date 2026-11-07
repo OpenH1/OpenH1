@@ -15,8 +15,9 @@ place that says where), and the first-person weapon is posed along the aim
 
 The view turns for the player's own aim, on foot and in a seat, first or
 third person (the views display.fov widens: view_fov.c's render_fov_unit);
-not dead, in a cinematic, a scripted camera or a view the director holds,
-nor in the VR mode, whose view is the head's. A scope's zoom brings the
+not dead, a scripted camera or a view the director holds (a cinematic
+seen from the player's eyes turns it too, as play will: #784), nor in the
+VR mode, whose view is the head's. A scope's zoom brings the
 reticle back to the middle along the zoom's own transition, as Halo 2 and 3
 do, for the scope's picture is drawn about the middle.
 */
