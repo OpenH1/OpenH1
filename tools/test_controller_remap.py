@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from harness import ABI_FLAGS, function
+from harness import ABI_FLAGS, function, structure
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -262,7 +262,11 @@ enum {SDL_GAMEPAD_AXIS_LEFT_TRIGGER,SDL_GAMEPAD_AXIS_RIGHT_TRIGGER,SDL_GAMEPAD_A
 typedef struct {short axes[6];int buttons[14];} SDL_Gamepad;
 static int SDL_GetGamepadButton(SDL_Gamepad *p,int b){return p->buttons[b];}
 static short SDL_GetGamepadAxis(SDL_Gamepad *p,int a){return p->axes[a];}
-''' + '\n'.join(function(original, name) for name in ['stick', 'merge_button', 'sdl_gamepad_state']) +
+typedef unsigned int Uint32;
+typedef int SDL_GamepadAxis;
+#define PLATFORM_GAMEPAD_TRIGGER_PRESSED 8000
+''' + structure(original, 'gamepad_taps') + '\n' + '\n'.join(function(original, name) for name in
+          ['stick', 'merge_button', 'gamepad_button_down', 'gamepad_trigger', 'sdl_gamepad_state']) +
           source('port/linux/src/controller_remap_input.c') + r'''
 int main(void) {
  SDL_Gamepad device;XINPUT_GAMEPAD old,current,physical;int n,i;
@@ -274,8 +278,8 @@ int main(void) {
   for(i=0;i<6;i++)device.axes[i]=(short)(n*931+i*9271);
   device.axes[0]&=32767;device.axes[1]&=32767;
   for(i=0;i<14;i++)device.buttons[i]=(n>>(i%7))&1;
-  sdl_gamepad_state(&device,&old);
-  sdl_gamepad_state(&device,&physical);
+  sdl_gamepad_state(&device,NULL,&old);
+  sdl_gamepad_state(&device,NULL,&physical);
   assert(!controller_remap_input(0,&physical,1));
   controller_remap_merge(&physical,&current);
   assert(!memcmp(&old,&current,sizeof(old)));
