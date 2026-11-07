@@ -1891,8 +1891,8 @@ int main(int argc, char **argv)
 			"at %+.2f dB", 20.0 * log10(amplitude[1] / amplitude[0] + 1e-30),
 			20.0 * log10(amplitude[2] / amplitude[0] + 1e-30));
 		/* a 3D voice through the HRTF 1 m ahead (each ear at -3 dB) at -52
-		dB, its ears at the level of -55 dB; at -58 dB, sending to the room,
-		silent */
+		dB, at the level of a 2D voice of -46 dB (VOICE_LEVEL_3D: its volume
+		and rolloff twice over); at -64 dB, sending to the room, silent */
 		hrtf_initialize();
 		listener_reset();
 		environment.lRoom = 0;
@@ -1911,7 +1911,7 @@ int main(int argc, char **argv)
 				IDirectSoundStream_SetI3DL2Source(&stream->object, &source, 0);
 				stream->room = stream->pending.room;
 				stream->room_hf = stream->pending.room_hf;
-				stream->volume = (float)pow(10.0, (pass == 0 ? 0.0 : pass == 1 ? -52.0 : -58.0) / 20.0);
+				stream->volume = (float)pow(10.0, (pass == 0 ? 0.0 : pass == 1 ? -52.0 : -64.0) / 20.0);
 				render_with_send(stream, frames, output, room);
 				if (pass < 2)
 				{
@@ -1920,14 +1920,14 @@ int main(int argc, char **argv)
 				}
 				for (n = 0; pass == 2 && n < frames; n++)
 				{
-					CHECK(output[n] == 0.0f && room[n] == 0.0f, "a 3D voice at -58 dB is heard at frame %lu (%g, "
+					CHECK(output[n] == 0.0f && room[n] == 0.0f, "a 3D voice at -64 dB is heard at frame %lu (%g, "
 						"room %g)", n, output[n], room[n]);
 				}
 				voice_delete(stream);
 			}
-			expected = 20.0 * log10(voice_level((float)(0.70710678 * pow(10.0, -52.0 / 20.0))) / 0.70710678);
-			CHECK(fabs(power_db[1] - power_db[0] - expected) < 0.1 && expected < -56.0,
-				"through the HRTF a voice at -52 dB plays at %+.2f dB (at its ears' level, %+.2f)",
+			expected = 20.0 * log10(voice_level((float)(2.0 * pow(10.0, -52.0 / 20.0))) / 2.0);
+			CHECK(fabs(power_db[1] - power_db[0] - expected) < 0.1 && expected > -52.0,
+				"through the HRTF a voice at -52 dB plays at %+.2f dB (a 2D voice's of -46 dB, %+.2f)",
 				power_db[1] - power_db[0], expected);
 			free(mono);
 		}
@@ -1936,6 +1936,98 @@ int main(int argc, char **argv)
 		free(samples);
 		free(output);
 		free(room);
+		return 0;
+	}
+	/* a 3D voice's quietest levels, as recorded (issue 714's seventh run: a
+	voice 10 m away, -20 dB of rolloff, stepped down from -20 dB): those of
+	its volume and rolloff together at twice their level, the pan's, the
+	HRTF's and the room's gains after them; each step's level under its
+	level at 0 dB, the same through the pan, the HRTF and to the room, and
+	silent from -44 dB. Its room send no louder than its rolloff: in the
+	cave (a room of -10 dB) at -10 dB 2 m away (-6 dB of rolloff), and at
+	-20 dB 10 m away */
+	CASE("quiet-levels-3d")
+	{
+		static const double recorded[][2] = {
+			{ -20.0, -20.0 }, { -30.0, -30.0 }, { -32.0, -31.5 }, { -34.0, -33.2 }, { -36.0, -35.4 },
+			{ -38.0, -38.3 }, { -40.0, -42.8 }, { -42.0, -52.1 },
+		};
+		static const double silent[] = { -44.0, -46.0, -50.0, -60.0 };
+		static const float aheads[] = { 2.0f, 10.0f };
+		short samples[64] = { 0 };
+		float reference[2][4] = { { 0 } };
+		int pass, hrtf;
+
+		hrtf_initialize();
+		listener_reset();
+		environment.lRoom = -1000;
+		environment.lRoomHF = 0;
+		environment.flRoomRolloffFactor = 0.0f;
+		for (hrtf = 0; hrtf < 2; hrtf++)
+		{
+			hrtf_enabled = hrtf;
+			for (pass = -1; pass < (int)(sizeof(recorded) / sizeof(recorded[0]) + sizeof(silent) / sizeof(silent[0]));
+				pass++)
+			{
+				int heard = pass < (int)(sizeof(recorded) / sizeof(recorded[0]));
+				double asked = pass < 0 ? 0.0 : heard ? recorded[pass][0] :
+					silent[pass - sizeof(recorded) / sizeof(recorded[0])];
+				unsigned long place;
+
+				for (place = 0; place < 2; place++)
+				{
+					DSI3DL2BUFFER source;
+					struct sdl_stream *stream = voice_placed(samples, 64, 48000, 0.0f, 0.0f, aheads[place]);
+					float left, right, pair[2], room, direct_lowpass, room_lowpass, gains[4];
+					BOOL hrtf_on;
+					struct hrtf_parameters way;
+					unsigned long kind;
+
+					memset(&source, 0, sizeof(source));
+					IDirectSoundStream_SetI3DL2Source(&stream->object, &source, 0);
+					stream->room = stream->pending.room;
+					stream->room_hf = stream->pending.room_hf;
+					stream->volume = (float)pow(10.0, asked / 20.0);
+					memset(&way, 0, sizeof(way));
+					voice_gains(stream, &left, &right, pair, &room, &direct_lowpass, &room_lowpass, &hrtf_on, &way);
+					gains[0] = left;
+					gains[1] = right;
+					gains[2] = room;
+					gains[3] = hrtf_on ? way.gain : 0.0f;
+					CHECK(!hrtf_on == !hrtf, "a 3D voice %s the HRTF", hrtf ? "not through" : "through");
+					if (pass < 0)
+					{
+						memcpy(reference[place], gains, sizeof(gains));
+						if (place == 0)
+							CHECK(fabs(20.0 * log10(room) + 10.0) < 0.05, "2 m away its room send is at %+.2f dB "
+								"(the Xbox's: the room's -10)", 20.0 * log10(room));
+						else
+							CHECK(fabs(20.0 * log10(room / reference[0][2]) + 10.0) < 0.05,
+								"10 m away its room send is %+.2f dB under 2 m away (the Xbox's: 10.7)",
+								20.0 * log10(room / reference[0][2]));
+					}
+					for (kind = 0; pass >= 0 && place == 1 && kind < 4; kind++)
+					{
+						double level;
+
+						if (reference[place][kind] == 0.0f)
+							continue;
+						level = gains[kind] / reference[place][kind];
+						if (heard)
+							CHECK(level > 0.0 && fabs(20.0 * log10(level) - recorded[pass][1]) < 0.4,
+								"10 m away at %g dB its %s plays at %+.2f dB (the Xbox's: %g)", asked,
+								kind == 0 ? "left" : kind == 1 ? "right" : kind == 2 ? "room send" : "HRTF's gain",
+								level > 0.0 ? 20.0 * log10(level) : -999.0, recorded[pass][1]);
+						else
+							CHECK(level == 0.0, "10 m away at %g dB its %s is heard (the Xbox's: silent)", asked,
+								kind == 0 ? "left" : kind == 1 ? "right" : kind == 2 ? "room send" : "HRTF's gain");
+					}
+					voice_delete(stream);
+				}
+			}
+		}
+		hrtf_enabled = FALSE;
+		environment.lRoom = DSBVOLUME_MIN;
 		return 0;
 	}
 	/* audio.channels and the device's channels: "auto" is 5.1 on six or

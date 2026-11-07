@@ -21,8 +21,10 @@ resampling) and applies:
 	- for 3D voices, DirectSound's Doppler shift from the velocities the
 	  game gives the voice and the listener (doppler).
 3D voices also send to an I3DL2 reverb of the environment the listener is in
-(reverb), through the Xbox's own resampler (send_phases). Each gain to a mix
-bin is played as the Xbox played it, silent under -57 dB (voice_level).
+(reverb), through the Xbox's own resampler (send_phases), no louder than
+their distance rolloff. Each gain to a mix bin is played as the Xbox played
+it, silent under -57 dB (voice_level; a 3D voice's by its volume and rolloff
+together).
 Cones are not modelled (no sound of the maps has one). The mix plays at the
 Xbox's output level, half the voices' sum, and a look-ahead
 limiter keeps it under full scale (limit). On stereo and 5.1 (audio.spatial:
@@ -117,6 +119,9 @@ VOICE_LEVEL_SILENT (-57 dB), where it is silent */
 #define VOICE_LEVEL_KNEE 0.0064242f
 #define VOICE_LEVEL_STEP (1.0f / 2048.0f)
 #define VOICE_LEVEL_SILENT 57.0f
+/* a 3D voice's level under voice_level: its volume and distance rolloff at
+VOICE_LEVEL_3D times, the rest of its gains after it (voice_gains) */
+#define VOICE_LEVEL_3D 2.0f
 
 /* the Doppler shift (doppler): the speed of sound (metres a second), the
 Doppler factor (DirectSound's default, which the game keeps), and the most a
@@ -1195,12 +1200,13 @@ static void surround_split(float right, float up, float ahead, float *pair)
 }
 
 /* the gains of a 3D voice to the left and right (the pan's), the gains of
-the front and back pairs of speakers (surround_split), and the room
-rolloff's attenuation of its room send; for a mono voice through the HRTF
+the front and back pairs of speakers (surround_split), the distance rolloff's
+attenuation of its direct path (distance_gain) and the room rolloff's of its
+room send; for a mono voice through the HRTF
 (hrtf_on: chosen, or crossfading from it), its gain to each ear and its way
 there (hrtf_out) */
 static void spatialize(const struct sdl_stream *stream, float *left, float *right, float *pair, float *room,
-	BOOL *hrtf_on, struct hrtf_parameters *hrtf_out)
+	float *distance_gain, BOOL *hrtf_on, struct hrtf_parameters *hrtf_out)
 {
 	float offset[3], right_axis[3], distance, attenuation, pan, side, ahead, up;
 	int axis;
@@ -1231,6 +1237,7 @@ static void spatialize(const struct sdl_stream *stream, float *left, float *righ
 	distance = sqrtf(dot3(offset, offset));
 	attenuation = distance_attenuation(stream, distance, listener.rolloff_factor);
 	*room = distance_attenuation(stream, distance, environment.flRoomRolloffFactor + stream->room_rolloff_factor);
+	*distance_gain = attenuation;
 
 	/* equal power pan; close sources and sources straight ahead or behind
 	stay centred, and neither ear drops below a quarter */
@@ -1272,6 +1279,8 @@ HRTF (hrtf_on) has its way to each ear too (hrtf_out) */
 static void voice_gains(const struct sdl_stream *stream, float *left, float *right, float *pair, float *room,
 	float *direct_lowpass, float *room_lowpass, BOOL *hrtf_on, struct hrtf_parameters *hrtf_out)
 {
+	float level_3d = -1.0f;
+
 	pair[0] = 1.0f;
 	pair[1] = 0.0f;
 	*room = 0.0f;
@@ -1280,9 +1289,10 @@ static void voice_gains(const struct sdl_stream *stream, float *left, float *rig
 	*hrtf_on = FALSE;
 	if (stream->has_3d && stream->mode != DS3DMODE_DISABLE)
 	{
-		float rolloff, cosine = frequency_cosine(environment.flHFReference);
+		float rolloff, distance_gain, cosine = frequency_cosine(environment.flHFReference);
 
-		spatialize(stream, left, right, pair, &rolloff, hrtf_on, hrtf_out);
+		spatialize(stream, left, right, pair, &rolloff, &distance_gain, hrtf_on, hrtf_out);
+		level_3d = VOICE_LEVEL_3D * distance_gain * stream->volume;
 		if (stream->direct_hf < stream->direct)
 			*direct_lowpass = lowpass_coefficient(gain_from_millibels(stream->direct_hf - stream->direct), cosine);
 		if (reverb_enabled)
@@ -1290,7 +1300,13 @@ static void voice_gains(const struct sdl_stream *stream, float *left, float *rig
 			LONG level = environment.lRoom + stream->room;
 			LONG high_level = environment.lRoom + environment.lRoomHF + stream->room_hf;
 
+			/* no louder than the direct path's distance rolloff: recorded
+			on an Xbox (issue 714's seventh run), the cave's reverb of a
+			voice 2 m away (-6 dB of rolloff) was at its -10 dB room level,
+			that of one 10 m away (-20 dB) 10.7 dB under it */
 			*room = gain_from_millibels(level) * rolloff;
+			if (*room > distance_gain)
+				*room = distance_gain;
 			if (*room > 0.0f && high_level < level)
 				*room_lowpass = lowpass_coefficient(gain_from_millibels(high_level - level), cosine);
 		}
@@ -1332,14 +1348,32 @@ static void voice_gains(const struct sdl_stream *stream, float *left, float *rig
 	}
 	/* (the Xbox's quietest levels before audio.volume, which it did not
 	have: voice_level) */
-	*left = voice_level(*left * stream->volume) * master_volume;
-	*right = voice_level(*right * stream->volume) * master_volume;
-	*room = voice_level(*room * stream->volume) * master_volume;
-	/* (the HRTF's gain too: without it every mono 3D voice on headphones
-	played at full volume, whatever audio.volume, audio.effects_volume and
-	the game's own gain said, and only the 2D voices followed them) */
-	if (*hrtf_on)
-		hrtf_out->gain = voice_level(hrtf_out->gain * stream->volume) * master_volume;
+	if (level_3d < 0.0f)
+	{
+		*left = voice_level(*left * stream->volume) * master_volume;
+		*right = voice_level(*right * stream->volume) * master_volume;
+		*room = voice_level(*room * stream->volume) * master_volume;
+	}
+	else
+	{
+		/* a 3D voice's are those of its volume and distance rolloff
+		together, at VOICE_LEVEL_3D times, its other gains after them:
+		recorded on an Xbox (issue 714's seventh run), a voice 10 m away
+		(-20 dB of rolloff, -23 with the pan's) stepped down from -20 dB
+		played as a 2D voice 14 dB quieter would, its direct path and its
+		reverb alike: exact to -30 dB, -40 at -42.8, -42 at -52.1, silent
+		from -44 (its whole level's would be silent from -34). The HRTF's
+		gain too: without it every mono 3D voice on headphones played at
+		full volume, whatever audio.volume, audio.effects_volume and the
+		game's own gain said, and only the 2D voices followed them */
+		float scale = level_3d > 0.0f ? voice_level(level_3d) / level_3d * stream->volume * master_volume : 0.0f;
+
+		*left *= scale;
+		*right *= scale;
+		*room *= scale;
+		if (*hrtf_on)
+			hrtf_out->gain *= scale;
+	}
 }
 
 /* the 5.1 speakers around the listener, clockwise from the center, and
