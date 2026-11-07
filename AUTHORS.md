@@ -22,13 +22,14 @@
 - **The HUD's button styles** (Classic, Gems and Menu Gems, the black and
   white buttons, the triggers and the stick clicks, in the HUD and the
   Android touch controls): added by chestahh (OpenCE #380,
-  `port/assets/buttons`, `tools/button_assets.py`); Classic recolours
-  saulob's redraws.
-- **The high-res HUD** (its meters, icons, scopes and messages, and the
-  weapons' reticles): redraws by MrBruh (`port/assets/hud`), based on
-  reference photos by Aerocatia. The sniper rifle's zoom labels (2x, 10x)
-  are set in Overpass (`port/assets/fonts`). The message icons' pictures
-  are Aerocatia's and Jessie's (below).
+  `port/assets/buttons`, `tools/button_assets.py`); Classic's faces are
+  Aerocatia's and Jessie's stencils (below) in its colours.
+- **The high-res HUD's redraws** where Halo PC Restored has nothing larger
+  than the Xbox's bitmap (the health meter's base, the motion sensor's
+  blips and sweeper, and the outlines of the vehicles' and passengers'
+  panels): by MrBruh (`port/assets/hud/svg`), based on reference photos by
+  Aerocatia. The sniper rifle's zoom labels (2x, 10x) are set in Overpass
+  (`port/assets/fonts`).
 - **The high-res text's font**, Cyborg Interface Gothic (the menus' and
   the HUD's text, `port/assets/fonts`): by fizzy, made to match Halo's
   interface font, many of its glyphs derived from Overpass and the others
@@ -39,12 +40,16 @@
 
 ## Third-party art
 
-- **The HUD's pictures of the weapons and the skull** (in its messages, as
-  "Hold to swap for" a weapon): Aerocatia's and Jessie's high-res HUD art
-  from [Halo PC Restored](https://github.com/Aerocatia/halopc-restored)
-  r220 (`port/assets/hud/art`), not under OpenH1's licence; see
-  `port/assets/hud/NOTICE.md`. Taken from ChupathingyCE, whose work by
-  MrMilenko the cutting and placing follow.
+- **The high-res HUD** (its meters, panels, counters, reticles, scopes,
+  waypoints, message icons and their pictures of the weapons and the skull,
+  the reticle's warnings, the multiplayer icons, and the classic style's
+  controller buttons): Aerocatia's and Jessie's high-res HUD art from
+  [Halo PC Restored](https://github.com/Aerocatia/halopc-restored) r220
+  (`port/assets/hud/art`), used with Aerocatia's permission on the
+  condition that Aerocatia and Jessie are credited; not under OpenH1's
+  licence. See `port/assets/hud/NOTICE.md`. ChupathingyCE first fitted it
+  to the Xbox maps' sheets; `tools/hud_assets.py` follows its way of
+  cutting and placing it.
 - **Voice chat's speaker icons** (who talks, and who is muted, in the lobby,
   on the scoreboard and in the game): `volume-2` and `volume-x` from
   [Lucide](https://lucide.dev) 1.53.0, copyright (c) 2026 Lucide Icons and
