@@ -235,6 +235,9 @@ static struct platform_input_state input_state;
 /* keys pressed since the last read, so a press and release between two
 reads still counts as a press (input injected on Android, or a slow frame) */
 static unsigned char keys_pressed[SDL_SCANCODE_COUNT];
+/* F3 to F7 pressed since the menu studio last asked, a bit each
+(platform_menu_studio_keys) */
+static int menu_studio_keys;
 /* The bound Screenshot action requests capture at the next presentation. */
 static BOOL screenshot_requested;
 /* likewise the mouse buttons pressed since the last read, so that a click
@@ -2853,6 +2856,17 @@ BOOL platform_screenshot_take_request(void)
 	return requested;
 }
 
+int platform_menu_studio_keys(void)
+{
+	int keys;
+
+	pthread_mutex_lock(&input_lock);
+	keys = menu_studio_keys;
+	menu_studio_keys = 0;
+	pthread_mutex_unlock(&input_lock);
+	return keys;
+}
+
 /* debug.exit_after (seconds) ends the game that long after the window
 opens (without one, after the first frame), as closing it does
 (tools/pgo_train.py, net_compare.py) */
@@ -3014,6 +3028,12 @@ void platform_pump_events(void)
 				(event.key.scancode == SDL_SCANCODE_PAGEUP || event.key.scancode == SDL_SCANCODE_PAGEDOWN))
 			{
 				scoreboard_pages += event.key.scancode == SDL_SCANCODE_PAGEDOWN ? 1 : -1;
+			}
+			/* (the menu studio's keys: port/linux/game/menu_studio.c) */
+			if (event.key.down && !event.key.repeat && event.key.scancode >= SDL_SCANCODE_F3 &&
+				event.key.scancode <= SDL_SCANCODE_F7)
+			{
+				menu_studio_keys |= 1 << (event.key.scancode - SDL_SCANCODE_F3);
 			}
 			/* F12 releases or recaptures the mouse */
 			if (event.key.down && !event.key.repeat && event.key.scancode == SDL_SCANCODE_F12)

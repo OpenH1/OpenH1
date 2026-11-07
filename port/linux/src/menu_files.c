@@ -152,8 +152,16 @@ static void files_gather(void)
 	unsigned int index;
 	char path[1200];
 
-	config_folder(folder, sizeof(folder));
-	snprintf(folder + strlen(folder), sizeof(folder) - strlen(folder), "menus");
+	/* (or debug.menu_files' folder: a source tree's, for the menu studio) */
+	if (config_string("debug.menu_files")[0])
+	{
+		snprintf(folder, sizeof(folder), "%s", config_string("debug.menu_files"));
+	}
+	else
+	{
+		config_folder(folder, sizeof(folder));
+		snprintf(folder + strlen(folder), sizeof(folder) - strlen(folder), "menus");
+	}
 	for (index = 0; index < menu_files_embedded_count; index++)
 	{
 		const struct menu_file_embedded *embedded = &menu_files_embedded[index];
@@ -1055,6 +1063,62 @@ struct halo_menus const *halo_menus_load(void)
 	if (!menus_read)
 		menus_files_read();
 	return menus_succeeded ? &menus : NULL;
+}
+
+/* the files read again by the next halo_menus_load (the menu studio's
+reload: port/linux/game/menu_studio.c, after the menus' tags are let go).
+What the last reading made is kept, not freed: the description points into
+it, and a reload is a tool's, a few times a minute */
+void halo_menus_reload(void)
+{
+	if (menus_reading)
+	{
+		pthread_join(menus_reader, NULL);
+		menus_reading = 0;
+	}
+	files = NULL;
+	file_count = 0;
+	memset(&menus, 0, sizeof(menus));
+	menus_succeeded = 0;
+	menus_read = 0;
+}
+
+/* a number that changes when a menu file of the folder (its own and its
+folders' .xml files) is written, added or removed: their times and sizes */
+unsigned long long halo_menus_files_stamp(void)
+{
+	static const char *const patterns[] = { "*.xml", "*/*.xml" };
+	unsigned long long stamp = 0;
+	char path[1200];
+	int pattern;
+
+#ifdef HALO_ANDROID
+	(void)patterns;
+	(void)path;
+	(void)pattern;
+	return stamp;
+#else
+	if (!folder[0])
+		return 0;
+	for (pattern = 0; pattern < 2; pattern++)
+	{
+		int count = 0;
+		char **names = SDL_GlobDirectory(folder, patterns[pattern], 0, &count);
+		int name;
+
+		for (name = 0; names && name < count; name++)
+		{
+			SDL_PathInfo info;
+
+			snprintf(path, sizeof(path), "%s/%s", folder, names[name]);
+			if (SDL_GetPathInfo(path, &info))
+				stamp = stamp * 1099511628211ULL + (unsigned long long)info.modify_time + info.size;
+		}
+		stamp += (unsigned long long)count;
+		SDL_free(names);
+	}
+	return stamp;
+#endif
 }
 
 long halo_menus_utf16(char const *utf8, unsigned short *out, long capacity)

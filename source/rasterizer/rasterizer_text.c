@@ -79,6 +79,7 @@ symbols in this file:
 #include "tag_files/tag_files.h"
 #include "cache/cache_files.h" /* port: tag_iterator (hires_text_fonts_ahead) */
 #include "menu_layout.h" /* port: port/linux/game/menu_layout.c */
+wchar_t const *menu_studio_text(wchar_t const *text); /* port: port/linux/game/menu_studio.c */
 
 /* port: the high-res text (port/linux/src/text_hires.c): the text drawn with
 fonts at the display's resolution, laid out as before. Characters are drawn
@@ -595,6 +596,9 @@ rasterizer_draw_unicode_string(
 {
 	boolean drop_shadow = TRUE;
 
+	/* port: every label longer, where the menu studio asks
+	(port/linux/game/menu_studio.c) */
+	string = menu_studio_text(string);
 	if (rasterizer_debug_options.draw_dynamic_screen_geometry
 		&& global_window_parameters.rasterizer_target == _rasterizer_target_render_primary)
 	{
@@ -702,16 +706,20 @@ rasterizer_draw_unicode_string(
 			}
 			/* port: the string's bounds, clip and extent, and its extent in
 			bounds without a foot (the lines that run past the foot are not
-			drawn), for debug.menu_layout */
+			drawn) and in bounds without a right edge (a line's letters past
+			it are not drawn), for the menus' layout (menu_layout.c) */
 			if (menu_layout_recording())
 			{
-				rectangle2d extent, whole, footless, cursor;
+				rectangle2d extent, whole, wide, unbounded, cursor;
 
 				draw_unicode_string_compute_bounds(&window_bounds, string, &extent, &cursor);
-				footless = window_bounds;
-				footless.y1 = SHORT_MAX;
-				draw_unicode_string_compute_bounds(&footless, string, &whole, &cursor);
-				menu_layout_text(&window_bounds, &viewport_bounds, &extent, &whole, string, text_scale,
+				unbounded = window_bounds;
+				unbounded.y1 = SHORT_MAX;
+				draw_unicode_string_compute_bounds(&unbounded, string, &whole, &cursor);
+				unbounded = window_bounds;
+				unbounded.x1 = SHORT_MAX;
+				draw_unicode_string_compute_bounds(&unbounded, string, &wide, &cursor);
+				menu_layout_text(&window_bounds, &viewport_bounds, &extent, &whole, &wide, string, text_scale,
 					text_scale_origin_x, text_scale_origin_y);
 			}
 

@@ -154,6 +154,11 @@ struct halo_menus const *halo_menus_load(void);
 /* the files read on a thread of their own, from now, for halo_menus_load
 (which waits for it) */
 void halo_menus_read_ahead(void);
+/* the files read again by the next halo_menus_load, and a number that
+changes when the menus folder's files do (the menu studio:
+port/linux/game/menu_studio.c) */
+void halo_menus_reload(void);
+unsigned long long halo_menus_files_stamp(void);
 /* text as UTF-16, its terminator included, "\n" written as the game's line
 breaks ("\r\n"): the number of characters written (at most capacity) */
 long halo_menus_utf16(char const *utf8, unsigned short *out, long capacity);
