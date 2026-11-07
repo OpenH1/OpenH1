@@ -1136,7 +1136,8 @@ static unsigned long keyboard_bound_actions(const struct platform_input_state *i
 }
 
 /* One capture per press, regardless of how long the binding is held; and
-Save Report's report (controls.report: report.c) the same. */
+a report (controls.report: saved, and its GitHub issue opened, report.c)
+the same. */
 static void keyboard_screenshot(unsigned long held)
 {
 	static BOOL was_down, report_was_down;
