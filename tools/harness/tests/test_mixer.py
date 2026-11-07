@@ -24,7 +24,7 @@ from harness import CHECK_FAILED, build, function, mutated, read, run  # noqa: E
 
 SOURCE = "port/linux/src/dsound_sdl.c"
 CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "doppler-step",
-         "parameter-ramp",
+         "parameter-ramp", "block-size",
          "limiter", "obstruction", "room-send", "channels", "surround", "lfe", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch",
          "dry-2d",
          "master-volume", "buffers", "sound-off",
@@ -105,6 +105,16 @@ NEGATIVE_CONTROLS = {
     # a change ramped over the whole mix, as it was (8 ms at 512 frames, where an Xbox took 1 to 2 ms)
     "parameter-ramp-whole-mix": (("#define PARAMETER_RAMP_FRAMES 64", "#define PARAMETER_RAMP_FRAMES 100000"),
                                  "parameter-ramp"),
+    # a change ramped over a mix of fewer than PARAMETER_RAMP_FRAMES, as it was (shorter the fewer the frames); the
+    # HRTF's over the whole mix (8 ms at 480 frames); the crossfade with the HRTF a mix's share a mix
+    "ramp-in-one-mix": (("stream->ramp_frames = PARAMETER_RAMP_FRAMES;",
+                         "stream->ramp_frames = frames < PARAMETER_RAMP_FRAMES ? frames : PARAMETER_RAMP_FRAMES;"),
+                        "block-size"),
+    "hrtf-ramp-whole-mix": (("hrtf_process(stream, hrtf_direct, output, frame, ramp_frames,",
+                             "hrtf_process(stream, hrtf_direct, output, frame, frames,"), "block-size"),
+    "hrtf-fade-per-mix": (("ramp_hrtf_mix = hrtf_mix_end > hrtf_mix ? 1.0f / HRTF_FADE_FRAMES :",
+                           "ramp_hrtf_mix = hrtf_mix_end > hrtf_mix ? 512.0f / HRTF_FADE_FRAMES / (float)frames :"),
+                          "block-size"),
     # the LFE's low pass at the Dolby Digital LFE's 120 Hz, 8th order, as it was
     "lfe-120-hz": (("#define LFE_CUTOFF 86.0\n#define LFE_SECTIONS 2\n", "#define LFE_CUTOFF 120.0\n#define LFE_SECTIONS 4\n"),
                    "lfe"),

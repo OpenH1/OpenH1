@@ -86,9 +86,11 @@ and gains (record, voices_log).
 #define MAXIMUM_STREAM_PACKETS 64
 #define MIX_CHUNK_FRAMES 1024
 
-/* the frames a voice's volume, pan, pitch and low passes take to move to new
-ones: 64 (1.3 ms), whatever frames a mix has. An Xbox's take 1 to 2 ms
-(recorded: a step of each settles from 10% to 90% within them) */
+/* the frames a voice's volume, pan, pitch, low passes and way through the
+HRTF take to move to new ones: 64 (1.3 ms), however many frames the mixes
+have, a ramp going on from one mix to the next (mix_voice). An Xbox's take 1
+to 2 ms (recorded: a step of each settles from 10% to 90% within them, a
+step of the position through its HRTF too) */
 #define PARAMETER_RAMP_FRAMES 64
 
 #define XBOX_ADPCM_BLOCK_BYTES 36
@@ -269,15 +271,22 @@ struct sdl_stream
 	unsigned long center;
 	double phase;
 	unsigned long silence;
-	/* gains and low pass coefficients the mixer is ramping from, to avoid
-	clicks, and the step through the frames (the frequency, Doppler shifted,
-	over the output rate) */
+	/* the gains and low pass coefficients where the last mix left them, and
+	the step through the frames (the frequency, Doppler shifted, over the
+	output rate): the mixer ramps from them, to avoid clicks, to the ones
+	it ramps to (target_), over the frames of the ramp left (ramp_frames,
+	mix_voice) */
 	float current_left, current_right, current_room;
 	double current_step;
 	/* the Doppler shift of the last mix (doppler) */
 	float current_doppler;
 	float current_direct_lowpass, current_room_lowpass;
 	float current_surround[2][MAXIMUM_OUTPUT_CHANNELS];
+	float target_left, target_right, target_room;
+	double target_step;
+	float target_direct_lowpass, target_room_lowpass;
+	float target_surround[2][MAXIMUM_OUTPUT_CHANNELS];
+	unsigned long ramp_frames;
 	BOOL gains_valid;
 	/* the direct path's low pass, for each channel, and the room send's */
 	float direct_lowpass[2];
@@ -285,11 +294,12 @@ struct sdl_stream
 	/* through the HRTF (hrtf): whether its filters ran in the last mix (their
 	states are the voice's), how much of the voice they play (0 the pan's to
 	1 theirs, crossfaded over HRTF_FADE_FRAMES as the choice changes), the
-	parameters the mixer is ramping from, each ear's last HRTF_FRAMES frames
-	before its delay (the oldest first), and the bands' low passes' states */
+	parameters where the last mix left them and those they ramp to (with
+	the gains), each ear's last HRTF_FRAMES frames before its delay (the
+	oldest first), and the bands' low passes' states */
 	BOOL hrtf_on;
 	float hrtf_mix;
-	struct hrtf_parameters hrtf_current;
+	struct hrtf_parameters hrtf_current, hrtf_target;
 	float hrtf_frames[2][HRTF_FRAMES];
 	float hrtf_bands[HRTF_BANDS - 1][2];
 };
@@ -626,8 +636,10 @@ gain less the next's), into its own line, and reads it its delay later
 
 A sound close to the head (within HRTF_NEAR) fades to the middle, the ears
 alike and at once, as the pan centres one within its minimum distance. The
-parameters are ramped across each mix, as the gains are: a turn of the head
-moves the sound smoothly from ear to ear, with no step. Distance, the direct
+parameters ramp over PARAMETER_RAMP_FRAMES, as the gains do: a turn of the
+head moves the sound smoothly from ear to ear, with no step. Recorded on an
+Xbox, a step of the position went from 10% to 90% within 1 ms; ramped over
+the whole mix, as they were, 8 ms at 480 frames a mix. Distance, the direct
 path's obstruction and occlusion (its low pass), the room send and the
 Doppler shift are the pan's, before the head's. When the choice changes
 (audio.spatial set mid-game), each voice crossfades between the pan and the
@@ -1001,32 +1013,42 @@ static void hrtf_step(struct hrtf_parameters *parameters, const struct hrtf_para
 	parameters->pair[1] += step->pair[1];
 }
 
+/* the crossfade between the pan and the HRTF a frame on: mix moved by
+ramp_mix (a frame's share of HRTF_FADE_FRAMES), no further than end */
+static float hrtf_mix_step(float mix, float ramp_mix, float end)
+{
+	mix += ramp_mix;
+	return (ramp_mix > 0.0f && mix > end) || (ramp_mix < 0.0f && mix < end) ? end : mix;
+}
+
 /* frames of a mono voice's direct path (direct) through the HRTF to each
 ear, added to output (frames of output_channels: on 5.1 to the front pair
-and the back pair, at their gains) at mix of the voice (a frame's step of it
-ramp_mix: the crossfade with the pan, which the voice's mix added), from
-the voice's parameters (stream->hrtf_current) to target, ramped over
-ramp_frames; a pass of its own over the mix, each ear's line one run of
-frames (the voice's last and these), so that it keeps to registers */
+and the back pair, at their gains) at mix of the voice (the crossfade with
+the pan, which the voice's mix added: hrtf_mix_step to mix_end), from the
+voice's parameters (stream->hrtf_current) to target, ramped over the
+ramp_frames left (more than frames: on in the next mix); a pass of its own
+over the mix, each ear's line one run of frames (the voice's last and
+these), so that it keeps to registers */
 static void hrtf_process(struct sdl_stream *stream, const float *direct, float *output, unsigned long frames,
-	unsigned long ramp_frames, const struct hrtf_parameters *target, float mix, float ramp_mix)
+	unsigned long ramp_frames, const struct hrtf_parameters *target, float mix, float ramp_mix, float mix_end)
 {
 	float line[2][HRTF_FRAMES + MIX_CHUNK_FRAMES];
 	struct hrtf_parameters now = stream->hrtf_current, ramp;
 	float state[HRTF_BANDS - 1][2];
+	float share = ramp_frames ? 1.0f / (float)ramp_frames : 0.0f;
 	unsigned long frame;
 	int ear, band;
 
 	for (ear = 0; ear < 2; ear++)
 	{
-		ramp.delay[ear] = (target->delay[ear] - now.delay[ear]) / (float)ramp_frames;
+		ramp.delay[ear] = (target->delay[ear] - now.delay[ear]) * share;
 		for (band = 0; band < HRTF_BANDS; band++)
-			ramp.weights[ear][band] = (target->weights[ear][band] - now.weights[ear][band]) / (float)ramp_frames;
+			ramp.weights[ear][band] = (target->weights[ear][band] - now.weights[ear][band]) * share;
 		memcpy(line[ear], stream->hrtf_frames[ear], sizeof(stream->hrtf_frames[ear]));
 	}
-	ramp.gain = (target->gain - now.gain) / (float)ramp_frames;
-	ramp.pair[0] = (target->pair[0] - now.pair[0]) / (float)ramp_frames;
-	ramp.pair[1] = (target->pair[1] - now.pair[1]) / (float)ramp_frames;
+	ramp.gain = (target->gain - now.gain) * share;
+	ramp.pair[0] = (target->pair[0] - now.pair[0]) * share;
+	ramp.pair[1] = (target->pair[1] - now.pair[1]) * share;
 	memcpy(state, stream->hrtf_bands, sizeof(state));
 	for (frame = 0; frame < frames; frame++)
 	{
@@ -1060,12 +1082,24 @@ static void hrtf_process(struct sdl_stream *stream, const float *direct, float *
 			else
 				output[frame * 2 + ear] += heard;
 		}
-		hrtf_step(&now, &ramp);
-		mix += ramp_mix;
+		/* (at the ramp's end, exactly the new ones, held) */
+		if (frame + 1 == ramp_frames)
+		{
+			memcpy(now.delay, target->delay, sizeof(now.delay));
+			memcpy(now.weights, target->weights, sizeof(now.weights));
+			now.gain = target->gain;
+			now.pair[0] = target->pair[0];
+			now.pair[1] = target->pair[1];
+			memset(&ramp, 0, sizeof(ramp));
+		}
+		else
+			hrtf_step(&now, &ramp);
+		mix = hrtf_mix_step(mix, ramp_mix, mix_end);
 	}
 	for (ear = 0; ear < 2; ear++)
 		memcpy(stream->hrtf_frames[ear], line[ear] + frames, sizeof(stream->hrtf_frames[ear]));
-	stream->hrtf_current = *target;
+	memcpy(now.decibels, target->decibels, sizeof(now.decibels));
+	stream->hrtf_current = now;
 	memcpy(stream->hrtf_bands, state, sizeof(state));
 }
 
@@ -1651,7 +1685,7 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	double step, target_step, ramp_step;
 	float target_left, target_right, target_room, left, right, room, ramp_left, ramp_right, ramp_room, scale;
 	float target_direct_lowpass, target_room_lowpass, direct_lowpass, room_lowpass;
-	float ramp_direct_lowpass, ramp_room_lowpass;
+	float ramp_direct_lowpass, ramp_room_lowpass, share;
 	float direct_state[2], room_state;
 	long width;
 	unsigned long frame, ramp_frames;
@@ -1700,29 +1734,18 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 		scale = resampler_scale(step);
 		width = (long)ceilf(RESAMPLER_ZERO_CROSSINGS / scale);
 	}
-	/* (the gains and the step move to the new ones over ramp_frames, then
-	hold) */
-	ramp_frames = frames < PARAMETER_RAMP_FRAMES ? frames : PARAMETER_RAMP_FRAMES;
-	ramp_step = (target_step - step) / (double)ramp_frames;
 	voice_gains(stream, &target_left, &target_right, pair, &target_room, &target_direct_lowpass,
 		&target_room_lowpass, &hrtf_on, &target_hrtf);
 	/* how much of the voice the HRTF plays: towards all of it while it is
 	chosen (hrtf_enabled), none otherwise, a frame's share of the crossfade
-	at a time; a voice starting is at once where it is going */
+	each frame (hrtf_mix_step), however many frames the mixes have; a voice
+	starting is at once where it is going */
 	hrtf_mix = hrtf_on ? stream->hrtf_mix : 0.0f;
 	hrtf_mix_end = hrtf_on && hrtf_enabled ? 1.0f : 0.0f;
 	if (!stream->gains_valid)
 		hrtf_mix = hrtf_mix_end;
-	else
-	{
-		float fade = (float)frames / HRTF_FADE_FRAMES;
-
-		if (hrtf_mix_end > hrtf_mix)
-			hrtf_mix_end = hrtf_mix + fade < 1.0f ? hrtf_mix + fade : 1.0f;
-		else if (hrtf_mix_end < hrtf_mix)
-			hrtf_mix_end = hrtf_mix - fade > 0.0f ? hrtf_mix - fade : 0.0f;
-	}
-	ramp_hrtf_mix = (hrtf_mix_end - hrtf_mix) / (float)frames;
+	ramp_hrtf_mix = hrtf_mix_end > hrtf_mix ? 1.0f / HRTF_FADE_FRAMES :
+		hrtf_mix_end < hrtf_mix ? -1.0f / HRTF_FADE_FRAMES : 0.0f;
 	hrtf_running = hrtf_on && (hrtf_mix > 0.0f || hrtf_mix_end > 0.0f);
 	/* (its filters start from silence, as the crossfade starts from none
 	of them) */
@@ -1733,9 +1756,14 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 		memset(stream->hrtf_bands, 0, sizeof(stream->hrtf_bands));
 	}
 	stream->hrtf_on = hrtf_running;
-	stream->hrtf_mix = hrtf_mix_end;
 	if (surround)
 		voice_surround_gains(stream, target_left, target_right, pair, target_surround);
+	/* a voice starting is at once at its gains, step and way through the
+	HRTF; a change to any of them, from the last mix's, ramps from where
+	they are to the new ones over PARAMETER_RAMP_FRAMES, then holds them: a
+	ramp the mix's frames end goes on in the next mix, and one changed
+	before its end ramps on from where it was, so that a change takes the
+	same frames however many the mixes have */
 	if (!stream->gains_valid)
 	{
 		if (surround)
@@ -1743,12 +1771,36 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 		stream->current_left = target_left;
 		stream->current_right = target_right;
 		stream->current_room = target_room;
+		stream->current_step = target_step;
 		stream->current_direct_lowpass = target_direct_lowpass;
 		stream->current_room_lowpass = target_room_lowpass;
 		stream->direct_lowpass[0] = stream->direct_lowpass[1] = 0.0f;
 		stream->room_lowpass = 0.0f;
+		stream->ramp_frames = 0;
 		stream->gains_valid = TRUE;
 	}
+	else if (target_left != stream->target_left || target_right != stream->target_right ||
+		target_room != stream->target_room || target_step != stream->target_step ||
+		target_direct_lowpass != stream->target_direct_lowpass || target_room_lowpass != stream->target_room_lowpass ||
+		(surround && memcmp(target_surround, stream->target_surround, sizeof(target_surround))) ||
+		(hrtf_running && memcmp(&target_hrtf, &stream->hrtf_target, sizeof(target_hrtf))))
+	{
+		stream->ramp_frames = PARAMETER_RAMP_FRAMES;
+	}
+	stream->target_left = target_left;
+	stream->target_right = target_right;
+	stream->target_room = target_room;
+	stream->target_step = target_step;
+	stream->target_direct_lowpass = target_direct_lowpass;
+	stream->target_room_lowpass = target_room_lowpass;
+	if (surround)
+		memcpy(stream->target_surround, target_surround, sizeof(target_surround));
+	if (hrtf_running)
+		stream->hrtf_target = target_hrtf;
+	ramp_frames = stream->ramp_frames;
+	share = ramp_frames ? 1.0f / (float)ramp_frames : 0.0f;
+	step = stream->current_step;
+	ramp_step = ramp_frames ? (target_step - step) / (double)ramp_frames : 0.0;
 	left = stream->current_left;
 	right = stream->current_right;
 	room = stream->current_room;
@@ -1759,11 +1811,11 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	direct_state[0] = stream->direct_lowpass[0];
 	direct_state[1] = stream->direct_lowpass[1];
 	room_state = stream->room_lowpass;
-	ramp_left = (target_left - left) / (float)ramp_frames;
-	ramp_right = (target_right - right) / (float)ramp_frames;
-	ramp_room = (target_room - room) / (float)ramp_frames;
-	ramp_direct_lowpass = (target_direct_lowpass - direct_lowpass) / (float)ramp_frames;
-	ramp_room_lowpass = (target_room_lowpass - room_lowpass) / (float)ramp_frames;
+	ramp_left = (target_left - left) * share;
+	ramp_right = (target_right - right) * share;
+	ramp_room = (target_room - room) * share;
+	ramp_direct_lowpass = (target_direct_lowpass - direct_lowpass) * share;
+	ramp_room_lowpass = (target_room_lowpass - room_lowpass) * share;
 	hrtf_mix_start = hrtf_mix;
 	if (surround)
 	{
@@ -1771,10 +1823,8 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 		{
 			surround_gains[0][speaker] = stream->current_surround[0][speaker];
 			surround_gains[1][speaker] = stream->current_surround[1][speaker];
-			ramp_surround[0][speaker] = (target_surround[0][speaker] - surround_gains[0][speaker]) /
-				(float)ramp_frames;
-			ramp_surround[1][speaker] = (target_surround[1][speaker] - surround_gains[1][speaker]) /
-				(float)ramp_frames;
+			ramp_surround[0][speaker] = (target_surround[0][speaker] - surround_gains[0][speaker]) * share;
+			ramp_surround[1][speaker] = (target_surround[1][speaker] - surround_gains[1][speaker]) * share;
 			/* (a 2D voice may be heard from the center, the backs or the
 			LFE alone, its left and right gains 0) */
 			if (surround_gains[0][speaker] || surround_gains[1][speaker] || target_surround[0][speaker] ||
@@ -1911,7 +1961,7 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 			if (hrtf_running)
 			{
 				hrtf_direct[frame] = sample_left;
-				hrtf_mix += ramp_hrtf_mix;
+				hrtf_mix = hrtf_mix_step(hrtf_mix, ramp_hrtf_mix, hrtf_mix_end);
 			}
 			for (speaker = 0; speaker < MAXIMUM_OUTPUT_CHANNELS; speaker++)
 			{
@@ -1932,7 +1982,7 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 				output[frame * 2] += sample_left * left * panned;
 				output[frame * 2 + 1] += sample_left * right * panned;
 			}
-			hrtf_mix += ramp_hrtf_mix;
+			hrtf_mix = hrtf_mix_step(hrtf_mix, ramp_hrtf_mix, hrtf_mix_end);
 		}
 		else if (stream->channels == 1)
 		{
@@ -1991,15 +2041,21 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	stream->room_lowpass = room_state;
 	/* (the frames mixed: all of them, or those before the voice ran dry) */
 	if (hrtf_running)
-		hrtf_process(stream, hrtf_direct, output, frame, frames, &target_hrtf, hrtf_mix_start, ramp_hrtf_mix);
-	stream->current_left = target_left;
-	stream->current_right = target_right;
-	stream->current_room = target_room;
-	stream->current_step = target_step;
-	stream->current_direct_lowpass = target_direct_lowpass;
-	stream->current_room_lowpass = target_room_lowpass;
+	{
+		hrtf_process(stream, hrtf_direct, output, frame, ramp_frames, &target_hrtf, hrtf_mix_start, ramp_hrtf_mix,
+			hrtf_mix_end);
+	}
+	stream->hrtf_mix = hrtf_running ? hrtf_mix : hrtf_mix_end;
+	/* where the ramp got to, and the frames of it left */
+	stream->current_left = left;
+	stream->current_right = right;
+	stream->current_room = room;
+	stream->current_step = step;
+	stream->current_direct_lowpass = direct_lowpass;
+	stream->current_room_lowpass = room_lowpass;
 	if (surround)
-		memcpy(stream->current_surround, target_surround, sizeof(target_surround));
+		memcpy(stream->current_surround, surround_gains, sizeof(surround_gains));
+	stream->ramp_frames = ramp_frames > frame ? ramp_frames - frame : 0;
 }
 
 /* ---------- reverb

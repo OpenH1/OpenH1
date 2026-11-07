@@ -135,7 +135,7 @@ static void our_response(int direction, float *left, float *right, struct hrtf_p
 	memset(impulse, 0, sizeof(impulse));
 	memset(output, 0, sizeof(output));
 	impulse[0] = 1.0f;
-	hrtf_process(stream, impulse, output, FRAMES, FRAMES, &parameters, 1.0f, 0.0f);
+	hrtf_process(stream, impulse, output, FRAMES, FRAMES, &parameters, 1.0f, 0.0f, 1.0f);
 	for (n = 0; n < FRAMES; n++)
 	{
 		left[n] = output[n * 2];
