@@ -38,7 +38,7 @@ port/linux/README.md.
 #include <stdint.h>
 
 #define XGPU_STREAM_MAGIC 0x53504758u /* "XGPS" */
-#define XGPU_STREAM_VERSION 20
+#define XGPU_STREAM_VERSION 21
 #define XGPU_STREAM_LOADING_ART_BYTES (640u * 480u * 4u)
 
 /* ---------- the ring
@@ -285,6 +285,11 @@ enum
 	/* display.ambient_occlusion "world"'s distance-field scene: a box of
 	its cascades (xgpu_backend_world_ao_cascades) */
 	XGPU_STREAM_WORLD_AO_CASCADES,
+	/* display.ambient_occlusion "ray_traced": a mesh of the scene the GPU's
+	ray queries trace, and the frame's instances of the meshes
+	(xgpu_backend_world_ao_mesh, _instances) */
+	XGPU_STREAM_WORLD_AO_MESH,
+	XGPU_STREAM_WORLD_AO_INSTANCES,
 	XGPU_STREAM_RECORD_TYPES,
 };
 
@@ -329,6 +334,10 @@ struct xgpu_stream_capabilities
 	int32_t most_anisotropy;
 	uint8_t sample_counting, bgra_vertex_colors, base_vertex, sample_mask;
 	uint8_t mixed_constant_blend, dynamic_lights, dynamic_lights_preparable, hdr;
+	/* display.ambient_occlusion "ray_traced": the backend traces the
+	occlusion's rays by the GPU's ray queries (xgpu_backend_world_ao_mesh,
+	_instances: Vulkan's VK_KHR_ray_query) */
+	uint8_t ray_queries, pad[3];
 	/* the GPU, its API and driver, in a few words (a report's:
 	port/linux/src/report.c), NUL terminated */
 	char device[96];
@@ -496,7 +505,9 @@ frame, its corners alike: the backend's previous texture of it), else 0;
 [1] the frame's number (the rays' turn); [2] the share of the new frame's
 occlusion blended into what is reprojected (1: none of the history); [3] 1
 where the dynamic objects' occlusion is traced, 0 where their shapes are
-walked instead (HALO_WORLD_AO_NO_TRACE, for measuring against) */
+walked instead (HALO_WORLD_AO_NO_TRACE, for measuring against), 2 where
+it is traced by the GPU's ray queries ("ray_traced": WORLD_AO_MESH, below;
+a backend without them, or before its scene is built, traces it as 1) */
 struct xgpu_world_ao_pass
 {
 	float camera[4][4];
@@ -927,7 +938,7 @@ struct xgpu_stream_draw_uniforms
 	float texture_scale[4][4];
 	float screen_offset;
 	float texture_lod_bias[4];
-	float world_ao[2];
+	float world_ao[3];
 };
 
 /* xgpu_backend_draw_state: what changed since the last follows, the
@@ -1315,13 +1326,62 @@ struct xgpu_stream_vr_screen_corrections
 	float viewport[2];
 };
 
+/* ---------- display.ambient_occlusion "ray_traced" (docs/world-ao.md,
+"Hardware ray queries")
+
+The scene the occlusion's pass traces its rays through with the GPU's ray
+queries, where the backend has them (xgpu_stream_capabilities' ray_queries):
+the dynamic objects' occlusion is then found by the hardware's rays against
+their collision meshes, the structure's collision mesh stopping them, in
+place of the distance-field scene's step (the pass's history[3] 2).
+
+WORLD_AO_MESH: a mesh (a bottom-level acceleration structure, built once):
+its id (1 to XGPU_STREAM_WORLD_AO_MESHES - 1) and count triangles, nine
+floats each (each corner's x, y, z in the mesh's own space, the front faces
+counterclockwise seen from outside), at data (size: count * 36); id 0 lets
+go of every mesh (a map's end). An id is given once a map */
+#define XGPU_STREAM_WORLD_AO_MESHES 4096u
+#define XGPU_STREAM_WORLD_AO_MESH_TRIANGLES (1u << 20)
+struct xgpu_stream_world_ao_mesh
+{
+	uint32_t header;
+	uint32_t id, count;
+	uint32_t data, size;
+	uint32_t pad[3];
+};
+
+/* WORLD_AO_INSTANCES: the frame's instances of the meshes (a top-level
+acceleration structure of them, built before the next pass), count of
+them at data (size: count * sizeof(struct xgpu_world_ao_instance)): each
+its transform (a row-major 3x4, its mesh's space into the world), its
+mesh's id, its owner (its object's datum index plus one, the instance's
+custom index: a pixel of that object's own leaves it out; 0 the structure,
+which stops a ray and occludes nothing: the lightmaps and the field hold
+its occlusion) and its kind (XGPU_WORLD_AO_INSTANCE_*, the instance's mask:
+the structure's facing either way, an object's front faces alone) */
+#define XGPU_STREAM_WORLD_AO_INSTANCES_MAXIMUM 4096u
+#define XGPU_WORLD_AO_INSTANCE_STRUCTURE 1u
+#define XGPU_WORLD_AO_INSTANCE_OBJECT 2u
+#define XGPU_WORLD_AO_INSTANCE_OWNERS (1u << 24)
+struct xgpu_world_ao_instance
+{
+	float transform[3][4];
+	uint32_t mesh, owner, kind, pad;
+};
+struct xgpu_stream_world_ao_instances
+{
+	uint32_t header;
+	uint32_t count;
+	uint32_t data, size;
+};
+
 /* ---------- the layouts' sizes, alike on both sides */
 
 #define XGPU_STREAM_ASSERT_SIZE(type, size) _Static_assert(sizeof(type) == (size), #type "'s size")
 
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_ring, 120);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_frame_end, 12);
-XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_capabilities, 116);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_capabilities, 120);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_hdr, 24);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_tone_map, 24);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_panini, 56);
@@ -1330,6 +1390,9 @@ XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_world_ao_window, 16 + 32 + 32 + XGPU_
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_world_ao_field, 40);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_world_ao_prepass, 96 + 64 + 64 + 16 + 16);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_world_ao_cascades, 40);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_world_ao_mesh, 32);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_world_ao_instance, 64);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_world_ao_instances, 16);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pipeline_stand_in, 12);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_set_targets, 16);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_clear, 36);
@@ -1342,7 +1405,7 @@ XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pipeline_key, 308);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pixel_program, 436);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pipeline_define, 752);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_dynamic_state, 68);
-XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_draw_uniforms, 580);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_draw_uniforms, 584);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vertex_element, 6);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_layout_define, 20);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vertex_stream, 20);

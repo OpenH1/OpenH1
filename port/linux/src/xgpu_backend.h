@@ -72,6 +72,9 @@ struct xgpu_backend_capabilities
 	/* display.hdr: an RGBA16F back buffer, the draws' tags carried out
 	(xgpu_hdr.h), the tone map and an HDR display's encoding */
 	BOOL hdr;
+	/* display.ambient_occlusion "ray_traced": the occlusion's rays traced
+	by the GPU's ray queries (xgpu_backend_world_ao_mesh, _instances) */
+	BOOL ray_queries;
 };
 
 extern struct xgpu_backend_capabilities xgpu_backend_capabilities;
@@ -155,6 +158,12 @@ XGPU_WORLD_CASCADE*): its first texel, its size, two signed bytes a texel,
 x fastest (width 0: released) */
 void xgpu_backend_world_ao_cascades(unsigned long x, unsigned long y, unsigned long z, unsigned long width,
 	unsigned long height, unsigned long depth, const void *data);
+/* display.ambient_occlusion "ray_traced" (xgpu_stream.h's WORLD_AO_MESH,
+_INSTANCES): a mesh of the scene, count triangles of nine floats (id 0:
+every mesh let go of), and the frame's instances of them */
+struct xgpu_world_ao_instance;
+void xgpu_backend_world_ao_mesh(unsigned long id, unsigned long count, const float *triangles);
+void xgpu_backend_world_ao_instances(const struct xgpu_world_ao_instance *instances, unsigned long count);
 BOOL xgpu_backend_display_hdr(float *headroom);
 BOOL xgpu_backend_display_white(float *nits);
 
@@ -330,8 +339,11 @@ struct xgpu_draw_uniforms
 	float screen_offset;
 	float texture_lod_bias[4];
 	/* display.ambient_occlusion "world": the draw's object's owner slot
-	(-1 none) and reference (xgpu.h; d3d8_device.c's halo_world_ao_object) */
-	float world_ao[2];
+	(-1 none) and reference (xgpu.h; d3d8_device.c's halo_world_ao_object),
+	and with "ray_traced" its owner among the ray-traced scene's instances
+	(its datum index plus one, 0 none: xgpu_stream.h's
+	xgpu_world_ao_instance) */
+	float world_ao[3];
 };
 
 /* ---------- the pipeline key's values */

@@ -234,6 +234,8 @@ static const uint32_t record_minimum[XGPU_STREAM_RECORD_TYPES] =
 	[XGPU_STREAM_WORLD_AO_FIELD] = sizeof(struct xgpu_stream_world_ao_field),
 	[XGPU_STREAM_WORLD_AO_PREPASS] = sizeof(struct xgpu_stream_world_ao_prepass),
 	[XGPU_STREAM_WORLD_AO_CASCADES] = sizeof(struct xgpu_stream_world_ao_cascades),
+	[XGPU_STREAM_WORLD_AO_MESH] = sizeof(struct xgpu_stream_world_ao_mesh),
+	[XGPU_STREAM_WORLD_AO_INSTANCES] = sizeof(struct xgpu_stream_world_ao_instances),
 	[XGPU_STREAM_PIPELINE_STAND_IN] = sizeof(struct xgpu_stream_pipeline_stand_in),
 	/* (and its folder's path, at least its NUL) */
 	[XGPU_STREAM_SCREENSHOT] = sizeof(struct xgpu_stream_screenshot) + XGPU_STREAM_RECORD_ALIGNMENT,
@@ -546,6 +548,30 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 			!data_inside(decoder, start, size, box->data, box->size)))
 			return XGPU_STREAM_ERROR_BOUNDS;
 		CALL(world_ao_cascades, box);
+		break;
+	}
+	case XGPU_STREAM_WORLD_AO_MESH:
+	{
+		const struct xgpu_stream_world_ao_mesh *mesh = (const void *)start;
+
+		if (mesh->id >= XGPU_STREAM_WORLD_AO_MESHES || mesh->count > XGPU_STREAM_WORLD_AO_MESH_TRIANGLES ||
+			(!mesh->id && mesh->count) || (uint64_t)mesh->count * 36u != mesh->size ||
+			(mesh->size && !data_inside(decoder, start, size, mesh->data, mesh->size)))
+			return XGPU_STREAM_ERROR_BOUNDS;
+		CALL(world_ao_mesh, mesh);
+		break;
+	}
+	case XGPU_STREAM_WORLD_AO_INSTANCES:
+	{
+		const struct xgpu_stream_world_ao_instances *instances = (const void *)start;
+
+		/* (each instance's mesh and owner checked by the backend, which
+		leaves out one it has not) */
+		if (instances->count > XGPU_STREAM_WORLD_AO_INSTANCES_MAXIMUM ||
+			(uint64_t)instances->count * sizeof(struct xgpu_world_ao_instance) != instances->size ||
+			(instances->size && !data_inside(decoder, start, size, instances->data, instances->size)))
+			return XGPU_STREAM_ERROR_BOUNDS;
+		CALL(world_ao_instances, instances);
 		break;
 	}
 	case XGPU_STREAM_TARGET_CREATE:
