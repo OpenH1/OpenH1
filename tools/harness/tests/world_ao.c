@@ -11,6 +11,7 @@ tools/test_world_ao_light.py. */
 #include "world_ao.h"
 #include "world_cascades.h"
 #include "world_proxies.h"
+#include "world_rt.h"
 #include "world_scene.h"
 #include "world_sdf.h"
 
@@ -27,6 +28,11 @@ static struct
 static int object_owner = -100;
 unsigned char render_enumerating;
 static float object_reference = -100.0f;
+/* ("ray_traced": the backend's ray queries, the object's owner among the
+ray-traced scene's instances, its frames and the log's lines) */
+static int ray_queries, backend_ready;
+static unsigned long object_rays_owner = 12345, rt_frames;
+static int rt_unloads, logged;
 /* (the window's span as the front end was last told it) */
 static int span = -100;
 
@@ -185,10 +191,44 @@ void halo_world_ao_span(int value)
 	span = value;
 }
 
-void halo_world_ao_object(int owner, float reference)
+void halo_world_ao_object(int owner, float reference, unsigned long rays_owner)
 {
 	object_owner = owner;
 	object_reference = reference;
+	object_rays_owner = rays_owner;
+}
+
+int halo_world_ao_ray_queries(void)
+{
+	return ray_queries;
+}
+
+char const *halo_world_ao_ray_queries_missing(void)
+{
+	return backend_ready && !ray_queries ? "none here" : NULL;
+}
+
+void platform_log(const char *format, ...)
+{
+	(void)format;
+	logged++;
+}
+
+/* (world_rt.c's, tested apart: test_world_rt.py) */
+void world_rt_frame(unsigned long frame)
+{
+	(void)frame;
+	rt_frames++;
+}
+
+void world_rt_map_unloaded(void)
+{
+	rt_unloads++;
+}
+
+unsigned long world_rt_owner(long object_index)
+{
+	return object_index == -1 ? 0 : (unsigned long)(object_index & 0xFFFF) + 1;
 }
 
 /* (the made-up field made sparse and handed on: world_sdf_bake.c's and
@@ -391,6 +431,51 @@ static void window_case(void)
 	CHECK(scene_updates == 2, "%d updates in two frames", scene_updates);
 }
 
+/* "ray_traced": "world" and the rays where the backend has ray queries
+(said once where it has not, once it is ready); the ray-traced scene's
+frame once a frame, each object's owner handed on */
+static void rays_case(void)
+{
+	float const camera[3] = { 1.0f, 2.0f, 3.0f };
+
+	setting = "ray_traced";
+	changes++;
+	CHECK(world_ao_mode() == (WORLD_AO_PROXIES | WORLD_AO_FIELD), "before the backend is ready: %d", world_ao_mode());
+	CHECK(logged == 0, "said before the backend was ready");
+	backend_ready = 1;
+	CHECK(world_ao_mode() == (WORLD_AO_PROXIES | WORLD_AO_FIELD), "without ray queries: %d", world_ao_mode());
+	CHECK(world_ao_mode() == (WORLD_AO_PROXIES | WORLD_AO_FIELD) && logged == 1, "said once: %d", logged);
+	world_ao_window_begin(0, 0, camera);
+	CHECK(rt_frames == 0, "the ray-traced scene's frame without ray queries");
+	world_ao_object_begin(200);
+	CHECK(object_rays_owner == 0, "an owner without ray queries: %lu", object_rays_owner);
+	world_ao_window_end();
+	ray_queries = 1;
+	CHECK(world_ao_mode() == (WORLD_AO_PROXIES | WORLD_AO_FIELD | WORLD_AO_RAYS), "with them: %d", world_ao_mode());
+	world_ao_frame_begin();
+	world_ao_window_begin(0, 0, camera);
+	CHECK(rt_frames == 1, "the scene's frame: %lu", rt_frames);
+	world_ao_object_begin(200);
+	CHECK(object_owner == 1 && object_rays_owner == 201, "%d %lu", object_owner, object_rays_owner);
+	world_ao_object_begin(-1);
+	CHECK(object_rays_owner == 0, "the structure's owner: %lu", object_rays_owner);
+	world_ao_first_person(1);
+	CHECK(object_rays_owner == 0, "the first-person weapon's owner: %lu", object_rays_owner);
+	world_ao_first_person(0);
+	world_ao_window_end();
+	/* ("world" again: none) */
+	setting = "world";
+	changes++;
+	world_ao_frame_begin();
+	world_ao_window_begin(0, 0, camera);
+	CHECK(rt_frames == 1, "the scene's frame with \"world\": %lu", rt_frames);
+	world_ao_object_begin(200);
+	CHECK(object_rays_owner == 0, "an owner with \"world\": %lu", object_rays_owner);
+	world_ao_window_end();
+	world_ao_map_unloaded();
+	CHECK(rt_unloads == 1, "the scene let go of at the map's end: %d", rt_unloads);
+}
+
 static void test_case(void)
 {
 	float const camera[3] = { 0.0f, 0.0f, 0.0f };
@@ -424,6 +509,8 @@ int main(int argc, char **argv)
 		window_case();
 	else if (!strcmp(name, "test"))
 		test_case();
+	else if (!strcmp(name, "rays"))
+		rays_case();
 	else
 		return 2;
 	return 0;
