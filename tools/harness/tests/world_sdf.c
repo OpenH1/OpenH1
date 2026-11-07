@@ -1005,7 +1005,7 @@ static void round_trip_case(void)
 	CHECK(bytes && size == 80 + payload + 4 + 4, "%lu", size);
 	/* (the header field by field, little-endian, at fixed places) */
 	CHECK(bytes[0] == 'W' && bytes[1] == 'S' && bytes[2] == 'D' && bytes[3] == 'F', "magic");
-	CHECK(sdf_get32(bytes + 4) == 5, "version");
+	CHECK(sdf_get32(bytes + 4) == 6, "version");
 	CHECK(sdf_get32(bytes + 8) == 0xC0FFEE12UL && sdf_get32(bytes + 12) == 2, "checksum, bsp");
 	CHECK(sdf_get32(bytes + 16) == volume.header.width && sdf_get32(bytes + 20) == volume.header.height &&
 		sdf_get32(bytes + 24) == volume.header.depth, "size");

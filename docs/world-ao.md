@@ -257,7 +257,8 @@ never shipped, and never trusted without checks.
 - **Key:** the map's cache file header checksum (`menu_picture_map_checksum`'s source) plus `WORLD_SDF_VERSION`. A
   different map under the same name, or a new version, is baked again. A good file is reused forever.
 - **Format** (little-endian, written field by field, not as a struct):
-  - an 80-byte `struct world_sdf_header`: magic `WSDF`, version (5: the scenery's occlusion fields), map checksum,
+  - an 80-byte `struct world_sdf_header`: magic `WSDF`, version (6: a box without collision geometry of what it
+    draws, in the pages; 5: the scenery's occlusion fields), map checksum,
     bsp index, the cells along x/y/z, origin, voxel, range, deflated size, bake ms, bake threads, brick count, the
     static scenery's part's bytes and its pages' bake ms, the vehicles' part's bytes and their bake ms;
   - then the cells (4 bytes each, x fastest, then y, then z), the bricks (729 bytes each), the static scenery's
@@ -485,8 +486,13 @@ Each object definition gets up to 16 shapes, made the first time it's drawn and 
   its occlusion field is drawn, the field stands in for the boxes ([The objects' occlusion fields](#the-objects-occlusion-fields)).
 - **Scenery, machines, controls, light fixtures, items (weapons and equipment on the ground, garbage):** one box,
   every node's collision geometry in node 0's space (where a piece of scenery's occlusion field is drawn, the field
-  instead); with no collision geometry, a sphere of the bounding radius at
-  its bounding centre.
+  instead). With no collision geometry, the box of what its model draws opaque (its most detailed geometry, its
+  regions' first permutations, `object_mesh_get_model`), and no shape when it draws nothing opaque (glass, a glowing
+  floor marker, an effect). It was a sphere of the bounding radius at its bounding centre, a bound for culling and
+  pickups: a frag grenade's 0.2 wu about its origin, twice the grenade and half under the floor, and Blood Gulch's and
+  Hang 'Em High's floor arrows' 0.3 wu, which draw nothing opaque. The floor inside the sphere was wholly occluded: a
+  hard-edged dark patch several times a grenade's size (a disc walked, a polygon from the distance-field scene's
+  voxels traced), and a round blotch about each arrow in the static scenery's pages (#773).
 - **Anything else** with a model: its bounding sphere.
 - **None:** projectiles, sound scenery, a weapon or equipment held (its holder covers it, and it would shade the
   hands holding it), invisible objects, and any shape under 0.05 wu across.
