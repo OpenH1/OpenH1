@@ -8,7 +8,10 @@ config.toml that the host reads itself.
 
 The log's lines go to the sink the host's main chooses (host_log_set_sink).
 Signal handlers log through it too (host_memory.c, host_debug.c), so a sink
-writes with neither locks nor stdio.
+writes with neither locks nor stdio. The last HOST_LOG_KEPT bytes of them
+are kept as well, for the guest's Save Report (host_log_recent,
+port/linux/src/report.c: host.log), since on Linux and Android they go only
+to the standard error stream or logcat.
 */
 
 #include "host.h"
@@ -49,6 +52,89 @@ static void default_sink(int priority, const char *line)
 
 static host_log_sink log_sink = default_sink;
 
+/* the host's last lines, each ended by a newline (a power of 2) */
+#define HOST_LOG_KEPT (64 * 1024)
+/* the spins a line waits for the ring before it is let go (a signal
+handler's line, on a thread that holds it, must not wait for ever) */
+#define HOST_LOG_SPINS 100000
+
+static struct
+{
+	char text[HOST_LOG_KEPT];
+	unsigned long long written;
+	volatile char busy;
+} log_kept;
+
+/* takes the ring with an atomic flag, not a lock: signal handlers log too */
+static int log_kept_take(void)
+{
+	int spins;
+
+	for (spins = 0; spins < HOST_LOG_SPINS; spins++)
+		if (!__atomic_test_and_set(&log_kept.busy, __ATOMIC_ACQUIRE))
+			return 1;
+	return 0;
+}
+
+static void log_kept_give(void)
+{
+	__atomic_clear(&log_kept.busy, __ATOMIC_RELEASE);
+}
+
+static void log_keep(int priority, const char *line)
+{
+	const char *level = priority >= HOST_LOG_FATAL ? "fatal: " : priority >= HOST_LOG_ERROR ? "error: " :
+		priority >= HOST_LOG_WARN ? "warning: " : "";
+	const char *parts[3];
+	int part;
+
+	if (!log_kept_take())
+		return;
+	parts[0] = level;
+	parts[1] = line;
+	parts[2] = "\n";
+	for (part = 0; part < 3; part++)
+	{
+		const char *character;
+
+		for (character = parts[part]; *character; character++)
+			log_kept.text[log_kept.written++ & (HOST_LOG_KEPT - 1)] = *character;
+	}
+	log_kept_give();
+}
+
+uint32_t host_log_recent(char *buffer, uint32_t size)
+{
+	unsigned long long oldest, start, index;
+	uint32_t length = 0;
+
+	if (!buffer || !size)
+		return 0;
+	if (!log_kept_take())
+	{
+		buffer[0] = 0;
+		return 0;
+	}
+	oldest = log_kept.written > HOST_LOG_KEPT ? log_kept.written - HOST_LOG_KEPT : 0;
+	start = oldest;
+	if (log_kept.written - start > size - 1)
+		start = log_kept.written - (size - 1);
+	/* (from the start of a line: the one after the oldest kept, the first
+	of which may be part of one, or after a newline the ring still has) */
+	if (start && !(start > oldest && log_kept.text[(start - 1) & (HOST_LOG_KEPT - 1)] == '\n'))
+	{
+		while (start < log_kept.written && log_kept.text[start & (HOST_LOG_KEPT - 1)] != '\n')
+			start++;
+		if (start < log_kept.written)
+			start++;
+	}
+	for (index = start; index < log_kept.written; index++)
+		buffer[length++] = log_kept.text[index & (HOST_LOG_KEPT - 1)];
+	log_kept_give();
+	buffer[length] = 0;
+	return length;
+}
+
 void host_log_set_sink(host_log_sink sink)
 {
 	log_sink = sink ? sink : default_sink;
@@ -56,6 +142,7 @@ void host_log_set_sink(host_log_sink sink)
 
 void host_log(int priority, const char *text)
 {
+	log_keep(priority, text ? text : "");
 	log_sink(priority, text ? text : "");
 }
 
@@ -67,6 +154,7 @@ void host_logf(int priority, const char *format, ...)
 	va_start(arguments, format);
 	vsnprintf(line, sizeof(line), format, arguments);
 	va_end(arguments);
+	log_keep(priority, line);
 	log_sink(priority, line);
 }
 
@@ -78,6 +166,7 @@ void host_fatal(const char *format, ...)
 	va_start(arguments, format);
 	vsnprintf(message, sizeof(message), format, arguments);
 	va_end(arguments);
+	log_keep(HOST_LOG_FATAL, message);
 	log_sink(HOST_LOG_FATAL, message);
 	SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Halo", message, NULL);
 	_exit(1);

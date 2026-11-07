@@ -25,6 +25,9 @@ long long host_syscall(long long number, long long a, long long b, long long c,
 
 /* Android log priorities (android/log.h) */
 void host_log(int priority, const char *text);
+/* the host's last lines, whole ones, into buffer (ended by a 0); returns
+their length (Save Report's host.log: port/linux/src/report.c) */
+unsigned int host_log_recent(char *buffer, unsigned int size);
 void host_abort(const char *reason) __attribute__((noreturn));
 void host_exit(int code) __attribute__((noreturn));
 /* the host's errno on this thread, after a call to a host function */

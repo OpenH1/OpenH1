@@ -31,6 +31,11 @@ The zip holds:
                  log is not otherwise in a file
   halo.log       the host's log file, where it has one (Windows beside
                  halo.exe, the macOS app's in ~/Library/Logs/OpenH1), its end
+  host.log       where it has none (Linux, Android, the macOS executable
+                 run by itself): the renderer's host's last lines, which go
+                 only to the standard error stream or logcat (its Vulkan
+                 device, validation errors, the swapchain's problems), kept
+                 by the host (host_log_recent, port/android/host/host_common.c)
   debug.txt      the game's own log, in the data folder
   settings.txt   the settings changed from their defaults (not config.toml:
                  never the passwords, this machine's addresses, keys)
@@ -53,6 +58,10 @@ on the render thread, as report_write is); a log line a copy into the ring.
 #include <unistd.h>
 
 int mkdir(const char *path, unsigned int mode);
+#ifdef HALO_GUEST
+/* port/android/guest/runtime/guest_host.h: the host's last lines */
+unsigned int host_log_recent(char *buffer, unsigned int size);
+#endif
 /* updater.c's: the build, in a few words */
 void updater_build_text(char *text, size_t size);
 /* p2p_discord.c's: the network game this machine is in, as the game told */
@@ -70,6 +79,8 @@ void p2p_discord_game(int *hosting, int *playing, char *description, int size, i
 #define REPORT_LOG_SIZE (512 * 1024)
 /* the most of a log file's end taken */
 #define REPORT_FILE_MOST (4 * 1024 * 1024)
+/* the most of the host's kept lines asked for (the host keeps 64 KB) */
+#define REPORT_HOST_LOG_MOST (64 * 1024)
 #define REPORT_ZIP_FILES 8
 #define REPORT_AGAIN_SECONDS 5
 /* the most issues waiting for the game's end */
@@ -949,6 +960,17 @@ static int report_finish(const char *note, char *message, size_t message_size)
 		report_zip_add_text(&zip, "halo.log", data, size);
 		free(data);
 	}
+#ifdef HALO_GUEST
+	/* (or, with no file, the lines the host kept: halo.log has them where
+	there is one) */
+	else if ((data = malloc(REPORT_HOST_LOG_MOST + 1)) != NULL)
+	{
+		size = host_log_recent(data, REPORT_HOST_LOG_MOST + 1);
+		if (size)
+			report_zip_add_text(&zip, "host.log", data, size);
+		free(data);
+	}
+#endif
 	snprintf(file_path, sizeof(file_path), "%s/debug.txt", platform_data_root());
 	data = report_file_end(file_path, REPORT_FILE_MOST, &size);
 	if (data)
