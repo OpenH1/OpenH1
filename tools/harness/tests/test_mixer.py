@@ -26,7 +26,7 @@ from harness import skip_without_32_bit_abi  # noqa: E402
 SOURCE = "port/linux/src/dsound_sdl.c"
 CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "doppler-step",
          "parameter-ramp", "block-size",
-         "limiter", "obstruction", "room-send", "room-send-images", "quiet-levels", "channels", "surround", "lfe", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch",
+         "limiter", "obstruction", "room-send", "room-send-images", "quiet-levels", "quiet-levels-3d", "resampler-xbox", "channels", "surround", "lfe", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch",
          "dry-2d",
          "master-volume", "buffers", "sound-off",
          "hand-off-never-waits", "hand-off-settings"]
@@ -92,10 +92,24 @@ NEGATIVE_CONTROLS = {
     "quiet-levels-exact": (("if (size >= VOICE_LEVEL_KNEE)", "if (size >= 0.0f)"), "quiet-levels"),
     "quiet-levels-volume-in": (("*left = voice_level(*left * stream->volume) * master_volume;",
                                 "*left = voice_level(*left * stream->volume * master_volume);"), "quiet-levels"),
-    "quiet-levels-hrtf": (("hrtf_out->gain = voice_level(hrtf_out->gain * stream->volume) * master_volume;",
-                           "hrtf_out->gain = hrtf_out->gain * stream->volume * master_volume;"), "quiet-levels"),
-    "quiet-levels-room": (("*room = voice_level(*room * stream->volume) * master_volume;",
-                           "*room = *room * stream->volume * master_volume;"), "quiet-levels"),
+    "quiet-levels-hrtf": (("hrtf_out->gain *= scale;", "hrtf_out->gain *= stream->volume * master_volume;"),
+                          "quiet-levels"),
+    "quiet-levels-room": (("*room *= scale;", "*room *= stream->volume * master_volume;"), "quiet-levels"),
+    # a 3D voice's: each gain's whole level's (as #785 had it: 10 m away silent from -34 dB, not -44), its volume and
+    # rolloff's once over, not twice; its room send louder than its rolloff (the cave's reverb 10 m away 10 dB over
+    # the Xbox's)
+    # audio.resampler "xbox": the direct path through the send's six taps (#785's model), through three frames each
+    # side, not four; the mixer's low pass by default, as it was
+    "direct-six-taps": (("direct_phases[row], direct_deltas[row], blend);\n\t\t\tsample_right",
+                         "send_phases[row], send_deltas[row], blend);\n\t\t\tsample_right"), "resampler-xbox"),
+    "direct-three-each-side": (("#define DIRECT_ZERO_CROSSINGS 4", "#define DIRECT_ZERO_CROSSINGS 3"),
+                               "resampler-xbox"),
+    "default-sinc": (("return setting && !strcmp(setting, \"linear\") ? RESAMPLER_LINEAR : RESAMPLER_XBOX;",
+                      "return setting && !strcmp(setting, \"linear\") ? RESAMPLER_LINEAR : RESAMPLER_SINC;"),
+                     "resampler-xbox"),
+    "quiet-levels-3d-whole": (("\tif (level_3d < 0.0f)\n", "\tif (1)\n"), "quiet-levels-3d"),
+    "quiet-levels-3d-once": (("#define VOICE_LEVEL_3D 2.0f", "#define VOICE_LEVEL_3D 1.0f"), "quiet-levels-3d"),
+    "room-past-rolloff": (("if (*room > distance_gain)", "if (0)"), "quiet-levels-3d"),
     # audio.channels "auto" stereo whatever the device (as every build was before the host said its channels)
     "auto-always-stereo": (('!strcmp(setting, "auto") && device_channels >= 6', '!strcmp(setting, "auto") && 0'),
                            "channels"),
@@ -164,8 +178,7 @@ NEGATIVE_CONTROLS = {
                  "\t*hrtf_on = FALSE;\n\tif (stream->channels == 1 || (stream->has_3d && stream->mode != DS3DMODE_DISABLE))"),
                 "dry-2d"),
     # the HRTF's gain without the master volume and the voice's own (every 3D sound at full volume on headphones)
-    "hrtf-no-volume": (("\tif (*hrtf_on)\n\t\thrtf_out->gain = voice_level(hrtf_out->gain * stream->volume) * master_volume;\n",
-                        ""), "master-volume"),
+    "hrtf-no-volume": (("\t\tif (*hrtf_on)\n\t\t\thrtf_out->gain *= scale;\n", ""), "master-volume"),
     # the hand-off: the device's mix waiting for the game's thread to take its side over, or to say what it
     # finished; a setting left on the game's side
     "hand-off-waits": (("else if (pthread_mutex_trylock(&voices_lock))\n\t{\n\t\thand_offs_skipped++;",

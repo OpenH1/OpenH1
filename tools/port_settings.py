@@ -678,9 +678,9 @@ PAGES = {
             ("REVERB", "audio.reverb", ON_OFF,
              "Echoes sounds as the place you are in would, and muffles those behind walls, as the Xbox did. It "
              "costs a little of the processor.", None),
-            ("RESAMPLER", "audio.resampler", [("CLEAN", "sinc"), ("CLASSIC", "linear")],
-             "How sounds are converted to your speakers' rate. Clean is clear; Classic is brighter but harsher, and "
-             "costs a little less.", None),
+            ("RESAMPLER", "audio.resampler", [("XBOX", "xbox"), ("CLEAN", "sinc"), ("CLASSIC", "linear")],
+             "How sounds are converted to your speakers' rate. Xbox sounds as the Xbox did; Clean is clearer; "
+             "Classic is brighter but harsher. Xbox and Classic cost a little less.", None),
             ("SOUND", "audio.enabled", ON_OFF,
              "Turns all sound off or on, at once.", None),
             (SECTION, "VOLUME"),
