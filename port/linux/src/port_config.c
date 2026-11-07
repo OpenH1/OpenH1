@@ -1274,8 +1274,11 @@ static const struct config_setting config_settings[] =
 		"bench, a Warthog on the sand), found in the world from the level's\n"
 		"distance field and the objects' shapes (docs/world-ao.md). The levels'\n"
 		"own corners keep their baked light, and self-illuminated surfaces,\n"
-		"lights and your weapon keep theirs: \"off\" or \"world\". The older\n"
-		"\"subtle\" and \"strong\" are read as \"world\"."
+		"lights and your weapon keep theirs: \"off\", \"world\" or \"ray_traced\"\n"
+		"(\"world\" with the objects' shade found by the GPU's ray tracing,\n"
+		"through their own shapes, where the GPU and its Vulkan driver have ray\n"
+		"queries; \"world\" elsewhere, the Mac's and iOS's Metal included). The\n"
+		"older \"subtle\" and \"strong\" are read as \"world\"."
 		GRAPHICS_CHOOSES },
 	{ "display.shield_color", _config_string, "\"default\"", "HALO_SHIELD_COLOR", _environment_value, _platform_all,
 		"Your energy shield's color, as this machine draws it: \"default\" (the\n"
@@ -3881,7 +3884,7 @@ static const struct
 	{ "display.mode", { "", "fullscreen", "borderless", "windowed", NULL }, "display.fullscreen's" },
 	{ "display.resolution_scaling", { "native", "original", NULL }, NULL },
 	{ "display.anti_aliasing", { "off", "fxaa", "smaa", "ssaa2x", "msaa2x", "msaa4x", "msaa8x", NULL }, NULL },
-	{ "display.ambient_occlusion", { "off", "world", NULL }, "off" },
+	{ "display.ambient_occlusion", { "off", "world", "ray_traced", NULL }, "off" },
 	{ "display.astc_textures", { "auto", "always", "off", NULL }, NULL },
 	{ "display.picture_position", { "center", "top", "bottom", NULL }, NULL },
 	{ "display.orientation", { "landscape", "portrait", "auto", NULL }, NULL },

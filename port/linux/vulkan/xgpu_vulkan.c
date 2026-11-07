@@ -1150,6 +1150,16 @@ static void pass_end_from(const char *caller);
 static VkCommandBuffer main_commands_from(const char *caller);
 #define main_commands() main_commands_from(__func__)
 
+VkCommandBuffer xgpu_vulkan_early_commands(void)
+{
+	return early_commands();
+}
+
+uint64_t xgpu_vulkan_completed(void)
+{
+	return completed_serial();
+}
+
 /* ---------- HALO_VULKAN_DISCARDS: the main command buffer in segments
 
 A pass's stores are chosen as its vkCmdBeginRendering is made, before its
@@ -4659,7 +4669,7 @@ static VkDescriptorPool descriptor_pool_get(void)
 
 	if (slot->descriptor_pool_used >= slot->descriptor_pool_count)
 	{
-		VkDescriptorPoolSize sizes[3];
+		VkDescriptorPoolSize sizes[4];
 		VkDescriptorPoolCreateInfo info;
 		VkDescriptorPool *grown = realloc(slot->descriptor_pools, (slot->descriptor_pool_count + 1) * sizeof(*grown));
 
@@ -4683,6 +4693,14 @@ static VkDescriptorPool descriptor_pool_get(void)
 		info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 		info.maxSets = SETS_A_POOL;
 		info.poolSizeCount = vk.capabilities.color_read ? 3 : 2;
+		/* (display.ambient_occlusion "ray_traced"'s scene, in the occlusion's
+		sets, where the device has ray queries) */
+		if (vk.capabilities.ray_queries)
+		{
+			sizes[info.poolSizeCount].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+			sizes[info.poolSizeCount].descriptorCount = SETS_A_POOL;
+			info.poolSizeCount++;
+		}
 		info.pPoolSizes = sizes;
 		if (!check(vkCreateDescriptorPool(vk.device, &info, NULL, &slot->descriptor_pools[slot->descriptor_pool_count]),
 			"vkCreateDescriptorPool"))
@@ -4766,7 +4784,9 @@ static VkDescriptorSet occlusion_set(void)
 {
 	VkDescriptorImageInfo field_image, table_image, scenery_image, objects_image, pixels_image;
 	VkDescriptorBufferInfo block;
-	VkWriteDescriptorSet writes[6];
+	VkWriteDescriptorSet writes[7];
+	VkWriteDescriptorSetAccelerationStructureKHR scene_write;
+	VkAccelerationStructureKHR scene = VK_NULL_HANDLE;
 	struct xgpu_vulkan_image *field = xgpu_vulkan_world_ao_field_image();
 	struct xgpu_vulkan_image *table = xgpu_vulkan_world_ao_table_image();
 	struct xgpu_vulkan_image *scenery = xgpu_vulkan_world_ao_scenery_image();
@@ -4781,6 +4801,14 @@ static VkDescriptorSet occlusion_set(void)
 	/* (display.ambient_occlusion "world"'s block in this submission's ring) */
 	if (!xgpu_vulkan_world_ao_block(serial, &block))
 		return VK_NULL_HANDLE;
+	/* (display.ambient_occlusion "ray_traced"'s scene, where the device has
+	ray queries: the latest built, or an empty one) */
+	if (vk.capabilities.ray_queries)
+	{
+		scene = xgpu_vulkan_rt_scene();
+		if (!scene)
+			return VK_NULL_HANDLE;
+	}
 	field->used = vk.serial;
 	table->used = vk.serial;
 	scenery->used = vk.serial;
@@ -4826,7 +4854,20 @@ static VkDescriptorSet occlusion_set(void)
 	writes[4].pImageInfo = &objects_image;
 	writes[5].dstBinding = XGPU_VULKAN_BINDING_WORLD_AO_PIXELS;
 	writes[5].pImageInfo = &pixels_image;
-	vkUpdateDescriptorSets(vk.device, 6, writes, 0, NULL);
+	if (scene)
+	{
+		memset(&scene_write, 0, sizeof(scene_write));
+		scene_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+		scene_write.accelerationStructureCount = 1;
+		scene_write.pAccelerationStructures = &scene;
+		writes[6].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[6].pNext = &scene_write;
+		writes[6].dstSet = vk.occlusion_set;
+		writes[6].dstBinding = XGPU_VULKAN_BINDING_WORLD_AO_SCENE;
+		writes[6].descriptorCount = 1;
+		writes[6].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+	}
+	vkUpdateDescriptorSets(vk.device, scene ? 7 : 6, writes, 0, NULL);
 	return vk.occlusion_set;
 }
 
@@ -6987,6 +7028,19 @@ static int device_make(const struct xgpu_vulkan_options *options)
 	int display_timing = device_has_extension(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
 	VkPhysicalDevicePresentIdFeaturesKHR available_id, present_id;
 	VkPhysicalDevicePresentWaitFeaturesKHR available_wait, present_wait;
+	/* (display.ambient_occlusion "ray_traced": ray queries through
+	acceleration structures, where the device has them, xgpu_vulkan_rt.c;
+	HALO_VULKAN_NO_RAY_QUERIES as a device without them. Not a processor's
+	(llvmpipe's): its ray tracing is no faster than the distance field's
+	rays, and Mesa 25's crashed in its own code as the scene was built
+	again each frame, on the Spark) */
+	int ray_queries = device_has_extension(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) &&
+		device_has_extension(VK_KHR_RAY_QUERY_EXTENSION_NAME) &&
+		device_has_extension(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) &&
+		vk.properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_CPU && !getenv("HALO_VULKAN_NO_RAY_QUERIES");
+	VkPhysicalDeviceAccelerationStructureFeaturesKHR available_structures, structures;
+	VkPhysicalDeviceRayQueryFeaturesKHR available_queries, queries;
+	VkPhysicalDeviceBufferDeviceAddressFeatures addresses;
 	void **chain;
 
 	memset(&available, 0, sizeof(available));
@@ -7028,6 +7082,16 @@ static int device_make(const struct xgpu_vulkan_options *options)
 	{
 		*chain = &available_order;
 		chain = &available_order.pNext;
+	}
+	memset(&available_structures, 0, sizeof(available_structures));
+	available_structures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+	memset(&available_queries, 0, sizeof(available_queries));
+	available_queries.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+	if (ray_queries)
+	{
+		*chain = &available_structures;
+		available_structures.pNext = &available_queries;
+		chain = &available_queries.pNext;
 	}
 	memset(&available_id, 0, sizeof(available_id));
 	available_id.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR;
@@ -7158,6 +7222,28 @@ static int device_make(const struct xgpu_vulkan_options *options)
 		extensions[extension_count++] = VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME;
 		vk.display_timing = 1;
 	}
+	vk.capabilities.ray_queries = 0;
+	if (ray_queries && available_structures.accelerationStructure && available_queries.rayQuery &&
+		available12.bufferDeviceAddress)
+	{
+		memset(&structures, 0, sizeof(structures));
+		structures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+		structures.accelerationStructure = VK_TRUE;
+		memset(&queries, 0, sizeof(queries));
+		queries.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+		queries.rayQuery = VK_TRUE;
+		memset(&addresses, 0, sizeof(addresses));
+		addresses.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+		addresses.bufferDeviceAddress = VK_TRUE;
+		structures.pNext = &queries;
+		queries.pNext = &addresses;
+		*chain = &structures;
+		chain = &addresses.pNext;
+		extensions[extension_count++] = VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME;
+		extensions[extension_count++] = VK_KHR_RAY_QUERY_EXTENSION_NAME;
+		extensions[extension_count++] = VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME;
+		vk.capabilities.ray_queries = 1;
+	}
 
 	memset(&queue, 0, sizeof(queue));
 	queue.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -7185,6 +7271,25 @@ static int device_make(const struct xgpu_vulkan_options *options)
 		LOAD(vkSetHdrMetadataEXT)
 #undef LOAD
 	vkGetDeviceQueue(vk.device, vk.queue_family, 0, &vk.queue);
+	if (vk.capabilities.ray_queries)
+	{
+		VkPhysicalDeviceAccelerationStructurePropertiesKHR structure_properties;
+		VkPhysicalDeviceProperties2 properties;
+		struct xgpu_vulkan_rt_device device;
+
+		memset(&structure_properties, 0, sizeof(structure_properties));
+		structure_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR;
+		memset(&properties, 0, sizeof(properties));
+		properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+		properties.pNext = &structure_properties;
+		vkGetPhysicalDeviceProperties2(vk.physical, &properties);
+		memset(&device, 0, sizeof(device));
+		device.device = vk.device;
+		device.get_device_proc_addr = vkGetDeviceProcAddr;
+		device.memory = vk.memory_properties;
+		device.scratch_alignment = structure_properties.minAccelerationStructureScratchOffsetAlignment;
+		vk.capabilities.ray_queries = xgpu_vulkan_rt_create(&device);
+	}
 
 	vk.capabilities.largest_target = vk.properties.limits.maxImageDimension2D;
 	{
@@ -7231,19 +7336,20 @@ static int device_make(const struct xgpu_vulkan_options *options)
 			properties12.driverName[0] ? properties12.driverName : "driver", properties12.driverInfo[0] ? " " : "",
 			properties12.driverInfo);
 	}
-	host_logf(HOST_LOG_INFO, "vulkan: %s (Vulkan %u.%u.%u, driver %08x)%s%s%s%s%s%s", vk.properties.deviceName,
+	host_logf(HOST_LOG_INFO, "vulkan: %s (Vulkan %u.%u.%u, driver %08x)%s%s%s%s%s%s%s", vk.properties.deviceName,
 		VK_API_VERSION_MAJOR(vk.properties.apiVersion), VK_API_VERSION_MINOR(vk.properties.apiVersion),
 		VK_API_VERSION_PATCH(vk.properties.apiVersion), vk.properties.driverVersion,
 		vk.capabilities.custom_border_colors ? ", custom border colours" : "",
 		vk.capabilities.block_compression ? ", BC" : "", vk.capabilities.astc ? ", ASTC" : "",
 		vk.capabilities.color_read ? (vk.capabilities.raster_order ? ", local reads (ordered)" : ", local reads") : "",
-		vk.colorspaces ? ", swapchain colour spaces" : "", vk.validation ? ", validated" : "");
+		vk.colorspaces ? ", swapchain colour spaces" : "", vk.capabilities.ray_queries ? ", ray queries" : "",
+		vk.validation ? ", validated" : "");
 	return 1;
 }
 
 static int layouts_make(void)
 {
-	VkDescriptorSetLayoutBinding draw[5], textures[6];
+	VkDescriptorSetLayoutBinding draw[5], textures[7];
 	VkDescriptorSetLayoutCreateInfo info;
 	VkPipelineLayoutCreateInfo layout;
 	VkDescriptorSetLayout sets[4];
@@ -7343,6 +7449,17 @@ static int layouts_make(void)
 	textures[5].descriptorCount = 1;
 	textures[5].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 	info.bindingCount = 6;
+	/* (and display.ambient_occlusion "ray_traced"'s scene, where the device
+	has ray queries) */
+	if (vk.capabilities.ray_queries)
+	{
+		textures[6].binding = XGPU_VULKAN_BINDING_WORLD_AO_SCENE;
+		textures[6].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+		textures[6].descriptorCount = 1;
+		textures[6].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		textures[6].pImmutableSamplers = NULL;
+		info.bindingCount = 7;
+	}
 	info.pBindings = textures;
 	if (!check(vkCreateDescriptorSetLayout(vk.device, &info, NULL, &vk.occlusion_layout), "vkCreateDescriptorSetLayout"))
 		return 0;
@@ -7837,6 +7954,7 @@ void xgpu_vulkan_initialize_undo(void)
 	{
 		vkDeviceWaitIdle(vk.device);
 		xgpu_vulkan_pacing_stop();
+		xgpu_vulkan_rt_destroy();
 		if (vkDestroyDevice)
 			vkDestroyDevice(vk.device, NULL);
 	}

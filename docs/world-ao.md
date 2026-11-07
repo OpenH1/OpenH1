@@ -457,18 +457,84 @@ distance under a quarter voxel; a step is at least half a voxel. A distance coun
 ray starting inside solid (a model's surface within its own capsules) leaves it without hitting it, as front faces
 alone would. It returns whether it hit, how far, and what (structure or objects).
 
-### Hardware ray queries later (#602)
+### Hardware ray queries (#602)
 
-The same call is what a hardware backend implements: `rayQueryEXT` (`VK_KHR_ray_query`) in SPIR-V, Metal's
-`intersector` (M3 and later, A17 Pro) in MSL.
-- **Acceleration structures** from the scene (`world_scene.h`): the structure's collision triangles a BLAS per BSP,
-  built once a map; each object's shapes a BLAS of procedural AABBs (capsules and boxes intersected in a small
-  intersection function) or its collision mesh, instanced in a TLAS refit each frame from the same motion test.
-- **The mask** is the instance mask: bit 0 the structure, bit 1 the objects. **Front faces alone**: cull back-facing
-  triangles; a procedural shape reports no hit from inside.
-- **t_max and the hit:** the ray query's committed t, or a miss.
-- **Choosing:** per device at start (the ray query feature, `supportsRaytracing` and the GPU family); the distance
-  field is the fallback everywhere else, and the result the hardware's is compared against.
+`display.ambient_occlusion = "ray_traced"`: `"world"`, with the dynamic objects' rays (the pass's `world_ao_traced`)
+cast by the GPU's ray queries through the objects' own collision meshes, in place of the step through the
+distance-field scene. Everything else is `"world"`'s: the level's field and its reference on the models, the static
+scenery's pages and shapes, the pre-pass, the quarter-resolution pass, the upsampling and the history. Vulkan only
+(the Linux builds, Windows, Android), where the device has `VK_KHR_ray_query`, `VK_KHR_acceleration_structure` and
+buffer device addresses, and is not a processor's (llvmpipe); elsewhere, Metal included, it draws as `"world"` and
+says why once in the log. Off by default.
+
+- **The scene** (`world_rt.h`, `port/linux/game/world_rt.c`; read through `world_rt_game.c` and the proxies'
+  instances). The meshes, each made once a map as first needed and let go of at its end:
+  - the loaded structure BSP's collision geometry (as `world_scene.c` fans it: 41,354 triangles at a10, 27,914 at
+    a30, 5,468 at Blood Gulch), made again for another BSP;
+  - each definition's nodes' collision geometry, a mesh a node (the first permutation's BSP of the collision node of
+    the node's index, as the collision tests take them), turned to face out by the sign of the volume it holds;
+  - an item with none (a grenade) a box about its bounding sphere, `WORLD_RT_BOX_SHARE` (0.6) of its radius, up to
+    1 wu across. Anything else with none has no mesh: an emitter's, a wire's or the sky's ring's sphere is not its
+    shape.
+
+  The instances, each frame: the structure, and every dynamic object's meshes on its nodes as drawn (the
+  `render_interpolation.c` pose the proxies take). The static scenery the field and its pages hold, held weapons and
+  the first-person weapon are left out, as the proxies leave them out. a10's start: 154 meshes (96,388 triangles),
+  931 instances a frame; Blood Gulch: 45 meshes, 89 instances.
+
+  Collision meshes rather than the proxies' shapes: they are the objects' own shape, rigid on each node (so each is
+  a bottom-level structure built once, and only the instances move: no refit or skinning), what the proxies are
+  fitted to already, and an order of magnitude fewer triangles than the render models. The shapes are what a
+  distance field can hold, not what a ray tracer needs.
+- **The command stream** (version 21): `WORLD_AO_MESH` (a mesh's triangles; id 0 every mesh let go of),
+  `WORLD_AO_INSTANCES` (the frame's: a 3x4 transform, the mesh, the owner and the kind), the backend's
+  `ray_queries` in `INITIALIZE`'s answer, each draw's owner among the instances (`world_ao[2]` of the uniforms, its
+  datum index plus one), and the pass's `history[3]` 2. The pre-pass's twins write the owner into the inputs' last
+  word.
+- **The backend** (`port/linux/vulkan/xgpu_vulkan_rt.c`): each mesh a bottom-level structure (fast to trace), the
+  frame's new ones built in one call into 16 MB buffers of their own; the instances a top-level structure built
+  again each frame (fast to build) before the first pass that reads it, three in turn. The builds go in the early
+  commands, before the submission's draws, so no pass is ended for them. The occlusion set names the latest scene
+  (or an empty one) at binding 8. The pass's pipeline with ray queries is made with the map's; until it and the
+  scene are, the pass steps through the distance-field scene as `"world"`'s does.
+- **The rays** (`world_ao_traced_rays`, `xgpu_spirv.c`): the same 4 cosine-weighted rays a pixel from the same point,
+  0.1 to 2 wu, the same history blended in. Each takes the nearest front face it meets (`gl_RayFlagsCullBackFacing`):
+  an object's (its instance not opaque, so that each candidate but the pixel's own owner is committed) counts
+  1 − (t / 2)², the structure's (opaque, either way facing) stops the ray and counts nothing, since the lightmaps and
+  the field hold the level's own occlusion. So an object behind a wall or floor no longer shades through it, as the
+  distance-field scene's objects channel did. Every pixel casts them: the scene holds every dynamic object drawn, not
+  the cascades' reach. The dynamic objects' occlusion fields (the vehicles') are not walked: their meshes are traced.
+  The facing was checked on the GPU: a box wound counterclockwise seen from outside, placed about the camera, shades
+  nothing inside it unflipped and the floor inside it flipped (`HALO_VULKAN_RT_FLIP=1`).
+- **Measured** (RTX 4090, release, a10's start held still: fixed-step frames, offscreen, unpaced, windowed; the
+  medians of 600-frame windows of `HALO_GPU_STATS`' GPU time a frame, and of `HALO_VULKAN_DRAW_TIMES=10`'s pass,
+  `aofe`, in runs of their own):
+
+  | | 1920x1080 frame / pass | 3840x2160 frame / pass |
+  | --- | --- | --- |
+  | `"off"` | 0.368 ms / none | 0.640 ms / none |
+  | `"world"` | 0.517 ms / 0.066 ms | 1.297 ms / 0.245 ms |
+  | `"ray_traced"` | 0.708 ms / 0.115 ms | 1.547 ms / 0.369 ms |
+
+  The pass is 0.05 ms (1080p) and 0.12 ms (4K) dearer than the distance field's step; the rest of the frame's
+  difference (0.14 ms at 1080p, 0.13 at 4K) is the top-level structure's build of 931 instances each frame and its
+  barrier. The Spark's GB10 builds and traces it (the pass with ray queries, no error); its timings
+  are not taken yet (the machine went off the network mid-run).
+- **Compared** (a10's and b30's starts, the same frames; the occlusion as the shaded frame over `"off"`'s): on the
+  level, contact shade where an object's real shape meets it (a door in its frame, a body on the grass) and none
+  through floors; on the models, the same field and reference, so alike. The mean over a10's frame is 0.947 with
+  `"world"`, 0.945 with `"ray_traced"`; `"world"`'s soft halo on the wall behind a10's first crewman and consoles is
+  mostly gone (4 rays from a wall a metre from a crewman see little of him). At b30's start `"world"` darkens the
+  whole beach by about a fifth (a mean of 0.79 against 0.94; most likely the vehicles' occlusion fields, whose reach is 20 to
+  90 wu, are walked over it); `"ray_traced"`'s 2 wu rays do not: only what is near shades.
+- **Validated**: Vulkan's validation layers on the 4090 (a10, a30, Blood Gulch, the map changes between them): no
+  messages.
+- **Left**: the models' structure term by rays (needs the reference by rays too: a small pass at each object's
+  lighting point), which would drop the field's bake for `"ray_traced"`; a refit of the top-level structure where
+  only transforms change; the vehicles' long-reach occlusion, which the fields have and 2 wu rays have not; Metal's
+  `intersector` (M3, A17 Pro); the Deck (RADV), the Frame and phones, each measured first (#432's rule). llvmpipe's
+  (Mesa 25 on the Spark) crashed in its own code as the scene was built again each frame, not root-caused; it is left
+  without ray queries.
 
 ## Proxies (`world_proxies.h`)
 
@@ -695,7 +761,7 @@ objects, strength on the level, fade, proxy count; `parameters[1]` reference wei
 proxies; then the grid: `grid[0]` the camera, `grid[1]` each axis's scale and 1 / cell; then 1,024 uvec4 cells, two
 cells' 64-bit masks each (cell i's word w at `cells[i / 2][2 (i % 2) + w]`).
 
-**Command stream (version 16):**
+**Command stream (version 16; 21 with "ray_traced"'s records, [Hardware ray queries](#hardware-ray-queries-602)):**
 - `XGPU_STREAM_WORLD_AO_WINDOW` carries the block (`active` 0: withdrawn);
 - `XGPU_STREAM_WORLD_AO_FIELD` carries a slab of slices of a part, the table (4 bytes a texel), the atlas (1), the
   static scenery's pages (1) or the vehicles' fields' atlas (8: four halves) (`width` 0: release every part). The table comes first; the field is drawn with once both have their last slices. The
@@ -741,12 +807,13 @@ ignored.
 
 ## Settings
 
-- `display.ambient_occlusion`: `"off"` (default) | `"world"`. GTAO's `"subtle"` and `"strong"` (#574) are retired,
+- `display.ambient_occlusion`: `"off"` (default) | `"world"` | `"ray_traced"` ([Hardware ray
+  queries](#hardware-ray-queries-602)). GTAO's `"subtle"` and `"strong"` (#574) are retired,
   with their pre-pass and passes: their stripes on flat surfaces and at door and screen edges were not worth keeping.
   A config.toml or `HALO_AMBIENT_OCCLUSION` with either is read as `"world"`, and the file is written with it
   (port_config.c's `config_renamed_words`).
 - `"world"` works in VR's eye passes and with Metal's multisampling.
-- The menu (`tools/port_settings.py`, AMBIENT OCCLUSION) has OFF and WORLD.
+- The menu (`tools/port_settings.py`, AMBIENT OCCLUSION) has OFF, WORLD and RAY TRACED.
 - Classic's preset writes `"off"`, which bypasses everything.
 - `debug.world_ao_view` (D): the surfaces it shades drawn as the term alone, in grey. `debug.world_ao_test` (D): a
   made-up field (a plane about the camera) and shapes in place of B's and C's, to check the shading alone. `debug.world_proxies_view`

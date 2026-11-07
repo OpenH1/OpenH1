@@ -26,6 +26,10 @@ enum
 {
 	WORLD_AO_PROXIES = 1, /* the objects' proxies */
 	WORLD_AO_FIELD = 2, /* the structure's distance field (on objects alone) */
+	/* "ray_traced": the dynamic objects' occlusion traced by the GPU's ray
+	queries, through their collision meshes (world_rt.h), where the backend
+	has them; "world" otherwise */
+	WORLD_AO_RAYS = 4,
 };
 
 /* a draw's owner (halo_world_ao_object), past the window's proxies' owner
@@ -91,9 +95,10 @@ struct world_sdf_volume;
 
 /* ---------- prototypes (port/linux/game/world_ao.c) */
 
-/* display.ambient_occlusion is "world": WORLD_AO_* parts on; 0 off (any
-other value, the VR mode's eye passes until they are done, the Classic
-preset) */
+/* display.ambient_occlusion is "world" or "ray_traced": WORLD_AO_* parts
+on (WORLD_AO_RAYS where "ray_traced" is and the backend has ray queries);
+0 off (any other value, the VR mode's eye passes until they are done, the
+Classic preset) */
 int world_ao_mode(void);
 
 /* the map loaded (scenario_load: its scene found, its fields looked for in
@@ -268,9 +273,27 @@ void halo_world_ao_window(float const field[2][4], float const parameters[2][4],
 	int count, float const grid[2][4], unsigned int const (*cells)[4]);
 /* the object drawn next: its slot among the window's proxies' owners
 (WORLD_AO_OWNER_NONE: none, the structure; WORLD_AO_OWNER_UNLIT: drawn
-without the occlusion) and its reference, the field's occlusion at its
-lighting point, which its ambient sample already holds (1: none) */
-void halo_world_ao_object(int owner, float reference);
+without the occlusion), its reference, the field's occlusion at its
+lighting point, which its ambient sample already holds (1: none), and with
+"ray_traced" its owner among the ray-traced scene's instances (world_rt.h's
+world_rt_owner: 0 none), whose own the rays leave out */
+void halo_world_ao_object(int owner, float reference, unsigned long rays_owner);
+/* "ray_traced": whether the backend traces the occlusion's rays by the
+GPU's ray queries (FALSE until it has said: "world" is drawn), and why not
+where it has said it does not (NULL: it does, or has not said) */
+int halo_world_ao_ray_queries(void);
+char const *halo_world_ao_ray_queries_missing(void);
+/* ... its scene (port/linux/src/xgpu_stream.h's WORLD_AO_MESH, _INSTANCES):
+a mesh, count triangles of nine floats (id 0: every mesh let go of), and
+the frame's instances of the meshes (struct world_ao_instance, as
+xgpu_stream.h's struct xgpu_world_ao_instance) */
+struct world_ao_instance
+{
+	float transform[3][4];
+	unsigned int mesh, owner, kind, pad;
+};
+void halo_world_ao_mesh(unsigned long id, unsigned long count, float const *triangles);
+void halo_world_ao_instances(struct world_ao_instance const *instances, unsigned long count);
 /* where the window's opaque surfaces are drawn (WORLD_AO_SPAN_*), whatever
 the setting and while a map's pipelines are prepared: the draws that take
 the world's light when it is on, which the renderer's manifest notes of

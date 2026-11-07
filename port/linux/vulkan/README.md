@@ -151,6 +151,8 @@ four multiview views and fragment storage-buffer atomics.
 | `HALO_VULKAN_STATS=1` | Every 600 frames, submissions, passes, attachment loads/clears, clears drawn, draws, pipeline creation count/time, upload ring bytes, stores discarded, resolves in passes, passes continued and put aside and buffers renamed (`HALO_VULKAN_DISCARDS`), textures made, and the frames' GPU time (from each frame's first work to its last) and time between frames (not in the VR mode, which times its own); as `debug.gpu_stats` |
 | `HALO_VULKAN_DRAW_TIMES=<n>` | Every `n`th frame, a timestamp after each draw; the times between them, sorted, each the draw's that ended it, summed by the draws' `display.ambient_occlusion` kind (their pixel key's `ambient_occlusion`, in hex: `ao11` a model lit for each pixel with the world's, `ao13` the lightmap pass with it, `ao00` none) and logged every 20 timed frames (`vulkan: draw times a frame`), the rest of the frame after its last draw as `other`. A timestamp after every draw serializes the draws, so each time is the draw's own. For measuring only |
 | `HALO_VULKAN_DRAW_TIMES_FILE=<file>` | With `HALO_VULKAN_DRAW_TIMES`: each timed frame's draws written there, a line each (`<draw> <microseconds> <ambient occlusion> <lighting> <per-pixel lighting> <flags> <vertices>`), to compare two runs of a fixed-step game draw for draw |
+| `HALO_VULKAN_NO_RAY_QUERIES=1` | The device made without ray queries, as one that has none: `display.ambient_occlusion` `"ray_traced"` draws as `"world"` (`docs/world-ao.md`, "Hardware ray queries") |
+| `HALO_VULKAN_RT_FLIP=1` | `"ray_traced"`'s objects' triangles' facing turned (`VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR`), to check which way they face. For checking only |
 | `HALO_VULKAN_NO_SUBGROUPS=1` | Shaders made as for a device without the subgroups' bitwise operations in pixel shaders (`display.ambient_occlusion` `"world"`'s proxies walked a pixel at a time: `docs/world-ao.md`, "Where the time goes") |
 | `HALO_VULKAN_DISCARDS=0` | Every attachment stored, passes recorded in the main command buffer as drawn: discards off (they are on by default: attachments stored only where something later reads them, multisampled targets resolved in their pass and, with lazily allocated memory, transient, passes put aside; above) |
 | `HALO_VULKAN_ASIDE=0` | With `HALO_VULKAN_DISCARDS`: no passes put aside, no buffers renamed (above) |
@@ -421,7 +423,7 @@ preparation, or made at its first use. Metal draws the same GLSL.
 
 ## Ambient occlusion
 
-`display.ambient_occlusion` (`"off"` or `"world"`: `docs/world-ao.md`)
+`display.ambient_occlusion` (`"off"`, `"world"` or `"ray_traced"`: `docs/world-ao.md`)
 darkens the ambient light of each window's opaque surfaces where the world
 about them hides the sky, and not what a light adds (the flashlight, the
 dynamic lights): it multiplies that light alone, in the shaders that light

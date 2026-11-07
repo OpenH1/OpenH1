@@ -104,6 +104,11 @@ struct host_render_backend
 	pre-pass's draws are drawn as the surfaces' (xgpu_stream.h) */
 	void (*world_ao_prepass)(void *context, const struct xgpu_stream_world_ao_prepass *record);
 	void (*world_ao_cascades)(void *context, const struct xgpu_stream_world_ao_cascades *record);
+	/* display.ambient_occlusion "ray_traced" (xgpu_stream.h's WORLD_AO_MESH,
+	_INSTANCES: the decoder has checked their sizes, not the instances'
+	meshes and owners); NULL where the backend has no ray queries */
+	void (*world_ao_mesh)(void *context, const struct xgpu_stream_world_ao_mesh *record);
+	void (*world_ao_instances)(void *context, const struct xgpu_stream_world_ao_instances *record);
 
 	void (*target_create)(void *context, const struct xgpu_stream_target_create *record);
 	void (*target_delete)(void *context, uint32_t target);

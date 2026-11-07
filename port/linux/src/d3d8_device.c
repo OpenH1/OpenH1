@@ -43,6 +43,7 @@ Conventions carried over from the Xbox:
 #include "panini_projection.h"
 #include "world_ao.h"
 #include "world_cascades.h"
+#include "world_rt.h"
 #include "world_sdf.h"
 #include "main/console.h"
 
@@ -317,7 +318,10 @@ static struct
 	halo_gpu_prepared); the backend told to make the draws' twins too
 	(world_ao_twins) */
 	BOOL preparing, twins;
-} world_ao = { FALSE, FALSE, WORLD_AO_OWNER_NONE, 1.0f, FALSE, FALSE, FALSE, 2.0f, WORLD_AO_SPAN_NONE, FALSE, FALSE };
+	/* "ray_traced": the draw's object's owner among the ray-traced scene's
+	instances (0 none: halo_world_ao_object) */
+	unsigned long rays_owner;
+} world_ao = { FALSE, FALSE, WORLD_AO_OWNER_NONE, 1.0f, FALSE, FALSE, FALSE, 2.0f, WORLD_AO_SPAN_NONE, FALSE, FALSE, 0 };
 
 /* the draw takes the world's light where its window is given: one of the
 window's opaque surfaces, not the first-person weapon, not lighting itself
@@ -420,6 +424,7 @@ void halo_world_ao_window(float const field[2][4], float const parameters[2][4],
 	world_ao.active = count >= 0;
 	world_ao.owner = WORLD_AO_OWNER_NONE;
 	world_ao.reference = 1.0f;
+	world_ao.rays_owner = 0;
 	/* (found once a pixel: no more) */
 	if (world_ao.sampled || world_ao.prepass)
 		xgpu_backend_world_ao_prepass(XGPU_WORLD_AO_PREPASS_NONE, 0, NULL);
@@ -446,10 +451,59 @@ void halo_world_ao_window(float const field[2][4], float const parameters[2][4],
 	xgpu_backend_world_ao_window(made);
 }
 
-void halo_world_ao_object(int owner, float reference)
+void halo_world_ao_object(int owner, float reference, unsigned long rays_owner)
 {
 	world_ao.owner = owner;
 	world_ao.reference = reference;
+	world_ao.rays_owner = rays_owner < XGPU_WORLD_AO_INSTANCE_OWNERS ? rays_owner : 0;
+}
+
+/* ---------- display.ambient_occlusion "ray_traced" (port/linux/game/world_rt.c)
+
+The ray-traced scene's meshes and instances handed to the backend, which
+traces the dynamic objects' occlusion by the GPU's ray queries where it has
+them (xgpu_backend_capabilities' ray_queries: Vulkan's, where the device has
+VK_KHR_ray_query); the pass is told to (its history[3] 2) and each draw's
+uniforms carry its object's owner among the instances (world_ao[2]), which
+the pre-pass's twins write into their inputs' last word. */
+
+_Static_assert(sizeof(struct world_ao_instance) == sizeof(struct xgpu_world_ao_instance) &&
+	offsetof(struct world_ao_instance, mesh) == offsetof(struct xgpu_world_ao_instance, mesh) &&
+	offsetof(struct world_ao_instance, owner) == offsetof(struct xgpu_world_ao_instance, owner) &&
+	offsetof(struct world_ao_instance, kind) == offsetof(struct xgpu_world_ao_instance, kind) &&
+	WORLD_RT_STRUCTURE == XGPU_WORLD_AO_INSTANCE_STRUCTURE && WORLD_RT_OBJECT == XGPU_WORLD_AO_INSTANCE_OBJECT &&
+	WORLD_RT_MESHES == XGPU_STREAM_WORLD_AO_MESHES - 1 &&
+	WORLD_RT_INSTANCES == XGPU_STREAM_WORLD_AO_INSTANCES_MAXIMUM &&
+	WORLD_RT_MESH_TRIANGLES == XGPU_STREAM_WORLD_AO_MESH_TRIANGLES,
+	"the ray-traced scene as the stream carries it (world_rt.h, xgpu_stream.h)");
+
+int halo_world_ao_ray_queries(void)
+{
+	return xgpu_backend_capabilities.ray_queries != 0;
+}
+
+char const *halo_world_ao_ray_queries_missing(void)
+{
+	/* (said once the backend is ready: its capabilities are zeros before) */
+	if (xgpu_backend_capabilities.ray_queries || !xgpu_backend_capabilities.largest_target)
+		return NULL;
+#ifdef HALO_METAL
+	return "the Metal renderer has no ray queries yet";
+#else
+	return "the GPU or its driver has no Vulkan ray queries (VK_KHR_ray_query, VK_KHR_acceleration_structure)";
+#endif
+}
+
+void halo_world_ao_mesh(unsigned long id, unsigned long count, float const *triangles)
+{
+	if (xgpu_backend_capabilities.ray_queries)
+		xgpu_backend_world_ao_mesh(id, count, triangles);
+}
+
+void halo_world_ao_instances(struct world_ao_instance const *instances, unsigned long count)
+{
+	if (xgpu_backend_capabilities.ray_queries)
+		xgpu_backend_world_ao_instances((struct xgpu_world_ao_instance const *)instances, count);
 }
 
 void halo_world_ao_field(int part, unsigned long width, unsigned long height, unsigned long depth,
@@ -3381,7 +3435,7 @@ static void pipeline_state_describe(BOOL has_depth, struct xgpu_pipeline_key *ke
 }
 /* the uniforms of the latest draws, converted from these inputs; the serial
 counts the conversions */
-#define DRAW_UNIFORM_INPUT_COUNT (4 + 4 + 16 + 1 + 16 + 2 + 4 + 1 + 1 + 7 * D3DTSS_MAXSTAGES + 2)
+#define DRAW_UNIFORM_INPUT_COUNT (4 + 4 + 16 + 1 + 16 + 2 + 4 + 1 + 1 + 7 * D3DTSS_MAXSTAGES + 3)
 
 static DWORD draw_uniform_inputs[DRAW_UNIFORM_INPUT_COUNT];
 static struct xgpu_draw_uniforms draw_uniforms;
@@ -3409,7 +3463,7 @@ static void draw_uniforms_update(const float texture_scale[4][4])
 {
 	DWORD inputs[DRAW_UNIFORM_INPUT_COUNT];
 	unsigned long count = 0;
-	float world_object[2];
+	float world_object[3];
 	int stage;
 
 	memcpy(&inputs[count], device.viewport_scale, sizeof(device.viewport_scale));
@@ -3436,8 +3490,9 @@ static void draw_uniforms_update(const float texture_scale[4][4])
 	slot and reference; -1 and 1 without the window's block) */
 	world_object[0] = world_ao.active ? (float)world_ao.owner : (float)WORLD_AO_OWNER_NONE;
 	world_object[1] = world_ao.active ? world_ao.reference : 1.0f;
+	world_object[2] = world_ao.active ? (float)world_ao.rays_owner : 0.0f;
 	memcpy(&inputs[count], world_object, sizeof(world_object));
-	count += 2;
+	count += 3;
 	for (stage = 0; stage < D3DTSS_MAXSTAGES; stage++)
 	{
 		DWORD *state = D3D__TextureState[stage];
@@ -3490,6 +3545,7 @@ static void draw_uniforms_update(const float texture_scale[4][4])
 		converted->screen_offset = (float)UI_OFFSET;
 		converted->world_ao[0] = world_object[0];
 		converted->world_ao[1] = world_object[1];
+		converted->world_ao[2] = world_object[2];
 	}
 }
 
@@ -5310,7 +5366,7 @@ void halo_world_ao_prepass_end(short x0, short y0, short x1, short y1, float con
 
 		if (traced < 0)
 			traced = getenv("HALO_WORLD_AO_NO_TRACE") == NULL;
-		pass.history[3] = traced ? 1.0f : 0.0f;
+		pass.history[3] = !traced ? 0.0f : world_ao_mode() & WORLD_AO_RAYS ? 2.0f : 1.0f;
 		if (!traced)
 			pass.history[0] = 0.0f;
 	}
