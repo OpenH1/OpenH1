@@ -92,6 +92,10 @@ linear, clamped: the dynamic objects' rays step through them) */
 /* (the distance-field scene's cascades: a 3D RG8 snorm image, linear,
 clamped: xgpu.h's XGPU_WORLD_CASCADE*) */
 #define XGPU_SPIRV_BINDING_WORLD_CASCADES 7
+/* (display.ambient_occlusion "ray_traced": the ray-traced scene's top-level
+acceleration structure, which the occlusion's pass made with ray queries
+reads: xgpu_stream.h's WORLD_AO_MESH, _INSTANCES) */
+#define XGPU_SPIRV_BINDING_WORLD_AO_SCENE 8
 
 /* the locations of what the vertex shader hands the pixel shader */
 enum
@@ -199,6 +203,11 @@ struct xgpu_spirv_options
 	(world_proxies_occlusion), each shape's place and kind then the same for
 	all of its pixels */
 	BOOL subgroups;
+	/* display.ambient_occlusion "ray_traced": the occlusion's pass traces
+	the dynamic objects' rays by the device's ray queries (SPV_KHR_ray_query:
+	xgpu_spirv_world_ao_pass) through the scene at
+	XGPU_SPIRV_BINDING_WORLD_AO_SCENE */
+	BOOL ray_queries;
 };
 
 /* ---------- the VR mode's effects
@@ -290,8 +299,9 @@ WORLD_AO_PREPASS): the passes after the pre-pass, entry point "main": the
 vertex shader covering the viewport with one triangle (pass 0) and the
 occlusion (1: a vec4 a texel, each 2x2 block's nearest pixel's at a quarter
 of the pixels: the occlusion, the distance, the normal octahedral). Their bindings:
-XGPU_SPIRV_WORLD_AO_PASS_*. options: subgroups alone. FALSE if out of
-memory. */
+XGPU_SPIRV_WORLD_AO_PASS_*. options: subgroups and ray_queries alone (the
+occlusion's rays through the ray-traced scene: the pass's history[3] 2).
+FALSE if out of memory. */
 enum
 {
 	XGPU_SPIRV_WORLD_AO_VERTEX,
