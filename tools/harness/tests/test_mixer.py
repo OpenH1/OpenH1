@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, function, mutated, read, run  # noqa: E402
 
 SOURCE = "port/linux/src/dsound_sdl.c"
-CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "doppler-steady",
+CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "doppler-step",
          "parameter-ramp",
          "limiter", "obstruction", "channels", "surround", "lfe", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch",
          "dry-2d",
@@ -47,10 +47,11 @@ NEGATIVE_CONTROLS = {
     "adpcm-index-87": (("if (*index > 88) *index = 88;", "if (*index > 87) *index = 87;"), "adpcm"),
     "adpcm-not-interleaved": (("(group * channels + channel) * 4", "(channel * 8 + group) * 4"), "adpcm"),
     # the Doppler shift: left out, or the source's part with the wrong sign
-    "doppler-off": (("doppler_smoothed(stream, frames);\n\t/* (the step", "1.0;\n\t/* (the step"), "doppler"),
-    # the Doppler shift a step at each mix, as the velocities give it
-    "doppler-unsmoothed": (("#define DOPPLER_SMOOTHING_SECONDS 0.08f", "#define DOPPLER_SMOOTHING_SECONDS 0.0001f"),
-                           "doppler-steady"),
+    "doppler-off": (("doppler_heard(stream);\n\t/* (the step", "1.0;\n\t/* (the step"), "doppler"),
+    # the Doppler shift glided towards the velocities' over 80 ms (a 512-frame mix's share), as it was
+    "doppler-glide": (("stream->current_doppler = doppler_ratio(stream);",
+                       "stream->current_doppler += (doppler_ratio(stream) - stream->current_doppler) *\n"
+                       "\t\t(stream->gains_valid ? 0.125f : 1.0f);"), "doppler-step"),
     "doppler-source-sign": (("(listener_speed - source_speed) / DOPPLER_SPEED_OF_SOUND",
                              "(listener_speed + source_speed) / DOPPLER_SPEED_OF_SOUND"), "doppler"),
     # the Doppler shift as (c + v_listener) / (c + v_source), as it was: 1.216 and 0.849 where an Xbox gave 1.178

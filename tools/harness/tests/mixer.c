@@ -1320,42 +1320,50 @@ int main(int argc, char **argv)
 		voice_delete(stream);
 		return 0;
 	}
-	/* the Doppler shift glides: a voice whose velocity jumps from mix to mix
-	between 5 and 15 units a second towards the listener (as the camera's
-	velocity did between the frames, sound_manager.c refresh_listener: its
-	shift from mix to mix 1.046 or 1.153, 170 cents apart) is heard steady,
-	at the shift in between, its pitch moving under 25 cents */
-	CASE("doppler-steady")
+	/* the Doppler shift steps with the voice's position and velocity, as a
+	change of its pitch does (over PARAMETER_RAMP_FRAMES): recorded on an
+	Xbox, a source passing at 40 units a second, its position set every
+	34 ms, stepped its pitch at each set, from 1.356 coming to 0.644 going,
+	and settled within 2 ms. A voice coming at 40 units a second ten units to
+	the left of ahead, then going ten to the right, plays the second shift
+	from PARAMETER_RAMP_FRAMES into the mix after the change */
+	CASE("doppler-step")
 	{
-		static short samples[22050];
-		static float output[CHUNK * 2], send[CHUNK];
+		unsigned long frames = 22050, n;
+		short *samples = malloc(frames * sizeof(short));
+		double *signal = malloc(frames * sizeof(double)), *exact = malloc(frames * sizeof(double)), amplitude,
+			rest_db;
+		float *output = calloc(4 * CHUNK, sizeof(float)), coming, going;
 		struct sdl_stream *stream;
-		float lowest = 10.0f, highest = 0.0f, middle = 1.0f + 10.0f * 3.048f / 343.0f;
-		unsigned long mix;
 
+		for (n = 0; n < frames; n++)
+			signal[n] = 0.5 * sin(2.0 * PI * 1000.0 * n / 22050.0);
+		quantize(signal, samples, exact, frames);
 		resampler_mode = RESAMPLER_SINC;
 		listener.distance_factor = 3.048f;
-		stream = voice_new(samples, 22050, 1, 22050, 0);
+		stream = voice_new(samples, frames, 1, 22050, 0);
 		stream->has_3d = TRUE;
 		stream->mode = DS3DMODE_NORMAL;
-		stream->position[2] = 10.0f;
-		stream->minimum_distance = 1.0f;
+		stream->position[0] = -10.0f;
+		stream->position[2] = 1.0f;
+		stream->velocity[0] = 40.0f;
+		stream->minimum_distance = 4.0f;
 		stream->maximum_distance = 1000.0f;
-		for (mix = 0; mix < 40; mix++)
-		{
-			stream->velocity[2] = mix & 1 ? -15.0f : -5.0f;
-			mix_voice(stream, output, send, CHUNK);
-			/* (after a quarter of a second) */
-			if (mix * CHUNK >= OUTPUT_RATE / 4)
-			{
-				lowest = stream->current_doppler < lowest ? stream->current_doppler : lowest;
-				highest = stream->current_doppler > highest ? stream->current_doppler : highest;
-			}
-		}
-		CHECK(1200.0 * log2((double)highest / lowest) < 25.0 && lowest < middle && highest > middle,
-			"heard from x%.4f to x%.4f (%.1f cents), around x%.4f", lowest, highest,
-			1200.0 * log2((double)highest / lowest), middle);
+		render(stream, output, 2 * CHUNK, FALSE);
+		coming = stream->current_doppler;
+		stream->position[0] = 10.0f;
+		render(stream, output + 2 * CHUNK, 2 * CHUNK, FALSE);
+		going = stream->current_doppler;
+		tone_fit(output, 2 * CHUNK + PARAMETER_RAMP_FRAMES, 4 * CHUNK, 1000.0 * going / OUTPUT_RATE, &amplitude,
+			&rest_db);
+		CHECK(fabsf(coming - 1.356f) < 0.01f && fabsf(going - 0.644f) < 0.01f && rest_db < -40.0,
+			"shifted x%.4f coming, x%.4f going (an Xbox: 1.356, 0.644); the mix after the change, from %d frames "
+			"in, %.1f dB besides the second", coming, going, PARAMETER_RAMP_FRAMES, rest_db);
 		voice_delete(stream);
+		free(output);
+		free(exact);
+		free(signal);
+		free(samples);
 		return 0;
 	}
 	/* the mix at the Xbox's output level, half (-6.02 dB): recorded on an
