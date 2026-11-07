@@ -207,3 +207,9 @@ def test_results_differ_by_what_the_menus_drew():
                                            {"digest": "b", "picture": moved})
     assert menu_gallery.results_differ({"digest": "a", "picture": background},
                                        {"digest": "c", "picture": letters})
+
+
+def test_a_change_to_the_menus_alone_needs_no_build():
+    assert menu_gallery.menus_only(["port/assets/menus/ce/main_menu.xml", "tools/port_settings.py", "AGENTS.md"])
+    assert not menu_gallery.menus_only(["port/assets/menus/ce/main_menu.xml", "port/linux/game/menu_tags.c"])
+    assert menu_gallery.menus_only([])

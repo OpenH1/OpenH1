@@ -15,6 +15,10 @@ a text's scale applied.
 menu_layout_frame_begin and menu_layout_frame_end of a frame that is due) */
 int menu_layout_recording(void);
 
+/* the next frame's layout written to this path (in the data root), whatever
+debug.menu_layout says (the menu tour's: menu_tour.c) */
+void menu_layout_request(char const *path);
+
 /* the first player's render of the menus begins and ends: the screen's
 width in the menus' units, the open screen's tag name */
 void menu_layout_frame_begin(long screen_width);

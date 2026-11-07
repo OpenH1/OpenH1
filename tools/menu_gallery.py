@@ -2,32 +2,46 @@
 """Every menu screen in each input's variant, as one HTML contact sheet, with
 the screens' layout checked from the game's own geometry.
 
+    python tools/menu_gallery.py --check                # the layout checks alone, in seconds (CI's)
     python tools/menu_gallery.py                        # build/menu_gallery/index.html
-    python tools/menu_gallery.py --compare master       # only the screens whose pixels differ
+    python tools/menu_gallery.py --regenerate --screens audio_settings   # a generator's change, seen
+    python tools/menu_gallery.py --compare master       # only the screens that differ
     python tools/menu_gallery.py --remote 5900x.fabric  # on a Linux box over ssh
-    python tools/menu_gallery.py --screens settings --variants keyboard-16x9,touch-phone
 
 The screens are enumerated from the generated menu files
 (port/assets/menus/ce: the root, every screen an event opens, and every
 widget named *_screen that no other holds; VR's settings, drawn in the
-headset, with --vr), each opened by debug.menu_open in
-a hidden, muted run of its own (capture.py's: its own HOME, data root with the
-maps linked in, off the network and the clipboard), with
-debug.menu_layout writing the screen's geometry (port/linux/game/menu_layout.c).
-Runs go in parallel (--jobs). The variants are the maintainer's priorities:
-keyboard and mouse at 16:9, a controller at 16:10 (the Steam Deck's
-1280x800) and touch on a phone in landscape (2400x1080); --variants all adds
-4:3 and 21:9.
+headset, with --vr). One run of the game walks a variant's screens
+(debug.menu_tour: each opened alone, its layout written by debug.menu_layout's
+code, port/linux/game/menu_layout.c, and its frame saved), hidden and muted,
+in folders of its own (its HOME, its data root with the maps linked in), off
+the network and the clipboard; a variant's screens are split over as many
+runs as --jobs allows, all at once. The variants are the maintainer's
+priorities: keyboard and mouse at 16:9, a controller at 16:10 (the Steam
+Deck's 1280x800) and touch on a phone in landscape (2400x1080); --variants
+all adds 4:3 and 21:9.
 
---compare <git ref or build folder> renders the screens with that too (a ref
-is checked out in build/menu_gallery_trees/<commit> and built, the build's
-configure_args reused) and shows only the screens whose pixels differ, before
-| after, with a count of the rest.
+No build is needed for a change to the menu files: the runs read this tree's
+port/assets/menus over the build's own (the menus folder beside config.toml,
+menu_files.c), so a generator's change (--regenerate runs
+tools/port_settings.py first; tools/ce_menus.py needs the PC version's tags)
+is seen in seconds. --build-menus uses the build's own.
 
-The layout checks (each screen in each variant): text cut by its clip, text
-past its box, text over another's, anything off the screen, a phone's safe
-areas (an iPhone's in landscape, scaled), touch targets under about 7 mm on
-the phone, and prompts with the other input's glyphs. They are in the page
+--check draws no pictures (debug.null_renderer): the layout checks for every
+screen and variant in a few seconds, the mode for after each regenerate and
+for CI.
+
+--compare <git ref or build folder> renders the screens with that too and
+shows only the screens that changed, before | after, with a count of the
+rest. A ref that differs from this tree only in its menu files (and tools and
+documents) is drawn by this build with its files (git's archive of them);
+another is checked out in build/menu_gallery_trees/<commit> and built, the
+build's configure_args reused.
+
+The layout checks (each screen in each variant): text cut by its clip or
+past its box's foot, text over another's, anything off the screen, a phone's
+safe areas (an iPhone's in landscape, scaled), touch targets under about 7 mm
+on the phone, and prompts with the other input's glyphs. They are in the page
 and in report.json, and the exit status is 1 where there is one (with
 --compare, one the before has not; without, the touch targets are reported
 but do not fail it, since the touch layout's rows are 3 to 5 mm on every
@@ -315,7 +329,13 @@ def load_picture(path: Path):
 
 
 def save_picture(picture, path: Path, thumbnail: Path = None, thumbnail_width: int = 640):
-    """the picture as PNG, and a smaller copy for the page (PIL's, when it is there, else every nth pixel)"""
+    """the picture (a PIL image as JPEG, capture.py's as PNG), and a smaller copy for the page"""
+    if not isinstance(picture, capture.Picture):
+        picture.save(path.with_suffix(".jpg"), "JPEG", quality=90)
+        if thumbnail is not None:
+            height = max(1, round(picture.height * thumbnail_width / picture.width))
+            picture.resize((thumbnail_width, height), 2).save(thumbnail, "JPEG", quality=82)  # (BILINEAR)
+        return
     capture.write_png(picture, path)
     if thumbnail is None:
         return
@@ -328,6 +348,34 @@ def save_picture(picture, path: Path, thumbnail: Path = None, thumbnail_width: i
     except ImportError:
         pass
     capture.write_png(subsample(picture, max(1, picture.width // thumbnail_width)), thumbnail.with_suffix(".png"))
+
+
+def read_shot(path: Path, size):
+    """a tour's frame (a BMP file) at the size asked for (a Retina display's twice that, averaged): PIL's
+    image where it is there, else capture.py's picture"""
+    try:
+        from PIL import Image
+    except ImportError:
+        return capture.fit(capture.read_bmp(path), size)
+    with Image.open(path) as opened:
+        image = opened.convert("RGB")
+    if image.size != tuple(size) and image.width % size[0] == 0 and image.width // size[0] == image.height // size[1]:
+        image = image.resize(tuple(size), Image.BOX)
+    return image
+
+
+def kept(picture):
+    """a frame as the page's files and --compare need it: the full picture, a thumbnail, the picture of every
+    PICTURE_STEP-th pixel (capture.py's) and a digest. PIL's JPEG files (fast, small) where it is there, else
+    PNG files"""
+    if isinstance(picture, capture.Picture):
+        return picture, subsample(picture, PICTURE_STEP), picture_digest(picture)
+    raw = picture.tobytes()
+    small = picture.resize((max(1, picture.width // PICTURE_STEP), max(1, picture.height // PICTURE_STEP)),
+                           0)  # (NEAREST: every third pixel, as subsample takes them)
+    data, stride = small.tobytes(), small.width * 3
+    rows = [data[row * stride:(row + 1) * stride] for row in range(small.height)]
+    return picture, capture.Picture(small.width, small.height, rows), hashlib.sha256(raw).hexdigest()
 
 
 def subsample(picture, step: int):
@@ -394,7 +442,10 @@ def regions_differ(a, b, layouts, threshold: int = 48, share: float = 0.25) -> b
 
 def results_differ(before: dict, after: dict) -> bool:
     """whether a screen changed between two builds: by their layouts where both wrote one (what they drew,
-    and the pixels of their letters and glyphs), else by the whole picture"""
+    and the pixels of their letters and glyphs), else by the whole picture; without pictures (--check), by
+    their layouts alone"""
+    if "picture" not in before or "picture" not in after:
+        return layout_shape(before.get("layout") or {}) != layout_shape(after.get("layout") or {})
     if before.get("digest") == after.get("digest"):
         return False
     if before.get("layout") and after.get("layout"):
@@ -451,11 +502,13 @@ def pictures_differ(a, b, threshold: int = 24, fraction: float = 0.0005) -> floa
 
 # ---------- runs
 
-def run_environment(screen: Screen, variant: Variant, folder: Path, timeout: float) -> dict:
+def run_environment(variant: Variant, folder: Path, timeout: float, pictures: bool) -> dict:
+    """a tour's run: its own folders, hidden, muted, off the network and the clipboard, its frames' time
+    fixed (the menus' animations alike in two runs); no renderer where no pictures are wanted"""
     home, data, saves, shots = folder / "home", folder / "data", folder / "saves", folder / "shots"
-    for path in (home, data, saves, shots, home / "cache"):
+    for path in (home, data, saves, shots, home / "cache", data / "tour"):
         path.mkdir(parents=True, exist_ok=True)
-    width, height = capture.window_size(variant.size)
+    width, height = capture.window_size(variant.size) if pictures else variant.size
     environment = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(home), "TMPDIR": str(home),
         "XDG_CACHE_HOME": str(home / "cache"), "XDG_CONFIG_HOME": str(home / "config"),
@@ -468,23 +521,19 @@ def run_environment(screen: Screen, variant: Variant, folder: Path, timeout: flo
         "HALO_EXIT_AFTER": str(int(timeout)),
         "HALO_DISPLAY_MODE": "windowed", "HALO_WINDOW_SIZE": f"{width}x{height}",
         "HALO_RESOLUTION_SCALING": "native", "HALO_BUTTON_PROMPTS": variant.prompts,
-        "HALO_MENU_OPEN": screen.name, "HALO_MENU_LAYOUT": "layout.json",
-        "HALO_SCREENSHOT_DIR": str(shots), "HALO_SCREENSHOT_EVERY": str(SHOT_EVERY),
+        "HALO_MENU_TOUR": "tour.txt", "HALO_SCREENSHOT_DIR": str(shots),
         "HALO_FRAME_TIME": f"{1 / 60:.6f}", "HALO_RANDOM_SEED": "1",
     }
+    if not pictures:
+        environment["HALO_NULL_RENDERER"] = "1"
     if variant.touch:
         environment["HALO_TOUCH_MENUS"] = "1"
     environment.update(variant.settings)
     return environment
 
 
-# a picture every this many frames, the second one kept (the screen opened, its fade over)
-SHOT_EVERY = 90
-SHOT_INDEX = 1
 # the pictures kept for --compare: every this many pixels each way
 PICTURE_STEP = 3
-# seconds a run waits for its layout after its picture
-LAYOUT_WAIT = 4.0
 
 
 def place(source: Path, destination: Path):
@@ -498,9 +547,10 @@ def place(source: Path, destination: Path):
         shutil.copy2(source, destination)
 
 
-def take(build: Path, screen: Screen, variant: Variant, maps: Path, timeout: float, xvfb: bool):
-    """one hidden, muted run on the screen: its picture and layout (None where the game wrote none)"""
-    started = time.monotonic()
+def tour(build: Path, screens: list, variant: Variant, maps: Path, menus: Path, pictures: bool, xvfb: bool,
+         timeout: float) -> dict:
+    """one run of the game through the screens (debug.menu_tour), the menu files of a folder over its own
+    (its menus folder: no build for a change to them): {screen's name: (picture or None, layout or None)}"""
     folder = Path(tempfile.mkdtemp(prefix="menu-gallery-"))
     process = server = None
     try:
@@ -512,51 +562,43 @@ def take(build: Path, screen: Screen, variant: Variant, maps: Path, timeout: flo
         if sys.platform != "darwin":
             for library in build.glob("*.so*"):
                 place(library, game / library.name)
-        environment = run_environment(screen, variant, folder, timeout)
+        if menus:
+            # (the folder beside config.toml, which a build run from its folder keeps in its own)
+            (game / "menus").symlink_to(menus.resolve())
+        environment = run_environment(variant, folder, timeout, pictures)
+        (folder / "data" / "tour.txt").write_text("".join(screen.name + "\n" for screen in screens))
         (folder / "data" / "maps").symlink_to(maps.resolve())
         if sys.platform != "darwin":
-            if xvfb:
+            if xvfb and pictures:
                 server, display = capture.start_xvfb(variant.size)
                 environment.update({"DISPLAY": f":{display}", "SDL_VIDEO_DRIVER": "x11"})
             else:
                 environment["SDL_VIDEO_DRIVER"] = "offscreen"
-        log = open(folder / "halo.log", "w")
-        process = subprocess.Popen([str(game / "halo")], cwd=game, env=environment, stdin=subprocess.DEVNULL,
-                                   stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
-        layout_path = folder / "data" / "layout.json"
-        shots = folder / "shots"
-        shot = None
-        layout_after = None
-        while time.monotonic() - started < timeout + 10 and process.poll() is None:
-            complete = [frame for frame in sorted(shots.glob("*.bmp")) if capture.bmp_complete(frame)]
-            if shot is None and len(complete) > SHOT_INDEX:
-                shot = complete[SHOT_INDEX]
-                shot_at = time.monotonic()
-                layout_after = layout_path.stat().st_mtime_ns if layout_path.exists() else 0
-            # (the layout written once more after the picture: the screen as it was drawn then; a build
-            # without debug.menu_layout, or a screen that writes none, not waited for long)
-            if shot is not None and ((layout_path.exists() and layout_path.stat().st_mtime_ns != layout_after)
-                                     or time.monotonic() - shot_at > LAYOUT_WAIT):
-                break
-            time.sleep(0.05)
-        if process.poll() is None:
-            os.killpg(process.pid, signal.SIGKILL)
-        process.wait()
-        log.close()
-        if shot is None:
-            tail = (folder / "halo.log").read_text(errors="replace")[-2000:]
-            raise RuntimeError(f"{screen.name} ({variant.description}): no picture in {timeout:g} s\n{tail}")
-        picture = capture.fit(load_picture(shot), variant.size)
-        layout = None
-        if layout_path.exists():
+        with open(folder / "halo.log", "w") as log:
+            process = subprocess.Popen([str(game / "halo")], cwd=game, env=environment, stdin=subprocess.DEVNULL,
+                                       stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             try:
-                layout = json.loads(layout_path.read_text(errors="replace"))
-            except json.JSONDecodeError:
-                layout = None
-        # (a screen that closed at once, needing a state the run has not, or one under the virtual keyboard,
-        # writes no layout of its own)
-        opened = layout is not None and layout.get("screen_name", "").replace("\\", "/").endswith(screen.name)
-        return picture, layout, opened, time.monotonic() - started
+                process.wait(timeout=timeout + 10)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+        text = (folder / "halo.log").read_text(errors="replace")
+        if "debug.menu_tour: done" not in text:
+            raise RuntimeError(f"the tour ({variant.description}) did not finish in {timeout:g} s\n{text[-2000:]}")
+        results = {}
+        for index, screen in enumerate(screens):
+            picture = layout = None
+            shot = folder / "shots" / f"tour-{index}.bmp"
+            if pictures and shot.exists():
+                picture = read_shot(shot, variant.size)
+            path = folder / "data" / "tour" / f"{index}.json"
+            if path.exists():
+                try:
+                    layout = json.loads(path.read_text(errors="replace"))
+                except json.JSONDecodeError:
+                    layout = None
+            results[screen.name] = (picture, layout)
+        return results
     finally:
         if process and process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)
@@ -567,35 +609,48 @@ def take(build: Path, screen: Screen, variant: Variant, maps: Path, timeout: flo
 
 
 def render(build: Path, screens: list, variants: list, maps: Path, out: Path, label: str, jobs: int,
-           timeout: float, xvfb: bool) -> dict:
-    """every screen in every variant with a build: {(screen, variant): result}, the pictures in out/label"""
+           timeout: float, xvfb: bool, menus: Path = None, pictures: bool = True) -> dict:
+    """every screen in every variant with a build, a tour a variant's part of the screens (as many parts as
+    the jobs allow): {(screen, variant): result}, the pictures in out/label"""
+    parts = max(1, -(-jobs // len(variants))) if pictures else 1
+    size = -(-len(screens) // parts)
+    tasks = [(name, screens[start:start + size]) for name in variants for start in range(0, len(screens), size)]
     results = {}
-    tasks = [(screen, name) for screen in screens for name in variants]
 
     def one(task):
-        screen, name = task
+        name, part = task
         folder = out / label / name
         folder.mkdir(parents=True, exist_ok=True)
+        started = time.monotonic()
         try:
-            picture, layout, opened, seconds = take(build, screen, VARIANTS[name], maps, timeout, xvfb)
+            found = tour(build, part, VARIANTS[name], maps, menus, pictures, xvfb, timeout + len(part))
         except Exception as error:  # (reported in the page)
-            return task, {"error": str(error)}
-        stem = folder / screen.slug
-        save_picture(picture, stem.with_suffix(".png"), stem.with_suffix(".thumb.jpg"))
-        if layout is not None:
-            stem.with_suffix(".json").write_text(json.dumps(layout))
-        # (a third of the pixels each way kept for --compare's difference: a whole gallery's would not fit)
-        return task, {"picture": subsample(picture, PICTURE_STEP), "layout": layout, "opened": opened, "seconds": seconds,
-                      "digest": picture_digest(picture)}
+            return task, {screen.name: {"error": str(error)} for screen in part}, time.monotonic() - started
+        made = {}
+        for screen in part:
+            picture, layout = found[screen.name]
+            result = {"layout": layout, "opened": layout is not None and
+                      layout.get("screen_name", "").replace("\\", "/").endswith(screen.name)}
+            stem = folder / screen.slug
+            if layout is not None:
+                stem.with_suffix(".json").write_text(json.dumps(layout))
+            if picture is not None:
+                save_picture(picture, stem.with_suffix(".png"), stem.with_suffix(".thumb.jpg"))
+                # (a third of the pixels each way kept for --compare's difference: a whole gallery's would not
+                # fit)
+                _, small, digest = kept(picture)
+                result.update(picture=small, digest=digest)
+            elif pictures:
+                result["error"] = "no picture"
+            made[screen.name] = result
+        return task, made, time.monotonic() - started
 
-    done = 0
-    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
-        for task, result in pool.map(one, tasks):
-            results[(task[0].name, task[1])] = result
-            done += 1
-            status = "error" if "error" in result else f"{result['seconds']:.1f} s"
-            print(f"menu_gallery: {label} {done}/{len(tasks)} {task[0].label} [{task[1]}] {status}",
-                  file=sys.stderr, flush=True)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(tasks))) as pool:
+        for (name, part), made, seconds in pool.map(one, tasks):
+            for screen_name, result in made.items():
+                results[(screen_name, name)] = result
+            print(f"menu_gallery: {label} {name}: {len(part)} screens in {seconds:.1f} s", file=sys.stderr,
+                  flush=True)
     return results
 
 
@@ -615,6 +670,40 @@ def configure_arguments(tree: Path) -> list:
     if not match:
         return []
     return shlex.split(match.group(1).replace("$\n", " ").replace("$ ", " "))
+
+
+# what a ref may differ from this tree in and still be drawn by this tree's build, its menu files laid over
+# it: the menus' files, the tools, the documents
+MENUS_ONLY = ("port/assets/menus/", "tools/")
+
+
+def menus_only(changed) -> bool:
+    """whether files changed between two trees are ones a build need not be made again for"""
+    return all(name.startswith(MENUS_ONLY) or name.endswith(".md") for name in changed)
+
+
+def ref_runner(tree: Path, ref: str, trees: Path, build: Path):
+    """the build and menu files that draw a ref's menus: where it differs from this tree (and its uncommitted
+    changes) only in its menu files, tools and documents, this tree's build with its menu files (git's
+    archive of them, in trees/menus-<commit>); else its own build (ref_build)"""
+    commit = subprocess.run(["git", "-C", str(tree), "rev-parse", "--verify", f"{ref}^{{commit}}"],
+                            capture_output=True, text=True, check=True).stdout.strip()
+    changed = subprocess.run(["git", "-C", str(tree), "diff", "--name-only", commit], capture_output=True,
+                             text=True, check=True).stdout.split()
+    changed += subprocess.run(["git", "-C", str(tree), "ls-files", "--others", "--exclude-standard"],
+                              capture_output=True, text=True, check=True).stdout.split()
+    if menus_only(changed):
+        menus = (trees / f"menus-{commit[:12]}").resolve()
+        if not (menus / "port" / "assets" / "menus").is_dir():
+            menus.mkdir(parents=True, exist_ok=True)
+            archive = subprocess.run(["git", "-C", str(tree), "archive", commit, "port/assets/menus"],
+                                     capture_output=True, check=True).stdout
+            with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+                tar.extractall(menus, filter="data")
+        print(f"menu_gallery: {ref} differs only in its menus: drawn by this build", file=sys.stderr)
+        return build, menus / "port" / "assets" / "menus"
+    worktree_build = ref_build(tree, ref, trees)
+    return worktree_build, worktree_build.parent.parent / "port" / "assets" / "menus"
 
 
 def ref_build(tree: Path, ref: str, trees: Path) -> Path:
@@ -728,6 +817,11 @@ def figure(path: str, thumbnail: str, alt: str, caption: str) -> str:
             f' alt="{html.escape(alt)}"><figcaption>{caption}</figcaption></figure>')
 
 
+def full_of(out: Path, label: str, variant: str, screen: Screen) -> str:
+    stem = f"{label}/{variant}/{screen.slug}"
+    return f"{stem}.jpg" if (out / f"{stem}.jpg").exists() else f"{stem}.png"
+
+
 def thumbnail_of(out: Path, label: str, variant: str, screen: Screen) -> str:
     stem = f"{label}/{variant}/{screen.slug}"
     return f"{stem}.thumb.jpg" if (out / f"{stem}.thumb.jpg").exists() else f"{stem}.thumb.png" \
@@ -757,16 +851,23 @@ def write_page(out: Path, screens: list, variants: list, after: dict, problems: 
                 caption += ' <span class="badge">no layout: the screen closed, or a keyboard is up</span>'
             if found:
                 caption += f' <span class="badge bad">{len(found)}</span>'
-            full = f"after/{name}/{screen.slug}.png"
+            if "picture" not in result and before is None:
+                cells.append(f'<div><p class="meta">{caption}</p>{problem_list(found)}</div>')
+                continue
+            full = full_of(out, "after", name, screen)
             thumbnail = thumbnail_of(out, "after", name, screen)
             if before is not None:
                 previous = before.get((screen.name, name), {})
-                if "picture" in previous and "picture" in result and not results_differ(previous, result):
+                if not results_differ(previous, result):
                     continue
                 changed = True
                 new = set(map(problem_key, found)) - set(map(problem_key, before_problems.get((screen.name, name),
                                                                                               [])))
-                left = figure(f"before/{name}/{screen.slug}.png", thumbnail_of(out, "before", name, screen),
+                if "picture" not in result:
+                    cells.append(f'<div><p class="meta">{caption}: its layout changed</p>'
+                                 f"{problem_list(found, new)}</div>")
+                    continue
+                left = figure(full_of(out, "before", name, screen), thumbnail_of(out, "before", name, screen),
                               f"{screen.label}, before, {VARIANTS[name].description}", "before")
                 right = figure(full, thumbnail, f"{screen.label}, after, {VARIANTS[name].description}", "after")
                 cells.append(f'<div><p class="meta">{caption}</p><div class="pair">{left}{right}</div>'
@@ -931,6 +1032,12 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--vr", action="store_true", help="VR's settings screens too (drawn flat)")
     parser.add_argument("--trees", type=Path, default=ROOT / "build" / "menu_gallery_trees",
                         help="where --compare's git refs are checked out and built (build/menu_gallery_trees)")
+    parser.add_argument("--check", action="store_true",
+                        help="the layout checks alone: no pictures, no renderer (seconds; CI's)")
+    parser.add_argument("--regenerate", action="store_true",
+                        help="write the port's own screens again first (tools/port_settings.py)")
+    parser.add_argument("--build-menus", action="store_true",
+                        help="the build's own menu files, not this tree's (port/assets/menus) laid over them")
     parser.add_argument("--list", action="store_true", help="print the screens and variants and exit")
     parser.add_argument("--jobs", type=int, default=0, help="runs at a time (half the processors)")
     parser.add_argument("--timeout", type=float, default=60.0, help="seconds a run may take")
@@ -960,6 +1067,12 @@ def main(argv=None) -> int:
     if arguments.remote:
         return remote(arguments, argv)
     started = time.monotonic()
+    if arguments.regenerate:
+        subprocess.run([sys.executable, str(ROOT / "tools" / "port_settings.py")], check=True)
+        screens = [screen for screen in enumerate_screens(ROOT / MENUS, arguments.vr)
+                   if not arguments.screens or re.search(arguments.screens, screen.name)]
+    menus = None if arguments.build_menus else ROOT / "port" / "assets" / "menus"
+    pictures = not arguments.check
     jobs = arguments.jobs or max(1, (os.cpu_count() or 2) // 2)
     build = (arguments.build or capture.default_build(ROOT)).resolve()
     maps = (arguments.data or capture.default_maps(ROOT)).resolve()
@@ -978,14 +1091,16 @@ def main(argv=None) -> int:
                            text=True).stdout.strip()
     if arguments.compare:
         other = Path(arguments.compare).expanduser()
+        other_menus = None
         if not (other / "halo").is_file():
-            other = ref_build(ROOT, arguments.compare, arguments.trees)
+            other, other_menus = ref_runner(ROOT, arguments.compare, arguments.trees, build)
         title = f"{arguments.compare} | {title}"
         before = render(other, screens, arguments.variants, maps, out, "before", jobs, arguments.timeout,
-                        arguments.xvfb)
+                        arguments.xvfb, other_menus, pictures)
         before_problems = {key: check_layout(result["layout"], VARIANTS[key[1]]) if result.get("layout") else []
                            for key, result in before.items()}
-    after = render(build, screens, arguments.variants, maps, out, "after", jobs, arguments.timeout, arguments.xvfb)
+    after = render(build, screens, arguments.variants, maps, out, "after", jobs, arguments.timeout, arguments.xvfb,
+                   menus, pictures)
     problems = {key: check_layout(result["layout"], VARIANTS[key[1]]) if result.get("layout") else []
                 for key, result in after.items()}
     elapsed = time.monotonic() - started
@@ -1002,8 +1117,16 @@ def main(argv=None) -> int:
                                   if problem_key(entry) not in set(map(problem_key, before_problems.get(
                                       (entry["screen"], entry["variant"]), [])))]
     (out / "report.json").write_text(json.dumps(report, indent=1))
+    if arguments.check:
+        listed = report.get("new_problems", report["problems"])
+        for entry in listed:
+            if before is not None or entry["check"] not in ADVISORY:
+                print(f"{entry['variant']}: {entry['screen']}: {entry['check']}: {entry['message']}")
+        advisory = [entry for entry in listed if before is None and entry["check"] in ADVISORY]
+        if advisory:
+            print(f"({len(advisory)} screens with {', '.join(sorted(ADVISORY))} issues: report.json)")
     print(f"menu_gallery: {len(report['problems'])} layout issues, {len(report['errors'])} runs failed,"
-          f" {elapsed:.0f} s", file=sys.stderr)
+          f" {elapsed:.1f} s", file=sys.stderr)
     print(page)
     failing = report["new_problems"] if before is not None else [
         problem for problem in report["problems"] if problem["check"] not in ADVISORY]
