@@ -833,10 +833,26 @@ def thumbnail_of(out: Path, label: str, variant: str, screen: Screen) -> str:
         if (out / f"{stem}.thumb.png").exists() else f"{stem}.png"
 
 
+def note_list(notes: list) -> str:
+    """a screen's notes (tools/menu_notes.py's), each with its status and picture"""
+    if not notes:
+        return ""
+    lines = []
+    for note in notes:
+        status = "open" if note.get("status") == "open" else f"done {str(note.get('commit', ''))[:9]}"
+        widget = (note.get("widget") or "").rsplit("\\", 1)[-1] or "the screen"
+        picture = (f' <a href="{html.escape(Path(note["picture"]).as_uri())}">picture</a>'
+                   if note.get("picture") else "")
+        lines.append(f'<li><span class="check">{html.escape(status)}</span>: {html.escape(widget)}: '
+                     f'{html.escape(note.get("note", ""))}{picture}</li>')
+    return '<ul class="problems notes">' + "".join(lines) + "</ul>"
+
+
 def write_page(out: Path, screens: list, variants: list, after: dict, problems: dict, before: dict = None,
-               before_problems: dict = None, title: str = "", elapsed: float = 0.0) -> Path:
+               before_problems: dict = None, title: str = "", elapsed: float = 0.0, notes: dict = None) -> Path:
     sections = []
     unchanged = 0
+    notes = notes or {}
     total_problems = sum(len(found) for found in problems.values())
     for screen in screens:
         cells = []
@@ -863,7 +879,7 @@ def write_page(out: Path, screens: list, variants: list, after: dict, problems: 
             thumbnail = thumbnail_of(out, "after", name, screen)
             if before is not None:
                 previous = before.get((screen.name, name), {})
-                if not results_differ(previous, result):
+                if not results_differ(previous, result) and screen.name not in notes:
                     continue
                 changed = True
                 new = set(map(problem_key, found)) - set(map(problem_key, before_problems.get((screen.name, name),
@@ -880,7 +896,7 @@ def write_page(out: Path, screens: list, variants: list, after: dict, problems: 
             else:
                 alt = f"{screen.label}, {VARIANTS[name].description}"
                 cells.append(f"<div>{figure(full, thumbnail, alt, caption)}{problem_list(found)}</div>")
-        if before is not None and not changed:
+        if before is not None and not changed and screen.name not in notes:
             unchanged += 1
             continue
         generator = f" &middot; {html.escape(screen.generator)}" if screen.generator else ""
@@ -888,7 +904,8 @@ def write_page(out: Path, screens: list, variants: list, after: dict, problems: 
         sections.append(
             f'<section class="screen" data-name="{html.escape(screen.name.lower())}" data-problems="{count}">'
             f'<h2>{html.escape(screen.label)}{badge}</h2><p class="meta">{html.escape(screen.name)} &middot; '
-            f'{html.escape(screen.file)}{generator}</p><div class="row">{"".join(cells)}</div></section>')
+            f'{html.escape(screen.file)}{generator}</p>{note_list(notes.get(screen.name, []))}'
+            f'<div class="row">{"".join(cells)}</div></section>')
     summary = f"{len(screens)} screens, {len(variants)} variants, {total_problems} layout issues"
     if before is not None:
         summary = (f"{len(sections)} screens differ, {unchanged} unchanged (of {len(screens)}), "
@@ -1043,6 +1060,9 @@ def make_parser() -> argparse.ArgumentParser:
                         help="write the port's own screens again first (tools/port_settings.py)")
     parser.add_argument("--build-menus", action="store_true",
                         help="the build's own menu files, not this tree's (port/assets/menus) laid over them")
+    parser.add_argument("--notes", nargs="?", type=Path, const=ROOT / "build" / "menu_notes.jsonl", metavar="FILE",
+                        help="only the screens the menu studio's notes are on, each with its notes, before | after"
+                             " whether it changed or not (tools/menu_notes.py; build/menu_notes.jsonl)")
     parser.add_argument("--list", action="store_true", help="print the screens and variants and exit")
     parser.add_argument("--jobs", type=int, default=0, help="runs at a time (half the processors)")
     parser.add_argument("--timeout", type=float, default=60.0, help="seconds a run may take")
@@ -1063,6 +1083,15 @@ def main(argv=None) -> int:
     if arguments.screens:
         pattern = re.compile(arguments.screens)
         screens = [screen for screen in screens if pattern.search(screen.name)]
+    notes = {}
+    if arguments.notes:
+        import menu_notes
+        for note in menu_notes.read_notes(arguments.notes):
+            notes.setdefault(note.get("screen", ""), []).append(note)
+        screens = [screen for screen in screens if screen.name in notes]
+        if not screens:
+            print(f"menu_gallery: no screen has a note in {arguments.notes}", file=sys.stderr)
+            return 1
     if arguments.list:
         for screen in screens:
             print(f"{screen.name}  ({screen.file}, {screen.generator or 'by hand'})")
@@ -1075,7 +1104,8 @@ def main(argv=None) -> int:
     if arguments.regenerate:
         subprocess.run([sys.executable, str(ROOT / "tools" / "port_settings.py")], check=True)
         screens = [screen for screen in enumerate_screens(ROOT / MENUS, arguments.vr)
-                   if not arguments.screens or re.search(arguments.screens, screen.name)]
+                   if (not arguments.screens or re.search(arguments.screens, screen.name)) and
+                   (not notes or screen.name in notes)]
     menus = None if arguments.build_menus else ROOT / "port" / "assets" / "menus"
     pictures = not arguments.check
     jobs = arguments.jobs or max(1, (os.cpu_count() or 2) // 2)
@@ -1109,7 +1139,8 @@ def main(argv=None) -> int:
     problems = {key: check_layout(result["layout"], VARIANTS[key[1]]) if result.get("layout") else []
                 for key, result in after.items()}
     elapsed = time.monotonic() - started
-    page = write_page(out, screens, arguments.variants, after, problems, before, before_problems, title, elapsed)
+    page = write_page(out, screens, arguments.variants, after, problems, before, before_problems, title, elapsed,
+                      notes)
     report = {"screens": len(screens), "variants": arguments.variants, "seconds": round(elapsed, 1),
               "problems": [{"screen": key[0], "variant": key[1], **problem}
                            for key, found in problems.items() for problem in found],
