@@ -25,7 +25,9 @@ The zip holds:
                  display's settings, the map and the game, how long the game
                  has run, and the frame times of the last REPORT_SECONDS
                  (report_frame_summary: the frame rate, its 1% and 0.1% lows,
-                 the longest frames and when)
+                 the longest frames and when; report_gpu_summary: the GPU's
+                 time a frame, how busy the GPU, the game and the renderer's
+                 thread were, and what held the frames back)
   log.txt        this run's log (platform_log's lines), its last
                  REPORT_LOG_SIZE bytes, kept here: on Linux and Android the
                  log is not otherwise in a file
@@ -64,7 +66,7 @@ the host wrote; on a computer, a session that did not exit is one (killed,
 or a crash the host could not write). A run nobody watches does not ask: it
 logs what the report would say, and debug.crash_answer answers for a test.
 
-A frame's time costs a clock reading and two stores (report_frame_presented,
+A frame's time costs a clock reading and six stores (report_frame_presented,
 on the render thread, as report_write is); a log line a copy into the ring.
 */
 
@@ -109,6 +111,15 @@ void p2p_discord_game(int *hosting, int *playing, char *description, int size, i
 #define REPORT_HITCH_MS 50
 /* the longest frames listed */
 #define REPORT_LONGEST 8
+/* a frame's GPU time not measured (the backend gives none) */
+#define REPORT_GPU_UNKNOWN 0xFFFFFFFFu
+/* the share of the frames' time (percent) the game waits for vsync or the
+frame cap for them to be what holds the frames back, unless a part is busy
+for REPORT_BUSY_PERCENT of it (it would hold them back without them) */
+#define REPORT_PACED_PERCENT 20
+#define REPORT_BUSY_PERCENT 95
+/* the fewest frames of GPU time a verdict is given on */
+#define REPORT_GPU_FEWEST 30
 #define REPORT_LOG_SIZE (512 * 1024)
 /* the most of a log file's end taken */
 #define REPORT_FILE_MOST (4 * 1024 * 1024)
@@ -123,8 +134,14 @@ static struct
 {
 	uint32_t micros[REPORT_FRAMES];
 	uint32_t at_ms[REPORT_FRAMES];
+	/* the work in each (xgpu_backend_frame_times; the GPU's
+	REPORT_GPU_UNKNOWN where not measured) */
+	struct report_frame_work work[REPORT_FRAMES];
 	unsigned long count;
 	long long start_ns, last_ns;
+	/* the backend's counts at the last frame, and whether the GPU's was */
+	struct xgpu_backend_frame_times last;
+	int gpu_last_known;
 } report_frames;
 
 static struct
@@ -188,6 +205,8 @@ static long long report_now_ns(void)
 void report_frame_presented(void)
 {
 	long long now = report_now_ns();
+	struct xgpu_backend_frame_times times = {0};
+	int gpu_known = xgpu_backend_frame_times(&times);
 
 	/* (the issues of reports asked for in a game, once it is left) */
 	if (report_pending.count && !report_game_playing())
@@ -200,14 +219,24 @@ void report_frame_presented(void)
 	{
 		unsigned long index = report_frames.count & (REPORT_FRAMES - 1);
 		long long micros = (now - report_frames.last_ns) / 1000;
+		struct report_frame_work *work = &report_frames.work[index];
 
 		report_frames.micros[index] = (uint32_t)(micros > 0xFFFFFFFFLL ? 0xFFFFFFFFLL : micros);
 		report_frames.at_ms[index] = (uint32_t)((now - report_frames.start_ns) / 1000000);
+		/* (the counts' changes since the last frame, modulo 2^32) */
+		work->gpu = (uint32_t)times.gpu - (uint32_t)report_frames.last.gpu;
+		if (!gpu_known || !report_frames.gpu_last_known)
+			work->gpu = REPORT_GPU_UNKNOWN;
+		work->render = (uint32_t)times.render - (uint32_t)report_frames.last.render;
+		work->waited = (uint32_t)times.waited - (uint32_t)report_frames.last.waited;
+		work->paced = (uint32_t)times.paced - (uint32_t)report_frames.last.paced;
 		report_frames.count++;
 	}
 	else
 		report_frames.start_ns = now;
 	report_frames.last_ns = now;
+	report_frames.last = times;
+	report_frames.gpu_last_known = gpu_known;
 }
 
 void report_log_line(const char *line)
@@ -333,6 +362,87 @@ void report_frame_summary(const uint32_t *micros, const uint32_t *at_ms, unsigne
 		REPORT_PRINT("  %.1f ms, %.1f s ago\n", micros[frame] / 1000.0,
 			(now_ms >= at_ms[frame] ? now_ms - at_ms[frame] : 0) / 1000.0);
 	}
+#undef REPORT_PRINT
+	free(sorted);
+}
+
+/* What held the frames back, from their times (micros) and the work in
+each (work: the GPU's time on it, REPORT_GPU_UNKNOWN where not measured;
+the renderer's thread's, playing its records; the game's waits for the
+renderer and the display, and of those the display's pacing and
+display.max_fps's). Each part's share of the time: the GPU's, its time
+over the measured frames' time; the game's (its thread on the CPU), a
+frame's time less its waits; the renderer's thread's, its time; the
+pacing's, its waits; each over all the frames' time. The verdict: limited
+by vsync or the frame cap if the pacing is REPORT_PACED_PERCENT of the
+time or more and no part is busy for REPORT_BUSY_PERCENT of it; else the
+busiest of the GPU, the game and the renderer's thread (GPU-bound,
+CPU-bound: the game, or the renderer's thread). No verdict on fewer than
+REPORT_GPU_FEWEST measured frames. */
+void report_gpu_summary(const uint32_t *micros, const struct report_frame_work *work, unsigned long count,
+	char *text, size_t size)
+{
+	uint32_t *sorted;
+	unsigned long index, measured = 0;
+	double total = 0, measured_total = 0, gpu_total = 0, game_total = 0, render_total = 0, paced_total = 0,
+		gpu_share, game_share, render_share, paced_share, busiest;
+	size_t used = 0;
+	const char *verdict;
+
+	if (!size)
+		return;
+	text[0] = 0;
+	sorted = malloc((count ? count : 1) * sizeof(*sorted));
+	if (!sorted)
+	{
+		snprintf(text, size, "No memory to sum the GPU's times.\n");
+		return;
+	}
+	for (index = 0; index < count; index++)
+	{
+		uint32_t waited = work[index].waited < micros[index] ? work[index].waited : micros[index];
+
+		total += micros[index];
+		game_total += micros[index] - waited;
+		paced_total += work[index].paced < waited ? work[index].paced : waited;
+		render_total += work[index].render < micros[index] ? work[index].render : micros[index];
+		if (work[index].gpu == REPORT_GPU_UNKNOWN)
+			continue;
+		sorted[measured++] = work[index].gpu;
+		measured_total += micros[index];
+		gpu_total += work[index].gpu;
+	}
+#define REPORT_PRINT(...) \
+	(used += (size_t)snprintf(text + (used < size ? used : size - 1), used < size ? size - used : 1, __VA_ARGS__))
+	if (measured < REPORT_GPU_FEWEST || !(total > 0) || !(measured_total > 0))
+	{
+		REPORT_PRINT("GPU time: not measured\n");
+		free(sorted);
+		return;
+	}
+	qsort(sorted, measured, sizeof(*sorted), report_compare_micros);
+	gpu_share = 100.0 * gpu_total / measured_total;
+	if (gpu_share > 100.0)
+		gpu_share = 100.0;
+	game_share = 100.0 * game_total / total;
+	render_share = 100.0 * render_total / total;
+	paced_share = 100.0 * paced_total / total;
+	busiest = gpu_share > game_share ? gpu_share : game_share;
+	busiest = busiest > render_share ? busiest : render_share;
+	if (paced_share >= REPORT_PACED_PERCENT && busiest < REPORT_BUSY_PERCENT)
+		verdict = "limited by vsync or the frame cap";
+	else if (gpu_share >= busiest)
+		verdict = "GPU-bound";
+	else if (game_share >= busiest)
+		verdict = "CPU-bound (the game)";
+	else
+		verdict = "CPU-bound (the renderer's thread)";
+	REPORT_PRINT("GPU time: %.2f ms a frame, %.2f ms at the 99th percentile\n", gpu_total / 1000.0 / (double)measured,
+		sorted[(measured - 1) * 99 / 100] / 1000.0);
+	REPORT_PRINT("Busy: the GPU %.0f%%, the game %.0f%%, the renderer's thread %.0f%% of the time\n", gpu_share,
+		game_share, render_share);
+	REPORT_PRINT("Waiting for vsync or the frame cap: %.0f%% of the time\n", paced_share);
+	REPORT_PRINT("Verdict: %s\n", verdict);
 #undef REPORT_PRINT
 	free(sorted);
 }
@@ -798,6 +908,7 @@ static char *report_text(const char *name, int crash)
 	size_t size = 64 * 1024, used = 0, index;
 	char *text = malloc(size), line[512], build[160];
 	uint32_t *micros, *at_ms;
+	struct report_frame_work *work;
 	unsigned long count, first;
 	int hosting = 0, playing = 0, players = 0, most = 0;
 	long long now = report_now_ns();
@@ -861,7 +972,8 @@ static char *report_text(const char *name, int crash)
 	}
 	micros = malloc((count ? count : 1) * sizeof(*micros));
 	at_ms = malloc((count ? count : 1) * sizeof(*at_ms));
-	if (micros && at_ms)
+	work = malloc((count ? count : 1) * sizeof(*work));
+	if (micros && at_ms && work)
 	{
 		char *summary = malloc(4096);
 
@@ -869,16 +981,23 @@ static char *report_text(const char *name, int crash)
 		{
 			micros[index] = report_frames.micros[(first + index) & (REPORT_FRAMES - 1)];
 			at_ms[index] = report_frames.at_ms[(first + index) & (REPORT_FRAMES - 1)];
+			work[index] = report_frames.work[(first + index) & (REPORT_FRAMES - 1)];
 		}
 		if (summary)
 		{
 			report_frame_summary(micros, at_ms, count, now_ms, summary, 4096);
 			REPORT_PRINT("%s", summary);
+			if (count)
+			{
+				report_gpu_summary(micros, work, count, summary, 4096);
+				REPORT_PRINT("%s", summary);
+			}
 			free(summary);
 		}
 	}
 	free(micros);
 	free(at_ms);
+	free(work);
 	REPORT_PRINT("```\n");
 #undef REPORT_PRINT
 	return text;

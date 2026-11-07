@@ -1616,6 +1616,8 @@ void xgpu_metal_capabilities(struct xgpu_metal_capabilities *capabilities)
 /* the GPU's time on a command buffer, of the game's or the presentation's:
 the time the GPU was busy with any is their union (they overlap: the GPU
 begins one before the last is done) */
+static double gpu_busy_total;
+
 void xgpu_metal_gpu_interval(double start, double end)
 {
 	static double busy_until;
@@ -1624,10 +1626,23 @@ void xgpu_metal_gpu_interval(double start, double end)
 	if (start < busy_until)
 		start = busy_until;
 	if (end > start)
+	{
 		metal.statistics.gpu_busy_seconds += end - start;
+		gpu_busy_total += end - start;
+	}
 	if (end > busy_until)
 		busy_until = end;
 	pthread_mutex_unlock(&metal.statistics_lock);
+}
+
+uint64_t xgpu_metal_gpu_busy_nanoseconds(void)
+{
+	double total;
+
+	pthread_mutex_lock(&metal.statistics_lock);
+	total = gpu_busy_total;
+	pthread_mutex_unlock(&metal.statistics_lock);
+	return (uint64_t)(total * 1e9);
 }
 
 void xgpu_metal_statistics(struct xgpu_metal_statistics *statistics)

@@ -52,6 +52,21 @@ void report_crash_answer(int report);
 first; now_ms, the report's time */
 void report_frame_summary(const uint32_t *micros, const uint32_t *at_ms, unsigned long count, uint32_t now_ms,
 	char *text, size_t size);
+/* a frame's work (microseconds each): the GPU's (0xFFFFFFFF: not
+measured), the renderer's thread's, the game's waits for the renderer and
+the display, and of those the display's pacing and display.max_fps's */
+struct report_frame_work
+{
+	uint32_t gpu, render, waited, paced;
+};
+
+/* what held the frames back, in report.md's words: the GPU's time a frame
+(its average and 99th percentile), the GPU's, the game's and the
+renderer's thread's shares of the time, the pacing's, and the verdict
+(GPU-bound, CPU-bound, or limited by vsync or the frame cap): micros, each
+frame's time, work, the work in it */
+void report_gpu_summary(const uint32_t *micros, const struct report_frame_work *work, unsigned long count,
+	char *text, size_t size);
 /* a new GitHub issue's address on OpenH1's repository, its title and body
 filled in (percent-encoded; the body cut at a line to keep the address
 within most bytes); 1 if it fits */

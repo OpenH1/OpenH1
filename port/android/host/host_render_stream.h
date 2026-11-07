@@ -261,6 +261,10 @@ void host_render_stream_call(void (*function)(void *argument), void *argument);
 statistics, for the host's logs (read as they are, racing with their
 writers) */
 const struct xgpu_stream_ring *host_render_stream_ring(void);
+/* the backend's GPU time on the frames so far, in nanoseconds (a running
+total; at a frame's end, on the render thread): written into the ring for
+the guest (gpu_microseconds: a report's) */
+void host_render_stream_gpu_time(uint64_t nanoseconds);
 
 /* ---------- pacing by the display (frame_pacing.h)
 

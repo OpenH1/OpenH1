@@ -49,6 +49,7 @@ black, white or blocks.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 void platform_log(const char *format, ...) __attribute__((format(printf, 1, 2)));
 
@@ -210,6 +211,12 @@ static struct
 	{
 		uint32_t width, height;
 	} targets[TARGET_MAXIMUM];
+
+	/* the time the game has waited so far, and of it the time paced by
+	display.max_fps (xgpu_backend_frame_times), and the host's count of
+	its waits as last read */
+	uint64_t waited_nanoseconds, capped_nanoseconds;
+	uint32_t host_waited;
 } stream;
 
 /* (tests and measurements) the ring's size and frames in flight, before
@@ -649,6 +656,31 @@ const char *xgpu_backend_device(void)
 {
 	return stream.open ? stream.capabilities.device : "";
 }
+
+int xgpu_backend_frame_times(struct xgpu_backend_frame_times *times)
+{
+	times->waited = (unsigned long)(uint32_t)(stream.waited_nanoseconds / 1000u);
+	times->paced = (unsigned long)(uint32_t)(stream.capped_nanoseconds / 1000u);
+	times->render = 0;
+	if (!stream.open)
+		return 0;
+	times->paced = (unsigned long)(uint32_t)(times->paced + load_acquire(&stream.ring->paced_microseconds));
+	times->render = load_acquire(&stream.ring->render_microseconds);
+	if (!load_acquire(&stream.ring->gpu_measured))
+		return 0;
+	times->gpu = load_acquire(&stream.ring->gpu_microseconds);
+	return 1;
+}
+
+#ifndef XGPU_STREAM_TEST
+static uint64_t monotonic_nanoseconds(void)
+{
+	struct timespec now;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (uint64_t)now.tv_sec * 1000000000u + (uint64_t)now.tv_nsec;
+}
+#endif
 
 /* (at exit) the frames submitted played, the render thread ended */
 void xgpu_stream_encode_close(void)
@@ -1850,11 +1882,26 @@ void xgpu_backend_frame_end(void)
 	xgpu_images_frame_end();
 	xgpu_texture_cache_begin_frame();
 #endif
+	/* (the game's waits for the host this frame: room, a frame retired, a
+	synchronous record, the display's pacing; a report's) */
+	{
+		uint32_t host_waited = stream.ring->wait_nanoseconds;
+
+		stream.waited_nanoseconds += (uint32_t)(host_waited - stream.host_waited);
+		stream.host_waited = host_waited;
+	}
 #ifndef XGPU_STREAM_TEST
 	/* (the frames paced by display.max_fps while the host shows this one:
 	sdl_platform.c; with vsync on, the Metal host's display paces them
 	instead, frame_pacing.h) */
-	platform_video_swap();
+	{
+		uint64_t swap_start = monotonic_nanoseconds(), swapped;
+
+		platform_video_swap();
+		swapped = monotonic_nanoseconds() - swap_start;
+		stream.waited_nanoseconds += swapped;
+		stream.capped_nanoseconds += swapped;
+	}
 #endif
 }
 
