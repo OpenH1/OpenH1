@@ -13,7 +13,7 @@ from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run
 
 CASES = ["turret_default", "turret_match", "turret_number", "third_person_seat", "turret_exit",
          "leaving_third_person", "match_exit", "entering", "turned_back", "respawn", "scoped_in_seat", "dead",
-         "neutral", "scripted", "wider_with_panini", "past_the_widest", "zoomed_reticle_size"]
+         "neutral", "scripted", "wider_with_panini", "past_the_widest", "zoomed_reticle_size", "unzooming"]
 CONTROLS = [
     # display.vehicle_fov unread: the seat at display.fov's (#449's)
     ("\t\trequested_tangent = vehicle_tangent;", "\t\trequested_tangent = foot_tangent;", "turret_default"),
@@ -51,6 +51,12 @@ CONTROLS = [
     # left as the last frame's where the view is the game's own (death)
     ("\t*reticle_size = 1.0f;\n\t*unzoomed_drawn_tangent",
      "\t*reticle_size = reticle_sizes[local_player_index];\n\t*unzoomed_drawn_tangent", "dead"),
+    # (#747) the zoom's easing out unseen: the reticle snaps back to its size as the scope is let go
+    ("!scaled_scopes[local_player_index] && reticle_widenings[local_player_index] > 1.0001f;", "FALSE;",
+     "unzooming"),
+    # the unzoomed view taken for an easing one (the arctangent's hair over 1)
+    ("reticle_widenings[local_player_index] > 1.0001f;", "reticle_widenings[local_player_index] > 0.0f;",
+     "unzooming"),
     # the director's neutral view widened
     ("perspective != _director_perspective_first_person &&", "perspective == _director_perspective_scripted &&",
      "neutral"),
@@ -116,7 +122,9 @@ def test_the_reticle_takes_it():
     # a scope's pieces are the items drawn only zoomed (the VR smart-link's zoomed layout's), and, zoomed, the
     # reticle too, which the tag draws with them (the pistol's circle under its range and diamond: #738)
     weapon = read("source/interface/hud_weapon.c")
-    assert "crosshair->states[_crosshair_state_zoom].value.reference_data > 0 &&\n" in weapon
+    assert "(crosshair->states[_crosshair_state_zoom].value.reference_data > 0 ||\n" in weapon
+    # (and, let go, while the view eases back out: #747)
+    assert "render_fov_zoom_easing(render.local_player_index)) &&\n" in weapon
     # (with the Xbox's zoom; display.scale_scoped_fov's keeps the unzoomed size, #594)
     assert "render_fov_zoomed_reticle_with_scope(render.local_player_index) ?\n" in weapon
     assert "\treturn !(local_player_index >= 0 && local_player_index < MAXIMUM_LOCAL_PLAYERS &&\n" \
