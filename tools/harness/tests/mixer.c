@@ -638,6 +638,43 @@ static void doppler_figures(float velocity, float listener_velocity, DWORD mode,
 	free(samples);
 }
 
+/* the amplitude of frequency hz in frames of x, Blackman windowed */
+static double window_bin(const float *x, unsigned long frames, double hz)
+{
+	double re = 0.0, im = 0.0, sum = 0.0;
+	unsigned long n;
+
+	for (n = 0; n < frames; n++)
+	{
+		double w = 0.42 - 0.5 * cos(2.0 * 3.14159265358979 * n / (frames - 1)) +
+			0.08 * cos(4.0 * 3.14159265358979 * n / (frames - 1));
+		double angle = 2.0 * 3.14159265358979 * hz * n / OUTPUT_RATE;
+
+		re += w * x[n] * cos(angle);
+		im -= w * x[n] * sin(angle);
+		sum += w;
+	}
+	return 2.0 * sqrt(re * re + im * im) / sum;
+}
+
+/* the amplitude of frequency hz in frames of x, its last 96 faded out (a
+click's: analyses.py's kernel_spectrum) */
+static double segment_bin(const float *x, unsigned long frames, double hz)
+{
+	double re = 0.0, im = 0.0;
+	unsigned long n;
+
+	for (n = 0; n < frames; n++)
+	{
+		double w = n + 96 < frames ? 1.0 : 0.5 + 0.5 * cos(3.14159265358979 * (n + 96 - frames) / 96.0);
+		double angle = 2.0 * 3.14159265358979 * hz * n / OUTPUT_RATE;
+
+		re += w * x[n] * cos(angle);
+		im -= w * x[n] * sin(angle);
+	}
+	return sqrt(re * re + im * im);
+}
+
 /* ---------- 3D audio: the HRTF and the pan */
 
 /* a mono 3D voice of frames frames at rate, right, up and ahead of the
@@ -1376,6 +1413,80 @@ int main(int argc, char **argv)
 		resampler_mode = RESAMPLER_SINC;
 		return 0;
 	}
+	/* audio.resampler = "xbox" at 22.05 kHz, as recorded (issue 792's
+	eighth run): a 4003 Hz sine's images at 0.82, 1.18 and 1.82 of the
+	source's rate (18047, 21947 and 7903 Hz) -63, -71 and -79 dB under it;
+	and sixteen one-sample clicks 1103 frames apart, each on another phase,
+	whose 2 kHz bands of 16 to 22 kHz average -34, -41 and -50 dB under
+	their passband (0.5 kHz to 0.7 of the source's Nyquist rate), where the
+	low pass's lobe from 1.3 to 1.6 of the source's rate comes down */
+	CASE("resampler-xbox-images")
+	{
+		static const double images[3][3] = { { 18047.0, -63.0, 2.0 }, { 21947.0, -71.0, 2.0 },
+			{ 7903.0, -79.0, 6.0 } };
+		static const double bands[3][2] = { { 16000.0, -34.0 }, { 18000.0, -41.0 }, { 20000.0, -50.0 } };
+		unsigned long frames = 30000, n, k, click;
+		short *samples = calloc(frames, sizeof(short));
+		float *output = calloc(48000, sizeof(float));
+		double band_sum[3] = { 0 };
+		struct sdl_stream *stream;
+
+		resampler_mode = RESAMPLER_XBOX;
+		for (n = 0; n < frames; n++)
+			samples[n] = (short)floor(16384.0 * sin(2.0 * 3.14159265358979 * 4003.0 * n / 22050.0) + 0.5);
+		stream = voice_new(samples, frames, 1, 22050, 0);
+		render(stream, output, 48000, FALSE);
+		voice_delete(stream);
+		{
+			/* (32768 frames from 0.1 s, Blackman windowed: each image's
+			level under the tone's) */
+			double tone = window_bin(output + 4800, 32768, 4003.0);
+
+			for (k = 0; k < 3; k++)
+			{
+				double level = 20.0 * log10(window_bin(output + 4800, 32768, images[k][0]) / tone);
+
+				CHECK(fabs(level - images[k][1]) <= images[k][2], "a 4003 Hz sine at 22.05 kHz: its image at %.0f Hz "
+					"is %+.1f dB under it (the Xbox's: %g)", images[k][0], level, images[k][1]);
+			}
+		}
+		memset(samples, 0, frames * sizeof(short));
+		for (click = 0; click < 16; click++)
+			samples[551 + 1103 * click] = 16384;
+		stream = voice_new(samples, frames, 1, 22050, 0);
+		memset(output, 0, 48000 * sizeof(float));
+		render(stream, output, 40000, FALSE);
+		voice_delete(stream);
+		for (click = 0; click < 16; click++)
+		{
+			/* (from 2 ms before the click's largest frame to 8 ms after) */
+			unsigned long start = (unsigned long)((551.0 + 1103.0 * click) * OUTPUT_RATE / 22050.0) - 40, peak = start;
+			double passband = 0.0, f;
+			unsigned long count = 0;
+
+			for (n = start; n < start + 80; n++)
+				peak = fabsf(output[n]) > fabsf(output[peak]) ? n : peak;
+			for (f = 500.0; f <= 0.7 * 11025.0; f += 50.0, count++)
+				passband += pow(segment_bin(output + peak - 96, 480, f), 2);
+			passband /= count;
+			for (k = 0; k < 3; k++)
+			{
+				double power = 0.0;
+
+				for (f = bands[k][0]; f < bands[k][0] + 2000.0; f += 50.0)
+					power += pow(segment_bin(output + peak - 96, 480, f), 2) / 40.0;
+				band_sum[k] += power / passband / 16.0;
+			}
+		}
+		for (k = 0; k < 3; k++)
+			CHECK(fabs(10.0 * log10(band_sum[k]) - bands[k][1]) <= 2.0, "sixteen clicks at 22.05 kHz: %.0f to %.0f kHz "
+				"averages %+.1f dB under their passband (the Xbox's: %g)", bands[k][0] / 1000.0,
+				bands[k][0] / 1000.0 + 2.0, 10.0 * log10(band_sum[k]), bands[k][1]);
+		resampler_mode = RESAMPLER_SINC;
+		free(output);
+		free(samples);
+		return 0;
+	}
 	/* audio.resampler = "linear": each frame the two source frames around
 	it, weighted by how near it is to each */
 	CASE("linear")
@@ -1993,9 +2104,13 @@ int main(int argc, char **argv)
 	its volume and rolloff together at twice their level, the pan's, the
 	HRTF's and the room's gains after them; each step's level under its
 	level at 0 dB, the same through the pan, the HRTF and to the room, and
-	silent from -44 dB. Its room send no louder than its rolloff: in the
-	cave (a room of -10 dB) at -10 dB 2 m away (-6 dB of rolloff), and at
-	-20 dB 10 m away */
+	silent from -44 dB. Its room send twice its room level and rolloff
+	(issue 792's eighth run: noise bursts in the cave, a room of -10 dB):
+	-4 dB within its minimum distance, -10 dB 2 m away, 14 dB under that 10
+	m away. With a direct level of -10 dB its direct path's steps are those
+	of a voice 10 dB quieter (recorded 10 m away: -25 dB at -24.2, -27 at
+	-26.6, -29 at -30.1, -31 at -36.0, silent from -33), its room send's
+	those of the voice without it */
 	CASE("quiet-levels-3d")
 	{
 		static const double recorded[][2] = {
@@ -2003,9 +2118,11 @@ int main(int argc, char **argv)
 			{ -38.0, -38.3 }, { -40.0, -42.8 }, { -42.0, -52.1 },
 		};
 		static const double silent[] = { -44.0, -46.0, -50.0, -60.0 };
-		static const float aheads[] = { 2.0f, 10.0f };
+		static const float aheads[] = { 2.0f, 10.0f, 0.5f };
+		static const double direct_recorded[][2] = { { -25.0, -24.2 }, { -27.0, -26.6 }, { -29.0, -30.1 },
+			{ -31.0, -36.0 }, { -33.0, -999.0 }, { -35.0, -999.0 } };
 		short samples[64] = { 0 };
-		float reference[2][4] = { { 0 } };
+		float reference[3][4] = { { 0 } };
 		int pass, hrtf;
 
 		hrtf_initialize();
@@ -2024,7 +2141,7 @@ int main(int argc, char **argv)
 					silent[pass - sizeof(recorded) / sizeof(recorded[0])];
 				unsigned long place;
 
-				for (place = 0; place < 2; place++)
+				for (place = 0; place < 3; place++)
 				{
 					DSI3DL2BUFFER source;
 					struct sdl_stream *stream = voice_placed(samples, 64, 48000, 0.0f, 0.0f, aheads[place]);
@@ -2049,11 +2166,15 @@ int main(int argc, char **argv)
 					{
 						memcpy(reference[place], gains, sizeof(gains));
 						if (place == 0)
-							CHECK(fabs(20.0 * log10(room) + 10.0) < 0.05, "2 m away its room send is at %+.2f dB "
-								"(the Xbox's: the room's -10)", 20.0 * log10(room));
+							CHECK(fabs(20.0 * log10(room) + 10.0) < 0.1, "2 m away its room send is at %+.2f dB "
+								"(the Xbox's: -10, the room's -10, the rolloff's -6 and 6 over)", 20.0 * log10(room));
+						else if (place == 1)
+							CHECK(fabs(20.0 * log10(room / reference[0][2]) + 14.0) < 0.1,
+								"10 m away its room send is %+.2f dB of 2 m away's (the Xbox's: -14.0)",
+								20.0 * log10(room / reference[0][2]));
 						else
-							CHECK(fabs(20.0 * log10(room / reference[0][2]) + 10.0) < 0.05,
-								"10 m away its room send is %+.2f dB under 2 m away (the Xbox's: 10.7)",
+							CHECK(fabs(20.0 * log10(room / reference[0][2]) - 6.0) < 0.1,
+								"0.5 m away its room send is %+.2f dB of 2 m away's (the Xbox's: +6.0)",
 								20.0 * log10(room / reference[0][2]));
 					}
 					for (kind = 0; pass >= 0 && place == 1 && kind < 4; kind++)
@@ -2077,6 +2198,54 @@ int main(int argc, char **argv)
 			}
 		}
 		hrtf_enabled = FALSE;
+		for (pass = -1; pass < (int)(sizeof(direct_recorded) / sizeof(direct_recorded[0])); pass++)
+		{
+			double asked = pass < 0 ? 0.0 : direct_recorded[pass][0];
+			float gains[2][2];
+			int direct;
+
+			for (direct = 0; direct < 2; direct++)
+			{
+				DSI3DL2BUFFER source;
+				struct sdl_stream *stream = voice_placed(samples, 64, 48000, 0.0f, 0.0f, 10.0f);
+				float left, right, pair[2], room, direct_lowpass, room_lowpass;
+				BOOL hrtf_on;
+				struct hrtf_parameters way;
+
+				memset(&source, 0, sizeof(source));
+				source.lDirect = direct ? -1000 : 0;
+				IDirectSoundStream_SetI3DL2Source(&stream->object, &source, 0);
+				stream->direct = stream->pending.direct;
+				stream->direct_hf = stream->pending.direct_hf;
+				stream->room = stream->pending.room;
+				stream->room_hf = stream->pending.room_hf;
+				stream->volume = (float)pow(10.0, asked / 20.0);
+				voice_gains(stream, &left, &right, pair, &room, &direct_lowpass, &room_lowpass, &hrtf_on, &way);
+				gains[direct][0] = left;
+				gains[direct][1] = room;
+				voice_delete(stream);
+			}
+			if (pass < 0)
+			{
+				memcpy(reference[0], gains[1], sizeof(gains[1]));
+				continue;
+			}
+			{
+				double level = gains[1][0] / reference[0][0];
+
+				if (direct_recorded[pass][1] > -900.0)
+					CHECK(level > 0.0 && fabs(20.0 * log10(level) - direct_recorded[pass][1]) < 0.5,
+						"10 m away, its direct level -10 dB, at %g dB its direct path plays at %+.2f dB (the Xbox's: "
+						"%g)", asked, level > 0.0 ? 20.0 * log10(level) : -999.0, direct_recorded[pass][1]);
+				else
+					CHECK(level < 0.001, "10 m away, its direct level -10 dB, at %g dB its direct path plays at %+.1f "
+						"dB (the Xbox's: silent, under the recording's noise 60 dB down)", asked,
+						20.0 * log10(level + 1e-30));
+				CHECK(gains[1][1] > 0.0f && fabs(gains[1][1] / gains[0][1] - 1.0) < 1.0e-4, "10 m away, its direct "
+					"level -10 dB, at %g dB its room send is %+.2f dB of the voice's without it (the Xbox's: the same)",
+					asked, 20.0 * log10(gains[1][1] / gains[0][1] + 1e-30));
+			}
+		}
 		environment.lRoom = DSBVOLUME_MIN;
 		return 0;
 	}

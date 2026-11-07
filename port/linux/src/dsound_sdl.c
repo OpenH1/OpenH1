@@ -21,10 +21,10 @@ resampling) and applies:
 	- for 3D voices, DirectSound's Doppler shift from the velocities the
 	  game gives the voice and the listener (doppler).
 3D voices also send to an I3DL2 reverb of the environment the listener is in
-(reverb), through the Xbox's own resampler (send_phases), no louder than
-their distance rolloff. Each gain to a mix bin is played as the Xbox played
-it, silent under -57 dB (voice_level; a 3D voice's by its volume and rolloff
-together).
+(reverb), through the Xbox's own resampler (send_phases), at twice their
+room level and distance rolloff. Each gain to a mix bin is played as the
+Xbox played it, silent under -57 dB (voice_level; a 3D voice's by its volume
+and rolloff together, and its direct path's with its direct level).
 Cones are not modelled (no sound of the maps has one). The mix plays at the
 Xbox's output level, half the voices' sum, and a look-ahead
 limiter keeps it under full scale (limit). On stereo and 5.1 (audio.spatial:
@@ -113,10 +113,11 @@ SEND_TAPS taps (whole vectors: those past it are 0) */
 #define SEND_ZERO_CROSSINGS 3
 #define SEND_TAPS 8
 /* the Xbox's resampler on a voice's direct path (audio.resampler "xbox":
-direct_phases): a low pass of DIRECT_ZERO_CROSSINGS source frames each side,
-Kaiser windowed (DIRECT_KAISER_BETA), in DIRECT_TAPS taps */
+direct_phases): its low pass as recorded (direct_kernel), DIRECT_ZERO_CROSSINGS
+source frames each side, in DIRECT_TAPS taps, a polynomial of DIRECT_KERNEL_ORDER
+in each frame */
 #define DIRECT_ZERO_CROSSINGS 4
-#define DIRECT_KAISER_BETA 8.3
+#define DIRECT_KERNEL_ORDER 5
 #define DIRECT_TAPS 8
 
 /* the Xbox's quietest levels (voice_level): below VOICE_LEVEL_KNEE (a gain,
@@ -126,7 +127,9 @@ VOICE_LEVEL_SILENT (-57 dB), where it is silent */
 #define VOICE_LEVEL_STEP (1.0f / 2048.0f)
 #define VOICE_LEVEL_SILENT 57.0f
 /* a 3D voice's level under voice_level: its volume and distance rolloff at
-VOICE_LEVEL_3D times, the rest of its gains after it (voice_gains) */
+VOICE_LEVEL_3D times (its direct path's with its direct level), the rest of
+its gains after it (voice_gains); its reverb send is VOICE_LEVEL_3D times its
+room level and distance rolloff */
 #define VOICE_LEVEL_3D 2.0f
 
 /* the Doppler shift (doppler): the speed of sound (metres a second), the
@@ -1206,12 +1209,11 @@ static void surround_split(float right, float up, float ahead, float *pair)
 }
 
 /* the gains of a 3D voice to the left and right (the pan's), the gains of
-the front and back pairs of speakers (surround_split), the distance rolloff's
-attenuation of its direct path (distance_gain) and the room rolloff's of its
-room send; for a mono voice through the HRTF
+the front and back pairs of speakers (surround_split) and the distance
+rolloff's attenuation (distance_gain); for a mono voice through the HRTF
 (hrtf_on: chosen, or crossfading from it), its gain to each ear and its way
 there (hrtf_out) */
-static void spatialize(const struct sdl_stream *stream, float *left, float *right, float *pair, float *room,
+static void spatialize(const struct sdl_stream *stream, float *left, float *right, float *pair,
 	float *distance_gain, BOOL *hrtf_on, struct hrtf_parameters *hrtf_out)
 {
 	float offset[3], right_axis[3], distance, attenuation, pan, side, ahead, up;
@@ -1242,7 +1244,6 @@ static void spatialize(const struct sdl_stream *stream, float *left, float *righ
 	here put every 3D sound 3 times as far away, up to 10 dB quieter */
 	distance = sqrtf(dot3(offset, offset));
 	attenuation = distance_attenuation(stream, distance, listener.rolloff_factor);
-	*room = distance_attenuation(stream, distance, environment.flRoomRolloffFactor + stream->room_rolloff_factor);
 	*distance_gain = attenuation;
 
 	/* equal power pan; close sources and sources straight ahead or behind
@@ -1285,7 +1286,7 @@ HRTF (hrtf_on) has its way to each ear too (hrtf_out) */
 static void voice_gains(const struct sdl_stream *stream, float *left, float *right, float *pair, float *room,
 	float *direct_lowpass, float *room_lowpass, BOOL *hrtf_on, struct hrtf_parameters *hrtf_out)
 {
-	float level_3d = -1.0f;
+	float level_3d = -1.0f, level_direct = -1.0f;
 
 	pair[0] = 1.0f;
 	pair[1] = 0.0f;
@@ -1295,10 +1296,11 @@ static void voice_gains(const struct sdl_stream *stream, float *left, float *rig
 	*hrtf_on = FALSE;
 	if (stream->has_3d && stream->mode != DS3DMODE_DISABLE)
 	{
-		float rolloff, distance_gain, cosine = frequency_cosine(environment.flHFReference);
+		float distance_gain, cosine = frequency_cosine(environment.flHFReference);
 
-		spatialize(stream, left, right, pair, &rolloff, &distance_gain, hrtf_on, hrtf_out);
+		spatialize(stream, left, right, pair, &distance_gain, hrtf_on, hrtf_out);
 		level_3d = VOICE_LEVEL_3D * distance_gain * stream->volume;
+		level_direct = level_3d * gain_from_millibels(stream->direct);
 		if (stream->direct_hf < stream->direct)
 			*direct_lowpass = lowpass_coefficient(gain_from_millibels(stream->direct_hf - stream->direct), cosine);
 		if (reverb_enabled)
@@ -1306,13 +1308,16 @@ static void voice_gains(const struct sdl_stream *stream, float *left, float *rig
 			LONG level = environment.lRoom + stream->room;
 			LONG high_level = environment.lRoom + environment.lRoomHF + stream->room_hf;
 
-			/* no louder than the direct path's distance rolloff: recorded
-			on an Xbox (issue 714's seventh run), the cave's reverb of a
-			voice 2 m away (-6 dB of rolloff) was at its -10 dB room level,
-			that of one 10 m away (-20 dB) 10.7 dB under it */
-			*room = gain_from_millibels(level) * rolloff;
-			if (*room > distance_gain)
-				*room = distance_gain;
+			/* VOICE_LEVEL_3D times the room level and the direct path's
+			distance rolloff, whatever the room rolloff: recorded on an
+			Xbox (issue 792's eighth run), the cave's reverb of a noise
+			burst 0.5 to 20 m away (minimum distance 1 m) is 6.0 dB over
+			its room level and rolloff to within 0.1 dB, at room levels of
+			-20, -10 and 0 dB and the source's own -10 alike, and a room
+			rolloff factor of 1 leaves it as it was. (#790's cap at the
+			rolloff, fitted at 2 and 10 m, was 4 dB loud from 3 m and 6
+			dB quiet within 1 m) */
+			*room = VOICE_LEVEL_3D * gain_from_millibels(level) * distance_gain;
 			if (*room > 0.0f && high_level < level)
 				*room_lowpass = lowpass_coefficient(gain_from_millibels(high_level - level), cosine);
 		}
@@ -1368,15 +1373,24 @@ static void voice_gains(const struct sdl_stream *stream, float *left, float *rig
 		(-20 dB of rolloff, -23 with the pan's) stepped down from -20 dB
 		played as a 2D voice 14 dB quieter would, its direct path and its
 		reverb alike: exact to -30 dB, -40 at -42.8, -42 at -52.1, silent
-		from -44 (its whole level's would be silent from -34). The HRTF's
-		gain too: without it every mono 3D voice on headphones played at
-		full volume, whatever audio.volume, audio.effects_volume and the
+		from -44 (its whole level's would be silent from -34). Its direct
+		path's are of its direct level too (obstruction and occlusion
+		with it), its reverb's not: recorded again (issue 792's eighth
+		run), voices 0.5 to 40 m away, ahead, to the right and at 45
+		degrees, went silent where this says to within a dB, each ear at
+		the same step (the pan after it), and a voice 10 m away with a
+		direct level of -10 dB, or obstructed by -10 dB, 10 dB sooner,
+		its reverb where the voice's without it went. The HRTF's gain
+		too: without it every mono 3D voice on headphones played at full
+		volume, whatever audio.volume, audio.effects_volume and the
 		game's own gain said, and only the 2D voices followed them */
-		float scale = level_3d > 0.0f ? voice_level(level_3d) / level_3d * stream->volume * master_volume : 0.0f;
+		float scale = level_direct > 0.0f ?
+			voice_level(level_direct) / level_direct * stream->volume * master_volume : 0.0f;
+		float room_scale = level_3d > 0.0f ? voice_level(level_3d) / level_3d * stream->volume * master_volume : 0.0f;
 
 		*left *= scale;
 		*right *= scale;
-		*room *= scale;
+		*room *= room_scale;
 		if (*hrtf_on)
 			hrtf_out->gain *= scale;
 	}
@@ -1548,18 +1562,35 @@ static float send_phases[RESAMPLER_TABLE_STEPS + 1][SEND_TAPS] RESAMPLER_ALIGNED
 static float send_deltas[RESAMPLER_TABLE_STEPS][SEND_TAPS] RESAMPLER_ALIGNED;
 
 /* the Xbox's resampler on a voice's direct path, audio.resampler's "xbox"
-(the default): a sinc low pass at the source's Nyquist rate, never narrowed,
-over four source frames each side, Kaiser windowed. Recorded on an Xbox
-(OpenH1 issue 714, its seventh run: one-sample clicks as 2D voices at 22.05,
-32 and 44.1 kHz, pitched 0.75 to 1.5), a click at 24 kHz, half the output's
-rate, sampled the low pass halfway between frames at 0.598, -0.120, 0.024
-and -0.003 (this one: 0.599, -0.120, 0.023, -0.002; a beta of 8 to 9 fits,
-over three frames each side none does), and at 24, 32, 44.1, 48 and 66.15
-kHz the images it leaves above the source's Nyquist rate are this one's to
-within 3 dB, where the send's six taps leave some 3 to 28 dB louder. At 22.05
-kHz the Xbox's from 16 kHz up are louder than either low pass's (-33 to -48
-dB under the passband, this one's -42 to -86). A row a phase, and its step to
-the next, as resampler_phases */
+(the default): a low pass at the source's Nyquist rate, never narrowed, over
+four source frames each side, as recorded on an Xbox (OpenH1 issue 792, its
+eighth run: two trains of sixteen one-sample clicks at 22.05 kHz, pitched 1
+and 0.9, each click on another phase, the clicks' frames laid on one time
+line by the rate the Xbox played them at). In each source frame from the
+center it is a polynomial of the distance into the frame, as here: these
+play the recordings back to within -70 dB, with corners at the whole frames,
+where the best smooth low pass's is -35 dB. With it the Xbox's 22.05 kHz
+voices are played as the Xbox played them: the passband (-2.2 dB at 0.4 of
+the source's rate, -6.9 at 0.5; the Kaiser windowed sinc fitted before, -1.9
+and -6.0), the images a 4 kHz tone leaves at 0.82, 1.18 and 1.82 of the
+source's rate (-63, -71 and -79 dB: the sinc's -70, -99, -101) and the low
+pass's lobe from 1.3 to 1.6 of it, at -33 dB, which comes down to the
+output's 13 to 19 kHz (issue 714's seventh run: a 22.05 kHz click's images
+above 16 kHz, 9 to 40 dB over any smooth low pass's). It is the
+coefficients, not their phases: tables of 16 to 64 phases, unblended, fit
+the clicks worse than one blended. The Xbox's step a frame is rounded too
+(22050 Hz played at 22042.97, 17640 at 17636.72, 24000 and 12000 exactly),
+by under 0.6 cents, which is not copied. A row a frame from the center, its
+coefficients from the constant up */
+static const double direct_kernel[DIRECT_ZERO_CROSSINGS][DIRECT_KERNEL_ORDER + 1] =
+{
+	{ 1.0007795, -0.2495059, -1.3652166, 0.3404684, 0.4084059, -0.1349805 },
+	{ -0.0001219, -0.6004896, 0.7474932, 0.0843083, -0.3094547, 0.0781494 },
+	{ -0.0001317, 0.1000168, -0.0728184, -0.1081077, 0.1009553, -0.0199766 },
+	{ -0.0001926, -0.0076839, -0.0064829, 0.0419929, -0.0412200, 0.0134312 },
+};
+/* direct_kernel as a table of phases: a row a phase, and its step to the
+next, as resampler_phases */
 static float direct_phases[RESAMPLER_TABLE_STEPS + 1][DIRECT_TAPS] RESAMPLER_ALIGNED;
 static float direct_deltas[RESAMPLER_TABLE_STEPS][DIRECT_TAPS] RESAMPLER_ALIGNED;
 
@@ -1676,18 +1707,23 @@ static void resampler_phases_initialize(void)
 	{
 		for (tap = 0; tap < DIRECT_TAPS; tap++)
 		{
-			double distance = (double)((long)tap + 1 - DIRECT_ZERO_CROSSINGS) - (double)phase / RESAMPLER_TABLE_STEPS;
-			double angle = 3.14159265358979 * distance, x = distance / DIRECT_ZERO_CROSSINGS;
+			double distance = fabs((double)((long)tap + 1 - DIRECT_ZERO_CROSSINGS) -
+				(double)phase / RESAMPLER_TABLE_STEPS);
+			unsigned long frame = (unsigned long)distance;
 
 			/* (on a frame, exactly it, and 0 at the others) */
 			if (phase % RESAMPLER_TABLE_STEPS == 0)
 				direct_phases[phase][tap] = distance == 0.0 ? 1.0f : 0.0f;
-			else if (fabs(x) >= 1.0)
+			else if (frame >= DIRECT_ZERO_CROSSINGS)
 				direct_phases[phase][tap] = 0.0f;
 			else
 			{
-				direct_phases[phase][tap] = (float)(sin(angle) / angle *
-					bessel_i0(DIRECT_KAISER_BETA * sqrt(1.0 - x * x)) / bessel_i0(DIRECT_KAISER_BETA));
+				double into = distance - (double)frame, weight = 0.0;
+				int power;
+
+				for (power = DIRECT_KERNEL_ORDER; power >= 0; power--)
+					weight = weight * into + direct_kernel[frame][power];
+				direct_phases[phase][tap] = (float)weight;
 			}
 		}
 	}
