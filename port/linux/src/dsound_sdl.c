@@ -1864,11 +1864,26 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 			if (stream->channels == 1)
 				sample_right = sample_left;
 		}
-		/* the room send, with its own low pass */
+		/* the room send, with its own low pass. A voice at the output's rate
+		sends its frames as they are, as the Xbox's voice processor did, not
+		through the resampler's low pass: the reverb takes every other frame
+		of the send (reverb_process), which folds the send's top octave onto
+		its bottom one, so the last 4% of the band the low pass takes out
+		(23 to 24 kHz) is the reverb's low end (recorded, the cave's
+		reverberation of a click was 4 dB louder below 500 Hz than with it) */
 		if (room || ramp_room)
 		{
-			float mono = stream->channels == 1 ? sample_left : 0.5f * (sample_left + sample_right);
+			float mono;
 
+			if (step == 1.0 && !ramp_step && stream->phase == 0.0)
+			{
+				unsigned long slot = stream->center % RESAMPLER_HISTORY;
+
+				mono = stream->channels == 1 ? stream->history[0][slot] :
+					0.5f * (stream->history[0][slot] + stream->history[1][slot]);
+			}
+			else
+				mono = stream->channels == 1 ? sample_left : 0.5f * (sample_left + sample_right);
 			room_state = flush_denormal(mono + room_lowpass * (room_state - mono));
 			send[frame] += room_state * room;
 		}
@@ -2002,7 +2017,9 @@ every retail default.xbe), redone in floating point:
 	  DSP's filter word did), and the reverb runs at half the output rate,
 	  24 kHz: it takes every other frame and plays each of its frames twice,
 	  as the DSP did (no filter either way: the reverberation stops at 12
-	  kHz, with the images of the repeat above);
+	  kHz, with the images of the repeat above, and the send's top octave
+	  is folded onto its bottom one, which is why a voice at the output's
+	  rate sends its frames unfiltered, mix_voice);
 	- every delay is a whole number of the DSP's 4-sample words, and the
 	  input's delay line is REVERB_INPUT_SIZE long, a longer delay wrapping
 	  round it as the DSP's did;

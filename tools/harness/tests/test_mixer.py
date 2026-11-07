@@ -25,7 +25,7 @@ from harness import CHECK_FAILED, build, function, mutated, read, run  # noqa: E
 SOURCE = "port/linux/src/dsound_sdl.c"
 CASES = ["reference", "impulse", "sines", "aliases", "silent-voice", "mono", "linear", "adpcm", "doppler", "doppler-step",
          "parameter-ramp",
-         "limiter", "obstruction", "channels", "surround", "lfe", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch",
+         "limiter", "obstruction", "room-send", "channels", "surround", "lfe", "spatial-choice", "hrtf-cues", "hrtf-paths", "hrtf-switch",
          "dry-2d",
          "master-volume", "buffers", "sound-off",
          "hand-off-never-waits", "hand-off-settings"]
@@ -72,6 +72,9 @@ NEGATIVE_CONTROLS = {
     "obstruction-not-muffling": (("direct_hf = source->lDirect + source->lDirectHF + source->Obstruction.lHFLevel",
                                   "direct_hf = source->lDirect + source->lDirectHF + 0 * source->Obstruction.lHFLevel"),
                                  "obstruction"),
+    # the room send of a voice at the output's rate through the resampler's low pass, as it was: the reverb's
+    # frames fold its missing 23 to 24 kHz onto the reverb's low end (the cave's 4 dB under the Xbox's below 500 Hz)
+    "room-send-low-passed": (("if (step == 1.0 && !ramp_step && stream->phase == 0.0)", "if (0)"), "room-send"),
     # audio.channels "auto" stereo whatever the device (as every build was before the host said its channels)
     "auto-always-stereo": (('!strcmp(setting, "auto") && device_channels >= 6', '!strcmp(setting, "auto") && 0'),
                            "channels"),

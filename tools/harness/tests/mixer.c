@@ -1514,6 +1514,61 @@ int main(int argc, char **argv)
 		free(samples);
 		return 0;
 	}
+	/* the room send of a voice at the output's rate, as the reverb takes it
+	(every other frame): a click sends a single pulse, as the Xbox's did.
+	Recorded on an Xbox, the first reflection of a 48 kHz click in the cave
+	(Room HF 0) was one pulse with nothing either side, and the cave's
+	reverberation below 500 Hz was 4.1 dB louder than the mixer's (equal
+	above 2 kHz), as was each room's by as much of the send's top octave
+	as its Room HF low pass left: the resampler's low pass took the send's
+	last 23 to 24 kHz out, which the reverb's frames fold onto its low end.
+	Here the frames the reverb takes about the click add up to the click
+	within 0.2 dB (they added up to 3.9 dB under it), and none but the
+	click's is over 1% of it */
+	CASE("room-send")
+	{
+		unsigned long frames = 4096, at = CHUNK + 1000, peak = 0, n;
+		short *samples = calloc(frames + 8192, sizeof(short));
+		float *left = malloc(frames * sizeof(float)), *room = malloc(frames * sizeof(float));
+		double sum = 0.0, largest = 0.0;
+		DSI3DL2BUFFER source;
+		struct sdl_stream *stream;
+
+		hrtf_initialize();
+		listener_reset();
+		environment.lRoom = 0;
+		environment.lRoomHF = 0;
+		samples[at] = 16384;
+		stream = voice_placed(samples, frames + 8192, 48000, 0.0f, 0.0f, 2.0f);
+		memset(&source, 0, sizeof(source));
+		IDirectSoundStream_SetI3DL2Source(&stream->object, &source, 0);
+		stream->direct = stream->pending.direct;
+		stream->direct_hf = stream->pending.direct_hf;
+		stream->room = stream->pending.room;
+		stream->room_hf = stream->pending.room_hf;
+		render_with_send(stream, frames, left, room);
+		voice_delete(stream);
+		for (n = 0; n < frames; n++)
+			peak = fabsf(room[n]) > fabsf(room[peak]) ? n : peak;
+		CHECK(room[peak] > 0.0f && peak > 64 && peak + 64 < frames, "the click's send at frame %lu, %g", peak,
+			room[peak]);
+		for (n = peak - 64; n <= peak + 64; n += 2)
+		{
+			sum += room[n];
+			if (n != peak && fabs(room[n]) > largest)
+				largest = fabs(room[n]);
+		}
+		CHECK(fabs(20.0 * log10(sum / room[peak])) < 0.2,
+			"the reverb's frames about the click add up to %+.2f dB of it (the Xbox's: the click alone)",
+			20.0 * log10(fabs(sum) / room[peak] + 1e-30));
+		CHECK(largest < 0.01 * room[peak], "a frame the reverb takes beside the click at %.1f%% of it", 100.0 * largest /
+			room[peak]);
+		environment.lRoom = DSBVOLUME_MIN;
+		free(left);
+		free(room);
+		free(samples);
+		return 0;
+	}
 	/* audio.channels and the device's channels: "auto" is 5.1 on six or
 	more, stereo on fewer and when the device cannot say; "5.1" and "stereo"
 	whatever the device; anything else stereo */
