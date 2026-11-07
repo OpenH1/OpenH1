@@ -10,7 +10,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, mutated, read, run  # noqa: E402
 
-CASES = ["sphere", "capsule", "box", "reach", "bound", "far", "culling", "skeleton", "owner", "baked", "field", "none"]
+CASES = ["sphere", "capsule", "box", "reach", "bound", "far", "culling", "skeleton", "owner", "baked", "field", "none", "drawn"]
 HEADER = "port/linux/include/world_proxies.h"
 SOURCE = "port/linux/include/world_proxies_source.h"
 GAME = "port/linux/game/world_proxies.c"
@@ -54,7 +54,7 @@ CONTROLS = [
     ("slot_count = WORLD_PROXY_FIELD_SLOTS;", "slot_count = 1;", "field"),
     # its boxes kept beside its field
     ("if (boxless && world_proxy_set_fielded(set, shape_index))\n\t\t\t\t\tcontinue;", "", "field"),
-    # a piece of scenery's sphere (no collision geometry) kept, not its field in its place (#666's dark discs)
+    # a definition's one sphere kept, not its field in its place (#666's dark discs)
     ("return set->shapes[shape_index].kind == _world_proxy_box || set->count == 1;",
      "return set->shapes[shape_index].kind == _world_proxy_box;", "field"),
     # a baked placement's box kept (its pages baked with its field: a page without a layer walked the box)
@@ -69,6 +69,14 @@ CONTROLS = [
     # the atlas's half texel left out
     ("proxies[2].v[0][axis] = (float)field->place[axis] + 0.5f;", "proxies[2].v[0][axis] = (float)field->place[axis];",
      "field"),
+    # a box without collision geometry its bounding sphere, as before #773 (a grenade's and a floor marker's discs)
+    ("\t\tif (!any && source->drawn)\n\t\t{\n\t\t\tmemcpy(bounds, source->drawn_bounds, sizeof(bounds));\n"
+     "\t\t\tany = 1;\n\t\t}\n\t\tif (any)\n\t\t{\n\t\t\tbox_shape(0, (float const (*)[3])bounds, &shape);\n"
+     "\t\t\tset_add(set, &shape);\n\t\t}",
+     "\t\tif (any)\n\t\t\tbox_shape(0, (float const (*)[3])bounds, &shape);\n\t\telse\n"
+     "\t\t\tsphere_shape(source, &shape);\n\t\tset_add(set, &shape);", "drawn"),
+    # what it draws not taken: a grenade without shapes
+    ("if (!any && source->drawn)", "if (!any && 0)", "drawn"),
     # a capsule's end carried as a direction, not a point
     ("frame_point(frame, shape->b, proxy->v[1]);", "frame_vector(frame, shape->b, proxy->v[1]);", "skeleton"),
 ]
