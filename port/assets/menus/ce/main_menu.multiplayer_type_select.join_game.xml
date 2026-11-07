@@ -466,27 +466,27 @@
 		<on event="start" run="port browser favorite"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/prompt_refresh" type="text" width="102" height="24" wide="-106 0" bitmap="main_menu/parts/item_102x24" text="%right-trigger REFRESH" font="ui\small_ui" color="#FFCFE3FF" text_x="5" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/prompt_refresh" type="text" width="102" height="24" wide="-106 70" bitmap="main_menu/parts/item_102x24" text="%right-trigger REFRESH" font="ui\small_ui" color="#FFCFE3FF" text_x="5" text_y="3">
 		<on event="a" run="port browser refresh"/>
 		<on event="start" run="port browser refresh"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/prompt_paste" type="text" width="124" height="24" wide="-106 0" bitmap="main_menu/parts/item_124x24" text="%right-trigger PASTE LINK" font="ui\small_ui" color="#FFCFE3FF" text_x="5" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/prompt_paste" type="text" width="124" height="24" wide="-106 63" bitmap="main_menu/parts/item_124x24" text="%right-trigger PASTE LINK" font="ui\small_ui" color="#FFCFE3FF" text_x="5" text_y="3">
 		<on event="a" run="port browser refresh"/>
 		<on event="start" run="port browser refresh"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/prompt_search" type="text" width="97" height="24" wide="-106 0" bitmap="main_menu/parts/item_97x24" text="%right-thumb SEARCH" font="ui\small_ui" color="#FFCFE3FF" text_x="5" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/prompt_search" type="text" width="97" height="24" wide="-21 62" bitmap="main_menu/parts/item_97x24" text="%right-thumb SEARCH" font="ui\small_ui" color="#FFCFE3FF" text_x="5" text_y="3">
 		<on event="a" run="port browser search next"/>
 		<on event="start" run="port browser search next"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/prompt_sort" type="text" width="90" height="24" wide="106 0" bitmap="main_menu/parts/item_90x24" text="%x-button SORT" font="ui\small_ui" color="#FFCFE3FF" text_x="5" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/prompt_sort" type="text" width="90" height="24" wide="51 0" bitmap="main_menu/parts/item_90x24" text="%x-button SORT" font="ui\small_ui" color="#FFCFE3FF" text_x="5" text_y="3">
 		<on event="a" run="port browser sort"/>
 		<on event="start" run="port browser sort"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/prompt_filters" type="text" width="97" height="24" wide="106 0" bitmap="main_menu/parts/item_97x24" text="%left-trigger FILTERS" font="ui\small_ui" color="#FFCFE3FF" text_x="5" text_y="3">
+	<widget name="main_menu/multiplayer_type_select/join_game/prompt_filters" type="text" width="97" height="24" wide="51 55" bitmap="main_menu/parts/item_97x24" text="%left-trigger FILTERS" font="ui\small_ui" color="#FFCFE3FF" text_x="5" text_y="3">
 		<on event="a" run="port browser filters" open="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_filters_screen"/>
 		<on event="start" run="port browser filters" open="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_filters_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
