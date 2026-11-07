@@ -4531,20 +4531,20 @@
       31,
       24
      ],
-     "svg": "label__Overpass-900__2x.svg",
-     "source_scale": 5.20673,
+     "svg": "label__CyborgInterfaceGothic-Regular__2x.svg",
+     "source_scale": 5.84702,
      "source": [
-      -22.7794,
-      -9.7626
+      -20.4646,
+      -13.1558
      ],
      "clip": [
       0,
       0,
-      117,
-      127
+      136,
+      122
      ],
      "kind": "alpha",
-     "score": 0.972
+     "score": 0.954
     },
     {
      "xbox": [
@@ -4553,20 +4553,20 @@
       43,
       48
      ],
-     "svg": "label__Overpass-900__10x.svg",
-     "source_scale": 5.28894,
+     "svg": "label__CyborgInterfaceGothic-Regular__10x.svg",
+     "source_scale": 5.7274,
      "source": [
-      -36.3615,
-      -11.239
+      -34.3644,
+      -11.4548
      ],
      "clip": [
       0,
       0,
-      171,
-      127
+      191,
+      122
      ],
      "kind": "alpha",
-     "score": 0.937
+     "score": 0.922
     },
     {
      "xbox": [

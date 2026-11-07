@@ -28,8 +28,8 @@
   than the Xbox's bitmap (the health meter's base, the motion sensor's
   blips and sweeper, and the outlines of the vehicles' and passengers'
   panels): by MrBruh (`port/assets/hud/svg`), based on reference photos by
-  Aerocatia. The sniper rifle's zoom labels (2x, 10x) are set in Overpass
-  (`port/assets/fonts`).
+  Aerocatia. The sniper rifle's zoom labels (2x, 10x) are set in Cyborg
+  Interface Gothic (`port/assets/fonts`).
 - **The high-res text's font**, Cyborg Interface Gothic (the menus' and
   the HUD's text, `port/assets/fonts`): by fizzy, made to match Halo's
   interface font, many of its glyphs derived from Overpass and the others

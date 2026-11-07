@@ -54,4 +54,5 @@ sweeper (`hud_sensor_blip__0.png`, `hud_sensor_blip_custom__0.png`,
 upscaled seat plates of other languages' maps get
 (`vehicle_wrench_outline__0.png`, `passenger_health_outline__0.png`). The
 sniper's zoom labels (2x and 10x, in `sniper__hud_reticles_scope__0.png`)
-are set in Overpass, as the restored ones say 2x and 8x (Halo PC's).
+are set in Cyborg Interface Gothic (`port/assets/fonts`), as the restored
+ones say 2x and 8x (Halo PC's).
