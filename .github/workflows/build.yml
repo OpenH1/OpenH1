@@ -276,6 +276,32 @@ jobs:
           path: dist/halo-steam-frame-vr-release
           retention-days: 3
 
+      # the guest image with its source lines (tools/ci_build.py's
+      # halo_guest.debug.elf), which the release publishes beside each
+      # build for tools/symbolize_crash.py; a build without one warns
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halo-linux-arm64-debug-symbols
+          path: dist/halo-linux-arm64-debug-symbols
+          retention-days: 3
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          name: halo-linux-arm64-release-symbols
+          path: dist/halo-linux-arm64-release-symbols
+          retention-days: 3
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          name: halo-steam-frame-vr-release-symbols
+          path: dist/halo-steam-frame-vr-release-symbols
+          retention-days: 3
+          if-no-files-found: warn
+
   linux-x86_64:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
@@ -448,6 +474,32 @@ jobs:
           name: halo-linux-x86_64-vr-release
           path: dist/halo-linux-x86_64-vr-release
           retention-days: 3
+
+      # the guest image with its source lines (tools/ci_build.py's
+      # halo_guest.debug.elf), which the release publishes beside each
+      # build for tools/symbolize_crash.py; a build without one warns
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halo-linux-x86_64-debug-symbols
+          path: dist/halo-linux-x86_64-debug-symbols
+          retention-days: 3
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          name: halo-linux-x86_64-release-symbols
+          path: dist/halo-linux-x86_64-release-symbols
+          retention-days: 3
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          name: halo-linux-x86_64-vr-release-symbols
+          path: dist/halo-linux-x86_64-vr-release-symbols
+          retention-days: 3
+          if-no-files-found: warn
 
   tests:
     needs: changes
@@ -648,6 +700,24 @@ jobs:
           name: halo-android-release
           path: dist/halo-android-release
           retention-days: 3
+
+      # the guest image with its source lines (tools/ci_build.py's
+      # halo_guest.debug.elf), which the release publishes beside each
+      # build for tools/symbolize_crash.py; a build without one warns
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halo-android-debug-symbols
+          path: dist/halo-android-debug-symbols
+          retention-days: 3
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          name: halo-android-release-symbols
+          path: dist/halo-android-release-symbols
+          retention-days: 3
+          if-no-files-found: warn
 
   windows:
     needs: changes
@@ -977,6 +1047,24 @@ jobs:
           path: dist/halo-macos-release
           retention-days: 3
 
+      # the guest image with its source lines (tools/ci_build.py's
+      # halo_guest.debug.elf), which the release publishes beside each
+      # build for tools/symbolize_crash.py; a build without one warns
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halo-macos-debug-symbols
+          path: dist/halo-macos-debug-symbols
+          retention-days: 3
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          name: halo-macos-release-symbols
+          path: dist/halo-macos-release-symbols
+          retention-days: 3
+          if-no-files-found: warn
+
   ios:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.build != 'false' && needs.changes.outputs.ios != 'false' }}
@@ -1062,8 +1150,19 @@ jobs:
           path: dist/halo-ios-debug
           retention-days: 3
 
+      # the guest image with its source lines (tools/ci_build.py's
+      # halo_guest.debug.elf), which the release publishes beside each
+      # build for tools/symbolize_crash.py; a build without one warns
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halo-ios-debug-symbols
+          path: dist/halo-ios-debug-symbols
+          retention-days: 3
+          if-no-files-found: warn
+
   release:
-    # The builds (and the Windows builds' PDBs) as a release, tagged
+    # The builds (and each build's symbols: the guest image with its source
+    # lines, and the Windows builds' PDBs) as a release, tagged
     # build-<run number> and marked latest
     # (every file keeps its name from release to release, for the README's
     # latest/download links), with their SHA256SUMS and, when the
@@ -1124,7 +1223,10 @@ jobs:
       # Frame's package is a zip already, with its modes; the macOS build's
       # disk image as it is, a file a Mac opens at once; the Android app's
       # APK as it is, which a phone installs at once and which carries its
-      # licences (tools/android_build.py)
+      # licences (tools/android_build.py); each build's symbols (the guest
+      # image with its source lines, and Windows's PDBs) zipped beside it,
+      # OpenH1-<machine>[-debug]-symbols.zip, for tools/symbolize_crash.py:
+      # a symbols zip that fails warns, and the release goes on
       - name: Package
         run: |
           mkdir release
@@ -1132,6 +1234,9 @@ jobs:
             name="$(basename "$build")"
             published="$(python3 tools/release_names.py "$name")"
             case "$name" in
+              halo-*-symbols)
+                (cd "$build" && zip -qr "$GITHUB_WORKSPACE/release/$published.zip" .) ||
+                  { echo "::warning::$name could not be zipped: the release has no $published.zip"; rm -f "release/$published.zip"; } ;;
               halo-steam-frame-*) cp "$build/$name.zip" "release/$published.zip" ;;
               halo-linux-*) python3 tools/linux_package.py zip "$build" "release/$published.zip" ;;
               halo-macos-*) cp "$build/OpenH1.dmg" "release/$published.dmg" ;;
@@ -1189,15 +1294,26 @@ jobs:
           fi
           mkdir carried
           gh release download "$previous" --dir carried --pattern '*.dmg' --pattern appcast.xml
+          # (and their symbols, the same builds', when that release has them)
+          gh release download "$previous" --dir carried --pattern 'OpenH1-macOS*-symbols.zip' ||
+            echo "::warning::$previous has no macOS symbols to carry over"
           ls -l carried
           cp carried/*.dmg release/
+          cp carried/OpenH1-macOS*-symbols.zip release/ 2> /dev/null || true
           if [ -f carried/appcast.xml ]; then
             sed "s#/releases/download/$previous/#/releases/download/$tag/#g" carried/appcast.xml > release/appcast.xml
           fi
           echo "The macOS build is $previous's: GitHub had no macOS runner free for this one." > mac-carried.txt
           echo "::warning::macOS job cancelled: carried $previous's macOS build over"
 
-      # SHA256SUMS of every file the release publishes, signed with the
+      # a warning for each build without its symbols zip, or with one that
+      # holds no guest image (tools/release_names.py): never a reason to
+      # hold the release back
+      - name: Check the symbols
+        continue-on-error: true
+        run: python3 tools/release_names.py --check-symbols release
+
+      # SHA256SUMS of every file the release publishes (the symbols zips too), signed with the
       # release key's seed (the OPENH1_RELEASE_KEY secret, 64 hex digits:
       # tools/release_sign.py keygen makes one). The signature is checked
       # against port/assets/release-key.pub before anything is published: a
@@ -1231,7 +1347,7 @@ jobs:
           # server.auto_update reads: port/linux/src/updater.c. A new one is
           # started once the game being played is over)
           versions="$(python3 tools/ci_build.py notes)"
-          printf '%s\n\nCommit: %s\nBuild: %s\n%s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Windows (64-bit Windows 10 1903 or later, with a Vulkan 1.3 graphics driver), download OpenH1-Windows.zip.\n\nOn Linux and the Steam Deck, download OpenH1-Linux.zip (OpenH1-Linux-ARM64.zip on 64-bit ARM, OpenH1-Linux-VR.zip for VR): it draws with Vulkan 1.3.\n\nOn the Steam Frame, in desktop mode, download OpenH1-Steam-Frame.zip, unzip it and open install.sh in it (port/linux/frame/README.md).\n\nOn macOS (Apple silicon, macOS 14.4 or later), download OpenH1.dmg, open it and drag OpenH1 to Applications: the app is signed and notarized.\n\nOn Android (64-bit, Android 9 or later, with Vulkan 1.3), download OpenH1-Android.apk on the phone and install it. The app is signed with OpenH1'"'"'s own key now: an install signed before it must be uninstalled once first (back up its maps and save folders).\n' \
+          printf '%s\n\nCommit: %s\nBuild: %s\n%s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Windows (64-bit Windows 10 1903 or later, with a Vulkan 1.3 graphics driver), download OpenH1-Windows.zip.\n\nOn Linux and the Steam Deck, download OpenH1-Linux.zip (OpenH1-Linux-ARM64.zip on 64-bit ARM, OpenH1-Linux-VR.zip for VR): it draws with Vulkan 1.3.\n\nOn the Steam Frame, in desktop mode, download OpenH1-Steam-Frame.zip, unzip it and open install.sh in it (port/linux/frame/README.md).\n\nOn macOS (Apple silicon, macOS 14.4 or later), download OpenH1.dmg, open it and drag OpenH1 to Applications: the app is signed and notarized.\n\nOn Android (64-bit, Android 9 or later, with Vulkan 1.3), download OpenH1-Android.apk on the phone and install it. The app is signed with OpenH1'"'"'s own key now: an install signed before it must be uninstalled once first (back up its maps and save folders).\n\nThe -symbols zips are not for playing: each has one build'"'"'s debugging information (OpenH1-macOS-symbols.zip is OpenH1.dmg'"'"'s, OpenH1-Linux-debug-symbols.zip OpenH1-Linux-debug.zip'"'"'s), which tools/symbolize_crash.py gives a crash report'"'"'s frames their source lines with.\n' \
             "$subject" "$COMMIT_URL" "$RUN_URL" "$versions" > notes.md
           if [ -f mac-carried.txt ]; then printf '\n%s\n' "$(cat mac-carried.txt)" >> notes.md; fi
           gh release create "$tag" release/*.zip release/*.dmg release/*.apk release/SHA256SUMS $(ls release/appcast.xml release/SHA256SUMS.sig 2> /dev/null) --target "$GITHUB_SHA" --latest \

@@ -758,7 +758,11 @@ or 64 KB pages.
   To find the functions, enter
   `llvm-symbolizer --obj=build/android/halo_guest.debug.elf <address>`
   (the image with its source lines), or give the crash report to
-  `tools/symbolize_crash.py` (refer to "Reports" in the Linux README).
+  `tools/symbolize_crash.py` (refer to "Reports" in the Linux README). A
+  release's APK's image with its lines is the release's
+  `OpenH1-Android-symbols.zip` (`OpenH1-Android-debug-symbols.zip` for the
+  debug APK), of the release the report's Build line names:
+  `python tools/symbolize_crash.py <report's zip> OpenH1-Android-symbols.zip OpenH1-Android.apk`.
 - Set `sample_seconds = <seconds>` in `[debug]` of `config.toml`. The log
   then shows the program counter and the frame chain of each guest thread
   at this interval. This finds hangs on devices without root access.

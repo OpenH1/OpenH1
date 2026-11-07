@@ -219,6 +219,73 @@ def test_the_command_line(tmp_path):
     assert result.returncode == 1 and "not the build that crashed" in result.stderr
 
 
+def test_a_release_s_symbols_zip_is_read(tmp_path):
+    """a release's OpenH1-<machine>-symbols.zip (tools/release_names.py), given as it is downloaded, with or
+    without its build's zip: its halo_guest.debug.elf is the image"""
+    symbols = tmp_path / "OpenH1-Linux-symbols.zip"
+    with zipfile.ZipFile(symbols, "w") as archive:
+        archive.writestr("halo_guest.debug.elf", elf(FUNCTIONS))
+    build = tmp_path / "OpenH1-Linux.zip"
+    with zipfile.ZipFile(build, "w") as archive:
+        archive.writestr("OpenH1/lib/openh1/halo", elf([("main", 0)], base=0x1000, machine=62))
+    report = tmp_path / "crash.txt"
+    report.write_text(CRASH)
+    for given in ([symbols], [symbols, build]):
+        result = subprocess.run([sys.executable, str(ROOT / "tools/symbolize_crash.py"), str(report),
+                                 *map(str, given), "--symbolizer", fake_symbolizer(tmp_path)],
+                                capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        assert "crash_here+0x10  source/test/crash_here.c:784" in result.stdout
+    # (the build's zip unpacked beside the symbols: its single top folder left out)
+    unpacked = symbolize_crash.unpack_zips([symbols, build, tmp_path / "other.apk"], tmp_path / "unpacked")
+    assert unpacked == [tmp_path / "unpacked/build", tmp_path / "other.apk"]
+    assert (unpacked[0] / "halo_guest.debug.elf").is_file() and (unpacked[0] / "lib/openh1/halo").is_file()
+
+
+@pytest.mark.parametrize("text, hint", [
+    ("- Build: build-1781 (release, commit 65d2d298e)\n- Platform: macOS\n", "OpenH1-macOS-symbols.zip of the release build-1781"),
+    ("build: build-1781 (debug, commit 65d2d298e)\nplatform: Linux arm64\n", "OpenH1-Linux-ARM64-debug-symbols.zip"),
+    ("- Build: build-12 (release)\n- Platform: Linux arm64, VR\n", "OpenH1-Steam-Frame-symbols.zip"),
+    ("- Build: build-12 (debug)\n- Platform: Android\n", "OpenH1-Android-debug-symbols.zip"),
+    ("- Build: build-12 (release)\n- Platform: Windows\n", "OpenH1-Windows-symbols.zip"),
+    ("- Build: build-12 (release)\n", "OpenH1-<machine>-symbols.zip"),
+    ("- Build: a local build, not a release (debug)\n- Platform: macOS\n", None),
+])
+def test_the_release_s_symbols_are_named(text, hint):
+    """a report of a release's build names the zip its image is in (report.c's Build and Platform lines)"""
+    found = symbolize_crash.symbols_hint(text)
+    if hint is None:
+        assert found is None
+    else:
+        assert hint in found and "https://github.com/OpenH1/OpenH1/releases/tag/build-" in found
+
+
+def test_every_report_platform_has_its_symbols():
+    """report.c's report_platform names are each a platform of tools/release_names.py's"""
+    import release_names
+
+    report = (ROOT / "port/linux/src/report.c").read_text()
+    body = report[report.index("static const char *report_platform(void)"):]
+    body = body[:body.index("\n}\n")]
+    import re
+    assert set(re.findall(r'return "([^"]+)";', body)) == set(symbolize_crash.PLATFORMS)
+    for platform in symbolize_crash.PLATFORMS.values():
+        assert release_names.symbols_name(platform, "release").endswith("-symbols")
+
+
+def test_the_wrong_build_names_the_right_zip(tmp_path):
+    """a release's report with another build's image: the error names the zip to fetch"""
+    image = elf(FUNCTIONS)
+    with pytest.raises(SymbolizeError, match="OpenH1-macOS-symbols.zip of the release build-7"):
+        symbolize_crash.symbolize_report(CRASH, "a0000200", tmp_path / "halo_guest.elf", image, None, None,
+                                         symbolize_crash.symbols_hint("- Build: build-7 (release)\n- Platform: macOS\n"))
+    # (an image without its lines: the frames have their functions, and the zip with the lines is named)
+    (tmp_path / "halo_guest.elf").write_bytes(image)
+    out = symbolize_crash.symbolize_report(CRASH, "a0000100", tmp_path / "halo_guest.elf", image, None,
+                                           fake_symbolizer(tmp_path), "OpenH1-macOS-symbols.zip of build-7")
+    assert any("no source lines" in line and "OpenH1-macOS-symbols.zip" in line for line in out)
+
+
 def llvm_tool(name):
     """the pinned LLVM's tool (tools/guest_toolchain.py), if it is here"""
     import guest_toolchain

@@ -509,6 +509,26 @@ information the build left, elsewhere with `llvm-symbolizer`, the guests'
 pinned LLVM's (`python tools/guest_toolchain.py`) or the PATH's.
 `tools/test_symbolize_crash.py` tests it, offline.
 
+A release's builds carry `halo_guest.elf` only. Each release has, beside
+each build, its `halo_guest.debug.elf` (and, Windows's, its PDBs):
+`OpenH1-<machine>[-debug]-symbols.zip`, made with the same link as the
+build (`tools/ci_build.py`, `tools/release_names.py`): `OpenH1-Linux-symbols.zip`,
+`OpenH1-Linux-VR-symbols.zip`, `OpenH1-Linux-ARM64-symbols.zip`,
+`OpenH1-Steam-Frame-symbols.zip`, `OpenH1-macOS-symbols.zip`,
+`OpenH1-Android-symbols.zip`, `OpenH1-Windows-symbols.zip`, and each with
+`-debug` for the debug build. Take the one of the release the report's
+Build line names (`build-<n>`, release or debug; the releases keep the
+last five builds), and give it as it is downloaded, with the build's own
+zip for the host's frames:
+
+```
+python tools/symbolize_crash.py report.zip OpenH1-Linux-symbols.zip OpenH1-Linux.zip
+```
+
+Given a release's report and another image, or one without its lines, the
+tool names the zip to fetch. No player and no self-updater downloads the
+symbols; the release's `SHA256SUMS` lists them with the rest.
+
 What held the frames back is read from the times of each frame: the
 frame's own; the GPU's on it (Metal's: the time the GPU was busy, the
 presentation's included; Vulkan's: from the frame's first work on the GPU

@@ -942,7 +942,11 @@ draw, and cleared.
   `llvm-symbolizer --obj=build/macos/halo_guest.debug.elf 0x<address>`
   (the image with its source lines). `python tools/symbolize_crash.py
   <report's zip, or crash.txt> build/macos` does it for every frame, the
-  host's too (with `atos`): refer to "Reports" in the Linux README.
+  host's too (with `atos`): refer to "Reports" in the Linux README. A
+  release's app's image with its lines is the release's
+  `OpenH1-macOS-symbols.zip` (`OpenH1-macOS-debug-symbols.zip` for
+  `OpenH1-debug.dmg`), of the release the report's Build line names:
+  `python tools/symbolize_crash.py <report's zip> OpenH1-macOS-symbols.zip`.
 - `HALO_TRACE_SYSCALLS=1` logs the guest's system calls.
 
 ## Limits

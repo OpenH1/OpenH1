@@ -211,6 +211,7 @@ python -m pytest -q tools/test_guest_layout.py tools/test_linux_guest_build.py  
 python -m pytest -q tools/test_windows_build.py         # the Windows host's import thunks, the guest build's steps without a shell
 python -m pytest -q tools/test_guest_toolchain.py         # the guests' pinned LLVM: its archives, what is kept of them, libxml2's stand-in
 python -m pytest -q tools/test_linux_package.py tools/test_install_layout.py   # the Linux release's layout, its install.sh
+python -m pytest -q tools/test_release_symbols.py tools/test_symbolize_crash.py  # each release's symbols zips; a crash's frames named
 python -m pytest -q tools/test_guest_base_register.py tools/test_host_memory_base.py  # the base register
 python -m pytest -q tools/test_host_pages.py tools/test_android_elf_alignment.py  # kernels of 16 KB and 64 KB pages, simulated; the APK's libraries' 16 KB alignment
 python -m pytest -q tools/test_guest_branch_relax.py       # the guests' conditional branches relaxed once the base register puts them out of reach

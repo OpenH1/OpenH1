@@ -56,6 +56,15 @@ The iOS build is the app (ninja ios), signed ad hoc (tools/ios_app.py: a
 device refuses it, a sideloading tool such as AltStore signs it again), as
 an .ipa (Payload/OpenH1.app, zipped), alone in dist/halo-ios-<config>/. The
 release does not publish it yet (port/ios/README.md).
+
+Each guest build (all but Windows, whose symbols folder has PDBs too, below)
+also leaves its guest image with its source lines, halo_guest.debug.elf, in
+dist/<its folder>-symbols/ (halo-macos-release-symbols...), taken as soon as
+the build is made (the next build in the same folder links another), and
+only when its loaded segments are those of the image the build carries
+(and, Android's, the APK's): the release publishes it as
+OpenH1-<machine>[-debug]-symbols.zip (tools/release_names.py), for
+tools/symbolize_crash.py. A build without one warns, and is not stopped.
 """
 
 import argparse
@@ -153,6 +162,67 @@ def check_guest_image(platform: str) -> None:
         print(f"{executable.relative_to(ROOT)} carries {image.relative_to(ROOT)}", flush=True)
 
 
+def loaded_segments(data: bytes) -> list:
+    """an ELF file's loadable segments: (vaddr, memsz, flags, the file's bytes of it)"""
+    import struct
+
+    if data[:4] != b"\x7fELF" or data[4] not in (1, 2):
+        raise ValueError("not an ELF file")
+    if data[4] == 2:
+        phoff, = struct.unpack_from("<Q", data, 32)
+        phentsize, phnum = struct.unpack_from("<HH", data, 54)
+    else:
+        phoff, = struct.unpack_from("<I", data, 28)
+        phentsize, phnum = struct.unpack_from("<HH", data, 42)
+    segments = []
+    for index in range(phnum):
+        at = phoff + index * phentsize
+        if data[4] == 2:
+            kind, flags, offset, vaddr, _, filesz, memsz = struct.unpack_from("<IIQQQQQ", data, at)
+        else:
+            kind, offset, vaddr, _, filesz, memsz, flags = struct.unpack_from("<IIIIIII", data, at)
+        if kind == 1:  # PT_LOAD
+            segments.append((vaddr, memsz, flags, data[offset:offset + filesz]))
+    if not segments:
+        raise ValueError("no loadable segments")
+    return segments
+
+
+def warn(message: str) -> None:
+    """a warning, which the workflow's page shows (::warning::)"""
+    print(f"::warning::{message}", flush=True)
+
+
+def collect_symbols(platform: str, folder: str) -> None:
+    """the guest image with its source lines (halo_guest.debug.elf, linked
+    beside halo_guest.elf from the same objects: tools/android_build.py)
+    into dist/<folder>-symbols/, when it is the image the build carries;
+    else a warning, and no folder: symbols missing do not stop a build"""
+    build = ROOT / "build" / platform
+    image, debug_image = build / "halo_guest.elf", build / "halo_guest.debug.elf"
+    symbols = ROOT / "dist" / f"{folder}-symbols"
+    if symbols.exists():
+        shutil.rmtree(symbols)
+    try:
+        carried = image.read_bytes()
+        if platform == "android":
+            # (the APK's copy, which the phone runs)
+            import zipfile
+
+            with zipfile.ZipFile(ROOT / APKS["release" if folder.endswith("-release") else "debug"]) as apk:
+                if apk.read("assets/halo_guest.elf") != carried:
+                    raise ValueError(f"the APK's assets/halo_guest.elf is not {image.relative_to(ROOT)}")
+        if loaded_segments(debug_image.read_bytes()) != loaded_segments(carried):
+            raise ValueError(f"its loaded segments are not those of {image.relative_to(ROOT)}")
+    except (OSError, KeyError, ValueError) as error:
+        warn(f"no symbols for {folder}: {debug_image.relative_to(ROOT)}: {error}")
+        return
+    symbols.mkdir(parents=True)
+    shutil.copy2(debug_image, symbols)
+    print(f"{debug_image.relative_to(ROOT)} -> {symbols.relative_to(ROOT)} "
+          f"({debug_image.stat().st_size} bytes, the image of {image.relative_to(ROOT)})", flush=True)
+
+
 def main() -> int:
     if sys.argv[1:] == ["notes"]:
         sys.stdout.write(release_notes_versions())
@@ -201,6 +271,7 @@ def main() -> int:
         # (ditto), which the workflow's artifacts would lose
         run(["ninja", "ios"])
         check_guest_image(args.platform)
+        collect_symbols(args.platform, f"halo-ios-{args.config}")
         dist = ROOT / "dist" / f"halo-ios-{args.config}"
         if dist.exists():
             shutil.rmtree(dist)
@@ -224,6 +295,8 @@ def main() -> int:
         run(["ninja", target])
         outputs = OUTPUTS[args.platform]
         check_guest_image(args.platform)
+    if args.platform != "windows":
+        collect_symbols(args.platform, dist_name(args.platform, args.config, args.vr))
 
     if args.platform == "linux_arm64" and args.vr:
         # the Steam Frame's package (tools/frame_package.py: the game, its

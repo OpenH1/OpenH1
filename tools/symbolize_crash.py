@@ -26,11 +26,24 @@ assets/halo_guest.elf). The game's reference address (debug.txt's, which
 report.md repeats: write_to_error_file's address) must be the image's, or
 the image is another build's and the tool stops.
 
+A release's build has its halo_guest.debug.elf in the release, beside it:
+OpenH1-<machine>[-debug]-symbols.zip (OpenH1-macOS-symbols.zip,
+OpenH1-Linux-symbols.zip, OpenH1-Linux-ARM64-debug-symbols.zip,
+OpenH1-Android-symbols.zip...: tools/release_names.py), in the release the
+report's Build line names (build-<n>, its flavour release or debug; the
+releases keep the last five builds). Give the zip as it is downloaded, with
+the player's download if the host's frames are wanted too:
+
+    python tools/symbolize_crash.py report.zip OpenH1-Linux-symbols.zip OpenH1-Linux.zip
+
+When the report names a release's build and the image is not that build's,
+or has no source lines, the tool says which zip to fetch.
+
 The Windows build's crash lines (port/windows/host/host_memory_watch_win.c)
 name each frame's module and the offset in it: its build is the folder of
-halo.exe with its halo.pdb and halo_guest.debug.elf (a release's
-OpenH1-Windows[-debug]-symbols.zip has halo.pdb and halo_guest.debug.elf; the zip
-of the same name without -symbols has halo.exe). The crash reports that
+halo.exe with its halo.pdb and halo_guest.debug.elf, or a release's
+OpenH1-Windows[-debug]-symbols.zip (halo.pdb and halo_guest.debug.elf)
+with the zip of the same name without -symbols (halo.exe). The crash reports that
 reach Sentry need none of this for the host's frames: Sentry symbolizes
 them itself.
 
@@ -71,6 +84,23 @@ GUEST_SPAN = 1 << 32
 HOST_SPAN = 256 << 20
 # the function whose address the reference address is (errors.c, report.c)
 REFERENCE_FUNCTION = "write_to_error_file"
+# the build a report names: report.md's "- Build: build-1781 (release, commit
+# ...)" and "- Platform: macOS", debug.txt's "build: ..." and "platform: ..."
+# (port/linux/src/report.c, updater_build_text)
+BUILD = re.compile(r"^(?:- )?build: build-(\d+) \((release|debug)", re.IGNORECASE | re.MULTILINE)
+PLATFORM = re.compile(r"^(?:- )?platform: (.+?)\s*$", re.IGNORECASE | re.MULTILINE)
+# report.c's report_platform -> tools/release_names.py's platform
+PLATFORMS = {
+    "macOS": "macos",
+    "iOS": "ios",
+    "Android": "android",
+    "Windows": "windows",
+    "Linux x86-64": "linux-x86_64",
+    "Linux x86-64, VR": "linux-x86_64-vr",
+    "Linux arm64": "linux-arm64",
+    "Linux arm64, VR": "steam-frame-vr",
+}
+RELEASES = "https://github.com/OpenH1/OpenH1/releases/tag"
 
 
 class SymbolizeError(Exception):
@@ -96,6 +126,35 @@ def report_text(path: Path) -> Tuple[str, Optional[str]]:
             return text, reference or last_reference(text)
     text = path.read_text(encoding="utf-8", errors="replace")
     return text, last_reference(text)
+
+
+def report_context(path: Path) -> str:
+    """all of a report's text (a zip's report.md, debug.txt and crash.txt,
+    or the file), where its build is named"""
+    if zipfile.is_zipfile(path):
+        with zipfile.ZipFile(path) as archive:
+            return "\n".join(archive.read(name).decode("utf-8", "replace") for name in archive.namelist()
+                             if Path(name).name in ("report.md", "debug.txt", "crash.txt"))
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def symbols_hint(text: str) -> Optional[str]:
+    """where the image of the release's build the report names is: its
+    release's symbols zip, or None for a local build (or a report that does
+    not say)"""
+    build, platform = BUILD.search(text), PLATFORM.search(text)
+    if build is None:
+        return None
+    number, flavor = build.group(1), build.group(2).lower()
+    if platform is None or platform.group(1) not in PLATFORMS:
+        return (f"the release build-{number}'s OpenH1-<machine>{'-debug' if flavor == 'debug' else ''}-symbols.zip "
+                f"({RELEASES}/build-{number})")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import release_names
+
+    name = release_names.symbols_name(PLATFORMS[platform.group(1)], flavor)
+    return (f"{name}.zip of the release build-{number} ({RELEASES}/build-{number}; the releases keep the last "
+            f"five builds)")
 
 
 def last_reference(text: str, before: Optional[int] = None) -> Optional[str]:
@@ -292,7 +351,32 @@ def find_build(paths: List[Path], guest: Optional[Path], host: Optional[Path]) -
     return guest, image, host
 
 
-def check_reference(image: bytes, reference: Optional[str], where: Path) -> None:
+def unpack_zips(paths: List[Path], folder: Path) -> List[Path]:
+    """the build's files with each zip given (a release's symbols zip, its
+    Linux or Windows zip; not an APK, which is read as it is) unpacked into
+    one folder (a zip's single top folder, if it has one, left out): that
+    folder, and the files that are not zips"""
+    rest, unpacked = [], folder / "build"
+    for index, path in enumerate(paths):
+        if path.is_dir() or path.suffix.lower() == ".apk" or not zipfile.is_zipfile(path):
+            rest.append(path)
+            continue
+        target = folder / str(index)
+        with zipfile.ZipFile(path) as archive:
+            archive.extractall(target)  # (which keeps every name inside target)
+        entries = list(target.iterdir())
+        root = entries[0] if len(entries) == 1 and entries[0].is_dir() else target
+        shutil.copytree(root, unpacked, dirs_exist_ok=True)
+    return ([unpacked] if unpacked.exists() else []) + rest
+
+
+def has_lines(image: bytes) -> bool:
+    """the image has its source lines (halo_guest.debug.elf, not the
+    builds' halo_guest.elf)"""
+    return b".debug_line" in image
+
+
+def check_reference(image: bytes, reference: Optional[str], where: Path, hint: Optional[str] = None) -> None:
     """the image is the build's that crashed: its reference function is at
     the reference address the report gives"""
     symbols = elf_symbols(image)
@@ -307,7 +391,7 @@ def check_reference(image: bytes, reference: Optional[str], where: Path) -> None
         raise SymbolizeError(
             f"{where} is not the build that crashed: the report's reference address is {reference}, the image's "
             f"{REFERENCE_FUNCTION} is at {ours:x}. Give the guest image of the build the report names "
-            f"(report.md's Build line).")
+            f"(report.md's Build line)" + (f": {hint}." if hint else "."))
 
 
 # ---------- the symbolizers
@@ -431,14 +515,15 @@ def answer_lines(answer: List[str]) -> List[str]:
 
 
 def symbolize_report(text: str, reference: Optional[str], guest_path: Optional[Path], image: Optional[bytes],
-                     host_path: Optional[Path], symbolizer: Optional[str]) -> List[str]:
-    """the crash's lines, each address's function and line after it"""
+                     host_path: Optional[Path], symbolizer: Optional[str], hint: Optional[str] = None) -> List[str]:
+    """the crash's lines, each address's function and line after it (hint:
+    where the build's image with its lines is, symbols_hint's)"""
     crash = parse_crash(text)
     if reference is None:
         reference = last_reference(text, crash["offset"])
     image_file = guest_path
     if image is not None:
-        check_reference(image, reference, guest_path)
+        check_reference(image, reference, guest_path, hint)
         if guest_path is None or not guest_path.name.startswith("halo_guest"):
             # (the executable's or the APK's copy, written out for llvm-symbolizer)
             handle = tempfile.NamedTemporaryFile(prefix="halo_guest.", suffix=".elf", delete=False)
@@ -472,7 +557,11 @@ def symbolize_report(text: str, reference: Optional[str], guest_path: Optional[P
     if crash["base"]:
         out.append(f"(the guest's memory at {crash['base']:016x}: its addresses are the host's less it)")
     if image is None:
-        out.append("(no guest image: the guest's frames are given as guest addresses only)")
+        out.append("(no guest image: the guest's frames are given as guest addresses only"
+                   + (f"; its image is in {hint})" if hint else ")"))
+    elif not has_lines(image):
+        out.append("(the guest image has no source lines: the guest's frames are given their functions only; "
+                   + (f"the image with them is in {hint})" if hint else "give halo_guest.debug.elf)"))
     for index, line in crash["lines"]:
         out.append(line)
         for label, address, is_return in crash["addresses"].get(index, []):
@@ -567,26 +656,31 @@ def main() -> int:
     parser.add_argument("report", type=Path, help="a crash report's zip, its crash.txt, or halo.log or debug.txt")
     parser.add_argument("build", type=Path, nargs="*",
                         help="the build that crashed: its folder (build/macos, the app, the Linux release's tree, "
-                             "Windows's halo.exe with halo.pdb and halo_guest.elf), or its files")
+                             "Windows's halo.exe with halo.pdb and halo_guest.debug.elf), or its files, or a "
+                             "release's zips (OpenH1-<machine>[-debug]-symbols.zip, and the build's own)")
     parser.add_argument("--guest", type=Path, help="the guest image (halo_guest.debug.elf or halo_guest.elf)")
     parser.add_argument("--host", type=Path, help="the host's executable (halo, libmain.so)")
     parser.add_argument("--symbolizer", help="llvm-symbolizer (default: the guests' pinned LLVM's, or the PATH's)")
     args = parser.parse_args()
 
-    try:
-        if not zipfile.is_zipfile(args.report):
-            raw = args.report.read_text(encoding="utf-8", errors="replace")
-            if EXCEPTION.search(raw) or FRAME.search(raw):
-                if len(args.build) != 1 or not args.build[0].is_dir():
-                    sys.exit("a Windows build's report needs the folder of its halo.exe, halo.pdb and halo_guest.elf")
-                return windows_main(args.report, args.build[0], args.symbolizer)
-        text, reference = report_text(args.report)
-        guest_path, image, host_path = find_build(args.build, args.guest, args.host)
-        for line in symbolize_report(text, reference, guest_path, image, host_path, args.symbolizer):
-            print(line)
-    except SymbolizeError as error:
-        print(f"symbolize_crash.py: {error}", file=sys.stderr)
-        return 1
+    with tempfile.TemporaryDirectory(prefix="symbolize_crash.") as folder:
+        try:
+            build = unpack_zips(args.build, Path(folder))
+            if not zipfile.is_zipfile(args.report):
+                raw = args.report.read_text(encoding="utf-8", errors="replace")
+                if EXCEPTION.search(raw) or FRAME.search(raw):
+                    if len(build) != 1 or not build[0].is_dir():
+                        sys.exit("a Windows build's report needs the folder of its halo.exe, halo.pdb and "
+                                 "halo_guest.debug.elf, or the release's OpenH1-Windows[-debug].zip and its -symbols.zip")
+                    return windows_main(args.report, build[0], args.symbolizer)
+            text, reference = report_text(args.report)
+            guest_path, image, host_path = find_build(build, args.guest, args.host)
+            for line in symbolize_report(text, reference, guest_path, image, host_path, args.symbolizer,
+                                         symbols_hint(report_context(args.report))):
+                print(line)
+        except (SymbolizeError, zipfile.BadZipFile) as error:
+            print(f"symbolize_crash.py: {error}", file=sys.stderr)
+            return 1
     return 0
 
 
