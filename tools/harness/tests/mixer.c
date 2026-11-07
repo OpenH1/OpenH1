@@ -1151,6 +1151,8 @@ int main(int argc, char **argv)
 
 	resampler_initialize();
 	resampler_phases_initialize();
+	/* (the cases are of the mixer's own low pass but where they say) */
+	resampler_mode = RESAMPLER_SINC;
 
 	/* the resampler is the low pass worked out exactly: noise at every rate,
 	the error well under 16-bit's */
@@ -1327,6 +1329,53 @@ int main(int argc, char **argv)
 		free(signal);
 		return 0;
 	}
+	/* audio.resampler = "xbox", the default: the direct path through the
+	Xbox's low pass, as recorded (issue 714's seventh run): a click at 32 kHz
+	played at 24 kHz, half the output's rate, is the click itself on the
+	frames and between them the Xbox's weights halfway, 0.598, -0.120, 0.024
+	and -0.003, both channels of a stereo voice alike; nothing further than
+	four frames */
+	CASE("resampler-xbox")
+	{
+		static const double halfway[4] = { 0.598, -0.120, 0.024, -0.003 };
+		short samples[64 * 2];
+		float output[160 * 2];
+		unsigned long channels, n;
+
+		resampler_setting = "xbox";
+		CHECK(resampler_mode_read() == RESAMPLER_XBOX, "audio.resampler = \"xbox\" is not read as xbox");
+		resampler_setting = "";
+		CHECK(resampler_mode_read() == RESAMPLER_XBOX, "audio.resampler = \"\" is not read as xbox");
+		resampler_setting = NULL;
+		resampler_mode = resampler_mode_read();
+		CHECK(resampler_mode == RESAMPLER_XBOX, "audio.resampler unset is not read as xbox");
+		for (channels = 1; channels <= 2; channels++)
+		{
+			struct sdl_stream *stream;
+
+			memset(samples, 0, sizeof(samples));
+			samples[20 * channels] = 16384;
+			if (channels == 2)
+				samples[20 * channels + 1] = -16384;
+			stream = voice_new(samples, 64, channels, 32000, 24000);
+			render(stream, output, 100, TRUE);
+			for (n = 0; n < 100; n++)
+			{
+				long offset = (long)n - 40;
+				double expected = offset == 0 ? 0.5 : (offset & 1) && labs(offset) < 8 ?
+					0.5 * halfway[(labs(offset) - 1) / 2] : 0.0;
+
+				CHECK(fabs(output[2 * n] - expected) < 0.5 * 0.003, "%lu channels: frame %ld from the click is "
+					"%.4f of it, not %.4f", channels, offset, output[2 * n] / 0.5, expected / 0.5);
+				CHECK(output[2 * n + 1] == (channels == 2 ? -output[2 * n] : output[2 * n]),
+					"%lu channels: the right channel's frame %ld is %f, the left's %f", channels, offset,
+					output[2 * n + 1], output[2 * n]);
+			}
+			voice_delete(stream);
+		}
+		resampler_mode = RESAMPLER_SINC;
+		return 0;
+	}
 	/* audio.resampler = "linear": each frame the two source frames around
 	it, weighted by how near it is to each */
 	CASE("linear")
@@ -1365,7 +1414,8 @@ int main(int argc, char **argv)
 		resampler_setting = "sinc";
 		CHECK(resampler_mode_read() == RESAMPLER_SINC, "audio.resampler = \"sinc\" is not read as sinc");
 		resampler_setting = NULL;
-		CHECK(resampler_mode_read() == RESAMPLER_SINC, "audio.resampler unset is not read as sinc");
+		CHECK(resampler_mode_read() == RESAMPLER_XBOX, "audio.resampler unset is not read as xbox");
+		resampler_mode = RESAMPLER_SINC;
 		free(output);
 		free(exact);
 		free(samples);
