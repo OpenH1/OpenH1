@@ -33,6 +33,7 @@ lights' cells' upload put aside before a draw that reads them).
 #include "../xgpu_vulkan_post.c"
 #include "../xgpu_vulkan_post_shaders.c"
 #include "../xgpu_vulkan_world_ao.c"
+#include "../xgpu_vulkan_rt.c"
 #include <assert.h>
 #include <stdarg.h>
 #include <unistd.h>

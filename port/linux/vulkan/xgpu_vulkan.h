@@ -186,6 +186,10 @@ struct xgpu_vulkan_capabilities
 	subgroup arithmetic in the fragment stage): xgpu_spirv_options
 	subgroups */
 	int subgroups;
+	/* display.ambient_occlusion "ray_traced": the device's ray queries and
+	acceleration structures (VK_KHR_ray_query, VK_KHR_acceleration_structure:
+	xgpu_vulkan_rt.c), unless HALO_VULKAN_NO_RAY_QUERIES */
+	int ray_queries;
 	/* the device, its Vulkan version and driver, in a few words (a
 	report's: port/linux/src/report.c) */
 	char device[96];
@@ -574,6 +578,9 @@ linear, clamped, a texel of none where it has not all come) */
 read: a 2D image of four floats, read by texel, a 1x1 of 1 where none is
 found) */
 #define XGPU_VULKAN_BINDING_WORLD_AO_PIXELS 6
+/* (and, where the device has ray queries, the ray-traced scene's top-level
+acceleration structure: xgpu_vulkan_rt_scene) */
+#define XGPU_VULKAN_BINDING_WORLD_AO_SCENE 8
 struct xgpu_world_ao_block;
 /* the stand-ins and the sampler made (the core's start): 0 if they cannot be */
 int xgpu_vulkan_world_ao_create(void);
@@ -604,6 +611,39 @@ void xgpu_vulkan_world_ao_set_pixels(struct xgpu_vulkan_image *image);
 struct xgpu_vulkan_image *xgpu_vulkan_world_ao_pixels_image(void);
 int xgpu_vulkan_world_ao_block(uint64_t serial, VkDescriptorBufferInfo *info);
 uint64_t xgpu_vulkan_world_ao_number(void);
+/* (the number changed: what the set names did, xgpu_vulkan_rt.c's scene) */
+void xgpu_vulkan_world_ao_touch(void);
+
+/* display.ambient_occlusion "ray_traced" (xgpu_vulkan_rt.c; xgpu_stream.h's
+WORLD_AO_MESH, _INSTANCES), where the device has ray queries
+(capabilities' ray_queries; else these do nothing): a mesh (id 0: every
+mesh let go of) and the frame's instances, in the stream's order; the
+frame's scene built for the pass about to read it (its meshes not yet
+built, then its instances', in the early commands: 1 if there is one to
+trace, 0 if not, the pass then the distance-field scene's); and the scene
+the occlusion set names (the latest built, else an empty one; VK_NULL_HANDLE
+without ray queries), read by the work recorded now */
+struct xgpu_world_ao_instance;
+void xgpu_vulkan_rt_mesh(uint32_t id, uint32_t count, const float *triangles);
+void xgpu_vulkan_rt_instances(const struct xgpu_world_ao_instance *instances, uint32_t count);
+int xgpu_vulkan_rt_build(void);
+VkAccelerationStructureKHR xgpu_vulkan_rt_scene(void);
+int xgpu_vulkan_rt_ready(void);
+/* (the core's: at the device's making and end) */
+struct xgpu_vulkan_rt_device
+{
+	VkDevice device;
+	PFN_vkGetDeviceProcAddr get_device_proc_addr;
+	VkPhysicalDeviceMemoryProperties memory;
+	uint32_t scratch_alignment;
+};
+int xgpu_vulkan_rt_create(const struct xgpu_vulkan_rt_device *device);
+void xgpu_vulkan_rt_destroy(void);
+/* (the core's, for xgpu_vulkan_rt.c) the early commands, begun: before the
+draws of the submission being recorded, which are ordered after them; and
+the latest submission the GPU is done with */
+VkCommandBuffer xgpu_vulkan_early_commands(void);
+uint64_t xgpu_vulkan_completed(void);
 
 /* the enhanced dynamic lights' block (struct xgpu_dynamic_lights_block,
 size bytes) and their grid's cells (32 x 32 x 16, four uints each: xgpu.h)

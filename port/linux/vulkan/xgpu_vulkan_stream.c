@@ -347,6 +347,11 @@ static struct
 	VkShaderModule shaders[2];
 	VkSampler sampler;
 	struct xgpu_vulkan_pipeline_description pass;
+	/* display.ambient_occlusion "ray_traced": the pass's pixel shader and
+	pipeline with ray queries, where the device has them (0: none) */
+	VkShaderModule rays_shader;
+	struct xgpu_vulkan_pipeline_description rays;
+	int rays_drawn;
 } prepass;
 
 static double preparation_start(void)
@@ -1512,6 +1517,7 @@ static int uniforms_update(int effect)
 		/* (display.ambient_occlusion "world": the draw's object) */
 		to->world_ao[0] = from->world_ao[0];
 		to->world_ao[1] = from->world_ao[1];
+		to->world_ao[2] = from->world_ao[2];
 		memcpy(to->blend_constant, stream.dynamic.blend_color, sizeof(to->blend_constant));
 		for (stage = 0; stage < 4; stage++)
 		{
@@ -2727,6 +2733,18 @@ static void stream_world_ao_window(void *context, const struct xgpu_stream_world
 	xgpu_vulkan_world_ao_window(record->active ? &record->block : NULL);
 }
 
+static void stream_world_ao_mesh(void *context, const struct xgpu_stream_world_ao_mesh *record)
+{
+	(void)context;
+	xgpu_vulkan_rt_mesh(record->id, record->count, record->size ? host_pointer(record->data) : NULL);
+}
+
+static void stream_world_ao_instances(void *context, const struct xgpu_stream_world_ao_instances *record)
+{
+	(void)context;
+	xgpu_vulkan_rt_instances(record->size ? host_pointer(record->data) : NULL, record->count);
+}
+
 /* ---------- display.ambient_occlusion "world" found once a pixel
 
 xgpu_stream.h's WORLD_AO_PREPASS: the window's opaque surfaces drawn first
@@ -2798,13 +2816,33 @@ static int prepass_shaders(void)
 	prepass.pass.color_mask = 15;
 	prepass.pass.color_format = XGPU_VULKAN_FORMAT_RGBA32F;
 	prepass.pass.samples = 1;
+	/* (and with ray queries, where the device has them) */
+	if (stream.capabilities.ray_queries && !prepass.rays_shader)
+	{
+		options.ray_queries = TRUE;
+		if (xgpu_spirv_world_ao_pass(XGPU_SPIRV_WORLD_AO_OCCLUSION, &options, &module))
+		{
+			shader_dump("world_ao_rays", &module);
+			prepass.rays_shader = xgpu_vulkan_shader(module.words, module.count);
+			free(module.words);
+		}
+		if (!prepass.rays_shader)
+			host_logf(HOST_LOG_WARN, "vulkan: display.ambient_occlusion \"ray_traced\"'s pass cannot be made: drawn as "
+				"\"world\"");
+		stream.capabilities.ray_queries = prepass.rays_shader != VK_NULL_HANDLE;
+	}
+	prepass.rays = prepass.pass;
+	prepass.rays.pixel_shader = prepass.rays_shader;
 	return 1;
 }
 
 static void prepass_prepare(void)
 {
-	if (prepass_shaders())
-		(void)xgpu_vulkan_pipeline_prepare(&prepass.pass);
+	if (!prepass_shaders())
+		return;
+	(void)xgpu_vulkan_pipeline_prepare(&prepass.pass);
+	if (prepass.rays_shader)
+		(void)xgpu_vulkan_pipeline_prepare(&prepass.rays);
 }
 
 static struct xgpu_vulkan_image *prepass_image(struct xgpu_vulkan_image *image, uint8_t format, uint32_t width,
@@ -2900,7 +2938,7 @@ static void prepass_draw(const struct draw_input *input)
 /* the pass's triangle over a rectangle of the occlusion's image, reading
 the inputs and the occlusion's set */
 static void prepass_pass_draw(struct xgpu_vulkan_image *into, const int32_t rectangle[4],
-	const struct xgpu_world_ao_pass *uniforms)
+	const struct xgpu_world_ao_pass *uniforms, const struct xgpu_vulkan_pipeline_description *pass)
 {
 	struct xgpu_vulkan_dynamic_state dynamic;
 	struct xgpu_vulkan_draw draw;
@@ -2908,7 +2946,7 @@ static void prepass_pass_draw(struct xgpu_vulkan_image *into, const int32_t rect
 	int stage;
 
 	memset(&draw, 0, sizeof(draw));
-	draw.pipeline = xgpu_vulkan_pipeline_ready(&prepass.pass);
+	draw.pipeline = xgpu_vulkan_pipeline_ready(pass);
 	if (!draw.pipeline)
 		return;
 	for (stage = 0; stage < 4; stage++)
@@ -2941,6 +2979,8 @@ static void prepass_pass_draw(struct xgpu_vulkan_image *into, const int32_t rect
 	draw.topology = XGPU_VULKAN_TOPOLOGY_TRIANGLES;
 	draw.count = 3;
 	draw.ambient_occlusion = 1;
+	/* (HALO_VULKAN_DRAW_TIMES: the pass's own kind, "aofe") */
+	draw.kind[0] = 0xfe;
 	xgpu_vulkan_set_target_views(into, NULL, 0, 1);
 	xgpu_vulkan_draw(&draw);
 }
@@ -3017,11 +3057,32 @@ static void stream_world_ao_prepass(void *context, const struct xgpu_stream_worl
 		if (!prepass.history || xgpu_vulkan_image_description(prepass.history)->width != width ||
 			xgpu_vulkan_image_description(prepass.history)->height != height)
 			uniforms.history[0] = 0.0f;
-		if (prepass.pixels && rectangle[2] > rectangle[0] && rectangle[3] > rectangle[1] &&
-			xgpu_vulkan_pipeline_ready(&prepass.pass))
+		/* ("ray_traced": its scene built first, then the pass with ray
+		queries; without them, or before the scene or the pipeline is made,
+		the distance-field scene's rays) */
 		{
-			prepass_pass_draw(prepass.pixels, rectangle, &uniforms);
-			xgpu_vulkan_world_ao_set_pixels(prepass.pixels);
+			const struct xgpu_vulkan_pipeline_description *pass = &prepass.pass;
+
+			if (uniforms.history[3] == 2.0f)
+			{
+				if (prepass.rays_shader && xgpu_vulkan_pipeline_ready(&prepass.rays) && xgpu_vulkan_rt_build())
+					pass = &prepass.rays;
+				else
+					uniforms.history[3] = 1.0f;
+				/* (said as it begins and stops) */
+				if ((pass == &prepass.rays) != prepass.rays_drawn)
+				{
+					prepass.rays_drawn = pass == &prepass.rays;
+					host_logf(HOST_LOG_INFO, "vulkan: display.ambient_occlusion \"ray_traced\": the pass's rays %s",
+						prepass.rays_drawn ? "traced by ray queries" : "stepped through the distance-field scene");
+				}
+			}
+			if (prepass.pixels && rectangle[2] > rectangle[0] && rectangle[3] > rectangle[1] &&
+				xgpu_vulkan_pipeline_ready(pass))
+			{
+				prepass_pass_draw(prepass.pixels, rectangle, &uniforms, pass);
+				xgpu_vulkan_world_ao_set_pixels(prepass.pixels);
+			}
 		}
 		targets_bind();
 		return;
@@ -3257,6 +3318,8 @@ static void stream_initialize(void *context, struct xgpu_stream_capabilities *ca
 	shaders, reading the pixels they draw over, the tone map in place:
 	where the device reads its colour attachments, the desktop's) */
 	capabilities->hdr = stream.capabilities.color_read != 0;
+	/* (display.ambient_occlusion "ray_traced": xgpu_vulkan_rt.c) */
+	capabilities->ray_queries = stream.capabilities.ray_queries != 0;
 	snprintf(capabilities->device, sizeof(capabilities->device), "%s", stream.capabilities.device);
 }
 
@@ -3396,6 +3459,10 @@ const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 		backend.world_ao_cascades = stream_world_ao_cascades;
 		backend.world_ao_window = stream_world_ao_window;
 		backend.world_ao_prepass = stream_world_ao_prepass;
+		/* ... "ray_traced"'s scene (xgpu_vulkan_rt.c), where the device has
+		ray queries */
+		backend.world_ao_mesh = stream_world_ao_mesh;
+		backend.world_ao_instances = stream_world_ao_instances;
 #ifdef HALO_VR
 		host_vulkan_vr_backend(&backend);
 #endif
