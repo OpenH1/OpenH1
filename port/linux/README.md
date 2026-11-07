@@ -429,12 +429,24 @@ The zip holds:
 
 | File | Contents |
 | --- | --- |
-| `report.md` | The summary, laid out as an issue's body: the build, the platform, the GPU, its API and driver, the processor, the map and the game, how long the game has run, the display's settings, and the frame times of the last 5 minutes (the average, the median, the 1% and 0.1% lows, the frames of 50 ms or more, and the longest frames with when they were). |
+| `report.md` | The summary, laid out as an issue's body: the build, the platform, the GPU, its API and driver, the processor, the map and the game, how long the game has run, where the game was (below), the display's settings, and the frame times of the last 5 minutes (the average, the median, the 1% and 0.1% lows, the frames of 50 ms or more, and the longest frames with when they were). |
 | `log.txt` | This run's log (its last 512 KB), which on Linux and Android is not otherwise in a file. |
 | `halo.log` | The host's log file, where there is one: Windows's beside `halo.exe`, the macOS app's in `~/Library/Logs/OpenH1`. |
 | `debug.txt` | The game's own log. |
 | `settings.txt` | The settings changed from their defaults: never `config.toml` itself, nor the passwords (`server.password` and the web ones), `network.public_address`, `server.master_publish_address` or `debug.update_key`. |
 | `screenshot.png` | The frame shown when the report was asked for (none in the VR mode). |
+
+Asked for in a game, `report.md` says where the game was, in its
+"Where" section: the level and its difficulty or gametype, the game's time
+and structure BSP, the first local player's place and aim (on foot, in a
+vehicle, or dead), and in a network game whether it was hosted or joined,
+OpenH1's rate or Legacy, the players' count, the round trip (a client's to
+the host, the host's slowest client's), whether the host has gone silent,
+and (the host's) the other machines' builds. No one's name or address is
+in it. It ends with the developer console's lines that look from the
+camera's place: `game_difficulty_set` (a campaign), `map_name`,
+`switch_bsp` and `debug_camera_set` (`debug_camera_set off` gives the
+camera back).
 
 Keeping the frame times costs a clock reading a frame; keeping the log, a
 copy of each line.

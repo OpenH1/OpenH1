@@ -51,10 +51,60 @@ char *report_scrub(const char *text, size_t size, const char *home, size_t *scru
 /* the zip's CRC-32 (crc 0 to begin, then each part's) */
 uint32_t report_crc32(uint32_t crc, const unsigned char *data, size_t size);
 
+/* where the problem happened, as report_game_where takes it the moment a
+report is asked for: numbers and this machine's tag names only, never a
+player's name or an address */
+enum
+{
+	REPORT_WHERE_BUILDS = 8,
+	/* (a build that is OpenCE's, not OpenH1's) */
+	REPORT_WHERE_OPENCE = -1,
+};
+struct report_where
+{
+	/* 0: the menus (nothing more is said) */
+	int playing;
+	/* the map and the game, report_game_describe's; the level's name, as
+	map_name takes it (the scenario's tag, or custom_maps\<name>); a
+	campaign (no game engine) and its difficulty (0 easy to 3 impossible);
+	the structure BSP loaded */
+	char game[256];
+	char map[128];
+	int campaign, difficulty, bsp;
+	/* the game's time, in ticks of ticks_per_second */
+	long ticks, ticks_per_second;
+	/* the first local player: whether there is one, alive; its place (its
+	vehicle's, in one), its aim in degrees (yaw from the x axis, pitch up);
+	its vehicle's tag (empty: on foot) */
+	int player, alive;
+	float position[3], yaw, pitch;
+	char vehicle[128];
+	/* its camera: position, yaw, pitch, roll and field of view in degrees
+	(as debug_camera_set takes them, camera_pose.c) */
+	int camera;
+	float camera_position[3], camera_yaw, camera_pitch, camera_roll, camera_field_of_view;
+	/* a network game: 0 none, 1 hosting, 2 joined; its OpenH1 game's rate
+	(0: Legacy); the round trip in milliseconds to the host (a client's) or
+	the slowest client's (the host's), -1 not known; the host silent for
+	two seconds (a client); the players in the game; (the host) the other
+	machines' builds as they told them, a count of each (a release's
+	number, 0 a local build, REPORT_WHERE_OPENCE), and of those that told
+	none */
+	int network;
+	long rate, ping;
+	int connection_problem, players;
+	long builds[REPORT_WHERE_BUILDS], build_counts[REPORT_WHERE_BUILDS];
+	int build_kinds, builds_unknown;
+};
+/* report.md's "## Where" section of it (empty for the menus) */
+void report_where_text(const struct report_where *where, char *text, size_t size);
+
 /* port/linux/game/report_game.c: the map and the game, in a few words; and
 whether a game is being played (not the menus: a report's issue waits) */
 void report_game_describe(char *text, size_t size);
 int report_game_playing(void);
+/* ... and where the game is, this moment */
+void report_game_where(struct report_where *where);
 /* the line for a report's note opened (network_chat.c: 1 if it is; it calls
 report_note_done), or closed unfinished; and the player told something */
 int report_game_note_begin(void);
