@@ -65,7 +65,10 @@ enum
 	_menu_layout_safe_area,
 	_menu_layout_touch_target,
 	_menu_layout_glyphs,
-	NUMBER_OF_MENU_LAYOUT_PROBLEMS
+	NUMBER_OF_MENU_LAYOUT_PROBLEMS,
+	/* (the menu studio's: a widget with an open note, the one being noted) */
+	_menu_layout_note = NUMBER_OF_MENU_LAYOUT_PROBLEMS,
+	_menu_layout_picked
 };
 
 typedef void (*menu_layout_outline_proc)(rectangle2d const *rectangle, long kind);
@@ -75,5 +78,17 @@ problems of each kind counted (NUMBER_OF_MENU_LAYOUT_PROBLEMS of them,
 _menu_layout_box's none); the problems in all. The phone's (its safe area,
 its touch targets) where the menus are the touchscreen's */
 long menu_layout_overlay(menu_layout_outline_proc outline, long *counts);
+
+/* the kept frame's widgets, by their record's number (the menu studio's
+notes): the one on top at a point (-1 for none but the screen's own), a
+widget's, a name's; a record's box and name; and a record as JSON fields:
+"widget", "widget_path" (the names from the screen down), "widget_text"
+(the words it and its children draw) and "box" */
+long menu_layout_widget_at(short x, short y);
+long menu_layout_widget_of(void const *widget);
+long menu_layout_widget_named(char const *name);
+boolean menu_layout_widget_box(long id, rectangle2d *box);
+char const *menu_layout_widget_name(long id);
+void menu_layout_widget_json(long id, char *json, long size);
 
 #endif

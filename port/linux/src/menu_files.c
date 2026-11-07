@@ -1083,6 +1083,67 @@ void halo_menus_reload(void)
 	menus_read = 0;
 }
 
+/* the menu studio's notes file and pictures' folder (debug.menu_notes, else
+<tree>/build/menu_notes.jsonl where debug.menu_files is <tree>'s
+port/assets/menus, else menu_notes.jsonl beside config.toml), the folder
+made */
+void halo_menus_notes_paths(char *notes, unsigned long notes_size, char *pictures, unsigned long pictures_size)
+{
+	char const *files = config_string("debug.menu_files");
+	char const *tail = "/port/assets/menus";
+	size_t length = strlen(files);
+	char *slash;
+
+	if (config_string("debug.menu_notes")[0])
+	{
+		snprintf(notes, notes_size, "%s", config_string("debug.menu_notes"));
+	}
+	else if (length > strlen(tail) && (!strcmp(files + length - strlen(tail), tail) ||
+		(files[length - 1] == '/' && !strncmp(files + length - strlen(tail) - 1, tail, strlen(tail)))))
+	{
+		snprintf(notes, notes_size, "%.*s/build/menu_notes.jsonl",
+			(int)(length - strlen(tail) - (files[length - 1] == '/')), files);
+	}
+	else
+	{
+		config_folder(notes, notes_size);
+		snprintf(notes + strlen(notes), notes_size - strlen(notes), "menu_notes.jsonl");
+	}
+	snprintf(pictures, pictures_size, "%s", notes);
+	slash = strrchr(pictures, '/');
+	if (slash)
+		snprintf(slash + 1, pictures_size - (unsigned long)(slash + 1 - pictures), "menu_notes");
+}
+
+/* a line added to the notes file (the menu studio's); FALSE if it could not */
+int halo_menus_note_append(char const *path, char const *line)
+{
+	FILE *file = fopen(path, "a");
+	int written;
+
+	if (!file)
+		return 0;
+	written = fputs(line, file) >= 0 && fputc('\n', file) != EOF;
+	return fclose(file) == 0 && written;
+}
+
+/* the notes file read whole (malloc's, the caller's to free), or NULL */
+char *halo_menus_notes_read(char const *path)
+{
+	unsigned long size = 0;
+	unsigned char *data = file_read(path, &size);
+
+	if (data)
+		data[size] = 0;
+	return (char *)data;
+}
+
+/* (the platform layer's allocation: the game's free is its own) */
+void halo_menus_notes_free(char *text)
+{
+	free(text);
+}
+
 /* a number that changes when a menu file of the folder (its own and its
 folders' .xml files) is written, added or removed: their times and sizes */
 unsigned long long halo_menus_files_stamp(void)

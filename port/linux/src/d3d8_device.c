@@ -5547,6 +5547,28 @@ static void write_screenshot_stream(const unsigned char *pixels, unsigned long w
 	fflush(stream);
 }
 
+/* the next frame saved as a PNG in a folder, as the screenshot key saves
+one (the menu studio's notes: port/linux/game/menu_studio.c), and the name
+it was saved as, once */
+static char screenshot_png_directory[512];
+static char screenshot_png_name[128];
+static BOOL screenshot_png_taken;
+
+void halo_screenshot_png(const char *directory)
+{
+	snprintf(screenshot_png_directory, sizeof(screenshot_png_directory), "%s", directory);
+	screenshot_png_taken = FALSE;
+}
+
+BOOL halo_screenshot_png_taken(char *name, unsigned long size)
+{
+	if (!screenshot_png_taken)
+		return FALSE;
+	screenshot_png_taken = FALSE;
+	snprintf(name, size, "%s", screenshot_png_name);
+	return TRUE;
+}
+
 /* the next frame saved as debug.screenshot_directory's <name>.bmp (the
 menu tour's: port/linux/game/menu_tour.c) */
 static char screenshot_name[128];
@@ -6026,6 +6048,17 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 					(long)back_buffer->target.pixel_height);
 				free(pixels);
 			}
+		}
+		if (screenshot_png_directory[0])
+		{
+			screenshot_png_name[0] = 0;
+			if (!xgpu_backend_screenshot(back_buffer->target.number, screenshot_png_directory, screenshot_png_name,
+				sizeof(screenshot_png_name)))
+			{
+				screenshot_png_name[0] = 0;
+			}
+			screenshot_png_directory[0] = 0;
+			screenshot_png_taken = TRUE;
 		}
 		if (platform_screenshot_take_request())
 			write_key_screenshot(back_buffer);
