@@ -3,7 +3,9 @@ REPORT_GAME.C
 
 What a Save Report's report.md says of the game (port/linux/src/report.c):
 the map loaded (its scenario's tag, as play_log.c names it) and, in a
-multiplayer game, its gametype's name (its variant's, where it has one).
+multiplayer game, its gametype's name (its variant's, where it has one);
+and whether a game is being played, not the menus (a report's issue waits
+until it is not).
 */
 
 #include "cseries.h"
@@ -14,6 +16,13 @@ multiplayer game, its gametype's name (its variant's, where it has one).
 
 #include <stdio.h>
 #include <string.h>
+
+int report_game_playing(void)
+{
+	char const *map_name = global_scenario_index != NONE ? tag_get_name(global_scenario_index) : NULL;
+
+	return map_name && map_name[0] && game_in_progress() && strcmp(map_name, "ui") && !strstr(map_name, "\\ui");
+}
 
 void report_game_describe(char *text, size_t size)
 {

@@ -382,7 +382,7 @@ These files are in the data root:
 | `init.txt` | Console commands that the game does at start-up. For example, `map_name levels\a10\a10` starts the first campaign level. |
 | `tags/` | Sound tag files that replace the sounds of the maps (`audio.loose_sounds`). |
 | `menu_pictures/` | The menus' pictures of the missions and the multiplayer maps, drawn again from these maps (`display.menu_pictures`): a PNG and a note of each. Deleting it draws them again. |
-| `reports/` | The reports saved for the developers (F9, or Settings > Profiles > Report a Problem): a zip each. Refer to "Reports". |
+| `reports/` | The reports saved for the developers (F8, or Settings > Profiles > Report a Problem): a zip each. Refer to "Reports". |
 | `mods/` | Mods: folders of Halo PC tag files whose sounds, bitmaps, text and models play over the maps' on this machine, in the order of Settings > Mods > Manage Mods (`load_order.toml`). Refer to [docs/mods.md](../../docs/mods.md). |
 
 The settings are in `config.toml` in the game's folder (the release's
@@ -404,15 +404,18 @@ A report gathers what helps the developers find a problem, in a zip in
 `reports/` beside `maps/`, named `YYYY-MM-DD_HH.MM.SS.zip` in local time
 (`src/report.c`). The game saves it; it sends nothing itself.
 
-- **Settings > Profiles > Report a Problem** saves a report and opens a new
-  issue on OpenH1's GitHub repository in the browser, its title and body
-  filled in with the report's summary, and, on a computer, the `reports/`
-  folder. Say what happened at the top of the issue, drag the zip into it,
-  and submit it (a GitHub account is needed).
-- **F9** (`controls.report`, rebindable under Controls Setup > Actions)
-  saves a report at once, in a game too, with no browser: the picture is
-  the moment you pressed it. Send the zip later, with Report a Problem's
-  issue or anywhere else.
+Press **F8** (`controls.report`, rebindable under Controls Setup > Actions)
+the moment something goes wrong, in a game or in the menus, or choose
+**Settings > Profiles > Report a Problem**. The game saves a report, its
+screenshot that moment, and opens a new issue on OpenH1's GitHub
+repository in the browser, its title and body filled in with the report's
+summary, and, on a computer, the `reports/` folder beside it. Say what
+happened at the top of the issue, drag the zip into it, and submit it (a
+GitHub account is needed). In a game nothing opens over it: the report is
+saved at once ("Report saved: its GitHub issue opens when you're back in
+the menus"), and its issue opens when you leave the game (or as the game
+quits). A second press
+within 5 seconds opens nothing more.
 
 The zip holds:
 
@@ -481,7 +484,7 @@ the other way side to side. Refer to
 | show the scores (hold) | tab |
 | pause menu | escape |
 | screenshot | F10 |
-| save a report for the developers (refer to "Reports") | F9 |
+| report a problem to the developers (refer to "Reports") | F8 |
 | talk in voice chat (hold) | V |
 | type a chat line to everyone | T |
 | type a chat line to your team | Y |

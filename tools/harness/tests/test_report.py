@@ -1,6 +1,6 @@
 """Save Report (port/linux/src/report.c): report.md's frame times (the average, the 1% and 0.1% lows, the frames of
 50 ms or more, the longest frames, stalls only) and the zip the report is saved as, opened with Python's zipfile;
-its key (controls.report, F9), its Settings row and its documentation."""
+its key (controls.report, F8), its Settings row and its documentation."""
 
 import re
 import sys
@@ -68,10 +68,10 @@ def test_negative_control(control):
 
 
 def test_key_row_and_documentation():
-    """F9 by default, an action of the keyboard's that Key Bindings lists; SAVE REPORT on Settings > Profiles, whose
+    """F8 by default (F9 is the game's own debug key, Profile Reset: debug_keys.c), an action of the keyboard's that Key Bindings lists; SAVE REPORT on Settings > Profiles, whose
     handler the menus know; the settings table and the controls' table"""
     config = read("port/linux/src/port_config.c")
-    assert re.search(r'\{ "controls.report", _config_string, "\\"F9\\"", "HALO_KEY_REPORT"', config)
+    assert re.search(r'\{ "controls.report", _config_string, "\\"F8\\"", "HALO_KEY_REPORT"', config)
     assert "HALO_KEYBOARD_REPORT," in read("port/linux/include/halo_keyboard.h")
     assert '"controls.report"' in read("port/linux/src/xinput_sdl.c")
     assert '{ "controls.report", L"SAVE REPORT", 2, FALSE }' in read("port/linux/game/menu_functions.c")
@@ -80,6 +80,6 @@ def test_key_row_and_documentation():
     assert 'run="port settings report"' in page and "REPORT A PROBLEM" in page
     assert '"port settings report"' in read("port/linux/game/menu_tags.c")
     readme = read("port/linux/README.md")
-    assert "| save a report for the developers (refer to \"Reports\") | F9 |" in readme
+    assert "| report a problem to the developers (refer to \"Reports\") | F8 |" in readme
     assert "`screenshot`, `report`, `push_to_talk`" in readme
     assert "### Reports" in readme

@@ -17,11 +17,9 @@ void report_frame_presented(void);
 /* a line of the log (xbox_kernel.c's platform_log), kept: the last
 REPORT_LOG_SIZE bytes */
 void report_log_line(const char *line);
-/* a report asked for, saved at the next frame presented: report_request
-saves it (controls.report), report_request_send also sends it (Settings'
-REPORT A PROBLEM: report_write); and taken (0 none, 1 saved, 2 sent) */
+/* a report asked for (controls.report, Settings' REPORT A PROBLEM), saved
+and sent at the next frame presented (report_write); and taken (1 if asked) */
 void report_request(void);
-void report_request_send(void);
 int report_take_request(void);
 /* the report saved: the target presented is its screenshot (0: none); send,
 a GitHub issue opened in the browser, filled in with report.md, and the
@@ -43,7 +41,9 @@ int report_issue_url(const char *title, const char *body, char *url, size_t most
 /* the zip's CRC-32 (crc 0 to begin, then each part's) */
 uint32_t report_crc32(uint32_t crc, const unsigned char *data, size_t size);
 
-/* port/linux/game/report_game.c: the map and the game, in a few words */
+/* port/linux/game/report_game.c: the map and the game, in a few words; and
+whether a game is being played (not the menus: a report's issue waits) */
 void report_game_describe(char *text, size_t size);
+int report_game_playing(void);
 
 #endif

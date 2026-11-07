@@ -3,13 +3,17 @@ REPORT.C
 
 Save Report: a zip of what helps find a problem, saved in reports/ beside
 maps/ (reports/<date>_<time>.zip) for the player to send to the developers.
-Asked for by controls.report (F9: report_request, from xinput_sdl.c) or
-Settings > Profiles > REPORT A PROBLEM (menu_functions.c), and saved at the
-next frame presented (d3d8_device.c: report_write), whose picture is its
-screenshot. REPORT A PROBLEM also opens a new issue on OpenH1's GitHub
-repository in the browser, its title and body filled in with report.md,
-and (on a computer) the reports folder: the player says what happened,
-drags the zip in and submits it. Nothing is sent by the game itself.
+Asked for by controls.report (F8, in a game too: xinput_sdl.c) or Settings >
+Profiles > REPORT A PROBLEM (menu_functions.c), both report_request, and
+saved at the next frame presented (d3d8_device.c: report_write), whose
+picture is its screenshot: the moment the key was pressed. Then a new issue
+on OpenH1's GitHub repository opens in the browser, its title and body
+filled in with report.md, and (on a computer) the reports folder: the
+player says what happened, drags the zip in and submits it. Nothing is
+sent by the game itself. Asked for in a game (report_game_playing), the
+issue waits until the player is back in the menus, so that nothing is
+opened over the game. A second ask within REPORT_AGAIN_SECONDS of one is
+let go (a key pressed twice opens one issue).
 
 The zip holds:
   report.md      a GitHub issue's body, its first lines for the player to
@@ -63,6 +67,9 @@ void p2p_discord_game(int *hosting, int *playing, char *description, int size, i
 /* the most of a log file's end taken */
 #define REPORT_FILE_MOST (4 * 1024 * 1024)
 #define REPORT_ZIP_FILES 8
+#define REPORT_AGAIN_SECONDS 5
+/* the most issues waiting for the game's end */
+#define REPORT_PENDING 4
 
 static struct
 {
@@ -80,6 +87,30 @@ static struct
 } report_log = { PTHREAD_MUTEX_INITIALIZER, { 0 }, 0 };
 
 static volatile int report_requested;
+/* the issues of the reports asked for in a game, opened once it is left
+(their addresses, malloc()'s) */
+static struct
+{
+	char *urls[REPORT_PENDING];
+	short count;
+} report_pending;
+/* (the last ask let through: another this soon after it is let go) */
+static long long report_last_ns;
+
+static void report_open_issue(const char *url);
+
+/* the issues waiting opened: the game left, or quit (atexit) */
+static void report_open_pending(void)
+{
+	short index;
+
+	for (index = 0; index < report_pending.count; index++)
+	{
+		report_open_issue(report_pending.urls[index]);
+		free(report_pending.urls[index]);
+	}
+	report_pending.count = 0;
+}
 
 static long long report_now_ns(void)
 {
@@ -94,6 +125,10 @@ static long long report_now_ns(void)
 void report_frame_presented(void)
 {
 	long long now = report_now_ns();
+
+	/* (the issues of reports asked for in a game, once it is left) */
+	if (report_pending.count && !report_game_playing())
+		report_open_pending();
 
 	if (report_frames.last_ns)
 	{
@@ -124,12 +159,12 @@ void report_log_line(const char *line)
 
 void report_request(void)
 {
-	report_requested = report_requested ? report_requested : 1;
-}
+	long long now = report_now_ns();
 
-void report_request_send(void)
-{
-	report_requested = 2;
+	if (report_last_ns && now - report_last_ns < REPORT_AGAIN_SECONDS * 1000000000LL)
+		return;
+	report_last_ns = now;
+	report_requested = 1;
 }
 
 int report_take_request(void)
@@ -631,6 +666,30 @@ static int report_unattended(void)
 		config_string("debug.network_test")[0] || config_real("debug.exit_after") > 0.0;
 }
 
+/* an issue opened in the browser, and the reports folder beside it (a run
+nobody watches leaves the desktop alone: the address logged) */
+static void report_open_issue(const char *url)
+{
+	char folder[1024], folder_url[1400];
+
+	if (report_unattended())
+	{
+		platform_log("report: the issue's address: %s", url);
+		return;
+	}
+	platform_open_url(url);
+#if !defined(HALO_ANDROID) && !defined(HALO_IOS)
+	/* (the folder, for the zip to be dragged into the issue) */
+	snprintf(folder, sizeof(folder), "%s/reports", platform_data_root());
+	report_file_url(folder, folder_url, sizeof(folder_url));
+	platform_open_url(folder_url);
+#else
+	(void)folder;
+	(void)folder_url;
+#endif
+	platform_log("report: opened a new issue for it");
+}
+
 /* ---------- the report */
 
 int report_write(unsigned int target, int send, char *message, size_t message_size)
@@ -737,24 +796,28 @@ int report_write(unsigned int target, int send, char *message, size_t message_si
 			snprintf(build, sizeof(build), "local build");
 		snprintf(title, sizeof(title), "Problem report (%s, %s)", report_platform(), build);
 		made = url && report_issue_url(title, issue, url, REPORT_URL_MOST + 1);
-		if (made && report_unattended())
+		if (made && report_game_playing() && report_pending.count < REPORT_PENDING)
 		{
-			/* (a run nobody watches leaves the desktop alone: the address
-			logged) */
-			platform_log("report: the issue's address: %s", url);
+			/* (in a game, nothing opened over it: the issue waits for the
+			menus, report_frame_presented) */
+			static int at_exit;
+
+			/* (opened as the game quits, if it is quit from the game) */
+			if (!at_exit)
+				at_exit = atexit(report_open_pending) == 0;
+			report_pending.urls[report_pending.count++] = url;
+			url = NULL;
+			snprintf(message, message_size, "Report saved: its GitHub issue opens when you're back in the menus");
+			platform_log("report: its issue opens once the game is left");
 		}
 		else if (made)
 		{
-			platform_open_url(url);
+			report_open_issue(url);
 #if !defined(HALO_ANDROID) && !defined(HALO_IOS)
-			/* (the folder, for the zip to be dragged into the issue) */
-			report_file_url(folder, file_path, sizeof(file_path));
-			platform_open_url(file_path);
 			snprintf(message, message_size, "Report saved: drag reports/%s.zip into the issue", name);
 #else
 			snprintf(message, message_size, "Report saved: attach reports/%s.zip to the issue", name);
 #endif
-			platform_log("report: opened a new issue for it");
 		}
 		free(url);
 	}
