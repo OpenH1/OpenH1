@@ -196,6 +196,15 @@ static struct
 	id<MTLBuffer> loading_uploads[LOADING_UPLOADS];
 	BOOL loading_upload_busy[LOADING_UPLOADS];
 	BOOL loading_texture_valid;
+	/* the caption at the drawable's pixels (loading_art_caption_shown): the
+	frame this refresh's render gave (NULL: none), the caption's textures
+	(each with the refreshes in flight that draw it), the one drawn last
+	(its index and 1; 0: none) and its place in the frame as it is shown */
+	const uint8_t *loading_pixels;
+	id<MTLTexture> caption_textures[LOADING_UPLOADS];
+	int caption_busy[LOADING_UPLOADS];
+	int caption_drawn;
+	unsigned int caption_left, caption_top;
 	id<MTLSamplerState> present_sampler;
 	_Atomic int active;
 	/* the window's size in pixels, as SDL last reported it */
@@ -529,6 +538,7 @@ void host_metal_loading_caption(void *context, const unsigned char *coverage, ui
 	(void)context;
 	pthread_mutex_lock(&presentation.lock);
 	loading_art_caption(&presentation.loading_art, coverage, width, height);
+	presentation.caption_drawn = 0;
 	presentation.loading_texture_valid = NO;
 	pthread_mutex_unlock(&presentation.lock);
 }
@@ -583,6 +593,7 @@ static id<MTLTexture> loading_upload(id<MTLCommandBuffer> buffer,
 	}
 	pixels = presentation.loading_texture && index < LOADING_UPLOADS ?
 		loading_art_render(&presentation.loading_art, frame) : NULL;
+	presentation.loading_pixels = pixels;
 	/* (what the render gave: the sharp frame's size, or, without its
 	memory, the 480 rows') */
 	if (pixels)
@@ -639,6 +650,77 @@ static id<MTLTexture> loading_upload(id<MTLCommandBuffer> buffer,
 	return texture;
 }
 
+/* The caption over the loading frame shown `shown_width` by `shown_height`
+pixels: its texture, at those pixels (loading_art_caption_shown), and its
+place in them; nil: none. */
+static id<MTLTexture> loading_caption_upload(id<MTLCommandBuffer> buffer, NSUInteger shown_width,
+	NSUInteger shown_height, unsigned int *left, unsigned int *top)
+{
+	id<MTLTexture> texture = nil;
+	const uint8_t *tile = NULL;
+	unsigned int width = 0, height = 0;
+	int index = LOADING_UPLOADS;
+
+	pthread_mutex_lock(&presentation.lock);
+	if (presentation.loading_pixels)
+	{
+		/* (this refresh's frame: its caption made again, the background
+		under it the frame's) */
+		tile = loading_art_caption_shown(&presentation.loading_art, presentation.loading_pixels,
+			(unsigned int)shown_width, (unsigned int)shown_height, left, top, &width, &height);
+		presentation.caption_drawn = 0;
+		for (index = 0; tile && index < LOADING_UPLOADS; index++)
+		{
+			if (!presentation.caption_busy[index])
+				break;
+		}
+		if (tile && index < LOADING_UPLOADS)
+		{
+			texture = presentation.caption_textures[index];
+			if (!texture || texture.width != width || texture.height != height)
+			{
+				MTLTextureDescriptor *description = [MTLTextureDescriptor
+					texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:width height:height
+					mipmapped:NO];
+
+				description.storageMode = MTLStorageModeShared;
+				description.usage = MTLTextureUsageShaderRead;
+				texture = [xgpu_metal_device() newTextureWithDescriptor:description];
+				presentation.caption_textures[index] = texture;
+			}
+			if (texture)
+			{
+				[texture replaceRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0 withBytes:tile
+					bytesPerRow:width * 4];
+				presentation.caption_drawn = index + 1;
+				presentation.caption_left = *left;
+				presentation.caption_top = *top;
+			}
+		}
+	}
+	else if (presentation.caption_drawn)
+	{
+		/* (the frame shown again: its caption too) */
+		index = presentation.caption_drawn - 1;
+		texture = presentation.caption_textures[index];
+		*left = presentation.caption_left;
+		*top = presentation.caption_top;
+	}
+	if (texture)
+		presentation.caption_busy[index]++;
+	pthread_mutex_unlock(&presentation.lock);
+	if (texture)
+	{
+		[buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
+			(void)done;
+			pthread_mutex_lock(&presentation.lock);
+			presentation.caption_busy[index]--;
+			pthread_mutex_unlock(&presentation.lock);
+		}];
+	}
+	return texture;
+}
+
 int host_metal_loading_owned(void *context)
 {
 	int owned;
@@ -675,6 +757,56 @@ uint64_t host_metal_loading(void *context, const struct loading_presentation_fra
 	while (discarded-- > 0)
 		host_render_stream_frame_taken();
 	return presentation.refresh_rate > 0.0f ? (uint64_t)(1e9 / presentation.refresh_rate) : 16666667ull;
+}
+
+/* A picture drawn into the viewport, as the drawable's layer wants it. */
+static void present_draw(id<MTLRenderCommandEncoder> encoder, id<CAMetalDrawable> drawable, id<MTLTexture> picture,
+	MTLViewport viewport)
+{
+	[encoder setViewport:viewport];
+	[encoder setFragmentTexture:picture atIndex:0];
+	[encoder setFragmentSamplerState:presentation.present_sampler atIndex:0];
+	if (drawable.texture.pixelFormat == MTLPixelFormatRGBA16Float && presentation.edr_pipeline)
+	{
+		/* display.hdr: the frame encoded for the EDR layer (xgpu_hdr.c) */
+		struct xgpu_metal_post_uniforms uniforms;
+		struct xgpu_hdr_frame frame;
+
+		host_metal_hdr_frame(&frame);
+		memset(&uniforms, 0, sizeof(uniforms));
+		uniforms.metrics[0] = (float)viewport.originX;
+		uniforms.metrics[1] = (float)viewport.originY;
+		uniforms.metrics[2] = 1.0f / (float)viewport.width;
+		uniforms.metrics[3] = 1.0f / (float)viewport.height;
+		uniforms.hdr[0] = frame.output == XGPU_HDR_OUTPUT_SDR ? 1.0f : frame.paper_white;
+		uniforms.hdr[1] = frame.output == XGPU_HDR_OUTPUT_SDR ? 1.0f : frame.peak;
+		uniforms.hdr[2] = (float)XGPU_HDR_OUTPUT_EXTENDED_LINEAR;
+		uniforms.hdr[3] = frame.output == XGPU_HDR_OUTPUT_SDR ? 1.0f : frame.ui;
+		[encoder setRenderPipelineState:presentation.edr_pipeline];
+		[encoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:XGPU_METAL_BUFFER_DRAW_UNIFORMS];
+		[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+	}
+	else if (drawable.texture.pixelFormat == MTLPixelFormatBGRA8Unorm && gamma_power() > 0.0f)
+	{
+		/* display.gamma: the frame curved as it is drawn into the SDR
+		layer (no pass of its own: this is the frame's last) */
+		struct xgpu_metal_post_uniforms uniforms;
+
+		memset(&uniforms, 0, sizeof(uniforms));
+		uniforms.metrics[0] = (float)viewport.originX;
+		uniforms.metrics[1] = (float)viewport.originY;
+		uniforms.metrics[2] = 1.0f / (float)viewport.width;
+		uniforms.metrics[3] = 1.0f / (float)viewport.height;
+		uniforms.bounds[0] = gamma_power();
+		[encoder setRenderPipelineState:presentation.gamma_pipeline];
+		[encoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:XGPU_METAL_BUFFER_DRAW_UNIFORMS];
+		[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+	}
+	else
+	{
+		[encoder setRenderPipelineState:presentation.present_pipeline];
+		[encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+	}
 }
 
 /* ---------- the presentation images */
@@ -1572,49 +1704,18 @@ static BOOL rate_adapt(BOOL shown, double now)
 			MTLViewport viewport = { floor((drawable_width - fit_width) / 2.0), floor((drawable_height - fit_height) / 2.0),
 				floor(fit_width), floor(fit_height), 0.0, 1.0 };
 
-			[encoder setViewport:viewport];
-			[encoder setFragmentTexture:sampled_image atIndex:0];
-			[encoder setFragmentSamplerState:presentation.present_sampler atIndex:0];
-			if (drawable.texture.pixelFormat == MTLPixelFormatRGBA16Float && presentation.edr_pipeline)
+			present_draw(encoder, drawable, sampled_image, viewport);
+			/* (the loading screen's caption over it, at the drawable's
+			pixels) */
+			if (loading_image)
 			{
-				/* display.hdr: the frame encoded for the EDR layer (xgpu_hdr.c) */
-				struct xgpu_metal_post_uniforms uniforms;
-				struct xgpu_hdr_frame frame;
+				unsigned int left = 0, top = 0;
+				id<MTLTexture> caption = loading_caption_upload(buffer, (NSUInteger)viewport.width,
+					(NSUInteger)viewport.height, &left, &top);
 
-				host_metal_hdr_frame(&frame);
-				memset(&uniforms, 0, sizeof(uniforms));
-				uniforms.metrics[0] = (float)viewport.originX;
-				uniforms.metrics[1] = (float)viewport.originY;
-				uniforms.metrics[2] = 1.0f / (float)viewport.width;
-				uniforms.metrics[3] = 1.0f / (float)viewport.height;
-				uniforms.hdr[0] = frame.output == XGPU_HDR_OUTPUT_SDR ? 1.0f : frame.paper_white;
-				uniforms.hdr[1] = frame.output == XGPU_HDR_OUTPUT_SDR ? 1.0f : frame.peak;
-				uniforms.hdr[2] = (float)XGPU_HDR_OUTPUT_EXTENDED_LINEAR;
-				uniforms.hdr[3] = frame.output == XGPU_HDR_OUTPUT_SDR ? 1.0f : frame.ui;
-				[encoder setRenderPipelineState:presentation.edr_pipeline];
-				[encoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:XGPU_METAL_BUFFER_DRAW_UNIFORMS];
-				[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
-			}
-			else if (drawable.texture.pixelFormat == MTLPixelFormatBGRA8Unorm && gamma_power() > 0.0f)
-			{
-				/* display.gamma: the frame curved as it is drawn into the
-				SDR layer (no pass of its own: this is the frame's last) */
-				struct xgpu_metal_post_uniforms uniforms;
-
-				memset(&uniforms, 0, sizeof(uniforms));
-				uniforms.metrics[0] = (float)viewport.originX;
-				uniforms.metrics[1] = (float)viewport.originY;
-				uniforms.metrics[2] = 1.0f / (float)viewport.width;
-				uniforms.metrics[3] = 1.0f / (float)viewport.height;
-				uniforms.bounds[0] = gamma_power();
-				[encoder setRenderPipelineState:presentation.gamma_pipeline];
-				[encoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:XGPU_METAL_BUFFER_DRAW_UNIFORMS];
-				[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
-			}
-			else
-			{
-				[encoder setRenderPipelineState:presentation.present_pipeline];
-				[encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+				if (caption)
+					present_draw(encoder, drawable, caption, (MTLViewport){ viewport.originX + left,
+						viewport.originY + top, caption.width, caption.height, 0.0, 1.0 });
 			}
 		}
 		if (loading_frame.active && !loading_image)

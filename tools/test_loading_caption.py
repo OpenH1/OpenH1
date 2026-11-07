@@ -1,15 +1,18 @@
 """The loading screen's caption (text_hires_line, port/linux/src/text_hires.c)
-set in the menus' heading font, OpenCE, and drawn under the words
-(loading_art_caption_draw): its letters are all there (a font whose ascent is
-smaller than its capitals once lost every letter but the dots), and drawn
-where they belong at the screen's rows."""
+set in the menus' font, Cyborg Interface Gothic, and drawn under the words
+at the screen's own pixels (loading_art_caption_shown): its letters are all
+there (a font whose ascent is smaller than its capitals once lost every
+letter but the dots), drawn where they belong, as tall as ten of the 480
+lines are on that screen (not the loading frame's pixels scaled up: a 4K
+screen shows a frame of 1080 rows), over the frame as the presenter's
+filter shows it."""
 from pathlib import Path
 import os
 import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-FONT = ROOT / "port/assets/fonts/OpenCE-Regular.ttf"
+FONT = ROOT / "port/assets/fonts/CyborgInterfaceGothic-Regular.ttf"
 
 
 def function(text, start):
@@ -48,13 +51,17 @@ int main(int argc, char **argv) {
     int width, height, x, y, inked_columns = 0, top = 1 << 30, bottom = -1;
     long sum = 0;
     unsigned char *line;
-    unsigned int drawn = 0, i;
+    const uint8_t *tile;
+    unsigned int tile_left, tile_top, tile_width, tile_height, drawn = 0, ink_top = ~0u, ink_bottom = 0, i;
     assert(file && fread(font, 1, sizeof(font), file) > 1000); fclose(file);
-    text_hires_embedded[0].tag = "pc\\heading"; text_hires_embedded[0].data_offset = 16;
+    text_hires_embedded[0].tag = "ui\\large_ui"; text_hires_embedded[0].data_offset = 16;
     text_hires_embedded[0].size = sizeof(font);
-    assert(!text_hires_line("no such font", "x", 40.0f, &width, &height));
-    line = text_hires_line("pc\\heading", "Preparing menu pictures \xc2\xb7 4 of 11", 40.0f, &width, &height);
-    assert(line && width > 600 && height >= 40);
+    assert(!text_hires_line("no such font", "x", 80.0f, &width, &height));
+    /* (as sdl_platform.c sets it: its capitals ten of the 480 lines, at
+    LOADING_PRESENTATION_CAPTION_SCALE times their size) */
+    line = text_hires_line("ui\\large_ui", "Preparing menu pictures \xc2\xb7 4 of 23",
+        10.0f * LOADING_PRESENTATION_CAPTION_SCALE, &width, &height);
+    assert(line && width > 1000 && width <= 8192 && height >= 80 && height <= 512);
     for (x = 0; x < width; x++) {
         int inked = 0;
         for (y = 0; y < height; y++) {
@@ -65,20 +72,52 @@ int main(int argc, char **argv) {
     }
     /* (every letter: ink across most of the line, as tall as the capitals) */
     assert(inked_columns > width / 2);
-    assert(bottom - top >= 38);
+    assert(bottom - top >= 76);
     assert(sum > (long)width * height * 255 / 10);
-    /* drawn under the words at 1916x1080: 4 lines a pixel of it, 2.25
-    pixels a line, so a pixel of the frame is 0.5625 of its */
+    /* shown on a 3840x2160 screen over the sharp frame (1916x1080, as on
+    one): 8 lines a pixel of the caption, 4.5 pixels a line of the screen */
     loading_art_caption(&art, line, (unsigned int)width, (unsigned int)height);
+    art.output_width = 1916;
+    art.output_height = 1080;
+    art.caption_completion = 256;
+    for (i = 0; i < 1916u * 1080u; i++) {
+        frame[i * 4] = 10; frame[i * 4 + 1] = 20; frame[i * 4 + 2] = 30; frame[i * 4 + 3] = 255;
+    }
+    tile = loading_art_caption_shown(&art, frame, 3840, 2160, &tile_left, &tile_top, &tile_width, &tile_height);
+    assert(tile);
+    assert(tile_top == LOADING_ART_CAPTION_TOP * 2160 / 480);
+    assert(tile_width <= 3840 && tile_left == (3840 - tile_width) / 2);
+    assert(tile_width >= (unsigned int)width * 2160 / 3840 && tile_width <= (unsigned int)width * 2160 / 3840 + 1);
+    for (i = 0; i < tile_width * tile_height; i++) {
+        const uint8_t *p = tile + i * 4;
+        assert(p[3] == 255);
+        if (p[2] > 30) {
+            drawn++;
+        } else {
+            /* (where it has none: the frame, as it is shown) */
+            assert(p[0] == 10 && p[1] == 20 && p[2] == 30);
+        }
+        if (p[2] > 160) {
+            unsigned int row = i / tile_width;
+            ink_top = row < ink_top ? row : ink_top;
+            ink_bottom = row > ink_bottom ? row : ink_bottom;
+        }
+    }
+    /* (its ink as tall as the line's at 8 lines a pixel, shown at 4.5: its
+    capitals 45 of the screen's rows, not the frame's 22.5 scaled up) */
+    assert((int)(ink_bottom - ink_top) * 3840 >= (bottom - top - 4) * 2160 &&
+        (int)(ink_bottom - ink_top) * 3840 <= (bottom - top + 4) * 2160);
+    assert(drawn > (unsigned int)(sum / 255) * 2160 / 3840 * 2160 / 3840 / 2);
+    /* in VR's frame, at its 480 rows */
     memset(frame, 0, sizeof(frame));
-    loading_art_caption_draw(&art, frame, 1916, 1080, 256);
-    for (i = 0; i < 1916u * 1080u; i++)
+    loading_art_caption_draw(&art, frame, 640, 480, 256);
+    for (i = drawn = 0; i < 640u * 480u; i++)
         if (frame[i * 4 + 2]) {
-            unsigned int row = i / 1916;
-            assert(row >= LOADING_ART_CAPTION_TOP * 1080 / 480 && row < LOADING_ART_CAPTION_TOP * 1080 / 480 + 50);
+            unsigned int row = i / 640;
+            assert(row >= LOADING_ART_CAPTION_TOP && row < LOADING_ART_CAPTION_TOP + 20);
             drawn++;
         }
-    assert(drawn > (unsigned int)(sum / 255) / 4);
+    assert(drawn > (unsigned int)(sum / 255) / 64 / 2);
     return 0;
 }
 '''

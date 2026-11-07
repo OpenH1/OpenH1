@@ -6,11 +6,11 @@ place of the bitmap fonts of the maps (`port/linux/src/text_hires.c`).
 
 | File | Draws | From |
 | --- | --- | --- |
-| `CyborgInterfaceGothic-Regular.ttf` | `ui\large_ui`, `ui\interstate`, `ui\small_ui` | Cyborg Interface Gothic by fizzy (below) |
+| `CyborgInterfaceGothic-Regular.ttf` | `ui\large_ui`, `ui\interstate`, `ui\small_ui`; the loading screen's caption ("Preparing menu pictures"), at the screen's pixels | Cyborg Interface Gothic by fizzy (below) |
 | `Overpass-900.ttf` | what Cyborg Interface Gothic lacks, for `ui\large_ui` and `ui\interstate` | Overpass, weight 900 (Black) |
 | `Overpass-750.ttf` | what Cyborg Interface Gothic lacks, for `ui\small_ui` | Overpass, weight 750 |
 | `Hack-Bold.ttf` | `old tags\internal system plain`, the console's (and the debug text's) | Hack 3.003, Bold, unmodified |
-| `OpenCE-Regular.ttf` | the menus' titles, as pictures (`port/assets/titles`); the menus' heading font, `pc\heading` (the loading screen's caption) | OpenCE: Newtown, respaced for this project (`tools/title_font.py`) |
+| `OpenCE-Regular.ttf` | the menus' titles, as pictures (`port/assets/titles`); the menus' heading font, `pc\heading` | OpenCE: Newtown, respaced for this project (`tools/title_font.py`) |
 | `Newtown-Regular.ttf` | (OpenCE's source) | Newtown by Roger White, unmodified |
 
 The maps' fonts are Interstate (Tobias Frere-Jones, The Font Bureau), a

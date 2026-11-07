@@ -156,9 +156,11 @@ void halo_loading_screen_progress(float progress, char const *caption)
 	if (strncmp(caption, loading_screen_caption, sizeof(loading_screen_caption) - 1))
 	{
 		int width = 0, height = 0;
-		/* (set at four times the 480 lines' size, in the menus' heading
-		font; its capitals ten of the lines tall) */
-		unsigned char *coverage = caption[0] ? text_hires_line("pc\\heading", caption, 40.0f, &width, &height) : NULL;
+		/* (in the menus' font, Cyborg Interface Gothic, its capitals ten of
+		the 480 lines tall, set at LOADING_PRESENTATION_CAPTION_SCALE times
+		their size: the presenter draws it at the screen's pixels) */
+		unsigned char *coverage = caption[0] ? text_hires_line("ui\\large_ui", caption,
+			10.0f * LOADING_PRESENTATION_CAPTION_SCALE, &width, &height) : NULL;
 
 		snprintf(loading_screen_caption, sizeof(loading_screen_caption), "%s", caption);
 		xgpu_backend_loading_caption(coverage, (unsigned long)width, (unsigned long)height);

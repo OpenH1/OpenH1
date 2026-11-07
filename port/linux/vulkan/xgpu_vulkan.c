@@ -456,6 +456,9 @@ static struct
 	of the guest's render targets and map allocations. */
 	struct xgpu_vulkan_image *loading_image;
 	struct xgpu_vulkan_image *loading_art_image;
+	/* the caption over it, at the loading image's pixels
+	(loading_art_caption_shown) */
+	struct xgpu_vulkan_image *loading_caption_image;
 	struct loading_art loading_art;
 	/* the last loading image held VR's stereo pair (loading_presentation.h) */
 	int loading_stereo_drawn;
@@ -6070,6 +6073,80 @@ uint32_t xgpu_vulkan_loading_frame_height(void)
 	return loading_art_frame_height(&vk.loading_art);
 }
 
+/* the window's size as it is shown (turned for a turned screen), where the
+loading screen has a caption, which is drawn at its pixels (the frame
+scaled up to them under it); else 0 */
+int xgpu_vulkan_loading_caption_size(uint32_t *width, uint32_t *height)
+{
+	*width = vk.swapchain_extent.width;
+	*height = vk.swapchain_extent.height;
+	if (vk.swapchain_turns && vk.rotate)
+	{
+		*width = vk.swapchain_extent.height;
+		*height = vk.swapchain_extent.width;
+	}
+	return vk.loading_art.caption && *width && *height && *width <= 16384 && *height <= 16384;
+}
+
+/* The loading screen's caption drawn over the frame `pixels` (the last
+render's) where it was scaled into the loading image, `width` by `height`
+at x, y: at the image's pixels (loading_art_caption_shown). */
+static void loading_caption_draw(const uint8_t *pixels, uint32_t x, uint32_t y, uint32_t width, uint32_t height)
+{
+	struct xgpu_vulkan_image_description description;
+	unsigned int left, top, tile_width, tile_height;
+	const uint8_t *tile = loading_art_caption_shown(&vk.loading_art, pixels, width, height, &left, &top,
+		&tile_width, &tile_height);
+	VkCommandBuffer commands;
+	VkImageBlit blit;
+
+	if (!tile)
+		return;
+	if (vk.loading_caption_image && (vk.loading_caption_image->description.width < tile_width ||
+		vk.loading_caption_image->description.height < tile_height))
+	{
+		xgpu_vulkan_image_destroy(vk.loading_caption_image);
+		vk.loading_caption_image = NULL;
+	}
+	if (!vk.loading_caption_image)
+	{
+		memset(&description, 0, sizeof(description));
+		description.type = XGPU_VULKAN_IMAGE_2D;
+		description.format = XGPU_VULKAN_FORMAT_RGBA8;
+		description.usage = XGPU_VULKAN_USAGE_SAMPLED;
+		description.width = tile_width;
+		description.height = tile_height;
+		description.depth_or_layers = description.levels = 1;
+		vk.loading_caption_image = xgpu_vulkan_image_create(&description);
+		if (!vk.loading_caption_image)
+			return;
+	}
+	pass_end();
+	xgpu_vulkan_image_upload(vk.loading_caption_image, 0, 0, 0, 0, 0, tile_width, tile_height, 1, tile,
+		tile_width * 4, 0);
+	commands = main_commands();
+	/* (a blit of the same size: pixel for pixel, the image's channels'
+	order made the loading image's) */
+	memset(&blit, 0, sizeof(blit));
+	blit.srcSubresource.aspectMask = blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	blit.srcSubresource.layerCount = blit.dstSubresource.layerCount = 1;
+	blit.srcOffsets[1].x = (int32_t)tile_width;
+	blit.srcOffsets[1].y = (int32_t)tile_height;
+	blit.srcOffsets[1].z = 1;
+	blit.dstOffsets[0].x = (int32_t)(x + left);
+	blit.dstOffsets[0].y = (int32_t)(y + top);
+	blit.dstOffsets[1].x = (int32_t)(x + left + tile_width);
+	blit.dstOffsets[1].y = (int32_t)(y + top + tile_height);
+	blit.dstOffsets[1].z = 1;
+	vk.loading_caption_image->used = vk.loading_image->used = vk.serial;
+	image_use(vk.loading_caption_image);
+	image_use(vk.loading_image);
+	image_written(vk.loading_image);
+	vkCmdBlitImage(commands, vk.loading_caption_image->image, VK_IMAGE_LAYOUT_GENERAL, vk.loading_image->image,
+		VK_IMAGE_LAYOUT_GENERAL, 1, &blit, VK_FILTER_NEAREST);
+	transfer_done(commands);
+}
+
 struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presentation_frame *frame,
 	uint32_t width, uint32_t height, uint32_t format)
 {
@@ -6208,6 +6285,10 @@ struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presenta
 			vk.loading_image->image, VK_IMAGE_LAYOUT_GENERAL, 1, &blit, VK_FILTER_LINEAR);
 		transfer_done(commands);
 		vk.loading_stereo_drawn = stereo;
+		/* (the caption over it, at the image's pixels: the frame under it
+		as the blit scaled it) */
+		if (!stereo)
+			loading_caption_draw(pixels, x, y, fit_width, fit_height);
 	}
 	else
 	{
@@ -7490,6 +7571,8 @@ void xgpu_vulkan_shutdown(void)
 	vk.loading_image = NULL;
 	xgpu_vulkan_image_destroy(vk.loading_art_image);
 	vk.loading_art_image = NULL;
+	xgpu_vulkan_image_destroy(vk.loading_caption_image);
+	vk.loading_caption_image = NULL;
 	/* (the loading screen's sharp frame and its threads) */
 	loading_art_hd_free(&vk.loading_art);
 	if (vk.recording)

@@ -205,10 +205,17 @@ struct loading_art
 	phase of the last two steps, for the sharp frame between them */
 	unsigned int follow;
 	float smoothed, wobble, phases[2];
-	/* a line under the words (loading_art_caption): its coverage, at four
-	times the 480 lines' size */
+	/* a line under the words (loading_art_caption): its coverage, at
+	LOADING_PRESENTATION_CAPTION_SCALE times the 480 lines' size */
 	uint8_t *caption;
 	unsigned int caption_width, caption_height;
+	/* and at the screen's pixels (loading_art_caption_shown): its coverage
+	for a frame shown caption_rows high, that coverage's size, its pixels
+	over the frame's (their memory), and how much of it is left as the load
+	completes (of 256: the last render's) */
+	uint8_t *caption_coverage, *caption_tile;
+	unsigned int caption_rows, caption_shown_width, caption_shown_height, caption_completion;
+	size_t caption_tile_capacity;
 	uint64_t progress_epoch, completed_ns;
 	unsigned int text_valid, stereo, eyes_valid, composed;
 	/* the feedback's rows blurred across (loading_art_row) */
@@ -479,14 +486,20 @@ static inline void loading_art_set(struct loading_art *art, const uint8_t *rgba)
 	unsigned int stereo = art->stereo, width = art->width;
 	struct loading_ring ring = art->ring;
 	struct loading_art_hd hd = art->hd;
-	uint8_t *caption = art->caption;
+	uint8_t *caption = art->caption, *caption_coverage = art->caption_coverage, *caption_tile = art->caption_tile;
 	unsigned int caption_width = art->caption_width, caption_height = art->caption_height, follow = art->follow;
+	size_t caption_tile_capacity = art->caption_tile_capacity;
 	memset(art, 0, sizeof(*art));
 	art->ring = ring;
 	art->hd = hd;
 	art->caption = caption;
 	art->caption_width = caption_width;
 	art->caption_height = caption_height;
+	/* (its coverage at the screen's made again) */
+	free(caption_coverage);
+	art->caption_tile = caption_tile;
+	art->caption_tile_capacity = caption_tile_capacity;
+	art->caption_completion = 256;
 	art->follow = follow;
 	art->hd.built = 0;
 	art->stereo = stereo;
@@ -777,14 +790,17 @@ static inline void loading_art_follow(struct loading_art *art, unsigned int foll
 }
 
 /* A line under the words (a wait's: what is being done), its coverage
- * `width` by `height`, set at four times the 480 lines' size (copied);
- * NULL: none. */
+ * `width` by `height`, set at LOADING_PRESENTATION_CAPTION_SCALE times the
+ * 480 lines' size (copied); NULL: none. */
 static inline void loading_art_caption(struct loading_art *art, const uint8_t *coverage, unsigned int width,
 	unsigned int height)
 {
 	free(art->caption);
 	art->caption = NULL;
 	art->caption_width = art->caption_height = 0;
+	free(art->caption_coverage);
+	art->caption_coverage = NULL;
+	art->caption_rows = art->caption_shown_width = art->caption_shown_height = 0;
 	if (!coverage || !width || !height || width > 8192 || height > 512)
 		return;
 	art->caption = malloc((size_t)width * height);
@@ -802,47 +818,107 @@ static inline void loading_art_caption(struct loading_art *art, const uint8_t *c
 /* its top, in the 480 lines (under the words) */
 #define LOADING_ART_CAPTION_TOP 268
 
+/* The average of the values (`count` of them, each `stride` apart, each a
+ * pixel's place) under the box from index * step to (index + 1) * step, in
+ * 65536ths of a place: each weighted by how much of its place the box
+ * covers, nothing past the last. */
+static inline uint32_t loading_art_caption_box(const uint32_t *values, size_t stride, unsigned int count,
+	unsigned int index, uint32_t step)
+{
+	uint64_t start = (uint64_t)index * step, end = start + step, sum = 0, place;
+	for (place = start >> 16; place < count && place << 16 < end; place++)
+	{
+		uint64_t from = place << 16 > start ? place << 16 : start;
+		uint64_t to = (place + 1) << 16 < end ? (place + 1) << 16 : end;
+		sum += (uint64_t)values[place * stride] * (to - from);
+	}
+	return (uint32_t)((sum + step / 2) / step);
+}
+
+/* The caption's coverage for a frame `rows` high (480 lines its height),
+ * art->caption_coverage, caption_shown_width by caption_shown_height: each
+ * pixel the caption's under it, averaged (kept until the caption or the
+ * rows change); 0 without a caption, or the memory. */
+static inline int loading_art_caption_scaled(struct loading_art *art, unsigned int rows)
+{
+	/* (the caption's pixels a frame's pixel is, in 65536ths) */
+	uint32_t step;
+	uint32_t *values, *across;
+	unsigned int width, height, x, y;
+	if (!art->caption || !rows || rows > 16384)
+		return 0;
+	if (art->caption_coverage && art->caption_rows == rows)
+		return 1;
+	free(art->caption_coverage);
+	art->caption_coverage = NULL;
+	art->caption_rows = art->caption_shown_width = art->caption_shown_height = 0;
+	step = (uint32_t)(((uint64_t)LOADING_ART_FRAME_HEIGHT * LOADING_PRESENTATION_CAPTION_SCALE << 16) / rows);
+	if (!step)
+		return 0;
+	width = (unsigned int)((((uint64_t)art->caption_width << 16) + step - 1) / step);
+	height = (unsigned int)((((uint64_t)art->caption_height << 16) + step - 1) / step);
+	values = malloc((size_t)art->caption_width * sizeof(uint32_t));
+	across = malloc((size_t)width * art->caption_height * sizeof(uint32_t));
+	art->caption_coverage = malloc((size_t)width * height);
+	if (!values || !across || !art->caption_coverage)
+	{
+		free(values);
+		free(across);
+		free(art->caption_coverage);
+		art->caption_coverage = NULL;
+		return 0;
+	}
+	/* (across each of the caption's rows, then down: in 256ths of a
+	pixel's coverage between them) */
+	for (y = 0; y < art->caption_height; y++)
+	{
+		for (x = 0; x < art->caption_width; x++)
+			values[x] = (uint32_t)art->caption[y * art->caption_width + x] << 8;
+		for (x = 0; x < width; x++)
+			across[y * width + x] = loading_art_caption_box(values, 1, art->caption_width, x, step);
+	}
+	for (y = 0; y < height; y++)
+		for (x = 0; x < width; x++)
+		{
+			uint32_t coverage = (loading_art_caption_box(across + x, width, art->caption_height, y, step) + 128) >> 8;
+			art->caption_coverage[y * width + x] = (uint8_t)(coverage < 255 ? coverage : 255);
+		}
+	free(values);
+	free(across);
+	art->caption_rows = rows;
+	art->caption_shown_width = width;
+	art->caption_shown_height = height;
+	return 1;
+}
+
+/* a pixel (RGBA) with the caption's colour over it, as much as `coverage`
+ * (of 255) */
+static inline void loading_art_caption_blend(uint8_t *out, unsigned int coverage)
+{
+	out[0] = (uint8_t)(out[0] + ((int)LOADING_ART_CAPTION_RED - out[0]) * (int)coverage / 255);
+	out[1] = (uint8_t)(out[1] + ((int)LOADING_ART_CAPTION_GREEN - out[1]) * (int)coverage / 255);
+	out[2] = (uint8_t)(out[2] + ((int)LOADING_ART_CAPTION_BLUE - out[2]) * (int)coverage / 255);
+}
+
 /* The caption drawn into a frame's pixels (RGBA, `width` by `height`, 480
- * lines its height), in its middle under the words, each pixel its
- * caption's pixels' average, as much of it as `completion` (of 256) has
- * left. */
-static inline void loading_art_caption_draw(const struct loading_art *art, uint8_t *pixels, unsigned int width,
+ * lines its height), in its middle under the words, as much of it as
+ * `completion` (of 256) has left: VR's pair, whose window is in the world
+ * (a presenter's own screen has it at its pixels: loading_art_caption_shown). */
+static inline void loading_art_caption_draw(struct loading_art *art, uint8_t *pixels, unsigned int width,
 	unsigned int height, unsigned int completion)
 {
-	/* (the frame's pixels a caption's pixel is, of 1024) */
-	unsigned int scale = (unsigned int)((uint64_t)height * 1024 / (LOADING_ART_FRAME_HEIGHT * 4));
-	unsigned int drawn_width, drawn_height, left, top, x, y;
-	if (!art->caption || !scale)
+	unsigned int left, top, x, y;
+	if (!loading_art_caption_scaled(art, height) || art->caption_shown_width > width)
 		return;
-	drawn_width = (unsigned int)((uint64_t)art->caption_width * scale / 1024);
-	drawn_height = (unsigned int)((uint64_t)art->caption_height * scale / 1024);
-	if (!drawn_width || !drawn_height || drawn_width > width)
-		return;
-	left = (width - drawn_width) / 2;
+	left = (width - art->caption_shown_width) / 2;
 	top = (unsigned int)((uint64_t)LOADING_ART_CAPTION_TOP * height / LOADING_ART_FRAME_HEIGHT);
-	for (y = 0; y < drawn_height && top + y < height; y++)
-	{
-		unsigned int y0 = (unsigned int)((uint64_t)y * 1024 / scale);
-		unsigned int y1 = (unsigned int)(((uint64_t)(y + 1) * 1024 + scale - 1) / scale);
-		y1 = y1 > y0 ? (y1 < art->caption_height ? y1 : art->caption_height) : y0 + 1;
-		for (x = 0; x < drawn_width; x++)
+	for (y = 0; y < art->caption_shown_height && top + y < height; y++)
+		for (x = 0; x < art->caption_shown_width; x++)
 		{
-			unsigned int x0 = (unsigned int)((uint64_t)x * 1024 / scale);
-			unsigned int x1 = (unsigned int)(((uint64_t)(x + 1) * 1024 + scale - 1) / scale);
-			unsigned int sum = 0, count = 0, sx, sy, coverage;
-			uint8_t *out = pixels + ((size_t)(top + y) * width + left + x) * 4;
-			x1 = x1 > x0 ? (x1 < art->caption_width ? x1 : art->caption_width) : x0 + 1;
-			for (sy = y0; sy < y1 && sy < art->caption_height; sy++)
-				for (sx = x0; sx < x1 && sx < art->caption_width; sx++, count++)
-					sum += art->caption[sy * art->caption_width + sx];
-			coverage = count ? sum / count * completion >> 8 : 0;
-			if (!coverage)
-				continue;
-			out[0] = (uint8_t)(out[0] + ((int)LOADING_ART_CAPTION_RED - out[0]) * (int)coverage / 255);
-			out[1] = (uint8_t)(out[1] + ((int)LOADING_ART_CAPTION_GREEN - out[1]) * (int)coverage / 255);
-			out[2] = (uint8_t)(out[2] + ((int)LOADING_ART_CAPTION_BLUE - out[2]) * (int)coverage / 255);
+			unsigned int coverage = art->caption_coverage[y * art->caption_shown_width + x] * completion >> 8;
+			if (coverage)
+				loading_art_caption_blend(pixels + ((size_t)(top + y) * width + left + x) * 4, coverage);
 		}
-	}
 }
 
 /* How much of the picture is left as the load completes, of 256. */
@@ -1741,7 +1817,7 @@ static inline const uint8_t *loading_art_render(struct loading_art *art,
 		loading_art_hd_compose(art, fraction, base, completion);
 		art->output_width = art->hd.width;
 		art->output_height = art->hd.height;
-		loading_art_caption_draw(art, art->hd.output, art->hd.width, art->hd.height, completion);
+		art->caption_completion = completion;
 		return art->hd.output;
 	}
 	art->output_width = art->width;
@@ -1763,11 +1839,90 @@ static inline const uint8_t *loading_art_render(struct loading_art *art,
 						(uint8_t)(art->output_right[pixel * 4 + channel] * completion >> 8);
 			}
 	}
-	/* (the caption, under the words: on both eyes' windows in VR) */
-	loading_art_caption_draw(art, art->output, art->width, LOADING_ART_FRAME_HEIGHT, completion);
+	/* (the caption, under the words: on both eyes' windows in VR; else at
+	the screen's pixels, the presenter's, loading_art_caption_shown) */
+	art->caption_completion = completion;
+	if (art->stereo)
+		loading_art_caption_draw(art, art->output, art->width, LOADING_ART_FRAME_HEIGHT, completion);
 	if (stereo)
 		loading_art_caption_draw(art, art->output_right, LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT, completion);
 	return art->output;
+}
+
+/* A place in a frame `size` pixels across shown `shown` pixels across,
+ * from a shown pixel's middle: the frame's pixel there, the next, and the
+ * second's share (of 256), as a bilinear filter reads it (from the frame's
+ * pixels' middles, clamped at its edges). */
+static inline void loading_art_caption_sample(unsigned int pixel, unsigned int shown, unsigned int size,
+	unsigned int *first, unsigned int *second, unsigned int *share)
+{
+	int64_t place = ((int64_t)(2 * pixel + 1) * size * 128) / shown - 128;
+	int64_t last = ((int64_t)size - 1) * 256;
+	place = place < 0 ? 0 : place > last ? last : place;
+	*first = (unsigned int)(place >> 8);
+	*share = (unsigned int)(place & 255);
+	*second = *first + 1 < size ? *first + 1 : *first;
+}
+
+/* The caption at the screen's own pixels, for a presenter that shows the
+ * last render's frame (`frame`, loading_art_output_width by _height) scaled
+ * to `shown_width` by `shown_height` pixels with a bilinear filter: its box
+ * in those pixels, from the shown frame's top left, and its pixels (RGBA,
+ * `*width` by `*height`), the frame's as the filter shows them with the
+ * caption over them, for the presenter to draw over the frame as they are.
+ * NULL: no caption, or no memory for it (VR's pair has it in the frame). */
+static inline const uint8_t *loading_art_caption_shown(struct loading_art *art, const uint8_t *frame,
+	unsigned int shown_width, unsigned int shown_height, unsigned int *left, unsigned int *top,
+	unsigned int *width, unsigned int *height)
+{
+	unsigned int frame_width = loading_art_output_width(art), frame_height = loading_art_output_height(art);
+	unsigned int x, y, drawn_height;
+	size_t bytes;
+	*left = *top = *width = *height = 0;
+	if (!frame || art->stereo || !shown_width || !shown_height || !frame_width || !frame_height ||
+		!loading_art_caption_scaled(art, shown_height) || art->caption_shown_width > shown_width)
+		return NULL;
+	*left = (shown_width - art->caption_shown_width) / 2;
+	*top = (unsigned int)((uint64_t)LOADING_ART_CAPTION_TOP * shown_height / LOADING_ART_FRAME_HEIGHT);
+	drawn_height = shown_height - *top < art->caption_shown_height ? shown_height - *top : art->caption_shown_height;
+	if (!drawn_height)
+		return NULL;
+	bytes = (size_t)art->caption_shown_width * drawn_height * 4;
+	if (bytes > art->caption_tile_capacity)
+	{
+		free(art->caption_tile);
+		art->caption_tile = malloc(bytes);
+		art->caption_tile_capacity = art->caption_tile ? bytes : 0;
+		if (!art->caption_tile)
+			return NULL;
+	}
+	for (y = 0; y < drawn_height; y++)
+	{
+		unsigned int row0, row1, down;
+		const uint8_t *upper, *lower;
+		loading_art_caption_sample(*top + y, shown_height, frame_height, &row0, &row1, &down);
+		upper = frame + (size_t)row0 * frame_width * 4;
+		lower = frame + (size_t)row1 * frame_width * 4;
+		for (x = 0; x < art->caption_shown_width; x++)
+		{
+			uint8_t *out = art->caption_tile + ((size_t)y * art->caption_shown_width + x) * 4;
+			unsigned int column0, column1, across, channel, coverage;
+			loading_art_caption_sample(*left + x, shown_width, frame_width, &column0, &column1, &across);
+			for (channel = 0; channel < 3; channel++)
+			{
+				unsigned int above = upper[column0 * 4 + channel] * (256 - across) + upper[column1 * 4 + channel] * across;
+				unsigned int below = lower[column0 * 4 + channel] * (256 - across) + lower[column1 * 4 + channel] * across;
+				out[channel] = (uint8_t)((above * (256 - down) + below * down + 32768) >> 16);
+			}
+			out[3] = 255;
+			coverage = art->caption_coverage[y * art->caption_shown_width + x] * art->caption_completion >> 8;
+			if (coverage)
+				loading_art_caption_blend(out, coverage);
+		}
+	}
+	*width = art->caption_shown_width;
+	*height = drawn_height;
+	return art->caption_tile;
 }
 
 #endif
