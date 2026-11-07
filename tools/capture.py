@@ -115,6 +115,19 @@ PATTERNS = {
 }
 
 
+# the campaign's levels, which a network test plays as co-op (campaign:<level>), not as a multiplayer map
+CAMPAIGN_LEVELS = ("a10", "a30", "a50", "b30", "b40", "c10", "c20", "c40", "d20", "d40")
+
+
+def campaign_level(map_name: str) -> str:
+    """a campaign level's full name (levels\\a50\\a50) for --map's a50 or levels\\a50\\a50; empty for any other map"""
+    name = map_name.replace("/", "\\").strip()
+    short = name.rsplit("\\", 1)[-1].lower()
+    if short in CAMPAIGN_LEVELS and (name.lower() == short or name.lower() == f"levels\\{short}\\{short}"):
+        return f"levels\\{short}\\{short}"
+    return ""
+
+
 def scene_for(name: str, map_name: str = "") -> Scene:
     """the scene of a name, or of a pattern's"""
     if name in SCENES:
@@ -143,6 +156,15 @@ def scene_for(name: str, map_name: str = "") -> Scene:
         roll = values[5] if len(values) > 5 else 0.0
         fov = values[6] if len(values) > 6 else 70.0
         pose = " ".join(f"{value:g}" for value in (x, y, z, yaw, pitch, roll, fov))
+        level = campaign_level(map_name)
+        if level:
+            # (a campaign level is played as network co-op on its own, as campaign:<level>: its opening
+            # cinematic skipped, then the camera put in place once the level is under way)
+            return Scene(f"the debug camera at {pose} on {level}", map=level, variant="coop", at=25.0,
+                         script="1 jump; 2 jump; 3 jump",
+                         # (set again every few seconds: a cinematic, or its end, takes the camera back)
+                         environment={"HALO_NETWORK_TEST_CUES": "|".join(
+                             f'{second} debug_camera_set "{pose}"' for second in range(2, 25, 4))})
         return Scene(f"the debug camera at {pose} on {map_name or 'bloodgulch'}", map=map_name or "bloodgulch",
                      at=2.5, environment={"HALO_NETWORK_TEST_CUES": f'1 debug_camera_set "{pose}"'})
     raise ValueError(f"no scene {name!r} (--list lists them)")
@@ -182,7 +204,7 @@ def parse_setting(text: str):
 def setting_variables(tree: Path = ROOT) -> dict:
     """each setting's environment variable, from port_config.c's table"""
     source = tree / "port" / "linux" / "src" / "port_config.c"
-    pattern = re.compile(r'\{\s*"([a-z0-9_]+\.[a-z0-9_.]+)",\s*_config_\w+,\s*"(?:[^"\\]|\\.)*",\s*"(HALO_[A-Z0-9_]+)"')
+    pattern = re.compile(r'\{\s*"([a-z0-9_]+\.[a-z0-9_.]+)",\s*_config_\w+,\s*(?:"(?:[^"\\]|\\.)*"|\w+),\s*"(HALO_[A-Z0-9_]+)"')
     return dict(pattern.findall(source.read_text(errors="replace")))
 
 
@@ -617,6 +639,9 @@ def remote(arguments, argv) -> int:
     print(f"capture: {arguments.remote}: {time.monotonic() - started:.1f} s in all", file=sys.stderr)
     for path in sorted(paths):
         print(path)
+    if not paths:
+        print(f"capture: no pictures came back from {arguments.remote}", file=sys.stderr)
+        return result.returncode or 1
     return result.returncode
 
 
