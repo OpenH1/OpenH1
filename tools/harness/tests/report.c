@@ -4,11 +4,12 @@ REPORT.C (test)
 Save Report (port/linux/src/report.c): report.md's frame times (the average,
 the 1% and 0.1% lows, the frames of 50 ms or more, the longest frames, a
 stall only), the GPU's time and what held the frames back (GPU-bound,
-CPU-bound, vsync or the frame cap), the zip (its CRC-32, its local and
-central records), which test_report.py opens with Python's zipfile, and the
-last run's crash: its heading of report.md (report_crash_summary) and the
-host's record of it, the log's ring oldest first
-(port/android/host/host_common.c).
+CPU-bound, vsync or the frame cap), its Where section (report_where_text:
+the game, the player, the network game, the console's lines to look from
+there), the zip (its CRC-32, its local and central records), which
+test_report.py opens with Python's zipfile, and the last run's crash: its
+heading of report.md (report_crash_summary) and the host's record of it,
+the log's ring oldest first (port/android/host/host_common.c).
 test_report.py takes the code.
 */
 
@@ -292,6 +293,91 @@ int main(int argc, char **argv)
 		printf("%s\n", out);
 		CHECK(!strncmp(out, "signal 11\n", 10), "the line");
 		CHECK(!strcmp(out + 10, expected), "the log, oldest first");
+		return 0;
+	}
+	if (!strcmp(test, "where"))
+	{
+		static struct report_where where;
+
+		/* (the menus: nothing) */
+		memset(&where, 0, sizeof(where));
+		strcpy(where.map, "levels\\a10\\a10");
+		where.camera = 1;
+		report_where_text(&where, text, sizeof(text));
+		CHECK(text[0] == 0, "a section for the menus");
+		/* (a campaign on Heroic, in a vehicle, its camera wider than the script's takes) */
+		where.playing = 1;
+		strcpy(where.game, "levels\\a10\\a10 (campaign)");
+		where.campaign = 1;
+		where.difficulty = 2;
+		where.bsp = 1;
+		where.ticks = 4500;
+		where.ticks_per_second = 30;
+		where.player = where.alive = 1;
+		where.position[0] = 1.5f;
+		where.position[1] = -2.25f;
+		where.position[2] = 3.0f;
+		where.yaw = 90.0f;
+		where.pitch = -10.0f;
+		strcpy(where.vehicle, "vehicles\\warthog\\mp_warthog");
+		where.camera_position[0] = 1.0f;
+		where.camera_position[1] = 2.0f;
+		where.camera_position[2] = 3.5f;
+		where.camera_yaw = 45.0f;
+		where.camera_pitch = -5.0f;
+		where.camera_roll = 0.0f;
+		where.camera_field_of_view = 110.0f;
+		report_where_text(&where, text, sizeof(text));
+		printf("%s", text);
+		CHECK(strstr(text, "\n## Where\n\n- Game: levels\\a10\\a10 (campaign), Heroic\n"), "the game and its difficulty");
+		CHECK(strstr(text, "- Time: 4500 ticks (150.0 s), BSP 1\n"), "the time and the BSP");
+		CHECK(strstr(text, "- Player: at 1.500 -2.250 3.000, facing 90.0 yaw -10.0 pitch, in vehicles\\warthog\\mp_warthog\n"),
+			"the player in a vehicle");
+		CHECK(!strstr(text, "- Network:"), "a network game where there is none");
+		CHECK(strstr(text, "```\ngame_difficulty_set hard\nmap_name levels\\a10\\a10\nswitch_bsp 1\n"
+			"debug_camera_set \"1.000 2.000 3.500 45.0 -5.0 0.0 89.0\"\n```\n"), "the console's lines");
+		/* (dead, a multiplayer game hosted: the slowest client's ping, the builds) */
+		where.alive = 0;
+		where.campaign = 0;
+		strcpy(where.game, "levels\\test\\bloodgulch\\bloodgulch (Slayer)");
+		where.camera_field_of_view = 70.0f;
+		where.network = 1;
+		where.rate = 60;
+		where.ping = 48;
+		where.players = 4;
+		where.build_kinds = 3;
+		where.builds[0] = 812;
+		where.build_counts[0] = 2;
+		where.builds[1] = 0;
+		where.build_counts[1] = 1;
+		where.builds[2] = REPORT_WHERE_OPENCE;
+		where.build_counts[2] = 1;
+		where.builds_unknown = 1;
+		report_where_text(&where, text, sizeof(text));
+		printf("%s", text);
+		CHECK(strstr(text, "- Game: levels\\test\\bloodgulch\\bloodgulch (Slayer)\n"), "a multiplayer game");
+		CHECK(strstr(text, "- Player: dead\n") && !strstr(text, "- Player: at"), "a dead player's place");
+		CHECK(strstr(text, "- Network: hosting, OpenH1 60 Tick, 4 players, ping 48 ms (the slowest client's)\n"),
+			"the network game");
+		CHECK(strstr(text, "- Other machines' builds: build-812 x2, a local build, OpenCE, 1 not told\n"), "the builds");
+		CHECK(!strstr(text, "game_difficulty_set"), "a difficulty for a multiplayer game");
+		CHECK(strstr(text, "debug_camera_set \"1.000 2.000 3.500 45.0 -5.0 0.0 70.0\"\n"), "the field of view kept");
+		/* (joined a Legacy game, its host silent, the ping not known) */
+		where.network = 2;
+		where.rate = 0;
+		where.ping = -1;
+		where.players = 1;
+		where.connection_problem = 1;
+		where.build_kinds = where.builds_unknown = 0;
+		report_where_text(&where, text, sizeof(text));
+		CHECK(strstr(text, "- Network: joined, Legacy, 1 player, the host silent\n"), "a client's network game");
+		CHECK(!strstr(text, "builds:"), "builds where none were told");
+		where.ping = 30;
+		report_where_text(&where, text, sizeof(text));
+		CHECK(strstr(text, "- Network: joined, Legacy, 1 player, ping 30 ms, the host silent\n"), "a client's ping");
+		/* (a small room: cut, ended) */
+		report_where_text(&where, text, 40);
+		CHECK(strlen(text) == 39, "cut to its room");
 		return 0;
 	}
 	if (!strcmp(test, "zip") && getenv("REPORT_ZIP"))

@@ -1,7 +1,7 @@
 """Save Report (port/linux/src/report.c): report.md's frame times (the average, the 1% and 0.1% lows, the frames of
-50 ms or more, the longest frames, stalls only), the GPU's time and what held the frames back, and the zip the report
-is saved as, opened with Python's zipfile; the maps a maps folder counts; the last run's crash; its key (controls.report,
-F8), its Settings row and its documentation."""
+50 ms or more, the longest frames, stalls only), the GPU's time and what held the frames back, its Where section
+(report_where_text) and the zip the report is saved as, opened with Python's zipfile; the maps a maps folder counts; the
+last run's crash; its key (controls.report, F8), its Settings row and its documentation."""
 
 import re
 import sys
@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from harness import CHECK_FAILED, build, function, mutated, read, run, structure  # noqa: E402
+from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run, structure  # noqa: E402
 
 NEGATIVE_CONTROLS = {
     # the CRC's polynomial wrong: no zip reader takes the files
@@ -56,12 +56,22 @@ NEGATIVE_CONTROLS = {
     "crash-session-name": ("crash", "&& line[length] == ':'", ""),
     # the log's ring written in the order it is kept, not oldest first
     "ring-order": ("ring", "if (first + kept > crash_record_log_size)", "if (0)"),
+    # a section written for the menus
+    "where-menus": ("where", "if (!where->playing)\n\t\treturn;", "if (0)\n\t\treturn;"),
+    # a dead player's last place given as where it is
+    "where-dead": ("where", "if (!where->alive)", "if (0)"),
+    # a field of view of 90 or more, which debug_camera_set refuses
+    "where-fov": ("where", "where->camera_field_of_view < 89.0f", "where->camera_field_of_view < 1000.0f"),
+    # the menus' difficulty names, not game_difficulty_set's
+    "where-difficulty": ("where", '"easy", "normal", "hard", "impossible"', '"easy", "normal", "heroic", "legendary"'),
+    # a client's ping called the slowest client's
+    "where-ping": ("where", 'where->network == 1 ? " (the slowest client\'s)" : ""', '" (the slowest client\'s)"'),
 }
 
 FUNCTIONS = ("report_crc32", "report_compare_micros", "report_low_fps", "report_frame_summary", "report_gpu_summary",
              "report_put16", "report_put32", "report_zip_add", "report_zip_end", "report_percent_encode", "report_issue_url", "report_setting_private",
              "report_address_length", "report_scrub", "report_session_value", "report_crash_line",
-             "report_crash_summary", "report_map_counted")
+             "report_crash_summary", "report_map_counted", "report_where_text")
 # the host's record of a crash, written from its signal handler (port/android/host/host_common.c)
 HOST_FUNCTIONS = ("crash_record_write", "host_crash_record_line", "host_crash_record_end")
 
@@ -75,8 +85,10 @@ def generated(fault=None):
     host = read("port/android/host/host_common.c")
     host_state = "\n".join(re.search(r"^static .*\bcrash_record_" + name + r"\b.*;$", host, re.M).group(0) for name in
                            ("log", "log_size", "log_written", "file"))
-    code = issues + "\n" + defines + "\n\n" + structure(read("port/linux/src/report.h"), "report_frame_work") + "\n\n" + \
-        structure(source, "report_zip") + "\n\n" + \
+    header = read("port/linux/src/report.h")
+    code = issues + "\n" + defines + "\n\n" + structure(header, "report_frame_work") + "\n\n" + \
+        structure(source, "report_zip") + "\n\n" + enum_with(header, "REPORT_WHERE_BUILDS") + "\n\n" + \
+        structure(header, "report_where") + "\n\n" + \
         "\n\n".join(function(source, name) for name in FUNCTIONS) + "\n\n" + host_state + "\n\n" + \
         "\n\n".join(function(host, name) for name in HOST_FUNCTIONS)
     if fault:
@@ -84,7 +96,7 @@ def generated(fault=None):
     return (("under_test.inc", code + "\n"),)
 
 
-@pytest.mark.parametrize("case", ["crc", "frames", "steady", "gpu", "issue", "scrub", "maps", "crash", "ring"])
+@pytest.mark.parametrize("case", ["crc", "frames", "steady", "gpu", "issue", "scrub", "maps", "crash", "ring", "where"])
 def test_case(case):
     status, output = run(build("report", generated()), case)
     assert status == 0, output

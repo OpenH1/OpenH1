@@ -23,7 +23,9 @@ The zip holds:
                  fill in (report_issue_url): the build, the platform, the GPU and its driver (the
                  renderer's host's: xgpu_backend_device), the processor, the
                  display's settings, the map and the game, how long the game
-                 has run, and the frame times of the last REPORT_SECONDS
+                 has run, where the game is (report_where_text: the level, its
+                 time and BSP, the player, the network game, the console's
+                 lines that look from the camera's place), and the frame times of the last REPORT_SECONDS
                  (report_frame_summary: the frame rate, its 1% and 0.1% lows,
                  the longest frames and when; report_gpu_summary: the GPU's
                  time a frame, how busy the GPU, the game and the renderer's
@@ -895,6 +897,90 @@ static long report_maps_in(const char *folder)
 	return count;
 }
 
+/* report.md's "## Where": the game, its time, the player, the network game,
+and the console's lines that take a developer there (the map loaded, its
+BSP, the camera: debug_camera_set, camera_pose.c) */
+void report_where_text(const struct report_where *where, char *text, size_t size)
+{
+	static const char *const difficulties[] = { "Easy", "Normal", "Heroic", "Legendary" };
+	/* (game_difficulty_set's names: game.c's) */
+	static const char *const difficulty_names[] = { "easy", "normal", "hard", "impossible" };
+	size_t used = 0;
+	int difficulty = where->difficulty >= 0 && where->difficulty < 4 ? where->difficulty : -1;
+	int index;
+
+	if (!size)
+		return;
+	text[0] = 0;
+	if (!where->playing)
+		return;
+#define WHERE_PRINT(...) \
+	(used += (size_t)snprintf(text + (used < size ? used : size - 1), used < size ? size - used : 1, __VA_ARGS__))
+	WHERE_PRINT("\n## Where\n\n");
+	WHERE_PRINT("- Game: %s", where->game[0] ? where->game : where->map);
+	if (where->campaign && difficulty >= 0)
+		WHERE_PRINT(", %s", difficulties[difficulty]);
+	WHERE_PRINT("\n- Time: %ld ticks (%.1f s), BSP %d\n", where->ticks,
+		where->ticks_per_second > 0 ? (double)where->ticks / where->ticks_per_second : 0.0, where->bsp);
+	if (where->player)
+	{
+		if (!where->alive)
+			WHERE_PRINT("- Player: dead\n");
+		else
+			WHERE_PRINT("- Player: at %.3f %.3f %.3f, facing %.1f yaw %.1f pitch, %s%s\n", where->position[0],
+				where->position[1], where->position[2], where->yaw, where->pitch, where->vehicle[0] ? "in " : "on foot",
+				where->vehicle);
+	}
+	if (where->network)
+	{
+		WHERE_PRINT("- Network: %s, ", where->network == 1 ? "hosting" : "joined");
+		if (where->rate > 0)
+			WHERE_PRINT("OpenH1 %ld Tick", where->rate);
+		else
+			WHERE_PRINT("Legacy");
+		WHERE_PRINT(", %d player%s", where->players, where->players == 1 ? "" : "s");
+		if (where->ping >= 0)
+			WHERE_PRINT(", ping %ld ms%s", where->ping, where->network == 1 ? " (the slowest client's)" : "");
+		if (where->connection_problem)
+			WHERE_PRINT(", the host silent");
+		WHERE_PRINT("\n");
+		if (where->build_kinds > 0 || where->builds_unknown > 0)
+		{
+			WHERE_PRINT("- Other machines' builds:");
+			for (index = 0; index < where->build_kinds && index < REPORT_WHERE_BUILDS; index++)
+			{
+				if (where->builds[index] == REPORT_WHERE_OPENCE)
+					WHERE_PRINT("%s OpenCE", index ? "," : "");
+				else if (where->builds[index] > 0)
+					WHERE_PRINT("%s build-%ld", index ? "," : "", where->builds[index]);
+				else
+					WHERE_PRINT("%s a local build", index ? "," : "");
+				if (where->build_counts[index] > 1)
+					WHERE_PRINT(" x%ld", where->build_counts[index]);
+			}
+			if (where->builds_unknown > 0)
+				WHERE_PRINT("%s %d not told", where->build_kinds > 0 ? "," : "", where->builds_unknown);
+			WHERE_PRINT("\n");
+		}
+	}
+	if (where->camera && where->map[0])
+	{
+		/* (the script's camera takes a field of view under 90 degrees:
+		camera_pose_set) */
+		float field_of_view = where->camera_field_of_view > 0.0f && where->camera_field_of_view < 89.0f ?
+			where->camera_field_of_view : 89.0f;
+
+		WHERE_PRINT("\nTo look from there, in the developer console (`), the last two once the map has loaded "
+			"(`debug_camera_set off` gives the camera back):\n\n```\n");
+		if (where->campaign && difficulty >= 0)
+			WHERE_PRINT("game_difficulty_set %s\n", difficulty_names[difficulty]);
+		WHERE_PRINT("map_name %s\nswitch_bsp %d\ndebug_camera_set \"%.3f %.3f %.3f %.1f %.1f %.1f %.1f\"\n```\n",
+			where->map, where->bsp, where->camera_position[0], where->camera_position[1],
+			where->camera_position[2], where->camera_yaw, where->camera_pitch, where->camera_roll, field_of_view);
+	}
+#undef WHERE_PRINT
+}
+
 /* report.md: a GitHub issue's body (report_send pastes it); a crash's has
 the system and settings alone, this run's time, game and frames being of no
 help (report_crash_summary heads it) */
@@ -906,7 +992,8 @@ static char *report_text(const char *name, int crash)
 		"display.refresh_rate", "game.sim_rate", "network.online",
 	};
 	size_t size = 64 * 1024, used = 0, index;
-	char *text = malloc(size), line[512], build[160];
+	char *text = malloc(size), line[2048], build[160];
+	struct report_where where;
 	uint32_t *micros, *at_ms;
 	struct report_frame_work *work;
 	unsigned long count, first;
@@ -916,6 +1003,9 @@ static char *report_text(const char *name, int crash)
 
 	if (!text)
 		return NULL;
+	memset(&where, 0, sizeof(where));
+	if (!crash)
+		report_game_where(&where);
 #define REPORT_PRINT(...) \
 	(used += (size_t)snprintf(text + (used < size ? used : size - 1), used < size ? size - used : 1, __VA_ARGS__))
 	REPORT_PRINT("## System\n\n");
@@ -926,15 +1016,21 @@ static char *report_text(const char *name, int crash)
 	report_processor(line, sizeof(line));
 	REPORT_PRINT("- Processor: %s\n", line);
 	if (!crash)
-	{
 		REPORT_PRINT("- Running for: %.0f seconds\n", report_frames.start_ns ? (now - report_frames.start_ns) / 1e9 : 0.0);
+	/* (in a game, its own section says where; in the menus, which, and a
+	network game's lobby) */
+	if (!crash && !where.playing)
+	{
 		report_game_describe(line, sizeof(line));
 		REPORT_PRINT("- Where: %s\n", line);
 		p2p_discord_game(&hosting, &playing, line, (int)sizeof(line), &players, &most);
 		if (line[0])
-			REPORT_PRINT("- Network game: %s, %s, %d of %d players\n", line, hosting ? "hosting" : "joined", players, most);
+			REPORT_PRINT("- Network game: %s, %s, %d of %d players\n", line, hosting ? "hosting" : "joined", players,
+				most);
 	}
 	REPORT_PRINT("- Report: %s\n", name);
+	report_where_text(&where, line, sizeof(line));
+	REPORT_PRINT("%s", line);
 	/* (the mods and the map: a problem one of them makes not taken for the
 	game's; names only, never a folder's path) */
 	{

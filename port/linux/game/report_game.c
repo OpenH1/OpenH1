@@ -4,9 +4,12 @@ REPORT_GAME.C
 What a Save Report's report.md says of the game (port/linux/src/report.c):
 the map loaded (its scenario's tag, as play_log.c names it) and, in a
 multiplayer game, its gametype's name (its variant's, where it has one);
-the mods played and the map's file, by their names; whether a game is
-being played, not the menus (a report's issue waits until it is not); and
-its note's line, the text chat's (network_chat.c).
+the mods played and the map's file, by their names; where the game is
+(report_game_where: the time, the BSP, the first local player's place and
+aim, its camera, the network game, as report_where_text writes them);
+whether a game is being played, not the menus (a report's issue waits
+until it is not); and its note's line, the text chat's (network_chat.c).
+Nothing that says who a player is: no names, no addresses.
 */
 
 #include "cseries.h"
@@ -14,13 +17,22 @@ its note's line, the text chat's (network_chat.c).
 #include "game/game_engine.h"
 #include "scenario/scenario.h"
 #include "tag_files/tag_files.h"
-#include "main/console.h"
 #include "cache/cache_files.h"
+#include "game/players.h"
+#include "camera/observer.h"
+#include "objects/objects.h"
+#include "units/units.h"
+#include "main/console.h"
 #include "custom_edition_cache.h"
 #include "mods.h"
 #include "network_chat.h"
+#include "network_distributed.h"
+#include "network_standard.h"
+#include "../src/report.h"
 
+#include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* the platform layer's (port_config.h) */
@@ -28,6 +40,8 @@ int config_boolean(const char *name);
 
 /* how many mods are listed at most (the others counted) */
 #define REPORT_GAME_MODS_LISTED 12
+
+#define REPORT_DEGREES (180.0f / 3.14159265358979f)
 
 int report_game_playing(void)
 {
@@ -183,6 +197,164 @@ void report_game_mods_and_maps(char *text, size_t size)
 	used = strlen(text);
 	snprintf(text + used, size - used, "- Custom Edition maps (game.custom_edition): %s\n",
 		config_boolean("game.custom_edition") ? "on" : "off");
+}
+
+/* a direction's yaw (from the x axis) and pitch (up), in degrees */
+static void report_game_angles(real_vector3d const *forward, float *yaw, float *pitch)
+{
+	real level = (real)sqrt(forward->i * forward->i + forward->j * forward->j);
+
+	*yaw = (float)atan2(forward->j, forward->i) * REPORT_DEGREES;
+	if (*yaw < 0.0f)
+		*yaw += 360.0f;
+	*pitch = (float)atan2(forward->k, level) * REPORT_DEGREES;
+}
+
+/* (the host) the other machines' builds as they told them, a count of each */
+static void report_game_builds(struct report_where *where)
+{
+	long machines[HALO_PORT_MAXIMUM_NETWORK_MACHINES];
+	short count = distributed_client_machines(machines, NUMBEROF(machines));
+	short index;
+
+	for (index = 0; index < count; index++)
+	{
+		struct distributed_client_build build;
+		long number;
+		int kind;
+
+		if (network_standard_machine_is_opence(machines[index]))
+			number = REPORT_WHERE_OPENCE;
+		else if (distributed_machine_client_build(machines[index], &build))
+			number = strtol(build.number, NULL, 10) > 0 ? strtol(build.number, NULL, 10) : 0;
+		else
+		{
+			where->builds_unknown++;
+			continue;
+		}
+		for (kind = 0; kind < where->build_kinds && where->builds[kind] != number; kind++)
+			;
+		if (kind == where->build_kinds)
+		{
+			if (kind >= REPORT_WHERE_BUILDS)
+			{
+				where->builds_unknown++;
+				continue;
+			}
+			where->builds[kind] = number;
+			where->build_counts[kind] = 0;
+			where->build_kinds++;
+		}
+		where->build_counts[kind]++;
+	}
+}
+
+void report_game_where(struct report_where *where)
+{
+	char const *map_name = global_scenario_index != NONE ? tag_get_name(global_scenario_index) : NULL;
+	struct observer_result const *camera;
+	long player_index;
+	short connection;
+
+	csmemset(where, 0, sizeof(*where));
+	if (!report_game_playing())
+		return;
+	where->playing = TRUE;
+	report_game_describe(where->game, sizeof(where->game));
+	/* (the level's name, as map_name takes it: a Custom Edition map's is its
+	file's in custom_maps, not its scenario's) */
+	if (custom_edition_cache_tags_loaded())
+		snprintf(where->map, sizeof(where->map), "%s%s", CUSTOM_EDITION_LEVEL_NAME_PREFIX, cache_file_loaded_map_name());
+	else
+		snprintf(where->map, sizeof(where->map), "%s", map_name);
+	where->campaign = !game_engine_running();
+	where->difficulty = game_difficulty_level_get();
+	where->bsp = global_structure_bsp_index;
+	where->ticks = game_time_get();
+	where->ticks_per_second = TICKS_PER_SECOND;
+	/* (the first local player: its unit's place, its vehicle's in one) */
+	player_index = local_player_get_player_index(0);
+	if (player_index != NONE)
+	{
+		struct player_datum *player = player_get(player_index);
+		struct unit_datum *unit = player->unit_index != NONE ? unit_try_and_get(player->unit_index) : NULL;
+
+		where->player = TRUE;
+		if (unit)
+		{
+			struct object_datum *place = (struct object_datum *)unit;
+
+			where->alive = TRUE;
+			if (unit->object.parent_object_index != NONE)
+			{
+				place = object_get(unit->object.parent_object_index);
+				snprintf(where->vehicle, sizeof(where->vehicle), "%s", tag_get_name(place->definition_index));
+			}
+			where->position[0] = place->object.position.x;
+			where->position[1] = place->object.position.y;
+			where->position[2] = place->object.position.z;
+			report_game_angles(&unit->unit.aiming_vector, &where->yaw, &where->pitch);
+		}
+	}
+	/* (the camera, as debug_camera_set takes it: its roll from the up of its
+	forward with none, camera_pose_set's) */
+	camera = observer_get_camera(0);
+	if (camera)
+	{
+		float cy, sy, cp, sp;
+		real_vector3d level_up, right;
+
+		where->camera = TRUE;
+		where->camera_position[0] = camera->position.x;
+		where->camera_position[1] = camera->position.y;
+		where->camera_position[2] = camera->position.z;
+		report_game_angles(&camera->forward, &where->camera_yaw, &where->camera_pitch);
+		cy = (float)cos(where->camera_yaw / REPORT_DEGREES);
+		sy = (float)sin(where->camera_yaw / REPORT_DEGREES);
+		cp = (float)cos(where->camera_pitch / REPORT_DEGREES);
+		sp = (float)sin(where->camera_pitch / REPORT_DEGREES);
+		level_up.i = -cy * sp;
+		level_up.j = -sy * sp;
+		level_up.k = cp;
+		right.i = sy * cp * level_up.k - sp * level_up.j;
+		right.j = sp * level_up.i - cy * cp * level_up.k;
+		right.k = cy * cp * level_up.j - sy * cp * level_up.i;
+		where->camera_roll = (float)atan2(
+			camera->up.i * right.i + camera->up.j * right.j + camera->up.k * right.k,
+			camera->up.i * level_up.i + camera->up.j * level_up.j + camera->up.k * level_up.k) * REPORT_DEGREES;
+		where->camera_field_of_view = camera->field_of_view * REPORT_DEGREES;
+	}
+	/* (a network game: this machine's part, the netcode, the round trip,
+	the players; no one's name or address) */
+	connection = game_connection();
+	if (connection == _game_connection_network_server || connection == _game_connection_network_client)
+	{
+		struct data_iterator iterator;
+		struct player_datum *player;
+
+		where->network = connection == _game_connection_network_server ? 1 : 2;
+		where->rate = network_standard_agreed_rate();
+		where->ping = NONE;
+		data_iterator_new(&iterator, player_data);
+		while ((player = data_iterator_next(&iterator)) != NULL)
+		{
+			short index = (short)DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index);
+			long ping = distributed_player_ping(index);
+
+			where->players++;
+			/* (a client: its own player's, as the host measured it; the
+			host: its slowest client's) */
+			if (ping == NONE || (where->network == 2 && iterator.datum_index != player_index))
+				continue;
+			if (ping > where->ping)
+				where->ping = ping;
+		}
+		if (where->ping == 0 && where->network == 1)
+			where->ping = NONE;
+		where->connection_problem = distributed_connection_problem();
+		if (where->network == 1)
+			report_game_builds(where);
+	}
 }
 
 /* the line for the note: the text chat's (network_chat.c) */
