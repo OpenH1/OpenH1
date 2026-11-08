@@ -4079,6 +4079,7 @@ static struct
 	{ "controls.party_accept", L"ACCEPT INVITE", 3, FALSE },
 	{ "controls.vote_yes", L"VOTE YES", 3, FALSE },
 	{ "controls.vote_no", L"VOTE NO", 3, FALSE },
+	{ "controls.ping", L"PING", 3, FALSE },
 };
 
 static struct
@@ -11478,6 +11479,8 @@ static struct gametype_option const gametype_options[] =
 	{ "votekick_spinner", _option_setting, 0, 0, 2, { 0 }, "network.votekick", { "true", "false" } },
 	/* (and the text chat: port/linux/game/network_chat.c) */
 	{ "text_chat_spinner", _option_setting, 0, 0, 3, { 0 }, "network.text_chat", { "on", "links", "off" } },
+	/* (and the players' pings: port/linux/game/network_markers.c) */
+	{ "pings_spinner", _option_setting, 0, 0, 2, { 0 }, "network.pings", { "true", "false" } },
 	{ "aim_assist_spinner", _option_setting, 0, 0, 2, { 0 }, "network.block_mouse_aim_assist", { "false", "true" } },
 	/* (the shield effects every machine draws: network_shield_effects.c) */
 	{ "shield_effects_spinner", _option_setting, 0, 0, 7, { 0 }, "network.shield_effects",

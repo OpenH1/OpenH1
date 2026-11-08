@@ -78,6 +78,9 @@ and the touch controls' stick and look */
 extern unsigned char network_chat_keyboard_open(void);
 /* port/linux/game/network_votekick.c: the D-pad's left and right vote now */
 extern unsigned char network_vote_pad_open(void);
+/* port/linux/game/network_markers.c: the port's player pings with the stock
+layouts' D-pad Right now */
+extern unsigned char network_markers_pad_open(short port);
 /* port/linux/game/menu_functions.c: two or more players on this machine
 (co-op, or split screen in a network game) */
 extern unsigned char pc_menu_split_players(void);
@@ -580,6 +583,41 @@ static void vote_pad_hold_over(XINPUT_GAMEPAD *pad)
 		pad->wButtons &= (WORD)~vote_held_buttons;
 }
 
+/* each port's stock layouts' ping (D-pad Right), held and pressed: while
+pings can be sent (network_markers_pad_open) and no overlay reads it, a
+press is the ping's (halo_ping_pad_pressed) and the game gets none of that
+direction (its strafe); a custom layout's ping is its PING's */
+static unsigned char ping_pad_held[PORT_COUNT];
+static unsigned char ping_pad_pressed[PORT_COUNT];
+
+static void ping_pad_read(int port, XINPUT_GAMEPAD *pad, unsigned int reserved)
+{
+	unsigned char layout[CONTROLLER_REMAP_ACTIONS];
+	unsigned char held = (chat_physical_pad[port] & (1UL << HALO_CHAT_PAD_RIGHT)) != 0;
+
+	if (controller_remap_read((short)port, layout) || (reserved & CONTROLLER_REMAP_RESERVE_DPAD_RIGHT) ||
+		!network_markers_pad_open((short)port))
+	{
+		ping_pad_held[port] = held;
+		return;
+	}
+	if (held && !ping_pad_held[port])
+		ping_pad_pressed[port] = 1;
+	ping_pad_held[port] = held;
+	pad->wButtons &= (WORD)~XINPUT_GAMEPAD_DPAD_RIGHT;
+}
+
+int halo_ping_pad_pressed(short port)
+{
+	int pressed;
+
+	if (port < 0 || port >= PORT_COUNT)
+		return 0;
+	pressed = ping_pad_pressed[port];
+	ping_pad_pressed[port] = 0;
+	return pressed;
+}
+
 /* the touch controls' stick as the player's movement (input_abstraction.c's
 keyboard_controls_update), forward and strafe -1..1, whatever the
 profile's sticks do; nonzero while it is pushed. Nothing but on Android and
@@ -943,7 +981,7 @@ static const char *const binding_settings[NUMBER_OF_HALO_KEYBOARD_ACTIONS] =
 	"controls.reload", "controls.zoom", "controls.switch_weapon", "controls.switch_grenade", "controls.action",
 	"controls.flashlight", "controls.scoreboard", "controls.pause", "controls.screenshot",
 	"controls.report", "controls.push_to_talk", "controls.chat", "controls.team_chat", "controls.party_accept",
-	"controls.vote_yes", "controls.vote_no", "controls.clip",
+	"controls.vote_yes", "controls.vote_no", "controls.clip", "controls.ping",
 };
 
 static const struct
@@ -3328,6 +3366,7 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 	XINPUT_GAMEPAD physical;
 	struct gamepad_taps taps;
 	int captured;
+	unsigned int reserved;
 
 	memset(state, 0, sizeof(*state));
 	if (port < 0)
@@ -3345,7 +3384,8 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 	/* Keep the opening chat press so even B can open it without immediately closing it. */
 	chat_pad_record((short)port, &physical);
 	chat_physical_pad[port] = chat_pad[port];
-	controller_remap_reserve((short)port, remap_reserved(port));
+	reserved = remap_reserved(port);
+	controller_remap_reserve((short)port, reserved);
 	controller_remap_paddles((short)port, sdl_gamepad_paddles(port_gamepad(gamepads, count, port), &taps));
 	captured = controller_remap_input((short)port, &physical, port_gamepad(gamepads, count, port) != NULL);
 	if (port == 0)
@@ -3455,6 +3495,8 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		/* (and a vote running takes the D-pad's left and right:
 		network_votekick.c) */
 		vote_pad_hold_over(&state->Gamepad);
+		/* (and pings, the stock layouts' D-pad Right: network_markers.c) */
+		ping_pad_read(0, &state->Gamepad, reserved);
 		/* (the input trace: what the first controller reads in all) */
 		input_trace_pad(0, state->Gamepad.wButtons, state->Gamepad.sThumbLX, state->Gamepad.sThumbLY,
 			state->Gamepad.sThumbRX, state->Gamepad.sThumbRY,
@@ -3488,6 +3530,7 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		/* (the chat's on-screen keyboard, when this player opened it) */
 		chat_pad_record((short)port, &state->Gamepad);
 		chat_pad_hold_over((short)port, &state->Gamepad);
+		ping_pad_read(port, &state->Gamepad, reserved);
 	}
 	if (captured) memset(&state->Gamepad, 0, sizeof(state->Gamepad));
 	/* (the port's gyroscope, and its right stick as the flick stick) */

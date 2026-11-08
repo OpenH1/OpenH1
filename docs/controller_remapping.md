@@ -4,7 +4,7 @@ Settings > Controls > Controller > **Button Remapping** edits separate P1–P4 l
 to input slots on this installation, not device serial numbers or player profiles.
 Empty settings keep the profile preset and stock shortcuts.
 
-Choose Movement, Combat, General, Chat and Voice or Debug Camera on the SHOW row. Select an action, release
+Choose Movement, Combat, General, Communication or Debug Camera on the SHOW row. Select an action, release
 the opening press, then press the desired button on that player's controller.
 All four D-pad directions and Back/Select are available, and the back paddles of a
 controller that has them (an Elite's P1 to P4, a DualSense Edge's, the Steam Deck's
@@ -25,7 +25,10 @@ General includes Flashlight, Zoom, Scoreboard (hold) and Screenshot (one press).
 Movement buttons use forward/backward/strafe directions independently of stick
 presets, with the keyboard controls' diagonal and crouch-walk speeds.
 
-Communication includes All Chat, Team Chat, Vehicle Chat and Push to Talk.
+Communication includes All Chat, Team Chat, Vehicle Chat, Push to Talk and Ping
+(port/linux/README.md, "Pings"). Ping's default is D-pad Right, the stock layouts'
+ping, which a new custom layout takes from Strafe Right (left unbound); an older
+layout keeps its D-pad Right for its strafe, and Ping starts unbound there.
 Chat opens once per press and belongs to the local player who opened it: their
 viewport, name, team and vehicle. The same controller drives the on-screen keyboard.
 Only one line can be edited at a time. A departing or disconnected owner cancels it.
@@ -127,14 +130,18 @@ continue") stay the stock buttons, as the menus do.
 ## Persistence and lifecycle
 
 `input.controller_p1` through `input.controller_p4` default to empty strings.
-New custom layouts use `v3:` followed by 26 comma-separated entries in this order:
+New custom layouts use `v4:` followed by 27 comma-separated entries in this order:
 
 ```
 jump, grenade type, use/reload, weapon, melee, flashlight, grenade, fire, crouch,
 zoom, scoreboard, screenshot, forward, backward, left, right, all chat, team chat,
 vehicle chat, push to talk, camera faster, camera slower, camera/player switch,
-camera raise, camera lower, cycle camera
+camera raise, camera lower, cycle camera, ping
 ```
+
+Ping is last so that a `v3:` layout (26 entries) is a `v4:` one's start; it is a
+gameplay and communication action (its button is unique among them), not the
+debug camera's.
 
 Entries are physical tokens: `south,east,west,north,rb,lb,lt,rt,ls,rs,dpad_up,
 dpad_down,dpad_left,dpad_right,back,left_paddle,right_paddle,left_paddle2,right_paddle2`,
@@ -146,7 +153,8 @@ PlayStation and B on Switch. Tokens must be unique within gameplay/communication
 and separately within Debug; `unbound` may repeat. Unbound saves remain distinct
 from an empty setting (profile defaults).
 
-Old ten-action and 25-action `v2:` strings remain readable. The appended Cycle
+Old ten-action, 25-action `v2:` and 26-action `v3:` strings remain readable; Ping
+takes D-pad Right only where no older action has it. The appended Cycle
 Camera defaults to RB unless an old debug action already owns RB, in which case
 Cycle Camera starts unbound and can be assigned in the Debug group. Existing
 assignments are preserved. Ten-action strings' original actions take priority over

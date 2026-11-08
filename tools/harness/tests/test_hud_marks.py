@@ -58,6 +58,10 @@ def generated(fault=None):
         decls += enum_with(nav, member) + "\n"
     for name in ("number_hud_element_definition", "hud_waypoint_arrow"):
         decls += structure(nav, name) + "\n"
+    # (a ping's colour and fade over the arrow's: port/linux/game/network_markers.c)
+    override = re.search(r"^static struct\n\{\n(?:.*\n)*?\} nav_point_override;\n", nav, re.M)
+    assert override, "hud_nav_points.c's nav_point_override"
+    decls += override.group(0)
     assert "static real_vector2d rasterizer_screen_offset;" in rasterizer
     decls += "static real_vector2d rasterizer_screen_offset;\n"
     assert "static boolean reticle_active;" in passenger and "static real_point2d reticle_offset;" in passenger

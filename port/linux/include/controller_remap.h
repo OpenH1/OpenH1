@@ -21,8 +21,16 @@ enum controller_remap_action
     PAD_CHAT, PAD_TEAM_CHAT, PAD_VEHICLE_CHAT, PAD_TALK,
     PAD_CAMERA_FASTER, PAD_CAMERA_SLOWER, PAD_CAMERA_SWITCH, PAD_CAMERA_UP, PAD_CAMERA_DOWN,
     PAD_CAMERA_CYCLE,
+    /* (after the debug camera's, so that a v3 layout is a v4 one's start:
+     * it is in the gameplay group, CONTROLLER_REMAP_DEBUG_ACTION) */
+    PAD_PING,
     CONTROLLER_REMAP_ACTIONS
 };
+/* The debug camera's actions, a group of their own: their buttons may be
+ * the gameplay's. */
+#define CONTROLLER_REMAP_DEBUG_ACTION(action) ((action) >= PAD_CAMERA_FASTER && (action) <= PAD_CAMERA_CYCLE)
+#define CONTROLLER_REMAP_DEBUG_MASK ((1u << (PAD_CAMERA_CYCLE + 1)) - (1u << PAD_CAMERA_FASTER))
+#define CONTROLLER_REMAP_GAMEPLAY_MASK (((1u << CONTROLLER_REMAP_ACTIONS) - 1) & ~CONTROLLER_REMAP_DEBUG_MASK)
 
 /* Game control indices: jump, grenade type, use/reload, weapon, melee,
  * flashlight, grenade, fire, crouch, zoom. Start and stick axes stay stock. */

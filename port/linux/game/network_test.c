@@ -116,6 +116,7 @@ Called from the main loop every frame (main.c).
 
 #include "../src/p2p.h" /* port: port/linux/src/p2p.c, p2p_lobby.c */
 #include "network_chat.h"
+#include "network_markers.h"
 #include "server_gametypes.h"
 #include "network_party.h"
 #include "network_voice.h"
@@ -238,6 +239,9 @@ static struct
 	short chat_lines_said;
 	/* debug.network_test_party's */
 	real party_time;
+	/* debug.network_test_ping's, and the steps done this game */
+	real ping_time;
+	short ping_steps;
 	long score_to_win;
 	/* the most players the host's games take (debug.network_test_most_players;
 	0: the game's own) */
@@ -359,6 +363,7 @@ static void network_test_read_settings(
 	network_test.elevator_stood = NONE;
 	network_test.chat_time = (real)config_real("debug.network_test_chat");
 	network_test.party_time = (real)config_real("debug.network_test_party");
+	network_test.ping_time = (real)config_real("debug.network_test_ping");
 	snprintf(network_test.pickup_weapon, sizeof(network_test.pickup_weapon), "%s",
 		config_string("debug.network_test_pickup_weapon"));
 	{
@@ -1132,6 +1137,57 @@ static void network_test_set_name(
 	profile.player_name[index] = 0;
 	player_ui_set_active_player_profile(0, player_ui_get_active_player_profile_index(0), &profile);
 	platform_log("network test: this machine's player is named %s", name);
+}
+
+/* debug.network_test_ping: each machine's first player pings what it aims
+at that many seconds in, the same again 3 seconds on (taking it away), and
+again 3 more on; a client then sends one as another machine's player's (the
+host refuses it), and 3 seconds on each sends 6 at once (the host takes
+MARKER_BURST); the pings each machine shows logged a second after each */
+static void network_test_pings(
+	void)
+{
+	long start = (long)(network_test.ping_time * TICKS_PER_SECOND);
+	long now = game_time_get();
+	short step = network_test.ping_steps;
+
+	if (now < start - TICKS_PER_SECOND)
+	{
+		network_test.ping_steps = 0;
+		return;
+	}
+	if (step % 2 == 1 && now >= start + (step / 2) * 3 * TICKS_PER_SECOND + TICKS_PER_SECOND)
+	{
+		short players[16];
+		short count = network_markers_shown(players, NUMBEROF(players));
+		char text[96];
+		short index;
+		int length = snprintf(text, sizeof(text), "network test: pings shown: %d", count);
+
+		for (index = 0; index < count && length > 0 && length < (int)sizeof(text) - 8; index++)
+			length += snprintf(text + length, sizeof(text) - length, " %d", players[index]);
+		platform_log("%s", text);
+		network_test.ping_steps++;
+		return;
+	}
+	if (step % 2 != 0 || step >= 10 || now < start + (step / 2) * 3 * TICKS_PER_SECOND)
+		return;
+	switch (step / 2)
+	{
+	case 0:
+	case 1:
+	case 2:
+		platform_log("network test: ping %d %s", step / 2, network_markers_ping_aimed() ? "sent" : "not sent");
+		break;
+	case 3:
+		if (network_test.mode != _network_test_host)
+			platform_log("network test: a forged ping %s", network_markers_ping_forged() ? "sent" : "not sent");
+		break;
+	default:
+		platform_log("network test: a burst of pings, %d sent", network_markers_ping_burst(6));
+		break;
+	}
+	network_test.ping_steps++;
 }
 
 /* debug.network_test_chat: the host seats the last two players in one
@@ -1979,6 +2035,8 @@ void network_test_update(
 			network_test_elevator_update();
 		if (network_test.party_time > 0.0f)
 			network_test_party();
+		if (network_test.ping_time > 0.0f)
+			network_test_pings();
 		/* debug.network_test_chat: each machine's player says a line to
 		everyone that many seconds in, one to the team two seconds on, and
 		one to the vehicle two more on, the host having seated the last two

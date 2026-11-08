@@ -1457,8 +1457,8 @@ TEAMPLAY_EDIT = "main_menu/settings_select/multiplayer_setup/teamplay_options_ed
 VOICE_QUALITIES = (8, 12, 16, 24, 32, 48, 64)
 # (the rows' step: closer than the PC's 30px, so that all of Server Setup's
 # fit above the help text, which moves down to TEAMPLAY_HELP_TOP)
-TEAMPLAY_STEP = 26
-TEAMPLAY_HELP_TOP = 351
+TEAMPLAY_STEP = 25
+TEAMPLAY_HELP_TOP = 366
 # (game_engine.c's game_engine_force_team_spawns: the gametype's own, so
 # shown in Edit Gametypes' copy too, and not on Server Setup's VOICE OPTIONS)
 TEAMPLAY_GAMETYPE_ROWS = [
@@ -1494,6 +1494,11 @@ TEAMPLAY_ROWS = [
         "Players can type to each other; lines with links\\nare refused. Off in a public internet game.",
         "Players can type to each other, links too. Off\\nin a public internet game.",
         "No text chat in the game.",
+    ]),
+    # (network_markers.c: in co-op and games with teams)
+    ("pings", "PINGS:", ["ON", "OFF"], [
+        "Players can mark what they aim at for their\\nallies, with a nav point and its distance.",
+        "Players cannot ping.",
     ]),
 ]
 # (Teamplay Options' rows of the port's, in order)
@@ -3242,7 +3247,7 @@ COOP_SETUP_SCREENS = [
             "Players can not hurt their AI allies, so that no\\none can kill Keyes or the Marines a level needs.",
         ]),
     ]),
-    ("voice_options", "VOICE AND VOTING", "Voice chat, text chat and votes to kick a player,\\nfor this game.",
+    ("voice_options", "VOICE AND VOTING", "Voice chat, text chat, pings and votes to kick a\\nplayer, for this game.",
      TEAMPLAY_ROWS),
 ]
 # Server Setup's map sharing (port/linux/game/map_share.c), for any game,

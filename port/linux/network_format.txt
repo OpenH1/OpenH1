@@ -108,6 +108,8 @@ enum _distributed_message_map_share_request 83
 enum _distributed_message_map_share_sources 85
 enum _distributed_message_map_vote 94
 enum _distributed_message_map_vote_choice 95
+enum _distributed_message_marker_down 140
+enum _distributed_message_marker_up 139
 enum _distributed_message_notice 17
 enum _distributed_message_object_changes 5
 enum _distributed_message_object_states 6
