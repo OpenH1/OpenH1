@@ -390,6 +390,10 @@ debug.gpu_validation (or debug.gl_debug) */
 #define LOW_LATENCY_ON 4
 #define LOW_LATENCY_OFF 8
 #define VRR_ON 16
+/* and debug.vulkan_present_mode's: 1 immediate, 2 mailbox, 3 fifo, 4
+fifo_relaxed (0: the swap interval's choice) */
+#define PRESENT_MODE_SHIFT 5
+#define PRESENT_MODE_MASK 7u
 
 /* ---------- whether the system says VRR is active (host_vulkan_vrr) */
 
@@ -693,6 +697,20 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 	}
 	options.interval = interval;
 	options.low_latency = debug & VRR_ON ? 2 : debug & LOW_LATENCY_ON ? 1 : debug & LOW_LATENCY_OFF ? 2 : 0;
+	{
+		static const VkPresentModeKHR modes[] = { VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_MAILBOX_KHR,
+			VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_FIFO_RELAXED_KHR };
+		uint32_t asked = (debug >> PRESENT_MODE_SHIFT) & PRESENT_MODE_MASK;
+		SDL_WindowFlags flags = SDL_GetWindowFlags(object);
+
+		if (asked >= 1 && asked <= 4)
+			options.present_mode = (int)modes[asked - 1] + 1;
+		/* (the window's mode, beside the present mode, for a tester's log:
+		SDL's fullscreen with a display mode of its own is exclusive, without
+		one borderless, the desktop's) */
+		host_logf(HOST_LOG_INFO, "vulkan: the window is %s", !(flags & SDL_WINDOW_FULLSCREEN) ? "windowed" :
+			SDL_GetWindowFullscreenMode(object) ? "fullscreen (exclusive)" : "fullscreen (borderless)");
+	}
 #ifdef HALO_VR
 	if (host_vr_vulkan_requested() && host_vr_vulkan_prepare())
 	{

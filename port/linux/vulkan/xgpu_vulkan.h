@@ -90,6 +90,9 @@ struct xgpu_vulkan_options
 	int interval;
 	/* display.low_latency at the start: xgpu_vulkan_window_low_latency */
 	int low_latency;
+	/* debug.vulkan_present_mode: a VkPresentModeKHR plus one, which the
+swapchain takes where the surface has it (0: the swap interval's choice) */
+	int present_mode;
 	/* The present step's turn for a surface the display turns (a phone held
 	sideways: xgpu_vulkan_post.c's): rotation_prepare makes its pipeline at
 	the start, where the surface can be turned (1 if it can); rotate draws

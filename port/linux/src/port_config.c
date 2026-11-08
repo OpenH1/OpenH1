@@ -2499,6 +2499,12 @@ static const struct config_setting config_settings[] =
 		"(which must be installed)." },
 	{ "debug.gl_debug", _config_boolean, "false", "HALO_GL_DEBUG", _environment_set_is_true, _platform_desktop,
 		"Deprecated: gpu_validation's old name, which turns it on too." },
+	{ "debug.vulkan_present_mode", _config_string, "\"\"", "HALO_VULKAN_PRESENT_MODE", _environment_value,
+		_platform_all,
+		"The Vulkan swapchain's present mode, to measure each (PresentMon): \"immediate\",\n"
+		"\"mailbox\", \"fifo\" or \"fifo_relaxed\"; empty, the game's own choice (FIFO\n"
+		"with vsync, else mailbox, else immediate). One the surface does not have\n"
+		"is the game's choice, as the log says." },
 	{ "debug.skip_cinematics", _config_boolean, "false", "HALO_SKIP_CINEMATICS", _environment_set_is_true, _platform_all,
 		"Skip each cinematic in a local game: as the skip button does where it can\n"
 		"be skipped, else run at sixteen times its speed (a test reaches play in\n"

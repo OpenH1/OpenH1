@@ -719,16 +719,32 @@ static int audio_mix_watching(uint64_t *slow_ns)
 	return wanted;
 }
 
+#ifdef _WIN32
+/* port/windows/host/host_thread_win.c: the calling thread made MMCSS's "Pro
+Audio" task (its handle; NULL, it could not be), and made itself again */
+void *host_thread_pro_audio_begin(void);
+void host_thread_pro_audio_end(void *task);
+#endif
+
 static void *audio_thread(void *context)
 {
 	unsigned long requests = 0;
 	struct audio_binding *binding = context;
+
+#ifdef _WIN32
+	void *pro_audio;
+#endif
 
 #ifndef __ANDROID__
 	/* (SDL's audio thread waits on this one while the guest mixes: at its
 	priority, so that a busy computer, a build running, keeps the mix in
 	time, as SDL keeps its own; a small audio.buffer_frames needs it) */
 	SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_TIME_CRITICAL);
+#endif
+#ifdef _WIN32
+	/* (and on Windows, MMCSS's "Pro Audio" task, above that priority, as
+	Windows's own audio engine's threads are, where it gives one) */
+	pro_audio = host_thread_pro_audio_begin();
 #endif
 #if defined(__APPLE__) && !TARGET_OS_IPHONE
 #endif
@@ -782,6 +798,9 @@ static void *audio_thread(void *context)
 		}
 	}
 	pthread_mutex_unlock(&binding->lock);
+#ifdef _WIN32
+	host_thread_pro_audio_end(pro_audio);
+#endif
 	pthread_cond_destroy(&binding->done);
 	pthread_cond_destroy(&binding->requested);
 	pthread_mutex_destroy(&binding->lock);

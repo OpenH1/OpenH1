@@ -1646,6 +1646,16 @@ static void window_test(void)
 	assert(present_mode_choose(all, 3, 0) == VK_PRESENT_MODE_MAILBOX_KHR);
 	assert(present_mode_choose(no_mailbox, 2, 0) == VK_PRESENT_MODE_IMMEDIATE_KHR);
 	assert(present_mode_choose(fifo_only, 1, 0) == VK_PRESENT_MODE_FIFO_KHR);
+	/* debug.vulkan_present_mode's, where the surface has it, over the
+	interval's; else the interval's */
+	vk.present_mode_asked = VK_PRESENT_MODE_IMMEDIATE_KHR + 1;
+	assert(present_mode_choose(all, 3, 1) == VK_PRESENT_MODE_IMMEDIATE_KHR);
+	vk.present_mode_asked = VK_PRESENT_MODE_FIFO_KHR + 1;
+	assert(present_mode_choose(all, 3, 0) == VK_PRESENT_MODE_FIFO_KHR);
+	vk.present_mode_asked = VK_PRESENT_MODE_MAILBOX_KHR + 1;
+	assert(present_mode_choose(no_mailbox, 2, 0) == VK_PRESENT_MODE_IMMEDIATE_KHR);
+	assert(present_mode_choose(no_mailbox, 2, 1) == VK_PRESENT_MODE_FIFO_KHR);
+	vk.present_mode_asked = 0;
 
 	/* the first present makes the surface and the swapchain (vsync: FIFO),
 	and blits the frame itself */

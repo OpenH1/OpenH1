@@ -589,6 +589,9 @@ static struct
 	VkSemaphore acquired[SLOTS], presentable[8];
 	int swapchain_stale;
 	VkPresentModeKHR present_mode;
+	/* debug.vulkan_present_mode's, plus one (0: none asked, the interval's
+	choice) */
+	int present_mode_asked;
 	/* (any thread, atomic) the window's size in pixels, width in the upper
 	half, and whether it changed since the render thread last looked; the
 	swap interval asked for, plus one (0: none asked) */
@@ -5895,14 +5898,55 @@ static int surface_remake(void)
 	return 1;
 }
 
+static const char *present_mode_name(VkPresentModeKHR mode)
+{
+	return mode == VK_PRESENT_MODE_IMMEDIATE_KHR ? "immediate" : mode == VK_PRESENT_MODE_MAILBOX_KHR ? "mailbox" :
+		mode == VK_PRESENT_MODE_FIFO_KHR ? "fifo" : mode == VK_PRESENT_MODE_FIFO_RELAXED_KHR ? "fifo_relaxed" :
+		"other";
+}
+
 /* the present mode of a swap interval: FIFO (which every surface has)
 waits for the display; without waiting, MAILBOX (no tearing) where the
-surface has it, else IMMEDIATE, else FIFO */
+surface has it, else IMMEDIATE, else FIFO. debug.vulkan_present_mode's,
+where the surface has it, before all (to measure each: PresentMon); the
+surface's modes, and what was asked of them, are logged once */
 static VkPresentModeKHR present_mode_choose(const VkPresentModeKHR *modes, uint32_t count, int interval)
 {
+	static int logged;
 	VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR;
 	uint32_t index;
 
+	if (!logged)
+	{
+		char names[160];
+		size_t used = 0;
+
+		names[0] = 0;
+		for (index = 0; index < count && used < sizeof(names); index++)
+			used += (size_t)snprintf(names + used, sizeof(names) - used, "%s%s", index ? ", " : "",
+				present_mode_name(modes[index]));
+		host_logf(HOST_LOG_INFO, "vulkan: the surface's present modes: %s", count ? names : "(none)");
+	}
+	if (vk.present_mode_asked)
+	{
+		VkPresentModeKHR asked = (VkPresentModeKHR)(vk.present_mode_asked - 1);
+
+		for (index = 0; index < count; index++)
+		{
+			if (modes[index] == asked)
+				break;
+		}
+		if (!logged)
+		{
+			host_logf(HOST_LOG_INFO, index < count ? "vulkan: debug.vulkan_present_mode %s" :
+				"vulkan: debug.vulkan_present_mode %s: not the surface's, the game's choice instead",
+				present_mode_name(asked));
+		}
+		logged = 1;
+		if (index < count)
+			return asked;
+	}
+	logged = 1;
 	if (interval > 0)
 		return mode;
 	for (index = 0; index < count; index++)
@@ -6428,8 +6472,8 @@ static int swapchain_make(void)
 	vk.surface_transform = capabilities.currentTransform;
 	vk.suboptimal_presents = 0;
 	hdr_metadata_set();
-	host_logf(HOST_LOG_INFO, "vulkan: swapchain %ux%u, %u images, present mode %d, turned %d%s", vk.swapchain_extent.width,
-		vk.swapchain_extent.height, vk.swapchain_image_count, (int)vk.present_mode, turns * 90,
+	host_logf(HOST_LOG_INFO, "vulkan: swapchain %ux%u, %u images, present mode %s, turned %d%s", vk.swapchain_extent.width,
+		vk.swapchain_extent.height, vk.swapchain_image_count, present_mode_name(vk.present_mode), turns * 90,
 		vk.hdr_output == XGPU_HDR_OUTPUT_SCRGB ? ", HDR (scRGB)" : vk.hdr_output == XGPU_HDR_OUTPUT_PQ ? ", HDR (HDR10)" : "");
 	return 1;
 }
@@ -8323,6 +8367,7 @@ int xgpu_vulkan_initialize(const struct xgpu_vulkan_options *options)
 		memcpy(&vk.window_headroom, &one, sizeof(one));
 	}
 	vk.interval = getenv("HALO_NO_VSYNC") || options->interval < 0 ? 0 : options->interval;
+	vk.present_mode_asked = options->present_mode;
 	if (vk.surface_create)
 	{
 		vk.surface = vk.surface_create(vk.instance, vk.surface_context);
