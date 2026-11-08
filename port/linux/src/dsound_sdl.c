@@ -78,6 +78,7 @@ and gains (record, voices_log).
 
 #include <SDL3/SDL.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -149,7 +150,7 @@ to behind, at 40, 20 and 0 degrees below and above. Measured on an Xbox
 #define HRTF_NEAR 0.25f
 #define HRTF_BANDS 9
 #define HRTF_AZIMUTHS 13
-#define HRTF_ELEVATIONS 5
+#define HRTF_ELEVATIONS 7
 /* the crossfade between the pan and the HRTF when the choice changes
 (audio.spatial): 100 ms */
 #define HRTF_FADE_FRAMES 4800
@@ -224,6 +225,8 @@ struct sdl_stream
 	IDirectSoundStream object;
 	struct sdl_stream *next;
 	ULONG reference_count;
+	/* its number in debug.dsound_log (dsound_log) */
+	unsigned long log_number;
 	LPFNXMEDIAOBJECTCALLBACK callback;
 	LPVOID context;
 
@@ -659,8 +662,8 @@ sound to the right (frames: the Xbox's time between the ears, the lag of
 their greatest cross-correlation below 1.5 kHz, less what the bands add to
 it). A sound to the left is the mirror of one to the right. Between the
 directions recorded, the table is interpolated (the levels in dB), round
-and up and down; above and below 40 degrees, towards the poles, the mean
-over all round of the rows at 40 degrees, the ears alike and at once.
+and up and down; above and below 60 degrees, towards the poles, each
+recorded straight up or down, the ears alike.
 What the Xbox's recordings showed, and the model this replaces (Brown and
 Duda's) did not:
 	- the time between the ears hardly falls with the elevation: to the side
@@ -709,9 +712,43 @@ struct hrtf_direction
 static const float hrtf_crossovers[HRTF_BANDS - 1] = { 500, 1000, 2000, 3000, 4500, 6700, 10000, 14000 };
 
 /* round from ahead (0 degrees) to behind (180) to the right, every 15
-degrees; 40, 20 and 0 degrees below, and 20 and 40 above */
+degrees; 60, 40, 20 and 0 degrees below, and 20, 40 and 60 above. The 60
+degree rows and the poles were recorded on an Xbox in the test bed's tenth
+run: before, the table stopped at 40 and the poles were the mean of the 40
+degree rows, which left a sound straight below (a Warthog's engine and
+wheels, 70 to 80 degrees under its driver) 20 to 30 dB too bright above
+4.5 kHz, and one 60 below up to 14 dB in a band */
 static const struct hrtf_direction hrtf_table[HRTF_ELEVATIONS][HRTF_AZIMUTHS] =
 {
+	/* 60 degrees below (the test bed's tenth run) */
+	{
+		{ { -0.8f, -2.1f, -3.9f, 4.8f, -9.9f, -23.3f, -0.4f, -11.1f, -12.5f },
+		  { -0.8f, -2.1f, -3.9f, 4.8f, -9.9f, -23.3f, -0.4f, -11.1f, -12.5f }, 0.00f }, /* 0 */
+		{ { -1.3f, -3.1f, -5.5f, 5.1f, -15.8f, -25.9f, -0.2f, -22.8f, -14.6f },
+		  { -0.1f, -1.3f, -2.5f, 3.7f, -5.4f, -20.0f, -1.2f, -7.4f, -11.5f }, 2.06f }, /* 15 */
+		{ { -1.1f, -3.8f, -8.2f, 4.6f, -18.5f, -25.1f, -2.3f, -24.6f, -17.2f },
+		  { 0.0f, -0.5f, -0.8f, 2.1f, -2.6f, -21.1f, -1.1f, -7.3f, -12.4f }, 3.62f }, /* 30 */
+		{ { -0.9f, -3.6f, -19.3f, 0.0f, -26.6f, -10.9f, -11.3f, -38.1f, -24.0f },
+		  { 0.3f, 0.7f, 2.5f, -1.8f, -0.7f, -21.8f, -0.3f, -11.3f, -17.0f }, 7.56f }, /* 45 */
+		{ { -1.1f, -2.4f, -21.5f, -8.5f, -12.7f, -19.1f, -18.0f, -39.1f, -55.5f },
+		  { 0.3f, 0.8f, 3.5f, -1.5f, -2.4f, -21.5f, -0.3f, -12.3f, -18.0f }, 8.88f }, /* 60 */
+		{ { -1.4f, -1.4f, -13.1f, -21.4f, -19.6f, -16.5f, -32.0f, -46.3f, -66.7f },
+		  { 0.4f, 0.9f, 4.0f, 0.6f, -5.2f, -22.4f, 0.0f, -14.4f, -17.4f }, 10.63f }, /* 75 */
+		{ { -1.5f, -1.2f, -6.8f, -30.9f, -19.4f, -38.2f, -15.5f, -21.8f, -31.3f },
+		  { 0.7f, 0.8f, 4.1f, 1.7f, -4.8f, -25.5f, -2.8f, -5.2f, -13.1f }, 12.81f }, /* 90 */
+		{ { -1.5f, -1.3f, -13.4f, -35.2f, -15.7f, -18.2f, -23.4f, -24.2f, -30.9f },
+		  { 0.7f, 0.8f, 3.8f, 0.7f, -6.7f, -28.2f, -4.4f, -6.4f, -14.1f }, 10.31f }, /* 105 */
+		{ { -1.3f, -2.4f, -19.8f, -7.7f, -18.0f, -32.6f, -15.3f, -22.8f, -39.8f },
+		  { 0.5f, 0.6f, 3.6f, -2.0f, -5.3f, -28.6f, -7.3f, -5.4f, -13.3f }, 8.81f }, /* 120 */
+		{ { -1.3f, -4.7f, -8.0f, -5.1f, -28.0f, -27.7f, -10.7f, -22.5f, -23.7f },
+		  { 0.4f, 0.1f, 3.3f, -5.0f, -3.8f, -26.5f, -7.0f, -5.8f, -12.2f }, 8.12f }, /* 135 */
+		{ { -1.9f, -3.8f, -1.9f, -3.7f, -10.6f, -24.6f, -8.9f, -13.0f, -21.5f },
+		  { -0.3f, -1.0f, 2.1f, -8.2f, -2.1f, -22.2f, -4.1f, -10.8f, -11.0f }, 4.00f }, /* 150 */
+		{ { -1.9f, -2.6f, -0.8f, -3.9f, -7.8f, -25.7f, -5.8f, -14.4f, -21.2f },
+		  { -0.7f, -1.4f, 1.4f, -6.9f, -2.8f, -22.9f, -4.2f, -9.5f, -13.0f }, 2.13f }, /* 165 */
+		{ { -1.4f, -1.9f, 0.4f, -5.3f, -5.2f, -24.1f, -4.6f, -11.5f, -17.3f },
+		  { -1.4f, -1.9f, 0.4f, -5.3f, -5.2f, -24.1f, -4.6f, -11.5f, -17.3f }, 0.00f }, /* 180 */
+	},
 	/* -40 degrees */
 	{
 		{ { -0.3f, -1.2f, 4.2f, 0.1f, 0.8f, -12.2f, -4.4f, 3.6f, -2.8f },
@@ -857,13 +894,43 @@ static const struct hrtf_direction hrtf_table[HRTF_ELEVATIONS][HRTF_AZIMUTHS] =
 		{ { 1.0f, -1.0f, 0.4f, 1.2f, -19.2f, -0.1f, -9.6f, -25.8f, -24.9f },
 		  { 1.0f, -1.0f, 0.4f, 1.2f, -19.2f, -0.1f, -9.6f, -25.8f, -24.9f }, 0.00f }, /* 180 */
 	},
+	/* 60 degrees above (the test bed's tenth run) */
+	{
+		{ { 0.0f, -1.1f, -1.1f, 1.5f, -6.9f, -1.8f, -5.1f, -0.7f, -9.8f },
+		  { 0.0f, -1.1f, -1.1f, 1.5f, -6.9f, -1.8f, -5.1f, -0.7f, -9.8f }, 0.00f }, /* 0 */
+		{ { 0.0f, -1.3f, -1.9f, -0.1f, -3.2f, -6.8f, -2.4f, -4.6f, -13.5f },
+		  { 0.4f, -0.7f, -0.1f, 1.9f, -7.0f, 0.4f, -6.3f, 1.0f, -5.4f }, 2.12f }, /* 15 */
+		{ { -0.1f, -1.5f, -2.5f, -1.7f, -3.1f, -6.2f, -5.4f, -4.8f, -15.4f },
+		  { 0.5f, -0.6f, 0.7f, 1.5f, -5.0f, 0.6f, -5.1f, 2.5f, -3.9f }, 4.19f }, /* 30 */
+		{ { -0.3f, -1.7f, -3.7f, -4.1f, -6.0f, -14.2f, -2.2f, -12.8f, -21.8f },
+		  { 0.8f, -0.3f, 1.6f, 1.0f, -2.5f, 0.2f, -3.6f, 4.5f, -2.7f }, 7.94f }, /* 45 */
+		{ { -0.3f, -2.0f, -4.0f, -5.2f, -8.0f, -11.9f, -7.3f, -7.8f, -20.4f },
+		  { 0.7f, 0.3f, 1.9f, 0.8f, -1.8f, 0.0f, -2.8f, 5.2f, -3.0f }, 9.31f }, /* 60 */
+		{ { -0.3f, -2.1f, -3.9f, -6.6f, -8.7f, -14.3f, -7.6f, -13.4f, -21.8f },
+		  { 0.8f, 0.5f, 2.0f, 1.1f, -1.7f, -0.8f, -1.3f, 5.3f, -3.6f }, 10.19f }, /* 75 */
+		{ { -0.6f, -2.2f, -3.8f, -8.9f, -9.0f, -20.5f, -6.1f, -20.6f, -28.9f },
+		  { 1.0f, 0.5f, 2.1f, 1.1f, -1.4f, -3.8f, 1.5f, 4.0f, -6.1f }, 10.75f }, /* 90 */
+		{ { -0.3f, -2.1f, -3.4f, -7.8f, -8.2f, -16.9f, -6.2f, -10.0f, -20.7f },
+		  { 0.8f, 0.6f, 2.1f, 0.6f, -1.2f, -6.5f, 2.7f, 2.5f, -7.8f }, 10.12f }, /* 105 */
+		{ { -0.3f, -1.9f, -3.3f, -6.6f, -7.7f, -18.6f, -3.7f, -8.1f, -21.4f },
+		  { 0.7f, 0.4f, 2.0f, 0.3f, -1.4f, -8.5f, 3.2f, 1.1f, -9.2f }, 9.13f }, /* 120 */
+		{ { -0.5f, -1.7f, -3.2f, -5.2f, -7.7f, -17.0f, -0.9f, -13.7f, -20.2f },
+		  { 0.6f, -0.1f, 1.6f, 0.0f, -2.2f, -9.0f, 2.7f, 0.2f, -10.6f }, 7.75f }, /* 135 */
+		{ { -0.2f, -1.3f, -2.0f, -2.7f, -4.2f, -16.1f, -0.3f, -9.1f, -18.9f },
+		  { 0.2f, -0.6f, 0.9f, -0.2f, -4.7f, -9.3f, 1.8f, -1.8f, -12.2f }, 3.94f }, /* 150 */
+		{ { -0.2f, -1.2f, -1.6f, -1.1f, -5.2f, -16.2f, 1.0f, -8.7f, -17.4f },
+		  { -0.1f, -0.9f, 0.1f, -0.1f, -6.5f, -9.7f, 0.8f, -3.1f, -13.9f }, 2.00f }, /* 165 */
+		{ { -0.1f, -0.9f, -0.6f, -0.2f, -6.0f, -13.4f, 1.4f, -5.5f, -15.8f },
+		  { -0.1f, -0.9f, -0.6f, -0.2f, -6.0f, -13.4f, 1.4f, -5.5f, -15.8f }, 0.00f }, /* 180 */
+	},
 };
 static const struct hrtf_direction hrtf_poles[2] =
 {
-	{ { 0.5f, 0.1f, 3.4f, -0.7f, -1.7f, -8.1f, -1.4f, 1.1f, -5.8f },
-	  { 0.5f, 0.1f, 3.4f, -0.7f, -1.7f, -8.1f, -1.4f, 1.1f, -5.8f }, 0.0f },
-	{ { 1.6f, 0.5f, 0.9f, 1.1f, -2.5f, -1.3f, -0.3f, -0.6f, -8.1f },
-	  { 1.6f, 0.5f, 0.9f, 1.1f, -2.5f, -1.3f, -0.3f, -0.6f, -8.1f }, 0.0f },
+	/* straight below and straight above (recorded, the test bed's tenth run) */
+	{ { -0.3f, -0.3f, 2.0f, -32.3f, -40.1f, -22.4f, -19.1f, -43.1f, -31.9f },
+	  { -0.3f, -0.3f, 2.0f, -32.3f, -40.1f, -22.4f, -19.1f, -43.1f, -31.9f }, 0.0f },
+	{ { 0.1f, -0.9f, -0.5f, -0.9f, -4.4f, -8.4f, -1.4f, -0.5f, -13.4f },
+	  { 0.1f, -0.9f, -0.5f, -0.9f, -4.4f, -8.4f, -1.4f, -0.5f, -13.4f }, 0.0f },
 };
 
 /* On 5.1 the Xbox's back pair played a sound behind as the direction
@@ -953,7 +1020,7 @@ elevation (-90 to 90), interpolated round, and up and down between its rows
 and the poles */
 static void hrtf_lookup(float azimuth, float elevation, struct hrtf_direction *out)
 {
-	static const float rows[HRTF_ELEVATIONS + 2] = { -90.0f, -40.0f, -20.0f, 0.0f, 20.0f, 40.0f, 90.0f };
+	static const float rows[HRTF_ELEVATIONS + 2] = { -90.0f, -60.0f, -40.0f, -20.0f, 0.0f, 20.0f, 40.0f, 60.0f, 90.0f };
 	float column = azimuth / 15.0f, round;
 	struct hrtf_direction at[2];
 	int first, row, side;
@@ -3108,6 +3175,121 @@ static void limit(float *output, unsigned long frames)
 	}
 }
 
+/* ---------- debug.dsound_log
+
+Every DirectSound call the game makes, a line each in a text file with the
+time it was made (microseconds of the mix's own clock, the frames mixed by
+then: without a device the mix keeps to the game's frames, which a hidden
+game may run slower than the wall clock, and a packet sent by the wall
+clock's time would come late), and the sound data of the
+packets it submits appended to the same name with .data added (each packet
+a line "P <time> <stream> <offset> <bytes>" of that file): what the audio
+test bed replays on an Xbox and through this mixer (its twin), to compare
+the two playing the same calls. The lines (stream numbers from 1, as they
+are created; mB, Hz, DirectSound's coordinates):
+  C t n <format tag> <channels> <rate> <3D>   a stream made
+  P t n <offset> <bytes>    a packet          F t n   flushed (stopped)
+  V t n <mB>  Q t n <Hz>  M t n <3D mode>  Z t n <pause>
+  X t n x y z (position)  W t n x y z (velocity)  N t n <min>  K t n <max>
+  S t n <direct> <direct HF> <room> <room HF> <room rolloff> <obstruction>
+        <its LF ratio> <occlusion> <its LF ratio>   its I3DL2 source
+  B t n <mix bins>  U t n <mix bins> <mB each>
+  LP t x y z  LV t x y z  LO t <front x y z> <top x y z>  LD t <distance factor>
+  LR t <rolloff factor>  LE t <the 12 I3DL2 listener values>
+(CommitDeferredSettings is not logged: the game makes it after each
+channel's changes, thousands of times a second, and this mixer takes
+every setting at once.)
+Buffered (a megabyte at a time); nothing at all is done while it is off. */
+
+static FILE *dsound_log_text, *dsound_log_data;
+/* the frames mixed so far: the log's clock (mix) */
+static unsigned long dsound_log_frames;
+static BOOL dsound_log_checked;
+static unsigned long dsound_log_streams;
+static unsigned long long dsound_log_data_size;
+static pthread_mutex_t dsound_log_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static BOOL dsound_log_on(void)
+{
+	if (!dsound_log_checked)
+	{
+		const char *path = config_string("debug.dsound_log");
+
+		dsound_log_checked = TRUE;
+		if (path && path[0])
+		{
+			char data_path[1024];
+
+			snprintf(data_path, sizeof(data_path), "%s.data", path);
+			dsound_log_text = fopen(path, "w");
+			dsound_log_data = dsound_log_text ? fopen(data_path, "wb") : NULL;
+			if (!dsound_log_data)
+			{
+				if (dsound_log_text)
+					fclose(dsound_log_text);
+				dsound_log_text = NULL;
+				platform_log("sound: cannot write the DirectSound log %s", path);
+			}
+			else
+			{
+				setvbuf(dsound_log_text, NULL, _IOFBF, 1 << 20);
+				setvbuf(dsound_log_data, NULL, _IOFBF, 1 << 20);
+				platform_log("sound: logging the DirectSound calls to %s", path);
+			}
+		}
+	}
+	return dsound_log_text != NULL;
+}
+
+/* the log's time: microseconds of mixed frames */
+static unsigned long long dsound_log_time(void)
+{
+	return (unsigned long long)__atomic_load_n(&dsound_log_frames, __ATOMIC_RELAXED) * 1000000ull / OUTPUT_RATE;
+}
+
+/* a line of the log: its code, the time, then the rest as format says */
+static void dsound_log(const char *code, const char *format, ...)
+{
+	va_list arguments;
+
+	if (!dsound_log_on())
+		return;
+	pthread_mutex_lock(&dsound_log_lock);
+	fprintf(dsound_log_text, "%s %llu ", code, dsound_log_time());
+	va_start(arguments, format);
+	vfprintf(dsound_log_text, format, arguments);
+	va_end(arguments);
+	fputc('\n', dsound_log_text);
+	pthread_mutex_unlock(&dsound_log_lock);
+}
+
+static void dsound_log_packet(unsigned long number, const void *data, unsigned long size)
+{
+	if (!dsound_log_on())
+		return;
+	pthread_mutex_lock(&dsound_log_lock);
+	fprintf(dsound_log_text, "P %llu %lu %llu %lu\n", dsound_log_time(), number, dsound_log_data_size, size);
+	fwrite(data, 1, size, dsound_log_data);
+	dsound_log_data_size += size;
+	pthread_mutex_unlock(&dsound_log_lock);
+}
+
+/* (the log written out, from DirectSoundDoWork once a second: a run stopped leaves it whole but its last second) */
+static void dsound_log_flush(void)
+{
+	pthread_mutex_lock(&dsound_log_lock);
+	if (dsound_log_text)
+	{
+		fflush(dsound_log_text);
+		fflush(dsound_log_data);
+	}
+	pthread_mutex_unlock(&dsound_log_lock);
+}
+
+#define DSLOG_ON (dsound_log_checked ? dsound_log_text != NULL : dsound_log_on())
+#define DSLOG_STREAM(code, format, ...) \
+	do { if (DSLOG_ON) dsound_log(code, "%lu " format, stream_from_interface(stream)->log_number, __VA_ARGS__); } while (0)
+
 /* ---------- recording
 
 debug.audio_record: the mix as it plays, to a WAV file of 16-bit stereo at
@@ -3617,6 +3799,9 @@ static void mix(float *output, unsigned long frames, BOOL wait)
 	struct sdl_stream *stream;
 	BOOL enabled = reverb_enabled;
 	Uint64 started = SDL_GetTicksNS();
+
+	if (dsound_log_text)
+		__atomic_fetch_add(&dsound_log_frames, frames, __ATOMIC_RELAXED);
 
 	memset(output, 0, frames * output_channels * sizeof(float));
 	memset(reverb.send, 0, frames * sizeof(float));
@@ -4539,6 +4724,8 @@ static HRESULT STDMETHODCALLTYPE stream_process(IDirectSoundStream *object, LPCX
 	(void)output;
 	if (!input)
 		return E_INVALIDARG;
+	if (DSLOG_ON && input->pvBuffer)
+		dsound_log_packet(stream->log_number, input->pvBuffer, input->dwMaxSize);
 	/* decode outside the lock */
 	samples = stream->adpcm ?
 		decode_adpcm(input->pvBuffer, input->dwMaxSize, stream->channels, &frames) :
@@ -4588,6 +4775,9 @@ static HRESULT STDMETHODCALLTYPE stream_discontinuity(IDirectSoundStream *object
 static HRESULT STDMETHODCALLTYPE stream_flush(IDirectSoundStream *object)
 {
 	struct sdl_stream *stream = stream_from_interface(object);
+
+	if (DSLOG_ON)
+		dsound_log("F", "%lu", stream->log_number);
 
 	pthread_mutex_lock(&voices_lock);
 	/* (the mixer takes none of the packets while they are completed, the
@@ -4762,7 +4952,14 @@ VOID WINAPI DirectSoundDoWork(void)
 #ifdef HALO_VR
 	static BOOL hrtf_setting;
 #endif
+	static unsigned long long log_flushed_ns;
 
+	/* (debug.dsound_log written out about once a second) */
+	if (dsound_log_text && SDL_GetTicksNS() - log_flushed_ns > 1000000000ull)
+	{
+		log_flushed_ns = SDL_GetTicksNS();
+		dsound_log_flush();
+	}
 	/* (audio.volume, audio.reverb, audio.doppler, audio.enabled and
 	audio.resampler read again when the settings change: on the game's thread, not the mixer's,
 	whose lock the config's file I/O would hold) */
@@ -4848,6 +5045,12 @@ HRESULT WINAPI IDirectSound_SetI3DL2Listener(LPDIRECTSOUND sound, LPCDSI3DL2LIST
 {
 	(void)sound;
 	(void)apply;
+	if (DSLOG_ON)
+		dsound_log("LE", "%ld %ld %.4f %.4f %.4f %ld %.4f %ld %.4f %.4f %.4f %.4f", (long)listener_properties->lRoom,
+			(long)listener_properties->lRoomHF, listener_properties->flRoomRolloffFactor, listener_properties->flDecayTime,
+			listener_properties->flDecayHFRatio, (long)listener_properties->lReflections,
+			listener_properties->flReflectionsDelay, (long)listener_properties->lReverb, listener_properties->flReverbDelay,
+			listener_properties->flDiffusion, listener_properties->flDensity, listener_properties->flHFReference);
 	pthread_mutex_lock(&voices_lock);
 	environment_set = *listener_properties;
 	environment_changed = TRUE;
@@ -4859,6 +5062,8 @@ HRESULT WINAPI IDirectSound_SetDistanceFactor(LPDIRECTSOUND sound, FLOAT factor,
 {
 	(void)sound;
 	(void)apply;
+	if (DSLOG_ON)
+		dsound_log("LD", "%.4f", factor);
 	pthread_mutex_lock(&voices_lock);
 	listener_set.distance_factor = factor > 0.0f ? factor : 1.0f;
 	listener_changed = TRUE;
@@ -4870,6 +5075,8 @@ HRESULT WINAPI IDirectSound_SetRolloffFactor(LPDIRECTSOUND sound, FLOAT factor, 
 {
 	(void)sound;
 	(void)apply;
+	if (DSLOG_ON)
+		dsound_log("LR", "%.4f", factor);
 	pthread_mutex_lock(&voices_lock);
 	listener_set.rolloff_factor = factor >= 0.0f ? factor : 1.0f;
 	listener_changed = TRUE;
@@ -4881,6 +5088,8 @@ HRESULT WINAPI IDirectSound_SetPosition(LPDIRECTSOUND sound, FLOAT x, FLOAT y, F
 {
 	(void)sound;
 	(void)apply;
+	if (DSLOG_ON)
+		dsound_log("LP", "%.4f %.4f %.4f", x, y, z);
 	pthread_mutex_lock(&voices_lock);
 	listener_set.position[0] = x;
 	listener_set.position[1] = y;
@@ -4894,6 +5103,8 @@ HRESULT WINAPI IDirectSound_SetVelocity(LPDIRECTSOUND sound, FLOAT x, FLOAT y, F
 {
 	(void)sound;
 	(void)apply;
+	if (DSLOG_ON)
+		dsound_log("LV", "%.4f %.4f %.4f", x, y, z);
 	pthread_mutex_lock(&voices_lock);
 	listener_set.velocity[0] = x;
 	listener_set.velocity[1] = y;
@@ -4920,6 +5131,8 @@ HRESULT WINAPI IDirectSound_SetOrientation(LPDIRECTSOUND sound, FLOAT x_front, F
 {
 	(void)sound;
 	(void)apply;
+	if (DSLOG_ON)
+		dsound_log("LO", "%.4f %.4f %.4f %.4f %.4f %.4f", x_front, y_front, z_front, x_top, y_top, z_top);
 	pthread_mutex_lock(&voices_lock);
 	listener_set.front[0] = x_front;
 	listener_set.front[1] = y_front;
@@ -4960,6 +5173,14 @@ HRESULT WINAPI IDirectSound_CreateSoundStream(LPDIRECTSOUND sound, LPCDSSTREAMDE
 	stream->pending.surround_bins[0][0] = 1.0f;
 	stream->pending.surround_bins[stream->channels - 1][1] = 1.0f;
 	stream->has_3d = (description->dwFlags & DSSTREAMCAPS_CTRL3D) != 0;
+	if (DSLOG_ON)
+	{
+		pthread_mutex_lock(&dsound_log_lock);
+		stream->log_number = ++dsound_log_streams;
+		pthread_mutex_unlock(&dsound_log_lock);
+		dsound_log("C", "%lu %u %u %lu %d", stream->log_number, format ? (unsigned)format->wFormatTag : 0u,
+			(unsigned)stream->channels, (unsigned long)stream->sample_rate, stream->has_3d ? 1 : 0);
+	}
 	stream->pending.mode = DS3DMODE_NORMAL;
 	stream->pending.minimum_distance = DS3D_DEFAULTMINDISTANCE;
 	stream->pending.maximum_distance = DS3D_DEFAULTMAXDISTANCE;
@@ -5004,11 +5225,13 @@ unsigned long __stdcall DirectSoundGetStreamVoiceStatus(LPDIRECTSOUNDSTREAM stre
 
 HRESULT WINAPI IDirectSoundStream_SetFrequency(LPDIRECTSOUNDSTREAM stream, DWORD frequency)
 {
+	DSLOG_STREAM("Q", "%lu", (unsigned long)frequency);
 	STREAM_SETTER(record->frequency = frequency ? frequency : stream_from_interface(stream)->sample_rate)
 }
 
 HRESULT WINAPI IDirectSoundStream_SetVolume(LPDIRECTSOUNDSTREAM stream, LONG volume)
 {
+	DSLOG_STREAM("V", "%ld", (long)volume);
 	STREAM_SETTER(record->volume = gain_from_millibels(volume))
 }
 
@@ -5039,6 +5262,7 @@ static void stream_set_surround_bins(struct voice_settings *record, unsigned lon
 
 HRESULT WINAPI IDirectSoundStream_SetMixBins(LPDIRECTSOUNDSTREAM stream, DWORD mix_bin_mask)
 {
+	DSLOG_STREAM("B", "%lu", (unsigned long)mix_bin_mask);
 	STREAM_SETTER(
 		record->mix_left = (mix_bin_mask & DSMIXBIN_FRONT_LEFT) ? 1.0f : 0.0f;
 		record->mix_right = (mix_bin_mask & DSMIXBIN_FRONT_RIGHT) ? 1.0f : 0.0f;
@@ -5051,6 +5275,20 @@ HRESULT WINAPI IDirectSoundStream_SetMixBinVolumes(LPDIRECTSOUNDSTREAM stream, D
 	struct voice_settings *record = &stream_from_interface(stream)->pending;
 	unsigned long bit, index = 0;
 
+	if (DSLOG_ON)
+	{
+		char text[400];
+		size_t used = 0;
+		unsigned long count = 0;
+
+		for (bit = 0; bit < 32; bit++)
+		{
+			if ((mix_bin_mask & (1ul << bit)) && used < sizeof(text) - 16)
+				used += (size_t)snprintf(text + used, sizeof(text) - used, " %ld", (long)volumes[count++]);
+		}
+		text[used] = 0;
+		DSLOG_STREAM("U", "%lu%s", (unsigned long)mix_bin_mask, text);
+	}
 	pthread_mutex_lock(&voices_lock);
 	for (bit = 0; bit < 32; bit++)
 	{
@@ -5071,24 +5309,28 @@ HRESULT WINAPI IDirectSoundStream_SetMixBinVolumes(LPDIRECTSOUNDSTREAM stream, D
 HRESULT WINAPI IDirectSoundStream_SetMode(LPDIRECTSOUNDSTREAM stream, DWORD mode, DWORD apply)
 {
 	(void)apply;
+	DSLOG_STREAM("M", "%lu", (unsigned long)mode);
 	STREAM_SETTER(record->mode = mode)
 }
 
 HRESULT WINAPI IDirectSoundStream_SetPosition(LPDIRECTSOUNDSTREAM stream, FLOAT x, FLOAT y, FLOAT z, DWORD apply)
 {
 	(void)apply;
+	DSLOG_STREAM("X", "%.4f %.4f %.4f", x, y, z);
 	STREAM_SETTER(record->position[0] = x; record->position[1] = y; record->position[2] = z)
 }
 
 HRESULT WINAPI IDirectSoundStream_SetMinDistance(LPDIRECTSOUNDSTREAM stream, FLOAT distance, DWORD apply)
 {
 	(void)apply;
+	DSLOG_STREAM("N", "%.4f", distance);
 	STREAM_SETTER(record->minimum_distance = distance)
 }
 
 HRESULT WINAPI IDirectSoundStream_SetMaxDistance(LPDIRECTSOUNDSTREAM stream, FLOAT distance, DWORD apply)
 {
 	(void)apply;
+	DSLOG_STREAM("K", "%.9g", distance);
 	STREAM_SETTER(record->maximum_distance = distance)
 }
 
@@ -5097,6 +5339,9 @@ HRESULT WINAPI IDirectSoundStream_SetI3DL2Source(LPDIRECTSOUNDSTREAM stream, LPC
 	LONG direct, direct_hf, room, room_hf;
 
 	(void)apply;
+	DSLOG_STREAM("S", "%ld %ld %ld %ld %.4f %ld %.4f %ld %.4f", (long)source->lDirect, (long)source->lDirectHF,
+		(long)source->lRoom, (long)source->lRoomHF, source->flRoomRolloffFactor, (long)source->Obstruction.lHFLevel,
+		source->Obstruction.flLFRatio, (long)source->Occlusion.lHFLevel, source->Occlusion.flLFRatio);
 	/* the direct path: at low frequencies obstruction and occlusion take
 	their LF ratio of their high frequency levels, which (with the source's
 	own) muffle it above the HF reference */
@@ -5137,12 +5382,14 @@ HRESULT WINAPI IDirectSoundStream_SetI3DL2Source(LPDIRECTSOUNDSTREAM stream, LPC
 
 HRESULT WINAPI IDirectSoundStream_Pause(LPDIRECTSOUNDSTREAM stream, DWORD pause)
 {
+	DSLOG_STREAM("Z", "%lu", (unsigned long)pause);
 	STREAM_SETTER(record->paused = pause == DSSTREAMPAUSE_PAUSE)
 }
 
 HRESULT WINAPI IDirectSoundStream_SetVelocity(LPDIRECTSOUNDSTREAM stream, FLOAT x, FLOAT y, FLOAT z, DWORD apply)
 {
 	(void)apply;
+	DSLOG_STREAM("W", "%.4f %.4f %.4f", x, y, z);
 	STREAM_SETTER(record->velocity[0] = x; record->velocity[1] = y; record->velocity[2] = z)
 }
 

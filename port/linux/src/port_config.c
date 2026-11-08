@@ -2210,6 +2210,11 @@ static const struct config_setting config_settings[] =
 	{ "debug.audio_record", _config_string, "\"\"", "HALO_AUDIO_RECORD", _environment_value, _platform_desktop,
 		"Record the game's sound, as it plays (with or without a device), to\n"
 		"this WAV file (48 kHz, 16-bit stereo), for automated tests; empty none." },
+	{ "debug.dsound_log", _config_string, "\"\"", "HALO_DSOUND_LOG", _environment_value, _platform_desktop,
+		"Log every DirectSound call the game makes, with its time, to this\n"
+		"file, and the sound data of the packets it submits to the same name\n"
+		"with .data added, for replaying the calls on an Xbox (the audio test\n"
+		"bed); empty none. The data is the maps' own sounds: keep it private." },
 
 #ifdef HALO_VR
 	{ "debug.vr_force_render", _config_boolean, "false", "HALO_VR_FORCE_RENDER", _environment_value, _platform_desktop,
