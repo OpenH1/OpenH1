@@ -2,9 +2,9 @@
 
 A demo is a recording of a game, tick by tick, that plays back exactly: the
 same game state after every tick as the game that was recorded, as a
-Counter-Strike demo is. Every game this computer plays or hosts is recorded
-as one (`demo.record`): the campaign, split screen, games with bots, a
-network game it hosts, a dedicated server's. They are the base for clips,
+Counter-Strike demo is. With `demo.record` on (it is off by default), every
+game this computer plays or hosts is recorded as one: the campaign, split
+screen, games with bots, a network game it hosts, a dedicated server's. They are the base for clips,
 bug reports' reproductions, kill cams and the render inspector.
 
 The code is `port/linux/game/demo.c` (what a demo holds, recording and
@@ -219,7 +219,7 @@ hold; `--builds`: not the seeds' takers' sites; `--game`: from a network
 game's first tick, after its lobby):
 
 ```sh
-HALO_DETERMINISM_LOG=rec.txt HALO_TEST_INPUT=bot:3 HALO_SKIP_CINEMATICS=1 ./halo   # init.txt: map_name levels\a10\a10
+HALO_DEMO_RECORD=1 HALO_DETERMINISM_LOG=rec.txt HALO_TEST_INPUT=bot:3 HALO_SKIP_CINEMATICS=1 ./halo   # init.txt: map_name levels\a10\a10
 HALO_DETERMINISM_LOG=play.txt HALO_DEMO_PLAY=demos/<demo> HALO_DEMO_QUIT=1 HALO_DEMO_RECORD=0 ./halo
 python tools/determinism_compare.py --simulation --builds \
     --ignore "object list header" --ignore "list object reference" rec.txt play.txt

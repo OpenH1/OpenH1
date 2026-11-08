@@ -1310,11 +1310,11 @@ static const struct config_setting config_settings[] =
 		"settings or other players' games (debug.txt names what they were\n"
 		"refused)." },
 
-	{ "demo.record", _config_boolean, "true", "HALO_DEMO_RECORD", _environment_value, _platform_all,
-		"Record every game this computer plays or hosts (the campaign, split\n"
-		"screen, games with bots, network games it hosts) as a demo in\n"
+	{ "demo.record", _config_boolean, "false", "HALO_DEMO_RECORD", _environment_value, _platform_all,
+		"true: record every game this computer plays or hosts (the campaign,\n"
+		"split screen, games with bots, network games it hosts) as a demo in\n"
 		"paths.data's demos/ folder: its ticks' input and what reached the game\n"
-		"from elsewhere, which plays back exactly (docs/demos.md)." },
+		"from elsewhere, which plays back exactly (docs/demos.md). Off by default." },
 	{ "demo.keep_count", _config_integer, "20", "HALO_DEMO_KEEP_COUNT", _environment_value, _platform_all,
 		"The most demos kept: the oldest are deleted as a new one begins. Pinned\n"
 		"demos (demos/kept/) are never deleted, nor counted." },
