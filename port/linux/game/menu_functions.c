@@ -3030,7 +3030,8 @@ static void hdr_display_show(struct widget_instance *list)
 	discord_text_set(value, text);
 }
 
-/* the VARIABLE REFRESH row's panel: its words of what the system says (the
+/* the VARIABLE REFRESH row's panel: its words of what the system says, in
+the help's body (the note below it holds two lines: more is cut) (the
 others': FALSE) */
 static boolean vrr_panel(struct widget_instance *row, wchar_t const **help)
 {
@@ -3043,16 +3044,17 @@ static boolean vrr_panel(struct widget_instance *row, wchar_t const **help)
 	{
 	case 0 /* PLATFORM_VRR_NONE */:
 		text = "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
-			"each frame shows as soon as it is ready, without tearing.|No variable refresh screen found. Turn it "
-			"on in your display or driver settings.";
+			"each frame shows as soon as it is ready, without tearing. No variable refresh screen found. Turn it on "
+			"in your display or driver settings.";
 		break;
 	case 1 /* PLATFORM_VRR_FOUND */:
 		text = "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
-			"each frame shows as soon as it is ready, without tearing.|Variable refresh found: Auto has it on.";
+			"each frame shows as soon as it is ready, without tearing. A variable refresh screen was found: Auto "
+			"has it on.";
 		break;
 	case 2 /* PLATFORM_VRR_UNKNOWN */:
 		text = "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
-			"each frame shows as soon as it is ready, without tearing.|Turn on if your screen has G-Sync or "
+			"each frame shows as soon as it is ready, without tearing. Turn on if your screen has G-Sync or "
 			"FreeSync enabled.";
 		break;
 	case 3 /* PLATFORM_VRR_SYSTEM */:
