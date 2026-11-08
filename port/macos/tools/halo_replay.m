@@ -192,6 +192,8 @@ static id<MTLTexture> ids_texture(uint32_t *handle)
 	return *handle ? xgpu_metal_texture(*handle) : nil;
 }
 
+static int ids_size(id<MTLTexture> texture);
+
 static void metal_ids_inspect(int after, uint32_t color, uint32_t level)
 {
 	uint32_t handle;
@@ -201,7 +203,11 @@ static void metal_ids_inspect(int after, uint32_t color, uint32_t level)
 	if (!ids.number || level)
 		return;
 	texture = ids_texture(&handle);
-	if (!texture || color != handle || texture.width != ids.width || texture.height != ids.height)
+	if (!texture || color != handle)
+		return;
+	if (!ids.width && !ids_size(texture))
+		return;
+	if (texture.width != ids.width || texture.height != ids.height)
 		return;
 	buffer = xgpu_metal_command_buffer();
 	if (!after)
@@ -244,7 +250,6 @@ static int metal_ids_begin(uint32_t target, uint32_t depth)
 {
 	uint32_t handle;
 	id<MTLTexture> texture;
-	size_t bytes;
 
 	@autoreleasepool
 	{
@@ -263,25 +268,39 @@ static int metal_ids_begin(uint32_t target, uint32_t depth)
 			}
 		}
 		ids.target = target;
-		texture = ids_texture(&handle);
-		if (!texture || !depth)
+		ids.depth = depth;
+		ids.number = 0;
+		ids.draws = 0;
+		ids.started = CACurrentMediaTime();
+		ids.width = ids.height = 0;
+		if (!depth)
 			return 0;
-		bytes = (size_t)texture.width * texture.height * depth * 4;
+		xgpu_metal_set_draw_inspector(metal_ids_inspect);
+		/* (a target the frame makes, its first: its buffer made at its
+		first draw) */
+		texture = ids_texture(&handle);
+		return !texture || ids_size(texture);
+	}
+}
+
+/* the buffer for the target's size, zeroed (no GPU work reads it now: the
+last frame's was waited for, and this frame's draws come after) */
+static int ids_size(id<MTLTexture> texture)
+{
+	size_t bytes;
+
+	@autoreleasepool
+	{
+		bytes = (size_t)texture.width * texture.height * ids.depth * 4;
 		if (!ids.ids || ids.ids.length != bytes)
 		{
 			ids.ids = [xgpu_metal_device() newBufferWithLength:bytes options:MTLResourceStorageModeShared];
 			if (!ids.ids)
 				return 0;
 		}
-		/* (no GPU work reads it now: the last frame's was waited for) */
 		memset(ids.ids.contents, 0, bytes);
 		ids.width = (uint32_t)texture.width;
 		ids.height = (uint32_t)texture.height;
-		ids.depth = depth;
-		ids.number = 0;
-		ids.draws = 0;
-		ids.started = CACurrentMediaTime();
-		xgpu_metal_set_draw_inspector(metal_ids_inspect);
 		return 1;
 	}
 }
@@ -299,8 +318,16 @@ static uint32_t *metal_ids_read(uint32_t target, uint32_t *width, uint32_t *heig
 	(void)target;
 	@autoreleasepool
 	{
-		if (!ids.ids)
-			return NULL;
+		/* (a frame that drew nothing into its target: none of its pixels
+drawn) */
+		if (!ids.width)
+		{
+			uint32_t handle;
+			id<MTLTexture> texture = ids_texture(&handle);
+
+			if (!texture || !ids_size(texture))
+				return NULL;
+		}
 		xgpu_metal_command_buffer_finish();
 		bytes = (size_t)ids.width * ids.height * ids.depth * 4;
 		copy = malloc(bytes);
