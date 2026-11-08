@@ -2601,14 +2601,19 @@ void platform_clipboard_set(const char *text)
 		SDL_SetClipboardText(text);
 }
 
-void platform_open_url(const char *url)
+int platform_open_url(const char *url)
 {
 #ifdef HALO_WEB
 	web_js_post(5, url);
+	return 1;
 #else
 	/* (the address logged too, for a machine whose browser does not open) */
 	if (!SDL_OpenURL(url))
+	{
 		platform_log("could not open the browser (%s): open %s", SDL_GetError(), url);
+		return 0;
+	}
+	return 1;
 #endif
 }
 

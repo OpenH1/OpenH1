@@ -42,6 +42,11 @@ void report_session_start(void);
 reason error_get's): reported at the next start as a crash is, though the
 player then closes the game */
 void report_session_halted(const char *reason);
+/* the updater's (updater.c), the new build about to start (1): this session
+ended as an exit ends it, before the new one looks for it (which starts
+while this one is still quitting, or in this process); or (0) it could not
+be started, and this session goes on: its file written again */
+void report_session_handover(int leaving);
 /* the crash question's answer (menu_functions.c's "port crash report", 1,
 and "port crash dismiss", 0): its report saved at the next frame, its issue
 opened, or the crash let go; neither asked of again */

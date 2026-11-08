@@ -87,12 +87,17 @@ NEGATIVE_CONTROLS = {
     "private-device": ("scrub", '"audio.output_device", "audio.input_device",', ""),
     # the scrubbed text not ended as a string: the issue's body runs on into the heap
     "scrub-unended": ("scrub", "out[used] = 0;\n\t*scrubbed_size", "out[used] = 'x';\n\t*scrubbed_size"),
+    # the data root "." left relative: the reports folder opened at file:///./reports, which is /reports
+    "folder-relative": ("folder", "if (path[0] == '/' || path[0] == '\\\\' ||", "if (1 || path[0] == '\\\\' ||"),
+    # a folder after the current one without a separator between them
+    "folder-separator": ("folder", '"/" : "", path);', '"" : "", path);'),
     # a folder's path in settings.txt (the account's name)
     "private-paths": ("scrub", '!strncmp(name, "paths.", 6) ||', "0 ||"),
 }
 
 FUNCTIONS = ("report_crc32", "report_compare_micros", "report_low_fps", "report_frame_summary", "report_gpu_summary",
              "report_put16", "report_put32", "report_zip_add", "report_zip_end", "report_percent_encode", "report_issue_url",
+             "report_file_url", "report_whole_path",
              "report_setting_private", "report_address_length", "report_hex_digit", "report_word_character",
              "report_address6_length", "report_whole_lines", "report_session_value", "report_crash_line",
              "report_crash_summary", "report_map_counted", "report_where_text", "report_scrub")
@@ -128,7 +133,8 @@ def generated(fault=None):
     return (("under_test.inc", code + "\n"),)
 
 
-@pytest.mark.parametrize("case", ["crc", "frames", "steady", "gpu", "issue", "scrub", "maps", "crash", "ring", "where"])
+@pytest.mark.parametrize("case", ["crc", "frames", "steady", "gpu", "issue", "scrub", "maps", "crash", "ring", "where",
+                                  "folder"])
 def test_case(case):
     status, output = run(build("report", generated()), case)
     assert status == 0, output
@@ -176,6 +182,21 @@ def test_key_row_and_documentation():
     chat = read("port/linux/game/network_chat.c")
     assert 'L"What happened?"' in chat and "report_note_done(chat_input.text);" in chat
     assert "report_note_done(NULL);" in chat
+
+
+def test_update_ends_the_session_first():
+    """the updater's new build starts while this one is still quitting (or in its process, under gamescope): this
+    session's reports/.running removed first, or the new build takes the update for a crash and asks to report it
+    (as the 5900x's install did after builds 1837 and 1845 updated themselves, 2026-11-07); put back if it could not
+    start"""
+    update = function(read("port/linux/src/updater.c"), "updater_update")
+    handover = update.index("report_session_handover(1);")
+    assert handover < update.index("update_restart(launch);") and handover < update.index("update_launch(launch)")
+    assert update.count("report_session_handover(0);") == 2
+    report = read("port/linux/src/report.c")
+    handover = function(report, "report_session_handover")
+    assert "report_session_end();" in handover and "report_session_write();" in handover
+    assert "if (!report_session_begun)\n\t\treturn;" in handover
 
 
 def test_note_and_issue_wait():
