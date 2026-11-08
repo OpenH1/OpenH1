@@ -2014,7 +2014,19 @@ median, the 1% and 0.1% lows, the frames of 50 ms or more and the longest,
 the GPU's time and the verdict), on every build; and on the guests' builds
 `HALO_AUDIO_MIX_TIMES=<seconds>` logs that often the mixes' count and
 their mean, 99th-percentile and longest times (`sound: <n> mixes in ...`:
-a mix longer than its buffer's time is a buffer the device ran dry for).
+a mix longer than its buffer's time is a buffer the device ran dry for),
+and the device's longest callback. Each mix over
+`HALO_AUDIO_MIX_SLOW_MS` (2 by default) is logged twice, by its request's
+number: the host's line gives its time, the share of it the thread spent
+on the processor (the rest is time the thread was set aside or waited),
+the page faults meanwhile and the thread's priority (97 while real-time
+on a Mac), and the mixer's gives the voices (listed, mixed, through the
+HRTF, started) and each part's time (the hand-off, the voices, the HRTF,
+the reverb, the voice chat, putting the mix in, the callback's own).
+Measure with the device's own thread, not `SDL_AUDIO_DRIVER=dummy`, whose
+thread is an ordinary one: under load its mixes take tens of ms that are
+the scheduler's, not the mix's. `HALO_AUDIO_MUTED=1` mixes as ever and
+plays silence, for measuring through the device with nobody hearing it.
 
 Measured on Linux (an RTX 4090) in gamescope's headless backend (the Steam
 Deck's compositor, without a screen), 1280x720, a local SWAT game on Blood
