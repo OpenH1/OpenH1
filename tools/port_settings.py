@@ -631,8 +631,8 @@ PAGES = {
              "display's own. VSync and Frame Rate Limit's Auto follow it.", "computer"),
             ("VSYNC", "display.vsync", ON_OFF,
              "Shows each frame at a refresh of the display: even motion that never tears, at the display's "
-             "refresh rate. On Linux and the Steam Deck each frame starts just in time for its refresh, so it adds "
-             "almost no input lag; it is on in the Steam Deck's Game Mode.", None),
+             "refresh rate. On Linux, Windows and the Steam Deck each frame starts just in time for its refresh, so "
+             "it adds almost no input lag; it is on in the Steam Deck's Game Mode.", None),
             # (shown while VSync shows OFF: menu_functions.c's max_fps_row_show)
             ("FRAME RATE LIMIT", "display.max_fps", FRAME_RATE_LIMITS,
              "The most frames drawn a second. Auto is twice the display's refresh rate. More feels smoother and "

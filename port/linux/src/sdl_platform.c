@@ -1958,8 +1958,8 @@ of the display's refresh rate or a whole fraction of it (60 at 60 Hz, 30 or
 the display's own rate drift against its refreshes, and now and then one is
 shown twice and the next not at all (judder, while the frame rate counter
 says 60). In step with the display, display.low_latency starts each in time
-for its refresh, for less input lag than the clock's. (Not Windows', whose
-display.low_latency is off until measured, nor the Mac's, whose frames
+for its refresh, for less input lag than the clock's. (Not Windows', not
+measured there in step with its display, nor the Mac's, whose frames
 with vsync off are taken at the display link's refreshes already.) */
 static int platform_swap_interval(void)
 {
