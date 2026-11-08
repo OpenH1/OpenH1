@@ -379,7 +379,9 @@ off, as Classic has it), read in the lobby as the pickup's way is, so that
 every OpenH1 machine turns a player's body as the host does
 (`network_standard_turns_with_aim`): the turn moves where shots go and
 what the campaign's AI sees. A Legacy game's players, and an OpenCE
-machine's in a mixed game, always turn, as OpenCE's machines turn them.
+machine's in a mixed game, always turn, as OpenCE's machines turn them;
+version 20 sends the players' pings (distributed messages 139 and 140,
+`_distributed_message_marker_up` and `_down`, reliably: below, "Pings").
 With no new version, each client then tells the
 host its build (distributed message 92, `_distributed_message_client_build`,
 reliably once a game after its ready, over its connection alone): its
@@ -1413,6 +1415,57 @@ machine:
   machine is in it, as a team move does; otherwise, and in a Legacy game,
   they wait for the next game's lobby. A Legacy game is sent nothing new.
 
+### Pings
+
+A player pings what they aim at (`controls.ping`, the middle mouse button;
+a controller's PING in Button Remapping, D-pad Right with the stock layouts):
+a nav point over it for their allies, the campaign's arrow
+(`hud_nav_points.c`'s `custom_render_nav_point`) with its distance, in the
+player's colour (their team's, or in co-op their profile's) and with their
+name, seen through walls (the arrow's occluded look), for 8 seconds and then
+faded. A ping of a unit, a vehicle, a weapon or equipment follows it; else
+it marks the point the aim hits. A player has one ping: a new one takes the
+last's place, and the same thing or a point within about 5 meters of the
+last takes it away (`port/linux/game/network_markers.c`). Pings are played
+in co-op and in games with teams (split screen's too, but never one player's
+alone on a computer), never in a game without teams, and are nothing of the simulation's: each machine
+keeps them by its own clock, so a recorded game replays the same without
+them.
+
+In a network game they are OpenH1's own (OpenH1 protocol version 20), sent
+only in an OpenH1 game (`network_standard_agreed_rate`): a Legacy game sends
+none, and an OpenCE machine of a mixed game is sent none
+(`network_standard_message_goes_to`; the host also sends only to machines
+that joined with an OpenH1 token), so nothing changes for one. Only the host
+decides:
+
+- A client sends its player's ping to the host
+  (`_distributed_message_marker_up`, 139, reliably): a format byte, the
+  player, whether it is of an object or a point, the object (every machine
+  has the host's units, vehicles, weapons and equipment at the same index:
+  "Stage 3") and the point.
+- The host takes it only over the client's stream, whole, from one of that
+  machine's players with a living unit, at most 3 at once and one each 1.2
+  seconds after, a point inside the world (no NaN) within 400 world units of
+  the player's unit, and an object that is there and of those kinds (else
+  the point). It decides whether the ping takes the player's last away, and
+  sends the ping or its clearing (`_distributed_message_marker_down`, 140,
+  reliably) to each OpenH1 client machine with a player who sees it (the
+  pinger's team; everyone in co-op), as it shows it itself.
+- A client takes the host's word only over the host's connection's stream,
+  in an OpenH1 game under way, of a player it has and a point inside the
+  world (an object it does not have is shown at the point), and plays the
+  menus' cursor sound as a ping its players see comes.
+- The host's `network.pings` (Server Setup's PINGS: Teamplay Options, and
+  co-op's VOICE AND VOTING; on by default) goes to each OpenH1 client in the
+  same message every 3 seconds and as it changes. A client that has not
+  heard it (a host of an earlier protocol, which no client of this one
+  joins) sends none, and with it off a client neither sends pings nor keeps
+  D-pad Right from its player's strafe.
+
+`debug.network_test_ping` tests it ("Testing"), and `debug.network_corrupt`
+the handlers' checks.
+
 ### Bots in network games
 
 A host plays the bots of its system link and internet games
@@ -2225,7 +2278,13 @@ says one more, the host mutes the last player for everyone (as its
 scoreboard does) around a line each, and the last player's machine mutes
 the host's for itself (as a client's scoreboard does) before another,
 which every machine's `debug.txt` records as
-it shows them (the notices as `chat notice:`), and `debug.network_test_score`
+it shows them (the notices as `chat notice:`), `debug.network_test_ping`
+has each machine's first player ping what they aim at, the same again 3
+seconds on (taking it away) and again 3 more on, then each client send one
+as another machine's player (the host refuses it) and a burst of 6 past its
+own limit (the host takes 3), each machine logging every ping it shows
+(`pings: player <n> pinged ...`) and those it shows a second after each
+step (`network test: pings shown:`), and `debug.network_test_score`
 shortens the game, to test the next (`host:<map>:<variant>,<variant>...`
 plays the variants in turn, the next once a game is over, as the host's
 button on the scores does). `debug.network_test_public` lists the host's

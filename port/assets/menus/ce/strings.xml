@@ -1074,6 +1074,8 @@
 		<string text="Players can type to each other; lines with links\nare refused. Off in a public internet game."/>
 		<string text="Players can type to each other, links too. Off\nin a public internet game."/>
 		<string text="No text chat in the game."/>
+		<string text="Players can mark what they aim at for their\nallies, with a nav point and its distance."/>
+		<string text="Players cannot ping."/>
 	</strings>
 	<strings name="main_menu/settings_select/multiplayer_setup/teamplay_options_edit/teamplay_options_labels" map="ui\shell\main_menu\settings_select\multiplayer_setup\teamplay_options_edit\teamplay_options_labels">
 		<string text="FRIENDLY FIRE:" map="0"/>
@@ -1086,6 +1088,7 @@
 		<string text="VOICE NEAR DISTANCE:"/>
 		<string text="VOTE KICK:"/>
 		<string text="TEXT CHAT:"/>
+		<string text="PINGS:"/>
 	</strings>
 	<strings name="main_menu/settings_select/multiplayer_setup/teamplay_options_edit/var_friendly_fire" map="ui\shell\main_menu\settings_select\multiplayer_setup\teamplay_options_edit\var_friendly_fire">
 		<string text="OFF" map="0"/>

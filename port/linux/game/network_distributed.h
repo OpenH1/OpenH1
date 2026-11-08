@@ -220,6 +220,12 @@ enum
 	admin's request) */
 	_distributed_message_admin_down = 137,
 	_distributed_message_admin_up = 138,
+	/* the players' pings (network_markers.c), reliably, in an OpenH1 game:
+	a client's player's ping, to the host, which takes it only from the
+	machine's own stream; and the host's word (a ping, one taken away, its
+	settings) to its OpenH1 clients with a player who sees it */
+	_distributed_message_marker_up = 139,
+	_distributed_message_marker_down = 140,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };

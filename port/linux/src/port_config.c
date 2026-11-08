@@ -989,9 +989,9 @@ static const struct config_setting config_settings[] =
 		"it (\"A Button\", \"Right Hand Trigger\"), or the gesture that does." },
 	{ "input.controller_p1", _config_string, "\"\"", "HALO_CONTROLLER_P1", _environment_value, _platform_all,
 		"P1 custom controller layout; empty uses the profile's preset. Edit in\n"
-		"Settings > Controls > Controller > Button Remapping. v3: 26 physical\n"
+		"Settings > Controls > Controller > Button Remapping. v4: 27 physical\n"
 		"button names (the back paddles too), unbound among them; gameplay and\n"
-		"the debug camera have separate bindings. Old ten-action and v2\n"
+		"the debug camera have separate bindings. Old ten-action, v2 and v3\n"
 		"layouts are accepted. See docs/controller_remapping.md for the full\n"
 		"order." },
 	{ "input.controller_p2", _config_string, "\"\"", "HALO_CONTROLLER_P2", _environment_value, _platform_all,
@@ -1117,6 +1117,10 @@ static const struct config_setting config_settings[] =
 		"the vote running, whose box shows at the left." },
 	{ "controls.vote_no", _config_string, "\"F2\"", "HALO_KEY_VOTE_NO", _environment_value, _platform_all,
 		"Network games' votes: vote no in the vote running." },
+	{ "controls.ping", _config_string, "\"Mouse Middle\"", "HALO_KEY_PING", _environment_value, _platform_all,
+		"Ping: mark what you aim at (a spot, an enemy, a vehicle, a weapon) for\n"
+		"your allies, with a nav point and its distance; again on the same spot\n"
+		"takes it away (the controller's D-pad Right)." },
 
 	{ "game.console_log", _config_string, "\"important\"", "HALO_CONSOLE_LOG", _environment_value, _platform_all,
 		"What the game's console shows on screen of what it logs: \"important\"\n"
@@ -1440,6 +1444,10 @@ static const struct config_setting config_settings[] =
 		"Hosting: the text chat: \"on\" (links in lines are refused), \"links\"\n"
 		"(links allowed) or \"off\", in either case; listed in the server\n"
 		"browser or not." },
+	{ "network.pings", _config_boolean, "true", "HALO_NET_PINGS", _environment_value, _platform_all,
+		"Hosting: let the players ping (controls.ping, a controller's D-pad\n"
+		"Right): what they aim at marked for their allies with a nav point and\n"
+		"its distance, in co-op and in games with teams (OpenH1 games only)." },
 	{ "network.host_playlist", _config_string, "\"\"", "HALO_NET_HOST_PLAYLIST", _environment_value, _platform_all,
 		"Hosting: the games played one after another when you host, each after\n"
 		"the last one's scores (Host Controls' PLAYLIST): map[:gametype\n"
@@ -1981,6 +1989,11 @@ static const struct config_setting config_settings[] =
 		"host seats the last two players in one first), then the host mutes and\n"
 		"unmutes a player, refuses a link and turns the chat off, and the\n"
 		"clients type on the on-screen keyboard (port/linux/NETCODE.md); 0 never." },
+	{ "debug.network_test_ping", _config_real, "0.0", "HALO_NETWORK_TEST_PING", _environment_value, _platform_all,
+		"This many seconds into an automated test game each machine's player\n"
+		"pings what it aims at, again (taking it away) and again; then a client\n"
+		"sends one as another's player (refused) and a burst (counted)\n"
+		"(port/linux/NETCODE.md); 0 never." },
 	{ "debug.network_test_party", _config_real, "0.0", "HALO_NETWORK_TEST_PARTY", _environment_value, _platform_all,
 		"This many seconds into an automated test game the host invites each\n"
 		"player it may to its party (unless debug.party leads one), a client asks\n"

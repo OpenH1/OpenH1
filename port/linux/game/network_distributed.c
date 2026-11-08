@@ -84,6 +84,7 @@ machine (their datum identifiers need not be).
 #include "network_party.h"
 #include "network_host_controls.h"
 #include "network_host_rules.h"
+#include "network_markers.h"
 #include "network_shield_effects.h"
 #include "network_substeps.h"
 #include "sim_rate.h"
@@ -6190,6 +6191,13 @@ void network_distributed_handle_message(
 	if (network_admin_handles_message(message, size))
 	{
 		network_admin_handle_message(machine_index, message, size, machine_index != NONE ?
+			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
+		return;
+	}
+	/* (the players' pings, in an OpenH1 game: network_markers.c) */
+	if (network_markers_handles_message(message, size))
+	{
+		network_markers_handle_message(machine_index, message, size, machine_index != NONE ?
 			distributed_handling_stream_message : !network_connection_last_read_was_unreliable());
 		return;
 	}

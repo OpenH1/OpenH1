@@ -383,6 +383,7 @@ symbols in this file:
 #include "coop_scripts.h" /* port: port/linux/game/coop_scripts.c */
 #include "network_voice.h" /* port: port/linux/game/network_voice.c */
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
+#include "network_markers.h" /* port: port/linux/game/network_markers.c */
 #include "network_party.h" /* port: port/linux/game/network_party.c */
 #include "network_host_controls.h" /* port: port/linux/game/network_host_controls.c */
 #include "party.h" /* port: port/linux/game/party_menu.inc */
@@ -3868,6 +3869,8 @@ void main_loop(
 			map_share_update();
 			/* port: network games' text chat (port/linux/game/network_chat.c) */
 			network_chat_update();
+			/* port: the players' pings (port/linux/game/network_markers.c) */
+			network_markers_update();
 			/* port: the party, which follows its leader into its games
 			(port/linux/game/party_menu.inc) */
 			party_update();
