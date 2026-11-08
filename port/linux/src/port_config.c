@@ -1981,6 +1981,14 @@ static const struct config_setting config_settings[] =
 	{ "debug.network_test_pickup", _config_real, "0.0", "HALO_NETWORK_TEST_PICKUP", _environment_value, _platform_all,
 		"This many seconds into an automated test game the host stands its last\n"
 		"player on a weapon, which a joining player then picks up; 0 never." },
+	{ "debug.network_test_elevator", _config_real, "0.0", "HALO_NETWORK_TEST_ELEVATOR", _environment_value, _platform_all,
+		"This many seconds into an automated test game each machine lists the\n"
+		"level's elevators, stands every player on the one of\n"
+		"debug.network_test_elevator_index and logs each frame where it and they\n"
+		"are drawn; the host runs it to its other end and back; 0 never." },
+	{ "debug.network_test_elevator_index", _config_integer, "0", "HALO_NETWORK_TEST_ELEVATOR_INDEX", _environment_value,
+		_platform_all,
+		"The elevator debug.network_test_elevator rides: its place in the list it logs." },
 	{ "debug.network_test_chat", _config_real, "0.0", "HALO_NETWORK_TEST_CHAT", _environment_value, _platform_all,
 		"This many seconds into an automated test game each machine's player\n"
 		"says a chat line to everyone, then to the team and to the vehicle (the\n"

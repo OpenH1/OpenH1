@@ -158,9 +158,22 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
   difference between the platforms' phases to its current height, when that
   difference is within 4 world units (the platform's travel over a round
   trip); a greater one, jumps, leaving the platform and authoritative
-  teleports correct normally. Rider carry uses the platform's current
-  collision displacement, including phase corrections, rather than its
-  previous tick's displacement (network version 30).
+  teleports correct normally. The other players standing on an elevator
+  on a client are corrected so too: across, their height kept on the
+  client's floor, the host's word having them on the host's floor (until
+  then each was pulled toward it every tick, the floor putting it back, and
+  drawn gliding from where it was, those glides adding up: in a co-op ride
+  down b40's lift at 120, the host's player drawn as much as 0.6 world
+  units over the client's platform, at 60 0.29 with steps of 0.13 from one
+  frame to the next, at 30 jumping by 0.07 to 0.11). A player stands on the
+  elevator where its physics found it among what it touched this tick
+  (`elevator_ticks` at 60) and is not airborne: not by its support surface,
+  a structure BSP's, which on a machine's floor is none (that test had kept
+  the client's own player's exception from ever applying). Rider carry
+  uses the platform's current collision displacement, including phase
+  corrections, rather than its previous tick's displacement (network
+  version 30). None of this changes what the machines send or agree on:
+  the host decides, and only a client's copies keep their floors.
 - **Shooter's hits.** A client reports what its own players hit; the host
   checks the report (the player's, a weapon they carry, fired from within
   its reach, the target where the host had it when the shooter saw it, no
@@ -2377,6 +2390,43 @@ changes only the ticks in the air, as gravity does, is within what
 identical builds show, and not caught. Positions agree to 0.04 world units
 on average, 0.24 at most, in every game, perturbed or not: the netcode
 corrects them.
+
+### Riding an elevator
+
+`debug.network_test_elevator` (seconds into a co-op game, `host:levels\b40\b40:coop`
+and `join`) lists the level's elevators (`network test: elevator <n> ...`:
+name, tag, platform, group), switches the host's structure BSP until the one
+of `debug.network_test_elevator_index` is loaded, stands every player on its
+platform, and has the host send it to its other end and back once it has
+stopped two seconds. Each frame each machine then logs where the platform and
+every player's root node are drawn and where the tick has them, whether each
+stands on it, and the view its own player was drawn from in the frame before
+(none with `debug.null_renderer`). `tools/elevator_jitter.py <log>` reads it:
+for the platform, each player and the view, how far each frame is off the
+line between its neighbours (rms and largest, world units), and each rider's
+height above the platform as drawn (its range, and its largest change from a
+frame to the next).
+
+On b40's 48-unit lift (`lift_a`, index 0), the host and a client on the
+loopback, the players standing still (`debug.test_input` `look:<seed>`),
+riding down (about 16 seconds), before the changes above and after:
+
+| Rate | Client: the host's player above the platform (range, largest step) | Own view's jitter, 144 frames a second (rms, largest) |
+| --- | --- | --- |
+| 120 | 0.606, 0.024 before; 0.005, 0.002 after | 0.0070, 0.020 before; 0.0006, 0.018 after |
+| 60 | 0.285, 0.129 before; 0.003, 0.003 after | 0.023, 0.17 before; 0.0035, 0.051 after |
+| 30 | 0.136, 0.106 before; 0.000, 0.000 after | 0.038, 0.28 before; 0.0067, 0.052 after |
+
+(the same with 40 ms each way, and at 120 with 60 ms and 5% of the datagrams
+lost; the platform and the bodies on the host are 0.0002 to 0.0004 rms in
+every case, before and after). The view's figures are from a hidden window
+on an X server (the frames' pacing there is uneven, and the view is the
+frame's before: its largest are a frame drawn late), the others with
+`debug.null_renderer`. The view was the stepped one at every rate and in
+single player too: drawn from the newest step and carried on by the unit's
+own velocity, which a lift's carry is no part of, it stood still between
+steps (`render_interpolation.c`'s `render_interpolation_rider_carry` carries
+it on by the platform's movement too).
 
 ### Measuring latency
 

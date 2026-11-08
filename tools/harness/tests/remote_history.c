@@ -44,6 +44,11 @@ static boolean distributed_apply_state(long i, struct distributed_unit_state con
     applied++;
     return TRUE;
 }
+/* (no one stands on an elevator here: test_elevator_remote_rider.py's) */
+static boolean distributed_remote_rider_height_kept(long unit_index, real_vector3d *error) {
+    (void)unit_index; (void)error;
+    return FALSE;
+}
 #include "config.inc"
 #include "under_test.inc"
 int main(int argc, char **argv) {

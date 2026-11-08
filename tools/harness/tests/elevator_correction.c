@@ -46,7 +46,8 @@ int main(int argc, char **argv) {
     boolean protected = !strncmp(case_name,"100ms",5) || !strncmp(case_name,"200ms",5);
     long delay = !strncmp(case_name,"100ms",5) ? 3 : 6;
     objects[1].mask = _object_mask_biped; objects[2].mask = objects[3].mask = _object_mask_machine;
-    objects[1].biped.support_surface_index = 1; objects[1].biped.elevator_ticks = 60;
+    /* (on a machine's floor its physics has no structure surface) */
+    objects[1].biped.support_surface_index = NONE; objects[1].biped.elevator_ticks = 60;
     objects[1].biped.elevator_object_index = 2; objects[1].object.position.z = 10;
     own->time = 100; own->unit_index = 1; own->position.z = 13.2f; own->elevator_index = 2;
     now = 100 + delay;

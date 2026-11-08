@@ -145,6 +145,9 @@ def generated(fault=None, newest=False):
         text += "static void render_interpolation_newest_vehicles(boolean rendering);\n"
         text += ("static boolean render_interpolation_newest_frame(long object_index, real_matrix4x3 const **frames, "
                  "real_matrix4x3 const **drawn, real_vector3d *correction);\n")
+        # (no lift carries a rider here: render_interpolation_rider_carry's machines are not in the fake world)
+        text += ("static boolean render_interpolation_rider_carry(long unit_index, real_vector3d *carry)\n"
+                 "{\n\t(void)unit_index; (void)carry;\n\treturn FALSE;\n}\n")
     else:
         text += NEWEST_STUBS
     text += LEAD_STUB

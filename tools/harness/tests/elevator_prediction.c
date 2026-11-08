@@ -155,7 +155,7 @@ static void ride(long elevator_index, real rise, long round_trip)
 	bound.rise = 1000.0f;
 	objects[UNIT].mask = _object_mask_biped;
 	objects[UNIT].biped.elevator_object_index = elevator_index;
-	objects[UNIT].biped.support_surface_index = 1;
+	objects[UNIT].biped.support_surface_index = NONE;
 	objects[UNIT].biped.elevator_ticks = 60;
 	objects[UNIT].object.position.z = floor;
 	objects[ELEVATOR].mask = _object_mask_device;
@@ -190,7 +190,7 @@ static real taken_height(long elevator_index, real velocity, real client_z)
 	bound.rise = 1000.0f;
 	objects[UNIT].mask = _object_mask_biped;
 	objects[UNIT].biped.elevator_object_index = elevator_index;
-	objects[UNIT].biped.support_surface_index = 1;
+	objects[UNIT].biped.support_surface_index = NONE;
 	objects[UNIT].biped.elevator_ticks = 60;
 	objects[UNIT].object.position.z = 10.0f;
 	objects[ELEVATOR].mask = _object_mask_device;
