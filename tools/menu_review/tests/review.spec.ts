@@ -196,9 +196,127 @@ test.describe("a phone", () => {
     await touch(page, "pointerup", 1, cx - 100, cy);
     await touch(page, "pointerup", 2, cx + 100, cy);
     expect(Number(await viewport.getAttribute("data-zoom"))).toBeGreaterThan(first * 3);
+    // (two fingers moved together: a pan)
+    const before = await at(page, 200, 130);
+    await touch(page, "pointerdown", 1, cx - 30, cy);
+    await touch(page, "pointerdown", 2, cx + 30, cy);
+    for (const step of [20, 40, 60]) {
+      await touch(page, "pointermove", 1, cx - 30 + step, cy + step);
+      await touch(page, "pointermove", 2, cx + 30 + step, cy + step);
+    }
+    await touch(page, "pointerup", 1, cx + 30, cy + 60);
+    await touch(page, "pointerup", 2, cx + 90, cy + 60);
+    const after = await at(page, 200, 130);
+    expect(Math.round(after[0] - before[0])).toBe(60);
+    expect(Math.round(after[1] - before[1])).toBe(60);
+    // (a one-finger drag pans too, and the panel's tabs are there by touch)
+    await page.locator('.tabs [data-tab="layers"]').tap();
+    await expect(page.locator(".layer").first()).toBeVisible();
   });
 });
 
 async function cookie(page: Page): Promise<string> {
   return (await page.context().cookies()).map((each) => `${each.name}=${each.value}`).join("; ");
 }
+
+test("the inspector shows the box in menu units and pixels and the generator's source; Alt shows distances", async ({ page }) => {
+  await open(page);
+  await page.mouse.click(...(await at(page, 200, 130)));
+  const inspector = page.locator(".inspector");
+  await page.locator('.tabs [data-tab="inspect"]').click();
+  await expect(inspector).toContainText("x 120  y 120  w 180  h 20");
+  await expect(inspector).toContainText("x 452  y 240  w 360  h 40");
+  await expect(inspector.locator(".source")).toContainText("tools/port_settings.py");
+  await expect(inspector).toContainText("“SOUND”");
+  // (Alt over label_b: the gap of 20 units between them)
+  await page.keyboard.down("Alt");
+  await page.mouse.move(...(await at(page, 200, 170)));
+  await expect(page.locator(".redline-label")).toHaveText(["20"]);
+  await page.keyboard.up("Alt");
+  await expect(page.locator(".redline-label")).toHaveCount(0);
+});
+
+test("Shift+1 fits, Shift+0 is 100%, and pixels are crisp past it", async ({ page }) => {
+  await open(page);
+  const viewport = page.locator(".viewport.main");
+  await viewport.focus();
+  await page.keyboard.press("Shift+0");
+  await expect(viewport).toHaveAttribute("data-zoom", "1");
+  await page.keyboard.press("+");
+  await expect(page.locator(".viewport.main .stage.crisp")).toHaveCount(1);
+  await page.keyboard.press("Shift+1");
+  const fitted = Number(await viewport.getAttribute("data-zoom"));
+  expect(fitted).toBeLessThan(1);
+  await expect(page.locator(".viewport.main .stage.crisp")).toHaveCount(0);
+});
+
+test("a handle resizes with snapping, a label's words are edited in place, and both are recorded", async ({ page, request }) => {
+  await open(page);
+  await page.locator(".viewport.main").focus();
+  await page.keyboard.press("e");
+  await page.mouse.click(...(await at(page, 200, 170)));
+  // (the right edge dragged from 300 to 397: snapped to the panel's at 400)
+  const [hx, hy] = await at(page, 300, 170);
+  const [tx] = await at(page, 397, 170);
+  await page.mouse.move(hx, hy);
+  await page.mouse.down();
+  await page.mouse.move(tx, hy, { steps: 6 });
+  await page.mouse.up();
+  await expect(page.locator(".proposal")).toContainText("Δ 0, 0, +100 w, 0 h");
+  await page.mouse.dblclick(...(await at(page, 200, 170)));
+  const editor = page.locator(".word-editor");
+  await expect(editor).toHaveValue("MUSIC");
+  await editor.fill("MUSIC VOLUME");
+  await editor.press("Enter");
+  await expect(page.locator(".proposal")).toContainText("Words → “MUSIC VOLUME”");
+  await page.locator(".proposal button.primary").click();
+  await page.locator(".composer textarea").fill("Wider, and say what it is");
+  await page.locator(".composer button.primary").click();
+  await expect(page.locator(".composer")).toHaveCount(0);
+  const notes = await (await request.get("api/notes", { headers: { Cookie: await cookie(page) } })).json();
+  const note = notes.find((each: any) => each.note === "Wider, and say what it is");
+  expect(note.edits.box.delta).toEqual([0, 0, 100, 0]);
+  expect(note.edits.text).toEqual({ old: "MUSIC", new: "MUSIC VOLUME" });
+});
+
+test("a note ready for review shows its before and after, and is reopened with a reply or approved", async ({ page, request }) => {
+  await page.goto("login?key=test&next=./%23/notes%3Fstatus%3Dfixed");
+  const card = page.locator(".note", { hasText: "Close the gap under SOUND" });
+  await expect(card.locator(".pair img")).toHaveCount(2);
+  await card.getByRole("button", { name: "Reopen with reply" }).click();
+  await expect(card.locator("textarea.reply")).toBeFocused();
+  await card.locator("textarea.reply").fill("Still 2 units off");
+  await card.getByRole("button", { name: "Reopen with reply" }).click();
+  let notes = await (await request.get("api/notes", { headers: { Cookie: await cookie(page) } })).json();
+  let note = notes.find((each: any) => each.id === "6aef00000001");
+  expect(note.status).toBe("open");
+  expect(note.thread[note.thread.length - 1].text).toBe("Still 2 units off");
+  await request.post("api/notes/6aef00000001", { headers: { Cookie: await cookie(page) }, data: { status: "fixed" } });
+  await page.reload();
+  await page.locator(".note", { hasText: "Close the gap under SOUND" }).getByRole("button", { name: "Approve" }).click();
+  notes = await (await request.get("api/notes", { headers: { Cookie: await cookie(page) } })).json();
+  note = notes.find((each: any) => each.id === "6aef00000001");
+  expect(note.status).toBe("closed");
+});
+
+test("before | after side by side follows the zoom and pan; the swipe cuts at its slider", async ({ page }) => {
+  await open(page, "keyboard-16x9", "pr-1");
+  await page.locator('[data-compare="side"]').click();
+  await page.locator(".viewport.main").focus();
+  await page.keyboard.press("+");
+  const transforms = async () => page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>(".stage")].map((stage) => stage.style.transform));
+  let [side, main] = await transforms();
+  expect(side).toBe(main);
+  const box = (await page.locator(".viewport.main").boundingBox())!;
+  await page.mouse.move(box.x + 50, box.y + 50);
+  await page.mouse.wheel(30, 40);
+  [side, main] = await transforms();
+  expect(side).toBe(main);
+  await page.locator('[data-compare="swipe"]').click();
+  await page.locator(".compare-slider").fill("25");
+  await expect(page.locator(".before-overlay")).toHaveCSS("clip-path", "inset(0px 75% 0px 0px)");
+  await page.locator(".viewport.main").focus();
+  await page.keyboard.press("b");
+  await expect(page.locator(".viewport.main")).toHaveAttribute("data-before", "shown");
+});
