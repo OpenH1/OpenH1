@@ -36,6 +36,7 @@ which tools/embed_assets.py embeds the files from, is written too.
 """
 
 import argparse
+import io
 import json
 import shutil
 import struct
@@ -131,6 +132,30 @@ CHILD_OFFSETS = {
 }
 SCALE = 4
 MAXIMUM_SIZE = 2048
+# the PNG files there were before this run, by path: a picture drawn the same
+# as before keeps its file, whose bytes zlib's builds (zlib-ng's differ on
+# x86-64 and AArch64) would write differently (save_png)
+PREVIOUS = {}
+
+
+def save_png(image: Image.Image, path: Path) -> None:
+    """the picture saved as a PNG file, or the file it had before where its
+    pixels are the same"""
+    previous = PREVIOUS.get(path) or (path.read_bytes() if path.is_file() else None)
+    if previous:
+        with Image.open(io.BytesIO(previous)) as before:
+            if before.size == image.size and before.convert("RGBA").tobytes() == image.convert("RGBA").tobytes():
+                path.write_bytes(previous)
+                return
+    image.save(path, optimize=True)
+
+
+def titles_font(size: int):
+    """the titles' font: laid out by FreeType alone, as every Pillow can (a
+    Pillow with Raqm (and FriBiDi) lays it out with other advances)"""
+    from PIL import ImageFont
+    return ImageFont.truetype(str(TITLE_FONT), size, layout_engine=ImageFont.Layout.BASIC)
+
 # the PC fonts this engine's map lacks, and the font drawn instead
 FONTS = {"ui\\gamespy": "ui\\small_ui", "ui\\ticker": "ui\\small_ui"}
 
@@ -375,23 +400,23 @@ class Art:
         the text set in OpenCE (the public-domain Newtown respaced, as the
         port's titles are: tools/title_assets.py) over the PC headers'
         backdrop"""
-        from PIL import ImageDraw, ImageFont
+        from PIL import ImageDraw
         scale = SCALE
-        probe = ImageFont.truetype(str(TITLE_FONT), 1000)
+        probe = titles_font(1000)
         left, top, right, bottom = probe.getbbox("H")
-        font = ImageFont.truetype(str(TITLE_FONT), round(port_settings.TITLE_CAP * scale * 1000 / (bottom - top)))
-        width = font.getlength(text) / scale
+        title_font = titles_font(round(port_settings.TITLE_CAP * scale * 1000 / (bottom - top)))
+        width = title_font.getlength(text) / scale
         svg = MENUS / "port_svg" / f"{name}.svg"
         svg.parent.mkdir(parents=True, exist_ok=True)
         svg.write_text(port_settings.title_backdrop(width))
         image = Image.fromarray(render_svg(svg, scale), "RGBA")
         draw = ImageDraw.Draw(image)
-        cap_top = font.getbbox("H")[1]
+        cap_top = title_font.getbbox("H")[1]
         draw.text((port_settings.TITLE_LEFT * scale, port_settings.TITLE_TOP * scale - cap_top), text,
-                  font=font, fill=port_settings.TITLE_COLOR)
+                  font=title_font, fill=port_settings.TITLE_COLOR)
         png = f"ce/port/{name}.png"
         (MENUS / png).parent.mkdir(parents=True, exist_ok=True)
-        image.save(MENUS / png, optimize=True)
+        save_png(image, MENUS / png)
         self.pngs.append(png)
         return "\n".join([f"\t<bitmap{attributes([('name', name)])}>",
                           f"\t\t<frame{attributes([('png', png), ('width', 512), ('height', 64)])}/>",
@@ -402,7 +427,7 @@ class Art:
         NON_HANDDRAWN.md says what each is), outside ce/, which this script
         writes anew"""
         pngs = [png] if isinstance(png, str) else png
-        self.pngs += [frame for frame in pngs if frame not in self.pngs]
+        self.pngs += [frame for frame in dict.fromkeys(pngs) if frame not in self.pngs]
         return "\n".join([f"\t<bitmap{attributes([('name', name)])}>",
                           *(f"\t\t<frame{attributes([('png', frame), ('width', width), ('height', height)])}/>"
                             for frame in pngs),
@@ -416,26 +441,26 @@ class Art:
         the widest digit would not fit the frame's width with a margin of
         DIGIT_MARGIN either side (OpenCE's 6 and 9 at the cap's height are
         wider than the frame: their sides were cut, #519)"""
-        from PIL import ImageDraw, ImageFont
+        from PIL import ImageDraw
         scale = SCALE
         width, height = port_settings.DIGIT_SIZE
-        probe = ImageFont.truetype(str(TITLE_FONT), 1000)
+        probe = titles_font(1000)
         left, top, right, bottom = probe.getbbox("0")
         widest = max(probe.getbbox(str(digit))[2] - probe.getbbox(str(digit))[0] for digit in range(10))
         size = min(port_settings.DIGIT_CAP * scale * 1000 / (bottom - top),
                    (width - 2 * port_settings.DIGIT_MARGIN) * scale * 1000 / widest)
-        font = ImageFont.truetype(str(TITLE_FONT), int(size))
+        digit_font = titles_font(int(size))
         lines = [f"\t<bitmap{attributes([('name', name)])}>"]
         for digit in range(10):
             image = Image.new("RGBA", (width * scale, height * scale), (0, 0, 0, 0))
             draw = ImageDraw.Draw(image)
-            box = font.getbbox(str(digit))
+            box = digit_font.getbbox(str(digit))
             x = (width * scale - (box[2] - box[0])) / 2 - box[0]
             y = (height * scale - (box[3] - box[1])) / 2 - box[1]
-            draw.text((x, y), str(digit), font=font, fill=port_settings.DIGIT_COLOR)
+            draw.text((x, y), str(digit), font=digit_font, fill=port_settings.DIGIT_COLOR)
             png = f"ce/port/{name}__{digit}.png"
             (MENUS / png).parent.mkdir(parents=True, exist_ok=True)
-            image.save(MENUS / png, optimize=True)
+            save_png(image, MENUS / png)
             self.pngs.append(png)
             lines.append(f"\t\t<frame{attributes([('png', png), ('width', width), ('height', height)])}/>")
         lines.append("\t</bitmap>")
@@ -454,7 +479,7 @@ class Art:
             svg.write_text(text)
             (MENUS / png).parent.mkdir(parents=True, exist_ok=True)
             if not unchanged:
-                Image.fromarray(render_svg(svg, SCALE), "RGBA").save(MENUS / png, optimize=True)
+                save_png(Image.fromarray(render_svg(svg, SCALE), "RGBA"), MENUS / png)
             self.pngs.append(png)
             lines.append(f"\t\t<frame{attributes([('png', png), ('width', width), ('height', height)])}/>")
         lines.append("\t</bitmap>")
@@ -511,7 +536,7 @@ class Art:
                 image = render_svg(copy, scale)
                 if image.shape[:2] != (height * scale, width * scale):
                     sys.exit(f"{svg}: {image.shape[1]}x{image.shape[0]}, not {scale}x {width}x{height}")
-                Image.fromarray(bleed(image), "RGBA").save(output, optimize=True)
+                save_png(Image.fromarray(bleed(image), "RGBA"), output)
                 return
         # (no redraw: the placeholder, as large as fits, in the middle of where
         # the PC version's picture is (only its bounds are read), else of the
@@ -531,7 +556,7 @@ class Art:
         picture = self.placeholder.copy()
         picture.thumbnail((area[2] - area[0], area[3] - area[1]), Image.LANCZOS)
         image.paste(picture, ((area[0] + area[2] - picture.width) // 2, (area[1] + area[3] - picture.height) // 2))
-        image.save(output, optimize=True)
+        save_png(image, output)
         self.pictures.append((output.relative_to(MENUS).as_posix(), width, height, f"{name}.png"))
 
 
@@ -794,6 +819,7 @@ def main() -> None:
     functions[:102] = engine_names(ROOT / "source/interface/ui_widget_event_handler_functions.c",
                                    '\t{\n\t\t"NULL",', 102)
     inputs[:41] = engine_names(ROOT / "port/linux/game/menu_tags.c", "game_data_input_names[] =", 41)
+    PREVIOUS.update((path, path.read_bytes()) for path in CE.rglob("*.png"))
     for folder in (CE, SVG_COPIES, MENUS / "port_svg"):
         if folder.exists():
             shutil.rmtree(folder)

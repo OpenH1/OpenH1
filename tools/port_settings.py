@@ -2428,7 +2428,7 @@ STRING_OVERRIDES.update({
 # menu_tags.c's map_strings); the inserted strings (STRING_INSERTS) are the
 # port's own, the rest of their lists the PC version's
 OVERRIDE_ORIGINALS = {
-    f"{PE}/profile_edit_descriptions": [0, None, None, None, None, None, None, 7, None],
+    f"{PE}/profile_edit_descriptions": [0, None, None, None, None, None, None, 7, None, None],
     f"{MT}/multiplayer_options": [0, 1, 2, None, None, 5, None, None, None, None],
     f"{MT}/multiplayer_option_descriptions": [None] * 9,
     "main_menu/gametype_select/var_gametype_banks": [0, None, 2],
