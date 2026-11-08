@@ -26,6 +26,9 @@ static void dsound_channel_fill(short i) {
 }
 static HRESULT stream_flush(IDirectSoundStream *object);
 #define DirectSoundStopStream(s) ((void)stream_flush(s))
+/* the call log (debug.dsound_log) is off in the test */
+#define DSLOG_ON 0
+static void dsound_log(const char *code,const char *format,...) { (void)code; (void)format; }
 /* The real callback's Xbox pointer-sized context is cast to a short channel number. */
 #pragma clang diagnostic ignored "-Wvoid-pointer-to-int-cast"
 #include "state.inc"
