@@ -1036,15 +1036,15 @@ PAGES = {
             # (display.vrr: sdl_platform.c's platform_vrr; hidden on the Mac,
             # whose Metal has none: menu_functions.c's vrr_rows_show)
             ("VARIABLE REFRESH", "display.vrr", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
-             "For a G-SYNC or FreeSync display: VSync on, with the frame rate held just under the refresh rate, so "
-             "each frame shows as soon as it is ready, with no tearing and no queue. Auto turns it on where the "
-             "system says VRR is active (the Steam Deck, a Linux desktop that has it on).|On Windows, choose ON.",
+             "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
+             "each frame shows as soon as it is ready, without tearing. Auto turns it on where the system says VRR "
+             "is on.|On Windows, choose ON.",
              "desktop"),
             # (dimmed while Variable Refresh shows OFF: vrr_rows_show)
             ("VRR FRAME CAP", "display.vrr_cap_margin", [(str(n), str(n)) for n in range(1, 11)],
-             "How many frames a second under the refresh rate Variable Refresh holds the game: it stays inside the "
-             "screen's VRR range, and never reaches the refresh rate and falls back to VSync. Lower is closer to the "
-             "most frames; higher is safer on a screen with a narrow range.|Used while Variable Refresh is on.",
+             "Frames a second kept under the refresh rate, so the game stays in the screen's VRR range and never "
+             "falls back to VSync. Lower is closer to the most frames; higher is safer on a screen with a narrow "
+             "range.|Used while Variable Refresh is on.",
              "desktop"),
             # (shown while VSync shows OFF: menu_functions.c's max_fps_row_show)
             ("MAX FPS", "display.max_fps", FRAME_RATE_LIMITS,
