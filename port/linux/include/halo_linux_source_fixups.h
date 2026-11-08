@@ -77,6 +77,10 @@ void render_interpolation_object_point(long object_index, union real_point3d *po
 mixed of the tick's state and the frame's (render_interpolation.c) */
 void render_interpolation_object_origin(long object_index, union real_point3d *origin);
 void render_interpolation_unit_camera_position(long unit_index, union real_point3d *position);
+/* where the last frame drew a local player's view from, if it drew one */
+unsigned char render_interpolation_drawn_view_position(short local_player_index, union real_point3d *position);
+/* debug.network_test_elevator's frames (port/linux/game/network_test.c) */
+void network_test_elevator_frame(void);
 /* a widget's shape (an antenna's chain, a cloth flag's grid), stepped in the
 tick, drawn between the ticks hung from its marker as drawn */
 void render_interpolation_shape_tick(unsigned long owner, long index, struct real_matrix4x3 const *anchor,

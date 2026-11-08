@@ -105,7 +105,7 @@ moved with that point onto the vehicle's path.
 
 The local player's own view (display.direct_camera) is drawn from the
 newest step instead, not a tick behind: on foot, where the newest step left
-the player, carried on by the player's velocity; in a vehicle's seat, the
+the player, carried on by the player's velocity and the lift they ride; in a vehicle's seat, the
 vehicle and what it carries are drawn as the vehicle's newest step left it,
 carried on as that step moved and turned it, and the view from the seat with
 it (render_interpolation_newest_vehicles). Each aims where the player aims as
@@ -130,6 +130,9 @@ the frame takes its view.
 #include "units/units.h"
 #include "units/unit_definitions.h"
 #include "units/bipeds.h"
+#include "devices/devices.h"
+#include "devices/device_machines.h"
+#include "devices/device_definitions.h"
 #include "passenger_camera.h"
 #include "sim_rate.h"
 
@@ -2710,6 +2713,19 @@ static struct observer_result blended_views[MAXIMUM_LOCAL_PLAYERS];
 static struct observer_result drawn_views[MAXIMUM_LOCAL_PLAYERS];
 static boolean drawn_views_valid[MAXIMUM_LOCAL_PLAYERS];
 
+/* where the last frame drew the local player's view from, if it drew one
+(debug.network_test_elevator logs it) */
+boolean render_interpolation_drawn_view_position(short local_player_index, real_point3d *position)
+{
+	if (local_player_index < 0 || local_player_index >= MAXIMUM_LOCAL_PLAYERS ||
+		!drawn_views_valid[local_player_index])
+	{
+		return FALSE;
+	}
+	*position = drawn_views[local_player_index].position;
+	return TRUE;
+}
+
 /* the views display.direct_camera takes (render_interpolation_direct) */
 enum
 {
@@ -2852,12 +2868,54 @@ static struct observer_result const *render_interpolation_direct_camera(
 	return direct;
 }
 
+/* how far a lift carries the unit in a tick (world units a tick), if one
+carries it (device_machines.c's machine_move_elevator_riders, and at 60 and
+120 objects.c's lanes, a share each sub-step): its platform's movement
+between the last two ticks' snapshots, which the carry of the tick to come
+(at 30) or under way (at 60 and 120, a tick behind the lift) is, but at a
+start or a stop. The unit's own velocity has none of it: the carry moves it
+where it is */
+static boolean render_interpolation_rider_carry(long unit_index, real_vector3d *carry)
+{
+	struct biped_datum *biped = (struct biped_datum *)object_try_and_get_and_verify_type(unit_index, _object_mask_biped);
+	struct interpolated_object const *record;
+	struct machine_datum *machine;
+	real_matrix4x3 const *previous, *latest;
+	long machine_index;
+	long absolute_index;
+	short node;
+
+	if (!biped || !interpolated_objects)
+		return FALSE;
+	machine_index = biped->biped.elevator_object_index;
+	if (machine_index == NONE || !machine_carries_rider(machine_index, unit_index))
+		return FALSE;
+	machine = machine_get(machine_index);
+	node = machine_definition_get(machine->definition_index)->machine.elevator_node_index;
+	absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(machine_index);
+	if (absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
+		return FALSE;
+	record = &interpolated_objects[absolute_index];
+	if (record->object_index != machine_index || record->tick != interpolation_tick || !record->has_previous ||
+		node < 0 || node >= record->node_count)
+	{
+		return FALSE;
+	}
+	previous = record->nodes + (record->latest ^ 1) * record->node_capacity;
+	latest = record->nodes + record->latest * record->node_capacity;
+	carry->i = latest[node].position.x - previous[node].position.x;
+	carry->j = latest[node].position.y - previous[node].position.y;
+	carry->k = latest[node].position.z - previous[node].position.z;
+	return TRUE;
+}
+
 /* The player's own view on foot (display.direct_camera, while frames are
 drawn between the ticks, and not in the VR mode, whose eyes stay as they
 were) stands where the newest step left the unit, not where the blend of the
 last two ticks has it a tick behind: the observer (taken after the frame's
-steps, the open tick's sub-steps too) moved on by the unit's own velocity for
-the time since that step, and its eye by its crouch's change
+steps, the open tick's sub-steps too) moved on by the unit's own velocity (and
+the lift's carry, render_interpolation_rider_carry) for the time since that
+step, and its eye by its crouch's change
 (bipeds.c's biped_eye_rise_ahead), so that it moves every frame at 30 as at
 60. The first-person weapon, posed from it, goes with it (render_interpolation_
 first_person). What the netcode glides (correction) is kept. Everything else
@@ -2869,19 +2927,28 @@ static void render_interpolation_newest_camera(
 {
 	struct interpolated_camera *camera = &interpolated_cameras[local_player_index];
 	long unit_index = player_control_get_unit_index(local_player_index);
-	real_vector3d const *velocity = &object_get(unit_index)->object.translational_velocity;
+	real_vector3d velocity = object_get(unit_index)->object.translational_velocity;
+	real_vector3d carry;
 	/* (the time since the newest step, in ticks: the clock's, not the
 	fraction's part past its last whole sub-step, which is a sub-step short
 	while a step's time has come and it has not run: OpenH1 #706) */
 	real since = interpolation_step_age;
 
+	/* (and by the lift it rides: carried by its velocity alone, the view
+	held still between the steps on a moving lift, a step at a time) */
+	if (render_interpolation_rider_carry(unit_index, &carry))
+	{
+		velocity.i += carry.i;
+		velocity.j += carry.j;
+		velocity.k += carry.k;
+	}
 	drawn->position = observer->position;
-	if (velocity->i * velocity->i + velocity->j * velocity->j + velocity->k * velocity->k <=
+	if (velocity.i * velocity.i + velocity.j * velocity.j + velocity.k * velocity.k <=
 		CAMERA_CUT_DISTANCE * CAMERA_CUT_DISTANCE)
 	{
-		drawn->position.x += velocity->i * since;
-		drawn->position.y += velocity->j * since;
-		drawn->position.z += velocity->k * since;
+		drawn->position.x += velocity.i * since;
+		drawn->position.y += velocity.j * since;
+		drawn->position.z += velocity.k * since;
 	}
 	/* (and its eye on with its crouch, which goes down or up a step at a
 	time as the unit's place does) */
