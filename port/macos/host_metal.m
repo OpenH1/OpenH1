@@ -1443,11 +1443,16 @@ static void hidden_refresh(void)
 
 /* (the main thread, as the window's occlusion changes) whether it is
 hidden: the link's thread takes its frames while it is */
+/* (HALO_METAL_HIDE_TEST, the window's hiding tested in a run nobody
+watches: its state while window_hide_test says so, else -1) */
+static int window_hide_forced = -1;
+
 static void window_visibility_read(void)
 {
 	NSWindow *native = (__bridge NSWindow *)SDL_GetPointerProperty(SDL_GetWindowProperties(presentation.window),
 		SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
-	int hidden = native && !(native.occlusionState & NSWindowOcclusionStateVisible);
+	int hidden = window_hide_forced >= 0 ? window_hide_forced :
+		native && !(native.occlusionState & NSWindowOcclusionStateVisible);
 
 	if (atomic_exchange(&presentation.hidden, hidden) == hidden)
 		return;
@@ -1459,6 +1464,37 @@ static void window_visibility_read(void)
 		CFRunLoopPerformBlock(presentation.link_run_loop, kCFRunLoopDefaultMode, ^{ hidden_refresh(); });
 		CFRunLoopWakeUp(presentation.link_run_loop);
 	}
+}
+
+/* HALO_METAL_HIDE_TEST="<first>,<hidden>,<every>": the window taken as
+hidden <first> seconds after it opens, for <hidden> seconds, and again every
+<every> seconds (0: once), through the same path as the occlusion's
+notification (window_visibility_read), on the main thread: the way back
+from a hidden window measured in a run whose window is never shown */
+static void window_hide_test(double hidden_seconds, double every, BOOL hide)
+{
+	window_hide_forced = hide ? 1 : 0;
+	window_visibility_read();
+	if (hide)
+		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(hidden_seconds * NSEC_PER_SEC)),
+			dispatch_get_main_queue(), ^{ window_hide_test(hidden_seconds, every, NO); });
+	else if (every > hidden_seconds)
+		dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((every - hidden_seconds) * NSEC_PER_SEC)),
+			dispatch_get_main_queue(), ^{ window_hide_test(hidden_seconds, every, YES); });
+}
+
+static void window_hide_test_start(void)
+{
+	const char *test = getenv("HALO_METAL_HIDE_TEST");
+	double first = 0.0, hidden_seconds = 0.0, every = 0.0;
+
+	if (!test || sscanf(test, "%lf,%lf,%lf", &first, &hidden_seconds, &every) < 2 || hidden_seconds <= 0.0)
+		return;
+	host_logf(HOST_LOG_INFO, "metal: the window taken as hidden at %g s for %g s (every %g s): HALO_METAL_HIDE_TEST",
+		first, hidden_seconds, every);
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(first * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		window_hide_test(hidden_seconds, every, YES);
+	});
 }
 #endif
 
@@ -2312,6 +2348,7 @@ int host_metal_window_open(uint32_t window)
 				(void)note;
 				window_visibility_read();
 			}];
+		window_hide_test_start();
 	}
 #endif
 	sampler = [MTLSamplerDescriptor new];
