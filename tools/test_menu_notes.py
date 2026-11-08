@@ -75,7 +75,8 @@ def test_brief_puts_the_source_first_and_questions_apart():
     assert "scope: this screen, in every variant" in first
     assert "proposed box: [0, 0, 10, 10] -> [0, -2, 12, 10]" in first and "moved +0, -2; +2 wider" in first
     assert 'proposed words: "OUTPUT DEVICE" -> "SPEAKERS"' in first
-    assert "style rules for this screen: Plain names. | Short values." in first
+    assert "\nStyle rules everywhere: Plain names.\n" in text
+    assert "style rules for this screen too: Short values." in first and "Plain names" not in first
     second = text.split("\n2. ")[1]
     assert second.startswith("[q2] QUESTION (answer on its thread; change no code until the reviewer answers)")
     assert "reply from agent: It holds the audio settings." in second and "on the screen as a whole" in second

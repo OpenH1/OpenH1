@@ -294,6 +294,10 @@ def brief(notes: list, rules: list = None) -> str:
            "you look at; then it is ready for review. A note that states a general preference becomes a rule: "
            "`python tools/menu_notes.py rule \"<scope>\" \"<rule>\"`. Questions: answer with "
            "`python tools/menu_notes.py reply <id> \"...\"` and change nothing until the reviewer answers.", ""]
+    everywhere = [rule for scope, rule in rules if scope == "everywhere"]
+    if everywhere:
+        out[-1:] = ["Style rules everywhere: " + " | ".join(everywhere), ""]
+    rules = [(scope, rule) for scope, rule in rules if scope != "everywhere"]
     for number, note in enumerate(fixes + questions, 1):
         screen = note.get("screen", "?")
         widget = menu_name(note.get("widget")) if note.get("widget") else ""
@@ -329,7 +333,7 @@ def brief(notes: list, rules: list = None) -> str:
             out.append(f"   picture: {note.get('picture')}")
         applying = rules_for(screen, rules)
         if applying:
-            out.append("   style rules for this screen: " + " | ".join(applying))
+            out.append("   style rules for this screen too: " + " | ".join(applying))
         out.append("")
     return "\n".join(out).rstrip() + "\n"
 
