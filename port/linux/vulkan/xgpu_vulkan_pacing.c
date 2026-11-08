@@ -149,6 +149,8 @@ static struct
 	interval; the refresh period by the window's mode and by display timing
 	(0: none) */
 	int paced, wanted, proven, silent, silent_run, interval, unheeded;
+	/* the presents present wait failed for (neither shown nor not yet) */
+	uint32_t wait_failed;
 	uint64_t mode_period, refresh;
 	/* display timing's times, by present number */
 	struct
@@ -392,6 +394,10 @@ static void *pacing_thread(void *unused)
 			if (pacing.wait_for_present)
 			{
 				result = pacing.wait_for_present(pacing.device.device, swapchain, id, WAIT_PART_NS);
+				/* (suboptimal is shown too: a swapchain the compositor would
+				have otherwise, which it shows all the same) */
+				if (result == VK_SUBOPTIMAL_KHR)
+					result = VK_SUCCESS;
 				if (result == VK_SUCCESS)
 					entry->returned = now_ns();
 			}
@@ -410,6 +416,23 @@ static void *pacing_thread(void *unused)
 			/* (present wait: not yet) */
 			if (pacing.wait_for_present && result == VK_TIMEOUT)
 				continue;
+			/* (present wait failed: said once, and counted with the
+			presents the display said nothing of, so that one that only
+			fails is given up on and the game bounded by its GPU, as by a
+			silent display, not taken for a display that answers late) */
+			if (pacing.wait_for_present && result != VK_SUCCESS)
+			{
+				if (!pacing.wait_failed++)
+					host_logf(HOST_LOG_WARN, "vulkan: present wait answered %d for present %llu", (int)result,
+						(unsigned long long)id);
+				if (!pacing.silent && ++pacing.silent_run >= SILENT_PRESENTS)
+				{
+					pacing.silent = 1;
+					host_logf(HOST_LOG_WARN, "vulkan: present wait failed for %d presents in a row (%u in all): they "
+						"are no longer waited for, and the game's frames not paced by it", SILENT_PRESENTS,
+						pacing.wait_failed);
+				}
+			}
 			if (pacing.past_timing)
 			{
 				timings_take();
@@ -495,6 +518,7 @@ static int thread_start(void)
 	}
 	pacing.stopping = 0;
 	pacing.proven = pacing.silent = pacing.silent_run = 0;
+	pacing.wait_failed = 0;
 	pacing.unheeded = getenv("HALO_VULKAN_UNHEEDED_PRESENTS") != NULL;
 	pacing.first = pacing.count = 0;
 	pacing.last_shown = 0;
