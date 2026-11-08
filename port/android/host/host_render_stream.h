@@ -217,6 +217,9 @@ struct host_render_backend
 the guest starts (macOS: the Metal backend). Without one,
 host_render_stream_open fails and the guest keeps its own renderer. */
 void host_render_stream_set_backend(const struct host_render_backend *backend);
+/* the backend set (NULL none): the replay's, which puts a table of its own
+in front of it (port/tools/replay/host_render_replay.c) */
+const struct host_render_backend *host_render_stream_backend(void);
 
 /* the screenshot key's file (XGPU_STREAM_SCREENSHOT): writes the pixels
 (BGRA rows from the top) as a PNG in directory (made if it is missing), and

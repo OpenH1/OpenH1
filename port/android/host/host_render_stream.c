@@ -1163,6 +1163,11 @@ void host_render_stream_set_backend(const struct host_render_backend *backend)
 	render_backend = backend;
 }
 
+const struct host_render_backend *host_render_stream_backend(void)
+{
+	return render_backend;
+}
+
 void host_render_stream_gpu_completed(void)
 {
 	pthread_mutex_lock(&render.lock);
