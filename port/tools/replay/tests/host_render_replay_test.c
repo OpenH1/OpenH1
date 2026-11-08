@@ -498,8 +498,36 @@ static void png_test(const char *path)
 	free(bgra);
 }
 
+/* the pictures' encodings timed on a frame (BGRA bytes, width by height) */
+static int bench(const char *path, uint32_t width, uint32_t height)
+{
+	FILE *file = fopen(path, "rb");
+	unsigned char *bgra = malloc((size_t)width * height * 4);
+	int kind;
+
+	if (!file || !bgra || fread(bgra, 4, (size_t)width * height, file) != (size_t)width * height)
+		return 2;
+	fclose(file);
+	for (kind = 0; kind < 6; kind++)
+	{
+		static const char *names[] = { "png stored", "png none+fixed", "png sub+fixed", "png up+fixed",
+			"png paeth+fixed", "qoi" };
+		double started = seconds_now();
+		size_t size = 0;
+		unsigned char *bytes = kind == 0 ? png_encode(bgra, width, height, &size) :
+			kind == 5 ? qoi_encode(bgra, width, height, &size) :
+			png_encode_compressed(bgra, width, height, kind == 1 ? 0 : kind == 2 ? 1 : kind == 3 ? 2 : 4, &size);
+
+		printf("%-16s %9zu bytes  %6.1f ms\n", names[kind], size, (seconds_now() - started) * 1000.0);
+		free(bytes);
+	}
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
+	if (argc == 5 && !strcmp(argv[1], "bench"))
+		return bench(argv[2], (uint32_t)atoi(argv[3]), (uint32_t)atoi(argv[4]));
 	if (argc == 4 && !strcmp(argv[1], "make"))
 		return make(argv[2], (uint32_t)atoi(argv[3]));
 	if (argc == 3 && !strcmp(argv[1], "unit"))

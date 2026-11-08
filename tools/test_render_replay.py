@@ -86,6 +86,40 @@ def png_pixels(data):
     return width, height, rows
 
 
+def qoi_pixels(data):
+    """a QOI file's rows (RGB), decoded as qoiformat.org's specification says"""
+    assert data[:4] == b"qoif" and data[-8:] == b"\0" * 7 + b"\1"
+    width, height, channels = struct.unpack(">IIB", data[4:13])
+    assert channels == 3
+    seen, pixel, out, place = [(0, 0, 0, 0)] * 64, (0, 0, 0, 255), [], 14
+    while len(out) < width * height:
+        byte = data[place]
+        place += 1
+        if byte == 0xfe:
+            pixel = (*data[place:place + 3], pixel[3])
+            place += 3
+        elif byte == 0xff:
+            pixel = tuple(data[place:place + 4])
+            place += 4
+        elif byte >> 6 == 0:
+            pixel = seen[byte]
+        elif byte >> 6 == 1:
+            pixel = (((pixel[0] + (byte >> 4 & 3) - 2) & 255), ((pixel[1] + (byte >> 2 & 3) - 2) & 255),
+                     ((pixel[2] + (byte & 3) - 2) & 255), pixel[3])
+        elif byte >> 6 == 2:
+            green = (byte & 63) - 32
+            second = data[place]
+            place += 1
+            pixel = ((pixel[0] + green + (second >> 4) - 8) & 255, (pixel[1] + green) & 255,
+                     (pixel[2] + green + (second & 15) - 8) & 255, pixel[3])
+        else:
+            out += [pixel] * ((byte & 63) + 1)
+            continue
+        seen[(pixel[0] * 3 + pixel[1] * 5 + pixel[2] * 7 + pixel[3] * 11) % 64] = pixel
+        out.append(pixel)
+    return width, height, [[out[y * width + x][:3] for x in range(width)] for y in range(height)]
+
+
 def expected(frame, x, y):
     """frame's pixel (RGB) and the draws that changed it, topmost first"""
     colour, draws = (frame, 0x20, 0x40), []
@@ -161,6 +195,22 @@ def test_service(binary, tmp_path):
         assert all(rows[y][x] == expected(19, x, y)[0] for y in range(HEIGHT) for x in range(WIDTH))
         thumbs = service.ask(cmd="thumbs", frames=[4], width=32, inline=True, compress=True)
         assert png_pixels(base64.b64decode(thumbs["thumbs"][0]["png_base64"]))[:2] == (32, 16)
+        # "image": "qoi", inline and into a file; thumbnails too
+        for frame in (21, 20):
+            reply = service.ask(cmd="frame", n=frame, inline=True, image="qoi")
+            assert "png_base64" not in reply
+            rows = qoi_pixels(base64.b64decode(reply["qoi_base64"]))[2]
+            assert all(rows[y][x] == expected(frame, x, y)[0] for y in range(HEIGHT) for x in range(WIDTH))
+        assert service.ask(cmd="frame", n=22, image="qoi", qoi=str(tmp_path / "f.qoi"))["ok"]
+        assert qoi_pixels((tmp_path / "f.qoi").read_bytes())[2][5][22 % 40] == (0, 0, 255)
+        thumbs = service.ask(cmd="thumbs", frames=[4], width=32, inline=True, image="qoi")
+        assert qoi_pixels(base64.b64decode(thumbs["thumbs"][0]["qoi_base64"]))[:2] == (32, 16)
+        # the ID buffers of the frames asked for with theirs, kept: a step back to one is the same
+        first = service.ask(cmd="frame", n=30, inline=True, ids=True)
+        service.ask(cmd="frame", n=31, inline=True, ids=True)
+        again = service.ask(cmd="frame", n=30, inline=True, ids=True)
+        assert again["ids_base64"] == first["ids_base64"] and again["png_base64"] == first["png_base64"]
+        assert [d["i"] + 1 for d in service.ask(cmd="pick", n=30, x=35, y=10)["stack"]] == expected(30, 35, 10)[1] == [2, 1]
         # the draws, and a pixel's stack (the green over the red; the third draw changed nothing)
         draws = service.ask(cmd="draws", n=19)
         assert draws["ok"] and [draw["i"] for draw in draws["draws"]] == [0, 1, 2]
