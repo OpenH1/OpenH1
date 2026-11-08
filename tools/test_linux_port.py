@@ -164,7 +164,9 @@ MENU_ATTRIBUTES = {
                "color", "align", "description", "string_list", "list_flags", "text_flags", "header_bitmap",
                "footer_bitmap", "header_bounds", "footer_bounds", "child_controller", "x", "y", "left", "top",
                "width", "height", "text_x", "text_y", "auto_close", "auto_close_fade", "string_index", "platform",
-               "wide", "radius"},
+               "wide", "radius",
+               # where it was made (the game ignores it; the review tools read it: tools/menu_sources.py)
+               "source"},
     "child": {"widget", "controller", "x", "y", "platform"},
     "on": {"event", "run", "script", "open", "replace", "close", "widget", "focus", "reload", "sound", "otherwise",
            "label", "back", "branch", "platform"},
