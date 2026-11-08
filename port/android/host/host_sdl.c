@@ -15,6 +15,7 @@ so the audio callback is handed to a thread that has one.
 
 #include <SDL3/SDL.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #ifdef __APPLE__
@@ -58,6 +59,10 @@ replay have no host_app.m) */
 void host_app_update_tick(void);
 #pragma weak host_app_update_tick
 #endif
+#ifdef __linux__
+#include <sys/resource.h>
+#include <time.h>
+#endif
 #ifdef __APPLE__
 /* port/macos/host_links.c: the links the app is opened with (openh1://...),
 which SDL sends as drop events, kept for the guest */
@@ -73,7 +78,8 @@ SDL_AudioStream *host_audio_output_open(SDL_AudioDeviceID device, const SDL_Audi
 int host_audio_output_resume(SDL_AudioStream *stream);
 int host_audio_output_close(SDL_AudioStream *stream);
 int host_audio_output_timing(SDL_AudioStream *stream, int *timing);
-void host_audio_output_thread(SDL_AudioStream *stream, int *state);
+void host_audio_output_thread(SDL_AudioStream *stream, int *state, void **output);
+void host_audio_output_usage(uint64_t *values);
 #endif
 #if defined(__APPLE__) && !TARGET_OS_IPHONE
 /* port/macos/host_raw_mouse.m: the mouse's unaccelerated counts */
@@ -576,19 +582,26 @@ struct audio_binding
 	int quit;
 	int additional;
 	int total;
+	/* when the request was passed to the thread (HALO_AUDIO_MIX_TIMES) */
+	uint64_t requested_ns;
 	unsigned char *buffer;
 	int buffer_length;
 	int buffer_size;
 #ifdef HOST_AUDIO_OUTPUT
-	/* the stream, and the output unit's set-up the thread was last made
-	ready for (host_audio_output_thread) */
+	/* the stream, the output unit's set-up the thread was last made ready
+	for, and its output, found once (host_audio_output_thread) */
 	SDL_AudioStream *stream;
 	int output_setups;
+	void *output;
 #endif
 };
 
 /* the binding whose callback this thread is running, if any */
 static __thread struct audio_binding *calling_back;
+
+/* (HALO_AUDIO_MIX_TIMES) the longest the device's callback took, from its
+call to its return, since audio_mix_timed last logged */
+static _Atomic uint64_t audio_callback_most_ns;
 
 /* HALO_AUDIO_MIX_TIMES=<seconds>: the guest's mixes timed (the audio
 thread's, each request's) and logged that often: their count, mean, 99th
@@ -632,16 +645,83 @@ static void audio_mix_timed(uint64_t nanoseconds, int bytes)
 				break;
 		}
 		host_logf(HOST_LOG_INFO, "sound: %lu mixes in %.1f s, %.3f ms each on average, %.3f at the 99th percentile, "
-			"%.3f at most; %lu bytes asked for each", count, (double)(SDL_GetTicksNS() - began) / 1e9,
-			(double)total / count / 1e6, (double)high / 1e6, (double)most / 1e6, asked / count);
+			"%.3f at most; %lu bytes asked for each; the device's callback %.3f ms at most", count,
+			(double)(SDL_GetTicksNS() - began) / 1e9, (double)total / count / 1e6, (double)high / 1e6,
+			(double)most / 1e6, asked / count,
+			(double)atomic_exchange(&audio_callback_most_ns, 0) / 1e6);
 		began = SDL_GetTicksNS();
 		count = asked = 0;
 		total = most = 0;
 	}
 }
 
+/* what the thread running the mix did meanwhile (HALO_AUDIO_MIX_TIMES): its
+processor time, the page faults (the process's on a Mac, the thread's on
+Linux) and pages read in, the times it was switched out (Linux: its
+involuntary switches), and its priority (a Mac's: 97 while real-time) */
+struct audio_mix_usage
+{
+	uint64_t cpu_ns;
+	uint64_t faults, pageins, switches;
+	int priority;
+};
+
+static void audio_mix_usage(struct audio_mix_usage *usage)
+{
+	memset(usage, 0, sizeof(*usage));
+#ifdef HOST_AUDIO_OUTPUT
+	{
+		uint64_t values[5];
+
+		host_audio_output_usage(values);
+		usage->cpu_ns = values[0];
+		usage->faults = values[1];
+		usage->pageins = values[2];
+		usage->switches = values[3];
+		usage->priority = (int)values[4];
+	}
+#elif defined(__linux__)
+	{
+		struct timespec now;
+		struct rusage rusage;
+
+		if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now) == 0)
+			usage->cpu_ns = (uint64_t)now.tv_sec * 1000000000ull + (uint64_t)now.tv_nsec;
+		if (getrusage(RUSAGE_THREAD, &rusage) == 0)
+		{
+			usage->faults = (uint64_t)rusage.ru_minflt + (uint64_t)rusage.ru_majflt;
+			usage->pageins = (uint64_t)rusage.ru_majflt;
+			usage->switches = (uint64_t)rusage.ru_nivcsw;
+		}
+	}
+#endif
+}
+
+/* HALO_AUDIO_MIX_TIMES: a mix over HALO_AUDIO_MIX_SLOW_MS (2 by default)
+logged by its request's number (the guest's mixer logs its parts by the same
+number): its time, the thread's processor time in it, the faults, pages read
+in and switches meanwhile, its priority, and how long the thread took to start
+on the request */
+static int audio_mix_watching(uint64_t *slow_ns)
+{
+	static int wanted = -1;
+	static uint64_t slow;
+
+	if (wanted < 0)
+	{
+		const char *seconds = getenv("HALO_AUDIO_MIX_TIMES");
+		const char *milliseconds = getenv("HALO_AUDIO_MIX_SLOW_MS");
+
+		slow = (uint64_t)((milliseconds && atof(milliseconds) > 0.0 ? atof(milliseconds) : 2.0) * 1e6);
+		wanted = seconds && atof(seconds) > 0.0;
+	}
+	*slow_ns = slow;
+	return wanted;
+}
+
 static void *audio_thread(void *context)
 {
+	unsigned long requests = 0;
 	struct audio_binding *binding = context;
 
 #ifndef __ANDROID__
@@ -665,20 +745,41 @@ static void *audio_thread(void *context)
 		total = binding->total;
 		pthread_mutex_unlock(&binding->lock);
 #ifdef HOST_AUDIO_OUTPUT
-		host_audio_output_thread(binding->stream, &binding->output_setups);
+		host_audio_output_thread(binding->stream, &binding->output_setups, &binding->output);
 #endif
 		calling_back = binding;
+		requests++;
 		{
-			uint64_t began = SDL_GetTicksNS();
+			uint64_t began = SDL_GetTicksNS(), took, slow_ns;
+			int watching = audio_mix_watching(&slow_ns);
+			struct audio_mix_usage before, after;
 
+			if (watching)
+				audio_mix_usage(&before);
 			host_call_guest(binding->callback, binding->userdata, binding->handle, (uint32_t)additional,
 				(uint32_t)total);
-			audio_mix_timed(SDL_GetTicksNS() - began, additional);
+			took = SDL_GetTicksNS() - began;
+			audio_mix_timed(took, additional);
+			calling_back = NULL;
+			if (watching)
+				audio_mix_usage(&after);
+			pthread_mutex_lock(&binding->lock);
+			binding->pending = 0;
+			pthread_cond_signal(&binding->done);
+			/* (logged after the buffer is handed back) */
+			if (watching && took >= slow_ns)
+			{
+				pthread_mutex_unlock(&binding->lock);
+				host_logf(HOST_LOG_INFO, "sound: slow mix (request %lu): %.3f ms, %.3f ms of it on the processor; "
+					"started %.3f ms after the request; %llu faults, %llu pages read in, %llu switches meanwhile; "
+					"priority %d (%d before)", requests, (double)took / 1e6,
+					(double)(after.cpu_ns - before.cpu_ns) / 1e6, (double)(began - binding->requested_ns) / 1e6,
+					(unsigned long long)(after.faults - before.faults),
+					(unsigned long long)(after.pageins - before.pageins),
+					(unsigned long long)(after.switches - before.switches), after.priority, before.priority);
+				pthread_mutex_lock(&binding->lock);
+			}
 		}
-		calling_back = NULL;
-		pthread_mutex_lock(&binding->lock);
-		binding->pending = 0;
-		pthread_cond_signal(&binding->done);
 	}
 	pthread_mutex_unlock(&binding->lock);
 	pthread_cond_destroy(&binding->done);
@@ -692,10 +793,14 @@ static void *audio_thread(void *context)
 static void SDLCALL audio_callback(void *userdata, SDL_AudioStream *stream, int additional, int total)
 {
 	struct audio_binding *binding = userdata;
+	uint64_t slow_ns, took;
+	int watching = audio_mix_watching(&slow_ns);
+	uint64_t called = watching ? SDL_GetTicksNS() : 0;
 
 	pthread_mutex_lock(&binding->lock);
 	binding->additional = additional;
 	binding->total = total;
+	binding->requested_ns = SDL_GetTicksNS();
 	binding->pending = 1;
 	pthread_cond_signal(&binding->requested);
 	while (binding->pending)
@@ -706,6 +811,11 @@ static void SDLCALL audio_callback(void *userdata, SDL_AudioStream *stream, int 
 		SDL_PutAudioStreamData(stream, binding->buffer, binding->buffer_length);
 		binding->buffer_length = 0;
 	}
+	if (!watching)
+		return;
+	took = SDL_GetTicksNS() - called;
+	if (took > atomic_load_explicit(&audio_callback_most_ns, memory_order_relaxed))
+		atomic_store_explicit(&audio_callback_most_ns, took, memory_order_relaxed);
 }
 
 /* audio the guest puts into its stream during the stream's callback, for
@@ -794,12 +904,16 @@ uint32_t host_sdl_open_audio_stream(uint32_t device, const void *spec, uint32_t 
 
 int host_sdl_put_audio_stream_data(uint32_t stream, const void *data, int length)
 {
-	SDL_AudioStream *object = host_sdl_handle_get(stream, _handle_audio);
+	SDL_AudioStream *object;
 
-	if (!object)
-		return 0;
+	/* (the mix, during the device's callback: kept without the handles'
+	lock, which the game's threads take, so that the device's thread never
+	waits on one the scheduler has set aside holding it) */
 	if (calling_back && calling_back->handle == stream)
 		return audio_keep(calling_back, data, length);
+	object = host_sdl_handle_get(stream, _handle_audio);
+	if (!object)
+		return 0;
 	return SDL_PutAudioStreamData(object, data, length);
 }
 

@@ -2009,6 +2009,141 @@ static BOOL voice_has_frames(struct sdl_stream *stream)
 	return FALSE;
 }
 
+/* ---------- a slow mix's parts
+
+HALO_AUDIO_MIX_TIMES=<seconds> (host_sdl.c's mix times) also times the
+parts of each mix here, and keeps those of any mix over
+HALO_AUDIO_MIX_SLOW_MS (2 by default) for the game's thread to log
+(DirectSoundDoWork): the voices' count and what of them was mixed, each part's
+time, and the number of the device's request it answered (as host_sdl.c
+counts them, which logs the mix's processor time and page faults by the same
+number). Off, it costs a test of mix_profile_on a mix and one a voice.
+HALO_AUDIO_MUTED=1 mixes as ever and plays silence (for measuring with the
+device's own timing and nobody hearing it). */
+
+enum
+{
+	_mix_part_hand_off,
+	_mix_part_voices,
+	_mix_part_hrtf,
+	_mix_part_publish,
+	_mix_part_buffers,
+	_mix_part_reverb,
+	_mix_part_chat,
+	_mix_part_rest,
+	_mix_part_put,
+	_mix_part_callback,
+	NUMBER_OF_MIX_PARTS
+};
+
+static const char *const mix_part_names[NUMBER_OF_MIX_PARTS] =
+	{ "hand-off", "voices", "HRTF", "publish", "buffers", "reverb", "chat", "rest", "put", "callback's own" };
+
+struct mix_profile
+{
+	unsigned long request;
+	unsigned long frames;
+	/* the voices listed, those mixed (not paused, with packets), through the
+	HRTF, started over (their resampler reset), and turned all the way down */
+	unsigned long voices, mixed, hrtf, started, silent;
+	Uint64 total_ns;
+	Uint64 parts_ns[NUMBER_OF_MIX_PARTS];
+};
+
+#define MIX_PROFILES_KEPT 64
+static BOOL mix_profile_on;
+static BOOL mix_muted;
+static Uint64 mix_slow_ns;
+/* (the mixer's thread) the mix being timed; the device's requests */
+static struct mix_profile mix_profile;
+static unsigned long mix_requests;
+/* the slow ones, written by the mixer's thread and read by the game's */
+static struct mix_profile mix_profiles[MIX_PROFILES_KEPT];
+static volatile unsigned long mix_profiles_written, mix_profiles_read;
+static unsigned long mix_profiles_lost;
+
+static void mix_profile_initialize(void)
+{
+	const char *times = getenv("HALO_AUDIO_MIX_TIMES");
+	const char *slow = getenv("HALO_AUDIO_MIX_SLOW_MS");
+	const char *muted = getenv("HALO_AUDIO_MUTED");
+
+	mix_profile_on = times && atof(times) > 0.0;
+	mix_slow_ns = (Uint64)((slow && atof(slow) > 0.0 ? atof(slow) : 2.0) * 1.0e6);
+	mix_muted = muted && muted[0] == '1';
+	if (mix_profile_on)
+		platform_log("sound: the parts of each mix over %.2f ms are logged", (double)mix_slow_ns / 1.0e6);
+	if (mix_muted)
+		platform_log("sound: muted (HALO_AUDIO_MUTED): mixed as ever, played as silence");
+}
+
+/* (the mixer's thread) the time since *at added to the part, and *at now */
+static void mix_part_end(int part, Uint64 *at)
+{
+	Uint64 now = SDL_GetTicksNS();
+
+	mix_profile.parts_ns[part] += now - *at;
+	*at = now;
+}
+
+/* (the mixer's thread) a request begun: its mixes' parts from 0 */
+static void mix_profile_begin(void)
+{
+	memset(&mix_profile, 0, sizeof(mix_profile));
+	mix_profile.request = mix_requests;
+}
+
+/* (the mixer's thread) the request answered, begun at began: kept if it
+was slow, what its mixes and putting the mix in did not take counted the
+callback's own */
+static void mix_profile_end(Uint64 began)
+{
+	unsigned long written = mix_profiles_written;
+	Uint64 parts = 0;
+	int part;
+
+	mix_profile.total_ns = SDL_GetTicksNS() - began;
+	if (mix_profile.total_ns < mix_slow_ns)
+		return;
+	for (part = 0; part < _mix_part_callback; part++)
+		parts += mix_profile.parts_ns[part];
+	mix_profile.parts_ns[_mix_part_callback] = mix_profile.total_ns > parts ? mix_profile.total_ns - parts : 0;
+	if (written - __atomic_load_n(&mix_profiles_read, __ATOMIC_ACQUIRE) >= MIX_PROFILES_KEPT)
+	{
+		mix_profiles_lost++;
+		return;
+	}
+	mix_profiles[written % MIX_PROFILES_KEPT] = mix_profile;
+	__atomic_store_n(&mix_profiles_written, written + 1, __ATOMIC_RELEASE);
+}
+
+/* (the game's thread) the slow mixes kept, logged */
+static void mix_profiles_log(void)
+{
+	unsigned long read = mix_profiles_read;
+
+	while (read != __atomic_load_n(&mix_profiles_written, __ATOMIC_ACQUIRE))
+	{
+		const struct mix_profile *profile = &mix_profiles[read % MIX_PROFILES_KEPT];
+		char parts[256];
+		int length = 0, part;
+
+		for (part = 0; part < NUMBER_OF_MIX_PARTS; part++)
+		{
+			length += snprintf(parts + length, sizeof(parts) - (size_t)length, "%s%s %.3f", part ? ", " : "",
+				mix_part_names[part], (double)profile->parts_ns[part] / 1.0e6);
+			if (length >= (int)sizeof(parts))
+				break;
+		}
+		platform_log("sound: slow mix (request %lu): %.3f ms for %lu frames; %lu voices, %lu mixed (%lu through the "
+			"HRTF, %lu started, %lu silent); %s ms%s", profile->request, (double)profile->total_ns / 1.0e6,
+			profile->frames, profile->voices, profile->mixed, profile->hrtf, profile->started, profile->silent, parts,
+			mix_profiles_lost ? " (some lost)" : "");
+		read++;
+		__atomic_store_n(&mix_profiles_read, read, __ATOMIC_RELEASE);
+	}
+}
+
 /* ---------- mixing */
 
 /* mixes one voice into output (frames of output_channels floats), and into
@@ -2061,6 +2196,8 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	{
 		if (!voice_has_frames(stream))
 			return;
+		if (mix_profile_on)
+			mix_profile.started++;
 		resampler_reset(stream);
 		stream->gains_valid = FALSE;
 		step = target_step;
@@ -2069,6 +2206,12 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	}
 	voice_gains(stream, &target_left, &target_right, pair, &target_room, &target_direct_lowpass,
 		&target_room_lowpass, &hrtf_on, &target_hrtf);
+	if (mix_profile_on)
+	{
+		mix_profile.mixed++;
+		mix_profile.started += !stream->gains_valid;
+		mix_profile.silent += !target_left && !target_right && !target_room;
+	}
 	/* how much of the voice the HRTF plays: towards all of it while it is
 	chosen (hrtf_enabled), none otherwise, a frame's share of the crossfade
 	each frame (hrtf_mix_step), however many frames the mixes have; a voice
@@ -2377,8 +2520,15 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	/* (the frames mixed: all of them, or those before the voice ran dry) */
 	if (hrtf_running)
 	{
+		Uint64 hrtf_began = mix_profile_on ? SDL_GetTicksNS() : 0;
+
 		hrtf_process(stream, hrtf_direct, output, frame, ramp_frames, &target_hrtf, hrtf_mix_start, ramp_hrtf_mix,
 			hrtf_mix_end);
+		if (mix_profile_on)
+		{
+			mix_profile.parts_ns[_mix_part_hrtf] += SDL_GetTicksNS() - hrtf_began;
+			mix_profile.hrtf++;
+		}
 	}
 	stream->hrtf_mix = hrtf_running ? hrtf_mix : hrtf_mix_end;
 	/* where the ramp got to, and the frames of it left */
@@ -3798,19 +3948,42 @@ static void mix(float *output, unsigned long frames, BOOL wait)
 {
 	struct sdl_stream *stream;
 	BOOL enabled = reverb_enabled;
-	Uint64 started = SDL_GetTicksNS();
+	Uint64 started = SDL_GetTicksNS(), part_at = 0, hrtf_ns = 0;
 
 	if (dsound_log_text)
 		__atomic_fetch_add(&dsound_log_frames, frames, __ATOMIC_RELAXED);
 
+	if (mix_profile_on)
+	{
+		mix_profile.frames += frames;
+		part_at = started;
+	}
 	memset(output, 0, frames * output_channels * sizeof(float));
 	memset(reverb.send, 0, frames * sizeof(float));
 	voices_hand_off(wait);
+	if (mix_profile_on)
+	{
+		mix_part_end(_mix_part_hand_off, &part_at);
+		hrtf_ns = mix_profile.parts_ns[_mix_part_hrtf];
+	}
 	for (stream = mixing_streams; stream; stream = stream->mixing_link)
+	{
 		mix_voice(stream, output, reverb.send, frames);
+		mix_profile.voices += mix_profile_on;
+	}
+	if (mix_profile_on)
+	{
+		/* (the HRTF's time is counted in the voices' too) */
+		mix_part_end(_mix_part_voices, &part_at);
+		mix_profile.parts_ns[_mix_part_voices] -= mix_profile.parts_ns[_mix_part_hrtf] - hrtf_ns;
+	}
 	voices_publish(wait);
+	if (mix_profile_on)
+		mix_part_end(_mix_part_publish, &part_at);
 	/* (the game's buffers: the loading screen's chant) */
 	mix_buffers(output, frames);
+	if (mix_profile_on)
+		mix_part_end(_mix_part_buffers, &part_at);
 	/* a new environment, once the fade to the last is over */
 	if (reverb.serial != environment_serial && !reverb.fade)
 		reverb_update(&environment, environment_serial);
@@ -3825,6 +3998,8 @@ static void mix(float *output, unsigned long frames, BOOL wait)
 		if ((!enabled && reverb.level <= 0.0f) || reverb.quiet > REVERB_QUIET_FRAMES)
 			reverb_clear();
 	}
+	if (mix_profile_on)
+		mix_part_end(_mix_part_reverb, &part_at);
 	/* (on 5.1, the LFE's band) */
 	lfe_lowpass(output, frames);
 	/* the game's mix at the Xbox's output level (OUTPUT_GAIN) */
@@ -3853,9 +4028,13 @@ static void mix(float *output, unsigned long frames, BOOL wait)
 	{
 		voice_audio_mix(output, frames);
 	}
+	if (mix_profile_on)
+		mix_part_end(_mix_part_chat, &part_at);
 	limit(output, frames);
 	sound_gain = sound_fade(output, frames, output_channels, sound_gain, sound_on);
 	record(output, frames);
+	if (mix_profile_on)
+		mix_part_end(_mix_part_rest, &part_at);
 	mix_nanoseconds += SDL_GetTicksNS() - started;
 	mix_frames += frames;
 }
@@ -4127,11 +4306,16 @@ static void SDLCALL audio_callback(void *userdata, SDL_AudioStream *stream, int 
 	float buffer[MIX_CHUNK_FRAMES * MAXIMUM_OUTPUT_CHANNELS];
 	unsigned long handed = 0;
 	Sint64 now;
+	Uint64 began = mix_profile_on ? SDL_GetTicksNS() : 0;
 
 	(void)userdata;
 	(void)total_amount;
+	/* (numbered as host_sdl.c numbers the calls: HALO_AUDIO_MIX_TIMES) */
+	mix_requests++;
 	if (additional_amount <= 0)
 		return;
+	if (mix_profile_on)
+		mix_profile_begin();
 	timing_request((Sint64)SDL_GetTicksNS());
 	/* (debug.latency_log: the voice measured, in this buffer from its start,
 	as the first mix's hand-off takes it) */
@@ -4146,7 +4330,17 @@ static void SDLCALL audio_callback(void *userdata, SDL_AudioStream *stream, int 
 			frames = 1;
 		mix(buffer, frames, FALSE);
 		sound_latency_request_ns = 0;
-		SDL_PutAudioStreamData(stream, buffer, (int)(frames * output_channels * sizeof(float)));
+		if (mix_muted)
+			memset(buffer, 0, frames * output_channels * sizeof(float));
+		if (mix_profile_on)
+		{
+			Uint64 put = SDL_GetTicksNS();
+
+			SDL_PutAudioStreamData(stream, buffer, (int)(frames * output_channels * sizeof(float)));
+			mix_profile.parts_ns[_mix_part_put] += SDL_GetTicksNS() - put;
+		}
+		else
+			SDL_PutAudioStreamData(stream, buffer, (int)(frames * output_channels * sizeof(float)));
 		additional_amount -= (int)(frames * output_channels * sizeof(float));
 		handed += frames;
 	}
@@ -4168,6 +4362,8 @@ static void SDLCALL audio_callback(void *userdata, SDL_AudioStream *stream, int 
 			sound_latency_handed_ns = (Uint64)now;
 		}
 	}
+	if (mix_profile_on)
+		mix_profile_end(began);
 }
 
 /* without a device, drain voices in real time */
@@ -4499,6 +4695,7 @@ static void audio_start(void)
 	doppler_enabled = config_boolean("audio.doppler");
 	sound_on = config_boolean("audio.enabled");
 	sound_gain = sound_on ? 1.0f : 0.0f;
+	mix_profile_initialize();
 	resampler_mode = resampler_mode_read();
 	resampler_initialize();
 	resampler_phases_initialize();
@@ -5001,6 +5198,8 @@ VOID WINAPI DirectSoundDoWork(void)
 	}
 	if (log_voices)
 		voices_log();
+	if (mix_profile_on)
+		mix_profiles_log();
 	streams_complete_finished();
 	retired_free();
 }
