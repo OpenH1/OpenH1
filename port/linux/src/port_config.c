@@ -2102,6 +2102,10 @@ static const struct config_setting config_settings[] =
 	{ "debug.bot_player", _config_boolean, "false", "HALO_BOT_PLAYER", _environment_set_is_true, _platform_all,
 		"In a local game with bots (bots.count), a bot of its own plays the first\n"
 		"player too, its view drawn as the player's (for recorded footage)." },
+	{ "debug.bot_player_skill", _config_boolean, "false", "HALO_BOT_PLAYER_SKILL", _environment_set_is_true, _platform_all,
+		"With debug.bot_player, the player's bot aims and fights as the other bots\n"
+		"do at bots.skill, not with the steady hand of the trailer's footage (for\n"
+		"footage of the bots' aim)." },
 	{ "debug.bot_player_weapon", _config_string, "\"\"", "HALO_BOT_PLAYER_WEAPON", _environment_value, _platform_all,
 		"With debug.bot_player, a weapon (part of its tag's name: \"sniper\",\n"
 		"\"rocket\") the player's bot goes for wherever it lies, and keeps." },

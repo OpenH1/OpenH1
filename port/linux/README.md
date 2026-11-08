@@ -1047,15 +1047,26 @@ bring the shield down and at the head once it is down, the rocket launcher and t
 gun at the feet, anything else at the body; the lower the skill, the less
 often it goes for the head. In a fight they play as people do: a grenade
 to open on a whole shield, a grenade then in for a blow, the pistol's
-shots to bring the shield down then a blow, a blow at the reach the game's
-melee has, a grenade at middle range now and then; they strafe one way and
+shots to bring the shield down then a blow, a blow at the reach they judge
+the game's melee to have (now and then too far: a whiff, the easy ones more
+often) once they have taken in that the enemy is there, a grenade at middle
+range now and then; they strafe one way and
 the other about every second and turn about when the enemy's aim comes on
 them (as quickly as their skill reacts, the easy ones not always), back
 away from an enemy too close or with their shield low, stand their ground
 to fire at range now and then (crouched now and then, held), and jump from
 a run some three seconds apart, never with a crouch. Each target's
-reaction is their own, spread as people's are, and until they have reacted
-they go on as they were. Walking, they hold their look and look about now
+reaction is their own, spread as people's are (now and then a second look
+first), and until they have reacted they go on as they were. Their hand
+moves as a person's: a flick that ends off the target, past it more often
+than short, then smaller corrections; it trails a target crossing their
+view by their skill's lag, wanders more the faster the target crosses and
+the further off it is, and they fire when their aim is on the target as
+they see it. A target that went out of sight they aim at where they saw it
+going, not through the wall. `tools/play_log/fights.py` measures all of it
+against people's play logs, skill by skill: the normal bots are about as
+accurate as the people of an internet game, the legendary ones better (a
+skilled player's aim, still trailing and missing), the easy ones worse. Walking, they hold their look and look about now
 and then, turning in sweeps. These habits follow a play log of an internet
 game (`debug.play_log`, `tools/play_log`): its people's reactions, turns,
 strafing rhythm, jumps and firing. On a map with a profile of how people
@@ -1551,8 +1562,9 @@ the setting for one start of the game. It has priority over the file.
 | `debug.network_test_cues`, `debug.network_test_cue_players` | none, `1` | `HALO_NETWORK_TEST_CUES`, `HALO_NETWORK_TEST_CUE_PLAYERS` | Console lines a test runs at their seconds, from the first tick that many players are in (`"<second> <line>\|..."`). |
 | `debug.network_test_lobby_cues` | none | `HALO_NETWORK_TEST_LOBBY_CUES` | Console lines a test's host runs in its first lobby, at their seconds of its setup, before `debug.network_test_start` starts the game (`"<second> <line>\|..."`). |
 | `debug.bot_trace` | `0` | `HALO_BOT_TRACE` | Every this many seconds, each bot's state is written to the log: where it is and where it goes, its path, its target and its weapon. `0`: never. |
-| `debug.play_log` | `""` | `HALO_PLAY_LOG` | A file to write every player's state to, about 60 times a second (`port/linux/game/play_log.c`): where each is, how it moves and aims, its controls, weapon and health; for studying how people play beside the bots. A relative name is in the data folder (the macOS app's, which can write nowhere else). `tools/play_log/` reports on one: `aim.py` (reactions, turning, firing), `movement.py` (strafing, jumps, crouching, retreats, spacing), `travel.py` (teleporters, vehicles). |
+| `debug.play_log` | `""` | `HALO_PLAY_LOG` | A file to write every player's state to, about 60 times a second (`port/linux/game/play_log.c`): where each is, how it moves and aims, its controls, weapon and health; for studying how people play beside the bots. A relative name is in the data folder (the macOS app's, which can write nowhere else). `tools/play_log/` reports on one: `aim.py` (reactions, turning, firing), `fights.py` (the aim and blows metric by metric, people against the bots of each skill), `movement.py` (strafing, jumps, crouching, retreats, spacing), `travel.py` (teleporters, vehicles). |
 | `debug.bot_player` | `false` | `HALO_BOT_PLAYER` (set) | In a local game with bots (`bots.count`), a bot of its own plays the first player too, and its view is drawn as the player's: footage of a fighter without a person at the controls. |
+| `debug.bot_player_skill` | `false` | `HALO_BOT_PLAYER_SKILL` (set) | With `debug.bot_player`, the player's bot aims and fights as the other bots do at `bots.skill` (their reactions, flicks, tracking lag, misses and blows), not with the steady hand of the trailer's footage: footage of the bots' aim from behind a bot's eyes. |
 | `debug.bot_player_weapon` | `""` | `HALO_BOT_PLAYER_WEAPON` | With `debug.bot_player`, a weapon (part of its tag's name: `sniper`, `rocket`) the player's bot goes for wherever on the map it lies, and keeps; with a sniper rifle it looks through the scope at a distance. |
 | `debug.bots_weapon` | `""` | `HALO_BOTS_WEAPON` | A weapon (part of its tag's name: `assault rifle`, `\pistol`, `sniper`) every bot spawns with and keeps while it has rounds, to measure the bots' aim with one weapon: halo.log's `bots: ... aim` line, each minute, gives each weapon family's rounds that struck someone of those fired. |
 | `debug.bot_player_grenades` | `""` | `HALO_BOT_PLAYER_GRENADES` | With `debug.bot_player`, `plasma`: the player's bot spawns with four plasma grenades and no frags, and throws them at 4 to 18 world units, six times as often as a bot, for sticks. |
