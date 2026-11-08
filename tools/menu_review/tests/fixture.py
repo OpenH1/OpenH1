@@ -32,7 +32,9 @@ def widgets(base: str) -> list:
                 "extent": [box[0] + 3, box[1], box[0] + 3 + 8 * len(words), box[3] - 2], "whole": None, "wide": None}
 
     return [widget(0, -1, "screen", [0, 0, 640, 480]), widget(1, 0, "panel", [100, 100, 400, 300]),
-            widget(2, 1, "label_a", [120, 120, 300, 140]), widget(3, 1, "label_b", [120, 160, 300, 180]),
+            {**widget(2, 1, "label_a", [120, 120, 300, 140]),
+             "source": "tools/port_settings.py settings_files/_settings_page/_settings_text"},
+            widget(3, 1, "label_b", [120, 160, 300, 180]),
             widget(4, 0, "button_ok", [450, 400, 578, 424]),
             text(2, "SOUND", [120, 120, 300, 140]), text(3, "MUSIC", [120, 160, 300, 180]), text(4, "OK", [450, 400, 578, 424])]
 
@@ -72,7 +74,13 @@ def make(folder: Path):
                     shown = picture(screen, size, items, 30 if side == "before" else 0)
                     capture.write_png(shown, out / f"{slug}.png")
                     capture.write_png(shown, out / f"{slug}.thumb.png")
-    (folder / "notes.jsonl").write_text("")
+    # (a note fixed, ready for review: its before | after is the --compare run's)
+    audio = next(name for name in SCREENS if SCREENS[name] == "audio")
+    ready = {"id": "6aef00000001", "status": "fixed", "kind": "fix", "scope": "variant", "time": "2026-11-07T20:00:00Z",
+             "note": "Close the gap under SOUND", "screen": audio, "variant": "keyboard-16x9", "author": "Paul",
+             "widget": "pc\\" + audio.replace("/", "\\").rsplit("\\", 1)[0] + "\\label_b", "commit": "abc1234",
+             "review": {"run": "pr-1", "new_problems": 0}, "thread": []}
+    (folder / "notes.jsonl").write_text(json.dumps(ready) + "\n")
 
 
 if __name__ == "__main__":
