@@ -3976,6 +3976,7 @@ static struct
 	{ "controls.pause", L"PAUSE MENU", 2, TRUE },
 	{ "controls.screenshot", L"SCREENSHOT", 2, FALSE },
 	{ "controls.report", L"SAVE REPORT", 2, FALSE },
+	{ "controls.clip", L"CLIP", 2, FALSE },
 	{ "controls.push_to_talk", L"PUSH TO TALK", 3, FALSE },
 	{ "controls.chat", L"CHAT", 3, FALSE },
 	{ "controls.team_chat", L"TEAM CHAT", 3, FALSE },

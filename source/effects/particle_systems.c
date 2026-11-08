@@ -90,6 +90,7 @@ symbols in this file:
 #include "saved games/game_state.h"
 #include "scenario/scenario.h"
 #include "tag_files/tag_files.h"
+#include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 
 /* ---------- constants */
 
@@ -550,6 +551,12 @@ static boolean particle_system_initialize(
 	struct particle_system_definition *definition = particle_system_definition_get(system->definition_index);
 	boolean success = TRUE;
 	short type_index;
+	/* port: at game.sim_rate 60 and 120 the frames' seed in a tick too
+	(random_math_port_begin_cosmetic, as particles.c's particle_new): a
+	particle system is only seen, and its first particles are as many as the
+	frames left room for. At 30 the tick's, as the original's */
+	boolean cosmetic = sim_rate_get() > TICKS_PER_SECOND;
+	boolean ticking = cosmetic ? random_math_port_begin_cosmetic() : FALSE;
 
 	scenario_location_from_point(&system->location, &system->position);
 	SET_FLAG(system->flags, _particle_system_initializing_bit, TRUE);
@@ -605,6 +612,8 @@ static boolean particle_system_initialize(
 	{
 		particle_system_update(0.001f, system_index);
 	}
+	if (cosmetic) /* port: (above) */
+		random_math_port_end_cosmetic(ticking);
 
 	return success;
 }

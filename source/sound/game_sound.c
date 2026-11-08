@@ -1608,3 +1608,23 @@ static void scripted_music_stop_all(
 
 	return;
 }
+
+/* port: the speakers' mouths and their seed, kept outside the game state
+and read by the ticks (game_sound_port_update_mouths), part by part (NULL
+past the last), for a demo (port/linux/game/demo.c): its playback has the
+recording's */
+void *game_sound_port_demo_state(
+	short part,
+	long *size)
+{
+	switch (part)
+	{
+	case 0:
+		*size = (long)sizeof(game_sound_mouths);
+		return game_sound_mouths;
+	case 1:
+		*size = (long)sizeof(game_sound_speech_seed);
+		return &game_sound_speech_seed;
+	}
+	return NULL;
+}

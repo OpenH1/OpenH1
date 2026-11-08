@@ -51,6 +51,7 @@ sub-step a frame.
 #include "math/real_math.h"
 #include "game/game.h"
 #include "sim_rate.h"
+#include "demo.h"
 #include "network_standard.h"
 
 /* port/linux/src/port_config.c */
@@ -142,6 +143,9 @@ boolean sim_rate_follows_setting(
 static long sim_rate_for_connection(
 	void)
 {
+	/* (a demo's playback, the recording's: demo.c) */
+	if (demo_playback_sim_rate())
+		return demo_playback_sim_rate();
 	if (sim_rate_follows_setting())
 		return sim_rate_setting();
 	switch (game_connection())

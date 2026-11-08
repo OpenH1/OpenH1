@@ -52,6 +52,9 @@ enum halo_keyboard_action
 	network_votekick.c, read with the chat's keys) */
 	HALO_KEYBOARD_VOTE_YES,
 	HALO_KEYBOARD_VOTE_NO,
+	/* (the clip key's, which the game itself does not read: the demo being
+	recorded marked, port/linux/game/demo.c) */
+	HALO_KEYBOARD_CLIP,
 	NUMBER_OF_HALO_KEYBOARD_ACTIONS
 };
 

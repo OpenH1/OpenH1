@@ -1109,6 +1109,9 @@ static const struct config_setting config_settings[] =
 		"Report a problem: a zip in reports/ beside maps/ (the log, the settings,\n"
 		"the GPU, the frame times and a screenshot of that moment), and a GitHub\n"
 		"issue opened in the browser, filled in, for it to be dragged into." },
+	{ "controls.clip", _config_string, "\"F9\"", "HALO_KEY_CLIP", _environment_value, _platform_all,
+		"Clip: mark the demo being recorded at this moment, its last\n"
+		"demo.clip_seconds (docs/demos.md)." },
 	{ "controls.push_to_talk", _config_string, "\"V\"", "HALO_KEY_PUSH_TO_TALK", _environment_value, _platform_all,
 		"Voice chat: talk while it is held (audio.voice_chat \"push_to_talk\")." },
 	{ "controls.chat", _config_string, "\"T\"", "HALO_KEY_CHAT", _environment_value, _platform_all,
@@ -1307,6 +1310,25 @@ static const struct config_setting config_settings[] =
 		"settings or other players' games (debug.txt names what they were\n"
 		"refused)." },
 
+	{ "demo.record", _config_boolean, "false", "HALO_DEMO_RECORD", _environment_value, _platform_all,
+		"true: record every game this computer plays or hosts (the campaign,\n"
+		"split screen, games with bots, network games it hosts) as a demo in\n"
+		"paths.data's demos/ folder: its ticks' input and what reached the game\n"
+		"from elsewhere, which plays back exactly (docs/demos.md). Off by default." },
+	{ "demo.keep_count", _config_integer, "20", "HALO_DEMO_KEEP_COUNT", _environment_value, _platform_all,
+		"The most demos kept: the oldest are deleted as a new one begins. Pinned\n"
+		"demos (demos/kept/) are never deleted, nor counted." },
+	{ "demo.keep_megabytes", _config_integer, "2048", "HALO_DEMO_KEEP_MEGABYTES", _environment_value, _platform_all,
+		"The most the demos kept may take of the disk, in MB (the pinned ones\n"
+		"not counted): the oldest are deleted as a new one begins." },
+	{ "demo.snapshot_seconds", _config_real, "10.0", "HALO_DEMO_SNAPSHOT_SECONDS", _environment_value, _platform_all,
+		"How often a demo keeps the whole game state, in seconds, for its\n"
+		"playback to seek to." },
+	{ "demo.clip_seconds", _config_real, "30.0", "HALO_DEMO_CLIP_SECONDS", _environment_value, _platform_all,
+		"How much of the demo before it the clip key marks, in seconds." },
+	{ "demo.play", _config_string, "\"\"", "HALO_DEMO_PLAY", _environment_value, _platform_all,
+		"A demo to play as the game starts (its file; also halo --demo <file>);\n"
+		"empty for none." },
 	{ "paths.data", _config_string, "\"\"", "HALO_DATA_ROOT", _environment_value, _platform_desktop,
 		"The folder holding the game data's maps folder; empty looks in the\n"
 		"working directory and its assets folder. Windows paths are easiest in\n"
@@ -2201,6 +2223,17 @@ static const struct config_setting config_settings[] =
 		"A file to write a line a tick to: a hash of the game state, the random\n"
 		"seeds and every taker of a seed by its call site, to compare two runs\n"
 		"of the same input (tools/determinism_compare.py); empty for none." },
+	{ "debug.demo_seek", _config_string, "\"\"", "HALO_DEMO_SEEK", _environment_value, _platform_all,
+		"\"<at>,<by>\": the demo played seeks by seconds (negative: back) once it\n"
+		"reaches at seconds, for tests; empty none." },
+	{ "debug.demo_verify", _config_boolean, "false", "HALO_DEMO_VERIFY", _environment_set_is_true, _platform_all,
+		"The demo played compared with each of its snapshots as it reaches them,\n"
+		"the bytes apart logged, to find where a playback parts." },
+	{ "debug.demo_log", _config_boolean, "false", "HALO_DEMO_LOG", _environment_set_is_true, _platform_all,
+		"Log each whole game state the demo being recorded takes, and why." },
+	{ "debug.demo_quit", _config_boolean, "false", "HALO_DEMO_QUIT", _environment_set_is_true, _platform_all,
+		"Quit when the demo played (demo.play, --demo) ends, or cannot be\n"
+		"played, for tests." },
 	{ "debug.determinism_dump", _config_integer, "0", "HALO_DETERMINISM_DUMP", _environment_value, _platform_all,
 		"With debug.determinism_log, the tick after which to write the game\n"
 		"state too, counted as logged from 1, to <log>.<count>.bin (and its first\n"
@@ -2666,6 +2699,22 @@ static int config_argument(const char *name, char *value, size_t size)
 	return 0;
 }
 #endif
+
+/* the value after a command line argument (halo --demo <file>), for the
+game's port code: whether it was there */
+int config_command_line_value(const char *name, char *value, unsigned long size)
+{
+#ifndef HALO_ANDROID
+	if (size)
+		value[0] = 0;
+	return config_argument(name, value, (size_t)size) && value[0];
+#else
+	(void)name;
+	if (size)
+		value[0] = 0;
+	return 0;
+#endif
+}
 
 /* ---------- the file */
 

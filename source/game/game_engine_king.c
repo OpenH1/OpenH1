@@ -1476,3 +1476,21 @@ boolean game_engine_king_read_network_state(
 		game_engine_play_multiplayer_sound(_multiplayer_sound_hill_move);
 	return TRUE;
 }
+
+/* port: the game type's state kept outside the game state, part by part
+(NULL past the last), for a demo (port/linux/game/demo.c) */
+void *game_engine_king_port_demo_state(
+	short part,
+	long *size)
+{
+	switch (part)
+	{
+	case 0:
+		*size = (long)sizeof(king_globals);
+		return &king_globals;
+	case 1:
+		*size = (long)sizeof(king_hills);
+		return &king_hills;
+	}
+	return NULL;
+}

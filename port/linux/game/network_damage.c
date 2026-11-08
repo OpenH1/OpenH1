@@ -69,6 +69,7 @@ being hit looks and feels like on the clients).
 #include "network_coop.h"
 #include "network_distributed.h"
 #include "network_standard.h"
+#include "demo.h"
 
 #include <math.h>
 
@@ -1266,14 +1267,20 @@ boolean network_damage_deals(
 	/* (a client's player's, whose machine reports it; but one whose machine
 	has left deals it here: their grenades and rockets still in flight; and
 	a static target's own, which no machine reports: static_target_damage) */
-	if (game_connection() == _game_connection_network_server && !damage_dealing_report &&
-		damage->owner_player_index != NONE && !distributed_player_is_local(damage->owner_player_index) &&
-		!static_target_damage(damage))
 	{
-		struct player_datum *owner = player_try_and_get(damage->owner_player_index);
+		boolean reported = FALSE;
 
-		if (owner && !owner->quit_out_of_game &&
-			distributed_player_machine((short)DATUM_INDEX_TO_ABSOLUTE_INDEX(damage->owner_player_index)) != NONE)
+		if (game_connection() == _game_connection_network_server && !damage_dealing_report &&
+			damage->owner_player_index != NONE && !distributed_player_is_local(damage->owner_player_index) &&
+			!static_target_damage(damage))
+		{
+			struct player_datum *owner = player_try_and_get(damage->owner_player_index);
+
+			reported = owner && !owner->quit_out_of_game &&
+				distributed_player_machine((short)DATUM_INDEX_TO_ABSOLUTE_INDEX(damage->owner_player_index)) != NONE;
+		}
+		/* (as the demo has it, in its playback: demo.c) */
+		if (demo_decide(reported))
 		{
 			distributed_damage_material((struct damage_data *)damage, object_index, material_index);
 			return FALSE;
@@ -2896,6 +2903,34 @@ static boolean distributed_report_valid(
 	return TRUE;
 }
 
+/* (a host) a hit dealt outside the ticks, as a demo records it (demo.c's
+X record, network_damage_deal_recorded deals it again in its playback):
+before object_cause_damage deals it, and demo_event_end after */
+void network_damage_demo_hit_begin(
+	struct damage_data const *damage,
+	long object_index,
+	short node_index,
+	short region_index,
+	short material_index,
+	real_vector3d const *object_normal)
+{
+	struct distributed_hit_report dealt;
+
+	csmemset(&dealt, 0, sizeof(dealt));
+	dealt.object_index = object_index;
+	distributed_damage_from_data(damage, &dealt.damage);
+	dealt.node_index = node_index;
+	dealt.region_index = region_index;
+	dealt.material_index = material_index;
+	if (object_normal)
+	{
+		dealt.object_normal = *object_normal;
+		dealt.has_normal = TRUE;
+	}
+	dealt.host_time = NONE;
+	demo_event_begin('X', &dealt, sizeof(dealt));
+}
+
 void network_damage_handle_reports(
 	long machine_index,
 	void const *entries,
@@ -2934,11 +2969,45 @@ void network_damage_handle_reports(
 		}
 		damage_dealt_reports++;
 		network_test_note_hit("dealt", report->object_index);
+		network_damage_demo_hit_begin(&damage, report->object_index, report->node_index, report->region_index,
+			report->material_index, report->has_normal ? &report->object_normal : NULL);
 		damage_dealing_report = TRUE;
 		object_cause_damage(&damage, report->object_index, report->node_index, report->region_index,
 			report->material_index, report->has_normal ? &report->object_normal : NULL);
 		damage_dealing_report = FALSE;
+		demo_event_end();
 	}
+}
+
+/* (a demo's playback, demo.c) a client's hit that the host dealt, as its
+demo recorded it (network_damage_handle_reports): dealt again as the host
+dealt it, the record checked as a report is */
+void network_damage_deal_recorded(
+	void const *bytes,
+	unsigned long size)
+{
+	struct distributed_hit_report report;
+	struct damage_data damage;
+
+	if (size != sizeof(report))
+		return;
+	csmemcpy(&report, bytes, sizeof(report));
+	if (!distributed_object_index_valid(report.object_index) ||
+		(!object_try_and_get_and_verify_type(report.object_index,
+			_object_mask_biped | _object_mask_vehicle | _object_mask_weapon | _object_mask_equipment) &&
+			!static_target(report.object_index)) ||
+		!distributed_damage_numbers_valid(&report.damage) ||
+		(report.has_normal && !distributed_point_valid((real_point3d const *)&report.object_normal, 2.0f)) ||
+		!distributed_damage_indices_valid(report.object_index, report.node_index, report.region_index,
+			report.material_index) ||
+		!distributed_damage_to_data(&report.damage, &damage))
+	{
+		return;
+	}
+	damage_dealing_report = TRUE;
+	object_cause_damage(&damage, report.object_index, report.node_index, report.region_index,
+		report.material_index, report.has_normal ? &report.object_normal : NULL);
+	damage_dealing_report = FALSE;
 }
 
 /* where each damage event of this tick goes: a player effect to its
