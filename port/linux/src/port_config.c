@@ -2402,6 +2402,12 @@ static const struct config_setting config_settings[] =
 		"Record the shaders and pipelines the game draws with into this file (each\n"
 		"new one added to it), for the renderer's manifest\n"
 		"(port/assets/render/README.md); empty for none." },
+	{ "debug.render_marks", _config_boolean, "false", "HALO_RENDER_MARKS", _environment_set_is_true, _platform_all,
+		"Tell the renderer's command stream what each draw belongs to (the\n"
+		"camera of each window, and each run of draws' owner: an object, the\n"
+		"structure's shader, an effect, the HUD, a menu widget, text), for the\n"
+		"inspector's replay of a recording (HALO_RENDER_RECORD; port/macos/README.md).\n"
+		"The backends draw nothing for them; off, nothing is sent." },
 	{ "debug.gpu_validation", _config_boolean, "false", "HALO_GPU_VALIDATION", _environment_set_is_true, _platform_all,
 		"Report the graphics API's errors in the log: Vulkan's validation layers\n"
 		"(which must be installed)." },

@@ -1211,6 +1211,8 @@ void draw_string(
 	/* port: streamer mode's words hidden, in what is drawn and what is measured
 	(port/linux/game/text_filter.c) */
 	string = text_filter_string(string);
+	/* port: debug.render_marks: the text's draws (port/linux/game/render_marks.c) */
+	render_marks_text(string);
 
 	match_assert("c:\\halo\\SOURCE\\text\\draw_string.c", 648, bounds);
 	match_assert("c:\\halo\\SOURCE\\text\\draw_string.c", 649, string);
@@ -1392,6 +1394,7 @@ void draw_string(
 		*cursor_reference = cursor;
 	}
 
+	render_marks_text_end(); /* port: debug.render_marks */
 	return;
 }
 
@@ -1413,6 +1416,7 @@ void draw_unicode_string(
 	/* port: streamer mode's words hidden, in what is drawn and what is measured
 	(port/linux/game/text_filter.c) */
 	string = text_filter_unicode(string);
+	render_marks_unicode_text((unsigned short const *)string); /* port: (as draw_string's) */
 
 	match_assert("c:\\halo\\SOURCE\\text\\draw_string.c", 848, bounds);
 	match_assert("c:\\halo\\SOURCE\\text\\draw_string.c", 849, string);
@@ -1594,6 +1598,7 @@ void draw_unicode_string(
 		*cursor_reference = cursor;
 	}
 
+	render_marks_text_end(); /* port: debug.render_marks */
 	return;
 }
 

@@ -10,7 +10,7 @@ effect, the HUD, a menu widget, text). The backends draw nothing for them;
 with the setting off nothing is sent and each call returns at once.
 
 The kinds are xgpu_stream.h's XGPU_STREAM_MARK_*, in the same order
-(render_marks.c checks).
+(kept so by hand: the stream's encoder takes them as its kinds).
 */
 
 #ifndef RENDER_MARKS_H
@@ -47,5 +47,40 @@ enum
 
 /* nonzero while the setting is on (read once a frame) */
 extern int render_marks_on;
+
+struct render_camera;
+
+/* the frame begun (the setting read; the map and the tick), and a
+window's camera (render.c) */
+void render_marks_frame_begin(void);
+void render_marks_view(short window_index, struct render_camera const *camera);
+/* the category drawing (rasterizer.h's _rasterizer_profile_*, -1 none:
+rasterizer_profile_begin and _end): every draw's owner until a finer one */
+void render_marks_category(int category);
+/* a model drawn (models.c's render_model): the object it is (its index, or
+NONE), in first person or as a shadow; and each of its parts' shader */
+void render_marks_model(long model_index, long object_index, int first_person, int shadow);
+void render_marks_model_shader(long shader_index);
+/* a structure material's surfaces (structure_render.c) */
+void render_marks_structure(long shader_index, short lightmap_index, short material_index);
+/* the kind (RENDER_MARK_PARTICLE, ...) and a tag (its bitmap: NONE none)
+of the transparent groups made from now on (NONE: none), each group made
+(rasterizer_xbox_dynavobgeom.c), and a group drawn
+(rasterizer_xbox_transparent_geometry.c) */
+void render_marks_next(int kind, long tag_index);
+void render_marks_group_made(void const *group);
+void render_marks_transparent(void const *group, unsigned long geometry_flags, long object_index, void const *shader,
+	int first_person, int sky, int water);
+/* a menu widget drawn (ui_widget.c): its definition, its instance, its
+background bitmap */
+void render_marks_widget(long definition_index, void const *widget, long bitmap_index);
+/* a HUD interface (its tag: NONE none) or a part of the HUD */
+void render_marks_hud(long tag_index, char const *label);
+/* draws of a kind of their own (the letterbox, the debug drawing) */
+void render_marks_kind(int kind, char const *label);
+/* text drawn (draw_string.c), and done */
+void render_marks_text(char const *string);
+void render_marks_unicode_text(unsigned short const *string);
+void render_marks_text_end(void);
 
 #endif

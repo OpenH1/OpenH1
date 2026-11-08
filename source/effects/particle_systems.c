@@ -1593,6 +1593,7 @@ static void particle_system_render(
 							lit_color.blue *= system->lighting.blue;
 						}
 
+						render_marks_next(RENDER_MARK_PARTICLE, state_definition->bitmaps.index); /* port: debug.render_marks */
 						build_sprites_begin(
 							&sprite_data,
 							2,
@@ -1653,6 +1654,7 @@ static void particle_system_render(
 							lit_color.blue *= system->lighting.blue;
 						}
 
+						render_marks_next(RENDER_MARK_PARTICLE, transition_state_definition->bitmaps.index); /* port: debug.render_marks */
 						build_sprites_begin(
 							&sprite_data,
 							2,

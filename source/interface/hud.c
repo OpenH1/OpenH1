@@ -1581,6 +1581,7 @@ void hud_draw_screen(
 		if ((!game_engine_running() || game_engine_display_team_indicators()) &&
 			!cinematic_in_progress())
 		{
+			render_marks_hud(NONE, "player indicators"); /* port: debug.render_marks */
 			hud_draw_players();
 		}
 
@@ -1635,10 +1636,12 @@ void hud_draw_screen(
 #ifdef HALO_VR
 				halo_vr_hud_group(HALO_VR_HUD_GROUP_WORLD);
 #endif
+				render_marks_hud(NONE, "navigation points"); /* port: debug.render_marks */
 				hud_render_nav_points(render.local_player_index);
 #ifdef HALO_VR
 				halo_vr_hud_group(HALO_VR_HUD_GROUP_CENTRE);
 #endif
+				render_marks_hud(NONE, "damage indicators"); /* port: debug.render_marks */
 				hud_render_damage_indicators(render.local_player_index);
 			}
 			else
@@ -1655,6 +1658,7 @@ void hud_draw_screen(
 #ifdef HALO_VR
 		halo_vr_hud_group(HALO_VR_HUD_GROUP_CENTRE);
 #endif
+		render_marks_hud(NONE, "messages"); /* port: debug.render_marks */
 		hud_messaging_update(render.local_player_index);
 		/* port: network games' text chat, the lines this view's player hears */
 		network_chat_draw(render.local_player_index);

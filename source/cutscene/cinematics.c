@@ -351,6 +351,8 @@ void cinematic_render(
 			bar_height *= viewport_height;
 			bar.y1 = (short)fast_ftol(
 				(real)render.camera.viewport_bounds.y0 + bar_height);
+			/* port: debug.render_marks (port/linux/game/render_marks.c) */
+			render_marks_kind(RENDER_MARK_CINEMATIC_LETTERBOX, "letterbox");
 			draw_quad(&bar, 0xFF000000);
 
 			bar.x0 = (short)fast_ftol((real)render.camera.viewport_bounds.x0);
