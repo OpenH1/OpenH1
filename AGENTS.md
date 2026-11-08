@@ -232,6 +232,7 @@ python -m pytest -q tools/test_ios_touch_layout.py          # the iOS touch layo
 python tools/touch_assets.py --check                        # the touch controls' pictures as their SVGs draw them
 python tools/test_light_storage.py
 python tools/test_death_timing.py
+(cd tools/menu_review && npx playwright test)               # the review app in a real browser (npm ci first)
 python -m pytest -q tools/test_menu_review.py               # menu_review.py: a tap as its widget, the web's notes, the login
 python -m pytest -q tools/test_menu_notes.py                # menu_notes.py's notes: listed, briefed, marked done
 python -m pytest -q tools/test_menu_gallery.py              # menu_gallery.py's screens, picture difference, layout checks, page
@@ -276,9 +277,14 @@ Running the game without a person at it:
   `done <id>` marks one addressed; `menu_gallery.py --compare <ref> --notes`
   shows their screens before | after.
 - `python tools/menu_review.py serve` serves the galleries in `build/` behind
-  a shared secret (`tools/menu_review.py secret`) for review on a phone or a
-  desktop: tap a widget on a picture (its layout maps the tap) and leave a
-  note in the same notes file; `render` shows the noted screens before | after.
+  a shared secret (`tools/menu_review.py secret`) as a design tool for a phone
+  or a desktop (the client: `tools/menu_review/`, its build committed): select,
+  inspect (the generator's source of each widget), propose edits, comment;
+  the notes go to `build/menu_notes.jsonl`. An agent works them with
+  `tools/menu_notes.py`: `batches`, `brief --batch N` (each note's source
+  first), `reply` to a question, and `fixed <id> --commit <sha>` once the fix
+  is committed (it re-renders and checks the screens, then it is ready for
+  review). A general preference becomes a rule in `port/assets/menus/STYLE.md`.
 - `debug.network_test` (`HALO_NETWORK_TEST=host:<map>` or `join`) hosts or
   joins a game without the menus and logs each player's state every second;
   several copies play on one machine on different loopback addresses
