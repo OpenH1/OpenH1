@@ -127,6 +127,7 @@ their handlers open opens.
 #include "../src/player_link.h" /* port: port/linux/src/player_link.c */
 #include "../src/server_master.h"
 #include "../src/report.h"
+#include "../src/game_caches.h" /* port: port/linux/src/game_caches.c */
 #include "text_filter.h"
 /* (the party: party_menu.inc) */
 #include "party.h"
@@ -2402,6 +2403,7 @@ static boolean settings_profile_new(struct widget_instance *widget, struct event
 }
 
 static void settings_weapon_reset(struct widget_instance *screen);
+static void clear_caches_press(void);
 
 /* "port settings <name>": FALSE if it is not one of these */
 static boolean settings_function(char const *name, struct widget_instance *widget, struct event_record *event,
@@ -2479,6 +2481,12 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 		halo_gyro_calibrate();
 		gyro_calibrated = FALSE;
 		ui_play_audio_feedback_sound(SOUND_CURSOR);
+	}
+	else if (!strcmp(name, "clear caches"))
+	{
+		/* (CLEAR CACHES: asked, then asked for at the next start,
+		port/linux/src/game_caches.c) */
+		clear_caches_press();
 	}
 	else if (!strcmp(name, "report"))
 	{
@@ -3039,6 +3047,111 @@ static boolean about_panel(struct widget_instance *row, wchar_t *value, wchar_t 
 	return TRUE;
 }
 
+/* ---------- Profiles' CLEAR CACHES (port/linux/src/game_caches.c)
+
+The row's value is the caches' size, walked on the disk as the page shows
+it and after each press, not each frame; SELECT AGAIN after a first press,
+and AT NEXT START once their clearing is asked for, which a press then takes
+back. The panel says what a press does now. */
+
+#define CLEAR_CACHES_ASK_MILLISECONDS 5000
+
+static struct
+{
+	/* the first press, 0: none */
+	unsigned long asked;
+	/* whether they were measured since the page showed, their bytes, and
+	whether their clearing is asked for */
+	boolean measured;
+	unsigned long long bytes;
+	boolean requested;
+} clear_caches;
+
+static boolean clear_caches_asked(void)
+{
+	return clear_caches.asked && system_milliseconds() - clear_caches.asked < CLEAR_CACHES_ASK_MILLISECONDS;
+}
+
+/* a size in words: "2.9 GB", "640 MB", "12 KB" */
+static void clear_caches_size(unsigned long long bytes, char *text, int size)
+{
+	if (bytes >= 1000ULL * 1024 * 1024)
+		snprintf(text, size, "%.1f GB", (double)bytes / (1024.0 * 1024.0 * 1024.0));
+	else if (bytes >= 1024ULL * 1024)
+		snprintf(text, size, "%lu MB", (unsigned long)(bytes / (1024ULL * 1024)));
+	else
+		snprintf(text, size, "%lu KB", (unsigned long)((bytes + 1023) / 1024));
+}
+
+static void clear_caches_measure(void)
+{
+	clear_caches.bytes = game_caches_bytes();
+	clear_caches.requested = game_caches_requested() != 0;
+	clear_caches.measured = TRUE;
+}
+
+static void clear_caches_show(struct widget_instance *list)
+{
+	struct widget_instance *row = named(list, "op_clear_caches", 0);
+	char text[ROW_TEXT_LENGTH];
+
+	if (!row)
+	{
+		clear_caches.measured = FALSE;
+		clear_caches.asked = 0;
+		return;
+	}
+	if (!clear_caches.measured)
+		clear_caches_measure();
+	if (clear_caches.requested)
+		snprintf(text, sizeof(text), "AT NEXT START");
+	else if (clear_caches_asked())
+		snprintf(text, sizeof(text), "SELECT AGAIN");
+	else
+		clear_caches_size(clear_caches.bytes, text, sizeof(text));
+	discord_text_set(named(row, "clear_caches_value", 0), text);
+}
+
+/* the panel's value (the size) and words for CLEAR CACHES (the others':
+FALSE) */
+static boolean clear_caches_panel(struct widget_instance *row, wchar_t *value, wchar_t const **help)
+{
+	static wchar_t words[SETTINGS_PANEL_TEXT_LENGTH];
+	char size[32], text[SETTINGS_PANEL_TEXT_LENGTH];
+
+	if (!row->name || strcmp(row->name, "op_clear_caches"))
+		return FALSE;
+	clear_caches_size(clear_caches.bytes, size, sizeof(size));
+	discord_widen(size, value, ROW_TEXT_LENGTH);
+	if (clear_caches.requested)
+		snprintf(text, sizeof(text), "These %s are cleared the next time the game starts, before anything uses "
+			"them, and made again as you play: that start takes longer.|Select CLEAR CACHES again to keep them.",
+			size);
+	else if (clear_caches_asked())
+		snprintf(text, sizeof(text), "Select CLEAR CACHES again to clear these %s at the next start.", size);
+	else
+		return TRUE;
+	discord_widen(text, words, SETTINGS_PANEL_TEXT_LENGTH);
+	*help = words;
+	return TRUE;
+}
+
+/* "port settings clear caches": the first press asks, the second asks for
+the clearing at the next start; once asked for, a press takes it back */
+static void clear_caches_press(void)
+{
+	if (!clear_caches.requested && !clear_caches_asked())
+	{
+		clear_caches.asked = system_milliseconds() | 1;
+		ui_play_audio_feedback_sound(SOUND_CURSOR);
+		return;
+	}
+	game_caches_request(!clear_caches.requested);
+	clear_caches.asked = 0;
+	clear_caches_measure();
+	ui_play_audio_feedback_sound(SOUND_FORWARD);
+}
+
 /* the panel's name, value and words for a row of the page (the others':
 FALSE) */
 static boolean discord_account_panel(struct widget_instance *row, wchar_t *name, wchar_t *value,
@@ -3269,6 +3382,8 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		gyro_found_panel(row, &help);
 		/* (Profile's ABOUT: this build) */
 		about_panel(row, value, &help);
+		/* (Profile's CLEAR CACHES: their size, and what a press does) */
+		clear_caches_panel(row, value, &help);
 		/* (Button Remapping's: a button being taken, a replacement asked) */
 		if (pad_editor_page(screen_of(list)))
 			pad_editor_panel(row, name, value, &help);
@@ -3405,6 +3520,7 @@ static void settings_page_update(struct widget_instance *list)
 	gamma_row_show(list);
 	settings_rows_show(list);
 	discord_account_show(list);
+	clear_caches_show(list);
 	hdr_display_show(list);
 	pad_editor_update(list);
 	controls_page_update(list);
