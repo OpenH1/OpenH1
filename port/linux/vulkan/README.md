@@ -208,7 +208,16 @@ standard error), over ssh as well (`"inline": true` answers with the
 files' bytes in base64 instead of writing them; `"compress": true` deflates
 them, the PNG and the ID buffer, which then comes as `ids_zlib_base64`: a
 1440p frame's reply with its ID buffer 11 MB instead of 34, for some 90 ms
-of the CPU):
+of the CPU; `"image": "qoi"` gives the picture as a QOI file instead of a
+PNG, `qoi_base64` inline, written to the request's `qoi` (or `png`) path,
+`thumb_<n>.qoi` for thumbnails. QOI was measured against PNG on three 1440p
+frames of a Mac recording (a menu, two of play), the bytes and the encoding
+on the 5900x: stored PNG 11.1 MB in 48 ms; PNG through the replay's deflate
+6.0 to 8.4 MB in 125 to 225 ms whichever filter (none, sub, up, Paeth);
+zlib's own at level 1, sub, 5.6 to 7.9 MB in 32 to 48 ms (level 6: 3.7 to
+5.5 MB, 170 to 190 ms); QOI 4.0 to 6.4 MB in 27 to 29 ms, the smallest
+short of zlib's slow levels and the quickest. A step on with a QOI reply
+is 51 ms through the pipes at 1440p, against 89 ms of the plain PNG):
 
 | Request | Answer |
 | --- | --- |
@@ -233,7 +242,12 @@ the gamma curve, Panini) are not draws.
 A frame is played from the one played last, and from the recording's
 start again (the ring's positions going on) for one before it; the
 pictures of the 16 frames before the one asked for are kept on the way, so
-that a step back is not a play again. Measured on the RTX 4090 (a 2,022
+that a step back is not a play again; and the last 8 frames asked for with
+their ID buffers keep them (as many as fit in 512 MB), so that a step back
+to one of those is not either (83 ms at 1440p through the pipes, against
+780 ms played again). The frames passed on the way are not given ID
+buffers: each costs its frame a pass of copies and comparisons for every
+draw (118 ms of a 1440p frame on the 4090) and 118 MB of stacks. Measured on the RTX 4090 (a 2,022
 frame, 1280x720 Blood Gulch recording; each a request's wall time through
 the pipes): a step on with its PNG 17 ms (2 ms of it the frame), with its
 ID buffer 39 ms, a step back to a picture kept 14 ms, a step back with an
