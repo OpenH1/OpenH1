@@ -48,6 +48,9 @@ The zip holds:
   debug.txt      the game's own log, in the data folder
   settings.txt   the settings changed from their defaults (not config.toml:
                  never the passwords, this machine's addresses, keys)
+  input.txt      the input trace (input_trace.c): the keyboard's, mouse's
+                 and gamepads' events, the window's focus, and what the game
+                 read of them, over the last INPUT_TRACE_SECONDS
   screenshot.png the frame shown when it was asked for
   crash.txt      a crash's report: what the host wrote of it, with that
                  run's log, or what is known of a run that did not exit
@@ -83,6 +86,7 @@ on the render thread, as report_write is); a log line a copy into the ring.
 #include "port_config.h"
 #include "posix.h"
 #include "report.h"
+#include "input_trace.h"
 #include "xgpu_backend.h"
 
 #include <pthread.h>
@@ -1943,8 +1947,8 @@ static struct
 	char fallback_folder[1024], fallback[1200];
 	int fell_back;
 	unsigned short time, date;
-	/* report.md, log.txt and settings.txt (malloc()'s, or NULL) */
-	char *issue, *log, *settings;
+	/* report.md, log.txt, settings.txt and input.txt (malloc()'s, or NULL) */
+	char *issue, *log, *settings, *input;
 	/* the host's kept lines, host.log where there is no halo.log
 	(malloc()'s, or NULL) */
 	char *host_lines;
@@ -2014,6 +2018,8 @@ static int report_job_zip(const char *path)
 	}
 	if (report_job.settings)
 		report_zip_add_text(&zip, "settings.txt", report_job.settings, strlen(report_job.settings));
+	if (report_job.input)
+		report_zip_add_text(&zip, "input.txt", report_job.input, strlen(report_job.input));
 	/* (the frame, written by the host beside the zip as it was asked
 	for, then taken in) */
 	if (report_job.shot[0])
@@ -2068,9 +2074,11 @@ static void report_finish_done(void)
 	free(report_job.issue);
 	free(report_job.log);
 	free(report_job.settings);
+	free(report_job.input);
 	free(report_job.host_lines);
 	free(report_job.crash_text);
 	report_job.issue = report_job.log = report_job.settings = report_job.host_lines = report_job.crash_text = NULL;
+	report_job.input = NULL;
 	if (!report_job.saved)
 	{
 		free(report_job.url);
@@ -2257,6 +2265,7 @@ static void report_finish(const char *note, int wait)
 	report_job.settings = report_settings_text(&size);
 	if (report_job.settings)
 		report_job.settings[size] = 0;
+	report_job.input = input_trace_text(INPUT_TRACE_SECONDS, NULL);
 	if (report_capture.send && issue)
 	{
 		char title[160], build[120], *scrubbed;
