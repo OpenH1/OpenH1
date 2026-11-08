@@ -6,6 +6,7 @@
     python tools/capture.py --scene warthog-passenger --compare ../other/build/macos
     python tools/capture.py --scene "camera:20 -60 2 90 -5" --map bloodgulch
     python tools/capture.py --scene hud --frames 30 --every 2
+    python tools/capture.py --scene spawn --script "2 aim=0,-60; 2.5-4 move=0,1" --at 3.5
 
 One run of a hidden, muted game, in folders of its own that are deleted
 afterwards (its data root with the maps linked in, its saves, HOME, TMPDIR,
@@ -226,6 +227,8 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument("--size", type=parse_size, default=(1920, 1080), help="the window's size (1920x1080)")
     parser.add_argument("--prompts", choices=("auto", "keyboard", "controller"), default="auto",
                         help="the button prompts (input.button_prompts)")
+    parser.add_argument("--script", help="debug.test_input's script for the player, in place of the scene's (\"2 aim=0,-60;"
+                        " 2.5-4 move=0,1\": port/linux/src/xinput_sdl.c)")
     parser.add_argument("--at", type=float, help="the second of the scene's clock to take it at (the scene's own)")
     parser.add_argument("--frames", type=int, default=1, help="pictures to take (an animation)")
     parser.add_argument("--every", type=int, default=1, help="with --frames, every this many frames drawn")
@@ -659,6 +662,8 @@ def main(argv=None) -> int:
     if arguments.remote:
         return remote(arguments, argv)
     scene = scene_for(arguments.scene, arguments.map)
+    if arguments.script is not None:
+        scene = Scene(**{**scene.__dict__, "script": arguments.script})
     tree = arguments.tree.resolve()
     build = (arguments.build or default_build(tree)).resolve()
     maps = (arguments.data or default_maps(tree)).resolve()

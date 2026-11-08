@@ -1239,7 +1239,7 @@ static const struct config_setting config_settings[] =
 	{ "display.first_person_legs", _config_boolean, "false", "HALO_FIRST_PERSON_LEGS", _environment_value, _platform_all,
 #endif
 		"Your own legs in first person, seen looking down: your body as others\n"
-		"see it, drawn from the waist down, moving as it moves." },
+		"see it, drawn from the belly down, moving as it moves, with its shadow." },
 	{ "display.overshield_effect", _config_boolean, "true", "HALO_OVERSHIELD_EFFECT", _environment_value, _platform_all,
 		"The overshield as this machine draws it: its flare lit as it charges\n"
 		"and staying lit for as long as it lasts, its energy slower, in its own\n"
