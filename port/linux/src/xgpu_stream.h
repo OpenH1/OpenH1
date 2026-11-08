@@ -38,7 +38,7 @@ port/linux/README.md.
 #include <stdint.h>
 
 #define XGPU_STREAM_MAGIC 0x53504758u /* "XGPS" */
-#define XGPU_STREAM_VERSION 21
+#define XGPU_STREAM_VERSION 22
 #define XGPU_STREAM_LOADING_ART_BYTES (640u * 480u * 4u)
 
 /* ---------- the ring
@@ -938,7 +938,7 @@ struct xgpu_stream_draw_uniforms
 	float texture_scale[4][4];
 	float screen_offset;
 	float texture_lod_bias[4];
-	float world_ao[3];
+	float world_ao[4];
 };
 
 /* xgpu_backend_draw_state: what changed since the last follows, the
@@ -1405,7 +1405,7 @@ XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pipeline_key, 308);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pixel_program, 436);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pipeline_define, 752);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_dynamic_state, 68);
-XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_draw_uniforms, 584);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_draw_uniforms, 588);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vertex_element, 6);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_layout_define, 20);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vertex_stream, 20);

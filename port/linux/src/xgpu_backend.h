@@ -342,8 +342,10 @@ struct xgpu_draw_uniforms
 	(-1 none) and reference (xgpu.h; d3d8_device.c's halo_world_ao_object),
 	and with "ray_traced" its owner among the ray-traced scene's instances
 	(its datum index plus one, 0 none: xgpu_stream.h's
-	xgpu_world_ao_instance) */
-	float world_ao[3];
+	xgpu_world_ao_instance); 1 where the draw is a two-sided model shader's
+	cards (halo_world_ao_cards: their occlusion about their most open
+	direction) */
+	float world_ao[4];
 };
 
 /* ---------- the pipeline key's values */

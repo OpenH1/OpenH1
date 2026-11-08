@@ -100,11 +100,16 @@ float world_sdf_fade(void)
 	return 0.5f;
 }
 
-/* (no static scenery) */
+/* (static scenery: object 400, with collision geometry, and 500, a shrub
+without) */
 int world_proxies_source_baked(long id)
 {
-	(void)id;
-	return 0;
+	return id == 400 || id == 500;
+}
+
+int world_proxies_source_solid(long id)
+{
+	return id == 400;
 }
 
 /* (no static scenery's pages) */
@@ -146,11 +151,11 @@ struct world_scene_instance const *world_scene_instance_find(long id)
 {
 	static struct world_scene_instance instance;
 
-	if (id != 200)
+	if (id != 200 && id != 500)
 		return NULL;
 	memset(&instance, 0, sizeof(instance));
 	instance.id = id;
-	instance.lighting_point[2] = 7.0f;
+	instance.lighting_point[2] = id == 200 ? 7.0f : 6.0f;
 	return &instance;
 }
 
@@ -196,6 +201,13 @@ void halo_world_ao_object(int owner, float reference, unsigned long rays_owner)
 	object_owner = owner;
 	object_reference = reference;
 	object_rays_owner = rays_owner;
+}
+
+static int object_cards = -1;
+
+void halo_world_ao_cards(int cards)
+{
+	object_cards = cards;
 }
 
 int halo_world_ao_ray_queries(void)
@@ -404,6 +416,17 @@ static void window_case(void)
 	CHECK(object_owner == 0 && object_reference == 1.0f, "%d %g", object_owner, object_reference);
 	world_ao_object_begin(300);
 	CHECK(object_owner == WORLD_AO_OWNER_NONE && object_reference == 1.0f, "%d %g", object_owner, object_reference);
+	/* a static placement the field holds: none (from its own depth); one
+	the field does not hold (a shrub): its reference, as a moving object's */
+	world_ao_object_begin(400);
+	CHECK(object_reference == WORLD_AO_REFERENCE_NO_FIELD, "a baked rock: %g", object_reference);
+	world_ao_object_begin(500);
+	CHECK(object_reference == 0.6f, "a baked shrub: %g", object_reference);
+	/* a two-sided shader's cards, and after them */
+	world_ao_cards(1);
+	CHECK(object_cards == 1, "cards: %d", object_cards);
+	world_ao_cards(0);
+	CHECK(object_cards == 0, "cards drawn: %d", object_cards);
 	world_ao_first_person(1);
 	CHECK(object_owner == WORLD_AO_OWNER_UNLIT, "the first-person weapon: %d", object_owner);
 	world_ao_first_person(0);
@@ -415,6 +438,9 @@ static void window_case(void)
 	object_owner = -100;
 	world_ao_object_begin(200);
 	CHECK(object_owner == -100, "an object named with no window");
+	object_cards = -1;
+	world_ao_cards(1);
+	CHECK(object_cards == -1, "cards with no window: %d", object_cards);
 	/* without a field: none faded in, every reference 1 */
 	field_ready = 0;
 	world_ao_window_begin(0, 0, camera);

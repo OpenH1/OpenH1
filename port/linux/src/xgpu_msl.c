@@ -1917,6 +1917,33 @@ static void world_ao_functions(struct xgpu_text *text, int light)
 		"\t\tocclusion += (1.0 / float(2 << tap)) * saturate((h - d) / h);\n"
 		"\t}\n"
 		"\treturn 1.0 - saturate(%.6f * occlusion);\n"
+		"}\n"
+		/* ... and where cards (a two-sided model shader's: xgpu.h's
+		XGPU_WORLD_AO_INPUT_CARDS) that of the most open of the sky's
+		direction (up) and the card's two faces, the first of them where
+		alike; n the direction found (world_ao_shading.c's
+		world_ao_cards_occlusion) */
+		"static inline float world_sdf_cards_occlusion(constant xgpu_world_ao &w, texture3d<float> world_sdf,\n"
+		"\ttexture3d<float> world_sdf_table, float3 p, thread float3 &n, float own, bool cards)\n"
+		"{\n"
+		"\tfloat field = world_sdf_occlusion(w, world_sdf, world_sdf_table, p, n, own);\n"
+		"\tif (!cards)\n"
+		"\t\treturn field;\n"
+		"\tfloat3 up = float3(0.0, 0.0, 1.0), direction = n;\n"
+		"\tfloat sky = world_sdf_occlusion(w, world_sdf, world_sdf_table, p, up, own);\n"
+		"\tfloat back = world_sdf_occlusion(w, world_sdf, world_sdf_table, p, -n, own);\n"
+		"\tif (!(field > sky))\n"
+		"\t{\n"
+		"\t\tfield = sky;\n"
+		"\t\tdirection = up;\n"
+		"\t}\n"
+		"\tif (back > field)\n"
+		"\t{\n"
+		"\t\tfield = back;\n"
+		"\t\tdirection = -n;\n"
+		"\t}\n"
+		"\tn = direction;\n"
+		"\treturn field;\n"
 		"}\n", XGPU_WORLD_SDF_RANGE_VOXELS, XGPU_WORLD_SDF_BRICK, 1.0 / XGPU_WORLD_SDF_BRICK, XGPU_WORLD_SDF_CELL_BRICK,
 		XGPU_WORLD_SDF_CELL_INSIDE, XGPU_WORLD_SDF_BRICK_SPAN, XGPU_WORLD_SDF_BRICK,
 		XGPU_WORLD_SDF_ATLAS * XGPU_WORLD_SDF_BRICK_SPAN, XGPU_WORLD_SDF_ATLAS * XGPU_WORLD_SDF_BRICK_SPAN,
@@ -2237,6 +2264,16 @@ static void world_ao_read(struct xgpu_text *text, const struct xgpu_pixel_progra
 		"\t{\n"
 		"\t\tfloat3 world_n = in.xWorldNormal.xyz * rsqrt(max(dot(in.xWorldNormal.xyz, in.xWorldNormal.xyz), 1.0e-24));\n"
 		"\t\tint limit = int(world_ao.parameters[1].y);\n");
+	/* (a model's field: where its reference is negative, a static scenery
+	placement's own draw, its taps from the pixel's own depth in the field,
+	relative to none; a two-sided shader's cards, its world_ao.w not 0, about
+	their most open direction, the shapes too) */
+	if (light != XGPU_AMBIENT_OCCLUSION_LIGHT_LIGHTMAP)
+		xgpu_text_append(text,
+			"\t\tbool baked = u.world_ao.y < 0.0;\n"
+			"\t\tfloat inside = min(world_sdf_distance(world_ao, world_sdf, world_sdf_table, in.xWorldPosition), 0.0);\n"
+			"\t\tfloat field = world_sdf_cards_occlusion(world_ao, world_sdf, world_sdf_table, in.xWorldPosition, world_n,\n"
+			"\t\t\tbaked ? inside : 0.0, u.world_ao.w != 0.0);\n");
 	if (world_ao_paged(program, light))
 		xgpu_text_append(text,
 			"\t\tfloat scenery = 1.0;\n"
@@ -2260,12 +2297,6 @@ static void world_ao_read(struct xgpu_text *text, const struct xgpu_pixel_progra
 			XGPU_WORLD_AO_FLOOR);
 	else
 		xgpu_text_append(text,
-			/* (a negative reference, a static scenery placement's own draw: its
-			taps from the pixel's own depth in the field, relative to none) */
-			"\t\tbool baked = u.world_ao.y < 0.0;\n"
-			"\t\tfloat inside = min(world_sdf_distance(world_ao, world_sdf, world_sdf_table, in.xWorldPosition), 0.0);\n"
-			"\t\tfloat field = world_sdf_occlusion(world_ao, world_sdf, world_sdf_table, in.xWorldPosition, world_n,\n"
-			"\t\t\tbaked ? inside : 0.0);\n"
 			"\t\tfield = mix(field, saturate(field / max(baked ? 1.0 : u.world_ao.y, %.6f)), world_ao.parameters[1].x);\n"
 			"\t\tocclusion = mix(1.0, max(mix(1.0, field, world_ao.parameters[0].z) * proxies, %.6f), world_ao.parameters[0].x);\n",
 			XGPU_WORLD_AO_REFERENCE_LEAST, XGPU_WORLD_AO_FLOOR);
@@ -2285,7 +2316,11 @@ static void world_ao_inputs(struct xgpu_text *text, const struct xgpu_pixel_prog
 		"\t{\n"
 		"\t\tfloat3 world_n = in.xWorldNormal.xyz * rsqrt(max(dot(in.xWorldNormal.xyz, in.xWorldNormal.xyz), 1.0e-24));\n"
 		"\t\tfloat value = u.world_ao.y;\n"
-		"\t\tuint flags = (uint(int(u.world_ao.x) + 2) & 0xFFu) | %uu;\n", XGPU_WORLD_AO_INPUT_PRESENT);
+		"\t\tuint flags = (uint(int(u.world_ao.x) + 2) & 0xFFu) | %uu;\n"
+		/* (a two-sided model shader's cards: found about their most open
+		direction) */
+		"\t\tif (u.world_ao.w != 0.0)\n"
+		"\t\t\tflags |= %uu;\n", XGPU_WORLD_AO_INPUT_PRESENT, XGPU_WORLD_AO_INPUT_CARDS);
 	if (world_ao_paged(program, light))
 		xgpu_text_append(text,
 			"\t\tflags |= %uu;\n"
@@ -2853,6 +2888,18 @@ char *xgpu_msl_world_ao_pass(BOOL pixel)
 		"\tfloat owner = float(int(words.y & 0xFFu)) - 2.0;\n"
 		"\tfloat value = float(as_type<half>(ushort(words.y >> 16)));\n"
 		"\tint limit = (words.y & %uu) != 0u ? %d : int(world_ao.parameters[1].y);\n"
+		"\tbool lightmap = (words.y & %uu) != 0u, baked = value < 0.0;\n"
+		/* (a model's field: from the pixel's own depth in it where its
+		reference is negative, a static scenery placement's own draw; a
+		two-sided shader's cards about their most open direction, the shapes
+		and rays too) */
+		"\tfloat field = 1.0;\n"
+		"\tif (!lightmap)\n"
+		"\t{\n"
+		"\t\tfloat inside = min(world_sdf_distance(world_ao, world_sdf, world_sdf_table, p), 0.0);\n"
+		"\t\tfield = world_sdf_cards_occlusion(world_ao, world_sdf, world_sdf_table, p, n, baked ? inside : 0.0,\n"
+		"\t\t\t(words.y & %uu) != 0u);\n"
+		"\t}\n"
 		/* (the dynamic objects' shapes by the rays, their occlusion fields
 		and the static scenery's shapes walked) */
 		"\tbool traced = pass.history.w != 0.0;\n"
@@ -2860,19 +2907,16 @@ char *xgpu_msl_world_ao_pass(BOOL pixel)
 		"\t\ttraced ? int(world_ao.parameters[1].y) : 0);\n"
 		"\tif (traced)\n"
 		"\t\tproxies *= 1.0 - world_ao_traced(world_cascades, pass.cascades, p, n, pixel, pass.history.y);\n"
-		"\tif ((words.y & %uu) != 0u)\n"
+		"\tif (lightmap)\n"
 		"\t\treturn mix(1.0, max(proxies * value, %.6f), world_ao.parameters[0].y);\n"
-		"\tbool baked = value < 0.0;\n"
-		"\tfloat inside = min(world_sdf_distance(world_ao, world_sdf, world_sdf_table, p), 0.0);\n"
-		"\tfloat field = world_sdf_occlusion(world_ao, world_sdf, world_sdf_table, p, n, baked ? inside : 0.0);\n"
 		"\tfield = mix(field, saturate(field / max(baked ? 1.0 : value, %.6f)), world_ao.parameters[1].x);\n"
 		"\treturn mix(1.0, max(mix(1.0, field, world_ao.parameters[0].z) * proxies, %.6f), world_ao.parameters[0].x);\n"
 		"}\n",
 		XGPU_WORLD_AO_RAY_CASCADE, XGPU_WORLD_AO_RAY_REACH,
 		XGPU_WORLD_AO_RAYS, XGPU_WORLD_AO_RAYS, XGPU_WORLD_AO_RAY_BIAS, XGPU_WORLD_AO_RAY_REACH, XGPU_WORLD_TRACE_OBJECTS,
 		XGPU_WORLD_AO_RAY_REACH, XGPU_WORLD_AO_RAYS,
-		XGPU_WORLD_AO_INPUT_ALL_SHAPES, XGPU_WORLD_AO_SHAPES, XGPU_WORLD_AO_INPUT_LIGHTMAP, XGPU_WORLD_AO_FLOOR,
-		XGPU_WORLD_AO_REFERENCE_LEAST, XGPU_WORLD_AO_FLOOR);
+		XGPU_WORLD_AO_INPUT_ALL_SHAPES, XGPU_WORLD_AO_SHAPES, XGPU_WORLD_AO_INPUT_LIGHTMAP, XGPU_WORLD_AO_INPUT_CARDS,
+		XGPU_WORLD_AO_FLOOR, XGPU_WORLD_AO_REFERENCE_LEAST, XGPU_WORLD_AO_FLOOR);
 	xgpu_text_append(&text,
 		"fragment float4 xgpu_world_ao_pass(float4 position [[position]], constant xgpu_world_ao_pass &pass [[buffer(%d)]],\n"
 		"\tconstant xgpu_world_ao &world_ao [[buffer(%d)]], texture2d<uint> inputs [[texture(0)]],\n"
