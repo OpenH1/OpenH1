@@ -1474,6 +1474,153 @@ static void report(uint32_t loop, double seconds)
 
 /* ---------- pictures */
 
+/* ---------- deflate ("compress": the service's replies made smaller)
+
+zlib's format, compressed by a matcher of its own (greedy, a hash of 3
+bytes, the last position of each, 32 KB back) into one block of the fixed
+Huffman codes: fast and plain, and the ID buffers, runs of a draw's number,
+shrink a hundredfold. */
+
+struct bits
+{
+	unsigned char *data;
+	size_t used, capacity;
+	uint32_t value;
+	int count;
+};
+
+static int bits_put(struct bits *bits, uint32_t value, int count)
+{
+	bits->value |= value << bits->count;
+	bits->count += count;
+	while (bits->count >= 8)
+	{
+		if (bits->used == bits->capacity)
+		{
+			size_t capacity = bits->capacity * 2 + 4096;
+			unsigned char *grown = realloc(bits->data, capacity);
+
+			if (!grown)
+				return 0;
+			bits->data = grown;
+			bits->capacity = capacity;
+		}
+		bits->data[bits->used++] = (unsigned char)bits->value;
+		bits->value >>= 8;
+		bits->count -= 8;
+	}
+	return 1;
+}
+
+/* a Huffman code (written from its first bit) */
+static int bits_code(struct bits *bits, uint32_t code, int length)
+{
+	uint32_t reversed = 0;
+	int bit;
+
+	for (bit = 0; bit < length; bit++)
+		reversed |= ((code >> bit) & 1) << (length - 1 - bit);
+	return bits_put(bits, reversed, length);
+}
+
+static int literal_put(struct bits *bits, uint32_t symbol)
+{
+	if (symbol < 144)
+		return bits_code(bits, 0x30 + symbol, 8);
+	if (symbol < 256)
+		return bits_code(bits, 0x190 + symbol - 144, 9);
+	if (symbol < 280)
+		return bits_code(bits, symbol - 256, 7);
+	return bits_code(bits, 0xc0 + symbol - 280, 8);
+}
+
+static const uint16_t length_bases[29] = { 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67,
+	83, 99, 115, 131, 163, 195, 227, 258 };
+static const uint8_t length_extra[29] = { 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5,
+	5, 5, 0 };
+static const uint16_t distance_bases[30] = { 1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513,
+	769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577 };
+static const uint8_t distance_extra[30] = { 0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11,
+	11, 12, 12, 13, 13 };
+
+static int match_put(struct bits *bits, uint32_t length, uint32_t distance)
+{
+	int code = 28, distance_code = 29;
+
+	while (length_bases[code] > length)
+		code--;
+	while (distance_bases[distance_code] > distance)
+		distance_code--;
+	return literal_put(bits, 257 + (uint32_t)code) &&
+		bits_put(bits, length - length_bases[code], length_extra[code]) &&
+		bits_code(bits, (uint32_t)distance_code, 5) &&
+		bits_put(bits, distance - distance_bases[distance_code], distance_extra[distance_code]);
+}
+
+#define DEFLATE_HASH_BITS 15
+#define DEFLATE_WINDOW 32768
+
+/* size bytes as a zlib stream, malloc'd (*compressed its size) */
+static unsigned char *deflate_bytes(const unsigned char *data, size_t size, size_t *compressed)
+{
+	struct bits bits = { NULL, 0, 0, 0, 0 };
+	uint32_t *last = malloc(sizeof(uint32_t) << DEFLATE_HASH_BITS), adler_a = 1, adler_b = 0;
+	size_t at = 0, index;
+	int ok;
+
+	if (!last)
+		return NULL;
+	memset(last, 0xff, sizeof(uint32_t) << DEFLATE_HASH_BITS);
+	ok = bits_put(&bits, 0x78, 8) && bits_put(&bits, 0x01, 8) && bits_put(&bits, 1, 1) && bits_put(&bits, 1, 2);
+	while (ok && at < size)
+	{
+		uint32_t length = 0, distance = 0;
+
+		if (size - at >= 3)
+		{
+			uint32_t key = ((uint32_t)data[at] << 16 | (uint32_t)data[at + 1] << 8 | data[at + 2]) * 2654435761u >>
+				(32 - DEFLATE_HASH_BITS);
+			uint32_t candidate = last[key];
+
+			last[key] = (uint32_t)at;
+			if (candidate != 0xffffffffu && at - candidate <= DEFLATE_WINDOW)
+			{
+				size_t most = size - at < 258 ? size - at : 258;
+
+				while (length < most && data[candidate + length] == data[at + length])
+					length++;
+				distance = (uint32_t)(at - candidate);
+			}
+		}
+		if (length >= 3)
+		{
+			ok = match_put(&bits, length, distance);
+			at += length;
+		}
+		else
+		{
+			ok = literal_put(&bits, data[at]);
+			at++;
+		}
+	}
+	ok = ok && literal_put(&bits, 256) && bits_put(&bits, 0, (8 - bits.count) & 7);
+	for (index = 0; index < size; index++)
+	{
+		adler_a = (adler_a + data[index]) % 65521;
+		adler_b = (adler_b + adler_a) % 65521;
+	}
+	ok = ok && bits_put(&bits, adler_b >> 8, 8) && bits_put(&bits, adler_b & 0xff, 8) && bits_put(&bits, adler_a >> 8, 8) &&
+		bits_put(&bits, adler_a & 0xff, 8);
+	free(last);
+	if (!ok)
+	{
+		free(bits.data);
+		return NULL;
+	}
+	*compressed = bits.used;
+	return bits.data;
+}
+
 /* ---------- PNG files written
 
 The service's pictures are written as they are, uncompressed (deflate's
@@ -1620,6 +1767,162 @@ static unsigned char *png_encode(const unsigned char *bgra, uint32_t width, uint
 	place = chunk_close(chunk, place + 4);
 	memcpy(place + 4, "IEND", 4);
 	place = chunk_close(place, place + 8);
+	*size = (size_t)(place - png);
+	return png;
+}
+
+/* ---------- QOI ("image": "qoi")
+
+The Quite OK Image format (qoiformat.org's specification, written here from
+it): a pixel is a run of the last, an index into the 64 seen most lately
+(by a hash), a small difference from the last, or itself. Lossless, made
+in one pass a few times faster than deflate and smaller on the game's
+frames. Written as RGB (3 channels, sRGB). */
+
+static unsigned char *qoi_encode(const unsigned char *bgra, uint32_t width, uint32_t height, size_t *size)
+{
+	size_t pixels = (size_t)width * height, index;
+	unsigned char *qoi = malloc(14 + pixels * 4 + 8), *place;
+	unsigned char seen[64][3], last[3] = { 0, 0, 0 };
+	uint32_t run = 0;
+
+	if (!qoi || !width || !height)
+	{
+		free(qoi);
+		return NULL;
+	}
+	memset(seen, 0, sizeof(seen));
+	memcpy(qoi, "qoif", 4);
+	store32(qoi + 4, width);
+	store32(qoi + 8, height);
+	qoi[12] = 3;
+	qoi[13] = 0;
+	place = qoi + 14;
+	for (index = 0; index < pixels; index++)
+	{
+		const unsigned char *from = bgra + index * 4;
+		unsigned char pixel[3] = { from[2], from[1], from[0] };
+		uint32_t slot;
+
+		if (!memcmp(pixel, last, 3))
+		{
+			if (++run == 62 || index + 1 == pixels)
+			{
+				*place++ = (unsigned char)(0xc0 | (run - 1));
+				run = 0;
+			}
+			continue;
+		}
+		if (run)
+		{
+			*place++ = (unsigned char)(0xc0 | (run - 1));
+			run = 0;
+		}
+		/* (alpha 255: its 11 * 255 in the hash) */
+		slot = (pixel[0] * 3u + pixel[1] * 5u + pixel[2] * 7u + 255u * 11u) % 64u;
+		if (!memcmp(seen[slot], pixel, 3))
+		{
+			*place++ = (unsigned char)slot;
+		}
+		else
+		{
+			signed char red = (signed char)(pixel[0] - last[0]), green = (signed char)(pixel[1] - last[1]);
+			signed char blue = (signed char)(pixel[2] - last[2]);
+			int red_green = red - green, blue_green = blue - green;
+
+			memcpy(seen[slot], pixel, 3);
+			if (red >= -2 && red <= 1 && green >= -2 && green <= 1 && blue >= -2 && blue <= 1)
+				*place++ = (unsigned char)(0x40 | (red + 2) << 4 | (green + 2) << 2 | (blue + 2));
+			else if (green >= -32 && green <= 31 && red_green >= -8 && red_green <= 7 && blue_green >= -8 &&
+				blue_green <= 7)
+			{
+				*place++ = (unsigned char)(0x80 | (green + 32));
+				*place++ = (unsigned char)((red_green + 8) << 4 | (blue_green + 8));
+			}
+			else
+			{
+				*place++ = 0xfe;
+				memcpy(place, pixel, 3);
+				place += 3;
+			}
+		}
+		memcpy(last, pixel, 3);
+	}
+	memcpy(place, "\0\0\0\0\0\0\0\1", 8);
+	place += 8;
+	*size = (size_t)(place - qoi);
+	return qoi;
+}
+
+/* PNG's filters (1 sub: the pixel to the left; 2 up: the one above; 4
+Paeth's predictor of the three) */
+static unsigned char paeth(int left, int above, int corner)
+{
+	int estimate = left + above - corner, to_left = abs(estimate - left), to_above = abs(estimate - above);
+	int to_corner = abs(estimate - corner);
+
+	return (unsigned char)(to_left <= to_above && to_left <= to_corner ? left : to_above <= to_corner ? above : corner);
+}
+
+/* BGRA pixels as a PNG's bytes, compressed (deflate_bytes, its rows
+filtered by filter), malloc'd */
+static unsigned char *png_encode_compressed(const unsigned char *bgra, uint32_t width, uint32_t height, int filter,
+	size_t *size)
+{
+	size_t row_bytes = (size_t)width * 3 + 1, deflated = 0;
+	unsigned char *raw = malloc(row_bytes * height), *compressed, *png, *place, *chunk;
+	uint32_t row, column;
+
+	if (!raw || !width || !height)
+	{
+		free(raw);
+		return NULL;
+	}
+	for (row = 0; row < height; row++)
+	{
+		unsigned char *line = raw + row * row_bytes;
+		const unsigned char *from = bgra + (size_t)row * width * 4, *above_row = row ? from - (size_t)width * 4 : NULL;
+
+		line[0] = (unsigned char)filter;
+		for (column = 0; column < width; column++)
+		{
+			const unsigned char *pixel = from + column * 4;
+			int channel;
+
+			for (channel = 0; channel < 3; channel++)
+			{
+				/* (RGB from BGRA) */
+				int at = 2 - channel, value = pixel[at];
+				int left = column ? pixel[at - 4] : 0, above = above_row ? above_row[column * 4 + at] : 0;
+				int corner = column && above_row ? above_row[(column - 1) * 4 + at] : 0;
+				int predicted = filter == 1 ? left : filter == 2 ? above : filter == 4 ? paeth(left, above, corner) : 0;
+
+				line[1 + column * 3 + channel] = (unsigned char)(value - predicted);
+			}
+		}
+	}
+	compressed = deflate_bytes(raw, row_bytes * height, &deflated);
+	free(raw);
+	png = compressed ? malloc(8 + 25 + 12 + deflated + 12) : NULL;
+	if (!png)
+	{
+		free(compressed);
+		return NULL;
+	}
+	memcpy(png, "\x89PNG\r\n\x1a\n", 8);
+	chunk = png + 8;
+	memcpy(chunk + 4, "IHDR", 4);
+	store32(chunk + 8, width);
+	store32(chunk + 12, height);
+	memcpy(chunk + 16, "\x08\x02\x00\x00\x00", 5);
+	place = chunk_close(chunk, chunk + 21);
+	chunk = place;
+	memcpy(chunk + 4, "IDAT", 4);
+	memcpy(chunk + 8, compressed, deflated);
+	place = chunk_close(chunk, chunk + 8 + deflated);
+	memcpy(place + 4, "IEND", 4);
+	place = chunk_close(place, place + 8);
+	free(compressed);
 	*size = (size_t)(place - png);
 	return png;
 }
@@ -2079,15 +2382,50 @@ static int request_true(const struct request *request, const char *key)
 }
 
 /* a PNG's bytes inline in a reply: ,"png_base64":"..." */
-static void png_inline(struct text *text, const unsigned char *bgra, uint32_t width, uint32_t height)
+static int file_write(const char *path, const void *data, size_t size);
+
+/* a request's picture format ("image": "png", the default, or "qoi"):
+nonzero for QOI */
+static int request_qoi(const struct request *request)
+{
+	const char *image = request_string(request, "image");
+
+	return image && !strcmp(image, "qoi");
+}
+
+/* a picture's file bytes: QOI's, or a PNG (deflated with compress) */
+static unsigned char *picture_encode(const unsigned char *bgra, uint32_t width, uint32_t height, int qoi, int compress,
+	size_t *size)
+{
+	return qoi ? qoi_encode(bgra, width, height, size) : compress ?
+		png_encode_compressed(bgra, width, height, 1, size) : png_encode(bgra, width, height, size);
+}
+
+static int picture_write(const unsigned char *bgra, uint32_t width, uint32_t height, int qoi, const char *path)
 {
 	size_t size;
-	unsigned char *bytes = png_encode(bgra, width, height, &size);
+	unsigned char *bytes = picture_encode(bgra, width, height, qoi, 0, &size);
+	int written = bytes && file_write(path, bytes, size);
+
+	free(bytes);
+	return written;
+}
+
+/* a picture's bytes inline in a reply: ,"png_base64":"..." (or
+"qoi_base64") */
+static void picture_inline(struct text *text, const unsigned char *bgra, uint32_t width, uint32_t height, int qoi,
+	int compress)
+{
+	size_t size;
+	unsigned char *bytes = picture_encode(bgra, width, height, qoi, compress, &size);
 	char *encoded = bytes ? host_render_replay_base64(bytes, size) : NULL;
 
 	if (encoded)
 	{
-		TEXT(text, ",\"png_base64\":\"");
+		if (qoi)
+			TEXT(text, ",\"qoi_base64\":\"");
+		else
+			TEXT(text, ",\"png_base64\":\"");
 		text_add(text, encoded, strlen(encoded));
 		TEXT(text, "\"");
 	}
@@ -2098,7 +2436,7 @@ static void png_inline(struct text *text, const unsigned char *bgra, uint32_t wi
 /* ---------- the service: frames */
 
 /* the frame last inspected, kept: its picture, ID buffer and draws */
-static struct
+struct inspected
 {
 	uint32_t frame;
 	unsigned char *pixels;
@@ -2109,15 +2447,76 @@ static struct
 	uint32_t draw_count;
 	int draws_seen;
 	double ms;
-} kept = { .frame = UINT32_MAX };
+};
+
+static struct inspected kept = { .frame = UINT32_MAX };
+
+/* The frames inspected with their ID buffers before it, kept whole (the
+newest first) while they take no more than INSPECTED_BYTES: a step back to
+one is not the recording played again. The pictures kept on the way
+(recent) are not these: an ID buffer is drawn with the frame, each draw
+compared (a frame's more GPU time), and a 1440p frame's stacks are 118 MB,
+so the frames passed on the way are not given theirs. */
+#define INSPECTED_KEPT 8
+#define INSPECTED_BYTES (512u << 20)
+
+static struct inspected inspected[INSPECTED_KEPT];
+
+static void inspected_free(struct inspected *entry)
+{
+	free(entry->pixels);
+	free(entry->ids);
+	free(entry->draws);
+	memset(entry, 0, sizeof(*entry));
+	entry->frame = UINT32_MAX;
+}
+
+static size_t inspected_bytes(const struct inspected *entry)
+{
+	return entry->pixels ? (size_t)entry->width * entry->height * 4 + (size_t)entry->ids_width * entry->ids_height *
+		HOST_RENDER_REPLAY_ID_DEPTH * 4 + (size_t)entry->draw_count * sizeof(struct draw_seen) : 0;
+}
 
 static void kept_forget(void)
 {
-	free(kept.pixels);
-	free(kept.ids);
-	free(kept.draws);
-	memset(&kept, 0, sizeof(kept));
-	kept.frame = UINT32_MAX;
+	size_t total;
+	int index;
+
+	if (kept.ids && kept.pixels && kept.draws_seen)
+	{
+		/* (into the newest place; the oldest let go, and those past the bytes) */
+		inspected_free(&inspected[INSPECTED_KEPT - 1]);
+		memmove(&inspected[1], &inspected[0], sizeof(*inspected) * (INSPECTED_KEPT - 1));
+		inspected[0] = kept;
+		for (total = 0, index = 0; index < INSPECTED_KEPT; index++)
+		{
+			total += inspected_bytes(&inspected[index]);
+			if (total > INSPECTED_BYTES && index)
+				inspected_free(&inspected[index]);
+		}
+		memset(&kept, 0, sizeof(kept));
+	}
+	inspected_free(&kept);
+}
+
+/* frame n's ID buffer, picture and draws, kept: into kept (nonzero), or
+none */
+static int inspected_take(uint32_t n)
+{
+	int index;
+
+	for (index = 0; index < INSPECTED_KEPT; index++)
+	{
+		if (inspected[index].pixels && inspected[index].frame == n)
+		{
+			kept = inspected[index];
+			memmove(&inspected[index], &inspected[index + 1], sizeof(*inspected) * (INSPECTED_KEPT - 1 - (size_t)index));
+			memset(&inspected[INSPECTED_KEPT - 1], 0, sizeof(*inspected));
+			inspected[INSPECTED_KEPT - 1].frame = UINT32_MAX;
+			return 1;
+		}
+	}
+	return 0;
 }
 
 /* (HALO_REPLAY_SEEK_SKIPS=0: every frame on the way played whole) */
@@ -2138,6 +2537,11 @@ static const char *frame_play(uint32_t n, int ids, int draws)
 	if (ids && !platform->ids_begin)
 		return "this backend has no ID buffer";
 	kept_forget();
+	if (inspected_take(n))
+	{
+		kept.ms = (seconds_now() - started) * 1000.0;
+		return NULL;
+	}
 	if (!ids && !draws && recent[slot].pixels && recent[slot].frame == n)
 	{
 		kept.frame = n;
@@ -2420,8 +2824,11 @@ static void serve_info(struct text *text)
 static void serve_frame(struct text *text, const struct request *request)
 {
 	double number;
-	const char *png = request_string(request, "png"), *ids_path = request_string(request, "ids"), *error;
+	int qoi = request_qoi(request);
+	const char *png = request_string(request, qoi && request_string(request, "qoi") ? "qoi" : "png");
+	const char *ids_path = request_string(request, "ids"), *error;
 	int inline_reply = request_true(request, "inline"), ids = ids_path != NULL || request_true(request, "ids");
+	int compress = request_true(request, "compress");
 	uint32_t n;
 
 	if (!request_number(request, "n", &number) || number < 0)
@@ -2439,15 +2846,15 @@ static void serve_frame(struct text *text, const struct request *request)
 		kept.height);
 	if (png && !inline_reply)
 	{
-		if (!png_write(kept.pixels, kept.width, kept.height, png))
+		if (!picture_write(kept.pixels, kept.width, kept.height, qoi, png))
 		{
-			reply_error(text, "the PNG cannot be written");
+			reply_error(text, "the picture cannot be written");
 			return;
 		}
 	}
 	else if (inline_reply)
 	{
-		png_inline(text, kept.pixels, kept.width, kept.height);
+		picture_inline(text, kept.pixels, kept.width, kept.height, qoi, compress);
 	}
 	if (ids)
 	{
@@ -2476,9 +2883,19 @@ static void serve_frame(struct text *text, const struct request *request)
 		}
 		else
 		{
-			char *encoded = host_render_replay_base64((const unsigned char *)top, pixels * 4);
+			size_t deflated = 0;
+			unsigned char *compressed = compress ? deflate_bytes((const unsigned char *)top, pixels * 4, &deflated) : NULL;
+			char *encoded = compressed ? host_render_replay_base64(compressed, deflated) :
+				host_render_replay_base64((const unsigned char *)top, pixels * 4);
 
-			if (encoded)
+			free(compressed);
+			if (encoded && compress)
+			{
+				TEXT(text, ",\"ids_zlib_base64\":\"");
+				text_add(text, encoded, strlen(encoded));
+				TEXT(text, "\"");
+			}
+			else if (encoded)
 			{
 				TEXT(text, ",\"ids_base64\":\"");
 				text_add(text, encoded, strlen(encoded));
@@ -2598,16 +3015,19 @@ static void serve_thumbs(struct text *text, const struct request *request)
 		{
 			char path[4200];
 
-			snprintf(path, sizeof(path), "%s/thumb_%u.png", directory, n);
-			if (png_write(scaled, (uint32_t)width, height, path))
+			snprintf(path, sizeof(path), "%s/thumb_%u.%s", directory, n, request_qoi(request) ? "qoi" : "png");
+			if (picture_write(scaled, (uint32_t)width, height, request_qoi(request), path))
 			{
-				TEXT(text, ",\"png\":");
+				if (request_qoi(request))
+					TEXT(text, ",\"qoi\":");
+				else
+					TEXT(text, ",\"png\":");
 				text_string(text, path);
 			}
 		}
 		else
 		{
-			png_inline(text, scaled, (uint32_t)width, height);
+			picture_inline(text, scaled, (uint32_t)width, height, request_qoi(request), request_true(request, "compress"));
 		}
 		TEXT(text, "}");
 		free(scaled);

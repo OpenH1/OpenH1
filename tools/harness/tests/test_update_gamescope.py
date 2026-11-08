@@ -75,7 +75,7 @@ def generated(fault=None):
         "void p2p_sha256_add(struct p2p_sha256 *context, const void *data, int size);\n"
         "void p2p_sha256_end(struct p2p_sha256 *context, unsigned char *digest);\n#endif\n",
         # (update_gamescope.c's fakes are declared before under_test.inc)
-        "SDL3/SDL.h": "", "platform.h": "", "install_layout.h": "", "port_config.h": "",
+        "SDL3/SDL.h": "", "platform.h": "", "install_layout.h": "", "port_config.h": "", "report.h": "",
     }
 
 

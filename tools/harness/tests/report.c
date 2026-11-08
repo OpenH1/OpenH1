@@ -9,7 +9,8 @@ the game, the player, the network game, the console's lines to look from
 there), the zip (its CRC-32, its local and central records), which
 test_report.py opens with Python's zipfile, and the last run's crash: its
 heading of report.md (report_crash_summary) and the host's record of it,
-the log's ring oldest first (port/android/host/host_common.c).
+the log's ring oldest first (port/android/host/host_common.c); and the
+reports folder's whole path and file: address (report_whole_path).
 test_report.py takes the code.
 */
 
@@ -479,6 +480,36 @@ int main(int argc, char **argv)
 		CHECK(report_map_counted("bitmaps2.map") && report_map_counted("loc.map2.map"), "names that only begin as one does");
 		CHECK(!report_map_counted("hugeass.map.partial") && !report_map_counted("readme.txt") &&
 			!report_map_counted(".map") && !report_map_counted("._a10.map"), "what is not a map");
+		return 0;
+	}
+	if (!strcmp(test, "folder"))
+	{
+		static char path[300], url[400];
+
+		/* (the data root ".", where a game started in its own folder, as
+		Steam and the menu entry start it, finds its maps: the reports
+		folder's address was file:///./reports, which is /reports) */
+		report_whole_path("./reports", "/home/someone/Applications/OpenH1", path, sizeof(path));
+		printf("%s\n", path);
+		CHECK(!strcmp(path, "/home/someone/Applications/OpenH1/reports"), "the data root . after the current folder");
+		report_file_url(path, url, sizeof(url));
+		printf("%s\n", url);
+		CHECK(!strcmp(url, "file:///home/someone/Applications/OpenH1/reports"), "its address the folder's");
+		report_whole_path(".", "/srv/halo/", path, sizeof(path));
+		CHECK(!strcmp(path, "/srv/halo/"), "the current folder itself");
+		report_whole_path("assets/reports", "/src/openh1", path, sizeof(path));
+		CHECK(!strcmp(path, "/src/openh1/assets/reports"), "a checkout's assets");
+		report_whole_path("/data/halo/reports", "/elsewhere", path, sizeof(path));
+		CHECK(!strcmp(path, "/data/halo/reports"), "a whole path kept");
+		report_whole_path("C:\\Games\\OpenH1/reports", "D:\\", path, sizeof(path));
+		CHECK(!strcmp(path, "C:\\Games\\OpenH1/reports"), "a Windows drive's path kept");
+		report_whole_path("./reports", "C:\\Games\\OpenH1", path, sizeof(path));
+		CHECK(!strcmp(path, "C:\\Games\\OpenH1/reports"), "after a Windows folder");
+		report_file_url(path, url, sizeof(url));
+		printf("%s\n", url);
+		CHECK(!strcmp(url, "file:///C:/Games/OpenH1/reports"), "a Windows folder's address");
+		report_whole_path("./reports", NULL, path, sizeof(path));
+		CHECK(!strcmp(path, "./reports"), "no current folder known: as it is");
 		return 0;
 	}
 	fprintf(stderr, "no case %s\n", test);

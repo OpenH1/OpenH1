@@ -489,6 +489,36 @@ static void base64_test(void)
 	}
 }
 
+/* deflate_bytes' streams written for the test to inflate (deflate_<n>.bin:
+text, noise, runs, a large frame's worth of mixed bytes, and nothing) */
+static void deflate_test(const char *folder)
+{
+	size_t sizes[5] = { 5000, 3000, 70000, 3 << 20, 0 }, index, at, compressed;
+	uint32_t state = 7;
+
+	for (index = 0; index < 5; index++)
+	{
+		unsigned char *data = malloc(sizes[index] + 1), *zipped;
+		char path[4200];
+
+		for (at = 0; at < sizes[index]; at++)
+		{
+			state = state * 1103515245u + 12345u;
+			data[at] = index == 0 ? (unsigned char)("the replay's deflate "[at % 21]) : index == 1 ?
+				(unsigned char)(state >> 16) : index == 2 ? (unsigned char)(at / 3000) :
+				at % 7 < 3 ? (unsigned char)(state >> 20) : (unsigned char)(at / 640);
+		}
+		zipped = deflate_bytes(data, sizes[index], &compressed);
+		CHECK(zipped != NULL);
+		snprintf(path, sizeof(path), "%s/deflate_%zu.bin", folder, index);
+		CHECK(zipped && file_write(path, zipped, compressed));
+		snprintf(path, sizeof(path), "%s/deflate_%zu.raw", folder, index);
+		CHECK(file_write(path, data, sizes[index]));
+		free(zipped);
+		free(data);
+	}
+}
+
 static void request_test(void)
 {
 	static struct request request;
@@ -538,8 +568,36 @@ static void png_test(const char *path)
 	free(bgra);
 }
 
+/* the pictures' encodings timed on a frame (BGRA bytes, width by height) */
+static int bench(const char *path, uint32_t width, uint32_t height)
+{
+	FILE *file = fopen(path, "rb");
+	unsigned char *bgra = malloc((size_t)width * height * 4);
+	int kind;
+
+	if (!file || !bgra || fread(bgra, 4, (size_t)width * height, file) != (size_t)width * height)
+		return 2;
+	fclose(file);
+	for (kind = 0; kind < 6; kind++)
+	{
+		static const char *names[] = { "png stored", "png none+fixed", "png sub+fixed", "png up+fixed",
+			"png paeth+fixed", "qoi" };
+		double started = seconds_now();
+		size_t size = 0;
+		unsigned char *bytes = kind == 0 ? png_encode(bgra, width, height, &size) :
+			kind == 5 ? qoi_encode(bgra, width, height, &size) :
+			png_encode_compressed(bgra, width, height, kind == 1 ? 0 : kind == 2 ? 1 : kind == 3 ? 2 : 4, &size);
+
+		printf("%-16s %9zu bytes  %6.1f ms\n", names[kind], size, (seconds_now() - started) * 1000.0);
+		free(bytes);
+	}
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
+	if (argc == 5 && !strcmp(argv[1], "bench"))
+		return bench(argv[2], (uint32_t)atoi(argv[3]), (uint32_t)atoi(argv[4]));
 	if (argc >= 4 && !strcmp(argv[1], "make"))
 		return make(argv[2], (uint32_t)atoi(argv[3]), argc > 4 && !strcmp(argv[4], "marks"),
 			argc > 4 && !strcmp(argv[4], "old"));
@@ -549,6 +607,15 @@ int main(int argc, char *argv[])
 		base64_test();
 		request_test();
 		png_test(argv[2]);
+		{
+			char folder[4200], *slash;
+
+			snprintf(folder, sizeof(folder), "%s", argv[2]);
+			slash = strrchr(folder, '/');
+			if (slash)
+				*slash = 0;
+			deflate_test(slash ? folder : ".");
+		}
 		fprintf(stderr, "%d failures\n", failures);
 		return failures != 0;
 	}
