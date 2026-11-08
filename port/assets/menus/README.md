@@ -37,31 +37,43 @@ one screen (by its name, `main_menu/settings_select/...`), for looking at it.
 ## Writing them again
 
 `tools/ce_menus.py` writes every file in `ce/` and `menus.json` again,
-the settings screens too (it runs `tools/port_settings.py`'s):
+the settings screens too (it runs `tools/port_settings.py`'s).
+`tools/menus_regen.sh` runs it with its inputs, kept in a folder outside the
+repository (`$MENU_INPUTS`, else `~/dev/menu-inputs`; the tags are the
+game's data, never committed):
 
 ```sh
-python3 tools/ce_menus.py \
-    --tags <halopc-restored>/tags \
-    --definitions <invader>/src/tag/hek/definition \
-    --redraws <ui-svg-handmade> \
-    --placeholder <placeholder.png> \
-    --pictures <extracted-ui-assets-fixed>
+tools/menus_regen.sh --fetch   # gets the inputs, once
+tools/menus_regen.sh           # writes the menus again
+git status                     # only the screens meant to change
 ```
 
-- `--tags`: the PC version's tags (its `ui\shell` widgets, strings and
-  bitmaps).
-- `--definitions`: Invader's tag definitions, which say how the tags are
-  laid out.
-- `--redraws`: the hand-made SVG redraws, copied to `svg/`.
-- `--placeholder`: the picture drawn where a picture has no redraw and the
-  Xbox's map has not got it.
-- `--pictures` (optional): the PC version's pictures, of which only where
-  each sits in its frame is read.
+`--fetch` needs `git` and `python3`; the run needs `rsvg-convert`
+(`librsvg2-bin`, Homebrew's `librsvg`). The inputs, as ce_menus.py's
+options:
 
-It needs `rsvg-convert`, Pillow, NumPy and SciPy. It writes every file, so
-`git status` should show only the screens meant to change; then
-`ninja linux_x86_64` (or `ninja linux_arm64`, `ninja android`) embeds them
-in the game.
+- `--tags`: the PC version's tags (its `ui\shell` widgets, strings and
+  bitmaps): `tags/` of [halopc-restored](https://github.com/Aerocatia/halopc-restored)
+  at the commit `HALOPC_RESTORED_COMMIT` in `menus_regen.sh`.
+- `--definitions`: Invader's tag definitions, which say how the tags are
+  laid out: `src/tag/hek/definition` of
+  [Invader](https://github.com/SnowyMouse/invader) at `INVADER_COMMIT`.
+- `--redraws`: the hand-made SVG redraws (ui-svg-handmade), copied to
+  `svg/`. `svg/` has every redraw the menus draw, so `menus_regen.sh` copies
+  it into the inputs' `redraws/` before each run; a new redraw goes there.
+- `--placeholder`: the picture drawn where a picture has no redraw and the
+  Xbox's map has not got it: `--fetch` cuts it from the largest of those
+  frames (`NON_HANDDRAWN.md`).
+- `--pictures` (optional): the PC version's pictures, of which only where
+  each sits in its frame is read: `--fetch` decodes those of the
+  placeholders' frames from the tags (`tools/ce_menu_pictures.py`).
+
+ce_menus.py needs Pillow, NumPy, SciPy and fontTools (`--fetch` puts them in
+the inputs' `venv/`). Its output does not depend on the computer: the titles
+are laid out by FreeType alone (not Raqm, which some Pillows have), and a
+picture drawn the same as before keeps its file (zlib's builds compress it
+differently). It writes every file; then `ninja linux_x86_64` (or
+`ninja linux_arm64`, `ninja android`) embeds them in the game.
 
 A settings screen (Controls Setup, Gamepads, Mouse, Audio, Video or Network
 Setup) is changed in `tools/port_settings.py`, not in its XML, and written
