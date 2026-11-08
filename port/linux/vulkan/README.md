@@ -161,6 +161,7 @@ four multiview views and fragment storage-buffer atomics.
 | `HALO_VULKAN_FRAME_LOG=<file>` | A line for each frame, paced or not (`xgpu_vulkan_pacing.c`): `frame <input> <queued> <finished> <shown> <refreshes> <paced> <earliest> <present_margin> <returned>`, nanoseconds of `CLOCK_MONOTONIC`: the frame's input read, its present's return, its work done on the GPU, its time on screen (display timing's, else present wait's return), the refreshes since the frame before reached the screen (more than one: a refresh showed a frame again), whether the game was paced, display timing's earliest time and margin, and present wait's return (0: not known). `tools/latency_summary.py --frames` joins it to `debug.latency_log` |
 | `HALO_VULKAN_NO_PRESENT_WAIT=1`, `HALO_VULKAN_NO_DISPLAY_TIMING=1`, `HALO_VULKAN_DISPLAY_TIMING=1` | `display.low_latency` without `VK_KHR_present_wait` (as on Android: display timing asked each millisecond), or without `VK_GOOGLE_display_timing` (the frames' times present wait's returns). Where the device has present wait, display timing is not used unless `HALO_VULKAN_DISPLAY_TIMING=1` asks for both: gamescope's layer on the Steam Deck answered its past times `VK_INCOMPLETE` without end (the game showed no frame) and crashed as a swapchain was made from one whose times had been asked for |
 | `HALO_VULKAN_NO_CUSTOM_BORDER_COLORS=1` | As a device without `VK_EXT_custom_border_color` (Android's, some): the shaders draw the stages' border colours, as Metal's do, a part of the pipeline whatever the colour (`xgpu_vulkan_stream.c`'s `border_axes`) |
+| `HALO_VULKAN_UNHEEDED_PRESENTS=1` | The presents waited for and logged (`HALO_VULKAN_FRAME_LOG`), but the game never paced or bounded by them, as by a display that says nothing: the GPU's bound alone, measured by the display's times |
 | `HALO_FRAME_PACING_MARGIN_MS=<ms>` | `display.low_latency`'s margin fixed (not learned), to find a display's lead: the frames miss their refresh when it is too small |
 
 The game's settings for finding problems in the graphics (`port/linux/README.md`)
@@ -286,7 +287,15 @@ refresh it is for, and the swapchain has three images (the least the
 surface allows, if more). A swapchain made again lets go of its presents
 first: those not yet shown count as shown, and the thread no longer waits
 for them. A frame that presents nothing (the window hidden, the app in the
-background, a held frame) is taken at once.
+background, a held frame) is taken at once. Bounded (`display.low_latency`
+off), the game starts a frame as soon as at most one
+waits for the display, without the start time. And with FIFO, whatever the
+display says, the game starts a frame only while at most one of its
+frames' work is unfinished on the GPU (`host_render_stream_frames_ahead`),
+and, while the display has said nothing of its presents, the swapchain has
+the least images the surface allows (two at least), so that a driver that
+queues presents ahead of the display without a word holds at most a frame
+or two of the game's (issue #274: NVIDIA's on Windows queued five).
 
 The surface is made again when the driver reports it lost
 (`VK_ERROR_SURFACE_LOST_KHR`, from the acquire, the present or the

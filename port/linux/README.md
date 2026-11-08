@@ -1242,7 +1242,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.window_size` | `""` | `HALO_WINDOW_SIZE` | The size of the window, as `"<width>x<height>"`, such as `"1920x1080"`, 640x480 or more. You can change the size of the window; the game's picture takes its shape. Empty: `display.window_scale` decides. Video Setup's Window Size sets it, from sizes of each shape (4:3, 16:10, 16:9 and 21:9) that fit the desktop; it shows with Windowed. |
 | `display.window_scale` | `2` | `HALO_WINDOW_SCALE` | Used when `display.window_size` is empty: the size of the window, as a multiple of 640x480. |
 | `display.vsync` | `false` (Linux, Windows, macOS); `true` (iOS, Android, and the Linux builds under gamescope: the Steam Deck's Game Mode) | `HALO_NO_VSYNC=1` sets `false` | `true`: each frame waits for the display. `false`: as many frames as `display.max_fps` allows (twice the refresh rate by default). With Vulkan, `false` presents in mailbox mode where the display has it (no tearing), else immediately. On macOS, `false` shows the newest frame at each refresh, with the older one dropped (no tearing). The VR mode's headset paces itself. With Vulkan and `true`, `display.low_latency` starts each frame just in time for its refresh. |
-| `display.low_latency` | `"auto"` | `HALO_LOW_LATENCY` | With vsync on (Vulkan: Linux, the Steam Deck, Windows, Android), the game starts each frame as late as it can and still have it on screen at the next refresh, its input read then, and never queues frames ahead of the display. `"on"`, `"off"`, or `"auto"`: on for Linux, the Steam Deck and Android (Windows: off until measured there). It needs a driver that says when each frame reaches the screen (`VK_KHR_present_wait`, or `VK_GOOGLE_display_timing`); without one it does nothing. The Mac's frames are paced by its display already. Refer to "Low latency with vsync". |
+| `display.low_latency` | `"auto"` | `HALO_LOW_LATENCY` | With vsync on (Vulkan: Linux, the Steam Deck, Windows, Android), the game starts each frame as late as it can and still have it on screen at the next refresh, its input read then, and never queues frames ahead of the display. `"on"` or `"auto"` (the same, on Linux, the Steam Deck, Windows and Android). `"off"` keeps the bound alone: the game starts a frame as soon as at most one waits for the display, its input read then. It needs a driver that says when each frame reaches the screen (`VK_KHR_present_wait`, or `VK_GOOGLE_display_timing`); without one, and whatever the setting, the game with vsync on is never more than a frame ahead of its GPU (refer to "Low latency with vsync"). The Mac's frames are paced by its display already. Refer to "Low latency with vsync". |
 | `display.max_fps` | `0` | `HALO_MAX_FPS` | With vsync off, the most frames each second. `0`: twice the display's refresh rate. `-1`: no limit, which can hang some Intel graphics (Raptor Lake), resetting the desktop's graphics too. On Linux, the display's refresh rate or a whole fraction of it (a half to a quarter), within one frame a second, is shown in step with the display, as vsync shows it, with `display.low_latency` (refer to "Frame rate"). Video Setup shows Frame Rate Limit while VSync is off: a slider through Auto, the common rates from 30 to 540 and None, with a field to type any limit from 10 to 1000 (Enter keeps it). A press while a frame waits for its time (a key, a mouse or controller button, a trigger or stick pushed or let go, the mouse moved after it was still) begins the next frame at once, so that it is read then: one frame more for each press, at most one an interval; the frame after waits for its time as before. Not the Mac's, whose frames wait for the display. |
 | `display.battery_saver` | `"off"` | `HALO_BATTERY_SAVER` | Draw less, for a longer battery and a cooler machine. `"on"`: each frame stays on screen for a whole number of the display's refreshes, 30 to 60 frames each second (60 at 60 or 120 Hz, 45 at 90 Hz), and the settings `display.graphics` chooses that are commented out are drawn at their Classic values; those set keep their own. `"auto"`: on while the machine runs on its battery, off on its charger, as SDL says (a machine without a battery, or one that cannot tell, is taken to be on its charger). `"off"`: never. Not in VR. The game plays the same. Video Setup > Battery Saver. Refer to "Battery saver". |
 | `display.graphics` | `"enhanced"` | `HALO_GRAPHICS` | The look of the 3D view, as one choice. `"classic"`: as the Xbox drew it. `"enhanced"`: the port's improvements together, each as far as the machine's GPU does it well. It chooses `display.anti_aliasing`, `display.anisotropic_filtering`, `display.shadow_resolution`, `display.per_pixel_lighting`, `display.model_detail`, `display.dynamic_lights` and `display.ambient_occlusion` where they are commented out; each of them set wins over it. Video Setup > Graphics > Preset. Refer to "Classic and Enhanced". |
@@ -1969,8 +1969,8 @@ finished frames, each waiting for its refresh, and the game starts the next
 as soon as an image is free. Its input is read when it starts, so what is
 on screen was read two or three refreshes (33 to 50 ms at 60 Hz) before.
 
-`display.low_latency` (`"auto"`, on for Linux, the Steam Deck and Android)
-paces the game by the display instead (`vulkan/xgpu_vulkan_pacing.c`,
+`display.low_latency` (`"auto"`: on, with Vulkan: Linux, the Steam Deck,
+Windows and Android) paces the game by the display instead (`vulkan/xgpu_vulkan_pacing.c`,
 `src/frame_pacing.h`, the command stream's `display_wait`):
 
 - Each present has a number, and a thread waits for each in turn
@@ -2002,6 +2002,36 @@ paces the game by the display instead (`vulkan/xgpu_vulkan_pacing.c`,
 
 The game plays the same; only when each frame starts changes. On a GPU
 that cannot draw a frame each refresh, the frames start at once, as before.
+
+Bounded (`display.low_latency = "off"`), the game starts a frame as soon as at most one of its frames waits for the display,
+by the same present wait, without waiting for the start time.
+
+And with vsync on, whatever the setting and whatever the display says, the
+game starts a frame only while at most one of its frames' work is
+unfinished on the GPU, and, while the display has said nothing of its
+presents, the swapchain has the least images the surface allows (two at
+least). A driver that queues presents without a word cannot then hold more
+than a frame or two of the game's. Issue #274's capture (Windows, NVIDIA,
+its "Vulkan/OpenGL present method" layered on DXGI, which it chose for
+FIFO) had none of this: auto was off on Windows then, five refreshes of
+frames waited between a present and the screen (81 ms at 60 Hz), and the
+press reached the screen 105 ms after it was made, against 11 ms with vsync
+off. Present wait answered, but after longer than the thread waits for a
+present (80 ms), so the display was taken for one that says nothing. Auto
+is now on there as everywhere, and a present is waited for 80 ms or five
+refreshes, the longer.
+
+Measured on Linux (an RTX 4090) in gamescope's headless backend, 1280x720
+at 60 Hz, a local SWAT game on Blood Gulch, `game.sim_rate` 60,
+`debug.test_input = "latency:7:fire,move,click,turn"`, 80 s a run: the
+press to the screen, median in ms, of fire, move, click and turn, and a
+present to the screen:
+
+| `display.low_latency` | before | after | present to screen, before → after |
+|---|---|---|---|
+| `"off"` (as Windows' auto was) | 96 / 100 / 100 / 91 | 41 / 40 / 40 / 41 | 50 → 32 ms |
+| `"off"`, the display's answers unheeded (`HALO_VULKAN_UNHEEDED_PRESENTS=1`: the GPU's bound alone) | (as above) | 57 / 57 / 59 / 57 | 50 → 33 ms |
+| `"auto"` | 11 / 13 / 11 / 12 | 12 / 12 / 12 / 12 | 1.4 to 2.0 ms |
 `HALO_VULKAN_STATS=1` logs, every 600 frames, the refreshes that showed a
 frame again, the frames shown after the refresh they were started for (and
 how many of those took longer than any before them), the margin and the

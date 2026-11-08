@@ -62,6 +62,7 @@ static uint64_t present(struct xgpu_vulkan_image *shown, int frame)
 }
 static unsigned paced_updates, unshown;
 static void frame_pacing_update(void) { paced_updates++; }
+static void frames_ahead_update(int present_window) { (void)present_window; }
 static void xgpu_vulkan_pacing_unshown(void) { unshown++; }
 static void recording_begin(void) { recordings++; }
 static uint64_t submit(int acquired, int shown)

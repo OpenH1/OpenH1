@@ -206,9 +206,10 @@ static const struct config_setting config_settings[] =
 	{ "display.low_latency", _config_string, "\"auto\"", "HALO_LOW_LATENCY", _environment_value, _platform_all,
 		"With vsync on (Vulkan: Linux, the Steam Deck, Windows, Android), start\n"
 		"each frame just in time for the refresh it is shown at, its input read\n"
-		"then, with no frames queued ahead: \"on\", \"off\", or \"auto\", on where\n"
-		"it was measured (Linux, the Steam Deck and Android). The Mac's frames\n"
-		"are paced by its display already." },
+		"then, with no frames queued ahead: \"on\" or \"auto\". \"off\" starts each\n"
+		"frame as soon as at most one waits for the display. Either way the game\n"
+		"is never more than a frame ahead of the display. The Mac's frames are\n"
+		"paced by its display already." },
 	{ "display.max_fps", _config_integer, "0", "HALO_MAX_FPS", _environment_value, _platform_desktop,
 		"With vsync off, the most frames a second: 0 for twice the display's\n"
 		"refresh rate, -1 for no limit (which can hang some Intel graphics). On\n"
