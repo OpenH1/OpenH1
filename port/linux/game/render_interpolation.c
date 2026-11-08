@@ -44,9 +44,9 @@ a tick where the tick left it. A projectile deleted in a tick (at
 what it hit) is drawn a tick longer, from its last snapshot to where it was
 deleted, as the effects it made there are drawn from the start of the tick:
 a ghost, drawn only here, which nothing of the game sees. At 60 and 120 a
-projectile is drawn from its newest sub-steps instead (below), its head
-start and hold from half a tick back, and its ghost through the sub-step it
-was deleted in.
+projectile is drawn from its newest sub-steps instead (below), placed and
+turned between two of them, its head start and hold from half a tick back,
+and its ghost through the sub-step it was deleted in.
 
 An object the distributed netcode moves to where the host has it
 (port/linux/game/network_objects.c) is drawn gliding there over a few ticks
@@ -317,6 +317,11 @@ struct interpolated_substeps
 	boolean framed[2];
 	real_point3d frame_positions[2][MAXIMUM_SIM_SUBSTEPS];
 	struct interpolation_quaternion frame_rotations[2][MAXIMUM_SIM_SUBSTEPS];
+	/* a projectile's root node's rotation after each, a bit each for those
+	kept (one whose basis is a rotation): it turns in the sub-steps (falling,
+	guided to a target), and is drawn turning between them */
+	byte rotated[2];
+	struct interpolation_quaternion rotations[2][MAXIMUM_SIM_SUBSTEPS];
 	/* where it is drawn this frame, between two of the drawn tick's */
 	long drawn_frame;
 	boolean drawn_valid;
@@ -682,6 +687,67 @@ static void rotation_from_matrix(real_matrix4x3 const *matrix, struct interpolat
 		quaternion_from_basis(matrix, &rotation->quaternion);
 }
 
+/* a times b: b's rotation, then a's */
+static void quaternion_multiply(
+	struct interpolation_quaternion const *a,
+	struct interpolation_quaternion const *b,
+	struct interpolation_quaternion *result)
+{
+	struct interpolation_quaternion q;
+
+	q.w = a->w * b->w - a->i * b->i - a->j * b->j - a->k * b->k;
+	q.i = a->w * b->i + a->i * b->w + a->j * b->k - a->k * b->j;
+	q.j = a->w * b->j - a->i * b->k + a->j * b->w + a->k * b->i;
+	q.k = a->w * b->k + a->i * b->j - a->j * b->i + a->k * b->w;
+	*result = q;
+}
+
+/* the rotation a fraction t of the way from a to b, the shorter way round
+(b where the two cancel) */
+static void quaternion_nlerp(
+	struct interpolation_quaternion const *a,
+	struct interpolation_quaternion const *b,
+	real t,
+	struct interpolation_quaternion *result)
+{
+	struct interpolation_quaternion qb = *b, q;
+	real length;
+
+	if (a->i * qb.i + a->j * qb.j + a->k * qb.k + a->w * qb.w < 0.0f)
+	{
+		qb.i = -qb.i;
+		qb.j = -qb.j;
+		qb.k = -qb.k;
+		qb.w = -qb.w;
+	}
+	q.i = lerp(a->i, qb.i, t);
+	q.j = lerp(a->j, qb.j, t);
+	q.k = lerp(a->k, qb.k, t);
+	q.w = lerp(a->w, qb.w, t);
+	length = (real)sqrt(q.i * q.i + q.j * q.j + q.k * q.k + q.w * q.w);
+	if (length > 1e-6f)
+	{
+		result->i = q.i / length;
+		result->j = q.j / length;
+		result->k = q.k / length;
+		result->w = q.w / length;
+	}
+	else
+	{
+		*result = *b;
+	}
+}
+
+/* the vector turned by a rotation's basis (basis_from_quaternion's) */
+static void vector_turned_by(real_matrix4x3 const *basis, real_vector3d const *vector, real_vector3d *result)
+{
+	real_vector3d v = *vector;
+
+	result->i = basis->forward.i * v.i + basis->left.i * v.j + basis->up.i * v.k;
+	result->j = basis->forward.j * v.i + basis->left.j * v.j + basis->up.j * v.k;
+	result->k = basis->forward.k * v.i + basis->left.k * v.j + basis->up.k * v.k;
+}
+
 /* a matrix a fraction t of the way from a to b, their rotations found */
 static void matrix_blend_rotations(
 	real_matrix4x3 const *a,
@@ -908,6 +974,8 @@ static void render_interpolation_previous_values(struct interpolated_object *rec
 }
 
 static void render_interpolation_substep(short substep_index, short substep_count, real seconds);
+static void render_interpolation_substep_rotation(long object_index, struct object_datum const *object,
+	struct interpolated_substeps *substeps, short buffer, short substep_index);
 static void render_interpolation_camera_anchors(void);
 
 /* the fast phase's slot (sim_rate.h), at every map's start and every tick
@@ -1042,6 +1110,8 @@ void render_interpolation_tick(void)
 			if (substeps->object_index == iterator.index && substeps->tick[buffer] == interpolation_tick)
 			{
 				substeps->positions[buffer][substeps->count[buffer] - 1] = object->object.position;
+				render_interpolation_substep_rotation(iterator.index, object, substeps, buffer,
+					(short)(substeps->count[buffer] - 1));
 				/* (and a vehicle's frame: its snapshot's root node) */
 				if (substeps->framed[buffer])
 				{
@@ -1239,6 +1309,7 @@ static void render_interpolation_substep(short substep_index, short substep_coun
 				substeps->tick[buffer] = tick;
 				substeps->count[buffer] = substep_count;
 				substeps->recorded[buffer] = 0;
+				substeps->rotated[buffer] = 0;
 				substeps->continuing[buffer] = FALSE;
 				substeps->framed[buffer] = FALSE;
 			}
@@ -1254,6 +1325,7 @@ static void render_interpolation_substep(short substep_index, short substep_coun
 			substeps->tick[buffer] = tick;
 			substeps->count[buffer] = substep_count;
 			substeps->recorded[buffer] = 0;
+			substeps->rotated[buffer] = 0;
 			substeps->framed[buffer] = TEST_FLAG(_object_mask_vehicle, object->object.type) &&
 				object->object.node_matrices.size >= (short)sizeof(real_matrix4x3);
 		}
@@ -1263,6 +1335,7 @@ static void render_interpolation_substep(short substep_index, short substep_coun
 		}
 		substeps->positions[buffer][substep_index] = object->object.position;
 		substeps->recorded[buffer] |= (byte)FLAG(substep_index);
+		render_interpolation_substep_rotation(iterator.index, object, substeps, buffer, substep_index);
 		/* a vehicle's frame: its root node, as the sub-step posed it
 		(vehicles.c's vehicle_substep_pose) */
 		if (substeps->framed[buffer])
@@ -1278,6 +1351,30 @@ static void render_interpolation_substep(short substep_index, short substep_coun
 				substeps->frame_rotations[buffer][substep_index] = rotation.quaternion;
 			}
 		}
+	}
+}
+
+/* (render_interpolation_substep, and the tick's end) a projectile's root
+node's rotation as the sub-step left it, kept beside where it is */
+static void render_interpolation_substep_rotation(long object_index, struct object_datum const *object,
+	struct interpolated_substeps *substeps, short buffer, short substep_index)
+{
+	struct interpolation_rotation rotation;
+
+	if (object->object.type != _object_type_projectile ||
+		object->object.node_matrices.size < (short)sizeof(real_matrix4x3))
+	{
+		return;
+	}
+	rotation_from_matrix(object_get_node_matrices(object_index), &rotation);
+	if (rotation.is_rotation)
+	{
+		substeps->rotations[buffer][substep_index] = rotation.quaternion;
+		substeps->rotated[buffer] |= (byte)FLAG(substep_index);
+	}
+	else
+	{
+		substeps->rotated[buffer] &= (byte)~FLAG(substep_index);
 	}
 }
 
@@ -1472,6 +1569,31 @@ static boolean render_interpolation_kept_position(
 	return TRUE;
 }
 
+/* ... and a projectile's root node's rotation then (FALSE for one not kept,
+or not a rotation) */
+static boolean render_interpolation_kept_rotation(
+	struct interpolated_substeps const *substeps,
+	long step,
+	short count,
+	struct interpolation_quaternion *rotation)
+{
+	long tick;
+	short buffer, index;
+
+	if (step < 0 || count <= 1)
+		return FALSE;
+	tick = step / count;
+	buffer = (short)(tick & 1);
+	index = (short)(step % count);
+	if (substeps->tick[buffer] != tick || substeps->count[buffer] != count ||
+		!TEST_FLAG(substeps->recorded[buffer], index) || !TEST_FLAG(substeps->rotated[buffer], index))
+	{
+		return FALSE;
+	}
+	*rotation = substeps->rotations[buffer][index];
+	return TRUE;
+}
+
 /* the newer of the two sub-steps a frame is drawn between from the newest
 (render_interpolation_lead_newest), as render_interpolation_kept_position
 counts them */
@@ -1494,9 +1616,14 @@ let go of (render_interpolation_object_from), to there over the tick it
 holds, and on its sub-steps from then: never past a sub-step the
 simulation ran, and never further than where it was deleted
 (render_interpolation_object_deleted). Its pose is its newest, moved
-there. FALSE when it is drawn otherwise (one sub-step a tick, carried, in a
-cinematic, none kept) */
-static boolean render_interpolation_projectile_lead(long object_index, real_point3d *drawn)
+there, and turned (rotated, when both its sub-steps' rotations were kept)
+to the rotation between those of the sub-steps it is drawn between: its
+newest alone turned in steps as each sub-step turned it (a mortar's arc, a
+bolt guided to its target), 60 or 120 times a second whatever the frame
+rate, where at 30 it turns between the ticks. FALSE when it is drawn
+otherwise (one sub-step a tick, carried, in a cinematic, none kept) */
+static boolean render_interpolation_projectile_lead(long object_index, real_point3d *drawn,
+	struct interpolation_quaternion *rotation, boolean *rotated)
 {
 	struct object_datum *object = object_get(object_index);
 	struct interpolated_substeps const *substeps;
@@ -1504,8 +1631,10 @@ static boolean render_interpolation_projectile_lead(long object_index, real_poin
 	short count = interpolation_substep_count;
 	long to_step;
 	real_point3d from, to;
+	struct interpolation_quaternion from_rotation, to_rotation;
 	boolean has_from, has_to;
 
+	*rotated = FALSE;
 	if (count <= 1 || !interpolated_substeps || object->object.type != _object_type_projectile ||
 		object->object.parent_object_index != NONE || absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS ||
 		cinematic_in_progress())
@@ -1524,20 +1653,38 @@ static boolean render_interpolation_projectile_lead(long object_index, real_poin
 		real part = ((real)(to_step - substeps->made_step) + interpolation_substep_fraction) / (real)count;
 
 		point_lerp(&substeps->made_from, &to, part > 0.0f ? part : 0.0f, drawn);
+		/* (turned as its first sub-step left it) */
+		*rotated = render_interpolation_kept_rotation(substeps, substeps->made_step, count, rotation);
 		return TRUE;
 	}
 	has_from = render_interpolation_kept_position(substeps, to_step - 1, count, &from);
 	has_to = render_interpolation_kept_position(substeps, to_step, count, &to);
 	/* (so written that a position not a number is a jump) */
 	if (has_from && has_to && distance_squared(&from, &to) <= OBJECT_SNAP_DISTANCE * OBJECT_SNAP_DISTANCE)
+	{
 		point_lerp(&from, &to, interpolation_substep_fraction, drawn);
+		if (render_interpolation_kept_rotation(substeps, to_step - 1, count, &from_rotation) &&
+			render_interpolation_kept_rotation(substeps, to_step, count, &to_rotation))
+		{
+			quaternion_nlerp(&from_rotation, &to_rotation, interpolation_substep_fraction, rotation);
+			*rotated = TRUE;
+		}
+	}
 	else if (has_to)
+	{
 		*drawn = to;
+		*rotated = render_interpolation_kept_rotation(substeps, to_step, count, rotation);
+	}
 	/* (the newer not run yet: where the last left it) */
 	else if (has_from)
+	{
 		*drawn = from;
+		*rotated = render_interpolation_kept_rotation(substeps, to_step - 1, count, rotation);
+	}
 	else
+	{
 		return FALSE;
+	}
 	return TRUE;
 }
 
@@ -1550,10 +1697,14 @@ static real_matrix4x3 *render_interpolation_projectile_nodes(long object_index)
 	struct lead_projectile *lead;
 	real_matrix4x3 const *current;
 	real_point3d drawn;
+	struct interpolation_quaternion rotation;
+	boolean rotated;
+	struct interpolation_rotation now;
+	real_matrix4x3 turn;
 	short node_count;
 	short node_index;
 
-	if (!render_interpolation_projectile_lead(object_index, &drawn))
+	if (!render_interpolation_projectile_lead(object_index, &drawn, &rotation, &rotated))
 		return NULL;
 	lead = &lead_projectiles[DATUM_INDEX_TO_ABSOLUTE_INDEX(object_index) % MAXIMUM_LEAD_PROJECTILES];
 	if (lead->frame == interpolation_frame)
@@ -1565,12 +1716,38 @@ static real_matrix4x3 *render_interpolation_projectile_nodes(long object_index)
 	/* (as it is now: object_get_node_matrices gives the drawn pose while a
 	frame is drawn) */
 	current = (real_matrix4x3 const *)object_header_block_get(object_index, &object->object.node_matrices);
+	/* (the turn from its root node's rotation now to the one drawn, about
+	where it is) */
+	rotation_from_matrix(&current[0], &now);
+	rotated = rotated && now.is_rotation;
+	if (rotated)
+	{
+		struct interpolation_quaternion inverse = now.quaternion, delta;
+
+		inverse.i = -inverse.i;
+		inverse.j = -inverse.j;
+		inverse.k = -inverse.k;
+		quaternion_multiply(&rotation, &inverse, &delta);
+		basis_from_quaternion(&delta, &turn);
+	}
 	for (node_index = 0; node_index < node_count; node_index++)
 	{
+		real_vector3d offset;
+
 		lead->nodes[node_index] = current[node_index];
-		lead->nodes[node_index].position.x += drawn.x - object->object.position.x;
-		lead->nodes[node_index].position.y += drawn.y - object->object.position.y;
-		lead->nodes[node_index].position.z += drawn.z - object->object.position.z;
+		offset.i = current[node_index].position.x - object->object.position.x;
+		offset.j = current[node_index].position.y - object->object.position.y;
+		offset.k = current[node_index].position.z - object->object.position.z;
+		if (rotated)
+		{
+			vector_turned_by(&turn, &offset, &offset);
+			vector_turned_by(&turn, &current[node_index].forward, &lead->nodes[node_index].forward);
+			vector_turned_by(&turn, &current[node_index].left, &lead->nodes[node_index].left);
+			vector_turned_by(&turn, &current[node_index].up, &lead->nodes[node_index].up);
+		}
+		lead->nodes[node_index].position.x = drawn.x + offset.i;
+		lead->nodes[node_index].position.y = drawn.y + offset.j;
+		lead->nodes[node_index].position.z = drawn.z + offset.k;
 	}
 	lead->object_index = object_index;
 	lead->frame = interpolation_frame;
