@@ -202,7 +202,7 @@ host without the base register has the guest's. The pipeline cache is
 on a Mac (its blocks LZ4's, Apple's framing of it, decoded here) plays as
 one made here does, and one made here plays on the Mac's.
 
-`--serve` is the OpenH1 Inspector's service, a JSON request a line on
+`--serve` is the replay service (`docs/replay_protocol.md`), a JSON request a line on
 standard input and a JSON answer a line on standard output (the log on
 standard error), over ssh as well (`"inline": true` answers with the
 files' bytes in base64 instead of writing them; `"compress": true` deflates

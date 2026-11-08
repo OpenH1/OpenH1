@@ -7,7 +7,7 @@ maps. What the replays share (host_render_replay.c): the recording read (its
 blocks LZ4's as Apple's libcompression writes them, or stored), the guest's
 memory put back before each record, the guest's side of the ring, the
 frames measured, the frames' pictures compared, and the service
-(--serve) the OpenH1 Inspector drives. Each replay is a backend's: Metal's
+(--serve) a client drives (docs/replay_protocol.md). Each replay is a backend's: Metal's
 (port/macos/tools/halo_replay.m), Vulkan's (port/linux/vulkan/tools/
 halo_replay.c), which hands host_render_replay_main its platform.
 
@@ -34,7 +34,7 @@ made (compiles) in it; then a summary, hitches named.
 --serve: requests as JSON lines on standard input, one JSON line answering
 each on standard output (the log on standard error):
 
-	{"cmd":"info"}
+	{"cmd":"info"}  ("protocol": HOST_RENDER_REPLAY_PROTOCOL)
 	{"cmd":"frame","n":N,"png":"<path>","ids":"<path>"}  (or "inline":true)
 	{"cmd":"draws","n":N}
 	{"cmd":"pick","n":N,"x":X,"y":Y}
@@ -42,13 +42,25 @@ each on standard output (the log on standard error):
 		"inline":true)
 
 A frame is played exactly: the frames before it are played first (from the
-recording's start again for one before the frame last played), and its
-picture is the back buffer it presents, read before it is presented. Its
+recording's start again for one before the frame last played; those more
+than eight before it without the GPU's work of their draws, clears,
+anti-aliasing, tone map and present, which nothing reads), and its picture
+is the back buffer it presents, read before it is presented. Its
 ID buffer (where the backend has one) gives each pixel the draws that
 changed it, topmost first: a draw's number in its frame plus one (0: none),
 a draw being a DRAW, DRAW_INDICES, DRAW_INDEXED or DRAW_IMMEDIATE record of
 the frame, counted from its first. A draw counts where it changed the
 pixel's value (an alpha-tested leaf's quad, not its cut-out corners).
+
+A recording made with debug.render_marks (the stream's MARK records) says
+what each draw belongs to: draws and pick give each draw's owner (its
+"kind", "label", "id", "tags": object, model, shader, bitmap; a menu
+widget's "widget" tag and "source", the generator's file and the source
+attribute's text) and the game renderer's "category" it was drawn in; the
+frame's view (its "map", "tick", "window", "camera": position, forward,
+up, fov in radians; "viewport" in the back buffer's pixels; every view of
+the frame in "views"). Without them a draw's kind is "other" and its label
+its record's kind and primitive.
 */
 
 #ifndef __HALO_HOST_RENDER_REPLAY_H
@@ -56,6 +68,11 @@ pixel's value (an alpha-tested leaf's quad, not its cut-out corners).
 
 #include <stddef.h>
 #include <stdint.h>
+
+/* the service's protocol, in info's "protocol": raised when a request or a
+reply changes so that a client reading the old one would misread it (an
+added field does not raise it); docs/replay_protocol.md */
+#define HOST_RENDER_REPLAY_PROTOCOL 1
 
 /* the draws an ID buffer keeps for each pixel (pick's stack) */
 #define HOST_RENDER_REPLAY_ID_DEPTH 8

@@ -139,6 +139,32 @@ int world_proxies_source_baked(long id)
 	return object && object_baked(id, object->definition_index);
 }
 
+int world_proxies_source_solid(long id)
+{
+	struct object_datum *object = (struct object_datum *)object_try_and_get(id);
+	struct object_definition const *definition;
+	struct collision_model const *collision;
+	long node_index;
+
+	if (!object)
+		return FALSE;
+	definition = object_definition_get(object->definition_index);
+	collision = definition && definition->object.collision_model.index != NONE ?
+		collision_model_definition_get(definition->object.collision_model.index) : NULL;
+	/* (any node's first BSP with triangles, as the bake folds them) */
+	for (node_index = 0; collision && collision->nodes.address && node_index < collision->nodes.count; node_index++)
+	{
+		struct collision_node const *node = TAG_BLOCK_GET_ELEMENT(&collision->nodes, node_index, struct collision_node);
+
+		if (node->bsps.address && node->bsps.count > 0 &&
+			world_scene_collision_fan(TAG_BLOCK_GET_ELEMENT(&node->bsps, 0, struct collision_bsp), NULL) > 0)
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
 int world_proxies_source_field(long definition, struct world_proxies_source_field *field)
 {
 	unsigned long atlas[3];

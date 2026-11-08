@@ -542,6 +542,22 @@ static short projectile_made_substep;
 static short projectile_held;
 #define PROJECTILE_SPEED 0.9f
 static real_point3d projectile_positions[MAXIMUM_TICKS][MAXIMUM_SIM_SUBSTEPS];
+/* (projectile_turning) how far it turns about the up axis each sub-step it moves (radians), and has turned */
+static real projectile_turn;
+static real projectile_heading;
+
+/* the projectile's nodes turned to its heading, about where it is */
+static void projectile_turned(void)
+{
+	real_matrix4x3 *m = &object_get_node_matrices(PROJECTILE)[0];
+
+	m->forward.i = (real)cos(projectile_heading);
+	m->forward.j = (real)sin(projectile_heading);
+	m->forward.k = 0.0f;
+	m->left.i = -(real)sin(projectile_heading);
+	m->left.j = (real)cos(projectile_heading);
+	m->left.k = 0.0f;
+}
 
 static void projectile_substep(long tick, short substep_index)
 {
@@ -555,6 +571,8 @@ static void projectile_substep(long tick, short substep_index)
 		/* (its head start) */
 		object_place(PROJECTILE, 1.0f + PROJECTILE_SPEED, 5.0f, 1.0f);
 		projectile_held = (short)(substep_index < 0 ? fake_substep_count : fake_substep_count - 1);
+		projectile_heading = 0.0f;
+		projectile_turned();
 	}
 	else if (valid(PROJECTILE) && substep_index >= 0)
 	{
@@ -562,13 +580,17 @@ static void projectile_substep(long tick, short substep_index)
 		if (projectile_held > 0)
 			projectile_held--;
 		else
+		{
 			object_place(PROJECTILE, projectile->object.position.x + PROJECTILE_SPEED / fake_substep_count, 5.0f, 1.0f);
+			projectile_heading += projectile_turn;
+		}
+		projectile_turned();
 	}
 	if (valid(PROJECTILE) && substep_index >= 0)
 		projectile_positions[tick][substep_index] = object_get(PROJECTILE)->object.position;
 }
 
-static void projectile_case(short made_substep, long checked_ticks)
+static void projectile_case(short made_substep, long checked_ticks, real turn)
 {
 	long frame;
 	short count = 4;
@@ -579,6 +601,7 @@ static void projectile_case(short made_substep, long checked_ticks)
 	world_new(count);
 	projectile_made_tick = 5;
 	projectile_made_substep = made_substep;
+	projectile_turn = turn;
 	/* (the sub-step it is first kept after, counted from the clock's first: the open tick's are ticks_ended + 1's) */
 	made_step = projectile_made_tick * count + (made_substep < 0 ? 0 : made_substep);
 	case_substep = projectile_substep;
@@ -613,6 +636,18 @@ static void projectile_case(short made_substep, long checked_ticks)
 		CHECK(drawn[0].position.x <= object_get(PROJECTILE)->object.position.x + 1e-5f,
 			"frame %ld: drawn past where the newest sub-step left it (%f, %f)", frame, drawn[0].position.x,
 			object_get(PROJECTILE)->object.position.x);
+		/* turning as it moves: headed as far round as it is along (the sub-steps' headings blended as the
+		quaternions are, near enough over a sub-step's small turn), not as the newest sub-step left it */
+		if (turn != 0.0f)
+		{
+			real moved = time <= (real)(count - 1) ? 0.0f : time - (real)(count - 1);
+			real heading = (real)atan2(drawn[0].forward.j, drawn[0].forward.i);
+
+			CHECK(fabs(heading - turn * moved) < 1e-3f && fabs(drawn[0].forward.k) < 1e-5f &&
+				fabs(drawn[0].up.k - 1.0f) < 1e-5f,
+				"frame %ld: headed %f radians round, not %f (turning %f a sub-step)", frame, heading, turn * moved,
+				turn);
+		}
 		seen = TRUE;
 		render_interpolation_frame_end();
 	}
@@ -853,9 +888,11 @@ int main(int argc, char **argv)
 	else if (!strcmp(argv[1], "camera_slow"))
 		case_camera_slow();
 	else if (!strcmp(argv[1], "projectile"))
-		projectile_case(-1, 8);
+		projectile_case(-1, 8, 0.0f);
 	else if (!strcmp(argv[1], "projectile_late"))
-		projectile_case(2, 8);
+		projectile_case(2, 8, 0.0f);
+	else if (!strcmp(argv[1], "projectile_turning"))
+		projectile_case(-1, 8, 0.03f);
 	else if (!strcmp(argv[1], "respawn"))
 		respawn_case(1);
 	else if (!strcmp(argv[1], "respawn_120"))

@@ -105,6 +105,11 @@ and its pages hold (world_sdf.h's world_sdf_scenery_baked): its draws take
 none of the field, which holds its own geometry
 (port/linux/game/world_proxies_game.c, which reads the object) */
 int world_proxies_source_baked(long id);
+/* whether a static scenery placement's own geometry is in the field: its
+definition has collision geometry, which the bake folds in (world_sdf.c's
+sdf_scenery_copy). A shrub's or a fern's has none: the field does not hold
+it (port/linux/game/world_proxies_game.c) */
+int world_proxies_source_solid(long id);
 struct world_proxies_frame;
 /* a definition's shapes placed on these nodes (world space; at most
 maximum): how many. The static scenery's, baked where it stands */

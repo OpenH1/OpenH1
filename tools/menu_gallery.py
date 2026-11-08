@@ -48,6 +48,11 @@ but do not fail it, since the touch layout's rows are 3 to 5 mm on every
 screen). A screen that writes no layout (it closes at once without a state
 the run has not, or it is the virtual keyboard's) is marked so.
 
+Each run has its own data and save folders (its profiles and saves its own), but not its own map cache: the
+stock maps are unpacked once for a build and its maps folder (build/menu_gallery_saves, made again when the
+build changes), and each run starts from a clone of them (an APFS clone on a Mac, a reflink on Linux, else
+hard links of the maps), not 2.6 to 3.2 GB of its own.
+
 The pictures are the game's imagery: they stay in --out (under build/, which
 git ignores), never committed nor pushed.
 
@@ -553,11 +558,133 @@ def place(source: Path, destination: Path):
         shutil.copy2(source, destination)
 
 
+# ---------- the map cache the runs share
+
+# (the unpacked maps' files in a save root's z: cacheNNN.map and its note, cacheNNN.source, and the language
+# they were unpacked in, without which the game unpacks them all again: port/linux/src/game_caches.c,
+# map_unpack.c)
+MAP_CACHE_FILE = re.compile(r"(cache\d{3}\.(map|source)|last_language\.dat)$")
+# where the templates are kept, a folder for each build, a template for each of its builds and maps folders
+MAP_CACHE_TEMPLATES = ROOT / "build" / "menu_gallery_saves"
+# the most seconds the template's run may take to unpack the stock maps
+MAP_CACHE_TIMEOUT = 600
+
+
+def map_cache_key(build: Path, maps: Path) -> tuple:
+    """(the build's folder's name among the templates, the template's for this build of it and these maps)"""
+    stamp = [str(maps.resolve())]
+    for name in ("halo", "halo_guest.elf"):
+        if (build / name).is_file():
+            status = (build / name).stat()
+            stamp.append(f"{name}:{status.st_size}:{status.st_mtime_ns}")
+    folder = hashlib.sha256(str(build.resolve()).encode()).hexdigest()[:12]
+    return folder, hashlib.sha256("\n".join(stamp).encode()).hexdigest()[:12]
+
+
+def map_cache_template(build: Path, maps: Path, variant: "Variant") -> Path:
+    """a z folder with the stock maps unpacked by this build (its cacheNNN files), made once by a run of its
+    own that waits for the map cache's prefill to go idle, and kept for later galleries until the build
+    changes (the build's older templates deleted): the runs each start from a clone of it, not a cache of
+    their own (2.6 to 3.2 GB a run), still with their own profiles and saves. None where it cannot be made"""
+    folder, key = map_cache_key(build, maps)
+    template = MAP_CACHE_TEMPLATES / folder / key
+    if (template / "made").is_file():
+        return template
+    for old in (MAP_CACHE_TEMPLATES / folder).glob("*") if (MAP_CACHE_TEMPLATES / folder).is_dir() else []:
+        shutil.rmtree(old, ignore_errors=True)
+    started = time.monotonic()
+    (MAP_CACHE_TEMPLATES / "runs").mkdir(parents=True, exist_ok=True)
+    run = Path(tempfile.mkdtemp(prefix="menu-gallery-template-", dir=MAP_CACHE_TEMPLATES / "runs"))
+    process = None
+    try:
+        game = run / "game"
+        game.mkdir()
+        for name in capture.BUILD_FILES:
+            if (build / name).is_file():
+                place(build / name, game / name)
+        if sys.platform != "darwin":
+            for library in build.glob("*.so*"):
+                place(library, game / library.name)
+        environment = run_environment(variant, run, MAP_CACHE_TIMEOUT, False)
+        environment.pop("HALO_MENU_TOUR", None)
+        environment["HALO_LOAD_TRACE"] = "1"
+        if sys.platform != "darwin":
+            environment["SDL_VIDEO_DRIVER"] = "offscreen"
+        (run / "data" / "maps").symlink_to(maps.resolve())
+        log_path = run / "halo.log"
+        with open(log_path, "w") as log:
+            process = subprocess.Popen([str(game / "halo")], cwd=game, env=environment, stdin=subprocess.DEVNULL,
+                                       stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            idle = False
+            while process.poll() is None and time.monotonic() - started < MAP_CACHE_TIMEOUT:
+                text = log_path.read_text(errors="replace")
+                debug = run / "data" / "debug.txt"
+                text += debug.read_text(errors="replace") if debug.is_file() else ""
+                if "phase=map_cache.prefill.idle" in text:
+                    idle = True
+                    break
+                time.sleep(1)
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+        z = run / "saves" / "z"
+        files = [path for path in z.iterdir() if MAP_CACHE_FILE.match(path.name)] if z.is_dir() else []
+        if not idle or not files:
+            print(f"menu_gallery: the map cache's template was not made (idle: {idle}, {len(files)} files): each "
+                  "run unpacks its own", file=sys.stderr, flush=True)
+            return None
+        template.mkdir(parents=True, exist_ok=True)
+        for path in files:
+            path.rename(template / path.name)
+        (template / "made").write_text(f"{len(files)} files, {time.monotonic() - started:.1f} s\n")
+        print(f"menu_gallery: the map cache's template made: {len(files)} files, "
+              f"{sum((template / p.name).stat().st_size for p in files) / 2 ** 30:.1f} GB, "
+              f"{time.monotonic() - started:.1f} s", file=sys.stderr, flush=True)
+        return template
+    finally:
+        if process and process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+        shutil.rmtree(run, ignore_errors=True)
+
+
+def map_cache_clone(template: Path, z: Path):
+    """the template's files in a run's z folder, sharing their blocks: an APFS clone on a Mac (clonefile, cp
+    -c), a reflink on Linux where the file system has them, else hard links of the maps (the game writes a
+    slot only to unpack another map into it, which the template's full cache never needs) and copies of
+    their small notes"""
+    z.mkdir(parents=True, exist_ok=True)
+    files = sorted(path for path in template.iterdir() if MAP_CACHE_FILE.match(path.name))
+    if sys.platform == "darwin":
+        if subprocess.run(["cp", "-c", *map(str, files), str(z)], capture_output=True).returncode == 0:
+            return
+    elif subprocess.run(["cp", "--reflink=always", *map(str, files), str(z)], capture_output=True).returncode == 0:
+        return
+    for path in files:
+        if not (z / path.name).exists():
+            if path.suffix == ".map":
+                place(path, z / path.name)
+            else:
+                shutil.copy2(path, z / path.name)
+
+
+def map_cache_unchanged(template: Path) -> bool:
+    """whether no run wrote a hard-linked map of the template (its times as made); one that did is deleted,
+    made again by the next gallery"""
+    made = (template / "made").stat().st_mtime_ns
+    if any(path.stat().st_mtime_ns > made for path in template.iterdir() if path.suffix == ".map"):
+        shutil.rmtree(template, ignore_errors=True)
+        return False
+    return True
+
+
 def tour(build: Path, screens: list, variant: Variant, maps: Path, menus: Path, pictures: bool, xvfb: bool,
-         timeout: float) -> dict:
+         timeout: float, template: Path = None) -> dict:
     """one run of the game through the screens (debug.menu_tour), the menu files of a folder over its own
     (its menus folder: no build for a change to them): {screen's name: (picture or None, layout or None)}"""
-    folder = Path(tempfile.mkdtemp(prefix="menu-gallery-"))
+    # (beside the template, on its file system, where its files can be cloned or linked: not a /tmp of RAM)
+    if template:
+        (MAP_CACHE_TEMPLATES / "runs").mkdir(parents=True, exist_ok=True)
+    folder = Path(tempfile.mkdtemp(prefix="menu-gallery-", dir=MAP_CACHE_TEMPLATES / "runs" if template else None))
     process = server = None
     try:
         game = folder / "game"
@@ -572,6 +699,8 @@ def tour(build: Path, screens: list, variant: Variant, maps: Path, menus: Path, 
             # (the folder beside config.toml, which a build run from its folder keeps in its own)
             (game / "menus").symlink_to(menus.resolve())
         environment = run_environment(variant, folder, timeout, pictures)
+        if template:
+            map_cache_clone(template, folder / "saves" / "z")
         (folder / "data" / "tour.txt").write_text("".join(screen.name + "\n" for screen in screens))
         (folder / "data" / "maps").symlink_to(maps.resolve())
         if sys.platform != "darwin":
@@ -623,6 +752,7 @@ def render(build: Path, screens: list, variants: list, maps: Path, out: Path, la
     tasks = [(name, screens[start:start + size]) for name in variants for start in range(0, len(screens), size)]
     results = {}
     sources = menu_sources.catalog(menus / "ce" if menus else ROOT / MENUS)
+    template = map_cache_template(build, maps, VARIANTS[variants[0]])
 
     def one(task):
         name, part = task
@@ -630,7 +760,7 @@ def render(build: Path, screens: list, variants: list, maps: Path, out: Path, la
         folder.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
         try:
-            found = tour(build, part, VARIANTS[name], maps, menus, pictures, xvfb, timeout + len(part))
+            found = tour(build, part, VARIANTS[name], maps, menus, pictures, xvfb, timeout + len(part), template)
         except Exception as error:  # (reported in the page)
             return task, {screen.name: {"error": str(error)} for screen in part}, time.monotonic() - started
         made = {}
@@ -660,6 +790,8 @@ def render(build: Path, screens: list, variants: list, maps: Path, out: Path, la
                 results[(screen_name, name)] = result
             print(f"menu_gallery: {label} {name}: {len(part)} screens in {seconds:.1f} s", file=sys.stderr,
                   flush=True)
+    if template:
+        map_cache_unchanged(template)
     return results
 
 

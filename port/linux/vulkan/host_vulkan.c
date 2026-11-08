@@ -73,6 +73,9 @@ names another file, or none (empty).
 #ifdef HALO_VR
 #include "host_vr_vulkan.h"
 #endif
+#ifdef HALO_ASTC
+#include "xgpu_astc.h"
+#endif
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -239,6 +242,105 @@ static const char *cache_path(char *path, size_t size)
 	return path;
 }
 
+/* ---------- the caches the player clears (host_caches, guest_host.h)
+
+The pipeline cache and the ASTC textures' files (HALO_ASTC) are made again as
+the game plays. Settings' CLEAR CACHES asks for them to go at the next start
+(CACHES_REQUEST, a file in the caches' folder), and they go as the window
+opens, before the renderer reads them (caches_clear_requested). */
+
+#define CACHES_REQUEST "clear_caches"
+
+/* the ASTC textures' folder: HALO_ASTC_CACHE, or the caches' folder's astc;
+NULL for none */
+static const char *astc_folder(char *folder, size_t size)
+{
+	const char *chosen = getenv("HALO_ASTC_CACHE");
+
+	if (chosen)
+		return chosen;
+	if (!cache_folder(folder, size))
+		return NULL;
+	strncat(folder, "/astc", size - strlen(folder) - 1);
+	return folder;
+}
+
+/* the caches' bytes, each file deleted with clear */
+static unsigned long long caches_bytes(int clear)
+{
+	char path[1024], folder[1024];
+	unsigned long long total = 0;
+	struct stat status;
+	const char *file = cache_path(path, sizeof(path));
+
+	if (file && !stat(file, &status))
+	{
+		total += (unsigned long long)status.st_size;
+		if (clear)
+			remove(file);
+	}
+#ifdef HALO_ASTC
+	{
+		const char *astc = astc_folder(folder, sizeof(folder));
+
+		total += xgpu_astc_cache_files(astc && *astc ? astc : NULL, clear);
+	}
+#else
+	(void)folder;
+#endif
+	return total;
+}
+
+/* the request's file, into path; NULL if there is no caches' folder */
+static const char *caches_request_path(char *path, size_t size)
+{
+	char folder[1024];
+
+	if (!cache_folder(folder, sizeof(folder)))
+		return NULL;
+	snprintf(path, size, "%s/" CACHES_REQUEST, folder);
+	return path;
+}
+
+/* the caches cleared, if the player asked for it at the last run */
+static void caches_clear_requested(void)
+{
+	char path[1100];
+	struct stat status;
+
+	if (!caches_request_path(path, sizeof(path)) || stat(path, &status))
+		return;
+	host_logf(HOST_LOG_INFO, "vulkan: the caches cleared, as Settings asked: %llu KB",
+		caches_bytes(1) / 1024ULL);
+	remove(path);
+}
+
+/* (a host import: menu_functions.c's CLEAR CACHES, by game_caches.c) the
+caches' kilobytes; with what 1 their clearing asked for at the next start,
+2 that asked for no longer */
+unsigned int host_caches(int what)
+{
+	char path[1100];
+	unsigned long long kilobytes;
+
+	if ((what == 1 || what == 2) && caches_request_path(path, sizeof(path)))
+	{
+		if (what == 1)
+		{
+			FILE *file = fopen(path, "wb");
+
+			if (file)
+				fclose(file);
+		}
+		else
+		{
+			remove(path);
+		}
+	}
+	kilobytes = caches_bytes(0) / 1024ULL;
+	return kilobytes > 0xFFFFFFFFULL ? 0xFFFFFFFFu : (unsigned int)kilobytes;
+}
+
 static void vulkan_shutdown(void)
 {
 	static int stopped;
@@ -327,18 +429,14 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 	xgpu_vulkan_stream_debug((debug & DEBUG_STATISTICS) != 0,
 		debug_folder(shader_folder, "HALO_VULKAN_SHADERS", shaders, sizeof(shaders)));
 	xgpu_vulkan_textures_dump(debug_folder(texture_folder, NULL, textures, sizeof(textures)));
+	/* (the caches gone first, if the player asked for it) */
+	caches_clear_requested();
 	{
 		/* (the DXT textures' ASTC blocks encoded, where they are ASTC:
 		HALO_ASTC_CACHE, or the caches' folder's astc) */
 		char folder[1024];
-		const char *chosen = getenv("HALO_ASTC_CACHE");
 
-		if (!chosen && cache_folder(folder, sizeof(folder)))
-		{
-			strncat(folder, "/astc", sizeof(folder) - strlen(folder) - 1);
-			chosen = folder;
-		}
-		xgpu_vulkan_textures_astc_folder(chosen);
+		xgpu_vulkan_textures_astc_folder(astc_folder(folder, sizeof(folder)));
 	}
 	vulkan_window = object;
 	/* (which of SDL's window systems the window is in: on a Linux desktop

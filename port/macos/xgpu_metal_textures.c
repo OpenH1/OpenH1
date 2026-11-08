@@ -283,25 +283,29 @@ static uint32_t texture_make(struct entry *entry)
 
 /* ---------- ASTC */
 
+const char *xgpu_metal_textures_astc_folder(char *path, size_t size)
+{
+	const char *folder = getenv("HALO_ASTC_CACHE"), *home = getenv("HOME");
+
+	if (folder)
+		return folder;
+	if (!home || !*home)
+		return NULL;
+	snprintf(path, size, "%s/" ASTC_CACHE_FOLDER, home);
+	return path;
+}
+
 /* whether DXT textures are ASTC here (decided at the first, once the
 device is there): display.astc_textures, and the GPU's formats */
 static int astc_wanted(void)
 {
 	if (cache.astc < 0)
 	{
-		const char *folder = getenv("HALO_ASTC_CACHE"), *home = getenv("HOME");
 		char path[1024];
 
 		cache.astc = xgpu_astc_chosen(host_astc_textures, xgpu_metal_block_compression(), xgpu_metal_astc());
 		if (cache.astc)
-		{
-			if (!folder && home && *home)
-			{
-				snprintf(path, sizeof(path), "%s/" ASTC_CACHE_FOLDER, home);
-				folder = path;
-			}
-			xgpu_astc_cache_initialize(folder, ASTC_CACHE_BYTES);
-		}
+			xgpu_astc_cache_initialize(xgpu_metal_textures_astc_folder(path, sizeof(path)), ASTC_CACHE_BYTES);
 		host_logf(HOST_LOG_INFO, "metal: DXT textures %s (display.astc_textures \"%s\"; the GPU samples BC %s, ASTC %s)",
 			cache.astc ? "as ASTC 4x4" : xgpu_metal_block_compression() ? "as BC" : "decoded", host_astc_textures,
 			xgpu_metal_block_compression() ? "yes" : "no", xgpu_metal_astc() ? "yes" : "no");

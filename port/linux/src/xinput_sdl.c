@@ -53,6 +53,7 @@ extern unsigned char network_aim_assist_block_mouse(void);
 #include "controller_remap.h"
 #include "gyro_aim.h"
 #include "report.h"
+#include "input_trace.h"
 
 #include <SDL3/SDL.h>
 #include <math.h>
@@ -1165,6 +1166,15 @@ static void keyboard_controls(unsigned long held, XINPUT_GAMEPAD *pad)
 unsigned long halo_keyboard_actions(short controller_index)
 {
 	return controller_index == 0 ? keyboard_actions_held : 0;
+}
+
+/* an action's name as config.toml's binding of it is ("move_forward"), for
+the input trace; NULL if none */
+const char *halo_keyboard_action_setting(int action)
+{
+	if (action < 0 || action >= NUMBER_OF_HALO_KEYBOARD_ACTIONS)
+		return NULL;
+	return binding_settings[action] + sizeof("controls.") - 1;
 }
 
 int halo_push_to_talk_held(void)
@@ -2316,7 +2326,12 @@ int halo_linux_substep_gamepad(short gamepad_index, XINPUT_GAMEPAD *pad)
 		return 0;
 	*pad = substep_frame_devices;
 	test_input_gamepad(pad);
-	return memcmp(pad, &substep_frame_reading, sizeof(*pad)) != 0;
+	if (!memcmp(pad, &substep_frame_reading, sizeof(*pad)))
+		return 0;
+	input_trace_pad(1, pad->wButtons, pad->sThumbLX, pad->sThumbLY, pad->sThumbRX, pad->sThumbRY,
+		pad->bAnalogButtons[XINPUT_GAMEPAD_LEFT_TRIGGER], pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER],
+		keyboard_actions_held, 0.0f, 0.0f);
+	return 1;
 }
 
 static void wheel_update(void)
@@ -3433,6 +3448,12 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		/* (and a vote running takes the D-pad's left and right:
 		network_votekick.c) */
 		vote_pad_hold_over(&state->Gamepad);
+		/* (the input trace: what the first controller reads in all) */
+		input_trace_pad(0, state->Gamepad.wButtons, state->Gamepad.sThumbLX, state->Gamepad.sThumbLY,
+			state->Gamepad.sThumbRX, state->Gamepad.sThumbRY,
+			state->Gamepad.bAnalogButtons[XINPUT_GAMEPAD_LEFT_TRIGGER],
+			state->Gamepad.bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER], keyboard_actions_held,
+			input.mouse_released ? 0.0f : input.mouse_dx, input.mouse_released ? 0.0f : input.mouse_dy);
 		/* (a right stick dead zone set below it aims from that) */
 		aiming_deflection = halo_stick_dead_range(1);
 		if (aiming_deflection > STICK_AIMING_DEFLECTION)

@@ -342,6 +342,9 @@ struct frame
 	uint32_t first, end;
 	uint32_t present, width, height;
 	uint32_t draws;
+	/* its first draw's number in the recording's (marks.draw_owners'), and
+	its views (marks.views') */
+	uint32_t draw_first, view_first, view_count;
 };
 
 static struct
@@ -398,6 +401,143 @@ static int is_draw(uint32_t type)
 		type == XGPU_STREAM_DRAW_IMMEDIATE;
 }
 
+/* ---------- debug.render_marks: what the recording's MARK records say of
+its draws (xgpu_stream.h): the strings by their numbers, the owners in
+their order, each draw's owner and the game renderer's category it was
+drawn in (the CATEGORY records, which every recording has), the views */
+
+static const char *const mark_kind_names[XGPU_STREAM_MARK_KINDS] =
+{
+	"other", "world_object", "first_person", "bsp", "sky", "decal", "effect", "particle", "contrail", "lightning",
+	"weather", "water", "hud", "text", "menu_widget", "cinematic_letterbox", "debug", "detail_object", "lens_flare",
+	"fog", "screen_effect", "light_volume", "shadow", "clear",
+};
+
+/* rasterizer.h's _rasterizer_profile_* */
+static const char *const category_names[] =
+{
+	"clear", "model_sky", "models", "environment_lightmaps", "environment_shadows", "environment_diffuse_lights",
+	"environment_decals_light", "environment_decals_alpha_tested", "environment_textures",
+	"environment_decals_primary", "environment_decals_secondary", "environment_specular_lights",
+	"environment_specular_lightmaps", "environment_reflection_lightmap_masks", "environment_reflection_mirrors",
+	"environment_reflections", "environment_transparents", "environment_fog", "environment_fog_screen", "water",
+	"environment_decals_water", "detail_objects", "queued_transparents", "lens_flare_occlusion_submit",
+	"lens_flare_occlusion_query", "lens_flares", "screen_effect", "hud", "screen_flash",
+};
+
+#define CATEGORY_NAMES (sizeof(category_names) / sizeof(*category_names))
+
+static struct
+{
+	/* the recording has MARK records */
+	int present;
+	char **strings;
+	uint32_t string_capacity;
+	struct xgpu_stream_mark_owner *owners;
+	uint32_t owner_count, owner_capacity;
+	struct xgpu_stream_mark_view *views;
+	uint32_t view_count, view_capacity;
+	/* each draw's owner (its index plus one, 0 none) and category (plus
+	one, 0 none) */
+	uint32_t *draw_owners;
+	uint8_t *draw_categories;
+} marks;
+
+static int grow(void **array, uint32_t *capacity, uint32_t wanted, size_t size)
+{
+	uint32_t larger = *capacity ? *capacity : 64;
+	void *grown;
+
+	if (wanted < *capacity)
+		return 1;
+	while (larger <= wanted)
+		larger *= 2;
+	grown = realloc(*array, (size_t)larger * size);
+	if (!grown)
+		return 0;
+	memset((unsigned char *)grown + (size_t)*capacity * size, 0, (size_t)(larger - *capacity) * size);
+	*array = grown;
+	*capacity = larger;
+	return 1;
+}
+
+/* a string of the stream's, kept: bytes that are not UTF-8 as '?' (a
+label cut in a character), control characters as spaces */
+static char *mark_text(const unsigned char *from, uint32_t length)
+{
+	char *text = malloc((size_t)length + 1);
+	uint32_t at = 0, to = 0;
+
+	if (!text)
+		return NULL;
+	while (at < length)
+	{
+		unsigned char byte = from[at];
+		uint32_t extra = byte < 0x80 ? 0 : (byte & 0xe0) == 0xc0 ? 1 : (byte & 0xf0) == 0xe0 ? 2 :
+			(byte & 0xf8) == 0xf0 ? 3 : 4, index;
+		int whole = extra < 4 && at + extra < length;
+
+		for (index = 1; whole && index <= extra; index++)
+			whole = (from[at + index] & 0xc0) == 0x80;
+		if (!whole || (extra && byte < 0xc2))
+		{
+			text[to++] = '?';
+			at++;
+			continue;
+		}
+		if (!extra)
+			text[to++] = byte < 0x20 ? ' ' : (char)byte;
+		else
+		{
+			memcpy(text + to, from + at, extra + 1);
+			to += extra + 1;
+		}
+		at += extra + 1;
+	}
+	text[to] = 0;
+	return text;
+}
+
+/* (the frames' index) a MARK record */
+static void mark_index(const struct record *record, struct frame *frame, uint32_t *owner)
+{
+	uint32_t mask = recording.header.ring.size - 1;
+
+	marks.present = 1;
+	if (record->type == XGPU_STREAM_MARK_STRING && record->bytes >= sizeof(struct xgpu_stream_mark_string))
+	{
+		struct xgpu_stream_mark_string string;
+		uint32_t offset;
+
+		memcpy(&string, record->data, sizeof(string));
+		offset = string.data - (recording.header.ring.buffer + (record->position & mask));
+		if (string.number && string.number < 0x1000000u && offset >= sizeof(string) && offset <= record->bytes &&
+			string.length < record->bytes - offset &&
+			grow((void **)&marks.strings, &marks.string_capacity, string.number, sizeof(*marks.strings)))
+		{
+			free(marks.strings[string.number]);
+			marks.strings[string.number] = mark_text(record->data + offset, string.length);
+		}
+	}
+	else if (record->type == XGPU_STREAM_MARK_VIEW && record->bytes >= sizeof(struct xgpu_stream_mark_view) &&
+		grow((void **)&marks.views, &marks.view_capacity, marks.view_count, sizeof(*marks.views)))
+	{
+		memcpy(&marks.views[marks.view_count++], record->data, sizeof(*marks.views));
+		frame->view_count++;
+	}
+	else if (record->type == XGPU_STREAM_MARK_OWNER && record->bytes >= sizeof(struct xgpu_stream_mark_owner) &&
+		grow((void **)&marks.owners, &marks.owner_capacity, marks.owner_count, sizeof(*marks.owners)))
+	{
+		memcpy(&marks.owners[marks.owner_count++], record->data, sizeof(*marks.owners));
+		*owner = marks.owner_count;
+	}
+}
+
+static const char *mark_string(uint32_t number)
+{
+	return number && number < marks.string_capacity ? marks.strings[number] : NULL;
+}
+
 /* the frames: their records, what they present and its size (the
 targets' sizes as they were made before it), their draws */
 #define TARGETS_MOST 4096
@@ -405,14 +545,35 @@ targets' sizes as they were made before it), their draws */
 static int frames_index(void)
 {
 	static uint32_t widths[TARGETS_MOST], heights[TARGETS_MOST];
-	uint32_t index, frame = 0, first = 0, draws = 0, present = 0;
+	uint32_t index, frame = 0, first = 0, draws = 0, present = 0, all_draws = 0, drawn = 0, owner = 0, category = 0;
+	struct frame next = { 0 };
 
 	recording.frames = calloc(recording.frame_count ? recording.frame_count : 1, sizeof(*recording.frames));
-	if (!recording.frames)
+	for (index = 0; index < recording.record_count; index++)
+		all_draws += is_draw(recording.records[index].type);
+	marks.draw_owners = calloc(all_draws ? all_draws : 1, sizeof(*marks.draw_owners));
+	marks.draw_categories = calloc(all_draws ? all_draws : 1, 1);
+	if (!recording.frames || !marks.draw_owners || !marks.draw_categories)
 		return 0;
 	for (index = 0; index < recording.record_count; index++)
 	{
 		const struct record *record = &recording.records[index];
+
+		if (record->type == XGPU_STREAM_MARK_STRING || record->type == XGPU_STREAM_MARK_VIEW ||
+			record->type == XGPU_STREAM_MARK_OWNER)
+			mark_index(record, &next, &owner);
+		else if (record->type == XGPU_STREAM_CATEGORY && record->bytes >= sizeof(struct xgpu_stream_value))
+		{
+			struct xgpu_stream_value value;
+
+			memcpy(&value, record->data, sizeof(value));
+			category = value.value < CATEGORY_NAMES ? value.value + 1 : 0;
+		}
+		else if (is_draw(record->type) && drawn < all_draws)
+		{
+			marks.draw_owners[drawn] = owner;
+			marks.draw_categories[drawn++] = (uint8_t)category;
+		}
 
 		if (record->type == XGPU_STREAM_TARGET_CREATE && record->bytes >= sizeof(struct xgpu_stream_target_create))
 		{
@@ -437,6 +598,10 @@ static int frames_index(void)
 		{
 			struct frame *to = &recording.frames[frame++];
 
+			*to = next;
+			to->draw_first = drawn - draws;
+			to->view_first = marks.view_count - next.view_count;
+			next.view_count = 0;
 			to->first = first;
 			to->end = index + 1;
 			to->present = present;
@@ -447,6 +612,86 @@ static int frames_index(void)
 			draws = 0;
 			present = 0;
 		}
+	}
+	return 1;
+}
+
+/* the blocks decompressed into the body, on threads of their own (each
+block alone: its place in the body is the sizes before it) */
+#define DECODE_THREADS 8
+
+struct block_job
+{
+	const unsigned char *from;
+	uint32_t stored, size;
+	size_t at;
+};
+
+static struct
+{
+	struct block_job *jobs;
+	uint32_t count;
+	_Atomic uint32_t next;
+	_Atomic int failed;
+} decoding;
+
+static void *blocks_decode_thread(void *unused)
+{
+	uint32_t index;
+
+	(void)unused;
+	while ((index = atomic_fetch_add(&decoding.next, 1)) < decoding.count)
+	{
+		const struct block_job *job = &decoding.jobs[index];
+
+		if (job->stored == job->size)
+			memcpy(recording.body + job->at, job->from, job->size);
+		else if (host_render_replay_lz4_decode(recording.body + job->at, job->size, job->from, job->stored) != job->size)
+			atomic_store(&decoding.failed, 1);
+	}
+	return NULL;
+}
+
+static int blocks_decode(const unsigned char *place, const unsigned char *map_end)
+{
+	pthread_t threads[DECODE_THREADS];
+	uint32_t capacity = 0, index, started = 0;
+
+	decoding.jobs = NULL;
+	decoding.count = 0;
+	while (place + sizeof(struct host_render_record_block) <= map_end)
+	{
+		struct host_render_record_block block;
+
+		memcpy(&block, place, sizeof(block));
+		if ((size_t)(map_end - place) - sizeof(block) < block.stored)
+		{
+			fprintf(stderr, "halo_replay: the recording is cut short (its last %zu bytes)\n", (size_t)(map_end - place));
+			break;
+		}
+		if (!grow((void **)&decoding.jobs, &capacity, decoding.count, sizeof(*decoding.jobs)))
+			return 0;
+		decoding.jobs[decoding.count].from = place + sizeof(block);
+		decoding.jobs[decoding.count].stored = block.stored;
+		decoding.jobs[decoding.count].size = block.size;
+		decoding.jobs[decoding.count].at = recording.body_size;
+		decoding.count++;
+		recording.body_size += block.size;
+		place += sizeof(block) + block.stored;
+	}
+	atomic_store(&decoding.next, 0);
+	atomic_store(&decoding.failed, 0);
+	for (index = 0; index < DECODE_THREADS && index < decoding.count; index++)
+		started += !pthread_create(&threads[started], NULL, blocks_decode_thread, NULL);
+	/* (and this thread, which finishes them if none started) */
+	blocks_decode_thread(NULL);
+	for (index = 0; index < started; index++)
+		pthread_join(threads[index], NULL);
+	free(decoding.jobs);
+	if (atomic_load(&decoding.failed))
+	{
+		fprintf(stderr, "halo_replay: a block does not decompress\n");
+		return 0;
 	}
 	return 1;
 }
@@ -472,9 +717,10 @@ static int recording_load(const char *path)
 	if (recording.map == MAP_FAILED)
 		return 0;
 	memcpy(&recording.header, recording.map, sizeof(recording.header));
-	if (recording.header.magic != HOST_RENDER_RECORD_MAGIC || recording.header.version != HOST_RENDER_RECORD_VERSION ||
-		recording.header.header_size != sizeof(recording.header) ||
-		recording.header.ring.version != XGPU_STREAM_VERSION)
+	/* (a recording of 1: the stream's 21, the same records but the marks) */
+	if (recording.header.magic != HOST_RENDER_RECORD_MAGIC || recording.header.version < 1 ||
+		recording.header.version > HOST_RENDER_RECORD_VERSION || recording.header.header_size != sizeof(recording.header) ||
+		recording.header.ring.version != XGPU_STREAM_VERSION - (HOST_RENDER_RECORD_VERSION - recording.header.version))
 	{
 		fprintf(stderr, "halo_replay: %s is not a recording of this version (%u, the stream's %u)\n", path,
 			recording.header.version, recording.header.ring.version);
@@ -497,29 +743,8 @@ static int recording_load(const char *path)
 			place += sizeof(block) + block.stored;
 		}
 		recording.body = malloc(total ? total : 1);
-		if (!recording.body)
+		if (!recording.body || !blocks_decode(block_place, map_end))
 			return 0;
-		for (place = block_place; place + sizeof(struct host_render_record_block) <= map_end;)
-		{
-			struct host_render_record_block block;
-
-			memcpy(&block, place, sizeof(block));
-			if ((size_t)(map_end - place) - sizeof(block) < block.stored)
-			{
-				fprintf(stderr, "halo_replay: the recording is cut short (its last %zu bytes)\n", (size_t)(map_end - place));
-				break;
-			}
-			if (block.stored == block.size)
-				memcpy(recording.body + recording.body_size, place + sizeof(block), block.size);
-			else if (host_render_replay_lz4_decode(recording.body + recording.body_size, block.size, place + sizeof(block),
-				block.stored) != block.size)
-			{
-				fprintf(stderr, "halo_replay: a block does not decompress\n");
-				return 0;
-			}
-			recording.body_size += block.size;
-			place += sizeof(block) + block.stored;
-		}
 	}
 	/* (counted first, then indexed) */
 	end = recording.body + recording.body_size;
@@ -784,6 +1009,29 @@ static void loop_begin(void)
 	play.last_end = seconds_now();
 }
 
+/* (the render thread) the memory a record reads put back */
+static void chunks_restore(const struct record *record)
+{
+	uint32_t c;
+
+	for (c = 0; c < record->chunk_count; c++)
+	{
+		const struct chunk *chunk = &recording.chunks[record->chunk_first + c];
+		void *to = host_pointer(chunk->address);
+
+		if (memcmp(to, chunk->data, chunk->size))
+		{
+			memcpy(to, chunk->data, chunk->size);
+			pages_mark(chunk->address, chunk->size, 1);
+			play.restored_bytes += chunk->size;
+		}
+		else
+		{
+			pages_mark(chunk->address, chunk->size, 0);
+		}
+	}
+}
+
 /* (the render thread) before each record is played: the memory it reads
 put back */
 static void restore(uint32_t position, uint32_t type, const unsigned char *bytes)
@@ -803,22 +1051,16 @@ static void restore(uint32_t position, uint32_t type, const unsigned char *bytes
 	if (play.index == 0)
 		loop_begin();
 	record = &recording.records[play.index++];
-	for (uint32_t c = 0; c < record->chunk_count; c++)
+	/* (a record the play left out, on its way to a frame: a SKIP where it
+	was, play_to) */
+	if (type == XGPU_STREAM_SKIP && record->type != XGPU_STREAM_SKIP)
 	{
-		const struct chunk *chunk = &recording.chunks[record->chunk_first + c];
-		void *to = host_pointer(chunk->address);
-
-		if (memcmp(to, chunk->data, chunk->size))
-		{
-			memcpy(to, chunk->data, chunk->size);
-			pages_mark(chunk->address, chunk->size, 1);
-			play.restored_bytes += chunk->size;
-		}
-		else
-		{
-			pages_mark(chunk->address, chunk->size, 0);
-		}
+		chunks_restore(record);
+		if (is_draw(record->type))
+			play.frame_draws++;
+		return;
 	}
+	chunks_restore(record);
 	/* (the frame inspected begins) */
 	if (play.frame == inspect.frame && play.frame < recording.frame_count &&
 		play.index - 1 == recording.frames[play.frame].first)
@@ -1059,8 +1301,24 @@ static void sync_all(void)
 	submit(written, XGPU_STREAM_SUBMIT_SYNC);
 }
 
-/* the records written to (not including) last */
-static void play_to(uint32_t last)
+/* what a play on its way to a frame leaves out of the frames well before
+it (play_to's skip): the GPU's work of their draws, clears, anti-aliasing,
+tone map, Panini pass and present, whose pictures nothing reads (the frames played whole before the one asked
+for, SEEK_WHOLE_FRAMES, draw what it shows, the way the game had); the
+state and the memory every record gives are kept (an immediate draw's
+attributes: its vertices left out) */
+#define SEEK_WHOLE_FRAMES 8
+
+static int left_out(uint32_t type)
+{
+	return type == XGPU_STREAM_DRAW || type == XGPU_STREAM_DRAW_INDICES || type == XGPU_STREAM_DRAW_INDEXED ||
+		type == XGPU_STREAM_CLEAR || type == XGPU_STREAM_CLEAR_TARGET || type == XGPU_STREAM_ANTI_ALIAS ||
+		type == XGPU_STREAM_TONE_MAP || type == XGPU_STREAM_PANINI || type == XGPU_STREAM_PRESENT;
+}
+
+/* the records written to (not including) last; those before skip that
+draw or clear left out (a SKIP in their place, which restore knows) */
+static void play_to_skipping(uint32_t last, uint32_t skip)
 {
 	uint32_t mask = ring->size - 1;
 
@@ -1069,8 +1327,21 @@ static void play_to(uint32_t last)
 		const struct record *record = &recording.records[next_record];
 		uint32_t at = record->position + play.offset;
 
+		if (next_record < skip && left_out(record->type))
+		{
+			skip_write(at, record->size);
+			continue;
+		}
 		room(at, record->size);
 		memcpy((unsigned char *)host_pointer(ring->buffer) + (at & mask), record->data, record->bytes);
+		if (next_record < skip && record->type == XGPU_STREAM_DRAW_IMMEDIATE &&
+			record->bytes >= sizeof(struct xgpu_stream_draw_immediate))
+		{
+			struct xgpu_stream_draw_immediate *draw = (void *)((unsigned char *)host_pointer(ring->buffer) + (at & mask));
+
+			draw->count = 0;
+			draw->index_count = 0;
+		}
 		written = at + record->size;
 		if (record->type == XGPU_STREAM_FRAME_END)
 		{
@@ -1082,6 +1353,11 @@ static void play_to(uint32_t last)
 			submit(written, XGPU_STREAM_SUBMIT_SYNC);
 		}
 	}
+}
+
+static void play_to(uint32_t last)
+{
+	play_to_skipping(last, 0);
 }
 
 /* the recording played again from its start: what was written played,
@@ -1349,18 +1625,18 @@ static unsigned char *deflate_bytes(const unsigned char *data, size_t size, size
 
 The service's pictures are written as they are, uncompressed (deflate's
 stored blocks): a frame's PNG in a few milliseconds, where SDL's took 130
-ms of a 1280x720 frame for a file two thirds as large, and the Inspector
+ms of a 1280x720 frame for a file two thirds as large, and a client
 waits for each. */
 
-static uint32_t crc_table[256];
+static uint32_t crc_table[8][256];
 
 static uint32_t crc_update(uint32_t crc, const unsigned char *data, size_t size)
 {
-	size_t index;
+	size_t index = 0;
 
-	if (!crc_table[1])
+	if (!crc_table[0][1])
 	{
-		uint32_t value, bit;
+		uint32_t value, bit, slice;
 
 		for (value = 0; value < 256; value++)
 		{
@@ -1368,11 +1644,26 @@ static uint32_t crc_update(uint32_t crc, const unsigned char *data, size_t size)
 
 			for (bit = 0; bit < 8; bit++)
 				entry = entry & 1 ? 0xedb88320u ^ (entry >> 1) : entry >> 1;
-			crc_table[value] = entry;
+			crc_table[0][value] = entry;
 		}
+		for (value = 0; value < 256; value++)
+			for (slice = 1; slice < 8; slice++)
+				crc_table[slice][value] = (crc_table[slice - 1][value] >> 8) ^
+					crc_table[0][crc_table[slice - 1][value] & 0xff];
 	}
-	for (index = 0; index < size; index++)
-		crc = crc_table[(crc ^ data[index]) & 0xff] ^ (crc >> 8);
+	/* (eight bytes at a time: the tables of a byte's CRC shifted on by
+	one to seven more) */
+	for (; index + 8 <= size; index += 8)
+	{
+		uint32_t low = crc ^ ((uint32_t)data[index] | (uint32_t)data[index + 1] << 8 | (uint32_t)data[index + 2] << 16 |
+			(uint32_t)data[index + 3] << 24);
+
+		crc = crc_table[7][low & 0xff] ^ crc_table[6][(low >> 8) & 0xff] ^ crc_table[5][(low >> 16) & 0xff] ^
+			crc_table[4][low >> 24] ^ crc_table[3][data[index + 4]] ^ crc_table[2][data[index + 5]] ^
+			crc_table[1][data[index + 6]] ^ crc_table[0][data[index + 7]];
+	}
+	for (; index < size; index++)
+		crc = crc_table[0][(crc ^ data[index]) & 0xff] ^ (crc >> 8);
 	return crc;
 }
 
@@ -1435,10 +1726,19 @@ static unsigned char *png_encode(const unsigned char *bgra, uint32_t width, uint
 			line[2 + column * 3] = from[column * 4 + 1];
 			line[3 + column * 3] = from[column * 4];
 		}
-		for (at = 0; at < length; at++)
+		/* (Adler-32 reduced once each 5552 bytes, zlib's NMAX: no sum
+		overflows before) */
+		for (at = 0; at < length;)
 		{
-			adler_a = (adler_a + line[at]) % 65521;
-			adler_b = (adler_b + adler_a) % 65521;
+			size_t run = length - at < 5552 ? length - at : 5552, end = at + run;
+
+			for (; at < end; at++)
+			{
+				adler_a += line[at];
+				adler_b += adler_a;
+			}
+			adler_a %= 65521;
+			adler_b %= 65521;
 		}
 		for (at = 0; at < length;)
 		{
@@ -2219,6 +2519,9 @@ static int inspected_take(uint32_t n)
 	return 0;
 }
 
+/* (HALO_REPLAY_SEEK_SKIPS=0: every frame on the way played whole) */
+static int seek_skips = 1;
+
 /* frame n played exactly, its picture read (and its ID buffer with ids):
 into kept, with its draws unless it is a step back to a picture kept
 (draws: they are wanted too); NULL, or the reason it was not */
@@ -2262,7 +2565,14 @@ static const char *frame_play(uint32_t n, int ids, int draws)
 	}
 	recent_from = !recent_keep ? UINT32_MAX : n >= RECENT ? n - (RECENT - 1) : 0;
 	inspect.frame = n;
-	play_to(recording.frames[n].first);
+	{
+		uint32_t whole = n > SEEK_WHOLE_FRAMES ? n - SEEK_WHOLE_FRAMES : 0;
+
+		/* (the pictures kept only of frames drawn whole) */
+		if (recent_from != UINT32_MAX && recent_from < whole && next_record < recording.frames[whole].first)
+			recent_from = whole;
+		play_to_skipping(recording.frames[n].first, seek_skips ? recording.frames[whole].first : 0);
+	}
 	inspect.pixels_wanted = 1;
 	inspect.ids_wanted = ids;
 	play_to(recording.frames[n].end);
@@ -2330,6 +2640,136 @@ static const char *draw_type_name(uint32_t type)
 		"none";
 }
 
+/* what the marks say of a draw of the frame kept (its kind, label, id,
+tags, a menu widget's tag and generator source, the category): without
+them, the record's kind and primitive as its label */
+static void draw_marks_json(struct text *text, uint32_t index)
+{
+	const struct frame *frame = &recording.frames[kept.frame];
+	const struct draw_seen *draw = index < kept.draw_count ? &kept.draws[index] : NULL;
+	uint32_t global = frame->draw_first + index, owner_number = 0, category = 0;
+	const struct xgpu_stream_mark_owner *owner = NULL;
+	const char *label = NULL, *source;
+
+	if (index < frame->draws)
+	{
+		owner_number = marks.draw_owners[global];
+		category = marks.draw_categories[global];
+	}
+	if (owner_number)
+		owner = &marks.owners[owner_number - 1];
+	TEXT(text, ",\"kind\":");
+	text_string(text, owner && owner->kind < XGPU_STREAM_MARK_KINDS ? mark_kind_names[owner->kind] : "other");
+	TEXT(text, ",\"label\":");
+	if (owner && (label = mark_string(owner->label)))
+		text_string(text, label);
+	else if (draw && draw->type)
+		text_printf(text, "\"%s %s\"", draw_type_name(draw->type), primitive_name(draw->primitive));
+	else
+		TEXT(text, "\"(not drawn)\"");
+	if (owner && owner->id != XGPU_STREAM_MARK_NONE)
+		text_printf(text, ",\"id\":%u", owner->id);
+	else
+		TEXT(text, ",\"id\":null");
+	TEXT(text, ",\"tags\":{");
+	if (owner)
+	{
+		static const char *const names[4] = { "object", "model", "shader", "bitmap" };
+		const uint32_t numbers[4] = { owner->object, owner->model, owner->shader, owner->bitmap };
+		int tag, first = 1;
+
+		for (tag = 0; tag < 4; tag++)
+		{
+			const char *path = mark_string(numbers[tag]);
+
+			if (!path)
+				continue;
+			text_printf(text, "%s\"%s\":", first ? "" : ",", names[tag]);
+			text_string(text, path);
+			first = 0;
+		}
+	}
+	TEXT(text, "}");
+	if (owner && mark_string(owner->widget))
+	{
+		TEXT(text, ",\"widget\":");
+		text_string(text, mark_string(owner->widget));
+	}
+	/* (tools/menu_sources.py's source attribute: its file, and its text
+	whole, which menu_sources.locate reads) */
+	if (owner && (source = mark_string(owner->source)))
+	{
+		const char *space = strchr(source, ' ');
+		char file[512];
+
+		snprintf(file, sizeof(file), "%.*s", space ? (int)(space - source) : (int)strlen(source), source);
+		TEXT(text, ",\"source\":{\"file\":");
+		text_string(text, file);
+		TEXT(text, ",\"text\":");
+		text_string(text, source);
+		TEXT(text, "}");
+	}
+	else
+		TEXT(text, ",\"source\":null");
+	TEXT(text, ",\"category\":");
+	if (category)
+		text_string(text, category_names[category - 1]);
+	else
+		TEXT(text, "null");
+}
+
+/* a view mark's fields */
+static void view_json(struct text *text, const struct xgpu_stream_mark_view *view)
+{
+	const char *map = mark_string(view->map);
+
+	TEXT(text, "\"map\":");
+	if (map)
+		text_string(text, map);
+	else
+		TEXT(text, "null");
+	text_printf(text, ",\"tick\":%u,\"window\":", view->tick);
+	if (view->window == XGPU_STREAM_MARK_NONE)
+		TEXT(text, "null");
+	else
+		text_printf(text, "%u", view->window);
+	text_printf(text, ",\"camera\":{\"position\":[%.9g,%.9g,%.9g],\"forward\":[%.9g,%.9g,%.9g],"
+		"\"up\":[%.9g,%.9g,%.9g],\"fov\":%.9g},\"viewport\":[%d,%d,%d,%d]", view->position[0], view->position[1],
+		view->position[2], view->forward[0], view->forward[1], view->forward[2], view->up[0], view->up[1], view->up[2],
+		view->field_of_view, view->viewport[0], view->viewport[1], view->viewport[2], view->viewport[3]);
+}
+
+/* the frame kept's marks: its first window's view (or the frame's start's,
+for the map and the tick), and every view */
+static void frame_marks_json(struct text *text)
+{
+	const struct frame *frame = &recording.frames[kept.frame];
+	const struct xgpu_stream_mark_view *main_view = NULL;
+	uint32_t index;
+
+	for (index = 0; index < frame->view_count; index++)
+	{
+		const struct xgpu_stream_mark_view *view = &marks.views[frame->view_first + index];
+
+		if (!main_view || (main_view->window == XGPU_STREAM_MARK_NONE && view->window != XGPU_STREAM_MARK_NONE))
+			main_view = view;
+	}
+	if (!main_view)
+		return;
+	TEXT(text, ",");
+	view_json(text, main_view);
+	TEXT(text, ",\"views\":[");
+	for (index = 0; index < frame->view_count; index++)
+	{
+		if (index)
+			TEXT(text, ",");
+		TEXT(text, "{");
+		view_json(text, &marks.views[frame->view_first + index]);
+		TEXT(text, "}");
+	}
+	TEXT(text, "]");
+}
+
 /* a draw of the frame kept, as the service gives it */
 static void draw_json(struct text *text, uint32_t index)
 {
@@ -2339,13 +2779,11 @@ static void draw_json(struct text *text, uint32_t index)
 	text_printf(text, "{\"i\":%u", index);
 	if (!draw || !draw->type)
 	{
-		TEXT(text, ",\"kind\":\"other\",\"label\":\"(not drawn)\",\"id\":null,\"tags\":{},\"source\":null,"
-			"\"textures\":[]}");
+		draw_marks_json(text, index);
+		TEXT(text, ",\"textures\":[]}");
 		return;
 	}
-	/* (without marks: the record's kind, and what it was handed with) */
-	text_printf(text, ",\"kind\":\"other\",\"label\":\"%s %s\",\"id\":null,\"tags\":{},\"source\":null",
-		draw_type_name(draw->type), primitive_name(draw->primitive));
+	draw_marks_json(text, index);
 	text_printf(text, ",\"record\":\"%s\",\"primitive\":\"%s\",\"count\":%u,\"prims\":%u,\"pipeline\":\"%u\","
 		"\"target\":%u,\"depth_target\":%u", draw_type_name(draw->type), primitive_name(draw->primitive), draw->count,
 		primitives_of(draw->primitive, draw->count), draw->pipeline, draw->color, draw->depth);
@@ -2378,9 +2816,9 @@ static void serve_info(struct text *text)
 {
 	const struct frame *last = recording.frame_count ? &recording.frames[recording.frame_count - 1] : NULL;
 
-	text_printf(text, "{\"ok\":true,\"frames\":%u,\"width\":%u,\"height\":%u,\"backend\":\"%s\",\"build\":\"%s\","
-		"\"marks\":false,\"records\":%u}", recording.frame_count, last ? last->width : 0, last ? last->height : 0,
-		platform->backend, HALO_REPLAY_BUILD, recording.record_count);
+	text_printf(text, "{\"ok\":true,\"protocol\":%u,\"frames\":%u,\"width\":%u,\"height\":%u,\"backend\":\"%s\",\"build\":\"%s\","
+		"\"marks\":%s,\"records\":%u}", HOST_RENDER_REPLAY_PROTOCOL, recording.frame_count, last ? last->width : 0, last ? last->height : 0,
+		platform->backend, HALO_REPLAY_BUILD, marks.present ? "true" : "false", recording.record_count);
 }
 
 static void serve_frame(struct text *text, const struct request *request)
@@ -2486,8 +2924,10 @@ static void serve_draws(struct text *text, const struct request *request)
 		reply_error(text, error);
 		return;
 	}
-	text_printf(text, "{\"ok\":true,\"n\":%u,\"frame\":{\"n\":%u,\"present\":%u},\"draws\":[", kept.frame, kept.frame,
+	text_printf(text, "{\"ok\":true,\"n\":%u,\"frame\":{\"n\":%u,\"present\":%u", kept.frame, kept.frame,
 		recording.frames[kept.frame].present);
+	frame_marks_json(text);
+	TEXT(text, "},\"draws\":[");
 	for (index = 0; index < kept.draw_count; index++)
 	{
 		if (index)
@@ -2606,6 +3046,8 @@ static int serve(void)
 
 	if (!request)
 		return 2;
+	if (getenv("HALO_REPLAY_SEEK_SKIPS") && *getenv("HALO_REPLAY_SEEK_SKIPS"))
+		seek_skips = atoi(getenv("HALO_REPLAY_SEEK_SKIPS")) != 0;
 	fprintf(stderr, "halo_replay: serving (%u frames)\n", recording.frame_count);
 	while (getline(&line, &capacity, stdin) > 0)
 	{
@@ -2770,6 +3212,8 @@ int host_render_replay_main(int argc, char *argv[], const struct host_render_rep
 	ring = host_pointer(recording.header.ring_address);
 	pages_mark(recording.header.ring_address, sizeof(*ring), 0);
 	*ring = recording.header.ring;
+	/* (a recording of the stream's 21 is a stream of 22 without marks) */
+	ring->version = XGPU_STREAM_VERSION;
 	ring->committed = ring->released = written = recording.records[0].position;
 	ring->error = 0;
 	if (host_render_stream_open(recording.header.ring_address))

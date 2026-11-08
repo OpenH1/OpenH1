@@ -61,4 +61,4 @@ def test_every_build_draws_smaa():
     device = (ROOT / "port/linux/src/d3d8_device.c").read_text()
     values = device[device.index("anti_aliasing_values[] ="):]
     values = values[:values.index("};")]
-    assert re.findall(r'\{ "smaa", (\w+), 0 \}', values) == ["_anti_aliasing_smaa"]
+    assert re.findall(r'\{ "smaa", (\w+), 0, 1.0f \}', values) == ["_anti_aliasing_smaa"]

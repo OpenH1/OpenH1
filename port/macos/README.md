@@ -645,7 +645,8 @@ GPU's time a frame says little about the work. To measure the work:
 The renderer's work can be recorded once and replayed in seconds, without
 the game: the same frames every time, no maps, no lobby, no guest.
 
-- `HALO_RENDER_RECORD=<file>` records every record the render thread plays
+- `HALO_RENDER_RECORD=<file>` (with `HALO_RENDER_MARKS=1` for the
+  inspector's marks, below) records every record the render thread plays
   (`port/android/host/host_render_record.c`, the host's, in every build),
   with the guest memory each one reads through guest addresses at the moment
   it is played: inline data too large for the ring, and what the backend
@@ -677,9 +678,34 @@ build/macos/halo_replay --compare <shots> <shots>
   the window, the statistics, `--cold`) of the replay the Vulkan backend
   has too (`port/tools/replay/host_render_replay.c`: the recording, the
   guest's memory, the play, the report, `--compare` and `--serve`, the
-  OpenH1 Inspector's service, described there and in
-  `port/linux/vulkan/README.md`). Metal's has no ID buffer yet: `pick` and
-  a frame's `ids` answer that it has none.
+  replay service, described in `docs/replay_protocol.md` and
+  `port/linux/vulkan/README.md`). Metal's ID buffer is the backend's
+  (`xgpu_metal_set_draw_inspector`): each draw into the target the frame
+  presents is bracketed, its pass ended before and after it, by a copy of
+  the target and a compute pass that compares the two by their bits, and
+  stacks the draw's number on the pixels it changed (an alpha-tested leaf's
+  pixels, not its quad's cut-out corners). A frame asked for with its IDs
+  is played twice: once as it is, for its picture, and once bracketed.
+- `debug.render_marks` (`HALO_RENDER_MARKS=1`, beside `HALO_RENDER_RECORD`)
+  records what each draw belongs to (the stream's MARK records,
+  `port/linux/game/render_marks.c`): each window's camera, the map and the
+  tick, and each run of draws' owner (its kind, an object and its
+  definition, model and shader tags, the structure's material, an effect's
+  maker and bitmap, the HUD's part, a menu widget's tag and the generator
+  source that wrote it, text's words). `--serve` gives them with each draw
+  (`draws`, `pick`) and the frame's view; a recording of before them
+  (`HOST_RENDER_RECORD_VERSION` 1) plays as it did, without them.
+- A frame asked for is reached exactly: the frames up to it are played from
+  where the play is (or from the recording's start, for one before it),
+  those more than eight before it without the GPU's work of their draws,
+  clears, anti-aliasing, tone map and present (`HALO_REPLAY_SEEK_SKIPS=0`:
+  all of it), the pictures identical to a play of every frame. On an M1
+  Max (a 30-second Silent Cartographer recording, 5,406 frames at
+  2560x1440 in HDR, 540 MB): the recording read in 0.8 s to 4.6 s, a step
+  to the next frame 45 to 60 ms (90 to 140 ms with its PNG written), a
+  frame anywhere from the start 0.5 to 3 s (about 0.3 to 0.7 ms a frame
+  passed), the ID buffer 100 to 150 ms more for 200 to 350 draws, a pick of
+  a frame whose IDs are read under 1 ms.
 
   It reserves the guest's 4 GB as the host does, writes the records into
   the ring where they were and submits them as the encoder did, and the same

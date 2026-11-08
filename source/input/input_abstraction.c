@@ -989,6 +989,8 @@ void input_abstraction_update(
 			input_abstraction_state_from_gamepad(controller_index, gamepad, state);
 			keyboard_controls_update(controller_index, state);
 			crouch_controls_update(controller_index, state); /* port */
+			/* port: the input trace (port/linux/src/input_trace.c) */
+			input_trace_player(controller_index, 0, state->forward_movement, state->strafe, state->yaw, state->pitch);
 			input_abstraction_globals.controller_available[controller_index] = TRUE;
 		}
 		else
@@ -1124,6 +1126,8 @@ boolean input_abstraction_port_substep_state(
 	gamepad.sticks[_gamepad_stick_right].y = fix_dead_zone(pad.sThumbRY, halo_stick_dead_range(_gamepad_stick_right));
 	input_abstraction_state_from_gamepad(controller_index, &gamepad, state);
 	keyboard_controls_apply(controller_index, halo_keyboard_actions(controller_index), state);
+	/* port: the input trace (port/linux/src/input_trace.c) */
+	input_trace_player(controller_index, 1, state->forward_movement, state->strafe, state->yaw, state->pitch);
 	*primary_trigger = primary_trigger_pull(controller_index, &gamepad);
 	return TRUE;
 }

@@ -3,7 +3,7 @@ sim_substep_blend): an object of the micro lane, and the first-person view of a 
 the poses its sub-steps left (a frame in sub-step j of the tick drawn: between the end of j - 1, or of the tick
 before, and the end of j), what it carries with it; at 30 the frames are the line between the ticks' snapshots, as
 they were. A projectile is drawn from its newest sub-steps: its head start and hold from half a tick's motion back,
-and the VR mode's grenade let go of in a sub-step from the hand, with no dart and no pop. In a network game another machine's
+turning between its sub-steps' rotations as it moves between their places, and the VR mode's grenade let go of in a sub-step from the hand, with no dart and no pop. In a network game another machine's
 player is drawn between its two newest sub-steps (the open tick's), not a tick behind, gliding to the tick drawn's
 path and back when that is let go of and taken again; at 30 it is drawn as before."""
 
@@ -16,8 +16,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run, structure  # noqa: E402
 
-CASES = ["classic", "substeps", "substeps_60", "carried", "camera_slow", "projectile", "projectile_late", "vr_release",
-         "respawn", "respawn_120", "scripted_camera", "scripted_camera_120", "lead", "lead_60", "lead_glide", "lead_classic"]
+CASES = ["classic", "substeps", "substeps_60", "carried", "camera_slow", "projectile", "projectile_late",
+         "projectile_turning", "vr_release", "respawn", "respawn_120", "scripted_camera", "scripted_camera_120", "lead",
+         "lead_60", "lead_glide", "lead_classic"]
 
 # a fault in the code, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -43,6 +44,9 @@ NEGATIVE_CONTROLS = {
     "projectile-a-tick-behind": (("\tif ((pending = render_interpolation_projectile_nodes(object_index)) != NULL)",
                                   "\tif ((pending = NULL) != NULL)"), "projectile"),
     # ... from where its head start put it at once: it darts out and waits
+    # a projectile turned as its newest sub-step left it, a step each sub-step, not between the two drawn
+    "projectile-turns-in-steps": (("\trotated = rotated && now.is_rotation;", "\trotated = FALSE;"),
+                                  "projectile_turning"),
     "head-start-drawn": (("\tif (to_step - substeps->made_step < count &&", "\tif (0 &&"), "projectile"),
     # ... and the hold drawn from the eye, a whole tick back
     "from-the-eye": (("\t\t\t\t\t1.0f : 0.5f;", "\t\t\t\t\t1.0f : 1.0f;"), "projectile_late"),
@@ -136,6 +140,8 @@ def generated(fault=None, newest=False):
     # sim_substep_blend, on the test's clock
     text += function(clock, "sim_substep_blend").replace("sim_rate_globals.substep_count", "fake_substep_count") + "\n"
     text += "static void render_interpolation_substep(short substep_index, short substep_count, real seconds);\n"
+    text += ("static void render_interpolation_substep_rotation(long object_index, struct object_datum const *object,"
+             " struct interpolated_substeps *substeps, short buffer, short substep_index);\n")
     text += "static void render_interpolation_camera_anchors(void);\n"
     if newest:
         enum_start = code.index("/* the views display.direct_camera takes")
@@ -145,18 +151,24 @@ def generated(fault=None, newest=False):
         text += "static void render_interpolation_newest_vehicles(boolean rendering);\n"
         text += ("static boolean render_interpolation_newest_frame(long object_index, real_matrix4x3 const **frames, "
                  "real_matrix4x3 const **drawn, real_vector3d *correction);\n")
+        # (no lift carries a rider here: render_interpolation_rider_carry's machines are not in the fake world)
+        text += ("static boolean render_interpolation_rider_carry(long unit_index, real_vector3d *carry)\n"
+                 "{\n\t(void)unit_index; (void)carry;\n\treturn FALSE;\n}\n")
     else:
         text += NEWEST_STUBS
     text += LEAD_STUB
     for name in ("lerp", "point_lerp", "vector_length", "vector_nlerp", "basis_is_rotation", "quaternion_from_basis",
-                 "basis_from_quaternion", "rotation_from_matrix", "matrix_blend_rotations", "correction_significant",
+                 "basis_from_quaternion", "rotation_from_matrix", "quaternion_multiply", "quaternion_nlerp",
+                 "vector_turned_by", "matrix_blend_rotations", "correction_significant",
                  "correction_advance", "correction_drawn", "correction_add", "distance_squared", "vector_in_frame",
                  "vector_from_frame", "point_in_frame", "point_from_frame", "matrix_in_frame", "matrix_from_frame",
                  "frame_blend", "render_interpolation_previous_values", "render_interpolation_register",
                  "render_interpolation_tick",
                  "render_interpolation_object_from", "render_interpolation_substep",
+                 "render_interpolation_substep_rotation",
                  "render_interpolation_lead_weight", "render_interpolation_lead_step",
                  "render_interpolation_lead_newest", "render_interpolation_kept_position",
+                 "render_interpolation_kept_rotation",
                  "render_interpolation_lead_to_step", "render_interpolation_projectile_lead",
                  "render_interpolation_projectile_nodes", "render_interpolation_ghost_part",
                  "render_interpolation_lead_frame",

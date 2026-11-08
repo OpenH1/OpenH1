@@ -113,6 +113,9 @@ struct halo_menu_widget
 	long has_width, has_height;
 	/* its picture's corners cut round by this many units (0: square) */
 	long radius;
+	/* the generator's file, line and functions that wrote it (its source
+	attribute, tools/menu_sources.py's; NULL none): debug.render_marks' */
+	char const *source;
 	/* indices in their arrays, or HALO_MENU_NONE */
 	long parent, first_child, first_handler, first_input, first_conditional, first_replace;
 	char const *file;
