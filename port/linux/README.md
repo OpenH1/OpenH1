@@ -617,7 +617,7 @@ the other way side to side. Refer to
 | pause menu | escape |
 | screenshot | F10 |
 | report a problem to the developers (refer to "Reports") | F8 |
-| clip: mark the demo being recorded, its last 30 seconds (`docs/demos.md`; not in Controls Setup yet, `controls.clip`) | F9 |
+| clip: mark the demo being recorded, its last 30 seconds (`docs/demos.md`) | F9 |
 | talk in voice chat (hold) | V |
 | type a chat line to everyone | T |
 | type a chat line to your team | Y |

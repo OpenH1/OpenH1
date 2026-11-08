@@ -141,10 +141,10 @@ saved game does), each build's own.
 
 ## Clips
 
-The clip key (`controls.clip`, F9) marks the demo being recorded where it
-is pressed: a bookmark of its last `demo.clip_seconds` (30), which
-`tools/demo_info.py` lists. (Not yet: a controller's button for it, its row
-in Controls Setup, and the export of a bookmark to video.)
+The clip key (`controls.clip`, F9; CLIP in Controls Setup > Actions) marks
+the demo being recorded where it is pressed: a bookmark of its last
+`demo.clip_seconds` (30), which `tools/demo_info.py` lists. (Not yet: a
+controller's button for it, and the export of a bookmark to video.)
 
 ## Sizes and cost
 
