@@ -20,6 +20,7 @@ test_report.py takes the code.
 #include <unistd.h>
 
 #define REPORT_HITCH_MS 50
+#define REPORT_STALL_MS 100
 #define REPORT_LONGEST 8
 #define REPORT_ZIP_FILES 8
 #define REPORT_GPU_UNKNOWN 0xFFFFFFFFu
@@ -94,6 +95,7 @@ int main(int argc, char **argv)
 		CHECK(strstr(text, low_10), "the 1 percent low (the slowest 10 frames)");
 		CHECK(strstr(text, lowest_10), "the 0.1 percent low (the slowest frame)");
 		CHECK(strstr(text, "Frames of 50 ms or more: 10\n"), "the frames of 50 ms or more");
+		CHECK(strstr(text, "Frames of 100 ms or more: 10 (the stall: lines"), "the frames of 100 ms or more");
 		/* (the latest of the longest first, and how long before the report) */
 		CHECK(strstr(text, "Longest frames:\n  100.0 ms, 2.0 s ago\n  100.0 ms, 3.0 s ago\n"), "the longest");
 		CHECK(!strstr(text, "  10.0 ms,"), "a frame of the median's time listed as one of the longest");
@@ -117,6 +119,7 @@ int main(int argc, char **argv)
 		micros[0] = micros[1] = 50000;
 		report_frame_summary(micros, at_ms, 600, 10200, text, sizeof(text));
 		CHECK(strstr(text, "Frames of 50 ms or more: 2\n"), "frames of 50 ms exactly");
+		CHECK(strstr(text, "Frames of 100 ms or more: 0\n"), "no frame of 100 ms");
 		report_frame_summary(micros, at_ms, 0, 0, text, sizeof(text));
 		CHECK(!strcmp(text, "No frames yet.\n"), "no frames");
 		return 0;

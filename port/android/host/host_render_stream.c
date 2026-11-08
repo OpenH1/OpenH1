@@ -159,6 +159,7 @@ static void loading_set(const struct host_render_backend *backend, int active)
 	if (active == (int)loading.frame.active)
 		return;
 	host_load_trace("loading.received", "active=%d", active);
+	host_stall_loading(active);
 	loading.backend = backend;
 	loading.frame.active = active;
 	loading.ready = 0;
@@ -1295,6 +1296,7 @@ static void *render_thread(void *argument)
 
 	(void)argument;
 	host_performance_thread();
+	host_stall_render_thread();
 	pthread_mutex_lock(&render.lock);
 	for (;;)
 	{
@@ -1844,7 +1846,10 @@ void host_render_stream_submit(uint32_t flags)
 	if (!render.running)
 		return;
 	if (flags & XGPU_STREAM_SUBMIT_FRAME)
+	{
 		host_performance_thread();
+		host_stall_frame();
+	}
 	pthread_mutex_lock(&render.lock);
 	render.committed = __atomic_load_n(&ring->committed, __ATOMIC_ACQUIRE);
 	if (flags & XGPU_STREAM_SUBMIT_FRAME)
@@ -1938,6 +1943,7 @@ void host_render_stream_gpu_time(uint64_t nanoseconds)
 
 void host_render_stream_exiting(void)
 {
+	host_stall_summary();
 	if (render_backend && render_backend->exiting)
 		render_backend->exiting(render_backend->context);
 }

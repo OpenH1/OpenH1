@@ -114,6 +114,12 @@ uint64_t host_memory_watch_faults(void)
 	return 0;
 }
 
+/* (no game's frames: no stalls detected, host_stall.c) */
+void host_stall_note(const char *what)
+{
+	(void)what;
+}
+
 #ifdef TEST_STREAM
 void host_render_stream_gpu_completed(void)
 {

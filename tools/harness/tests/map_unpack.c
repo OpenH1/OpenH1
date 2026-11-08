@@ -41,6 +41,10 @@ static int posix_stat(const char *path, struct posix_file_information *informati
 
 static char folder[256];
 static void platform_log(const char *format, ...) { (void)format; }
+/* (the loading screen over a wait for a copy: none here) */
+static void halo_loading_screen_begin(int follow_progress) { (void)follow_progress; }
+static void halo_loading_screen_progress(float progress, const char *caption) { (void)progress; (void)caption; }
+static void halo_loading_screen_end(void) {}
 static unsigned long XGetLanguage(void) { return 1; }
 static int posix_make_directory(const char *path) { return mkdir(path, 0755); }
 unsigned long long map_cache_budget(unsigned long long cache_bytes, unsigned long long least)

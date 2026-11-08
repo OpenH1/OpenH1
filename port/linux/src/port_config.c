@@ -2568,6 +2568,11 @@ static const struct config_setting config_settings[] =
 	{ "debug.sample_seconds", _config_real, "0.0", "HALO_SAMPLE", _environment_value, _platform_android | _platform_guest,
 		"Log where every game thread is this often, in seconds (read by the\n"
 		"host, port/android/host/host_debug.c); 0 never." },
+	{ "debug.stall_ms", _config_real, "100.0", "HALO_STALL_MS", _environment_value, _platform_android | _platform_guest,
+		"When the game goes this many milliseconds without a frame, log where\n"
+		"its thread and the render thread were (sampled every 10 ms while it\n"
+		"lasts) and the work in progress, once the frame comes; and count such\n"
+		"frames. Read by the host (port/android/host/host_stall.c); 0 never." },
 	{ "debug.pass_times", _config_integer, "0", "HALO_PASS_TIMES", _environment_value, _platform_all,
 		"Every this many frames, time each of the frame's passes on the GPU and\n"
 		"log, every 30 timed frames, each kind of pass's milliseconds a frame and\n"
