@@ -787,6 +787,10 @@ static boolean game_time_run_substep(
 	game/demo.c), as nothing of the tick has run */
 	if (sim_substep_next() == 0 && !game_time_menu_scene())
 		demo_tick_begin(game_time_globals->server_time);
+	/* port: (or a later sub-step: what the frames put in while the tick
+	was open) */
+	else if (!game_time_menu_scene())
+		demo_substep_resume(sim_substep_next());
 	determinism_log_tick_begin();
 	random_math_port_set_ticking(TRUE);
 	LATENCY_LOG(latency_log_substep_begin()); /* port: debug.latency_log */
@@ -817,6 +821,9 @@ static boolean game_time_run_substep(
 		and are not logged as the tick's) */
 		random_math_port_set_ticking(FALSE);
 		determinism_log_tick_pause();
+		/* port: (and the demo's, port/linux/game/demo.c) */
+		if (!game_time_menu_scene())
+			demo_tick_pause();
 	}
 
 	return tick_ended;

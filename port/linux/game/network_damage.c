@@ -69,6 +69,7 @@ being hit looks and feels like on the clients).
 #include "network_coop.h"
 #include "network_distributed.h"
 #include "network_standard.h"
+#include "demo.h"
 
 #include <math.h>
 
@@ -1266,14 +1267,20 @@ boolean network_damage_deals(
 	/* (a client's player's, whose machine reports it; but one whose machine
 	has left deals it here: their grenades and rockets still in flight; and
 	a static target's own, which no machine reports: static_target_damage) */
-	if (game_connection() == _game_connection_network_server && !damage_dealing_report &&
-		damage->owner_player_index != NONE && !distributed_player_is_local(damage->owner_player_index) &&
-		!static_target_damage(damage))
 	{
-		struct player_datum *owner = player_try_and_get(damage->owner_player_index);
+		boolean reported = FALSE;
 
-		if (owner && !owner->quit_out_of_game &&
-			distributed_player_machine((short)DATUM_INDEX_TO_ABSOLUTE_INDEX(damage->owner_player_index)) != NONE)
+		if (game_connection() == _game_connection_network_server && !damage_dealing_report &&
+			damage->owner_player_index != NONE && !distributed_player_is_local(damage->owner_player_index) &&
+			!static_target_damage(damage))
+		{
+			struct player_datum *owner = player_try_and_get(damage->owner_player_index);
+
+			reported = owner && !owner->quit_out_of_game &&
+				distributed_player_machine((short)DATUM_INDEX_TO_ABSOLUTE_INDEX(damage->owner_player_index)) != NONE;
+		}
+		/* (as the demo has it, in its playback: demo.c) */
+		if (demo_decide(reported))
 		{
 			distributed_damage_material((struct damage_data *)damage, object_index, material_index);
 			return FALSE;

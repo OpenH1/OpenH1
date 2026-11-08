@@ -16,7 +16,6 @@ room rather than lose the input of its ticks.
 */
 
 #include "platform.h"
-#include "port_config.h"
 #include "posix.h"
 #include "demo_files.h"
 #include "memory/zlib/zlib.h"

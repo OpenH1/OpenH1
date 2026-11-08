@@ -1102,6 +1102,9 @@ static const struct config_setting config_settings[] =
 		"Report a problem: a zip in reports/ beside maps/ (the log, the settings,\n"
 		"the GPU, the frame times and a screenshot of that moment), and a GitHub\n"
 		"issue opened in the browser, filled in, for it to be dragged into." },
+	{ "controls.clip", _config_string, "\"F9\"", "HALO_KEY_CLIP", _environment_value, _platform_all,
+		"Clip: mark the demo being recorded at this moment, its last\n"
+		"demo.clip_seconds (docs/demos.md)." },
 	{ "controls.push_to_talk", _config_string, "\"V\"", "HALO_KEY_PUSH_TO_TALK", _environment_value, _platform_all,
 		"Voice chat: talk while it is held (audio.voice_chat \"push_to_talk\")." },
 	{ "controls.chat", _config_string, "\"T\"", "HALO_KEY_CHAT", _environment_value, _platform_all,
@@ -2196,6 +2199,8 @@ static const struct config_setting config_settings[] =
 		"A file to write a line a tick to: a hash of the game state, the random\n"
 		"seeds and every taker of a seed by its call site, to compare two runs\n"
 		"of the same input (tools/determinism_compare.py); empty for none." },
+	{ "debug.demo_log", _config_boolean, "false", "HALO_DEMO_LOG", _environment_set_is_true, _platform_all,
+		"Log each whole game state the demo being recorded takes, and why." },
 	{ "debug.demo_quit", _config_boolean, "false", "HALO_DEMO_QUIT", _environment_set_is_true, _platform_all,
 		"Quit when the demo played (demo.play, --demo) ends, or cannot be\n"
 		"played, for tests." },

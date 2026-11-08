@@ -53,6 +53,8 @@ extern unsigned char network_aim_assist_block_mouse(void);
 #include "controller_remap.h"
 #include "gyro_aim.h"
 #include "report.h"
+/* port/linux/game/demo.c: the clip key pressed */
+void demo_clip_request(void);
 
 #include <SDL3/SDL.h>
 #include <math.h>
@@ -940,7 +942,7 @@ static const char *const binding_settings[NUMBER_OF_HALO_KEYBOARD_ACTIONS] =
 	"controls.reload", "controls.zoom", "controls.switch_weapon", "controls.switch_grenade", "controls.action",
 	"controls.flashlight", "controls.scoreboard", "controls.pause", "controls.screenshot",
 	"controls.report", "controls.push_to_talk", "controls.chat", "controls.team_chat", "controls.party_accept",
-	"controls.vote_yes", "controls.vote_no",
+	"controls.vote_yes", "controls.vote_no", "controls.clip",
 };
 
 static const struct
@@ -1140,16 +1142,21 @@ a report (controls.report: saved, and its GitHub issue opened, report.c)
 the same. */
 static void keyboard_screenshot(unsigned long held)
 {
-	static BOOL was_down, report_was_down;
+	static BOOL was_down, report_was_down, clip_was_down;
 	BOOL down = (held & (1UL << HALO_KEYBOARD_SCREENSHOT)) != 0;
 	BOOL report_down = (held & (1UL << HALO_KEYBOARD_REPORT)) != 0;
+	BOOL clip_down = (held & (1UL << HALO_KEYBOARD_CLIP)) != 0;
 
 	if (down && !was_down)
 		platform_screenshot_request();
 	if (report_down && !report_was_down)
 		report_request(1);
+	/* (the clip key: the demo being recorded marked, port/linux/game/demo.c) */
+	if (clip_down && !clip_was_down)
+		demo_clip_request();
 	was_down = down;
 	report_was_down = report_down;
+	clip_was_down = clip_down;
 }
 
 /* in the game: the actions held, and Start/Back for pause/scores */

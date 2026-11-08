@@ -26,6 +26,13 @@ once its last has run */
 void demo_tick_begin(long tick);
 void demo_tick_end(long tick);
 
+/* a tick left open between two of its sub-steps, the frames meanwhile
+(game_time.c: game.sim_rate's sub-steps spread over the frames), and the
+next of them begun: what the frames put into the game state in between
+(a host's netcode dealing a client's reported hits) */
+void demo_tick_pause(void);
+void demo_substep_resume(short substep_index);
+
 /* the tick's players' input (players.c): TRUE if a demo's playback gave it
 (the bots then take no part); else, around the bots' turn, it is recorded */
 boolean demo_playback_tick_actions(struct player_action *actions);
@@ -38,6 +45,17 @@ void demo_substep_begin(short substep_index);
 void demo_substep_end(short substep_index, short substep_count);
 /* in playback, a unit's controls that went down in the running sub-step */
 unsigned long demo_playback_pressed_flags(long unit_index);
+
+/* inside a tick, what the netcode puts into the game state from what other
+machines sent (a host takes its clients' predictions of their units:
+network_distributed.c): recorded as it changed the game state, and in
+playback written as it did (the netcode then has nothing to put in) */
+void demo_foreign_begin(void);
+void demo_foreign_end(void);
+/* inside a tick, a choice the netcode makes by what other machines are
+there (a host leaves a client's hits to its reports: network_damage.c):
+recorded, and in playback the recording's */
+boolean demo_decide(boolean decision);
 
 /* whether a demo is playing (the input of the machine's players, its own
 saved games, its recording left alone), and the rate its ticks run at (0
