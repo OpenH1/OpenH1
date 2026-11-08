@@ -207,8 +207,17 @@ can't be re-read.
   other (repeated switches once leaked the device's groups, #506). A campaign map's other BSPs are baked in the
   background the first time the game switches to them (proxies alone until then), never in the switch. A map that
   is played while its field still waits behind the main menu's others has its bake put first.
+- **Only the field drawn in a game** (`sdf_schedule_said`, `sdf_bake_next_locked`): while a game is played, no other
+  field is baked: the start-up pass's others (and a BSP left) wait, their copies kept, for the main menu, where the
+  game is idle. A bake of another field that is running when a game begins, or when the field drawn is queued behind
+  it, stops where it is (`sdf_yield`: its threads take no more items) and begins again after it, from its copies.
+  So a game's frames never share the processors with the fields of maps nobody is playing: on the M1 Max whose
+  playtest found this (build 1845), the start-up pass's 24 fields took 13 minutes behind the main menu and
+  in the first games. A bake stops only before the static scenery's pages (they rewrite the copies' shapes), which
+  take at most a few seconds. With `"world"` off no bake runs, and one running stops: turning it off in the menu
+  while the start-up pass's fields were baking once let them run on for 11 minutes for nothing.
 - **Threads:** the processors less 3 (`world_sdf_bake_threads`; at least 1, at most 32; `HALO_WORLD_SDF_THREADS`
-  overrides, for measuring). The 3 are the game's thread, the renderer's (the command stream's) and the sound's with
+  overrides, for measuring), and at most 2 for a pass begun while a game is played (`WORLD_SDF_PLAY_THREADS`). The 3 are the game's thread, the renderer's (the command stream's) and the sound's with
   the system's own (its compositor and drivers): 5 on an M2 or a Steam Deck, 29 on a 5900X. Each thread is lowered
   with `setpriority(PRIO_PROCESS, 0, 19)`, which each host applies to the calling thread: Linux and Android as
   nice 19 and `SCHED_IDLE` (only a processor nothing else wants), macOS and iOS as `QOS_CLASS_BACKGROUND` (the
@@ -237,7 +246,10 @@ can't be re-read.
   that, not the bake's threads, was #651's stutter. When the bake finishes, the field uploads a few slices a frame (at most 512 KB a frame) and then **fades in over 1 s**
   (`world_sdf_fade`), with no hitch and no pop. We chose proxies-only over falling back to GTAO: GTAO's pre-pass
   would cost more than the whole new feature on the Deck, and switching would pop.
-- **Measured and stated:** each bake logs `world sdf: <map> bsp <n>: ... within <bounds>, <w>x<h>x<d> cells, <n>
+- **Measured and stated:** a field found in the cache logs `world sdf: <map> bsp <n>: its field cached (baked in
+  <ms> ms on <t> threads)`; a bake that stopped for the field drawn, `its bake stopped for the field drawn`. An object's field taken from those kept by their geometry logs `<name>'s occlusion field: <n>
+  triangles, <w>x<h>x<d> voxels, the same geometry's baked before (world_sdf/objects)`, and the bake's line counts them
+  (`<n> objects' occlusion fields (<n> of them baked before, ...)`). Each bake logs `world sdf: <map> bsp <n>: ... within <bounds>, <w>x<h>x<d> cells, <n>
   bricks, voxel <v>; static scenery <n> placements, <n> shapes, <n> of <n> lightmap pages in <n> layers of <w>x<h>
   (<ms> ms); in <ms> ms on <t> threads, <bytes> in memory, <bytes> cached`, and the header records the times and
   threads. Once the start-up pass's last bake is done it logs `world sdf: the first start's <n> of <n> fields baked
@@ -378,7 +390,10 @@ normal, and measured against the exact boxes a single cone was off by 17/255 on 
   Pelican 46×40×29 at 0.41, a30's pine 20×20×27 at 0.46.
 - **Each voxel:** 256 fixed directions (a Fibonacci sphere's), each let through by the triangles it crosses, each
   passing on 1 − its opacity of what's left (an opaque one: none). Rays are bucketed on a cube's faces, and a triangle
-  tests only the buckets its cone meets. The occlusion at 96 normals is their directions' cosines' sum, each by its
+  tests only the buckets its cone meets: every bucket's cone at once, then each bucket's rays as one run, without
+  branches (the rays stored by axis in the buckets' order), so that both are tested a few at a time; the same
+  numbers as one by one, bit for bit, in half the time (a 228-triangle field 2.7 s to 1.4 s on one M1 Max
+  performance core). The occlusion at 96 normals is their directions' cosines' sum, each by its
   share blocked. t and v are its clamped least squares fit, weighted 0.02 plus each normal's
   occlusion: a surface under a vehicle faces it, and its contact darkening is what shows.
 - **Solid:** a voxel inside, by the nodes' own BSP point tests, takes its outside neighbours' mean, step by step.
@@ -388,7 +403,13 @@ normal, and measured against the exact boxes a single cone was off by 17/255 on 
 
 **Cache and schedule:** in each BSP's field file, keyed on the map's checksum and the bake version, one entry per
 object tag (its definition, grid, voxel, reach, bounds and texels). It's baked with the field, in the first start's
-pass and on a first load, written whole, checked on read, and redone if missing, stale or damaged. A piece of
+pass and on a first load, written whole, checked on read, and redone if missing, stale or damaged. Each one baked is
+kept apart too, by its geometry (`sdf_object_cache_load`): `<data>/world_sdf/objects/<hash>.wsdo`, named by a 64-bit
+FNV-1a hash of `WORLD_SDF_VERSION`, its grid, bounds, triangles, opacities and solids, and holding the magic `HSFO`,
+the version, the hash, the part's size, the objects' part of the one object and a CRC-32. Another map's bake takes
+it from there instead of baking it again (its definition its own map's); one that fails a check is baked again. A
+Warthog, a flag base or a storage crate is in many maps: the 217 objects' fields the playtest that found this baked
+(build 1845, an M1 Max) were 119 objects', the flag base's 11 times. A piece of
 scenery's alpha-tested textures are loaded for it as a draw loads them, when its geometry is copied (a few, once a
 BSP). On the GPU the fields share one 3D atlas within 8 MB (`world_sdf_objects_place`): in columns along z, rows of
 them along x and the rows along y, of the depth and width that place the most, in order, in the least bytes (one
