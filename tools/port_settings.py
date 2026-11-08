@@ -514,6 +514,9 @@ def _page_screen(folder: str, screen: str) -> str:
 # (a <bitmap> name: TITLES), and for a tab its name
 ADVANCED = ("video_settings/advanced", "advanced_graphics_screen")
 FIRST_PERSON = ("video_settings/first_person", "first_person_screen")
+# (display.vsync, display.vrr and its margin, display.max_fps and
+# display.low_latency: how the frames meet the display)
+FRAME_RATE = ("video_settings/frame_rate", "frame_rate_screen")
 # (display.gamma, and display.hdr's settings and the display's peak on the
 # renderers that draw it)
 BRIGHTNESS_PAGE = ("video_settings/brightness", "brightness_screen")
@@ -628,23 +631,13 @@ PAGES = {
             # port/linux/game/menu_tags.c adds the display's rates)
             ("REFRESH RATE", "display.refresh_rate", [("AUTO", "0")],
              "How many times a second the display shows a picture while the game is fullscreen. Auto keeps the "
-             "display's own. VSync and Frame Rate Limit's Auto follow it.", "computer"),
-            ("VSYNC", "display.vsync", ON_OFF,
-             "Shows each frame at a refresh of the display: even motion that never tears, at the display's "
-             "refresh rate. On Linux, Windows and the Steam Deck each frame starts just in time for its refresh, so "
-             "it adds almost no input lag; it is on in the Steam Deck's Game Mode.", None),
-            # (display.vrr: sdl_platform.c's platform_vrr; hidden on the Mac,
-            # whose Metal has none: menu_functions.c's vrr_row_show)
-            ("VARIABLE REFRESH", "display.vrr", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
-             "For a G-SYNC or FreeSync display: VSync on and the frame rate held 3 under the refresh rate, so each "
-             "frame is shown as soon as it is ready, with no tearing and no queue. Auto turns it on where the "
-             "system says VRR is active (the Steam Deck, a Linux desktop that has it on).|On Windows, choose ON.",
-             "desktop"),
-            # (shown while VSync shows OFF: menu_functions.c's max_fps_row_show)
-            ("FRAME RATE LIMIT", "display.max_fps", FRAME_RATE_LIMITS,
-             "The most frames drawn a second. Auto is twice the display's refresh rate. More feels smoother and "
-             "uses more power; None draws as fast as it can. On Linux, the display's refresh rate (or half of it) "
-             "is shown in step with the display.|Click the number (or press A) to type 10 to 1000.", "desktop"),
+             "display's own. VSync and Max FPS's Auto follow it.", "computer"),
+            ("FRAME RATE & SYNC ›", None, _page_screen(*FRAME_RATE),
+             "VSync, variable refresh (G-SYNC, FreeSync), the most frames a second and low latency.", None),
+            ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
+             "How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini "
+             "Projection (First Person). Passenger seats use it too; driver and gunner: First Person.|Click the "
+             "number (or press A) to type 20 to 160.", None),
             ("ORIENTATION", "display.orientation",
              [("LANDSCAPE", "landscape"), ("PORTRAIT", "portrait"), ("AUTO", "auto")],
              "Which way up you hold the device. Portrait has a strip of buttons along the top, the picture under "
@@ -653,8 +646,8 @@ PAGES = {
              "Where the picture sits on a screen taller than it, its shape, and the frame around it in portrait.",
              "android"),
             ("FIRST PERSON ›", None, _page_screen(*FIRST_PERSON),
-             "Your field of view and the vehicles' and scopes', the Panini projection, how far you see, the "
-             "reticle, a passenger's view, and your weapon, body and shields.", None),
+             "The vehicles' and scopes' fields of view, the Panini projection, how far you see, the reticle, a "
+             "passenger's view, and your weapon, body and shields.", None),
             # (port/linux/src/bink_movie.c; the help says where the movies go:
             # MOVIES_HELP)
             ("STARTUP MOVIES", "display.movies", ON_OFF, MOVIES_HELP, None),
@@ -1034,16 +1027,39 @@ PAGES = {
             # own, port/linux/README.md; its OVERSHIELD row is First Person's)
         ],
     },
+    FRAME_RATE[0]: {
+        "screen": FRAME_RATE[1], "title": "FRAME RATE & SYNC",
+        "rows": [
+            ("VSYNC", "display.vsync", ON_OFF,
+             "Shows each frame at a refresh of the display: even motion that never tears. With Low Latency it adds "
+             "almost no input lag. It is on in the Steam Deck's Game Mode.", None),
+            # (display.vrr: sdl_platform.c's platform_vrr; hidden on the Mac,
+            # whose Metal has none: menu_functions.c's vrr_rows_show)
+            ("VARIABLE REFRESH", "display.vrr", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
+             "For a G-SYNC or FreeSync display: VSync on, with the frame rate held just under the refresh rate, so "
+             "each frame shows as soon as it is ready, with no tearing and no queue. Auto turns it on where the "
+             "system says VRR is active (the Steam Deck, a Linux desktop that has it on).|On Windows, choose ON.",
+             "desktop"),
+            # (dimmed while Variable Refresh shows OFF: vrr_rows_show)
+            ("VRR FRAME CAP", "display.vrr_cap_margin", [(str(n), str(n)) for n in range(1, 11)],
+             "How many frames a second under the refresh rate Variable Refresh holds the game: it stays inside the "
+             "screen's VRR range, and never reaches the refresh rate and falls back to VSync. Lower is closer to the "
+             "most frames; higher is safer on a screen with a narrow range.|Used while Variable Refresh is on.",
+             "desktop"),
+            # (shown while VSync shows OFF: menu_functions.c's max_fps_row_show)
+            ("MAX FPS", "display.max_fps", FRAME_RATE_LIMITS,
+             "The most frames drawn a second with VSync off. Auto is twice the display's refresh rate. More feels "
+             "smoother and uses more power; None draws as fast as it can.|Click the number (or press A) to type 10 "
+             "to 1000.", "desktop"),
+            ("LOW LATENCY", "display.low_latency", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
+             "With VSync on, starts each frame just in time for the refresh it is shown at, so a press reaches the "
+             "screen sooner. Off starts each frame as soon as the one before is waiting. Auto is on.", None),
+        ],
+    },
     FIRST_PERSON[0]: {
         "screen": FIRST_PERSON[1], "title": "FIRST PERSON",
         "rows": [
             (SECTION, "VIEW"),
-            # (here, with the other fields of view: Variable Refresh took its row on
-            # Video's tab)
-            ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
-             "How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini "
-             "Projection. Passenger seats use it too; driver and gunner: Vehicle Field of View.|Click the number "
-             "(or press A) to type 20 to 160.", None),
             ("VEHICLE FIELD OF VIEW", "display.vehicle_fov", VEHICLE_FIELDS_OF_VIEW,
              "How wide you see from a vehicle's third-person seats (driver, gunner), in degrees across a 16:9 "
              "screen. Passenger seats use your Field of View. Default keeps the game's view; Match uses your Field "

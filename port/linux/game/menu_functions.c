@@ -1937,7 +1937,7 @@ static void panini_rows_show(struct widget_instance *list)
 #endif
 }
 
-/* Video's Frame Rate Limit, shown while VSync shows OFF (Defaults too):
+/* Frame Rate & Sync's Max FPS, shown while VSync shows OFF (Defaults too):
 with vsync on, the display paces the frames and the limit does nothing;
 the rows below close the gap (settings_rows_pack) */
 static void max_fps_row_show(struct widget_instance *list)
@@ -1953,17 +1953,41 @@ static void max_fps_row_show(struct widget_instance *list)
 	row->visible = index >= 0 && index < setting->value_count && !strcmp(setting->values[index], "false");
 }
 
-/* Variable Refresh (display.vrr): the Vulkan builds' alone (the Mac's Metal
-has none) */
-static void vrr_row_show(struct widget_instance *list)
+/* Frame Rate & Sync's Variable Refresh (display.vrr), its VRR Frame Cap
+(display.vrr_cap_margin) and Low Latency (display.low_latency): the Vulkan
+builds' alone (the Mac's Metal has none of them: its frames are paced by its
+display); the cap dimmed while Variable Refresh shows OFF */
+static void vrr_rows_show(struct widget_instance *list)
 {
 #ifdef HALO_METAL
-	struct widget_instance *row = named(list, "op_vrr", 0);
+	static char const *const rows[] = { "op_vrr", "op_vrr_cap_margin", "op_low_latency" };
+	unsigned int index;
 
-	if (row)
-		row->visible = FALSE;
+	for (index = 0; index < sizeof(rows) / sizeof(rows[0]); index++)
+	{
+		struct widget_instance *row = named(list, rows[index], 0);
+
+		if (row)
+			row->visible = FALSE;
+	}
 #else
-	(void)list;
+	struct widget_instance *vrr = named(list, "vrr_spinner", 0);
+	struct widget_instance *row = named(list, "op_vrr_cap_margin", 0);
+	struct widget_instance *spinner = named(list, "vrr_cap_margin_spinner", 0);
+	struct pc_menu_setting *setting = vrr ? pc_menu_setting_get(vrr->definition_tag_index) : NULL;
+	boolean off;
+	short index;
+
+	if (!setting || !row || !spinner)
+		return;
+	index = vrr->parameters.list.selected_index;
+	off = index >= 0 && index < setting->value_count && !strcmp(setting->values[index], "off");
+	if (spinner->disabled == off)
+		return;
+	row->disabled = off;
+	spinner->disabled = off;
+	/* (dimmed: its label, its spinner and its background, as Tick Rate's) */
+	row->alpha_modifier = off ? 0.4f : 1.0f;
 #endif
 }
 
@@ -3529,7 +3553,7 @@ static void settings_page_update(struct widget_instance *list)
 	refresh_rate_row_show(list);
 	hud_button_style_row_show(list);
 	max_fps_row_show(list);
-	vrr_row_show(list);
+	vrr_rows_show(list);
 	panini_rows_show(list);
 	menu_cursor_row_show(list);
 	gamma_row_show(list);

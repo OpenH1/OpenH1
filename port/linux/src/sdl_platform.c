@@ -1975,7 +1975,8 @@ A display of variable refresh (G-SYNC, FreeSync, VRR) shows each frame as
 it comes, while the frames come within its range. The game with VRR on
 presents with vsync (FIFO, which waits for the display while the frames
 come faster than its range allows, and never tears) and holds its frames to
-VRR_HEADROOM a second under the refresh rate (117 at 120 Hz, 141 at 144),
+display.vrr_cap_margin a second under the refresh rate (by default 3: 117
+at 120 Hz, 141 at 144),
 or display.max_fps where that is lower: so they stay inside the range and
 the display refreshes when each is ready, without vsync's queue. The frames
 are bounded by the display (at most one waits for it), not started just in
@@ -1991,8 +1992,16 @@ Video. Not while battery saver is on, whose frames are a whole number of
 refreshes each (battery_saver.c). The choice and its reason are logged as
 they change. The Mac (Metal) and Android have none of it. */
 
-#define VRR_HEADROOM 3.0f
 #define VRR_ASK_MS 2000u
+
+/* display.vrr_cap_margin: the frames a second under the refresh rate VRR
+holds the game to, 1 to 10 */
+static float platform_vrr_margin(void)
+{
+	long margin = config_integer("display.vrr_cap_margin");
+
+	return (float)(margin < 1 ? 1 : margin > 10 ? 10 : margin);
+}
 
 /* (platform_frame_rate_apply's: the VRR the window was given, -1 none) */
 static int platform_vrr_applied = -1;
@@ -2004,6 +2013,7 @@ static BOOL platform_vrr(void)
 	static Uint64 asked_at;
 	static int on = -1;
 	static char reason[160];
+	static float logged_margin;
 	char why[160];
 	const char *mode;
 	int now_on, detected;
@@ -2039,18 +2049,20 @@ static BOOL platform_vrr(void)
 		now_on = 0;
 		snprintf(why, sizeof(why), "battery saver is on");
 	}
-	if (now_on != on || strcmp(why, reason))
+	if (now_on != on || strcmp(why, reason) || (now_on && platform_vrr_margin() != logged_margin))
 	{
 		float refresh = platform_refresh_rate();
 
-		if (now_on && refresh > VRR_HEADROOM)
-			platform_log("display: VRR on (%s): vsync on, at most %.0f frames a second at %.2f Hz", why,
-				(double)(refresh - VRR_HEADROOM), (double)refresh);
+		if (now_on && refresh > platform_vrr_margin())
+			platform_log("display: VRR on (%s): vsync on, at most %.2f frames a second, display.vrr_cap_margin %.0f "
+				"under the display's %.2f Hz", why, (double)(refresh - platform_vrr_margin()),
+				(double)platform_vrr_margin(), (double)refresh);
 		else if (now_on)
 			platform_log("display: VRR on (%s): vsync on, the display's refresh rate not known yet", why);
 		else
 			platform_log("display: VRR off (%s)", why);
 		snprintf(reason, sizeof(reason), "%s", why);
+		logged_margin = platform_vrr_margin();
 	}
 	on = now_on;
 	return on;
@@ -2195,7 +2207,7 @@ static Uint64 frame_interval_ns(void)
 		/* (VRR's ceiling, or display.max_fps under it) */
 		float refresh = platform_refresh_rate();
 
-		rate = refresh > VRR_HEADROOM ? refresh - VRR_HEADROOM : 0.0f;
+		rate = refresh > platform_vrr_margin() ? refresh - platform_vrr_margin() : 0.0f;
 		if (maximum > 0 && (!rate || (float)maximum < rate))
 			rate = (float)maximum;
 	}
