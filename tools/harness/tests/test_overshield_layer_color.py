@@ -67,5 +67,5 @@ def test_wired():
     assert re.search(r'\{ "display.overshield_layer_color", _config_boolean, "true", "HALO_OVERSHIELD_LAYER_COLOR"',
                      config), "on by default"
     shields = read("port/assets/menus/ce/main_menu.settings_select.player_setup.player_profile_edit."
-                   "video_settings.first_person.shields.xml")
-    assert "display.overshield_layer_color" in shields, "its row on the Shields page"
+                   "video_settings.first_person.weapon_body.xml")
+    assert "display.overshield_layer_color" in shields, "its row on the Weapon & Body page's SHIELDS"
