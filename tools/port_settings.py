@@ -514,6 +514,9 @@ def _page_screen(folder: str, screen: str) -> str:
 # (a <bitmap> name: TITLES), and for a tab its name
 ADVANCED = ("video_settings/advanced", "advanced_graphics_screen")
 FIRST_PERSON = ("video_settings/first_person", "first_person_screen")
+# (display.vsync, display.vrr and its margin, display.max_fps and
+# display.low_latency: how the frames meet the display)
+FRAME_RATE = ("video_settings/frame_rate", "frame_rate_screen")
 # (display.gamma, and display.hdr's settings and the display's peak on the
 # renderers that draw it)
 BRIGHTNESS_PAGE = ("video_settings/brightness", "brightness_screen")
@@ -628,16 +631,9 @@ PAGES = {
             # port/linux/game/menu_tags.c adds the display's rates)
             ("REFRESH RATE", "display.refresh_rate", [("AUTO", "0")],
              "How many times a second the display shows a picture while the game is fullscreen. Auto keeps the "
-             "display's own. VSync and Frame Rate Limit's Auto follow it.", "computer"),
-            ("VSYNC", "display.vsync", ON_OFF,
-             "Shows each frame at a refresh of the display: even motion that never tears, at the display's "
-             "refresh rate. On Linux, Windows and the Steam Deck each frame starts just in time for its refresh, so "
-             "it adds almost no input lag; it is on in the Steam Deck's Game Mode.", None),
-            # (shown while VSync shows OFF: menu_functions.c's max_fps_row_show)
-            ("FRAME RATE LIMIT", "display.max_fps", FRAME_RATE_LIMITS,
-             "The most frames drawn a second. Auto is twice the display's refresh rate. More feels smoother and "
-             "uses more power; None draws as fast as it can. On Linux, the display's refresh rate (or half of it) "
-             "is shown in step with the display.|Click the number (or press A) to type 10 to 1000.", "desktop"),
+             "display's own. VSync and Max FPS's Auto follow it.", "computer"),
+            ("FRAME RATE & SYNC ›", None, _page_screen(*FRAME_RATE),
+             "VSync, variable refresh (G-SYNC, FreeSync), the most frames a second and low latency.", None),
             ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
              "How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini "
              "Projection (First Person). Passenger seats use it too; driver and gunner: First Person.|Click the "
@@ -1029,6 +1025,37 @@ PAGES = {
              "hdr_display"),
             # (OpenCE's HDR DISPLAY row is left out: HDR output is display.hdr's
             # own, port/linux/README.md; its OVERSHIELD row is First Person's)
+        ],
+    },
+    FRAME_RATE[0]: {
+        "screen": FRAME_RATE[1], "title": "FRAME RATE & SYNC",
+        "rows": [
+            ("VSYNC", "display.vsync", ON_OFF,
+             "Shows each frame at a refresh of the display: even motion that never tears. With Low Latency it adds "
+             "almost no input lag. It is on in the Steam Deck's Game Mode.", None),
+            # (display.vrr: sdl_platform.c's platform_vrr; on every build, its
+            # AUTO and its words what the system says, dimmed on the Mac:
+            # menu_tags.c's spinner_split, menu_functions.c's vrr_rows_show and
+            # vrr_panel, which has the words shown)
+            ("VARIABLE REFRESH", "display.vrr", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
+             "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
+             "each frame shows as soon as it is ready, without tearing. Auto turns it on where the system says VRR "
+             "is on.",
+             "desktop"),
+            # (dimmed while VRR is not on: vrr_rows_show)
+            ("VRR FRAME CAP", "display.vrr_cap_margin", [(str(n), str(n)) for n in range(1, 11)],
+             "Frames a second kept under the refresh rate, so the game stays in the screen's VRR range and never "
+             "falls back to VSync. Lower is closer to the most frames; higher is safer on a screen with a narrow "
+             "range.|Used while Variable Refresh is on.",
+             "desktop"),
+            # (shown while VSync shows OFF: menu_functions.c's max_fps_row_show)
+            ("MAX FPS", "display.max_fps", FRAME_RATE_LIMITS,
+             "The most frames drawn a second with VSync off. Auto is twice the display's refresh rate. More feels "
+             "smoother and uses more power; None draws as fast as it can.|Click the number (or press A) to type 10 "
+             "to 1000.", "desktop"),
+            ("LOW LATENCY", "display.low_latency", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
+             "With VSync on, starts each frame just in time for the refresh it is shown at, so a press reaches the "
+             "screen sooner. Off starts each frame as soon as the one before is waiting. Auto is on.", None),
         ],
     },
     FIRST_PERSON[0]: {

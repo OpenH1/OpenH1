@@ -1623,14 +1623,32 @@ int host_vulkan_window_open(unsigned int window, unsigned int debug, const char 
 /* (host_vulkan.c's) debug.gpu_stats, debug.gpu_validation (or debug.gl_debug) */
 #define HOST_VULKAN_DEBUG_STATISTICS 1
 #define HOST_VULKAN_DEBUG_VALIDATION 2
-/* display.low_latency, with the debugging settings: on, off (neither: auto) */
+/* display.low_latency, with the debugging settings: on, off (neither: auto);
+and display.vrr's VRR on (platform_vrr: the frames bounded by the display,
+not started for a refresh) */
 #define HOST_VULKAN_LOW_LATENCY_ON 4
 #define HOST_VULKAN_LOW_LATENCY_OFF 8
+#define HOST_VULKAN_VRR 16
+/* port/linux/vulkan/host_vulkan.c: whether the system says VRR is active
+(display.vrr's auto): HOST_VULKAN_VRR_NONE where it says nothing of it;
+gamescope's word (the Steam Deck's, the Steam Frame's), or a Linux
+display's DRM (a CRTC on with VRR_ENABLED), yes or no */
+#define HOST_VULKAN_VRR_NONE 0
+#define HOST_VULKAN_VRR_GAMESCOPE 1
+#define HOST_VULKAN_VRR_DRM 2
+#define HOST_VULKAN_VRR_GAMESCOPE_OFF 3
+#define HOST_VULKAN_VRR_DRM_OFF 4
+#ifndef HALO_ANDROID
+int host_vulkan_vrr(void);
+#endif
+static BOOL platform_vrr(void);
 
 static unsigned int platform_low_latency_flags(void)
 {
 	const char *mode = config_string("display.low_latency");
 
+	if (platform_vrr())
+		return HOST_VULKAN_VRR;
 	if (mode && !strcmp(mode, "on"))
 		return HOST_VULKAN_LOW_LATENCY_ON;
 	if (mode && !strcmp(mode, "off"))
@@ -1951,6 +1969,133 @@ static float platform_refresh_rate(void)
 #endif
 }
 
+/* ---------- display.vrr
+
+A display of variable refresh (G-SYNC, FreeSync, VRR) shows each frame as
+it comes, while the frames come within its range. The game with VRR on
+presents with vsync (FIFO, which waits for the display while the frames
+come faster than its range allows, and never tears) and holds its frames to
+display.vrr_cap_margin a second under the refresh rate (by default 3: 117
+at 120 Hz, 141 at 144),
+or display.max_fps where that is lower: so they stay inside the range and
+the display refreshes when each is ready, without vsync's queue. The frames
+are bounded by the display (at most one waits for it), not started just in
+time for a refresh, which a variable display does not have
+(HOST_VULKAN_VRR).
+
+"on" and "off" are the player's; "auto" turns it on only where the system
+says VRR is active (host_vulkan_vrr: gamescope's word, or a Linux display's
+DRM), asked again every VRR_ASK_MS, so that a display whose compositor
+turns VRR on once the game is fullscreen is followed. Windows says nothing
+reliable of it: there auto is off, and the player turns it on in Settings >
+Video. Not while battery saver is on, whose frames are a whole number of
+refreshes each (battery_saver.c). The choice and its reason are logged as
+they change. The Mac (Metal) and Android have none of it. */
+
+#define VRR_ASK_MS 2000u
+
+/* display.vrr_cap_margin: the frames a second under the refresh rate VRR
+holds the game to, 1 to 10 */
+static float platform_vrr_margin(void)
+{
+	long margin = config_integer("display.vrr_cap_margin");
+
+	return (float)(margin < 1 ? 1 : margin > 10 ? 10 : margin);
+}
+
+/* (platform_frame_rate_apply's: the VRR the window was given, -1 none) */
+static int platform_vrr_applied = -1;
+
+static BOOL platform_vrr(void)
+{
+#if defined(HALO_VULKAN) && !defined(HALO_ANDROID)
+	static unsigned long read_at = (unsigned long)-1;
+	static Uint64 asked_at;
+	static int on = -1;
+	static char reason[160];
+	static float logged_margin;
+	char why[160];
+	const char *mode;
+	int now_on, detected;
+	Uint64 now = SDL_GetTicks();
+
+	mode = config_string("display.vrr");
+	if (on >= 0 && read_at == config_changes() && (strcmp(mode, "auto") || now - asked_at < VRR_ASK_MS))
+		return on;
+	read_at = config_changes();
+	asked_at = now;
+	if (!strcmp(mode, "on"))
+	{
+		now_on = 1;
+		snprintf(why, sizeof(why), "display.vrr is on");
+	}
+	else if (!strcmp(mode, "off"))
+	{
+		now_on = 0;
+		snprintf(why, sizeof(why), "display.vrr is off");
+	}
+	else
+	{
+		detected = host_vulkan_vrr();
+		now_on = detected == HOST_VULKAN_VRR_GAMESCOPE || detected == HOST_VULKAN_VRR_DRM;
+		snprintf(why, sizeof(why), "auto: %s", detected == HOST_VULKAN_VRR_GAMESCOPE ? "gamescope says VRR is active" :
+			detected == HOST_VULKAN_VRR_DRM ? "the display's DRM output has VRR enabled" :
+			detected == HOST_VULKAN_VRR_GAMESCOPE_OFF ? "gamescope says VRR is not active" :
+			detected == HOST_VULKAN_VRR_DRM_OFF ? "no display's DRM output has VRR enabled" :
+			"the system says nothing of VRR (display.vrr = \"on\" for a G-SYNC or FreeSync display)");
+	}
+	if (now_on && battery_saver_active())
+	{
+		now_on = 0;
+		snprintf(why, sizeof(why), "battery saver is on");
+	}
+	if (now_on != on || strcmp(why, reason) || (now_on && platform_vrr_margin() != logged_margin))
+	{
+		float refresh = platform_refresh_rate();
+
+		if (now_on && refresh > platform_vrr_margin())
+			platform_log("display: VRR on (%s): vsync on, at most %.2f frames a second, display.vrr_cap_margin %.0f "
+				"under the display's %.2f Hz", why, (double)(refresh - platform_vrr_margin()),
+				(double)platform_vrr_margin(), (double)refresh);
+		else if (now_on)
+			platform_log("display: VRR on (%s): vsync on, the display's refresh rate not known yet", why);
+		else
+			platform_log("display: VRR off (%s)", why);
+		snprintf(reason, sizeof(reason), "%s", why);
+		logged_margin = platform_vrr_margin();
+	}
+	on = now_on;
+	return on;
+#else
+	return FALSE;
+#endif
+}
+
+int platform_vrr_detected(void)
+{
+#if defined(HALO_METAL)
+	return PLATFORM_VRR_SYSTEM;
+#elif defined(HALO_ANDROID) || !defined(HALO_VULKAN)
+	return PLATFORM_VRR_NOT_HERE;
+#elif defined(HALO_WINDOWS)
+	return PLATFORM_VRR_UNKNOWN;
+#else
+	/* (asked at most every VRR_ASK_MS: the menus ask each frame) */
+	static Uint64 asked_at;
+	static int found = -1;
+	Uint64 now = SDL_GetTicks();
+	int detected;
+
+	if (found < 0 || now - asked_at >= VRR_ASK_MS)
+	{
+		detected = host_vulkan_vrr();
+		found = detected == HOST_VULKAN_VRR_GAMESCOPE || detected == HOST_VULKAN_VRR_DRM;
+		asked_at = now;
+	}
+	return found ? PLATFORM_VRR_FOUND : PLATFORM_VRR_NONE;
+#endif
+}
+
 /* the refreshes each frame is shown for, 0 for none (vsync off):
 display.vsync's 1; and on the Linux builds, with vsync off, a display.max_fps
 of the display's refresh rate or a whole fraction of it (60 at 60 Hz, 30 or
@@ -1969,7 +2114,7 @@ static int platform_swap_interval(void)
 	int interval;
 #endif
 
-	if (config_boolean("display.vsync"))
+	if (config_boolean("display.vsync") || platform_vrr())
 		return 1;
 #if defined(HALO_VULKAN) && !defined(HALO_ANDROID) && !defined(HALO_WINDOWS)
 	maximum = config_integer("display.max_fps");
@@ -2028,6 +2173,7 @@ void platform_frame_rate_apply(void)
 	if (!platform_window)
 		return;
 	interval = platform_interval_take();
+	platform_vrr_applied = platform_vrr();
 #if defined(HALO_METAL)
 	host_metal_vsync(platform_vsync());
 	host_metal_battery_saver(saving);
@@ -2077,8 +2223,20 @@ static Uint64 frame_interval_ns(void)
 	{
 		platform_frame_rate_apply();
 	}
+	/* (VRR turned on or off: auto's system, or battery saver) */
+	if (platform_interval >= 0 && platform_vrr() != platform_vrr_applied)
+		platform_frame_rate_apply();
 	vsync = platform_vsync();
-	if (!vsync && maximum >= 0)
+	if (platform_vrr())
+	{
+		/* (VRR's ceiling, or display.max_fps under it) */
+		float refresh = platform_refresh_rate();
+
+		rate = refresh > platform_vrr_margin() ? refresh - platform_vrr_margin() : 0.0f;
+		if (maximum > 0 && (!rate || (float)maximum < rate))
+			rate = (float)maximum;
+	}
+	else if (!vsync && maximum >= 0)
 		rate = maximum ? (float)maximum : 2.0f * (platform_refresh_rate() > 0.0f ? platform_refresh_rate() : 60.0f);
 	if (battery_saver_active() && !vsync)
 	{

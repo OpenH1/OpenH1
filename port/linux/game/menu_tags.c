@@ -62,6 +62,8 @@ int platform_display_refresh_rates(long *rates, int maximum);
 int platform_window_sizes(long *widths, long *heights, int maximum);
 /* (sdl_platform.c's PLATFORM_AUDIO_DEVICE_NAME_SIZE) */
 int platform_audio_devices(int recording, char (*names)[128], int maximum);
+/* (sdl_platform.h's PLATFORM_VRR_*) */
+int platform_vrr_detected(void);
 
 /* the game's network server (this machine hosts: network_game_globals.c) */
 void *global_network_game_server_get(void);
@@ -1229,6 +1231,25 @@ static long spinner_split(struct halo_menu_widget const *widget, boolean values,
 	long count = split(values ? widget->values : widget->strings, pieces);
 	long widths[MAXIMUM_STRINGS], heights[MAXIMUM_STRINGS];
 	long added, index;
+
+	/* (Frame Rate & Sync's Variable Refresh: its AUTO shown as what auto
+	does here as the menus are made, AUTO: ON or AUTO: OFF, where the system
+	is asked (sdl_platform.c's platform_vrr_detected); every choice SET BY
+	MACOS on the Mac, where the system sets it: menu_functions.c's
+	vrr_rows_show dims it) */
+	if (!values && widget->setting && !strcmp(widget->setting, "display.vrr"))
+	{
+		int vrr = platform_vrr_detected();
+
+		for (index = 0; index < count; index++)
+		{
+			if (vrr == 3 /* PLATFORM_VRR_SYSTEM */)
+				pieces[index] = "SET BY MACOS";
+			else if (!strcmp(pieces[index], "AUTO") && (vrr == 0 || vrr == 1))
+				pieces[index] = vrr ? "AUTO: ON" : "AUTO: OFF";
+		}
+		return count;
+	}
 
 	if (widget->setting && (!strcmp(widget->setting, "audio.output_device") ||
 		!strcmp(widget->setting, "audio.input_device")))
