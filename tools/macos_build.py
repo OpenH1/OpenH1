@@ -40,8 +40,8 @@ from .linux_package import ROOT as REPO_ROOT, notices as release_notices
 from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, SDL_TAG,
                             TOML_DIR, fetch_third_party, generate_guest_image)
 from .build_common import (ASTC_CXX_FLAGS, ASTC_DIR, ASTC_HOST_CXX_SOURCES, ASTC_HOST_SOURCES, MBEDTLS_DIR, MINIUPNPC_DEFINES,
-                           MINIUPNPC_DIR, OWN_CODE_ERRORS, astc_encoder_sources, compile_launcher, download,
-                           miniupnpc_sources, pgo_generate_defines)
+                           MINIUPNPC_DIR, OWN_CODE_ERRORS, REPLAY_DIR, astc_encoder_sources, compile_launcher, download,
+                           miniupnpc_sources, pgo_generate_defines, replay_build_label)
 from .guest_arch import ARM64_32
 from .guest_toolchain import LLVM_VERSION, guest_toolchain
 from .ninja_syntax import Writer
@@ -523,7 +523,8 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
     n.build(outputs=assets, rule=f"{name}_copy", inputs=guest["assets"])
     result = {"sparkle": sparkle, "guest": guest, "executable": output, "sdl": libsdl, "library": library, "brokers": brokers,
               "records": records, "assets": assets,
-              "metal_objects": metal_objects, "shared_objects": shared_objects, "host_obj_dir": host_obj_dir, "objc_cflags": objc_cflags}
+              "metal_objects": metal_objects, "shared_objects": shared_objects, "host_obj_dir": host_obj_dir, "objc_cflags": objc_cflags,
+              "host_cflags": host_cflags}
     if name == "macos":
         _generate_macos_app(n, sln, result)
     return result
@@ -596,10 +597,16 @@ def _generate_macos_app(n: Writer, sln: Any, built: Dict[str, Any]) -> None:
 
     # ---------- the command stream's replay (port/macos/tools/halo_replay.m)
 
+    # (with the replays' shared part, port/tools/replay)
+    replay_cflags = f"-I{REPLAY_DIR} -DHALO_REPLAY_BUILD=\\\"{replay_build_label()}\\\""
     replay_obj = host_obj_dir / "tools" / "halo_replay.m.o"
     n.build(outputs=replay_obj, rule="macos_host_cc", inputs=PORT_DIR / "tools" / "halo_replay.m",
-            variables={"cflags": objc_cflags})
-    replay_host = [host_obj_dir / "host_render_stream.c.o", host_obj_dir / "host_screenshot.c.o", record_obj]
+            variables={"cflags": f"{objc_cflags} {replay_cflags}"})
+    replay_shared_obj = host_obj_dir / "tools" / "host_render_replay.c.o"
+    n.build(outputs=replay_shared_obj, rule="macos_host_cc", inputs=REPLAY_DIR / "host_render_replay.c",
+            variables={"cflags": f"{built['host_cflags']} {replay_cflags}"})
+    replay_host = [host_obj_dir / "host_render_stream.c.o", host_obj_dir / "host_screenshot.c.o", record_obj,
+                   replay_shared_obj]
     replay = BUILD / "halo_replay"
     n.build(outputs=replay, rule="macos_host_link", inputs=[replay_obj, *replay_host, *metal_objects, *shared_objects],
             implicit=[libsdl])

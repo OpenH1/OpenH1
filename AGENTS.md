@@ -29,7 +29,7 @@ end.
 | `port/ios/` | The iOS and iPadOS app's own files: its start (`host_app.m`: the Documents folder, the log, the background), the touch controls (`touch_controls.m`, Android's overlay in UIKit, through `port/android/host/host_touch.c`; `host_imports.list`), the guest image in the executable's `__TEXT` (`guest_image.S`), the entitlements, the icon; the rest is the macOS build's (`port/macos`, `port/android/host`, `port/linux/host`) |
 | `port/assets/` | What the builds embed or ship: high-res HUD (`hud/`), fonts, titles, menus (`menus/`), the Android touch controls' art (`touch/`), icons, network brokers, the bots' map profiles (`bots/`, made from play logs by `tools/play_log/profile.py`), the Linux desktop entry (`linux/`), Steam's library artwork for the shortcut the Linux and Steam Frame installs add (`steam/`) |
 | `port/third_party/` | Vendored libraries, each with a README naming its upstream, version and checksum |
-| `port/tools/` | Stand-alone tools (`cache_file_report.c`) |
+| `port/tools/` | Stand-alone tools (`cache_file_report.c`); the render stream's replay that Metal's and Vulkan's share (`replay/host_render_replay.c`: the recording, the play, `--serve`, the OpenH1 Inspector's service) |
 | `tools/` | Build scripts (`build_common.py`, what the others share; `linux_guest_build.py`, `vulkan_build.py`, `windows_build.py`, `android_build.py` (also the guest image of every guest build), `macos_build.py`, `macos_app.py` (the macOS app, its disk image, signing and notarization), `macos_shaders.py` (the macOS and iOS apps' shader libraries), `ios_build.py`, `ios_app.py` (the iOS app, its signature, devicectl's and simctl's install, launch and log), `ios_provision.py` (its development profile, by Xcode's automatic signing), `render_manifest.py` (the renderer's manifest, the game's vertex shaders from its code), `ci_build.py`, `release_names.py` (the names releases publish the builds under), `release_sign.py` (a release's SHA256SUMS and its signature by the release key, `port/assets/release-key.pub`, which the self-updaters check: `port/linux/src/release_signature.c`), `linux_package.py`, `linux_install.sh` (the one installer: the Linux release's `install.sh`, the Steam Deck's install, and the Steam Frame package's), `frame_install.sh` (it, run on a Frame over ssh), `frame_package.py` (the Steam Frame's)), the game's 32-bit x86 ABI for test tools (`x86_game_abi.py`: `map_validate`), the guest's base register (`guest_base_register.py`, measured by `base_register_bench/`), generators (`ce_menus.py`, `port_settings.py`, `hud_assets.py`, `title_assets.py`, `embed_assets.py`, `xdk_headers.py`, `touch_assets.py`: the Android touch controls' pictures, whose layout `touch_preview.py` draws; `steam_art.py`: Steam's library artwork, `port/assets/steam`), tests, OpenCE's `stagekit/` (scenarios staged and instrumented on the real engine, no retail assets; its map writer runs as a guest image of the 64-bit builds' host), and `scorecard/` (the 60/120 Hz simulation's check: scenarios at each rate compared, the 30 Hz gate against master) |
 | `docs/` | Longer design notes (`custom_edition_caches.md`, `mods.md`, `dedicated_server.md`, `master_protocol.md`, `world-ao.md`) |
 | `pgo/` | Profile-guided optimisation profiles |
@@ -46,6 +46,8 @@ ninja linux_arm64              # build/linux_arm64/halo: arm64_32 guest (64-bit 
 ninja android                  # the Android guest image and native libraries
 ninja android_apk              # the APK (Gradle)
 ninja macos                    # build/macos/OpenH1.app (and halo), on Apple silicon (port/macos/README.md)
+ninja linux_replay             # build/<name>/halo_replay: a recorded render stream replayed with Vulkan
+                               # (ninja macos_replay: with Metal)
 ninja macos_dmg                # build/macos/OpenH1.dmg
 ninja ios                      # build/ios/OpenH1.app, on Apple silicon with Xcode's iOS SDK (port/ios/README.md);
                                # configure.py --ios-team <team> signs it for development; ninja ios_install
@@ -202,6 +204,7 @@ python -m pytest -q tools/test_cache_file_formats.py tools/test_bmp_files.py too
 python -m pytest -q tools/test_xiso.py tools/test_port_settings.py  # the disc image's maps and movies extracted; the settings pages' rows fit
 python -m pytest -q tools/test_cabinet.py                   # Custom Edition's installer and Halo PC's CD read (made-up cabinets; cabextract checks them)
 python -m pytest -q tools/test_render_manifest.py tools/test_render_stream.py  # the renderer's manifest, the command stream
+python -m pytest -q tools/test_render_replay.py             # the replays' shared part: a CPU backend's recording served (no GPU)
 python -m pytest -q tools/test_vulkan_passes.py tools/test_host_vr_vulkan.py  # the Vulkan backend, the VR host (a fake GPU)
 python -m pytest -q tools/test_vr_effects.py                # the VR effects: the thickness bake, the eyes' transforms, their SPIR-V
 python tools/render_enumerate_sweep.py --data <game data>  # every map's enumeration checked in play (offscreen)
@@ -225,6 +228,10 @@ python -m pytest -q tools/test_astc.py                      # the DXT textures a
 python -m pytest -q tools/test_ios_app.py                   # the iOS app's Info.plist, entitlements, the guest's code section
 build/macos/halo_replay <recording> --shots <dir>           # a recorded render stream replayed (ninja macos_replay;
                                                             # HALO_RENDER_RECORD: port/macos/README.md)
+build/linux_x86_64/halo_replay <recording> --shots <dir>    # the same with Vulkan, offscreen (ninja linux_replay; a Mac's
+                                                            # recording too: port/linux/vulkan/README.md)
+build/linux_x86_64/halo_replay <recording> --serve          # the OpenH1 Inspector's service: JSON lines (frame, ids, draws,
+                                                            # pick, thumbs; macOS's too)
 python -m pytest -q tools/test_gpu_isa.py                  # tools/gpu_isa.py (a shader's GPU code, on an M1 Mac)
 python tools/base_register_bench/run.py                     # the base register's cost (Linux arm64, macOS)
 python tools/test_touch_layout.py                           # the Android touch layout (JDK 17+)

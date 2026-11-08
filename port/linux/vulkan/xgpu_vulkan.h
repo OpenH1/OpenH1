@@ -807,6 +807,19 @@ struct xgpu_vulkan_statistics
 	double wait_seconds;
 };
 void xgpu_vulkan_statistics(struct xgpu_vulkan_statistics *statistics);
+
+/* The replay's ID buffer (port/tools/replay/host_render_replay.h; render
+thread): begin, for a frame, each pixel's stack of depth draws; next, the
+draws handed to the backend from now on (to the next call; UINT32_MAX:
+none) are the frame's number'th, and they are looked at where they draw
+into image or multisampled (the target the frame presents); read, at the
+present, the stacks of image's pixels, rows from the top, depth numbers a
+pixel, topmost first, each a draw's number plus one (0 none), malloc'd;
+end, the frame's done with. */
+int xgpu_vulkan_inspect_begin(uint32_t depth);
+void xgpu_vulkan_inspect_next(uint32_t number, struct xgpu_vulkan_image *image, struct xgpu_vulkan_image *multisampled);
+uint32_t *xgpu_vulkan_inspect_read(struct xgpu_vulkan_image *image, uint32_t *width, uint32_t *height);
+void xgpu_vulkan_inspect_end(void);
 void xgpu_vulkan_statistics_peek(struct xgpu_vulkan_statistics *statistics);
 
 #endif

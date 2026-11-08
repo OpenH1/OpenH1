@@ -175,6 +175,72 @@ numbered in the order the textures are read; `xgpu_vulkan_textures.c`).
 which the SPIR-V written directly has no place for) is Metal's alone, and
 does nothing here.
 
+## Recording the stream, and replaying it (`halo_replay`)
+
+The renderer's work can be recorded and replayed without the game, as on
+macOS (`port/macos/README.md`, "Recording the stream"): `HALO_RENDER_RECORD=<file>`
+records it (the textures' cache, `xgpu_vulkan_textures.c`, names the guest
+memory it reads in place), `HALO_RENDER_SHOTS` and `HALO_RENDER_SHOT_FRAMES`
+write the frames' back buffers as PNG files (`xgpu_vulkan_stream_shot`),
+and `ninja linux_replay` (`linux_x86_64_replay`, `linux_arm64_replay`; not
+in the VR build) makes `build/<name>/halo_replay`
+(`port/linux/vulkan/tools/halo_replay.c`), the Vulkan part of the replay
+Metal's shares (`port/tools/replay/host_render_replay.h`):
+
+```sh
+build/linux_x86_64/halo_replay <file> [--frames a-b] [--shots dir] [--shot-frames list] [--loop N]
+    [--hitch ms] [--quiet] [--verbose]
+build/linux_x86_64/halo_replay <file> --serve
+build/linux_x86_64/halo_replay --compare <shots> <shots>
+```
+
+It plays offscreen (no window, no surface: the frames are drawn and read
+back). The guest's memory is the low 4 GB of the tool's process, as the
+host without the base register has the guest's. The pipeline cache is
+`<file>.vkpipelines` (`HALO_VULKAN_PIPELINE_CACHE` names another, or none);
+`HALO_VULKAN_VALIDATION=1` turns on the validation layers. A recording made
+on a Mac (its blocks LZ4's, Apple's framing of it, decoded here) plays as
+one made here does, and one made here plays on the Mac's.
+
+`--serve` is the OpenH1 Inspector's service, a JSON request a line on
+standard input and a JSON answer a line on standard output (the log on
+standard error), over ssh as well (`"inline": true` answers with the
+files' bytes in base64 instead of writing them):
+
+| Request | Answer |
+| --- | --- |
+| `{"cmd":"info"}` | the frames, the back buffer's size, `"backend":"vulkan"`, the commit configure.py ran at |
+| `{"cmd":"frame","n":N,"png":path,"ids":path}` | frame N played exactly; its back buffer as a PNG, its ID buffer: a little-endian `uint32` a pixel, rows from the top, the topmost draw that changed the pixel, its number in the frame plus one (0 none) |
+| `{"cmd":"draws","n":N}` | the frame's draws, numbered as the ID buffer numbers them, with what each was drawn with (its record, primitive and count, pipeline, targets, textures) |
+| `{"cmd":"pick","n":N,"x":X,"y":Y}` | the pixel's draws, topmost first, the 8 last that changed it |
+| `{"cmd":"thumbs","every":E,"width":W,"dir":path}` | thumbnails for the timeline (`"frames":[...]` for chosen ones) |
+
+A draw is a DRAW, DRAW_INDICES, DRAW_INDEXED or DRAW_IMMEDIATE record of the
+frame, counted from its first. The ID buffer is the backend's
+(`xgpu_vulkan_inspect_*` in `xgpu_vulkan.c`): each draw into the target the
+frame presents is drawn in a pass of its own, the target copied before it
+(a multisampled one resolved, and resolved again after), and a compute pass
+(`xgpu_vulkan_inspect_shader.c`, from `tools/vulkan_inspect_shader.py`'s
+GLSL) compares the two by their bits, pushing the draw's number onto the
+stacks of the pixels it changed (an R32_UINT layer each): an alpha-tested
+leaf counts where it drew, not over its cut-out corners, and a draw that
+wrote what was there already does not count. Post passes (anti-aliasing,
+the gamma curve, Panini) are not draws.
+
+A frame is played from the one played last, and from the recording's
+start again (the ring's positions going on) for one before it; the
+pictures of the 16 frames before the one asked for are kept on the way, so
+that a step back is not a play again. Measured on the RTX 4090 (a 2,022
+frame, 1280x720 Blood Gulch recording; each a request's wall time through
+the pipes): a step on with its PNG 17 ms (2 ms of it the frame), with its
+ID buffer 39 ms, a step back to a picture kept 14 ms, a step back with an
+ID buffer (played again from the start) 344 ms, the last frame from the
+first 561 ms, a frame's first ID buffer mid-recording 396 ms; `pick` on a
+frame with its ID buffer 0.1 ms, `draws` 3 ms; 34 thumbnails 692 ms. The
+measuring play runs the recording at about 900 frames a second
+(`tools/test_render_replay.py` tests the service with a CPU backend of its
+own; no GPU, no game).
+
 ## The window
 
 `display.vsync` chooses the present mode: FIFO waits for the display;

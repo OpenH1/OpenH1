@@ -653,7 +653,10 @@ the game: the same frames every time, no maps, no lobby, no guest.
   textures' headers, palettes and texels, the images' pixels). Memory is
   stored by its content's hash, each content once; the file is written in
   blocks that a thread of its own compresses (LZ4, Apple's libcompression;
-  on other hosts the blocks are stored as they are). Its format is the
+  on other hosts the blocks are stored as they are). A recording is the
+  backend's no more than the stream is: one made on a Mac replays on Linux's
+  Vulkan (`ninja linux_replay`, `port/linux/vulkan/README.md`) and one made
+  on Linux on Metal. Its format is the
   recorder's and the tool's alone (`HOST_RENDER_RECORD_VERSION`), not the
   stream's. Record with `HALO_METAL_UNPACED=1`: a paced window the display
   does not show (behind another app, on another space) waits 100 ms a frame.
@@ -666,8 +669,17 @@ the game: the same frames every time, no maps, no lobby, no guest.
 ```sh
 build/macos/halo_replay <file> [--frames a-b] [--window] [--unpaced] [--shots dir]
     [--shot-frames list] [--loop N] [--cold] [--archive path] [--hitch ms] [--quiet]
+build/macos/halo_replay <file> --serve
 build/macos/halo_replay --compare <shots> <shots>
 ```
+
+  The tool is Metal's part (`port/macos/tools/halo_replay.m`: the device,
+  the window, the statistics, `--cold`) of the replay the Vulkan backend
+  has too (`port/tools/replay/host_render_replay.c`: the recording, the
+  guest's memory, the play, the report, `--compare` and `--serve`, the
+  OpenH1 Inspector's service, described there and in
+  `port/linux/vulkan/README.md`). Metal's has no ID buffer yet: `pick` and
+  a frame's `ids` answer that it has none.
 
   It reserves the guest's 4 GB as the host does, writes the records into
   the ring where they were and submits them as the encoder did, and the same
