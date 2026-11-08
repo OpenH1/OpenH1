@@ -640,11 +640,19 @@ static int rasterizer_widget_set_texture(int stage, long map, short sequence) {
     assert(stage == 0 && sequence == (map == NONE ? 0 : map-9)); return map == 11;
 }
 static void rasterizer_widget_batch_sprites(int enabled) { batch = enabled; }
+static int category, kind;
 static void rasterizer_widget_draw_sprite3d(const real_point3d *p, float radius, void *scale, float rotation, unsigned color) {
     assert(depth && batch && p->z == 2.0f && radius > 0 && color == 0x80ffffff);
+    assert(category == 7 && kind == 3);
     assert(!scale && rotation == 0); draws++;
 }
 static void rasterizer_widget_end(void) { assert(!batch); ends++; }
+/* (each drawn as a light among the queued transparents, display.hdr's kind) */
+#define _rasterizer_profile_queued_transparents 7
+#define HALO_HDR_KIND_NONE 0
+#define HALO_HDR_KIND_LIGHT 3
+static void halo_hdr_category(int c) { category = c; }
+static void halo_hdr_draw_kind(int k) { kind = k; }
 ''' + function + r'''
 int main(void) {
     render.camera.forward.z = 1;
@@ -652,6 +660,7 @@ int main(void) {
     reject = 1;
     light_volumes_draw();
     assert(begins == 6 && ends == 6 && draws == 4);
+    assert(category == NONE && kind == HALO_HDR_KIND_NONE);
     return 0;
 }
 '''
