@@ -2124,10 +2124,10 @@ has them 15 dB apart (coherence 0.94). The menus, the music, the HUD and the
 other 2D sounds are as they were. Each ear hears a sound at its own level
 in nine bands and after its own delay, from a table of the directions an
 Xbox was recorded from (its final output, a sweep through Halo's own sound
-calls every 15 degrees round, at 40 and 20 degrees below and above and
-level), interpolated between them; above and below 40 degrees, towards the
-mean of the rows at 40 (`hrtf_place`). Recorded and played here the same
-way, every one of the 120 directions is within 3 dB of the Xbox's in each
+calls every 15 degrees round, at 60, 40 and 20 degrees below and above and
+level, and straight up and down), interpolated between them (`hrtf_place`).
+Recorded and played here the same way, every one of the 120 directions from
+40 below to 40 above is within 3 dB of the Xbox's in each
 octave and each ear, and within 60 us in the time between the ears (below
 1.5 kHz, mostly within 10 us); and it agrees with the figures measured on
 the Xbox's own filters (`tools/harness/tests/hrtf.c` holds both). The VR

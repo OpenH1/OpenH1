@@ -150,7 +150,7 @@ to behind, at 40, 20 and 0 degrees below and above. Measured on an Xbox
 #define HRTF_NEAR 0.25f
 #define HRTF_BANDS 9
 #define HRTF_AZIMUTHS 13
-#define HRTF_ELEVATIONS 5
+#define HRTF_ELEVATIONS 7
 /* the crossfade between the pan and the HRTF when the choice changes
 (audio.spatial): 100 ms */
 #define HRTF_FADE_FRAMES 4800
@@ -662,8 +662,8 @@ sound to the right (frames: the Xbox's time between the ears, the lag of
 their greatest cross-correlation below 1.5 kHz, less what the bands add to
 it). A sound to the left is the mirror of one to the right. Between the
 directions recorded, the table is interpolated (the levels in dB), round
-and up and down; above and below 40 degrees, towards the poles, the mean
-over all round of the rows at 40 degrees, the ears alike and at once.
+and up and down; above and below 60 degrees, towards the poles, each
+recorded straight up or down, the ears alike.
 What the Xbox's recordings showed, and the model this replaces (Brown and
 Duda's) did not:
 	- the time between the ears hardly falls with the elevation: to the side
@@ -712,9 +712,43 @@ struct hrtf_direction
 static const float hrtf_crossovers[HRTF_BANDS - 1] = { 500, 1000, 2000, 3000, 4500, 6700, 10000, 14000 };
 
 /* round from ahead (0 degrees) to behind (180) to the right, every 15
-degrees; 40, 20 and 0 degrees below, and 20 and 40 above */
+degrees; 60, 40, 20 and 0 degrees below, and 20, 40 and 60 above. The 60
+degree rows and the poles were recorded on an Xbox in the test bed's tenth
+run: before, the table stopped at 40 and the poles were the mean of the 40
+degree rows, which left a sound straight below (a Warthog's engine and
+wheels, 70 to 80 degrees under its driver) 20 to 30 dB too bright above
+4.5 kHz, and one 60 below up to 14 dB in a band */
 static const struct hrtf_direction hrtf_table[HRTF_ELEVATIONS][HRTF_AZIMUTHS] =
 {
+	/* 60 degrees below (the test bed's tenth run) */
+	{
+		{ { -0.8f, -2.1f, -3.9f, 4.8f, -9.9f, -23.3f, -0.4f, -11.1f, -12.5f },
+		  { -0.8f, -2.1f, -3.9f, 4.8f, -9.9f, -23.3f, -0.4f, -11.1f, -12.5f }, 0.00f }, /* 0 */
+		{ { -1.3f, -3.1f, -5.5f, 5.1f, -15.8f, -25.9f, -0.2f, -22.8f, -14.6f },
+		  { -0.1f, -1.3f, -2.5f, 3.7f, -5.4f, -20.0f, -1.2f, -7.4f, -11.5f }, 2.06f }, /* 15 */
+		{ { -1.1f, -3.8f, -8.2f, 4.6f, -18.5f, -25.1f, -2.3f, -24.6f, -17.2f },
+		  { 0.0f, -0.5f, -0.8f, 2.1f, -2.6f, -21.1f, -1.1f, -7.3f, -12.4f }, 3.62f }, /* 30 */
+		{ { -0.9f, -3.6f, -19.3f, 0.0f, -26.6f, -10.9f, -11.3f, -38.1f, -24.0f },
+		  { 0.3f, 0.7f, 2.5f, -1.8f, -0.7f, -21.8f, -0.3f, -11.3f, -17.0f }, 7.56f }, /* 45 */
+		{ { -1.1f, -2.4f, -21.5f, -8.5f, -12.7f, -19.1f, -18.0f, -39.1f, -55.5f },
+		  { 0.3f, 0.8f, 3.5f, -1.5f, -2.4f, -21.5f, -0.3f, -12.3f, -18.0f }, 8.88f }, /* 60 */
+		{ { -1.4f, -1.4f, -13.1f, -21.4f, -19.6f, -16.5f, -32.0f, -46.3f, -66.7f },
+		  { 0.4f, 0.9f, 4.0f, 0.6f, -5.2f, -22.4f, 0.0f, -14.4f, -17.4f }, 10.63f }, /* 75 */
+		{ { -1.5f, -1.2f, -6.8f, -30.9f, -19.4f, -38.2f, -15.5f, -21.8f, -31.3f },
+		  { 0.7f, 0.8f, 4.1f, 1.7f, -4.8f, -25.5f, -2.8f, -5.2f, -13.1f }, 12.81f }, /* 90 */
+		{ { -1.5f, -1.3f, -13.4f, -35.2f, -15.7f, -18.2f, -23.4f, -24.2f, -30.9f },
+		  { 0.7f, 0.8f, 3.8f, 0.7f, -6.7f, -28.2f, -4.4f, -6.4f, -14.1f }, 10.31f }, /* 105 */
+		{ { -1.3f, -2.4f, -19.8f, -7.7f, -18.0f, -32.6f, -15.3f, -22.8f, -39.8f },
+		  { 0.5f, 0.6f, 3.6f, -2.0f, -5.3f, -28.6f, -7.3f, -5.4f, -13.3f }, 8.81f }, /* 120 */
+		{ { -1.3f, -4.7f, -8.0f, -5.1f, -28.0f, -27.7f, -10.7f, -22.5f, -23.7f },
+		  { 0.4f, 0.1f, 3.3f, -5.0f, -3.8f, -26.5f, -7.0f, -5.8f, -12.2f }, 8.12f }, /* 135 */
+		{ { -1.9f, -3.8f, -1.9f, -3.7f, -10.6f, -24.6f, -8.9f, -13.0f, -21.5f },
+		  { -0.3f, -1.0f, 2.1f, -8.2f, -2.1f, -22.2f, -4.1f, -10.8f, -11.0f }, 4.00f }, /* 150 */
+		{ { -1.9f, -2.6f, -0.8f, -3.9f, -7.8f, -25.7f, -5.8f, -14.4f, -21.2f },
+		  { -0.7f, -1.4f, 1.4f, -6.9f, -2.8f, -22.9f, -4.2f, -9.5f, -13.0f }, 2.13f }, /* 165 */
+		{ { -1.4f, -1.9f, 0.4f, -5.3f, -5.2f, -24.1f, -4.6f, -11.5f, -17.3f },
+		  { -1.4f, -1.9f, 0.4f, -5.3f, -5.2f, -24.1f, -4.6f, -11.5f, -17.3f }, 0.00f }, /* 180 */
+	},
 	/* -40 degrees */
 	{
 		{ { -0.3f, -1.2f, 4.2f, 0.1f, 0.8f, -12.2f, -4.4f, 3.6f, -2.8f },
@@ -860,13 +894,43 @@ static const struct hrtf_direction hrtf_table[HRTF_ELEVATIONS][HRTF_AZIMUTHS] =
 		{ { 1.0f, -1.0f, 0.4f, 1.2f, -19.2f, -0.1f, -9.6f, -25.8f, -24.9f },
 		  { 1.0f, -1.0f, 0.4f, 1.2f, -19.2f, -0.1f, -9.6f, -25.8f, -24.9f }, 0.00f }, /* 180 */
 	},
+	/* 60 degrees above (the test bed's tenth run) */
+	{
+		{ { 0.0f, -1.1f, -1.1f, 1.5f, -6.9f, -1.8f, -5.1f, -0.7f, -9.8f },
+		  { 0.0f, -1.1f, -1.1f, 1.5f, -6.9f, -1.8f, -5.1f, -0.7f, -9.8f }, 0.00f }, /* 0 */
+		{ { 0.0f, -1.3f, -1.9f, -0.1f, -3.2f, -6.8f, -2.4f, -4.6f, -13.5f },
+		  { 0.4f, -0.7f, -0.1f, 1.9f, -7.0f, 0.4f, -6.3f, 1.0f, -5.4f }, 2.12f }, /* 15 */
+		{ { -0.1f, -1.5f, -2.5f, -1.7f, -3.1f, -6.2f, -5.4f, -4.8f, -15.4f },
+		  { 0.5f, -0.6f, 0.7f, 1.5f, -5.0f, 0.6f, -5.1f, 2.5f, -3.9f }, 4.19f }, /* 30 */
+		{ { -0.3f, -1.7f, -3.7f, -4.1f, -6.0f, -14.2f, -2.2f, -12.8f, -21.8f },
+		  { 0.8f, -0.3f, 1.6f, 1.0f, -2.5f, 0.2f, -3.6f, 4.5f, -2.7f }, 7.94f }, /* 45 */
+		{ { -0.3f, -2.0f, -4.0f, -5.2f, -8.0f, -11.9f, -7.3f, -7.8f, -20.4f },
+		  { 0.7f, 0.3f, 1.9f, 0.8f, -1.8f, 0.0f, -2.8f, 5.2f, -3.0f }, 9.31f }, /* 60 */
+		{ { -0.3f, -2.1f, -3.9f, -6.6f, -8.7f, -14.3f, -7.6f, -13.4f, -21.8f },
+		  { 0.8f, 0.5f, 2.0f, 1.1f, -1.7f, -0.8f, -1.3f, 5.3f, -3.6f }, 10.19f }, /* 75 */
+		{ { -0.6f, -2.2f, -3.8f, -8.9f, -9.0f, -20.5f, -6.1f, -20.6f, -28.9f },
+		  { 1.0f, 0.5f, 2.1f, 1.1f, -1.4f, -3.8f, 1.5f, 4.0f, -6.1f }, 10.75f }, /* 90 */
+		{ { -0.3f, -2.1f, -3.4f, -7.8f, -8.2f, -16.9f, -6.2f, -10.0f, -20.7f },
+		  { 0.8f, 0.6f, 2.1f, 0.6f, -1.2f, -6.5f, 2.7f, 2.5f, -7.8f }, 10.12f }, /* 105 */
+		{ { -0.3f, -1.9f, -3.3f, -6.6f, -7.7f, -18.6f, -3.7f, -8.1f, -21.4f },
+		  { 0.7f, 0.4f, 2.0f, 0.3f, -1.4f, -8.5f, 3.2f, 1.1f, -9.2f }, 9.13f }, /* 120 */
+		{ { -0.5f, -1.7f, -3.2f, -5.2f, -7.7f, -17.0f, -0.9f, -13.7f, -20.2f },
+		  { 0.6f, -0.1f, 1.6f, 0.0f, -2.2f, -9.0f, 2.7f, 0.2f, -10.6f }, 7.75f }, /* 135 */
+		{ { -0.2f, -1.3f, -2.0f, -2.7f, -4.2f, -16.1f, -0.3f, -9.1f, -18.9f },
+		  { 0.2f, -0.6f, 0.9f, -0.2f, -4.7f, -9.3f, 1.8f, -1.8f, -12.2f }, 3.94f }, /* 150 */
+		{ { -0.2f, -1.2f, -1.6f, -1.1f, -5.2f, -16.2f, 1.0f, -8.7f, -17.4f },
+		  { -0.1f, -0.9f, 0.1f, -0.1f, -6.5f, -9.7f, 0.8f, -3.1f, -13.9f }, 2.00f }, /* 165 */
+		{ { -0.1f, -0.9f, -0.6f, -0.2f, -6.0f, -13.4f, 1.4f, -5.5f, -15.8f },
+		  { -0.1f, -0.9f, -0.6f, -0.2f, -6.0f, -13.4f, 1.4f, -5.5f, -15.8f }, 0.00f }, /* 180 */
+	},
 };
 static const struct hrtf_direction hrtf_poles[2] =
 {
-	{ { 0.5f, 0.1f, 3.4f, -0.7f, -1.7f, -8.1f, -1.4f, 1.1f, -5.8f },
-	  { 0.5f, 0.1f, 3.4f, -0.7f, -1.7f, -8.1f, -1.4f, 1.1f, -5.8f }, 0.0f },
-	{ { 1.6f, 0.5f, 0.9f, 1.1f, -2.5f, -1.3f, -0.3f, -0.6f, -8.1f },
-	  { 1.6f, 0.5f, 0.9f, 1.1f, -2.5f, -1.3f, -0.3f, -0.6f, -8.1f }, 0.0f },
+	/* straight below and straight above (recorded, the test bed's tenth run) */
+	{ { -0.3f, -0.3f, 2.0f, -32.3f, -40.1f, -22.4f, -19.1f, -43.1f, -31.9f },
+	  { -0.3f, -0.3f, 2.0f, -32.3f, -40.1f, -22.4f, -19.1f, -43.1f, -31.9f }, 0.0f },
+	{ { 0.1f, -0.9f, -0.5f, -0.9f, -4.4f, -8.4f, -1.4f, -0.5f, -13.4f },
+	  { 0.1f, -0.9f, -0.5f, -0.9f, -4.4f, -8.4f, -1.4f, -0.5f, -13.4f }, 0.0f },
 };
 
 /* On 5.1 the Xbox's back pair played a sound behind as the direction
@@ -956,7 +1020,7 @@ elevation (-90 to 90), interpolated round, and up and down between its rows
 and the poles */
 static void hrtf_lookup(float azimuth, float elevation, struct hrtf_direction *out)
 {
-	static const float rows[HRTF_ELEVATIONS + 2] = { -90.0f, -40.0f, -20.0f, 0.0f, 20.0f, 40.0f, 90.0f };
+	static const float rows[HRTF_ELEVATIONS + 2] = { -90.0f, -60.0f, -40.0f, -20.0f, 0.0f, 20.0f, 40.0f, 60.0f, 90.0f };
 	float column = azimuth / 15.0f, round;
 	struct hrtf_direction at[2];
 	int first, row, side;
