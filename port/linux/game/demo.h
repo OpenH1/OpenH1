@@ -55,6 +55,11 @@ void demo_foreign_end(void);
 there (a host leaves a client's hits to its reports: network_damage.c):
 recorded, and in playback the recording's */
 boolean demo_decide(boolean decision);
+/* ... and a choice the frames' state makes for the tick (whether a
+particle waits for a later frame, whose emitter's snapshots the frames
+keep: render_interpolation.c), in any game: recorded, and in playback the
+recording's */
+boolean demo_decide_frames(boolean decision);
 /* ... and numbers the tick takes from the frames' state (a unit's
 illumination, the lights'): recorded, and in playback the recording's */
 void demo_decide_reals(long object_index, real *values, short count);

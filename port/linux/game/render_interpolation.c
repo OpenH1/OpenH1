@@ -132,6 +132,7 @@ the frame takes its view.
 #include "units/bipeds.h"
 #include "passenger_camera.h"
 #include "sim_rate.h"
+#include "demo.h"
 
 /* port/linux/src/port_config.c */
 int config_boolean(const char *name);
@@ -4658,23 +4659,33 @@ boolean render_interpolation_particle_later(
 	short node_index,
 	real fraction)
 {
-	struct interpolated_object *record;
+	struct interpolated_object *record = NULL;
 	struct later_particle *later;
 	long absolute_index;
+	boolean possible;
 
-	if (!halo_interpolation_enabled() || !interpolated_objects || object_index == NONE ||
-		!(fraction > 0.0f && fraction < 1.0f) || later_particle_count >= MAXIMUM_LATER_PARTICLES)
-	{
+	if (object_index == NONE || !(fraction > 0.0f && fraction < 1.0f))
 		return FALSE;
-	}
 	absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(object_index);
-	if (absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
+	if (interpolated_objects && absolute_index < MAXIMUM_INTERPOLATED_OBJECTS)
+		record = &interpolated_objects[absolute_index];
+	possible = halo_interpolation_enabled() && record && later_particle_count < MAXIMUM_LATER_PARTICLES &&
+		record->object_index == object_index && record->has_previous && node_index >= 0 &&
+		node_index < record->node_count;
+	/* (whether it can wait is the frames' (its emitter's snapshots here),
+	and a particle made now takes the tick's local seed: a demo's playback
+	has the recording's choice, demo.c; one the recording held back that
+	cannot be here is made now on the frames' seed, as the recording's
+	frames made it) */
+	if (!demo_decide_frames(possible))
 		return FALSE;
-	record = &interpolated_objects[absolute_index];
-	if (record->object_index != object_index || !record->has_previous ||
-		node_index < 0 || node_index >= record->node_count)
+	if (!possible)
 	{
-		return FALSE;
+		boolean ticking = random_math_port_begin_cosmetic();
+
+		particle_new(data);
+		random_math_port_end_cosmetic(ticking);
+		return TRUE;
 	}
 	later = &later_particles[later_particle_count++];
 	later->data = *data;

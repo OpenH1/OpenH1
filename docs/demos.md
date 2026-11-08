@@ -83,12 +83,16 @@ take (`source/math/random_math.c`) and the players' input of each tick
   bytes are not written in. So are the network test's own (a host's player
   shooting, its kill of the last player: `debug.network_test_shoot`,
   `debug.network_test_kill`).
-- **What the game engine keeps outside the game state** and the ticks
-  read (`game_engine_port_demo_state`): its flags (by the players the game
-  began with: five or more take fewer grenades from a map's places), the
-  goals, the vehicles' homes, the friendly fire penalties, each game type's
-  state (its scores), whole with each snapshot and wherever it changed
-  outside the ticks; the playback puts it back as it was.
+- **What the game keeps outside the game state** and the ticks read: the
+  game engine's (`game_engine_port_demo_state`: its flags, by the players
+  the game began with, five or more taking fewer grenades from a map's
+  places; the goals, the vehicles' homes, the friendly fire penalties, each
+  game type's state, its scores) and the speakers' mouths
+  (`game_sound_port_demo_state`), whole with each snapshot and wherever it
+  changed outside the ticks; the playback puts it back as it was.
+- **The frames' choices a tick takes**: whether a particle waits for a
+  later frame (`render_interpolation.c`), which decides whether the tick's
+  local seed makes it.
 - **A hash of the game state three times a second**, and of each allocation, which
   the playback compares with its own (a data array's free datums left out:
   what the frames made and deleted again there, which no tick reads).
@@ -156,7 +160,8 @@ its bytes:
 | `D` | a choice the netcode made |
 | `X` | a hit the host dealt outside the ticks (a client's reported, the network test's): the seeds, then the hit as dealt |
 | `Y` | a kill the host made for a player outside the ticks (the network test's): the seeds, the unit, the player |
-| `G` | what the game engine keeps outside the game state, where it changed outside the ticks (whole with a snapshot) |
+| `G` | what the game keeps outside the game state (the game engine's, the speakers' mouths), where it changed outside the ticks (whole with a snapshot) |
+| `L` | whether a tick's particle waited for a later frame |
 | `O` | a local player's camera as the tick begins |
 | `I` | a unit's illumination as its update took it |
 | `H` | the game state's hash, and each allocation's |
@@ -226,33 +231,31 @@ recording, every tick and every one of the demo's own hashes:
 
 | Run | Ticks alike | Hashes as recorded |
 | --- | --- | --- |
-| a10 at 60 Hz, `debug.frame_time` | 7351 | 735 of 735 |
-| a10 at 30 Hz, `debug.frame_time` | 7982 | 798 of 798 |
-| a10 at 120 Hz, `debug.frame_time` | 7202 | 720 of 720 |
-| b30 fighting, deaths and reverts, `debug.frame_time` | 6784 | 676 of 676 |
+| a10 at 60 Hz, `debug.frame_time` | 7381 | 738 of 738 |
+| a10 at 30 Hz, `debug.frame_time` | 7892 | 789 of 789 |
+| a10 at 120 Hz, `debug.frame_time` | 7292 | 729 of 729 |
+| a10 in real time | 1771 | 177 of 177 |
+| b30 fighting, deaths and reverts, `debug.frame_time` | 6432 | 641 of 641 |
+| Slayer, a player and 3 bots, 30 Hz | 2460 | 246 of 246 |
 | Slayer, a player and 3 bots, 60 Hz (twice) | 2460 each | 246 of 246 each |
 | Slayer, a player and 3 bots, 120 Hz (twice) | 2460 each | 246 of 246 each |
 | Slayer, a player and 7 bots, 120 Hz | 2460 | 246 of 246 |
-| Blood Gulch hosted, a client, 120 Hz, the network test's shots and kills, 2.2 minutes (four) | 4050 each | 405 of 405 each |
+| Blood Gulch hosted, a client, 120 Hz, the network test's shots and kills, 2.75 minutes (four) | 4950 each | 495 of 495 each |
 
 Before these fixes the same runs parted: Slayer with three bots after 17
 to 38 seconds in each of four runs (a speaker's mouth), with five or seven
 at its first tick (the game engine's flags), hosted games after 3 to 77
 seconds (the network test's kills and the game type's score, a datum
-deleted from an array's end, the particles' seeds).
+deleted from an array's end, a particle held for a later frame).
 
 Where they parted, and what changed:
 
 - **A speaker's mouth.** The mouths the speech sounds move (`game_sound.c`)
-  were kept outside the game state, with the speakers' seed: a playback
+  are kept outside the game state, with the speakers' seed: a playback
   began with none moving, and its units' mouths, which their nodes follow,
-  were not the recording's. They are in the game state now ("game sound
-  speakers"), as the units they move are, in a saved game and a checkpoint
-  too. (`debug.demo_verify` named the field as a unit's illumination; it is
-  the mouth's aperture, the field after it.)
-- **The frames' input in an open tick.** The HUD's crosshair (in the
-  tick's last sub-step) reads the aim assist's level, which the frames set
-  between the sub-steps: recorded there too now, with the seeds.
+  were not the recording's. They are recorded with the game engine's state
+  now (`G`, below). (`debug.demo_verify` named the field as a unit's
+  illumination; it is the mouth's aperture, the field after it.)
 - **The game engine's state outside the game state.** A game begun with
   five players or more draws its grenades from a map's places by the
   game engine's flags, which its start set by its players: the playback's
@@ -272,14 +275,18 @@ Where they parted, and what changed:
   were apart). A difference now runs as far as the array was in use before;
   and the datums the playback's own frames made past a count put back are
   freed again.
-- **The particles' seeds.** Whether a tick made a particle (seen from the
+- **The particles' seeds.** Whether a tick makes a particle (seen from the
   camera, room among the particles, held for a later frame:
-  `render_interpolation_particle_later`) is the frames', and the particle
-  took the game's local seed when the tick made it: the game's seed moved
-  with the frames. A particle and a particle system's first particles take
-  the frames' local seed now, as the contrails and the decals do. This
-  changes the game's local seed from what a build before took (a 30 Hz
-  run against master's parts in the seeds), not what the game does.
+  `render_interpolation_particle_later`) and how many a new particle system
+  makes at once (room among its particles) are the frames', and a particle
+  made in a tick took the game's local seed: the game's seed moved with the
+  frames. At `game.sim_rate` 60 and 120 a particle and a particle system's
+  first particles take the frames' local seed now, as the contrails and the
+  decals do. At 30 they take the tick's, as the original's (the scorecard's
+  30 Hz gate keeps a build bit for bit as master); there the playback has
+  the recording's choice of a particle held for a later frame (`L`), but
+  not the room the frames left, so a 30 Hz demo of a fight with the
+  particles full can still part in the local seed.
 - **What the frames made and deleted again** in a data array (an effect, a
   cluster reference) leaves bytes in its free slots, which no tick reads:
   the demo's hash and `--simulation` leave them out.

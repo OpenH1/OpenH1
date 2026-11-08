@@ -140,6 +140,7 @@ void console_printf(boolean clear, const char *format, ...);
 void network_damage_deal_recorded(void const *bytes, unsigned long size);
 void damage_kill_object_for_player(long object_index, long player_index);
 void *game_engine_port_demo_state(short part, long *size);
+void *game_sound_port_demo_state(short part, long *size);
 extern struct game_variant game_variant_global;
 void main_build_identity(long *number, char *flavor, size_t flavor_size, char *repository, size_t repository_size,
 	char *version, size_t version_size);
@@ -1084,10 +1085,28 @@ static void demo_seeds_write(
 	demo_record_end(buffer, start);
 }
 
-/* the game engine's state that it keeps outside the game state and the
-ticks read (game_engine_port_demo_state: its flags, by the players the game
-began with; its goals, the vehicles' homes, a game type's scores), its parts
-one after another into state: its size, 0 if it cannot be had */
+/* a part of what the game keeps outside the game state and the ticks read:
+the game engine's (game_engine_port_demo_state: its flags, by the players
+the game began with; its goals, the vehicles' homes, a game type's scores),
+then the speakers' mouths (game_sound_port_demo_state); NULL past the last */
+static void *demo_outside_part(
+	short part,
+	long *size)
+{
+	short count = 0;
+	long part_size;
+	void *address;
+
+	address = game_engine_port_demo_state(part, size);
+	if (address)
+		return address;
+	while (game_engine_port_demo_state(count, &part_size))
+		count++;
+	return game_sound_port_demo_state((short)(part - count), size);
+}
+
+/* ... its parts one after another into state: its size, 0 if it cannot be
+had */
 static unsigned long demo_engine_state_get(
 	unsigned char *state)
 {
@@ -1096,7 +1115,7 @@ static unsigned long demo_engine_state_get(
 	long part_size;
 	void *address;
 
-	for (part = 0; (address = game_engine_port_demo_state(part, &part_size)) != NULL; part++)
+	for (part = 0; (address = demo_outside_part(part, &part_size)) != NULL; part++)
 	{
 		if (part_size < 0 || (unsigned long)part_size > DEMO_ENGINE_STATE_SIZE - size)
 			return 0;
@@ -1156,12 +1175,12 @@ static void demo_engine_state_set(
 	long part_size;
 	void *address;
 
-	for (part = 0; game_engine_port_demo_state(part, &part_size) != NULL; part++)
+	for (part = 0; demo_outside_part(part, &part_size) != NULL; part++)
 		position += (unsigned long)part_size;
 	if (position != size)
 		return;
 	position = 0;
-	for (part = 0; (address = game_engine_port_demo_state(part, &part_size)) != NULL; part++)
+	for (part = 0; (address = demo_outside_part(part, &part_size)) != NULL; part++)
 	{
 		memcpy(address, state + position, (size_t)part_size);
 		position += (unsigned long)part_size;
@@ -1700,6 +1719,28 @@ boolean demo_decide(
 }
 
 static char demo_playback_record(unsigned char const **bytes, unsigned long *length, boolean take);
+
+boolean demo_decide_frames(
+	boolean decision)
+{
+	unsigned char const *bytes;
+	unsigned long length;
+	unsigned long start;
+
+	if (demo_player.playing && demo_player.started)
+	{
+		if (!demo_recorder.in_tick || demo_playback_record(&bytes, &length, FALSE) != 'L' || length < 1)
+			return decision;
+		demo_playback_record(&bytes, &length, TRUE);
+		return bytes[0] != 0;
+	}
+	if (!demo_recorder.recording || !demo_recorder.in_tick)
+		return decision;
+	start = demo_record_begin(&demo_recorder.records, 'L');
+	demo_buffer_u8(&demo_recorder.records, decision ? 1 : 0);
+	demo_record_end(&demo_recorder.records, start);
+	return decision;
+}
 
 void demo_decide_reals(
 	long object_index,
