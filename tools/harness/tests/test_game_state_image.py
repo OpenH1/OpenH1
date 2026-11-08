@@ -16,8 +16,8 @@ SOURCE = "source/saved games/game_state.c"
 CAPACITY = read("port/linux/include/halo_port_capacity.h")
 
 CASES = ["size", "taken", "taken-back", "whole", "checked", "other-size"]
-NAMES = ["game_state_image_pointer", "game_state_image_refuse", "game_state_image_size", "game_state_image_take",
-         "game_state_image_accept"]
+NAMES = ["game_state_image_pointer", "game_state_image_refuse", "game_state_image_valid", "game_state_image_size",
+         "game_state_image_take", "game_state_image_accept"]
 
 # a fault in the code, the function it is in, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -34,7 +34,7 @@ NEGATIVE_CONTROLS = {
     "unused-part-overwritten": (("\tcsmemcpy(game_state_globals.base_address, image, game_state_globals.cpu_allocation_size);",
                                  "\tcsmemcpy(game_state_globals.base_address, image, size);"),
                                 "game_state_image_accept", "taken-back"),
-    "unchecked": (("\t\tif (!valid)\n", "\t\tif (!valid && 0)\n"), "game_state_image_accept", "checked"),
+    "unchecked": (("\t\tif (!valid)\n", "\t\tif (!valid && 0)\n"), "game_state_image_valid", "checked"),
     "any-size": (("\telse\n\t\treturn game_state_image_refuse(", "\telse if (0)\n\t\treturn game_state_image_refuse("),
                  "game_state_image_accept", "other-size"),
 }
