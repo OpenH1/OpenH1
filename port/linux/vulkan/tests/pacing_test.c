@@ -22,6 +22,10 @@ static int stream_paced, paced_calls;
 answers a present only this long after it was made (a deep queue) */
 static int answers;
 static uint64_t presents, answer_delay;
+/* what present wait answers for a present shown (VK_SUCCESS; gamescope's
+layer may answer VK_SUBOPTIMAL_KHR), and for every present (an error: 0
+for none) */
+static VkResult answer_shown = VK_SUCCESS, answer_always = VK_SUCCESS;
 static uint64_t present_times[256];
 /* display timing's calls (the fake's answer: VK_INCOMPLETE always) */
 static uint32_t past_calls;
@@ -83,9 +87,11 @@ static VKAPI_ATTR VkResult VKAPI_CALL fake_wait_for_present(VkDevice device, VkS
 {
 	(void)device;
 	(void)swapchain;
+	if (answer_always != VK_SUCCESS)
+		return answer_always;
 	if (answers && id <= __atomic_load_n(&presents, __ATOMIC_ACQUIRE) &&
 		now_ns() >= __atomic_load_n(&present_times[id % 256], __ATOMIC_ACQUIRE) + answer_delay)
-		return VK_SUCCESS;
+		return answer_shown;
 	sleep_ns(timeout < 1000000ull ? timeout : 1000000ull);
 	return VK_TIMEOUT;
 }
@@ -265,6 +271,35 @@ int main(void)
 	assert(stream_paced == HOST_RENDER_DISPLAY_PACED);
 	xgpu_vulkan_pacing_stop();
 	answer_delay = 0;
+
+	/* present wait that answers VK_SUBOPTIMAL_KHR for the presents shown:
+	shown, and the game paced */
+	answer_shown = VK_SUBOPTIMAL_KHR;
+	start(1, 0);
+	for (frame = 0; frame < 20 && !stream_paced; frame++)
+	{
+		sleep_ns(17000000ull);
+		assert(present() < 5000000ull);
+	}
+	assert(stream_paced == HOST_RENDER_DISPLAY_PACED);
+	xgpu_vulkan_pacing_stop();
+	answer_shown = VK_SUCCESS;
+
+	/* present wait that fails for every present (it had said nothing, and
+	no warning, on the Steam Deck's FIFO): given up on as a silent display */
+	answer_always = VK_ERROR_OUT_OF_DATE_KHR;
+	start(1, 0);
+	for (frame = 0; frame < 20; frame++)
+	{
+		assert(present() < 5000000ull);
+		sleep_ns(17000000ull);
+	}
+	pthread_mutex_lock(&pacing.lock);
+	assert(pacing.silent && !pacing.proven && pacing.wait_failed >= SILENT_PRESENTS);
+	pthread_mutex_unlock(&pacing.lock);
+	assert(!stream_paced);
+	xgpu_vulkan_pacing_stop();
+	answer_always = VK_SUCCESS;
 	puts("pacing: ok");
 	return 0;
 }
