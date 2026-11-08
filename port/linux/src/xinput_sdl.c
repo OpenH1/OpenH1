@@ -1850,6 +1850,9 @@ static struct test_script_event
 	float x, y;
 	int aim, aimed;
 	int hunt;
+	/* (mouse=: its motion in counts a second, played with the window's
+	events, halo_test_input_pump) */
+	int mouse;
 	/* (gyro=, tilt=: the rates or the direction in x, y and z) */
 	int gyro, tilt, gyro_button, stick_touch, gyro_calibrate;
 	float z;
@@ -1919,6 +1922,8 @@ static void test_script_parse(const char *script)
 			event->stick = 2;
 		else if (sscanf(action, "aim=%f,%f", &event->x, &event->y) == 2)
 			event->aim = 1;
+		else if (sscanf(action, "mouse=%f,%f", &event->x, &event->y) == 2)
+			event->mouse = 1;
 		else if (!strcmp(action, "hunt"))
 			event->hunt = 1;
 		else if (sscanf(action, "gyro=%f,%f,%f", &event->x, &event->y, &event->z) == 3)
@@ -2109,6 +2114,33 @@ static void test_latency_gamepad(XINPUT_GAMEPAD *pad)
 		pad->wButtons |= test_latency.pressed & 1 ? XINPUT_GAMEPAD_DPAD_DOWN : XINPUT_GAMEPAD_DPAD_UP;
 }
 
+/* debug.test_input "script:"'s "mouse=<x>,<y>": the mouse moved at that
+many counts a second (x right, y down) while the script's time is within the
+event's, its motion coming with the window's events as a real mouse's does,
+on the real clock: as much each time as the time since the last */
+static void test_script_mouse(struct platform_input_state *state)
+{
+	static Uint64 last_ns;
+	Uint64 now = SDL_GetTicksNS();
+	double t, seconds;
+	int index;
+
+	seconds = last_ns ? (double)(now - last_ns) * 1e-9 : 0.0;
+	last_ns = now;
+	if (!test_script_on)
+		return;
+	t = sim_trace_scenario_seconds() + 1e-6;
+	for (index = 0; index < test_script_count; index++)
+	{
+		struct test_script_event const *event = &test_script[index];
+
+		if (!event->mouse || t < event->start || t >= event->end)
+			continue;
+		state->mouse_dx += event->x * (float)seconds;
+		state->mouse_dy += event->y * (float)seconds;
+	}
+}
+
 /* (sdl_platform.c's platform_pump_events, its input lock held, after the
 window's events) the scripted mouse's own, as its events would bring them:
 its button held or let go, its motion */
@@ -2116,6 +2148,7 @@ void halo_test_input_pump(struct platform_input_state *state, unsigned char *but
 {
 	int kind;
 
+	test_script_mouse(state);
 	if (test_latency.state < 0 || !test_latency_on())
 		return;
 	kind = test_latency_advance(SDL_GetTicksNS());
