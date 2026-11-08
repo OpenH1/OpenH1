@@ -633,15 +633,18 @@ PAGES = {
              "Shows each frame at a refresh of the display: even motion that never tears, at the display's "
              "refresh rate. On Linux, Windows and the Steam Deck each frame starts just in time for its refresh, so "
              "it adds almost no input lag; it is on in the Steam Deck's Game Mode.", None),
+            # (display.vrr: sdl_platform.c's platform_vrr; hidden on the Mac,
+            # whose Metal has none: menu_functions.c's vrr_row_show)
+            ("VARIABLE REFRESH", "display.vrr", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
+             "For a G-SYNC or FreeSync display: VSync on and the frame rate held 3 under the refresh rate, so each "
+             "frame is shown as soon as it is ready, with no tearing and no queue. Auto turns it on where the "
+             "system says VRR is active (the Steam Deck, a Linux desktop that has it on).|On Windows, choose ON.",
+             "desktop"),
             # (shown while VSync shows OFF: menu_functions.c's max_fps_row_show)
             ("FRAME RATE LIMIT", "display.max_fps", FRAME_RATE_LIMITS,
              "The most frames drawn a second. Auto is twice the display's refresh rate. More feels smoother and "
              "uses more power; None draws as fast as it can. On Linux, the display's refresh rate (or half of it) "
              "is shown in step with the display.|Click the number (or press A) to type 10 to 1000.", "desktop"),
-            ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
-             "How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini "
-             "Projection (First Person). Passenger seats use it too; driver and gunner: First Person.|Click the "
-             "number (or press A) to type 20 to 160.", None),
             ("ORIENTATION", "display.orientation",
              [("LANDSCAPE", "landscape"), ("PORTRAIT", "portrait"), ("AUTO", "auto")],
              "Which way up you hold the device. Portrait has a strip of buttons along the top, the picture under "
@@ -650,8 +653,8 @@ PAGES = {
              "Where the picture sits on a screen taller than it, its shape, and the frame around it in portrait.",
              "android"),
             ("FIRST PERSON ›", None, _page_screen(*FIRST_PERSON),
-             "The vehicles' and scopes' fields of view, the Panini projection, how far you see, the reticle, a "
-             "passenger's view, and your weapon, body and shields.", None),
+             "Your field of view and the vehicles' and scopes', the Panini projection, how far you see, the "
+             "reticle, a passenger's view, and your weapon, body and shields.", None),
             # (port/linux/src/bink_movie.c; the help says where the movies go:
             # MOVIES_HELP)
             ("STARTUP MOVIES", "display.movies", ON_OFF, MOVIES_HELP, None),
@@ -1035,6 +1038,12 @@ PAGES = {
         "screen": FIRST_PERSON[1], "title": "FIRST PERSON",
         "rows": [
             (SECTION, "VIEW"),
+            # (here, with the other fields of view: Variable Refresh took its row on
+            # Video's tab)
+            ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
+             "How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini "
+             "Projection. Passenger seats use it too; driver and gunner: Vehicle Field of View.|Click the number "
+             "(or press A) to type 20 to 160.", None),
             ("VEHICLE FIELD OF VIEW", "display.vehicle_fov", VEHICLE_FIELDS_OF_VIEW,
              "How wide you see from a vehicle's third-person seats (driver, gunner), in degrees across a 16:9 "
              "screen. Passenger seats use your Field of View. Default keeps the game's view; Match uses your Field "

@@ -210,6 +210,15 @@ static const struct config_setting config_settings[] =
 		"frame as soon as at most one waits for the display. Either way the game\n"
 		"is never more than a frame ahead of the display. The Mac's frames are\n"
 		"paced by its display already." },
+	{ "display.vrr", _config_string, "\"auto\"", "HALO_VRR", _environment_value, _platform_desktop,
+		"For a display of variable refresh (G-SYNC, FreeSync): \"on\" presents\n"
+		"with vsync and holds the frames to 3 a second under the refresh rate\n"
+		"(117 at 120 Hz; display.max_fps where it is lower), so the display\n"
+		"refreshes as each frame is ready, without tearing or vsync's lag.\n"
+		"\"auto\": on where the system says VRR is active (gamescope: the Steam\n"
+		"Deck, the Steam Frame; a Linux desktop whose display has it on), else\n"
+		"off (Windows says nothing of it: turn it on here). \"off\": never. Not\n"
+		"with battery saver on. Vulkan only (Linux, Windows)." },
 	{ "display.max_fps", _config_integer, "0", "HALO_MAX_FPS", _environment_value, _platform_desktop,
 		"With vsync off, the most frames a second: 0 for twice the display's\n"
 		"refresh rate, -1 for no limit (which can hang some Intel graphics). On\n"

@@ -1953,6 +1953,20 @@ static void max_fps_row_show(struct widget_instance *list)
 	row->visible = index >= 0 && index < setting->value_count && !strcmp(setting->values[index], "false");
 }
 
+/* Variable Refresh (display.vrr): the Vulkan builds' alone (the Mac's Metal
+has none) */
+static void vrr_row_show(struct widget_instance *list)
+{
+#ifdef HALO_METAL
+	struct widget_instance *row = named(list, "op_vrr", 0);
+
+	if (row)
+		row->visible = FALSE;
+#else
+	(void)list;
+#endif
+}
+
 /* a setting's value as Settings shows it: the change kept, else
 config.toml's (or the profile's) */
 static boolean settings_value(char const *name, char *text, unsigned int size)
@@ -3515,6 +3529,7 @@ static void settings_page_update(struct widget_instance *list)
 	refresh_rate_row_show(list);
 	hud_button_style_row_show(list);
 	max_fps_row_show(list);
+	vrr_row_show(list);
 	panini_rows_show(list);
 	menu_cursor_row_show(list);
 	gamma_row_show(list);
