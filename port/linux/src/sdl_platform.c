@@ -2912,6 +2912,10 @@ static void exit_after_check(void)
 	}
 	if (exit_ticks && SDL_GetTicks() >= exit_ticks)
 	{
+		const char *summary = getenv("HALO_FRAME_SUMMARY");
+
+		if (summary && atof(summary) > 0.0)
+			report_frames_log(atof(summary));
 		platform_log("exiting after debug.exit_after");
 		exit(EXIT_SUCCESS);
 	}

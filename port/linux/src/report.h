@@ -14,6 +14,10 @@ machine for the player to send.
 /* a frame presented (d3d8_device.c's present): its time kept, the last
 REPORT_FRAMES of them */
 void report_frame_presented(void);
+/* the frame times of the last seconds logged, as a report's summary gives
+them (debug.exit_after's runs with HALO_FRAME_SUMMARY=<seconds>, for
+measuring) */
+void report_frames_log(double seconds);
 /* a line of the log (xbox_kernel.c's platform_log), kept: the last
 REPORT_LOG_SIZE bytes */
 void report_log_line(const char *line);
