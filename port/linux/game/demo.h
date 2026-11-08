@@ -18,7 +18,6 @@ void demo_game_state_allocation(char const *name, void const *address, long size
 core loaded, a checkpoint reverted to (game_state.c's after-load
 procedures), the map started over (main.c), a new map (game.c) */
 void demo_note_state_loaded(void);
-void demo_note_map_reset(void);
 void demo_note_new_map(void);
 
 /* the clock's ticks (game_time.c): before a tick's first sub-step, and
@@ -56,6 +55,9 @@ void demo_foreign_end(void);
 there (a host leaves a client's hits to its reports: network_damage.c):
 recorded, and in playback the recording's */
 boolean demo_decide(boolean decision);
+/* ... and numbers the tick takes from the frames' state (a unit's
+illumination, the lights'): recorded, and in playback the recording's */
+void demo_decide_reals(long object_index, real *values, short count);
 
 /* whether a demo is playing (the input of the machine's players, its own
 saved games, its recording left alone), and the rate its ticks run at (0

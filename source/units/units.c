@@ -698,6 +698,7 @@ symbols in this file:
 #include "coop_scripts.h" /* port: port/linux/game/coop_scripts.c */
 #include "coop_enemies.h" /* port: port/linux/game/coop_enemies.c */
 #include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
+#include "demo.h" /* port: port/linux/game/demo.c */
 
 /* port: the control and animation impulses the host's actors give their
 units go to the clients' copies (port/linux/game/network_actors.c) */
@@ -8031,6 +8032,9 @@ static void unit_refresh_illumination(
 		lights_illumination_at_point(&unit->object.position, &unit->object.location, &color);
 		unit->unit.ambient_illumination = real_rgb_color_brightness(&color);
 		unit->unit.self_illumination = object_get_self_illumination(unit_index);
+		/* port: the lights at its place are as the frames left them: the
+		demo's (port/linux/game/demo.c) */
+		demo_decide_reals(unit_index, &unit->unit.ambient_illumination, 2);
 	}
 	else
 	{

@@ -2202,6 +2202,9 @@ static const struct config_setting config_settings[] =
 	{ "debug.demo_seek", _config_string, "\"\"", "HALO_DEMO_SEEK", _environment_value, _platform_all,
 		"\"<at>,<by>\": the demo played seeks by seconds (negative: back) once it\n"
 		"reaches at seconds, for tests; empty none." },
+	{ "debug.demo_verify", _config_boolean, "false", "HALO_DEMO_VERIFY", _environment_set_is_true, _platform_all,
+		"The demo played compared with each of its snapshots as it reaches them,\n"
+		"the bytes apart logged, to find where a playback parts." },
 	{ "debug.demo_log", _config_boolean, "false", "HALO_DEMO_LOG", _environment_set_is_true, _platform_all,
 		"Log each whole game state the demo being recorded takes, and why." },
 	{ "debug.demo_quit", _config_boolean, "false", "HALO_DEMO_QUIT", _environment_set_is_true, _platform_all,

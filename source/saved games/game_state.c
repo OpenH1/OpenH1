@@ -885,6 +885,40 @@ static boolean game_state_image_lruv_cache_valid(
 	return game_state_image_data_valid(image, blocks_live, allocation->maximum_count, sizeof(struct lruv_cache_block));
 }
 
+/* port: what game_state_image_accept checks of an image (the live game
+state itself, for the demos: game_state_port_demo_load) */
+static boolean game_state_image_valid(
+	void *image)
+{
+	long index;
+
+	for (index = 0; index < game_state_allocation_count; index++)
+	{
+		struct game_state_allocation const *allocation = &game_state_allocations[index];
+		boolean valid;
+
+		switch (allocation->kind)
+		{
+		case _game_state_allocation_data:
+			valid = game_state_image_data_valid(image, allocation->address, allocation->maximum_count,
+				allocation->element_size);
+			break;
+		case _game_state_allocation_memory_pool:
+			valid = game_state_image_memory_pool_valid(image, allocation->address, allocation->size);
+			break;
+		case _game_state_allocation_lruv_cache:
+			valid = game_state_image_lruv_cache_valid(image, allocation->address, allocation);
+			break;
+		default:
+			valid = FALSE;
+			break;
+		}
+		if (!valid)
+			return FALSE;
+	}
+	return TRUE;
+}
+
 long game_state_image_size(
 	void)
 {
@@ -911,7 +945,6 @@ boolean game_state_image_accept(
 	long size)
 {
 	byte *gpu_image;
-	long index;
 
 	if (size == GAME_STATE_SIZE)
 		gpu_image = (byte *)image + GAME_STATE_SIZE - game_state_globals.gpu_allocation_size;
@@ -919,30 +952,9 @@ boolean game_state_image_accept(
 		gpu_image = (byte *)image + game_state_globals.cpu_allocation_size;
 	else
 		return game_state_image_refuse("the image", "is of another size");
-	for (index = 0; index < game_state_allocation_count; index++)
-	{
-		struct game_state_allocation const *allocation = &game_state_allocations[index];
-		boolean valid;
-
-		switch (allocation->kind)
-		{
-		case _game_state_allocation_data:
-			valid = game_state_image_data_valid(image, allocation->address, allocation->maximum_count,
-				allocation->element_size);
-			break;
-		case _game_state_allocation_memory_pool:
-			valid = game_state_image_memory_pool_valid(image, allocation->address, allocation->size);
-			break;
-		case _game_state_allocation_lruv_cache:
-			valid = game_state_image_lruv_cache_valid(image, allocation->address, allocation);
-			break;
-		default:
-			valid = FALSE;
-			break;
-		}
-		if (!valid)
-			return FALSE;
-	}
+	/* port: (the checks, the demos' too: game_state_image_valid) */
+	if (!game_state_image_valid(image))
+		return FALSE;
 	csmemcpy(game_state_globals.base_address, image, game_state_globals.cpu_allocation_size);
 	csmemcpy((byte *)game_state_globals.base_address + GAME_STATE_SIZE - game_state_globals.gpu_allocation_size,
 		gpu_image, game_state_globals.gpu_allocation_size);
@@ -951,69 +963,34 @@ boolean game_state_image_accept(
 	return TRUE;
 }
 
-/* port: the game state's memory and its size, for the demos
-(port/linux/game/demo.c) */
+/* port: the game state's memory, its size and its allocations' checksum,
+for the demos (port/linux/game/demo.c) */
 void *game_state_port_base(
-	long *size)
+	long *size,
+	unsigned long *checksum)
 {
 	*size = GAME_STATE_SIZE;
+	*checksum = (unsigned long)game_state_globals.allocation_size_checksum;
 	return game_state_globals.base_address;
 }
 
-unsigned long game_state_port_allocation_checksum(
-	void)
+/* port: a demo's snapshot taken as a saved game is (port/linux/game/demo.c):
+the loading's procedures before write writes it over the game state and
+after, the game state checked between them in place; whether it was. Or,
+with no procedures, only written and checked */
+boolean game_state_port_demo_load(
+	void (*write)(void *context),
+	void *context,
+	boolean procedures)
 {
-	return (unsigned long)game_state_globals.allocation_size_checksum;
-}
-
-/* port: a demo's snapshot taken (port/linux/game/demo.c) as a saved game
-is: the loading's procedures before it is written over the game state and
-after, and the game state checked between them as a saved game's image is
-(here in place) */
-void game_state_port_demo_load_begin(
-	void)
-{
-	game_state_note_event("demo snapshot");
-	game_state_call_before_load_procs();
-}
-
-boolean game_state_port_check_live(
-	void)
-{
-	byte *image = game_state_globals.base_address;
-	long index;
-
-	for (index = 0; index < game_state_allocation_count; index++)
-	{
-		struct game_state_allocation const *allocation = &game_state_allocations[index];
-		boolean valid;
-
-		switch (allocation->kind)
-		{
-		case _game_state_allocation_data:
-			valid = game_state_image_data_valid(image, allocation->address, allocation->maximum_count,
-				allocation->element_size);
-			break;
-		case _game_state_allocation_memory_pool:
-			valid = game_state_image_memory_pool_valid(image, allocation->address, allocation->size);
-			break;
-		case _game_state_allocation_lruv_cache:
-			valid = game_state_image_lruv_cache_valid(image, allocation->address, allocation);
-			break;
-		default:
-			valid = FALSE;
-			break;
-		}
-		if (!valid)
-			return FALSE;
-	}
+	if (procedures)
+		game_state_call_before_load_procs();
+	write(context);
+	if (!game_state_image_valid(game_state_globals.base_address))
+		return FALSE;
+	if (procedures)
+		game_state_call_after_load_procs();
 	return TRUE;
-}
-
-void game_state_port_demo_load_end(
-	void)
-{
-	game_state_call_after_load_procs();
 }
 
 struct data_array *game_state_data_new(

@@ -57,6 +57,11 @@ take (`source/math/random_math.c`) and the players' input of each tick
   reverted to, a saved game or core loaded, the map started over), or the
   game's code made or deleted an object outside the ticks, the whole game
   state is recorded instead, as at the start.
+- **What the ticks read of the frames.** Each of this machine's players'
+  camera (`observer_get_camera`) as the tick begins, which the material
+  effects test by distance and a player without a unit sees the level from;
+  and a unit's illumination, which the AI's sight reads and which is the
+  lights' (the frames') at its place.
 - **What the netcode put in inside a tick.** A host takes its clients'
   predictions of their own units at the tick's start
   (`network_distributed.c`): what that changed is recorded, and the

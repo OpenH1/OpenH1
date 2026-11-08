@@ -94,6 +94,8 @@ the code, and another's may part from it at the first tick.
 #include "scenario/scenario.h"
 #include "tag_files/tag_groups.h"
 #include "units/units.h"
+#include "camera/observer.h"
+#include "structures/structure_bsp_definitions.h"
 
 #include "demo.h"
 #include "halo_keyboard.h"
@@ -116,16 +118,10 @@ void platform_log(char const *format, ...);
 void random_math_port_seeds(unsigned long *global_seed, unsigned long *local_seed);
 void random_math_port_set_seeds(unsigned long global_seed, unsigned long local_seed);
 /* source/saved games/game_state.c */
-void *game_state_port_base(long *size);
-void game_state_port_demo_load_begin(void);
-boolean game_state_port_check_live(void);
-void game_state_port_demo_load_end(void);
-unsigned long game_state_port_allocation_checksum(void);
+void *game_state_port_base(long *size, unsigned long *checksum);
+boolean game_state_port_demo_load(void (*write)(void *context), void *context, boolean procedures);
 /* source/main/main.c */
-char const *main_port_build_commit(void);
-void main_port_demo_load_map(char const *map_name, short difficulty);
-void main_port_demo_reset_map(void);
-void main_port_demo_end(boolean quit);
+void main_disallow_persistent_storage(void);
 /* port/linux/src/xbox_kernel.c */
 unsigned long long platform_shared_clock_microseconds(void);
 /* source/structures/cluster_partitions.c, port/linux/game/object_bounds_cache.c */
@@ -272,6 +268,7 @@ static struct
 {
 	unsigned char *base;
 	long size;
+	unsigned long checksum;
 	long count;
 	struct demo_allocation list[MAXIMUM_DEMO_ALLOCATIONS];
 } demo_allocations;
@@ -287,6 +284,9 @@ static struct
 	char name[DEMO_FILE_NAME_SIZE];
 	unsigned char *shadow;
 	boolean shadow_valid;
+	/* the machine's players' cameras as they were last recorded (O records) */
+	struct observer_result cameras[MAXIMUM_NUMBER_OF_LOCAL_PLAYERS];
+	boolean cameras_valid;
 	/* the frames' input as it was last recorded (C records) */
 	unsigned char *input;
 	boolean input_valid;
@@ -297,7 +297,6 @@ static struct
 	long ticks;
 	long last_snapshot_tick;
 	boolean loaded;
-	boolean reset;
 	boolean stopped;
 	unsigned long end_seeds[2];
 	unsigned long bots_seeds[2];
@@ -488,7 +487,7 @@ void demo_game_state_allocation(
 	long index;
 
 	if (!demo_allocations.base)
-		demo_allocations.base = game_state_port_base(&demo_allocations.size);
+		demo_allocations.base = game_state_port_base(&demo_allocations.size, &demo_allocations.checksum);
 	if (demo_allocations.count >= MAXIMUM_DEMO_ALLOCATIONS || !demo_allocations.base ||
 		(unsigned char const *)address < demo_allocations.base ||
 		(unsigned char const *)address + size > demo_allocations.base + demo_allocations.size)
@@ -506,6 +505,17 @@ void demo_game_state_allocation(
 			allocation->frames = TRUE;
 	}
 	allocation->input = !strcmp(allocation->name, "player control globals");
+}
+
+/* the allocations' checksum as the game state has it now (game_state.c's:
+each allocation's size, summed as it is made) */
+static unsigned long demo_allocation_checksum(
+	void)
+{
+	long size;
+
+	game_state_port_base(&size, &demo_allocations.checksum);
+	return demo_allocations.checksum;
 }
 
 /* the part of an allocation that is in use, from its start: a data
@@ -685,12 +695,11 @@ static void demo_header_write(
 	header[12] = (unsigned char)(DEMO_HEADER_SIZE & 0xFF);
 	header[13] = (unsigned char)(DEMO_HEADER_SIZE >> 8);
 	main_build_identity(&number, flavor, sizeof(flavor), repository, sizeof(repository), version, sizeof(version));
-	snprintf((char *)header + 16, DEMO_BUILD_SIZE, "%ld/%s/%s/%s%s", number, flavor,
-		main_port_build_commit()[0] ? main_port_build_commit() : "local", DEMO_PLATFORM, DEMO_PLATFORM_VARIANT);
+	snprintf((char *)header + 16, DEMO_BUILD_SIZE, "%ld/%s/%s%s", number, flavor, DEMO_PLATFORM, DEMO_PLATFORM_VARIANT);
 	{
 		unsigned long values[] = {
 			HALO_PORT_NETWORK_VERSION,
-			game_state_port_allocation_checksum(),
+			demo_allocation_checksum(),
 			(unsigned long)demo_allocations.size,
 			(unsigned long)game_connection(),
 			(unsigned long)sim_rate_next(),
@@ -982,6 +991,37 @@ static void demo_input_write(
 	demo_recorder.input_valid = TRUE;
 }
 
+/* the machine's players' cameras as the tick begins, where they changed
+since they were last recorded (an O record): the frames move them, and the
+ticks read them (material_effects.c's effects by the camera's distance,
+players.c's view of the level without a unit) */
+static void demo_cameras_write(
+	void)
+{
+	short local_player_index;
+
+	for (local_player_index = 0; local_player_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
+	{
+		struct observer_result const *camera;
+		unsigned long start;
+
+		if (local_player_get_player_index(local_player_index) == NONE)
+			continue;
+		camera = observer_get_camera(local_player_index);
+		if (demo_recorder.cameras_valid &&
+			!memcmp(&demo_recorder.cameras[local_player_index], camera, sizeof(*camera)))
+		{
+			continue;
+		}
+		demo_recorder.cameras[local_player_index] = *camera;
+		start = demo_record_begin(&demo_recorder.records, 'O');
+		demo_buffer_u8(&demo_recorder.records, (unsigned long)local_player_index);
+		demo_buffer_bytes(&demo_recorder.records, camera, sizeof(*camera));
+		demo_record_end(&demo_recorder.records, start);
+	}
+	demo_recorder.cameras_valid = TRUE;
+}
+
 static void demo_seeds_write(
 	struct demo_buffer *buffer,
 	unsigned long global_seed,
@@ -1097,8 +1137,9 @@ static void demo_record_start(
 	demo_recorder.patch_bytes = 0;
 	demo_recorder.structural_snapshots = 0;
 	demo_recorder.work_microseconds = 0;
-	demo_recorder.loaded = demo_recorder.reset = FALSE;
+	demo_recorder.loaded = FALSE;
 	demo_recorder.input_valid = FALSE;
+	demo_recorder.cameras_valid = FALSE;
 	/* (a multiplayer game's variant, for its playback's game) */
 	{
 		unsigned long start = demo_record_begin(&demo_recorder.records, 'V');
@@ -1139,7 +1180,7 @@ static void demo_record_tick_begin(
 		demo_buffer_u32(&demo_recorder.records, (unsigned long)sim_rate_next());
 		demo_record_end(&demo_recorder.records, start);
 		structural = FALSE;
-		if (!demo_recorder.loaded && !demo_recorder.reset && demo_patch_write('P'))
+		if (!demo_recorder.loaded && demo_patch_write('P'))
 		{
 			demo_recorder.loaded = TRUE;
 			structural = TRUE;
@@ -1149,14 +1190,12 @@ static void demo_record_tick_begin(
 		checkpoint as much as the pause menu's: the checkpoint the playback's
 		own revert takes was saved as the frames had left the game state, and
 		the frames are not the recording's) */
-		if (demo_recorder.loaded || demo_recorder.reset)
+		if (demo_recorder.loaded)
 		{
 			if (config_boolean("debug.demo_log"))
 				platform_log("demos: the whole game state at tick %ld (%s)", tick,
-					structural ? "made or deleted outside the ticks" : demo_recorder.reset ? "the map started over" :
-					"a saved game or checkpoint loaded");
-			demo_snapshot_block(tick, FLAG(_demo_snapshot_loaded_bit) |
-				(demo_recorder.reset ? FLAG(_demo_snapshot_reset_bit) : 0));
+					structural ? "made or deleted outside the ticks" : "a saved game or checkpoint loaded");
+			demo_snapshot_block(tick, FLAG(_demo_snapshot_loaded_bit));
 		}
 		else
 		{
@@ -1171,7 +1210,8 @@ static void demo_record_tick_begin(
 			}
 		}
 	}
-	demo_recorder.loaded = demo_recorder.reset = FALSE;
+	demo_cameras_write();
+	demo_recorder.loaded = FALSE;
 	demo_recorder.in_tick = TRUE;
 	/* (a K's input is the input as it then was) */
 	if (demo_recorder.input && demo_recorder.last_snapshot_tick == tick)
@@ -1347,12 +1387,6 @@ void demo_note_state_loaded(
 	demo_recorder.loaded = TRUE;
 }
 
-void demo_note_map_reset(
-	void)
-{
-	demo_recorder.reset = TRUE;
-}
-
 void demo_note_new_map(
 	void)
 {
@@ -1506,6 +1540,57 @@ boolean demo_decide(
 	return decision;
 }
 
+static char demo_playback_record(unsigned char const **bytes, unsigned long *length, boolean take);
+
+void demo_decide_reals(
+	long object_index,
+	real *values,
+	short count)
+{
+	unsigned char const *bytes;
+	unsigned long length;
+	unsigned long start;
+	short index;
+
+	if (count <= 0 || count > 8)
+		return;
+	if (demo_player.playing && demo_player.started)
+	{
+		real played[8];
+
+		if (!demo_recorder.in_tick || demo_playback_record(&bytes, &length, FALSE) != 'I' ||
+			length != 4 + count * sizeof(real) || demo_read_u32(bytes) != (unsigned long)object_index)
+		{
+			static long reported;
+
+			if (config_boolean("debug.demo_verify") && reported++ < 10)
+			{
+				char type = demo_playback_record(&bytes, &length, FALSE);
+
+				platform_log("demos: verify: tick %ld, object %lx's numbers not the next record (a %c, of %lx)",
+					demo_player.last_tick, (unsigned long)object_index, type ? type : '0',
+					type == 'I' && length >= 4 ? demo_read_u32(bytes) : 0);
+			}
+			return;
+		}
+		demo_playback_record(&bytes, &length, TRUE);
+		memcpy(played, bytes + 4, length - 4);
+		for (index = 0; index < count; index++)
+		{
+			if (!valid_real(played[index]))
+				return;
+		}
+		memcpy(values, played, length - 4);
+		return;
+	}
+	if (!demo_recorder.recording || !demo_recorder.in_tick)
+		return;
+	start = demo_record_begin(&demo_recorder.records, 'I');
+	demo_buffer_u32(&demo_recorder.records, (unsigned long)object_index);
+	demo_buffer_bytes(&demo_recorder.records, values, (unsigned long)count * sizeof(real));
+	demo_record_end(&demo_recorder.records, start);
+}
+
 /* ---------- playback */
 
 boolean demo_playing(
@@ -1518,6 +1603,19 @@ long demo_playback_sim_rate(
 	void)
 {
 	return demo_player.playing && demo_player.started ? demo_player.rate : 0;
+}
+
+/* a playback over: the game quits (debug.demo_quit, or a demo that cannot be
+played), or goes back to the main menu */
+static void demo_playback_end(
+	boolean quit)
+{
+	if (quit)
+	{
+		platform_log("exiting after the demo (debug.demo_quit)");
+		exit(0);
+	}
+	main_goto_main_menu();
 }
 
 static void demo_playback_stop(
@@ -1537,7 +1635,7 @@ static void demo_playback_stop(
 	demo_player.block = NULL;
 	demo_player.playing = FALSE;
 	demo_player.started = FALSE;
-	main_port_demo_end(demo_player.quit_at_end || failed);
+	demo_playback_end(demo_player.quit_at_end || failed);
 }
 
 /* the next block the playback takes (a seek's snapshot skipped) read and
@@ -1571,6 +1669,92 @@ static boolean demo_playback_read_block(
 	}
 }
 
+static struct demo_allocation const *demo_allocation_holding(unsigned long offset, unsigned long size);
+
+/* (debug.demo_verify) a seek's snapshot, as the playback reaches its tick,
+compared with the playback's game state: the first bytes apart in each
+allocation the ticks keep logged (the objects' by object), to find where a
+playback parts */
+static void demo_playback_verify(
+	struct demo_block_entry const *entry)
+{
+	unsigned char *packed = demo_files_alloc(entry->packed_size);
+	unsigned char *data = demo_files_alloc(entry->size);
+	unsigned long position = 21;
+	long logged = 0;
+
+	if (packed && data && demo_reader_read(demo_player.file, entry->offset + DEMO_BLOCK_HEADER_SIZE, packed,
+		entry->packed_size) && demo_files_unpack(packed, entry->packed_size, data, entry->size) && entry->size > 21)
+	{
+		demo_skips_find();
+		while (position + 8 <= entry->size && logged < 40)
+		{
+			unsigned long offset = demo_read_u32(data + position);
+			unsigned long size = demo_read_u32(data + position + 4);
+			struct demo_allocation const *allocation;
+			unsigned long index;
+
+			position += 8;
+			if (size > entry->size - position)
+				break;
+			allocation = demo_allocation_holding(offset, size);
+			if (allocation && !allocation->frames)
+			{
+				for (index = 0; index + 4 <= size && logged < 40; index += 4)
+				{
+					unsigned long address = (unsigned long)(demo_allocations.base + offset + index);
+					long skip;
+					boolean skipped = FALSE;
+
+					if (!memcmp(data + position + index, demo_allocations.base + offset + index, 4))
+						continue;
+					for (skip = 0; skip < demo_skip_count; skip++)
+						skipped |= demo_skips[skip] == address;
+					if (skipped)
+						continue;
+					{
+						char where[160];
+
+						where[0] = 0;
+						/* (in the objects: which object, and where in it) */
+						if (!strcmp(allocation->name, "objects"))
+						{
+							struct memory_pool const *pool = (struct memory_pool const *)(demo_allocations.base + offset);
+							struct memory_pool_block const *block;
+							long blocks = 0;
+
+							for (block = pool->first_block; block && blocks++ < 100000; block = block->next_block)
+							{
+								unsigned char const *start = (unsigned char const *)block;
+
+								if ((unsigned long)address >= (unsigned long)start &&
+									(unsigned long)address < (unsigned long)start + (unsigned long)block->size)
+								{
+									struct object_datum const *object = (struct object_datum const *)(block + 1);
+
+									snprintf(where, sizeof(where), " (object %s, type %d, +0x%lx)",
+										tag_get_name(object->definition_index), object->object.type,
+										(unsigned long)address - (unsigned long)object);
+									break;
+								}
+							}
+						}
+						platform_log("demos: verify tick %lu: %s +%lu%s: recorded %08lx, played %08lx", entry->first_tick,
+							allocation->name, index, where, demo_read_u32(data + position + index),
+							demo_read_u32(demo_allocations.base + offset + index));
+					}
+					logged++;
+				}
+			}
+			position += size;
+		}
+		if (!logged)
+			platform_log("demos: verify tick %lu: as recorded", entry->first_tick);
+	}
+	demo_files_free(packed);
+	demo_files_free(data);
+}
+
 static boolean demo_playback_next_block(
 	void)
 {
@@ -1579,7 +1763,11 @@ static boolean demo_playback_next_block(
 		struct demo_block_entry const *entry = &demo_player.blocks[demo_player.next_block++];
 
 		if (entry->kind == _demo_block_seek_snapshot)
+		{
+			if (config_boolean("debug.demo_verify"))
+				demo_playback_verify(entry);
 			continue;
+		}
 		return demo_playback_read_block(entry);
 	}
 	return FALSE;
@@ -1690,34 +1878,49 @@ static boolean demo_ranges_apply(
 /* a K record taken: the game state as the snapshot has it, through the
 saved games' loading (the caches outside the game state put right, the
 state checked), the procedures' changes to it then written over */
+/* (game_state_port_demo_load's writer) a record's ranges written */
+struct demo_ranges
+{
+	unsigned char const *bytes;
+	unsigned long length;
+	boolean whole_allocations;
+};
+
+static void demo_ranges_write(
+	void *context)
+{
+	struct demo_ranges const *ranges = context;
+
+	demo_ranges_apply(ranges->bytes, ranges->length, ranges->whole_allocations, TRUE);
+}
+
 static boolean demo_playback_snapshot(
 	unsigned char const *bytes,
 	unsigned long length,
 	boolean seek)
 {
+	struct demo_ranges ranges;
 	unsigned long flags;
 
 	if (length < 16 || !demo_ranges_apply(bytes + 16, length - 16, TRUE, FALSE))
 		return FALSE;
 	flags = demo_read_u32(bytes + 4);
-	if (TEST_FLAG(flags, _demo_snapshot_reset_bit) && !seek)
-		main_port_demo_reset_map();
+	ranges.bytes = bytes + 16;
+	ranges.length = length - 16;
+	ranges.whole_allocations = TRUE;
 	/* (the start's: the map just loaded here as it was there, the game
-	state written over as it is, as nothing outside it differs) */
+	state written over as it is, as nothing outside it differs; else as a
+	saved game, the loading's procedures' changes then written over) */
 	if (TEST_FLAG(flags, _demo_snapshot_start_bit) && demo_player.connection == _game_connection_local && !seek)
 	{
-		demo_ranges_apply(bytes + 16, length - 16, TRUE, TRUE);
-		if (!game_state_port_check_live())
+		if (!game_state_port_demo_load(demo_ranges_write, &ranges, FALSE))
 			return FALSE;
 	}
 	else
 	{
-		game_state_port_demo_load_begin();
-		demo_ranges_apply(bytes + 16, length - 16, TRUE, TRUE);
-		if (!game_state_port_check_live())
+		if (!game_state_port_demo_load(demo_ranges_write, &ranges, TRUE))
 			return FALSE;
-		game_state_port_demo_load_end();
-		demo_ranges_apply(bytes + 16, length - 16, TRUE, TRUE);
+		demo_ranges_write(&ranges);
 	}
 	random_math_port_set_seeds(demo_read_u32(bytes + 8), demo_read_u32(bytes + 12));
 	return TRUE;
@@ -1727,15 +1930,19 @@ static boolean demo_playback_patch(
 	unsigned char const *bytes,
 	unsigned long length)
 {
+	struct demo_ranges ranges;
+
 	if (!demo_ranges_apply(bytes, length, FALSE, FALSE))
 		return FALSE;
 	/* (once the playback has parted from the recording, the bytes of the
 	recording's game state no longer fit its own: an object's place with
 	another's cluster references. It plays on as its own game, with the
 	recorded input and whole game states) */
-	if (demo_player.diverged)
+	if (demo_player.diverged && !config_boolean("debug.demo_verify"))
 		return TRUE;
-	demo_ranges_apply(bytes, length, FALSE, TRUE);
+	ranges.bytes = bytes;
+	ranges.length = length;
+	ranges.whole_allocations = FALSE;
 	/* (what was made outside the code here, an object's place and its
 	cluster references: the objects' caches outside the game state
 	forgotten, as a loaded game state's are) */
@@ -1744,7 +1951,32 @@ static boolean demo_playback_patch(
 		cluster_partitions_port_forget();
 		object_bounds_cache_invalidate();
 	}
-	return game_state_port_check_live();
+	return game_state_port_demo_load(demo_ranges_write, &ranges, FALSE);
+}
+
+/* an O record taken: the machine's player's camera as the recording's tick
+began, for this tick to read (the frames' next sets it again for the
+picture), its place checked to be in the level */
+static void demo_playback_camera(
+	short local_player_index,
+	unsigned char const *bytes)
+{
+	struct observer_result camera;
+	struct structure_bsp *structure_bsp = global_structure_bsp_get();
+
+	memcpy(&camera, bytes, sizeof(camera));
+	if (local_player_index < 0 || local_player_index >= MAXIMUM_NUMBER_OF_LOCAL_PLAYERS ||
+		local_player_get_player_index(local_player_index) == NONE || !structure_bsp ||
+		!valid_real_point3d(&camera.position) || !valid_real_vector3d(&camera.velocity) ||
+		!valid_real_vector3d(&camera.forward) || !valid_real_vector3d(&camera.up) || !valid_real(camera.field_of_view) ||
+		(camera.location.cluster_index != NONE &&
+			(camera.location.cluster_index < 0 || camera.location.cluster_index >= structure_bsp->clusters.count)) ||
+		(camera.location.leaf_index != NONE &&
+			(camera.location.leaf_index < 0 || camera.location.leaf_index >= structure_bsp->leaves.count)))
+	{
+		return;
+	}
+	*(struct observer_result *)observer_get_camera(local_player_index) = camera;
 }
 
 /* the records before a tick's own (its T, then what came from outside it) */
@@ -1844,6 +2076,11 @@ static void demo_playback_tick_begin(
 			demo_playback_record(&bytes, &length, TRUE);
 			random_math_port_set_seeds(demo_read_u32(bytes), demo_read_u32(bytes + 4));
 		}
+		else if (type == 'O' && length == 1 + sizeof(struct observer_result))
+		{
+			demo_playback_record(&bytes, &length, TRUE);
+			demo_playback_camera(bytes[0], bytes + 1);
+		}
 		else if (type == 'B' || type == 'V')
 			demo_playback_record(&bytes, &length, TRUE);
 		else
@@ -1866,6 +2103,12 @@ boolean demo_playback_tick_actions(
 
 	if (!demo_player.playing || !demo_player.started)
 		return FALSE;
+	/* (a seek's snapshot's tick: its cameras come after the snapshot) */
+	while (demo_playback_record(&bytes, &length, FALSE) == 'O' && length == 1 + sizeof(struct observer_result))
+	{
+		demo_playback_record(&bytes, &length, TRUE);
+		demo_playback_camera(bytes[0], bytes + 1);
+	}
 	type = demo_playback_record(&bytes, &length, TRUE);
 	if (type != 'A')
 	{
@@ -2078,11 +2321,10 @@ static boolean demo_playback_open(
 		return FALSE;
 	}
 	main_build_identity(&number, flavor, sizeof(flavor), repository, sizeof(repository), version, sizeof(version));
-	snprintf(build, sizeof(build), "%ld/%s/%s/%s%s", number, flavor,
-		main_port_build_commit()[0] ? main_port_build_commit() : "local", DEMO_PLATFORM, DEMO_PLATFORM_VARIANT);
+	snprintf(build, sizeof(build), "%ld/%s/%s%s", number, flavor, DEMO_PLATFORM, DEMO_PLATFORM_VARIANT);
 	header[16 + DEMO_BUILD_SIZE - 1] = 0;
 	if (strcmp((char const *)header + 16, build) || demo_read_u32(header + 80) != HALO_PORT_NETWORK_VERSION ||
-		demo_read_u32(header + 84) != game_state_port_allocation_checksum() ||
+		demo_read_u32(header + 84) != demo_allocation_checksum() ||
 		demo_read_u32(header + 88) != (unsigned long)demo_allocations.size)
 	{
 		platform_log("demos: %s was recorded by another build of OpenH1 (%s, network version %lu), not this one "
@@ -2224,14 +2466,18 @@ static void demo_playback_begin(
 		demo_files_free(demo_player.blocks);
 		memset(&demo_player, 0, sizeof(demo_player));
 		if (config_boolean("debug.demo_quit"))
-			main_port_demo_end(TRUE);
+			demo_playback_end(TRUE);
 		return;
 	}
 	demo_player.playing = TRUE;
 	demo_player.seek_block = NONE;
 	demo_player.speed = 1.f;
 	demo_recorder.shadow_valid = FALSE;
-	main_port_demo_load_map(demo_player.map_name, (short)demo_player.difficulty);
+	/* (as map_name loads one, at the demo's difficulty, nothing of the
+	player's saved game read or written) */
+	main_set_map_name(demo_player.map_name);
+	main_disallow_persistent_storage();
+	main_set_difficulty((short)demo_player.difficulty);
 }
 
 /* a seek of seconds from where the playback is: to the snapshot nearest

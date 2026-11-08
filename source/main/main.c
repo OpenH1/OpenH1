@@ -423,12 +423,6 @@ symbols in this file:
 #ifdef HALO_VR
 #include "../../port/linux/src/vr.h"
 #endif
-/* port: the commit a build is of (tools/build_common.py; none for a local
-build), and the log's */
-#ifndef HALO_BUILD_COMMIT
-#define HALO_BUILD_COMMIT ""
-#endif
-void platform_log(const char *format, ...);
 
 /* ---------- constants */
 
@@ -1662,58 +1656,6 @@ static void main_change_map_name(
 		main_globals.map_change_load_timer = 0;
 	}
 
-	return;
-}
-
-/* port: the commit this build is of (CI's; empty for a local build), for
-the demos' builds (port/linux/game/demo.c) */
-char const *main_port_build_commit(
-	void)
-{
-	return HALO_BUILD_COMMIT;
-}
-
-/* port: a demo's map loaded for its playback (port/linux/game/demo.c), as
-map_name loads one, at the demo's difficulty, and nothing of the player's
-read (their saved game) or written (their last level) */
-void main_port_demo_load_map(
-	char const *map_name,
-	short difficulty)
-{
-	main_set_map_name(map_name);
-	main_globals.allow_persistent_storage = FALSE;
-	if (difficulty >= _game_difficulty_level_easy && difficulty < NUMBER_OF_GAME_DIFFICULTY_LEVELS)
-		global_difficulty_level = difficulty;
-	return;
-}
-
-/* port: the map started over at once, as main_reset_map does on the next
-frame, for a demo's playback whose recording's map was */
-void main_port_demo_reset_map(
-	void)
-{
-	scenario_switch_structure_bsp(0);
-	game_dispose_from_old_map();
-	input_flush();
-	game_initialize_for_new_map();
-	create_local_players();
-	game_time_start();
-	game_initial_pulse();
-	main_globals.reset_map = FALSE;
-	return;
-}
-
-/* port: a demo's playback over: the game quits (debug.demo_quit, or a demo
-that cannot be played), or goes back to the main menu */
-void main_port_demo_end(
-	boolean quit)
-{
-	if (quit)
-	{
-		platform_log("exiting after the demo (debug.demo_quit)");
-		exit(0);
-	}
-	main_goto_main_menu();
 	return;
 }
 
@@ -3193,9 +3135,6 @@ static void main_reset_map_private(
 {
 	if (!game_time_get_paused())
 	{
-		/* port: (the demo being recorded takes the whole game state again:
-		port/linux/game/demo.c) */
-		demo_note_map_reset();
 		scenario_switch_structure_bsp(0);
 		game_dispose_from_old_map();
 		input_flush();
