@@ -356,6 +356,9 @@ game's thread) */
 void host_stall_frame(void);
 /* the render thread's start: the thread sampled with the game's */
 void host_stall_render_thread(void);
+/* the loading screen shown (1) or ended (0): a stall it is up for is a
+load */
+void host_stall_loading(int active);
 /* work in progress that may hold up a frame (a string that lives on), kept
 with its time, and listed with a stall it was in */
 void host_stall_note(const char *what);

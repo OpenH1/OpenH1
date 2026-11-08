@@ -121,6 +121,9 @@ void p2p_discord_game(int *hosting, int *playing, char *description, int size, i
 #define REPORT_SECONDS 300
 /* a frame this long (milliseconds) or longer is a hitch */
 #define REPORT_HITCH_MS 50
+/* (a stall: debug.stall_ms's default, whose samples the host logs:
+port/android/host/host_stall.c) */
+#define REPORT_STALL_MS 100
 /* the longest frames listed */
 #define REPORT_LONGEST 8
 /* a frame's GPU time not measured (the backend gives none) */
@@ -319,7 +322,7 @@ void report_frame_summary(const uint32_t *micros, const uint32_t *at_ms, unsigne
 	char *text, size_t size)
 {
 	uint32_t *sorted;
-	unsigned long index, hitches = 0, shown;
+	unsigned long index, hitches = 0, stalls = 0, shown;
 	double total = 0;
 	size_t used = 0;
 	unsigned long longest[REPORT_LONGEST];
@@ -344,6 +347,8 @@ void report_frame_summary(const uint32_t *micros, const uint32_t *at_ms, unsigne
 		total += micros[index];
 		if (micros[index] >= REPORT_HITCH_MS * 1000)
 			hitches++;
+		if (micros[index] >= REPORT_STALL_MS * 1000)
+			stalls++;
 	}
 	qsort(sorted, count, sizeof(*sorted), report_compare_micros);
 #define REPORT_PRINT(...) \
@@ -355,6 +360,9 @@ void report_frame_summary(const uint32_t *micros, const uint32_t *at_ms, unsigne
 	REPORT_PRINT("1%% low: %.1f fps\n", report_low_fps(sorted, count, 10));
 	REPORT_PRINT("0.1%% low: %.1f fps\n", report_low_fps(sorted, count, 1));
 	REPORT_PRINT("Frames of %d ms or more: %lu\n", REPORT_HITCH_MS, hitches);
+	/* (where the game was in each: the host log's stall: lines) */
+	REPORT_PRINT("Frames of %d ms or more: %lu%s\n", REPORT_STALL_MS, stalls,
+		stalls ? " (the stall: lines of halo.log or host.log say where the game was)" : "");
 	/* (the longest, the latest first among equals: those of twice the
 	median's time or more, a stall) */
 	for (shown = 0; shown < REPORT_LONGEST && shown < count; shown++)

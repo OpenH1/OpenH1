@@ -159,7 +159,7 @@ static void loading_set(const struct host_render_backend *backend, int active)
 	if (active == (int)loading.frame.active)
 		return;
 	host_load_trace("loading.received", "active=%d", active);
-	host_stall_note(active ? "the loading screen shown" : "the loading screen ended");
+	host_stall_loading(active);
 	loading.backend = backend;
 	loading.frame.active = active;
 	loading.ready = 0;

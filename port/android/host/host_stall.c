@@ -16,7 +16,8 @@ as the guest's (llvm-symbolizer --obj=<build>/halo_guest.elf), a host one
 as its library's symbol, or the executable's offset (atos -o <halo> -l 0
 or llvm-symbolizer). The work that was in progress (host_stall_note:
 pipelines and shaders made and waited for, the loading screen) is listed
-with it. The report (F8) has the host's log, and so these blocks.
+with it. A stall the loading screen was up for is a load: one line, its
+time. The report (F8) has the host's log, and so these blocks.
 
 Between stalls it costs the game a clock reading and a store each frame,
 and the watchdog a wake-up every 10 ms.
@@ -59,9 +60,13 @@ static struct
 	the longest gap */
 	uint64_t frame_at;
 	uint64_t over, longest;
+	/* the loading screen up (host_stall_loading); the stalls that were
+	loads, and the longest of the others */
+	int loading;
+	uint64_t loads, longest_stall;
 	/* (the watchdog's) a stall being sampled, from when; its end, as the
 	frame that ended it came (set by host_stall_frame) */
-	int sampling;
+	int sampling, loading_from;
 	uint64_t stalled_from, ended_gap;
 	/* the samples of the stall (the platform's sampler fills them through
 	host_stall_record) */
@@ -109,6 +114,12 @@ void host_stall_render_thread(void)
 {
 	if (stall.threshold)
 		host_debug_stall_thread(HOST_STALL_RENDER);
+}
+
+void host_stall_loading(int active)
+{
+	__atomic_store_n(&stall.loading, active, __ATOMIC_RELEASE);
+	host_stall_note(active ? "the loading screen shown" : "the loading screen ended");
 }
 
 void host_stall_note(const char *what)
@@ -183,13 +194,35 @@ static void report(uint64_t gap)
 	int group_of[STALL_SAMPLES], group_size[STALL_SAMPLES], per_thread[HOST_STALL_THREADS] = { 0 };
 	unsigned note, notes_shown = 0;
 	char line[2048], name[256];
-	int length;
+	int length, load = stall.loading_from;
 
 	if (count > STALL_SAMPLES)
 		count = STALL_SAMPLES;
+	/* (a load: the loading screen up at any time of it) */
+	pthread_mutex_lock(&stall.notes_lock);
+	for (note = 0; note < STALL_NOTES; note++)
+	{
+		const struct stall_note *entry = &stall.notes[note];
+
+		if (entry->what && entry->at >= stall.stalled_from && !strcmp(entry->what, "the loading screen shown"))
+			load = 1;
+	}
+	pthread_mutex_unlock(&stall.notes_lock);
+	if (load)
+	{
+		/* (the game loads behind the loading screen: its time logged, not
+		where it was) */
+		stall.loads++;
+		host_logf(HOST_LOG_INFO, "stall: a load: the game made no frame for %.0f ms, the loading screen up",
+			(double)gap / 1e6);
+		return;
+	}
+	if (gap > stall.longest_stall)
+		stall.longest_stall = gap;
 	host_logf(HOST_LOG_WARN, "stall: the game made no frame for %.0f ms (%llu frames of %llu ms or more so far, "
-		"the longest %.0f ms); %d samples", (double)gap / 1e6, (unsigned long long)stall.over,
-		(unsigned long long)(stall.threshold / 1000000ull), (double)stall.longest / 1e6, count);
+		"%llu of them loads; the longest other %.0f ms); %d samples", (double)gap / 1e6,
+		(unsigned long long)stall.over, (unsigned long long)(stall.threshold / 1000000ull),
+		(unsigned long long)stall.loads, (double)stall.longest_stall / 1e6, count);
 	/* (the work in progress during it: each note of the stall's time) */
 	pthread_mutex_lock(&stall.notes_lock);
 	length = snprintf(line, sizeof(line), "stall: work during it:");
@@ -281,6 +314,7 @@ static void *watchdog(void *argument)
 			if (now - at < stall.threshold)
 				continue;
 			stall.stalled_from = at;
+			stall.loading_from = __atomic_load_n(&stall.loading, __ATOMIC_ACQUIRE);
 			memset(stall.samples, 0, sizeof(stall.samples));
 			__atomic_store_n(&stall.sample_next, 0, __ATOMIC_RELEASE);
 			__atomic_store_n(&stall.ended_gap, 0, __ATOMIC_RELEASE);
@@ -328,7 +362,8 @@ void host_stall_start(double milliseconds)
 void host_stall_summary(void)
 {
 	if (stall.threshold && stall.frame_at)
-		host_logf(HOST_LOG_INFO, "stall: %llu frames of %llu ms or more, the longest %.0f ms",
-			(unsigned long long)stall.over, (unsigned long long)(stall.threshold / 1000000ull),
-			(double)stall.longest / 1e6);
+		host_logf(HOST_LOG_INFO, "stall: %llu frames of %llu ms or more, %llu of them loads; the longest %.0f ms, "
+			"the longest other %.0f ms", (unsigned long long)stall.over,
+			(unsigned long long)(stall.threshold / 1000000ull), (unsigned long long)stall.loads,
+			(double)stall.longest / 1e6, (double)stall.longest_stall / 1e6);
 }

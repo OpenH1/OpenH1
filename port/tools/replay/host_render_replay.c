@@ -97,6 +97,11 @@ void host_stall_note(const char *what)
 	(void)what;
 }
 
+void host_stall_loading(int active)
+{
+	(void)active;
+}
+
 void host_stall_summary(void)
 {
 }
