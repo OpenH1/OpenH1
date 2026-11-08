@@ -131,6 +131,8 @@ its bytes:
 | `U` | a later sub-step's units' controls |
 | `F` | what the netcode put in inside the tick |
 | `D` | a choice the netcode made |
+| `O` | a local player's camera as the tick begins |
+| `I` | a unit's illumination as its update took it |
 | `H` | the game state's hash, and each allocation's |
 | `V` | the game's variant and its options |
 | `B` | a bookmark: its tick and how far back it reaches |
@@ -220,9 +222,12 @@ refused, the retention.
   game state ("Determinism" in `port/linux/README.md`), and with the frames'
   time fixed it is the frames' time. A demo recorded in real time plays back
   in real time.
-- **Slayer with bots** (split screen) plays back as recorded for 20 to 70
-  seconds, and longer (a run of 2130 ticks, alike throughout); then an
-  object's state parts, now and then only for a moment (one hash of 216).
+- **Slayer with bots** (split screen): of the last three runs, one played
+  back every hash as recorded (2160 ticks), two parted after 20 to 40
+  seconds. `debug.demo_verify` names the field: an AI unit's illumination,
+  found 0 in the playback at a snapshot where the recording had it (after
+  the camera and the illumination were recorded, which fixed the earlier
+  partings).
 - **The problem report** does not attach the last 30 seconds yet: a demo
   holds the players' names (the game state's), which a public issue must not.
 - **A seek back** can part from the recording (the AI's actors, the

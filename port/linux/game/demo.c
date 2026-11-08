@@ -1732,9 +1732,10 @@ static void demo_playback_verify(
 								{
 									struct object_datum const *object = (struct object_datum const *)(block + 1);
 
-									snprintf(where, sizeof(where), " (object %s, type %d, +0x%lx)",
+									snprintf(where, sizeof(where), " (object %s, type %d, +0x%lx, parent %lx)",
 										tag_get_name(object->definition_index), object->object.type,
-										(unsigned long)address - (unsigned long)object);
+										(unsigned long)address - (unsigned long)object,
+										(unsigned long)object->object.parent_object_index);
 									break;
 								}
 							}
