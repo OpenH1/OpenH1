@@ -86,6 +86,7 @@ Called from the main loop every frame (main.c).
 #include "networking/network_game_globals.h"
 #include "networking/network_client_manager.h"
 #include "networking/network_server_manager.h"
+#include "demo.h"
 #include "game/game.h"
 #include "game/game_engine.h"
 #include "game/players.h"
@@ -135,6 +136,9 @@ unsigned long long platform_shared_clock_microseconds(void);
 void bsp_switch_test_update(boolean main_menu_loaded);
 /* damage.c's */
 void damage_kill_object_for_player(long object_index, long player_index);
+/* network_damage.c's */
+void network_damage_demo_hit_begin(struct damage_data const *damage, long object_index, short node_index,
+	short region_index, short material_index, real_vector3d const *object_normal);
 /* network_distributed.c's */
 void network_distributed_statistics(long *sent, long *received, long *corrections);
 void network_distributed_remote_statistics(long *corrections, long *history_corrections, long *history_kept);
@@ -892,7 +896,11 @@ static void network_test_shoot(
 		damage.direction = direction;
 		damage.scale = 1.0f;
 		scenario_location_from_point(&damage.location, &damage.epicenter);
+		/* (the host's: an event of a demo's, dealt again in its playback,
+		demo.c) */
+		network_damage_demo_hit_begin(&damage, target->unit_index, NONE, NONE, NONE, NULL);
 		object_cause_damage(&damage, target->unit_index, NONE, NONE, NONE, NULL);
+		demo_event_end();
 		platform_log("network test: player %ld shoots player %ld",
 			(long)DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index), (long)(target - (struct player_datum *)player_data->data));
 	}
@@ -1886,7 +1894,16 @@ void network_test_update(
 			{
 				/* killed by the first player: a kill that scores */
 				platform_log("network test: the first player kills the last");
+				/* (an event of a demo's, done again in its playback: demo.c) */
+				{
+					unsigned long kill[2];
+
+					kill[0] = (unsigned long)last->unit_index;
+					kill[1] = (unsigned long)first_index;
+					demo_event_begin('Y', kill, sizeof(kill));
+				}
 				damage_kill_object_for_player(last->unit_index, first_index);
+				demo_event_end();
 				/* and picks up a weapon lying about, and two grenades of each kind */
 				{
 					struct object_iterator objects;

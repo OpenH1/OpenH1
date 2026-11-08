@@ -815,6 +815,7 @@ void particle_new(
 	struct location location;
 	real_point3d position;
 	long particle_index;
+	boolean ticking; /* port: (below) */
 
 	match_assert_valid_real_vector3d(
 		"c:\\halo\\SOURCE\\effects\\particles.c",
@@ -870,6 +871,12 @@ void particle_new(
 		return;
 
 	particle = particle_get(particle_index);
+	/* port: the frames' seed (random_math_port_begin_cosmetic), in a tick
+	too: a particle is only seen, and whether a tick makes it at all (seen
+	from the camera, room in the particles, held for a later frame:
+	render_interpolation_particle_later) is the frames', so the game's
+	local seed would move with them */
+	ticking = random_math_port_begin_cosmetic();
 
 	particle->flags = 0;
 	if (TEST_FLAG(definition->flags, _particle_definition_can_animate_backwards_bit))
@@ -997,6 +1004,7 @@ void particle_new(
 			particle->frame_index = NONE;
 		}
 	}
+	random_math_port_end_cosmetic(ticking); /* port: (above) */
 
 	return;
 }

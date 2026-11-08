@@ -47,7 +47,10 @@ take (`source/math/random_math.c`) and the players' input of each tick
 - **The frames' input the ticks read.** The player control globals, which
   the frames write from the controllers and which the scripts test (Pillar of
   Autumn's tutorial asks the player to look up and down), whole at each
-  tick's start that they changed by.
+  tick's start that they changed by, and before each later sub-step of a
+  tick left open across frames (the HUD's crosshair reads the aim assist's
+  level the frames set meanwhile), with the seeds where the frames took the
+  game's.
 - **What reached the game state from outside the ticks.** At each tick's
   start, and each sub-step's when the tick was open across frames, the
   allocations the ticks keep are compared with what the tick before left,
@@ -67,8 +70,28 @@ take (`source/math/random_math.c`) and the players' input of each tick
   (`network_distributed.c`): what that changed is recorded, and the
   choices it makes by which machines are there (a client's hits are its
   report's to deal: `network_damage.c`).
+- **What the netcode does outside the ticks, as events.** A client's hit
+  that the host deals as its report comes (`network_damage.c`, between two
+  ticks or two sub-steps of an open tick) is recorded as the hit dealt, with
+  the seeds its code takes (the game's, and the frames' local seed its
+  effects take), at its place among the frames' differences: what changed
+  before it, the hit, then what changed after it. The playback deals it
+  again there, through the same code (`network_damage_deal_recorded`,
+  which checks it as a report is), so that what the hit's code does
+  outside the game state is done too (the game type's score, which the
+  game keeps outside it; an object's cluster references; its effects); its
+  bytes are not written in. So are the network test's own (a host's player
+  shooting, its kill of the last player: `debug.network_test_shoot`,
+  `debug.network_test_kill`).
+- **What the game engine keeps outside the game state** and the ticks
+  read (`game_engine_port_demo_state`): its flags (by the players the game
+  began with: five or more take fewer grenades from a map's places), the
+  goals, the vehicles' homes, the friendly fire penalties, each game type's
+  state (its scores), whole with each snapshot and wherever it changed
+  outside the ticks; the playback puts it back as it was.
 - **A hash of the game state three times a second**, and of each allocation, which
-  the playback compares with its own.
+  the playback compares with its own (a data array's free datums left out:
+  what the frames made and deleted again there, which no tick reads).
 - **A snapshot every `demo.snapshot_seconds`** (10), for seeking.
 - **Bookmarks** (the clip key) and the game's variant.
 
@@ -124,13 +147,16 @@ its bytes:
 | `T` | a tick begins: its number, its rate |
 | `K` | the game state: each allocation's part in use, and the seeds |
 | `P` | what changed in the game state since the tick before ended |
-| `M` | the same, before a sub-step of a tick left open across frames |
+| `M` | the same, before a sub-step of a tick left open across frames (of sub-step 0: before a tick, ahead of an `X`) |
 | `C` | the player control globals, whole |
 | `S` | the seeds |
 | `A` | the tick's players' actions (`struct player_action`) |
 | `U` | a later sub-step's units' controls |
 | `F` | what the netcode put in inside the tick |
 | `D` | a choice the netcode made |
+| `X` | a hit the host dealt outside the ticks (a client's reported, the network test's): the seeds, then the hit as dealt |
+| `Y` | a kill the host made for a player outside the ticks (the network test's): the seeds, the unit, the player |
+| `G` | what the game engine keeps outside the game state, where it changed outside the ticks (whole with a snapshot) |
 | `O` | a local player's camera as the tick begins |
 | `I` | a unit's illumination as its update took it |
 | `H` | the game state's hash, and each allocation's |
@@ -165,11 +191,12 @@ Measured on the Linux x86-64 build (`tools/demo_info.py`):
 
 | Game | MB a minute |
 | --- | --- |
-| Pillar of Autumn (a10), the campaign's start, 30, 60 or 120 Hz | 1.0 |
-| The Silent Cartographer (b30), fighting, a death every 20 s, 60 Hz | 2.2 |
-| Blood Gulch Slayer, a player and 3 bots, 60 Hz | 0.6 |
-| Blood Gulch Slayer, a player and 7 bots, 120 Hz | 1.5 |
-| Blood Gulch Slayer hosted, a client, 120 Hz | 2.0 |
+| Pillar of Autumn (a10), the campaign's start, 30, 60 or 120 Hz | 1.1 |
+| The Silent Cartographer (b30), fighting, a death every 20 s, 60 Hz | 2.3 |
+| Blood Gulch Slayer, a player and 3 bots, 60 Hz | 0.7 |
+| Blood Gulch Slayer, a player and 3 bots, 120 Hz | 0.8 |
+| Blood Gulch Slayer, a player and 7 bots, 120 Hz | 1.1 |
+| Blood Gulch Slayer hosted, a client, 120 Hz | 1.6 |
 
 Most of it is the snapshots for seeking (about 150 KB packed each in the
 campaign) and the whole game states of reloads (a revert's). Recording
@@ -181,9 +208,10 @@ and packing and writing are on a thread of their own.
 
 `debug.determinism_log` hashes the game state after every tick;
 `tools/determinism_compare.py` compares a recording's log with its
-playback's (`--simulation`: not the frames' allocations; `--builds`: not
-the seeds' takers' sites; `--game`: from a network game's first tick, after
-its lobby):
+playback's (`--simulation`: not the frames' allocations, and a data
+array's datums in use only, the log's `u` line, not what its free slots
+hold; `--builds`: not the seeds' takers' sites; `--game`: from a network
+game's first tick, after its lobby):
 
 ```sh
 HALO_DETERMINISM_LOG=rec.txt HALO_TEST_INPUT=bot:3 HALO_SKIP_CINEMATICS=1 ./halo   # init.txt: map_name levels\a10\a10
@@ -192,28 +220,82 @@ python tools/determinism_compare.py --simulation --builds \
     --ignore "object list header" --ignore "list object reference" rec.txt play.txt
 ```
 
-Alike at every tick: Pillar of Autumn (a10) at 30, 60 and 120 (with
-`debug.frame_time`, and in real time); played back at 144 frames a second
-from a recording at 60; on macOS with the Metal renderer, in real time.
-Every recorded hash matched in those playbacks, and in The Silent
-Cartographer's (b30) fighting, 2.5 minutes with its deaths and their
-reverts (`determinism_compare.py` finds the cluster references' and the
-AI's props' free elements apart after a revert, which no tick reads).
-The object lists' free elements are left out: the playback's loading leaves
-other bytes in them, which no tick reads. `tools/test_demo_files.py` checks
-the files without the game: a demo written and read back, a damaged block
-refused, the retention.
+Measured on the last build (omarchy, Linux x86-64, the null renderer, in
+real time but where it says `debug.frame_time`), each playback against its
+recording, every tick and every one of the demo's own hashes:
+
+| Run | Ticks alike | Hashes as recorded |
+| --- | --- | --- |
+| a10 at 60 Hz, `debug.frame_time` | 7351 | 735 of 735 |
+| a10 at 30 Hz, `debug.frame_time` | 7982 | 798 of 798 |
+| a10 at 120 Hz, `debug.frame_time` | 7202 | 720 of 720 |
+| b30 fighting, deaths and reverts, `debug.frame_time` | 6784 | 676 of 676 |
+| Slayer, a player and 3 bots, 60 Hz (twice) | 2460 each | 246 of 246 each |
+| Slayer, a player and 3 bots, 120 Hz (twice) | 2460 each | 246 of 246 each |
+| Slayer, a player and 7 bots, 120 Hz | 2460 | 246 of 246 |
+| Blood Gulch hosted, a client, 120 Hz, the network test's shots and kills, 2.2 minutes (four) | 4050 each | 405 of 405 each |
+
+Before these fixes the same runs parted: Slayer with three bots after 17
+to 38 seconds in each of four runs (a speaker's mouth), with five or seven
+at its first tick (the game engine's flags), hosted games after 3 to 77
+seconds (the network test's kills and the game type's score, a datum
+deleted from an array's end, the particles' seeds).
+
+Where they parted, and what changed:
+
+- **A speaker's mouth.** The mouths the speech sounds move (`game_sound.c`)
+  were kept outside the game state, with the speakers' seed: a playback
+  began with none moving, and its units' mouths, which their nodes follow,
+  were not the recording's. They are in the game state now ("game sound
+  speakers"), as the units they move are, in a saved game and a checkpoint
+  too. (`debug.demo_verify` named the field as a unit's illumination; it is
+  the mouth's aperture, the field after it.)
+- **The frames' input in an open tick.** The HUD's crosshair (in the
+  tick's last sub-step) reads the aim assist's level, which the frames set
+  between the sub-steps: recorded there too now, with the seeds.
+- **The game engine's state outside the game state.** A game begun with
+  five players or more draws its grenades from a map's places by the
+  game engine's flags, which its start set by its players: the playback's
+  game began as a game of this machine's, its flags not the recording's,
+  and its first tick placed other grenades (Slayer with five or seven bots
+  parted at once). They are recorded now (`G`), with the rest of what the
+  engine keeps outside the game state.
+- **The netcode's and the network test's kills and hits in the frames.**
+  Their bytes were recorded, not what their code does outside the game
+  state: the kill's score (the game types keep theirs outside the game
+  state), and the hit message that shows it ("You killed Player 2 (3)").
+  They are events now, done again in the playback by their code.
+- **A datum deleted from an array's end** outside the ticks: the
+  difference written stopped at the count the array was left with, and the
+  playback kept the datum's identifier past it, which `datum_new` takes for
+  a datum in use (once, a crash deleting an object whose cluster references
+  were apart). A difference now runs as far as the array was in use before;
+  and the datums the playback's own frames made past a count put back are
+  freed again.
+- **The particles' seeds.** Whether a tick made a particle (seen from the
+  camera, room among the particles, held for a later frame:
+  `render_interpolation_particle_later`) is the frames', and the particle
+  took the game's local seed when the tick made it: the game's seed moved
+  with the frames. A particle and a particle system's first particles take
+  the frames' local seed now, as the contrails and the decals do. This
+  changes the game's local seed from what a build before took (a 30 Hz
+  run against master's parts in the seeds), not what the game does.
+- **What the frames made and deleted again** in a data array (an effect, a
+  cluster reference) leaves bytes in its free slots, which no tick reads:
+  the demo's hash and `--simulation` leave them out.
+
+`tools/test_demo_files.py` checks the files without the game: a demo
+written and read back, a damaged block refused, the retention.
 
 ## Not yet
 
 - **A game joined on another machine** is not recorded: its client decides
   nothing, and much of what it has comes from the host inside its ticks.
-- **A hosted game with clients** plays back as recorded for a while (on the
-  loopback, with a client and the network test's kills, 17 to 77 seconds),
-  then parts: what the netcode does outside the recorded points (a client's
-  reported hit dealt between two sub-steps of an open tick, whose effects
-  the game's code makes) reaches the game state as bytes, without the
-  frames' side of it. The playback's hash says where; it plays on.
+- **What else the game's code does outside the ticks** is recorded as the
+  bytes it changed, not as an event its code does again: a console
+  command, the Host Controls (a kick, a team changed). Where that code also
+  changes what the game keeps outside its game state (the game type's
+  score), a playback parts. The playback's hash says where; it plays on.
 - **Effects the frames make** (a particle striking) are recorded as data,
   and the ticks update them: their particles in the playback are the
   playback's own.
@@ -222,17 +304,16 @@ refused, the retention.
   game state ("Determinism" in `port/linux/README.md`), and with the frames'
   time fixed it is the frames' time. A demo recorded in real time plays back
   in real time.
-- **Slayer with bots** (split screen): of the last three runs, one played
-  back every hash as recorded (2160 ticks), two parted after 20 to 40
-  seconds. `debug.demo_verify` names the field: an AI unit's illumination,
-  found 0 in the playback at a snapshot where the recording had it (after
-  the camera and the illumination were recorded, which fixed the earlier
-  partings).
 - **The problem report** does not attach the last 30 seconds yet: a demo
   holds the players' names (the game state's), which a public issue must not.
 - **A seek back** can part from the recording (the AI's actors, the
   objects): what the game keeps outside its game state (the checkpoints'
   timers, the main loop's) is where the playback was, not where it goes.
-  A seek on plays on as recorded (checked: every hash after one).
+  A seek on plays on as recorded (checked in the campaign: every hash after
+  one).
+- **OpenCE's game types** (Infection, Gun Game: `infection.c`,
+  `gun_game.c`) keep their players' roles and levels outside the game state
+  too, and the demo does not record them yet: a playback of one parts where
+  their code ran outside the ticks.
 - The other players' views (the camera follows this machine's player), the
   export to video and the Demos screen come next.

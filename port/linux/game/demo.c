@@ -117,6 +117,8 @@ void platform_log(char const *format, ...);
 /* source/math/random_math.c */
 void random_math_port_seeds(unsigned long *global_seed, unsigned long *local_seed);
 void random_math_port_set_seeds(unsigned long global_seed, unsigned long local_seed);
+unsigned long random_math_port_frame_seed(void);
+void random_math_port_set_frame_seed(unsigned long seed);
 /* source/saved games/game_state.c */
 void *game_state_port_base(long *size, unsigned long *checksum);
 boolean game_state_port_demo_load(void (*write)(void *context), void *context, boolean procedures);
@@ -134,6 +136,10 @@ struct player_control *player_control_get(short local_player_index);
 boolean game_time_menu_scene(void);
 /* source/main/console.c */
 void console_printf(boolean clear, const char *format, ...);
+
+void network_damage_deal_recorded(void const *bytes, unsigned long size);
+void damage_kill_object_for_player(long object_index, long player_index);
+void *game_engine_port_demo_state(short part, long *size);
 extern struct game_variant game_variant_global;
 void main_build_identity(long *number, char *flavor, size_t flavor_size, char *repository, size_t repository_size,
 	char *version, size_t version_size);
@@ -165,7 +171,7 @@ caches' procedures, the objects' types' functions), each build's own */
 
 enum
 {
-	DEMO_FORMAT_VERSION = 1,
+	DEMO_FORMAT_VERSION = 2,
 	DEMO_HEADER_SIZE = 512,
 	DEMO_BUILD_SIZE = 64,
 	DEMO_MAP_NAME_SIZE = 128,
@@ -184,6 +190,8 @@ enum
 	DEMO_PATCH_JOIN_BYTES = 32,
 	/* the largest record */
 	DEMO_RECORD_MAXIMUM_SIZE = DEMO_BLOCK_MAXIMUM_SIZE,
+	/* the most of the game engine's state outside the game state (G) */
+	DEMO_ENGINE_STATE_SIZE = 256 * 1024,
 };
 
 /* a block's kind */
@@ -300,6 +308,11 @@ static struct
 	boolean stopped;
 	unsigned long end_seeds[2];
 	unsigned long bots_seeds[2];
+	/* the seeds as the open tick was left (demo_tick_pause) */
+	unsigned long pause_seeds[2];
+	/* the game engine's state as it was last recorded (G records) */
+	unsigned char *engine_state;
+	unsigned long engine_state_size;
 	/* the sub-step's units' controls as it began, by player */
 	struct demo_unit_controls substep_before[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
 	long substep_units[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
@@ -642,8 +655,10 @@ static void demo_skips_find(
 }
 
 /* the hash of the game state the ticks keep: each allocation's part in
-use but the frames' allocations, and the objects' fields left out
-(FNV-1a over words) */
+use but the frames' allocations, a data array's free datums (what a datum
+the frames made and deleted again left there, which no tick reads:
+determinism_log.c's u line) and the objects' fields left out (FNV-1a over
+words) */
 static unsigned long demo_state_hash(
 	unsigned long *allocation_hashes)
 {
@@ -659,6 +674,9 @@ static unsigned long demo_state_hash(
 		unsigned long words = demo_allocation_used(allocation) / 4;
 		unsigned long word_index;
 		unsigned long allocation_hash = 2166136261UL;
+		struct data_array const *data = (struct data_array const *)word;
+		boolean data_array = words * 4 >= sizeof(*data) && data->signature == 'd@t@' && data->data == data + 1 &&
+			data->size >= (short)sizeof(long) && data->size % 4 == 0;
 
 		if (allocation->frames)
 		{
@@ -668,6 +686,14 @@ static unsigned long demo_state_hash(
 		}
 		for (word_index = 0; word_index < words; word_index++, word++)
 		{
+			/* (a free datum's words: its identifier none) */
+			if (data_array && word_index * 4 >= sizeof(*data))
+			{
+				unsigned long datum_offset = (word_index * 4 - sizeof(*data)) % (unsigned long)data->size;
+
+				if (!((struct datum_header const *)((unsigned char const *)word - datum_offset))->identifier)
+					continue;
+			}
 			while (skip < demo_skip_count && demo_skips[skip] < (unsigned long)word)
 				skip++;
 			if (skip < demo_skip_count && demo_skips[skip] == (unsigned long)word)
@@ -826,9 +852,17 @@ static void demo_shadow_restore(
 		unsigned char const *shadow = demo_recorder.shadow + allocation->offset;
 		unsigned long used = demo_shadow_used[index];
 		unsigned long position = 0;
+		struct data_array *data = (struct data_array *)live;
+		short live_count = NONE;
 
 		if (allocation->frames || !used || !memcmp(live, shadow, used))
 			continue;
+		if (used >= sizeof(*data) && data->signature == 'd@t@' && data->data == data + 1 && data->size >= (short)sizeof(short) &&
+			data->count >= 0 && data->count <= data->maximum_count &&
+			sizeof(*data) + (unsigned long)data->maximum_count * (unsigned long)data->size <= allocation->size)
+		{
+			live_count = data->count;
+		}
 		while (skip < demo_skip_count && demo_skips[skip] < (unsigned long)live)
 			skip++;
 		while (position < used)
@@ -844,12 +878,24 @@ static void demo_shadow_restore(
 			position = end + 4;
 			skip++;
 		}
+		/* (a data array's datums the frames made past the count it is put
+		back to: free again, their identifiers none, as datum_delete leaves
+		them, which datum_new looks for) */
+		if (live_count != NONE && data->count >= 0 && data->count < live_count)
+		{
+			short datum_index;
+
+			for (datum_index = data->count; datum_index < live_count; datum_index++)
+				((struct datum_header *)((unsigned char *)data->data + (long)data->size * datum_index))->identifier = 0;
+		}
 	}
 }
 
 /* what changed in the game state's allocations since the tick before
 ended, as a P record (none if nothing did): word by word where a run of
-them differs, the objects' fields the frames write left out */
+them differs, the objects' fields the frames write left out. Whether an
+object or an element was made or deleted (a P record then taken back: the
+whole game state is recorded instead) */
 static boolean demo_patch_write(
 	char type)
 {
@@ -872,6 +918,10 @@ static boolean demo_patch_write(
 
 		if (allocation->frames)
 			continue;
+		/* (and as far as the shadow's was: a datum deleted from the end, its
+		identifier none past the count it left) */
+		if (demo_shadow_used[index] > used)
+			used = demo_shadow_used[index];
 		while (position < used)
 		{
 			unsigned long chunk = used - position < 256 ? used - position : 256;
@@ -956,7 +1006,7 @@ static boolean demo_patch_write(
 		if (type == 'P')
 			demo_recorder.patches++;
 	}
-	return FALSE;
+	return structural;
 }
 
 /* the frames' input the ticks read, whole, where it changed since it was
@@ -1032,6 +1082,90 @@ static void demo_seeds_write(
 	demo_buffer_u32(buffer, global_seed);
 	demo_buffer_u32(buffer, local_seed);
 	demo_record_end(buffer, start);
+}
+
+/* the game engine's state that it keeps outside the game state and the
+ticks read (game_engine_port_demo_state: its flags, by the players the game
+began with; its goals, the vehicles' homes, a game type's scores), its parts
+one after another into state: its size, 0 if it cannot be had */
+static unsigned long demo_engine_state_get(
+	unsigned char *state)
+{
+	unsigned long size = 0;
+	short part;
+	long part_size;
+	void *address;
+
+	for (part = 0; (address = game_engine_port_demo_state(part, &part_size)) != NULL; part++)
+	{
+		if (part_size < 0 || (unsigned long)part_size > DEMO_ENGINE_STATE_SIZE - size)
+			return 0;
+		memcpy(state + size, address, (size_t)part_size);
+		size += (unsigned long)part_size;
+	}
+	return size;
+}
+
+/* ... where it changed since it was last recorded (a G record), or always
+(a snapshot's, whole): the game engine's code run outside the ticks (a
+kill dealt there) changes it, and the game's start set it by its players */
+static void demo_engine_state_write(
+	boolean whole)
+{
+	static unsigned char *state;
+	unsigned long size;
+	unsigned long start;
+
+	if (!state)
+		state = demo_files_alloc(DEMO_ENGINE_STATE_SIZE);
+	if (!demo_recorder.engine_state)
+		demo_recorder.engine_state = demo_files_alloc(DEMO_ENGINE_STATE_SIZE);
+	if (!state || !demo_recorder.engine_state)
+		return;
+	size = demo_engine_state_get(state);
+	if (!size || (!whole && size == demo_recorder.engine_state_size &&
+		!memcmp(state, demo_recorder.engine_state, size)))
+	{
+		return;
+	}
+	start = demo_record_begin(&demo_recorder.records, 'G');
+	demo_buffer_bytes(&demo_recorder.records, state, size);
+	demo_record_end(&demo_recorder.records, start);
+	memcpy(demo_recorder.engine_state, state, size);
+	demo_recorder.engine_state_size = size;
+}
+
+/* (the recording's) the game engine's state as the tick left it */
+static void demo_engine_state_take(
+	void)
+{
+	if (!demo_recorder.engine_state)
+		demo_recorder.engine_state = demo_files_alloc(DEMO_ENGINE_STATE_SIZE);
+	if (demo_recorder.engine_state)
+		demo_recorder.engine_state_size = demo_engine_state_get(demo_recorder.engine_state);
+}
+
+/* (the playback's) a G record's state put back, part by part, if its size
+is this build's */
+static void demo_engine_state_set(
+	unsigned char const *state,
+	unsigned long size)
+{
+	unsigned long position = 0;
+	short part;
+	long part_size;
+	void *address;
+
+	for (part = 0; game_engine_port_demo_state(part, &part_size) != NULL; part++)
+		position += (unsigned long)part_size;
+	if (position != size)
+		return;
+	position = 0;
+	for (part = 0; (address = game_engine_port_demo_state(part, &part_size)) != NULL; part++)
+	{
+		memcpy(address, state + position, (size_t)part_size);
+		position += (unsigned long)part_size;
+	}
 }
 
 static void demo_record_stop(
@@ -1211,6 +1345,7 @@ static void demo_record_tick_begin(
 		}
 	}
 	demo_cameras_write();
+	demo_engine_state_write(demo_recorder.last_snapshot_tick == tick);
 	demo_recorder.loaded = FALSE;
 	demo_recorder.in_tick = TRUE;
 	/* (a K's input is the input as it then was) */
@@ -1255,6 +1390,7 @@ static void demo_record_tick_end(
 		demo_record_end(&demo_recorder.records, start);
 	}
 	demo_shadow_take();
+	demo_engine_state_take();
 	random_math_port_seeds(&demo_recorder.end_seeds[0], &demo_recorder.end_seeds[1]);
 	demo_recorder.ticks++;
 	demo_recorder.last_tick = tick;
@@ -1430,6 +1566,35 @@ void demo_bookmark(
 
 /* ---------- what the frames put in while a tick is open */
 
+/* what changed since the shadow was taken, as an M record of the sub-step
+it comes before (none if nothing did), written as the bytes are, whatever
+made them: the open tick cannot take a whole game state. (Of sub-step 0:
+what came between two ticks before a netcode event, demo_event_begin.)
+Whether an object or an element was made or deleted */
+static boolean demo_open_patch_write(
+	short substep_index)
+{
+	unsigned long start = demo_record_begin(&demo_recorder.records, 'M');
+	unsigned long size_before;
+	boolean structural;
+
+	demo_buffer_u8(&demo_recorder.records, (unsigned long)substep_index);
+	size_before = demo_recorder.records.size;
+	structural = demo_patch_write('F');
+	/* (the F record's own type and length dropped, its ranges kept) */
+	if (demo_recorder.records.size >= size_before + 5)
+	{
+		memmove(demo_recorder.records.data + size_before, demo_recorder.records.data + size_before + 5,
+			demo_recorder.records.size - size_before - 5);
+		demo_recorder.records.size -= 5;
+	}
+	if (demo_recorder.records.size == size_before)
+		demo_recorder.records.size = start - 1;
+	else
+		demo_record_end(&demo_recorder.records, start);
+	return structural;
+}
+
 void demo_tick_pause(
 	void)
 {
@@ -1445,10 +1610,12 @@ void demo_tick_pause(
 	if (demo_player.playing || !demo_recorder.recording)
 		return;
 	demo_shadow_take();
+	random_math_port_seeds(&demo_recorder.pause_seeds[0], &demo_recorder.pause_seeds[1]);
 	demo_recorder.paused = TRUE;
 }
 
 static void demo_playback_resume(short substep_index);
+static void demo_playback_open_records(short substep_index);
 
 void demo_substep_resume(
 	short substep_index)
@@ -1469,27 +1636,19 @@ void demo_substep_resume(
 	if (!demo_recorder.paused)
 		return;
 	demo_recorder.paused = FALSE;
-	/* (an M record of the sub-step it comes before, written as the bytes
-	are, whatever made them: the open tick cannot take a whole game state) */
+	demo_open_patch_write(substep_index);
+	/* (and the frames' input, which they moved meanwhile and the sub-step
+	reads: the HUD's crosshair by the aim assist's level; and the seeds, an
+	event's code took) */
+	demo_input_write();
 	{
-		unsigned long start = demo_record_begin(&demo_recorder.records, 'M');
-		unsigned long size_before;
+		unsigned long seeds[2];
 
-		demo_buffer_u8(&demo_recorder.records, (unsigned long)substep_index);
-		size_before = demo_recorder.records.size;
-		demo_patch_write('F');
-		/* (the F record's own type and length dropped, its ranges kept) */
-		if (demo_recorder.records.size >= size_before + 5)
-		{
-			memmove(demo_recorder.records.data + size_before, demo_recorder.records.data + size_before + 5,
-				demo_recorder.records.size - size_before - 5);
-			demo_recorder.records.size -= 5;
-		}
-		if (demo_recorder.records.size == size_before)
-			demo_recorder.records.size = start - 1;
-		else
-			demo_record_end(&demo_recorder.records, start);
+		random_math_port_seeds(&seeds[0], &seeds[1]);
+		if (seeds[0] != demo_recorder.pause_seeds[0] || seeds[1] != demo_recorder.pause_seeds[1])
+			demo_seeds_write(&demo_recorder.records, seeds[0], seeds[1]);
 	}
+	demo_engine_state_write(FALSE);
 }
 
 /* ---------- what the netcode puts in, inside a tick */
@@ -1589,6 +1748,49 @@ void demo_decide_reals(
 	demo_buffer_u32(&demo_recorder.records, (unsigned long)object_index);
 	demo_buffer_bytes(&demo_recorder.records, values, (unsigned long)count * sizeof(real));
 	demo_record_end(&demo_recorder.records, start);
+}
+
+/* ---------- what the netcode does outside the ticks */
+
+boolean demo_event_begin(
+	char type,
+	void const *bytes,
+	unsigned long size)
+{
+	unsigned long seeds[2];
+	unsigned long start;
+
+	if (demo_player.playing || !demo_recorder.recording || demo_recorder.in_tick || !demo_recorder.shadow_valid ||
+		game_connection() != _game_connection_network_server)
+	{
+		return FALSE;
+	}
+	/* (what reached the game state before it, as the difference it comes
+	after: of the open tick's next sub-step, else before the next tick; one
+	of the game's code there is the whole game state at the next tick's
+	start) */
+	if (demo_recorder.paused)
+		demo_open_patch_write(sim_substep_next());
+	else if (demo_open_patch_write(0))
+		demo_recorder.loaded = TRUE;
+	/* (the seeds as the event's code takes them: the game's global seed,
+	the frames' local seed, which its effects take) */
+	random_math_port_seeds(&seeds[0], &seeds[1]);
+	start = demo_record_begin(&demo_recorder.records, type);
+	demo_buffer_u32(&demo_recorder.records, seeds[0]);
+	demo_buffer_u32(&demo_recorder.records, random_math_port_frame_seed());
+	demo_buffer_bytes(&demo_recorder.records, bytes, size);
+	demo_record_end(&demo_recorder.records, start);
+	return TRUE;
+}
+
+void demo_event_end(
+	void)
+{
+	/* (what the event's code did is the playback's code's to do again: the
+	differences after it are from where it left the game state) */
+	if (!demo_player.playing && demo_recorder.recording && !demo_recorder.in_tick)
+		demo_shadow_take();
 }
 
 /* ---------- playback */
@@ -2023,6 +2225,10 @@ static void demo_playback_tick_begin(
 		return;
 	}
 	demo_shadow_restore();
+	/* (what the netcode did between the ticks) */
+	demo_playback_open_records(0);
+	if (!demo_player.playing)
+		return;
 	type = demo_playback_record(&bytes, &length, TRUE);
 	if (type == 'E' || type == 0)
 	{
@@ -2082,6 +2288,11 @@ static void demo_playback_tick_begin(
 			demo_playback_record(&bytes, &length, TRUE);
 			demo_playback_camera(bytes[0], bytes + 1);
 		}
+		else if (type == 'G')
+		{
+			demo_playback_record(&bytes, &length, TRUE);
+			demo_engine_state_set(bytes, length);
+		}
 		else if (type == 'B' || type == 'V')
 			demo_playback_record(&bytes, &length, TRUE);
 		else
@@ -2104,11 +2315,23 @@ boolean demo_playback_tick_actions(
 
 	if (!demo_player.playing || !demo_player.started)
 		return FALSE;
-	/* (a seek's snapshot's tick: its cameras come after the snapshot) */
-	while (demo_playback_record(&bytes, &length, FALSE) == 'O' && length == 1 + sizeof(struct observer_result))
+	/* (a seek's snapshot's tick: its cameras and the game engine's state
+	come after the snapshot) */
+	for (;;)
 	{
-		demo_playback_record(&bytes, &length, TRUE);
-		demo_playback_camera(bytes[0], bytes + 1);
+		type = demo_playback_record(&bytes, &length, FALSE);
+		if (type == 'O' && length == 1 + sizeof(struct observer_result))
+		{
+			demo_playback_record(&bytes, &length, TRUE);
+			demo_playback_camera(bytes[0], bytes + 1);
+		}
+		else if (type == 'G')
+		{
+			demo_playback_record(&bytes, &length, TRUE);
+			demo_engine_state_set(bytes, length);
+		}
+		else
+			break;
 	}
 	type = demo_playback_record(&bytes, &length, TRUE);
 	if (type != 'A')
@@ -2229,17 +2452,74 @@ static void demo_playback_foreign(
 		demo_playback_stop("a damaged record (of what another machine put in)", TRUE);
 }
 
-static void demo_playback_resume(
+/* the records of what came before a sub-step of an open tick (or, of
+sub-step 0, before a tick), in their order: the differences (M), and the
+netcode's events between them, done again by their code (X: a hit the
+host dealt, a client's reported; Y: a kill it made for a player, the
+network test's), with the frames' input and the seeds the sub-step takes
+(C, S) */
+static void demo_playback_open_records(
 	short substep_index)
 {
 	unsigned char const *bytes;
 	unsigned long length;
+	char type;
 
-	if (demo_playback_record(&bytes, &length, FALSE) != 'M' || length < 1 || bytes[0] != substep_index)
-		return;
-	demo_playback_record(&bytes, &length, TRUE);
-	if (!demo_playback_patch(bytes + 1, length - 1))
-		demo_playback_stop("a damaged record (of what came while a tick was open)", TRUE);
+	while (demo_player.playing)
+	{
+		type = demo_playback_record(&bytes, &length, FALSE);
+		if (type == 'M' && length >= 1 && bytes[0] == substep_index)
+		{
+			demo_playback_record(&bytes, &length, TRUE);
+			if (!demo_playback_patch(bytes + 1, length - 1))
+				demo_playback_stop("a damaged record (of what came while a tick was open)", TRUE);
+		}
+		else if ((type == 'X' || type == 'Y') && length >= 8)
+		{
+			unsigned long seeds[2];
+
+			demo_playback_record(&bytes, &length, TRUE);
+			random_math_port_seeds(&seeds[0], &seeds[1]);
+			random_math_port_set_seeds(demo_read_u32(bytes), seeds[1]);
+			random_math_port_set_frame_seed(demo_read_u32(bytes + 4));
+			if (type == 'X')
+				network_damage_deal_recorded(bytes + 8, length - 8);
+			/* (a kill the host made for a player: the network test's) */
+			else if (length == 16 && object_try_and_get((long)demo_read_u32(bytes + 8)) &&
+				player_try_and_get((long)demo_read_u32(bytes + 12)))
+			{
+				damage_kill_object_for_player((long)demo_read_u32(bytes + 8), (long)demo_read_u32(bytes + 12));
+			}
+		}
+		else if (type == 'S' && length >= 8 && substep_index > 0)
+		{
+			demo_playback_record(&bytes, &length, TRUE);
+			random_math_port_set_seeds(demo_read_u32(bytes), demo_read_u32(bytes + 4));
+		}
+		else if (type == 'G' && substep_index > 0)
+		{
+			demo_playback_record(&bytes, &length, TRUE);
+			demo_engine_state_set(bytes, length);
+		}
+		else if (type == 'C' && substep_index > 0)
+		{
+			demo_playback_record(&bytes, &length, TRUE);
+			if (!demo_ranges_apply(bytes, length, FALSE, FALSE))
+			{
+				demo_playback_stop("a damaged record (of the input)", TRUE);
+				return;
+			}
+			demo_ranges_apply(bytes, length, FALSE, TRUE);
+		}
+		else
+			break;
+	}
+}
+
+static void demo_playback_resume(
+	short substep_index)
+{
+	demo_playback_open_records(substep_index);
 }
 
 static boolean demo_playback_decide(

@@ -550,6 +550,10 @@ static boolean particle_system_initialize(
 	struct particle_system_definition *definition = particle_system_definition_get(system->definition_index);
 	boolean success = TRUE;
 	short type_index;
+	/* port: the frames' seed (random_math_port_begin_cosmetic), in a tick
+	too: a particle system is only seen, and its first particles are as
+	many as the frames left it room for (particles.c's particle_new) */
+	boolean ticking = random_math_port_begin_cosmetic();
 
 	scenario_location_from_point(&system->location, &system->position);
 	SET_FLAG(system->flags, _particle_system_initializing_bit, TRUE);
@@ -605,6 +609,7 @@ static boolean particle_system_initialize(
 	{
 		particle_system_update(0.001f, system_index);
 	}
+	random_math_port_end_cosmetic(ticking); /* port: (above) */
 
 	return success;
 }

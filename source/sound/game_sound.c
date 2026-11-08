@@ -247,10 +247,17 @@ struct game_sound_mouth
 	long start_time;
 };
 
-static struct game_sound_mouth game_sound_mouths[MAXIMUM_GAME_SOUND_MOUTHS];
-/* (the speakers' own seed, so that a speech sound begun between ticks, a
-network game's, moves nothing else the game picks) */
-static unsigned long game_sound_speech_seed;
+/* (in the game state, which the ticks read them from: a saved game, a
+checkpoint and a demo's snapshot have them as the units they move) */
+struct game_sound_speakers
+{
+	/* (the speakers' own seed, so that a speech sound begun between ticks, a
+	network game's, moves nothing else the game picks) */
+	unsigned long speech_seed;
+	struct game_sound_mouth mouths[MAXIMUM_GAME_SOUND_MOUTHS];
+};
+
+static struct game_sound_speakers *game_sound_speakers;
 
 static void game_sound_mouths_clear(
 	void)
@@ -258,7 +265,7 @@ static void game_sound_mouths_clear(
 	short index;
 
 	for (index = 0; index < MAXIMUM_GAME_SOUND_MOUTHS; index++)
-		game_sound_mouths[index].unit_index = NONE;
+		game_sound_speakers->mouths[index].unit_index = NONE;
 }
 
 /* the game's pick of a speech sound's permutation, given to the sound
@@ -277,7 +284,7 @@ static void game_sound_speech_begin(
 		return;
 	pitch_range_index = sound_definition_find_pitch_range_by_pitch(definition, 1.f, NONE);
 	permutation_index = sound_definition_port_speech_permutation(definition, pitch_range_index,
-		&game_sound_speech_seed);
+		&game_sound_speakers->speech_seed);
 	if (permutation_index == NONE)
 		return;
 	sound_port_next_impulse_permutation(pitch_range_index, permutation_index);
@@ -286,21 +293,21 @@ static void game_sound_speech_begin(
 	/* (the unit's slot, else a free one, else the one that began first) */
 	for (index = 0; index < MAXIMUM_GAME_SOUND_MOUTHS && !mouth; index++)
 	{
-		if (game_sound_mouths[index].unit_index == unit_index)
-			mouth = &game_sound_mouths[index];
+		if (game_sound_speakers->mouths[index].unit_index == unit_index)
+			mouth = &game_sound_speakers->mouths[index];
 	}
 	for (index = 0; index < MAXIMUM_GAME_SOUND_MOUTHS && !mouth; index++)
 	{
-		if (game_sound_mouths[index].unit_index == NONE)
-			mouth = &game_sound_mouths[index];
+		if (game_sound_speakers->mouths[index].unit_index == NONE)
+			mouth = &game_sound_speakers->mouths[index];
 	}
 	if (!mouth)
 	{
-		mouth = &game_sound_mouths[0];
+		mouth = &game_sound_speakers->mouths[0];
 		for (index = 1; index < MAXIMUM_GAME_SOUND_MOUTHS; index++)
 		{
-			if (game_sound_mouths[index].start_time < mouth->start_time)
-				mouth = &game_sound_mouths[index];
+			if (game_sound_speakers->mouths[index].start_time < mouth->start_time)
+				mouth = &game_sound_speakers->mouths[index];
 		}
 	}
 	mouth->unit_index = unit_index;
@@ -320,7 +327,7 @@ void game_sound_port_update_mouths(
 
 	for (index = 0; index < MAXIMUM_GAME_SOUND_MOUTHS; index++)
 	{
-		struct game_sound_mouth *mouth = &game_sound_mouths[index];
+		struct game_sound_mouth *mouth = &game_sound_speakers->mouths[index];
 		struct sound_definition *definition;
 		struct sound_pitch_range *range;
 		struct sound_permutation *permutation = NULL;
@@ -380,6 +387,11 @@ void game_sound_initialize(
 		"game sound globals",
 		NULL,
 		sizeof(*game_sound_globals));
+	/* port: the speakers' mouths */
+	game_sound_speakers = (struct game_sound_speakers *)game_state_malloc(
+		"game sound speakers",
+		NULL,
+		sizeof(*game_sound_speakers));
 
 	return;
 }
@@ -406,7 +418,7 @@ void game_sound_initialize_for_new_map(
 	}
 	/* port: the speakers' (their seed from the game's) */
 	game_sound_mouths_clear();
-	game_sound_speech_seed = get_random_seed() ^ 0x73706565;
+	game_sound_speakers->speech_seed = get_random_seed() ^ 0x73706565;
 
 	return;
 }
@@ -777,10 +789,10 @@ void scripted_sound_stop(
 		/* port: and its speaker's mouth stops */
 		for (index = 0; index < MAXIMUM_GAME_SOUND_MOUTHS; index++)
 		{
-			if (game_sound_mouths[index].unit_index != NONE &&
-				game_sound_mouths[index].definition_index == sound_index)
+			if (game_sound_speakers->mouths[index].unit_index != NONE &&
+				game_sound_speakers->mouths[index].definition_index == sound_index)
 			{
-				game_sound_mouths[index].unit_index = NONE;
+				game_sound_speakers->mouths[index].unit_index = NONE;
 			}
 		}
 	}

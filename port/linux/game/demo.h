@@ -59,6 +59,14 @@ boolean demo_decide(boolean decision);
 illumination, the lights'): recorded, and in playback the recording's */
 void demo_decide_reals(long object_index, real *values, short count);
 
+/* outside the ticks, an event of the netcode's that its code applies to
+the game state (a client's hit the host deals: network_damage.c), begun
+and ended around that code: recorded as the event at its place among the
+frames' differences, and in playback done again there by the same code
+(network_damage_deal_recorded). TRUE if it was recorded */
+boolean demo_event_begin(char type, void const *bytes, unsigned long size);
+void demo_event_end(void);
+
 /* whether a demo is playing (the input of the machine's players, its own
 saved games, its recording left alone), and the rate its ticks run at (0
 when none is: sim_rate.c) */

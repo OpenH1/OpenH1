@@ -2903,6 +2903,34 @@ static boolean distributed_report_valid(
 	return TRUE;
 }
 
+/* (a host) a hit dealt outside the ticks, as a demo records it (demo.c's
+X record, network_damage_deal_recorded deals it again in its playback):
+before object_cause_damage deals it, and demo_event_end after */
+void network_damage_demo_hit_begin(
+	struct damage_data const *damage,
+	long object_index,
+	short node_index,
+	short region_index,
+	short material_index,
+	real_vector3d const *object_normal)
+{
+	struct distributed_hit_report dealt;
+
+	csmemset(&dealt, 0, sizeof(dealt));
+	dealt.object_index = object_index;
+	distributed_damage_from_data(damage, &dealt.damage);
+	dealt.node_index = node_index;
+	dealt.region_index = region_index;
+	dealt.material_index = material_index;
+	if (object_normal)
+	{
+		dealt.object_normal = *object_normal;
+		dealt.has_normal = TRUE;
+	}
+	dealt.host_time = NONE;
+	demo_event_begin('X', &dealt, sizeof(dealt));
+}
+
 void network_damage_handle_reports(
 	long machine_index,
 	void const *entries,
@@ -2941,11 +2969,45 @@ void network_damage_handle_reports(
 		}
 		damage_dealt_reports++;
 		network_test_note_hit("dealt", report->object_index);
+		network_damage_demo_hit_begin(&damage, report->object_index, report->node_index, report->region_index,
+			report->material_index, report->has_normal ? &report->object_normal : NULL);
 		damage_dealing_report = TRUE;
 		object_cause_damage(&damage, report->object_index, report->node_index, report->region_index,
 			report->material_index, report->has_normal ? &report->object_normal : NULL);
 		damage_dealing_report = FALSE;
+		demo_event_end();
 	}
+}
+
+/* (a demo's playback, demo.c) a client's hit that the host dealt, as its
+demo recorded it (network_damage_handle_reports): dealt again as the host
+dealt it, the record checked as a report is */
+void network_damage_deal_recorded(
+	void const *bytes,
+	unsigned long size)
+{
+	struct distributed_hit_report report;
+	struct damage_data damage;
+
+	if (size != sizeof(report))
+		return;
+	csmemcpy(&report, bytes, sizeof(report));
+	if (!distributed_object_index_valid(report.object_index) ||
+		(!object_try_and_get_and_verify_type(report.object_index,
+			_object_mask_biped | _object_mask_vehicle | _object_mask_weapon | _object_mask_equipment) &&
+			!static_target(report.object_index)) ||
+		!distributed_damage_numbers_valid(&report.damage) ||
+		(report.has_normal && !distributed_point_valid((real_point3d const *)&report.object_normal, 2.0f)) ||
+		!distributed_damage_indices_valid(report.object_index, report.node_index, report.region_index,
+			report.material_index) ||
+		!distributed_damage_to_data(&report.damage, &damage))
+	{
+		return;
+	}
+	damage_dealing_report = TRUE;
+	object_cause_damage(&damage, report.object_index, report.node_index, report.region_index,
+		report.material_index, report.has_normal ? &report.object_normal : NULL);
+	damage_dealing_report = FALSE;
 }
 
 /* where each damage event of this tick goes: a player effect to its
