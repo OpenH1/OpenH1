@@ -8,11 +8,13 @@ list them, mark them done, and print a brief to act on.
     python tools/menu_notes.py --all            # the done ones too
 
 A note is a JSON line in the notes file (build/menu_notes.jsonl unless
---file): its id, status ("open" or "done", with the commit that addressed
-it), the note, the screen and the widget (its tag's name, its path down the
+--file): its id, status ("open", "in_progress", "done" with the commit that
+addressed it, or "closed" once a reviewer approved the fix), the note, the screen and the widget (its tag's name, its path down the
 screen, its words, its box in the menus' units), the input and the window's
 shape it was seen in, and a PNG of the screen with the widget outlined
-(build/menu_notes/). An ID may be given by its first characters. The notes
+(build/menu_notes/). The studio's (F9) and the review app's
+(tools/menu_review.py, "source": "web", with its author and where on the
+gallery's picture) are alike. An ID may be given by its first characters. The notes
 and their pictures stay in build/, out of git.
 
 After a batch is fixed, `python tools/menu_gallery.py --compare <ref> --notes`
@@ -23,6 +25,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -30,6 +33,40 @@ import menu_gallery  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 NOTES = ROOT / "build" / "menu_notes.jsonl"
+
+
+# a note's statuses: to act on (open, in_progress), fixed (done: its commit), approved (closed)
+STATUSES = ("open", "in_progress", "done", "closed")
+ACTIVE = ("open", "in_progress")
+# a note at most this long (the studio's field holds 200)
+NOTE_LENGTH = 2000
+
+
+def new_id() -> str:
+    """a note's id as the studio makes them: the time's seconds and a part of a second, in hex"""
+    now = time.time()
+    return f"{int(now):08x}{int(now * 1000) % 4096:03x}"
+
+
+def append_note(path: Path, note: dict):
+    """a note added to the file, as the studio adds its: a line at its end"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a") as file:
+        file.write(json.dumps(note, ensure_ascii=False) + "\n")
+
+
+def set_status(path: Path, identifier: str, status: str, **fields) -> dict:
+    """a note's status changed (and fields with it: the commit, who, when), the file written again: the note"""
+    if status not in STATUSES:
+        raise ValueError(f"no status {status!r}")
+    notes = read_notes(path)
+    for note in notes:
+        if note.get("id") == identifier:
+            note["status"] = status
+            note.update({key: value for key, value in fields.items() if value is not None})
+            write_notes(path, notes)
+            return note
+    raise KeyError(identifier)
 
 
 def read_notes(path: Path) -> list:
@@ -95,7 +132,7 @@ def generator_lines(generator: str, widget: str, limit: int = 3) -> list:
 def pick(notes: list, ids: list) -> list:
     """the notes of the IDs given (each by its first characters; all the open ones for none)"""
     if not ids:
-        return [note for note in notes if note.get("status") == "open"]
+        return [note for note in notes if note.get("status") in ACTIVE]
     chosen = []
     for prefix in ids:
         matches = [note for note in notes if str(note.get("id", "")).startswith(prefix)]
@@ -119,14 +156,15 @@ def describe(note: dict) -> str:
 
 
 def list_notes(notes: list, everything: bool) -> str:
-    shown = notes if everything else [note for note in notes if note.get("status") == "open"]
+    shown = notes if everything else [note for note in notes if note.get("status") in ACTIVE]
     if not shown:
         return "No open notes." if not everything else "No notes."
     lines = []
     for screen, group in by_screen(shown).items():
         lines.append(f"{screen}")
         for note in group:
-            status = "" if note.get("status") == "open" else f" [done {str(note.get('commit', ''))[:9]}]"
+            status = ("" if note.get("status") == "open" else " [in progress]" if note.get("status") == "in_progress"
+                      else f" [{note.get('status')} {str(note.get('commit', ''))[:9]}]")
             lines.append(f"  {note.get('id')}{status}  {describe(note)}: {note.get('note')}")
     return "\n".join(lines)
 
