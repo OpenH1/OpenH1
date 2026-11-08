@@ -11028,6 +11028,10 @@ static boolean unit_animation_set_state(
 				unit_index,
 				unit_definition->object.animation_graph.index,
 				animation_index);
+			/* port: in network co-op an AI's units idle out of step
+			(coop_enemies.c) */
+			if (new_state == _unit_state_idle)
+				coop_enemies_idle_started(unit_index, unit->unit.animation.state);
 
 			interpolation_frame_count =
 				unit_animation_compute_interpolation_frame_count(
