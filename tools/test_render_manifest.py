@@ -382,7 +382,7 @@ def test_settings_have_every_multisampling():
     device = (SOURCE / "d3d8_device.c").read_text(encoding="latin-1")
     table = device[device.index("anti_aliasing_values[] ="):]
     table = table[:table.index("};")]
-    samples = {int(value) for value in re.findall(r"_anti_aliasing_\w+, (\d+) \}", table)} - {0}
+    samples = {int(value) for value in re.findall(r"_anti_aliasing_\w+, (\d+), [0-9.]+f \}", table)} - {0}
     manifest = (SOURCE / "xgpu_manifest.c").read_text()
     listed = manifest[manifest.index("static const int settings_samples[] = {"):]
     listed = {int(value) for value in re.findall(r"\d+", listed[:listed.index("}")])}

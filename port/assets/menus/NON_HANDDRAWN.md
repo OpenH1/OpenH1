@@ -61,7 +61,7 @@ view, or a part of it at 1:1 or larger.
 | `stills/fov_130.png` | 160x100 | Field of view 130, for 120 to 160 |
 | `stills/aa_off.png` | 160x100 | Anti-aliasing OFF, close on an edge (each pixel twice its size) |
 | `stills/aa_smaa.png` | 160x100 | Anti-aliasing SMAA (and FXAA), the same; render resolution FULL |
-| `stills/aa_msaa.png` | 160x100 | Anti-aliasing MSAA 4X (and SSAA and MSAA's others), the same |
+| `stills/aa_msaa.png` | 160x100 | Anti-aliasing MSAA 4X (and MSAA's others, and render resolution above 100%), the same |
 | `stills/render_xbox.png` | 160x100 | Render resolution XBOX 640X480, the same edge, its pixels as drawn |
 | `stills/hud_high_res.png` | 160x100 | High-res HUD ON: the health and shields meters, close |
 | `stills/hud_game.png` | 160x100 | High-res HUD OFF, the same |

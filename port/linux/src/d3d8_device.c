@@ -86,8 +86,9 @@ render target the size of the screen has per unit of it */
 static long screen_width;
 static float screen_scale[2] = { 1.0f, 1.0f };
 /* how many times the display's pixels each way supersampling draws (with
-the scale screen_mode_choose last chose) */
-static float screen_supersampling = 1.0f;
+the scale screen_mode_choose last chose), and how many it was asked for
+(more where the GPU's largest target has too few pixels) */
+static float screen_supersampling = 1.0f, screen_supersampling_asked = 1.0f;
 static long ui_offset;
 #define UI_OFFSET ((long)ui_offset)
 /* ---------- anti-aliasing
@@ -95,45 +96,56 @@ static long ui_offset;
 display.anti_aliasing, off unless it is set: the Xbox drew without any.
 "fxaa" and "smaa" are passes over each window's 3D view before the HUD and
 menus are drawn over it (halo_screen_anti_alias, xgpu_vulkan_post.c and
-xgpu_metal_post.c); "ssaa2x"
-draws the screen's targets at twice the resolution each way
-(screen_mode_choose), which the display blit scales down; "msaa2x" to
-"msaa8x" draw the back buffer and its depth buffer with that many samples a
-pixel (render_target_multisample). The setting is read again between frames
-(halo_screen_commit), so that a change applies from the next one. */
+xgpu_metal_post.c); "msaa2x" to "msaa8x" draw the back buffer and its depth
+buffer with that many samples a pixel (render_target_multisample). Either
+combines with display.supersampling (screen_mode_choose), which draws the
+screen's targets at more pixels than the display has: the pass and the
+samples' resolve are the targets' own, at that resolution, and the display
+blit scales the frame down after the HUD. The setting is read again between
+frames (halo_screen_commit), so that a change applies from the next one. */
 
 enum
 {
 	_anti_aliasing_off,
 	_anti_aliasing_fxaa,
 	_anti_aliasing_smaa,
-	_anti_aliasing_ssaa,
 	_anti_aliasing_msaa,
 };
+
+/* (supersampling where the build draws it: not Android's, nor Metal's on
+iOS, whose phones' GPUs have no time to spare for it; display.render_scale
+draws them below the screen's resolution instead) */
+#if !defined(HALO_ANDROID) && !defined(HALO_IOS)
+#define SUPERSAMPLING 1
+#endif
 
 static const struct
 {
 	const char *name;
 	int mode;
 	int samples;
+	/* the supersampling it asks for, each way (1: none) */
+	float supersampling;
 } anti_aliasing_values[] =
 {
-	{ "off", _anti_aliasing_off, 0 },
-	{ "fxaa", _anti_aliasing_fxaa, 0 },
+	{ "off", _anti_aliasing_off, 0, 1.0f },
+	{ "fxaa", _anti_aliasing_fxaa, 0, 1.0f },
 	/* (Vulkan draws it on a phone too, as on the desktop, and Metal on a
 	Mac: passes of fixed cost whatever the scene; "fxaa" is the cheaper
 	pass) */
-	{ "smaa", _anti_aliasing_smaa, 0 },
-#if defined(HALO_ANDROID) || defined(HALO_MACOS)
-	/* (supersampling's four times the pixels are more than a phone's GPU
-	has to spare: none, on Android, and with Metal on macOS and iOS) */
-	{ "ssaa2x", _anti_aliasing_off, 0 },
+	{ "smaa", _anti_aliasing_smaa, 0, 1.0f },
+	/* (an older version's: twice the pixels each way and no pass, which
+	display.supersampling = 2.0 is now; config.toml's is written so as it
+	is read, port_config.c's config_migrate_supersampling. It drew nothing
+	on the Mac, which had no supersampling then) */
+#if defined(SUPERSAMPLING) && !defined(HALO_MACOS)
+	{ "ssaa2x", _anti_aliasing_off, 0, 2.0f },
 #else
-	{ "ssaa2x", _anti_aliasing_ssaa, 0 },
+	{ "ssaa2x", _anti_aliasing_off, 0, 1.0f },
 #endif
-	{ "msaa2x", _anti_aliasing_msaa, 2 },
-	{ "msaa4x", _anti_aliasing_msaa, 4 },
-	{ "msaa8x", _anti_aliasing_msaa, 8 },
+	{ "msaa2x", _anti_aliasing_msaa, 2, 1.0f },
+	{ "msaa4x", _anti_aliasing_msaa, 4, 1.0f },
+	{ "msaa8x", _anti_aliasing_msaa, 8, 1.0f },
 };
 
 #define NUMBER_OF_ANTI_ALIASING_VALUES ((int)(sizeof(anti_aliasing_values) / sizeof(anti_aliasing_values[0])))
@@ -171,6 +183,54 @@ static int anti_aliasing(void)
 	if (anti_aliasing_value < 0)
 		anti_aliasing_read();
 	return anti_aliasing_values[anti_aliasing_value].mode;
+}
+
+/* ---------- display.supersampling
+
+The screen's targets drawn at this many times the display's pixels each
+way, 1 to 2, which the display blit scales down to the display's
+(screen_mode_choose): the 3D view, the HUD and the menus, with
+display.anti_aliasing's pass or samples at the targets' resolution. 1 (or
+unset, or not a number) draws the display's pixels. The supersampling
+drawn is the most of this, "ssaa2x"'s and display.panini's, at most the
+GPU's largest target; not with display.resolution_scaling "original", which
+draws the Xbox's 640x480. Read between frames (halo_screen_commit). */
+
+#define SUPERSAMPLING_LEAST 1.0f
+#define SUPERSAMPLING_MOST 2.0f
+
+static float supersampling_wanted(void)
+{
+#ifdef SUPERSAMPLING
+	static unsigned long read_at = (unsigned long)-1;
+	/* (the setting as last read, and what it gives) */
+	static float setting = 1.0f, factor = 1.0f;
+	float legacy;
+
+	if (read_at != config_changes())
+	{
+		float value = (float)config_real("display.supersampling");
+
+		read_at = config_changes();
+		if (value != setting)
+		{
+			setting = value;
+			factor = value > SUPERSAMPLING_MOST ? SUPERSAMPLING_MOST :
+				value >= SUPERSAMPLING_LEAST ? value : SUPERSAMPLING_LEAST;
+			if (factor != value)
+				platform_log("supersampling: %g is outside %g to %g, so %gx", value, SUPERSAMPLING_LEAST,
+					SUPERSAMPLING_MOST, factor);
+			else
+				platform_log("supersampling: %gx", factor);
+		}
+	}
+	if (anti_aliasing_value < 0)
+		anti_aliasing_read();
+	legacy = anti_aliasing_values[anti_aliasing_value].supersampling;
+	return legacy > factor ? legacy : factor;
+#else
+	return 1.0f;
+#endif
 }
 
 /* ---------- display.hdr (xgpu_hdr.h)
@@ -556,11 +616,13 @@ The 3D view drawn through the Panini projection is drawn larger at its
 middle (port/linux/include/panini_projection.h): by its magnification there,
 1.5 at 120 degrees across 16:9 at full strength, 2.4 at 150. So that the
 middle keeps its sharpness, the screen is supersampled by as much, as
-"ssaa2x" supersamples it (the display blit scales it down), at most twice
-the pixels each way, as "ssaa2x": the magnification at the widest of
-display.fov's and display.vehicle_fov's views on the display's shape. Not on
-Android, Metal (the Mac and iOS) or VR, where supersampling is not either;
-there the middle is drawn from the pixels the view has. */
+display.supersampling supersamples it (the display blit scales it down), at
+most twice the pixels each way: the magnification at the widest of
+display.fov's and display.vehicle_fov's views on the display's shape, or
+display.supersampling's where that is more. Not on Android, Metal (the Mac
+and iOS) or VR, which draw only the supersampling the player chooses (the
+Mac's: display.supersampling) or none; there the middle is drawn from the
+pixels the view has. */
 
 #define PANINI_SUPERSAMPLING_MOST 2.0f
 
@@ -637,7 +699,7 @@ static void screen_mode_choose(long *width, float scale[2])
 #endif
 	*width = 640;
 	scale[0] = scale[1] = 1.0f;
-	screen_supersampling = 1.0f;
+	screen_supersampling = screen_supersampling_asked = 1.0f;
 	if (platform_screen_mode(&display_width, &display_height) && display_width > 0 && display_height > 0)
 	{
 		long wanted = (SCREEN_HEIGHT * display_width + display_height / 2) / display_height;
@@ -650,18 +712,22 @@ static void screen_mode_choose(long *width, float scale[2])
 		keeps its shape and the display blit letterboxes it */
 		if (*width != wanted && *width != (wanted & ~1L))
 			scale[0] = scale[1] = scale[0] < scale[1] ? scale[0] : scale[1];
-		/* supersampling: twice the pixels each way, or as many as the GPU's
-		largest target has (once it is known), which the display blit
-		scales down; not with "original" resolution scaling, which draws
-		the Xbox's 640x480. display.panini's: its middle's magnification
-		(above), as much as "ssaa2x" at most */
+		/* supersampling: display.supersampling's (or "ssaa2x"'s), or
+		display.panini's, its middle's magnification (above), whichever is
+		more, at most as many pixels as the GPU's largest target has (once
+		it is known), which the display blit scales down; not with
+		"original" resolution scaling, which draws the Xbox's 640x480 (and
+		gives no display_width). Each target's pixels are its units times
+		the scale, rounded (render_target_get): 1.5 at 2560x1440 draws
+		3840x2160 */
 		if (xgpu_backend_capabilities.largest_target > 0)
 		{
-			float factor = anti_aliasing() == _anti_aliasing_ssaa ? 2.0f : 1.0f;
+			float factor = supersampling_wanted();
 			float panini = panini_supersampling(display_width, display_height);
 
 			if (factor < panini)
 				factor = panini;
+			screen_supersampling_asked = factor;
 			if (*width * scale[0] * factor > (float)xgpu_backend_capabilities.largest_target)
 				factor = (float)xgpu_backend_capabilities.largest_target / (*width * scale[0]);
 			if (SCREEN_HEIGHT * scale[1] * factor > (float)xgpu_backend_capabilities.largest_target)
@@ -676,13 +742,28 @@ static void screen_mode_choose(long *width, float scale[2])
 	}
 }
 
+/* the screen's size and its targets' pixels, in the log, with the
+supersampling they have and any the GPU could not draw */
+static void screen_mode_log(long width, const float scale[2])
+{
+	if (screen_supersampling_asked > screen_supersampling)
+		platform_log("screen: %ldx%d drawn at %.0fx%.0f, supersampled %.3gx (%.3gx asked: the GPU's targets have "
+			"%ld pixels at most each way)", width, SCREEN_HEIGHT, width * scale[0], SCREEN_HEIGHT * scale[1],
+			screen_supersampling, screen_supersampling_asked, xgpu_backend_capabilities.largest_target);
+	else if (screen_supersampling > 1.0f)
+		platform_log("screen: %ldx%d drawn at %.0fx%.0f, supersampled %.3gx", width, SCREEN_HEIGHT, width * scale[0],
+			SCREEN_HEIGHT * scale[1], screen_supersampling);
+	else
+		platform_log("screen: %ldx%d drawn at %.0fx%.0f", width, SCREEN_HEIGHT, width * scale[0],
+			SCREEN_HEIGHT * scale[1]);
+}
+
 long halo_screen_width(void)
 {
 	if (!screen_width)
 	{
 		screen_mode_choose(&screen_width, screen_scale);
-		platform_log("screen: %ldx%d drawn at %.0fx%.0f", screen_width, SCREEN_HEIGHT,
-			screen_width * screen_scale[0], SCREEN_HEIGHT * screen_scale[1]);
+		screen_mode_log(screen_width, screen_scale);
 	}
 	return screen_width;
 }
@@ -2333,8 +2414,8 @@ long halo_screen_commit(void)
 	/* (display.movies: the movies copied from the disc image when the data
 	root has none) */
 	bink_import_update();
-	/* (display.anti_aliasing, as Settings or config.toml has it now:
-	supersampling changes the scale below) */
+	/* (display.anti_aliasing, as Settings or config.toml has it now; it and
+	display.supersampling change the scale below) */
 	anti_aliasing_read();
 	/* (display.hdr, and the display: the back buffer's format) */
 	hdr_read();
@@ -2364,8 +2445,7 @@ long halo_screen_commit(void)
 	screen_mode_choose(&width, scale);
 	if (width != screen_width || scale[0] != screen_scale[0] || scale[1] != screen_scale[1])
 	{
-		platform_log("screen: %ldx%d drawn at %.0fx%.0f", width, SCREEN_HEIGHT,
-			width * scale[0], SCREEN_HEIGHT * scale[1]);
+		screen_mode_log(width, scale);
 		screen_width = width;
 		screen_scale[0] = scale[0];
 		screen_scale[1] = scale[1];
