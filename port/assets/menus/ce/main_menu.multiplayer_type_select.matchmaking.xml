@@ -61,17 +61,17 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/matchmaking/mm_note_4" type="text" width="264" height="26" wide="0 80" font="ui\small_ui" color="#FF5ED38C" align="right" text_y="4" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_matchmaking">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_title" type="text" controller="1" left="330" top="94" width="268" height="24" font="ui\large_ui" color="#FFFFFFFF" wide="0 132" text_flags="no_focus_test" source="tools/port_settings.py _matchmaking/_matchmaking.text/_part_text">
+	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_title" type="text" controller="1" left="330" top="94" width="268" height="24" font="ui\large_ui" color="#FFFFFFFF" wide="0 132" text_flags="no_focus_test" source="tools/port_settings.py _matchmaking/text/_part_text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_about" type="text" controller="1" left="330" top="120" width="268" height="36" font="ui\small_ui" color="#FF2896FF" wide="0 132" text_flags="no_focus_test" source="tools/port_settings.py _matchmaking/_matchmaking.text/_part_text">
+	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_about" type="text" controller="1" left="330" top="120" width="268" height="36" font="ui\small_ui" color="#FF2896FF" wide="0 132" text_flags="no_focus_test" source="tools/port_settings.py _matchmaking/text/_part_text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_status_label" type="text" controller="1" left="330" top="164" width="268" height="16" font="ui\small_ui" color="#FF6F9CD0" wide="0 132" text="SEARCH" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_matchmaking/_matchmaking.text">
+	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_status_label" type="text" controller="1" left="330" top="164" width="268" height="16" font="ui\small_ui" color="#FF6F9CD0" wide="0 132" text="SEARCH" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_matchmaking/text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_status" type="text" controller="1" left="330" top="180" width="268" height="24" font="ui\large_ui" color="#FFFFFFFF" wide="0 132" text_flags="no_focus_test" source="tools/port_settings.py _matchmaking/_matchmaking.text/_part_text">
+	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_status" type="text" controller="1" left="330" top="180" width="268" height="24" font="ui\large_ui" color="#FFFFFFFF" wide="0 132" text_flags="no_focus_test" source="tools/port_settings.py _matchmaking/text/_part_text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_detail" type="text" controller="1" left="330" top="206" width="268" height="84" font="ui\small_ui" color="#FF2896FF" wide="0 132" text_flags="no_focus_test" source="tools/port_settings.py _matchmaking/_matchmaking.text/_part_text">
+	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_detail" type="text" controller="1" left="330" top="206" width="268" height="84" font="ui\small_ui" color="#FF2896FF" wide="0 132" text_flags="no_focus_test" source="tools/port_settings.py _matchmaking/text/_part_text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_help" type="text" controller="1" left="330" top="310" width="268" height="78" font="ui\small_ui" color="#FF2896FF" wide="0 132" text="Matchmaking finds a game with room for your whole party, by ping, or hosts one that players searching the same playlist join. Your party comes with you." text_flags="no_focus_test wrap" source="tools/port_settings.py multiplayer_files/_matchmaking/_matchmaking.text">
+	<widget name="main_menu/multiplayer_type_select/matchmaking/panel_help" type="text" controller="1" left="330" top="310" width="268" height="78" font="ui\small_ui" color="#FF2896FF" wide="0 132" text="Matchmaking finds a game with room for your whole party, by ping, or hosts one that players searching the same playlist join. Your party comes with you." text_flags="no_focus_test wrap" source="tools/port_settings.py multiplayer_files/_matchmaking/text">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/matchmaking/matchmaking_panel" controller="1" left="316" top="80" width="296" height="320" bitmap="main_menu/parts/panel_296x320" wide="-26 132" source="tools/port_settings.py multiplayer_files/_matchmaking">
 		<child widget="main_menu/multiplayer_type_select/matchmaking/panel_title"/>

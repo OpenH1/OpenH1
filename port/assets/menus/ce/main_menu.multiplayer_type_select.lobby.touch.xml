@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- The port's multiplayer screens, in the PC version's style (tools/port_settings.py) -->
 <menus>
-	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_next_label" type="text" controller="1" width="164" height="16" font="ui\small_ui" color="#FF6F9CD0" wide="0 72" text="NEXT GAME" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_touch_lobby_board/_touch_lobby_board.text">
+	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_next_label" type="text" controller="1" width="164" height="16" font="ui\small_ui" color="#FF6F9CD0" wide="0 72" text="NEXT GAME" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_touch_lobby_board/text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_gametype" type="text" controller="1" width="164" height="22" font="ui\large_ui" color="#FFFFFFFF" wide="0 72" text_flags="no_focus_test" source="tools/port_settings.py _touch_lobby_board/_touch_lobby_board.text/_part_text">
+	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_gametype" type="text" controller="1" width="164" height="22" font="ui\large_ui" color="#FFFFFFFF" wide="0 72" text_flags="no_focus_test" source="tools/port_settings.py _touch_lobby_board/text/_part_text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_map" type="text" controller="1" width="164" height="16" font="ui\small_ui" color="#FF2896FF" wide="0 72" text_flags="no_focus_test" source="tools/port_settings.py _touch_lobby_board/_touch_lobby_board.text/_part_text">
+	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_map" type="text" controller="1" width="164" height="16" font="ui\small_ui" color="#FF2896FF" wide="0 72" text_flags="no_focus_test" source="tools/port_settings.py _touch_lobby_board/text/_part_text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_limits" type="text" controller="1" width="164" height="16" font="ui\small_ui" color="#FF2896FF" wide="0 72" text_flags="no_focus_test" source="tools/port_settings.py _touch_lobby_board/_touch_lobby_board.text/_part_text">
+	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_limits" type="text" controller="1" width="164" height="16" font="ui\small_ui" color="#FF2896FF" wide="0 72" text_flags="no_focus_test" source="tools/port_settings.py _touch_lobby_board/text/_part_text">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_after_label" type="text" controller="1" width="42" height="16" font="ui\small_ui" color="#FF6F9CD0" text="THEN" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_touch_lobby_board">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_after" type="text" controller="1" width="120" height="16" font="ui\small_ui" color="#FF2896FF" wide="0 72" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_touch_lobby_board/_part_text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_status" type="text" controller="1" width="164" height="24" font="ui\small_ui" color="#FF2896FF" wide="0 72" text_flags="no_focus_test" source="tools/port_settings.py _touch_lobby_board/_touch_lobby_board.text/_part_text">
+	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_status" type="text" controller="1" width="164" height="24" font="ui\small_ui" color="#FF2896FF" wide="0 72" text_flags="no_focus_test" source="tools/port_settings.py _touch_lobby_board/text/_part_text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_waiting" type="text" controller="1" width="164" height="26" font="ui\large_ui" color="#FF2896FF" align="center" wide="0 72" text_flags="no_focus_test" source="tools/port_settings.py _touch_lobby_board/_touch_lobby_board.text/_part_text">
+	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_waiting" type="text" controller="1" width="164" height="26" font="ui\large_ui" color="#FF2896FF" align="center" wide="0 72" text_flags="no_focus_test" source="tools/port_settings.py _touch_lobby_board/text/_part_text">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/lobby/touch/board_panel" controller="1" left="420" top="80" width="192" height="324" bitmap="main_menu/parts/panel_192x324" wide="34 72" source="tools/port_settings.py multiplayer_files/_touch_lobby_board">
 		<child widget="main_menu/multiplayer_type_select/lobby/touch/board_next_label" x="434" y="88"/>

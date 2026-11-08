@@ -1482,9 +1482,10 @@ def _source() -> str:
     while frame is not None and len(names) < 3:
         code = frame.f_code
         if code.co_filename == __file__ and code.co_name not in _NOT_SOURCES:
-            name = getattr(code, "co_qualname", code.co_name).replace(".<locals>.", ".")
-            if name not in names:
-                names.append(name)
+            # the function's own name: co_qualname (Python 3.11) would make
+            # the files differ by the Python that wrote them
+            if code.co_name not in names:
+                names.append(code.co_name)
         frame = frame.f_back
     return "tools/port_settings.py " + "/".join(reversed(names))
 
