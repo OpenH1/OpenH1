@@ -370,8 +370,8 @@ static int parse_long(struct reader *reader, const char *name, const char *text,
 }
 
 /* the element's attributes into the table's fields; one not in the table
-(but platform, which for_this_platform reads, and source, which nothing
-here does) is an error */
+(but platform, which for_this_platform reads, and source, which only a
+widget keeps) is an error */
 static void read_attributes(struct reader *reader, const char *element, const XML_Char **attributes,
 	const struct attribute *table, size_t count)
 {
@@ -382,9 +382,7 @@ static void read_attributes(struct reader *reader, const char *element, const XM
 		const char *name = attributes[index], *value = attributes[index + 1];
 		size_t field;
 
-		/* (and source, where a generator says it made the element, for the
-		menu review tools: tools/menu_review.py) */
-		if (!strcmp(name, "platform") || !strcmp(name, "source"))
+		if (!strcmp(name, "platform"))
 			continue;
 		for (field = 0; field < count; field++)
 		{
@@ -400,7 +398,10 @@ static void read_attributes(struct reader *reader, const char *element, const XM
 				*table[field].given = 1;
 			break;
 		}
-		if (field == count)
+		/* (source, where a generator says it made the element, for the
+		menu review tools, tools/menu_review.py, and debug.render_marks: a
+		widget's is kept, any other's is not read) */
+		if (field == count && strcmp(name, "source"))
 			reader_error(reader, "<%s> has no attribute %s", element, name);
 	}
 }
@@ -701,7 +702,7 @@ static void read_widget(struct reader *reader, const XML_Char **attributes, long
 		{ "height", NULL, &widget.height, &widget.has_height }, { "text_x", NULL, &widget.text_x },
 		{ "text_y", NULL, &widget.text_y }, { "auto_close", NULL, &widget.auto_close },
 		{ "auto_close_fade", NULL, &widget.auto_close_fade }, { "string_index", NULL, &widget.string_index },
-		{ "radius", NULL, &widget.radius },
+		{ "radius", NULL, &widget.radius }, { "source", &widget.source },
 	};
 
 	memset(&widget, 0, sizeof(widget));

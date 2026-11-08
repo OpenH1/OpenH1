@@ -231,7 +231,8 @@ build/macos/halo_replay <recording> --shots <dir>           # a recorded render 
 build/linux_x86_64/halo_replay <recording> --shots <dir>    # the same with Vulkan, offscreen (ninja linux_replay; a Mac's
                                                             # recording too: port/linux/vulkan/README.md)
 build/linux_x86_64/halo_replay <recording> --serve          # the OpenH1 Inspector's service: JSON lines (frame, ids, draws,
-                                                            # pick, thumbs; macOS's too)
+                                                            # pick, thumbs; macOS's too); record with HALO_RENDER_MARKS=1
+                                                            # (debug.render_marks) for each draw's owner and the camera
 python -m pytest -q tools/test_gpu_isa.py                  # tools/gpu_isa.py (a shader's GPU code, on an M1 Mac)
 python tools/base_register_bench/run.py                     # the base register's cost (Linux arm64, macOS)
 python tools/test_touch_layout.py                           # the Android touch layout (JDK 17+)

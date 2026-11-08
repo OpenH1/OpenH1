@@ -236,6 +236,9 @@ static const uint32_t record_minimum[XGPU_STREAM_RECORD_TYPES] =
 	[XGPU_STREAM_WORLD_AO_PREPASS] = sizeof(struct xgpu_stream_world_ao_prepass),
 	[XGPU_STREAM_WORLD_AO_CASCADES] = sizeof(struct xgpu_stream_world_ao_cascades),
 	[XGPU_STREAM_WORLD_AO_MESH] = sizeof(struct xgpu_stream_world_ao_mesh),
+	[XGPU_STREAM_MARK_STRING] = sizeof(struct xgpu_stream_mark_string) + XGPU_STREAM_RECORD_ALIGNMENT,
+	[XGPU_STREAM_MARK_VIEW] = sizeof(struct xgpu_stream_mark_view),
+	[XGPU_STREAM_MARK_OWNER] = sizeof(struct xgpu_stream_mark_owner),
 	[XGPU_STREAM_WORLD_AO_INSTANCES] = sizeof(struct xgpu_stream_world_ao_instances),
 	[XGPU_STREAM_PIPELINE_STAND_IN] = sizeof(struct xgpu_stream_pipeline_stand_in),
 	/* (and its folder's path, at least its NUL) */
@@ -509,6 +512,12 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 		break;
 	case XGPU_STREAM_GAMMA:
 		CALL(gamma, value->value);
+		break;
+	/* (debug.render_marks: the replay's, which reads them from its
+	recording; nothing to play) */
+	case XGPU_STREAM_MARK_STRING:
+	case XGPU_STREAM_MARK_VIEW:
+	case XGPU_STREAM_MARK_OWNER:
 		break;
 	case XGPU_STREAM_CATEGORY:
 		CALL(category, value->value);

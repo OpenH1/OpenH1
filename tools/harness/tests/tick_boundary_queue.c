@@ -41,6 +41,7 @@ static boolean game_time_held(void) { return FALSE; }
 static void *global_network_game_server_get(void) { return NULL; }
 static void render_interpolation_frame_begin(void) {}
 static void render_interpolation_frame_end(void) {}
+static void network_test_elevator_frame(void) {}
 static void game_frame(real seconds) { (void)seconds; }
 static real game_time_get_speed(void) { return 1.0f; }
 static void build(short ticks)

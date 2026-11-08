@@ -15,7 +15,7 @@
 		<child widget="main_menu/settings/panel_picture_fov" x="420" y="156"/>
 		<child widget="main_menu/settings/panel_picture_anti_aliasing" x="420" y="156"/>
 		<child widget="main_menu/settings/panel_picture_anti_aliasing_android" x="420" y="156"/>
-		<child widget="main_menu/settings/panel_picture_resolution_scaling" x="420" y="156"/>
+		<child widget="main_menu/settings/panel_picture_render_resolution" x="420" y="156"/>
 		<child widget="main_menu/settings/panel_picture_high_res_hud" x="420" y="156"/>
 		<child widget="main_menu/settings/panel_picture_hud_button_style" x="420" y="156"/>
 		<child widget="main_menu/settings/panel_picture_hdr_mode" x="420" y="156"/>
@@ -34,7 +34,7 @@
 		<child widget="main_menu/settings/panel_picture_fov" x="420" y="132"/>
 		<child widget="main_menu/settings/panel_picture_anti_aliasing" x="420" y="132"/>
 		<child widget="main_menu/settings/panel_picture_anti_aliasing_android" x="420" y="132"/>
-		<child widget="main_menu/settings/panel_picture_resolution_scaling" x="420" y="132"/>
+		<child widget="main_menu/settings/panel_picture_render_resolution" x="420" y="132"/>
 		<child widget="main_menu/settings/panel_picture_high_res_hud" x="420" y="132"/>
 		<child widget="main_menu/settings/panel_picture_hud_button_style" x="420" y="132"/>
 		<child widget="main_menu/settings/panel_picture_hdr_mode" x="420" y="132"/>
@@ -67,7 +67,7 @@
 	</widget>
 	<widget name="main_menu/settings/panel_picture_anti_aliasing_android" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_anti_aliasing_android" wide="46 0" source="tools/port_settings.py settings_files/_settings_shared">
 	</widget>
-	<widget name="main_menu/settings/panel_picture_resolution_scaling" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_resolution_scaling" wide="46 0" source="tools/port_settings.py settings_files/_settings_shared">
+	<widget name="main_menu/settings/panel_picture_render_resolution" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_render_resolution" wide="46 0" source="tools/port_settings.py settings_files/_settings_shared">
 	</widget>
 	<widget name="main_menu/settings/panel_picture_high_res_hud" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_high_res_hud" wide="46 0" source="tools/port_settings.py settings_files/_settings_shared">
 	</widget>

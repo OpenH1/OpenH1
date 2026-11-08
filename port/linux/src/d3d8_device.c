@@ -86,8 +86,9 @@ render target the size of the screen has per unit of it */
 static long screen_width;
 static float screen_scale[2] = { 1.0f, 1.0f };
 /* how many times the display's pixels each way supersampling draws (with
-the scale screen_mode_choose last chose) */
-static float screen_supersampling = 1.0f;
+the scale screen_mode_choose last chose), and how many it was asked for
+(more where the GPU's largest target has too few pixels) */
+static float screen_supersampling = 1.0f, screen_supersampling_asked = 1.0f;
 static long ui_offset;
 #define UI_OFFSET ((long)ui_offset)
 /* ---------- anti-aliasing
@@ -95,45 +96,56 @@ static long ui_offset;
 display.anti_aliasing, off unless it is set: the Xbox drew without any.
 "fxaa" and "smaa" are passes over each window's 3D view before the HUD and
 menus are drawn over it (halo_screen_anti_alias, xgpu_vulkan_post.c and
-xgpu_metal_post.c); "ssaa2x"
-draws the screen's targets at twice the resolution each way
-(screen_mode_choose), which the display blit scales down; "msaa2x" to
-"msaa8x" draw the back buffer and its depth buffer with that many samples a
-pixel (render_target_multisample). The setting is read again between frames
-(halo_screen_commit), so that a change applies from the next one. */
+xgpu_metal_post.c); "msaa2x" to "msaa8x" draw the back buffer and its depth
+buffer with that many samples a pixel (render_target_multisample). Either
+combines with display.supersampling (screen_mode_choose), which draws the
+screen's targets at more pixels than the display has: the pass and the
+samples' resolve are the targets' own, at that resolution, and the display
+blit scales the frame down after the HUD. The setting is read again between
+frames (halo_screen_commit), so that a change applies from the next one. */
 
 enum
 {
 	_anti_aliasing_off,
 	_anti_aliasing_fxaa,
 	_anti_aliasing_smaa,
-	_anti_aliasing_ssaa,
 	_anti_aliasing_msaa,
 };
+
+/* (supersampling where the build draws it: not Android's, nor Metal's on
+iOS, whose phones' GPUs have no time to spare for it; display.render_scale
+draws them below the screen's resolution instead) */
+#if !defined(HALO_ANDROID) && !defined(HALO_IOS)
+#define SUPERSAMPLING 1
+#endif
 
 static const struct
 {
 	const char *name;
 	int mode;
 	int samples;
+	/* the supersampling it asks for, each way (1: none) */
+	float supersampling;
 } anti_aliasing_values[] =
 {
-	{ "off", _anti_aliasing_off, 0 },
-	{ "fxaa", _anti_aliasing_fxaa, 0 },
+	{ "off", _anti_aliasing_off, 0, 1.0f },
+	{ "fxaa", _anti_aliasing_fxaa, 0, 1.0f },
 	/* (Vulkan draws it on a phone too, as on the desktop, and Metal on a
 	Mac: passes of fixed cost whatever the scene; "fxaa" is the cheaper
 	pass) */
-	{ "smaa", _anti_aliasing_smaa, 0 },
-#if defined(HALO_ANDROID) || defined(HALO_MACOS)
-	/* (supersampling's four times the pixels are more than a phone's GPU
-	has to spare: none, on Android, and with Metal on macOS and iOS) */
-	{ "ssaa2x", _anti_aliasing_off, 0 },
+	{ "smaa", _anti_aliasing_smaa, 0, 1.0f },
+	/* (an older version's: twice the pixels each way and no pass, which
+	display.supersampling = 2.0 is now; config.toml's is written so as it
+	is read, port_config.c's config_migrate_supersampling. It drew nothing
+	on the Mac, which had no supersampling then) */
+#if defined(SUPERSAMPLING) && !defined(HALO_MACOS)
+	{ "ssaa2x", _anti_aliasing_off, 0, 2.0f },
 #else
-	{ "ssaa2x", _anti_aliasing_ssaa, 0 },
+	{ "ssaa2x", _anti_aliasing_off, 0, 1.0f },
 #endif
-	{ "msaa2x", _anti_aliasing_msaa, 2 },
-	{ "msaa4x", _anti_aliasing_msaa, 4 },
-	{ "msaa8x", _anti_aliasing_msaa, 8 },
+	{ "msaa2x", _anti_aliasing_msaa, 2, 1.0f },
+	{ "msaa4x", _anti_aliasing_msaa, 4, 1.0f },
+	{ "msaa8x", _anti_aliasing_msaa, 8, 1.0f },
 };
 
 #define NUMBER_OF_ANTI_ALIASING_VALUES ((int)(sizeof(anti_aliasing_values) / sizeof(anti_aliasing_values[0])))
@@ -171,6 +183,54 @@ static int anti_aliasing(void)
 	if (anti_aliasing_value < 0)
 		anti_aliasing_read();
 	return anti_aliasing_values[anti_aliasing_value].mode;
+}
+
+/* ---------- display.supersampling
+
+The screen's targets drawn at this many times the display's pixels each
+way, 1 to 2, which the display blit scales down to the display's
+(screen_mode_choose): the 3D view, the HUD and the menus, with
+display.anti_aliasing's pass or samples at the targets' resolution. 1 (or
+unset, or not a number) draws the display's pixels. The supersampling
+drawn is the most of this, "ssaa2x"'s and display.panini's, at most the
+GPU's largest target; not with display.resolution_scaling "original", which
+draws the Xbox's 640x480. Read between frames (halo_screen_commit). */
+
+#define SUPERSAMPLING_LEAST 1.0f
+#define SUPERSAMPLING_MOST 2.0f
+
+static float supersampling_wanted(void)
+{
+#ifdef SUPERSAMPLING
+	static unsigned long read_at = (unsigned long)-1;
+	/* (the setting as last read, and what it gives) */
+	static float setting = 1.0f, factor = 1.0f;
+	float legacy;
+
+	if (read_at != config_changes())
+	{
+		float value = (float)config_real("display.supersampling");
+
+		read_at = config_changes();
+		if (value != setting)
+		{
+			setting = value;
+			factor = value > SUPERSAMPLING_MOST ? SUPERSAMPLING_MOST :
+				value >= SUPERSAMPLING_LEAST ? value : SUPERSAMPLING_LEAST;
+			if (factor != value)
+				platform_log("supersampling: %g is outside %g to %g, so %gx", value, SUPERSAMPLING_LEAST,
+					SUPERSAMPLING_MOST, factor);
+			else
+				platform_log("supersampling: %gx", factor);
+		}
+	}
+	if (anti_aliasing_value < 0)
+		anti_aliasing_read();
+	legacy = anti_aliasing_values[anti_aliasing_value].supersampling;
+	return legacy > factor ? legacy : factor;
+#else
+	return 1.0f;
+#endif
 }
 
 /* ---------- display.hdr (xgpu_hdr.h)
@@ -285,7 +345,8 @@ _Static_assert(XGPU_WORLD_AO_GRID_X == WORLD_AO_GRID_X && XGPU_WORLD_AO_GRID_Y =
 	"the world's proxy grid as the game makes it and the emitters read it (world_ao.h, xgpu.h)");
 _Static_assert(XGPU_WORLD_AO_INPUT_LIGHTMAP == XGPU_WORLD_AO_INPUT_LIGHTMAP_BIT &&
 	XGPU_WORLD_AO_INPUT_ALL_SHAPES == XGPU_WORLD_AO_INPUT_ALL_SHAPES_BIT &&
-	XGPU_WORLD_AO_INPUT_PRESENT == XGPU_WORLD_AO_INPUT_PRESENT_BIT,
+	XGPU_WORLD_AO_INPUT_PRESENT == XGPU_WORLD_AO_INPUT_PRESENT_BIT &&
+	XGPU_WORLD_AO_INPUT_CARDS == XGPU_WORLD_AO_INPUT_CARDS_BIT,
 	"the pre-pass's inputs as the emitters write them and the CPU reads them (xgpu.h, world_ao.h)");
 _Static_assert(WORLD_AO_FIELD_TABLE == XGPU_STREAM_WORLD_AO_TABLE && WORLD_AO_FIELD_ATLAS == XGPU_STREAM_WORLD_AO_ATLAS &&
 	WORLD_AO_FIELD_SCENERY == XGPU_STREAM_WORLD_AO_SCENERY && WORLD_AO_FIELD_OBJECTS == XGPU_STREAM_WORLD_AO_OBJECTS,
@@ -321,7 +382,10 @@ static struct
 	/* "ray_traced": the draw's object's owner among the ray-traced scene's
 	instances (0 none: halo_world_ao_object) */
 	unsigned long rays_owner;
-} world_ao = { FALSE, FALSE, WORLD_AO_OWNER_NONE, 1.0f, FALSE, FALSE, FALSE, 2.0f, WORLD_AO_SPAN_NONE, FALSE, FALSE, 0 };
+	/* the draws are a two-sided model shader's cards (halo_world_ao_cards) */
+	BOOL cards;
+} world_ao = { FALSE, FALSE, WORLD_AO_OWNER_NONE, 1.0f, FALSE, FALSE, FALSE, 2.0f, WORLD_AO_SPAN_NONE, FALSE, FALSE, 0,
+	FALSE };
 
 /* the draw takes the world's light where its window is given: one of the
 window's opaque surfaces, not the first-person weapon, not lighting itself
@@ -425,6 +489,7 @@ void halo_world_ao_window(float const field[2][4], float const parameters[2][4],
 	world_ao.owner = WORLD_AO_OWNER_NONE;
 	world_ao.reference = 1.0f;
 	world_ao.rays_owner = 0;
+	world_ao.cards = FALSE;
 	/* (found once a pixel: no more) */
 	if (world_ao.sampled || world_ao.prepass)
 		xgpu_backend_world_ao_prepass(XGPU_WORLD_AO_PREPASS_NONE, 0, NULL);
@@ -456,6 +521,11 @@ void halo_world_ao_object(int owner, float reference, unsigned long rays_owner)
 	world_ao.owner = owner;
 	world_ao.reference = reference;
 	world_ao.rays_owner = rays_owner < XGPU_WORLD_AO_INSTANCE_OWNERS ? rays_owner : 0;
+}
+
+void halo_world_ao_cards(int cards)
+{
+	world_ao.cards = cards != 0;
 }
 
 /* ---------- display.ambient_occlusion "ray_traced" (port/linux/game/world_rt.c)
@@ -556,11 +626,13 @@ The 3D view drawn through the Panini projection is drawn larger at its
 middle (port/linux/include/panini_projection.h): by its magnification there,
 1.5 at 120 degrees across 16:9 at full strength, 2.4 at 150. So that the
 middle keeps its sharpness, the screen is supersampled by as much, as
-"ssaa2x" supersamples it (the display blit scales it down), at most twice
-the pixels each way, as "ssaa2x": the magnification at the widest of
-display.fov's and display.vehicle_fov's views on the display's shape. Not on
-Android, Metal (the Mac and iOS) or VR, where supersampling is not either;
-there the middle is drawn from the pixels the view has. */
+display.supersampling supersamples it (the display blit scales it down), at
+most twice the pixels each way: the magnification at the widest of
+display.fov's and display.vehicle_fov's views on the display's shape, or
+display.supersampling's where that is more. Not on Android, Metal (the Mac
+and iOS) or VR, which draw only the supersampling the player chooses (the
+Mac's: display.supersampling) or none; there the middle is drawn from the
+pixels the view has. */
 
 #define PANINI_SUPERSAMPLING_MOST 2.0f
 
@@ -637,7 +709,7 @@ static void screen_mode_choose(long *width, float scale[2])
 #endif
 	*width = 640;
 	scale[0] = scale[1] = 1.0f;
-	screen_supersampling = 1.0f;
+	screen_supersampling = screen_supersampling_asked = 1.0f;
 	if (platform_screen_mode(&display_width, &display_height) && display_width > 0 && display_height > 0)
 	{
 		long wanted = (SCREEN_HEIGHT * display_width + display_height / 2) / display_height;
@@ -650,18 +722,22 @@ static void screen_mode_choose(long *width, float scale[2])
 		keeps its shape and the display blit letterboxes it */
 		if (*width != wanted && *width != (wanted & ~1L))
 			scale[0] = scale[1] = scale[0] < scale[1] ? scale[0] : scale[1];
-		/* supersampling: twice the pixels each way, or as many as the GPU's
-		largest target has (once it is known), which the display blit
-		scales down; not with "original" resolution scaling, which draws
-		the Xbox's 640x480. display.panini's: its middle's magnification
-		(above), as much as "ssaa2x" at most */
+		/* supersampling: display.supersampling's (or "ssaa2x"'s), or
+		display.panini's, its middle's magnification (above), whichever is
+		more, at most as many pixels as the GPU's largest target has (once
+		it is known), which the display blit scales down; not with
+		"original" resolution scaling, which draws the Xbox's 640x480 (and
+		gives no display_width). Each target's pixels are its units times
+		the scale, rounded (render_target_get): 1.5 at 2560x1440 draws
+		3840x2160 */
 		if (xgpu_backend_capabilities.largest_target > 0)
 		{
-			float factor = anti_aliasing() == _anti_aliasing_ssaa ? 2.0f : 1.0f;
+			float factor = supersampling_wanted();
 			float panini = panini_supersampling(display_width, display_height);
 
 			if (factor < panini)
 				factor = panini;
+			screen_supersampling_asked = factor;
 			if (*width * scale[0] * factor > (float)xgpu_backend_capabilities.largest_target)
 				factor = (float)xgpu_backend_capabilities.largest_target / (*width * scale[0]);
 			if (SCREEN_HEIGHT * scale[1] * factor > (float)xgpu_backend_capabilities.largest_target)
@@ -676,13 +752,28 @@ static void screen_mode_choose(long *width, float scale[2])
 	}
 }
 
+/* the screen's size and its targets' pixels, in the log, with the
+supersampling they have and any the GPU could not draw */
+static void screen_mode_log(long width, const float scale[2])
+{
+	if (screen_supersampling_asked > screen_supersampling)
+		platform_log("screen: %ldx%d drawn at %.0fx%.0f, supersampled %.3gx (%.3gx asked: the GPU's targets have "
+			"%ld pixels at most each way)", width, SCREEN_HEIGHT, width * scale[0], SCREEN_HEIGHT * scale[1],
+			screen_supersampling, screen_supersampling_asked, xgpu_backend_capabilities.largest_target);
+	else if (screen_supersampling > 1.0f)
+		platform_log("screen: %ldx%d drawn at %.0fx%.0f, supersampled %.3gx", width, SCREEN_HEIGHT, width * scale[0],
+			SCREEN_HEIGHT * scale[1], screen_supersampling);
+	else
+		platform_log("screen: %ldx%d drawn at %.0fx%.0f", width, SCREEN_HEIGHT, width * scale[0],
+			SCREEN_HEIGHT * scale[1]);
+}
+
 long halo_screen_width(void)
 {
 	if (!screen_width)
 	{
 		screen_mode_choose(&screen_width, screen_scale);
-		platform_log("screen: %ldx%d drawn at %.0fx%.0f", screen_width, SCREEN_HEIGHT,
-			screen_width * screen_scale[0], SCREEN_HEIGHT * screen_scale[1]);
+		screen_mode_log(screen_width, screen_scale);
 	}
 	return screen_width;
 }
@@ -691,6 +782,15 @@ long halo_screen_width(void)
 static float vr_text_pixel_scale(void);
 static int vr_drawing_eyes(void);
 #endif
+
+/* the back buffer's pixels for each of the screen's units, across and down
+(debug.render_marks' viewports: port/linux/game/render_marks.c) */
+void halo_screen_scale_axes(float scale[2])
+{
+	halo_screen_width();
+	scale[0] = screen_scale[0];
+	scale[1] = screen_scale[1];
+}
 
 /* the display's pixels for each of the 480 lines (text_hires.c) */
 float halo_screen_pixel_scale(void)
@@ -2333,8 +2433,8 @@ long halo_screen_commit(void)
 	/* (display.movies: the movies copied from the disc image when the data
 	root has none) */
 	bink_import_update();
-	/* (display.anti_aliasing, as Settings or config.toml has it now:
-	supersampling changes the scale below) */
+	/* (display.anti_aliasing, as Settings or config.toml has it now; it and
+	display.supersampling change the scale below) */
 	anti_aliasing_read();
 	/* (display.hdr, and the display: the back buffer's format) */
 	hdr_read();
@@ -2364,8 +2464,7 @@ long halo_screen_commit(void)
 	screen_mode_choose(&width, scale);
 	if (width != screen_width || scale[0] != screen_scale[0] || scale[1] != screen_scale[1])
 	{
-		platform_log("screen: %ldx%d drawn at %.0fx%.0f", width, SCREEN_HEIGHT,
-			width * scale[0], SCREEN_HEIGHT * scale[1]);
+		screen_mode_log(width, scale);
 		screen_width = width;
 		screen_scale[0] = scale[0];
 		screen_scale[1] = scale[1];
@@ -3435,7 +3534,7 @@ static void pipeline_state_describe(BOOL has_depth, struct xgpu_pipeline_key *ke
 }
 /* the uniforms of the latest draws, converted from these inputs; the serial
 counts the conversions */
-#define DRAW_UNIFORM_INPUT_COUNT (4 + 4 + 16 + 1 + 16 + 2 + 4 + 1 + 1 + 7 * D3DTSS_MAXSTAGES + 3)
+#define DRAW_UNIFORM_INPUT_COUNT (4 + 4 + 16 + 1 + 16 + 2 + 4 + 1 + 1 + 7 * D3DTSS_MAXSTAGES + 4)
 
 static DWORD draw_uniform_inputs[DRAW_UNIFORM_INPUT_COUNT];
 static struct xgpu_draw_uniforms draw_uniforms;
@@ -3463,7 +3562,7 @@ static void draw_uniforms_update(const float texture_scale[4][4])
 {
 	DWORD inputs[DRAW_UNIFORM_INPUT_COUNT];
 	unsigned long count = 0;
-	float world_object[3];
+	float world_object[4];
 	int stage;
 
 	memcpy(&inputs[count], device.viewport_scale, sizeof(device.viewport_scale));
@@ -3487,12 +3586,14 @@ static void draw_uniforms_update(const float texture_scale[4][4])
 	inputs[count++] = D3D__RenderState[D3DRS_ALPHAREF];
 	inputs[count++] = (DWORD)UI_OFFSET;
 	/* (display.ambient_occlusion "world": the draw's object, its owner
-	slot and reference; -1 and 1 without the window's block) */
+	slot and reference, its owner among the rays' instances, and whether it
+	is two-sided cards; -1, 1, 0 and 0 without the window's block) */
 	world_object[0] = world_ao.active ? (float)world_ao.owner : (float)WORLD_AO_OWNER_NONE;
 	world_object[1] = world_ao.active ? world_ao.reference : 1.0f;
 	world_object[2] = world_ao.active ? (float)world_ao.rays_owner : 0.0f;
+	world_object[3] = world_ao.active && world_ao.cards ? 1.0f : 0.0f;
 	memcpy(&inputs[count], world_object, sizeof(world_object));
-	count += 3;
+	count += 4;
 	for (stage = 0; stage < D3DTSS_MAXSTAGES; stage++)
 	{
 		DWORD *state = D3D__TextureState[stage];
@@ -3546,6 +3647,7 @@ static void draw_uniforms_update(const float texture_scale[4][4])
 		converted->world_ao[0] = world_object[0];
 		converted->world_ao[1] = world_object[1];
 		converted->world_ao[2] = world_object[2];
+		converted->world_ao[3] = world_object[3];
 	}
 }
 
@@ -3566,8 +3668,8 @@ lights cost what lights each pixel, not their number. A plasma bolt's light
 backend has them (xgpu_backend_capabilities: Vulkan, Metal). */
 static struct
 {
-	/* the settings read, as config_changes() was then (0 too, before any
-	change: the flag says whether they have been read) */
+	/* the settings read, as halo_gpu_settings_taken() was then (the flag
+	says whether they have been read) */
 	BOOL read;
 	unsigned long read_at;
 	BOOL enhanced;
@@ -3598,10 +3700,14 @@ static void dynamic_lights_read_settings(void)
 	static const float defaults[2][4] = { { 1.7f, 12.0f, 0.18f, 0.25f }, { 0.22f, 1.2f, 0.12f, 0.035f } };
 	const char *look;
 
-	if (dynamic_lights.read && dynamic_lights.read_at == config_changes())
+	/* (as the front end took the settings up between frames, not as the
+	menus write them: the draws' pipelines change at the frame that
+	prepares the map again under them, render_enumerate.c's
+	enumerated_derivation_check) */
+	if (dynamic_lights.read && dynamic_lights.read_at == halo_gpu_settings_taken())
 		return;
 	dynamic_lights.read = TRUE;
-	dynamic_lights.read_at = config_changes();
+	dynamic_lights.read_at = halo_gpu_settings_taken();
 	dynamic_lights.enhanced = !strcmp(config_string("display.dynamic_lights"), "enhanced");
 	memcpy(dynamic_lights.look, defaults, sizeof(defaults));
 	look = config_string("debug.dynamic_lights_look");
@@ -3845,16 +3951,19 @@ void halo_dynamic_lights_halos_draw(void)
 
 /* display.per_pixel_lighting: the model lighting programs' draws are lit for
 each pixel (xgpu_spirv.c's model lighting), from shaders of their own; read
-again when a setting changes. The enhanced dynamic lights light models for
-each pixel too, whatever it says. */
+again as the front end takes a change up between frames (as the dynamic
+lights are: dynamic_lights_read_settings). The enhanced dynamic lights light
+models for each pixel too, whatever it says. */
 static BOOL per_pixel_lighting(void)
 {
-	static unsigned long read_at = (unsigned long)-1;
+	static BOOL read;
+	static unsigned long read_at;
 	static BOOL enabled;
 
-	if (read_at != config_changes())
+	if (!read || read_at != halo_gpu_settings_taken())
 	{
-		read_at = config_changes();
+		read = TRUE;
+		read_at = halo_gpu_settings_taken();
 		enabled = config_boolean("display.per_pixel_lighting") != 0;
 	}
 	return enabled || halo_dynamic_lights_enhanced();

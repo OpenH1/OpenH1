@@ -2387,7 +2387,10 @@ static boolean distributed_apply_state(
 lasts after a jump. Only a current floor contact allows ignoring a height
 difference caused by the platforms' different phases. biped_update_moving
 (bipeds.c) sets elevator_ticks to 60 each tick the biped's physics finds it
-on an elevator, and counts it down from then on. */
+on an elevator (among what it collides with), and counts it down from then
+on; on the ground (not airborne) with it found this tick, it stands on it.
+(Not by its support surface: that is a structure BSP's surface, and NONE on
+a machine's floor, bipeds.c's physics.) */
 static long distributed_supported_elevator(
 	long unit_index)
 {
@@ -2395,12 +2398,34 @@ static long distributed_supported_elevator(
 		_object_mask_biped);
 	struct device_datum *elevator;
 
-	if (!biped || TEST_FLAG(biped->biped.flags, _biped_airborne_bit) ||
-		biped->biped.support_surface_index == NONE || biped->biped.elevator_ticks != 60)
+	if (!biped || TEST_FLAG(biped->biped.flags, _biped_airborne_bit) || biped->biped.elevator_ticks != 60)
 		return NONE;
 	elevator = (struct device_datum *)object_try_and_get_and_verify_type(biped->biped.elevator_object_index,
 		_object_mask_machine);
 	return elevator ? biped->biped.elevator_object_index : NONE;
+}
+
+/* (a client) another player's unit standing on an elevator here, and the
+host's word on it no further than its platform's phase lag up or down: the
+height left to this machine's floor, as its own player's is
+(distributed_correct_own_unit). The host's word has it on the host's
+elevator, which is apart from this machine's by what the platform travels in
+the trip between them; put there, the unit is pulled into the floor or off
+it each tick, and drawn gliding from where it was, those glides adding up
+(a rider drawn up to half a world unit off the platform, jumping when the
+floor puts it back). TRUE when the height is kept (error.k made 0) */
+static boolean distributed_remote_rider_height_kept(
+	long unit_index,
+	real_vector3d *error)
+{
+	if (distributed_supported_elevator(unit_index) == NONE ||
+		error->i * error->i + error->j * error->j > REMOTE_BLEND_DISTANCE * REMOTE_BLEND_DISTANCE ||
+		!(error->k >= -ELEVATOR_PHASE_TOLERANCE && error->k <= ELEVATOR_PHASE_TOLERANCE))
+	{
+		return FALSE;
+	}
+	error->k = 0.0f;
+	return TRUE;
 }
 
 /* (a client) where its own players' units are this tick, noted */
@@ -2509,6 +2534,7 @@ static boolean distributed_correct_remote_unit(
 	error.i = state->position.x - noted->position.x;
 	error.j = state->position.y - noted->position.y;
 	error.k = state->position.z - noted->position.z;
+	distributed_remote_rider_height_kept(unit_index, &error);
 	if (!(error.i * error.i + error.j * error.j + error.k * error.k >
 		REMOTE_CORRECTION_TOLERANCE * REMOTE_CORRECTION_TOLERANCE))
 	{
@@ -3279,13 +3305,19 @@ static void distributed_place_remote_unit(
 
 	if (!distributed_correct_remote_unit(state->player_index, unit_index, state, substep_index))
 	{
+		real_point3d position = state->position;
+		real_vector3d error;
+
+		/* (on an elevator here: its height this machine's floor's) */
+		error.i = position.x - before.x;
+		error.j = position.y - before.y;
+		error.k = position.z - before.z;
+		if (distributed_remote_rider_height_kept(unit_index, &error))
+			position.z = before.z;
 		/* (the tests' reports) */
-		if (distance_squared3d(&state->position, &object_get(unit_index)->object.position) >
-			REMOTE_CORRECTION_TOLERANCE * REMOTE_CORRECTION_TOLERANCE)
-		{
+		if (distance_squared3d(&position, &before) > REMOTE_CORRECTION_TOLERANCE * REMOTE_CORRECTION_TOLERANCE)
 			distributed_statistics.remote_corrections++;
-		}
-		distributed_apply_state(unit_index, state, &state->position, REMOTE_CORRECTION_TOLERANCE,
+		distributed_apply_state(unit_index, state, &position, REMOTE_CORRECTION_TOLERANCE,
 			REMOTE_BLEND_DISTANCE, 0.0f, 0.0f);
 	}
 	/* moved further than a step at once (the host's teleporter sent it): on

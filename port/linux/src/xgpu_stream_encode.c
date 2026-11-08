@@ -271,6 +271,8 @@ static void commit(unsigned int flags)
 }
 
 static void vertices_keep(uint32_t size);
+static void marks_forget(void);
+static void marks_draw(void);
 
 /* A map's preparation (render_enumerate.c) writes hundreds of megabytes of
 records in one frame, and waits for the render thread to have played them
@@ -622,6 +624,7 @@ void xgpu_backend_initialize(void)
 		stream_free(stream.asides[--stream.aside_count].data);
 	memset(&stream.vertices, 0, sizeof(stream.vertices));
 	forget_sent();
+	marks_forget();
 	if (host_render_stream_open(STREAM_ADDRESS(ring)))
 	{
 		fprintf(stderr, "the renderer's command stream: the host has no renderer for it\n");
@@ -786,6 +789,143 @@ void xgpu_backend_category(int category)
 		return;
 	stream.category = value + 1;
 	record_value(XGPU_STREAM_CATEGORY, value);
+}
+
+/* ---------- debug.render_marks (xgpu_stream.h's MARK records)
+
+The strings the marks name, by their hash: a cache of those sent (the
+host keeps every number it was given, so a string the cache lets go is
+sent again under a new number); and the owner, sent before the draw that
+follows it (marks_draw). */
+
+#define MARK_STRINGS 4096u
+
+static struct
+{
+	uint64_t hashes[MARK_STRINGS];
+	uint32_t numbers[MARK_STRINGS];
+	uint32_t count, next;
+	/* the owner given (written before the next draw: owners given
+	without a draw between them are not sent) and the last sent */
+	BOOL owner_given, owner_sent;
+	struct xgpu_stream_mark_owner owner, sent;
+} marks;
+
+static void marks_forget(void)
+{
+	memset(&marks, 0, sizeof(marks));
+	marks.next = 1;
+}
+
+static uint64_t mark_hash(const char *text, uint32_t length)
+{
+	uint64_t hash = 0xcbf29ce484222325ull;
+	uint32_t index;
+
+	for (index = 0; index < length; index++)
+		hash = (hash ^ (unsigned char)text[index]) * 0x100000001b3ull;
+	return hash ? hash : 1;
+}
+
+/* the string's number, sent before if it is new (0: none) */
+static uint32_t mark_string(const char *text)
+{
+	struct xgpu_stream_mark_string *record_body;
+	unsigned char *data;
+	uint32_t length, slot;
+	uint64_t hash;
+
+	if (!text || !*text)
+		return 0;
+	length = (uint32_t)strnlen(text, 1024);
+	hash = mark_hash(text, length);
+	for (slot = (uint32_t)hash & (MARK_STRINGS - 1); marks.hashes[slot]; slot = (slot + 1) & (MARK_STRINGS - 1))
+	{
+		if (marks.hashes[slot] == hash)
+			return marks.numbers[slot];
+	}
+	if (marks.count * 2 >= MARK_STRINGS)
+	{
+		/* (full: forgotten, the numbers counted on) */
+		memset(marks.hashes, 0, sizeof(marks.hashes));
+		marks.count = 0;
+		slot = (uint32_t)hash & (MARK_STRINGS - 1);
+	}
+	marks.hashes[slot] = hash;
+	marks.numbers[slot] = marks.next++;
+	marks.count++;
+	record_body = record_data(XGPU_STREAM_MARK_STRING, sizeof(*record_body), length + 1, &data);
+	record_body->number = marks.numbers[slot];
+	record_body->length = length;
+	memcpy(data, text, length);
+	data[length] = 0;
+	record_body->data = STREAM_ADDRESS(data);
+	return marks.numbers[slot];
+}
+
+void xgpu_backend_mark_view(const char *map, unsigned long tick, long window, const float position[3],
+	const float forward[3], const float up[3], float field_of_view, const long viewport[4])
+{
+	struct xgpu_stream_mark_view *record_body;
+	uint32_t map_number;
+	int index;
+
+	if (!stream.open || stream.preparing)
+		return;
+	map_number = mark_string(map);
+	record_body = record(XGPU_STREAM_MARK_VIEW, sizeof(*record_body));
+	record_body->map = map_number;
+	record_body->tick = (uint32_t)tick;
+	record_body->window = window < 0 ? XGPU_STREAM_MARK_NONE : (uint32_t)window;
+	for (index = 0; index < 3; index++)
+	{
+		record_body->position[index] = position ? position[index] : 0.0f;
+		record_body->forward[index] = forward ? forward[index] : 0.0f;
+		record_body->up[index] = up ? up[index] : 0.0f;
+	}
+	record_body->field_of_view = field_of_view;
+	for (index = 0; index < 4; index++)
+		record_body->viewport[index] = viewport ? (int32_t)viewport[index] : 0;
+	/* (an owner is said again after a view) */
+	marks.owner_sent = FALSE;
+	marks.owner_given = TRUE;
+}
+
+void xgpu_backend_mark_owner(int kind, long id, const char *label, const char *object, const char *model,
+	const char *shader, const char *bitmap, const char *widget, const char *source)
+{
+	struct xgpu_stream_mark_owner *owner = &marks.owner;
+
+	if (!stream.open || stream.preparing)
+		return;
+	memset(owner, 0, sizeof(*owner));
+	owner->kind = kind >= 0 && kind < XGPU_STREAM_MARK_KINDS ? (uint32_t)kind : XGPU_STREAM_MARK_OTHER;
+	owner->id = id < 0 ? XGPU_STREAM_MARK_NONE : (uint32_t)id;
+	owner->label = mark_string(label);
+	owner->object = mark_string(object);
+	owner->model = mark_string(model);
+	owner->shader = mark_string(shader);
+	owner->bitmap = mark_string(bitmap);
+	owner->widget = mark_string(widget);
+	owner->source = mark_string(source);
+	marks.owner_given = TRUE;
+}
+
+/* (before a draw's records) the owner given, if it is not the last sent */
+static void marks_draw(void)
+{
+	struct xgpu_stream_mark_owner *record_body;
+
+	if (!marks.owner_given)
+		return;
+	marks.owner_given = FALSE;
+	if (marks.owner_sent && !memcmp(&marks.owner, &marks.sent, sizeof(marks.sent)))
+		return;
+	record_body = record(XGPU_STREAM_MARK_OWNER, sizeof(*record_body));
+	marks.owner.header = record_body->header;
+	*record_body = marks.owner;
+	marks.sent = marks.owner;
+	marks.owner_sent = TRUE;
 }
 
 void xgpu_backend_picture_top(int top)
@@ -1747,6 +1887,7 @@ void xgpu_backend_draw(int primitive, unsigned long count)
 
 	if (!stream.open)
 		return;
+	marks_draw();
 	vertices_ensure(sizeof(*record_body));
 	record_body = record(XGPU_STREAM_DRAW, sizeof(*record_body));
 	record_body->primitive = (uint32_t)primitive;
@@ -1761,6 +1902,7 @@ void xgpu_backend_draw_indices(int primitive, const WORD *indices, unsigned long
 
 	if (!stream.open)
 		return;
+	marks_draw();
 	data_size = carried_one(bytes);
 	vertices_ensure(sizeof(*record_body) + data_size + XGPU_STREAM_DATA_ALIGNMENT);
 	record_body = record_data(XGPU_STREAM_DRAW_INDICES, sizeof(*record_body), data_size, &place);
@@ -1778,6 +1920,7 @@ void xgpu_backend_draw_indexed(int primitive, const WORD *indices, unsigned long
 
 	if (!stream.open)
 		return;
+	marks_draw();
 	data_size = carried_one(bytes);
 	vertices_ensure(sizeof(*record_body) + data_size + XGPU_STREAM_DATA_ALIGNMENT);
 	record_body = record_data(XGPU_STREAM_DRAW_INDEXED, sizeof(*record_body), data_size, &place);
@@ -1804,6 +1947,7 @@ void xgpu_backend_draw_immediate(int primitive, const float *vertices, unsigned 
 
 	if (!stream.open)
 		return;
+	marks_draw();
 	/* the written registers' values alone, vertex by vertex (immediate
 	mode's vertices are few: lens flares, text, the HUD) */
 	changed = attributes_changed(&stream.immediate_attributes, attributes, ~registers & 0xffff);

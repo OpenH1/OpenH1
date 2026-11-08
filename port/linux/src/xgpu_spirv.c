@@ -2653,6 +2653,8 @@ static unsigned int world_ao_vector(struct module *m, int member, unsigned int i
 }
 
 static unsigned int fselect(struct module *m, unsigned int condition, unsigned int a, unsigned int b);
+static void selection_begin(struct module *m, unsigned int condition, unsigned int *merge);
+static void selection_end(struct module *m, unsigned int merge);
 
 /* the field's distance at a point (world_sdf_sample): the voxels' place
 (from the first voxel's centre, clamped to the field's edge), its cell in
@@ -2724,6 +2726,35 @@ static unsigned int world_sdf_occlusion(struct module *m, struct pixel_state *st
 			saturate(m, 1, fdiv(m, 1, fsub(m, 1, h, d), h))));
 	}
 	return fsub(m, 1, constant_float(m, 1.0f), saturate(m, 1, fmul(m, 1, constant_float(m, XGPU_WORLD_AO_K), occlusion)));
+}
+
+/* A_sdf(p, n), and where cards (a two-sided model shader's: xgpu.h's
+XGPU_WORLD_AO_INPUT_CARDS) that of the most open of the sky's direction
+(up) and the card's two faces, the first of them where alike; *n the
+direction found (world_ao_shading.c's world_ao_cards_occlusion). Its other
+two cones only for the cards' pixels */
+static unsigned int world_sdf_cards_occlusion(struct module *m, struct pixel_state *state, unsigned int p,
+	unsigned int *n, unsigned int own, unsigned int cards)
+{
+	unsigned int field = world_sdf_occlusion(m, state, p, *n, own);
+	unsigned int field_variable = local(m, &state->locals, m->t_float), normal_variable = local(m, &state->locals, m->t_v3);
+	unsigned int merge, up, sky, back, best, direction, better;
+
+	store(m, field_variable, field);
+	store(m, normal_variable, *n);
+	selection_begin(m, cards, &merge);
+	up = constant_vector(m, 3, (float[]){ 0.0f, 0.0f, 1.0f, 0.0f });
+	sky = world_sdf_occlusion(m, state, p, up, own);
+	back = world_sdf_occlusion(m, state, p, fneg(m, 3, *n), own);
+	better = compare(m, OP_F_ORD_GREATER_THAN, field, sky);
+	best = fselect(m, better, field, sky);
+	direction = select_n(m, 3, better, *n, up);
+	better = compare(m, OP_F_ORD_GREATER_THAN, back, best);
+	store(m, field_variable, fselect(m, better, back, best));
+	store(m, normal_variable, select_n(m, 3, better, fneg(m, 3, *n), direction));
+	selection_end(m, merge);
+	*n = load(m, m->t_v3, normal_variable);
+	return load(m, m->t_float, field_variable);
 }
 
 /* the shapes' occlusion, world_proxies.c's world_proxy_occlusion
@@ -3636,7 +3667,7 @@ static unsigned int world_ao_read(struct module *m, struct pixel_state *state, i
 	no lightmap: world_ao_shading.c's world_ao_proxies_walked) */
 	unsigned int dynamic = op1(m, OP_CONVERT_F_TO_S, m->t_int, extract(m, parameters1, 1));
 	unsigned int layer = extract(m, object, 1), limit = dynamic, scenery = 0, proxies;
-	unsigned int field, relative, occlusion;
+	unsigned int field = 0, relative = 0, occlusion;
 	int paged = light == XGPU_AMBIENT_OCCLUSION_LIGHT_LIGHTMAP && state->in_t[2] &&
 		state->program->stages[2].mode == XGPU_TEXTURE_PROJECT2D && state->program->stages[2].sampler == _xgpu_sampler_2d;
 
@@ -3669,17 +3700,12 @@ static unsigned int world_ao_read(struct module *m, struct pixel_state *state, i
 			limit = constant_int(m, XGPU_WORLD_AO_SHAPES);
 		}
 	}
-	proxies = world_proxies_occlusion(m, state, p, n, extract(m, object, 0), limit, constant_int(m, 0), 0);
-	if (light == XGPU_AMBIENT_OCCLUSION_LIGHT_LIGHTMAP)
-	{
-		if (scenery)
-			proxies = fmul(m, 1, proxies, scenery);
-		return ext3(m, GLSL_F_MIX, m->t_float, constant_float(m, 1.0f), fmax_scalar(m, 1, proxies, XGPU_WORLD_AO_FLOOR),
-			extract(m, parameters0, 1));
-	}
-	/* (a negative reference, a static scenery placement's own draw: the
-	field holds its own geometry, so its taps are taken from the pixel's own
-	depth in it, relative to no reference) */
+	/* (a model's field: where its reference is negative, a static scenery
+	placement's own draw, the field holds its own geometry, so its taps are
+	taken from the pixel's own depth in it, relative to no reference; a
+	two-sided shader's cards, its world_ao.w not 0, about their most open
+	direction, the shapes too) */
+	if (light != XGPU_AMBIENT_OCCLUSION_LIGHT_LIGHTMAP)
 	{
 		unsigned int baked = compare(m, OP_F_ORD_LESS_THAN, extract(m, object, 1), constant_float(m, 0.0f));
 		unsigned int field0 = world_ao_vector(m, 0, constant_int(m, 0)), field1 = world_ao_vector(m, 0, constant_int(m, 1));
@@ -3687,8 +3713,17 @@ static unsigned int world_ao_read(struct module *m, struct pixel_state *state, i
 			constant_float(m, 0.0f));
 		unsigned int reference = fselect(m, baked, constant_float(m, 1.0f), extract(m, object, 1));
 
-		field = world_sdf_occlusion(m, state, p, n, fselect(m, baked, inside, constant_float(m, 0.0f)));
+		field = world_sdf_cards_occlusion(m, state, p, &n, fselect(m, baked, inside, constant_float(m, 0.0f)),
+			compare(m, OP_F_UNORD_NOT_EQUAL, extract(m, object, 3), constant_float(m, 0.0f)));
 		relative = saturate(m, 1, fdiv(m, 1, field, fmax_scalar(m, 1, reference, XGPU_WORLD_AO_REFERENCE_LEAST)));
+	}
+	proxies = world_proxies_occlusion(m, state, p, n, extract(m, object, 0), limit, constant_int(m, 0), 0);
+	if (light == XGPU_AMBIENT_OCCLUSION_LIGHT_LIGHTMAP)
+	{
+		if (scenery)
+			proxies = fmul(m, 1, proxies, scenery);
+		return ext3(m, GLSL_F_MIX, m->t_float, constant_float(m, 1.0f), fmax_scalar(m, 1, proxies, XGPU_WORLD_AO_FLOOR),
+			extract(m, parameters0, 1));
 	}
 	field = ext3(m, GLSL_F_MIX, m->t_float, field, relative, extract(m, parameters1, 0));
 	occlusion = fmul(m, 1, ext3(m, GLSL_F_MIX, m->t_float, constant_float(m, 1.0f), field, extract(m, parameters0, 2)),
@@ -3742,6 +3777,10 @@ static unsigned int world_ao_inputs(struct module *m, struct pixel_state *state,
 		flags = op2(m, OP_BITWISE_OR, m->t_uint, flags,
 			constant_uint(m, XGPU_WORLD_AO_INPUT_LIGHTMAP | XGPU_WORLD_AO_INPUT_ALL_SHAPES));
 	}
+	/* (a two-sided model shader's cards, its world_ao.w not 0: found about
+	their most open direction) */
+	flags = op2(m, OP_BITWISE_OR, m->t_uint, flags, op3(m, OP_SELECT, m->t_uint, compare(m, OP_F_UNORD_NOT_EQUAL,
+		extract(m, object, 3), constant_float(m, 0.0f)), constant_uint(m, XGPU_WORLD_AO_INPUT_CARDS), constant_uint(m, 0)));
 	/* octahedral: n.xy / (|x| + |y| + |z|), the lower half folded over the
 	diagonals: (1 - |folded.yx|) * (folded >= 0 ? 1 : -1) */
 	folded = fdiv(m, 2, xy(m, n), splat(m, 2, fmax_scalar(m, 1, fadd(m, 1, fadd(m, 1, extract(m, absolute, 0),
@@ -5464,6 +5503,16 @@ static unsigned int world_ao_evaluate(struct module *m, struct pixel_state *stat
 	collision meshes are in the ray-traced scene) */
 	unsigned int dynamic = op3(m, OP_SELECT, m->t_int, traced, op1(m, OP_CONVERT_F_TO_S, m->t_int, extract(m, parameters1, 1)),
 		constant_int(m, 0));
+	unsigned int field0 = world_ao_vector(m, 0, constant_int(m, 0)), field1 = world_ao_vector(m, 0, constant_int(m, 1));
+	/* (a negative reference, a static scenery placement's own draw: its
+	taps from the pixel's own depth in the field, relative to none) */
+	unsigned int baked = compare(m, OP_F_ORD_LESS_THAN, value, constant_float(m, 0.0f));
+	unsigned int inside = ext2(m, GLSL_F_MIN, m->t_float, world_sdf_distance(m, state, field0, field1, p),
+		constant_float(m, 0.0f));
+	/* (a two-sided shader's cards: about their most open direction, the
+	shapes and rays too) */
+	unsigned int field = world_sdf_cards_occlusion(m, state, p, &n, fselect(m, baked, inside, constant_float(m, 0.0f)),
+		unot_zero(m, uand(m, word1, constant_uint(m, XGPU_WORLD_AO_INPUT_CARDS))));
 	unsigned int proxies = fmul(m, 1, world_proxies_occlusion(m, state, p, n, owner, limit, dynamic,
 		pass->scene ? dynamic : 0), fsub(m, 1, constant_float(m, 1.0f), pass->scene ?
 		world_ao_traced_rays(m, state, pass, p, n, pixel, op1(m, OP_BITCAST, m->t_int, uextract(m, words, 3))) :
@@ -5471,13 +5520,6 @@ static unsigned int world_ao_evaluate(struct module *m, struct pixel_state *stat
 	unsigned int lightmap = unot_zero(m, uand(m, word1, constant_uint(m, XGPU_WORLD_AO_INPUT_LIGHTMAP)));
 	unsigned int level = ext3(m, GLSL_F_MIX, m->t_float, constant_float(m, 1.0f), fmax_scalar(m, 1,
 		fmul(m, 1, proxies, value), XGPU_WORLD_AO_FLOOR), extract(m, parameters0, 1));
-	unsigned int field0 = world_ao_vector(m, 0, constant_int(m, 0)), field1 = world_ao_vector(m, 0, constant_int(m, 1));
-	/* (a negative reference, a static scenery placement's own draw: its
-	taps from the pixel's own depth in the field, relative to none) */
-	unsigned int baked = compare(m, OP_F_ORD_LESS_THAN, value, constant_float(m, 0.0f));
-	unsigned int inside = ext2(m, GLSL_F_MIN, m->t_float, world_sdf_distance(m, state, field0, field1, p),
-		constant_float(m, 0.0f));
-	unsigned int field = world_sdf_occlusion(m, state, p, n, fselect(m, baked, inside, constant_float(m, 0.0f)));
 	unsigned int relative = saturate(m, 1, fdiv(m, 1, field, fmax_scalar(m, 1, fselect(m, baked, constant_float(m, 1.0f),
 		value), XGPU_WORLD_AO_REFERENCE_LEAST)));
 	unsigned int model;

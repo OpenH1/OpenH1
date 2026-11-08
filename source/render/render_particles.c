@@ -472,6 +472,7 @@ void render_particles(
 						real total_radius = 0.0f;
 						short built_particle_count = 0;
 
+						render_marks_next(RENDER_MARK_PARTICLE, definition->bitmap.index); /* port: debug.render_marks */
 						build_sprites_begin(
 							&sprite_data,
 							render_particles_part_ends[part_index] - order_index,

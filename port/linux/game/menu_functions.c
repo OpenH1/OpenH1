@@ -399,6 +399,56 @@ static boolean profile_setting_boolean(short field)
 	return field != 0 && field != 4 && field != 5;
 }
 
+/* ---------- Advanced Graphics' RENDER RESOLUTION row: two settings as one
+spinner, a setting named "display.render_resolution" (tools/port_settings.py):
+"original", display.resolution_scaling's Xbox 640x480, or the factor of
+display.supersampling's that "native" draws at (1, the screen's pixels, to
+2); written as both (render_resolution_write) */
+
+#define RENDER_RESOLUTION_SETTING "display.render_resolution"
+
+static boolean render_resolution_text(char *text, unsigned int size, boolean default_value)
+{
+	char scaling[32];
+
+	if (!(default_value ? config_default("display.resolution_scaling", scaling, sizeof(scaling)) :
+		config_text("display.resolution_scaling", scaling, sizeof(scaling))))
+	{
+		return FALSE;
+	}
+	if (!strcmp(scaling, "original"))
+	{
+		snprintf(text, size, "%s", "original");
+		return TRUE;
+	}
+	return default_value ? config_default("display.supersampling", text, size) != 0 :
+		config_text("display.supersampling", text, size) != 0;
+}
+
+/* (each setting written only where it changes, so that one at its default
+stays at it) */
+static boolean render_resolution_write(char const *value)
+{
+	char scaling[32] = "", factor[32] = "";
+	double number, current;
+	boolean original = !strcmp(value, "original");
+
+	config_text("display.resolution_scaling", scaling, sizeof(scaling));
+	if (strcmp(scaling, original ? "original" : "native") &&
+		!config_write("display.resolution_scaling", original ? "original" : "native"))
+	{
+		return FALSE;
+	}
+	if (original)
+		return TRUE;
+	config_text("display.supersampling", factor, sizeof(factor));
+	if (!text_is_number(value, &number))
+		return FALSE;
+	if (text_is_number(factor, &current) && current == number)
+		return TRUE;
+	return config_write("display.supersampling", value) != 0;
+}
+
 /* ---------- First Person's THIS WEAPON rows (Weapon Position's): the
 offsets of the weapon the player who opened Settings holds, by its tag's
 path (config.toml's [display.viewmodel_weapon."<path>"], view_fov.c), as
@@ -464,6 +514,8 @@ static boolean setting_text(char const *name, char *text, unsigned int size, boo
 
 	if (settings_weapon_value(name) != NONE)
 		return settings_weapon_text(settings_weapon_value(name), text, size, default_value);
+	if (!strcmp(name, RENDER_RESOLUTION_SETTING))
+		return render_resolution_text(text, size, default_value);
 	if (strncmp(name, "profile.", 8))
 	{
 		if (!(default_value ? config_default(name, text, size) : config_text(name, text, size)))
@@ -522,6 +574,8 @@ static boolean setting_write(char const *name, char const *value)
 
 	if (settings_weapon_value(name) != NONE)
 		return settings_weapon_write(settings_weapon_value(name), value);
+	if (!strcmp(name, RENDER_RESOLUTION_SETTING))
+		return render_resolution_write(value);
 	if (strncmp(name, "profile.", 8))
 		return config_write(name, value);
 	for (index = 0; index < NUMBEROF(profile_settings); index++)

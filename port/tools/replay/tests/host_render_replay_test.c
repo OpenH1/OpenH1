@@ -271,7 +271,45 @@ static uint32_t rectangle(uint32_t x, uint32_t y, uint32_t width, uint32_t heigh
 	return x | y << 8 | width << 16 | height << 24;
 }
 
-static int make(const char *path, uint32_t frames)
+/* debug.render_marks' records (xgpu_stream.h): a string (its bytes inline,
+at the record's 16-byte aligned place), a view, an owner */
+static void mark_string_add(uint32_t number, const char *text)
+{
+	unsigned char bytes[256];
+	struct xgpu_stream_mark_string string;
+	uint32_t length = (uint32_t)strlen(text), offset = 16, size = (offset + length + 1 + 3) & ~3u;
+
+	memset(bytes, 0, sizeof(bytes));
+	string.header = 0;
+	string.number = number;
+	string.length = length;
+	string.data = RING_BUFFER + (position & (RING_SIZE - 1)) + offset;
+	memcpy(bytes, &string, sizeof(string));
+	memcpy(bytes + offset, text, length);
+	record_add(XGPU_STREAM_MARK_STRING, bytes, size);
+}
+
+static void mark_owner_add(uint32_t kind, uint32_t id, uint32_t label, uint32_t object, uint32_t shader,
+	uint32_t widget, uint32_t source)
+{
+	struct xgpu_stream_mark_owner owner;
+
+	memset(&owner, 0, sizeof(owner));
+	owner.kind = kind;
+	owner.id = id;
+	owner.label = label;
+	owner.object = object;
+	owner.shader = shader;
+	owner.widget = widget;
+	owner.source = source;
+	record_add(XGPU_STREAM_MARK_OWNER, &owner, sizeof(owner));
+}
+
+/* a recording of frames of rectangles: with marks (the first draw a
+world object's, the second a menu widget's, the third of no owner's: the
+owner before it ends at the view), or as a recording of version 1 (the
+stream's 21, before the marks) */
+static int make(const char *path, uint32_t frames, int with_marks, int old)
 {
 	struct host_render_record_file file;
 	struct host_render_record_block block;
@@ -280,13 +318,13 @@ static int make(const char *path, uint32_t frames)
 
 	memset(&file, 0, sizeof(file));
 	file.magic = HOST_RENDER_RECORD_MAGIC;
-	file.version = HOST_RENDER_RECORD_VERSION;
+	file.version = old ? 1 : HOST_RENDER_RECORD_VERSION;
 	file.header_size = sizeof(file);
 	file.page_size = (uint32_t)sysconf(_SC_PAGESIZE);
 	file.block_size = HOST_RENDER_RECORD_BLOCK;
 	file.ring_address = RING_ADDRESS;
 	file.ring.magic = XGPU_STREAM_MAGIC;
-	file.ring.version = XGPU_STREAM_VERSION;
+	file.ring.version = old ? XGPU_STREAM_VERSION - 1 : XGPU_STREAM_VERSION;
 	file.ring.header_size = sizeof(file.ring);
 	file.ring.buffer = RING_BUFFER;
 	file.ring.size = RING_SIZE;
@@ -322,13 +360,45 @@ static int make(const char *path, uint32_t frames)
 		clear.color[2] = 0x40 / 255.0f;
 		clear.color[3] = 1.0f;
 		record_add(XGPU_STREAM_CLEAR_TARGET, &clear, sizeof(clear));
+		if (with_marks)
+		{
+			struct xgpu_stream_mark_view view;
+
+			if (!frame)
+			{
+				mark_string_add(1, "levels\\test\\test");
+				mark_string_add(2, "warthog #2");
+				mark_string_add(3, "vehicles\\warthog\\warthog");
+				mark_string_add(4, "vehicles\\warthog\\shaders\\warthog hull");
+				mark_string_add(5, "pc\\main_menu\\board_start");
+				mark_string_add(6, "tools/port_settings.py multiplayer_files/_lobby/_lobby_board");
+				/* (a label cut in a character: not UTF-8) */
+				mark_string_add(7, "caf\xc3");
+			}
+			memset(&view, 0, sizeof(view));
+			view.map = 1;
+			view.tick = 1000 + frame;
+			view.window = 0;
+			view.position[0] = (float)frame;
+			view.forward[1] = 1.0f;
+			view.up[2] = 1.0f;
+			view.field_of_view = 1.5f;
+			view.viewport[2] = TARGET_WIDTH;
+			view.viewport[3] = TARGET_HEIGHT;
+			record_add(XGPU_STREAM_MARK_VIEW, &view, sizeof(view));
+			mark_owner_add(XGPU_STREAM_MARK_WORLD_OBJECT, 0x10002, 2, 3, 4, 0, 0);
+		}
 		memset(&draw, 0, sizeof(draw));
 		draw.primitive = 0xff0000ffu;
 		draw.count = rectangle(frame % 40, 4, 16, 8);
 		record_add(XGPU_STREAM_DRAW, &draw, sizeof(draw));
+		if (with_marks)
+			mark_owner_add(XGPU_STREAM_MARK_MENU_WIDGET, 7, 7, 0, 0, 5, 6);
 		draw.primitive = 0xff00ff00u;
 		draw.count = rectangle(20, 8, 20, 16);
 		record_add(XGPU_STREAM_DRAW, &draw, sizeof(draw));
+		if (with_marks)
+			mark_owner_add(XGPU_STREAM_MARK_OTHER, XGPU_STREAM_MARK_NONE, 0, 0, 0, 0, 0);
 		draw.primitive = 0xff000000u | frame << 16 | 0x20 << 8 | 0x40;
 		draw.count = rectangle(0, 26, 64, 6);
 		record_add(XGPU_STREAM_DRAW, &draw, sizeof(draw));
@@ -528,8 +598,9 @@ int main(int argc, char *argv[])
 {
 	if (argc == 5 && !strcmp(argv[1], "bench"))
 		return bench(argv[2], (uint32_t)atoi(argv[3]), (uint32_t)atoi(argv[4]));
-	if (argc == 4 && !strcmp(argv[1], "make"))
-		return make(argv[2], (uint32_t)atoi(argv[3]));
+	if (argc >= 4 && !strcmp(argv[1], "make"))
+		return make(argv[2], (uint32_t)atoi(argv[3]), argc > 4 && !strcmp(argv[4], "marks"),
+			argc > 4 && !strcmp(argv[4], "old"));
 	if (argc == 3 && !strcmp(argv[1], "unit"))
 	{
 		lz4_test();

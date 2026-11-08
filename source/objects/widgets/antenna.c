@@ -439,6 +439,7 @@ static void antenna_render_proper(
 			}
 		}
 
+		render_marks_next(RENDER_MARK_EFFECT, definition->texture.index); /* port: debug.render_marks */
 		build_sprites_begin(
 			&sprite_data,
 			(short)vertices->count,

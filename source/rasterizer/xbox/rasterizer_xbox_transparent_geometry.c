@@ -1555,6 +1555,11 @@ void rasterizer_transparent_geometry_group_draw(
 
 			if (!group->shader)
 			{
+				/* port: debug.render_marks: an object's widget (its antenna,
+				flag, glow, light volume, lightning: port/linux/game/
+				render_marks.c) */
+				render_marks_transparent(group, group->geometry_flags, group->first_triangle_index, NULL,
+					FALSE, FALSE, FALSE);
 				group->render_proc(
 					group->first_triangle_index,
 					group->triangle_count);
@@ -1649,6 +1654,12 @@ void rasterizer_transparent_geometry_group_draw(
 
 					/* port: (display.hdr's, until the group is drawn) */
 					halo_hdr_draw_kind(transparent_hdr_kind(group));
+					/* port: debug.render_marks: the group's object, shader or
+					maker (port/linux/game/render_marks.c) */
+					render_marks_transparent(group, group->geometry_flags, group->object_index, group->shader,
+						TEST_FLAG(group->geometry_flags, _rasterizer_geometry_first_person_bit),
+						TEST_FLAG(group->geometry_flags, _rasterizer_geometry_sky_bit),
+						group->shader->base.type == _shader_type_transparent_water);
 					switch (group->shader->base.type)
 					{
 						case _shader_type_model:

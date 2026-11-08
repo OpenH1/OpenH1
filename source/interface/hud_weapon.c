@@ -2158,6 +2158,7 @@ void hud_render_weapon_interface(
 			weapon_index,
 			&weapon_state);
 		hud_index = definition->weapon.interface_definition.hud_interface.index;
+		render_marks_hud(hud_index, "weapon interface"); /* port: debug.render_marks */
 		if (hud_index != NONE)
 		{
 			crosshairs_draw(

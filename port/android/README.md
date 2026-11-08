@@ -691,7 +691,8 @@ Android build defines all of (`tools/android_build.py`):
 - `HALO_VULKAN`: the renderer's backend is the host's, Vulkan's, which the
   guest's frames reach as the command stream;
 - `HALO_ANDROID`: the app (its display, input, files and lifecycle), with
-  the anti-aliasing a phone's GPU can spare (`"ssaa2x"` gives none).
+  the anti-aliasing a phone's GPU can spare (no `display.supersampling`;
+  an older `"ssaa2x"` is read as `"off"`).
 
 `HALO_ARM64_GUEST`, the name of `HALO_GUEST` before, is still defined:
 `HALO_GUEST` on AArch64.

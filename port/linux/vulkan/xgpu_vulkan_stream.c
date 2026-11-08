@@ -1588,6 +1588,7 @@ static int uniforms_update(int effect)
 		to->world_ao[0] = from->world_ao[0];
 		to->world_ao[1] = from->world_ao[1];
 		to->world_ao[2] = from->world_ao[2];
+		to->world_ao[3] = from->world_ao[3];
 		memcpy(to->blend_constant, stream.dynamic.blend_color, sizeof(to->blend_constant));
 		for (stage = 0; stage < 4; stage++)
 		{
