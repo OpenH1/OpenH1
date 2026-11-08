@@ -73,3 +73,47 @@ def test_demo_info_reads_a_demo(demo_files_test, tmp_path):
     output = subprocess.run([sys.executable, str(ROOT / "tools" / "demo_info.py"), str(path)], capture_output=True,
                             text=True, check=True).stdout
     assert "map levels\\test\\demo\\demo" in output
+
+
+def test_demo_of_a_killed_recorder_plays_to_its_last_whole_block(demo_files_test, tmp_path):
+    """a recorder killed as it writes (a crash, SIGKILL; the game's own SIGINT
+    and SIGTERM end the demo as it quits) leaves its whole blocks readable: the
+    index the playback makes (demo.c's demo_playback_open, which demo_info.py
+    reads as) stops at the first block cut short, and every block before it
+    unpacks to whole records"""
+    import signal
+    import time
+
+    sys.path.insert(0, str(ROOT / "tools"))
+    import demo_info
+
+    process = subprocess.Popen([str(demo_files_test), str(tmp_path), "killed"], stdout=subprocess.PIPE, text=True)
+    path = Path(process.stdout.readline().strip())
+    # (killed once some blocks are written, most likely in the middle of one)
+    deadline = time.time() + 30
+    while time.time() < deadline and (not path.exists() or path.stat().st_size < 3 << 20):
+        time.sleep(0.01)
+    process.send_signal(signal.SIGKILL)
+    process.wait(timeout=30)
+    data = path.read_bytes()
+    assert len(data) >= 3 << 20
+
+    def whole_blocks(cut):
+        demo = demo_info.Demo(cut)
+        ticks = 0
+        for _, kind, record in demo.records("R"):
+            assert kind in "TP"
+            ticks += kind == "T"
+        return demo, ticks
+
+    demo, ticks = whole_blocks(data)
+    assert len(demo.blocks) >= 2 and ticks > 0
+    assert [block[1] for block in demo.blocks] == [index * 30 for index in range(len(demo.blocks))]
+    # (and cut anywhere, as the kill could have: the blocks before the cut
+    # play, none is taken for damaged)
+    offsets = [512 + 20 * index for index in range(3)] + list(range(600, len(data), max(1, len(data) // 97)))
+    for offset in offsets:
+        cut_demo, cut_ticks = whole_blocks(data[:offset])
+        assert len(cut_demo.blocks) <= len(demo.blocks)
+        assert all(a[:4] == b[:4] for a, b in zip(cut_demo.blocks, demo.blocks))
+        assert cut_ticks <= ticks

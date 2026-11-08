@@ -240,7 +240,27 @@ recording, every tick and every one of the demo's own hashes:
 | Slayer, a player and 3 bots, 60 Hz (twice) | 2460 each | 246 of 246 each |
 | Slayer, a player and 3 bots, 120 Hz (twice) | 2460 each | 246 of 246 each |
 | Slayer, a player and 7 bots, 120 Hz | 2460 | 246 of 246 |
+| Slayer, a player and 7 bots, 120 Hz, 2.7 minutes (twice) | 4800 each | 480 of 480 each |
+| Slayer, a player and 7 bots, 60 Hz, 2.7 minutes (twice) | 4800 each | 480 of 480 each |
 | Blood Gulch hosted, a client, 120 Hz, the network test's shots and kills, 2.75 minutes (four) | 4950 each | 495 of 495 each |
+
+(A tick is the game's 30th of a second at every rate; at 60 and 120 it
+runs in 2 or 4 sub-steps. 4800 ticks are 160 seconds.)
+
+At 60 and 120 a particle takes the frames' seed now (below), so a game
+differs from a build before it in its local seed; nothing another machine
+has reads that seed (each machine makes its own particles and effects, and
+the local seed is never sent). `tools/net_compare.py` with this build and
+master's, hosted at 120 Hz with three bots, each build hosting in turn
+(`--swap`), 94 seconds compared each: both in step (drift 4 and 5 ticks of
+2600 apart, largest 0.003 world units, as two builds alike have).
+
+A recorder killed as it plays (the timeout's SIGINT in these runs, which
+stops the game at once; a crash) leaves a demo whose whole blocks play:
+the playback's index stops at a block cut short, and a recording that ends
+inside a tick ends its playback there ("the file ends there", not a damaged
+record; every run above ended so). `tools/test_demo_files.py` kills a
+writer as it writes and reads what it left, cut anywhere.
 
 Before these fixes the same runs parted: Slayer with three bots after 17
 to 38 seconds in each of four runs (a speaker's mouth), with five or seven

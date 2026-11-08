@@ -261,11 +261,60 @@ static void test_retention(void)
 	CHECK(demo_files_list(entries, DEMO_FILES_MAXIMUM_LISTED) == 0);
 }
 
+/* ("killed": a recorder that never ends its demo, the test's to kill: blocks
+of tick records written on and on, its path said first) */
+static void test_killed(void)
+{
+	enum { SIZE = 256 << 10 };
+	unsigned char header[512];
+	char folder[512], path[768];
+	struct demo_writer *writer;
+	unsigned char *block = demo_files_alloc(SIZE);
+	unsigned long index;
+
+	if (!block || !demo_files_folder(folder, sizeof(folder), 0))
+		exit(2);
+	snprintf(path, sizeof(path), "%s/20261108-020000-killed.demo", folder);
+	memset(header, 0, sizeof(header));
+	memcpy(header, "OH1DEMO", 8);
+	header[8] = 2;
+	snprintf((char *)header + 128, 128, "levels\\test\\demo\\demo");
+	writer = demo_writer_open(path, header, sizeof(header));
+	if (!writer)
+		exit(2);
+	printf("%s\n", path);
+	fflush(stdout);
+	for (index = 0;; index++)
+	{
+		unsigned long position = 0;
+		unsigned long seed = 777 + index;
+
+		/* (a second's ticks, each with bytes that pack poorly) */
+		while (position + 5 + 8 + 5 + 4096 <= SIZE)
+		{
+			unsigned char tick[8] = { (unsigned char)index, (unsigned char)(index >> 8), 0, 0, 120, 0, 0, 0 };
+			unsigned char noise[4096];
+			unsigned long byte_index;
+
+			for (byte_index = 0; byte_index < sizeof(noise); byte_index++)
+			{
+				seed = seed * 1103515245UL + 12345UL;
+				noise[byte_index] = (unsigned char)(seed >> 16);
+			}
+			position += record(block + position, 'T', tick, sizeof(tick));
+			position += record(block + position, 'P', noise, sizeof(noise));
+		}
+		demo_writer_block(writer, 'R', index * 30, block, position, 0);
+	}
+}
+
 int main(int argc, char **argv)
 {
 	if (argc < 2)
 		return 2;
 	data_root = argv[1];
+	if (argc >= 3 && !strcmp(argv[2], "killed"))
+		test_killed();
 	test_write_and_read();
 	/* ("write": the demo left for tools/demo_info.py) */
 	if (argc < 3 || strcmp(argv[2], "write"))

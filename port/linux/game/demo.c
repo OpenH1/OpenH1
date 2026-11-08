@@ -2425,8 +2425,15 @@ static void demo_playback_substep_end(
 
 	if (type != 'U' || length < 2 || bytes[0] != substep_index || bytes[1] != substep_count)
 	{
-		platform_log("demos: a %c record where the sub-step %d of %d was looked for", type ? type : '0',
-			substep_index, substep_count);
+		/* (a recording cut short in a tick, its last whole block's, ends
+		there) */
+		if (!type)
+		{
+			demo_playback_stop("the file ends there", FALSE);
+			return;
+		}
+		platform_log("demos: a %c record where the sub-step %d of %d was looked for", type, substep_index,
+			substep_count);
 		demo_playback_stop("a damaged record (no sub-step where the recording's was)", TRUE);
 		return;
 	}
