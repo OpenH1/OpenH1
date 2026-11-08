@@ -275,6 +275,10 @@ enum
 unit_cause_player_melee_damage), to the target's surface */
 #define BOTS_MELEE_REACH 0.8f
 
+/* within this many degrees of its mark a bot's hand follows it; further
+off it flicks (bots_aim_plan) */
+#define BOTS_FLICK_DEGREES 3.0f
+
 /* the play a bot is in the middle of, close up (bots_bot_fight) */
 enum
 {
@@ -359,18 +363,38 @@ struct bots_skill_definition
 	crossing its view at a run), each also as the enemy gives itself away */
 	real camo_notice;
 	real camo_lose;
+	/* the hand's lag on a target crossing its view (seconds: it trails one
+	by its crossing's speed times this, as people's aim does: measured in an
+	internet game, 2.8 degrees behind one crossing at 15 to 40 degrees a
+	second, 5.1 at 40 to 80), and the wander the crossing adds (radians for
+	a radian a second) */
+	real track_lag_seconds;
+	real track_noise;
+	/* a flick (bots_aim_plan): its end off the mark by this part of its
+	size, about (the spread), and past it by this part on the whole (the
+	bias); the seconds before it corrects (a sub-movement after it sees
+	where the last one ended) */
+	real flick_spread;
+	real flick_bias;
+	real correction_seconds;
+	/* the chance it takes a second look at a new target before its hand
+	moves (a hesitation: bots_reaction_ticks) */
+	real hesitate_chance;
+	/* how far off its judgement of a blow's reach is (a part of the reach,
+	about: bots_blow_judge) */
+	real blow_misjudge;
 };
 
 static struct bots_skill_definition const bots_skills[NUMBER_OF_BOTS_SKILLS] =
 {
-	{ "easy", 0.55f, 30.0f, 100.0f, 12.0f, 1.4f, 8.0f, 7.0f, 0.45f, 1.8f, 4.0f, 0.70f, 1.5f, 0.6f, 2.2f, 0.3f, 0.20f, 0.10f,
-		6, 14, 0.35f, 0.60f, 0.40f, 0.5f, 1.2f },
-	{ "normal", 0.36f, 42.0f, 120.0f, 7.0f, 0.9f, 13.0f, 9.0f, 0.6f, 1.1f, 3.0f, 0.80f, 2.2f, 0.4f, 1.8f, 0.7f, 0.40f, 0.25f,
-		9, 9, 0.6f, 0.40f, 0.65f, 0.8f, 0.8f },
-	{ "heroic", 0.28f, 50.0f, 140.0f, 4.0f, 0.6f, 20.0f, 15.0f, 0.65f, 0.5f, 1.8f, 0.88f, 3.0f, 0.15f, 1.5f, 0.8f, 0.60f, 0.40f,
-		12, 6, 0.85f, 0.30f, 0.85f, 1.1f, 0.55f },
-	{ "legendary", 0.22f, 60.0f, 160.0f, 2.2f, 0.35f, 30.0f, 20.0f, 1.0f, 0.25f, 1.2f, 0.95f, 4.0f, 0.05f, 1.25f, 1.0f, 0.75f,
-		0.50f, 16, 4, 1.0f, 0.20f, 1.00f, 1.5f, 0.35f },
+	{ "easy", 0.70f, 30.0f, 100.0f, 12.0f, 1.4f, 8.0f, 7.0f, 0.65f, 1.1f, 4.0f, 0.70f, 1.5f, 0.6f, 1.6f, 0.3f, 0.20f,
+		0.10f, 6, 14, 0.35f, 0.60f, 0.40f, 0.5f, 1.2f, 0.22f, 0.06f, 0.16f, 0.05f, 0.20f, 0.30f, 0.35f },
+	{ "normal", 0.48f, 42.0f, 120.0f, 7.0f, 0.9f, 13.0f, 9.0f, 0.85f, 0.6f, 3.0f, 0.80f, 2.2f, 0.4f, 1.3f, 0.7f, 0.40f,
+		0.25f, 9, 9, 0.6f, 0.40f, 0.65f, 0.8f, 0.8f, 0.18f, 0.05f, 0.12f, 0.03f, 0.16f, 0.20f, 0.25f },
+	{ "heroic", 0.38f, 50.0f, 140.0f, 4.0f, 0.6f, 20.0f, 15.0f, 0.9f, 0.45f, 1.8f, 0.88f, 3.0f, 0.15f, 1.2f, 0.8f,
+		0.60f, 0.40f, 12, 6, 0.85f, 0.30f, 0.85f, 1.1f, 0.55f, 0.14f, 0.045f, 0.09f, 0.025f, 0.13f, 0.12f, 0.18f },
+	{ "legendary", 0.30f, 60.0f, 160.0f, 2.2f, 0.35f, 30.0f, 20.0f, 1.0f, 0.3f, 1.2f, 0.95f, 4.0f, 0.05f, 1.25f, 1.0f,
+		0.75f, 0.50f, 16, 4, 1.0f, 0.20f, 1.00f, 1.5f, 0.35f, 0.11f, 0.04f, 0.07f, 0.02f, 0.10f, 0.06f, 0.12f },
 };
 
 struct bots_bot
@@ -383,8 +407,10 @@ struct bots_bot
 	real yaw;
 	real pitch;
 	/* debug.bot_player's (the trailer's camera: its own weapon, vehicle and
-	grenades, a steady hand) */
+	grenades), and its steady hand (not with debug.bot_player_skill: its
+	aim and blows a bot's of the skill's) */
 	boolean smooth;
+	boolean steady;
 	/* how fast its aim turns now (radians a second), carried from tick to
 	tick: it turns as a player's hand does (bots_turn) */
 	real yaw_rate;
@@ -417,6 +443,11 @@ struct bots_bot
 	real wander_spin;
 	real wander_radius;
 	real form;
+	/* the flick its hand makes (bots_aim_plan): where it ends, off the mark
+	(radians, across and up), and the tick before which it makes no other */
+	real plan_yaw;
+	real plan_pitch;
+	long plan_tick;
 	/* the target's motion as the bot has taken it in (world units a tick);
 	a change of it seen and not reacted to yet (its tick, NONE: none); how
 	far the target has gone from where that motion had it, which the aim is
@@ -526,6 +557,12 @@ struct bots_bot
 	long press_until_ticks[4];
 	long grenade_tick;
 	long melee_tick;
+	/* a blow (bots_blow_judge): the target it judges the reach of, its
+	judgement (the reach's part it strikes from), and when its target came
+	within that (NONE: not) and it may strike */
+	long blow_player_index;
+	real blow_judge;
+	long blow_ready_tick;
 	long item_check_tick;
 
 	/* the buttons held last tick (a press is a tick held, then released) */
@@ -1045,6 +1082,13 @@ static real bots_random_real(struct bots_bot *bot)
 static real bots_random_signed(struct bots_bot *bot)
 {
 	return bots_random_real(bot) * 2.0f - 1.0f;
+}
+
+/* about 0, spread as a normal number of spread 1 is (the sum of three of
+its random numbers: -3 to 3) */
+static real bots_random_normal(struct bots_bot *bot)
+{
+	return (bots_random_real(bot) + bots_random_real(bot) + bots_random_real(bot) - 1.5f) * 2.0f;
 }
 
 /* seconds about a median, spread as people's times are (a log-normal
@@ -4036,6 +4080,8 @@ static void bots_bot_reset(struct bots_bot *bot, long player_index, long bot_ind
 	bot->motion_change_tick = NONE;
 	bot->aimed_since_tick = NONE;
 	bot->opened_player_index = NONE;
+	bot->blow_player_index = NONE;
+	bot->blow_ready_tick = NONE;
 	bot->tally_weapon_index = NONE;
 	bot->tally_camo_state = NONE;
 	bot->tally_band = NONE;
@@ -4046,7 +4092,9 @@ static void bots_bot_reset(struct bots_bot *bot, long player_index, long bot_ind
 	bot->vehicle_driverless_tick = NONE;
 	bot->drive_circle_sign = 1.0f;
 	bot->smooth = bot_index == BOTS_MAXIMUM;
-	if (bot->smooth)
+	/* (debug.bot_player_skill: its aim and blows a bot's of the skill's) */
+	bot->steady = bot->smooth && !config_boolean("debug.bot_player_skill");
+	if (bot_index == BOTS_MAXIMUM)
 	{
 		platform_log("bots: the first player played by a bot (debug.bot_player): weapon \"%s\", vehicle \"%s\"",
 			config_string("debug.bot_player_weapon"), config_string("debug.bot_player_vehicle"));
@@ -4080,31 +4128,41 @@ static void bots_turn(struct bots_bot *bot, real yaw_off, real pitch_off, real t
 
 /* ---------- the aim's hand
 
-A bot misses as a player does: its aim error on taking a target settles
-while it keeps the target in sight, but never below a slow wander of its
-skill's size (scaled by its form, a slow streak of good and bad stretches,
-and by its own moves: walking, a jump); a hit knocks its aim off (the
-flinch, more for its shield popped); a change of the target's motion (a
-strafe the other way, a jump, a stop) is reacted to only after two fifths of
-its reaction time, its aim going on where the old motion led until then, and the error
-grows as it takes the target in again. Its hand (bots_turn) flicks past a
-target and comes back, trails one crossing its view faster than it follows,
-and it fires while its aim still closes on the target (the fire cone). All
-of it is the bot's own random numbers and the game state at the tick. */
+A bot misses as a player does, measured against people's play logs
+(tools/play_log/fights.py): its aim error on taking a target settles while
+it keeps the target in sight, but never below a slow wander of its skill's
+size (scaled by its form, a slow streak of good and bad stretches, by its
+own moves: walking, a jump, by the target's crossing of its view and by
+its distance far off); a hit knocks its aim off (the flinch, more for its
+shield popped); a change of the target's motion (a strafe the other way, a
+jump, a stop) is reacted to only after two fifths of its reaction time, its
+aim going on where the old motion led until then, and the error grows as
+it takes the target in again. Its hand turns to a target in a flick that
+ends off the mark, past it more often than short, and corrects in smaller
+turns after it (bots_aim_plan), trails a target crossing its view by its
+lag (people's aim is 3 to 5 degrees behind one crossing at 20 to 60
+degrees a second), and it fires while its aim is on the target as it sees
+it (the fire cone), which is behind the target for that lag. A target out
+of its sight since its last look it aims at where it saw it, gone on as it
+was going, not through the wall. All of it is the bot's own random numbers
+and the game state at the tick. */
 
 /* a tick of the aim's error while the bot fights: the error it took the
 target with (and its flinches) settles in its skill's time; its wander
 never does: a point going round the mark, never nearer than 0.4 of the
-floor's size (its form's and disturbance's times: 1 standing still), whose
+floor's size (its disturbance's times: 1 standing still), and more as the
+target crosses its view (crossing, radians a second: the skill's track
+noise of it), its form's times, whose
 way turns smoothly, about a turn a few seconds, so that the aim wobbles
 slowly as a hand's does. A camouflaged target's blur (bots_camo_blur; 1
 for one not) makes the wander that many times as large and the settling
 that many times as slow */
 static void bots_aim_settle(struct bots_bot *bot, struct bots_skill_definition const *skill, real disturbance,
-	real blur)
+	real blur, real crossing)
 {
 	real settle = (real)exp(-1.1f / (skill->aim_settle_seconds * blur * TICKS_PER_SECOND));
-	real size = skill->aim_floor_degrees * BOTS_DEGREES * bot->form * disturbance * blur;
+	real size = (skill->aim_floor_degrees * BOTS_DEGREES * disturbance + skill->track_noise * crossing) * bot->form *
+		blur;
 	real radius;
 
 	bot->aim_error_yaw *= settle;
@@ -4138,6 +4196,43 @@ static void bots_aim_flinch(struct bots_bot *bot, struct bots_skill_definition c
 
 	bot->aim_error_yaw += side * kick * (0.6f + 0.4f * bots_random_real(bot));
 	bot->aim_error_pitch += kick * (0.3f + 0.4f * bots_random_real(bot));
+}
+
+/* a flick of the bot's hand, as a person's is: a quick turn toward the
+mark (the offset from its aim, radians) that ends off it, past it more
+often than short, by a part of the turn's size (the skill's flick spread
+and bias, along the turn and half of it across), and once that turn has
+run its course and the bot has seen where it ended (the skill's correction
+time), another, smaller, from there: a flick and its corrective
+sub-movements. Within BOTS_FLICK_DEGREES of the mark once a turn has run
+its course, the hand follows the mark instead, the last turn's miss let go
+over the correction time. The plan is
+an offset from the mark (it goes with a moving target), which the bot's
+hand turns to (bots_bot_fight) */
+static void bots_aim_plan(struct bots_bot *bot, struct bots_skill_definition const *skill, real yaw_off, real pitch_off,
+	long now)
+{
+	real size = (real)sqrt(yaw_off * yaw_off + pitch_off * pitch_off);
+	real along, across;
+
+	if (now < bot->plan_tick)
+		return;
+	if (size < BOTS_FLICK_DEGREES * BOTS_DEGREES)
+	{
+		real keep = (real)exp(-1.0f / (skill->correction_seconds * TICKS_PER_SECOND));
+
+		bot->plan_yaw *= keep;
+		bot->plan_pitch *= keep;
+		return;
+	}
+	along = size * (skill->flick_bias + skill->flick_spread * bots_random_normal(bot));
+	across = size * skill->flick_spread * 0.5f * bots_random_normal(bot);
+	bot->plan_yaw = (yaw_off * along - pitch_off * across) / size;
+	bot->plan_pitch = (pitch_off * along + yaw_off * across) / size;
+	/* (the turn's time, until its spring has all but come to rest, and
+	the correction's after it) */
+	bot->plan_tick = now + (long)((MIN(6.0f / skill->aim_frequency, 0.5f) +
+		bots_random_seconds(bot, skill->correction_seconds, 0.3f, 0.06f, 0.5f)) * TICKS_PER_SECOND + 0.5f);
 }
 
 /* the target's motion (its velocity, world units a tick) as the bot takes
@@ -4288,6 +4383,36 @@ a few ticks after the press) */
 static real bots_strike_reach(real target_radius, boolean charging)
 {
 	return BOTS_MELEE_REACH + MIN(target_radius, 0.4f) + (charging ? 0.3f : 0.0f);
+}
+
+/* whether the bot strikes its target now, a blow's reach (bots_strike_reach)
+and that close (eye to the target's middle): as a person judges a blow,
+from where it believes the target within reach, off by its skill's
+misjudgement (more often too far than too near: a whiff), and only once it
+has taken in that the target is there (half its reaction time, about); a
+new judgement for each target and after each blow */
+static boolean bots_blow_ready(struct bots_bot *bot, struct bots_skill_definition const *skill, real reach, real close,
+	long now)
+{
+	if (bot->blow_player_index != bot->target_player_index)
+	{
+		real judge = 1.0f + skill->blow_misjudge * (bots_random_normal(bot) + 0.5f);
+
+		bot->blow_player_index = bot->target_player_index;
+		bot->blow_judge = PIN(judge, 0.6f, 1.8f);
+		bot->blow_ready_tick = NONE;
+	}
+	if (close >= reach * bot->blow_judge)
+	{
+		bot->blow_ready_tick = NONE;
+		return FALSE;
+	}
+	if (bot->blow_ready_tick == NONE)
+	{
+		bot->blow_ready_tick = now +
+			(long)(bots_random_seconds(bot, skill->reaction_seconds * 0.5f, 0.4f, 0.05f, 0.6f) * TICKS_PER_SECOND + 0.5f);
+	}
+	return now >= bot->blow_ready_tick;
 }
 
 /* (the aim's tally) the rounds the bot's weapon fired since the last tick,
@@ -4500,10 +4625,16 @@ skill's reaction about, spread as people's are (measured in an internet
 game: from an enemy coming within 25 degrees of a person's aim to the aim
 within 4 of it, 0.5 seconds the median, a quarter under 0.13, a quarter over
 1; the turn's own time is the hand's, bots_turn), never under 0.12 seconds
-nor over 1.5 */
+nor over 1.5; and now and then (its skill's hesitation) a fifth of a second
+to three fifths more, as a person takes a second look */
 static long bots_reaction_ticks(struct bots_bot *bot, struct bots_skill_definition const *skill)
 {
-	return (long)(bots_random_seconds(bot, skill->reaction_seconds, 0.5f, 0.12f, 1.5f) * TICKS_PER_SECOND + 0.5f);
+	real seconds = bots_random_seconds(bot, skill->reaction_seconds, 0.5f, 0.12f, 1.5f);
+
+	/* (now and then a second look first: a hesitation) */
+	if (bots_random_real(bot) < skill->hesitate_chance)
+		seconds += 0.2f + 0.4f * bots_random_real(bot);
+	return (long)(seconds * TICKS_PER_SECOND + 0.5f);
 }
 
 /* looking for enemies (every third tick, the bots in turn), and forgetting
@@ -4608,8 +4739,9 @@ static boolean bots_known_threat(struct bots_bot *bot, struct bots_tick *tick, r
 }
 
 /* close up, and the grenades: the plays a player makes, each started by
-the fight's situation and the bot's random numbers, and the blow at a
-blow's reach (bots_strike_reach) with a weapon that strikes:
+the fight's situation and the bot's random numbers, and the blow at the
+reach the bot judges a blow's (bots_blow_ready: a person's judgement, now
+and then too far, a whiff) with a weapon that strikes:
 - a grenade, then shooting: a target newly fought at middle range (6 to 20
   units) whose shield is whole, now and then (the skill's grenade chance);
 - a grenade, then in for a blow: a target 2 to 5.5 units off whose shield
@@ -4696,15 +4828,19 @@ static void bots_bot_fight_close(struct bots_bot *bot, struct bots_tick *tick, s
 			}
 		}
 	}
-	/* the blow, at its reach (further charging in) */
+	/* the blow, at its reach as the bot judges it (further charging in) */
 	charging = now < bot->combo_until_tick &&
 		(bot->combo == _bots_combo_grenade_blow || bot->combo == _bots_combo_shoot_blow);
 	if (kind && kind->can_strike && on_foot && now >= bot->melee_tick &&
-		close < bots_strike_reach(target_object->object.bounding_sphere_radius, charging))
+		(bot->steady ? close < bots_strike_reach(target_object->object.bounding_sphere_radius, charging) :
+			bots_blow_ready(bot, skill, bots_strike_reach(target_object->object.bounding_sphere_radius, charging), close,
+				now)))
 	{
 		tick->flags |= FLAG(_unit_control_use_equipment_bit);
 		tick->flags &= ~FLAG(_unit_control_weapon_primary_trigger_bit);
 		bot->melee_tick = now + TICKS_PER_SECOND;
+		/* (the next blow judged again) */
+		bot->blow_player_index = NONE;
 		bots_globals.blows++;
 		if (bot->combo == _bots_combo_grenade_blow || bot->combo == _bots_combo_shoot_blow)
 			bot->combo_until_tick = now;
@@ -4763,6 +4899,11 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 	long reaction_ticks = bot->reaction_ticks;
 	long now = tick->now;
 	real desired_yaw, desired_pitch, dx, dy, dz, horizontal, turn, yaw_off, pitch_off, cone;
+	real target_yaw, target_pitch, cross_yaw = 0.0f, cross_pitch = 0.0f, crossing, seen_yaw, seen_pitch;
+	/* (out of sight since its last look: the target where the bot last saw
+	it, gone on as it was going) */
+	boolean unseen = !bot->steady && now - bot->target_seen_tick > 3;
+	real_vector3d middle;
 	boolean new_target = bot->target_aim_tick != now - 1 || bot->target_first_seen_tick == now;
 	short part;
 	struct bots_weapon_kind const *kind = tick->weapon_index != NONE ?
@@ -4777,6 +4918,19 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 
 	tick->fighting = TRUE;
 	bots_tick_eye(tick);
+	/* (the target's middle from its place, kept to aim at where it was
+	seen) */
+	middle.i = target_object->object.bounding_sphere_center.x - target_object->object.position.x;
+	middle.j = target_object->object.bounding_sphere_center.y - target_object->object.position.y;
+	middle.k = target_object->object.bounding_sphere_center.z - target_object->object.position.z;
+	if (unseen)
+	{
+		real gone = (real)MIN(now - bot->target_seen_tick, TICKS_PER_SECOND);
+
+		aim_point.x = bot->target_last_position.x + middle.i + bot->seen_velocity.i * gone;
+		aim_point.y = bot->target_last_position.y + middle.j + bot->seen_velocity.j * gone;
+		aim_point.z = bot->target_last_position.z + middle.k + bot->seen_velocity.k * gone;
+	}
 	/* (a camouflaged target: the aim blurred, bots_camo_blur) */
 	if (bots_camo_sight_get(bot, skill, &tick->eye, target_player->unit_index, now,
 		now - bot->hurt_tick < TICKS_PER_SECOND * 2, &camo))
@@ -4806,13 +4960,19 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 	/* (where its weapon is best aimed: the head, the feet, the body;
 	debug.bot_player's goes for the head always) */
 	part = bots_aim_point_kind(family, target_object->object.shield_vitality,
-		target_object->object.parent_object_index != NONE, bot->smooth || bots_aim_head_wanted(bot, skill, now, new_target));
-	if (part == _bots_aim_head)
+		target_object->object.parent_object_index != NONE, bot->steady || bots_aim_head_wanted(bot, skill, now, new_target));
+	if (part == _bots_aim_head && !unseen)
 		unit_get_head_position(target_player->unit_index, &aim_point);
+	/* (the body: a tenth of a unit over its middle, the chest, where people
+	aim: measured, their aim at 10 to 20 units a tenth of a unit over the
+	bots' on its middle) */
+	else if (part == _bots_aim_body && target_object->object.parent_object_index == NONE)
+		aim_point.z += 0.1f;
 	else if (part == _bots_aim_feet)
 	{
-		aim_point = target_object->object.position;
-		aim_point.z += 0.05f;
+		aim_point.x -= middle.i;
+		aim_point.y -= middle.j;
+		aim_point.z -= middle.k - 0.05f;
 	}
 	/* (leading a moving target by the projectile's flight) */
 	if (tick->weapon_index != NONE && skill->lead > 0.0f)
@@ -4835,45 +4995,58 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 	dy = aim_point.y - tick->eye.y;
 	dz = aim_point.z - tick->eye.z;
 	horizontal = (real)sqrt(dx * dx + dy * dy);
+	/* how fast the target crosses its view (radians a second), as much
+	and as fast as its hand follows (a faster target is trailed) */
+	target_yaw = (real)atan2(dy, dx);
+	target_pitch = (real)atan2(dz, horizontal);
+	if (bot->target_aim_tick == now - 1)
+	{
+		real gain = bot->steady ? 1.0f : skill->track_gain, most = bot->steady ? 6.0f : skill->track_most;
+
+		cross_yaw = PIN(bots_angle_difference(target_yaw, bot->target_yaw) * TICKS_PER_SECOND * gain, -most, most);
+		cross_pitch = PIN((target_pitch - bot->target_pitch) * TICKS_PER_SECOND * gain, -most, most);
+	}
+	bot->target_yaw = target_yaw;
+	bot->target_pitch = target_pitch;
+	bot->target_aim_tick = now;
+	crossing = (real)sqrt(cross_yaw * cross_yaw + cross_pitch * cross_pitch);
 	/* the aim error settles while the target stays in sight, but not its
-	wander, which its own moves make larger (walking, a jump) */
+	wander, which its own moves make larger (walking, a jump), and the
+	target's crossing of its view, and its distance past 30 units (a small
+	mark: people's aim is a third worse at 35 units than at 20) */
 	{
 		real_vector3d const *own = tick->vehicle_index != NONE ?
 			&object_get(tick->vehicle_index)->object.translational_velocity : &tick->object->object.translational_velocity;
 		struct biped_datum *biped = biped_try_and_get(tick->player->unit_index);
 		real disturbance = (1.0f + (real)sqrt(own->i * own->i + own->j * own->j) * 3.0f +
-			(biped && TEST_FLAG(biped->biped.flags, _biped_airborne_bit) ? 1.5f : 0.0f)) * (tick->crouching ? 0.75f : 1.0f);
+			(biped && TEST_FLAG(biped->biped.flags, _biped_airborne_bit) ? 1.5f : 0.0f)) * (tick->crouching ? 0.75f : 1.0f) *
+			(1.0f + MAX(tick->target_distance - 30.0f, 0.0f) / 40.0f);
 
-		bots_aim_settle(bot, skill, disturbance, blur);
+		bots_aim_settle(bot, skill, disturbance, blur, bot->steady ? 0.0f : crossing);
 	}
-	desired_yaw = (real)atan2(dy, dx) + bot->aim_error_yaw + bot->wander_yaw;
-	desired_pitch = (real)atan2(dz, horizontal) + bot->aim_error_pitch + bot->wander_pitch;
+	/* where the bot sees the target: behind it by the hand's lag, as a
+	person's aim trails a target crossing the view (debug.bot_player's
+	steady hand none) */
+	seen_yaw = target_yaw - (bot->steady ? 0.0f : cross_yaw * skill->track_lag_seconds);
+	seen_pitch = target_pitch - (bot->steady ? 0.0f : cross_pitch * skill->track_lag_seconds);
+	desired_yaw = seen_yaw + bot->aim_error_yaw + bot->wander_yaw;
+	desired_pitch = seen_pitch + bot->aim_error_pitch + bot->wander_pitch;
 	turn = skill->turn_degrees_per_tick * BOTS_DEGREES;
 	yaw_off = bots_angle_difference(desired_yaw, bot->yaw);
 	pitch_off = desired_pitch - bot->pitch;
-	/* (a player's hand on a target, its skill's: quick, following it as
-	it moves; debug.bot_player's a steady one, about a quarter second to
-	settle) */
+	/* (a player's hand on a target, its skill's: a flick that ends off the
+	mark and corrections after it (bots_aim_plan), then quick, following
+	it as it moves; debug.bot_player's a steady one, about a quarter second
+	to settle) */
+	if (bot->steady)
+		bots_turn(bot, yaw_off, pitch_off, turn, 14.0f, 1.0f, cross_yaw, cross_pitch);
+	else
 	{
-		real target_yaw = (real)atan2(dy, dx), target_pitch = (real)atan2(dz, horizontal);
-		real yaw_track = 0.0f, pitch_track = 0.0f;
-
-		if (bot->target_aim_tick == now - 1)
-		{
-			/* (as much and as fast as its hand follows: a faster target is
-			trailed) */
-			real gain = bot->smooth ? 1.0f : skill->track_gain, most = bot->smooth ? 6.0f : skill->track_most;
-
-			yaw_track = PIN(bots_angle_difference(target_yaw, bot->target_yaw) * TICKS_PER_SECOND * gain, -most, most);
-			pitch_track = PIN((target_pitch - bot->target_pitch) * TICKS_PER_SECOND * gain, -most, most);
-		}
-		bot->target_yaw = target_yaw;
-		bot->target_pitch = target_pitch;
-		bot->target_aim_tick = now;
-		if (bot->smooth)
-			bots_turn(bot, yaw_off, pitch_off, turn, 14.0f, 1.0f, yaw_track, pitch_track);
-		else
-			bots_turn(bot, yaw_off, pitch_off, turn, skill->aim_frequency, skill->aim_damping, yaw_track, pitch_track);
+		if (new_target)
+			bot->plan_tick = now;
+		bots_aim_plan(bot, skill, yaw_off, pitch_off, now);
+		bots_turn(bot, yaw_off + bot->plan_yaw, pitch_off + bot->plan_pitch, turn, skill->aim_frequency,
+			skill->aim_damping, cross_yaw, cross_pitch);
 	}
 
 	/* (debug.bot_player's sniper: through the scope, as a player snipes,
@@ -4883,13 +5056,14 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 		tick->action->desired_zoom_level = tick->target_distance > 30.0f ? 1 : 0;
 	}
 
-	/* fire: once it has reacted, while its aim is on the target (its size
-	at that distance; going for the head, about the head and shoulders, as a
-	player fires when the reticle is near the head) */
-	yaw_off = (real)fabs(bots_angle_difference((real)atan2(dy, dx), bot->yaw));
-	pitch_off = (real)fabs((real)atan2(dz, horizontal) - bot->pitch);
+	/* fire: once it has reacted, while its aim is on the target as it sees
+	it (behind a target crossing its view by its hand's lag), within its
+	size at that distance (going for the head, about the head and
+	shoulders, as a player fires when the reticle is near the head) */
+	yaw_off = (real)fabs(bots_angle_difference(seen_yaw, bot->yaw));
+	pitch_off = (real)fabs(seen_pitch - bot->pitch);
 	cone = (real)atan((part == _bots_aim_head ? 0.3f : 0.35f) / MAX(tick->target_distance, 0.5f)) * skill->fire_cone +
-		0.01f;
+		0.004f;
 	/* (a weapon fired a shot a press, as a player fires a precise one: a
 	tighter cone, the aim let settle on the mark) */
 	if (tick->weapon_index != NONE && bots_weapon_tap_ticks(tick->weapon_index) > 0)
@@ -4900,7 +5074,7 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 		((yaw_off < cone && pitch_off < cone * 1.5f) ||
 			/* (the sniper rifle, now and then, as the flick crosses near
 			the target: early) */
-			(family == _bots_family_sniper && !bot->smooth && yaw_off < cone * 3.0f && pitch_off < cone * 4.5f &&
+			(family == _bots_family_sniper && !bot->steady && yaw_off < cone * 3.0f && pitch_off < cone * 4.5f &&
 				bots_random_real(bot) < skill->early_shot_chance / TICKS_PER_SECOND)))
 	{
 		short tap_ticks = bots_weapon_tap_ticks(tick->weapon_index);
@@ -5050,7 +5224,7 @@ static boolean bots_bot_fire_back(struct bots_bot *bot, struct bots_tick *tick)
 	dz = bot->shots_point.z - eye->z;
 	horizontal = (real)sqrt(dx * dx + dy * dy);
 	distance = (real)sqrt(dx * dx + dy * dy + dz * dz);
-	bots_aim_settle(bot, skill, 1.0f, 3.0f);
+	bots_aim_settle(bot, skill, 1.0f, 3.0f, 0.0f);
 	yaw_off = bots_angle_difference((real)atan2(dy, dx) + bot->aim_error_yaw + bot->wander_yaw, bot->yaw);
 	pitch_off = (real)atan2(dz, horizontal) + bot->aim_error_pitch + bot->wander_pitch - bot->pitch;
 	bots_turn(bot, yaw_off, pitch_off, skill->turn_degrees_per_tick * BOTS_DEGREES, skill->aim_frequency,
@@ -6612,6 +6786,8 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 		bot->last_shield = tick.object->object.shield_vitality;
 		bot->wander_yaw = bot->wander_pitch = bot->wander_spin = 0.0f;
 		bot->wander_radius = 1.0f;
+		bot->plan_yaw = bot->plan_pitch = 0.0f;
+		bot->blow_player_index = NONE;
 		bot->stuck_position = tick.position;
 		bot->stuck_tick = tick.now;
 		bot->stuck_count = 0;
@@ -6663,7 +6839,7 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 	if (vitality < bot->last_vitality - 0.01f)
 	{
 		bot->hurt_tick = tick.now;
-		if (!bot->smooth)
+		if (!bot->steady)
 		{
 			bots_aim_flinch(bot, tick.skill, bot->last_vitality - vitality,
 				bot->last_shield > 0.05f && tick.object->object.shield_vitality <= 0.0f);
@@ -6671,7 +6847,7 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 	}
 	bot->last_vitality = vitality;
 	bot->last_shield = tick.object->object.shield_vitality;
-	if (!bot->smooth)
+	if (!bot->steady)
 		bots_aim_form(bot, tick.now);
 
 	/* (in a vehicle: which, and its part) */
@@ -6707,7 +6883,7 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 	Warthog's driver, with nothing to fire, drives the fight
 	(bots_bot_drive)) */
 	if (bot->target_player_index != NONE && tick.now - bot->target_seen_tick <= TICKS_PER_SECOND / 2 &&
-		(bot->smooth || tick.now - bot->target_first_seen_tick >= bot->reaction_ticks))
+		(bot->steady || tick.now - bot->target_first_seen_tick >= bot->reaction_ticks))
 	{
 		if (!bot->smooth && tick.vehicle_part == _bots_seat_driver && tick.weapon_index == NONE)
 		{
