@@ -205,7 +205,10 @@ one made here does, and one made here plays on the Mac's.
 `--serve` is the OpenH1 Inspector's service, a JSON request a line on
 standard input and a JSON answer a line on standard output (the log on
 standard error), over ssh as well (`"inline": true` answers with the
-files' bytes in base64 instead of writing them):
+files' bytes in base64 instead of writing them; `"compress": true` deflates
+them, the PNG and the ID buffer, which then comes as `ids_zlib_base64`: a
+1440p frame's reply with its ID buffer 11 MB instead of 34, for some 90 ms
+of the CPU):
 
 | Request | Answer |
 | --- | --- |

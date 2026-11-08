@@ -419,6 +419,36 @@ static void base64_test(void)
 	}
 }
 
+/* deflate_bytes' streams written for the test to inflate (deflate_<n>.bin:
+text, noise, runs, a large frame's worth of mixed bytes, and nothing) */
+static void deflate_test(const char *folder)
+{
+	size_t sizes[5] = { 5000, 3000, 70000, 3 << 20, 0 }, index, at, compressed;
+	uint32_t state = 7;
+
+	for (index = 0; index < 5; index++)
+	{
+		unsigned char *data = malloc(sizes[index] + 1), *zipped;
+		char path[4200];
+
+		for (at = 0; at < sizes[index]; at++)
+		{
+			state = state * 1103515245u + 12345u;
+			data[at] = index == 0 ? (unsigned char)("the replay's deflate "[at % 21]) : index == 1 ?
+				(unsigned char)(state >> 16) : index == 2 ? (unsigned char)(at / 3000) :
+				at % 7 < 3 ? (unsigned char)(state >> 20) : (unsigned char)(at / 640);
+		}
+		zipped = deflate_bytes(data, sizes[index], &compressed);
+		CHECK(zipped != NULL);
+		snprintf(path, sizeof(path), "%s/deflate_%zu.bin", folder, index);
+		CHECK(zipped && file_write(path, zipped, compressed));
+		snprintf(path, sizeof(path), "%s/deflate_%zu.raw", folder, index);
+		CHECK(file_write(path, data, sizes[index]));
+		free(zipped);
+		free(data);
+	}
+}
+
 static void request_test(void)
 {
 	static struct request request;
@@ -478,6 +508,15 @@ int main(int argc, char *argv[])
 		base64_test();
 		request_test();
 		png_test(argv[2]);
+		{
+			char folder[4200], *slash;
+
+			snprintf(folder, sizeof(folder), "%s", argv[2]);
+			slash = strrchr(folder, '/');
+			if (slash)
+				*slash = 0;
+			deflate_test(slash ? folder : ".");
+		}
 		fprintf(stderr, "%d failures\n", failures);
 		return failures != 0;
 	}

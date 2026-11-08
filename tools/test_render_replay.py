@@ -60,7 +60,7 @@ def binary(tmp_path_factory):
 
 
 def png_pixels(data):
-    """an uncompressed or compressed RGB PNG's rows (as the replay writes them: no filters)"""
+    """an RGB PNG's rows (as the replay writes them: unfiltered, or with the sub filter)"""
     assert data[:8] == b"\x89PNG\r\n\x1a\n"
     place, idat, width, height = 8, b"", 0, 0
     while place < len(data):
@@ -77,8 +77,11 @@ def png_pixels(data):
     raw = zlib.decompress(idat)
     rows = []
     for y in range(height):
-        row = raw[y * (width * 3 + 1):(y + 1) * (width * 3 + 1)]
-        assert row[0] == 0
+        row = bytearray(raw[y * (width * 3 + 1):(y + 1) * (width * 3 + 1)])
+        assert row[0] in (0, 1)
+        if row[0] == 1:
+            for at in range(4, len(row)):
+                row[at] = (row[at] + row[at - 3]) & 0xff
         rows.append([tuple(row[1 + x * 3:4 + x * 3]) for x in range(width)])
     return width, height, rows
 
@@ -100,6 +103,9 @@ def test_units(binary, tmp_path):
     width, height, rows = png_pixels(picture.read_bytes())
     assert (width, height) == (300, 230)
     assert rows[7][250] == (250, 7, 250 ^ 7)
+    for index in range(5):
+        assert zlib.decompress((tmp_path / f"deflate_{index}.bin").read_bytes()) == \
+            (tmp_path / f"deflate_{index}.raw").read_bytes(), index
 
 
 class Service:
@@ -146,6 +152,15 @@ def test_service(binary, tmp_path):
         reply = service.ask(cmd="frame", n=19, inline=True, ids=True)
         ids = struct.unpack(f"<{WIDTH * HEIGHT}I", base64.b64decode(reply["ids_base64"]))
         assert ids[10 * WIDTH + 25] == 2
+        # "compress": the PNG deflated, the ID buffer as zlib's (the replay's own deflate, read by Python's)
+        reply = service.ask(cmd="frame", n=19, inline=True, ids=True, compress=True)
+        assert "ids_base64" not in reply
+        zipped = base64.b64decode(reply["ids_zlib_base64"])
+        assert struct.unpack(f"<{WIDTH * HEIGHT}I", zlib.decompress(zipped)) == ids and len(zipped) < len(ids)
+        rows = png_pixels(base64.b64decode(reply["png_base64"]))[2]
+        assert all(rows[y][x] == expected(19, x, y)[0] for y in range(HEIGHT) for x in range(WIDTH))
+        thumbs = service.ask(cmd="thumbs", frames=[4], width=32, inline=True, compress=True)
+        assert png_pixels(base64.b64decode(thumbs["thumbs"][0]["png_base64"]))[:2] == (32, 16)
         # the draws, and a pixel's stack (the green over the red; the third draw changed nothing)
         draws = service.ask(cmd="draws", n=19)
         assert draws["ok"] and [draw["i"] for draw in draws["draws"]] == [0, 1, 2]
