@@ -59,7 +59,10 @@ stall of the renderer or of the VR runtime stops it, which the host must
 play through)
 and debug.network_test_pickup (the last player stands on a weapon lying
 about that many seconds in, and a joining machine's player holds the action
-button a second later, to pick it up).
+button a second later, to pick it up), and debug.network_test_elevator (every
+player stood on a campaign level's elevator, which the host rides to its
+other end and back, each frame of each machine logged: where the platform
+and the players are drawn, and its own player's view).
 
 debug.network_test_cues: console lines the host (or a game of one machine)
 runs at their ticks, counted from the first tick every player of
@@ -92,6 +95,7 @@ Called from the main loop every frame (main.c).
 #include "game/players.h"
 #include "objects/objects.h"
 #include "units/units.h"
+#include "units/bipeds.h"
 #include "units/unit_definitions.h"
 #include "items/weapons.h"
 #include "items/weapon_definitions.h"
@@ -103,6 +107,10 @@ Called from the main loop every frame (main.c).
 #include "tag_files/tag_files.h"
 #include "camera/observer.h"
 #include "hs/hs.h"
+#include "cutscene/cinematics.h"
+#include "devices/devices.h"
+#include "devices/device_machines.h"
+#include "devices/device_definitions.h"
 #include "network_clock.h"
 #include "network_distributed.h"
 
@@ -215,6 +223,13 @@ static struct
 	real hitch_seconds;
 	real pickup_time;
 	char pickup_weapon[64];
+	/* debug.network_test_elevator's: when, which elevator, and the one
+	chosen (NONE before), when its riders stood on it and it last stopped */
+	real elevator_time;
+	long elevator_choice;
+	long elevator_index;
+	long elevator_stood;
+	long elevator_stopped;
 	/* debug.network_test_vehicle_seat's "<vehicle>:<seat>" */
 	char vehicle_name[64];
 	char seat_label[64];
@@ -338,6 +353,10 @@ static void network_test_read_settings(
 	network_test.vehicle_time = (real)config_real("debug.network_test_vehicle");
 	network_test.hitch_seconds = (real)config_real("debug.network_test_hitch");
 	network_test.pickup_time = (real)config_real("debug.network_test_pickup");
+	network_test.elevator_time = (real)config_real("debug.network_test_elevator");
+	network_test.elevator_choice = config_integer("debug.network_test_elevator_index");
+	network_test.elevator_index = NONE;
+	network_test.elevator_stood = NONE;
 	network_test.chat_time = (real)config_real("debug.network_test_chat");
 	network_test.party_time = (real)config_real("debug.network_test_party");
 	snprintf(network_test.pickup_weapon, sizeof(network_test.pickup_weapon), "%s",
@@ -1547,6 +1566,267 @@ static void network_test_pickup(
 	}
 }
 
+/* debug.network_test_elevator: the level's elevators (machines that carry
+their riders), each logged with its name, where its platform is and the
+group that moves it; the one of debug.network_test_elevator_index (by its
+place in the list) is chosen, every player stood on its platform, and the
+host sends it to its other end, back once it stops two seconds, and so on.
+Each frame from then on each machine logs where the platform and every
+player are drawn and where the tick has them, and its own player's view
+(network_test_elevator_frame), for tools/elevator_jitter.py */
+static long network_test_elevator_node(
+	long machine_index)
+{
+	struct machine_datum *machine = machine_try_and_get(machine_index);
+	struct machine_definition *definition;
+
+	if (!machine)
+		return NONE;
+	definition = machine_definition_get(machine->definition_index);
+	if (!TEST_FLAG(definition->machine.flags, _machine_is_elevator_bit) || definition->machine.elevator_node_index == NONE)
+		return NONE;
+	return definition->machine.elevator_node_index;
+}
+
+static void network_test_elevator_choose(
+	void)
+{
+	struct object_iterator iterator;
+	struct machine_datum *machine;
+	struct scenario *scenario = global_scenario_get();
+	long count = 0;
+
+	object_iterator_new(&iterator, _object_mask_machine, 0);
+	while ((machine = (struct machine_datum *)object_iterator_next(&iterator)) != NULL)
+	{
+		long node = network_test_elevator_node(iterator.index);
+		real_point3d const *platform;
+		char const *name = "";
+
+		if (node == NONE)
+			continue;
+		platform = &object_get_node_matrix(iterator.index, (short)node)->position;
+		if (machine->object.name_index != NONE && machine->object.name_index < scenario->object_names.count)
+			name = TAG_BLOCK_GET_ELEMENT(&scenario->object_names, machine->object.name_index, struct scenario_object_name)->name;
+		platform_log("network test: elevator %ld %lx '%s' %s at (%.2f %.2f %.2f) platform (%.2f %.2f %.2f) "
+			"position %.3f group %d power %.2f", count, iterator.index, name, tag_get_name(machine->definition_index),
+			machine->object.position.x, machine->object.position.y, machine->object.position.z,
+			platform->x, platform->y, platform->z, machine->device.position, machine->device.position_group_index,
+			machine->device.power);
+		if (count == network_test.elevator_choice)
+			network_test.elevator_index = iterator.index;
+		count++;
+	}
+	platform_log("network test: elevators %ld, riding %lx", count, network_test.elevator_index);
+}
+
+/* the elevator's floor straight down from above the point (from well above
+it, through the structure's floors and ceilings: a ray that starts outside
+the structure finds nothing), if it is there */
+static boolean network_test_elevator_floor(
+	long ignore_index,
+	real_point3d *point)
+{
+	struct collision_result collision;
+	real_vector3d down = { 0.0f, 0.0f, -100.0f };
+	real_point3d top = *point;
+	short hits;
+
+	top.z += 40.0f;
+	for (hits = 0; hits < 8 && collision_test_vector(FLAG(_collision_test_front_facing_surfaces_bit) |
+		FLAG(_collision_test_structure_bit) | FLAG(_collision_test_objects_bit) |
+		FLAG(_collision_test_objects_machines_bit), &top, &down, ignore_index, &collision); hits++)
+	{
+		if (collision.type == _collision_result_object && collision.object_index == network_test.elevator_index)
+		{
+			*point = collision.point;
+			return TRUE;
+		}
+		top = collision.point;
+		top.z -= 0.05f;
+	}
+	return FALSE;
+}
+
+/* every player stood on the platform about its node, apart (nearer it where
+the platform is narrow) */
+static void network_test_elevator_stand(
+	void)
+{
+	struct data_iterator iterator;
+	struct player_datum *player;
+	long node = network_test_elevator_node(network_test.elevator_index);
+	real_point3d platform;
+	short count = 0;
+
+	if (node == NONE)
+		return;
+	platform = object_get_node_matrix(network_test.elevator_index, (short)node)->position;
+	data_iterator_new(&iterator, player_data);
+	while ((player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
+	{
+		real_point3d stand;
+		real spread;
+		boolean found = FALSE;
+
+		if (player->unit_index == NONE)
+			continue;
+		/* (about the node, from the next player's place on: the first
+		where the floor is) */
+		for (spread = 0.6f; spread > 0.1f && !found; spread *= 0.5f)
+		{
+			short turn;
+
+			for (turn = 0; turn < 8 && !found; turn++)
+			{
+				real angle = (real)((count * 3 + turn) % 8) * (real)(M_PI / 4.0);
+
+				stand = platform;
+				stand.x += spread * (real)cos(angle);
+				stand.y += spread * (real)sin(angle);
+				found = network_test_elevator_floor(player->unit_index, &stand);
+			}
+		}
+		if (!found)
+			stand = platform;
+		count++;
+		/* (dropped onto it, not on the plane, where it falls through) */
+		stand.z += 0.25f;
+		object_set_position(player->unit_index, &stand, NULL, NULL);
+		platform_log("network test: elevator stands player %ld at (%.2f %.2f %.2f)%s",
+			(long)DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index), stand.x, stand.y, stand.z,
+			found ? " on its floor" : ", its floor not found");
+	}
+}
+
+/* (each second) choose and stand at the time; the host moves it */
+static void network_test_elevator_update(
+	void)
+{
+	long time = (long)(network_test.elevator_time * TICKS_PER_SECOND);
+	struct device_datum *device;
+
+	if (game_time_get() < time)
+	{
+		network_test.elevator_index = NONE;
+		network_test.elevator_stood = NONE;
+		return;
+	}
+	if (network_test.elevator_stood == NONE)
+	{
+		struct data_iterator iterator;
+		struct player_datum *player;
+		long players = 0, units = 0;
+
+		/* (once every player has a unit, out of the level's cutscene) */
+		data_iterator_new(&iterator, player_data);
+		while ((player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
+		{
+			players++;
+			units += player->unit_index != NONE;
+		}
+		if (units < players || players < network_test.cue_players || cinematic_in_progress())
+			return;
+		network_test_elevator_choose();
+		if (network_test.elevator_index == NONE)
+		{
+			network_test.elevator_stood = game_time_get();
+			return;
+		}
+		/* (its structure bsp loaded: the host switches to the next until it
+		is, as a loading zone does, and its clients follow) */
+		{
+			long node = network_test_elevator_node(network_test.elevator_index);
+			real_point3d platform = object_get_node_matrix(network_test.elevator_index, (short)node)->position;
+			short count = global_scenario_get()->structure_bsp_references.count;
+
+			platform.z += 0.5f;
+			if (scenario_leaf_index_from_point(&platform) == NONE)
+			{
+				if (network_test.mode == _network_test_host && count > 1 && game_time_get() % (3 * TICKS_PER_SECOND) < TICKS_PER_SECOND)
+				{
+					platform_log("network test: elevator not in structure bsp %d: switching", global_structure_bsp_index_get());
+					main_switch_structure_bsp((short)((global_structure_bsp_index_get() + 1) % count));
+				}
+				network_test.elevator_index = NONE;
+				return;
+			}
+		}
+		network_test.elevator_stood = game_time_get();
+		network_test.elevator_stopped = game_time_get();
+		network_test_elevator_stand();
+	}
+	if (network_test.elevator_index == NONE || !object_try_and_get(network_test.elevator_index))
+		return;
+	device = device_get(network_test.elevator_index);
+	if (device->device.position_velocity != 0.0f)
+		network_test.elevator_stopped = game_time_get();
+	else if (network_test.mode == _network_test_host && game_time_get() - network_test.elevator_stopped >= 2 * TICKS_PER_SECOND)
+	{
+		real target = device->device.position < 0.5f ? 1.0f : 0.0f;
+
+		device_set_desired_position(network_test.elevator_index, target);
+		network_test.elevator_stopped = game_time_get();
+		platform_log("network test: elevator %lx sent from %.3f to %.0f", network_test.elevator_index,
+			device->device.position, target);
+	}
+}
+
+/* (each frame, as the frame's objects are drawn: game_time.c) */
+void network_test_elevator_frame(
+	void)
+{
+	struct data_iterator iterator;
+	struct player_datum *player;
+	long node;
+	real_matrix4x3 const *drawn;
+	char line[512];
+	int length;
+	long local_unit;
+
+	if (network_test.elevator_index == NONE || !game_in_progress() || !object_try_and_get(network_test.elevator_index))
+		return;
+	node = network_test_elevator_node(network_test.elevator_index);
+	if (node == NONE)
+		return;
+	drawn = render_interpolation_object_node_matrices(network_test.elevator_index);
+	length = snprintf(line, sizeof(line), "network test: elevator frame %llu tick %ld f%.3f pos %.4f v%.5f drawn %.4f tick %.4f",
+		network_test_microseconds(), game_time_get(), game_time_get_tick_fraction(),
+		device_get(network_test.elevator_index)->device.position,
+		device_get(network_test.elevator_index)->device.position_velocity,
+		drawn ? drawn[node].position.z : object_get_node_matrix(network_test.elevator_index, (short)node)->position.z,
+		machine_get(network_test.elevator_index)->machine.elevator_position.z);
+	local_unit = player_control_get_unit_index(0);
+	data_iterator_new(&iterator, player_data);
+	while ((player = (struct player_datum *)data_iterator_next(&iterator)) != NULL && length < (int)sizeof(line) - 96)
+	{
+		real_point3d origin;
+		struct biped_datum *biped;
+
+		if (player->unit_index == NONE || !object_try_and_get(player->unit_index))
+			continue;
+		{
+			real_matrix4x3 const *nodes = render_interpolation_object_node_matrices(player->unit_index);
+
+			origin = nodes ? nodes[0].position : object_get_node_matrix(player->unit_index, 0)->position;
+		}
+		biped = (struct biped_datum *)object_try_and_get_and_verify_type(player->unit_index, _object_mask_biped);
+		length += snprintf(line + length, sizeof(line) - length, " | p%ld drawn %.4f tick %.4f%s",
+			(long)DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index), origin.z, object_get(player->unit_index)->object.position.z,
+			biped && biped->biped.elevator_object_index == network_test.elevator_index ? " on" : "");
+		if (player->unit_index == local_unit)
+		{
+			real_point3d camera;
+
+			/* (the view the last frame drew, a frame behind the rest: none
+			with debug.null_renderer, which draws none) */
+			if (!config_boolean("debug.null_renderer") && render_interpolation_drawn_view_position(0, &camera))
+				length += snprintf(line + length, sizeof(line) - length, " view %.4f", camera.z);
+		}
+	}
+	platform_log("%s", line);
+}
+
 /* (a probe: halo --probe) the first game found, printed as JSON on the
 standard output, and the end; when given_up, that none was. With an
 invite (p2p.c joins the command line's), the invite's host's game alone:
@@ -1695,6 +1975,8 @@ void network_test_update(
 				test_input_hold_action(hold);
 			}
 		}
+		if (network_test.elevator_time > 0.0f)
+			network_test_elevator_update();
 		if (network_test.party_time > 0.0f)
 			network_test_party();
 		/* debug.network_test_chat: each machine's player says a line to

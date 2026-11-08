@@ -683,8 +683,13 @@ void world_ao_object_begin(long object_index)
 		}
 		/* (a static scenery placement the field holds: its own geometry is in
 		the field, which a negative reference says: the shaders take its taps
-		from the pixel's own depth in it) */
-		baked = world_ao.volume && world_ao.fade > 0.0f && world_proxies_source_baked(object_index);
+		from the pixel's own depth in it. One without collision geometry (a
+		shrub, a fern) is not in the field: its reference is taken as a moving
+		object's, since the lightmap its ambient light is sampled from already
+		holds what the field finds about it (#781: a shrub by a cliff went
+		black)) */
+		baked = world_ao.volume && world_ao.fade > 0.0f && world_proxies_source_baked(object_index) &&
+			world_proxies_source_solid(object_index);
 		instance = world_ao.volume && world_ao.fade > 0.0f && !baked ? world_scene_instance_find(object_index) : NULL;
 		if (instance)
 			reference = world_ao_reference(world_ao.volume, instance->lighting_point);
@@ -695,6 +700,13 @@ void world_ao_object_begin(long object_index)
 			rays_owner = world_rt_owner(object_index);
 	}
 	halo_world_ao_object(owner, reference, rays_owner);
+}
+
+void world_ao_cards(int cards)
+{
+	if (!world_ao.window)
+		return;
+	halo_world_ao_cards(cards);
 }
 
 void world_ao_lightmap_begin(void const *lightmap_bitmap)

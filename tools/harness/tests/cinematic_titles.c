@@ -43,6 +43,9 @@ static long ticks;
 static struct { struct { rectangle2d viewport_bounds; } camera; } render;
 static long quads;
 static void draw_quad(rectangle2d const *bounds, pixel32 color) { quads++; }
+/* (debug.render_marks: nothing here) */
+#define RENDER_MARK_CINEMATIC_LETTERBOX 15
+static void render_marks_kind(int kind, char const *label) { (void)kind; (void)label; }
 
 /* the HUD's font and the scenario's one title, its text in the ingame help text */
 static struct

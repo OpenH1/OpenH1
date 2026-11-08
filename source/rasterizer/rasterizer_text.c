@@ -580,6 +580,8 @@ rasterizer_draw_string(
 				height_adjust,
 				string);
 			rasterizer_text_end();
+			/* port: debug.render_marks: the text's draws (the batch's) drawn (port/linux/game/render_marks.c) */
+			render_marks_text_end();
 		}
 	}
 
@@ -743,6 +745,8 @@ rasterizer_draw_unicode_string(
 				height_adjust,
 				string);
 			rasterizer_text_end();
+			/* port: debug.render_marks: the text's draws (the batch's) drawn (port/linux/game/render_marks.c) */
+			render_marks_text_end();
 		}
 	}
 

@@ -1721,9 +1721,22 @@ static void first_person_weapon_build_node_matrices(
 					/* port: and one of the graph's nodes */
 					if (first_person_weapon_animation_fits(animation_graph, overcharged_jitter_animation))
 					{
+						real jitter_frame_index= first_person_weapon->overcharged_jitter_animation.frame_index;
+
+						/* port: at the frame's time (phase, above), as far on as the
+						tick's advance (first_person_weapon_update: 2 to 4 frames a
+						tick, by the weapon's overcharge) takes it by then: held on
+						the tick's frame, the overcharged shake jumped once a tick,
+						whatever the frame rate */
+						if (phase>0.0f)
+						{
+							jitter_frame_index= (real)fmod(
+								jitter_frame_index+phase*(weapon->weapon.overcharged+1.0f)*2.0f,
+								(real)overcharged_jitter_animation->frame_count);
+						}
 						overlay_animation_apply_continuous_scaled(
 							overcharged_jitter_animation,
-							first_person_weapon->overcharged_jitter_animation.frame_index,
+							jitter_frame_index,
 							weapon->weapon.overcharged+0.5f,
 							first_person_weapon->node_orientations);
 					}

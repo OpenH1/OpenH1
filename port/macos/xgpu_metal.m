@@ -501,6 +501,11 @@ static id<MTLCommandBuffer> command_buffer(void)
 	return metal.command_buffer;
 }
 
+id<MTLCommandBuffer> xgpu_metal_command_buffer(void)
+{
+	return command_buffer();
+}
+
 /* the serial the command buffer being recorded has or will have */
 static uint64_t recording_serial(void)
 {
@@ -3912,6 +3917,20 @@ static void profile_draw_describe(struct profile_pass *pass, uint32_t primitive,
 	}
 }
 
+static xgpu_metal_draw_inspector draw_inspector;
+
+void xgpu_metal_command_buffer_finish(void)
+{
+	pass_end();
+	xgpu_metal_frame_wait(command_buffer_commit(nil));
+	metal.dirty = _dirty_all;
+}
+
+void xgpu_metal_set_draw_inspector(xgpu_metal_draw_inspector inspector)
+{
+	draw_inspector = inspector;
+}
+
 void xgpu_metal_draw(uint32_t primitive, uint32_t count, uint32_t first_vertex, int32_t base_vertex,
 	struct xgpu_metal_source indices)
 {
@@ -3930,6 +3949,12 @@ void xgpu_metal_draw(uint32_t primitive, uint32_t count, uint32_t first_vertex, 
 	}
 	if (metal.aside && aside_reads_written(indices))
 		aside_close();
+	if (draw_inspector)
+	{
+		pass_end();
+		metal.dirty = _dirty_all;
+		draw_inspector(0, metal.color, metal.color_level);
+	}
 	render = encoder();
 	if (!render || !draw_state_apply(render))
 	{
@@ -3959,6 +3984,12 @@ void xgpu_metal_draw(uint32_t primitive, uint32_t count, uint32_t first_vertex, 
 		[render drawPrimitives:primitive_types[primitive] vertexStart:first_vertex vertexCount:count];
 	}
 	metal.counted.draws++;
+	if (draw_inspector)
+	{
+		pass_end();
+		metal.dirty = _dirty_all;
+		draw_inspector(1, metal.color, metal.color_level);
+	}
 	if (profile.current >= 0)
 	{
 		profile.passes[profile.current].draws++;

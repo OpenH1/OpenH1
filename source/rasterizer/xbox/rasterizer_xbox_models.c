@@ -124,6 +124,7 @@ symbols in this file:
 #include "rasterizer/xbox/rasterizer_xbox_internal.h"
 #include "rasterizer/xbox/rasterizer_xbox_models.h"
 #include "view_fov.h" /* port: port/linux/game/view_fov.c */
+#include "world_ao.h" /* port: port/linux/game/world_ao.c */
 
 /* ---------- constants */
 
@@ -2363,6 +2364,14 @@ void _rasterizer_model_draw(
 					global_d3d_device,
 					D3DRS_CULLMODE,
 					D3DCULL_CCW);
+				/* port: display.ambient_occlusion "world": a two-sided
+				shader's cards (a plant's leaves) take their occlusion about
+				their most open direction, not each card's normal
+				(world_ao.c) */
+				world_ao_cards(
+					TEST_FLAG(
+						shader_model->model.flags,
+						_shader_model_two_sided_bit));
 
 				rasterizer_draw(
 					triangle_buffer,
@@ -2448,6 +2457,7 @@ void _rasterizer_model_draw(
 					}
 				}
 				halo_hdr_draw_kind(HALO_HDR_KIND_NONE); /* port: (drawn) */
+				world_ao_cards(FALSE); /* port: (drawn) */
 			}
 
 			if (local_environment_fog_screen_flag)

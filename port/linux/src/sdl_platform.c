@@ -28,6 +28,7 @@ and the debug keyboard that the game's console reads.
 #include "server_master.h"
 #include "player_link.h"
 #include "report.h"
+#include "input_trace.h"
 #include "xiso.h"
 #include "map_unpack.h"
 #include "map_import.h"
@@ -1957,8 +1958,8 @@ of the display's refresh rate or a whole fraction of it (60 at 60 Hz, 30 or
 the display's own rate drift against its refreshes, and now and then one is
 shown twice and the next not at all (judder, while the frame rate counter
 says 60). In step with the display, display.low_latency starts each in time
-for its refresh, for less input lag than the clock's. (Not Windows', whose
-display.low_latency is off until measured, nor the Mac's, whose frames
+for its refresh, for less input lag than the clock's. (Not Windows', not
+measured there in step with its display, nor the Mac's, whose frames
 with vsync off are taken at the display link's refreshes already.) */
 static int platform_swap_interval(void)
 {
@@ -2424,12 +2425,17 @@ static void queue_test_keystroke(BYTE virtual_key, CHAR ascii)
 	}
 }
 
+/* (input_lock) Return held by test_menu_keys, and the mouse buttons held by
+the scripted player's mouse (halo_test_input_pump, a bit each), which no
+events hold (input_held_reconcile leaves them) */
+static int test_enter_held;
+static unsigned int test_buttons_held;
+
 /* (input_lock) debug.test_input "menu:...": its "type:" and "enter"
 (platform_test_menu_keys), as the keyboard would type them: the letters'
 and digits' keystrokes, and Return held and its keystroke */
 static void test_menu_keys(void)
 {
-	static int enter_held;
 	char typed[64];
 	int enter, index;
 
@@ -2447,9 +2453,9 @@ static void test_menu_keys(void)
 		if (enter)
 			queue_test_keystroke(0x0d, '\r');
 	}
-	if (enter != enter_held)
+	if (enter != test_enter_held)
 	{
-		enter_held = enter;
+		test_enter_held = enter;
 		input_state.keys[SDL_SCANCODE_RETURN] = (unsigned char)enter;
 	}
 }
@@ -2601,14 +2607,19 @@ void platform_clipboard_set(const char *text)
 		SDL_SetClipboardText(text);
 }
 
-void platform_open_url(const char *url)
+int platform_open_url(const char *url)
 {
 #ifdef HALO_WEB
 	web_js_post(5, url);
+	return 1;
 #else
 	/* (the address logged too, for a machine whose browser does not open) */
 	if (!SDL_OpenURL(url))
+	{
 		platform_log("could not open the browser (%s): open %s", SDL_GetError(), url);
+		return 0;
+	}
+	return 1;
 #endif
 }
 
@@ -2907,6 +2918,10 @@ static void exit_after_check(void)
 	}
 	if (exit_ticks && SDL_GetTicks() >= exit_ticks)
 	{
+		const char *summary = getenv("HALO_FRAME_SUMMARY");
+
+		if (summary && atof(summary) > 0.0)
+			report_frames_log(atof(summary));
 		platform_log("exiting after debug.exit_after");
 		exit(EXIT_SUCCESS);
 	}
@@ -2973,6 +2988,156 @@ static void orientation_apply(void)
 }
 #endif
 
+#ifdef HALO_GUEST
+/* port/android/guest/runtime/guest_host.h: the keys and mouse buttons SDL
+holds, and those the system has had up a while (host_sdl.c) */
+unsigned int host_sdl_input_held(unsigned char *keys, int count);
+#endif
+
+/* (the input trace's clock: input_trace.c) */
+unsigned long long input_trace_now_ns(void)
+{
+	return (unsigned long long)SDL_GetTicksNS();
+}
+
+/* an event as the input trace keeps it (input_trace.c) */
+static void input_trace_event(const SDL_Event *event)
+{
+	static const struct
+	{
+		Uint32 type;
+		int what;
+	} window_events[] =
+	{
+		{ SDL_EVENT_WINDOW_FOCUS_GAINED, INPUT_TRACE_FOCUS_GAINED },
+		{ SDL_EVENT_WINDOW_FOCUS_LOST, INPUT_TRACE_FOCUS_LOST },
+		{ SDL_EVENT_WINDOW_SHOWN, INPUT_TRACE_SHOWN },
+		{ SDL_EVENT_WINDOW_HIDDEN, INPUT_TRACE_HIDDEN },
+		{ SDL_EVENT_WINDOW_EXPOSED, INPUT_TRACE_EXPOSED },
+		{ SDL_EVENT_WINDOW_OCCLUDED, INPUT_TRACE_OCCLUDED },
+		{ SDL_EVENT_WINDOW_MINIMIZED, INPUT_TRACE_MINIMIZED },
+		{ SDL_EVENT_WINDOW_RESTORED, INPUT_TRACE_RESTORED },
+		{ SDL_EVENT_WINDOW_ENTER_FULLSCREEN, INPUT_TRACE_FULLSCREEN },
+		{ SDL_EVENT_WINDOW_LEAVE_FULLSCREEN, INPUT_TRACE_WINDOWED },
+		{ SDL_EVENT_WINDOW_MOUSE_ENTER, INPUT_TRACE_MOUSE_ENTERED },
+		{ SDL_EVENT_WINDOW_MOUSE_LEAVE, INPUT_TRACE_MOUSE_LEFT },
+		{ SDL_EVENT_KEYBOARD_REMOVED, INPUT_TRACE_KEYBOARD_REMOVED },
+	};
+	size_t index;
+
+	switch (event->type)
+	{
+	case SDL_EVENT_KEY_DOWN:
+	case SDL_EVENT_KEY_UP:
+		input_trace_key(event->key.timestamp, event->key.scancode, event->key.down, event->key.repeat, event->key.raw);
+		return;
+	case SDL_EVENT_MOUSE_BUTTON_DOWN:
+	case SDL_EVENT_MOUSE_BUTTON_UP:
+		input_trace_mouse_button(event->button.timestamp, event->button.button, event->button.down,
+			input_state.ui_pointer);
+		return;
+	case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+	case SDL_EVENT_GAMEPAD_BUTTON_UP:
+		input_trace_gamepad_button(event->gbutton.timestamp, event->gbutton.which, event->gbutton.button,
+			event->gbutton.down);
+		return;
+	case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+		input_trace_gamepad_axis(event->gaxis.timestamp, event->gaxis.which, event->gaxis.axis, event->gaxis.value);
+		return;
+	case SDL_EVENT_GAMEPAD_ADDED:
+	case SDL_EVENT_GAMEPAD_REMOVED:
+		input_trace_gamepad_device(event->gdevice.timestamp, event->gdevice.which,
+			event->type == SDL_EVENT_GAMEPAD_ADDED);
+		return;
+	default:
+		break;
+	}
+	for (index = 0; index < sizeof(window_events) / sizeof(window_events[0]); index++)
+	{
+		if (window_events[index].type == event->type)
+			input_trace_window(event->common.timestamp, window_events[index].what);
+	}
+}
+
+/* (input_lock, once a window's events are taken) The keys and mouse
+buttons held are what the events left held, and an event can be lost on
+its way (SDL's queue full, which drops its events but keeps its state; a
+loop that takes the events and drops them, as a download's window does:
+updater.c), or never come (macOS lets a key's release go astray: the
+system's state has the key up, SDL's still down). A key or button held
+counts only while SDL (host_sdl_input_held: SDL_GetKeyboardState,
+SDL_GetMouseState) holds it too, and, on macOS, while the system has not
+had it up for a while; what is let go of here is traced, logged, and the
+last seconds of the trace logged with it (once a minute). Only what is held
+is let go of: a key's press still counts once, latched (keys_pressed), and
+nothing is held that its events did not hold. What a scripted run holds
+(test_enter_held, test_buttons_held) stays. */
+static void input_held_reconcile(void)
+{
+	static unsigned char held[SDL_SCANCODE_COUNT];
+	static Uint64 logged_ms;
+	unsigned int buttons;
+	int scancode, button, released = 0;
+
+#ifdef HALO_GUEST
+	buttons = host_sdl_input_held(held, SDL_SCANCODE_COUNT);
+#else
+	{
+		int count = 0;
+		const bool *state = SDL_GetKeyboardState(&count);
+
+		for (scancode = 0; scancode < SDL_SCANCODE_COUNT; scancode++)
+			held[scancode] = scancode < count && state && state[scancode] ? 1 : 0;
+		buttons = (unsigned int)SDL_GetMouseState(NULL, NULL) & 0xffffu;
+	}
+#endif
+	for (scancode = 0; scancode < SDL_SCANCODE_COUNT; scancode++)
+	{
+		int by;
+
+		if (!input_state.keys[scancode] || ((held[scancode] & 1) && !(held[scancode] & 2)))
+			continue;
+		if (scancode == SDL_SCANCODE_RETURN && test_enter_held)
+			continue;
+		by = held[scancode] & 1 ? INPUT_TRACE_RELEASED_BY_SYSTEM : INPUT_TRACE_RELEASED_BY_SDL;
+		input_state.keys[scancode] = 0;
+		input_trace_release(scancode, by);
+		platform_log("input: %s held by its events, but %s; let go of", SDL_GetScancodeName((SDL_Scancode)scancode),
+			by == INPUT_TRACE_RELEASED_BY_SYSTEM ? "the system has it up" : "SDL has it up");
+		released++;
+	}
+	for (button = 1; button < PLATFORM_MOUSE_BUTTON_COUNT; button++)
+	{
+		unsigned int mask = SDL_BUTTON_MASK(button);
+		int by;
+
+		if (!input_state.mouse_buttons[button])
+			test_buttons_held &= ~(1u << button);
+		if (!input_state.mouse_buttons[button] || ((buttons & mask) && !(buttons & (mask << 16))) ||
+			(test_buttons_held & (1u << button)))
+		{
+			continue;
+		}
+		by = buttons & mask ? INPUT_TRACE_RELEASED_BY_SYSTEM : INPUT_TRACE_RELEASED_BY_SDL;
+		input_state.mouse_buttons[button] = 0;
+		input_trace_release(INPUT_MOUSE + button, by);
+		platform_log("input: mouse button %d held by its events, but %s; let go of", button,
+			by == INPUT_TRACE_RELEASED_BY_SYSTEM ? "the system has it up" : "SDL has it up");
+		released++;
+	}
+	if (released && (!logged_ms || SDL_GetTicks() - logged_ms >= 60000))
+	{
+		logged_ms = SDL_GetTicks();
+		input_trace_log("a key or button its events left held was let go of", 10);
+	}
+}
+
+/* (atexit, debug.input_trace) the trace as the game ends */
+static void input_trace_at_exit(void)
+{
+	input_trace_log("the game ends", INPUT_TRACE_SECONDS);
+}
+
 void platform_pump_events(void)
 {
 	SDL_Event event;
@@ -3010,6 +3175,17 @@ void platform_pump_events(void)
 #ifndef HALO_ANDROID
 	test_menu_mouse();
 #endif
+	{
+		static BOOL trace_at_exit;
+
+		/* (debug.input_trace: and as the game ends) */
+		if (!trace_at_exit)
+		{
+			trace_at_exit = TRUE;
+			if (config_boolean("debug.input_trace"))
+				atexit(input_trace_at_exit);
+		}
+	}
 	pthread_mutex_lock(&input_lock);
 #ifndef HALO_ANDROID
 	/* (the scoreboard closed, or no longer offering it: the pointer goes) */
@@ -3021,6 +3197,7 @@ void platform_pump_events(void)
 #endif
 	while (SDL_PollEvent(&event))
 	{
+		input_trace_event(&event);
 		switch (event.type)
 		{
 		case SDL_EVENT_QUIT:
@@ -3267,7 +3444,13 @@ void platform_pump_events(void)
 			input_state.mouse_wheel += event.wheel.y;
 			break;
 		case SDL_EVENT_WINDOW_FOCUS_LOST:
+			/* (debug.input_trace: the trace, as the window lets the keys go) */
+			if (config_boolean("debug.input_trace"))
+				input_trace_log("the window lost the focus", INPUT_TRACE_SECONDS);
+			/* (and what was pressed before it went, which would otherwise
+			count when it comes back) */
 			memset(input_state.keys, 0, sizeof(input_state.keys));
+			memset(keys_pressed, 0, sizeof(keys_pressed));
 			memset(input_state.mouse_buttons, 0, sizeof(input_state.mouse_buttons));
 			memset(mouse_buttons_pressed, 0, sizeof(mouse_buttons_pressed));
 			gamepad_presses_clear();
@@ -3392,8 +3575,20 @@ void platform_pump_events(void)
 		}
 	}
 #endif
+	input_held_reconcile();
 	test_menu_keys();
-	halo_test_input_pump(&input_state, mouse_buttons_pressed);
+	{
+		unsigned char before[PLATFORM_MOUSE_BUTTON_COUNT];
+		int button;
+
+		memcpy(before, input_state.mouse_buttons, sizeof(before));
+		halo_test_input_pump(&input_state, mouse_buttons_pressed);
+		for (button = 0; button < PLATFORM_MOUSE_BUTTON_COUNT; button++)
+		{
+			if (!before[button] && input_state.mouse_buttons[button])
+				test_buttons_held |= 1u << button;
+		}
+	}
 	pthread_mutex_unlock(&input_lock);
 	looked_at_clipboard = TRUE;
 	platform_invite_clipboard(look_at_clipboard);
@@ -3747,6 +3942,14 @@ void platform_input_read(struct platform_input_state *state, BOOL consume_motion
 	{
 		int scancode;
 
+		/* (the input trace: the reading as the controller takes it, and
+		what it latched) */
+		input_trace_reading(input_state.keys, SDL_SCANCODE_COUNT, input_state.mouse_buttons,
+			PLATFORM_MOUSE_BUTTON_COUNT, keys_pressed, mouse_buttons_pressed,
+			(input_state.menus ? INPUT_TRACE_READING_MENUS : 0) |
+			(input_state.focused ? INPUT_TRACE_READING_FOCUSED : 0) |
+			(input_state.ui_pointer ? INPUT_TRACE_READING_POINTER : 0) |
+			(input_state.mouse_released ? INPUT_TRACE_READING_RELEASED : 0));
 		for (scancode = 0; scancode < SDL_SCANCODE_COUNT; scancode++)
 		{
 			state->keys[scancode] |= keys_pressed[scancode];

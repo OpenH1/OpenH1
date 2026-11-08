@@ -32,6 +32,20 @@ int xgpu_metal_frame_waiting(void);
 /* a texture's Metal texture (nil for none) */
 id<MTLTexture> xgpu_metal_texture(uint32_t texture);
 
+/* the replay's inspector (port/macos/tools/halo_replay_serve.m): called on
+the render thread before and after each draw (after: 1) with the draw's pass
+ended (its targets stored, what it drew in them) and the colour target's
+texture handle and level, so that it can encode work of its own into the
+command buffer (xgpu_metal_command_buffer) between draws; NULL: none (the
+draws as ever) */
+typedef void (*xgpu_metal_draw_inspector)(int after, uint32_t color, uint32_t level);
+void xgpu_metal_set_draw_inspector(xgpu_metal_draw_inspector inspector);
+/* the command buffer being recorded (begun if there is none); and it
+committed (the open pass ended first) and waited for, the frame going on
+in another */
+id<MTLCommandBuffer> xgpu_metal_command_buffer(void);
+void xgpu_metal_command_buffer_finish(void);
+
 /* ---------- host_metal.m */
 
 /* a window shows the frames presented */

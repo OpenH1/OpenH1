@@ -31,6 +31,7 @@ host_sdl_create_window
 host_sdl_window_size_in_pixels
 host_sdl_set_relative_mouse
 host_sdl_poll_event
+host_sdl_input_held
 host_sdl_set_clipboard_text
 host_sdl_get_clipboard_text
 host_sdl_show_toast
@@ -64,6 +65,7 @@ host_render_stream_submit
 host_render_stream_wait
 host_render_stream_close
 host_audio_headphones
+host_caches
 host_https_request
 
 host_errno

@@ -450,6 +450,7 @@ void lightning_submit(
 										shader = &global_shader_effect_additive.shader;
 
 									rasterizer_dynamic_vertices_unlock(vertex_buffer_index);
+									render_marks_next(RENDER_MARK_LIGHTNING, definition->map.index); /* port: debug.render_marks */
 									rasterizer_dynamic_unlit_geometry_draw(
 										shader,
 										bitmap,
@@ -459,6 +460,7 @@ void lightning_submit(
 										2*point_count - 2,
 										&centroid,
 										0);
+									render_marks_next(NONE, NONE); /* port: (made) */
 									rasterizer_dynamic_vertices_delete(vertex_buffer_index);
 								}
 								first_marker = TRUE;

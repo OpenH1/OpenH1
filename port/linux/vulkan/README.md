@@ -161,6 +161,7 @@ four multiview views and fragment storage-buffer atomics.
 | `HALO_VULKAN_FRAME_LOG=<file>` | A line for each frame, paced or not (`xgpu_vulkan_pacing.c`): `frame <input> <queued> <finished> <shown> <refreshes> <paced> <earliest> <present_margin> <returned>`, nanoseconds of `CLOCK_MONOTONIC`: the frame's input read, its present's return, its work done on the GPU, its time on screen (display timing's, else present wait's return), the refreshes since the frame before reached the screen (more than one: a refresh showed a frame again), whether the game was paced, display timing's earliest time and margin, and present wait's return (0: not known). `tools/latency_summary.py --frames` joins it to `debug.latency_log` |
 | `HALO_VULKAN_NO_PRESENT_WAIT=1`, `HALO_VULKAN_NO_DISPLAY_TIMING=1`, `HALO_VULKAN_DISPLAY_TIMING=1` | `display.low_latency` without `VK_KHR_present_wait` (as on Android: display timing asked each millisecond), or without `VK_GOOGLE_display_timing` (the frames' times present wait's returns). Where the device has present wait, display timing is not used unless `HALO_VULKAN_DISPLAY_TIMING=1` asks for both: gamescope's layer on the Steam Deck answered its past times `VK_INCOMPLETE` without end (the game showed no frame) and crashed as a swapchain was made from one whose times had been asked for |
 | `HALO_VULKAN_NO_CUSTOM_BORDER_COLORS=1` | As a device without `VK_EXT_custom_border_color` (Android's, some): the shaders draw the stages' border colours, as Metal's do, a part of the pipeline whatever the colour (`xgpu_vulkan_stream.c`'s `border_axes`) |
+| `HALO_VULKAN_UNHEEDED_PRESENTS=1` | The presents waited for and logged (`HALO_VULKAN_FRAME_LOG`), but the game never paced or bounded by them, as by a display that says nothing: the GPU's bound alone, measured by the display's times |
 | `HALO_FRAME_PACING_MARGIN_MS=<ms>` | `display.low_latency`'s margin fixed (not learned), to find a display's lead: the frames miss their refresh when it is too small |
 
 The game's settings for finding problems in the graphics (`port/linux/README.md`)
@@ -174,6 +175,89 @@ numbered in the order the textures are read; `xgpu_vulkan_textures.c`).
 `debug.gpu_debug_expression` (an expression put into each pixel shader,
 which the SPIR-V written directly has no place for) is Metal's alone, and
 does nothing here.
+
+## Recording the stream, and replaying it (`halo_replay`)
+
+The renderer's work can be recorded and replayed without the game, as on
+macOS (`port/macos/README.md`, "Recording the stream"): `HALO_RENDER_RECORD=<file>`
+records it (the textures' cache, `xgpu_vulkan_textures.c`, names the guest
+memory it reads in place), `HALO_RENDER_SHOTS` and `HALO_RENDER_SHOT_FRAMES`
+write the frames' back buffers as PNG files (`xgpu_vulkan_stream_shot`),
+and `ninja linux_replay` (`linux_x86_64_replay`, `linux_arm64_replay`; not
+in the VR build) makes `build/<name>/halo_replay`
+(`port/linux/vulkan/tools/halo_replay.c`), the Vulkan part of the replay
+Metal's shares (`port/tools/replay/host_render_replay.h`):
+
+```sh
+build/linux_x86_64/halo_replay <file> [--frames a-b] [--shots dir] [--shot-frames list] [--loop N]
+    [--hitch ms] [--quiet] [--verbose]
+build/linux_x86_64/halo_replay <file> --serve
+build/linux_x86_64/halo_replay --compare <shots> <shots>
+```
+
+It plays offscreen (no window, no surface: the frames are drawn and read
+back). The guest's memory is the low 4 GB of the tool's process, as the
+host without the base register has the guest's. The pipeline cache is
+`<file>.vkpipelines` (`HALO_VULKAN_PIPELINE_CACHE` names another, or none);
+`HALO_VULKAN_VALIDATION=1` turns on the validation layers. A recording made
+on a Mac (its blocks LZ4's, Apple's framing of it, decoded here) plays as
+one made here does, and one made here plays on the Mac's.
+
+`--serve` is the replay service (`docs/replay_protocol.md`), a JSON request a line on
+standard input and a JSON answer a line on standard output (the log on
+standard error), over ssh as well (`"inline": true` answers with the
+files' bytes in base64 instead of writing them; `"compress": true` deflates
+them, the PNG and the ID buffer, which then comes as `ids_zlib_base64`: a
+1440p frame's reply with its ID buffer 11 MB instead of 34, for some 90 ms
+of the CPU; `"image": "qoi"` gives the picture as a QOI file instead of a
+PNG, `qoi_base64` inline, written to the request's `qoi` (or `png`) path,
+`thumb_<n>.qoi` for thumbnails. QOI was measured against PNG on three 1440p
+frames of a Mac recording (a menu, two of play), the bytes and the encoding
+on the 5900x: stored PNG 11.1 MB in 48 ms; PNG through the replay's deflate
+6.0 to 8.4 MB in 125 to 225 ms whichever filter (none, sub, up, Paeth);
+zlib's own at level 1, sub, 5.6 to 7.9 MB in 32 to 48 ms (level 6: 3.7 to
+5.5 MB, 170 to 190 ms); QOI 4.0 to 6.4 MB in 27 to 29 ms, the smallest
+short of zlib's slow levels and the quickest. A step on with a QOI reply
+is 51 ms through the pipes at 1440p, against 89 ms of the plain PNG):
+
+| Request | Answer |
+| --- | --- |
+| `{"cmd":"info"}` | the frames, the back buffer's size, `"backend":"vulkan"`, the commit configure.py ran at |
+| `{"cmd":"frame","n":N,"png":path,"ids":path}` | frame N played exactly; its back buffer as a PNG, its ID buffer: a little-endian `uint32` a pixel, rows from the top, the topmost draw that changed the pixel, its number in the frame plus one (0 none) |
+| `{"cmd":"draws","n":N}` | the frame's draws, numbered as the ID buffer numbers them, with what each was drawn with (its record, primitive and count, pipeline, targets, textures) |
+| `{"cmd":"pick","n":N,"x":X,"y":Y}` | the pixel's draws, topmost first, the 8 last that changed it |
+| `{"cmd":"thumbs","every":E,"width":W,"dir":path}` | thumbnails for the timeline (`"frames":[...]` for chosen ones) |
+
+A draw is a DRAW, DRAW_INDICES, DRAW_INDEXED or DRAW_IMMEDIATE record of the
+frame, counted from its first. The ID buffer is the backend's
+(`xgpu_vulkan_inspect_*` in `xgpu_vulkan.c`): each draw into the target the
+frame presents is drawn in a pass of its own, the target copied before it
+(a multisampled one resolved, and resolved again after), and a compute pass
+(`xgpu_vulkan_inspect_shader.c`, from `tools/vulkan_inspect_shader.py`'s
+GLSL) compares the two by their bits, pushing the draw's number onto the
+stacks of the pixels it changed (an R32_UINT layer each): an alpha-tested
+leaf counts where it drew, not over its cut-out corners, and a draw that
+wrote what was there already does not count. Post passes (anti-aliasing,
+the gamma curve, Panini) are not draws.
+
+A frame is played from the one played last, and from the recording's
+start again (the ring's positions going on) for one before it; the
+pictures of the 16 frames before the one asked for are kept on the way, so
+that a step back is not a play again; and the last 8 frames asked for with
+their ID buffers keep them (as many as fit in 512 MB), so that a step back
+to one of those is not either (83 ms at 1440p through the pipes, against
+780 ms played again). The frames passed on the way are not given ID
+buffers: each costs its frame a pass of copies and comparisons for every
+draw (118 ms of a 1440p frame on the 4090) and 118 MB of stacks. Measured on the RTX 4090 (a 2,022
+frame, 1280x720 Blood Gulch recording; each a request's wall time through
+the pipes): a step on with its PNG 17 ms (2 ms of it the frame), with its
+ID buffer 39 ms, a step back to a picture kept 14 ms, a step back with an
+ID buffer (played again from the start) 344 ms, the last frame from the
+first 561 ms, a frame's first ID buffer mid-recording 396 ms; `pick` on a
+frame with its ID buffer 0.1 ms, `draws` 3 ms; 34 thumbnails 692 ms. The
+measuring play runs the recording at about 900 frames a second
+(`tools/test_render_replay.py` tests the service with a CPU backend of its
+own; no GPU, no game).
 
 ## The window
 
@@ -203,7 +287,15 @@ refresh it is for, and the swapchain has three images (the least the
 surface allows, if more). A swapchain made again lets go of its presents
 first: those not yet shown count as shown, and the thread no longer waits
 for them. A frame that presents nothing (the window hidden, the app in the
-background, a held frame) is taken at once.
+background, a held frame) is taken at once. Bounded (`display.low_latency`
+off), the game starts a frame as soon as at most one
+waits for the display, without the start time. And with FIFO, whatever the
+display says, the game starts a frame only while at most one of its
+frames' work is unfinished on the GPU (`host_render_stream_frames_ahead`),
+and, while the display has said nothing of its presents, the swapchain has
+the least images the surface allows (two at least), so that a driver that
+queues presents ahead of the display without a word holds at most a frame
+or two of the game's (issue #274: NVIDIA's on Windows queued five).
 
 The surface is made again when the driver reports it lost
 (`VK_ERROR_SURFACE_LOST_KHR`, from the acquire, the present or the

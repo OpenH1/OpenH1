@@ -54,7 +54,7 @@
  "tools/harness/tests/test_far_clip.py": 0.55,
  "tools/harness/tests/test_far_live_due.py": 0.74,
  "tools/harness/tests/test_fire_origins.py": 0.96,
- "tools/harness/tests/test_first_person_legs_cut.py": 2.09,
+ "tools/harness/tests/test_first_person_legs_place.py": 1.0,
  "tools/harness/tests/test_first_person_legs_view.py": 0.22,
  "tools/harness/tests/test_first_person_near_clip.py": 1.98,
  "tools/harness/tests/test_first_person_sway.py": 0.48,

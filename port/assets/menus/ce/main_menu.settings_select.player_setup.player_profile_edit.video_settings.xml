@@ -284,17 +284,17 @@
 		<string text="What fullscreen and borderless draw at. Native is the display's own, the sharpest; a lower one is lighter on a slow computer, and softer. Fullscreen sets the display to it; borderless scales it."/>
 		<string text="The window's size: 4:3 first, then 16:10, 16:9 and 21:9. Its edges can also be dragged."/>
 		<string text="How many times a second the display shows a picture while the game is fullscreen. Auto keeps the display's own. VSync and Frame Rate Limit's Auto follow it."/>
-		<string text="Shows each frame at a refresh of the display: even motion that never tears, at the display's refresh rate. On Linux and the Steam Deck each frame starts just in time for its refresh, so it adds almost no input lag; it is on in the Steam Deck's Game Mode."/>
+		<string text="Shows each frame at a refresh of the display: even motion that never tears, at the display's refresh rate. On Linux, Windows and the Steam Deck each frame starts just in time for its refresh, so it adds almost no input lag; it is on in the Steam Deck's Game Mode."/>
 		<string text="The most frames drawn a second. Auto is twice the display's refresh rate. More feels smoother and uses more power; None draws as fast as it can. On Linux, the display's refresh rate (or half of it) is shown in step with the display.|Click the number (or press A) to type 10 to 1000."/>
 		<string text="How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini Projection (First Person). Passenger seats use it too; driver and gunner: First Person.|Click the number (or press A) to type 20 to 160."/>
 		<string text="Which way up you hold the device. Portrait has a strip of buttons along the top, the picture under it and the touch controls below it. Auto turns with the device."/>
 		<string text="Where the picture sits on a screen taller than it, its shape, and the frame around it in portrait."/>
-		<string text="Your weapon's field of view and whether it is drawn, the Panini projection, how far you see, your legs and arms, your shield's color, and the view from a vehicle's passenger seat."/>
+		<string text="The vehicles' and scopes' fields of view, the Panini projection, how far you see, the reticle, a passenger's view, and your weapon, body and shields."/>
 		<string text="Plays the Xbox's intro movie as the game starts, and its attract movies on an idle main menu. Any button skips the intro.|They are the bink folder of your Xbox disc image, copied with the maps. Without them, put the disc's bink folder beside your maps folder."/>
 		<string text=""/>
 		<string text="Enhanced: smoother edges, sharper textures and shadows, smoother lighting. Classic looks as the Xbox did.|Changing one shows CUSTOM."/>
 		<string text="Up to 60 frames a second and Classic graphics, for a longer battery and a cooler device. Auto turns it on while the device runs on its battery. Your own settings come back as it turns off."/>
 		<string text="How bright the picture is: its gamma, and on an HDR display, HDR's look, how bright white and the HUD are, and the display's peak."/>
-		<string text="Anti-aliasing, texture filtering, model detail, shadows, the lighting and the shields' glow, smooth motion and the tick rate."/>
+		<string text="Render resolution, anti-aliasing, texture filtering, model detail, shadows, the lighting and the shields' glow, smooth motion and the tick rate."/>
 	</strings>
 </menus>

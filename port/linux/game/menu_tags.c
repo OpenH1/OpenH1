@@ -513,7 +513,7 @@ static char const *const port_function_names[] =
 	"port settings begin", "port settings tab", "port settings tab next", "port settings tab previous",
 	"port settings ok", "port settings cancel", "port settings keep", "port settings page cancel",
 	"port settings new profile", "port settings profiles", "port settings report", "port settings weapon reset",
-	"port settings gyro calibrate",
+	"port settings gyro calibrate", "port settings clear caches",
 	/* (Online's Discord account: menu_functions.c's discord_link and
 	discord_unlink) */
 	"port discord link", "port discord unlink",
@@ -638,6 +638,11 @@ static struct
 	(original_count), and the extra width they are laid out for now */
 	struct menu_wide *wides;
 	long wide_count;
+	/* each widget's generator source (its source attribute: NULL none),
+	by its tag's index after the map's, as the wide layouts are
+	(debug.render_marks: pc_menu_widget_source) */
+	char const **sources;
+	long source_count;
 	short wide_extra;
 	boolean loaded;
 	char root[300];
@@ -2983,6 +2988,8 @@ void menu_tags_loaded(
 	/* (the widgets' wide layouts, by their tags' indices after the map's) */
 	menu_tags.wides = allocate(total * sizeof(*menu_tags.wides));
 	menu_tags.wide_count = menu_tags.wides ? total : 0;
+	menu_tags.sources = allocate(total * sizeof(*menu_tags.sources));
+	menu_tags.source_count = menu_tags.sources ? total : 0;
 	/* each new tag's index */
 	for (index = 0; index < widget_count; index++)
 	{
@@ -3050,6 +3057,12 @@ void menu_tags_loaded(
 				string_list_build(pieces, NULL, count, NULL));
 		}
 		instance_set(instances, UI_WIDGET_DEFINITION_TAG, build.widget_tags[index], widget->name, "", NULL);
+		{
+			long source_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(build.widget_tags[index]) - menu_tags.original_count;
+
+			if (source_index >= 0 && source_index < menu_tags.source_count)
+				menu_tags.sources[source_index] = widget->source;
+		}
 		if (widget->radius > 0)
 			tag_value_set(menu_tags.radii, &menu_tags.radius_count, build.widget_tags[index], (short)widget->radius);
 	}
@@ -3210,6 +3223,20 @@ short pc_menu_widget_radius(
 	long definition_index)
 {
 	return tag_value_get(menu_tags.radii, menu_tags.radius_count, definition_index);
+}
+
+/* the generator source that wrote a menu file's widget, by its definition
+(its source attribute: tools/menu_sources.py's), NULL for none or a map's
+own widget (debug.render_marks: port/linux/game/render_marks.c) */
+char const *pc_menu_widget_source(
+	long definition_index)
+{
+	long index;
+
+	if (!menu_tags.sources || definition_index == NONE)
+		return NULL;
+	index = DATUM_INDEX_TO_ABSOLUTE_INDEX(definition_index) - menu_tags.original_count;
+	return index >= 0 && index < menu_tags.source_count ? menu_tags.sources[index] : NULL;
 }
 
 /* the room a legends' row's panel was made wider by for it (pause_box_widen:

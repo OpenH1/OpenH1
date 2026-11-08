@@ -761,6 +761,7 @@ void game_time_update(
 		the fraction, so what they hang off is drawn where they put it. */
 		render_interpolation_frame_begin();
 		profile_scope(game_time_game_frame_section, game_frame(game_time_get_speed()*time_delta_sec);)
+		network_test_elevator_frame(); /* port: debug.network_test_elevator (port/linux/game/network_test.c) */
 		render_interpolation_frame_end();
 	}
 	else

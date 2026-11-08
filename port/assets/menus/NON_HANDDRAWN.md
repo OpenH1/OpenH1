@@ -44,13 +44,14 @@ picture of Gamepad Setup: the Xbox's Controller Setup's pictures of the button s
 ## Screenshots
 
 Settings' Quality row shows these two small screenshots of the game, the same view drawn by each preset
-(`port/assets/menus/stills`, shipped as they are). They are this port's own drawing of the game: a local
+(`port/assets/menus/stills`). They are this port's own drawing of the game: a local
 Slayer game on Blood Gulch (`debug.network_test = "local:bloodgulch:slayer"`, `debug.random_seed = 7`,
 four bots), the same frame of each run captured offscreen by the macOS build at 1600x1200
 (`debug.screenshot_every`), cropped to 16:10, scaled to 288x180 (three times their size in the menu) and
 reduced to 96 colors for size. The pictures of other rows' values are made the same way at the frame 12 s
 into the game with the setting set, 320x200 (twice their size in the menu), reduced to 64 colors: the whole
-view, or a part of it at 1:1 or larger.
+view, or a part of it at 1:1 or larger. The menus ship them with their corners cut round, and the others'
+framed (`ce/port/stills`, tools/ce_menus.py's `rounded_still`).
 
 | File | Size | What it shows |
 | --- | --- | --- |
@@ -61,7 +62,7 @@ view, or a part of it at 1:1 or larger.
 | `stills/fov_130.png` | 160x100 | Field of view 130, for 120 to 160 |
 | `stills/aa_off.png` | 160x100 | Anti-aliasing OFF, close on an edge (each pixel twice its size) |
 | `stills/aa_smaa.png` | 160x100 | Anti-aliasing SMAA (and FXAA), the same; render resolution FULL |
-| `stills/aa_msaa.png` | 160x100 | Anti-aliasing MSAA 4X (and SSAA and MSAA's others), the same |
+| `stills/aa_msaa.png` | 160x100 | Anti-aliasing MSAA 4X (and MSAA's others, and render resolution above 100%), the same |
 | `stills/render_xbox.png` | 160x100 | Render resolution XBOX 640X480, the same edge, its pixels as drawn |
 | `stills/hud_high_res.png` | 160x100 | High-res HUD ON: the health and shields meters, close |
 | `stills/hud_game.png` | 160x100 | High-res HUD OFF, the same |

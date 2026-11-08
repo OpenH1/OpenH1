@@ -77,6 +77,10 @@ void render_interpolation_object_point(long object_index, union real_point3d *po
 mixed of the tick's state and the frame's (render_interpolation.c) */
 void render_interpolation_object_origin(long object_index, union real_point3d *origin);
 void render_interpolation_unit_camera_position(long unit_index, union real_point3d *position);
+/* where the last frame drew a local player's view from, if it drew one */
+unsigned char render_interpolation_drawn_view_position(short local_player_index, union real_point3d *position);
+/* debug.network_test_elevator's frames (port/linux/game/network_test.c) */
+void network_test_elevator_frame(void);
 /* a widget's shape (an antenna's chain, a cloth flag's grid), stepped in the
 tick, drawn between the ticks hung from its marker as drawn */
 void render_interpolation_shape_tick(unsigned long owner, long index, struct real_matrix4x3 const *anchor,
@@ -294,6 +298,9 @@ _end), and what the code drawing knows of them (HALO_HDR_KIND_*, 0 none) */
 void halo_screen_tone_map(short x0, short y0, short x1, short y1);
 void halo_hdr_category(int category);
 void halo_hdr_draw_kind(int kind);
+/* debug.render_marks: what the draws that follow belong to, for the
+inspector's replay (port/linux/game/render_marks.c) */
+#include "render_marks.h"
 /* the display's peak and SDR white, as the backend says them, as text
 (Video Setup's DISPLAY PEAK row: its value, "800 NITS"; words, its panel's
 words); 0 where no renderer draws HDR (port/linux/src/d3d8_device.c) */
@@ -335,6 +342,9 @@ void server_console_output(const char *text);
 int halo_server_debug_echo(void);
 /* ... the level its rotation plays next, NULL if none (game_engine.c) */
 char const *server_director_first_level(void);
+/* the caches cleared at the start, where Settings' CLEAR CACHES asked for
+it (port/linux/src/game_caches.c: shell_xbox.c) */
+void game_caches_start(void);
 /* the cache slots' sources (port/linux/src/xbox_files.c): the size and
 modification time of the map file a slot was copied from, and the name,
 checksum and length of the map its whole copy holds, kept beside it once
@@ -400,6 +410,9 @@ int halo_linux_flick_stick(void);
 asked, which skips a Bink movie as a controller's button does
 (port/linux/src/sdl_platform.c; source/bink/bink_playback.c) */
 int platform_movie_skip_pressed(void);
+/* the player's move and look as the game read them, for the input trace
+(port/linux/src/input_trace.c): a frame's, or a sub-step's */
+void input_trace_player(int controller, int substep, float forward, float strafe, float yaw, float pitch);
 /* the mouse in the menus (source/interface/ui_widget.c) */
 #include "halo_ui_pointer.h"
 

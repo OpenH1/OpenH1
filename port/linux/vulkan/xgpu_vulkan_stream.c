@@ -64,6 +64,7 @@ its swapchain.
 #include "host_vulkan_vr.h"
 #endif
 
+#include <SDL3/SDL.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -535,6 +536,75 @@ struct xgpu_vulkan_image *xgpu_vulkan_stream_target(uint32_t number)
 
 	target_resolve(target);
 	return target ? target->image : NULL;
+}
+
+unsigned char *xgpu_vulkan_stream_read(uint32_t number, uint32_t *width, uint32_t *height)
+{
+	struct stream_target *target = target_get(number);
+	unsigned char *pixels;
+
+	if (!target || target->depth)
+		return NULL;
+	target_resolve(target);
+	*width = target->width;
+	*height = target->height;
+	pixels = malloc((size_t)target->width * target->height * 4);
+	if (pixels && !xgpu_vulkan_read_pixels(target->image, 0, pixels, target->width * 4, 1))
+	{
+		free(pixels);
+		pixels = NULL;
+	}
+	return pixels;
+}
+
+int xgpu_vulkan_stream_shot(uint32_t number, const char *path)
+{
+	uint32_t width, height;
+	unsigned char *pixels = xgpu_vulkan_stream_read(number, &width, &height);
+	SDL_Surface *surface;
+	size_t pixel;
+	int written;
+
+	if (!pixels)
+		return 0;
+	/* (the frame's alpha is the game's scratch, not transparency) */
+	for (pixel = 0; pixel < (size_t)width * height; pixel++)
+		pixels[pixel * 4 + 3] = 0xff;
+	surface = SDL_CreateSurfaceFrom((int)width, (int)height, SDL_PIXELFORMAT_BGRA32, pixels, (int)(width * 4));
+	written = surface && SDL_SavePNG(surface, path);
+	SDL_DestroySurface(surface);
+	free(pixels);
+	return written;
+}
+
+/* the ID buffer's target (0 none), whose image or multisampled image the
+draws are looked at in */
+static uint32_t ids_target;
+
+int xgpu_vulkan_stream_ids_begin(uint32_t number, uint32_t depth)
+{
+	ids_target = number;
+	return xgpu_vulkan_inspect_begin(depth);
+}
+
+void xgpu_vulkan_stream_ids_draw(uint32_t index)
+{
+	struct stream_target *target = target_get(ids_target);
+
+	xgpu_vulkan_inspect_next(index, target ? target->image : NULL, target ? target->multisampled : NULL);
+}
+
+uint32_t *xgpu_vulkan_stream_ids_read(uint32_t number, uint32_t *width, uint32_t *height)
+{
+	struct stream_target *target = target_get(number);
+
+	return target ? xgpu_vulkan_inspect_read(target->image, width, height) : NULL;
+}
+
+void xgpu_vulkan_stream_ids_end(void)
+{
+	ids_target = 0;
+	xgpu_vulkan_inspect_end();
 }
 
 void xgpu_vulkan_stream_set_vr_target(uint32_t number, struct xgpu_vulkan_image *image)
@@ -1518,6 +1588,7 @@ static int uniforms_update(int effect)
 		to->world_ao[0] = from->world_ao[0];
 		to->world_ao[1] = from->world_ao[1];
 		to->world_ao[2] = from->world_ao[2];
+		to->world_ao[3] = from->world_ao[3];
 		memcpy(to->blend_constant, stream.dynamic.blend_color, sizeof(to->blend_constant));
 		for (stage = 0; stage < 4; stage++)
 		{

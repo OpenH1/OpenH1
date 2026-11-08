@@ -32,6 +32,7 @@ lights' cells' upload put aside before a draw that reads them).
 #include "../xgpu_vulkan.c"
 #include "../xgpu_vulkan_post.c"
 #include "../xgpu_vulkan_post_shaders.c"
+#include "../xgpu_vulkan_inspect_shader.c"
 #include "../xgpu_vulkan_world_ao.c"
 #include "../xgpu_vulkan_rt.c"
 #include <assert.h>
@@ -46,6 +47,11 @@ device has neither present wait nor display timing) */
 void host_render_stream_display_paced(int paced)
 {
 	(void)paced;
+}
+
+void host_render_stream_frames_ahead(int frames)
+{
+	(void)frames;
 }
 
 void host_render_stream_frames_taken_reset(void)

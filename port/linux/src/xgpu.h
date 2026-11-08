@@ -270,12 +270,17 @@ in its low byte, the XGPU_WORLD_AO_INPUT_* bits, and in its high half the
 reference (a model's) or the static scenery's page's texel (the lightmap
 pass's: 1 where it has none) as a half float; its distance from the eye
 (the block's grid[0]), a float's bits; and a spare word. The occlusion's
-pass reads them (world_ao_shading.c's world_ao_pass_*) */
+pass reads them (world_ao_shading.c's world_ao_pass_*). _CARDS: the draw
+is a two-sided model shader's cards (its uniforms' world_ao.w not 0: a
+plant's leaves), whose occlusion is found about their most open
+direction, the sky's (up) or either face's (world_ao_shading.c's
+world_ao_cards_occlusion) */
 #define XGPU_AMBIENT_OCCLUSION_WORLD_SAMPLED 0x40
 #define XGPU_AMBIENT_OCCLUSION_WORLD_INPUTS 0x80
 #define XGPU_WORLD_AO_INPUT_LIGHTMAP 0x100u
 #define XGPU_WORLD_AO_INPUT_ALL_SHAPES 0x200u
 #define XGPU_WORLD_AO_INPUT_PRESENT 0x400u
+#define XGPU_WORLD_AO_INPUT_CARDS 0x800u
 /* (the surfaces' upsampling of the occlusion found at a quarter of the
 pixels: world_ao.h's WORLD_AO_UPSAMPLE_*) */
 #define XGPU_WORLD_AO_UPSAMPLE_DEPTH 0.02f

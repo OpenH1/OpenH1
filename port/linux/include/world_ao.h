@@ -130,6 +130,12 @@ it; -1 none, the structure); the first-person weapon drawn (TRUE) and done
 (FALSE: none drawn now), which the occlusion leaves as it is */
 void world_ao_object_begin(long object_index);
 void world_ao_first_person(int drawing);
+/* the model shader drawn next is a two-sided one's cards (TRUE: its
+_shader_model_two_sided_bit, a plant's leaves; FALSE after its draws):
+their occlusion is taken about their most open direction, the sky's or
+either face's, not each card's one normal (world_ao_cards_occlusion;
+rasterizer_xbox_models.c's _rasterizer_model_draw) */
+void world_ao_cards(int cards);
 /* the structure's lightmap pass draws with this page of its lightmaps
 next (rasterizer_environment_lightmap_begin; NULL none): its static
 scenery's layer, or the static scenery's shapes walked where it has none */
@@ -205,10 +211,11 @@ page has a layer (reference, as the lightmap pass's draws give it, 0 or
 more), the dynamic proxies times scenery, the page's texel there), the
 parameters as the block's (xgpu_stream.h's struct xgpu_world_ao_block:
 parameters[1][1] is how many of the proxies are the dynamic objects', the
-static scenery's after them) */
+static scenery's after them); a model's two-sided shader's cards (cards
+TRUE) about their most open direction (world_ao_cards_occlusion) */
 float world_ao_occlusion(float const parameters[2][4], struct world_sdf_volume const *volume,
 	struct world_proxy const *proxies, long count, float const point[3], float const normal[3], float owner,
-	float reference, int lightmap, float scenery);
+	float reference, int lightmap, float scenery, int cards);
 /* of a window's proxies, how many a draw walks: the dynamic objects'
 alone, or every one (the lightmap pass where its page has no layer) */
 long world_ao_proxies_walked(float const parameters[2][4], long count, float reference, int lightmap);
@@ -229,10 +236,22 @@ again (0: none drawn there) */
 #define XGPU_WORLD_AO_INPUT_LIGHTMAP_BIT 0x100u
 #define XGPU_WORLD_AO_INPUT_ALL_SHAPES_BIT 0x200u
 #define XGPU_WORLD_AO_INPUT_PRESENT_BIT 0x400u
-void world_ao_inputs_pack(float const normal[3], float owner, float value, int lightmap, int all_shapes,
+#define XGPU_WORLD_AO_INPUT_CARDS_BIT 0x800u
+/* the field's occlusion at a two-sided model shader's card (a plant's
+leaf: world_ao_cards), taps from own as world_ao_field_occlusion_from's:
+that of its most open direction of the sky's (up, as the object's
+reference finds it) and its two faces', the first of them where alike.
+A card is thin and drawn alike from both sides, and lit through either
+face: the field's cone along its one normal finds the ground below a
+horizontal card, or the wall a card faces, where the card is open to the
+sky (#781). The direction found is put in normal, which the shapes and
+rays are then found about */
+float world_ao_cards_occlusion(struct world_sdf_volume const *volume, float const point[3], float normal[3],
+	float own);
+void world_ao_inputs_pack(float const normal[3], float owner, float value, int lightmap, int all_shapes, int cards,
 	float distance, unsigned int words[4]);
 int world_ao_inputs_unpack(unsigned int const words[4], float normal[3], float *owner, float *value, int *lightmap,
-	int *all_shapes, float *distance);
+	int *all_shapes, int *cards, float *distance);
 /* the occlusion at a pixel from its inputs (1 none) and its position, as
 the occlusion's pass finds it: world_ao_occlusion's, its proxies those of
 the point's cell alone */
@@ -278,6 +297,8 @@ lighting point, which its ambient sample already holds (1: none), and with
 "ray_traced" its owner among the ray-traced scene's instances (world_rt.h's
 world_rt_owner: 0 none), whose own the rays leave out */
 void halo_world_ao_object(int owner, float reference, unsigned long rays_owner);
+/* the draws next are two-sided cards (world_ao_cards), or not */
+void halo_world_ao_cards(int cards);
 /* "ray_traced": whether the backend traces the occlusion's rays by the
 GPU's ray queries (FALSE until it has said: "world" is drawn), and why not
 where it has said it does not (NULL: it does, or has not said) */

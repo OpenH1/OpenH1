@@ -14,6 +14,10 @@ machine for the player to send.
 /* a frame presented (d3d8_device.c's present): its time kept, the last
 REPORT_FRAMES of them */
 void report_frame_presented(void);
+/* the frame times of the last seconds logged, as a report's summary gives
+them (debug.exit_after's runs with HALO_FRAME_SUMMARY=<seconds>, for
+measuring) */
+void report_frames_log(double seconds);
 /* a line of the log (xbox_kernel.c's platform_log), kept: the last
 REPORT_LOG_SIZE bytes */
 void report_log_line(const char *line);
@@ -42,6 +46,11 @@ void report_session_start(void);
 reason error_get's): reported at the next start as a crash is, though the
 player then closes the game */
 void report_session_halted(const char *reason);
+/* the updater's (updater.c), the new build about to start (1): this session
+ended as an exit ends it, before the new one looks for it (which starts
+while this one is still quitting, or in this process); or (0) it could not
+be started, and this session goes on: its file written again */
+void report_session_handover(int leaving);
 /* the crash question's answer (menu_functions.c's "port crash report", 1,
 and "port crash dismiss", 0): its report saved at the next frame, its issue
 opened, or the crash let go; neither asked of again */

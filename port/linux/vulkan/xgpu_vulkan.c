@@ -110,7 +110,7 @@ float host_app_render_scale(void);
 	F(vkCmdDraw) F(vkCmdDrawIndexed) F(vkCmdClearAttachments) F(vkCmdCopyBuffer) F(vkCmdCopyBufferToImage) \
 	F(vkCmdCopyImageToBuffer) F(vkCmdCopyImage) F(vkCmdBlitImage) F(vkCmdResolveImage) F(vkCmdClearColorImage) \
 	F(vkCmdClearDepthStencilImage) F(vkCmdBeginQuery) F(vkCmdEndQuery) F(vkCmdWriteTimestamp) \
-	F(vkCmdExecuteCommands)
+	F(vkCmdExecuteCommands) F(vkCreateComputePipelines) F(vkCmdDispatch) F(vkCmdPushConstants)
 
 #define SWAPCHAIN_FUNCTIONS(F) \
 	F(vkCreateSwapchainKHR) F(vkDestroySwapchainKHR) F(vkGetSwapchainImagesKHR) F(vkAcquireNextImageKHR) \
@@ -604,6 +604,9 @@ static struct
 	VK_GOOGLE_display_timing */
 	uint32_t low_latency;
 	int paced, present_wait, display_timing;
+	/* the frames ahead of the GPU the stream is told, and one
+	(frames_ahead_update; 0: none told) */
+	int frames_ahead;
 
 	/* display.hdr: the input attachments' set layout (the pipeline
 	layout's third set, where draws can read their colour attachment);
@@ -5002,7 +5005,503 @@ static VkPrimitiveTopology topology_of(uint8_t topology)
 	}
 }
 
+/* ---------- the replay's ID buffer (xgpu_vulkan_inspect_*)
+
+Each draw of a frame's into the target it presents (its image, or its
+multisampled image) between the stream's handing it on and its end
+(xgpu_vulkan_inspect_next) is drawn in a pass of its own: before it the
+target is copied (a multisampled one resolved), after it the copy is
+compared with the target (resolved again) by xgpu_vulkan_inspect_shader.c's
+pass, which puts the draw's number on top of the stacks of the pixels it
+changed. The ID image is a 2D array of R32_UINT, a layer for each place
+of the stacks. The work is the main command buffer's, in order with the
+draws (outside their passes: the pass breaks here are the replay's alone,
+and the stores between them are kept). */
+
+extern const uint32_t xgpu_vulkan_inspect_shader[];
+extern const size_t xgpu_vulkan_inspect_shader_size;
+
+#define INSPECT_SETS 64
+
+static struct
+{
+	/* a frame's (begin to end); the next draw's number (armed: the
+	stream's draw being handed on), and its target's images */
+	int active, armed, failed, cleared;
+	uint32_t depth, number;
+	struct xgpu_vulkan_image *image, *multisampled;
+	/* the pass: made once */
+	VkDescriptorSetLayout set_layout;
+	VkPipelineLayout layout;
+	VkPipeline pipeline;
+	VkDescriptorPool pool;
+	VkSampler sampler;
+	/* the target's copies (before, and after: a multisampled one's
+	resolve) and the ID image, of its size and format */
+	struct xgpu_vulkan_image *before, *after;
+	VkImage ids;
+	struct allocation ids_memory;
+	VkImageView ids_view;
+	uint32_t width, height, layers;
+	uint8_t format;
+	/* the sets written, by the image compared after (its number) */
+	struct
+	{
+		uint64_t number;
+		VkDescriptorSet set;
+	} sets[INSPECT_SETS];
+	uint32_t set_count;
+} inspect;
+
+static int inspect_pass_make(void)
+{
+	VkDescriptorSetLayoutBinding bindings[3];
+	VkDescriptorSetLayoutCreateInfo set_info;
+	VkPushConstantRange push;
+	VkPipelineLayoutCreateInfo layout_info;
+	VkShaderModuleCreateInfo module_info;
+	VkShaderModule module;
+	VkComputePipelineCreateInfo pipeline_info;
+	VkDescriptorPoolSize sizes[2];
+	VkDescriptorPoolCreateInfo pool_info;
+	struct xgpu_vulkan_sampler_description sampler;
+	int index;
+
+	if (inspect.pipeline)
+		return 1;
+	memset(bindings, 0, sizeof(bindings));
+	for (index = 0; index < 3; index++)
+	{
+		bindings[index].binding = (uint32_t)index;
+		bindings[index].descriptorType = index < 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER :
+			VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		bindings[index].descriptorCount = 1;
+		bindings[index].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+	}
+	memset(&set_info, 0, sizeof(set_info));
+	set_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	set_info.bindingCount = 3;
+	set_info.pBindings = bindings;
+	if (!check(vkCreateDescriptorSetLayout(vk.device, &set_info, NULL, &inspect.set_layout),
+		"vkCreateDescriptorSetLayout (inspect)"))
+		return 0;
+	memset(&push, 0, sizeof(push));
+	push.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+	push.size = 24;
+	memset(&layout_info, 0, sizeof(layout_info));
+	layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	layout_info.setLayoutCount = 1;
+	layout_info.pSetLayouts = &inspect.set_layout;
+	layout_info.pushConstantRangeCount = 1;
+	layout_info.pPushConstantRanges = &push;
+	if (!check(vkCreatePipelineLayout(vk.device, &layout_info, NULL, &inspect.layout), "vkCreatePipelineLayout (inspect)"))
+		return 0;
+	memset(&module_info, 0, sizeof(module_info));
+	module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	module_info.codeSize = xgpu_vulkan_inspect_shader_size;
+	module_info.pCode = xgpu_vulkan_inspect_shader;
+	if (!check(vkCreateShaderModule(vk.device, &module_info, NULL, &module), "vkCreateShaderModule (inspect)"))
+		return 0;
+	memset(&pipeline_info, 0, sizeof(pipeline_info));
+	pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+	pipeline_info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	pipeline_info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+	pipeline_info.stage.module = module;
+	pipeline_info.stage.pName = "main";
+	pipeline_info.layout = inspect.layout;
+	/* (the module is kept: a pass made once) */
+	if (!check(vkCreateComputePipelines(vk.device, VK_NULL_HANDLE, 1, &pipeline_info, NULL, &inspect.pipeline),
+		"vkCreateComputePipelines (inspect)"))
+		return 0;
+	sizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	sizes[0].descriptorCount = INSPECT_SETS * 2;
+	sizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	sizes[1].descriptorCount = INSPECT_SETS;
+	memset(&pool_info, 0, sizeof(pool_info));
+	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pool_info.maxSets = INSPECT_SETS;
+	pool_info.poolSizeCount = 2;
+	pool_info.pPoolSizes = sizes;
+	if (!check(vkCreateDescriptorPool(vk.device, &pool_info, NULL, &inspect.pool), "vkCreateDescriptorPool (inspect)"))
+		return 0;
+	memset(&sampler, 0, sizeof(sampler));
+	sampler.minify = sampler.magnify = XGPU_VULKAN_FILTER_POINT;
+	sampler.mip = XGPU_VULKAN_MIP_NONE;
+	sampler.anisotropy = 1;
+	inspect.sampler = xgpu_vulkan_sampler(&sampler);
+	return inspect.sampler != VK_NULL_HANDLE;
+}
+
+/* the copies and the ID image, of the image's size and format (made again
+for another: the GPU waited for first) */
+static int inspect_images_make(const struct xgpu_vulkan_image *image)
+{
+	struct xgpu_vulkan_image_description description;
+	VkImageCreateInfo info;
+	VkImageViewCreateInfo view;
+	VkMemoryRequirements requirements;
+
+	if (inspect.before && inspect.width == image->description.width && inspect.height == image->description.height &&
+		inspect.format == image->description.format && inspect.layers == inspect.depth)
+		return 1;
+	xgpu_vulkan_wait(xgpu_vulkan_fence());
+	if (inspect.before)
+		xgpu_vulkan_image_destroy(inspect.before);
+	if (inspect.after)
+		xgpu_vulkan_image_destroy(inspect.after);
+	inspect.before = inspect.after = NULL;
+	if (inspect.ids_view)
+		vkDestroyImageView(vk.device, inspect.ids_view, NULL);
+	if (inspect.ids)
+	{
+		vkDestroyImage(vk.device, inspect.ids, NULL);
+		memory_release(&inspect.ids_memory);
+	}
+	inspect.ids = VK_NULL_HANDLE;
+	inspect.ids_view = VK_NULL_HANDLE;
+	vkResetDescriptorPool(vk.device, inspect.pool, 0);
+	inspect.set_count = 0;
+	memset(&description, 0, sizeof(description));
+	description.type = XGPU_VULKAN_IMAGE_2D;
+	description.format = image->description.format;
+	description.usage = XGPU_VULKAN_USAGE_SAMPLED;
+	description.width = image->description.width;
+	description.height = image->description.height;
+	description.depth_or_layers = 1;
+	description.levels = 1;
+	inspect.before = xgpu_vulkan_image_create(&description);
+	inspect.after = xgpu_vulkan_image_create(&description);
+	if (!inspect.before || !inspect.after)
+		return 0;
+	memset(&info, 0, sizeof(info));
+	info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	info.imageType = VK_IMAGE_TYPE_2D;
+	info.format = VK_FORMAT_R32_UINT;
+	info.extent.width = description.width;
+	info.extent.height = description.height;
+	info.extent.depth = 1;
+	info.mipLevels = 1;
+	info.arrayLayers = inspect.depth;
+	info.samples = VK_SAMPLE_COUNT_1_BIT;
+	info.tiling = VK_IMAGE_TILING_OPTIMAL;
+	info.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	if (!check(vkCreateImage(vk.device, &info, NULL, &inspect.ids), "vkCreateImage (inspect)"))
+	{
+		inspect.ids = VK_NULL_HANDLE;
+		return 0;
+	}
+	vkGetImageMemoryRequirements(vk.device, inspect.ids, &requirements);
+	if (!memory_for(&requirements, &inspect.ids_memory) ||
+		!check(vkBindImageMemory(vk.device, inspect.ids, inspect.ids_memory.memory, inspect.ids_memory.offset),
+			"vkBindImageMemory (inspect)"))
+		return 0;
+	memset(&view, 0, sizeof(view));
+	view.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	view.image = inspect.ids;
+	view.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+	view.format = VK_FORMAT_R32_UINT;
+	view.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	view.subresourceRange.levelCount = 1;
+	view.subresourceRange.layerCount = inspect.depth;
+	if (!check(vkCreateImageView(vk.device, &view, NULL, &inspect.ids_view), "vkCreateImageView (inspect)"))
+		return 0;
+	{
+		VkCommandBuffer commands = early_commands();
+		VkImageMemoryBarrier transition;
+
+		memset(&transition, 0, sizeof(transition));
+		transition.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		transition.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		transition.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		transition.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+		transition.srcQueueFamilyIndex = transition.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		transition.image = inspect.ids;
+		transition.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		transition.subresourceRange.levelCount = 1;
+		transition.subresourceRange.layerCount = inspect.depth;
+		vkCmdPipelineBarrier(commands, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL, 0,
+			NULL, 1, &transition);
+	}
+	inspect.width = description.width;
+	inspect.height = description.height;
+	inspect.format = description.format;
+	inspect.layers = inspect.depth;
+	return 1;
+}
+
+/* the set comparing the copy before with compared (the target, or the
+copy after) */
+static VkDescriptorSet inspect_set(struct xgpu_vulkan_image *compared)
+{
+	VkDescriptorSetAllocateInfo allocate;
+	VkDescriptorImageInfo images[3];
+	VkWriteDescriptorSet writes[3];
+	VkDescriptorSet set;
+	uint32_t index;
+
+	for (index = 0; index < inspect.set_count; index++)
+	{
+		if (inspect.sets[index].number == compared->number)
+			return inspect.sets[index].set;
+	}
+	if (inspect.set_count == INSPECT_SETS)
+		return VK_NULL_HANDLE;
+	memset(&allocate, 0, sizeof(allocate));
+	allocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocate.descriptorPool = inspect.pool;
+	allocate.descriptorSetCount = 1;
+	allocate.pSetLayouts = &inspect.set_layout;
+	if (!check(vkAllocateDescriptorSets(vk.device, &allocate, &set), "vkAllocateDescriptorSets (inspect)"))
+		return VK_NULL_HANDLE;
+	memset(images, 0, sizeof(images));
+	images[0].sampler = images[1].sampler = inspect.sampler;
+	images[0].imageView = inspect.before->sampled;
+	images[1].imageView = compared->sampled;
+	images[2].imageView = inspect.ids_view;
+	images[0].imageLayout = images[1].imageLayout = images[2].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+	memset(writes, 0, sizeof(writes));
+	for (index = 0; index < 3; index++)
+	{
+		writes[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[index].dstSet = set;
+		writes[index].dstBinding = index;
+		writes[index].descriptorCount = 1;
+		writes[index].descriptorType = index < 2 ? VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER :
+			VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		writes[index].pImageInfo = &images[index];
+	}
+	vkUpdateDescriptorSets(vk.device, 3, writes, 0, NULL);
+	inspect.sets[inspect.set_count].number = compared->number;
+	inspect.sets[inspect.set_count].set = set;
+	inspect.set_count++;
+	return set;
+}
+
+/* the draw's target, where it is the one looked at (a 2D image's first
+layer): the target bound, else NULL */
+static struct xgpu_vulkan_image *inspect_looked(void)
+{
+	struct xgpu_vulkan_image *color = vk.color;
+
+	if (!inspect.active || !inspect.armed || inspect.failed || !color || vk.layer || vk.views > 1 ||
+		(color != inspect.image && color != inspect.multisampled) || color->transient)
+		return NULL;
+	return color;
+}
+
+/* everything before it done with, before the transfer and the pass after */
+#define INSPECT_STAGES (VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)
+#define INSPECT_ACCESS (VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT)
+
+/* the image resolved into, or copied into, to */
+static void inspect_copy(VkCommandBuffer commands, struct xgpu_vulkan_image *image, struct xgpu_vulkan_image *to)
+{
+	if (image->description.samples > 1)
+	{
+		VkImageResolve resolve;
+
+		memset(&resolve, 0, sizeof(resolve));
+		resolve.srcSubresource.aspectMask = resolve.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		resolve.srcSubresource.layerCount = resolve.dstSubresource.layerCount = 1;
+		resolve.extent.width = inspect.width;
+		resolve.extent.height = inspect.height;
+		resolve.extent.depth = 1;
+		vkCmdResolveImage(commands, image->image, VK_IMAGE_LAYOUT_GENERAL, to->image, VK_IMAGE_LAYOUT_GENERAL, 1,
+			&resolve);
+	}
+	else
+	{
+		VkImageCopy copy;
+
+		memset(&copy, 0, sizeof(copy));
+		copy.srcSubresource.aspectMask = copy.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		copy.srcSubresource.layerCount = copy.dstSubresource.layerCount = 1;
+		copy.extent.width = inspect.width;
+		copy.extent.height = inspect.height;
+		copy.extent.depth = 1;
+		vkCmdCopyImage(commands, image->image, VK_IMAGE_LAYOUT_GENERAL, to->image, VK_IMAGE_LAYOUT_GENERAL, 1, &copy);
+	}
+}
+
+static void inspect_before(struct xgpu_vulkan_image *image)
+{
+	VkCommandBuffer commands;
+
+	/* (the pass ended first: an image made again waits for the GPU, the
+	work so far submitted) */
+	main_commands();
+	if (!inspect_pass_make() || !inspect_images_make(image))
+	{
+		inspect.failed = 1;
+		host_logf(HOST_LOG_WARN, "vulkan: the replay's ID buffer cannot be made");
+		return;
+	}
+	commands = main_commands();
+	image_use(image);
+	image_use(inspect.before);
+	barrier(commands, INSPECT_STAGES, INSPECT_ACCESS, VK_PIPELINE_STAGE_TRANSFER_BIT, INSPECT_ACCESS);
+	if (!inspect.cleared)
+	{
+		VkClearColorValue zero;
+		VkImageSubresourceRange range;
+
+		memset(&zero, 0, sizeof(zero));
+		memset(&range, 0, sizeof(range));
+		range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		range.levelCount = 1;
+		range.layerCount = inspect.depth;
+		vkCmdClearColorImage(commands, inspect.ids, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &range);
+		inspect.cleared = 1;
+	}
+	inspect_copy(commands, image, inspect.before);
+	barrier(commands, VK_PIPELINE_STAGE_TRANSFER_BIT, INSPECT_ACCESS, INSPECT_STAGES, INSPECT_ACCESS);
+}
+
+static void inspect_after(struct xgpu_vulkan_image *image)
+{
+	VkCommandBuffer commands;
+	struct xgpu_vulkan_image *compared = image->description.samples > 1 ? inspect.after : image;
+	VkDescriptorSet set;
+	uint32_t push[6];
+
+	if (inspect.failed)
+		return;
+	commands = main_commands();
+	image_use(image);
+	barrier(commands, INSPECT_STAGES, INSPECT_ACCESS, VK_PIPELINE_STAGE_TRANSFER_BIT |
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, INSPECT_ACCESS);
+	if (compared != image)
+	{
+		inspect_copy(commands, image, compared);
+		barrier(commands, VK_PIPELINE_STAGE_TRANSFER_BIT, INSPECT_ACCESS, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+			INSPECT_ACCESS);
+	}
+	set = inspect_set(compared);
+	if (!set)
+	{
+		inspect.failed = 1;
+		return;
+	}
+	vkCmdBindPipeline(commands, VK_PIPELINE_BIND_POINT_COMPUTE, inspect.pipeline);
+	vkCmdBindDescriptorSets(commands, VK_PIPELINE_BIND_POINT_COMPUTE, inspect.layout, 0, 1, &set, 0, NULL);
+	push[0] = push[1] = 0;
+	push[2] = inspect.width;
+	push[3] = inspect.height;
+	push[4] = inspect.number + 1;
+	push[5] = inspect.depth;
+	vkCmdPushConstants(commands, inspect.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(push), push);
+	vkCmdDispatch(commands, (inspect.width + 7) / 8, (inspect.height + 7) / 8, 1);
+	barrier(commands, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, INSPECT_ACCESS, INSPECT_STAGES, INSPECT_ACCESS);
+	/* (the draws after it bind their state again: the compute pipeline
+	took the bind point's descriptor sets' place in the command buffer) */
+	vk.bound_pipeline = VK_NULL_HANDLE;
+	memset(&vk.bound, 0, sizeof(vk.bound));
+}
+
+int xgpu_vulkan_inspect_begin(uint32_t depth)
+{
+	inspect.image = inspect.multisampled = NULL;
+	inspect.depth = depth ? depth : 1;
+	inspect.active = 1;
+	inspect.armed = inspect.failed = inspect.cleared = 0;
+	return 1;
+}
+
+void xgpu_vulkan_inspect_next(uint32_t number, struct xgpu_vulkan_image *image, struct xgpu_vulkan_image *multisampled)
+{
+	inspect.armed = number != UINT32_MAX;
+	inspect.number = number;
+	inspect.image = image;
+	inspect.multisampled = multisampled;
+}
+
+uint32_t *xgpu_vulkan_inspect_read(struct xgpu_vulkan_image *image, uint32_t *width, uint32_t *height)
+{
+	VkDeviceSize layer_size, size;
+	VkCommandBuffer commands;
+	VkBufferImageCopy copy;
+	uint32_t *ids, layer;
+	size_t pixel, pixels;
+
+	if (!inspect.active || inspect.failed || !image)
+		return NULL;
+	*width = image->description.width;
+	*height = image->description.height;
+	pixels = (size_t)*width * *height;
+	ids = calloc(pixels * inspect.depth, sizeof(*ids));
+	if (!ids)
+		return NULL;
+	/* (no draw was looked at: none drew into the target) */
+	if (!inspect.before || !inspect.cleared || inspect.width != *width || inspect.height != *height)
+		return ids;
+	layer_size = (VkDeviceSize)pixels * 4;
+	size = layer_size * inspect.depth;
+	if (size > vk.readback_size)
+	{
+		if (vk.readback)
+		{
+			vkDestroyBuffer(vk.device, vk.readback, NULL);
+			memory_release(&vk.readback_memory);
+			vk.readback = VK_NULL_HANDLE;
+		}
+		if (!buffer_make(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT, BUFFER_READBACK, &vk.readback, &vk.readback_memory,
+			(void **)&vk.readback_mapped))
+		{
+			vk.readback_size = 0;
+			free(ids);
+			return NULL;
+		}
+		vk.readback_size = size;
+	}
+	commands = main_commands();
+	barrier(commands, INSPECT_STAGES, INSPECT_ACCESS, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+	memset(&copy, 0, sizeof(copy));
+	copy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	copy.imageSubresource.layerCount = inspect.depth;
+	copy.imageExtent.width = *width;
+	copy.imageExtent.height = *height;
+	copy.imageExtent.depth = 1;
+	vkCmdCopyImageToBuffer(commands, inspect.ids, VK_IMAGE_LAYOUT_GENERAL, vk.readback, 1, &copy);
+	barrier(commands, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+		VK_ACCESS_HOST_READ_BIT);
+	xgpu_vulkan_wait(xgpu_vulkan_fence());
+	/* (layer by layer, into each pixel's stack) */
+	for (layer = 0; layer < inspect.depth; layer++)
+	{
+		const uint32_t *from = (const uint32_t *)(vk.readback_mapped + layer * layer_size);
+
+		for (pixel = 0; pixel < pixels; pixel++)
+			ids[pixel * inspect.depth + layer] = from[pixel];
+	}
+	return ids;
+}
+
+void xgpu_vulkan_inspect_end(void)
+{
+	inspect.active = inspect.armed = 0;
+	inspect.image = inspect.multisampled = NULL;
+}
+
+static void draw_body(const struct xgpu_vulkan_draw *draw);
+
 void xgpu_vulkan_draw(const struct xgpu_vulkan_draw *draw)
+{
+	struct xgpu_vulkan_image *looked = inspect_looked();
+
+	if (!looked)
+	{
+		draw_body(draw);
+		return;
+	}
+	inspect_before(looked);
+	draw_body(draw);
+	/* (its pass ended: the comparison is outside it) */
+	inspect_after(looked);
+}
+
+static void draw_body(const struct xgpu_vulkan_draw *draw)
 {
 	const struct xgpu_vulkan_dynamic_state *dynamic = draw->dynamic;
 	VkCommandBuffer commands;
@@ -5850,12 +6349,18 @@ static int swapchain_make(void)
 	memset(&info, 0, sizeof(info));
 	info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	info.surface = vk.surface;
-	/* (paced by the display, at most one frame waits for it while the
-	next is drawn: three images, one on screen, one waiting, one drawn
-	into; else one more than the least, for the frames queued ahead) */
+	/* (paced or bounded by the display, at most one frame waits for it
+	while the next is drawn: three images, one on screen, one waiting, one
+	drawn into. FIFO not paced by it (a display that says nothing of its
+	presents): the least, two at least, so that the swapchain itself bounds
+	the frames queued ahead of the display, beside the GPU's bound
+	(xgpu_vulkan_pacing_frames_ahead). Else one more than the least, for
+	the frames queued ahead) */
 	info.minImageCount = capabilities.minImageCount + 1;
 	if (vk.paced && vk.interval <= 1)
 		info.minImageCount = capabilities.minImageCount > 3 ? capabilities.minImageCount : 3;
+	else if (!vk.paced && vk.present_mode == VK_PRESENT_MODE_FIFO_KHR)
+		info.minImageCount = capabilities.minImageCount > 2 ? capabilities.minImageCount : 2;
 	if (capabilities.maxImageCount && info.minImageCount > capabilities.maxImageCount)
 		info.minImageCount = capabilities.maxImageCount;
 	if (info.minImageCount > 8)
@@ -6598,9 +7103,29 @@ static void frame_pacing_update(void)
 	fifo = vk.swapchain ? vk.present_mode == VK_PRESENT_MODE_FIFO_KHR : vk.interval > 0;
 	paced = xgpu_vulkan_pacing_mode((int)__atomic_load_n(&vk.low_latency, __ATOMIC_ACQUIRE), vk.interval, fifo,
 		vk.frame % 120 ? 0 : host_vulkan_display_period());
-	if (paced != vk.paced && vk.swapchain && vk.interval <= 1)
+	if (!paced != !vk.paced && vk.swapchain && vk.interval <= 1)
 		vk.swapchain_stale = 1;
 	vk.paced = paced;
+}
+
+/* the frames ahead of the GPU bounded (xgpu_vulkan_pacing_frames_ahead):
+where the window's presents queue for the display (FIFO), the game starts a
+frame only once the frame before is done on the GPU, whatever the display
+says of them (issue #274: NVIDIA's Windows driver queued five refreshes of
+them); the guest's own bound else (mailbox and immediate replace or tear,
+and the headset paces the VR mode). With a display that says nothing of its
+presents, on gamescope's headless 60 Hz, the press reached the screen in
+57 ms, against 96 ms unbounded (68 ms with one frame more allowed) */
+static void frames_ahead_update(int present_window)
+{
+	int ahead = present_window && vk.swapchain && vk.present_mode == VK_PRESENT_MODE_FIFO_KHR ? 0 : -1;
+
+	if (ahead + 2 == vk.frames_ahead)
+		return;
+	vk.frames_ahead = ahead + 2;
+	xgpu_vulkan_pacing_frames_ahead(ahead);
+	host_logf(HOST_LOG_INFO, "vulkan: the game's frames %s", !ahead ?
+		"start once the frame before is done on the GPU (FIFO)" : "ahead of the GPU as the stream allows");
 }
 
 void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
@@ -6618,6 +7143,7 @@ void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
 		barrier(main_commands(), VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 			VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	frame_pacing_update();
+	frames_ahead_update(present_window);
 	/* (the frame's last work, its tests' queries with it: the present's
 	submission, or one of its own; with discards, its last passes' stores
 	chosen as the frame's) */

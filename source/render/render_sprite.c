@@ -333,6 +333,8 @@ void build_sprites_end(
 	}
 
 	SET_FLAG(data->flags, _build_sprites_valid_bit, FALSE);
+	/* port: debug.render_marks: the groups' maker said (render_marks_next) */
+	render_marks_next(NONE, NONE);
 	/* port: (view_fov.c) */
 	if (TEST_FLAG(data->flags, _build_sprites_first_person_bit))
 		viewmodel_projection_end();
