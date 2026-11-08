@@ -1465,8 +1465,33 @@ def attributes(pairs: list) -> str:
     return "".join(f" {key}={quoteattr(str(value))}" for key, value in pairs if value is not None)
 
 
+# the functions that are not where a widget comes from: the module's own
+# running of them
+_NOT_SOURCES = {"<module>", "main", "<listcomp>", "<genexpr>", "<lambda>", "<dictcomp>", "<setcomp>"}
+
+
+def _source() -> str:
+    """where a widget comes from (its source attribute, which the game
+    ignores and the menu review tools read: tools/menu_review.py): this
+    file and the functions that made it, as a path of calls, the outermost
+    first, three at most ("multiplayer_files/_browser/_prompts"); names,
+    not lines, so that the files do not change where nothing about them
+    did"""
+    names = []
+    frame = sys._getframe(2)
+    while frame is not None and len(names) < 3:
+        code = frame.f_code
+        if code.co_filename == __file__ and code.co_name not in _NOT_SOURCES:
+            name = getattr(code, "co_qualname", code.co_name).replace(".<locals>.", ".")
+            if name not in names:
+                names.append(name)
+        frame = frame.f_back
+    return "tools/port_settings.py " + "/".join(reversed(names))
+
+
 def _widget(name: str, pairs: list, inner: list) -> list:
-    return [f"\t<widget{attributes([('name', name)] + pairs)}>", *[f"\t\t{line}" for line in inner], "\t</widget>"]
+    return [f"\t<widget{attributes([('name', name)] + pairs + [('source', _source())])}>",
+            *[f"\t\t{line}" for line in inner], "\t</widget>"]
 
 
 def _strings(name: str, texts: list) -> list:

@@ -631,6 +631,10 @@ def widget_xml(tag: str, widget: dict, tags: Tags, functions: list, inputs: list
             pairs = [(k, value if k == key else v) for k, v in pairs]
         else:
             pairs = [(k, v) for k, v in pairs if k != key] + [(key, value)]
+    # (where it comes from, which the game ignores and the menu review tools
+    # read: tools/menu_review.py; the PC version's tag, and the port's patch)
+    pairs.append(("source", f"tools/ce_menus.py widget_xml {tag}" +
+                  (" + port_settings.WIDGET_PATCHES" if patch else "")))
     lines = [f"{indent}<widget{attributes(pairs)}>"]
     inner = indent + "\t"
     for data in widget["game data inputs"]:
