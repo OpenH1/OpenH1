@@ -62,6 +62,7 @@ names another file, or none (empty).
 */
 
 #include "host.h"
+#include "host_render_record.h"
 #include "host_render_stream.h"
 #include "xgpu_vulkan.h"
 #include "xgpu_vulkan_loading.h"
@@ -440,6 +441,8 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 	backend.exiting = vulkan_exiting;
 	host_render_stream_set_backend(&backend);
 	host_render_stream_set_screenshot_writer(host_screenshot_write);
+	/* (HALO_RENDER_SHOTS' pictures: host_render_record.h) */
+	host_render_record_set_shooter(xgpu_vulkan_stream_shot);
 	atexit(vulkan_shutdown);
 	opened = 1;
 	return 1;

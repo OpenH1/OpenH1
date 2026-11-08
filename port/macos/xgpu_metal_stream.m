@@ -496,6 +496,26 @@ static void shot_half_floats(struct stream_target *entry, const char *path)
 
 /* a target's picture as a PNG (host_render_record.h's shots: a frame's back
 buffer as it is presented); its pixels' alpha is not written */
+unsigned char *xgpu_metal_stream_read(uint32_t target, uint32_t *width, uint32_t *height)
+{
+	struct stream_target *entry = target_get(target);
+	unsigned char *pixels;
+
+	if (!entry || (entry->description.format != XGPU_METAL_FORMAT_BGRA8 &&
+		entry->description.format != XGPU_METAL_FORMAT_RGBA16F))
+		return NULL;
+	*width = entry->description.width;
+	*height = entry->description.height;
+	pixels = malloc((size_t)*width * *height * 4);
+	if (pixels && !(entry->description.format == XGPU_METAL_FORMAT_RGBA16F ? read_half_floats(entry, 0, pixels, 0) :
+		xgpu_metal_read_pixels(entry->texture, 0, 0, 0, 0, *width, *height, pixels, *width * 4)))
+	{
+		free(pixels);
+		pixels = NULL;
+	}
+	return pixels;
+}
+
 int xgpu_metal_stream_shot(uint32_t target, const char *path)
 {
 	struct stream_target *entry = target_get(target);
@@ -503,18 +523,10 @@ int xgpu_metal_stream_shot(uint32_t target, const char *path)
 	unsigned char *pixels;
 	int written = 0;
 
-	if (!entry || (entry->description.format != XGPU_METAL_FORMAT_BGRA8 &&
-		entry->description.format != XGPU_METAL_FORMAT_RGBA16F))
-		return 0;
-	width = entry->description.width;
-	height = entry->description.height;
-	pixels = malloc((size_t)width * height * 4);
-	if (!pixels)
-		return 0;
-	if (entry->description.format == XGPU_METAL_FORMAT_RGBA16F)
+	if (entry && entry->description.format == XGPU_METAL_FORMAT_RGBA16F)
 		shot_half_floats(entry, path);
-	if (entry->description.format == XGPU_METAL_FORMAT_RGBA16F ? read_half_floats(entry, 0, pixels, 0) :
-		xgpu_metal_read_pixels(entry->texture, 0, 0, 0, 0, width, height, pixels, width * 4))
+	pixels = xgpu_metal_stream_read(target, &width, &height);
+	if (pixels)
 	{
 		CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
 		CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, pixels, (size_t)width * height * 4, NULL);
