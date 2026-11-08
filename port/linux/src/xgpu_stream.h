@@ -38,7 +38,7 @@ port/linux/README.md.
 #include <stdint.h>
 
 #define XGPU_STREAM_MAGIC 0x53504758u /* "XGPS" */
-#define XGPU_STREAM_VERSION 21
+#define XGPU_STREAM_VERSION 22
 #define XGPU_STREAM_LOADING_ART_BYTES (640u * 480u * 4u)
 
 /* ---------- the ring
@@ -290,6 +290,12 @@ enum
 	(xgpu_backend_world_ao_mesh, _instances) */
 	XGPU_STREAM_WORLD_AO_MESH,
 	XGPU_STREAM_WORLD_AO_INSTANCES,
+	/* debug.render_marks: what the draws from now on belong to, for the
+	inspector's replay (port/macos/tools/halo_replay.m); the backends play
+	nothing for them (xgpu_stream_mark_*) */
+	XGPU_STREAM_MARK_STRING,
+	XGPU_STREAM_MARK_VIEW,
+	XGPU_STREAM_MARK_OWNER,
 	XGPU_STREAM_RECORD_TYPES,
 };
 
@@ -322,6 +328,81 @@ struct xgpu_stream_value
 /* CATEGORY's value: the category (rasterizer.h's _rasterizer_profile_*,
 XGPU_STREAM_CATEGORY_NONE outside them) */
 #define XGPU_STREAM_CATEGORY_NONE 255u
+
+/* ---------- debug.render_marks (port/linux/game/render_marks.c)
+
+Written only with the setting on. A string a mark names is a number: the
+first mark that names it is preceded by MARK_STRING, its number and its
+bytes (inline, NUL-terminated); 0 names none. Numbers count from 1 since
+the stream began and are never given again. A VIEW mark says where the
+camera of the window drawn from now on is; an OWNER mark says what the
+draws from now on, until the next OWNER mark, belong to. */
+
+/* an owner's kind (the replay's names: halo_replay.m's mark_kind_names) */
+enum
+{
+	XGPU_STREAM_MARK_OTHER,
+	XGPU_STREAM_MARK_WORLD_OBJECT,
+	XGPU_STREAM_MARK_FIRST_PERSON,
+	XGPU_STREAM_MARK_BSP,
+	XGPU_STREAM_MARK_SKY,
+	XGPU_STREAM_MARK_DECAL,
+	XGPU_STREAM_MARK_EFFECT,
+	XGPU_STREAM_MARK_PARTICLE,
+	XGPU_STREAM_MARK_CONTRAIL,
+	XGPU_STREAM_MARK_LIGHTNING,
+	XGPU_STREAM_MARK_WEATHER,
+	XGPU_STREAM_MARK_WATER,
+	XGPU_STREAM_MARK_HUD,
+	XGPU_STREAM_MARK_TEXT,
+	XGPU_STREAM_MARK_MENU_WIDGET,
+	XGPU_STREAM_MARK_CINEMATIC_LETTERBOX,
+	XGPU_STREAM_MARK_DEBUG,
+	XGPU_STREAM_MARK_DETAIL_OBJECT,
+	XGPU_STREAM_MARK_LENS_FLARE,
+	XGPU_STREAM_MARK_FOG,
+	XGPU_STREAM_MARK_SCREEN_EFFECT,
+	XGPU_STREAM_MARK_LIGHT_VOLUME,
+	XGPU_STREAM_MARK_SHADOW,
+	XGPU_STREAM_MARK_CLEAR,
+	XGPU_STREAM_MARK_KINDS,
+};
+
+#define XGPU_STREAM_MARK_NONE 0xffffffffu
+
+/* MARK_STRING: then length bytes and a NUL (inline: at data) */
+struct xgpu_stream_mark_string
+{
+	uint32_t header;
+	uint32_t number, length, data;
+};
+
+/* MARK_VIEW: the map, the game's tick, the window (XGPU_STREAM_MARK_NONE:
+the frame's start, no camera) and its camera: position, forward and up
+(the world's units), the horizontal field of view (radians) and the
+viewport in the back buffer's pixels (x, y, width, height) */
+struct xgpu_stream_mark_view
+{
+	uint32_t header;
+	uint32_t map, tick, window;
+	float position[3], forward[3], up[3];
+	float field_of_view;
+	int32_t viewport[4];
+};
+
+/* MARK_OWNER: the kind (XGPU_STREAM_MARK_*), an id (an object's or a
+widget's handle, a tag's index; XGPU_STREAM_MARK_NONE), and strings: a
+label, the tags that matter (the object's definition, its model, the
+shader, a bitmap), a menu widget's tag and the generator source that wrote
+it (tools/menu_sources.py's) */
+struct xgpu_stream_mark_owner
+{
+	uint32_t header;
+	uint32_t kind, id;
+	uint32_t label;
+	uint32_t object, model, shader, bitmap;
+	uint32_t widget, source;
+};
 
 /* ---------- the backend's life */
 
@@ -1395,6 +1476,9 @@ XGPU_STREAM_ASSERT_SIZE(struct xgpu_world_ao_instance, 64);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_world_ao_instances, 16);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pipeline_stand_in, 12);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_set_targets, 16);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_mark_string, 16);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_mark_view, 72);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_mark_owner, 40);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_clear, 36);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_read_target, 28);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_screenshot, 32);
