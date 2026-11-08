@@ -386,6 +386,14 @@ static int pc_menu_update_question_open(void)
 	return 1;
 }
 
+/* report.c's: this session ended before the new build starts, or (0) taken
+up again; said for the test to see, before the restart */
+static void report_session_handover(int leaving)
+{
+	printf("test: session %s\n", leaving ? "handed over" : "taken up again");
+	fflush(stdout);
+}
+
 static void platform_request_quit(void)
 {
 	quit_requested = 1;
