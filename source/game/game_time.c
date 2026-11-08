@@ -87,6 +87,7 @@ real network_clock_frame_seconds(real time_delta_sec);
 void determinism_log_tick_begin(void);
 void determinism_log_tick_end(long tick);
 void determinism_log_tick_pause(void);
+#include "demo.h" /* port: port/linux/game/demo.c */
 
 /* port: the tick loop's steps, timed in the profiling build */
 PROFILE_SECTION(game_time_network_distributed_tick_section, "network_distributed_tick")
@@ -782,11 +783,19 @@ static boolean game_time_run_substep(
 
 	/* port: (debug.determinism_log), and the local seed's takers in the
 	tick take the ticks' (random_math.c) */
+	/* port: a tick begun: the demo being recorded or played (port/linux/
+	game/demo.c), as nothing of the tick has run */
+	if (sim_substep_next() == 0 && !game_time_menu_scene())
+		demo_tick_begin(game_time_globals->server_time);
 	determinism_log_tick_begin();
 	random_math_port_set_ticking(TRUE);
 	LATENCY_LOG(latency_log_substep_begin()); /* port: debug.latency_log */
 	tick_ended = game_tick_substep(sim_substep_next());
 	LATENCY_LOG(latency_log_substep_end()); /* port: debug.latency_log */
+	/* port: (and ended, before the netcode's work of the tick, which a
+	demo has as what reached the game state from outside the ticks) */
+	if (tick_ended && !game_time_menu_scene())
+		demo_tick_end(game_time_globals->server_time + 1);
 	if (tick_ended)
 	{
 		sim_trace_step(game_time_globals->server_time, sim_substep_count() - 1, sim_substep_count()); /* port: debug.trace */

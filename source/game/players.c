@@ -239,6 +239,7 @@ symbols in this file:
 #include "devices/devices.h"
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
 #include "bots.h" /* port: port/linux/game/bots.c */
+#include "demo.h" /* port: port/linux/game/demo.c */
 #include "cutscene/cinematics.h" /* port: network co-op's first spawns */
 #include "editor/editor_stubs.h"
 #include "effects/effects.h"
@@ -4910,16 +4911,28 @@ void players_update_before_game(
 	struct unit_control_data control_data;
 	long weapon_index;
 	short action_index;
+	boolean have_actions; /* port: (a demo's playback's too) */
 
 	profile_enter(PLAYERS_UPDATE_BEFORE_GAME_PROFILE);
 	players_coop_note_on_foot();
 	players_coop_rescue_stranded();
 	/* port: or the main menu's scene's idle players (players_idle_actions) */
-	if (update_client_dequeue(actions) || players_idle_actions(actions))
+	have_actions = update_client_dequeue(actions) || players_idle_actions(actions);
+	/* port: a demo's playback's recorded input, in place of what the queues
+	held (the machine's players give none) and of the bots
+	(port/linux/game/demo.c); else the controls of a local game's bots this
+	tick (port/linux/game/bots.c), in place of what their queues held, and
+	the tick's input recorded */
+	if (demo_playback_tick_actions(actions))
+		have_actions = TRUE;
+	else if (have_actions)
 	{
-		/* port: the controls of a local game's bots this tick
-		(port/linux/game/bots.c), in place of what their queues held */
+		demo_record_tick_actions_begin();
 		bots_update_actions(actions);
+		demo_record_tick_actions(actions);
+	}
+	if (have_actions)
+	{
 		/* port: debug.play_log (port/linux/game/play_log.c) */
 		play_log_tick(actions);
 		data_iterator_new(&iterator, player_data);

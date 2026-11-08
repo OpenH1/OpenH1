@@ -423,6 +423,12 @@ symbols in this file:
 #ifdef HALO_VR
 #include "../../port/linux/src/vr.h"
 #endif
+/* port: the commit a build is of (tools/build_common.py; none for a local
+build), and the log's */
+#ifndef HALO_BUILD_COMMIT
+#define HALO_BUILD_COMMIT ""
+#endif
+void platform_log(const char *format, ...);
 
 /* ---------- constants */
 
@@ -698,6 +704,7 @@ typedef char screenshot_and_framerate_globals_size_assert[
 	sizeof(struct _screenshot_and_framerate_globals) == 0x38B ? 1 : -1];
 
 void network_test_update(boolean main_menu_loaded, real seconds);
+#include "demo.h" /* port: port/linux/game/demo.c */
 /* port: port/linux/game/basic_training.c */
 void basic_training_update(boolean main_menu_loaded, real seconds);
 /* port: the menus' pictures drawn again from the player's maps, rendered
@@ -1645,7 +1652,7 @@ static void main_change_map_name(
 			/* port: (not a map of the menus' pictures: the player's last level
 			is as it was) */
 			for (local_player_index = 0;
-				local_player_index < player_spawn_count && !menu_pictures_preparing();
+				local_player_index < player_spawn_count && !menu_pictures_preparing() && !demo_playing();
 				local_player_index++)
 			{
 				player_profile_save_last_level_played(local_player_index);
@@ -1655,6 +1662,58 @@ static void main_change_map_name(
 		main_globals.map_change_load_timer = 0;
 	}
 
+	return;
+}
+
+/* port: the commit this build is of (CI's; empty for a local build), for
+the demos' builds (port/linux/game/demo.c) */
+char const *main_port_build_commit(
+	void)
+{
+	return HALO_BUILD_COMMIT;
+}
+
+/* port: a demo's map loaded for its playback (port/linux/game/demo.c), as
+map_name loads one, at the demo's difficulty, and nothing of the player's
+read (their saved game) or written (their last level) */
+void main_port_demo_load_map(
+	char const *map_name,
+	short difficulty)
+{
+	main_set_map_name(map_name);
+	main_globals.allow_persistent_storage = FALSE;
+	if (difficulty >= _game_difficulty_level_easy && difficulty < NUMBER_OF_GAME_DIFFICULTY_LEVELS)
+		global_difficulty_level = difficulty;
+	return;
+}
+
+/* port: the map started over at once, as main_reset_map does on the next
+frame, for a demo's playback whose recording's map was */
+void main_port_demo_reset_map(
+	void)
+{
+	scenario_switch_structure_bsp(0);
+	game_dispose_from_old_map();
+	input_flush();
+	game_initialize_for_new_map();
+	create_local_players();
+	game_time_start();
+	game_initial_pulse();
+	main_globals.reset_map = FALSE;
+	return;
+}
+
+/* port: a demo's playback over: the game quits (debug.demo_quit, or a demo
+that cannot be played), or goes back to the main menu */
+void main_port_demo_end(
+	boolean quit)
+{
+	if (quit)
+	{
+		platform_log("exiting after the demo (debug.demo_quit)");
+		exit(0);
+	}
+	main_goto_main_menu();
 	return;
 }
 
@@ -3134,6 +3193,9 @@ static void main_reset_map_private(
 {
 	if (!game_time_get_paused())
 	{
+		/* port: (the demo being recorded takes the whole game state again:
+		port/linux/game/demo.c) */
+		demo_note_map_reset();
 		scenario_switch_structure_bsp(0);
 		game_dispose_from_old_map();
 		input_flush();
@@ -3838,6 +3900,9 @@ void main_loop(
 
 			/* automated system link tests (port/linux/game/network_test.c) */
 			network_test_update(main_globals.main_menu_scenario_loaded, main_globals.seconds_elapsed);
+			/* port: a demo asked for played, and the end of one
+			(port/linux/game/demo.c) */
+			demo_frame(main_globals.main_menu_scenario_loaded, main_globals.seconds_elapsed);
 			/* port: Basic Training's game started, its skip buttons
 			(port/linux/game/basic_training.c) */
 			basic_training_update(main_globals.main_menu_scenario_loaded, main_globals.seconds_elapsed);
@@ -4006,10 +4071,15 @@ void main_loop(
 				if (!console_update() || main_globals.connection!=_game_connection_local)
 				{
 					/* port: not while a chat line is typed (its K plays an animation) */
-					if (!network_chat_typing())
-						debug_keys_update();
-					cheats_update();
-					player_control_update((real)main_globals.halt_time_scale*main_globals.seconds_elapsed);
+					/* port: nor any of the machine's input in a demo's playback,
+					whose players play the recording's (port/linux/game/demo.c) */
+					if (!demo_playing())
+					{
+						if (!network_chat_typing())
+							debug_keys_update();
+						cheats_update();
+						player_control_update((real)main_globals.halt_time_scale*main_globals.seconds_elapsed);
+					}
 
 					connection = main_globals.connection;
 					profile_scope_enter(main_network_end_frame_section)

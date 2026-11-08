@@ -209,6 +209,15 @@ void random_math_port_seeds(
 	*local_seed= random_math_globals.global_local_random_seed;
 }
 
+/* port: the seeds as a demo has them (port/linux/game/demo.c) */
+void random_math_port_set_seeds(
+	unsigned long global_seed,
+	unsigned long local_seed)
+{
+	random_math_globals.global_random_seed= global_seed;
+	random_math_globals.global_local_random_seed= local_seed;
+}
+
 void
 random_seed_debug_log(
 	boolean log)

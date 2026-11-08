@@ -167,7 +167,7 @@ static void print_help(void)
 {
 	fprintf(stdout,
 		"halo [--server] [--relay] [--config <file>] [--keygen] [--sign <text>] [--probe [<invite>]] "
-		"[--import-maps <file>] [--version] [--help]\n"
+		"[--import-maps <file>] [--demo <file>] [--version] [--help]\n"
 		"  --server         a dedicated server (docs/dedicated_server.md)\n"
 		"  --relay          a relay alone, for players who cannot connect directly (docs/dedicated_server.md)\n"
 		"  --probe [<invite>]  prints the invite's game (or the LAN's first) as one line of JSON\n"
@@ -176,6 +176,7 @@ static void print_help(void)
 		"  --sign <text>    prints the publisher key's signature of the text (an application's proof)\n"
 		"  --import-maps <file>  adds the multiplayer maps of Custom Edition's installer (halocesetup_en_1.00.exe)\n"
 		"                   to the custom_maps folder\n"
+		"  --demo <file>    plays a demo (docs/demos.md)\n"
 		"  --version        prints the build and its network version\n");
 }
 

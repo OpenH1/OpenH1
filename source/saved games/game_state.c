@@ -127,6 +127,7 @@ symbols in this file:
 void object_bounds_cache_invalidate(void);
 /* port: port/linux/game/determinism_log.c */
 void determinism_log_game_state_allocation(char const *name, void const *address, long size);
+#include "demo.h" /* port: port/linux/game/demo.c */
 
 void platform_log(const char *format, ...);
 
@@ -271,6 +272,9 @@ static void game_state_call_after_load_procs(
 	{
 		(*proc)();
 	}
+	/* port: the game state rewritten as a whole, for the demo being
+	recorded (port/linux/game/demo.c) */
+	demo_note_state_loaded();
 
 	return;
 }
@@ -407,7 +411,8 @@ void game_state_save_to_persistent_storage(
 	not a game state no checkpoint has (game_state_revert would start the
 	map over and leave the game state as it is, written with no map's
 	header) */
-	if (player_spawn_count==1 && (game_state_port_saved_game_valid() || recover_saved_games_hack))
+	/* port: (nothing of a demo's playback: port/linux/game/demo.c) */
+	if (player_spawn_count==1 && !demo_playing() && (game_state_port_saved_game_valid() || recover_saved_games_hack))
 	{
 		game_state_note_event("save and quit");
 		game_state_revert();
@@ -617,8 +622,9 @@ void *game_state_malloc(
 
 	pointer = (byte *)game_state_globals.base_address+game_state_globals.cpu_allocation_size;
 	game_state_globals.cpu_allocation_size+= size;
-	/* port: (debug.determinism_log) */
+	/* port: (debug.determinism_log, and the demos) */
 	determinism_log_game_state_allocation(name, pointer, size);
+	demo_game_state_allocation(name, pointer, size);
 
 	crc_checksum_buffer((unsigned long *)&game_state_globals.allocation_size_checksum, &size, sizeof(size));
 
@@ -640,8 +646,9 @@ void *game_state_gpu_malloc(
 
 	game_state_globals.gpu_allocation_size+= size;
 	pointer = (byte *)game_state_globals.base_address-game_state_globals.gpu_allocation_size+GAME_STATE_SIZE;
-	/* port: (debug.determinism_log) */
+	/* port: (debug.determinism_log, and the demos) */
 	determinism_log_game_state_allocation(name, pointer, size);
+	demo_game_state_allocation(name, pointer, size);
 
 	crc_checksum_buffer((unsigned long *)&game_state_globals.allocation_size_checksum, &size, sizeof(size));
 
@@ -942,6 +949,71 @@ boolean game_state_image_accept(
 	error(_error_silent, "the saved game is taken");
 
 	return TRUE;
+}
+
+/* port: the game state's memory and its size, for the demos
+(port/linux/game/demo.c) */
+void *game_state_port_base(
+	long *size)
+{
+	*size = GAME_STATE_SIZE;
+	return game_state_globals.base_address;
+}
+
+unsigned long game_state_port_allocation_checksum(
+	void)
+{
+	return (unsigned long)game_state_globals.allocation_size_checksum;
+}
+
+/* port: a demo's snapshot taken (port/linux/game/demo.c) as a saved game
+is: the loading's procedures before it is written over the game state and
+after, and the game state checked between them as a saved game's image is
+(here in place) */
+void game_state_port_demo_load_begin(
+	void)
+{
+	game_state_note_event("demo snapshot");
+	game_state_call_before_load_procs();
+}
+
+boolean game_state_port_check_live(
+	void)
+{
+	byte *image = game_state_globals.base_address;
+	long index;
+
+	for (index = 0; index < game_state_allocation_count; index++)
+	{
+		struct game_state_allocation const *allocation = &game_state_allocations[index];
+		boolean valid;
+
+		switch (allocation->kind)
+		{
+		case _game_state_allocation_data:
+			valid = game_state_image_data_valid(image, allocation->address, allocation->maximum_count,
+				allocation->element_size);
+			break;
+		case _game_state_allocation_memory_pool:
+			valid = game_state_image_memory_pool_valid(image, allocation->address, allocation->size);
+			break;
+		case _game_state_allocation_lruv_cache:
+			valid = game_state_image_lruv_cache_valid(image, allocation->address, allocation);
+			break;
+		default:
+			valid = FALSE;
+			break;
+		}
+		if (!valid)
+			return FALSE;
+	}
+	return TRUE;
+}
+
+void game_state_port_demo_load_end(
+	void)
+{
+	game_state_call_after_load_procs();
 }
 
 struct data_array *game_state_data_new(

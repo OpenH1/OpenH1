@@ -1,0 +1,1802 @@
+/*
+DEMO.C
+
+Demos (docs/demos.md): every game this machine plays, recorded as it plays,
+and played again exactly, tick for tick, as the game state was.
+
+The game's simulation is a function of its game state (one block of
+memory: game_state.c), the two random seeds the ticks take (random_math.c)
+and the players' input of each tick ("Determinism", port/linux/README.md).
+A demo is then:
+
+- the state it starts from: a snapshot of the game state and the seeds at
+  its first tick (the map's first, a game's first), and one every
+  demo.snapshot_seconds after it, for seeking;
+- each tick's players' input, as the tick takes it (players.c), every
+  player's: this machine's, the bots', and the other machines' that the
+  netcode gave it; and each later sub-step's controls of the players' units
+  (player_control.c's slot of the fast phase: game.sim_rate's 60 and 120);
+- what reached the game state from outside the ticks: at each tick's
+  start, what differs from the state the tick before left (a player joined
+  or left, a host's decision, a console command, the menus) as the bytes
+  that changed, and when the game state was rewritten as a whole (a
+  checkpoint reverted to, a saved game loaded, the map started over), the
+  whole of it. The frames' own allocations (the particles, the decals, the
+  lights and the rest determinism_compare.py names FRAME_ALLOCATIONS) are
+  not compared: the ticks do not read them;
+- a hash of the game state once a second, which the playback compares
+  with its own, and says where the two first part.
+
+Playing a demo loads its map, takes its first snapshot, and runs the ticks
+with the recorded input in place of the players' (this machine's input,
+the bots and the other machines play no part), the differences put back at
+each tick's start. Its sub-steps' controls are put on the units as the
+recording's were. Nothing of the machine's own saved games is read or
+written meanwhile.
+
+The file (demo_files.c writes it on a thread of its own): a header
+(DEMO_HEADER_SIZE bytes: the build, the map, the connection, the rate),
+then blocks, each packed (zlib): a second of records ('R'), a snapshot that
+the playback takes ('K': the start, a reload) or may skip ('k': a seek's).
+A record is its type (a byte), its length (4 bytes) and its bytes:
+
+    T <tick> <rate>                    a tick begins (its number as the clock had
+                                       it, and the rate it runs at)
+    K <tick> <flags> <seeds> {<offset> <size> <bytes>}...
+                                       the game state (each allocation's part in
+                                       use) and the seeds
+    P {<offset> <size> <bytes>}...     what changed in the game state since the
+                                       tick before ended
+    S <global seed> <local seed>       the seeds as they then are
+    A {<player> <action>}...           the tick's players' input (players.h's
+                                       struct player_action, each in use)
+    U <sub-step> <count> {<player> <unit> <controls>}...
+                                       a later sub-step's units' controls
+    H <tick> <hash>                    the game state's hash as the tick ended
+    V <variant> <options>              the game's variant (a multiplayer game's)
+    B <tick> <seconds>                 a bookmark (the clip key)
+    E <tick>                           the end
+
+Everything a demo holds is checked before the playback takes it, as the
+netcode checks what another machine sends: a demo is a file anyone may
+send. Its snapshots and differences go only into the game state's
+allocations, and the game state is checked as a saved game is
+(game_state.c) after each; an input is a controller's.
+
+A demo of another build is refused, with the reason: the simulation is
+the code, and another's may part from it at the first tick.
+*/
+
+#include "cseries.h"
+#include "game/game.h"
+#include "game/game_engine.h"
+#include "game/players.h"
+#include "main/main.h"
+#include "memory/data.h"
+#include "memory/memory_pool.h"
+#include "objects/objects.h"
+#include "scenario/scenario.h"
+#include "tag_files/tag_groups.h"
+#include "units/units.h"
+
+#include "demo.h"
+#include "sim_rate.h"
+#include "../src/demo_files.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+/* port/linux/src/port_config.c */
+char const *config_string(char const *name);
+long config_integer(char const *name);
+int config_boolean(char const *name);
+double config_real(char const *name);
+int config_command_line_value(char const *name, char *value, unsigned long size);
+void platform_log(char const *format, ...);
+/* source/math/random_math.c */
+void random_math_port_seeds(unsigned long *global_seed, unsigned long *local_seed);
+void random_math_port_set_seeds(unsigned long global_seed, unsigned long local_seed);
+/* source/saved games/game_state.c */
+void *game_state_port_base(long *size);
+void game_state_port_demo_load_begin(void);
+boolean game_state_port_check_live(void);
+void game_state_port_demo_load_end(void);
+unsigned long game_state_port_allocation_checksum(void);
+/* source/main/main.c */
+char const *main_port_build_commit(void);
+void main_port_demo_load_map(char const *map_name, short difficulty);
+void main_port_demo_reset_map(void);
+void main_port_demo_end(boolean quit);
+/* source/game/player_control.c */
+unsigned long player_control_substep_pressed_flags(long unit_index);
+struct player_control *player_control_get(short local_player_index);
+/* source/game/game_time.c */
+boolean game_time_menu_scene(void);
+extern struct game_variant game_variant_global;
+void main_build_identity(long *number, char *flavor, size_t flavor_size, char *repository, size_t repository_size,
+	char *version, size_t version_size);
+
+/* ---------- constants */
+
+#define DEMO_MAGIC "OH1DEMO"
+
+enum
+{
+	DEMO_FORMAT_VERSION = 1,
+	DEMO_HEADER_SIZE = 512,
+	DEMO_BUILD_SIZE = 64,
+	DEMO_MAP_NAME_SIZE = 128,
+
+	MAXIMUM_DEMO_ALLOCATIONS = 512,
+	/* the ticks of a block of records */
+	DEMO_BLOCK_TICKS = TICKS_PER_SECOND,
+	/* the hash's ticks */
+	DEMO_HASH_TICKS = TICKS_PER_SECOND,
+	/* the objects' fields left out of the comparison and the hash (the
+	frames' as much as the ticks'): a magic number, the attachments'
+	indices, a render state's */
+	MAXIMUM_DEMO_SKIPS = 65536,
+	/* two differences this near are one */
+	DEMO_PATCH_JOIN_BYTES = 32,
+	/* the largest record */
+	DEMO_RECORD_MAXIMUM_SIZE = DEMO_BLOCK_MAXIMUM_SIZE,
+};
+
+/* a block's kind */
+enum
+{
+	_demo_block_records = 'R',
+	_demo_block_snapshot = 'K',
+	_demo_block_seek_snapshot = 'k',
+};
+
+/* a snapshot's flags */
+enum
+{
+	_demo_snapshot_start_bit,
+	_demo_snapshot_loaded_bit,
+	_demo_snapshot_reset_bit,
+	_demo_snapshot_seek_bit,
+};
+
+/* ---------- structures */
+
+struct demo_allocation
+{
+	char name[32];
+	unsigned long offset;
+	unsigned long size;
+	/* whether the frames move it (determinism_compare.py's
+	FRAME_ALLOCATIONS): not compared, nor hashed */
+	boolean frames;
+	/* whether it is the frames' input that the ticks read (the player
+	control globals: the scripts' tests of the players' actions), recorded
+	whole at each tick's start that it changed by */
+	boolean input;
+};
+
+struct demo_buffer
+{
+	unsigned char *data;
+	unsigned long size;
+	unsigned long capacity;
+	boolean failed;
+};
+
+/* what a unit was given in a sub-step */
+struct demo_unit_controls
+{
+	unsigned long control_flags;
+	real_vector3d throttle;
+	real primary_trigger;
+	real_vector3d desired_facing_vector;
+	real_vector3d desired_aiming_vector;
+	real_vector3d desired_looking_vector;
+	unsigned long pressed_flags;
+};
+
+/* a block of the demo being played, as its index has it */
+struct demo_block_entry
+{
+	unsigned long offset;
+	unsigned long kind;
+	unsigned long first_tick;
+	unsigned long size;
+	unsigned long packed_size;
+};
+
+/* ---------- globals */
+
+static struct
+{
+	boolean read;
+	boolean record;
+	long keep_count;
+	long keep_megabytes;
+	long snapshot_ticks;
+	real clip_seconds;
+} demo_settings;
+
+static struct
+{
+	unsigned char *base;
+	long size;
+	long count;
+	struct demo_allocation list[MAXIMUM_DEMO_ALLOCATIONS];
+} demo_allocations;
+
+/* the objects' fields left out (absolute addresses, in order) */
+static unsigned long demo_skips[MAXIMUM_DEMO_SKIPS];
+static long demo_skip_count;
+
+static struct
+{
+	boolean recording;
+	struct demo_writer *writer;
+	char name[DEMO_FILE_NAME_SIZE];
+	unsigned char *shadow;
+	boolean shadow_valid;
+	/* the frames' input as it was last recorded (C records) */
+	unsigned char *input;
+	boolean input_valid;
+	struct demo_buffer records;
+	struct demo_buffer scratch;
+	long block_first_tick;
+	long block_ticks;
+	long ticks;
+	long last_snapshot_tick;
+	boolean loaded;
+	boolean reset;
+	boolean stopped;
+	unsigned long end_seeds[2];
+	unsigned long bots_seeds[2];
+	/* the sub-step's units' controls as it began, by player */
+	struct demo_unit_controls substep_before[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+	long substep_units[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+	long patches;
+	unsigned long patch_bytes;
+	long last_tick;
+} demo_recorder;
+
+static struct
+{
+	boolean requested;
+	boolean playing;
+	boolean started;
+	boolean ended;
+	boolean quit_at_end;
+	struct demo_reader *file;
+	unsigned long file_size;
+	char path[512];
+	unsigned char header[DEMO_HEADER_SIZE];
+	char map_name[DEMO_MAP_NAME_SIZE];
+	long connection;
+	long difficulty;
+	long rate;
+	struct demo_block_entry *blocks;
+	long block_count;
+	long next_block;
+	unsigned char *block;
+	unsigned long block_size;
+	unsigned long cursor;
+	unsigned long pressed_units[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+	unsigned long pressed_flags[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+	long pressed_count;
+	long ticks;
+	long last_tick;
+	boolean diverged;
+	long hashes_matched;
+} demo_player;
+
+/* ---------- the settings */
+
+static void demo_settings_read(
+	void)
+{
+	if (demo_settings.read)
+		return;
+	demo_settings.read = TRUE;
+	demo_settings.record = config_boolean("demo.record") != 0;
+	demo_settings.keep_count = config_integer("demo.keep_count");
+	demo_settings.keep_megabytes = config_integer("demo.keep_megabytes");
+	demo_settings.snapshot_ticks = (long)(config_real("demo.snapshot_seconds") * TICKS_PER_SECOND);
+	if (demo_settings.snapshot_ticks < TICKS_PER_SECOND)
+		demo_settings.snapshot_ticks = TICKS_PER_SECOND;
+	demo_settings.clip_seconds = config_real("demo.clip_seconds");
+}
+
+/* ---------- the buffers */
+
+static boolean demo_buffer_reserve(
+	struct demo_buffer *buffer,
+	unsigned long size)
+{
+	unsigned long capacity;
+	unsigned char *data;
+
+	if (buffer->failed)
+		return FALSE;
+	if (buffer->size + size <= buffer->capacity)
+		return TRUE;
+	capacity = buffer->capacity ? buffer->capacity : 65536;
+	while (capacity < buffer->size + size)
+		capacity *= 2;
+	data = demo_files_realloc(buffer->data, capacity);
+	if (!data)
+	{
+		buffer->failed = TRUE;
+		return FALSE;
+	}
+	buffer->data = data;
+	buffer->capacity = capacity;
+	return TRUE;
+}
+
+static void demo_buffer_bytes(
+	struct demo_buffer *buffer,
+	void const *bytes,
+	unsigned long size)
+{
+	if (!demo_buffer_reserve(buffer, size))
+		return;
+	memcpy(buffer->data + buffer->size, bytes, size);
+	buffer->size += size;
+}
+
+static void demo_buffer_u8(
+	struct demo_buffer *buffer,
+	unsigned long value)
+{
+	unsigned char byte_value = (unsigned char)value;
+
+	demo_buffer_bytes(buffer, &byte_value, 1);
+}
+
+static void demo_buffer_u32(
+	struct demo_buffer *buffer,
+	unsigned long value)
+{
+	unsigned char bytes[4];
+
+	bytes[0] = (unsigned char)value;
+	bytes[1] = (unsigned char)(value >> 8);
+	bytes[2] = (unsigned char)(value >> 16);
+	bytes[3] = (unsigned char)(value >> 24);
+	demo_buffer_bytes(buffer, bytes, 4);
+}
+
+/* a record begun: its type, and room for its length (demo_record_end) */
+static unsigned long demo_record_begin(
+	struct demo_buffer *buffer,
+	char type)
+{
+	unsigned long start;
+
+	demo_buffer_u8(buffer, (unsigned char)type);
+	start = buffer->size;
+	demo_buffer_u32(buffer, 0);
+	return start;
+}
+
+static void demo_record_end(
+	struct demo_buffer *buffer,
+	unsigned long start)
+{
+	unsigned long length;
+
+	if (buffer->failed || start + 4 > buffer->size)
+		return;
+	length = buffer->size - start - 4;
+	buffer->data[start] = (unsigned char)length;
+	buffer->data[start + 1] = (unsigned char)(length >> 8);
+	buffer->data[start + 2] = (unsigned char)(length >> 16);
+	buffer->data[start + 3] = (unsigned char)(length >> 24);
+}
+
+static unsigned long demo_read_u32(
+	unsigned char const *bytes)
+{
+	return (unsigned long)bytes[0] | (unsigned long)bytes[1] << 8 | (unsigned long)bytes[2] << 16 |
+		(unsigned long)bytes[3] << 24;
+}
+
+/* ---------- the game state's allocations */
+
+void demo_game_state_allocation(
+	char const *name,
+	void const *address,
+	long size)
+{
+	static char const *const frames[] = {
+		"game time globals", "lights", "decals", "decal globals", "decal vertices",
+		"decal vertex cache", "particle systems", "particle system particles", "particle", "contrail",
+		"contrail point", "game sound globals", "cached object render states", "motion sensor (radar)",
+		"object looping sounds", "scenario globals", "player control globals", "first person weapons",
+	};
+	struct demo_allocation *allocation;
+	long index;
+
+	if (!demo_allocations.base)
+		demo_allocations.base = game_state_port_base(&demo_allocations.size);
+	if (demo_allocations.count >= MAXIMUM_DEMO_ALLOCATIONS || !demo_allocations.base ||
+		(unsigned char const *)address < demo_allocations.base ||
+		(unsigned char const *)address + size > demo_allocations.base + demo_allocations.size)
+	{
+		return;
+	}
+	allocation = &demo_allocations.list[demo_allocations.count++];
+	snprintf(allocation->name, sizeof(allocation->name), "%s", name ? name : "?");
+	allocation->offset = (unsigned long)((unsigned char const *)address - demo_allocations.base);
+	allocation->size = (unsigned long)size;
+	allocation->frames = FALSE;
+	for (index = 0; index < (long)NUMBEROF(frames); index++)
+	{
+		if (!strcmp(allocation->name, frames[index]))
+			allocation->frames = TRUE;
+	}
+	allocation->input = !strcmp(allocation->name, "player control globals");
+}
+
+/* the part of an allocation that is in use, from its start: a data
+array's header and its elements up to its count, a memory pool's header
+and its blocks up to the end of its last; anything else whole */
+static unsigned long demo_allocation_used(
+	struct demo_allocation const *allocation)
+{
+	unsigned char const *address = demo_allocations.base + allocation->offset;
+	unsigned long used = allocation->size;
+
+	if (allocation->size >= sizeof(struct data_array) &&
+		((struct data_array const *)address)->signature == 'd@t@' &&
+		((struct data_array const *)address)->data == (struct data_array const *)address + 1)
+	{
+		struct data_array const *data = (struct data_array const *)address;
+
+		if (data->count >= 0 && data->size > 0)
+			used = sizeof(*data) + (unsigned long)data->count * (unsigned long)data->size;
+	}
+	else if (allocation->size >= sizeof(struct memory_pool) &&
+		((struct memory_pool const *)address)->signature == 'pool' &&
+		((struct memory_pool const *)address)->base_address == (struct memory_pool const *)address + 1)
+	{
+		struct memory_pool const *pool = (struct memory_pool const *)address;
+		unsigned char const *last = (unsigned char const *)pool->last_block;
+
+		used = sizeof(*pool);
+		if (last && last >= address + sizeof(*pool) && last + sizeof(struct memory_pool_block) <= address + allocation->size)
+		{
+			long block_size = ((struct memory_pool_block const *)last)->size;
+
+			if (block_size > 0)
+				used = (unsigned long)(last - address) + (unsigned long)block_size;
+		}
+	}
+	return used < allocation->size ? used : allocation->size;
+}
+
+/* whether an object's attachment of this type is a datum of the frames'
+allocations (determinism_log.c's determinism_frames_attachment) */
+static boolean demo_frames_attachment(
+	char type)
+{
+	return type == _object_attachment_type_light ||
+		type == _object_attachment_type_looping_sound ||
+		type == _object_attachment_type_contrail ||
+		type == _object_attachment_type_particle_system;
+}
+
+static void demo_skip_add(
+	void const *address)
+{
+	if (demo_skip_count < MAXIMUM_DEMO_SKIPS)
+		demo_skips[demo_skip_count++] = (unsigned long)address;
+}
+
+/* the objects' fields the frames write as well as the ticks (each
+object's magic number, the collision tests' mark; its attachments' indices
+that are the frames' datums; its render state's index: determinism_log.c's
+determinism_hash_objects), in order */
+static void demo_skips_find(
+	void)
+{
+	long index;
+
+	demo_skip_count = 0;
+	for (index = 0; index < demo_allocations.count; index++)
+	{
+		struct demo_allocation const *allocation = &demo_allocations.list[index];
+		unsigned char const *start = demo_allocations.base + allocation->offset;
+		unsigned char const *end = start + allocation->size;
+		struct memory_pool const *pool = (struct memory_pool const *)start;
+		struct memory_pool_block const *block;
+		long blocks = 0;
+
+		if (strcmp(allocation->name, "objects") || allocation->size < sizeof(*pool) || pool->signature != 'pool')
+			continue;
+		for (block = pool->first_block;
+			block && (unsigned char const *)block >= start && (unsigned char const *)(block + 1) <= end &&
+				blocks++ < (long)allocation->size;
+			block = block->next_block)
+		{
+			struct object_datum const *object = (struct object_datum const *)(block + 1);
+			unsigned char const *block_end = (unsigned char const *)block + block->size;
+			short attachment;
+
+			if (block->size < (long)sizeof(*block) || block_end > end ||
+				(unsigned char const *)(&object->object.cached_render_state_index + 1) > block_end)
+			{
+				break;
+			}
+			demo_skip_add(&object->object.magic_number);
+			if ((unsigned char const *)&object->object.attachment_indices[MAXIMUM_NUMBER_OF_ATTACHMENTS_PER_OBJECT] <=
+				block_end && object_definition_get(object->definition_index))
+			{
+				short attachment_count = (short)MIN(
+					object_definition_get(object->definition_index)->object.attachments.count,
+					MAXIMUM_NUMBER_OF_ATTACHMENTS_PER_OBJECT);
+
+				for (attachment = 0; attachment < attachment_count; attachment++)
+				{
+					if (demo_frames_attachment(object->object.attachment_types[attachment]))
+						demo_skip_add(&object->object.attachment_indices[attachment]);
+				}
+			}
+			demo_skip_add(&object->object.cached_render_state_index);
+		}
+	}
+	/* (in order: the blocks are, and each one's fields; but sorted to be
+	sure, as the comparison walks them) */
+	for (index = 1; index < demo_skip_count; index++)
+	{
+		unsigned long value = demo_skips[index];
+		long other = index - 1;
+
+		while (other >= 0 && demo_skips[other] > value)
+		{
+			demo_skips[other + 1] = demo_skips[other];
+			other--;
+		}
+		demo_skips[other + 1] = value;
+	}
+}
+
+/* the hash of the game state the ticks keep: each allocation's part in
+use but the frames' allocations, and the objects' fields left out
+(FNV-1a over words) */
+static unsigned long demo_state_hash(
+	void)
+{
+	unsigned long hash = 2166136261UL;
+	long skip = 0;
+	long index;
+
+	demo_skips_find();
+	for (index = 0; index < demo_allocations.count; index++)
+	{
+		struct demo_allocation const *allocation = &demo_allocations.list[index];
+		unsigned long const *word = (unsigned long const *)(demo_allocations.base + allocation->offset);
+		unsigned long words = demo_allocation_used(allocation) / 4;
+		unsigned long word_index;
+
+		if (allocation->frames)
+			continue;
+		for (word_index = 0; word_index < words; word_index++, word++)
+		{
+			while (skip < demo_skip_count && demo_skips[skip] < (unsigned long)word)
+				skip++;
+			if (skip < demo_skip_count && demo_skips[skip] == (unsigned long)word)
+				continue;
+			hash = (hash ^ *word) * 16777619UL;
+		}
+	}
+	return hash;
+}
+
+/* ---------- recording */
+
+static void demo_header_write(
+	unsigned char *header)
+{
+	long number;
+	char flavor[32], repository[128], version[128];
+
+	memset(header, 0, DEMO_HEADER_SIZE);
+	memcpy(header, DEMO_MAGIC, sizeof(DEMO_MAGIC));
+	header[8] = DEMO_FORMAT_VERSION;
+	header[12] = (unsigned char)(DEMO_HEADER_SIZE & 0xFF);
+	header[13] = (unsigned char)(DEMO_HEADER_SIZE >> 8);
+	main_build_identity(&number, flavor, sizeof(flavor), repository, sizeof(repository), version, sizeof(version));
+	snprintf((char *)header + 16, DEMO_BUILD_SIZE, "%ld/%s/%s", number, flavor,
+		main_port_build_commit()[0] ? main_port_build_commit() : "local");
+	{
+		unsigned long values[] = {
+			HALO_PORT_NETWORK_VERSION,
+			game_state_port_allocation_checksum(),
+			(unsigned long)demo_allocations.size,
+			(unsigned long)game_connection(),
+			(unsigned long)sim_rate_next(),
+			(unsigned long)game_difficulty_level_get(),
+			(unsigned long)game_time_get(),
+			0,
+			(unsigned long)players_globals->local_player_count,
+			(unsigned long)halo_server_mode(),
+		};
+		long index;
+
+		for (index = 0; index < (long)NUMBEROF(values); index++)
+		{
+			unsigned char *out = header + 80 + index * 4;
+
+			out[0] = (unsigned char)values[index];
+			out[1] = (unsigned char)(values[index] >> 8);
+			out[2] = (unsigned char)(values[index] >> 16);
+			out[3] = (unsigned char)(values[index] >> 24);
+		}
+	}
+	snprintf((char *)header + 128, DEMO_MAP_NAME_SIZE, "%s", tag_get_name(global_scenario_index));
+}
+
+/* the game state's allocations in use (all, or but the frames'), as K and P
+records hold them */
+static void demo_snapshot_write(
+	struct demo_buffer *buffer,
+	long tick,
+	unsigned long flags)
+{
+	unsigned long seeds[2];
+	unsigned long start = demo_record_begin(buffer, 'K');
+	long index;
+
+	random_math_port_seeds(&seeds[0], &seeds[1]);
+	demo_buffer_u32(buffer, (unsigned long)tick);
+	demo_buffer_u32(buffer, flags);
+	demo_buffer_u32(buffer, seeds[0]);
+	demo_buffer_u32(buffer, seeds[1]);
+	for (index = 0; index < demo_allocations.count; index++)
+	{
+		struct demo_allocation const *allocation = &demo_allocations.list[index];
+		unsigned long used = demo_allocation_used(allocation);
+
+		demo_buffer_u32(buffer, allocation->offset);
+		demo_buffer_u32(buffer, used);
+		demo_buffer_bytes(buffer, demo_allocations.base + allocation->offset, used);
+	}
+	demo_record_end(buffer, start);
+}
+
+/* the records of the ticks so far handed to the writer */
+static void demo_records_flush(
+	void)
+{
+	if (!demo_recorder.writer || !demo_recorder.records.size)
+		return;
+	demo_writer_block(demo_recorder.writer, _demo_block_records, (unsigned long)demo_recorder.block_first_tick,
+		demo_recorder.records.data, demo_recorder.records.size, FALSE);
+	demo_recorder.records.size = 0;
+	demo_recorder.block_ticks = 0;
+}
+
+static void demo_snapshot_block(
+	long tick,
+	unsigned long flags)
+{
+	boolean seek = TEST_FLAG(flags, _demo_snapshot_seek_bit);
+
+	demo_records_flush();
+	demo_recorder.scratch.size = 0;
+	demo_snapshot_write(&demo_recorder.scratch, tick, flags);
+	if (!demo_recorder.scratch.failed)
+	{
+		demo_writer_block(demo_recorder.writer, seek ? _demo_block_seek_snapshot : _demo_block_snapshot,
+			(unsigned long)tick, demo_recorder.scratch.data, demo_recorder.scratch.size, seek);
+	}
+	demo_recorder.last_snapshot_tick = tick;
+}
+
+/* the allocations the ticks keep copied as the tick left them, to find
+what changes before the next */
+static void demo_shadow_take(
+	void)
+{
+	long index;
+
+	if (!demo_recorder.shadow)
+		return;
+	for (index = 0; index < demo_allocations.count; index++)
+	{
+		struct demo_allocation const *allocation = &demo_allocations.list[index];
+
+		if (!allocation->frames)
+		{
+			memcpy(demo_recorder.shadow + allocation->offset, demo_allocations.base + allocation->offset,
+				demo_allocation_used(allocation));
+		}
+	}
+	demo_recorder.shadow_valid = TRUE;
+}
+
+/* what changed in the game state's allocations since the tick before
+ended, as a P record (none if nothing did): word by word where a run of
+them differs, the objects' fields the frames write left out */
+static void demo_patch_write(
+	void)
+{
+	unsigned long start = 0;
+	boolean begun = FALSE;
+	long skip = 0;
+	long index;
+
+	if (!demo_recorder.shadow_valid)
+		return;
+	demo_skips_find();
+	for (index = 0; index < demo_allocations.count; index++)
+	{
+		struct demo_allocation const *allocation = &demo_allocations.list[index];
+		unsigned char const *live = demo_allocations.base + allocation->offset;
+		unsigned char const *shadow = demo_recorder.shadow + allocation->offset;
+		unsigned long used = demo_allocation_used(allocation);
+		unsigned long position = 0;
+
+		if (allocation->frames)
+			continue;
+		while (position < used)
+		{
+			unsigned long chunk = used - position < 256 ? used - position : 256;
+			unsigned long run_start, run_end, word;
+
+			if (!memcmp(live + position, shadow + position, chunk))
+			{
+				position += chunk;
+				continue;
+			}
+			/* (a run of differing words, joined across short gaps) */
+			run_start = run_end = 0;
+			for (word = position; word + 4 <= used; word += 4)
+			{
+				unsigned long address = (unsigned long)(live + word);
+				boolean differs;
+
+				while (skip < demo_skip_count && demo_skips[skip] < address)
+					skip++;
+				differs = memcmp(live + word, shadow + word, 4) != 0 &&
+					!(skip < demo_skip_count && demo_skips[skip] == address);
+				if (differs)
+				{
+					if (run_end == 0)
+						run_start = word;
+					run_end = word + 4;
+				}
+				else if (run_end && word >= run_end + DEMO_PATCH_JOIN_BYTES)
+					break;
+				else if (!run_end && word >= position + chunk)
+					break;
+			}
+			if (!run_end)
+			{
+				position = word > position + chunk ? word : position + chunk;
+				continue;
+			}
+			if (!begun)
+			{
+				start = demo_record_begin(&demo_recorder.records, 'P');
+				begun = TRUE;
+			}
+			demo_buffer_u32(&demo_recorder.records, allocation->offset + run_start);
+			demo_buffer_u32(&demo_recorder.records, run_end - run_start);
+			demo_buffer_bytes(&demo_recorder.records, live + run_start, run_end - run_start);
+			demo_recorder.patch_bytes += run_end - run_start;
+			position = run_end;
+		}
+	}
+	if (begun)
+	{
+		demo_record_end(&demo_recorder.records, start);
+		demo_recorder.patches++;
+	}
+}
+
+/* the frames' input the ticks read, whole, where it changed since it was
+last recorded (a C record) */
+static void demo_input_write(
+	void)
+{
+	long index;
+
+	if (!demo_recorder.input)
+		demo_recorder.input = demo_files_alloc((unsigned long)demo_allocations.size);
+	if (!demo_recorder.input)
+		return;
+	for (index = 0; index < demo_allocations.count; index++)
+	{
+		struct demo_allocation const *allocation = &demo_allocations.list[index];
+		unsigned char const *live = demo_allocations.base + allocation->offset;
+		unsigned long start;
+
+		if (!allocation->input ||
+			(demo_recorder.input_valid && !memcmp(demo_recorder.input + allocation->offset, live, allocation->size)))
+		{
+			continue;
+		}
+		start = demo_record_begin(&demo_recorder.records, 'C');
+		demo_buffer_u32(&demo_recorder.records, allocation->offset);
+		demo_buffer_u32(&demo_recorder.records, allocation->size);
+		demo_buffer_bytes(&demo_recorder.records, live, allocation->size);
+		demo_record_end(&demo_recorder.records, start);
+		memcpy(demo_recorder.input + allocation->offset, live, allocation->size);
+	}
+	demo_recorder.input_valid = TRUE;
+}
+
+static void demo_seeds_write(
+	struct demo_buffer *buffer,
+	unsigned long global_seed,
+	unsigned long local_seed)
+{
+	unsigned long start = demo_record_begin(buffer, 'S');
+
+	demo_buffer_u32(buffer, global_seed);
+	demo_buffer_u32(buffer, local_seed);
+	demo_record_end(buffer, start);
+}
+
+static void demo_record_stop(
+	char const *reason)
+{
+	if (!demo_recorder.recording)
+		return;
+	if (demo_recorder.writer)
+	{
+		unsigned long start = demo_record_begin(&demo_recorder.records, 'E');
+
+		demo_buffer_u32(&demo_recorder.records, (unsigned long)demo_recorder.last_tick);
+		demo_record_end(&demo_recorder.records, start);
+		demo_records_flush();
+		demo_writer_close(demo_recorder.writer);
+		demo_recorder.writer = NULL;
+	}
+	platform_log("demos: %s ended (%s): %ld ticks, %ld differences from outside the ticks (%lu bytes)",
+		demo_recorder.name, reason, demo_recorder.ticks, demo_recorder.patches, demo_recorder.patch_bytes);
+	demo_recorder.recording = FALSE;
+	demo_recorder.shadow_valid = FALSE;
+	demo_settings.read = FALSE;
+}
+
+/* whether this tick's game is one to record: a game of a map (not the main
+menu's scene, nor the menus' pictures' pass), this machine's own or its
+host's, not a demo playing */
+static boolean demo_record_wanted(
+	void)
+{
+	demo_settings_read();
+	return demo_settings.record && !demo_player.playing && !demo_player.requested && !game_time_menu_scene() &&
+		!menu_pictures_preparing() && game_connection() != _game_connection_network_client &&
+		global_scenario_index != NONE && !demo_recorder.stopped;
+}
+
+static void demo_record_start(
+	long tick)
+{
+	unsigned char header[DEMO_HEADER_SIZE];
+	char folder[512], path[768];
+	char const *map = tag_get_name(global_scenario_index);
+	char const *short_name = strrchr(map, '\\');
+	unsigned long stamp = (unsigned long)time(NULL);
+
+	short_name = short_name ? short_name + 1 : map;
+	if (!demo_recorder.shadow)
+		demo_recorder.shadow = demo_files_alloc((size_t)demo_allocations.size);
+	if (!demo_recorder.shadow || !demo_files_folder(folder, sizeof(folder), FALSE))
+	{
+		demo_recorder.stopped = TRUE;
+		return;
+	}
+	{
+		time_t now = (time_t)stamp;
+		struct tm const *moment = localtime(&now);
+
+		if (moment)
+		{
+			snprintf(demo_recorder.name, sizeof(demo_recorder.name), "%04d%02d%02d-%02d%02d%02d-%.40s.demo",
+				moment->tm_year + 1900, moment->tm_mon + 1, moment->tm_mday, moment->tm_hour, moment->tm_min,
+				moment->tm_sec, short_name);
+		}
+		else
+			snprintf(demo_recorder.name, sizeof(demo_recorder.name), "%lu-%.40s.demo", stamp, short_name);
+	}
+	snprintf(path, sizeof(path), "%s/%s", folder, demo_recorder.name);
+	demo_files_retain(demo_settings.keep_count > 0 ? demo_settings.keep_count - 1 : 0, demo_settings.keep_megabytes,
+		NULL);
+	demo_header_write(header);
+	header[80 + 7 * 4] = (unsigned char)stamp;
+	header[80 + 7 * 4 + 1] = (unsigned char)(stamp >> 8);
+	header[80 + 7 * 4 + 2] = (unsigned char)(stamp >> 16);
+	header[80 + 7 * 4 + 3] = (unsigned char)(stamp >> 24);
+	demo_recorder.writer = demo_writer_open(path, header, sizeof(header));
+	if (!demo_recorder.writer)
+	{
+		demo_recorder.stopped = TRUE;
+		return;
+	}
+	demo_recorder.recording = TRUE;
+	demo_recorder.records.size = 0;
+	demo_recorder.records.failed = FALSE;
+	demo_recorder.scratch.failed = FALSE;
+	demo_recorder.block_first_tick = tick;
+	demo_recorder.block_ticks = 0;
+	demo_recorder.ticks = 0;
+	demo_recorder.patches = 0;
+	demo_recorder.patch_bytes = 0;
+	demo_recorder.loaded = demo_recorder.reset = FALSE;
+	demo_recorder.input_valid = FALSE;
+	/* (a multiplayer game's variant, for its playback's game) */
+	{
+		unsigned long start = demo_record_begin(&demo_recorder.records, 'V');
+
+		demo_buffer_u32(&demo_recorder.records, sizeof(game_variant_global));
+		demo_buffer_bytes(&demo_recorder.records, &game_variant_global, sizeof(game_variant_global));
+		demo_buffer_u32(&demo_recorder.records, (unsigned long)sizeof(struct game_variant_options));
+		demo_buffer_bytes(&demo_recorder.records, game_variant_options_get(), (unsigned long)sizeof(struct game_variant_options));
+		demo_record_end(&demo_recorder.records, start);
+	}
+	platform_log("demos: recording %s", demo_recorder.name);
+}
+
+static void demo_record_tick_begin(
+	long tick)
+{
+	unsigned long seeds[2];
+	unsigned long start;
+
+	if (!demo_recorder.recording)
+	{
+		if (!demo_record_wanted())
+			return;
+		demo_record_start(tick);
+		if (!demo_recorder.recording)
+			return;
+		start = demo_record_begin(&demo_recorder.records, 'T');
+		demo_buffer_u32(&demo_recorder.records, (unsigned long)tick);
+		demo_buffer_u32(&demo_recorder.records, (unsigned long)sim_rate_next());
+		demo_record_end(&demo_recorder.records, start);
+		demo_snapshot_block(tick, FLAG(_demo_snapshot_start_bit));
+	}
+	else
+	{
+		start = demo_record_begin(&demo_recorder.records, 'T');
+		demo_buffer_u32(&demo_recorder.records, (unsigned long)tick);
+		demo_buffer_u32(&demo_recorder.records, (unsigned long)sim_rate_next());
+		demo_record_end(&demo_recorder.records, start);
+		if (demo_recorder.loaded || demo_recorder.reset)
+		{
+			demo_snapshot_block(tick, FLAG(_demo_snapshot_loaded_bit) |
+				(demo_recorder.reset ? FLAG(_demo_snapshot_reset_bit) : 0));
+		}
+		else
+		{
+			demo_patch_write();
+			demo_input_write();
+			random_math_port_seeds(&seeds[0], &seeds[1]);
+			if (seeds[0] != demo_recorder.end_seeds[0] || seeds[1] != demo_recorder.end_seeds[1])
+				demo_seeds_write(&demo_recorder.records, seeds[0], seeds[1]);
+			if (tick - demo_recorder.last_snapshot_tick >= demo_settings.snapshot_ticks ||
+				tick < demo_recorder.last_snapshot_tick)
+			{
+				demo_snapshot_block(tick, FLAG(_demo_snapshot_seek_bit));
+			}
+		}
+	}
+	demo_recorder.loaded = demo_recorder.reset = FALSE;
+	/* (a K's input is the input as it then was) */
+	if (demo_recorder.input && demo_recorder.last_snapshot_tick == tick)
+	{
+		long index;
+
+		for (index = 0; index < demo_allocations.count; index++)
+		{
+			if (demo_allocations.list[index].input)
+			{
+				memcpy(demo_recorder.input + demo_allocations.list[index].offset,
+					demo_allocations.base + demo_allocations.list[index].offset, demo_allocations.list[index].size);
+			}
+		}
+	}
+	if (!demo_recorder.block_ticks)
+		demo_recorder.block_first_tick = tick;
+}
+
+static void demo_record_tick_end(
+	long tick)
+{
+	unsigned long start;
+
+	if (!demo_recorder.recording)
+		return;
+	if (tick % DEMO_HASH_TICKS == 0)
+	{
+		start = demo_record_begin(&demo_recorder.records, 'H');
+		demo_buffer_u32(&demo_recorder.records, (unsigned long)tick);
+		demo_buffer_u32(&demo_recorder.records, demo_state_hash());
+		demo_record_end(&demo_recorder.records, start);
+	}
+	demo_shadow_take();
+	random_math_port_seeds(&demo_recorder.end_seeds[0], &demo_recorder.end_seeds[1]);
+	demo_recorder.ticks++;
+	demo_recorder.last_tick = tick;
+	if (++demo_recorder.block_ticks >= DEMO_BLOCK_TICKS)
+		demo_records_flush();
+	if (demo_recorder.records.failed || demo_recorder.scratch.failed)
+	{
+		demo_record_stop("out of memory");
+		demo_recorder.stopped = TRUE;
+	}
+}
+
+void demo_record_tick_actions_begin(
+	void)
+{
+	random_math_port_seeds(&demo_recorder.bots_seeds[0], &demo_recorder.bots_seeds[1]);
+}
+
+void demo_record_tick_actions(
+	struct player_action const *actions)
+{
+	struct data_iterator iterator;
+	unsigned long seeds[2];
+	unsigned long start;
+
+	if (!demo_recorder.recording)
+		return;
+	start = demo_record_begin(&demo_recorder.records, 'A');
+	data_iterator_new(&iterator, player_data);
+	while (data_iterator_next(&iterator))
+	{
+		short index = DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index);
+
+		demo_buffer_u8(&demo_recorder.records, (unsigned long)index);
+		demo_buffer_bytes(&demo_recorder.records, &actions[index], sizeof(actions[index]));
+	}
+	demo_record_end(&demo_recorder.records, start);
+	/* (the seeds the bots took: their playback has no bots) */
+	random_math_port_seeds(&seeds[0], &seeds[1]);
+	if (seeds[0] != demo_recorder.bots_seeds[0] || seeds[1] != demo_recorder.bots_seeds[1])
+		demo_seeds_write(&demo_recorder.records, seeds[0], seeds[1]);
+}
+
+static void demo_unit_controls_get(
+	long unit_index,
+	struct demo_unit_controls *controls)
+{
+	struct unit_datum *unit = unit_get(unit_index);
+
+	controls->control_flags = unit->unit.control_flags;
+	controls->throttle = unit->unit.throttle;
+	controls->primary_trigger = unit->unit.primary_trigger;
+	controls->desired_facing_vector = unit->unit.desired_facing_vector;
+	controls->desired_aiming_vector = unit->unit.desired_aiming_vector;
+	controls->desired_looking_vector = unit->unit.desired_looking_vector;
+	controls->pressed_flags = 0;
+}
+
+void demo_substep_begin(
+	short substep_index)
+{
+	struct data_iterator iterator;
+	struct player_datum *player;
+
+	if (substep_index == 0)
+		return;
+	if (demo_player.playing)
+	{
+		demo_player.pressed_count = 0;
+		return;
+	}
+	if (!demo_recorder.recording)
+		return;
+	data_iterator_new(&iterator, player_data);
+	while ((player = data_iterator_next(&iterator)) != NULL)
+	{
+		short index = DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index);
+
+		demo_recorder.substep_units[index] = player->unit_index;
+		if (player->unit_index != NONE && unit_try_and_get(player->unit_index))
+			demo_unit_controls_get(player->unit_index, &demo_recorder.substep_before[index]);
+		else
+			demo_recorder.substep_units[index] = NONE;
+	}
+}
+
+static void demo_record_substep_end(
+	short substep_index,
+	short substep_count)
+{
+	struct data_iterator iterator;
+	struct player_datum *player;
+	unsigned long start;
+
+	start = demo_record_begin(&demo_recorder.records, 'U');
+	demo_buffer_u8(&demo_recorder.records, (unsigned long)substep_index);
+	demo_buffer_u8(&demo_recorder.records, (unsigned long)substep_count);
+	data_iterator_new(&iterator, player_data);
+	while ((player = data_iterator_next(&iterator)) != NULL)
+	{
+		short index = DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index);
+		struct demo_unit_controls after;
+
+		if (player->unit_index == NONE || player->unit_index != demo_recorder.substep_units[index] ||
+			!unit_try_and_get(player->unit_index))
+		{
+			continue;
+		}
+		demo_unit_controls_get(player->unit_index, &after);
+		after.pressed_flags = player_control_substep_pressed_flags(player->unit_index);
+		if (!after.pressed_flags && !memcmp(&after, &demo_recorder.substep_before[index], sizeof(after)))
+			continue;
+		demo_buffer_u8(&demo_recorder.records, (unsigned long)index);
+		demo_buffer_u32(&demo_recorder.records, (unsigned long)player->unit_index);
+		demo_buffer_bytes(&demo_recorder.records, &after, sizeof(after));
+	}
+	demo_record_end(&demo_recorder.records, start);
+}
+
+void demo_note_state_loaded(
+	void)
+{
+	demo_recorder.loaded = TRUE;
+}
+
+void demo_note_map_reset(
+	void)
+{
+	demo_recorder.reset = TRUE;
+}
+
+void demo_note_new_map(
+	void)
+{
+	demo_record_stop("a new map");
+	demo_recorder.stopped = FALSE;
+	if (demo_player.playing && demo_player.started)
+		demo_player.ended = TRUE;
+}
+
+void demo_bookmark(
+	void)
+{
+	unsigned long start;
+
+	if (!demo_recorder.recording)
+		return;
+	demo_settings_read();
+	start = demo_record_begin(&demo_recorder.records, 'B');
+	demo_buffer_u32(&demo_recorder.records, (unsigned long)game_time_get());
+	demo_buffer_u32(&demo_recorder.records, (unsigned long)(demo_settings.clip_seconds * 1000.f));
+	demo_record_end(&demo_recorder.records, start);
+	platform_log("demos: the last %.0f s of %s marked as a clip", demo_settings.clip_seconds, demo_recorder.name);
+}
+
+/* ---------- playback */
+
+boolean demo_playing(
+	void)
+{
+	return demo_player.playing;
+}
+
+long demo_playback_sim_rate(
+	void)
+{
+	return demo_player.playing && demo_player.started ? demo_player.rate : 0;
+}
+
+static void demo_playback_stop(
+	char const *reason,
+	boolean failed)
+{
+	if (!demo_player.playing)
+		return;
+	platform_log("demos: the playback of %s ended at tick %ld (%s): %ld ticks played, %ld hashes as recorded%s",
+		demo_player.path, demo_player.last_tick, reason, demo_player.ticks, demo_player.hashes_matched,
+		demo_player.diverged ? ", but it parted from the recording" : "");
+	demo_reader_close(demo_player.file);
+	demo_player.file = NULL;
+	demo_files_free(demo_player.blocks);
+	demo_player.blocks = NULL;
+	demo_files_free(demo_player.block);
+	demo_player.block = NULL;
+	demo_player.playing = FALSE;
+	demo_player.started = FALSE;
+	main_port_demo_end(demo_player.quit_at_end || failed);
+}
+
+/* the next block the playback takes (a seek's snapshot skipped) read and
+unpacked: whether there was one */
+static boolean demo_playback_next_block(
+	void)
+{
+	while (demo_player.next_block < demo_player.block_count)
+	{
+		struct demo_block_entry const *entry = &demo_player.blocks[demo_player.next_block++];
+		unsigned char *packed;
+		boolean unpacked;
+
+		if (entry->kind == _demo_block_seek_snapshot)
+			continue;
+		packed = demo_files_alloc(entry->packed_size ? entry->packed_size : 1);
+		demo_files_free(demo_player.block);
+		demo_player.block = demo_files_alloc(entry->size ? entry->size : 1);
+		demo_player.block_size = 0;
+		demo_player.cursor = 0;
+		if (!packed || !demo_player.block)
+		{
+			demo_files_free(packed);
+			return FALSE;
+		}
+		unpacked = demo_reader_read(demo_player.file, entry->offset + DEMO_BLOCK_HEADER_SIZE, packed,
+				entry->packed_size) &&
+			demo_files_unpack(packed, entry->packed_size, demo_player.block, entry->size);
+		demo_files_free(packed);
+		if (!unpacked)
+			return FALSE;
+		demo_player.block_size = entry->size;
+		return TRUE;
+	}
+	return FALSE;
+}
+
+/* the next record (peeked, or taken): its type, its bytes and its length;
+0 at the demo's end or a damaged record */
+static char demo_playback_record(
+	unsigned char const **bytes,
+	unsigned long *length,
+	boolean take)
+{
+	unsigned long size;
+
+	while (demo_player.cursor >= demo_player.block_size)
+	{
+		if (!demo_playback_next_block())
+			return 0;
+	}
+	if (demo_player.block_size - demo_player.cursor < 5)
+		return 0;
+	size = demo_read_u32(demo_player.block + demo_player.cursor + 1);
+	if (size > demo_player.block_size - demo_player.cursor - 5)
+		return 0;
+	*bytes = demo_player.block + demo_player.cursor + 5;
+	*length = size;
+	{
+		char type = (char)demo_player.block[demo_player.cursor];
+
+		if (take)
+			demo_player.cursor += 5 + size;
+		return type;
+	}
+}
+
+/* the allocation that holds [offset, offset+size) wholly, or NULL */
+static struct demo_allocation const *demo_allocation_holding(
+	unsigned long offset,
+	unsigned long size)
+{
+	long index;
+
+	for (index = 0; index < demo_allocations.count; index++)
+	{
+		struct demo_allocation const *allocation = &demo_allocations.list[index];
+
+		if (offset >= allocation->offset && size <= allocation->size &&
+			offset - allocation->offset <= allocation->size - size)
+		{
+			return allocation;
+		}
+	}
+	return NULL;
+}
+
+/* a P record's or a K record's ranges checked (each wholly in one
+allocation; a K's each an allocation from its start), then written into
+the game state if write */
+static boolean demo_ranges_apply(
+	unsigned char const *bytes,
+	unsigned long length,
+	boolean whole_allocations,
+	boolean write)
+{
+	unsigned long position = 0;
+
+	while (position < length)
+	{
+		struct demo_allocation const *allocation;
+		unsigned long offset, size;
+
+		if (length - position < 8)
+			return FALSE;
+		offset = demo_read_u32(bytes + position);
+		size = demo_read_u32(bytes + position + 4);
+		position += 8;
+		if (size > length - position)
+			return FALSE;
+		allocation = demo_allocation_holding(offset, size);
+		if (!allocation || (whole_allocations && allocation->offset != offset))
+			return FALSE;
+		if (write)
+		{
+			memcpy(demo_allocations.base + offset, bytes + position, size);
+			/* (a K's data array past its count as the game leaves one: its free
+			elements' identifiers none, which datum_new looks for; what else
+			they hold is never read) */
+			if (whole_allocations && size >= sizeof(struct data_array))
+			{
+				struct data_array *data = (struct data_array *)(demo_allocations.base + offset);
+
+				if (data->signature == 'd@t@' && data->data == data + 1 && data->size >= (short)sizeof(short) &&
+					data->count >= 0 && data->count <= data->maximum_count &&
+					sizeof(*data) + (unsigned long)data->maximum_count * (unsigned long)data->size <= allocation->size)
+				{
+					short index;
+
+					for (index = data->count; index < data->maximum_count; index++)
+						((struct datum_header *)((unsigned char *)data->data + (long)data->size * index))->identifier = 0;
+				}
+			}
+		}
+		position += size;
+	}
+	return TRUE;
+}
+
+/* a K record taken: the game state as the snapshot has it, through the
+saved games' loading (the caches outside the game state put right, the
+state checked), the procedures' changes to it then written over */
+static boolean demo_playback_snapshot(
+	unsigned char const *bytes,
+	unsigned long length)
+{
+	unsigned long flags;
+
+	if (length < 16 || !demo_ranges_apply(bytes + 16, length - 16, TRUE, FALSE))
+		return FALSE;
+	flags = demo_read_u32(bytes + 4);
+	if (TEST_FLAG(flags, _demo_snapshot_reset_bit))
+		main_port_demo_reset_map();
+	/* (the start's: the map just loaded here as it was there, the game
+	state written over as it is, as nothing outside it differs) */
+	if (TEST_FLAG(flags, _demo_snapshot_start_bit))
+	{
+		demo_ranges_apply(bytes + 16, length - 16, TRUE, TRUE);
+		if (!game_state_port_check_live())
+			return FALSE;
+	}
+	else
+	{
+		game_state_port_demo_load_begin();
+		demo_ranges_apply(bytes + 16, length - 16, TRUE, TRUE);
+		if (!game_state_port_check_live())
+			return FALSE;
+		game_state_port_demo_load_end();
+		demo_ranges_apply(bytes + 16, length - 16, TRUE, TRUE);
+	}
+	random_math_port_set_seeds(demo_read_u32(bytes + 8), demo_read_u32(bytes + 12));
+	return TRUE;
+}
+
+static boolean demo_playback_patch(
+	unsigned char const *bytes,
+	unsigned long length)
+{
+	if (!demo_ranges_apply(bytes, length, FALSE, FALSE))
+		return FALSE;
+	demo_ranges_apply(bytes, length, FALSE, TRUE);
+	return game_state_port_check_live();
+}
+
+/* the records before a tick's own (its T, then what came from outside it) */
+static void demo_playback_tick_begin(
+	long tick)
+{
+	unsigned char const *bytes;
+	unsigned long length;
+	char type;
+
+	if (demo_player.ended)
+	{
+		demo_playback_stop("the map changed", FALSE);
+		return;
+	}
+	/* (the start: the demo's map loaded, and nothing taken yet) */
+	if (!demo_player.started)
+	{
+		if (global_scenario_index == NONE || csstrcasecmp(tag_get_name(global_scenario_index), demo_player.map_name))
+			return;
+		demo_player.started = TRUE;
+		/* (the variant, for the record) */
+		if (demo_playback_record(&bytes, &length, FALSE) == 'V')
+			demo_playback_record(&bytes, &length, TRUE);
+	}
+	type = demo_playback_record(&bytes, &length, TRUE);
+	if (type == 'E' || type == 0)
+	{
+		demo_playback_stop(type == 'E' ? "its end" : "the file ends there", FALSE);
+		return;
+	}
+	if (type != 'T' || length < 8)
+	{
+		demo_playback_stop("a damaged record", TRUE);
+		return;
+	}
+	demo_player.rate = (long)demo_read_u32(bytes + 4);
+	if (!sim_rate_supported(demo_player.rate))
+	{
+		demo_playback_stop("a damaged record (its rate)", TRUE);
+		return;
+	}
+	demo_player.last_tick = (long)demo_read_u32(bytes);
+	for (;;)
+	{
+		type = demo_playback_record(&bytes, &length, FALSE);
+		if (type == 'K')
+		{
+			demo_playback_record(&bytes, &length, TRUE);
+			if (!demo_playback_snapshot(bytes, length))
+			{
+				demo_playback_stop("a damaged snapshot", TRUE);
+				return;
+			}
+		}
+		else if (type == 'P')
+		{
+			demo_playback_record(&bytes, &length, TRUE);
+			if (!demo_playback_patch(bytes, length))
+			{
+				demo_playback_stop("a damaged difference", TRUE);
+				return;
+			}
+		}
+		else if (type == 'C')
+		{
+			demo_playback_record(&bytes, &length, TRUE);
+			if (!demo_ranges_apply(bytes, length, FALSE, FALSE))
+			{
+				demo_playback_stop("a damaged record (of the input)", TRUE);
+				return;
+			}
+			demo_ranges_apply(bytes, length, FALSE, TRUE);
+		}
+		else if (type == 'S' && length >= 8)
+		{
+			demo_playback_record(&bytes, &length, TRUE);
+			random_math_port_set_seeds(demo_read_u32(bytes), demo_read_u32(bytes + 4));
+		}
+		else if (type == 'B' || type == 'V')
+			demo_playback_record(&bytes, &length, TRUE);
+		else
+			break;
+	}
+	if (game_time_get() != demo_player.last_tick && !demo_player.diverged)
+	{
+		platform_log("demos: the playback's tick is %ld where the recording's was %ld", game_time_get(),
+			demo_player.last_tick);
+	}
+}
+
+boolean demo_playback_tick_actions(
+	struct player_action *actions)
+{
+	unsigned char const *bytes;
+	unsigned long length;
+	unsigned long position = 0;
+	char type;
+
+	if (!demo_player.playing || !demo_player.started)
+		return FALSE;
+	type = demo_playback_record(&bytes, &length, TRUE);
+	if (type != 'A')
+	{
+		/* (a recording cut short in its last tick ends there) */
+		demo_playback_stop(type ? "a damaged record (no input where a tick's was)" : "the file ends there", type != 0);
+		return FALSE;
+	}
+	while (position + 1 + sizeof(struct player_action) <= length)
+	{
+		short index = bytes[position];
+		struct player_action action;
+
+		memcpy(&action, bytes + position + 1, sizeof(action));
+		position += 1 + sizeof(action);
+		if (index >= HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
+			continue;
+		/* (a controller's: as the netcode checks another machine's) */
+		if (!valid_real(action.desired_facing.yaw) || !valid_real(action.desired_facing.pitch) ||
+			!valid_real(action.throttle.i) || !valid_real(action.throttle.j) || !valid_real(action.primary_trigger) ||
+			(action.desired_weapon_index != NONE &&
+				(action.desired_weapon_index < 0 || action.desired_weapon_index >= MAXIMUM_WEAPONS_PER_UNIT)) ||
+			(action.desired_grenade_index != NONE &&
+				(action.desired_grenade_index < 0 || action.desired_grenade_index >= NUMBER_OF_UNIT_GRENADE_TYPES)) ||
+			(action.desired_zoom_level != NONE && action.desired_zoom_level < 0))
+		{
+			continue;
+		}
+		actions[index] = action;
+	}
+	/* (the seeds the bots left) */
+	if (demo_playback_record(&bytes, &length, FALSE) == 'S' && length >= 8)
+	{
+		demo_playback_record(&bytes, &length, TRUE);
+		random_math_port_set_seeds(demo_read_u32(bytes), demo_read_u32(bytes + 4));
+	}
+	return TRUE;
+}
+
+static void demo_playback_substep_end(
+	short substep_index,
+	short substep_count)
+{
+	unsigned char const *bytes;
+	unsigned long length;
+	unsigned long position = 2;
+	struct demo_unit_controls controls;
+	unsigned long const entry_size = 1 + 4 + sizeof(controls);
+	char type = demo_playback_record(&bytes, &length, TRUE);
+
+	if (type != 'U' || length < 2 || bytes[0] != substep_index || bytes[1] != substep_count)
+	{
+		platform_log("demos: a %c record where the sub-step %d of %d was looked for", type ? type : '0',
+			substep_index, substep_count);
+		demo_playback_stop("a damaged record (no sub-step where the recording's was)", TRUE);
+		return;
+	}
+	demo_player.pressed_count = 0;
+	while (position + entry_size <= length)
+	{
+		short index = bytes[position];
+		long unit_index = (long)demo_read_u32(bytes + position + 1);
+		struct player_datum *player;
+		struct unit_datum *unit;
+
+		memcpy(&controls, bytes + position + 5, sizeof(controls));
+		position += entry_size;
+		if (index >= HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
+			continue;
+		player = player_try_and_get(index);
+		if (!player || player->unit_index != unit_index || !unit_try_and_get(unit_index) ||
+			!valid_real(controls.primary_trigger) || !valid_real_vector3d(&controls.throttle) ||
+			!valid_real_vector3d(&controls.desired_facing_vector) ||
+			!valid_real_vector3d(&controls.desired_aiming_vector) ||
+			!valid_real_vector3d(&controls.desired_looking_vector))
+		{
+			continue;
+		}
+		unit = unit_get(unit_index);
+		unit->unit.control_flags = controls.control_flags;
+		unit->unit.throttle = controls.throttle;
+		unit->unit.primary_trigger = controls.primary_trigger;
+		unit->unit.desired_facing_vector = controls.desired_facing_vector;
+		unit->unit.desired_aiming_vector = controls.desired_aiming_vector;
+		unit->unit.desired_looking_vector = controls.desired_looking_vector;
+		if (controls.pressed_flags && demo_player.pressed_count < HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
+		{
+			demo_player.pressed_units[demo_player.pressed_count] = (unsigned long)unit_index;
+			demo_player.pressed_flags[demo_player.pressed_count] = controls.pressed_flags;
+			demo_player.pressed_count++;
+		}
+	}
+}
+
+unsigned long demo_playback_pressed_flags(
+	long unit_index)
+{
+	long index;
+
+	for (index = 0; index < demo_player.pressed_count; index++)
+	{
+		if (demo_player.pressed_units[index] == (unsigned long)unit_index)
+			return demo_player.pressed_flags[index];
+	}
+	return 0;
+}
+
+static void demo_playback_tick_end(
+	long tick)
+{
+	unsigned char const *bytes;
+	unsigned long length;
+
+	demo_player.ticks++;
+	if (demo_playback_record(&bytes, &length, FALSE) != 'H' || length < 8)
+		return;
+	demo_playback_record(&bytes, &length, TRUE);
+	if (demo_read_u32(bytes + 4) == demo_state_hash())
+	{
+		demo_player.hashes_matched++;
+		return;
+	}
+	if (!demo_player.diverged)
+	{
+		demo_player.diverged = TRUE;
+		platform_log("demos: the playback of %s parted from the recording by tick %ld (its hash %08lx, the "
+			"recording's %08lx); it plays on as its own game", demo_player.path, tick, demo_state_hash(),
+			demo_read_u32(bytes + 4));
+	}
+}
+
+/* a demo opened and checked, its blocks indexed: whether it can be played
+(its reason logged otherwise) */
+static boolean demo_playback_open(
+	char const *path)
+{
+	unsigned char *header = demo_player.header;
+	long number;
+	char flavor[32], repository[128], version[128], build[DEMO_BUILD_SIZE];
+	long capacity = 0;
+	unsigned long offset = DEMO_HEADER_SIZE;
+
+	snprintf(demo_player.path, sizeof(demo_player.path), "%s", path);
+	demo_player.file = demo_reader_open(path, &demo_player.file_size);
+	if (!demo_player.file)
+	{
+		platform_log("demos: cannot open %s", path);
+		return FALSE;
+	}
+	if (!demo_reader_read(demo_player.file, 0, header, DEMO_HEADER_SIZE) ||
+		memcmp(header, DEMO_MAGIC, sizeof(DEMO_MAGIC)) || header[8] != DEMO_FORMAT_VERSION)
+	{
+		platform_log("demos: %s is not a demo of this version of OpenH1", path);
+		return FALSE;
+	}
+	main_build_identity(&number, flavor, sizeof(flavor), repository, sizeof(repository), version, sizeof(version));
+	snprintf(build, sizeof(build), "%ld/%s/%s", number, flavor,
+		main_port_build_commit()[0] ? main_port_build_commit() : "local");
+	header[16 + DEMO_BUILD_SIZE - 1] = 0;
+	if (strcmp((char const *)header + 16, build) || demo_read_u32(header + 80) != HALO_PORT_NETWORK_VERSION ||
+		demo_read_u32(header + 84) != game_state_port_allocation_checksum() ||
+		demo_read_u32(header + 88) != (unsigned long)demo_allocations.size)
+	{
+		platform_log("demos: %s was recorded by another build of OpenH1 (%s, network version %lu), not this one "
+			"(%s, network version %d): its game would not play the same here", path, (char const *)header + 16,
+			demo_read_u32(header + 80), build, HALO_PORT_NETWORK_VERSION);
+		return FALSE;
+	}
+	demo_player.connection = (long)demo_read_u32(header + 92);
+	demo_player.rate = (long)demo_read_u32(header + 96);
+	demo_player.difficulty = (long)demo_read_u32(header + 100);
+	header[128 + DEMO_MAP_NAME_SIZE - 1] = 0;
+	snprintf(demo_player.map_name, sizeof(demo_player.map_name), "%s", (char const *)header + 128);
+	if (demo_player.connection != _game_connection_local)
+	{
+		platform_log("demos: %s is of a multiplayer game, which this build does not play back yet", path);
+		return FALSE;
+	}
+	if (!demo_player.map_name[0] || demo_player.difficulty < 0 ||
+		demo_player.difficulty >= NUMBER_OF_GAME_DIFFICULTY_LEVELS)
+	{
+		platform_log("demos: %s has a damaged header", path);
+		return FALSE;
+	}
+	/* (the blocks' index: a block cut short, a crash's, ends it) */
+	for (;;)
+	{
+		unsigned char block[DEMO_BLOCK_HEADER_SIZE];
+		struct demo_block_entry entry;
+
+		if (!demo_reader_read(demo_player.file, offset, block, sizeof(block)) ||
+			demo_read_u32(block) != DEMO_BLOCK_MAGIC)
+		{
+			break;
+		}
+		entry.offset = offset;
+		entry.kind = demo_read_u32(block + 4);
+		entry.first_tick = demo_read_u32(block + 8);
+		entry.size = demo_read_u32(block + 12);
+		entry.packed_size = demo_read_u32(block + 16);
+		if (entry.size > DEMO_BLOCK_MAXIMUM_SIZE || entry.packed_size > DEMO_BLOCK_MAXIMUM_SIZE ||
+			(entry.kind != _demo_block_records && entry.kind != _demo_block_snapshot &&
+				entry.kind != _demo_block_seek_snapshot))
+		{
+			break;
+		}
+		if (entry.packed_size > demo_player.file_size - offset - DEMO_BLOCK_HEADER_SIZE)
+			break;
+		if (demo_player.block_count >= capacity)
+		{
+			struct demo_block_entry *blocks;
+
+			capacity = capacity ? capacity * 2 : 256;
+			blocks = demo_files_realloc(demo_player.blocks, (size_t)capacity * sizeof(*blocks));
+			if (!blocks)
+				break;
+			demo_player.blocks = blocks;
+		}
+		demo_player.blocks[demo_player.block_count++] = entry;
+		offset += DEMO_BLOCK_HEADER_SIZE + entry.packed_size;
+	}
+	if (demo_player.block_count < 2)
+	{
+		platform_log("demos: %s holds no game", path);
+		return FALSE;
+	}
+	platform_log("demos: playing %s (%s, %ld blocks)", path, demo_player.map_name, demo_player.block_count);
+	return TRUE;
+}
+
+/* a demo asked for played: its map loaded at its difficulty, the playback
+taking it from its first tick */
+static void demo_playback_begin(
+	char const *path)
+{
+	demo_settings_read();
+	demo_record_stop("a demo plays");
+	memset(&demo_player, 0, sizeof(demo_player));
+	demo_player.quit_at_end = config_boolean("debug.demo_quit") != 0;
+	if (!demo_playback_open(path))
+	{
+		demo_reader_close(demo_player.file);
+		demo_files_free(demo_player.blocks);
+		memset(&demo_player, 0, sizeof(demo_player));
+		if (config_boolean("debug.demo_quit"))
+			main_port_demo_end(TRUE);
+		return;
+	}
+	demo_player.playing = TRUE;
+	main_port_demo_load_map(demo_player.map_name, (short)demo_player.difficulty);
+}
+
+void demo_frame(
+	boolean main_menu_loaded,
+	real seconds)
+{
+	static boolean asked;
+
+	(void)seconds;
+	if (!asked)
+	{
+		char path[512];
+
+		asked = TRUE;
+		if (!config_command_line_value("--demo", path, sizeof(path)))
+			snprintf(path, sizeof(path), "%s", config_string("demo.play"));
+		if (path[0])
+			demo_playback_begin(path);
+	}
+	/* (the main menu reached: a recording's game over, a playback's too) */
+	if (main_menu_loaded)
+	{
+		if (demo_recorder.recording)
+			demo_record_stop("the main menu");
+		if (demo_player.playing && demo_player.started)
+			demo_playback_stop("the main menu", FALSE);
+	}
+}
+
+/* ---------- the clock's ticks */
+
+void demo_tick_begin(
+	long tick)
+{
+	if (demo_player.playing)
+		demo_playback_tick_begin(tick);
+	else
+		demo_record_tick_begin(tick);
+}
+
+void demo_tick_end(
+	long tick)
+{
+	if (demo_player.playing && demo_player.started)
+		demo_playback_tick_end(tick);
+	else if (!demo_player.playing)
+		demo_record_tick_end(tick);
+}
+
+void demo_substep_end(
+	short substep_index,
+	short substep_count)
+{
+	if (substep_index == 0)
+		return;
+	if (demo_player.playing && demo_player.started)
+		demo_playback_substep_end(substep_index, substep_count);
+	else if (demo_recorder.recording)
+		demo_record_substep_end(substep_index, substep_count);
+}

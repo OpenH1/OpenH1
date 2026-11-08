@@ -709,6 +709,7 @@ boolean game_load(
 
 void network_distributed_new_game(void);
 void network_objects_placed(void);
+#include "demo.h" /* port: port/linux/game/demo.c */
 
 void game_initialize_for_new_map(
 	void)
@@ -723,6 +724,8 @@ void game_initialize_for_new_map(
 		!game_globals->active);
 
 	halo_load_trace("initialize.begin", NULL); /* port: loading measurement */
+	/* port: the demo being recorded ends with its map (port/linux/game/demo.c) */
+	demo_note_new_map();
 	set_random_seed(game_globals->options.random_seed);
 	/* port: and the local seeds from the game's too (the ticks' and the
 	frames', random_math.c). It was the clock's at startup, with whatever the
