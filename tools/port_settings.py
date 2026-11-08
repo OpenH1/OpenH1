@@ -488,6 +488,11 @@ PANINI_VERTICAL = Slider(0.0, 1.0, 0.05, 0.0, 1.0)
 DRAW_DISTANCES = Slider(1024, 10000, 1, 1024, 10000, whole=True,
                         stops=(("DEFAULT", "1024"),) + tuple((str(n), str(n)) for n in (
                             1536, 2048, 3072, 4096, 6144, 8192, 10000)))
+# Render Resolution's: display.resolution_scaling's Xbox 640x480, or Full at
+# display.supersampling's factors each way (d3d8_device.c: 1 to 2), as a
+# percentage (menu_functions.c's render_resolution_text)
+RENDER_RESOLUTIONS = [("XBOX 640X480", "original"), ("FULL", "1")] + \
+    [(f"{round(factor * 100)}%", f"{factor:g}") for factor in (1.25, 1.5, 1.75, 2)]
 ANTI_ALIASING_HELP = "Smooths jagged edges. FXAA and SMAA cost little; {} sharper and {} more of the graphics card."
 # (STRONG & WORSE: its row's spinner's 140 units, STRONG AND WORSE did not fit)
 STREAMER_LEVELS = [("OFF", "off"), ("SEVERE", "severe"), ("STRONG & WORSE", "strong"), ("MILD & WORSE", "mild")]
@@ -659,8 +664,8 @@ PAGES = {
              "How bright the picture is: its gamma, and on an HDR display, HDR's look, how bright white and the "
              "HUD are, and the display's peak.", None, "brightness_settings"),
             ("ADVANCED GRAPHICS ›", None, _page_screen(*ADVANCED),
-             "Anti-aliasing, texture filtering, model detail, shadows, the lighting and the shields' glow, smooth "
-             "motion and the tick rate.", None),
+             "Render resolution, anti-aliasing, texture filtering, model detail, shadows, the lighting and the "
+             "shields' glow, smooth motion and the tick rate.", None),
         ],
     },
     "audio_settings": {
@@ -911,13 +916,19 @@ PAGES = {
         "rows": [
             # (the image's rows under the page's title, with no section of
             # their own: GAME's ANIMATIONS took its line)
-            ("RENDER RESOLUTION", "display.resolution_scaling", [("FULL", "native"), ("XBOX 640X480", "original")],
-             "Full draws the game at your screen's resolution. Xbox draws it at the Xbox's 640x480 and scales it "
-             "up: softer, and very light on the graphics card.", "computer"),
+            # (display.resolution_scaling and display.supersampling as one
+            # row: menu_functions.c's render_resolution_text; Full's factors,
+            # with any anti-aliasing, drawn at their resolution:
+            # d3d8_device.c's screen_mode_choose; not iOS's)
+            ("RENDER RESOLUTION", "display.render_resolution", RENDER_RESOLUTIONS,
+             "Full draws the game at your screen's resolution. Above 100% draws it larger and scales it down: finer "
+             "detail and smoother edges, with any anti-aliasing, for over twice the graphics card's work at 150%, "
+             "four times at 200%. Xbox draws the Xbox's 640x480 and scales it up: softer, and very light.",
+             "computer"),
             ("ANTI-ALIASING", "display.anti_aliasing",
-             [("OFF", "off"), ("FXAA", "fxaa"), ("SMAA", "smaa"), ("SSAA 2X", "ssaa2x"), ("MSAA 2X", "msaa2x"),
-              ("MSAA 4X", "msaa4x"), ("MSAA 8X", "msaa8x")],
-             ANTI_ALIASING_HELP.format("SSAA and MSAA are", "cost"), "desktop"),
+             [("OFF", "off"), ("FXAA", "fxaa"), ("SMAA", "smaa"), ("MSAA 2X", "msaa2x"), ("MSAA 4X", "msaa4x"),
+              ("MSAA 8X", "msaa8x")],
+             ANTI_ALIASING_HELP.format("MSAA is", "costs"), "desktop"),
             # (Android's Vulkan draws SMAA, but no supersampling)
             ("ANTI-ALIASING", "display.anti_aliasing",
              [("OFF", "off"), ("FXAA", "fxaa"), ("SMAA", "smaa"), ("MSAA 2X", "msaa2x"), ("MSAA 4X", "msaa4x")],
@@ -2191,10 +2202,10 @@ _FOV_PICTURES = (["stills/fov_default.png"] * 4 + ["stills/fov_100.png"] * 5 + [
 SETTINGS_VALUE_PICTURES = {
     "fov": _FOV_PICTURES,
     "viewmodel_fov": None,
-    "anti_aliasing": ["stills/aa_off.png", "stills/aa_smaa.png", "stills/aa_smaa.png"] + ["stills/aa_msaa.png"] * 4,
+    "anti_aliasing": ["stills/aa_off.png", "stills/aa_smaa.png", "stills/aa_smaa.png"] + ["stills/aa_msaa.png"] * 3,
     "anti_aliasing_android": ["stills/aa_off.png", "stills/aa_smaa.png", "stills/aa_smaa.png",
                               "stills/aa_msaa.png", "stills/aa_msaa.png"],
-    "resolution_scaling": ["stills/aa_smaa.png", "stills/render_xbox.png"],
+    "render_resolution": ["stills/render_xbox.png", "stills/aa_smaa.png"] + ["stills/aa_msaa.png"] * 4,
     "high_res_hud": ["stills/hud_high_res.png", "stills/hud_game.png"],
     "hud_button_style": ["stills/buttons_classic.png", "stills/buttons_gems.png", "stills/buttons_dark_gems.png"],
     "hdr_mode": ["stills/fov_default.png", "stills/hdr_punchy.png"],
@@ -2206,7 +2217,7 @@ SETTINGS_PICTURE_FILES = {
     "stills/fov_130.png": "Field of view 130, for 120 to 160",
     "stills/aa_off.png": "Anti-aliasing OFF, close on an edge (each pixel twice its size)",
     "stills/aa_smaa.png": "Anti-aliasing SMAA (and FXAA), the same; render resolution FULL",
-    "stills/aa_msaa.png": "Anti-aliasing MSAA 4X (and SSAA and MSAA's others), the same",
+    "stills/aa_msaa.png": "Anti-aliasing MSAA 4X (and MSAA's others, and render resolution above 100%), the same",
     "stills/render_xbox.png": "Render resolution XBOX 640X480, the same edge, its pixels as drawn",
     "stills/hud_high_res.png": "High-res HUD ON: the health and shields meters, close",
     "stills/hud_game.png": "High-res HUD OFF, the same",

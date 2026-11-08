@@ -231,9 +231,15 @@ static const struct config_setting config_settings[] =
 		_platform_all,
 		"Smoothing of jagged edges, which the Xbox did not have: \"off\"; \"fxaa\"\n"
 		"or \"smaa\" smooth the 3D view once it is drawn (the HUD and menus stay\n"
-		"sharp); \"ssaa2x\" draws at twice the resolution each way (four times\n"
-		"the work); \"msaa2x\", \"msaa4x\" or \"msaa8x\" draw with that many samples\n"
-		"a pixel. Android, macOS and iOS have no \"ssaa2x\"." GRAPHICS_CHOOSES },
+		"sharp); \"msaa2x\", \"msaa4x\" or \"msaa8x\" draw with that many samples\n"
+		"a pixel. Each combines with display.supersampling." GRAPHICS_CHOOSES },
+	{ "display.supersampling", _config_real, "1.0", "HALO_SUPERSAMPLING", _environment_value, _platform_desktop,
+		"Draw the game at this many times the display's resolution each way, 1.0\n"
+		"to 2.0, and scale it down to the display: smoother edges and finer\n"
+		"detail, for 1.56 (1.25) to 4 (2.0) times the graphics card's work. 1.0\n"
+		"draws the display's pixels. display.anti_aliasing's smoothing is drawn\n"
+		"at the larger resolution. Not with display.resolution_scaling =\n"
+		"\"original\", nor on iOS." },
 	{ "display.interpolation", _config_boolean, "true", "HALO_INTERPOLATION", _environment_value, _platform_all,
 		"Draw a frame for every display refresh, blending between the game's 30\n"
 		"ticks a second; false keeps the original 30 frames a second." },
@@ -3240,6 +3246,57 @@ static char *config_migrate_words(const char *text, toml_datum_t table)
 	return result;
 }
 
+static char *config_add_missing(const char *text, toml_datum_t table);
+
+/* a file with display.anti_aliasing = "ssaa2x", an older version's
+supersampling (twice the pixels each way, with no pass over the 3D view):
+"off" in its place, and display.supersampling 2.0 where the build drew it
+(not on Android, nor on the Mac and iOS, whose "ssaa2x" drew none), unless
+the file has more; each with this version's comment, so that it looks as it
+did. Returns the new text, or NULL if the file has no "ssaa2x" */
+static char *config_migrate_supersampling(const char *text, toml_datum_t table)
+{
+	long anti_aliasing = config_setting_index("display.anti_aliasing");
+	toml_datum_t datum = toml_seek(table, "display.anti_aliasing");
+	char *result;
+#if !defined(HALO_ANDROID) && !defined(HALO_MACOS)
+	long supersampling = config_setting_index("display.supersampling");
+	toml_datum_t factor = toml_seek(table, "display.supersampling");
+	double asked = factor.type == TOML_FP64 ? factor.u.fp64 : factor.type == TOML_INT64 ? (double)factor.u.int64 : 0.0;
+	char *completed = NULL;
+#endif
+
+	if (anti_aliasing < 0 || datum.type != TOML_STRING || !config_word_is(datum.u.s, strlen(datum.u.s), "ssaa2x"))
+		return NULL;
+#if !defined(HALO_ANDROID) && !defined(HALO_MACOS)
+	/* (display.supersampling's block, commented out, in a file older than
+	it, as config_add_missing would add it after) */
+	if (supersampling >= 0 && factor.type == TOML_UNKNOWN)
+		completed = config_add_missing(text, table);
+	result = config_replace_setting(completed ? completed : text, &config_settings[anti_aliasing], "\"off\"");
+	free(completed);
+	if (result && supersampling >= 0 && !(asked >= 2.0))
+	{
+		char *updated = config_replace_setting(result, &config_settings[supersampling], "2.0");
+
+		if (updated)
+		{
+			free(result);
+			result = updated;
+		}
+	}
+	if (result)
+		platform_log("settings: display.anti_aliasing = \"%s\" is an older version's: now \"off\", with "
+			"display.supersampling = %s", datum.u.s, asked >= 2.0 ? "as it was" : "2.0");
+#else
+	result = config_replace_setting(text, &config_settings[anti_aliasing], "\"off\"");
+	if (result)
+		platform_log("settings: display.anti_aliasing = \"%s\" is an older version's, which drew none here: now "
+			"\"off\"", datum.u.s);
+#endif
+	return result;
+}
+
 /* the settings of this build that text (the file, parsed as table) lacks,
 added to it in their sections, keeping the rest as it is: a newer version's
 settings appear in an older file. Returns the new text, or NULL if nothing
@@ -4309,6 +4366,20 @@ static void config_load(void)
 				toml_free(result);
 				free(text);
 				text = words;
+				result = toml_parse(text, (int)strlen(text));
+				migrated = text;
+			}
+		}
+		/* (an older version's "ssaa2x", display.supersampling's now) */
+		if (result.ok && !skipped)
+		{
+			char *supersampling = config_migrate_supersampling(text, result.toptab);
+
+			if (supersampling)
+			{
+				toml_free(result);
+				free(text);
+				text = supersampling;
 				result = toml_parse(text, (int)strlen(text));
 				migrated = text;
 			}

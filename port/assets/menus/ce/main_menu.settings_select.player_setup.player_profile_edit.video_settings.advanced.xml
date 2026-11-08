@@ -11,7 +11,7 @@
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/options_menu" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child up_down_tabs_children" description="main_menu/settings/page_panel" source="tools/port_settings.py settings_files/_settings_page">
 		<data input="port settings page"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/op_resolution_scaling" x="28" y="80" platform="computer"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/op_render_resolution" x="28" y="80" platform="computer"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/op_anti_aliasing" x="28" y="101" platform="desktop"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/op_anti_aliasing_android" x="28" y="101" platform="android"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/op_anisotropic_filtering" x="28" y="122"/>
@@ -49,13 +49,13 @@
 		<on event="start" run="port settings page cancel" back="true"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/op_resolution_scaling" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" platform="computer" wide="-106 120" source="tools/port_settings.py settings_files/_settings_page">
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/resolution_scaling_label"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/resolution_scaling_spinner" x="188"/>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/op_render_resolution" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" platform="computer" wide="-106 120" source="tools/port_settings.py settings_files/_settings_page">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/render_resolution_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/render_resolution_spinner" x="188"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/resolution_scaling_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/labels" color="#FF2896FF" text_x="10" text_y="1" wide="0 120" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/render_resolution_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/labels" color="#FF2896FF" text_x="10" text_y="1" wide="0 120" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/resolution_scaling_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="FULL|XBOX 640X480" setting="display.resolution_scaling" values="native|original" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="120 0" source="tools/port_settings.py settings_files/_settings_page">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/render_resolution_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="XBOX 640X480|FULL|125%|150%|175%|200%" setting="display.render_resolution" values="original|1|1.25|1.5|1.75|2" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="120 0" source="tools/port_settings.py settings_files/_settings_page">
 		<on event="created" run="port setting load"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/op_anti_aliasing" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" platform="desktop" wide="-106 120" source="tools/port_settings.py settings_files/_settings_page">
@@ -64,7 +64,7 @@
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/anti_aliasing_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/labels" string_index="1" color="#FF2896FF" text_x="10" text_y="1" wide="0 120" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/anti_aliasing_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="OFF|FXAA|SMAA|SSAA 2X|MSAA 2X|MSAA 4X|MSAA 8X" setting="display.anti_aliasing" values="off|fxaa|smaa|ssaa2x|msaa2x|msaa4x|msaa8x" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="120 0" source="tools/port_settings.py settings_files/_settings_page">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/anti_aliasing_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="OFF|FXAA|SMAA|MSAA 2X|MSAA 4X|MSAA 8X" setting="display.anti_aliasing" values="off|fxaa|smaa|msaa2x|msaa4x|msaa8x" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="120 0" source="tools/port_settings.py settings_files/_settings_page">
 		<on event="created" run="port setting load"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/op_anti_aliasing_android" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" platform="android" wide="-106 120" source="tools/port_settings.py settings_files/_settings_page">
@@ -205,8 +205,8 @@
 	</strings>
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/help_strings">
 		<string text=""/>
-		<string text="Full draws the game at your screen's resolution. Xbox draws it at the Xbox's 640x480 and scales it up: softer, and very light on the graphics card."/>
-		<string text="Smooths jagged edges. FXAA and SMAA cost little; SSAA and MSAA are sharper and cost more of the graphics card."/>
+		<string text="Full draws the game at your screen's resolution. Above 100% draws it larger and scales it down: finer detail and smoother edges, with any anti-aliasing, for over twice the graphics card's work at 150%, four times at 200%. Xbox draws the Xbox's 640x480 and scales it up: softer, and very light."/>
+		<string text="Smooths jagged edges. FXAA and SMAA cost little; MSAA is sharper and costs more of the graphics card."/>
 		<string text="Smooths jagged edges. FXAA and SMAA cost little; MSAA is sharper and costs more of the graphics card."/>
 		<string text="Keeps floors and walls sharp into the distance, at a small cost. Off looks as the Xbox did: surfaces blur a few steps away."/>
 		<string text="How detailed characters and vehicles stay in the distance. Xbox simplifies them as on a TV; Full keeps their detail for your screen; Highest always draws the most. Auto is Full in VR."/>
