@@ -96,6 +96,7 @@ the code, and another's may part from it at the first tick.
 #include "units/units.h"
 
 #include "demo.h"
+#include "halo_keyboard.h"
 #include "sim_rate.h"
 #include "../src/demo_files.h"
 
@@ -135,6 +136,8 @@ unsigned long player_control_substep_pressed_flags(long unit_index);
 struct player_control *player_control_get(short local_player_index);
 /* source/game/game_time.c */
 boolean game_time_menu_scene(void);
+/* source/main/console.c */
+void console_printf(boolean clear, const char *format, ...);
 extern struct game_variant game_variant_global;
 void main_build_identity(long *number, char *flavor, size_t flavor_size, char *repository, size_t repository_size,
 	char *version, size_t version_size);
@@ -247,6 +250,9 @@ struct demo_block_entry
 	unsigned long first_tick;
 	unsigned long size;
 	unsigned long packed_size;
+	/* the ticks the demo ran before it (its records' T, counted at the
+	playback's start), where a seek to a snapshot puts the playback */
+	unsigned long position;
 };
 
 /* ---------- globals */
@@ -339,6 +345,13 @@ static struct
 	long last_tick;
 	boolean diverged;
 	long hashes_matched;
+	/* the ticks the demo runs, its seek asked for (a block's index, NONE),
+	and the playback's controls held last */
+	unsigned long length_ticks;
+	long seek_block;
+	unsigned long controls_held;
+	real speed;
+	boolean seek_tested;
 } demo_player;
 
 /* ---------- the settings */
@@ -1528,17 +1541,14 @@ static void demo_playback_stop(
 
 /* the next block the playback takes (a seek's snapshot skipped) read and
 unpacked: whether there was one */
-static boolean demo_playback_next_block(
-	void)
+/* a block read and unpacked into the playback's block: whether it was */
+static boolean demo_playback_read_block(
+	struct demo_block_entry const *entry)
 {
-	while (demo_player.next_block < demo_player.block_count)
-	{
-		struct demo_block_entry const *entry = &demo_player.blocks[demo_player.next_block++];
-		unsigned char *packed;
-		boolean unpacked;
+	unsigned char *packed;
+	boolean unpacked;
 
-		if (entry->kind == _demo_block_seek_snapshot)
-			continue;
+	{
 		packed = demo_files_alloc(entry->packed_size ? entry->packed_size : 1);
 		demo_files_free(demo_player.block);
 		demo_player.block = demo_files_alloc(entry->size ? entry->size : 1);
@@ -1557,6 +1567,19 @@ static boolean demo_playback_next_block(
 			return FALSE;
 		demo_player.block_size = entry->size;
 		return TRUE;
+	}
+}
+
+static boolean demo_playback_next_block(
+	void)
+{
+	while (demo_player.next_block < demo_player.block_count)
+	{
+		struct demo_block_entry const *entry = &demo_player.blocks[demo_player.next_block++];
+
+		if (entry->kind == _demo_block_seek_snapshot)
+			continue;
+		return demo_playback_read_block(entry);
 	}
 	return FALSE;
 }
@@ -1668,18 +1691,19 @@ saved games' loading (the caches outside the game state put right, the
 state checked), the procedures' changes to it then written over */
 static boolean demo_playback_snapshot(
 	unsigned char const *bytes,
-	unsigned long length)
+	unsigned long length,
+	boolean seek)
 {
 	unsigned long flags;
 
 	if (length < 16 || !demo_ranges_apply(bytes + 16, length - 16, TRUE, FALSE))
 		return FALSE;
 	flags = demo_read_u32(bytes + 4);
-	if (TEST_FLAG(flags, _demo_snapshot_reset_bit))
+	if (TEST_FLAG(flags, _demo_snapshot_reset_bit) && !seek)
 		main_port_demo_reset_map();
 	/* (the start's: the map just loaded here as it was there, the game
 	state written over as it is, as nothing outside it differs) */
-	if (TEST_FLAG(flags, _demo_snapshot_start_bit) && demo_player.connection == _game_connection_local)
+	if (TEST_FLAG(flags, _demo_snapshot_start_bit) && demo_player.connection == _game_connection_local && !seek)
 	{
 		demo_ranges_apply(bytes + 16, length - 16, TRUE, TRUE);
 		if (!game_state_port_check_live())
@@ -1731,6 +1755,26 @@ static void demo_playback_tick_begin(
 		if (demo_playback_record(&bytes, &length, FALSE) == 'V')
 			demo_playback_record(&bytes, &length, TRUE);
 	}
+	/* (a seek: the snapshot's tick begins here, its own records before it
+	taken already, the next its input) */
+	if (demo_player.seek_block != NONE)
+	{
+		struct demo_block_entry const *entry = &demo_player.blocks[demo_player.seek_block];
+
+		demo_player.seek_block = NONE;
+		if (!demo_playback_read_block(entry) ||
+			demo_playback_record(&bytes, &length, TRUE) != 'K' || !demo_playback_snapshot(bytes, length, TRUE))
+		{
+			demo_playback_stop("a damaged snapshot (the seek's)", TRUE);
+			return;
+		}
+		demo_player.next_block = (long)(entry - demo_player.blocks) + 1;
+		demo_player.cursor = demo_player.block_size;
+		demo_player.ticks = (long)entry->position;
+		demo_player.last_tick = (long)entry->first_tick;
+		return;
+	}
+	demo_shadow_restore();
 	type = demo_playback_record(&bytes, &length, TRUE);
 	if (type == 'E' || type == 0)
 	{
@@ -1749,14 +1793,13 @@ static void demo_playback_tick_begin(
 		return;
 	}
 	demo_player.last_tick = (long)demo_read_u32(bytes);
-	demo_shadow_restore();
 	for (;;)
 	{
 		type = demo_playback_record(&bytes, &length, FALSE);
 		if (type == 'K')
 		{
 			demo_playback_record(&bytes, &length, TRUE);
-			if (!demo_playback_snapshot(bytes, length))
+			if (!demo_playback_snapshot(bytes, length, FALSE))
 			{
 				demo_playback_stop("a damaged snapshot", TRUE);
 				return;
@@ -2094,6 +2137,41 @@ static boolean demo_playback_open(
 		platform_log("demos: %s holds no game", path);
 		return FALSE;
 	}
+	/* (each block's place in the demo's ticks, for seeking: its records'
+	ticks counted) */
+	{
+		long index;
+		unsigned long position = 0;
+
+		for (index = 0; index < demo_player.block_count; index++)
+		{
+			struct demo_block_entry *entry = &demo_player.blocks[index];
+
+			entry->position = position;
+			if (entry->kind == _demo_block_records && demo_playback_read_block(entry))
+			{
+				unsigned long cursor = 0;
+
+				while (cursor + 5 <= demo_player.block_size)
+				{
+					unsigned long size = demo_read_u32(demo_player.block + cursor + 1);
+
+					if (size > demo_player.block_size - cursor - 5)
+						break;
+					if (demo_player.block[cursor] == 'T')
+						position++;
+					cursor += 5 + size;
+				}
+			}
+			/* (a snapshot comes after its tick's T, in the block before it:
+			the tick it begins is the one before the count) */
+			if (entry->kind != _demo_block_records && entry->position)
+				entry->position--;
+		}
+		demo_player.length_ticks = position;
+		demo_player.block_size = 0;
+		demo_player.cursor = 0;
+	}
 	/* (the game's variant, the first records', for the map's game engine as
 	it loads: demo_note_new_map) */
 	{
@@ -2139,8 +2217,72 @@ static void demo_playback_begin(
 		return;
 	}
 	demo_player.playing = TRUE;
+	demo_player.seek_block = NONE;
+	demo_player.speed = 1.f;
 	demo_recorder.shadow_valid = FALSE;
 	main_port_demo_load_map(demo_player.map_name, (short)demo_player.difficulty);
+}
+
+/* a seek of seconds from where the playback is: to the snapshot nearest
+before that point (the demo's start's, its reloads', one each
+demo.snapshot_seconds), at the next tick's start */
+static void demo_playback_seek(
+	long seconds)
+{
+	long target = demo_player.ticks + seconds * TICKS_PER_SECOND;
+	long found = NONE;
+	long index;
+
+	if (target < 0)
+		target = 0;
+	for (index = 0; index < demo_player.block_count; index++)
+	{
+		struct demo_block_entry const *entry = &demo_player.blocks[index];
+
+		if (entry->kind != _demo_block_records && (long)entry->position <= target)
+			found = index;
+	}
+	/* (forward, only to one past where it is) */
+	if (found == NONE || (seconds > 0 && (long)demo_player.blocks[found].position <= demo_player.ticks))
+		return;
+	demo_player.seek_block = found;
+}
+
+static void demo_playback_show(
+	void)
+{
+	long now = demo_player.ticks / TICKS_PER_SECOND;
+	long length = (long)demo_player.length_ticks / TICKS_PER_SECOND;
+
+	console_printf(FALSE, "demo %ld:%02ld / %ld:%02ld%s, speed %gx (A, D: 10 s back, on; W, S: faster, slower; "
+		"space: pause)", now / 60, now % 60, length / 60, length % 60, game_time_get_paused() ? ", paused" : "",
+		(double)demo_player.speed);
+}
+
+/* the playback's controls, on the keyboard's own: strafing left and right
+seeks 10 seconds back and on, moving forward and back plays faster and
+slower, jumping pauses (the machine's players play no part in it) */
+static void demo_playback_controls(
+	void)
+{
+	unsigned long held = halo_keyboard_actions(0);
+	unsigned long pressed = held & ~demo_player.controls_held;
+
+	demo_player.controls_held = held;
+	if (!pressed || !demo_player.started)
+		return;
+	if (TEST_FLAG(pressed, HALO_KEYBOARD_STRAFE_LEFT))
+		demo_playback_seek(-10);
+	if (TEST_FLAG(pressed, HALO_KEYBOARD_STRAFE_RIGHT))
+		demo_playback_seek(10);
+	if (TEST_FLAG(pressed, HALO_KEYBOARD_MOVE_FORWARD) && demo_player.speed < 8.f)
+		demo_player.speed *= 2.f;
+	if (TEST_FLAG(pressed, HALO_KEYBOARD_MOVE_BACKWARD) && demo_player.speed > 0.25f)
+		demo_player.speed *= 0.5f;
+	if (TEST_FLAG(pressed, HALO_KEYBOARD_JUMP))
+		game_time_set_paused(!game_time_get_paused());
+	game_time_set_speed(demo_player.speed);
+	demo_playback_show();
 }
 
 void demo_frame(
@@ -2159,6 +2301,24 @@ void demo_frame(
 			snprintf(path, sizeof(path), "%s", config_string("demo.play"));
 		if (path[0])
 			demo_playback_begin(path);
+	}
+	if (demo_player.playing && demo_player.started)
+	{
+		demo_playback_controls();
+		/* (debug.demo_seek "<at>,<by>": a seek of by seconds once the playback
+		reaches at seconds, for tests) */
+		if (!demo_player.seek_tested && config_string("debug.demo_seek")[0])
+		{
+			long at = 0, by = 0;
+
+			if (sscanf(config_string("debug.demo_seek"), "%ld,%ld", &at, &by) == 2 &&
+				demo_player.ticks >= at * TICKS_PER_SECOND)
+			{
+				demo_player.seek_tested = TRUE;
+				platform_log("demos: seeking %ld seconds from %ld (debug.demo_seek)", by, demo_player.ticks / TICKS_PER_SECOND);
+				demo_playback_seek(by);
+			}
+		}
 	}
 	if (demo_clip_requests)
 	{

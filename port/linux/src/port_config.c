@@ -2199,6 +2199,9 @@ static const struct config_setting config_settings[] =
 		"A file to write a line a tick to: a hash of the game state, the random\n"
 		"seeds and every taker of a seed by its call site, to compare two runs\n"
 		"of the same input (tools/determinism_compare.py); empty for none." },
+	{ "debug.demo_seek", _config_string, "\"\"", "HALO_DEMO_SEEK", _environment_value, _platform_all,
+		"\"<at>,<by>\": the demo played seeks by seconds (negative: back) once it\n"
+		"reaches at seconds, for tests; empty none." },
 	{ "debug.demo_log", _config_boolean, "false", "HALO_DEMO_LOG", _environment_set_is_true, _platform_all,
 		"Log each whole game state the demo being recorded takes, and why." },
 	{ "debug.demo_quit", _config_boolean, "false", "HALO_DEMO_QUIT", _environment_set_is_true, _platform_all,

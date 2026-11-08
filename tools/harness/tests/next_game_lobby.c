@@ -145,6 +145,11 @@ static long *machine_get_player_list(long machine_index)
 }
 
 long network_standard_agreed_rate(void);
+/* (port/linux/game/demo.c: no demo plays) */
+static long demo_playback_sim_rate(void)
+{
+	return 0;
+}
 void network_standard_new_game(void);
 
 static long config_integer(char const *name)

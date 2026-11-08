@@ -149,6 +149,12 @@ static void game_state_note_event(char const *event)
 	(void)event;
 }
 
+/* (port/linux/game/demo.c: no demo plays) */
+static boolean demo_playing(void)
+{
+	return FALSE;
+}
+
 static boolean game_state_port_saved_game_valid(void)
 {
 	return checkpoint;

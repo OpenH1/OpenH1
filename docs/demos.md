@@ -88,6 +88,12 @@ taken as a saved game is (`game_state.c`: the loading's procedures before
 and after, the game state checked between them, then written again over
 what the procedures changed).
 
+While a demo plays, the keyboard's own controls drive the playback, not a
+player: strafing left and right (A, D) seeks 10 seconds back and on, to the
+snapshot nearest before that point; moving forward and back (W, S) plays
+twice as fast or half as fast (from a quarter to eight times); jumping
+(space) pauses. The console's line shows where the playback is.
+
 The playback checks its hash against the recording's once a second. If they
 differ, it says where in the log ("parted from the recording by tick 1680:
 effect"), names the allocations that differ, and plays on as its own game.
@@ -204,5 +210,9 @@ refused, the retention.
   recorded again after.
 - **The problem report** does not attach the last 30 seconds yet: a demo
   holds the players' names (the game state's), which a public issue must not.
-- Seeking, the free camera and players' views, the export to video and the
-  Demos screen come next.
+- **A seek back** can part from the recording (the AI's actors, the
+  objects): what the game keeps outside its game state (the checkpoints'
+  timers, the main loop's) is where the playback was, not where it goes.
+  A seek on plays on as recorded (checked: every hash after one).
+- The free camera and the other players' views, the export to video and
+  the Demos screen come next.
