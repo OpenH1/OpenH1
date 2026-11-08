@@ -158,15 +158,17 @@ Measured on the Linux x86-64 build (`tools/demo_info.py`):
 
 | Game | MB a minute |
 | --- | --- |
-| Pillar of Autumn (a10), the campaign's start, 60 Hz | 1.0 |
+| Pillar of Autumn (a10), the campaign's start, 30, 60 or 120 Hz | 1.0 |
 | The Silent Cartographer (b30), fighting, a death every 20 s, 60 Hz | 2.2 |
-| Blood Gulch Slayer, a player and 3 bots, 60 Hz | 0.5 |
-| Blood Gulch Slayer hosted, a client, 120 Hz | 0.3 to 2 |
+| Blood Gulch Slayer, a player and 3 bots, 60 Hz | 0.6 |
+| Blood Gulch Slayer, a player and 7 bots, 120 Hz | 1.5 |
+| Blood Gulch Slayer hosted, a client, 120 Hz | 2.0 |
 
 Most of it is the snapshots for seeking (about 150 KB packed each in the
 campaign) and the whole game states of reloads (a revert's). Recording
-takes about 0.1 ms of the game's thread a tick (the comparison of the
-allocations the ticks keep, about 1 MB, with what the tick before left).
+takes 0.05 to 0.1 ms of the game's thread a tick (the comparison of the
+allocations the ticks keep, about 1 MB, with what the tick before left),
+and packing and writing are on a thread of their own.
 
 ## What is checked
 
@@ -183,12 +185,13 @@ python tools/determinism_compare.py --simulation --builds \
     --ignore "object list header" --ignore "list object reference" rec.txt play.txt
 ```
 
-Alike at every tick: a10 at 30, 60 and 120 (with `debug.frame_time`, and in
-real time); played back at 144 frames a second from a recording at 60; The
-Silent Cartographer (b30) fighting, 4 minutes with 12 deaths and their
-reverts; Blood Gulch Slayer with three bots at 60, in real time; a hosted
-game at 120 alone; on macOS with the Metal renderer, in real time. Every
-recorded hash matched in those playbacks.
+Alike at every tick: Pillar of Autumn (a10) at 30, 60 and 120 (with
+`debug.frame_time`, and in real time); played back at 144 frames a second
+from a recording at 60; on macOS with the Metal renderer, in real time.
+Every recorded hash matched in those playbacks, and in The Silent
+Cartographer's (b30) fighting, 2.5 minutes with its deaths and their
+reverts (`determinism_compare.py` finds the cluster references' and the
+AI's props' free elements apart after a revert, which no tick reads).
 The object lists' free elements are left out: the playback's loading leaves
 other bytes in them, which no tick reads. `tools/test_demo_files.py` checks
 the files without the game: a demo written and read back, a damaged block
@@ -198,11 +201,12 @@ refused, the retention.
 
 - **A game joined on another machine** is not recorded: its client decides
   nothing, and much of what it has comes from the host inside its ticks.
-- **A hosted game with clients** plays back exactly until the netcode's
-  work outside the recorded points reaches the game: a client's reported hit
-  dealt between two sub-steps of an open tick, whose effects (made by the
-  game's code) the bytes recorded do not bring with them. The playback's
-  hash says where.
+- **A hosted game with clients** plays back as recorded for a while (on the
+  loopback, with a client and the network test's kills, 17 to 77 seconds),
+  then parts: what the netcode does outside the recorded points (a client's
+  reported hit dealt between two sub-steps of an open tick, whose effects
+  the game's code makes) reaches the game state as bytes, without the
+  frames' side of it. The playback's hash says where; it plays on.
 - **Effects the frames make** (a particle striking) are recorded as data,
   and the ticks update them: their particles in the playback are the
   playback's own.
@@ -211,9 +215,9 @@ refused, the retention.
   game state ("Determinism" in `port/linux/README.md`), and with the frames'
   time fixed it is the frames' time. A demo recorded in real time plays back
   in real time.
-- **Slayer with bots**: of three runs, two played back every hash as
-  recorded, the third two hashes apart (the objects, six seconds in) and as
-  recorded again after.
+- **Slayer with bots** (split screen) plays back as recorded for 20 to 70
+  seconds, and longer (a run of 2130 ticks, alike throughout); then an
+  object's state parts, now and then only for a moment (one hash of 216).
 - **The problem report** does not attach the last 30 seconds yet: a demo
   holds the players' names (the game state's), which a public issue must not.
 - **A seek back** can part from the recording (the AI's actors, the
