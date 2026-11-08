@@ -370,7 +370,8 @@ static int parse_long(struct reader *reader, const char *name, const char *text,
 }
 
 /* the element's attributes into the table's fields; one not in the table
-(but platform, which for_this_platform reads) is an error */
+(but platform, which for_this_platform reads, and source, which nothing
+here does) is an error */
 static void read_attributes(struct reader *reader, const char *element, const XML_Char **attributes,
 	const struct attribute *table, size_t count)
 {
@@ -381,7 +382,9 @@ static void read_attributes(struct reader *reader, const char *element, const XM
 		const char *name = attributes[index], *value = attributes[index + 1];
 		size_t field;
 
-		if (!strcmp(name, "platform"))
+		/* (and source, where a generator says it made the element, for the
+		menu review tools: tools/menu_review.py) */
+		if (!strcmp(name, "platform") || !strcmp(name, "source"))
 			continue;
 		for (field = 0; field < count; field++)
 		{

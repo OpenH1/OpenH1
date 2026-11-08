@@ -16,6 +16,7 @@ opened as no player could open them, one over the state another left.
 
 #include "cseries.h"
 #include "interface/ui_widget.h"
+#include "interface/terminal.h"
 #include "interface/virtual_keyboard.h"
 #include "menu_layout.h"
 
@@ -90,6 +91,9 @@ static boolean menu_tour_open(
 	}
 	if (virtual_keyboard_active())
 		virtual_keyboard_close();
+	/* (what the screen before printed on the screen, its warnings, not on
+	this one's picture) */
+	terminal_clear();
 	ui_widgets_close_all();
 	pc_menu_profile_edit_begin();
 	return ui_widget_load_by_name_or_tag(tag_name, NONE, NULL, NONE, NONE, NONE, NONE) != NULL;

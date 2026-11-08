@@ -58,7 +58,8 @@ def test_web_notes_on_a_widget_an_area_a_point_and_the_screen():
     x, y = menu_review.picture_point(shown, SIZE, 550, 427)
     note = menu_review.make_web_note(shown, SIZE, {"kind": "widget", "x": x, "y": y, "variant": "keyboard-16x9",
                                                    "note": " ADD PLAYER is cut off ", "author": "Paul"}, "latest")
-    assert note["status"] == "open" and note["source"] == "web" and note["author"] == "Paul"
+    assert note["status"] == "open" and note["origin"] == "web" and note["author"] == "Paul"
+    assert note["kind"] == "fix" and note["scope"] == "variant" and note["thread"] == []
     assert note["screen"] == SCREEN and note["screen_tag"] == TAG and note["note"] == "ADD PLAYER is cut off"
     assert note["widget"].endswith("prompt_add") and note["input"] == "keyboard" and note["shape"] == "16:9"
     assert note["image"] == {"run": "latest", "variant": "keyboard-16x9", "size": [1920, 1080], "x": 1478, "y": 961}
@@ -66,16 +67,16 @@ def test_web_notes_on_a_widget_an_area_a_point_and_the_screen():
     x1, y1 = menu_review.picture_point(shown, SIZE, 120, 450)
     area = menu_review.make_web_note(shown, SIZE, {"kind": "area", "x": x1, "y": y1, "x1": x0, "y1": y0,
                                                    "variant": "controller-16x10", "note": "crowded"}, "pr-1")
-    assert area["widget"] is None and area["area"] == [0, 400, 120, 450] and area["kind"] == "area"
+    assert area["widget"] is None and area["area"] == [0, 400, 120, 450] and area["target"] == "area"
     assert area["area_widgets"] == ["pc\\main_menu\\lobby\\button_bar"] and area["author"] == "reviewer"
     assert area["input"] == "controller" and area["shape"] == "16:10"
     point = menu_review.make_web_note(shown, SIZE, {"kind": "point", "x": x0, "y": y0, "variant": "touch-phone",
                                                     "note": "here"}, "latest")
-    assert point["area"] == [0, 400, 0, 400] and point["kind"] == "point"
+    assert point["area"] == [0, 400, 0, 400] and point["target"] == "point"
     x, y = menu_review.picture_point(shown, SIZE, 300, 100)
     whole = menu_review.make_web_note(shown, SIZE, {"x": x, "y": y, "variant": "keyboard-16x9", "note": "dark"},
                                       "latest")
-    assert whole["kind"] == "screen" and whole["widget"] is None
+    assert whole["target"] == "screen" and whole["widget"] is None
 
 
 def test_notes_written_read_and_their_status_changed(tmp_path):
@@ -98,7 +99,7 @@ def test_notes_written_read_and_their_status_changed(tmp_path):
     assert "in progress" in menu_notes.list_notes(notes, False) and web["id"] not in menu_notes.list_notes(notes, False)
     menu_notes.set_status(path, web["id"], "closed")
     assert menu_notes.read_notes(path)[1]["status"] == "closed"
-    for wrong in (("aaa", "fixed"), ("nope", "open")):
+    for wrong in (("aaa", "repaired"), ("nope", "open")):
         try:
             menu_notes.set_status(path, *wrong)
         except (ValueError, KeyError):
@@ -146,3 +147,23 @@ def test_a_sign_in_link_goes_on_to_the_apps_own_pages_alone():
     assert menu_review.local_next("screen?run=latest&screen=a") == "screen?run=latest&screen=a"
     for elsewhere in ("", "//evil.example/x", "/notes", "https://evil.example", "\\\\evil", "javascript:alert(1)"):
         assert menu_review.local_next(elsewhere) == "./"
+
+
+def test_a_note_names_its_widget_its_kind_scope_and_the_edits_proposed():
+    shown = layout()
+    note = menu_review.make_web_note(shown, SIZE, {
+        "kind": "widget", "widget": "pc\\main_menu\\lobby\\prompt_add", "variant": "keyboard-16x9",
+        "note": "Room for the key", "note_kind": "question", "scope": "everywhere",
+        "edits": {"box": {"to": [490, 415, 600, 439]}, "text": {"old": "ADD PLAYER", "new": "ADD A PLAYER"}}}, "latest")
+    assert note["widget"].endswith("prompt_add") and note["kind"] == "question" and note["scope"] == "everywhere"
+    assert note["edits"]["box"] == {"from": [500, 415, 600, 439], "to": [490.0, 415.0, 600.0, 439.0],
+                                    "delta": [-10.0, 0.0, 10.0, 0.0]}
+    assert note["edits"]["text"] == {"old": "ADD PLAYER", "new": "ADD A PLAYER"}
+    # (nothing proposed where the box and words are as they were; a box of no sense refused)
+    same = menu_review.clean_edits({"box": {"to": [500, 415, 600, 439]}, "text": {"old": "A", "new": "A"}},
+                                   menu_review.widget_named(shown, "pc\\main_menu\\lobby\\prompt_add"))
+    assert same == {}
+    assert menu_review.clean_box([1, 2, 0, 4]) is None and menu_review.clean_box("x") is None
+    unknown = menu_review.make_web_note(shown, SIZE, {"kind": "widget", "widget": "nope", "variant": "keyboard-16x9",
+                                                      "note": "n", "note_kind": "bogus", "scope": "bogus"}, "latest")
+    assert unknown["widget"] is None and unknown["kind"] == "fix" and unknown["scope"] == "variant"

@@ -78,6 +78,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import capture  # noqa: E402
+import menu_sources  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 MENUS = Path("port") / "assets" / "menus" / "ce"
@@ -621,6 +622,7 @@ def render(build: Path, screens: list, variants: list, maps: Path, out: Path, la
     size = -(-len(screens) // parts)
     tasks = [(name, screens[start:start + size]) for name in variants for start in range(0, len(screens), size)]
     results = {}
+    sources = menu_sources.catalog(menus / "ce" if menus else ROOT / MENUS)
 
     def one(task):
         name, part = task
@@ -638,6 +640,8 @@ def render(build: Path, screens: list, variants: list, maps: Path, out: Path, la
                       layout.get("screen_name", "").replace("\\", "/").endswith(screen.name)}
             stem = folder / screen.slug
             if layout is not None:
+                # (each widget's source and file, from the menu files: the review tools')
+                menu_sources.enrich_layout(layout, sources)
                 stem.with_suffix(".json").write_text(json.dumps(layout))
             if picture is not None:
                 save_picture(picture, stem.with_suffix(".png"), stem.with_suffix(".thumb.jpg"))
