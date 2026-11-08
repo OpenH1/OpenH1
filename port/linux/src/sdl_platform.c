@@ -2071,6 +2071,31 @@ static BOOL platform_vrr(void)
 #endif
 }
 
+int platform_vrr_detected(void)
+{
+#if defined(HALO_METAL)
+	return PLATFORM_VRR_SYSTEM;
+#elif defined(HALO_ANDROID) || !defined(HALO_VULKAN)
+	return PLATFORM_VRR_NOT_HERE;
+#elif defined(HALO_WINDOWS)
+	return PLATFORM_VRR_UNKNOWN;
+#else
+	/* (asked at most every VRR_ASK_MS: the menus ask each frame) */
+	static Uint64 asked_at;
+	static int found = -1;
+	Uint64 now = SDL_GetTicks();
+	int detected;
+
+	if (found < 0 || now - asked_at >= VRR_ASK_MS)
+	{
+		detected = host_vulkan_vrr();
+		found = detected == HOST_VULKAN_VRR_GAMESCOPE || detected == HOST_VULKAN_VRR_DRM;
+		asked_at = now;
+	}
+	return found ? PLATFORM_VRR_FOUND : PLATFORM_VRR_NONE;
+#endif
+}
+
 /* the refreshes each frame is shown for, 0 for none (vsync off):
 display.vsync's 1; and on the Linux builds, with vsync off, a display.max_fps
 of the display's refresh rate or a whole fraction of it (60 at 60 Hz, 30 or

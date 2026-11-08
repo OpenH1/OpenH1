@@ -1953,42 +1953,59 @@ static void max_fps_row_show(struct widget_instance *list)
 	row->visible = index >= 0 && index < setting->value_count && !strcmp(setting->values[index], "false");
 }
 
-/* Frame Rate & Sync's Variable Refresh (display.vrr), its VRR Frame Cap
-(display.vrr_cap_margin) and Low Latency (display.low_latency): the Vulkan
-builds' alone (the Mac's Metal has none of them: its frames are paced by its
-display); the cap dimmed while Variable Refresh shows OFF */
+/* Frame Rate & Sync's Variable Refresh (display.vrr), shown on every build
+as what it does there (sdl_platform.c's platform_vrr_detected, menu_tags.c's
+spinner_split: AUTO: ON or AUTO: OFF where the system is asked); dimmed on
+the Mac, whose Metal and ProMotion set it (SET BY MACOS). Its VRR Frame Cap
+(display.vrr_cap_margin) dimmed while VRR is not on: OFF, AUTO where the
+system says none, and the Mac. Low Latency (display.low_latency) hidden on
+the Mac, whose frames its display paces already. Dimmed as Tick Rate's
+locked row is (sim_rate_row_show): at 0.4, its value held; but the row keeps
+the cursor, so that its panel says why */
+int platform_vrr_detected(void);
+
+static void row_dim(struct widget_instance *row, struct widget_instance *spinner, boolean dim)
+{
+	struct pc_menu_setting *setting;
+
+	if (!row || !spinner)
+		return;
+	/* (the row still takes the cursor, so that its panel says why; its
+	value held where it was loaded while it is dimmed: a press changes
+	nothing) */
+	setting = pc_menu_setting_get(spinner->definition_tag_index);
+	if (dim && setting && setting->loaded_index >= 0 && setting->loaded_index < setting->value_count)
+		spinner->parameters.list.selected_index = setting->loaded_index;
+	if (spinner->disabled == dim)
+		return;
+	spinner->disabled = dim;
+	row->alpha_modifier = dim ? 0.4f : 1.0f;
+}
+
 static void vrr_rows_show(struct widget_instance *list)
 {
-#ifdef HALO_METAL
-	static char const *const rows[] = { "op_vrr", "op_vrr_cap_margin", "op_low_latency" };
-	unsigned int index;
-
-	for (index = 0; index < sizeof(rows) / sizeof(rows[0]); index++)
-	{
-		struct widget_instance *row = named(list, rows[index], 0);
-
-		if (row)
-			row->visible = FALSE;
-	}
-#else
 	struct widget_instance *vrr = named(list, "vrr_spinner", 0);
-	struct widget_instance *row = named(list, "op_vrr_cap_margin", 0);
-	struct widget_instance *spinner = named(list, "vrr_cap_margin_spinner", 0);
 	struct pc_menu_setting *setting = vrr ? pc_menu_setting_get(vrr->definition_tag_index) : NULL;
-	boolean off;
+	int detected;
+	boolean on;
 	short index;
 
-	if (!setting || !row || !spinner)
+	if (!setting)
 		return;
+	detected = platform_vrr_detected();
 	index = vrr->parameters.list.selected_index;
-	off = index >= 0 && index < setting->value_count && !strcmp(setting->values[index], "off");
-	if (spinner->disabled == off)
-		return;
-	row->disabled = off;
-	spinner->disabled = off;
-	/* (dimmed: its label, its spinner and its background, as Tick Rate's) */
-	row->alpha_modifier = off ? 0.4f : 1.0f;
-#endif
+	on = index >= 0 && index < setting->value_count && (!strcmp(setting->values[index], "on") ||
+		(!strcmp(setting->values[index], "auto") && detected == 1 /* PLATFORM_VRR_FOUND */));
+	if (detected == 3 /* PLATFORM_VRR_SYSTEM */)
+	{
+		struct widget_instance *latency = named(list, "op_low_latency", 0);
+
+		on = FALSE;
+		row_dim(named(list, "op_vrr", 0), vrr, TRUE);
+		if (latency)
+			latency->visible = FALSE;
+	}
+	row_dim(named(list, "op_vrr_cap_margin", 0), named(list, "vrr_cap_margin_spinner", 0), !on);
 }
 
 /* a setting's value as Settings shows it: the change kept, else
@@ -3013,6 +3030,42 @@ static void hdr_display_show(struct widget_instance *list)
 	discord_text_set(value, text);
 }
 
+/* the VARIABLE REFRESH row's panel: its words of what the system says (the
+others': FALSE) */
+static boolean vrr_panel(struct widget_instance *row, wchar_t const **help)
+{
+	static wchar_t words[SETTINGS_PANEL_TEXT_LENGTH];
+	char const *text;
+
+	if (!row->name || strcmp(row->name, "op_vrr"))
+		return FALSE;
+	switch (platform_vrr_detected())
+	{
+	case 0 /* PLATFORM_VRR_NONE */:
+		text = "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
+			"each frame shows as soon as it is ready, without tearing.|No variable refresh screen found. Turn it "
+			"on in your display or driver settings.";
+		break;
+	case 1 /* PLATFORM_VRR_FOUND */:
+		text = "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
+			"each frame shows as soon as it is ready, without tearing.|Variable refresh found: Auto has it on.";
+		break;
+	case 2 /* PLATFORM_VRR_UNKNOWN */:
+		text = "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
+			"each frame shows as soon as it is ready, without tearing.|Turn on if your screen has G-Sync or "
+			"FreeSync enabled.";
+		break;
+	case 3 /* PLATFORM_VRR_SYSTEM */:
+		text = "Set by macOS: Metal and ProMotion match the display's refresh to the frames themselves.";
+		break;
+	default:
+		return FALSE;
+	}
+	discord_widen(text, words, SETTINGS_PANEL_TEXT_LENGTH);
+	*help = words;
+	return TRUE;
+}
+
 /* the GYRO row's panel while Steam Input has the controller (STEAM INPUT HAS
 IT: only its virtual controllers, which pass no gyroscope): how to turn it
 off for the game, on a Steam Deck (xinput_sdl.c's halo_steam_deck) or another
@@ -3418,6 +3471,8 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		hdr_display_panel(row, value, &help);
 		/* (Gyro's STEAM INPUT HAS IT: how to turn it off) */
 		gyro_found_panel(row, &help);
+		/* (Variable Refresh: what the system says of it) */
+		vrr_panel(row, &help);
 		/* (Profile's ABOUT: this build) */
 		about_panel(row, value, &help);
 		/* (Profile's CLEAR CACHES: their size, and what a press does) */

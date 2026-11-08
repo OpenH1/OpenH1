@@ -111,6 +111,18 @@ int platform_display_refresh_rates(long *rates, int maximum);
 that fit the desktop, and display.window_size's; how many. None on
 Android. */
 int platform_window_sizes(long *widths, long *heights, int maximum);
+/* Frame Rate & Sync's Variable Refresh (menu_tags.c, menu_functions.c):
+PLATFORM_VRR_FOUND or _NONE where the system is asked (the Linux builds:
+gamescope's word, a display's DRM), PLATFORM_VRR_UNKNOWN where nothing
+reliable says (Windows), PLATFORM_VRR_SYSTEM where the system sets it (the
+Mac: Metal and ProMotion), PLATFORM_VRR_NOT_HERE where it has no meaning
+(Android) */
+#define PLATFORM_VRR_NONE 0
+#define PLATFORM_VRR_FOUND 1
+#define PLATFORM_VRR_UNKNOWN 2
+#define PLATFORM_VRR_SYSTEM 3
+#define PLATFORM_VRR_NOT_HERE 4
+int platform_vrr_detected(void);
 /* Settings > Audio's devices (port/linux/game/menu_tags.c): the names of
 the output (or, recording, input) devices SDL finds; how many. None on
 Android, which plays and records with the system's. */

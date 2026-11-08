@@ -1980,6 +1980,17 @@ the log says at start; a display without VRR is unchanged. On Windows,
 which says nothing reliable of it, set it to On for a G-SYNC or FreeSync
 display (with VRR on in the driver's and the display's settings).
 
+The Variable Refresh row shows what it does on each system: on Linux its
+AUTO reads AUTO: ON where the system says VRR is active and AUTO: OFF
+where it does not (its words then: no variable refresh screen found, and
+to turn it on in the display's or the driver's settings), and ON stays the
+player's to choose; on Windows AUTO reads AUTO, with words to turn it on
+for a screen with G-Sync or FreeSync on; on the Mac the row reads SET BY
+MACOS, dimmed, as Metal and ProMotion match the refresh to the frames
+themselves. VRR Frame Cap is dimmed (its value held) while VRR is not on;
+both still take the cursor, so their words can be read. Low Latency is
+not on the Mac's page: its frames are paced by its display already.
+
 ### Low latency with vsync
 
 With vsync on, the display shows a frame at each refresh, and a game left

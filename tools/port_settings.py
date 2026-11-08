@@ -1033,14 +1033,16 @@ PAGES = {
             ("VSYNC", "display.vsync", ON_OFF,
              "Shows each frame at a refresh of the display: even motion that never tears. With Low Latency it adds "
              "almost no input lag. It is on in the Steam Deck's Game Mode.", None),
-            # (display.vrr: sdl_platform.c's platform_vrr; hidden on the Mac,
-            # whose Metal has none: menu_functions.c's vrr_rows_show)
+            # (display.vrr: sdl_platform.c's platform_vrr; on every build, its
+            # AUTO and its words what the system says, dimmed on the Mac:
+            # menu_tags.c's spinner_split, menu_functions.c's vrr_rows_show and
+            # vrr_panel, which has the words shown)
             ("VARIABLE REFRESH", "display.vrr", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
              "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
              "each frame shows as soon as it is ready, without tearing. Auto turns it on where the system says VRR "
-             "is on.|On Windows, choose ON.",
+             "is on.",
              "desktop"),
-            # (dimmed while Variable Refresh shows OFF: vrr_rows_show)
+            # (dimmed while VRR is not on: vrr_rows_show)
             ("VRR FRAME CAP", "display.vrr_cap_margin", [(str(n), str(n)) for n in range(1, 11)],
              "Frames a second kept under the refresh rate, so the game stays in the screen's VRR range and never "
              "falls back to VSync. Lower is closer to the most frames; higher is safer on a screen with a narrow "
