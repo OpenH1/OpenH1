@@ -1471,9 +1471,103 @@ static unsigned char *png_encode(const unsigned char *bgra, uint32_t width, uint
 	return png;
 }
 
+/* ---------- QOI ("image": "qoi")
+
+The Quite OK Image format (qoiformat.org's specification, written here from
+it): a pixel is a run of the last, an index into the 64 seen most lately
+(by a hash), a small difference from the last, or itself. Lossless, made
+in one pass a few times faster than deflate and smaller on the game's
+frames. Written as RGB (3 channels, sRGB). */
+
+static unsigned char *qoi_encode(const unsigned char *bgra, uint32_t width, uint32_t height, size_t *size)
+{
+	size_t pixels = (size_t)width * height, index;
+	unsigned char *qoi = malloc(14 + pixels * 4 + 8), *place;
+	unsigned char seen[64][3], last[3] = { 0, 0, 0 };
+	uint32_t run = 0;
+
+	if (!qoi || !width || !height)
+	{
+		free(qoi);
+		return NULL;
+	}
+	memset(seen, 0, sizeof(seen));
+	memcpy(qoi, "qoif", 4);
+	store32(qoi + 4, width);
+	store32(qoi + 8, height);
+	qoi[12] = 3;
+	qoi[13] = 0;
+	place = qoi + 14;
+	for (index = 0; index < pixels; index++)
+	{
+		const unsigned char *from = bgra + index * 4;
+		unsigned char pixel[3] = { from[2], from[1], from[0] };
+		uint32_t slot;
+
+		if (!memcmp(pixel, last, 3))
+		{
+			if (++run == 62 || index + 1 == pixels)
+			{
+				*place++ = (unsigned char)(0xc0 | (run - 1));
+				run = 0;
+			}
+			continue;
+		}
+		if (run)
+		{
+			*place++ = (unsigned char)(0xc0 | (run - 1));
+			run = 0;
+		}
+		/* (alpha 255: its 11 * 255 in the hash) */
+		slot = (pixel[0] * 3u + pixel[1] * 5u + pixel[2] * 7u + 255u * 11u) % 64u;
+		if (!memcmp(seen[slot], pixel, 3))
+		{
+			*place++ = (unsigned char)slot;
+		}
+		else
+		{
+			signed char red = (signed char)(pixel[0] - last[0]), green = (signed char)(pixel[1] - last[1]);
+			signed char blue = (signed char)(pixel[2] - last[2]);
+			int red_green = red - green, blue_green = blue - green;
+
+			memcpy(seen[slot], pixel, 3);
+			if (red >= -2 && red <= 1 && green >= -2 && green <= 1 && blue >= -2 && blue <= 1)
+				*place++ = (unsigned char)(0x40 | (red + 2) << 4 | (green + 2) << 2 | (blue + 2));
+			else if (green >= -32 && green <= 31 && red_green >= -8 && red_green <= 7 && blue_green >= -8 &&
+				blue_green <= 7)
+			{
+				*place++ = (unsigned char)(0x80 | (green + 32));
+				*place++ = (unsigned char)((red_green + 8) << 4 | (blue_green + 8));
+			}
+			else
+			{
+				*place++ = 0xfe;
+				memcpy(place, pixel, 3);
+				place += 3;
+			}
+		}
+		memcpy(last, pixel, 3);
+	}
+	memcpy(place, "\0\0\0\0\0\0\0\1", 8);
+	place += 8;
+	*size = (size_t)(place - qoi);
+	return qoi;
+}
+
+/* PNG's filters (1 sub: the pixel to the left; 2 up: the one above; 4
+Paeth's predictor of the three) */
+static unsigned char paeth(int left, int above, int corner)
+{
+	int estimate = left + above - corner, to_left = abs(estimate - left), to_above = abs(estimate - above);
+	int to_corner = abs(estimate - corner);
+
+	return (unsigned char)(to_left <= to_above && to_left <= to_corner ? left : to_above <= to_corner ? above : corner);
+}
+
 /* BGRA pixels as a PNG's bytes, compressed (deflate_bytes, its rows
-filtered by the pixel to their left), malloc'd */
-static unsigned char *png_encode_compressed(const unsigned char *bgra, uint32_t width, uint32_t height, size_t *size)
+filtered by filter), malloc'd */
+static unsigned char *png_encode_compressed(const unsigned char *bgra, uint32_t width, uint32_t height, int filter,
+	size_t *size)
 {
 	size_t row_bytes = (size_t)width * 3 + 1, deflated = 0;
 	unsigned char *raw = malloc(row_bytes * height), *compressed, *png, *place, *chunk;
@@ -1487,16 +1581,24 @@ static unsigned char *png_encode_compressed(const unsigned char *bgra, uint32_t 
 	for (row = 0; row < height; row++)
 	{
 		unsigned char *line = raw + row * row_bytes;
-		const unsigned char *from = bgra + (size_t)row * width * 4;
+		const unsigned char *from = bgra + (size_t)row * width * 4, *above_row = row ? from - (size_t)width * 4 : NULL;
 
-		line[0] = 1;
+		line[0] = (unsigned char)filter;
 		for (column = 0; column < width; column++)
 		{
-			const unsigned char *pixel = from + column * 4, *left = column ? pixel - 4 : NULL;
+			const unsigned char *pixel = from + column * 4;
+			int channel;
 
-			line[1 + column * 3] = (unsigned char)(pixel[2] - (left ? left[2] : 0));
-			line[2 + column * 3] = (unsigned char)(pixel[1] - (left ? left[1] : 0));
-			line[3 + column * 3] = (unsigned char)(pixel[0] - (left ? left[0] : 0));
+			for (channel = 0; channel < 3; channel++)
+			{
+				/* (RGB from BGRA) */
+				int at = 2 - channel, value = pixel[at];
+				int left = column ? pixel[at - 4] : 0, above = above_row ? above_row[column * 4 + at] : 0;
+				int corner = column && above_row ? above_row[(column - 1) * 4 + at] : 0;
+				int predicted = filter == 1 ? left : filter == 2 ? above : filter == 4 ? paeth(left, above, corner) : 0;
+
+				line[1 + column * 3 + channel] = (unsigned char)(value - predicted);
+			}
 		}
 	}
 	compressed = deflate_bytes(raw, row_bytes * height, &deflated);
@@ -1980,16 +2082,50 @@ static int request_true(const struct request *request, const char *key)
 }
 
 /* a PNG's bytes inline in a reply: ,"png_base64":"..." */
-static void png_inline(struct text *text, const unsigned char *bgra, uint32_t width, uint32_t height, int compress)
+static int file_write(const char *path, const void *data, size_t size);
+
+/* a request's picture format ("image": "png", the default, or "qoi"):
+nonzero for QOI */
+static int request_qoi(const struct request *request)
+{
+	const char *image = request_string(request, "image");
+
+	return image && !strcmp(image, "qoi");
+}
+
+/* a picture's file bytes: QOI's, or a PNG (deflated with compress) */
+static unsigned char *picture_encode(const unsigned char *bgra, uint32_t width, uint32_t height, int qoi, int compress,
+	size_t *size)
+{
+	return qoi ? qoi_encode(bgra, width, height, size) : compress ?
+		png_encode_compressed(bgra, width, height, 1, size) : png_encode(bgra, width, height, size);
+}
+
+static int picture_write(const unsigned char *bgra, uint32_t width, uint32_t height, int qoi, const char *path)
 {
 	size_t size;
-	unsigned char *bytes = compress ? png_encode_compressed(bgra, width, height, &size) :
-		png_encode(bgra, width, height, &size);
+	unsigned char *bytes = picture_encode(bgra, width, height, qoi, 0, &size);
+	int written = bytes && file_write(path, bytes, size);
+
+	free(bytes);
+	return written;
+}
+
+/* a picture's bytes inline in a reply: ,"png_base64":"..." (or
+"qoi_base64") */
+static void picture_inline(struct text *text, const unsigned char *bgra, uint32_t width, uint32_t height, int qoi,
+	int compress)
+{
+	size_t size;
+	unsigned char *bytes = picture_encode(bgra, width, height, qoi, compress, &size);
 	char *encoded = bytes ? host_render_replay_base64(bytes, size) : NULL;
 
 	if (encoded)
 	{
-		TEXT(text, ",\"png_base64\":\"");
+		if (qoi)
+			TEXT(text, ",\"qoi_base64\":\"");
+		else
+			TEXT(text, ",\"png_base64\":\"");
 		text_add(text, encoded, strlen(encoded));
 		TEXT(text, "\"");
 	}
@@ -2000,7 +2136,7 @@ static void png_inline(struct text *text, const unsigned char *bgra, uint32_t wi
 /* ---------- the service: frames */
 
 /* the frame last inspected, kept: its picture, ID buffer and draws */
-static struct
+struct inspected
 {
 	uint32_t frame;
 	unsigned char *pixels;
@@ -2011,15 +2147,76 @@ static struct
 	uint32_t draw_count;
 	int draws_seen;
 	double ms;
-} kept = { .frame = UINT32_MAX };
+};
+
+static struct inspected kept = { .frame = UINT32_MAX };
+
+/* The frames inspected with their ID buffers before it, kept whole (the
+newest first) while they take no more than INSPECTED_BYTES: a step back to
+one is not the recording played again. The pictures kept on the way
+(recent) are not these: an ID buffer is drawn with the frame, each draw
+compared (a frame's more GPU time), and a 1440p frame's stacks are 118 MB,
+so the frames passed on the way are not given theirs. */
+#define INSPECTED_KEPT 8
+#define INSPECTED_BYTES (512u << 20)
+
+static struct inspected inspected[INSPECTED_KEPT];
+
+static void inspected_free(struct inspected *entry)
+{
+	free(entry->pixels);
+	free(entry->ids);
+	free(entry->draws);
+	memset(entry, 0, sizeof(*entry));
+	entry->frame = UINT32_MAX;
+}
+
+static size_t inspected_bytes(const struct inspected *entry)
+{
+	return entry->pixels ? (size_t)entry->width * entry->height * 4 + (size_t)entry->ids_width * entry->ids_height *
+		HOST_RENDER_REPLAY_ID_DEPTH * 4 + (size_t)entry->draw_count * sizeof(struct draw_seen) : 0;
+}
 
 static void kept_forget(void)
 {
-	free(kept.pixels);
-	free(kept.ids);
-	free(kept.draws);
-	memset(&kept, 0, sizeof(kept));
-	kept.frame = UINT32_MAX;
+	size_t total;
+	int index;
+
+	if (kept.ids && kept.pixels && kept.draws_seen)
+	{
+		/* (into the newest place; the oldest let go, and those past the bytes) */
+		inspected_free(&inspected[INSPECTED_KEPT - 1]);
+		memmove(&inspected[1], &inspected[0], sizeof(*inspected) * (INSPECTED_KEPT - 1));
+		inspected[0] = kept;
+		for (total = 0, index = 0; index < INSPECTED_KEPT; index++)
+		{
+			total += inspected_bytes(&inspected[index]);
+			if (total > INSPECTED_BYTES && index)
+				inspected_free(&inspected[index]);
+		}
+		memset(&kept, 0, sizeof(kept));
+	}
+	inspected_free(&kept);
+}
+
+/* frame n's ID buffer, picture and draws, kept: into kept (nonzero), or
+none */
+static int inspected_take(uint32_t n)
+{
+	int index;
+
+	for (index = 0; index < INSPECTED_KEPT; index++)
+	{
+		if (inspected[index].pixels && inspected[index].frame == n)
+		{
+			kept = inspected[index];
+			memmove(&inspected[index], &inspected[index + 1], sizeof(*inspected) * (INSPECTED_KEPT - 1 - (size_t)index));
+			memset(&inspected[INSPECTED_KEPT - 1], 0, sizeof(*inspected));
+			inspected[INSPECTED_KEPT - 1].frame = UINT32_MAX;
+			return 1;
+		}
+	}
+	return 0;
 }
 
 /* frame n played exactly, its picture read (and its ID buffer with ids):
@@ -2037,6 +2234,11 @@ static const char *frame_play(uint32_t n, int ids, int draws)
 	if (ids && !platform->ids_begin)
 		return "this backend has no ID buffer";
 	kept_forget();
+	if (inspected_take(n))
+	{
+		kept.ms = (seconds_now() - started) * 1000.0;
+		return NULL;
+	}
 	if (!ids && !draws && recent[slot].pixels && recent[slot].frame == n)
 	{
 		kept.frame = n;
@@ -2184,7 +2386,9 @@ static void serve_info(struct text *text)
 static void serve_frame(struct text *text, const struct request *request)
 {
 	double number;
-	const char *png = request_string(request, "png"), *ids_path = request_string(request, "ids"), *error;
+	int qoi = request_qoi(request);
+	const char *png = request_string(request, qoi && request_string(request, "qoi") ? "qoi" : "png");
+	const char *ids_path = request_string(request, "ids"), *error;
 	int inline_reply = request_true(request, "inline"), ids = ids_path != NULL || request_true(request, "ids");
 	int compress = request_true(request, "compress");
 	uint32_t n;
@@ -2204,15 +2408,15 @@ static void serve_frame(struct text *text, const struct request *request)
 		kept.height);
 	if (png && !inline_reply)
 	{
-		if (!png_write(kept.pixels, kept.width, kept.height, png))
+		if (!picture_write(kept.pixels, kept.width, kept.height, qoi, png))
 		{
-			reply_error(text, "the PNG cannot be written");
+			reply_error(text, "the picture cannot be written");
 			return;
 		}
 	}
 	else if (inline_reply)
 	{
-		png_inline(text, kept.pixels, kept.width, kept.height, compress);
+		picture_inline(text, kept.pixels, kept.width, kept.height, qoi, compress);
 	}
 	if (ids)
 	{
@@ -2371,16 +2575,19 @@ static void serve_thumbs(struct text *text, const struct request *request)
 		{
 			char path[4200];
 
-			snprintf(path, sizeof(path), "%s/thumb_%u.png", directory, n);
-			if (png_write(scaled, (uint32_t)width, height, path))
+			snprintf(path, sizeof(path), "%s/thumb_%u.%s", directory, n, request_qoi(request) ? "qoi" : "png");
+			if (picture_write(scaled, (uint32_t)width, height, request_qoi(request), path))
 			{
-				TEXT(text, ",\"png\":");
+				if (request_qoi(request))
+					TEXT(text, ",\"qoi\":");
+				else
+					TEXT(text, ",\"png\":");
 				text_string(text, path);
 			}
 		}
 		else
 		{
-			png_inline(text, scaled, (uint32_t)width, height, request_true(request, "compress"));
+			picture_inline(text, scaled, (uint32_t)width, height, request_qoi(request), request_true(request, "compress"));
 		}
 		TEXT(text, "}");
 		free(scaled);
