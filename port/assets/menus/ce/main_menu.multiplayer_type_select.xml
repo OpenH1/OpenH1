@@ -36,7 +36,7 @@
 		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/multiplayer_type_select/invite_note"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/multiplayer_type_join_internet_item" type="text" left="51" width="232" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/multiplayer_type_select/multiplayer_options" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5" string_index="6">
+	<widget name="main_menu/multiplayer_type_select/multiplayer_type_join_internet_item" type="text" left="51" width="232" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/multiplayer_type_select/multiplayer_options" string_index="6" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
 		<on event="a" run="mp type set mode" open="main_menu/multiplayer_type_select/join_game/join_game_screen"/>
 		<on event="start" run="mp type set mode" open="main_menu/multiplayer_type_select/join_game/join_game_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
