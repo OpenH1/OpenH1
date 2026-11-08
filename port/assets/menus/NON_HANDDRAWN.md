@@ -44,13 +44,14 @@ picture of Gamepad Setup: the Xbox's Controller Setup's pictures of the button s
 ## Screenshots
 
 Settings' Quality row shows these two small screenshots of the game, the same view drawn by each preset
-(`port/assets/menus/stills`, shipped as they are). They are this port's own drawing of the game: a local
+(`port/assets/menus/stills`). They are this port's own drawing of the game: a local
 Slayer game on Blood Gulch (`debug.network_test = "local:bloodgulch:slayer"`, `debug.random_seed = 7`,
 four bots), the same frame of each run captured offscreen by the macOS build at 1600x1200
 (`debug.screenshot_every`), cropped to 16:10, scaled to 288x180 (three times their size in the menu) and
 reduced to 96 colors for size. The pictures of other rows' values are made the same way at the frame 12 s
 into the game with the setting set, 320x200 (twice their size in the menu), reduced to 64 colors: the whole
-view, or a part of it at 1:1 or larger.
+view, or a part of it at 1:1 or larger. The menus ship them with their corners cut round, and the others'
+framed (`ce/port/stills`, tools/ce_menus.py's `rounded_still`).
 
 | File | Size | What it shows |
 | --- | --- | --- |

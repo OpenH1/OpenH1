@@ -64,6 +64,7 @@ host_render_stream_submit
 host_render_stream_wait
 host_render_stream_close
 host_audio_headphones
+host_caches
 host_https_request
 
 host_errno

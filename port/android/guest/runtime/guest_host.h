@@ -132,6 +132,15 @@ headphones, 0 speakers, -1 not known; kept current by a thread of the
 host's, so asking costs nothing */
 int host_audio_headphones(void);
 
+/* ---------- the renderer's caches (port/linux/vulkan/host_vulkan.c,
+port/macos/host_metal.m)
+
+The host's caches that Settings' CLEAR CACHES clears (game_caches.c): the
+GPU's pipelines and the ASTC textures. Their kilobytes; what 1 asks for them
+to be cleared at the next start, before the renderer reads them, 2 no
+longer */
+unsigned int host_caches(int what);
+
 /* ---------- the renderer's command stream (port/linux/src/xgpu_stream.h,
 port/android/host/host_render_stream.h): the ring at the guest address
 ring opened (0, or -1: the host has no renderer for it); its records to
