@@ -83,6 +83,24 @@ void host_fatal(const char *format, ...)
 	exit(2);
 }
 
+/* (no game's frames: no stalls detected, host_stall.c) */
+void host_stall_frame(void)
+{
+}
+
+void host_stall_render_thread(void)
+{
+}
+
+void host_stall_note(const char *what)
+{
+	(void)what;
+}
+
+void host_stall_summary(void)
+{
+}
+
 /* the guest's memory: pages put back (readable) and their generations */
 static size_t page_size;
 static uint8_t *pages_restored;
