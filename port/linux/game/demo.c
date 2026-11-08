@@ -32,7 +32,7 @@ A demo is then:
 - inside a tick, what a host's netcode put in from its clients (their
   predictions of their units) and the choices it made by which machines are
   there (whose hits are their reports');
-- a hash of the game state once a second, and of each allocation, which the
+- a hash of the game state three times a second, and of each allocation, which the
   playback compares with its own, and says where the two first part.
 
 Playing a demo loads its map (a multiplayer game's as a game of this
@@ -177,8 +177,9 @@ enum
 	MAXIMUM_DEMO_ALLOCATIONS = 512,
 	/* the ticks of a block of records */
 	DEMO_BLOCK_TICKS = TICKS_PER_SECOND,
-	/* the hash's ticks */
-	DEMO_HASH_TICKS = TICKS_PER_SECOND,
+	/* the hash's ticks: a third of a second, the playback's differences
+	written no more once it has parted (demo_playback_patch) */
+	DEMO_HASH_TICKS = TICKS_PER_SECOND / 3,
 	/* the objects' fields left out of the comparison and the hash (the
 	frames' as much as the ticks'): a magic number, the attachments'
 	indices, a render state's */
@@ -1728,7 +1729,21 @@ static boolean demo_playback_patch(
 {
 	if (!demo_ranges_apply(bytes, length, FALSE, FALSE))
 		return FALSE;
+	/* (once the playback has parted from the recording, the bytes of the
+	recording's game state no longer fit its own: an object's place with
+	another's cluster references. It plays on as its own game, with the
+	recorded input and whole game states) */
+	if (demo_player.diverged)
+		return TRUE;
 	demo_ranges_apply(bytes, length, FALSE, TRUE);
+	/* (what was made outside the code here, an object's place and its
+	cluster references: the objects' caches outside the game state
+	forgotten, as a loaded game state's are) */
+	if (length)
+	{
+		cluster_partitions_port_forget();
+		object_bounds_cache_invalidate();
+	}
 	return game_state_port_check_live();
 }
 
@@ -1981,10 +1996,6 @@ static void demo_playback_resume(
 	demo_playback_record(&bytes, &length, TRUE);
 	if (!demo_playback_patch(bytes + 1, length - 1))
 		demo_playback_stop("a damaged record (of what came while a tick was open)", TRUE);
-	/* (what was made outside the code here: the objects' caches outside the
-	game state forgotten, as a loaded game state's are) */
-	cluster_partitions_port_forget();
-	object_bounds_cache_invalidate();
 }
 
 static boolean demo_playback_decide(
@@ -2254,14 +2265,17 @@ static void demo_playback_show(
 	long now = demo_player.ticks / TICKS_PER_SECOND;
 	long length = (long)demo_player.length_ticks / TICKS_PER_SECOND;
 
-	console_printf(FALSE, "demo %ld:%02ld / %ld:%02ld%s, speed %gx (A, D: 10 s back, on; W, S: faster, slower; "
-		"space: pause)", now / 60, now % 60, length / 60, length % 60, game_time_get_paused() ? ", paused" : "",
-		(double)demo_player.speed);
+	console_printf(FALSE, "demo %ld:%02ld / %ld:%02ld%s, speed %gx (Q, E: 10 s back, on; X, C: faster, slower; "
+		"space: pause; Backspace: the camera)", now / 60, now % 60, length / 60, length % 60,
+		game_time_get_paused() ? ", paused" : "", (double)demo_player.speed);
 }
 
-/* the playback's controls, on the keyboard's own: strafing left and right
-seeks 10 seconds back and on, moving forward and back plays faster and
-slower, jumping pauses (the machine's players play no part in it) */
+/* the playback's controls, on the keyboard's own (the machine's players
+play no part in it), clear of the flying camera's keys (W, A, S, D, R, F,
+T, G, Tab and the right mouse button: director.c), which Backspace's
+camera switch gives the playback as it gives a game: the flashlight's
+seeks 10 seconds back and the action's 10 on, switching the grenade plays
+faster and crouching slower, jumping pauses */
 static void demo_playback_controls(
 	void)
 {
@@ -2271,13 +2285,13 @@ static void demo_playback_controls(
 	demo_player.controls_held = held;
 	if (!pressed || !demo_player.started)
 		return;
-	if (TEST_FLAG(pressed, HALO_KEYBOARD_STRAFE_LEFT))
+	if (TEST_FLAG(pressed, HALO_KEYBOARD_FLASHLIGHT))
 		demo_playback_seek(-10);
-	if (TEST_FLAG(pressed, HALO_KEYBOARD_STRAFE_RIGHT))
+	if (TEST_FLAG(pressed, HALO_KEYBOARD_ACTION))
 		demo_playback_seek(10);
-	if (TEST_FLAG(pressed, HALO_KEYBOARD_MOVE_FORWARD) && demo_player.speed < 8.f)
+	if (TEST_FLAG(pressed, HALO_KEYBOARD_SWITCH_GRENADE) && demo_player.speed < 8.f)
 		demo_player.speed *= 2.f;
-	if (TEST_FLAG(pressed, HALO_KEYBOARD_MOVE_BACKWARD) && demo_player.speed > 0.25f)
+	if (TEST_FLAG(pressed, HALO_KEYBOARD_CROUCH) && demo_player.speed > 0.25f)
 		demo_player.speed *= 0.5f;
 	if (TEST_FLAG(pressed, HALO_KEYBOARD_JUMP))
 		game_time_set_paused(!game_time_get_paused());

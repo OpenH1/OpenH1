@@ -62,7 +62,7 @@ take (`source/math/random_math.c`) and the players' input of each tick
   (`network_distributed.c`): what that changed is recorded, and the
   choices it makes by which machines are there (a client's hits are its
   report's to deal: `network_damage.c`).
-- **A hash of the game state once a second**, and of each allocation, which
+- **A hash of the game state three times a second**, and of each allocation, which
   the playback compares with its own.
 - **A snapshot every `demo.snapshot_seconds`** (10), for seeking.
 - **Bookmarks** (the clip key) and the game's variant.
@@ -89,14 +89,20 @@ and after, the game state checked between them, then written again over
 what the procedures changed).
 
 While a demo plays, the keyboard's own controls drive the playback, not a
-player: strafing left and right (A, D) seeks 10 seconds back and on, to the
-snapshot nearest before that point; moving forward and back (W, S) plays
-twice as fast or half as fast (from a quarter to eight times); jumping
-(space) pauses. The console's line shows where the playback is.
+player: the flashlight's key and the action's (Q, E) seek 10 seconds back
+and on, to the snapshot nearest before that point; switching the grenade
+and crouching (X, C) play twice as fast or half as fast (from a quarter to
+eight times); jumping (space) pauses. The console's line shows where the
+playback is. Backspace switches the camera as it does in a game: the
+player's eyes, a flying camera (hold Tab or the right mouse button and fly
+with W, A, S, D, R, F), and one following the player.
 
-The playback checks its hash against the recording's once a second. If they
+The playback checks its hash against the recording's three times a second. If they
 differ, it says where in the log ("parted from the recording by tick 1680:
-effect"), names the allocations that differ, and plays on as its own game.
+effect"), names the allocations that differ, and plays on as its own game:
+on the recorded input and whole game states, the recorded differences no
+longer written (the recording's bytes would not fit its game state: an
+object's place with another's cluster references).
 
 ## The file
 
@@ -214,5 +220,5 @@ refused, the retention.
   objects): what the game keeps outside its game state (the checkpoints'
   timers, the main loop's) is where the playback was, not where it goes.
   A seek on plays on as recorded (checked: every hash after one).
-- The free camera and the other players' views, the export to video and
-  the Demos screen come next.
+- The other players' views (the camera follows this machine's player), the
+  export to video and the Demos screen come next.
