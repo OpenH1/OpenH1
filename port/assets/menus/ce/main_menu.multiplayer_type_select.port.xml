@@ -5,7 +5,7 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/multiplayer_status_detail" type="text" controller="1" left="290" top="128" width="295" height="150" font="ui\large_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/online_now_label" type="text" controller="1" left="290" top="84" width="200" height="18" text="ONLINE NOW" font="ui\small_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/_multiplayer_status.text">
+	<widget name="main_menu/multiplayer_type_select/online_now_label" type="text" controller="1" left="290" top="84" width="200" height="18" text="ONLINE NOW" font="ui\small_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/text">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/online_games_0" controller="1" left="290" top="102" width="26" height="36" bitmap="main_menu/multiplayer_type_select/status_digits" source="tools/port_settings.py multiplayer_files/_multiplayer_status">
 	</widget>
@@ -19,33 +19,33 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/online_players_2" controller="1" left="488" top="102" width="26" height="36" bitmap="main_menu/multiplayer_type_select/status_digits" source="tools/port_settings.py multiplayer_files/_multiplayer_status">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/online_games_label" type="text" controller="1" left="290" top="120" width="140" height="20" font="ui\large_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/_multiplayer_status.text">
+	<widget name="main_menu/multiplayer_type_select/online_games_label" type="text" controller="1" left="290" top="120" width="140" height="20" font="ui\large_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/online_players_label" type="text" controller="1" left="436" top="120" width="150" height="20" font="ui\large_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/_multiplayer_status.text">
+	<widget name="main_menu/multiplayer_type_select/online_players_label" type="text" controller="1" left="436" top="120" width="150" height="20" font="ui\large_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/best_label" type="text" controller="1" left="290" top="146" width="200" height="18" text="BEST FOR YOU" font="ui\small_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/_multiplayer_status.text">
+	<widget name="main_menu/multiplayer_type_select/best_label" type="text" controller="1" left="290" top="146" width="200" height="18" text="BEST FOR YOU" font="ui\small_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/best_0_name" type="text" controller="1" left="290" top="164" width="195" height="20" font="ui\large_ui" color="#FFFFFFFF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/_multiplayer_status.text">
+	<widget name="main_menu/multiplayer_type_select/best_0_name" type="text" controller="1" left="290" top="164" width="195" height="20" font="ui\large_ui" color="#FFFFFFFF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/best_0_about" type="text" controller="1" left="290" top="182" width="195" height="18" font="ui\small_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/_multiplayer_status.text">
+	<widget name="main_menu/multiplayer_type_select/best_0_about" type="text" controller="1" left="290" top="182" width="195" height="18" font="ui\small_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/best_0_players" type="text" controller="1" left="486" top="170" width="72" height="20" font="ui\large_ui" color="#FFFFFFFF" align="right" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/_multiplayer_status.text">
+	<widget name="main_menu/multiplayer_type_select/best_0_players" type="text" controller="1" left="486" top="170" width="72" height="20" font="ui\large_ui" color="#FFFFFFFF" align="right" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/text">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/best_0_ping" controller="1" left="564" top="173" width="24" height="16" bitmap="main_menu/multiplayer_type_select/ping_bars" source="tools/port_settings.py multiplayer_files/_multiplayer_status">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/best_1_name" type="text" controller="1" left="290" top="202" width="195" height="20" font="ui\large_ui" color="#FFFFFFFF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/_multiplayer_status.text">
+	<widget name="main_menu/multiplayer_type_select/best_1_name" type="text" controller="1" left="290" top="202" width="195" height="20" font="ui\large_ui" color="#FFFFFFFF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/best_1_about" type="text" controller="1" left="290" top="220" width="195" height="18" font="ui\small_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/_multiplayer_status.text">
+	<widget name="main_menu/multiplayer_type_select/best_1_about" type="text" controller="1" left="290" top="220" width="195" height="18" font="ui\small_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/best_1_players" type="text" controller="1" left="486" top="208" width="72" height="20" font="ui\large_ui" color="#FFFFFFFF" align="right" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/_multiplayer_status.text">
+	<widget name="main_menu/multiplayer_type_select/best_1_players" type="text" controller="1" left="486" top="208" width="72" height="20" font="ui\large_ui" color="#FFFFFFFF" align="right" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/text">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/best_1_ping" controller="1" left="564" top="211" width="24" height="16" bitmap="main_menu/multiplayer_type_select/ping_bars" source="tools/port_settings.py multiplayer_files/_multiplayer_status">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/best_2_name" type="text" controller="1" left="290" top="240" width="195" height="20" font="ui\large_ui" color="#FFFFFFFF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/_multiplayer_status.text">
+	<widget name="main_menu/multiplayer_type_select/best_2_name" type="text" controller="1" left="290" top="240" width="195" height="20" font="ui\large_ui" color="#FFFFFFFF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/best_2_about" type="text" controller="1" left="290" top="258" width="195" height="18" font="ui\small_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/_multiplayer_status.text">
+	<widget name="main_menu/multiplayer_type_select/best_2_about" type="text" controller="1" left="290" top="258" width="195" height="18" font="ui\small_ui" color="#FF2896FF" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/text">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/best_2_players" type="text" controller="1" left="486" top="246" width="72" height="20" font="ui\large_ui" color="#FFFFFFFF" align="right" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/_multiplayer_status.text">
+	<widget name="main_menu/multiplayer_type_select/best_2_players" type="text" controller="1" left="486" top="246" width="72" height="20" font="ui\large_ui" color="#FFFFFFFF" align="right" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_multiplayer_status/text">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/best_2_ping" controller="1" left="564" top="249" width="24" height="16" bitmap="main_menu/multiplayer_type_select/ping_bars" source="tools/port_settings.py multiplayer_files/_multiplayer_status">
 	</widget>
