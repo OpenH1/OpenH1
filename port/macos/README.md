@@ -678,7 +678,7 @@ build/macos/halo_replay --compare <shots> <shots>
   the window, the statistics, `--cold`) of the replay the Vulkan backend
   has too (`port/tools/replay/host_render_replay.c`: the recording, the
   guest's memory, the play, the report, `--compare` and `--serve`, the
-  OpenH1 Inspector's service, described there and in
+  replay service, described in `docs/replay_protocol.md` and
   `port/linux/vulkan/README.md`). Metal's ID buffer is the backend's
   (`xgpu_metal_set_draw_inspector`): each draw into the target the frame
   presents is bracketed, its pass ended before and after it, by a copy of
