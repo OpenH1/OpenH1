@@ -1590,6 +1590,12 @@ BOOL platform_video_hdr(float *sdr_white, float *headroom)
 }
 #endif
 
+#ifdef HALO_WINDOWS
+/* port/windows/host/host_windows.c: sleeps until a time of CLOCK_MONOTONIC,
+on time (the frames' limit) */
+void host_windows_sleep_until(unsigned long long when);
+#endif
+
 #ifdef HALO_METAL
 /* port/macos/host_metal.m: the window drawn with Metal, from the main
 thread; nonzero on success */
@@ -1629,6 +1635,10 @@ not started for a refresh) */
 #define HOST_VULKAN_LOW_LATENCY_ON 4
 #define HOST_VULKAN_LOW_LATENCY_OFF 8
 #define HOST_VULKAN_VRR 16
+/* debug.vulkan_present_mode's, of these bits: immediate, mailbox, fifo,
+fifo_relaxed (none: the swap interval's choice) */
+#define HOST_VULKAN_PRESENT_MODE_SHIFT 5
+#define HOST_VULKAN_PRESENT_MODE_MASK (7u << HOST_VULKAN_PRESENT_MODE_SHIFT)
 /* port/linux/vulkan/host_vulkan.c: whether the system says VRR is active
 (display.vrr's auto): HOST_VULKAN_VRR_NONE where it says nothing of it;
 gamescope's word (the Steam Deck's, the Steam Frame's), or a Linux
@@ -1642,6 +1652,24 @@ display's DRM (a CRTC on with VRR_ENABLED), yes or no */
 int host_vulkan_vrr(void);
 #endif
 static BOOL platform_vrr(void);
+
+static unsigned int platform_present_mode_flags(void)
+{
+	static const char *const names[] = { "immediate", "mailbox", "fifo", "fifo_relaxed" };
+	const char *mode = config_string("debug.vulkan_present_mode");
+	unsigned int index;
+
+	if (!mode || !*mode)
+		return 0;
+	for (index = 0; index < sizeof(names) / sizeof(names[0]); index++)
+	{
+		if (!strcmp(mode, names[index]))
+			return (index + 1) << HOST_VULKAN_PRESENT_MODE_SHIFT;
+	}
+	platform_log("debug.vulkan_present_mode \"%s\" is none of immediate, mailbox, fifo, fifo_relaxed: "
+		"the game's choice", mode);
+	return 0;
+}
 
 static unsigned int platform_low_latency_flags(void)
 {
@@ -1873,7 +1901,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	if (!host_vulkan_window_open((unsigned int)(uintptr_t)platform_window,
 		(config_boolean("debug.gpu_stats") ? HOST_VULKAN_DEBUG_STATISTICS : 0) |
 		(config_boolean("debug.gpu_validation") || config_boolean("debug.gl_debug") ? HOST_VULKAN_DEBUG_VALIDATION : 0) |
-		platform_low_latency_flags(), config_string("debug.gpu_dump_shaders"),
+		platform_low_latency_flags() | platform_present_mode_flags(), config_string("debug.gpu_dump_shaders"),
 		config_string("debug.texture_dump_directory"),
 		platform_interval_take(), battery_saver_active()))
 	{
@@ -2359,6 +2387,14 @@ void platform_video_swap(void)
 #ifdef HALO_ANDROID
 		/* (the Android guest's SDL waits in milliseconds) */
 		SDL_Delay((Uint32)((next_frame - now) / 1000000u));
+#elif defined(HALO_WINDOWS)
+		/* (the host's wait, on time: Windows's timer wakes up to a
+		millisecond late; guest_windows.c) */
+		struct timespec monotonic;
+
+		clock_gettime(CLOCK_MONOTONIC, &monotonic);
+		host_windows_sleep_until((unsigned long long)monotonic.tv_sec * 1000000000ull +
+			(unsigned long long)monotonic.tv_nsec + (next_frame - now));
 #else
 		SDL_DelayPrecise(next_frame - now);
 #endif

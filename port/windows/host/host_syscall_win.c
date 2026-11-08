@@ -1395,6 +1395,28 @@ void host_sleep_nanoseconds(uint64_t nanoseconds)
 	Sleep((DWORD)((nanoseconds + 999999) / 1000000));
 }
 
+/* The high-resolution timer wakes a thread up to about half a millisecond
+after the time it was set for, as the scheduler gets to it (more on a busy
+computer): a frame limited to 240 Hz, 4.2 ms, would come late by as much
+as a tenth of its time, unevenly. So a sleep until a time waits the timer
+until a millisecond before it, and spins on the performance counter (the
+monotonic clock's) for the rest; a wait shorter than SPIN_ALONE is spun
+whole. Only the frames' limit sleeps this way: every other sleep (the
+game's Sleep(1), poll's steps) is host_sleep_nanoseconds's, which spins
+for none of its time. */
+#define SPIN_TAIL 1000000ULL
+#define SPIN_ALONE 1500000ULL
+
+void host_sleep_until_nanoseconds(uint64_t deadline)
+{
+	uint64_t now = clock_nanoseconds(CLOCK_MONOTONIC);
+
+	if (deadline > now + SPIN_ALONE)
+		host_sleep_nanoseconds(deadline - now - SPIN_TAIL);
+	while (clock_nanoseconds(CLOCK_MONOTONIC) < deadline)
+		YieldProcessor();
+}
+
 /* ---------- futexes, on WaitOnAddress */
 
 static long futex_wake(void *address, long long count)
