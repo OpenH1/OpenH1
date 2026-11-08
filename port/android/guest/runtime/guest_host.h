@@ -76,6 +76,10 @@ unsigned int host_sdl_create_window(const char *title, int width, int height, lo
 void host_sdl_window_size_in_pixels(unsigned int window, int *width, int *height);
 int host_sdl_set_relative_mouse(unsigned int window, int enabled);
 int host_sdl_poll_event(void *event);
+/* the keys SDL holds now (keys[scancode]: bit 0; bit 1, the system has
+had it up a while though SDL holds it), and its mouse buttons (low 16 bits,
+SDL_BUTTON_MASK; high 16, the system has had them up a while): host_sdl.c */
+unsigned int host_sdl_input_held(unsigned char *keys, int count);
 int host_sdl_set_clipboard_text(const char *text);
 void host_sdl_get_clipboard_text(char *buffer, unsigned int size);
 int host_sdl_open_url(const char *url);

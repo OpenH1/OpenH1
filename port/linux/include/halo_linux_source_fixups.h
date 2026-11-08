@@ -410,6 +410,9 @@ int halo_linux_flick_stick(void);
 asked, which skips a Bink movie as a controller's button does
 (port/linux/src/sdl_platform.c; source/bink/bink_playback.c) */
 int platform_movie_skip_pressed(void);
+/* the player's move and look as the game read them, for the input trace
+(port/linux/src/input_trace.c): a frame's, or a sub-step's */
+void input_trace_player(int controller, int substep, float forward, float strafe, float yaw, float pitch);
 /* the mouse in the menus (source/interface/ui_widget.c) */
 #include "halo_ui_pointer.h"
 

@@ -2174,6 +2174,11 @@ static const struct config_setting config_settings[] =
 		"the first frame); 0 never." },
 	{ "debug.hidden_window", _config_boolean, "false", "HALO_HIDDEN_WINDOW", _environment_set_is_true, _platform_desktop,
 		"Keep the window hidden (and never fullscreen)." },
+	{ "debug.input_trace", _config_boolean, "false", "HALO_INPUT_TRACE", _environment_set_is_true, _platform_all,
+		"Write the input trace (the keys, buttons and gamepads' events, and\n"
+		"what the game read of them, over the last 30 seconds; a problem\n"
+		"report has it always, input.txt) to the log each time the window\n"
+		"loses the focus." },
 	{ "debug.voice_test", _config_boolean, "false", "HALO_VOICE_TEST", _environment_set_is_true, _platform_all,
 		"Voice chat's automated tests: a tone instead of the microphone, and\n"
 		"each voice heard logged once a second." },
