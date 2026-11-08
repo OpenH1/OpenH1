@@ -15,6 +15,7 @@ so the audio callback is handed to a thread that has one.
 
 #include <SDL3/SDL.h>
 #include <pthread.h>
+#include <stdlib.h>
 #include <string.h>
 #ifdef __APPLE__
 #include <TargetConditionals.h>
@@ -449,6 +450,56 @@ struct audio_binding
 /* the binding whose callback this thread is running, if any */
 static __thread struct audio_binding *calling_back;
 
+/* HALO_AUDIO_MIX_TIMES=<seconds>: the guest's mixes timed (the audio
+thread's, each request's) and logged that often: their count, mean, 99th
+percentile and most, and the bytes asked for (for measuring: a mix longer
+than its buffer's time is a buffer the device ran dry for) */
+static void audio_mix_timed(uint64_t nanoseconds, int bytes)
+{
+	static int wanted = -1;
+	static uint64_t period, began, most, total, times[4096];
+	static unsigned long count, asked;
+
+	if (wanted < 0)
+	{
+		const char *seconds = getenv("HALO_AUDIO_MIX_TIMES");
+
+		wanted = seconds && atof(seconds) > 0.0;
+		period = wanted ? (uint64_t)(atof(seconds) * 1e9) : 0;
+	}
+	if (!wanted)
+		return;
+	if (!began)
+		began = SDL_GetTicksNS();
+	if (count < sizeof(times) / sizeof(times[0]))
+		times[count] = nanoseconds;
+	count++;
+	total += nanoseconds;
+	asked += bytes > 0 ? (unsigned long)bytes : 0;
+	most = nanoseconds > most ? nanoseconds : most;
+	if (SDL_GetTicksNS() - began >= period)
+	{
+		unsigned long kept = count < sizeof(times) / sizeof(times[0]) ? count : sizeof(times) / sizeof(times[0]);
+		unsigned long index, above = 0;
+		uint64_t high;
+
+		/* (the 99th percentile: the least of the top 1%, by counting) */
+		for (high = most; high > 0; high -= high / 64 + 1)
+		{
+			for (index = 0, above = 0; index < kept; index++)
+				above += times[index] >= high;
+			if (above * 100 >= kept)
+				break;
+		}
+		host_logf(HOST_LOG_INFO, "sound: %lu mixes in %.1f s, %.3f ms each on average, %.3f at the 99th percentile, "
+			"%.3f at most; %lu bytes asked for each", count, (double)(SDL_GetTicksNS() - began) / 1e9,
+			(double)total / count / 1e6, (double)high / 1e6, (double)most / 1e6, asked / count);
+		began = SDL_GetTicksNS();
+		count = asked = 0;
+		total = most = 0;
+	}
+}
+
 static void *audio_thread(void *context)
 {
 	struct audio_binding *binding = context;
@@ -477,7 +528,13 @@ static void *audio_thread(void *context)
 		host_audio_output_thread(binding->stream, &binding->output_setups);
 #endif
 		calling_back = binding;
-		host_call_guest(binding->callback, binding->userdata, binding->handle, (uint32_t)additional, (uint32_t)total);
+		{
+			uint64_t began = SDL_GetTicksNS();
+
+			host_call_guest(binding->callback, binding->userdata, binding->handle, (uint32_t)additional,
+				(uint32_t)total);
+			audio_mix_timed(SDL_GetTicksNS() - began, additional);
+		}
 		calling_back = NULL;
 		pthread_mutex_lock(&binding->lock);
 		binding->pending = 0;

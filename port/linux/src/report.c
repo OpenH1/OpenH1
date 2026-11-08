@@ -384,6 +384,57 @@ void report_frame_summary(const uint32_t *micros, const uint32_t *at_ms, unsigne
 	free(sorted);
 }
 
+void report_frames_log(double seconds)
+{
+	uint32_t now_ms = report_frames.start_ns ? (uint32_t)((report_now_ns() - report_frames.start_ns) / 1000000) : 0;
+	unsigned long count = report_frames.count < REPORT_FRAMES ? report_frames.count : REPORT_FRAMES;
+	unsigned long first = report_frames.count - count, index;
+	uint32_t *micros, *at_ms;
+	struct report_frame_work *work;
+	char *summary;
+
+	while (count && report_frames.at_ms[first & (REPORT_FRAMES - 1)] + (uint32_t)(seconds * 1000.0) < now_ms)
+	{
+		first++;
+		count--;
+	}
+	micros = malloc((count ? count : 1) * sizeof(*micros));
+	at_ms = malloc((count ? count : 1) * sizeof(*at_ms));
+	work = malloc((count ? count : 1) * sizeof(*work));
+	summary = malloc(4096);
+	if (micros && at_ms && work && summary)
+	{
+		char *line, *next;
+
+		for (index = 0; index < count; index++)
+		{
+			micros[index] = report_frames.micros[(first + index) & (REPORT_FRAMES - 1)];
+			at_ms[index] = report_frames.at_ms[(first + index) & (REPORT_FRAMES - 1)];
+			work[index] = report_frames.work[(first + index) & (REPORT_FRAMES - 1)];
+		}
+		for (index = 0; index < 2 && (index == 0 || count); index++)
+		{
+			if (index == 0)
+				report_frame_summary(micros, at_ms, count, now_ms, summary, 4096);
+			else
+				report_gpu_summary(micros, work, count, summary, 4096);
+			for (line = summary; *line; line = next)
+			{
+				next = strchr(line, '\n');
+				if (next)
+					*next++ = 0;
+				else
+					next = line + strlen(line);
+				platform_log("frames: %s", line);
+			}
+		}
+	}
+	free(summary);
+	free(micros);
+	free(at_ms);
+	free(work);
+}
+
 /* What held the frames back, from their times (micros) and the work in
 each (work: the GPU's time on it, REPORT_GPU_UNKNOWN where not measured;
 the renderer's thread's, playing its records; the game's waits for the

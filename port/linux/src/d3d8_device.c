@@ -3659,8 +3659,8 @@ lights cost what lights each pixel, not their number. A plasma bolt's light
 backend has them (xgpu_backend_capabilities: Vulkan, Metal). */
 static struct
 {
-	/* the settings read, as config_changes() was then (0 too, before any
-	change: the flag says whether they have been read) */
+	/* the settings read, as halo_gpu_settings_taken() was then (the flag
+	says whether they have been read) */
 	BOOL read;
 	unsigned long read_at;
 	BOOL enhanced;
@@ -3691,10 +3691,14 @@ static void dynamic_lights_read_settings(void)
 	static const float defaults[2][4] = { { 1.7f, 12.0f, 0.18f, 0.25f }, { 0.22f, 1.2f, 0.12f, 0.035f } };
 	const char *look;
 
-	if (dynamic_lights.read && dynamic_lights.read_at == config_changes())
+	/* (as the front end took the settings up between frames, not as the
+	menus write them: the draws' pipelines change at the frame that
+	prepares the map again under them, render_enumerate.c's
+	enumerated_derivation_check) */
+	if (dynamic_lights.read && dynamic_lights.read_at == halo_gpu_settings_taken())
 		return;
 	dynamic_lights.read = TRUE;
-	dynamic_lights.read_at = config_changes();
+	dynamic_lights.read_at = halo_gpu_settings_taken();
 	dynamic_lights.enhanced = !strcmp(config_string("display.dynamic_lights"), "enhanced");
 	memcpy(dynamic_lights.look, defaults, sizeof(defaults));
 	look = config_string("debug.dynamic_lights_look");
@@ -3938,16 +3942,19 @@ void halo_dynamic_lights_halos_draw(void)
 
 /* display.per_pixel_lighting: the model lighting programs' draws are lit for
 each pixel (xgpu_spirv.c's model lighting), from shaders of their own; read
-again when a setting changes. The enhanced dynamic lights light models for
-each pixel too, whatever it says. */
+again as the front end takes a change up between frames (as the dynamic
+lights are: dynamic_lights_read_settings). The enhanced dynamic lights light
+models for each pixel too, whatever it says. */
 static BOOL per_pixel_lighting(void)
 {
-	static unsigned long read_at = (unsigned long)-1;
+	static BOOL read;
+	static unsigned long read_at;
 	static BOOL enabled;
 
-	if (read_at != config_changes())
+	if (!read || read_at != halo_gpu_settings_taken())
 	{
-		read_at = config_changes();
+		read = TRUE;
+		read_at = halo_gpu_settings_taken();
 		enabled = config_boolean("display.per_pixel_lighting") != 0;
 	}
 	return enabled || halo_dynamic_lights_enhanced();

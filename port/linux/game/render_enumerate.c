@@ -35,7 +35,7 @@ skipped or made without its sampler.
 What a structure the map switches to later draws besides its materials is
 drawn in the map's first frame too, whatever structure it starts in: the
 mirrors' window (render_window's through a mirror: the world again, its
-models, effects and lens flares, unlit by the ambient occlusion, which the
+models, decals, effects and lens flares, unlit by the ambient occlusion, which the
 3D view's window alone has) where any structure of the map has a mirror
 (structure_bsp_cache_has_mirrors: the kept copies of its bsps), and the
 other structures' materials (the stand-ins) drawn through it too; and the
@@ -108,6 +108,7 @@ each structure's first sight, every model and effect).
 #include "halo_dynamic_lights.h"
 #include "render_enumerate.h"
 #include "render_prepared.h"
+#include "world_ao.h"
 #ifdef HALO_VR
 #include "../src/vr.h"
 boolean vr_render_eye_pass(void);
@@ -1516,7 +1517,12 @@ void render_enumerate_models(void)
 		object_effects_draw();
 		break;
 	case _part_first_person:
+		/* (as render_objects draws the first-person weapon: its window's
+		span the first person's, display.ambient_occlusion "world" leaving
+		it as it is, world_ao.c) */
+		world_ao_first_person(TRUE);
 		first_person_models_draw();
+		world_ao_first_person(FALSE);
 		break;
 	}
 	rasterizer_debug_options.debug_model_lod = saved_lod;
@@ -1583,7 +1589,10 @@ fog */
 
 void render_enumerate_decals(void)
 {
-	if (!render_enumerating || !enumerate.everything || pass_part() != _part_world)
+	/* (the world's, and a mirror's window, which draws its clusters' decals
+	and detail objects as the world's does: into the secondary target, whose
+	colour is not the screen's) */
+	if (!render_enumerating || !enumerate.everything || !pass_world())
 		return;
 	rasterizer_decals_port_enumerate(pass_stencil_reject() ? 2 : 0);
 	/* (and every detail object collection's: rasterizer_xbox_detail_objects.c) */
@@ -1670,7 +1679,10 @@ static void effect_sprite(long bitmap_group_index, struct shader_effect_definiti
 }
 
 /* Light volumes use the widget sprite shader with depth testing, unlike
-lens flares. Their animated objects need not be visible in the first frame. */
+lens flares. Their animated objects need not be visible in the first frame.
+They are drawn as light_volume_render draws them in play: among the queued
+transparent geometry, each a light (display.hdr: a light's glow, whose HDR
+tag makes a pipeline of its own) */
 static void light_volumes_draw(void)
 {
 	struct tag_iterator iterator;
@@ -1679,6 +1691,8 @@ static void light_volumes_draw(void)
 
 	point_from_line3d(&render.camera.position, &render.camera.forward, 2.0f, &origin);
 	rasterizer_set_stencil_mode(pass_stencil_reject() ? 2 : 0);
+	halo_hdr_category(_rasterizer_profile_queued_transparents);
+	halo_hdr_draw_kind(HALO_HDR_KIND_LIGHT);
 	tag_iterator_new(&iterator, 'mgs2');
 	while ((tag_index = tag_iterator_next(&iterator)) != NONE)
 	{
@@ -1694,6 +1708,8 @@ static void light_volumes_draw(void)
 		}
 		rasterizer_widget_end();
 	}
+	halo_hdr_draw_kind(HALO_HDR_KIND_NONE);
+	halo_hdr_category(NONE);
 }
 
 void render_enumerate_effects(void)

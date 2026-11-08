@@ -2005,7 +2005,14 @@ frame again, the frames shown after the refresh they were started for (and
 how many of those took longer than any before them), the margin and the
 input to screen time; `HALO_VULKAN_FRAME_LOG=<file>` writes each frame's
 times (`vulkan/README.md`), which `tools/latency_summary.py --frames` joins
-to `debug.latency_log`'s presses.
+to `debug.latency_log`'s presses. With `debug.exit_after`,
+`HALO_FRAME_SUMMARY=<seconds>` logs as the game quits its last seconds'
+frames as a problem report sums them (`frames:` lines: the average, the
+median, the 1% and 0.1% lows, the frames of 50 ms or more and the longest,
+the GPU's time and the verdict), on every build; and on the guests' builds
+`HALO_AUDIO_MIX_TIMES=<seconds>` logs that often the mixes' count and
+their mean, 99th-percentile and longest times (`sound: <n> mixes in ...`:
+a mix longer than its buffer's time is a buffer the device ran dry for).
 
 Measured on Linux (an RTX 4090) in gamescope's headless backend (the Steam
 Deck's compositor, without a screen), 1280x720, a local SWAT game on Blood
