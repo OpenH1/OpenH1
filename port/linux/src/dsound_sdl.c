@@ -3114,7 +3114,10 @@ static void limit(float *output, unsigned long frames)
 /* ---------- debug.dsound_log
 
 Every DirectSound call the game makes, a line each in a text file with the
-time it was made (microseconds from the first), and the sound data of the
+time it was made (microseconds of the mix's own clock, the frames mixed by
+then: without a device the mix keeps to the game's frames, which a hidden
+game may run slower than the wall clock, and a packet sent by the wall
+clock's time would come late), and the sound data of the
 packets it submits appended to the same name with .data added (each packet
 a line "P <time> <stream> <offset> <bytes>" of that file): what the audio
 test bed replays on an Xbox and through this mixer (its twin), to compare
@@ -3135,9 +3138,11 @@ every setting at once.)
 Buffered (a megabyte at a time); nothing at all is done while it is off. */
 
 static FILE *dsound_log_text, *dsound_log_data;
+/* the frames mixed so far: the log's clock (mix) */
+static unsigned long dsound_log_frames;
 static BOOL dsound_log_checked;
 static unsigned long dsound_log_streams;
-static unsigned long long dsound_log_start_ns, dsound_log_data_size;
+static unsigned long long dsound_log_data_size;
 static pthread_mutex_t dsound_log_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static BOOL dsound_log_on(void)
@@ -3165,12 +3170,17 @@ static BOOL dsound_log_on(void)
 			{
 				setvbuf(dsound_log_text, NULL, _IOFBF, 1 << 20);
 				setvbuf(dsound_log_data, NULL, _IOFBF, 1 << 20);
-				dsound_log_start_ns = SDL_GetTicksNS();
 				platform_log("sound: logging the DirectSound calls to %s", path);
 			}
 		}
 	}
 	return dsound_log_text != NULL;
+}
+
+/* the log's time: microseconds of mixed frames */
+static unsigned long long dsound_log_time(void)
+{
+	return (unsigned long long)__atomic_load_n(&dsound_log_frames, __ATOMIC_RELAXED) * 1000000ull / OUTPUT_RATE;
 }
 
 /* a line of the log: its code, the time, then the rest as format says */
@@ -3181,7 +3191,7 @@ static void dsound_log(const char *code, const char *format, ...)
 	if (!dsound_log_on())
 		return;
 	pthread_mutex_lock(&dsound_log_lock);
-	fprintf(dsound_log_text, "%s %llu ", code, (unsigned long long)((SDL_GetTicksNS() - dsound_log_start_ns) / 1000));
+	fprintf(dsound_log_text, "%s %llu ", code, dsound_log_time());
 	va_start(arguments, format);
 	vfprintf(dsound_log_text, format, arguments);
 	va_end(arguments);
@@ -3194,8 +3204,7 @@ static void dsound_log_packet(unsigned long number, const void *data, unsigned l
 	if (!dsound_log_on())
 		return;
 	pthread_mutex_lock(&dsound_log_lock);
-	fprintf(dsound_log_text, "P %llu %lu %llu %lu\n",
-		(unsigned long long)((SDL_GetTicksNS() - dsound_log_start_ns) / 1000), number, dsound_log_data_size, size);
+	fprintf(dsound_log_text, "P %llu %lu %llu %lu\n", dsound_log_time(), number, dsound_log_data_size, size);
 	fwrite(data, 1, size, dsound_log_data);
 	dsound_log_data_size += size;
 	pthread_mutex_unlock(&dsound_log_lock);
@@ -3726,6 +3735,9 @@ static void mix(float *output, unsigned long frames, BOOL wait)
 	struct sdl_stream *stream;
 	BOOL enabled = reverb_enabled;
 	Uint64 started = SDL_GetTicksNS();
+
+	if (dsound_log_text)
+		__atomic_fetch_add(&dsound_log_frames, frames, __ATOMIC_RELAXED);
 
 	memset(output, 0, frames * output_channels * sizeof(float));
 	memset(reverb.send, 0, frames * sizeof(float));
