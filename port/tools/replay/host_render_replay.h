@@ -42,13 +42,25 @@ each on standard output (the log on standard error):
 		"inline":true)
 
 A frame is played exactly: the frames before it are played first (from the
-recording's start again for one before the frame last played), and its
-picture is the back buffer it presents, read before it is presented. Its
+recording's start again for one before the frame last played; those more
+than eight before it without the GPU's work of their draws, clears,
+anti-aliasing, tone map and present, which nothing reads), and its picture
+is the back buffer it presents, read before it is presented. Its
 ID buffer (where the backend has one) gives each pixel the draws that
 changed it, topmost first: a draw's number in its frame plus one (0: none),
 a draw being a DRAW, DRAW_INDICES, DRAW_INDEXED or DRAW_IMMEDIATE record of
 the frame, counted from its first. A draw counts where it changed the
 pixel's value (an alpha-tested leaf's quad, not its cut-out corners).
+
+A recording made with debug.render_marks (the stream's MARK records) says
+what each draw belongs to: draws and pick give each draw's owner (its
+"kind", "label", "id", "tags": object, model, shader, bitmap; a menu
+widget's "widget" tag and "source", the generator's file and the source
+attribute's text) and the game renderer's "category" it was drawn in; the
+frame's view (its "map", "tick", "window", "camera": position, forward,
+up, fov in radians; "viewport" in the back buffer's pixels; every view of
+the frame in "views"). Without them a draw's kind is "other" and its label
+its record's kind and primitive.
 */
 
 #ifndef __HALO_HOST_RENDER_REPLAY_H
