@@ -25,8 +25,9 @@ enemies rather than enemies standing inside one another. The places the
 encounter's squads start at are kept free for those placed after. An
 enemy that starts in the air (a Sentinel, a Drone) goes on rings at its
 height, and a swarm's (Infection forms) there too when the ground has no
-room. Each faces a little away from its starting location's facing (the
-game's random seed, in the host's tick).
+room. Each faces a little away from its starting location's facing, by
+an amount from its encounter, squad and number: none of this draws on the
+game's random seed, so the level's random numbers stay as they were.
 
 A script often places a squad of the next part of a level before its
 structure is the one loaded (switch_bsp), when no spot there can be tested:
@@ -34,12 +35,16 @@ the extra enemies wait, and are placed as above once it is loaded (those
 of a squad with nobody left are forgotten). They were stacked on the
 squad's starting locations.
 
-In network co-op an AI's biped, on the host and on the clients alike,
-begins its idle animation (a sleeping Grunt's sleep, an Elite's watch) at a
-point of its own whenever it settles into it, so that a squad and its
-extra enemies don't breathe and turn in step: the point comes from the
+In network co-op with extra enemies, an AI's biped, on the host and on
+the clients alike, begins its idle animation (a sleeping Grunt's sleep,
+an Elite's watch) at a point of its own whenever it settles into it, so
+that a squad and its extra enemies don't breathe and turn in step: the
+point comes from the
 unit's object index, which a client's copy shares, so every machine has
-the same one.
+the same one. Without extra enemies (EXTRA ENEMIES off, or PER PLAYER
+with one player) the host's game is the stock one; a client, which isn't
+told the setting, varies its copies anyway, which changes only how they
+look.
 
 A squad a script loads into a dropship (vehicle_load_magic) can be larger
 than the dropship's seats. The riders left without a seat are erased, and
@@ -699,6 +704,31 @@ static boolean coop_enemies_location_swarm(
 		TEST_FLAG(actor_definition_get(actor_definition_index)->flags, _actor_definition_swarm_actor_bit);
 }
 
+/* whether this game's squads get extra enemies now: a co-op host's, with
+EXTRA ENEMIES on and, for PER PLAYER, a second player */
+static boolean coop_enemies_growing(
+	void)
+{
+	return coop_enemies_on() &&
+		(coop_enemies.mode == _coop_enemies_multiplier || coop_enemies_player_count() > 1);
+}
+
+/* how far an extra enemy's facing turns from its starting location's: from
+its encounter, squad and number, not a draw of the game's seed, whose later
+numbers (the AI's choices, grenades' spreads) it would move */
+static real coop_enemies_facing_offset(
+	long encounter_index,
+	short squad_index,
+	short extra_number)
+{
+	unsigned long hash = ((unsigned long)DATUM_INDEX_TO_ABSOLUTE_INDEX(encounter_index) * 73856093UL) ^
+		((unsigned long)squad_index * 19349663UL) ^ ((unsigned long)extra_number * 83492791UL);
+
+	hash *= 2654435761UL;
+	hash ^= hash >> 15;
+	return FACING_VARIATION * (2.0f * (real)(hash % 1024) / 1023.0f - 1.0f);
+}
+
 /* A unit's animation begun at a point of its own through it, if it is a
 base animation of its graph that loops: the same point for the unit on
 every machine (from its object's index, which a client's copy shares),
@@ -1038,7 +1068,7 @@ boolean coop_enemies_extra_location(
 			return FALSE;
 		}
 		coop_enemies_stander_add(&location->position, size.radius);
-		location->facing += real_random_range(-FACING_VARIATION, FACING_VARIATION);
+		location->facing += coop_enemies_facing_offset(encounter_index, squad_index, extra_number);
 		return TRUE;
 	}
 	/* (free ground around its starting location, else around the squad's
@@ -1070,7 +1100,7 @@ boolean coop_enemies_extra_location(
 		return FALSE;
 	}
 	coop_enemies_stander_add(&location->position, size.radius);
-	location->facing += real_random_range(-FACING_VARIATION, FACING_VARIATION);
+	location->facing += coop_enemies_facing_offset(encounter_index, squad_index, extra_number);
 	return TRUE;
 }
 
@@ -1087,6 +1117,11 @@ void coop_enemies_idle_started(
 	{
 		return;
 	}
+	/* (the host's game, the one that counts, as it was unless the squads
+	grow; a client, which isn't told whether they do, varies its copies
+	anyway: only how they look) */
+	if (game_connection() == _game_connection_network_server && !coop_enemies_growing())
+		return;
 	unit = unit_get(unit_index);
 	if (unit->object.type == _object_type_biped && unit->unit.player_index == NONE)
 		coop_enemies_vary_animation(unit_index);

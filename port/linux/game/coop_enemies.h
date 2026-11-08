@@ -38,10 +38,10 @@ boolean coop_enemies_extra_location(
 	short extra_number,
 	struct actor_starting_location *location);
 /* units.c: a unit's idle animation begun (from `old_state`, its animation
-state before). In network co-op, an AI's biped's begins at a point of its
-own, but for one only turning on the spot (on every machine, the host's
-and the clients' copies alike), so that a squad, and the extra enemies
-placed with it, don't breathe and turn in step. */
+state before). In network co-op with extra enemies, an AI's biped's
+begins at a point of its own, but for one only turning on the spot (the
+host's and the clients' copies alike), so that a squad, and the extra
+enemies placed with it, don't breathe and turn in step. */
 void coop_enemies_idle_started(
 	long unit_index,
 	short old_state);
