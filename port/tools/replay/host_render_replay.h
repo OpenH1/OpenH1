@@ -7,7 +7,7 @@ maps. What the replays share (host_render_replay.c): the recording read (its
 blocks LZ4's as Apple's libcompression writes them, or stored), the guest's
 memory put back before each record, the guest's side of the ring, the
 frames measured, the frames' pictures compared, and the service
-(--serve) the OpenH1 Inspector drives. Each replay is a backend's: Metal's
+(--serve) a client drives (docs/replay_protocol.md). Each replay is a backend's: Metal's
 (port/macos/tools/halo_replay.m), Vulkan's (port/linux/vulkan/tools/
 halo_replay.c), which hands host_render_replay_main its platform.
 
@@ -34,7 +34,7 @@ made (compiles) in it; then a summary, hitches named.
 --serve: requests as JSON lines on standard input, one JSON line answering
 each on standard output (the log on standard error):
 
-	{"cmd":"info"}
+	{"cmd":"info"}  ("protocol": HOST_RENDER_REPLAY_PROTOCOL)
 	{"cmd":"frame","n":N,"png":"<path>","ids":"<path>"}  (or "inline":true)
 	{"cmd":"draws","n":N}
 	{"cmd":"pick","n":N,"x":X,"y":Y}
@@ -68,6 +68,11 @@ its record's kind and primitive.
 
 #include <stddef.h>
 #include <stdint.h>
+
+/* the service's protocol, in info's "protocol": raised when a request or a
+reply changes so that a client reading the old one would misread it (an
+added field does not raise it); docs/replay_protocol.md */
+#define HOST_RENDER_REPLAY_PROTOCOL 1
 
 /* the draws an ID buffer keeps for each pixel (pick's stack) */
 #define HOST_RENDER_REPLAY_ID_DEPTH 8
