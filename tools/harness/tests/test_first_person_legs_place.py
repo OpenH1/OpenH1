@@ -17,8 +17,8 @@ from harness import CHECK_FAILED, build, function, inline, mutated, read, run, s
 CASES = ["planted", "stateless", "clear", "crouch_jump", "shadow"]
 CONTROLS = [
     # set back along the view's heading rather than the body's: the feet swing about as the view turns (#724)
-    ("\tforward = object->object.forward;\n\tif (moved)",
-     "\tforward = global_window_parameters.camera.forward;\n\tif (moved)", "planted"),
+    ("\tforward = object->object.forward;\n\tmoved =",
+     "\tforward = global_window_parameters.camera.forward;\n\tmoved =", "planted"),
     # the chest drawn: its joint and the neck at the eye, in the near plane's reach
     ("\t\tif (first_person_legs_below(model, index, chest))\n", "\t\tif (index == 4)\n", "clear"),
     # never lowered: a crouch jump's hips and thighs at the eye
@@ -79,7 +79,7 @@ def test_where_the_pose_takes_it():
     place = function(code, "first_person_legs_place")
     # the flat screen's: the body seen from the view drawn (#697), then set back and lowered; nothing weighed against
     # the view but the eye's height, nothing kept from one frame to the next
-    assert "moved = render_interpolation_view_body(object_index, &move);" in place
+    assert "moved = render_interpolation_view_body(object_index, &move, &forward);" in place
     assert "global_window_parameters.frustum" not in code
     assert "global_window_parameters.camera.forward" not in code
     assert not re.search(r"^\s+static ", place, re.M)

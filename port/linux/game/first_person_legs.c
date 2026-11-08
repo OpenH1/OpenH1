@@ -13,18 +13,22 @@ world with the world's camera, so they keep their place and size at any field
 of view. How the copy relates to the eye, each frame, is fixed by these rules,
 none of which depends on where the view looks, nor on the frames before:
 
-- The pose is the body's own, as it is drawn now about the view drawn as it is
-  about its own view (render_interpolation_view_body): the body is drawn
-  between the ticks, a tick behind, but the view drawn on foot is the newest
-  step's (display.direct_camera), a tick's motion on and aimed in the frame.
-  So the legs move with the view as smoothly as the frames draw it, at any
-  frame rate and any number of ticks a second (#697).
-- The body stands FIRST_PERSON_LEGS_BACK behind the eye along its heading:
+- The pose is the body's own, as it is drawn now, placed about the view drawn
+  as the first-person weapon is (render_interpolation_view_body): at its eye
+  and its heading this frame, the yaw the mouse gave it late in the frame
+  included. The body is drawn between the ticks, a tick behind, but the view
+  drawn on foot is the newest step's (display.direct_camera), a tick's motion
+  on and aimed in the frame (#697); and the body faces the aim only once the
+  aim has turned far enough from it, then turns after it a tick at a time,
+  which swung the legs away from the view and back with a jerk each tick as
+  the view turned (#826). So the legs stay under the view as it turns, and
+  move as smoothly as the frames draw it, at any frame rate and any number of
+  ticks a second, only as the body's animation moves them.
+- The body stands FIRST_PERSON_LEGS_BACK behind the eye along that heading:
   the game's eye is over the middle of the body, its spine, where looking
   down shows only the top of the hips, and a person's eyes are ahead of their
-  chest, where looking down shows the belly, the legs and the feet. The set
-  back is along the body's own heading, not the view's, so the feet stay put
-  on the ground however the view turns and tilts (#724).
+  chest, where looking down shows the belly, the legs and the feet. The
+  heading is level, so the feet stay put however the view tilts (#724).
 - Its chest and all above it (the neck, the head, the arms: the first-person
   arms are the weapon's) are folded into the chest's joint, which closes the
   body at its belly. The eye is then never inside the body nor near enough
@@ -114,7 +118,7 @@ boolean vr_render_body_seat(long object_index, struct vr_body_seat *seat);
 int config_boolean(const char *name);
 unsigned long config_changes(void);
 /* port/linux/game/render_interpolation.c */
-boolean render_interpolation_view_body(long unit_index, real_matrix4x3 *move);
+boolean render_interpolation_view_body(long unit_index, real_matrix4x3 *move, real_vector3d *heading);
 #ifdef HALO_VR
 /* port/linux/src/vr.c */
 int halo_vr_running(void);
@@ -1170,9 +1174,9 @@ static boolean first_person_legs_model(
 }
 
 /* the body's pose placed for the flat screen's eye, into placed: the body's
-own as it is drawn now, moved as the view drawn is from its own
-(render_interpolation_view_body), set back FIRST_PERSON_LEGS_BACK along its
-heading, and lowered where its head is less than FIRST_PERSON_LEGS_HEAD_BELOW
+own as it is drawn now, turned to the view drawn's heading and moved to its
+eye (render_interpolation_view_body), set back FIRST_PERSON_LEGS_BACK along
+that heading, and lowered where its head is less than FIRST_PERSON_LEGS_HEAD_BELOW
 below the eye (first_person_legs.c's notes at the top); *chest: the neck's
 parent, the Master Chief's "bip01 spine1". The same for any
 view, pitch and frame: nothing is weighed against the view but the eye's
@@ -1219,10 +1223,12 @@ static boolean first_person_legs_place(
 	if (*chest == NONE || *chest == pelvis)
 		*chest = neck;
 
-	/* (the body as it is about its own view, between the ticks, about the
-	view drawn: that is the newest step's, a tick's motion on, aimed in the
-	frame; the legs trailed it, sliding and stepping against it, #697) */
-	moved = render_interpolation_view_body(object_index, &move);
+	/* (the body, between the ticks, turned to the view drawn's heading and
+	moved to its eye: that is the newest step's, a tick's motion on, aimed in
+	the frame; the legs trailed it, sliding and stepping against it, #697, and
+	swung against it turning, #826) */
+	forward = object->object.forward;
+	moved = render_interpolation_view_body(object_index, &move, &forward);
 	for (index = 0; index < count; index++)
 	{
 		if (moved)
@@ -1230,10 +1236,7 @@ static boolean first_person_legs_place(
 		else
 			placed[index] = nodes[index];
 	}
-	/* (set back along its heading, level, as the view drawn turns it) */
-	forward = object->object.forward;
-	if (moved)
-		matrix4x3_transform_vector(&move, &object->object.forward, &forward);
+	/* (set back along its heading, level: the view drawn's) */
 	forward.k = 0.f;
 	if (normalize3d(&forward) > 0.f)
 	{

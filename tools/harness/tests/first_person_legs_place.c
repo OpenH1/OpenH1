@@ -76,7 +76,7 @@ static struct object_datum test_unit;
 #define object_try_and_get(index) (&test_unit)
 #define object_definition_get(index) (&test_definition)
 #define model_definition_get(index) (&test_model)
-#define render_interpolation_view_body(unit_index, move) (memset((move), 0, sizeof(*(move))), FALSE)
+#define render_interpolation_view_body(unit_index, move, heading) (memset((move), 0, sizeof(*(move))), FALSE)
 
 #include "under_test.inc"
 
