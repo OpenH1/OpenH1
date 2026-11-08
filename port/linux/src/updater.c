@@ -89,6 +89,7 @@ test's release server, debug.update_url).
 #include "platform.h"
 #include "install_layout.h"
 #include "port_config.h"
+#include "report.h"
 #include "update.h"
 
 #include <stdio.h>
@@ -1239,6 +1240,10 @@ static void updater_update(void)
 		updater_path(launch, sizeof(launch), "bin/" INSTALL_NAME);
 #endif
 		platform_log("update: starting build %ld", updater_latest_build);
+		/* (this session ended first, as an exit ends it: the new build,
+		started before this one has quit or in its place, finds no session
+		that did not exit, which it would take for a crash: report.c) */
+		report_session_handover(1);
 #ifndef HALO_WINDOWS
 		/* (under gamescope, in this process, which Steam started and waits
 		for: it never quits, and the new game's window is this process's,
@@ -1249,12 +1254,14 @@ static void updater_update(void)
 			update_restart(launch);
 			platform_log("update: the new version is in place, but could not be started in this process: "
 				"quitting");
+			report_session_handover(0);
 			platform_request_quit();
 			return;
 		}
 #endif
 		if (update_launch(launch))
 			exit(EXIT_SUCCESS);
+		report_session_handover(0);
 		snprintf(error, sizeof(error), "the new version is in place, but could not be started: start it again");
 	}
 	platform_log("update: failed: %s", error);

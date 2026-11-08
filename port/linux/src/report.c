@@ -2,14 +2,18 @@
 REPORT.C
 
 Save Report: a zip of what helps find a problem, saved in reports/ beside
-maps/ (reports/<date>_<time>.zip) for the player to send to the developers.
+maps/ (reports/<date>_<time>.zip; where it cannot be written, the home
+folder's OpenH1-report-<date>_<time>.zip, its whole path told) for the
+player to send to the developers.
 Asked for by controls.report (F8, in a game too: xinput_sdl.c) or Settings >
 Profiles > REPORT A PROBLEM (menu_functions.c), both report_request, and
 saved at the next frame presented (d3d8_device.c: report_write), whose
 picture is its screenshot: the moment the key was pressed. Then a new issue
 on OpenH1's GitHub repository opens in the browser, its title and body
-filled in with report.md, and (on a computer) the reports folder: the
-player says what happened, drags the zip in and submits it. Nothing is
+filled in with report.md, and (on a computer) the reports folder, at its
+whole path's file: address (the data root is "." when the game starts in
+its own folder): the player says what happened, drags the zip in and
+submits it; a browser that does not open, the zip's whole path told. Nothing is
 sent by the game itself. Its issue is public, so what could say who the
 player is never goes in: settings.txt leaves the private settings out, and
 every text in it, and the issue's body, is scrubbed (report_scrub: the
@@ -52,7 +56,9 @@ A crash ends the game before F8 can be pressed, so the next start offers to
 report it. Each session writes reports/.running as it starts (its build,
 when it began, debug.txt's reference address: report_session_start) and
 removes it when the game exits (atexit: the window closed, Quit,
-debug.exit_after); a crash leaves it. The host, at a crash, writes
+debug.exit_after) or the updater starts the new build, which looks for it
+while this one is still quitting (report_session_handover); a crash leaves
+it. The host, at a crash, writes
 reports/.crash.txt: the crash's lines as it logs them (the signal, the
 address, the registers, the frames) and then this run's log kept here, the
 ring below, which a signal handler can write as it is (host_crash_record,
@@ -158,16 +164,17 @@ a note) */
 static volatile int report_requested;
 static int report_asked_by_key;
 /* the issues of the reports asked for in a game, opened once it is left
-(their addresses, malloc()'s) */
+(their addresses, malloc()'s, and the folders their zips are in) */
 static struct
 {
 	char *urls[REPORT_PENDING];
+	char folders[REPORT_PENDING][1200];
 	short count;
 } report_pending;
 /* (the last ask let through: another this soon after it is let go) */
 static long long report_last_ns;
 
-static void report_open_issue(const char *url);
+static int report_open_issue(const char *url, const char *folder);
 static int report_unattended(void);
 
 /* the crash of the last run, found as this one started (report_session_start):
@@ -192,7 +199,8 @@ static void report_open_pending(void)
 
 	for (index = 0; index < report_pending.count; index++)
 	{
-		report_open_issue(report_pending.urls[index]);
+		if (!report_open_issue(report_pending.urls[index], report_pending.folders[index]))
+			platform_log("report: its issue could not be opened: the report is in %s", report_pending.folders[index]);
 		free(report_pending.urls[index]);
 	}
 	report_pending.count = 0;
@@ -1494,13 +1502,59 @@ static void report_session_end(void)
 	remove(path);
 }
 
+/* this session's file (reports/.running): what the next start needs to
+report its crash; 1 if it was written */
+static int report_session_write(void)
+{
+	static char when[64];
+	char running[1200], build[160];
+	FILE *file;
+
+	/* (when this session began: the first writing's) */
+	if (!when[0])
+	{
+		time_t now = time(NULL);
+		struct tm local;
+
+		localtime_r(&now, &local);
+		strftime(when, sizeof(when), "%Y-%m-%d %H:%M:%S", &local);
+	}
+	report_crash_path(".running", running, sizeof(running));
+	updater_build_text(build, sizeof(build));
+	file = fopen(running, "wb");
+	if (!file)
+		return 0;
+	fprintf(file, "build: %s\nplatform: %s\nstarted: %s\nreference address: %x\n", build, report_platform(), when,
+		(unsigned int)(uintptr_t)write_to_error_file);
+	fclose(file);
+	return 1;
+}
+
+/* (1 once this session's file is written: not a dedicated server's, whose
+data folder a game may share; 1 while it is handed over to a new build's) */
+static int report_session_begun, report_session_left;
+
+void report_session_handover(int leaving)
+{
+	if (!report_session_begun)
+		return;
+	if (leaving)
+	{
+		report_session_end();
+		report_session_left = 1;
+		platform_log("report: this session ended for the new build's");
+		return;
+	}
+	if (report_session_left && !report_session_halt)
+		report_session_write();
+	report_session_left = 0;
+}
+
 void report_session_start(void)
 {
 	static int started;
-	char folder[1024], running[1200], record[1200], crashed[1200], crashed_record[1200], build[160], when[64];
+	char folder[1024], running[1200], record[1200], crashed[1200], crashed_record[1200];
 	FILE *file;
-	time_t now = time(NULL);
-	struct tm local;
 
 	if (started)
 		return;
@@ -1535,15 +1589,9 @@ void report_session_start(void)
 	if (report_crash.found)
 		platform_log("report: the last run closed unexpectedly%s", report_crash.record ? "" : " (no crash report written)");
 	/* (this session's: what the next start needs to report its crash) */
-	updater_build_text(build, sizeof(build));
-	localtime_r(&now, &local);
-	strftime(when, sizeof(when), "%Y-%m-%d %H:%M:%S", &local);
-	file = fopen(running, "wb");
-	if (file)
+	if (report_session_write())
 	{
-		fprintf(file, "build: %s\nplatform: %s\nstarted: %s\nreference address: %x\n", build, report_platform(), when,
-			(unsigned int)(uintptr_t)write_to_error_file);
-		fclose(file);
+		report_session_begun = 1;
 		atexit(report_session_end);
 	}
 #ifdef HALO_GUEST
@@ -1692,6 +1740,50 @@ static void report_file_url(const char *folder, char *url, size_t size)
 	url[used < size ? used : size - 1] = 0;
 }
 
+/* a path made whole: a relative one (the data root ".", where the game
+started in its own folder finds its maps, as its menu entry and Steam start
+it) after the current folder, current; one whole already (/..., \..., C:...)
+as it is. A file: address needs it: file:///./reports is /reports */
+static void report_whole_path(const char *path, const char *current, char *out, size_t size)
+{
+	size_t length;
+
+	if (path[0] == '/' || path[0] == '\\' || (path[0] && path[1] == ':') || !current || !current[0])
+	{
+		snprintf(out, size, "%s", path);
+		return;
+	}
+	while (path[0] == '.' && (path[1] == '/' || path[1] == '\\'))
+		path += 2;
+	if (!strcmp(path, "."))
+		path = "";
+	length = strlen(current);
+	snprintf(out, size, "%s%s%s", current, path[0] && current[length - 1] != '/' && current[length - 1] != '\\' ?
+		"/" : "", path);
+}
+
+/* the reports folder (reports/ in the data root), whole */
+static void report_folder(char *folder, size_t size)
+{
+	char relative[1024], current[1024];
+
+	snprintf(relative, sizeof(relative), "%s/reports", platform_data_root());
+	report_whole_path(relative, getcwd(current, sizeof(current)), folder, size);
+}
+
+/* where a report is written when reports/ cannot be (a folder not
+writable, a disk full): the home folder, whole, or "" for none */
+static void report_fallback_folder(char *folder, size_t size)
+{
+	const char *home = getenv("HOME");
+
+#if defined(_WIN32) || defined(HALO_WINDOWS)
+	if (!home || !home[0])
+		home = getenv("USERPROFILE");
+#endif
+	snprintf(folder, size, "%s", home && home[0] ? home : "");
+}
+
 int report_issue_url(const char *title, const char *body, char *url, size_t most)
 {
 	size_t used, length = strlen(body), written;
@@ -1744,28 +1836,29 @@ static int report_unattended(void)
 		config_string("debug.network_test")[0] || config_real("debug.exit_after") > 0.0;
 }
 
-/* an issue opened in the browser, and the reports folder beside it (a run
-nobody watches leaves the desktop alone: the address logged) */
-static void report_open_issue(const char *url)
+/* an issue opened in the browser, and the folder its zip is in beside it
+(a run nobody watches leaves the desktop alone: the addresses logged); 0 if
+the browser could not be opened */
+static int report_open_issue(const char *url, const char *folder)
 {
-	char folder[1024], folder_url[1400];
+	char folder_url[1400];
+	int opened;
 
+	report_file_url(folder, folder_url, sizeof(folder_url));
 	if (report_unattended())
 	{
 		platform_log("report: the issue's address: %s", url);
-		return;
+		platform_log("report: the folder's address: %s", folder_url);
+		return 1;
 	}
-	platform_open_url(url);
+	opened = platform_open_url(url);
 #if !defined(HALO_ANDROID) && !defined(HALO_IOS)
 	/* (the folder, for the zip to be dragged into the issue) */
-	snprintf(folder, sizeof(folder), "%s/reports", platform_data_root());
-	report_file_url(folder, folder_url, sizeof(folder_url));
 	platform_open_url(folder_url);
-#else
-	(void)folder;
-	(void)folder_url;
 #endif
-	platform_log("report: opened a new issue for it");
+	if (opened)
+		platform_log("report: opened a new issue for it, and %s", folder_url);
+	return opened;
 }
 
 /* ---------- the report */
@@ -1794,6 +1887,10 @@ static struct
 	volatile int done;
 	pthread_t thread;
 	char name[64], folder[1024], path[1200], shot[1200], host_log[1200], host_log_other[1200], debug_log[1200];
+	/* where it is written if reports/ cannot be (report_fallback_folder's,
+	or ""), and whether it was */
+	char fallback_folder[1024], fallback[1200];
+	int fell_back;
 	unsigned short time, date;
 	/* report.md, log.txt and settings.txt (malloc()'s, or NULL) */
 	char *issue, *log, *settings;
@@ -1814,76 +1911,91 @@ static struct
 /* (the game quitting: nothing more said on its console) */
 static int report_exiting;
 
-/* (the job's thread) the zip written */
-static void *report_job_write(void *unused)
+/* (the job's thread) the zip written at path; 1 if it was (one that could
+not be finished removed) */
+static int report_job_zip(const char *path)
 {
 	struct report_zip zip;
 	size_t size;
 	char *data;
-	long long started = report_now_ns();
+	int saved;
 
-	(void)unused;
 	memset(&zip, 0, sizeof(zip));
 	zip.time = report_job.time;
 	zip.date = report_job.date;
-	zip.file = fopen(report_job.path, "wb");
-	report_job.opened = zip.file != NULL;
-	if (zip.file)
+	zip.file = fopen(path, "wb");
+	if (!zip.file)
+		return 0;
+	report_job.opened = 1;
+	if (report_job.issue)
+		report_zip_add_text(&zip, "report.md", report_job.issue, strlen(report_job.issue));
+	if (report_job.log)
+		report_zip_add_text(&zip, "log.txt", report_job.log, strlen(report_job.log));
+	/* (the host's log file, where it has one) */
+	data = report_log_file_end(report_job.host_log, REPORT_FILE_MOST, &size);
+	if (!data && report_job.host_log_other[0])
+		data = report_log_file_end(report_job.host_log_other, REPORT_FILE_MOST, &size);
+	if (data)
 	{
-		if (report_job.issue)
-			report_zip_add_text(&zip, "report.md", report_job.issue, strlen(report_job.issue));
-		if (report_job.log)
-			report_zip_add_text(&zip, "log.txt", report_job.log, strlen(report_job.log));
-		/* (the host's log file, where it has one) */
-		data = report_log_file_end(report_job.host_log, REPORT_FILE_MOST, &size);
-		if (!data && report_job.host_log_other[0])
-			data = report_log_file_end(report_job.host_log_other, REPORT_FILE_MOST, &size);
-		if (data)
-		{
-			report_zip_add_text(&zip, "halo.log", data, size);
-			free(data);
-		}
-		/* (or, with no file, the lines the host kept: halo.log has them
-		where there is one) */
-		else if (report_job.host_lines && report_job.host_lines_size)
-			report_zip_add_text(&zip, "host.log", report_job.host_lines, report_job.host_lines_size);
-		data = report_log_file_end(report_job.debug_log, REPORT_FILE_MOST, &size);
-		if (data)
-		{
-			report_zip_add_text(&zip, "debug.txt", data, size);
-			free(data);
-		}
-		if (report_job.crash_text)
-			report_zip_add_text(&zip, "crash.txt", report_job.crash_text, strlen(report_job.crash_text));
-		if (report_job.previous_log[0])
-		{
-			data = report_log_file_end(report_job.previous_log, REPORT_FILE_MOST, &size);
-			if (data)
-			{
-				report_zip_add_text(&zip, "halo.previous.log", data, size);
-				free(data);
-			}
-		}
-		if (report_job.settings)
-			report_zip_add_text(&zip, "settings.txt", report_job.settings, strlen(report_job.settings));
-		/* (the frame, written by the host beside the zip as it was asked
-		for, then taken in) */
-		if (report_job.shot[0])
-		{
-			data = report_file_end(report_job.shot, 64 * 1024 * 1024, &size);
-			if (data)
-			{
-				report_zip_add(&zip, "screenshot.png", data, size);
-				free(data);
-			}
-			remove(report_job.shot);
-		}
-		report_job.saved = report_zip_end(&zip);
-		report_job.saved = fclose(zip.file) == 0 && report_job.saved;
-		if (!report_job.saved)
-			remove(report_job.path);
+		report_zip_add_text(&zip, "halo.log", data, size);
+		free(data);
 	}
+	/* (or, with no file, the lines the host kept: halo.log has them
+	where there is one) */
+	else if (report_job.host_lines && report_job.host_lines_size)
+		report_zip_add_text(&zip, "host.log", report_job.host_lines, report_job.host_lines_size);
+	data = report_log_file_end(report_job.debug_log, REPORT_FILE_MOST, &size);
+	if (data)
+	{
+		report_zip_add_text(&zip, "debug.txt", data, size);
+		free(data);
+	}
+	if (report_job.crash_text)
+		report_zip_add_text(&zip, "crash.txt", report_job.crash_text, strlen(report_job.crash_text));
+	if (report_job.previous_log[0])
+	{
+		data = report_log_file_end(report_job.previous_log, REPORT_FILE_MOST, &size);
+		if (data)
+		{
+			report_zip_add_text(&zip, "halo.previous.log", data, size);
+			free(data);
+		}
+	}
+	if (report_job.settings)
+		report_zip_add_text(&zip, "settings.txt", report_job.settings, strlen(report_job.settings));
+	/* (the frame, written by the host beside the zip as it was asked
+	for, then taken in) */
+	if (report_job.shot[0])
+	{
+		data = report_file_end(report_job.shot, 64 * 1024 * 1024, &size);
+		if (data)
+		{
+			report_zip_add(&zip, "screenshot.png", data, size);
+			free(data);
+		}
+	}
+	saved = report_zip_end(&zip);
+	saved = fclose(zip.file) == 0 && saved;
+	if (!saved)
+		remove(path);
 	report_job.count = zip.count;
+	return saved;
+}
+
+/* (the job's thread) the zip written in reports/, or, if it cannot be,
+in the fallback folder */
+static void *report_job_write(void *unused)
+{
+	long long started = report_now_ns();
+
+	(void)unused;
+	report_job.saved = report_job_zip(report_job.path);
+	if (!report_job.saved && report_job.fallback[0])
+	{
+		report_job.saved = report_job.fell_back = report_job_zip(report_job.fallback);
+	}
+	if (report_job.shot[0])
+		remove(report_job.shot);
 	report_job.thread_ms = (report_now_ns() - started) / 1e6;
 	report_job.done = 1;
 	return NULL;
@@ -1893,7 +2005,8 @@ static void *report_job_write(void *unused)
 opened or held for the menus */
 static void report_finish_done(void)
 {
-	char message[160];
+	char message[1400], folder[1024];
+	const char *path;
 
 	if (!report_job.running)
 		return;
@@ -1911,15 +2024,28 @@ static void report_finish_done(void)
 	{
 		free(report_job.url);
 		report_job.url = NULL;
-		snprintf(message, sizeof(message), report_job.opened ? "Report failed: couldn't write %s.zip" :
-			"Report failed: can't write in %s", report_job.opened ? report_job.name : report_job.folder);
-		platform_log("report: could not write %s", report_job.path);
+		snprintf(message, sizeof(message), report_job.opened ? "Report failed: couldn't write %s.zip in %s%s%s" :
+			"Report failed: can't write in %s%s%s", report_job.opened ? report_job.name : report_job.folder,
+			report_job.opened ? report_job.folder : "", report_job.fallback[0] ? " or " : "",
+			report_job.fallback_folder);
+		platform_log("report: could not write %s%s%s", report_job.path, report_job.fallback[0] ? " or " : "",
+			report_job.fallback);
 		if (!report_exiting)
 			report_game_say(message);
 		return;
 	}
-	snprintf(message, sizeof(message), "Report saved: reports/%s.zip", report_job.name);
-	platform_log("report: saved %s (%d files, in %.1f ms on its thread, %.1f ms on the game's)%s", report_job.path,
+	/* (written in the fallback folder: the whole path said, and that
+	folder opened with the issue) */
+	path = report_job.fell_back ? report_job.fallback : report_job.path;
+	snprintf(folder, sizeof(folder), "%s", report_job.fell_back ? report_job.fallback_folder : report_job.folder);
+	if (report_job.fell_back)
+	{
+		snprintf(message, sizeof(message), "Report saved in %s (reports/ couldn't be written)", path);
+		platform_log("report: could not write %s: written in %s instead", report_job.path, path);
+	}
+	else
+		snprintf(message, sizeof(message), "Report saved: reports/%s.zip", report_job.name);
+	platform_log("report: saved %s (%d files, in %.1f ms on its thread, %.1f ms on the game's)%s", path,
 		report_job.count, report_job.thread_ms, report_job.game_ms, report_job.crash ? ", of the last run's crash" :
 		report_job.noted ? ", with a note" : "");
 	/* (the crash reported: not asked of again) */
@@ -1937,6 +2063,7 @@ static void report_finish_done(void)
 			report_pending.count--;
 			platform_log("report: %d issues waiting for the menus; the oldest let go", REPORT_PENDING);
 		}
+		snprintf(report_pending.folders[report_pending.count], sizeof(report_pending.folders[0]), "%s", folder);
 		report_pending.urls[report_pending.count++] = report_job.url;
 		report_job.url = NULL;
 		snprintf(message, sizeof(message), "Report saved: its GitHub issue opens when you're back in the menus");
@@ -1944,12 +2071,26 @@ static void report_finish_done(void)
 	}
 	else if (report_job.url)
 	{
-		report_open_issue(report_job.url);
+		/* (the browser not opened: where the zip is said, for it to be
+		sent by hand) */
+		if (!report_open_issue(report_job.url, folder))
+		{
+			snprintf(message, sizeof(message), "Report saved in %s: the browser didn't open, send it at %s", path,
+				REPORT_ISSUES);
+			platform_log("report: its issue could not be opened: the report is %s", path);
+		}
+		else if (report_job.fell_back)
+		{
+			snprintf(message, sizeof(message), "Report saved in %s: drag it into the issue", path);
+		}
+		else
+		{
 #if !defined(HALO_ANDROID) && !defined(HALO_IOS)
-		snprintf(message, sizeof(message), "Report saved: drag reports/%s.zip into the issue", report_job.name);
+			snprintf(message, sizeof(message), "Report saved: drag reports/%s.zip into the issue", report_job.name);
 #else
-		snprintf(message, sizeof(message), "Report saved: attach reports/%s.zip to the issue", report_job.name);
+			snprintf(message, sizeof(message), "Report saved: attach reports/%s.zip to the issue", report_job.name);
 #endif
+		}
 	}
 	free(report_job.url);
 	report_job.url = NULL;
@@ -1980,8 +2121,15 @@ static void report_finish(const char *note, int wait)
 	report_finish_done();
 	memset(&report_job, 0, sizeof(report_job));
 	snprintf(report_job.name, sizeof(report_job.name), "%s", name);
-	snprintf(report_job.folder, sizeof(report_job.folder), "%s/reports", platform_data_root());
+	/* (whole: what the player is told, and the folder's file: address) */
+	report_folder(report_job.folder, sizeof(report_job.folder));
 	snprintf(report_job.path, sizeof(report_job.path), "%s/%s.zip", report_job.folder, name);
+	report_fallback_folder(report_job.fallback_folder, sizeof(report_job.fallback_folder));
+	if (report_job.fallback_folder[0])
+	{
+		snprintf(report_job.fallback, sizeof(report_job.fallback), "%s/OpenH1-report-%s.zip",
+			report_job.fallback_folder, name);
+	}
 	if (report_capture.shot[0])
 		snprintf(report_job.shot, sizeof(report_job.shot), "%s/%s", report_job.folder, report_capture.shot);
 	/* (the host's log file, where it has one) */
@@ -2122,7 +2270,7 @@ int report_write(unsigned int target, int send, char *message, size_t message_si
 	}
 	localtime_r(&now, &local);
 	strftime(report_capture.name, sizeof(report_capture.name), "%Y-%m-%d_%H.%M.%S", &local);
-	snprintf(folder, sizeof(folder), "%s/reports", platform_data_root());
+	report_folder(folder, sizeof(folder));
 	mkdir(folder, 0755);
 	/* (the last run's crash's, asked for at the crash question: its summary
 	heading the system's, and no screenshot, which would be of the menu) */
