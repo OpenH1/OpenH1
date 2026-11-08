@@ -39,6 +39,7 @@ made again only when the loaded tags change.
 #include "render_marks.h"
 
 int config_boolean(char const *name);
+void halo_screen_scale_axes(float scale[2]); /* port/linux/src/d3d8_device.c */
 
 /* port/linux/src/xgpu_backend.h */
 void xgpu_backend_mark_view(const char *map, unsigned long tick, long window, const float position[3],
@@ -210,7 +211,7 @@ void render_marks_view(
 {
 	float position[3], forward[3], up[3];
 	long viewport[4];
-	float vertical, horizontal = 0.0f;
+	float vertical, horizontal = 0.0f, scale[2];
 	long width, height;
 
 	if (!render_marks_on || !camera)
@@ -224,10 +225,14 @@ void render_marks_view(
 	up[0] = camera->up.i;
 	up[1] = camera->up.j;
 	up[2] = camera->up.k;
-	viewport[0] = camera->viewport_bounds.x0;
-	viewport[1] = camera->viewport_bounds.y0;
-	width = viewport[2] = camera->viewport_bounds.x1 - camera->viewport_bounds.x0;
-	height = viewport[3] = camera->viewport_bounds.y1 - camera->viewport_bounds.y0;
+	width = camera->viewport_bounds.x1 - camera->viewport_bounds.x0;
+	height = camera->viewport_bounds.y1 - camera->viewport_bounds.y0;
+	/* (in the back buffer's pixels: the screen's units scaled) */
+	halo_screen_scale_axes(scale);
+	viewport[0] = (long)(camera->viewport_bounds.x0 * scale[0] + 0.5f);
+	viewport[1] = (long)(camera->viewport_bounds.y0 * scale[1] + 0.5f);
+	viewport[2] = (long)(width * scale[0] + 0.5f);
+	viewport[3] = (long)(height * scale[1] + 0.5f);
 	/* (the camera's is vertical: the stream's is horizontal) */
 	vertical = camera->vertical_field_of_view;
 	if (height > 0)
@@ -472,8 +477,19 @@ void render_marks_kind(
 HUD (the HUD's, labelled with it); the owner before it again after */
 static void text_begin(char const *utf8)
 {
-	if (owner.kind == RENDER_MARK_MENU_WIDGET || text_drawing)
+	if (owner.kind == RENDER_MARK_MENU_WIDGET)
 		return;
+	/* (the text before not ended: drawn by draw_string alone; this one's
+	label from here on) */
+	if (text_drawing)
+	{
+		if (owner.kind == RENDER_MARK_TEXT || owner.kind == RENDER_MARK_HUD)
+		{
+			snprintf(owner.label, sizeof(owner.label), "%s", utf8);
+			owner_send();
+		}
+		return;
+	}
 	text_saved = owner;
 	text_drawing = TRUE;
 	if (owner.kind != RENDER_MARK_HUD)

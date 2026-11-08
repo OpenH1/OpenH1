@@ -692,6 +692,15 @@ static float vr_text_pixel_scale(void);
 static int vr_drawing_eyes(void);
 #endif
 
+/* the back buffer's pixels for each of the screen's units, across and down
+(debug.render_marks' viewports: port/linux/game/render_marks.c) */
+void halo_screen_scale_axes(float scale[2])
+{
+	halo_screen_width();
+	scale[0] = screen_scale[0];
+	scale[1] = screen_scale[1];
+}
+
 /* the display's pixels for each of the 480 lines (text_hires.c) */
 float halo_screen_pixel_scale(void)
 {

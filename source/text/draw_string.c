@@ -1394,7 +1394,6 @@ void draw_string(
 		*cursor_reference = cursor;
 	}
 
-	render_marks_text_end(); /* port: debug.render_marks */
 	return;
 }
 
@@ -1598,7 +1597,6 @@ void draw_unicode_string(
 		*cursor_reference = cursor;
 	}
 
-	render_marks_text_end(); /* port: debug.render_marks */
 	return;
 }
 
