@@ -16,6 +16,7 @@ pipeline archive; --archive: the pipelines' archive (default:
 
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#import <QuartzCore/QuartzCore.h>
 
 /* (host.h's host_page_size is Mach's too: not used here) */
 #define host_page_size host_page_size_of_guest_memory
@@ -138,6 +139,216 @@ static unsigned char *metal_read_target(uint32_t target, uint32_t *width, uint32
 	}
 }
 
+/* ---------- the ID buffer (host_render_replay.h's ids_*)
+
+Each draw into the target the frame presents is bracketed by the backend
+(xgpu_metal_set_draw_inspector: the draw's pass ended before it and after
+it): before, the target is copied; after, a compute pass compares it with
+the copy, texel by texel, by their bits, and where they differ the draw's
+number goes on top of the pixel's stack (depth numbers a pixel, in a
+buffer the CPU reads at the present), the others down one, the last let
+go; a draw drawn in several parts keeps one place. A multisampled target's
+pass ends resolved (its samples stored too), so the resolved texture is
+compared. As the Vulkan backend's (xgpu_vulkan.c's xgpu_vulkan_inspect_*). */
+
+static const char inspect_source[] =
+	"#include <metal_stdlib>\n"
+	"using namespace metal;\n"
+	"struct inspect_draw { uint width, height, number, depth; };\n"
+	"kernel void inspect_compare(texture2d<float, access::read> before [[texture(0)]],\n"
+	"\ttexture2d<float, access::read> after [[texture(1)]], device uint *ids [[buffer(0)]],\n"
+	"\tconstant inspect_draw &draw [[buffer(1)]], uint2 at [[thread_position_in_grid]])\n"
+	"{\n"
+	"\tif (at.x >= draw.width || at.y >= draw.height)\n"
+	"\t\treturn;\n"
+	"\tif (all(as_type<uint4>(before.read(at)) == as_type<uint4>(after.read(at))))\n"
+	"\t\treturn;\n"
+	"\tdevice uint *stack = ids + ((ulong)at.y * draw.width + at.x) * draw.depth;\n"
+	"\tif (stack[0] == draw.number)\n"
+	"\t\treturn;\n"
+	"\tfor (uint layer = draw.depth - 1; layer > 0; layer--)\n"
+	"\t\tstack[layer] = stack[layer - 1];\n"
+	"\tstack[0] = draw.number;\n"
+	"}\n";
+
+static struct
+{
+	/* the target presented (the stream's number), the numbers a pixel, the
+	draw handed on (its number plus one; 0 none) */
+	uint32_t target, depth, number;
+	uint32_t width, height;
+	id<MTLComputePipelineState> compare;
+	id<MTLBuffer> ids;
+	id<MTLTexture> before;
+	/* draws compared, and their time (the ID frame's cost) */
+	uint32_t draws;
+	double started;
+} ids;
+
+/* the target's texture now (its handle in *handle; nil if it has none) */
+static id<MTLTexture> ids_texture(uint32_t *handle)
+{
+	*handle = xgpu_metal_stream_target_texture(ids.target);
+	return *handle ? xgpu_metal_texture(*handle) : nil;
+}
+
+static int ids_size(id<MTLTexture> texture);
+
+static void metal_ids_inspect(int after, uint32_t color, uint32_t level)
+{
+	uint32_t handle;
+	id<MTLTexture> texture;
+	id<MTLCommandBuffer> buffer;
+
+	if (!ids.number || level)
+		return;
+	texture = ids_texture(&handle);
+	if (!texture || color != handle)
+		return;
+	if (!ids.width && !ids_size(texture))
+		return;
+	if (texture.width != ids.width || texture.height != ids.height)
+		return;
+	buffer = xgpu_metal_command_buffer();
+	if (!after)
+	{
+		id<MTLBlitCommandEncoder> blit;
+
+		if (!ids.before || ids.before.pixelFormat != texture.pixelFormat)
+		{
+			MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:texture.pixelFormat
+				width:ids.width height:ids.height mipmapped:NO];
+
+			descriptor.usage = MTLTextureUsageShaderRead;
+			descriptor.storageMode = MTLStorageModePrivate;
+			ids.before = [xgpu_metal_device() newTextureWithDescriptor:descriptor];
+			if (!ids.before)
+				return;
+		}
+		blit = [buffer blitCommandEncoder];
+		[blit copyFromTexture:texture sourceSlice:0 sourceLevel:0 toTexture:ids.before destinationSlice:0
+			destinationLevel:0 sliceCount:1 levelCount:1];
+		[blit endEncoding];
+	}
+	else if (ids.before && ids.before.pixelFormat == texture.pixelFormat)
+	{
+		id<MTLComputeCommandEncoder> compute = [buffer computeCommandEncoder];
+		uint32_t draw[4] = { ids.width, ids.height, ids.number, ids.depth };
+
+		[compute setComputePipelineState:ids.compare];
+		[compute setTexture:ids.before atIndex:0];
+		[compute setTexture:texture atIndex:1];
+		[compute setBuffer:ids.ids offset:0 atIndex:0];
+		[compute setBytes:draw length:sizeof(draw) atIndex:1];
+		[compute dispatchThreads:MTLSizeMake(ids.width, ids.height, 1) threadsPerThreadgroup:MTLSizeMake(8, 8, 1)];
+		[compute endEncoding];
+		ids.draws++;
+	}
+}
+
+static int metal_ids_begin(uint32_t target, uint32_t depth)
+{
+	uint32_t handle;
+	id<MTLTexture> texture;
+
+	@autoreleasepool
+	{
+		if (!ids.compare)
+		{
+			NSError *error = nil;
+			id<MTLLibrary> library = [xgpu_metal_device() newLibraryWithSource:@(inspect_source) options:nil error:&error];
+			id<MTLFunction> function = [library newFunctionWithName:@"inspect_compare"];
+
+			ids.compare = function ? [xgpu_metal_device() newComputePipelineStateWithFunction:function error:&error] : nil;
+			if (!ids.compare)
+			{
+				fprintf(stderr, "halo_replay: the ID buffer's pass is not made (%s)\n",
+					error.localizedDescription.UTF8String);
+				return 0;
+			}
+		}
+		ids.target = target;
+		ids.depth = depth;
+		ids.number = 0;
+		ids.draws = 0;
+		ids.started = CACurrentMediaTime();
+		ids.width = ids.height = 0;
+		if (!depth)
+			return 0;
+		xgpu_metal_set_draw_inspector(metal_ids_inspect);
+		/* (a target the frame makes, its first: its buffer made at its
+		first draw) */
+		texture = ids_texture(&handle);
+		return !texture || ids_size(texture);
+	}
+}
+
+/* the buffer for the target's size, zeroed (no GPU work reads it now: the
+last frame's was waited for, and this frame's draws come after) */
+static int ids_size(id<MTLTexture> texture)
+{
+	size_t bytes;
+
+	@autoreleasepool
+	{
+		bytes = (size_t)texture.width * texture.height * ids.depth * 4;
+		if (!ids.ids || ids.ids.length != bytes)
+		{
+			ids.ids = [xgpu_metal_device() newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+			if (!ids.ids)
+				return 0;
+		}
+		memset(ids.ids.contents, 0, bytes);
+		ids.width = (uint32_t)texture.width;
+		ids.height = (uint32_t)texture.height;
+		return 1;
+	}
+}
+
+static void metal_ids_draw(uint32_t index)
+{
+	ids.number = index == UINT32_MAX ? 0 : index + 1;
+}
+
+static uint32_t *metal_ids_read(uint32_t target, uint32_t *width, uint32_t *height)
+{
+	uint32_t *copy;
+	size_t bytes;
+
+	(void)target;
+	@autoreleasepool
+	{
+		/* (a frame that drew nothing into its target: none of its pixels
+drawn) */
+		if (!ids.width)
+		{
+			uint32_t handle;
+			id<MTLTexture> texture = ids_texture(&handle);
+
+			if (!texture || !ids_size(texture))
+				return NULL;
+		}
+		xgpu_metal_command_buffer_finish();
+		bytes = (size_t)ids.width * ids.height * ids.depth * 4;
+		copy = malloc(bytes);
+		if (!copy)
+			return NULL;
+		memcpy(copy, ids.ids.contents, bytes);
+		*width = ids.width;
+		*height = ids.height;
+		if (host_render_replay_verbose)
+			fprintf(stderr, "halo_replay: the ID buffer of %u draws compared in %.1f ms\n", ids.draws,
+				(CACurrentMediaTime() - ids.started) * 1000.0);
+		return copy;
+	}
+}
+
+static void metal_ids_end(void)
+{
+	xgpu_metal_set_draw_inspector(NULL);
+	ids.number = 0;
+}
+
 static const struct host_render_replay_platform metal_platform =
 {
 	.backend = "metal",
@@ -149,6 +360,10 @@ static const struct host_render_replay_platform metal_platform =
 	.frame_statistics = metal_frame_statistics,
 	.report = metal_report,
 	.read_target = metal_read_target,
+	.ids_begin = metal_ids_begin,
+	.ids_draw = metal_ids_draw,
+	.ids_read = metal_ids_read,
+	.ids_end = metal_ids_end,
 };
 
 /* ---------- --cold: this program again, in an app of a new bundle id

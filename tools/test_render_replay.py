@@ -236,6 +236,59 @@ def test_service(binary, tmp_path):
         service.close()
 
 
+def test_marks(binary, tmp_path):
+    """debug.render_marks' records read: each draw's owner (its kind, label, id, tags, a menu widget's tag and
+    generator source), the frame's view, the category; a frame reached far ahead (the frames well before it
+    played without their draws) and back again drawn exactly; a recording of before the marks (version 1)
+    played as it was"""
+    recording = tmp_path / "marked.hrpl"
+    subprocess.run([str(binary), "make", str(recording), str(FRAMES), "marks"], check=True)
+    service = Service(binary, recording)
+    try:
+        assert service.ask(cmd="info")["marks"] is True
+        for frame in (40, 41, 2, 45, 30):
+            reply = service.ask(cmd="frame", n=frame, png=str(tmp_path / "f.png"), ids=str(tmp_path / "f.ids"))
+            assert reply["ok"], reply
+            width, height, rows = png_pixels((tmp_path / "f.png").read_bytes())
+            ids = struct.unpack(f"<{WIDTH * HEIGHT}I", (tmp_path / "f.ids").read_bytes())
+            for y in range(HEIGHT):
+                for x in range(WIDTH):
+                    colour, draws = expected(frame, x, y)
+                    assert rows[y][x] == colour, (frame, x, y)
+                    assert ids[y * WIDTH + x] == (draws[0] if draws else 0), (frame, x, y)
+        draws = service.ask(cmd="draws", n=30)
+        assert draws["ok"], draws
+        frame = draws["frame"]
+        assert frame["map"] == "levels\\test\\test" and frame["tick"] == 1030 and frame["window"] == 0
+        assert frame["camera"]["position"] == [30, 0, 0] and frame["camera"]["fov"] == 1.5
+        assert frame["viewport"] == [0, 0, WIDTH, HEIGHT] and len(frame["views"]) == 1
+        first, second, third = draws["draws"]
+        assert first["kind"] == "world_object" and first["label"] == "warthog #2" and first["id"] == 0x10002
+        assert first["tags"] == {"object": "vehicles\\warthog\\warthog",
+                                 "shader": "vehicles\\warthog\\shaders\\warthog hull"}
+        assert first["source"] is None and first["category"] is None
+        assert second["kind"] == "menu_widget" and second["label"] == "caf?"
+        assert second["widget"] == "pc\\main_menu\\board_start"
+        assert second["source"] == {"file": "tools/port_settings.py",
+                                    "text": "tools/port_settings.py multiplayer_files/_lobby/_lobby_board"}
+        assert third["kind"] == "other" and third["label"].startswith("draw ") and third["id"] is None
+        pick = service.ask(cmd="pick", n=30, x=35, y=10)
+        assert [(draw["i"], draw["kind"]) for draw in pick["stack"]] == [(1, "menu_widget"), (0, "world_object")]
+    finally:
+        service.close()
+    old = tmp_path / "old.hrpl"
+    subprocess.run([str(binary), "make", str(old), str(FRAMES), "old"], check=True)
+    service = Service(binary, old)
+    try:
+        assert service.ask(cmd="info")["marks"] is False
+        reply = service.ask(cmd="frame", n=33, png=str(tmp_path / "o.png"))
+        assert reply["ok"], reply
+        assert png_pixels((tmp_path / "o.png").read_bytes())[2][5][33 % 40] == (0, 0, 255)
+        assert service.ask(cmd="draws", n=33)["draws"][0]["kind"] == "other"
+    finally:
+        service.close()
+
+
 def test_play(binary, tmp_path):
     """the measuring play, twice over (the recording played again from its start)"""
     recording = tmp_path / "rectangles.hrpl"

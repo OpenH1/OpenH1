@@ -142,6 +142,18 @@ _rasterizer_profile_*, -1 none): what the backends' GPU timing sums by
 (HALO_METAL_PASS_TIMES) */
 void xgpu_backend_category(int category);
 void xgpu_backend_tone_map(xgpu_target target, const long corners[4]);
+/* debug.render_marks (xgpu_stream.h's MARK records, from
+port/linux/game/render_marks.c): what the draws from now on belong to, for
+the inspector's replay; the backends draw nothing for them. A view: the
+map, the game's tick, the window (-1: the frame's start) and its camera
+(position, forward, up, the horizontal field of view in radians, the
+viewport in the back buffer's pixels); an owner: its kind
+(XGPU_STREAM_MARK_*), an id (-1 none), a label, tag paths (NULL none), a
+menu widget's tag and its generator source */
+void xgpu_backend_mark_view(const char *map, unsigned long tick, long window, const float position[3],
+	const float forward[3], const float up[3], float field_of_view, const long viewport[4]);
+void xgpu_backend_mark_owner(int kind, long id, const char *label, const char *object, const char *model,
+	const char *shader, const char *bitmap, const char *widget, const char *source);
 /* display.ambient_occlusion "world" (xgpu_stream.h, docs/world-ao.md):
 the block the opaque surfaces' ambient light reads from here on (the
 field's place, the window's proxies; NULL none), and slices of the field

@@ -298,6 +298,9 @@ _end), and what the code drawing knows of them (HALO_HDR_KIND_*, 0 none) */
 void halo_screen_tone_map(short x0, short y0, short x1, short y1);
 void halo_hdr_category(int category);
 void halo_hdr_draw_kind(int kind);
+/* debug.render_marks: what the draws that follow belong to, for the
+inspector's replay (port/linux/game/render_marks.c) */
+#include "render_marks.h"
 /* the display's peak and SDR white, as the backend says them, as text
 (Video Setup's DISPLAY PEAK row: its value, "800 NITS"; words, its panel's
 words); 0 where no renderer draws HDR (port/linux/src/d3d8_device.c) */

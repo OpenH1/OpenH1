@@ -97,6 +97,9 @@ int xgpu_metal_stream_shot(uint32_t target, const char *path);
 /* (the render thread) a colour target's pixels as xgpu_metal_stream_shot
 reads them: BGRA rows from the top, malloc'd; NULL if it has none */
 unsigned char *xgpu_metal_stream_read(uint32_t target, uint32_t *width, uint32_t *height);
+/* a target's texture handle (0: none: the tests', the replay's ID buffer;
+the render thread) */
+uint32_t xgpu_metal_stream_target_texture(uint32_t target);
 
 /* the MSL emitter's provider (xgpu_metal_shaders.c) */
 const struct xgpu_metal_stream_shaders *xgpu_metal_shaders(void);

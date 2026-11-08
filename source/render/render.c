@@ -332,6 +332,7 @@ void render_frame_pregame(
 
 	rasterizer_frame_begin(&parameters);
 	rasterizer_windows_begin();
+	render_marks_frame_begin(); /* port: debug.render_marks */
 	profile_render_window_start(FALSE);
 
 	memset(&rasterizer_parameters, 0, sizeof(rasterizer_parameters));
@@ -425,6 +426,9 @@ static void render_window(
 	(port/linux/game/panini.c) */
 	panini_window_begin(local_player_index, rasterizer_target, rasterizer_camera, &parameters.frustum);
 	rasterizer_window_begin(&parameters);
+	/* port: debug.render_marks: the window's camera, its viewport the
+	rasterizer's (port/linux/game/render_marks.c) */
+	render_marks_view(render.window_index, rasterizer_camera);
 
 	if (!bink_playback_in_progress())
 	{
@@ -1056,6 +1060,9 @@ void render_frame(
 	parameters.game_time_sec = render_interpolation_game_time_sec(game_time_get());
 	rasterizer_frame_begin(&parameters);
 	rasterizer_windows_begin();
+	/* port: debug.render_marks: the frame's map and tick
+	(port/linux/game/render_marks.c) */
+	render_marks_frame_begin();
 	/* port: display.ambient_occlusion "world": the scene's objects as drawn
 	this frame, the field's upload continued (port/linux/game/world_ao.c;
 	nothing unless it is on) */
@@ -1101,6 +1108,9 @@ void render_frame(
 		render_nonplayer_frame(window, window_type);
 	}
 
+	/* port: debug.render_marks: what the frame draws over its windows
+	(port/linux/game/render_marks.c) */
+	render_marks_kind(RENDER_MARK_OTHER, "frame overlays");
 	halo_screen_ui_offset(TRUE);
 	progress_bar_eachframe();
 	halo_screen_ui_offset(FALSE);

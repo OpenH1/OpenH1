@@ -8708,6 +8708,9 @@ static void widget_instance_render_recursive(
 	if (!widget->visible)
 		return;
 	ui_mouse_note_target(widget, definition, offset);
+	/* port: debug.render_marks: the widget's draws, before its children's
+	(port/linux/game/render_marks.c) */
+	render_marks_widget(widget->definition_tag_index, widget, definition->background_bitmap.index);
 	/* port: the widget's box as drawn, for debug.menu_layout */
 	if (menu_layout_recording())
 	{
