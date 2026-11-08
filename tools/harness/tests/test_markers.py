@@ -1,6 +1,7 @@
 """The players' pings (port/linux/game/network_markers.c): a point the host takes from another machine (inside the
 world, never NaN or infinite), a ping that takes the player's last away (the same object, or a point near the last;
-an object and a point never the same), and the pings a player sends at once and over time."""
+an object and a point never the same), the pings a player sends at once and over time, and where a ping of an object
+is drawn in a frame between the ticks: over it as drawn, a biped's head (read from the pose drawn) not moved again."""
 import re
 import sys
 from pathlib import Path
@@ -11,8 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, function, mutated, read, run  # noqa: E402
 
 SOURCE = "port/linux/game/network_markers.c"
-FUNCTIONS = ("network_markers_point_valid", "network_markers_same_spot", "markers_rate_take")
-CASES = ["point", "same-spot", "rate-burst", "rate-refill", "rate-wrap"]
+FUNCTIONS = ("network_markers_point_valid", "network_markers_same_spot", "markers_rate_take",
+             "markers_object_drawn_point")
+CASES = ["point", "same-spot", "rate-burst", "rate-refill", "rate-wrap", "object-point"]
 
 # a fault in the code under test and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -27,6 +29,11 @@ NEGATIVE_CONTROLS = {
     "no-burst-limit": (("if (rate->tokens <= 0)\n\t\treturn FALSE;", ""), "rate-burst"),
     # refilled past the burst
     "refill-unbounded": (("while (rate->tokens < MARKER_BURST &&", "while ("), "rate-refill"),
+    # (as it was) the biped's drawn head moved with the object again: a tick's rise further, up and down each tick
+    "head-moved-twice": (("position->z = head_position.z + MARKER_HEAD_HEIGHT;",
+                          "position->z += head_position.z - at->z + MARKER_HEAD_HEIGHT;"), "object-point"),
+    # the tick's middle, not moved with the object as drawn
+    "not-interpolated": (("\trender_interpolation_object_point(object_index, position);\n", ""), "object-point"),
 }
 
 

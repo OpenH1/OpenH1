@@ -40,7 +40,9 @@ Each machine plays the UI's cursor sound as a ping its players see comes.
 Nothing of it is the simulation's: the pings are kept by the machine's
 clock, not the game's ticks, and the recorded and replayed game is the same
 without them. The pure parts (network_markers_point_valid,
-network_markers_same_spot) are tools/harness/tests/test_markers.py's.
+network_markers_same_spot, markers_object_drawn_point) are
+tools/harness/tests/test_markers.py's; the name over the arrow
+(markers_draw_name) is test_hud_marks.py's.
 */
 
 #include "cseries.h"
@@ -52,6 +54,7 @@ network_markers_same_spot) are tools/harness/tests/test_markers.py's.
 #include "camera/observer.h"
 #include "cutscene/cinematics.h"
 #include "interface/hud.h"
+#include "interface/hud_draw.h"
 #include "interface/hud_messaging.h"
 #include "interface/ui_widget.h"
 #include "main/console.h"
@@ -345,6 +348,70 @@ static void markers_player_color(
 		game_engine_player_get_change_color(color, player_index);
 	else
 		*color = player_profile_get_rgb_color(player->network_player_data.primary_color_index);
+}
+
+/* where a ping of an object is drawn this frame: over it as the frame draws
+it between the ticks (render_interpolation.c), over a biped's head, over
+another's middle by its size; at, its middle as the last tick left it (where
+the ping stays once the object is gone). A biped's head is its head marker's,
+which is read from the pose drawn already: moved with the object again, as
+the middle is, it went a tick's motion further, up and down a step a tick
+as the biped rose or fell */
+static void markers_object_drawn_point(
+	long object_index,
+	real_point3d *at,
+	real_point3d *position)
+{
+	real radius;
+
+	object_get_bounding_sphere(object_index, at, &radius);
+	*position = *at;
+	render_interpolation_object_point(object_index, position);
+	if (object_try_and_get_and_verify_type(object_index, _object_mask_biped))
+	{
+		real_point3d head_position;
+
+		unit_get_head_position(object_index, &head_position);
+		position->z = head_position.z + MARKER_HEAD_HEIGHT;
+	}
+	else
+	{
+		position->z += radius * MARKER_OBJECT_RADIUS_PART + MARKER_OBJECT_HEIGHT;
+	}
+}
+
+/* the pinger's name over their arrow (drawn at drawn, half_height tall
+each way), where the arrow is, not the nearest whole unit of the screen (3
+to 5 of a display's pixels) short of it (hud_draw_mark_begin), as a
+player's name is: in whole units it stepped against the arrow and the
+world under it as the view turned or moved */
+static void markers_draw_name(
+	long font_index,
+	wchar_t const *name,
+	real_rgb_color const *color,
+	real alpha,
+	real_point2d const *drawn,
+	real half_height)
+{
+	struct font_header *font = font_definition_get(font_index);
+	real_argb_color text_color;
+	rectangle2d bounds;
+	point2d whole;
+
+	hud_draw_mark_begin(drawn->x, drawn->y - half_height - 2.0f, &whole);
+	bounds.x0 = (short)(whole.x - 160);
+	bounds.x1 = (short)(whole.x + 160);
+	bounds.y1 = whole.y;
+	bounds.y0 = (short)(whole.y - (font->ascending_height + font->descending_height));
+	text_color.alpha = alpha;
+	text_color.red = color->red;
+	text_color.green = color->green;
+	text_color.blue = color->blue;
+	draw_string_set_draw_mode(font_index, NONE, 2 /* centred */, 0, &text_color);
+	rasterizer_text_set_scale(0.75f, (real)whole.x, (real)whole.y);
+	rasterizer_draw_unicode_string(&bounds, NULL, NULL, 0, name);
+	rasterizer_text_set_scale(1.0f, 0.0f, 0.0f);
+	hud_draw_mark_end();
 }
 
 /* this map's arrow and sound, looked up once a game */
@@ -930,32 +997,7 @@ void network_markers_render(
 		if (marker->kind == _marker_kind_object && object_try_and_get_and_verify_type(marker->object_index,
 			MARKER_OBJECT_MASK))
 		{
-			real radius;
-
-			object_get_bounding_sphere(marker->object_index, &position, &radius);
-			marker->point = position;
-			/* (over a biped's head; over another's middle, by its size) */
-			if (object_try_and_get_and_verify_type(marker->object_index, _object_mask_biped))
-			{
-				real_point3d head_position;
-
-				unit_get_head_position(marker->object_index, &head_position);
-				position.z = head_position.z + MARKER_HEAD_HEIGHT;
-			}
-			else
-			{
-				position.z += radius * MARKER_OBJECT_RADIUS_PART + MARKER_OBJECT_HEIGHT;
-			}
-			/* (as it is drawn between the ticks: render_interpolation.c) */
-			{
-				real_point3d at = marker->point;
-				real_point3d drawn_at = marker->point;
-
-				render_interpolation_object_point(marker->object_index, &drawn_at);
-				position.x += drawn_at.x - at.x;
-				position.y += drawn_at.y - at.y;
-				position.z += drawn_at.z - at.z;
-			}
+			markers_object_drawn_point(marker->object_index, &marker->point, &position);
 			reference_index = marker->object_index;
 		}
 		else
@@ -980,29 +1022,13 @@ void network_markers_render(
 		/* (the player's name over the arrow, on the screen) */
 		if (font_index != NONE && drawn_type != 1 /* off the screen */)
 		{
-			struct font_header *font = font_definition_get(font_index);
 			wchar_t name[NUMBEROF(pinger->name) + 1];
-			real_argb_color text_color;
-			rectangle2d bounds;
-			short x = (short)drawn.x;
-			short y = (short)(drawn.y - half_height - 2.0f);
 			short index;
 
 			for (index = 0; index < (short)NUMBEROF(pinger->name); index++)
 				name[index] = pinger->name[index];
 			name[NUMBEROF(pinger->name)] = 0;
-			bounds.x0 = (short)(x - 160);
-			bounds.x1 = (short)(x + 160);
-			bounds.y1 = y;
-			bounds.y0 = (short)(y - (font->ascending_height + font->descending_height));
-			text_color.alpha = alpha;
-			text_color.red = color.red;
-			text_color.green = color.green;
-			text_color.blue = color.blue;
-			draw_string_set_draw_mode(font_index, NONE, 2 /* centred */, 0, &text_color);
-			rasterizer_text_set_scale(0.75f, (real)x, (real)y);
-			rasterizer_draw_unicode_string(&bounds, NULL, NULL, 0, name);
-			rasterizer_text_set_scale(1.0f, 0.0f, 0.0f);
+			markers_draw_name(font_index, name, &color, alpha, &drawn, half_height);
 		}
 	}
 }
