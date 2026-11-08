@@ -618,6 +618,11 @@ int host_sdl_open_file_dialog(uint32_t window, int filter_count, const char *fil
 	while (!SDL_GetAtomicInt(&dialog.done))
 	{
 		SDL_PumpEvents();
+		/* (the game's other events stay queued for it; its mouse's motion
+		and gamepads' sensors meanwhile, which would fill SDL's queue and
+		have it drop the rest, a key's release with them, go) */
+		SDL_FlushEvent(SDL_EVENT_MOUSE_MOTION);
+		SDL_FlushEvent(SDL_EVENT_GAMEPAD_SENSOR_UPDATE);
 		SDL_Delay(50);
 	}
 	if (dialog.failed)

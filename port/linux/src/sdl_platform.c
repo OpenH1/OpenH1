@@ -233,6 +233,12 @@ void halo_loading_ready(void)
 }
 
 static struct platform_input_state input_state;
+/* (the event thread) the game window's input events that a loop of a window
+of its own took from SDL while the game's waited (platform_events_aside),
+for platform_pump_events, before SDL's: oldest first */
+#define DEFERRED_EVENTS 512
+static SDL_Event deferred_events[DEFERRED_EVENTS];
+static int deferred_head, deferred_count;
 /* keys pressed since the last read, so a press and release between two
 reads still counts as a press (input injected on Android, or a slow frame) */
 static unsigned char keys_pressed[SDL_SCANCODE_COUNT];
@@ -741,17 +747,13 @@ static BOOL data_extract(const char *image, const char *destination, BOOL instal
 	}
 	while (!finished)
 	{
-		SDL_Event event;
 		char file[256];
 		unsigned long long done, total;
 
-		while (SDL_PollEvent(&event))
+		if (platform_events_aside(window))
 		{
-			if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
-			{
-				platform_log("extraction cancelled");
-				exit(EXIT_SUCCESS);
-			}
+			platform_log("extraction cancelled");
+			exit(EXIT_SUCCESS);
 		}
 		pthread_mutex_lock(&extraction.lock);
 		finished = extraction.finished;
@@ -3059,11 +3061,98 @@ static void input_trace_event(const SDL_Event *event)
 	}
 }
 
+/* whether an event a loop took aside is one of the game window's input
+(keys, mouse buttons, the window's focus and visibility), a gamepad's (not
+its axes or sensors, which are read as they are) or a request to quit, which
+platform_pump_events must have: the rest (motion, the wheel, the other
+window's) are dropped */
+static BOOL platform_event_deferred(const SDL_Event *event, SDL_WindowID game)
+{
+	switch (event->type)
+	{
+	case SDL_EVENT_QUIT:
+	case SDL_EVENT_GAMEPAD_ADDED:
+	case SDL_EVENT_GAMEPAD_REMOVED:
+	case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+	case SDL_EVENT_GAMEPAD_BUTTON_UP:
+		return TRUE;
+	case SDL_EVENT_KEY_DOWN:
+	case SDL_EVENT_KEY_UP:
+		return game && event->key.windowID == game;
+	case SDL_EVENT_MOUSE_BUTTON_DOWN:
+	case SDL_EVENT_MOUSE_BUTTON_UP:
+		return game && event->button.windowID == game;
+	case SDL_EVENT_WINDOW_FOCUS_GAINED:
+	case SDL_EVENT_WINDOW_FOCUS_LOST:
+	case SDL_EVENT_WINDOW_SHOWN:
+	case SDL_EVENT_WINDOW_HIDDEN:
+	case SDL_EVENT_WINDOW_EXPOSED:
+	case SDL_EVENT_WINDOW_OCCLUDED:
+	case SDL_EVENT_WINDOW_MINIMIZED:
+	case SDL_EVENT_WINDOW_RESTORED:
+	case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
+	case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
+	case SDL_EVENT_WINDOW_MOUSE_ENTER:
+	case SDL_EVENT_WINDOW_MOUSE_LEAVE:
+		return game && event->window.windowID == game;
+	default:
+		return FALSE;
+	}
+}
+
+/* (the event thread) for a loop that shows a window of its own (own: a
+download's, the maps' extraction) while the game's waits: takes SDL's
+events, so that its window answers and SDL's queue does not fill, and keeps
+the game window's input for platform_pump_events, which takes them first,
+in order (a key let go of meanwhile is let go of there, as a focus lost
+is); 1 if the game is asked to quit or a window to close */
+int platform_events_aside(SDL_Window *own)
+{
+	static BOOL full_logged;
+	SDL_WindowID game = platform_window ? SDL_GetWindowID(platform_window) : 0;
+	SDL_Event event;
+	int closing = 0;
+
+	(void)own;
+	while (SDL_PollEvent(&event))
+	{
+		if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
+			closing = 1;
+		if (!platform_event_deferred(&event, game))
+			continue;
+		if (deferred_count == DEFERRED_EVENTS)
+		{
+			/* (input_held_reconcile lets go of what a release lost here
+			left held) */
+			if (!full_logged)
+				platform_log("input: %d events kept for the game window, the most; the rest dropped", DEFERRED_EVENTS);
+			full_logged = TRUE;
+			continue;
+		}
+		deferred_events[(deferred_head + deferred_count) % DEFERRED_EVENTS] = event;
+		deferred_count++;
+	}
+	return closing;
+}
+
+/* the next event for platform_pump_events: those kept aside first */
+static BOOL platform_poll_event(SDL_Event *event)
+{
+	if (deferred_count)
+	{
+		*event = deferred_events[deferred_head];
+		deferred_head = (deferred_head + 1) % DEFERRED_EVENTS;
+		deferred_count--;
+		return TRUE;
+	}
+	return SDL_PollEvent(event);
+}
+
 /* (input_lock, once a window's events are taken) The keys and mouse
 buttons held are what the events left held, and an event can be lost on
 its way (SDL's queue full, which drops its events but keeps its state; a
-loop that takes the events and drops them, as a download's window does:
-updater.c), or never come (macOS lets a key's release go astray: the
+loop that took the events and dropped them, as a download's window did
+before it kept them: platform_events_aside), or never come (macOS lets a key's release go astray: the
 system's state has the key up, SDL's still down). A key or button held
 counts only while SDL (host_sdl_input_held: SDL_GetKeyboardState,
 SDL_GetMouseState) holds it too, and, on macOS, while the system has not
@@ -3195,7 +3284,7 @@ void platform_pump_events(void)
 		scoreboard_pointer_stop();
 	}
 #endif
-	while (SDL_PollEvent(&event))
+	while (platform_poll_event(&event))
 	{
 		input_trace_event(&event);
 		switch (event.type)

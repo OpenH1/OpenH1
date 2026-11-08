@@ -91,6 +91,7 @@ test's release server, debug.update_url).
 #include "port_config.h"
 #include "report.h"
 #include "update.h"
+#include "sdl_platform.h"
 
 #include <stdio.h>
 
@@ -992,13 +993,11 @@ static int updater_download_zip(const char *zip_path, char *error, size_t error_
 		renderer = SDL_CreateRenderer(window, SDL_SOFTWARE_RENDERER);
 	while (!finished)
 	{
-		SDL_Event event;
 		unsigned long long received, total;
 
-		/* (the game's own events wait: its window is not drawn meanwhile) */
-		while (SDL_PollEvent(&event))
-		{
-		}
+		/* (the game's own input kept for it, its window not drawn
+		meanwhile: a key let go of here is let go of in the game) */
+		platform_events_aside(window);
 		SDL_LockMutex(download.lock);
 		finished = download.finished;
 		received = download.received;

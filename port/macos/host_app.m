@@ -312,6 +312,11 @@ int host_app_choose_game_data(SDL_Window *window, char *path, uint32_t size)
 			while (!done)
 			{
 				SDL_PumpEvents();
+				/* (the game's other events stay queued for it; the mouse's
+				motion meanwhile, which would fill SDL's queue and have it
+				drop the rest, a key's release with them, goes) */
+				SDL_FlushEvent(SDL_EVENT_MOUSE_MOTION);
+				SDL_FlushEvent(SDL_EVENT_GAMEPAD_SENSOR_UPDATE);
 				SDL_Delay(20);
 			}
 		}

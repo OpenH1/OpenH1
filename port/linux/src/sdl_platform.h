@@ -152,6 +152,11 @@ void platform_screenshot_request(void);
 BOOL platform_screenshot_take_request(void);
 /* a snapshot of the input state; consume_motion resets the mouse deltas */
 void platform_input_read(struct platform_input_state *state, BOOL consume_motion);
+/* (the event thread) a loop's of a window of its own while the game's waits:
+SDL's events taken, the game window's input kept for platform_pump_events;
+1 if the game is asked to quit or a window to close (sdl_platform.c) */
+struct SDL_Window;
+int platform_events_aside(struct SDL_Window *own);
 /* F3 to F7 pressed since the last call, a bit each from F3's, and F9 the
 seventh bit (the menu studio's keys: port/linux/game/menu_studio.c) */
 int platform_menu_studio_keys(void);

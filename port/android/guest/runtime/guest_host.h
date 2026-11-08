@@ -74,6 +74,8 @@ long long host_sdl_ticks_ns(void);
 long long host_sdl_thread_id(void);
 unsigned int host_sdl_create_window(const char *title, int width, int height, long long flags);
 void host_sdl_window_size_in_pixels(unsigned int window, int *width, int *height);
+/* SDL_GetWindowID: the ID a window's events carry */
+unsigned int host_sdl_window_id(unsigned int window);
 int host_sdl_set_relative_mouse(unsigned int window, int enabled);
 int host_sdl_poll_event(void *event);
 /* the keys SDL holds now (keys[scancode]: bit 0; bit 1, the system has

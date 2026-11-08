@@ -243,6 +243,14 @@ uint32_t host_sdl_create_window(const char *title, int width, int height, int64_
 	return host_sdl_handle_new(_handle_window, SDL_CreateWindow(title, width, height, (SDL_WindowFlags)flags));
 }
 
+/* SDL_GetWindowID: the ID a window's events carry (0 for none) */
+uint32_t host_sdl_window_id(uint32_t window)
+{
+	SDL_Window *object = host_sdl_handle_get(window, _handle_window);
+
+	return object ? (uint32_t)SDL_GetWindowID(object) : 0;
+}
+
 void host_sdl_window_size_in_pixels(uint32_t window, int *width, int *height)
 {
 	SDL_Window *object = host_sdl_handle_get(window, _handle_window);
