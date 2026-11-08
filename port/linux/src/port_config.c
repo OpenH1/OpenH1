@@ -206,9 +206,26 @@ static const struct config_setting config_settings[] =
 	{ "display.low_latency", _config_string, "\"auto\"", "HALO_LOW_LATENCY", _environment_value, _platform_all,
 		"With vsync on (Vulkan: Linux, the Steam Deck, Windows, Android), start\n"
 		"each frame just in time for the refresh it is shown at, its input read\n"
-		"then, with no frames queued ahead: \"on\", \"off\", or \"auto\", on where\n"
-		"it was measured (Linux, the Steam Deck and Android). The Mac's frames\n"
-		"are paced by its display already." },
+		"then, with no frames queued ahead: \"on\" or \"auto\". \"off\" starts each\n"
+		"frame as soon as at most one waits for the display. Either way the game\n"
+		"is never more than a frame ahead of the display. The Mac's frames are\n"
+		"paced by its display already." },
+	{ "display.vrr", _config_string, "\"auto\"", "HALO_VRR", _environment_value, _platform_desktop,
+		"For a display of variable refresh (G-SYNC, FreeSync): \"on\" presents\n"
+		"with vsync and holds the frames display.vrr_cap_margin a second under\n"
+		"the refresh rate (117 at 120 Hz; display.max_fps where it is lower), so\n"
+		"the display refreshes as each frame is ready, without tearing or vsync's\n"
+		"lag.\n"
+		"\"auto\": on where the system says VRR is active (gamescope: the Steam\n"
+		"Deck, the Steam Frame; a Linux desktop whose display has it on), else\n"
+		"off (Windows says nothing of it: turn it on here). \"off\": never. Not\n"
+		"with battery saver on. Vulkan only (Linux, Windows)." },
+	{ "display.vrr_cap_margin", _config_integer, "3", "HALO_VRR_CAP_MARGIN", _environment_value, _platform_desktop,
+		"With display.vrr on, how many frames a second under the refresh rate\n"
+		"the game holds its frames (1 to 10), so that they stay inside the\n"
+		"display's VRR range and never reach the refresh rate, where vsync takes\n"
+		"over. Lower is closer to the most frames; higher is safer on a display\n"
+		"with a narrow range." },
 	{ "display.max_fps", _config_integer, "0", "HALO_MAX_FPS", _environment_value, _platform_desktop,
 		"With vsync off, the most frames a second: 0 for twice the display's\n"
 		"refresh rate, -1 for no limit (which can hang some Intel graphics). On\n"
@@ -1108,6 +1125,9 @@ static const struct config_setting config_settings[] =
 		"Report a problem: a zip in reports/ beside maps/ (the log, the settings,\n"
 		"the GPU, the frame times and a screenshot of that moment), and a GitHub\n"
 		"issue opened in the browser, filled in, for it to be dragged into." },
+	{ "controls.clip", _config_string, "\"F9\"", "HALO_KEY_CLIP", _environment_value, _platform_all,
+		"Clip: mark the demo being recorded at this moment, its last\n"
+		"demo.clip_seconds (docs/demos.md)." },
 	{ "controls.push_to_talk", _config_string, "\"V\"", "HALO_KEY_PUSH_TO_TALK", _environment_value, _platform_all,
 		"Voice chat: talk while it is held (audio.voice_chat \"push_to_talk\")." },
 	{ "controls.chat", _config_string, "\"T\"", "HALO_KEY_CHAT", _environment_value, _platform_all,
@@ -1243,7 +1263,7 @@ static const struct config_setting config_settings[] =
 	{ "display.first_person_legs", _config_boolean, "false", "HALO_FIRST_PERSON_LEGS", _environment_value, _platform_all,
 #endif
 		"Your own legs in first person, seen looking down: your body as others\n"
-		"see it, drawn from the waist down, moving as it moves." },
+		"see it, drawn from the belly down, moving as it moves, with its shadow." },
 	{ "display.overshield_effect", _config_boolean, "true", "HALO_OVERSHIELD_EFFECT", _environment_value, _platform_all,
 		"The overshield as this machine draws it: its flare lit as it charges\n"
 		"and staying lit for as long as it lasts, its energy slower, in its own\n"
@@ -1310,6 +1330,25 @@ static const struct config_setting config_settings[] =
 		"settings or other players' games (debug.txt names what they were\n"
 		"refused)." },
 
+	{ "demo.record", _config_boolean, "false", "HALO_DEMO_RECORD", _environment_value, _platform_all,
+		"true: record every game this computer plays or hosts (the campaign,\n"
+		"split screen, games with bots, network games it hosts) as a demo in\n"
+		"paths.data's demos/ folder: its ticks' input and what reached the game\n"
+		"from elsewhere, which plays back exactly (docs/demos.md). Off by default." },
+	{ "demo.keep_count", _config_integer, "20", "HALO_DEMO_KEEP_COUNT", _environment_value, _platform_all,
+		"The most demos kept: the oldest are deleted as a new one begins. Pinned\n"
+		"demos (demos/kept/) are never deleted, nor counted." },
+	{ "demo.keep_megabytes", _config_integer, "2048", "HALO_DEMO_KEEP_MEGABYTES", _environment_value, _platform_all,
+		"The most the demos kept may take of the disk, in MB (the pinned ones\n"
+		"not counted): the oldest are deleted as a new one begins." },
+	{ "demo.snapshot_seconds", _config_real, "10.0", "HALO_DEMO_SNAPSHOT_SECONDS", _environment_value, _platform_all,
+		"How often a demo keeps the whole game state, in seconds, for its\n"
+		"playback to seek to." },
+	{ "demo.clip_seconds", _config_real, "30.0", "HALO_DEMO_CLIP_SECONDS", _environment_value, _platform_all,
+		"How much of the demo before it the clip key marks, in seconds." },
+	{ "demo.play", _config_string, "\"\"", "HALO_DEMO_PLAY", _environment_value, _platform_all,
+		"A demo to play as the game starts (its file; also halo --demo <file>);\n"
+		"empty for none." },
 	{ "paths.data", _config_string, "\"\"", "HALO_DATA_ROOT", _environment_value, _platform_desktop,
 		"The folder holding the game data's maps folder; empty looks in the\n"
 		"working directory and its assets folder. Windows paths are easiest in\n"
@@ -2129,6 +2168,10 @@ static const struct config_setting config_settings[] =
 	{ "debug.bot_player", _config_boolean, "false", "HALO_BOT_PLAYER", _environment_set_is_true, _platform_all,
 		"In a local game with bots (bots.count), a bot of its own plays the first\n"
 		"player too, its view drawn as the player's (for recorded footage)." },
+	{ "debug.bot_player_skill", _config_boolean, "false", "HALO_BOT_PLAYER_SKILL", _environment_set_is_true, _platform_all,
+		"With debug.bot_player, the player's bot aims and fights as the other bots\n"
+		"do at bots.skill, not with the steady hand of the trailer's footage (for\n"
+		"footage of the bots' aim)." },
 	{ "debug.bot_player_weapon", _config_string, "\"\"", "HALO_BOT_PLAYER_WEAPON", _environment_value, _platform_all,
 		"With debug.bot_player, a weapon (part of its tag's name: \"sniper\",\n"
 		"\"rocket\") the player's bot goes for wherever it lies, and keeps." },
@@ -2187,6 +2230,11 @@ static const struct config_setting config_settings[] =
 		"the first frame); 0 never." },
 	{ "debug.hidden_window", _config_boolean, "false", "HALO_HIDDEN_WINDOW", _environment_set_is_true, _platform_desktop,
 		"Keep the window hidden (and never fullscreen)." },
+	{ "debug.input_trace", _config_boolean, "false", "HALO_INPUT_TRACE", _environment_set_is_true, _platform_all,
+		"Write the input trace (the keys, buttons and gamepads' events, and\n"
+		"what the game read of them, over the last 30 seconds; a problem\n"
+		"report has it always, input.txt) to the log each time the window\n"
+		"loses the focus." },
 	{ "debug.voice_test", _config_boolean, "false", "HALO_VOICE_TEST", _environment_set_is_true, _platform_all,
 		"Voice chat's automated tests: a tone instead of the microphone, and\n"
 		"each voice heard logged once a second." },
@@ -2204,6 +2252,17 @@ static const struct config_setting config_settings[] =
 		"A file to write a line a tick to: a hash of the game state, the random\n"
 		"seeds and every taker of a seed by its call site, to compare two runs\n"
 		"of the same input (tools/determinism_compare.py); empty for none." },
+	{ "debug.demo_seek", _config_string, "\"\"", "HALO_DEMO_SEEK", _environment_value, _platform_all,
+		"\"<at>,<by>\": the demo played seeks by seconds (negative: back) once it\n"
+		"reaches at seconds, for tests; empty none." },
+	{ "debug.demo_verify", _config_boolean, "false", "HALO_DEMO_VERIFY", _environment_set_is_true, _platform_all,
+		"The demo played compared with each of its snapshots as it reaches them,\n"
+		"the bytes apart logged, to find where a playback parts." },
+	{ "debug.demo_log", _config_boolean, "false", "HALO_DEMO_LOG", _environment_set_is_true, _platform_all,
+		"Log each whole game state the demo being recorded takes, and why." },
+	{ "debug.demo_quit", _config_boolean, "false", "HALO_DEMO_QUIT", _environment_set_is_true, _platform_all,
+		"Quit when the demo played (demo.play, --demo) ends, or cannot be\n"
+		"played, for tests." },
 	{ "debug.determinism_dump", _config_integer, "0", "HALO_DETERMINISM_DUMP", _environment_value, _platform_all,
 		"With debug.determinism_log, the tick after which to write the game\n"
 		"state too, counted as logged from 1, to <log>.<count>.bin (and its first\n"
@@ -2571,6 +2630,11 @@ static const struct config_setting config_settings[] =
 	{ "debug.sample_seconds", _config_real, "0.0", "HALO_SAMPLE", _environment_value, _platform_android | _platform_guest,
 		"Log where every game thread is this often, in seconds (read by the\n"
 		"host, port/android/host/host_debug.c); 0 never." },
+	{ "debug.stall_ms", _config_real, "100.0", "HALO_STALL_MS", _environment_value, _platform_android | _platform_guest,
+		"When the game goes this many milliseconds without a frame, log where\n"
+		"its thread and the render thread were (sampled every 10 ms while it\n"
+		"lasts) and the work in progress, once the frame comes; and count such\n"
+		"frames. Read by the host (port/android/host/host_stall.c); 0 never." },
 	{ "debug.pass_times", _config_integer, "0", "HALO_PASS_TIMES", _environment_value, _platform_all,
 		"Every this many frames, time each of the frame's passes on the GPU and\n"
 		"log, every 30 timed frames, each kind of pass's milliseconds a frame and\n"
@@ -2664,6 +2728,22 @@ static int config_argument(const char *name, char *value, size_t size)
 	return 0;
 }
 #endif
+
+/* the value after a command line argument (halo --demo <file>), for the
+game's port code: whether it was there */
+int config_command_line_value(const char *name, char *value, unsigned long size)
+{
+#ifndef HALO_ANDROID
+	if (size)
+		value[0] = 0;
+	return config_argument(name, value, (size_t)size) && value[0];
+#else
+	(void)name;
+	if (size)
+		value[0] = 0;
+	return 0;
+#endif
+}
 
 /* ---------- the file */
 

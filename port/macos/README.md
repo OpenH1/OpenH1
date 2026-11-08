@@ -587,6 +587,14 @@ pipelines made, and those from the archive. Each hitch is logged as it
 comes, with the shaders and pipelines the render thread made since the
 frame before it (what the frame may have waited for).
 
+`HALO_METAL_HIDE_TEST="<first>,<hidden>,<every>"` takes the window as
+hidden `<first>` seconds after it opens, for `<hidden>` seconds, and again
+every `<every>` seconds (`0`: once), through the path the window's
+occlusion notification takes (`window_visibility_read`: the link's thread
+takes the frames while it is hidden). It tests the way back from a hidden
+window in a run whose window is never shown (`debug.hidden_window`); a
+real occlusion also stops the link's calls, which it does not.
+
 ### The GPU's time
 
 Apple's GPUs run as slowly as the frames allow: with the game paced by
@@ -678,7 +686,7 @@ build/macos/halo_replay --compare <shots> <shots>
   the window, the statistics, `--cold`) of the replay the Vulkan backend
   has too (`port/tools/replay/host_render_replay.c`: the recording, the
   guest's memory, the play, the report, `--compare` and `--serve`, the
-  OpenH1 Inspector's service, described there and in
+  replay service, described in `docs/replay_protocol.md` and
   `port/linux/vulkan/README.md`). Metal's ID buffer is the backend's
   (`xgpu_metal_set_draw_inspector`): each draw into the target the frame
   presents is bracketed, its pass ended before and after it, by a copy of

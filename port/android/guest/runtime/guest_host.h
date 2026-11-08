@@ -76,6 +76,10 @@ unsigned int host_sdl_create_window(const char *title, int width, int height, lo
 void host_sdl_window_size_in_pixels(unsigned int window, int *width, int *height);
 int host_sdl_set_relative_mouse(unsigned int window, int enabled);
 int host_sdl_poll_event(void *event);
+/* the keys SDL holds now (keys[scancode]: bit 0; bit 1, the system has
+had it up a while though SDL holds it), and its mouse buttons (low 16 bits,
+SDL_BUTTON_MASK; high 16, the system has had them up a while): host_sdl.c */
+unsigned int host_sdl_input_held(unsigned char *keys, int count);
 int host_sdl_set_clipboard_text(const char *text);
 void host_sdl_get_clipboard_text(char *buffer, unsigned int size);
 int host_sdl_open_url(const char *url);
@@ -131,6 +135,15 @@ What the system's sound plays on, for the sound's log (dsound_sdl.c): 1
 headphones, 0 speakers, -1 not known; kept current by a thread of the
 host's, so asking costs nothing */
 int host_audio_headphones(void);
+
+/* ---------- the renderer's caches (port/linux/vulkan/host_vulkan.c,
+port/macos/host_metal.m)
+
+The host's caches that Settings' CLEAR CACHES clears (game_caches.c): the
+GPU's pipelines and the ASTC textures. Their kilobytes; what 1 asks for them
+to be cleared at the next start, before the renderer reads them, 2 no
+longer */
+unsigned int host_caches(int what);
 
 /* ---------- the renderer's command stream (port/linux/src/xgpu_stream.h,
 port/android/host/host_render_stream.h): the ring at the guest address

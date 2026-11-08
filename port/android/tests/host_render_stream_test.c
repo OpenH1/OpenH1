@@ -120,6 +120,24 @@ void host_logf(int priority, const char *format, ...)
 	fputc('\n', stderr);
 }
 
+/* (no stalls detected here: host_stall.c) */
+void host_stall_frame(void)
+{
+}
+
+void host_stall_render_thread(void)
+{
+}
+
+void host_stall_loading(int active)
+{
+	(void)active;
+}
+
+void host_stall_summary(void)
+{
+}
+
 void xgpu_texture_describe(DWORD format_word, DWORD size_word, struct xgpu_texture_description *description)
 {
 	memset(description, 0, sizeof(*description));

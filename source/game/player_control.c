@@ -215,6 +215,7 @@ symbols in this file:
 #include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 #include "network_substeps.h" /* port: port/linux/game/network_substeps.c */
 #include "view_fov.h" /* port: port/linux/game/view_fov.c */
+#include "demo.h" /* port: port/linux/game/demo.c */
 
 /* ---------- constants */
 
@@ -2687,7 +2688,9 @@ static long player_control_substep_player_index(
 	struct player_datum *player;
 	short gamepad_index;
 
-	if ((!sim_rate_follows_setting() && !network_substeps_active()) || player_index == NONE)
+	/* port: (nor in a demo's playback, whose units' controls are the
+	recording's: port/linux/game/demo.c) */
+	if ((!sim_rate_follows_setting() && !network_substeps_active()) || player_index == NONE || demo_playing())
 		return NONE;
 	player = player_get(player_index);
 	gamepad_index = player->local_player_index;
@@ -2831,6 +2834,9 @@ static void player_control_substep(
 	short local_player_index;
 
 	(void)seconds;
+	/* port: the units' controls as the sub-step begins, for the demo
+	(port/linux/game/demo.c) */
+	demo_substep_begin(substep_index);
 	for (local_player_index = 0; local_player_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
 	{
 		if (substep_index == 0)
@@ -2852,6 +2858,8 @@ static void player_control_substep(
 		network_substeps_tick_begun(substep_count);
 	else
 		network_substeps_replay(substep_index, substep_count);
+	/* port: and as it ends: recorded, or a demo's put on them */
+	demo_substep_end(substep_index, substep_count);
 	return;
 }
 
@@ -2866,6 +2874,9 @@ unsigned long player_control_substep_pressed_flags(
 
 	if (unit_index == NONE || sim_substep_index() == NONE)
 		return 0;
+	/* port: (a demo's playback's, as recorded: port/linux/game/demo.c) */
+	if (demo_playing())
+		return demo_playback_pressed_flags(unit_index);
 	for (local_player_index = 0; local_player_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
 	{
 		struct player_control_substep_player const *substep = &player_control_substep_players[local_player_index];

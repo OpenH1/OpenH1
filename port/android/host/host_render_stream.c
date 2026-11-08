@@ -18,9 +18,15 @@ thread plays N + 1 and the game writes N + 2.
 A backend that shows the frames on a display paces the game by it
 (frame_pacing.h): the game starts a frame only while at most
 FRAME_PACING_QUEUED of its frames wait for the display, and not before the
-budget a frame takes ahead of the display's latch it is for. Each frame's
-FRAME_END says when its input was read, for the time from then to the
-frame on screen.
+budget a frame takes ahead of the display's latch it is for (or, bounded
+only, without that start time). A backend whose display queues its frames
+(vsync's FIFO) bounds the frames ahead of its GPU as well
+(host_render_stream_frames_ahead): the game starts a frame only while at
+most one of its frames' work is unfinished, whatever the display says, so
+that a driver whose presents queue ahead of the display without a word
+(NVIDIA's on Windows, issue #274) holds no more than a frame of the game's.
+Each frame's FRAME_END says when its input was read, for the time from
+then to the frame on screen.
 */
 
 #include "host.h"
@@ -153,6 +159,7 @@ static void loading_set(const struct host_render_backend *backend, int active)
 	if (active == (int)loading.frame.active)
 		return;
 	host_load_trace("loading.received", "active=%d", active);
+	host_stall_loading(active);
 	loading.backend = backend;
 	loading.frame.active = active;
 	loading.ready = 0;
@@ -1123,6 +1130,10 @@ static struct
 	their input read to ready for the display */
 	int display_paced;
 	uint32_t frames_taken;
+	/* the most frames whose work may be unfinished, besides the one it has
+	just given, when the game starts one, and one (0: the ring's
+	frames_in_flight; host_render_stream_frames_ahead) */
+	uint32_t frames_ahead;
 	uint64_t latch, period;
 	struct frame_pacing_costs costs;
 	/* the refresh each of the last frames was started for (by its number,
@@ -1285,6 +1296,7 @@ static void *render_thread(void *argument)
 
 	(void)argument;
 	host_performance_thread();
+	host_stall_render_thread();
 	pthread_mutex_lock(&render.lock);
 	for (;;)
 	{
@@ -1547,6 +1559,13 @@ uint64_t host_render_stream_frame_input(void)
 	return render.decoder ? render.decoder->frame_input : 0;
 }
 
+void host_render_stream_frames_ahead(int frames)
+{
+	pthread_mutex_lock(&render.lock);
+	render.frames_ahead = frames >= 0 ? (uint32_t)frames + 1 : 0;
+	pthread_mutex_unlock(&render.lock);
+}
+
 void host_render_stream_frame_taken(void)
 {
 	pthread_mutex_lock(&render.lock);
@@ -1743,6 +1762,15 @@ static void display_wait(uint64_t *start)
 	}
 	if (render.ring->error || !render.display_paced)
 		return;
+	/* (bounded only: no start time, and no refresh the frame is for) */
+	if (render.display_paced == HOST_RENDER_DISPLAY_BOUNDED)
+	{
+		uint32_t next = render.ring->frames_submitted + 1;
+
+		render.targets[next % 8].frame = next;
+		render.targets[next % 8].target = 0;
+		return;
+	}
 	/* (and the time the guest says the next frame takes more than its
 	frames do, a load zone's switch: its start so much earlier, within a
 	refresh) */
@@ -1818,7 +1846,10 @@ void host_render_stream_submit(uint32_t flags)
 	if (!render.running)
 		return;
 	if (flags & XGPU_STREAM_SUBMIT_FRAME)
+	{
 		host_performance_thread();
+		host_stall_frame();
+	}
 	pthread_mutex_lock(&render.lock);
 	render.committed = __atomic_load_n(&ring->committed, __ATOMIC_ACQUIRE);
 	if (flags & XGPU_STREAM_SUBMIT_FRAME)
@@ -1826,7 +1857,9 @@ void host_render_stream_submit(uint32_t flags)
 	pthread_cond_signal(&render.work);
 	while (!ring->error)
 	{
-		if ((flags & XGPU_STREAM_SUBMIT_FRAME) && ring->frames_submitted - render.retired_frames > ring->frames_in_flight)
+		if ((flags & XGPU_STREAM_SUBMIT_FRAME) && ring->frames_submitted - render.retired_frames >
+			(render.frames_ahead && render.frames_ahead <= ring->frames_in_flight ? render.frames_ahead - 1 :
+			ring->frames_in_flight))
 			guest_wait(&start);
 		else if ((flags & XGPU_STREAM_SUBMIT_SYNC) && (int32_t)(ring->released - render.committed) < 0)
 			guest_wait(&start);
@@ -1910,6 +1943,7 @@ void host_render_stream_gpu_time(uint64_t nanoseconds)
 
 void host_render_stream_exiting(void)
 {
+	host_stall_summary();
 	if (render_backend && render_backend->exiting)
 		render_backend->exiting(render_backend->context);
 }

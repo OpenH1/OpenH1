@@ -699,6 +699,7 @@ typedef char screenshot_and_framerate_globals_size_assert[
 	sizeof(struct _screenshot_and_framerate_globals) == 0x38B ? 1 : -1];
 
 void network_test_update(boolean main_menu_loaded, real seconds);
+#include "demo.h" /* port: port/linux/game/demo.c */
 /* port: port/linux/game/basic_training.c */
 void basic_training_update(boolean main_menu_loaded, real seconds);
 /* port: the menus' pictures drawn again from the player's maps, rendered
@@ -1646,7 +1647,7 @@ static void main_change_map_name(
 			/* port: (not a map of the menus' pictures: the player's last level
 			is as it was) */
 			for (local_player_index = 0;
-				local_player_index < player_spawn_count && !menu_pictures_preparing();
+				local_player_index < player_spawn_count && !menu_pictures_preparing() && !demo_playing();
 				local_player_index++)
 			{
 				player_profile_save_last_level_played(local_player_index);
@@ -3839,6 +3840,9 @@ void main_loop(
 
 			/* automated system link tests (port/linux/game/network_test.c) */
 			network_test_update(main_globals.main_menu_scenario_loaded, main_globals.seconds_elapsed);
+			/* port: a demo asked for played, and the end of one
+			(port/linux/game/demo.c) */
+			demo_frame(main_globals.main_menu_scenario_loaded, main_globals.seconds_elapsed);
 			/* port: Basic Training's game started, its skip buttons
 			(port/linux/game/basic_training.c) */
 			basic_training_update(main_globals.main_menu_scenario_loaded, main_globals.seconds_elapsed);
@@ -4009,10 +4013,15 @@ void main_loop(
 				if (!console_update() || main_globals.connection!=_game_connection_local)
 				{
 					/* port: not while a chat line is typed (its K plays an animation) */
-					if (!network_chat_typing())
-						debug_keys_update();
-					cheats_update();
-					player_control_update((real)main_globals.halt_time_scale*main_globals.seconds_elapsed);
+					/* port: nor any of the machine's input in a demo's playback,
+					whose players play the recording's (port/linux/game/demo.c) */
+					if (!demo_playing())
+					{
+						if (!network_chat_typing())
+							debug_keys_update();
+						cheats_update();
+						player_control_update((real)main_globals.halt_time_scale*main_globals.seconds_elapsed);
+					}
 
 					connection = main_globals.connection;
 					profile_scope_enter(main_network_end_frame_section)

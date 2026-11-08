@@ -150,6 +150,31 @@ def save_png(image: Image.Image, path: Path) -> None:
     image.save(path, optimize=True)
 
 
+def rounded_still(png: str, width: int, height: int, rim: Optional[str]) -> str:
+    """a still (port/assets/menus/stills) with its corners cut round, the
+    rim drawn round it in rim's colour if there is one, as ce/port/stills'
+    file of the same name (whose name it returns); drawn SCALE times larger
+    and reduced, for smooth edges"""
+    from PIL import ImageChops, ImageDraw
+    out = f"ce/port/stills/{Path(png).stem}{'' if rim is None else '_framed'}.png"
+    image = Image.open(MENUS / png).convert("RGBA")
+    units = image.width / width
+    big = (image.width * SCALE, image.height * SCALE)
+    radius = port_settings.SETTINGS_STILL_RADIUS * units * SCALE
+    mask = Image.new("L", big, 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, big[0] - 1, big[1] - 1), radius, fill=255)
+    mask = mask.resize(image.size, Image.LANCZOS)
+    image.putalpha(ImageChops.multiply(image.getchannel("A"), mask))
+    if rim is not None:
+        layer = Image.new("RGBA", big, (0, 0, 0, 0))
+        ImageDraw.Draw(layer).rounded_rectangle((0, 0, big[0] - 1, big[1] - 1), radius, outline=rim,
+                                                width=round(port_settings.SETTINGS_STILL_RIM * units * SCALE))
+        image = Image.alpha_composite(image, layer.resize(image.size, Image.LANCZOS))
+    (MENUS / out).parent.mkdir(parents=True, exist_ok=True)
+    save_png(image, MENUS / out)
+    return out
+
+
 def titles_font(size: int):
     """the titles' font: laid out by FreeType alone, as every Pillow can (a
     Pillow with Raqm (and FriBiDi) lays it out with other advances)"""
@@ -422,11 +447,12 @@ class Art:
                           f"\t\t<frame{attributes([('png', png), ('width', 512), ('height', 64)])}/>",
                           "\t</bitmap>"])
 
-    def still(self, name: str, png, width: int, height: int) -> str:
+    def still(self, name: str, png, width: int, height: int, rim: Optional[str] = None) -> str:
         """a <bitmap> of a picture shipped as it is (port/assets/menus/stills:
-        NON_HANDDRAWN.md says what each is), outside ce/, which this script
-        writes anew"""
-        pngs = [png] if isinstance(png, str) else png
+        NON_HANDDRAWN.md says what each is), its corners cut round as the
+        panel's frames are (port_settings.SETTINGS_STILL_RADIUS), and with
+        rim its frame drawn in that colour, into ce/port/stills"""
+        pngs = [rounded_still(frame, width, height, rim) for frame in ([png] if isinstance(png, str) else png)]
         self.pngs += [frame for frame in dict.fromkeys(pngs) if frame not in self.pngs]
         return "\n".join([f"\t<bitmap{attributes([('name', name)])}>",
                           *(f"\t\t<frame{attributes([('png', frame), ('width', width), ('height', height)])}/>"
@@ -911,7 +937,7 @@ def main() -> None:
     lines += [art.port_picture(name, frames) for name, frames in port_settings.settings_pictures()]
     lines += [art.still(name, png, width, height) for name, png, width, height, _ in port_settings.SETTINGS_STILLS]
     lines += [art.still(f"{port_settings.SETTINGS}/pictures_{key}", pngs, port_settings.SETTINGS_PICTURE_WIDTH,
-                        port_settings.SETTINGS_PICTURE_HEIGHT)
+                        port_settings.SETTINGS_PICTURE_HEIGHT, port_settings.SETTINGS_PICTURE_RIM)
               for key, pngs in port_settings.SETTINGS_VALUE_PICTURES.items()]
     # (the menus' shared parts, in Settings' look: the server browser's and
     # Multiplayer's tabs, rows, panels, pills, button and prompts, and the

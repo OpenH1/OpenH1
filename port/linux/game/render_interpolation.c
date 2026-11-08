@@ -135,6 +135,7 @@ the frame takes its view.
 #include "devices/device_definitions.h"
 #include "passenger_camera.h"
 #include "sim_rate.h"
+#include "demo.h"
 
 /* port/linux/src/port_config.c */
 int config_boolean(const char *name);
@@ -300,6 +301,9 @@ struct interpolated_object
 	(as made: a tick's motion back, or render_interpolation_object_from's) */
 	real_point3d position;
 	real_point3d previous_position;
+	/* its facing at each snapshot, by snapshot (for a body drawn turned to
+	the view: render_interpolation_view_body) */
+	real_vector3d facing[2];
 };
 
 /* an object of the micro lane, by itself (not carried): where it was after
@@ -973,6 +977,7 @@ static void render_interpolation_previous_values(struct interpolated_object *rec
 		sizeof(record->change_colors[0]));
 	memcpy(record->camouflage[record->latest ^ 1], record->camouflage[record->latest],
 		sizeof(record->camouflage[0]));
+	record->facing[record->latest ^ 1] = record->facing[record->latest];
 	record->has_previous = TRUE;
 }
 
@@ -1101,6 +1106,9 @@ void render_interpolation_tick(void)
 			record->camouflage[record->latest][1] = unit->unit.active_camouflage_super_amount;
 		}
 		record->values_blended_frame = NONE;
+		record->facing[record->latest] = object->object.forward;
+		if (!continuing)
+			record->facing[record->latest ^ 1] = object->object.forward;
 		record->previous_position = continuing ? record->position : object->object.position;
 		record->position = object->object.position;
 		/* the tick's last sub-step's pose kept: where the tick left it (what
@@ -4229,6 +4237,39 @@ static boolean view_heading(
 	return TRUE;
 }
 
+/* the unit's facing, level, as its body is drawn this frame: the blend of
+its facing at the two ticks drawn between, as its pose is (FALSE: none, or
+level it has none) */
+static boolean render_interpolation_body_heading(
+	long unit_index,
+	real *i,
+	real *j)
+{
+	struct interpolated_object const *record = NULL;
+	real_vector3d const *forward = &object_get(unit_index)->object.forward;
+	real length;
+	long absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(unit_index);
+
+	*i = forward->i;
+	*j = forward->j;
+	if (interpolation_rendering && interpolated_objects && absolute_index < MAXIMUM_INTERPOLATED_OBJECTS)
+		record = &interpolated_objects[absolute_index];
+	if (record && record->object_index == unit_index && record->tick == interpolation_tick && record->has_previous)
+	{
+		real_vector3d const *a = &record->facing[record->latest ^ 1];
+		real_vector3d const *b = &record->facing[record->latest];
+
+		*i = lerp(a->i, b->i, interpolation_fraction);
+		*j = lerp(a->j, b->j, interpolation_fraction);
+	}
+	length = (real)sqrt(*i * *i + *j * *j);
+	if (!(length >= 1e-4f))
+		return FALSE;
+	*i /= length;
+	*j /= length;
+	return TRUE;
+}
+
 /* The local player's own body in the first person on foot, drawn below the
 view as its legs (display.first_person_legs: first_person_legs.c). The body
 is drawn between the ticks, a tick behind, as the view between the ticks is;
@@ -4236,21 +4277,28 @@ the view drawn is the newest step's (display.direct_camera), a tick's motion
 on, and points where the player aims in the frame. Drawn where the body has
 them, the legs trailed the view by a tick's motion, and by more or less as
 each step's speed and each frame's aim came: they slid under the view and
-stepped against it, and swung about it as the aim turned (#697). Here the
-move that takes the view between the ticks to the view drawn, level: turned
-about the vertical from the one's heading to the other's, and moved from the
-one's place to the other's (the body stands upright, whatever the pitch).
-The legs' pose taken by it is where the body has them from its own view, now
-seen from the view drawn: they move as the body moves about its eye, as
-smoothly as the frames draw it. FALSE (and the move none) for any other
-unit, view or window, and in the VR mode, whose body has its own place */
+stepped against it (#697). And the body faces where the player aimed only
+after the aim has turned far enough from it, then turns after it a tick at
+a time: looking down while turning, the legs swung away from the view, came
+back with a jerk each tick and swung away again (#826). Here the move that
+takes the body to the view drawn, level: turned about the vertical from the
+body's heading as it is drawn to the view drawn's heading (*heading), and
+moved from the view between the ticks' place to the view drawn's (the body
+stands upright, whatever the pitch). So the legs are posed about the eye as
+the view is, at its yaw, place and time this frame, as the first-person
+weapon is: still under the view as it turns, moving only as the body's
+animation moves them. FALSE (and the move none, *heading the body's) for any
+other unit, view or window, and in the VR mode, whose body has its own
+place */
 boolean render_interpolation_view_body(
 	long unit_index,
-	real_matrix4x3 *move)
+	real_matrix4x3 *move,
+	real_vector3d *heading)
 {
 	short local_player_index = render.local_player_index;
 	struct observer_result const *from, *to;
 	real from_i, from_j, to_i, to_j, c = 1.0f, s = 0.0f;
+	boolean turned;
 
 	move->scale = 1.0f;
 	move->forward.i = 1.0f;
@@ -4265,6 +4313,8 @@ boolean render_interpolation_view_body(
 	move->position.x = 0.0f;
 	move->position.y = 0.0f;
 	move->position.z = 0.0f;
+	if (unit_index != NONE && object_try_and_get(unit_index))
+		*heading = object_get(unit_index)->object.forward;
 	if (local_player_index < 0 || local_player_index >= MAXIMUM_LOCAL_PLAYERS ||
 		!drawn_views_valid[local_player_index] || unit_index == NONE ||
 		player_control_get_unit_index(local_player_index) != unit_index ||
@@ -4280,17 +4330,23 @@ boolean render_interpolation_view_body(
 #endif
 	from = &blended_views[local_player_index];
 	to = &drawn_views[local_player_index];
-	/* (the turn from one heading to the other: none if either has none) */
-	if (view_heading(from, &from_i, &from_j) && view_heading(to, &to_i, &to_j))
+	/* (the turn from the body's heading to the view's: none if either has
+	none) */
+	turned = render_interpolation_body_heading(unit_index, &from_i, &from_j) && view_heading(to, &to_i, &to_j);
+	if (turned)
 	{
 		c = from_i * to_i + from_j * to_j;
 		s = from_i * to_j - from_j * to_i;
+		heading->i = to_i;
+		heading->j = to_j;
+		heading->k = 0.0f;
 	}
 	move->forward.i = c;
 	move->forward.j = s;
 	move->left.i = -s;
 	move->left.j = c;
-	/* (the view between the ticks' place, turned, onto the view drawn's) */
+	/* (turned about the view between the ticks' place, onto the view
+	drawn's) */
 	move->position.x = to->position.x - (c * from->position.x - s * from->position.y);
 	move->position.y = to->position.y - (s * from->position.x + c * from->position.y);
 	move->position.z = to->position.z - from->position.z;
@@ -4902,23 +4958,33 @@ boolean render_interpolation_particle_later(
 	short node_index,
 	real fraction)
 {
-	struct interpolated_object *record;
+	struct interpolated_object *record = NULL;
 	struct later_particle *later;
 	long absolute_index;
+	boolean possible;
 
-	if (!halo_interpolation_enabled() || !interpolated_objects || object_index == NONE ||
-		!(fraction > 0.0f && fraction < 1.0f) || later_particle_count >= MAXIMUM_LATER_PARTICLES)
-	{
+	if (object_index == NONE || !(fraction > 0.0f && fraction < 1.0f))
 		return FALSE;
-	}
 	absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(object_index);
-	if (absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
+	if (interpolated_objects && absolute_index < MAXIMUM_INTERPOLATED_OBJECTS)
+		record = &interpolated_objects[absolute_index];
+	possible = halo_interpolation_enabled() && record && later_particle_count < MAXIMUM_LATER_PARTICLES &&
+		record->object_index == object_index && record->has_previous && node_index >= 0 &&
+		node_index < record->node_count;
+	/* (whether it can wait is the frames' (its emitter's snapshots here),
+	and a particle made now takes the tick's local seed: a demo's playback
+	has the recording's choice, demo.c; one the recording held back that
+	cannot be here is made now on the frames' seed, as the recording's
+	frames made it) */
+	if (!demo_decide_frames(possible))
 		return FALSE;
-	record = &interpolated_objects[absolute_index];
-	if (record->object_index != object_index || !record->has_previous ||
-		node_index < 0 || node_index >= record->node_count)
+	if (!possible)
 	{
-		return FALSE;
+		boolean ticking = random_math_port_begin_cosmetic();
+
+		particle_new(data);
+		random_math_port_end_cosmetic(ticking);
+		return TRUE;
 	}
 	later = &later_particles[later_particle_count++];
 	later->data = *data;

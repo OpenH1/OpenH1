@@ -435,6 +435,7 @@ void render_objects(
 /* port: port/linux/game/first_person_legs.c */
 boolean first_person_legs_wanted(long object_index);
 real_matrix4x3 const *first_person_legs_node_matrices(long object_index, real_matrix4x3 const *nodes);
+real_matrix4x3 const *first_person_legs_shadow_node_matrices(long object_index, real_matrix4x3 const *nodes);
 #ifdef HALO_VR
 /* port: port/linux/game/vr_death.c */
 real_matrix4x3 const *vr_death_body_nodes(long object_index, real_matrix4x3 const *nodes);
@@ -595,13 +596,14 @@ static void render_object_list(
 	{
 		struct object_datum *object = object_get(object_index);
 		/* port: the player's own legs, seen looking down in first person
-		(port/linux/game/first_person_legs.c): its body drawn but its head
-		and arms, nothing it carries */
-		boolean legs = !data->shadow && !render.camera.mirrored &&
+		(port/linux/game/first_person_legs.c): its body drawn from its belly
+		down, nothing it carries; its shadow the whole body's, placed as the
+		legs are */
+		boolean legs = !render.camera.mirrored &&
 			object_is_first_person_camera(object_index) && first_person_legs_wanted(object_index);
-		real_matrix4x3 const *node_matrices = legs ?
-			first_person_legs_node_matrices(object_index, object_get_node_matrices(object_index)) :
-			object_get_node_matrices(object_index);
+		real_matrix4x3 const *node_matrices = !legs ? object_get_node_matrices(object_index) :
+			data->shadow ? first_person_legs_shadow_node_matrices(object_index, object_get_node_matrices(object_index)) :
+			first_person_legs_node_matrices(object_index, object_get_node_matrices(object_index));
 
 #ifdef HALO_VR
 		/* port: the VR mode's dead player's body, seen from where its head
@@ -1316,7 +1318,11 @@ static void render_object(
 	{
 		struct object_datum *object = object_get(data->object_index);
 
-		if (!object_is_first_person_camera(data->object_index) &&
+		/* port: the player's own body casts its shadow in first person
+		with its legs drawn (port/linux/game/first_person_legs.c) */
+		if ((!object_is_first_person_camera(data->object_index) ||
+				(first_person_legs_wanted(data->object_index) && first_person_legs_shadow_node_matrices(
+					data->object_index, object_get_node_matrices(data->object_index)))) &&
 			!TEST_FLAG(object->object.flags, _object_shadowless_bit) &&
 			(!TEST_FLAG(object->object.flags, _object_invisible_bit) ||
 				object->object.first_child_object_index != NONE))

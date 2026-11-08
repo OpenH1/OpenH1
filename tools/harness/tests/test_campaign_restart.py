@@ -47,8 +47,9 @@ NEGATIVE_CONTROLS = {
     # RESTART does not check the saved game is still the one asked about
     "restart-unchecked": (CAMPAIGN_MENU, (" || level != campaign_restart_level)", ")"), "cancel-keeps"),
     # leaving before a checkpoint writes the game state over the saved game
-    "written-without-checkpoint": (GAME_STATE, ("if (player_spawn_count==1 && (game_state_port_saved_game_valid() || "
-                                                "recover_saved_games_hack))", "if (player_spawn_count==1)"),
+    "written-without-checkpoint": (GAME_STATE, ("if (player_spawn_count==1 && !demo_playing() && "
+                                                "(game_state_port_saved_game_valid() || recover_saved_games_hack))",
+                                                "if (player_spawn_count==1 && !demo_playing())"),
                                    "kept-until-checkpoint"),
 }
 

@@ -192,6 +192,7 @@ struct game_options;
 #include "profile_sections.h" /* port: port/linux/include/profile_sections.h */
 #include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 #include "basic_training.h" /* port: port/linux/game/basic_training.c */
+#include "demo.h" /* port: port/linux/game/demo.c */
 
 /* network_game_globals.c's */
 boolean network_game_distributed_client(void);
@@ -380,7 +381,11 @@ static void game_tick_macro_step(
 	/* port: an OpenH1 game's client: the other players' controls of their
 	later sub-steps, as they ran, where they are later than the input just
 	given (port/linux/game/network_substeps.c) */
+	/* port: (what it puts in from the other machines, for the demo:
+	port/linux/game/demo.c) */
+	demo_foreign_begin();
 	network_substeps_actions_given();
+	demo_foreign_end();
 
 	seconds_per_tick = game_globals->players_are_double_speed
 		? 1.0f / (2 * TICKS_PER_SECOND)
@@ -723,6 +728,8 @@ void game_initialize_for_new_map(
 		!game_globals->active);
 
 	halo_load_trace("initialize.begin", NULL); /* port: loading measurement */
+	/* port: the demo being recorded ends with its map (port/linux/game/demo.c) */
+	demo_note_new_map();
 	set_random_seed(game_globals->options.random_seed);
 	/* port: and the local seeds from the game's too (the ticks' and the
 	frames', random_math.c). It was the clock's at startup, with whatever the

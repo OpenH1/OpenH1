@@ -1484,6 +1484,8 @@ static void archive_save(double wait)
 				error ? error.localizedDescription : @(strerror(errno)));
 		dispatch_semaphore_signal(done);
 	});
+	if (wait != 0.0)
+		host_stall_note("metal: the pipeline archive's writing waited for");
 	if (wait != 0.0 && dispatch_semaphore_wait(done, wait < 0.0 ? DISPATCH_TIME_FOREVER :
 		dispatch_time(DISPATCH_TIME_NOW, (int64_t)(wait * NSEC_PER_SEC))) != 0)
 		host_logf(HOST_LOG_INFO, "metal: the pipeline archive not written: not done after %.1f s", wait);
@@ -1696,6 +1698,7 @@ static id<MTLFunction> function_compile(NSString *text, NSString *name)
 	NSError *error = nil;
 	double start = seconds_now(), seconds;
 
+	host_stall_note("metal: a shader compiled");
 	library = [metal.device newLibraryWithSource:text options:compile_options() error:&error];
 	function = library ? [library newFunctionWithName:name] : nil;
 	seconds = seconds_now() - start;
@@ -3393,6 +3396,7 @@ static id<MTLRenderPipelineState> pipeline_state_get(const struct xgpu_metal_pip
 	}
 	if (!state)
 	{
+		host_stall_note("metal: a pipeline made and waited for");
 		made = dispatch_group_create();
 		pipeline_make_later(&key, made);
 		dispatch_group_wait(made, DISPATCH_TIME_FOREVER);
@@ -3456,6 +3460,7 @@ double xgpu_metal_prepared(void)
 
 	metal.preparing_draws = NO;
 	metal.prepared_once = YES;
+	host_stall_note("metal: the map's pipelines waited for");
 	dispatch_group_wait(metal.preparing, DISPATCH_TIME_FOREVER);
 	/* (a safe point: the user's archive written with the map's pipelines,
 	in the background) */

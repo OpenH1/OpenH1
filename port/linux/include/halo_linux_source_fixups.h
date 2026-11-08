@@ -342,6 +342,9 @@ void server_console_output(const char *text);
 int halo_server_debug_echo(void);
 /* ... the level its rotation plays next, NULL if none (game_engine.c) */
 char const *server_director_first_level(void);
+/* the caches cleared at the start, where Settings' CLEAR CACHES asked for
+it (port/linux/src/game_caches.c: shell_xbox.c) */
+void game_caches_start(void);
 /* the cache slots' sources (port/linux/src/xbox_files.c): the size and
 modification time of the map file a slot was copied from, and the name,
 checksum and length of the map its whole copy holds, kept beside it once
@@ -407,6 +410,9 @@ int halo_linux_flick_stick(void);
 asked, which skips a Bink movie as a controller's button does
 (port/linux/src/sdl_platform.c; source/bink/bink_playback.c) */
 int platform_movie_skip_pressed(void);
+/* the player's move and look as the game read them, for the input trace
+(port/linux/src/input_trace.c): a frame's, or a sub-step's */
+void input_trace_player(int controller, int substep, float forward, float strafe, float yaw, float pitch);
 /* the mouse in the menus (source/interface/ui_widget.c) */
 #include "halo_ui_pointer.h"
 

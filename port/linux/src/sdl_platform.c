@@ -28,6 +28,7 @@ and the debug keyboard that the game's console reads.
 #include "server_master.h"
 #include "player_link.h"
 #include "report.h"
+#include "input_trace.h"
 #include "xiso.h"
 #include "map_unpack.h"
 #include "map_import.h"
@@ -1622,14 +1623,32 @@ int host_vulkan_window_open(unsigned int window, unsigned int debug, const char 
 /* (host_vulkan.c's) debug.gpu_stats, debug.gpu_validation (or debug.gl_debug) */
 #define HOST_VULKAN_DEBUG_STATISTICS 1
 #define HOST_VULKAN_DEBUG_VALIDATION 2
-/* display.low_latency, with the debugging settings: on, off (neither: auto) */
+/* display.low_latency, with the debugging settings: on, off (neither: auto);
+and display.vrr's VRR on (platform_vrr: the frames bounded by the display,
+not started for a refresh) */
 #define HOST_VULKAN_LOW_LATENCY_ON 4
 #define HOST_VULKAN_LOW_LATENCY_OFF 8
+#define HOST_VULKAN_VRR 16
+/* port/linux/vulkan/host_vulkan.c: whether the system says VRR is active
+(display.vrr's auto): HOST_VULKAN_VRR_NONE where it says nothing of it;
+gamescope's word (the Steam Deck's, the Steam Frame's), or a Linux
+display's DRM (a CRTC on with VRR_ENABLED), yes or no */
+#define HOST_VULKAN_VRR_NONE 0
+#define HOST_VULKAN_VRR_GAMESCOPE 1
+#define HOST_VULKAN_VRR_DRM 2
+#define HOST_VULKAN_VRR_GAMESCOPE_OFF 3
+#define HOST_VULKAN_VRR_DRM_OFF 4
+#ifndef HALO_ANDROID
+int host_vulkan_vrr(void);
+#endif
+static BOOL platform_vrr(void);
 
 static unsigned int platform_low_latency_flags(void)
 {
 	const char *mode = config_string("display.low_latency");
 
+	if (platform_vrr())
+		return HOST_VULKAN_VRR;
 	if (mode && !strcmp(mode, "on"))
 		return HOST_VULKAN_LOW_LATENCY_ON;
 	if (mode && !strcmp(mode, "off"))
@@ -1950,6 +1969,133 @@ static float platform_refresh_rate(void)
 #endif
 }
 
+/* ---------- display.vrr
+
+A display of variable refresh (G-SYNC, FreeSync, VRR) shows each frame as
+it comes, while the frames come within its range. The game with VRR on
+presents with vsync (FIFO, which waits for the display while the frames
+come faster than its range allows, and never tears) and holds its frames to
+display.vrr_cap_margin a second under the refresh rate (by default 3: 117
+at 120 Hz, 141 at 144),
+or display.max_fps where that is lower: so they stay inside the range and
+the display refreshes when each is ready, without vsync's queue. The frames
+are bounded by the display (at most one waits for it), not started just in
+time for a refresh, which a variable display does not have
+(HOST_VULKAN_VRR).
+
+"on" and "off" are the player's; "auto" turns it on only where the system
+says VRR is active (host_vulkan_vrr: gamescope's word, or a Linux display's
+DRM), asked again every VRR_ASK_MS, so that a display whose compositor
+turns VRR on once the game is fullscreen is followed. Windows says nothing
+reliable of it: there auto is off, and the player turns it on in Settings >
+Video. Not while battery saver is on, whose frames are a whole number of
+refreshes each (battery_saver.c). The choice and its reason are logged as
+they change. The Mac (Metal) and Android have none of it. */
+
+#define VRR_ASK_MS 2000u
+
+/* display.vrr_cap_margin: the frames a second under the refresh rate VRR
+holds the game to, 1 to 10 */
+static float platform_vrr_margin(void)
+{
+	long margin = config_integer("display.vrr_cap_margin");
+
+	return (float)(margin < 1 ? 1 : margin > 10 ? 10 : margin);
+}
+
+/* (platform_frame_rate_apply's: the VRR the window was given, -1 none) */
+static int platform_vrr_applied = -1;
+
+static BOOL platform_vrr(void)
+{
+#if defined(HALO_VULKAN) && !defined(HALO_ANDROID)
+	static unsigned long read_at = (unsigned long)-1;
+	static Uint64 asked_at;
+	static int on = -1;
+	static char reason[160];
+	static float logged_margin;
+	char why[160];
+	const char *mode;
+	int now_on, detected;
+	Uint64 now = SDL_GetTicks();
+
+	mode = config_string("display.vrr");
+	if (on >= 0 && read_at == config_changes() && (strcmp(mode, "auto") || now - asked_at < VRR_ASK_MS))
+		return on;
+	read_at = config_changes();
+	asked_at = now;
+	if (!strcmp(mode, "on"))
+	{
+		now_on = 1;
+		snprintf(why, sizeof(why), "display.vrr is on");
+	}
+	else if (!strcmp(mode, "off"))
+	{
+		now_on = 0;
+		snprintf(why, sizeof(why), "display.vrr is off");
+	}
+	else
+	{
+		detected = host_vulkan_vrr();
+		now_on = detected == HOST_VULKAN_VRR_GAMESCOPE || detected == HOST_VULKAN_VRR_DRM;
+		snprintf(why, sizeof(why), "auto: %s", detected == HOST_VULKAN_VRR_GAMESCOPE ? "gamescope says VRR is active" :
+			detected == HOST_VULKAN_VRR_DRM ? "the display's DRM output has VRR enabled" :
+			detected == HOST_VULKAN_VRR_GAMESCOPE_OFF ? "gamescope says VRR is not active" :
+			detected == HOST_VULKAN_VRR_DRM_OFF ? "no display's DRM output has VRR enabled" :
+			"the system says nothing of VRR (display.vrr = \"on\" for a G-SYNC or FreeSync display)");
+	}
+	if (now_on && battery_saver_active())
+	{
+		now_on = 0;
+		snprintf(why, sizeof(why), "battery saver is on");
+	}
+	if (now_on != on || strcmp(why, reason) || (now_on && platform_vrr_margin() != logged_margin))
+	{
+		float refresh = platform_refresh_rate();
+
+		if (now_on && refresh > platform_vrr_margin())
+			platform_log("display: VRR on (%s): vsync on, at most %.2f frames a second, display.vrr_cap_margin %.0f "
+				"under the display's %.2f Hz", why, (double)(refresh - platform_vrr_margin()),
+				(double)platform_vrr_margin(), (double)refresh);
+		else if (now_on)
+			platform_log("display: VRR on (%s): vsync on, the display's refresh rate not known yet", why);
+		else
+			platform_log("display: VRR off (%s)", why);
+		snprintf(reason, sizeof(reason), "%s", why);
+		logged_margin = platform_vrr_margin();
+	}
+	on = now_on;
+	return on;
+#else
+	return FALSE;
+#endif
+}
+
+int platform_vrr_detected(void)
+{
+#if defined(HALO_METAL)
+	return PLATFORM_VRR_SYSTEM;
+#elif defined(HALO_ANDROID) || !defined(HALO_VULKAN)
+	return PLATFORM_VRR_NOT_HERE;
+#elif defined(HALO_WINDOWS)
+	return PLATFORM_VRR_UNKNOWN;
+#else
+	/* (asked at most every VRR_ASK_MS: the menus ask each frame) */
+	static Uint64 asked_at;
+	static int found = -1;
+	Uint64 now = SDL_GetTicks();
+	int detected;
+
+	if (found < 0 || now - asked_at >= VRR_ASK_MS)
+	{
+		detected = host_vulkan_vrr();
+		found = detected == HOST_VULKAN_VRR_GAMESCOPE || detected == HOST_VULKAN_VRR_DRM;
+		asked_at = now;
+	}
+	return found ? PLATFORM_VRR_FOUND : PLATFORM_VRR_NONE;
+#endif
+}
+
 /* the refreshes each frame is shown for, 0 for none (vsync off):
 display.vsync's 1; and on the Linux builds, with vsync off, a display.max_fps
 of the display's refresh rate or a whole fraction of it (60 at 60 Hz, 30 or
@@ -1957,8 +2103,8 @@ of the display's refresh rate or a whole fraction of it (60 at 60 Hz, 30 or
 the display's own rate drift against its refreshes, and now and then one is
 shown twice and the next not at all (judder, while the frame rate counter
 says 60). In step with the display, display.low_latency starts each in time
-for its refresh, for less input lag than the clock's. (Not Windows', whose
-display.low_latency is off until measured, nor the Mac's, whose frames
+for its refresh, for less input lag than the clock's. (Not Windows', not
+measured there in step with its display, nor the Mac's, whose frames
 with vsync off are taken at the display link's refreshes already.) */
 static int platform_swap_interval(void)
 {
@@ -1968,7 +2114,7 @@ static int platform_swap_interval(void)
 	int interval;
 #endif
 
-	if (config_boolean("display.vsync"))
+	if (config_boolean("display.vsync") || platform_vrr())
 		return 1;
 #if defined(HALO_VULKAN) && !defined(HALO_ANDROID) && !defined(HALO_WINDOWS)
 	maximum = config_integer("display.max_fps");
@@ -2027,6 +2173,7 @@ void platform_frame_rate_apply(void)
 	if (!platform_window)
 		return;
 	interval = platform_interval_take();
+	platform_vrr_applied = platform_vrr();
 #if defined(HALO_METAL)
 	host_metal_vsync(platform_vsync());
 	host_metal_battery_saver(saving);
@@ -2076,8 +2223,20 @@ static Uint64 frame_interval_ns(void)
 	{
 		platform_frame_rate_apply();
 	}
+	/* (VRR turned on or off: auto's system, or battery saver) */
+	if (platform_interval >= 0 && platform_vrr() != platform_vrr_applied)
+		platform_frame_rate_apply();
 	vsync = platform_vsync();
-	if (!vsync && maximum >= 0)
+	if (platform_vrr())
+	{
+		/* (VRR's ceiling, or display.max_fps under it) */
+		float refresh = platform_refresh_rate();
+
+		rate = refresh > platform_vrr_margin() ? refresh - platform_vrr_margin() : 0.0f;
+		if (maximum > 0 && (!rate || (float)maximum < rate))
+			rate = (float)maximum;
+	}
+	else if (!vsync && maximum >= 0)
 		rate = maximum ? (float)maximum : 2.0f * (platform_refresh_rate() > 0.0f ? platform_refresh_rate() : 60.0f);
 	if (battery_saver_active() && !vsync)
 	{
@@ -2424,12 +2583,17 @@ static void queue_test_keystroke(BYTE virtual_key, CHAR ascii)
 	}
 }
 
+/* (input_lock) Return held by test_menu_keys, and the mouse buttons held by
+the scripted player's mouse (halo_test_input_pump, a bit each), which no
+events hold (input_held_reconcile leaves them) */
+static int test_enter_held;
+static unsigned int test_buttons_held;
+
 /* (input_lock) debug.test_input "menu:...": its "type:" and "enter"
 (platform_test_menu_keys), as the keyboard would type them: the letters'
 and digits' keystrokes, and Return held and its keystroke */
 static void test_menu_keys(void)
 {
-	static int enter_held;
 	char typed[64];
 	int enter, index;
 
@@ -2447,9 +2611,9 @@ static void test_menu_keys(void)
 		if (enter)
 			queue_test_keystroke(0x0d, '\r');
 	}
-	if (enter != enter_held)
+	if (enter != test_enter_held)
 	{
-		enter_held = enter;
+		test_enter_held = enter;
 		input_state.keys[SDL_SCANCODE_RETURN] = (unsigned char)enter;
 	}
 }
@@ -2982,6 +3146,156 @@ static void orientation_apply(void)
 }
 #endif
 
+#ifdef HALO_GUEST
+/* port/android/guest/runtime/guest_host.h: the keys and mouse buttons SDL
+holds, and those the system has had up a while (host_sdl.c) */
+unsigned int host_sdl_input_held(unsigned char *keys, int count);
+#endif
+
+/* (the input trace's clock: input_trace.c) */
+unsigned long long input_trace_now_ns(void)
+{
+	return (unsigned long long)SDL_GetTicksNS();
+}
+
+/* an event as the input trace keeps it (input_trace.c) */
+static void input_trace_event(const SDL_Event *event)
+{
+	static const struct
+	{
+		Uint32 type;
+		int what;
+	} window_events[] =
+	{
+		{ SDL_EVENT_WINDOW_FOCUS_GAINED, INPUT_TRACE_FOCUS_GAINED },
+		{ SDL_EVENT_WINDOW_FOCUS_LOST, INPUT_TRACE_FOCUS_LOST },
+		{ SDL_EVENT_WINDOW_SHOWN, INPUT_TRACE_SHOWN },
+		{ SDL_EVENT_WINDOW_HIDDEN, INPUT_TRACE_HIDDEN },
+		{ SDL_EVENT_WINDOW_EXPOSED, INPUT_TRACE_EXPOSED },
+		{ SDL_EVENT_WINDOW_OCCLUDED, INPUT_TRACE_OCCLUDED },
+		{ SDL_EVENT_WINDOW_MINIMIZED, INPUT_TRACE_MINIMIZED },
+		{ SDL_EVENT_WINDOW_RESTORED, INPUT_TRACE_RESTORED },
+		{ SDL_EVENT_WINDOW_ENTER_FULLSCREEN, INPUT_TRACE_FULLSCREEN },
+		{ SDL_EVENT_WINDOW_LEAVE_FULLSCREEN, INPUT_TRACE_WINDOWED },
+		{ SDL_EVENT_WINDOW_MOUSE_ENTER, INPUT_TRACE_MOUSE_ENTERED },
+		{ SDL_EVENT_WINDOW_MOUSE_LEAVE, INPUT_TRACE_MOUSE_LEFT },
+		{ SDL_EVENT_KEYBOARD_REMOVED, INPUT_TRACE_KEYBOARD_REMOVED },
+	};
+	size_t index;
+
+	switch (event->type)
+	{
+	case SDL_EVENT_KEY_DOWN:
+	case SDL_EVENT_KEY_UP:
+		input_trace_key(event->key.timestamp, event->key.scancode, event->key.down, event->key.repeat, event->key.raw);
+		return;
+	case SDL_EVENT_MOUSE_BUTTON_DOWN:
+	case SDL_EVENT_MOUSE_BUTTON_UP:
+		input_trace_mouse_button(event->button.timestamp, event->button.button, event->button.down,
+			input_state.ui_pointer);
+		return;
+	case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+	case SDL_EVENT_GAMEPAD_BUTTON_UP:
+		input_trace_gamepad_button(event->gbutton.timestamp, event->gbutton.which, event->gbutton.button,
+			event->gbutton.down);
+		return;
+	case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+		input_trace_gamepad_axis(event->gaxis.timestamp, event->gaxis.which, event->gaxis.axis, event->gaxis.value);
+		return;
+	case SDL_EVENT_GAMEPAD_ADDED:
+	case SDL_EVENT_GAMEPAD_REMOVED:
+		input_trace_gamepad_device(event->gdevice.timestamp, event->gdevice.which,
+			event->type == SDL_EVENT_GAMEPAD_ADDED);
+		return;
+	default:
+		break;
+	}
+	for (index = 0; index < sizeof(window_events) / sizeof(window_events[0]); index++)
+	{
+		if (window_events[index].type == event->type)
+			input_trace_window(event->common.timestamp, window_events[index].what);
+	}
+}
+
+/* (input_lock, once a window's events are taken) The keys and mouse
+buttons held are what the events left held, and an event can be lost on
+its way (SDL's queue full, which drops its events but keeps its state; a
+loop that takes the events and drops them, as a download's window does:
+updater.c), or never come (macOS lets a key's release go astray: the
+system's state has the key up, SDL's still down). A key or button held
+counts only while SDL (host_sdl_input_held: SDL_GetKeyboardState,
+SDL_GetMouseState) holds it too, and, on macOS, while the system has not
+had it up for a while; what is let go of here is traced, logged, and the
+last seconds of the trace logged with it (once a minute). Only what is held
+is let go of: a key's press still counts once, latched (keys_pressed), and
+nothing is held that its events did not hold. What a scripted run holds
+(test_enter_held, test_buttons_held) stays. */
+static void input_held_reconcile(void)
+{
+	static unsigned char held[SDL_SCANCODE_COUNT];
+	static Uint64 logged_ms;
+	unsigned int buttons;
+	int scancode, button, released = 0;
+
+#ifdef HALO_GUEST
+	buttons = host_sdl_input_held(held, SDL_SCANCODE_COUNT);
+#else
+	{
+		int count = 0;
+		const bool *state = SDL_GetKeyboardState(&count);
+
+		for (scancode = 0; scancode < SDL_SCANCODE_COUNT; scancode++)
+			held[scancode] = scancode < count && state && state[scancode] ? 1 : 0;
+		buttons = (unsigned int)SDL_GetMouseState(NULL, NULL) & 0xffffu;
+	}
+#endif
+	for (scancode = 0; scancode < SDL_SCANCODE_COUNT; scancode++)
+	{
+		int by;
+
+		if (!input_state.keys[scancode] || ((held[scancode] & 1) && !(held[scancode] & 2)))
+			continue;
+		if (scancode == SDL_SCANCODE_RETURN && test_enter_held)
+			continue;
+		by = held[scancode] & 1 ? INPUT_TRACE_RELEASED_BY_SYSTEM : INPUT_TRACE_RELEASED_BY_SDL;
+		input_state.keys[scancode] = 0;
+		input_trace_release(scancode, by);
+		platform_log("input: %s held by its events, but %s; let go of", SDL_GetScancodeName((SDL_Scancode)scancode),
+			by == INPUT_TRACE_RELEASED_BY_SYSTEM ? "the system has it up" : "SDL has it up");
+		released++;
+	}
+	for (button = 1; button < PLATFORM_MOUSE_BUTTON_COUNT; button++)
+	{
+		unsigned int mask = SDL_BUTTON_MASK(button);
+		int by;
+
+		if (!input_state.mouse_buttons[button])
+			test_buttons_held &= ~(1u << button);
+		if (!input_state.mouse_buttons[button] || ((buttons & mask) && !(buttons & (mask << 16))) ||
+			(test_buttons_held & (1u << button)))
+		{
+			continue;
+		}
+		by = buttons & mask ? INPUT_TRACE_RELEASED_BY_SYSTEM : INPUT_TRACE_RELEASED_BY_SDL;
+		input_state.mouse_buttons[button] = 0;
+		input_trace_release(INPUT_MOUSE + button, by);
+		platform_log("input: mouse button %d held by its events, but %s; let go of", button,
+			by == INPUT_TRACE_RELEASED_BY_SYSTEM ? "the system has it up" : "SDL has it up");
+		released++;
+	}
+	if (released && (!logged_ms || SDL_GetTicks() - logged_ms >= 60000))
+	{
+		logged_ms = SDL_GetTicks();
+		input_trace_log("a key or button its events left held was let go of", 10);
+	}
+}
+
+/* (atexit, debug.input_trace) the trace as the game ends */
+static void input_trace_at_exit(void)
+{
+	input_trace_log("the game ends", INPUT_TRACE_SECONDS);
+}
+
 void platform_pump_events(void)
 {
 	SDL_Event event;
@@ -3019,6 +3333,17 @@ void platform_pump_events(void)
 #ifndef HALO_ANDROID
 	test_menu_mouse();
 #endif
+	{
+		static BOOL trace_at_exit;
+
+		/* (debug.input_trace: and as the game ends) */
+		if (!trace_at_exit)
+		{
+			trace_at_exit = TRUE;
+			if (config_boolean("debug.input_trace"))
+				atexit(input_trace_at_exit);
+		}
+	}
 	pthread_mutex_lock(&input_lock);
 #ifndef HALO_ANDROID
 	/* (the scoreboard closed, or no longer offering it: the pointer goes) */
@@ -3030,6 +3355,7 @@ void platform_pump_events(void)
 #endif
 	while (SDL_PollEvent(&event))
 	{
+		input_trace_event(&event);
 		switch (event.type)
 		{
 		case SDL_EVENT_QUIT:
@@ -3276,7 +3602,13 @@ void platform_pump_events(void)
 			input_state.mouse_wheel += event.wheel.y;
 			break;
 		case SDL_EVENT_WINDOW_FOCUS_LOST:
+			/* (debug.input_trace: the trace, as the window lets the keys go) */
+			if (config_boolean("debug.input_trace"))
+				input_trace_log("the window lost the focus", INPUT_TRACE_SECONDS);
+			/* (and what was pressed before it went, which would otherwise
+			count when it comes back) */
 			memset(input_state.keys, 0, sizeof(input_state.keys));
+			memset(keys_pressed, 0, sizeof(keys_pressed));
 			memset(input_state.mouse_buttons, 0, sizeof(input_state.mouse_buttons));
 			memset(mouse_buttons_pressed, 0, sizeof(mouse_buttons_pressed));
 			gamepad_presses_clear();
@@ -3401,8 +3733,20 @@ void platform_pump_events(void)
 		}
 	}
 #endif
+	input_held_reconcile();
 	test_menu_keys();
-	halo_test_input_pump(&input_state, mouse_buttons_pressed);
+	{
+		unsigned char before[PLATFORM_MOUSE_BUTTON_COUNT];
+		int button;
+
+		memcpy(before, input_state.mouse_buttons, sizeof(before));
+		halo_test_input_pump(&input_state, mouse_buttons_pressed);
+		for (button = 0; button < PLATFORM_MOUSE_BUTTON_COUNT; button++)
+		{
+			if (!before[button] && input_state.mouse_buttons[button])
+				test_buttons_held |= 1u << button;
+		}
+	}
 	pthread_mutex_unlock(&input_lock);
 	looked_at_clipboard = TRUE;
 	platform_invite_clipboard(look_at_clipboard);
@@ -3756,6 +4100,14 @@ void platform_input_read(struct platform_input_state *state, BOOL consume_motion
 	{
 		int scancode;
 
+		/* (the input trace: the reading as the controller takes it, and
+		what it latched) */
+		input_trace_reading(input_state.keys, SDL_SCANCODE_COUNT, input_state.mouse_buttons,
+			PLATFORM_MOUSE_BUTTON_COUNT, keys_pressed, mouse_buttons_pressed,
+			(input_state.menus ? INPUT_TRACE_READING_MENUS : 0) |
+			(input_state.focused ? INPUT_TRACE_READING_FOCUSED : 0) |
+			(input_state.ui_pointer ? INPUT_TRACE_READING_POINTER : 0) |
+			(input_state.mouse_released ? INPUT_TRACE_READING_RELEASED : 0));
 		for (scancode = 0; scancode < SDL_SCANCODE_COUNT; scancode++)
 		{
 			state->keys[scancode] |= keys_pressed[scancode];

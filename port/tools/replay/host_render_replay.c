@@ -83,6 +83,29 @@ void host_fatal(const char *format, ...)
 	exit(2);
 }
 
+/* (no game's frames: no stalls detected, host_stall.c) */
+void host_stall_frame(void)
+{
+}
+
+void host_stall_render_thread(void)
+{
+}
+
+void host_stall_note(const char *what)
+{
+	(void)what;
+}
+
+void host_stall_loading(int active)
+{
+	(void)active;
+}
+
+void host_stall_summary(void)
+{
+}
+
 /* the guest's memory: pages put back (readable) and their generations */
 static size_t page_size;
 static uint8_t *pages_restored;
@@ -1625,7 +1648,7 @@ static unsigned char *deflate_bytes(const unsigned char *data, size_t size, size
 
 The service's pictures are written as they are, uncompressed (deflate's
 stored blocks): a frame's PNG in a few milliseconds, where SDL's took 130
-ms of a 1280x720 frame for a file two thirds as large, and the Inspector
+ms of a 1280x720 frame for a file two thirds as large, and a client
 waits for each. */
 
 static uint32_t crc_table[8][256];
@@ -2816,8 +2839,8 @@ static void serve_info(struct text *text)
 {
 	const struct frame *last = recording.frame_count ? &recording.frames[recording.frame_count - 1] : NULL;
 
-	text_printf(text, "{\"ok\":true,\"frames\":%u,\"width\":%u,\"height\":%u,\"backend\":\"%s\",\"build\":\"%s\","
-		"\"marks\":%s,\"records\":%u}", recording.frame_count, last ? last->width : 0, last ? last->height : 0,
+	text_printf(text, "{\"ok\":true,\"protocol\":%u,\"frames\":%u,\"width\":%u,\"height\":%u,\"backend\":\"%s\",\"build\":\"%s\","
+		"\"marks\":%s,\"records\":%u}", HOST_RENDER_REPLAY_PROTOCOL, recording.frame_count, last ? last->width : 0, last ? last->height : 0,
 		platform->backend, HALO_REPLAY_BUILD, marks.present ? "true" : "false", recording.record_count);
 }
 

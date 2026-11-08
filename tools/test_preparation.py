@@ -26,6 +26,7 @@ static uint64_t monotonic_nanoseconds(void) { return clock_now; }
 static void host_load_trace(const char *phase, const char *format, ...) {
     (void)phase; (void)format;
 }
+static void host_stall_loading(int active) { (void)active; }
 static uint64_t callback(void *context, const struct loading_presentation_frame *frame) {
     (void)context;
     if (frame->active && !frame->ready) { clock_now += duration; calls++; }

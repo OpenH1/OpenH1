@@ -380,6 +380,12 @@ def arrows_bounds(height: int, left: int, right: int) -> tuple:
             f"{y} {right} {y + ARROW_SM_HEIGHT} {right + ARROW_SM_WIDTH}")
 # the Quality row's pictures in the panel (its stills: SETTINGS_STILLS)
 SETTINGS_STILL_WIDTH, SETTINGS_STILL_HEIGHT = 96, 60
+# (the panel's pictures' corners, rounded as their frames are: still_frame's
+# rim, SETTINGS_STILL_RIM wide, is drawn this far in, its outer edge at the
+# picture's; tools/ce_menus.py's Art.still cuts each picture's corners to
+# it, and draws a value's picture its rim, SETTINGS_PICTURE_RIM: #786)
+SETTINGS_STILL_RADIUS, SETTINGS_STILL_RIM = 4.75, 1.5
+SETTINGS_PICTURE_RIM = "#2995ff"
 SETTINGS_BLUE = "#FF2896FF"
 SETTINGS_DIM = "#FF6F9CD0"
 SETTINGS = "main_menu/settings"
@@ -508,15 +514,20 @@ def _page_screen(folder: str, screen: str) -> str:
 # (a <bitmap> name: TITLES), and for a tab its name
 ADVANCED = ("video_settings/advanced", "advanced_graphics_screen")
 FIRST_PERSON = ("video_settings/first_person", "first_person_screen")
+# (display.vsync, display.vrr and its margin, display.max_fps and
+# display.low_latency: how the frames meet the display)
+FRAME_RATE = ("video_settings/frame_rate", "frame_rate_screen")
 # (display.gamma, and display.hdr's settings and the display's peak on the
 # renderers that draw it)
 BRIGHTNESS_PAGE = ("video_settings/brightness", "brightness_screen")
 # (Android's: the picture on a tall screen, and portrait's frame)
 SCREEN_LAYOUT = ("video_settings/screen_layout", "screen_layout_screen")
-# (First Person's shields: the arms' flare, its color, the overshield and its color; their
-# own page, so that First Person's view rows fit)
-SHIELDS = ("video_settings/first_person/shields", "shields_screen")
-# (First Person's weapon position: every weapon's offsets and turns, and in a
+# (First Person's WEAPON & BODY: what of you is drawn in first person, the
+# weapon and hands (their field of view, their place), the legs, and the
+# shields on the arms, their colors and the overshield's; their own page, so
+# that First Person's view rows fit, #776)
+WEAPON_BODY = ("video_settings/first_person/weapon_body", "weapon_body_screen")
+# (Weapon & Body's weapon position: every weapon's offsets and turns, and in a
 # game the held weapon's own: menu_functions.c's viewmodel_weapon_rows_show)
 WEAPON_POSITION = ("video_settings/first_person/weapon_position", "weapon_position_screen")
 CONTROLLER = ("gamepad_setup", "gamepad_setup_screen")
@@ -565,7 +576,7 @@ REMAP_HANDLERS = ['<on event="x" run="port controller clear"/>',
 # hdr_display_show's, the display's peak
 SETTINGS_STATUS_ROWS = {"discord_account", "link_status", "link_unlink",
                         *(f"link_master_{n}" for n in range(1, 5)), "hdr_display",
-                        "viewmodel_weapon_reset", "gyro_found", "gyro_calibrate",
+                        "viewmodel_weapon_reset", "gyro_found", "gyro_calibrate", "clear_caches",
                         "remap_player", "remap_group", *(f"pad_{n}" for n in range(1, REMAP_ROWS + 1))}
 # the rows whose labels menu_functions.c writes (a master server's host): the
 # label's text its own, not its list's; their values the narrower column at
@@ -620,16 +631,9 @@ PAGES = {
             # port/linux/game/menu_tags.c adds the display's rates)
             ("REFRESH RATE", "display.refresh_rate", [("AUTO", "0")],
              "How many times a second the display shows a picture while the game is fullscreen. Auto keeps the "
-             "display's own. VSync and Frame Rate Limit's Auto follow it.", "computer"),
-            ("VSYNC", "display.vsync", ON_OFF,
-             "Shows each frame at a refresh of the display: even motion that never tears, at the display's "
-             "refresh rate. On Linux and the Steam Deck each frame starts just in time for its refresh, so it adds "
-             "almost no input lag; it is on in the Steam Deck's Game Mode.", None),
-            # (shown while VSync shows OFF: menu_functions.c's max_fps_row_show)
-            ("FRAME RATE LIMIT", "display.max_fps", FRAME_RATE_LIMITS,
-             "The most frames drawn a second. Auto is twice the display's refresh rate. More feels smoother and "
-             "uses more power; None draws as fast as it can. On Linux, the display's refresh rate (or half of it) "
-             "is shown in step with the display.|Click the number (or press A) to type 10 to 1000.", "desktop"),
+             "display's own. VSync and Max FPS's Auto follow it.", "computer"),
+            ("FRAME RATE & SYNC ›", None, _page_screen(*FRAME_RATE),
+             "VSync, variable refresh (G-SYNC, FreeSync), the most frames a second and low latency.", None),
             ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
              "How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini "
              "Projection (First Person). Passenger seats use it too; driver and gunner: First Person.|Click the "
@@ -642,8 +646,8 @@ PAGES = {
              "Where the picture sits on a screen taller than it, its shape, and the frame around it in portrait.",
              "android"),
             ("FIRST PERSON ›", None, _page_screen(*FIRST_PERSON),
-             "Your weapon's field of view and whether it is drawn, the Panini projection, how far you see, your "
-             "legs and arms, your shield's color, and the view from a vehicle's passenger seat.", None),
+             "The vehicles' and scopes' fields of view, the Panini projection, how far you see, the reticle, a "
+             "passenger's view, and your weapon, body and shields.", None),
             # (port/linux/src/bink_movie.c; the help says where the movies go:
             # MOVIES_HELP)
             ("STARTUP MOVIES", "display.movies", ON_OFF, MOVIES_HELP, None),
@@ -859,7 +863,7 @@ PAGES = {
     },
     "profile_settings": {
         "screen": "profile_settings_screen", "tab": "PROFILES",
-        "about": "Your player profiles, your name and color, and the disk space the maps take.",
+        "about": "Your player profiles, your name and color, and the disk space the maps and caches take.",
         "rows": [
             # (with no profile, NAME, COLOR and MANAGE PROFILES are hidden and
             # CREATE PROFILE shown; in a game, those whose screens are
@@ -882,6 +886,13 @@ PAGES = {
             # nearer: port/linux/src/map_cache.c, port/linux/game/map_cache_prefill.c)
             (SECTION, "STORAGE"),
             ("MAP STORAGE", "game.map_cache_megabytes", MAP_STORAGE, MAP_STORAGE_HELP, None),
+            # (the caches cleared at the next start: their size its value,
+            # menu_functions.c's clear_caches_show; port/linux/src/game_caches.c)
+            ("CLEAR CACHES", None, None,
+             "Deletes what the game keeps only to start and load faster: the unpacked maps, their prepared "
+             "draws, the menus' pictures, the ambient occlusion's volumes and the GPU's pipelines. They go at the "
+             "next start and are made again as you play.|Select it twice: the first asks, the second clears.",
+             None, "clear_caches", "port settings clear caches"),
             # (port/linux/src/report.c: saved at the next frame, and a GitHub
             # issue opened in the browser, filled in; the game sends nothing)
             (SECTION, "HELP"),
@@ -1016,16 +1027,41 @@ PAGES = {
             # own, port/linux/README.md; its OVERSHIELD row is First Person's)
         ],
     },
+    FRAME_RATE[0]: {
+        "screen": FRAME_RATE[1], "title": "FRAME RATE & SYNC",
+        "rows": [
+            ("VSYNC", "display.vsync", ON_OFF,
+             "Shows each frame at a refresh of the display: even motion that never tears. With Low Latency it adds "
+             "almost no input lag. It is on in the Steam Deck's Game Mode.", None),
+            # (display.vrr: sdl_platform.c's platform_vrr; on every build, its
+            # AUTO and its words what the system says, dimmed on the Mac:
+            # menu_tags.c's spinner_split, menu_functions.c's vrr_rows_show and
+            # vrr_panel, which has the words shown)
+            ("VARIABLE REFRESH", "display.vrr", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
+             "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
+             "each frame shows as soon as it is ready, without tearing. Auto turns it on where the system says VRR "
+             "is on.",
+             "desktop"),
+            # (dimmed while VRR is not on: vrr_rows_show)
+            ("VRR FRAME CAP", "display.vrr_cap_margin", [(str(n), str(n)) for n in range(1, 11)],
+             "Frames a second kept under the refresh rate, so the game stays in the screen's VRR range and never "
+             "falls back to VSync. Lower is closer to the most frames; higher is safer on a screen with a narrow "
+             "range.|Used while Variable Refresh is on.",
+             "desktop"),
+            # (shown while VSync shows OFF: menu_functions.c's max_fps_row_show)
+            ("MAX FPS", "display.max_fps", FRAME_RATE_LIMITS,
+             "The most frames drawn a second with VSync off. Auto is twice the display's refresh rate. More feels "
+             "smoother and uses more power; None draws as fast as it can.|Click the number (or press A) to type 10 "
+             "to 1000.", "desktop"),
+            ("LOW LATENCY", "display.low_latency", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
+             "With VSync on, starts each frame just in time for the refresh it is shown at, so a press reaches the "
+             "screen sooner. Off starts each frame as soon as the one before is waiting. Auto is on.", None),
+        ],
+    },
     FIRST_PERSON[0]: {
         "screen": FIRST_PERSON[1], "title": "FIRST PERSON",
         "rows": [
             (SECTION, "VIEW"),
-            ("WEAPON FIELD OF VIEW", "display.viewmodel_fov", WEAPON_FIELDS_OF_VIEW,
-             "How wide your weapon and hands are drawn, in degrees across a 16:9 screen: wider draws them "
-             "smaller. Default keeps the weapon's own view.|Click the number (or press A) to type any from 20 to 150.", None),
-            ("WEAPON POSITION ›", None, _page_screen(*WEAPON_POSITION),
-             "Moves and turns your weapon and hands on the screen, for every weapon and, in a game, for the one "
-             "you hold.", None),
             ("VEHICLE FIELD OF VIEW", "display.vehicle_fov", VEHICLE_FIELDS_OF_VIEW,
              "How wide you see from a vehicle's third-person seats (driver, gunner), in degrees across a 16:9 "
              "screen. Passenger seats use your Field of View. Default keeps the game's view; Match uses your Field "
@@ -1058,16 +1094,12 @@ PAGES = {
             ("RETICLE LOWERED BY", "display.lowered_reticle_amount", LOWERED_RETICLE_AMOUNTS,
              "How far below the middle the lowered reticle sits, in percent of the screen's height. 10 is about "
              "Halo 2's and 3's.|Click the number (or press A) to type any from 0 to 30.", None),
-            ("WEAPON AND HANDS", "display.viewmodel_visible", [("SHOW", "true"), ("HIDE", "false")],
-             "Draws your weapon, your hands and what they hold. Hide clears the view; you still fire, reload and "
-             "hear them.", None),
-            ("LEGS", "display.first_person_legs", ON_OFF,
-             "Your legs when you look down, moving as you run: your body as the others see it.", None),
             ("PASSENGER VIEW", "display.passenger_third_person", [("BEHIND", "true"), ("SEAT", "false")],
              "Riding in a Warthog or a Scorpion in the campaign and co-op: the view from behind the vehicle, or "
              "from your seat. Behind, the weapon cannot zoom.", None),
-            ("SHIELDS ›", None, _page_screen(*SHIELDS),
-             "Your shield's flare on your first-person arms, its color, and an overshield's glow.", None),
+            ("WEAPON & BODY ›", None, _page_screen(*WEAPON_BODY),
+             "Your weapon and hands: whether they are drawn, their field of view and their place. Your legs, and "
+             "your shield's flare on your arms, its color and an overshield's.", None),
         ],
     },
     WEAPON_POSITION[0]: {
@@ -1122,9 +1154,22 @@ PAGES = {
              "OK.", None, "viewmodel_weapon_reset", "port settings weapon reset"),
         ],
     },
-    SHIELDS[0]: {
-        "screen": SHIELDS[1], "title": "SHIELDS",
+    WEAPON_BODY[0]: {
+        "screen": WEAPON_BODY[1], "title": "WEAPON & BODY",
         "rows": [
+            (SECTION, "WEAPON"),
+            ("WEAPON AND HANDS", "display.viewmodel_visible", [("SHOW", "true"), ("HIDE", "false")],
+             "Draws your weapon, your hands and what they hold. Hide clears the view; you still fire, reload and "
+             "hear them.", None),
+            ("WEAPON FIELD OF VIEW", "display.viewmodel_fov", WEAPON_FIELDS_OF_VIEW,
+             "How wide your weapon and hands are drawn, in degrees across a 16:9 screen: wider draws them "
+             "smaller. Default keeps the weapon's own view.|Click the number (or press A) to type any from 20 to 150.", None),
+            ("WEAPON POSITION ›", None, _page_screen(*WEAPON_POSITION),
+             "Moves and turns your weapon and hands on the screen, for every weapon and, in a game, for the one "
+             "you hold.", None),
+            (SECTION, "BODY"),
+            ("LEGS", "display.first_person_legs", ON_OFF,
+             "Your legs when you look down, moving as you run: your body as the others see it.", None),
             (SECTION, "SHIELDS"),
             ("ARM SHIELDS", "display.viewmodel_shield", ON_OFF,
              "When your shield takes a hit, its flare shows on your first-person arms too, as on your body, "
@@ -2142,6 +2187,7 @@ def settings_pictures() -> list:
     row_w, row_h = SETTINGS_ROW_WIDTH, SETTINGS_ROW_HEIGHT
     tab_w, tab_h = SETTINGS_TAB_WIDTH, SETTINGS_TAB_HEIGHT
     still_w, still_h = SETTINGS_STILL_WIDTH, SETTINGS_STILL_HEIGHT
+    radius, rim = SETTINGS_STILL_RADIUS, SETTINGS_STILL_RIM
     pictures = [
         # (a row: nothing, and while chosen the option_bkds redraw's framed
         # bar)
@@ -2183,9 +2229,9 @@ def settings_pictures() -> list:
             _rounded(SETTINGS_PANEL_WIDTH, height, 1, 9.5, "#000e23", 0.88, "#2995ff", 2)]),
             SETTINGS_PANEL_WIDTH, height)]))
     pictures.append((f"{SETTINGS}/still_frame", [
-        (_svg(still_w, still_h, [_rounded(still_w, still_h, 0.75, 4, stroke="#1d4f8a", stroke_width=1.5)]),
-         still_w, still_h),
-        (_svg(still_w, still_h, [_rounded(still_w, still_h, 1, 4, stroke="#2995ff", stroke_width=2)]),
+        (_svg(still_w, still_h, [_rounded(still_w, still_h, rim / 2, radius - rim / 2, stroke="#1d4f8a",
+                                          stroke_width=rim)]), still_w, still_h),
+        (_svg(still_w, still_h, [_rounded(still_w, still_h, 1, radius - 1, stroke="#2995ff", stroke_width=2)]),
          still_w, still_h)]))
     return pictures
 
@@ -2236,13 +2282,14 @@ SETTINGS_PICTURE_FILES = {
 # NON_HANDDRAWN.md's words for them (tools/ce_menus.py)
 SETTINGS_STILLS_MADE = [
     "Settings' Quality row shows these two small screenshots of the game, the same view drawn by each preset",
-    "(`port/assets/menus/stills`, shipped as they are). They are this port's own drawing of the game: a local",
+    "(`port/assets/menus/stills`). They are this port's own drawing of the game: a local",
     "Slayer game on Blood Gulch (`debug.network_test = \"local:bloodgulch:slayer\"`, `debug.random_seed = 7`,",
     "four bots), the same frame of each run captured offscreen by the macOS build at 1600x1200",
     "(`debug.screenshot_every`), cropped to 16:10, scaled to 288x180 (three times their size in the menu) and",
     "reduced to 96 colors for size. The pictures of other rows' values are made the same way at the frame 12 s",
     "into the game with the setting set, 320x200 (twice their size in the menu), reduced to 64 colors: the whole",
-    "view, or a part of it at 1:1 or larger.",
+    "view, or a part of it at 1:1 or larger. The menus ship them with their corners cut round, and the others'",
+    "framed (`ce/port/stills`, tools/ce_menus.py's `rounded_still`).",
 ]
 
 
@@ -2534,6 +2581,10 @@ MULTIPLAYER_LINE_PLACE = (28, 375)
 HUB_LIST_STEP = 27
 HUB_SECTION_GAP = 6
 HUB_GAMETYPES_GAP = 6
+# (MATCHMAKING, PLAY ONLINE's first item, is left off Multiplayer's list and
+# tiles until matchmaking is decided, #813: its screen, _matchmaking, and
+# matchmaking.c stay, and True puts it back)
+HUB_MATCHMAKING = False
 # the screen's children for one platform only (tools/ce_menus.py): the
 # computer's list and its line (the hub's, in the PC version's places:
 # WIDGET_PATCHES' swap), the touchscreen's tiles in their place (_touch_hub)
@@ -5102,10 +5153,10 @@ def _hub() -> list:
                        ['<data input="port multiplayer status"/>', *children])
 
     # (Multiplayer's own list a unit closer, its sections closer, for its
-    # eleven items: HUB_LIST_STEP)
-    lines = page_list("hub_list", [("section_online", "PLAY ONLINE", ["hub_matchmaking", "hub_join_internet",
-                                                                      "hub_join_lan_item", "hub_join_direct",
-                                                                      "hub_party", "hub_friends"]),
+    # ten items, eleven with MATCHMAKING: HUB_LIST_STEP, HUB_MATCHMAKING)
+    online = ["hub_matchmaking"] * HUB_MATCHMAKING + ["hub_join_internet", "hub_join_lan_item", "hub_join_direct",
+                                                      "hub_party", "hub_friends"]
+    lines = page_list("hub_list", [("section_online", "PLAY ONLINE", online),
                                    ("section_host", "HOST", ["hub_create", "hub_coop"]),
                                    (None, None, ["hub_gametypes"])], "hub_prompts", HUB_LIST_STEP, HUB_SECTION_GAP)
     lines += _section(f"{HUB}/section_online", "PLAY ONLINE", item_w, wide(-WIDE_HALF, HUB_WIDE_ITEMS))
@@ -5743,7 +5794,7 @@ TOUCH_TILE = ((TOUCH_HUB_WIDTH - TOUCH_GAP) // 2, TOUCH_TAP)
 TOUCH_HUB_PANEL = (HUB_LIST_X + TOUCH_HUB_WIDTH + 8, HUB_PANEL[1],
                    640 - HUB_LIST_X - (HUB_LIST_X + TOUCH_HUB_WIDTH + 8), HUB_PANEL[3])
 TOUCH_TILES = [
-    ("section_online", "PLAY ONLINE", [("hub_matchmaking", "MATCHMAKING", "matchmaking_note"),
+    ("section_online", "PLAY ONLINE", [("hub_matchmaking", "MATCHMAKING", "matchmaking_note")] * HUB_MATCHMAKING + [
                                        ("hub_join_internet", "BROWSE GAMES", "browser_note"),
                                        ("hub_join_lan_item", "LOCAL GAMES", "item_note"),
                                        ("hub_join_direct", "JOIN BY LINK", "invite_note"),

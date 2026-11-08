@@ -604,6 +604,9 @@ static struct
 	VK_GOOGLE_display_timing */
 	uint32_t low_latency;
 	int paced, present_wait, display_timing;
+	/* the frames ahead of the GPU the stream is told, and one
+	(frames_ahead_update; 0: none told) */
+	int frames_ahead;
 
 	/* display.hdr: the input attachments' set layout (the pipeline
 	layout's third set, where draws can read their colour attachment);
@@ -6346,12 +6349,18 @@ static int swapchain_make(void)
 	memset(&info, 0, sizeof(info));
 	info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	info.surface = vk.surface;
-	/* (paced by the display, at most one frame waits for it while the
-	next is drawn: three images, one on screen, one waiting, one drawn
-	into; else one more than the least, for the frames queued ahead) */
+	/* (paced or bounded by the display, at most one frame waits for it
+	while the next is drawn: three images, one on screen, one waiting, one
+	drawn into. FIFO not paced by it (a display that says nothing of its
+	presents): the least, two at least, so that the swapchain itself bounds
+	the frames queued ahead of the display, beside the GPU's bound
+	(xgpu_vulkan_pacing_frames_ahead). Else one more than the least, for
+	the frames queued ahead) */
 	info.minImageCount = capabilities.minImageCount + 1;
 	if (vk.paced && vk.interval <= 1)
 		info.minImageCount = capabilities.minImageCount > 3 ? capabilities.minImageCount : 3;
+	else if (!vk.paced && vk.present_mode == VK_PRESENT_MODE_FIFO_KHR)
+		info.minImageCount = capabilities.minImageCount > 2 ? capabilities.minImageCount : 2;
 	if (capabilities.maxImageCount && info.minImageCount > capabilities.maxImageCount)
 		info.minImageCount = capabilities.maxImageCount;
 	if (info.minImageCount > 8)
@@ -7094,9 +7103,29 @@ static void frame_pacing_update(void)
 	fifo = vk.swapchain ? vk.present_mode == VK_PRESENT_MODE_FIFO_KHR : vk.interval > 0;
 	paced = xgpu_vulkan_pacing_mode((int)__atomic_load_n(&vk.low_latency, __ATOMIC_ACQUIRE), vk.interval, fifo,
 		vk.frame % 120 ? 0 : host_vulkan_display_period());
-	if (paced != vk.paced && vk.swapchain && vk.interval <= 1)
+	if (!paced != !vk.paced && vk.swapchain && vk.interval <= 1)
 		vk.swapchain_stale = 1;
 	vk.paced = paced;
+}
+
+/* the frames ahead of the GPU bounded (xgpu_vulkan_pacing_frames_ahead):
+where the window's presents queue for the display (FIFO), the game starts a
+frame only once the frame before is done on the GPU, whatever the display
+says of them (issue #274: NVIDIA's Windows driver queued five refreshes of
+them); the guest's own bound else (mailbox and immediate replace or tear,
+and the headset paces the VR mode). With a display that says nothing of its
+presents, on gamescope's headless 60 Hz, the press reached the screen in
+57 ms, against 96 ms unbounded (68 ms with one frame more allowed) */
+static void frames_ahead_update(int present_window)
+{
+	int ahead = present_window && vk.swapchain && vk.present_mode == VK_PRESENT_MODE_FIFO_KHR ? 0 : -1;
+
+	if (ahead + 2 == vk.frames_ahead)
+		return;
+	vk.frames_ahead = ahead + 2;
+	xgpu_vulkan_pacing_frames_ahead(ahead);
+	host_logf(HOST_LOG_INFO, "vulkan: the game's frames %s", !ahead ?
+		"start once the frame before is done on the GPU (FIFO)" : "ahead of the GPU as the stream allows");
 }
 
 void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
@@ -7114,6 +7143,7 @@ void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
 		barrier(main_commands(), VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
 			VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	frame_pacing_update();
+	frames_ahead_update(present_window);
 	/* (the frame's last work, its tests' queries with it: the present's
 	submission, or one of its own; with discards, its last passes' stores
 	chosen as the frame's) */

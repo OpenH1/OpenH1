@@ -127,6 +127,7 @@ their handlers open opens.
 #include "../src/player_link.h" /* port: port/linux/src/player_link.c */
 #include "../src/server_master.h"
 #include "../src/report.h"
+#include "../src/game_caches.h" /* port: port/linux/src/game_caches.c */
 #include "text_filter.h"
 /* (the party: party_menu.inc) */
 #include "party.h"
@@ -1936,7 +1937,7 @@ static void panini_rows_show(struct widget_instance *list)
 #endif
 }
 
-/* Video's Frame Rate Limit, shown while VSync shows OFF (Defaults too):
+/* Frame Rate & Sync's Max FPS, shown while VSync shows OFF (Defaults too):
 with vsync on, the display paces the frames and the limit does nothing;
 the rows below close the gap (settings_rows_pack) */
 static void max_fps_row_show(struct widget_instance *list)
@@ -1950,6 +1951,61 @@ static void max_fps_row_show(struct widget_instance *list)
 		return;
 	index = vsync->parameters.list.selected_index;
 	row->visible = index >= 0 && index < setting->value_count && !strcmp(setting->values[index], "false");
+}
+
+/* Frame Rate & Sync's Variable Refresh (display.vrr), shown on every build
+as what it does there (sdl_platform.c's platform_vrr_detected, menu_tags.c's
+spinner_split: AUTO: ON or AUTO: OFF where the system is asked); dimmed on
+the Mac, whose Metal and ProMotion set it (SET BY MACOS). Its VRR Frame Cap
+(display.vrr_cap_margin) dimmed while VRR is not on: OFF, AUTO where the
+system says none, and the Mac. Low Latency (display.low_latency) hidden on
+the Mac, whose frames its display paces already. Dimmed as Tick Rate's
+locked row is (sim_rate_row_show): at 0.4, its value held; but the row keeps
+the cursor, so that its panel says why */
+int platform_vrr_detected(void);
+
+static void row_dim(struct widget_instance *row, struct widget_instance *spinner, boolean dim)
+{
+	struct pc_menu_setting *setting;
+
+	if (!row || !spinner)
+		return;
+	/* (the row still takes the cursor, so that its panel says why; its
+	value held where it was loaded while it is dimmed: a press changes
+	nothing) */
+	setting = pc_menu_setting_get(spinner->definition_tag_index);
+	if (dim && setting && setting->loaded_index >= 0 && setting->loaded_index < setting->value_count)
+		spinner->parameters.list.selected_index = setting->loaded_index;
+	if (spinner->disabled == dim)
+		return;
+	spinner->disabled = dim;
+	row->alpha_modifier = dim ? 0.4f : 1.0f;
+}
+
+static void vrr_rows_show(struct widget_instance *list)
+{
+	struct widget_instance *vrr = named(list, "vrr_spinner", 0);
+	struct pc_menu_setting *setting = vrr ? pc_menu_setting_get(vrr->definition_tag_index) : NULL;
+	int detected;
+	boolean on;
+	short index;
+
+	if (!setting)
+		return;
+	detected = platform_vrr_detected();
+	index = vrr->parameters.list.selected_index;
+	on = index >= 0 && index < setting->value_count && (!strcmp(setting->values[index], "on") ||
+		(!strcmp(setting->values[index], "auto") && detected == 1 /* PLATFORM_VRR_FOUND */));
+	if (detected == 3 /* PLATFORM_VRR_SYSTEM */)
+	{
+		struct widget_instance *latency = named(list, "op_low_latency", 0);
+
+		on = FALSE;
+		row_dim(named(list, "op_vrr", 0), vrr, TRUE);
+		if (latency)
+			latency->visible = FALSE;
+	}
+	row_dim(named(list, "op_vrr_cap_margin", 0), named(list, "vrr_cap_margin_spinner", 0), !on);
 }
 
 /* a setting's value as Settings shows it: the change kept, else
@@ -2402,6 +2458,7 @@ static boolean settings_profile_new(struct widget_instance *widget, struct event
 }
 
 static void settings_weapon_reset(struct widget_instance *screen);
+static void clear_caches_press(void);
 
 /* "port settings <name>": FALSE if it is not one of these */
 static boolean settings_function(char const *name, struct widget_instance *widget, struct event_record *event,
@@ -2479,6 +2536,12 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 		halo_gyro_calibrate();
 		gyro_calibrated = FALSE;
 		ui_play_audio_feedback_sound(SOUND_CURSOR);
+	}
+	else if (!strcmp(name, "clear caches"))
+	{
+		/* (CLEAR CACHES: asked, then asked for at the next start,
+		port/linux/src/game_caches.c) */
+		clear_caches_press();
 	}
 	else if (!strcmp(name, "report"))
 	{
@@ -2967,6 +3030,44 @@ static void hdr_display_show(struct widget_instance *list)
 	discord_text_set(value, text);
 }
 
+/* the VARIABLE REFRESH row's panel: its words of what the system says, in
+the help's body (the note below it holds two lines: more is cut) (the
+others': FALSE) */
+static boolean vrr_panel(struct widget_instance *row, wchar_t const **help)
+{
+	static wchar_t words[SETTINGS_PANEL_TEXT_LENGTH];
+	char const *text;
+
+	if (!row->name || strcmp(row->name, "op_vrr"))
+		return FALSE;
+	switch (platform_vrr_detected())
+	{
+	case 0 /* PLATFORM_VRR_NONE */:
+		text = "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
+			"each frame shows as soon as it is ready, without tearing. No variable refresh screen found. Turn it on "
+			"in your display or driver settings.";
+		break;
+	case 1 /* PLATFORM_VRR_FOUND */:
+		text = "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
+			"each frame shows as soon as it is ready, without tearing. A variable refresh screen was found: Auto "
+			"has it on.";
+		break;
+	case 2 /* PLATFORM_VRR_UNKNOWN */:
+		text = "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
+			"each frame shows as soon as it is ready, without tearing. Turn on if your screen has G-Sync or "
+			"FreeSync enabled.";
+		break;
+	case 3 /* PLATFORM_VRR_SYSTEM */:
+		text = "Set by macOS: Metal and ProMotion match the display's refresh to the frames themselves.";
+		break;
+	default:
+		return FALSE;
+	}
+	discord_widen(text, words, SETTINGS_PANEL_TEXT_LENGTH);
+	*help = words;
+	return TRUE;
+}
+
 /* the GYRO row's panel while Steam Input has the controller (STEAM INPUT HAS
 IT: only its virtual controllers, which pass no gyroscope): how to turn it
 off for the game, on a Steam Deck (xinput_sdl.c's halo_steam_deck) or another
@@ -3037,6 +3138,111 @@ static boolean about_panel(struct widget_instance *row, wchar_t *value, wchar_t 
 	discord_widen(text, words + length, (short)(SETTINGS_PANEL_TEXT_LENGTH - length));
 	*help = words;
 	return TRUE;
+}
+
+/* ---------- Profiles' CLEAR CACHES (port/linux/src/game_caches.c)
+
+The row's value is the caches' size, walked on the disk as the page shows
+it and after each press, not each frame; SELECT AGAIN after a first press,
+and AT NEXT START once their clearing is asked for, which a press then takes
+back. The panel says what a press does now. */
+
+#define CLEAR_CACHES_ASK_MILLISECONDS 5000
+
+static struct
+{
+	/* the first press, 0: none */
+	unsigned long asked;
+	/* whether they were measured since the page showed, their bytes, and
+	whether their clearing is asked for */
+	boolean measured;
+	unsigned long long bytes;
+	boolean requested;
+} clear_caches;
+
+static boolean clear_caches_asked(void)
+{
+	return clear_caches.asked && system_milliseconds() - clear_caches.asked < CLEAR_CACHES_ASK_MILLISECONDS;
+}
+
+/* a size in words: "2.9 GB", "640 MB", "12 KB" */
+static void clear_caches_size(unsigned long long bytes, char *text, int size)
+{
+	if (bytes >= 1000ULL * 1024 * 1024)
+		snprintf(text, size, "%.1f GB", (double)bytes / (1024.0 * 1024.0 * 1024.0));
+	else if (bytes >= 1024ULL * 1024)
+		snprintf(text, size, "%lu MB", (unsigned long)(bytes / (1024ULL * 1024)));
+	else
+		snprintf(text, size, "%lu KB", (unsigned long)((bytes + 1023) / 1024));
+}
+
+static void clear_caches_measure(void)
+{
+	clear_caches.bytes = game_caches_bytes();
+	clear_caches.requested = game_caches_requested() != 0;
+	clear_caches.measured = TRUE;
+}
+
+static void clear_caches_show(struct widget_instance *list)
+{
+	struct widget_instance *row = named(list, "op_clear_caches", 0);
+	char text[ROW_TEXT_LENGTH];
+
+	if (!row)
+	{
+		clear_caches.measured = FALSE;
+		clear_caches.asked = 0;
+		return;
+	}
+	if (!clear_caches.measured)
+		clear_caches_measure();
+	if (clear_caches.requested)
+		snprintf(text, sizeof(text), "AT NEXT START");
+	else if (clear_caches_asked())
+		snprintf(text, sizeof(text), "SELECT AGAIN");
+	else
+		clear_caches_size(clear_caches.bytes, text, sizeof(text));
+	discord_text_set(named(row, "clear_caches_value", 0), text);
+}
+
+/* the panel's value (the size) and words for CLEAR CACHES (the others':
+FALSE) */
+static boolean clear_caches_panel(struct widget_instance *row, wchar_t *value, wchar_t const **help)
+{
+	static wchar_t words[SETTINGS_PANEL_TEXT_LENGTH];
+	char size[32], text[SETTINGS_PANEL_TEXT_LENGTH];
+
+	if (!row->name || strcmp(row->name, "op_clear_caches"))
+		return FALSE;
+	clear_caches_size(clear_caches.bytes, size, sizeof(size));
+	discord_widen(size, value, ROW_TEXT_LENGTH);
+	if (clear_caches.requested)
+		snprintf(text, sizeof(text), "These %s are cleared the next time the game starts, before anything uses "
+			"them, and made again as you play: that start takes longer.|Select CLEAR CACHES again to keep them.",
+			size);
+	else if (clear_caches_asked())
+		snprintf(text, sizeof(text), "Select CLEAR CACHES again to clear these %s at the next start.", size);
+	else
+		return TRUE;
+	discord_widen(text, words, SETTINGS_PANEL_TEXT_LENGTH);
+	*help = words;
+	return TRUE;
+}
+
+/* "port settings clear caches": the first press asks, the second asks for
+the clearing at the next start; once asked for, a press takes it back */
+static void clear_caches_press(void)
+{
+	if (!clear_caches.requested && !clear_caches_asked())
+	{
+		clear_caches.asked = system_milliseconds() | 1;
+		ui_play_audio_feedback_sound(SOUND_CURSOR);
+		return;
+	}
+	game_caches_request(!clear_caches.requested);
+	clear_caches.asked = 0;
+	clear_caches_measure();
+	ui_play_audio_feedback_sound(SOUND_FORWARD);
 }
 
 /* the panel's name, value and words for a row of the page (the others':
@@ -3267,8 +3473,12 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		hdr_display_panel(row, value, &help);
 		/* (Gyro's STEAM INPUT HAS IT: how to turn it off) */
 		gyro_found_panel(row, &help);
+		/* (Variable Refresh: what the system says of it) */
+		vrr_panel(row, &help);
 		/* (Profile's ABOUT: this build) */
 		about_panel(row, value, &help);
+		/* (Profile's CLEAR CACHES: their size, and what a press does) */
+		clear_caches_panel(row, value, &help);
 		/* (Button Remapping's: a button being taken, a replacement asked) */
 		if (pad_editor_page(screen_of(list)))
 			pad_editor_panel(row, name, value, &help);
@@ -3400,11 +3610,13 @@ static void settings_page_update(struct widget_instance *list)
 	refresh_rate_row_show(list);
 	hud_button_style_row_show(list);
 	max_fps_row_show(list);
+	vrr_rows_show(list);
 	panini_rows_show(list);
 	menu_cursor_row_show(list);
 	gamma_row_show(list);
 	settings_rows_show(list);
 	discord_account_show(list);
+	clear_caches_show(list);
 	hdr_display_show(list);
 	pad_editor_update(list);
 	controls_page_update(list);
@@ -3860,6 +4072,7 @@ static struct
 	{ "controls.pause", L"PAUSE MENU", 2, TRUE },
 	{ "controls.screenshot", L"SCREENSHOT", 2, FALSE },
 	{ "controls.report", L"SAVE REPORT", 2, FALSE },
+	{ "controls.clip", L"CLIP", 2, FALSE },
 	{ "controls.push_to_talk", L"PUSH TO TALK", 3, FALSE },
 	{ "controls.chat", L"CHAT", 3, FALSE },
 	{ "controls.team_chat", L"TEAM CHAT", 3, FALSE },

@@ -16,8 +16,8 @@ end.
 | Path | Contents |
 | --- | --- |
 | `source/` | The game: 466 C files of the decompilation, compiled as they are with few changes (each marked, below) |
-| `port/linux/src/` | The platform layer the ports share: Direct3D 8's front end (`d3d8_device.c`), behind `xgpu_backend.h` the renderer's command stream to the host's backend (`xgpu_stream_encode.c`), DirectSound and XInput on SDL3, files, threads, memory, sockets, settings (`port_config.c`), the mods folder (`port_mods.c`), internet play (`p2p*.c`), the Linux release's layout (`install_layout.c`) and self-updater (`updater.c`), the dedicated server's platform side (`server_*.c`: the mode, the log, the rotation's grammar, HTTP, RCON, the master servers' publisher; `posix_server.c`, in the guest) and the master servers' list (`master_list.c`) |
-| `port/linux/game/` | The port's game-side code, compiled as the game's sources are: the distributed netcode (`network_*.c`), co-op, OpenCE's gametypes (`game_modes.c`, `infection.c`, `gun_game.c`), map sharing (`map_share*.c`), the menus (`menu_tags.c`, `menu_functions.c`), Custom Edition maps (`custom_edition_*.c`, `cache_file_formats.c`), the tag validator (`tag_validate.c`, `tag_schema_*.c`), mods (`mods.c`, `mod_*.c`), streamer mode's word filter (`text_filter*.c`), the dedicated server's director, commands, gametypes and status (`server_*.c`), a player host's Host Controls and next game and playlist (`network_host_controls.c`, `network_host_game.c`), touch, FOV and more |
+| `port/linux/src/` | The platform layer the ports share: Direct3D 8's front end (`d3d8_device.c`), behind `xgpu_backend.h` the renderer's command stream to the host's backend (`xgpu_stream_encode.c`), DirectSound and XInput on SDL3, files, threads, memory, sockets, settings (`port_config.c`), the mods folder (`port_mods.c`), internet play (`p2p*.c`), the Linux release's layout (`install_layout.c`) and self-updater (`updater.c`), the dedicated server's platform side (`server_*.c`: the mode, the log, the rotation's grammar, HTTP, RCON, the master servers' publisher; `posix_server.c`, in the guest), the master servers' list (`master_list.c`) and the demos' files (`demo_files.c`: their writer, retention; `demo_unpack.c`) |
+| `port/linux/game/` | The port's game-side code, compiled as the game's sources are: the distributed netcode (`network_*.c`), co-op, OpenCE's gametypes (`game_modes.c`, `infection.c`, `gun_game.c`), map sharing (`map_share*.c`), the menus (`menu_tags.c`, `menu_functions.c`), Custom Edition maps (`custom_edition_*.c`, `cache_file_formats.c`), the tag validator (`tag_validate.c`, `tag_schema_*.c`), mods (`mods.c`, `mod_*.c`), streamer mode's word filter (`text_filter*.c`), the dedicated server's director, commands, gametypes and status (`server_*.c`), a player host's Host Controls and next game and playlist (`network_host_controls.c`, `network_host_game.c`), the demos (`demo.c`: every game recorded tick by tick and played back exactly, `docs/demos.md`), touch, FOV and more |
 | `port/linux/include/` | The port's headers: the limits (`halo_port_limits.h`, with `HALO_PORT_NETWORK_VERSION`), capacities (`halo_port_capacity.h`), the prefix header, `halo_linux_source_fixups.h` (port functions the game's sources call) |
 | `port/include/xdk/` | Stand-ins for the Xbox SDK's headers (declarations only) |
 | `port/windows/` | The Windows build's host (`host/`: the x32 guest in a 64-bit Windows process, drawn with Vulkan, `tools/windows_build.py`) and the `posix.h` and `update.h` functions it shares (`src/win32_*.c`) |
@@ -29,9 +29,9 @@ end.
 | `port/ios/` | The iOS and iPadOS app's own files: its start (`host_app.m`: the Documents folder, the log, the background), the touch controls (`touch_controls.m`, Android's overlay in UIKit, through `port/android/host/host_touch.c`; `host_imports.list`), the guest image in the executable's `__TEXT` (`guest_image.S`), the entitlements, the icon; the rest is the macOS build's (`port/macos`, `port/android/host`, `port/linux/host`) |
 | `port/assets/` | What the builds embed or ship: high-res HUD (`hud/`), fonts, titles, menus (`menus/`), the Android touch controls' art (`touch/`), icons, network brokers, the bots' map profiles (`bots/`, made from play logs by `tools/play_log/profile.py`), the Linux desktop entry (`linux/`), Steam's library artwork for the shortcut the Linux and Steam Frame installs add (`steam/`) |
 | `port/third_party/` | Vendored libraries, each with a README naming its upstream, version and checksum |
-| `port/tools/` | Stand-alone tools (`cache_file_report.c`); the render stream's replay that Metal's and Vulkan's share (`replay/host_render_replay.c`: the recording, the play, `--serve`, the OpenH1 Inspector's service) |
+| `port/tools/` | Stand-alone tools (`cache_file_report.c`); the render stream's replay that Metal's and Vulkan's share (`replay/host_render_replay.c`: the recording, the play, `--serve`, the replay service: `docs/replay_protocol.md`) |
 | `tools/` | Build scripts (`build_common.py`, what the others share; `linux_guest_build.py`, `vulkan_build.py`, `windows_build.py`, `android_build.py` (also the guest image of every guest build), `macos_build.py`, `macos_app.py` (the macOS app, its disk image, signing and notarization), `macos_shaders.py` (the macOS and iOS apps' shader libraries), `ios_build.py`, `ios_app.py` (the iOS app, its signature, devicectl's and simctl's install, launch and log), `ios_provision.py` (its development profile, by Xcode's automatic signing), `render_manifest.py` (the renderer's manifest, the game's vertex shaders from its code), `ci_build.py`, `release_names.py` (the names releases publish the builds under), `release_sign.py` (a release's SHA256SUMS and its signature by the release key, `port/assets/release-key.pub`, which the self-updaters check: `port/linux/src/release_signature.c`), `linux_package.py`, `linux_install.sh` (the one installer: the Linux release's `install.sh`, the Steam Deck's install, and the Steam Frame package's), `frame_install.sh` (it, run on a Frame over ssh), `frame_package.py` (the Steam Frame's)), the game's 32-bit x86 ABI for test tools (`x86_game_abi.py`: `map_validate`), the guest's base register (`guest_base_register.py`, measured by `base_register_bench/`), generators (`ce_menus.py`, `port_settings.py`, `hud_assets.py`, `title_assets.py`, `embed_assets.py`, `xdk_headers.py`, `touch_assets.py`: the Android touch controls' pictures, whose layout `touch_preview.py` draws; `steam_art.py`: Steam's library artwork, `port/assets/steam`), tests, OpenCE's `stagekit/` (scenarios staged and instrumented on the real engine, no retail assets; its map writer runs as a guest image of the 64-bit builds' host), and `scorecard/` (the 60/120 Hz simulation's check: scenarios at each rate compared, the 30 Hz gate against master) |
-| `docs/` | Longer design notes (`custom_edition_caches.md`, `mods.md`, `dedicated_server.md`, `master_protocol.md`, `world-ao.md`) |
+| `docs/` | Longer design notes (`custom_edition_caches.md`, `mods.md`, `dedicated_server.md`, `master_protocol.md`, `replay_protocol.md`, `world-ao.md`) |
 | `pgo/` | Profile-guided optimisation profiles |
 | `deploy/` | Running a dedicated server: systemd, Docker, Pterodactyl, Helm, PufferPanel, MCSManager, example gametypes |
 | `assets/` | Game data for local runs (gitignored: `maps/`, `custom_maps/`) |
@@ -203,6 +203,7 @@ python -m pytest -q tools/test_screenshot_key.py            # the Screenshot key
 python -m pytest -q tools/test_cache_file_formats.py tools/test_bmp_files.py tools/test_profile.py
 python -m pytest -q tools/test_xiso.py tools/test_port_settings.py  # the disc image's maps and movies extracted; the settings pages' rows fit
 python -m pytest -q tools/test_cabinet.py                   # Custom Edition's installer and Halo PC's CD read (made-up cabinets; cabextract checks them)
+python -m pytest -q tools/test_demo_files.py                # the demos' files: written and read back, a damaged block refused, retention
 python -m pytest -q tools/test_render_manifest.py tools/test_render_stream.py  # the renderer's manifest, the command stream
 python -m pytest -q tools/test_render_replay.py             # the replays' shared part: a CPU backend's recording served (no GPU)
 python -m pytest -q tools/test_vulkan_passes.py tools/test_host_vr_vulkan.py  # the Vulkan backend, the VR host (a fake GPU)
@@ -230,9 +231,10 @@ build/macos/halo_replay <recording> --shots <dir>           # a recorded render 
                                                             # HALO_RENDER_RECORD: port/macos/README.md)
 build/linux_x86_64/halo_replay <recording> --shots <dir>    # the same with Vulkan, offscreen (ninja linux_replay; a Mac's
                                                             # recording too: port/linux/vulkan/README.md)
-build/linux_x86_64/halo_replay <recording> --serve          # the OpenH1 Inspector's service: JSON lines (frame, ids, draws,
+build/linux_x86_64/halo_replay <recording> --serve          # the replay service: JSON lines (frame, ids, draws,
                                                             # pick, thumbs; macOS's too); record with HALO_RENDER_MARKS=1
-                                                            # (debug.render_marks) for each draw's owner and the camera
+                                                            # (debug.render_marks) for each draw's owner and the camera;
+                                                            # docs/replay_protocol.md
 python -m pytest -q tools/test_gpu_isa.py                  # tools/gpu_isa.py (a shader's GPU code, on an M1 Mac)
 python tools/base_register_bench/run.py                     # the base register's cost (Linux arm64, macOS)
 python tools/test_touch_layout.py                           # the Android touch layout (JDK 17+)
@@ -243,6 +245,7 @@ python tools/test_death_timing.py
 (cd tools/menu_review && npx playwright test)               # the review app in a real browser (npm ci first)
 python -m pytest -q tools/test_menu_review.py               # menu_review.py: a tap as its widget, the web's notes, the login
 python -m pytest -q tools/test_menu_notes.py                # menu_notes.py's notes: listed, briefed, marked done
+python -m pytest -q tools/test_notes.py                     # notes.py: the recorded frames' notes and the menus' in one tool
 python -m pytest -q tools/test_menu_gallery.py              # menu_gallery.py's screens, picture difference, layout checks, page
 python -m pytest -q tools/test_join_page.py                 # the website's join page: the links it reads (Node), nothing loaded from elsewhere
 python -m pytest -q tools/test_net_compare.py               # net_compare.py's judging of logs, its copies and their processes
@@ -301,6 +304,11 @@ Running the game without a person at it:
 - `halo --server` is a dedicated server (`docs/dedicated_server.md`), and
   `halo --probe [<invite>]` prints a game's advertisement as JSON and exits;
   `tools/test_dedicated_server.py` runs both with clients.
+- `halo --demo <file>` (`demo.play`) plays a demo (every game is recorded
+  to `demos/`: `docs/demos.md`), `debug.demo_quit` quits at its end, and its
+  log says whether its hash stayed the recording's; `tools/demo_info.py`
+  prints what a demo holds. Compare a recording's `debug.determinism_log`
+  with its playback's with `tools/determinism_compare.py --simulation`.
 - `debug.exit_after`, `debug.hidden_window`, `debug.null_renderer`,
   `debug.menu_open` (start on one menu screen), `debug.telnet_console`.
 - `debug.no_clipboard` (`HALO_NO_CLIPBOARD=1`) keeps a run off the
@@ -454,7 +462,9 @@ The decompilation's upstream, punpckhdq/halo, is AGPL 3.0 from 17 October
 | [port/include/xdk/README.md](port/include/xdk/README.md) | How the SDK declarations were written and are checked |
 | [docs/custom_edition_caches.md](docs/custom_edition_caches.md) | Loading and converting Custom Edition maps, and the evidence for each layout |
 | [docs/hdr.md](docs/hdr.md) | HDR (`display.hdr`): the shared contract the renderers implement, which draws go past paper white, the tone map and the encodings, the tests |
+| [docs/demos.md](docs/demos.md) | Demos: every game recorded tick by tick, what a demo holds and why, its playback, the file, sizes, what is not deterministic yet |
 | [docs/dedicated_server.md](docs/dedicated_server.md) | The dedicated server: its command line, exit codes, commands, HTTP API, RCON, events and files |
+| [docs/replay_protocol.md](docs/replay_protocol.md) | The replay service (`halo_replay --serve`): its requests and replies, the ID buffer, the marks a client reads, the notes (`build/notes.jsonl`) |
 | [docs/master_protocol.md](docs/master_protocol.md) | The master servers' protocol: publishing, the probe, the signed list |
 | [docs/controller_remapping.md](docs/controller_remapping.md) | Controller button remapping (each player's layout, the overlays' buttons, VR), stick dead zones, the look's inversion |
 | [docs/mods.md](docs/mods.md) | Mods: folders of Halo PC tag files whose sounds, bitmaps, text and models play over a map's on one machine |

@@ -443,6 +443,8 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 {
 	toml_result_t result = toml_parse_file_ex(path);
 	double sample_seconds = 0.0;
+	/* (debug.stall_ms' default, as port_config.c's) */
+	double stall_ms = 100.0;
 	int memory_watch = 1;
 
 	if (result.ok)
@@ -451,6 +453,7 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 		toml_datum_t watch = toml_seek(result.toptab, "debug.memory_watch");
 		toml_datum_t astc = toml_seek(result.toptab, "display.astc_textures");
 		toml_datum_t pass_times = toml_seek(result.toptab, "debug.pass_times");
+		toml_datum_t stall = toml_seek(result.toptab, "debug.stall_ms");
 
 		sample_seconds = seconds.type == TOML_FP64 ? seconds.u.fp64 :
 			seconds.type == TOML_INT64 ? (double)seconds.u.int64 : 0.0;
@@ -460,6 +463,8 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 			snprintf(host_astc_textures, sizeof(host_astc_textures), "%s", astc.u.s);
 		if (pass_times.type == TOML_INT64)
 			host_pass_times = (int)pass_times.u.int64;
+		if (stall.type == TOML_FP64 || stall.type == TOML_INT64)
+			stall_ms = stall.type == TOML_FP64 ? stall.u.fp64 : (double)stall.u.int64;
 		toml_free(result);
 	}
 	if (getenv("HALO_ASTC_TEXTURES") && *getenv("HALO_ASTC_TEXTURES"))
@@ -470,6 +475,9 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 		host_pass_times = atoi(getenv("HALO_PASS_TIMES"));
 	if (getenv("HALO_SAMPLE"))
 		sample_seconds = atof(getenv("HALO_SAMPLE"));
+	if (getenv("HALO_STALL_MS") && *getenv("HALO_STALL_MS"))
+		stall_ms = atof(getenv("HALO_STALL_MS"));
+	host_stall_start(stall_ms);
 	if (getenv("HALO_MEMORY_WATCH") && *getenv("HALO_MEMORY_WATCH"))
 	{
 		/* ("0", "false", "no" and "off" are false, as for the game's settings) */
