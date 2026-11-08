@@ -345,7 +345,8 @@ _Static_assert(XGPU_WORLD_AO_GRID_X == WORLD_AO_GRID_X && XGPU_WORLD_AO_GRID_Y =
 	"the world's proxy grid as the game makes it and the emitters read it (world_ao.h, xgpu.h)");
 _Static_assert(XGPU_WORLD_AO_INPUT_LIGHTMAP == XGPU_WORLD_AO_INPUT_LIGHTMAP_BIT &&
 	XGPU_WORLD_AO_INPUT_ALL_SHAPES == XGPU_WORLD_AO_INPUT_ALL_SHAPES_BIT &&
-	XGPU_WORLD_AO_INPUT_PRESENT == XGPU_WORLD_AO_INPUT_PRESENT_BIT,
+	XGPU_WORLD_AO_INPUT_PRESENT == XGPU_WORLD_AO_INPUT_PRESENT_BIT &&
+	XGPU_WORLD_AO_INPUT_CARDS == XGPU_WORLD_AO_INPUT_CARDS_BIT,
 	"the pre-pass's inputs as the emitters write them and the CPU reads them (xgpu.h, world_ao.h)");
 _Static_assert(WORLD_AO_FIELD_TABLE == XGPU_STREAM_WORLD_AO_TABLE && WORLD_AO_FIELD_ATLAS == XGPU_STREAM_WORLD_AO_ATLAS &&
 	WORLD_AO_FIELD_SCENERY == XGPU_STREAM_WORLD_AO_SCENERY && WORLD_AO_FIELD_OBJECTS == XGPU_STREAM_WORLD_AO_OBJECTS,
@@ -381,7 +382,10 @@ static struct
 	/* "ray_traced": the draw's object's owner among the ray-traced scene's
 	instances (0 none: halo_world_ao_object) */
 	unsigned long rays_owner;
-} world_ao = { FALSE, FALSE, WORLD_AO_OWNER_NONE, 1.0f, FALSE, FALSE, FALSE, 2.0f, WORLD_AO_SPAN_NONE, FALSE, FALSE, 0 };
+	/* the draws are a two-sided model shader's cards (halo_world_ao_cards) */
+	BOOL cards;
+} world_ao = { FALSE, FALSE, WORLD_AO_OWNER_NONE, 1.0f, FALSE, FALSE, FALSE, 2.0f, WORLD_AO_SPAN_NONE, FALSE, FALSE, 0,
+	FALSE };
 
 /* the draw takes the world's light where its window is given: one of the
 window's opaque surfaces, not the first-person weapon, not lighting itself
@@ -485,6 +489,7 @@ void halo_world_ao_window(float const field[2][4], float const parameters[2][4],
 	world_ao.owner = WORLD_AO_OWNER_NONE;
 	world_ao.reference = 1.0f;
 	world_ao.rays_owner = 0;
+	world_ao.cards = FALSE;
 	/* (found once a pixel: no more) */
 	if (world_ao.sampled || world_ao.prepass)
 		xgpu_backend_world_ao_prepass(XGPU_WORLD_AO_PREPASS_NONE, 0, NULL);
@@ -516,6 +521,11 @@ void halo_world_ao_object(int owner, float reference, unsigned long rays_owner)
 	world_ao.owner = owner;
 	world_ao.reference = reference;
 	world_ao.rays_owner = rays_owner < XGPU_WORLD_AO_INSTANCE_OWNERS ? rays_owner : 0;
+}
+
+void halo_world_ao_cards(int cards)
+{
+	world_ao.cards = cards != 0;
 }
 
 /* ---------- display.ambient_occlusion "ray_traced" (port/linux/game/world_rt.c)
@@ -3515,7 +3525,7 @@ static void pipeline_state_describe(BOOL has_depth, struct xgpu_pipeline_key *ke
 }
 /* the uniforms of the latest draws, converted from these inputs; the serial
 counts the conversions */
-#define DRAW_UNIFORM_INPUT_COUNT (4 + 4 + 16 + 1 + 16 + 2 + 4 + 1 + 1 + 7 * D3DTSS_MAXSTAGES + 3)
+#define DRAW_UNIFORM_INPUT_COUNT (4 + 4 + 16 + 1 + 16 + 2 + 4 + 1 + 1 + 7 * D3DTSS_MAXSTAGES + 4)
 
 static DWORD draw_uniform_inputs[DRAW_UNIFORM_INPUT_COUNT];
 static struct xgpu_draw_uniforms draw_uniforms;
@@ -3543,7 +3553,7 @@ static void draw_uniforms_update(const float texture_scale[4][4])
 {
 	DWORD inputs[DRAW_UNIFORM_INPUT_COUNT];
 	unsigned long count = 0;
-	float world_object[3];
+	float world_object[4];
 	int stage;
 
 	memcpy(&inputs[count], device.viewport_scale, sizeof(device.viewport_scale));
@@ -3567,12 +3577,14 @@ static void draw_uniforms_update(const float texture_scale[4][4])
 	inputs[count++] = D3D__RenderState[D3DRS_ALPHAREF];
 	inputs[count++] = (DWORD)UI_OFFSET;
 	/* (display.ambient_occlusion "world": the draw's object, its owner
-	slot and reference; -1 and 1 without the window's block) */
+	slot and reference, its owner among the rays' instances, and whether it
+	is two-sided cards; -1, 1, 0 and 0 without the window's block) */
 	world_object[0] = world_ao.active ? (float)world_ao.owner : (float)WORLD_AO_OWNER_NONE;
 	world_object[1] = world_ao.active ? world_ao.reference : 1.0f;
 	world_object[2] = world_ao.active ? (float)world_ao.rays_owner : 0.0f;
+	world_object[3] = world_ao.active && world_ao.cards ? 1.0f : 0.0f;
 	memcpy(&inputs[count], world_object, sizeof(world_object));
-	count += 3;
+	count += 4;
 	for (stage = 0; stage < D3DTSS_MAXSTAGES; stage++)
 	{
 		DWORD *state = D3D__TextureState[stage];
@@ -3626,6 +3638,7 @@ static void draw_uniforms_update(const float texture_scale[4][4])
 		converted->world_ao[0] = world_object[0];
 		converted->world_ao[1] = world_object[1];
 		converted->world_ao[2] = world_object[2];
+		converted->world_ao[3] = world_object[3];
 	}
 }
 

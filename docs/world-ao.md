@@ -311,7 +311,10 @@ baked in the BSP's own lightmap space:
 every static placement, not just the 64 nearest shapes. A static placement's own draws take the field from the
 pixel's own depth inside it (each tap's distance less `min(d(p), 0)`), relative to no reference. That keeps a
 rock's ground contact while its surface, which sits on its collision, isn't darkened by itself. Their reference
-is sent as −1 (`WORLD_AO_REFERENCE_NO_FIELD`).
+is sent as −1 (`WORLD_AO_REFERENCE_NO_FIELD`). A placement whose definition has no collision geometry (a shrub, a
+fern: `world_proxies_source_solid`) isn't in the field, so this doesn't apply: its draws take their reference as a
+moving object's do. Taken relative to none, a shrub by a cliff was darkened twice, by the field and by the lightmap
+its ambient light is sampled from, which already holds the cliff (#781).
 
 **The window.** The dynamic objects' shapes come first, nearest first; the static scenery's that the drawn field
 holds come after them (`world_proxies_window`'s dynamic count, `parameters[1].y`). A draw walks only the shapes
@@ -622,6 +625,21 @@ A_obj = mix(A_sdf(p, n), A_obj, reference_weight)          (block parameters[1][
 
 A Spartan in a corridor isn't darker overall than the floor's light says. But its side facing a wall, its underside
 and a Warthog's belly over the ground are darker, which is what the eye misses today.
+
+**Foliage: a two-sided shader's cards** (#781). A plant's leaves are cards drawn with a two-sided model shader
+(`_shader_model_two_sided_bit`: its back faces drawn again, the normal reversed). A card is thin, drawn alike from
+both sides and lit through either face, and its normal is no surface's: the cone along a horizontal card's normal
+finds the ground under it, and along a card facing a cliff the cliff, though the card is open to the sky. A shrub on
+Blood Gulch went near black, card by card. So a card's field term is that of its most open direction of three: the
+sky's (up, as the reference finds it) and its two faces' (`world_ao_cards_occlusion`: the first of them where alike),
+and its shapes and rays are found about that direction. The game says which draws are cards
+(`world_ao_cards`, hooked in `_rasterizer_model_draw`; the draw's uniforms' `world_ao[3]`), the pre-pass's twin puts
+`XGPU_WORLD_AO_INPUT_CARDS` in its inputs, and the pass (or an inline draw) finds the other two cones for those pixels
+alone. A canopy is then darkened where it is enclosed (under an overhang and against a wall at once, or by a vehicle
+beside it), not where a card happens to face. Measured (Vulkan, the GB10; mean luminance of the changed pixels, AO
+off / before / after): the shrub of #781's report 0.258 / 0.120 / 0.249, a pine by Sidewinder's base 0.096 / 0.038 /
+0.073, b30's trees from its start 0.396 / 0.291 / 0.297; nothing but the cards changed in those frames (and a30's
+lifepod's ceiling grilles, also a two-sided shader's).
 
 ### Proxies' occlusion
 
