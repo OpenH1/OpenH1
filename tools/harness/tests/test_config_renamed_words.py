@@ -13,7 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run, structure  # noqa: E402
 
 CASES = ["file", "kept", "read"]
-NAMES = ["config_setting_index", "config_append", "config_copy", "config_append_setting", "config_line_key",
+NAMES = ["config_name_hash", "config_setting_walk", "config_index_make", "config_setting_index", "config_append",
+         "config_copy", "config_append_setting", "config_line_key",
          "config_line_section", "config_find_line", "config_line_commented_default", "config_replace_setting",
          "config_word_is", "config_renamed_word", "config_migrate_words", "config_check_words"]
 
@@ -52,6 +53,9 @@ def generated(fault=None, faulty_function=None):
     ]) + "\n"
     words = table(source, "config_words") + "\n#define NUMBER_OF_CONFIG_WORDS (sizeof(config_words) / sizeof(config_words[0]))\n"
     text = table(source, "config_renamed_words") + "\n" + words
+    # (the settings' index by name: its slots and its state, as the source has them)
+    text += source[source.index("#define CONFIG_INDEX_SLOTS"):source.index("static int config_index_state;")]
+    text += "static int config_index_state;\n"
     for name in NAMES:
         code = function(source, name)
         if fault and name == faulty_function:
