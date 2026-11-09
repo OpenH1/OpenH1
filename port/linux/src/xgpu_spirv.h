@@ -157,9 +157,14 @@ struct xgpu_spirv_uniforms
 	float effect_eye[4][4];
 	/* display.ambient_occlusion "world" (xgpu.h): the draw's object, its
 	owner slot among the window's proxies (-1 none) and its reference, then
-	two spare; declared in the pixel shaders that read it alone, the last
-	member, so that the others' words are as they were */
+	two spare; declared in the pixel shaders that read it alone, past the
+	others, so that their words are as they were */
 	float world_ao[4];
+	/* display.dynamic_lights "enhanced": the lights' tint in the
+	structure's lightmap pass, ps_final_c0's color in linear light (to the
+	2.2), which the backend works out; declared (past world_ao) in those
+	pixel shaders alone */
+	float dynamic_light_tint[4];
 };
 
 /* what the SPIR-V is written for (xgpu_spirv.c):

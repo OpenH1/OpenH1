@@ -1002,10 +1002,11 @@ static int read_file(struct reader *reader, const struct menu_file *file)
 
 /* ---------- public code */
 
-/* The files are read once, on a thread of their own from the start
-(halo_menus_read_ahead), so that the first map's load (the main menu's)
-does not wait the 24 ms Expat takes over them: halo_menus_load waits for
-that thread, and nothing else reads the files before it. */
+/* The files are read once, on a thread of their own from the renderer's
+start (halo_menus_read_ahead, once xgpu_backend_capabilities and the VR mode
+that for_this_platform reads are set), so that the first map's load (the main
+menu's) does not wait the 24 ms Expat takes over them: halo_menus_load waits
+for that thread, and nothing else reads the files before it. */
 static struct halo_menus menus;
 static int menus_succeeded;
 static int menus_read;

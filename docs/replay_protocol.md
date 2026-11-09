@@ -2,12 +2,15 @@
 
 `halo_replay <recording> --serve` replays a render recording
 (`HALO_RENDER_RECORD`: `port/android/host/host_render_record.h`) and answers
-requests about its frames: their pictures, which draw made each pixel, and
-what each draw was. A client (a review tool, a script, an agent) starts it as
+requests about its frames: their pictures, which draw made each pixel, what
+each draw was and what each draw costs the GPU and the CPU. A client (a review tool, a script, an agent) starts it as
 a child process and talks to it in JSON lines. This document is what a client
 may rely on; the code is `port/tools/replay/host_render_replay.c`, shared by
 Metal's replay (`port/macos/tools/halo_replay.m`, `ninja macos_replay`) and
-Vulkan's (`port/linux/vulkan/tools/halo_replay.c`, `ninja linux_replay`).
+Vulkan's (`port/linux/vulkan/tools/halo_replay.c`, `ninja linux_replay`;
+`ninja windows_replay` builds it for Windows, `build/windows/halo_replay.exe`,
+with the Windows host's renderer, and CI keeps it as the `halo-windows-replay`
+artifact).
 
 Recordings and the pictures the service draws hold the game's art: keep them
 on your own machines.
@@ -30,11 +33,18 @@ on your own machines.
 ## Versions
 
 `info`'s `"protocol"` is the protocol's version, `HOST_RENDER_REPLAY_PROTOCOL`
-in `host_render_replay.h`: **1**. It is raised when a request or a reply
-changes so that a client of the old version would misread it; added fields
-and requests do not raise it, and a client ignores fields it does not know. A
-service without the field speaks version 1. A client refuses a service whose
-version it does not speak, and says so.
+in `host_render_replay.h`: **2**. `"protocols"` lists every version the
+service serves: a version 2 service serves version 1's clients unchanged
+(version 2 added `cost` and `info`'s `protocols`, `capabilities` and
+`cost_methods`; nothing of version 1 changed). `cost`'s `"cpu"` and `info`'s
+`call_kinds` were added to version 2 later: a service has them if its
+`capabilities` has `"cpu_cost"`. The version is raised when a
+request or a reply changes so that a client of the old version would misread
+it; added fields do not raise it, and a client ignores fields it does not
+know. A service without `"protocol"` speaks version 1, and one without
+`"protocols"` serves only its `"protocol"`. A client takes a service when
+one of the versions it speaks is in `"protocols"` (else `"protocol"`), and
+otherwise refuses it and says so.
 
 ## Requests
 
@@ -42,8 +52,9 @@ version it does not speak, and says so.
 
 ```json
 {"cmd": "info"}
-{"ok": true, "protocol": 1, "frames": 1676, "width": 2560, "height": 1440, "backend": "metal",
- "build": "85ccc010a", "marks": true, "records": 4196312}
+{"ok": true, "protocol": 2, "protocols": [1, 2], "frames": 1676, "width": 2560, "height": 1440,
+ "backend": "metal", "build": "85ccc010a", "marks": true, "records": 4196312,
+ "capabilities": ["frame", "draws", "thumbs", "ids", "pick", "cost", "cpu_cost"], "cost_methods": ["subtract"]}
 ```
 
 `frames`: the recording's frames, numbered from 0. `width`, `height`: the
@@ -51,7 +62,11 @@ last frame's back buffer (a frame's own size is in its `frame` reply).
 `backend`: `"metal"` or `"vulkan"`. `build`: the replay's git commit, which a
 client can key a cache of pictures on (with `backend`). `marks`: the
 recording has MARK records (`debug.render_marks`, below). `records`: the
-stream's records.
+stream's records. `capabilities`: what this service does (`ids` and `pick`
+need the backend's ID buffer, `cost` its GPU timing; `cpu_cost`: `cost`
+takes `"cpu"`). `cost_methods`: the methods `cost` can measure draws with
+(below), the default last. `call_kinds` (where the backend counts its calls
+of the driver, Vulkan's): the kinds `cost`'s `"cpu"` counts them by.
 
 ### frame
 
@@ -127,6 +142,192 @@ Written to `dir` as `thumb_<n>.png` (`thumb_<n>.qoi` and `"qoi"` with `"image":
 "qoi"`); with `"inline": true` or no `dir`, each is `{"n", "png_base64"}` (or
 `"qoi_base64"`), deflated with `"compress": true`. A frame that cannot be
 played is left out.
+
+### cost
+
+```json
+{"cmd": "cost", "n": 2760, "repeats": 7, "all": true}
+{"ok": true, "n": 2760, "method": "subtract", "repeats": 7, "plays": 2310, "frame_ms": 3.285,
+ "frame_spread": 0.012, "repeat_exact": true,
+ "passes": [{"i": 0, "kind": "sky", "width": 2560, "height": 1440, "draws": 65, "ms": 1.207, "spread": 0.004,
+             "draws_ms": 0.468, "draws_spread": 0.022, "draws_sum_ms": 1.221}, ...],
+ "draws": [{"i": 62, "pass": 0, "ms": 1.092, "spread": 0.016}, ...],
+ "draws_ms": 2.33, "frame_draws": 278, "note": "...", "seconds": 10.9}
+```
+
+The GPU's time on frame `n`: the frame's, each pass's and each draw's. The
+frame is played exactly once (unless it was the frame last played), then
+played again where it is, after itself, as many times as the measure needs
+(`plays`). `repeat_exact` says whether the first play again drew exactly the
+frame's picture (it should; `false` means state leaks from one play to the
+next). The frame asked for after a `cost` is played from the start again,
+so its picture is exact.
+
+- `repeats` (default 5, at most 64): the plays each figure is the median of.
+- `"all": true`: every draw measured; `"draws": [i, ...]`: those; neither:
+  the frame and its passes alone (fast: `repeats` plays). Every draw takes
+  about `repeats` x 1.13 x (draws + passes) plays: 278 draws and 7 repeats,
+  2310 plays in 11 s on an M-series Mac. A client measures every draw once, cheaply, then the
+  few it cares about with more repeats.
+- `"method"`: one of `info`'s `cost_methods`; by default the backend's own
+  if it has one (Vulkan's `timestamps`), else `subtract`.
+
+`frame_ms`: the time the GPU was busy with the frame (its passes' times
+added). Each pass, in the order it was made: `kind` (what its first draw
+was, or the backend's own pass: `aside` for a small target's pass put
+aside, `anti-aliasing`, `copies`...), its target's size, its `draws`, its
+`ms` (its part of `frame_ms`: from its start, or the end of the passes
+before it, to its end) and, with `all`, `draws_ms`, what the frame takes
+less without all its draws at once, and `draws_sum_ms`, its draws' `ms`
+added. Each draw: its `pass` (null: none timed it) and its `ms`. Every
+figure has its `spread`: the median of the repeats' distances from their
+median, x 1.4826 (a normal distribution's standard deviation). A
+difference smaller than about twice the two spreads together is noise.
+`draws_ms`: the draws' `ms` added; `note`: the backend's words on what its
+timing cannot see.
+
+#### The methods
+
+**subtract** (every backend). A draw's `ms` is what the frame takes less
+without it: the frame played with the draw left out (not handed to the
+backend; the state it was drawn with kept), between plays of the frame
+whole, 8 draws between two, the whole's time the mean of the two about it
+(so that the GPU's clocks, and other programs' work on the GPU, which change
+over seconds, cancel), counted from the draw's pass on (the passes made
+before it that ran before it cannot change: their time would be noise). It
+is what removing or fixing the draw saves: its own vertices and pixels, and
+what it costs later passes (a surface that gives the anti-aliasing edges to
+work on, a target sampled later). It is the method for a tiler, where a
+draw's pixels are shaded when its pass ends, not when it is drawn: Apple's
+GPUs sample timestamps only where a pass's stages begin and end
+(`MTLCounterSamplingPointAtStageBoundary`), and a pass ended at each draw
+to time it would no longer be the pass it is (each draw's loads and stores,
+its hidden surfaces no longer removed). A draw's `ms` can be negative:
+within its spread, noise; beyond it, the draw made later work cheaper (an
+opaque surface hiding what is behind it). Draws' costs do not add up: two
+draws that hide each other each cost little, together much (`draws_ms`
+against `draws_sum_ms`).
+
+**timestamps** (Vulkan). A timestamp at the bottom of the pipeline before
+and after each draw: the draw's own time. The timestamp before a draw waits
+for the work before it, so draws an immediate GPU would overlap run one
+after another; it does not see what a draw costs later passes; the first
+draw of a pass carries the pass's load or clear; times come in steps of the
+device's timestamp period (`note` gives `timestampPeriod` and
+`timestampValidBits`). On a tiler it says little: draws are shaded at the
+pass's end.
+
+#### The CPU's time: "cpu"
+
+```json
+{"cmd": "cost", "n": 2760, "repeats": 7, "cpu": true}
+{"ok": true, ..., "cpu": {"repeats": 7, "clock_ns": 7.9, "ticks_per_ms": 3700000.0,
+  "frame_ms": 2.412, "frame_spread": 0.031, "wall_ms": 2.47, "after_ms": 0.21,
+  "driver_ms": 1.13, "driver_spread": 0.02, "calls": 4312, "after_driver_ms": 0.09, "watched_ms": 2.66,
+  "kinds": [{"kind": "draw", "calls": 640, "ms": 0.16, "spread": 0.004}, ...],
+  "records": [{"type": "set_textures", "count": 512, "ms": 0.31, "spread": 0.01, "driver_ms": 0.02}, ...],
+  "passes": [{"i": 0, "draws": 65, "ms": 0.52, "spread": 0.01, "driver_ms": 0.25, "calls": 610}, ...],
+  "draws": [{"i": 62, "pass": 0, "ms": 0.0081, "spread": 0.0004, "own_ms": 0.0042,
+             "driver_ms": 0.0031, "driver_spread": 0.0002,
+             "calls": {"bind_pipeline": 1, "bind_descriptors": 2, "push_constants": 1, "draw": 1}}, ...],
+  "draws_ms": 2.19, "draws_calls": 3920}}
+```
+
+With `"cpu": true` the reply has `cpu` too: the render thread's time on the
+frame, which is the backend's code and the driver's under it (where the
+game's render thread spends its time: decoding the stream, recording the
+command buffers, submitting them). After the GPU's plays, the frame is
+played again where it is `repeats` times without the GPU's timestamps, each
+record timed on the render thread (the processor's counter read after the
+replay has put back the memory it reads, and again once it is played: the
+replay's own work is not counted), and, where the backend counts its calls
+of the driver (`call_kinds`), `repeats` times more in turn with each of those
+calls timed and counted. The memory the frame's play in order found changed
+counts as written again in each play, so that the backend makes again what
+it made then (textures decoded, vertices copied), as the game does each
+frame.
+
+- `frame_ms`: the frame's records' time added (the median of the plays).
+  `wall_ms`: from the frame's first record to its end, waits included.
+  `after_ms`: the records after its last draw (the anti-aliasing, the tone
+  map, the present, the frame's end and its submission).
+- `driver_ms`: the time inside the driver's calls (the clock's own cost,
+  `clock_ns` a read, taken off each), `calls` their number; `kinds` by kind.
+  `watched_ms` is `frame_ms` with the calls watched: what the watch itself
+  costs, which `frame_ms` and each draw's `ms` do not carry.
+- `records`: each record type's `count` in the frame, its time and the
+  driver's within it.
+- `passes`: each GPU pass's (as `passes` above numbers them; `null`: the
+  draws no pass timed) draws' times added, the driver's and the calls.
+- `draws`: every draw: `ms`, the records after the draw before it to it (its
+  state: textures, constants, pipeline, vertices) and the draw itself;
+  `own_ms`, the draw record's alone; `driver_ms` and `calls`, the driver's
+  among them, by kind (only the kinds it made). `draws_ms` is their sum.
+
+The kinds (Vulkan's, `xgpu_vulkan.h`): `bind_pipeline`, `bind_descriptors`,
+`update_descriptors`, `allocate_descriptors` (and the pools' resets),
+`push_constants`, `bind_buffers` (vertex and index), `dynamic_state`
+(viewport, scissor, depth bias, blend constants, stencil reference,
+topology), `draw` (and dispatches), `clear`, `begin_commands` and
+`end_commands` (a command buffer begun and ended: the secondary command
+buffers' and the submissions'), `execute_commands`, `rendering` (a dynamic
+rendering begun or ended), `barrier`, `copy`, `query`, `submit`, `wait`
+(semaphores waited for and read), `create` (samplers, views, images,
+buffers, memory, command buffers made).
+
+The clock is the processor's counter (x86's time stamp counter, AArch64's
+virtual counter: an Apple GPU Mac's ticks are 41.7 ns), converted to
+milliseconds against the monotonic clock over the plays (`ticks_per_ms`).
+`clock_ns` is also a gauge of the processor's clock: a frame of the render
+thread's is short, and a processor that idles between plays (a laptop's
+powersave governor) may not raise its clock for it. On bosgame's i5-1135G7 the
+Linux replay's figures were 2.2 times longer with the processor otherwise idle
+(`clock_ns` 20.7) than with another process keeping it at its full clock
+(7.0): compare machines at like `clock_ns`, or scale by it, and by the
+records that make no driver calls (`constants`, `set_textures`,
+`vertices`), the backend's own code on each.
+
+The CPU's figures have the GPU's caveats: measure with nothing else running,
+compare builds or machines measured alike, and a difference counts only past
+the spreads. Two replays of one recording on two machines, or two drivers
+on one GPU, compare draw by draw (by `i`): the same records, the same calls,
+the driver's time and the backend's (`ms` less `driver_ms`) apart.
+
+#### Accuracy
+
+Measured on an M-series Mac (Metal), Blood Gulch at 2560x1440:
+
+- **The frame and its passes**, against `HALO_METAL_PASS_TIMES` (each
+  pass's time as the game takes it, on a normal replay of the same frames):
+  frames 2751-2770 measured one by one with `cost` (5 repeats) have a median
+  of 3.37 and 3.51 ms in two runs, the normal replay's busy time 3.57 and
+  3.58 ms: within 6%. The passes by kind: 1.233 against 1.254 ms (the first
+  pass), 0.042 against 0.041 (the HUD), 0.323 against 0.308
+  (anti-aliasing), 0.576 against 0.618 (the aside passes), 0.090 against
+  0.090 (copies). On a frame of 133 draws the passes agreed within 2%.
+- **A draw's `ms`** (subtract, 9 repeats, two runs of one frame): on a quiet
+  GPU the runs differ by a median of 0.005 ms, 0.013 ms at the 90th
+  percentile, and the costliest draws by 0-12% (0.334 and 0.334 ms; 0.290
+  and 0.293; 0.170 and 0.191). With other programs drawing on the GPU (a
+  game, another replay) the differences grow five times (0.027 and 0.072
+  ms): measure on a quiet GPU, and look at `frame_spread`.
+- **Sums**: where draws hide each other, the draws' `ms` add up neither to
+  the frame's nor to their pass's `draws_ms` (above: a first pass of 65
+  draws, `draws_ms` 0.468, `draws_sum_ms` 1.221). Where they do not, they
+  agree to their spreads (the shadow maps' aside passes: 0.072 against
+  0.060 ms, 0.064 against 0.075).
+
+Vulkan (an RTX 4090, `timestampPeriod` 1 ns, 64 valid bits): the passes'
+shares of the frame match `debug.pass_times`' over the same frames within a
+few points (the main pass 56% and 56%, anti-aliasing 22% and 22%). In ms,
+the frame played again in place runs 25-50% longer than in an unpaced
+replay (the GPU idles between the plays and its clocks drop): compare
+shares, or builds measured alike.
+
+**A build against another**: the same recording replayed by each build's
+replay, each measured with `cost` in turn (not at once: they would share
+the GPU), the draws matched by `i` and ranked by the difference of their
+`ms`, a difference counted only past both spreads.
 
 ## A draw
 

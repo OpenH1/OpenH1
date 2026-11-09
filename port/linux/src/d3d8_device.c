@@ -37,6 +37,7 @@ Conventions carried over from the Xbox:
 #include "port_config.h"
 #include "battery_saver.h"
 #include "menu_pictures.h"
+#include "halo_menus.h"
 #include "report.h"
 #include "bink_import.h"
 #include "halo_linux_source_fixups.h"
@@ -54,6 +55,7 @@ Conventions carried over from the Xbox:
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <time.h>
 
 void d3d8_surface_initialize(D3DSurface *surface, D3DFORMAT format, unsigned long width, unsigned long height);
@@ -1949,6 +1951,13 @@ static void device_backend_ready(void)
 	a frame drawn before the next, a map loaded as the game starts,
 	prepares its pipelines as they are, its targets none yet) */
 	hdr_read();
+	/* (the PC menus' files read meanwhile, on a thread of their own, for
+	the first map's load: menu_files.c. Not before: their rows for the
+	renderer that draws display.hdr, and for the VR mode, are kept or left
+	out as the files are read, by the capabilities and the VR mode set
+	above) */
+	if (!halo_server_mode() && !strcasecmp(config_string("display.menus"), "pc"))
+		halo_menus_read_ahead();
 }
 
 /* what display.anti_aliasing's value needs of the backend, once it is

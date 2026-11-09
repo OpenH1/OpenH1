@@ -117,6 +117,10 @@ void host_render_record_set_frame(uint32_t frame);
 position, type and bytes in the ring), to restore the memory it reads */
 typedef void (*host_render_restorer)(uint32_t position, uint32_t type, const unsigned char *record);
 void host_render_record_set_restorer(host_render_restorer restorer);
+/* (the replay's too) called after each record is played, on the render
+thread: with the restorer, what a record took to play is the time from one
+to the other; NULL none */
+void host_render_record_set_played(void (*played)(void));
 
 /* the content's hash, as the file names it */
 uint64_t host_render_record_hash(const void *data, uint32_t size);

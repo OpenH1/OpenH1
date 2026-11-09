@@ -411,8 +411,17 @@ distance along it), then the leaves' clusters, four a texel (all bits set:
 none). A pixel finds its cluster from its point a little off its surface,
 along its normal, and its cell's lights are those its cluster's mask has; a
 world with no nodes (none uploaded, or too large) leaves the cells' lights as
-they are, as does a point the BSP puts in no cluster. */
+they are, as does a point the BSP puts in no cluster.
+That is the world the game sends; the hosts' backends give the GPU another
+made of it (xgpu_dynamic_lights_world.c and .h, which say how), in which
+every point ends in the cluster it ended in, with each node's plane beside
+it, and past the clusters' masks, at XGPU_DYNAMIC_LIGHTS_WALK in their slice,
+the mask of the lights whose walk could take them from a pixel (which the
+backend sets), a model's, and after it a structure's (which leaves out the
+lights for the models alone): a pixel walks the world only where its cell
+has one of them. */
 #define XGPU_DYNAMIC_LIGHTS_CLUSTERS 512
+#define XGPU_DYNAMIC_LIGHTS_WALK XGPU_DYNAMIC_LIGHTS_CLUSTERS
 #define XGPU_DYNAMIC_LIGHTS_WORLD_SLICES 240
 #define XGPU_DYNAMIC_LIGHTS_WORLD_TEXELS (XGPU_DYNAMIC_LIGHTS_WORLD_SLICES * 1024)
 /* the bytes uploaded each frame: the cells and the clusters' masks */

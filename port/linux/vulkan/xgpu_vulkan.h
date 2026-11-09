@@ -825,4 +825,82 @@ uint32_t *xgpu_vulkan_inspect_read(struct xgpu_vulkan_image *image, uint32_t *wi
 void xgpu_vulkan_inspect_end(void);
 void xgpu_vulkan_statistics_peek(struct xgpu_vulkan_statistics *statistics);
 
+/* A frame's GPU time for a caller (the replay's cost: port/tools/replay/
+host_render_replay.h), from timestamps at the bottom of the pipeline about
+each draw and each pass (xgpu_vulkan.c, "a frame's GPU time").
+xgpu_vulkan_timing_begin: (the render thread, before the frame's first
+work) the frame is timed; 0 if the device has no timestamps.
+xgpu_vulkan_timing_draw: (the render thread) the draws recorded from now
+are the caller's index'th (UINT32_MAX: none). xgpu_vulkan_timing_wait:
+(the frame ended, the render thread idle) waits up to seconds for its
+GPU work, then gives its time (its passes', which sum to it), its passes
+(each from the timestamp before it, ms from the frame's first; kind its
+label), each draw's own time and its pass (UINT32_MAX: none), by the
+caller's numbers; they are the backend's until the next begin. 0 if it
+was not timed. */
+struct xgpu_vulkan_pass_time
+{
+	const char *kind;
+	uint32_t width, height, draws;
+	double start_ms, end_ms, ms;
+};
+struct xgpu_vulkan_timing
+{
+	double frame_ms;
+	const struct xgpu_vulkan_pass_time *passes;
+	uint32_t pass_count;
+	const uint32_t *draw_pass;
+	const double *draw_ms;
+	uint32_t draw_count;
+	const char *note;
+};
+int xgpu_vulkan_timing_begin(void);
+void xgpu_vulkan_timing_draw(uint32_t index);
+int xgpu_vulkan_timing_wait(double seconds, struct xgpu_vulkan_timing *result);
+
+/* The driver's calls a thread makes, counted and timed for a caller (the
+replay's cost: its CPU time, port/tools/replay/host_render_replay.h), by
+kind. xgpu_vulkan_calls_watch: (the thread watched, the render thread)
+from now each Vulkan call of the backend's that it makes adds its time (in
+clock's ticks, the clock read before and after it) and one to its kind's
+entry of ticks and counts, and to their last (XGPU_VULKAN_CALL_KINDS: the
+total); NULL: the watch ends (the calls go straight to the driver again). */
+enum
+{
+	XGPU_VULKAN_CALL_BIND_PIPELINE,
+	XGPU_VULKAN_CALL_BIND_DESCRIPTORS,
+	XGPU_VULKAN_CALL_UPDATE_DESCRIPTORS,
+	/* (and the pools' resets) */
+	XGPU_VULKAN_CALL_ALLOCATE_DESCRIPTORS,
+	XGPU_VULKAN_CALL_PUSH_CONSTANTS,
+	/* (the vertex and index buffers) */
+	XGPU_VULKAN_CALL_BIND_BUFFERS,
+	/* (viewport, scissor, depth bias, blend constants, stencil reference,
+	topology) */
+	XGPU_VULKAN_CALL_DYNAMIC_STATE,
+	/* (and the dispatches) */
+	XGPU_VULKAN_CALL_DRAW,
+	XGPU_VULKAN_CALL_CLEAR,
+	/* (a command buffer begun, ended: the secondary command buffers'
+	and the submissions') */
+	XGPU_VULKAN_CALL_BEGIN_COMMANDS,
+	XGPU_VULKAN_CALL_END_COMMANDS,
+	XGPU_VULKAN_CALL_EXECUTE_COMMANDS,
+	/* (vkCmdBeginRendering, vkCmdEndRendering) */
+	XGPU_VULKAN_CALL_RENDERING,
+	XGPU_VULKAN_CALL_BARRIER,
+	/* (copies, blits, resolves) */
+	XGPU_VULKAN_CALL_COPY,
+	/* (queries and timestamps) */
+	XGPU_VULKAN_CALL_QUERY,
+	XGPU_VULKAN_CALL_SUBMIT,
+	/* (the semaphores waited for and read, the device idle) */
+	XGPU_VULKAN_CALL_WAIT,
+	/* (samplers, views, images, buffers, memory, command buffers made) */
+	XGPU_VULKAN_CALL_CREATE,
+	XGPU_VULKAN_CALL_KINDS
+};
+extern const char *const xgpu_vulkan_call_kind_names[XGPU_VULKAN_CALL_KINDS];
+void xgpu_vulkan_calls_watch(uint64_t *ticks, uint64_t *counts, uint64_t (*clock)(void));
+
 #endif

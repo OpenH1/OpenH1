@@ -125,6 +125,208 @@ DEVICE_FUNCTIONS(DECLARE)
 SWAPCHAIN_FUNCTIONS(DECLARE)
 #undef DECLARE
 static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
+
+/* ---------- the driver's calls watched (xgpu_vulkan_calls_watch: the
+replay's cost, port/tools/replay): while a thread watches, each call it
+makes of these (by the pointers above) is counted and timed, by its kind,
+into the watcher's counters; the pointers are the watched functions' only
+while some thread watches, and each passes a call of another thread on
+untimed */
+
+static uint64_t *calls_ticks, *calls_counts;
+static uint64_t (*calls_clock)(void);
+static _Thread_local int calls_watching;
+static int calls_installed;
+
+const char *const xgpu_vulkan_call_kind_names[XGPU_VULKAN_CALL_KINDS] =
+{
+	"bind_pipeline", "bind_descriptors", "update_descriptors", "allocate_descriptors", "push_constants",
+	"bind_buffers", "dynamic_state", "draw", "clear", "begin_commands", "end_commands", "execute_commands",
+	"rendering", "barrier", "copy", "query", "submit", "wait", "create",
+};
+
+/* (the watched call's time and count added, the total's in the last) */
+#define CALL_COUNTED(kind, start) \
+	do \
+	{ \
+		uint64_t elapsed = calls_clock() - (start); \
+		calls_ticks[kind] += elapsed; \
+		calls_ticks[XGPU_VULKAN_CALL_KINDS] += elapsed; \
+		calls_counts[kind]++; \
+		calls_counts[XGPU_VULKAN_CALL_KINDS]++; \
+	} while (0)
+
+#define WATCHED_VOID(kind, name, parameters, arguments) \
+	static PFN_##name name##_unwatched; \
+	static VKAPI_ATTR void VKAPI_CALL name##_watched parameters \
+	{ \
+		uint64_t start; \
+		if (!calls_watching) \
+		{ \
+			name##_unwatched arguments; \
+			return; \
+		} \
+		start = calls_clock(); \
+		name##_unwatched arguments; \
+		CALL_COUNTED(XGPU_VULKAN_CALL_##kind, start); \
+	}
+#define WATCHED_RESULT(kind, name, parameters, arguments) \
+	static PFN_##name name##_unwatched; \
+	static VKAPI_ATTR VkResult VKAPI_CALL name##_watched parameters \
+	{ \
+		uint64_t start; \
+		VkResult result; \
+		if (!calls_watching) \
+			return name##_unwatched arguments; \
+		start = calls_clock(); \
+		result = name##_unwatched arguments; \
+		CALL_COUNTED(XGPU_VULKAN_CALL_##kind, start); \
+		return result; \
+	}
+
+WATCHED_VOID(BIND_PIPELINE, vkCmdBindPipeline, (VkCommandBuffer a, VkPipelineBindPoint b, VkPipeline c),
+	(a, b, c))
+WATCHED_VOID(BIND_DESCRIPTORS, vkCmdBindDescriptorSets, (VkCommandBuffer a, VkPipelineBindPoint b, VkPipelineLayout c, uint32_t d, uint32_t e, const VkDescriptorSet *f, uint32_t g, const uint32_t *h),
+	(a, b, c, d, e, f, g, h))
+WATCHED_VOID(UPDATE_DESCRIPTORS, vkUpdateDescriptorSets, (VkDevice a, uint32_t b, const VkWriteDescriptorSet *c, uint32_t d, const VkCopyDescriptorSet *e),
+	(a, b, c, d, e))
+WATCHED_RESULT(ALLOCATE_DESCRIPTORS, vkAllocateDescriptorSets, (VkDevice a, const VkDescriptorSetAllocateInfo *b, VkDescriptorSet *c),
+	(a, b, c))
+WATCHED_RESULT(ALLOCATE_DESCRIPTORS, vkResetDescriptorPool, (VkDevice a, VkDescriptorPool b, VkDescriptorPoolResetFlags c),
+	(a, b, c))
+WATCHED_VOID(PUSH_CONSTANTS, vkCmdPushConstants, (VkCommandBuffer a, VkPipelineLayout b, VkShaderStageFlags c, uint32_t d, uint32_t e, const void *f),
+	(a, b, c, d, e, f))
+WATCHED_VOID(BIND_BUFFERS, vkCmdBindVertexBuffers, (VkCommandBuffer a, uint32_t b, uint32_t c, const VkBuffer *d, const VkDeviceSize *e),
+	(a, b, c, d, e))
+WATCHED_VOID(BIND_BUFFERS, vkCmdBindIndexBuffer, (VkCommandBuffer a, VkBuffer b, VkDeviceSize c, VkIndexType d),
+	(a, b, c, d))
+WATCHED_VOID(DYNAMIC_STATE, vkCmdSetViewport, (VkCommandBuffer a, uint32_t b, uint32_t c, const VkViewport *d),
+	(a, b, c, d))
+WATCHED_VOID(DYNAMIC_STATE, vkCmdSetScissor, (VkCommandBuffer a, uint32_t b, uint32_t c, const VkRect2D *d),
+	(a, b, c, d))
+WATCHED_VOID(DYNAMIC_STATE, vkCmdSetDepthBias, (VkCommandBuffer a, float b, float c, float d),
+	(a, b, c, d))
+WATCHED_VOID(DYNAMIC_STATE, vkCmdSetBlendConstants, (VkCommandBuffer a, const float b[4]),
+	(a, b))
+WATCHED_VOID(DYNAMIC_STATE, vkCmdSetStencilReference, (VkCommandBuffer a, VkStencilFaceFlags b, uint32_t c),
+	(a, b, c))
+WATCHED_VOID(DYNAMIC_STATE, vkCmdSetPrimitiveTopology, (VkCommandBuffer a, VkPrimitiveTopology b),
+	(a, b))
+WATCHED_VOID(DRAW, vkCmdDraw, (VkCommandBuffer a, uint32_t b, uint32_t c, uint32_t d, uint32_t e),
+	(a, b, c, d, e))
+WATCHED_VOID(DRAW, vkCmdDrawIndexed, (VkCommandBuffer a, uint32_t b, uint32_t c, uint32_t d, int32_t e, uint32_t f),
+	(a, b, c, d, e, f))
+WATCHED_VOID(DRAW, vkCmdDispatch, (VkCommandBuffer a, uint32_t b, uint32_t c, uint32_t d),
+	(a, b, c, d))
+WATCHED_VOID(CLEAR, vkCmdClearAttachments, (VkCommandBuffer a, uint32_t b, const VkClearAttachment *c, uint32_t d, const VkClearRect *e),
+	(a, b, c, d, e))
+WATCHED_VOID(CLEAR, vkCmdClearColorImage, (VkCommandBuffer a, VkImage b, VkImageLayout c, const VkClearColorValue *d, uint32_t e, const VkImageSubresourceRange *f),
+	(a, b, c, d, e, f))
+WATCHED_VOID(CLEAR, vkCmdClearDepthStencilImage, (VkCommandBuffer a, VkImage b, VkImageLayout c, const VkClearDepthStencilValue *d, uint32_t e, const VkImageSubresourceRange *f),
+	(a, b, c, d, e, f))
+WATCHED_RESULT(BEGIN_COMMANDS, vkBeginCommandBuffer, (VkCommandBuffer a, const VkCommandBufferBeginInfo *b),
+	(a, b))
+WATCHED_RESULT(END_COMMANDS, vkEndCommandBuffer, (VkCommandBuffer a),
+	(a))
+WATCHED_VOID(EXECUTE_COMMANDS, vkCmdExecuteCommands, (VkCommandBuffer a, uint32_t b, const VkCommandBuffer *c),
+	(a, b, c))
+WATCHED_VOID(RENDERING, vkCmdBeginRendering, (VkCommandBuffer a, const VkRenderingInfo *b),
+	(a, b))
+WATCHED_VOID(RENDERING, vkCmdEndRendering, (VkCommandBuffer a),
+	(a))
+WATCHED_VOID(BARRIER, vkCmdPipelineBarrier, (VkCommandBuffer a, VkPipelineStageFlags b, VkPipelineStageFlags c, VkDependencyFlags d, uint32_t e, const VkMemoryBarrier *f, uint32_t g, const VkBufferMemoryBarrier *h, uint32_t i, const VkImageMemoryBarrier *j),
+	(a, b, c, d, e, f, g, h, i, j))
+WATCHED_VOID(COPY, vkCmdCopyBuffer, (VkCommandBuffer a, VkBuffer b, VkBuffer c, uint32_t d, const VkBufferCopy *e),
+	(a, b, c, d, e))
+WATCHED_VOID(COPY, vkCmdCopyBufferToImage, (VkCommandBuffer a, VkBuffer b, VkImage c, VkImageLayout d, uint32_t e, const VkBufferImageCopy *f),
+	(a, b, c, d, e, f))
+WATCHED_VOID(COPY, vkCmdCopyImageToBuffer, (VkCommandBuffer a, VkImage b, VkImageLayout c, VkBuffer d, uint32_t e, const VkBufferImageCopy *f),
+	(a, b, c, d, e, f))
+WATCHED_VOID(COPY, vkCmdCopyImage, (VkCommandBuffer a, VkImage b, VkImageLayout c, VkImage d, VkImageLayout e, uint32_t f, const VkImageCopy *g),
+	(a, b, c, d, e, f, g))
+WATCHED_VOID(COPY, vkCmdBlitImage, (VkCommandBuffer a, VkImage b, VkImageLayout c, VkImage d, VkImageLayout e, uint32_t f, const VkImageBlit *g, VkFilter h),
+	(a, b, c, d, e, f, g, h))
+WATCHED_VOID(COPY, vkCmdResolveImage, (VkCommandBuffer a, VkImage b, VkImageLayout c, VkImage d, VkImageLayout e, uint32_t f, const VkImageResolve *g),
+	(a, b, c, d, e, f, g))
+WATCHED_VOID(QUERY, vkCmdBeginQuery, (VkCommandBuffer a, VkQueryPool b, uint32_t c, VkQueryControlFlags d),
+	(a, b, c, d))
+WATCHED_VOID(QUERY, vkCmdEndQuery, (VkCommandBuffer a, VkQueryPool b, uint32_t c),
+	(a, b, c))
+WATCHED_VOID(QUERY, vkCmdWriteTimestamp, (VkCommandBuffer a, VkPipelineStageFlagBits b, VkQueryPool c, uint32_t d),
+	(a, b, c, d))
+WATCHED_VOID(QUERY, vkResetQueryPool, (VkDevice a, VkQueryPool b, uint32_t c, uint32_t d),
+	(a, b, c, d))
+WATCHED_RESULT(QUERY, vkGetQueryPoolResults, (VkDevice a, VkQueryPool b, uint32_t c, uint32_t d, size_t e, void *f, VkDeviceSize g, VkQueryResultFlags h),
+	(a, b, c, d, e, f, g, h))
+WATCHED_RESULT(SUBMIT, vkQueueSubmit, (VkQueue a, uint32_t b, const VkSubmitInfo *c, VkFence d),
+	(a, b, c, d))
+WATCHED_RESULT(WAIT, vkWaitSemaphores, (VkDevice a, const VkSemaphoreWaitInfo *b, uint64_t c),
+	(a, b, c))
+WATCHED_RESULT(WAIT, vkGetSemaphoreCounterValue, (VkDevice a, VkSemaphore b, uint64_t *c),
+	(a, b, c))
+WATCHED_RESULT(WAIT, vkDeviceWaitIdle, (VkDevice a),
+	(a))
+WATCHED_RESULT(CREATE, vkCreateSampler, (VkDevice a, const VkSamplerCreateInfo *b, const VkAllocationCallbacks *c, VkSampler *d),
+	(a, b, c, d))
+WATCHED_RESULT(CREATE, vkCreateImageView, (VkDevice a, const VkImageViewCreateInfo *b, const VkAllocationCallbacks *c, VkImageView *d),
+	(a, b, c, d))
+WATCHED_RESULT(CREATE, vkCreateImage, (VkDevice a, const VkImageCreateInfo *b, const VkAllocationCallbacks *c, VkImage *d),
+	(a, b, c, d))
+WATCHED_RESULT(CREATE, vkCreateBuffer, (VkDevice a, const VkBufferCreateInfo *b, const VkAllocationCallbacks *c, VkBuffer *d),
+	(a, b, c, d))
+WATCHED_RESULT(CREATE, vkAllocateMemory, (VkDevice a, const VkMemoryAllocateInfo *b, const VkAllocationCallbacks *c, VkDeviceMemory *d),
+	(a, b, c, d))
+WATCHED_RESULT(CREATE, vkAllocateCommandBuffers, (VkDevice a, const VkCommandBufferAllocateInfo *b, VkCommandBuffer *c),
+	(a, b, c))
+WATCHED_RESULT(CREATE, vkResetCommandPool, (VkDevice a, VkCommandPool b, VkCommandPoolResetFlags c),
+	(a, b, c))
+WATCHED_RESULT(CREATE, vkCreateGraphicsPipelines, (VkDevice a, VkPipelineCache b, uint32_t c, const VkGraphicsPipelineCreateInfo *d, const VkAllocationCallbacks *e, VkPipeline *f),
+	(a, b, c, d, e, f))
+#undef WATCHED_VOID
+#undef WATCHED_RESULT
+
+#define WATCHED_FUNCTIONS(F) \
+	F(vkCmdBindPipeline) F(vkCmdBindDescriptorSets) F(vkUpdateDescriptorSets) F(vkAllocateDescriptorSets) \
+	F(vkResetDescriptorPool) F(vkCmdPushConstants) F(vkCmdBindVertexBuffers) F(vkCmdBindIndexBuffer) \
+	F(vkCmdSetViewport) F(vkCmdSetScissor) F(vkCmdSetDepthBias) F(vkCmdSetBlendConstants) \
+	F(vkCmdSetStencilReference) F(vkCmdSetPrimitiveTopology) F(vkCmdDraw) F(vkCmdDrawIndexed) \
+	F(vkCmdDispatch) F(vkCmdClearAttachments) F(vkCmdClearColorImage) F(vkCmdClearDepthStencilImage) \
+	F(vkBeginCommandBuffer) F(vkEndCommandBuffer) F(vkCmdExecuteCommands) F(vkCmdBeginRendering) \
+	F(vkCmdEndRendering) F(vkCmdPipelineBarrier) F(vkCmdCopyBuffer) F(vkCmdCopyBufferToImage) \
+	F(vkCmdCopyImageToBuffer) F(vkCmdCopyImage) F(vkCmdBlitImage) F(vkCmdResolveImage) \
+	F(vkCmdBeginQuery) F(vkCmdEndQuery) F(vkCmdWriteTimestamp) F(vkResetQueryPool) \
+	F(vkGetQueryPoolResults) F(vkQueueSubmit) F(vkWaitSemaphores) F(vkGetSemaphoreCounterValue) \
+	F(vkDeviceWaitIdle) F(vkCreateSampler) F(vkCreateImageView) F(vkCreateImage) \
+	F(vkCreateBuffer) F(vkAllocateMemory) F(vkAllocateCommandBuffers) F(vkResetCommandPool) \
+	F(vkCreateGraphicsPipelines)
+
+void xgpu_vulkan_calls_watch(uint64_t *ticks, uint64_t *counts, uint64_t (*clock)(void))
+{
+	if (ticks && counts && clock)
+	{
+		calls_ticks = ticks;
+		calls_counts = counts;
+		calls_clock = clock;
+		if (!calls_installed)
+		{
+#define INSTALL(name) name##_unwatched = name; name = name##_watched;
+			WATCHED_FUNCTIONS(INSTALL)
+#undef INSTALL
+			calls_installed = 1;
+		}
+		calls_watching = 1;
+		return;
+	}
+	calls_watching = 0;
+	if (calls_installed)
+	{
+#define UNINSTALL(name) name = name##_unwatched;
+		WATCHED_FUNCTIONS(UNINSTALL)
+#undef UNINSTALL
+		calls_installed = 0;
+	}
+}
+
 /* (VK_EXT_hdr_metadata's, where the device has it) */
 static PFN_vkSetHdrMetadataEXT vkSetHdrMetadataEXT;
 
@@ -1598,6 +1800,7 @@ static void pass_play(VkCommandBuffer main, uint32_t first, uint32_t last)
 
 static void pass_times_mark(VkCommandBuffer main, const char *label);
 static const char *pass_times_label(const struct segment *segment, int aside);
+static void timing_mark(VkCommandBuffer main, const struct segment *segment, int aside, int outside);
 
 /* the submission's segments into the main command buffer, in order but for
 what was put aside (before the chain it was put aside from, whose pieces
@@ -1609,6 +1812,7 @@ static void segments_play(void)
 
 	segment_close();
 	pass_times_mark(main, NULL);
+	timing_mark(main, NULL, 0, 0);
 	for (index = 0; index < vk.segment_count; index++)
 	{
 		struct segment *segment = &vk.segments[index];
@@ -1617,6 +1821,7 @@ static void segments_play(void)
 		{
 			vkCmdExecuteCommands(main, 1, &segment->commands);
 			pass_times_mark(main, "outside passes");
+			timing_mark(main, NULL, 0, 1);
 			continue;
 		}
 		if (segment->chain_last > index + 1)
@@ -1634,20 +1839,24 @@ static void segments_play(void)
 					pass_play(main, between, between);
 					vk.statistics.passes_aside++;
 					pass_times_mark(main, pass_times_label(aside, 1));
+					timing_mark(main, aside, 1, 0);
 				}
 				else
 				{
 					vkCmdExecuteCommands(main, 1, &aside->commands);
 					pass_times_mark(main, "outside passes");
+					timing_mark(main, NULL, 0, 1);
 				}
 			}
 			pass_play(main, index, last);
 			pass_times_mark(main, pass_times_label(segment, 0));
+			timing_mark(main, segment, 0, 0);
 			index = last;
 			continue;
 		}
 		pass_play(main, index, index);
 		pass_times_mark(main, pass_times_label(segment, 0));
+		timing_mark(main, segment, 0, 0);
 	}
 	vk.segment_count = 0;
 	aside_break();
@@ -2113,6 +2322,286 @@ static void pass_times_collect(void)
 		pass_times.sum_count = 0;
 		pass_times.frames = 0.0;
 	}
+}
+
+/* ---------- a frame's GPU time for a caller (xgpu_vulkan_timing_*)
+
+The replay's cost (port/tools/replay/host_render_replay.h): the frame
+begun after a request is timed with timestamps at the bottom of the
+pipeline before and after each of its draws (in the segments' commands)
+and, as segments_play plays them, at each submission's start and after
+each pass and each piece of work outside passes (in the main command
+buffer). A pass's time is from the timestamp before it to its own, so that
+the passes' times sum to the frame's (the waits between its submissions
+left out); a draw's from its timestamp before to its timestamp after, and
+it belongs to the pass whose span holds its end. A timestamp at the bottom
+of the pipeline waits for the work before it: around each draw, the draws
+that would overlap on an immediate GPU are drawn one after the other, so
+a draw's time is its own, without the overlap, and the frame drawn so is
+slower than it is untimed (its passes' times are those of the frame drawn
+so); a tiler's draws are binned and shaded at the pass's end, so their
+timestamps say little. HALO_VULKAN_TIMING_DRAWS=0 times the passes alone
+(the frame drawn as untimed; the replay's subtraction needs no more). */
+
+#define TIMING_QUERIES 16384
+/* (room kept for the passes' timestamps) */
+#define TIMING_PASS_ROOM 1024
+#define TIMING_LABEL 64
+
+enum { TIMING_START, TIMING_PASS, TIMING_DRAW_BEFORE, TIMING_DRAW_AFTER };
+
+static struct
+{
+	VkQueryPool pool;
+	/* the frame being timed (render thread), its timestamps written to
+	used; the draw being handed (the caller's number), done: the frame
+	ended, its timestamps all written to (used) */
+	int active, done, draws_off;
+	uint32_t used, draw;
+	struct
+	{
+		uint8_t what;
+		/* a draw's number; a pass's place in passes */
+		uint32_t index;
+	} marks[TIMING_QUERIES];
+	struct
+	{
+		char label[TIMING_LABEL];
+		uint32_t width, height;
+	} passes[TIMING_PASS_ROOM];
+	uint32_t pass_count;
+	/* the results */
+	struct xgpu_vulkan_pass_time results[TIMING_PASS_ROOM];
+	uint32_t *draw_pass;
+	double *draw_ms;
+	uint32_t draw_count, draw_capacity;
+	char note[512];
+} timing;
+
+int xgpu_vulkan_timing_begin(void)
+{
+	VkQueryPoolCreateInfo create;
+
+	if (!vk.capabilities.gpu_timestamps)
+		return 0;
+	if (!timing.pool)
+	{
+		memset(&create, 0, sizeof(create));
+		create.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+		create.queryType = VK_QUERY_TYPE_TIMESTAMP;
+		create.queryCount = TIMING_QUERIES;
+		if (!check(vkCreateQueryPool(vk.device, &create, NULL, &timing.pool), "vkCreateQueryPool (timing)"))
+		{
+			timing.pool = VK_NULL_HANDLE;
+			return 0;
+		}
+	}
+	vkResetQueryPool(vk.device, timing.pool, 0, TIMING_QUERIES);
+	timing.used = 0;
+	timing.pass_count = 0;
+	timing.draw = UINT32_MAX;
+	timing.done = 0;
+	timing.draws_off = getenv("HALO_VULKAN_TIMING_DRAWS") && !atoi(getenv("HALO_VULKAN_TIMING_DRAWS"));
+	timing.active = 1;
+	return 1;
+}
+
+void xgpu_vulkan_timing_draw(uint32_t index)
+{
+	timing.draw = index;
+}
+
+/* a timestamp of the timed frame's into commands (0 if there is no room) */
+static int timing_write(VkCommandBuffer commands, uint8_t what, uint32_t index)
+{
+	if (!timing.active || timing.used >= TIMING_QUERIES ||
+		((what == TIMING_DRAW_BEFORE || what == TIMING_DRAW_AFTER) && timing.used >= TIMING_QUERIES - TIMING_PASS_ROOM))
+		return 0;
+	vkCmdWriteTimestamp(commands, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timing.pool, timing.used);
+	timing.marks[timing.used].what = what;
+	timing.marks[timing.used].index = index;
+	timing.used++;
+	return 1;
+}
+
+/* (about a draw recorded into commands) */
+static void timing_draw_mark(VkCommandBuffer commands, int after)
+{
+	if (!timing.active || timing.draw == UINT32_MAX || timing.draws_off)
+		return;
+	/* (a pair, or none: the one after is written where the one before was) */
+	if (!after)
+		timing_write(commands, TIMING_DRAW_BEFORE, timing.draw);
+	else if (timing.used && timing.marks[timing.used - 1].what == TIMING_DRAW_BEFORE)
+		timing_write(commands, TIMING_DRAW_AFTER, timing.draw);
+}
+
+/* (segments_play) a submission's start (segment NULL, outside 0), or the
+end of a pass (segment) or of work outside passes (outside) */
+static void timing_mark(VkCommandBuffer main, const struct segment *segment, int aside, int outside)
+{
+	const struct xgpu_vulkan_image *image;
+
+	if (!timing.active)
+		return;
+	if (!segment && !outside)
+	{
+		timing_write(main, TIMING_START, 0);
+		return;
+	}
+	if (timing.pass_count >= TIMING_PASS_ROOM || !timing_write(main, TIMING_PASS, timing.pass_count))
+		return;
+	if (outside)
+	{
+		snprintf(timing.passes[timing.pass_count].label, TIMING_LABEL, "outside passes");
+		timing.passes[timing.pass_count].width = timing.passes[timing.pass_count].height = 0;
+	}
+	else
+	{
+		image = segment->color.image ? segment->color.image : segment->depth.image;
+		snprintf(timing.passes[timing.pass_count].label, TIMING_LABEL, "%s%ux%u%s%s%s", aside ? "aside " : "pass ",
+			segment->area.extent.width, segment->area.extent.height, segment->color.image ? " colour" : "",
+			segment->depth.image ? " depth" : "", image && image->description.samples > 1 ? " msaa" : "");
+		timing.passes[timing.pass_count].width = segment->area.extent.width;
+		timing.passes[timing.pass_count].height = segment->area.extent.height;
+	}
+	timing.pass_count++;
+}
+
+/* (the frame's end, its last submission made) */
+static void timing_frame_end(void)
+{
+	if (!timing.active)
+		return;
+	timing.active = 0;
+	timing.done = 1;
+}
+
+int xgpu_vulkan_timing_wait(double seconds, struct xgpu_vulkan_timing *result)
+{
+	static uint64_t times[TIMING_QUERIES][2];
+	uint64_t mask = vk.timestamp_bits >= 64 ? UINT64_MAX : (UINT64_C(1) << vk.timestamp_bits) - 1, first = 0, previous = 0;
+	double period = (double)vk.properties.limits.timestampPeriod * 1e-6, frame = 0.0, waited = 0.0;
+	uint32_t index, pass, draws = 0;
+	int have_first = 0, have_previous = 0;
+	VkResult status;
+
+	memset(result, 0, sizeof(*result));
+	if (!timing.done || !timing.used)
+		return 0;
+	/* (the timestamps of the main command buffer all written: the frame is
+	done; a draw's segment that was not played has none) */
+	for (;;)
+	{
+		int ready = 1;
+
+		status = vkGetQueryPoolResults(vk.device, timing.pool, 0, timing.used, sizeof(times[0]) * timing.used, times,
+			sizeof(times[0]), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+		if (status != VK_SUCCESS && status != VK_NOT_READY)
+			return 0;
+		for (index = 0; index < timing.used && ready; index++)
+		{
+			if ((timing.marks[index].what == TIMING_START || timing.marks[index].what == TIMING_PASS) && !times[index][1])
+				ready = 0;
+		}
+		if (ready)
+			break;
+		if (waited >= seconds)
+			return 0;
+		{
+			struct timespec pause = { 0, 200000 };
+
+			nanosleep(&pause, NULL);
+			waited += 0.0002;
+		}
+	}
+	/* the passes: each from the timestamp before it, in its submission */
+	for (index = 0; index < timing.used; index++)
+	{
+		if (timing.marks[index].what == TIMING_START)
+		{
+			if (!have_first)
+			{
+				first = times[index][0];
+				have_first = 1;
+			}
+			previous = times[index][0];
+			have_previous = 1;
+			continue;
+		}
+		if (timing.marks[index].what != TIMING_PASS || !have_previous)
+			continue;
+		pass = timing.marks[index].index;
+		timing.results[pass].kind = timing.passes[pass].label;
+		timing.results[pass].width = timing.passes[pass].width;
+		timing.results[pass].height = timing.passes[pass].height;
+		timing.results[pass].draws = 0;
+		timing.results[pass].start_ms = (double)((previous - first) & mask) * period;
+		timing.results[pass].end_ms = (double)((times[index][0] - first) & mask) * period;
+		timing.results[pass].ms = (double)((times[index][0] - previous) & mask) * period;
+		frame += timing.results[pass].ms;
+		previous = times[index][0];
+	}
+	/* the draws: each its own time, in the pass whose span holds its end */
+	for (index = 0; index + 1 < timing.used; index++)
+	{
+		if (timing.marks[index].what == TIMING_DRAW_BEFORE && timing.marks[index + 1].what == TIMING_DRAW_AFTER &&
+			timing.marks[index + 1].index + 1 > draws)
+			draws = timing.marks[index + 1].index + 1;
+	}
+	if (draws > timing.draw_capacity)
+	{
+		uint32_t *grown_pass = realloc(timing.draw_pass, draws * sizeof(*grown_pass));
+		double *grown_ms;
+
+		if (grown_pass)
+			timing.draw_pass = grown_pass;
+		grown_ms = realloc(timing.draw_ms, draws * sizeof(*grown_ms));
+		if (grown_ms)
+			timing.draw_ms = grown_ms;
+		if (!grown_pass || !grown_ms)
+			return 0;
+		timing.draw_capacity = draws;
+	}
+	for (index = 0; index < draws; index++)
+	{
+		timing.draw_pass[index] = UINT32_MAX;
+		timing.draw_ms[index] = 0.0;
+	}
+	for (index = 0; index + 1 < timing.used; index++)
+	{
+		uint32_t draw = timing.marks[index].index;
+		double end;
+
+		if (timing.marks[index].what != TIMING_DRAW_BEFORE || timing.marks[index + 1].what != TIMING_DRAW_AFTER ||
+			!times[index][1] || !times[index + 1][1] || !have_first)
+			continue;
+		/* (a draw handed on in pieces: their times summed) */
+		timing.draw_ms[draw] += (double)((times[index + 1][0] - times[index][0]) & mask) * period;
+		end = (double)((times[index + 1][0] - first) & mask) * period;
+		for (pass = 0; pass < timing.pass_count; pass++)
+		{
+			if (end > timing.results[pass].start_ms && end <= timing.results[pass].end_ms)
+			{
+				if (timing.draw_pass[draw] == UINT32_MAX)
+					timing.results[pass].draws++;
+				timing.draw_pass[draw] = pass;
+				break;
+			}
+		}
+	}
+	snprintf(timing.note, sizeof(timing.note), "Vulkan timestamps at the bottom of the pipeline about each draw "
+		"(period %.3f ns, %u valid bits): overlapping draws are drawn one after another, so a draw's ms is its own "
+		"and the timed frame is slower than untimed; a tiler's draws are shaded at the pass's end",
+		(double)vk.properties.limits.timestampPeriod, vk.timestamp_bits);
+	result->frame_ms = frame;
+	result->passes = timing.results;
+	result->pass_count = timing.pass_count;
+	result->draw_pass = timing.draw_pass;
+	result->draw_ms = timing.draw_ms;
+	result->draw_count = draws;
+	result->note = timing.note;
+	return frame > 0.0;
 }
 
 /* ---------- the upload ring */
@@ -5712,14 +6201,17 @@ static void draw_body(const struct xgpu_vulkan_draw *draw)
 			vk.bound.index_offset = draw->indices.offset;
 		}
 		draw_times_draw(commands, draw, 0);
+		timing_draw_mark(commands, 0);
 		vkCmdDrawIndexed(commands, draw->count, 1, draw->first_index, draw->vertex_offset, 0);
 	}
 	else
 	{
 		draw_times_draw(commands, draw, 0);
+		timing_draw_mark(commands, 0);
 		vkCmdDraw(commands, draw->count, 1, 0, 0);
 	}
 	draw_times_draw(commands, draw, 1);
+	timing_draw_mark(commands, 1);
 	vk.statistics.draws++;
 }
 
@@ -7217,6 +7709,7 @@ void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
 		draw_times.serial = serial;
 	/* (after the present: its submission plays the frame's last passes) */
 	pass_times_frame_end();
+	timing_frame_end();
 	if (pass_times.pending && !pass_times.serial)
 		pass_times.serial = serial;
 	if (vk.queries)

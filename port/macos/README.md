@@ -694,6 +694,11 @@ build/macos/halo_replay --compare <shots> <shots>
   stacks the draw's number on the pixels it changed (an alpha-tested leaf's
   pixels, not its quad's cut-out corners). A frame asked for with its IDs
   is played twice: once as it is, for its picture, and once bracketed.
+  The service's `cost` (each pass's and draw's GPU time) times the frame
+  played again with the passes' timestamps at their stages
+  (`xgpu_metal_timing_*`, as `HALO_METAL_PASSES`'), the only places Apple's
+  GPUs take them: a draw's time is the frame's without it subtracted from
+  the frame's whole (`docs/replay_protocol.md`, "cost").
 - `debug.render_marks` (`HALO_RENDER_MARKS=1`, beside `HALO_RENDER_RECORD`)
   records what each draw belongs to (the stream's MARK records,
   `port/linux/game/render_marks.c`): each window's camera, the map and the

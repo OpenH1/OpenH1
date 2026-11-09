@@ -49,6 +49,14 @@ whole rings), so that the render thread sees one stream.
 #define HALO_REPLAY_BUILD "unknown"
 #endif
 
+#ifdef _WIN32
+/* (Windows's: host_render_replay_win.c) */
+const unsigned char *host_render_replay_map(const char *path, size_t *size);
+int host_render_replay_low_claim(uint32_t address, uint32_t size);
+void host_render_replay_low_watch(void);
+void host_render_replay_binary_output(void);
+#endif
+
 /* ---------- what the host gives the backend and the decoder, here */
 
 #ifdef HALO_GUEST_BASE
@@ -349,6 +357,10 @@ struct chunk
 {
 	uint32_t address, size;
 	const unsigned char *data;
+	/* its memory was other than this when the frame was last played in
+	order (not again after itself): what the CPU's cost plays count as
+	written again */
+	uint8_t changed;
 };
 
 struct record
@@ -721,24 +733,36 @@ static int blocks_decode(const unsigned char *place, const unsigned char *map_en
 
 static int recording_load(const char *path)
 {
-	int descriptor = open(path, O_RDONLY);
-	struct stat status;
 	const unsigned char *place, *end;
 	uint32_t records = 0, chunks = 0, contents = 0, record_capacity, chunk_capacity, size;
 	uint32_t pending_first = 0;
 
-	if (descriptor < 0 || fstat(descriptor, &status) || (size_t)status.st_size < sizeof(recording.header))
+#ifdef _WIN32
+	recording.map = host_render_replay_map(path, &recording.map_size);
+	if (!recording.map || recording.map_size < sizeof(recording.header))
 	{
 		fprintf(stderr, "halo_replay: cannot read %s\n", path);
-		if (descriptor >= 0)
-			close(descriptor);
 		return 0;
 	}
-	recording.map_size = (size_t)status.st_size;
-	recording.map = mmap(NULL, recording.map_size, PROT_READ, MAP_PRIVATE, descriptor, 0);
-	close(descriptor);
-	if (recording.map == MAP_FAILED)
-		return 0;
+#else
+	{
+		int descriptor = open(path, O_RDONLY);
+		struct stat status;
+
+		if (descriptor < 0 || fstat(descriptor, &status) || (size_t)status.st_size < sizeof(recording.header))
+		{
+			fprintf(stderr, "halo_replay: cannot read %s\n", path);
+			if (descriptor >= 0)
+				close(descriptor);
+			return 0;
+		}
+		recording.map_size = (size_t)status.st_size;
+		recording.map = mmap(NULL, recording.map_size, PROT_READ, MAP_PRIVATE, descriptor, 0);
+		close(descriptor);
+		if (recording.map == MAP_FAILED)
+			return 0;
+	}
+#endif
 	memcpy(&recording.header, recording.map, sizeof(recording.header));
 	/* (a recording of 1: the stream's 21, the same records but the marks) */
 	if (recording.header.magic != HOST_RENDER_RECORD_MAGIC || recording.header.version < 1 ||
@@ -881,6 +905,25 @@ static int memory_make(void)
 			MAP_NORESERVE, -1, 0) == MAP_FAILED)
 			return 0;
 	}
+#elif defined(_WIN32)
+	{
+		/* the low 4 GB, as the Windows host has the guest's: the memory the
+		recording names claimed now, before the driver loads, and any other
+		free granule the stream writes as it does (host_render_replay_win.c) */
+		uint32_t index;
+
+		for (index = 0; index < recording.chunk_count; index++)
+		{
+			if (!host_render_replay_low_claim(recording.chunks[index].address, recording.chunks[index].size))
+				return 0;
+		}
+		if (!host_render_replay_low_claim(recording.header.ring_address, sizeof(struct xgpu_stream_ring)) ||
+			!host_render_replay_low_claim(ring->buffer, ring->size) ||
+			(ring->visibility && !host_render_replay_low_claim(ring->visibility, XGPU_STREAM_VISIBILITY_SLOTS * 2 * 4)) ||
+			(ring->pipelines && !host_render_replay_low_claim(ring->pipelines, XGPU_STREAM_PIPELINES)))
+			return 0;
+		host_render_replay_low_watch();
+	}
 #else
 	{
 		/* the low 4 GB, as the host without a base has the guest's (from
@@ -929,7 +972,66 @@ static struct
 	struct draw_seen *draws;
 	uint32_t draw_count, draw_capacity;
 	int ids_active;
-} inspect = { .frame = UINT32_MAX };
+	/* (the cost) its GPU time wanted, and being measured; the draws left
+	out of it, [skip_from, skip_to) */
+	int cost_wanted, cost_active;
+	uint32_t skip_from, skip_to, skip_pass;
+} inspect = { .frame = UINT32_MAX, .skip_pass = UINT32_MAX };
+
+/* the CPU's time on a frame (the cost's "cpu", serve_cost): each record's,
+by the render thread's clock about it (record_begin, record_played), the
+records of each draw (those after the draw before it, to it) added to it,
+and the driver's calls the backend made among them (platform->calls_watch:
+each kind's time and count) */
+#define CPU_KINDS_MOST 32
+
+static struct
+{
+	/* (the service) the next play of inspect.frame measured, with the
+	driver's calls watched; the chunks the frame's play in order found
+	changed counted as written again (as they were then, so that the
+	textures and vertices made again then are again) */
+	int wanted, watched, forcing;
+	/* (the service, before the play) room for the frame's draws */
+	uint32_t draw_capacity;
+	uint64_t *draw_ticks, *draw_own, *draw_driver, *draw_counts;
+	/* (the render thread) measuring; the record being played (its type,
+	its draw or UINT32_MAX, its start, the driver's total then) */
+	int active, ended;
+	uint32_t kinds, type, draw;
+	uint64_t record_start, driver_start, frame_start, frame_end;
+	/* the records since the last draw: their time, the driver's, its calls
+	when they began */
+	uint64_t span_ticks, span_driver, span_counts[CPU_KINDS_MOST + 1];
+	/* the backend's counters (the last the total) */
+	uint64_t ticks[CPU_KINDS_MOST + 1], counts[CPU_KINDS_MOST + 1];
+	/* the frame's: each record type's time, the driver's and their count,
+	all the records', those after the last draw */
+	uint64_t type_ticks[XGPU_STREAM_RECORD_TYPES], type_driver[XGPU_STREAM_RECORD_TYPES];
+	uint32_t type_count[XGPU_STREAM_RECORD_TYPES];
+	uint64_t records_ticks, after_ticks, after_driver;
+	/* the clock's own cost, in ticks (taken off each record's time and each
+	call's) */
+	uint64_t clock_ticks;
+} cpu;
+
+uint64_t host_render_replay_ticks(void)
+{
+#if defined(__x86_64__) || defined(_M_X64)
+	return __builtin_ia32_rdtsc();
+#elif defined(__aarch64__)
+	uint64_t value;
+
+	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(value));
+	return value;
+#else
+	struct timespec now;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (uint64_t)now.tv_sec * 1000000000ull + (uint64_t)now.tv_nsec;
+#endif
+}
+
 
 /* ---------- playing: the render thread's side */
 
@@ -1032,6 +1134,87 @@ static void loop_begin(void)
 	play.last_end = seconds_now();
 }
 
+/* (the render thread, the frame's first record) */
+static void cpu_begin(void)
+{
+	cpu.active = 1;
+	cpu.ended = 0;
+	cpu.kinds = platform->calls_watch && platform->call_kinds <= CPU_KINDS_MOST ? platform->call_kinds : 0;
+	cpu.span_ticks = cpu.span_driver = 0;
+	cpu.records_ticks = cpu.after_ticks = cpu.after_driver = 0;
+	memset(cpu.ticks, 0, sizeof(cpu.ticks));
+	memset(cpu.counts, 0, sizeof(cpu.counts));
+	memset(cpu.span_counts, 0, sizeof(cpu.span_counts));
+	memset(cpu.type_ticks, 0, sizeof(cpu.type_ticks));
+	memset(cpu.type_driver, 0, sizeof(cpu.type_driver));
+	memset(cpu.type_count, 0, sizeof(cpu.type_count));
+	if (cpu.draw_capacity)
+	{
+		memset(cpu.draw_ticks, 0, cpu.draw_capacity * sizeof(*cpu.draw_ticks));
+		memset(cpu.draw_own, 0, cpu.draw_capacity * sizeof(*cpu.draw_own));
+		memset(cpu.draw_driver, 0, cpu.draw_capacity * sizeof(*cpu.draw_driver));
+		memset(cpu.draw_counts, 0, (size_t)cpu.draw_capacity * (CPU_KINDS_MOST + 1) * sizeof(*cpu.draw_counts));
+	}
+	if (cpu.watched && cpu.kinds)
+		platform->calls_watch(cpu.ticks, cpu.counts);
+	cpu.frame_start = host_render_replay_ticks();
+}
+
+/* (the render thread, the last thing before a record is played) */
+static void record_begin(uint32_t type)
+{
+	cpu.type = type < XGPU_STREAM_RECORD_TYPES ? type : XGPU_STREAM_SKIP;
+	cpu.draw = is_draw(type) ? play.draw : UINT32_MAX;
+	cpu.driver_start = cpu.ticks[cpu.kinds];
+	cpu.record_start = host_render_replay_ticks();
+}
+
+/* (the render thread) the record played (host_render_record_set_played) */
+static void record_played(void)
+{
+	uint64_t now, elapsed, driver;
+	uint32_t kind;
+
+	if (!cpu.active)
+		return;
+	now = host_render_replay_ticks();
+	elapsed = now - cpu.record_start;
+	elapsed = elapsed > cpu.clock_ticks ? elapsed - cpu.clock_ticks : 0;
+	driver = cpu.ticks[cpu.kinds] - cpu.driver_start;
+	cpu.type_ticks[cpu.type] += elapsed;
+	cpu.type_driver[cpu.type] += driver;
+	cpu.type_count[cpu.type]++;
+	cpu.records_ticks += elapsed;
+	cpu.span_ticks += elapsed;
+	cpu.span_driver += driver;
+	if (cpu.draw != UINT32_MAX)
+	{
+		if (cpu.draw < cpu.draw_capacity)
+		{
+			cpu.draw_ticks[cpu.draw] = cpu.span_ticks;
+			cpu.draw_own[cpu.draw] = elapsed;
+			cpu.draw_driver[cpu.draw] = cpu.span_driver;
+			for (kind = 0; kind <= cpu.kinds; kind++)
+				cpu.draw_counts[(size_t)cpu.draw * (CPU_KINDS_MOST + 1) + kind] = cpu.counts[kind] - cpu.span_counts[kind];
+		}
+		memcpy(cpu.span_counts, cpu.counts, sizeof(cpu.span_counts));
+		cpu.span_ticks = cpu.span_driver = 0;
+	}
+	if (cpu.type == XGPU_STREAM_FRAME_END)
+	{
+		cpu.after_ticks = cpu.span_ticks;
+		cpu.after_driver = cpu.span_driver;
+		cpu.frame_end = now;
+		if (cpu.watched && cpu.kinds)
+			platform->calls_watch(NULL, NULL);
+		cpu.active = 0;
+		cpu.ended = 1;
+	}
+}
+
+/* the frame is played again where it is (the cost's plays: frame_again) */
+static int play_again_here;
+
 /* (the render thread) the memory a record reads put back */
 static void chunks_restore(const struct record *record)
 {
@@ -1039,10 +1222,16 @@ static void chunks_restore(const struct record *record)
 
 	for (c = 0; c < record->chunk_count; c++)
 	{
-		const struct chunk *chunk = &recording.chunks[record->chunk_first + c];
+		struct chunk *chunk = &recording.chunks[record->chunk_first + c];
 		void *to = host_pointer(chunk->address);
 
-		if (memcmp(to, chunk->data, chunk->size))
+		int changed = memcmp(to, chunk->data, chunk->size) != 0;
+
+		/* (in order: what the CPU's cost plays of the frame count as
+		written again) */
+		if (!play_again_here)
+			chunk->changed = (uint8_t)changed;
+		if (changed)
 		{
 			memcpy(to, chunk->data, chunk->size);
 			pages_mark(chunk->address, chunk->size, 1);
@@ -1050,14 +1239,14 @@ static void chunks_restore(const struct record *record)
 		}
 		else
 		{
-			pages_mark(chunk->address, chunk->size, 0);
+			pages_mark(chunk->address, chunk->size, cpu.forcing && chunk->changed);
 		}
 	}
 }
 
 /* (the render thread) before each record is played: the memory it reads
 put back */
-static void restore(uint32_t position, uint32_t type, const unsigned char *bytes)
+static void restore_memory(uint32_t position, uint32_t type, const unsigned char *bytes)
 {
 	const struct record *record;
 
@@ -1091,9 +1280,20 @@ static void restore(uint32_t position, uint32_t type, const unsigned char *bytes
 		inspect.draw_count = 0;
 		inspect.ids_active = inspect.ids_wanted && platform->ids_begin &&
 			platform->ids_begin(recording.frames[play.frame].present, HOST_RENDER_REPLAY_ID_DEPTH);
+		inspect.cost_active = inspect.cost_wanted && platform->cost_begin && platform->cost_begin();
+		if (cpu.wanted)
+			cpu_begin();
 	}
 	if (is_draw(type))
 		play.draw = play.frame_draws++;
+}
+
+static void restore(uint32_t position, uint32_t type, const unsigned char *bytes)
+{
+	restore_memory(position, type, bytes);
+	/* (the CPU's measure of the record begins once its memory is back) */
+	if (cpu.active)
+		record_begin(type);
 }
 
 /* ---------- the replay's table, in front of the backend's */
@@ -1123,10 +1323,13 @@ static void draw_seen(uint32_t type, uint32_t primitive, uint32_t count)
 	struct draw_seen *seen;
 	int stage;
 
-	if (play.frame != inspect.frame)
+	/* (nor while the CPU's time is measured: the replay's own) */
+	if (play.frame != inspect.frame || cpu.active)
 		return;
 	if (inspect.ids_active)
 		platform->ids_draw(play.draw);
+	if (inspect.cost_active)
+		platform->cost_draw(play.draw);
 	/* (numbered as the records are: a draw the decoder did not hand on
 	leaves its number empty) */
 	if (play.draw >= inspect.draw_capacity)
@@ -1170,26 +1373,43 @@ static void draw_done(void)
 {
 	if (inspect.ids_active && play.frame == inspect.frame)
 		platform->ids_draw(UINT32_MAX);
+	if (inspect.cost_active && play.frame == inspect.frame)
+		platform->cost_draw(UINT32_MAX);
+}
+
+/* (the cost) the draw is one left out: not handed on. skip_draw_pass:
+each draw's pass, the frame's whole play's (inspect.skip_pass's draws are
+left out) */
+static const uint32_t *skip_draw_pass;
+static uint32_t skip_draw_count;
+
+static int draw_skipped(void)
+{
+	return play.frame == inspect.frame && ((play.draw >= inspect.skip_from && play.draw < inspect.skip_to) ||
+		(inspect.skip_pass != UINT32_MAX && play.draw < skip_draw_count && skip_draw_pass[play.draw] == inspect.skip_pass));
 }
 
 static void outer_draw(void *context, const struct xgpu_stream_draw *record)
 {
 	draw_seen(XGPU_STREAM_DRAW, record->primitive, record->count);
-	play.inner->draw(context, record);
+	if (!draw_skipped())
+		play.inner->draw(context, record);
 	draw_done();
 }
 
 static void outer_draw_indices(void *context, const struct xgpu_stream_draw_indices *record)
 {
 	draw_seen(XGPU_STREAM_DRAW_INDICES, record->primitive, record->count);
-	play.inner->draw_indices(context, record);
+	if (!draw_skipped())
+		play.inner->draw_indices(context, record);
 	draw_done();
 }
 
 static void outer_draw_indexed(void *context, const struct xgpu_stream_draw_indexed *record)
 {
 	draw_seen(XGPU_STREAM_DRAW_INDEXED, record->primitive, record->count);
-	play.inner->draw_indexed(context, record);
+	if (!draw_skipped())
+		play.inner->draw_indexed(context, record);
 	draw_done();
 }
 
@@ -1197,7 +1417,8 @@ static void outer_draw_immediate(void *context, const struct xgpu_stream_draw_im
 	const float (*attributes)[4])
 {
 	draw_seen(XGPU_STREAM_DRAW_IMMEDIATE, record->primitive, record->index_count ? record->index_count : record->count);
-	play.inner->draw_immediate(context, record, attributes);
+	if (!draw_skipped())
+		play.inner->draw_immediate(context, record, attributes);
 	draw_done();
 }
 
@@ -1383,6 +1604,23 @@ static void play_to(uint32_t last)
 	play_to_skipping(last, 0);
 }
 
+/* skips written to start (ahead of what is written, within a ring of
+it): to the ring's end, then in records no larger than a record may be */
+static void skips_to(uint32_t start)
+{
+	uint32_t mask = ring->size - 1;
+
+	while (written != start)
+	{
+		uint32_t offset = written & mask, gap = start - written;
+
+		if (offset + gap > ring->size)
+			skip_write(written, 0);
+		else
+			skip_write(written, gap > XGPU_STREAM_RECORD_MAXIMUM ? (XGPU_STREAM_RECORD_MAXIMUM & ~15u) : gap);
+	}
+}
+
 /* the recording played again from its start: what was written played,
 then skips to a position of the ring's where its first record was */
 static void play_again(void)
@@ -1394,19 +1632,33 @@ static void play_again(void)
 	was written) */
 	start = recording.records[0].position + play.offset;
 	start += ((written - start) + mask) & ~mask;
-	while (written != start)
-	{
-		uint32_t offset = written & mask, gap = start - written;
-
-		if (offset + gap > ring->size || gap > XGPU_STREAM_RECORD_MAXIMUM)
-			skip_write(written, 0);
-		else
-			skip_write(written, gap);
-	}
+	skips_to(start);
 	sync_all();
 	play.offset = start - recording.records[0].position;
 	play.index = 0;
 	next_record = 0;
+}
+
+/* the frame just played (frame n: the records played to its end) to be
+played again where it is: skips to the ring's next position where its
+first record was, so that its records play there as they did, after
+themselves. The stream's state is the frame's end's, not its start's: what
+it draws from targets an earlier frame drew is this frame's (the cost's
+plays; a frame played after them is played from the start again) */
+static void frame_again(uint32_t n)
+{
+	uint32_t mask = ring->size - 1, first = recording.frames[n].first, start;
+
+	sync_all();
+	start = recording.records[first].position + play.offset;
+	start += ((written - start) + mask) & ~mask;
+	skips_to(start);
+	sync_all();
+	play.offset = start - recording.records[first].position;
+	play.index = first;
+	next_record = first;
+	play.frame = n;
+	play.frame_draws = 0;
 }
 
 /* the records of the frames measured, played play.loops times (done once
@@ -2544,28 +2796,34 @@ static int inspected_take(uint32_t n)
 
 /* (HALO_REPLAY_SEEK_SKIPS=0: every frame on the way played whole) */
 static int seek_skips = 1;
+/* the play is not where the recording had it (a cost played a frame again
+after itself): the next frame is played from the start */
+static int play_inexact;
 
 /* frame n played exactly, its picture read (and its ID buffer with ids):
 into kept, with its draws unless it is a step back to a picture kept
-(draws: they are wanted too); NULL, or the reason it was not */
-static const char *frame_play(uint32_t n, int ids, int draws)
+(draws: they are wanted too; played: it is played, not taken from what was
+kept); NULL, or the reason it was not */
+static const char *frame_play_as(uint32_t n, int ids, int draws, int played)
 {
 	double started = seconds_now();
 	uint32_t slot = n % RECENT;
 
 	if (n >= recording.frame_count)
 		return "no such frame";
-	if (kept.frame == n && kept.pixels && (!ids || kept.ids) && (!draws || kept.draws_seen))
+	if (!played && kept.frame == n && kept.pixels && (!ids || kept.ids) && (!draws || kept.draws_seen))
 		return NULL;
 	if (ids && !platform->ids_begin)
 		return "this backend has no ID buffer";
 	kept_forget();
-	if (inspected_take(n))
+	if (played && inspected_take(n))
+		inspected_free(&kept);
+	if (!played && inspected_take(n))
 	{
 		kept.ms = (seconds_now() - started) * 1000.0;
 		return NULL;
 	}
-	if (!ids && !draws && recent[slot].pixels && recent[slot].frame == n)
+	if (!played && !ids && !draws && recent[slot].pixels && recent[slot].frame == n)
 	{
 		kept.frame = n;
 		kept.pixels = malloc((size_t)recent[slot].width * recent[slot].height * 4);
@@ -2578,10 +2836,11 @@ static const char *frame_play(uint32_t n, int ids, int draws)
 		return NULL;
 	}
 	/* (the frame is played again: from the start for one played already) */
-	if (play.frame > n || (play.frame == n && next_record > recording.frames[n].first))
+	if (play_inexact || play.frame > n || (play.frame == n && next_record > recording.frames[n].first))
 	{
 		uint32_t index;
 
+		play_inexact = 0;
 		play_again();
 		for (index = 0; index < RECENT; index++)
 			recent[index].frame = UINT32_MAX;
@@ -2622,6 +2881,11 @@ static const char *frame_play(uint32_t n, int ids, int draws)
 	if (ids && !kept.ids)
 		return "the frame's ID buffer was not read";
 	return NULL;
+}
+
+static const char *frame_play(uint32_t n, int ids, int draws)
+{
+	return frame_play_as(n, ids, draws, 0);
 }
 
 static int file_write(const char *path, const void *data, size_t size)
@@ -2839,9 +3103,43 @@ static void serve_info(struct text *text)
 {
 	const struct frame *last = recording.frame_count ? &recording.frames[recording.frame_count - 1] : NULL;
 
-	text_printf(text, "{\"ok\":true,\"protocol\":%u,\"frames\":%u,\"width\":%u,\"height\":%u,\"backend\":\"%s\",\"build\":\"%s\","
-		"\"marks\":%s,\"records\":%u}", HOST_RENDER_REPLAY_PROTOCOL, recording.frame_count, last ? last->width : 0, last ? last->height : 0,
-		platform->backend, HALO_REPLAY_BUILD, marks.present ? "true" : "false", recording.record_count);
+	text_printf(text, "{\"ok\":true,\"protocol\":%u,\"protocols\":[1,2],\"frames\":%u,\"width\":%u,\"height\":%u,"
+		"\"backend\":\"%s\",\"build\":\"%s\",\"marks\":%s,\"records\":%u", HOST_RENDER_REPLAY_PROTOCOL,
+		recording.frame_count, last ? last->width : 0, last ? last->height : 0, platform->backend, HALO_REPLAY_BUILD,
+		marks.present ? "true" : "false", recording.record_count);
+	/* (what this service does: the requests beyond version 1's, and what a
+	backend may lack) */
+	TEXT(text, ",\"capabilities\":[\"frame\",\"draws\",\"thumbs\"");
+	if (platform->ids_begin)
+		TEXT(text, ",\"ids\",\"pick\"");
+	if (platform->cost_begin && platform->cost_end)
+		TEXT(text, ",\"cost\",\"cpu_cost\"");
+	TEXT(text, "]");
+	/* (the kinds of the driver's calls cost's "cpu" counts, if any) */
+	if (platform->calls_watch && platform->call_kinds && platform->call_kinds <= CPU_KINDS_MOST)
+	{
+		uint32_t kind;
+
+		TEXT(text, ",\"call_kinds\":[");
+		for (kind = 0; kind < platform->call_kinds; kind++)
+		{
+			if (kind)
+				TEXT(text, ",");
+			text_string(text, platform->call_kind_names[kind]);
+		}
+		TEXT(text, "]");
+	}
+	if (platform->cost_begin && platform->cost_end)
+	{
+		TEXT(text, ",\"cost_methods\":[\"subtract\"");
+		if (platform->cost_draw_method)
+		{
+			TEXT(text, ",");
+			text_string(text, platform->cost_draw_method);
+		}
+		TEXT(text, "]");
+	}
+	TEXT(text, "}");
 }
 
 static void serve_frame(struct text *text, const struct request *request)
@@ -3060,6 +3358,862 @@ static void serve_thumbs(struct text *text, const struct request *request)
 	free(wanted);
 }
 
+/* ---------- the cost: a frame's GPU time, its passes' and its draws'
+
+The frame is played again where it is (frame_again), each play timed by the
+backend (cost_begin, cost_end): the GPU's time on the frame and on each of
+its passes. A draw's cost is subtracted: the frame played with the draw left
+out, between plays of it whole (COST_BATCH draws between two, each draw's
+whole the mean of the two about it, so that a drift of the GPU's clocks or
+of others' work on it over the plays cancels), the time from the draw's pass
+on taken from the whole's (the passes that began before it cannot be changed
+by it: their time is only noise); the median of the repeats, with their
+spread. A pass's draws are taken out together too (its "draws_ms"), and the
+frame's whole time (its "ms" each). Where the backend times each draw itself
+(draw_ms: its timestamps about it), its method gives that instead.
+docs/replay_protocol.md, "cost", says what the figures mean and how far
+they can be trusted. */
+
+#define COST_REPEATS_MOST 64
+#define COST_WARMUPS 2
+#define COST_BATCH 8
+
+static double median_of(double *values, uint32_t count, double *spread)
+{
+	double *distances, middle;
+	uint32_t index;
+
+	*spread = 0.0;
+	if (!count || !(distances = malloc(count * sizeof(*distances))))
+		return 0.0;
+	qsort(values, count, sizeof(*values), double_compare);
+	middle = count % 2 ? values[count / 2] : (values[count / 2 - 1] + values[count / 2]) * 0.5;
+	/* (the spread: the median of the distances from the median, scaled to
+	a normal distribution's standard deviation) */
+	for (index = 0; index < count; index++)
+		distances[index] = fabs(values[index] - middle);
+	qsort(distances, count, sizeof(*distances), double_compare);
+	*spread = (count % 2 ? distances[count / 2] : (distances[count / 2 - 1] + distances[count / 2]) * 0.5) * 1.4826;
+	free(distances);
+	return middle;
+}
+
+/* what a cost play leaves out: a draw, or every draw of a pass */
+struct cost_entry
+{
+	uint32_t draw, pass;
+	int group;
+};
+
+/* the frame just played (n) played again, entry's draws left out (NULL:
+none), and timed into cost; pixels: its picture read too, into
+inspect.pixels. Nonzero if timed. */
+static int cost_play(uint32_t n, const struct cost_entry *entry, int pixels, struct host_render_replay_cost *cost)
+{
+	int timed;
+
+	frame_again(n);
+	play_inexact = 1;
+	inspect.frame = n;
+	inspect.pixels_wanted = pixels;
+	inspect.ids_wanted = 0;
+	inspect.cost_wanted = 1;
+	inspect.cost_active = 0;
+	inspect.skip_from = entry && !entry->group ? entry->draw : 0;
+	inspect.skip_to = entry && !entry->group ? entry->draw + 1 : 0;
+	inspect.skip_pass = entry && entry->group ? entry->pass : UINT32_MAX;
+	play_again_here = 1;
+	play_to(recording.frames[n].end);
+	sync_all();
+	play_again_here = 0;
+	timed = inspect.cost_active;
+	inspect.frame = UINT32_MAX;
+	inspect.cost_wanted = 0;
+	inspect.cost_active = 0;
+	inspect.skip_from = inspect.skip_to = 0;
+	inspect.skip_pass = UINT32_MAX;
+	memset(cost, 0, sizeof(*cost));
+	return timed && platform->cost_end(cost) && cost->frame_ms > 0.0;
+}
+
+/* a play's time from a pass on: the frame's, less the passes made before it
+(a smaller number) that began on the GPU before it did (earlier: before,
+in the frame's whole play given) — the passes a draw of it cannot change,
+whose time is only noise. The aside passes, made later but run first, are
+counted; and the pass a draw left out may have taken with it is not
+needed. */
+static double cost_from_pass(const struct host_render_replay_pass_time *passes, uint32_t count, double frame_ms,
+	const struct host_render_replay_pass_time *earlier, uint32_t earlier_count, uint32_t pass)
+{
+	uint32_t index;
+
+	if (pass == UINT32_MAX || pass >= earlier_count)
+		return frame_ms;
+	for (index = 0; index < pass && index < count; index++)
+	{
+		if (earlier[index].start_ms < earlier[pass].start_ms)
+			frame_ms -= passes[index].ms;
+	}
+	return frame_ms;
+}
+
+struct cost_whole
+{
+	struct host_render_replay_pass_time *passes;
+	uint32_t count, capacity;
+	double frame_ms;
+};
+
+static int cost_whole_keep(struct cost_whole *whole, const struct host_render_replay_cost *cost)
+{
+	if (cost->pass_count > whole->capacity)
+	{
+		struct host_render_replay_pass_time *grown = realloc(whole->passes, cost->pass_count * sizeof(*grown));
+
+		if (!grown)
+			return 0;
+		whole->passes = grown;
+		whole->capacity = cost->pass_count;
+	}
+	if (cost->pass_count)
+		memcpy(whole->passes, cost->passes, cost->pass_count * sizeof(*whole->passes));
+	whole->count = cost->pass_count;
+	whole->frame_ms = cost->frame_ms;
+	return 1;
+}
+
+/* ---------- the cost's CPU time ("cpu"): the frame played again where it
+is, without the GPU's timestamps, its records timed on the render thread
+(record_begin, record_played); every other play with the driver's calls
+watched (the backend's calls_watch), whose own time (the clock read about
+each) is left out of the plays' others. The chunks the frame's play in
+order found changed count as written again (cpu.forcing), so that the
+backend makes again the textures and vertices it made then. */
+
+static const char *const record_type_names[XGPU_STREAM_RECORD_TYPES] =
+{
+	[XGPU_STREAM_SKIP] = "skip", [XGPU_STREAM_INITIALIZE] = "initialize", [XGPU_STREAM_INVALIDATE] = "invalidate",
+	[XGPU_STREAM_FLUSH] = "flush", [XGPU_STREAM_ANTI_ALIASING_PREPARE] = "anti_aliasing_prepare",
+	[XGPU_STREAM_ANTI_ALIAS] = "anti_alias", [XGPU_STREAM_TARGET_CREATE] = "target_create",
+	[XGPU_STREAM_TARGET_DELETE] = "target_delete", [XGPU_STREAM_TARGET_MULTISAMPLE] = "target_multisample",
+	[XGPU_STREAM_TARGET_RESOLVE] = "target_resolve", [XGPU_STREAM_SET_TARGETS] = "set_targets",
+	[XGPU_STREAM_CLEAR] = "clear", [XGPU_STREAM_CLEAR_TARGET] = "clear_target", [XGPU_STREAM_READ_TARGET] = "read_target",
+	[XGPU_STREAM_SET_TEXTURES] = "set_textures", [XGPU_STREAM_CONSTANTS] = "constants",
+	[XGPU_STREAM_VERTEX_PROGRAM] = "vertex_program", [XGPU_STREAM_VERTEX_LIGHTING] = "vertex_lighting",
+	[XGPU_STREAM_PIPELINE_DEFINE] = "pipeline_define", [XGPU_STREAM_PIPELINE] = "pipeline",
+	[XGPU_STREAM_DRAW_STATE] = "draw_state", [XGPU_STREAM_MIRROR_WRITE] = "mirror_write",
+	[XGPU_STREAM_LAYOUT_DEFINE] = "layout_define", [XGPU_STREAM_VERTICES] = "vertices", [XGPU_STREAM_DRAW] = "draw",
+	[XGPU_STREAM_DRAW_INDICES] = "draw_indices", [XGPU_STREAM_DRAW_INDEXED] = "draw_indexed",
+	[XGPU_STREAM_DRAW_IMMEDIATE] = "draw_immediate", [XGPU_STREAM_VISIBILITY_BEGIN] = "visibility_begin",
+	[XGPU_STREAM_VISIBILITY_END] = "visibility_end", [XGPU_STREAM_VISIBILITY_FRAME] = "visibility_frame",
+	[XGPU_STREAM_PRESENT] = "present", [XGPU_STREAM_FRAME_END] = "frame_end",
+	[XGPU_STREAM_DYNAMIC_LIGHTS_PREPARE] = "dynamic_lights_prepare",
+	[XGPU_STREAM_DYNAMIC_LIGHTS_UPLOAD] = "dynamic_lights_upload", [XGPU_STREAM_DYNAMIC_LIGHTS_HALOS] = "dynamic_lights_halos",
+	[XGPU_STREAM_PREPARED] = "prepared", [XGPU_STREAM_PREPARE] = "prepare", [XGPU_STREAM_LOADING] = "loading",
+	[XGPU_STREAM_HDR] = "hdr", [XGPU_STREAM_TONE_MAP] = "tone_map", [XGPU_STREAM_SCREENSHOT] = "screenshot",
+	[XGPU_STREAM_PICTURE_POSITION] = "picture_position", [XGPU_STREAM_GAMMA] = "gamma", [XGPU_STREAM_PANINI] = "panini",
+	[XGPU_STREAM_WORLD_AO_WINDOW] = "world_ao_window", [XGPU_STREAM_WORLD_AO_FIELD] = "world_ao_field",
+	[XGPU_STREAM_PIPELINE_STAND_IN] = "pipeline_stand_in", [XGPU_STREAM_CATEGORY] = "category",
+	[XGPU_STREAM_DYNAMIC_LIGHTS_WORLD] = "dynamic_lights_world", [XGPU_STREAM_WORLD_AO_PREPASS] = "world_ao_prepass",
+	[XGPU_STREAM_WORLD_AO_CASCADES] = "world_ao_cascades", [XGPU_STREAM_WORLD_AO_MESH] = "world_ao_mesh",
+	[XGPU_STREAM_WORLD_AO_INSTANCES] = "world_ao_instances", [XGPU_STREAM_MARK_STRING] = "mark_string",
+	[XGPU_STREAM_MARK_VIEW] = "mark_view", [XGPU_STREAM_MARK_OWNER] = "mark_owner",
+};
+
+/* the frame just played (n) played again, its CPU time measured into cpu
+(watched: the driver's calls too); nonzero if it was */
+static int cpu_play(uint32_t n, int watched)
+{
+	frame_again(n);
+	play_inexact = 1;
+	inspect.frame = n;
+	inspect.pixels_wanted = 0;
+	inspect.ids_wanted = 0;
+	inspect.cost_wanted = 0;
+	inspect.cost_active = 0;
+	inspect.skip_from = inspect.skip_to = 0;
+	inspect.skip_pass = UINT32_MAX;
+	cpu.watched = watched;
+	cpu.ended = 0;
+	cpu.wanted = 1;
+	cpu.forcing = 1;
+	play_again_here = 1;
+	play_to(recording.frames[n].end);
+	sync_all();
+	play_again_here = 0;
+	cpu.forcing = 0;
+	cpu.wanted = 0;
+	inspect.frame = UINT32_MAX;
+	return cpu.ended && !cpu.active;
+}
+
+/* the clock's own cost (the ticks between two reads, the least of many) */
+static uint64_t clock_cost(void)
+{
+	uint64_t least = UINT64_MAX;
+	uint32_t round, index;
+
+	for (round = 0; round < 64; round++)
+	{
+		uint64_t start = host_render_replay_ticks(), end;
+
+		for (index = 0; index < 64; index++)
+			host_render_replay_ticks();
+		end = host_render_replay_ticks();
+		if ((end - start) / 65 < least)
+			least = (end - start) / 65;
+	}
+	return least;
+}
+
+/* a measure's repeats: the median of count values (each per_ms ticks a
+millisecond) printed as name ("ms") and its spread (name's "spread", or
+"<name>_spread") */
+static double ticks_median(const uint64_t *values, uint32_t count, uint32_t stride, double per_ms, double *spread,
+	double *column)
+{
+	uint32_t index;
+
+	for (index = 0; index < count; index++)
+		column[index] = (double)values[(size_t)index * stride] / per_ms;
+	return median_of(column, count, spread);
+}
+
+/* the CPU's figures of frame n (its draws' passes draw_pass, of the frame's
+pass_count), the median of repeats plays (and repeats more watched), into
+text as "cpu"; NULL, or the reason not */
+static const char *cost_cpu(struct text *text, uint32_t n, uint32_t repeats, const uint32_t *draw_pass, uint32_t draws,
+	uint32_t pass_count)
+{
+	uint32_t kinds = platform->calls_watch && platform->call_kinds <= CPU_KINDS_MOST ? platform->call_kinds : 0;
+	uint32_t index, repeat, kind, stride = kinds + 1, type, calls_total = 0, first;
+	size_t frame_values = (size_t)repeats;
+	uint64_t *draw_ticks = NULL, *draw_own = NULL, *draw_driver = NULL, *draw_counts = NULL, *frame = NULL;
+	uint64_t *type_ticks = NULL, *type_driver = NULL, *kind_ticks = NULL, *kind_counts = NULL, *pass_ticks = NULL;
+	uint64_t *pass_driver = NULL;
+	uint32_t type_count[XGPU_STREAM_RECORD_TYPES];
+	double *column = NULL, per_ms, spread, started_seconds, ms, driver_ms, sum = 0.0;
+	uint64_t started_ticks;
+	const char *error = NULL;
+	/* (each play's: all its records, its wall time, after its last draw,
+	the driver's in the watched, all its records in the watched) */
+	enum { FRAME_RECORDS, FRAME_WALL, FRAME_AFTER, FRAME_DRIVER, FRAME_AFTER_DRIVER, FRAME_WATCHED, FRAME_FIELDS };
+
+	cpu.draw_capacity = draws;
+	cpu.draw_ticks = calloc(draws ? draws : 1, sizeof(*cpu.draw_ticks));
+	cpu.draw_own = calloc(draws ? draws : 1, sizeof(*cpu.draw_own));
+	cpu.draw_driver = calloc(draws ? draws : 1, sizeof(*cpu.draw_driver));
+	cpu.draw_counts = calloc((size_t)(draws ? draws : 1) * (CPU_KINDS_MOST + 1), sizeof(*cpu.draw_counts));
+	draw_ticks = calloc((size_t)(draws ? draws : 1) * repeats, sizeof(*draw_ticks));
+	draw_own = calloc((size_t)(draws ? draws : 1) * repeats, sizeof(*draw_own));
+	draw_driver = calloc((size_t)(draws ? draws : 1) * repeats, sizeof(*draw_driver));
+	draw_counts = calloc((size_t)(draws ? draws : 1) * stride, sizeof(*draw_counts));
+	frame = calloc(frame_values * FRAME_FIELDS, sizeof(*frame));
+	type_ticks = calloc((size_t)XGPU_STREAM_RECORD_TYPES * repeats, sizeof(*type_ticks));
+	type_driver = calloc((size_t)XGPU_STREAM_RECORD_TYPES * repeats, sizeof(*type_driver));
+	kind_ticks = calloc((size_t)stride * repeats, sizeof(*kind_ticks));
+	kind_counts = calloc(stride, sizeof(*kind_counts));
+	pass_ticks = calloc((size_t)(pass_count + 1) * repeats, sizeof(*pass_ticks));
+	pass_driver = calloc((size_t)(pass_count + 1) * repeats, sizeof(*pass_driver));
+	column = malloc(sizeof(*column) * (repeats + 1));
+	if (!cpu.draw_ticks || !cpu.draw_own || !cpu.draw_driver || !cpu.draw_counts || !draw_ticks || !draw_own ||
+		!draw_driver || !draw_counts || !frame || !type_ticks || !type_driver || !kind_ticks || !kind_counts ||
+		!pass_ticks || !pass_driver || !column)
+	{
+		error = "out of memory";
+		goto done;
+	}
+	memset(type_count, 0, sizeof(type_count));
+	cpu.clock_ticks = clock_cost();
+	started_ticks = host_render_replay_ticks();
+	started_seconds = seconds_now();
+	/* (one of each first, not counted: what the first play made again,
+	once) */
+	if (!cpu_play(n, 0) || (kinds && !cpu_play(n, 1)))
+	{
+		error = ring->error ? "the stream stopped" : "the frame's CPU time was not measured";
+		goto done;
+	}
+	for (repeat = 0; repeat < repeats; repeat++)
+	{
+		uint64_t *values = frame + (size_t)repeat * FRAME_FIELDS;
+
+		/* (in turn, plain and watched, so that a drift of the clocks
+		cancels) */
+		if (!cpu_play(n, 0))
+		{
+			error = ring->error ? "the stream stopped" : "the frame's CPU time was not measured";
+			goto done;
+		}
+		values[FRAME_RECORDS] = cpu.records_ticks;
+		values[FRAME_WALL] = cpu.frame_end - cpu.frame_start;
+		values[FRAME_AFTER] = cpu.after_ticks;
+		for (index = 0; index < draws; index++)
+		{
+			draw_ticks[(size_t)index * repeats + repeat] = cpu.draw_ticks[index];
+			draw_own[(size_t)index * repeats + repeat] = cpu.draw_own[index];
+			if (draw_pass[index] < pass_count)
+				pass_ticks[(size_t)draw_pass[index] * repeats + repeat] += cpu.draw_ticks[index];
+			else
+				pass_ticks[(size_t)pass_count * repeats + repeat] += cpu.draw_ticks[index];
+		}
+		for (type = 0; type < XGPU_STREAM_RECORD_TYPES; type++)
+		{
+			type_ticks[(size_t)type * repeats + repeat] = cpu.type_ticks[type];
+			type_count[type] = cpu.type_count[type];
+		}
+		if (!kinds)
+			continue;
+		if (!cpu_play(n, 1))
+		{
+			error = ring->error ? "the stream stopped" : "the frame's CPU time was not measured";
+			goto done;
+		}
+		/* (each call's time less the clock's own) */
+		for (kind = 0; kind <= kinds; kind++)
+		{
+			uint64_t own = cpu.counts[kind] * cpu.clock_ticks;
+
+			kind_ticks[(size_t)kind * repeats + repeat] = cpu.ticks[kind] > own ? cpu.ticks[kind] - own : 0;
+			kind_counts[kind] = cpu.counts[kind];
+		}
+		values[FRAME_DRIVER] = kind_ticks[(size_t)kinds * repeats + repeat];
+		values[FRAME_WATCHED] = cpu.records_ticks;
+		values[FRAME_AFTER_DRIVER] = cpu.after_driver;
+		for (index = 0; index < draws; index++)
+		{
+			uint64_t calls = cpu.draw_counts[(size_t)index * (CPU_KINDS_MOST + 1) + kinds], own = calls * cpu.clock_ticks;
+			uint64_t driver = cpu.draw_driver[index] > own ? cpu.draw_driver[index] - own : 0;
+
+			draw_driver[(size_t)index * repeats + repeat] = driver;
+			for (kind = 0; kind <= kinds; kind++)
+				draw_counts[(size_t)index * stride + kind] = cpu.draw_counts[(size_t)index * (CPU_KINDS_MOST + 1) + kind];
+			if (draw_pass[index] < pass_count)
+				pass_driver[(size_t)draw_pass[index] * repeats + repeat] += driver;
+			else
+				pass_driver[(size_t)pass_count * repeats + repeat] += driver;
+		}
+		for (type = 0; type < XGPU_STREAM_RECORD_TYPES; type++)
+			type_driver[(size_t)type * repeats + repeat] = cpu.type_driver[type];
+	}
+	per_ms = (double)(host_render_replay_ticks() - started_ticks) / ((seconds_now() - started_seconds) * 1000.0);
+	if (!(per_ms > 0.0))
+	{
+		error = "the CPU's clock did not run";
+		goto done;
+	}
+
+	/* the figures */
+	ms = ticks_median(frame + FRAME_RECORDS, repeats, FRAME_FIELDS, per_ms, &spread, column);
+	text_printf(text, ",\"cpu\":{\"repeats\":%u,\"clock_ns\":%.2f,\"ticks_per_ms\":%.1f,\"frame_ms\":%.4f,"
+		"\"frame_spread\":%.4f", repeats, (double)cpu.clock_ticks / per_ms * 1.0e6, per_ms, ms, spread);
+	ms = ticks_median(frame + FRAME_WALL, repeats, FRAME_FIELDS, per_ms, &spread, column);
+	text_printf(text, ",\"wall_ms\":%.4f", ms);
+	ms = ticks_median(frame + FRAME_AFTER, repeats, FRAME_FIELDS, per_ms, &spread, column);
+	text_printf(text, ",\"after_ms\":%.4f", ms);
+	if (kinds)
+	{
+		ms = ticks_median(frame + FRAME_DRIVER, repeats, FRAME_FIELDS, per_ms, &spread, column);
+		text_printf(text, ",\"driver_ms\":%.4f,\"driver_spread\":%.4f,\"calls\":%llu", ms, spread,
+			(unsigned long long)kind_counts[kinds]);
+		ms = ticks_median(frame + FRAME_AFTER_DRIVER, repeats, FRAME_FIELDS, per_ms, &spread, column);
+		text_printf(text, ",\"after_driver_ms\":%.4f", ms);
+		ms = ticks_median(frame + FRAME_WATCHED, repeats, FRAME_FIELDS, per_ms, &spread, column);
+		text_printf(text, ",\"watched_ms\":%.4f", ms);
+		TEXT(text, ",\"kinds\":[");
+		for (kind = 0, first = 1; kind < kinds; kind++)
+		{
+			if (!kind_counts[kind])
+				continue;
+			ms = ticks_median(kind_ticks + (size_t)kind * repeats, repeats, 1, per_ms, &spread, column);
+			text_printf(text, "%s{\"kind\":", first ? "" : ",");
+			text_string(text, platform->call_kind_names[kind]);
+			text_printf(text, ",\"calls\":%llu,\"ms\":%.4f,\"spread\":%.4f}", (unsigned long long)kind_counts[kind], ms,
+				spread);
+			first = 0;
+		}
+		TEXT(text, "]");
+	}
+	TEXT(text, ",\"records\":[");
+	for (type = 0, first = 1; type < XGPU_STREAM_RECORD_TYPES; type++)
+	{
+		if (!type_count[type])
+			continue;
+		ms = ticks_median(type_ticks + (size_t)type * repeats, repeats, 1, per_ms, &spread, column);
+		text_printf(text, "%s{\"type\":", first ? "" : ",");
+		text_string(text, record_type_names[type] ? record_type_names[type] : "other");
+		text_printf(text, ",\"count\":%u,\"ms\":%.4f,\"spread\":%.4f", type_count[type], ms, spread);
+		if (kinds)
+		{
+			driver_ms = ticks_median(type_driver + (size_t)type * repeats, repeats, 1, per_ms, &spread, column);
+			text_printf(text, ",\"driver_ms\":%.4f", driver_ms);
+		}
+		TEXT(text, "}");
+		first = 0;
+	}
+	TEXT(text, "],\"passes\":[");
+	for (index = 0; index <= pass_count; index++)
+	{
+		uint32_t count = 0, draw;
+		uint64_t calls = 0;
+
+		for (draw = 0; draw < draws; draw++)
+		{
+			if (index < pass_count ? draw_pass[draw] == index : draw_pass[draw] >= pass_count)
+			{
+				count++;
+				calls += draw_counts[(size_t)draw * stride + kinds];
+			}
+		}
+		if (index == pass_count && !count)
+			break;
+		ms = ticks_median(pass_ticks + (size_t)index * repeats, repeats, 1, per_ms, &spread, column);
+		text_printf(text, "%s{\"i\":", index ? "," : "");
+		if (index < pass_count)
+			text_printf(text, "%u", index);
+		else
+			TEXT(text, "null");
+		text_printf(text, ",\"draws\":%u,\"ms\":%.4f,\"spread\":%.4f", count, ms, spread);
+		if (kinds)
+		{
+			driver_ms = ticks_median(pass_driver + (size_t)index * repeats, repeats, 1, per_ms, &spread, column);
+			text_printf(text, ",\"driver_ms\":%.4f,\"calls\":%llu", driver_ms, (unsigned long long)calls);
+		}
+		TEXT(text, "}");
+	}
+	TEXT(text, "],\"draws\":[");
+	for (index = 0; index < draws; index++)
+	{
+		double own_ms, own_spread;
+
+		ms = ticks_median(draw_ticks + (size_t)index * repeats, repeats, 1, per_ms, &spread, column);
+		own_ms = ticks_median(draw_own + (size_t)index * repeats, repeats, 1, per_ms, &own_spread, column);
+		sum += ms;
+		text_printf(text, "%s{\"i\":%u,\"pass\":", index ? "," : "", index);
+		if (draw_pass[index] < pass_count)
+			text_printf(text, "%u", draw_pass[index]);
+		else
+			TEXT(text, "null");
+		text_printf(text, ",\"ms\":%.4f,\"spread\":%.4f,\"own_ms\":%.4f", ms, spread, own_ms);
+		if (kinds)
+		{
+			driver_ms = ticks_median(draw_driver + (size_t)index * repeats, repeats, 1, per_ms, &spread, column);
+			text_printf(text, ",\"driver_ms\":%.4f,\"driver_spread\":%.4f,\"calls\":{", driver_ms, spread);
+			for (kind = 0, first = 1; kind < kinds; kind++)
+			{
+				uint64_t count = draw_counts[(size_t)index * stride + kind];
+
+				if (!count)
+					continue;
+				text_printf(text, "%s", first ? "" : ",");
+				text_string(text, platform->call_kind_names[kind]);
+				text_printf(text, ":%llu", (unsigned long long)count);
+				first = 0;
+			}
+			TEXT(text, "}");
+		}
+		TEXT(text, "}");
+		calls_total += (uint32_t)(kinds ? draw_counts[(size_t)index * stride + kinds] : 0);
+	}
+	text_printf(text, "],\"draws_ms\":%.4f", sum);
+	if (kinds)
+		text_printf(text, ",\"draws_calls\":%u", calls_total);
+	TEXT(text, "}");
+done:
+	free(cpu.draw_ticks);
+	free(cpu.draw_own);
+	free(cpu.draw_driver);
+	free(cpu.draw_counts);
+	cpu.draw_ticks = cpu.draw_own = cpu.draw_driver = cpu.draw_counts = NULL;
+	cpu.draw_capacity = 0;
+	free(draw_ticks);
+	free(draw_own);
+	free(draw_driver);
+	free(draw_counts);
+	free(frame);
+	free(type_ticks);
+	free(type_driver);
+	free(kind_ticks);
+	free(kind_counts);
+	free(pass_ticks);
+	free(pass_driver);
+	free(column);
+	return error;
+}
+
+static void serve_cost(struct text *text, const struct request *request)
+{
+	double number, repeats_asked = 5, started = seconds_now(), spread;
+	struct host_render_replay_cost cost;
+	struct cost_whole before = { NULL, 0, 0, 0.0 }, after = { NULL, 0, 0, 0.0 }, layout = { NULL, 0, 0, 0.0 };
+	struct cost_entry *entries = NULL;
+	uint32_t n, repeats, draws, entry_count = 0, wanted_count = 0, index, repeat, pass_count = 0, *draw_pass = NULL;
+	uint32_t full_count = 0, batch, plays = 0, different = 0;
+	double *full = NULL, *pass_ms = NULL, *entry_cost = NULL, *draw_own = NULL, *column = NULL;
+	const char *error = NULL, *method, *note;
+	int subtract, all = request_true(request, "all"), exact = -1;
+	unsigned char *reference = NULL;
+	uint32_t reference_width = 0, reference_height = 0;
+
+	if (!request_number(request, "n", &number) || number < 0)
+	{
+		reply_error(text, "no frame (n)");
+		return;
+	}
+	n = (uint32_t)number;
+	if (!platform->cost_begin || !platform->cost_end)
+	{
+		reply_error(text, "this backend has no GPU timing");
+		return;
+	}
+	if (n >= recording.frame_count)
+	{
+		reply_error(text, "no such frame");
+		return;
+	}
+	request_number(request, "repeats", &repeats_asked);
+	repeats = repeats_asked < 1 ? 1 : repeats_asked > COST_REPEATS_MOST ? COST_REPEATS_MOST : (uint32_t)repeats_asked;
+	draws = recording.frames[n].draws;
+	if (request_find(request, "draws") >= 0)
+	{
+		for (index = 0; index < (uint32_t)request->number_count; index++)
+		{
+			if (request->numbers[index] < 0 || request->numbers[index] >= draws)
+			{
+				reply_error(text, "no such draw");
+				return;
+			}
+		}
+	}
+	/* (played exactly first, unless it was the frame last played: its
+	picture the one the plays again are checked against) */
+	if (!(play.frame == n + 1 && next_record == recording.frames[n].end && play.index == recording.frames[n].end))
+	{
+		if ((error = frame_play_as(n, 0, 1, 1)))
+		{
+			reply_error(text, error);
+			return;
+		}
+	}
+	if (kept.frame == n && kept.pixels)
+	{
+		reference = kept.pixels;
+		reference_width = kept.width;
+		reference_height = kept.height;
+	}
+	/* (the GPU's clocks up and the pipelines made: plays not counted; one
+	checked against the frame's picture, its read a pass of its own) */
+	for (index = 0; index < COST_WARMUPS + (reference != NULL); index++)
+	{
+		int check = reference && index == COST_WARMUPS;
+
+		if (!cost_play(n, NULL, check, &cost))
+		{
+			error = ring->error ? "the stream stopped" : "the frame was not timed";
+			goto failed;
+		}
+		if (check)
+		{
+			exact = inspect.pixels && inspect.width == reference_width && inspect.height == reference_height &&
+				!memcmp(inspect.pixels, reference, (size_t)reference_width * reference_height * 4);
+			free(inspect.pixels);
+			inspect.pixels = NULL;
+			if (!cost_play(n, NULL, 0, &cost))
+			{
+				error = ring->error ? "the stream stopped" : "the frame was not timed";
+				goto failed;
+			}
+		}
+	}
+	method = cost.draw_ms ? cost.draw_method : "subtract";
+	if (request_string(request, "method"))
+	{
+		method = request_string(request, "method");
+		if (strcmp(method, "subtract") && (!cost.draw_ms || strcmp(method, cost.draw_method)))
+		{
+			error = "this backend has no such method";
+			goto failed;
+		}
+	}
+	subtract = !strcmp(method, "subtract");
+	note = cost.note;
+	/* (each draw's pass, the whole's: the time from it on, and the groups) */
+	pass_count = cost.pass_count;
+	if (!cost_whole_keep(&layout, &cost) || !(draw_pass = malloc(sizeof(*draw_pass) * (draws ? draws : 1))))
+	{
+		error = "out of memory";
+		goto failed;
+	}
+	for (index = 0; index < draws; index++)
+		draw_pass[index] = index < cost.draw_count ? cost.draw_pass[index] : UINT32_MAX;
+	skip_draw_pass = draw_pass;
+	skip_draw_count = draws;
+	/* what is left out in turn: the draws asked for (or all), then, with
+	all, each pass's draws together */
+	wanted_count = all ? draws : request_find(request, "draws") >= 0 ? (uint32_t)request->number_count : 0;
+	if (!(entries = malloc(sizeof(*entries) * (wanted_count + pass_count + 1))))
+	{
+		error = "out of memory";
+		goto failed;
+	}
+	for (index = 0; index < wanted_count; index++)
+	{
+		entries[entry_count].draw = all ? index : (uint32_t)request->numbers[index];
+		entries[entry_count].pass = draw_pass[entries[entry_count].draw];
+		entries[entry_count++].group = 0;
+	}
+	if (subtract && all)
+	{
+		for (index = 0; index < pass_count; index++)
+		{
+			uint32_t draw;
+
+			for (draw = 0; draw < draws && draw_pass[draw] != index; draw++)
+				;
+			if (draw == draws)
+				continue;
+			entries[entry_count].draw = UINT32_MAX;
+			entries[entry_count].pass = index;
+			entries[entry_count++].group = 1;
+		}
+	}
+	if (!subtract)
+		entry_count = 0;
+	batch = (entry_count + COST_BATCH - 1) / COST_BATCH;
+	full = calloc((size_t)repeats * (batch + 1), sizeof(*full));
+	pass_ms = calloc((size_t)repeats * (batch + 1) * (pass_count ? pass_count : 1), sizeof(*pass_ms));
+	entry_cost = calloc((size_t)repeats * (entry_count ? entry_count : 1), sizeof(*entry_cost));
+	draw_own = !subtract ? calloc((size_t)repeats * (draws ? draws : 1), sizeof(*draw_own)) : NULL;
+	column = malloc(sizeof(*column) * ((size_t)repeats * (batch + 1) + draws + 1));
+	if (!full || !pass_ms || !entry_cost || (!subtract && !draw_own) || !column)
+	{
+		error = "out of memory";
+		goto failed;
+	}
+	for (repeat = 0; repeat < repeats; repeat++)
+	{
+		uint32_t chunk;
+
+		for (chunk = 0; chunk <= batch; chunk++)
+		{
+			uint32_t at = chunk * COST_BATCH, end = at + COST_BATCH < entry_count ? at + COST_BATCH : entry_count, k;
+
+			if (!cost_play(n, NULL, 0, &cost) || !cost_whole_keep(&after, &cost))
+			{
+				error = ring->error ? "the stream stopped" : "the frame was not timed";
+				goto failed;
+			}
+			plays++;
+			full[full_count] = cost.frame_ms;
+			if (cost.pass_count == pass_count)
+			{
+				for (index = 0; index < pass_count; index++)
+					pass_ms[(size_t)full_count * pass_count + index] = cost.passes[index].ms;
+			}
+			else
+			{
+				/* (a whole of another layout of passes: its passes not counted) */
+				for (index = 0; index < pass_count; index++)
+					pass_ms[(size_t)full_count * pass_count + index] = -1.0;
+				different++;
+			}
+			full_count++;
+			if (!subtract)
+			{
+				for (index = 0; index < draws && index < cost.draw_count; index++)
+					draw_own[(size_t)repeat * draws + index] = cost.draw_ms[index];
+				continue;
+			}
+			/* (the batch before it: each left out's time from its pass on,
+			subtracted from the mean of the wholes' about it) */
+			if (chunk > 0)
+			{
+				for (k = at - COST_BATCH; k < at && k < entry_count; k++)
+				{
+					uint32_t pass = entries[k].pass;
+					double whole = (cost_from_pass(before.passes, before.count, before.frame_ms, layout.passes, layout.count,
+						pass) + cost_from_pass(after.passes, after.count, after.frame_ms, layout.passes, layout.count, pass)) * 0.5;
+
+					entry_cost[(size_t)repeat * entry_count + k] = whole - entry_cost[(size_t)repeat * entry_count + k];
+				}
+			}
+			{
+				struct cost_whole swap = before;
+
+				before = after;
+				after = swap;
+			}
+			if (chunk == batch)
+				break;
+			for (k = at; k < end; k++)
+			{
+				if (!cost_play(n, &entries[k], 0, &cost))
+				{
+					error = ring->error ? "the stream stopped" : "the frame was not timed";
+					goto failed;
+				}
+				plays++;
+				entry_cost[(size_t)repeat * entry_count + k] = cost_from_pass(cost.passes, cost.pass_count, cost.frame_ms,
+					layout.passes, layout.count, entries[k].pass);
+			}
+		}
+	}
+	{
+		double frame_ms, sum = 0.0;
+		uint32_t first = 1;
+
+		memcpy(column, full, full_count * sizeof(*column));
+		frame_ms = median_of(column, full_count, &spread);
+		text_printf(text, "{\"ok\":true,\"n\":%u,\"method\":", n);
+		text_string(text, method);
+		text_printf(text, ",\"repeats\":%u,\"plays\":%u,\"frame_ms\":%.4f,\"frame_spread\":%.4f", repeats, plays,
+			frame_ms, spread);
+		if (exact >= 0)
+			text_printf(text, ",\"repeat_exact\":%s", exact ? "true" : "false");
+		TEXT(text, ",\"passes\":[");
+		for (index = 0; index < pass_count; index++)
+		{
+			uint32_t r, count = 0, draw, k;
+			double ms;
+
+			for (r = 0; r < full_count; r++)
+			{
+				if (pass_ms[(size_t)r * pass_count + index] >= 0.0)
+					column[count++] = pass_ms[(size_t)r * pass_count + index];
+			}
+			ms = median_of(column, count, &spread);
+			for (count = 0, draw = 0; draw < draws; draw++)
+				count += draw_pass[draw] == index;
+			text_printf(text, "%s{\"i\":%u,\"kind\":", index ? "," : "", index);
+			text_string(text, cost.passes && index < cost.pass_count && cost.passes[index].kind ? cost.passes[index].kind :
+				"other");
+			text_printf(text, ",\"width\":%u,\"height\":%u,\"draws\":%u,\"ms\":%.4f,\"spread\":%.4f",
+				cost.passes && index < cost.pass_count ? cost.passes[index].width : 0,
+				cost.passes && index < cost.pass_count ? cost.passes[index].height : 0, count, ms, spread);
+			/* (its draws left out together; and its draws' own, summed) */
+			for (k = 0; k < entry_count; k++)
+			{
+				if (entries[k].group && entries[k].pass == index)
+				{
+					double sum_draws = 0.0, own_spread;
+
+					for (r = 0; r < repeats; r++)
+						column[r] = entry_cost[(size_t)r * entry_count + k];
+					ms = median_of(column, repeats, &spread);
+					for (draw = 0; draw < entry_count; draw++)
+					{
+						if (!entries[draw].group && entries[draw].pass == index)
+						{
+							for (r = 0; r < repeats; r++)
+								column[r] = entry_cost[(size_t)r * entry_count + draw];
+							sum_draws += median_of(column, repeats, &own_spread);
+						}
+					}
+					text_printf(text, ",\"draws_ms\":%.4f,\"draws_spread\":%.4f,\"draws_sum_ms\":%.4f", ms, spread, sum_draws);
+				}
+			}
+			TEXT(text, "}");
+		}
+		TEXT(text, "],\"draws\":[");
+		for (index = 0; index < entry_count; index++)
+		{
+			uint32_t r;
+			double ms;
+
+			if (entries[index].group)
+				continue;
+			for (r = 0; r < repeats; r++)
+				column[r] = entry_cost[(size_t)r * entry_count + index];
+			ms = median_of(column, repeats, &spread);
+			sum += ms;
+			text_printf(text, "%s{\"i\":%u,\"pass\":", first ? "" : ",", entries[index].draw);
+			first = 0;
+			if (entries[index].pass == UINT32_MAX)
+				TEXT(text, "null");
+			else
+				text_printf(text, "%u", entries[index].pass);
+			text_printf(text, ",\"ms\":%.4f,\"spread\":%.4f}", ms, spread);
+		}
+		if (!subtract)
+		{
+			for (index = 0; index < draws; index++)
+			{
+				uint32_t r, w;
+				double ms;
+
+				for (w = 0; w < wanted_count && !all && (uint32_t)request->numbers[w] != index; w++)
+					;
+				if (!all && w == wanted_count)
+					continue;
+				for (r = 0; r < repeats; r++)
+					column[r] = draw_own[(size_t)r * draws + index];
+				ms = median_of(column, repeats, &spread);
+				sum += ms;
+				text_printf(text, "%s{\"i\":%u,\"pass\":", first ? "" : ",", index);
+				first = 0;
+				if (draw_pass[index] == UINT32_MAX)
+					TEXT(text, "null");
+				else
+					text_printf(text, "%u", draw_pass[index]);
+				text_printf(text, ",\"ms\":%.4f,\"spread\":%.4f}", ms, spread);
+			}
+		}
+		text_printf(text, "],\"draws_ms\":%.4f,\"frame_draws\":%u", sum, draws);
+		if (different)
+			text_printf(text, ",\"passes_differed\":%u", different);
+		if (note)
+		{
+			TEXT(text, ",\"note\":");
+			text_string(text, note);
+		}
+		/* (the CPU's time too) */
+		if (request_true(request, "cpu") && (error = cost_cpu(text, n, repeats, draw_pass, draws, pass_count)))
+			goto failed;
+		text_printf(text, ",\"seconds\":%.2f}", seconds_now() - started);
+	}
+failed:
+	skip_draw_pass = NULL;
+	skip_draw_count = 0;
+	free(entries);
+	free(full);
+	free(pass_ms);
+	free(entry_cost);
+	free(draw_own);
+	free(column);
+	free(draw_pass);
+	free(before.passes);
+	free(after.passes);
+	free(layout.passes);
+	if (error)
+		reply_error(text, error);
+}
+
+/* a line of file into *line (grown as needed, *capacity its size), its
+newline kept; 0 at the end (getline's, which Windows's C runtime has not) */
+static int line_read(char **line, size_t *capacity, FILE *file)
+{
+	size_t used = 0;
+
+	for (;;)
+	{
+		if (*capacity - used < 2)
+		{
+			size_t grown = *capacity ? *capacity * 2 : 4096;
+			char *bigger = realloc(*line, grown);
+
+			if (!bigger)
+				return 0;
+			*line = bigger;
+			*capacity = grown;
+		}
+		if (!fgets(*line + used, (int)(*capacity - used), file))
+			return used > 0;
+		used += strlen(*line + used);
+		if (used && (*line)[used - 1] == '\n')
+			return 1;
+	}
+}
+
 static int serve(void)
 {
 	char *line = NULL;
@@ -3071,8 +4225,11 @@ static int serve(void)
 		return 2;
 	if (getenv("HALO_REPLAY_SEEK_SKIPS") && *getenv("HALO_REPLAY_SEEK_SKIPS"))
 		seek_skips = atoi(getenv("HALO_REPLAY_SEEK_SKIPS")) != 0;
+#ifdef _WIN32
+	host_render_replay_binary_output();
+#endif
 	fprintf(stderr, "halo_replay: serving (%u frames)\n", recording.frame_count);
-	while (getline(&line, &capacity, stdin) > 0)
+	while (line_read(&line, &capacity, stdin))
 	{
 		const char *command;
 
@@ -3091,6 +4248,8 @@ static int serve(void)
 			serve_pick(&reply, request);
 		else if (!strcmp(command, "thumbs"))
 			serve_thumbs(&reply, request);
+		else if (!strcmp(command, "cost"))
+			serve_cost(&reply, request);
 		else if (!strcmp(command, "quit"))
 			break;
 		else
@@ -3228,6 +4387,7 @@ int host_render_replay_main(int argc, char *argv[], const struct host_render_rep
 	}
 	outer_install();
 	host_render_record_set_restorer(restore);
+	host_render_record_set_played(record_played);
 	/* (the Screenshot key's pictures are the game's, not the replay's) */
 	host_render_stream_set_screenshot_writer(NULL);
 
