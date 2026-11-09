@@ -3461,6 +3461,12 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 			ustrncpy(value, profile->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH);
 			value[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
 		}
+		else if (profile && !strcmp(row->name, "op_color") && profile->primary_color_index == NONE)
+		{
+			/* (a new profile's: no colour chosen, so the host gives the player
+			one no one else has, network_server_manager.c's get_unique_random_color) */
+			settings_wide_copy(value, L"Random", ROW_TEXT_LENGTH);
+		}
 		else if (profile && !strcmp(row->name, "op_color"))
 		{
 			string_get("pc\\main_menu\\settings_select\\player_setup\\player_profile_edit\\color_edit\\colors_list",
