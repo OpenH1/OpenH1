@@ -1319,35 +1319,26 @@ static void dynamic_lights_functions(struct xgpu_text *text, struct xgpu_text *f
 		"\tfloat4 cone[%d];\n"
 		"};\n", XGPU_DYNAMIC_LIGHTS_MAXIMUM, XGPU_DYNAMIC_LIGHTS_MAXIMUM, XGPU_DYNAMIC_LIGHTS_MAXIMUM);
 	/* (the lights that reach a point's cluster: its cluster's mask, found down
-	the world's BSP; every light where the world has none, or puts the point
-	in no cluster: xgpu.h) */
+	the world's tree; every light where the world has none, or puts the point
+	in no cluster: xgpu.h, xgpu_dynamic_lights_world.h) */
 	xgpu_text_append(functions,
 		"static inline uint4 dynamic_light_cluster_mask(const device uint4 *cells, const device uint4 *world, float3 q)\n"
 		"{\n"
-		"\tuint4 header = world[0];\n"
-		"\tuint node = 0u;\n"
+		"\tuint node = world[0].y;\n"
 		"\tfor (int depth = 0; depth < %d; depth++)\n"
 		"\t{\n"
-		"\t\tif (node >= header.x)\n"
-		"\t\t\tbreak;\n"
-		"\t\tuint4 entry = world[1u + node];\n"
-		"\t\tif (entry.x >= header.z - header.y)\n"
-		"\t\t\tbreak;\n"
-		"\t\tfloat4 plane = as_type<float4>(world[header.y + entry.x]);\n"
-		"\t\tuint child = dot(plane.xyz, q) - plane.w >= 0.0 ? entry.z : entry.y;\n"
+		"\t\tuint at = 1u + 2u * min(node, %du);\n"
+		"\t\tfloat4 plane = as_type<float4>(world[at]);\n"
+		"\t\tuint4 children = world[at + 1u];\n"
+		"\t\tuint child = dot(plane.xyz, q) - plane.w >= 0.0 ? children.y : children.x;\n"
 		"\t\tif ((child & 0x80000000u) != 0u)\n"
-		"\t\t{\n"
-		"\t\t\tuint leaf = child & 0x7fffffffu;\n"
-		"\t\t\tif (child == 0xffffffffu || leaf >= header.w)\n"
-		"\t\t\t\tbreak;\n"
-		"\t\t\tuint cluster = world[header.z + leaf / 4u][leaf %% 4u];\n"
-		"\t\t\treturn cluster < %du ? cells[%du + cluster] : uint4(0xffffffffu);\n"
-		"\t\t}\n"
+		"\t\t\treturn child == 0xffffffffu ? uint4(0xffffffffu) : cells[%du + (child & %du)];\n"
 		"\t\tnode = child;\n"
 		"\t}\n"
 		"\treturn uint4(0xffffffffu);\n"
-		"}\n", XGPU_DYNAMIC_LIGHTS_WORLD_DEPTH, XGPU_DYNAMIC_LIGHTS_CLUSTERS,
-		XGPU_DYNAMIC_LIGHTS_GRID_X * XGPU_DYNAMIC_LIGHTS_GRID_Y * XGPU_DYNAMIC_LIGHTS_GRID_Z);
+		"}\n", XGPU_DYNAMIC_LIGHTS_WORLD_DEPTH, (XGPU_DYNAMIC_LIGHTS_WORLD_TEXELS - 3) / 2,
+		XGPU_DYNAMIC_LIGHTS_GRID_X * XGPU_DYNAMIC_LIGHTS_GRID_Y * XGPU_DYNAMIC_LIGHTS_GRID_Z,
+		XGPU_DYNAMIC_LIGHTS_CLUSTERS - 1);
 	xgpu_text_append(functions,
 		"static inline float3 dynamic_light_sum(constant xgpu_dynamic_lights &lights, const device uint4 *cells,\n"
 		"\tconst device uint4 *world, float3 p, float3 n, float3 surface_normal, bool environment, float4 own)\n"
@@ -1357,7 +1348,7 @@ static void dynamic_lights_functions(struct xgpu_text *text, struct xgpu_text *f
 		"\t\tfloat3(%d.0, %d.0, %d.0);\n"
 		"\tint3 at = clamp(int3(floor(cell)), int3(0), int3(%d, %d, %d));\n"
 		"\tuint4 mask = cells[(at.z * %d + at.y) * %d + at.x];\n"
-		"\tif (any(mask != 0u) && world[0].x != 0u)\n"
+		"\tif (any((mask & cells[environment ? %d : %d]) != 0u) && world[0].x != 0u)\n"
 		"\t\tmask &= dynamic_light_cluster_mask(cells, world, p + surface_normal * %.4f);\n"
 		"\tfloat3 sum = float3(0.0);\n"
 		"\tfor (int word = 0; word < 4; word++)\n"
@@ -1392,6 +1383,8 @@ static void dynamic_lights_functions(struct xgpu_text *text, struct xgpu_text *f
 		"}\n"
 		"static inline float3 dynamic_light_add(constant xgpu_dynamic_lights &lights, float3 base, float3 light)\n"
 		"{\n"
+		"\tif (all(light == 0.0))\n"
+		"\t\treturn saturate(base);\n"
 		"\tlight += float3(max(max(light.r, max(light.g, light.b)) - 1.0, 0.0) * lights.grid[2].z);\n"
 		"\tfloat3 had = pow(saturate(base), float3(2.2));\n"
 		"\tfloat3 room = max(1.0 - had, float3(1.0e-3));\n"
@@ -1402,6 +1395,8 @@ static void dynamic_lights_functions(struct xgpu_text *text, struct xgpu_text *f
 		xgpu_hdr_lights) */
 		"static inline float3 dynamic_light_add_hdr(constant xgpu_dynamic_lights &lights, float3 base, float3 light)\n"
 		"{\n"
+		"\tif (all(light == 0.0))\n"
+		"\t\treturn saturate(base);\n"
 		"\tlight += float3(max(max(light.r, max(light.g, light.b)) - 1.0, 0.0) * lights.grid[2].z);\n"
 		"\tfloat3 had = pow(saturate(base), float3(2.2));\n"
 		"\tfloat3 room = max(1.0 - had, float3(1.0e-3));\n"
@@ -1411,7 +1406,10 @@ static void dynamic_lights_functions(struct xgpu_text *text, struct xgpu_text *f
 		"}\n",
 		XGPU_DYNAMIC_LIGHTS_GRID_X / 2, XGPU_DYNAMIC_LIGHTS_GRID_Y / 2, XGPU_DYNAMIC_LIGHTS_GRID_Z / 2,
 		XGPU_DYNAMIC_LIGHTS_GRID_X - 1, XGPU_DYNAMIC_LIGHTS_GRID_Y - 1, XGPU_DYNAMIC_LIGHTS_GRID_Z - 1,
-		XGPU_DYNAMIC_LIGHTS_GRID_Y, XGPU_DYNAMIC_LIGHTS_GRID_X, (double)XGPU_DYNAMIC_LIGHTS_CLUSTER_OFFSET,
+		XGPU_DYNAMIC_LIGHTS_GRID_Y, XGPU_DYNAMIC_LIGHTS_GRID_X,
+		XGPU_DYNAMIC_LIGHTS_GRID_X * XGPU_DYNAMIC_LIGHTS_GRID_Y * XGPU_DYNAMIC_LIGHTS_GRID_Z + XGPU_DYNAMIC_LIGHTS_WALK + 1,
+		XGPU_DYNAMIC_LIGHTS_GRID_X * XGPU_DYNAMIC_LIGHTS_GRID_Y * XGPU_DYNAMIC_LIGHTS_GRID_Z + XGPU_DYNAMIC_LIGHTS_WALK,
+		(double)XGPU_DYNAMIC_LIGHTS_CLUSTER_OFFSET,
 		1.0 / (XGPU_DYNAMIC_LIGHTS_CORE * XGPU_DYNAMIC_LIGHTS_CORE));
 }
 
@@ -2387,7 +2385,9 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 		program->dynamic_lights == XGPU_DYNAMIC_LIGHTS_MODEL)) || environment || world;
 	if (comparison && *comparison && program->alpha_test_samples && comparison[0] != '=' && comparison[0] != '!')
 		sample_mask = TRUE;
-	xgpu_text_append(&text, uniforms_declaration, XGPU_MODEL_LIGHT_COUNT, world ? "\tfloat4 world_ao;\n" : "");
+	xgpu_text_append(&text, uniforms_declaration, XGPU_MODEL_LIGHT_COUNT, environment ?
+		(world ? "\tfloat4 world_ao;\n\tfloat4 dynamic_light_tint;\n" : "\tfloat4 dynamic_light_spare;\n\tfloat4 dynamic_light_tint;\n") :
+		world ? "\tfloat4 world_ao;\n" : "");
 	if (world_inline)
 		world_ao_functions(&text, occlusion_light);
 	else if (world_sampled || world_inputs)
@@ -2610,7 +2610,7 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 			"\t\tresult.rgb = dynamic_light_add%s(dynamic_lights, result.rgb,\n"
 			"\t\t\tdynamic_light_sum(dynamic_lights, dynamic_light_cells, dynamic_light_world, in.xWorldPosition, n, surface_normal, true,\n"
 			"\t\t\t\tfloat4(-1.0)) *\n"
-			"\t\t\tpow(u.ps_final_c0.rgb, float3(2.2)));\n"
+			"\t\t\tu.dynamic_light_tint.rgb);\n"
 			"\t}\n",
 			program->stages[0].sampler == _xgpu_sampler_2d ? "dynamic_light_bump * 2.0 - 1.0" : "float3(0.0, 0.0, 1.0)",
 			(program->hdr & XGPU_HDR_LIGHTS) ? "_hdr" : "");

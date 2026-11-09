@@ -51,6 +51,7 @@ its swapchain.
 #include "host_render_stream.h"
 #include "xgpu.h"
 #include "xgpu_backend.h"
+#include "xgpu_dynamic_lights_world.h"
 #include "xgpu_hdr.h"
 #include "xgpu_shader.h"
 #include "xgpu_spirv.h"
@@ -1589,6 +1590,10 @@ static int uniforms_update(int effect)
 		to->world_ao[1] = from->world_ao[1];
 		to->world_ao[2] = from->world_ao[2];
 		to->world_ao[3] = from->world_ao[3];
+		/* (the enhanced dynamic lights' tint, in linear light) */
+		for (stage = 0; stage < 3; stage++)
+			to->dynamic_light_tint[stage] = powf(from->ps_final_c0[stage], 2.2f);
+		to->dynamic_light_tint[3] = 1.0f;
 		memcpy(to->blend_constant, stream.dynamic.blend_color, sizeof(to->blend_constant));
 		for (stage = 0; stage < 4; stage++)
 		{
@@ -2419,6 +2424,11 @@ static int stream_dynamic_lights_prepare(void *context)
 	return 1;
 }
 
+/* the world as the GPU has it (xgpu_dynamic_lights_world.h), and the
+frame's cells, with the lights the world is walked for (made each frame) */
+static struct xgpu_dynamic_lights_world lights_world;
+static unsigned char *lights_cells;
+
 static void stream_dynamic_lights_upload(void *context, const struct xgpu_stream_dynamic_lights_upload *record)
 {
 	const void *cells = host_pointer(record->cells);
@@ -2426,6 +2436,16 @@ static void stream_dynamic_lights_upload(void *context, const struct xgpu_stream
 	(void)context;
 	if (!cells || record->size != DYNAMIC_LIGHTS_CELLS_SIZE)
 		return;
+	/* (with the lights the world is walked for: xgpu.h) */
+	if (!lights_cells)
+		lights_cells = malloc(DYNAMIC_LIGHTS_CELLS_SIZE);
+	if (lights_cells)
+	{
+		memcpy(lights_cells, cells, DYNAMIC_LIGHTS_CELLS_SIZE);
+		xgpu_dynamic_lights_world_walked(&lights_world, (const float (*)[4])&record->block, record->count,
+			lights_cells, (uint32_t *)(lights_cells + XGPU_DYNAMIC_LIGHTS_WORLD_WALK_TEXEL * 16));
+		cells = lights_cells;
+	}
 	xgpu_vulkan_dynamic_lights_upload(&record->block, sizeof(record->block), cells);
 }
 
@@ -2434,9 +2454,16 @@ static void stream_dynamic_lights_world(void *context, const struct xgpu_stream_
 	const void *texels = host_pointer(record->texels);
 
 	(void)context;
-	if (!texels)
+	if (!texels || !record->count || record->count > XGPU_STREAM_DYNAMIC_LIGHTS_WORLD_TEXELS)
 		return;
-	xgpu_vulkan_dynamic_lights_world(texels, record->count);
+	if (!xgpu_dynamic_lights_world_convert(&lights_world, (const uint32_t (*)[4])texels, record->count))
+		host_logf(HOST_LOG_WARN, "vulkan: the dynamic lights' world (%u texels) could not be made: its lights reach "
+			"every cluster", record->count);
+	else if (lights_world.game_nodes)
+		host_logf(HOST_LOG_INFO, "vulkan: the dynamic lights' world: %u nodes, %u deep (the game's %u, %u deep)",
+			lights_world.nodes, lights_world.depth, lights_world.game_nodes, lights_world.game_depth);
+	if (lights_world.count)
+		xgpu_vulkan_dynamic_lights_world(lights_world.texels, lights_world.count);
 }
 
 /* a glow's shaders for its layers' slot (0: the screen's target, 1: the VR
