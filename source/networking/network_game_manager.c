@@ -876,8 +876,10 @@ boolean network_game_create_game_objects(
 	}
 	else
 	{
-		error(0, "game_load() failed.");
-		network_game_map_load_failed(options.map_name); /* port */
+		/* port: not _error_immediate (0), which stopped the game for good
+		(halt_and_catch_fire): the game is left */
+		error(_error_silent, "game_load() failed.");
+		network_game_map_load_failed(options.map_name);
 	}
 
 	return game->local_data.game_objects_loaded;
