@@ -632,10 +632,8 @@ this run's marked as begun: report.c) */
 	/* (the mods, and whether to play those that say they cannot be played
 	together, before the window opens: port_mods.c) */
 	port_mods_startup();
-	/* (the PC menus' files read meanwhile, on a thread of their own, for
-	the first map's load: menu_files.c) */
-	if (!halo_server_mode() && !strcasecmp(config_string("display.menus"), "pc"))
-		halo_menus_read_ahead();
+	/* (the PC menus' files are read ahead once the renderer is ready, which
+	their rows for it need: d3d8_device.c's device_backend_ready) */
 	return TRUE;
 }
 
