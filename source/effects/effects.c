@@ -170,6 +170,7 @@ symbols in this file:
 #include "sound/sound_definitions.h"
 #include "tag_files/tag_files.h"
 #include "tag_files/tag_groups.h"
+#include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 #include "units/bipeds.h"
 #include "units/units.h"
 #undef real_local_random
@@ -2392,7 +2393,26 @@ static void effect_update(
 			short next_event_index;
 
 			if (!TEST_FLAG(flags, _effect_invisible_bit))
-				effect_generate_particles(effect);
+			{
+				/* port: at game.sim_rate 60 and 120 the particles' places and
+				motion take the frames' local seed in a tick too, as the
+				particles themselves do (particles.c's particle_new,
+				random_math_port_begin_cosmetic): how many an effect makes at
+				its locations is the frames' (a first-person weapon's are where
+				the frames posed it), and the game's local seed would move
+				with them. At 30 the tick's, as the original's */
+				if (sim_rate_get() > TICKS_PER_SECOND)
+				{
+					boolean ticking = random_math_port_begin_cosmetic();
+
+					effect_generate_particles(effect);
+					random_math_port_end_cosmetic(ticking);
+				}
+				else
+				{
+					effect_generate_particles(effect);
+				}
+			}
 
 			if (!event_completed)
 				continue;

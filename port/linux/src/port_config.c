@@ -1174,8 +1174,9 @@ static const struct config_setting config_settings[] =
 		"to throw and reload, and a player turns with the aim while throwing\n"
 		"and in the air (so shots after a turn in a jump go to the crosshair);\n"
 		"false: the original animations, which freeze the legs and stand a\n"
-		"rider up, and the body, so the campaign's AI plays as on the Xbox. In\n"
-		"an OpenH1 network game the host's choice (a Legacy game's players turn)." GRAPHICS_CHOOSES },
+		"rider up, and the body, so the campaign's AI plays as on the Xbox. A\n"
+		"rule of the game, read as its map begins: in an OpenH1 network game the\n"
+		"host's, on every machine (a Legacy game's players turn)." GRAPHICS_CHOOSES },
 	{ "game.campaign_difficulty", _config_integer, "1", "HALO_CAMPAIGN_DIFFICULTY", _environment_value, _platform_all,
 		"The difficulty Choose Difficulty opens on: the one chosen last (0 Easy,\n"
 		"1 Normal, 2 Heroic, 3 Legendary). The campaign's menus write it." },
@@ -1198,9 +1199,10 @@ static const struct config_setting config_settings[] =
 	{ "game.auto_pickup", _config_boolean, "false", "HALO_AUTO_PICKUP", _environment_value, _platform_all,
 		"Multiplayer: a player with an empty weapon slot picks up a weapon by\n"
 		"walking over it, as Custom Edition does. false (the Xbox's way): they\n"
-		"hold the action button for it. The campaign always picks it up. In a\n"
-		"network game the host's decides, read in the lobby; a Legacy game, and\n"
-		"OpenCE's players, always walk over (OpenCE's way)." },
+		"hold the action button for it. The campaign always picks it up. A game\n"
+		"of this computer's reads it as its map begins; in a network game the\n"
+		"host's decides, read in the lobby; a Legacy game, and OpenCE's\n"
+		"players, always walk over (OpenCE's way)." },
 	{ "game.custom_edition", _config_boolean, "true", "HALO_CUSTOM_EDITION", _environment_value, _platform_all,
 		"Load and run Halo Custom Edition maps (not those that need OpenSauce):\n"
 		"put them and Custom Edition's bitmaps.map, sounds.map and loc.map in\n"

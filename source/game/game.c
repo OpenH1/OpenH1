@@ -400,10 +400,26 @@ static void game_tick_macro_step(
 	/* ... and so is a flag's cloth (flags.c): stepped a frame at a time, its
 	pulls come several times a tick and it thrashes */
 	flags_tick(seconds_per_tick);
+	/* port: at game.sim_rate 60 and 120 the first-person weapons (only
+	seen: the frames' allocation, which the frames move as they pose it at
+	the camera) take the frames' local seed in the tick too, as the
+	particles do (random_math_port_begin_cosmetic): when an idle weapon
+	draws its next pose is the frames', and the game's local seed would move
+	with them. At 30 the tick's, as the original's */
 	profile_scope(game_tick_first_person_section,
 		lock_global_random_seed();
 		rumble_update();
-		first_person_weapons_update();
+		if (sim_rate_get() > TICKS_PER_SECOND)
+		{
+			boolean ticking = random_math_port_begin_cosmetic();
+
+			first_person_weapons_update();
+			random_math_port_end_cosmetic(ticking);
+		}
+		else
+		{
+			first_person_weapons_update();
+		}
 		unlock_global_random_seed();)
 	profile_scope(game_tick_game_engine_section, game_engine_update();)
 	/* port: Basic Training's steps and chapters (port/linux/game/basic_training.c) */

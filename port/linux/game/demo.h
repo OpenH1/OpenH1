@@ -77,6 +77,16 @@ saved games, its recording left alone), and the rate its ticks run at (0
 when none is: sim_rate.c) */
 boolean demo_playing(void);
 long demo_playback_sim_rate(void);
+/* the rules of the recorded game that this machine's settings would
+otherwise give a game of its own (network_standard.c): TRUE in a demo's
+playback, with the recording's in rules (its header's) */
+enum
+{
+	_demo_rule_enhanced_animations_bit,
+	_demo_rule_turns_with_aim_bit,
+	_demo_rule_walk_over_pickup_bit,
+};
+boolean demo_playback_rules(unsigned long *rules);
 
 /* each frame (main.c): a demo asked for (demo.play, --demo) started, and
 the playback's end */
