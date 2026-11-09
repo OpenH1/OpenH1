@@ -389,13 +389,16 @@ uint32_t xgpu_metal_layout_immediate(uint32_t written, struct xgpu_metal_vertex_
 	return count;
 }
 
-/* XGPU_SOURCE_NONE; _xgpu_sampler_cube, _2d_layered (xgpu.h) */
+/* XGPU_SOURCE_NONE; _xgpu_sampler_3d, _cube, _2d_layered (xgpu.h) */
 enum
 {
 	_source_none = 0,
+	_sampler_3d = 2,
 	_sampler_cube = 3,
 	_sampler_2d_layered = 4,
 };
+
+_Static_assert(XGPU_METAL_ADDRESS_REGION == 5, "XGPU_ADDRESS_REGION's number");
 
 uint8_t xgpu_metal_border_axes(uint8_t source, uint8_t sampler_type, const struct xgpu_stream_sampler *sampler)
 {
@@ -417,5 +420,8 @@ uint8_t xgpu_metal_border_axes(uint8_t source, uint8_t sampler_type, const struc
 		if (sampler->address[axis] == XGPU_METAL_ADDRESS_BORDER)
 			axes |= (uint8_t)(1u << axis);
 	}
+	/* (a region of a 2D texture: its border on u and v, the shader's) */
+	if (sampler->address[0] == XGPU_METAL_ADDRESS_REGION && sampler_type != _sampler_3d)
+		axes = 3 | XGPU_METAL_BORDER_REGION;
 	return axes;
 }

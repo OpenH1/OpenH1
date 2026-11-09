@@ -255,6 +255,12 @@ it kept, and the range it had in previous (NULL: not wanted): a range in
 the last step before 1 draws behind everything drawn, still clipped at the
 far plane (port/linux/src/d3d8_device.c) */
 void d3d8_viewport_depth_range(float minimum, float maximum, float previous[2]);
+/* the stage samples a region of its texture as a texture of the region's
+alone, addressed by its border beyond it (D3DTADDRESS_BORDER, whatever the
+stage's address modes): region its width and height, then its left and top,
+in the texture's coordinates (0 to 1); NULL: the whole texture, as the
+stage's address modes have it (port/linux/src/d3d8_device.c) */
+void d3d8_texture_region(unsigned long stage, const float *region);
 /* takes up a new width between frames (F11); returns the width */
 long halo_screen_commit(void);
 /* the shadow maps' pixels for each of their 128 texels each way, a power of

@@ -227,6 +227,9 @@ def vertex(arguments):
 # shader's)
 SAMPLER_CUBE, SAMPLER_2D_LAYERED = 3, 5
 ADDRESS_BORDER = 3
+# a region of the texture (XGPU_ADDRESS_REGION), its border the shader's whatever its colour (XGPU_BORDER_REGION)
+ADDRESS_REGION = 5
+BORDER_REGION = 8
 DYNAMIC_FIELDS = ("dt", "st", "sm", "cu", "fi", "db")
 
 
@@ -252,6 +255,8 @@ def compiled(draw):
                 if source != "0" and int(sampler) not in (SAMPLER_CUBE, SAMPLER_2D_LAYERED) and \
                         int(border, 16) not in (0, 0xff000000, 0xffffffff):
                     axes = sum(1 << axis for axis, address in enumerate((u, v, w)) if int(address) == ADDRESS_BORDER)
+                if source != "0" and int(u) == ADDRESS_REGION and int(sampler) not in (SAMPLER_CUBE, SAMPLER_2D_LAYERED):
+                    axes = 3 | BORDER_REGION
                 stages.append(f"{source}.{sampler}.{axes}")
             value = "/".join(stages)
         parts.append(f"{name}={value}")

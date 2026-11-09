@@ -1034,6 +1034,12 @@ static void sample(struct xgpu_text *text, const struct xgpu_pixel_program *prog
 	unsigned int border = options->border[stage] & (sampler == _xgpu_sampler_3d ? 7 : 3);
 	char uv[160];
 
+	if ((options->border[stage] & XGPU_BORDER_REGION) && sampler == _xgpu_sampler_2d)
+	{
+		xgpu_text_append(text, "region_sample(tex%d, tex%d_sampler, (%s).xy, u.texture_scale[%d], u.texture_lod_bias[%d], "
+			"u.texture_border[%d], u.texture_border_linear[%d])", stage, stage, coordinates, stage, stage, stage, stage);
+		return;
+	}
 	if (sampler == _xgpu_sampler_3d || sampler == _xgpu_sampler_cube)
 		snprintf(uv, sizeof(uv), "(%s).xyz", coordinates);
 	else
@@ -1448,6 +1454,18 @@ static const char border_function[] =
 	"\t\tinside *= linear != 0.0 ? filtered : nearest;\n"
 	"\t}\n"
 	"\treturn mix(color, texel, float4(inside));\n"
+	"}\n"
+	/* a region of the texture (XGPU_BORDER_REGION: region its size, then
+	its origin) sampled as a texture of the region's own whose border is
+	beyond it: clamped to the region's edge texels, and the border mixed in
+	by how much of the lookup is inside the region */
+	"static inline float4 region_sample(texture2d<float> t, sampler s, float2 r, float4 region, float lod_bias, float4 color,\n"
+	"\tfloat linear)\n"
+	"{\n"
+	"\tfloat2 size = float2(float(t.get_width()), float(t.get_height())) * region.xy;\n"
+	"\tfloat2 half_texel = 0.5 / size;\n"
+	"\tfloat4 texel = t.sample(s, region.zw + clamp(r, half_texel, 1.0 - half_texel) * region.xy, bias(lod_bias));\n"
+	"\treturn border_mix(texel, float3(r, 0.5), float3(size, 1.0), 3u, color, linear);\n"
 	"}\n";
 
 /* ---------- display.hdr's tags (xgpu_hdr.h) */

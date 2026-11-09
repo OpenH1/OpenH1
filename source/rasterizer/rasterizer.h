@@ -601,7 +601,7 @@ drawn into it if begin returns TRUE; after each caster's models, its region
 (NONE: its shadow was drawn into the map as before, its receivers to be
 drawn now); after every caster, the chain over the atlas; then each
 region's receivers, after receive */
-#define RASTERIZER_SHADOW_ATLAS_REGIONS 9
+#define RASTERIZER_SHADOW_ATLAS_REGIONS 49
 boolean rasterizer_shadow_atlas_begin(
 	void);
 short rasterizer_shadow_atlas_caster_end(

@@ -1068,6 +1068,10 @@ struct d3d8_device
 	D3DMATRIX transforms[D3DTS_MAX];
 	D3DBaseTexture *textures[D3DTSS_MAXSTAGES];
 	D3DPalette *palettes[D3DTSS_MAXSTAGES];
+	/* the region of its texture each stage samples, as a texture of its own
+	with its border beyond it (d3d8_texture_region: its size and origin, in
+	the texture's coordinates; size 0: the whole texture) */
+	float texture_regions[D3DTSS_MAXSTAGES][4];
 	D3DSHADERCONSTANTMODE shader_constant_mode;
 
 	struct vertex_shader_object *vertex_shader;
@@ -2583,6 +2587,16 @@ void d3d8_viewport_depth_range(float minimum, float maximum, float previous[2])
 	viewport_update_constants();
 }
 
+void d3d8_texture_region(unsigned long stage, const float *region)
+{
+	if (stage >= D3DTSS_MAXSTAGES)
+		return;
+	if (region && region[0] > 0.0f && region[1] > 0.0f)
+		memcpy(device.texture_regions[stage], region, sizeof(device.texture_regions[stage]));
+	else
+		memset(device.texture_regions[stage], 0, sizeof(device.texture_regions[stage]));
+}
+
 void WINAPI D3DDevice_SetTransform(D3DTRANSFORMSTATETYPE state, CONST D3DMATRIX *matrix)
 {
 	if ((unsigned long)state < D3DTS_MAX)
@@ -3168,6 +3182,8 @@ static void sampler_describe(int stage, BOOL mipmapped, BOOL hires, BOOL rendere
 	sampler->magnify = sampler_filter(hires ? D3DTEXF_LINEAR : state[D3DTSS_MAGFILTER]);
 	sampler->address[0] = sampler_address(state[D3DTSS_ADDRESSU]);
 	sampler->address[1] = sampler_address(state[D3DTSS_ADDRESSV]);
+	if (device.texture_regions[stage][0] > 0.0f)
+		sampler->address[0] = sampler->address[1] = XGPU_ADDRESS_REGION;
 	sampler->address[2] = sampler_address(state[D3DTSS_ADDRESSW]);
 	sampler->lod_bias = hires ? 0.0f : dword_to_float(state[D3DTSS_MIPMAPLODBIAS]);
 	sampler->first_level = hires ? 0 : state[D3DTSS_MAXMIPLEVEL];
@@ -3347,6 +3363,8 @@ static void bind_textures(struct nv2a_pixel_shader_key *key, float texture_scale
 			}
 		}
 		sampler_describe(stage, description.levels > 1, description.hires, target != NULL, &source->sampler);
+		if (device.texture_regions[stage][0] > 0.0f)
+			memcpy(texture_scale[stage], device.texture_regions[stage], sizeof(texture_scale[stage]));
 		if (stage == 0)
 		{
 			key->coverage_alpha = description.hires_coverage != FALSE;

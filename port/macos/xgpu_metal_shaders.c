@@ -37,6 +37,8 @@ read the game's settings file.
 #include <stdlib.h>
 #include <string.h>
 
+_Static_assert(XGPU_METAL_BORDER_REGION == XGPU_BORDER_REGION, "a region's border bit");
+
 /* the stream's copies of the intermediate form's pieces are their bytes */
 _Static_assert(sizeof(struct xgpu_vertex_instruction) == XGPU_STREAM_VERTEX_INSTRUCTION_SIZE, "vertex instruction");
 _Static_assert(sizeof(struct xgpu_texture_stage) == XGPU_STREAM_TEXTURE_STAGE_SIZE, "texture stage");

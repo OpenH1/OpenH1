@@ -1566,6 +1566,35 @@ void render_enumerate_shadows(void)
 		if (!enumerate.everything)
 			break;
 	}
+	/* the shadow atlas's (rasterizer_xbox_shadows.c): a caster into a region
+	of it, the chain over the atlas, and the receivers sampling the region */
+	if (rasterizer_shadow_atlas_begin())
+	{
+		short region = NONE;
+		real radius = 1.0f;
+
+		tag_iterator_new(&iterator, MODELS_GROUP_TAG);
+		model_index = tag_iterator_next(&iterator);
+		if (model_index != NONE &&
+			rasterizer_environment_shadow_begin(STAND_IN_OBJECT_INDEX, &shadow_matrix, &shadow_color, 1.0f, &radius))
+		{
+			model_draw(model_index, 0, NULL, 0, FLAG(_render_model_shadow_bit));
+			region = rasterizer_shadow_atlas_caster_end();
+			if (region == NONE)
+			{
+				structure_render_shadow(&render.camera.position, radius, &bounds, 0, planes);
+				rasterizer_environment_shadow_end();
+			}
+		}
+		rasterizer_shadow_atlas_convolve();
+		if (region != NONE)
+		{
+			rasterizer_shadow_atlas_receive(region);
+			structure_render_shadow(&render.camera.position, radius, &bounds, 0, planes);
+			rasterizer_environment_shadow_end();
+		}
+		rasterizer_shadow_atlas_end();
+	}
 	rasterizer_environment_shadows_end();
 	/* Shadows leave stencil rejection enabled. The world can also follow
 	a frame with no shadow or first-person weapon, so retain the selected
