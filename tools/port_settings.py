@@ -1558,7 +1558,23 @@ def _source() -> str:
     return "tools/port_settings.py " + "/".join(reversed(names))
 
 
+def _with_stick(inner: list) -> list:
+    """a widget's handlers, its d-pad's left and right taken by the left stick
+    too where it has none of its own: the engine steps its lists, spinners and
+    tabs with either, but a handler names one event, so a row that steps
+    through its values itself (a slider, Button Remapping's rows) took only
+    the d-pad (issue 890)"""
+    lines = list(inner)
+    for direction in ("left", "right"):
+        if any(f'<on event="stick_{direction}"' in line for line in inner):
+            continue
+        lines += [line.replace(f'<on event="{direction}"', f'<on event="stick_{direction}"', 1)
+                  for line in inner if line.startswith(f'<on event="{direction}"')]
+    return lines
+
+
 def _widget(name: str, pairs: list, inner: list) -> list:
+    inner = _with_stick(inner)
     return [f"\t<widget{attributes([('name', name)] + pairs + [('source', _source())])}>",
             *[f"\t\t{line}" for line in inner], "\t</widget>"]
 
