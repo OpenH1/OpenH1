@@ -125,6 +125,208 @@ DEVICE_FUNCTIONS(DECLARE)
 SWAPCHAIN_FUNCTIONS(DECLARE)
 #undef DECLARE
 static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
+
+/* ---------- the driver's calls watched (xgpu_vulkan_calls_watch: the
+replay's cost, port/tools/replay): while a thread watches, each call it
+makes of these (by the pointers above) is counted and timed, by its kind,
+into the watcher's counters; the pointers are the watched functions' only
+while some thread watches, and each passes a call of another thread on
+untimed */
+
+static uint64_t *calls_ticks, *calls_counts;
+static uint64_t (*calls_clock)(void);
+static _Thread_local int calls_watching;
+static int calls_installed;
+
+const char *const xgpu_vulkan_call_kind_names[XGPU_VULKAN_CALL_KINDS] =
+{
+	"bind_pipeline", "bind_descriptors", "update_descriptors", "allocate_descriptors", "push_constants",
+	"bind_buffers", "dynamic_state", "draw", "clear", "begin_commands", "end_commands", "execute_commands",
+	"rendering", "barrier", "copy", "query", "submit", "wait", "create",
+};
+
+/* (the watched call's time and count added, the total's in the last) */
+#define CALL_COUNTED(kind, start) \
+	do \
+	{ \
+		uint64_t elapsed = calls_clock() - (start); \
+		calls_ticks[kind] += elapsed; \
+		calls_ticks[XGPU_VULKAN_CALL_KINDS] += elapsed; \
+		calls_counts[kind]++; \
+		calls_counts[XGPU_VULKAN_CALL_KINDS]++; \
+	} while (0)
+
+#define WATCHED_VOID(kind, name, parameters, arguments) \
+	static PFN_##name name##_unwatched; \
+	static VKAPI_ATTR void VKAPI_CALL name##_watched parameters \
+	{ \
+		uint64_t start; \
+		if (!calls_watching) \
+		{ \
+			name##_unwatched arguments; \
+			return; \
+		} \
+		start = calls_clock(); \
+		name##_unwatched arguments; \
+		CALL_COUNTED(XGPU_VULKAN_CALL_##kind, start); \
+	}
+#define WATCHED_RESULT(kind, name, parameters, arguments) \
+	static PFN_##name name##_unwatched; \
+	static VKAPI_ATTR VkResult VKAPI_CALL name##_watched parameters \
+	{ \
+		uint64_t start; \
+		VkResult result; \
+		if (!calls_watching) \
+			return name##_unwatched arguments; \
+		start = calls_clock(); \
+		result = name##_unwatched arguments; \
+		CALL_COUNTED(XGPU_VULKAN_CALL_##kind, start); \
+		return result; \
+	}
+
+WATCHED_VOID(BIND_PIPELINE, vkCmdBindPipeline, (VkCommandBuffer a, VkPipelineBindPoint b, VkPipeline c),
+	(a, b, c))
+WATCHED_VOID(BIND_DESCRIPTORS, vkCmdBindDescriptorSets, (VkCommandBuffer a, VkPipelineBindPoint b, VkPipelineLayout c, uint32_t d, uint32_t e, const VkDescriptorSet *f, uint32_t g, const uint32_t *h),
+	(a, b, c, d, e, f, g, h))
+WATCHED_VOID(UPDATE_DESCRIPTORS, vkUpdateDescriptorSets, (VkDevice a, uint32_t b, const VkWriteDescriptorSet *c, uint32_t d, const VkCopyDescriptorSet *e),
+	(a, b, c, d, e))
+WATCHED_RESULT(ALLOCATE_DESCRIPTORS, vkAllocateDescriptorSets, (VkDevice a, const VkDescriptorSetAllocateInfo *b, VkDescriptorSet *c),
+	(a, b, c))
+WATCHED_RESULT(ALLOCATE_DESCRIPTORS, vkResetDescriptorPool, (VkDevice a, VkDescriptorPool b, VkDescriptorPoolResetFlags c),
+	(a, b, c))
+WATCHED_VOID(PUSH_CONSTANTS, vkCmdPushConstants, (VkCommandBuffer a, VkPipelineLayout b, VkShaderStageFlags c, uint32_t d, uint32_t e, const void *f),
+	(a, b, c, d, e, f))
+WATCHED_VOID(BIND_BUFFERS, vkCmdBindVertexBuffers, (VkCommandBuffer a, uint32_t b, uint32_t c, const VkBuffer *d, const VkDeviceSize *e),
+	(a, b, c, d, e))
+WATCHED_VOID(BIND_BUFFERS, vkCmdBindIndexBuffer, (VkCommandBuffer a, VkBuffer b, VkDeviceSize c, VkIndexType d),
+	(a, b, c, d))
+WATCHED_VOID(DYNAMIC_STATE, vkCmdSetViewport, (VkCommandBuffer a, uint32_t b, uint32_t c, const VkViewport *d),
+	(a, b, c, d))
+WATCHED_VOID(DYNAMIC_STATE, vkCmdSetScissor, (VkCommandBuffer a, uint32_t b, uint32_t c, const VkRect2D *d),
+	(a, b, c, d))
+WATCHED_VOID(DYNAMIC_STATE, vkCmdSetDepthBias, (VkCommandBuffer a, float b, float c, float d),
+	(a, b, c, d))
+WATCHED_VOID(DYNAMIC_STATE, vkCmdSetBlendConstants, (VkCommandBuffer a, const float b[4]),
+	(a, b))
+WATCHED_VOID(DYNAMIC_STATE, vkCmdSetStencilReference, (VkCommandBuffer a, VkStencilFaceFlags b, uint32_t c),
+	(a, b, c))
+WATCHED_VOID(DYNAMIC_STATE, vkCmdSetPrimitiveTopology, (VkCommandBuffer a, VkPrimitiveTopology b),
+	(a, b))
+WATCHED_VOID(DRAW, vkCmdDraw, (VkCommandBuffer a, uint32_t b, uint32_t c, uint32_t d, uint32_t e),
+	(a, b, c, d, e))
+WATCHED_VOID(DRAW, vkCmdDrawIndexed, (VkCommandBuffer a, uint32_t b, uint32_t c, uint32_t d, int32_t e, uint32_t f),
+	(a, b, c, d, e, f))
+WATCHED_VOID(DRAW, vkCmdDispatch, (VkCommandBuffer a, uint32_t b, uint32_t c, uint32_t d),
+	(a, b, c, d))
+WATCHED_VOID(CLEAR, vkCmdClearAttachments, (VkCommandBuffer a, uint32_t b, const VkClearAttachment *c, uint32_t d, const VkClearRect *e),
+	(a, b, c, d, e))
+WATCHED_VOID(CLEAR, vkCmdClearColorImage, (VkCommandBuffer a, VkImage b, VkImageLayout c, const VkClearColorValue *d, uint32_t e, const VkImageSubresourceRange *f),
+	(a, b, c, d, e, f))
+WATCHED_VOID(CLEAR, vkCmdClearDepthStencilImage, (VkCommandBuffer a, VkImage b, VkImageLayout c, const VkClearDepthStencilValue *d, uint32_t e, const VkImageSubresourceRange *f),
+	(a, b, c, d, e, f))
+WATCHED_RESULT(BEGIN_COMMANDS, vkBeginCommandBuffer, (VkCommandBuffer a, const VkCommandBufferBeginInfo *b),
+	(a, b))
+WATCHED_RESULT(END_COMMANDS, vkEndCommandBuffer, (VkCommandBuffer a),
+	(a))
+WATCHED_VOID(EXECUTE_COMMANDS, vkCmdExecuteCommands, (VkCommandBuffer a, uint32_t b, const VkCommandBuffer *c),
+	(a, b, c))
+WATCHED_VOID(RENDERING, vkCmdBeginRendering, (VkCommandBuffer a, const VkRenderingInfo *b),
+	(a, b))
+WATCHED_VOID(RENDERING, vkCmdEndRendering, (VkCommandBuffer a),
+	(a))
+WATCHED_VOID(BARRIER, vkCmdPipelineBarrier, (VkCommandBuffer a, VkPipelineStageFlags b, VkPipelineStageFlags c, VkDependencyFlags d, uint32_t e, const VkMemoryBarrier *f, uint32_t g, const VkBufferMemoryBarrier *h, uint32_t i, const VkImageMemoryBarrier *j),
+	(a, b, c, d, e, f, g, h, i, j))
+WATCHED_VOID(COPY, vkCmdCopyBuffer, (VkCommandBuffer a, VkBuffer b, VkBuffer c, uint32_t d, const VkBufferCopy *e),
+	(a, b, c, d, e))
+WATCHED_VOID(COPY, vkCmdCopyBufferToImage, (VkCommandBuffer a, VkBuffer b, VkImage c, VkImageLayout d, uint32_t e, const VkBufferImageCopy *f),
+	(a, b, c, d, e, f))
+WATCHED_VOID(COPY, vkCmdCopyImageToBuffer, (VkCommandBuffer a, VkImage b, VkImageLayout c, VkBuffer d, uint32_t e, const VkBufferImageCopy *f),
+	(a, b, c, d, e, f))
+WATCHED_VOID(COPY, vkCmdCopyImage, (VkCommandBuffer a, VkImage b, VkImageLayout c, VkImage d, VkImageLayout e, uint32_t f, const VkImageCopy *g),
+	(a, b, c, d, e, f, g))
+WATCHED_VOID(COPY, vkCmdBlitImage, (VkCommandBuffer a, VkImage b, VkImageLayout c, VkImage d, VkImageLayout e, uint32_t f, const VkImageBlit *g, VkFilter h),
+	(a, b, c, d, e, f, g, h))
+WATCHED_VOID(COPY, vkCmdResolveImage, (VkCommandBuffer a, VkImage b, VkImageLayout c, VkImage d, VkImageLayout e, uint32_t f, const VkImageResolve *g),
+	(a, b, c, d, e, f, g))
+WATCHED_VOID(QUERY, vkCmdBeginQuery, (VkCommandBuffer a, VkQueryPool b, uint32_t c, VkQueryControlFlags d),
+	(a, b, c, d))
+WATCHED_VOID(QUERY, vkCmdEndQuery, (VkCommandBuffer a, VkQueryPool b, uint32_t c),
+	(a, b, c))
+WATCHED_VOID(QUERY, vkCmdWriteTimestamp, (VkCommandBuffer a, VkPipelineStageFlagBits b, VkQueryPool c, uint32_t d),
+	(a, b, c, d))
+WATCHED_VOID(QUERY, vkResetQueryPool, (VkDevice a, VkQueryPool b, uint32_t c, uint32_t d),
+	(a, b, c, d))
+WATCHED_RESULT(QUERY, vkGetQueryPoolResults, (VkDevice a, VkQueryPool b, uint32_t c, uint32_t d, size_t e, void *f, VkDeviceSize g, VkQueryResultFlags h),
+	(a, b, c, d, e, f, g, h))
+WATCHED_RESULT(SUBMIT, vkQueueSubmit, (VkQueue a, uint32_t b, const VkSubmitInfo *c, VkFence d),
+	(a, b, c, d))
+WATCHED_RESULT(WAIT, vkWaitSemaphores, (VkDevice a, const VkSemaphoreWaitInfo *b, uint64_t c),
+	(a, b, c))
+WATCHED_RESULT(WAIT, vkGetSemaphoreCounterValue, (VkDevice a, VkSemaphore b, uint64_t *c),
+	(a, b, c))
+WATCHED_RESULT(WAIT, vkDeviceWaitIdle, (VkDevice a),
+	(a))
+WATCHED_RESULT(CREATE, vkCreateSampler, (VkDevice a, const VkSamplerCreateInfo *b, const VkAllocationCallbacks *c, VkSampler *d),
+	(a, b, c, d))
+WATCHED_RESULT(CREATE, vkCreateImageView, (VkDevice a, const VkImageViewCreateInfo *b, const VkAllocationCallbacks *c, VkImageView *d),
+	(a, b, c, d))
+WATCHED_RESULT(CREATE, vkCreateImage, (VkDevice a, const VkImageCreateInfo *b, const VkAllocationCallbacks *c, VkImage *d),
+	(a, b, c, d))
+WATCHED_RESULT(CREATE, vkCreateBuffer, (VkDevice a, const VkBufferCreateInfo *b, const VkAllocationCallbacks *c, VkBuffer *d),
+	(a, b, c, d))
+WATCHED_RESULT(CREATE, vkAllocateMemory, (VkDevice a, const VkMemoryAllocateInfo *b, const VkAllocationCallbacks *c, VkDeviceMemory *d),
+	(a, b, c, d))
+WATCHED_RESULT(CREATE, vkAllocateCommandBuffers, (VkDevice a, const VkCommandBufferAllocateInfo *b, VkCommandBuffer *c),
+	(a, b, c))
+WATCHED_RESULT(CREATE, vkResetCommandPool, (VkDevice a, VkCommandPool b, VkCommandPoolResetFlags c),
+	(a, b, c))
+WATCHED_RESULT(CREATE, vkCreateGraphicsPipelines, (VkDevice a, VkPipelineCache b, uint32_t c, const VkGraphicsPipelineCreateInfo *d, const VkAllocationCallbacks *e, VkPipeline *f),
+	(a, b, c, d, e, f))
+#undef WATCHED_VOID
+#undef WATCHED_RESULT
+
+#define WATCHED_FUNCTIONS(F) \
+	F(vkCmdBindPipeline) F(vkCmdBindDescriptorSets) F(vkUpdateDescriptorSets) F(vkAllocateDescriptorSets) \
+	F(vkResetDescriptorPool) F(vkCmdPushConstants) F(vkCmdBindVertexBuffers) F(vkCmdBindIndexBuffer) \
+	F(vkCmdSetViewport) F(vkCmdSetScissor) F(vkCmdSetDepthBias) F(vkCmdSetBlendConstants) \
+	F(vkCmdSetStencilReference) F(vkCmdSetPrimitiveTopology) F(vkCmdDraw) F(vkCmdDrawIndexed) \
+	F(vkCmdDispatch) F(vkCmdClearAttachments) F(vkCmdClearColorImage) F(vkCmdClearDepthStencilImage) \
+	F(vkBeginCommandBuffer) F(vkEndCommandBuffer) F(vkCmdExecuteCommands) F(vkCmdBeginRendering) \
+	F(vkCmdEndRendering) F(vkCmdPipelineBarrier) F(vkCmdCopyBuffer) F(vkCmdCopyBufferToImage) \
+	F(vkCmdCopyImageToBuffer) F(vkCmdCopyImage) F(vkCmdBlitImage) F(vkCmdResolveImage) \
+	F(vkCmdBeginQuery) F(vkCmdEndQuery) F(vkCmdWriteTimestamp) F(vkResetQueryPool) \
+	F(vkGetQueryPoolResults) F(vkQueueSubmit) F(vkWaitSemaphores) F(vkGetSemaphoreCounterValue) \
+	F(vkDeviceWaitIdle) F(vkCreateSampler) F(vkCreateImageView) F(vkCreateImage) \
+	F(vkCreateBuffer) F(vkAllocateMemory) F(vkAllocateCommandBuffers) F(vkResetCommandPool) \
+	F(vkCreateGraphicsPipelines)
+
+void xgpu_vulkan_calls_watch(uint64_t *ticks, uint64_t *counts, uint64_t (*clock)(void))
+{
+	if (ticks && counts && clock)
+	{
+		calls_ticks = ticks;
+		calls_counts = counts;
+		calls_clock = clock;
+		if (!calls_installed)
+		{
+#define INSTALL(name) name##_unwatched = name; name = name##_watched;
+			WATCHED_FUNCTIONS(INSTALL)
+#undef INSTALL
+			calls_installed = 1;
+		}
+		calls_watching = 1;
+		return;
+	}
+	calls_watching = 0;
+	if (calls_installed)
+	{
+#define UNINSTALL(name) name = name##_unwatched;
+		WATCHED_FUNCTIONS(UNINSTALL)
+#undef UNINSTALL
+		calls_installed = 0;
+	}
+}
+
 /* (VK_EXT_hdr_metadata's, where the device has it) */
 static PFN_vkSetHdrMetadataEXT vkSetHdrMetadataEXT;
 

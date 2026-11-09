@@ -784,6 +784,18 @@ jobs:
       - name: Debug
         run: python tools/ci_build.py windows debug
 
+      # the command stream's replay (ninja windows_replay), for measuring a
+      # recording on a Windows machine's driver (docs/replay_protocol.md);
+      # the releases do not carry it
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halo-windows-replay
+          path: |
+            build/windows/halo_replay.exe
+            build/windows/halo_replay.pdb
+            build/windows/SDL3.dll
+          retention-days: 7
+
       # The debug build started: the 64-bit host reserves the guest's memory,
       # loads the guest image and runs it through its start-up (settings,
       # SDL, the files) until it finds no game data and quits, saying so.
