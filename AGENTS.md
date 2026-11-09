@@ -200,6 +200,7 @@ python -m pytest -q tools/test_linux_port.py                # the build, the map
 python -m pytest -q tools/test_mods.py                      # mods played over a map (needs assets/maps)
 python -m pytest -q tools/test_bots.py                      # the bots in local games (needs assets/maps)
 python -m pytest -q tools/test_screenshot_key.py            # the Screenshot key's PNG in a hidden run (a build, assets/maps)
+python -m pytest -q tools/test_map_name.py                  # a map that cannot be loaded refused, the game usable (a build, assets/maps)
 python -m pytest -q tools/test_cache_file_formats.py tools/test_bmp_files.py tools/test_profile.py
 python -m pytest -q tools/test_xiso.py tools/test_port_settings.py  # the disc image's maps and movies extracted; the settings pages' rows fit
 python -m pytest -q tools/test_cabinet.py                   # Custom Edition's installer and Halo PC's CD read (made-up cabinets; cabextract checks them)

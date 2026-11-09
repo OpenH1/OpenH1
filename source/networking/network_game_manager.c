@@ -79,6 +79,7 @@ symbols in this file:
 #include "cseries/cseries.h"
 #include "cseries/errors.h"
 #include "cache/cache_files.h" /* port: cache_files_map_loadable */
+#include "interface/ui_widget.h" /* port: display_error_text_when_main_menu_loaded */
 #include "game/game.h"
 #include "game/game_engine.h"
 #include "game/players.h"
@@ -765,6 +766,28 @@ boolean network_game_remove_machine(
 	return result;
 }
 
+/* port: a network game whose map this machine cannot load left for the main
+menu, with the reason (network_game_create_game_objects), not the Xbox's
+damaged disc for good, nor a game with no map and no menus */
+static void network_game_map_load_failed(
+	char const *map_name)
+{
+	static wchar_t text[320];
+	char message[320];
+	short index;
+
+	error(_error_silent, "network game: can't load map '%s': leaving the game", map_name);
+	snprintf(message, sizeof(message),
+		"The game's map \"%s\" could not be loaded: it is not in the maps folder, or it is damaged.", map_name);
+	for (index = 0; message[index] && index < NUMBEROF(text) - 1; index++)
+		text[index] = (wchar_t)(unsigned char)message[index];
+	text[index] = 0;
+	display_error_text_when_main_menu_loaded(text);
+	network_game_abort();
+
+	return;
+}
+
 boolean network_game_create_game_objects(
 	struct network_game *game)
 {
@@ -805,7 +828,7 @@ boolean network_game_create_game_objects(
 	precache took it for a damaged disc and stopped for good */
 	if (!cache_files_map_loadable(options.map_name) || !game_precache_new_map_refusable(options.map_name))
 	{
-		error(_error_silent, "network game: can't load map '%s'", options.map_name);
+		network_game_map_load_failed(options.map_name);
 		return FALSE;
 	}
 	main_menu_unload();
@@ -854,6 +877,7 @@ boolean network_game_create_game_objects(
 	else
 	{
 		error(0, "game_load() failed.");
+		network_game_map_load_failed(options.map_name); /* port */
 	}
 
 	return game->local_data.game_objects_loaded;
