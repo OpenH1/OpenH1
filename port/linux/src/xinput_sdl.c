@@ -1623,7 +1623,8 @@ void test_input_press(unsigned long buttons)
 the first poll, for testing the menus: a, b, x, y, up, down, left, right,
 start, back, lb and rb (the white and black buttons), lt and rt (the
 triggers), forward (the left
-stick pushed forward, which moves a player whom no menu has), screenshot
+stick pushed forward, which moves a player whom no menu has), stick_left
+and stick_right (the left stick pushed sideways), screenshot
 (the Screenshot key's capture, once), or wait (none), separated by spaces
 or commas; two or more joined by + ("back+x") hold the first through the
 second and press the others half way through it */
@@ -1712,6 +1713,10 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 			down = into >= 500 && into < 650;
 		if (down && name_length == 7 && !strncmp(token, "forward", 7))
 			pad->sThumbLY = 32767;
+		if (down && name_length == 10 && !strncmp(token, "stick_left", 10))
+			pad->sThumbLX = -32768;
+		if (down && name_length == 11 && !strncmp(token, "stick_right", 11))
+			pad->sThumbLX = 32767;
 		for (index = 0; down && index < sizeof(buttons) / sizeof(buttons[0]); index++)
 		{
 			if (strlen(buttons[index].name) == name_length && !strncmp(token, buttons[index].name, name_length))
