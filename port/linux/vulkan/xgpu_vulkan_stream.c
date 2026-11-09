@@ -187,6 +187,20 @@ struct stream_pipeline
 	uint8_t constants_first, constants_end;
 };
 
+/* the last draw's pipeline and what its description was made of
+(draw_pipeline) */
+static struct
+{
+	VkPipeline pipeline;
+	uint32_t generation, layout, present, bindings;
+	const struct stream_pipeline *entry;
+	const struct xgpu_stream_pipeline_define *definition;
+	VkShaderModule vertex_shader, pixel_shader;
+	const struct xgpu_vulkan_attribute *attributes;
+	uint16_t inputs;
+	uint8_t primitive, sky, color_read;
+} last_draw;
+
 struct program_entry
 {
 	struct program_entry *next;
@@ -2122,20 +2136,6 @@ static int effect_textures(struct xgpu_vulkan_texture textures[4])
 	textures[XGPU_SPIRV_EFFECT_THICKNESS_BINDING].image = stream.thickness;
 	return reads_depth;
 }
-
-/* the last draw's pipeline and what its description was made of
-(draw_pipeline) */
-static struct
-{
-	VkPipeline pipeline;
-	uint32_t generation, layout, present, bindings;
-	const struct stream_pipeline *entry;
-	const struct xgpu_stream_pipeline_define *definition;
-	VkShaderModule vertex_shader, pixel_shader;
-	const struct xgpu_vulkan_attribute *attributes;
-	uint16_t inputs;
-	uint8_t primitive, sky, color_read;
-} last_draw;
 
 /* a draw of the current pipeline, made and drawn: its shaders for the
 draw's variant, its pipeline for the vertex layout, its textures and
