@@ -239,7 +239,8 @@ and packing and writing are on a thread of their own.
 
 `debug.determinism_log` hashes the game state after every tick;
 `tools/determinism_compare.py` compares a recording's log with its
-playback's (`--simulation`: not the frames' allocations, and a data
+playback's (`--simulation`: not the frames' allocations, the lights'
+among them, as the demo has them, and a data
 array's datums in use only, the log's `u` line, not what its free slots
 hold; `--builds`: not the seeds' takers' sites; `--game`: from a network
 game's first tick, after its lobby):
@@ -269,6 +270,7 @@ recording, every tick and every one of the demo's own hashes:
 | Slayer, a player and 7 bots, 120 Hz, 2.7 minutes (twice) | 4800 each | 480 of 480 each |
 | Slayer, a player and 7 bots, 60 Hz, 2.7 minutes (twice) | 4800 each | 480 of 480 each |
 | Blood Gulch hosted, a client, 120 Hz, the network test's shots and kills, 2.75 minutes (four) | 4950 each | 495 of 495 each |
+| Blood Gulch hosted with 20 bots at 120 Hz, the renderer on and a player's own settings (enhanced lights, HDR, legs, 100° FOV), a client joined over the internet from another computer (15 ms more each way, 1% of datagrams lost), 4.9 minutes; played on that other computer with the default settings | 8747 | 874 of 874 |
 
 (A tick is the game's 30th of a second at every rate; at 60 and 120 it
 runs in 2 or 4 sub-steps. 4800 ticks are 160 seconds.)
