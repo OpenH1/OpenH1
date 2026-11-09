@@ -787,6 +787,9 @@ static void network_game_map_load_failed(
 		text[index] = (wchar_t)(unsigned char)message[index];
 	text[index] = 0;
 	display_error_text_when_main_menu_loaded(text);
+	/* (the failed load's delayed errors cleared: main_new_map takes them for
+	the main menu's own) */
+	errors_clear();
 	if (main_menu_unloaded)
 		main_load_ui_scenario(TRUE);
 	network_game_abort();
