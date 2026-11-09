@@ -691,6 +691,12 @@ long player_ui_get_player1_last_used_profile_index(
 	sets the path itself */
 	static boolean player1_profile_path_looked_for = FALSE;
 
+	/* port: and not until the profiles are enumerated: the game's thread asks
+	from the start (friends_menu.inc, game_state_persistent_storage_ahead),
+	while the enumeration writes the mapfile on its own thread, whose list
+	the index found then was not of (#888) */
+	if (!player1_profile_path[0] && !player1_profile_path_looked_for && !saved_game_files_enumerated())
+		return NONE;
 	if (!player1_profile_path[0] && !player1_profile_path_looked_for)
 	{
 		player1_profile_path_looked_for = TRUE;

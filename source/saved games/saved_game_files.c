@@ -2010,6 +2010,15 @@ void enumerate_memory_units_test(
 	return;
 }
 
+/* port: whether this run's enumeration has written the mapfile (the main
+menu's filesystem thread's, ui_widget.c); before it, an index read from the
+mapfile is the last run's, which the enumeration may number differently */
+boolean saved_game_files_enumerated(
+	void)
+{
+	return !saved_game_files_globals.memory_units_dirty;
+}
+
 /* ---------- private code */
 
 static boolean find_and_create_directory_if_necessary(
@@ -2040,6 +2049,19 @@ static boolean enumerate_saved_game_files_start(
 		1647,
 		!saved_game_files_globals.enumeration_in_progress);
 
+	/* port: the mapfile's mutex held until enumerate_saved_game_files_end. The
+	enumeration (on ui_widget.c's filesystem thread) writes the mapfile through
+	memory_unit_mapfile, which every other user of the mapfile sets and closes
+	under this mutex alone: a reader on another thread took it over and closed
+	it, the writes after failed (error 6), and the profiles after them were
+	not listed (#888) */
+	if (!saved_game_files_take_mapfile_mutex())
+	{
+		error(_error_silent, "failed to take mapfile mutex");
+		saved_game_files_globals.next_enumerated_profile_index = NONE;
+		return FALSE;
+	}
+
 	if (file_reference_create_from_path(&saved_game_files_globals.memory_unit_mapfile,
 			memory_unit_mapfile_path[memory_unit], FALSE) &&
 		file_create(&saved_game_files_globals.memory_unit_mapfile) &&
@@ -2052,6 +2074,7 @@ static boolean enumerate_saved_game_files_start(
 	{
 		error(_error_silent, "failed to create/open memory unit mapfile for memory unit #%d", memory_unit);
 		saved_game_files_globals.next_enumerated_profile_index = NONE;
+		saved_game_files_release_mapfile_mutex();
 	}
 
 	return saved_game_files_globals.enumeration_in_progress;
@@ -2077,6 +2100,8 @@ static boolean enumerate_saved_game_files_end(
 
 	saved_game_files_globals.next_enumerated_profile_index = NONE;
 	saved_game_files_globals.enumeration_in_progress = FALSE;
+	/* port: (taken by enumerate_saved_game_files_start) */
+	saved_game_files_release_mapfile_mutex();
 
 	return TRUE;
 }
@@ -2189,6 +2214,10 @@ static boolean enumerate_saved_game_file_from_mapfile(
 static long count_enumerated_profiles_in_mapfile(
 	word memory_unit_index)
 {
+	/* port: a reference of its own: the size is read by the file's path, and
+	this is called with no mutex held (create_enumerated_saved_game_file),
+	where setting memory_unit_mapfile closed another thread's use of it */
+	struct file_reference mapfile;
 	unsigned long mapfile_size;
 	long number_of_entries;
 
@@ -2206,9 +2235,9 @@ static long count_enumerated_profiles_in_mapfile(
 		2147,
 		memory_unit_index < NUMBER_OF_MEMORY_UNITS);
 
-	if (file_reference_create_from_path(&saved_game_files_globals.memory_unit_mapfile,
+	if (file_reference_create_from_path(&mapfile,
 			memory_unit_mapfile_path[memory_unit_index], FALSE) &&
-		file_get_size(&saved_game_files_globals.memory_unit_mapfile, &mapfile_size))
+		file_get_size(&mapfile, &mapfile_size))
 	{
 		number_of_entries = mapfile_size/sizeof(struct enumerated_saved_game_file);
 	}
