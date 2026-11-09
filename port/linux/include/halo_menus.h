@@ -151,6 +151,76 @@ struct halo_menus
 	char const *root;
 };
 
+/* ---------- the menu engine's model (port/assets/menus/model, written by
+tools/port_settings.py: docs/menu_engine.md), read by menu_model.c */
+
+/* the model's files' folder, beside the menus' (whose reading skips it) */
+#define HALO_MENU_MODEL_FOLDER "model/"
+
+/* a choice of a row (a spinner's value, or a slider's stop) */
+struct halo_menu_model_choice
+{
+	char const *shown, *value;
+};
+
+/* a row of a screen, a section's title over rows, or a button: kind is
+"section", "button", or the row's ("choice", "slider", "link", "binding",
+"status", "stepped"); its widgets are named by key (op_<key> and
+<key>_label for a row, as tools/port_settings.py names them) */
+struct halo_menu_model_row
+{
+	char const *kind, *key, *setting, *label, *title, *when, *open, *run, *help, *note;
+	/* (in the place of the row before it; hidden while the game plays in
+	the headset; a label the game writes; a status row's value beside it) */
+	long same_place, not_in_vr, named, status;
+	/* a slider's track, step and the values it may be typed (whole: in whole
+	numbers); its stops, or a spinner's choices, from first_choice */
+	double least, most, step, typed_least, typed_most;
+	long whole;
+	long first_choice, choice_count;
+	char const *file;
+	long line;
+};
+
+/* a screen: kind "settings", laid out as layout says ("tab", "page" or
+"options": rows spacing apart); its rows from first_row */
+struct halo_menu_model_screen
+{
+	char const *name, *kind, *layout, *tab, *title, *about;
+	long spacing, platform_places, profile;
+	long first_row, row_count;
+	char const *file;
+	long line;
+};
+
+/* the geometry the settings rows are laid out by (tools/port_settings.py's
+SETTINGS_*), in the menus' 640x480 units */
+struct halo_menu_model_geometry
+{
+	long row_x, row_width, row_height, row_step, section_height, section_step, section_gap, tab_top, page_top,
+		rows_bottom, spinner_x, spinner_width;
+};
+
+struct halo_menu_model
+{
+	struct halo_menu_model_geometry geometry;
+	struct halo_menu_model_screen *screens;
+	long screen_count;
+	struct halo_menu_model_row *rows;
+	long row_count;
+	struct halo_menu_model_choice *choices;
+	long choice_count;
+};
+
+/* the model, read from its files once the menus are (halo_menus_load);
+NULL if there is none or a file has a problem (logged) */
+struct halo_menu_model const *halo_menus_model(void);
+/* the model read again by the next halo_menus_model (halo_menus_reload's) */
+void halo_menus_model_forget(void);
+/* a file gathered for the menus (halo_menus_load's): its path and data,
+FALSE past the last */
+int halo_menus_file_at(long index, char const **path, unsigned char const **data, unsigned long *size);
+
 /* the menus, read from the files (once; the same each call after); NULL if
 there are none, or a file has an error (logged) */
 struct halo_menus const *halo_menus_load(void);

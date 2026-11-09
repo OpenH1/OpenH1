@@ -215,69 +215,8 @@ enum
 /* ---------- structures */
 
 /* a widget, as ui_widget.c has it */
-struct widget_instance
-{
-	long definition_tag_index;
-	char const *name;
-	short local_player_index;
-	short horizontal_offset;
-	short vertical_offset;
-	short type;
-	boolean visible;
-	boolean render_regardless_of_controller_index;
-	boolean disabled;
-	boolean pause_game_time;
-	boolean delete_recursion_lock;
-	boolean widget_is_error_dialog;
-	boolean close_if_local_player_controller_present;
-	byte pad17;
-	long creation_time;
-	unsigned long milliseconds_to_auto_close;
-	unsigned long auto_close_fade_time;
-	real alpha_modifier;
-	struct widget_instance *previous;
-	struct widget_instance *next;
-	struct widget_instance *parent;
-	struct widget_instance *child;
-	struct widget_instance *focused_child;
-	union
-	{
-		struct
-		{
-			wchar_t *text;
-			short string_list_index;
-		} text_box;
-		struct
-		{
-			short selected_index;
-			short last_list_tab_direction;
-			void *list_items;
-			word number_of_items;
-			struct widget_instance *extended_description;
-			wchar_t *item_text;
-		} list;
-	} parameters;
-	struct
-	{
-		short current_frame_index;
-		short first_frame_index;
-		short last_frame_index;
-		short number_of_sprite_frames;
-	} animation;
-};
-
-typedef char verify_widget_instance_size[
-	sizeof(struct widget_instance) == 0x58 ? 1 : -1];
-typedef char verify_widget_instance_child_offset[
-	offsetof(struct widget_instance, child) == 0x34 ? 1 : -1];
-typedef char verify_widget_instance_parent_offset[
-	offsetof(struct widget_instance, parent) == 0x30 ? 1 : -1];
-typedef char verify_widget_instance_selected_index_offset[
-	offsetof(struct widget_instance, parameters.list.selected_index) == 0x3C ? 1 : -1];
-typedef char verify_widget_instance_number_of_items_offset[
-	offsetof(struct widget_instance, parameters.list.number_of_items) == 0x44 ? 1 : -1];
-typedef char verify_widget_instance_animation_offset[
-	offsetof(struct widget_instance, animation) == 0x50 ? 1 : -1];
+#include "menu_widget.h"
+#include "menu_engine.h"
 
 /* menu_tags.c's */
 struct pc_menu_setting
@@ -2624,6 +2563,10 @@ static void settings_rows_pack(struct widget_instance *list, boolean tab)
 	struct widget_instance *child;
 	boolean rows_above = FALSE;
 
+	/* (the menu engine lays them out from the model: menu_engine.c) */
+	if (menu_engine_lays_out(list))
+		return;
+
 	for (child = list->child; child; child = child->next)
 	{
 		if (!child->name)
@@ -2716,14 +2659,19 @@ static wchar_t const *settings_string(char const *list, short index)
 	return tag_index != NONE && index >= 0 ? unicode_string_list_get_string(tag_index, index) : NULL;
 }
 
-/* the words for the row, from the help list beside its labels' */
+/* the words for the row: the model's, where the menu engine runs the screen
+(menu_engine.c), else from the help list beside its labels' */
 static wchar_t const *settings_row_help(struct widget_instance *label)
 {
 	long labels = label ? pc_menu_widget_string_list(label->definition_tag_index) : NONE;
 	short index = label ? pc_menu_string_index(label->definition_tag_index) : NONE;
+	boolean found = FALSE;
+	wchar_t const *help = label && label->parent ? menu_engine_row_help(label->parent, &found) : NULL;
 	char name[256];
 	char *last;
 
+	if (found)
+		return help;
 	if (labels == NONE || index == NONE)
 		return NULL;
 	snprintf(name, sizeof(name), "%s", tag_get_name(labels));
