@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""The MSDF atlas of the shipped fonts' characters (display.text_renderer
-"msdf": port/linux/src/text_hires.c), baked once and committed, as the HUD's
+"""The MSDF atlas of the shipped fonts' characters, which the high-res text
+is drawn from (port/linux/src/text_hires.c), baked once and committed, as the HUD's
 pictures are:
 
     python3 tools/msdf_atlas.py            # writes port/assets/fonts/msdf_atlas.zlib

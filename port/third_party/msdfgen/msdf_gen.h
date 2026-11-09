@@ -2,9 +2,9 @@
 MSDF_GEN.H
 
 A glyph's multi-channel signed distance field (MSDF) from its outline: what
-display.text_renderer "msdf" draws the text from (port/linux/src/
-text_hires.c), baked for the shipped fonts' characters by
-tools/msdf_atlas.py and made at run time for any other. Included, its
+the high-res text is drawn from (port/linux/src/text_hires.c), baked for
+the shipped fonts' characters by tools/msdf_atlas.py and made at run time
+for any other. Included, its
 functions static, by text_hires.c and by the bake tool
 (tools/msdf_atlas/bake.c), so that both make the same fields.
 

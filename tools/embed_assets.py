@@ -387,7 +387,7 @@ def main() -> None:
         lines.append("\t{ 0 },")
     lines.append("};")
     lines.append(f"const unsigned int text_hires_embedded_count = {len(fonts)};")
-    # the fonts' glyphs' MSDF atlas (display.text_renderer "msdf", made by
+    # the fonts' glyphs' MSDF atlas (the high-res text's, made by
     # tools/msdf_atlas.py; of size 0 where the checkout has none)
     data = (ROOT / MSDF_ATLAS).read_bytes() if files and (ROOT / MSDF_ATLAS).is_file() else b""
     lines.append(f"const unsigned int text_hires_msdf_offset = {assets.add(data) if data else 0}u;")

@@ -370,11 +370,6 @@ static const struct config_setting config_settings[] =
 		"port/assets/fonts (Cyborg Interface Gothic, Hack) at the resolution\n"
 		"the game draws at, and the menus' titles from port/assets/titles;\n"
 		"false draws the maps' bitmap fonts and titles." },
-	{ "display.text_renderer", _config_string, "\"raster\"", "HALO_TEXT_RENDERER", _environment_value, _platform_all,
-		"How the high-res text's letters are drawn: \"raster\" rasterized at\n"
-		"the resolution the game draws at, for each size; \"msdf\" from\n"
-		"distance fields made with the build, sharp at any size, none made as\n"
-		"the display's size changes. Requires display.high_res_text." },
 	{ "display.shadow_resolution", _config_integer, GRAPHICS_SHADOW_RESOLUTION, "HALO_SHADOW_RESOLUTION",
 		_environment_value, _platform_all,
 		"The size the objects' shadows are drawn at, in pixels each way: 128 as\n"
@@ -2927,6 +2922,17 @@ static const struct
 	{ NULL, NULL, NULL },
 };
 
+/* the settings an older version had that this one has not: read without a
+word in the log (config_report_unknown_keys), and taken out of the file as
+it is read, their line and the comment above it (config_migrate_retired) */
+static const char *const config_retired_settings[] =
+{
+	/* (the high-res text's letters rasterized or drawn from distance
+	fields: the fields draw them all) */
+	"display.text_renderer",
+	NULL,
+};
+
 struct config_text
 {
 	char *buffer;
@@ -3187,6 +3193,31 @@ static int config_line_commented_default(const char *line, const char *end)
 	return line < end && *line == '=';
 }
 
+/* the start of the comment just above a setting's line (the line itself if
+it has none): back over it to a blank line, a section, a value or another
+setting's commented default */
+static const char *config_comment_start(const char *text, const char *line)
+{
+	const char *start;
+
+	for (start = line; start > text;)
+	{
+		const char *previous_end = start - 1;
+		const char *previous = previous_end;
+		const char *first;
+
+		while (previous > text && previous[-1] != '\n')
+			previous--;
+		for (first = previous; first < previous_end && (*first == ' ' || *first == '\t'); first++)
+		{
+		}
+		if (first >= previous_end || *first != '#' || config_line_commented_default(previous, previous_end))
+			break;
+		start = previous;
+	}
+	return start;
+}
+
 /* text with the setting's block (the comment lines just above its line,
 and its line or its commented default) in place of the one it has: its
 comment as this version writes it, and value (NULL: its commented
@@ -3211,23 +3242,7 @@ static char *config_replace_setting(const char *text, const struct config_settin
 	end = line + strcspn(line, "\n");
 	if (*end)
 		end++;
-	/* (back over the comment above it, to a blank line, a section, a
-	value or another setting's commented default) */
-	for (start = line; start > text;)
-	{
-		const char *previous_end = start - 1;
-		const char *previous = previous_end;
-		const char *first;
-
-		while (previous > text && previous[-1] != '\n')
-			previous--;
-		for (first = previous; first < previous_end && (*first == ' ' || *first == '\t'); first++)
-		{
-		}
-		if (first >= previous_end || *first != '#' || config_line_commented_default(previous, previous_end))
-			break;
-		start = previous;
-	}
+	start = config_comment_start(text, line);
 	config_append_setting(&block, setting);
 	if (!block.buffer)
 		return NULL;
@@ -3371,6 +3386,72 @@ static char *config_migrate_words(const char *text, toml_datum_t table)
 		free(result);
 		result = updated;
 		platform_log("settings: %s = \"%s\" is an older version's: now \"%s\"", name, datum.u.s, word);
+	}
+	return result;
+}
+
+/* whether a setting is one an older version had (config_retired_settings) */
+static int config_setting_retired(const char *name)
+{
+	size_t index;
+
+	for (index = 0; config_retired_settings[index]; index++)
+	{
+		if (!strcmp(config_retired_settings[index], name))
+			return 1;
+	}
+	return 0;
+}
+
+/* a file with settings this version has not (config_retired_settings): each
+one's line, set or commented at its default, taken out with the comment
+above it and the blank line before that. Returns the new text, or NULL if
+it has none */
+static char *config_migrate_retired(const char *text)
+{
+	char *result = NULL;
+	size_t index;
+
+	for (index = 0; config_retired_settings[index]; index++)
+	{
+		const char *name = config_retired_settings[index];
+		const char *dot = strchr(name, '.');
+		char section[64];
+		int commented;
+
+		if (!dot)
+			continue;
+		snprintf(section, sizeof(section), "%.*s", (int)(dot - name), name);
+		for (commented = 0; commented < 2; commented++)
+		{
+			const char *current = result ? result : text;
+			const char *line = config_find_line(current, section, dot + 1, commented);
+			const char *start, *end;
+			struct config_text out = { NULL, 0, 0 };
+			char *before;
+
+			if (!line)
+				continue;
+			end = line + strcspn(line, "\n");
+			if (*end)
+				end++;
+			start = config_comment_start(current, line);
+			if (start - current >= 2 && start[-1] == '\n' && start[-2] == '\n')
+				start--;
+			before = config_copy(current, (size_t)(start - current));
+			if (!before)
+				continue;
+			config_append(&out, before);
+			free(before);
+			config_append(&out, end);
+			if (!out.buffer)
+				continue;
+			if (!commented)
+				platform_log("settings: %s is an older version's setting, gone from this one: taken out of the file",
+					name);
+			free(result);
+			result = out.buffer;
+		}
 	}
 	return result;
 }
@@ -4024,7 +4105,7 @@ static void config_report_unknown_keys(toml_datum_t table)
 			in them) */
 			if (!strcmp(name, CONFIG_WEAPON_TABLE))
 				continue;
-			if (config_setting_index(name) < 0)
+			if (config_setting_index(name) < 0 && !config_setting_retired(name))
 				config_report_unknown_key(section.u.tab.value[key_index].lineno, name);
 		}
 	}
@@ -4188,7 +4269,6 @@ static const struct
 	{ "display.shield_glow_intensity", { "default", "light_show", NULL }, NULL },
 	{ "display.shield_color", { "default", "white", "black", "red", "blue", "gray", "yellow", "green", "pink",
 		"purple", "cyan", "cobalt", "orange", "teal", "sage", "brown", "tan", "maroon", "salmon", NULL }, NULL },
-	{ "display.text_renderer", { "raster", "msdf", NULL }, NULL },
 	{ "audio.resampler", { "xbox", "sinc", "linear", NULL }, NULL },
 	{ "audio.spatial", { "auto", "headphones", "speakers", NULL }, "auto" },
 	{ "audio.voice_chat", { "push_to_talk", "open_mic", "off", NULL }, NULL },
@@ -4574,6 +4654,20 @@ static void config_load(void)
 				toml_free(result);
 				free(text);
 				text = supersampling;
+				result = toml_parse(text, (int)strlen(text));
+				migrated = text;
+			}
+		}
+		/* (the settings an older version had) */
+		if (result.ok && !skipped)
+		{
+			char *retired = config_migrate_retired(text);
+
+			if (retired)
+			{
+				toml_free(result);
+				free(text);
+				text = retired;
 				result = toml_parse(text, (int)strlen(text));
 				migrated = text;
 			}

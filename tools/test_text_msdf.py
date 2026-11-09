@@ -1,9 +1,10 @@
-"""display.text_renderer "msdf" (port/linux/src/text_hires.c, port/third_party/msdfgen/msdf_gen.h):
+"""The high-res text's distance fields (port/linux/src/text_hires.c, port/third_party/msdfgen/msdf_gen.h):
 
 - the committed atlas (port/assets/fonts/msdf_atlas.zlib) is what the fonts
   make (tools/msdf_atlas.py --check);
-- each glyph drawn from the distance fields is laid out exactly as the
-  rasterized one is: its quad, advance and ink, for the shipped fonts' tags,
+- each glyph drawn from the distance fields is laid out exactly as it was
+  when the text was rasterized: its quad, advance and ink are the font's box
+  for it at the display's pixels (stb_truetype's), for the shipped fonts' tags,
   at 720p, 1080p and 4K and drawn twice as large, the baked characters and
   some made at run time (tools/text_msdf/layout.c, with text_hires.c built
   for this computer and stand-ins for the platform);
@@ -44,7 +45,7 @@ def test_atlas_is_the_fonts():
 STUBS = {
     "platform.h": "#include <pthread.h>\n#include <stdlib.h>\ntypedef int BOOL;\n#define FALSE 0\n#define TRUE 1\n"
                   "void platform_log(const char *format, ...);\n",
-    "xgpu_images.h": "enum { XGPU_IMAGE_RGBA, XGPU_IMAGE_COVERAGE };\n"
+    "xgpu_images.h": "enum { XGPU_IMAGE_RGBA };\n"
                      "unsigned int xgpu_image_create(void *pixels, unsigned long width, unsigned long height, "
                      "unsigned long levels, int format, int owned);\nvoid xgpu_image_changed(unsigned int image);\n"
                      "void xgpu_image_delete(unsigned int image);\n",
@@ -76,7 +77,7 @@ def _generated(folder: Path) -> Path:
 
 
 @pytest.mark.skipif(not CC, reason="no C compiler")
-def test_layout_is_the_rasterized(tmp_path):
+def test_layout_is_the_fonts(tmp_path):
     source = tmp_path / "port/linux/src"
     source.mkdir(parents=True)
     (tmp_path / "port/third_party").symlink_to(ROOT / "port/third_party")
