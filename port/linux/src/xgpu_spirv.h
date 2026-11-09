@@ -273,11 +273,14 @@ struct xgpu_pixel_program;
 /* the program can be drawn as an effect (above) */
 BOOL xgpu_spirv_effect_possible(const struct xgpu_pixel_program *program);
 
-/* a module's words (SPIR-V's own: 32 bits each), malloc'd, count of them */
+/* a module's words (SPIR-V's own: 32 bits each), malloc'd, count of them;
+the vertex constants it reads (bit n of word n / 64: c[n], counted from
+c[-96]), every one where it indexes them with a0 */
 struct xgpu_spirv_module
 {
 	unsigned int *words;
 	unsigned long count;
+	unsigned long long constants_read[3];
 };
 
 /* the vertex program (xgpu_shader.h) as a vertex shader, entry point

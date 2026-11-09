@@ -163,6 +163,8 @@ bitwise or (GroupNonUniformArithmetic) */
 	unsigned int world_ao, world_sdf, world_sdf_table, world_ao_scenery, world_ao_objects;
 	/* (found once a pixel: its texture, and the passes' inputs) */
 	unsigned int world_ao_pixels, t_uv2;
+	/* the vertex constants read (xgpu_spirv_module's) */
+	unsigned long long constants_read[3];
 };
 
 static void words_push(struct module *m, struct words *words, unsigned int word)
@@ -993,14 +995,29 @@ static unsigned int eye_position(struct module *m, unsigned int eye, unsigned in
 	return result;
 }
 
-/* c[index] (a constant index, or an int value: dynamic) */
+/* c[index] (an int value: dynamic, every register counted as read) */
 static unsigned int vertex_constant(struct module *m, unsigned int index_id)
 {
 	unsigned int operands[3], pointer;
 
+	memset(m->constants_read, 0xff, sizeof(m->constants_read));
 	operands[0] = m->constants;
 	operands[1] = constant_int(m, 0);
 	operands[2] = index_id;
+	pointer = op(m, OP_ACCESS_CHAIN, type_pointer(m, STORAGE_UNIFORM, m->t_v4), 3, operands);
+	return load(m, m->t_v4, pointer);
+}
+
+/* c[index] (a constant index: the registers read, xgpu_spirv_module's) */
+static unsigned int vertex_constant_at(struct module *m, int index)
+{
+	unsigned int operands[3], pointer;
+
+	if (index >= 0 && index < XGPU_VERTEX_CONSTANT_COUNT)
+		m->constants_read[index >> 6] |= 1ull << (index & 63);
+	operands[0] = m->constants;
+	operands[1] = constant_int(m, 0);
+	operands[2] = constant_int(m, index);
 	pointer = op(m, OP_ACCESS_CHAIN, type_pointer(m, STORAGE_UNIFORM, m->t_v4), 3, operands);
 	return load(m, m->t_v4, pointer);
 }
@@ -1122,6 +1139,7 @@ static BOOL module_end(struct module *m, unsigned int execution_model, unsigned 
 		module_free(m);
 		return FALSE;
 	}
+	memcpy(out->constants_read, m->constants_read, sizeof(out->constants_read));
 	out->words[0] = SPV_MAGIC;
 	out->words[1] = SPV_VERSION;
 	out->words[2] = 0;
@@ -1355,7 +1373,7 @@ static unsigned int vertex_operand(struct module *m, struct vertex_state *state,
 		}
 		else
 		{
-			value = vertex_constant(m, constant_int(m, operand->index));
+			value = vertex_constant_at(m, operand->index);
 		}
 		break;
 	default:
@@ -1473,7 +1491,7 @@ static BOOL lighting_position(const struct nv2a_vertex_lighting *lighting)
 lighting's order (xgpu.h: [0] c[-82], [1] to [11] c[-79] to c[-69]) */
 static unsigned int model_light_constant(struct module *m, int index)
 {
-	return vertex_constant(m, constant_int(m, XGPU_VERTEX_CONSTANT_BIAS + (index ? index - 80 : -82)));
+	return vertex_constant_at(m, XGPU_VERTEX_CONSTANT_BIAS + (index ? index - 80 : -82));
 }
 
 /* display.ambient_occlusion, a model lit for each vertex
@@ -1801,8 +1819,8 @@ BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 			offset = construct(&m, 3, offset_parts);
 			w = extract(&m, clip_position, 3);
 			sum = fadd(&m, 3, fmul(&m, 3, xyz(&m, clip_position),
-				xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_VERTEX_CONSTANT_BIAS - 38)))),
-				fscale(&m, 3, fsub(&m, 3, fadd(&m, 3, xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_VERTEX_CONSTANT_BIAS - 37))),
+				xyz(&m, vertex_constant_at(&m, XGPU_VERTEX_CONSTANT_BIAS - 38))),
+				fscale(&m, 3, fsub(&m, 3, fadd(&m, 3, xyz(&m, vertex_constant_at(&m, XGPU_VERTEX_CONSTANT_BIAS - 37)),
 				offset), xyz(&m, viewport_offset)), w));
 			position = vec4_of(&m, fdiv(&m, 3, sum, scale), w);
 		}
@@ -1839,9 +1857,9 @@ BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 					fadd(&m, 1, fdot(&m, xyz(&m, depth_point), xyz(&m, row)), extract(&m, row, 3)) :
 					fdot(&m, depth_point, row);
 				identity = op2(&m, OP_LOGICAL_AND, m.t_bool,
-					compare(&m, OP_F_ORD_EQUAL, extract(&m, vertex_constant(&m, constant_int(&m, XGPU_VERTEX_CONSTANT_BIAS - 38)), 2),
+					compare(&m, OP_F_ORD_EQUAL, extract(&m, vertex_constant_at(&m, XGPU_VERTEX_CONSTANT_BIAS - 38), 2),
 					scale_parts[2]),
-					compare(&m, OP_F_ORD_EQUAL, extract(&m, vertex_constant(&m, constant_int(&m, XGPU_VERTEX_CONSTANT_BIAS - 37)), 2),
+					compare(&m, OP_F_ORD_EQUAL, extract(&m, vertex_constant_at(&m, XGPU_VERTEX_CONSTANT_BIAS - 37), 2),
 					extract(&m, viewport_offset, 2)));
 				/* (an eye's: its correction's w row less its z row, e, times the
 				centre's clip position, with the centre's w - z for its z and w
@@ -5793,11 +5811,11 @@ static BOOL glow_vertex_shader(const struct xgpu_spirv_options *options, struct 
 	corner = load(&m, m.t_v2, corner_in);
 	middle = xyz(&m, halo);
 	size = extract(&m, halo, 3);
-	head = vertex_constant(&m, constant_int(&m, XGPU_SPIRV_GLOW_HEAD));
+	head = vertex_constant_at(&m, XGPU_SPIRV_GLOW_HEAD);
 	near = extract(&m, head, 3);
-	right = xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_GLOW_AXES)));
-	up = xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_GLOW_AXES + 1)));
-	forward = xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_GLOW_AXES + 2)));
+	right = xyz(&m, vertex_constant_at(&m, XGPU_SPIRV_GLOW_AXES));
+	up = xyz(&m, vertex_constant_at(&m, XGPU_SPIRV_GLOW_AXES + 1));
+	forward = xyz(&m, vertex_constant_at(&m, XGPU_SPIRV_GLOW_AXES + 2));
 	to_head = fsub(&m, 3, xyz(&m, head), middle);
 	away = ext1(&m, GLSL_LENGTH, m.t_float, to_head);
 	n = fdiv(&m, 3, to_head, splat(&m, 3, fmax_scalar(&m, 1, away, 1.0e-6f)));
@@ -5978,12 +5996,12 @@ BOOL xgpu_spirv_halo_vertex_shader(const struct xgpu_spirv_options *options, str
 	corner = load(&m, m.t_v2, corner_in);
 	/* world = middle.xyz + (camera_axes[0].xyz * corner.x + camera_axes[1].xyz * corner.y) * middle.w */
 	world = fadd(&m, 3, xyz(&m, middle), fscale(&m, 3, fadd(&m, 3,
-		fscale(&m, 3, xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_HALO_CAMERA_AXES))), extract(&m, corner, 0)),
-		fscale(&m, 3, xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_HALO_CAMERA_AXES + 1))), extract(&m, corner, 1))),
+		fscale(&m, 3, xyz(&m, vertex_constant_at(&m, XGPU_SPIRV_HALO_CAMERA_AXES)), extract(&m, corner, 0)),
+		fscale(&m, 3, xyz(&m, vertex_constant_at(&m, XGPU_SPIRV_HALO_CAMERA_AXES + 1)), extract(&m, corner, 1))),
 		extract(&m, middle, 3)));
 	for (component = 0; component < 4; component++)
 	{
-		unsigned int row = vertex_constant(&m, constant_int(&m, XGPU_SPIRV_HALO_PROJECTION + component));
+		unsigned int row = vertex_constant_at(&m, XGPU_SPIRV_HALO_PROJECTION + component);
 
 		rows[component] = fadd(&m, 1, fdot(&m, world, xyz(&m, row)), extract(&m, row, 3));
 	}
@@ -6015,8 +6033,8 @@ BOOL xgpu_spirv_halo_vertex_shader(const struct xgpu_spirv_options *options, str
 	offset_parts[2] = constant_float(&m, 0.0f);
 	w = extract(&m, clip, 3);
 	sum = fadd(&m, 3, fmul(&m, 3, xyz(&m, clip),
-		xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_HALO_PROJECTION + 4)))),
-		fscale(&m, 3, fsub(&m, 3, fadd(&m, 3, xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_HALO_PROJECTION + 5))),
+		xyz(&m, vertex_constant_at(&m, XGPU_SPIRV_HALO_PROJECTION + 4))),
+		fscale(&m, 3, fsub(&m, 3, fadd(&m, 3, xyz(&m, vertex_constant_at(&m, XGPU_SPIRV_HALO_PROJECTION + 5)),
 		construct(&m, 3, offset_parts)), xyz(&m, viewport_offset)), w));
 	position = vec4_of(&m, fdiv(&m, 3, sum, scale), w);
 	/* Vulkan's rows from the top of the framebuffer, y down (xgpu_spirv.h) */
@@ -6034,7 +6052,7 @@ BOOL xgpu_spirv_halo_vertex_shader(const struct xgpu_spirv_options *options, str
 	color = load(&m, m.t_v4, color_in);
 	store(&m, color_out, xyz(&m, color));
 	store(&m, depth_out, depth);
-	store(&m, parameters_out, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_HALO_DEPTH)));
+	store(&m, parameters_out, vertex_constant_at(&m, XGPU_SPIRV_HALO_DEPTH));
 	return module_end(&m, EXECUTION_MODEL_VERTEX, main_id, &locals, module);
 }
 
