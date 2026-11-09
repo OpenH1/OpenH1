@@ -221,6 +221,75 @@ static long long report_now_ns(void)
 	return (long long)now.tv_sec * 1000000000LL + now.tv_nsec;
 }
 
+/* ---------- debug.frame_log
+
+A line for each frame presented once the scenario's simulation has started
+(sim_trace_scenario_seconds: the clock of debug.test_input's scripts), for a
+benchmark (tools/bench.py): the scenario's seconds, then microseconds of the
+frame's time, the GPU's (-1 not measured), the render thread's playing its
+records, the game's waits for the renderer and the display, and the game
+thread's CPU (CLOCK_THREAD_CPUTIME_ID, -1 not known). With
+debug.frame_log_seconds the game quits once the scenario's clock reaches it,
+so that every build runs the same ticks and then stops. */
+static FILE *frame_log;
+static int frame_log_opened;
+static double frame_log_seconds;
+static long long frame_log_cpu_ns = -1;
+
+/* port/linux/game/sim_trace.c's */
+extern double sim_trace_scenario_seconds(void);
+
+static long long report_thread_cpu_ns(void)
+{
+#ifdef CLOCK_THREAD_CPUTIME_ID
+	struct timespec now;
+
+	if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now) == 0)
+		return (long long)now.tv_sec * 1000000000LL + now.tv_nsec;
+#endif
+	return -1;
+}
+
+static void report_frame_log(long long micros, const struct report_frame_work *work)
+{
+	long long cpu_ns, cpu;
+	double seconds;
+
+	if (!frame_log_opened)
+	{
+		const char *path = config_string("debug.frame_log");
+
+		frame_log_opened = 1;
+		frame_log_seconds = config_real("debug.frame_log_seconds");
+		if (path && path[0])
+		{
+			frame_log = fopen(path, "w");
+			if (frame_log)
+				fprintf(frame_log, "# frame log 1: seconds frame gpu render waited cpu (microseconds)\n");
+			else
+				platform_log("debug.frame_log: cannot write %s", path);
+		}
+	}
+	if (!frame_log)
+		return;
+	cpu_ns = report_thread_cpu_ns();
+	cpu = cpu_ns >= 0 && frame_log_cpu_ns >= 0 ? (cpu_ns - frame_log_cpu_ns) / 1000 : -1;
+	frame_log_cpu_ns = cpu_ns;
+	seconds = sim_trace_scenario_seconds();
+	if (seconds < 0.0 || micros < 0)
+		return;
+	fprintf(frame_log, "%.6f %lld %ld %lu %lu %lld\n", seconds, micros,
+		work->gpu == REPORT_GPU_UNKNOWN ? -1L : (long)work->gpu, (unsigned long)work->render,
+		(unsigned long)work->waited, cpu);
+	if (frame_log_seconds > 0.0 && seconds >= frame_log_seconds - 1e-9)
+	{
+		fclose(frame_log);
+		frame_log = NULL;
+		platform_log("debug.frame_log: %.3f seconds of the scenario logged", seconds);
+		exit(EXIT_SUCCESS);
+	}
+}
+
 /* ---------- what is kept */
 
 void report_frame_presented(void)
@@ -254,6 +323,7 @@ void report_frame_presented(void)
 		work->waited = (uint32_t)times.waited - (uint32_t)report_frames.last.waited;
 		work->paced = (uint32_t)times.paced - (uint32_t)report_frames.last.paced;
 		report_frames.count++;
+		report_frame_log(micros, work);
 	}
 	else
 		report_frames.start_ns = now;
