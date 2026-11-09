@@ -908,13 +908,18 @@ static void stream_set_textures(void *context, const struct host_render_texture_
 	{
 		const struct xgpu_stream_texture_stage *stage = &stages[index].stage;
 
+		/* (only the stages that changed are looked at again, and copied: the
+		guest sends all four when any changes, and a draw's textures were a
+		noticeable part of the render thread's time on a headset) */
+		if (!memcmp(&stream.stages[index], &stages[index], sizeof(stages[index])))
+		{
+			if (stage_palettized(stage))
+				stream.textures_dirty |= 1u << index;
+			continue;
+		}
 		if (memcmp(&stream.stages[index].stage.sampler, &stage->sampler, sizeof(stage->sampler)))
 			stream.uniforms_dirty = 1;
-		/* (only the stages that changed are looked at again: the guest
-		sends all four when any changes, and a draw's textures were a
-		noticeable part of the render thread's time on a headset) */
-		if (memcmp(&stream.stages[index], &stages[index], sizeof(stages[index])) || stage_palettized(stage))
-			stream.textures_dirty |= 1u << index;
+		stream.textures_dirty |= 1u << index;
 		stream.stages[index] = stages[index];
 		/* (the shader draws the border of a 2D or 3D texture's sampler) */
 		stream.border[index] = stage->source != _source_none && stage->sampler_type != _xgpu_sampler_cube &&
