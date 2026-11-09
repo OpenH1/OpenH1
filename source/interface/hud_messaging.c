@@ -959,8 +959,16 @@ void hud_render_timer(
 					if (timer->ticks > flash_cutoff)
 					{
 						timer->ticks = flash_cutoff;
+						/* port: the time the timer passed the cutoff, so that it
+						reads on as it did (BUG (original): flash_cutoff -
+						timer_ticks + current_time, which put it as far above the
+						cutoff as it was below. On the Xbox it was caught at the
+						cutoff, a tick below at most; but a timer found further
+						below, as when its state is set again each tick (network
+						co-op's clients, from the host's) and drawn between, read
+						2 * cutoff - time, issue 897) */
 						timer->reference_time =
-							flash_cutoff - timer_ticks + current_time;
+							current_time - (flash_cutoff - timer_ticks);
 					}
 				}
 			}
