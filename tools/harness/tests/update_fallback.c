@@ -202,50 +202,126 @@ static void answer_bytes(struct update_response *response, int status, const cha
 	response->body_size = (unsigned long)strlen(text);
 }
 
+/* the latest release's answer (GitHub's API's), into text */
+static void latest_answer(char *text, size_t size)
+{
+	char assets[1500] = "";
+	int index;
+
+	/* (the release's and the uploader's ids, and a name and id in the
+	notes, are not the files') */
+	for (index = 0; ids_listed && index < UPDATER_ASSET_COUNT; index++)
+	{
+		snprintf(assets + strlen(assets), sizeof(assets) - strlen(assets),
+			"%s{\"url\": \"" TEST_SERVER "/repos/OpenH1/OpenH1/releases/assets/%llu\", \"id\": %llu, "
+			"\"uploader\": {\"login\": \"github-actions[bot]\", \"id\": 41898282}, \"name\": \"%s\", "
+			"\"label\": \"\", \"size\": %d}",
+			index ? ", " : "", file_ids[index], file_ids[index], updater_asset_name(index),
+			(int)strlen(file_bytes[index]));
+	}
+	snprintf(text, size, "{\"url\": \"x\", \"id\": 77, \"tag_name\": \"build-%d\", \"author\": {\"id\": 5}, "
+		"\"body\": \"Network version: 3\\n\\\"name\\\": \\\"SHA256SUMS\\\", \\\"id\\\": 1\", \"assets\": [%s]}",
+		BUILD, assets);
+}
+
+/* GitHub's API: the copy of a release's file (/releases/assets/<id>),
+its bytes when asked for application/octet-stream (redirected to the file
+host, or the answer itself), its description else */
 int update_https_request(const char *method, const char *url, const char *headers, const void *body,
 	unsigned long body_size, unsigned long maximum, struct update_response *response, char *error, int error_size)
 {
-	static const char link[] = TEST_SERVER "/OpenH1/OpenH1/releases/download/build-8/";
 	static const char api[] = TEST_SERVER "/repos/OpenH1/OpenH1/releases/assets/";
+	unsigned long long id;
+	int index;
 
-	(void)method, (void)body, (void)body_size, (void)maximum;
+	(void)method, (void)body, (void)body_size;
 	memset(response, 0, sizeof(*response));
+	if (strncmp(url, api, sizeof(api) - 1))
+	{
+		answer_bytes(response, 404, "");
+		return 1;
+	}
+	id = strtoull(url + sizeof(api) - 1, NULL, 10);
+	for (index = 0; index < UPDATER_ASSET_COUNT && file_ids[index] != id; index++)
+	{
+	}
+	if (index == UPDATER_ASSET_COUNT)
+	{
+		answer_bytes(response, 404, "{\"message\": \"Not Found\"}");
+		return 1;
+	}
+	api_requests[index]++;
+	if (!headers || !strstr(headers, "Accept: application/octet-stream\r\n"))
+	{
+		answer_bytes(response, 200, "{\"id\": 1, \"name\": \"the asset's description, not its bytes\"}");
+		return 1;
+	}
+	api_accept_octets++;
+	if (api_status[index] == 200)
+	{
+		/* (no more than the caller takes) */
+		if (strlen(file_bytes[index]) > maximum)
+		{
+			snprintf(error, (size_t)error_size, "the answer is larger than %lu bytes", maximum);
+			return 0;
+		}
+		answer_bytes(response, 200, file_bytes[index]);
+	}
+	else if (api_status[index] == 302)
+	{
+		answer_bytes(response, 302, "");
+		snprintf(response->headers, sizeof(response->headers), "Content-Type: text/html\nlocation: "
+			"https://files.test/%s?from=api \r\n", updater_asset_name(index));
+	}
+	else
+	{
+		answer_bytes(response, api_status[index], "");
+	}
+	return 1;
+}
+
+/* the file at path, the bytes text; 1 when written */
+static int write_file(const char *path, const char *text, char *error, int error_size)
+{
+	FILE *file = fopen(path, "wb");
+
+	if (!file)
+	{
+		snprintf(error, (size_t)error_size, "could not write %s", path);
+		return 0;
+	}
+	fwrite(text, 1, strlen(text), file);
+	fclose(file);
+	return 1;
+}
+
+/* GitHub's addresses that update_download fetches, following redirects:
+the latest release's answer (its API's), a release's links (which
+redirect to the file host), and the file host (which the API's copies
+redirect to) */
+int update_download(const char *url, const char *path, unsigned long long maximum, update_progress_proc progress,
+	void *context, char *error, int error_size)
+{
+	static const char link[] = TEST_SERVER "/OpenH1/OpenH1/releases/download/build-8/";
+	static const char host[] = "https://files.test/";
+	char name[256];
+	int index;
+
+	(void)maximum;
 	if (!strcmp(url, TEST_SERVER "/repos/OpenH1/OpenH1/releases/latest"))
 	{
-		char text[2048];
+		char text[4096];
 
-		/* (the uploader's id, and a name in the notes, are not the files') */
-		snprintf(text, sizeof(text), "{\"url\": \"x\", \"id\": 77, \"tag_name\": \"build-%d\", "
-			"\"body\": \"Network version: 3\\n\\\"name\\\": \\\"SHA256SUMS\\\", \\\"id\\\": 1\", \"assets\": [%s]}",
-			BUILD, "");
-		if (ids_listed)
-		{
-			char assets[1500] = "";
-			int index;
-
-			for (index = 0; index < UPDATER_ASSET_COUNT; index++)
-			{
-				snprintf(assets + strlen(assets), sizeof(assets) - strlen(assets),
-					"%s{\"url\": \"" TEST_SERVER "/repos/OpenH1/OpenH1/releases/assets/%llu\", \"id\": %llu, "
-					"\"uploader\": {\"login\": \"github-actions[bot]\", \"id\": 41898282}, \"name\": \"%s\", "
-					"\"label\": \"\", \"size\": %d}",
-					index ? ", " : "", file_ids[index], file_ids[index], updater_asset_name(index),
-					(int)strlen(file_bytes[index]));
-			}
-			snprintf(text, sizeof(text), "{\"url\": \"x\", \"id\": 77, \"tag_name\": \"build-%d\", "
-				"\"author\": {\"id\": 5}, \"body\": \"Network version: 3\", \"assets\": [%s]}", BUILD, assets);
-		}
-		answer_bytes(response, 200, text);
-		return 1;
+		latest_answer(text, sizeof(text));
+		return write_file(path, text, error, error_size);
 	}
 	if (!strncmp(url, link, sizeof(link) - 1))
 	{
-		int index = file_index(url + sizeof(link) - 1);
-
+		index = file_index(url + sizeof(link) - 1);
 		if (index < 0)
 		{
-			answer_bytes(response, 404, "");
-			return 1;
+			snprintf(error, (size_t)error_size, "the server answered 404");
+			return 0;
 		}
 		link_requests[index]++;
 		if (no_answer)
@@ -256,94 +332,36 @@ int update_https_request(const char *method, const char *url, const char *header
 		if (link_trouble[index] > 0)
 		{
 			link_trouble[index]--;
-			answer_bytes(response, 503, "busy");
-			return 1;
+			snprintf(error, (size_t)error_size, "the server answered 503");
+			return 0;
 		}
 		if (link_status[index] != 302)
 		{
-			answer_bytes(response, link_status[index], "");
-			return 1;
+			snprintf(error, (size_t)error_size, "the server answered %d", link_status[index]);
+			return 0;
 		}
-		answer_bytes(response, 302, "");
-		snprintf(response->headers, sizeof(response->headers), "Content-Type: text/html\nlocation: "
-			"https://files.test/%s?signed=1 \r\n", updater_asset_name(index));
-		return 1;
 	}
-	if (!strncmp(url, api, sizeof(api) - 1))
+	else if (!strncmp(url, host, sizeof(host) - 1))
 	{
-		unsigned long long id = strtoull(url + sizeof(api) - 1, NULL, 10);
-		int index;
-
-		for (index = 0; index < UPDATER_ASSET_COUNT && file_ids[index] != id; index++)
+		file_host_requests++;
+		snprintf(name, sizeof(name), "%s", url + sizeof(host) - 1);
+		name[strcspn(name, "?")] = 0;
+		index = file_index(name);
+		if (index < 0)
 		{
+			snprintf(error, (size_t)error_size, "the server answered 404");
+			return 0;
 		}
-		if (index == UPDATER_ASSET_COUNT)
-		{
-			answer_bytes(response, 404, "{\"message\": \"Not Found\"}");
-			return 1;
-		}
-		api_requests[index]++;
-		/* (the bytes only for application/octet-stream: else its description) */
-		if (!headers || !strstr(headers, "Accept: application/octet-stream\r\n"))
-		{
-			answer_bytes(response, 200, "{\"id\": 1, \"name\": \"the asset's description, not its bytes\"}");
-			return 1;
-		}
-		api_accept_octets++;
-		if (api_status[index] == 200)
-		{
-			answer_bytes(response, 200, file_bytes[index]);
-		}
-		else if (api_status[index] == 302)
-		{
-			answer_bytes(response, 302, "");
-			snprintf(response->headers, sizeof(response->headers), "Location: https://files.test/%s?from=api\n",
-				updater_asset_name(index));
-		}
-		else
-		{
-			answer_bytes(response, api_status[index], "");
-		}
-		return 1;
 	}
-	answer_bytes(response, 404, "");
-	return 1;
-}
-
-/* the file host, which GitHub's links and API redirect to */
-int update_download(const char *url, const char *path, unsigned long long maximum, update_progress_proc progress,
-	void *context, char *error, int error_size)
-{
-	static const char host[] = "https://files.test/";
-	char name[256];
-	int index;
-	FILE *file;
-
-	file_host_requests++;
-	if (strncmp(url, host, sizeof(host) - 1))
+	else
 	{
 		snprintf(error, (size_t)error_size, "the server answered 404");
 		return 0;
 	}
-	snprintf(name, sizeof(name), "%s", url + sizeof(host) - 1);
-	name[strcspn(name, "?")] = 0;
-	index = file_index(name);
-	if (index < 0)
-	{
-		snprintf(error, (size_t)error_size, "the server answered 404");
+	if (!write_file(path, file_bytes[index], error, error_size))
 		return 0;
-	}
-	file = fopen(path, "wb");
-	if (!file)
-	{
-		snprintf(error, (size_t)error_size, "could not write %s", path);
-		return 0;
-	}
-	fwrite(file_bytes[index], 1, strlen(file_bytes[index]), file);
-	fclose(file);
 	if (progress)
 		progress(context, strlen(file_bytes[index]), strlen(file_bytes[index]));
-	(void)maximum;
 	return 1;
 }
 
@@ -496,6 +514,7 @@ int main(int argc, char **argv)
 		CHECK(updater_download_failure("the server answered 504") == _updater_fetch_unreachable, "504");
 		CHECK(updater_download_failure("no answer from files.test") == _updater_fetch_unreachable, "no answer");
 		CHECK(updater_download_failure("the server answered 403") == _updater_fetch_failed, "403");
+		CHECK(updater_download_failure("the server answered 404") == _updater_fetch_none, "404");
 		CHECK(updater_download_failure("could not write /x (No space left on device)") == _updater_fetch_failed,
 			"a full disk");
 		CHECK(updater_download_failure("the download from files.test is larger than expected") ==

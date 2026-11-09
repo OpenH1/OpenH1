@@ -101,31 +101,53 @@ static const char *install_system_reason(void) { return ""; }
 static int install_is_tree(void) { return 1; }
 static const char *install_folder(void) { return environment("FAKE_TREE"); }
 
-/* GitHub's file host: the release's zip, FAKE_RELEASE (its link's redirect,
-update_https_request's, to https://files.test/<name>) */
+/* GitHub: the latest release, build FAKE_LATEST, whose zip is FAKE_RELEASE;
+its SHA256SUMS and signature: none (GitHub's 404) */
 int update_download(const char *url, const char *path, unsigned long long maximum, update_progress_proc progress,
 	void *context, char *error, int error_size)
 {
-	FILE *output = fopen(path, "wb");
-	FILE *input = fopen(environment("FAKE_RELEASE"), "rb");
-	char buffer[16384];
-	size_t count;
+	FILE *output;
+	const char *latest = "/releases/latest";
+	const char *name = strrchr(url, '/');
+	size_t length = strlen(url);
 
 	(void)maximum, (void)progress, (void)context;
-	printf("test: download %s\n", url);
-	fflush(stdout);
-	if (!output || !input)
+	name = name ? name + 1 : url;
+	if (!strcmp(name, "SHA256SUMS") || !strcmp(name, "SHA256SUMS.sig"))
 	{
-		if (output)
-			fclose(output);
-		if (input)
-			fclose(input);
+		printf("test: asked for %s\n", name);
+		fflush(stdout);
 		snprintf(error, (size_t)error_size, "the server answered 404");
 		return 0;
 	}
-	while ((count = fread(buffer, 1, sizeof(buffer), input)) > 0)
-		fwrite(buffer, 1, count, output);
-	fclose(input);
+	printf("test: download %s\n", url);
+	fflush(stdout);
+	output = fopen(path, "wb");
+	if (!output)
+	{
+		snprintf(error, (size_t)error_size, "could not write %s", path);
+		return 0;
+	}
+	if (length > strlen(latest) && !strcmp(url + length - strlen(latest), latest))
+	{
+		fprintf(output, "{\"url\": \"...\", \"tag_name\": \"build-%s\", \"name\": \"...\"}", environment("FAKE_LATEST"));
+	}
+	else
+	{
+		FILE *input = fopen(environment("FAKE_RELEASE"), "rb");
+		char buffer[16384];
+		size_t count;
+
+		if (!input)
+		{
+			fclose(output);
+			snprintf(error, (size_t)error_size, "the server answered 404");
+			return 0;
+		}
+		while ((count = fread(buffer, 1, sizeof(buffer), input)) > 0)
+			fwrite(buffer, 1, count, output);
+		fclose(input);
+	}
 	fclose(output);
 	return 1;
 }
@@ -161,47 +183,18 @@ static void platform_request_quit(void)
 	printf("test: quit\n");
 }
 
-/* GitHub: the latest release, build FAKE_LATEST (its API's answer); its zip's
-link, redirected to the file host (update_download); its SHA256SUMS and
-signature: none (GitHub's 404). The check of the download (release_signature.c's,
-test_release_signature.py's) as FAKE_VERDICT says: "refused", else taken as
-an unsigned release */
+/* (GitHub's API, which the updater asks only for a file its release lists:
+none is listed here) and the check of the download (release_signature.c's,
+test_release_signature.py's) as FAKE_VERDICT says: "refused", else taken
+as an unsigned release */
 int update_https_request(const char *method, const char *url, const char *headers, const void *body,
 	unsigned long body_size, unsigned long maximum, struct update_response *response, char *error, int error_size)
 {
-	const char *name = strrchr(url, '/');
-	const char *latest = "/releases/latest";
-	size_t length = strlen(url);
-
 	(void)method, (void)headers, (void)body, (void)body_size, (void)maximum, (void)error, (void)error_size;
+	printf("test: asked GitHub's API for %s\n", url);
 	memset(response, 0, sizeof(*response));
-	name = name ? name + 1 : url;
-	if (length > strlen(latest) && !strcmp(url + length - strlen(latest), latest))
-	{
-		char text[200];
-
-		printf("test: download %s\n", url);
-		snprintf(text, sizeof(text), "{\"url\": \"...\", \"tag_name\": \"build-%s\", \"name\": \"...\"}",
-			environment("FAKE_LATEST"));
-		response->status = 200;
-		response->body = strdup(text);
-		response->body_size = strlen(text);
-	}
-	else if (strstr(url, "/releases/download/") && strstr(name, ".zip"))
-	{
-		printf("test: download %s\n", url);
-		response->status = 302;
-		snprintf(response->headers, sizeof(response->headers), "Content-Length: 0\nLocation: https://files.test/%s\n",
-			name);
-		response->body = calloc(1, 1);
-	}
-	else
-	{
-		printf("test: asked for %s\n", name);
-		response->status = 404;
-		response->body = calloc(1, 1);
-	}
-	fflush(stdout);
+	response->status = 404;
+	response->body = calloc(1, 1);
 	return 1;
 }
 

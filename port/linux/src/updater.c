@@ -667,9 +667,9 @@ static int updater_location(const char *headers, const char *url, char *location
 	return 0;
 }
 
-/* what update_download's failure (its error) was: the server's trouble or
-no answer (_updater_fetch_unreachable), or this computer's or the
-download's (_updater_fetch_failed) */
+/* what update_download's failure (its error) was: no such file (a 404),
+the server's trouble or no answer (_updater_fetch_unreachable), or this
+computer's or the download's (_updater_fetch_failed) */
 static int updater_download_failure(const char *error)
 {
 	static const char answered[] = "the server answered ";
@@ -678,32 +678,54 @@ static int updater_download_failure(const char *error)
 	if (!strncmp(error, "could not write", 15) || strstr(error, "larger than expected"))
 		return _updater_fetch_failed;
 	if (status)
-		return updater_status_transient(atoi(status + sizeof(answered) - 1)) ? _updater_fetch_unreachable :
+	{
+		int code = atoi(status + sizeof(answered) - 1);
+
+		return code == 404 ? _updater_fetch_none : updater_status_transient(code) ? _updater_fetch_unreachable :
 			_updater_fetch_failed;
+	}
 	return _updater_fetch_unreachable;
 }
 
+/* the most of an answer had in memory (update_https_request's, which a
+guest's host makes into a buffer of this size: guest_https.c), not
+streamed to its file */
+#define UPDATER_IN_MEMORY_MAXIMUM (64ULL * 1024 * 1024)
+
 /* one try of url (with extra header lines, or NULL) into the file at path,
-no larger than maximum: the answer itself (a test's release server's,
-debug.update_url, GitHub's API's), or the redirect's (GitHub's release
-links' and API's, to their file host), followed by update_download; what
-it came to (_updater_fetch_*), why in error */
+no larger than maximum: GitHub's https:// addresses without headers
+streamed by update_download, which follows their redirects (a release's
+links, to GitHub's file host); a test's release server's (debug.update_url,
+plain http:// on this machine), or one with headers (GitHub's API's copy of
+a file, application/octet-stream), asked with update_https_request, its
+answer written or its redirect followed by update_download. What it came
+to (_updater_fetch_*), why in error */
 static int updater_get_once(const char *url, const char *headers, const char *path, unsigned long long maximum,
 	update_progress_proc progress, void *context, char *error, size_t error_size)
 {
 	struct update_response response;
 	char location[UPDATER_LOCATION_SIZE];
 	SDL_IOStream *file;
+	unsigned long long in_memory = maximum < UPDATER_IN_MEMORY_MAXIMUM ? maximum : UPDATER_IN_MEMORY_MAXIMUM;
 	int result = _updater_fetch_failed;
 
+	if (!headers && !strncmp(url, "https://", 8))
+	{
+		if (update_download(url, path, maximum, progress, context, error, (int)error_size))
+			return _updater_fetch_got;
+		return updater_download_failure(error);
+	}
 	memset(&response, 0, sizeof(response));
-	if (!update_https_request("GET", url, headers, NULL, 0, (unsigned long)maximum, &response, error, (int)error_size))
+	if (!update_https_request("GET", url, headers, NULL, 0, (unsigned long)in_memory, &response, error,
+		(int)error_size))
+	{
 		return _updater_fetch_unreachable;
+	}
 	if (response.status == 200)
 	{
-		if ((unsigned long long)response.body_size > maximum || !response.body)
+		if ((unsigned long long)response.body_size > in_memory || !response.body)
 		{
-			snprintf(error, error_size, "the answer is larger than %llu bytes", maximum);
+			snprintf(error, error_size, "the answer is larger than %llu bytes", in_memory);
 		}
 		else if (!(file = SDL_IOFromFile(path, "wb")))
 		{
