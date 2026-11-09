@@ -1278,6 +1278,9 @@ class FakeReleases:
 # the test's release key, which signs FakeReleases' SHA256SUMS: the server trusts it beside OpenH1's
 # (debug.update_key) while its debug.update_url is set
 UPDATE_SEED = bytes(range(96, 128))
+# the tries of each of the updater's downloads (updater.c)
+UPDATER_FETCH_TRIES = int(re.search(r"#define UPDATER_FETCH_TRIES (\d+)", (ROOT / "port/linux/src/updater.c").read_text())
+                          .group(1))
 NEW_GAME = b"#!/bin/sh\necho the new build\n"
 
 
@@ -1323,13 +1326,13 @@ def _installed(machine):
 
 
 def test_update_of_the_same_network_version_once_empty(machines):
-    """a newer release of the same network versions is found, its download refused once (the install tried again
-    at the next check), installed while the server runs, and the server, empty, stops with exit code 5 (after 10
-    minutes, on debug.update_time_scale's clock)"""
+    """a newer release of the same network versions is found, its download refused (503) as often as the updater
+    tries it (UPDATER_FETCH_TRIES: the install tried again at the next check), installed while the server runs, and
+    the server, empty, stops with exit code 5 (after 10 minutes, on debug.update_time_scale's clock)"""
     _needs_game("bloodgulch")
     releases = FakeReleases(_release_zip())
     releases.build = 7
-    releases.refusals = 1
+    releases.refusals = UPDATER_FETCH_TRIES
     try:
         port = _free_port()
         server = _tree(machines("server")).start(["--server"], **_server_settings(
@@ -1341,8 +1344,8 @@ def test_update_of_the_same_network_version_once_empty(machines):
         assert "build 7 could not be installed" in text and "server answered 503" in text, text[-3000:]
         assert text.index("could not be installed") < text.index("build 7 installed: started once the server")
         assert "stopping to be started again (empty for 10 minutes)" in text, text[-3000:]
-        assert len(releases.downloads) == 2 and all(name.startswith("OpenH1-Linux") and name.endswith(".zip")
-                                                    for name in releases.downloads), releases.downloads
+        assert len(releases.downloads) == UPDATER_FETCH_TRIES + 1, releases.downloads
+        assert all(name.startswith("OpenH1-Linux") and name.endswith(".zip") for name in releases.downloads)
         assert _installed(server), sorted(str(path) for path in server.folder.rglob("*"))
         assert "bin/halo.old" in (server.folder / "update-old.txt").read_text()
         assert not list(server.folder.glob("update.partial*")), "the update's folder was left"
