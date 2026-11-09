@@ -1,0 +1,55 @@
+/*
+MENU_ENGINE.H
+
+The port's menu engine (menu_engine.c, docs/menu_engine.md): the generated
+screens of the PC menus (port/assets/menus) run from their model, under
+display.menu_engine "new". A screen is one widget of the game's, its
+stand-in, which ui_widget.c opens, keeps in its history and closes as its
+own; the engine lays out, draws and takes the events of what is in it.
+These are ui_widget.c's calls into the engine, and the engine's into it.
+*/
+
+#ifndef MENU_ENGINE_H
+#define MENU_ENGINE_H
+
+struct widget_instance;
+struct event_record;
+
+/* ---------- ui_widget.c's calls into the engine */
+
+/* a screen opened (a widget with no parent): the engine takes it if it is a
+generated screen and display.menu_engine is "new" */
+void menu_engine_screen_opened(struct widget_instance *screen);
+/* a screen closed: the engine lets it go */
+void menu_engine_screen_closed(struct widget_instance *screen);
+/* the screen drawn by the engine: FALSE if it is not the engine's (or the
+engine is drawing it now), for ui_widget.c to draw */
+boolean menu_engine_screen_draw(struct widget_instance *screen, rectangle2d *clip, point2d offset, boolean focus,
+	boolean nifty);
+/* an event for the screen taken by the engine (*deleted: the screen is gone
+after it): FALSE if the screen is not the engine's */
+boolean menu_engine_screen_event(struct widget_instance *screen, struct event_record *event, boolean *deleted);
+
+/* ---------- ui_widget.c's for the engine (port: in ui_widget.c) */
+
+/* one widget drawn as ui_widget.c draws it, but not its children: its game
+data inputs run, its picture, text, spinner or list drawn, its box and
+targets noted. FALSE if it is not shown; else *children_offset is where its
+children are drawn from and *children whether they are drawn */
+boolean ui_widget_port_render_node(struct widget_instance *widget, rectangle2d *clip, point2d offset, boolean focus,
+	boolean nifty, point2d *children_offset, boolean *children);
+/* an event processed by ui_widget.c's own code (the widget and those it
+passes it to) */
+void ui_widget_port_process_event(struct widget_instance *widget, struct event_record *event, boolean *deleted);
+
+/* ---------- the menus' functions' (menu_functions.c) */
+
+/* a settings row's help and note (after a "|"), from the model, where the
+engine runs its screen (*found: the model has the row) */
+wchar_t const *menu_engine_row_help(struct widget_instance *row, boolean *found);
+
+/* whether the engine lays out what is in the widget (a settings tab's or
+page's rows) from the model */
+boolean menu_engine_lays_out(struct widget_instance *widget);
+
+#endif
