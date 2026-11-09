@@ -1261,6 +1261,9 @@ static struct
 } art[MAXIMUM_ART];
 static long art_count;
 static unsigned short art_lookup[MAXIMUM_ART * 2];
+/* each slot's texture data, beside it: a draw's texture stages, which are
+seldom menu art, probe these alone, not the entries */
+static unsigned long art_lookup_data[MAXIMUM_ART * 2];
 static pthread_mutex_t art_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t art_decoded = PTHREAD_COND_INITIALIZER;
 static int art_decoders;
@@ -1275,7 +1278,7 @@ static unsigned long art_slot(unsigned long data)
 	hash *= 0x85ebca6bUL;
 	hash ^= hash >> 13;
 	slot = hash % (MAXIMUM_ART * 2);
-	while (art_lookup[slot] && art[art_lookup[slot] - 1].data != data)
+	while (art_lookup[slot] && art_lookup_data[slot] != data)
 		slot = (slot + 1) % (MAXIMUM_ART * 2);
 	return slot;
 }
@@ -1303,6 +1306,7 @@ void halo_menus_art_register(void const *texture, char const *png)
 			return;
 		}
 		art_lookup[slot] = (unsigned short)(index + 1);
+		art_lookup_data[slot] = data;
 		art_count++;
 	}
 	else if (art[index].png && !strcmp(art[index].png, png))
@@ -1343,6 +1347,7 @@ void halo_menus_art_forget(void)
 	}
 	art_count = 0;
 	memset(art_lookup, 0, sizeof(art_lookup));
+	memset(art_lookup_data, 0, sizeof(art_lookup_data));
 }
 
 /* a decoding thread: each PNG queued in turn, until none is */
@@ -1419,8 +1424,14 @@ void halo_menus_art_ahead(void const *texture)
 
 unsigned int menu_art_texture(unsigned long data, unsigned long *levels)
 {
-	unsigned long slot = art_slot(data);
-	long index = art_lookup[slot] ? art_lookup[slot] - 1 : art_count;
+	unsigned long slot;
+	long index;
+
+	/* (none registered: in a game whose menus have not been read) */
+	if (!art_count)
+		return 0;
+	slot = art_slot(data);
+	index = art_lookup[slot] ? art_lookup[slot] - 1 : art_count;
 	/* (no png: out of memory registering it) */
 	if (index == art_count || art[index].failed || !art[index].png)
 		return 0;

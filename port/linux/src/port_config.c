@@ -3726,7 +3726,30 @@ static int config_set_from_file(struct config_value *value, const struct config_
 keep a setting watch this, to read it again */
 static volatile unsigned long config_change_count;
 
-static long config_setting_index(const char *name)
+/* The settings by name, hashed: each config_boolean, config_integer and the
+rest finds its setting by its name, many a frame (the rasterizer's, the
+HUD's, the input's), and a walk of the 600 names was 2.7% of the game
+thread in a bot match. Open addressing, each slot the setting's index plus
+one; made once from the table, by the first thread to ask (0 not made, 1
+being made, 2 made: not pthread_once, which the Android guest's C library
+cannot link), the others walking the names meanwhile. */
+#define CONFIG_INDEX_SLOTS 2048
+
+typedef char config_index_slots_check[NUMBER_OF_CONFIG_SETTINGS * 2 <= CONFIG_INDEX_SLOTS ? 1 : -1];
+
+static unsigned short config_index_slots[CONFIG_INDEX_SLOTS];
+static int config_index_state;
+
+static unsigned long config_name_hash(const char *name)
+{
+	unsigned long hash = 2166136261UL;
+
+	for (; *name; name++)
+		hash = ((hash ^ (unsigned char)*name) * 16777619UL) & 0xffffffffUL;
+	return hash;
+}
+
+static long config_setting_walk(const char *name)
 {
 	size_t index;
 
@@ -3734,6 +3757,47 @@ static long config_setting_index(const char *name)
 	{
 		if (!strcmp(config_settings[index].name, name))
 			return (long)index;
+	}
+	return -1;
+}
+
+/* (the first of a name, as the walk finds it) */
+static void config_index_make(void)
+{
+	size_t index;
+
+	for (index = 0; index < NUMBER_OF_CONFIG_SETTINGS; index++)
+	{
+		unsigned long slot = config_name_hash(config_settings[index].name) & (CONFIG_INDEX_SLOTS - 1);
+
+		while (config_index_slots[slot] && strcmp(config_settings[config_index_slots[slot] - 1].name,
+			config_settings[index].name))
+		{
+			slot = (slot + 1) & (CONFIG_INDEX_SLOTS - 1);
+		}
+		if (!config_index_slots[slot])
+			config_index_slots[slot] = (unsigned short)(index + 1);
+	}
+}
+
+static long config_setting_index(const char *name)
+{
+	unsigned long slot;
+
+	if (__atomic_load_n(&config_index_state, __ATOMIC_ACQUIRE) != 2)
+	{
+		int unmade = 0;
+
+		if (!__atomic_compare_exchange_n(&config_index_state, &unmade, 1, 0, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
+			return config_setting_walk(name);
+		config_index_make();
+		__atomic_store_n(&config_index_state, 2, __ATOMIC_RELEASE);
+	}
+	for (slot = config_name_hash(name) & (CONFIG_INDEX_SLOTS - 1); config_index_slots[slot];
+		slot = (slot + 1) & (CONFIG_INDEX_SLOTS - 1))
+	{
+		if (!strcmp(config_settings[config_index_slots[slot] - 1].name, name))
+			return config_index_slots[slot] - 1;
 	}
 	return -1;
 }
