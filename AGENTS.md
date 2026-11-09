@@ -442,6 +442,11 @@ The decompilation's upstream, punpckhdq/halo, is AGPL 3.0 from 17 October
 
 ### Commits and pull requests
 
+- Pull requests target `dev`, the default branch. `master` is what ships:
+  every push to it publishes a release that the self-updaters install, so
+  it changes only when `dev` is merged into it, a release, when the
+  maintainers choose.
+
 - Commit subjects are plain sentences saying what changed; the body says
   why and what was checked.
 - A pull request is merged with a merge commit (`Merge pull request #N from
