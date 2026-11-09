@@ -1272,6 +1272,18 @@ static int effect_fade(const struct xgpu_stream_pipeline_key *key)
 	return XGPU_SPIRV_FADE_NONE;
 }
 
+/* the shaders' debugging switches (HALO_GPU_DEBUG_T0, _FLAT), each read once
+(the render thread's; Windows's getenv locks and scans the environment);
+-1 until read */
+static int debug_texture0 = -1, debug_flat = -1;
+
+static int debug_switch(const char *variable, int *cached)
+{
+	if (*cached < 0)
+		*cached = getenv(variable) != NULL;
+	return *cached;
+}
+
 /* a pipeline's shaders for a variant: made if the pipeline has none for it;
 0 if they cannot be */
 static int pipeline_shaders(struct stream_pipeline *entry, const struct xgpu_stream_pipeline_define *definition,
@@ -1316,8 +1328,8 @@ static int pipeline_shaders(struct stream_pipeline *entry, const struct xgpu_str
 	/* (display.hdr: a draw blending in its shader reads its target's
 	pixel, each sample's own) */
 	options.input_samples = key->samples > 1 ? key->samples : 1;
-	options.debug_texture0 = getenv("HALO_GPU_DEBUG_T0") != NULL;
-	options.debug_flat = getenv("HALO_GPU_DEBUG_FLAT") != NULL;
+	options.debug_texture0 = debug_switch("HALO_GPU_DEBUG_T0", &debug_texture0);
+	options.debug_flat = debug_switch("HALO_GPU_DEBUG_FLAT", &debug_flat);
 	options.reversed_depth = XGPU_VULKAN_REVERSED_DEPTH;
 	options.subgroups = stream.capabilities.subgroups;
 	program = malloc(sizeof(*program));
