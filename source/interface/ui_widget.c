@@ -7247,17 +7247,32 @@ static short ui_widget_port_key_legend_shift(
 	for (icon = label->parent ? label->parent->child : NULL; icon && count < UI_WIDGET_PORT_LEGENDS; icon = icon->next)
 	{
 		struct widget_instance *words;
-		wchar_t name[256];
+		struct ui_widget_definition *words_definition;
+		wchar_t const *text;
 
 		if (!ui_widget_port_key_icon_key(icon))
 			continue;
 		words = ui_widget_port_key_icon_legend(icon);
-		if (!words || !ui_widget_port_key_legend_text(words, TRUE, name, NUMBEROF(name)))
+		if (!words)
+			continue;
+		words_definition = ui_widget_definition_get(words->definition_tag_index);
+		/* (a legend drawn after this one has its words from its strings
+		only once it is drawn: until then, on the menu's first frame,
+		they are its strings', or the row was laid out without it and
+		this legend's words drawn elsewhere for a frame, issue 900) */
+		text = words->parameters.text_box.text;
+		if (!text && words_definition->text_label_string_list.index != NONE)
+		{
+			text = unicode_string_list_get_string(words_definition->text_label_string_list.index,
+				words->parameters.text_box.string_list_index == NONE ? words_definition->string_list_index :
+					words->parameters.text_box.string_list_index);
+		}
+		if (!text)
 			continue;
 		if (words == label)
 			label_index = count;
-		ui_widget_port_legend_measure(&legends[count], ui_widget_definition_get(words->definition_tag_index),
-			words->parameters.text_box.text, ui_widget_port_key_icon_key(icon), ui_widget_port_left_in_parent(icon),
+		ui_widget_port_legend_measure(&legends[count], words_definition,
+			text, ui_widget_port_key_icon_key(icon), ui_widget_port_left_in_parent(icon),
 			ui_widget_port_left_in_parent(words));
 		count++;
 	}
