@@ -768,9 +768,13 @@ boolean network_game_remove_machine(
 
 /* port: a network game whose map this machine cannot load left for the main
 menu, with the reason (network_game_create_game_objects), not the Xbox's
-damaged disc for good, nor a game with no map and no menus */
+damaged disc for good, nor a game with no map and no menus. A map that
+failed once the main menu's was unloaded loads the main menu's again at
+once: the frame goes on to read the map's tags before the game is left
+(network_game_client_start_frame) */
 static void network_game_map_load_failed(
-	char const *map_name)
+	char const *map_name,
+	boolean main_menu_unloaded)
 {
 	static wchar_t text[320];
 	char message[320];
@@ -783,6 +787,8 @@ static void network_game_map_load_failed(
 		text[index] = (wchar_t)(unsigned char)message[index];
 	text[index] = 0;
 	display_error_text_when_main_menu_loaded(text);
+	if (main_menu_unloaded)
+		main_load_ui_scenario(TRUE);
 	network_game_abort();
 
 	return;
@@ -828,7 +834,7 @@ boolean network_game_create_game_objects(
 	precache took it for a damaged disc and stopped for good */
 	if (!cache_files_map_loadable(options.map_name) || !game_precache_new_map_refusable(options.map_name))
 	{
-		network_game_map_load_failed(options.map_name);
+		network_game_map_load_failed(options.map_name, FALSE);
 		return FALSE;
 	}
 	main_menu_unload();
@@ -879,7 +885,7 @@ boolean network_game_create_game_objects(
 		/* port: not _error_immediate (0), which stopped the game for good
 		(halt_and_catch_fire): the game is left */
 		error(_error_silent, "game_load() failed.");
-		network_game_map_load_failed(options.map_name);
+		network_game_map_load_failed(options.map_name, TRUE);
 	}
 
 	return game->local_data.game_objects_loaded;
