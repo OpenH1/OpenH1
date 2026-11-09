@@ -1,33 +1,38 @@
 /*
-TEXT_MSDF_GEN.H
+MSDF_GEN.H
 
 A glyph's multi-channel signed distance field (MSDF) from its outline: what
-display.text_renderer "msdf" draws the text from (text_hires.c), baked for
-the shipped fonts' characters by tools/msdf_atlas.py and made at run time
-for any other. Included, its functions static, by text_hires.c and by the
-bake tool (tools/msdf_atlas/bake.c), so that both make the same fields.
+display.text_renderer "msdf" draws the text from (port/linux/src/
+text_hires.c), baked for the shipped fonts' characters by
+tools/msdf_atlas.py and made at run time for any other. Included, its
+functions static, by text_hires.c and by the bake tool
+(tools/msdf_atlas/bake.c), so that both make the same fields.
 
-Adapted from Viktor Chlumsky's msdfgen (port/third_party/msdfgen: MIT,
-Copyright (c) 2014 - 2025 Viktor Chlumsky; "Shape Decomposition for
-Multi-channel Distance Fields", 2015), as that README says: the outline's edges are coloured so
-that each corner sits between edges of two different colours, each of red,
-green and blue holds the pseudo-distance to the nearest edge of its colour,
-and the median of the three is the distance to the outline, with its
-corners kept sharp. The fourth channel (alpha) is the true signed distance,
-for effects whose reach is wider than the corners' (an outline, a glow, a
-shadow). Each texel's inside or outside is the outline's own (its non-zero
-winding), the channels turned about where their median says otherwise (the
-fonts' overlapping contours), and the texels whose channels would clash
-when filtered with a neighbour's are made plain distance (msdfgen's error
-correction).
+Translated to C from Viktor Chlumsky's msdfgen (MIT; this folder's
+LICENSE.txt and README.md say which parts, and from which commit), the
+technique of his thesis, "Shape Decomposition for Multi-channel Distance
+Fields" (Czech Technical University in Prague, 2015). The outline's edges
+are coloured so that each corner sits between edges of two different
+colours, each of red, green and blue holds the pseudo-distance to the
+nearest edge of its colour, and the median of the three is the distance to
+the outline, with its corners kept sharp. The fourth channel (alpha) is the
+true signed distance, for effects whose reach is wider than the corners'
+(an outline, a glow, a shadow). Each texel's inside or outside is the
+outline's own (its non-zero winding), the channels turned about where their
+median says otherwise (the fonts' overlapping contours), and the texels
+whose channels would clash when filtered with a neighbour's are made plain
+distance (msdfgen's error correction).
+
+Copyright (c) 2014 - 2025 Viktor Chlumsky (msdfgen, MIT License: the parts
+translated from it). The rest, and the C, are OpenH1's.
 
 The outline is stb_truetype's (stbtt_vertex: lines, quadratic and cubic
 curves, in font units, y up). Values are stored as 0 to 255: 128 on the
 outline, inside above, range texels of distance from one end to the other.
 */
 
-#ifndef TEXT_MSDF_GEN_H
-#define TEXT_MSDF_GEN_H
+#ifndef MSDFGEN_MSDF_GEN_H
+#define MSDFGEN_MSDF_GEN_H
 
 #include <math.h>
 #include <stdlib.h>

@@ -1,4 +1,4 @@
-"""display.text_renderer "msdf" (port/linux/src/text_hires.c, text_msdf_gen.h):
+"""display.text_renderer "msdf" (port/linux/src/text_hires.c, port/third_party/msdfgen/msdf_gen.h):
 
 - the committed atlas (port/assets/fonts/msdf_atlas.zlib) is what the fonts
   make (tools/msdf_atlas.py --check);
@@ -80,7 +80,7 @@ def test_layout_is_the_rasterized(tmp_path):
     source = tmp_path / "port/linux/src"
     source.mkdir(parents=True)
     (tmp_path / "port/third_party").symlink_to(ROOT / "port/third_party")
-    for name in ("text_hires.c", "text_hires.h", "text_msdf_gen.h", "embedded_assets.h", "port_config.h"):
+    for name in ("text_hires.c", "text_hires.h", "embedded_assets.h", "port_config.h"):
         shutil.copy(SOURCE / name, source / name)
     for name, text in STUBS.items():
         (source / name).write_text(text)

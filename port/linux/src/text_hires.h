@@ -55,7 +55,7 @@ struct text_hires_glyph
 /* The committed setting; checked before looking up cached font choices. */
 int text_hires_enabled(void);
 /* display.text_renderer is "msdf": the glyphs drawn from multi-channel
-signed distance fields (text_msdf_gen.h), not rasterized */
+signed distance fields (port/third_party/msdfgen/msdf_gen.h), not rasterized */
 int text_hires_msdf(void);
 
 /* the font standing for a font tag, sized so that its capitals are

@@ -477,8 +477,11 @@ version (`AGPL-3.0-or-later`). It comes with no warranty. The full text is in
   each release's source is its tag (`build-<n>`).
 - **Third-party code, fonts and art** keep their own licences, which are
   next to them (`port/third_party`, `port/assets/fonts`,
-  `port/assets/icons`, `port/assets/text_filter`). The release downloads and
-  the web site's `licenses.txt` carry their notices.
+  `port/assets/icons`, `port/assets/text_filter`). Code translated from
+  another project keeps its notice there too: the high-res text's distance
+  fields are Viktor Chlumsky's msdfgen (MIT) translated to C
+  (`port/third_party/msdfgen`). The release downloads and the web site's
+  `licenses.txt` carry their notices.
 - **Halo is not covered.** The licence covers the work of OpenH1's and
   OpenCE's authors. It gives no rights in Halo, its maps or anything else that Microsoft owns.
 

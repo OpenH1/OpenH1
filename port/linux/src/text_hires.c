@@ -53,7 +53,7 @@ takes milliseconds, and reading it back would save nothing a player sees.
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "../../third_party/stb/stb_truetype.h"
-#include "text_msdf_gen.h"
+#include "../../third_party/msdfgen/msdf_gen.h"
 
 /* (the Xbox maps' tags and a Custom Edition loc.map's, which share names,
 each at its oversamples) */
@@ -330,8 +330,8 @@ static int face_make(struct font_face *face, const unsigned char *data, float ca
 
 /* ---------- display.text_renderer "msdf"
 
-The glyphs drawn from multi-channel signed distance fields (text_msdf_gen.h)
-in place of the rasterized atlas: the shipped fonts' characters baked into
+The glyphs drawn from multi-channel signed distance fields
+(port/third_party/msdfgen/msdf_gen.h) in place of the rasterized atlas: the shipped fonts' characters baked into
 an atlas with the build (tools/msdf_atlas.py, embedded), any other made as
 it is first drawn (text_hires_rasterize; a millisecond or two, once) into
 the room below them, the font's missing glyph's for a character neither

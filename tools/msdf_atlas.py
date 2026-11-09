@@ -10,7 +10,7 @@ pictures are:
 Each font fonts.json names (port/assets/fonts) gets a field of each of its
 characters in CODES (ASCII, Latin-1 and Windows-1252's punctuation and
 letters, what the menus, the HUD and the console draw); a fallback only of
-those its font lacks. The fields are made by port/linux/src/text_msdf_gen.h,
+those its font lacks. The fields are made by port/third_party/msdfgen/msdf_gen.h,
 the code the game makes any other character's with at run time, compiled
 here with the computer's C compiler (tools/msdf_atlas/bake.c). The atlas is
 derived from the fonts, so it is under their licences (the SIL Open Font

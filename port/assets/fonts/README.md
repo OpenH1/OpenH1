@@ -88,7 +88,7 @@ licenses ask (`tools/linux_package.py`'s `notices`, `tools/frame_package.py`).
 `msdf_atlas.zlib` is the fonts' characters (ASCII, Latin-1 and Windows-1252's
 punctuation and letters) as multi-channel signed distance fields, which
 `display.text_renderer "msdf"` draws the text from (`port/linux/src/text_hires.c`;
-the fields' code, `port/linux/src/text_msdf_gen.h`, is adapted from msdfgen:
+the fields' code is msdfgen's translated to C:
 `port/third_party/msdfgen`). It is derived from the fonts, so it is under
 their licences, as they are (the SIL Open Font License 1.1 for Cyborg
 Interface Gothic, Overpass and OpenCE; the MIT and Bitstream Vera licenses

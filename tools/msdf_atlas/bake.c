@@ -1,6 +1,6 @@
 /*
 The MSDF atlas's glyphs (tools/msdf_atlas.py): each font's characters of the
-set made fields (port/linux/src/text_msdf_gen.h) and packed into one atlas,
+set made fields (port/third_party/msdfgen/msdf_gen.h) and packed into one atlas,
 written as the atlas's file before it is compressed (text_hires.c reads it).
 
 	bake OUTPUT SPEC
@@ -29,7 +29,7 @@ that file has not (a fallback's). OUTPUT, little-endian:
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "../../port/third_party/stb/stb_truetype.h"
-#include "../../port/linux/src/text_msdf_gen.h"
+#include "../../port/third_party/msdfgen/msdf_gen.h"
 
 #define MAXIMUM_FILES 16
 #define MAXIMUM_CODES 1024
