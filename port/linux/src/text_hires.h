@@ -31,6 +31,10 @@ struct text_hires_embedded
 
 extern const struct text_hires_embedded text_hires_embedded[];
 extern const unsigned int text_hires_embedded_count;
+/* the fonts' glyphs' MSDF atlas, zlib-compressed (tools/msdf_atlas.py; an
+offset in the assets' file, size 0: none) */
+extern const unsigned int text_hires_msdf_offset;
+extern const unsigned int text_hires_msdf_size;
 
 /* a glyph: its quad, in units of the 480 lines from the pen on the baseline,
 its texels in the atlas, in texels of the atlas's placeholder bitmap, the
@@ -50,6 +54,9 @@ struct text_hires_glyph
 
 /* The committed setting; checked before looking up cached font choices. */
 int text_hires_enabled(void);
+/* display.text_renderer is "msdf": the glyphs drawn from multi-channel
+signed distance fields (port/third_party/msdfgen/msdf_gen.h), not rasterized */
+int text_hires_msdf(void);
 
 /* the font standing for a font tag, sized so that its capitals are
 cap_height units tall and narrowed where its letters are wider than the
@@ -77,8 +84,10 @@ and its size; NULL forgets it */
 void text_hires_register_atlas(const unsigned long *texture, unsigned long width, unsigned long height);
 
 /* the image of the atlas when data (a D3D texture's Data) is its
-placeholder's, its rasterized glyphs uploaded; 0 otherwise */
-unsigned int text_hires_atlas_texture(unsigned long data);
+placeholder's, its rasterized glyphs uploaded; 0 otherwise. msdf_field: the
+image is the glyphs' distance fields (display.text_renderer "msdf"), to be
+sampled as XGPU_ADDRESS_MSDF */
+unsigned int text_hires_atlas_texture(unsigned long data, int *msdf_field);
 
 /* a function called before the atlas is emptied, which draws what has been
 batched from it (rasterizer_xbox_text.c's rasterizer_text_flush) */

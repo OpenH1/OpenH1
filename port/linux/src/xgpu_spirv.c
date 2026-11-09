@@ -2093,6 +2093,24 @@ static unsigned int sample(struct module *m, struct pixel_state *state, int stag
 	{
 		texel = op2(m, OP_IMAGE_SAMPLE_IMPLICIT_LOD, m->t_v4, image, uv);
 	}
+	/* (the high-res text's distance fields: xgpu_msl.c's msdf_coverage) */
+	if ((state->options->border[stage] & XGPU_BORDER_MSDF) && sampler == _xgpu_sampler_2d)
+	{
+		unsigned int raw = op(m, OP_IMAGE, type_sampled_image(m, DIM_2D, FALSE, FALSE, FALSE), 1, &image);
+		unsigned int size = op1(m, OP_CONVERT_S_TO_F, m->t_v2, image_size(m, raw, m->t_iv2));
+		unsigned int texels = op1(m, OP_FWIDTH, m->t_v2, fmul(m, 2, uv, size));
+		unsigned int across = fdiv(m, 2, splat(m, 2, constant_float(m, 1.0f)),
+			ext2(m, GLSL_F_MAX, m->t_v2, texels, splat(m, 2, constant_float(m, 1e-6f))));
+		unsigned int pixels = ext2(m, GLSL_F_MAX, m->t_float, fmul(m, 1, constant_float(m, XGPU_MSDF_RANGE * 0.5f),
+			fadd(m, 1, extract(m, across, 0), extract(m, across, 1))), constant_float(m, 1.0f));
+		unsigned int red = extract(m, texel, 0), green = extract(m, texel, 1), blue = extract(m, texel, 2);
+		unsigned int distance = ext2(m, GLSL_F_MAX, m->t_float, ext2(m, GLSL_F_MIN, m->t_float, red, green),
+			ext2(m, GLSL_F_MIN, m->t_float, ext2(m, GLSL_F_MAX, m->t_float, red, green), blue));
+		unsigned int one = constant_float(m, 1.0f);
+
+		return construct4(m, one, one, one, saturate(m, 1, fadd(m, 1, fmul(m, 1, fsub(m, 1, distance,
+			constant_float(m, 0.5f)), pixels), constant_float(m, 0.5f))));
+	}
 	if (border && sampler != _xgpu_sampler_cube && sampler != _xgpu_sampler_2d_layered)
 	{
 		unsigned int size, inside = constant_float(m, 1.0f), linear;

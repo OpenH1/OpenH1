@@ -38,6 +38,8 @@ read the game's settings file.
 #include <string.h>
 
 _Static_assert(XGPU_METAL_BORDER_REGION == XGPU_BORDER_REGION, "a region's border bit");
+_Static_assert(XGPU_METAL_BORDER_MSDF == XGPU_BORDER_MSDF, "the distance fields' border bit");
+_Static_assert(XGPU_METAL_ADDRESS_MSDF == XGPU_ADDRESS_MSDF, "XGPU_ADDRESS_MSDF's number");
 
 /* the stream's copies of the intermediate form's pieces are their bytes */
 _Static_assert(sizeof(struct xgpu_vertex_instruction) == XGPU_STREAM_VERTEX_INSTRUCTION_SIZE, "vertex instruction");

@@ -83,6 +83,10 @@ def notices(platform: str) -> List[Tuple[Path, str]]:
         # the menus' headings' font (port/assets/fonts), embedded in every
         # build, whose SIL Open Font License asks each copy to carry it
         (ROOT / "port/assets/fonts/OpenCE-OFL.txt", "OpenCE-OFL.txt"),
+        # the high-res text's distance fields (port/third_party/msdfgen/msdf_gen.h,
+        # msdfgen translated to C), in every build, whose MIT license asks
+        # copies to carry its notice
+        (ROOT / "port/third_party/msdfgen/LICENSE.txt", "msdfgen-LICENSE.txt"),
         # the menus' XML parser (port/third_party/expat), in every build,
         # whose MIT license asks copies to carry its notice
         (ROOT / "port/third_party/expat/COPYING", "expat-COPYING.txt"),

@@ -199,11 +199,17 @@ enum
 	/* XGPU_ADDRESS_REGION: the shader's (xgpu_metal_border_axes), clamped
 	to the edge here */
 	XGPU_METAL_ADDRESS_REGION,
+	/* XGPU_ADDRESS_MSDF (on w): the shader's (xgpu_metal_border_axes),
+	repeated here */
+	XGPU_METAL_ADDRESS_MSDF = 6,
 };
 
 /* the bit of a stage's border axes for a region (xgpu_shader.h's
 XGPU_BORDER_REGION) */
 #define XGPU_METAL_BORDER_REGION 8
+/* the bit of a stage's border axes for the high-res text's distance fields
+(xgpu_shader.h's XGPU_BORDER_MSDF) */
+#define XGPU_METAL_BORDER_MSDF 16
 
 /* the border colours Metal has; another is the emitter's to blend in (the
 design notes, 7) */

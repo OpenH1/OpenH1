@@ -423,5 +423,8 @@ uint8_t xgpu_metal_border_axes(uint8_t source, uint8_t sampler_type, const struc
 	/* (a region of a 2D texture: its border on u and v, the shader's) */
 	if (sampler->address[0] == XGPU_METAL_ADDRESS_REGION && sampler_type != _sampler_3d)
 		axes = 3 | XGPU_METAL_BORDER_REGION;
+	/* (the high-res text's distance fields, a 2D texture's: the shader's) */
+	if (sampler->address[2] == XGPU_METAL_ADDRESS_MSDF && sampler_type != _sampler_3d)
+		axes |= XGPU_METAL_BORDER_MSDF;
 	return axes;
 }

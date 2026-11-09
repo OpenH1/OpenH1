@@ -3365,6 +3365,12 @@ static void bind_textures(struct nv2a_pixel_shader_key *key, float texture_scale
 		sampler_describe(stage, description.levels > 1, description.hires, target != NULL, &source->sampler);
 		if (device.texture_regions[stage][0] > 0.0f)
 			memcpy(texture_scale[stage], device.texture_regions[stage], sizeof(texture_scale[stage]));
+		/* (the high-res text's distance fields: text_hires.c) */
+		if (description.hires_msdf)
+		{
+			source->sampler.address[0] = source->sampler.address[1] = XGPU_ADDRESS_CLAMP;
+			source->sampler.address[2] = XGPU_ADDRESS_MSDF;
+		}
 		if (stage == 0)
 		{
 			key->coverage_alpha = description.hires_coverage != FALSE;
