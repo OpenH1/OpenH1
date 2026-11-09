@@ -62,9 +62,10 @@ host_vulkan_vrr whether the system says VRR is active: gamescope's
 properties on its X server's root window (GAMESCOPE_VRR_FEEDBACK, set while
 it shows a frame by VRR; or GAMESCOPE_VRR_CAPABLE and GAMESCOPE_VRR_ENABLED
 both, the display able and VRR asked for), through libX11 where it loads;
-else a Linux display's DRM, a CRTC that is on with its VRR_ENABLED set (the
-compositor's VRR on: KWin's, GNOME's, Sway's), read without the master's
-rights. Windows and Android say nothing reliable of it: none there.
+else a Linux display's DRM, a CRTC with its VRR_ENABLED set and not off
+(the compositor's VRR on: KWin's, GNOME's, Sway's), read without the
+master's rights. KWin's "Automatic" sets it while a window is fullscreen:
+auto, asked every 2 s, finds it once the game's window is. Windows and Android say nothing reliable of it: none there.
 
 HALO_VULKAN_VALIDATION=1 turns on the validation layers and logs their
 messages (the layers must be installed, or found through VK_ADD_LAYER_PATH).
@@ -519,7 +520,10 @@ static int vrr_drm_card(int file)
 		struct vrr_object_properties object;
 		uint32_t properties[64], index;
 		uint64_t values[64];
-		int active = 0, enabled = 0;
+		/* (ACTIVE is an atomic property, which a client that has not asked
+		for atomic's is not shown (nvidia-drm's under KWin): not known, -1,
+		VRR_ENABLED alone then says it) */
+		int active = -1, enabled = 0;
 
 		memset(&object, 0, sizeof(object));
 		object.object = crtcs[crtc];
@@ -546,7 +550,7 @@ static int vrr_drm_card(int file)
 				enabled = values[index] != 0;
 			}
 		}
-		if (active && enabled)
+		if (active != 0 && enabled)
 			return 1;
 	}
 	return readable ? 0 : -1;
