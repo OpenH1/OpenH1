@@ -80,11 +80,6 @@
 			<choice shown="ON" value="on"/>
 			<choice shown="AUTO" value="auto"/>
 		</row>
-		<row key="text_renderer" kind="choice" setting="display.text_renderer" label="TEXT RENDERER">
-			<help>How the menus' and HUD's high-res text is drawn. Raster: drawn again for each size. Distance Field: sharp at any size, from fields made once.</help>
-			<choice shown="RASTER" value="raster"/>
-			<choice shown="DISTANCE FIELD" value="msdf"/>
-		</row>
 		<row key="brightness_settings" kind="link" label="BRIGHTNESS ›" open="main_menu/settings_select/player_setup/player_profile_edit/video_settings/brightness/brightness_screen">
 			<help>How bright the picture is: its gamma, and on an HDR display, HDR's look, how bright white and the HUD are, and the display's peak.</help>
 		</row>
