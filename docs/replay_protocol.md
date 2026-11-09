@@ -278,6 +278,15 @@ buffers, memory, command buffers made).
 The clock is the processor's counter (x86's time stamp counter, AArch64's
 virtual counter: an Apple GPU Mac's ticks are 41.7 ns), converted to
 milliseconds against the monotonic clock over the plays (`ticks_per_ms`).
+`clock_ns` is also a gauge of the processor's clock: a frame of the render
+thread's is short, and a processor that idles between plays (a laptop's
+powersave governor) may not raise its clock for it. On bosgame's i5-1135G7 the
+Linux replay's figures were 2.2 times longer with the processor otherwise idle
+(`clock_ns` 20.7) than with another process keeping it at its full clock
+(7.0): compare machines at like `clock_ns`, or scale by it, and by the
+records that make no driver calls (`constants`, `set_textures`,
+`vertices`), the backend's own code on each.
+
 The CPU's figures have the GPU's caveats: measure with nothing else running,
 compare builds or machines measured alike, and a difference counts only past
 the spreads. Two replays of one recording on two machines, or two drivers
