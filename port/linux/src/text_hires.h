@@ -57,15 +57,17 @@ tag's letter_widths (TEXT_HIRES_FIT_LETTERS of them, 0 for a letter the tag
 has not), its glyphs rasterized with oversample times the display's pixels
 (for text drawn scaled up); -1 if none, or display.high_res_text is off */
 long text_hires_font(char const *tag_name, float cap_height, short const *letter_widths, float oversample);
-/* whether the font, or its fallback, has a glyph for the character (it draws
-a string only if they have all of its characters) */
-int text_hires_covers(long font, unsigned long code);
-/* the glyph of a character (rasterized into the atlas if it is not yet);
-0 if it has none */
+/* the character's glyph rasterized into the atlas now, if it is not yet: each
+of a string's before any is drawn, so that the atlas does not start over in
+the middle of it */
+void text_hires_rasterize(long font, unsigned long code);
+/* the glyph of a character (rasterized into the atlas if it is not yet; the
+font's missing glyph for one neither the font nor its fallback has); 0 if
+it has no ink */
 int text_hires_glyph(long font, unsigned long code, struct text_hires_glyph *glyph);
 /* a character's advance in units, as its glyph has it (whether or not it is
-rasterized yet, a space's too); negative if neither the font nor its
-fallback has it */
+rasterized yet, a space's too; the missing glyph's for one the fonts have
+not); negative if there is no font */
 float text_hires_advance(long font, unsigned long code);
 /* the font's kerning between two characters, in units (0 unless one face
 has both, with kerning) */
