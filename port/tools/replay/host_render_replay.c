@@ -3518,6 +3518,7 @@ static const char *const record_type_names[XGPU_STREAM_RECORD_TYPES] =
 	[XGPU_STREAM_WORLD_AO_CASCADES] = "world_ao_cascades", [XGPU_STREAM_WORLD_AO_MESH] = "world_ao_mesh",
 	[XGPU_STREAM_WORLD_AO_INSTANCES] = "world_ao_instances", [XGPU_STREAM_MARK_STRING] = "mark_string",
 	[XGPU_STREAM_MARK_VIEW] = "mark_view", [XGPU_STREAM_MARK_OWNER] = "mark_owner",
+	[XGPU_STREAM_DYNAMIC_LIGHTS_CHANGE] = "dynamic_lights_change",
 };
 
 /* the frame just played (n) played again, its CPU time measured into cpu

@@ -144,8 +144,9 @@ static struct
 	BOOL halo_failed;
 	uint32_t lights_none[2];
 	/* their world (none: lights_world_none's header of no nodes), as the
-	GPU has it (xgpu_dynamic_lights_world.h), and the frame's cells, with
-	the lights the world is walked for (made each frame) */
+	GPU has it (xgpu_dynamic_lights_world.h), and the cells as the stream's
+	changes leave them, with the lights the world is walked for (made each
+	frame) */
 	uint32_t lights_world, lights_world_none;
 	struct xgpu_dynamic_lights_world lights_world_made;
 	unsigned char *lights_cells;
@@ -1172,31 +1173,56 @@ static int stream_dynamic_lights_prepare(void *context)
 	return stream.lights_none[0] && stream.lights_none[1];
 }
 
-static void stream_dynamic_lights_upload(void *context, const struct xgpu_stream_dynamic_lights_upload *record)
+/* the frame's cells (the bytes from offset, size of them: the stream's
+version 22's the whole, a change only those that changed) into the cells
+kept (the stream's changes applied, with the lights the world is walked
+for: xgpu.h), which the frame's draws read */
+static void dynamic_lights_cells(const struct xgpu_stream_dynamic_lights_block *record_block, uint32_t count,
+	uint32_t offset, uint32_t size, const unsigned char *cells)
 {
-	const void *cells = host_pointer(record->cells);
 	struct xgpu_metal_source block, copied;
 
-	(void)context;
-	if (!cells || record->size != XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE)
-		return;
-	/* (with the lights the world is walked for: xgpu.h) */
 	if (!stream.lights_cells)
-		stream.lights_cells = malloc(XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE);
+		stream.lights_cells = calloc(1, XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE);
 	if (stream.lights_cells)
 	{
-		memcpy(stream.lights_cells, cells, XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE);
-		xgpu_dynamic_lights_world_walked(&stream.lights_world_made, (const float (*)[4])&record->block,
-			record->count, stream.lights_cells,
-			(uint32_t *)(stream.lights_cells + XGPU_DYNAMIC_LIGHTS_WORLD_WALK_TEXEL * 16));
+		if (size)
+			memcpy(stream.lights_cells + offset, cells, size);
+		xgpu_dynamic_lights_world_walked(&stream.lights_world_made, (const float (*)[4])record_block, count,
+			stream.lights_cells, (uint32_t *)(stream.lights_cells + XGPU_DYNAMIC_LIGHTS_WORLD_WALK_TEXEL * 16));
 		cells = stream.lights_cells;
 	}
-	block = xgpu_metal_stream(&record->block, sizeof(record->block));
-	copied = xgpu_metal_stream(cells, record->size);
+	else if (offset || size != XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE)
+	{
+		lights_none_bind();
+		return;
+	}
+	block = xgpu_metal_stream(record_block, sizeof(*record_block));
+	copied = xgpu_metal_stream(cells, XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE);
 	if (block.kind == XGPU_METAL_SOURCE_NONE || copied.kind == XGPU_METAL_SOURCE_NONE)
 		lights_none_bind();
 	else
 		xgpu_metal_set_dynamic_lights(block, copied);
+}
+
+static void stream_dynamic_lights_upload(void *context, const struct xgpu_stream_dynamic_lights_upload *record)
+{
+	const void *cells = host_pointer(record->cells);
+
+	(void)context;
+	if (!cells || record->size != XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE)
+		return;
+	dynamic_lights_cells(&record->block, record->count, 0, record->size, cells);
+}
+
+static void stream_dynamic_lights_change(void *context, const struct xgpu_stream_dynamic_lights_change *record)
+{
+	const void *cells = record->size ? host_pointer(record->cells) : NULL;
+
+	(void)context;
+	if (record->size && !cells)
+		return;
+	dynamic_lights_cells(&record->block, record->count, record->offset, record->size, cells);
 }
 
 /* the world (xgpu.h), as the GPU has it (xgpu_dynamic_lights_world.h), into
@@ -2004,6 +2030,7 @@ const struct host_render_backend *xgpu_metal_stream_backend(void)
 		backend.loading_caption = host_metal_loading_caption;
 		backend.dynamic_lights_prepare = stream_dynamic_lights_prepare;
 		backend.dynamic_lights_upload = stream_dynamic_lights_upload;
+		backend.dynamic_lights_change = stream_dynamic_lights_change;
 		backend.dynamic_lights_halos = stream_dynamic_lights_halos;
 		backend.dynamic_lights_world = stream_dynamic_lights_world;
 		backend.anti_aliasing_prepare = stream_anti_aliasing_prepare;

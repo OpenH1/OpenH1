@@ -659,6 +659,9 @@ static struct
 	and cells, and the visibility counters (unused by the flat game) */
 	struct xgpu_vulkan_buffer *lights_block, *samples;
 	struct xgpu_vulkan_image *lights_cells;
+	/* the cells uploaded since lights_cells was made (else they are all
+	uploaded, whatever changed) */
+	int lights_cells_uploaded;
 	VkSampler stand_in_sampler;
 	struct xgpu_vulkan_image *stand_ins[4];
 	/* Presentation owns this image across loading frames, independently
@@ -8625,6 +8628,7 @@ static int draw_set_make(void)
 	description.depth_or_layers = XGPU_STREAM_DYNAMIC_LIGHTS_CELL_SLICES + XGPU_STREAM_DYNAMIC_LIGHTS_WORLD_SLICES;
 	description.levels = 1;
 	vk.lights_cells = xgpu_vulkan_image_create(&description);
+	vk.lights_cells_uploaded = 0;
 	if (!vk.lights_block || !vk.samples || !vk.lights_cells)
 		return 0;
 	/* (no world yet: its header's node count 0) */
@@ -8671,15 +8675,32 @@ static int draw_set_make(void)
 	return 1;
 }
 
-void xgpu_vulkan_dynamic_lights_upload(const void *block, uint32_t size, const void *cells)
+void xgpu_vulkan_dynamic_lights_upload(const void *block, uint32_t size, const void *cells, uint32_t first,
+	uint32_t end)
 {
+	const uint32_t row = 32 * 16, slice = 32 * row;
+	uint32_t z, z_end, y, y_end;
+
 	if (!vk.lights_block || !vk.lights_cells)
 		return;
 	/* (early, before the submission's draws, unless a draw recorded in it
 	read the lights: xgpu_vulkan_draw) */
 	xgpu_vulkan_buffer_write(vk.lights_block, 0, block, size < vk.lights_block->size ? size : vk.lights_block->size, 0);
-	xgpu_vulkan_image_upload(vk.lights_cells, 0, 0, 0, 0, 0, vk.lights_cells->description.width,
-		vk.lights_cells->description.height, XGPU_STREAM_DYNAMIC_LIGHTS_CELL_SLICES, cells, 0, 0);
+	if (!vk.lights_cells_uploaded)
+	{
+		first = 0;
+		end = XGPU_STREAM_DYNAMIC_LIGHTS_CELL_SLICES * slice;
+		vk.lights_cells_uploaded = 1;
+	}
+	if (first >= end || end > XGPU_STREAM_DYNAMIC_LIGHTS_CELL_SLICES * slice)
+		return;
+	/* (the rows changed, in a slice; the slices, in more than one) */
+	z = first / slice;
+	z_end = (end - 1) / slice + 1;
+	y = z_end - z == 1 ? first % slice / row : 0;
+	y_end = z_end - z == 1 ? ((end - 1) % slice) / row + 1 : 32;
+	xgpu_vulkan_image_upload(vk.lights_cells, 0, 0, 0, y, z, 32, y_end - y, z_end - z,
+		(const unsigned char *)cells + z * slice + y * row, row, slice);
 }
 
 void xgpu_vulkan_dynamic_lights_world(const void *texels, uint32_t count)

@@ -177,6 +177,8 @@ struct host_render_backend
 	/* nonzero if the block and cells are made */
 	int (*dynamic_lights_prepare)(void *context);
 	void (*dynamic_lights_upload)(void *context, const struct xgpu_stream_dynamic_lights_upload *record);
+	/* checked: the changed bytes inside the cells and the stream */
+	void (*dynamic_lights_change)(void *context, const struct xgpu_stream_dynamic_lights_change *record);
 	void (*dynamic_lights_halos)(void *context, const struct xgpu_stream_dynamic_lights_halos *record);
 	/* the world (xgpu.h), checked: its texels inside the stream */
 	void (*dynamic_lights_world)(void *context, const struct xgpu_stream_dynamic_lights_world *record);
