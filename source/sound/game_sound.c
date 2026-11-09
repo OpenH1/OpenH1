@@ -875,9 +875,15 @@ void scripted_looping_sound_set_alternate(
 void unattached_looping_sound_stop(
 	long looping_sound_index)
 {
+	/* port: one that is no more is left alone, as sound_stop_impulse leaves
+	an impulse (the HUD's indices of its looping sounds are kept with the
+	ticks' state, the looping sounds with the frames': a demo's playback
+	writes the recording's HUD, whose looping sounds it never made) */
 	struct game_looping_sound_datum *looping_sound =
-		game_looping_sound_get(looping_sound_index);
+		(struct game_looping_sound_datum *)datum_try_and_get(game_looping_sound_data, looping_sound_index);
 
+	if (!looping_sound)
+		return;
 	SET_FLAG(looping_sound->flags, _game_looping_sound_unattached_stop_bit, TRUE);
 
 	return;

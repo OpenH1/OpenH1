@@ -141,6 +141,8 @@ void network_damage_deal_recorded(void const *bytes, unsigned long size);
 void damage_kill_object_for_player(long object_index, long player_index);
 void *game_engine_port_demo_state(short part, long *size);
 void *game_sound_port_demo_state(short part, long *size);
+void *wind_port_demo_state(long *size);
+unsigned long network_standard_demo_rules(void);
 extern struct game_variant game_variant_global;
 void main_build_identity(long *number, char *flavor, size_t flavor_size, char *repository, size_t repository_size,
 	char *version, size_t version_size);
@@ -172,7 +174,10 @@ caches' procedures, the objects' types' functions), each build's own */
 
 enum
 {
-	DEMO_FORMAT_VERSION = 2,
+	/* 3: every sub-step's U and every tick's Z, which bound the records
+	the tick's code takes as it runs (D, F, I, L); the wind in G; the
+	game's rules in the header */
+	DEMO_FORMAT_VERSION = 3,
 	DEMO_HEADER_SIZE = 512,
 	DEMO_BUILD_SIZE = 64,
 	DEMO_MAP_NAME_SIZE = 128,
@@ -343,6 +348,18 @@ static struct
 	long connection;
 	long difficulty;
 	long rate;
+	/* the recorded game's rules (_demo_rule_*: the header's) */
+	unsigned long rules;
+	/* the records of a tick's code (D, F, I, L) the playback's code did not
+	take, left at a sub-step's or the tick's end: its code ran otherwise
+	than the recording's (it has parted, or is about to) */
+	long records_left;
+	boolean records_left_logged;
+	/* the machine's players' cameras as the recording's last O records had
+	them, put back wherever the tick's code may read them after the frames
+	moved them (a sub-step of an open tick, an event between ticks) */
+	struct observer_result cameras[MAXIMUM_NUMBER_OF_LOCAL_PLAYERS];
+	boolean cameras_valid[MAXIMUM_NUMBER_OF_LOCAL_PLAYERS];
 	boolean variant_read;
 	struct game_variant variant;
 	struct game_variant_options variant_options;
@@ -735,6 +752,9 @@ static void demo_header_write(
 			0,
 			(unsigned long)players_globals->local_player_count,
 			(unsigned long)halo_server_mode(),
+			/* (the game's rules this machine's settings would give a game
+			of the playback's machine otherwise: network_standard.c) */
+			network_standard_demo_rules(),
 		};
 		long index;
 
@@ -1088,7 +1108,9 @@ static void demo_seeds_write(
 /* a part of what the game keeps outside the game state and the ticks read:
 the game engine's (game_engine_port_demo_state: its flags, by the players
 the game began with; its goals, the vehicles' homes, a game type's scores),
-then the speakers' mouths (game_sound_port_demo_state); NULL past the last */
+then the speakers' mouths (game_sound_port_demo_state), then the wind
+(wind.c: its random walk, which the ticks step and an antenna's or a flag's
+points are blown by); NULL past the last */
 static void *demo_outside_part(
 	short part,
 	long *size)
@@ -1102,7 +1124,16 @@ static void *demo_outside_part(
 		return address;
 	while (game_engine_port_demo_state(count, &part_size))
 		count++;
-	return game_sound_port_demo_state((short)(part - count), size);
+	part = (short)(part - count);
+	address = game_sound_port_demo_state(part, size);
+	if (address)
+		return address;
+	count = 0;
+	while (game_sound_port_demo_state(count, &part_size))
+		count++;
+	if (part == count)
+		return wind_port_demo_state(size);
+	return NULL;
 }
 
 /* ... its parts one after another into state: its size, 0 if it cannot be
@@ -1393,6 +1424,11 @@ static void demo_record_tick_end(
 	demo_recorder.in_tick = FALSE;
 	if (!demo_recorder.recording)
 		return;
+	/* (the tick's end, after every record its code made: its T's number,
+	the clock's before it counts the tick) */
+	start = demo_record_begin(&demo_recorder.records, 'Z');
+	demo_buffer_u32(&demo_recorder.records, (unsigned long)(tick - 1));
+	demo_record_end(&demo_recorder.records, start);
 	if (tick % DEMO_HASH_TICKS == 0)
 	{
 		static unsigned long allocation_hashes[MAXIMUM_DEMO_ALLOCATIONS];
@@ -1512,10 +1548,12 @@ static void demo_record_substep_end(
 	unsigned long start;
 
 	start = demo_record_begin(&demo_recorder.records, 'U');
+	demo_buffer_u32(&demo_recorder.records, (unsigned long)game_time_get());
 	demo_buffer_u8(&demo_recorder.records, (unsigned long)substep_index);
 	demo_buffer_u8(&demo_recorder.records, (unsigned long)substep_count);
 	data_iterator_new(&iterator, player_data);
-	while ((player = data_iterator_next(&iterator)) != NULL)
+	/* (the first sub-step's controls are the tick's own, its A) */
+	while (substep_index > 0 && (player = data_iterator_next(&iterator)) != NULL)
 	{
 		short index = DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index);
 		struct demo_unit_controls after;
@@ -1657,8 +1695,10 @@ void demo_substep_resume(
 	demo_recorder.paused = FALSE;
 	demo_open_patch_write(substep_index);
 	/* (and the frames' input, which they moved meanwhile and the sub-step
-	reads: the HUD's crosshair by the aim assist's level; and the seeds, an
-	event's code took) */
+	reads: the HUD's crosshair by the aim assist's level; the cameras, by
+	which a hit's damage indicator points; and the seeds, an event's code
+	took) */
+	demo_cameras_write();
 	demo_input_write();
 	{
 		unsigned long seeds[2];
@@ -1814,6 +1854,9 @@ boolean demo_event_begin(
 		demo_open_patch_write(sim_substep_next());
 	else if (demo_open_patch_write(0))
 		demo_recorder.loaded = TRUE;
+	/* (the cameras as the frames left them, which the event's code reads:
+	a hit's damage indicator points from its player's camera) */
+	demo_cameras_write();
 	/* (the seeds as the event's code takes them: the game's global seed,
 	the frames' local seed, which its effects take) */
 	random_math_port_seeds(&seeds[0], &seeds[1]);
@@ -1848,6 +1891,15 @@ long demo_playback_sim_rate(
 	return demo_player.playing && demo_player.started ? demo_player.rate : 0;
 }
 
+boolean demo_playback_rules(
+	unsigned long *rules)
+{
+	if (!demo_player.playing)
+		return FALSE;
+	*rules = demo_player.rules;
+	return TRUE;
+}
+
 /* a playback over: the game quits (debug.demo_quit, or a demo that cannot be
 played), or goes back to the main menu */
 static void demo_playback_end(
@@ -1867,9 +1919,10 @@ static void demo_playback_stop(
 {
 	if (!demo_player.playing)
 		return;
-	platform_log("demos: the playback of %s ended at tick %ld (%s): %ld ticks played, %ld hashes as recorded%s",
-		demo_player.path, demo_player.last_tick, reason, demo_player.ticks, demo_player.hashes_matched,
-		demo_player.diverged ? ", but it parted from the recording" : "");
+	platform_log("demos: the playback of %s ended at tick %ld (%s): %ld ticks played, %ld hashes as recorded%s; "
+		"%ld of the recording's records of the ticks' code left untaken", demo_player.path, demo_player.last_tick,
+		reason, demo_player.ticks, demo_player.hashes_matched,
+		demo_player.diverged ? ", but it parted from the recording" : "", demo_player.records_left);
 	demo_reader_close(demo_player.file);
 	demo_player.file = NULL;
 	demo_files_free(demo_player.blocks);
@@ -2221,6 +2274,22 @@ static void demo_playback_camera(
 		return;
 	}
 	*(struct observer_result *)observer_get_camera(local_player_index) = camera;
+	demo_player.cameras[local_player_index] = camera;
+	demo_player.cameras_valid[local_player_index] = TRUE;
+}
+
+/* the cameras as the recording last had them, put back (the playback's own
+frames moved them since) */
+static void demo_playback_cameras_again(
+	void)
+{
+	short local_player_index;
+
+	for (local_player_index = 0; local_player_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
+	{
+		if (demo_player.cameras_valid[local_player_index] && local_player_get_player_index(local_player_index) != NONE)
+			*(struct observer_result *)observer_get_camera(local_player_index) = demo_player.cameras[local_player_index];
+	}
 }
 
 /* the records before a tick's own (its T, then what came from outside it) */
@@ -2356,6 +2425,8 @@ boolean demo_playback_tick_actions(
 
 	if (!demo_player.playing || !demo_player.started)
 		return FALSE;
+	/* (a later sub-step's presses are its own: none are the tick's) */
+	demo_player.pressed_count = 0;
 	/* (a seek's snapshot's tick: its cameras and the game engine's state
 	come after the snapshot) */
 	for (;;)
@@ -2412,31 +2483,81 @@ boolean demo_playback_tick_actions(
 	return TRUE;
 }
 
+/* the records of the tick's code that the playback's code left untaken
+(a choice of the netcode's, D; what it put in, F; a unit's illumination, I;
+a particle held for a later frame, L), up to the record that bounds them (a
+sub-step's U, the tick's Z): the recording's code made them, and the
+playback's ran otherwise (it has parted from the recording, or is about
+to; its hash says where). Each sub-step's and each tick's records are
+bounded so, so that what one left never stands where the next looks */
+static void demo_playback_records_left(
+	char const *where)
+{
+	unsigned char const *bytes;
+	unsigned long length;
+	long left = 0;
+	char first = 0;
+	char type;
+
+	while ((type = demo_playback_record(&bytes, &length, FALSE)) == 'D' || type == 'F' || type == 'I' || type == 'L')
+	{
+		if (!left)
+			first = type;
+		demo_playback_record(&bytes, &length, TRUE);
+		left++;
+	}
+	if (!left)
+		return;
+	demo_player.records_left += left;
+	if (!demo_player.records_left_logged)
+	{
+		demo_player.records_left_logged = TRUE;
+		platform_log("demos: the playback's tick %ld left %ld of the recording's records of its code untaken at %s "
+			"(the first a %c): its code ran otherwise than the recording's", demo_player.last_tick, left, where,
+			first);
+	}
+}
+
+/* a record where a bound was looked for that is not it: the demo's end (an
+E: a recorder stopped in the middle of a tick; or the file's), or else a
+damaged demo */
+static void demo_playback_bound_missing(
+	char type,
+	char const *what)
+{
+	if (type == 'E' || type == 0)
+	{
+		demo_playback_stop(type == 'E' ? "its end" : "the file ends there", FALSE);
+		return;
+	}
+	platform_log("demos: a %c record where %s was looked for", type, what);
+	demo_playback_stop("a damaged record (no sub-step or tick's end where the recording's was)", TRUE);
+}
+
 static void demo_playback_substep_end(
 	short substep_index,
 	short substep_count)
 {
 	unsigned char const *bytes;
 	unsigned long length;
-	unsigned long position = 2;
+	unsigned long position = 6;
 	struct demo_unit_controls controls;
 	unsigned long const entry_size = 1 + 4 + sizeof(controls);
-	char type = demo_playback_record(&bytes, &length, TRUE);
+	char type;
 
-	if (type != 'U' || length < 2 || bytes[0] != substep_index || bytes[1] != substep_count)
+	demo_playback_records_left("a sub-step's start");
+	type = demo_playback_record(&bytes, &length, FALSE);
+	if (type != 'U' || length < 6 || demo_read_u32(bytes) != (unsigned long)demo_player.last_tick ||
+		bytes[4] != substep_index || bytes[5] != substep_count)
 	{
-		/* (a recording cut short in a tick, its last whole block's, ends
-		there) */
-		if (!type)
-		{
-			demo_playback_stop("the file ends there", FALSE);
-			return;
-		}
-		platform_log("demos: a %c record where the sub-step %d of %d was looked for", type, substep_index,
-			substep_count);
-		demo_playback_stop("a damaged record (no sub-step where the recording's was)", TRUE);
+		char what[64];
+
+		snprintf(what, sizeof(what), "the sub-step %d of %d of tick %ld", substep_index, substep_count,
+			demo_player.last_tick);
+		demo_playback_bound_missing(type, what);
 		return;
 	}
+	demo_playback_record(&bytes, &length, TRUE);
 	demo_player.pressed_count = 0;
 	while (position + entry_size <= length)
 	{
@@ -2513,10 +2634,16 @@ static void demo_playback_open_records(
 	unsigned long length;
 	char type;
 
+	demo_playback_cameras_again();
 	while (demo_player.playing)
 	{
 		type = demo_playback_record(&bytes, &length, FALSE);
-		if (type == 'M' && length >= 1 && bytes[0] == substep_index)
+		if (type == 'O' && length == 1 + sizeof(struct observer_result))
+		{
+			demo_playback_record(&bytes, &length, TRUE);
+			demo_playback_camera(bytes[0], bytes + 1);
+		}
+		else if (type == 'M' && length >= 1 && bytes[0] == substep_index)
 		{
 			demo_playback_record(&bytes, &length, TRUE);
 			if (!demo_playback_patch(bytes + 1, length - 1))
@@ -2567,6 +2694,9 @@ static void demo_playback_open_records(
 static void demo_playback_resume(
 	short substep_index)
 {
+	/* (what the sub-step before left, ahead of what the frames put in
+	since) */
+	demo_playback_records_left("a sub-step's start");
 	demo_playback_open_records(substep_index);
 }
 
@@ -2597,6 +2727,22 @@ static void demo_playback_tick_end(
 	if (!demo_recorder.shadow)
 		demo_recorder.shadow = demo_files_alloc((unsigned long)demo_allocations.size);
 	demo_shadow_take();
+	/* (the tick's end: what its code left of the recording's records, then
+	the bound) */
+	demo_playback_records_left("the tick's end");
+	{
+		char type = demo_playback_record(&bytes, &length, FALSE);
+
+		if (type != 'Z' || length < 4 || demo_read_u32(bytes) != (unsigned long)demo_player.last_tick)
+		{
+			char what[48];
+
+			snprintf(what, sizeof(what), "the end of tick %ld", demo_player.last_tick);
+			demo_playback_bound_missing(type, what);
+			return;
+		}
+		demo_playback_record(&bytes, &length, TRUE);
+	}
 	if (demo_playback_record(&bytes, &length, FALSE) != 'H' || length < 8)
 		return;
 	demo_playback_record(&bytes, &length, TRUE);
@@ -2644,9 +2790,16 @@ static boolean demo_playback_open(
 		return FALSE;
 	}
 	if (!demo_reader_read(demo_player.file, 0, header, DEMO_HEADER_SIZE) ||
-		memcmp(header, DEMO_MAGIC, sizeof(DEMO_MAGIC)) || header[8] != DEMO_FORMAT_VERSION)
+		memcmp(header, DEMO_MAGIC, sizeof(DEMO_MAGIC)))
 	{
-		platform_log("demos: %s is not a demo of this version of OpenH1", path);
+		platform_log("demos: %s is not a demo", path);
+		return FALSE;
+	}
+	if (header[8] != DEMO_FORMAT_VERSION)
+	{
+		platform_log("demos: %s is a demo of format %d, which this build does not play (its format is %d)%s", path,
+			header[8], DEMO_FORMAT_VERSION,
+			header[8] < DEMO_FORMAT_VERSION ? ": it was recorded by an earlier build, whose demos played back otherwise" : "");
 		return FALSE;
 	}
 	main_build_identity(&number, flavor, sizeof(flavor), repository, sizeof(repository), version, sizeof(version));
@@ -2664,6 +2817,7 @@ static boolean demo_playback_open(
 	demo_player.connection = (long)demo_read_u32(header + 92);
 	demo_player.rate = (long)demo_read_u32(header + 96);
 	demo_player.difficulty = (long)demo_read_u32(header + 100);
+	demo_player.rules = demo_read_u32(header + 120);
 	header[128 + DEMO_MAP_NAME_SIZE - 1] = 0;
 	snprintf(demo_player.map_name, sizeof(demo_player.map_name), "%s", (char const *)header + 128);
 	if (demo_player.connection != _game_connection_local && demo_player.connection != _game_connection_network_server)
@@ -2962,8 +3116,6 @@ void demo_substep_end(
 	short substep_index,
 	short substep_count)
 {
-	if (substep_index == 0)
-		return;
 	if (demo_player.playing && demo_player.started)
 		demo_playback_substep_end(substep_index, substep_count);
 	else if (demo_recorder.recording)

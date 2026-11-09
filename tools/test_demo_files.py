@@ -117,3 +117,61 @@ def test_demo_of_a_killed_recorder_plays_to_its_last_whole_block(demo_files_test
         assert len(cut_demo.blocks) <= len(demo.blocks)
         assert all(a[:4] == b[:4] for a, b in zip(cut_demo.blocks, demo.blocks))
         assert cut_ticks <= ticks
+
+
+def test_each_tick_of_one_shape_whatever_came_when():
+    """a tick's records (format 3: demo.c, docs/demos.md's "The file") are of
+    one shape however a remote client's input and hits fall among the host's
+    sub-steps: its T, its input, each sub-step's U in order with the records
+    its code made between them, its Z; between ticks only what came from
+    outside them. tools/demo_info.py --check holds a demo to it; these are
+    the shapes a real client's game gives (a hit reported late, in the last
+    sub-step; another dealt between two ticks; what the netcode put in before
+    the first sub-step), and the faults it must refuse"""
+    import struct
+
+    sys.path.insert(0, str(ROOT / "tools"))
+    import demo_info
+
+    def tick(number, substeps=4, inside=None, between=()):
+        """a tick's records, with inside {sub-step: [record types]} after each
+        sub-step's U (and -1: before the first, the tick's own work), and
+        between: what came after its Z"""
+        inside = inside or {}
+        records = [("T", struct.pack("<II", number, 30 * substeps))]
+        records += [("P", b""), ("A", b"")]
+        records += [(kind, b"\x01") for kind in inside.get(-1, [])]
+        for index in range(substeps):
+            records.append(("U", struct.pack("<IBB", number, index, substeps)))
+            records += [(kind, b"\x01") for kind in inside.get(index, [])]
+        records.append(("Z", struct.pack("<I", number)))
+        records += [(kind, b"\x00" * 8) for kind in between]
+        return records
+
+    def problems(records):
+        return demo_info.shape_problems(("R", kind, data) for kind, data in records)[1]
+
+    good = (tick(0, inside={0: ["D"]}) +
+            tick(1, inside={-1: ["F"], 2: ["D", "D"], 3: ["D", "L"]}, between=["M", "X"]) +
+            tick(2, inside={1: ["I", "I", "L"]}) +
+            tick(3, substeps=1, inside={0: ["D"]}))
+    # (a recorder stopped inside a tick: its E there)
+    good += tick(4)[:4] + [("E", struct.pack("<I", 4))]
+    assert problems(good) == []
+    assert demo_info.shape_problems(("R", kind, data) for kind, data in good)[0] == 5
+    # a hit's choice between two ticks, where no tick's code reads it
+    assert problems(tick(0, between=["D"]) + tick(1))
+    # a sub-step left out, or out of order
+    missing = tick(0)
+    del missing[4]
+    assert problems(missing)
+    swapped = tick(0)
+    swapped[3], swapped[4] = swapped[4], swapped[3]
+    assert problems(swapped)
+    # a U or a Z of another tick
+    other = tick(5)
+    other[3] = ("U", struct.pack("<IBB", 4, 0, 4))
+    assert problems(other)
+    assert problems(tick(0)[:-1] + [("Z", struct.pack("<I", 1))])
+    # a tick without its end
+    assert problems(tick(0)[:-1] + tick(1))

@@ -3354,16 +3354,14 @@ void unit_impulse(
 	return;
 }
 
-/* the platform layer's (port/linux/src/port_config.c) */
-int config_boolean(const char *name);
-unsigned long config_changes(void);
 /* port/linux/game/network_standard.c's */
 boolean network_standard_turns_with_aim(long player_index);
+boolean network_standard_enhanced_animations(void);
 
 /* port: the animation enhancements (game.enhanced_animations, on unless
-config.toml turns them off) are for the player bipeds (cyborg and
-cyborg_mp), whose animations they were made with; every other unit keeps
-the original animations */
+config.toml turns them off; a rule of the game) are for the player bipeds
+(cyborg and cyborg_mp), whose animations they were made with; every other
+unit keeps the original animations */
 static char const *const enhanced_animation_units[] =
 {
 	"cyborg",
@@ -3393,16 +3391,11 @@ static boolean unit_animation_enhanced_unit(
 boolean unit_animation_enhanced(
 	long unit_index)
 {
-	static boolean enhanced = TRUE;
-	static unsigned long read_at = (unsigned long)-1;
-
-	/* (read again when the settings change) */
-	if (read_at != config_changes())
-	{
-		read_at = config_changes();
-		enhanced = config_boolean("game.enhanced_animations") != 0;
-	}
-	if (!enhanced)
+	/* port: (a rule of the game, as every machine of it has it: the host's
+	in a network game, network_standard_enhanced_animations; it was each
+	machine's own setting, and a client and its host posed that player's
+	body, and so where its shots went and what hit it, differently) */
+	if (!network_standard_enhanced_animations())
 	{
 		return FALSE;
 	}
@@ -3417,17 +3410,12 @@ the host says (network_standard_turns_with_aim: the host's
 game.enhanced_animations, a Legacy game's always), whatever its own
 setting: a client and its host would otherwise turn that player's body
 differently. In a game of one machine the setting decides, as for the other
-enhancements. */
+enhancements (and in a demo's playback, its recording's game). */
 boolean unit_turns_with_aim(
 	long unit_index)
 {
-	if (game_connection() == _game_connection_network_client ||
-		game_connection() == _game_connection_network_server)
-	{
-		return unit_animation_enhanced_unit(unit_index) &&
-			network_standard_turns_with_aim(unit_get(unit_index)->unit.player_index);
-	}
-	return unit_animation_enhanced(unit_index);
+	return unit_animation_enhanced_unit(unit_index) &&
+		network_standard_turns_with_aim(unit_get(unit_index)->unit.player_index);
 }
 
 /* port: a seat whose graph has no reload of its own (a Scorpion rider's)

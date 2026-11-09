@@ -109,6 +109,12 @@ of network.game_mode and network.sim_rate */
 static int server_mode;
 static char server_game_mode[16] = "legacy";
 
+/* (no demo plays: demo.c's) */
+static boolean demo_playback_rules(unsigned long *rules)
+{
+	return FALSE;
+}
+
 static int halo_server_mode(void)
 {
 	return server_mode;

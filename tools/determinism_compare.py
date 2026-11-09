@@ -62,7 +62,11 @@ FRAME_ALLOCATIONS = ["game time globals", "lights", "decals", "decal globals", "
                      "decal vertex cache", "particle systems",
                      "particle system particles", "particle", "contrail", "contrail point", "game sound globals",
                      "cached object render states", "motion sensor (radar)", "object looping sounds",
-                     "scenario globals", "player control globals", "first person weapons"]
+                     "scenario globals", "player control globals", "first person weapons",
+                     # (the lights' own allocations, beside "lights": the effects
+                     # the frames make light them, as port/linux/game/demo.c's
+                     # frames' allocations have them)
+                     "lights globals", "light", "cluster light reference", "light cluster reference"]
 
 
 # the simulation's rate of a log that names none (game.sim_rate: a build

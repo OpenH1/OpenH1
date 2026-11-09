@@ -62,8 +62,10 @@ take (`source/math/random_math.c`) and the players' input of each tick
   state is recorded instead, as at the start.
 - **What the ticks read of the frames.** Each of this machine's players'
   camera (`observer_get_camera`) as the tick begins, which the material
-  effects test by distance and a player without a unit sees the level from;
-  and a unit's illumination, which the AI's sight reads and which is the
+  effects test by distance and a player without a unit sees the level from,
+  and again where the frames moved it before a later sub-step of an open
+  tick or an event of the netcode's (a hit's damage indicator points from
+  its player's camera); and a unit's illumination, which the AI's sight reads and which is the
   lights' (the frames') at its place.
 - **What the netcode put in inside a tick.** A host takes its clients'
   predictions of their own units at the tick's start
@@ -87,9 +89,11 @@ take (`source/math/random_math.c`) and the players' input of each tick
   game engine's (`game_engine_port_demo_state`: its flags, by the players
   the game began with, five or more taking fewer grenades from a map's
   places; the goals, the vehicles' homes, the friendly fire penalties, each
-  game type's state, its scores) and the speakers' mouths
-  (`game_sound_port_demo_state`), whole with each snapshot and wherever it
-  changed outside the ticks; the playback puts it back as it was.
+  game type's state, its scores), the speakers' mouths
+  (`game_sound_port_demo_state`) and the wind (`wind_port_demo_state`: its
+  random walk, which the ticks step and an antenna's and a flag's points are
+  blown by), whole with each snapshot and wherever it changed outside the
+  ticks; the playback puts it back as it was.
 - **The frames' choices a tick takes**: whether a particle waits for a
   later frame (`render_interpolation.c`), which decides whether the tick's
   local seed makes it.
@@ -138,9 +142,9 @@ object's place with another's cluster references).
 
 ## The file
 
-A header of 512 bytes (`OH1DEMO`, the format's version, the build, the
+A header of 512 bytes (`OH1DEMO`, the format's version (3), the build, the
 network version, the game state's allocations' checksum, the connection,
-the rate, the difficulty, the map), then blocks, each packed with zlib on a
+the rate, the difficulty, the game's rules, the map), then blocks, each packed with zlib on a
 thread of its own as the game plays (`demo_writer_*`): a second of records
 (`R`), a snapshot the playback takes (`K`: the start, a reload) or one only
 a seek takes (`k`). A record is its type (a byte), its length (4 bytes) and
@@ -155,22 +159,44 @@ its bytes:
 | `C` | the player control globals, whole |
 | `S` | the seeds |
 | `A` | the tick's players' actions (`struct player_action`) |
-| `U` | a later sub-step's units' controls |
+| `U` | a sub-step's work begins (every sub-step's, at every rate): the tick's number, the sub-step's and their count, then (past the first) its units' controls |
 | `F` | what the netcode put in inside the tick |
 | `D` | a choice the netcode made |
 | `X` | a hit the host dealt outside the ticks (a client's reported, the network test's): the seeds, then the hit as dealt |
 | `Y` | a kill the host made for a player outside the ticks (the network test's): the seeds, the unit, the player |
-| `G` | what the game keeps outside the game state (the game engine's, the speakers' mouths), where it changed outside the ticks (whole with a snapshot) |
+| `G` | what the game keeps outside the game state (the game engine's, the speakers' mouths, the wind), where it changed outside the ticks (whole with a snapshot) |
 | `L` | whether a tick's particle waited for a later frame |
-| `O` | a local player's camera as the tick begins |
+| `O` | a local player's camera as the tick begins (and before a later sub-step or an event, where the frames moved it) |
 | `I` | a unit's illumination as its update took it |
+| `Z` | the tick ends: its number |
 | `H` | the game state's hash, and each allocation's |
 | `V` | the game's variant and its options |
 | `B` | a bookmark: its tick and how far back it reaches |
 | `E` | the end |
 
-A block cut short (the game crashed or was killed) ends the demo there; the
-blocks before it play. A demo is a file anyone may send: its playback checks
+Each tick has one shape, whatever came when: its `T`; what came from
+outside it; its input (`A`); each sub-step's `U`, in order, with the
+records its code made as it ran between them (`D`, `F`, `I`, `L`, read
+back by the same code as it runs again); and its `Z`. Between two ticks
+there is only what came from outside them. So a playback whose code ran
+otherwise than the recording's (it parted from it) leaves the records its
+code did not take at the next `U` or `Z`, and goes on: a record never stands
+where another sub-step's or tick's is looked for. `tools/demo_info.py
+--check` checks a demo's shape.
+
+The game's rules that this machine's settings would otherwise give a game
+of its own are in the header, and the playback plays by them, not by the
+settings of the machine it plays on: the players' animation enhancements
+(`game.enhanced_animations`, which `display.graphics` chooses), their
+turning with the aim, and their way of picking up a second weapon
+(`game.auto_pickup`), as the recorded game had them (`network_standard.c`'s
+`network_standard_demo_rules`). Nothing a machine's drawing settings
+choose (the graphics preset's drawing, the first-person legs, the field of
+view) reaches the game state.
+
+A demo of an earlier format is refused with its format's number ("a demo
+of format 2, which this build does not play"). A block cut short (the game
+crashed or was killed) ends the demo there; the blocks before it play. A demo is a file anyone may send: its playback checks
 every range it writes into the game state (each wholly in one allocation; a
 snapshot's each an allocation from its start), the game state after each
 as a saved game's is checked, every input as the netcode checks another
@@ -213,7 +239,8 @@ and packing and writing are on a thread of their own.
 
 `debug.determinism_log` hashes the game state after every tick;
 `tools/determinism_compare.py` compares a recording's log with its
-playback's (`--simulation`: not the frames' allocations, and a data
+playback's (`--simulation`: not the frames' allocations, the lights'
+among them, as the demo has them, and a data
 array's datums in use only, the log's `u` line, not what its free slots
 hold; `--builds`: not the seeds' takers' sites; `--game`: from a network
 game's first tick, after its lobby):
@@ -243,6 +270,7 @@ recording, every tick and every one of the demo's own hashes:
 | Slayer, a player and 7 bots, 120 Hz, 2.7 minutes (twice) | 4800 each | 480 of 480 each |
 | Slayer, a player and 7 bots, 60 Hz, 2.7 minutes (twice) | 4800 each | 480 of 480 each |
 | Blood Gulch hosted, a client, 120 Hz, the network test's shots and kills, 2.75 minutes (four) | 4950 each | 495 of 495 each |
+| Blood Gulch hosted with 20 bots at 120 Hz, the renderer on and a player's own settings (enhanced lights, HDR, legs, 100° FOV), a client joined over the internet from another computer (15 ms more each way, 1% of datagrams lost), 4.9 minutes; played on that other computer with the default settings | 8747 | 874 of 874 |
 
 (A tick is the game's 30th of a second at every rate; at 60 and 120 it
 runs in 2 or 4 sub-steps. 4800 ticks are 160 seconds.)
@@ -311,8 +339,63 @@ Where they parted, and what changed:
   cluster reference) leaves bytes in its free slots, which no tick reads:
   the demo's hash and `--simulation` leave them out.
 
+A real match (the maintainer's first, on build 1968: a host at 120 Hz with
+the renderer on, its own settings, a client at internet latency) parted at
+tick 10, and the playback then stopped at tick 40 to 49. Three causes:
+
+- **A setting of the machine changed the game state.** `display.graphics`
+  "classic" sets `game.enhanced_animations` false, and the enhancements
+  (a seat's reload borrowed, a rider's hands off the grips and the pose in
+  a throw) were each machine's own setting in the ticks: a playback with
+  other settings posed the players' bodies otherwise ("objects", tick 100
+  in a recording made so). They are a rule of the game now, read as its
+  map begins: in an OpenH1 network game the host's on every machine (a
+  client and its host posed a player otherwise before, and so where its
+  shots went and what hit it: OpenH1 protocol version 21), and a demo's
+  header holds the recorded game's (`network_standard.c`'s
+  `network_standard_enhanced_animations`, with the turning with the aim
+  and the way of picking up a second weapon).
+- **The antennas.** An antenna's chain is stepped in the ticks, blown by
+  the wind (`wind.c`), which the game keeps outside the game state and the
+  ticks step with the local seed: a playback began with its own. The wind
+  is recorded with what the game keeps outside the game state now (`G`).
+  (The chain steps only while the frames draw it, `antenna_render`: those
+  are the frames' writes into its datum, which the differences record.)
+- **The records of a tick's code** (`D`, the netcode's choice of a client's
+  hits; `I`, `L`) were read in order by the code that made them, and a
+  playback that had parted made fewer of those calls: a choice left over
+  stood where the next sub-step's controls were looked for, and the
+  playback stopped ("a D record where the sub-step 3 of 4 was looked
+  for"). Every sub-step and every tick is bounded now (`U`, `Z`), and what
+  a playback's code left untaken is passed over at the bound (logged once).
+  A playback whose game had parted also wrote the recording's HUD over its
+  own, whose looping sounds (the frames') it never made, and stopped one
+  that was not there: a looping sound gone is left alone now.
+
+Played back in the same conditions (a host recording at 120 Hz with the
+renderer on and the maintainer's settings, a client on another machine)
+the playbacks parted in three more places, each the frames' state reaching
+the tick:
+
+- **The first-person weapons** drew an idle weapon's next pose from the
+  tick's local seed, by where the frames had left it (their allocation is
+  the frames'), and the wind's walk, which takes the same seed, moved with
+  them. At 60 and 120 they take the frames' local seed, as the particles do.
+- **An effect's particles** were placed with the tick's local seed, as many
+  as its locations had (a first-person weapon's are where the frames posed
+  it). At 60 and 120 they take the frames' local seed too.
+- **A hit dealt between two sub-steps** (a client's report) points its
+  player's damage indicator from that player's camera, which the frames had
+  moved since the tick began. The cameras are recorded again before such
+  an event and before a later sub-step of an open tick (`O`), where the
+  frames moved them, and the playback puts back the recording's there.
+
 `tools/test_demo_files.py` checks the files without the game: a demo
-written and read back, a damaged block refused, the retention.
+written and read back, a damaged block refused, the retention, and the
+ticks' one shape (`demo_info.py --check`) whatever came in which sub-step.
+`tools/harness/tests/test_game_rules.py` checks that the enhancements are
+the game's rule (the host's on a client, the recording's in a playback),
+not the machine's setting.
 
 ## Not yet
 

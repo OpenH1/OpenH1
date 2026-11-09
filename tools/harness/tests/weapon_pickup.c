@@ -63,11 +63,15 @@ static struct
 	boolean hosting_hold_to_pick_up;
 	boolean hosting_classic_turning;
 	boolean joined;
+	/* (a game of this machine's own: its setting as the map began) */
+	boolean local_auto_pickup;
 } network_standard_globals;
 static struct network_game record;
 static struct network_game *network_game_get_game(void) { return &record; }
 static long network_standard_server_rate(boolean in_lobby) { return network_standard_globals.hosting ? 60 : 0; }
 static boolean network_standard_player_is_opence(long player_index) { return player_index == OPENCE_PLAYER; }
+/* (no demo plays: demo.c's) */
+static boolean demo_playback_rules(unsigned long *rules) { return FALSE; }
 
 /* the player's unit, its weapons, the weapon walked over */
 static long carried;
@@ -107,6 +111,7 @@ int main(int argc, char **argv)
 	{
 		CHECK(walks_over(1), "the campaign held the action button for a second weapon");
 		auto_pickup_setting = TRUE;
+		network_standard_globals.local_auto_pickup = TRUE;
 		CHECK(walks_over(1), "the campaign held the action button for a second weapon (auto_pickup)");
 		return 0;
 	}
@@ -118,6 +123,7 @@ int main(int argc, char **argv)
 		CHECK(walks_over(0), "a player with no weapon held the action button for one");
 		CHECK(!walks_over(2), "a player with two weapons walked over a third");
 		auto_pickup_setting = TRUE;
+		network_standard_globals.local_auto_pickup = TRUE;
 		CHECK(walks_over(1), "multiplayer held the action button with game.auto_pickup true");
 		return 0;
 	}
@@ -137,6 +143,7 @@ int main(int argc, char **argv)
 		unit_player = PLAYER;
 		/* (a change during the game waits for the lobby) */
 		auto_pickup_setting = TRUE;
+		network_standard_globals.local_auto_pickup = TRUE;
 		network_standard_stamp_game(&record, FALSE);
 		CHECK(!walks_over(1), "the host's way changed during the game");
 		CHECK(TEST_FLAG(record.cooperative_flags, _network_game_hold_to_pick_up_bit),
@@ -177,6 +184,7 @@ int main(int argc, char **argv)
 		engine_running = TRUE;
 		connection = _game_connection_network_client;
 		auto_pickup_setting = TRUE;
+		network_standard_globals.local_auto_pickup = TRUE;
 		network_standard_globals.joined = TRUE;
 		SET_FLAG(record.cooperative_flags, _network_game_hold_to_pick_up_bit, TRUE);
 		CHECK(!walks_over(1), "a client walked over a second weapon in a game whose host holds");
@@ -184,6 +192,7 @@ int main(int argc, char **argv)
 		CHECK(walks_over(1), "a client took an OpenCE player to hold the action button");
 		unit_player = PLAYER;
 		auto_pickup_setting = FALSE;
+		network_standard_globals.local_auto_pickup = FALSE;
 		SET_FLAG(record.cooperative_flags, _network_game_hold_to_pick_up_bit, FALSE);
 		CHECK(walks_over(1), "a client held the action button in a game whose host walks over");
 		network_standard_globals.joined = FALSE;
