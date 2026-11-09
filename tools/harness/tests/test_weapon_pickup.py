@@ -40,7 +40,8 @@ NEGATIVE_CONTROLS = {
 
 def generated(fault=None):
     standard = read("port/linux/game/network_standard.c")
-    config = enum_with(read("source/networking/network_game_manager.h"), "_network_game_hold_to_pick_up_bit") + "\n"
+    config = enum_with(read("source/networking/network_game_manager.h"), "_network_game_hold_to_pick_up_bit") + "\n" + \
+        enum_with(read("port/linux/game/demo.h"), "_demo_rule_walk_over_pickup_bit") + "\n"
     code = "\n".join([
         function(standard, "network_standard_game_for_machine"),
         function(standard, "network_standard_stamp_game"),
