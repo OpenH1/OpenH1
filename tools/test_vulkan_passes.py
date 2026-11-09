@@ -259,7 +259,7 @@ static struct
     uint8_t border[4];
     unsigned int textures_dirty;
     int feedback_bound, uniforms_dirty;
-    uint32_t textures_serial, color, depth, samples, views, base;
+    uint32_t textures_serial, color, depth, samples, views, base, description_generation;
     int hud_group, preparing;
     struct xgpu_vulkan_texture textures[4];
     struct xgpu_stream_sampler sampler_from[4];
@@ -353,6 +353,18 @@ int main(void)
         targets.color = 7;
         stream_set_targets(NULL, &targets);
         assert(stream.color == 7 && !stream.textures_dirty);
+        /* the same targets again: the pipelines' descriptions as they were */
+        {
+            uint32_t generation = stream.description_generation;
+
+            stream_set_targets(NULL, &targets);
+            assert(stream.description_generation == generation);
+            targets.color = 8;
+            stream_set_targets(NULL, &targets);
+            assert(stream.description_generation != generation);
+            targets.color = 7;
+            stream_set_targets(NULL, &targets);
+        }
         stages[3].stage.source = _source_target;
         set(stages);
         stream_set_targets(NULL, &targets);

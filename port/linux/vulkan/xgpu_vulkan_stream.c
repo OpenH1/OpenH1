@@ -234,6 +234,10 @@ static struct
 	uint32_t pipeline_id;
 	const struct xgpu_stream_pipeline_define *definition;
 	struct xgpu_vulkan_pipeline_description pipeline;
+	/* counted up wherever something a draw's pipeline description is made
+	of may change (the pipeline, the vertex layout, the targets): the last
+	draw's pipeline is kept while it has not (draw_pipeline) */
+	uint32_t description_generation;
 
 	/* the uniforms' inputs, and their upload (made again where an input
 	changed or another submission reads them) */
@@ -485,6 +489,7 @@ static void target_forget(uint32_t number)
 	if (stream.feedback_target == number)
 		stream.feedback_target = 0;
 	stream.textures_dirty = TEXTURES_ALL;
+	stream.description_generation++;
 }
 
 static struct xgpu_vulkan_image *target_image_make(const struct stream_target *target, int samples)
@@ -545,6 +550,7 @@ static void stream_target_create(void *context, const struct xgpu_stream_target_
 	}
 	stream.targets[record->target] = target;
 	stream.textures_dirty = TEXTURES_ALL;
+	stream.description_generation++;
 }
 
 struct xgpu_vulkan_image *xgpu_vulkan_stream_target(uint32_t number)
@@ -659,6 +665,7 @@ void xgpu_vulkan_stream_set_vr_target(uint32_t number, struct xgpu_vulkan_image 
 	target->layers = description->type == XGPU_VULKAN_IMAGE_2D_ARRAY ? description->depth_or_layers : 1;
 	target->written++;
 	stream.textures_dirty = TEXTURES_ALL;
+	stream.description_generation++;
 	stream.uniforms_dirty = 1;
 	stream.uniforms_effect = stream.effect_valid = 0;
 }
@@ -667,6 +674,7 @@ void xgpu_vulkan_stream_vr_changed(void)
 {
 	stream.uniforms_dirty = 1;
 	stream.textures_dirty = TEXTURES_ALL;
+	stream.description_generation++;
 	stream.uniforms_effect = stream.effect_valid = 0;
 }
 
@@ -682,6 +690,7 @@ static void stream_target_multisample(void *context, const struct xgpu_stream_ta
 	int samples = record->samples > 1 ? record->samples : 0;
 
 	(void)context;
+	stream.description_generation++;
 	if (!target || target->samples == samples)
 		return;
 	/* (its pixels resolved first; the new attachment's are cleared: the
@@ -744,6 +753,10 @@ static void prepass_prepare(void);
 static void stream_set_targets(void *context, const struct xgpu_stream_set_targets *record)
 {
 	(void)context;
+	/* (the guest sets them before most draws: the pipelines' descriptions
+	changed only where they did) */
+	if (stream.color != record->color || stream.views != (record->views > 1 ? (uint32_t)record->views : 1))
+		stream.description_generation++;
 	stream.color = record->color;
 	stream.depth = record->depth;
 	stream.samples = record->samples;
@@ -1500,6 +1513,7 @@ static int stream_pipeline(void *context, uint32_t id, const struct xgpu_stream_
 
 	(void)context;
 	stream.pipeline_id = 0;
+	stream.description_generation++;
 	if (!id || id >= XGPU_STREAM_PIPELINES)
 		return 0;
 	entry = &stream.pipelines[id];
@@ -1839,9 +1853,15 @@ static VkFormat element_format(uint8_t format, int *integers)
 
 static void stream_set_vertices(void *context, const struct host_render_vertex_input *input)
 {
-	uint32_t integers = 0, index;
+	struct xgpu_vulkan_attribute attributes[16];
+	uint16_t strides[16];
+	uint32_t integers = 0, index, present = stream.present;
 
 	(void)context;
+	/* (the layout as it was: the pipelines' descriptions changed where it
+	did, which the guest's sets before each draw mostly do not) */
+	memcpy(attributes, stream.attributes, sizeof(attributes));
+	memcpy(strides, stream.strides, sizeof(strides));
 	memset(stream.attributes, 0, sizeof(stream.attributes));
 	if (input->layout)
 	{
@@ -1882,6 +1902,9 @@ static void stream_set_vertices(void *context, const struct host_render_vertex_i
 		}
 	}
 	memcpy(stream.constant_attributes, input->attributes, sizeof(stream.constant_attributes));
+	if (present != stream.present || memcmp(attributes, stream.attributes, sizeof(attributes)) ||
+		memcmp(strides, stream.strides, sizeof(strides)))
+		stream.description_generation++;
 }
 
 /* a stream's vertices for the draw: the mirror's segment, or the data
@@ -1945,6 +1968,9 @@ struct draw_input
 	const uint16_t *indices;
 	struct xgpu_vulkan_range index_range;
 	int32_t vertex_offset;
+	/* an immediate draw's registers written, with bit 31 (its own layout,
+	made of them alone); 0: the stream's (stream_set_vertices') */
+	uint32_t layout;
 };
 
 /* the draw's indices in the ring: as they are, or a line loop made a list
@@ -2097,6 +2123,20 @@ static int effect_textures(struct xgpu_vulkan_texture textures[4])
 	return reads_depth;
 }
 
+/* the last draw's pipeline and what its description was made of
+(draw_pipeline) */
+static struct
+{
+	VkPipeline pipeline;
+	uint32_t generation, layout, present, bindings;
+	const struct stream_pipeline *entry;
+	const struct xgpu_stream_pipeline_define *definition;
+	VkShaderModule vertex_shader, pixel_shader;
+	const struct xgpu_vulkan_attribute *attributes;
+	uint16_t inputs;
+	uint8_t primitive, sky, color_read;
+} last_draw;
+
 /* a draw of the current pipeline, made and drawn: its shaders for the
 draw's variant, its pipeline for the vertex layout, its textures and
 uniforms, its vertices and indices; nothing if it cannot be drawn. Apart
@@ -2105,12 +2145,13 @@ pipeline made apart from the draws (xgpu_vulkan_pipeline_ready), and FALSE
 before anything is done where either is not made yet; else TRUE */
 static int draw_pipeline(const struct draw_input *input, int apart)
 {
-	struct xgpu_vulkan_pipeline_description pipeline = stream.pipeline;
+	struct xgpu_vulkan_pipeline_description pipeline;
 	struct xgpu_vulkan_draw draw;
 	struct xgpu_vulkan_texture effect_draw_textures[4];
 	struct stream_pipeline *entry;
 	struct variant variant;
 	uint32_t index, attempt;
+	uint8_t primitive, sky = 0, color_read;
 	double traced;
 
 	if (!stream.pipeline_id || !stream.definition || !input->count)
@@ -2122,81 +2163,116 @@ static int draw_pipeline(const struct draw_input *input, int apart)
 		return 0;
 	if (!pipeline_shaders(entry, stream.definition, &variant))
 		return 1;
-	pipeline.vertex_shader = entry->vertex_shader;
-	pipeline.pixel_shader = entry->pixel_shader;
-	pipeline.primitive_class = primitive_class(input->primitive);
-	memset(&draw, 0, sizeof(draw));
-	for (index = 0; index < 16; index++)
-	{
-		const struct xgpu_vulkan_attribute *attribute = &input->attributes[index];
-
-		if (!(entry->inputs & (1u << index)))
-			continue;
-		if (attribute->format != VK_FORMAT_UNDEFINED)
-		{
-			pipeline.attributes[index] = *attribute;
-			pipeline.strides[attribute->binding] = input->strides[attribute->binding];
-			draw.bindings |= 1u << attribute->binding;
-		}
-		else
-		{
-			/* (the input's value, every vertex the same: a NORMPACKED3
-			input's, its value's bits) */
-			pipeline.attributes[index].format = (stream.definition->key.packed_attributes & (1u << index)) &&
-				!stream.definition->key.immediate ? VK_FORMAT_R32_UINT : VK_FORMAT_R32G32B32A32_SFLOAT;
-			pipeline.attributes[index].binding = XGPU_VULKAN_BINDING_CONSTANT;
-			pipeline.attributes[index].offset = (uint16_t)(index * 16);
-			pipeline.strides[XGPU_VULKAN_BINDING_CONSTANT] = 0;
-			draw.bindings |= 1u << XGPU_VULKAN_BINDING_CONSTANT;
-		}
-	}
-	/* (a binding the pipeline reads that has no stream: not drawn) */
-	for (index = 0; index < 16; index++)
-	{
-		if ((draw.bindings & (1u << index)) && !(input->present & (1u << index)))
-			return 1;
-	}
-	pipeline.view_mask = stream.views > 1 ? (uint8_t)((1u << stream.views) - 1) : 0;
-	if (target_image(stream.color))
-		pipeline.color_format = xgpu_vulkan_image_description(target_image(stream.color))->format;
-	/* (display.hdr: the target's half floats read where it is drawn) */
-	pipeline.color_read = pipeline.color_format == XGPU_VULKAN_FORMAT_RGBA16F && stream.capabilities.color_read &&
-		XGPU_HDR_SHADER_BLENDS(stream.definition->key.pixel.hdr);
-	/* (a twin in the pre-pass: into its inputs, one sample, nothing blended) */
-	if (prepass.drawing)
-	{
-		pipeline.color_format = XGPU_VULKAN_FORMAT_RGBA32_UINT;
-		pipeline.color_read = 0;
-		pipeline.blend = 0;
-		pipeline.color_mask = 15;
-		pipeline.samples = 1;
-		pipeline.view_mask = 0;
-		pipeline.depth_format = XGPU_VULKAN_FORMAT_D24S8;
-	}
+	primitive = primitive_class(input->primitive);
 #ifdef HALO_VR
-	pipeline.depth_clamp = host_vulkan_vr_sky() != 0;
+	sky = host_vulkan_vr_sky() != 0;
 #endif
+	memset(&draw, 0, sizeof(draw));
+	/* (the last draw's pipeline where nothing its description is made of
+	changed: the guest's draws mostly repeat their neighbours') */
+	if (!stream.preparing && last_draw.pipeline && last_draw.generation == stream.description_generation &&
+		last_draw.entry == entry && last_draw.definition == stream.definition &&
+		last_draw.vertex_shader == entry->vertex_shader && last_draw.pixel_shader == entry->pixel_shader &&
+		last_draw.inputs == entry->inputs && last_draw.layout == input->layout &&
+		(input->layout || last_draw.attributes == input->attributes) && last_draw.present == input->present &&
+		last_draw.primitive == primitive && last_draw.sky == sky)
 	{
-		uint64_t before = xgpu_vulkan_pipeline_count();
-		uint64_t vertex_program = stream.definition->key.vertex_program[0] |
-			((uint64_t)stream.definition->key.vertex_program[1] << 32);
+		draw.pipeline = last_draw.pipeline;
+		draw.bindings = last_draw.bindings;
+		color_read = last_draw.color_read;
+	}
+	else
+	{
+		pipeline = stream.pipeline;
+		pipeline.vertex_shader = entry->vertex_shader;
+		pipeline.pixel_shader = entry->pixel_shader;
+		pipeline.primitive_class = primitive;
+		for (index = 0; index < 16; index++)
+		{
+			const struct xgpu_vulkan_attribute *attribute = &input->attributes[index];
 
-		if (stream.preparing)
-			(void)xgpu_vulkan_pipeline_prepare(&pipeline);
-		else if (apart)
-			draw.pipeline = xgpu_vulkan_pipeline_ready(&pipeline);
-		else if (stream.prepared)
-			draw.pipeline = xgpu_vulkan_pipeline_ready(&pipeline);
-		else
-			draw.pipeline = xgpu_vulkan_pipeline(&pipeline);
-		if (xgpu_vulkan_pipeline_count() != before)
-			pipeline_description_trace(&pipeline, vertex_program, &variant);
-		/* (a world pipeline or a twin made apart too: its stand-in drawn,
-		or nothing, until it is made, but missed all the same) */
-		if (!stream.preparing && stream.prepared && xgpu_vulkan_pipeline_count() != before)
-			pipeline_missed(&pipeline, vertex_program);
-		if (apart && !stream.preparing && !draw.pipeline)
-			return 0;
+			if (!(entry->inputs & (1u << index)))
+				continue;
+			if (attribute->format != VK_FORMAT_UNDEFINED)
+			{
+				pipeline.attributes[index] = *attribute;
+				pipeline.strides[attribute->binding] = input->strides[attribute->binding];
+				draw.bindings |= 1u << attribute->binding;
+			}
+			else
+			{
+				/* (the input's value, every vertex the same: a NORMPACKED3
+				input's, its value's bits) */
+				pipeline.attributes[index].format = (stream.definition->key.packed_attributes & (1u << index)) &&
+					!stream.definition->key.immediate ? VK_FORMAT_R32_UINT : VK_FORMAT_R32G32B32A32_SFLOAT;
+				pipeline.attributes[index].binding = XGPU_VULKAN_BINDING_CONSTANT;
+				pipeline.attributes[index].offset = (uint16_t)(index * 16);
+				pipeline.strides[XGPU_VULKAN_BINDING_CONSTANT] = 0;
+				draw.bindings |= 1u << XGPU_VULKAN_BINDING_CONSTANT;
+			}
+		}
+		/* (a binding the pipeline reads that has no stream: not drawn) */
+		for (index = 0; index < 16; index++)
+		{
+			if ((draw.bindings & (1u << index)) && !(input->present & (1u << index)))
+				return 1;
+		}
+		pipeline.view_mask = stream.views > 1 ? (uint8_t)((1u << stream.views) - 1) : 0;
+		if (target_image(stream.color))
+			pipeline.color_format = xgpu_vulkan_image_description(target_image(stream.color))->format;
+		/* (display.hdr: the target's half floats read where it is drawn) */
+		pipeline.color_read = pipeline.color_format == XGPU_VULKAN_FORMAT_RGBA16F && stream.capabilities.color_read &&
+			XGPU_HDR_SHADER_BLENDS(stream.definition->key.pixel.hdr);
+		/* (a twin in the pre-pass: into its inputs, one sample, nothing blended) */
+		if (prepass.drawing)
+		{
+			pipeline.color_format = XGPU_VULKAN_FORMAT_RGBA32_UINT;
+			pipeline.color_read = 0;
+			pipeline.blend = 0;
+			pipeline.color_mask = 15;
+			pipeline.samples = 1;
+			pipeline.view_mask = 0;
+			pipeline.depth_format = XGPU_VULKAN_FORMAT_D24S8;
+		}
+		pipeline.depth_clamp = sky;
+		color_read = pipeline.color_read;
+		{
+			uint64_t before = xgpu_vulkan_pipeline_count();
+			uint64_t vertex_program = stream.definition->key.vertex_program[0] |
+				((uint64_t)stream.definition->key.vertex_program[1] << 32);
+
+			if (stream.preparing)
+				(void)xgpu_vulkan_pipeline_prepare(&pipeline);
+			else if (apart)
+				draw.pipeline = xgpu_vulkan_pipeline_ready(&pipeline);
+			else if (stream.prepared)
+				draw.pipeline = xgpu_vulkan_pipeline_ready(&pipeline);
+			else
+				draw.pipeline = xgpu_vulkan_pipeline(&pipeline);
+			if (xgpu_vulkan_pipeline_count() != before)
+				pipeline_description_trace(&pipeline, vertex_program, &variant);
+			/* (a world pipeline or a twin made apart too: its stand-in drawn,
+			or nothing, until it is made, but missed all the same) */
+			if (!stream.preparing && stream.prepared && xgpu_vulkan_pipeline_count() != before)
+				pipeline_missed(&pipeline, vertex_program);
+			if (apart && !stream.preparing && !draw.pipeline)
+				return 0;
+		}
+		/* (kept for the next draw: a pipeline made is never destroyed) */
+		last_draw.pipeline = stream.preparing ? VK_NULL_HANDLE : draw.pipeline;
+		last_draw.generation = stream.description_generation;
+		last_draw.entry = entry;
+		last_draw.definition = stream.definition;
+		last_draw.vertex_shader = entry->vertex_shader;
+		last_draw.pixel_shader = entry->pixel_shader;
+		last_draw.inputs = entry->inputs;
+		last_draw.layout = input->layout;
+		last_draw.attributes = input->attributes;
+		last_draw.present = input->present;
+		last_draw.primitive = primitive;
+		last_draw.sky = sky;
+		last_draw.bindings = draw.bindings;
+		last_draw.color_read = color_read;
 	}
 	if (stream.preparing)
 	{
@@ -2273,7 +2349,7 @@ static int draw_pipeline(const struct draw_input *input, int apart)
 	draw.dynamic = &stream.dynamic;
 	draw.dynamic_lights = stream.definition->pixel_program.dynamic_lights != 0;
 	draw.ambient_occlusion = stream.definition->pixel_program.ambient_occlusion != 0;
-	draw.reads_color = pipeline.color_read;
+	draw.reads_color = color_read;
 	{
 		const struct xgpu_stream_pipeline_key *key = &stream.definition->key;
 
@@ -2414,6 +2490,7 @@ static void draw_input(const struct draw_input *input)
 	stream.pipeline_id = id;
 	stream.definition = definition;
 	stream.pipeline = pipeline;
+	stream.description_generation++;
 }
 
 /* the draws of set_vertices's input */
@@ -2515,6 +2592,7 @@ static void stream_draw_immediate(void *context, const struct xgpu_stream_draw_i
 	input.attributes = layout;
 	input.strides = strides;
 	input.present = 1;
+	input.layout = record->written | 0x80000000u;
 	input.sources = sources;
 	input.values = attributes;
 	input.primitive = record->primitive;
@@ -3254,12 +3332,14 @@ static void prepass_draw(const struct draw_input *input)
 	stream.definition = &prepass.definitions[id];
 	/* (an occluder's: strictly nearer) */
 	stream.pipeline.depth_function = twin.key.depth_function;
+	stream.description_generation++;
 	prepass.drawing = entry;
 	(void)draw_pipeline(input, 1);
 	prepass.drawing = NULL;
 	stream.definition = definition;
 	stream.pipeline = pipeline;
 	stream.pipeline_id = id;
+	stream.description_generation++;
 }
 
 /* the pass's triangle over a rectangle of the occlusion's image, reading
@@ -3602,6 +3682,7 @@ static void stream_frame_end(void *context)
 	/* (each stage's texture looked for at least once a frame, so that the
 	cache sees it used and keeps it: textures_bind; and its sampler) */
 	stream.textures_dirty = TEXTURES_ALL;
+	stream.description_generation++;
 	memset(stream.sampler_valid, 0, sizeof(stream.sampler_valid));
 }
 
