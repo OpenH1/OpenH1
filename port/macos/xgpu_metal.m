@@ -1564,7 +1564,9 @@ static void archive_save(double wait)
 	done = dispatch_semaphore_create(0);
 	dispatch_async(metal.archive_queue, ^{
 		MTLBinaryArchiveDescriptor *descriptor = [MTLBinaryArchiveDescriptor new];
-		NSString *temporary = [path stringByAppendingString:@".new"];
+		/* (the process's own: the replay's services on one recording save
+		one archive at once) */
+		NSString *temporary = [path stringByAppendingFormat:@".new%d", (int)getpid()];
 		id<MTLBinaryArchive> archive;
 		NSError *error = nil;
 

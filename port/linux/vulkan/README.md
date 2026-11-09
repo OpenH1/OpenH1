@@ -259,6 +259,18 @@ measuring play runs the recording at about 900 frames a second
 (`tools/test_render_replay.py` tests the service with a CPU backend of its
 own; no GPU, no game).
 
+The service's `cost` (each pass's and draw's GPU time,
+`docs/replay_protocol.md`) times the frame played again with timestamps
+(`xgpu_vulkan_timing_*`): one at the bottom of the pipeline before and
+after each draw, in its segment's commands, and one after each pass and
+each piece of work outside passes as `segments_play` plays them, masked to
+the queue's `timestampValidBits`. A pass's time runs from the timestamp
+before it, so the passes add up to the frame's; a draw belongs to the pass
+whose span holds its end. Its method is `timestamps` (a draw's own time);
+the service's `subtract` works here too. `HALO_VULKAN_TIMING_DRAWS=0` times
+the passes alone; `HALO_PASS_TIMES` sets `debug.pass_times` in the replay,
+as the game reads it, to compare against.
+
 ## The window
 
 `display.vsync` chooses the present mode: FIFO waits for the display;

@@ -6,7 +6,8 @@ decoded on a Mac, base64, the PNG writer, the requests' parser), and its
 service (--serve) driven over its pipes on a recording it makes: frames of a
 CPU backend's rectangles, read back exactly however they are reached (on,
 back, again), their ID buffers and pick's stacks, their draws, the
-timeline's thumbnails and the errors.
+timeline's thumbnails, the GPU's cost of their passes and draws (the CPU
+backend's made-up times, by both methods) and the errors.
 
 The Metal and Vulkan replays are the same code with a GPU's backend
 (halo_replay.m, port/linux/vulkan/tools/halo_replay.c); a recording of the

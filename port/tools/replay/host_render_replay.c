@@ -1181,7 +1181,9 @@ static void draw_done(void)
 		platform->cost_draw(UINT32_MAX);
 }
 
-/* (the cost) the draw is one left out: not handed on */
+/* (the cost) the draw is one left out: not handed on. skip_draw_pass:
+each draw's pass, the frame's whole play's (inspect.skip_pass's draws are
+left out) */
 static const uint32_t *skip_draw_pass;
 static uint32_t skip_draw_count;
 
