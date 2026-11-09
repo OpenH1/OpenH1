@@ -1286,7 +1286,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.viewmodel_visible` | `true` | `HALO_VIEWMODEL_VISIBLE` | `true`: the first-person weapon, hands and what is attached to them are drawn. `false`: they are not; firing, animation, sound and lights go on, and other players' models are drawn. |
 | `display.passenger_third_person` | `false` | `HALO_PASSENGER_THIRD_PERSON` | Third-person view for the Warthog's passenger and the Scorpion's four passengers. Uses the gunner's camera on the Warthog and the driver's on the Scorpion, within the passenger's firing arc. Smooth entry and exit; weapon zoom is disabled while riding. The reticle follows the shot's centre ray. Local view only. In the campaign and co-op only: not in multiplayer, where seeing around the vehicle would be an advantage. Never in VR, which stays in first person in every seat. |
 | `display.viewmodel_shield` | `false` | `HALO_VIEWMODEL_SHIELD` | `true`: the energy shield's flare is drawn on the first-person arms too, as on the body, with the unit's own shield shader, kept closer to the arms than to the body. The stock game draws it on the body only. The flare is the shield's hits: it shows as the shield takes damage and fades over the next second or two (the unit's recent shield damage), so a full shield that nothing hits shows none, on the arms as on the body. An overshield stays lit on the arms with `display.overshield_effect` (OVERSHIELD, on the same screen). |
-| `display.first_person_legs` | `false` | `HALO_FIRST_PERSON_LEGS` | `true`: your own body is drawn in first person from the belly down, with its shadow, so you see your legs when you look down, moving as the body's animation moves them, its feet where they stand. Refer to "Field of view". |
+| `display.first_person_legs` | `false` | `HALO_FIRST_PERSON_LEGS` | `true`: your own body is drawn in first person from the belly down, with its shadow, so you see your legs when you look down, moving as the body's animation moves them, its feet where they stand; its lower body stays planted as you turn and faces the way you walk, on your screen alone. Refer to "Field of view". |
 | `display.shield_color` | `default` | `HALO_SHIELD_COLOR` | Your energy shield's flare as this machine draws it: `default` (the shield's own) or a multiplayer armor color (`white`, `black`, `red`, `blue`, `gray`, `yellow`, `green`, `pink`, `purple`, `cyan`, `cobalt`, `orange`, `teal`, `sage`, `brown`, `tan`, `maroon`, `salmon`), whatever the armor's, on the body and, with `display.viewmodel_shield`, on the first-person arms. The shield's own shader is drawn with its two colors replaced at their brightness; the flare is added to what is behind it, so `black` is drawn a faint grey. Only this machine sees it. |
 | `display.high_res_hud` | `true` | `HALO_HIGH_RES_HUD` | `true`: the HUD (meters, counters, panels and their outlines, reticles, waypoints, scopes, the message icons and their pictures of the weapons, the reticle's warnings, the multiplayer icons) is drawn from the high-res assets in `port/assets/hud`, 4x the size of the maps' bitmaps: Aerocatia's and Jessie's art from Halo PC Restored (`port/assets/hud/NOTICE.md`); the motion sensor and the health meter's base, which it has no larger, from redraws at 8x. Another language's text (the message icons' words, the warnings, the seat plates) is upscaled from its maps' own pixels without changing their layout. `false`: the maps' own bitmaps. |
 | `display.hud_button_style` | `classic` | `HALO_HUD_BUTTON_STYLE` | Gameplay controller icons while High-Res HUD is on: `classic` (the Xbox's flat faces, their letters cut out: Aerocatia's and Jessie's stencils from Halo PC Restored), `gems` (shaded Xbox faces), or `menu_gems` (Dark Gems). |
@@ -2638,20 +2638,33 @@ the view's height (10 by default; Halo 2's is about 9, Halo 3's about 11).
 
 LEGS (`display.first_person_legs`) draws your own body in first person
 from the belly down, so you see your legs when you look down, walking,
-running, strafing, crouching and jumping as everyone else sees them: it is
-the body others see, posed as they see it. Three rules place it, the same
-in every frame whatever the view does, so it neither shakes nor flickers:
+running, strafing, crouching and jumping: it is the body others see, posed
+as they see it, but for the heading of its lower body, which is yours alone
+(below). These rules place it, the same whatever the view's pitch, so it
+neither shakes nor flickers:
 
-- It stands 37 cm behind the eye along the body's own heading. The game's
-  eye is over the middle of the body; set back, the eye is before the belly,
-  as a person's eyes are before their chest, and looking down shows the
-  belt, the legs and the feet rather than only the top of the hips. The
-  heading is the body's, not the view's, so the feet stay put on the ground
-  however you turn and tilt the view.
+- Its lower body has a heading of its own, turned about the eye. Standing,
+  it stays planted while you turn the view within 60 degrees of it, so your
+  feet stay where they stand, and past that it turns after the view, quickly
+  and smoothly. Walking, it faces the way you walk: at an angle it turns
+  toward it (as far as halfway to sideways) and walks forward or backward,
+  never facing behind you, and straight sideways it sidesteps. Where the
+  game plays another walk than the one that heading walks (a sideways walk
+  at an angle), the legs are drawn walking theirs, so the feet stay where
+  they step. It turns by each frame's time, alike at any frame rate and
+  tick rate. Nothing of the game changes: others see the body as they always
+  did, and nothing of it is sent.
+- The eye is over the front of the body's hips and belly (about 19 cm before
+  the hips' joint, from the body's model), as a person's eyes are over the
+  front of their belly: looking down shows the legs going down and a little
+  forward, not the hips and belly before the eye, nor the thighs reaching
+  forward from behind it. The heading is level, so the feet stay put on the
+  ground however you tilt the view.
 - Its chest and all above it (the neck, the head, the arms: yours are the
-  weapon's) are folded into the joint at the top of its belly, which closes
-  it. Nothing is then near enough to the eye for the near edge of the view
-  to cut it and show the armour hollow, standing, walking or crouching.
+  weapon's) are folded into the joint at the top of its belly, and the belly
+  is flattened onto the top of the hips, closing it like a lid. Nothing is
+  then near enough to the eye for the near edge of the view to cut it and
+  show the armour hollow, standing, walking or crouching.
 - Where the eye comes down into the body (a crouch jump: the eye drops to
   crouching height while the body keeps its airborne pose, its hips at the
   eye), the body is lowered until its head is as far below the eye as on
