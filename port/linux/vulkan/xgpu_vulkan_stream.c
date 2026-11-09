@@ -181,6 +181,10 @@ struct stream_pipeline
 	/* and a z-sprite's (xgpu_shader.h, xgpu_pixel_program_depth_stage),
 	which tests the depth itself, by its fade: xgpu_spirv.c */
 	uint8_t effect_tests_depth;
+	/* the vertex constants its vertex shader reads (xgpu_spirv_module's),
+	and the run of registers from the first of them to the last */
+	uint64_t constants_read[3], constants_run[3];
+	uint8_t constants_first, constants_end;
 };
 
 struct program_entry
@@ -246,10 +250,15 @@ static struct
 	float effect_unproject[4][4][4], effect_eye[4][4];
 	float effect_scale[4], effect_offset[4], effect_screen_offset;
 	float constants[192][4];
-	int constants_dirty;
+	/* the registers set since the constants were last uploaded, and those
+	that upload has (bit n of word n / 64: c[n], from c[-96]) */
+	uint64_t constants_changed[3], constants_valid[3];
 	struct xgpu_vulkan_dynamic_state dynamic;
 	struct xgpu_vulkan_range uniforms_range, constants_range;
 	uint64_t uniforms_uploaded, constants_uploaded;
+	/* the enhanced dynamic lights' tint, and the colour it is of */
+	float tint[3], tint_from[4];
+	int tint_valid;
 
 	/* the stages as set, their samplers' border axes the shader draws, and
 	what is bound for them (looked at again where a stage changed, a
@@ -1112,9 +1121,24 @@ XGPU_MODEL_LIGHT_REGISTER: c[-82], c[-79] to c[-69], c[-57]) */
 /* the screen conversion's registers (c[-38], c[-37]) */
 #define SCREEN_CONVERSION (96 - 38)
 
+/* bits first to end - 1 of a mask of the 192 registers */
+static void registers_mask(uint32_t first, uint32_t end, uint64_t mask[3])
+{
+	int word;
+
+	for (word = 0; word < 3; word++)
+	{
+		uint32_t low = first > (uint32_t)word * 64 ? first - (uint32_t)word * 64 : 0;
+		uint32_t high = end < (uint32_t)word * 64 + 64 ? (end > (uint32_t)word * 64 ? end - (uint32_t)word * 64 : 0) : 64;
+
+		mask[word] = low >= high ? 0 : (high - low == 64 ? ~(uint64_t)0 : (((uint64_t)1 << (high - low)) - 1) << low);
+	}
+}
+
 static void stream_set_constants(void *context, const struct xgpu_stream_constants *record)
 {
 	uint32_t count = record->count;
+	uint64_t changed[3];
 
 	(void)context;
 	if (record->first >= 192)
@@ -1124,7 +1148,11 @@ static void stream_set_constants(void *context, const struct xgpu_stream_constan
 	if (!memcmp(stream.constants[record->first], record->values, (size_t)count * sizeof(stream.constants[0])))
 		return;
 	memcpy(stream.constants[record->first], record->values, (size_t)count * sizeof(stream.constants[0]));
-	stream.constants_dirty = 1;
+	/* (uploaded again for the draws that read them) */
+	registers_mask(record->first, record->first + count, changed);
+	stream.constants_changed[0] |= changed[0];
+	stream.constants_changed[1] |= changed[1];
+	stream.constants_changed[2] |= changed[2];
 	/* (the world's projection or the screen conversion: the effects' views) */
 	if (record->first < 4 || (record->first <= SCREEN_CONVERSION + 1 && record->first + count > SCREEN_CONVERSION))
 		stream.uniforms_effect = stream.effect_valid = 0;
@@ -1295,6 +1323,25 @@ static int debug_switch(const char *variable, int *cached)
 	return *cached;
 }
 
+/* the vertex constants a pipeline's vertex shader reads, and their run */
+static void constants_read_set(struct stream_pipeline *entry, const unsigned long long read[3])
+{
+	int number;
+
+	entry->constants_first = entry->constants_end = 0;
+	for (number = 0; number < 3; number++)
+		entry->constants_read[number] = (uint64_t)read[number];
+	for (number = 0; number < 192; number++)
+	{
+		if (!(read[number >> 6] & (1ull << (number & 63))))
+			continue;
+		if (entry->constants_first == entry->constants_end)
+			entry->constants_first = (uint8_t)number;
+		entry->constants_end = (uint8_t)(number + 1);
+	}
+	registers_mask(entry->constants_first, entry->constants_end, entry->constants_run);
+}
+
 /* a pipeline's shaders for a variant: made if the pipeline has none for it;
 0 if they cannot be */
 static int pipeline_shaders(struct stream_pipeline *entry, const struct xgpu_stream_pipeline_define *definition,
@@ -1355,6 +1402,7 @@ static int pipeline_shaders(struct stream_pipeline *entry, const struct xgpu_str
 		shader_dump(name, &module);
 		entry->vertex_shader = xgpu_vulkan_shader(module.words, module.count);
 		free(module.words);
+		constants_read_set(entry, module.constants_read);
 	}
 	free(program);
 	pixel_program_convert(&definition->pixel_program, &pixel);
@@ -1562,11 +1610,43 @@ static int effect_views(const struct xgpu_spirv_uniforms *to, const float projec
 #endif
 }
 
+/* the vertex constants a pipeline reads, in the ring for this submission:
+uploaded again only where one of them was set since the last upload, or
+that upload lacks one, and then only the run from the first of them to the
+last (the range bound is the 192 registers', but the shader reads no
+other) */
+static int constants_update(const struct stream_pipeline *entry, uint64_t serial)
+{
+	const uint64_t *read = entry->constants_read;
+	uint8_t *to;
+	int word;
+
+	if (stream.constants_uploaded == serial &&
+		!(read[0] & (stream.constants_changed[0] | ~stream.constants_valid[0])) &&
+		!(read[1] & (stream.constants_changed[1] | ~stream.constants_valid[1])) &&
+		!(read[2] & (stream.constants_changed[2] | ~stream.constants_valid[2])))
+		return 1;
+	to = xgpu_vulkan_upload(CONSTANTS_RANGE, 256, &stream.constants_range);
+	if (!to)
+		return 0;
+	if (entry->constants_end > entry->constants_first)
+		memcpy(to + (size_t)entry->constants_first * sizeof(stream.constants[0]), stream.constants[entry->constants_first],
+			(size_t)(entry->constants_end - entry->constants_first) * sizeof(stream.constants[0]));
+	for (word = 0; word < 3; word++)
+	{
+		stream.constants_valid[word] = entry->constants_run[word];
+		stream.constants_changed[word] = 0;
+	}
+	stream.constants_uploaded = serial;
+	return 1;
+}
+
 /* the uniforms both stages read and the vertex constants, in the ring for
 this submission (with the VR effects' views, for a VR effect's draw) */
-static int uniforms_update(int effect)
+static int uniforms_update(const struct stream_pipeline *entry)
 {
 	uint64_t serial = xgpu_vulkan_serial();
+	int effect = entry->effect;
 	/* (the constant depth bias, reversed depth's: the pipeline's and the
 	dynamic state's) */
 	float depth_bias = XGPU_VULKAN_REVERSED_DEPTH && stream.definition ?
@@ -1612,9 +1692,16 @@ static int uniforms_update(int effect)
 		to->world_ao[1] = from->world_ao[1];
 		to->world_ao[2] = from->world_ao[2];
 		to->world_ao[3] = from->world_ao[3];
-		/* (the enhanced dynamic lights' tint, in linear light) */
-		for (stage = 0; stage < 3; stage++)
-			to->dynamic_light_tint[stage] = powf(from->ps_final_c0[stage], 2.2f);
+		/* (the enhanced dynamic lights' tint, in linear light: worked out
+		again where the colour changed) */
+		if (!stream.tint_valid || memcmp(stream.tint_from, from->ps_final_c0, sizeof(stream.tint_from)))
+		{
+			for (stage = 0; stage < 3; stage++)
+				stream.tint[stage] = powf(from->ps_final_c0[stage], 2.2f);
+			memcpy(stream.tint_from, from->ps_final_c0, sizeof(stream.tint_from));
+			stream.tint_valid = 1;
+		}
+		memcpy(to->dynamic_light_tint, stream.tint, 3 * sizeof(to->dynamic_light_tint[0]));
 		to->dynamic_light_tint[3] = 1.0f;
 		memcpy(to->blend_constant, stream.dynamic.blend_color, sizeof(to->blend_constant));
 		for (stage = 0; stage < 4; stage++)
@@ -1656,16 +1743,8 @@ static int uniforms_update(int effect)
 		stream.uniforms_dirty = 0;
 		stream.uniforms_uploaded = serial;
 	}
-	if (stream.constants_dirty || stream.constants_uploaded != serial)
-	{
-		void *to = xgpu_vulkan_upload(CONSTANTS_RANGE, 256, &stream.constants_range);
-
-		if (!to)
-			return 0;
-		memcpy(to, stream.constants, CONSTANTS_RANGE);
-		stream.constants_dirty = 0;
-		stream.constants_uploaded = serial;
-	}
+	if (!constants_update(entry, serial))
+		return 0;
 	/* (the constants' upload may have begun another submission) */
 	return stream.uniforms_uploaded == xgpu_vulkan_serial();
 }
@@ -2114,7 +2193,7 @@ static int draw_pipeline(const struct draw_input *input, int apart)
 		preparation_end(0, traced);
 		serial = xgpu_vulkan_serial();
 		traced = preparation_start();
-		if (!uniforms_update(entry->effect))
+		if (!uniforms_update(entry))
 		{
 			preparation_end(1, traced);
 			continue;
