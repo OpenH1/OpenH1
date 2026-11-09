@@ -2277,6 +2277,15 @@ static const struct config_setting config_settings[] =
 		"memory never written: two runs, one of each, compared with\n"
 		"tools/determinism_compare.py, part where one reaches the game; empty\n"
 		"as the game always has (the game's malloc fills with 0xCA)." },
+	{ "debug.frame_log", _config_string, "\"\"", "HALO_FRAME_LOG", _environment_value, _platform_all,
+		"A file to write a line to for each frame presented once the scenario's\n"
+		"simulation has started: its seconds, then microseconds of the frame,\n"
+		"the GPU's (-1 not measured), the render thread's, the game's waits for\n"
+		"the renderer and the display, and the game thread's CPU (a benchmark's:\n"
+		"tools/bench.py; port/linux/src/report.c). Empty: none." },
+	{ "debug.frame_log_seconds", _config_real, "0.0", "HALO_FRAME_LOG_SECONDS", _environment_value, _platform_all,
+		"With debug.frame_log, quit once the scenario has run this many seconds\n"
+		"of simulation; 0 never." },
 	{ "debug.frame_time", _config_real, "0.0", "HALO_FRAME_TIME", _environment_value, _platform_all,
 		"Seconds of game time each frame runs, whatever time it took, so that two\n"
 		"runs of the same input run the same frames (the determinism check),\n"
