@@ -4983,7 +4983,14 @@ int p2p_hand_off_invite(void)
 	int socket;
 	int attempt;
 	int result = 0;
+	/* (once a process: the platform's start can run again, after SDL could
+	not start, and by then this copy's own p2p has opened the hand-off's
+	socket, which would answer this copy's invite, #861) */
+	static int tried;
 
+	if (tried)
+		return 0;
+	tried = 1;
 	if (!command_line_invite(invite, sizeof(invite)) || !handoff_key(key))
 		return 0;
 	socket = open_socket(SOCK_DGRAM, network_long(0x7F000001), 0, NULL);
