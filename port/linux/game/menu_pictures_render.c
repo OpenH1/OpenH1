@@ -78,11 +78,13 @@ shown, not the loading screen.
 #include "cutscene/cinematics.h"
 #include "effects/player_effects.h"
 #include "game/game.h"
+#include "game/players.h"
 #include "hs/hs.h"
 #include "input/input.h"
 #include "interface/interface.h"
 #include "interface/ui_widget.h"
 #include "main/main.h"
+#include "objects/objects.h"
 #include "rasterizer/rasterizer.h"
 #include "render/render.h"
 #include "scenario/scenario.h"
@@ -313,6 +315,24 @@ static void prepare_command(
 	char const *line)
 {
 	hs_compile_and_evaluate((char *)line);
+}
+
+/* the player's body (and what it holds) gone from the world: the player
+given no unit first, for the scripts' object_destroy refuses a player's
+(hs_object_destroy: a10's picture had the Master Chief standing in it,
+issue 881) */
+static void prepare_player_body_remove(
+	void)
+{
+	long unit_index;
+
+	if (!local_player_exists(0))
+		return;
+	unit_index = player_get(local_player_get_player_index(0))->unit_index;
+	if (unit_index == NONE)
+		return;
+	players_set_local_player_unit(0, NONE);
+	object_delete(unit_index);
 }
 
 /* the world's ticks run now (its time stood still, game_speed 0, else) */
@@ -779,7 +799,7 @@ static void prepare_update(
 		/* (the player's body gone after the pose's own lines, which may
 		need it: cheat_teleport_to_camera, for where the camera's view is
 		drawn from) */
-		prepare_command("object_destroy (unit (list_get (players) 0))");
+		prepare_player_body_remove();
 		prepare_quiet();
 		snprintf(line, sizeof(line), "debug_camera_set \"%s\"", picture->camera);
 		prepare_command(line);
