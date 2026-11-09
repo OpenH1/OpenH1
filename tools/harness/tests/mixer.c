@@ -1738,10 +1738,13 @@ int main(int argc, char **argv)
 				voices[voice]->next = streams;
 				streams = voices[voice];
 			}
+			/* (the peaks once the output's 20 Hz high pass has settled from
+			the tone's abrupt start, after a quarter of a second: its ringing,
+			decaying in some 20 ms, adds 0.06 dB just after it) */
 			for (chunk = 0; chunk < OUTPUT_RATE / 2 / CHUNK; chunk++)
 			{
 				mix(mixed, CHUNK, TRUE);
-				for (n = 0; chunk && n < CHUNK * 2; n++)
+				for (n = 0; chunk >= OUTPUT_RATE / 4 / CHUNK && n < CHUNK * 2; n++)
 					peaks[count - 1] = fabsf(mixed[n]) > peaks[count - 1] ? fabsf(mixed[n]) : peaks[count - 1];
 			}
 			streams = NULL;
