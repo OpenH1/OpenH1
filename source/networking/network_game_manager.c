@@ -78,6 +78,7 @@ symbols in this file:
 
 #include "cseries/cseries.h"
 #include "cseries/errors.h"
+#include "cache/cache_files.h" /* port: cache_files_map_loadable */
 #include "game/game.h"
 #include "game/game_engine.h"
 #include "game/players.h"
@@ -798,7 +799,15 @@ boolean network_game_create_game_objects(
 			break;
 	}
 
-	game_precache_new_map(options.map_name, TRUE);
+	/* port: a map this machine cannot load (a name another machine sent that
+	is no map here, a map file damaged) refused, the game left
+	(network_game_client_game_has_started's caller), where the Xbox's
+	precache took it for a damaged disc and stopped for good */
+	if (!cache_files_map_loadable(options.map_name) || !game_precache_new_map_refusable(options.map_name))
+	{
+		error(_error_silent, "network game: can't load map '%s'", options.map_name);
+		return FALSE;
+	}
 	main_menu_unload();
 
 	/* port: and whenever a map is loaded. After a game the client is back in

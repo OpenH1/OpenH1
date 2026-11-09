@@ -895,9 +895,13 @@ void game_dispose(
 	return;
 }
 
-void game_precache_new_map(
+/* port: a map's precache that may fail (game_precache_new_map_refusable):
+its failure returned, not the Xbox's damaged disc (display_error_damaged_media),
+whose error stops the game for good */
+static boolean game_precache_map(
 	char *map_name,
-	boolean blocking)
+	boolean blocking,
+	boolean refusable)
 {
 	long map_status;
 
@@ -921,12 +925,18 @@ void game_precache_new_map(
 		}
 
 		if (!cache_files_precache_in_progress() &&
-			!cache_files_precache_map_begin(map_name, blocking))
+			!cache_files_precache_map_begin(map_name, blocking && !refusable))
 		{
 			error(
 				_error_silent,
 				"shouldn't be here... map '%s' doesn't exist",
 				map_name);
+			/* port: (refused, the game as it was) */
+			if (blocking && refusable)
+			{
+				halo_loading_end();
+				return FALSE;
+			}
 			if (blocking)
 			{
 				match_vassert(
@@ -970,6 +980,18 @@ void game_precache_new_map(
 
 			progress_bar_end();
 			ui_widgets_close_all();
+			/* port: (refused, its copy ended: the cache file emptied,
+			cache_files_precache_map_mark) */
+			if (map_status == _cached_map_file_failed && refusable)
+			{
+				error(_error_silent, "the copy of map '%s' into the cache failed", map_name);
+				cache_files_precache_map_end();
+				globals = game_globals;
+				globals->map_load_in_progress = FALSE;
+				globals->loading_progress = 0.0f;
+				halo_loading_end();
+				return FALSE;
+			}
 			if (map_status == _cached_map_file_failed)
 				display_error_damaged_media();
 			cache_files_precache_map_end();
@@ -998,7 +1020,24 @@ void game_precache_new_map(
 	}
 
 	halo_load_trace("precache.end", map_name); /* port: loading measurement */
+	return TRUE;
+}
+
+void game_precache_new_map(
+	char *map_name,
+	boolean blocking)
+{
+	game_precache_map(map_name, blocking, FALSE);
 	return;
+}
+
+/* port: a map precached, blocking, as game_precache_new_map does, but a map
+that cannot be copied into the cache (a damaged map file) returned FALSE,
+with nothing of the current game disposed of (main_change_map_name) */
+boolean game_precache_new_map_refusable(
+	char *map_name)
+{
+	return game_precache_map(map_name, TRUE, TRUE);
 }
 
 void game_dispose_from_old_map(
