@@ -53,9 +53,18 @@ preserve their pixels. By default every pass stores its attachments: later
 scope, cockpit and runtime-depth passes can read the depth.
 `HALO_VULKAN_STATS` includes attachment loads and clears.
 
-Discards (on by default since they were measured on the Steam Frame,
-#335; `HALO_VULKAN_DISCARDS=0`: off) store less from a tiler's tile memory, as the Metal backend
-does (#131). Each pass's draws go into a secondary command buffer, and the
+Discards (on by default on a tiler since they were measured on the Steam
+Frame, #335; `HALO_VULKAN_DISCARDS=0`: off) store less from a tiler's tile memory, as the Metal backend
+does (#131). A tiler is a GPU of ARM, Qualcomm, Imagination, Apple or
+Broadcom, or any with lazily allocated memory. An immediate GPU (NVIDIA's,
+AMD's, Intel's: a desktop's, a laptop's, the Steam Deck's) has no tile
+memory for them to save, and there they are off unless
+`HALO_VULKAN_DISCARDS=1`: the segments below cost the render thread a
+secondary command buffer begun, ended and executed for each pass and each
+piece of work between passes, and the draws' state bound again in each (on
+an RTX 3090, 22 secondary command buffers and 92 pipeline binds a frame of
+250 draws), so the passes are recorded into the main command buffer as they
+are drawn, the state bound in it kept from pass to pass. Each pass's draws go into a secondary command buffer, and the
 pass's `vkCmdBeginRendering` is made at the submission, when what the
 later work does with its attachments is known (`xgpu_vulkan.c`, "the main
 command buffer in segments"):
@@ -154,7 +163,7 @@ four multiview views and fragment storage-buffer atomics.
 | `HALO_VULKAN_NO_RAY_QUERIES=1` | The device made without ray queries, as one that has none: `display.ambient_occlusion` `"ray_traced"` draws as `"world"` (`docs/world-ao.md`, "Hardware ray queries") |
 | `HALO_VULKAN_RT_FLIP=1` | `"ray_traced"`'s objects' triangles' facing turned (`VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR`), to check which way they face. For checking only |
 | `HALO_VULKAN_NO_SUBGROUPS=1` | Shaders made as for a device without the subgroups' bitwise operations in pixel shaders (`display.ambient_occlusion` `"world"`'s proxies walked a pixel at a time: `docs/world-ao.md`, "Where the time goes") |
-| `HALO_VULKAN_DISCARDS=0` | Every attachment stored, passes recorded in the main command buffer as drawn: discards off (they are on by default: attachments stored only where something later reads them, multisampled targets resolved in their pass and, with lazily allocated memory, transient, passes put aside; above) |
+| `HALO_VULKAN_DISCARDS=0`, `=1` | Every attachment stored, passes recorded in the main command buffer as drawn: discards off (they are on by default on a tiler, off on an immediate GPU: attachments stored only where something later reads them, multisampled targets resolved in their pass and, with lazily allocated memory, transient, passes put aside; above); `=1`: on, whatever the GPU |
 | `HALO_VULKAN_ASIDE=0` | With `HALO_VULKAN_DISCARDS`: no passes put aside, no buffers renamed (above) |
 | `HALO_VULKAN_TRANSIENT=0`, `=force` | With `HALO_VULKAN_DISCARDS`: no transient multisampled targets, or transient ones in ordinary memory where the device has no lazily allocated memory |
 | `HALO_NO_VSYNC=1` | `display.vsync = false`: presented without waiting for the display (mailbox where the surface has it, else immediate) instead of FIFO |

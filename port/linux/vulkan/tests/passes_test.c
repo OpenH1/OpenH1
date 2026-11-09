@@ -511,6 +511,9 @@ static void vertex_input_test(void)
 		bound_vertices = 0;
 		xgpu_vulkan_draw(&draw);
 		assert(begins == before + 1 && vk.pass_reads_depth);
+		/* (without discards the pass is the main command buffer's, which
+		keeps the state bound before it) */
+		assert(!vk.deferred && bound_vertices == 0);
 		assert(began_depth.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && began_depth.storeOp == VK_ATTACHMENT_STORE_OP_NONE);
 		assert(began_stencil.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && began_stencil.storeOp == VK_ATTACHMENT_STORE_OP_NONE);
 		assert(began_color.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && began_color.storeOp == VK_ATTACHMENT_STORE_OP_STORE);
@@ -3080,6 +3083,27 @@ static void discards_test(void)
 	assert(vk.transient == 2);
 	unsetenv("HALO_VULKAN_TRANSIENT");
 	unsetenv("HALO_VULKAN_DISCARDS");
+	/* (by default on a tiler alone: one with lazily allocated memory, or of
+	a tiler's vendor; an immediate GPU records into the main command
+	buffer, unless HALO_VULKAN_DISCARDS=1) */
+	vk.properties.vendorID = 0x10de;
+	discards_choose();
+	assert(!vk.deferred && !vk.aside && !vk.transient);
+	vk.properties.vendorID = 0x5143;
+	discards_choose();
+	assert(vk.deferred && vk.aside);
+	vk.properties.vendorID = 0x1002;
+	vk.memory_properties.memoryTypeCount = 2;
+	discards_choose();
+	assert(vk.deferred && vk.transient == 1);
+	vk.memory_properties.memoryTypeCount = 1;
+	discards_choose();
+	assert(!vk.deferred);
+	setenv("HALO_VULKAN_DISCARDS", "1", 1);
+	discards_choose();
+	assert(vk.deferred);
+	unsetenv("HALO_VULKAN_DISCARDS");
+	vk.properties.vendorID = 0;
 
 	/* a transient multisampled target: an attachment alone, in lazily
 	allocated memory, cleared by a pass of the early work; an ordinary
