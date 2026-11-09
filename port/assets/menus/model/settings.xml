@@ -460,13 +460,7 @@
 		<row key="report" kind="link" label="REPORT A PROBLEM" run="port settings report">
 			<help>Saves a report (the log, your settings and GPU, the frame rate and a screenshot) and opens a GitHub issue filled in with it: say what happened, drag in the report's file, submit. F8 does the same in a game, its screenshot that moment.</help>
 		</row>
-		<row key="menu_engine" kind="choice" setting="display.menu_engine" label="MENU ENGINE">
-			<help>What draws these menus. Classic: the game's own widgets. New: OpenH1's menu engine, which draws them the same way from their model.</help>
-			<note>From the next screen opened.</note>
-			<choice shown="CLASSIC" value="classic"/>
-			<choice shown="NEW" value="new"/>
-		</row>
-		<section key="section_11" title="ABOUT"/>
+		<section key="section_10" title="ABOUT"/>
 		<row key="about" kind="link" label="OPENH1">
 			<help>Halo: Combat Evolved, the Xbox game, on this computer, played from your own copy of its maps. OpenH1 is a free fan project.</help>
 		</row>

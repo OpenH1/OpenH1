@@ -904,10 +904,6 @@ PAGES = {
              "Saves a report (the log, your settings and GPU, the frame rate and a screenshot) and opens a "
              "GitHub issue filled in with it: say what happened, drag in the report's file, submit. F8 does the "
              "same in a game, its screenshot that moment.", None, "report", "port settings report"),
-            # (display.menu_engine: port/linux/game/menu_engine.c, docs/menu_engine.md)
-            ("MENU ENGINE", "display.menu_engine", [("CLASSIC", "classic"), ("NEW", "new")],
-             "What draws these menus. Classic: the game's own widgets. New: OpenH1's menu engine, which draws "
-             "them the same way from their model.|From the next screen opened.", None),
             (SECTION, "ABOUT"),
             ("OPENH1", None, None,
              "Halo: Combat Evolved, the Xbox game, on this computer, played from your own copy of its maps. OpenH1 "
