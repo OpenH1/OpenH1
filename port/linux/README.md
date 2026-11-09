@@ -459,7 +459,8 @@ whole, with that run's log (its last 512 KB), and the macOS app's adds the
 host's log of that run (`halo.previous.log`). Each run writes
 `reports/.running` as it starts and removes it when it exits; at a crash,
 the host writes `reports/.crash.txt` (the crash's lines, then the log the
-game keeps in memory, with a signal handler's `write` calls alone); a
+game keeps in memory, with a signal handler's `write` calls alone; on
+Windows, its exception handler's `WriteFile`); a
 fatal error's halt screen writes it too, and is asked about though the game
 is then closed as usual. On a
 computer a run that did not exit is asked about even with no crash
@@ -1539,6 +1540,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.load_trace` | `false` | `HALO_LOAD_TRACE` | Log map loading checkpoints, and start-up's from the host's `main` (`host.main`, `host.guest_main`), with absolute monotonic wall, thread and process CPU seconds. Subtract timestamps to measure phases; process CPU includes worker threads. Each frame of the game's main loop longer than 25 ms is logged too (`frame.long`, its milliseconds; `frame.longest` for a frame longer than any before), to find and measure hitches on every platform. Set `HALO_LOAD_TRACE_DETAIL=1` to add sampled preparation CPU timings and detailed renderer traces; measure final loading times without these extra diagnostics. |
 | `debug.fixed_step` | `false` | `HALO_FIXED_STEP` | `true`: a game of this computer alone runs one step a frame (a tick at `game.sim_rate` 30, a sub-step at 60 and 120), whatever time has passed, so that it plays the same every time (tests); the sound is timed by the frames too, mixed with no device. |
 | `debug.fatal_asserts` | `false` | `HALO_FATAL_ASSERTS` | `true` (tests): a failed assertion ends the run, with its reason, its place and the call stack's return addresses (`addr2line -f -e build/<build>/halo_guest.elf`) on stderr and in `debug.txt`, exit status 70. Without it a release build carries on past a failed assertion, as the retail game did (noted in `debug.txt`), and a debug build halts. A warning is only counted. Either way, a run in which any failed sums them up on stderr when it exits (`asserts: ...`: each place, assert or warn, how many times), and the determinism log has their totals (`asserts <failed> <warnings>`). StageKit's runs, the scorecard's and the 30 Hz gate's set it (`tools/stagekit/tests/runner.py`). |
+| `debug.crash_after` | `0.0` | `HALO_CRASH_AFTER` | The game crashes this number of seconds after its window opens (with `debug.null_renderer`, or no display, after its first frame), by a write to address 0, to test the crash reports and the next start's question ("Reports"). `0`: never. |
 | `debug.exit_after` | `0.0` | `HALO_EXIT_AFTER` | The game stops after this number of seconds (from when its window opens; with `debug.null_renderer`, or no display, from its first frame; a dedicated server stops as `quit` stops it). `0`: never. |
 | `debug.screenshot_directory`, `debug.screenshot_every` | `""`, `0` | `HALO_SCREENSHOT_DIR`, `HALO_SCREENSHOT_EVERY` | The game writes each Nth frame to this folder as a BMP file. |
 | `debug.screenshot_stream` | `""` | `HALO_SCREENSHOT_STREAM` | With `debug.screenshot_every`, a file each frame's pixels are appended to instead of the folder's BMP files: BGRA, the top row first, no header (a named pipe an encoder reads, `ffmpeg -f rawvideo -pix_fmt bgra -s <width>x<height>`), so that a long run's frames never reach the disk. |

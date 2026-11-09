@@ -3095,6 +3095,27 @@ int platform_menu_studio_keys(void)
 	return keys;
 }
 
+/* debug.crash_after (seconds) crashes the game that long after the window
+opens (without one, after the first frame), by a write to address 0 on the
+game's thread: the crash report and the next start's question to test
+(report.c, the hosts' crash records) */
+static void crash_after_check(void)
+{
+	static Uint64 crash_ticks = (Uint64)-1;
+
+	if (crash_ticks == (Uint64)-1)
+	{
+		double seconds = config_real("debug.crash_after");
+
+		crash_ticks = seconds > 0.0 ? SDL_GetTicks() + (Uint64)(seconds * 1000.0) : 0;
+	}
+	if (crash_ticks && SDL_GetTicks() >= crash_ticks)
+	{
+		platform_log("crashing after debug.crash_after");
+		*(volatile int *)0 = 0;
+	}
+}
+
 /* debug.exit_after (seconds) ends the game that long after the window
 opens (without one, after the first frame), as closing it does
 (tools/pgo_train.py, net_compare.py) */
@@ -3117,6 +3138,7 @@ static void exit_after_check(void)
 		platform_log("exiting after debug.exit_after");
 		exit(EXIT_SUCCESS);
 	}
+	crash_after_check();
 }
 
 /* the events without a window (debug.null_renderer, or no display): on the

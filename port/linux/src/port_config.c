@@ -2232,6 +2232,9 @@ static const struct config_setting config_settings[] =
 		"release build otherwise carries on past it, as the retail game did,\n"
 		"and a debug build halts); a warning is counted only. Either way, a\n"
 		"run in which any failed sums them up on stderr when it exits." },
+	{ "debug.crash_after", _config_real, "0.0", "HALO_CRASH_AFTER", _environment_value, _platform_all,
+		"Crash this many seconds after the window opens (without a window,\n"
+		"after the first frame), to test the crash reports; 0 never." },
 	{ "debug.exit_after", _config_real, "0.0", "HALO_EXIT_AFTER", _environment_value, _platform_all,
 		"Quit this many seconds after the window opens (without a window, after\n"
 		"the first frame); 0 never." },
