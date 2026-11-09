@@ -14,6 +14,11 @@ host_render_replay_test unit                  the LZ4 decoder, base64, the
 	PNG writer (its file at argv[2] for the test to read), the requests'
 	parser
 host_render_replay_test <file> --serve        the replay, with this backend
+
+The backend's GPU time (cost) is made up: a clear takes COST_CLEAR ms, a
+draw COST_PIXEL ms a pixel of its rectangle (whether it changed them or
+not), the frame's present a pass of its own of COST_PRESENT; the draws are
+timed one by one as well (the "timestamps" method).
 */
 
 #include "../host_render_replay.c"
@@ -24,6 +29,10 @@ host_render_replay_test <file> --serve        the replay, with this backend
 
 #define TARGET_WIDTH 64
 #define TARGET_HEIGHT 32
+
+#define COST_CLEAR 0.05
+#define COST_PIXEL 0.001
+#define COST_PRESENT 0.01
 
 /* ---------- the backend */
 
@@ -37,6 +46,11 @@ static struct
 	uint32_t ids_target, ids_number, ids_depth;
 	int ids_armed;
 	uint32_t *ids;
+	/* the frame timed: its draws' made-up times, the draw being handed */
+	int timing;
+	uint32_t timing_draw;
+	double clear_ms, draw_ms[16];
+	uint32_t draw_pass[16], draw_count;
 } fake;
 
 static void fake_open(void *context, void *ring, uint32_t ring_size, volatile uint32_t *visibility)
@@ -88,6 +102,8 @@ static void fake_clear_target(void *context, const struct xgpu_stream_clear_targ
 	size_t pixel;
 
 	(void)context;
+	if (fake.timing)
+		fake.clear_ms += COST_CLEAR;
 	if (record->target != 1 || !fake.pixels)
 		return;
 	for (pixel = 0; pixel < (size_t)fake.width * fake.height; pixel++)
@@ -109,6 +125,13 @@ static void fake_draw(void *context, const struct xgpu_stream_draw *record)
 
 	(void)context;
 	memcpy(color, &record->primitive, 4);
+	if (fake.timing && fake.timing_draw < 16)
+	{
+		fake.draw_ms[fake.timing_draw] = width * height * COST_PIXEL;
+		fake.draw_pass[fake.timing_draw] = 0;
+		if (fake.timing_draw + 1 > fake.draw_count)
+			fake.draw_count = fake.timing_draw + 1;
+	}
 	if (fake.color != 1 || !fake.pixels)
 		return;
 	for (y = y0; y < y0 + height && y < fake.height; y++)
@@ -219,6 +242,51 @@ static void fake_ids_end(void)
 	fake.ids = NULL;
 }
 
+static int fake_cost_begin(void)
+{
+	memset(fake.draw_ms, 0, sizeof(fake.draw_ms));
+	fake.clear_ms = 0.0;
+	fake.draw_count = 0;
+	fake.timing_draw = UINT32_MAX;
+	fake.timing = 1;
+	return 1;
+}
+
+static void fake_cost_draw(uint32_t index)
+{
+	fake.timing_draw = index;
+}
+
+static int fake_cost_end(struct host_render_replay_cost *cost)
+{
+	static struct host_render_replay_pass_time passes[2];
+	uint32_t draw;
+
+	fake.timing = 0;
+	memset(passes, 0, sizeof(passes));
+	passes[0].kind = "test";
+	passes[0].width = TARGET_WIDTH;
+	passes[0].height = TARGET_HEIGHT;
+	passes[0].ms = fake.clear_ms;
+	for (draw = 0; draw < fake.draw_count; draw++)
+	{
+		passes[0].ms += fake.draw_ms[draw];
+		passes[0].draws++;
+	}
+	passes[1].kind = "present";
+	passes[1].ms = COST_PRESENT;
+	passes[1].start_ms = passes[0].ms;
+	cost->passes = passes;
+	cost->pass_count = 2;
+	cost->frame_ms = passes[0].ms + passes[1].ms;
+	cost->draw_pass = fake.draw_pass;
+	cost->draw_count = fake.draw_count;
+	cost->draw_ms = fake.draw_ms;
+	cost->draw_method = "timestamps";
+	cost->note = "made up";
+	return 1;
+}
+
 static const struct host_render_replay_platform fake_platform =
 {
 	.backend = "test",
@@ -228,6 +296,10 @@ static const struct host_render_replay_platform fake_platform =
 	.ids_draw = fake_ids_draw,
 	.ids_read = fake_ids_read,
 	.ids_end = fake_ids_end,
+	.cost_begin = fake_cost_begin,
+	.cost_draw_method = "timestamps",
+	.cost_draw = fake_cost_draw,
+	.cost_end = fake_cost_end,
 };
 
 /* ---------- the recording made */

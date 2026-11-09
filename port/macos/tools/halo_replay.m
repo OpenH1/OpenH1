@@ -349,6 +349,50 @@ static void metal_ids_end(void)
 	ids.number = 0;
 }
 
+/* ---------- the cost: the frame's passes timed (xgpu_metal_timing_*), at
+the stages' boundaries, the only places Apple's GPUs sample their
+timestamps: a draw's own time is the service's subtraction */
+
+static struct host_render_replay_pass_time cost_passes[1024];
+
+static int metal_cost_begin(void)
+{
+	xgpu_metal_timing_request();
+	return 1;
+}
+
+static int metal_cost_end(struct host_render_replay_cost *cost)
+{
+	const struct xgpu_metal_pass_time *passes;
+	const uint32_t *draw_pass;
+	uint32_t pass_count, draws, index;
+	double busy;
+
+	if (!xgpu_metal_timing_wait(10.0, &busy, &passes, &pass_count, &draw_pass, &draws))
+		return 0;
+	if (pass_count > sizeof(cost_passes) / sizeof(cost_passes[0]))
+		pass_count = sizeof(cost_passes) / sizeof(cost_passes[0]);
+	for (index = 0; index < pass_count; index++)
+	{
+		cost_passes[index].kind = passes[index].kind;
+		cost_passes[index].width = passes[index].width;
+		cost_passes[index].height = passes[index].height;
+		cost_passes[index].draws = passes[index].draws;
+		cost_passes[index].ms = passes[index].ms;
+		cost_passes[index].start_ms = passes[index].start_ms;
+		cost_passes[index].vertex_ms = passes[index].vertex_ms;
+		cost_passes[index].fragment_ms = passes[index].fragment_ms;
+	}
+	cost->frame_ms = busy;
+	cost->passes = cost_passes;
+	cost->pass_count = pass_count;
+	cost->draw_pass = draw_pass;
+	cost->draw_count = draws;
+	cost->note = "Apple's GPUs time passes, not draws: a draw's ms is the frame's time without it subtracted "
+		"from its time whole";
+	return 1;
+}
+
 static const struct host_render_replay_platform metal_platform =
 {
 	.backend = "metal",
@@ -364,6 +408,9 @@ static const struct host_render_replay_platform metal_platform =
 	.ids_draw = metal_ids_draw,
 	.ids_read = metal_ids_read,
 	.ids_end = metal_ids_end,
+	.cost_begin = metal_cost_begin,
+	.cost_draw = xgpu_metal_timing_draw,
+	.cost_end = metal_cost_end,
 };
 
 /* ---------- --cold: this program again, in an app of a new bundle id
