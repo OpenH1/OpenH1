@@ -222,7 +222,7 @@ python -m pytest -q tools/test_host_pages.py tools/test_android_elf_alignment.py
 python -m pytest -q tools/test_guest_branch_relax.py       # the guests' conditional branches relaxed once the base register puts them out of reach
 python -m pytest -q tools/test_macos_metal.py               # the Metal backend (ninja macos_metal_test first)
 python -m pytest -q tools/test_metal_post_shaders.py        # the Metal backend's anti-aliasing passes (tools/metal_post_shaders.py)
-python -m pytest -q tools/test_text_msdf.py                 # display.text_renderer "msdf": the atlas the fonts make, the glyphs laid out as rasterized, the backends' fields on a Mac's GPU
+python -m pytest -q tools/test_text_msdf.py                 # the high-res text's distance fields: the atlas the fonts make, the glyphs laid out as rasterized, the backends' fields on a Mac's GPU
 python -m pytest -q tools/test_hdr.py                       # display.hdr's contract: the draws' classification, the reference curves (docs/hdr.md)
 python -m pytest -q tools/test_hdr_backends.py              # display.hdr across the backends: Vulkan's shaders (via SPIRV-Cross) on a Mac's GPU against the reference and Metal's
 python -m pytest -q tools/test_macos_app.py                 # the macOS app's Info.plist, entitlements, signature
@@ -441,6 +441,11 @@ The decompilation's upstream, punpckhdq/halo, is AGPL 3.0 from 17 October
 2026; bnunu/halo-1 is CC0.
 
 ### Commits and pull requests
+
+- Pull requests target `dev`, the default branch. `master` is what ships:
+  every push to it publishes a release that the self-updaters install, so
+  it changes only when `dev` is merged into it, a release, when the
+  maintainers choose.
 
 - Commit subjects are plain sentences saying what changed; the body says
   why and what was checked.

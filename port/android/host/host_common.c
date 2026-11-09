@@ -18,8 +18,9 @@ guest names, written at a crash (host_memory_watch.c's report, a fatal error,
 an abort) with what the host logged of it and then the guest's log as
 report.c keeps it in memory, oldest first, so that the next start can offer
 to report it. It is written with open() and write() alone, which a signal
-handler may call; not on Windows, whose crash reports are its own
-(port/windows/host/host_crash_win.c).
+handler may call; on Windows with CreateFileW and WriteFile
+(port/windows/host/host_crash_win.c), its path made whole as it is named,
+and its lines written by the host's crash report (host_memory_watch_win.c).
 */
 
 #include "host.h"
@@ -174,7 +175,16 @@ static const char *crash_record_log;
 static uint32_t crash_record_log_size;
 static const uint64_t *crash_record_log_written;
 static volatile int crash_record_taken;
+#ifdef _WIN32
+/* (host_crash_win.c's: the record's file by Windows's functions) */
+void host_crash_file_name(const char *path);
+void *host_crash_file_create(void);
+void host_crash_file_write(void *file, const char *text, size_t length);
+void host_crash_file_close(void *file);
+static void *crash_record_handle;
+#else
 static int crash_record_file = -1;
+#endif
 
 void host_crash_record(const char *path, const char *log, uint32_t log_size, const uint64_t *log_written)
 {
@@ -182,11 +192,26 @@ void host_crash_record(const char *path, const char *log, uint32_t log_size, con
 	crash_record_log = log;
 	crash_record_log_size = log_size;
 	crash_record_log_written = log_written;
+#ifdef _WIN32
+	host_crash_file_name(crash_record_path);
+#endif
 }
 
-#ifndef _WIN32
+static int crash_record_is_open(void)
+{
+#ifdef _WIN32
+	return crash_record_handle != NULL;
+#else
+	return crash_record_file >= 0;
+#endif
+}
+
 static void crash_record_write(const char *text, size_t length)
 {
+#ifdef _WIN32
+	if (crash_record_handle)
+		host_crash_file_write(crash_record_handle, text, length);
+#else
 	while (length && crash_record_file >= 0)
 	{
 		ssize_t written = write(crash_record_file, text, length);
@@ -196,45 +221,39 @@ static void crash_record_write(const char *text, size_t length)
 		text += written;
 		length -= (size_t)written;
 	}
-}
 #endif
+}
 
 int host_crash_record_begin(const char *reason)
 {
-#ifndef _WIN32
 	/* (the first thread to crash writes it; the others' crashes are left out) */
 	if (!crash_record_path[0] || __atomic_exchange_n(&crash_record_taken, 1, __ATOMIC_ACQ_REL))
 		return 0;
+#ifdef _WIN32
+	crash_record_handle = host_crash_file_create();
+#else
 	crash_record_file = open(crash_record_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	if (crash_record_file < 0)
+#endif
+	if (!crash_record_is_open())
 		return 0;
 	host_crash_record_line(reason);
 	return 1;
-#else
-	(void)reason;
-	return 0;
-#endif
 }
 
 void host_crash_record_line(const char *line)
 {
-#ifndef _WIN32
-	if (crash_record_file < 0 || !line)
+	if (!crash_record_is_open() || !line)
 		return;
 	crash_record_write(line, strlen(line));
 	crash_record_write("\n", 1);
-#else
-	(void)line;
-#endif
 }
 
 void host_crash_record_end(void)
 {
-#ifndef _WIN32
 	static const char heading[] = "\n--- the log's last lines\n";
 	uint64_t written, kept, first;
 
-	if (crash_record_file < 0)
+	if (!crash_record_is_open())
 		return;
 	if (crash_record_log && crash_record_log_size && crash_record_log_written)
 	{
@@ -252,6 +271,10 @@ void host_crash_record_end(void)
 		else
 			crash_record_write(crash_record_log + first, (size_t)kept);
 	}
+#ifdef _WIN32
+	host_crash_file_close(crash_record_handle);
+	crash_record_handle = NULL;
+#else
 	close(crash_record_file);
 	crash_record_file = -1;
 #endif

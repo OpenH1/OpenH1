@@ -24,8 +24,8 @@ Technical University in Prague, 2015).
   output. Since it is not a verbatim copy, there is no upstream file whose
   checksum it matches; the commit above is the source it was translated
   from.
-- What uses it: `port/linux/src/text_hires.c` (`display.text_renderer
-  "msdf"`, glyphs made at run time, in every platform's game) and
+- What uses it: `port/linux/src/text_hires.c` (the high-res text's
+  glyphs made at run time, in every platform's game) and
   `tools/msdf_atlas/bake.c` (the baked atlas,
   `port/assets/fonts/msdf_atlas.zlib`). The releases carry the licence as
   `msdfgen-LICENSE.txt` (`tools/linux_package.py`, `tools/frame_package.py`).

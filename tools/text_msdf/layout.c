@@ -1,16 +1,21 @@
 /*
 LAYOUT.C (test)
 
-The high-res text's glyphs laid out the same whichever way they are drawn
-(display.text_renderer, port/linux/src/text_hires.c): each character's quad,
-advance and ink, from text_hires_glyph, rasterized ("raster") and from the
-distance fields ("msdf"), at the display's scales of 720p, 1080p and 4K and
-drawn twice as large, for each of the shipped fonts' tags. The baked
-characters, and some the atlas has not (made at run time) and the missing glyph's. tools/
-test_text_msdf.py builds it with text_hires.c and stand-ins for the
-platform (generated.c: the embedded fonts and atlas, in a blob it reads).
+The high-res text's glyphs laid out where the fonts put them at the
+display's pixels (port/linux/src/text_hires.c): each character's quad,
+advance and ink, from text_hires_glyph, against stb_truetype's own box for
+it rasterized at the display's pixels (the reference: the font sized and
+narrowed to its tag as text_hires.c's face_make does, its glyph from the
+font or its fallback), at the display's scales of 720p, 1080p and 4K and
+drawn twice as large, for each of the shipped fonts' tags: the positions
+the rasterized text had, before the distance fields drew every letter. The
+baked characters, and some the atlas has not (made at run time) and the
+missing glyph's. tools/test_text_msdf.py builds it with text_hires.c and
+stand-ins for the platform (generated.c: the embedded fonts and atlas, in a
+blob it reads).
 */
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,12 +23,14 @@ platform (generated.c: the embedded fonts and atlas, in a blob it reads).
 
 #include "text_hires.h"
 
+#define STBTT_STATIC
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "../../third_party/stb/stb_truetype.h"
+
 /* ---------- stand-ins */
 
 static unsigned char *blob;
 static float screen_scale = 2.25f;
-static const char *renderer = "raster";
-static unsigned long changes = 1;
 
 const void *embedded_assets_data(unsigned int offset, unsigned int size)
 {
@@ -33,7 +40,7 @@ const void *embedded_assets_data(unsigned int offset, unsigned int size)
 
 unsigned long config_changes(void)
 {
-	return changes;
+	return 1;
 }
 
 int config_boolean(const char *name)
@@ -44,7 +51,8 @@ int config_boolean(const char *name)
 
 const char *config_string(const char *name)
 {
-	return !strcmp(name, "display.text_renderer") ? renderer : "";
+	(void)name;
+	return "";
 }
 
 float halo_screen_pixel_scale(void)
@@ -74,16 +82,119 @@ void xgpu_image_delete(unsigned int image)
 	(void)image;
 }
 
+/* ---------- the reference: the fonts' own boxes at the display's pixels */
+
+struct face
+{
+	stbtt_fontinfo info;
+	float scale, narrowing;
+};
+
+static int names_differ(const char *a, const char *b)
+{
+	while (*a && tolower((unsigned char)*a) == tolower((unsigned char)*b))
+	{
+		a++;
+		b++;
+	}
+	return tolower((unsigned char)*a) != tolower((unsigned char)*b);
+}
+
+/* a font sized so that its capitals are cap units tall, narrowed where its
+letters are wider than the tag's */
+static int face_make(struct face *face, unsigned int offset, float cap, short const *widths)
+{
+	const unsigned char *data = blob + offset;
+	float tag_width = 0.0f, font_width = 0.0f;
+	int x0, y0, x1, y1, letter;
+
+	face->scale = 0.0f;
+	face->narrowing = 1.0f;
+	if (!stbtt_InitFont(&face->info, data, stbtt_GetFontOffsetForIndex(data, 0)) ||
+		!stbtt_GetCodepointBox(&face->info, 'H', &x0, &y0, &x1, &y1) || y1 <= y0)
+	{
+		return 0;
+	}
+	face->scale = cap / (float)(y1 - y0);
+	for (letter = 0; letter < TEXT_HIRES_FIT_LETTERS; letter++)
+	{
+		int glyph = stbtt_FindGlyphIndex(&face->info, letter < 26 ? 'A' + letter : 'a' + letter - 26);
+		int advance = 0, bearing = 0;
+
+		if (widths[letter] <= 0 || !glyph)
+			continue;
+		stbtt_GetGlyphHMetrics(&face->info, glyph, &advance, &bearing);
+		tag_width += widths[letter];
+		font_width += advance * face->scale;
+	}
+	if (tag_width > 0.0f && font_width > tag_width)
+		face->narrowing = tag_width / font_width;
+	return 1;
+}
+
+/* the tag's font and its fallback: how many there are (0: none) */
+static int faces_make(const char *tag, float cap, short const *widths, struct face faces[2])
+{
+	unsigned int index;
+
+	for (index = 0; index < text_hires_embedded_count; index++)
+	{
+		const struct text_hires_embedded *embedded = &text_hires_embedded[index];
+
+		if (!embedded->tag || names_differ(embedded->tag, tag))
+			continue;
+		if (!face_make(&faces[0], embedded->data_offset, cap, widths))
+			return 0;
+		return embedded->fallback_file && face_make(&faces[1], embedded->fallback_data_offset, cap, widths) ? 2 : 1;
+	}
+	return 0;
+}
+
+/* the character's glyph rasterized at the display's pixels (the font's, else
+its fallback's, else the font's missing glyph); 0 if it has no ink */
+static int reference_glyph(struct face *faces, int count, float oversample, unsigned long code,
+	struct text_hires_glyph *glyph)
+{
+	struct face *face = &faces[0];
+	int index = 0, which, x0 = 0, y0 = 0, x1 = 0, y1 = 0, advance = 0, bearing = 0, ink_x0 = 0, ink_x1 = 0;
+	float pixels, pixels_x, pixel_scale, ink_left = 0.0f, ink_right = 0.0f;
+
+	for (which = 0; which < count; which++)
+	{
+		if ((index = stbtt_FindGlyphIndex(&faces[which].info, (int)code)) != 0)
+		{
+			face = &faces[which];
+			break;
+		}
+	}
+	if (which == count)
+		index = 0;
+	pixels = face->scale * screen_scale * oversample;
+	pixels_x = pixels * face->narrowing;
+	pixel_scale = screen_scale * oversample;
+	stbtt_GetGlyphBitmapBox(&face->info, index, pixels_x, pixels, &x0, &y0, &x1, &y1);
+	stbtt_GetGlyphHMetrics(&face->info, index, &advance, &bearing);
+	if (stbtt_GetGlyphBox(&face->info, index, &ink_x0, NULL, &ink_x1, NULL))
+	{
+		ink_left = (float)ink_x0 * pixels_x;
+		ink_right = (float)ink_x1 * pixels_x;
+	}
+	if (x1 <= x0 || y1 <= y0)
+		return 0;
+	glyph->left = x0 / pixel_scale;
+	glyph->top = y0 / pixel_scale;
+	glyph->right = x1 / pixel_scale;
+	glyph->bottom = y1 / pixel_scale;
+	glyph->advance = advance * face->scale * face->narrowing;
+	glyph->ink_left = ink_right > ink_left ? ink_left / pixel_scale : glyph->left;
+	glyph->ink_right = ink_right > ink_left ? ink_right / pixel_scale : glyph->right;
+	return 1;
+}
+
 /* ---------- the test */
 
 /* (some the atlas has not, and some no font has: the missing glyph) */
 static const unsigned long extra[] = { 0x2026, 0x20ac, 0x2122, 0x100, 0x101, 0x141, 0x3a9, 0x4e2d, 0x1f600 };
-
-static int glyph_of(long font, unsigned long code, struct text_hires_glyph *glyph)
-{
-	text_hires_rasterize(font, code);
-	return text_hires_glyph(font, code, glyph);
-}
 
 static int same(float a, float b)
 {
@@ -126,14 +237,16 @@ int main(int argc, char **argv)
 			for (tag = 0; tag < 4; tag++)
 			{
 				short widths[TEXT_HIRES_FIT_LETTERS];
+				struct face faces[2];
 				long font;
 				unsigned long code;
-				int letter;
+				int letter, face_count;
 
 				for (letter = 0; letter < TEXT_HIRES_FIT_LETTERS; letter++)
 					widths[letter] = (short)(tags[tag].width - (letter >= 26));
 				font = text_hires_font(tags[tag].tag, tags[tag].cap, widths, oversamples[oversample]);
-				if (font < 0)
+				face_count = faces_make(tags[tag].tag, tags[tag].cap, widths, faces);
+				if (font < 0 || !face_count)
 				{
 					printf("FAIL %s: no font\n", tags[tag].tag);
 					return 1;
@@ -141,41 +254,39 @@ int main(int argc, char **argv)
 				for (code = 0x21; code < 0x100 + sizeof(extra) / sizeof(extra[0]); code++)
 				{
 					unsigned long character = code < 0x100 ? code : extra[code - 0x100];
-					struct text_hires_glyph raster, msdf;
-					int had_raster, had_msdf;
+					struct text_hires_glyph reference, drawn;
+					int had_reference, had_drawn;
 
 					if (character >= 0x7f && character < 0xa1)
 						continue;
-					renderer = "raster";
-					changes++;
-					memset(&raster, 0, sizeof(raster));
-					memset(&msdf, 0, sizeof(msdf));
-					had_raster = glyph_of(font, character, &raster);
-					renderer = "msdf";
-					changes++;
-					had_msdf = glyph_of(font, character, &msdf);
-					if (had_raster != had_msdf || (had_raster == 1 && (!same(raster.left, msdf.left) ||
-						!same(raster.top, msdf.top) || !same(raster.right, msdf.right) ||
-						!same(raster.bottom, msdf.bottom) || !same(raster.advance, msdf.advance) ||
-						!same(raster.ink_left, msdf.ink_left) || !same(raster.ink_right, msdf.ink_right))))
+					memset(&reference, 0, sizeof(reference));
+					memset(&drawn, 0, sizeof(drawn));
+					had_reference = reference_glyph(faces, face_count, oversamples[oversample], character, &reference);
+					text_hires_rasterize(font, character);
+					had_drawn = text_hires_glyph(font, character, &drawn);
+					if (had_reference != had_drawn || (had_reference == 1 && (!same(reference.left, drawn.left) ||
+						!same(reference.top, drawn.top) || !same(reference.right, drawn.right) ||
+						!same(reference.bottom, drawn.bottom) || !same(reference.advance, drawn.advance) ||
+						!same(reference.ink_left, drawn.ink_left) || !same(reference.ink_right, drawn.ink_right))))
 					{
-						printf("FAIL %s U+%04lX at %g x%g: raster %d (%g %g %g %g, %g, ink %g %g), "
-							"msdf %d (%g %g %g %g, %g, ink %g %g)\n", tags[tag].tag, character, scales[scale],
-							oversamples[oversample], had_raster, raster.left, raster.top, raster.right, raster.bottom,
-							raster.advance, raster.ink_left, raster.ink_right, had_msdf, msdf.left, msdf.top, msdf.right,
-							msdf.bottom, msdf.advance, msdf.ink_left, msdf.ink_right);
+						printf("FAIL %s U+%04lX at %g x%g: the font's %d (%g %g %g %g, %g, ink %g %g), "
+							"drawn %d (%g %g %g %g, %g, ink %g %g)\n", tags[tag].tag, character, scales[scale],
+							oversamples[oversample], had_reference, reference.left, reference.top, reference.right,
+							reference.bottom, reference.advance, reference.ink_left, reference.ink_right, had_drawn,
+							drawn.left, drawn.top, drawn.right, drawn.bottom, drawn.advance, drawn.ink_left,
+							drawn.ink_right);
 						failed++;
 					}
 					/* (its quad within the atlas, the right way round) */
-					if (had_msdf == 1 && !(msdf.u0 < msdf.u1 && msdf.v0 < msdf.v1 && msdf.u0 >= 0.0f &&
-						msdf.v0 >= 0.0f && msdf.u1 <= 256.0f && msdf.v1 <= 256.0f))
+					if (had_drawn == 1 && !(drawn.u0 < drawn.u1 && drawn.v0 < drawn.v1 && drawn.u0 >= 0.0f &&
+						drawn.v0 >= 0.0f && drawn.u1 <= 256.0f && drawn.v1 <= 256.0f))
 					{
-						printf("FAIL %s U+%04lX: its field's quad %g %g %g %g\n", tags[tag].tag, character, msdf.u0,
-							msdf.v0, msdf.u1, msdf.v1);
+						printf("FAIL %s U+%04lX: its field's quad %g %g %g %g\n", tags[tag].tag, character, drawn.u0,
+							drawn.v0, drawn.u1, drawn.v1);
 						failed++;
 					}
-					checked += had_msdf == 1;
-					made += had_msdf == 1 && code >= 0x100;
+					checked += had_drawn == 1;
+					made += had_drawn == 1 && code >= 0x100;
 				}
 			}
 		}

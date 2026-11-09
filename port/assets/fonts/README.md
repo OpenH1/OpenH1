@@ -12,7 +12,7 @@ place of the bitmap fonts of the maps (`port/linux/src/text_hires.c`).
 | `Hack-Bold.ttf` | `old tags\internal system plain`, the console's (and the debug text's) | Hack 3.003, Bold, unmodified |
 | `OpenCE-Regular.ttf` | the menus' titles, as pictures (`port/assets/titles`); the menus' heading font, `pc\heading` | OpenCE: Newtown, respaced for this project (`tools/title_font.py`) |
 | `Newtown-Regular.ttf` | (OpenCE's source) | Newtown by Roger White, unmodified |
-| `msdf_atlas.zlib` | the fonts above as distance fields, for `display.text_renderer "msdf"` | made from them by `tools/msdf_atlas.py` |
+| `msdf_atlas.zlib` | the fonts above as distance fields, which the high-res text is drawn from | made from them by `tools/msdf_atlas.py` |
 
 The maps' fonts are Interstate (Tobias Frere-Jones, The Font Bureau), a
 commercial typeface that cannot be shipped.
@@ -88,7 +88,7 @@ names (`tools/linux_package.py`'s `notices`, `tools/frame_package.py`).
 
 `msdf_atlas.zlib` is the fonts' characters (ASCII, Latin-1 and Windows-1252's
 punctuation and letters) as multi-channel signed distance fields, which
-`display.text_renderer "msdf"` draws the text from (`port/linux/src/text_hires.c`;
+the high-res text is drawn from (`port/linux/src/text_hires.c`;
 the fields' code is msdfgen's translated to C:
 `port/third_party/msdfgen`). It is derived from the fonts, so it is under
 their licences, as they are (the SIL Open Font License 1.1 for Cyborg

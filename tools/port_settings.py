@@ -665,9 +665,6 @@ PAGES = {
             ("BATTERY SAVER", "display.battery_saver", [("OFF", "off"), ("ON", "on"), ("AUTO", "auto")],
              "Up to 60 frames a second and Classic graphics, for a longer battery and a cooler device. Auto turns "
              "it on while the device runs on its battery. Your own settings come back as it turns off.", None),
-            ("TEXT RENDERER", "display.text_renderer", [("RASTER", "raster"), ("DISTANCE FIELD", "msdf")],
-             "How the menus' and HUD's high-res text is drawn. Raster: drawn again for each size. Distance Field: "
-             "sharp at any size, from fields made once.", None),
             # (display.gamma's page, and display.hdr's rows on the renderers
             # that draw it: menu_files.c's "hdr")
             ("BRIGHTNESS ›", None, _page_screen(*BRIGHTNESS_PAGE),

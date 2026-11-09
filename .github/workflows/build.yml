@@ -111,13 +111,14 @@ jobs:
           ios=true
           base=
           if [ "$EVENT" = push ]; then
-            if [ "$GITHUB_REF" = refs/heads/master ]; then
-              # (all zeros: master's first push)
+            if [ "$GITHUB_REF" = refs/heads/master ] || [ "$GITHUB_REF" = refs/heads/dev ]; then
+              # (all zeros: the branch's first push)
               if [ -n "${BEFORE//0/}" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
                 base="$BEFORE"
               fi
             else
-              base="$(git merge-base origin/master "$GITHUB_SHA" 2>/dev/null)" || base=
+              # (a branch is compared with dev, where pull requests merge)
+              base="$(git merge-base origin/dev "$GITHUB_SHA" 2>/dev/null)" || base=
             fi
           fi
           if [ -n "$base" ] && files="$(git -c core.quotePath=false diff --name-only --no-renames "$base" "$GITHUB_SHA")"; then
