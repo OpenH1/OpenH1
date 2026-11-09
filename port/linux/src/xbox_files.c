@@ -1139,6 +1139,23 @@ BOOL WINAPI MoveFileA(LPCSTR existing_file_name, LPCSTR new_file_name)
 	return TRUE;
 }
 
+/* halo_linux_source_fixups.h's: the file at from put in to's place at once,
+replacing it (rename(2) replaces; the Windows host's renameat is MoveFileEx's
+replace) */
+int platform_replace_file(const char *from, const char *to)
+{
+	char from_path[1024], to_path[1024];
+
+	platform_translate_path(from, from_path, sizeof(from_path));
+	platform_translate_path(to, to_path, sizeof(to_path));
+	if (rename(from_path, to_path) != 0)
+	{
+		platform_set_last_error_from_errno(errno);
+		return FALSE;
+	}
+	return TRUE;
+}
+
 BOOL WINAPI CopyFileA(LPCSTR existing_file_name, LPCSTR new_file_name, BOOL fail_if_exists)
 {
 	char from[1024], to[1024];

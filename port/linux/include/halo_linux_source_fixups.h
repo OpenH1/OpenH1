@@ -422,4 +422,9 @@ void input_trace_player(int controller, int substep, float forward, float strafe
 /* the mouse in the menus (source/interface/ui_widget.c) */
 #include "halo_ui_pointer.h"
 
+/* replaces the file at to with the one at from, at once (a rename: on POSIX
+rename(2), on Windows MoveFileEx's replace), both Xbox paths; FALSE if it
+could not (port/linux/src/xbox_files.c) */
+int platform_replace_file(const char *from, const char *to);
+
 #endif
