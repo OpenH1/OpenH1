@@ -1925,7 +1925,8 @@ static boolean network_game_join_game_from_server_list(
 			if ((word)generated_count > (word)zero)
 			{
 				server = ((byte **)widget->generated_list)[widget->data3C.selected_index];
-				if (server[0xE0] == TRUE)
+				/* port: a row with no game behind it joins nothing (#732) */
+				if (server && server[0xE0] == TRUE)
 				{
 					if (*(short *)(server + 0xDE) == zero)
 					{
