@@ -154,7 +154,10 @@ paths with any characters operate.
 ## Crash reports
 
 A crash writes the faulting address, the registers and the calls that led
-to it to the log, with the frames of the guest. The builds of the workflow
+to it to the log, with the frames of the guest, and to `reports\.crash.txt`
+with the log the game keeps in memory, so that the next start offers to
+report it as the other computers' builds do (Report a Problem, in
+`port/linux/README.md`; the next start makes `halo.log` afresh). The builds of the workflow
 (the releases) also send a crash report to the Sentry project of the
 developers:
 
