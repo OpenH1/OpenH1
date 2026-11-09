@@ -53,6 +53,9 @@ SHIELD_COLORS = ["white", "black", "red", "blue", "gray", "yellow", "green", "pi
 VERTICAL_SENSITIVITIES = [(f"{value:g}X", f"{value:g}") for value in (0.25, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.25,
                                                                        1.5, 2)]
 VOLUMES = [(str(step), f"{step / 10:g}") for step in range(11)]
+# audio.volume's: past 10 (the Xbox's level) to 20, as loud as before the
+# Xbox's level was matched (dsound_sdl.c's limiter keeps it under full scale)
+MASTER_VOLUMES = [(str(step), f"{step / 10:g}") for step in range(21)]
 # the platforms a menu element's platform attribute names (menu_files.c's
 # MENU_PLATFORM, "vr": the VR build, playing in the headset, and "hdr": a
 # renderer that draws display.hdr)
@@ -695,7 +698,8 @@ PAGES = {
             ("SOUND", "audio.enabled", ON_OFF,
              "Turns all sound off or on, at once.", None),
             (SECTION, "VOLUME"),
-            ("MASTER VOLUME", "audio.volume", VOLUMES, "The volume of everything the game plays.", None),
+            ("MASTER VOLUME", "audio.volume", MASTER_VOLUMES,
+             "The volume of everything the game plays. 10 is the Xbox's level; up to 20 is louder.", None),
             ("MUSIC VOLUME", "audio.music_volume", VOLUMES, "The music's volume.", None),
             ("EFFECTS VOLUME", "audio.effects_volume", VOLUMES,
              "Every other sound: weapons, vehicles, the world and the characters' speech.", None),
