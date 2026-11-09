@@ -190,6 +190,12 @@ program header, four each) */
 void nv2a_vertex_program_decode(const DWORD *instructions, unsigned long instruction_count,
 	struct xgpu_vertex_program *program);
 
+/* the bit of a stage's border axes (the emitters' options, border) that
+says it samples a region of its texture (XGPU_ADDRESS_REGION): its
+texture_scale the region's width and height, then its left and top, and
+the border drawn beyond the region, on u and v */
+#define XGPU_BORDER_REGION 8
+
 /* ---------- pixel programs
 
 A pixel shader runs in three parts: texture stages 0-3 fetch t0-t3, some of

@@ -2033,9 +2033,26 @@ static unsigned int sample(struct module *m, struct pixel_state *state, int stag
 	unsigned char sampler = state->program->stages[stage].sampler;
 	unsigned int border = state->options->border[stage] & (sampler == _xgpu_sampler_3d ? 7 : 3);
 	unsigned int image = texture_load(m, state, stage), uv, texel;
+	/* (a region of the texture: the region's coordinates, the region's
+	size in texels; xgpu_msl.c's region_sample) */
+	unsigned int region_uv = 0, region_size = 0;
 
 	if (sampler == _xgpu_sampler_3d || sampler == _xgpu_sampler_cube)
 		uv = xyz(m, coordinates);
+	else if ((state->options->border[stage] & XGPU_BORDER_REGION) && sampler == _xgpu_sampler_2d)
+	{
+		static const unsigned int zw[2] = { 2, 3 };
+		unsigned int region = uniform(m, U_TEXTURE_SCALE, stage), extent = xy(m, region);
+		unsigned int raw = op(m, OP_IMAGE, type_sampled_image(m, DIM_2D, FALSE, FALSE, FALSE), 1, &image);
+		unsigned int half;
+
+		region_uv = xy(m, coordinates);
+		region_size = fmul(m, 2, op1(m, OP_CONVERT_S_TO_F, m->t_v2, image_size(m, raw, m->t_iv2)), extent);
+		half = fdiv(m, 2, splat(m, 2, constant_float(m, 0.5f)), region_size);
+		uv = fadd(m, 2, shuffle(m, 2, region, region, zw), fmul(m, 2, ext3(m, GLSL_F_CLAMP, m->t_v2, region_uv, half,
+			fsub(m, 2, splat(m, 2, constant_float(m, 1.0f)), half)), extent));
+		border = 3;
+	}
 	else
 		uv = fmul(m, 2, xy(m, coordinates), xy(m, uniform(m, U_TEXTURE_SCALE, stage)));
 	if (sampler == _xgpu_sampler_2d_layered)
@@ -2081,6 +2098,12 @@ static unsigned int sample(struct module *m, struct pixel_state *state, int stag
 		unsigned int size, inside = constant_float(m, 1.0f), linear;
 		int axis;
 
+		if (region_size)
+		{
+			size = region_size;
+			uv = region_uv;
+		}
+		else
 		{
 			unsigned int raw = op(m, OP_IMAGE, type_sampled_image(m, sampler == _xgpu_sampler_3d ? DIM_3D : DIM_2D, FALSE,
 				FALSE, FALSE), 1, &image);

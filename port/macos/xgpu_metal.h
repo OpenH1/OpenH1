@@ -196,7 +196,14 @@ enum
 {
 	XGPU_METAL_ADDRESS_WRAP, XGPU_METAL_ADDRESS_MIRROR, XGPU_METAL_ADDRESS_CLAMP, XGPU_METAL_ADDRESS_BORDER,
 	XGPU_METAL_ADDRESS_MIRROR_ONCE,
+	/* XGPU_ADDRESS_REGION: the shader's (xgpu_metal_border_axes), clamped
+	to the edge here */
+	XGPU_METAL_ADDRESS_REGION,
 };
+
+/* the bit of a stage's border axes for a region (xgpu_shader.h's
+XGPU_BORDER_REGION) */
+#define XGPU_METAL_BORDER_REGION 8
 
 /* the border colours Metal has; another is the emitter's to blend in (the
 design notes, 7) */

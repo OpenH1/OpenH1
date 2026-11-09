@@ -1091,7 +1091,8 @@ void xgpu_manifest_note_textures(const struct xgpu_texture_source *stages)
 		if (to->sampler_type != _xgpu_sampler_3d)
 			to->address[2] = 0;
 		if (from->source != XGPU_SOURCE_NONE && (to->address[0] == XGPU_ADDRESS_BORDER ||
-			to->address[1] == XGPU_ADDRESS_BORDER || to->address[2] == XGPU_ADDRESS_BORDER))
+			to->address[1] == XGPU_ADDRESS_BORDER || to->address[2] == XGPU_ADDRESS_BORDER ||
+			to->address[0] == XGPU_ADDRESS_REGION))
 		{
 			to->border_color = (uint32_t)from->sampler.border_color;
 		}

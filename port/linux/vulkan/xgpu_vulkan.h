@@ -328,6 +328,9 @@ enum
 enum
 {
 	XGPU_VULKAN_ADDRESS_WRAP, XGPU_VULKAN_ADDRESS_MIRROR, XGPU_VULKAN_ADDRESS_CLAMP, XGPU_VULKAN_ADDRESS_BORDER,
+	/* XGPU_ADDRESS_REGION: the shader's (xgpu_vulkan_stream.c's
+	border_axes), clamped to the edge here */
+	XGPU_VULKAN_ADDRESS_REGION = 5,
 };
 
 /* zeroed before it is filled (it is compared whole) */

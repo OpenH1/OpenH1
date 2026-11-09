@@ -91,6 +91,7 @@ _Static_assert(XGPU_SPIRV_SET_OCCLUSION == XGPU_VULKAN_SET_OCCLUSION &&
 #define CONSTANTS_RANGE (192 * 16)
 
 _Static_assert(sizeof(struct xgpu_spirv_uniforms) <= UNIFORMS_RANGE, "the uniforms' range");
+_Static_assert(XGPU_VULKAN_ADDRESS_REGION == XGPU_ADDRESS_REGION, "XGPU_ADDRESS_REGION's number");
 _Static_assert(sizeof(struct xgpu_stream_dynamic_state) == sizeof(struct xgpu_vulkan_dynamic_state),
 	"the dynamic state's layouts");
 /* the stream's copies of the intermediate form's pieces are their bytes */
@@ -832,6 +833,10 @@ static uint8_t border_axes(const struct xgpu_stream_sampler *sampler)
 	uint8_t axes = 0;
 	int axis;
 
+	/* (a region of a 2D texture: its border on u and v, the shader's
+	whatever the sampler can do) */
+	if (sampler->address[0] == XGPU_VULKAN_ADDRESS_REGION)
+		return 3 | XGPU_BORDER_REGION;
 	if (stream.capabilities.custom_border_colors)
 		return 0;
 	for (axis = 0; axis < 3; axis++)

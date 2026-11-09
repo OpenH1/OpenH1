@@ -263,6 +263,11 @@ enum
 enum
 {
 	XGPU_ADDRESS_WRAP, XGPU_ADDRESS_MIRROR, XGPU_ADDRESS_CLAMP, XGPU_ADDRESS_BORDER,
+	/* (u and v) a region of the texture, sampled as a texture of its own
+	whose border is beyond it (d3d8_texture_region): the draw's
+	texture_scale for the stage its width and height, then its left and
+	top, in the texture's coordinates; the shader draws the border */
+	XGPU_ADDRESS_REGION = 5,
 };
 
 /* a sampler (zeroed, then filled: compared whole) */
