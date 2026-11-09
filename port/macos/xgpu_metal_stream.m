@@ -1259,7 +1259,10 @@ static void halo_depth_parameters(const struct xgpu_stream_dynamic_lights_halos 
 /* the glows of the frame's bolts' lights, into the 3D view, after its
 transparent geometry: added to what is there (not its alpha), into the
 target without its depth, which the shader reads (resolved, where it is
-multisampled); the macOS app draws no VR views (one layer) */
+multisampled), in the target's format (display.hdr's half floats as the
+SDR frame's bytes: their light goes on past white, an additive draw's, as
+docs/hdr.md has it and Vulkan draws it); the macOS app draws no VR views (one
+layer) */
 static void stream_dynamic_lights_halos(void *context, const struct xgpu_stream_dynamic_lights_halos *record)
 {
 	static const float corners[6][2] =
@@ -1277,8 +1280,8 @@ static void stream_dynamic_lights_halos(void *context, const struct xgpu_stream_
 	int halo, corner, multisampled;
 
 	(void)context;
-	if (!color || !depth || color->description.format != XGPU_METAL_FORMAT_BGRA8 ||
-		depth->description.format != XGPU_METAL_FORMAT_D24S8 || record->count <= 0 || record->layers > 1 ||
+	if (!color || !depth || (color->description.format != XGPU_METAL_FORMAT_BGRA8 &&
+		color->description.format != XGPU_METAL_FORMAT_RGBA16F) || depth->description.format != XGPU_METAL_FORMAT_D24S8 || record->count <= 0 || record->layers > 1 ||
 		color->description.depth_or_layers > 1 || !halo_shaders())
 		return;
 	multisampled = stream.samples != 0 && color->description.samples > 1;
@@ -1296,7 +1299,7 @@ static void stream_dynamic_lights_halos(void *context, const struct xgpu_stream_
 	pipeline.blend_source = pipeline.blend_destination = XGPU_BLEND_ONE;
 	pipeline.blend_operation = XGPU_BLEND_ADD;
 	pipeline.color_mask = XGPU_WRITE_RED | XGPU_WRITE_GREEN | XGPU_WRITE_BLUE;
-	pipeline.color_format = XGPU_METAL_FORMAT_BGRA8;
+	pipeline.color_format = color->description.format;
 	pipeline.samples = (uint8_t)(multisampled ? color->description.samples : 1);
 	if (stream.preparing)
 	{
