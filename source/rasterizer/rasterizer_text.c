@@ -95,7 +95,7 @@ struct text_hires_glyph
 #define TEXT_HIRES_FIT_LETTERS 52
 int text_hires_enabled(void); /* port: port/linux/src/text_hires.c */
 long text_hires_font(char const *tag_name, float cap_height, short const *letter_widths, float oversample);
-int text_hires_covers(long font, unsigned long code);
+void text_hires_rasterize(long font, unsigned long code);
 int text_hires_glyph(long font, unsigned long code, struct text_hires_glyph *glyph);
 float text_hires_advance(long font, unsigned long code);
 float text_hires_kerning(long font, unsigned long first, unsigned long second);
@@ -485,7 +485,7 @@ rasterizer_draw_string(
 				draw_character = rasterizer_draw_character;
 			}
 
-			/* port: from the font's atlas, when it has every character */
+			/* port: from the font's atlas, its glyphs rasterized first */
 			hires_text_fonts_ahead();
 			hires_text_font = hires_text_atlas ? hires_text_font_get(draw_string_get_font(), MAX(text_scale, 1.0f)) : NONE;
 			if (hires_text_font != NONE)
@@ -493,16 +493,7 @@ rasterizer_draw_string(
 				long character_index;
 
 				for (character_index = 0; character_index < length; character_index++)
-				{
-					if (!text_hires_covers(hires_text_font, (unsigned char)string[character_index]))
-					{
-						hires_text_font = NONE;
-						break;
-					}
-				}
-			}
-			if (hires_text_font != NONE)
-			{
+					text_hires_rasterize(hires_text_font, (unsigned char)string[character_index]);
 				bitmap = hires_text_atlas;
 				draw_character = drop_shadow ?
 					rasterizer_draw_hires_character_with_dropshadow :
@@ -632,7 +623,7 @@ rasterizer_draw_unicode_string(
 				draw_character = rasterizer_draw_character;
 			}
 
-			/* port: from the font's atlas, when it has every character */
+			/* port: from the font's atlas, its glyphs rasterized first */
 			hires_text_fonts_ahead();
 			hires_text_font = hires_text_atlas ? hires_text_font_get(draw_string_get_font(), MAX(text_scale, 1.0f)) : NONE;
 			if (hires_text_font != NONE)
@@ -640,16 +631,7 @@ rasterizer_draw_unicode_string(
 				long character_index;
 
 				for (character_index = 0; character_index < length; character_index++)
-				{
-					if (!text_hires_covers(hires_text_font, (word)string[character_index]))
-					{
-						hires_text_font = NONE;
-						break;
-					}
-				}
-			}
-			if (hires_text_font != NONE)
-			{
+					text_hires_rasterize(hires_text_font, (word)string[character_index]);
 				bitmap = hires_text_atlas;
 				draw_character = drop_shadow ?
 					rasterizer_draw_hires_character_with_dropshadow :
@@ -881,8 +863,8 @@ static void rasterizer_text_draw_scaled_character(
 }
 
 /* port: the high-res text's fonts of every font tag of the map, made as its
-first string is drawn: their glyphs are rasterized then, on a thread
-(text_hires.c), before the menus and the HUD draw with them */
+first string is drawn: their ASCII glyphs are rasterized then (text_hires.c),
+before the menus and the HUD draw with them */
 static void hires_text_fonts_ahead(
 	void)
 {
@@ -1337,8 +1319,7 @@ boolean rasterizer_text_port_drawn_span_real(
 	if (!hires_text_atlas || !font_character)
 		return FALSE;
 	hires_font = hires_text_font_get(draw_string_get_font(), MAX(text_scale, 1.0f));
-	if (hires_font == NONE || !text_hires_covers(hires_font, font_character->character) ||
-		!text_hires_glyph(hires_font, font_character->character, &glyph))
+	if (hires_font == NONE || !text_hires_glyph(hires_font, font_character->character, &glyph))
 	{
 		return FALSE;
 	}
@@ -1370,8 +1351,7 @@ boolean rasterizer_text_port_drawn_span(
 	if (!hires_text_atlas || !font_character)
 		return FALSE;
 	hires_font = hires_text_font_get(draw_string_get_font(), MAX(text_scale, 1.0f));
-	if (hires_font == NONE || !text_hires_covers(hires_font, font_character->character) ||
-		!text_hires_glyph(hires_font, font_character->character, &glyph))
+	if (hires_font == NONE || !text_hires_glyph(hires_font, font_character->character, &glyph))
 	{
 		return FALSE;
 	}
