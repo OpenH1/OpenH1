@@ -268,6 +268,12 @@ enum
 	texture_scale for the stage its width and height, then its left and
 	top, in the texture's coordinates; the shader draws the border */
 	XGPU_ADDRESS_REGION = 5,
+	/* (w, of a 2D texture) its texels are the high-res text's distance
+	fields (text_hires.c, xgpu_shader.h's XGPU_MSDF_RANGE): the shader samples the median
+	of red, green and blue as white of the coverage of the field's edge,
+	smoothed over a pixel of the screen (xgpu_shader.h's
+	XGPU_BORDER_MSDF); repeated on w, which a 2D texture has not */
+	XGPU_ADDRESS_MSDF = 6,
 };
 
 /* a sampler (zeroed, then filled: compared whole) */

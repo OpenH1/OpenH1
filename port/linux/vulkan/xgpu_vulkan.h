@@ -331,6 +331,9 @@ enum
 	/* XGPU_ADDRESS_REGION: the shader's (xgpu_vulkan_stream.c's
 	border_axes), clamped to the edge here */
 	XGPU_VULKAN_ADDRESS_REGION = 5,
+	/* XGPU_ADDRESS_MSDF (on w): the shader's (xgpu_vulkan_stream.c's
+	border_axes), repeated here */
+	XGPU_VULKAN_ADDRESS_MSDF = 6,
 };
 
 /* zeroed before it is filled (it is compared whole) */

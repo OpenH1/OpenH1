@@ -430,11 +430,15 @@ unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_descri
 	unsigned int image;
 	long override;
 	struct replacement_entry *entry;
+	int msdf_field;
 
-	/* (the high-res text's atlas, for its placeholder bitmap: text_hires.h) */
-	if ((image = text_hires_atlas_texture(header[1])) != 0)
+	/* (the high-res text's atlas, for its placeholder bitmap: text_hires.h;
+	its distance fields filtered as a high-res picture's) */
+	if ((image = text_hires_atlas_texture(header[1], &msdf_field)) != 0)
 	{
 		description->levels = 1;
+		description->hires = msdf_field != 0;
+		description->hires_msdf = msdf_field != 0;
 		return image;
 	}
 	/* (a menu's bitmap: menu_files.h) */

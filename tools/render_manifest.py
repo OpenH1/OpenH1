@@ -230,6 +230,9 @@ ADDRESS_BORDER = 3
 # a region of the texture (XGPU_ADDRESS_REGION), its border the shader's whatever its colour (XGPU_BORDER_REGION)
 ADDRESS_REGION = 5
 BORDER_REGION = 8
+# the high-res text's distance fields (XGPU_ADDRESS_MSDF on w), the shader's (XGPU_BORDER_MSDF)
+ADDRESS_MSDF = 6
+BORDER_MSDF = 16
 DYNAMIC_FIELDS = ("dt", "st", "sm", "cu", "fi", "db")
 
 
@@ -257,6 +260,8 @@ def compiled(draw):
                     axes = sum(1 << axis for axis, address in enumerate((u, v, w)) if int(address) == ADDRESS_BORDER)
                 if source != "0" and int(u) == ADDRESS_REGION and int(sampler) not in (SAMPLER_CUBE, SAMPLER_2D_LAYERED):
                     axes = 3 | BORDER_REGION
+                if source != "0" and int(w) == ADDRESS_MSDF and int(sampler) not in (SAMPLER_CUBE, SAMPLER_2D_LAYERED):
+                    axes |= BORDER_MSDF
                 stages.append(f"{source}.{sampler}.{axes}")
             value = "/".join(stages)
         parts.append(f"{name}={value}")

@@ -370,6 +370,11 @@ static const struct config_setting config_settings[] =
 		"port/assets/fonts (Cyborg Interface Gothic, Hack) at the resolution\n"
 		"the game draws at, and the menus' titles from port/assets/titles;\n"
 		"false draws the maps' bitmap fonts and titles." },
+	{ "display.text_renderer", _config_string, "\"raster\"", "HALO_TEXT_RENDERER", _environment_value, _platform_all,
+		"How the high-res text's letters are drawn: \"raster\" rasterized at\n"
+		"the resolution the game draws at, for each size; \"msdf\" from\n"
+		"distance fields made with the build, sharp at any size, none made as\n"
+		"the display's size changes. Requires display.high_res_text." },
 	{ "display.shadow_resolution", _config_integer, GRAPHICS_SHADOW_RESOLUTION, "HALO_SHADOW_RESOLUTION",
 		_environment_value, _platform_all,
 		"The size the objects' shadows are drawn at, in pixels each way: 128 as\n"
@@ -4183,6 +4188,7 @@ static const struct
 	{ "display.shield_glow_intensity", { "default", "light_show", NULL }, NULL },
 	{ "display.shield_color", { "default", "white", "black", "red", "blue", "gray", "yellow", "green", "pink",
 		"purple", "cyan", "cobalt", "orange", "teal", "sage", "brown", "tan", "maroon", "salmon", NULL }, NULL },
+	{ "display.text_renderer", { "raster", "msdf", NULL }, NULL },
 	{ "audio.resampler", { "xbox", "sinc", "linear", NULL }, NULL },
 	{ "audio.spatial", { "auto", "headphones", "speakers", NULL }, "auto" },
 	{ "audio.voice_chat", { "push_to_talk", "open_mic", "off", NULL }, NULL },
