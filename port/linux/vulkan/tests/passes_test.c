@@ -819,6 +819,18 @@ static void texture_sets_test(void)
 	set = texture_set(b);
 	assert(set == vk.texture_sets[TEXTURE_SETS_KEPT - 2].set && set_updates == 6 && allocated_sets == 5);
 	assert(texture_set(a) && texture_set(b) == set && set_updates == 6);
+
+	/* An image destroyed and another made at its address whose view the
+	driver gives the destroyed view's handle: its number is new
+	(xgpu_vulkan_image_create's count, never reused), so a kept set of
+	the old view is never bound for it. */
+	set = texture_set(a);
+	assert(set_updates == 6);
+	first.number = 4;
+	/* (the last set b's, as xgpu_vulkan_image_destroy leaves it) */
+	assert(texture_set(b));
+	assert(texture_set(a) != set && set_updates == 7);
+	assert(written_images[0].imageView == (VkImageView)(uintptr_t)33);
 	slot->descriptor_pools = NULL;
 	slot->descriptor_pool_count = 0;
 	reset();
