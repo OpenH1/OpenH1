@@ -845,13 +845,15 @@ enum
 	U_EFFECT_UNPROJECT, U_EFFECT_EYE,
 	U_COUNT,
 	/* (display.ambient_occlusion "world": past the others, declared by the
-	pixel shaders that read it alone: declare_uniforms_world) */
+	pixel shaders that read it alone: declare_uniforms_world; and past it the
+	enhanced dynamic lights' tint, by the structure's lit by them) */
 	U_WORLD_AO = U_COUNT,
+	U_DYNAMIC_LIGHT_TINT,
 };
 
 static void declare_uniforms_members(struct module *m, int count)
 {
-	static const unsigned long offsets[U_COUNT + 1] =
+	static const unsigned long offsets[U_COUNT + 2] =
 	{
 		offsetof(struct xgpu_spirv_uniforms, viewport_scale), offsetof(struct xgpu_spirv_uniforms, viewport_offset),
 		offsetof(struct xgpu_spirv_uniforms, point_size), offsetof(struct xgpu_spirv_uniforms, screen_offset),
@@ -867,9 +869,9 @@ static void declare_uniforms_members(struct module *m, int count)
 		offsetof(struct xgpu_spirv_uniforms, fovea_view), offsetof(struct xgpu_spirv_uniforms, fovea_sample),
 		offsetof(struct xgpu_spirv_uniforms, visibility_counter), offsetof(struct xgpu_spirv_uniforms, depth_bias),
 		offsetof(struct xgpu_spirv_uniforms, effect_unproject), offsetof(struct xgpu_spirv_uniforms, effect_eye),
-		offsetof(struct xgpu_spirv_uniforms, world_ao),
+		offsetof(struct xgpu_spirv_uniforms, world_ao), offsetof(struct xgpu_spirv_uniforms, dynamic_light_tint),
 	};
-	unsigned int members[U_COUNT + 1], block;
+	unsigned int members[U_COUNT + 2], block;
 	int member;
 
 	for (member = 0; member < count; member++)
@@ -906,10 +908,12 @@ static void declare_uniforms(struct module *m)
 	declare_uniforms_members(m, U_COUNT);
 }
 
-/* (and the draw's object's, U_WORLD_AO: display.ambient_occlusion "world") */
-static void declare_uniforms_world(struct module *m)
+/* (and the draw's object's, U_WORLD_AO: display.ambient_occlusion "world";
+and past it, U_DYNAMIC_LIGHT_TINT, the enhanced dynamic lights' tint: a
+structure's pass lit by them) */
+static void declare_uniforms_world(struct module *m, BOOL tint)
 {
-	declare_uniforms_members(m, U_COUNT + 1);
+	declare_uniforms_members(m, tint ? U_COUNT + 2 : U_COUNT + 1);
 }
 
 /* a member of the uniforms (an element of an array member): a float or a
@@ -4038,36 +4042,43 @@ static unsigned int uextract(struct module *m, unsigned int vector, unsigned int
 }
 
 /* the cell's lights that reach the point q's cluster (xgpu.h): its
-cluster's mask, the world's BSP walked down from its root to q's leaf, in a
-loop of SPIR-V's structure; every light where the world has no nodes, or
-puts q in no cluster. Only where the cell has a light: mask is the cell's */
+cluster's mask, the world's tree walked down from its root to q's cluster,
+in a loop of SPIR-V's structure; every light where the world has no nodes,
+or puts q in no cluster. Only where the cell has a light whose walk could
+take it away (XGPU_DYNAMIC_LIGHTS_WALK: a model's, or the structure's):
+mask is the cell's */
 static unsigned int dynamic_light_cluster_mask(struct module *m, struct pixel_state *state, unsigned int mask,
-	unsigned int q)
+	unsigned int q, BOOL environment)
 {
 	unsigned int all = constant_uint(m, 0xffffffffu), top = constant_uint(m, 0x80000000u);
 	unsigned int header = dynamic_light_world_texel(m, constant_uint(m, 0));
-	unsigned int node_count = uextract(m, header, 0), plane_base = uextract(m, header, 1);
-	unsigned int leaf_base = uextract(m, header, 2), leaf_count = uextract(m, header, 3);
+	unsigned int node_count = uextract(m, header, 0), root = uextract(m, header, 1);
 	unsigned int mask_variable = local(m, &state->locals, m->t_uv4);
 	unsigned int node_variable = local(m, &state->locals, m->t_uint);
 	unsigned int leaf_variable = local(m, &state->locals, m->t_uint);
 	unsigned int depth_variable = local(m, &state->locals, m->t_int);
 	unsigned int walk, after, loop_header, loop_condition, loop_body, loop_continue, loop_merge;
-	unsigned int node, entry, plane, distance, child, is_leaf, bad, done, leaf, word, cluster, found, cluster_mask;
-	unsigned int any_light, condition;
+	unsigned int node, texel, plane, children, distance, child, is_leaf, leaf, cluster, found, cluster_mask;
+	unsigned int walked, zero, condition;
 
 	store(m, mask_variable, mask);
-	any_light = op1(m, OP_ANY, m->t_bool, op2(m, OP_I_NOT_EQUAL, m->t_bv4, mask,
-		op(m, OP_COMPOSITE_CONSTRUCT, m->t_uv4, 4, (unsigned int[]){ constant_uint(m, 0), constant_uint(m, 0),
-		constant_uint(m, 0), constant_uint(m, 0) })));
-	condition = op2(m, OP_LOGICAL_AND, m->t_bool, any_light, op2(m, OP_I_NOT_EQUAL, m->t_bool, node_count,
-		constant_uint(m, 0)));
+	/* (the lights the world is walked for: their texel past the clusters'
+	masks) */
+	walked = dynamic_light_texel(m, op(m, OP_COMPOSITE_CONSTRUCT, m->t_iv3, 3, (unsigned int[]){
+		constant_int(m, (XGPU_DYNAMIC_LIGHTS_WALK + (environment ? 1 : 0)) % 32),
+		constant_int(m, (XGPU_DYNAMIC_LIGHTS_WALK + (environment ? 1 : 0)) / 32),
+		constant_int(m, XGPU_DYNAMIC_LIGHTS_GRID_Z) }));
+	zero = op(m, OP_COMPOSITE_CONSTRUCT, m->t_uv4, 4, (unsigned int[]){ constant_uint(m, 0), constant_uint(m, 0),
+		constant_uint(m, 0), constant_uint(m, 0) });
+	condition = op2(m, OP_LOGICAL_AND, m->t_bool, op1(m, OP_ANY, m->t_bool, op2(m, OP_I_NOT_EQUAL, m->t_bv4,
+		op2(m, OP_BITWISE_AND, m->t_uv4, mask, walked), zero)),
+		op2(m, OP_I_NOT_EQUAL, m->t_bool, node_count, constant_uint(m, 0)));
 	walk = id_new(m);
 	after = id_new(m);
 	selection_merge(m, after);
 	branch_conditional(m, condition, walk, after);
 	label_at(m, walk);
-	store(m, node_variable, constant_uint(m, 0));
+	store(m, node_variable, root);
 	store(m, leaf_variable, all);
 	store(m, depth_variable, constant_int(m, 0));
 
@@ -4091,41 +4102,28 @@ static unsigned int dynamic_light_cluster_mask(struct module *m, struct pixel_st
 		op2(m, OP_S_LESS_THAN, m->t_bool, load(m, m->t_int, depth_variable), constant_int(m, XGPU_DYNAMIC_LIGHTS_WORLD_DEPTH)),
 		op2(m, OP_U_LESS_THAN, m->t_bool, node, node_count)), loop_body, loop_merge);
 	label_at(m, loop_body);
-	/* entry = world[1 + node]; plane = world[plane_base + entry.x];
-	child = dot(plane.xyz, q) - plane.w >= 0.0 ? entry.z : entry.y */
-	entry = dynamic_light_world_texel(m, op2(m, OP_I_ADD, m->t_uint, node, constant_uint(m, 1)));
-	bad = op2(m, OP_U_GREATER_THAN_EQUAL, m->t_bool, uextract(m, entry, 0),
-		op2(m, OP_I_SUB, m->t_uint, leaf_base, plane_base));
-	plane = op1(m, OP_BITCAST, m->t_v4, dynamic_light_world_texel(m, op2(m, OP_I_ADD, m->t_uint, plane_base,
-		uextract(m, entry, 0))));
+	/* plane = world[1 + 2 node]; children = world[2 + 2 node] (the two reads
+	apart); child = dot(plane.xyz, q) - plane.w >= 0.0 ? children.y : children.x */
+	texel = op2(m, OP_I_ADD, m->t_uint, op2(m, OP_I_MUL, m->t_uint, node, constant_uint(m, 2)), constant_uint(m, 1));
+	plane = op1(m, OP_BITCAST, m->t_v4, dynamic_light_world_texel(m, texel));
+	children = dynamic_light_world_texel(m, op2(m, OP_I_ADD, m->t_uint, texel, constant_uint(m, 1)));
 	distance = fsub(m, 1, fdot(m, xyz(m, plane), q), extract(m, plane, 3));
 	child = op(m, OP_SELECT, m->t_uint, 3, (unsigned int[]){ compare(m, OP_F_ORD_GREATER_THAN_EQUAL, distance,
-		constant_float(m, 0.0f)), uextract(m, entry, 2), uextract(m, entry, 1) });
+		constant_float(m, 0.0f)), uextract(m, children, 1), uextract(m, children, 0) });
 	is_leaf = op2(m, OP_I_NOT_EQUAL, m->t_bool, op2(m, OP_BITWISE_AND, m->t_uint, child, top), constant_uint(m, 0));
-	/* a leaf (or a bad node: none) ends the walk */
-	store(m, leaf_variable, op(m, OP_SELECT, m->t_uint, 3, (unsigned int[]){ bad, all,
-		op(m, OP_SELECT, m->t_uint, 3, (unsigned int[]){ is_leaf, child, all }) }));
-	done = op2(m, OP_LOGICAL_OR, m->t_bool, bad, is_leaf);
-	store(m, node_variable, op(m, OP_SELECT, m->t_uint, 3, (unsigned int[]){ done, all, child }));
+	/* a cluster (or none) ends the walk */
+	store(m, leaf_variable, op(m, OP_SELECT, m->t_uint, 3, (unsigned int[]){ is_leaf, child, all }));
+	store(m, node_variable, op(m, OP_SELECT, m->t_uint, 3, (unsigned int[]){ is_leaf, all, child }));
 	branch(m, loop_continue);
 	label_at(m, loop_continue);
 	store(m, depth_variable, op2(m, OP_I_ADD, m->t_int, load(m, m->t_int, depth_variable), constant_int(m, 1)));
 	branch(m, loop_header);
 	label_at(m, loop_merge);
 
-	/* the leaf's cluster, and its mask */
+	/* the cluster's mask */
 	leaf = load(m, m->t_uint, leaf_variable);
-	found = op2(m, OP_LOGICAL_AND, m->t_bool, op2(m, OP_I_NOT_EQUAL, m->t_bool, leaf, all),
-		op2(m, OP_U_LESS_THAN, m->t_bool, op2(m, OP_BITWISE_AND, m->t_uint, leaf, constant_uint(m, 0x7fffffffu)),
-		leaf_count));
-	leaf = op2(m, OP_BITWISE_AND, m->t_uint, leaf, constant_uint(m, 0x7fffffffu));
-	word = dynamic_light_world_texel(m, op2(m, OP_I_ADD, m->t_uint, leaf_base,
-		op2(m, OP_SHIFT_RIGHT_LOGICAL, m->t_uint, leaf, constant_uint(m, 2))));
-	cluster = op2(m, OP_VECTOR_EXTRACT_DYNAMIC, m->t_uint, word, op2(m, OP_BITWISE_AND, m->t_uint, leaf,
-		constant_uint(m, 3)));
-	found = op2(m, OP_LOGICAL_AND, m->t_bool, found, op2(m, OP_U_LESS_THAN, m->t_bool, cluster,
-		constant_uint(m, XGPU_DYNAMIC_LIGHTS_CLUSTERS)));
-	cluster = ext2(m, GLSL_U_MIN, m->t_uint, cluster, constant_uint(m, XGPU_DYNAMIC_LIGHTS_CLUSTERS - 1));
+	found = op2(m, OP_I_NOT_EQUAL, m->t_bool, leaf, all);
+	cluster = op2(m, OP_BITWISE_AND, m->t_uint, leaf, constant_uint(m, XGPU_DYNAMIC_LIGHTS_CLUSTERS - 1));
 	cluster_mask = dynamic_light_texel(m, op1(m, OP_BITCAST, m->t_iv3, op(m, OP_COMPOSITE_CONSTRUCT,
 		type_vector(m, m->t_uint, 3), 3, (unsigned int[]){ op2(m, OP_BITWISE_AND, m->t_uint, cluster, constant_uint(m, 31)),
 		op2(m, OP_SHIFT_RIGHT_LOGICAL, m->t_uint, cluster, constant_uint(m, 5)),
@@ -4168,7 +4166,7 @@ static unsigned int dynamic_light_sum(struct module *m, struct pixel_state *stat
 	/* (those of the cell's lights that reach the pixel's cluster, its point
 	a little off its surface: xgpu.h) */
 	mask = dynamic_light_cluster_mask(m, state, mask, fadd(m, 3, p, fscale(m, 3, surface_normal,
-		constant_float(m, XGPU_DYNAMIC_LIGHTS_CLUSTER_OFFSET))));
+		constant_float(m, XGPU_DYNAMIC_LIGHTS_CLUSTER_OFFSET))), environment);
 	grid2 = dynamic_light(m, 0, constant_int(m, 2));
 	/* (a model's: the lights it is not lit by, xgpu.h) */
 	if (!environment)
@@ -4287,12 +4285,23 @@ static unsigned int dynamic_light_sum(struct module *m, struct pixel_state *stat
 }
 
 /* dynamic_light_add(base, light): the light added to the base under the
-shoulder, in linear space */
-static unsigned int dynamic_light_add(struct module *m, unsigned int base, unsigned int light, BOOL hdr)
+shoulder, in linear space; the base as it is (saturated) where there is no
+light, as the shoulder gives it, but for its rounding there and back */
+static unsigned int dynamic_light_add(struct module *m, struct pixel_state *state, unsigned int base,
+	unsigned int light, BOOL hdr)
 {
-	unsigned int grid2 = dynamic_light(m, 0, constant_int(m, 2));
-	unsigned int brightest, had, room, gamma, lit;
+	unsigned int grid2, brightest, had, room, gamma, lit, added, after, any_light, result_variable;
 
+	result_variable = local(m, &state->locals, m->t_v3);
+	store(m, result_variable, saturate(m, 3, base));
+	any_light = op1(m, OP_ANY, m->t_bool, op2(m, OP_F_UNORD_NOT_EQUAL, m->t_bv3, light,
+		constant_splat(m, 3, 0.0f)));
+	added = id_new(m);
+	after = id_new(m);
+	selection_merge(m, after);
+	branch_conditional(m, any_light, added, after);
+	label_at(m, added);
+	grid2 = dynamic_light(m, 0, constant_int(m, 2));
 	brightest = ext2(m, GLSL_F_MAX, m->t_float, extract(m, light, 0), ext2(m, GLSL_F_MAX, m->t_float, extract(m, light, 1),
 		extract(m, light, 2)));
 	light = fadd(m, 3, light, splat(m, 3, fmul(m, 1, fmax_scalar(m, 1, fsub(m, 1, brightest, constant_float(m, 1.0f)), 0.0f),
@@ -4313,7 +4322,10 @@ static unsigned int dynamic_light_add(struct module *m, unsigned int base, unsig
 		lit = fadd(m, 3, lit, fmul(m, 3, white_room, fsub(m, 3, constant_splat(m, 3, 1.0f),
 			ext1(m, GLSL_EXP, m->t_v3, fdiv(m, 3, fneg(m, 3, past), white_room)))));
 	}
-	return ext2(m, GLSL_POW, m->t_v3, lit, gamma);
+	store(m, result_variable, ext2(m, GLSL_POW, m->t_v3, lit, gamma));
+	branch(m, after);
+	label_at(m, after);
+	return load(m, m->t_v3, result_variable);
 }
 
 /* ---------- display.hdr's tags (xgpu_hdr.h; xgpu_msl.c's hdr_output, operation
@@ -4808,8 +4820,8 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 	state.program = program;
 	state.options = options;
 	module_begin(&m, EXECUTION_MODEL_FRAGMENT);
-	if (world)
-		declare_uniforms_world(&m);
+	if (world || environment)
+		declare_uniforms_world(&m, environment);
 	else
 		declare_uniforms(&m);
 	declare_views(&m, program->multiview, options->foveated, TRUE);
@@ -4930,7 +4942,7 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 		unsigned int sum = dynamic_light_sum(&m, &state, pixel_input(&m, &state, state.in_world_position, m.t_v3), n, n, FALSE);
 		static const unsigned int rgb[4] = { 4, 5, 6, 3 };
 
-		state.v0 = shuffle(&m, 4, state.v0, dynamic_light_add(&m, lit, sum, FALSE), rgb);
+		state.v0 = shuffle(&m, 4, state.v0, dynamic_light_add(&m, &state, lit, sum, FALSE), rgb);
 	}
 	else if (program->per_pixel_lighting)
 	{
@@ -5022,8 +5034,8 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 			fscale(&m, 3, pixel_input(&m, &state, state.in_world_binormal, m.t_v3), extract(&m, bump, 1))),
 			fscale(&m, 3, surface_normal, fmax_scalar(&m, 1, extract(&m, bump, 2), 0.05f))));
 		sum = dynamic_light_sum(&m, &state, pixel_input(&m, &state, state.in_world_position, m.t_v3), n, surface_normal, TRUE);
-		lit = dynamic_light_add(&m, xyz(&m, result), fmul(&m, 3, sum, ext2(&m, GLSL_POW, m.t_v3,
-			xyz(&m, uniform(&m, U_PS_FINAL_C0, -1)), constant_splat(&m, 3, 2.2f))), (program->hdr & XGPU_HDR_LIGHTS) != 0);
+		lit = dynamic_light_add(&m, &state, xyz(&m, result), fmul(&m, 3, sum,
+			xyz(&m, uniform(&m, U_DYNAMIC_LIGHT_TINT, -1))), (program->hdr & XGPU_HDR_LIGHTS) != 0);
 		result = shuffle(&m, 4, result, lit, rgb);
 	}
 	if (program->coverage_alpha)

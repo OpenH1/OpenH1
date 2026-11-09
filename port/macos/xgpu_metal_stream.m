@@ -50,6 +50,7 @@ by the functions under "the interface's values".
 #include "xgpu_metal_stream.h"
 #include "xgpu_metal_textures.h"
 #define XGPU_HDR_REFERENCE
+#include "xgpu_dynamic_lights_world.h"
 #include "xgpu_hdr.h"
 
 #include <math.h>
@@ -142,8 +143,12 @@ static struct
 	uint32_t halo_vertex, halo_pixel;
 	BOOL halo_failed;
 	uint32_t lights_none[2];
-	/* their world (none: lights_world_none's header of no nodes) */
+	/* their world (none: lights_world_none's header of no nodes), as the
+	GPU has it (xgpu_dynamic_lights_world.h), and the frame's cells, with
+	the lights the world is walked for (made each frame) */
 	uint32_t lights_world, lights_world_none;
+	struct xgpu_dynamic_lights_world lights_world_made;
+	unsigned char *lights_cells;
 } stream;
 
 /* display.ambient_occlusion "world" found once a pixel (xgpu_stream.h's
@@ -1175,6 +1180,17 @@ static void stream_dynamic_lights_upload(void *context, const struct xgpu_stream
 	(void)context;
 	if (!cells || record->size != XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE)
 		return;
+	/* (with the lights the world is walked for: xgpu.h) */
+	if (!stream.lights_cells)
+		stream.lights_cells = malloc(XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE);
+	if (stream.lights_cells)
+	{
+		memcpy(stream.lights_cells, cells, XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE);
+		xgpu_dynamic_lights_world_walked(&stream.lights_world_made, (const float (*)[4])&record->block,
+			record->count, stream.lights_cells,
+			(uint32_t *)(stream.lights_cells + XGPU_DYNAMIC_LIGHTS_WORLD_WALK_TEXEL * 16));
+		cells = stream.lights_cells;
+	}
 	block = xgpu_metal_stream(&record->block, sizeof(record->block));
 	copied = xgpu_metal_stream(cells, record->size);
 	if (block.kind == XGPU_METAL_SOURCE_NONE || copied.kind == XGPU_METAL_SOURCE_NONE)
@@ -1183,11 +1199,13 @@ static void stream_dynamic_lights_upload(void *context, const struct xgpu_stream
 		xgpu_metal_set_dynamic_lights(block, copied);
 }
 
-/* the world (xgpu.h), into a buffer of its own made the first time with room
-for the most, written in the frame's order */
+/* the world (xgpu.h), as the GPU has it (xgpu_dynamic_lights_world.h), into
+a buffer of its own made the first time with room for the most, written in
+the frame's order */
 static void stream_dynamic_lights_world(void *context, const struct xgpu_stream_dynamic_lights_world *record)
 {
 	const void *texels = host_pointer(record->texels);
+	struct xgpu_dynamic_lights_world *made = &stream.lights_world_made;
 
 	(void)context;
 	if (!texels || !record->count || record->count > XGPU_METAL_STREAM_DYNAMIC_LIGHT_WORLD_TEXELS)
@@ -1196,7 +1214,15 @@ static void stream_dynamic_lights_world(void *context, const struct xgpu_stream_
 		stream.lights_world = xgpu_metal_buffer_create(XGPU_METAL_STREAM_DYNAMIC_LIGHT_WORLD_TEXELS * 16);
 	if (!stream.lights_world)
 		return;
-	xgpu_metal_buffer_write(stream.lights_world, 0, texels, record->count * 16, 1);
+	if (!xgpu_dynamic_lights_world_convert(made, (const uint32_t (*)[4])texels, record->count))
+		host_logf(HOST_LOG_WARN, "metal: the dynamic lights' world (%u texels) could not be made: its lights reach "
+			"every cluster", record->count);
+	else if (made->game_nodes)
+		host_logf(HOST_LOG_INFO, "metal: the dynamic lights' world: %u nodes, %u deep (the game's %u, %u deep)",
+			made->nodes, made->depth, made->game_nodes, made->game_depth);
+	if (!made->count)
+		return;
+	xgpu_metal_buffer_write(stream.lights_world, 0, made->texels, made->count * 16, 1);
 	xgpu_metal_set_dynamic_light_world((struct xgpu_metal_source){ XGPU_METAL_SOURCE_BUFFER, 0,
 		XGPU_METAL_STREAM_DYNAMIC_LIGHT_WORLD_TEXELS * 16, stream.lights_world });
 }
