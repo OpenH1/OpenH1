@@ -172,3 +172,51 @@ its list of deliberate ones.
 ## Deliberate differences
 
 None yet. Each one added is listed here with its reason.
+
+## Where it ends, and the steps there
+
+The engine is worth having only at its end: one source, the generators'
+model, rendered by one engine. Until then, a screen's look comes from its
+widgets (the flattened XML, `menu_tags.c`), its meaning from the model, and
+its behaviour from `menu_functions.c` on `widget_instance`s: three places,
+more than before. Each step below removes one, and each is proved by
+`tools/menu_parity.py` (layout, pixels and, from step 2, behaviour) before it
+merges, with `display.menu_engine` still `"classic"` by default.
+
+The end:
+
+- the model holds everything a generated screen is: its layout (bounds,
+  anchors, sections, rows) and its look (bitmaps, colours, fonts), as well
+  as its meaning (labels, help, choices, ranges, conditions, actions);
+- the engine draws, lays out, focuses and runs every generated screen from
+  the model alone;
+- the screens' behaviour is handlers on the model's rows and actions, not
+  `menu_functions.c` reading `widget_instance` fields by name;
+- `port/assets/menus/ce`'s XML and its widget definitions stay only for the
+  menus the maps carry (the in-game pause menu, `display.menus = "xbox"`),
+  which Halo's engine keeps;
+- `display.menu_engine` is retired, the engine the only one for those
+  screens.
+
+The steps, in order:
+
+1. **Drawn by the engine** (done): the model written for the settings
+   screens, the engine drawing every generated screen under `"new"`, the
+   rows laid out and their help found from the model; 972 of 972 screen
+   variants alike in layout and pixels.
+2. **Input and behaviour by the engine**: focus, navigation, pad, keys,
+   mouse, touch and repeat, the rows' actions, sliders' ranges and stops
+   from the model (`settings_sliders` gone), the rows' conditions from the
+   model (the row-name predicates gone); the parity tool's behaviour scripts,
+   config.toml and the profile compared after each.
+3. **The look in the model**: bounds, anchors and the look written by the
+   generators into the model for every generated screen; the engine reads
+   them there, not from widget definitions.
+4. **Behaviour off `widget_instance`**: each screen's handlers in
+   `menu_functions.c` moved onto the model, a batch of screens at a time.
+5. **The switch**: `"new"` the default, played for a while; then the
+   generated screens' widget XML no longer written, `display.menu_engine`
+   retired.
+
+Features that need the model (scrolling long strings, #899; one dialog
+style, #901; search; live values) come after step 2, on the engine alone.
