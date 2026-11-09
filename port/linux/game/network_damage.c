@@ -69,6 +69,7 @@ being hit looks and feels like on the clients).
 #include "network_coop.h"
 #include "network_distributed.h"
 #include "network_standard.h"
+#include "hit_sounds.h"
 #include "demo.h"
 
 #include <math.h>
@@ -1381,6 +1382,13 @@ void network_damage_aftermath(
 	struct unit_datum *unit;
 	boolean kill;
 
+	/* (the hit sound of damage this machine decides: the host's, or a game
+	of its own; a client's comes with the host's word on it) */
+	if (game_connection() != _game_connection_network_client)
+	{
+		hit_sounds_note_damage(damage->owner_player_index, victim_player_index, shield_damage, body_damage,
+			being_damaged_flags);
+	}
 	if (game_connection() != _game_connection_network_server)
 		return;
 	if (static_target(object_index))
@@ -3240,6 +3248,34 @@ static boolean distributed_predicted_kill_answered(
 	return TRUE;
 }
 
+/* a client: the hit sound of the host's damage of a unit (an aftermath or a
+killing blow, which the host sends the machine of the damage's owner), the
+victim the unit's player, or, its death shown at once (the player taken from
+it), the player it was */
+static void distributed_hit_sound(
+	struct distributed_damage_event const *event,
+	struct damage_data const *damage)
+{
+	struct unit_datum *unit;
+	long victim_player_index;
+
+	if (!network_objects_client_has(event->object_index))
+		return;
+	unit = (struct unit_datum *)object_try_and_get_and_verify_type(event->object_index, _object_mask_unit);
+	if (!unit)
+		return;
+	victim_player_index = unit->unit.player_index;
+	if (victim_player_index == NONE && event->kind == _damage_event_kill)
+	{
+		struct damage_predicted_hit *predicted = distributed_predicted_kill(event->object_index);
+
+		if (predicted)
+			victim_player_index = predicted->victim_player_index;
+	}
+	hit_sounds_note_damage(damage->owner_player_index, victim_player_index, event->shield_damage, event->body_damage,
+		event->being_damaged_flags);
+}
+
 void network_damage_handle_events(
 	void const *entries,
 	short count)
@@ -3270,6 +3306,7 @@ void network_damage_handle_events(
 			break;
 		}
 		case _damage_event_aftermath:
+			distributed_hit_sound(event, &damage);
 			/* (of a hit of this machine's own player it showed: shown) */
 			if (distributed_predicted_hit_answered(event->object_index, &damage))
 				break;
@@ -3285,6 +3322,7 @@ void network_damage_handle_events(
 			}
 			break;
 		case _damage_event_kill:
+			distributed_hit_sound(event, &damage);
 			/* (of a unit this machine killed ahead of it: the kill announced) */
 			if (distributed_predicted_kill_answered(event))
 				break;

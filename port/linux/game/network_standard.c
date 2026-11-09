@@ -100,6 +100,9 @@ static struct
 	/* ... and whether its players keep the original's facing in a jump and
 	a throw (game.enhanced_animations false), read so too */
 	boolean hosting_classic_turning;
+	/* ... and whether it forbids its players' hit sounds (network.allow_hit_sounds
+	false: hit_sounds.c), read so too */
+	boolean hosting_no_hit_sounds;
 	/* ... OpenCE players may join it (network.allow_opence as the server
 	was made, or as Host Controls' Allow OpenCE players has it since); and
 	OpenCE players may be in it, having been let join since the server was
@@ -186,6 +189,7 @@ void network_standard_server_created(
 	network_standard_globals.hosting_rate = network_standard_rate_setting();
 	network_standard_globals.hosting_hold_to_pick_up = !config_boolean("game.auto_pickup");
 	network_standard_globals.hosting_classic_turning = !config_boolean("game.enhanced_animations");
+	network_standard_globals.hosting_no_hit_sounds = !config_boolean("network.allow_hit_sounds");
 	network_standard_globals.mixed = network_standard_globals.hosting && config_boolean("network.allow_opence");
 	network_standard_globals.mixed_since = network_standard_globals.mixed;
 	csmemset(network_standard_globals.machine_kinds, 0, sizeof(network_standard_globals.machine_kinds));
@@ -345,6 +349,7 @@ struct network_game const *network_standard_game_for_machine(
 	legacy_game.standard_rate = 0;
 	SET_FLAG(legacy_game.cooperative_flags, _network_game_hold_to_pick_up_bit, FALSE);
 	SET_FLAG(legacy_game.cooperative_flags, _network_game_classic_turning_bit, FALSE);
+	SET_FLAG(legacy_game.cooperative_flags, _network_game_no_hit_sounds_bit, FALSE);
 	return &legacy_game;
 }
 
@@ -547,6 +552,7 @@ void network_standard_stamp_game(
 	{
 		network_standard_globals.hosting_hold_to_pick_up = !config_boolean("game.auto_pickup");
 		network_standard_globals.hosting_classic_turning = !config_boolean("game.enhanced_animations");
+		network_standard_globals.hosting_no_hit_sounds = !config_boolean("network.allow_hit_sounds");
 	}
 	if (game)
 	{
@@ -554,6 +560,33 @@ void network_standard_stamp_game(
 			network_standard_globals.hosting && network_standard_globals.hosting_hold_to_pick_up);
 		SET_FLAG(game->cooperative_flags, _network_game_classic_turning_bit,
 			network_standard_globals.hosting && network_standard_globals.hosting_classic_turning);
+		SET_FLAG(game->cooperative_flags, _network_game_no_hit_sounds_bit,
+			network_standard_globals.hosting && network_standard_globals.hosting_no_hit_sounds);
+	}
+}
+
+boolean network_standard_hit_sounds_allowed(
+	void)
+{
+	struct network_game *game;
+
+	switch (game_connection())
+	{
+	case _game_connection_network_server:
+		/* (an OpenH1 game's, as read in the lobby; a Legacy game's host
+		reads its own setting, for its own players) */
+		if (network_standard_globals.hosting)
+			return !network_standard_globals.hosting_no_hit_sounds;
+		return config_boolean("network.allow_hit_sounds") != 0;
+	case _game_connection_network_client:
+		/* (the host's word, as its record brought it; a Legacy host, which
+		cannot say, has no rule against them, as OpenCE has none) */
+		game = network_game_get_game();
+		if (!network_standard_globals.joined || !game)
+			return TRUE;
+		return !TEST_FLAG(game->cooperative_flags, _network_game_no_hit_sounds_bit);
+	default:
+		return TRUE;
 	}
 }
 

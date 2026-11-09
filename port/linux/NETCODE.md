@@ -394,7 +394,20 @@ every OpenH1 machine turns a player's body as the host does
 what the campaign's AI sees. A Legacy game's players, and an OpenCE
 machine's in a mixed game, always turn, as OpenCE's machines turn them;
 version 20 sends the players' pings (distributed messages 139 and 140,
-`_distributed_message_marker_up` and `_down`, reliably: below, "Pings").
+`_distributed_message_marker_up` and `_down`, reliably: below, "Pings");
+version 21 makes the rest of the animation enhancements (a seat's reload
+borrowed, the hands off a vehicle's grips and the pose in a throw) the
+host's word on every machine, as the turning is
+(`network_standard_enhanced_animations`); version 22 carries, in bit 5 of
+`cooperative_flags` (`_network_game_no_hit_sounds_bit`), whether the host
+forbids its players' hit sounds (`network.allow_hit_sounds` false), read in
+the lobby as the pickup's way is, so that an OpenH1 client plays none
+(`network_standard_hit_sounds_allowed`, `hit_sounds.c`). The sounds
+themselves need nothing new: a client beeps for the host's damage events
+of its own players' hits, which the host already sends the machine of the
+damage's owner. An OpenCE machine's copy of the record leaves the bit
+clear, and a Legacy game's clients, who hear nothing of the host's, may
+play them.
 With no new version, each client then tells the
 host its build (distributed message 92, `_distributed_message_client_build`,
 reliably once a game after its ready, over its connection alone): its

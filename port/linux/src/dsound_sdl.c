@@ -5696,8 +5696,15 @@ HRESULT WINAPI IDirectSoundBuffer_Play(LPDIRECTSOUNDBUFFER buffer, DWORD reserve
 	(void)reserved2;
 	pthread_mutex_lock(&buffers_lock);
 	record->looping = (flags & DSBPLAY_LOOPING) != 0;
+	/* (from silence, rising to its gain over a twentieth of a second; but a
+	sound played from its start that begins in silence itself, at its gain:
+	there is no click to soften, and a short one, the hit sound, keeps its
+	attack) */
 	if (!record->playing)
-		record->current = 0.0f;
+	{
+		record->current = record->samples && record->position == 0.0 && !record->samples[0] &&
+			(record->channels != 2 || !record->samples[1]) ? record->gain * master_volume : 0.0f;
+	}
 	record->playing = TRUE;
 	record->stopping = FALSE;
 	pthread_mutex_unlock(&buffers_lock);

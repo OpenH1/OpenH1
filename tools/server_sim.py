@@ -322,6 +322,8 @@ def default_settings():
                  "game sees, whatever their own.", "HALO_NET_SHIELD_EFFECTS",
                  choices=["stock", "glow", "light_show", "overshield", "glow_overshield", "light_show_overshield",
                           "players"]),
+        _setting("network.allow_hit_sounds", "boolean", True, "Host: whether the players of your games may hear "
+                 "their hit sounds (audio.hit_sounds); false forbids them.", "HALO_NET_ALLOW_HIT_SOUNDS"),
         _setting("network.voice_lobby", "boolean", True, "Hosting: voice chat in the lobby, before and after a game.",
                  "HALO_NET_VOICE_LOBBY"),
         _setting("network.voice_mode", "string", "team_global_enemy_proximity", "Hosting: voice chat in a game.",

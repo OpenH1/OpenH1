@@ -69,6 +69,12 @@ _network_game_classic_turning_bit) in an OpenH1 game, both on the host
 and its clients; this machine's setting as the map began in a game of its
 own and a Legacy game; a demo's recording's in its playback */
 boolean network_standard_enhanced_animations(void);
+/* whether this machine's players may hear their hit sounds (hit_sounds.c):
+not in a network game whose host forbids them (network.allow_hit_sounds
+false), which an OpenH1 game's record carries to its OpenH1 clients, as read
+in the lobby (_network_game_no_hit_sounds_bit); a Legacy game's clients hear
+nothing of the host's, and may; a game of this machine's own may */
+boolean network_standard_hit_sounds_allowed(void);
 /* the rules above as the game has them, for a demo's header (demo.h's
 _demo_rule_*) */
 unsigned long network_standard_demo_rules(void);

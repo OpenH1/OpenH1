@@ -64,6 +64,10 @@ enum
 	network_standard_turns_with_aim). Only a Standard host sets it, and its
 	OpenH1 machines alone read it */
 	_network_game_classic_turning_bit = 4,
+	/* not co-op's: an OpenH1 game's host forbids its players' hit sounds
+	(network.allow_hit_sounds false: network_standard_hit_sounds_allowed).
+	Only a Standard host sets it, and its OpenH1 machines alone read it */
+	_network_game_no_hit_sounds_bit = 5,
 };
 
 struct network_game
