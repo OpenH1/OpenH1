@@ -396,7 +396,7 @@ static int make(const char *path, uint32_t frames, int with_marks, int old)
 	file.block_size = HOST_RENDER_RECORD_BLOCK;
 	file.ring_address = RING_ADDRESS;
 	file.ring.magic = XGPU_STREAM_MAGIC;
-	file.ring.version = old ? XGPU_STREAM_VERSION - 1 : XGPU_STREAM_VERSION;
+	file.ring.version = old ? XGPU_STREAM_VERSION - (HOST_RENDER_RECORD_VERSION - 1) : XGPU_STREAM_VERSION;
 	file.ring.header_size = sizeof(file.ring);
 	file.ring.buffer = RING_BUFFER;
 	file.ring.size = RING_SIZE;

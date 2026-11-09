@@ -33,8 +33,10 @@ HOST_RENDER_RECORD_VERSION); the stream's own is unchanged.
 #define HOST_RENDER_RECORD_MAGIC 0x4c505248u /* "HRPL" */
 /* 2: the stream's version 22, whose MARK records (debug.render_marks) the
 replay's inspector reads; a recording of 1 (the stream's 21) plays as it
-did, without marks */
-#define HOST_RENDER_RECORD_VERSION 2
+did, without marks. 3: the stream's 23, whose dynamic lights' cells come
+as their changes (DYNAMIC_LIGHTS_CHANGE); a recording of 2 plays its
+whole cells (DYNAMIC_LIGHTS_UPLOAD) as it did */
+#define HOST_RENDER_RECORD_VERSION 3
 
 /* the file: this header, then blocks, each a block header and its bytes:
 together, the events, each an event header and its bytes (an event may

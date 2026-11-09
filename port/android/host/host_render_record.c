@@ -400,6 +400,14 @@ static void record_memory(const unsigned char *start, uint32_t type, uint32_t si
 		outside(upload->cells, upload->size);
 		break;
 	}
+	case XGPU_STREAM_DYNAMIC_LIGHTS_CHANGE:
+	{
+		const struct xgpu_stream_dynamic_lights_change *change = (const void *)start;
+
+		if (change->size)
+			outside(change->cells, change->size);
+		break;
+	}
 	case XGPU_STREAM_DYNAMIC_LIGHTS_WORLD:
 	{
 		const struct xgpu_stream_dynamic_lights_world *world = (const void *)start;

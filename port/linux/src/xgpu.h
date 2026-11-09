@@ -424,7 +424,8 @@ has one of them. */
 #define XGPU_DYNAMIC_LIGHTS_WALK XGPU_DYNAMIC_LIGHTS_CLUSTERS
 #define XGPU_DYNAMIC_LIGHTS_WORLD_SLICES 240
 #define XGPU_DYNAMIC_LIGHTS_WORLD_TEXELS (XGPU_DYNAMIC_LIGHTS_WORLD_SLICES * 1024)
-/* the bytes uploaded each frame: the cells and the clusters' masks */
+/* the bytes of the cells and the clusters' masks, of which each frame's lights
+send those that changed (the command stream's DYNAMIC_LIGHTS_CHANGE) */
 #define XGPU_DYNAMIC_LIGHTS_CELLS_BYTES \
 	(XGPU_DYNAMIC_LIGHTS_GRID_X * XGPU_DYNAMIC_LIGHTS_GRID_Y * (XGPU_DYNAMIC_LIGHTS_GRID_Z + 1) * 16)
 /* how far off its surface a pixel's point is put, world units */

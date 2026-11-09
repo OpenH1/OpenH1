@@ -279,6 +279,7 @@ static const uint32_t record_minimum[XGPU_STREAM_RECORD_TYPES] =
 	[XGPU_STREAM_FRAME_END] = sizeof(struct xgpu_stream_record),
 	[XGPU_STREAM_DYNAMIC_LIGHTS_PREPARE] = sizeof(struct xgpu_stream_record),
 	[XGPU_STREAM_DYNAMIC_LIGHTS_UPLOAD] = sizeof(struct xgpu_stream_dynamic_lights_upload),
+	[XGPU_STREAM_DYNAMIC_LIGHTS_CHANGE] = sizeof(struct xgpu_stream_dynamic_lights_change),
 	[XGPU_STREAM_DYNAMIC_LIGHTS_HALOS] = sizeof(struct xgpu_stream_dynamic_lights_halos),
 	[XGPU_STREAM_DYNAMIC_LIGHTS_WORLD] = sizeof(struct xgpu_stream_dynamic_lights_world),
 	[XGPU_STREAM_VR_SUPPORTED] = sizeof(struct xgpu_stream_reply_record),
@@ -898,6 +899,18 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 			!data_inside(decoder, start, size, upload->cells, upload->size))
 			return XGPU_STREAM_ERROR_BOUNDS;
 		CALL(dynamic_lights_upload, upload);
+		break;
+	}
+	case XGPU_STREAM_DYNAMIC_LIGHTS_CHANGE:
+	{
+		const struct xgpu_stream_dynamic_lights_change *change = (const void *)start;
+
+		if (change->count > XGPU_STREAM_DYNAMIC_LIGHTS_MAXIMUM || (change->offset & 15) || (change->size & 15) ||
+			change->offset > XGPU_STREAM_DYNAMIC_LIGHTS_CELLS_BYTES ||
+			change->size > XGPU_STREAM_DYNAMIC_LIGHTS_CELLS_BYTES - change->offset ||
+			(change->size && !data_inside(decoder, start, size, change->cells, change->size)))
+			return XGPU_STREAM_ERROR_BOUNDS;
+		CALL(dynamic_lights_change, change);
 		break;
 	}
 	case XGPU_STREAM_DYNAMIC_LIGHTS_WORLD:

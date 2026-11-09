@@ -652,8 +652,11 @@ uint64_t xgpu_vulkan_completed(void);
 size bytes) and their grid's cells (32 x 32 x 16, four uints each: xgpu.h)
 with the clusters' masks past them (a slice more), which the draw set holds
 (xgpu_spirv.h), in the stream's order: draws recorded before it read the old
-ones, draws after it these */
-void xgpu_vulkan_dynamic_lights_upload(const void *block, uint32_t size, const void *cells);
+ones, draws after it these. cells is all of them, of which only the bytes
+from first to end changed since the last upload (multiples of 16; first ==
+end: none), which alone are uploaded (all of them the first time) */
+void xgpu_vulkan_dynamic_lights_upload(const void *block, uint32_t size, const void *cells, uint32_t first,
+	uint32_t end);
 /* the world (xgpu.h): count texels, into the cells' texture past the
 clusters' masks, in the stream's order as the cells are */
 void xgpu_vulkan_dynamic_lights_world(const void *texels, uint32_t count);

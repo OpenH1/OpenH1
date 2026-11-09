@@ -931,6 +931,14 @@ static void test_dynamic_lights_upload(void *context, const struct xgpu_stream_d
 		checksum(host_pointer(record->cells), record->size));
 }
 
+static void test_dynamic_lights_change(void *context, const struct xgpu_stream_dynamic_lights_change *record)
+{
+	(void)context;
+	text_printf(&actual, "lights %u %u %08x %08x\n", record->offset, record->size,
+		checksum(&record->block, sizeof(record->block)),
+		record->size ? checksum(host_pointer(record->cells), record->size) : 0u);
+}
+
 static void test_dynamic_lights_halos(void *context, const struct xgpu_stream_dynamic_lights_halos *record)
 {
 	(void)context;
@@ -1000,6 +1008,7 @@ static const struct host_render_backend test_backend =
 	.loading = test_loading,
 	.loading_art = test_loading_art,
 	.dynamic_lights_upload = test_dynamic_lights_upload,
+	.dynamic_lights_change = test_dynamic_lights_change,
 	.dynamic_lights_halos = test_dynamic_lights_halos,
 	.vr_supported = test_vr_supported,
 	.vr_initialize = test_vr_initialize,
@@ -1689,9 +1698,18 @@ static void test_round_trip(void)
 			random_bytes(block->position, 5 * 16);
 			random_bytes(cells, 32 * 32 * 17 * 16);
 			CHECK(xgpu_backend_dynamic_lights_prepare());
+			/* (the first: all of the cells; then those that changed, from the
+			first texel that did to the last; none) */
 			xgpu_backend_dynamic_lights_upload(block, cells);
-			text_printf(&expected, "lights %08x %08x\n", checksum(block, sizeof(*block)),
+			text_printf(&expected, "lights 0 %u %08x %08x\n", 32 * 32 * 17 * 16, checksum(block, sizeof(*block)),
 				checksum(cells, 32 * 32 * 17 * 16));
+			cells[5000] ^= 1;
+			cells[70000] ^= 1;
+			xgpu_backend_dynamic_lights_upload(block, cells);
+			text_printf(&expected, "lights 4992 %u %08x %08x\n", 70016 - 4992, checksum(block, sizeof(*block)),
+				checksum(cells + 4992, 70016 - 4992));
+			xgpu_backend_dynamic_lights_upload(block, cells);
+			text_printf(&expected, "lights 0 0 %08x 00000000\n", checksum(block, sizeof(*block)));
 			memset(cells, 0, 32 * 32 * 17 * 16);
 			halos->count = 3;
 			random_bytes(halos->halos, 6 * 16);

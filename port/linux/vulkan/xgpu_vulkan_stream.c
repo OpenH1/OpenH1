@@ -2437,9 +2437,100 @@ static int stream_dynamic_lights_prepare(void *context)
 }
 
 /* the world as the GPU has it (xgpu_dynamic_lights_world.h), and the
-frame's cells, with the lights the world is walked for (made each frame) */
+cells as the GPU has them: the stream's changes applied, with the lights
+the world is walked for (made each frame) */
 static struct xgpu_dynamic_lights_world lights_world;
 static unsigned char *lights_cells;
+
+typedef uint64_t __attribute__((may_alias)) lights_word;
+
+/* whether bytes bytes (a multiple of 16) at a and b are the same: their
+words' differences or'd, which the compiler makes vector instructions of
+(a C library's memcmp may go a byte at a time) */
+static int lights_same(const void *a, const void *b, uint32_t bytes)
+{
+	const lights_word *x = a, *y = b;
+	uint64_t difference = 0;
+	uint32_t index;
+
+	for (index = 0; index < bytes / 8; index++)
+		difference |= x[index] ^ y[index];
+	return !difference;
+}
+
+/* the bytes from *low to *high of the cells kept, and of the frame's (b,
+which starts at base), narrowed to those from the first texel that differs
+to the last (none: *low == *high), a row of 32 texels at a time first */
+static void lights_changed(const unsigned char *b, uint32_t base, uint32_t *low, uint32_t *high)
+{
+	uint32_t from = *low, to = *high;
+
+	while (from + 512 <= to && lights_same(lights_cells + from, b + from - base, 512))
+		from += 512;
+	while (from < to && lights_same(lights_cells + from, b + from - base, 16))
+		from += 16;
+	while (to >= from + 512 && lights_same(lights_cells + to - 512, b + to - 512 - base, 512))
+		to -= 512;
+	while (to > from && lights_same(lights_cells + to - 16, b + to - 16 - base, 16))
+		to -= 16;
+	*low = from;
+	*high = to;
+}
+
+/* the frame's cells (the bytes from offset, size of them, as they are
+now: the stream's version 22's the whole, a change only those that
+changed) into the GPU's: only the bytes from the first texel that changed
+to the last that did copied and uploaded, the walk's texels (made here,
+not sent) left out of the comparison and made again */
+static void dynamic_lights_cells(const struct xgpu_stream_dynamic_lights_block *block, uint32_t count,
+	uint32_t offset, uint32_t size, const unsigned char *cells)
+{
+	enum
+	{
+		WALK = XGPU_DYNAMIC_LIGHTS_WORLD_WALK_TEXEL * 16,
+		WALK_END = WALK + 8 * sizeof(uint32_t),
+	};
+	uint32_t first = DYNAMIC_LIGHTS_CELLS_SIZE, end = 0, part;
+	uint32_t walk[8];
+
+	if (!lights_cells)
+		lights_cells = calloc(1, DYNAMIC_LIGHTS_CELLS_SIZE);
+	if (!lights_cells)
+	{
+		/* (as they come, without the world's walk) */
+		if (!offset && size == DYNAMIC_LIGHTS_CELLS_SIZE)
+			xgpu_vulkan_dynamic_lights_upload(block, sizeof(*block), cells, 0, DYNAMIC_LIGHTS_CELLS_SIZE);
+		return;
+	}
+	/* (the parts before and after the walk's texels) */
+	for (part = 0; part < 2 && size; part++)
+	{
+		uint32_t low = part ? (offset > WALK_END ? offset : WALK_END) : offset;
+		uint32_t high = part ? offset + size : (offset + size < WALK ? offset + size : WALK);
+
+		if (low >= high)
+			continue;
+		lights_changed(cells, offset, &low, &high);
+		if (low < high)
+		{
+			memcpy(lights_cells + low, cells + low - offset, high - low);
+			if (low < first)
+				first = low;
+			if (high > end)
+				end = high;
+		}
+	}
+	xgpu_dynamic_lights_world_walked(&lights_world, (const float (*)[4])block, count, lights_cells, walk);
+	if (memcmp(lights_cells + WALK, walk, sizeof(walk)))
+	{
+		memcpy(lights_cells + WALK, walk, sizeof(walk));
+		if (WALK < first)
+			first = WALK;
+		if (WALK_END > end)
+			end = WALK_END;
+	}
+	xgpu_vulkan_dynamic_lights_upload(block, sizeof(*block), lights_cells, first < end ? first : 0, first < end ? end : 0);
+}
 
 static void stream_dynamic_lights_upload(void *context, const struct xgpu_stream_dynamic_lights_upload *record)
 {
@@ -2448,17 +2539,17 @@ static void stream_dynamic_lights_upload(void *context, const struct xgpu_stream
 	(void)context;
 	if (!cells || record->size != DYNAMIC_LIGHTS_CELLS_SIZE)
 		return;
-	/* (with the lights the world is walked for: xgpu.h) */
-	if (!lights_cells)
-		lights_cells = malloc(DYNAMIC_LIGHTS_CELLS_SIZE);
-	if (lights_cells)
-	{
-		memcpy(lights_cells, cells, DYNAMIC_LIGHTS_CELLS_SIZE);
-		xgpu_dynamic_lights_world_walked(&lights_world, (const float (*)[4])&record->block, record->count,
-			lights_cells, (uint32_t *)(lights_cells + XGPU_DYNAMIC_LIGHTS_WORLD_WALK_TEXEL * 16));
-		cells = lights_cells;
-	}
-	xgpu_vulkan_dynamic_lights_upload(&record->block, sizeof(record->block), cells);
+	dynamic_lights_cells(&record->block, record->count, 0, DYNAMIC_LIGHTS_CELLS_SIZE, cells);
+}
+
+static void stream_dynamic_lights_change(void *context, const struct xgpu_stream_dynamic_lights_change *record)
+{
+	const void *cells = record->size ? host_pointer(record->cells) : NULL;
+
+	(void)context;
+	if (record->size && !cells)
+		return;
+	dynamic_lights_cells(&record->block, record->count, record->offset, record->size, cells);
 }
 
 static void stream_dynamic_lights_world(void *context, const struct xgpu_stream_dynamic_lights_world *record)
@@ -3553,6 +3644,7 @@ const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 		backend.prepared = stream_prepared;
 		backend.dynamic_lights_prepare = stream_dynamic_lights_prepare;
 		backend.dynamic_lights_upload = stream_dynamic_lights_upload;
+		backend.dynamic_lights_change = stream_dynamic_lights_change;
 		backend.dynamic_lights_halos = stream_dynamic_lights_halos;
 		backend.dynamic_lights_world = stream_dynamic_lights_world;
 		backend.anti_aliasing_prepare = stream_anti_aliasing_prepare;

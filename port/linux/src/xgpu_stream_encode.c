@@ -217,6 +217,11 @@ static struct
 	its waits as last read */
 	uint64_t waited_nanoseconds, capped_nanoseconds;
 	uint32_t host_waited;
+
+	/* the dynamic lights' cells as last sent (lights_sent: the host has
+	them since the stream opened), which the next change is of */
+	unsigned char *lights_cells;
+	BOOL lights_sent;
 } stream;
 
 /* (tests and measurements) the ring's size and frames in flight, before
@@ -625,6 +630,7 @@ void xgpu_backend_initialize(void)
 	memset(&stream.vertices, 0, sizeof(stream.vertices));
 	forget_sent();
 	marks_forget();
+	stream.lights_sent = FALSE;
 	if (host_render_stream_open(STREAM_ADDRESS(ring)))
 	{
 		fprintf(stderr, "the renderer's command stream: the host has no renderer for it\n");
@@ -2101,24 +2107,78 @@ BOOL xgpu_backend_dynamic_lights_prepare(void)
 
 #define DYNAMIC_LIGHTS_CELLS_SIZE XGPU_DYNAMIC_LIGHTS_CELLS_BYTES
 
+/* The cells change little from frame to frame (where the lights reach
+around the camera, and the clusters' masks): only the bytes from the first
+16 that differ from those last sent to the last that do are sent, and none
+where none differ; the first after the stream opens are all of them. (All
+278 KB of them were sent each frame, copied into the ring and again by the
+host.) */
+#define DYNAMIC_LIGHTS_ROW 512u
+
+typedef uint64_t __attribute__((may_alias)) lights_word;
+
+/* whether bytes bytes (a multiple of 16) at a and b are the same: their
+words' differences or'd, which the compiler makes vector instructions of
+(musl's memcmp is a byte at a time) */
+static BOOL lights_same(const void *a, const void *b, uint32_t bytes)
+{
+	const lights_word *x = a, *y = b;
+	uint64_t difference = 0;
+	uint32_t index;
+
+	for (index = 0; index < bytes / 8; index++)
+		difference |= x[index] ^ y[index];
+	return !difference;
+}
+
+static void dynamic_lights_changed(const unsigned char *cells, uint32_t *first, uint32_t *end)
+{
+	const unsigned char *sent = stream.lights_cells;
+	uint32_t low = 0, high = DYNAMIC_LIGHTS_CELLS_SIZE;
+
+	/* (a row of 32 cells at a time, then the cells in the row) */
+	while (low < high && lights_same(sent + low, cells + low, DYNAMIC_LIGHTS_ROW))
+		low += DYNAMIC_LIGHTS_ROW;
+	while (low < high && lights_same(sent + low, cells + low, 16))
+		low += 16;
+	while (high > low && lights_same(sent + high - DYNAMIC_LIGHTS_ROW, cells + high - DYNAMIC_LIGHTS_ROW,
+		DYNAMIC_LIGHTS_ROW))
+		high -= DYNAMIC_LIGHTS_ROW;
+	while (high > low && lights_same(sent + high - 16, cells + high - 16, 16))
+		high -= 16;
+	*first = low;
+	*end = high;
+}
+
 void xgpu_backend_dynamic_lights_upload(const struct xgpu_dynamic_lights_block *block, const void *cells)
 {
 	static const float zero[4];
-	struct xgpu_stream_dynamic_lights_upload *record_body;
+	struct xgpu_stream_dynamic_lights_change *record_body;
 	uint32_t count = XGPU_DYNAMIC_LIGHTS_MAXIMUM;
-	uint32_t light;
+	uint32_t light, first = 0, end = DYNAMIC_LIGHTS_CELLS_SIZE;
 	unsigned char *place;
 
 	if (!stream.open)
 		return;
+	if (!stream.lights_cells)
+		stream.lights_cells = malloc(DYNAMIC_LIGHTS_CELLS_SIZE);
+	if (!stream.lights_cells)
+		stream.lights_sent = FALSE;
+	else if (stream.lights_sent)
+	{
+		dynamic_lights_changed(cells, &first, &end);
+		if (first >= end)
+			first = end = 0;
+	}
 	/* the lights past the last that is there are zeros */
 	while (count && !memcmp(block->position[count - 1], zero, 16) && !memcmp(block->color[count - 1], zero, 16) &&
 		!memcmp(block->cone[count - 1], zero, 16))
 		count--;
-	record_body = record_data(XGPU_STREAM_DYNAMIC_LIGHTS_UPLOAD, sizeof(*record_body),
-		carried_one(DYNAMIC_LIGHTS_CELLS_SIZE), &place);
+	record_body = record_data(XGPU_STREAM_DYNAMIC_LIGHTS_CHANGE, sizeof(*record_body),
+		end > first ? carried_one(end - first) : 0, &place);
 	record_body->count = count;
-	record_body->size = DYNAMIC_LIGHTS_CELLS_SIZE;
+	record_body->offset = first;
+	record_body->size = end - first;
 	memcpy(record_body->block.grid, block->grid, sizeof(record_body->block.grid));
 	for (light = 0; light < count; light++)
 	{
@@ -2130,7 +2190,15 @@ void xgpu_backend_dynamic_lights_upload(const struct xgpu_dynamic_lights_block *
 	stream_finite(&record_body->block.position[0][0], count * 4, "dynamic light place", 0);
 	stream_finite(&record_body->block.color[0][0], count * 4, "dynamic light colour", 0);
 	stream_finite(&record_body->block.cone[0][0], count * 4, "dynamic light cone", 0);
-	record_body->cells = carry_one(&place, cells, DYNAMIC_LIGHTS_CELLS_SIZE);
+	if (end > first)
+	{
+		record_body->cells = carry_one(&place, (const unsigned char *)cells + first, end - first);
+		if (stream.lights_cells)
+		{
+			memcpy(stream.lights_cells + first, (const unsigned char *)cells + first, end - first);
+			stream.lights_sent = TRUE;
+		}
+	}
 }
 
 void xgpu_backend_dynamic_lights_world(const void *texels, int count)

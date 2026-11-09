@@ -659,6 +659,9 @@ static struct
 	and cells, and the visibility counters (unused by the flat game) */
 	struct xgpu_vulkan_buffer *lights_block, *samples;
 	struct xgpu_vulkan_image *lights_cells;
+	/* the cells uploaded since lights_cells was made (else they are all
+	uploaded, whatever changed) */
+	int lights_cells_uploaded;
 	VkSampler stand_in_sampler;
 	struct xgpu_vulkan_image *stand_ins[4];
 	/* Presentation owns this image across loading frames, independently
@@ -873,6 +876,11 @@ static struct
 	uint32_t segment_count, segment_capacity;
 	int segment_open, discard_logged;
 	VkCommandBuffer pass_commands;
+	/* without discards: the pass being recorded (into the main command
+	buffer) as a segment, for its timestamps' labels, and whether work
+	outside passes was recorded since the last timestamp */
+	struct segment direct_pass;
+	int direct_outside;
 	/* HALO_VULKAN_ASIDE (on with discards): passes put aside, before the
 	pass they interrupt, which goes on in one rendering ("aside passes",
 	below): the chain's first and last pieces (segment indices plus one;
@@ -1279,6 +1287,10 @@ static void barrier(VkCommandBuffer commands, VkPipelineStageFlags source_stages
 done first */
 static void gpu_time_start(void);
 
+static void pass_times_mark(VkCommandBuffer main, const char *label);
+static const char *pass_times_label(const struct segment *segment, int aside);
+static void timing_mark(VkCommandBuffer main, const struct segment *segment, int aside, int outside);
+
 static void recording_begin(void)
 {
 	struct slot *slot;
@@ -1330,6 +1342,14 @@ static void recording_begin(void)
 	vk.bound_pipeline = VK_NULL_HANDLE;
 	memset(&vk.bound, 0, sizeof(vk.bound));
 	vk.last_texture_valid = 0;
+	/* (without discards the main command buffer is recorded as drawn: its
+	timestamps written as it is, segments_play's otherwise) */
+	vk.direct_outside = 0;
+	if (!vk.deferred)
+	{
+		pass_times_mark(slot->main, NULL);
+		timing_mark(slot->main, NULL, 0, 0);
+	}
 	gpu_time_start();
 }
 
@@ -1798,10 +1818,6 @@ static void pass_play(VkCommandBuffer main, uint32_t first, uint32_t last)
 	pass_barrier(main);
 }
 
-static void pass_times_mark(VkCommandBuffer main, const char *label);
-static const char *pass_times_label(const struct segment *segment, int aside);
-static void timing_mark(VkCommandBuffer main, const struct segment *segment, int aside, int outside);
-
 /* the submission's segments into the main command buffer, in order but for
 what was put aside (before the chain it was put aside from, whose pieces
 are then one pass): each pass begun with the stores chosen now */
@@ -1869,13 +1885,27 @@ static VkCommandBuffer outside_commands(void)
 	struct segment *segment;
 
 	if (!vk.deferred)
+	{
+		vk.direct_outside = 1;
 		return vk.slot->main;
+	}
 	if (vk.segment_open)
 		return vk.segments[vk.segment_count - 1].commands;
 	segment = segment_add();
 	segment->commands = secondary_begin(NULL);
 	vk.segment_open = 1;
 	return segment->commands;
+}
+
+/* without discards: the work outside passes recorded since the last
+timestamp, timed (before a pass, and as the submission is made) */
+static void direct_outside_mark(void)
+{
+	if (vk.deferred || !vk.direct_outside)
+		return;
+	vk.direct_outside = 0;
+	pass_times_mark(vk.slot->main, "outside passes");
+	timing_mark(vk.slot->main, NULL, 0, 1);
 }
 
 /* the main command buffer, outside a pass */
@@ -2378,6 +2408,8 @@ static struct
 	char note[512];
 } timing;
 
+static int timing_write(VkCommandBuffer commands, uint8_t what, uint32_t index);
+
 int xgpu_vulkan_timing_begin(void)
 {
 	VkQueryPoolCreateInfo create;
@@ -2403,6 +2435,10 @@ int xgpu_vulkan_timing_begin(void)
 	timing.done = 0;
 	timing.draws_off = getenv("HALO_VULKAN_TIMING_DRAWS") && !atoi(getenv("HALO_VULKAN_TIMING_DRAWS"));
 	timing.active = 1;
+	/* (without discards a submission's timestamps are written as it is
+	recorded: one being recorded starts its timing now) */
+	if (vk.recording && !vk.deferred)
+		timing_write(vk.slot->main, TIMING_START, 0);
 	return 1;
 }
 
@@ -4913,6 +4949,14 @@ static int pass_begin(uint32_t clear_parts, const float clear_color[4], float cl
 		pass_segment_begin(&rendering);
 	else
 	{
+		/* (the pass's state as a segment's, for its timestamp's label; the
+		state bound before it stays bound in the main command buffer) */
+		direct_outside_mark();
+		memset(&vk.direct_pass, 0, sizeof(vk.direct_pass));
+		vk.direct_pass.pass = 1;
+		vk.direct_pass.area = rendering.renderArea;
+		vk.direct_pass.color.image = rendering.colorAttachmentCount ? vk.color : NULL;
+		vk.direct_pass.depth.image = rendering.pDepthAttachment ? vk.depth : NULL;
 		vkCmdBeginRendering(vk.slot->main, &rendering);
 		vk.pass_commands = vk.slot->main;
 	}
@@ -4938,6 +4982,8 @@ static void pass_end_body(void)
 	{
 		vkCmdEndRendering(vk.slot->main);
 		pass_barrier(vk.slot->main);
+		pass_times_mark(vk.slot->main, pass_times_label(&vk.direct_pass, 0));
+		timing_mark(vk.slot->main, &vk.direct_pass, 0, 0);
 	}
 	vk.pass_active = 0;
 	vk.pass_reads_depth = 0;
@@ -4945,7 +4991,9 @@ static void pass_end_body(void)
 
 static void pass_end_from(const char *caller)
 {
-	if (vk.pass_active && vk.segment_count && vk.segments[vk.segment_count - 1].pass)
+	if (vk.pass_active && !vk.deferred)
+		vk.direct_pass.ended_by = caller;
+	else if (vk.pass_active && vk.segment_count && vk.segments[vk.segment_count - 1].pass)
 		vk.segments[vk.segment_count - 1].ended_by = caller;
 	pass_end_body();
 }
@@ -6235,6 +6283,8 @@ static uint64_t submit(VkSemaphore wait_semaphore, VkSemaphore signal_semaphore)
 	pass_end();
 	if (vk.deferred)
 		segments_play();
+	else
+		direct_outside_mark();
 	if (vk.early_recording)
 	{
 		barrier(vk.slot->early, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
@@ -8578,6 +8628,7 @@ static int draw_set_make(void)
 	description.depth_or_layers = XGPU_STREAM_DYNAMIC_LIGHTS_CELL_SLICES + XGPU_STREAM_DYNAMIC_LIGHTS_WORLD_SLICES;
 	description.levels = 1;
 	vk.lights_cells = xgpu_vulkan_image_create(&description);
+	vk.lights_cells_uploaded = 0;
 	if (!vk.lights_block || !vk.samples || !vk.lights_cells)
 		return 0;
 	/* (no world yet: its header's node count 0) */
@@ -8624,15 +8675,32 @@ static int draw_set_make(void)
 	return 1;
 }
 
-void xgpu_vulkan_dynamic_lights_upload(const void *block, uint32_t size, const void *cells)
+void xgpu_vulkan_dynamic_lights_upload(const void *block, uint32_t size, const void *cells, uint32_t first,
+	uint32_t end)
 {
+	const uint32_t row = 32 * 16, slice = 32 * row;
+	uint32_t z, z_end, y, y_end;
+
 	if (!vk.lights_block || !vk.lights_cells)
 		return;
 	/* (early, before the submission's draws, unless a draw recorded in it
 	read the lights: xgpu_vulkan_draw) */
 	xgpu_vulkan_buffer_write(vk.lights_block, 0, block, size < vk.lights_block->size ? size : vk.lights_block->size, 0);
-	xgpu_vulkan_image_upload(vk.lights_cells, 0, 0, 0, 0, 0, vk.lights_cells->description.width,
-		vk.lights_cells->description.height, XGPU_STREAM_DYNAMIC_LIGHTS_CELL_SLICES, cells, 0, 0);
+	if (!vk.lights_cells_uploaded)
+	{
+		first = 0;
+		end = XGPU_STREAM_DYNAMIC_LIGHTS_CELL_SLICES * slice;
+		vk.lights_cells_uploaded = 1;
+	}
+	if (first >= end || end > XGPU_STREAM_DYNAMIC_LIGHTS_CELL_SLICES * slice)
+		return;
+	/* (the rows changed, in a slice; the slices, in more than one) */
+	z = first / slice;
+	z_end = (end - 1) / slice + 1;
+	y = z_end - z == 1 ? first % slice / row : 0;
+	y_end = z_end - z == 1 ? ((end - 1) % slice) / row + 1 : 32;
+	xgpu_vulkan_image_upload(vk.lights_cells, 0, 0, 0, y, z, 32, y_end - y, z_end - z,
+		(const unsigned char *)cells + z * slice + y * row, row, slice);
 }
 
 void xgpu_vulkan_dynamic_lights_world(const void *texels, uint32_t count)
@@ -8795,8 +8863,34 @@ own, as without discards), and lazily allocated memory for the transient
 multisampled images (else they are ordinary images: a desktop's GPU has
 none). HALO_VULKAN_TRANSIENT=0: no transient images; =force: transient
 images in ordinary memory, to try their path on a desktop's GPU. On by
-default (measured on the Steam Frame's Adreno, #335);
-HALO_VULKAN_DISCARDS=0: off. */
+default on a tiler (measured on the Steam Frame's Adreno, #335), off on an
+immediate GPU (a desktop's, a laptop's or the Steam Deck's), which has no
+tile memory for them to save and on which the segments cost the render
+thread a secondary command buffer begun, ended and executed each pass and
+each piece of work between passes, and the state bound again in each:
+there the passes are recorded into the main command buffer as they are
+drawn, the state bound in it kept from pass to pass.
+HALO_VULKAN_DISCARDS=1: on, =0: off, whatever the GPU. */
+
+/* a tiler: a GPU whose passes draw in tile memory, which their loads and
+stores fill and write out (ARM's Mali, Qualcomm's Adreno, Imagination's
+PowerVR, Apple's, Broadcom's VideoCore), or any with lazily allocated
+memory, which only a tiler's attachments can leave uncommitted */
+static int device_tiles(int lazily)
+{
+	switch (vk.properties.vendorID)
+	{
+	case 0x13b5: /* ARM */
+	case 0x5143: /* Qualcomm */
+	case 0x1010: /* Imagination */
+	case 0x106b: /* Apple */
+	case 0x14e4: /* Broadcom */
+		return 1;
+	default:
+		return lazily;
+	}
+}
+
 static void discards_choose(void)
 {
 	const char *chosen = getenv("HALO_VULKAN_DISCARDS"), *transient = getenv("HALO_VULKAN_TRANSIENT");
@@ -8806,10 +8900,16 @@ static void discards_choose(void)
 	uint32_t index;
 	int lazily = 0;
 
-	vk.deferred = !chosen || !*chosen || atoi(chosen) != 0;
+	for (index = 0; index < vk.memory_properties.memoryTypeCount; index++)
+		lazily |= (vk.memory_properties.memoryTypes[index].propertyFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT) != 0;
+	vk.deferred = chosen && *chosen ? atoi(chosen) != 0 : device_tiles(lazily);
 	vk.depth_resolve = vk.transient = vk.aside = 0;
 	if (!vk.deferred)
+	{
+		host_logf(HOST_LOG_INFO, "vulkan: discards off: passes recorded into the main command buffer as drawn (%s)",
+			chosen && *chosen ? "HALO_VULKAN_DISCARDS=0" : "an immediate GPU; HALO_VULKAN_DISCARDS=1: on");
 		return;
+	}
 	vk.aside = !aside || !*aside || atoi(aside) != 0;
 	memset(&resolve, 0, sizeof(resolve));
 	resolve.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DEPTH_STENCIL_RESOLVE_PROPERTIES;
@@ -8819,8 +8919,6 @@ static void discards_choose(void)
 	vkGetPhysicalDeviceProperties2(vk.physical, &properties);
 	vk.depth_resolve = (resolve.supportedDepthResolveModes & VK_RESOLVE_MODE_SAMPLE_ZERO_BIT) &&
 		(resolve.supportedStencilResolveModes & VK_RESOLVE_MODE_SAMPLE_ZERO_BIT);
-	for (index = 0; index < vk.memory_properties.memoryTypeCount; index++)
-		lazily |= (vk.memory_properties.memoryTypes[index].propertyFlags & VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT) != 0;
 	if (transient && !strcmp(transient, "force"))
 		vk.transient = 2;
 	else if (lazily && !(transient && *transient && !atoi(transient)))

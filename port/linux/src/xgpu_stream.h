@@ -38,7 +38,7 @@ port/linux/README.md.
 #include <stdint.h>
 
 #define XGPU_STREAM_MAGIC 0x53504758u /* "XGPS" */
-#define XGPU_STREAM_VERSION 22
+#define XGPU_STREAM_VERSION 23
 #define XGPU_STREAM_LOADING_ART_BYTES (640u * 480u * 4u)
 
 /* ---------- the ring
@@ -296,6 +296,10 @@ enum
 	XGPU_STREAM_MARK_STRING,
 	XGPU_STREAM_MARK_VIEW,
 	XGPU_STREAM_MARK_OWNER,
+	/* the enhanced dynamic lights' cells that changed
+	(xgpu_backend_dynamic_lights_upload; DYNAMIC_LIGHTS_UPLOAD's records,
+	of the whole, are the stream's version 22's) */
+	XGPU_STREAM_DYNAMIC_LIGHTS_CHANGE,
 	XGPU_STREAM_RECORD_TYPES,
 };
 
@@ -1182,12 +1186,27 @@ struct xgpu_stream_dynamic_lights_upload
 	struct xgpu_stream_dynamic_lights_block block;
 };
 
+/* the frame's lights: the block (its lights past count zero), and the
+cells' bytes from offset that changed since the stream's last change (size
+bytes, inline at cells; none: 0), the others as they were. The offset and
+size are multiples of 16, inside XGPU_STREAM_DYNAMIC_LIGHTS_CELLS_BYTES;
+the stream's first change is of all of them. */
+struct xgpu_stream_dynamic_lights_change
+{
+	uint32_t header;
+	uint32_t count;
+	uint32_t cells, offset, size;
+	struct xgpu_stream_dynamic_lights_block block;
+};
+
 /* the world's count texels (inline) at texels, count * 16 bytes; count
 at most xgpu.h's XGPU_DYNAMIC_LIGHTS_WORLD_TEXELS */
 #define XGPU_STREAM_DYNAMIC_LIGHTS_WORLD_TEXELS (240u * 1024u)
 /* the cells' texture's slices of 32 x 32 texels (xgpu.h): the cells and the
 clusters' masks, uploaded each frame, then the world's */
 #define XGPU_STREAM_DYNAMIC_LIGHTS_CELL_SLICES 17u
+/* their bytes (xgpu.h's XGPU_DYNAMIC_LIGHTS_CELLS_BYTES) */
+#define XGPU_STREAM_DYNAMIC_LIGHTS_CELLS_BYTES (32u * 32u * XGPU_STREAM_DYNAMIC_LIGHTS_CELL_SLICES * 16u)
 #define XGPU_STREAM_DYNAMIC_LIGHTS_WORLD_SLICES 240u
 struct xgpu_stream_dynamic_lights_world
 {
