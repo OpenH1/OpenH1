@@ -266,6 +266,11 @@ static struct
 	stages to look at again (bits; TEXTURES_ALL) */
 	struct host_render_texture_stage stages[4];
 	uint8_t border[4];
+	/* each stage's sampler, and the sampler and border axes it was made
+	for (until the frame's end) */
+	struct xgpu_stream_sampler sampler_from[4];
+	uint8_t sampler_axes[4], sampler_valid[4];
+	VkSampler sampler_made[4];
 	unsigned int textures_dirty;
 	int feedback_bound;
 	uint32_t textures_serial;
@@ -745,8 +750,18 @@ static void stream_set_targets(void *context, const struct xgpu_stream_set_targe
 	stream.views = record->views > 1 ? (uint32_t)record->views : 1;
 	stream.base = record->views == -2 ? 1 : record->base;
 	stream.hud_group = record->hud_group;
-	/* (whether a stage samples the target drawn into) */
-	stream.textures_dirty = TEXTURES_ALL;
+	/* (whether a stage samples the target drawn into: the stages of
+	targets and images looked at again; a texture's stage is not the
+	targets', and the guest sets the targets before most draws) */
+	{
+		int index;
+
+		for (index = 0; index < 4; index++)
+		{
+			if (stream.stages[index].stage.source != _source_texture)
+				stream.textures_dirty |= 1u << index;
+		}
+	}
 	targets_bind();
 	/* (display.ambient_occlusion "world"'s passes' pipelines, as the map's
 	are made) */
@@ -902,13 +917,18 @@ static void stream_set_textures(void *context, const struct host_render_texture_
 	{
 		const struct xgpu_stream_texture_stage *stage = &stages[index].stage;
 
+		/* (only the stages that changed are looked at again, and copied: the
+		guest sends all four when any changes, and a draw's textures were a
+		noticeable part of the render thread's time on a headset) */
+		if (!memcmp(&stream.stages[index], &stages[index], sizeof(stages[index])))
+		{
+			if (stage_palettized(stage))
+				stream.textures_dirty |= 1u << index;
+			continue;
+		}
 		if (memcmp(&stream.stages[index].stage.sampler, &stage->sampler, sizeof(stage->sampler)))
 			stream.uniforms_dirty = 1;
-		/* (only the stages that changed are looked at again: the guest
-		sends all four when any changes, and a draw's textures were a
-		noticeable part of the render thread's time on a headset) */
-		if (memcmp(&stream.stages[index], &stages[index], sizeof(stages[index])) || stage_palettized(stage))
-			stream.textures_dirty |= 1u << index;
+		stream.textures_dirty |= 1u << index;
 		stream.stages[index] = stages[index];
 		/* (the shader draws the border of a 2D or 3D texture's sampler) */
 		stream.border[index] = stage->source != _source_none && stage->sampler_type != _xgpu_sampler_cube &&
@@ -1069,8 +1089,25 @@ static void textures_bind(void)
 		texture->kind = stage->sampler_type == _xgpu_sampler_3d ? XGPU_VULKAN_IMAGE_3D :
 			stage->sampler_type == _xgpu_sampler_cube ? XGPU_VULKAN_IMAGE_CUBE :
 			stage->sampler_type == _xgpu_sampler_2d_layered ? XGPU_VULKAN_IMAGE_2D_ARRAY : XGPU_VULKAN_IMAGE_2D;
-		texture->sampler = stage->source != _source_none ? sampler_get(&stage->sampler, stream.border[index]) :
-			VK_NULL_HANDLE;
+		/* (the sampler kept while its stage's is the same: most changes of
+		a stage are of its texture) */
+		if (stage->source == _source_none)
+		{
+			texture->sampler = VK_NULL_HANDLE;
+		}
+		else if (stream.sampler_valid[index] && stream.sampler_axes[index] == stream.border[index] &&
+			!memcmp(&stream.sampler_from[index], &stage->sampler, sizeof(stage->sampler)))
+		{
+			texture->sampler = stream.sampler_made[index];
+		}
+		else
+		{
+			texture->sampler = sampler_get(&stage->sampler, stream.border[index]);
+			memcpy(&stream.sampler_from[index], &stage->sampler, sizeof(stage->sampler));
+			stream.sampler_axes[index] = stream.border[index];
+			stream.sampler_made[index] = texture->sampler;
+			stream.sampler_valid[index] = 1;
+		}
 		if (stage->source == _source_target)
 		{
 			struct stream_target *target = target_get(stage->target);
@@ -3563,8 +3600,9 @@ static void stream_frame_end(void *context)
 		}
 	}
 	/* (each stage's texture looked for at least once a frame, so that the
-	cache sees it used and keeps it: textures_bind) */
+	cache sees it used and keeps it: textures_bind; and its sampler) */
 	stream.textures_dirty = TEXTURES_ALL;
+	memset(stream.sampler_valid, 0, sizeof(stream.sampler_valid));
 }
 
 static void stream_open(void *context, void *ring, uint32_t ring_size, volatile uint32_t *visibility)

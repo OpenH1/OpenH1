@@ -366,8 +366,10 @@ in-flight pair, and skip samples rather than wait if all pairs are busy. */
 #define QUERIES_A_FRAME 8192
 /* texture descriptor sets a submission's pool has, before another pool */
 #define SETS_A_POOL 1024
-/* the buckets of a submission's texture sets, by their textures */
-#define TEXTURE_SET_BUCKETS 1024
+/* the texture sets kept from one submission to the next, and their buckets,
+by what they have */
+#define TEXTURE_SETS_KEPT 4096
+#define TEXTURE_SET_BUCKETS 4096
 
 /* ---------- memory */
 
@@ -473,22 +475,26 @@ struct garbage
 	struct allocation memory;
 };
 
-/* what a texture set has: the stages' images (and their numbers), kinds
-and samplers, as the draws name them (samplers are never destroyed) */
+/* what a texture set has: each stage's view and sampler as they are
+written, and the number of the image the view is of (a destroyed image's
+sets are never found, even by a view made with its handle; samplers are
+never destroyed) */
 struct texture_set_key
 {
-	struct xgpu_vulkan_image *images[4];
-	uint64_t numbers[4];
+	VkImageView views[4];
 	VkSampler samplers[4];
-	uint8_t kinds[4];
+	uint64_t numbers[4];
 };
 
 struct texture_set_entry
 {
 	struct texture_set_key key;
 	VkDescriptorSet set;
-	/* the next in its bucket (an index plus one; 0 ends it) */
-	uint32_t next;
+	/* the last submission that drew with it */
+	uint64_t used;
+	/* the next in its bucket (an index plus one; 0 ends it), and its
+	bucket */
+	uint32_t next, bucket;
 };
 
 /* a submission's own */
@@ -501,11 +507,6 @@ struct slot
 	uint32_t descriptor_pool_count, descriptor_pool_used;
 	/* the pools allocated from since they were reset */
 	uint32_t descriptor_pool_dirty;
-	/* the texture sets written from its pools, by their textures (good
-	until the pools are reset): each bucket's first (an index plus one) */
-	struct texture_set_entry *texture_sets;
-	uint32_t texture_set_count, texture_set_capacity;
-	uint32_t texture_set_buckets[TEXTURE_SET_BUCKETS];
 	/* the upload ring's position its uploads end at */
 	uint64_t ring_end;
 	/* HALO_VULKAN_DISCARDS: the secondary command buffers allocated from
@@ -737,6 +738,13 @@ static struct
 	struct xgpu_vulkan_texture last_textures[4];
 	VkDescriptorSet last_texture_set;
 	int last_texture_valid;
+	/* the texture sets kept (texture_set), from a pool of their own, never
+	reset: each bucket's first (an index plus one), and where the next one
+	written again is looked for */
+	VkDescriptorPool texture_set_pool;
+	struct texture_set_entry *texture_sets;
+	uint32_t texture_set_count, texture_set_hand;
+	uint32_t texture_set_buckets[TEXTURE_SET_BUCKETS];
 
 	/* visibility tests; the frames ended */
 	volatile uint32_t *visibility_output;
@@ -1318,12 +1326,6 @@ static void recording_begin(void)
 	}
 	slot->descriptor_pool_used = 0;
 	slot->descriptor_pool_dirty = 0;
-	/* (its texture sets went with them) */
-	if (slot->texture_set_count)
-	{
-		memset(slot->texture_set_buckets, 0, sizeof(slot->texture_set_buckets));
-		slot->texture_set_count = 0;
-	}
 	memset(&begin, 0, sizeof(begin));
 	begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -5414,52 +5416,118 @@ static VkDescriptorSet occlusion_set(void)
 	return vk.occlusion_set;
 }
 
-/* a set written before from the slot's pools with these textures, or NULL */
-static struct texture_set_entry *texture_set_find(const struct slot *slot, const struct texture_set_key *key,
-	uint32_t bucket)
+/* a kept set with these textures, or NULL */
+static struct texture_set_entry *texture_set_find(const struct texture_set_key *key, uint32_t bucket)
 {
 	uint32_t index;
 
-	for (index = slot->texture_set_buckets[bucket]; index; index = slot->texture_sets[index - 1].next)
+	for (index = vk.texture_set_buckets[bucket]; index; index = vk.texture_sets[index - 1].next)
 	{
-		if (!memcmp(&slot->texture_sets[index - 1].key, key, sizeof(*key)))
-			return &slot->texture_sets[index - 1];
+		if (!memcmp(&vk.texture_sets[index - 1].key, key, sizeof(*key)))
+			return &vk.texture_sets[index - 1];
 	}
 	return NULL;
 }
 
-static void texture_set_remember(struct slot *slot, const struct texture_set_key *key, uint32_t bucket,
-	VkDescriptorSet set)
+/* the kept set pool, made the first time */
+static int texture_set_pool(void)
 {
-	struct texture_set_entry *entry;
+	VkDescriptorPoolSize size;
+	VkDescriptorPoolCreateInfo info;
 
-	if (slot->texture_set_count == slot->texture_set_capacity)
+	if (vk.texture_set_pool)
+		return 1;
+	vk.texture_sets = calloc(TEXTURE_SETS_KEPT, sizeof(*vk.texture_sets));
+	if (!vk.texture_sets)
+		return 0;
+	size.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	size.descriptorCount = TEXTURE_SETS_KEPT * 4;
+	memset(&info, 0, sizeof(info));
+	info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	info.maxSets = TEXTURE_SETS_KEPT;
+	info.poolSizeCount = 1;
+	info.pPoolSizes = &size;
+	if (!check(vkCreateDescriptorPool(vk.device, &info, NULL, &vk.texture_set_pool), "vkCreateDescriptorPool"))
 	{
-		uint32_t capacity = slot->texture_set_capacity ? slot->texture_set_capacity * 2 : 256;
-		struct texture_set_entry *grown = realloc(slot->texture_sets, capacity * sizeof(*grown));
-
-		/* (not remembered: the next draw with them writes another) */
-		if (!grown)
-			return;
-		slot->texture_sets = grown;
-		slot->texture_set_capacity = capacity;
+		free(vk.texture_sets);
+		vk.texture_sets = NULL;
+		vk.texture_set_pool = VK_NULL_HANDLE;
+		return 0;
 	}
-	entry = &slot->texture_sets[slot->texture_set_count++];
+	return 1;
+}
+
+/* a kept set to write these textures to, in their bucket: a new one while
+there are fewer than TEXTURE_SETS_KEPT, else the one the GPU finished with
+longest ago that is found first after the last taken; NULL if none can be
+(every one is read by work the GPU has not done) */
+static struct texture_set_entry *texture_set_take(const struct texture_set_key *key, uint32_t bucket)
+{
+	struct texture_set_entry *entry = NULL;
+	uint32_t looked, *link;
+
+	if (!texture_set_pool())
+		return NULL;
+	if (vk.texture_set_count < TEXTURE_SETS_KEPT)
+	{
+		VkDescriptorSetAllocateInfo allocate;
+		VkDescriptorSet set = VK_NULL_HANDLE;
+
+		memset(&allocate, 0, sizeof(allocate));
+		allocate.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocate.descriptorPool = vk.texture_set_pool;
+		allocate.descriptorSetCount = 1;
+		allocate.pSetLayouts = &vk.texture_layout;
+		if (!check(vkAllocateDescriptorSets(vk.device, &allocate, &set), "vkAllocateDescriptorSets"))
+			return NULL;
+		entry = &vk.texture_sets[vk.texture_set_count++];
+		entry->set = set;
+	}
+	else
+	{
+		/* (the work done is asked again once, if the first look finds
+		none) */
+		uint64_t completed = vk.completed;
+
+		for (looked = 0; looked < 2 * TEXTURE_SETS_KEPT && !entry; looked++)
+		{
+			struct texture_set_entry *candidate = &vk.texture_sets[vk.texture_set_hand];
+
+			vk.texture_set_hand = (vk.texture_set_hand + 1) % TEXTURE_SETS_KEPT;
+			if (looked == TEXTURE_SETS_KEPT)
+				completed = completed_serial();
+			if (candidate->used <= completed && candidate->used < vk.serial)
+				entry = candidate;
+		}
+		if (!entry)
+			return NULL;
+		/* (out of its bucket) */
+		for (link = &vk.texture_set_buckets[entry->bucket]; *link; link = &vk.texture_sets[*link - 1].next)
+		{
+			if (&vk.texture_sets[*link - 1] == entry)
+			{
+				*link = entry->next;
+				break;
+			}
+		}
+	}
 	/* (copied as bytes, its padding too: texture_set_find compares them
 	all; a structure's assignment need not copy padding) */
 	memcpy(&entry->key, key, sizeof(entry->key));
-	entry->set = set;
-	entry->next = slot->texture_set_buckets[bucket];
-	slot->texture_set_buckets[bucket] = slot->texture_set_count;
+	entry->bucket = bucket;
+	entry->next = vk.texture_set_buckets[bucket];
+	vk.texture_set_buckets[bucket] = (uint32_t)(entry - vk.texture_sets) + 1;
+	return entry;
 }
 
-/* the descriptor set of the stages' textures: the last draw's, one written
-before in this submission (the game's draws come back to the same few), or
-a new one */
+/* the descriptor set of the stages' textures: the last draw's, one kept
+with the same views and samplers (the game's draws come back to the same
+few, frame after frame), or one written now */
 static VkDescriptorSet texture_set(const struct xgpu_vulkan_texture textures[4])
 {
 	VkDescriptorImageInfo images[4];
 	VkWriteDescriptorSet writes[4];
+	struct xgpu_vulkan_image *sampled[4];
 	VkDescriptorSet set = VK_NULL_HANDLE;
 	struct texture_set_key key;
 	struct texture_set_entry *entry;
@@ -5468,30 +5536,7 @@ static VkDescriptorSet texture_set(const struct xgpu_vulkan_texture textures[4])
 
 	if (vk.last_texture_valid && !memcmp(vk.last_textures, textures, sizeof(vk.last_textures)))
 		return vk.last_texture_set;
-	/* (by the images' numbers too: a destroyed image's sets are never
-	found, even by an image made at its address) */
 	memset(&key, 0, sizeof(key));
-	for (stage = 0; stage < 4; stage++)
-	{
-		key.images[stage] = textures[stage].image;
-		key.numbers[stage] = textures[stage].image ? textures[stage].image->number : 0;
-		key.samplers[stage] = textures[stage].sampler;
-		key.kinds[stage] = textures[stage].kind;
-	}
-	bucket = (uint32_t)(bytes_hash64(&key, sizeof(key)) % TEXTURE_SET_BUCKETS);
-	entry = texture_set_find(vk.slot, &key, bucket);
-	if (entry)
-	{
-		/* (its images are marked used: it was written in this submission) */
-		memcpy(vk.last_textures, textures, sizeof(vk.last_textures));
-		vk.last_texture_set = entry->set;
-		vk.last_texture_valid = 1;
-		vk.statistics.texture_sets_reused++;
-		return entry->set;
-	}
-	set = set_allocate(vk.texture_layout);
-	if (!set)
-		return VK_NULL_HANDLE;
 	for (stage = 0; stage < 4; stage++)
 	{
 		const struct xgpu_vulkan_texture *texture = &textures[stage];
@@ -5509,8 +5554,39 @@ static VkDescriptorSet texture_set(const struct xgpu_vulkan_texture textures[4])
 			images[stage].imageView = image->sampled_2d;
 		}
 		images[stage].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		image->used = vk.serial;
+		sampled[stage] = image;
+		key.views[stage] = images[stage].imageView;
+		key.samplers[stage] = images[stage].sampler;
+		key.numbers[stage] = image->number;
 	}
+	/* (its images used by this submission: destroyed after it) */
+	for (stage = 0; stage < 4; stage++)
+		sampled[stage]->used = vk.serial;
+	bucket = (uint32_t)(bytes_hash64(&key, sizeof(key)) % TEXTURE_SET_BUCKETS);
+	entry = texture_set_find(&key, bucket);
+	if (entry)
+	{
+		entry->used = vk.serial;
+		memcpy(vk.last_textures, textures, sizeof(vk.last_textures));
+		vk.last_texture_set = entry->set;
+		vk.last_texture_valid = 1;
+		vk.statistics.texture_sets_reused++;
+		return entry->set;
+	}
+	/* (a kept one, else one of the slot's pools, good for this submission
+	alone) */
+	entry = texture_set_take(&key, bucket);
+	if (entry)
+	{
+		entry->used = vk.serial;
+		set = entry->set;
+	}
+	else
+	{
+		set = set_allocate(vk.texture_layout);
+	}
+	if (!set)
+		return VK_NULL_HANDLE;
 	memset(writes, 0, sizeof(writes));
 	/* One write per binding: PowerVR's Android driver does not reliably
 	advance across bindings when one write contains all four descriptors. */
@@ -5524,7 +5600,6 @@ static VkDescriptorSet texture_set(const struct xgpu_vulkan_texture textures[4])
 		writes[stage].pImageInfo = &images[stage];
 	}
 	vkUpdateDescriptorSets(vk.device, 4, writes, 0, NULL);
-	texture_set_remember(vk.slot, &key, bucket, set);
 	memcpy(vk.last_textures, textures, sizeof(vk.last_textures));
 	vk.last_texture_set = set;
 	vk.last_texture_valid = 1;
