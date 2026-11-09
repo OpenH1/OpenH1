@@ -15,11 +15,10 @@ XGPU_STREAM_SOURCE_IMAGE). xgpu_images.c.
 #include "xgpu.h"
 
 /* an image's pixels: 4 bytes each, red, green, blue and alpha (the PNGs'
-order); or a byte each, the coverage (alpha) of white */
+order) */
 enum
 {
 	XGPU_IMAGE_RGBA,
-	XGPU_IMAGE_COVERAGE,
 };
 
 struct xgpu_image

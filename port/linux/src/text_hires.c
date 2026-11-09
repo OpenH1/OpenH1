@@ -13,26 +13,27 @@ Custom Edition loc.map) gets its font narrowed until its letters are, on
 the whole, as wide as the tag's, so that they do not run into each other;
 the Xbox maps' fonts are narrowed by a few hundredths.
 
-The glyphs are rasterized at the display's pixels per unit of the 480
-lines, into an 8-bit atlas, on the thread that draws the text, as they are
-first wanted: a font's letters, digits and punctuation (ASCII's) as the font
-is made, which the maps' fonts are as each map loads (rasterizer_text.c's
-hires_text_fonts_ahead), and any other character as the first string that
-has it is drawn (rasterizer_text.c rasterizes a string's glyphs before it
-draws any of them: text_hires_rasterize). A glyph takes some tens of
-microseconds. A character neither font has is drawn as the font's missing
-glyph; a string is never drawn from its font tag's bitmaps for want of a
-glyph.
+The glyphs are drawn from multi-channel signed distance fields
+(port/third_party/msdfgen/msdf_gen.h): the shipped fonts' characters baked
+into an atlas with the build (tools/msdf_atlas.py, embedded), any other made
+on the thread that draws the text as the first string that has it is drawn
+(rasterizer_text.c makes a string's glyphs before it draws any of them:
+text_hires_rasterize; a millisecond or two, once) into the room below them.
+A character neither font has is drawn as the font's missing glyph; a string
+is never drawn from its font tag's bitmaps for want of a glyph. The fields
+are for every scale: the display's size changes nothing. The shader takes
+the median of the three channels and smooths its edge over a pixel of the
+screen (xgpu_backend.h's XGPU_ADDRESS_MSDF). Each glyph's quad, advance and
+ink are the font's box for it rasterized at the display's pixels
+(stbtt_GetGlyphBitmapBox), so that the text is laid out and cut as it was
+when it was rasterized (tools/text_msdf/layout.c). stb_truetype reads the
+fonts: their metrics, and the outlines of the glyphs made at run time.
 
 The atlas is an image (xgpu_images.h) whose pixels the host reads a frame
 or two after the game draws with it: glyphs are only ever added where
-nothing drawn is, and when the atlas starts over (a change of the display's
-scale, a window made fullscreen; or a full atlas) it is a new image, the old
-one kept until the frames that drew it are done (xgpu_image_delete). Its
-glyphs are then rasterized again as they are drawn.
-
-The atlas is not kept on disk: the maps' fonts' ASCII (some 470 glyphs)
-takes milliseconds, and reading it back would save nothing a player sees.
+nothing drawn is, and when the glyphs made at run time are let go (the
+atlas full) it is a new image, the old one kept until the frames that drew
+it are done (xgpu_image_delete).
 */
 
 #include "text_hires.h"
@@ -58,10 +59,6 @@ takes milliseconds, and reading it back would save nothing a player sees.
 /* (the Xbox maps' tags and a Custom Edition loc.map's, which share names,
 each at its oversamples) */
 #define MAXIMUM_FONTS 16
-#define ATLAS_SIZE 2048
-/* clear texels around each glyph, so that filtering never reaches the next */
-#define ATLAS_PADDING 2
-#define GLYPH_CACHE_SIZE 4096
 
 /* a font file as it draws a tag (none where scale is 0) */
 struct font_face
@@ -71,7 +68,7 @@ struct font_face
 	float scale;
 	/* the glyphs' widths, against their heights, to fit the tag's letters */
 	float narrowing;
-	/* (display.text_renderer "msdf") the font file's, among the atlas's */
+	/* the font file's, among the atlas's */
 	const char *file;
 	int msdf_file;
 };
@@ -86,31 +83,12 @@ static struct
 	float cap_height;
 	long letters_width;
 	struct font_face faces[FONT_FACES];
-	/* how many times the display's pixels its glyphs are rasterized with */
+	/* how many times the display's pixels its glyphs are laid out at */
 	float oversample;
 } fonts[MAXIMUM_FONTS];
 static long font_count;
 
-/* the glyphs in the atlas (used: rasterized there, or one with no ink) */
-static struct
-{
-	short used;
-	long font;
-	unsigned long code;
-	short x, y, width, height;
-	short left, top;    /* the glyph's corner, in pixels from the pen on the baseline */
-	float advance;      /* in units of the 480 lines */
-	float ink_left, ink_right;  /* its outline's left and right, in pixels from the pen */
-} glyphs[GLYPH_CACHE_SIZE];
-
-static unsigned char *atlas;
-static float atlas_scale;   /* the pixels per unit its glyphs have */
-/* where the next glyph goes */
-static int pack_x, pack_y, pack_row_height;
-static int atlas_changed;
 static unsigned long placeholder_data, placeholder_width, placeholder_height;
-/* (the atlas's image, which owns its pixels; 0 until it is first bound) */
-static unsigned int atlas_texture;
 
 /* tag names compared as the game does, ignoring case (and without the POSIX
 strcasecmp, which the Windows build has not) */
@@ -144,38 +122,6 @@ void text_hires_set_reset_hook(void (*hook)(void))
 	reset_hook = hook;
 }
 
-/* the atlas started over, empty, for a display of this scale: a new image
-(the old one's pixels kept for the frames that drew them) */
-static void atlas_reset(float scale)
-{
-	/* (text batched from the glyphs there drawn first, from the old image) */
-	if (reset_hook && atlas)
-		reset_hook();
-	if (atlas_texture)
-		xgpu_image_delete(atlas_texture);
-	else
-		free(atlas);
-	atlas_texture = 0;
-	atlas = calloc(ATLAS_SIZE, ATLAS_SIZE);
-	pack_x = pack_y = pack_row_height = 0;
-	memset(glyphs, 0, sizeof(glyphs));
-	atlas_scale = scale;
-	atlas_changed = 1;
-}
-
-/* the atlas, for the display's scale now (started over if it was another's);
-0 if there is none */
-static int atlas_ready(void)
-{
-	float scale = halo_screen_pixel_scale();
-
-	if (scale <= 0.0f)
-		return 0;
-	if (!atlas || scale != atlas_scale)
-		atlas_reset(scale);
-	return atlas != NULL;
-}
-
 /* the face of a font that draws a character, and the character's glyph in
 it: the font's own, else its fallback's; else the font's missing glyph */
 static struct font_face *font_glyph(long font, unsigned long code, int *index)
@@ -192,105 +138,6 @@ static struct font_face *font_glyph(long font, unsigned long code, int *index)
 	}
 	*index = 0;
 	return &fonts[font].faces[0];
-}
-
-/* the glyph's slot in the cache: its own, else the free one it would take,
-else -1 (the cache is full) */
-static long glyph_slot(long font, unsigned long code)
-{
-	unsigned long slot = ((unsigned long)font * 2654435761UL ^ code * 40503UL) & (GLYPH_CACHE_SIZE - 1);
-	long probe;
-
-	for (probe = 0; probe < GLYPH_CACHE_SIZE; probe++, slot = (slot + 1) & (GLYPH_CACHE_SIZE - 1))
-	{
-		if (!glyphs[slot].used || (glyphs[slot].font == font && glyphs[slot].code == code))
-			return (long)slot;
-	}
-	return -1;
-}
-
-/* a glyph rasterized into the atlas, in its slot; 0 if the atlas has no
-room for it */
-static int glyph_rasterize(long slot, long font, unsigned long code)
-{
-	int index, x0 = 0, y0 = 0, x1 = 0, y1 = 0, advance = 0, bearing = 0, ink_x0 = 0, ink_x1 = 0, width, height;
-	struct font_face *face = font_glyph(font, code, &index);
-	float pixels = face->scale * atlas_scale * fonts[font].oversample;
-	float pixels_x = pixels * face->narrowing;
-
-	glyphs[slot].ink_left = glyphs[slot].ink_right = 0.0f;
-	stbtt_GetGlyphBitmapBox(&face->info, index, pixels_x, pixels, &x0, &y0, &x1, &y1);
-	stbtt_GetGlyphHMetrics(&face->info, index, &advance, &bearing);
-	/* (the outline's own left and right, which the box rounds out to whole
-	pixels) */
-	if (stbtt_GetGlyphBox(&face->info, index, &ink_x0, NULL, &ink_x1, NULL))
-	{
-		glyphs[slot].ink_left = (float)ink_x0 * pixels_x;
-		glyphs[slot].ink_right = (float)ink_x1 * pixels_x;
-	}
-	width = x1 - x0;
-	height = y1 - y0;
-	if (width <= 0 || height <= 0 || width + 2 * ATLAS_PADDING > ATLAS_SIZE || height + 2 * ATLAS_PADDING > ATLAS_SIZE)
-		width = height = 0;
-	if (width)
-	{
-		if (pack_x + width + 2 * ATLAS_PADDING > ATLAS_SIZE)
-		{
-			pack_x = 0;
-			pack_y += pack_row_height;
-			pack_row_height = 0;
-		}
-		if (pack_y + height + 2 * ATLAS_PADDING > ATLAS_SIZE)
-			return 0;
-		glyphs[slot].x = (short)(pack_x + ATLAS_PADDING);
-		glyphs[slot].y = (short)(pack_y + ATLAS_PADDING);
-		stbtt_MakeGlyphBitmap(&face->info, atlas + (size_t)glyphs[slot].y * ATLAS_SIZE + glyphs[slot].x,
-			width, height, ATLAS_SIZE, pixels_x, pixels, index);
-		pack_x += width + 2 * ATLAS_PADDING;
-		if (height + 2 * ATLAS_PADDING > pack_row_height)
-			pack_row_height = height + 2 * ATLAS_PADDING;
-		atlas_changed = 1;
-	}
-	glyphs[slot].used = 1;
-	glyphs[slot].font = font;
-	glyphs[slot].code = code;
-	glyphs[slot].width = (short)width;
-	glyphs[slot].height = (short)height;
-	glyphs[slot].left = (short)x0;
-	glyphs[slot].top = (short)y0;
-	glyphs[slot].advance = advance * face->scale * face->narrowing;
-	return 1;
-}
-
-/* the glyph's slot, rasterized now if it is not yet (the atlas started over
-if it is full); -1 if there is no atlas */
-static long glyph_get(long font, unsigned long code)
-{
-	long slot;
-	int attempt;
-
-	if (!placeholder_data || !atlas_ready())
-		return -1;
-	for (attempt = 0; attempt < 2; attempt++)
-	{
-		slot = glyph_slot(font, code);
-		if (slot >= 0 && (glyphs[slot].used || glyph_rasterize(slot, font, code)))
-			return slot;
-		atlas_reset(atlas_scale);
-		if (!atlas)
-			return -1;
-	}
-	return -1;
-}
-
-/* a font's letters, digits and punctuation rasterized as it is made, before
-they are drawn */
-static void font_ahead(long font)
-{
-	unsigned long code;
-
-	for (code = '!'; code <= '~'; code++)
-		glyph_get(font, code);
 }
 
 /* a font file made a face that draws a tag: sized so that its capitals are
@@ -328,19 +175,7 @@ static int face_make(struct font_face *face, const unsigned char *data, float ca
 	return 1;
 }
 
-/* ---------- display.text_renderer "msdf"
-
-The glyphs drawn from multi-channel signed distance fields
-(port/third_party/msdfgen/msdf_gen.h) in place of the rasterized atlas: the shipped fonts' characters baked into
-an atlas with the build (tools/msdf_atlas.py, embedded), any other made as
-it is first drawn (text_hires_rasterize; a millisecond or two, once) into
-the room below them, the font's missing glyph's for a character neither
-font has. The fields are for every scale: the display's size changes
-nothing. The shader takes the median of the three channels and smooths its
-edge over a pixel of the screen (xgpu_backend.h's XGPU_ADDRESS_MSDF). Each
-glyph's quad, advance and ink are the rasterized glyph's
-(stbtt_GetGlyphBitmapBox at the same pixels), so that the text is laid out
-and cut exactly as it is drawn rasterized. */
+/* ---------- the distance fields */
 
 #define MSDF_ATLAS_WIDTH 1024
 #define MSDF_ATLAS_HEIGHT 1024
@@ -379,19 +214,6 @@ static struct
 	unsigned int image;
 	int changed;
 } msdf;
-
-int text_hires_msdf(void)
-{
-	static int msdf_mode;
-	static unsigned long read_at = (unsigned long)-1;
-
-	if (read_at != config_changes())
-	{
-		read_at = config_changes();
-		msdf_mode = !strcmp(config_string("display.text_renderer"), "msdf");
-	}
-	return msdf_mode;
-}
 
 static unsigned long msdf_hash(int file, unsigned long code)
 {
@@ -688,7 +510,7 @@ static struct msdf_glyph *msdf_glyph(long font, unsigned long code, struct font_
 	return glyph ? glyph : msdf_make(face, file, key, *index);
 }
 
-/* (display.text_renderer "msdf") text_hires_glyph */
+/* text_hires_glyph */
 static int msdf_text_glyph(long font, unsigned long code, struct text_hires_glyph *glyph)
 {
 	struct font_face *face = NULL;
@@ -698,10 +520,8 @@ static int msdf_text_glyph(long font, unsigned long code, struct text_hires_glyp
 
 	if (!field || !field->width || screen <= 0.0f || !placeholder_data)
 		return 0;
-	/* (the quad the glyph rasterized has, at the pixels it would be
-	rasterized at: glyph_rasterize's) */
+	/* (the quad the glyph has rasterized at the display's pixels) */
 	pixel_scale = screen * fonts[font].oversample;
-	/* (as glyph_rasterize works it out: the same floats) */
 	pixels = face->scale * screen * fonts[font].oversample;
 	pixels_x = pixels * face->narrowing;
 	stbtt_GetGlyphBitmapBox(&face->info, index, pixels_x, pixels, &x0, &y0, &x1, &y1);
@@ -735,22 +555,6 @@ static int msdf_text_glyph(long font, unsigned long code, struct text_hires_glyp
 	return 1;
 }
 
-/* the renderer changed (display.text_renderer): what was batched from the
-other atlas drawn first */
-static int msdf_mode_check(void)
-{
-	static int last = -1;
-	int mode = text_hires_msdf() && msdf_read();
-
-	if (mode != last)
-	{
-		if (last >= 0 && reset_hook)
-			reset_hook();
-		last = mode;
-	}
-	return mode;
-}
-
 long text_hires_font(char const *tag_name, float cap_height, short const *letter_widths, float oversample)
 {
 	unsigned int index;
@@ -758,7 +562,8 @@ long text_hires_font(char const *tag_name, float cap_height, short const *letter
 	long letters_width = 0;
 	int letter;
 
-	if (!text_hires_enabled() || !tag_name || cap_height <= 0.0f || !letter_widths)
+	/* (without the atlas, the maps' bitmap fonts) */
+	if (!text_hires_enabled() || !tag_name || cap_height <= 0.0f || !letter_widths || !msdf_read())
 		return -1;
 	/* (text is never drawn with fewer pixels than the display's) */
 	if (oversample < 1.0f)
@@ -812,55 +617,24 @@ long text_hires_font(char const *tag_name, float cap_height, short const *letter
 	}
 	if (fonts[font].faces[0].scale <= 0.0f)
 		return -1;
-	/* (no glyph to rasterize ahead: msdf's are made) */
-	if (!msdf_mode_check())
-		font_ahead(font);
 	return font;
 }
 
 void text_hires_rasterize(long font, unsigned long code)
 {
+	struct font_face *face;
+	int index;
+
 	if (font < 0 || font >= font_count || fonts[font].faces[0].scale <= 0.0f || code <= ' ')
 		return;
-	if (msdf_mode_check())
-	{
-		struct font_face *face;
-		int index;
-
-		msdf_glyph(font, code, &face, &index);
-		return;
-	}
-	glyph_get(font, code);
+	msdf_glyph(font, code, &face, &index);
 }
 
 int text_hires_glyph(long font, unsigned long code, struct text_hires_glyph *glyph)
 {
-	float pixel_scale;
-	long slot;
-
 	if (font < 0 || font >= font_count || fonts[font].faces[0].scale <= 0.0f || code <= ' ')
 		return 0;
-	if (msdf_mode_check())
-		return msdf_text_glyph(font, code, glyph);
-	slot = glyph_get(font, code);
-	if (slot < 0 || !glyphs[slot].width || !glyphs[slot].height)
-		return 0;
-	pixel_scale = atlas_scale * fonts[font].oversample;
-	glyph->left = glyphs[slot].left / pixel_scale;
-	glyph->top = glyphs[slot].top / pixel_scale;
-	glyph->right = (glyphs[slot].left + glyphs[slot].width) / pixel_scale;
-	glyph->bottom = (glyphs[slot].top + glyphs[slot].height) / pixel_scale;
-	glyph->advance = glyphs[slot].advance;
-	/* (no outline's: its box's) */
-	glyph->ink_left = glyphs[slot].ink_right > glyphs[slot].ink_left ? glyphs[slot].ink_left / pixel_scale :
-		glyph->left;
-	glyph->ink_right = glyphs[slot].ink_right > glyphs[slot].ink_left ? glyphs[slot].ink_right / pixel_scale :
-		glyph->right;
-	glyph->u0 = (float)glyphs[slot].x * placeholder_width / ATLAS_SIZE;
-	glyph->v0 = (float)glyphs[slot].y * placeholder_height / ATLAS_SIZE;
-	glyph->u1 = (float)(glyphs[slot].x + glyphs[slot].width) * placeholder_width / ATLAS_SIZE;
-	glyph->v1 = (float)(glyphs[slot].y + glyphs[slot].height) * placeholder_height / ATLAS_SIZE;
-	return 1;
+	return msdf_text_glyph(font, code, glyph);
 }
 
 float text_hires_advance(long font, unsigned long code)
@@ -897,48 +671,23 @@ void text_hires_register_atlas(const unsigned long *texture, unsigned long width
 	placeholder_height = height;
 }
 
-unsigned int text_hires_atlas_texture(unsigned long data, int *msdf_field)
+unsigned int text_hires_atlas_texture(unsigned long data)
 {
-	*msdf_field = 0;
 	if (!data || data != placeholder_data)
 		return 0;
 	/* (the fields' atlas, which its image owns once it is made: a new one
 	each time the glyphs made at run time are let go, msdf_made_reset) */
-	if (msdf_mode_check())
+	if (!msdf.image && msdf.pixels)
 	{
-		if (!msdf.image && msdf.pixels)
-		{
-			msdf.image = xgpu_image_create(msdf.pixels, MSDF_ATLAS_WIDTH, MSDF_ATLAS_HEIGHT, 1, XGPU_IMAGE_RGBA, TRUE);
-			msdf.changed = 0;
-		}
-		if (msdf.changed && msdf.image)
-		{
-			xgpu_image_changed(msdf.image);
-			msdf.changed = 0;
-		}
-		*msdf_field = msdf.image != 0;
-		return msdf.image;
+		msdf.image = xgpu_image_create(msdf.pixels, MSDF_ATLAS_WIDTH, MSDF_ATLAS_HEIGHT, 1, XGPU_IMAGE_RGBA, TRUE);
+		msdf.changed = 0;
 	}
-	if (!atlas)
-		return 0;
-	/* (the host reads the atlas where it is, again once it has changed; the
-	image owns it, and frees it once it is deleted and done with) */
-	if (!atlas_texture)
+	if (msdf.changed && msdf.image)
 	{
-		atlas_texture = xgpu_image_create(atlas, ATLAS_SIZE, ATLAS_SIZE, 1, XGPU_IMAGE_COVERAGE, TRUE);
-		if (!atlas_texture)
-		{
-			atlas = NULL;
-			return 0;
-		}
-		atlas_changed = 0;
+		xgpu_image_changed(msdf.image);
+		msdf.changed = 0;
 	}
-	if (atlas_changed)
-	{
-		xgpu_image_changed(atlas_texture);
-		atlas_changed = 0;
-	}
-	return atlas_texture;
+	return msdf.image;
 }
 
 unsigned char *text_hires_line(char const *tag_name, char const *text, float cap_pixels,
