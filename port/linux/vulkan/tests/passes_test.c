@@ -107,7 +107,9 @@ the calls that set state (a draw's state is set only where it changed) */
 static VkBuffer vertex_state[3];
 static VkDeviceSize vertex_state_offsets[3];
 static unsigned int state_calls;
-static unsigned int allocated_sets, set_updates, pool_resets;
+static unsigned int allocated_sets, set_updates, pool_resets, pools_made;
+/* the pool each set was allocated from, by its handle (50 on) */
+static VkDescriptorPool allocated_from[64];
 static VkMemoryBarrier last_memory;
 static VkPipelineStageFlags last_source, last_destination;
 
@@ -185,8 +187,18 @@ static VkResult VKAPI_CALL fake_view(VkDevice device, const VkImageViewCreateInf
 
 static VkResult VKAPI_CALL fake_allocate(VkDevice device, const VkDescriptorSetAllocateInfo *info, VkDescriptorSet *set)
 {
-	(void)device; (void)info;
+	(void)device;
+	if (allocated_sets < 64)
+		allocated_from[allocated_sets] = info->descriptorPool;
 	*set = (VkDescriptorSet)(uintptr_t)(50 + allocated_sets++);
+	return VK_SUCCESS;
+}
+
+static VkResult VKAPI_CALL fake_make_pool(VkDevice device, const VkDescriptorPoolCreateInfo *info,
+	const VkAllocationCallbacks *allocator, VkDescriptorPool *pool)
+{
+	(void)device; (void)info; (void)allocator;
+	*pool = (VkDescriptorPool)(uintptr_t)(90 + pools_made++);
 	return VK_SUCCESS;
 }
 
@@ -275,9 +287,8 @@ static void reset(void)
 	free(color_target.attachments);
 	free(depth_target.attachments);
 	free(vk.garbage);
-	for (index = 0; index < SLOTS; index++)
-		free(vk.slots[index].texture_sets);
-	free(recording.texture_sets);
+	(void)index;
+	free(vk.texture_sets);
 	memset(&vk, 0, sizeof(vk));
 	memset(&color_target, 0, sizeof(color_target));
 	memset(&depth_target, 0, sizeof(depth_target));
@@ -311,6 +322,7 @@ static void reset(void)
 	vkCreateImageView = fake_view;
 	vkAllocateDescriptorSets = fake_allocate;
 	vkUpdateDescriptorSets = fake_update;
+	vkCreateDescriptorPool = fake_make_pool;
 }
 
 static VkResult VKAPI_CALL fake_pipeline(VkDevice device, VkPipelineCache cache, uint32_t count,
@@ -712,9 +724,12 @@ static VkResult VKAPI_CALL fake_reset_descriptors(VkDevice device, VkDescriptorP
 static VkResult VKAPI_CALL fake_counter(VkDevice device, VkSemaphore semaphore, uint64_t *value)
 { (void)device; (void)semaphore; *value = vk.serial; return VK_SUCCESS; }
 
-/* Draws that come back to earlier textures reuse their submission's sets.
-Another sampler, an image made where a destroyed one was, or the slot's
-pools reset never give back a set written before. */
+/* Draws that come back to earlier textures reuse the sets kept for them,
+in this submission and the ones after. Another sampler or an image made
+where a destroyed one was never gives back a set written before. Once as
+many are kept as there can be, the one the GPU finished with that is found
+first is written again; while every one is read by work not done, a set of
+the slot's pools is written, kept for nothing. */
 static void texture_sets_test(void)
 {
 	static struct xgpu_vulkan_image first, second;
@@ -722,6 +737,7 @@ static void texture_sets_test(void)
 	VkDescriptorPool pools[2] = { (VkDescriptorPool)(uintptr_t)7, (VkDescriptorPool)(uintptr_t)8 };
 	VkDescriptorSet set_a, set_b, set;
 	struct slot *slot;
+	uint32_t index;
 
 	reset();
 	vk.recording = 0;
@@ -732,7 +748,7 @@ static void texture_sets_test(void)
 	slot = &vk.slots[vk.serial % SLOTS];
 	slot->descriptor_pools = pools;
 	slot->descriptor_pool_count = 2;
-	pool_resets = 0;
+	pool_resets = pools_made = 0;
 	recording_begin();
 	assert(vk.slot == slot && !pool_resets);
 	memset(&first, 0, sizeof(first));
@@ -751,10 +767,12 @@ static void texture_sets_test(void)
 	set_a = texture_set(a);
 	set_b = texture_set(b);
 	assert(set_a && set_b && set_a != set_b && set_updates == 2);
+	assert(pools_made == 1 && allocated_from[0] == vk.texture_set_pool && allocated_from[1] == vk.texture_set_pool);
 	assert(texture_set(a) == set_a && texture_set(b) == set_b);
 	assert(texture_set(a) == set_a && set_updates == 2 && allocated_sets == 2);
 	assert(vk.statistics.texture_sets_written == 2 && vk.statistics.texture_sets_reused == 3);
 	assert(written_images[0].imageView == second.sampled);
+	assert(first.used == vk.serial && second.used == vk.serial);
 
 	a[0].sampler = (VkSampler)(uintptr_t)6;
 	set = texture_set(a);
@@ -774,15 +792,33 @@ static void texture_sets_test(void)
 	assert(written_images[0].imageView == (VkImageView)(uintptr_t)33);
 	assert(texture_set(b) == set_b && texture_set(a) == set && set_updates == 4);
 
-	/* The slot's next submission: only the pool allocated from is reset,
-	and its sets are forgotten with it. */
+	/* The slot's next submission: the kept sets are found again (none
+	was allocated from the slot's pools, which are not reset), their images
+	used by it. */
 	vk.recording = 0;
 	vk.serial += SLOTS;
 	recording_begin();
-	assert(vk.slot == slot && pool_resets == 1 && !slot->texture_set_count && !slot->descriptor_pool_dirty);
-	assert(texture_set(b) && set_updates == 5 && allocated_sets == 5);
-	assert(texture_set(a) && set_updates == 6);
-	assert(texture_set(b) && set_updates == 6);
+	assert(vk.slot == slot && !pool_resets && !slot->descriptor_pool_dirty);
+	assert(texture_set(b) == set_b && texture_set(a) == set && set_updates == 4 && allocated_sets == 4);
+	assert(second.used == vk.serial && first.used == vk.serial);
+
+	/* As many kept as there can be: each one used by this submission, a
+	set of the slot's pools; one the GPU has done with, written again */
+	vk.texture_set_count = TEXTURE_SETS_KEPT;
+	for (index = 0; index < TEXTURE_SETS_KEPT; index++)
+	{
+		if (!vk.texture_sets[index].set)
+			vk.texture_sets[index].set = (VkDescriptorSet)(uintptr_t)(1000 + index);
+		vk.texture_sets[index].used = vk.serial;
+	}
+	b[0].sampler = (VkSampler)(uintptr_t)7;
+	set = texture_set(b);
+	assert(set && set_updates == 5 && allocated_sets == 5 && allocated_from[4] == pools[0]);
+	b[0].sampler = (VkSampler)(uintptr_t)8;
+	vk.texture_sets[TEXTURE_SETS_KEPT - 2].used = vk.serial - 1;
+	set = texture_set(b);
+	assert(set == vk.texture_sets[TEXTURE_SETS_KEPT - 2].set && set_updates == 6 && allocated_sets == 5);
+	assert(texture_set(a) && texture_set(b) == set && set_updates == 6);
 	slot->descriptor_pools = NULL;
 	slot->descriptor_pool_count = 0;
 	reset();
