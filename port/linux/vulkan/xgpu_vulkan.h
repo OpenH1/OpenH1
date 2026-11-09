@@ -825,4 +825,37 @@ uint32_t *xgpu_vulkan_inspect_read(struct xgpu_vulkan_image *image, uint32_t *wi
 void xgpu_vulkan_inspect_end(void);
 void xgpu_vulkan_statistics_peek(struct xgpu_vulkan_statistics *statistics);
 
+/* A frame's GPU time for a caller (the replay's cost: port/tools/replay/
+host_render_replay.h), from timestamps at the bottom of the pipeline about
+each draw and each pass (xgpu_vulkan.c, "a frame's GPU time").
+xgpu_vulkan_timing_begin: (the render thread, before the frame's first
+work) the frame is timed; 0 if the device has no timestamps.
+xgpu_vulkan_timing_draw: (the render thread) the draws recorded from now
+are the caller's index'th (UINT32_MAX: none). xgpu_vulkan_timing_wait:
+(the frame ended, the render thread idle) waits up to seconds for its
+GPU work, then gives its time (its passes', which sum to it), its passes
+(each from the timestamp before it, ms from the frame's first; kind its
+label), each draw's own time and its pass (UINT32_MAX: none), by the
+caller's numbers; they are the backend's until the next begin. 0 if it
+was not timed. */
+struct xgpu_vulkan_pass_time
+{
+	const char *kind;
+	uint32_t width, height, draws;
+	double start_ms, end_ms, ms;
+};
+struct xgpu_vulkan_timing
+{
+	double frame_ms;
+	const struct xgpu_vulkan_pass_time *passes;
+	uint32_t pass_count;
+	const uint32_t *draw_pass;
+	const double *draw_ms;
+	uint32_t draw_count;
+	const char *note;
+};
+int xgpu_vulkan_timing_begin(void);
+void xgpu_vulkan_timing_draw(uint32_t index);
+int xgpu_vulkan_timing_wait(double seconds, struct xgpu_vulkan_timing *result);
+
 #endif

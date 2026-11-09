@@ -6,7 +6,8 @@ decoded on a Mac, base64, the PNG writer, the requests' parser), and its
 service (--serve) driven over its pipes on a recording it makes: frames of a
 CPU backend's rectangles, read back exactly however they are reached (on,
 back, again), their ID buffers and pick's stacks, their draws, the
-timeline's thumbnails and the errors.
+timeline's thumbnails, the GPU's cost of their passes and draws (the CPU
+backend's made-up times, by both methods) and the errors.
 
 The Metal and Vulkan replays are the same code with a GPU's backend
 (halo_replay.m, port/linux/vulkan/tools/halo_replay.c); a recording of the
@@ -232,6 +233,57 @@ def test_service(binary, tmp_path):
         service.process.stdin.write("not json\n")
         service.process.stdin.flush()
         assert json.loads(service.process.stdout.readline())["ok"] is False
+    finally:
+        service.close()
+
+
+def test_cost(binary, tmp_path):
+    """protocol 2's cost: the frame played again where it is, its passes' and its draws' GPU time (the test
+    backend's made up: a clear 0.05 ms, a draw 0.001 ms a pixel of its rectangle, the present 0.01 ms),
+    subtracted (each draw left out) and the backend's own (timestamps); the frame asked for after it played
+    exactly again"""
+    recording = tmp_path / "rectangles.hrpl"
+    subprocess.run([str(binary), "make", str(recording), str(FRAMES)], check=True)
+    service = Service(binary, recording)
+    areas = [16 * 8, 20 * 16, 64 * 6]
+    try:
+        info = service.ask(cmd="info")
+        assert info["protocol"] == 2 and 1 in info["protocols"]
+        assert {"cost", "ids", "pick", "frame", "draws", "thumbs"} <= set(info["capabilities"])
+        assert info["cost_methods"] == ["subtract", "timestamps"]
+        service.ask(cmd="frame", n=12, png=str(tmp_path / "f.png"))
+        reply = service.ask(cmd="cost", n=12, all=True, method="subtract", repeats=3)
+        assert reply["ok"], reply
+        assert reply["method"] == "subtract" and reply["repeat_exact"] is True and reply["frame_draws"] == 3
+        whole = 0.05 + sum(areas) * 0.001 + 0.01
+        assert reply["frame_ms"] == pytest.approx(whole, abs=1e-4) and reply["frame_spread"] == 0
+        assert [draw["i"] for draw in reply["draws"]] == [0, 1, 2]
+        for draw, area in zip(reply["draws"], areas):
+            assert draw["ms"] == pytest.approx(area * 0.001, abs=1e-4) and draw["spread"] == 0 and draw["pass"] == 0
+        assert reply["draws_ms"] == pytest.approx(sum(areas) * 0.001, abs=1e-4)
+        first, present = reply["passes"]
+        assert (first["kind"], first["draws"], present["kind"], present["draws"]) == ("test", 3, "present", 0)
+        assert first["ms"] == pytest.approx(0.05 + sum(areas) * 0.001, abs=1e-4)
+        assert first["draws_ms"] == pytest.approx(first["draws_sum_ms"], abs=1e-4) == pytest.approx(sum(areas) * 0.001)
+        assert "draws_ms" not in present
+        # (each repeat's whole plays and the left-out ones: 3 draws and the pass's group, a batch, two wholes)
+        assert reply["plays"] == 3 * (2 + 4)
+        # the backend's own times, by default; a few draws
+        reply = service.ask(cmd="cost", n=12, draws=[1], repeats=2)
+        assert reply["method"] == "timestamps" and [draw["i"] for draw in reply["draws"]] == [1]
+        assert reply["draws"][0]["ms"] == pytest.approx(areas[1] * 0.001)
+        reply = service.ask(cmd="cost", n=12, draws=[2, 0], method="subtract", repeats=1)
+        assert [(draw["i"], round(draw["ms"], 4)) for draw in reply["draws"]] == [(2, 0.384), (0, 0.128)]
+        # the frames after it, and the frame itself, exactly as before
+        for frame in (13, 12, 12, 40):
+            reply = service.ask(cmd="frame", n=frame, png=str(tmp_path / "f.png"))
+            rows = png_pixels((tmp_path / "f.png").read_bytes())[2]
+            assert all(rows[y][x] == expected(frame, x, y)[0] for y in range(HEIGHT) for x in range(WIDTH)), frame
+        # errors
+        assert service.ask(cmd="cost", n=FRAMES)["ok"] is False
+        assert service.ask(cmd="cost", n=1, draws=[3])["ok"] is False
+        assert service.ask(cmd="cost", n=1, method="nothing")["ok"] is False
+        assert service.ask(cmd="cost")["ok"] is False
     finally:
         service.close()
 

@@ -40,6 +40,15 @@ each on standard output (the log on standard error):
 	{"cmd":"pick","n":N,"x":X,"y":Y}
 	{"cmd":"thumbs","every":E,"width":W,"dir":"<folder>"}  (or "frames":[..],
 		"inline":true)
+	{"cmd":"cost","n":N,"repeats":R,"draws":[..]}  (or "all":true, "top":K)
+
+cost: frame N's GPU time, the frame's and its passes' (the backend's
+timestamps at their boundaries) and its draws' (the frame played again with
+each left out: what the frame takes without it, subtracted from what it
+takes whole; or the backend's timestamps around each draw, where it has
+them), each the median of R plays with its spread. The frame is played
+again where it is, after itself (not from the recording's start): the
+frame played after a cost is played from the start again, exactly.
 
 A frame is played exactly: the frames before it are played first (from the
 recording's start again for one before the frame last played; those more
@@ -72,7 +81,7 @@ its record's kind and primitive.
 /* the service's protocol, in info's "protocol": raised when a request or a
 reply changes so that a client reading the old one would misread it (an
 added field does not raise it); docs/replay_protocol.md */
-#define HOST_RENDER_REPLAY_PROTOCOL 1
+#define HOST_RENDER_REPLAY_PROTOCOL 2
 
 /* the draws an ID buffer keeps for each pixel (pick's stack) */
 #define HOST_RENDER_REPLAY_ID_DEPTH 8
@@ -82,6 +91,42 @@ struct host_render_replay_statistics
 {
 	double cpu_ms, gpu_ms, compile_ms, shader_ms;
 	uint32_t draws, compiles, shaders;
+};
+
+/* a frame's GPU time, as the backend measured it (cost_end) */
+struct host_render_replay_pass_time
+{
+	/* what the pass drew (the backend's names: "world", "hud", ...), and
+	its target's size */
+	const char *kind;
+	uint32_t width, height;
+	/* its draws, and its time (ms): its part of the frame's, so that the
+	passes' times sum to the frame's */
+	uint32_t draws;
+	double ms;
+	/* when it started on the GPU (ms, from the frame's first timestamp) */
+	double start_ms;
+	/* its stages' own times (ms; they overlap other passes': the vertex
+	stages of a tiler's passes run ahead), 0 if not known */
+	double vertex_ms, fragment_ms;
+};
+
+struct host_render_replay_cost
+{
+	/* the time the GPU was busy with the frame (ms) */
+	double frame_ms;
+	const struct host_render_replay_pass_time *passes;
+	uint32_t pass_count;
+	/* each draw's pass (UINT32_MAX: none), by the draw's number in the
+	frame */
+	const uint32_t *draw_pass;
+	uint32_t draw_count;
+	/* each draw's own time (ms) where the backend measures it, by its
+	method's name ("timestamps"); NULL none */
+	const double *draw_ms;
+	const char *draw_method;
+	/* the backend's words on the measure's limits (or NULL) */
+	const char *note;
 };
 
 struct host_render_replay_platform
@@ -117,6 +162,17 @@ struct host_render_replay_platform
 	void (*ids_draw)(uint32_t index);
 	uint32_t *(*ids_read)(uint32_t target, uint32_t *width, uint32_t *height);
 	void (*ids_end)(void);
+	/* The GPU's time (NULL: none). cost_begin: (the render thread, before
+	the frame's first record) the frame about to be played is timed;
+	nonzero if it will be; cost_draw: as ids_draw; cost_end: (the service's
+	thread, the frame played) waits for the frame's GPU work and gives its
+	times, which are the backend's until the next cost_begin; nonzero if
+	it has them. */
+	int (*cost_begin)(void);
+	/* (cost_end's draw_method when it has one, for info: NULL none) */
+	const char *cost_draw_method;
+	void (*cost_draw)(uint32_t index);
+	int (*cost_end)(struct host_render_replay_cost *cost);
 };
 
 int host_render_replay_main(int argc, char *argv[], const struct host_render_replay_platform *platform);
