@@ -83,6 +83,9 @@ def notices(platform: str) -> List[Tuple[Path, str]]:
         # the menus' headings' font (port/assets/fonts), embedded in every
         # build, whose SIL Open Font License asks each copy to carry it
         (ROOT / "port/assets/fonts/OpenCE-OFL.txt", "OpenCE-OFL.txt"),
+        # the font OpenCE is made from, Newtown, in the public domain, whose
+        # statement OpenCE-OFL.txt names
+        (ROOT / "port/assets/fonts/Newtown-LICENSE.txt", "Newtown-LICENSE.txt"),
         # the high-res text's distance fields (port/third_party/msdfgen/msdf_gen.h,
         # msdfgen translated to C), in every build, whose MIT license asks
         # copies to carry its notice

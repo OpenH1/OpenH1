@@ -83,7 +83,8 @@ The builds embed the fonts `fonts.json` names and their fallbacks
 (`tools/embed_assets.py`), and every release package, the dedicated
 server's included, carries `CyborgInterfaceGothic-OFL.txt`,
 `Overpass-OFL.txt`, `OpenCE-OFL.txt` and `Hack-LICENSE.txt`, as the
-licenses ask (`tools/linux_package.py`'s `notices`, `tools/frame_package.py`).
+licenses ask, and `Newtown-LICENSE.txt`, the statement `OpenCE-OFL.txt`
+names (`tools/linux_package.py`'s `notices`, `tools/frame_package.py`).
 
 `msdf_atlas.zlib` is the fonts' characters (ASCII, Latin-1 and Windows-1252's
 punctuation and letters) as multi-channel signed distance fields, which
