@@ -1707,6 +1707,20 @@ the distribution (`src/posix_update.c`, with Mbed TLS); on Windows, the
 certificate store of Windows (WinHTTP). The game's folder must let the
 game write to it.
 
+When GitHub has trouble (no answer, or a 5xx, 408, 425 or 429), the game
+tries each download two more times, after 1 s and then 3 s. If a file of
+the release does not come from its link
+(`github.com/OpenH1/OpenH1/releases/download/...`), the game asks GitHub's
+API for the same file (`api.github.com/.../releases/assets/<id>`, the id
+from the API's answer about the release). This happens when the servers of
+GitHub's release links fail and its API does not. The checks below are the
+same wherever the bytes came from. The game gets `SHA256SUMS` and its
+signature before it asks you about the release, and it does not ask if it
+cannot get them. If GitHub cannot be reached, the game shows no message,
+even after you select "Yes": it writes the failure to the log, you play
+on, and it looks again at the next start. A refused download, or an install
+that fails, still shows a message.
+
 Before it unpacks a download, the game checks it against the release's
 `SHA256SUMS` and that file's signature, `SHA256SUMS.sig`: an Ed25519
 signature by OpenH1's release key, whose public key the game carries

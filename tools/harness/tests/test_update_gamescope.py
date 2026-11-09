@@ -186,8 +186,9 @@ def test_update(tmp_path, tmp_path_factory):
     the main menu (not before), then the new version put in place and started in the same process"""
     output = check_update(build(tmp_path_factory), tmp_path, player="update")
     lines_in_order(output, "test: started", "test: download https://api.github.com/repos/OpenH1/OpenH1/releases/latest",
-                   f"test: download https://github.com/OpenH1/OpenH1/releases/download/build-{BUILD + 1}/{ASSET}",
                    "test: asked for SHA256SUMS", "test: asked for SHA256SUMS.sig",
+                   f"test: download https://github.com/OpenH1/OpenH1/releases/download/build-{BUILD + 1}/{ASSET}",
+                   f"test: download https://files.test/{ASSET}",
                    f"test: release check of {ASSET}: sums 0, signature 0, required 1: unsigned",
                    f"update: build {BUILD + 1} is downloaded",
                    "test: the update question opened over the main menu",

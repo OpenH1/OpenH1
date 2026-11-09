@@ -38,235 +38,7 @@ download, in under_test.inc) */
 #include "release_signature.h"
 #include "p2p_internal.h"
 
-/* ---------- SDL, the parts the updater uses */
-
-typedef int64_t Sint64;
-typedef uint64_t Uint64;
-typedef uint32_t Uint32;
-typedef uint8_t Uint8;
-#define SDLCALL
-#define SDL_IO_SEEK_SET SEEK_SET
-#define SDL_IO_SEEK_CUR SEEK_CUR
-#define SDL_SOFTWARE_RENDERER "software"
-#define SDL_WINDOW_FULLSCREEN 1
-#define SDL_MESSAGEBOX_ERROR 0x10
-#define SDL_MESSAGEBOX_WARNING 0x20
-#define SDL_MESSAGEBOX_INFORMATION 0x40
-#define SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT 1
-#define SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT 2
-
-typedef struct SDL_IOStream { FILE *file; } SDL_IOStream;
-typedef struct SDL_PathInfo SDL_PathInfo;
-typedef struct { int value; } SDL_AtomicInt;
-typedef struct SDL_Thread { pthread_t thread; } SDL_Thread;
-typedef struct SDL_Mutex { pthread_mutex_t mutex; } SDL_Mutex;
-typedef struct SDL_Window { int unused; } SDL_Window;
-typedef struct SDL_Renderer SDL_Renderer;
-typedef struct { float x, y, w, h; } SDL_FRect;
-typedef union { Uint32 type; } SDL_Event;
-typedef int (*SDL_ThreadFunction)(void *data);
-typedef struct { Uint32 flags; int buttonID; const char *text; } SDL_MessageBoxButtonData;
-typedef struct
-{
-	Uint32 flags;
-	SDL_Window *window;
-	const char *title, *message;
-	int numbuttons;
-	const SDL_MessageBoxButtonData *buttons;
-	const void *colorScheme;
-} SDL_MessageBoxData;
-
-/* what the player saw of the updater beyond the game's own window */
-static int dialogs_shown, windows_made;
-
-static SDL_IOStream *SDL_IOFromFile(const char *path, const char *mode)
-{
-	FILE *file = fopen(path, mode);
-	SDL_IOStream *stream;
-
-	if (!file)
-		return NULL;
-	stream = malloc(sizeof(*stream));
-	stream->file = file;
-	return stream;
-}
-
-static size_t SDL_ReadIO(SDL_IOStream *stream, void *data, size_t size)
-{
-	return fread(data, 1, size, stream->file);
-}
-
-static size_t SDL_WriteIO(SDL_IOStream *stream, const void *data, size_t size)
-{
-	return fwrite(data, 1, size, stream->file);
-}
-
-static Sint64 SDL_SeekIO(SDL_IOStream *stream, Sint64 offset, int whence)
-{
-	return fseeko(stream->file, (off_t)offset, whence) ? -1 : (Sint64)ftello(stream->file);
-}
-
-static Sint64 SDL_TellIO(SDL_IOStream *stream)
-{
-	return (Sint64)ftello(stream->file);
-}
-
-static Sint64 SDL_GetIOSize(SDL_IOStream *stream)
-{
-	struct stat information;
-
-	return fstat(fileno(stream->file), &information) ? -1 : (Sint64)information.st_size;
-}
-
-static bool SDL_CloseIO(SDL_IOStream *stream)
-{
-	int closed = fclose(stream->file) == 0;
-
-	free(stream);
-	return closed;
-}
-
-static void *SDL_LoadFile(const char *path, size_t *size)
-{
-	FILE *file = fopen(path, "rb");
-	char *data;
-	long length;
-
-	if (!file)
-		return NULL;
-	fseek(file, 0, SEEK_END);
-	length = ftell(file);
-	fseek(file, 0, SEEK_SET);
-	data = malloc((size_t)length + 1);
-	*size = fread(data, 1, (size_t)length, file);
-	data[*size] = 0;
-	fclose(file);
-	return data;
-}
-
-static void SDL_free(void *data)
-{
-	free(data);
-}
-
-static bool SDL_GetPathInfo(const char *path, SDL_PathInfo *information)
-{
-	struct stat status;
-
-	(void)information;
-	return stat(path, &status) == 0;
-}
-
-static const char *SDL_GetError(void)
-{
-	return strerror(errno);
-}
-
-static int SDL_SetAtomicInt(SDL_AtomicInt *atomic, int value)
-{
-	return __atomic_exchange_n(&atomic->value, value, __ATOMIC_SEQ_CST);
-}
-
-static int SDL_GetAtomicInt(SDL_AtomicInt *atomic)
-{
-	return __atomic_load_n(&atomic->value, __ATOMIC_SEQ_CST);
-}
-
-struct thread_start { SDL_ThreadFunction function; void *data; };
-
-static void *thread_main(void *context)
-{
-	struct thread_start start = *(struct thread_start *)context;
-
-	free(context);
-	start.function(start.data);
-	return NULL;
-}
-
-static SDL_Thread *SDL_CreateThread(SDL_ThreadFunction function, const char *name, void *data)
-{
-	SDL_Thread *thread = malloc(sizeof(*thread));
-	struct thread_start *start = malloc(sizeof(*start));
-
-	(void)name;
-	start->function = function;
-	start->data = data;
-	if (pthread_create(&thread->thread, NULL, thread_main, start))
-	{
-		free(start);
-		free(thread);
-		return NULL;
-	}
-	return thread;
-}
-
-static void SDL_DetachThread(SDL_Thread *thread)
-{
-	pthread_detach(thread->thread);
-	free(thread);
-}
-
-static void SDL_WaitThread(SDL_Thread *thread, int *status)
-{
-	(void)status;
-	pthread_join(thread->thread, NULL);
-	free(thread);
-}
-
-static SDL_Mutex *SDL_CreateMutex(void)
-{
-	SDL_Mutex *mutex = malloc(sizeof(*mutex));
-
-	pthread_mutex_init(&mutex->mutex, NULL);
-	return mutex;
-}
-
-static void SDL_LockMutex(SDL_Mutex *mutex) { pthread_mutex_lock(&mutex->mutex); }
-static void SDL_UnlockMutex(SDL_Mutex *mutex) { pthread_mutex_unlock(&mutex->mutex); }
-static void SDL_DestroyMutex(SDL_Mutex *mutex) { pthread_mutex_destroy(&mutex->mutex); free(mutex); }
-
-/* (the desktop's download window: none is made, and it draws nothing) */
-static SDL_Window *SDL_CreateWindow(const char *title, int width, int height, Uint64 flags)
-{
-	(void)title, (void)width, (void)height, (void)flags;
-	windows_made++;
-	printf("test: the updater made a window\n");
-	return NULL;
-}
-
-static SDL_Renderer *SDL_CreateRenderer(SDL_Window *window, const char *name) { (void)window, (void)name; return NULL; }
-static void SDL_DestroyRenderer(SDL_Renderer *renderer) { (void)renderer; }
-static void SDL_DestroyWindow(SDL_Window *window) { (void)window; }
-static void SDL_SetRenderDrawColor(SDL_Renderer *r, Uint8 a, Uint8 b, Uint8 c, Uint8 d) { (void)r, (void)a, (void)b, (void)c, (void)d; }
-static void SDL_SetRenderScale(SDL_Renderer *renderer, float x, float y) { (void)renderer, (void)x, (void)y; }
-static void SDL_RenderClear(SDL_Renderer *renderer) { (void)renderer; }
-static void SDL_RenderDebugText(SDL_Renderer *r, float x, float y, const char *text) { (void)r, (void)x, (void)y, (void)text; }
-static void SDL_RenderFillRect(SDL_Renderer *renderer, const SDL_FRect *rectangle) { (void)renderer, (void)rectangle; }
-static void SDL_RenderPresent(SDL_Renderer *renderer) { (void)renderer; }
-static bool SDL_PollEvent(SDL_Event *event) { (void)event; return false; }
-static void SDL_Delay(Uint32 milliseconds) { usleep(milliseconds * 1000); }
-static Uint64 SDL_GetWindowFlags(SDL_Window *window) { (void)window; return 0; }
-static bool SDL_SetWindowFullscreen(SDL_Window *window, bool fullscreen) { (void)window, (void)fullscreen; return true; }
-
-/* (a system dialog: under gamescope it would stop the game; the desktop's
-question is answered FAKE_DIALOG_ANSWER, No by default) */
-static bool SDL_ShowMessageBox(const SDL_MessageBoxData *data, int *button)
-{
-	const char *answer = getenv("FAKE_DIALOG_ANSWER");
-
-	dialogs_shown++;
-	printf("test: a dialog: %s\n", data->title);
-	*button = answer ? atoi(answer) : 0;
-	return true;
-}
-
-static bool SDL_ShowSimpleMessageBox(Uint32 flags, const char *title, const char *message, SDL_Window *window)
-{
-	(void)flags, (void)window;
-	dialogs_shown++;
-	printf("test: a dialog: %s: %s\n", title, message);
-	return true;
-}
+#include "update_sdl.h"
 
 /* ---------- the game's */
 
@@ -329,42 +101,31 @@ static const char *install_system_reason(void) { return ""; }
 static int install_is_tree(void) { return 1; }
 static const char *install_folder(void) { return environment("FAKE_TREE"); }
 
-/* GitHub: the latest release, build FAKE_LATEST, whose zip is FAKE_RELEASE */
+/* GitHub's file host: the release's zip, FAKE_RELEASE (its link's redirect,
+update_https_request's, to https://files.test/<name>) */
 int update_download(const char *url, const char *path, unsigned long long maximum, update_progress_proc progress,
 	void *context, char *error, int error_size)
 {
 	FILE *output = fopen(path, "wb");
-	const char *latest = "/releases/latest";
-	size_t length = strlen(url);
+	FILE *input = fopen(environment("FAKE_RELEASE"), "rb");
+	char buffer[16384];
+	size_t count;
 
 	(void)maximum, (void)progress, (void)context;
 	printf("test: download %s\n", url);
 	fflush(stdout);
-	if (!output)
+	if (!output || !input)
 	{
-		snprintf(error, (size_t)error_size, "could not write %s", path);
+		if (output)
+			fclose(output);
+		if (input)
+			fclose(input);
+		snprintf(error, (size_t)error_size, "the server answered 404");
 		return 0;
 	}
-	if (length > strlen(latest) && !strcmp(url + length - strlen(latest), latest))
-	{
-		fprintf(output, "{\"url\": \"...\", \"tag_name\": \"build-%s\", \"name\": \"...\"}", environment("FAKE_LATEST"));
-	}
-	else
-	{
-		FILE *input = fopen(environment("FAKE_RELEASE"), "rb");
-		char buffer[16384];
-		size_t count;
-
-		if (!input)
-		{
-			fclose(output);
-			snprintf(error, (size_t)error_size, "the server answered 404");
-			return 0;
-		}
-		while ((count = fread(buffer, 1, sizeof(buffer), input)) > 0)
-			fwrite(buffer, 1, count, output);
-		fclose(input);
-	}
+	while ((count = fread(buffer, 1, sizeof(buffer), input)) > 0)
+		fwrite(buffer, 1, count, output);
+	fclose(input);
 	fclose(output);
 	return 1;
 }
@@ -400,18 +161,47 @@ static void platform_request_quit(void)
 	printf("test: quit\n");
 }
 
-/* the release's SHA256SUMS and signature: none (GitHub's 404), and the check
-of the download (release_signature.c's, test_release_signature.py's) as
-FAKE_VERDICT says: "refused", else taken as an unsigned release */
+/* GitHub: the latest release, build FAKE_LATEST (its API's answer); its zip's
+link, redirected to the file host (update_download); its SHA256SUMS and
+signature: none (GitHub's 404). The check of the download (release_signature.c's,
+test_release_signature.py's) as FAKE_VERDICT says: "refused", else taken as
+an unsigned release */
 int update_https_request(const char *method, const char *url, const char *headers, const void *body,
 	unsigned long body_size, unsigned long maximum, struct update_response *response, char *error, int error_size)
 {
 	const char *name = strrchr(url, '/');
+	const char *latest = "/releases/latest";
+	size_t length = strlen(url);
 
 	(void)method, (void)headers, (void)body, (void)body_size, (void)maximum, (void)error, (void)error_size;
-	printf("test: asked for %s\n", name ? name + 1 : url);
 	memset(response, 0, sizeof(*response));
-	response->status = 404;
+	name = name ? name + 1 : url;
+	if (length > strlen(latest) && !strcmp(url + length - strlen(latest), latest))
+	{
+		char text[200];
+
+		printf("test: download %s\n", url);
+		snprintf(text, sizeof(text), "{\"url\": \"...\", \"tag_name\": \"build-%s\", \"name\": \"...\"}",
+			environment("FAKE_LATEST"));
+		response->status = 200;
+		response->body = strdup(text);
+		response->body_size = strlen(text);
+	}
+	else if (strstr(url, "/releases/download/") && strstr(name, ".zip"))
+	{
+		printf("test: download %s\n", url);
+		response->status = 302;
+		snprintf(response->headers, sizeof(response->headers), "Content-Length: 0\nLocation: https://files.test/%s\n",
+			name);
+		response->body = calloc(1, 1);
+	}
+	else
+	{
+		printf("test: asked for %s\n", name);
+		response->status = 404;
+		response->body = calloc(1, 1);
+	}
+	fflush(stdout);
 	return 1;
 }
 
