@@ -102,7 +102,7 @@ FUNCTIONS = ("report_crc32", "report_compare_micros", "report_low_fps", "report_
              "report_address6_length", "report_whole_lines", "report_session_value", "report_crash_line",
              "report_crash_summary", "report_map_counted", "report_where_text", "report_scrub")
 # the host's record of a crash, written from its signal handler (port/android/host/host_common.c)
-HOST_FUNCTIONS = ("crash_record_write", "host_crash_record_line", "host_crash_record_end")
+HOST_FUNCTIONS = ("crash_record_is_open", "crash_record_write", "host_crash_record_line", "host_crash_record_end")
 
 
 def markers(source):

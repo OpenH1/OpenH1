@@ -182,10 +182,8 @@ void *host_crash_file_create(void);
 void host_crash_file_write(void *file, const char *text, size_t length);
 void host_crash_file_close(void *file);
 static void *crash_record_handle;
-#define CRASH_RECORD_OPEN (crash_record_handle != NULL)
 #else
 static int crash_record_file = -1;
-#define CRASH_RECORD_OPEN (crash_record_file >= 0)
 #endif
 
 void host_crash_record(const char *path, const char *log, uint32_t log_size, const uint64_t *log_written)
@@ -196,6 +194,15 @@ void host_crash_record(const char *path, const char *log, uint32_t log_size, con
 	crash_record_log_written = log_written;
 #ifdef _WIN32
 	host_crash_file_name(crash_record_path);
+#endif
+}
+
+static int crash_record_is_open(void)
+{
+#ifdef _WIN32
+	return crash_record_handle != NULL;
+#else
+	return crash_record_file >= 0;
 #endif
 }
 
@@ -227,7 +234,7 @@ int host_crash_record_begin(const char *reason)
 #else
 	crash_record_file = open(crash_record_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 #endif
-	if (!CRASH_RECORD_OPEN)
+	if (!crash_record_is_open())
 		return 0;
 	host_crash_record_line(reason);
 	return 1;
@@ -235,7 +242,7 @@ int host_crash_record_begin(const char *reason)
 
 void host_crash_record_line(const char *line)
 {
-	if (!CRASH_RECORD_OPEN || !line)
+	if (!crash_record_is_open() || !line)
 		return;
 	crash_record_write(line, strlen(line));
 	crash_record_write("\n", 1);
@@ -246,7 +253,7 @@ void host_crash_record_end(void)
 	static const char heading[] = "\n--- the log's last lines\n";
 	uint64_t written, kept, first;
 
-	if (!CRASH_RECORD_OPEN)
+	if (!crash_record_is_open())
 		return;
 	if (crash_record_log && crash_record_log_size && crash_record_log_written)
 	{
