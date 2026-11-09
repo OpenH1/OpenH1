@@ -1598,6 +1598,7 @@ static void pass_play(VkCommandBuffer main, uint32_t first, uint32_t last)
 
 static void pass_times_mark(VkCommandBuffer main, const char *label);
 static const char *pass_times_label(const struct segment *segment, int aside);
+static void timing_mark(VkCommandBuffer main, const struct segment *segment, int aside, int outside);
 
 /* the submission's segments into the main command buffer, in order but for
 what was put aside (before the chain it was put aside from, whose pieces
@@ -1609,6 +1610,7 @@ static void segments_play(void)
 
 	segment_close();
 	pass_times_mark(main, NULL);
+	timing_mark(main, NULL, 0, 0);
 	for (index = 0; index < vk.segment_count; index++)
 	{
 		struct segment *segment = &vk.segments[index];
@@ -1617,6 +1619,7 @@ static void segments_play(void)
 		{
 			vkCmdExecuteCommands(main, 1, &segment->commands);
 			pass_times_mark(main, "outside passes");
+			timing_mark(main, NULL, 0, 1);
 			continue;
 		}
 		if (segment->chain_last > index + 1)
@@ -1634,20 +1637,24 @@ static void segments_play(void)
 					pass_play(main, between, between);
 					vk.statistics.passes_aside++;
 					pass_times_mark(main, pass_times_label(aside, 1));
+					timing_mark(main, aside, 1, 0);
 				}
 				else
 				{
 					vkCmdExecuteCommands(main, 1, &aside->commands);
 					pass_times_mark(main, "outside passes");
+					timing_mark(main, NULL, 0, 1);
 				}
 			}
 			pass_play(main, index, last);
 			pass_times_mark(main, pass_times_label(segment, 0));
+			timing_mark(main, segment, 0, 0);
 			index = last;
 			continue;
 		}
 		pass_play(main, index, index);
 		pass_times_mark(main, pass_times_label(segment, 0));
+		timing_mark(main, segment, 0, 0);
 	}
 	vk.segment_count = 0;
 	aside_break();
@@ -2113,6 +2120,286 @@ static void pass_times_collect(void)
 		pass_times.sum_count = 0;
 		pass_times.frames = 0.0;
 	}
+}
+
+/* ---------- a frame's GPU time for a caller (xgpu_vulkan_timing_*)
+
+The replay's cost (port/tools/replay/host_render_replay.h): the frame
+begun after a request is timed with timestamps at the bottom of the
+pipeline before and after each of its draws (in the segments' commands)
+and, as segments_play plays them, at each submission's start and after
+each pass and each piece of work outside passes (in the main command
+buffer). A pass's time is from the timestamp before it to its own, so that
+the passes' times sum to the frame's (the waits between its submissions
+left out); a draw's from its timestamp before to its timestamp after, and
+it belongs to the pass whose span holds its end. A timestamp at the bottom
+of the pipeline waits for the work before it: around each draw, the draws
+that would overlap on an immediate GPU are drawn one after the other, so
+a draw's time is its own, without the overlap, and the frame drawn so is
+slower than it is untimed (its passes' times are those of the frame drawn
+so); a tiler's draws are binned and shaded at the pass's end, so their
+timestamps say little. HALO_VULKAN_TIMING_DRAWS=0 times the passes alone
+(the frame drawn as untimed; the replay's subtraction needs no more). */
+
+#define TIMING_QUERIES 16384
+/* (room kept for the passes' timestamps) */
+#define TIMING_PASS_ROOM 1024
+#define TIMING_LABEL 64
+
+enum { TIMING_START, TIMING_PASS, TIMING_DRAW_BEFORE, TIMING_DRAW_AFTER };
+
+static struct
+{
+	VkQueryPool pool;
+	/* the frame being timed (render thread), its timestamps written to
+	used; the draw being handed (the caller's number), done: the frame
+	ended, its timestamps all written to (used) */
+	int active, done, draws_off;
+	uint32_t used, draw;
+	struct
+	{
+		uint8_t what;
+		/* a draw's number; a pass's place in passes */
+		uint32_t index;
+	} marks[TIMING_QUERIES];
+	struct
+	{
+		char label[TIMING_LABEL];
+		uint32_t width, height;
+	} passes[TIMING_PASS_ROOM];
+	uint32_t pass_count;
+	/* the results */
+	struct xgpu_vulkan_pass_time results[TIMING_PASS_ROOM];
+	uint32_t *draw_pass;
+	double *draw_ms;
+	uint32_t draw_count, draw_capacity;
+	char note[512];
+} timing;
+
+int xgpu_vulkan_timing_begin(void)
+{
+	VkQueryPoolCreateInfo create;
+
+	if (!vk.capabilities.gpu_timestamps)
+		return 0;
+	if (!timing.pool)
+	{
+		memset(&create, 0, sizeof(create));
+		create.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+		create.queryType = VK_QUERY_TYPE_TIMESTAMP;
+		create.queryCount = TIMING_QUERIES;
+		if (!check(vkCreateQueryPool(vk.device, &create, NULL, &timing.pool), "vkCreateQueryPool (timing)"))
+		{
+			timing.pool = VK_NULL_HANDLE;
+			return 0;
+		}
+	}
+	vkResetQueryPool(vk.device, timing.pool, 0, TIMING_QUERIES);
+	timing.used = 0;
+	timing.pass_count = 0;
+	timing.draw = UINT32_MAX;
+	timing.done = 0;
+	timing.draws_off = getenv("HALO_VULKAN_TIMING_DRAWS") && !atoi(getenv("HALO_VULKAN_TIMING_DRAWS"));
+	timing.active = 1;
+	return 1;
+}
+
+void xgpu_vulkan_timing_draw(uint32_t index)
+{
+	timing.draw = index;
+}
+
+/* a timestamp of the timed frame's into commands (0 if there is no room) */
+static int timing_write(VkCommandBuffer commands, uint8_t what, uint32_t index)
+{
+	if (!timing.active || timing.used >= TIMING_QUERIES ||
+		((what == TIMING_DRAW_BEFORE || what == TIMING_DRAW_AFTER) && timing.used >= TIMING_QUERIES - TIMING_PASS_ROOM))
+		return 0;
+	vkCmdWriteTimestamp(commands, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timing.pool, timing.used);
+	timing.marks[timing.used].what = what;
+	timing.marks[timing.used].index = index;
+	timing.used++;
+	return 1;
+}
+
+/* (about a draw recorded into commands) */
+static void timing_draw_mark(VkCommandBuffer commands, int after)
+{
+	if (!timing.active || timing.draw == UINT32_MAX || timing.draws_off)
+		return;
+	/* (a pair, or none: the one after is written where the one before was) */
+	if (!after)
+		timing_write(commands, TIMING_DRAW_BEFORE, timing.draw);
+	else if (timing.used && timing.marks[timing.used - 1].what == TIMING_DRAW_BEFORE)
+		timing_write(commands, TIMING_DRAW_AFTER, timing.draw);
+}
+
+/* (segments_play) a submission's start (segment NULL, outside 0), or the
+end of a pass (segment) or of work outside passes (outside) */
+static void timing_mark(VkCommandBuffer main, const struct segment *segment, int aside, int outside)
+{
+	const struct xgpu_vulkan_image *image;
+
+	if (!timing.active)
+		return;
+	if (!segment && !outside)
+	{
+		timing_write(main, TIMING_START, 0);
+		return;
+	}
+	if (timing.pass_count >= TIMING_PASS_ROOM || !timing_write(main, TIMING_PASS, timing.pass_count))
+		return;
+	if (outside)
+	{
+		snprintf(timing.passes[timing.pass_count].label, TIMING_LABEL, "outside passes");
+		timing.passes[timing.pass_count].width = timing.passes[timing.pass_count].height = 0;
+	}
+	else
+	{
+		image = segment->color.image ? segment->color.image : segment->depth.image;
+		snprintf(timing.passes[timing.pass_count].label, TIMING_LABEL, "%s%ux%u%s%s%s", aside ? "aside " : "pass ",
+			segment->area.extent.width, segment->area.extent.height, segment->color.image ? " colour" : "",
+			segment->depth.image ? " depth" : "", image && image->description.samples > 1 ? " msaa" : "");
+		timing.passes[timing.pass_count].width = segment->area.extent.width;
+		timing.passes[timing.pass_count].height = segment->area.extent.height;
+	}
+	timing.pass_count++;
+}
+
+/* (the frame's end, its last submission made) */
+static void timing_frame_end(void)
+{
+	if (!timing.active)
+		return;
+	timing.active = 0;
+	timing.done = 1;
+}
+
+int xgpu_vulkan_timing_wait(double seconds, struct xgpu_vulkan_timing *result)
+{
+	static uint64_t times[TIMING_QUERIES][2];
+	uint64_t mask = vk.timestamp_bits >= 64 ? UINT64_MAX : (UINT64_C(1) << vk.timestamp_bits) - 1, first = 0, previous = 0;
+	double period = (double)vk.properties.limits.timestampPeriod * 1e-6, frame = 0.0, waited = 0.0;
+	uint32_t index, pass, draws = 0;
+	int have_first = 0, have_previous = 0;
+	VkResult status;
+
+	memset(result, 0, sizeof(*result));
+	if (!timing.done || !timing.used)
+		return 0;
+	/* (the timestamps of the main command buffer all written: the frame is
+	done; a draw's segment that was not played has none) */
+	for (;;)
+	{
+		int ready = 1;
+
+		status = vkGetQueryPoolResults(vk.device, timing.pool, 0, timing.used, sizeof(times[0]) * timing.used, times,
+			sizeof(times[0]), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+		if (status != VK_SUCCESS && status != VK_NOT_READY)
+			return 0;
+		for (index = 0; index < timing.used && ready; index++)
+		{
+			if ((timing.marks[index].what == TIMING_START || timing.marks[index].what == TIMING_PASS) && !times[index][1])
+				ready = 0;
+		}
+		if (ready)
+			break;
+		if (waited >= seconds)
+			return 0;
+		{
+			struct timespec pause = { 0, 200000 };
+
+			nanosleep(&pause, NULL);
+			waited += 0.0002;
+		}
+	}
+	/* the passes: each from the timestamp before it, in its submission */
+	for (index = 0; index < timing.used; index++)
+	{
+		if (timing.marks[index].what == TIMING_START)
+		{
+			if (!have_first)
+			{
+				first = times[index][0];
+				have_first = 1;
+			}
+			previous = times[index][0];
+			have_previous = 1;
+			continue;
+		}
+		if (timing.marks[index].what != TIMING_PASS || !have_previous)
+			continue;
+		pass = timing.marks[index].index;
+		timing.results[pass].kind = timing.passes[pass].label;
+		timing.results[pass].width = timing.passes[pass].width;
+		timing.results[pass].height = timing.passes[pass].height;
+		timing.results[pass].draws = 0;
+		timing.results[pass].start_ms = (double)((previous - first) & mask) * period;
+		timing.results[pass].end_ms = (double)((times[index][0] - first) & mask) * period;
+		timing.results[pass].ms = (double)((times[index][0] - previous) & mask) * period;
+		frame += timing.results[pass].ms;
+		previous = times[index][0];
+	}
+	/* the draws: each its own time, in the pass whose span holds its end */
+	for (index = 0; index + 1 < timing.used; index++)
+	{
+		if (timing.marks[index].what == TIMING_DRAW_BEFORE && timing.marks[index + 1].what == TIMING_DRAW_AFTER &&
+			timing.marks[index + 1].index + 1 > draws)
+			draws = timing.marks[index + 1].index + 1;
+	}
+	if (draws > timing.draw_capacity)
+	{
+		uint32_t *grown_pass = realloc(timing.draw_pass, draws * sizeof(*grown_pass));
+		double *grown_ms;
+
+		if (grown_pass)
+			timing.draw_pass = grown_pass;
+		grown_ms = realloc(timing.draw_ms, draws * sizeof(*grown_ms));
+		if (grown_ms)
+			timing.draw_ms = grown_ms;
+		if (!grown_pass || !grown_ms)
+			return 0;
+		timing.draw_capacity = draws;
+	}
+	for (index = 0; index < draws; index++)
+	{
+		timing.draw_pass[index] = UINT32_MAX;
+		timing.draw_ms[index] = 0.0;
+	}
+	for (index = 0; index + 1 < timing.used; index++)
+	{
+		uint32_t draw = timing.marks[index].index;
+		double end;
+
+		if (timing.marks[index].what != TIMING_DRAW_BEFORE || timing.marks[index + 1].what != TIMING_DRAW_AFTER ||
+			!times[index][1] || !times[index + 1][1] || !have_first)
+			continue;
+		/* (a draw handed on in pieces: their times summed) */
+		timing.draw_ms[draw] += (double)((times[index + 1][0] - times[index][0]) & mask) * period;
+		end = (double)((times[index + 1][0] - first) & mask) * period;
+		for (pass = 0; pass < timing.pass_count; pass++)
+		{
+			if (end > timing.results[pass].start_ms && end <= timing.results[pass].end_ms)
+			{
+				if (timing.draw_pass[draw] == UINT32_MAX)
+					timing.results[pass].draws++;
+				timing.draw_pass[draw] = pass;
+				break;
+			}
+		}
+	}
+	snprintf(timing.note, sizeof(timing.note), "Vulkan timestamps at the bottom of the pipeline about each draw "
+		"(period %.3f ns, %u valid bits): overlapping draws are drawn one after another, so a draw's ms is its own "
+		"and the timed frame is slower than untimed; a tiler's draws are shaded at the pass's end",
+		(double)vk.properties.limits.timestampPeriod, vk.timestamp_bits);
+	result->frame_ms = frame;
+	result->passes = timing.results;
+	result->pass_count = timing.pass_count;
+	result->draw_pass = timing.draw_pass;
+	result->draw_ms = timing.draw_ms;
+	result->draw_count = draws;
+	result->note = timing.note;
+	return frame > 0.0;
 }
 
 /* ---------- the upload ring */
@@ -5712,14 +5999,17 @@ static void draw_body(const struct xgpu_vulkan_draw *draw)
 			vk.bound.index_offset = draw->indices.offset;
 		}
 		draw_times_draw(commands, draw, 0);
+		timing_draw_mark(commands, 0);
 		vkCmdDrawIndexed(commands, draw->count, 1, draw->first_index, draw->vertex_offset, 0);
 	}
 	else
 	{
 		draw_times_draw(commands, draw, 0);
+		timing_draw_mark(commands, 0);
 		vkCmdDraw(commands, draw->count, 1, 0, 0);
 	}
 	draw_times_draw(commands, draw, 1);
+	timing_draw_mark(commands, 1);
 	vk.statistics.draws++;
 }
 
@@ -7217,6 +7507,7 @@ void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
 		draw_times.serial = serial;
 	/* (after the present: its submission plays the frame's last passes) */
 	pass_times_frame_end();
+	timing_frame_end();
 	if (pass_times.pending && !pass_times.serial)
 		pass_times.serial = serial;
 	if (vk.queries)

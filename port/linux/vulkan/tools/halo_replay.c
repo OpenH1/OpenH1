@@ -79,6 +79,42 @@ static void vulkan_ids_draw(uint32_t index)
 	xgpu_vulkan_stream_ids_draw(index);
 }
 
+/* ---------- the cost: each draw timed with timestamps about it
+(xgpu_vulkan_timing_*); the service's subtraction needs only the frame's
+and its passes' */
+
+static struct host_render_replay_pass_time cost_passes[1024];
+
+static int vulkan_cost_end(struct host_render_replay_cost *cost)
+{
+	struct xgpu_vulkan_timing timing;
+	uint32_t index;
+
+	if (!xgpu_vulkan_timing_wait(10.0, &timing))
+		return 0;
+	if (timing.pass_count > sizeof(cost_passes) / sizeof(cost_passes[0]))
+		timing.pass_count = sizeof(cost_passes) / sizeof(cost_passes[0]);
+	for (index = 0; index < timing.pass_count; index++)
+	{
+		memset(&cost_passes[index], 0, sizeof(cost_passes[index]));
+		cost_passes[index].kind = timing.passes[index].kind;
+		cost_passes[index].width = timing.passes[index].width;
+		cost_passes[index].height = timing.passes[index].height;
+		cost_passes[index].draws = timing.passes[index].draws;
+		cost_passes[index].ms = timing.passes[index].ms;
+		cost_passes[index].start_ms = timing.passes[index].start_ms;
+	}
+	cost->frame_ms = timing.frame_ms;
+	cost->passes = cost_passes;
+	cost->pass_count = timing.pass_count;
+	cost->draw_pass = timing.draw_pass;
+	cost->draw_count = timing.draw_count;
+	cost->draw_ms = timing.draw_ms;
+	cost->draw_method = "timestamps";
+	cost->note = timing.note;
+	return 1;
+}
+
 static const struct host_render_replay_platform vulkan_platform =
 {
 	.backend = "vulkan",
@@ -90,6 +126,10 @@ static const struct host_render_replay_platform vulkan_platform =
 	.ids_draw = vulkan_ids_draw,
 	.ids_read = xgpu_vulkan_stream_ids_read,
 	.ids_end = xgpu_vulkan_stream_ids_end,
+	.cost_begin = xgpu_vulkan_timing_begin,
+	.cost_draw_method = "timestamps",
+	.cost_draw = xgpu_vulkan_timing_draw,
+	.cost_end = vulkan_cost_end,
 };
 
 int main(int argc, char *argv[])
@@ -97,6 +137,10 @@ int main(int argc, char *argv[])
 	char cache[4200];
 	int index;
 
+	/* (debug.pass_times, as the game reads it: each pass's GPU time logged,
+	every so many frames; port/tools/replay's host_pass_times) */
+	if (getenv("HALO_PASS_TIMES") && atoi(getenv("HALO_PASS_TIMES")) > 0)
+		host_pass_times = atoi(getenv("HALO_PASS_TIMES"));
 	/* (the pipeline cache beside the recording, as Metal's archive is) */
 	for (index = 1; index < argc; index++)
 	{
