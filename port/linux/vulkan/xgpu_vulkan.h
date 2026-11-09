@@ -858,4 +858,49 @@ int xgpu_vulkan_timing_begin(void);
 void xgpu_vulkan_timing_draw(uint32_t index);
 int xgpu_vulkan_timing_wait(double seconds, struct xgpu_vulkan_timing *result);
 
+/* The driver's calls a thread makes, counted and timed for a caller (the
+replay's cost: its CPU time, port/tools/replay/host_render_replay.h), by
+kind. xgpu_vulkan_calls_watch: (the thread watched, the render thread)
+from now each Vulkan call of the backend's that it makes adds its time (in
+clock's ticks, the clock read before and after it) and one to its kind's
+entry of ticks and counts, and to their last (XGPU_VULKAN_CALL_KINDS: the
+total); NULL: the watch ends (the calls go straight to the driver again). */
+enum
+{
+	XGPU_VULKAN_CALL_BIND_PIPELINE,
+	XGPU_VULKAN_CALL_BIND_DESCRIPTORS,
+	XGPU_VULKAN_CALL_UPDATE_DESCRIPTORS,
+	/* (and the pools' resets) */
+	XGPU_VULKAN_CALL_ALLOCATE_DESCRIPTORS,
+	XGPU_VULKAN_CALL_PUSH_CONSTANTS,
+	/* (the vertex and index buffers) */
+	XGPU_VULKAN_CALL_BIND_BUFFERS,
+	/* (viewport, scissor, depth bias, blend constants, stencil reference,
+	topology) */
+	XGPU_VULKAN_CALL_DYNAMIC_STATE,
+	/* (and the dispatches) */
+	XGPU_VULKAN_CALL_DRAW,
+	XGPU_VULKAN_CALL_CLEAR,
+	/* (a command buffer begun, ended: the secondary command buffers'
+	and the submissions') */
+	XGPU_VULKAN_CALL_BEGIN_COMMANDS,
+	XGPU_VULKAN_CALL_END_COMMANDS,
+	XGPU_VULKAN_CALL_EXECUTE_COMMANDS,
+	/* (vkCmdBeginRendering, vkCmdEndRendering) */
+	XGPU_VULKAN_CALL_RENDERING,
+	XGPU_VULKAN_CALL_BARRIER,
+	/* (copies, blits, resolves) */
+	XGPU_VULKAN_CALL_COPY,
+	/* (queries and timestamps) */
+	XGPU_VULKAN_CALL_QUERY,
+	XGPU_VULKAN_CALL_SUBMIT,
+	/* (the semaphores waited for and read, the device idle) */
+	XGPU_VULKAN_CALL_WAIT,
+	/* (samplers, views, images, buffers, memory, command buffers made) */
+	XGPU_VULKAN_CALL_CREATE,
+	XGPU_VULKAN_CALL_KINDS
+};
+extern const char *const xgpu_vulkan_call_kind_names[XGPU_VULKAN_CALL_KINDS];
+void xgpu_vulkan_calls_watch(uint64_t *ticks, uint64_t *counts, uint64_t (*clock)(void));
+
 #endif

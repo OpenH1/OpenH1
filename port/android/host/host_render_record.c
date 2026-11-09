@@ -67,6 +67,7 @@ static struct
 	uint32_t frame;
 	host_render_shooter shooter;
 	host_render_restorer restorer;
+	void (*played)(void);
 	char shots[1024];
 	struct shot_range ranges[SHOT_RANGES];
 	int range_count;
@@ -488,6 +489,11 @@ void host_render_record_set_restorer(host_render_restorer restorer)
 	active_update();
 }
 
+void host_render_record_set_played(void (*played)(void))
+{
+	recorder.played = played;
+}
+
 uint32_t host_render_record_frame(void)
 {
 	return recorder.frame;
@@ -532,6 +538,8 @@ void host_render_record_after(void)
 		event_write(HOST_RENDER_EVENT_RECORD, &recorder.position, sizeof(recorder.position), recorder.record, bytes);
 		recorder.records++;
 	}
+	if (recorder.played)
+		recorder.played();
 	if (recorder.type == XGPU_STREAM_FRAME_END)
 		recorder.frame++;
 }

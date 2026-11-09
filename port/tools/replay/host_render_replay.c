@@ -49,6 +49,14 @@ whole rings), so that the render thread sees one stream.
 #define HALO_REPLAY_BUILD "unknown"
 #endif
 
+#ifdef _WIN32
+/* (Windows's: host_render_replay_win.c) */
+const unsigned char *host_render_replay_map(const char *path, size_t *size);
+int host_render_replay_low_claim(uint32_t address, uint32_t size);
+void host_render_replay_low_watch(void);
+void host_render_replay_binary_output(void);
+#endif
+
 /* ---------- what the host gives the backend and the decoder, here */
 
 #ifdef HALO_GUEST_BASE
@@ -349,6 +357,10 @@ struct chunk
 {
 	uint32_t address, size;
 	const unsigned char *data;
+	/* its memory was other than this when the frame was last played in
+	order (not again after itself): what the CPU's cost plays count as
+	written again */
+	uint8_t changed;
 };
 
 struct record
@@ -721,24 +733,36 @@ static int blocks_decode(const unsigned char *place, const unsigned char *map_en
 
 static int recording_load(const char *path)
 {
-	int descriptor = open(path, O_RDONLY);
-	struct stat status;
 	const unsigned char *place, *end;
 	uint32_t records = 0, chunks = 0, contents = 0, record_capacity, chunk_capacity, size;
 	uint32_t pending_first = 0;
 
-	if (descriptor < 0 || fstat(descriptor, &status) || (size_t)status.st_size < sizeof(recording.header))
+#ifdef _WIN32
+	recording.map = host_render_replay_map(path, &recording.map_size);
+	if (!recording.map || recording.map_size < sizeof(recording.header))
 	{
 		fprintf(stderr, "halo_replay: cannot read %s\n", path);
-		if (descriptor >= 0)
-			close(descriptor);
 		return 0;
 	}
-	recording.map_size = (size_t)status.st_size;
-	recording.map = mmap(NULL, recording.map_size, PROT_READ, MAP_PRIVATE, descriptor, 0);
-	close(descriptor);
-	if (recording.map == MAP_FAILED)
-		return 0;
+#else
+	{
+		int descriptor = open(path, O_RDONLY);
+		struct stat status;
+
+		if (descriptor < 0 || fstat(descriptor, &status) || (size_t)status.st_size < sizeof(recording.header))
+		{
+			fprintf(stderr, "halo_replay: cannot read %s\n", path);
+			if (descriptor >= 0)
+				close(descriptor);
+			return 0;
+		}
+		recording.map_size = (size_t)status.st_size;
+		recording.map = mmap(NULL, recording.map_size, PROT_READ, MAP_PRIVATE, descriptor, 0);
+		close(descriptor);
+		if (recording.map == MAP_FAILED)
+			return 0;
+	}
+#endif
 	memcpy(&recording.header, recording.map, sizeof(recording.header));
 	/* (a recording of 1: the stream's 21, the same records but the marks) */
 	if (recording.header.magic != HOST_RENDER_RECORD_MAGIC || recording.header.version < 1 ||
@@ -881,6 +905,25 @@ static int memory_make(void)
 			MAP_NORESERVE, -1, 0) == MAP_FAILED)
 			return 0;
 	}
+#elif defined(_WIN32)
+	{
+		/* the low 4 GB, as the Windows host has the guest's: the memory the
+		recording names claimed now, before the driver loads, and any other
+		free granule the stream writes as it does (host_render_replay_win.c) */
+		uint32_t index;
+
+		for (index = 0; index < recording.chunk_count; index++)
+		{
+			if (!host_render_replay_low_claim(recording.chunks[index].address, recording.chunks[index].size))
+				return 0;
+		}
+		if (!host_render_replay_low_claim(recording.header.ring_address, sizeof(struct xgpu_stream_ring)) ||
+			!host_render_replay_low_claim(ring->buffer, ring->size) ||
+			(ring->visibility && !host_render_replay_low_claim(ring->visibility, XGPU_STREAM_VISIBILITY_SLOTS * 2 * 4)) ||
+			(ring->pipelines && !host_render_replay_low_claim(ring->pipelines, XGPU_STREAM_PIPELINES)))
+			return 0;
+		host_render_replay_low_watch();
+	}
 #else
 	{
 		/* the low 4 GB, as the host without a base has the guest's (from
@@ -934,6 +977,61 @@ static struct
 	int cost_wanted, cost_active;
 	uint32_t skip_from, skip_to, skip_pass;
 } inspect = { .frame = UINT32_MAX, .skip_pass = UINT32_MAX };
+
+/* the CPU's time on a frame (the cost's "cpu", serve_cost): each record's,
+by the render thread's clock about it (record_begin, record_played), the
+records of each draw (those after the draw before it, to it) added to it,
+and the driver's calls the backend made among them (platform->calls_watch:
+each kind's time and count) */
+#define CPU_KINDS_MOST 32
+
+static struct
+{
+	/* (the service) the next play of inspect.frame measured, with the
+	driver's calls watched; the chunks the frame's play in order found
+	changed counted as written again (as they were then, so that the
+	textures and vertices made again then are again) */
+	int wanted, watched, forcing;
+	/* (the service, before the play) room for the frame's draws */
+	uint32_t draw_capacity;
+	uint64_t *draw_ticks, *draw_own, *draw_driver, *draw_counts;
+	/* (the render thread) measuring; the record being played (its type,
+	its draw or UINT32_MAX, its start, the driver's total then) */
+	int active, ended;
+	uint32_t kinds, type, draw;
+	uint64_t record_start, driver_start, frame_start, frame_end;
+	/* the records since the last draw: their time, the driver's, its calls
+	when they began */
+	uint64_t span_ticks, span_driver, span_counts[CPU_KINDS_MOST + 1];
+	/* the backend's counters (the last the total) */
+	uint64_t ticks[CPU_KINDS_MOST + 1], counts[CPU_KINDS_MOST + 1];
+	/* the frame's: each record type's time, the driver's and their count,
+	all the records', those after the last draw */
+	uint64_t type_ticks[XGPU_STREAM_RECORD_TYPES], type_driver[XGPU_STREAM_RECORD_TYPES];
+	uint32_t type_count[XGPU_STREAM_RECORD_TYPES];
+	uint64_t records_ticks, after_ticks, after_driver;
+	/* the clock's own cost, in ticks (taken off each record's time and each
+	call's) */
+	uint64_t clock_ticks;
+} cpu;
+
+uint64_t host_render_replay_ticks(void)
+{
+#if defined(__x86_64__) || defined(_M_X64)
+	return __builtin_ia32_rdtsc();
+#elif defined(__aarch64__)
+	uint64_t value;
+
+	__asm__ volatile("mrs %0, cntvct_el0" : "=r"(value));
+	return value;
+#else
+	struct timespec now;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (uint64_t)now.tv_sec * 1000000000ull + (uint64_t)now.tv_nsec;
+#endif
+}
+
 
 /* ---------- playing: the render thread's side */
 
@@ -1036,6 +1134,87 @@ static void loop_begin(void)
 	play.last_end = seconds_now();
 }
 
+/* (the render thread, the frame's first record) */
+static void cpu_begin(void)
+{
+	cpu.active = 1;
+	cpu.ended = 0;
+	cpu.kinds = platform->calls_watch && platform->call_kinds <= CPU_KINDS_MOST ? platform->call_kinds : 0;
+	cpu.span_ticks = cpu.span_driver = 0;
+	cpu.records_ticks = cpu.after_ticks = cpu.after_driver = 0;
+	memset(cpu.ticks, 0, sizeof(cpu.ticks));
+	memset(cpu.counts, 0, sizeof(cpu.counts));
+	memset(cpu.span_counts, 0, sizeof(cpu.span_counts));
+	memset(cpu.type_ticks, 0, sizeof(cpu.type_ticks));
+	memset(cpu.type_driver, 0, sizeof(cpu.type_driver));
+	memset(cpu.type_count, 0, sizeof(cpu.type_count));
+	if (cpu.draw_capacity)
+	{
+		memset(cpu.draw_ticks, 0, cpu.draw_capacity * sizeof(*cpu.draw_ticks));
+		memset(cpu.draw_own, 0, cpu.draw_capacity * sizeof(*cpu.draw_own));
+		memset(cpu.draw_driver, 0, cpu.draw_capacity * sizeof(*cpu.draw_driver));
+		memset(cpu.draw_counts, 0, (size_t)cpu.draw_capacity * (CPU_KINDS_MOST + 1) * sizeof(*cpu.draw_counts));
+	}
+	if (cpu.watched && cpu.kinds)
+		platform->calls_watch(cpu.ticks, cpu.counts);
+	cpu.frame_start = host_render_replay_ticks();
+}
+
+/* (the render thread, the last thing before a record is played) */
+static void record_begin(uint32_t type)
+{
+	cpu.type = type < XGPU_STREAM_RECORD_TYPES ? type : XGPU_STREAM_SKIP;
+	cpu.draw = is_draw(type) ? play.draw : UINT32_MAX;
+	cpu.driver_start = cpu.ticks[cpu.kinds];
+	cpu.record_start = host_render_replay_ticks();
+}
+
+/* (the render thread) the record played (host_render_record_set_played) */
+static void record_played(void)
+{
+	uint64_t now, elapsed, driver;
+	uint32_t kind;
+
+	if (!cpu.active)
+		return;
+	now = host_render_replay_ticks();
+	elapsed = now - cpu.record_start;
+	elapsed = elapsed > cpu.clock_ticks ? elapsed - cpu.clock_ticks : 0;
+	driver = cpu.ticks[cpu.kinds] - cpu.driver_start;
+	cpu.type_ticks[cpu.type] += elapsed;
+	cpu.type_driver[cpu.type] += driver;
+	cpu.type_count[cpu.type]++;
+	cpu.records_ticks += elapsed;
+	cpu.span_ticks += elapsed;
+	cpu.span_driver += driver;
+	if (cpu.draw != UINT32_MAX)
+	{
+		if (cpu.draw < cpu.draw_capacity)
+		{
+			cpu.draw_ticks[cpu.draw] = cpu.span_ticks;
+			cpu.draw_own[cpu.draw] = elapsed;
+			cpu.draw_driver[cpu.draw] = cpu.span_driver;
+			for (kind = 0; kind <= cpu.kinds; kind++)
+				cpu.draw_counts[(size_t)cpu.draw * (CPU_KINDS_MOST + 1) + kind] = cpu.counts[kind] - cpu.span_counts[kind];
+		}
+		memcpy(cpu.span_counts, cpu.counts, sizeof(cpu.span_counts));
+		cpu.span_ticks = cpu.span_driver = 0;
+	}
+	if (cpu.type == XGPU_STREAM_FRAME_END)
+	{
+		cpu.after_ticks = cpu.span_ticks;
+		cpu.after_driver = cpu.span_driver;
+		cpu.frame_end = now;
+		if (cpu.watched && cpu.kinds)
+			platform->calls_watch(NULL, NULL);
+		cpu.active = 0;
+		cpu.ended = 1;
+	}
+}
+
+/* the frame is played again where it is (the cost's plays: frame_again) */
+static int play_again_here;
+
 /* (the render thread) the memory a record reads put back */
 static void chunks_restore(const struct record *record)
 {
@@ -1043,10 +1222,16 @@ static void chunks_restore(const struct record *record)
 
 	for (c = 0; c < record->chunk_count; c++)
 	{
-		const struct chunk *chunk = &recording.chunks[record->chunk_first + c];
+		struct chunk *chunk = &recording.chunks[record->chunk_first + c];
 		void *to = host_pointer(chunk->address);
 
-		if (memcmp(to, chunk->data, chunk->size))
+		int changed = memcmp(to, chunk->data, chunk->size) != 0;
+
+		/* (in order: what the CPU's cost plays of the frame count as
+		written again) */
+		if (!play_again_here)
+			chunk->changed = (uint8_t)changed;
+		if (changed)
 		{
 			memcpy(to, chunk->data, chunk->size);
 			pages_mark(chunk->address, chunk->size, 1);
@@ -1054,14 +1239,14 @@ static void chunks_restore(const struct record *record)
 		}
 		else
 		{
-			pages_mark(chunk->address, chunk->size, 0);
+			pages_mark(chunk->address, chunk->size, cpu.forcing && chunk->changed);
 		}
 	}
 }
 
 /* (the render thread) before each record is played: the memory it reads
 put back */
-static void restore(uint32_t position, uint32_t type, const unsigned char *bytes)
+static void restore_memory(uint32_t position, uint32_t type, const unsigned char *bytes)
 {
 	const struct record *record;
 
@@ -1096,9 +1281,19 @@ static void restore(uint32_t position, uint32_t type, const unsigned char *bytes
 		inspect.ids_active = inspect.ids_wanted && platform->ids_begin &&
 			platform->ids_begin(recording.frames[play.frame].present, HOST_RENDER_REPLAY_ID_DEPTH);
 		inspect.cost_active = inspect.cost_wanted && platform->cost_begin && platform->cost_begin();
+		if (cpu.wanted)
+			cpu_begin();
 	}
 	if (is_draw(type))
 		play.draw = play.frame_draws++;
+}
+
+static void restore(uint32_t position, uint32_t type, const unsigned char *bytes)
+{
+	restore_memory(position, type, bytes);
+	/* (the CPU's measure of the record begins once its memory is back) */
+	if (cpu.active)
+		record_begin(type);
 }
 
 /* ---------- the replay's table, in front of the backend's */
@@ -1128,7 +1323,8 @@ static void draw_seen(uint32_t type, uint32_t primitive, uint32_t count)
 	struct draw_seen *seen;
 	int stage;
 
-	if (play.frame != inspect.frame)
+	/* (nor while the CPU's time is measured: the replay's own) */
+	if (play.frame != inspect.frame || cpu.active)
 		return;
 	if (inspect.ids_active)
 		platform->ids_draw(play.draw);
@@ -2917,8 +3113,22 @@ static void serve_info(struct text *text)
 	if (platform->ids_begin)
 		TEXT(text, ",\"ids\",\"pick\"");
 	if (platform->cost_begin && platform->cost_end)
-		TEXT(text, ",\"cost\"");
+		TEXT(text, ",\"cost\",\"cpu_cost\"");
 	TEXT(text, "]");
+	/* (the kinds of the driver's calls cost's "cpu" counts, if any) */
+	if (platform->calls_watch && platform->call_kinds && platform->call_kinds <= CPU_KINDS_MOST)
+	{
+		uint32_t kind;
+
+		TEXT(text, ",\"call_kinds\":[");
+		for (kind = 0; kind < platform->call_kinds; kind++)
+		{
+			if (kind)
+				TEXT(text, ",");
+			text_string(text, platform->call_kind_names[kind]);
+		}
+		TEXT(text, "]");
+	}
 	if (platform->cost_begin && platform->cost_end)
 	{
 		TEXT(text, ",\"cost_methods\":[\"subtract\"");
@@ -3212,8 +3422,10 @@ static int cost_play(uint32_t n, const struct cost_entry *entry, int pixels, str
 	inspect.skip_from = entry && !entry->group ? entry->draw : 0;
 	inspect.skip_to = entry && !entry->group ? entry->draw + 1 : 0;
 	inspect.skip_pass = entry && entry->group ? entry->pass : UINT32_MAX;
+	play_again_here = 1;
 	play_to(recording.frames[n].end);
 	sync_all();
+	play_again_here = 0;
 	timed = inspect.cost_active;
 	inspect.frame = UINT32_MAX;
 	inspect.cost_wanted = 0;
@@ -3268,6 +3480,365 @@ static int cost_whole_keep(struct cost_whole *whole, const struct host_render_re
 	whole->count = cost->pass_count;
 	whole->frame_ms = cost->frame_ms;
 	return 1;
+}
+
+/* ---------- the cost's CPU time ("cpu"): the frame played again where it
+is, without the GPU's timestamps, its records timed on the render thread
+(record_begin, record_played); every other play with the driver's calls
+watched (the backend's calls_watch), whose own time (the clock read about
+each) is left out of the plays' others. The chunks the frame's play in
+order found changed count as written again (cpu.forcing), so that the
+backend makes again the textures and vertices it made then. */
+
+static const char *const record_type_names[XGPU_STREAM_RECORD_TYPES] =
+{
+	[XGPU_STREAM_SKIP] = "skip", [XGPU_STREAM_INITIALIZE] = "initialize", [XGPU_STREAM_INVALIDATE] = "invalidate",
+	[XGPU_STREAM_FLUSH] = "flush", [XGPU_STREAM_ANTI_ALIASING_PREPARE] = "anti_aliasing_prepare",
+	[XGPU_STREAM_ANTI_ALIAS] = "anti_alias", [XGPU_STREAM_TARGET_CREATE] = "target_create",
+	[XGPU_STREAM_TARGET_DELETE] = "target_delete", [XGPU_STREAM_TARGET_MULTISAMPLE] = "target_multisample",
+	[XGPU_STREAM_TARGET_RESOLVE] = "target_resolve", [XGPU_STREAM_SET_TARGETS] = "set_targets",
+	[XGPU_STREAM_CLEAR] = "clear", [XGPU_STREAM_CLEAR_TARGET] = "clear_target", [XGPU_STREAM_READ_TARGET] = "read_target",
+	[XGPU_STREAM_SET_TEXTURES] = "set_textures", [XGPU_STREAM_CONSTANTS] = "constants",
+	[XGPU_STREAM_VERTEX_PROGRAM] = "vertex_program", [XGPU_STREAM_VERTEX_LIGHTING] = "vertex_lighting",
+	[XGPU_STREAM_PIPELINE_DEFINE] = "pipeline_define", [XGPU_STREAM_PIPELINE] = "pipeline",
+	[XGPU_STREAM_DRAW_STATE] = "draw_state", [XGPU_STREAM_MIRROR_WRITE] = "mirror_write",
+	[XGPU_STREAM_LAYOUT_DEFINE] = "layout_define", [XGPU_STREAM_VERTICES] = "vertices", [XGPU_STREAM_DRAW] = "draw",
+	[XGPU_STREAM_DRAW_INDICES] = "draw_indices", [XGPU_STREAM_DRAW_INDEXED] = "draw_indexed",
+	[XGPU_STREAM_DRAW_IMMEDIATE] = "draw_immediate", [XGPU_STREAM_VISIBILITY_BEGIN] = "visibility_begin",
+	[XGPU_STREAM_VISIBILITY_END] = "visibility_end", [XGPU_STREAM_VISIBILITY_FRAME] = "visibility_frame",
+	[XGPU_STREAM_PRESENT] = "present", [XGPU_STREAM_FRAME_END] = "frame_end",
+	[XGPU_STREAM_DYNAMIC_LIGHTS_PREPARE] = "dynamic_lights_prepare",
+	[XGPU_STREAM_DYNAMIC_LIGHTS_UPLOAD] = "dynamic_lights_upload", [XGPU_STREAM_DYNAMIC_LIGHTS_HALOS] = "dynamic_lights_halos",
+	[XGPU_STREAM_PREPARED] = "prepared", [XGPU_STREAM_PREPARE] = "prepare", [XGPU_STREAM_LOADING] = "loading",
+	[XGPU_STREAM_HDR] = "hdr", [XGPU_STREAM_TONE_MAP] = "tone_map", [XGPU_STREAM_SCREENSHOT] = "screenshot",
+	[XGPU_STREAM_PICTURE_POSITION] = "picture_position", [XGPU_STREAM_GAMMA] = "gamma", [XGPU_STREAM_PANINI] = "panini",
+	[XGPU_STREAM_WORLD_AO_WINDOW] = "world_ao_window", [XGPU_STREAM_WORLD_AO_FIELD] = "world_ao_field",
+	[XGPU_STREAM_PIPELINE_STAND_IN] = "pipeline_stand_in", [XGPU_STREAM_CATEGORY] = "category",
+	[XGPU_STREAM_DYNAMIC_LIGHTS_WORLD] = "dynamic_lights_world", [XGPU_STREAM_WORLD_AO_PREPASS] = "world_ao_prepass",
+	[XGPU_STREAM_WORLD_AO_CASCADES] = "world_ao_cascades", [XGPU_STREAM_WORLD_AO_MESH] = "world_ao_mesh",
+	[XGPU_STREAM_WORLD_AO_INSTANCES] = "world_ao_instances", [XGPU_STREAM_MARK_STRING] = "mark_string",
+	[XGPU_STREAM_MARK_VIEW] = "mark_view", [XGPU_STREAM_MARK_OWNER] = "mark_owner",
+};
+
+/* the frame just played (n) played again, its CPU time measured into cpu
+(watched: the driver's calls too); nonzero if it was */
+static int cpu_play(uint32_t n, int watched)
+{
+	frame_again(n);
+	play_inexact = 1;
+	inspect.frame = n;
+	inspect.pixels_wanted = 0;
+	inspect.ids_wanted = 0;
+	inspect.cost_wanted = 0;
+	inspect.cost_active = 0;
+	inspect.skip_from = inspect.skip_to = 0;
+	inspect.skip_pass = UINT32_MAX;
+	cpu.watched = watched;
+	cpu.ended = 0;
+	cpu.wanted = 1;
+	cpu.forcing = 1;
+	play_again_here = 1;
+	play_to(recording.frames[n].end);
+	sync_all();
+	play_again_here = 0;
+	cpu.forcing = 0;
+	cpu.wanted = 0;
+	inspect.frame = UINT32_MAX;
+	return cpu.ended && !cpu.active;
+}
+
+/* the clock's own cost (the ticks between two reads, the least of many) */
+static uint64_t clock_cost(void)
+{
+	uint64_t least = UINT64_MAX;
+	uint32_t round, index;
+
+	for (round = 0; round < 64; round++)
+	{
+		uint64_t start = host_render_replay_ticks(), end;
+
+		for (index = 0; index < 64; index++)
+			host_render_replay_ticks();
+		end = host_render_replay_ticks();
+		if ((end - start) / 65 < least)
+			least = (end - start) / 65;
+	}
+	return least;
+}
+
+/* a measure's repeats: the median of count values (each per_ms ticks a
+millisecond) printed as name ("ms") and its spread (name's "spread", or
+"<name>_spread") */
+static double ticks_median(const uint64_t *values, uint32_t count, uint32_t stride, double per_ms, double *spread,
+	double *column)
+{
+	uint32_t index;
+
+	for (index = 0; index < count; index++)
+		column[index] = (double)values[(size_t)index * stride] / per_ms;
+	return median_of(column, count, spread);
+}
+
+/* the CPU's figures of frame n (its draws' passes draw_pass, of the frame's
+pass_count), the median of repeats plays (and repeats more watched), into
+text as "cpu"; NULL, or the reason not */
+static const char *cost_cpu(struct text *text, uint32_t n, uint32_t repeats, const uint32_t *draw_pass, uint32_t draws,
+	uint32_t pass_count)
+{
+	uint32_t kinds = platform->calls_watch && platform->call_kinds <= CPU_KINDS_MOST ? platform->call_kinds : 0;
+	uint32_t index, repeat, kind, stride = kinds + 1, type, calls_total = 0, first;
+	size_t frame_values = (size_t)repeats;
+	uint64_t *draw_ticks = NULL, *draw_own = NULL, *draw_driver = NULL, *draw_counts = NULL, *frame = NULL;
+	uint64_t *type_ticks = NULL, *type_driver = NULL, *kind_ticks = NULL, *kind_counts = NULL, *pass_ticks = NULL;
+	uint64_t *pass_driver = NULL;
+	uint32_t type_count[XGPU_STREAM_RECORD_TYPES];
+	double *column = NULL, per_ms, spread, started_seconds, ms, driver_ms, sum = 0.0;
+	uint64_t started_ticks;
+	const char *error = NULL;
+	/* (each play's: all its records, its wall time, after its last draw,
+	the driver's in the watched, all its records in the watched) */
+	enum { FRAME_RECORDS, FRAME_WALL, FRAME_AFTER, FRAME_DRIVER, FRAME_AFTER_DRIVER, FRAME_WATCHED, FRAME_FIELDS };
+
+	cpu.draw_capacity = draws;
+	cpu.draw_ticks = calloc(draws ? draws : 1, sizeof(*cpu.draw_ticks));
+	cpu.draw_own = calloc(draws ? draws : 1, sizeof(*cpu.draw_own));
+	cpu.draw_driver = calloc(draws ? draws : 1, sizeof(*cpu.draw_driver));
+	cpu.draw_counts = calloc((size_t)(draws ? draws : 1) * (CPU_KINDS_MOST + 1), sizeof(*cpu.draw_counts));
+	draw_ticks = calloc((size_t)(draws ? draws : 1) * repeats, sizeof(*draw_ticks));
+	draw_own = calloc((size_t)(draws ? draws : 1) * repeats, sizeof(*draw_own));
+	draw_driver = calloc((size_t)(draws ? draws : 1) * repeats, sizeof(*draw_driver));
+	draw_counts = calloc((size_t)(draws ? draws : 1) * stride, sizeof(*draw_counts));
+	frame = calloc(frame_values * FRAME_FIELDS, sizeof(*frame));
+	type_ticks = calloc((size_t)XGPU_STREAM_RECORD_TYPES * repeats, sizeof(*type_ticks));
+	type_driver = calloc((size_t)XGPU_STREAM_RECORD_TYPES * repeats, sizeof(*type_driver));
+	kind_ticks = calloc((size_t)stride * repeats, sizeof(*kind_ticks));
+	kind_counts = calloc(stride, sizeof(*kind_counts));
+	pass_ticks = calloc((size_t)(pass_count + 1) * repeats, sizeof(*pass_ticks));
+	pass_driver = calloc((size_t)(pass_count + 1) * repeats, sizeof(*pass_driver));
+	column = malloc(sizeof(*column) * (repeats + 1));
+	if (!cpu.draw_ticks || !cpu.draw_own || !cpu.draw_driver || !cpu.draw_counts || !draw_ticks || !draw_own ||
+		!draw_driver || !draw_counts || !frame || !type_ticks || !type_driver || !kind_ticks || !kind_counts ||
+		!pass_ticks || !pass_driver || !column)
+	{
+		error = "out of memory";
+		goto done;
+	}
+	memset(type_count, 0, sizeof(type_count));
+	cpu.clock_ticks = clock_cost();
+	started_ticks = host_render_replay_ticks();
+	started_seconds = seconds_now();
+	/* (one of each first, not counted: what the first play made again,
+	once) */
+	if (!cpu_play(n, 0) || (kinds && !cpu_play(n, 1)))
+	{
+		error = ring->error ? "the stream stopped" : "the frame's CPU time was not measured";
+		goto done;
+	}
+	for (repeat = 0; repeat < repeats; repeat++)
+	{
+		uint64_t *values = frame + (size_t)repeat * FRAME_FIELDS;
+
+		/* (in turn, plain and watched, so that a drift of the clocks
+		cancels) */
+		if (!cpu_play(n, 0))
+		{
+			error = ring->error ? "the stream stopped" : "the frame's CPU time was not measured";
+			goto done;
+		}
+		values[FRAME_RECORDS] = cpu.records_ticks;
+		values[FRAME_WALL] = cpu.frame_end - cpu.frame_start;
+		values[FRAME_AFTER] = cpu.after_ticks;
+		for (index = 0; index < draws; index++)
+		{
+			draw_ticks[(size_t)index * repeats + repeat] = cpu.draw_ticks[index];
+			draw_own[(size_t)index * repeats + repeat] = cpu.draw_own[index];
+			if (draw_pass[index] < pass_count)
+				pass_ticks[(size_t)draw_pass[index] * repeats + repeat] += cpu.draw_ticks[index];
+			else
+				pass_ticks[(size_t)pass_count * repeats + repeat] += cpu.draw_ticks[index];
+		}
+		for (type = 0; type < XGPU_STREAM_RECORD_TYPES; type++)
+		{
+			type_ticks[(size_t)type * repeats + repeat] = cpu.type_ticks[type];
+			type_count[type] = cpu.type_count[type];
+		}
+		if (!kinds)
+			continue;
+		if (!cpu_play(n, 1))
+		{
+			error = ring->error ? "the stream stopped" : "the frame's CPU time was not measured";
+			goto done;
+		}
+		/* (each call's time less the clock's own) */
+		for (kind = 0; kind <= kinds; kind++)
+		{
+			uint64_t own = cpu.counts[kind] * cpu.clock_ticks;
+
+			kind_ticks[(size_t)kind * repeats + repeat] = cpu.ticks[kind] > own ? cpu.ticks[kind] - own : 0;
+			kind_counts[kind] = cpu.counts[kind];
+		}
+		values[FRAME_DRIVER] = kind_ticks[(size_t)kinds * repeats + repeat];
+		values[FRAME_WATCHED] = cpu.records_ticks;
+		values[FRAME_AFTER_DRIVER] = cpu.after_driver;
+		for (index = 0; index < draws; index++)
+		{
+			uint64_t calls = cpu.draw_counts[(size_t)index * (CPU_KINDS_MOST + 1) + kinds], own = calls * cpu.clock_ticks;
+			uint64_t driver = cpu.draw_driver[index] > own ? cpu.draw_driver[index] - own : 0;
+
+			draw_driver[(size_t)index * repeats + repeat] = driver;
+			for (kind = 0; kind <= kinds; kind++)
+				draw_counts[(size_t)index * stride + kind] = cpu.draw_counts[(size_t)index * (CPU_KINDS_MOST + 1) + kind];
+			if (draw_pass[index] < pass_count)
+				pass_driver[(size_t)draw_pass[index] * repeats + repeat] += driver;
+			else
+				pass_driver[(size_t)pass_count * repeats + repeat] += driver;
+		}
+		for (type = 0; type < XGPU_STREAM_RECORD_TYPES; type++)
+			type_driver[(size_t)type * repeats + repeat] = cpu.type_driver[type];
+	}
+	per_ms = (double)(host_render_replay_ticks() - started_ticks) / ((seconds_now() - started_seconds) * 1000.0);
+	if (!(per_ms > 0.0))
+	{
+		error = "the CPU's clock did not run";
+		goto done;
+	}
+
+	/* the figures */
+	ms = ticks_median(frame + FRAME_RECORDS, repeats, FRAME_FIELDS, per_ms, &spread, column);
+	text_printf(text, ",\"cpu\":{\"repeats\":%u,\"clock_ns\":%.2f,\"ticks_per_ms\":%.1f,\"frame_ms\":%.4f,"
+		"\"frame_spread\":%.4f", repeats, (double)cpu.clock_ticks / per_ms * 1.0e6, per_ms, ms, spread);
+	ms = ticks_median(frame + FRAME_WALL, repeats, FRAME_FIELDS, per_ms, &spread, column);
+	text_printf(text, ",\"wall_ms\":%.4f", ms);
+	ms = ticks_median(frame + FRAME_AFTER, repeats, FRAME_FIELDS, per_ms, &spread, column);
+	text_printf(text, ",\"after_ms\":%.4f", ms);
+	if (kinds)
+	{
+		ms = ticks_median(frame + FRAME_DRIVER, repeats, FRAME_FIELDS, per_ms, &spread, column);
+		text_printf(text, ",\"driver_ms\":%.4f,\"driver_spread\":%.4f,\"calls\":%llu", ms, spread,
+			(unsigned long long)kind_counts[kinds]);
+		ms = ticks_median(frame + FRAME_AFTER_DRIVER, repeats, FRAME_FIELDS, per_ms, &spread, column);
+		text_printf(text, ",\"after_driver_ms\":%.4f", ms);
+		ms = ticks_median(frame + FRAME_WATCHED, repeats, FRAME_FIELDS, per_ms, &spread, column);
+		text_printf(text, ",\"watched_ms\":%.4f", ms);
+		TEXT(text, ",\"kinds\":[");
+		for (kind = 0, first = 1; kind < kinds; kind++)
+		{
+			if (!kind_counts[kind])
+				continue;
+			ms = ticks_median(kind_ticks + (size_t)kind * repeats, repeats, 1, per_ms, &spread, column);
+			text_printf(text, "%s{\"kind\":", first ? "" : ",");
+			text_string(text, platform->call_kind_names[kind]);
+			text_printf(text, ",\"calls\":%llu,\"ms\":%.4f,\"spread\":%.4f}", (unsigned long long)kind_counts[kind], ms,
+				spread);
+			first = 0;
+		}
+		TEXT(text, "]");
+	}
+	TEXT(text, ",\"records\":[");
+	for (type = 0, first = 1; type < XGPU_STREAM_RECORD_TYPES; type++)
+	{
+		if (!type_count[type])
+			continue;
+		ms = ticks_median(type_ticks + (size_t)type * repeats, repeats, 1, per_ms, &spread, column);
+		text_printf(text, "%s{\"type\":", first ? "" : ",");
+		text_string(text, record_type_names[type] ? record_type_names[type] : "other");
+		text_printf(text, ",\"count\":%u,\"ms\":%.4f,\"spread\":%.4f", type_count[type], ms, spread);
+		if (kinds)
+		{
+			driver_ms = ticks_median(type_driver + (size_t)type * repeats, repeats, 1, per_ms, &spread, column);
+			text_printf(text, ",\"driver_ms\":%.4f", driver_ms);
+		}
+		TEXT(text, "}");
+		first = 0;
+	}
+	TEXT(text, "],\"passes\":[");
+	for (index = 0; index <= pass_count; index++)
+	{
+		uint32_t count = 0, draw;
+		uint64_t calls = 0;
+
+		for (draw = 0; draw < draws; draw++)
+		{
+			if (index < pass_count ? draw_pass[draw] == index : draw_pass[draw] >= pass_count)
+			{
+				count++;
+				calls += draw_counts[(size_t)draw * stride + kinds];
+			}
+		}
+		if (index == pass_count && !count)
+			break;
+		ms = ticks_median(pass_ticks + (size_t)index * repeats, repeats, 1, per_ms, &spread, column);
+		text_printf(text, "%s{\"i\":", index ? "," : "");
+		if (index < pass_count)
+			text_printf(text, "%u", index);
+		else
+			TEXT(text, "null");
+		text_printf(text, ",\"draws\":%u,\"ms\":%.4f,\"spread\":%.4f", count, ms, spread);
+		if (kinds)
+		{
+			driver_ms = ticks_median(pass_driver + (size_t)index * repeats, repeats, 1, per_ms, &spread, column);
+			text_printf(text, ",\"driver_ms\":%.4f,\"calls\":%llu", driver_ms, (unsigned long long)calls);
+		}
+		TEXT(text, "}");
+	}
+	TEXT(text, "],\"draws\":[");
+	for (index = 0; index < draws; index++)
+	{
+		double own_ms, own_spread;
+
+		ms = ticks_median(draw_ticks + (size_t)index * repeats, repeats, 1, per_ms, &spread, column);
+		own_ms = ticks_median(draw_own + (size_t)index * repeats, repeats, 1, per_ms, &own_spread, column);
+		sum += ms;
+		text_printf(text, "%s{\"i\":%u,\"pass\":", index ? "," : "", index);
+		if (draw_pass[index] < pass_count)
+			text_printf(text, "%u", draw_pass[index]);
+		else
+			TEXT(text, "null");
+		text_printf(text, ",\"ms\":%.4f,\"spread\":%.4f,\"own_ms\":%.4f", ms, spread, own_ms);
+		if (kinds)
+		{
+			driver_ms = ticks_median(draw_driver + (size_t)index * repeats, repeats, 1, per_ms, &spread, column);
+			text_printf(text, ",\"driver_ms\":%.4f,\"driver_spread\":%.4f,\"calls\":{", driver_ms, spread);
+			for (kind = 0, first = 1; kind < kinds; kind++)
+			{
+				uint64_t count = draw_counts[(size_t)index * stride + kind];
+
+				if (!count)
+					continue;
+				text_printf(text, "%s", first ? "" : ",");
+				text_string(text, platform->call_kind_names[kind]);
+				text_printf(text, ":%llu", (unsigned long long)count);
+				first = 0;
+			}
+			TEXT(text, "}");
+		}
+		TEXT(text, "}");
+		calls_total += (uint32_t)(kinds ? draw_counts[(size_t)index * stride + kinds] : 0);
+	}
+	text_printf(text, "],\"draws_ms\":%.4f", sum);
+	if (kinds)
+		text_printf(text, ",\"draws_calls\":%u", calls_total);
+	TEXT(text, "}");
+done:
+	free(cpu.draw_ticks);
+	free(cpu.draw_own);
+	free(cpu.draw_driver);
+	free(cpu.draw_counts);
+	cpu.draw_ticks = cpu.draw_own = cpu.draw_driver = cpu.draw_counts = NULL;
+	cpu.draw_capacity = 0;
+	free(draw_ticks);
+	free(draw_own);
+	free(draw_driver);
+	free(draw_counts);
+	free(frame);
+	free(type_ticks);
+	free(type_driver);
+	free(kind_ticks);
+	free(kind_counts);
+	free(pass_ticks);
+	free(pass_driver);
+	free(column);
+	return error;
 }
 
 static void serve_cost(struct text *text, const struct request *request)
@@ -3595,6 +4166,9 @@ static void serve_cost(struct text *text, const struct request *request)
 			TEXT(text, ",\"note\":");
 			text_string(text, note);
 		}
+		/* (the CPU's time too) */
+		if (request_true(request, "cpu") && (error = cost_cpu(text, n, repeats, draw_pass, draws, pass_count)))
+			goto failed;
 		text_printf(text, ",\"seconds\":%.2f}", seconds_now() - started);
 	}
 failed:
@@ -3614,6 +4188,32 @@ failed:
 		reply_error(text, error);
 }
 
+/* a line of file into *line (grown as needed, *capacity its size), its
+newline kept; 0 at the end (getline's, which Windows's C runtime has not) */
+static int line_read(char **line, size_t *capacity, FILE *file)
+{
+	size_t used = 0;
+
+	for (;;)
+	{
+		if (*capacity - used < 2)
+		{
+			size_t grown = *capacity ? *capacity * 2 : 4096;
+			char *bigger = realloc(*line, grown);
+
+			if (!bigger)
+				return 0;
+			*line = bigger;
+			*capacity = grown;
+		}
+		if (!fgets(*line + used, (int)(*capacity - used), file))
+			return used > 0;
+		used += strlen(*line + used);
+		if (used && (*line)[used - 1] == '\n')
+			return 1;
+	}
+}
+
 static int serve(void)
 {
 	char *line = NULL;
@@ -3625,8 +4225,11 @@ static int serve(void)
 		return 2;
 	if (getenv("HALO_REPLAY_SEEK_SKIPS") && *getenv("HALO_REPLAY_SEEK_SKIPS"))
 		seek_skips = atoi(getenv("HALO_REPLAY_SEEK_SKIPS")) != 0;
+#ifdef _WIN32
+	host_render_replay_binary_output();
+#endif
 	fprintf(stderr, "halo_replay: serving (%u frames)\n", recording.frame_count);
-	while (getline(&line, &capacity, stdin) > 0)
+	while (line_read(&line, &capacity, stdin))
 	{
 		const char *command;
 
@@ -3784,6 +4387,7 @@ int host_render_replay_main(int argc, char *argv[], const struct host_render_rep
 	}
 	outer_install();
 	host_render_record_set_restorer(restore);
+	host_render_record_set_played(record_played);
 	/* (the Screenshot key's pictures are the game's, not the replay's) */
 	host_render_stream_set_screenshot_writer(NULL);
 

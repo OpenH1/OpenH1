@@ -40,7 +40,8 @@ each on standard output (the log on standard error):
 	{"cmd":"pick","n":N,"x":X,"y":Y}
 	{"cmd":"thumbs","every":E,"width":W,"dir":"<folder>"}  (or "frames":[..],
 		"inline":true)
-	{"cmd":"cost","n":N,"repeats":R,"draws":[..]}  (or "all":true, "top":K)
+	{"cmd":"cost","n":N,"repeats":R,"draws":[..]}  (or "all":true, "top":K;
+		"cpu":true: the CPU's time too)
 
 cost: frame N's GPU time, the frame's and its passes' (the backend's
 timestamps at their boundaries) and its draws' (the frame played again with
@@ -49,6 +50,11 @@ takes whole; or the backend's timestamps around each draw, where it has
 them), each the median of R plays with its spread. The frame is played
 again where it is, after itself (not from the recording's start): the
 frame played after a cost is played from the start again, exactly.
+With "cpu", the render thread's time on each record of the frame (the
+records of a draw: those after the draw before it, to it), the backend's
+calls of its driver among it (their time and count, by kind), each draw's,
+pass's and record type's, the median of R plays without the GPU's
+timestamps (and R more with the driver's calls watched).
 
 A frame is played exactly: the frames before it are played first (from the
 recording's start again for one before the frame last played; those more
@@ -173,9 +179,25 @@ struct host_render_replay_platform
 	const char *cost_draw_method;
 	void (*cost_draw)(uint32_t index);
 	int (*cost_end)(struct host_render_replay_cost *cost);
+	/* The CPU's time (cost's "cpu"): what the render thread takes to play
+	each record is the replay's own measure (host_render_replay_ticks before
+	and after it); the backend's calls of its driver within it, where the
+	backend counts them (call_kinds 0: none). calls_watch: (the render
+	thread) from now each call it makes adds its time (in
+	host_render_replay_ticks' ticks) and one to its kind's entry of ticks
+	and counts (call_kinds + 1 entries each, the last the total; NULL: no
+	more); call_kind_names: each kind's name ("draw", "bind_pipeline"...). */
+	uint32_t call_kinds;
+	const char *const *call_kind_names;
+	void (*calls_watch)(uint64_t *ticks, uint64_t *counts);
 };
 
 int host_render_replay_main(int argc, char *argv[], const struct host_render_replay_platform *platform);
+
+/* the replay's clock for the CPU's time: the processor's counter (x86's
+time stamp counter, AArch64's virtual counter), whose ticks the cost
+converts to milliseconds against the monotonic clock */
+uint64_t host_render_replay_ticks(void);
 
 /* --verbose: the host's information logged too */
 extern int host_render_replay_verbose;

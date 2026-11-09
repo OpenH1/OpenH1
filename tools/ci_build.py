@@ -295,7 +295,8 @@ def main() -> int:
         # (and the command stream's replay, built to keep it building: the
         # releases do not carry it; not the VR builds')
         replay = ["macos_replay"] if args.platform == "macos" else \
-            [f"{args.platform}_replay"] if args.platform.startswith("linux") and not args.vr else []
+            [f"{args.platform}_replay"] if (args.platform.startswith("linux") or args.platform == "windows") \
+            and not args.vr else []
         run(["ninja", target, *replay])
         outputs = OUTPUTS[args.platform]
         check_guest_image(args.platform)

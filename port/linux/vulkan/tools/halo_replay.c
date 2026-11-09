@@ -6,7 +6,9 @@ backend (HALO_RENDER_RECORD: port/android/host/host_render_record.h), on
 the Linux builds' host: the replay of port/tools/replay/host_render_replay.h,
 its options and its service (--serve), offscreen (no window: the backend
 draws the frames and reads them back, as the game's does with SDL's
-offscreen driver). ninja linux_replay builds it as build/<name>/halo_replay.
+offscreen driver). ninja linux_replay builds it as build/<name>/halo_replay;
+ninja windows_replay, with the Windows host's renderer and its POSIX
+functions (tools/windows_build.py), as build/windows/halo_replay.exe.
 
 The pipeline cache is <file>.vkpipelines (HALO_VULKAN_PIPELINE_CACHE names
 another file, or none: empty); HALO_VULKAN_VALIDATION=1 turns on the
@@ -115,6 +117,14 @@ static int vulkan_cost_end(struct host_render_replay_cost *cost)
 	return 1;
 }
 
+/* ---------- the CPU's time: the backend's calls of the driver, counted and
+timed by kind (xgpu_vulkan_calls_watch) */
+
+static void vulkan_calls_watch(uint64_t *ticks, uint64_t *counts)
+{
+	xgpu_vulkan_calls_watch(ticks, counts, ticks ? host_render_replay_ticks : NULL);
+}
+
 static const struct host_render_replay_platform vulkan_platform =
 {
 	.backend = "vulkan",
@@ -130,6 +140,9 @@ static const struct host_render_replay_platform vulkan_platform =
 	.cost_draw_method = "timestamps",
 	.cost_draw = xgpu_vulkan_timing_draw,
 	.cost_end = vulkan_cost_end,
+	.call_kinds = XGPU_VULKAN_CALL_KINDS,
+	.call_kind_names = xgpu_vulkan_call_kind_names,
+	.calls_watch = vulkan_calls_watch,
 };
 
 int main(int argc, char *argv[])
@@ -151,7 +164,12 @@ int main(int argc, char *argv[])
 			!strcmp(argv[index - 1], "--unpaced")))
 		{
 			snprintf(cache, sizeof(cache), "%s.vkpipelines", argv[index]);
+#ifdef _WIN32
+			if (!getenv("HALO_VULKAN_PIPELINE_CACHE"))
+				_putenv_s("HALO_VULKAN_PIPELINE_CACHE", cache);
+#else
 			setenv("HALO_VULKAN_PIPELINE_CACHE", cache, 0);
+#endif
 			break;
 		}
 	}
