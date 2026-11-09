@@ -76,6 +76,7 @@ static struct
 {
 	boolean main_menu_scenario_loaded;
 	boolean load_last_solo_level;
+	boolean want_to_be_at_main_menu;
 	boolean reset_map, defer_map_change, revert_map, skip_cinematic, saving_map, won_map, lost_map, respawn;
 	boolean save_core, load_core, load_core_at_startup, allow_persistent_storage;
 	short switch_to_structure_bsp_index;
@@ -219,7 +220,10 @@ static void director_script_camera(boolean on) {}
 static void scripted_camera_set(short a, short b, long c) {}
 static void main_menu_active(boolean active) {}
 static void main_menu_precache_resources(void) { ui_loads++; }
-enum { _error_immediate = 1 };
+enum { _error_immediate = 1, _error_silent = 2 };
+/* (main.c's: a map that does not load refused, which game_load's stub never
+does) */
+static void main_map_change_failed(char const *map_name) {}
 
 #include "under_test.inc"
 

@@ -1531,6 +1531,8 @@ boolean main_menu_is_loaded(
 	return main_globals.main_menu_scenario_loaded;
 }
 
+static void main_map_change_failed(char const *map_name); /* port: (below) */
+
 static void main_new_map(
 	struct game_options *options)
 {
@@ -1539,6 +1541,28 @@ static void main_new_map(
 	if (game_load(options))
 	{
 		game_initialize_for_new_map();
+	}
+	/* port: a map that does not load (its tags damaged: tag_validate.c)
+	leaves the game at the main menu, with its error, where the Xbox's
+	stopped for good (_error_immediate: halt_and_catch_fire); a failure of
+	the main menu's own map is as it was */
+	else if (!main_globals.main_menu_scenario_loaded)
+	{
+		error(_error_silent, "game_load() failed.");
+		errors_handle();
+		main_map_change_failed(options->map_name);
+		main_globals.want_to_be_at_main_menu = TRUE;
+		main_globals.reset_map = FALSE;
+		main_globals.revert_map = FALSE;
+		main_globals.skip_cinematic = FALSE;
+		main_globals.saving_map = FALSE;
+		main_globals.won_map = FALSE;
+		main_globals.lost_map = FALSE;
+		main_globals.respawn = FALSE;
+		main_globals.save_core = FALSE;
+		main_globals.load_core = FALSE;
+		main_globals.switch_to_structure_bsp_index = NONE;
+		return;
 	}
 	else
 	{
@@ -1584,9 +1608,61 @@ static void main_new_map(
 /* port: the platform layer's (port/linux/src/port_config.c) */
 int config_boolean(const char *name);
 
+/* port: the solo map's name before map_name changed it (main_set_map_name),
+for a change refused (main_map_change_refused) */
+static char main_map_name_before_change[256];
+
+/* port: a map that cannot be loaded (a name typed wrong at the console or in
+init.txt, a map file missing or damaged) refused once, before the game it
+would end is left: the reason logged (cache_files_map_loadable) and shown (a
+line of the console; at the main menu its error dialog too), and the game as
+it was. The Xbox's precache took a missing map for a damaged disc, whose
+error stopped the game for good (display_error_damaged_media,
+main_loop_of_death): a map's name typed at a computer's console is no disc */
+static void main_map_change_failed(
+	char const *map_name)
+{
+	static wchar_t text[320];
+	char message[320];
+	short index;
+
+	error(_error_silent, "can't load map '%s'", map_name);
+	console_warning("can't load map '%s' (debug.txt says why)", map_name);
+	snprintf(message, sizeof(message),
+		"The map \"%s\" could not be loaded: it is not in the maps folder, or it is damaged.", map_name);
+	for (index = 0; message[index] && index < NUMBEROF(text) - 1; index++)
+		text[index] = (wchar_t)(unsigned char)message[index];
+	text[index] = 0;
+	if (main_globals.main_menu_scenario_loaded)
+		display_error_text_deferred(text, NONE);
+	else if (!game_in_progress())
+		display_error_text_when_main_menu_loaded(text);
+	csstrncpy(main_globals.soloplayer_map_name, main_map_name_before_change,
+		NUMBEROF(main_globals.soloplayer_map_name) - 1);
+	main_globals.soloplayer_map_name[NUMBEROF(main_globals.soloplayer_map_name) - 1] = 0;
+	main_globals.defer_map_change = FALSE;
+	main_globals.map_change_load_timer = 0;
+
+	return;
+}
+
+static boolean main_map_change_refused(
+	char const *map_name)
+{
+	if (cache_files_map_loadable(map_name))
+		return FALSE;
+	main_map_change_failed(map_name);
+
+	return TRUE;
+}
+
 static void main_change_map_name(
 	void)
 {
+	/* port: (a map that cannot be loaded refused, the game as it was) */
+	if (!main_globals.map_change_load_timer && main_map_change_refused(main_globals.soloplayer_map_name))
+		return;
+
 	/* port: (none for the menus' pictures: menu_pictures_render.c) */
 	if (main_globals.main_menu_scenario_loaded == TRUE && !menu_pictures_preparing())
 	{
@@ -1621,6 +1697,21 @@ static void main_change_map_name(
 
 	if (main_globals.frame_start_milliseconds >= main_globals.map_change_load_timer)
 	{
+		/* port: the map copied into the cache before anything of this game
+		is left, as the main menu's map is (main_load_ui_scenario): a map
+		whose copy fails (its file damaged) is refused, and the game stays,
+		where the Xbox's took it for a damaged disc and stopped for good. The
+		menus the copy's loading screen closed are opened again. */
+		if (game_in_progress() && main_globals.connection == _game_connection_local &&
+			!game_precache_new_map_refusable(main_globals.soloplayer_map_name))
+		{
+			ui_widgets_set_fade_value(-1.0f);
+			ui_widgets_inhibit_processing(FALSE);
+			if (main_globals.main_menu_scenario_loaded)
+				main_screen_shell_load();
+			main_map_change_failed(main_globals.soloplayer_map_name);
+			return;
+		}
 		ui_widgets_set_fade_value(-1.0f);
 		ui_stop_main_menu_music();
 		main_menu_active(FALSE);
@@ -2516,6 +2607,12 @@ void main_set_map_name(
 	char const *map_name)
 {
 	main_globals.want_to_be_at_main_menu = FALSE;
+	/* port: (the name a change refused goes back to: main_map_change_refused) */
+	if (!main_globals.defer_map_change)
+	{
+		csstrncpy(main_map_name_before_change, main_globals.soloplayer_map_name, NUMBEROF(main_map_name_before_change) - 1);
+		main_map_name_before_change[NUMBEROF(main_map_name_before_change) - 1] = 0;
+	}
 	csstrncpy(main_globals.soloplayer_map_name, map_name, NUMBEROF(main_globals.soloplayer_map_name) - 1);
 	main_globals.soloplayer_map_name[NUMBEROF(main_globals.soloplayer_map_name) - 1] = 0;
 	main_globals.allow_persistent_storage = TRUE;
@@ -3101,9 +3198,15 @@ static void main_setup_connection(
 		main_globals.want_to_be_at_main_menu = TRUE;
 		main_menu_load();
 	}
+	/* port: a map of init.txt's map_name that cannot be loaded refused, and
+	the main menu loaded in its place (main_map_change_refused) */
+	else if (main_map_change_refused(main_globals.soloplayer_map_name))
+	{
+		main_globals.want_to_be_at_main_menu = TRUE;
+		main_menu_load();
+	}
 	else
 	{
-		main_globals.connection = _game_connection_local;
 		game_options_new(&options);
 		csstrncpy(
 			options.map_name,
@@ -3111,7 +3214,15 @@ static void main_setup_connection(
 			NUMBEROF(options.map_name) - 1);
 		options.map_name[NUMBEROF(options.map_name) - 1] = 0;
 		options.difficulty = global_difficulty_level;
-		game_precache_new_map(options.map_name, TRUE);
+		/* port: (and one whose copy fails: game_precache_new_map_refusable) */
+		if (!game_precache_new_map_refusable(options.map_name))
+		{
+			main_map_change_failed(options.map_name);
+			main_globals.want_to_be_at_main_menu = TRUE;
+			main_menu_load();
+			return;
+		}
+		main_globals.connection = _game_connection_local;
 		game_dispose_from_old_map();
 		main_new_map(&options);
 	}

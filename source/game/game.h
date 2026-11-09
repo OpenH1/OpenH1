@@ -133,6 +133,8 @@ void game_initialize(
 	void);
 void game_dispose(void);
 void game_precache_new_map(char *map_name, boolean blocking);
+/* port: (game.c: a damaged map's failure returned) */
+boolean game_precache_new_map_refusable(char *map_name);
 boolean game_map_loading_in_progress(real *progress);
 void game_unload(
 	void);
