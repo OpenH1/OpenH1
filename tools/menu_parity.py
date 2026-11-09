@@ -176,6 +176,139 @@ def run_layouts(build: Path, screens: list, variant_names: list, maps: Path, tem
     return results
 
 
+# ---------- behaviour: scripted presses on each engine, what they leave compared
+
+PE = "main_menu/settings_select/player_setup/player_profile_edit"
+# (the 4:3 window's fractions of the buttons of a Settings tab or page: the menus' 640 x 480 fill it)
+OK_CLICK, CANCEL_CLICK, DEFAULTS_CLICK = "click:0.659:0.889", "click:0.859:0.889", "click:0.138:0.889"
+# the seconds a run waits for the menus before its first press (debug.test_input "menu:" times its presses
+# from the input's first read, before the menus are up)
+SETTLE = ["wait"] * 12
+
+# each script: its name, the screen it starts on (debug.menu_open) and its presses (debug.test_input
+# "menu:...", one a second: port/linux/src/xinput_sdl.c)
+SCRIPTS = [
+    ("spinners", f"{PE}/audio_settings/audio_settings_screen",
+     ["down", "right", "down", "right", "down", "right", "down", "down", "down", "right", "right", "left",
+      OK_CLICK]),
+    ("toggle-and-cancel", f"{PE}/audio_settings/audio_settings_screen",
+     ["down", "down", "right", "down", "down", "right", "b"]),
+    ("slider-keys-and-typed", f"{PE}/video_settings/video_settings_screen",
+     ["down", "down", "down", "right", "right", "left", "down", "up", "a", "type:118", "enter",
+      OK_CLICK]),
+    ("sub-page", f"{PE}/video_settings/video_settings_screen",
+     ["down", "down", "down", "down", "a", "wait", "down", "right", "down", "right", "b", "wait", OK_CLICK]),
+    ("sub-page-keep", f"{PE}/video_settings/video_settings_screen",
+     ["down", "down", "down", "down", "a", "wait", "down", "right", "right", OK_CLICK, "wait", "down", "right",
+      OK_CLICK]),
+    ("tabs", f"{PE}/audio_settings/audio_settings_screen",
+     ["rb", "wait", "down", "right", "rb", "wait", "rb", "wait", "down", "right", "lb", "wait", "lb", "wait",
+      "down", "right", OK_CLICK]),
+    ("defaults", f"{PE}/audio_settings/audio_settings_screen",
+     ["down", "right", DEFAULTS_CLICK, "wait", OK_CLICK]),
+    ("key-binding", f"{PE}/controls_setup/controls_settings_screen",
+     ["down", "down", "a", "type:k", "wait", "down", "right", "a", "type:j", "wait", "up", "up", OK_CLICK]),
+    ("mouse-and-cancel-button", f"{PE}/mouse_settings/mouse_settings_screen",
+     ["down", "right", "right", "down", "right", "a", "type:3", "enter", CANCEL_CLICK]),
+    ("profile-tab", f"{PE}/profile_settings/profile_settings_screen",
+     ["down", "down", "down", "down", "down", "right", "up", "up", OK_CLICK]),
+]
+BEHAVIOUR_VARIANT = "4x3-keyboard"
+
+
+def behaviour_run(build: Path, script: tuple, engine: str, maps: Path, template: Path, timeout: float) -> dict:
+    """one script on one engine: {"config": config.toml's lines, "profile": the saved profiles' bytes'
+    digests, "writes": the settings the log says were written, "layout": the last screen's layout, "log"}"""
+    import hashlib
+    import signal
+    import subprocess
+    import tempfile
+    name, screen, presses = script
+    folder = Path(tempfile.mkdtemp(prefix="menu-parity-"))
+    process = None
+    try:
+        game = folder / "game"
+        game.mkdir()
+        for file in menu_gallery.capture.BUILD_FILES:
+            if (build / file).is_file():
+                menu_gallery.place(build / file, game / file)
+        if sys.platform != "darwin":
+            for library in build.glob("*.so*"):
+                menu_gallery.place(library, game / library.name)
+        variant = engine_variant(VARIANTS[BEHAVIOUR_VARIANT], ENGINES.get(engine, engine))
+        environment = menu_gallery.run_environment(variant, folder, timeout, True)
+        environment.pop("HALO_MENU_TOUR", None)
+        presses = SETTLE + presses + ["wait"] * 3
+        environment.update({
+            "HALO_MENU_OPEN": screen, "HALO_TEST_INPUT": "menu:" + " ".join(presses),
+            "HALO_EXIT_AFTER": str(len(presses) + 4), "HALO_MENU_LAYOUT": "layout.json",
+        })
+        if template:
+            menu_gallery.map_cache_clone(template, folder / "saves" / "z")
+        (folder / "data" / "maps").symlink_to(maps.resolve())
+        if sys.platform != "darwin":
+            environment["SDL_VIDEO_DRIVER"] = "offscreen"
+        with open(folder / "halo.log", "w") as log:
+            process = subprocess.Popen([str(game / "halo")], cwd=game, env=environment, stdin=subprocess.DEVNULL,
+                                       stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            try:
+                process.wait(timeout=len(presses) + timeout)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+        text = (folder / "halo.log").read_text(errors="replace")
+        # (the run's config.toml, beside its executable: never the computer's own)
+        config = (game / "config.toml").read_text(errors="replace").splitlines() \
+            if (game / "config.toml").is_file() else []
+        profiles = {path.relative_to(folder / "saves").as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+                    for path in sorted((folder / "saves").rglob("*")) if path.is_file() and
+                    not path.relative_to(folder / "saves").as_posix().startswith("z/")}
+        layout = None
+        if (folder / "data" / "layout.json").is_file():
+            try:
+                layout = json.loads((folder / "data" / "layout.json").read_text(errors="replace"))
+            except json.JSONDecodeError:
+                layout = None
+        writes = [line.split("menus: ", 1)[1] for line in text.splitlines()
+                  if "menus: " in line and " = " in line and "could not" not in line]
+        return {"config": config, "profile": profiles, "writes": writes, "layout": layout, "log": text[-3000:]}
+    finally:
+        if process and process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+        import shutil
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def behaviour(arguments, template: Path) -> dict:
+    """{script: lines} of the scripts whose results differ between the engines"""
+    scripts = [script for script in SCRIPTS if re.search(arguments.scripts, script[0])]
+    tasks = [(script, engine) for script in scripts for engine in ("classic", "new")]
+    results = {}
+
+    def one(task):
+        script, engine = task
+        return task, behaviour_run(arguments.build, script, engine, arguments.data, template, arguments.timeout)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(arguments.jobs, len(tasks)))) as pool:
+        for (script, engine), result in pool.map(one, tasks):
+            results[(script[0], engine)] = result
+    differences = {}
+    for script in scripts:
+        a, b = results[(script[0], "classic")], results[(script[0], "new")]
+        lines = []
+        if not a["writes"] and not b["writes"] and script[0] not in ("toggle-and-cancel", "mouse-and-cancel-button"):
+            lines.append("nothing written by either engine: the script did not reach its rows\n" + a["log"][-800:])
+        for key in ("config", "profile", "writes"):
+            if a[key] != b[key]:
+                lines.append(f"{key}: {json.dumps(a[key])[:1500]}\n      | {json.dumps(b[key])[:1500]}")
+        lines += compare_layouts(script[1], a["layout"], b["layout"])
+        if lines:
+            differences[script[0]] = lines
+        print(f"menu_parity: behaviour {script[0]}: {'differs' if lines else 'the same'} "
+              f"({len(a['writes'])} settings written: {', '.join(a['writes'])[:300]})", file=sys.stderr, flush=True)
+    return differences
+
+
 def compare_results(results: dict, screens: list, variant_names: list, arguments) -> dict:
     """{"<variant> <screen>": lines} of the screens whose layouts or frames differ between the engines"""
     differences = {}
@@ -206,6 +339,9 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--layout", action="store_true", help="compare the screens' layouts (debug.menu_layout)")
     parser.add_argument("--pixels", action="store_true", help="compare the screens' frames, pixel for pixel")
+    parser.add_argument("--behaviour", action="store_true",
+                        help="run the scripts of presses on each engine and compare what they leave")
+    parser.add_argument("--scripts", default="", help="only the scripts whose name has this in it (a regex)")
     parser.add_argument("--build", type=Path, default=ROOT / "build" / ("macos" if sys.platform == "darwin" else
                                                                          "linux_x86_64"))
     parser.add_argument("--data", type=Path, default=Path.home() / "dev" / "halo-macos-data" / "maps",
@@ -223,8 +359,21 @@ def main(argv=None) -> int:
     arguments = parser.parse_args(argv)
     if arguments.baseline:
         ENGINES["new"] = "classic"
-    if not arguments.layout and not arguments.pixels:
-        parser.error("say what to compare: --layout, --pixels")
+    if not arguments.layout and not arguments.pixels and not arguments.behaviour:
+        parser.error("say what to compare: --layout, --pixels, --behaviour")
+    template = arguments.saves if arguments.saves.is_dir() else None
+    failed = 0
+    if arguments.behaviour:
+        differences = behaviour(arguments, template)
+        for key, lines in sorted(differences.items()):
+            print(f"DIFFERS behaviour {key}")
+            for line in lines:
+                print(f"    {line}")
+        print(f"menu_parity: behaviour: {sum(1 for script in SCRIPTS if re.search(arguments.scripts, script[0])) - len(differences)} "
+              f"scripts the same, {len(differences)} differ")
+        failed = 1 if differences else 0
+        if not arguments.layout and not arguments.pixels:
+            return failed
     if arguments.pixels:
         # (the frames as drawn, compared exactly: not scaled down as the gallery's are)
         menu_gallery.read_shot = raw_shot
@@ -235,7 +384,6 @@ def main(argv=None) -> int:
             parser.error(f"no variant {name} ({', '.join(VARIANTS)})")
     screens = [screen for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS)
                if re.search(arguments.screens, screen.name)]
-    template = arguments.saves if arguments.saves.is_dir() else None
     results = run_layouts(arguments.build, screens, variant_names, arguments.data, template, arguments.jobs,
                           arguments.timeout, arguments.pixels)
     differences = compare_results(results, screens, variant_names, arguments)
@@ -266,7 +414,7 @@ def main(argv=None) -> int:
           f"({len(screens)} screens x {len(variant_names)} variants)")
     if arguments.out:
         arguments.out.write_text(json.dumps(differences, indent=1))
-    return 1 if differences else 0
+    return 1 if differences or failed else 0
 
 
 if __name__ == "__main__":
