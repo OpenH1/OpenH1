@@ -50,6 +50,7 @@ from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from hud_assets import bleed, render_svg  # noqa: E402
+import menu_look  # noqa: E402
 import port_settings  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -771,6 +772,10 @@ def port_pictures_only() -> None:
     ports = {**port_settings.settings_files(), **port_settings.multiplayer_files(), **port_settings.campaign_files()}
     for name, lines in ports.items():
         (CE / name).write_text("\n".join(lines))
+    # (the model's rows and the widgets' look: tools/menu_look.py)
+    for name, lines in port_settings.model_files().items():
+        (MENUS / name).write_text("\n".join(lines))
+    looks = menu_look.write(MENUS)
     art = Art.__new__(Art)
     art.pngs = []
     blocks = bitmap_blocks((CE / "bitmaps.xml").read_text())
@@ -812,7 +817,8 @@ def port_pictures_only() -> None:
         (MENUS / "port_svg" / (png[len("ce/port/"):-len(".png")] + ".svg")).unlink(missing_ok=True)
     listed = json.loads((MENUS / "menus.json").read_text())
     pngs = sorted((set(name for name in listed["files"] if name.endswith(".png")) - old_pngs) | set(art.pngs))
-    xmls = [name for name in listed["files"] if not name.endswith(".png")]
+    xmls = [name for name in listed["files"] if not name.endswith(".png") and not name.startswith(menu_look.LOOK)]
+    xmls = sorted(xmls + looks)
     # (and a file of the port's screens new to it, before the first listed
     # after it)
     for name in sorted(set(f"ce/{name}" for name in ports) - set(xmls)):
@@ -899,6 +905,8 @@ def main() -> None:
     for name, lines in port_settings.model_files().items():
         (MENUS / name).parent.mkdir(exist_ok=True)
         (MENUS / name).write_text("\n".join(lines))
+    # (and the look of every widget written: tools/menu_look.py)
+    menu_look.write(MENUS)
     # their strings
     (CE / "strings.xml").write_text(strings_xml({
         tag: [text_value(item["string"]) for item in tags.load(tag, "unicode_string_list")["strings"]]

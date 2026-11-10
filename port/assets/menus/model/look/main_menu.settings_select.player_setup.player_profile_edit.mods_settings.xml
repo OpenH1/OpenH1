@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The look of ce/main_menu.settings_select.player_setup.player_profile_edit.mods_settings.xml's widgets, for the menu engine (docs/menu_engine.md; tools/menu_look.py) -->
+<model>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/mods_settings_screen" picture="bitmaps/gradient">
+		<at widget="main_menu/settings/header_settings" x="0" y="0"/>
+		<at widget="main_menu/settings/tab_prompt_previous" x="24" y="76"/>
+		<at widget="main_menu/settings/tab_prompt_next" x="586" y="76"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/options_menu" x="0" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/options_menu" type="column_list">
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/section_0" x="28" y="104"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/op_mods" x="28" y="124"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/op_mods_folder" x="28" y="145"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/button_bar" x="0" y="414"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tabs" x="0" y="76"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/button_bar" type="column_list" box="0 0 640 28">
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/button_defaults" x="24" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/button_ok" x="358" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/button_cancel" x="488" y="1"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tab_video_settings" type="text" box="0 0 59 22" wide="-106 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tab_audio_settings" type="text" box="0 0 61 22" wide="-71 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="1"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tab_mouse_settings" type="text" box="0 0 92 22" wide="-35 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="2"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tab_network_settings" type="text" box="0 0 67 22" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="3"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tab_interface_settings" type="text" box="0 0 95 22" wide="35 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="4"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tab_profile_settings" type="text" box="0 0 83 22" wide="71 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="5"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tab_mods_settings" type="text" box="0 0 57 22" wide="106 0" place="keep_ends" picture="main_menu/settings/tab_current">
+		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="6"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tabs" type="column_list" box="0 0 640 22">
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tab_video_settings" x="56" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tab_audio_settings" x="117" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tab_mouse_settings" x="180" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tab_network_settings" x="274" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tab_interface_settings" x="343" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tab_profile_settings" x="440" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/tab_mods_settings" x="525" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/button_defaults" type="text" box="0 0 128 24" wide="-106 0" picture="bitmaps/text_button_background">
+		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" string_list="strings/common_button_captions" index="3"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/button_ok" type="text" box="0 0 128 24" wide="106 0" picture="bitmaps/text_button_background">
+		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" string_list="strings/common_button_captions" index="1"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/button_cancel" type="text" box="0 0 128 24" wide="106 0" picture="bitmaps/text_button_background">
+		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" string_list="strings/common_button_captions" index="2"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/section_0" box="0 0 344 18" wide="-106 120" picture="main_menu/settings/section">
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/section_0_title" x="0" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/section_0_title" type="text" box="0 0 344 18" wide="0 120">
+		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/labels"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/op_mods" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/mods_label" x="0" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/mods_label" type="text" box="0 0 332 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/labels" index="1"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/op_mods_folder" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/mods_folder_label" x="0" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/mods_folder_label" type="text" box="0 0 332 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/labels" index="2"/>
+	</look>
+</model>
