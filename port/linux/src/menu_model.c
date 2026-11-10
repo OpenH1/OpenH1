@@ -293,10 +293,12 @@ static void model_row(struct model_reader *reader, char const *element, XML_Char
 		{ "whole", NULL, NULL, NULL, &row.whole },
 		{ "name", &row.key }, { "parent", &row.parent },
 		{ "focusable", NULL, NULL, NULL, &row.focusable }, { "initial", NULL, NULL, NULL, &row.initial },
+		{ "help_index", NULL, &row.help_index }, { "help_choices", NULL, NULL, NULL, &row.help_choices },
 	};
 	struct halo_menu_model_screen *screen;
 
 	memset(&row, 0, sizeof(row));
+	row.help_index = -1;
 	model_attributes(reader, element, attributes, table, sizeof(table) / sizeof(*table));
 	if (reader->failed)
 		return;
