@@ -298,10 +298,13 @@ The steps, in order:
    row-name predicates of its tabs and pages gone). `--against <build>`
    compares a build before such a change, which both engines run, with the
    one after. The widgets' behaviour flags and actions in the model
-   (`model/behaviour`), by which the engine takes the events. Left: the
-   focus's way through a list (`ui_widget.c`'s, by the definitions: which
-   children take the focus), and the setup screens' row-name predicates,
-   which wait for their screens' model.
+   (`model/behaviour`), by which the engine takes the events. The focus's
+   way through a screen's children and a generated list's items, over its
+   labels (`engine_tab`, `engine_list_step`), by the model's behaviour, not
+   the definitions'; giving a widget the focus stays `ui_widget.c`'s, as do
+   a list made in code and a list stepped by a handler's function. Left:
+   the setup screens' row-name predicates, which wait for their screens'
+   model.
 3. **The look in the model** (done): bounds, anchors, places, pictures, text
    and its style, and the children's places written by the generators into
    the model for every widget of every generated screen

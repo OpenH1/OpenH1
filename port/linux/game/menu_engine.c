@@ -81,6 +81,7 @@ void *menu_tags_handler(void const *handlers, long index);
 #define ENGINE_LEFT_RIGHT_TABS_CHILDREN_BIT 4
 #define ENGINE_UP_DOWN_TABS_ITEMS_BIT 5
 #define ENGINE_LEFT_RIGHT_TABS_ITEMS_BIT 6
+#define ENGINE_NO_FOCUSED_CHILD_BIT 7
 #define ENGINE_PASS_UNHANDLED_TO_ALL_CHILDREN_BIT 8
 #define ENGINE_PASS_HANDLED_TO_ALL_CHILDREN_BIT 10
 #define ENGINE_RETURN_TO_MAIN_MENU_BIT 11
@@ -379,6 +380,155 @@ static void engine_handler_run(struct widget_instance *widget, struct engine_beh
 		ui_widget_port_handler_run(widget, event, menu_tags_handler(behaviour->handlers, index), deleted);
 }
 
+/* whether a widget takes events: one enabled with handlers of its own, or
+a list (ui_widget.c's widget_instance_can_handle_events) */
+static boolean engine_takes_events(struct widget_instance const *widget)
+{
+	struct engine_behaviour behaviour;
+
+	if (widget->disabled)
+		return FALSE;
+	if (widget->type == ENGINE_WIDGET_SPINNER || widget->type == ENGINE_WIDGET_COLUMN_LIST)
+		return TRUE;
+	engine_behaviour_of(widget, &behaviour);
+	return behaviour.handler_count > 0;
+}
+
+/* whether a list's item is one its focus passes over: a label (taking no
+events, with nothing in it that does), or hidden or disabled
+(ui_widget.c's widget_instance_port_is_label) */
+static boolean engine_is_label(struct widget_instance const *widget)
+{
+	return (!engine_takes_events(widget) && !widget->child) || !widget->visible || widget->disabled;
+}
+
+/* a widget that only passes events on, given the focus, focused on its first
+child that takes events again (ui_widget.c's
+widget_instance_refocus_passthrough) */
+static void engine_refocus_passthrough(struct widget_instance *widget)
+{
+	struct engine_behaviour behaviour;
+	struct widget_instance *child;
+
+	if (!widget || widget->focused_child || engine_takes_events(widget))
+		return;
+	engine_behaviour_of(widget, &behaviour);
+	if (!TEST_FLAG(behaviour.flags, ENGINE_PASS_UNHANDLED_TO_FOCUSED_CHILD_BIT) ||
+		TEST_FLAG(behaviour.flags, ENGINE_NO_FOCUSED_CHILD_BIT))
+	{
+		return;
+	}
+	for (child = widget->child; child; child = child->next)
+	{
+		if (engine_takes_events(child))
+		{
+			widget->focused_child = child;
+			break;
+		}
+	}
+}
+
+/* whether a child of the widget may take its focus: one that takes events or
+passes them on, or any of a list's but a label of the generated menus' lists
+(ui_widget.c's widget_instance_tab_to_next_valid_widget's test) */
+static boolean engine_focusable(struct widget_instance const *widget, struct widget_instance const *child)
+{
+	struct engine_behaviour behaviour;
+	boolean list = widget->type == ENGINE_WIDGET_SPINNER || widget->type == ENGINE_WIDGET_COLUMN_LIST;
+
+	engine_behaviour_of(child, &behaviour);
+	return (behaviour.handler_count > 0 || TEST_FLAG(behaviour.flags, ENGINE_PASS_UNHANDLED_TO_FOCUSED_CHILD_BIT) ||
+		list) && !(widget->type == ENGINE_WIDGET_COLUMN_LIST && pc_menu_tag(widget->definition_tag_index) &&
+		engine_is_label(child));
+}
+
+/* the focus moved to the widget's next child that may take it (or its
+previous), round from the last to the first, as ui_widget.c's
+widget_instance_tab_to_next_valid_widget and _previous_ move it */
+static void engine_tab(struct widget_instance *widget, boolean next)
+{
+	struct widget_instance *child, *tail;
+
+	for (tail = widget->child; tail && tail->next; tail = tail->next)
+		;
+	if (next)
+		child = widget->focused_child && widget->focused_child->next ? widget->focused_child->next : widget->child;
+	else if (widget->focused_child)
+		child = widget->focused_child->previous ? widget->focused_child->previous : tail;
+	else
+		child = widget->child && widget->child->previous ? widget->child->previous : widget->child;
+	while (child && child != widget->focused_child)
+	{
+		if (engine_focusable(widget, child))
+		{
+			widget->focused_child = child;
+			engine_refocus_passthrough(child);
+			break;
+		}
+		if (next)
+			child = child->next ? child->next : widget->child;
+		else
+			child = child->previous ? child->previous : tail;
+	}
+}
+
+/* the focus moved to a list's next item (or its previous), round from the
+last to the first, over its labels: for a list of the generated menus whose
+items are its children (not a list made in code), as ui_widget.c's
+widget_event_function_list_widget_goto_next_item and _previous_item move it
+there; any other list is moved by them */
+static void engine_list_step(struct widget_instance *widget, boolean next, struct event_record *event,
+	boolean *deleted)
+{
+	struct widget_instance *child = NULL;
+	long item_index = 0, tries = 0;
+
+	if (widget->type != ENGINE_WIDGET_COLUMN_LIST || !pc_menu_tag(widget->definition_tag_index) ||
+		(widget->parameters.list.list_items && widget->parameters.list.number_of_items > 0) || !widget->child)
+	{
+		if (next)
+			widget_event_function_list_widget_goto_next_item(widget, event, deleted);
+		else
+			widget_event_function_list_widget_goto_previous_item(widget, event, deleted);
+		return;
+	}
+	if (widget->focused_child)
+	{
+		item_index = widget->parameters.list.selected_index + (next ? 1 : -1);
+		child = next ? widget->focused_child->next : widget->focused_child->previous;
+		if (next && item_index == widget->parameters.list.number_of_items)
+			child = NULL;
+	}
+	if (!child)
+	{
+		child = widget->child;
+		item_index = 0;
+		while (!next && child->next)
+		{
+			child = child->next;
+			item_index++;
+		}
+	}
+	while (engine_is_label(child) && tries++ < 256)
+	{
+		child = next ? child->next : child->previous;
+		item_index += next ? 1 : -1;
+		if (!child)
+		{
+			child = widget->child;
+			item_index = 0;
+			while (!next && child->next)
+			{
+				child = child->next;
+				item_index++;
+			}
+		}
+	}
+	ui_widget_port_give_focus(widget, child);
+	widget->parameters.list.selected_index = (short)item_index;
+	widget->parameters.list.last_list_tab_direction = next ? 15 : -15;
+}
+
 /* the direction of a D-pad button (0 up, 1 down, 2 left, 3 right), or NONE */
 static short engine_dpad_direction(struct event_record const *event)
 {
@@ -439,28 +589,22 @@ static boolean engine_move(struct widget_instance *widget, long flags, struct ev
 		return FALSE;
 	if (vertical && TEST_FLAG(flags, ENGINE_UP_DOWN_TABS_CHILDREN_BIT) && widget->focused_child)
 	{
-		ui_widget_port_tab(widget, vertical > 0);
+		engine_tab(widget, vertical > 0);
 		return TRUE;
 	}
 	if (horizontal && TEST_FLAG(flags, ENGINE_LEFT_RIGHT_TABS_CHILDREN_BIT) && widget->focused_child)
 	{
-		ui_widget_port_tab(widget, horizontal > 0);
+		engine_tab(widget, horizontal > 0);
 		return TRUE;
 	}
 	if (vertical && TEST_FLAG(flags, ENGINE_UP_DOWN_TABS_ITEMS_BIT) && list)
 	{
-		if (vertical > 0)
-			widget_event_function_list_widget_goto_next_item(widget, event, deleted);
-		else
-			widget_event_function_list_widget_goto_previous_item(widget, event, deleted);
+		engine_list_step(widget, vertical > 0, event, deleted);
 		return TRUE;
 	}
 	if (horizontal && TEST_FLAG(flags, ENGINE_LEFT_RIGHT_TABS_ITEMS_BIT) && list)
 	{
-		if (horizontal > 0)
-			widget_event_function_list_widget_goto_next_item(widget, event, deleted);
-		else
-			widget_event_function_list_widget_goto_previous_item(widget, event, deleted);
+		engine_list_step(widget, horizontal > 0, event, deleted);
 		return TRUE;
 	}
 	return FALSE;
