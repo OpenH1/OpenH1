@@ -633,6 +633,8 @@ in the VR mode's eyes, whose weapon is in the world */
 #ifdef HALO_VR
 boolean vr_render_eye_pass(void);
 #endif
+/* port: (rasterizer_xbox_transparent_geometry.c) */
+boolean rasterizer_transparent_geometry_group_camouflaged(struct transparent_geometry_group const *group);
 
 static boolean rasterizer_first_person_camouflaged(
 	long first_group_index)
@@ -654,7 +656,7 @@ static boolean rasterizer_first_person_camouflaged(
 		{
 			break;
 		}
-		if (group->effect_type == _render_model_effect_type_active_camouflage)
+		if (rasterizer_transparent_geometry_group_camouflaged(group))
 		{
 			return TRUE;
 		}
