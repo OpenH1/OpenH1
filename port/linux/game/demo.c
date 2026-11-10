@@ -201,9 +201,11 @@ enum
 	DEMO_ENGINE_STATE_SIZE = 256 * 1024,
 	/* the whole game states taken one after another for what the game's
 	code made or deleted outside the ticks, and the ticks that give one
-	more (a snapshot's): past them, the bytes it changed instead
-	(demo_structural_whole) */
+	more (a snapshot's), past which the recording warns that they come too
+	often (demo_structural_whole) */
 	DEMO_STRUCTURAL_BURST = 4,
+	/* ... at most this often */
+	DEMO_STRUCTURAL_WARNING_TICKS = 60 * TICKS_PER_SECOND,
 };
 
 /* a block's kind */
@@ -336,13 +338,13 @@ static struct
 	boolean paused;
 	long structural_snapshots;
 	/* the whole game states that may yet be taken for what the game's code
-	made or deleted outside the ticks, as of a tick; those it changed as
-	bytes past them (demo_structural_whole) */
+	made or deleted outside the ticks before the recording warns, as of a
+	tick; those taken past them, and when it last warned
+	(demo_structural_whole) */
 	long structural_allowance;
 	long structural_allowance_tick;
-	long structural_differences;
-	/* (demo_patch_write) a difference of the game's code kept as its bytes */
-	boolean structural_as_bytes;
+	long structural_too_often;
+	long structural_warning_tick;
 	/* (the host) the netcode's work after a tick is being recorded
 	(demo_netcode_begin) */
 	boolean netcode;
@@ -1034,7 +1036,7 @@ static boolean demo_patch_write(
 		start = demo_record_begin(&demo_recorder.records, type);
 		begun = TRUE;
 	}
-	if (begun && type == 'P' && structural && !demo_recorder.structural_as_bytes)
+	if (begun && type == 'P' && structural)
 	{
 		/* (the record taken back) */
 		demo_recorder.records.size = start - 1;
@@ -1049,14 +1051,13 @@ static boolean demo_patch_write(
 	return structural;
 }
 
-/* the whole game states that may be taken for what the game's code made
-or deleted outside the ticks, as of the tick: a few one after another, and
-one more each snapshot's ticks (demo.snapshot_seconds). Past them such a
-difference is recorded as its bytes, as an open tick's are (M), which a
-playback writes in without that code's work outside the game state, and
-may part from the recording there (its hash says where); but a game whose
-code does that every tick makes a demo of a game's size, not a whole game
-state a tick (1 to 2 GB a minute) */
+/* the whole game states taken for what the game's code made or deleted
+outside the ticks, as of the tick, against a rate: a few one after
+another, and one more each snapshot's ticks (demo.snapshot_seconds). Each
+is taken, whatever the rate (the playback stays exact), but past it the
+recording warns, once a minute at most: a game whose code does that every
+tick takes a whole game state a tick, 1 to 2 GB a minute (a host's OpenCE
+players' moves did, before demo_netcode_begin) */
 static void demo_structural_refill(
 	long tick)
 {
@@ -1076,8 +1077,7 @@ static void demo_structural_refill(
 	}
 }
 
-/* ... whether one may be taken now (and is counted), or the difference
-was recorded as its bytes */
+/* ... one counted (always TRUE: it is taken) */
 static boolean demo_structural_whole(
 	long tick)
 {
@@ -1087,13 +1087,19 @@ static boolean demo_structural_whole(
 		demo_recorder.structural_allowance--;
 		return TRUE;
 	}
-	if (!demo_recorder.structural_differences++)
+	demo_recorder.structural_too_often++;
+	if (demo_recorder.structural_warning_tick == NONE ||
+		tick - demo_recorder.structural_warning_tick >= DEMO_STRUCTURAL_WARNING_TICKS ||
+		tick < demo_recorder.structural_warning_tick)
 	{
-		platform_log("demos: %s: the game's code made or deleted objects outside the ticks more often than the "
-			"whole game states allow (%d, and one each %ld ticks); what it changed is recorded as bytes there",
-			demo_recorder.name, DEMO_STRUCTURAL_BURST, demo_settings.snapshot_ticks);
+		demo_recorder.structural_warning_tick = tick;
+		platform_log("warning: demos: %s: a whole game state at tick %ld for what the game's code made or deleted "
+			"outside the ticks, %ld more often than %d and one each %ld ticks so far (%.2f MB written): the "
+			"demo grows by about 1 MB each; demo.c's records miss what made them (debug.demo_log names it)",
+			demo_recorder.name, tick, demo_recorder.structural_too_often, DEMO_STRUCTURAL_BURST,
+			demo_settings.snapshot_ticks, (double)demo_writer_bytes(demo_recorder.writer) / 1e6);
 	}
-	return FALSE;
+	return TRUE;
 }
 
 /* the frames' input the ticks read, whole, where it changed since it was
@@ -1304,10 +1310,10 @@ static void demo_record_stop(
 		demo_recorder.writer = NULL;
 	}
 	platform_log("demos: %s ended (%s): %ld ticks, %ld differences from outside the ticks (%lu bytes), %ld "
-		"whole game states for what the game's code made or deleted there (%ld more as bytes); %.2f MB; the "
+		"whole game states for what the game's code made or deleted there (%ld more often than allowed); %.2f MB; the "
 		"recording took %.3f ms a tick of the game's thread", demo_recorder.name, reason, demo_recorder.ticks,
 		demo_recorder.patches, demo_recorder.patch_bytes, demo_recorder.structural_snapshots,
-		demo_recorder.structural_differences, (double)demo_recorder.written / 1e6,
+		demo_recorder.structural_too_often, (double)demo_recorder.written / 1e6,
 		demo_recorder.ticks ? (double)demo_recorder.work_microseconds / 1000.0 / (double)demo_recorder.ticks : 0.0);
 	demo_recorder.recording = FALSE;
 	demo_recorder.shadow_valid = FALSE;
@@ -1393,7 +1399,8 @@ static void demo_record_start(
 	demo_recorder.structural_snapshots = 0;
 	demo_recorder.structural_allowance = DEMO_STRUCTURAL_BURST;
 	demo_recorder.structural_allowance_tick = tick;
-	demo_recorder.structural_differences = 0;
+	demo_recorder.structural_too_often = 0;
+	demo_recorder.structural_warning_tick = NONE;
 	demo_recorder.netcode = FALSE;
 	demo_recorder.written = 0;
 	demo_recorder.work_microseconds = 0;
@@ -1442,17 +1449,12 @@ static void demo_record_tick_begin(
 		structural = FALSE;
 		if (!demo_recorder.loaded)
 		{
-			/* (a difference of the game's code past the whole game states
-			allowed: its bytes) */
-			demo_structural_refill(tick);
-			demo_recorder.structural_as_bytes = demo_recorder.structural_allowance <= 0;
 			if (demo_patch_write('P') && demo_structural_whole(tick))
 			{
 				demo_recorder.loaded = TRUE;
 				structural = TRUE;
 				demo_recorder.structural_snapshots++;
 			}
-			demo_recorder.structural_as_bytes = FALSE;
 		}
 		/* (a whole game state for a reload too, a death's revert to the last
 		checkpoint as much as the pause menu's: the checkpoint the playback's

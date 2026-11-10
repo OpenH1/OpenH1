@@ -59,12 +59,11 @@ take (`source/math/random_math.c`) and the players' input of each tick
   struck. When the game state was rewritten as a whole (a checkpoint
   reverted to, a saved game or core loaded, the map started over), or the
   game's code made or deleted an object outside the ticks, the whole game
-  state is recorded instead, as at the start: up to four one after another,
-  and one more each `demo.snapshot_seconds`. Past them the bytes are
-  recorded instead (logged once a demo), which a playback writes in without
-  that code's work outside the game state and so may part there; a game
-  whose code did that every tick would otherwise take a whole game state a
-  tick (below, "Sizes and cost").
+  state is recorded instead, as at the start. Each is taken, however often
+  (the playback stays exact), but past four one after another and one more
+  each `demo.snapshot_seconds` the recording warns in the log, once a
+  minute at most: a game whose code does that every tick takes a whole game
+  state a tick, about 1 MB packed each (below, "Sizes and cost").
 - **What the ticks read of the frames.** Each of this machine's players'
   camera (`observer_get_camera`) as the tick begins, which the material
   effects test by distance and a player without a unit sees the level from,
