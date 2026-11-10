@@ -1207,7 +1207,7 @@ static const struct config_setting config_settings[] =
 		"of this computer's reads it as its map begins; in a network game the\n"
 		"host's decides, read in the lobby; a Legacy game, and OpenCE's\n"
 		"players, always walk over (OpenCE's way)." },
-	{ "game.spectate_on_death", _config_string, "\"teammates\"", "HALO_SPECTATE_ON_DEATH", _environment_value,
+	{ "game.spectate_on_death", _config_string, "\"off\"", "HALO_SPECTATE_ON_DEATH", _environment_value,
 		_platform_all,
 		"While you are dead in co-op or a team game, waiting to respawn:\n"
 		"\"teammates\" shows a living teammate's view through their eyes (their\n"

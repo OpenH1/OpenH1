@@ -2,7 +2,7 @@
 DEAD_SPECTATE.C
 
 A dead player watching a living teammate until they respawn
-(game.spectate_on_death). With "teammates" (the default) a dead player in
+(game.spectate_on_death). With "teammates" (off by default) a dead player in
 co-op (network or split screen) or in a team game sees through a living
 teammate's eyes, full screen: the teammate's eye, their aim, their zoom,
 and their first-person weapon and arms, their body hidden from that view,
