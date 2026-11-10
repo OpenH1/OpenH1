@@ -173,6 +173,10 @@ struct halo_menu_model_row
 	char const *kind, *key, *setting, *label, *title, *when, *open, *run, *help, *note;
 	/* (when it is enabled, else dimmed: a condition as when's) */
 	char const *enabled;
+	/* (a node's, kind "node": its key its widget's name, its parent's name,
+	whether the focus may take it, and whether it takes it first) */
+	char const *parent;
+	long focusable, initial;
 	/* (in the place of the row before it; hidden while the game plays in
 	the headset; a label the game writes; a status row's value beside it) */
 	long same_place, not_in_vr, named, status;

@@ -201,6 +201,9 @@ def run_layouts(build: Path, screens: list, variant_names: list, maps: Path, tem
 # ---------- behaviour: scripted presses on each engine, what they leave compared
 
 PE = "main_menu/settings_select/player_setup/player_profile_edit"
+# (the setup screens': the gametype editor's and Server Setup's)
+MS = "main_menu/settings_select/multiplayer_setup"
+MT = "main_menu/multiplayer_type_select"
 # (the 4:3 window's fractions of the buttons of a Settings tab or page: the menus' 640 x 480 fill it)
 OK_CLICK, CANCEL_CLICK, DEFAULTS_CLICK = "click:0.659:0.889", "click:0.859:0.889", "click:0.138:0.889"
 # each script: its name, the screen it starts on (debug.menu_open) and its presses (debug.test_input
@@ -255,6 +258,15 @@ SCRIPTS = [
       OK_CLICK]),
     ("conditions-hud", f"{PE}/interface_settings/interface_settings_screen",
      ["right", "down", "down", "up", "up", "left", "down", "right", OK_CLICK]),
+    # (the setup screens' rows shown by their nodes' conditions in the model, on other rows' values: Item Options'
+    # LOADOUT's weapons, OpenCE Options' MODE's rows, co-op's extras' amounts)
+    ("setup-loadout", f"{MS}/item_options_edit/item_options_screen",
+     ["down", "down", "down", "down", "right", "down", "down", "up", "up", "left", "down", "up", "right", "down"]),
+    ("setup-opence", f"{MS}/opence_options_edit/opence_screen",
+     ["right", "right", "down", "down", "down", "up", "up", "up", "right", "down", "down", "down", "up", "left"]),
+    ("setup-coop", f"{MT}/server_settings/coop_options/coop_options_screen",
+     ["down", "right", "down", "down", "down", "up", "up", "right", "down", "down", "up", "up", "up", "right",
+      "down", "down", "right", "down"]),
     ("held-repeat", f"{PE}/video_settings/video_settings_screen",
      ["down", "down", "down", "hold:right", "hold:right", "wait", "hold:left", "wait", "hold:down", "hold:down",
       "hold:down", "wait", "hold:up", "wait", OK_CLICK]),
@@ -270,7 +282,8 @@ SCRIPTS = [
 MAKE_PROFILE = ("profile-create", f"{PE}/profile_settings/profile_settings_screen",
                 ["a", "wait", "type:Tester", "enter", "wait", "wait"])
 # (scripts that write nothing: the presses are taken back, or only move the focus)
-WRITE_NOTHING = ("toggle-and-cancel", "mouse-and-cancel-button", "sub-page-cancel")
+WRITE_NOTHING = ("toggle-and-cancel", "mouse-and-cancel-button", "sub-page-cancel", "setup-loadout", "setup-opence",
+                 "setup-coop")
 # the navigation sweep: every generated screen opened, the focus moved about it with no press that leaves it
 SWEEP = ["down", "down", "down", "down", "up", "up", "right", "down", "left", "hold:down", "hold:down", "up",
          "hold:up", "hold:up", "down", "right", "right", "left"]
@@ -288,9 +301,15 @@ def sweep_scripts() -> list:
             for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS) if not SWEEP_SKIP.search(screen.name)]
 
 
+# the host's warning of a stalled thread (port/android/host/host_stall.c), which a busy computer's runs print, written
+# into the middle of the game's line of the focus: not the game's
+HOST_STALL = re.compile(r"halo-host: warning: stall: .*$")
+
+
 def focus_path(text: str) -> list:
     """where the focus was after each second of a run's script (menu_tour.c's "menus: focus" lines)"""
-    return [line.split("menus: focus ", 1)[1] for line in text.splitlines() if "menus: focus " in line]
+    return [HOST_STALL.sub("", line.split("menus: focus ", 1)[1]) for line in text.splitlines()
+            if "menus: focus " in line]
 
 
 def profile_digests(saves: Path) -> dict:

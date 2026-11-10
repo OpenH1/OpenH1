@@ -7,8 +7,9 @@ tools/port_settings.py writes beside the menus' XML, or a menus folder's
 file of the same name) read with Expat into screens, their rows and their
 choices, the widgets' looks (model/look, tools/menu_look.py) and the
 widgets' behaviours (model/behaviour, tools/menu_behaviour.py: their
-behaviour flags and their <on> handlers, read as the menus' own), for the
-game's menu engine (port/linux/game/menu_engine.c).
+behaviour flags and their <on> handlers, read as the menus' own), and the
+setup screens' nodes (model/nodes.xml, tools/menu_nodes.py: rows of kind
+"node", each keyed by its widget's name), for the game's menu engine (port/linux/game/menu_engine.c).
 
 As with the menus' files (menu_files.c), only the files' shape is checked
 here: their elements and attributes, and numbers. A problem is logged with
@@ -274,7 +275,7 @@ static void model_screen(struct model_reader *reader, XML_Char const **attribute
 	reader->model.screens[reader->model.screen_count++] = screen;
 }
 
-/* a <row>, <section> or <button> of the screen open */
+/* a <row>, <section>, <button> or <node> of the screen open */
 static void model_row(struct model_reader *reader, char const *element, XML_Char const **attributes)
 {
 	struct halo_menu_model_row row;
@@ -288,6 +289,8 @@ static void model_row(struct model_reader *reader, char const *element, XML_Char
 		{ "least", NULL, NULL, &row.least }, { "most", NULL, NULL, &row.most }, { "step", NULL, NULL, &row.step },
 		{ "typed_least", NULL, NULL, &row.typed_least }, { "typed_most", NULL, NULL, &row.typed_most },
 		{ "whole", NULL, NULL, NULL, &row.whole },
+		{ "name", &row.key }, { "parent", &row.parent },
+		{ "focusable", NULL, NULL, NULL, &row.focusable }, { "initial", NULL, NULL, NULL, &row.initial },
 	};
 	struct halo_menu_model_screen *screen;
 
@@ -297,10 +300,12 @@ static void model_row(struct model_reader *reader, char const *element, XML_Char
 		return;
 	if (!row.key)
 	{
-		model_error(reader, "a <%s> needs a key", element);
+		model_error(reader, "a <%s> needs a key (a <node>, a name)", element);
 		return;
 	}
-	if (!strcmp(element, "section"))
+	if (!strcmp(element, "node"))
+		row.kind = "node";
+	else if (!strcmp(element, "section"))
 		row.kind = "section";
 	else if (!strcmp(element, "button"))
 	{
@@ -500,8 +505,8 @@ static void XMLCALL model_start(void *data, XML_Char const *name, XML_Char const
 	}
 	else if (!strcmp(name, "about") && parent == _model_screen)
 		element = _model_about;
-	else if ((!strcmp(name, "row") || !strcmp(name, "section") || !strcmp(name, "button")) &&
-		parent == _model_screen)
+	else if ((!strcmp(name, "row") || !strcmp(name, "section") || !strcmp(name, "button") ||
+		!strcmp(name, "node")) && parent == _model_screen)
 	{
 		element = _model_row;
 		model_row(reader, name, attributes);
