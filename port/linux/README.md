@@ -3261,9 +3261,10 @@ master servers, or only the brokers.
   The titles are: server name, map, game, players, the lock (the games
   with a password first) and the dedicated icon (dedicated servers first).
   A second choice of the same title reverses the order, and an arrow on
-  the title shows the direction. The default order is OpenH1 games
+  the title shows the direction. The default order is the games with
+  the most players first; of games with as many players, the OpenH1 games
   first, the dedicated servers first among them and among the Legacy games
-  after them, then the games with the most players, then by name. The browser
+  after them, then by name. The browser
   keeps the order in `network.browser_sort`.
 - FILTERS hides games from the list: refer to "Filters" above.
 - A dedicated server's row shows the dedicated icon of Custom Edition.
