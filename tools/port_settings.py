@@ -18,7 +18,7 @@ import re
 import sys
 from pathlib import Path
 from typing import NamedTuple
-from xml.sax.saxutils import quoteattr
+from xml.sax.saxutils import escape, quoteattr
 
 PE = "main_menu/settings_select/player_setup/player_profile_edit"
 # the mods' screen, and its rows (_mods), which Settings' MODS tab opens
@@ -7231,6 +7231,133 @@ def _difficulties() -> list:
     return lines
 
 
+# ---------- the model (docs/menu_engine.md): the settings screens as what
+# they mean, for the menu engine (display.menu_engine "new"), beside the
+# widgets the files above flatten them into. Each row by its key (its
+# widgets op_<key>, <key>_label, ...), its kind, label, help and note, its
+# choices or slider, and when it is there; and the geometry the rows are
+# laid out by. Written to port/assets/menus/model/settings.xml.
+MODEL_FILE = "model/settings.xml"
+
+
+def _model_row_kind(key: str, setting, choices) -> str:
+    """a Settings row's kind, as _settings_page builds its widgets"""
+    if key in CONTROL_COMMAND_ROWS:
+        return "binding"
+    if setting and isinstance(choices, Slider):
+        return "slider"
+    if setting or isinstance(choices, list):
+        return "choice"
+    if key in SETTINGS_STEPPED_ROWS:
+        return "stepped"
+    if key in SETTINGS_STATUS_ROWS:
+        return "status"
+    return "link"
+
+
+def _model_element(name: str, pairs: list, inner: list = (), depth: int = 2) -> list:
+    tabs = "\t" * depth
+    if not inner:
+        return [f"{tabs}<{name}{attributes(pairs)}/>"]
+    return [f"{tabs}<{name}{attributes(pairs)}>", *inner, f"{tabs}</{name}>"]
+
+
+def _model_row_inner(help_text, choices) -> list:
+    """a row's help and its note (after a "|"), and its choices or stops"""
+    words, _, note = (help_text or "").partition("|")
+    lines = [f"\t\t\t<help>{escape(words)}</help>"] if words else []
+    lines += [f"\t\t\t<note>{escape(note)}</note>"] if note else []
+    if isinstance(choices, Slider):
+        lines += [f"\t\t\t<stop{attributes([('shown', shown), ('value', value)])}/>" for shown, value in choices.stops]
+    elif isinstance(choices, list):
+        lines += [f"\t\t\t<choice{attributes([('shown', shown), ('value', value)])}/>" for shown, value in choices]
+    return lines
+
+
+def _model_slider(choices) -> list:
+    if not isinstance(choices, Slider):
+        return []
+    return [("least", f"{choices.least:g}"), ("most", f"{choices.most:g}"), ("step", f"{choices.step:g}"),
+            ("typed_least", f"{choices.typed_least:g}"), ("typed_most", f"{choices.typed_most:g}"),
+            ("whole", "true" if choices.whole else None)]
+
+
+def _model_page(folder: str, page: dict) -> list:
+    """a tab's or a page's screen: its rows under their sections, its buttons"""
+    base = f"{PE}/{folder}"
+    tab = "tab" in page
+    kind = "tab" if tab else "page"
+    inner = [f"\t\t<about>{escape(page['about'])}</about>"] if page.get("about") else []
+    for index, entry in enumerate(page["rows"]):
+        if entry[0] == SECTION:
+            inner += _model_element("section", [("key", f"section_{index}"), ("title", entry[1]),
+                                                ("when", _settings_platform(page["rows"], index))])
+            continue
+        label, setting, choices, help_text, platform, *named = entry
+        key = named[0] if named else setting.split(".", 1)[1] if setting else \
+            re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+        row_kind = _model_row_kind(key, setting, choices)
+        pairs = [("key", key), ("kind", row_kind), ("setting", setting), ("label", label), ("when", platform),
+                 ("open", choices if isinstance(choices, str) else None),
+                 ("run", named[1] if len(named) > 1 else None),
+                 ("same_place", "true" if key in SETTINGS_SAME_PLACE or setting == "display.window_size" else None),
+                 ("not_in_vr", "true" if key in SETTINGS_NOT_IN_VR else None),
+                 ("named", "true" if key in SETTINGS_NAMED_ROWS else None),
+                 ("status", "true" if key in SETTINGS_STATUS_ROWS and row_kind != "status" else None),
+                 *_model_slider(choices)]
+        inner += _model_element("row", pairs, _model_row_inner(help_text, choices))
+    runs = (("defaults", "port settings defaults"), ("ok", "port settings ok" if tab else "port settings keep"),
+            ("cancel", "port settings cancel" if tab else "port settings page cancel"))
+    for index, (button, run) in enumerate(runs):
+        inner += _model_element("button", [("key", f"button_{button}"), ("kind", button), ("run", run),
+                                           ("help", SETTINGS_BUTTON_HELP[kind][index])])
+    return _model_element("screen", [("name", f"{base}/{page['screen']}"), ("kind", "settings"), ("layout", kind),
+                                     ("tab", page.get("tab")), ("title", page.get("title")),
+                                     ("profile", "true" if page.get("profile") else None)], inner, 1)
+
+
+def _model_option_screen(folder: str, spec: dict) -> list:
+    """a screen of option rows (VR Setup's): its rows, the spacing apart"""
+    base = f"{PE}/{folder}"
+    same_place = spec.get("same_place", ())
+    inner = []
+    for label, setting, choices, help_text, platform, *named in spec["rows"]:
+        if setting is None:
+            key, row_kind, opens = choices.rsplit("/", 1)[1], "link", choices
+        else:
+            key, row_kind, opens = named[0] if named else setting.split(".", 1)[1], "choice", None
+        inner += _model_element("row", [("key", key), ("kind", row_kind), ("setting", setting), ("label", label),
+                                        ("when", platform), ("open", opens),
+                                        ("same_place", "true" if setting in same_place or key in same_place else None)],
+                                _model_row_inner(help_text, choices))
+    for label, category_folder, help_text, *category_platform in spec.get("categories", ()):
+        target = f"{PE}/{category_folder}/{SCREENS[category_folder]['screen']}"
+        inner += _model_element("row", [("key", category_folder.rsplit("/", 1)[-1]), ("kind", "link"),
+                                        ("label", label),
+                                        ("when", category_platform[0] if category_platform else None),
+                                        ("open", target)], _model_row_inner(help_text, None))
+    return _model_element("screen", [("name", f"{base}/{spec['screen']}"), ("kind", "settings"),
+                                     ("layout", "options"), ("spacing", spec.get("spacing", OPTION_ROW_PITCH)),
+                                     ("platform_places", "true" if spec.get("platform_places") else None)], inner, 1)
+
+
+def model_files() -> dict:
+    """the model's files, by their paths in port/assets/menus"""
+    geometry = [("row_x", SETTINGS_ROW_X), ("row_width", SETTINGS_ROW_WIDTH), ("row_height", SETTINGS_ROW_HEIGHT),
+                ("row_step", SETTINGS_ROW_STEP), ("section_height", SETTINGS_SECTION_HEIGHT),
+                ("section_step", SETTINGS_SECTION_STEP), ("section_gap", SETTINGS_SECTION_GAP),
+                ("tab_top", SETTINGS_TOP), ("page_top", PAGE_TOP), ("rows_bottom", SETTINGS_ROWS_BOTTOM),
+                ("spinner_x", SETTINGS_SPINNER_X), ("spinner_width", SETTINGS_SPINNER_WIDTH)]
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             "<!-- The settings screens' model, for the menu engine (docs/menu_engine.md; tools/port_settings.py) -->",
+             "<model>", f"\t<geometry{attributes(geometry)}/>"]
+    for folder, page in PAGES.items():
+        lines += _model_page(folder, page)
+    for folder, spec in SCREENS.items():
+        lines += _model_option_screen(folder, spec)
+    return {MODEL_FILE: lines + ["</model>", ""]}
+
+
 def campaign_files() -> dict:
     head = ['<?xml version="1.0" encoding="UTF-8"?>',
             "<!-- The campaign's screens: the Campaign menu, Choose Mission and Choose Difficulty "
@@ -7623,6 +7750,9 @@ def main() -> None:
     folder = Path(__file__).resolve().parent.parent / "port/assets/menus/ce"
     for name, lines in [*settings_files().items(), *multiplayer_files().items(), *campaign_files().items()]:
         (folder / name).write_text("\n".join(lines))
+    for name, lines in model_files().items():
+        (folder.parent / name).parent.mkdir(exist_ok=True)
+        (folder.parent / name).write_text("\n".join(lines))
 
 
 if __name__ == "__main__":

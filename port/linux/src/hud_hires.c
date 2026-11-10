@@ -375,6 +375,7 @@ void hud_hires_register_placeholder(long asset, const unsigned long *texture)
 	{
 		placeholders[index].data = texture ? texture[1] : 0;
 		placeholders[index].asset = asset;
+		xgpu_texture_replacements_changed();
 	}
 }
 

@@ -5,7 +5,8 @@ debug.menu_tour: one run of the game walks the menu screens a list names
 (a file in the data root, a screen a line, as port/assets/menus names it:
 main_menu/settings_select/...), for tools/menu_gallery.py. Once the menus
 are up, each screen in turn is opened alone (the others closed, a player
-profile being edited, as debug.menu_open opens one), shown for
+profile being edited, as debug.menu_open opens one), the first at the same
+game time in every run (MENU_TOUR_START_TICKS), shown for
 debug.menu_tour_frames frames, and then its layout written
 (menu_layout.c: tour/<n>.json in the data root, n its line, from 0) and,
 where frames are drawn, its picture saved (debug.screenshot_directory's
@@ -15,6 +16,7 @@ opened as no player could open them, one over the state another left.
 */
 
 #include "cseries.h"
+#include "game/game.h"
 #include "interface/ui_widget.h"
 #include "interface/terminal.h"
 #include "interface/virtual_keyboard.h"
@@ -31,6 +33,11 @@ void halo_screenshot_named(const char *name);
 extern boolean pc_menu_profile_edit_begin(void);
 
 #define MENU_TOUR_MAXIMUM_SCREENS 512
+/* the game time (ticks) the first screen opens at: every run's alike, past
+the menus' load, however many frames that took, so that the scene behind
+the menus is where it was in another run (tools/menu_parity.py compares
+two runs' pictures, pixel for pixel) */
+#define MENU_TOUR_START_TICKS 150
 #define MENU_TOUR_NAME_LENGTH 256
 
 static struct
@@ -46,13 +53,14 @@ static struct
 static boolean menu_tour_read(
 	void)
 {
-	char const *path = config_string("debug.menu_tour");
+	char const *path;
 	char line[MENU_TOUR_NAME_LENGTH];
 	FILE *file;
 
 	if (menu_tour.read)
 		return menu_tour.count > 0;
 	menu_tour.read = 1;
+	path = config_string("debug.menu_tour");
 	if (!path[0])
 		return FALSE;
 	file = fopen(path, "r");
@@ -117,6 +125,8 @@ void menu_tour_update(
 		platform_log("menus: debug.menu_tour: done");
 		exit(EXIT_SUCCESS);
 	}
+	if (menu_tour.index == 0 && menu_tour.frame == 0 && game_time_get() < MENU_TOUR_START_TICKS)
+		return;
 	if (menu_tour.frame == 0 && !menu_tour_open(menu_tour.names[menu_tour.index]))
 	{
 		platform_log("menus: debug.menu_tour: cannot open %s", menu_tour.names[menu_tour.index]);

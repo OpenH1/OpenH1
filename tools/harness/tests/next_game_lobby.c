@@ -166,9 +166,15 @@ static int config_boolean(char const *name)
 	return !strcmp(name, "network.allow_opence") && allow_opence;
 }
 
+/* (moves as the settings change, as config.toml's count does) */
 static unsigned long config_changes(void)
 {
-	return 1;
+	unsigned long changes = (unsigned long)network_rate * 2 + (allow_opence ? 1 : 0);
+	char const *text;
+
+	for (text = game_mode ? game_mode : ""; *text; text++)
+		changes = changes * 31 + (unsigned char)*text;
+	return changes;
 }
 
 static char const *config_string(char const *name)

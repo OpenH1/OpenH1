@@ -10,8 +10,24 @@
 #include <string.h>
 
 int config_boolean(char const *name);
+unsigned long config_changes(void);
 static boolean client_blocks_mouse = TRUE;
 static short sent_policy = NONE;
+
+/* network.block_mouse_aim_assist, read again as the settings change
+(config_changes): the mouse and the update ask every frame */
+static boolean host_blocks_mouse(void)
+{
+    static unsigned long read_at = (unsigned long)-1;
+    static boolean blocks;
+
+    if (read_at != config_changes())
+    {
+        read_at = config_changes();
+        blocks = config_boolean("network.block_mouse_aim_assist") != 0;
+    }
+    return blocks;
+}
 struct aim_assist_policy_message
 {
     struct distributed_message_header header;
@@ -30,7 +46,7 @@ boolean network_aim_assist_block_mouse(void)
 {
     if (!game_in_progress() || main_menu_is_active()) return FALSE;
     if (game_connection() == _game_connection_network_server)
-        return config_boolean("network.block_mouse_aim_assist") != 0;
+        return host_blocks_mouse();
     return game_connection() == _game_connection_network_client && client_blocks_mouse;
 }
 
@@ -39,7 +55,7 @@ void network_aim_assist_send_policy(long machine_index)
     struct aim_assist_policy_message message;
     if (game_connection() != _game_connection_network_server) return;
     memset(&message, 0, sizeof(message));
-    message.block_mouse = config_boolean("network.block_mouse_aim_assist") != 0;
+    message.block_mouse = host_blocks_mouse();
     distributed_send_to_machine_reliably(machine_index, &message,
         _distributed_message_aim_assist_policy, 1, sizeof(message));
 }
@@ -50,7 +66,7 @@ void network_aim_assist_update(void)
     short policy;
     if (!game_in_progress() || main_menu_is_active() ||
         game_connection() != _game_connection_network_server) return;
-    policy = config_boolean("network.block_mouse_aim_assist") != 0;
+    policy = host_blocks_mouse();
     if (sent_policy == policy) return;
     sent_policy = policy;
     memset(&message, 0, sizeof(message));

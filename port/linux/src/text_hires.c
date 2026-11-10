@@ -669,6 +669,12 @@ void text_hires_register_atlas(const unsigned long *texture, unsigned long width
 	placeholder_data = texture ? texture[1] : 0;
 	placeholder_width = width;
 	placeholder_height = height;
+	xgpu_texture_replacements_changed();
+}
+
+int text_hires_atlas_placeholder(unsigned long data)
+{
+	return data && data == placeholder_data;
 }
 
 unsigned int text_hires_atlas_texture(unsigned long data)

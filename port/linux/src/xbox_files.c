@@ -698,7 +698,7 @@ static BOOL read_at(struct platform_file *file, LPVOID buffer, DWORD count, LPDW
 	BOOL positioned, unsigned long long offset)
 {
 	DWORD total = 0;
-	BOOL tracing = config_boolean("debug.load_trace");
+	BOOL tracing = halo_load_trace_enabled();
 	double started = tracing ? load_io_now() : 0.0;
 	double syscall_seconds = 0.0;
 	/* The renderer write-protects guest memory it caches (memory_watch.c),
@@ -765,7 +765,7 @@ static BOOL write_at(struct platform_file *file, LPCVOID buffer, DWORD count, LP
 	BOOL positioned, unsigned long long offset)
 {
 	DWORD total = 0;
-	BOOL tracing = config_boolean("debug.load_trace");
+	BOOL tracing = halo_load_trace_enabled();
 	double started = tracing ? load_io_now() : 0.0;
 
 	while (total < count)

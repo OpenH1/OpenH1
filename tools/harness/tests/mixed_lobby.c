@@ -137,6 +137,19 @@ static int config_boolean(char const *name)
 	return !strcmp(name, "network.allow_opence") && allow_opence;
 }
 
+/* (moves as the settings change, as config.toml's count does) */
+static unsigned long config_changes(void)
+{
+	unsigned long changes = (unsigned long)sim_rate_setting * 2 + (allow_opence ? 1 : 0);
+	char const *text;
+
+	for (text = game_mode; *text; text++)
+		changes = changes * 31 + (unsigned char)*text;
+	for (text = server_game_mode; *text; text++)
+		changes = changes * 31 + (unsigned char)*text;
+	return changes;
+}
+
 static short game_connection(void)
 {
 	return connection;

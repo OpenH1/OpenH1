@@ -655,6 +655,7 @@ struct widget_instance;
 #include "interface/ui_widget_game_data_input_functions.h"
 #include "custom_edition_maps.h" /* port: port/linux/game/custom_edition_maps.c */
 #include "menu_layout.h" /* port: port/linux/game/menu_layout.c */
+#include "menu_engine.h" /* port: port/linux/game/menu_engine.c */
 void menu_tour_update(void); /* port: port/linux/game/menu_tour.c */
 /* port: port/linux/game/menu_studio.c */
 void menu_studio_update(void);
@@ -1905,7 +1906,11 @@ static void draw_bitmap_columns_in_rect(
 					interface_get_tag_index(_interface_bitmap_iface_map3))->bitmaps,
 				0,
 				struct bitmap_data);
-			long time = system_milliseconds();
+			/* port: the frames' time where it is fixed (debug.frame_time:
+			port/linux/game/frames_clock.c), so that two runs draw the plasma
+			alike (tools/menu_parity.py) */
+			unsigned long fixed_time;
+			long time = frames_clock(&fixed_time) ? (long)fixed_time : system_milliseconds();
 
 			map0_offset.x =
 				compute_offset_coordinate(time, 0.03215434f) * 311.0f;
@@ -2465,6 +2470,9 @@ void ui_widget_delete(
 	if (widget->delete_recursion_lock)
 		return;
 	widget->delete_recursion_lock = TRUE;
+	/* port: (the menu engine's screen let go: port/linux/game/menu_engine.c) */
+	if (!widget->parent)
+		menu_engine_screen_closed(widget);
 	if (widget->local_player_index != NONE && !widget->parent)
 		player_control_inhibit_buttons(
 			widget->local_player_index,
@@ -4298,9 +4306,13 @@ struct widget_instance *ui_widget_load_by_name_or_tag(
 				local_player_index,
 				widget_stack);
 			/* port: a screen shown: the art of those it opens decoded ahead
-			(port/linux/game/menu_tags.c) */
+			(port/linux/game/menu_tags.c), and the menu engine's if it is a
+			generated one (port/linux/game/menu_engine.c) */
 			if (!parent)
+			{
 				pc_menu_screen_shown(tag_index);
+				menu_engine_screen_opened(widget);
+			}
 		}
 		else
 		{
@@ -5931,7 +5943,7 @@ void ui_widget_port_caret_show(
 	if (shown && box)
 	{
 		ui_widget_port_caret_box = box;
-		ui_widget_port_caret_time = system_milliseconds();
+		ui_widget_port_caret_time = widget_globals.current_system_milliseconds;
 	}
 	else if (box == ui_widget_port_caret_box)
 	{
@@ -5943,7 +5955,7 @@ static boolean ui_widget_port_caret_shown(
 	struct widget_instance *widget)
 {
 	return widget && widget == ui_widget_port_caret_box &&
-		system_milliseconds() - ui_widget_port_caret_time < UI_WIDGET_PORT_CARET_MILLISECONDS;
+		widget_globals.current_system_milliseconds - ui_widget_port_caret_time < UI_WIDGET_PORT_CARET_MILLISECONDS;
 }
 
 /* port: the caret after a text drawn in the bounds (in the draw mode's
@@ -8678,6 +8690,18 @@ static void ui_widgets_process_mouse(
 	return;
 }
 
+/* port: a widget drawn alone, for the menu engine
+(ui_widget_port_render_node): the widget (what it draws of others, a list's
+description, drawn whole), whether it was shown, and where and whether its
+children are drawn */
+static struct
+{
+	struct widget_instance *alone;
+	boolean shown;
+	boolean children;
+	point2d offset;
+} ui_widget_port_node;
+
 static void widget_instance_render_recursive(
 	struct widget_instance *widget,
 	rectangle2d *clip_rect,
@@ -8696,6 +8720,9 @@ static void widget_instance_render_recursive(
 	struct bitmap_data *custom_edition_picture;
 	short frame_index;
 
+	/* port: a screen the port's menu engine draws (port/linux/game/menu_engine.c) */
+	if (!widget->parent && menu_engine_screen_draw(widget, clip_rect, offset, focus, use_nifty_plasma_fx))
+		return;
 	if (!use_nifty_plasma_fx &&
 		TEST_FLAG(definition->flags, _widget_always_render_with_nifty_fx_bit))
 	{
@@ -8979,6 +9006,16 @@ static void widget_instance_render_recursive(
 			_list_items_generated_in_code);
 		break;
 	}
+	/* port: the widget alone, for the menu engine (ui_widget_port_render_node) */
+	if (ui_widget_port_node.alone == widget)
+	{
+		ui_widget_port_node.alone = NULL;
+		ui_widget_port_node.shown = TRUE;
+		ui_widget_port_node.offset = offset;
+		ui_widget_port_node.children = render_children;
+
+		return;
+	}
 	if (render_children)
 	{
 		for (child = widget->child; child; child = child->next)
@@ -8997,6 +9034,27 @@ static void widget_instance_render_recursive(
 	}
 
 	return;
+}
+
+/* port: one widget drawn without its children, for the menu engine
+(port/linux/game/menu_engine.h) */
+boolean ui_widget_port_render_node(
+	struct widget_instance *widget,
+	rectangle2d *clip,
+	point2d offset,
+	boolean focus,
+	boolean nifty,
+	point2d *children_offset,
+	boolean *children)
+{
+	ui_widget_port_node.alone = widget;
+	ui_widget_port_node.shown = FALSE;
+	ui_widget_port_node.children = FALSE;
+	widget_instance_render_recursive(widget, clip, offset, focus, nifty);
+	ui_widget_port_node.alone = NULL;
+	*children_offset = ui_widget_port_node.offset;
+	*children = ui_widget_port_node.children;
+	return ui_widget_port_node.shown;
 }
 
 void render_ui_widgets_postgame(
@@ -9758,6 +9816,9 @@ static void widget_instance_process_one_event_recursive(
 		"c:\\halo\\SOURCE\\interface\\ui_widget.c",
 		3067,
 		widget && definition && event && return_widget_deleted);
+	/* port: a screen the port's menu engine runs (port/linux/game/menu_engine.c) */
+	if (!widget->parent && menu_engine_screen_event(widget, event, return_widget_deleted))
+		return;
 	if (event->type == _event_type_button &&
 		event->data.button.index >= _widget_event_dpad_up &&
 		event->data.button.index <= _widget_event_dpad_right)
@@ -10241,6 +10302,20 @@ static void widget_instance_process_one_event_recursive(
 	*return_widget_deleted = widget_deleted;
 
 	return;
+}
+
+/* port: an event processed by this code, for the menu engine
+(port/linux/game/menu_engine.h) */
+void ui_widget_port_process_event(
+	struct widget_instance *widget,
+	struct event_record *event,
+	boolean *deleted)
+{
+	widget_instance_process_one_event_recursive(
+		widget,
+		ui_widget_definition_get(widget->definition_tag_index),
+		event,
+		deleted);
 }
 
 static boolean ui_check_for_pause_game(

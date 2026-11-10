@@ -220,7 +220,15 @@ short halo_stick_dead_range(short stick)
 (input.invert_look_horizontal; the profile's INVERT LOOK is up and down) */
 int halo_look_horizontal_inverted(void)
 {
-	return config_boolean("input.invert_look_horizontal");
+	static unsigned long read_at = (unsigned long)-1;
+	static int inverted;
+
+	if (read_at != config_changes())
+	{
+		read_at = config_changes();
+		inverted = config_boolean("input.invert_look_horizontal");
+	}
+	return inverted;
 }
 
 /* radians of yaw and pitch for the mouse motion since the last call: each

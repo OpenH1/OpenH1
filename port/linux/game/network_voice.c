@@ -903,16 +903,30 @@ static void voice_end_session(
 void network_voice_update(
 	void)
 {
-	char const *chat = config_string("audio.voice_chat");
-	boolean open_mic = chat && !csstrcmp(chat, "open_mic");
-	boolean push_to_talk = chat && !csstrcmp(chat, "push_to_talk");
+	/* (audio.voice_chat and audio.voice_volume, read again as the settings
+	change: config_changes) */
+	static boolean settings_read;
+	static unsigned long settings_read_at;
+	static boolean open_mic, push_to_talk;
+	static float volume;
 	boolean held;
 	unsigned long now = system_milliseconds();
 	float frame[VOICE_FRAME_SAMPLES];
 	short local_machine = network_game_client_get_local_machine_index();
 	long index;
 
-	voice_audio_set_volume((float)PIN(config_real("audio.voice_volume"), 0.0, 2.0));
+	if (!settings_read || settings_read_at != config_changes())
+	{
+		char const *chat;
+
+		settings_read_at = config_changes();
+		settings_read = TRUE;
+		chat = config_string("audio.voice_chat");
+		open_mic = chat && !csstrcmp(chat, "open_mic");
+		push_to_talk = chat && !csstrcmp(chat, "push_to_talk");
+		volume = (float)PIN(config_real("audio.voice_volume"), 0.0, 2.0);
+	}
+	voice_audio_set_volume(volume);
 	/* (a network game: the host's, or one joined) */
 	if (!voice_network_game() || local_machine == NONE)
 	{

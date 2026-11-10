@@ -137,6 +137,12 @@ static int config_boolean(const char *name)
 	return !strcmp(name, "network.online") && online;
 }
 
+/* (moves as the setting changes, as config.toml's count does) */
+static unsigned long config_changes(void)
+{
+	return (unsigned long)online;
+}
+
 static unsigned long system_milliseconds(void)
 {
 	return now;

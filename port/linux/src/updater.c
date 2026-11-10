@@ -1955,11 +1955,12 @@ void updater_start(void)
 the game's menus once the new version is ready to install */
 void updater_poll(SDL_Window *window)
 {
-	const char *test_answer = config_string("debug.update_answer");
+	const char *test_answer;
 
 	(void)window;
 	if (SDL_GetAtomicInt(&updater_state) != _updater_available)
 		return;
+	test_answer = config_string("debug.update_answer");
 	/* (an automated test's answer: debug.update_answer) */
 	if (test_answer[0])
 	{
@@ -2019,10 +2020,11 @@ void updater_poll(SDL_Window *window)
 	char message[400];
 	int answer = 0;
 	int fullscreen;
-	const char *test_answer = config_string("debug.update_answer");
+	const char *test_answer;
 
 	if (SDL_GetAtomicInt(&updater_state) != _updater_available)
 		return;
+	test_answer = config_string("debug.update_answer");
 	/* (an automated test's answer: debug.update_answer) */
 	if (test_answer[0])
 	{

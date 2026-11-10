@@ -941,15 +941,24 @@ static boolean chat_host(
 static byte chat_host_config_flags(
 	void)
 {
-	char const *setting = config_string("network.text_chat");
-	byte flags = 0;
+	/* (read again as the settings change: config_changes) */
+	static unsigned long read_at = (unsigned long)-1;
+	static byte flags;
 
-	/* (in either case: HALO_NET_TEXT_CHAT=OFF is off) */
-	if (setting && !chat_names_equal(setting, "off"))
+	if (read_at != config_changes())
 	{
-		flags |= (byte)FLAG(_chat_config_allowed_bit);
-		if (chat_names_equal(setting, "links"))
-			flags |= (byte)FLAG(_chat_config_links_bit);
+		char const *setting;
+
+		read_at = config_changes();
+		setting = config_string("network.text_chat");
+		flags = 0;
+		/* (in either case: HALO_NET_TEXT_CHAT=OFF is off) */
+		if (setting && !chat_names_equal(setting, "off"))
+		{
+			flags |= (byte)FLAG(_chat_config_allowed_bit);
+			if (chat_names_equal(setting, "links"))
+				flags |= (byte)FLAG(_chat_config_links_bit);
+		}
 	}
 	return flags;
 }

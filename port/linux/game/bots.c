@@ -158,6 +158,7 @@ void update_server_take_bot_action(long absolute_player_index, struct player_act
 const char *config_string(char const *name);
 long config_integer(char const *name);
 int config_boolean(char const *name);
+unsigned long config_changes(void);
 void platform_log(char const *format, ...);
 
 /* ---------- constants */
@@ -859,6 +860,55 @@ static struct
 	long placed_unit[BOTS_MAXIMUM];
 } bots_training;
 
+/* the bots' settings, read again only as the settings change
+(config_changes): the server asks for them every tick, and each bot's
+update for its weapon */
+static struct
+{
+	boolean read;
+	unsigned long read_at;
+	long count;
+	long fill_to;
+	short skill;
+	short teams;
+	boolean make_room;
+	boolean vehicles;
+	boolean bot_player;
+	char weapon[256];
+	char player_weapon[256];
+} bots_settings;
+
+static void bots_settings_read(void)
+{
+	unsigned long changes = config_changes();
+	char const *name;
+	short skill;
+
+	if (bots_settings.read && bots_settings.read_at == changes)
+		return;
+	bots_settings.count = config_integer("bots.count");
+	bots_settings.fill_to = config_integer("bots.fill_to");
+	name = config_string("bots.skill");
+	bots_settings.skill = _bots_skill_normal;
+	for (skill = 0; skill < NUMBER_OF_BOTS_SKILLS; skill++)
+	{
+		if (!strcmp(name, bots_skills[skill].name))
+		{
+			bots_settings.skill = skill;
+			break;
+		}
+	}
+	bots_settings.teams = strcmp(config_string("bots.teams"), "against") ? _bots_teams_even : _bots_teams_against;
+	bots_settings.make_room = config_boolean("bots.make_room") != 0;
+	bots_settings.vehicles = config_boolean("bots.vehicles") != 0;
+	bots_settings.bot_player = config_boolean("debug.bot_player") != 0;
+	snprintf(bots_settings.weapon, sizeof(bots_settings.weapon), "%s", config_string("debug.bots_weapon"));
+	snprintf(bots_settings.player_weapon, sizeof(bots_settings.player_weapon), "%s",
+		config_string("debug.bot_player_weapon"));
+	bots_settings.read_at = changes;
+	bots_settings.read = TRUE;
+}
+
 void bots_set_matchmaking(long count, long fill_to)
 {
 	bots_matchmaking.count = count < 0 ? NONE : count;
@@ -872,28 +922,24 @@ int bots_matchmaking_on(void)
 
 long bots_wanted_count(void)
 {
-	long count = bots_training.on ? BOTS_TRAINING_COUNT :
-		bots_matchmaking.count != NONE ? bots_matchmaking.count : config_integer("bots.count");
+	long count;
 
+	bots_settings_read();
+	count = bots_training.on ? BOTS_TRAINING_COUNT :
+		bots_matchmaking.count != NONE ? bots_matchmaking.count : bots_settings.count;
 	return count < 0 ? 0 : count > BOTS_MAXIMUM ? BOTS_MAXIMUM : count;
 }
 
 short bots_skill(void)
 {
-	char const *name = config_string("bots.skill");
-	short skill;
-
-	for (skill = 0; skill < NUMBER_OF_BOTS_SKILLS; skill++)
-	{
-		if (!strcmp(name, bots_skills[skill].name))
-			return skill;
-	}
-	return _bots_skill_normal;
+	bots_settings_read();
+	return bots_settings.skill;
 }
 
 short bots_teams(void)
 {
-	return strcmp(config_string("bots.teams"), "against") ? _bots_teams_even : _bots_teams_against;
+	bots_settings_read();
+	return bots_settings.teams;
 }
 
 int bots_make_room(void)
@@ -901,13 +947,16 @@ int bots_make_room(void)
 	/* (basic training's four whatever bots.fill_to says) */
 	if (bots_training.on)
 		return FALSE;
-	return bots_matchmaking.count != NONE || config_boolean("bots.make_room") != 0;
+	bots_settings_read();
+	return bots_matchmaking.count != NONE || bots_settings.make_room;
 }
 
 long bots_fill_to(void)
 {
-	long count = bots_matchmaking.count != NONE ? bots_matchmaking.fill_to : config_integer("bots.fill_to");
+	long count;
 
+	bots_settings_read();
+	count = bots_matchmaking.count != NONE ? bots_matchmaking.fill_to : bots_settings.fill_to;
 	return count < 2 ? 2 : count > HALO_PORT_MAXIMUM_NETWORK_PLAYERS ? HALO_PORT_MAXIMUM_NETWORK_PLAYERS : count;
 }
 
@@ -1414,7 +1463,8 @@ debug.bot_player_weapon's for the first player's bot, debug.bots_weapon's
 for the others */
 static char const *bots_weapon_wanted(struct bots_bot const *bot)
 {
-	return config_string(bot->smooth ? "debug.bot_player_weapon" : "debug.bots_weapon");
+	bots_settings_read();
+	return bot->smooth ? bots_settings.player_weapon : bots_settings.weapon;
 }
 
 /* whether the bot found no way to the item a while ago (left be thirty
@@ -7183,6 +7233,7 @@ void bots_update_actions(struct player_action *actions)
 	{
 		return;
 	}
+	bots_settings_read();
 	data_iterator_new(&iterator, player_data);
 	while ((player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
 	{
@@ -7190,7 +7241,7 @@ void bots_update_actions(struct player_action *actions)
 		long absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index);
 		struct bots_bot *bot;
 
-		if (player->local_player_index == 0 && config_boolean("debug.bot_player"))
+		if (player->local_player_index == 0 && bots_settings.bot_player)
 		{
 			bot_index = BOTS_MAXIMUM;
 			bot = &bots_globals.player_bot;
@@ -7215,7 +7266,7 @@ void bots_update_actions(struct player_action *actions)
 				bots_prepare_map();
 			bots_globals.skill = bots_skill();
 			/* (none in basic training: its bots stay where it puts them) */
-			bots_globals.vehicles = !bots_training.on && config_boolean("bots.vehicles") &&
+			bots_globals.vehicles = !bots_training.on && bots_settings.vehicles &&
 				bots_globals.roam_outdoors_count >= 4 &&
 				bots_distance2d(&bots_globals.roam_low, &bots_globals.roam_high) >= 80.0f;
 			bots_globals.tick_searches = 0;
