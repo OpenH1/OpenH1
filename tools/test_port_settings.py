@@ -29,7 +29,7 @@ def _key(entry):
 
 
 def _profile_row(entry):
-    """a row settings_row_profile hides with no profile"""
+    """a row hidden with no profile (its condition in the model: profile)"""
     return (entry[1] or "").startswith("profile.") or _key(entry) in ("name", "color", "profiles")
 
 
@@ -131,9 +131,41 @@ def test_mods_tab():
     links = {_key(entry): entry[2] for entry in page["rows"] if entry[0] != SECTION and not entry[1]}
     assert links["mods"] == f"{port_settings.MODS}/mods_screen"
     assert "mods_folder" in links
+    assert port_settings.SETTINGS_ROW_WHEN["mods"] == "!in_game" and "mods_folder" not in port_settings.SETTINGS_ROW_WHEN
+
+
+def test_row_conditions():
+    """every row's condition in the model (SETTINGS_ROW_WHEN, SETTINGS_ROW_ENABLED; a profile's setting's) names terms
+    that menu_functions.c's settings_condition_term knows, and other rows' keys that are on its page with their
+    values; each condition is written into the model's rows (beside their platforms)"""
     functions = (Path(__file__).resolve().parent.parent / "port/linux/game/menu_functions.c").read_text()
-    hidden = functions[functions.index("settings_in_game_hidden[] ="):][:400]
-    assert '"op_mods"' in hidden and '"op_mods_folder"' not in hidden
+    terms = set(re.findall(r'!strcmp\(name, "(\w+)"\)', function_body(functions, "settings_condition_term")))
+    platforms = set(port_settings.MENU_PLATFORMS)
+    model = (Path(__file__).resolve().parent.parent / "port/assets/menus/model/settings.xml").read_text()
+    for folder, page in PAGES.items():
+        rows = {_key(entry) or re.sub(r"[^a-z0-9]+", "_", entry[0].lower()).strip("_"): entry
+                for entry in page["rows"] if entry[0] != SECTION}
+        for key, entry in rows.items():
+            for condition in (port_settings.SETTINGS_ROW_WHEN.get(key), port_settings.SETTINGS_ROW_ENABLED.get(key)):
+                for term in (condition or "").replace("+", " ").split():
+                    term = term.lstrip("!")
+                    if "=" in term:
+                        other, value = term.split("=", 1)
+                        assert other in rows, (folder, key, term)
+                        assert value in [v for _, v in rows[other][2]], (folder, key, term)
+                    else:
+                        assert term in terms | platforms, (folder, key, term)
+            when = port_settings._settings_row_when(key, entry[1], entry[4])
+            if when:
+                assert f'key="{key}"' in model and f'when="{when}"' in model, (folder, key, when)
+    for key in port_settings.SETTINGS_ROW_WHEN:
+        assert any(key in {_key(entry) for entry in page["rows"] if entry[0] != SECTION} for page in PAGES.values()), key
+
+
+def function_body(source, name):
+    """a C function's body, by its name"""
+    start = source.index(f"static boolean {name}(")
+    return source[start:source.index("\n}\n", start)]
 
 
 def _engine_tabs():

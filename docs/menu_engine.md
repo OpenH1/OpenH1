@@ -69,14 +69,19 @@ reads XML and has no JSON reader.
   (Key Bindings' slot pair), `status` (a value the game writes), `stepped`
   (left and right step a list `menu_functions.c` keeps), `text` (a field typed
   into). Each has its label, help and note: no index + 1.
-- **Conditions** (`when`): an expression of the platforms
+- **Conditions** (`when`, and `enabled`, without which a row is dimmed, its
+  value held): an expression of the platforms
   (`desktop android web vr touch pointer computer`), capabilities found at
-  run time (`hdr`, `vrr`, `refresh_rates`, ...), and states (`in_game`,
-  `profile`, `vr_playing`), with `!`, space for *or*, `+` for *and*. They are
-  evaluated as the screen is laid out, each frame, not as the file is read:
-  a capability found after start-up shows its rows. The predicates
-  `menu_functions.c` runs by row name today move into the model one by one
-  as conditions; until each has, it keeps working (below).
+  run time (`hdr`, `refresh_rates`, `vrr_found`, `vrr_system`, `gyro`,
+  `vr_build`, ...), states (`in_game`, `profile`, `weapon_held`) and another
+  row's value shown (`mode=windowed`), with `!`, space for *or*, `+` for
+  *and*. `tools/port_settings.py` writes them (`SETTINGS_ROW_WHEN`,
+  `SETTINGS_ROW_ENABLED`) beside the rows' platforms, and `menu_functions.c`
+  tests them each frame as a Settings page is shown, on both engines
+  (`settings_rows_conditions`); a platform's term still holds as the file is
+  read (#853 is a later change). The predicates `menu_functions.c` ran by
+  row name on Settings' tabs and pages are gone; the setup screens' (Server
+  Setup's, Game Options', co-op's) wait for those screens' model.
 - **Actions** are the XML's (`open`, `replace`, `back`, `close`, `run`,
   `branch`/`otherwise`, `sound`), on a row, a button or a node.
 
@@ -226,7 +231,10 @@ The steps, in order:
    by the engine (`menu_engine.c`'s `engine_event`, by the definitions'
    flags and handlers, which step 3 moves into the model); the sliders made
    from the model's rows on both engines (`settings_slider_made`; the table
-   `settings_sliders` gone).
+   `settings_sliders` gone); Settings' rows' conditions from the model (the
+   row-name predicates of its tabs and pages gone). `--against <build>`
+   compares a build before such a change, which both engines run, with the
+   one after.
 3. **The look in the model**: bounds, anchors and the look written by the
    generators into the model for every generated screen; the engine reads
    them there, not from widget definitions.

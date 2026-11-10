@@ -1235,8 +1235,8 @@ static long spinner_split(struct halo_menu_widget const *widget, boolean values,
 	/* (Frame Rate & Sync's Variable Refresh: its AUTO shown as what auto
 	does here as the menus are made, AUTO: ON or AUTO: OFF, where the system
 	is asked (sdl_platform.c's platform_vrr_detected); every choice SET BY
-	MACOS on the Mac, where the system sets it: menu_functions.c's
-	vrr_rows_show dims it) */
+	MACOS on the Mac, where the system sets it: its row's condition in the
+	model dims it, menu_functions.c's settings_rows_conditions) */
 	if (!values && widget->setting && !strcmp(widget->setting, "display.vrr"))
 	{
 		int vrr = platform_vrr_detected();
@@ -2654,7 +2654,8 @@ the PC version's pause menu's pitch, so a highlight sits clear of the next
 label. The prompts (B and A) stay that same gap under the last row, and the
 box beside the mission objectives grows with them, and the box is as wide as
 the legends need (pause_campaign_widen). Settings there hides the rows that
-do not work in a game (menu_functions.c's settings_rows_show). */
+do not work in a game (their conditions in the model: menu_functions.c's
+settings_rows_conditions). */
 
 /* the pause box's frames from the third (pause_box_height's of five and six
 rows), and the mission objectives' box's, are the stock 159 grown by the 36
