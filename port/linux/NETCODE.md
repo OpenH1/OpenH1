@@ -1644,7 +1644,11 @@ as any other, with these differences, all on the host's side:
   next players to join balance the teams). The host waits for no player of
   its own to precache, and a client's player that quits the game does not
   end the host's (`network_client_manager.c`: only a local player's quit
-  leaves).
+  leaves). The distributed netcode's sends to the clients pass machine 0
+  over (`network_distributed_server_machine_is_own`): with no local player
+  it was taken for a client, and was sent every client's share of the
+  ticks' messages over the host's own connection (in a 40-player game at 120,
+  a ninth of the host's datagrams' bytes: 0.80 MB/s, 0.65 without).
 - **No ticks of its own player.** The host's own action queue may hold no
   action (`player_queues_new.c`), as a game with no local player has none.
 - **The kind of game.** A dedicated server hosts Legacy games unless its

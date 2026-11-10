@@ -110,6 +110,7 @@ boolean network_distributed_server_send_to_all_reliably(void *message, word size
 boolean network_distributed_server_send_to_machine(long machine_index, void *message, word size);
 boolean network_distributed_server_send_to_machine_reliably(long machine_index, void *message, word size);
 short network_distributed_server_machines(long *machine_indices, short maximum);
+boolean network_distributed_server_machine_is_own(long machine_index);
 /* players.c's */
 void network_player_attach_unit(long player_index, long unit_index);
 void network_player_detach_unit(long player_index);
@@ -1812,7 +1813,8 @@ short distributed_client_machines(
 		{
 			if (distributed_machines.indices[index] >= 0 &&
 				distributed_machines.indices[index] < HALO_PORT_MAXIMUM_NETWORK_MACHINES &&
-				!distributed_machine_is_local(distributed_machines.indices[index]))
+				!distributed_machine_is_local(distributed_machines.indices[index]) &&
+				!network_distributed_server_machine_is_own(distributed_machines.indices[index]))
 			{
 				distributed_machines.indices[distributed_machines.count++] = distributed_machines.indices[index];
 			}
