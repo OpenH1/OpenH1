@@ -737,8 +737,9 @@ def _play_openh1_game(machines, rate, opence_client, shoot):
     port = _free_port()
     mode = f"openh1_{rate}"
     server = machines("server")
-    # (in config.toml, not its environment variable, which would pin it: sv_set changes it below)
-    (server.folder / "bin" / "config.toml").write_text(f'[server]\ngame_mode = "{mode}"\n')
+    # (in config.toml, not its environment variable, which would pin it: sv_set changes it below; a mixed game,
+    # network.allow_opence being off by default)
+    (server.folder / "bin" / "config.toml").write_text(f'[server]\ngame_mode = "{mode}"\n\n[network]\nallow_opence = true\n')
     server.start(["--server"], **_server_settings(
         port, HALO_SERVER_ROTATION="bloodgulch:slayer+score=50", HALO_NETWORK_TEST="log",
         HALO_NETWORK_TEST_SHOOT=shoot))
@@ -867,14 +868,13 @@ def test_openh1_tick_game(machines, rate):
 
 
 def test_openh1_game_closed_to_opence(machines):
-    """an OpenH1 game that OpenCE players do not join (network.allow_opence false) is advertised with the OpenH1
+    """an OpenH1 game that OpenCE players do not join (network.allow_opence false, its default) is advertised with the OpenH1
     protocol version and its top bit (0x8000), which OpenCE takes for a newer version and does not list, and the
     status says so; sv_set network.allow_opence true opens it to them at once, advertised as a mixed game"""
     _needs_game("bloodgulch")
     port = _free_port()
     server = machines("server")
-    (server.folder / "bin" / "config.toml").write_text('[server]\ngame_mode = "openh1_60"\n\n'
-                                                       '[network]\nallow_opence = false\n')
+    (server.folder / "bin" / "config.toml").write_text('[server]\ngame_mode = "openh1_60"\n')
     # (and a player host's network.sim_rate, which the server leaves aside, saying so)
     server.start(["--server"], **_server_settings(port, HALO_SERVER_ROTATION="bloodgulch:slayer", HALO_NET_SIM_RATE=30))
     api = Api(port)
