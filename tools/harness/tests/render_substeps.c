@@ -828,18 +828,28 @@ frame's time: the observer a frame leaves is the camera at the frame's moment, a
 tick). Frames come at any part of a tick, several in a tick or one every tick and a half; the camera is drawn where
 it was a tick before the frame's moment, as the objects are, at every frame rate (#805: blended from snapshots taken
 as if each were the tick's, it lurched ahead and back at each tick by the part of a tick its first frame came) */
+static double scripted_speed = 0.3;
+/* a cut to another camera point at this moment (0: none) */
+static double scripted_cut;
+
 static real scripted_path(double moment)
 {
-	return (real)(0.3 * moment + 0.001 * moment * moment);
+	return (real)(scripted_speed * moment + 0.001 * moment * moment +
+		(scripted_cut > 0.0 && moment >= scripted_cut ? 100.0 : 0.0));
 }
 
-static void scripted_camera_case(short substep_count)
+/* ... a fast one (d40's, c40's: nearly a cut's distance a tick), whose snapshots are often more than a cut's distance
+apart (a frame more than a tick after the last): drawn a tick behind as the slow one, not from the latest snapshot a
+tick ahead at random ticks (#805); and a cut to another point still cut, not glided through */
+static void scripted_camera_case(short substep_count, double speed, double cut)
 {
 	double moment = 0.0;
 	long frame;
 
 	world_new(substep_count);
 	fake_perspective = _director_perspective_scripted;
+	scripted_speed = speed;
+	scripted_cut = cut;
 	for (frame = 0; frame < 300; frame++)
 	{
 		struct observer_result observer;
@@ -865,13 +875,98 @@ static void scripted_camera_case(short substep_count)
 			render_interpolation_frame_end();
 			continue;
 		}
+		if (cut > 0.0)
+		{
+			/* (either side of the cut, never between) */
+			real before = (real)(speed * drawn_moment + 0.001 * drawn_moment * drawn_moment);
+
+			CHECK(fabsf(camera->position.x - before) < 2.0f * (real)speed + 0.5f ||
+				fabsf(camera->position.x - before - 100.0f) < 2.0f * (real)speed + 0.5f,
+				"frame %ld (moment %.3f): the camera %f between the cut's two points (%f, %f)", frame, moment,
+				camera->position.x, before, before + 100.0f);
+			/* (from the cut's frame until a tick past the snapshot after it: drawn from either point) */
+			if (moment >= cut && drawn_moment < cut + 1.7)
+			{
+				render_interpolation_frame_end();
+				continue;
+			}
+		}
 		error = camera->position.x - scripted_path(drawn_moment);
 		CHECK(fabsf(error) < 2e-3f, "frame %ld (moment %.3f): the camera %f from where it was a tick before (%f): "
 			"%.2f of a tick's move", frame, moment, camera->position.x, scripted_path(drawn_moment),
-			error / 0.3f);
+			error / (real)speed);
 		CHECK(camera->field_of_view == 1.2f, "frame %ld: the field of view %f", frame, camera->field_of_view);
 		render_interpolation_frame_end();
 	}
+}
+
+/* An object whose part an animation carries away from its root faster each tick (a30's lifepod's body, dropping from
+its root): further in a tick than a limb moves, but steadily, so blended between the ticks as any object, not drawn
+stepping from tick to tick as a new pose each tick (#805); a part that jumps at once from rest is a new pose still,
+drawn as the latest snapshot has it */
+#define STEADY_POSED_TICK 20
+
+static real steady_part_offset(long tick)
+{
+	return (real)(0.035 * tick * (tick + 1));
+}
+
+static void steady_part_substep(long tick, short substep_index)
+{
+	long at = absolute(BIPED);
+
+	if (substep_index != -1)
+		return;
+	node_offsets[at][2].k = 0.2f + steady_part_offset(tick);
+	node_offsets[at][1].i = tick >= STEADY_POSED_TICK ? 1.0f : 0.0f;
+}
+
+static void steady_part_case(void)
+{
+	real_point3d snapshots[MAXIMUM_TICKS][MAXIMUM_NODES];
+	long frame;
+	long recorded = -1;
+
+	world_new(1);
+	case_substep = steady_part_substep;
+	for (frame = 0; frame < 4 * 34; frame++)
+	{
+		real_matrix4x3 const *drawn;
+		real_point3d expected;
+		real fraction;
+		short node_index;
+
+		if (frame % 4 == 0)
+			world_substep();
+		if (recorded != ticks_ended)
+		{
+			for (node_index = 0; node_index < MAXIMUM_NODES; node_index++)
+				snapshots[ticks_ended][node_index] = world_nodes[absolute(BIPED)][node_index].position;
+			recorded = ticks_ended;
+		}
+		if (ticks_ended < 3)
+			continue;
+		fraction = 0.1f + 0.25f * (real)(frame % 4);
+		frame_begin(fraction);
+		drawn = render_interpolation_object_node_matrices(BIPED);
+		CHECK(drawn, "frame %ld: not drawn between the ticks", frame);
+		for (node_index = 1; node_index < MAXIMUM_NODES; node_index++)
+		{
+			if (ticks_ended == STEADY_POSED_TICK)
+				expected = snapshots[ticks_ended][node_index];
+			else
+				expected = point_between(&snapshots[ticks_ended - 1][node_index], &snapshots[ticks_ended][node_index],
+					fraction);
+			CHECK(distance(&drawn[node_index].position, &expected) < 1e-4f,
+				"tick %ld, %.2f of a tick: node %d drawn %f from %s (its part moved %f in the tick)", ticks_ended,
+				fraction, node_index, distance(&drawn[node_index].position, &expected),
+				ticks_ended == STEADY_POSED_TICK ? "the new pose" : "the line between the ticks",
+				steady_part_offset(ticks_ended) - steady_part_offset(ticks_ended - 1));
+		}
+		render_interpolation_frame_end();
+	}
+	CHECK(steady_part_offset(33) - steady_part_offset(32) > 2.0f,
+		"the part never moved far in a tick: the case shows nothing");
 }
 
 int main(int argc, char **argv)
@@ -899,9 +994,17 @@ int main(int argc, char **argv)
 	else if (!strcmp(argv[1], "respawn_120"))
 		respawn_case(4);
 	else if (!strcmp(argv[1], "scripted_camera"))
-		scripted_camera_case(1);
+		scripted_camera_case(1, 0.3, 0.0);
 	else if (!strcmp(argv[1], "scripted_camera_120"))
-		scripted_camera_case(4);
+		scripted_camera_case(4, 0.3, 0.0);
+	else if (!strcmp(argv[1], "scripted_camera_fast"))
+		scripted_camera_case(1, 2.9, 0.0);
+	else if (!strcmp(argv[1], "scripted_camera_fast_120"))
+		scripted_camera_case(4, 2.9, 0.0);
+	else if (!strcmp(argv[1], "scripted_camera_cut"))
+		scripted_camera_case(1, 2.9, 61.3);
+	else if (!strcmp(argv[1], "steady_part"))
+		steady_part_case();
 	else if (!strcmp(argv[1], "vr_release"))
 		case_vr_release();
 	else if (!strcmp(argv[1], "lead"))
