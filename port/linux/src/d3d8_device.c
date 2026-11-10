@@ -4169,26 +4169,55 @@ static void unread_stage_fields_clear(DWORD *state, DWORD texture_modes)
 }
 
 /* the combiners' part of a draw's pixel shader key, from the render states
-and the texture modes: most draws share them with the draw before, and so
-share the key's part (the same inputs, the same part) */
+(less the constants, which are uniforms) and the texture modes: a frame's
+draws use a few dozen pixel shaders, interleaved, so the parts already made
+are kept, each under its inputs (the same inputs, the same part) */
+#define COMBINER_PARTS 128
+
+static struct combiner_part
+{
+	BOOL made;
+	DWORD texture_modes;
+	DWORD inputs[D3DRS_PS_MAX];
+	DWORD state[D3DRS_PS_MAX];
+} combiner_parts[COMBINER_PARTS];
+
+static BOOL combiner_part_found(const struct combiner_part *part, const DWORD *inputs, DWORD texture_modes)
+{
+	return part->made && part->texture_modes == texture_modes && words_equal(part->inputs, inputs, sizeof(part->inputs));
+}
+
 static void combiner_state_describe(DWORD *state, DWORD texture_modes)
 {
-	static DWORD last_inputs[D3DRS_PS_MAX], last_state[D3DRS_PS_MAX];
-	static DWORD last_texture_modes;
-	static BOOL described;
-	int stage;
+	static struct combiner_part *last;
+	struct combiner_part *part;
+	DWORD hash = texture_modes;
+	int stage, index;
 
-	if (described && texture_modes == last_texture_modes &&
-		words_equal(D3D__RenderState, last_inputs, sizeof(last_inputs)))
-	{
-		memcpy(state, last_state, sizeof(last_state));
-		return;
-	}
 	memcpy(state, D3D__RenderState, D3DRS_PS_MAX * sizeof(DWORD));
 	/* constants are uniforms, not part of the program */
 	memset(&state[D3DRS_PSCONSTANT0_0], 0, 16 * sizeof(DWORD));
 	state[D3DRS_PSFINALCOMBINERCONSTANT0] = 0;
 	state[D3DRS_PSFINALCOMBINERCONSTANT1] = 0;
+	/* (most often the draw before's; else found by a sum of the inputs,
+	each word weighted apart, which the compiler sums several at once) */
+	if (last && combiner_part_found(last, state, texture_modes))
+	{
+		memcpy(state, last->state, sizeof(last->state));
+		return;
+	}
+	for (index = 0; index < D3DRS_PS_MAX; index++)
+		hash += state[index] * (2u * (DWORD)index + 0x9e3779b1u);
+	part = &combiner_parts[(hash ^ (hash >> 15) ^ (hash >> 23)) % COMBINER_PARTS];
+	last = part;
+	if (combiner_part_found(part, state, texture_modes))
+	{
+		memcpy(state, part->state, sizeof(part->state));
+		return;
+	}
+	part->made = TRUE;
+	part->texture_modes = texture_modes;
+	memcpy(part->inputs, state, sizeof(part->inputs));
 	/* nor are the stages past the combiner count (what earlier draws left
 	in them): one program, one key */
 	for (stage = (int)(D3D__RenderState[D3DRS_PSCOMBINERCOUNT] & 0xff); stage < 8; stage++)
@@ -4200,10 +4229,7 @@ static void combiner_state_describe(DWORD *state, DWORD texture_modes)
 	}
 	dead_portions_clear(state);
 	unread_stage_fields_clear(state, texture_modes);
-	memcpy(last_inputs, D3D__RenderState, sizeof(last_inputs));
-	memcpy(last_state, state, sizeof(last_state));
-	last_texture_modes = texture_modes;
-	described = TRUE;
+	memcpy(part->state, state, sizeof(part->state));
 }
 
 /* what the settings make of a draw's pipeline (xgpu_draw_derive), in it */
