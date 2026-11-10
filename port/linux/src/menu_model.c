@@ -275,7 +275,7 @@ static void model_row(struct model_reader *reader, char const *element, XML_Char
 	{
 		{ "kind", &row.kind }, { "key", &row.key }, { "setting", &row.setting }, { "label", &row.label },
 		{ "title", &row.title }, { "when", &row.when }, { "open", &row.open }, { "run", &row.run },
-		{ "help", &row.help },
+		{ "help", &row.help }, { "enabled", &row.enabled },
 		{ "same_place", NULL, NULL, NULL, &row.same_place }, { "not_in_vr", NULL, NULL, NULL, &row.not_in_vr },
 		{ "named", NULL, NULL, NULL, &row.named }, { "status", NULL, NULL, NULL, &row.status },
 		{ "least", NULL, NULL, &row.least }, { "most", NULL, NULL, &row.most }, { "step", NULL, NULL, &row.step },

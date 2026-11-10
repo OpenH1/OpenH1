@@ -394,16 +394,11 @@ offsets of the weapon the player who opened Settings holds, by its tag's
 path (config.toml's [display.viewmodel_weapon."<path>"], view_fov.c), as
 settings named "weapon.x", "weapon.y", "weapon.z", "weapon.pitch",
 "weapon.yaw" and "weapon.roll"; shown in a game, with a weapon held
-(viewmodel_weapon_rows_show) */
+(the model's weapon_held: settings_rows_conditions) */
 
 #define SETTINGS_WEAPON_PREFIX "weapon."
 
 static char const *const settings_weapon_keys[CONFIG_WEAPON_VALUES] = { "x", "y", "z", "pitch", "yaw", "roll" };
-static char const *const settings_weapon_rows[CONFIG_WEAPON_VALUES] =
-{
-	"op_viewmodel_weapon_x", "op_viewmodel_weapon_y", "op_viewmodel_weapon_z", "op_viewmodel_weapon_pitch",
-	"op_viewmodel_weapon_yaw", "op_viewmodel_weapon_roll"
-};
 /* the weapon the rows are for (the page's last frame's); "" for none */
 static char settings_weapon[256];
 
@@ -1767,140 +1762,11 @@ static void settings_help(struct widget_instance *list)
 	help->parameters.text_box.string_list_index = index;
 }
 
-/* Video Setup's Resolution and Window Size, in the one row's place
-(tools/port_settings.py): the one the display mode shown uses (Window Size
-the window's, Resolution fullscreen's and borderless's) is shown, and the
-list passes over the other, which takes no focus while it is hidden */
-static void video_rows_show(struct widget_instance *list)
-{
-	struct widget_instance *mode = named(list, "mode_spinner", 0);
-	struct widget_instance *resolution = named(list, "op_resolution", 0);
-	struct widget_instance *window_size = named(list, "op_window_size", 0);
-	struct pc_menu_setting *setting = mode ? pc_menu_setting_get(mode->definition_tag_index) : NULL;
-	struct widget_instance *shown, *child;
-	short index;
-
-	if (!setting || !resolution || !window_size)
-		return;
-	index = mode->parameters.list.selected_index;
-	shown = index >= 0 && index < setting->value_count && !strcmp(setting->values[index], "windowed") ?
-		window_size : resolution;
-	resolution->visible = shown == resolution;
-	window_size->visible = shown == window_size;
-	/* (the focus on the one hidden goes to the one shown: Defaults can
-	change the mode while it has it) */
-	if (list->focused_child == (shown == resolution ? window_size : resolution))
-	{
-		for (index = 0, child = list->child; child && child != shown; child = child->next)
-			index++;
-		list->focused_child = shown;
-		list->parameters.list.selected_index = index;
-	}
-}
-
-/* Video Setup's Refresh Rate, shown while Window shows FULLSCREEN where
-fullscreen can set the display's rate (sdl_platform.c); the rows below close
-the gap (settings_rows_pack), and a focus on it hidden goes to the first row
-shown (settings_focus_shown) */
-static void refresh_rate_row_show(struct widget_instance *list)
-{
-	struct widget_instance *mode = named(list, "mode_spinner", 0);
-	struct widget_instance *row = named(list, "op_refresh_rate", 0);
-	struct pc_menu_setting *setting = mode ? pc_menu_setting_get(mode->definition_tag_index) : NULL;
-	short index;
-
-	if (!row)
-		return;
-	index = mode ? mode->parameters.list.selected_index : NONE;
-	row->visible = setting && index >= 0 && index < setting->value_count &&
-		!strcmp(setting->values[index], "fullscreen") && platform_refresh_rates_settable();
-}
-
-/* Interface's button style, shown while the HUD shown is the high-res one
-(Defaults too); the rows below close the gap (settings_rows_pack) */
-static void hud_button_style_row_show(struct widget_instance *list)
-{
-	struct widget_instance *hud = named(list, "high_res_hud_spinner", 0);
-	struct widget_instance *row = named(list, "op_hud_button_style", 0);
-	struct pc_menu_setting *setting = hud ? pc_menu_setting_get(hud->definition_tag_index) : NULL;
-	short index;
-
-	if (!setting || !row)
-		return;
-	index = hud->parameters.list.selected_index;
-	row->visible = index >= 0 && index < setting->value_count && !strcmp(setting->values[index], "true");
-}
-
-/* Mouse's Menu Cursor (display.menu_cursor), hidden while VR Setup's row is
-there (the game in the headset, whose menus have no desktop pointer): that
-row takes its room on the page (tools/port_settings.py) */
-static void menu_cursor_row_show(struct widget_instance *list)
-{
-	struct widget_instance *row = named(list, "op_menu_cursor", 0);
-
-	if (row)
-		row->visible = !named(list, "op_vr_setup", 0);
-}
-
-/* Brightness's Gamma (display.gamma), hidden in the VR build, whose frames
-are never curved (d3d8_device.c's gamma_send) */
-static void gamma_row_show(struct widget_instance *list)
-{
-#ifdef HALO_VR
-	struct widget_instance *row = named(list, "op_gamma", 0);
-
-	if (row)
-		row->visible = FALSE;
-#else
-	(void)list;
-#endif
-}
-
-/* First Person's Panini Projection (display.panini, port/linux/game/panini.c)
-and Panini Vertical: none in the VR build, which never draws through it */
-static void panini_rows_show(struct widget_instance *list)
-{
-#ifdef HALO_VR
-	static char const *const rows[] = { "op_panini", "op_panini_vertical" };
-	short index;
-
-	for (index = 0; index < (short)NUMBEROF(rows); index++)
-	{
-		struct widget_instance *row = named(list, rows[index], 0);
-
-		if (row)
-			row->visible = FALSE;
-	}
-#else
-	(void)list;
-#endif
-}
-
-/* Frame Rate & Sync's Max FPS, shown while VSync shows OFF (Defaults too):
-with vsync on, the display paces the frames and the limit does nothing;
-the rows below close the gap (settings_rows_pack) */
-static void max_fps_row_show(struct widget_instance *list)
-{
-	struct widget_instance *vsync = named(list, "vsync_spinner", 0);
-	struct widget_instance *row = named(list, "op_max_fps", 0);
-	struct pc_menu_setting *setting = vsync ? pc_menu_setting_get(vsync->definition_tag_index) : NULL;
-	short index;
-
-	if (!setting || !row)
-		return;
-	index = vsync->parameters.list.selected_index;
-	row->visible = index >= 0 && index < setting->value_count && !strcmp(setting->values[index], "false");
-}
-
-/* Frame Rate & Sync's Variable Refresh (display.vrr), shown on every build
-as what it does there (sdl_platform.c's platform_vrr_detected, menu_tags.c's
-spinner_split: AUTO: ON or AUTO: OFF where the system is asked); dimmed on
-the Mac, whose Metal and ProMotion set it (SET BY MACOS). Its VRR Frame Cap
-(display.vrr_cap_margin) dimmed while VRR is not on: OFF, AUTO where the
-system says none, and the Mac. Low Latency (display.low_latency) hidden on
-the Mac, whose frames its display paces already. Dimmed as Tick Rate's
-locked row is (sim_rate_row_show): at 0.4, its value held; but the row keeps
-the cursor, so that its panel says why */
+/* a row dimmed, as a row whose model's enabled does not hold is
+(settings_rows_conditions: Frame Rate & Sync's Variable Refresh on the Mac,
+whose Metal and ProMotion set it, SET BY MACOS; its VRR Frame Cap while VRR
+is not on), and as Tick Rate's locked row is (sim_rate_row_show): at 0.4,
+its value held; but the row keeps the cursor, so that its panel says why */
 int platform_vrr_detected(void);
 
 static void row_dim(struct widget_instance *row, struct widget_instance *spinner, boolean dim)
@@ -1919,32 +1785,6 @@ static void row_dim(struct widget_instance *row, struct widget_instance *spinner
 		return;
 	spinner->disabled = dim;
 	row->alpha_modifier = dim ? 0.4f : 1.0f;
-}
-
-static void vrr_rows_show(struct widget_instance *list)
-{
-	struct widget_instance *vrr = named(list, "vrr_spinner", 0);
-	struct pc_menu_setting *setting = vrr ? pc_menu_setting_get(vrr->definition_tag_index) : NULL;
-	int detected;
-	boolean on;
-	short index;
-
-	if (!setting)
-		return;
-	detected = platform_vrr_detected();
-	index = vrr->parameters.list.selected_index;
-	on = index >= 0 && index < setting->value_count && (!strcmp(setting->values[index], "on") ||
-		(!strcmp(setting->values[index], "auto") && detected == 1 /* PLATFORM_VRR_FOUND */));
-	if (detected == 3 /* PLATFORM_VRR_SYSTEM */)
-	{
-		struct widget_instance *latency = named(list, "op_low_latency", 0);
-
-		on = FALSE;
-		row_dim(named(list, "op_vrr", 0), vrr, TRUE);
-		if (latency)
-			latency->visible = FALSE;
-	}
-	row_dim(named(list, "op_vrr_cap_margin", 0), named(list, "vrr_cap_margin_spinner", 0), !on);
 }
 
 /* a setting's value as Settings shows it: the change kept, else
@@ -2075,9 +1915,10 @@ list and the pointer pass over it, and OK leaves the setting as it was
 (setting_changed_save passes over a disabled spinner). Unlocked, it shows
 the setting's value again */
 /* Weapon Position's THIS WEAPON rows and RESET THIS WEAPON, for the weapon
-the player who opened Settings holds: shown in a game, with one held, its
-name in RESET's value (its tag's last name: "ASSAULT RIFLE"); none on the
-main menu, where the panel says how to set them */
+the player who opened Settings holds: shown in a game, with one held (the
+model's weapon_held: settings_rows_conditions), its name in RESET's value
+(its tag's last name: "ASSAULT RIFLE"); none on the main menu, where the
+panel says how to set them */
 boolean viewmodel_held_weapon(short local_player_index, char *path, unsigned int size);
 static void discord_text_set(struct widget_instance *text_box, char const *text);
 
@@ -2085,7 +1926,7 @@ static void viewmodel_weapon_rows_show(struct widget_instance *list)
 {
 	struct widget_instance *reset = named(list, "op_viewmodel_weapon_reset", 0);
 	struct widget_instance *value;
-	short local_player_index, row;
+	short local_player_index;
 	char path[sizeof(settings_weapon)];
 	boolean held;
 
@@ -2096,14 +1937,6 @@ static void viewmodel_weapon_rows_show(struct widget_instance *list)
 		local_player_index = 0;
 	held = !main_menu_is_active() && viewmodel_held_weapon(local_player_index, path, sizeof(path));
 	snprintf(settings_weapon, sizeof(settings_weapon), "%s", held ? path : "");
-	for (row = 0; row < CONFIG_WEAPON_VALUES; row++)
-	{
-		struct widget_instance *widget = named(list, settings_weapon_rows[row], 0);
-
-		if (widget)
-			widget->visible = held;
-	}
-	reset->visible = held;
 	value = named(list, "viewmodel_weapon_reset_value", 0);
 	if (value && held)
 	{
@@ -2121,9 +1954,9 @@ static void viewmodel_weapon_rows_show(struct widget_instance *list)
 
 /* Gyro & Flick Stick's rows (port/linux/src/xinput_sdl.c): GYRO says whether
 a controller with a gyroscope is connected (or only Steam Input's virtual
-ones, which pass none), and the gyroscope's rows are shown only then; Gyro
-Button's only while Gyro Aiming holds it (Hold to Aim, Hold to Pause);
-CALIBRATE's value says it measures, then that it is done */
+ones, which pass none), and the gyroscope's rows are shown only then (the
+model's conditions: settings_rows_conditions); CALIBRATE's value says it
+measures, then that it is done */
 int halo_gyro_found(void);
 int halo_gyro_calibrating(void);
 void halo_gyro_calibrate(void);
@@ -2131,17 +1964,8 @@ static boolean gyro_calibrated;
 
 static void gyro_rows_show(struct widget_instance *list)
 {
-	static char const *const rows[] =
-	{
-		"op_gyro_aim", "op_gyro_button", "op_gyro_sensitivity", "op_gyro_vertical_sensitivity", "op_gyro_space",
-		"op_gyro_smoothing", "op_gyro_calibrate",
-	};
 	struct widget_instance *found = named(list, "op_gyro_found", 0);
-	struct widget_instance *mode = named(list, "gyro_aim_spinner", 0);
-	struct widget_instance *button = named(list, "op_gyro_button", 0);
 	struct widget_instance *value;
-	struct pc_menu_setting *setting = mode ? pc_menu_setting_get(mode->definition_tag_index) : NULL;
-	short index;
 	int gyro;
 
 	if (!found)
@@ -2149,19 +1973,6 @@ static void gyro_rows_show(struct widget_instance *list)
 	gyro = halo_gyro_found();
 	if ((value = named(list, "gyro_found_value", 0)) != NULL)
 		discord_text_set(value, gyro == 2 ? "CONNECTED" : gyro == 1 ? "STEAM INPUT HAS IT" : "NONE CONNECTED");
-	for (index = 0; index < (short)NUMBEROF(rows); index++)
-	{
-		struct widget_instance *row = named(list, rows[index], 0);
-
-		if (row)
-			row->visible = gyro == 2;
-	}
-	if (button && gyro == 2)
-	{
-		index = mode ? mode->parameters.list.selected_index : NONE;
-		button->visible = setting && index >= 0 && index < setting->value_count &&
-			(!strcmp(setting->values[index], "hold") || !strcmp(setting->values[index], "pause"));
-	}
 	if (halo_gyro_calibrating())
 		gyro_calibrated = TRUE;
 	if ((value = named(list, "gyro_calibrate_value", 0)) != NULL)
@@ -2241,7 +2052,8 @@ kept, as an OK does, and the PROFILES tab, shown again, edits player 1's
 profile then: the one chosen there, made or left after a delete.
 
 "port settings page" (a tab's or a page's list, each frame) shows the rows
-that are for this game (settings_rows_show), packs them at the steps
+that are for this game (their conditions in the model:
+settings_rows_conditions), packs them at the steps
 tools/port_settings.py laid them out at, notes the changes, keeps the tabs on
 the one shown, and fills in the panel for the row chosen (settings_panel_show):
 its name, its value in large type, and its words wrapped to the panel. */
@@ -2282,16 +2094,6 @@ static struct
 	{ "interface_settings", "interface_settings_screen" },
 	{ "profile_settings", "profile_settings_screen" },
 	{ "mods_settings", "mods_settings_screen" },
-};
-
-/* the rows hidden in a game (not on the main menu): those that would drop
-it or are the main menu's (internet play, the router, the clipboard, the
-updates, the profiles, the mods), and those whose screens are ui.map's (the
-name's keyboard, the colours' pictures) or make a profile */
-static char const *const settings_in_game_hidden[] =
-{
-	"op_online", "op_allow_upnp", "op_join_from_clipboard", "op_auto", "op_name", "op_color", "op_create_profile",
-	"op_profiles", "op_mods",
 };
 
 static struct
@@ -2505,52 +2307,168 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 	return TRUE;
 }
 
-/* whether the row sets one of the profile's settings ("profile.<field>"),
-or opens what is the profile's (its name, its colour, the other profiles) */
-static boolean settings_row_profile(struct widget_instance *row)
+/* a term of a row's condition in the model (tools/port_settings.py's
+SETTINGS_ROW_WHEN and SETTINGS_ROW_ENABLED): a platform's, "<key>=<value>"
+(another row's value shown, its spinner's), or a state or a capability of
+the game's */
+static boolean settings_condition_term(struct widget_instance *list, char const *term, unsigned long length)
 {
-	struct widget_instance *child;
+	char name[64];
+	char const *equals = memchr(term, '=', length);
+	int platform = halo_menus_platform(term, length);
 
-	if (!strcmp(row->name, "op_name") || !strcmp(row->name, "op_color") || !strcmp(row->name, "op_profiles"))
-		return TRUE;
-	for (child = row->child; child; child = child->next)
+	if (platform >= 0)
+		return platform != 0;
+	if (equals)
 	{
-		struct pc_menu_setting *setting = child->type == 2 && !spinner_item(child) ?
-			pc_menu_setting_get(child->definition_tag_index) : NULL;
+		unsigned long key = (unsigned long)(equals - term);
+		struct widget_instance *spinner;
+		struct pc_menu_setting *setting;
+		short index;
 
-		if (setting && !strncmp(setting->setting, "profile.", 8))
+		snprintf(name, sizeof(name), "%.*s_spinner", (int)key, term);
+		spinner = named(list, name, 0);
+		setting = spinner ? pc_menu_setting_get(spinner->definition_tag_index) : NULL;
+		index = spinner ? spinner->parameters.list.selected_index : NONE;
+		return setting && index >= 0 && index < setting->value_count &&
+			strlen(setting->values[index]) == length - key - 1 &&
+			!strncmp(setting->values[index], equals + 1, length - key - 1);
+	}
+	snprintf(name, sizeof(name), "%.*s", (int)length, term);
+	if (!strcmp(name, "in_game"))
+		return !main_menu_is_active();
+	if (!strcmp(name, "profile"))
+		return player_ui_get_edit_player_profile() != NULL;
+	if (!strcmp(name, "vr_build"))
+	{
+#ifdef HALO_VR
+		return TRUE;
+#else
+		return FALSE;
+#endif
+	}
+	if (!strcmp(name, "refresh_rates"))
+		return platform_refresh_rates_settable() != 0;
+	if (!strcmp(name, "vrr_found"))
+		return platform_vrr_detected() == 1 /* PLATFORM_VRR_FOUND */;
+	if (!strcmp(name, "vrr_system"))
+		return platform_vrr_detected() == 3 /* PLATFORM_VRR_SYSTEM */;
+	if (!strcmp(name, "gyro"))
+		return halo_gyro_found() == 2;
+	if (!strcmp(name, "weapon_held"))
+	{
+		char path[sizeof(settings_weapon)];
+		short local_player_index =
+			player_ui_get_single_player_local_player_from_controller(controller_of(screen_of(list)));
+
+		return !main_menu_is_active() &&
+			viewmodel_held_weapon(local_player_index == NONE ? 0 : local_player_index, path, sizeof(path));
+	}
+	platform_log("menus: a row's condition names %s, which is no term of one", name);
+	return FALSE;
+}
+
+/* a row's condition: its terms, "!" before one not, "+" between those that
+all hold, a space between those of which one does */
+static boolean settings_condition(struct widget_instance *list, char const *condition)
+{
+	while (*condition)
+	{
+		unsigned long length = (unsigned long)strcspn(condition, " ");
+		char const *end = condition + length;
+		boolean all = length > 0;
+
+		while (condition < end)
+		{
+			unsigned long term = (unsigned long)strcspn(condition, "+ ");
+			boolean not = *condition == '!';
+
+			if (settings_condition_term(list, condition + not, term - not) == not)
+				all = FALSE;
+			condition += term;
+			if (*condition == '+')
+				condition++;
+		}
+		if (all)
 			return TRUE;
+		while (*condition == ' ')
+			condition++;
 	}
 	return FALSE;
 }
 
-/* the rows that are for this game: in a game, not those of
-settings_in_game_hidden; with no profile, not the profile's, but CREATE
-PROFILE (on the main menu) */
-static void settings_rows_show(struct widget_instance *list)
+/* whether a condition has a term that is not a platform's (one the game
+tests as the page is shown: a platform's holds as the files are read) */
+static boolean settings_condition_runs(char const *condition)
 {
-	boolean in_game = !main_menu_is_active();
-	boolean profile = player_ui_get_edit_player_profile() != NULL;
-	struct widget_instance *row;
-
-	for (row = list->child; row; row = row->next)
+	while (*condition)
 	{
-		short index;
+		unsigned long length = (unsigned long)strcspn(condition, "+ ");
 
-		if (!row->name || strncmp(row->name, "op_", 3))
+		if (*condition == '!' || (length && halo_menus_platform(condition, length) < 0))
+			return TRUE;
+		condition += length;
+		condition += strspn(condition, "+ ");
+	}
+	return FALSE;
+}
+
+/* the rows' conditions in the model (docs/menu_engine.md), as a page is
+shown: each row shown while its when holds, and dimmed while its enabled
+does not; a focus on a row hidden goes to the row in its place (Window
+Size's and Resolution's), else to the first shown (settings_focus_shown) */
+static void settings_rows_conditions(struct widget_instance *list)
+{
+	struct halo_menu_model_screen const *screen = menu_engine_model_screen_of(list);
+	struct halo_menu_model const *model = menu_engine_model();
+	struct widget_instance *focused = list->focused_child;
+	struct widget_instance *child;
+	long index;
+
+	for (index = 0; screen && model && index < screen->row_count; index++)
+	{
+		struct halo_menu_model_row const *row = &model->rows[screen->first_row + index];
+		struct widget_instance *widget;
+		char name[80];
+
+		if (!strcmp(row->kind, "section") || !strcmp(row->kind, "button"))
 			continue;
-		if (!strcmp(row->name, "op_create_profile"))
-		{
-			row->visible = !profile && !in_game;
+		snprintf(name, sizeof(name), "op_%s", row->key);
+		if ((widget = named(list, name, 0)) == NULL)
 			continue;
-		}
-		if (!profile && settings_row_profile(row))
-			row->visible = FALSE;
-		for (index = 0; in_game && index < (short)NUMBEROF(settings_in_game_hidden); index++)
+		if (row->when && settings_condition_runs(row->when))
+			widget->visible = settings_condition(list, row->when);
+		if (row->enabled)
 		{
-			if (!strcmp(row->name, settings_in_game_hidden[index]))
-				row->visible = FALSE;
+			snprintf(name, sizeof(name), "%s_spinner", row->key);
+			row_dim(widget, named(widget, name, 0), !settings_condition(list, row->enabled));
 		}
+	}
+	if (!screen || !model || !focused || focused->visible || !focused->name || strncmp(focused->name, "op_", 3))
+		return;
+	for (index = 0; index < screen->row_count; index++)
+	{
+		struct halo_menu_model_row const *row = &model->rows[screen->first_row + index];
+		struct halo_menu_model_row const *other = NULL;
+		struct widget_instance *place;
+		char name[80];
+		short at;
+
+		if (strcmp(row->key, focused->name + 3))
+			continue;
+		if (row->same_place && index > 0)
+			other = row - 1;
+		else if (index + 1 < screen->row_count && row[1].same_place)
+			other = row + 1;
+		snprintf(name, sizeof(name), "op_%s", other ? other->key : "");
+		place = other ? named(list, name, 0) : NULL;
+		if (!place || !place->visible)
+			return;
+		for (at = 0, child = list->child; child && child != place; child = child->next)
+			at++;
+		list->focused_child = place;
+		list->parameters.list.selected_index = at;
+		return;
 	}
 }
 
@@ -3560,15 +3478,7 @@ static void settings_page_update(struct widget_instance *list)
 				pc_menu_profile_edit_begin();
 		}
 	}
-	video_rows_show(list);
-	refresh_rate_row_show(list);
-	hud_button_style_row_show(list);
-	max_fps_row_show(list);
-	vrr_rows_show(list);
-	panini_rows_show(list);
-	menu_cursor_row_show(list);
-	gamma_row_show(list);
-	settings_rows_show(list);
+	settings_rows_conditions(list);
 	discord_account_show(list);
 	clear_caches_show(list);
 	hdr_display_show(list);

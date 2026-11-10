@@ -621,7 +621,7 @@ PAGES = {
              "the screen with a window, so that other windows open over it at once; windowed is a window you can "
              "move and resize. F11 switches between the window and the screen.", "computer"),
             # (in Window Size's place, the one the display mode shown uses:
-            # menu_functions.c's video_rows_show; port/linux/game/menu_tags.c
+            # SETTINGS_ROW_WHEN; port/linux/game/menu_tags.c
             # adds the display's resolutions, and puts the sizes that fit the
             # desktop in place of Window Size's own)
             ("RESOLUTION", "display.resolution", [("NATIVE", "native")],
@@ -631,7 +631,7 @@ PAGES = {
             ("WINDOW SIZE", "display.window_size", [("1280 x 960", "1280x960")],
              "The window's size: 4:3 first, then 16:10, 16:9 and 21:9. Its edges can also be dragged.", "computer"),
             # (shown while Window shows FULLSCREEN where fullscreen can set
-            # the display's rate: menu_functions.c's refresh_rate_row_show;
+            # the display's rate: SETTINGS_ROW_WHEN;
             # port/linux/game/menu_tags.c adds the display's rates)
             ("REFRESH RATE", "display.refresh_rate", [("AUTO", "0")],
              "How many times a second the display shows a picture while the game is fullscreen. Auto keeps the "
@@ -743,7 +743,7 @@ PAGES = {
              "the original did.", "computer"),
             # (port/linux/src/sdl_platform.c's menu_cursor_size; hidden in the
             # headset, where VR Setup's row takes its room and the menus have
-            # no desktop pointer: menu_functions.c's menu_cursor_row_show)
+            # no desktop pointer: SETTINGS_ROW_WHEN)
             ("MENU CURSOR", "display.menu_cursor",
              [("OFF", "off"), ("SMALL", "small"), ("MEDIUM", "medium"), ("LARGE", "large"),
               ("EXTRA LARGE", "extra_large")],
@@ -779,7 +779,7 @@ PAGES = {
         "about": "Internet play, sharing maps and updates.",
         "rows": [
             # (in a game, the rows that would drop it or are the main menu's
-            # are hidden: menu_functions.c's settings_rows_show)
+            # are hidden: SETTINGS_ROW_WHEN)
             (SECTION, "INTERNET"),
             ("INTERNET PLAY", "network.online", ON_OFF,
              "Host and join games over the internet with invite links, and find public games. Off keeps to the "
@@ -831,8 +831,7 @@ PAGES = {
             (SECTION, "HUD"),
             ("HIGH-RES HUD", "display.high_res_hud", ON_OFF,
              "Draws the HUD from sharp high-resolution redraws. Off draws the game's own pictures.", None),
-            # (shown while HIGH-RES HUD is: menu_functions.c's
-            # hud_button_style_row_show)
+            # (shown while HIGH-RES HUD is: SETTINGS_ROW_WHEN)
             ("BUTTON STYLE", "display.hud_button_style",
              [("CLASSIC", "classic"), ("GEMS", "gems"), ("DARK GEMS", "menu_gems")],
              "The buttons the HUD draws. Classic: plain Xbox buttons. Gems: shaded Xbox buttons. Dark Gems: the "
@@ -873,7 +872,7 @@ PAGES = {
             # (with no profile, NAME, COLOR and MANAGE PROFILES are hidden and
             # CREATE PROFILE shown; in a game, those whose screens are
             # ui.map's: the name's keyboard, the colours' pictures, and those
-            # that are the main menu's: the profiles: settings_rows_show)
+            # that are the main menu's: the profiles: SETTINGS_ROW_WHEN)
             (SECTION, "PLAYER"),
             ("NAME ›", None, f"{PE}/name_edit/profile_name_screen",
              "The name the other players see, kept in your player profile.", None, "name",
@@ -912,7 +911,7 @@ PAGES = {
         ],
     },
     # (port/linux/game/mods.c: this machine's, every profile's; MANAGE MODS
-    # is the main menu's, hidden in a game: settings_rows_show)
+    # is the main menu's, hidden in a game: SETTINGS_ROW_WHEN)
     "mods_settings": {
         "screen": "mods_settings_screen", "tab": "MODS",
         "about": "Texture, sound, text and model packs from the mods folder.",
@@ -1003,7 +1002,7 @@ PAGES = {
         "screen": BRIGHTNESS_PAGE[1], "title": "BRIGHTNESS",
         "rows": [
             (SECTION, "PICTURE"),
-            # (not the VR build's: menu_functions.c's gamma_row_show)
+            # (not the VR build's: SETTINGS_ROW_WHEN)
             ("GAMMA", "display.gamma", GAMMA,
              "How bright the picture is, the HUD and menus too, as Halo PC's gamma. Higher brightens the dark "
              "parts; lower darkens them. 1.0 shows the game as it is drawn. With HDR on an HDR display, Paper "
@@ -1040,20 +1039,20 @@ PAGES = {
              "almost no input lag. It is on in the Steam Deck's Game Mode.", None),
             # (display.vrr: sdl_platform.c's platform_vrr; on every build, its
             # AUTO and its words what the system says, dimmed on the Mac:
-            # menu_tags.c's spinner_split, menu_functions.c's vrr_rows_show and
-            # vrr_panel, which has the words shown)
+            # menu_tags.c's spinner_split, SETTINGS_ROW_ENABLED and
+            # menu_functions.c's vrr_panel, which has the words shown)
             ("VARIABLE REFRESH", "display.vrr", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
              "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
              "each frame shows as soon as it is ready, without tearing. Auto turns it on where the system says VRR "
              "is on.",
              "desktop"),
-            # (dimmed while VRR is not on: vrr_rows_show)
+            # (dimmed while VRR is not on: SETTINGS_ROW_ENABLED)
             ("VRR FRAME CAP", "display.vrr_cap_margin", [(str(n), str(n)) for n in range(1, 11)],
              "Frames a second kept under the refresh rate, so the game stays in the screen's VRR range and never "
              "falls back to VSync. Lower is closer to the most frames; higher is safer on a screen with a narrow "
              "range.|Used while Variable Refresh is on.",
              "desktop"),
-            # (shown while VSync shows OFF: menu_functions.c's max_fps_row_show)
+            # (shown while VSync shows OFF: SETTINGS_ROW_WHEN)
             ("MAX FPS", "display.max_fps", FRAME_RATE_LIMITS,
              "The most frames drawn a second with VSync off. Auto is twice the display's refresh rate. More feels "
              "smoother and uses more power; None draws as fast as it can.|Click the number (or press A) to type 10 "
@@ -1078,8 +1077,7 @@ PAGES = {
              "Xbox did. Scaled zooms your own view by the same magnification, so a wider view stays wider zoomed.",
              None),
             # (display.panini, port/linux/game/panini.c, and its vertical
-            # compression; none in the VR build: menu_functions.c's
-            # panini_rows_show)
+            # compression; none in the VR build: SETTINGS_ROW_WHEN)
             ("PANINI PROJECTION", "display.panini", PANINI_STRENGTHS,
              "Stops a wide field of view from stretching what is at the sides; you still see as far, and the "
              "middle is drawn larger. 1 keeps their shapes true. The HUD stays flat. Fields of view up to 160 "
@@ -1823,13 +1821,64 @@ def _settings_platform(rows: list, start: int):
 
 
 # the rows in the place of the row before them, each platform having one of
-# them at most, or menu_functions.c showing one (video_rows_show): Window Size
-# in Resolution's, Android's anti-aliasing in the desktop's
+# them at most, or the model's conditions showing one (SETTINGS_ROW_WHEN):
+# Window Size in Resolution's, Android's anti-aliasing in the desktop's
 SETTINGS_SAME_PLACE = {"window_size", "anti_aliasing_android"}
-# the rows menu_functions.c hides while VR Setup's row is shown (the game in
-# the headset), which takes their room: Mouse's Menu Cursor (menu_cursor_row_show);
-# and Brightness's Gamma, which the VR build hides always (gamma_row_show)
+# the rows hidden while VR Setup's row is shown (the game in the headset),
+# which takes their room: Mouse's Menu Cursor; and Brightness's Gamma, which
+# the VR build hides always (their conditions: SETTINGS_ROW_WHEN)
 SETTINGS_NOT_IN_VR = {"menu_cursor", "gamma"}
+# a Settings row's conditions, in the model (docs/menu_engine.md), which
+# menu_functions.c tests each frame as the page is shown, on either engine
+# (settings_rows_conditions): when the row is there, beside its platforms,
+# and when it is enabled (else dimmed, its value held where it was, its panel
+# still saying why). Their terms: "<key>=<value>", another row's value shown
+# (its spinner's); in_game, profile (one being edited), vr (the game in the
+# headset), vr_build, refresh_rates (fullscreen can set the display's rate),
+# vrr_found and vrr_system (platform_vrr_detected's), gyro (a controller's
+# gyroscope connected), weapon_held (in a game, a weapon held: Weapon
+# Position's THIS WEAPON rows); "!" not, "+" and, a space or.
+SETTINGS_ROW_WHEN = {
+    # (Window Size the window's, Resolution fullscreen's and borderless's, in
+    # one place; Refresh Rate fullscreen's)
+    "resolution": "!mode=windowed", "window_size": "mode=windowed",
+    "refresh_rate": "mode=fullscreen+refresh_rates",
+    "hud_button_style": "high_res_hud=true",
+    # (with vsync on the display paces the frames)
+    "max_fps": "vsync=false",
+    # (the headset's menus have no desktop pointer; the VR build never curves
+    # its frames, nor draws through the Panini projection)
+    "menu_cursor": "!vr", "gamma": "!vr_build", "panini": "!vr_build", "panini_vertical": "!vr_build",
+    # (the Mac's display paces its frames already)
+    "low_latency": "!vrr_system",
+    # (in a game: not those that would drop it or are the main menu's, nor
+    # those whose screens are ui.map's or make a profile)
+    "online": "!in_game", "allow_upnp": "!in_game", "join_from_clipboard": "!in_game", "auto": "!in_game",
+    "mods": "!in_game",
+    "name": "profile+!in_game", "color": "profile+!in_game", "profiles": "profile+!in_game",
+    "create_profile": "!profile+!in_game",
+    **{key: "gyro" for key in ("gyro_aim", "gyro_sensitivity", "gyro_vertical_sensitivity", "gyro_space",
+                               "gyro_smoothing", "gyro_calibrate")},
+    "gyro_button": "gyro+gyro_aim=hold gyro+gyro_aim=pause",
+    **{f"viewmodel_weapon_{name}": "weapon_held" for name in ("x", "y", "z", "pitch", "yaw", "roll", "reset")},
+}
+SETTINGS_ROW_ENABLED = {
+    # (macOS's Metal and ProMotion set it: SET BY MACOS; its frame cap only
+    # while it is on)
+    "vrr": "!vrr_system",
+    "vrr_cap_margin": "vrr=on+!vrr_system vrr=auto+vrr_found+!vrr_system",
+}
+
+
+def _settings_row_when(key: str, setting, platform):
+    """a Settings row's condition in the model: its platforms, and its
+    SETTINGS_ROW_WHEN (a profile's setting's: a profile edited), both"""
+    condition = SETTINGS_ROW_WHEN.get(key) or ("profile" if setting and setting.startswith("profile.") else None)
+    if not condition:
+        return platform
+    if not platform:
+        return condition
+    return " ".join(f"{name}+{term}" for name in platform.split() for term in condition.split())
 
 
 def _settings_page(folder: str, page: dict) -> list:
@@ -7298,7 +7347,8 @@ def _model_page(folder: str, page: dict) -> list:
         key = named[0] if named else setting.split(".", 1)[1] if setting else \
             re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
         row_kind = _model_row_kind(key, setting, choices)
-        pairs = [("key", key), ("kind", row_kind), ("setting", setting), ("label", label), ("when", platform),
+        pairs = [("key", key), ("kind", row_kind), ("setting", setting), ("label", label),
+                 ("when", _settings_row_when(key, setting, platform)), ("enabled", SETTINGS_ROW_ENABLED.get(key)),
                  ("open", choices if isinstance(choices, str) else None),
                  ("run", named[1] if len(named) > 1 else None),
                  ("same_place", "true" if key in SETTINGS_SAME_PLACE or setting == "display.window_size" else None),

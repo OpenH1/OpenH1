@@ -171,6 +171,8 @@ struct halo_menu_model_choice
 struct halo_menu_model_row
 {
 	char const *kind, *key, *setting, *label, *title, *when, *open, *run, *help, *note;
+	/* (when it is enabled, else dimmed: a condition as when's) */
+	char const *enabled;
 	/* (in the place of the row before it; hidden while the game plays in
 	the headset; a label the game writes; a status row's value beside it) */
 	long same_place, not_in_vr, named, status;
@@ -244,6 +246,11 @@ struct halo_menu_model
 	struct halo_menu_model_place *places;
 	long place_count;
 };
+
+/* whether a platform of the menus' (a platform attribute's, a model's when's:
+desktop android vr hdr touch pointer computer) is this one: 1 or 0, -1 for a
+name that is not one's (menu_files.c) */
+int halo_menus_platform(const char *name, unsigned long length);
 
 /* the model, read from its files once the menus are (halo_menus_load);
 NULL if there is none or a file has a problem (logged) */

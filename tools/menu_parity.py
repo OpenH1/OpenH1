@@ -246,6 +246,15 @@ SCRIPTS = [
      ["down", "down", "down", "right", "right", DEFAULTS_CLICK, "wait", "down", "down", "down", "left", OK_CLICK]),
     ("slider-words", f"{PE}/video_settings/video_settings_screen",
      ["down", "down", "down", "down", "a", "wait", "right", "right", "left", OK_CLICK, "wait", OK_CLICK]),
+    # (rows shown by the model's conditions on other rows' values: WINDOW's Resolution, Window Size and Refresh Rate,
+    # VSYNC's MAX FPS, HIGH-RES HUD's BUTTON STYLE)
+    ("conditions-window", f"{PE}/video_settings/video_settings_screen",
+     ["right", "down", "up", "right", "down", "down", "up", "up", "right", "down", "up", "left", OK_CLICK]),
+    ("conditions-vsync", f"{PE}/video_settings/frame_rate/frame_rate_screen",
+     ["right", "down", "down", "down", "down", "up", "up", "up", "up", "left", "down", "down", "down", "right",
+      OK_CLICK]),
+    ("conditions-hud", f"{PE}/interface_settings/interface_settings_screen",
+     ["right", "down", "down", "up", "up", "left", "down", "right", OK_CLICK]),
     ("held-repeat", f"{PE}/video_settings/video_settings_screen",
      ["down", "down", "down", "hold:right", "hold:right", "wait", "hold:left", "wait", "hold:down", "hold:down",
       "hold:down", "wait", "hold:up", "wait", OK_CLICK]),
@@ -383,11 +392,13 @@ def behaviour(arguments, template: Path) -> dict:
 
     def one(task):
         script, engine = task
-        result = behaviour_run(arguments.build, script, engine, arguments.data, template, arguments.timeout,
+        # (--against: the classic side another build's, the one before a change both engines run)
+        build = arguments.against if arguments.against and engine == "classic" else arguments.build
+        result = behaviour_run(build, script, engine, arguments.data, template, arguments.timeout,
                                None if script is MAKE_PROFILE else profile)
         if not result["done"]:
             # (once more: a run that did not start, or was starved by the others, is not the engine's)
-            result = behaviour_run(arguments.build, script, engine, arguments.data, template, arguments.timeout,
+            result = behaviour_run(build, script, engine, arguments.data, template, arguments.timeout,
                                    None if script is MAKE_PROFILE else profile)
         return task, result
 
@@ -499,6 +510,9 @@ def main(argv=None) -> int:
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument("--out", type=Path, help="the differences written as JSON here too")
     parser.add_argument("--baseline", action="store_true", help="the classic engine on both sides")
+    parser.add_argument("--against", type=Path,
+                        help="with --behaviour, the classic side run from this build (a copy of the one before a "
+                        "change that both engines run, as the model's sliders and conditions are): before | after")
     parser.add_argument("--show", type=Path, help="a scratch folder each differing pair of frames is saved in, to "
                         "look at (the game's imagery: delete it after)")
     parser.add_argument("--look-control", action="store_true", help="prove that a widget drawn from its definition is "
