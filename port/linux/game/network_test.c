@@ -223,6 +223,8 @@ static struct
 	real vehicle_time;
 	real hitch_seconds;
 	real pickup_time;
+	/* debug.network_test_camouflage's */
+	real camouflage_time;
 	char pickup_weapon[64];
 	/* debug.network_test_elevator's: when, which elevator, and the one
 	chosen (NONE before), when its riders stood on it and it last stopped */
@@ -357,6 +359,7 @@ static void network_test_read_settings(
 	network_test.vehicle_time = (real)config_real("debug.network_test_vehicle");
 	network_test.hitch_seconds = (real)config_real("debug.network_test_hitch");
 	network_test.pickup_time = (real)config_real("debug.network_test_pickup");
+	network_test.camouflage_time = (real)config_real("debug.network_test_camouflage");
 	network_test.elevator_time = (real)config_real("debug.network_test_elevator");
 	network_test.elevator_choice = config_integer("debug.network_test_elevator_index");
 	network_test.elevator_index = NONE;
@@ -2005,6 +2008,26 @@ void network_test_update(
 			long vehicle_time = (long)(network_test.vehicle_time * TICKS_PER_SECOND);
 
 			network_test_gather(network_test.vehicle_time > 0.0f && game_time_get() >= vehicle_time - 2 * TICKS_PER_SECOND);
+		}
+		if (network_test.camouflage_time > 0.0f && network_test.mode == _network_test_host)
+		{
+			long camouflage_time = (long)(network_test.camouflage_time * TICKS_PER_SECOND);
+
+			/* debug.network_test_camouflage: every player camouflaged, as the
+			powerup does */
+			if (game_time_get() == camouflage_time)
+			{
+				struct data_iterator players;
+				struct player_datum *player;
+
+				data_iterator_new(&players, player_data);
+				while ((player = (struct player_datum *)data_iterator_next(&players)) != NULL)
+				{
+					player_handle_powerup(DATUM_INDEX_NEW(player - (struct player_datum *)player_data->data,
+						player->identifier), _player_powerup_active_camouflage, 20 * TICKS_PER_SECOND);
+				}
+				platform_log("network test: every player camouflaged");
+			}
 		}
 		if (network_test.pickup_time > 0.0f)
 		{

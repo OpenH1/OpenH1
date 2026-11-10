@@ -2034,6 +2034,10 @@ static const struct config_setting config_settings[] =
 	{ "debug.network_test_pickup", _config_real, "0.0", "HALO_NETWORK_TEST_PICKUP", _environment_value, _platform_all,
 		"This many seconds into an automated test game the host stands its last\n"
 		"player on a weapon, which a joining player then picks up; 0 never." },
+	{ "debug.network_test_camouflage", _config_real, "0.0", "HALO_NETWORK_TEST_CAMOUFLAGE", _environment_value,
+		_platform_all,
+		"This many seconds into an automated test game the host gives every\n"
+		"player active camouflage, as the powerup does, for 20 seconds; 0 never." },
 	{ "debug.network_test_elevator", _config_real, "0.0", "HALO_NETWORK_TEST_ELEVATOR", _environment_value, _platform_all,
 		"This many seconds into an automated test game each machine lists the\n"
 		"level's elevators, stands every player on the one of\n"
