@@ -957,8 +957,11 @@ enum
 
 /* The public definition header intentionally exposes only the shared prefix;
 this TU owns the complete January layout used below. */
+/* port: the menu engine's definition of a widget of the menus' files, made
+from its look in the model, where it draws it (display.menu_engine "new":
+port/linux/game/menu_engine.c), else the tag */
 #define ui_widget_definition_get(tag_index) \
-	((struct ui_widget_definition *)tag_get(UI_WIDGET_DEFINITION_TAG, (tag_index)))
+	((struct ui_widget_definition *)menu_engine_definition(tag_index))
 
 /* ---------- structures */
 
