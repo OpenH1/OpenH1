@@ -7,8 +7,9 @@
 shared text fitting (port/linux/game/menu_functions.c, in Settings' look:
 tools/port_settings.py's _browser): a tab lists its kind of game (dedicated
 servers', OpenH1's, Legacy, co-op) or the favorites, the favorites first and
-the rest sorted (in the order the list opens in, the OpenH1 games first,
-and the dedicated servers first among them and among the Legacy ones),
+the rest sorted (in the order the list opens in, the most players first,
+and of as many players the OpenH1 games first and the dedicated servers
+first among them and among the Legacy ones),
 the favorites offline only on ALL and FAVORITES; a list with no games says
 why, and the local network's what to do; a name too long for its column is
 cut short with "..." where it fits, and one that fits is kept whole */
@@ -167,6 +168,39 @@ static void listed(short tab, char *names, size_t size, short *offline)
 	*offline = browser_offline_count;
 }
 
+/* six games sorted by their players, their names in order */
+static void sorted(boolean descending, char *names, size_t size)
+{
+	struct browser_sort_entry entries[6];
+	short order[6], index, place;
+
+	/* (#920: a game players host with 13 under an empty dedicated server;
+	four games of 5, OpenH1's and Legacy, dedicated or hosted) */
+	entries[0] = entry("empty", FALSE, FALSE, 0);
+	entries[0].dedicated = TRUE;
+	entries[1] = entry("hosted", FALSE, FALSE, 13);
+	entries[2] = entry("legacy", FALSE, FALSE, 5);
+	entries[3] = entry("legacyserver", FALSE, FALSE, 5);
+	entries[3].dedicated = TRUE;
+	entries[4] = entry("openh1", TRUE, FALSE, 5);
+	entries[5] = entry("openh1server", TRUE, FALSE, 5);
+	entries[5].dedicated = TRUE;
+	browser_sort_column = _browser_sort_players;
+	browser_sort_descending = descending;
+	for (index = 0; index < 6; index++)
+	{
+		for (place = index; place > 0 && browser_sort_before(&entries[index], &entries[order[place - 1]]); place--)
+			order[place] = order[place - 1];
+		order[place] = index;
+	}
+	names[0] = 0;
+	for (index = 0; index < 6; index++)
+	{
+		strncat(names, entries[order[index]].name, size - strlen(names) - 2);
+		strncat(names, " ", size - strlen(names) - 1);
+	}
+}
+
 static boolean contains(wchar_t const *text, wchar_t const *part)
 {
 	return wcsstr(text, part) != NULL;
@@ -181,17 +215,15 @@ int main(int argc, char **argv)
 		char names[128];
 		short offline;
 
-		/* (the favorites first, OpenH1's echo before Legacy's bravo; the
-		rest the OpenH1 games first, the dedicated server alpha before
-		delta's more players, then the Legacy ones) */
+		/* (the favorites first, then the rest by their players) */
 		listed(_browser_tab_all, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "echo* bravo* alpha delta coop "), "ALL lists %s", names);
+		CHECK(!strcmp(names, "bravo* echo* delta alpha coop "), "ALL lists %s", names);
 		CHECK(offline == 2, "ALL lists no favorites offline");
 		listed(_browser_tab_dedicated, names, sizeof(names), &offline);
 		CHECK(!strcmp(names, "alpha coop "), "DEDICATED lists %s", names);
 		CHECK(offline == 0, "DEDICATED lists the favorites offline");
 		listed(_browser_tab_openh1, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "echo* alpha delta "), "OPENH1 lists %s", names);
+		CHECK(!strcmp(names, "echo* delta alpha "), "OPENH1 lists %s", names);
 		CHECK(offline == 0, "OPENH1 lists the favorites offline");
 		listed(_browser_tab_legacy, names, sizeof(names), &offline);
 		CHECK(!strcmp(names, "bravo* coop "), "LEGACY lists %s", names);
@@ -199,10 +231,25 @@ int main(int argc, char **argv)
 		CHECK(!strcmp(names, "echo* coop "), "CO-OP lists %s", names);
 		CHECK(offline == 0, "CO-OP lists the favorites offline");
 		listed(_browser_tab_favorites, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "echo* bravo* "), "FAVORITES lists %s", names);
+		CHECK(!strcmp(names, "bravo* echo* "), "FAVORITES lists %s", names);
 		CHECK(offline == 2, "FAVORITES lists no favorites offline");
 		return 0;
 	}
+	CASE("sort")
+	{
+		char names[128];
+
+		/* (the most players first, whatever the game; of as many, the
+		OpenH1 games first, the dedicated servers first in each) */
+		sorted(TRUE, names, sizeof(names));
+		CHECK(!strcmp(names, "hosted openh1server openh1 legacyserver legacy empty "), "most first sorts %s", names);
+		/* (the fewest first, as the games came of as many) */
+		sorted(FALSE, names, sizeof(names));
+		CHECK(!strcmp(names, "empty legacy legacyserver openh1 openh1server hosted "), "fewest first sorts %s",
+			names);
+		return 0;
+	}
+
 	CASE("empty")
 	{
 		wchar_t text[256];
@@ -344,7 +391,7 @@ int main(int argc, char **argv)
 		browser_filtering = TRUE;
 		/* (bravo's 9 and delta's 12 of 12 players: delta full) */
 		listed(_browser_tab_all, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "echo* bravo* alpha coop "), "ALL filtered lists %s", names);
+		CHECK(!strcmp(names, "bravo* echo* alpha coop "), "ALL filtered lists %s", names);
 		CHECK(browser_filtered_count == 1, "ALL filtered counts %d hidden", browser_filtered_count);
 		listed(_browser_tab_openh1, names, sizeof(names), &offline);
 		CHECK(!strcmp(names, "echo* alpha "), "OPENH1 filtered lists %s", names);
@@ -353,7 +400,7 @@ int main(int argc, char **argv)
 		CHECK(browser_filtered_count == 0, "LEGACY counts %d hidden of another tab's", browser_filtered_count);
 		browser_filtering = FALSE;
 		listed(_browser_tab_all, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "echo* bravo* alpha delta coop "), "unfiltered lists %s", names);
+		CHECK(!strcmp(names, "bravo* echo* delta alpha coop "), "unfiltered lists %s", names);
 		CHECK(browser_filtered_count == 0, "unfiltered counts %d hidden", browser_filtered_count);
 		return 0;
 	}
@@ -442,7 +489,7 @@ int main(int argc, char **argv)
 		browser_filtering = TRUE;
 		snprintf(browser_searches[_browser_search_server], sizeof(browser_searches[0]), "A");
 		listed(_browser_tab_all, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "bravo* alpha delta "), "\"A\" lists %s", names);
+		CHECK(!strcmp(names, "bravo* delta alpha "), "\"A\" lists %s", names);
 		CHECK(browser_filtered_count == 2 && browser_searched_count == 2, "\"A\" counts %d hidden, %d searched",
 			browser_filtered_count, browser_searched_count);
 		/* (delta full, which SHOW FULL GAMES: NO hides: counted the Filters') */
@@ -474,7 +521,7 @@ int main(int argc, char **argv)
 		CHECK(!strcmp(names, "bravo* "), "the touchscreen's \"BRAVO\" lists %s", names);
 		browser_filtering = FALSE;
 		listed(_browser_tab_all, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "echo* bravo* alpha delta coop "), "unfiltered lists %s", names);
+		CHECK(!strcmp(names, "bravo* echo* delta alpha coop "), "unfiltered lists %s", names);
 		return 0;
 	}
 	CASE("ping")

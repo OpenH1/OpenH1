@@ -171,6 +171,15 @@ struct halo_menu_model_choice
 struct halo_menu_model_row
 {
 	char const *kind, *key, *setting, *label, *title, *when, *open, *run, *help, *note;
+	/* (when it is enabled, else dimmed: a condition as when's) */
+	char const *enabled;
+	/* (a node's, kind "node": its key its widget's name, its parent's name,
+	whether the focus may take it, and whether it takes it first) */
+	char const *parent;
+	long focusable, initial;
+	/* (and its place in its screen's help, its choices' after it each its
+	own with help_choices; NONE: none) */
+	long help_index, help_choices;
 	/* (in the place of the row before it; hidden while the game plays in
 	the headset; a label the game writes; a status row's value beside it) */
 	long same_place, not_in_vr, named, status;
@@ -219,6 +228,10 @@ children's places, from first_place. Names are the menus' (a <bitmap>, a
 struct halo_menu_model_look
 {
 	char const *name, *type, *wide, *place, *picture, *effects, *list, *header, *footer;
+	/* (what the widget is to the game's code, which finds it by it: "tabs",
+	"buttons", "panel name", ...; tools/port_settings.py's
+	settings_look_roles) */
+	char const *role;
 	long box[4], header_box[4], footer_box[4];
 	long has_box, has_header_box, has_footer_box;
 	long radius;
@@ -226,6 +239,18 @@ struct halo_menu_model_look
 	char const *font, *color, *align, *text_flags, *string_list, *text, *items, *replace;
 	long text_x, text_y, string_index;
 	long first_place, place_count;
+	char const *file;
+	long line;
+};
+
+/* a widget's behaviour (model/behaviour, tools/menu_behaviour.py): its
+flags that are behaviour (how it takes its events: the menus' widget flags,
+but the look's), and its actions, the menus' <on> handlers, from
+first_handler */
+struct halo_menu_model_behaviour
+{
+	char const *name, *flags;
+	long first_handler, handler_count;
 	char const *file;
 	long line;
 };
@@ -243,15 +268,31 @@ struct halo_menu_model
 	long look_count;
 	struct halo_menu_model_place *places;
 	long place_count;
+	struct halo_menu_model_behaviour *behaviours;
+	long behaviour_count;
+	struct halo_menu_handler *handlers;
+	long handler_count;
 };
+
+/* whether a platform of the menus' (a platform attribute's, a model's when's:
+desktop android vr hdr touch pointer computer) is this one: 1 or 0, -1 for a
+name that is not one's (menu_files.c) */
+int halo_menus_platform(const char *name, unsigned long length);
 
 /* the model, read from its files once the menus are (halo_menus_load);
 NULL if there is none or a file has a problem (logged) */
 struct halo_menu_model const *halo_menus_model(void);
 /* a widget's look in the model by its name, NULL if it has none */
 struct halo_menu_model_look const *halo_menus_model_look(struct halo_menu_model const *model, char const *name);
+/* the model's behaviour of a widget by its name (NULL: none, a widget with no
+behaviour flags nor actions) */
+struct halo_menu_model_behaviour const *halo_menus_model_behaviour(struct halo_menu_model const *model,
+	char const *name);
 /* the model read again by the next halo_menus_model (halo_menus_reload's) */
 void halo_menus_model_forget(void);
+/* the number of the model's reads (one more each time it is read again: a
+cache of anything in it is kept for one) */
+unsigned long halo_menus_model_reads(void);
 /* a file gathered for the menus (halo_menus_load's): its path and data,
 FALSE past the last */
 int halo_menus_file_at(long index, char const **path, unsigned char const **data, unsigned long *size);

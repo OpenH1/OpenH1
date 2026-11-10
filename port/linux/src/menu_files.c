@@ -427,11 +427,41 @@ apps, or debug.touch_menus): the menus' "touch" platform, the others'
 #define MENU_TOUCH config_boolean("debug.touch_menus")
 #endif
 
+/* whether a platform of the menus' is this one (1, 0; -1 not a platform's
+name): "vr" the VR build, playing in the headset; "hdr" a renderer that
+draws display.hdr: xgpu_backend.h; "touch" the touchscreen's builds,
+"pointer" the rest: MENU_TOUCH; "computer" the desktop's builds but iOS's,
+whose phone has no window to size nor mouse */
+int halo_menus_platform(const char *name, unsigned long length)
+{
+	if ((length != 7 || strncmp(name, "desktop", 7)) && (length != 7 || strncmp(name, "android", 7)) &&
+		(length != 2 || strncmp(name, "vr", 2)) && (length != 3 || strncmp(name, "hdr", 3)) &&
+		(length != 5 || strncmp(name, "touch", 5)) && (length != 7 || strncmp(name, "pointer", 7)) &&
+		(length != 8 || strncmp(name, "computer", 8)))
+	{
+		return -1;
+	}
+#if !defined(HALO_ANDROID) && !defined(HALO_IOS)
+	if (length == 8 && !strncmp(name, "computer", 8))
+		return 1;
+#endif
+	if (length == 5 && !strncmp(name, "touch", 5) && MENU_TOUCH)
+		return 1;
+	if (length == 7 && !strncmp(name, "pointer", 7) && !MENU_TOUCH)
+		return 1;
+	if (length == 3 && !strncmp(name, "hdr", 3) && xgpu_backend_capabilities.hdr)
+		return 1;
+	if (length == strlen(MENU_PLATFORM) && !strncmp(name, MENU_PLATFORM, length))
+		return 1;
+#ifdef HALO_VR
+	if (length == 2 && !strncmp(name, "vr", 2) && halo_vr_running())
+		return 1;
+#endif
+	return 0;
+}
+
 /* whether the element is for this platform (its platform attribute: the
-platforms it is for, separated by spaces; "vr" the VR build, playing in the
-headset; "hdr" a renderer that draws display.hdr: xgpu_backend.h; "touch"
-the touchscreen's builds, "pointer" the rest: MENU_TOUCH; "computer" the
-desktop's builds but iOS's, whose phone has no window to size nor mouse) */
+platforms it is for, separated by spaces) */
 static int for_this_platform(struct reader *reader, const XML_Char **attributes)
 {
 	int index;
@@ -449,31 +479,16 @@ static int for_this_platform(struct reader *reader, const XML_Char **attributes)
 
 				if (length)
 				{
-					if ((length != 7 || strncmp(name, "desktop", 7)) && (length != 7 || strncmp(name, "android", 7)) &&
-						(length != 2 || strncmp(name, "vr", 2)) && (length != 3 || strncmp(name, "hdr", 3)) &&
-						(length != 5 || strncmp(name, "touch", 5)) && (length != 7 || strncmp(name, "pointer", 7)) &&
-						(length != 8 || strncmp(name, "computer", 8)))
+					int platform = halo_menus_platform(name, length);
+
+					if (platform < 0)
 					{
 						reader_error(reader, "platform=\"%s\" names one that is not desktop, android, vr, hdr, "
 							"touch, pointer or computer", attributes[index + 1]);
 						return 1;
 					}
-#if !defined(HALO_ANDROID) && !defined(HALO_IOS)
-					if (length == 8 && !strncmp(name, "computer", 8))
+					if (platform)
 						found = 1;
-#endif
-					if (length == 5 && !strncmp(name, "touch", 5) && MENU_TOUCH)
-						found = 1;
-					if (length == 7 && !strncmp(name, "pointer", 7) && !MENU_TOUCH)
-						found = 1;
-					if (length == 3 && !strncmp(name, "hdr", 3) && xgpu_backend_capabilities.hdr)
-						found = 1;
-					if (length == strlen(MENU_PLATFORM) && !strncmp(name, MENU_PLATFORM, length))
-						found = 1;
-#ifdef HALO_VR
-					if (length == 2 && !strncmp(name, "vr", 2) && halo_vr_running())
-						found = 1;
-#endif
 				}
 				name += length;
 				while (*name == ' ')

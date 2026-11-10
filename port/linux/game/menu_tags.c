@@ -694,6 +694,12 @@ static struct
 	struct pause_box_growth pause_boxes[PAUSE_BOXES];
 	long pause_box_count;
 	boolean pause_boxes_wide;
+	/* the game's event handlers of the model's widgets' behaviours
+	(menu_tags_behaviour_handlers), made with the widgets (behaviours_build),
+	by their index in the model's behaviours, and the model they are of */
+	struct halo_menu_model const *behaviour_model;
+	struct ui_widget_event_handler_reference **behaviour_handlers;
+	long *behaviour_handler_counts;
 } menu_tags;
 
 /* the build under way */
@@ -1255,25 +1261,25 @@ static long split(char const *text, char const **pieces)
 	return count;
 }
 
-/* a spinner's strings, or its values, split: its own, but Video Setup's
+/* a spinner's strings, or its values (count of them in pieces), with those
+the platform adds: Video Setup's
 sizes are the display's (sdl_platform.c), shown "1920 x 1080" and set
 "1920x1080": its resolutions after Resolution's own (NATIVE), and the
 window sizes that fit it in place of Window Size's own; its refresh rates
 after Refresh Rate's own (AUTO); and Audio Setup's
 devices SDL finds, after their SYSTEM DEFAULT, each set by its name and
 shown by it (in capitals, as the menus' words are, and cut short) */
-static long spinner_split(struct halo_menu_widget const *widget, boolean values, char const **pieces)
+static long spinner_expand(char const *setting, boolean values, char const **pieces, long count)
 {
-	long count = split(values ? widget->values : widget->strings, pieces);
 	long widths[MAXIMUM_STRINGS], heights[MAXIMUM_STRINGS];
 	long added, index;
 
 	/* (Frame Rate & Sync's Variable Refresh: its AUTO shown as what auto
 	does here as the menus are made, AUTO: ON or AUTO: OFF, where the system
 	is asked (sdl_platform.c's platform_vrr_detected); every choice SET BY
-	MACOS on the Mac, where the system sets it: menu_functions.c's
-	vrr_rows_show dims it) */
-	if (!values && widget->setting && !strcmp(widget->setting, "display.vrr"))
+	MACOS on the Mac, where the system sets it: its row's condition in the
+	model dims it, menu_functions.c's settings_rows_conditions) */
+	if (!values && setting && !strcmp(setting, "display.vrr"))
 	{
 		int vrr = platform_vrr_detected();
 
@@ -1287,12 +1293,12 @@ static long spinner_split(struct halo_menu_widget const *widget, boolean values,
 		return count;
 	}
 
-	if (widget->setting && (!strcmp(widget->setting, "audio.output_device") ||
-		!strcmp(widget->setting, "audio.input_device")))
+	if (setting && (!strcmp(setting, "audio.output_device") ||
+		!strcmp(setting, "audio.input_device")))
 	{
 		static char names[MAXIMUM_STRINGS][128];
 
-		added = platform_audio_devices(!strcmp(widget->setting, "audio.input_device"), names,
+		added = platform_audio_devices(!strcmp(setting, "audio.input_device"), names,
 			(int)(MAXIMUM_STRINGS - count));
 		for (index = 0; index < added; index++)
 		{
@@ -1322,7 +1328,7 @@ static long spinner_split(struct halo_menu_widget const *widget, boolean values,
 		}
 		return count;
 	}
-	if (widget->setting && !strcmp(widget->setting, "display.refresh_rate"))
+	if (setting && !strcmp(setting, "display.refresh_rate"))
 	{
 		/* (the display's rates after Refresh Rate's own, AUTO: shown "144 HZ",
 		set "144") */
@@ -1341,9 +1347,9 @@ static long spinner_split(struct halo_menu_widget const *widget, boolean values,
 		}
 		return count;
 	}
-	if (widget->setting && !strcmp(widget->setting, "display.resolution"))
+	if (setting && !strcmp(setting, "display.resolution"))
 		added = platform_display_resolutions(widths, heights, (int)(MAXIMUM_STRINGS - count));
-	else if (widget->setting && !strcmp(widget->setting, "display.window_size"))
+	else if (setting && !strcmp(setting, "display.window_size"))
 	{
 		added = platform_window_sizes(widths, heights, MAXIMUM_STRINGS);
 		if (added > 0)
@@ -1364,6 +1370,26 @@ static long spinner_split(struct halo_menu_widget const *widget, boolean values,
 		pieces[count++] = piece;
 	}
 	return count;
+}
+
+/* a spinner's strings, or its values, split, and expanded so */
+static long spinner_split(struct halo_menu_widget const *widget, boolean values, char const **pieces)
+{
+	long count = split(values ? widget->values : widget->strings, pieces);
+
+	return spinner_expand(widget->setting, values, pieces, count);
+}
+
+/* a setting's values as the menus' spinners have them (the menu engine's
+model's rows', menu_functions.c's settings_row_setting): those given, and
+those the platform adds as the menus are made (spinner_expand: the
+displays' sizes and rates, the audio devices) */
+long pc_menu_setting_values(
+	char const *setting,
+	char const **values,
+	long count)
+{
+	return spinner_expand(setting, TRUE, values, count);
 }
 
 /* a tag's value in a table of them (MENU_TAG_VALUES at most: past that,
@@ -2140,6 +2166,79 @@ static void instance_set(struct cache_file_tag_instance *instances, long group_t
 	instance->base_address = definition;
 }
 
+/* the game's event handlers of each of the model's widgets' behaviours (of
+a widget built: a game map's have few of ui.map's), an <on> for several
+events a handler for each, as a widget's (widget_build) */
+static void behaviours_build(struct cache_file_tag_instance *instances)
+{
+	struct halo_menu_model const *model = halo_menus_model();
+	long index;
+
+	if (!model || !model->behaviour_count)
+		return;
+	menu_tags.behaviour_handlers = allocate(model->behaviour_count * (long)sizeof(*menu_tags.behaviour_handlers));
+	menu_tags.behaviour_handler_counts =
+		allocate(model->behaviour_count * (long)sizeof(*menu_tags.behaviour_handler_counts));
+	if (!menu_tags.behaviour_handlers || !menu_tags.behaviour_handler_counts)
+		return;
+	for (index = 0; index < model->behaviour_count && !build.failed; index++)
+	{
+		struct halo_menu_model_behaviour const *behaviour = &model->behaviours[index];
+		long widget = widget_named(behaviour->name);
+		struct ui_widget_definition *definition;
+		struct ui_widget_event_handler_reference *handlers;
+		long total = 0, handler;
+
+		if (widget == NONE)
+			continue;
+		definition = instances[DATUM_INDEX_TO_ABSOLUTE_INDEX(build.widget_tags[widget])].base_address;
+		for (handler = 0; handler < behaviour->handler_count; handler++)
+		{
+			char const *text = model->handlers[behaviour->first_handler + handler].event;
+
+			while (text && *text)
+			{
+				text += strspn(text, " \t\r\n");
+				if (!*text)
+					break;
+				total++;
+				text += strcspn(text, " \t\r\n");
+			}
+		}
+		if (!total || !definition || (handlers = allocate(total * (long)sizeof(*handlers))) == NULL)
+			continue;
+		for (total = 0, handler = 0; handler < behaviour->handler_count; handler++)
+		{
+			struct halo_menu_handler const *on = &model->handlers[behaviour->first_handler + handler];
+			char const *text = on->event;
+
+			while (text && *text)
+			{
+				char word[64];
+				long length, event;
+
+				text += strspn(text, " \t\r\n");
+				length = (long)strcspn(text, " \t\r\n");
+				if (!length)
+					break;
+				if (length >= (long)sizeof(word))
+					length = sizeof(word) - 1;
+				memcpy(word, text, length);
+				word[length] = 0;
+				text += strcspn(text, " \t\r\n");
+				event = name_index(word, event_names, NUMBEROF(event_names));
+				if (event == NONE)
+					problem(on->file, on->line, "there is no event", word);
+				else
+					handler_build(&handlers[total++], on, event, definition);
+			}
+		}
+		menu_tags.behaviour_handlers[index] = handlers;
+		menu_tags.behaviour_handler_counts[index] = total;
+	}
+	menu_tags.behaviour_model = model;
+}
+
 /* ---------- the menu engine's looks
 
 Under display.menu_engine "new" the engine (menu_engine.c) draws the
@@ -2496,6 +2595,46 @@ static void menu_tags_release(void)
 }
 
 /* ---------- public code */
+
+/* ---------- the menu engine's widgets' behaviour (menu_engine.c): the
+model's (model/behaviour, tools/menu_behaviour.py), whose flags and <on>
+handlers are those of the widgets' own, made into the game's as theirs are
+(flags_parse, handler_build), as the widgets are built (behaviours_build) */
+
+long menu_tags_behaviour_flags(
+	struct halo_menu_model_behaviour const *behaviour)
+{
+	return flags_parse(behaviour->flags, widget_flag_names, NUMBEROF(widget_flag_names), behaviour->file,
+		behaviour->line);
+}
+
+void const *menu_tags_behaviour_handlers(
+	struct halo_menu_model const *model,
+	struct halo_menu_model_behaviour const *behaviour,
+	long *count)
+{
+	long index = (long)(behaviour - model->behaviours);
+
+	*count = 0;
+	if (!menu_tags.loaded || model != menu_tags.behaviour_model || index < 0 || index >= model->behaviour_count)
+		return NULL;
+	*count = menu_tags.behaviour_handler_counts[index];
+	return menu_tags.behaviour_handlers[index];
+}
+
+short menu_tags_handler_event(
+	void const *handlers,
+	long index)
+{
+	return ((struct ui_widget_event_handler_reference const *)handlers)[index].event_type;
+}
+
+void *menu_tags_handler(
+	void const *handlers,
+	long index)
+{
+	return (void *)&((struct ui_widget_event_handler_reference const *)handlers)[index];
+}
 
 /* ---------- the in-game pause menu (a multiplayer map's)
 
@@ -3019,7 +3158,8 @@ the PC version's pause menu's pitch, so a highlight sits clear of the next
 label. The prompts (B and A) stay that same gap under the last row, and the
 box beside the mission objectives grows with them, and the box is as wide as
 the legends need (pause_campaign_widen). Settings there hides the rows that
-do not work in a game (menu_functions.c's settings_rows_show). */
+do not work in a game (their conditions in the model: menu_functions.c's
+settings_rows_conditions). */
 
 /* the pause box's frames from the third (pause_box_height's of five and six
 rows), and the mission objectives' box's, are the stock 159 grown by the 36
@@ -3470,6 +3610,8 @@ void menu_tags_loaded(
 	cache_files_set_tag_instances(instances, build.first_index + total);
 	for (index = 0; index < widget_count && !build.failed; index++)
 		instances[DATUM_INDEX_TO_ABSOLUTE_INDEX(build.widget_tags[index])].base_address = widget_build(index);
+	/* (and the model's behaviours of them, the menu engine's) */
+	behaviours_build(instances);
 	if (build.failed)
 		goto failed;
 	if (game_map)

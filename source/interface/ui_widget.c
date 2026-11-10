@@ -10329,6 +10329,124 @@ void ui_widget_port_process_event(
 		deleted);
 }
 
+/* port: what the menu engine processes its screens' events by
+(port/linux/game/menu_engine.c, its engine_event, which takes an event as
+widget_instance_process_one_event_recursive does): a widget's definition's
+flags and event handlers (for a widget the model has not: the engine's own
+are the model's), and this file's steps, unchanged */
+long ui_widget_port_definition_flags(
+	struct widget_instance const *widget)
+{
+	return ui_widget_definition_get(widget->definition_tag_index)->flags;
+}
+
+long ui_widget_port_handler_count(
+	struct widget_instance const *widget)
+{
+	return ui_widget_definition_get(widget->definition_tag_index)->event_handlers.count;
+}
+
+short ui_widget_port_handler_event_type(
+	struct widget_instance const *widget,
+	long index)
+{
+	struct ui_widget_definition *definition = ui_widget_definition_get(widget->definition_tag_index);
+
+	return ((struct ui_widget_event_handler_reference *)definition->event_handlers.address + index)->event_type;
+}
+
+void ui_widget_port_handler_dispatch(
+	struct widget_instance *widget,
+	struct event_record *event,
+	long index,
+	boolean *deleted)
+{
+	struct ui_widget_definition *definition = ui_widget_definition_get(widget->definition_tag_index);
+
+	event_handler_dispatch(
+		widget,
+		definition,
+		event,
+		(struct ui_widget_event_handler_reference *)definition->event_handlers.address + index,
+		deleted);
+}
+
+void ui_widget_port_handler_run(
+	struct widget_instance *widget,
+	struct event_record *event,
+	void *handler,
+	boolean *deleted)
+{
+	event_handler_dispatch(
+		widget,
+		ui_widget_definition_get(widget->definition_tag_index),
+		event,
+		handler,
+		deleted);
+}
+
+boolean ui_widget_port_takes_events(
+	struct widget_instance const *widget,
+	short controller_index)
+{
+	return widget_takes_events_of_controller(widget, controller_index);
+}
+
+void ui_widget_port_give_focus(
+	struct widget_instance *widget,
+	struct widget_instance *focus)
+{
+	widget_instance_give_focus_by_tag(widget, focus->definition_tag_index, widget->local_player_index);
+}
+
+void ui_widget_port_lists_update(
+	struct widget_instance *widget)
+{
+	widget_instance_update_animation_parameters(widget);
+	if (widget->type == _ui_widget_type_spinner_list)
+		spinner_list_update(widget);
+	else if (widget->type == _ui_widget_type_column_list)
+		column_list_update(widget, ui_widget_definition_get(widget->definition_tag_index));
+}
+
+/* port: (the time a controller's D-pad direction last moved the menus, which
+a held direction repeats after: DPAD_EVENT_REPEAT_MILLISECONDS) */
+unsigned long *ui_widget_port_dpad_time(
+	short controller_index,
+	short direction)
+{
+	return &dpad_event_times[controller_index][direction];
+}
+
+unsigned long ui_widget_port_milliseconds(
+	void)
+{
+	return widget_globals.current_system_milliseconds;
+}
+
+/* port: the pointer no longer what moved the focus last (a D-pad's press) */
+void ui_widget_port_pointer_not_last(
+	void)
+{
+	ui_mouse_focused_last = FALSE;
+	ui_mouse_hovered_last = FALSE;
+}
+
+/* port: whether no screen is open for any player (the return to the main
+menu of a screen whose flags ask for it) */
+boolean ui_widget_port_no_screens(
+	void)
+{
+	long widget_index;
+
+	for (widget_index = 0; widget_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; widget_index++)
+	{
+		if (widget_globals.active_widgets[widget_index])
+			return FALSE;
+	}
+	return TRUE;
+}
+
 static boolean ui_check_for_pause_game(
 	void)
 {

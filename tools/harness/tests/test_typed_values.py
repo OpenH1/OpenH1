@@ -48,6 +48,32 @@ def _between(source, start, end):
     return source[at:source.index(end, at) + len(end)]
 
 
+# the sliders the cases type into, as the model has them (port/assets/menus/model, tools/port_settings.py's)
+SLIDERS = ("fov", "max_fps", "panini", "vehicle_fov")
+
+
+def model_sliders() -> str:
+    """the model's rows of SLIDERS (each one's first), and menu_engine_model's model of them"""
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(read("port/assets/menus/model/settings.xml"))
+    rows, choices = [], []
+    for key in SLIDERS:
+        row = next(row for row in root.iter("row") if row.get("key") == key and row.get("kind") == "slider")
+        stops = row.findall("stop")
+        rows.append(f'{{ .kind = "slider", .key = "{key}", .setting = "{row.get("setting")}", '
+                    + ", ".join(f".{name} = {row.get(name)}" for name in ("least", "most", "step", "typed_least",
+                                                                          "typed_most"))
+                    + f', .whole = {int(row.get("whole") == "true")}, .first_choice = {len(choices)}, '
+                    f'.choice_count = {len(stops)} }}')
+        choices += [f'{{ "{stop.get("shown")}", "{stop.get("value")}" }}' for stop in stops]
+    return ("static struct halo_menu_model_choice test_choices[] = {\n\t" + ",\n\t".join(choices) + "\n};\n"
+            "static struct halo_menu_model_row test_rows[] = {\n\t" + ",\n\t".join(rows) + "\n};\n"
+            "static struct halo_menu_model test_model = { .rows = test_rows, .row_count = NUMBEROF(test_rows), "
+            ".choices = test_choices, .choice_count = NUMBEROF(test_choices) };\n"
+            "static struct halo_menu_model const *menu_engine_model(void) { return &test_model; }\n"
+            "static unsigned long halo_menus_model_reads(void) { return 1; }\n")
+
+
 def generated(fault=None):
     menus = read("port/linux/game/menu_functions.c")
     inputs = read("port/linux/src/xinput_sdl.c")
@@ -61,9 +87,12 @@ def generated(fault=None):
     field = _between(menus, "static struct\n{\n\tstruct widget_instance *row;\n\tchar text[TEXT_FIELD_LENGTH];",
                      "} text_field;")
     start = menus.index("struct settings_slider_stop\n{")
-    sliders = menus[start:menus.index("\n};", menus.index("} const settings_sliders[] =")) + 3]
-    code = "\n\n".join([field, "static unsigned long text_field_shown_time;", sliders] + [
+    sliders = menus[start:menus.index("} settings_slider_cache;") + len("} settings_slider_cache;")]
+    header = read("port/linux/include/halo_menus.h")
+    model = header[header.index("struct halo_menu_model_choice\n{"):header.index("/* the model, read from its files")]
+    code = "\n\n".join([field, "static unsigned long text_field_shown_time;", model, model_sliders(), sliders] + [
         function(menus, name) for name in (
+            "text_is_number", "settings_slider_made",
             "text_field_editing", "text_field_open", "text_field_begin", "text_field_begin_value",
             "text_field_end", "text_field_insert", "text_field_show", "settings_slider_word", "settings_slider_number",
             "settings_slider_text", "settings_slider_field_text")])

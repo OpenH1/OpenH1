@@ -25,3 +25,21 @@ def test_look_files_are_the_same_each_time():
 def test_look_files_are_embedded():
     listed = set(json.loads((MENUS / "menus.json").read_text())["files"])
     assert {name for name in menu_look.look_files(MENUS / "ce")} <= listed
+
+
+def test_roles():
+    """every role menu_functions.c finds a widget by (settings_part, settings_is_part) is a look's in the model
+    (tools/port_settings.py's settings_look_roles), each one widget's but the tabs' and button bars', one a screen"""
+    import re
+    import xml.etree.ElementTree as ET
+    roles = {}
+    for path in (MENUS / menu_look.LOOK).glob("*.xml"):
+        for look in ET.parse(path).getroot():
+            if look.get("role"):
+                roles.setdefault(look.get("role"), []).append(look.get("name"))
+    source = (MENUS.parent.parent / "linux/game/menu_functions.c").read_text()
+    used = set(re.findall(r'settings_(?:part|is_part)\([^,]+, "([^"]+)"\)', source))
+    used |= {f"still {still}{part}" for still in ("classic", "enhanced") for part in ("", " frame", " caption")}
+    assert used and used <= set(roles), used - set(roles)
+    for role, names in roles.items():
+        assert len(names) == 1 or role in ("tabs", "buttons"), (role, names)

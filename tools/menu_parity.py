@@ -201,6 +201,9 @@ def run_layouts(build: Path, screens: list, variant_names: list, maps: Path, tem
 # ---------- behaviour: scripted presses on each engine, what they leave compared
 
 PE = "main_menu/settings_select/player_setup/player_profile_edit"
+# (the setup screens': the gametype editor's and Server Setup's)
+MS = "main_menu/settings_select/multiplayer_setup"
+MT = "main_menu/multiplayer_type_select"
 # (the 4:3 window's fractions of the buttons of a Settings tab or page: the menus' 640 x 480 fill it)
 OK_CLICK, CANCEL_CLICK, DEFAULTS_CLICK = "click:0.659:0.889", "click:0.859:0.889", "click:0.138:0.889"
 # each script: its name, the screen it starts on (debug.menu_open) and its presses (debug.test_input
@@ -238,6 +241,36 @@ SCRIPTS = [
     ("clicks-and-wheel", f"{PE}/video_settings/video_settings_screen",
      ["click:0.406:0.410", "click:0.53:0.498", "down", "down", "down", "wheel:1", "wheel:-3", "click:0.230:0.181",
       "wait", "down", "right", OK_CLICK]),
+    # (sliders without stops, Defaults over a page's sliders, and stops that write a word of the setting's:
+    # VEHICLE FIELD OF VIEW's DEFAULT and MATCH)
+    ("slider-plain", f"{PE}/mouse_settings/mouse_settings_screen",
+     ["right", "right", "left", "down", "up", "right", OK_CLICK]),
+    ("slider-defaults", f"{PE}/video_settings/video_settings_screen",
+     ["down", "down", "down", "right", "right", DEFAULTS_CLICK, "wait", "down", "down", "down", "left", OK_CLICK]),
+    ("slider-words", f"{PE}/video_settings/video_settings_screen",
+     ["down", "down", "down", "down", "a", "wait", "right", "right", "left", OK_CLICK, "wait", OK_CLICK]),
+    # (rows shown by the model's conditions on other rows' values: WINDOW's Resolution, Window Size and Refresh Rate,
+    # VSYNC's MAX FPS, HIGH-RES HUD's BUTTON STYLE)
+    ("conditions-window", f"{PE}/video_settings/video_settings_screen",
+     ["right", "down", "up", "right", "down", "down", "up", "up", "right", "down", "up", "left", OK_CLICK]),
+    ("conditions-vsync", f"{PE}/video_settings/frame_rate/frame_rate_screen",
+     ["right", "down", "down", "down", "down", "up", "up", "up", "up", "left", "down", "down", "down", "right",
+      OK_CLICK]),
+    ("conditions-hud", f"{PE}/interface_settings/interface_settings_screen",
+     ["right", "down", "down", "up", "up", "left", "down", "right", OK_CLICK]),
+    # (the setup screens' rows shown by their nodes' conditions in the model, on other rows' values: Item Options'
+    # LOADOUT's weapons, OpenCE Options' MODE's rows, co-op's extras' amounts)
+    ("setup-loadout", f"{MS}/item_options_edit/item_options_screen",
+     ["down", "down", "down", "down", "right", "down", "down", "up", "up", "left", "down", "up", "right", "down"]),
+    ("setup-opence", f"{MS}/opence_options_edit/opence_screen",
+     ["right", "right", "down", "down", "down", "up", "up", "up", "right", "down", "down", "down", "up", "left"]),
+    ("setup-coop", f"{MT}/server_settings/coop_options/coop_options_screen",
+     ["down", "right", "down", "down", "down", "up", "up", "right", "down", "down", "up", "up", "up", "right",
+      "down", "down", "right", "down"]),
+    # (the host's own settings on a setup screen, their setting and values its nodes' in the model: Server Setup's
+    # VOICE AND VOTING, changed and kept by its OK)
+    ("setup-voice", f"{MT}/server_settings/voice_options/voice_options_screen",
+     ["right", "down", "right", "down", "down", "right", "down", "down", "down", "down", "a"]),
     ("held-repeat", f"{PE}/video_settings/video_settings_screen",
      ["down", "down", "down", "hold:right", "hold:right", "wait", "hold:left", "wait", "hold:down", "hold:down",
       "hold:down", "wait", "hold:up", "wait", OK_CLICK]),
@@ -253,7 +286,9 @@ SCRIPTS = [
 MAKE_PROFILE = ("profile-create", f"{PE}/profile_settings/profile_settings_screen",
                 ["a", "wait", "type:Tester", "enter", "wait", "wait"])
 # (scripts that write nothing: the presses are taken back, or only move the focus)
-WRITE_NOTHING = ("toggle-and-cancel", "mouse-and-cancel-button", "sub-page-cancel")
+# (and the setup screens', whose settings' writes the log does not name: config.toml is compared)
+WRITE_NOTHING = ("toggle-and-cancel", "mouse-and-cancel-button", "sub-page-cancel", "setup-loadout", "setup-opence",
+                 "setup-coop", "setup-voice")
 # the navigation sweep: every generated screen opened, the focus moved about it with no press that leaves it
 SWEEP = ["down", "down", "down", "down", "up", "up", "right", "down", "left", "hold:down", "hold:down", "up",
          "hold:up", "hold:up", "down", "right", "right", "left"]
@@ -265,15 +300,22 @@ BEHAVIOUR_VARIANT = "4x3-keyboard"
 SWEEP_SKIP = re.compile(r"/name_edit/")
 
 
-def sweep_scripts() -> list:
-    """the navigation sweep's scripts, one a screen"""
+def sweep_scripts(vr: bool = False) -> list:
+    """the navigation sweep's scripts, one a screen (VR's too with vr)"""
     return [(f"sweep:{screen.name}", screen.name, SWEEP)
-            for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS) if not SWEEP_SKIP.search(screen.name)]
+            for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS, vr)
+            if not SWEEP_SKIP.search(screen.name)]
+
+
+# the host's warning of a stalled thread (port/android/host/host_stall.c), which a busy computer's runs print, written
+# into the middle of the game's line of the focus: not the game's
+HOST_STALL = re.compile(r"halo-host: warning: stall: .*$")
 
 
 def focus_path(text: str) -> list:
     """where the focus was after each second of a run's script (menu_tour.c's "menus: focus" lines)"""
-    return [line.split("menus: focus ", 1)[1] for line in text.splitlines() if "menus: focus " in line]
+    return [HOST_STALL.sub("", line.split("menus: focus ", 1)[1]) for line in text.splitlines()
+            if "menus: focus " in line]
 
 
 def profile_digests(saves: Path) -> dict:
@@ -359,7 +401,7 @@ def behaviour_run(build: Path, script: tuple, engine: str, maps: Path, template:
 
 def behaviour(arguments, template: Path) -> dict:
     """{script: lines} of the scripts whose results differ between the engines"""
-    scripts = [script for script in [MAKE_PROFILE] + SCRIPTS + (sweep_scripts() if arguments.sweep else [])
+    scripts = [script for script in [MAKE_PROFILE] + SCRIPTS + (sweep_scripts(arguments.vr) if arguments.sweep else [])
                if re.search(arguments.scripts, script[0])]
     import shutil
     import tempfile
@@ -375,11 +417,13 @@ def behaviour(arguments, template: Path) -> dict:
 
     def one(task):
         script, engine = task
-        result = behaviour_run(arguments.build, script, engine, arguments.data, template, arguments.timeout,
+        # (--against: the classic side another build's, the one before a change both engines run)
+        build = arguments.against if arguments.against and engine == "classic" else arguments.build
+        result = behaviour_run(build, script, engine, arguments.data, template, arguments.timeout,
                                None if script is MAKE_PROFILE else profile)
         if not result["done"]:
             # (once more: a run that did not start, or was starved by the others, is not the engine's)
-            result = behaviour_run(arguments.build, script, engine, arguments.data, template, arguments.timeout,
+            result = behaviour_run(build, script, engine, arguments.data, template, arguments.timeout,
                                    None if script is MAKE_PROFILE else profile)
         return task, result
 
@@ -471,6 +515,10 @@ def look_control(build: Path, screens: list, maps: Path, template: Path, timeout
 
 
 def main(argv=None) -> int:
+    import signal
+    # (stopped, it leaves as a raised exit, so that each run's folder, its own clone of the map cache, is deleted as
+    # its run ends: a signal's default left them behind, gigabytes each)
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--layout", action="store_true", help="compare the screens' layouts (debug.menu_layout)")
     parser.add_argument("--pixels", action="store_true", help="compare the screens' frames, pixel for pixel")
@@ -491,8 +539,12 @@ def main(argv=None) -> int:
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument("--out", type=Path, help="the differences written as JSON here too")
     parser.add_argument("--baseline", action="store_true", help="the classic engine on both sides")
+    parser.add_argument("--against", type=Path,
+                        help="with --behaviour, the classic side run from this build (a copy of the one before a "
+                        "change that both engines run, as the model's sliders and conditions are): before | after")
     parser.add_argument("--show", type=Path, help="a scratch folder each differing pair of frames is saved in, to "
                         "look at (the game's imagery: delete it after)")
+    parser.add_argument("--vr", action="store_true", help="VR's settings screens too (drawn flat, as the gallery's)")
     parser.add_argument("--look-control", action="store_true", help="prove that a widget drawn from its definition is "
                         "noticed: the new engine run with one widget's look taken out of the model")
     arguments = parser.parse_args(argv)
@@ -522,7 +574,7 @@ def main(argv=None) -> int:
     for name in variant_names:
         if name not in VARIANTS:
             parser.error(f"no variant {name} ({', '.join(VARIANTS)})")
-    screens = [screen for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS)
+    screens = [screen for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS, arguments.vr)
                if re.search(arguments.screens, screen.name)]
     if arguments.look_control:
         return look_control(arguments.build, screens, arguments.data, template, arguments.timeout)

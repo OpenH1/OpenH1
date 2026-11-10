@@ -11,15 +11,15 @@
 			<choice shown="BORDERLESS" value="borderless"/>
 			<choice shown="WINDOWED" value="windowed"/>
 		</row>
-		<row key="resolution" kind="choice" setting="display.resolution" label="RESOLUTION" when="computer">
+		<row key="resolution" kind="choice" setting="display.resolution" label="RESOLUTION" when="computer+!mode=windowed">
 			<help>What fullscreen and borderless draw at. Native is the display's own, the sharpest; a lower one is lighter on a slow computer, and softer. Fullscreen sets the display to it; borderless scales it.</help>
 			<choice shown="NATIVE" value="native"/>
 		</row>
-		<row key="window_size" kind="choice" setting="display.window_size" label="WINDOW SIZE" when="computer" same_place="true">
+		<row key="window_size" kind="choice" setting="display.window_size" label="WINDOW SIZE" when="computer+mode=windowed" same_place="true">
 			<help>The window's size: 4:3 first, then 16:10, 16:9 and 21:9. Its edges can also be dragged.</help>
 			<choice shown="1280 x 960" value="1280x960"/>
 		</row>
-		<row key="refresh_rate" kind="choice" setting="display.refresh_rate" label="REFRESH RATE" when="computer">
+		<row key="refresh_rate" kind="choice" setting="display.refresh_rate" label="REFRESH RATE" when="computer+mode=fullscreen+refresh_rates">
 			<help>How many times a second the display shows a picture while the game is fullscreen. Auto keeps the display's own. VSync and Max FPS's Auto follow it.</help>
 			<choice shown="AUTO" value="0"/>
 		</row>
@@ -244,7 +244,7 @@
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>
-		<row key="menu_cursor" kind="choice" setting="display.menu_cursor" label="MENU CURSOR" when="computer" not_in_vr="true">
+		<row key="menu_cursor" kind="choice" setting="display.menu_cursor" label="MENU CURSOR" when="computer+!vr" not_in_vr="true">
 			<help>The menus' blue arrow for the mouse, and its size. The sizes keep their share of the screen at any resolution.</help>
 			<note>Off shows the system's pointer.</note>
 			<choice shown="OFF" value="off"/>
@@ -292,17 +292,17 @@
 	<screen name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/network_settings_screen" kind="settings" layout="tab" tab="ONLINE">
 		<about>Internet play, sharing maps and updates.</about>
 		<section key="section_0" title="INTERNET"/>
-		<row key="online" kind="choice" setting="network.online" label="INTERNET PLAY" when="desktop android">
+		<row key="online" kind="choice" setting="network.online" label="INTERNET PLAY" when="desktop+!in_game android+!in_game">
 			<help>Host and join games over the internet with invite links, and find public games. Off keeps to the local network.</help>
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>
-		<row key="allow_upnp" kind="choice" setting="network.allow_upnp" label="OPEN ROUTER PORT" when="desktop android">
+		<row key="allow_upnp" kind="choice" setting="network.allow_upnp" label="OPEN ROUTER PORT" when="desktop+!in_game android+!in_game">
 			<help>Asks your router to open the game's port (UPnP), so that players can reach the games you host.</help>
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>
-		<row key="join_from_clipboard" kind="choice" setting="network.join_from_clipboard" label="JOIN FROM CLIPBOARD" when="desktop android">
+		<row key="join_from_clipboard" kind="choice" setting="network.join_from_clipboard" label="JOIN FROM CLIPBOARD" when="desktop+!in_game android+!in_game">
 			<help>Joins a game when you switch to the game with its invite link copied.</help>
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
@@ -345,7 +345,7 @@
 			<choice shown="10 MB/S" value="10240"/>
 		</row>
 		<section key="section_12" title="UPDATES" when="desktop android"/>
-		<row key="auto" kind="choice" setting="update.auto" label="CHECK FOR UPDATES" when="desktop android">
+		<row key="auto" kind="choice" setting="update.auto" label="CHECK FOR UPDATES" when="desktop+!in_game android+!in_game">
 			<help>Looks for a new version when the game starts.</help>
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
@@ -362,7 +362,7 @@
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>
-		<row key="hud_button_style" kind="choice" setting="display.hud_button_style" label="BUTTON STYLE">
+		<row key="hud_button_style" kind="choice" setting="display.hud_button_style" label="BUTTON STYLE" when="high_res_hud=true">
 			<help>The buttons the HUD draws. Classic: plain Xbox buttons. Gems: shaded Xbox buttons. Dark Gems: the menus' button artwork.</help>
 			<choice shown="CLASSIC" value="classic"/>
 			<choice shown="GEMS" value="gems"/>
@@ -373,12 +373,7 @@
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>
-		<row key="show_frame_rate" kind="choice" setting="display.show_frame_rate" label="SHOW FRAME RATE">
-			<help>Draws the frame rate at the bottom right of the screen, to see how the game runs: the frames drawn each second, averaged over half a second. Green is 30 or more, red under 30.</help>
-			<choice shown="ON" value="true"/>
-			<choice shown="OFF" value="false"/>
-		</row>
-		<section key="section_5" title="MULTIPLAYER"/>
+		<section key="section_4" title="MULTIPLAYER"/>
 		<row key="player_names" kind="choice" setting="display.player_names" label="PLAYER NAMES">
 			<help>In multiplayer, whose names are drawn above their heads.</help>
 			<choice shown="ALL" value="all"/>
@@ -405,6 +400,11 @@
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>
+		<row key="spectate_on_death" kind="choice" setting="game.spectate_on_death" label="WHILE DEAD">
+			<help>While you wait to respawn in co-op or a team game: watch a living teammate through their eyes (A or Jump for the next), or the game's death camera.</help>
+			<choice shown="TEAMMATE'S VIEW" value="teammates"/>
+			<choice shown="DEATH CAMERA" value="off"/>
+		</row>
 		<row key="match_timer" kind="choice" setting="display.match_timer" label="MATCH TIMER">
 			<help>Draws a clock at the bottom right in multiplayer, counting up from the start of the game.</help>
 			<choice shown="ON" value="true"/>
@@ -428,16 +428,16 @@
 	<screen name="main_menu/settings_select/player_setup/player_profile_edit/profile_settings/profile_settings_screen" kind="settings" layout="tab" tab="PROFILES">
 		<about>Your player profiles, your name and color, and the disk space the maps and caches take.</about>
 		<section key="section_0" title="PLAYER"/>
-		<row key="name" kind="link" label="NAME ›" open="main_menu/settings_select/player_setup/player_profile_edit/name_edit/profile_name_screen" run="player profile change name">
+		<row key="name" kind="link" label="NAME ›" when="profile+!in_game" open="main_menu/settings_select/player_setup/player_profile_edit/name_edit/profile_name_screen" run="player profile change name">
 			<help>The name the other players see, kept in your player profile.</help>
 		</row>
-		<row key="color" kind="link" label="COLOR ›" open="main_menu/settings_select/player_setup/player_profile_edit/color_edit/color_select_screen">
+		<row key="color" kind="link" label="COLOR ›" when="profile+!in_game" open="main_menu/settings_select/player_setup/player_profile_edit/color_edit/color_select_screen">
 			<help>Your armor's color in free-for-all multiplayer games, kept in your player profile.</help>
 		</row>
-		<row key="create_profile" kind="link" label="CREATE PROFILE ›" run="port settings new profile">
+		<row key="create_profile" kind="link" label="CREATE PROFILE ›" when="!profile+!in_game" run="port settings new profile">
 			<help>Your name, color and controller layout are kept in a player profile. Make one to set them; the rest of Settings works without one.</help>
 		</row>
-		<row key="profiles" kind="link" label="MANAGE PROFILES ›" open="main_menu/profile_manager/player_profile_manager" run="port settings profiles">
+		<row key="profiles" kind="link" label="MANAGE PROFILES ›" when="profile+!in_game" open="main_menu/profile_manager/player_profile_manager" run="port settings profiles">
 			<help>Switch to another player profile, make a new one or delete one. Your changes so far are kept.</help>
 		</row>
 		<section key="section_5" title="STORAGE"/>
@@ -466,7 +466,7 @@
 	<screen name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/mods_settings_screen" kind="settings" layout="tab" tab="MODS">
 		<about>Texture, sound, text and model packs from the mods folder.</about>
 		<section key="section_0" title="MODS"/>
-		<row key="mods" kind="link" label="MANAGE MODS ›" open="main_menu/mods/mods_screen">
+		<row key="mods" kind="link" label="MANAGE MODS ›" when="!in_game" open="main_menu/mods/mods_screen">
 			<help>Texture, sound, text and model packs from the mods folder: turn each on or off, and choose which plays over which. They are this computer's, for every profile.</help>
 		</row>
 		<row key="mods_folder" kind="link" label="MODS FOLDER">
@@ -575,7 +575,7 @@
 	</screen>
 	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/brightness/brightness_screen" kind="settings" layout="page" title="BRIGHTNESS">
 		<section key="section_0" title="PICTURE"/>
-		<row key="gamma" kind="slider" setting="display.gamma" label="GAMMA" not_in_vr="true" least="0.5" most="2" step="0.05" typed_least="0.5" typed_most="2">
+		<row key="gamma" kind="slider" setting="display.gamma" label="GAMMA" when="!vr_build" not_in_vr="true" least="0.5" most="2" step="0.05" typed_least="0.5" typed_most="2">
 			<help>How bright the picture is, the HUD and menus too, as Halo PC's gamma. Higher brightens the dark parts; lower darkens them. 1.0 shows the game as it is drawn. With HDR on an HDR display, Paper White sets the brightness instead.</help>
 			<note>Click the number (or press A) to type any from 0.5 to 2.0.</note>
 		</row>
@@ -658,13 +658,13 @@
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>
-		<row key="vrr" kind="choice" setting="display.vrr" label="VARIABLE REFRESH" when="desktop">
+		<row key="vrr" kind="choice" setting="display.vrr" label="VARIABLE REFRESH" when="desktop" enabled="!vrr_system">
 			<help>For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so each frame shows as soon as it is ready, without tearing. Auto turns it on where the system says VRR is on.</help>
 			<choice shown="AUTO" value="auto"/>
 			<choice shown="ON" value="on"/>
 			<choice shown="OFF" value="off"/>
 		</row>
-		<row key="vrr_cap_margin" kind="choice" setting="display.vrr_cap_margin" label="VRR FRAME CAP" when="desktop">
+		<row key="vrr_cap_margin" kind="choice" setting="display.vrr_cap_margin" label="VRR FRAME CAP" when="desktop" enabled="vrr=on+!vrr_system vrr=auto+vrr_found+!vrr_system">
 			<help>Frames a second kept under the refresh rate, so the game stays in the screen's VRR range and never falls back to VSync. Lower is closer to the most frames; higher is safer on a screen with a narrow range.</help>
 			<note>Used while Variable Refresh is on.</note>
 			<choice shown="1" value="1"/>
@@ -678,7 +678,7 @@
 			<choice shown="9" value="9"/>
 			<choice shown="10" value="10"/>
 		</row>
-		<row key="max_fps" kind="slider" setting="display.max_fps" label="MAX FPS" when="desktop" least="30" most="540" step="1" typed_least="10" typed_most="1000" whole="true">
+		<row key="max_fps" kind="slider" setting="display.max_fps" label="MAX FPS" when="desktop+vsync=false" least="30" most="540" step="1" typed_least="10" typed_most="1000" whole="true">
 			<help>The most frames drawn a second with VSync off. Auto is twice the display's refresh rate. More feels smoother and uses more power; None draws as fast as it can.</help>
 			<note>Click the number (or press A) to type 10 to 1000.</note>
 			<stop shown="AUTO" value="0"/>
@@ -698,11 +698,16 @@
 			<stop shown="540" value="540"/>
 			<stop shown="NONE" value="-1"/>
 		</row>
-		<row key="low_latency" kind="choice" setting="display.low_latency" label="LOW LATENCY">
+		<row key="low_latency" kind="choice" setting="display.low_latency" label="LOW LATENCY" when="!vrr_system">
 			<help>With VSync on, starts each frame just in time for the refresh it is shown at, so a press reaches the screen sooner. Off starts each frame as soon as the one before is waiting. Auto is on.</help>
 			<choice shown="AUTO" value="auto"/>
 			<choice shown="ON" value="on"/>
 			<choice shown="OFF" value="off"/>
+		</row>
+		<row key="show_frame_rate" kind="choice" setting="display.show_frame_rate" label="SHOW FRAME RATE">
+			<help>Draws the frame rate at the bottom right of the screen, to see how the game runs: the frames drawn each second, averaged over half a second. Green is 30 or more, red under 30.</help>
+			<choice shown="ON" value="true"/>
+			<choice shown="OFF" value="false"/>
 		</row>
 		<button key="button_defaults" kind="defaults" run="port settings defaults" help="Puts this page's settings back to their defaults."/>
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
@@ -738,7 +743,7 @@
 			<choice shown="XBOX" value="false"/>
 			<choice shown="SCALED" value="true"/>
 		</row>
-		<row key="panini" kind="slider" setting="display.panini" label="PANINI PROJECTION" least="0" most="1" step="0.25" typed_least="0" typed_most="1">
+		<row key="panini" kind="slider" setting="display.panini" label="PANINI PROJECTION" when="!vr_build" least="0" most="1" step="0.25" typed_least="0" typed_most="1">
 			<help>Stops a wide field of view from stretching what is at the sides; you still see as far, and the middle is drawn larger. 1 keeps their shapes true. The HUD stays flat. Fields of view up to 160 need it.</help>
 			<note>Click the number (or press A) to type 0 to 1.</note>
 			<stop shown="OFF" value="0"/>
@@ -747,7 +752,7 @@
 			<stop shown="0.75" value="0.75"/>
 			<stop shown="1" value="1"/>
 		</row>
-		<row key="panini_vertical" kind="slider" setting="display.panini_vertical" label="PANINI VERTICAL" least="0" most="1" step="0.05" typed_least="0" typed_most="1">
+		<row key="panini_vertical" kind="slider" setting="display.panini_vertical" label="PANINI VERTICAL" when="!vr_build" least="0" most="1" step="0.05" typed_least="0" typed_most="1">
 			<help>With Panini Projection on: straightens floors and ceilings above and below the middle, and stretches the sides taller. 0 keeps their shapes true.</help>
 			<note>Click the number (or press A) to type 0 to 1.</note>
 		</row>
@@ -811,31 +816,31 @@
 			<note>Click the number (or press A) to type any from -15 to 15.</note>
 		</row>
 		<section key="section_7" title="THIS WEAPON"/>
-		<row key="viewmodel_weapon_x" kind="slider" setting="weapon.x" label="HORIZONTAL" least="-20" most="20" step="0.5" typed_least="-20" typed_most="20">
+		<row key="viewmodel_weapon_x" kind="slider" setting="weapon.x" label="HORIZONTAL" when="weapon_held" least="-20" most="20" step="0.5" typed_least="-20" typed_most="20">
 			<help>Moves the weapon you hold right, or left below 0, in centimeters, added to All Weapons'. Each weapon keeps its own, a modded map's too.</help>
 			<note>Click the number (or press A) to type any from -20 to 20.</note>
 		</row>
-		<row key="viewmodel_weapon_y" kind="slider" setting="weapon.y" label="VERTICAL" least="-20" most="20" step="0.5" typed_least="-20" typed_most="20">
+		<row key="viewmodel_weapon_y" kind="slider" setting="weapon.y" label="VERTICAL" when="weapon_held" least="-20" most="20" step="0.5" typed_least="-20" typed_most="20">
 			<help>Moves the weapon you hold up, or down below 0, in centimeters, added to All Weapons'.</help>
 			<note>Click the number (or press A) to type any from -20 to 20.</note>
 		</row>
-		<row key="viewmodel_weapon_z" kind="slider" setting="weapon.z" label="DEPTH" least="-20" most="20" step="0.5" typed_least="-20" typed_most="20">
+		<row key="viewmodel_weapon_z" kind="slider" setting="weapon.z" label="DEPTH" when="weapon_held" least="-20" most="20" step="0.5" typed_least="-20" typed_most="20">
 			<help>Pushes the weapon you hold away, or closer below 0, in centimeters, added to All Weapons'.</help>
 			<note>Click the number (or press A) to type any from -20 to 20.</note>
 		</row>
-		<row key="viewmodel_weapon_pitch" kind="slider" setting="weapon.pitch" label="PITCH" least="-15" most="15" step="0.5" typed_least="-15" typed_most="15">
+		<row key="viewmodel_weapon_pitch" kind="slider" setting="weapon.pitch" label="PITCH" when="weapon_held" least="-15" most="15" step="0.5" typed_least="-15" typed_most="15">
 			<help>Tilts the muzzle of the weapon you hold up, or down below 0, in degrees, added to All Weapons'.</help>
 			<note>Click the number (or press A) to type any from -15 to 15.</note>
 		</row>
-		<row key="viewmodel_weapon_yaw" kind="slider" setting="weapon.yaw" label="YAW" least="-15" most="15" step="0.5" typed_least="-15" typed_most="15">
+		<row key="viewmodel_weapon_yaw" kind="slider" setting="weapon.yaw" label="YAW" when="weapon_held" least="-15" most="15" step="0.5" typed_least="-15" typed_most="15">
 			<help>Turns the muzzle of the weapon you hold right, or left below 0, in degrees, added to All Weapons'.</help>
 			<note>Click the number (or press A) to type any from -15 to 15.</note>
 		</row>
-		<row key="viewmodel_weapon_roll" kind="slider" setting="weapon.roll" label="ROLL" least="-15" most="15" step="0.5" typed_least="-15" typed_most="15">
+		<row key="viewmodel_weapon_roll" kind="slider" setting="weapon.roll" label="ROLL" when="weapon_held" least="-15" most="15" step="0.5" typed_least="-15" typed_most="15">
 			<help>Tilts the top of the weapon you hold right, or left below 0, in degrees, added to All Weapons'.</help>
 			<note>Click the number (or press A) to type any from -15 to 15.</note>
 		</row>
-		<row key="viewmodel_weapon_reset" kind="status" label="RESET THIS WEAPON" run="port settings weapon reset">
+		<row key="viewmodel_weapon_reset" kind="status" label="RESET THIS WEAPON" when="weapon_held" run="port settings weapon reset">
 			<help>Puts the weapon you hold back to All Weapons' place: its own offsets go back to 0 when you press OK.</help>
 		</row>
 		<button key="button_defaults" kind="defaults" run="port settings defaults" help="Puts this page's settings back to their defaults."/>
@@ -923,7 +928,7 @@
 	</screen>
 	<screen name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gamepad_setup_screen" kind="settings" layout="page" title="CONTROLLER" profile="true">
 		<section key="section_0" title="LOOK"/>
-		<row key="look_sensitivity" kind="choice" setting="profile.look_sensitivity" label="LOOK SENSITIVITY">
+		<row key="look_sensitivity" kind="choice" setting="profile.look_sensitivity" label="LOOK SENSITIVITY" when="profile">
 			<help>How fast the right stick turns the view.</help>
 			<choice shown="1" value="1"/>
 			<choice shown="2" value="2"/>
@@ -936,7 +941,7 @@
 			<choice shown="9" value="9"/>
 			<choice shown="10" value="10"/>
 		</row>
-		<row key="invert_look" kind="choice" setting="profile.invert_look" label="INVERT LOOK">
+		<row key="invert_look" kind="choice" setting="profile.invert_look" label="INVERT LOOK" when="profile">
 			<help>Pushing the right stick up looks down.</help>
 			<choice shown="YES" value="true"/>
 			<choice shown="NO" value="false"/>
@@ -949,18 +954,18 @@
 		<row key="gyro_flick_stick" kind="link" label="GYRO &amp; FLICK STICK ›" open="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_screen">
 			<help>Aim by turning a controller that has a gyroscope, and the right stick as a flick stick.</help>
 		</row>
-		<row key="flight_inversion" kind="choice" setting="profile.flight_inversion" label="INVERT FLIGHT">
+		<row key="flight_inversion" kind="choice" setting="profile.flight_inversion" label="INVERT FLIGHT" when="profile">
 			<help>Flying vehicles pitch as aircraft do: pushing up flies down.</help>
 			<choice shown="YES" value="true"/>
 			<choice shown="NO" value="false"/>
 		</row>
-		<row key="autocenter" kind="choice" setting="profile.autocenter" label="AUTO-CENTER LOOK">
+		<row key="autocenter" kind="choice" setting="profile.autocenter" label="AUTO-CENTER LOOK" when="profile">
 			<help>Levels the view while you walk.</help>
 			<choice shown="YES" value="true"/>
 			<choice shown="NO" value="false"/>
 		</row>
 		<section key="section_7" title="LAYOUT"/>
-		<row key="button_preset" kind="choice" setting="profile.button_preset" label="BUTTON LAYOUT">
+		<row key="button_preset" kind="choice" setting="profile.button_preset" label="BUTTON LAYOUT" when="profile">
 			<help>Which of the controller's buttons does what. Button Remapping sets them one by one; the keyboard's keys are Key Bindings'.</help>
 			<choice shown="DEFAULT" value="0"/>
 			<choice shown="SWAP TRIGGERS" value="1"/>
@@ -971,7 +976,7 @@
 			<choice shown="FISHSTICKS" value="6"/>
 			<choice shown="RECON" value="7"/>
 		</row>
-		<row key="joystick_preset" kind="choice" setting="profile.joystick_preset" label="STICK LAYOUT">
+		<row key="joystick_preset" kind="choice" setting="profile.joystick_preset" label="STICK LAYOUT" when="profile">
 			<help>Which stick moves and which looks. Southpaw swaps them.</help>
 			<choice shown="DEFAULT" value="0"/>
 			<choice shown="SOUTHPAW" value="1"/>
@@ -985,18 +990,18 @@
 			<help>How far each stick moves before it does anything: more for a worn stick that drifts, less for finer aim.</help>
 		</row>
 		<section key="section_12" title="FEEDBACK"/>
-		<row key="vibration" kind="choice" setting="profile.vibration" label="VIBRATION">
+		<row key="vibration" kind="choice" setting="profile.vibration" label="VIBRATION" when="profile">
 			<help>Rumbles the controller.</help>
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>
-		<row key="ingame_help" kind="choice" setting="profile.ingame_help" label="IN-GAME HELP">
+		<row key="ingame_help" kind="choice" setting="profile.ingame_help" label="IN-GAME HELP" when="profile">
 			<help>Shows the game's hints about its controls.</help>
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>
 		<section key="section_15" title="PROFILE"/>
-		<row key="create_profile" kind="link" label="CREATE PROFILE ›" run="port settings new profile">
+		<row key="create_profile" kind="link" label="CREATE PROFILE ›" when="!profile+!in_game" run="port settings new profile">
 			<help>Your name, color and controller layout are kept in a player profile. Make one to set them; the rest of Settings works without one.</help>
 		</row>
 		<button key="button_defaults" kind="defaults" run="port settings defaults" help="Puts this page's settings back to their defaults."/>
@@ -1049,7 +1054,7 @@
 			<help>Whether a controller with a gyroscope is connected: a DualSense, a DualShock 4, a Switch Pro Controller or Joy-Cons, a Steam Deck.</help>
 			<note>With Steam Input, turn it off for OpenH1.</note>
 		</row>
-		<row key="gyro_aim" kind="choice" setting="input.gyro_aim" label="GYRO AIMING">
+		<row key="gyro_aim" kind="choice" setting="input.gyro_aim" label="GYRO AIMING" when="gyro">
 			<help>Aim by turning the controller, as you would a mouse; the stick still works too. Hold to Aim: only while the gyro button is held. Hold to Pause: except while it is held, to re-center. Thumb on Stick: while your thumb touches the right stick (a Steam Deck, a Steam Controller).</help>
 			<note>No aim assist on the gyro's aim.</note>
 			<choice shown="OFF" value="off"/>
@@ -1058,7 +1063,7 @@
 			<choice shown="HOLD TO PAUSE" value="pause"/>
 			<choice shown="THUMB ON STICK" value="touch"/>
 		</row>
-		<row key="gyro_button" kind="choice" setting="input.gyro_button" label="GYRO BUTTON">
+		<row key="gyro_button" kind="choice" setting="input.gyro_button" label="GYRO BUTTON" when="gyro+gyro_aim=hold gyro+gyro_aim=pause">
 			<help>The button that Hold to Aim and Hold to Pause hold. It still does its own action too: Button Remapping can move that.</help>
 			<choice shown="TOUCHPAD" value="touchpad"/>
 			<choice shown="LEFT PADDLE" value="left_paddle"/>
@@ -1071,11 +1076,11 @@
 			<choice shown="LEFT STICK" value="left_stick"/>
 			<choice shown="RIGHT STICK" value="right_stick"/>
 		</row>
-		<row key="gyro_sensitivity" kind="slider" setting="input.gyro_sensitivity" label="SENSITIVITY" least="0.25" most="8" step="0.05" typed_least="0.05" typed_most="20">
+		<row key="gyro_sensitivity" kind="slider" setting="input.gyro_sensitivity" label="SENSITIVITY" when="gyro" least="0.25" most="8" step="0.05" typed_least="0.05" typed_most="20">
 			<help>How far the view turns for each degree you turn the controller: 1 as far, 2 twice as far. Press A, or click the number, to type a value.</help>
 			<note>Zoomed in: as Zoom Aim Speed sets.</note>
 		</row>
-		<row key="gyro_vertical_sensitivity" kind="choice" setting="input.gyro_vertical_sensitivity" label="VERTICAL SENSITIVITY">
+		<row key="gyro_vertical_sensitivity" kind="choice" setting="input.gyro_vertical_sensitivity" label="VERTICAL SENSITIVITY" when="gyro">
 			<help>How far the view turns up and down, of how far it turns side to side. 1X turns it as far.</help>
 			<choice shown="0.25X" value="0.25"/>
 			<choice shown="0.5X" value="0.5"/>
@@ -1090,17 +1095,17 @@
 			<choice shown="1.5X" value="1.5"/>
 			<choice shown="2X" value="2"/>
 		</row>
-		<row key="gyro_space" kind="choice" setting="input.gyro_space" label="TURN AXIS">
+		<row key="gyro_space" kind="choice" setting="input.gyro_space" label="TURN AXIS" when="gyro">
 			<help>Player Space turns you as you turn the controller about the up direction, however you hold it: flat, upright or between. Local Space turns you about the controller's own axis, as if held flat.</help>
 			<choice shown="PLAYER SPACE" value="player"/>
 			<choice shown="LOCAL SPACE" value="local"/>
 		</row>
-		<row key="gyro_smoothing" kind="choice" setting="input.gyro_smoothing" label="SMOOTHING">
+		<row key="gyro_smoothing" kind="choice" setting="input.gyro_smoothing" label="SMOOTHING" when="gyro">
 			<help>Steadies the smallest motions, your hand's tremor, but never a real turn. Off: every motion as it comes.</help>
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>
-		<row key="gyro_calibrate" kind="status" label="CALIBRATE" run="port settings gyro calibrate">
+		<row key="gyro_calibrate" kind="status" label="CALIBRATE" when="gyro" run="port settings gyro calibrate">
 			<help>Put the controller down on something still, then select this: it measures the gyroscope at rest for a second and a half.</help>
 			<note>It also does so whenever it is held still.</note>
 		</row>
@@ -1271,7 +1276,7 @@
 		<row key="link_status" kind="status" label="DISCORD">
 			<help>The Discord account linked to this game, and how many of the master servers it is linked with.</help>
 		</row>
-		<row key="link_unlink" kind="status" label="UNLINK" run="port discord unlink">
+		<row key="link_unlink" kind="status" label="UNLINK" when="discord_linked" run="port discord unlink">
 			<help>Forgets the linked account on this device. Select it twice: the first asks, the second unlinks.</help>
 		</row>
 		<section key="section_3" title="MASTER SERVERS"/>

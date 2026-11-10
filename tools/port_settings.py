@@ -296,8 +296,9 @@ class Slider(NamedTuple):
     typed_most (whole: rounded to a whole number). With stops, [(shown,
     value)], the track is the stops, evenly spaced, and left, right and a
     click go from stop to stop; a stop shown as a word (AUTO) is that value,
-    which may be typed as the word or the number. menu_functions.c's
-    settings_sliders has the same"""
+    which may be typed as the word or the number. The model has it
+    (port/assets/menus/model), which menu_functions.c makes its sliders
+    from"""
     least: float
     most: float
     step: float
@@ -483,17 +484,17 @@ VEHICLE_FIELDS_OF_VIEW = FIELDS_OF_VIEW._replace(
 FRAME_RATE_LIMITS = Slider(30, 540, 1, 10, 1000, whole=True,
                            stops=(("AUTO", "0"),) + tuple((str(n), str(n)) for n in (
                                30, 60, 75, 90, 100, 120, 144, 165, 200, 240, 280, 360, 480, 540)) + (("NONE", "-1"),))
-# display.gamma's: Halo PC's gamma, past 1 brighter; 1 none (menu_functions.c's
-# settings_sliders, d3d8_device.c's GAMMA_LEAST and GAMMA_MOST)
+# display.gamma's: Halo PC's gamma, past 1 brighter; 1 none (d3d8_device.c's
+# GAMMA_LEAST and GAMMA_MOST)
 GAMMA = Slider(0.5, 2.0, 0.05, 0.5, 2.0)
 # display.panini's: its strength, off (0) to 1; any of 0 to 1 typed; and
-# display.panini_vertical's, 0 to 1 (menu_functions.c's settings_sliders)
+# display.panini_vertical's, 0 to 1
 PANINI_STRENGTHS = Slider(0.0, 1.0, 0.25, 0.0, 1.0,
                           stops=(("OFF", "0"), ("0.25", "0.25"), ("0.5", "0.5"), ("0.75", "0.75"), ("1", "1")))
 PANINI_VERTICAL = Slider(0.0, 1.0, 0.05, 0.0, 1.0)
 # display.draw_distance's: the far clip plane in world units, the game's own
 # 1024 to ChupathingyCE's farthest (port/linux/game/far_clip.c); any of 1024
-# to 10000 typed (menu_functions.c's settings_sliders)
+# to 10000 typed
 DRAW_DISTANCES = Slider(1024, 10000, 1, 1024, 10000, whole=True,
                         stops=(("DEFAULT", "1024"),) + tuple((str(n), str(n)) for n in (
                             1536, 2048, 3072, 4096, 6144, 8192, 10000)))
@@ -620,7 +621,7 @@ PAGES = {
              "the screen with a window, so that other windows open over it at once; windowed is a window you can "
              "move and resize. F11 switches between the window and the screen.", "computer"),
             # (in Window Size's place, the one the display mode shown uses:
-            # menu_functions.c's video_rows_show; port/linux/game/menu_tags.c
+            # SETTINGS_ROW_WHEN; port/linux/game/menu_tags.c
             # adds the display's resolutions, and puts the sizes that fit the
             # desktop in place of Window Size's own)
             ("RESOLUTION", "display.resolution", [("NATIVE", "native")],
@@ -630,7 +631,7 @@ PAGES = {
             ("WINDOW SIZE", "display.window_size", [("1280 x 960", "1280x960")],
              "The window's size: 4:3 first, then 16:10, 16:9 and 21:9. Its edges can also be dragged.", "computer"),
             # (shown while Window shows FULLSCREEN where fullscreen can set
-            # the display's rate: menu_functions.c's refresh_rate_row_show;
+            # the display's rate: SETTINGS_ROW_WHEN;
             # port/linux/game/menu_tags.c adds the display's rates)
             ("REFRESH RATE", "display.refresh_rate", [("AUTO", "0")],
              "How many times a second the display shows a picture while the game is fullscreen. Auto keeps the "
@@ -742,7 +743,7 @@ PAGES = {
              "the original did.", "computer"),
             # (port/linux/src/sdl_platform.c's menu_cursor_size; hidden in the
             # headset, where VR Setup's row takes its room and the menus have
-            # no desktop pointer: menu_functions.c's menu_cursor_row_show)
+            # no desktop pointer: SETTINGS_ROW_WHEN)
             ("MENU CURSOR", "display.menu_cursor",
              [("OFF", "off"), ("SMALL", "small"), ("MEDIUM", "medium"), ("LARGE", "large"),
               ("EXTRA LARGE", "extra_large")],
@@ -778,7 +779,7 @@ PAGES = {
         "about": "Internet play, sharing maps and updates.",
         "rows": [
             # (in a game, the rows that would drop it or are the main menu's
-            # are hidden: menu_functions.c's settings_rows_show)
+            # are hidden: SETTINGS_ROW_WHEN)
             (SECTION, "INTERNET"),
             ("INTERNET PLAY", "network.online", ON_OFF,
              "Host and join games over the internet with invite links, and find public games. Off keeps to the "
@@ -830,19 +831,13 @@ PAGES = {
             (SECTION, "HUD"),
             ("HIGH-RES HUD", "display.high_res_hud", ON_OFF,
              "Draws the HUD from sharp high-resolution redraws. Off draws the game's own pictures.", None),
-            # (shown while HIGH-RES HUD is: menu_functions.c's
-            # hud_button_style_row_show)
+            # (shown while HIGH-RES HUD is: SETTINGS_ROW_WHEN)
             ("BUTTON STYLE", "display.hud_button_style",
              [("CLASSIC", "classic"), ("GEMS", "gems"), ("DARK GEMS", "menu_gems")],
              "The buttons the HUD draws. Classic: plain Xbox buttons. Gems: shaded Xbox buttons. Dark Gems: the "
              "menus' button artwork.", None),
             ("HIGH-RES TEXT", "display.high_res_text", ON_OFF,
              "Draws text and titles with sharp high-resolution fonts. Off draws the game's own.", None),
-            # (main.c's main_framerate_render, as the console's
-            # display_framerate draws it; Video's page has no room)
-            ("SHOW FRAME RATE", "display.show_frame_rate", ON_OFF,
-             "Draws the frame rate at the bottom right of the screen, to see how the game runs: the frames drawn "
-             "each second, averaged over half a second. Green is 30 or more, red under 30.", None),
             (SECTION, "MULTIPLAYER"),
             ("PLAYER NAMES", "display.player_names",
              [("ALL", "all"), ("ALLIES", "allies"), ("ENEMIES", "enemies"), ("NONE", "none")],
@@ -854,6 +849,10 @@ PAGES = {
              "A team game's scoreboard: a column for each team, or every player in order of score.", None),
             ("SCOREBOARD PANEL", "display.scoreboard_background", ON_OFF,
              "Draws a dark panel behind the scoreboard, for clearer text.", None),
+            # (port/linux/game/dead_spectate.c: co-op and team games)
+            ("WHILE DEAD", "game.spectate_on_death", [("TEAMMATE'S VIEW", "teammates"), ("DEATH CAMERA", "off")],
+             "While you wait to respawn in co-op or a team game: watch a living teammate through their eyes "
+             "(A or Jump for the next), or the game's death camera.", None),
             ("MATCH TIMER", "display.match_timer", ON_OFF,
              "Draws a clock at the bottom right in multiplayer, counting up from the start of the game.", None),
             # (the text chat's: port/linux/game/network_chat.c)
@@ -872,7 +871,7 @@ PAGES = {
             # (with no profile, NAME, COLOR and MANAGE PROFILES are hidden and
             # CREATE PROFILE shown; in a game, those whose screens are
             # ui.map's: the name's keyboard, the colours' pictures, and those
-            # that are the main menu's: the profiles: settings_rows_show)
+            # that are the main menu's: the profiles: SETTINGS_ROW_WHEN)
             (SECTION, "PLAYER"),
             ("NAME ›", None, f"{PE}/name_edit/profile_name_screen",
              "The name the other players see, kept in your player profile.", None, "name",
@@ -911,7 +910,7 @@ PAGES = {
         ],
     },
     # (port/linux/game/mods.c: this machine's, every profile's; MANAGE MODS
-    # is the main menu's, hidden in a game: settings_rows_show)
+    # is the main menu's, hidden in a game: SETTINGS_ROW_WHEN)
     "mods_settings": {
         "screen": "mods_settings_screen", "tab": "MODS",
         "about": "Texture, sound, text and model packs from the mods folder.",
@@ -1002,7 +1001,7 @@ PAGES = {
         "screen": BRIGHTNESS_PAGE[1], "title": "BRIGHTNESS",
         "rows": [
             (SECTION, "PICTURE"),
-            # (not the VR build's: menu_functions.c's gamma_row_show)
+            # (not the VR build's: SETTINGS_ROW_WHEN)
             ("GAMMA", "display.gamma", GAMMA,
              "How bright the picture is, the HUD and menus too, as Halo PC's gamma. Higher brightens the dark "
              "parts; lower darkens them. 1.0 shows the game as it is drawn. With HDR on an HDR display, Paper "
@@ -1039,20 +1038,20 @@ PAGES = {
              "almost no input lag. It is on in the Steam Deck's Game Mode.", None),
             # (display.vrr: sdl_platform.c's platform_vrr; on every build, its
             # AUTO and its words what the system says, dimmed on the Mac:
-            # menu_tags.c's spinner_split, menu_functions.c's vrr_rows_show and
-            # vrr_panel, which has the words shown)
+            # menu_tags.c's spinner_split, SETTINGS_ROW_ENABLED and
+            # menu_functions.c's vrr_panel, which has the words shown)
             ("VARIABLE REFRESH", "display.vrr", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
              "For a G-SYNC or FreeSync display: VSync on and the frame rate held just under the refresh rate, so "
              "each frame shows as soon as it is ready, without tearing. Auto turns it on where the system says VRR "
              "is on.",
              "desktop"),
-            # (dimmed while VRR is not on: vrr_rows_show)
+            # (dimmed while VRR is not on: SETTINGS_ROW_ENABLED)
             ("VRR FRAME CAP", "display.vrr_cap_margin", [(str(n), str(n)) for n in range(1, 11)],
              "Frames a second kept under the refresh rate, so the game stays in the screen's VRR range and never "
              "falls back to VSync. Lower is closer to the most frames; higher is safer on a screen with a narrow "
              "range.|Used while Variable Refresh is on.",
              "desktop"),
-            # (shown while VSync shows OFF: menu_functions.c's max_fps_row_show)
+            # (shown while VSync shows OFF: SETTINGS_ROW_WHEN)
             ("MAX FPS", "display.max_fps", FRAME_RATE_LIMITS,
              "The most frames drawn a second with VSync off. Auto is twice the display's refresh rate. More feels "
              "smoother and uses more power; None draws as fast as it can.|Click the number (or press A) to type 10 "
@@ -1060,6 +1059,12 @@ PAGES = {
             ("LOW LATENCY", "display.low_latency", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
              "With VSync on, starts each frame just in time for the refresh it is shown at, so a press reaches the "
              "screen sooner. Off starts each frame as soon as the one before is waiting. Auto is on.", None),
+            # (main.c's main_framerate_render, as the console's
+            # display_framerate draws it: Video's page has no room, and
+            # Interface's none since WHILE DEAD)
+            ("SHOW FRAME RATE", "display.show_frame_rate", ON_OFF,
+             "Draws the frame rate at the bottom right of the screen, to see how the game runs: the frames drawn "
+             "each second, averaged over half a second. Green is 30 or more, red under 30.", None),
         ],
     },
     FIRST_PERSON[0]: {
@@ -1077,8 +1082,7 @@ PAGES = {
              "Xbox did. Scaled zooms your own view by the same magnification, so a wider view stays wider zoomed.",
              None),
             # (display.panini, port/linux/game/panini.c, and its vertical
-            # compression; none in the VR build: menu_functions.c's
-            # panini_rows_show)
+            # compression; none in the VR build: SETTINGS_ROW_WHEN)
             ("PANINI PROJECTION", "display.panini", PANINI_STRENGTHS,
              "Stops a wide field of view from stretching what is at the sides; you still see as far, and the "
              "middle is drawn larger. 1 keeps their shapes true. The HUD stays flat. Fields of view up to 160 "
@@ -1455,8 +1459,9 @@ WIDE_SETTINGS = {"audio.output_device", "audio.input_device", "streamer.slurs", 
 
 # Teamplay Options' rows of the port's (_teamplay_options_extras): the
 # gametype's FORCE TEAM SPAWNS, then the host's voice chat and vote kicks;
-# each row's key, its label, its choices' words (menu_functions.c's
-# gametype_options give their values) and their helps
+# each row's key, its label, its choices' words (SETUP_ROW_SETTINGS gives
+# the host's settings' values, menu_functions.c's gametype_options the
+# gametype's) and their helps
 TEAMPLAY_EDIT = "main_menu/settings_select/multiplayer_setup/teamplay_options_edit"
 VOICE_QUALITIES = (8, 12, 16, 24, 32, 48, 64)
 # (the rows' step: closer than the PC's 30px, so that all of Server Setup's
@@ -1822,13 +1827,66 @@ def _settings_platform(rows: list, start: int):
 
 
 # the rows in the place of the row before them, each platform having one of
-# them at most, or menu_functions.c showing one (video_rows_show): Window Size
-# in Resolution's, Android's anti-aliasing in the desktop's
+# them at most, or the model's conditions showing one (SETTINGS_ROW_WHEN):
+# Window Size in Resolution's, Android's anti-aliasing in the desktop's
 SETTINGS_SAME_PLACE = {"window_size", "anti_aliasing_android"}
-# the rows menu_functions.c hides while VR Setup's row is shown (the game in
-# the headset), which takes their room: Mouse's Menu Cursor (menu_cursor_row_show);
-# and Brightness's Gamma, which the VR build hides always (gamma_row_show)
+# the rows hidden while VR Setup's row is shown (the game in the headset),
+# which takes their room: Mouse's Menu Cursor; and Brightness's Gamma, which
+# the VR build hides always (their conditions: SETTINGS_ROW_WHEN)
 SETTINGS_NOT_IN_VR = {"menu_cursor", "gamma"}
+# a Settings row's conditions, in the model (docs/menu_engine.md), which
+# menu_functions.c tests each frame as the page is shown, on either engine
+# (settings_rows_conditions): when the row is there, beside its platforms,
+# and when it is enabled (else dimmed, its value held where it was, its panel
+# still saying why). Their terms: "<key>=<value>", another row's value shown
+# (its spinner's); in_game, profile (one being edited), vr (the game in the
+# headset), vr_build, refresh_rates (fullscreen can set the display's rate),
+# vrr_found and vrr_system (platform_vrr_detected's), gyro (a controller's
+# gyroscope connected), weapon_held (in a game, a weapon held: Weapon
+# Position's THIS WEAPON rows); "!" not, "+" and, a space or.
+SETTINGS_ROW_WHEN = {
+    # (Window Size the window's, Resolution fullscreen's and borderless's, in
+    # one place; Refresh Rate fullscreen's)
+    "resolution": "!mode=windowed", "window_size": "mode=windowed",
+    "refresh_rate": "mode=fullscreen+refresh_rates",
+    "hud_button_style": "high_res_hud=true",
+    # (with vsync on the display paces the frames)
+    "max_fps": "vsync=false",
+    # (the headset's menus have no desktop pointer; the VR build never curves
+    # its frames, nor draws through the Panini projection)
+    "menu_cursor": "!vr", "gamma": "!vr_build", "panini": "!vr_build", "panini_vertical": "!vr_build",
+    # (the Mac's display paces its frames already)
+    "low_latency": "!vrr_system",
+    # (in a game: not those that would drop it or are the main menu's, nor
+    # those whose screens are ui.map's or make a profile)
+    "online": "!in_game", "allow_upnp": "!in_game", "join_from_clipboard": "!in_game", "auto": "!in_game",
+    "mods": "!in_game",
+    "name": "profile+!in_game", "color": "profile+!in_game", "profiles": "profile+!in_game",
+    "create_profile": "!profile+!in_game",
+    **{key: "gyro" for key in ("gyro_aim", "gyro_sensitivity", "gyro_vertical_sensitivity", "gyro_space",
+                               "gyro_smoothing", "gyro_calibrate")},
+    "gyro_button": "gyro+gyro_aim=hold gyro+gyro_aim=pause",
+    **{f"viewmodel_weapon_{name}": "weapon_held" for name in ("x", "y", "z", "pitch", "yaw", "roll", "reset")},
+    # (Discord's UNLINK an account linked, or waiting for its code)
+    "link_unlink": "discord_linked",
+}
+SETTINGS_ROW_ENABLED = {
+    # (macOS's Metal and ProMotion set it: SET BY MACOS; its frame cap only
+    # while it is on)
+    "vrr": "!vrr_system",
+    "vrr_cap_margin": "vrr=on+!vrr_system vrr=auto+vrr_found+!vrr_system",
+}
+
+
+def _settings_row_when(key: str, setting, platform):
+    """a Settings row's condition in the model: its platforms, and its
+    SETTINGS_ROW_WHEN (a profile's setting's: a profile edited), both"""
+    condition = SETTINGS_ROW_WHEN.get(key) or ("profile" if setting and setting.startswith("profile.") else None)
+    if not condition:
+        return platform
+    if not platform:
+        return condition
+    return " ".join(f"{name}+{term}" for name in platform.split() for term in condition.split())
 
 
 def _settings_page(folder: str, page: dict) -> list:
@@ -3177,29 +3235,7 @@ def _server_settings() -> list:
                                          "TEAMPLAY OPTIONS:", "LISTING:",
                                          *(f"{title}:" for _, title, _, _ in COOP_SETUP_SCREENS), "PASSWORD:",
                                          f"{MAP_SHARE_SETUP[1]}:", "GAME:"])
-    extra += _strings(f"{base}/help_strings", [
-        "",
-        "The name the game shows in the lists of games.\\nEnter changes it.",
-        "The most players the game takes (up to 128).",
-        "Players join this game by its invite link, or your\\nDiscord invite. Enter copies the link again.",
-        "The gametype and its rules, for this game.",
-        "Lives, health, shields and respawning, for this game.",
-        "Weapons, grenades and starting equipment, for\\nthis game.",
-        "Each team's vehicles and their respawn time, for\\nthis game.",
-        "The motion tracker and nav points, for this game.",
-        "Friendly fire and team balance, for this game.",
-        # (LISTING's, by its choice)
-        "Anyone can see and join your game: it is listed\\nin everyone's Server Browser.",
-        "Only players with your invite link can join.",
-        # (co-op's options' rows: COOP_SETUP_SCREENS)
-        *(help_text for _, _, help_text, _ in COOP_SETUP_SCREENS),
-        # (PASSWORD's)
-        "Players from the Server Browser must type it to\\njoin (an invite link needs none). Enter sets it.",
-        # (MAP SHARING's)
-        MAP_SHARE_SETUP[2],
-        # (GAME's, by its choice)
-        *(help_text for _, help_text in GAME_MODES),
-    ])
+    extra += _strings(f"{base}/help_strings", [text for _, texts in SERVER_SETTINGS_HELP for text in texts])
     lines = _screen(base, spec, rows, ["server settings update"],
                     ['<on event="created" run="server settings init"/>'], extra)
     # (a game of this machine alone's line: server_settings_local)
@@ -3219,15 +3255,14 @@ def _server_settings() -> list:
 
 MAXIMUM_PLAYERS = [2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128]
 # CO-OP OPTIONS' amounts of PER PLAYER (network.coop_enemies, percentages)
-# and STATIC MULTIPLIER (network.coop_enemies_multiplier), as menu_functions.c's
-# gametype_options have their values
+# and STATIC MULTIPLIER (network.coop_enemies_multiplier), as
+# SETUP_ROW_SETTINGS has their values
 COOP_ENEMIES_PERCENTAGES = [25, 50, 100, 150, 200]
 COOP_ENEMIES_MULTIPLIERS = [2, 4, 8, 16, 32]
 # co-op's Server Setup options, in screens of their own as the gametype's
 # are (its rows: _server_settings), each its key, its title, its row's help
 # and its rows (as TEAMPLAY_ROWS: each spinner's key, label, words and the
-# help of each of them; menu_functions.c's gametype_options give their
-# settings' values)
+# help of each of them; SETUP_ROW_SETTINGS gives their settings' values)
 COOP_SETUP_SCREENS = [
     ("coop_options", "CO-OP OPTIONS", "Friendly fire, the enemies and player collisions,\\nfor this game.", [
         ("coop_friendly_fire", "FRIENDLY FIRE:", ["OFF", "ON", "SHIELD ONLY", "EXPLOSIVES ONLY"], [
@@ -3272,7 +3307,7 @@ COOP_SETUP_SCREENS = [
 ]
 # Server Setup's map sharing (port/linux/game/map_share.c), for any game,
 # laid out as co-op's options are (its key, its title, its row's help and
-# its rows: menu_functions.c's gametype_options give their settings' values)
+# its rows: SETUP_ROW_SETTINGS gives their settings' values)
 MAP_SHARE_UPLOADS = (256, 512, 1024, 2048, 4096, 8192, 16384, 20480)
 MAP_SHARE_SETUP = ("map_share_options", "MAP SHARING",
                    "Sending players who join without the game's\\nCustom Edition map the map, and how fast.", [
@@ -3350,6 +3385,145 @@ SETUP_OPTION_SCREENS = [
     ("indicator_options", "indicator_options_edit/indicator_options_screen"),
     ("team_options", "teamplay_options_edit/teamplay_options_screen"),
 ]
+
+
+# ---------- the setup screens' model (docs/menu_engine.md): Server Setup,
+# its co-op options' screen, and the gametype editor's Item Options and
+# OpenCE Options, as screens of nodes (tools/menu_nodes.py writes them from
+# ce/'s widgets, model/nodes.xml), and each node's condition here, by its
+# widget's name: the terms of a Settings row's condition
+# (SETTINGS_ROW_WHEN), and Server Setup's states (cooperative: a co-op game
+# hosted; local: a game of this machine alone; internet_host: an internet
+# game hosted; online: network.online; public_lobby: network.public_lobby;
+# private: the game PRIVATE), and "<key>=<n>" for a spinner of the game's
+# (its <key>_spinner) at its nth word. menu_functions.c tests them each frame
+# as the screen is shown (setup_nodes_conditions), in place of the row-name
+# predicates of server_settings_update and gametype_option_help.
+SS = f"{MT}/server_settings"
+ITEM_EDIT = "main_menu/settings_select/multiplayer_setup/item_options_edit"
+SETUP_NODE_WHEN = {
+    f"{SS}/server_settings_screen": {
+        # (a game of this machine alone: none of the network's rows, a line
+        # saying what the game is in their place: LOCAL_NOTE)
+        **{f"{SS}/{name}": "!local" for name in ("op_game_mode", "op_invite", "op_map_share_options")},
+        f"{SS}/local_note": "local",
+        # (co-op's options in the place of the gametype's)
+        **{f"{SS}/op_{key}": "!cooperative" for key, _ in SETUP_OPTION_SCREENS},
+        **{f"{SS}/op_{key}": "cooperative" for key, _, _, _ in COOP_SETUP_SCREENS},
+        # (LISTING an internet game's, with the public lobby on; PASSWORD a
+        # public one's)
+        f"{SS}/op_listing": "internet_host+online+public_lobby",
+        f"{SS}/op_password": "internet_host+online+public_lobby+!private",
+    },
+    # (CO-OP OPTIONS: PER PLAYER's amount while one of the extras is per
+    # player, MULTIPLIER's while one is a multiplier)
+    f"{SS}/coop_options/coop_options_screen": {
+        f"{SS}/coop_options/op_coop_enemies_{row}": " ".join(
+            f"{key}={words.index(word)}" for key, _, words, _ in COOP_SETUP_SCREENS[0][3]
+            if key.startswith("coop_extra_"))
+        for row, word in (("per_player", "PER PLAYER"), ("multiplier", "STATIC MULTIPLIER"))
+    },
+    # (Item Options: the weapon set's row for a category loadout, the two
+    # weapons' for a custom one)
+    f"{ITEM_EDIT}/item_options_screen": {
+        f"{ITEM_EDIT}/op_weapon_set": "loadout=0",
+        f"{ITEM_EDIT}/op_primary_weapon": "loadout=1",
+        f"{ITEM_EDIT}/op_secondary_weapon": "loadout=1",
+    },
+    # (OPENCE OPTIONS: Infection's rows and Gun Game's, by MODE)
+    f"{OPENCE_EDIT}/opence_screen": {
+        f"{OPENCE_EDIT}/op_{key}": f"oce_mode={OPENCE_ROWS[0][2].index(mode)}"
+        for key, _, _, _ in OPENCE_ROWS for prefix, mode in (("inf_", "INFECTION"), ("gg_", "GUN GAME"))
+        if key.startswith(prefix)
+    },
+}
+
+# the setup screens' spinners of the host's own settings (config.toml's, not
+# the gametype's: Server Setup's copy of the gametype's screens alone, its
+# co-op options, voice and voting, and map sharing), each by its key (its
+# <key>_spinner), its setting and its values in its words' order: written
+# into the setup screens' nodes (tools/menu_nodes.py), which menu_functions.c's
+# gametype_option_setting reads them from
+SETUP_ROW_SETTINGS = {
+    "voice_mode": ("network.voice_mode",
+                   ["off", "team_proximity", "team_enemy_proximity", "team_global", "team_global_enemy_proximity"]),
+    "voice_lobby": ("network.voice_lobby", ["true", "false"]),
+    "voice_kbps": ("network.voice_kbps", [str(kbps) for kbps in VOICE_QUALITIES]),
+    "voice_proximity": ("network.voice_proximity", ["5", "10", "15", "20", "30", "50"]),
+    "votekick": ("network.votekick", ["true", "false"]),
+    "text_chat": ("network.text_chat", ["on", "links", "off"]),
+    "pings": ("network.pings", ["true", "false"]),
+    "aim_assist": ("network.block_mouse_aim_assist", ["false", "true"]),
+    "shield_effects": ("network.shield_effects",
+                       ["stock", "glow", "light_show", "overshield", "glow_overshield", "light_show_overshield",
+                        "players"]),
+    "coop_friendly_fire": ("network.coop_friendly_fire", ["off", "on", "shields_only", "explosives_only"]),
+    "coop_extra_enemies": ("network.coop_enemies_mode", ["per_player", "multiplier", "none"]),
+    "coop_extra_pickups": ("network.coop_pickups", ["per_player", "multiplier", "none"]),
+    "coop_extra_vehicles": ("network.coop_vehicles", ["per_player", "multiplier", "none"]),
+    "coop_enemies_per_player": ("network.coop_enemies", [str(percent) for percent in COOP_ENEMIES_PERCENTAGES]),
+    "coop_enemies_multiplier": ("network.coop_enemies_multiplier",
+                                [str(multiplier) for multiplier in COOP_ENEMIES_MULTIPLIERS]),
+    "coop_player_collisions": ("network.coop_player_collisions", ["true", "false"]),
+    "coop_ally_friendly_fire": ("network.coop_ally_friendly_fire", ["true", "false"]),
+    "map_share": ("network.map_share", ["true", "false"]),
+    "map_share_upload": ("network.map_share_upload", [str(kb) for kb in MAP_SHARE_UPLOADS]),
+}
+# the setup screens in the model as nodes: those with conditions
+# (SETUP_NODE_WHEN), and those with spinners of the host's settings
+SETUP_NODE_SCREENS = [*SETUP_NODE_WHEN, f"{SS}/voice_options/voice_options_screen",
+                      f"{SS}/map_share_options/map_share_options_screen", f"{PLAYER_EDIT}/player_options_screen",
+                      f"{TEAMPLAY_EDIT}/teamplay_options_screen"]
+
+
+def settings_look_roles() -> dict:
+    """the Settings screens' widgets that menu_functions.c finds by what they are, their role in their look
+    (model/look's role=, written by tools/menu_look.py), by their names: each tab's or page's tabs and button bar,
+    and the panel's name, value, words, note and Quality's two stills (each with its frame and caption)"""
+    roles = {f"{SETTINGS}/panel_{part}": f"panel {part}" for part in ("name", "value", "text", "note")}
+    for still in ("classic", "enhanced"):
+        roles[f"{SETTINGS}/panel_{still}"] = f"still {still}"
+        for part in ("frame", "caption"):
+            roles[f"{SETTINGS}/panel_{still}_{part}"] = f"still {still} {part}"
+    for folder, page in [*PAGES.items(), *SCREENS.items()]:
+        if "tab" in page:
+            roles[f"{PE}/{folder}/tabs"] = "tabs"
+        roles[f"{PE}/{folder}/button_bar"] = "buttons"
+    return roles
+
+
+# Server Setup's help, in its help_strings' order: each row's (its key, op_<key>), or each of its choices' (LISTING's
+# and GAME's), the first none's; the setup screens' nodes have each row's place in it (tools/menu_nodes.py's help,
+# help_choices), which menu_functions.c's setup_help shows
+SERVER_SETTINGS_HELP = [
+    (None, [""]),
+    ("server_name", ["The name the game shows in the lists of games.\\nEnter changes it."]),
+    ("max_players", ["The most players the game takes (up to 128)."]),
+    ("invite", ["Players join this game by its invite link, or your\\nDiscord invite. Enter copies the link again."]),
+    ("game_type", ["The gametype and its rules, for this game."]),
+    ("player_options", ["Lives, health, shields and respawning, for this game."]),
+    ("item_options", ["Weapons, grenades and starting equipment, for\\nthis game."]),
+    ("vehicle_options", ["Each team's vehicles and their respawn time, for\\nthis game."]),
+    ("indicator_options", ["The motion tracker and nav points, for this game."]),
+    ("team_options", ["Friendly fire and team balance, for this game."]),
+    ("listing", ["Anyone can see and join your game: it is listed\\nin everyone's Server Browser.",
+                 "Only players with your invite link can join."]),
+    *((key, [help_text]) for key, _, help_text, _ in COOP_SETUP_SCREENS),
+    ("password", ["Players from the Server Browser must type it to\\njoin (an invite link needs none). Enter sets it."]),
+    (MAP_SHARE_SETUP[0], [MAP_SHARE_SETUP[2]]),
+    ("game_mode", [help_text for _, help_text in GAME_MODES]),
+]
+
+
+def server_settings_help() -> dict:
+    """Server Setup's rows' places in its help (SERVER_SETTINGS_HELP), by their widgets' names: (the first, whether
+    each choice has its own)"""
+    places, index = {}, 0
+    for key, texts in SERVER_SETTINGS_HELP:
+        if key:
+            places[f"{SS}/op_{key}"] = (index, len(texts) > 1)
+        index += len(texts)
+    return places
 
 
 def lobby_column_x(column: int) -> int:
@@ -7297,7 +7471,8 @@ def _model_page(folder: str, page: dict) -> list:
         key = named[0] if named else setting.split(".", 1)[1] if setting else \
             re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
         row_kind = _model_row_kind(key, setting, choices)
-        pairs = [("key", key), ("kind", row_kind), ("setting", setting), ("label", label), ("when", platform),
+        pairs = [("key", key), ("kind", row_kind), ("setting", setting), ("label", label),
+                 ("when", _settings_row_when(key, setting, platform)), ("enabled", SETTINGS_ROW_ENABLED.get(key)),
                  ("open", choices if isinstance(choices, str) else None),
                  ("run", named[1] if len(named) > 1 else None),
                  ("same_place", "true" if key in SETTINGS_SAME_PLACE or setting == "display.window_size" else None),
@@ -7753,9 +7928,14 @@ def main() -> None:
     for name, lines in model_files().items():
         (folder.parent / name).parent.mkdir(exist_ok=True)
         (folder.parent / name).write_text("\n".join(lines))
-    # (and the widgets' look, from those files: tools/menu_look.py)
+    # (and the widgets' look and behaviour, and the setup screens' nodes, from those files: tools/menu_look.py,
+    # tools/menu_behaviour.py, tools/menu_nodes.py)
+    import menu_behaviour
     import menu_look
+    import menu_nodes
     menu_look.write(folder.parent)
+    menu_behaviour.write(folder.parent)
+    menu_nodes.write(folder.parent)
 
 
 if __name__ == "__main__":

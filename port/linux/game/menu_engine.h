@@ -41,6 +41,30 @@ boolean ui_widget_port_render_node(struct widget_instance *widget, rectangle2d *
 /* an event processed by ui_widget.c's own code (the widget and those it
 passes it to) */
 void ui_widget_port_process_event(struct widget_instance *widget, struct event_record *event, boolean *deleted);
+/* what the engine takes its screens' events by: a widget's definition's
+flags, its event handlers (their count, each one's event type, one run), and
+ui_widget.c's steps: whether a widget takes a controller's events, the
+screen before, the focus given to a widget, a list's items' frames brought
+up to date, the time a controller's D-pad direction last moved the menus,
+the menus' clock, the pointer no longer what moved the focus last, and
+whether no screen is open */
+long ui_widget_port_definition_flags(struct widget_instance const *widget);
+long ui_widget_port_handler_count(struct widget_instance const *widget);
+short ui_widget_port_handler_event_type(struct widget_instance const *widget, long index);
+void ui_widget_port_handler_dispatch(struct widget_instance *widget, struct event_record *event, long index,
+	boolean *deleted);
+/* (an event handler of the game's not of the widget's definition: the
+model's, which menu_tags.c makes) */
+void ui_widget_port_handler_run(struct widget_instance *widget, struct event_record *event, void *handler,
+	boolean *deleted);
+boolean ui_widget_port_takes_events(struct widget_instance const *widget, short controller_index);
+void ui_widget_port_go_back(struct widget_instance *widget);
+void ui_widget_port_give_focus(struct widget_instance *widget, struct widget_instance *focus);
+void ui_widget_port_lists_update(struct widget_instance *widget);
+unsigned long *ui_widget_port_dpad_time(short controller_index, short direction);
+unsigned long ui_widget_port_milliseconds(void);
+void ui_widget_port_pointer_not_last(void);
+boolean ui_widget_port_no_screens(void);
 
 /* ---------- the widgets' definitions (ui_widget.c, menu_tags.c) */
 
@@ -57,6 +81,19 @@ void *menu_engine_definition(long tag_index);
 /* a settings row's help and note (after a "|"), from the model, where the
 engine runs its screen (*found: the model has the row) */
 wchar_t const *menu_engine_row_help(struct widget_instance *row, boolean *found);
+
+/* the menus' model (NULL: none); the model's screen of a widget's screen,
+and the model's row of a settings row (op_<key>), on either engine (NULL:
+the model has none) */
+struct halo_menu_model;
+struct halo_menu_model_screen;
+struct halo_menu_model_row;
+struct halo_menu_model const *menu_engine_model(void);
+struct halo_menu_model_screen const *menu_engine_model_screen_of(struct widget_instance const *widget);
+struct halo_menu_model_row const *menu_engine_model_row_of(struct widget_instance const *row);
+/* a widget's role in its look in the model (model/look's role=: what the
+game's code finds it by), NULL if it has none */
+char const *menu_engine_look_role(struct widget_instance const *widget);
 
 /* whether the engine lays out what is in the widget (a settings tab's or
 page's rows) from the model */

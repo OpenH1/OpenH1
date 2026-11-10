@@ -5,8 +5,11 @@ The menu engine's model (halo_menus.h; docs/menu_engine.md): the files in
 the menus' model folder (port/assets/menus/model, which
 tools/port_settings.py writes beside the menus' XML, or a menus folder's
 file of the same name) read with Expat into screens, their rows and their
-choices, and the widgets' looks (model/look, tools/menu_look.py), for the
-game's menu engine (port/linux/game/menu_engine.c).
+choices, the widgets' looks (model/look, tools/menu_look.py) and the
+widgets' behaviours (model/behaviour, tools/menu_behaviour.py: their
+behaviour flags and their <on> handlers, read as the menus' own), and the
+setup screens' nodes (model/nodes.xml, tools/menu_nodes.py: rows of kind
+"node", each keyed by its widget's name), for the game's menu engine (port/linux/game/menu_engine.c).
 
 As with the menus' files (menu_files.c), only the files' shape is checked
 here: their elements and attributes, and numbers. A problem is logged with
@@ -38,6 +41,8 @@ enum model_element
 	_model_look,
 	_model_look_text,
 	_model_place,
+	_model_behaviour,
+	_model_behaviour_on,
 };
 
 #define MODEL_MAXIMUM_DEPTH 8
@@ -55,10 +60,13 @@ struct model_reader
 	size_t text_length;
 	/* the capacities of the model's arrays */
 	long screen_capacity, row_capacity, choice_capacity, look_capacity, place_capacity;
+	long behaviour_capacity, handler_capacity;
 };
 
 static struct halo_menu_model model;
 static int model_read;
+/* each model read's number (halo_menus_model_reads) */
+static unsigned long model_reads;
 static int model_succeeded;
 
 static void model_error(struct model_reader *reader, char const *format, char const *detail)
@@ -105,8 +113,10 @@ static int model_grow(struct model_reader *reader, void **array, long count, lon
 	return 1;
 }
 
-/* the looks by name (halo_menus_model_look) */
+/* the looks by name (halo_menus_model_look), and the behaviours
+(halo_menus_model_behaviour) */
 static struct halo_menu_model_look const **model_looks_sorted;
+static struct halo_menu_model_behaviour const **model_behaviours_sorted;
 
 static int model_long(struct model_reader *reader, char const *text, long *value)
 {
@@ -267,7 +277,7 @@ static void model_screen(struct model_reader *reader, XML_Char const **attribute
 	reader->model.screens[reader->model.screen_count++] = screen;
 }
 
-/* a <row>, <section> or <button> of the screen open */
+/* a <row>, <section>, <button> or <node> of the screen open */
 static void model_row(struct model_reader *reader, char const *element, XML_Char const **attributes)
 {
 	struct halo_menu_model_row row;
@@ -275,25 +285,31 @@ static void model_row(struct model_reader *reader, char const *element, XML_Char
 	{
 		{ "kind", &row.kind }, { "key", &row.key }, { "setting", &row.setting }, { "label", &row.label },
 		{ "title", &row.title }, { "when", &row.when }, { "open", &row.open }, { "run", &row.run },
-		{ "help", &row.help },
+		{ "help", &row.help }, { "enabled", &row.enabled },
 		{ "same_place", NULL, NULL, NULL, &row.same_place }, { "not_in_vr", NULL, NULL, NULL, &row.not_in_vr },
 		{ "named", NULL, NULL, NULL, &row.named }, { "status", NULL, NULL, NULL, &row.status },
 		{ "least", NULL, NULL, &row.least }, { "most", NULL, NULL, &row.most }, { "step", NULL, NULL, &row.step },
 		{ "typed_least", NULL, NULL, &row.typed_least }, { "typed_most", NULL, NULL, &row.typed_most },
 		{ "whole", NULL, NULL, NULL, &row.whole },
+		{ "name", &row.key }, { "parent", &row.parent },
+		{ "focusable", NULL, NULL, NULL, &row.focusable }, { "initial", NULL, NULL, NULL, &row.initial },
+		{ "help_index", NULL, &row.help_index }, { "help_choices", NULL, NULL, NULL, &row.help_choices },
 	};
 	struct halo_menu_model_screen *screen;
 
 	memset(&row, 0, sizeof(row));
+	row.help_index = -1;
 	model_attributes(reader, element, attributes, table, sizeof(table) / sizeof(*table));
 	if (reader->failed)
 		return;
 	if (!row.key)
 	{
-		model_error(reader, "a <%s> needs a key", element);
+		model_error(reader, "a <%s> needs a key (a <node>, a name)", element);
 		return;
 	}
-	if (!strcmp(element, "section"))
+	if (!strcmp(element, "node"))
+		row.kind = "node";
+	else if (!strcmp(element, "section"))
 		row.kind = "section";
 	else if (!strcmp(element, "button"))
 	{
@@ -346,7 +362,8 @@ static void model_look(struct model_reader *reader, XML_Char const **attributes)
 	char const *box = NULL, *header_box = NULL, *footer_box = NULL;
 	struct model_attribute table[] =
 	{
-		{ "name", &look.name }, { "type", &look.type }, { "box", &box }, { "wide", &look.wide },
+		{ "name", &look.name }, { "role", &look.role }, { "type", &look.type }, { "box", &box },
+		{ "wide", &look.wide },
 		{ "place", &look.place }, { "picture", &look.picture }, { "radius", NULL, &look.radius },
 		{ "effects", &look.effects }, { "list", &look.list }, { "header", &look.header },
 		{ "header_box", &header_box }, { "footer", &look.footer }, { "footer_box", &footer_box },
@@ -419,6 +436,53 @@ static void model_place(struct model_reader *reader, XML_Char const **attributes
 	reader->model.looks[reader->model.look_count - 1].place_count++;
 }
 
+/* a <behaviour> (tools/menu_behaviour.py) */
+static void model_behaviour(struct model_reader *reader, XML_Char const **attributes)
+{
+	struct halo_menu_model_behaviour behaviour;
+	struct model_attribute table[] = { { "name", &behaviour.name }, { "flags", &behaviour.flags } };
+
+	memset(&behaviour, 0, sizeof(behaviour));
+	model_attributes(reader, "behaviour", attributes, table, sizeof(table) / sizeof(*table));
+	if (!reader->failed && !behaviour.name)
+		model_error(reader, "a <behaviour> needs a name%s", "");
+	if (reader->failed || !model_grow(reader, (void **)&reader->model.behaviours, reader->model.behaviour_count,
+		&reader->behaviour_capacity, sizeof(behaviour)))
+		return;
+	behaviour.first_handler = reader->model.handler_count;
+	behaviour.file = reader->file;
+	behaviour.line = (long)XML_GetCurrentLineNumber(reader->parser);
+	reader->model.behaviours[reader->model.behaviour_count++] = behaviour;
+}
+
+/* the open <behaviour>'s <on>: an event handler, as the menus' own are
+(menu_files.c), which menu_tags.c makes the game's of */
+static void model_behaviour_on(struct model_reader *reader, XML_Char const **attributes)
+{
+	struct halo_menu_handler handler;
+	struct model_attribute table[] =
+	{
+		{ "event", &handler.event }, { "run", &handler.run }, { "open", &handler.open },
+		{ "replace", &handler.replace }, { "close", &handler.close }, { "back", NULL, NULL, NULL, &handler.back },
+		{ "branch", NULL, NULL, NULL, &handler.branch }, { "sound", &handler.sound },
+		{ "otherwise", &handler.otherwise }, { "focus", &handler.focus }, { "reload", &handler.reload },
+		{ "widget", &handler.widget }, { "script", &handler.script }, { "label", &handler.label },
+	};
+
+	memset(&handler, 0, sizeof(handler));
+	model_attributes(reader, "on", attributes, table, sizeof(table) / sizeof(*table));
+	if (!reader->failed && !handler.event)
+		model_error(reader, "an <on> needs an event%s", "");
+	if (reader->failed || !model_grow(reader, (void **)&reader->model.handlers, reader->model.handler_count,
+		&reader->handler_capacity, sizeof(handler)))
+		return;
+	handler.next = HALO_MENU_NONE;
+	handler.file = reader->file;
+	handler.line = (long)XML_GetCurrentLineNumber(reader->parser);
+	reader->model.handlers[reader->model.handler_count++] = handler;
+	reader->model.behaviours[reader->model.behaviour_count - 1].handler_count++;
+}
+
 static void XMLCALL model_start(void *data, XML_Char const *name, XML_Char const **attributes)
 {
 	struct model_reader *reader = data;
@@ -446,8 +510,8 @@ static void XMLCALL model_start(void *data, XML_Char const *name, XML_Char const
 	}
 	else if (!strcmp(name, "about") && parent == _model_screen)
 		element = _model_about;
-	else if ((!strcmp(name, "row") || !strcmp(name, "section") || !strcmp(name, "button")) &&
-		parent == _model_screen)
+	else if ((!strcmp(name, "row") || !strcmp(name, "section") || !strcmp(name, "button") ||
+		!strcmp(name, "node")) && parent == _model_screen)
 	{
 		element = _model_row;
 		model_row(reader, name, attributes);
@@ -475,6 +539,16 @@ static void XMLCALL model_start(void *data, XML_Char const *name, XML_Char const
 	{
 		element = _model_place;
 		model_place(reader, attributes);
+	}
+	else if (!strcmp(name, "behaviour") && parent == _model_model)
+	{
+		element = _model_behaviour;
+		model_behaviour(reader, attributes);
+	}
+	else if (!strcmp(name, "on") && parent == _model_behaviour)
+	{
+		element = _model_behaviour_on;
+		model_behaviour_on(reader, attributes);
 	}
 	if (element == _model_none)
 	{
@@ -577,6 +651,12 @@ static int model_look_order(void const *a, void const *b)
 		(*(struct halo_menu_model_look const *const *)b)->name);
 }
 
+static int model_behaviour_order(void const *a, void const *b)
+{
+	return strcmp((*(struct halo_menu_model_behaviour const *const *)a)->name,
+		(*(struct halo_menu_model_behaviour const *const *)b)->name);
+}
+
 struct halo_menu_model const *halo_menus_model(void)
 {
 	struct model_reader reader;
@@ -615,9 +695,19 @@ struct halo_menu_model const *halo_menus_model(void)
 			model_looks_sorted[index] = &model.looks[index];
 		qsort(model_looks_sorted, (size_t)model.look_count, sizeof(*model_looks_sorted), model_look_order);
 	}
+	model_behaviours_sorted = model.behaviour_count ?
+		malloc((size_t)model.behaviour_count * sizeof(*model_behaviours_sorted)) : NULL;
+	if (model_behaviours_sorted)
+	{
+		for (index = 0; index < model.behaviour_count; index++)
+			model_behaviours_sorted[index] = &model.behaviours[index];
+		qsort(model_behaviours_sorted, (size_t)model.behaviour_count, sizeof(*model_behaviours_sorted),
+			model_behaviour_order);
+	}
 	model_succeeded = 1;
-	platform_log("menus: the model has %ld screens, %ld rows, %ld widgets' looks", model.screen_count,
-		model.row_count, model.look_count);
+	model_reads++;
+	platform_log("menus: the model has %ld screens, %ld rows, %ld widgets' looks, %ld widgets' behaviours",
+		model.screen_count, model.row_count, model.look_count, model.behaviour_count);
 	return &model;
 }
 
@@ -635,6 +725,26 @@ struct halo_menu_model_look const *halo_menus_model_look(struct halo_menu_model 
 	return found ? *found : NULL;
 }
 
+struct halo_menu_model_behaviour const *halo_menus_model_behaviour(struct halo_menu_model const *of,
+	char const *name)
+{
+	struct halo_menu_model_behaviour key;
+	struct halo_menu_model_behaviour const *pointer = &key;
+	struct halo_menu_model_behaviour const **found;
+
+	if (!of || of != &model || !model_behaviours_sorted || !name)
+		return NULL;
+	key.name = name;
+	found = bsearch(&pointer, model_behaviours_sorted, (size_t)model.behaviour_count,
+		sizeof(*model_behaviours_sorted), model_behaviour_order);
+	return found ? *found : NULL;
+}
+
+unsigned long halo_menus_model_reads(void)
+{
+	return model_reads;
+}
+
 /* the model read again with the menus (halo_menus_reload: the menu studio's) */
 void halo_menus_model_forget(void)
 {
@@ -643,4 +753,6 @@ void halo_menus_model_forget(void)
 	memset(&model, 0, sizeof(model));
 	free(model_looks_sorted);
 	model_looks_sorted = NULL;
+	free(model_behaviours_sorted);
+	model_behaviours_sorted = NULL;
 }

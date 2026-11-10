@@ -63,22 +63,48 @@ reads XML and has no JSON reader.
   header so that the C and the Python never disagree); `nodes`, every other
   screen (the PC version's from its tags, the lobby, the server browser, the
   campaign, the dialogs), a tree of nodes with the XML widgets' attributes.
+  The setup screens (Server Setup, its co-op options, the gametype editor's
+  Item Options and OpenCE Options) are the first in the model as nodes
+  (`model/nodes.xml`, written by `tools/menu_nodes.py` from `ce/`'s widgets
+  after the generators have written them): each node is a widget, keyed by
+  its name as the look and the behaviour are, with its parent, what A does
+  (`open`, `run`), whether the focus may take it (`focusable`), the one it
+  starts on (`initial`) and its condition (`when`, `tools/port_settings.py`'s
+  `SETUP_NODE_WHEN`).
 - **Kinds of row.** `choice` (a spinner: two values are a toggle), `slider`
   (its range, step, typed range and stops: the table `menu_functions.c`
   copies today goes), `link` (opens a page or runs a function), `binding`
   (Key Bindings' slot pair), `status` (a value the game writes), `stepped`
   (left and right step a list `menu_functions.c` keeps), `text` (a field typed
   into). Each has its label, help and note: no index + 1.
-- **Conditions** (`when`): an expression of the platforms
+- **Conditions** (`when`, and `enabled`, without which a row is dimmed, its
+  value held): an expression of the platforms
   (`desktop android web vr touch pointer computer`), capabilities found at
-  run time (`hdr`, `vrr`, `refresh_rates`, ...), and states (`in_game`,
-  `profile`, `vr_playing`), with `!`, space for *or*, `+` for *and*. They are
-  evaluated as the screen is laid out, each frame, not as the file is read:
-  a capability found after start-up shows its rows. The predicates
-  `menu_functions.c` runs by row name today move into the model one by one
-  as conditions; until each has, it keeps working (below).
+  run time (`hdr`, `refresh_rates`, `vrr_found`, `vrr_system`, `gyro`,
+  `vr_build`, ...), states (`in_game`, `profile`, `weapon_held`) and another
+  row's value shown (`mode=windowed`), with `!`, space for *or*, `+` for
+  *and*. `tools/port_settings.py` writes them (`SETTINGS_ROW_WHEN`,
+  `SETTINGS_ROW_ENABLED`) beside the rows' platforms, and `menu_functions.c`
+  tests them each frame as a Settings page is shown, on both engines
+  (`settings_rows_conditions`); a platform's term still holds as the file is
+  read (#853 is a later change). The predicates `menu_functions.c` ran by
+  row name on Settings' tabs and pages are gone. The setup screens' nodes'
+  conditions are tested so too (`setup_nodes_conditions`), with Server
+  Setup's states (`cooperative`, `local`, `internet_host`, `online`,
+  `public_lobby`, `private`) and a game's spinner at its nth word
+  (`loadout=1`), in place of the predicates of `server_settings_update` and
+  `gametype_option_help`; Discord's UNLINK is a Settings row's condition
+  (`discord_linked`).
 - **Actions** are the XML's (`open`, `replace`, `back`, `close`, `run`,
   `branch`/`otherwise`, `sound`), on a row, a button or a node.
+- **Behaviour** (`model/behaviour/<file>.xml`, written by
+  `tools/menu_behaviour.py` from `ce/`'s widgets, as `tools/menu_look.py`
+  writes their look): each generated widget's behaviour flags (how it takes
+  its events: `pass_unhandled_to_focused_child`, `up_down_tabs_children`,
+  ...; the place and effect flags are the look's) and its actions, its
+  `<on>` handlers, as the menus' own. `menu_tags.c` makes the handlers the
+  game's as it makes the widgets' (`behaviours_build`), and the engine takes
+  a screen's events by them, not by the widgets' definitions.
 
 ### The look
 
@@ -109,12 +135,17 @@ widget's name, as the game's definitions are:
   effects go here as attributes when they come (outlines, glows and drop
   shadows: the MSDF atlas's fourth channel is a plain distance, so each is a
   threshold in the text's shader).
+- `role` is what the game's code finds the widget by, where it is not a
+  model row's: Settings' `tabs` and `buttons` bars, the panel's
+  `panel name`, `panel value`, `panel text` and `panel note`, Quality's
+  stills (`tools/port_settings.py`'s `settings_look_roles`).
 - `<at>` is where a child is in it. A child is found by its name and its
   place among those of the same name, so a widget may not have two children
   of one name for different platforms (`tools/menu_look.py` refuses it).
-- What a widget does (its events, game data inputs, conditionals, the
-  flags that route events and focus, its controller, closing) is not in its
-  look: it stays the widget definitions' until step 4.
+- What a widget does is not in its look: the flags that route its events
+  and focus and its handlers are its behaviour (`model/behaviour`, above);
+  its game data inputs, conditionals, controller and closing stay the
+  widget definitions' until step 4.
 
 ## The engine
 
@@ -271,11 +302,28 @@ The steps, in order:
    screens, the engine drawing every generated screen under `"new"`, the
    rows laid out and their help found from the model; 972 of 972 screen
    variants alike in layout and pixels.
-2. **Input and behaviour by the engine**: focus, navigation, pad, keys,
+2. **Input and behaviour by the engine** (done): focus, navigation, pad, keys,
    mouse, touch and repeat, the rows' actions, sliders' ranges and stops
    from the model (`settings_sliders` gone), the rows' conditions from the
    model (the row-name predicates gone); the parity tool's behaviour scripts,
-   config.toml and the profile compared after each.
+   config.toml and the profile compared after each. Done so far: the
+   behaviour scripts (`--behaviour`, `--sweep`); the screens' events taken
+   by the engine (`menu_engine.c`'s `engine_event`, by the definitions'
+   flags and handlers, which step 3 moves into the model); the sliders made
+   from the model's rows on both engines (`settings_slider_made`; the table
+   `settings_sliders` gone); Settings' rows' conditions from the model (the
+   row-name predicates of its tabs and pages gone). `--against <build>`
+   compares a build before such a change, which both engines run, with the
+   one after. The widgets' behaviour flags and actions in the model
+   (`model/behaviour`), by which the engine takes the events. The focus's
+   way through a screen's children and a generated list's items, over its
+   labels (`engine_tab`, `engine_list_step`), by the model's behaviour, not
+   the definitions'; giving a widget the focus stays `ui_widget.c`'s, as do
+   a list made in code and a list stepped by a handler's function. The
+   setup screens in the model as nodes (`model/nodes.xml`), and their rows'
+   conditions there, in place of their row-name predicates. Step 2 is done:
+   what `ui_widget.c` still does for the engine (giving the focus, a list's
+   frames, the history) is Halo's, as the hooks say.
 3. **The look in the model** (done): bounds, anchors, places, pictures, text
    and its style, and the children's places written by the generators into
    the model for every widget of every generated screen
@@ -287,6 +335,30 @@ The steps, in order:
    fixed.)
 4. **Behaviour off `widget_instance`**: each screen's handlers in
    `menu_functions.c` moved onto the model, a batch of screens at a time.
+   Done so far: Settings' spinners' settings from their model rows
+   (`settings_each`, `settings_setting_of`: each choice row's setting and
+   its choices, the value it was loaded at kept with the row, not the
+   spinner's widget definition); the tabs, the model's screens laid out
+   as tabs (`settings_tab_screen`: the table `settings_tabs` gone), and the
+   panel's words for a tab and a button from the model; the status rows'
+   values written, and their panels' rows found, by their model rows
+   (`settings_model_row`, `settings_status_set`); the setup screens' spinners
+   of the host's own settings (voice and voting, co-op's options, map
+   sharing, aim assist, shield effects), their settings and values from
+   their nodes in the model (`gametype_option_setting`; `tools/port_settings.py`'s
+   `SETUP_ROW_SETTINGS`, in place of `gametype_options`' copies). The
+   gametype's own options stay in C, decided: `gametype_options` says which
+   field of the game variant each spinner sets, by `offsetof`, which the C
+   compiler checks where the structure is; a model naming the fields would
+   need a table of names to offsets in C, the same table moved. Settings'
+   tabs' bar, button bar and the panel's parts are found by their roles in
+   their looks (`model/look`'s `role`, `tools/port_settings.py`'s
+   `settings_look_roles`: `settings_part`), not their names. Server Setup's
+   help by each row's place in it, in its node (`help_index`,
+   `help_choices`: `tools/port_settings.py`'s `SERVER_SETTINGS_HELP`,
+   `setup_help`), in place of `menu_functions.c`'s copies of the places.
+   Left: the setup screens' values' text boxes, which their handlers still
+   find by name.
 5. **The switch**: `"new"` the default, played for a while; then the
    generated screens' widget XML no longer written, `display.menu_engine`
    retired.

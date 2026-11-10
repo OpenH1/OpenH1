@@ -29,7 +29,7 @@ def _key(entry):
 
 
 def _profile_row(entry):
-    """a row settings_row_profile hides with no profile"""
+    """a row hidden with no profile (its condition in the model: profile)"""
     return (entry[1] or "").startswith("profile.") or _key(entry) in ("name", "color", "profiles")
 
 
@@ -131,22 +131,58 @@ def test_mods_tab():
     links = {_key(entry): entry[2] for entry in page["rows"] if entry[0] != SECTION and not entry[1]}
     assert links["mods"] == f"{port_settings.MODS}/mods_screen"
     assert "mods_folder" in links
+    assert port_settings.SETTINGS_ROW_WHEN["mods"] == "!in_game" and "mods_folder" not in port_settings.SETTINGS_ROW_WHEN
+
+
+def test_row_conditions():
+    """every row's condition in the model (SETTINGS_ROW_WHEN, SETTINGS_ROW_ENABLED; a profile's setting's) names terms
+    that menu_functions.c's settings_condition_term knows, and other rows' keys that are on its page with their
+    values; each condition is written into the model's rows (beside their platforms)"""
     functions = (Path(__file__).resolve().parent.parent / "port/linux/game/menu_functions.c").read_text()
-    hidden = functions[functions.index("settings_in_game_hidden[] ="):][:400]
-    assert '"op_mods"' in hidden and '"op_mods_folder"' not in hidden
+    terms = set(re.findall(r'!strcmp\(name, "(\w+)"\)', function_body(functions, "settings_condition_term")))
+    platforms = set(port_settings.MENU_PLATFORMS)
+    model = (Path(__file__).resolve().parent.parent / "port/assets/menus/model/settings.xml").read_text()
+    for folder, page in PAGES.items():
+        rows = {_key(entry) or re.sub(r"[^a-z0-9]+", "_", entry[0].lower()).strip("_"): entry
+                for entry in page["rows"] if entry[0] != SECTION}
+        for key, entry in rows.items():
+            for condition in (port_settings.SETTINGS_ROW_WHEN.get(key), port_settings.SETTINGS_ROW_ENABLED.get(key)):
+                for term in (condition or "").replace("+", " ").split():
+                    term = term.lstrip("!")
+                    if "=" in term:
+                        other, value = term.split("=", 1)
+                        assert other in rows, (folder, key, term)
+                        assert value in [v for _, v in rows[other][2]], (folder, key, term)
+                    else:
+                        assert term in terms | platforms, (folder, key, term)
+            when = port_settings._settings_row_when(key, entry[1], entry[4])
+            if when:
+                assert f'key="{key}"' in model and f'when="{when}"' in model, (folder, key, when)
+    for key in port_settings.SETTINGS_ROW_WHEN:
+        assert any(key in {_key(entry) for entry in page["rows"] if entry[0] != SECTION} for page in PAGES.values()), key
+
+
+def function_body(source, name):
+    """a C function's body, by its name"""
+    start = source.index(f"static boolean {name}(")
+    return source[start:source.index("\n}\n", start)]
 
 
 def _engine_tabs():
-    """menu_functions.c's settings_tabs: each tab's folder and screen, in order"""
-    functions = (Path(__file__).resolve().parent.parent / "port/linux/game/menu_functions.c").read_text()
-    table = functions[functions.index("} const settings_tabs[] ="):]
-    return re.findall(r'\{ "(\w+)", "(\w+)" \}', table[:table.index("};")])
+    """the menus' tabs as menu_functions.c finds them (settings_tab_screen): the model's screens laid out as tabs,
+    in order"""
+    import xml.etree.ElementTree as ET
+    model = ET.parse(Path(__file__).resolve().parent.parent / "port/assets/menus/model/settings.xml").getroot()
+    return [screen.get("name") for screen in model.findall("screen") if screen.get("layout") == "tab"]
 
 
 def test_engine_tabs_are_the_generators():
     """the tabs Q and E, LB and RB step through (and a click opens) are the
-    generator's, in its order"""
-    assert _engine_tabs() == [(folder, PAGES[folder]["screen"]) for folder in port_settings.SETTINGS_TAB_PAGES]
+    generator's, in its order; the panel's words for each are its screen's"""
+    assert _engine_tabs() == [f"{port_settings.PE}/{folder}/{PAGES[folder]['screen']}"
+                              for folder in port_settings.SETTINGS_TAB_PAGES]
+    functions = (Path(__file__).resolve().parent.parent / "port/linux/game/menu_functions.c").read_text()
+    assert "settings_tabs[]" not in functions
 
 
 def _tab_problems(places, names):
@@ -190,3 +226,46 @@ def test_map_storage_row():
     assert rows[0][2] == [("INSTANT LOADING", "0"), ("DISK SPACE SAVER", "730")]
     config = (Path(__file__).resolve().parent.parent / "port/linux/src/port_config.c").read_text()
     assert re.search(r'\{ "game\.map_cache_megabytes", _config_integer, "0",', config)
+
+
+def test_settings_spinners_are_model_rows():
+    """every spinner of a setting in the menus (its setting= and values=) is a choice row of its screen's in the
+    model, of the same setting and values, in the order of the screen's widgets: menu_functions.c's settings_each
+    and settings_setting_of take Settings' spinners' settings from the model's rows (but the lobby's, which the model
+    has no screen of)"""
+    import xml.etree.ElementTree as ET
+    menus = Path(__file__).resolve().parent.parent / "port/assets/menus"
+    widgets = {}
+    for path in sorted((menus / "ce").glob("*.xml")):
+        for widget in ET.parse(path).getroot().iter("widget"):
+            widgets.setdefault(widget.get("name"), []).append(widget)
+    model = ET.parse(menus / "model/settings.xml").getroot()
+    rows = {}
+    for screen in model.findall("screen"):
+        folder = screen.get("name").rsplit("/", 1)[0]
+        order = []
+
+        def walk(name, seen):
+            if name in seen:
+                return
+            seen.add(name)
+            for widget in widgets.get(name, [])[:1]:
+                if widget.get("setting"):
+                    order.append(name)
+                for child in widget.findall("child"):
+                    walk(child.get("widget"), seen)
+
+        walk(screen.get("name"), set())
+        choices = [row for row in screen.findall("row") if row.get("kind") == "choice" and row.get("setting")]
+        for row in choices:
+            rows[f"{folder}/{row.get('key')}_spinner"] = row
+        named = [f"{folder}/{row.get('key')}_spinner" for row in choices]
+        assert [name for name in named if name in order] == order, screen.get("name")
+    for name, variants in widgets.items():
+        for widget in variants:
+            if widget.get("setting") is None or "/lobby/" in name:
+                continue
+            row = rows.get(name)
+            assert row is not None, name
+            assert row.get("setting") == widget.get("setting"), name
+            assert [choice.get("value") for choice in row.findall("choice")] == widget.get("values").split("|"), name

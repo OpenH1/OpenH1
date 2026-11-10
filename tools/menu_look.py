@@ -73,11 +73,18 @@ def _text(widget: ET.Element):
             ("text", get("text")), ("items", get("strings")), ("replace", "|".join(replaces) or None)]
 
 
-def _look(widget: ET.Element) -> list:
+def _roles() -> dict:
+    """the widgets' roles, by their names (tools/port_settings.py's settings_look_roles)"""
+    import port_settings
+    return port_settings.settings_look_roles()
+
+
+def _look(widget: ET.Element, roles: dict) -> list:
     get = widget.get
     box = _box(widget)
     flags = get("flags")
-    pairs = [("name", get("name")), ("type", None if get("type", "container") == "container" else get("type")),
+    pairs = [("name", get("name")), ("role", roles.get(get("name"))),
+             ("type", None if get("type", "container") == "container" else get("type")),
              ("box", None if box == "0 0 640 480" else box), ("wide", get("wide")),
              ("place", _words(flags, PLACE_FLAGS)), ("picture", get("bitmap")), ("radius", get("radius")),
              ("effects", _words(flags, EFFECT_FLAGS)), ("list", get("list_flags")),
@@ -109,6 +116,8 @@ def _look(widget: ET.Element) -> list:
 def look_files(ce: Path = CE) -> dict:
     """the look's files, by their paths in port/assets/menus: one for each of ce/'s files of widgets"""
     files = {}
+    roles = _roles()
+    named = set()
     for path in sorted(ce.glob("*.xml")):
         if path.name in NOT_WIDGETS:
             continue
@@ -116,8 +125,11 @@ def look_files(ce: Path = CE) -> dict:
                  f"<!-- The look of ce/{path.name}'s widgets, for the menu engine (docs/menu_engine.md; "
                  "tools/menu_look.py) -->", "<model>"]
         for widget in ET.parse(path).getroot().iter("widget"):
-            lines += _look(widget)
+            lines += _look(widget, roles)
+            named.add(widget.get("name"))
         files[f"{LOOK}/{path.name}"] = lines + ["</model>", ""]
+    if set(roles) - named:
+        raise SystemExit(f"menu_look: no widgets {', '.join(sorted(set(roles) - named))} for their roles")
     return files
 
 

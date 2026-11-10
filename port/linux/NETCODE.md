@@ -74,7 +74,9 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
   standing on a loading zone is told it waits for the host. A player
   outside the loaded BSP and falling for two seconds is brought back beside
   the host, else a teammate. A dead
-  player watches a living teammate (`coop_spectate.c`) and comes back
+  player watches a living teammate, through their eyes
+  (`dead_spectate.c`, `game.spectate_on_death`, drawn from this machine's
+  copy of the world: nothing is sent) or from behind (`coop_spectate.c`), and comes back
   beside one once it is safe. With everyone dead they come back where they
   were at the last checkpoint, without a revert. A mission the scripts fail
   with players still alive reverts to the last checkpoint on the host, as a
