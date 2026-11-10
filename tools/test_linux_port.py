@@ -208,7 +208,8 @@ def test_menus_are_well_formed():
     assert sorted(path.relative_to(MENUS).as_posix() for path in files) == \
         sorted(name for name in listed if name.endswith(".xml"))
     widgets, bitmaps, strings, references, roots = {}, {}, {}, [], []
-    for path in files:
+    # (the menu engine's model, model/, is another format: menu_model.c reads it)
+    for path in (path for path in files if path.relative_to(MENUS).parts[0] != "model"):
         tree = ElementTree.parse(path)
         assert tree.getroot().tag == "menus", path
         if tree.getroot().get("root"):
