@@ -7746,12 +7746,6 @@ static boolean browser_sort_before(struct browser_sort_entry const *a, struct br
 {
 	int difference = 0;
 
-	/* (the order the lists open in: the OpenH1 games first, the better
-	game and the fewer, then the dedicated servers first in each) */
-	if (browser_sort_column == _browser_sort_players && browser_sort_descending && a->openh1 != b->openh1)
-		return a->openh1;
-	if (browser_sort_column == _browser_sort_players && browser_sort_descending && a->dedicated != b->dedicated)
-		return a->dedicated;
 	switch (browser_sort_column)
 	{
 	case _browser_sort_players:
@@ -7774,6 +7768,17 @@ static boolean browser_sort_before(struct browser_sort_entry const *a, struct br
 		break;
 	default:
 		return FALSE;
+	}
+	/* (the order the lists open in, most players first: of games with as
+	many players, the OpenH1 games first, the better game and the fewer,
+	then the dedicated servers. Only between equal counts, so that a game
+	players host is never put under emptier dedicated servers) */
+	if (!difference && browser_sort_column == _browser_sort_players && browser_sort_descending)
+	{
+		if (a->openh1 != b->openh1)
+			return a->openh1;
+		if (a->dedicated != b->dedicated)
+			return a->dedicated;
 	}
 	return browser_sort_descending ? difference > 0 : difference < 0;
 }

@@ -15,16 +15,17 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, ROOT, build, enum_with, function, mutated, read, run, structure  # noqa: E402
 
-CASES = ["tabs", "empty", "ellipsis", "ping", "filters", "search"]
+CASES = ["tabs", "sort", "empty", "ellipsis", "ping", "filters", "search"]
 
 NEGATIVE_CONTROLS = {
     "favorites-on-every-tab": (("\tcase _browser_tab_favorites:\n\t\treturn favorite;\n", ""), "tabs"),
     "legacy-as-openh1": (("\t\treturn !entry->openh1;", "\t\treturn entry->openh1;"), "tabs"),
     "dedicated-tab-lists-all": (("\tcase _browser_tab_dedicated:\n\t\treturn entry->dedicated;\n", ""), "tabs"),
-    "openh1-not-first": (("browser_sort_descending && a->openh1 != b->openh1)",
-                          "browser_sort_descending && a->openh1 != b->openh1 && FALSE)"), "tabs"),
-    "dedicated-not-first": (("browser_sort_descending && a->dedicated != b->dedicated)",
-                             "browser_sort_descending && a->dedicated != b->dedicated && FALSE)"), "tabs"),
+    "openh1-not-first": (("\t\tif (a->openh1 != b->openh1)", "\t\tif (a->openh1 != b->openh1 && FALSE)"), "sort"),
+    "dedicated-not-first": (("\t\tif (a->dedicated != b->dedicated)",
+                             "\t\tif (a->dedicated != b->dedicated && FALSE)"), "sort"),
+    # (#920: the grouping before the players, as it was)
+    "grouped-before-players": (("if (!difference && browser_sort_column", "if (browser_sort_column"), "sort"),
     "offline-on-every-tab": (("\tif (!browser_tab_lists_offline())\n\t\tbrowser_offline_count = 0;\n", ""), "tabs"),
     "lan-says-nothing-to-do": (("L\"No games on your network yet.\\r\\nHost one from Create Game.\"",
                                 "L\"No games.\""), "empty"),

@@ -1178,6 +1178,14 @@ static boolean active_camouflage_same_view(
 			TEST_FLAG(geometry_flags, _rasterizer_geometry_first_person_bit);
 }
 
+/* port: whether the group is drawn as active camouflage
+(rasterizer_transparent_geometry.c's rasterizer_first_person_camouflaged, #875) */
+boolean rasterizer_transparent_geometry_group_camouflaged(
+	struct transparent_geometry_group const *group)
+{
+	return group->effect_type == _render_model_effect_type_active_camouflage;
+}
+
 /* port: whether the group is the last of its object's camouflaged model parts
 in its view still to be drawn (one sorted after it and not drawn yet, or
 drawn with it as its presorted chain's, comes later) */

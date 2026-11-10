@@ -611,5 +611,7 @@ def _generate_macos_app(n: Writer, sln: Any, built: Dict[str, Any]) -> None:
     replay = BUILD / "halo_replay"
     n.build(outputs=replay, rule="macos_host_link", inputs=[replay_obj, *replay_host, *metal_objects, *shared_objects],
             implicit=[libsdl])
-    n.build(outputs="macos_replay", rule="phony", inputs=[replay, staged_sdl])
+    # (and the shaders' library it plays with, as the app does: halo_replay copies the one beside it into the app
+    # it runs, and one left from an older build drew the high-res text's distance fields as colours)
+    n.build(outputs="macos_replay", rule="phony", inputs=[replay, staged_sdl, library])
     n.newline()
