@@ -1111,8 +1111,9 @@ a direct connection has failed.
   of kilobytes a second.
 - **Where players learn of relays**: `relays.txt` beside `masters.txt`
   (`network.relays_file`; a dedicated server's own, `server.relays_file`,
-  which it offers its joiners and tells its players of), none by default;
-  and what the dedicated server of their game tells them.
+  which it offers its joiners and tells its players of): the project's
+  own, `net.goath1.com:2302` (`deploy/net`), by default and when there is no
+  file (an empty one names none); and what the dedicated server of their game tells them.
 - **Limits** (both): `server.relay_pairs` (64) pairs at once, 8 for each
   address; `server.relay_upload` (8192 KB/s) in all, 256 KB/s for each pair
   and 1 MB/s for each address; binds answered 20 times a second for each
@@ -1227,8 +1228,8 @@ the server takes FROM only from its front's address with its session.
 | `gametypes/<name>.toml` | Gametype files: the `gametypes` folder beside `config.toml` if there is one, else the data root's |
 | `gametypes/<name>.gametype` | Gametypes saved by a player's game (`file=<name>` in the rotation): the same `gametypes` folder |
 | `publisher.key` | The publisher key for the master servers (beside `config.toml`). On Windows, a server's `config.toml` and `publisher.key` are given an access list of their owner alone (the entries inherited for Administrators and SYSTEM taken out) |
-| `masters.txt` | The master servers (`server.masters_file`: beside `config.toml`, else beside the executable); one that names none leaves the official master, built in |
-| `relays.txt` | The relays the server offers players who cannot reach it, and tells its players of (`server.relays_file`, found as `masters.txt` is): `host[:port]` on each line; none by default ("Relays") |
+| `masters.txt` | The master servers (`server.masters_file`: beside `config.toml`, else beside the executable); the release's names the project's master and OpenCE's, which are also built in for one that names none |
+| `relays.txt` | The relays the server offers players who cannot reach it, and tells its players of (`server.relays_file`, found as `masters.txt` is): `host[:port]` on each line; the project's, `net.goath1.com:2302`, by default ("Relays") |
 | `bans.txt`, `cheaters.txt`, `debug.txt` | In `paths.logs`, else the data root |
 | `admins.txt`, `admin_id.txt` | Beside `bans.txt`: the players' keys (or key ids) who are admins in the game, and the server's id their keys for it are made from ("Admins in the game") |
 | `vpn_allow.txt`, `vpn_block.txt`, `netlist-<master key id>.bin` | Beside `bans.txt`: ranges never refused as a VPN's, ranges refused besides, and the masters' netlists held ("VPNs and linked Discord accounts") |

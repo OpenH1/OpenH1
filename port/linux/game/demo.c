@@ -142,6 +142,7 @@ void damage_kill_object_for_player(long object_index, long player_index);
 void *game_engine_port_demo_state(short part, long *size);
 void *game_sound_port_demo_state(short part, long *size);
 void *wind_port_demo_state(long *size);
+void *network_standard_port_demo_state(long *size);
 unsigned long network_standard_demo_rules(void);
 extern struct game_variant game_variant_global;
 void main_build_identity(long *number, char *flavor, size_t flavor_size, char *repository, size_t repository_size,
@@ -198,6 +199,13 @@ enum
 	DEMO_RECORD_MAXIMUM_SIZE = DEMO_BLOCK_MAXIMUM_SIZE,
 	/* the most of the game engine's state outside the game state (G) */
 	DEMO_ENGINE_STATE_SIZE = 256 * 1024,
+	/* the whole game states taken one after another for what the game's
+	code made or deleted outside the ticks, and the ticks that give one
+	more (a snapshot's), past which the recording warns that they come too
+	often (demo_structural_whole) */
+	DEMO_STRUCTURAL_BURST = 4,
+	/* ... at most this often */
+	DEMO_STRUCTURAL_WARNING_TICKS = 60 * TICKS_PER_SECOND,
 };
 
 /* a block's kind */
@@ -329,6 +337,19 @@ static struct
 	boolean foreign;
 	boolean paused;
 	long structural_snapshots;
+	/* the whole game states that may yet be taken for what the game's code
+	made or deleted outside the ticks before the recording warns, as of a
+	tick; those taken past them, and when it last warned
+	(demo_structural_whole) */
+	long structural_allowance;
+	long structural_allowance_tick;
+	long structural_too_often;
+	long structural_warning_tick;
+	/* (the host) the netcode's work after a tick is being recorded
+	(demo_netcode_begin) */
+	boolean netcode;
+	/* the bytes the demo took, once it ended */
+	unsigned long long written;
 	/* the microseconds the recording took of the game's thread */
 	unsigned long long work_microseconds;
 } demo_recorder;
@@ -1030,6 +1051,57 @@ static boolean demo_patch_write(
 	return structural;
 }
 
+/* the whole game states taken for what the game's code made or deleted
+outside the ticks, as of the tick, against a rate: a few one after
+another, and one more each snapshot's ticks (demo.snapshot_seconds). Each
+is taken, whatever the rate (the playback stays exact), but past it the
+recording warns, once a minute at most: a game whose code does that every
+tick takes a whole game state a tick, 1 to 2 GB a minute (a host's OpenCE
+players' moves did, before demo_netcode_begin) */
+static void demo_structural_refill(
+	long tick)
+{
+	long elapsed = tick - demo_recorder.structural_allowance_tick;
+
+	if (elapsed < 0)
+	{
+		demo_recorder.structural_allowance = DEMO_STRUCTURAL_BURST;
+		demo_recorder.structural_allowance_tick = tick;
+	}
+	else if (elapsed >= demo_settings.snapshot_ticks)
+	{
+		long more = elapsed / demo_settings.snapshot_ticks;
+
+		demo_recorder.structural_allowance = MIN(DEMO_STRUCTURAL_BURST, demo_recorder.structural_allowance + more);
+		demo_recorder.structural_allowance_tick += more * demo_settings.snapshot_ticks;
+	}
+}
+
+/* ... one counted (always TRUE: it is taken) */
+static boolean demo_structural_whole(
+	long tick)
+{
+	demo_structural_refill(tick);
+	if (demo_recorder.structural_allowance > 0)
+	{
+		demo_recorder.structural_allowance--;
+		return TRUE;
+	}
+	demo_recorder.structural_too_often++;
+	if (demo_recorder.structural_warning_tick == NONE ||
+		tick - demo_recorder.structural_warning_tick >= DEMO_STRUCTURAL_WARNING_TICKS ||
+		tick < demo_recorder.structural_warning_tick)
+	{
+		demo_recorder.structural_warning_tick = tick;
+		platform_log("warning: demos: %s: a whole game state at tick %ld for what the game's code made or deleted "
+			"outside the ticks, %ld more often than %d and one each %ld ticks so far (%.2f MB written): the "
+			"demo grows by about 1 MB each; demo.c's records miss what made them (debug.demo_log names it)",
+			demo_recorder.name, tick, demo_recorder.structural_too_often, DEMO_STRUCTURAL_BURST,
+			demo_settings.snapshot_ticks, (double)demo_writer_bytes(demo_recorder.writer) / 1e6);
+	}
+	return TRUE;
+}
+
 /* the frames' input the ticks read, whole, where it changed since it was
 last recorded (a C record) */
 static void demo_input_write(
@@ -1133,6 +1205,10 @@ static void *demo_outside_part(
 		count++;
 	if (part == count)
 		return wind_port_demo_state(size);
+	/* (and which players are OpenCE machines', whose units a mixed game
+	moves once a tick: network_standard.c) */
+	if (part == count + 1)
+		return network_standard_port_demo_state(size);
 	return NULL;
 }
 
@@ -1230,13 +1306,14 @@ static void demo_record_stop(
 		demo_buffer_u32(&demo_recorder.records, (unsigned long)demo_recorder.last_tick);
 		demo_record_end(&demo_recorder.records, start);
 		demo_records_flush();
-		demo_writer_close(demo_recorder.writer);
+		demo_recorder.written = demo_writer_close(demo_recorder.writer);
 		demo_recorder.writer = NULL;
 	}
 	platform_log("demos: %s ended (%s): %ld ticks, %ld differences from outside the ticks (%lu bytes), %ld "
-		"whole game states for what the game's code made or deleted there; the recording took %.3f ms a tick of "
-		"the game's thread", demo_recorder.name, reason, demo_recorder.ticks, demo_recorder.patches,
-		demo_recorder.patch_bytes, demo_recorder.structural_snapshots,
+		"whole game states for what the game's code made or deleted there (%ld more often than allowed); %.2f MB; the "
+		"recording took %.3f ms a tick of the game's thread", demo_recorder.name, reason, demo_recorder.ticks,
+		demo_recorder.patches, demo_recorder.patch_bytes, demo_recorder.structural_snapshots,
+		demo_recorder.structural_too_often, (double)demo_recorder.written / 1e6,
 		demo_recorder.ticks ? (double)demo_recorder.work_microseconds / 1000.0 / (double)demo_recorder.ticks : 0.0);
 	demo_recorder.recording = FALSE;
 	demo_recorder.shadow_valid = FALSE;
@@ -1320,6 +1397,12 @@ static void demo_record_start(
 	demo_recorder.patches = 0;
 	demo_recorder.patch_bytes = 0;
 	demo_recorder.structural_snapshots = 0;
+	demo_recorder.structural_allowance = DEMO_STRUCTURAL_BURST;
+	demo_recorder.structural_allowance_tick = tick;
+	demo_recorder.structural_too_often = 0;
+	demo_recorder.structural_warning_tick = NONE;
+	demo_recorder.netcode = FALSE;
+	demo_recorder.written = 0;
 	demo_recorder.work_microseconds = 0;
 	demo_recorder.loaded = FALSE;
 	demo_recorder.input_valid = FALSE;
@@ -1364,11 +1447,14 @@ static void demo_record_tick_begin(
 		demo_buffer_u32(&demo_recorder.records, (unsigned long)sim_rate_next());
 		demo_record_end(&demo_recorder.records, start);
 		structural = FALSE;
-		if (!demo_recorder.loaded && demo_patch_write('P'))
+		if (!demo_recorder.loaded)
 		{
-			demo_recorder.loaded = TRUE;
-			structural = TRUE;
-			demo_recorder.structural_snapshots++;
+			if (demo_patch_write('P') && demo_structural_whole(tick))
+			{
+				demo_recorder.loaded = TRUE;
+				structural = TRUE;
+				demo_recorder.structural_snapshots++;
+			}
 		}
 		/* (a whole game state for a reload too, a death's revert to the last
 		checkpoint as much as the pause menu's: the checkpoint the playback's
@@ -1852,7 +1938,7 @@ boolean demo_event_begin(
 	start) */
 	if (demo_recorder.paused)
 		demo_open_patch_write(sim_substep_next());
-	else if (demo_open_patch_write(0))
+	else if (demo_open_patch_write(0) && demo_structural_whole(game_time_get()))
 		demo_recorder.loaded = TRUE;
 	/* (the cameras as the frames left them, which the event's code reads:
 	a hit's damage indicator points from its player's camera) */
@@ -1874,6 +1960,49 @@ void demo_event_end(
 	/* (what the event's code did is the playback's code's to do again: the
 	differences after it are from where it left the game state) */
 	if (!demo_player.playing && demo_recorder.recording && !demo_recorder.in_tick)
+		demo_shadow_take();
+}
+
+/* ---------- what the netcode puts in after a tick */
+
+void demo_netcode_begin(
+	void)
+{
+	unsigned long size;
+
+	demo_recorder.netcode = FALSE;
+	if (demo_player.playing || !demo_recorder.recording || demo_recorder.in_tick || demo_recorder.paused ||
+		!demo_recorder.shadow_valid || game_connection() != _game_connection_network_server)
+	{
+		return;
+	}
+	/* (what reached the game state before it, as a difference of its own:
+	one of the game's code there is the whole game state at the next
+	tick's start, as before an event) */
+	size = demo_recorder.records.size;
+	if (demo_open_patch_write(0) && demo_structural_whole(game_time_get()))
+		demo_recorder.loaded = TRUE;
+	if (demo_recorder.records.size != size)
+		demo_shadow_take();
+	demo_recorder.netcode = TRUE;
+}
+
+void demo_netcode_end(
+	void)
+{
+	unsigned long size;
+
+	if (!demo_recorder.netcode)
+		return;
+	demo_recorder.netcode = FALSE;
+	if (!demo_recorder.recording || demo_recorder.in_tick)
+		return;
+	/* (what it changed, as the bytes are: the units it moved, with their
+	cluster references, as the clients' predictions taken at a tick's
+	start are, F) */
+	size = demo_recorder.records.size;
+	demo_open_patch_write(0);
+	if (demo_recorder.records.size != size)
 		demo_shadow_take();
 }
 

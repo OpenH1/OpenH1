@@ -15,7 +15,7 @@ anywhere and starts with bin/openh1:
     share/openh1/masters.txt                   the master servers (network.masters_file)
     share/openh1/prepared.records              the stock maps' preparations' records (prepared_shipped.h)
     share/openh1/openh1.assets                 the textures', fonts' and menus' bytes (embedded_assets.h)
-    share/openh1/relays.txt                    the relays offered (network.relays_file: none in it)
+    share/openh1/relays.txt                    the relays offered (network.relays_file)
     share/openh1/vr                            only in the VR build's (--vr): install.sh's sign of it
     share/openh1/steam/<kind>.png              Steam's library artwork, which install.sh gives its shortcut
                                                (port/assets/steam, tools/steam_art.py; the VR build's OpenH1 VR's)

@@ -98,6 +98,8 @@ static void ui_widget_port_caret_show(struct widget_instance *box, boolean shown
 /* (the clock, which the caret blinks by) */
 static unsigned long now;
 #define system_milliseconds() (now)
+/* (the frames' time, not fixed here: frames_clock.c) */
+#define frames_clock(milliseconds) (0)
 #define text_filter_exempt(text) ((void)0)
 #define _stricmp strcasecmp
 #include <strings.h>
