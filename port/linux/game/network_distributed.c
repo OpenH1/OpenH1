@@ -110,7 +110,6 @@ boolean network_distributed_server_send_to_all_reliably(void *message, word size
 boolean network_distributed_server_send_to_machine(long machine_index, void *message, word size);
 boolean network_distributed_server_send_to_machine_reliably(long machine_index, void *message, word size);
 short network_distributed_server_machines(long *machine_indices, short maximum);
-boolean network_distributed_server_machine_is_own(long machine_index);
 /* players.c's */
 void network_player_attach_unit(long player_index, long unit_index);
 void network_player_detach_unit(long player_index);
@@ -1875,8 +1874,7 @@ short distributed_client_machines(
 		{
 			if (distributed_machines.indices[index] >= 0 &&
 				distributed_machines.indices[index] < HALO_PORT_MAXIMUM_NETWORK_MACHINES &&
-				!distributed_machine_is_local(distributed_machines.indices[index]) &&
-				!network_distributed_server_machine_is_own(distributed_machines.indices[index]))
+				!distributed_machine_is_local(distributed_machines.indices[index]))
 			{
 				distributed_machines.indices[distributed_machines.count++] = distributed_machines.indices[index];
 			}
@@ -6179,6 +6177,7 @@ static boolean distributed_message_stale(
 	case _distributed_message_damage_events:
 	case _distributed_message_pings:
 	case _distributed_message_actor_states:
+	case _distributed_message_actor_states_compact:
 	case _distributed_message_structure_bsp:
 	case _distributed_message_coop_presentation:
 	case _distributed_message_coop_device_groups:
@@ -7162,6 +7161,7 @@ void network_distributed_handle_message(
 	case _distributed_message_player_statistics: entry_size = sizeof(struct distributed_player_statistics); break;
 	case _distributed_message_pings: entry_size = sizeof(struct distributed_player_ping); break;
 	case _distributed_message_actor_states: entry_size = network_actors_entry_size(); break;
+	case _distributed_message_actor_states_compact: entry_size = network_actors_compact_minimum_size(); break;
 	case _distributed_message_structure_bsp: entry_size = sizeof(struct distributed_structure_bsp); break;
 	case _distributed_message_coop_presentation: entry_size = network_coop_presentation_entry_size(); break;
 	case _distributed_message_coop_events: entry_size = network_coop_event_entry_size(); break;
@@ -7308,6 +7308,9 @@ void network_distributed_handle_message(
 		break;
 	case _distributed_message_actor_states:
 		network_actors_handle_states(entries, header.count);
+		break;
+	case _distributed_message_actor_states_compact:
+		network_actors_handle_compact_states(entries, (byte const *)message + size, header.count);
 		break;
 	case _distributed_message_structure_bsp:
 		distributed_handle_structure_bsp((struct distributed_structure_bsp const *)entries);

@@ -95,7 +95,7 @@ takes it for a newer version and does not join. Raise it with any change to
 what a Standard game's machines send each other, and with every raise of
 HALO_PORT_NETWORK_VERSION: HALO_PORT_STANDARD_BASE_VERSION is the network
 version it was last raised for, and the build fails until they agree. */
-#define HALO_PORT_STANDARD_NETWORK_VERSION 23
+#define HALO_PORT_STANDARD_NETWORK_VERSION 24
 /* (1: the rate agreed; 2: the players' sub-steps sent, network_substeps.c;
 3: OpenCE players in the game, network_standard.c's mixed games; 4: a
 player moved to the other team by the host, network_host_controls.c; 5:
@@ -137,8 +137,10 @@ client was last sent of the player, network_distributed.c's
 distributed_substep_state_write; 23: the tick's states of the players
 as their differences from states the client says it took, on a grid of
 1/4096 of a world unit, network_distributed.c's
-_distributed_message_unit_state_differences and the input's word on them.
-Legacy games, and what an OpenCE
+_distributed_message_unit_state_differences and the input's word on them;
+24: the actors' states without the parts at their defaults,
+network_actors.c's _distributed_message_actor_states_compact. Legacy
+games, and what an OpenCE
 machine sees, are unchanged) */
 #define HALO_PORT_STANDARD_BASE_VERSION 41
 #define HALO_PORT_STANDARD_VERSION_BIT 0x8000

@@ -1286,6 +1286,22 @@ on average (`network test: bandwidth`), 63.3 KB/s of it actors' states
 (`network test: actors to clients`): the presses 1.0 KB/s of those, the aims
 1.8 KB/s, so 97.2 KB/s before (2.9% more).
 
+From protocol version 24 an OpenH1 game's host sends its OpenH1 clients the
+actors' states without the parts at their defaults
+(`_distributed_message_actor_states_compact`, `network_actors.c`'s
+`actor_state_compact_write`), in place of the whole 88-byte structure: the
+unit, its flags, animation state, aiming speed and team, its aim, shields
+and health, where it is and which way it faces always (36 bytes), and each
+of the rest only where any of its values is not its default (the vehicle and
+seat, an impulse, a speech, a custom animation, fleeing, camouflage, a look
+or a facing not along its aim, an up not straight up, a velocity, the sticks,
+the control flags, the trigger). The structure read is the one written, byte
+for byte. A Legacy game, and an OpenCE machine, take the whole structure as
+before. On b30 (the host and three clients, the scripted player, 60 s) the
+actors' states were 288 KB/s at 60 and 297 at 120, and are 153 and 150
+(about 45 bytes each), the host's datagrams 0.46 and 0.48 MB/s, now 0.32 and
+0.31 (-31% and -35%, with version 23's tick states).
+
 ### Remote players drawn from the newest sub-steps
 
 The frames are drawn between the ticks (`render_interpolation.c`): a frame
@@ -1699,11 +1715,7 @@ as any other, with these differences, all on the host's side:
   next players to join balance the teams). The host waits for no player of
   its own to precache, and a client's player that quits the game does not
   end the host's (`network_client_manager.c`: only a local player's quit
-  leaves). The distributed netcode's sends to the clients pass machine 0
-  over (`network_distributed_server_machine_is_own`): with no local player
-  it was taken for a client, and was sent every client's share of the
-  ticks' messages over the host's own connection (in a 40-player game at 120,
-  a ninth of the host's datagrams' bytes: 0.80 MB/s, 0.65 without).
+  leaves).
 - **No ticks of its own player.** The host's own action queue may hold no
   action (`player_queues_new.c`), as a game with no local player has none.
 - **The kind of game.** A dedicated server hosts Legacy games unless its
