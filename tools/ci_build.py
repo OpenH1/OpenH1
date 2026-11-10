@@ -372,7 +372,7 @@ def main() -> int:
     # docs/dedicated_server.md)
     shutil.copy2(ROOT / "port/assets/network/masters.txt", dist / "masters.txt")
     # ... and the relays a machine offers when a direct connection fails
-    # (network.relays_file, server.relays_file: none in it)
+    # (network.relays_file, server.relays_file: the project's relay)
     shutil.copy2(ROOT / "port/assets/network/relays.txt", dist / "relays.txt")
     # ... and the stock maps' preparations' records (port/linux/src/prepared_shipped.h)
     shutil.copy2(ROOT / "port/assets/prepared/prepared.records", dist / "prepared.records")

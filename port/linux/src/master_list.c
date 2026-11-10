@@ -179,6 +179,11 @@ int master_list_read_file(const char *setting, char (*urls)[MASTER_LIST_URL_SIZE
 	return count;
 }
 
+/* the relays used when relays.txt cannot be read (the builds that bring no
+file: Android, macOS, iOS, the Steam Frame's): the project's own
+(deploy/net), as port/assets/network/relays.txt names them */
+#define DEFAULT_RELAYS "net.goath1.com:2302\n"
+
 int master_list_read_relays(const char *setting, char (*hosts)[MASTER_LIST_RELAY_HOST_SIZE], unsigned short *ports,
 	int maximum)
 {
@@ -191,7 +196,12 @@ int master_list_read_relays(const char *setting, char (*hosts)[MASTER_LIST_RELAY
 		return 0;
 	text = masters_file(setting, path, sizeof(path));
 	if (!text)
-		return 0;
+	{
+		text = (char *)malloc(sizeof(DEFAULT_RELAYS));
+		if (!text)
+			return 0;
+		memcpy(text, DEFAULT_RELAYS, sizeof(DEFAULT_RELAYS));
+	}
 	for (line = text; *line && count < maximum;)
 	{
 		const char *end = line + strcspn(line, "\n");

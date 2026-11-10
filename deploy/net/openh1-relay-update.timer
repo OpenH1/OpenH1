@@ -1,0 +1,13 @@
+# /etc/systemd/system/openh1-relay-update.timer: the relay updated weekly, on
+# Tuesdays at 09:00 UTC (early morning in the Americas). Releases come
+# often, but the relay's protocol is versioned on its own and rarely changes.
+[Unit]
+Description=Weekly OpenH1 relay update
+
+[Timer]
+OnCalendar=Tue *-*-* 09:00:00 UTC
+RandomizedDelaySec=30m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
