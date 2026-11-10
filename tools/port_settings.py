@@ -838,11 +838,6 @@ PAGES = {
              "menus' button artwork.", None),
             ("HIGH-RES TEXT", "display.high_res_text", ON_OFF,
              "Draws text and titles with sharp high-resolution fonts. Off draws the game's own.", None),
-            # (main.c's main_framerate_render, as the console's
-            # display_framerate draws it; Video's page has no room)
-            ("SHOW FRAME RATE", "display.show_frame_rate", ON_OFF,
-             "Draws the frame rate at the bottom right of the screen, to see how the game runs: the frames drawn "
-             "each second, averaged over half a second. Green is 30 or more, red under 30.", None),
             (SECTION, "MULTIPLAYER"),
             ("PLAYER NAMES", "display.player_names",
              [("ALL", "all"), ("ALLIES", "allies"), ("ENEMIES", "enemies"), ("NONE", "none")],
@@ -854,6 +849,10 @@ PAGES = {
              "A team game's scoreboard: a column for each team, or every player in order of score.", None),
             ("SCOREBOARD PANEL", "display.scoreboard_background", ON_OFF,
              "Draws a dark panel behind the scoreboard, for clearer text.", None),
+            # (port/linux/game/dead_spectate.c: co-op and team games)
+            ("WHILE DEAD", "game.spectate_on_death", [("TEAMMATE'S VIEW", "teammates"), ("DEATH CAMERA", "off")],
+             "While you wait to respawn in co-op or a team game: watch a living teammate through their eyes "
+             "(A or Jump for the next), or the game's death camera.", None),
             ("MATCH TIMER", "display.match_timer", ON_OFF,
              "Draws a clock at the bottom right in multiplayer, counting up from the start of the game.", None),
             # (the text chat's: port/linux/game/network_chat.c)
@@ -1060,6 +1059,12 @@ PAGES = {
             ("LOW LATENCY", "display.low_latency", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
              "With VSync on, starts each frame just in time for the refresh it is shown at, so a press reaches the "
              "screen sooner. Off starts each frame as soon as the one before is waiting. Auto is on.", None),
+            # (main.c's main_framerate_render, as the console's
+            # display_framerate draws it: Video's page has no room, and
+            # Interface's none since WHILE DEAD)
+            ("SHOW FRAME RATE", "display.show_frame_rate", ON_OFF,
+             "Draws the frame rate at the bottom right of the screen, to see how the game runs: the frames drawn "
+             "each second, averaged over half a second. Green is 30 or more, red under 30.", None),
         ],
     },
     FIRST_PERSON[0]: {

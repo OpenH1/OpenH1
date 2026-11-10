@@ -16,6 +16,7 @@
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/op_vrr_cap_margin" x="28" y="122" platform="desktop"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/op_max_fps" x="28" y="143" platform="desktop"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/op_low_latency" x="28" y="164"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/op_show_frame_rate" x="28" y="185"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/button_bar" y="414"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items" source="tools/port_settings.py settings_files/_settings_page">
@@ -95,12 +96,22 @@
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/low_latency_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="AUTO|ON|OFF" setting="display.low_latency" values="auto|on|off" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="120 0" source="tools/port_settings.py settings_files/_settings_page">
 		<on event="created" run="port setting load"/>
 	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/op_show_frame_rate" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" wide="-106 120" source="tools/port_settings.py settings_files/_settings_page">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/show_frame_rate_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/show_frame_rate_spinner" x="188"/>
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/show_frame_rate_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/labels" string_index="5" color="#FF2896FF" text_x="10" text_y="1" wide="0 120" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	</widget>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/show_frame_rate_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="ON|OFF" setting="display.show_frame_rate" values="true|false" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="120 0" source="tools/port_settings.py settings_files/_settings_page">
+		<on event="created" run="port setting load"/>
+	</widget>
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/labels">
 		<string text="VSYNC"/>
 		<string text="VARIABLE REFRESH"/>
 		<string text="VRR FRAME CAP"/>
 		<string text="MAX FPS"/>
 		<string text="LOW LATENCY"/>
+		<string text="SHOW FRAME RATE"/>
 	</strings>
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/help_strings">
 		<string text=""/>
@@ -109,5 +120,6 @@
 		<string text="Frames a second kept under the refresh rate, so the game stays in the screen's VRR range and never falls back to VSync. Lower is closer to the most frames; higher is safer on a screen with a narrow range.|Used while Variable Refresh is on."/>
 		<string text="The most frames drawn a second with VSync off. Auto is twice the display's refresh rate. More feels smoother and uses more power; None draws as fast as it can.|Click the number (or press A) to type 10 to 1000."/>
 		<string text="With VSync on, starts each frame just in time for the refresh it is shown at, so a press reaches the screen sooner. Off starts each frame as soon as the one before is waiting. Auto is on."/>
+		<string text="Draws the frame rate at the bottom right of the screen, to see how the game runs: the frames drawn each second, averaged over half a second. Green is 30 or more, red under 30."/>
 	</strings>
 </menus>

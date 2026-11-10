@@ -12,6 +12,7 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/op_vrr_cap_margin" x="28" y="122"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/op_max_fps" x="28" y="143"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/op_low_latency" x="28" y="164"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/op_show_frame_rate" x="28" y="185"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/button_bar" x="0" y="414"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/button_bar" role="buttons" type="column_list" box="0 0 640 28">
@@ -87,5 +88,16 @@
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/low_latency_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="AUTO|ON|OFF"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/op_show_frame_rate" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/show_frame_rate_label" x="0" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/show_frame_rate_spinner" x="188" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/show_frame_rate_label" type="text" box="0 0 184 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/labels" index="5"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/show_frame_rate_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
 	</look>
 </model>

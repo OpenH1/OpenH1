@@ -399,6 +399,30 @@ static short first_person_weapon_index_from_weapon_index(
 static short first_person_weapon_index_from_unit_index(
 	long unit_index);
 
+/* port: a dead player looking out of a teammate's eyes shows their
+first-person weapon (port/linux/game/dead_spectate.c) */
+long dead_spectate_first_person_weapon_unit(short local_player_index, long unit_index);
+long dead_spectate_eyes_unit(short local_player_index);
+
+/* port: whether a local player's view is in the first person: its own
+unit's, or a teammate's eyes while it is dead */
+static boolean first_person_weapon_port_first_person(
+	short local_player_index)
+{
+	return director_get_perspective(local_player_index)==_director_perspective_first_person ||
+		dead_spectate_eyes_unit(local_player_index)!=NONE;
+}
+
+/* port: and the zoom it looks through: its own, or that teammate's */
+static short first_person_weapon_port_zoom_level(
+	short local_player_index)
+{
+	long unit_index= dead_spectate_eyes_unit(local_player_index);
+
+	return unit_index!=NONE ? (short)unit_get(unit_index)->unit.current_zoom_level :
+		player_control_get_zoom_level(local_player_index);
+}
+
 /* port/linux/game/pal_tags.c's */
 boolean pal_tags_first_person_advance(short local_player_index, long graph_index, short animation_index,
 	short frame_index);
@@ -516,7 +540,11 @@ long first_person_weapon_get_local_index(
 	{
 		struct first_person_weapon *first_person_weapon= first_person_weapon_get(local_player_index);
 
-		if (first_person_weapon->weapon_index==weapon_index && first_person_weapon->visible)
+		/* port: not a dead player's slot showing a teammate's weapon
+		(dead_spectate.c): the effects the weapon makes are the game
+		state's, built at its own markers as without the spectating */
+		if (first_person_weapon->weapon_index==weapon_index && first_person_weapon->visible &&
+			dead_spectate_eyes_unit(local_player_index)==NONE)
 		{
 			break;
 		}
@@ -541,8 +569,9 @@ void first_person_weapon_draw(
 
 		if (local_player_get_player_index(render.local_player_index)!=NONE)
 		{
-			long unit_index= player_get(
-				local_player_get_player_index(render.local_player_index))->unit_index;
+			/* port: (dead_spectate_first_person_weapon_unit) */
+			long unit_index= dead_spectate_first_person_weapon_unit(render.local_player_index, player_get(
+				local_player_get_player_index(render.local_player_index))->unit_index);
 
 			if (unit_index!=NONE &&
 				first_person_weapon->visible &&
@@ -734,7 +763,7 @@ short first_person_weapon_get_marker_by_name(
 		short local_player_index= first_person_weapon_index_from_weapon_index(weapon_index);
 
 		if (local_player_index!=NONE &&
-			director_get_perspective(local_player_index)==_director_perspective_first_person)
+			first_person_weapon_port_first_person(local_player_index))
 		{
 			struct first_person_weapon *first_person_weapon= first_person_weapon_get(local_player_index);
 			struct weapon_definition *weapon_definition= weapon_definition_get(weapon->definition_index);
@@ -807,8 +836,8 @@ void first_person_weapon_render_update(
 		if (first_person_weapon->unit_index!=NONE &&
 			first_person_weapon->weapon_index!=NONE)
 		{
-			boolean visible= director_get_perspective(render.local_player_index)==_director_perspective_first_person &&
-				(player_control_get_zoom_level(render.local_player_index)==NONE
+			boolean visible= first_person_weapon_port_first_person(render.local_player_index) &&
+				(first_person_weapon_port_zoom_level(render.local_player_index)==NONE
 #ifdef HALO_VR
 				/* port: the VR mode's eyes are not magnified as the game zooms (a
 				raised scope magnifies its own view: port/linux/game/vr_scope.c),
@@ -1006,7 +1035,9 @@ void first_person_weapons_update(
 		if (player_index!=NONE)
 		{
 			struct first_person_weapon *first_person_weapon= first_person_weapon_get(local_player_index);
-			long unit_index= player_get(player_index)->unit_index;
+			/* port: or, dead, the teammate whose eyes it looks out of */
+			long unit_index= dead_spectate_first_person_weapon_unit(local_player_index,
+				player_get(player_index)->unit_index);
 
 			if (first_person_weapon->unit_index!=unit_index)
 			{
@@ -1151,7 +1182,14 @@ static void first_person_weapon_set_visibility(
 {
 	struct first_person_weapon *first_person_weapon= first_person_weapon_get(local_player_index);
 
-	if (visible!=first_person_weapon->visible)
+	/* port: a dead player's slot showing a teammate's weapon (dead_spectate.c)
+	moves none of the weapon's effects to it: they are the game state's, and
+	stay as they are without the spectating */
+	if (visible!=first_person_weapon->visible && dead_spectate_eyes_unit(local_player_index)!=NONE)
+	{
+		first_person_weapon->visible= visible;
+	}
+	else if (visible!=first_person_weapon->visible)
 	{
 		if (visible)
 		{
@@ -2863,23 +2901,31 @@ static short first_person_weapon_index_from_weapon_index(
 	long weapon_index)
 {
 	short local_player_index;
+	/* port: a local player's own unit first, then a dead player's watched
+	teammate's (dead_spectate_first_person_weapon_unit): a split screen's
+	player watched by another keeps its own weapon's messages */
+	short pass;
 
-	for (local_player_index=0; local_player_index<MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
+	for (pass=0; pass<2; pass++)
 	{
-		long player_index= local_player_get_player_index(local_player_index);
-
-		if (player_index!=NONE)
+		for (local_player_index=0; local_player_index<MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
 		{
-			long unit_index= player_get(player_index)->unit_index;
+			long player_index= local_player_get_player_index(local_player_index);
 
-			if (unit_index!=NONE)
+			if (player_index!=NONE)
 			{
-				struct unit_datum *unit= unit_get(unit_index);
+				long unit_index= pass==0 ? player_get(player_index)->unit_index :
+					dead_spectate_first_person_weapon_unit(local_player_index, player_get(player_index)->unit_index);
 
-				if (unit->unit.current_weapon_index!=NONE &&
-					weapon_index==unit->unit.weapon_object_indices[unit->unit.current_weapon_index])
+				if (unit_index!=NONE)
 				{
-					return local_player_index;
+					struct unit_datum *unit= unit_get(unit_index);
+
+					if (unit->unit.current_weapon_index!=NONE &&
+						weapon_index==unit->unit.weapon_object_indices[unit->unit.current_weapon_index])
+					{
+						return local_player_index;
+					}
 				}
 			}
 		}
@@ -2892,14 +2938,22 @@ static short first_person_weapon_index_from_unit_index(
 	long unit_index)
 {
 	short local_player_index;
+	/* port: (first_person_weapon_index_from_weapon_index) */
+	short pass;
 
-	for (local_player_index=0; local_player_index<MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
+	for (pass=0; pass<2; pass++)
 	{
-		long player_index= local_player_get_player_index(local_player_index);
-
-		if (player_index!=NONE && player_get(player_index)->unit_index==unit_index)
+		for (local_player_index=0; local_player_index<MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
 		{
-			return local_player_index;
+			long player_index= local_player_get_player_index(local_player_index);
+
+			if (player_index!=NONE && unit_index!=NONE &&
+				(pass==0 ? player_get(player_index)->unit_index :
+					dead_spectate_first_person_weapon_unit(local_player_index,
+						player_get(player_index)->unit_index))==unit_index)
+			{
+				return local_player_index;
+			}
 		}
 	}
 
