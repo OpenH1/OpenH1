@@ -5310,8 +5310,16 @@ static void text_field_show(struct widget_instance *value, char const *text, boo
 	shown[index] = 0;
 	text_set(value, shown);
 	/* (the caret: drawn by the text box, after the text, on its capitals'
-	middle; lit half the time) */
-	ui_widget_port_caret_show(value, editing && (system_milliseconds() / 500) % 2);
+	middle; lit half the time, by the menus' clock: the frames' where it is
+	fixed, debug.frame_time, so that two runs draw it alike,
+	tools/menu_parity.py) */
+	{
+		unsigned long now;
+
+		if (!frames_clock(&now))
+			now = system_milliseconds();
+		ui_widget_port_caret_show(value, editing && (now / 500) % 2);
+	}
 	/* (what is being typed shown as it is: streamer mode hides nothing of it,
 	text_filter.c) */
 	if (editing && value)
