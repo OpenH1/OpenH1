@@ -62,6 +62,9 @@ class Machine:
         shutil.copy(GAME, self.folder / "bin" / "halo")
         if SDL.is_file():
             shutil.copy(SDL, self.folder / "bin" / SDL.name)
+        # (the build's embedded assets beside it: the game quits without them)
+        if (GAME.parent / "openh1.assets").is_file():
+            (self.folder / "bin" / "openh1.assets").symlink_to(GAME.parent / "openh1.assets")
         if maps:
             (self.folder / "data" / "maps").symlink_to(RETAIL_MAPS)
         self.process = None
