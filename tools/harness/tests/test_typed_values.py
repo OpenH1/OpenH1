@@ -70,8 +70,7 @@ def model_sliders() -> str:
             "static struct halo_menu_model_row test_rows[] = {\n\t" + ",\n\t".join(rows) + "\n};\n"
             "static struct halo_menu_model test_model = { .rows = test_rows, .row_count = NUMBEROF(test_rows), "
             ".choices = test_choices, .choice_count = NUMBEROF(test_choices) };\n"
-            "static struct halo_menu_model const *menu_engine_model(void) { return &test_model; }\n"
-            "static unsigned long halo_menus_model_reads(void) { return 1; }\n")
+            "static struct halo_menu_model const *menu_engine_model(void) { return &test_model; }\n")
 
 
 def generated(fault=None):

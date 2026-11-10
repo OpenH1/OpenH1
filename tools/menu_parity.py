@@ -300,11 +300,10 @@ BEHAVIOUR_VARIANT = "4x3-keyboard"
 SWEEP_SKIP = re.compile(r"/name_edit/")
 
 
-def sweep_scripts(vr: bool = False) -> list:
-    """the navigation sweep's scripts, one a screen (VR's too with vr)"""
+def sweep_scripts() -> list:
+    """the navigation sweep's scripts, one a screen"""
     return [(f"sweep:{screen.name}", screen.name, SWEEP)
-            for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS, vr)
-            if not SWEEP_SKIP.search(screen.name)]
+            for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS) if not SWEEP_SKIP.search(screen.name)]
 
 
 # the host's warning of a stalled thread (port/android/host/host_stall.c), which a busy computer's runs print, written
@@ -401,7 +400,7 @@ def behaviour_run(build: Path, script: tuple, engine: str, maps: Path, template:
 
 def behaviour(arguments, template: Path) -> dict:
     """{script: lines} of the scripts whose results differ between the engines"""
-    scripts = [script for script in [MAKE_PROFILE] + SCRIPTS + (sweep_scripts(arguments.vr) if arguments.sweep else [])
+    scripts = [script for script in [MAKE_PROFILE] + SCRIPTS + (sweep_scripts() if arguments.sweep else [])
                if re.search(arguments.scripts, script[0])]
     import shutil
     import tempfile
@@ -544,7 +543,6 @@ def main(argv=None) -> int:
                         "change that both engines run, as the model's sliders and conditions are): before | after")
     parser.add_argument("--show", type=Path, help="a scratch folder each differing pair of frames is saved in, to "
                         "look at (the game's imagery: delete it after)")
-    parser.add_argument("--vr", action="store_true", help="VR's settings screens too (drawn flat, as the gallery's)")
     parser.add_argument("--look-control", action="store_true", help="prove that a widget drawn from its definition is "
                         "noticed: the new engine run with one widget's look taken out of the model")
     arguments = parser.parse_args(argv)
@@ -574,7 +572,7 @@ def main(argv=None) -> int:
     for name in variant_names:
         if name not in VARIANTS:
             parser.error(f"no variant {name} ({', '.join(VARIANTS)})")
-    screens = [screen for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS, arguments.vr)
+    screens = [screen for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS)
                if re.search(arguments.screens, screen.name)]
     if arguments.look_control:
         return look_control(arguments.build, screens, arguments.data, template, arguments.timeout)
