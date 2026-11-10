@@ -226,6 +226,10 @@ static struct
 	/* debug.network_test_camouflage's */
 	real camouflage_time;
 	char pickup_weapon[64];
+	/* debug.network_test_place's: where and which way, and when */
+	boolean place;
+	real_point3d place_position;
+	real place_yaw, place_pitch, place_time;
 	/* debug.network_test_elevator's: when, which elevator, and the one
 	chosen (NONE before), when its riders stood on it and it last stopped */
 	real elevator_time;
@@ -369,6 +373,19 @@ static void network_test_read_settings(
 	network_test.ping_time = (real)config_real("debug.network_test_ping");
 	snprintf(network_test.pickup_weapon, sizeof(network_test.pickup_weapon), "%s",
 		config_string("debug.network_test_pickup_weapon"));
+	{
+		char const *place = config_string("debug.network_test_place");
+		char const *at = strchr(place, '@');
+		float x, y, z, yaw, pitch;
+
+		network_test.place = sscanf(place, "%f %f %f %f %f", &x, &y, &z, &yaw, &pitch) == 5;
+		network_test.place_position.x = x;
+		network_test.place_position.y = y;
+		network_test.place_position.z = z;
+		network_test.place_yaw = yaw;
+		network_test.place_pitch = pitch;
+		network_test.place_time = at ? (real)atof(at + 1) : 1.0f;
+	}
 	{
 		char const *seat = config_string("debug.network_test_vehicle_seat");
 		char const *colon = strchr(seat, ':');
@@ -1625,6 +1642,39 @@ static void network_test_pickup(
 	}
 }
 
+/* debug.network_test_place: the first local player's unit put at a point,
+facing (yaw, pitch in degrees) that way, as the debug camera's numbers give
+them, once, for pictures of one place */
+static void network_test_place(
+	void)
+{
+	long player_index = local_player_get_player_index(0);
+	struct player_datum *player;
+	struct unit_datum *unit;
+	real_euler_angles2d angles;
+	real_vector3d facing, forward;
+
+	if (player_index == NONE)
+		return;
+	player = player_get(player_index);
+	if (player->unit_index == NONE)
+		return;
+	angles.yaw = DEGREES_TO_RADIANS(network_test.place_yaw);
+	angles.pitch = DEGREES_TO_RADIANS(network_test.place_pitch);
+	vector3d_from_euler_angles2d(&facing, &angles);
+	forward = facing;
+	forward.k = 0.0f;
+	normalize3d(&forward);
+	object_set_position(player->unit_index, &network_test.place_position, &forward, NULL);
+	unit = unit_get(player->unit_index);
+	unit->unit.desired_facing_vector = forward;
+	unit->unit.desired_aiming_vector = facing;
+	unit->unit.desired_looking_vector = facing;
+	player_control_set_facing(0, &facing);
+	platform_log("network test: placed at %.3f %.3f %.3f, yaw %.1f pitch %.1f", network_test.place_position.x,
+		network_test.place_position.y, network_test.place_position.z, network_test.place_yaw, network_test.place_pitch);
+}
+
 /* debug.network_test_elevator: the level's elevators (machines that carry
 their riders), each logged with its name, where its platform is and the
 group that moves it; the one of debug.network_test_elevator_index (by its
@@ -2029,6 +2079,8 @@ void network_test_update(
 				platform_log("network test: every player camouflaged");
 			}
 		}
+		if (network_test.place && game_time_get() == (long)(network_test.place_time * TICKS_PER_SECOND))
+			network_test_place();
 		if (network_test.pickup_time > 0.0f)
 		{
 			long pickup_time = (long)(network_test.pickup_time * TICKS_PER_SECOND);
