@@ -353,8 +353,12 @@ The steps, in order:
    need a table of names to offsets in C, the same table moved. Settings'
    tabs' bar, button bar and the panel's parts are found by their roles in
    their looks (`model/look`'s `role`, `tools/port_settings.py`'s
-   `settings_look_roles`: `settings_part`), not their names. Left: the
-   setup screens' other handlers.
+   `settings_look_roles`: `settings_part`), not their names. Server Setup's
+   help by each row's place in it, in its node (`help_index`,
+   `help_choices`: `tools/port_settings.py`'s `SERVER_SETTINGS_HELP`,
+   `setup_help`), in place of `menu_functions.c`'s copies of the places.
+   Left: the setup screens' values' text boxes, which their handlers still
+   find by name.
 5. **The switch**: `"new"` the default, played for a while; then the
    generated screens' widget XML no longer written, `display.menu_engine`
    retired.

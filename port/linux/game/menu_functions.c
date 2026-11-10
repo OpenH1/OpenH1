@@ -2687,6 +2687,38 @@ static void setup_nodes_conditions(struct widget_instance *widget)
 	}
 }
 
+/* a setup screen's help (its list's description) for the row with the
+focus: its node's place in the help in the model (Server Setup's,
+tools/port_settings.py's SERVER_SETTINGS_HELP), and its spinner's choice
+after it where each choice has its own; a row hidden, or one the model has
+no place of, by its label's string (settings_help) */
+static void setup_help(struct widget_instance *list)
+{
+	struct widget_instance *help = list->parameters.list.extended_description;
+	struct widget_instance *row = list->focused_child;
+	struct halo_menu_model_screen const *screen = menu_engine_model_screen_of(list);
+	struct halo_menu_model const *model = menu_engine_model();
+	long index;
+
+	for (index = 0; help && row && row->name && row->visible && screen && model && index < screen->row_count;
+		index++)
+	{
+		struct halo_menu_model_row const *node = &model->rows[screen->first_row + index];
+		char const *leaf = strrchr(node->key, '/');
+		struct widget_instance *spinner;
+
+		if (strcmp(node->kind, "node") || node->help_index < 0 || strcmp(leaf ? leaf + 1 : node->key, row->name))
+			continue;
+		help->parameters.text_box.string_list_index = (short)node->help_index;
+		for (spinner = row->child; node->help_choices && spinner && spinner->type != 2; spinner = spinner->next)
+			;
+		if (node->help_choices && spinner)
+			help->parameters.text_box.string_list_index += spinner->parameters.list.selected_index;
+		return;
+	}
+	settings_help(list);
+}
+
 /* the rows shown, a step apart from the top, each section's title over them
 (hidden with none shown), as tools/port_settings.py lays them out for every
 row */
@@ -6590,14 +6622,6 @@ static boolean hosting_cooperative(void)
 
 /* the most players a co-op game hosted starts with (maximum_players') */
 #define COOPERATIVE_DEFAULT_PLAYERS 16
-/* Server Setup's help for co-op's options' rows (CO-OP OPTIONS, VOICE AND
-VOTING), PASSWORD's and MAP SHARING's (its help_strings, tools/port_settings.py) */
-#define COOPERATIVE_OPTIONS_HELP 12
-#define COOPERATIVE_VOICE_OPTIONS_HELP 13
-#define SERVER_PASSWORD_HELP 14
-#define MAP_SHARE_OPTIONS_HELP 15
-/* ... and GAME's first choice's (each choice its own) */
-#define GAME_MODE_HELP 16
 
 /* Server Setup's GAME: the kind of game hosted (network.game_mode) and its
 tick rate (network.sim_rate), as tools/port_settings.py's GAME_MODES have
@@ -6778,51 +6802,29 @@ static void server_settings_update(struct widget_instance *list)
 		gametype_setup_type(type);
 		text_set(named(list, "game_type_value", 0), type);
 	}
-	settings_help(list);
 	/* the rows shown by their conditions in the model (SETUP_NODE_WHEN):
 	co-op's options in the place of the gametype's, none of the network's in
 	a game of this machine alone (a line saying what the game is in their
 	place, LOCAL_NOTE; its bots are the lobby's, as every game's), LISTING an
 	internet game's, PASSWORD a public one's */
 	setup_nodes_conditions(list);
-	{
-		/* (co-op's options' rows open their screens:
-		tools/port_settings.py's COOP_SETUP_SCREENS, each its help) */
-		{
-			struct widget_instance *help = list->parameters.list.extended_description;
-
-			if (help && list->focused_child == named(list, "op_coop_options", 0))
-				help->parameters.text_box.string_list_index = COOPERATIVE_OPTIONS_HELP;
-			else if (help && list->focused_child == named(list, "op_voice_options", 0))
-				help->parameters.text_box.string_list_index = COOPERATIVE_VOICE_OPTIONS_HELP;
-			/* (MAP SHARING's, any game's: map_share.c) */
-			else if (help && list->focused_child == named(list, "op_map_share_options", 0))
-				help->parameters.text_box.string_list_index = MAP_SHARE_OPTIONS_HELP;
-		}
-	}
 	/* LISTING (an internet game's): PUBLIC, listed in everyone's server
-	browser, or PRIVATE, for this game. Its help is its choice's */
+	browser, or PRIVATE, for this game */
 	if ((spinner = named(list, "listing_spinner", 0)) != NULL && named(list, "op_listing", 0) &&
 		named(list, "op_listing", 0)->visible)
 	{
 		boolean public = spinner->parameters.list.selected_index == 0;
-		struct widget_instance *help = list->parameters.list.extended_description;
 
 		server_settings_private_set(!public);
 		p2p_set_hosting_public(public);
-		if (help && list->focused_child == named(list, "op_listing", 0))
-			help->parameters.text_box.string_list_index = (short)(10 + spinner->parameters.list.selected_index);
 	}
 	/* GAME: OpenH1 at a tick rate, or Legacy (network.game_mode,
-	network.sim_rate), written as it is chosen. Its help is its choice's */
+	network.sim_rate), written as it is chosen */
 	if ((spinner = named(list, "game_mode_spinner", 0)) != NULL)
 	{
-		struct widget_instance *help = list->parameters.list.extended_description;
 		short index = (short)PIN(spinner->parameters.list.selected_index, 0, NUMBEROF(server_settings_game_modes) - 1);
 
 		server_settings_game_mode_set(index);
-		if (help && list->focused_child == named(list, "op_game_mode", 0))
-			help->parameters.text_box.string_list_index = (short)(GAME_MODE_HELP + index);
 	}
 	/* PASSWORD (a PUBLIC internet game's): its stars, NONE if it has none
 	(its condition again, for the listing just chosen) */
@@ -6832,16 +6834,16 @@ static void server_settings_update(struct widget_instance *list)
 		text_field_end(FALSE);
 	if (row && row->visible)
 	{
-		struct widget_instance *help = list->parameters.list.extended_description;
 		short index;
 
 		for (index = 0; multiplayer.game_password[index] && index < (short)sizeof(text) - 1; index++)
 			text[index] = '*';
 		text[index] = 0;
 		text_field_show(named(list, "password_value", 0), index ? text : "NONE", text_field_editing(row));
-		if (help && list->focused_child == row)
-			help->parameters.text_box.string_list_index = SERVER_PASSWORD_HELP;
 	}
+	/* the help of the row with the focus: its node's in the model, each
+	choice's its own (LISTING's and GAME's) */
+	setup_help(list);
 }
 
 static void server_password_done(char const *text)

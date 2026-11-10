@@ -177,6 +177,9 @@ struct halo_menu_model_row
 	whether the focus may take it, and whether it takes it first) */
 	char const *parent;
 	long focusable, initial;
+	/* (and its place in its screen's help, its choices' after it each its
+	own with help_choices; NONE: none) */
+	long help_index, help_choices;
 	/* (in the place of the row before it; hidden while the game plays in
 	the headset; a label the game writes; a status row's value beside it) */
 	long same_place, not_in_vr, named, status;
