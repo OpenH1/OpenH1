@@ -583,6 +583,13 @@ BOOL platform_sdl_initialize(void)
 		flags = SDL_INIT_EVENTS;
 	}
 #endif
+#ifdef HALO_MACOS
+	/* a run nobody watches (debug.hidden_window): a background process,
+	with no Dock icon, that never takes the focus from the person at the
+	computer as it starts */
+	if (config_boolean("debug.hidden_window"))
+		SDL_SetHint(SDL_HINT_MAC_BACKGROUND_APP, "1");
+#endif
 	if (!SDL_Init(flags))
 	{
 		/* (tried again by each caller that needs SDL, some of them every
