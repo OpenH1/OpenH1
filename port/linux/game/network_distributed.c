@@ -396,6 +396,48 @@ enum
 	_substep_state_up_bit,
 };
 
+/* an OpenH1 game's tick states to its OpenH1 clients
+(_distributed_message_unit_state_differences): each as its difference from
+a state of the player the client said it took (distributed_unit_difference_write),
+or whole. The host's states as sent are on a grid of 1/4096 of a world unit
+(an 8192th off at most), so that a difference and the whole state come to
+the same, whatever the state it is a difference from. The ticks of states
+each machine keeps of each player (a power of two), and the ticks the host
+remembers sending each client each player */
+enum
+{
+	UNIT_BASE_TICKS = 32,
+	UNIT_SENT_TICKS = 4,
+	/* (a client's input's word on them: the host's ticks since the latest
+	it took, or this, none: send them whole) */
+	UNIT_STATES_WHOLE = 255,
+};
+/* a difference's first byte: the whole state follows (a unit state's bytes,
+distributed_unit_state_write), or the player, the host's ticks since the
+state it is a difference from, and the parts that differ (16 bits, as
+below), each as the state has it but the position (its difference on the
+grid, 16 bits a part), and the velocity, facing and client's tick, each its
+difference in a byte a part where it fits ("small"), else whole */
+enum
+{
+	_unit_difference_flags_bit = 0,
+	_unit_difference_killer_bit,
+	_unit_difference_unit_bit,
+	_unit_difference_riding_bit,
+	_unit_difference_position_bit,
+	_unit_difference_velocity_small_bit,
+	_unit_difference_velocity_bit,
+	_unit_difference_forward_small_bit,
+	_unit_difference_forward_bit,
+	_unit_difference_up_bit,
+	_unit_difference_predicted_small_bit,
+	_unit_difference_predicted_bit,
+	_unit_difference_vitality_bit,
+	_unit_difference_damage_bit,
+	_unit_difference_powerups_bit,
+	_unit_difference_camouflage_bit,
+};
+
 /* a player's unit, as this machine has it (its bytes on the wire are fewer:
 distributed_unit_state_write) */
 struct distributed_unit_state
@@ -782,6 +824,26 @@ static void distributed_substep_base_from_state(struct distributed_unit_state co
 	long time, struct distributed_substep_base *base);
 static word distributed_substep_state_read(byte const *buffer, byte const *end, long time,
 	struct distributed_unit_state *state, boolean *known);
+static boolean distributed_vector_difference(struct distributed_vector const *vector,
+	struct distributed_vector const *from, signed char *difference);
+/* the host: each player's state of each of its last UNIT_BASE_TICKS ticks,
+on the grid (distributed_unit_state_snap), by its tick (NONE: none); the
+ticks it last sent each client each player's state (NONE: none); and the
+latest of its ticks whose states each client said it took (NONE: none, or
+they are to go whole) */
+static struct distributed_unit_state distributed_tick_states[MAXIMUM_TRACKED_PLAYERS][UNIT_BASE_TICKS];
+static long distributed_tick_state_times[MAXIMUM_TRACKED_PLAYERS][UNIT_BASE_TICKS];
+static long distributed_unit_sent_times[HALO_PORT_MAXIMUM_NETWORK_MACHINES][MAXIMUM_TRACKED_PLAYERS][UNIT_SENT_TICKS];
+static long distributed_unit_acked_times[HALO_PORT_MAXIMUM_NETWORK_MACHINES];
+/* a client: the host's states of each player it took of the host's last
+UNIT_BASE_TICKS ticks, as written to it, by the host's tick (NONE: none);
+the host's latest tick it took states of; and whether a difference came
+from a state it has not (lost: it asks for them whole) */
+static struct distributed_unit_state distributed_unit_bases[MAXIMUM_TRACKED_PLAYERS][UNIT_BASE_TICKS];
+static long distributed_unit_base_times[MAXIMUM_TRACKED_PLAYERS][UNIT_BASE_TICKS];
+static long distributed_unit_taken_time;
+static boolean distributed_unit_bases_missing;
+static long distributed_unit_missing_time;
 /* the host: the players each machine had when it last told the host that it
 had loaded (a machine new at its index has none of the old one's state) */
 static long distributed_machine_players[HALO_PORT_MAXIMUM_NETWORK_MACHINES][MAXIMUM_LOCAL_PLAYERS];
@@ -2382,6 +2444,375 @@ static word distributed_unit_state_read(
 	return (word)(cursor - buffer);
 }
 
+/* ---------- tick states as differences
+An OpenH1 game's host writes each tick's states of the players to an OpenH1
+client as their differences from states the client said it took
+(_distributed_message_unit_state_differences; NETCODE.md, "Tick states as
+differences"): the client's input says the host's latest tick it took
+states of, or that a difference came from a state it has not, and the host
+sends the states whole until it says it took them. */
+
+/* a coordinate on the grid of 1/4096 of a world unit, as a whole number of
+its steps (rounded) */
+static long distributed_grid_steps(
+	real coordinate)
+{
+	real steps = coordinate * SUBSTEP_POSITION_SCALE;
+
+	return (long)(steps >= 0.0f ? steps + 0.5f : steps - 0.5f);
+}
+
+/* (the host) a state's position on the grid, as its states are sent to its
+OpenH1 clients */
+static void distributed_unit_state_snap(
+	struct distributed_unit_state *state)
+{
+	if (TEST_FLAG(state->flags, _distributed_unit_alive_bit) && TEST_FLAG(state->flags, _distributed_unit_placed_bit) &&
+		distributed_point_valid(&state->position, UNIT_WORLD_BOUND))
+	{
+		state->position.x = (real)distributed_grid_steps(state->position.x) / SUBSTEP_POSITION_SCALE;
+		state->position.y = (real)distributed_grid_steps(state->position.y) / SUBSTEP_POSITION_SCALE;
+		state->position.z = (real)distributed_grid_steps(state->position.z) / SUBSTEP_POSITION_SCALE;
+	}
+}
+
+/* a state as a client has it from its bytes on the wire (the predicted tick
+only where predicted, the parts that go only where they are not their
+defaults at them): written and read back */
+static void distributed_unit_state_as_written(
+	struct distributed_unit_state const *state,
+	boolean predicted,
+	struct distributed_unit_state *written)
+{
+	byte buffer[DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE];
+	word size = distributed_unit_state_write(state, predicted, buffer);
+
+	if (!distributed_unit_state_read(buffer, buffer + size, written))
+		*written = *state;
+}
+
+/* (the host) a player's tick state to an OpenH1 client (at most
+1 + DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE bytes): its difference from the
+latest state of the player sent the client at a tick no later than the one
+it said it took, within UNIT_BASE_TICKS; else whole. The state is on the
+grid (distributed_tick_states) */
+static word distributed_unit_difference_write(
+	long machine_index,
+	short player_index,
+	struct distributed_unit_state const *state,
+	boolean predicted,
+	byte *buffer)
+{
+	long now = game_time_get();
+	long acked = distributed_unit_acked_times[machine_index];
+	long base_time = NONE;
+	struct distributed_unit_state written;
+	struct distributed_unit_state base;
+	word parts = 0;
+	byte *cursor = buffer + 5;
+	short index;
+	boolean placed;
+
+	distributed_unit_state_as_written(state, predicted, &written);
+	placed = TEST_FLAG(written.flags, _distributed_unit_alive_bit) && TEST_FLAG(written.flags, _distributed_unit_placed_bit);
+	if (acked != NONE && !written.fine)
+	{
+		for (index = 0; index < UNIT_SENT_TICKS; index++)
+		{
+			long sent = distributed_unit_sent_times[machine_index][player_index][index];
+
+			if (sent != NONE && sent <= acked && now - sent < UNIT_BASE_TICKS && now - sent > 0 &&
+				distributed_tick_state_times[player_index][sent & (UNIT_BASE_TICKS - 1)] == sent &&
+				(base_time == NONE || sent > base_time))
+			{
+				base_time = sent;
+			}
+		}
+	}
+	if (base_time != NONE)
+	{
+		distributed_unit_state_as_written(&distributed_tick_states[player_index][base_time & (UNIT_BASE_TICKS - 1)],
+			predicted, &base);
+		if (written.flags != base.flags)
+		{
+			SET_FLAG(parts, _unit_difference_flags_bit, TRUE);
+			*cursor++ = written.flags;
+		}
+		if (written.killing_player_index != base.killing_player_index)
+		{
+			SET_FLAG(parts, _unit_difference_killer_bit, TRUE);
+			*cursor++ = written.killing_player_index;
+		}
+		if (written.unit_index != base.unit_index)
+		{
+			SET_FLAG(parts, _unit_difference_unit_bit, TRUE);
+			cursor = distributed_put(cursor, &written.unit_index, sizeof(written.unit_index));
+		}
+		if (written.vehicle_index != base.vehicle_index || written.seat_index != base.seat_index)
+		{
+			SET_FLAG(parts, _unit_difference_riding_bit, TRUE);
+			cursor = distributed_put(cursor, &written.vehicle_index, sizeof(written.vehicle_index));
+			cursor = distributed_put(cursor, &written.seat_index, sizeof(written.seat_index));
+		}
+		/* (the parts of a unit on foot: a dead one's or a rider's go at their
+		defaults, the client's whole state's as written) */
+		if (placed && (written.position.x != base.position.x || written.position.y != base.position.y ||
+			written.position.z != base.position.z))
+		{
+			short steps[3];
+			short axis;
+
+			for (axis = 0; axis < 3; axis++)
+			{
+				long difference = distributed_grid_steps((&written.position.x)[axis]) -
+					distributed_grid_steps((&base.position.x)[axis]);
+
+				/* (on the grid, both: else, or too far, whole) */
+				if (difference < -32767 || difference > 32767 ||
+					(real)distributed_grid_steps((&written.position.x)[axis]) / SUBSTEP_POSITION_SCALE !=
+						(&written.position.x)[axis] ||
+					(real)distributed_grid_steps((&base.position.x)[axis]) / SUBSTEP_POSITION_SCALE !=
+						(&base.position.x)[axis])
+				{
+					base_time = NONE;
+					break;
+				}
+				steps[axis] = (short)difference;
+			}
+			SET_FLAG(parts, _unit_difference_position_bit, TRUE);
+			cursor = distributed_put(cursor, steps, sizeof(steps));
+		}
+	}
+	if (base_time != NONE)
+	{
+		signed char small[3];
+		long predicted_difference = (long)(short)(word)((word)written.predicted_time - (word)base.predicted_time);
+
+		if (placed && (written.velocity.i != base.velocity.i || written.velocity.j != base.velocity.j ||
+			written.velocity.k != base.velocity.k))
+		{
+			if (distributed_vector_difference(&written.velocity, &base.velocity, small))
+			{
+				SET_FLAG(parts, _unit_difference_velocity_small_bit, TRUE);
+				cursor = distributed_put(cursor, small, sizeof(small));
+			}
+			else
+			{
+				SET_FLAG(parts, _unit_difference_velocity_bit, TRUE);
+				cursor = distributed_put(cursor, &written.velocity, sizeof(written.velocity));
+			}
+		}
+		if (placed && (written.forward.i != base.forward.i || written.forward.j != base.forward.j ||
+			written.forward.k != base.forward.k))
+		{
+			if (distributed_vector_difference(&written.forward, &base.forward, small))
+			{
+				SET_FLAG(parts, _unit_difference_forward_small_bit, TRUE);
+				cursor = distributed_put(cursor, small, sizeof(small));
+			}
+			else
+			{
+				SET_FLAG(parts, _unit_difference_forward_bit, TRUE);
+				cursor = distributed_put(cursor, &written.forward, sizeof(written.forward));
+			}
+		}
+		if (placed && (written.up.i != base.up.i || written.up.j != base.up.j || written.up.k != base.up.k))
+		{
+			SET_FLAG(parts, _unit_difference_up_bit, TRUE);
+			cursor = distributed_put(cursor, &written.up, sizeof(written.up));
+		}
+		if (predicted_difference)
+		{
+			if (predicted_difference >= -128 && predicted_difference <= 127)
+			{
+				SET_FLAG(parts, _unit_difference_predicted_small_bit, TRUE);
+				*cursor++ = (byte)(signed char)predicted_difference;
+			}
+			else
+			{
+				SET_FLAG(parts, _unit_difference_predicted_bit, TRUE);
+				cursor = distributed_put(cursor, &written.predicted_time, sizeof(written.predicted_time));
+			}
+		}
+		if (written.body_vitality != base.body_vitality || written.shield_vitality != base.shield_vitality)
+		{
+			SET_FLAG(parts, _unit_difference_vitality_bit, TRUE);
+			cursor = distributed_put(cursor, &written.body_vitality, sizeof(written.body_vitality));
+			cursor = distributed_put(cursor, &written.shield_vitality, sizeof(written.shield_vitality));
+		}
+		if (written.current_body_damage != base.current_body_damage ||
+			written.recent_body_damage != base.recent_body_damage ||
+			written.current_shield_damage != base.current_shield_damage ||
+			written.recent_shield_damage != base.recent_shield_damage)
+		{
+			SET_FLAG(parts, _unit_difference_damage_bit, TRUE);
+			cursor = distributed_put(cursor, &written.current_body_damage, sizeof(written.current_body_damage));
+			cursor = distributed_put(cursor, &written.recent_body_damage, sizeof(written.recent_body_damage));
+			cursor = distributed_put(cursor, &written.current_shield_damage, sizeof(written.current_shield_damage));
+			cursor = distributed_put(cursor, &written.recent_shield_damage, sizeof(written.recent_shield_damage));
+		}
+		if (csmemcmp(written.powerup_durations, base.powerup_durations, sizeof(written.powerup_durations)))
+		{
+			SET_FLAG(parts, _unit_difference_powerups_bit, TRUE);
+			cursor = distributed_put(cursor, written.powerup_durations, sizeof(written.powerup_durations));
+		}
+		if (written.unit_flags != base.unit_flags || written.active_camouflage != base.active_camouflage)
+		{
+			SET_FLAG(parts, _unit_difference_camouflage_bit, TRUE);
+			*cursor++ = written.unit_flags;
+			*cursor++ = written.active_camouflage;
+		}
+		buffer[0] = 1;
+		buffer[1] = written.player_index;
+		buffer[2] = (byte)(now - base_time);
+		csmemcpy(buffer + 3, &parts, sizeof(parts));
+		return (word)(cursor - buffer);
+	}
+	buffer[0] = 0;
+	return (word)(1 + distributed_unit_state_write(state, predicted, buffer + 1));
+}
+
+/* (a client) a tick state from its bytes on the wire, no further than end,
+of the host's tick time (its message's): the bytes it took, 0 for none that
+make one; *known FALSE for a difference from a state this machine has not
+(lost, or older than it keeps), which is passed over */
+static word distributed_unit_difference_read(
+	byte const *buffer,
+	byte const *end,
+	long time,
+	struct distributed_unit_state *state,
+	boolean *known)
+{
+	byte const *cursor = buffer;
+	byte form;
+	byte player_index;
+	byte age;
+	word parts;
+	struct distributed_unit_state const *base;
+	struct distributed_unit_state read;
+
+	*known = TRUE;
+	if (!distributed_take(&cursor, end, &form, sizeof(form)))
+		return 0;
+	if (!form)
+	{
+		word size = distributed_unit_state_read(cursor, end, state);
+
+		return size ? (word)(1 + size) : 0;
+	}
+	if (form != 1 || !distributed_take(&cursor, end, &player_index, sizeof(player_index)) ||
+		!distributed_take(&cursor, end, &age, sizeof(age)) || !distributed_take(&cursor, end, &parts, sizeof(parts)))
+	{
+		return 0;
+	}
+	base = player_index < MAXIMUM_TRACKED_PLAYERS && age > 0 && age < UNIT_BASE_TICKS &&
+		distributed_unit_base_times[player_index][(time - age) & (UNIT_BASE_TICKS - 1)] == time - age ?
+		&distributed_unit_bases[player_index][(time - age) & (UNIT_BASE_TICKS - 1)] : NULL;
+	if (base)
+		read = *base;
+	else
+		csmemset(&read, 0, sizeof(read));
+	read.player_index = player_index;
+	if ((TEST_FLAG(parts, _unit_difference_flags_bit) && !distributed_take(&cursor, end, &read.flags, sizeof(read.flags))) ||
+		(TEST_FLAG(parts, _unit_difference_killer_bit) &&
+			!distributed_take(&cursor, end, &read.killing_player_index, sizeof(read.killing_player_index))) ||
+		(TEST_FLAG(parts, _unit_difference_unit_bit) &&
+			!distributed_take(&cursor, end, &read.unit_index, sizeof(read.unit_index))) ||
+		(TEST_FLAG(parts, _unit_difference_riding_bit) &&
+			(!distributed_take(&cursor, end, &read.vehicle_index, sizeof(read.vehicle_index)) ||
+				!distributed_take(&cursor, end, &read.seat_index, sizeof(read.seat_index)))))
+	{
+		return 0;
+	}
+	if (TEST_FLAG(parts, _unit_difference_position_bit))
+	{
+		short steps[3];
+		short axis;
+
+		if (!distributed_take(&cursor, end, steps, sizeof(steps)))
+			return 0;
+		for (axis = 0; axis < 3; axis++)
+		{
+			(&read.position.x)[axis] = (real)(distributed_grid_steps((&read.position.x)[axis]) + steps[axis]) /
+				SUBSTEP_POSITION_SCALE;
+		}
+	}
+	{
+		struct
+		{
+			short small_bit;
+			short whole_bit;
+			struct distributed_vector *vector;
+		} vectors[2];
+		short vector_index;
+
+		vectors[0].small_bit = _unit_difference_velocity_small_bit;
+		vectors[0].whole_bit = _unit_difference_velocity_bit;
+		vectors[0].vector = &read.velocity;
+		vectors[1].small_bit = _unit_difference_forward_small_bit;
+		vectors[1].whole_bit = _unit_difference_forward_bit;
+		vectors[1].vector = &read.forward;
+		for (vector_index = 0; vector_index < 2; vector_index++)
+		{
+			if (TEST_FLAG(parts, vectors[vector_index].small_bit))
+			{
+				signed char small[3];
+
+				if (!distributed_take(&cursor, end, small, sizeof(small)))
+					return 0;
+				vectors[vector_index].vector->i = (short)(vectors[vector_index].vector->i + small[0]);
+				vectors[vector_index].vector->j = (short)(vectors[vector_index].vector->j + small[1]);
+				vectors[vector_index].vector->k = (short)(vectors[vector_index].vector->k + small[2]);
+			}
+			else if (TEST_FLAG(parts, vectors[vector_index].whole_bit) &&
+				!distributed_take(&cursor, end, vectors[vector_index].vector, sizeof(*vectors[vector_index].vector)))
+			{
+				return 0;
+			}
+		}
+	}
+	if (TEST_FLAG(parts, _unit_difference_up_bit) && !distributed_take(&cursor, end, &read.up, sizeof(read.up)))
+		return 0;
+	if (TEST_FLAG(parts, _unit_difference_predicted_small_bit))
+	{
+		signed char small;
+
+		if (!distributed_take(&cursor, end, &small, sizeof(small)))
+			return 0;
+		read.predicted_time = (short)(word)((word)read.predicted_time + (word)(short)small);
+	}
+	else if (TEST_FLAG(parts, _unit_difference_predicted_bit) &&
+		!distributed_take(&cursor, end, &read.predicted_time, sizeof(read.predicted_time)))
+	{
+		return 0;
+	}
+	if ((TEST_FLAG(parts, _unit_difference_vitality_bit) &&
+			(!distributed_take(&cursor, end, &read.body_vitality, sizeof(read.body_vitality)) ||
+				!distributed_take(&cursor, end, &read.shield_vitality, sizeof(read.shield_vitality)))) ||
+		(TEST_FLAG(parts, _unit_difference_damage_bit) &&
+			(!distributed_take(&cursor, end, &read.current_body_damage, sizeof(read.current_body_damage)) ||
+				!distributed_take(&cursor, end, &read.recent_body_damage, sizeof(read.recent_body_damage)) ||
+				!distributed_take(&cursor, end, &read.current_shield_damage, sizeof(read.current_shield_damage)) ||
+				!distributed_take(&cursor, end, &read.recent_shield_damage, sizeof(read.recent_shield_damage)))) ||
+		(TEST_FLAG(parts, _unit_difference_powerups_bit) &&
+			!distributed_take(&cursor, end, read.powerup_durations, sizeof(read.powerup_durations))) ||
+		(TEST_FLAG(parts, _unit_difference_camouflage_bit) &&
+			(!distributed_take(&cursor, end, &read.unit_flags, sizeof(read.unit_flags)) ||
+				!distributed_take(&cursor, end, &read.active_camouflage, sizeof(read.active_camouflage)))))
+	{
+		return 0;
+	}
+	if (!base)
+	{
+		*known = FALSE;
+		return (word)(cursor - buffer);
+	}
+	/* (as the whole state would have come: the parts its flags leave out at
+	their defaults, every value as a whole state's checks have it) */
+	distributed_unit_state_as_written(&read, TEST_FLAG(read.flags, _distributed_unit_predicted_bit), state);
+	return (word)(cursor - buffer);
+}
+
 /* moves the unit toward the state (at position) if it is further than
 tolerance from it: within blend_distance part of the way, further all of it,
 no faster than maximum_speed across and up and maximum_fall_speed down (0
@@ -3535,7 +3966,8 @@ static void distributed_handle_substep_states(
 {
 	byte substep_index;
 	byte substep_count;
-	long latest = distributed_received_times[HOST_SENDER][_distributed_message_unit_states];
+	long latest = MAX(distributed_received_times[HOST_SENDER][_distributed_message_unit_states],
+		distributed_received_times[HOST_SENDER][_distributed_message_unit_state_differences]);
 	short index;
 
 	if (!distributed_take(&data, end, &substep_index, sizeof(substep_index)) ||
@@ -3615,6 +4047,58 @@ static void distributed_handle_unit_states(
 	}
 }
 
+/* (a client of an OpenH1 game) the host's word on every player's unit, each
+the difference from a state of it this machine said it took, or whole
+(distributed_unit_difference_read); one from a state it has not passed over,
+and the host asked for them whole until it has */
+static void distributed_handle_unit_state_differences(
+	long time,
+	byte const *data,
+	byte const *end,
+	short count)
+{
+	boolean missing = FALSE;
+	short index;
+
+	for (index = 0; index < count; index++)
+	{
+		struct distributed_unit_state state;
+		boolean known;
+		word size = distributed_unit_difference_read(data, end, time, &state, &known);
+
+		if (!size)
+			break;
+		data += size;
+		if (!known)
+		{
+			missing = TRUE;
+			continue;
+		}
+		if (state.player_index < MAXIMUM_TRACKED_PLAYERS)
+		{
+			short slot = (short)(time & (UNIT_BASE_TICKS - 1));
+
+			distributed_unit_bases[state.player_index][slot] = state;
+			distributed_unit_base_times[state.player_index][slot] = time;
+			distributed_substep_base_from_state(&state, TRUE, time,
+				&distributed_taken_substep_bases[state.player_index][time & (SUBSTEP_BASE_TICKS - 1)]);
+		}
+		distributed_handle_unit_state(&state, time);
+	}
+	if (distributed_unit_taken_time == NONE || time > distributed_unit_taken_time)
+		distributed_unit_taken_time = time;
+	/* (asked for whole until a message of a later tick, all of it known) */
+	if (missing)
+	{
+		distributed_unit_bases_missing = TRUE;
+		distributed_unit_missing_time = time;
+	}
+	else if (distributed_unit_bases_missing && time > distributed_unit_missing_time)
+	{
+		distributed_unit_bases_missing = FALSE;
+	}
+}
+
 /* ---------- input */
 
 /* (a client) its own players' input of the tick just run, with the buttons
@@ -3644,6 +4128,19 @@ static void distributed_client_send_inputs(
 		input->structure_bsp_index = (byte)global_structure_bsp_index_get();
 		input->coop_no_friendly_fire = network_coop_active() && !network_coop_own_friendly_fire();
 		input->host_time = distributed_host_time;
+		/* (an OpenH1 game's: the host's ticks from the latest whose states
+		this machine took to host_time, the states' differences written
+		against them; UNIT_STATES_WHOLE for none, or one missed, to have
+		them whole. A Legacy game's byte as before) */
+		if (network_standard_agreed_rate() != 0)
+		{
+			input->pad = UNIT_STATES_WHOLE;
+			if (!distributed_unit_bases_missing && distributed_unit_taken_time != NONE && distributed_host_time != NONE &&
+				distributed_host_time >= distributed_unit_taken_time)
+			{
+				input->pad = (byte)MIN(distributed_host_time - distributed_unit_taken_time, UNIT_STATES_WHOLE - 1);
+			}
+		}
 		count++;
 	}
 	if (count)
@@ -3744,7 +4241,17 @@ static void distributed_handle_inputs(
 			}
 		}
 		if (input->host_time != NONE && (host_time == NONE || input->host_time > host_time))
+		{
 			host_time = input->host_time;
+			/* (an OpenH1 client's word on the states it took: their
+			differences go from the latest of them, distributed_unit_difference_write;
+			none, or one ahead of this machine's clock, whole) */
+			if (network_standard_hosting() && machine_index >= 0 && machine_index < HALO_PORT_MAXIMUM_NETWORK_MACHINES)
+			{
+				distributed_unit_acked_times[machine_index] = input->pad == UNIT_STATES_WHOLE ||
+					input->host_time > game_time_get() ? NONE : input->host_time - input->pad;
+			}
+		}
 		if (heard_tick == NONE || input->tick > heard_tick)
 			heard_tick = input->tick;
 	}
@@ -4804,11 +5311,34 @@ static void distributed_host_send_players(
 	long machine_indices[HALO_PORT_MAXIMUM_NETWORK_MACHINES];
 	short machine_count = distributed_client_machines(machine_indices, HALO_PORT_MAXIMUM_NETWORK_MACHINES);
 	short machine_number;
+	long now = game_time_get();
+	boolean differences = network_standard_hosting();
 
+	/* (an OpenH1 game's: the tick's states on the grid, as its OpenH1
+	clients are sent them, kept to write the next against) */
+	if (differences)
+	{
+		short player_index;
+
+		for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+		{
+			short slot = (short)(now & (UNIT_BASE_TICKS - 1));
+
+			if (!distributed_player(player_index))
+			{
+				distributed_tick_state_times[player_index][slot] = NONE;
+				continue;
+			}
+			distributed_tick_states[player_index][slot] = distributed_host_states[player_index];
+			distributed_unit_state_snap(&distributed_tick_states[player_index][slot]);
+			distributed_tick_state_times[player_index][slot] = now;
+		}
+	}
 	for (machine_number = 0; machine_number < machine_count; machine_number++)
 	{
 		long machine_index = machine_indices[machine_number];
 		short player_index;
+		boolean machine_differences = differences && network_standard_machine_is_openh1(machine_index);
 
 		distributed_packer_begin(&distributed_packer, (short)machine_index, _distributed_message_relayed_actions,
 			&distributed_host_update_number, sizeof(distributed_host_update_number));
@@ -4836,10 +5366,11 @@ static void distributed_host_send_players(
 			}
 			network_substeps_host_send(machine_index, distributed_host_update_number, relayed, relayed_count);
 		}
-		distributed_packer_begin(&distributed_packer, (short)machine_index, _distributed_message_unit_states, NULL, 0);
+		distributed_packer_begin(&distributed_packer, (short)machine_index, machine_differences ?
+			_distributed_message_unit_state_differences : _distributed_message_unit_states, NULL, 0);
 		for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
 		{
-			byte entry[DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE];
+			byte entry[1 + DISTRIBUTED_UNIT_STATE_MAXIMUM_SIZE];
 
 			if (TEST_FLAG(distributed_sends[machine_index][player_index], _distributed_send_state_bit))
 			{
@@ -4850,11 +5381,33 @@ static void distributed_host_send_players(
 				distributed_correct_remote_unit) */
 				boolean predicted = distributed_player_machines[player_index] == machine_index ||
 					(network_substeps_active() && network_standard_machine_is_openh1(machine_index));
-				word size = distributed_unit_state_write(&distributed_host_states[player_index], predicted, entry);
+				struct distributed_unit_state const *state = machine_differences ?
+					&distributed_tick_states[player_index][now & (UNIT_BASE_TICKS - 1)] :
+					&distributed_host_states[player_index];
+				word size;
 
+				if (machine_differences)
+				{
+					long *sent = distributed_unit_sent_times[machine_index][player_index];
+					short index;
+					short oldest = 0;
+
+					size = distributed_unit_difference_write(machine_index, player_index, state, predicted, entry);
+					/* (the tick it went, in place of the oldest remembered) */
+					for (index = 1; index < UNIT_SENT_TICKS; index++)
+					{
+						if (sent[index] == NONE || (sent[oldest] != NONE && sent[index] < sent[oldest]))
+							oldest = index;
+					}
+					sent[oldest] = now;
+				}
+				else
+				{
+					size = distributed_unit_state_write(state, predicted, entry);
+				}
 				/* (what the client's states of the sub-steps until the next
 				are written against: distributed_substep_state_write) */
-				distributed_substep_base_from_state(&distributed_host_states[player_index], predicted, game_time_get(),
+				distributed_substep_base_from_state(state, predicted, now,
 					&distributed_sent_substep_bases[machine_index][player_index]);
 				distributed_packer_add(&distributed_packer, entry, size);
 			}
@@ -5373,14 +5926,27 @@ void network_distributed_new_game(
 		distributed_substep_states_taken[player_index].substep_index = NONE;
 		for (type = 0; type < SUBSTEP_BASE_TICKS; type++)
 			distributed_taken_substep_bases[player_index][type].time = NONE;
+		for (type = 0; type < UNIT_BASE_TICKS; type++)
+		{
+			distributed_tick_state_times[player_index][type] = NONE;
+			distributed_unit_base_times[player_index][type] = NONE;
+		}
 	}
+	distributed_unit_taken_time = NONE;
+	distributed_unit_bases_missing = FALSE;
+	distributed_unit_missing_time = NONE;
 	{
 		long machine_index;
 
 		for (machine_index = 0; machine_index < HALO_PORT_MAXIMUM_NETWORK_MACHINES; machine_index++)
 		{
 			for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+			{
 				distributed_sent_substep_bases[machine_index][player_index].time = NONE;
+				for (type = 0; type < UNIT_SENT_TICKS; type++)
+					distributed_unit_sent_times[machine_index][player_index][type] = NONE;
+			}
+			distributed_unit_acked_times[machine_index] = NONE;
 		}
 	}
 	csmemset(distributed_player_pings, 0xFF, sizeof(distributed_player_pings));
@@ -5601,6 +6167,7 @@ static boolean distributed_message_stale(
 	{
 	case _distributed_message_player_prediction:
 	case _distributed_message_unit_states:
+	case _distributed_message_unit_state_differences:
 	case _distributed_message_player_statistics:
 	case _distributed_message_inventories:
 	case _distributed_message_object_states:
@@ -6588,6 +7155,7 @@ void network_distributed_handle_message(
 	{
 	case _distributed_message_player_prediction:
 	case _distributed_message_unit_states: entry_size = DISTRIBUTED_UNIT_STATE_MINIMUM_SIZE; break;
+	case _distributed_message_unit_state_differences: entry_size = 1 + DISTRIBUTED_UNIT_STATE_MINIMUM_SIZE; break;
 	case _distributed_message_substep_states: entry_size = 1 + DISTRIBUTED_UNIT_STATE_MINIMUM_SIZE; break;
 	case _distributed_message_player_statistics: entry_size = sizeof(struct distributed_player_statistics); break;
 	case _distributed_message_pings: entry_size = sizeof(struct distributed_player_ping); break;
@@ -6727,6 +7295,10 @@ void network_distributed_handle_message(
 	case _distributed_message_unit_states:
 		distributed_handle_unit_states(header.game_time, (byte const *)entries, (byte const *)message + size,
 			header.count);
+		break;
+	case _distributed_message_unit_state_differences:
+		distributed_handle_unit_state_differences(header.game_time, (byte const *)entries,
+			(byte const *)message + size, header.count);
 		break;
 	case _distributed_message_substep_states:
 		distributed_handle_substep_states(header.game_time, (byte const *)entries, (byte const *)message + size,

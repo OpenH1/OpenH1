@@ -1196,6 +1196,61 @@ the host had them within 0.16 to 0.17 world units (p95) before and 0.16 to
 seen from one client to another in 50 to 52 ms and 49 to 57, and a hit dealt
 in 26 ms and 25 to 26: the games' spread, not the builds'.
 
+### Tick states as differences
+
+From protocol version 23 an OpenH1 game's host sends its OpenH1 clients each
+tick's states of the players as their differences from states the client
+says it took (`_distributed_message_unit_state_differences`, in place of
+`_distributed_message_unit_states`; `network_distributed.c`'s
+`distributed_unit_difference_write`), not whole. A Legacy game, and what an
+OpenCE machine is sent, are as before.
+
+- **On a grid.** The host's states as its OpenH1 clients have them are on a
+  grid of 1/4096 of a world unit (`distributed_unit_state_snap`: an 8192th
+  off at most, where a client corrects another player only past a
+  twentieth), so a difference and the whole state come to the same state,
+  whatever state the difference is from. The host keeps its last 32 ticks'
+  states of each player so (`distributed_tick_states`), once for every
+  client, and the last 4 ticks it sent each client each player.
+- **The client's word.** A client's input (its byte that was padding) says
+  how many of the host's ticks before `host_time` the latest is whose states
+  it took, or 255: none, or a difference came from a state it has not (lost),
+  until a later tick's are all known. The host writes each difference from
+  the latest state of the player it sent that client at a tick no later than
+  that one, within 32 ticks; with none (or 255), whole.
+- **A difference** is the player, the host's ticks since the state it is
+  from, and which parts differ (16 bits): the flags, the killer, the unit,
+  the vehicle and seat, the position (its steps on the grid, 16 bits a part),
+  the velocity and the facing (a byte a part where the change fits, else
+  whole), the up, the client's tick (a byte, else whole), the shields and
+  health, the damage they show, the powerups, the camouflage. A part the
+  whole state leaves at its default (a dead player's position) is not
+  compared. A teleport further than 8 world units, a state with a velocity
+  at full precision, or no state to be from, goes whole after a byte that
+  says so.
+- **Read.** A client keeps the states it took of the host's last 32 ticks of
+  each player (`distributed_unit_bases`), reads a difference against the one
+  it names and takes the result as the whole state would have been (written
+  and read back); a difference from one it has not is passed over, and the
+  next input asks for them whole. The sub-steps' states are written against
+  these states as before ("States at the sub-steps").
+
+A player's tick state was 35 bytes on foot, and its difference is 14 to 18
+from the tick before (5 of its own, the position 6, the velocity, facing and
+client's tick 7). Forty players on Blood Gulch (8 clients and 32 of the host's
+bots, 60 s, after version 22): the tick states 245 KB/s before and 156 KB/s
+after at 120 (120 KB/s of differences, and 36 KB/s still of
+`_distributed_message_unit_states`, to machines the host does not take for
+OpenH1 clients), the host's datagrams 1.00 MB/s and 0.90 MB/s on the wire (-10%);
+at 60, from before version 22, 0.80 MB/s and 0.64 MB/s (-20%). Over 20 ms ±3
+each way the players near a client were where the host had them within 0.17
+world units (p95; 0.16 to 0.18 before), aimed within 14.6 to 15.4 degrees
+(13.9 to 17.9), a press seen from one client to another in 50 to 56 ms (49 to
+57); with 1% of the datagrams lost too, within 0.17 and 14.8 to 14.9 degrees,
+the host's datagrams 0.92 to 0.96 MB/s (the whole states the lost ones asked
+for). At 30 (16 players) the states go as differences too, with the clients'
+players where the host has them as before.
+
 ### Actors to far clients
 
 Only the host runs the AI. It sends each client its actors' units as it

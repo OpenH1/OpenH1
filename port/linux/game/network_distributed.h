@@ -226,6 +226,11 @@ enum
 	settings) to its OpenH1 clients with a player who sees it */
 	_distributed_message_marker_up = 139,
 	_distributed_message_marker_down = 140,
+	/* an OpenH1 game's tick states of the players (network_distributed.c,
+	unreliable, to each OpenH1 client, in place of _distributed_message_unit_states):
+	each the difference from a state of the player the client said it took,
+	or whole */
+	_distributed_message_unit_state_differences = 141,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };
