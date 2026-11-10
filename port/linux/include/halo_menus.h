@@ -287,6 +287,9 @@ struct halo_menu_model_behaviour const *halo_menus_model_behaviour(struct halo_m
 	char const *name);
 /* the model read again by the next halo_menus_model (halo_menus_reload's) */
 void halo_menus_model_forget(void);
+/* the number of the model's reads (one more each time it is read again: a
+cache of anything in it is kept for one) */
+unsigned long halo_menus_model_reads(void);
 /* a file gathered for the menus (halo_menus_load's): its path and data,
 FALSE past the last */
 int halo_menus_file_at(long index, char const **path, unsigned char const **data, unsigned long *size);

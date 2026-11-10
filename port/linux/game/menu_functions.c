@@ -289,6 +289,8 @@ static void settings_widget_name(char *name, size_t size, char const *prefix, ch
 static struct
 {
 	struct halo_menu_model const *model;
+	/* (and its read: the menu studio reads it again in the same place) */
+	unsigned long reads;
 	unsigned long generation;
 	struct halo_menu_model_row const *rows[SETTINGS_MAXIMUM_CHOICES];
 	struct pc_menu_setting settings[SETTINGS_MAXIMUM_CHOICES];
@@ -303,9 +305,10 @@ static struct pc_menu_setting *settings_row_setting(struct halo_menu_model_row c
 
 	if (!model || !row || !row->setting || strcmp(row->kind, "choice"))
 		return NULL;
-	if (settings_rows.model != model)
+	if (settings_rows.model != model || settings_rows.reads != halo_menus_model_reads())
 	{
 		settings_rows.model = model;
+		settings_rows.reads = halo_menus_model_reads();
 		settings_rows.count = 0;
 	}
 	if (settings_rows.generation != cache_files_tags_generation())
@@ -5593,6 +5596,7 @@ struct settings_slider
 static struct
 {
 	struct halo_menu_model const *model;
+	unsigned long reads;
 	struct settings_slider sliders[SETTINGS_MAXIMUM_SLIDERS];
 	short count;
 } settings_slider_cache;
@@ -5619,9 +5623,10 @@ static struct settings_slider const *settings_slider_made(struct halo_menu_model
 
 	if (!model || !row || strcmp(row->kind, "slider"))
 		return NULL;
-	if (settings_slider_cache.model != model)
+	if (settings_slider_cache.model != model || settings_slider_cache.reads != halo_menus_model_reads())
 	{
 		settings_slider_cache.model = model;
+		settings_slider_cache.reads = halo_menus_model_reads();
 		settings_slider_cache.count = 0;
 	}
 	for (index = 0; index < settings_slider_cache.count; index++)
