@@ -65,6 +65,8 @@ struct model_reader
 
 static struct halo_menu_model model;
 static int model_read;
+/* each model read's number (halo_menus_model_reads) */
+static unsigned long model_reads;
 static int model_succeeded;
 
 static void model_error(struct model_reader *reader, char const *format, char const *detail)
@@ -703,6 +705,7 @@ struct halo_menu_model const *halo_menus_model(void)
 			model_behaviour_order);
 	}
 	model_succeeded = 1;
+	model_reads++;
 	platform_log("menus: the model has %ld screens, %ld rows, %ld widgets' looks, %ld widgets' behaviours",
 		model.screen_count, model.row_count, model.look_count, model.behaviour_count);
 	return &model;
@@ -735,6 +738,11 @@ struct halo_menu_model_behaviour const *halo_menus_model_behaviour(struct halo_m
 	found = bsearch(&pointer, model_behaviours_sorted, (size_t)model.behaviour_count,
 		sizeof(*model_behaviours_sorted), model_behaviour_order);
 	return found ? *found : NULL;
+}
+
+unsigned long halo_menus_model_reads(void)
+{
+	return model_reads;
 }
 
 /* the model read again with the menus (halo_menus_reload: the menu studio's) */
