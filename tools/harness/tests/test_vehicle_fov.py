@@ -81,6 +81,12 @@ CONTROLS = [
 ]
 
 
+def _model_slider(key: str) -> str:
+    """the model's slider row of the key (port/assets/menus/model, which menu_functions.c's sliders are made from):
+    its element's line"""
+    model = read("port/assets/menus/model/settings.xml")
+    return next(line for line in model.splitlines() if f'<row key="{key}" kind="slider"' in line)
+
 def generated(fault=None):
     code = read("port/linux/game/view_fov.c")
     world = code[code.index("/* ---------- the world's field of view */"):
@@ -156,5 +162,4 @@ def test_the_setting():
     config = read("port/linux/src/port_config.c")
     assert '{ "display.vehicle_fov", _config_string, "\\"default\\"", "HALO_VEHICLE_FOV",' in config
     assert '!strcmp(setting->name, "display.vehicle_fov")' in config
-    menu = read("port/linux/game/menu_functions.c")
-    assert '{ "op_vehicle_fov", "display.vehicle_fov",' in menu
+    assert 'setting="display.vehicle_fov"' in _model_slider("vehicle_fov")
