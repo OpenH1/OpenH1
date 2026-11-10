@@ -30,12 +30,18 @@ the input of the same index by default). Its reads see the draws before it
 through a framebuffer-local barrier before it, or, where the device orders
 attachment reads in rasterization order
 (VK_EXT_rasterization_order_attachment_access), with no barrier, its own
-overlapping triangles in order too. Where the frames are HDR and the
-window's display shows HDR, the swapchain is HDR (VK_EXT_swapchain_colorspace:
-scRGB's half floats in extended linear sRGB, or HDR10's PQ in BT.2020's
-primaries) and the frame is encoded for it (the options' encode) before it
-is letterboxed into it as an SDR frame is; the swapchain is made again as
-that changes. An SDR swapchain's frame is curved by display.gamma (the
+overlapping triangles in order too. Where the device has the fragment
+shader interlock instead (VK_EXT_fragment_shader_interlock), a draw that
+writes no depth (its pipeline's color_store) reads and writes the
+attachment as a storage image of the same set, its own triangles ordered by
+the interlock, a run of them after a barrier and with one after it, its
+pipeline writing no colour; the targets it writes are uncompressed where
+the device can say so (VK_EXT_image_compression_control). Where the
+frames are HDR and the window's display shows HDR, the swapchain is HDR
+(VK_EXT_swapchain_colorspace: scRGB's half floats in extended linear
+sRGB, or HDR10's PQ in BT.2020's primaries) and the frame is encoded for it
+(the options' encode) before it is letterboxed into it as an SDR frame is;
+the swapchain is made again as that changes. An SDR swapchain's frame is curved by display.gamma (the
 options' gamma) first, where the setting is not 1.
 */
 
@@ -622,6 +628,11 @@ static struct
 	int nvidia;
 	/* cube maps sampled face by face (VK_EXT_non_seamless_cube_map) */
 	int non_seamless;
+	/* display.hdr's interlocked draws: the targets they write as storage
+	images made uncompressed (VK_EXT_image_compression_control); and one
+	drawn whose writes the pass's other commands have not yet been made to
+	see (color_stores_seen) */
+	int compression_control, color_stored;
 
 	/* memory blocks for images, by memory type */
 	struct block *blocks;
@@ -3131,6 +3142,7 @@ struct xgpu_vulkan_image *xgpu_vulkan_image_create(const struct xgpu_vulkan_imag
 {
 	struct xgpu_vulkan_image *image = calloc(1, sizeof(*image));
 	VkImageCreateInfo info;
+	VkImageCompressionControlEXT uncompressed;
 	VkMemoryRequirements requirements;
 	uint32_t layers = 1;
 
@@ -3171,14 +3183,28 @@ struct xgpu_vulkan_image *xgpu_vulkan_image_create(const struct xgpu_vulkan_imag
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	if ((description->usage & XGPU_VULKAN_USAGE_INPUT) && vk.capabilities.color_read)
 		info.usage |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+	/* (and written by the interlocked draws as a storage image) */
+	if ((description->usage & XGPU_VULKAN_USAGE_INPUT) && vk.capabilities.pixel_interlock &&
+		info.format == VK_FORMAT_R16G16B16A16_SFLOAT)
+		info.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
 	/* (with discards, where the device has lazily allocated memory: a
 	multisampled target is an attachment alone, transient) */
-	image->transient = vk.transient && description->samples > 1 && (description->usage & XGPU_VULKAN_USAGE_TARGET);
+	image->transient = vk.transient && description->samples > 1 && (description->usage & XGPU_VULKAN_USAGE_TARGET) &&
+		!(info.usage & VK_IMAGE_USAGE_STORAGE_BIT);
 	if (image->transient)
 		info.usage = (info.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
 			VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)) | VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
 	info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	/* (a target the interlocked draws write as a storage image while the
+	pass draws into it, uncompressed where the device can say so: RADV's
+	DCC left specks of other colours where it was compressed, on an RDNA
+	3.5 GPU, Mesa 26.2) */
+	memset(&uncompressed, 0, sizeof(uncompressed));
+	uncompressed.sType = VK_STRUCTURE_TYPE_IMAGE_COMPRESSION_CONTROL_EXT;
+	uncompressed.flags = VK_IMAGE_COMPRESSION_DISABLED_EXT;
+	if ((info.usage & VK_IMAGE_USAGE_STORAGE_BIT) && vk.compression_control)
+		info.pNext = &uncompressed;
 	if (image->format == VK_FORMAT_UNDEFINED || !check(vkCreateImage(vk.device, &info, NULL, &image->image), "vkCreateImage"))
 	{
 		host_logf(HOST_LOG_ERROR, "vulkan: cannot make a %ux%u image of format %u", description->width, description->height,
@@ -4649,7 +4675,7 @@ static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *
 	blend_attachment.srcColorBlendFactor = blend_attachment.srcAlphaBlendFactor = blend_factor(description->blend_source);
 	blend_attachment.dstColorBlendFactor = blend_attachment.dstAlphaBlendFactor = blend_factor(description->blend_destination);
 	blend_attachment.colorBlendOp = blend_attachment.alphaBlendOp = blend_op(description->blend_operation);
-	blend_attachment.colorWriteMask = description->color_mask & 15;
+	blend_attachment.colorWriteMask = description->color_store ? 0 : description->color_mask & 15;
 	memset(&blend, 0, sizeof(blend));
 	blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
 	blend.attachmentCount = color_format != VK_FORMAT_UNDEFINED ? 1 : 0;
@@ -4971,10 +4997,32 @@ static int pass_begin(uint32_t clear_parts, const float clear_color[4], float cl
 	return 1;
 }
 
+/* display.hdr: the writes of the interlocked draws drawn since the last
+barrier (their storage image's) seen by what comes after them in the pass,
+as the colour attachment's writes, and by what follows the pass as its
+writes are: one barrier after a run of interlocked draws, and none between
+them (draw_body) */
+static void color_stores_seen(VkCommandBuffer commands)
+{
+	VkMemoryBarrier stored;
+
+	if (!vk.color_stored)
+		return;
+	memset(&stored, 0, sizeof(stored));
+	stored.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	stored.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	stored.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+		VK_ACCESS_INPUT_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+	vkCmdPipelineBarrier(commands, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_DEPENDENCY_BY_REGION_BIT, 1, &stored, 0, NULL, 0, NULL);
+	vk.color_stored = 0;
+}
+
 static void pass_end_body(void)
 {
 	if (!vk.pass_active)
 		return;
+	color_stores_seen(vk.pass_commands);
 	test_query_end();
 	/* (with discards, the pass's draws ended: its rendering, and the
 	barrier after it, are made at the submission, segments_play) */
@@ -5177,7 +5225,10 @@ void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t 
 		rect_count++;
 	}
 	if (rect_count && attachment_count)
+	{
+		color_stores_seen(vk.pass_commands);
 		vkCmdClearAttachments(vk.pass_commands, attachment_count, attachments, rect_count, rects);
+	}
 	if (rect_count && draw.pipeline)
 	{
 		struct xgpu_vulkan_dynamic_state dynamic;
@@ -5214,7 +5265,7 @@ static VkDescriptorPool descriptor_pool_get(void)
 
 	if (slot->descriptor_pool_used >= slot->descriptor_pool_count)
 	{
-		VkDescriptorPoolSize sizes[4];
+		VkDescriptorPoolSize sizes[5];
 		VkDescriptorPoolCreateInfo info;
 		VkDescriptorPool *grown = realloc(slot->descriptor_pools, (slot->descriptor_pool_count + 1) * sizeof(*grown));
 
@@ -5230,6 +5281,9 @@ static VkDescriptorPool descriptor_pool_get(void)
 		attachment) */
 		sizes[2].type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
 		sizes[2].descriptorCount = SETS_A_POOL;
+		/* (and, interlocked, as a storage image) */
+		sizes[3].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		sizes[3].descriptorCount = SETS_A_POOL;
 		/* (display.ambient_occlusion "world"'s block, in the occlusion's
 		sets) */
 		sizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -5237,7 +5291,7 @@ static VkDescriptorPool descriptor_pool_get(void)
 		memset(&info, 0, sizeof(info));
 		info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 		info.maxSets = SETS_A_POOL;
-		info.poolSizeCount = vk.capabilities.color_read ? 3 : 2;
+		info.poolSizeCount = vk.capabilities.color_read ? (vk.capabilities.pixel_interlock ? 4 : 3) : 2;
 		/* (display.ambient_occlusion "ray_traced"'s scene, in the occlusion's
 		sets, where the device has ray queries) */
 		if (vk.capabilities.ray_queries)
@@ -5319,6 +5373,14 @@ static VkDescriptorSet input_set(void)
 	write.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
 	write.pImageInfo = &image;
 	vkUpdateDescriptorSets(vk.device, 1, &write, 0, NULL);
+	/* (the interlocked draws': the same view as a storage image,
+	XGPU_SPIRV_BINDING_STORE) */
+	if (vk.capabilities.pixel_interlock)
+	{
+		write.dstBinding = XGPU_VULKAN_BINDING_STORE;
+		write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		vkUpdateDescriptorSets(vk.device, 1, &write, 0, NULL);
+	}
 	return vk.input_set;
 }
 
@@ -6249,21 +6311,31 @@ static void draw_body(const struct xgpu_vulkan_draw *draw)
 	input, and, unless the device orders the reads in rasterization order,
 	sees the pass's draws before it through a framebuffer-local barrier
 	(local reads' dependency: a memory barrier between framebuffer-space
-	stages, by region) */
+	stages, by region); an interlocked one, which reads and writes it as a
+	storage image, the same, its shader's reads and writes (and the draws
+	after it see its writes: below) */
+	if (!draw->stores_color)
+		color_stores_seen(commands);
 	if (draw->reads_color)
 	{
 		VkDescriptorSet input = input_set();
 
 		if (!input)
 			return;
-		if (!vk.capabilities.raster_order)
+		/* (an interlocked draw right after another, none: the interlock
+		orders the two draws' triangles over the same pixel as it orders one
+		draw's, in primitive order, which runs on from one draw to the next
+		in a pass, and their coherent reads and writes of the storage image
+		inside it see each other's) */
+		if (!vk.capabilities.raster_order && !(draw->stores_color && vk.color_stored))
 		{
 			VkMemoryBarrier local;
 
 			memset(&local, 0, sizeof(local));
 			local.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
 			local.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			local.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+			local.dstAccessMask = draw->stores_color ? VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT :
+				VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
 			vkCmdPipelineBarrier(commands, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 				VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 1, &local, 0, NULL, 0, NULL);
 			vk.statistics.local_reads++;
@@ -6325,7 +6397,25 @@ static void draw_body(const struct xgpu_vulkan_draw *draw)
 		}
 		draw_times_draw(commands, draw, 0);
 		timing_draw_mark(commands, 0);
-		vkCmdDrawIndexed(commands, draw->count, 1, draw->first_index, draw->vertex_offset, 0);
+		if (draw->reads_color && getenv("HALO_VULKAN_HDR_SERIAL") && draw->topology == XGPU_VULKAN_TOPOLOGY_TRIANGLES)
+		{
+			uint32_t triangle;
+
+			for (triangle = 0; triangle + 3 <= draw->count; triangle += 3)
+			{
+				VkMemoryBarrier local;
+
+				memset(&local, 0, sizeof(local));
+				local.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+				local.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+				local.dstAccessMask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+				vkCmdPipelineBarrier(commands, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+					VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 1, &local, 0, NULL, 0, NULL);
+				vkCmdDrawIndexed(commands, 3, 1, draw->first_index + triangle, draw->vertex_offset, 0);
+			}
+		}
+		else
+			vkCmdDrawIndexed(commands, draw->count, 1, draw->first_index, draw->vertex_offset, 0);
 	}
 	else
 	{
@@ -6335,6 +6425,13 @@ static void draw_body(const struct xgpu_vulkan_draw *draw)
 	}
 	draw_times_draw(commands, draw, 1);
 	timing_draw_mark(commands, 1);
+	/* (an interlocked draw's writes: seen by what comes after its run,
+	color_stores_seen) */
+	if (draw->stores_color)
+	{
+		vk.color_stored = 1;
+		vk.statistics.color_stores++;
+	}
 	vk.statistics.draws++;
 }
 
@@ -8047,6 +8144,21 @@ static int device_has_extension(const char *name)
 	return found;
 }
 
+/* the driver's (VK_DRIVER_ID_*) */
+static VkDriverId driver_id(void)
+{
+	VkPhysicalDeviceVulkan12Properties properties12;
+	VkPhysicalDeviceProperties2 properties;
+
+	memset(&properties12, 0, sizeof(properties12));
+	memset(&properties, 0, sizeof(properties));
+	properties12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
+	properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+	properties.pNext = &properties12;
+	vkGetPhysicalDeviceProperties2(vk.physical, &properties);
+	return properties12.driverID;
+}
+
 static int format_has(VkFormat format, int buffer, VkFormatFeatureFlags features)
 {
 	VkFormatProperties properties;
@@ -8195,9 +8307,12 @@ static int device_make(const struct xgpu_vulkan_options *options)
 	VkPhysicalDeviceCustomBorderColorFeaturesEXT border;
 	VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR available_local_read, local_read;
 	VkPhysicalDeviceRasterizationOrderAttachmentAccessFeaturesEXT available_order, order;
+	VkPhysicalDeviceFragmentShaderInterlockFeaturesEXT available_interlock, interlock;
+	VkPhysicalDeviceImageCompressionControlFeaturesEXT available_compression, compression;
+	VkDriverId driver = driver_id();
 	VkDeviceQueueCreateInfo queue;
 	VkDeviceCreateInfo info;
-	const char *extensions[16];
+	const char *extensions[20];
 	uint32_t extension_count = 0;
 	float priority = 1.0f;
 	/* (HALO_VULKAN_NO_CUSTOM_BORDER_COLORS: as a device without them, whose
@@ -8209,6 +8324,14 @@ static int device_make(const struct xgpu_vulkan_options *options)
 	rasterization order where the device can; the swapchain's metadata) */
 	int local_reads = HDR_POSSIBLE && device_has_extension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME);
 	int ordered = local_reads && device_has_extension(VK_EXT_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_EXTENSION_NAME);
+	/* (else the fragment shader interlock, where the targets the interlocked
+	draws write as storage images can be made uncompressed, or the driver is
+	NVIDIA's, whose compression they were right with (an RTX 4090, 615.78);
+	HALO_VULKAN_NO_INTERLOCK: as a device without it, whose draws' own
+	triangles are unordered) */
+	int interlocks = local_reads && device_has_extension(VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME) &&
+		!getenv("HALO_VULKAN_NO_INTERLOCK");
+	int compression_control = interlocks && device_has_extension(VK_EXT_IMAGE_COMPRESSION_CONTROL_EXTENSION_NAME);
 	int metadata = HDR_POSSIBLE && vk.colorspaces && device_has_extension(VK_EXT_HDR_METADATA_EXTENSION_NAME);
 	/* (display.low_latency: when each present reaches the screen) */
 	int present_ids = device_has_extension(VK_KHR_PRESENT_ID_EXTENSION_NAME) &&
@@ -8270,6 +8393,20 @@ static int device_make(const struct xgpu_vulkan_options *options)
 	{
 		*chain = &available_order;
 		chain = &available_order.pNext;
+	}
+	memset(&available_interlock, 0, sizeof(available_interlock));
+	available_interlock.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT;
+	if (interlocks)
+	{
+		*chain = &available_interlock;
+		chain = &available_interlock.pNext;
+	}
+	memset(&available_compression, 0, sizeof(available_compression));
+	available_compression.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_COMPRESSION_CONTROL_FEATURES_EXT;
+	if (compression_control)
+	{
+		*chain = &available_compression;
+		chain = &available_compression.pNext;
 	}
 	memset(&available_structures, 0, sizeof(available_structures));
 	available_structures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
@@ -8375,6 +8512,32 @@ static int device_make(const struct xgpu_vulkan_options *options)
 			*chain = &order;
 			chain = &order.pNext;
 			vk.capabilities.raster_order = 1;
+		}
+		else if (interlocks && available_interlock.fragmentShaderPixelInterlock &&
+			available.features.shaderStorageImageMultisample &&
+			format_has(VK_FORMAT_R16G16B16A16_SFLOAT, 0, VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) &&
+			(available_compression.imageCompressionControl || driver == VK_DRIVER_ID_NVIDIA_PROPRIETARY))
+		{
+			memset(&interlock, 0, sizeof(interlock));
+			interlock.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADER_INTERLOCK_FEATURES_EXT;
+			interlock.fragmentShaderPixelInterlock = VK_TRUE;
+			interlock.fragmentShaderSampleInterlock = available_interlock.fragmentShaderSampleInterlock;
+			extensions[extension_count++] = VK_EXT_FRAGMENT_SHADER_INTERLOCK_EXTENSION_NAME;
+			*chain = &interlock;
+			chain = &interlock.pNext;
+			features.features.shaderStorageImageMultisample = VK_TRUE;
+			vk.capabilities.pixel_interlock = 1;
+			if (available_compression.imageCompressionControl)
+			{
+				memset(&compression, 0, sizeof(compression));
+				compression.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_COMPRESSION_CONTROL_FEATURES_EXT;
+				compression.imageCompressionControl = VK_TRUE;
+				extensions[extension_count++] = VK_EXT_IMAGE_COMPRESSION_CONTROL_EXTENSION_NAME;
+				*chain = &compression;
+				chain = &compression.pNext;
+				vk.compression_control = 1;
+			}
+			vk.capabilities.sample_interlock = available_interlock.fragmentShaderSampleInterlock != 0;
 		}
 	}
 	if (metadata && (vk.surface || vk.surface_create))
@@ -8529,7 +8692,8 @@ static int device_make(const struct xgpu_vulkan_options *options)
 		VK_API_VERSION_PATCH(vk.properties.apiVersion), vk.properties.driverVersion,
 		vk.capabilities.custom_border_colors ? ", custom border colours" : "",
 		vk.capabilities.block_compression ? ", BC" : "", vk.capabilities.astc ? ", ASTC" : "",
-		vk.capabilities.color_read ? (vk.capabilities.raster_order ? ", local reads (ordered)" : ", local reads") : "",
+		vk.capabilities.color_read ? (vk.capabilities.raster_order ? ", local reads (ordered)" :
+		vk.capabilities.pixel_interlock ? ", local reads (interlocked)" : ", local reads") : "",
 		vk.colorspaces ? ", swapchain colour spaces" : "", vk.capabilities.ray_queries ? ", ray queries" : "",
 		vk.validation ? ", validated" : "");
 	return 1;
@@ -8596,7 +8760,10 @@ static int layouts_make(void)
 		textures[0].descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
 		textures[0].descriptorCount = 1;
 		textures[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-		info.bindingCount = 1;
+		textures[1] = textures[0];
+		textures[1].binding = XGPU_VULKAN_BINDING_STORE;
+		textures[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+		info.bindingCount = vk.capabilities.pixel_interlock ? 2 : 1;
 		info.pBindings = textures;
 		if (!check(vkCreateDescriptorSetLayout(vk.device, &info, NULL, &vk.input_layout), "vkCreateDescriptorSetLayout"))
 			return 0;

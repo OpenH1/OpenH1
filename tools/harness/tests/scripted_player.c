@@ -56,8 +56,12 @@ static unsigned long test_input_pressed;
 static int test_input_holding_action;
 static double test_input_holding_action_since;
 static int test_script_on;
-static char test_input_menu[512];
+static char test_input_menu[2048];
 static unsigned long long test_input_menu_since;
+/* ("menu:ready ...": its clock waiting for the menus; the computer's clock,
+debug.frame_time not set) */
+static int test_input_menu_waiting;
+static unsigned long long test_input_menu_now(void) { return SDL_GetTicks(); }
 
 static void test_script_parse(char const *script) { (void)script; test_script_on = 1; }
 static void test_script_gamepad(XINPUT_GAMEPAD *pad) { (void)pad; }

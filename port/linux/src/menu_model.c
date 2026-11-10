@@ -5,7 +5,8 @@ The menu engine's model (halo_menus.h; docs/menu_engine.md): the files in
 the menus' model folder (port/assets/menus/model, which
 tools/port_settings.py writes beside the menus' XML, or a menus folder's
 file of the same name) read with Expat into screens, their rows and their
-choices, for the game's menu engine (port/linux/game/menu_engine.c).
+choices, and the widgets' looks (model/look, tools/menu_look.py), for the
+game's menu engine (port/linux/game/menu_engine.c).
 
 As with the menus' files (menu_files.c), only the files' shape is checked
 here: their elements and attributes, and numbers. A problem is logged with
@@ -34,6 +35,9 @@ enum model_element
 	_model_help,
 	_model_note,
 	_model_choice,
+	_model_look,
+	_model_look_text,
+	_model_place,
 };
 
 #define MODEL_MAXIMUM_DEPTH 8
@@ -50,7 +54,7 @@ struct model_reader
 	char *text;
 	size_t text_length;
 	/* the capacities of the model's arrays */
-	long screen_capacity, row_capacity, choice_capacity;
+	long screen_capacity, row_capacity, choice_capacity, look_capacity, place_capacity;
 };
 
 static struct halo_menu_model model;
@@ -101,6 +105,9 @@ static int model_grow(struct model_reader *reader, void **array, long count, lon
 	return 1;
 }
 
+/* the looks by name (halo_menus_model_look) */
+static struct halo_menu_model_look const **model_looks_sorted;
+
 static int model_long(struct model_reader *reader, char const *text, long *value)
 {
 	char *end;
@@ -136,6 +143,42 @@ static int model_flag(struct model_reader *reader, char const *text, long *value
 		return 0;
 	}
 	*value = !strcmp(text, "true");
+	return 1;
+}
+
+/* whole numbers separated by spaces, as many as values has */
+static int model_longs(struct model_reader *reader, char const *text, long *values, int count)
+{
+	char numbers[64], *word, *rest;
+	int index;
+
+	if (strlen(text) >= sizeof(numbers))
+	{
+		model_error(reader, "\"%s\" is too long", text);
+		return 0;
+	}
+	strcpy(numbers, text);
+	rest = numbers;
+	for (index = 0; index < count; index++)
+	{
+		rest += strspn(rest, " ");
+		word = rest;
+		rest += strcspn(rest, " ");
+		if (*rest)
+			*rest++ = 0;
+		if (!*word)
+		{
+			model_error(reader, "\"%s\" has too few numbers", text);
+			return 0;
+		}
+		if (!model_long(reader, word, &values[index]))
+			return 0;
+	}
+	if (rest[strspn(rest, " ")])
+	{
+		model_error(reader, "\"%s\" has too many numbers", text);
+		return 0;
+	}
 	return 1;
 }
 
@@ -289,6 +332,93 @@ static void model_choice(struct model_reader *reader, XML_Char const **attribute
 	reader->model.rows[reader->model.row_count - 1].choice_count++;
 }
 
+/* a box ("x0 y0 x1 y1") or a pair ("x y") given as text, read into values
+(*given: it was) */
+static void model_numbers(struct model_reader *reader, char const *text, long *values, int count, long *given)
+{
+	if (text && !reader->failed && model_longs(reader, text, values, count) && given)
+		*given = 1;
+}
+
+static void model_look(struct model_reader *reader, XML_Char const **attributes)
+{
+	struct halo_menu_model_look look;
+	char const *box = NULL, *header_box = NULL, *footer_box = NULL;
+	struct model_attribute table[] =
+	{
+		{ "name", &look.name }, { "type", &look.type }, { "box", &box }, { "wide", &look.wide },
+		{ "place", &look.place }, { "picture", &look.picture }, { "radius", NULL, &look.radius },
+		{ "effects", &look.effects }, { "list", &look.list }, { "header", &look.header },
+		{ "header_box", &header_box }, { "footer", &look.footer }, { "footer_box", &footer_box },
+	};
+
+	memset(&look, 0, sizeof(look));
+	model_attributes(reader, "look", attributes, table, sizeof(table) / sizeof(*table));
+	model_numbers(reader, box, look.box, 4, &look.has_box);
+	model_numbers(reader, header_box, look.header_box, 4, &look.has_header_box);
+	model_numbers(reader, footer_box, look.footer_box, 4, &look.has_footer_box);
+	if (!reader->failed && !look.name)
+		model_error(reader, "a <look> needs a name%s", "");
+	if (reader->failed || !model_grow(reader, (void **)&reader->model.looks, reader->model.look_count,
+		&reader->look_capacity, sizeof(look)))
+		return;
+	look.first_place = reader->model.place_count;
+	look.file = reader->file;
+	look.line = (long)XML_GetCurrentLineNumber(reader->parser);
+	reader->model.looks[reader->model.look_count++] = look;
+}
+
+/* the open <look>'s <text> */
+static void model_look_text(struct model_reader *reader, XML_Char const **attributes)
+{
+	struct halo_menu_model_look *look = &reader->model.looks[reader->model.look_count - 1];
+	char const *at = NULL;
+	long given = 0;
+	struct model_attribute table[] =
+	{
+		{ "font", &look->font }, { "color", &look->color }, { "align", &look->align }, { "at", &at },
+		{ "flags", &look->text_flags }, { "string_list", &look->string_list },
+		{ "index", NULL, &look->string_index }, { "text", &look->text }, { "items", &look->items },
+		{ "replace", &look->replace },
+	};
+
+	if (look->has_text)
+	{
+		model_error(reader, "a <look> has one <text>%s", "");
+		return;
+	}
+	look->has_text = 1;
+	model_attributes(reader, "text", attributes, table, sizeof(table) / sizeof(*table));
+	if (at)
+	{
+		long pair[2];
+
+		model_numbers(reader, at, pair, 2, &given);
+		look->text_x = pair[0];
+		look->text_y = pair[1];
+	}
+}
+
+/* the open <look>'s <at> */
+static void model_place(struct model_reader *reader, XML_Char const **attributes)
+{
+	struct halo_menu_model_place place;
+	struct model_attribute table[] =
+	{
+		{ "widget", &place.widget }, { "x", NULL, &place.x }, { "y", NULL, &place.y },
+	};
+
+	memset(&place, 0, sizeof(place));
+	model_attributes(reader, "at", attributes, table, sizeof(table) / sizeof(*table));
+	if (!reader->failed && !place.widget)
+		model_error(reader, "an <at> needs a widget%s", "");
+	if (reader->failed || !model_grow(reader, (void **)&reader->model.places, reader->model.place_count,
+		&reader->place_capacity, sizeof(place)))
+		return;
+	reader->model.places[reader->model.place_count++] = place;
+	reader->model.looks[reader->model.look_count - 1].place_count++;
+}
+
 static void XMLCALL model_start(void *data, XML_Char const *name, XML_Char const **attributes)
 {
 	struct model_reader *reader = data;
@@ -330,6 +460,21 @@ static void XMLCALL model_start(void *data, XML_Char const *name, XML_Char const
 	{
 		element = _model_choice;
 		model_choice(reader, attributes);
+	}
+	else if (!strcmp(name, "look") && parent == _model_model)
+	{
+		element = _model_look;
+		model_look(reader, attributes);
+	}
+	else if (!strcmp(name, "text") && parent == _model_look)
+	{
+		element = _model_look_text;
+		model_look_text(reader, attributes);
+	}
+	else if (!strcmp(name, "at") && parent == _model_look)
+	{
+		element = _model_place;
+		model_place(reader, attributes);
 	}
 	if (element == _model_none)
 	{
@@ -426,6 +571,12 @@ static void model_file(struct model_reader *reader, char const *path, unsigned c
 	XML_ParserFree(reader->parser);
 }
 
+static int model_look_order(void const *a, void const *b)
+{
+	return strcmp((*(struct halo_menu_model_look const *const *)a)->name,
+		(*(struct halo_menu_model_look const *const *)b)->name);
+}
+
 struct halo_menu_model const *halo_menus_model(void)
 {
 	struct model_reader reader;
@@ -456,9 +607,32 @@ struct halo_menu_model const *halo_menus_model(void)
 		return NULL;
 	}
 	model = reader.model;
+	/* (the looks by name) */
+	model_looks_sorted = model.look_count ? malloc((size_t)model.look_count * sizeof(*model_looks_sorted)) : NULL;
+	if (model_looks_sorted)
+	{
+		for (index = 0; index < model.look_count; index++)
+			model_looks_sorted[index] = &model.looks[index];
+		qsort(model_looks_sorted, (size_t)model.look_count, sizeof(*model_looks_sorted), model_look_order);
+	}
 	model_succeeded = 1;
-	platform_log("menus: the model has %ld screens, %ld rows", model.screen_count, model.row_count);
+	platform_log("menus: the model has %ld screens, %ld rows, %ld widgets' looks", model.screen_count,
+		model.row_count, model.look_count);
 	return &model;
+}
+
+struct halo_menu_model_look const *halo_menus_model_look(struct halo_menu_model const *of, char const *name)
+{
+	struct halo_menu_model_look key;
+	struct halo_menu_model_look const *pointer = &key;
+	struct halo_menu_model_look const **found;
+
+	if (!of || of != &model || !model_looks_sorted || !name)
+		return NULL;
+	key.name = name;
+	found = bsearch(&pointer, model_looks_sorted, (size_t)model.look_count, sizeof(*model_looks_sorted),
+		model_look_order);
+	return found ? *found : NULL;
 }
 
 /* the model read again with the menus (halo_menus_reload: the menu studio's) */
@@ -467,4 +641,6 @@ void halo_menus_model_forget(void)
 	model_read = 0;
 	model_succeeded = 0;
 	memset(&model, 0, sizeof(model));
+	free(model_looks_sorted);
+	model_looks_sorted = NULL;
 }

@@ -179,6 +179,11 @@ int master_list_read_file(const char *setting, char (*urls)[MASTER_LIST_URL_SIZE
 	return count;
 }
 
+/* the relays used when relays.txt cannot be read (the builds that bring no
+file: Android, macOS, iOS, the Steam Frame's): the project's own
+(deploy/net), as port/assets/network/relays.txt names them */
+#define DEFAULT_RELAYS "net.goath1.com:2302\n"
+
 int master_list_read_relays(const char *setting, char (*hosts)[MASTER_LIST_RELAY_HOST_SIZE], unsigned short *ports,
 	int maximum)
 {
@@ -191,7 +196,12 @@ int master_list_read_relays(const char *setting, char (*hosts)[MASTER_LIST_RELAY
 		return 0;
 	text = masters_file(setting, path, sizeof(path));
 	if (!text)
-		return 0;
+	{
+		text = (char *)malloc(sizeof(DEFAULT_RELAYS));
+		if (!text)
+			return 0;
+		memcpy(text, DEFAULT_RELAYS, sizeof(DEFAULT_RELAYS));
+	}
 	for (line = text; *line && count < maximum;)
 	{
 		const char *end = line + strcspn(line, "\n");
@@ -254,7 +264,9 @@ static int master_keep(const char *url, const char *key, char (*urls)[MASTER_LIS
 }
 
 /* the official master servers, asked when masters.txt names none (it is
-missing, empty or has comments alone) */
+missing, empty or has comments alone, or the build brings none: Android,
+macOS, iOS, the Steam Frame's): the project's own (deploy/net), then
+OpenCE's, as port/assets/network/masters.txt names them */
 int master_list_read_defaults(char (*urls)[MASTER_LIST_URL_SIZE], unsigned char (*keys)[MASTER_LIST_KEY_SIZE],
 	int maximum)
 {
@@ -264,6 +276,8 @@ int master_list_read_defaults(char (*urls)[MASTER_LIST_URL_SIZE], unsigned char 
 		const char *key;
 	} masters[] =
 	{
+		{ "https://master.goath1.com",
+			"ed25519:120f7635fe754e327cae95480d847aa57b8b23a9bb362b3d6080bfdd21399684" },
 		{ "https://master.opencommunityedition.com",
 			"ed25519:89f4eda71229f11f3538679f49ef7fb0c2b407b380093f7f4fe02105b92225aa" },
 	};

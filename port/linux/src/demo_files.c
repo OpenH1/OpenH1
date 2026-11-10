@@ -48,7 +48,8 @@ struct demo_writer
 	struct demo_writer_block *first;
 	struct demo_writer_block *last;
 	unsigned long queued_bytes;
-	unsigned long written_bytes;
+	/* (64 bits: a long demo passes 4 GB, which an ILP32 guest's long wraps at) */
+	unsigned long long written_bytes;
 	int closing;
 	int failed;
 };
@@ -385,9 +386,9 @@ void demo_writer_block(struct demo_writer *writer, unsigned long kind, unsigned 
 	pthread_mutex_unlock(&writer->lock);
 }
 
-unsigned long demo_writer_bytes(struct demo_writer *writer)
+unsigned long long demo_writer_bytes(struct demo_writer *writer)
 {
-	unsigned long bytes;
+	unsigned long long bytes;
 
 	if (!writer)
 		return 0;
@@ -397,19 +398,23 @@ unsigned long demo_writer_bytes(struct demo_writer *writer)
 	return bytes;
 }
 
-void demo_writer_close(struct demo_writer *writer)
+unsigned long long demo_writer_close(struct demo_writer *writer)
 {
+	unsigned long long bytes;
+
 	if (!writer)
-		return;
+		return 0;
 	pthread_mutex_lock(&writer->lock);
 	writer->closing = 1;
 	pthread_cond_broadcast(&writer->changed);
 	pthread_mutex_unlock(&writer->lock);
 	pthread_join(writer->thread, NULL);
 	fclose(writer->file);
+	bytes = writer->written_bytes;
 	pthread_mutex_destroy(&writer->lock);
 	pthread_cond_destroy(&writer->changed);
 	free(writer);
+	return bytes;
 }
 
 /* ---------- memory and the reader */

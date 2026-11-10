@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The look of ce/main_menu.settings_select.player_setup.player_profile_edit.network_setup.xml's widgets, for the menu engine (docs/menu_engine.md; tools/menu_look.py) -->
+<model>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/network_settings_screen" picture="bitmaps/gradient">
+		<at widget="main_menu/settings/header_settings" x="0" y="0"/>
+		<at widget="main_menu/settings/tab_prompt_previous" x="24" y="76"/>
+		<at widget="main_menu/settings/tab_prompt_next" x="586" y="76"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/options_menu" x="0" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/options_menu" type="column_list">
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_0" x="28" y="104"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_online" x="28" y="124"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_allow_upnp" x="28" y="145"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_join_from_clipboard" x="28" y="166"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_discord_account" x="28" y="187"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_server_browser_filters" x="28" y="208"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_streamer_mode" x="28" y="229"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_auto_pickup" x="28" y="250"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_8" x="28" y="277"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_map_download" x="28" y="297"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_map_seed" x="28" y="318"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_map_seed_upload" x="28" y="339"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_12" x="28" y="366"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_auto" x="28" y="386"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/button_bar" x="0" y="414"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tabs" x="0" y="76"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/button_bar" type="column_list" box="0 0 640 28">
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/button_defaults" x="24" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/button_ok" x="358" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/button_cancel" x="488" y="1"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tab_video_settings" type="text" box="0 0 59 22" wide="-106 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tab_audio_settings" type="text" box="0 0 61 22" wide="-71 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="1"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tab_mouse_settings" type="text" box="0 0 92 22" wide="-35 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="2"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tab_network_settings" type="text" box="0 0 67 22" place="keep_ends" picture="main_menu/settings/tab_current">
+		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="3"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tab_interface_settings" type="text" box="0 0 95 22" wide="35 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="4"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tab_profile_settings" type="text" box="0 0 83 22" wide="71 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="5"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tab_mods_settings" type="text" box="0 0 57 22" wide="106 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="6"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tabs" type="column_list" box="0 0 640 22">
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tab_video_settings" x="56" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tab_audio_settings" x="117" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tab_mouse_settings" x="180" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tab_network_settings" x="274" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tab_interface_settings" x="343" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tab_profile_settings" x="440" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/tab_mods_settings" x="525" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/button_defaults" type="text" box="0 0 128 24" wide="-106 0" picture="bitmaps/text_button_background">
+		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" string_list="strings/common_button_captions" index="3"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/button_ok" type="text" box="0 0 128 24" wide="106 0" picture="bitmaps/text_button_background">
+		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" string_list="strings/common_button_captions" index="1"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/button_cancel" type="text" box="0 0 128 24" wide="106 0" picture="bitmaps/text_button_background">
+		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" string_list="strings/common_button_captions" index="2"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_0" box="0 0 344 18" wide="-106 120" picture="main_menu/settings/section">
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_0_title" x="0" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_0_title" type="text" box="0 0 344 18" wide="0 120">
+		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_online" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/online_label" x="0" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/online_spinner" x="188" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/online_label" type="text" box="0 0 184 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels" index="1"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/online_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_allow_upnp" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/allow_upnp_label" x="0" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/allow_upnp_spinner" x="188" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/allow_upnp_label" type="text" box="0 0 184 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels" index="2"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/allow_upnp_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_join_from_clipboard" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/join_from_clipboard_label" x="0" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/join_from_clipboard_spinner" x="188" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/join_from_clipboard_label" type="text" box="0 0 184 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels" index="3"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/join_from_clipboard_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_discord_account" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/discord_account_label" x="0" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/discord_account_value" x="188" y="2"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/discord_account_label" type="text" box="0 0 184 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels" index="4"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/discord_account_value" type="text" box="0 0 140 16" wide="120 0">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 -1" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_server_browser_filters" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/server_browser_filters_label" x="0" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/server_browser_filters_label" type="text" box="0 0 332 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels" index="5"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_streamer_mode" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/streamer_mode_label" x="0" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/streamer_mode_label" type="text" box="0 0 332 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels" index="6"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_auto_pickup" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/auto_pickup_label" x="0" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/auto_pickup_spinner" x="188" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/auto_pickup_label" type="text" box="0 0 184 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels" index="7"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/auto_pickup_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="HOLD (XBOX)|WALK OVER (CE)"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_8" box="0 0 344 18" wide="-106 120" picture="main_menu/settings/section">
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_8_title" x="0" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_8_title" type="text" box="0 0 344 18" wide="0 120">
+		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels" index="8"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_map_download" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/map_download_label" x="0" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/map_download_spinner" x="188" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/map_download_label" type="text" box="0 0 184 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels" index="9"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/map_download_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_map_seed" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/map_seed_label" x="0" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/map_seed_spinner" x="188" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/map_seed_label" type="text" box="0 0 184 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels" index="10"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/map_seed_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_map_seed_upload" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/map_seed_upload_label" x="0" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/map_seed_upload_spinner" x="188" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/map_seed_upload_label" type="text" box="0 0 184 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels" index="11"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/map_seed_upload_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="64 KB/S|128 KB/S|256 KB/S|512 KB/S|1 MB/S|2 MB/S|4 MB/S|8 MB/S|10 MB/S"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_12" box="0 0 344 18" wide="-106 120" picture="main_menu/settings/section">
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_12_title" x="0" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_12_title" type="text" box="0 0 344 18" wide="0 120">
+		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels" index="12"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_auto" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/auto_label" x="0" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/auto_spinner" x="188" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/auto_label" type="text" box="0 0 184 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels" index="13"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/auto_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
+	</look>
+</model>

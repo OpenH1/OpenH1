@@ -13,6 +13,12 @@ where frames are drawn, its picture saved (debug.screenshot_directory's
 tour-<n>.bmp); after the last the game quits. A screen that cannot be
 opened is logged and has neither. Its run is its own: the screens are
 opened as no player could open them, one over the state another left.
+
+And a scripted run of the menus (debug.test_input "menu:ready ...",
+tools/menu_parity.py's behaviour scripts): its presses counted from when
+the screen opened is up, and where the focus is after each logged
+("menus: focus <second>: <screen>: <widgets>"), for two runs' to be
+compared; past its last, the game quits.
 */
 
 #include "cseries.h"
@@ -21,6 +27,7 @@ opened as no player could open them, one over the state another left.
 #include "interface/terminal.h"
 #include "interface/virtual_keyboard.h"
 #include "menu_layout.h"
+#include "menu_widget.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,6 +38,12 @@ char const *config_string(char const *name);
 void platform_log(char const *format, ...);
 void halo_screenshot_named(const char *name);
 extern boolean pc_menu_profile_edit_begin(void);
+void platform_test_menu_start(void);
+int platform_test_menu_waiting(void);
+int platform_test_menu_step(void);
+int platform_test_menu_done(void);
+char const *ui_widget_port_screen_name(void);
+void const *ui_widget_port_focused_widget(void);
 
 #define MENU_TOUR_MAXIMUM_SCREENS 512
 /* the game time (ticks) the first screen opens at: every run's alike, past
@@ -107,6 +120,72 @@ static boolean menu_tour_open(
 	return ui_widget_load_by_name_or_tag(tag_name, NONE, NULL, NONE, NONE, NONE, NONE) != NULL;
 }
 
+/* the frames a scripted run's screen is shown before its presses are
+counted (its fade in over) */
+#define MENU_SCRIPT_SETTLE_FRAMES 30
+
+/* a widget's name without its folders */
+static char const *menu_script_leaf(
+	char const *name)
+{
+	char const *leaf = name ? strrchr(name, '\\') : NULL;
+
+	return leaf ? leaf + 1 : name ? name : "?";
+}
+
+/* debug.test_input "menu:ready ...": its clock started, the screen up; and
+the focus logged at the end of each second (platform_test_menu_step's),
+where its press left it */
+static void menu_script_update(
+	void)
+{
+	static long frames;
+	static int logged = -1;
+	struct widget_instance const *focused;
+	struct widget_instance const *widgets[16];
+	char path[1024];
+	size_t used = 0;
+	int step;
+	int count = 0;
+
+	if (platform_test_menu_waiting())
+	{
+		/* (a name typed in: the game's keyboard, over no screen) */
+		if (game_time_get() < MENU_TOUR_START_TICKS ||
+			(!ui_widget_port_screen_name()[0] && !virtual_keyboard_active()))
+			return;
+		if (++frames < MENU_SCRIPT_SETTLE_FRAMES)
+			return;
+		platform_test_menu_start();
+	}
+	step = platform_test_menu_step();
+	if (step < 0 || step == logged)
+		return;
+	logged = step;
+	for (focused = ui_widget_port_focused_widget(); focused && count < (int)NUMBEROF(widgets);
+		focused = focused->parent)
+		widgets[count++] = focused;
+	path[0] = 0;
+	while (count-- > 0 && used + 1 < sizeof(path))
+	{
+		int wrote = snprintf(path + used, sizeof(path) - used, "%s%s", used ? "/" : "",
+			menu_script_leaf(widgets[count]->name));
+
+		if (wrote < 0)
+			break;
+		used += (size_t)wrote;
+		if (used >= sizeof(path))
+			used = sizeof(path) - 1;
+	}
+	platform_log("menus: focus %d: %s: %s%s", step, menu_script_leaf(ui_widget_port_screen_name()), path,
+		virtual_keyboard_active() ? " (the keyboard)" : "");
+	if (platform_test_menu_done())
+	{
+		platform_log("menus: debug.test_input: done");
+		exit(EXIT_SUCCESS);
+	}
+}
+
 /* (each frame of the menus, as they update: ui_widget.c) */
 void menu_tour_update(
 	void)
@@ -114,6 +193,7 @@ void menu_tour_update(
 	long frames;
 	char name[64];
 
+	menu_script_update();
 	if (!menu_tour_read())
 		return;
 	frames = config_integer("debug.menu_tour_frames");

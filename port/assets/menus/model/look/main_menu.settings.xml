@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The look of ce/main_menu.settings.xml's widgets, for the menu engine (docs/menu_engine.md; tools/menu_look.py) -->
+<model>
+	<look name="main_menu/settings/header_settings" box="35 11 640 70" wide="-106 0" picture="main_menu/settings/header_settings"/>
+	<look name="main_menu/settings/tab_panel" box="388 104 612 400" wide="14 92" picture="main_menu/settings/tab_panel">
+		<at widget="main_menu/settings/panel_name" x="402" y="116"/>
+		<at widget="main_menu/settings/panel_value" x="402" y="130"/>
+		<at widget="main_menu/settings/panel_classic" x="400" y="156"/>
+		<at widget="main_menu/settings/panel_classic_frame" x="400" y="156"/>
+		<at widget="main_menu/settings/panel_classic_caption" x="400" y="218"/>
+		<at widget="main_menu/settings/panel_enhanced" x="504" y="156"/>
+		<at widget="main_menu/settings/panel_enhanced_frame" x="504" y="156"/>
+		<at widget="main_menu/settings/panel_enhanced_caption" x="504" y="218"/>
+		<at widget="main_menu/settings/panel_picture_fov" x="420" y="156"/>
+		<at widget="main_menu/settings/panel_picture_anti_aliasing" x="420" y="156"/>
+		<at widget="main_menu/settings/panel_picture_anti_aliasing_android" x="420" y="156"/>
+		<at widget="main_menu/settings/panel_picture_render_resolution" x="420" y="156"/>
+		<at widget="main_menu/settings/panel_picture_high_res_hud" x="420" y="156"/>
+		<at widget="main_menu/settings/panel_picture_hud_button_style" x="420" y="156"/>
+		<at widget="main_menu/settings/panel_picture_hdr_mode" x="420" y="156"/>
+		<at widget="main_menu/settings/panel_text" x="402" y="156"/>
+		<at widget="main_menu/settings/panel_note" x="402" y="360"/>
+	</look>
+	<look name="main_menu/settings/page_panel" box="388 80 612 400" wide="14 92" picture="main_menu/settings/page_panel">
+		<at widget="main_menu/settings/panel_name" x="402" y="92"/>
+		<at widget="main_menu/settings/panel_value" x="402" y="106"/>
+		<at widget="main_menu/settings/panel_classic" x="400" y="132"/>
+		<at widget="main_menu/settings/panel_classic_frame" x="400" y="132"/>
+		<at widget="main_menu/settings/panel_classic_caption" x="400" y="194"/>
+		<at widget="main_menu/settings/panel_enhanced" x="504" y="132"/>
+		<at widget="main_menu/settings/panel_enhanced_frame" x="504" y="132"/>
+		<at widget="main_menu/settings/panel_enhanced_caption" x="504" y="194"/>
+		<at widget="main_menu/settings/panel_picture_fov" x="420" y="132"/>
+		<at widget="main_menu/settings/panel_picture_anti_aliasing" x="420" y="132"/>
+		<at widget="main_menu/settings/panel_picture_anti_aliasing_android" x="420" y="132"/>
+		<at widget="main_menu/settings/panel_picture_render_resolution" x="420" y="132"/>
+		<at widget="main_menu/settings/panel_picture_high_res_hud" x="420" y="132"/>
+		<at widget="main_menu/settings/panel_picture_hud_button_style" x="420" y="132"/>
+		<at widget="main_menu/settings/panel_picture_hdr_mode" x="420" y="132"/>
+		<at widget="main_menu/settings/panel_text" x="402" y="132"/>
+		<at widget="main_menu/settings/panel_note" x="402" y="360"/>
+	</look>
+	<look name="main_menu/settings/panel_name" type="text" box="0 0 196 18" wide="0 92">
+		<text font="ui\small_ui" color="#FF6F9CD0"/>
+	</look>
+	<look name="main_menu/settings/panel_value" type="text" box="0 0 196 24" wide="0 92">
+		<text font="ui\large_ui" color="#FFFFFFFF"/>
+	</look>
+	<look name="main_menu/settings/panel_text" type="text" box="0 0 196 220" wide="0 92">
+		<text font="ui\small_ui" color="#FF2896FF"/>
+	</look>
+	<look name="main_menu/settings/panel_note" type="text" box="0 0 196 40" wide="0 92">
+		<text font="ui\small_ui" color="#FF6F9CD0"/>
+	</look>
+	<look name="main_menu/settings/panel_classic" box="0 0 96 60" wide="46 0" picture="main_menu/settings/graphics_classic"/>
+	<look name="main_menu/settings/panel_classic_frame" box="0 0 96 60" wide="46 0" picture="main_menu/settings/still_frame"/>
+	<look name="main_menu/settings/panel_classic_caption" type="text" box="0 0 96 18" wide="46 0">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" string_list="main_menu/settings/still_captions"/>
+	</look>
+	<look name="main_menu/settings/panel_enhanced" box="0 0 96 60" wide="46 0" picture="main_menu/settings/graphics_enhanced"/>
+	<look name="main_menu/settings/panel_enhanced_frame" box="0 0 96 60" wide="46 0" picture="main_menu/settings/still_frame"/>
+	<look name="main_menu/settings/panel_enhanced_caption" type="text" box="0 0 96 18" wide="46 0">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" string_list="main_menu/settings/still_captions" index="1"/>
+	</look>
+	<look name="main_menu/settings/panel_picture_fov" box="0 0 160 100" wide="46 0" picture="main_menu/settings/pictures_fov"/>
+	<look name="main_menu/settings/panel_picture_anti_aliasing" box="0 0 160 100" wide="46 0" picture="main_menu/settings/pictures_anti_aliasing"/>
+	<look name="main_menu/settings/panel_picture_anti_aliasing_android" box="0 0 160 100" wide="46 0" picture="main_menu/settings/pictures_anti_aliasing_android"/>
+	<look name="main_menu/settings/panel_picture_render_resolution" box="0 0 160 100" wide="46 0" picture="main_menu/settings/pictures_render_resolution"/>
+	<look name="main_menu/settings/panel_picture_high_res_hud" box="0 0 160 100" wide="46 0" picture="main_menu/settings/pictures_high_res_hud"/>
+	<look name="main_menu/settings/panel_picture_hud_button_style" box="0 0 160 100" wide="46 0" picture="main_menu/settings/pictures_hud_button_style"/>
+	<look name="main_menu/settings/panel_picture_hdr_mode" box="0 0 160 100" wide="46 0" picture="main_menu/settings/pictures_hdr_mode"/>
+	<look name="main_menu/settings/settings_creating_profile"/>
+	<look name="main_menu/settings/settings_saving_profile">
+		<at widget="error/warning_creating_player_profile_screen" x="0" y="0"/>
+	</look>
+	<look name="main_menu/settings/tab_prompt_previous" type="text" box="0 0 30 22" wide="-106 0">
+		<text font="ui\small_ui" color="#FF2896FF" at="2 2" text="%white-button"/>
+	</look>
+	<look name="main_menu/settings/tab_prompt_next" type="text" box="0 0 30 22" wide="106 0">
+		<text font="ui\small_ui" color="#FF2896FF" at="2 2" text="%black-button"/>
+	</look>
+	<look name="main_menu/settings/stepped_left" box="0 0 16 16" wide="120 0" picture="bitmaps/arrow_sm_left"/>
+	<look name="main_menu/settings/stepped_right" box="0 0 16 16" wide="120 0" picture="bitmaps/arrow_sm_right"/>
+</model>

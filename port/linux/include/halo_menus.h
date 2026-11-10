@@ -152,7 +152,8 @@ struct halo_menus
 };
 
 /* ---------- the menu engine's model (port/assets/menus/model, written by
-tools/port_settings.py: docs/menu_engine.md), read by menu_model.c */
+tools/port_settings.py and tools/menu_look.py: docs/menu_engine.md), read by
+menu_model.c */
 
 /* the model's files' folder, beside the menus' (whose reading skips it) */
 #define HALO_MENU_MODEL_FOLDER "model/"
@@ -201,6 +202,34 @@ struct halo_menu_model_geometry
 		rows_bottom, spinner_x, spinner_width;
 };
 
+/* where a widget's child is in it (a look's <at>) */
+struct halo_menu_model_place
+{
+	char const *widget;
+	long x, y;
+};
+
+/* a widget's look (model/look, written by tools/menu_look.py): its type,
+its box (x0 y0 x1 y1 in its parent's units; 0 0 640 480 if has_box is 0),
+its wide layout ("dx dw"), its place and effect flags (as the widgets' flags
+name them), its picture and its corners' radius, its list's flags, header
+and footer; its text (has_text: a <text>) and its text's style; and its
+children's places, from first_place. Names are the menus' (a <bitmap>, a
+<strings>, a widget), or a map's tag with a backslash */
+struct halo_menu_model_look
+{
+	char const *name, *type, *wide, *place, *picture, *effects, *list, *header, *footer;
+	long box[4], header_box[4], footer_box[4];
+	long has_box, has_header_box, has_footer_box;
+	long radius;
+	long has_text;
+	char const *font, *color, *align, *text_flags, *string_list, *text, *items, *replace;
+	long text_x, text_y, string_index;
+	long first_place, place_count;
+	char const *file;
+	long line;
+};
+
 struct halo_menu_model
 {
 	struct halo_menu_model_geometry geometry;
@@ -210,11 +239,17 @@ struct halo_menu_model
 	long row_count;
 	struct halo_menu_model_choice *choices;
 	long choice_count;
+	struct halo_menu_model_look *looks;
+	long look_count;
+	struct halo_menu_model_place *places;
+	long place_count;
 };
 
 /* the model, read from its files once the menus are (halo_menus_load);
 NULL if there is none or a file has a problem (logged) */
 struct halo_menu_model const *halo_menus_model(void);
+/* a widget's look in the model by its name, NULL if it has none */
+struct halo_menu_model_look const *halo_menus_model_look(struct halo_menu_model const *model, char const *name);
 /* the model read again by the next halo_menus_model (halo_menus_reload's) */
 void halo_menus_model_forget(void);
 /* a file gathered for the menus (halo_menus_load's): its path and data,
