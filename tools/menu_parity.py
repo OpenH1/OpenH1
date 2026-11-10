@@ -301,9 +301,15 @@ def sweep_scripts() -> list:
             for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS) if not SWEEP_SKIP.search(screen.name)]
 
 
+# the host's warning of a stalled thread (port/android/host/host_stall.c), which a busy computer's runs print, written
+# into the middle of the game's line of the focus: not the game's
+HOST_STALL = re.compile(r"halo-host: warning: stall: .*$")
+
+
 def focus_path(text: str) -> list:
     """where the focus was after each second of a run's script (menu_tour.c's "menus: focus" lines)"""
-    return [line.split("menus: focus ", 1)[1] for line in text.splitlines() if "menus: focus " in line]
+    return [HOST_STALL.sub("", line.split("menus: focus ", 1)[1]) for line in text.splitlines()
+            if "menus: focus " in line]
 
 
 def profile_digests(saves: Path) -> dict:
