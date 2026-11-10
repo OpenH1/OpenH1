@@ -15,7 +15,7 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/op_insults" x="28" y="189"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/button_bar" x="0" y="414"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/button_bar" type="column_list" box="0 0 640 28">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/button_bar" role="buttons" type="column_list" box="0 0 640 28">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/button_defaults" x="24" y="1"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/button_ok" x="358" y="1"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/button_cancel" x="488" y="1"/>

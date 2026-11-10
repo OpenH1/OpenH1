@@ -27,7 +27,7 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/button_bar" x="0" y="414"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/tabs" x="0" y="76"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/button_bar" type="column_list" box="0 0 640 28">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/button_bar" role="buttons" type="column_list" box="0 0 640 28">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/button_defaults" x="24" y="1"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/button_ok" x="358" y="1"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/button_cancel" x="488" y="1"/>
@@ -53,7 +53,7 @@
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/tab_mods_settings" type="text" box="0 0 57 22" wide="106 0" place="keep_ends" picture="main_menu/settings/tab">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="6"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/tabs" type="column_list" box="0 0 640 22">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/tabs" role="tabs" type="column_list" box="0 0 640 22">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/tab_video_settings" x="56" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/tab_audio_settings" x="117" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/tab_mouse_settings" x="180" y="0"/>

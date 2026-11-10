@@ -2037,6 +2037,7 @@ panel says how to set them */
 boolean viewmodel_held_weapon(short local_player_index, char *path, unsigned int size);
 static void discord_text_set(struct widget_instance *text_box, char const *text);
 static boolean settings_row_is(struct widget_instance const *row, char const *key);
+static struct widget_instance *settings_part(struct widget_instance *widget, char const *role);
 
 /* a row of the list's screen's model, by its key: its widget (op_<key>),
 NULL if the model has not the row or the screen not its widget (its
@@ -2756,7 +2757,7 @@ static void settings_focus_shown(struct widget_instance *list)
 /* the tabs' focus, while they have not the list's, on the tab shown */
 static void settings_tabs_show(struct widget_instance *list, short tab)
 {
-	struct widget_instance *tabs = named(list, "tabs", 0);
+	struct widget_instance *tabs = settings_part(list, "tabs");
 	struct widget_instance *item;
 	short index = 0;
 
@@ -2832,6 +2833,34 @@ static wchar_t const *settings_model_text(char const *text, short buffer)
 		return NULL;
 	halo_menus_utf16(text, (unsigned short *)texts[buffer], SETTINGS_PANEL_TEXT_LENGTH);
 	return texts[buffer];
+}
+
+/* the widget's descendant of the role in its look (model/look's role=,
+tools/port_settings.py's settings_look_roles: Settings' tabs and button
+bar, the panel's parts), NULL if none */
+static struct widget_instance *settings_part(struct widget_instance *widget, char const *role)
+{
+	struct widget_instance *child;
+
+	for (child = widget ? widget->child : NULL; child; child = child->next)
+	{
+		char const *found = menu_engine_look_role(child);
+		struct widget_instance *part;
+
+		if (found && !strcmp(found, role))
+			return child;
+		if ((part = settings_part(child, role)) != NULL)
+			return part;
+	}
+	return NULL;
+}
+
+/* whether the widget is of the role in its look */
+static boolean settings_is_part(struct widget_instance const *widget, char const *role)
+{
+	char const *found = menu_engine_look_role(widget);
+
+	return found && !strcmp(found, role);
 }
 
 /* whether a row is the model's row of the key (on its screen) */
@@ -3526,11 +3555,11 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	short still = NONE, length, lines, note_lines, line = 12, index;
 	boolean stills = FALSE, picture = FALSE;
 	struct widget_instance *row_spinner = NULL;
-	char const *const stills_names[] = { "panel_classic", "panel_enhanced" };
+	char const *const still_names[] = { "classic", "enhanced" };
 
 	if (!panel || !row || !row->name)
 		return;
-	if (!strcmp(row->name, "tabs") && row->focused_child)
+	if (settings_is_part(row, "tabs") && row->focused_child)
 	{
 		/* (a tab's name and words: its screen's in the model) */
 		struct halo_menu_model_screen const *shown = settings_tab_screen(sibling_index(row->focused_child));
@@ -3539,7 +3568,7 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		settings_wide_copy(value, settings_model_text(shown ? shown->tab : NULL, 0), ROW_TEXT_LENGTH);
 		help = settings_model_text(shown ? shown->about : NULL, 1);
 	}
-	else if (!strcmp(row->name, "button_bar") && row->focused_child)
+	else if (settings_is_part(row, "buttons") && row->focused_child)
 	{
 		/* (a button's words: the screen's button's in the model, the
 		index'th) */
@@ -3653,13 +3682,13 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	}
 	if (*bar)
 		*bar++ = 0;
-	text_set_length(named(panel, "panel_name", 0), name, ROW_TEXT_LENGTH);
-	text_set_length(named(panel, "panel_value", 0), value, ROW_TEXT_LENGTH);
+	text_set_length(settings_part(panel, "panel name"), name, ROW_TEXT_LENGTH);
+	text_set_length(settings_part(panel, "panel value"), value, ROW_TEXT_LENGTH);
 	/* (wrapped in the text boxes' fonts, taken from their definitions in the
 	map loaded now: a font's tag index is not kept, as the next map's tags
 	are numbered again) */
-	text = named(panel, "panel_text", 0);
-	note = named(panel, "panel_note", 0);
+	text = settings_part(panel, "panel text");
+	note = settings_part(panel, "panel note");
 	text_font = ui_widget_port_text_box_font(text, &text_width);
 	note_font = ui_widget_port_text_box_font(note, &note_width);
 	lines = settings_text_wrap(words, wrapped, SETTINGS_PANEL_TEXT_LENGTH, text_font, text_width);
@@ -3684,9 +3713,9 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	inside the panel, whatever the screen's width: the pictures left out if
 	the words do not fit under them, then the note, then the words' last
 	lines) */
-	if (text && named(panel, "panel_name", 0))
+	if (text && settings_part(panel, "panel name"))
 	{
-		short name_top = named(panel, "panel_name", 0)->vertical_offset;
+		short name_top = settings_part(panel, "panel name")->vertical_offset;
 		short room = (short)(SETTINGS_PANEL_BOTTOM - SETTINGS_PANEL_TEXT_MARGIN - name_top);
 		short top = stills ? SETTINGS_PANEL_TEXT_UNDER_STILLS : picture ? SETTINGS_PANEL_TEXT_UNDER_PICTURE :
 			SETTINGS_PANEL_TEXT_TOP;
@@ -3713,19 +3742,20 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		note->vertical_offset = (short)(text->vertical_offset + lines * line + line / 2);
 	for (index = 0; index < 2; index++)
 	{
-		char frame_name[32];
+		char role[32];
 		struct widget_instance *widget;
 
-		if ((widget = named(panel, stills_names[index], 0)) != NULL)
+		snprintf(role, sizeof(role), "still %s", still_names[index]);
+		if ((widget = settings_part(panel, role)) != NULL)
 			widget->visible = stills;
-		snprintf(frame_name, sizeof(frame_name), "%s_frame", stills_names[index]);
-		if ((widget = named(panel, frame_name, 0)) != NULL)
+		snprintf(role, sizeof(role), "still %s frame", still_names[index]);
+		if ((widget = settings_part(panel, role)) != NULL)
 		{
 			widget->visible = stills;
 			widget->animation.current_frame_index = (short)(still == index);
 		}
-		snprintf(frame_name, sizeof(frame_name), "%s_caption", stills_names[index]);
-		if ((widget = named(panel, frame_name, 0)) != NULL)
+		snprintf(role, sizeof(role), "still %s caption", still_names[index]);
+		if ((widget = settings_part(panel, role)) != NULL)
 			widget->visible = stills;
 	}
 }

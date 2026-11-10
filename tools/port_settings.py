@@ -3493,6 +3493,22 @@ SETUP_NODE_SCREENS = [*SETUP_NODE_WHEN, f"{SS}/voice_options/voice_options_scree
                       f"{TEAMPLAY_EDIT}/teamplay_options_screen"]
 
 
+def settings_look_roles() -> dict:
+    """the Settings screens' widgets that menu_functions.c finds by what they are, their role in their look
+    (model/look's role=, written by tools/menu_look.py), by their names: each tab's or page's tabs and button bar,
+    and the panel's name, value, words, note and Quality's two stills (each with its frame and caption)"""
+    roles = {f"{SETTINGS}/panel_{part}": f"panel {part}" for part in ("name", "value", "text", "note")}
+    for still in ("classic", "enhanced"):
+        roles[f"{SETTINGS}/panel_{still}"] = f"still {still}"
+        for part in ("frame", "caption"):
+            roles[f"{SETTINGS}/panel_{still}_{part}"] = f"still {still} {part}"
+    for folder, page in [*PAGES.items(), *SCREENS.items()]:
+        if "tab" in page:
+            roles[f"{PE}/{folder}/tabs"] = "tabs"
+        roles[f"{PE}/{folder}/button_bar"] = "buttons"
+    return roles
+
+
 def lobby_column_x(column: int) -> int:
     """a team's column's left (red's, blue's)"""
     return LOBBY_LIST_X + column * (LOBBY_COLUMN_WIDTH + LOBBY_COLUMN_GAP)

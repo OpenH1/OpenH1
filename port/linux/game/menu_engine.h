@@ -91,6 +91,9 @@ struct halo_menu_model_row;
 struct halo_menu_model const *menu_engine_model(void);
 struct halo_menu_model_screen const *menu_engine_model_screen_of(struct widget_instance const *widget);
 struct halo_menu_model_row const *menu_engine_model_row_of(struct widget_instance const *row);
+/* a widget's role in its look in the model (model/look's role=: what the
+game's code finds it by), NULL if it has none */
+char const *menu_engine_look_role(struct widget_instance const *widget);
 
 /* whether the engine lays out what is in the widget (a settings tab's or
 page's rows) from the model */

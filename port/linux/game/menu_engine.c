@@ -842,6 +842,19 @@ struct halo_menu_model_screen const *menu_engine_model_screen_of(struct widget_i
 	return widget ? engine_model_screen(widget->definition_tag_index) : NULL;
 }
 
+char const *menu_engine_look_role(struct widget_instance const *widget)
+{
+	struct halo_menu_model_look const *look;
+	char name[256];
+
+	if (!engine.model)
+		engine.model = halo_menus_model();
+	if (!widget || !engine.model || !engine_widget_name(widget->definition_tag_index, name, sizeof(name)))
+		return NULL;
+	look = halo_menus_model_look(engine.model, name);
+	return look ? look->role : NULL;
+}
+
 struct halo_menu_model_row const *menu_engine_model_row_of(struct widget_instance const *row)
 {
 	if (!row || !row->name || strncmp(row->name, "op_", 3))

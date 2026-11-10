@@ -225,6 +225,10 @@ children's places, from first_place. Names are the menus' (a <bitmap>, a
 struct halo_menu_model_look
 {
 	char const *name, *type, *wide, *place, *picture, *effects, *list, *header, *footer;
+	/* (what the widget is to the game's code, which finds it by it: "tabs",
+	"buttons", "panel name", ...; tools/port_settings.py's
+	settings_look_roles) */
+	char const *role;
 	long box[4], header_box[4], footer_box[4];
 	long has_box, has_header_box, has_footer_box;
 	long radius;

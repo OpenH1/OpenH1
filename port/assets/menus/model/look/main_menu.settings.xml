@@ -40,26 +40,26 @@
 		<at widget="main_menu/settings/panel_text" x="402" y="132"/>
 		<at widget="main_menu/settings/panel_note" x="402" y="360"/>
 	</look>
-	<look name="main_menu/settings/panel_name" type="text" box="0 0 196 18" wide="0 92">
+	<look name="main_menu/settings/panel_name" role="panel name" type="text" box="0 0 196 18" wide="0 92">
 		<text font="ui\small_ui" color="#FF6F9CD0"/>
 	</look>
-	<look name="main_menu/settings/panel_value" type="text" box="0 0 196 24" wide="0 92">
+	<look name="main_menu/settings/panel_value" role="panel value" type="text" box="0 0 196 24" wide="0 92">
 		<text font="ui\large_ui" color="#FFFFFFFF"/>
 	</look>
-	<look name="main_menu/settings/panel_text" type="text" box="0 0 196 220" wide="0 92">
+	<look name="main_menu/settings/panel_text" role="panel text" type="text" box="0 0 196 220" wide="0 92">
 		<text font="ui\small_ui" color="#FF2896FF"/>
 	</look>
-	<look name="main_menu/settings/panel_note" type="text" box="0 0 196 40" wide="0 92">
+	<look name="main_menu/settings/panel_note" role="panel note" type="text" box="0 0 196 40" wide="0 92">
 		<text font="ui\small_ui" color="#FF6F9CD0"/>
 	</look>
-	<look name="main_menu/settings/panel_classic" box="0 0 96 60" wide="46 0" picture="main_menu/settings/graphics_classic"/>
-	<look name="main_menu/settings/panel_classic_frame" box="0 0 96 60" wide="46 0" picture="main_menu/settings/still_frame"/>
-	<look name="main_menu/settings/panel_classic_caption" type="text" box="0 0 96 18" wide="46 0">
+	<look name="main_menu/settings/panel_classic" role="still classic" box="0 0 96 60" wide="46 0" picture="main_menu/settings/graphics_classic"/>
+	<look name="main_menu/settings/panel_classic_frame" role="still classic frame" box="0 0 96 60" wide="46 0" picture="main_menu/settings/still_frame"/>
+	<look name="main_menu/settings/panel_classic_caption" role="still classic caption" type="text" box="0 0 96 18" wide="46 0">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" string_list="main_menu/settings/still_captions"/>
 	</look>
-	<look name="main_menu/settings/panel_enhanced" box="0 0 96 60" wide="46 0" picture="main_menu/settings/graphics_enhanced"/>
-	<look name="main_menu/settings/panel_enhanced_frame" box="0 0 96 60" wide="46 0" picture="main_menu/settings/still_frame"/>
-	<look name="main_menu/settings/panel_enhanced_caption" type="text" box="0 0 96 18" wide="46 0">
+	<look name="main_menu/settings/panel_enhanced" role="still enhanced" box="0 0 96 60" wide="46 0" picture="main_menu/settings/graphics_enhanced"/>
+	<look name="main_menu/settings/panel_enhanced_frame" role="still enhanced frame" box="0 0 96 60" wide="46 0" picture="main_menu/settings/still_frame"/>
+	<look name="main_menu/settings/panel_enhanced_caption" role="still enhanced caption" type="text" box="0 0 96 18" wide="46 0">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" string_list="main_menu/settings/still_captions" index="1"/>
 	</look>
 	<look name="main_menu/settings/panel_picture_fov" box="0 0 160 100" wide="46 0" picture="main_menu/settings/pictures_fov"/>
