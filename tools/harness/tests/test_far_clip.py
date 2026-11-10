@@ -27,6 +27,12 @@ CONTROLS = [
 ]
 
 
+def _model_slider(key: str) -> str:
+    """the model's slider row of the key (port/assets/menus/model, which menu_functions.c's sliders are made from):
+    its element's line"""
+    model = read("port/assets/menus/model/settings.xml")
+    return next(line for line in model.splitlines() if f'<row key="{key}" kind="slider"' in line)
+
 def generated(fault=None):
     code = read("port/linux/game/far_clip.c")
     text = "\n".join(re.findall(r"^#define DRAW_DISTANCE_\w+ .*$", code, re.M)) + "\n" + \
@@ -71,7 +77,8 @@ def test_the_marks_keep_their_fade():
 def test_the_setting():
     config = read("port/linux/src/port_config.c")
     assert '{ "display.draw_distance", _config_real, "1024.0", "HALO_DRAW_DISTANCE",' in config
-    menu = read("port/linux/game/menu_functions.c")
-    assert '{ "op_draw_distance", "display.draw_distance", 1024.0, 10000.0, 1.0, 1024.0, 10000.0, TRUE,' in menu
+    row = _model_slider("draw_distance")
+    assert 'setting="display.draw_distance"' in row
+    assert 'least="1024" most="10000" step="1" typed_least="1024" typed_most="10000" whole="true"' in row
     code = read("port/linux/game/far_clip.c")
     assert "#define DRAW_DISTANCE_LEAST 1024.0" in code and "#define DRAW_DISTANCE_MOST 10000.0" in code
