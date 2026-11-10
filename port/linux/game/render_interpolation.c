@@ -401,9 +401,11 @@ struct interpolated_camera
 	double previous_time;
 	double latest_time;
 	/* ... a cut from the snapshot before to each of the last two
-	(observer_timed_cut) */
+	(observer_timed_cut), and how far a tick the view last moved between
+	two snapshots with no cut between them (0: not since it began) */
 	boolean cut_to_previous;
 	boolean cut_to_latest;
+	real speed;
 };
 
 /* a local player's vehicle's last three steps (render_interpolation_newest_
@@ -4466,28 +4468,33 @@ static boolean observer_cut(
 }
 
 /* A cut between two snapshots of a view that moves in the frames' time
-(render_interpolation_camera_timed), taken at their times (ticks), and
-the one before them if any. Its snapshots are as far apart as the frames
-that took them, a tick or more, and a cutscene's fast camera (d40's flight
-after the Longsword, c40's) moves nearly the distance of a cut in a tick:
-judged as the player's views are, two snapshots a little more than a tick
-apart were a cut, drawn from the latest, a tick ahead of the world, and the
-next not, so that the camera jumped ahead a tick's flight and back at
-random ticks uncapped, and after any long frame (#805). It is a cut only
-if it turned as far as a cut does, or moved further than a cut's distance
-in a tick, and further from where its last move carried on would have
-put it (so that a camera set to another point, or a cut from a moving
-camera, is still one) */
+(render_interpolation_camera_timed), taken at their times (ticks). Its
+snapshots are as far apart as the frames that took them, a tick or more,
+and a cutscene's fast camera (d40's flight after the Longsword, c40's)
+moves nearly the distance of a cut in a tick, or further: judged as the
+player's views are, two snapshots a little more than a tick apart were a
+cut, drawn from the latest, a tick ahead of the world, and the next not,
+so that the camera jumped ahead a tick's flight and back at random ticks
+uncapped, and after any long frame (#805). It is a cut if it turned as
+far as a cut does; or if it moved further than a cut's distance a tick
+and, from the snapshot before (earlier, when no cut came between them),
+further than a cut's distance from where its last move carried on would
+have put it, or, with no such move to carry on (the first after a cut),
+further than the view's last speed takes it besides: a camera set to
+another point, or a cut from a moving camera, is still one, and a fast
+camera's first move after a cut is not */
 static boolean observer_timed_cut(
 	struct observer_result const *earlier,
 	double earlier_time,
+	real speed,
 	struct observer_result const *a,
 	double a_time,
 	struct observer_result const *b,
 	double b_time)
 {
 	double apart = b_time - a_time;
-	real reach = CAMERA_CUT_DISTANCE * (real)(apart > 1.0 ? apart : 1.0);
+	real ticks = (real)(apart > 1.0 ? apart : 1.0);
+	real reach = CAMERA_CUT_DISTANCE * ticks;
 	real_point3d expected;
 	real carried;
 
@@ -4497,7 +4504,10 @@ static boolean observer_timed_cut(
 	if (distance_squared(&a->position, &b->position) <= reach * reach)
 		return FALSE;
 	if (!earlier || !(a_time > earlier_time))
-		return TRUE;
+	{
+		reach += speed * ticks;
+		return !(distance_squared(&a->position, &b->position) <= reach * reach);
+	}
 	carried = (real)(apart / (a_time - earlier_time));
 	expected.x = a->position.x + (a->position.x - earlier->position.x) * carried;
 	expected.y = a->position.y + (a->position.y - earlier->position.y) * carried;
@@ -4819,9 +4829,16 @@ static struct observer_result const *render_interpolation_blended_camera(
 		camera->latest_time = timed ? now : (double)interpolation_tick;
 		camera->timed = timed;
 		camera->cut_to_previous = camera->cut_to_latest;
+		if (!camera->has_previous)
+			camera->speed = 0.0f;
 		camera->cut_to_latest = camera->has_previous && observer_timed_cut(
-			camera->has_before ? &camera->before : NULL, camera->before_time,
-			&camera->previous, camera->previous_time, &camera->latest, camera->latest_time);
+			camera->has_before && !camera->cut_to_previous ? &camera->before : NULL, camera->before_time,
+			camera->speed, &camera->previous, camera->previous_time, &camera->latest, camera->latest_time);
+		if (camera->has_previous && !camera->cut_to_latest && camera->latest_time > camera->previous_time)
+		{
+			camera->speed = (real)sqrt(distance_squared(&camera->previous.position, &camera->latest.position)) /
+				(real)(camera->latest_time - camera->previous_time);
+		}
 		if (substep_unit_index != NONE)
 			render_interpolation_camera_at_tick(substep_unit_index, &camera->latest);
 		if (substep_vehicle_index != NONE)
@@ -4863,9 +4880,26 @@ static struct observer_result const *render_interpolation_blended_camera(
 
 		if (drawn_time < from_time && camera->has_before)
 		{
+			/* (after a cut, the shot cut to, carried back along its first
+			move from the snapshot after the cut to the moment drawn, no
+			further back than a tick, nor than the snapshot before the
+			cut, after which the cut came: not held still at that
+			snapshot until the moment drawn reaches it, a long frame's
+			stall) */
 			if (camera->cut_to_previous)
 			{
+				double back_to = drawn_time > camera->before_time ? drawn_time : camera->before_time;
+
+				if (back_to < camera->previous_time - 1.0)
+					back_to = camera->previous_time - 1.0;
+
 				camera->blended = camera->previous;
+				if (camera->latest_time > camera->previous_time)
+				{
+					observer_blend(&camera->previous, &camera->latest,
+						(real)((back_to - camera->previous_time) / (camera->latest_time - camera->previous_time)),
+						&camera->blended);
+				}
 				return &camera->blended;
 			}
 			from = &camera->before;

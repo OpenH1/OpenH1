@@ -82,6 +82,10 @@ NEGATIVE_CONTROLS = {
     "scripted-camera-cut-glides": (("\treturn !(distance_squared(&expected, &b->position) <= CAMERA_CUT_DISTANCE * "
                                     "CAMERA_CUT_DISTANCE);",
                                     "\treturn FALSE;"), "scripted_camera_cut"),
+    # ... or a fast camera's first move after a cut (faster than a cut's distance a tick, with no move since the cut to
+    # carry on) taken for another cut: drawn from the latest, a tick ahead
+    "scripted-camera-cut-twice": (("\t\treach += speed * ticks;", "\t\treach += 0.0f * ticks;"),
+                                  "scripted_camera_cut"),
     # a part moving steadily further than a limb moves in a tick taken for a new pose each tick: drawn stepping
     "steady-part-snaps": (("NODE_SNAP_DISTANCE + (steady ? NODE_STEADY_GROWTH * moves_before[node_index] : 0.0f)",
                            "NODE_SNAP_DISTANCE"), "steady_part"),
@@ -220,11 +224,31 @@ def test_case(case):
     assert status == 0, output
 
 
+# the cases whose frames come at times drawn from a seed, run from many seeds (the test's own generator: the same
+# frames on every system), so that a rare frame timing cannot pass on one machine and fail on another
+SEEDED = ["scripted_camera", "scripted_camera_120", "scripted_camera_fast", "scripted_camera_fast_120",
+          "scripted_camera_cut"]
+SEEDS = 200
+
+
+@pytest.mark.parametrize("case", SEEDED)
+def test_case_seeds(case):
+    executable = build("render_substeps", generated())
+    for seed in range(1, SEEDS + 1):
+        status, output = run(executable, f"{case}@{seed}")
+        assert status == 0, f"seed {seed}: {output}"
+
+
 @pytest.mark.parametrize("control", NEGATIVE_CONTROLS)
 def test_negative_control(control):
     fault, case = NEGATIVE_CONTROLS[control]
-    status, output = run(build("render_substeps", generated(fault)), case)
-    assert status == CHECK_FAILED, f"the code with a fault ({control}) passed '{case}': the test cannot see it"
+    executable = build("render_substeps", generated(fault))
+    # (a seeded case's fault seen from any of its seeds: some faults show only at some frames' timings)
+    for name in [f"{case}@{seed}" for seed in range(1, SEEDS + 1)] if case in SEEDED else [case]:
+        status, output = run(executable, name)
+        if status == CHECK_FAILED:
+            return
+    assert False, f"the code with a fault ({control}) passed '{case}': the test cannot see it"
 
 
 def test_registered_last():

@@ -328,9 +328,21 @@ static real_point3d biped_on_line(void)
 		&biped_positions[tick][fake_substep_count - 1], fake_fraction);
 }
 
+/* the frames' times drawn by the test's own generator (xorshift32), not the C library's rand(), whose numbers
+differ from system to system: a case draws the same frames everywhere, from the seed it is run with */
+static unsigned long random_state = 7;
+
+static void random_seed(unsigned long seed)
+{
+	random_state = (seed & 0xFFFFFFFFUL) ? (seed & 0xFFFFFFFFUL) : 7;
+}
+
 static real random_part(void)
 {
-	return (real)(rand() % 1000) / 1000.0f;
+	random_state ^= (random_state << 13) & 0xFFFFFFFFUL;
+	random_state ^= random_state >> 17;
+	random_state ^= (random_state << 5) & 0xFFFFFFFFUL;
+	return (real)(random_state % 1000) / 1000.0f;
 }
 
 /* the observer as the main loop has it after the frame's sub-steps: the biped's eye, now */
@@ -859,6 +871,9 @@ static void scripted_camera_case(short substep_count, double speed, double cut)
 
 		/* (the next frame's moment: some frames close together, some more than a tick apart) */
 		moment += frame % 7 == 3 ? 1.0 + 0.6 * random_part() : 0.05 + 0.4 * random_part();
+		/* (as many ticks as the world keeps) */
+		if (moment > (double)(MAXIMUM_TICKS - 4))
+			break;
 		while ((double)(ticks_ended * substep_count + substeps_run + 1) <= moment * substep_count)
 			world_substep();
 		frame_begin((real)(moment * substep_count - (double)(ticks_ended * substep_count + substeps_run)));
@@ -971,8 +986,20 @@ static void steady_part_case(void)
 
 int main(int argc, char **argv)
 {
-	CHECK(argc == 2, "usage: %s <case>", argv[0]);
-	srand(7);
+	char name[64];
+	char *at;
+
+	CHECK(argc == 2, "usage: %s <case>[@<seed>]", argv[0]);
+	/* (<case>@<seed>: the frames drawn from another seed) */
+	snprintf(name, sizeof(name), "%s", argv[1]);
+	at = strchr(name, '@');
+	random_seed(7);
+	if (at)
+	{
+		*at = 0;
+		random_seed(strtoul(at + 1, NULL, 10));
+	}
+	argv[1] = name;
 	if (!strcmp(argv[1], "classic"))
 		case_classic();
 	else if (!strcmp(argv[1], "substeps"))
