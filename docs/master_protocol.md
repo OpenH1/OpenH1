@@ -68,11 +68,14 @@ checks), since anyone can make signatures that verify under one.
 `masters.txt` (the one beside `config.toml`, else the one beside the
 executable) lists the masters, one per line:
 `https://master1.example.org ed25519:<64 hex>`; `#` starts a comment; the
-first 4 are used. A file that names none (missing, empty, or comments alone,
-as the release's) leaves the official master, built into the game
-(`master_list_read_defaults` in `port/linux/src/master_list.c`) and the web
-page (`servers.js`):
+first 4 are used. The release's names OpenH1's master and OpenCE's
+official master; a file that names none (missing, empty, or comments alone)
+leaves the same two, built into the game (`master_list_read_defaults` in
+`port/linux/src/master_list.c`):
+`https://master.goath1.com ed25519:120f7635fe754e327cae95480d847aa57b8b23a9bb362b3d6080bfdd21399684`
+(`deploy/net`) and
 `https://master.opencommunityedition.com ed25519:89f4eda71229f11f3538679f49ef7fb0c2b407b380093f7f4fe02105b92225aa`.
+A file that names any master is asked instead of them.
 The web build reads its site's `masters.json` before the official master. The URL is an origin with no path, or a path
 the master is served under as it is (a proxy must not rewrite paths, since
 the path is signed).

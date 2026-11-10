@@ -890,21 +890,24 @@ int main(int argc, char **argv)
 	{
 		char urls[MASTER_LIST_MAXIMUM_MASTERS][MASTER_LIST_URL_SIZE];
 		unsigned char keys[MASTER_LIST_MAXIMUM_MASTERS][MASTER_LIST_KEY_SIZE];
-		unsigned char official[32];
+		unsigned char official[32], own[32];
 		static const char *const none[] = { NULL, "", "# comments alone\n\n#https://master1.example.org\n",
 			"https://master1.example.org ed25519:abc\n" };
 		static char named[256];
 		int index;
 
 		key_of("89f4eda71229f11f3538679f49ef7fb0c2b407b380093f7f4fe02105b92225aa", official);
+		key_of("120f7635fe754e327cae95480d847aa57b8b23a9bb362b3d6080bfdd21399684", own);
 		for (index = 0; index < (int)(sizeof(none) / sizeof(none[0])); index++)
 		{
 			file_masters = none[index];
 			memset(urls, 0, sizeof(urls));
-			CHECK(master_list_read("masters.txt", urls, keys, MASTER_LIST_MAXIMUM_MASTERS) == 1 &&
-				!strcmp(urls[0], "https://master.opencommunityedition.com"),
-				"masters.txt %d naming none: %s", index, urls[0]);
-			CHECK(!memcmp(keys[0], official, 32), "the official master's key is %s", hex_of(keys[0], 32));
+			CHECK(master_list_read("masters.txt", urls, keys, MASTER_LIST_MAXIMUM_MASTERS) == 2 &&
+				!strcmp(urls[0], "https://master.goath1.com") &&
+				!strcmp(urls[1], "https://master.opencommunityedition.com"),
+				"masters.txt %d naming none: %s, %s", index, urls[0], urls[1]);
+			CHECK(!memcmp(keys[0], own, 32), "the project's master's key is %s", hex_of(keys[0], 32));
+			CHECK(!memcmp(keys[1], official, 32), "OpenCE's master's key is %s", hex_of(keys[1], 32));
 		}
 		snprintf(named, sizeof(named), "https://master1.example.org %s\n", VECTOR_MASTER_PUBLIC_KEY_TEXT);
 		file_masters = named;

@@ -264,7 +264,9 @@ static int master_keep(const char *url, const char *key, char (*urls)[MASTER_LIS
 }
 
 /* the official master servers, asked when masters.txt names none (it is
-missing, empty or has comments alone) */
+missing, empty or has comments alone, or the build brings none: Android,
+macOS, iOS, the Steam Frame's): the project's own (deploy/net), then
+OpenCE's, as port/assets/network/masters.txt names them */
 int master_list_read_defaults(char (*urls)[MASTER_LIST_URL_SIZE], unsigned char (*keys)[MASTER_LIST_KEY_SIZE],
 	int maximum)
 {
@@ -274,6 +276,8 @@ int master_list_read_defaults(char (*urls)[MASTER_LIST_URL_SIZE], unsigned char 
 		const char *key;
 	} masters[] =
 	{
+		{ "https://master.goath1.com",
+			"ed25519:120f7635fe754e327cae95480d847aa57b8b23a9bb362b3d6080bfdd21399684" },
 		{ "https://master.opencommunityedition.com",
 			"ed25519:89f4eda71229f11f3538679f49ef7fb0c2b407b380093f7f4fe02105b92225aa" },
 	};

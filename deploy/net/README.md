@@ -1,4 +1,4 @@
-# net.goath1.com: the project's broker and relay
+# net.goath1.com: the project's broker, relay and master server
 
 One small server carries what internet play needs from the project:
 
@@ -11,7 +11,11 @@ One small server carries what internet play needs from the project:
 - **a relay** on UDP 2302 (`halo --relay`, `docs/dedicated_server.md`,
   "Relays"), in `port/assets/network/relays.txt` and the game's
   `DEFAULT_RELAYS` (`port/linux/src/master_list.c`), for two machines whose
-  NATs keep them apart.
+  NATs keep them apart;
+- **a master server** at `https://master.goath1.com` (opence-master, behind
+  Caddy on TCP 80 and 443), first in `port/assets/network/masters.txt` and
+  `master_list_read_defaults` (`port/linux/src/master_list.c`): it lists
+  dedicated servers of approved operators ("The master server", below).
 
 The other brokers in the list (OpenCE's `opence.milenko.org`, which OpenCE's
 players use, and a public one) carry the same messages, so the game goes on
@@ -19,8 +23,9 @@ if this server is down.
 
 The server: a Hetzner Cloud CPX11 (2 vCPU, 2 GB) in Ashburn, Ubuntu 24.04,
 `goath1-net-ash`; `net.goath1.com` has its A and AAAA records (DNS only, not
-proxied). Its Hetzner Cloud firewall (`goath1-net`) lets in only TCP 1883,
-UDP 2302 and ICMP from the internet.
+proxied), and so has `master.goath1.com`. Its Hetzner Cloud firewall
+(`goath1-net`) lets in only TCP 1883, UDP 2302, TCP 80 and 443, and ICMP
+from the internet.
 
 **ssh is over Tailscale only**: the server is on the maintainer's tailnet as
 `goath1-net-ash` (`ssh root@goath1-net-ash`), with key-only logins; port 22
@@ -48,7 +53,13 @@ boot).
 | `nftables.conf` | `/etc/nftables.conf` | Loads `/etc/nftables.d`, without flushing Tailscale's tables |
 | `sshd-goath1.conf` | `/etc/ssh/sshd_config.d/10-goath1.conf` | ssh by key only. Already on the server: a copy of it, which `setup.sh` installs only on a new server that has none |
 | `unattended-goath1.conf` | `/etc/apt/apt.conf.d/51goath1-reboot` | Security updates daily, rebooting at 09:30 UTC when they need to. Already on the server: `setup.sh` installs it only where it is missing |
-| `setup.sh` | | All of the above on a fresh Ubuntu 24.04, as root |
+| `opence-master.service` | `/etc/systemd/system/` | The master server, as a dynamic user, on 127.0.0.1:8090 |
+| `master.env.example` | `/etc/opence-master/env` | Its settings; the real file (root's, mode 0600) holds the admin token |
+| `Caddyfile` | `/etc/caddy/Caddyfile` | HTTPS for `master.goath1.com`; the admin and HTML pages for the tailnet only |
+| `install-master.sh` | | opence-master's release installed, its signature checked |
+| `opence-master-cli` | `/usr/local/sbin/opence-master-cli` | The master's administration commands, as its own user |
+| `setup.sh` | | The broker and relay on a fresh Ubuntu 24.04, as root |
+| `setup-master.sh` | | The master server, after `setup.sh` |
 
 ## The broker
 
@@ -109,6 +120,71 @@ The relay's protocol is versioned on its own (`docs/dedicated_server.md`,
 "Relays"), so a relay of an older release keeps serving newer games; an
 update is needed only when that version changes.
 
+## The master server
+
+[opence-master](https://github.com/OpenCommunityEdition/opence-master-server)
+(AGPL-3.0; protocol 1, `docs/master_protocol.md`), the static release binary
+in `/usr/local/bin/opence-master`, run by `opence-master.service` (the
+upstream unit) on 127.0.0.1:8090. Caddy (Ubuntu's package) serves it at
+`https://master.goath1.com` with a Let's Encrypt certificate that it gets and
+renews itself (it needs TCP 80 and 443). Its state is
+`/var/lib/opence-master` (in fact `/var/lib/private/opence-master`, the
+dynamic user's): `master.db` and `master.key`, the list-signing key, made on
+the server at the first start (mode 0600) and backed up nowhere public. Its
+public half is in `masters.txt`:
+
+    https://master.goath1.com ed25519:120f7635fe754e327cae95480d847aa57b8b23a9bb362b3d6080bfdd21399684
+
+A new key would refuse every list to every game that pins this one: back up
+`master.key` and `master.db` together, privately (`sqlite3 master.db
+".backup copy.db"`), if at all.
+
+- **What the public reaches** (`Caddyfile`): the protocol's endpoints alone:
+  `/v1/servers` (the list, a server, the publishes), `/v1/netlist` (which
+  dedicated servers' `server.vpn_policy` checks players against),
+  `/v1/pass`, `/v1/me`, `/v1/keys`, `/v1/master`, `/v1/publishers`,
+  `/v1/applications` (which answers 410) and `/healthz`. Everything else, the
+  admin pages, `/metrics`, the list page, `/link` and `/apply`, answers 404
+  but to the tailnet's addresses (100.64.0.0/10, fd7a:115c:a1e0::/48).
+- **The admin pages**, over Tailscale: point `master.goath1.com` at the
+  server's Tailscale address, so that the request comes in on `tailscale0`
+  with the real certificate: a line `100.101.9.65 master.goath1.com` in
+  `/etc/hosts` (remove it after), then `https://master.goath1.com/admin/`;
+  or `curl --resolve master.goath1.com:443:100.101.9.65 -H "Authorization:
+  Bearer <token>" ...`. The token is `MASTER_ADMIN_TOKEN` in
+  `/etc/opence-master/env` on the server (root's alone, mode 0600; never in
+  the repository): `ssh root@goath1-net-ash grep TOKEN /etc/opence-master/env`.
+- **No Discord bot**: an operator makes a publisher key on their server
+  (`halo --server --keygen`), and sends us its public key and a proof of it:
+  we make the nonce (`ssh root@goath1-net-ash opence-master-cli challenge`),
+  they sign it (`halo --server --sign <nonce>`), and we take the
+  application and approve it:
+
+  ```sh
+  ssh root@goath1-net-ash opence-master-cli add-application --display-name "<name>" \
+      --public-key ed25519:<hex> --servers <n> --region na-east --proof-nonce <nonce> --proof-signature <hex>
+  ssh root@goath1-net-ash opence-master-cli approve <application id> --quota 4
+  ```
+
+  or approve it on the admin pages (Applications). A server behind a NAT that
+  the probe cannot reach is listed once an admin marks it **trusted**
+  (Servers). The other commands: `opence-master-cli list-applications`,
+  `list-publishers`, `suspend`, `resume`, `revoke`, `quota`.
+- **No peers**: approvals are not shared with OpenCE's master
+  (`MASTER_PEERS`); that is for the maintainers to decide.
+- **Updates, by hand**: the admin pages say when opence-master has a release
+  (`MASTER_UPDATES=notify`; it never installs one by itself). Read its notes,
+  then `ssh root@goath1-net-ash sh /root/goath1-net/install-master.sh
+  v<x.y.z>`: it downloads the release's binary and `SHA256SUMS`, checks the
+  signature with opence-master's release key and the binary's sum, installs
+  it and restarts the master (a newer database is backed up by the master
+  itself, `master.db.before-<version>`). To go back: the older tag the same
+  way, with that backup copied over `master.db` while the master is stopped.
+
+Check it: `curl https://master.goath1.com/healthz`, `curl
+https://master.goath1.com/v1/master` (its name and key id), `journalctl -u
+opence-master -u caddy`.
+
 ## Rebuilding the server from scratch
 
 1. Create the server (Ubuntu 24.04, the maintainers' ssh key), its firewall
@@ -121,6 +197,8 @@ update is needed only when that version changes.
    hcloud firewall add-rule goath1-net --direction in --protocol tcp --port 22 --source-ips 0.0.0.0/0 --source-ips ::/0 --description ssh-until-tailscale
    hcloud firewall add-rule goath1-net --direction in --protocol tcp --port 1883 --source-ips 0.0.0.0/0 --source-ips ::/0 --description mqtt
    hcloud firewall add-rule goath1-net --direction in --protocol udp --port 2302 --source-ips 0.0.0.0/0 --source-ips ::/0 --description relay
+   hcloud firewall add-rule goath1-net --direction in --protocol tcp --port 80 --source-ips 0.0.0.0/0 --source-ips ::/0 --description https-80
+   hcloud firewall add-rule goath1-net --direction in --protocol tcp --port 443 --source-ips 0.0.0.0/0 --source-ips ::/0 --description https-443
    hcloud firewall add-rule goath1-net --direction in --protocol icmp --source-ips 0.0.0.0/0 --source-ips ::/0 --description ping
    hcloud firewall apply-to-resource goath1-net --type server --server goath1-net-ash
    ```
@@ -151,5 +229,12 @@ update is needed only when that version changes.
    the server out.
 4. Check: `ssh root@goath1-net-ash 'systemctl is-active mosquitto
    openh1-relay nftables; journalctl -u openh1-relay -n 3'`.
+5. The master server: `master.goath1.com`'s A and AAAA records, then `ssh
+   root@goath1-net-ash sh /root/goath1-net/setup-master.sh`. It makes the
+   admin token (in `/etc/opence-master/env`) and, at the master's first
+   start, a new key: put its public half (the script prints it) in
+   `masters.txt` and `master_list_read_defaults`, or restore the old
+   `master.key` into `/var/lib/private/opence-master/` before the first start
+   to keep the one the games pin.
 
 The server holds no secrets but its ssh host keys; nothing here needs any.
