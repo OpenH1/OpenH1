@@ -84,6 +84,14 @@ reads XML and has no JSON reader.
   Setup's, Game Options', co-op's) wait for those screens' model.
 - **Actions** are the XML's (`open`, `replace`, `back`, `close`, `run`,
   `branch`/`otherwise`, `sound`), on a row, a button or a node.
+- **Behaviour** (`model/behaviour/<file>.xml`, written by
+  `tools/menu_behaviour.py` from `ce/`'s widgets, as `tools/menu_look.py`
+  writes their look): each generated widget's behaviour flags (how it takes
+  its events: `pass_unhandled_to_focused_child`, `up_down_tabs_children`,
+  ...; the place and effect flags are the look's) and its actions, its
+  `<on>` handlers, as the menus' own. `menu_tags.c` makes the handlers the
+  game's as it makes the widgets' (`behaviours_build`), and the engine takes
+  a screen's events by them, not by the widgets' definitions.
 
 ## The engine
 
@@ -234,7 +242,11 @@ The steps, in order:
    `settings_sliders` gone); Settings' rows' conditions from the model (the
    row-name predicates of its tabs and pages gone). `--against <build>`
    compares a build before such a change, which both engines run, with the
-   one after.
+   one after. The widgets' behaviour flags and actions in the model
+   (`model/behaviour`), by which the engine takes the events. Left: the
+   focus's way through a list (`ui_widget.c`'s, by the definitions: which
+   children take the focus), and the setup screens' row-name predicates,
+   which wait for their screens' model.
 3. **The look in the model**: bounds, anchors and the look written by the
    generators into the model for every generated screen; the engine reads
    them there, not from widget definitions.

@@ -666,6 +666,12 @@ static struct
 	struct pause_box_growth pause_boxes[PAUSE_BOXES];
 	long pause_box_count;
 	boolean pause_boxes_wide;
+	/* the game's event handlers of the model's widgets' behaviours
+	(menu_tags_behaviour_handlers), made with the widgets (behaviours_build),
+	by their index in the model's behaviours, and the model they are of */
+	struct halo_menu_model const *behaviour_model;
+	struct ui_widget_event_handler_reference **behaviour_handlers;
+	long *behaviour_handler_counts;
 } menu_tags;
 
 /* the build under way */
@@ -2104,6 +2110,79 @@ static void instance_set(struct cache_file_tag_instance *instances, long group_t
 	instance->base_address = definition;
 }
 
+/* the game's event handlers of each of the model's widgets' behaviours (of
+a widget built: a game map's have few of ui.map's), an <on> for several
+events a handler for each, as a widget's (widget_build) */
+static void behaviours_build(struct cache_file_tag_instance *instances)
+{
+	struct halo_menu_model const *model = halo_menus_model();
+	long index;
+
+	if (!model || !model->behaviour_count)
+		return;
+	menu_tags.behaviour_handlers = allocate(model->behaviour_count * (long)sizeof(*menu_tags.behaviour_handlers));
+	menu_tags.behaviour_handler_counts =
+		allocate(model->behaviour_count * (long)sizeof(*menu_tags.behaviour_handler_counts));
+	if (!menu_tags.behaviour_handlers || !menu_tags.behaviour_handler_counts)
+		return;
+	for (index = 0; index < model->behaviour_count && !build.failed; index++)
+	{
+		struct halo_menu_model_behaviour const *behaviour = &model->behaviours[index];
+		long widget = widget_named(behaviour->name);
+		struct ui_widget_definition *definition;
+		struct ui_widget_event_handler_reference *handlers;
+		long total = 0, handler;
+
+		if (widget == NONE)
+			continue;
+		definition = instances[DATUM_INDEX_TO_ABSOLUTE_INDEX(build.widget_tags[widget])].base_address;
+		for (handler = 0; handler < behaviour->handler_count; handler++)
+		{
+			char const *text = model->handlers[behaviour->first_handler + handler].event;
+
+			while (text && *text)
+			{
+				text += strspn(text, " \t\r\n");
+				if (!*text)
+					break;
+				total++;
+				text += strcspn(text, " \t\r\n");
+			}
+		}
+		if (!total || !definition || (handlers = allocate(total * (long)sizeof(*handlers))) == NULL)
+			continue;
+		for (total = 0, handler = 0; handler < behaviour->handler_count; handler++)
+		{
+			struct halo_menu_handler const *on = &model->handlers[behaviour->first_handler + handler];
+			char const *text = on->event;
+
+			while (text && *text)
+			{
+				char word[64];
+				long length, event;
+
+				text += strspn(text, " \t\r\n");
+				length = (long)strcspn(text, " \t\r\n");
+				if (!length)
+					break;
+				if (length >= (long)sizeof(word))
+					length = sizeof(word) - 1;
+				memcpy(word, text, length);
+				word[length] = 0;
+				text += strcspn(text, " \t\r\n");
+				event = name_index(word, event_names, NUMBEROF(event_names));
+				if (event == NONE)
+					problem(on->file, on->line, "there is no event", word);
+				else
+					handler_build(&handlers[total++], on, event, definition);
+			}
+		}
+		menu_tags.behaviour_handlers[index] = handlers;
+		menu_tags.behaviour_handler_counts[index] = total;
+	}
+	menu_tags.behaviour_model = model;
+}
+
 static void menu_tags_release(void)
 {
 	long index;
@@ -2131,6 +2210,46 @@ static void menu_tags_release(void)
 }
 
 /* ---------- public code */
+
+/* ---------- the menu engine's widgets' behaviour (menu_engine.c): the
+model's (model/behaviour, tools/menu_behaviour.py), whose flags and <on>
+handlers are those of the widgets' own, made into the game's as theirs are
+(flags_parse, handler_build), as the widgets are built (behaviours_build) */
+
+long menu_tags_behaviour_flags(
+	struct halo_menu_model_behaviour const *behaviour)
+{
+	return flags_parse(behaviour->flags, widget_flag_names, NUMBEROF(widget_flag_names), behaviour->file,
+		behaviour->line);
+}
+
+void const *menu_tags_behaviour_handlers(
+	struct halo_menu_model const *model,
+	struct halo_menu_model_behaviour const *behaviour,
+	long *count)
+{
+	long index = (long)(behaviour - model->behaviours);
+
+	*count = 0;
+	if (!menu_tags.loaded || model != menu_tags.behaviour_model || index < 0 || index >= model->behaviour_count)
+		return NULL;
+	*count = menu_tags.behaviour_handler_counts[index];
+	return menu_tags.behaviour_handlers[index];
+}
+
+short menu_tags_handler_event(
+	void const *handlers,
+	long index)
+{
+	return ((struct ui_widget_event_handler_reference const *)handlers)[index].event_type;
+}
+
+void *menu_tags_handler(
+	void const *handlers,
+	long index)
+{
+	return (void *)&((struct ui_widget_event_handler_reference const *)handlers)[index];
+}
 
 /* ---------- the in-game pause menu (a multiplayer map's)
 
@@ -3100,6 +3219,8 @@ void menu_tags_loaded(
 	cache_files_set_tag_instances(instances, build.first_index + total);
 	for (index = 0; index < widget_count && !build.failed; index++)
 		instances[DATUM_INDEX_TO_ABSOLUTE_INDEX(build.widget_tags[index])].base_address = widget_build(index);
+	/* (and the model's behaviours of them, the menu engine's) */
+	behaviours_build(instances);
 	if (build.failed)
 		goto failed;
 	if (game_map)

@@ -232,6 +232,18 @@ struct halo_menu_model_look
 	long line;
 };
 
+/* a widget's behaviour (model/behaviour, tools/menu_behaviour.py): its
+flags that are behaviour (how it takes its events: the menus' widget flags,
+but the look's), and its actions, the menus' <on> handlers, from
+first_handler */
+struct halo_menu_model_behaviour
+{
+	char const *name, *flags;
+	long first_handler, handler_count;
+	char const *file;
+	long line;
+};
+
 struct halo_menu_model
 {
 	struct halo_menu_model_geometry geometry;
@@ -245,6 +257,10 @@ struct halo_menu_model
 	long look_count;
 	struct halo_menu_model_place *places;
 	long place_count;
+	struct halo_menu_model_behaviour *behaviours;
+	long behaviour_count;
+	struct halo_menu_handler *handlers;
+	long handler_count;
 };
 
 /* whether a platform of the menus' (a platform attribute's, a model's when's:
@@ -257,6 +273,10 @@ NULL if there is none or a file has a problem (logged) */
 struct halo_menu_model const *halo_menus_model(void);
 /* a widget's look in the model by its name, NULL if it has none */
 struct halo_menu_model_look const *halo_menus_model_look(struct halo_menu_model const *model, char const *name);
+/* the model's behaviour of a widget by its name (NULL: none, a widget with no
+behaviour flags nor actions) */
+struct halo_menu_model_behaviour const *halo_menus_model_behaviour(struct halo_menu_model const *model,
+	char const *name);
 /* the model read again by the next halo_menus_model (halo_menus_reload's) */
 void halo_menus_model_forget(void);
 /* a file gathered for the menus (halo_menus_load's): its path and data,

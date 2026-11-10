@@ -53,6 +53,10 @@ long ui_widget_port_handler_count(struct widget_instance const *widget);
 short ui_widget_port_handler_event_type(struct widget_instance const *widget, long index);
 void ui_widget_port_handler_dispatch(struct widget_instance *widget, struct event_record *event, long index,
 	boolean *deleted);
+/* (an event handler of the game's not of the widget's definition: the
+model's, which menu_tags.c makes) */
+void ui_widget_port_handler_run(struct widget_instance *widget, struct event_record *event, void *handler,
+	boolean *deleted);
 boolean ui_widget_port_takes_events(struct widget_instance const *widget, short controller_index);
 void ui_widget_port_go_back(struct widget_instance *widget);
 void ui_widget_port_tab(struct widget_instance *widget, boolean next);
