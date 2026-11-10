@@ -59,7 +59,12 @@ take (`source/math/random_math.c`) and the players' input of each tick
   struck. When the game state was rewritten as a whole (a checkpoint
   reverted to, a saved game or core loaded, the map started over), or the
   game's code made or deleted an object outside the ticks, the whole game
-  state is recorded instead, as at the start.
+  state is recorded instead, as at the start: up to four one after another,
+  and one more each `demo.snapshot_seconds`. Past them the bytes are
+  recorded instead (logged once a demo), which a playback writes in without
+  that code's work outside the game state and so may part there; a game
+  whose code did that every tick would otherwise take a whole game state a
+  tick (below, "Sizes and cost").
 - **What the ticks read of the frames.** Each of this machine's players'
   camera (`observer_get_camera`) as the tick begins, which the material
   effects test by distance and a player without a unit sees the level from,
@@ -72,6 +77,13 @@ take (`source/math/random_math.c`) and the players' input of each tick
   (`network_distributed.c`): what that changed is recorded, and the
   choices it makes by which machines are there (a client's hits are its
   report's to deal: `network_damage.c`).
+- **What the netcode put in after a tick.** The predictions of the clients
+  whose units a host moves once the tick has ended (an OpenCE machine's in
+  a mixed game, every client's in a Legacy game: `distributed_apply_predictions`
+  in `network_distributed_tick`) are recorded as the bytes they changed
+  (`demo_netcode_begin`, `demo_netcode_end`: an `M` before the next tick),
+  as the predictions taken at a tick's start are, and the playback writes
+  them in there.
 - **What the netcode does outside the ticks, as events.** A client's hit
   that the host deals as its report comes (`network_damage.c`, between two
   ticks or two sub-steps of an open tick) is recorded as the hit dealt, with
@@ -155,7 +167,7 @@ its bytes:
 | `T` | a tick begins: its number, its rate |
 | `K` | the game state: each allocation's part in use, and the seeds |
 | `P` | what changed in the game state since the tick before ended |
-| `M` | the same, before a sub-step of a tick left open across frames (of sub-step 0: before a tick, ahead of an `X`) |
+| `M` | the same, before a sub-step of a tick left open across frames (of sub-step 0: before a tick, ahead of an `X`, or what a host's netcode put in after the tick before) |
 | `C` | the player control globals, whole |
 | `S` | the seeds |
 | `A` | the tick's players' actions (`struct player_action`) |
