@@ -16,7 +16,8 @@ static int game_connection(void){return connection;}
 static int game_in_progress(void){return playing;}
 static int main_menu_is_active(void){return menu;}
 int config_boolean(char const *name){return !strcmp(name,"input.mouse_aim_assist")?preference:block;}
-static unsigned long config_changes(void){return changes;}
+/* (moves as either setting changes, as config.toml's count does) */
+static unsigned long config_changes(void){return changes*4+block*2+preference;}
 #define pthread_mutex_lock(p) ((void)(p))
 #define pthread_mutex_unlock(p) ((void)(p))
 static void distributed_send(void *data,byte type,int count,word size,int destination){
