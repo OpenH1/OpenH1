@@ -46,7 +46,7 @@ enum
 	OP_DECORATE = 71, OP_MEMBER_DECORATE = 72,
 	OP_VECTOR_EXTRACT_DYNAMIC = 77, OP_VECTOR_SHUFFLE = 79, OP_COMPOSITE_CONSTRUCT = 80, OP_COMPOSITE_EXTRACT = 81,
 	OP_COMPOSITE_INSERT = 82,
-	OP_IMAGE_SAMPLE_IMPLICIT_LOD = 87, OP_IMAGE_SAMPLE_EXPLICIT_LOD = 88, OP_IMAGE_FETCH = 95, OP_IMAGE_READ = 98, OP_IMAGE = 100, OP_IMAGE_QUERY_SIZE_LOD = 103,
+	OP_IMAGE_SAMPLE_IMPLICIT_LOD = 87, OP_IMAGE_SAMPLE_EXPLICIT_LOD = 88, OP_IMAGE_FETCH = 95, OP_IMAGE_READ = 98, OP_IMAGE_WRITE = 99, OP_IMAGE = 100, OP_IMAGE_QUERY_SIZE_LOD = 103,
 	OP_CONVERT_F_TO_S = 110, OP_CONVERT_S_TO_F = 111, OP_BITCAST = 124,
 	OP_F_NEGATE = 127, OP_I_ADD = 128, OP_F_ADD = 129, OP_I_SUB = 130, OP_F_SUB = 131, OP_I_MUL = 132, OP_F_MUL = 133,
 	OP_F_DIV = 136, OP_VECTOR_TIMES_SCALAR = 142, OP_DOT = 148,
@@ -79,7 +79,7 @@ enum
 enum
 {
 	DECORATION_BLOCK = 2, DECORATION_ARRAY_STRIDE = 6, DECORATION_BUILT_IN = 11, DECORATION_FLAT = 14, DECORATION_INVARIANT = 18,
-	DECORATION_NON_WRITABLE = 24, DECORATION_LOCATION = 30, DECORATION_BINDING = 33, DECORATION_DESCRIPTOR_SET = 34,
+	DECORATION_COHERENT = 23, DECORATION_NON_WRITABLE = 24, DECORATION_LOCATION = 30, DECORATION_BINDING = 33, DECORATION_DESCRIPTOR_SET = 34,
 	DECORATION_OFFSET = 35, DECORATION_NO_CONTRACTION = 42, DECORATION_INPUT_ATTACHMENT_INDEX = 43,
 };
 
@@ -98,14 +98,17 @@ enum
 
 enum
 {
-	CAPABILITY_SHADER = 1, CAPABILITY_SAMPLE_RATE_SHADING = 35, CAPABILITY_INPUT_ATTACHMENT = 40,
+	CAPABILITY_SHADER = 1, CAPABILITY_STORAGE_IMAGE_MULTISAMPLE = 27, CAPABILITY_SAMPLE_RATE_SHADING = 35, CAPABILITY_INPUT_ATTACHMENT = 40,
 	CAPABILITY_IMAGE_QUERY = 50, CAPABILITY_GROUP_NON_UNIFORM = 61, CAPABILITY_GROUP_NON_UNIFORM_ARITHMETIC = 63,
 	CAPABILITY_MULTIVIEW = 4439, CAPABILITY_RAY_QUERY = 4472,
+	CAPABILITY_FRAGMENT_SHADER_SAMPLE_INTERLOCK = 5363, CAPABILITY_FRAGMENT_SHADER_PIXEL_INTERLOCK = 5378,
+	OP_BEGIN_INVOCATION_INTERLOCK = 5364, OP_END_INVOCATION_INTERLOCK = 5365,
 	RAY_FLAGS_CULL_BACK_FACING_TRIANGLES = 0x10, RAY_QUERY_CANDIDATE = 0, RAY_QUERY_COMMITTED = 1,
 	EXECUTION_MODEL_VERTEX = 0, EXECUTION_MODEL_FRAGMENT = 4,
 	EXECUTION_MODE_ORIGIN_UPPER_LEFT = 7, EXECUTION_MODE_EARLY_FRAGMENT_TESTS = 9, EXECUTION_MODE_DEPTH_REPLACING = 12,
 	EXECUTION_MODE_DEPTH_GREATER = 14, EXECUTION_MODE_DEPTH_LESS = 15,
-	DIM_2D = 1, DIM_3D = 2, DIM_CUBE = 3, DIM_SUBPASS_DATA = 6,
+	EXECUTION_MODE_PIXEL_INTERLOCK_ORDERED = 5366, EXECUTION_MODE_SAMPLE_INTERLOCK_ORDERED = 5368,
+	DIM_2D = 1, DIM_3D = 2, DIM_CUBE = 3, DIM_SUBPASS_DATA = 6, IMAGE_FORMAT_RGBA16F = 2,
 	IMAGE_OPERANDS_LOD = 2, IMAGE_OPERANDS_SAMPLE = 0x40,
 	SCOPE_DEVICE = 1, SCOPE_SUBGROUP = 3, GROUP_OPERATION_REDUCE = 0,
 };
@@ -4402,30 +4405,65 @@ static unsigned int brightest_of(struct module *m, unsigned int rgb)
 		extract(m, rgb, 2)));
 }
 
-/* the pixel drawn over */
-static unsigned int hdr_destination(struct module *m, const struct xgpu_spirv_options *options)
+/* where an interlocked draw writes its colour (hdr_destination): its
+target as a storage image, the pixel's place and the sample's (0: none) */
+struct hdr_store
+{
+	unsigned int image, place, sample;
+};
+
+/* the pixel drawn over: as an input attachment, or, where the draw is
+interlocked (options->interlock), from its target as a storage image at
+XGPU_SPIRV_BINDING_STORE, whose write (store) ends the critical section the
+read begins: a colour attachment's write lands after the shader, outside
+it, where the next triangle's read may not see it */
+static unsigned int hdr_destination(struct module *m, const struct xgpu_spirv_options *options,
+	unsigned int *frag_coord, struct hdr_store *store)
 {
 	BOOL multisampled = options->input_samples > 1;
-	unsigned int operands[7], image_type, image, capability;
+	unsigned int operands[9], image_type, image, capability;
 	int count = 2;
 
-	capability = CAPABILITY_INPUT_ATTACHMENT;
-	instruction(m, SECTION_CAPABILITIES, OP_CAPABILITY, 1, &capability);
 	operands[0] = m->t_float;
-	operands[1] = DIM_SUBPASS_DATA;
+	operands[1] = options->interlock ? DIM_2D : DIM_SUBPASS_DATA;
 	operands[2] = 0;
 	operands[3] = 0;
 	operands[4] = multisampled ? 1 : 0;
 	operands[5] = 2;
-	operands[6] = 0;
+	operands[6] = options->interlock ? IMAGE_FORMAT_RGBA16F : 0;
 	image_type = intern(m, OP_TYPE_IMAGE, FALSE, 7, operands);
 	image = variable(m, image_type, STORAGE_UNIFORM_CONSTANT, "xgpu_destination");
 	decorate1(m, image, DECORATION_DESCRIPTOR_SET, XGPU_SPIRV_SET_INPUT);
-	decorate1(m, image, DECORATION_BINDING, 0);
-	decorate1(m, image, DECORATION_INPUT_ATTACHMENT_INDEX, 0);
+	if (options->interlock)
+	{
+		decorate1(m, image, DECORATION_BINDING, XGPU_SPIRV_BINDING_STORE);
+		decorate(m, image, DECORATION_COHERENT, 0, NULL);
+		if (multisampled)
+		{
+			capability = CAPABILITY_STORAGE_IMAGE_MULTISAMPLE;
+			instruction(m, SECTION_CAPABILITIES, OP_CAPABILITY, 1, &capability);
+		}
+		if (!*frag_coord)
+		{
+			*frag_coord = variable(m, m->t_v4, STORAGE_INPUT, "gl_FragCoord");
+			decorate1(m, *frag_coord, DECORATION_BUILT_IN, BUILT_IN_FRAG_COORD);
+		}
+		operands[1] = op1(m, OP_CONVERT_F_TO_S, m->t_iv2, xy(m, load(m, m->t_v4, *frag_coord)));
+	}
+	else
+	{
+		capability = CAPABILITY_INPUT_ATTACHMENT;
+		instruction(m, SECTION_CAPABILITIES, OP_CAPABILITY, 1, &capability);
+		decorate1(m, image, DECORATION_BINDING, 0);
+		decorate1(m, image, DECORATION_INPUT_ATTACHMENT_INDEX, 0);
+		operands[1] = constant_int(m, 0);
+		operands[1] = intern(m, OP_CONSTANT_COMPOSITE, TRUE, 3, (const unsigned int[]){ m->t_iv2, operands[1],
+			operands[1] });
+	}
 	operands[0] = load(m, image_type, image);
-	operands[1] = constant_int(m, 0);
-	operands[1] = intern(m, OP_CONSTANT_COMPOSITE, TRUE, 3, (const unsigned int[]){ m->t_iv2, operands[1], operands[1] });
+	store->image = operands[0];
+	store->place = operands[1];
+	store->sample = 0;
 	if (multisampled)
 	{
 		unsigned int sample = variable(m, m->t_int, STORAGE_INPUT, "gl_SampleID");
@@ -4435,9 +4473,41 @@ static unsigned int hdr_destination(struct module *m, const struct xgpu_spirv_op
 		decorate1(m, sample, DECORATION_BUILT_IN, BUILT_IN_SAMPLE_ID);
 		decorate(m, sample, DECORATION_FLAT, 0, NULL);
 		operands[count++] = IMAGE_OPERANDS_SAMPLE;
-		operands[count++] = load(m, m->t_int, sample);
+		operands[count++] = store->sample = load(m, m->t_int, sample);
 	}
+	/* (interlocked: the pixel's, or each sample's own, read and written by
+	one invocation at a time, in the order the triangles were drawn, from
+	here to the store) */
+	if (options->interlock)
+		op_void(m, OP_BEGIN_INVOCATION_INTERLOCK, 0, NULL);
 	return op(m, OP_IMAGE_READ, m->t_v4, count, operands);
+}
+
+/* an interlocked draw's colour written to its target (hdr_destination),
+the channels its mask leaves as they were, and the critical section ended */
+static void hdr_store(struct module *m, const struct xgpu_spirv_options *options, const struct hdr_store *store,
+	unsigned int destination, unsigned int color)
+{
+	unsigned int operands[5], components[4];
+	int count = 3, channel;
+
+	if ((options->interlock_mask & 15) != 15)
+	{
+		for (channel = 0; channel < 4; channel++)
+			components[channel] = extract(m, (options->interlock_mask & (1 << channel)) ? color : destination,
+				channel);
+		color = op(m, OP_COMPOSITE_CONSTRUCT, m->t_v4, 4, components);
+	}
+	operands[0] = store->image;
+	operands[1] = store->place;
+	operands[2] = color;
+	if (store->sample)
+	{
+		operands[count++] = IMAGE_OPERANDS_SAMPLE;
+		operands[count++] = store->sample;
+	}
+	op_void(m, OP_IMAGE_WRITE, count, operands);
+	op_void(m, OP_END_INVOCATION_INTERLOCK, 0, NULL);
 }
 
 /* a blend factor for every channel at once, of the source (s), the pixel
@@ -4478,14 +4548,14 @@ drawn over and the key's blend, a glow brightened toward its ceiling, no
 channel taken past what the pixel had or the ceiling, nor below 0,
 destination alpha not past 1 */
 static unsigned int hdr_output(struct module *m, unsigned short hdr, unsigned int s,
-	const struct xgpu_spirv_options *options)
+	const struct xgpu_spirv_options *options, unsigned int *frag_coord, struct hdr_store *store, unsigned int *read)
 {
 	int ceiling = XGPU_HDR_CEILING_OF(hdr);
 	float ceiling_value = ceiling == XGPU_HDR_CEILING_WEAPON ? XGPU_HDR_CEILING_WEAPON_VALUE :
 		ceiling == XGPU_HDR_CEILING_HUD ? XGPU_HDR_CEILING_HUD_VALUE :
 		ceiling == XGPU_HDR_CEILING_LIGHT ? XGPU_HDR_CEILING_LIGHT_VALUE : XGPU_HDR_CEILING_PAPER_WHITE_VALUE;
 	float knee = ceiling == XGPU_HDR_CEILING_LIGHT ? XGPU_HDR_EXPAND_LIGHT_KNEE : XGPU_HDR_EXPAND_KNEE;
-	unsigned int d = hdr_destination(m, options), v, rgb, had, alpha;
+	unsigned int d = *read = hdr_destination(m, options, frag_coord, store), v, rgb, had, alpha;
 	unsigned int source = fmul(m, 4, s, hdr_factor(m, XGPU_HDR_BLEND_SOURCE(hdr), s, d));
 	unsigned int destination = fmul(m, 4, d, hdr_factor(m, XGPU_HDR_BLEND_DESTINATION(hdr), s, d));
 
@@ -4869,6 +4939,9 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 	ever nearer than the card), or as a VR effect its fade measured from it */
 	BOOL replaces_depth = xgpu_pixel_program_depth_stage(program) != 0;
 	unsigned int frag_depth_out = 0, zsprite_hidden = 0;
+	BOOL interlocked = FALSE;
+	struct hdr_store target;
+	unsigned int drawn_over = 0;
 	/* (display.hdr: a self-illuminated surface's pass; its pixel without its
 	self-illumination, and the light that adds past white) */
 	BOOL self_illuminated = XGPU_HDR_IS_SELF_ILLUMINATED(program->hdr) && !program->source_blend;
@@ -5207,7 +5280,16 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 		result = fmul(&m, 4, result, factor);
 	}
 	else if (XGPU_HDR_SHADER_BLENDS(program->hdr))
-		result = hdr_output(&m, program->hdr, result, options);
+	{
+		/* (no discard between the interlock's begin and end) */
+		if (zsprite_hidden && options->interlock)
+		{
+			discard_if(&m, zsprite_hidden);
+			zsprite_hidden = 0;
+		}
+		interlocked = options->interlock != 0;
+		result = hdr_output(&m, program->hdr, result, options, &state.frag_coord, &target, &drawn_over);
+	}
 	/* a z-sprite's puff behind the scene (as an effect, tested by its fade:
 	effect_zsprite_fade) */
 	if (zsprite_hidden)
@@ -5220,6 +5302,29 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 			constant_uint(&m, 0), constant_uint(&m, 0), constant_uint(&m, 0) }));
 	else
 		store(&m, color_out, finite4(&m, result));
+	if (interlocked)
+	{
+		unsigned int operands[2];
+
+		hdr_store(&m, options, &target, drawn_over, finite4(&m, result));
+		/* (the depth and stencil tests before the shader: the store is the
+		draw's colour, and a pixel that fails them must not be written) */
+		if (!count_samples)
+		{
+			operands[0] = main_id;
+			operands[1] = EXECUTION_MODE_EARLY_FRAGMENT_TESTS;
+			instruction(&m, SECTION_EXECUTION_MODES, OP_EXECUTION_MODE, 2, operands);
+		}
+		operands[0] = options->interlock == XGPU_SPIRV_INTERLOCK_SAMPLE ?
+			CAPABILITY_FRAGMENT_SHADER_SAMPLE_INTERLOCK : CAPABILITY_FRAGMENT_SHADER_PIXEL_INTERLOCK;
+		instruction(&m, SECTION_CAPABILITIES, OP_CAPABILITY, 1, operands);
+		instruction_string(&m, SECTION_EXTENSIONS, OP_EXTENSION, 0, NULL, "SPV_EXT_fragment_shader_interlock", 0,
+			NULL);
+		operands[0] = main_id;
+		operands[1] = options->interlock == XGPU_SPIRV_INTERLOCK_SAMPLE ? EXECUTION_MODE_SAMPLE_INTERLOCK_ORDERED :
+			EXECUTION_MODE_PIXEL_INTERLOCK_ORDERED;
+		instruction(&m, SECTION_EXECUTION_MODES, OP_EXECUTION_MODE, 2, operands);
+	}
 	/* else its depth, no farther than the card: the conservative depth's
 	promise, so that the depth test before the shader keeps what it can (on
 	reversed depth, 1 - it and no nearer than the card's reversed) */
