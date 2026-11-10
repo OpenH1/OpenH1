@@ -1207,6 +1207,14 @@ static const struct config_setting config_settings[] =
 		"of this computer's reads it as its map begins; in a network game the\n"
 		"host's decides, read in the lobby; a Legacy game, and OpenCE's\n"
 		"players, always walk over (OpenCE's way)." },
+	{ "game.spectate_on_death", _config_string, "\"teammates\"", "HALO_SPECTATE_ON_DEATH", _environment_value,
+		_platform_all,
+		"While you are dead in co-op or a team game, waiting to respawn:\n"
+		"\"teammates\" shows a living teammate's view through their eyes (their\n"
+		"aim, their zoom, their weapon in hand), drawn from this computer's copy\n"
+		"of the game; A (or the jump key) goes to the next teammate. A\n"
+		"free-for-all game shows nobody's. \"off\": the game's death camera\n"
+		"(network co-op follows a teammate from behind, as before)." },
 	{ "game.custom_edition", _config_boolean, "true", "HALO_CUSTOM_EDITION", _environment_value, _platform_all,
 		"Load and run Halo Custom Edition maps (not those that need OpenSauce):\n"
 		"put them and Custom Edition's bitmaps.map, sounds.map and loc.map in\n"
@@ -2002,6 +2010,13 @@ static const struct config_setting config_settings[] =
 		"empty for none." },
 	{ "debug.network_test_start", _config_real, "15.0", "HALO_NETWORK_TEST_START", _environment_value, _platform_all,
 		"Seconds after hosting that an automated test game starts." },
+	{ "debug.spectate_log", _config_boolean, "false", "HALO_SPECTATE_LOG", _environment_value, _platform_all,
+		"Log each local player's camera each tick, with whether it is dead and\n"
+		"whom it watches (game.spectate_on_death's tests:\n"
+		"port/linux/game/dead_spectate.c)." },
+	{ "debug.spectate_shots", _config_string, "\"\"", "HALO_SPECTATE_SHOTS", _environment_value, _platform_all,
+		"Ticks (\"<tick>,<tick>...\") whose first frame is saved as\n"
+		"debug.screenshot_directory's tick<tick>.bmp; empty none." },
 	{ "debug.network_test_kill", _config_real, "0.0", "HALO_NETWORK_TEST_KILL", _environment_value, _platform_all,
 		"Every this many seconds an automated test host kills its last player; 0 never." },
 	{ "debug.network_test_score", _config_integer, "0", "HALO_NETWORK_TEST_SCORE", _environment_value, _platform_all,
@@ -4299,6 +4314,7 @@ static const struct
 	{ "input.button_prompts", { "auto", "controller", "keyboard", NULL }, NULL },
 	{ "input.zoom_sensitivity", { "cs2", "halo", NULL }, "cs2" },
 	{ "game.console_log", { "important", "all", "none", NULL }, NULL },
+	{ "game.spectate_on_death", { "teammates", "off", NULL }, NULL },
 	{ "game.language", { "", "ja", "de", "fr", "es", "it", NULL }, NULL },
 	{ "network.game_mode", { "openh1", "legacy", "standard", NULL }, NULL },
 	{ "server.game_mode", { "openh1_120", "openh1_60", "openh1_30", "legacy", NULL }, NULL },

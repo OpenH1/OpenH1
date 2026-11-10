@@ -373,12 +373,7 @@
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>
-		<row key="show_frame_rate" kind="choice" setting="display.show_frame_rate" label="SHOW FRAME RATE">
-			<help>Draws the frame rate at the bottom right of the screen, to see how the game runs: the frames drawn each second, averaged over half a second. Green is 30 or more, red under 30.</help>
-			<choice shown="ON" value="true"/>
-			<choice shown="OFF" value="false"/>
-		</row>
-		<section key="section_5" title="MULTIPLAYER"/>
+		<section key="section_4" title="MULTIPLAYER"/>
 		<row key="player_names" kind="choice" setting="display.player_names" label="PLAYER NAMES">
 			<help>In multiplayer, whose names are drawn above their heads.</help>
 			<choice shown="ALL" value="all"/>
@@ -404,6 +399,11 @@
 			<help>Draws a dark panel behind the scoreboard, for clearer text.</help>
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
+		</row>
+		<row key="spectate_on_death" kind="choice" setting="game.spectate_on_death" label="WHILE DEAD">
+			<help>While you wait to respawn in co-op or a team game: watch a living teammate through their eyes (A or Jump for the next), or the game's death camera.</help>
+			<choice shown="TEAMMATE'S VIEW" value="teammates"/>
+			<choice shown="DEATH CAMERA" value="off"/>
 		</row>
 		<row key="match_timer" kind="choice" setting="display.match_timer" label="MATCH TIMER">
 			<help>Draws a clock at the bottom right in multiplayer, counting up from the start of the game.</help>
@@ -703,6 +703,11 @@
 			<choice shown="AUTO" value="auto"/>
 			<choice shown="ON" value="on"/>
 			<choice shown="OFF" value="off"/>
+		</row>
+		<row key="show_frame_rate" kind="choice" setting="display.show_frame_rate" label="SHOW FRAME RATE">
+			<help>Draws the frame rate at the bottom right of the screen, to see how the game runs: the frames drawn each second, averaged over half a second. Green is 30 or more, red under 30.</help>
+			<choice shown="ON" value="true"/>
+			<choice shown="OFF" value="false"/>
 		</row>
 		<button key="button_defaults" kind="defaults" run="port settings defaults" help="Puts this page's settings back to their defaults."/>
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>

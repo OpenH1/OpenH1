@@ -509,6 +509,14 @@ static boolean object_is_first_person_camera(
 			return TRUE;
 	}
 #endif
+	{
+		/* port: a dead player's view through a teammate's eyes, that
+		teammate's body hidden (port/linux/game/dead_spectate.c) */
+		extern long dead_spectate_eyes_unit(short local_player_index);
+
+		if (object_index != NONE && object_index == dead_spectate_eyes_unit(render.local_player_index))
+			return TRUE;
+	}
 	return (unit_index == object_index &&
 		director_get_perspective(render.local_player_index) ==
 			_director_perspective_first_person) ||

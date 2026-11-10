@@ -1,5 +1,5 @@
-"""Settings > Interface's SHOW FRAME RATE (display.show_frame_rate, #512): a setting off by default and kept in
-config.toml, a row of the Interface page, read again as it changes (main.c's main_show_frame_rate_setting) and drawn
+"""Settings > Video > Frame Rate & Sync's SHOW FRAME RATE (display.show_frame_rate, #512): a setting off by default
+and kept in config.toml, a row of that page, read again as it changes (main.c's main_show_frame_rate_setting) and drawn
 by main_framerate_render as the console's display_framerate is."""
 
 import re
@@ -36,12 +36,12 @@ def test_negative_control(control):
 
 
 def test_setting_row_and_drawing():
-    """off by default, with its environment variable; a row of the Interface page (the generated file has it); the
+    """off by default, with its environment variable; a row of Video's Frame Rate & Sync page (the generated file has it); the
     frame rate drawn for it as for the console's variable"""
     config = read("port/linux/src/port_config.c")
     assert re.search(r'\{ "display.show_frame_rate", _config_boolean, "false", "HALO_SHOW_FRAME_RATE"', config)
     page = read("port/assets/menus/ce/main_menu.settings_select.player_setup.player_profile_edit."
-                "interface_settings.xml")
+                "video_settings.frame_rate.xml")
     assert 'setting="display.show_frame_rate" values="true|false"' in page
     assert "SHOW FRAME RATE" in page
     render = function(read("source/main/main.c"), "main_framerate_render")
