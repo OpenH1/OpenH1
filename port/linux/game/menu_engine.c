@@ -21,13 +21,14 @@ Each widget is drawn from its look in the model (model/look: its box, wide
 layout, places, pictures, text and its style, and where its children are),
 not its definition: ui_widget.c finds every widget's definition through
 menu_engine_definition, which gives it the one menu_tags.c made from the
-model (pc_menu_look_definition); what the widget does stays its own
-definition's. From the model the engine also takes what the widgets cannot
-say: a settings screen's rows and sections, their order and the geometry
-they are laid out by (menu_engine_settings_layout, in place of
-settings_rows_pack's packing), each row's help and note
-(menu_engine_row_help, in place of the help found by its label's index +
-1).
+model (pc_menu_look_definition). From the model the engine also takes what
+the widgets cannot say: a settings screen's rows and sections, their order
+and the geometry they are laid out by (menu_engine_settings_layout, in place
+of settings_rows_pack's packing), each row's help and note
+(menu_engine_row_help, in place of the help found by its label's index + 1);
+and how each widget takes its events and what they do, its behaviour
+(model/behaviour: its flags and its <on> handlers, which menu_tags.c makes
+the game's), in place of its definition's.
 */
 
 #include "cseries.h"
@@ -52,6 +53,12 @@ char *tag_get_name(long tag_index);
 boolean pc_menu_tag(long tag_index);
 void platform_log(char const *format, ...);
 void main_goto_main_menu(void);
+/* menu_tags.c's: the model's widgets' behaviours made the game's */
+long menu_tags_behaviour_flags(struct halo_menu_model_behaviour const *behaviour);
+void const *menu_tags_behaviour_handlers(struct halo_menu_model const *model,
+	struct halo_menu_model_behaviour const *behaviour, long *count);
+short menu_tags_handler_event(void const *handlers, long index);
+void *menu_tags_handler(void const *handlers, long index);
 
 /* ui_widget.c's widget types (its enum) */
 #define ENGINE_WIDGET_SPINNER 2
@@ -322,6 +329,56 @@ widget_instance_process_one_event_recursive), its steps the same; what the
 widgets do and how they are moved through (their definitions' flags and
 event handlers) read from ui_widget.c (ui_widget_port_...). */
 
+/* how a widget takes its events: its flags that are behaviour and its event
+handlers, the model's (model/behaviour: a widget it has nothing for has
+neither), else its definition's (a widget not of the generated menus) */
+struct engine_behaviour
+{
+	long flags;
+	void const *handlers;
+	long handler_count;
+	/* (the definition's handlers, not the model's) */
+	boolean definition;
+};
+
+static void engine_behaviour_of(struct widget_instance const *widget, struct engine_behaviour *behaviour)
+{
+	struct halo_menu_model const *model = engine.model ? engine.model : (engine.model = halo_menus_model());
+	char name[256];
+
+	memset(behaviour, 0, sizeof(*behaviour));
+	if (model && engine_widget_name(widget->definition_tag_index, name, sizeof(name)))
+	{
+		struct halo_menu_model_behaviour const *found = halo_menus_model_behaviour(model, name);
+
+		if (found)
+		{
+			behaviour->flags = menu_tags_behaviour_flags(found);
+			behaviour->handlers = menu_tags_behaviour_handlers(model, found, &behaviour->handler_count);
+		}
+		return;
+	}
+	behaviour->flags = ui_widget_port_definition_flags(widget);
+	behaviour->handler_count = ui_widget_port_handler_count(widget);
+	behaviour->definition = TRUE;
+}
+
+static short engine_handler_event(struct widget_instance const *widget, struct engine_behaviour const *behaviour,
+	long index)
+{
+	return behaviour->definition ? ui_widget_port_handler_event_type(widget, index) :
+		menu_tags_handler_event(behaviour->handlers, index);
+}
+
+static void engine_handler_run(struct widget_instance *widget, struct engine_behaviour const *behaviour,
+	struct event_record *event, long index, boolean *deleted)
+{
+	if (behaviour->definition)
+		ui_widget_port_handler_dispatch(widget, event, index, deleted);
+	else
+		ui_widget_port_handler_run(widget, event, menu_tags_handler(behaviour->handlers, index), deleted);
+}
+
 /* the direction of a D-pad button (0 up, 1 down, 2 left, 3 right), or NONE */
 static short engine_dpad_direction(struct event_record const *event)
 {
@@ -340,13 +397,14 @@ static boolean engine_pressed(struct event_record const *event)
 }
 
 /* whether the widget has an event handler for the event type */
-static boolean engine_has_handler(struct widget_instance const *widget, short event_type)
+static boolean engine_has_handler(struct widget_instance const *widget, struct engine_behaviour const *behaviour,
+	short event_type)
 {
 	long index;
 
-	for (index = 0; index < ui_widget_port_handler_count(widget); index++)
+	for (index = 0; index < behaviour->handler_count; index++)
 	{
-		if (ui_widget_port_handler_event_type(widget, index) == event_type)
+		if (engine_handler_event(widget, behaviour, index) == event_type)
 			return TRUE;
 	}
 	return FALSE;
@@ -431,7 +489,8 @@ static boolean engine_handler_matches(short handler, struct event_record const *
 /* an event for a widget of a screen the engine runs, and on down the focus */
 static void engine_event(struct widget_instance *widget, struct event_record *event, boolean *return_deleted)
 {
-	long flags = ui_widget_port_definition_flags(widget);
+	struct engine_behaviour behaviour;
+	long flags;
 	boolean handled = FALSE;
 	boolean deleted = FALSE;
 	boolean for_this = ui_widget_port_takes_events(widget, event->controller_index);
@@ -440,6 +499,8 @@ static void engine_event(struct widget_instance *widget, struct event_record *ev
 	boolean player = event->controller_index >= 0 && event->controller_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS;
 	long index;
 
+	engine_behaviour_of(widget, &behaviour);
+	flags = behaviour.flags;
 	/* (a direction pressed: the pointer is not what moved the focus last; a
 	held one repeats, as a press, once it has waited long enough) */
 	if (direction != NONE)
@@ -468,7 +529,7 @@ static void engine_event(struct widget_instance *widget, struct event_record *ev
 	if (for_this && !deleted && engine_pressed(event) &&
 		(event->data.button.index == _gamepad_analog_button_b ||
 			event->data.button.index == _gamepad_binary_button_back) &&
-		!engine_has_handler(widget, event->data.button.index))
+		!engine_has_handler(widget, &behaviour, event->data.button.index))
 	{
 		ui_widget_port_go_back(widget);
 		sound = ENGINE_SOUND_BACK;
@@ -501,12 +562,12 @@ static void engine_event(struct widget_instance *widget, struct event_record *ev
 			handled = TRUE;
 		}
 	}
-	for (index = 0; for_this && !deleted && index < ui_widget_port_handler_count(widget); index++)
+	for (index = 0; for_this && !deleted && index < behaviour.handler_count; index++)
 	{
-		if (engine_handler_matches(ui_widget_port_handler_event_type(widget, index), event))
+		if (engine_handler_matches(engine_handler_event(widget, &behaviour, index), event))
 		{
 			handled = TRUE;
-			ui_widget_port_handler_dispatch(widget, event, index, &deleted);
+			engine_handler_run(widget, &behaviour, event, index, &deleted);
 		}
 	}
 	if ((TEST_FLAG(flags, ENGINE_PASS_HANDLED_TO_ALL_CHILDREN_BIT) || !handled) && (TEST_FLAG(flags, ENGINE_PASS_UNHANDLED_TO_FOCUSED_CHILD_BIT) || TEST_FLAG(flags, ENGINE_PASS_UNHANDLED_TO_ALL_CHILDREN_BIT)) && !deleted)

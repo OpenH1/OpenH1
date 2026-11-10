@@ -10370,6 +10370,20 @@ void ui_widget_port_handler_dispatch(
 		deleted);
 }
 
+void ui_widget_port_handler_run(
+	struct widget_instance *widget,
+	struct event_record *event,
+	void *handler,
+	boolean *deleted)
+{
+	event_handler_dispatch(
+		widget,
+		ui_widget_definition_get(widget->definition_tag_index),
+		event,
+		handler,
+		deleted);
+}
+
 boolean ui_widget_port_takes_events(
 	struct widget_instance const *widget,
 	short controller_index)

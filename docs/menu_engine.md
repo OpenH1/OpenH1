@@ -84,6 +84,14 @@ reads XML and has no JSON reader.
   Setup's, Game Options', co-op's) wait for those screens' model.
 - **Actions** are the XML's (`open`, `replace`, `back`, `close`, `run`,
   `branch`/`otherwise`, `sound`), on a row, a button or a node.
+- **Behaviour** (`model/behaviour/<file>.xml`, written by
+  `tools/menu_behaviour.py` from `ce/`'s widgets, as `tools/menu_look.py`
+  writes their look): each generated widget's behaviour flags (how it takes
+  its events: `pass_unhandled_to_focused_child`, `up_down_tabs_children`,
+  ...; the place and effect flags are the look's) and its actions, its
+  `<on>` handlers, as the menus' own. `menu_tags.c` makes the handlers the
+  game's as it makes the widgets' (`behaviours_build`), and the engine takes
+  a screen's events by them, not by the widgets' definitions.
 
 ### The look
 
@@ -117,9 +125,10 @@ widget's name, as the game's definitions are:
 - `<at>` is where a child is in it. A child is found by its name and its
   place among those of the same name, so a widget may not have two children
   of one name for different platforms (`tools/menu_look.py` refuses it).
-- What a widget does (its events, game data inputs, conditionals, the
-  flags that route events and focus, its controller, closing) is not in its
-  look: it stays the widget definitions' until step 4.
+- What a widget does is not in its look: the flags that route its events
+  and focus and its handlers are its behaviour (`model/behaviour`, above);
+  its game data inputs, conditionals, controller and closing stay the
+  widget definitions' until step 4.
 
 ## The engine
 
@@ -288,7 +297,11 @@ The steps, in order:
    `settings_sliders` gone); Settings' rows' conditions from the model (the
    row-name predicates of its tabs and pages gone). `--against <build>`
    compares a build before such a change, which both engines run, with the
-   one after.
+   one after. The widgets' behaviour flags and actions in the model
+   (`model/behaviour`), by which the engine takes the events. Left: the
+   focus's way through a list (`ui_widget.c`'s, by the definitions: which
+   children take the focus), and the setup screens' row-name predicates,
+   which wait for their screens' model.
 3. **The look in the model** (done): bounds, anchors, places, pictures, text
    and its style, and the children's places written by the generators into
    the model for every widget of every generated screen

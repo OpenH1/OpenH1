@@ -7804,9 +7804,11 @@ def main() -> None:
     for name, lines in model_files().items():
         (folder.parent / name).parent.mkdir(exist_ok=True)
         (folder.parent / name).write_text("\n".join(lines))
-    # (and the widgets' look, from those files: tools/menu_look.py)
+    # (and the widgets' look and behaviour, from those files: tools/menu_look.py, tools/menu_behaviour.py)
+    import menu_behaviour
     import menu_look
     menu_look.write(folder.parent)
+    menu_behaviour.write(folder.parent)
 
 
 if __name__ == "__main__":
