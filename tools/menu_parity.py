@@ -267,6 +267,10 @@ SCRIPTS = [
     ("setup-coop", f"{MT}/server_settings/coop_options/coop_options_screen",
      ["down", "right", "down", "down", "down", "up", "up", "right", "down", "down", "up", "up", "up", "right",
       "down", "down", "right", "down"]),
+    # (the host's own settings on a setup screen, their setting and values its nodes' in the model: Server Setup's
+    # VOICE AND VOTING, changed and kept by its OK)
+    ("setup-voice", f"{MT}/server_settings/voice_options/voice_options_screen",
+     ["right", "down", "right", "down", "down", "right", "down", "down", "down", "down", "a"]),
     ("held-repeat", f"{PE}/video_settings/video_settings_screen",
      ["down", "down", "down", "hold:right", "hold:right", "wait", "hold:left", "wait", "hold:down", "hold:down",
       "hold:down", "wait", "hold:up", "wait", OK_CLICK]),
@@ -282,8 +286,9 @@ SCRIPTS = [
 MAKE_PROFILE = ("profile-create", f"{PE}/profile_settings/profile_settings_screen",
                 ["a", "wait", "type:Tester", "enter", "wait", "wait"])
 # (scripts that write nothing: the presses are taken back, or only move the focus)
+# (and the setup screens', whose settings' writes the log does not name: config.toml is compared)
 WRITE_NOTHING = ("toggle-and-cancel", "mouse-and-cancel-button", "sub-page-cancel", "setup-loadout", "setup-opence",
-                 "setup-coop")
+                 "setup-coop", "setup-voice")
 # the navigation sweep: every generated screen opened, the focus moved about it with no press that leaves it
 SWEEP = ["down", "down", "down", "down", "up", "up", "right", "down", "left", "hold:down", "hold:down", "up",
          "hold:up", "hold:up", "down", "right", "right", "left"]

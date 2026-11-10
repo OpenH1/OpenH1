@@ -11469,7 +11469,8 @@ enum
 	_option_short,		/* a short of the options */
 	_option_option_byte,	/* a byte of the options */
 	_option_radar,		/* the options' radar players, and the variant's flag */
-	_option_setting,	/* the host's own (config.toml): Server Setup's copy only */
+	_option_setting,	/* the host's own (config.toml): Server Setup's copy only, its setting and values the
+				   model's (gametype_option_setting) */
 	_option_byte_value	/* a byte of the variant, its number (not on or off) */
 };
 
@@ -11481,9 +11482,6 @@ struct gametype_option
 	unsigned long argument;
 	short count;
 	long values[16];
-	/* (_option_setting: the setting, and its values' text) */
-	char const *setting;
-	char const *setting_values[16];
 };
 
 #define VARIANT_FIELD(field) (short)offsetof(struct game_variant, field)
@@ -11601,50 +11599,65 @@ static struct gametype_option const gametype_options[] =
 	{ "force_team_spawns_spinner", _option_option_byte, OPTIONS_FIELD(force_team_spawns), 0, 2, { 0, 1 } },
 	/* (the host's voice chat, below them: port/linux/game/network_voice.c;
 	tools/port_settings.py's TEAMPLAY_ROWS) */
-	{ "voice_mode_spinner", _option_setting, 0, 0, 5, { 0 }, "network.voice_mode",
-		{ "off", "team_proximity", "team_enemy_proximity", "team_global", "team_global_enemy_proximity" } },
-	{ "voice_lobby_spinner", _option_setting, 0, 0, 2, { 0 }, "network.voice_lobby", { "true", "false" } },
-	{ "voice_kbps_spinner", _option_setting, 0, 0, 7, { 0 }, "network.voice_kbps",
-		{ "8", "12", "16", "24", "32", "48", "64" } },
-	{ "voice_proximity_spinner", _option_setting, 0, 0, 6, { 0 }, "network.voice_proximity",
-		{ "5", "10", "15", "20", "30", "50" } },
+	{ "voice_mode_spinner", _option_setting },
+	{ "voice_lobby_spinner", _option_setting },
+	{ "voice_kbps_spinner", _option_setting },
+	{ "voice_proximity_spinner", _option_setting },
 	/* (and the players' votes to kick: port/linux/game/network_votekick.c) */
-	{ "votekick_spinner", _option_setting, 0, 0, 2, { 0 }, "network.votekick", { "true", "false" } },
+	{ "votekick_spinner", _option_setting },
 	/* (and the text chat: port/linux/game/network_chat.c) */
-	{ "text_chat_spinner", _option_setting, 0, 0, 3, { 0 }, "network.text_chat", { "on", "links", "off" } },
+	{ "text_chat_spinner", _option_setting },
 	/* (and the players' pings: port/linux/game/network_markers.c) */
-	{ "pings_spinner", _option_setting, 0, 0, 2, { 0 }, "network.pings", { "true", "false" } },
-	{ "aim_assist_spinner", _option_setting, 0, 0, 2, { 0 }, "network.block_mouse_aim_assist", { "false", "true" } },
+	{ "pings_spinner", _option_setting },
+	{ "aim_assist_spinner", _option_setting },
 	/* (the shield effects every machine draws: network_shield_effects.c) */
-	{ "shield_effects_spinner", _option_setting, 0, 0, 7, { 0 }, "network.shield_effects",
-		{ "stock", "glow", "light_show", "overshield", "glow_overshield", "light_show_overshield", "players" } },
+	{ "shield_effects_spinner", _option_setting },
 	/* co-op's options (Server Setup's CO-OP OPTIONS: tools/port_settings.py's
 	COOP_SETUP_SCREENS; coop_enemies.c) */
-	{ "coop_friendly_fire_spinner", _option_setting, 0, 0, 4, { 0 }, "network.coop_friendly_fire",
-		{ "off", "on", "shields_only", "explosives_only" } },
-	{ "coop_extra_enemies_spinner", _option_setting, 0, 0, 3, { 0 }, "network.coop_enemies_mode",
-		{ "per_player", "multiplier", "none" } },
-	{ "coop_extra_pickups_spinner", _option_setting, 0, 0, 3, { 0 }, "network.coop_pickups",
-		{ "per_player", "multiplier", "none" } },
-	{ "coop_extra_vehicles_spinner", _option_setting, 0, 0, 3, { 0 }, "network.coop_vehicles",
-		{ "per_player", "multiplier", "none" } },
-	{ "coop_enemies_per_player_spinner", _option_setting, 0, 0, 5, { 0 }, "network.coop_enemies",
-		{ "25", "50", "100", "150", "200" } },
-	{ "coop_enemies_multiplier_spinner", _option_setting, 0, 0, 5, { 0 }, "network.coop_enemies_multiplier",
-		{ "2", "4", "8", "16", "32" } },
-	{ "coop_player_collisions_spinner", _option_setting, 0, 0, 2, { 0 }, "network.coop_player_collisions",
-		{ "true", "false" } },
-	{ "coop_ally_friendly_fire_spinner", _option_setting, 0, 0, 2, { 0 }, "network.coop_ally_friendly_fire",
-		{ "true", "false" } },
+	{ "coop_friendly_fire_spinner", _option_setting },
+	{ "coop_extra_enemies_spinner", _option_setting },
+	{ "coop_extra_pickups_spinner", _option_setting },
+	{ "coop_extra_vehicles_spinner", _option_setting },
+	{ "coop_enemies_per_player_spinner", _option_setting },
+	{ "coop_enemies_multiplier_spinner", _option_setting },
+	{ "coop_player_collisions_spinner", _option_setting },
+	{ "coop_ally_friendly_fire_spinner", _option_setting },
 	/* map sharing's (Server Setup's MAP SHARING: tools/port_settings.py's
 	MAP_SHARE_SETUP; map_share.c) */
-	{ "map_share_spinner", _option_setting, 0, 0, 2, { 0 }, "network.map_share", { "true", "false" } },
-	{ "map_share_upload_spinner", _option_setting, 0, 0, 8, { 0 }, "network.map_share_upload",
-		{ "256", "512", "1024", "2048", "4096", "8192", "16384", "20480" } },
+	{ "map_share_spinner", _option_setting },
+	{ "map_share_upload_spinner", _option_setting },
 	/* vehicle options (the side's set and counts: vehicles_update) */
 	{ "vehicles_respawn_spinner", _option_short, OPTIONS_FIELD(vehicle_respawn_time), 0, 7,
 		{ 0, 30, 60, 90, 120, 180, 300 } },
 };
+
+/* an option of the host's own setting: its setting and values, its
+spinner's node's in the menus' model (tools/port_settings.py's
+SETUP_ROW_SETTINGS, model/nodes.xml); FALSE if the model has none */
+static boolean gametype_option_setting(struct gametype_option const *option, struct pc_menu_setting *setting)
+{
+	struct halo_menu_model const *model = menu_engine_model();
+	long index, choice;
+
+	csmemset(setting, 0, sizeof(*setting));
+	for (index = 0; model && index < model->row_count; index++)
+	{
+		struct halo_menu_model_row const *row = &model->rows[index];
+		char const *leaf;
+
+		if (strcmp(row->kind, "node") || !row->setting)
+			continue;
+		leaf = strrchr(row->key, '/');
+		if (strcmp(leaf ? leaf + 1 : row->key, option->spinner))
+			continue;
+		setting->setting = row->setting;
+		for (choice = 0; choice < row->choice_count && choice < MAXIMUM_STRINGS; choice++)
+			setting->values[choice] = model->choices[row->first_choice + choice].value;
+		setting->value_count = choice;
+		return choice > 0;
+	}
+	return FALSE;
+}
 
 /* an option of the host's own setting: the value shown for it (the one
 set, else the nearest) */
@@ -11652,14 +11665,8 @@ static short gametype_option_setting_index(struct gametype_option const *option)
 {
 	struct pc_menu_setting setting;
 	char text[64];
-	short index;
 
-	csmemset(&setting, 0, sizeof(setting));
-	setting.setting = option->setting;
-	setting.value_count = option->count;
-	for (index = 0; index < option->count; index++)
-		setting.values[index] = option->setting_values[index];
-	if (!setting_text(option->setting, text, sizeof(text), FALSE))
+	if (!gametype_option_setting(option, &setting) || !setting_text(setting.setting, text, sizeof(text), FALSE))
 		return 0;
 	return setting_value_index(&setting, text);
 }
@@ -11776,19 +11783,21 @@ static void gametype_options_each(struct widget_instance *list, boolean save)
 			written on OK, as the gametype's are kept) */
 			if (option->kind == _option_setting)
 			{
-				short index = (short)PIN(spinner->parameters.list.selected_index, 0, option->count - 1);
+				struct pc_menu_setting setting;
+				boolean found = gametype_option_setting(option, &setting);
+				short index = (short)PIN(spinner->parameters.list.selected_index, 0, setting.value_count - 1);
 
 				visible_set(row, gametype_edit.setup);
-				if (!gametype_edit.setup)
+				if (!gametype_edit.setup || !found)
 					continue;
 				if (!save)
 				{
 					spinner->parameters.list.selected_index = gametype_option_setting_index(option);
 				}
 				else if (index != gametype_option_setting_index(option) &&
-					!setting_write(option->setting, option->setting_values[index]))
+					!setting_write(setting.setting, setting.values[index]))
 				{
-					platform_log("menus: could not set %s", option->setting);
+					platform_log("menus: could not set %s", setting.setting);
 				}
 				continue;
 			}
@@ -11819,19 +11828,20 @@ static void setting_options_each(struct widget_instance *list, boolean save)
 		for (spinner = row->child; spinner; spinner = spinner->next)
 		{
 			struct gametype_option const *option = spinner->type == 2 ? gametype_option_named(spinner->name) : NULL;
+			struct pc_menu_setting setting;
 			short index;
 
-			if (!option || option->kind != _option_setting)
+			if (!option || option->kind != _option_setting || !gametype_option_setting(option, &setting))
 				continue;
-			index = (short)PIN(spinner->parameters.list.selected_index, 0, option->count - 1);
+			index = (short)PIN(spinner->parameters.list.selected_index, 0, setting.value_count - 1);
 			if (!save)
 			{
 				spinner->parameters.list.selected_index = gametype_option_setting_index(option);
 			}
 			else if (index != gametype_option_setting_index(option) &&
-				!setting_write(option->setting, option->setting_values[index]))
+				!setting_write(setting.setting, setting.values[index]))
 			{
-				platform_log("menus: could not set %s", option->setting);
+				platform_log("menus: could not set %s", setting.setting);
 			}
 		}
 	}
