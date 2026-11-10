@@ -331,6 +331,10 @@ The steps, in order:
    fixed.)
 4. **Behaviour off `widget_instance`**: each screen's handlers in
    `menu_functions.c` moved onto the model, a batch of screens at a time.
+   Done so far: Settings' spinners' settings from their model rows
+   (`settings_each`, `settings_setting_of`: each choice row's setting and
+   its choices, the value it was loaded at kept with the row, not the
+   spinner's widget definition).
 5. **The switch**: `"new"` the default, played for a while; then the
    generated screens' widget XML no longer written, `display.menu_engine`
    retired.

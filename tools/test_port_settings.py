@@ -222,3 +222,46 @@ def test_map_storage_row():
     assert rows[0][2] == [("INSTANT LOADING", "0"), ("DISK SPACE SAVER", "730")]
     config = (Path(__file__).resolve().parent.parent / "port/linux/src/port_config.c").read_text()
     assert re.search(r'\{ "game\.map_cache_megabytes", _config_integer, "0",', config)
+
+
+def test_settings_spinners_are_model_rows():
+    """every spinner of a setting in the menus (its setting= and values=) is a choice row of its screen's in the
+    model, of the same setting and values, in the order of the screen's widgets: menu_functions.c's settings_each
+    and settings_setting_of take Settings' spinners' settings from the model's rows (but the lobby's, which the model
+    has no screen of)"""
+    import xml.etree.ElementTree as ET
+    menus = Path(__file__).resolve().parent.parent / "port/assets/menus"
+    widgets = {}
+    for path in sorted((menus / "ce").glob("*.xml")):
+        for widget in ET.parse(path).getroot().iter("widget"):
+            widgets.setdefault(widget.get("name"), []).append(widget)
+    model = ET.parse(menus / "model/settings.xml").getroot()
+    rows = {}
+    for screen in model.findall("screen"):
+        folder = screen.get("name").rsplit("/", 1)[0]
+        order = []
+
+        def walk(name, seen):
+            if name in seen:
+                return
+            seen.add(name)
+            for widget in widgets.get(name, [])[:1]:
+                if widget.get("setting"):
+                    order.append(name)
+                for child in widget.findall("child"):
+                    walk(child.get("widget"), seen)
+
+        walk(screen.get("name"), set())
+        choices = [row for row in screen.findall("row") if row.get("kind") == "choice" and row.get("setting")]
+        for row in choices:
+            rows[f"{folder}/{row.get('key')}_spinner"] = row
+        named = [f"{folder}/{row.get('key')}_spinner" for row in choices]
+        assert [name for name in named if name in order] == order, screen.get("name")
+    for name, variants in widgets.items():
+        for widget in variants:
+            if widget.get("setting") is None or "/lobby/" in name:
+                continue
+            row = rows.get(name)
+            assert row is not None, name
+            assert row.get("setting") == widget.get("setting"), name
+            assert [choice.get("value") for choice in row.findall("choice")] == widget.get("values").split("|"), name
