@@ -89,3 +89,22 @@ def test_host_settings():
     table = table[:table.index("\n};")]
     assert set(re.findall(r'\{ "(\w+)_spinner", _option_setting \}', table)) == set(port_settings.SETUP_ROW_SETTINGS)
     assert table.count("_option_setting") == len(port_settings.SETUP_ROW_SETTINGS)
+
+
+def test_server_settings_help():
+    """Server Setup's rows' places in its help (help_index, help_choices) are their words' in its help_strings
+    (tools/port_settings.py's SERVER_SETTINGS_HELP), and menu_functions.c keeps no places of its own"""
+    lists = {element.get("name"): [item.get("text") for item in element.findall("string")]
+             for path in (MENUS / "ce").glob("*.xml") for element in ET.parse(path).getroot().iter("strings")}
+    strings = lists[f"{port_settings.SS}/help_strings"]
+    nodes = {node.get("name"): node for screen in _screens().values() for node in screen}
+    for key, texts in port_settings.SERVER_SETTINGS_HELP:
+        if not key:
+            continue
+        node = nodes[f"{port_settings.SS}/op_{key}"]
+        first = int(node.get("help_index"))
+        assert strings[first:first + len(texts)] == [text.replace("\\n", "\n") for text in texts] or \
+            strings[first:first + len(texts)] == texts, key
+        assert (node.get("help_choices") == "true") == (len(texts) > 1), key
+    source = (ROOT / "port/linux/game/menu_functions.c").read_text()
+    assert not re.search(r"#define \w+_HELP \d+", source)

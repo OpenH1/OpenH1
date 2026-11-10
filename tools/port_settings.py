@@ -3230,29 +3230,7 @@ def _server_settings() -> list:
                                          "TEAMPLAY OPTIONS:", "LISTING:",
                                          *(f"{title}:" for _, title, _, _ in COOP_SETUP_SCREENS), "PASSWORD:",
                                          f"{MAP_SHARE_SETUP[1]}:", "GAME:"])
-    extra += _strings(f"{base}/help_strings", [
-        "",
-        "The name the game shows in the lists of games.\\nEnter changes it.",
-        "The most players the game takes (up to 128).",
-        "Players join this game by its invite link, or your\\nDiscord invite. Enter copies the link again.",
-        "The gametype and its rules, for this game.",
-        "Lives, health, shields and respawning, for this game.",
-        "Weapons, grenades and starting equipment, for\\nthis game.",
-        "Each team's vehicles and their respawn time, for\\nthis game.",
-        "The motion tracker and nav points, for this game.",
-        "Friendly fire and team balance, for this game.",
-        # (LISTING's, by its choice)
-        "Anyone can see and join your game: it is listed\\nin everyone's Server Browser.",
-        "Only players with your invite link can join.",
-        # (co-op's options' rows: COOP_SETUP_SCREENS)
-        *(help_text for _, _, help_text, _ in COOP_SETUP_SCREENS),
-        # (PASSWORD's)
-        "Players from the Server Browser must type it to\\njoin (an invite link needs none). Enter sets it.",
-        # (MAP SHARING's)
-        MAP_SHARE_SETUP[2],
-        # (GAME's, by its choice)
-        *(help_text for _, help_text in GAME_MODES),
-    ])
+    extra += _strings(f"{base}/help_strings", [text for _, texts in SERVER_SETTINGS_HELP for text in texts])
     lines = _screen(base, spec, rows, ["server settings update"],
                     ['<on event="created" run="server settings init"/>'], extra)
     # (a game of this machine alone's line: server_settings_local)
@@ -3507,6 +3485,40 @@ def settings_look_roles() -> dict:
             roles[f"{PE}/{folder}/tabs"] = "tabs"
         roles[f"{PE}/{folder}/button_bar"] = "buttons"
     return roles
+
+
+# Server Setup's help, in its help_strings' order: each row's (its key, op_<key>), or each of its choices' (LISTING's
+# and GAME's), the first none's; the setup screens' nodes have each row's place in it (tools/menu_nodes.py's help,
+# help_choices), which menu_functions.c's setup_help shows
+SERVER_SETTINGS_HELP = [
+    (None, [""]),
+    ("server_name", ["The name the game shows in the lists of games.\\nEnter changes it."]),
+    ("max_players", ["The most players the game takes (up to 128)."]),
+    ("invite", ["Players join this game by its invite link, or your\\nDiscord invite. Enter copies the link again."]),
+    ("game_type", ["The gametype and its rules, for this game."]),
+    ("player_options", ["Lives, health, shields and respawning, for this game."]),
+    ("item_options", ["Weapons, grenades and starting equipment, for\\nthis game."]),
+    ("vehicle_options", ["Each team's vehicles and their respawn time, for\\nthis game."]),
+    ("indicator_options", ["The motion tracker and nav points, for this game."]),
+    ("team_options", ["Friendly fire and team balance, for this game."]),
+    ("listing", ["Anyone can see and join your game: it is listed\\nin everyone's Server Browser.",
+                 "Only players with your invite link can join."]),
+    *((key, [help_text]) for key, _, help_text, _ in COOP_SETUP_SCREENS),
+    ("password", ["Players from the Server Browser must type it to\\njoin (an invite link needs none). Enter sets it."]),
+    (MAP_SHARE_SETUP[0], [MAP_SHARE_SETUP[2]]),
+    ("game_mode", [help_text for _, help_text in GAME_MODES]),
+]
+
+
+def server_settings_help() -> dict:
+    """Server Setup's rows' places in its help (SERVER_SETTINGS_HELP), by their widgets' names: (the first, whether
+    each choice has its own)"""
+    places, index = {}, 0
+    for key, texts in SERVER_SETTINGS_HELP:
+        if key:
+            places[f"{SS}/op_{key}"] = (index, len(texts) > 1)
+        index += len(texts)
+    return places
 
 
 def lobby_column_x(column: int) -> int:

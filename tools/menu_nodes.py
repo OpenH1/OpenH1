@@ -6,7 +6,9 @@ port/assets/menus/model/nodes.xml beside the Settings screens' rows (model/setti
 A screen's nodes are its widgets, from the screen down (each after its parent), keyed by the widgets' names as the
 look and the behaviour have them (model/look, model/behaviour); each with what a press of A does (open, run), whether
 the focus may take it (a widget with handlers or one that passes its events on to its children), the first of
-those in the screen's first list (initial), and its condition (when), port_settings.py's:
+those in the screen's first list (initial), its condition (when), port_settings.py's, its place in its screen's help
+(help_index, and help_choices for a spinner's row whose choices each have their own: Server Setup's,
+port_settings.py's SERVER_SETTINGS_HELP), and a spinner of the host's own settings its setting and choices:
 
     <screen name="main_menu/.../server_settings_screen" kind="nodes">
         <node name="main_menu/.../options_menu" parent="main_menu/.../server_settings_screen" focusable="true"/>
@@ -84,6 +86,7 @@ def _screen(name: str, whens: dict, widgets: dict, lists: dict) -> list:
     if name not in widgets:
         raise SystemExit(f"menu_nodes: ce/ has no screen {name}")
     lines, seen, initial = [], set(), [None]
+    helps = port_settings.server_settings_help()
     unknown = set(whens)
 
     def walk(widget_name: str, parent: str, in_list: bool):
@@ -101,7 +104,9 @@ def _screen(name: str, whens: dict, widgets: dict, lists: dict) -> list:
         setting, choices = _settings(widget_name, widget, lists)
         pairs = [("name", widget_name), ("parent", parent), ("open", opens), ("run", runs),
                  ("focusable", "true" if focusable else None), ("initial", "true" if first else None),
-                 ("when", whens.get(widget_name)), ("setting", setting)]
+                 ("when", whens.get(widget_name)), ("setting", setting),
+                 ("help_index", str(helps[widget_name][0]) if widget_name in helps else None),
+                 ("help_choices", "true" if helps.get(widget_name, (0, False))[1] else None)]
         if choices:
             lines.extend([f"\t\t<node{_attributes(pairs)}>", *choices, "\t\t</node>"])
         else:
