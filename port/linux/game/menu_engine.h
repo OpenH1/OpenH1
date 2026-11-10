@@ -68,6 +68,16 @@ boolean ui_widget_port_no_screens(void);
 engine runs its screen (*found: the model has the row) */
 wchar_t const *menu_engine_row_help(struct widget_instance *row, boolean *found);
 
+/* the menus' model (NULL: none); the model's screen of a widget's screen,
+and the model's row of a settings row (op_<key>), on either engine (NULL:
+the model has none) */
+struct halo_menu_model;
+struct halo_menu_model_screen;
+struct halo_menu_model_row;
+struct halo_menu_model const *menu_engine_model(void);
+struct halo_menu_model_screen const *menu_engine_model_screen_of(struct widget_instance const *widget);
+struct halo_menu_model_row const *menu_engine_model_row_of(struct widget_instance const *row);
+
 /* whether the engine lays out what is in the widget (a settings tab's or
 page's rows) from the model */
 boolean menu_engine_lays_out(struct widget_instance *widget);

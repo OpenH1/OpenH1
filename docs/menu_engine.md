@@ -221,7 +221,12 @@ The steps, in order:
    mouse, touch and repeat, the rows' actions, sliders' ranges and stops
    from the model (`settings_sliders` gone), the rows' conditions from the
    model (the row-name predicates gone); the parity tool's behaviour scripts,
-   config.toml and the profile compared after each.
+   config.toml and the profile compared after each. Done so far: the
+   behaviour scripts (`--behaviour`, `--sweep`); the screens' events taken
+   by the engine (`menu_engine.c`'s `engine_event`, by the definitions'
+   flags and handlers, which step 3 moves into the model); the sliders made
+   from the model's rows on both engines (`settings_slider_made`; the table
+   `settings_sliders` gone).
 3. **The look in the model**: bounds, anchors and the look written by the
    generators into the model for every generated screen; the engine reads
    them there, not from widget definitions.

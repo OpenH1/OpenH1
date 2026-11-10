@@ -111,17 +111,19 @@ BOOL text_typing_keyboard;
 
 #include "under_test.inc"
 
-static short slider_named(char const *row)
+/* a slider made from its row of the model (test_model: the model's rows,
+port/assets/menus/model) */
+static struct settings_slider const *slider_named(char const *row)
 {
-	short index;
+	long index;
 
-	for (index = 0; index < (short)NUMBEROF(settings_sliders); index++)
+	for (index = 0; index < test_model.row_count; index++)
 	{
-		if (!strcmp(settings_sliders[index].row, row))
-			return index;
+		if (!strcmp(test_model.rows[index].key, row + 3))
+			return settings_slider_made(&test_model.rows[index]);
 	}
 	CHECK(FALSE, "no slider %s", row);
-	return NONE;
+	return NULL;
 }
 
 static void typed_done(char const *text)
@@ -152,8 +154,8 @@ int main(int argc, char **argv)
 	if (!strcmp(test, "word-empty"))
 	{
 		/* a stop shown as a word: nothing to edit; a number: its number */
-		short fov = slider_named("op_fov"), fps = slider_named("op_max_fps"), panini = slider_named("op_panini");
-		short vehicle = slider_named("op_vehicle_fov");
+		struct settings_slider const *fov = slider_named("op_fov"), *fps = slider_named("op_max_fps");
+		struct settings_slider const *panini = slider_named("op_panini"), *vehicle = slider_named("op_vehicle_fov");
 
 		settings_slider_field_text(fov, 0.0, text, sizeof(text));
 		CHECK(!strcmp(text, ""), "FoV's DEFAULT starts as \"%s\"", text);

@@ -296,8 +296,9 @@ class Slider(NamedTuple):
     typed_most (whole: rounded to a whole number). With stops, [(shown,
     value)], the track is the stops, evenly spaced, and left, right and a
     click go from stop to stop; a stop shown as a word (AUTO) is that value,
-    which may be typed as the word or the number. menu_functions.c's
-    settings_sliders has the same"""
+    which may be typed as the word or the number. The model has it
+    (port/assets/menus/model), which menu_functions.c makes its sliders
+    from"""
     least: float
     most: float
     step: float
@@ -483,17 +484,17 @@ VEHICLE_FIELDS_OF_VIEW = FIELDS_OF_VIEW._replace(
 FRAME_RATE_LIMITS = Slider(30, 540, 1, 10, 1000, whole=True,
                            stops=(("AUTO", "0"),) + tuple((str(n), str(n)) for n in (
                                30, 60, 75, 90, 100, 120, 144, 165, 200, 240, 280, 360, 480, 540)) + (("NONE", "-1"),))
-# display.gamma's: Halo PC's gamma, past 1 brighter; 1 none (menu_functions.c's
-# settings_sliders, d3d8_device.c's GAMMA_LEAST and GAMMA_MOST)
+# display.gamma's: Halo PC's gamma, past 1 brighter; 1 none (d3d8_device.c's
+# GAMMA_LEAST and GAMMA_MOST)
 GAMMA = Slider(0.5, 2.0, 0.05, 0.5, 2.0)
 # display.panini's: its strength, off (0) to 1; any of 0 to 1 typed; and
-# display.panini_vertical's, 0 to 1 (menu_functions.c's settings_sliders)
+# display.panini_vertical's, 0 to 1
 PANINI_STRENGTHS = Slider(0.0, 1.0, 0.25, 0.0, 1.0,
                           stops=(("OFF", "0"), ("0.25", "0.25"), ("0.5", "0.5"), ("0.75", "0.75"), ("1", "1")))
 PANINI_VERTICAL = Slider(0.0, 1.0, 0.05, 0.0, 1.0)
 # display.draw_distance's: the far clip plane in world units, the game's own
 # 1024 to ChupathingyCE's farthest (port/linux/game/far_clip.c); any of 1024
-# to 10000 typed (menu_functions.c's settings_sliders)
+# to 10000 typed
 DRAW_DISTANCES = Slider(1024, 10000, 1, 1024, 10000, whole=True,
                         stops=(("DEFAULT", "1024"),) + tuple((str(n), str(n)) for n in (
                             1536, 2048, 3072, 4096, 6144, 8192, 10000)))

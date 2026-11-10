@@ -221,6 +221,14 @@ SCRIPTS = [
     ("clicks-and-wheel", f"{PE}/video_settings/video_settings_screen",
      ["click:0.406:0.410", "click:0.53:0.498", "down", "down", "down", "wheel:1", "wheel:-3", "click:0.230:0.181",
       "wait", "down", "right", OK_CLICK]),
+    # (sliders without stops, Defaults over a page's sliders, and stops that write a word of the setting's:
+    # VEHICLE FIELD OF VIEW's DEFAULT and MATCH)
+    ("slider-plain", f"{PE}/mouse_settings/mouse_settings_screen",
+     ["right", "right", "left", "down", "up", "right", OK_CLICK]),
+    ("slider-defaults", f"{PE}/video_settings/video_settings_screen",
+     ["down", "down", "down", "right", "right", DEFAULTS_CLICK, "wait", "down", "down", "down", "left", OK_CLICK]),
+    ("slider-words", f"{PE}/video_settings/video_settings_screen",
+     ["down", "down", "down", "down", "a", "wait", "right", "right", "left", OK_CLICK, "wait", OK_CLICK]),
     ("held-repeat", f"{PE}/video_settings/video_settings_screen",
      ["down", "down", "down", "hold:right", "hold:right", "wait", "hold:left", "wait", "hold:down", "hold:down",
       "hold:down", "wait", "hold:up", "wait", OK_CLICK]),
