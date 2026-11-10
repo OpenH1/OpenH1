@@ -102,8 +102,9 @@ defaults (`server.relay_pairs` 64 pairs, `server.relay_upload` 8 MB/s): set
 others in `/var/lib/openh1-relay/config.toml`.
 
 **Updates.** `openh1-relay-update.timer` runs `update-relay.sh` on Tuesdays
-at 09:00 UTC: it downloads the latest release's `SHA256SUMS`, its signature
-and `OpenH1-Linux.zip`, checks the signature with the release key
+at 4 am New York time (within 10 minutes), before the security updates'
+reboot at 09:30 UTC: it downloads the latest release's `SHA256SUMS`, its
+signature and `OpenH1-Linux.zip`, checks the signature with the release key
 (`port/assets/release-key.pub`, as the game's self-updater does) and the
 zip's sum, installs it beside the others and restarts the relay if the
 build changed (pairs being relayed then bind again within seconds). The
