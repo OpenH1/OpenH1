@@ -2024,11 +2024,45 @@ model's weapon_held: settings_rows_conditions), its name in RESET's value
 panel says how to set them */
 boolean viewmodel_held_weapon(short local_player_index, char *path, unsigned int size);
 static void discord_text_set(struct widget_instance *text_box, char const *text);
+static boolean settings_row_is(struct widget_instance const *row, char const *key);
+
+/* a row of the list's screen's model, by its key: its widget (op_<key>),
+NULL if the model has not the row or the screen not its widget (its
+platform has it not) */
+static struct widget_instance *settings_model_row(struct widget_instance *list, char const *key)
+{
+	struct halo_menu_model_screen const *screen = menu_engine_model_screen_of(list);
+	struct halo_menu_model const *model = menu_engine_model();
+	char name[80];
+	long index;
+
+	for (index = 0; screen && model && index < screen->row_count; index++)
+	{
+		if (!strcmp(model->rows[screen->first_row + index].key, key))
+		{
+			snprintf(name, sizeof(name), "op_%s", key);
+			return named(list, name, 0);
+		}
+	}
+	return NULL;
+}
+
+/* a status row's value (its <key>_value) written, the game's words: the
+status rows' writers (tools/port_settings.py's SETTINGS_STATUS_ROWS) */
+static void settings_status_set(struct widget_instance *list, char const *key, char const *text)
+{
+	struct widget_instance *row = settings_model_row(list, key);
+	char name[80];
+
+	if (!row)
+		return;
+	snprintf(name, sizeof(name), "%s_value", key);
+	discord_text_set(named(row, name, 0), text);
+}
 
 static void viewmodel_weapon_rows_show(struct widget_instance *list)
 {
-	struct widget_instance *reset = named(list, "op_viewmodel_weapon_reset", 0);
-	struct widget_instance *value;
+	struct widget_instance *reset = settings_model_row(list, "viewmodel_weapon_reset");
 	short local_player_index;
 	char path[sizeof(settings_weapon)];
 	boolean held;
@@ -2040,8 +2074,7 @@ static void viewmodel_weapon_rows_show(struct widget_instance *list)
 		local_player_index = 0;
 	held = !main_menu_is_active() && viewmodel_held_weapon(local_player_index, path, sizeof(path));
 	snprintf(settings_weapon, sizeof(settings_weapon), "%s", held ? path : "");
-	value = named(list, "viewmodel_weapon_reset_value", 0);
-	if (value && held)
+	if (held)
 	{
 		char const *name = strrchr(settings_weapon, '\\');
 		char shown[ROW_TEXT_LENGTH];
@@ -2051,7 +2084,7 @@ static void viewmodel_weapon_rows_show(struct widget_instance *list)
 		for (length = 0; name[length] && length < (short)sizeof(shown) - 1; length++)
 			shown[length] = name[length] == '_' ? ' ' : (char)toupper((unsigned char)name[length]);
 		shown[length] = 0;
-		discord_text_set(value, shown);
+		settings_status_set(list, "viewmodel_weapon_reset", shown);
 	}
 }
 
@@ -2067,19 +2100,17 @@ static boolean gyro_calibrated;
 
 static void gyro_rows_show(struct widget_instance *list)
 {
-	struct widget_instance *found = named(list, "op_gyro_found", 0);
-	struct widget_instance *value;
 	int gyro;
 
-	if (!found)
+	if (!settings_model_row(list, "gyro_found"))
 		return;
 	gyro = halo_gyro_found();
-	if ((value = named(list, "gyro_found_value", 0)) != NULL)
-		discord_text_set(value, gyro == 2 ? "CONNECTED" : gyro == 1 ? "STEAM INPUT HAS IT" : "NONE CONNECTED");
+	settings_status_set(list, "gyro_found", gyro == 2 ? "CONNECTED" : gyro == 1 ? "STEAM INPUT HAS IT" :
+		"NONE CONNECTED");
 	if (halo_gyro_calibrating())
 		gyro_calibrated = TRUE;
-	if ((value = named(list, "gyro_calibrate_value", 0)) != NULL)
-		discord_text_set(value, halo_gyro_calibrating() ? "HOLD STILL" : gyro_calibrated ? "DONE" : "");
+	settings_status_set(list, "gyro_calibrate", halo_gyro_calibrating() ? "HOLD STILL" : gyro_calibrated ? "DONE" :
+		"");
 }
 
 static void sim_rate_row_show(struct widget_instance *list)
@@ -3036,20 +3067,20 @@ static void discord_account_show(struct widget_instance *list)
 	struct widget_instance *row;
 	char name[PLAYER_LINK_NAME_SIZE + 1], code[PLAYER_LINK_CODE_SIZE], host[80], text[ROW_TEXT_LENGTH];
 	int state, linked, masters, master, needed = player_link_needed_master();
-	boolean page = named(list, "op_link_status", 0) != NULL;
+	boolean page = settings_model_row(list, "link_status") != NULL;
 
-	if (!named(list, "op_discord_account", 0) && !page)
+	if (!settings_model_row(list, "discord_account") && !page)
 		return;
 	state = discord_state_shown(name, sizeof(name), code, sizeof(code), &linked, &masters);
-	discord_text_set(named(list, "discord_account_value", 0), discord_state_word(state));
+	settings_status_set(list, "discord_account", discord_state_word(state));
 	if (!page)
 		return;
-	discord_text_set(named(list, "link_status_value", 0), discord_state_word(state));
-	if ((row = named(list, "op_link_unlink", 0)) != NULL)
+	settings_status_set(list, "link_status", discord_state_word(state));
+	if ((row = settings_model_row(list, "link_unlink")) != NULL)
 	{
 		if (!row->visible)
 			discord_account.unlink_asked = 0;
-		discord_text_set(named(row, "link_unlink_value", 0), discord_unlink_asked() ? "SELECT AGAIN" : "");
+		settings_status_set(list, "link_unlink", discord_unlink_asked() ? "SELECT AGAIN" : "");
 	}
 	for (master = 0; master < PLAYER_LINK_MAXIMUM_MASTERS; master++)
 	{
@@ -3057,8 +3088,8 @@ static void discord_account_show(struct widget_instance *list)
 		int master_state = player_link_master_state(master, host, sizeof(host), name, sizeof(name), code,
 			sizeof(code));
 
-		snprintf(row_name, sizeof(row_name), "op_link_master_%d", master + 1);
-		if (!(row = named(list, row_name, 0)))
+		snprintf(row_name, sizeof(row_name), "link_master_%d", master + 1);
+		if (!(row = settings_model_row(list, row_name)))
 			continue;
 		row->visible = host[0] != 0;
 		snprintf(row_name, sizeof(row_name), "link_master_%d_label", master + 1);
@@ -3068,8 +3099,8 @@ static void discord_account_show(struct widget_instance *list)
 		else
 			snprintf(text, sizeof(text), "%s", master_state == _player_link_state_none ? "LINK" :
 				discord_state_word(master_state));
-		snprintf(row_name, sizeof(row_name), "link_master_%d_value", master + 1);
-		discord_text_set(named(row, row_name, 0), text);
+		snprintf(row_name, sizeof(row_name), "link_master_%d", master + 1);
+		settings_status_set(list, row_name, text);
 	}
 	/* (a page opened: on the master to link with, if a server asked) */
 	if (screen && (screen->definition_tag_index != discord_account.screen_tag ||
@@ -3099,13 +3130,12 @@ the display's peak as the backend says it now (it follows the window to
 another display, and the system's brightness) */
 static void hdr_display_show(struct widget_instance *list)
 {
-	struct widget_instance *value = named(list, "hdr_display_value", 0);
 	char text[ROW_TEXT_LENGTH];
 
-	if (!value)
+	if (!settings_model_row(list, "hdr_display"))
 		return;
 	halo_hdr_display_text(0, text, sizeof(text));
-	discord_text_set(value, text);
+	settings_status_set(list, "hdr_display", text);
 }
 
 /* the VARIABLE REFRESH row's panel: its words of what the system says, in
@@ -3116,7 +3146,7 @@ static boolean vrr_panel(struct widget_instance *row, wchar_t const **help)
 	static wchar_t words[SETTINGS_PANEL_TEXT_LENGTH];
 	char const *text;
 
-	if (!row->name || strcmp(row->name, "op_vrr"))
+	if (!settings_row_is(row, "vrr"))
 		return FALSE;
 	switch (platform_vrr_detected())
 	{
@@ -3156,7 +3186,7 @@ static boolean gyro_found_panel(struct widget_instance *row, wchar_t const **hel
 {
 	static wchar_t words[SETTINGS_PANEL_TEXT_LENGTH];
 
-	if (!row->name || strcmp(row->name, "op_gyro_found") || halo_gyro_found() != 1)
+	if (!settings_row_is(row, "gyro_found") || halo_gyro_found() != 1)
 		return FALSE;
 	discord_widen(halo_steam_deck() ?
 		"Steam Input has the controls: it passes no gyro to OpenH1.|To aim with the Steam Deck's gyro: Steam > "
@@ -3174,7 +3204,7 @@ static boolean hdr_display_panel(struct widget_instance *row, wchar_t *value, wc
 	static wchar_t words[SETTINGS_PANEL_TEXT_LENGTH];
 	char text[SETTINGS_PANEL_TEXT_LENGTH];
 
-	if (!row->name || strcmp(row->name, "op_hdr_display") || !halo_hdr_display_text(0, text, sizeof(text)))
+	if (!settings_row_is(row, "hdr_display") || !halo_hdr_display_text(0, text, sizeof(text)))
 		return FALSE;
 	discord_widen(text, value, ROW_TEXT_LENGTH);
 	halo_hdr_display_text(1, text, sizeof(text));
@@ -3194,7 +3224,7 @@ static boolean about_panel(struct widget_instance *row, wchar_t *value, wchar_t 
 	long number;
 	short length;
 
-	if (!row->name || strcmp(row->name, "op_about"))
+	if (!settings_row_is(row, "about"))
 		return FALSE;
 	main_build_identity(&number, flavor, sizeof(flavor), repository, sizeof(repository), version, sizeof(version));
 	/* (the label's " | ", a comma) */
@@ -3263,10 +3293,9 @@ static void clear_caches_measure(void)
 
 static void clear_caches_show(struct widget_instance *list)
 {
-	struct widget_instance *row = named(list, "op_clear_caches", 0);
 	char text[ROW_TEXT_LENGTH];
 
-	if (!row)
+	if (!settings_model_row(list, "clear_caches"))
 	{
 		clear_caches.measured = FALSE;
 		clear_caches.asked = 0;
@@ -3280,7 +3309,7 @@ static void clear_caches_show(struct widget_instance *list)
 		snprintf(text, sizeof(text), "SELECT AGAIN");
 	else
 		clear_caches_size(clear_caches.bytes, text, sizeof(text));
-	discord_text_set(named(row, "clear_caches_value", 0), text);
+	settings_status_set(list, "clear_caches", text);
 }
 
 /* the panel's value (the size) and words for CLEAR CACHES (the others':
@@ -3290,7 +3319,7 @@ static boolean clear_caches_panel(struct widget_instance *row, wchar_t *value, w
 	static wchar_t words[SETTINGS_PANEL_TEXT_LENGTH];
 	char size[32], text[SETTINGS_PANEL_TEXT_LENGTH];
 
-	if (!row->name || strcmp(row->name, "op_clear_caches"))
+	if (!settings_row_is(row, "clear_caches"))
 		return FALSE;
 	clear_caches_size(clear_caches.bytes, size, sizeof(size));
 	discord_widen(size, value, ROW_TEXT_LENGTH);
@@ -3333,7 +3362,7 @@ static boolean discord_account_panel(struct widget_instance *row, wchar_t *name,
 	char text[SETTINGS_PANEL_TEXT_LENGTH], shown[ROW_TEXT_LENGTH];
 	int master = discord_master_of(row->name), state, linked, masters;
 
-	if (row->name && !strcmp(row->name, "op_discord_account"))
+	if (settings_row_is(row, "discord_account"))
 	{
 		/* (Online's row: its words its own, the value the account's state) */
 		state = player_link_state(account, sizeof(account), code, sizeof(code), &linked, &masters);
@@ -3382,7 +3411,7 @@ static boolean discord_account_panel(struct widget_instance *row, wchar_t *name,
 			break;
 		}
 	}
-	else if (row->name && !strcmp(row->name, "op_link_status"))
+	else if (settings_row_is(row, "link_status"))
 	{
 		int needed = player_link_needed_master();
 
@@ -3422,7 +3451,7 @@ static boolean discord_account_panel(struct widget_instance *row, wchar_t *name,
 				"with it in your browser: servers that block VPNs then let you in while you use one.");
 		}
 	}
-	else if (row->name && !strcmp(row->name, "op_link_unlink") && discord_unlink_asked())
+	else if (settings_row_is(row, "link_unlink") && discord_unlink_asked())
 	{
 		snprintf(shown, sizeof(shown), "SELECT AGAIN");
 		snprintf(text, sizeof(text), "Select UNLINK again to forget the linked account on this device. You can "

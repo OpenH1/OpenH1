@@ -336,7 +336,11 @@ The steps, in order:
    its choices, the value it was loaded at kept with the row, not the
    spinner's widget definition); the tabs, the model's screens laid out
    as tabs (`settings_tab_screen`: the table `settings_tabs` gone), and the
-   panel's words for a tab and a button from the model.
+   panel's words for a tab and a button from the model; the status rows'
+   values written, and their panels' rows found, by their model rows
+   (`settings_model_row`, `settings_status_set`). Left: the setup screens'
+   handlers, and the look's widgets that Settings' code still finds by
+   name (the tabs' bar, the button bar, the panel's parts).
 5. **The switch**: `"new"` the default, played for a while; then the
    generated screens' widget XML no longer written, `display.menu_engine`
    retired.
