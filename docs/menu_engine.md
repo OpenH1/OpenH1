@@ -281,9 +281,10 @@ The steps, in order:
    the model for every widget of every generated screen
    (`tools/menu_look.py`, `model/look`); the engine draws them from there,
    not from widget definitions, and the parity tool fails on any widget drawn
-   from its definition; every screen variant alike in layout and pixels
-   but for what differs between two classic runs too (a field's blinking
-   caret, `mission_screen`'s picture, on a loaded computer).
+   from its definition; 972 of 972 screen variants alike in layout and
+   pixels. (For runs to be comparable, a field's caret, a menu picture's
+   upscale and the icons in text follow the frames' time where it is
+   fixed.)
 4. **Behaviour off `widget_instance`**: each screen's handlers in
    `menu_functions.c` moved onto the model, a batch of screens at a time.
 5. **The switch**: `"new"` the default, played for a while; then the
