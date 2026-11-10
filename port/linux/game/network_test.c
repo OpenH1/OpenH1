@@ -1644,8 +1644,8 @@ static void network_test_pickup(
 
 /* debug.network_test_place: the first local player's unit put at a point,
 facing (yaw, pitch in degrees) that way, as the debug camera's numbers give
-them, once, for pictures of one place */
-static void network_test_place(
+them, once, for pictures of one place; whether it was */
+static boolean network_test_place(
 	void)
 {
 	long player_index = local_player_get_player_index(0);
@@ -1655,10 +1655,10 @@ static void network_test_place(
 	real_vector3d facing, forward;
 
 	if (player_index == NONE)
-		return;
+		return FALSE;
 	player = player_get(player_index);
 	if (player->unit_index == NONE)
-		return;
+		return FALSE;
 	angles.yaw = DEGREES_TO_RADIANS(network_test.place_yaw);
 	angles.pitch = DEGREES_TO_RADIANS(network_test.place_pitch);
 	vector3d_from_euler_angles2d(&facing, &angles);
@@ -1673,6 +1673,7 @@ static void network_test_place(
 	player_control_set_facing(0, &facing);
 	platform_log("network test: placed at %.3f %.3f %.3f, yaw %.1f pitch %.1f", network_test.place_position.x,
 		network_test.place_position.y, network_test.place_position.z, network_test.place_yaw, network_test.place_pitch);
+	return TRUE;
 }
 
 /* debug.network_test_elevator: the level's elevators (machines that carry
@@ -2064,8 +2065,9 @@ void network_test_update(
 			long camouflage_time = (long)(network_test.camouflage_time * TICKS_PER_SECOND);
 
 			/* debug.network_test_camouflage: every player camouflaged, as the
-			powerup does */
-			if (game_time_get() == camouflage_time)
+			powerup does (through a second: a slow frame steps several
+			ticks) */
+			if (game_time_get() >= camouflage_time && game_time_get() - camouflage_time < TICKS_PER_SECOND)
 			{
 				struct data_iterator players;
 				struct player_datum *player;
@@ -2079,8 +2081,12 @@ void network_test_update(
 				platform_log("network test: every player camouflaged");
 			}
 		}
-		if (network_test.place && game_time_get() == (long)(network_test.place_time * TICKS_PER_SECOND))
-			network_test_place();
+		/* (at the first frame from then: a slow frame steps several ticks) */
+		if (network_test.place && game_time_get() >= (long)(network_test.place_time * TICKS_PER_SECOND) &&
+			network_test_place())
+		{
+			network_test.place = FALSE;
+		}
 		if (network_test.pickup_time > 0.0f)
 		{
 			long pickup_time = (long)(network_test.pickup_time * TICKS_PER_SECOND);
