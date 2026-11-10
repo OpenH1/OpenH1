@@ -5,12 +5,17 @@ and what each draws compared.
 
     python tools/menu_parity.py --layout              # every screen's debug.menu_layout, both engines, diffed
     python tools/menu_parity.py --layout --screens settings --variants 16x9-keyboard
+    python tools/menu_parity.py --behaviour --sweep   # the scripts of presses, and every screen's navigation
 
 --layout runs tools/menu_gallery.py's tour (debug.menu_tour: each screen opened alone, hidden, muted, no
 renderer) once on each engine for each variant, and compares each screen's layout (port/linux/game/menu_layout.c:
 every widget's box and clip, every string's text, box, clip and extent, every button's glyph and every pointer
 target), item by item. The variants are the four aspect ratios (4:3, 16:10, 16:9, 21:9) with each input (a
 controller, the keyboard and mouse, touch).
+
+--behaviour runs scripts of presses (debug.test_input "menu:ready ...", SCRIPTS) on each engine from the same
+config.toml and player profile and compares where the focus was after each press, config.toml, the profile's files,
+the settings written and the last screen's layout; --sweep adds every generated screen's navigation (SWEEP).
 
 The runs reuse one map cache (a clone of --saves's, by default ~/.cache/openh1-bench/saves/z: APFS clones on a
 Mac, so nothing is unpacked again), each with its own data and save folders, deleted afterwards. A difference
@@ -176,6 +181,220 @@ def run_layouts(build: Path, screens: list, variant_names: list, maps: Path, tem
     return results
 
 
+# ---------- behaviour: scripted presses on each engine, what they leave compared
+
+PE = "main_menu/settings_select/player_setup/player_profile_edit"
+# (the 4:3 window's fractions of the buttons of a Settings tab or page: the menus' 640 x 480 fill it)
+OK_CLICK, CANCEL_CLICK, DEFAULTS_CLICK = "click:0.659:0.889", "click:0.859:0.889", "click:0.138:0.889"
+# each script: its name, the screen it starts on (debug.menu_open) and its presses (debug.test_input
+# "menu:ready ...", one a second of the frames' clock from when the screen is up: port/linux/src/xinput_sdl.c,
+# port/linux/game/menu_tour.c)
+SCRIPTS = [
+    ("spinners", f"{PE}/audio_settings/audio_settings_screen",
+     ["down", "right", "down", "right", "down", "right", "down", "down", "down", "right", "right", "left",
+      OK_CLICK]),
+    ("toggle-and-cancel", f"{PE}/audio_settings/audio_settings_screen",
+     ["down", "down", "right", "down", "down", "right", "b"]),
+    ("slider-keys-and-typed", f"{PE}/video_settings/video_settings_screen",
+     ["down", "down", "down", "right", "right", "left", "down", "up", "a", "type:118", "enter",
+      OK_CLICK]),
+    ("sub-page-cancel", f"{PE}/video_settings/video_settings_screen",
+     ["down", "down", "down", "down", "a", "wait", "down", "right", "down", "right", "b", "wait", OK_CLICK]),
+    ("sub-page-keep", f"{PE}/video_settings/video_settings_screen",
+     ["down", "down", "down", "down", "a", "wait", "down", "right", "right", OK_CLICK, "wait", "down", "right",
+      OK_CLICK]),
+    ("tabs", f"{PE}/audio_settings/audio_settings_screen",
+     ["rb", "wait", "down", "right", "rb", "wait", "rb", "wait", "down", "right", "lb", "wait", "lb", "wait",
+      "down", "right", OK_CLICK]),
+    ("defaults", f"{PE}/audio_settings/audio_settings_screen",
+     ["down", "right", DEFAULTS_CLICK, "wait", OK_CLICK]),
+    # (a binding taken from the scripted mouse's events, which the binding's capture reads: its middle button,
+    # the wheel turned)
+    ("key-binding", f"{PE}/controls_setup/controls_settings_screen",
+     ["down", "down", "a", "wait", "mouse:2", "wait", "down", "right", "a", "wait", "wheel:1", "wait", "up", "up",
+      OK_CLICK]),
+    ("mouse-and-cancel-button", f"{PE}/mouse_settings/mouse_settings_screen",
+     ["down", "right", "right", "down", "right", "a", "type:3", "enter", CANCEL_CLICK]),
+    ("profile-tab", f"{PE}/profile_settings/profile_settings_screen",
+     ["down", "right", "right", "down", "down", "right", "up", OK_CLICK]),
+    # (the 4:3 window's fractions of FIELD OF VIEW's track, MOVIES' spinner and the AUDIO tab)
+    ("clicks-and-wheel", f"{PE}/video_settings/video_settings_screen",
+     ["click:0.406:0.410", "click:0.53:0.498", "down", "down", "down", "wheel:1", "wheel:-3", "click:0.230:0.181",
+      "wait", "down", "right", OK_CLICK]),
+    ("held-repeat", f"{PE}/video_settings/video_settings_screen",
+     ["down", "down", "down", "hold:right", "hold:right", "wait", "hold:left", "wait", "hold:down", "hold:down",
+      "hold:down", "wait", "hold:up", "wait", OK_CLICK]),
+    ("controller", f"{PE}/audio_settings/audio_settings_screen",
+     ["down", "right", "down", "down", "right", "rb", "wait", "down", "right", "lb", "wait", "up", "up", "right",
+      "a"], "4x3-controller"),
+    ("touch", f"{PE}/video_settings/video_settings_screen",
+     ["click:0.406:0.410", "click:0.53:0.498", "down", "right", "click:0.230:0.181", "wait", OK_CLICK],
+     "4x3-touch"),
+]
+# the script that makes the player profile every other run starts from (its text field typed into): run on the
+# classic engine first, its saves kept and copied into each run, and itself compared like the others
+MAKE_PROFILE = ("profile-create", f"{PE}/profile_settings/profile_settings_screen",
+                ["a", "wait", "type:Tester", "enter", "wait", "wait"])
+# (scripts that write nothing: the presses are taken back, or only move the focus)
+WRITE_NOTHING = ("toggle-and-cancel", "mouse-and-cancel-button", "sub-page-cancel")
+# the navigation sweep: every generated screen opened, the focus moved about it with no press that leaves it
+SWEEP = ["down", "down", "down", "down", "up", "up", "right", "down", "left", "hold:down", "hold:down", "up",
+         "hold:up", "hold:up", "down", "right", "right", "left"]
+BEHAVIOUR_VARIANT = "4x3-keyboard"
+
+
+# (screens the sweep leaves out: a name's, which debug.menu_open does not bring up alone, its run never reaching
+# the menus on either engine; profile-create types into a name's field)
+SWEEP_SKIP = re.compile(r"/name_edit/")
+
+
+def sweep_scripts() -> list:
+    """the navigation sweep's scripts, one a screen"""
+    return [(f"sweep:{screen.name}", screen.name, SWEEP)
+            for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS) if not SWEEP_SKIP.search(screen.name)]
+
+
+def focus_path(text: str) -> list:
+    """where the focus was after each second of a run's script (menu_tour.c's "menus: focus" lines)"""
+    return [line.split("menus: focus ", 1)[1] for line in text.splitlines() if "menus: focus " in line]
+
+
+def profile_digests(saves: Path) -> dict:
+    """the player profiles' files' digests, by their place (the profile's folder, named at random as it is
+    made, and its friend key, made at random, left out)"""
+    import hashlib
+    found = {}
+    for path in sorted((saves / "u").rglob("*")) if (saves / "u").is_dir() else []:
+        relative = path.relative_to(saves).as_posix()
+        if path.is_file() and path.name != "friends.txt":
+            found[re.sub(r"^u/UDATA/[^/]+/", "u/UDATA/*/", relative)] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return found
+
+
+def behaviour_run(build: Path, script: tuple, engine: str, maps: Path, template: Path, timeout: float,
+                  profile: Path = None, keep: Path = None) -> dict:
+    """one script on one engine: {"config": config.toml's lines, "profile": the saved profiles' files'
+    digests, "writes": the settings the log says were written, "focus": where the focus was after each press,
+    "layout": the last screen's layout, "done": whether the script ran to its end, "log"} (profile: a save
+    folder's player profiles the run starts with; keep: its own copied there afterwards)"""
+    import shutil
+    import signal
+    import subprocess
+    import tempfile
+    name, screen, presses = script[:3]
+    folder = Path(tempfile.mkdtemp(prefix="menu-parity-"))
+    process = None
+    try:
+        game = folder / "game"
+        game.mkdir()
+        for file in menu_gallery.capture.BUILD_FILES:
+            if (build / file).is_file():
+                menu_gallery.place(build / file, game / file)
+        if sys.platform != "darwin":
+            for library in build.glob("*.so*"):
+                menu_gallery.place(library, game / library.name)
+        variant = engine_variant(VARIANTS[script[3] if len(script) > 3 and script[3] else BEHAVIOUR_VARIANT],
+                                 ENGINES.get(engine, engine))
+        environment = menu_gallery.run_environment(variant, folder, timeout, True)
+        environment.pop("HALO_MENU_TOUR", None)
+        presses = list(presses) + ["wait"] * 2
+        environment.update({
+            "HALO_MENU_OPEN": screen, "HALO_TEST_INPUT": "menu:ready " + " ".join(presses),
+            "HALO_EXIT_AFTER": str(int(timeout)), "HALO_MENU_LAYOUT": "layout.json",
+        })
+        if template:
+            menu_gallery.map_cache_clone(template, folder / "saves" / "z")
+        if profile:
+            shutil.copytree(profile, folder / "saves" / "u", dirs_exist_ok=True)
+        (folder / "data" / "maps").symlink_to(maps.resolve())
+        if sys.platform != "darwin":
+            environment["SDL_VIDEO_DRIVER"] = "offscreen"
+        with open(folder / "halo.log", "w") as log:
+            process = subprocess.Popen([str(game / "halo")], cwd=game, env=environment, stdin=subprocess.DEVNULL,
+                                       stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            try:
+                process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+        text = (folder / "halo.log").read_text(errors="replace")
+        # (the run's config.toml, beside its executable: never the computer's own)
+        config = (game / "config.toml").read_text(errors="replace").splitlines() \
+            if (game / "config.toml").is_file() else []
+        profiles = profile_digests(folder / "saves")
+        if keep and (folder / "saves" / "u").is_dir():
+            shutil.copytree(folder / "saves" / "u", keep, dirs_exist_ok=True)
+        layout = None
+        if (folder / "data" / "layout.json").is_file():
+            try:
+                layout = json.loads((folder / "data" / "layout.json").read_text(errors="replace"))
+            except json.JSONDecodeError:
+                layout = None
+        writes = [line.split("menus: ", 1)[1] for line in text.splitlines()
+                  if "menus: " in line and " = " in line and "could not" not in line and "menus: focus " not in line]
+        return {"config": config, "profile": profiles, "writes": writes, "focus": focus_path(text), "layout": layout,
+                "done": "debug.test_input: done" in text, "log": text[-3000:]}
+    finally:
+        if process and process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+        shutil.rmtree(folder, ignore_errors=True)
+
+
+def behaviour(arguments, template: Path) -> dict:
+    """{script: lines} of the scripts whose results differ between the engines"""
+    scripts = [script for script in [MAKE_PROFILE] + SCRIPTS + (sweep_scripts() if arguments.sweep else [])
+               if re.search(arguments.scripts, script[0])]
+    import shutil
+    import tempfile
+    tasks = [(script, engine) for script in scripts for engine in ("classic", "new")]
+    results = {}
+    # (the profile the scripts start from, made by a script: the same for both engines)
+    profile = Path(tempfile.mkdtemp(prefix="menu-parity-profile-"))
+    made = behaviour_run(arguments.build, MAKE_PROFILE, "classic", arguments.data, template, arguments.timeout,
+                         keep=profile)
+    if not made["profile"]:
+        shutil.rmtree(profile, ignore_errors=True)
+        raise SystemExit("menu_parity: no player profile made for the scripts:\n" + made["log"][-800:])
+
+    def one(task):
+        script, engine = task
+        result = behaviour_run(arguments.build, script, engine, arguments.data, template, arguments.timeout,
+                               None if script is MAKE_PROFILE else profile)
+        if not result["done"]:
+            # (once more: a run that did not start, or was starved by the others, is not the engine's)
+            result = behaviour_run(arguments.build, script, engine, arguments.data, template, arguments.timeout,
+                                   None if script is MAKE_PROFILE else profile)
+        return task, result
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(arguments.jobs, len(tasks)))) as pool:
+            for (script, engine), result in pool.map(one, tasks):
+                results[(script[0], engine)] = result
+    finally:
+        shutil.rmtree(profile, ignore_errors=True)
+    differences = {}
+    for script in scripts:
+        a, b = results[(script[0], "classic")], results[(script[0], "new")]
+        lines = []
+        for engine, result in (("classic", a), ("new", b)):
+            if not result["done"]:
+                lines.append(f"{engine}: the script did not finish\n" + result["log"][-800:])
+        if not a["writes"] and a["profile"] == (made["profile"] if script is not MAKE_PROFILE else {}) and not script[0].startswith("sweep:") and \
+                script[0] not in WRITE_NOTHING:
+            lines.append("nothing written by the classic engine: the script did not reach its rows\n" +
+                         "\n".join(a["focus"])[-1500:])
+        for key in ("focus", "config", "profile", "writes"):
+            if a[key] != b[key]:
+                lines.append(f"{key}: {json.dumps(a[key])[:1500]}\n      | {json.dumps(b[key])[:1500]}")
+        lines += compare_layouts(script[1], a["layout"], b["layout"])
+        if lines:
+            differences[script[0]] = lines
+        print(f"menu_parity: behaviour {script[0]}: {'differs' if lines else 'the same'} "
+              f"({len(a['focus'])} steps, {len(a['writes'])} settings written: "
+              f"{', '.join(a['writes'])[:300]})", file=sys.stderr, flush=True)
+    return differences, len(scripts)
+
+
 def compare_results(results: dict, screens: list, variant_names: list, arguments) -> dict:
     """{"<variant> <screen>": lines} of the screens whose layouts or frames differ between the engines"""
     differences = {}
@@ -206,6 +425,11 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--layout", action="store_true", help="compare the screens' layouts (debug.menu_layout)")
     parser.add_argument("--pixels", action="store_true", help="compare the screens' frames, pixel for pixel")
+    parser.add_argument("--behaviour", action="store_true",
+                        help="run the scripts of presses on each engine and compare what they leave")
+    parser.add_argument("--scripts", default="", help="only the scripts whose name has this in it (a regex)")
+    parser.add_argument("--sweep", action="store_true",
+                        help="with --behaviour, the navigation sweep of every generated screen too")
     parser.add_argument("--build", type=Path, default=ROOT / "build" / ("macos" if sys.platform == "darwin" else
                                                                          "linux_x86_64"))
     parser.add_argument("--data", type=Path, default=Path.home() / "dev" / "halo-macos-data" / "maps",
@@ -223,8 +447,20 @@ def main(argv=None) -> int:
     arguments = parser.parse_args(argv)
     if arguments.baseline:
         ENGINES["new"] = "classic"
-    if not arguments.layout and not arguments.pixels:
-        parser.error("say what to compare: --layout, --pixels")
+    if not arguments.layout and not arguments.pixels and not arguments.behaviour:
+        parser.error("say what to compare: --layout, --pixels, --behaviour")
+    template = arguments.saves if arguments.saves.is_dir() else None
+    failed = 0
+    if arguments.behaviour:
+        differences, count = behaviour(arguments, template)
+        for key, lines in sorted(differences.items()):
+            print(f"DIFFERS behaviour {key}")
+            for line in lines:
+                print(f"    {line}")
+        print(f"menu_parity: behaviour: {count - len(differences)} scripts the same, {len(differences)} differ")
+        failed = 1 if differences else 0
+        if not arguments.layout and not arguments.pixels:
+            return failed
     if arguments.pixels:
         # (the frames as drawn, compared exactly: not scaled down as the gallery's are)
         menu_gallery.read_shot = raw_shot
@@ -235,7 +471,6 @@ def main(argv=None) -> int:
             parser.error(f"no variant {name} ({', '.join(VARIANTS)})")
     screens = [screen for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS)
                if re.search(arguments.screens, screen.name)]
-    template = arguments.saves if arguments.saves.is_dir() else None
     results = run_layouts(arguments.build, screens, variant_names, arguments.data, template, arguments.jobs,
                           arguments.timeout, arguments.pixels)
     differences = compare_results(results, screens, variant_names, arguments)
@@ -266,7 +501,7 @@ def main(argv=None) -> int:
           f"({len(screens)} screens x {len(variant_names)} variants)")
     if arguments.out:
         arguments.out.write_text(json.dumps(differences, indent=1))
-    return 1 if differences else 0
+    return 1 if differences or failed else 0
 
 
 if __name__ == "__main__":

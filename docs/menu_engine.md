@@ -159,12 +159,25 @@ allowing only the differences listed below as deliberate.
    both read back in memory as the Screenshot key reads the frame
    (`d3d8_device.c`), and compared there; the log has each screen's count of differing pixels and their
    bounds. No picture is written.
-3. **Behaviour.** Scripts of `debug.test_input "menu:..."` (navigation, each
-   kind of row: a spinner, a slider by keys, by a click and by typing, a
-   toggle, a text field, a binding slot, a sub-page; back, cancel and OK,
-   Defaults, the "Save changes" confirm) run on each engine from the same
-   `config.toml` and profile; the resulting `config.toml` and profile are
-   diffed, with the layout of each step's screen.
+3. **Behaviour.** `tools/menu_parity.py --behaviour` runs scripts of
+   `debug.test_input "menu:ready ..."` on each engine from the same
+   `config.toml` and player profile, and compares where the focus was after
+   each press, the resulting `config.toml`, the profile's files, the
+   settings the log says were written and the last screen's layout. The
+   presses are counted from when the screen opened is up, on the frames'
+   clock (`debug.frame_time`, which the menus' clock follows), so that a
+   press lasts as many of the menus' frames in every run, however many runs
+   share the computer; `menu_tour.c` logs the focus at the end of each
+   second. The profile is made first by a script (a name typed into the
+   profile's field) and copied into each run. The scripts: each kind of row
+   (a spinner, a toggle, a slider by keys, by a click, held and by typing, a
+   binding slot, by the mouse's button and wheel, a sub-page kept and
+   cancelled), the tabs by LB and RB and by a click, the wheel, Defaults, OK
+   and Cancel by the pad and by clicks, with the keyboard and mouse, a
+   controller and touch. `--sweep` adds the navigation sweep: every generated
+   screen opened, the focus moved about it (down, up, left, right, held), with
+   no press that leaves it. `--baseline` runs the classic engine on both
+   sides, to show the scripts give the same results run to run.
 
 `tools/menu_parity.py` runs all three and fails on any difference not in
 its list of deliberate ones.
