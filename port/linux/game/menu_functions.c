@@ -229,6 +229,7 @@ struct pc_menu_setting
 };
 
 struct pc_menu_setting *pc_menu_setting_get(long definition_index);
+long pc_menu_setting_values(char const *setting, char const **values, long count);
 /* sdl_platform.c's: whether fullscreen can set the display's refresh rate */
 int platform_refresh_rates_settable(void);
 /* the menus' pointer, their latest click on an item and the latest place
@@ -268,12 +269,22 @@ static boolean spinner_item(struct widget_instance const *widget)
 }
 
 /* the settings of Settings' spinners, from their rows in the menus' model
-(docs/menu_engine.md): each a choice row's setting, its values its choices',
-and its value as it was loaded kept with the row, not with the spinner's
-widget definition; made the first time a row's is asked for, and their
-loaded values forgotten with the tags they were loaded with, as the widget
+(docs/menu_engine.md): each a choice row's setting, its values its choices'
+(and the platform's, as the spinners' are), and its value as it was loaded
+kept with the row, not with the spinner's widget definition; made the first
+time a row's is asked for, and made again with the next tags, as the widget
 definitions' are (menu_tags.c) */
 #define SETTINGS_MAXIMUM_CHOICES 512
+/* the size of a widget's name as its instance has it: its definition's,
+cut short (menu_tags.c's definitions' name[32]: a long key's spinner,
+mouse_vertical_sensitivity_spinner, is mouse_vertical_sensitivity_spin) */
+#define SETTINGS_WIDGET_NAME_SIZE 32
+
+/* a row's widget's name (its prefix, key and suffix) as its instance has it */
+static void settings_widget_name(char *name, size_t size, char const *prefix, char const *key, char const *suffix)
+{
+	snprintf(name, size < SETTINGS_WIDGET_NAME_SIZE ? size : SETTINGS_WIDGET_NAME_SIZE, "%s%s%s", prefix, key, suffix);
+}
 
 static struct
 {
@@ -300,8 +311,7 @@ static struct pc_menu_setting *settings_row_setting(struct halo_menu_model_row c
 	if (settings_rows.generation != cache_files_tags_generation())
 	{
 		settings_rows.generation = cache_files_tags_generation();
-		for (index = 0; index < settings_rows.count; index++)
-			settings_rows.settings[index].loaded_index = NONE;
+		settings_rows.count = 0;
 	}
 	for (index = 0; index < settings_rows.count; index++)
 	{
@@ -319,7 +329,8 @@ static struct pc_menu_setting *settings_row_setting(struct halo_menu_model_row c
 	setting->loaded_index = NONE;
 	for (choice = 0; choice < row->choice_count && choice < MAXIMUM_STRINGS; choice++)
 		setting->values[choice] = model->choices[row->first_choice + choice].value;
-	setting->value_count = choice;
+	/* (and those the platform adds, as the spinners' are: menu_tags.c) */
+	setting->value_count = pc_menu_setting_values(row->setting, setting->values, choice);
 	return setting;
 }
 
@@ -330,13 +341,14 @@ static struct pc_menu_setting *settings_setting_of(struct widget_instance *spinn
 {
 	struct halo_menu_model_row const *row;
 	struct pc_menu_setting *setting = NULL;
-	size_t length;
+	char name[80];
 
 	if (!spinner)
 		return NULL;
 	row = spinner->parent ? menu_engine_model_row_of(spinner->parent) : NULL;
-	length = row && spinner->name ? strlen(row->key) : 0;
-	if (length && !strncmp(spinner->name, row->key, length) && !strcmp(spinner->name + length, "_spinner"))
+	if (row)
+		settings_widget_name(name, sizeof(name), "", row->key, "_spinner");
+	if (row && spinner->name && !strcmp(spinner->name, name))
 		setting = settings_row_setting(row);
 	return setting ? setting : pc_menu_setting_get(spinner->definition_tag_index);
 }
@@ -1801,7 +1813,7 @@ static void settings_each(struct widget_instance *widget, boolean (*visit)(struc
 		if (!setting)
 			continue;
 		rows = TRUE;
-		snprintf(name, sizeof(name), "%s_spinner", row->key);
+		settings_widget_name(name, sizeof(name), "", row->key, "_spinner");
 		spinner = named(widget, name, 0);
 		if (spinner && spinner->type == 2 && !spinner_item(spinner))
 			visit(spinner, setting);
