@@ -70,6 +70,7 @@ enum _distributed_infection_role_zombie 2
 enum _distributed_infection_waiting 0
 enum _distributed_message_actor_damage 73
 enum _distributed_message_actor_states 64
+enum _distributed_message_actor_states_compact 142
 enum _distributed_message_admin_down 137
 enum _distributed_message_admin_up 138
 enum _distributed_message_aim_assist_policy 90

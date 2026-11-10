@@ -881,34 +881,6 @@ short network_distributed_server_machines(
 	return count;
 }
 
-/* port: whether a machine in the game, by its slot, is the host's own (a
-dedicated server's has no player, so the distributed netcode does not know it
-for its own by its players: its sends to the clients pass it over,
-network_distributed.c's distributed_client_machines) */
-boolean network_distributed_server_machine_is_own(
-	long machine_index)
-{
-	struct network_game_server *server = global_network_game_server_get();
-	long client_index;
-
-	if (!server)
-		return FALSE;
-	for (client_index = 0; client_index < MAXIMUM_NETWORK_MACHINE_COUNT; client_index++)
-	{
-		struct network_game_server_client_machine *machine =
-			network_game_server_get_client_machine_at_index(server, client_index);
-		long game_machine_index;
-
-		if (network_game_server_client_machine_is_joined_to_game(server, machine) &&
-			network_game_server_get_client_machine(server, machine, &game_machine_index) &&
-			game_machine_index == machine_index)
-		{
-			return network_game_server_client_machine_is_local(server, machine);
-		}
-	}
-	return FALSE;
-}
-
 /* the client machine of a machine in the game, at its slot (NULL if none) */
 static struct network_game_server_client_machine *network_game_server_client_machine_in_game(
 	struct network_game_server *server,
