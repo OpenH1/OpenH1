@@ -44,10 +44,10 @@ void ui_widget_port_process_event(struct widget_instance *widget, struct event_r
 /* what the engine takes its screens' events by: a widget's definition's
 flags, its event handlers (their count, each one's event type, one run), and
 ui_widget.c's steps: whether a widget takes a controller's events, the
-screen before, the focus moved to the next or previous child, a list's
-items' frames brought up to date, the time a controller's D-pad direction
-last moved the menus, the menus' clock, the pointer no longer what moved
-the focus last, and whether no screen is open */
+screen before, the focus given to a widget, a list's items' frames brought
+up to date, the time a controller's D-pad direction last moved the menus,
+the menus' clock, the pointer no longer what moved the focus last, and
+whether no screen is open */
 long ui_widget_port_definition_flags(struct widget_instance const *widget);
 long ui_widget_port_handler_count(struct widget_instance const *widget);
 short ui_widget_port_handler_event_type(struct widget_instance const *widget, long index);
@@ -59,7 +59,7 @@ void ui_widget_port_handler_run(struct widget_instance *widget, struct event_rec
 	boolean *deleted);
 boolean ui_widget_port_takes_events(struct widget_instance const *widget, short controller_index);
 void ui_widget_port_go_back(struct widget_instance *widget);
-void ui_widget_port_tab(struct widget_instance *widget, boolean next);
+void ui_widget_port_give_focus(struct widget_instance *widget, struct widget_instance *focus);
 void ui_widget_port_lists_update(struct widget_instance *widget);
 unsigned long *ui_widget_port_dpad_time(short controller_index, short direction);
 unsigned long ui_widget_port_milliseconds(void);

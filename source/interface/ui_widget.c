@@ -10332,7 +10332,8 @@ void ui_widget_port_process_event(
 /* port: what the menu engine processes its screens' events by
 (port/linux/game/menu_engine.c, its engine_event, which takes an event as
 widget_instance_process_one_event_recursive does): a widget's definition's
-flags and event handlers, and this file's steps, unchanged */
+flags and event handlers (for a widget the model has not: the engine's own
+are the model's), and this file's steps, unchanged */
 long ui_widget_port_definition_flags(
 	struct widget_instance const *widget)
 {
@@ -10391,14 +10392,11 @@ boolean ui_widget_port_takes_events(
 	return widget_takes_events_of_controller(widget, controller_index);
 }
 
-void ui_widget_port_tab(
+void ui_widget_port_give_focus(
 	struct widget_instance *widget,
-	boolean next)
+	struct widget_instance *focus)
 {
-	if (next)
-		widget_instance_tab_to_next_valid_widget(widget);
-	else
-		widget_instance_tab_to_previous_valid_widget(widget);
+	widget_instance_give_focus_by_tag(widget, focus->definition_tag_index, widget->local_player_index);
 }
 
 void ui_widget_port_lists_update(
