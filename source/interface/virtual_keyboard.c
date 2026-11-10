@@ -537,14 +537,14 @@ static void virtual_keyboard_port_render_backdrop(
 
 	/* the panels: the text's and the keys', filled as the Xbox's picture
 	(ui\bkd_virtual_keyboard) fills them: 0xEE of one shade down both,
-	from 02142A at the text's top to 02070D at the keys' bottom (issue 896:
-	a flat navy hid the shade) */
+	from 02142A at the text's top to 02070D at the keys' bottom, edged in
+	its 31AAFF (issue 896: a flat navy hid the shade) */
 	menu_shape_shaded_box(VIRTUAL_KEYBOARD_PORT_PANEL_LEFT, VIRTUAL_KEYBOARD_PORT_TEXT_PANEL_TOP,
 		VIRTUAL_KEYBOARD_PORT_PANEL_RIGHT, VIRTUAL_KEYBOARD_PORT_TEXT_PANEL_BOTTOM, 9.5f, 2.0f,
-		0xEE02142AUL, 0xEE021225UL, 0xFF2995FFUL);
+		0xEE02142AUL, 0xEE021225UL, 0xFF31AAFFUL);
 	menu_shape_shaded_box(VIRTUAL_KEYBOARD_PORT_PANEL_LEFT, VIRTUAL_KEYBOARD_PORT_KEYS_PANEL_TOP,
 		VIRTUAL_KEYBOARD_PORT_PANEL_RIGHT, VIRTUAL_KEYBOARD_PORT_KEYS_PANEL_BOTTOM, 9.5f, 2.0f,
-		0xEE021225UL, 0xEE02070DUL, 0xFF2995FFUL);
+		0xEE021225UL, 0xEE02070DUL, 0xFF31AAFFUL);
 }
 
 /* how a key looks: chosen (pressed, if A was the last thing done to it), or
