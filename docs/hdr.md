@@ -120,7 +120,10 @@ programmable blending; Vulkan's local reads of the colour attachment, in
 rasterization order where the device has it, else after a framebuffer-local
 barrier before the draw), with the key's blend (`XGPU_HDR_BLEND_*`) and its
 fixed-function blending off. One less the destination's colour is never
-below 0 there.
+below 0 there. Without the order, a draw's triangles do not see one another's
+writes, so decals that overlap are never one draw
+(`rasterizer_decal_batch_overlaps`): a scorch over a scorch in one draw lost
+the one under it inside a lighter patch with straight edges.
 
 **Expansion** brightens a glow where it is bright (its brightest channel
 from 0.6 up; the light of the world's from 0.4, which the game draws

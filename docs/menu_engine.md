@@ -85,12 +85,63 @@ reads XML and has no JSON reader.
 - **Actions** are the XML's (`open`, `replace`, `back`, `close`, `run`,
   `branch`/`otherwise`, `sound`), on a row, a button or a node.
 
+### The look
+
+`tools/menu_look.py` writes the look of every widget of the generated
+screens to `model/look/<file>.xml`, one file for each of `ce/`'s files of
+widgets. The generators call it once they have written `ce/`, so the widgets
+and their looks cannot disagree, and `python3 tools/menu_look.py` writes it
+again from `ce/` alone. A widget's look is its own element, keyed by the
+widget's name, as the game's definitions are:
+
+```xml
+<look name="main_menu/.../button_bar" type="column_list" box="0 0 640 28" wide="-106 212"
+      place="anchor_left stretch keep_ends" picture="settings/panel" radius="8" effects="flash_bitmap nifty_fx"
+      list="items_in_code" header="..." header_box="x0 y0 x1 y1" footer="..." footer_box="x0 y0 x1 y1">
+  <text font="large" color="#FF6F9CD0" align="center" at="4 2" flags="wrap no_focus_test"
+        string_list="..." index="3" text="..." items="A|B" replace="%controller controller"/>
+  <at widget="main_menu/.../button_ok" x="464" y="2"/>
+</look>
+```
+
+- `box` is the widget's area in its parent's units (left, top, right,
+  bottom); `wide` its wide layout (`dx dw`, as the XML's); `place` the flags
+  that place it on a touchscreen's wide screen and keep its picture's ends;
+  `effects` the plasma and the flashing picture.
+- `<text>` is the text and its style: its font, colour, alignment, where it
+  starts (`at`), its text flags, and what it says (a `<strings>` list and an
+  index, its own `text`, a spinner's `items`, its replaces). A text style's
+  effects go here as attributes when they come (outlines, glows and drop
+  shadows: the MSDF atlas's fourth channel is a plain distance, so each is a
+  threshold in the text's shader).
+- `<at>` is where a child is in it. A child is found by its name and its
+  place among those of the same name, so a widget may not have two children
+  of one name for different platforms (`tools/menu_look.py` refuses it).
+- What a widget does (its events, game data inputs, conditionals, the
+  flags that route events and focus, its controller, closing) is not in its
+  look: it stays the widget definitions' until step 4.
+
 ## The engine
 
 `port/linux/game/menu_engine.c` (layout, focus, input), `menu_engine_draw.c`
 (drawing), `menu_engine_model.c` (the model read and its conditions), in the
 guest, compiled as the game's sources are.
 
+- **Each widget's look** is the model's: `ui_widget.c` reads every
+  widget's definition through `menu_engine_definition`, which, under
+  `"new"`, gives it the definition `menu_tags.c` makes from the widget's
+  look in the model (`pc_menu_look_definition`, the first time the widget is
+  asked for): its type, bounds, flags of place and effect, pictures, list
+  flags, header and footer, text and its style, and its children's places
+  from the look; its events, game data inputs, conditionals, description,
+  controller, auto-close and other flags from its own definition. So the
+  game's drawing (and its layout, mouse targets and children's creation)
+  takes the look from the model without a line of it changed, and the
+  look is exactly the same. The port's tables by widget (the wide layout,
+  a picture's radius) answer from the look too. A widget whose look the
+  model lacks, or whose look names a picture, font or strings that are not
+  there, is drawn from its definition and logged ("menu engine: look from
+  the widget definition"), which `tools/menu_parity.py` fails on.
 - **A screen** opened under `display.menu_engine = "new"` is a tree of
   engine nodes made from the model. Each node has its box in the 640x480
   menu units, laid out each frame: `wide`, `anchor_*`, `stretch` and
@@ -185,7 +236,10 @@ allowing only the differences listed below as deliberate.
    sides, to show the scripts give the same results run to run.
 
 `tools/menu_parity.py` runs all three and fails on any difference not in
-its list of deliberate ones.
+its list of deliberate ones, and on any widget the new engine drew from its
+widget definition rather than its look in the model (step 3);
+`--look-control` proves that this check fires: the first screen's look
+taken out of the model (a menus folder's copy of its file) must be logged.
 
 ## Deliberate differences
 
@@ -235,9 +289,15 @@ The steps, in order:
    row-name predicates of its tabs and pages gone). `--against <build>`
    compares a build before such a change, which both engines run, with the
    one after.
-3. **The look in the model**: bounds, anchors and the look written by the
-   generators into the model for every generated screen; the engine reads
-   them there, not from widget definitions.
+3. **The look in the model** (done): bounds, anchors, places, pictures, text
+   and its style, and the children's places written by the generators into
+   the model for every widget of every generated screen
+   (`tools/menu_look.py`, `model/look`); the engine draws them from there,
+   not from widget definitions, and the parity tool fails on any widget drawn
+   from its definition; 972 of 972 screen variants alike in layout and
+   pixels. (For runs to be comparable, a field's caret, a menu picture's
+   upscale and the icons in text follow the frames' time where it is
+   fixed.)
 4. **Behaviour off `widget_instance`**: each screen's handlers in
    `menu_functions.c` moved onto the model, a batch of screens at a time.
 5. **The switch**: `"new"` the default, played for a while; then the

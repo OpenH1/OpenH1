@@ -72,6 +72,15 @@ frames' differences, and in playback done again there by the same code
 boolean demo_event_begin(char type, void const *bytes, unsigned long size);
 void demo_event_end(void);
 
+/* (the host) after a tick, the netcode's work that puts what other machines
+sent into the game state (network_distributed.c: the predictions of the
+clients whose units it moves after the tick, an OpenCE machine's, or every
+client's at 30 ticks a second), begun and ended around it: recorded as the
+bytes it changed, an M record before the next tick, which a playback
+writes in there, not as a whole game state for each unit it moved */
+void demo_netcode_begin(void);
+void demo_netcode_end(void);
+
 /* whether a demo is playing (the input of the machine's players, its own
 saved games, its recording left alone), and the rate its ticks run at (0
 when none is: sim_rate.c) */

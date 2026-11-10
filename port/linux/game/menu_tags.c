@@ -32,6 +32,10 @@ no screen pauses the game (a network game's clock runs on).
 So does a single-player campaign's map (pause_campaign_patch), whose screens
 pause it as its pause menu does, and a network co-op game's, whose pause
 menu gets FRIENDLY FIRE too.
+
+Under display.menu_engine "new" the menu engine draws the widgets of the
+menus' files from their looks in the model instead ("the menu engine's
+looks", below).
 */
 
 #include "cseries.h"
@@ -44,6 +48,7 @@ menu gets FRIENDLY FIRE too.
 #include "rasterizer/xbox/rasterizer_xbox_hardware_bitmaps.h"
 
 #include "halo_menus.h"
+#include "menu_engine.h"
 #include "custom_edition_cache.h"
 #include "network_admin.h"
 #include "basic_training.h"
@@ -89,6 +94,7 @@ boolean pc_menu_scaled_frame_at(unsigned long address, long width, long height);
 boolean pc_menu_map_frame_at(unsigned long address, long width, long height, long *tag_index, long *frame);
 short pc_menu_widget_radius(long definition_index);
 short pc_menu_legend_room(long definition_index);
+void *pc_menu_look_definition(long tag_index);
 /* ui_widget.c: how much wider a legends' row is drawn while the keyboard
 plays than the Xbox's pictures and words were */
 short ui_widget_port_key_legend_growth(long definition_index);
@@ -288,6 +294,19 @@ struct menu_wide
 	struct ui_widget_definition *definition;
 	short dx, dw;
 	short x1;
+};
+
+/* a widget of the menus' files as the menu engine draws it
+(pc_menu_look_definition): its name, its definition made from its look in
+the model once it is asked for (made; NULL if none could be), its wide
+layout and its picture's corners' radius */
+struct menu_look
+{
+	char const *name;
+	struct ui_widget_definition *definition;
+	boolean made;
+	struct menu_wide wide;
+	short radius;
 };
 
 /* a spinner bound to a setting (menu_functions.c) */
@@ -659,6 +678,15 @@ static struct
 	long radius_count;
 	struct menu_tag_value legend_rooms[MENU_TAG_VALUES];
 	long legend_room_count;
+	/* the menu engine's definitions of the menus' files' widgets, by their
+	tags' indices after the map's, as the wide layouts are
+	(pc_menu_look_definition), and what the fonts are found by at run time,
+	as font_tag finds them when the tags are built */
+	struct menu_look *looks;
+	long look_count;
+	long heading_tag;
+	long map_font;
+	boolean game_map;
 	/* the pause boxes made wider for the keys' caps of the legends under
 	them while the keyboard plays (pause_boxes_fit), each with the screen
 	whose mission objectives move with it (or NULL), and whether they are
@@ -750,8 +778,21 @@ static struct menu_wide const *wide_of(long definition_index)
 	index = DATUM_INDEX_TO_ABSOLUTE_INDEX(definition_index) - menu_tags.original_count;
 	if (index < 0 || index >= menu_tags.wide_count)
 		return NULL;
-	wide = &menu_tags.wides[index];
+	/* (the menu engine's, from the model's look, where it draws the widget) */
+	wide = menu_engine_looks() && pc_menu_look_definition(definition_index) ? &menu_tags.looks[index].wide :
+		&menu_tags.wides[index];
 	return wide->definition && !wide_anchored(wide) ? wide : NULL;
+}
+
+/* a widget's definition as much wider as its wide layout says at an extra
+width */
+static void wide_apply(struct menu_wide const *wide, short extra)
+{
+	if (wide->definition && wide->dw)
+	{
+		wide->definition->bounds.x1 = (short)(wide->x1 +
+			(wide_anchored(wide) ? 0 : ui_widget_port_wide_scale(wide->dw, extra)));
+	}
 }
 
 /* the port's screens laid out for a view this wide: each widget's
@@ -767,15 +808,10 @@ void ui_widget_port_wide_layout(long width)
 		return;
 	menu_tags.wide_extra = extra;
 	for (index = 0; index < menu_tags.wide_count; index++)
-	{
-		struct menu_wide const *wide = &menu_tags.wides[index];
-
-		if (wide->definition && wide->dw)
-		{
-			wide->definition->bounds.x1 = (short)(wide->x1 +
-				(wide_anchored(wide) ? 0 : ui_widget_port_wide_scale(wide->dw, extra)));
-		}
-	}
+		wide_apply(&menu_tags.wides[index], extra);
+	/* (and the menu engine's definitions made) */
+	for (index = 0; index < menu_tags.look_count; index++)
+		wide_apply(&menu_tags.looks[index].wide, extra);
 }
 
 /* the extra width the port's screens are laid out in now (the view's past
@@ -2104,6 +2140,335 @@ static void instance_set(struct cache_file_tag_instance *instances, long group_t
 	instance->base_address = definition;
 }
 
+/* ---------- the menu engine's looks
+
+Under display.menu_engine "new" the engine (menu_engine.c) draws the
+widgets of the menus' files from the model (model/look, written by
+tools/menu_look.py) rather than from their definitions: ui_widget.c finds a
+widget's definition through menu_engine_definition, which gives it the one
+made here from the widget's look. Its look (its type, box, wide layout,
+place and effect flags, pictures, list flags, text and its style, and where
+its children are) is the model's alone; what it does (its events, game data
+inputs, conditionals, description, controller, closing, the other flags)
+and what its children are stay its definition's until the engine runs the
+screens' behaviour (docs/menu_engine.md, step 4). A widget whose look the
+model has not got, or whose look names what is not there, is drawn from its
+definition, and logged (look_missing): tools/menu_parity.py fails on it. */
+
+/* the widget flags that are its look (widget_flag_names): flash_bitmap,
+nifty_fx, anchor_left, anchor_right, stretch and keep_ends */
+#define LOOK_FLAGS (FLAG(2) | FLAG(13) | FLAG(WIDGET_FLAG_ANCHOR_LEFT) | FLAG(WIDGET_FLAG_ANCHOR_RIGHT) | \
+	FLAG(WIDGET_FLAG_STRETCH) | FLAG(WIDGET_FLAG_KEEP_ENDS))
+
+/* a widget drawn from its definition, not its look, and why */
+static void look_missing(char const *name, char const *why, char const *detail)
+{
+	platform_log("menu engine: look from the widget definition: %s (%s%s%s)", name, why, detail ? " " : "",
+		detail ? detail : "");
+}
+
+/* a tag a look names: one of the menus' (pc\<name>, with suffix), or the
+map's by its path; NONE if there is none */
+static long look_tag(long group_tag, char const *name, char const *suffix)
+{
+	char path[300];
+	long index;
+
+	if (strchr(name, '\\'))
+		return tag_loaded(group_tag, name);
+	snprintf(path, sizeof(path), "%s%s%s", PC_MENU_TAG_PREFIX, name, suffix);
+	for (index = 0; path[index]; index++)
+	{
+		if (path[index] == '/')
+			path[index] = '\\';
+	}
+	return tag_loaded(group_tag, path);
+}
+
+/* a look's font, as font_tag finds it when the tags are built */
+static long look_font(char const *font)
+{
+	char const *path;
+	long index;
+
+	if (!strcmp(font, "heading") && menu_tags.heading_tag != NONE)
+		return menu_tags.heading_tag;
+	path = !strcmp(font, "large") || !strcmp(font, "heading") ? "ui\\large_ui" :
+		!strcmp(font, "small") ? "ui\\small_ui" :
+		!strcmp(font, "terminal") ? "ui\\interstate" : font;
+	index = tag_loaded(FONT_TAG, path);
+	return index == NONE && menu_tags.game_map ? menu_tags.map_font : index;
+}
+
+/* a reference to what a look names (FALSE: it names what is not there,
+which a game map may: ui.map's pictures) */
+static boolean look_reference(struct tag_reference *reference, long group_tag, char const *name, char const *suffix)
+{
+	long index = name ? look_tag(group_tag, name, suffix) : NONE;
+
+	reference_set(reference, group_tag, index);
+	return !name || index != NONE || menu_tags.game_map;
+}
+
+static void look_box(rectangle2d *bounds, long const *box)
+{
+	bounds->x0 = (short)box[0];
+	bounds->y0 = (short)box[1];
+	bounds->x1 = (short)box[2];
+	bounds->y1 = (short)box[3];
+}
+
+/* a widget's name as the menus' files and the model have it: a tag of
+ours without pc\ and with slashes, else the map's tag's path */
+static void look_widget_name(long tag_index, char *name, size_t size)
+{
+	char const *tag = tag_get_name(tag_index);
+	size_t index;
+	boolean ours = !strncmp(tag, PC_MENU_TAG_PREFIX, strlen(PC_MENU_TAG_PREFIX));
+
+	if (ours)
+		tag += strlen(PC_MENU_TAG_PREFIX);
+	for (index = 0; tag[index] && index + 1 < size; index++)
+		name[index] = ours && tag[index] == '\\' ? '/' : tag[index];
+	name[index] = 0;
+}
+
+/* the definition's children, each where the look's <at> of its name (the
+same one of those of its name) puts it */
+static boolean look_children(struct ui_widget_definition *definition, struct ui_widget_definition const *tag,
+	struct halo_menu_model const *model, struct halo_menu_model_look const *look)
+{
+	struct ui_widget_child_reference const *from = tag->child_widgets.address;
+	struct ui_widget_child_reference *children;
+	long child, place;
+
+	if (!tag->child_widgets.count)
+		return TRUE;
+	children = allocate(tag->child_widgets.count * sizeof(*children));
+	if (!children)
+		return FALSE;
+	for (child = 0; child < tag->child_widgets.count; child++)
+	{
+		char name[256];
+		long before = 0, earlier;
+		boolean placed = FALSE;
+
+		children[child] = from[child];
+		look_widget_name(from[child].widget_tag.index, name, sizeof(name));
+		for (earlier = 0; earlier < child; earlier++)
+			before += from[earlier].widget_tag.index == from[child].widget_tag.index;
+		for (place = 0; place < look->place_count && !placed; place++)
+		{
+			struct halo_menu_model_place const *at = &model->places[look->first_place + place];
+
+			if (!strcmp(at->widget, name) && before-- == 0)
+			{
+				children[child].horizontal_offset = (short)at->x;
+				children[child].vertical_offset = (short)at->y;
+				placed = TRUE;
+			}
+		}
+		if (!placed)
+		{
+			look_missing(look->name, "no place for its child", name);
+			return FALSE;
+		}
+	}
+	definition->child_widgets.count = tag->child_widgets.count;
+	definition->child_widgets.address = children;
+	return TRUE;
+}
+
+/* the look's text and its style, as widget_build makes a widget's */
+static boolean look_text(struct ui_widget_definition *definition, struct halo_menu_model_look const *look)
+{
+	boolean found = TRUE;
+
+	reference_clear(&definition->text_label_string_list, UNICODE_STRING_LIST_TAG);
+	reference_clear(&definition->text_font, FONT_TAG);
+	if (!look->has_text)
+		return TRUE;
+	/* (a widget's own text and a spinner's items are the strings the tags
+	were built with for it, by its name) */
+	if (look->text)
+		found = look_reference(&definition->text_label_string_list, UNICODE_STRING_LIST_TAG, look->name, " text");
+	else if (look->items)
+	{
+		found = look_reference(&definition->text_label_string_list, UNICODE_STRING_LIST_TAG, look->name,
+			" strings");
+		definition->list_flags |= FLAG(_list_items_generated_from_string_list_tag_bit);
+	}
+	else if (look->string_list)
+		found = look_reference(&definition->text_label_string_list, UNICODE_STRING_LIST_TAG, look->string_list, "");
+	definition->string_list_index = (short)look->string_index;
+	/* (our own text is white in the large font, unless given) */
+	if (look->text || look->items)
+	{
+		definition->text_color.alpha = definition->text_color.red = 1.0f;
+		definition->text_color.green = definition->text_color.blue = 1.0f;
+		if (!look->font)
+			reference_set(&definition->text_font, FONT_TAG, look_font("large"));
+	}
+	if (look->color && !parse_color(look->color, &definition->text_color))
+		found = FALSE;
+	if (look->font)
+		reference_set(&definition->text_font, FONT_TAG, look_font(look->font));
+	if (look->align)
+		definition->justification = (short)MAX(name_index(look->align, align_names, NUMBEROF(align_names)), 0);
+	definition->text_box_flags = (word)flags_parse(look->text_flags, text_flag_names, NUMBEROF(text_flag_names),
+		look->file, look->line);
+	definition->horizontal_offset = (short)look->text_x;
+	definition->vertical_offset = (short)look->text_y;
+	/* its replaces: "<search> <function>", separated by "|" */
+	if (look->replace)
+	{
+		char const *text = look->replace;
+		long count = 1, index;
+		struct ui_widget_search_and_replace_reference *replaces;
+
+		for (index = 0; text[index]; index++)
+			count += text[index] == '|';
+		replaces = allocate(count * sizeof(*replaces));
+		if (!replaces)
+			return FALSE;
+		for (index = 0; index < count; index++)
+		{
+			char search[64], function[64];
+			long length = (long)strcspn(text, "|");
+			long chosen;
+
+			if (length >= (long)sizeof(search) || sscanf(text, "%63s %63[^|]", search, function) != 2)
+				return FALSE;
+			chosen = name_index(function, replace_names, NUMBEROF(replace_names));
+			strncpy(replaces[index].search_string, search, sizeof(replaces[index].search_string) - 1);
+			/* (the PC version's own are none here) */
+			replaces[index].replace_function = (short)(chosen == 1 ? 1 : 0);
+			text += length + (text[length] == '|');
+		}
+		definition->search_and_replace_functions.count = count;
+		definition->search_and_replace_functions.address = replaces;
+	}
+	return found;
+}
+
+/* the menu engine's definition of a widget, made from its look in the model
+and what its own definition does; FALSE if there is none (logged) */
+static boolean look_make(struct menu_look *made, long tag_index)
+{
+	struct halo_menu_model const *model = halo_menus_model();
+	struct halo_menu_model_look const *look = halo_menus_model_look(model, made->name);
+	struct ui_widget_definition const *tag = tag_get(UI_WIDGET_DEFINITION_TAG, tag_index);
+	struct ui_widget_definition *definition;
+	long type;
+
+	if (!look)
+	{
+		look_missing(made->name, "the model has no look of it", NULL);
+		return FALSE;
+	}
+	definition = allocate(sizeof(*definition));
+	if (!definition)
+		return FALSE;
+	/* what it does, and what its children are: its definition's */
+	memcpy(definition->name, tag->name, sizeof(definition->name));
+	definition->controller_index = tag->controller_index;
+	definition->flags = tag->flags & ~LOOK_FLAGS;
+	definition->milliseconds_to_auto_close = tag->milliseconds_to_auto_close;
+	definition->auto_close_fade_time = tag->auto_close_fade_time;
+	definition->game_data_inputs = tag->game_data_inputs;
+	definition->event_handlers = tag->event_handlers;
+	definition->conditional_widgets = tag->conditional_widgets;
+	definition->extended_description_widget = tag->extended_description_widget;
+	/* its look: the model's */
+	type = look->type ? name_index(look->type, widget_type_names, NUMBEROF(widget_type_names)) : _widget_type_container;
+	if (type == NONE)
+	{
+		look_missing(made->name, "its type is none of the widgets'", look->type);
+		return FALSE;
+	}
+	definition->type = (short)type;
+	if (look->has_box)
+		look_box(&definition->bounds, look->box);
+	else
+	{
+		definition->bounds.x1 = 640;
+		definition->bounds.y1 = 480;
+	}
+	definition->flags |= flags_parse(look->place, widget_flag_names, NUMBEROF(widget_flag_names), look->file,
+		look->line) & LOOK_FLAGS;
+	definition->flags |= flags_parse(look->effects, widget_flag_names, NUMBEROF(widget_flag_names), look->file,
+		look->line) & LOOK_FLAGS;
+	if (!look_reference(&definition->background_bitmap, BITMAP_GROUP_TAG, look->picture, ""))
+	{
+		look_missing(made->name, "there is no picture", look->picture);
+		return FALSE;
+	}
+	made->radius = (short)look->radius;
+	if (!look_text(definition, look))
+	{
+		look_missing(made->name, "its text names what is not there", NULL);
+		return FALSE;
+	}
+	definition->list_flags |= flags_parse(look->list, list_flag_names, NUMBEROF(list_flag_names), look->file,
+		look->line);
+	if (!look_reference(&definition->list_header_bitmap, BITMAP_GROUP_TAG, look->header, "") ||
+		!look_reference(&definition->list_footer_bitmap, BITMAP_GROUP_TAG, look->footer, ""))
+	{
+		look_missing(made->name, "there is no header or footer picture", NULL);
+		return FALSE;
+	}
+	if (look->has_header_box)
+		look_box(&definition->list_header_bounds, look->header_box);
+	if (look->has_footer_box)
+		look_box(&definition->list_footer_bounds, look->footer_box);
+	if (!look_children(definition, tag, model, look))
+		return FALSE;
+	/* its wide layout: "dx dw", as the menus' 640 have it, and as wide now
+	(ui_widget_port_wide_layout) */
+	if (look->wide)
+	{
+		long dx, dw;
+		char end;
+
+		if (sscanf(look->wide, "%ld %ld %c", &dx, &dw, &end) != 2 || dx < -WIDE_LAYOUT_EXTRA ||
+			dx > WIDE_LAYOUT_EXTRA || dw < -WIDE_LAYOUT_EXTRA || dw > WIDE_LAYOUT_EXTRA)
+		{
+			look_missing(made->name, "its wide is not \"dx dw\", each -212 to 212:", look->wide);
+			return FALSE;
+		}
+		made->wide.definition = definition;
+		made->wide.dx = (short)dx;
+		made->wide.dw = (short)dw;
+		made->wide.x1 = definition->bounds.x1;
+		wide_apply(&made->wide, menu_tags.wide_extra);
+	}
+	made->definition = definition;
+	return TRUE;
+}
+
+/* the menu engine's definition of a widget of the menus' files (made the
+first time it is asked for), NULL for any other tag or if it has none */
+void *pc_menu_look_definition(
+	long tag_index)
+{
+	long index;
+	struct menu_look *made;
+
+	if (!menu_tags.looks || tag_index == NONE)
+		return NULL;
+	index = DATUM_INDEX_TO_ABSOLUTE_INDEX(tag_index) - menu_tags.original_count;
+	if (index < 0 || index >= menu_tags.look_count || !menu_tags.looks[index].name)
+		return NULL;
+	made = &menu_tags.looks[index];
+	if (!made->made)
+	{
+		made->made = TRUE;
+		if (!look_make(made, tag_index))
+			made->definition = NULL;
+	}
+	return made->definition;
+}
+
 static void menu_tags_release(void)
 {
 	long index;
@@ -3012,6 +3377,8 @@ void menu_tags_loaded(
 	menu_tags.wide_count = menu_tags.wides ? total : 0;
 	menu_tags.sources = allocate(total * sizeof(*menu_tags.sources));
 	menu_tags.source_count = menu_tags.sources ? total : 0;
+	menu_tags.looks = allocate(total * sizeof(*menu_tags.looks));
+	menu_tags.look_count = menu_tags.looks ? total : 0;
 	/* each new tag's index */
 	for (index = 0; index < widget_count; index++)
 	{
@@ -3084,6 +3451,10 @@ void menu_tags_loaded(
 
 			if (source_index >= 0 && source_index < menu_tags.source_count)
 				menu_tags.sources[source_index] = widget->source;
+			/* (its look in the model found by its name: the menus' files' are
+			kept until they are read again) */
+			if (source_index >= 0 && source_index < menu_tags.look_count)
+				menu_tags.looks[source_index].name = widget->name;
 		}
 		if (widget->radius > 0)
 			tag_value_set(menu_tags.radii, &menu_tags.radius_count, build.widget_tags[index], (short)widget->radius);
@@ -3127,6 +3498,9 @@ void menu_tags_loaded(
 	}
 	menu_tags.loaded = TRUE;
 	menu_tags.generation = cache_files_tags_generation();
+	menu_tags.heading_tag = build.heading_tag;
+	menu_tags.map_font = build.map_font;
+	menu_tags.game_map = game_map;
 	platform_log("menus: %ld widgets, %ld string lists and %ld bitmaps added to the map's %ld tags",
 		widget_count, own_lists + menus->string_list_count, menus->bitmap_count, build.first_index);
 	goto done;
@@ -3244,6 +3618,8 @@ picture), 0 for square */
 short pc_menu_widget_radius(
 	long definition_index)
 {
+	if (menu_engine_looks() && pc_menu_look_definition(definition_index))
+		return menu_tags.looks[DATUM_INDEX_TO_ABSOLUTE_INDEX(definition_index) - menu_tags.original_count].radius;
 	return tag_value_get(menu_tags.radii, menu_tags.radius_count, definition_index);
 }
 
@@ -3309,7 +3685,7 @@ else NONE (Settings' panel: menu_functions.c's settings_panel_show) */
 long pc_menu_widget_string_list(
 	long definition_index)
 {
-	struct ui_widget_definition *definition = tag_get(UI_WIDGET_DEFINITION_TAG, definition_index);
+	struct ui_widget_definition *definition = menu_engine_definition(definition_index);
 
 	return definition ? definition->text_label_string_list.index : NONE;
 }
@@ -3318,7 +3694,7 @@ long pc_menu_widget_string_list(
 short pc_menu_string_index(
 	long definition_index)
 {
-	struct ui_widget_definition *definition = tag_get(UI_WIDGET_DEFINITION_TAG, definition_index);
+	struct ui_widget_definition *definition = menu_engine_definition(definition_index);
 
 	return definition ? definition->string_list_index : NONE;
 }

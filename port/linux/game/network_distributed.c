@@ -96,6 +96,7 @@ machine (their datum identifiers need not be).
 #include "latency_meter.h"
 #include "profile_sections.h"
 #include "server_director.h"
+#include "demo.h"
 
 #include <limits.h>
 #include <stdio.h>
@@ -5157,9 +5158,13 @@ void network_distributed_tick(
 		decided first: the damage goes where the players it hurt do), and a
 		kill's statistics before the kill, so that a client announcing it
 		counts it (a double kill, a killing spree) */
+		/* (for the demo being recorded, what the predictions changed:
+		demo.c) */
+		demo_netcode_begin();
 		profile_scope(distributed_tick_apply_predictions_section, distributed_apply_predictions(FALSE);)
 		profile_scope(distributed_tick_apply_vehicle_predictions_section,
 			network_objects_apply_vehicle_predictions(FALSE);)
+		demo_netcode_end();
 		profile_scope(distributed_tick_objects_host_tick_section, network_objects_host_tick();)
 		profile_scope(distributed_tick_plan_players_section, distributed_host_plan_players();)
 		profile_scope(distributed_tick_damage_host_tick_section, network_damage_host_tick();)

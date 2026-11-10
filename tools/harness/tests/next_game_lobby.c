@@ -151,6 +151,11 @@ static long demo_playback_sim_rate(void)
 {
 	return 0;
 }
+
+static boolean demo_playing(void)
+{
+	return FALSE;
+}
 void network_standard_new_game(void);
 
 static long config_integer(char const *name)
