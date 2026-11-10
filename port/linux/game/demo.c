@@ -142,6 +142,7 @@ void damage_kill_object_for_player(long object_index, long player_index);
 void *game_engine_port_demo_state(short part, long *size);
 void *game_sound_port_demo_state(short part, long *size);
 void *wind_port_demo_state(long *size);
+void *network_standard_port_demo_state(long *size);
 unsigned long network_standard_demo_rules(void);
 extern struct game_variant game_variant_global;
 void main_build_identity(long *number, char *flavor, size_t flavor_size, char *repository, size_t repository_size,
@@ -1198,6 +1199,10 @@ static void *demo_outside_part(
 		count++;
 	if (part == count)
 		return wind_port_demo_state(size);
+	/* (and which players are OpenCE machines', whose units a mixed game
+	moves once a tick: network_standard.c) */
+	if (part == count + 1)
+		return network_standard_port_demo_state(size);
 	return NULL;
 }
 
