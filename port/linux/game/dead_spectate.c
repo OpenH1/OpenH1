@@ -350,8 +350,16 @@ long dead_spectate_unit(
 	/* alive: keep `watched`, so the next death starts on the same teammate */
 	if (player->unit_index != NONE || !spectate_game())
 		return NONE;
-	if (!spectate_teammate(self, *watched) || next)
-		*watched = next_teammate(self, *watched);
+	if (!spectate_teammate(self, *watched))
+		*watched = next_teammate(self, NONE);
+	else if (next)
+	{
+		/* (the one watched, if they are the only one) */
+		long after = next_teammate(self, *watched);
+
+		if (after != NONE)
+			*watched = after;
+	}
 
 	return *watched != NONE ? player_get(*watched)->unit_index : NONE;
 }

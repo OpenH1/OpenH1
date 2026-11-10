@@ -540,7 +540,11 @@ long first_person_weapon_get_local_index(
 	{
 		struct first_person_weapon *first_person_weapon= first_person_weapon_get(local_player_index);
 
-		if (first_person_weapon->weapon_index==weapon_index && first_person_weapon->visible)
+		/* port: not a dead player's slot showing a teammate's weapon
+		(dead_spectate.c): the effects the weapon makes are the game
+		state's, built at its own markers as without the spectating */
+		if (first_person_weapon->weapon_index==weapon_index && first_person_weapon->visible &&
+			dead_spectate_eyes_unit(local_player_index)==NONE)
 		{
 			break;
 		}
@@ -1178,7 +1182,14 @@ static void first_person_weapon_set_visibility(
 {
 	struct first_person_weapon *first_person_weapon= first_person_weapon_get(local_player_index);
 
-	if (visible!=first_person_weapon->visible)
+	/* port: a dead player's slot showing a teammate's weapon (dead_spectate.c)
+	moves none of the weapon's effects to it: they are the game state's, and
+	stay as they are without the spectating */
+	if (visible!=first_person_weapon->visible && dead_spectate_eyes_unit(local_player_index)!=NONE)
+	{
+		first_person_weapon->visible= visible;
+	}
+	else if (visible!=first_person_weapon->visible)
 	{
 		if (visible)
 		{
@@ -2890,25 +2901,31 @@ static short first_person_weapon_index_from_weapon_index(
 	long weapon_index)
 {
 	short local_player_index;
+	/* port: a local player's own unit first, then a dead player's watched
+	teammate's (dead_spectate_first_person_weapon_unit): a split screen's
+	player watched by another keeps its own weapon's messages */
+	short pass;
 
-	for (local_player_index=0; local_player_index<MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
+	for (pass=0; pass<2; pass++)
 	{
-		long player_index= local_player_get_player_index(local_player_index);
-
-		if (player_index!=NONE)
+		for (local_player_index=0; local_player_index<MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
 		{
-			/* port: (dead_spectate_first_person_weapon_unit) */
-			long unit_index= dead_spectate_first_person_weapon_unit(local_player_index,
-				player_get(player_index)->unit_index);
+			long player_index= local_player_get_player_index(local_player_index);
 
-			if (unit_index!=NONE)
+			if (player_index!=NONE)
 			{
-				struct unit_datum *unit= unit_get(unit_index);
+				long unit_index= pass==0 ? player_get(player_index)->unit_index :
+					dead_spectate_first_person_weapon_unit(local_player_index, player_get(player_index)->unit_index);
 
-				if (unit->unit.current_weapon_index!=NONE &&
-					weapon_index==unit->unit.weapon_object_indices[unit->unit.current_weapon_index])
+				if (unit_index!=NONE)
 				{
-					return local_player_index;
+					struct unit_datum *unit= unit_get(unit_index);
+
+					if (unit->unit.current_weapon_index!=NONE &&
+						weapon_index==unit->unit.weapon_object_indices[unit->unit.current_weapon_index])
+					{
+						return local_player_index;
+					}
 				}
 			}
 		}
@@ -2921,16 +2938,22 @@ static short first_person_weapon_index_from_unit_index(
 	long unit_index)
 {
 	short local_player_index;
+	/* port: (first_person_weapon_index_from_weapon_index) */
+	short pass;
 
-	for (local_player_index=0; local_player_index<MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
+	for (pass=0; pass<2; pass++)
 	{
-		long player_index= local_player_get_player_index(local_player_index);
-
-		/* port: (dead_spectate_first_person_weapon_unit) */
-		if (player_index!=NONE && unit_index!=NONE &&
-			dead_spectate_first_person_weapon_unit(local_player_index, player_get(player_index)->unit_index)==unit_index)
+		for (local_player_index=0; local_player_index<MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
 		{
-			return local_player_index;
+			long player_index= local_player_get_player_index(local_player_index);
+
+			if (player_index!=NONE && unit_index!=NONE &&
+				(pass==0 ? player_get(player_index)->unit_index :
+					dead_spectate_first_person_weapon_unit(local_player_index,
+						player_get(player_index)->unit_index))==unit_index)
+			{
+				return local_player_index;
+			}
 		}
 	}
 
