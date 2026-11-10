@@ -1455,7 +1455,7 @@ the setting for one start of the game. It has priority over the file.
 | `network.link_share` | `"when_needed"` | `HALO_NET_LINK_SHARE` | When the game shows a server the Discord account linked to it (Settings > Online > Discord Account > SHOW TO SERVERS): `"when_needed"` (a server that asks, to let you in from a VPN), `"always"` or `"never"`. Refer to "Discord account". |
 | `network.use_relays` | `true` | `HALO_NET_USE_RELAYS` | `true`: when another machine is not reached directly in a few seconds, reach it through a relay (a dedicated server, or `halo --relay`). `false`: direct connections only. Refer to "Relays". |
 | `network.relays_file` | `"relays.txt"` | `HALO_NET_RELAYS_FILE` | The relays this machine offers when a direct connection fails, next to `config.toml` unless a full path, else next to the game: on each line `host[:port]` (2302 if none), 8 at most. The release's names the project's relay, `net.goath1.com:2302`, which the game also uses when it finds no file (an empty file names none). Refer to "Relays". |
-| `network.masters_file` | `"masters.txt"` | `HALO_NET_MASTERS_FILE` | The file of the master servers the server browser asks for dedicated servers, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`), 4 at most. A file that names none (missing, or comments alone, as the release's) leaves the official master, built in (`https://master.opencommunityedition.com`). Refer to "Dedicated server". |
+| `network.masters_file` | `"masters.txt"` | `HALO_NET_MASTERS_FILE` | The file of the master servers the server browser asks for dedicated servers, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`), 4 at most. The release's names the project's master (`https://master.goath1.com`) and OpenCE's (`https://master.opencommunityedition.com`); a file that names none (missing, or comments alone) leaves the same two, built in. A file that names any is asked instead of them. Refer to "Dedicated server". |
 | `server.enabled` | `false` | `HALO_SERVER` | `true`: run as a dedicated server, as `halo --server` does. Refer to "Dedicated server". The `server.*` settings are written to `config.toml` only by a dedicated server. |
 | `server.name` | `"OpenH1 Server"` | `HALO_SERVER_NAME` | The game's name in the lobby and the server browser: 15 characters of printable ASCII. |
 | `server.max_players` | `16` | `HALO_SERVER_MAX_PLAYERS` | The most players (2 to 127). |
@@ -1499,7 +1499,7 @@ the setting for one start of the game. It has priority over the file.
 | `server.relays_file` | `"relays.txt"` | `HALO_SERVER_RELAYS_FILE` | The relays the server offers players who cannot reach it directly (a server at home), and tells its game's players of: `host[:port]` on each line. The release's names the project's relay, `net.goath1.com:2302` (also used when there is no file). |
 | `server.front_ports` | `""` | `HALO_SERVER_FRONT_PORTS` | `halo --relay` as a front: the UDP ports, `first-last` (64 at most), it gives the servers that register with it (`network.front`), one each. Open them in the firewall. Empty: no front. Refer to "Fronts" in `docs/dedicated_server.md`. |
 | `server.front_operators_file` | `"front_operators.txt"` | `HALO_SERVER_FRONT_OPERATORS_FILE` | `halo --relay` as a front: the publisher keys it gives ports to, `ed25519:<hex>` (as `halo --keygen` prints) on each line, next to `config.toml` unless a full path. Read again every minute; a key taken off ends its registration. |
-| `server.masters_file` | `"masters.txt"` | `HALO_SERVER_MASTERS_FILE` | The master servers the server is published to, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`). None named: the official master, built in. |
+| `server.masters_file` | `"masters.txt"` | `HALO_SERVER_MASTERS_FILE` | The master servers the server is published to, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`). None named: the project's master and OpenCE's, built in. |
 | `server.publisher_key_file` | `"publisher.key"` | `HALO_SERVER_PUBLISHER_KEY_FILE` | The operator's Ed25519 key for the master servers (`halo --server --keygen` makes it), next to `config.toml` unless a full path. In a container, `HALO_SERVER_PUBLISHER_KEY` can hold the key itself. |
 | `server.instance` | `""` | `HALO_SERVER_INSTANCE` | A short name that tells this server from the operator's other servers on the master servers (letters, digits, `-` and `_`). Empty: made from `server.name`. |
 | `server.region` | `""` | `HALO_SERVER_REGION` | A region the server browser shows (`eu`, `na-east`...): 16 characters. Empty: none. |
@@ -3244,8 +3244,9 @@ password, a friend code) brings up the system's keyboard on Android and
 iOS.
 
 The browser lists two kinds of games: the dedicated servers that the
-master servers list (`masters.txt`, `network.masters_file`; the official
-master, `https://master.opencommunityedition.com`, built in, when the file
+master servers list (`masters.txt`, `network.masters_file`: the
+project's, `https://master.goath1.com`, and OpenCE's,
+`https://master.opencommunityedition.com`, also built in for when the file
 names none), and the games
 that players host, which come through the brokers. `network.listings`
 chooses the kinds that the browser asks for: both (the default), only the

@@ -1228,7 +1228,7 @@ the server takes FROM only from its front's address with its session.
 | `gametypes/<name>.toml` | Gametype files: the `gametypes` folder beside `config.toml` if there is one, else the data root's |
 | `gametypes/<name>.gametype` | Gametypes saved by a player's game (`file=<name>` in the rotation): the same `gametypes` folder |
 | `publisher.key` | The publisher key for the master servers (beside `config.toml`). On Windows, a server's `config.toml` and `publisher.key` are given an access list of their owner alone (the entries inherited for Administrators and SYSTEM taken out) |
-| `masters.txt` | The master servers (`server.masters_file`: beside `config.toml`, else beside the executable); one that names none leaves the official master, built in |
+| `masters.txt` | The master servers (`server.masters_file`: beside `config.toml`, else beside the executable); the release's names the project's master and OpenCE's, which are also built in for one that names none |
 | `relays.txt` | The relays the server offers players who cannot reach it, and tells its players of (`server.relays_file`, found as `masters.txt` is): `host[:port]` on each line; the project's, `net.goath1.com:2302`, by default ("Relays") |
 | `bans.txt`, `cheaters.txt`, `debug.txt` | In `paths.logs`, else the data root |
 | `admins.txt`, `admin_id.txt` | Beside `bans.txt`: the players' keys (or key ids) who are admins in the game, and the server's id their keys for it are made from ("Admins in the game") |

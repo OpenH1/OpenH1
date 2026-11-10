@@ -2,7 +2,7 @@
 # net.goath1.com's firewall (installed as /etc/nftables.d/goath1.nft, loaded
 # by /etc/nftables.conf). A table of its own, so that Tailscale's
 # (iptables-nft's "ip filter") and any other program's tables are left
-# alone. The Hetzner Cloud firewall in front lets in the same public ports;
+# alone. The Hetzner Cloud firewall in front lets in the same public ports (1883, 2302, 80, 443);
 # this one also limits each source address.
 
 table inet goath1
@@ -14,6 +14,8 @@ table inet goath1 {
 	set mqtt6_rate { type ipv6_addr; flags dynamic; timeout 2m; }
 	set mqtt_count { type ipv4_addr; flags dynamic; }
 	set mqtt6_count { type ipv6_addr; flags dynamic; }
+	set https_rate { type ipv4_addr; flags dynamic; timeout 2m; }
+	set https6_rate { type ipv6_addr; flags dynamic; timeout 2m; }
 
 	chain input {
 		type filter hook input priority filter; policy drop;
@@ -44,6 +46,14 @@ table inet goath1 {
 		tcp dport 1883 ct state new add @mqtt_count { ip saddr ct count over 64 } reject with tcp reset
 		tcp dport 1883 ct state new add @mqtt6_count { ip6 saddr ct count over 64 } reject with tcp reset
 		tcp dport 1883 accept
+
+		# the master server, behind Caddy: HTTPS, and HTTP for the
+		# certificate's challenge and the redirect (60 new a minute from an
+		# address: a dedicated server publishes every 30 seconds, a browser
+		# asks once a minute)
+		tcp dport { 80, 443 } ct state new add @https_rate { ip saddr limit rate over 60/minute burst 120 packets } drop
+		tcp dport { 80, 443 } ct state new add @https6_rate { ip6 saddr limit rate over 60/minute burst 120 packets } drop
+		tcp dport { 80, 443 } accept
 
 		# the relay (halo --relay limits each address itself:
 		# docs/dedicated_server.md, "Relays")
