@@ -66,6 +66,16 @@ unsigned long ui_widget_port_milliseconds(void);
 void ui_widget_port_pointer_not_last(void);
 boolean ui_widget_port_no_screens(void);
 
+/* ---------- the widgets' definitions (ui_widget.c, menu_tags.c) */
+
+/* whether the engine draws the menus' files' widgets from the model's looks
+(display.menu_engine "new") */
+boolean menu_engine_looks(void);
+/* a widget's definition as the game's widgets read it: the engine's, made
+from the widget's look in the model (menu_tags.c's pc_menu_look_definition),
+where it draws the widget; else the widget's tag */
+void *menu_engine_definition(long tag_index);
+
 /* ---------- the menus' functions' (menu_functions.c) */
 
 /* a settings row's help and note (after a "|"), from the model, where the

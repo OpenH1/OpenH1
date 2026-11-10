@@ -1454,8 +1454,8 @@ the setting for one start of the game. It has priority over the file.
 | `network.listings` | `"both"` | `HALO_NET_LISTINGS` | What the server browser lists. `"both"`: the dedicated servers of the master servers first, then the games players host (from the brokers). `"masters"`: the master servers' only. `"brokers"`: the brokers' only. Refer to "Server browser". |
 | `network.link_share` | `"when_needed"` | `HALO_NET_LINK_SHARE` | When the game shows a server the Discord account linked to it (Settings > Online > Discord Account > SHOW TO SERVERS): `"when_needed"` (a server that asks, to let you in from a VPN), `"always"` or `"never"`. Refer to "Discord account". |
 | `network.use_relays` | `true` | `HALO_NET_USE_RELAYS` | `true`: when another machine is not reached directly in a few seconds, reach it through a relay (a dedicated server, or `halo --relay`). `false`: direct connections only. Refer to "Relays". |
-| `network.relays_file` | `"relays.txt"` | `HALO_NET_RELAYS_FILE` | The relays this machine offers when a direct connection fails, next to `config.toml` unless a full path, else next to the game: on each line `host[:port]` (2302 if none), 8 at most. The release's names none. Refer to "Relays". |
-| `network.masters_file` | `"masters.txt"` | `HALO_NET_MASTERS_FILE` | The file of the master servers the server browser asks for dedicated servers, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`), 4 at most. A file that names none (missing, or comments alone, as the release's) leaves the official master, built in (`https://master.opencommunityedition.com`). Refer to "Dedicated server". |
+| `network.relays_file` | `"relays.txt"` | `HALO_NET_RELAYS_FILE` | The relays this machine offers when a direct connection fails, next to `config.toml` unless a full path, else next to the game: on each line `host[:port]` (2302 if none), 8 at most. The release's names the project's relay, `net.goath1.com:2302`, which the game also uses when it finds no file (an empty file names none). Refer to "Relays". |
+| `network.masters_file` | `"masters.txt"` | `HALO_NET_MASTERS_FILE` | The file of the master servers the server browser asks for dedicated servers, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`), 4 at most. The release's names the project's master (`https://master.goath1.com`) and OpenCE's (`https://master.opencommunityedition.com`); a file that names none (missing, or comments alone) leaves the same two, built in. A file that names any is asked instead of them. Refer to "Dedicated server". |
 | `server.enabled` | `false` | `HALO_SERVER` | `true`: run as a dedicated server, as `halo --server` does. Refer to "Dedicated server". The `server.*` settings are written to `config.toml` only by a dedicated server. |
 | `server.name` | `"OpenH1 Server"` | `HALO_SERVER_NAME` | The game's name in the lobby and the server browser: 15 characters of printable ASCII. |
 | `server.max_players` | `16` | `HALO_SERVER_MAX_PLAYERS` | The most players (2 to 127). |
@@ -1496,10 +1496,10 @@ the setting for one start of the game. It has priority over the file.
 | `server.relay` | `"game"` | `HALO_SERVER_RELAY` | Relay for players who cannot reach each other directly: `"game"`, the players of the server's own game (it tells them so); `"any"`, any two machines (a relay that players name in `relays.txt`); `"off"`. Refer to "Relays" in `docs/dedicated_server.md`. |
 | `server.relay_pairs` | `64` | `HALO_SERVER_RELAY_PAIRS` | Relaying: the most pairs of machines at once (1 to 256), 8 for each address. `halo --relay` too. |
 | `server.relay_upload` | `8192` | `HALO_SERVER_RELAY_UPLOAD` | Relaying: the most kilobytes a second sent on in all (16 to 1000000); 256 for each pair, 1024 for each address. `halo --relay` too. |
-| `server.relays_file` | `"relays.txt"` | `HALO_SERVER_RELAYS_FILE` | The relays the server offers players who cannot reach it directly (a server at home), and tells its game's players of: `host[:port]` on each line. None by default. |
+| `server.relays_file` | `"relays.txt"` | `HALO_SERVER_RELAYS_FILE` | The relays the server offers players who cannot reach it directly (a server at home), and tells its game's players of: `host[:port]` on each line. The release's names the project's relay, `net.goath1.com:2302` (also used when there is no file). |
 | `server.front_ports` | `""` | `HALO_SERVER_FRONT_PORTS` | `halo --relay` as a front: the UDP ports, `first-last` (64 at most), it gives the servers that register with it (`network.front`), one each. Open them in the firewall. Empty: no front. Refer to "Fronts" in `docs/dedicated_server.md`. |
 | `server.front_operators_file` | `"front_operators.txt"` | `HALO_SERVER_FRONT_OPERATORS_FILE` | `halo --relay` as a front: the publisher keys it gives ports to, `ed25519:<hex>` (as `halo --keygen` prints) on each line, next to `config.toml` unless a full path. Read again every minute; a key taken off ends its registration. |
-| `server.masters_file` | `"masters.txt"` | `HALO_SERVER_MASTERS_FILE` | The master servers the server is published to, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`). None named: the official master, built in. |
+| `server.masters_file` | `"masters.txt"` | `HALO_SERVER_MASTERS_FILE` | The master servers the server is published to, next to `config.toml` unless a full path: on each line an `https://` URL and the master's key (`ed25519:<hex>`). None named: the project's master and OpenCE's, built in. |
 | `server.publisher_key_file` | `"publisher.key"` | `HALO_SERVER_PUBLISHER_KEY_FILE` | The operator's Ed25519 key for the master servers (`halo --server --keygen` makes it), next to `config.toml` unless a full path. In a container, `HALO_SERVER_PUBLISHER_KEY` can hold the key itself. |
 | `server.instance` | `""` | `HALO_SERVER_INSTANCE` | A short name that tells this server from the operator's other servers on the master servers (letters, digits, `-` and `_`). Empty: made from `server.name`. |
 | `server.region` | `""` | `HALO_SERVER_REGION` | A region the server browser shows (`eu`, `na-east`...): 16 characters. Empty: none. |
@@ -1593,6 +1593,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.touch_menus` | `false` | `HALO_TOUCH_MENUS` | Lays the menus out as the touchscreen's builds (Android, iOS) do: their `touch` screens (Multiplayer's tiles, the server browser, the lobby, Host Controls and the Party screen with every tap target a finger's size, the tabs as chips and the footer's key prompts as buttons), for looking at them on a computer. Read as the menus load. |
 | `debug.touch_targets` | `false` | `HALO_TOUCH_TARGETS` | Outlines the tap targets of the menus (item green, value blue, list slot yellow, legend button red, the band beside the slots of a list orange, keys of the on-screen keyboard white), marks where the last finger went down and the last tap landed for 3 seconds, and logs each tap with the target that it hit (for a value, also where it splits into previous and next): to judge the accuracy of touch. |
 | `debug.log_addresses` | `false` | `HALO_LOG_ADDRESSES=1` sets `true` | `true`: other machines' internet addresses are written whole in `debug.txt` and the console, for debugging your own network. `false`: a public address is written as a tag (`addr#3f2a9c`) that matches up only within one run; local network addresses are always whole. Do not post a `debug.txt` written with this on. |
+| `debug.network_relay_only` | `false` | `HALO_NETWORK_RELAY_ONLY` | Internet play's tunnel sends to other players only through a relay and drops what comes straight from them, as when two NATs keep the machines apart: to test the relays (`network.relays_file`) between two machines that could meet directly. |
 | `debug.network_latency`, `debug.network_loss`, `debug.network_corrupt`, `debug.network_corrupt_stream`, `debug.network_corrupt_after` | `0` | `HALO_NETWORK_LATENCY`, `HALO_NETWORK_LOSS`, `HALO_NETWORK_CORRUPT`, `HALO_NETWORK_CORRUPT_STREAM`, `HALO_NETWORK_CORRUPT_AFTER` | The game holds all the data that it receives for this number of milliseconds, ignores this percentage of the datagrams, and damages this percentage of the datagrams it receives, and this percentage of its reads of streams, at random (bytes changed, cut short, stretched or replaced), from this many seconds after the start. Use the first two to test the netcode as on the internet, and the others to test that nothing another machine sends can crash the game (a damaged stream is closed, so a little goes a long way; a host's messages to its own client are damaged too, so start damaging once the game has started). |
 | `debug.voice_test` | `false` | `HALO_VOICE_TEST` | Automatic tests of voice chat: a tone replaces the microphone, and each voice that the game hears is written to the log once each second. |
 | `debug.bsp_switch_test` | `0.0` | `HALO_BSP_SWITCH_TEST` | Every this many seconds of a campaign level, the game switches to the scenario's next structure BSP (as a load zone does), puts the first player on the first cutscene flag inside it, and logs the frame the switch was in, the longest frame of the three seconds after it, and the longest and median frames before it (`bsp switch test:` lines, `game/bsp_switch_test.c`); `0` never. |
@@ -3243,8 +3244,9 @@ password, a friend code) brings up the system's keyboard on Android and
 iOS.
 
 The browser lists two kinds of games: the dedicated servers that the
-master servers list (`masters.txt`, `network.masters_file`; the official
-master, `https://master.opencommunityedition.com`, built in, when the file
+master servers list (`masters.txt`, `network.masters_file`: the
+project's, `https://master.goath1.com`, and OpenCE's,
+`https://master.opencommunityedition.com`, also built in for when the file
 names none), and the games
 that players host, which come through the brokers. `network.listings`
 chooses the kinds that the browser asks for: both (the default), only the
@@ -3559,8 +3561,9 @@ or a relay that runs alone (`halo --relay`, on a small server): refer to
 
 - Each machine offers the other the relays it knows: those in `relays.txt`
   (`network.relays_file`, next to `config.toml`, else next to the game: on
-  each line `host[:port]`, the port 2302 if none; the release's file names
-  none), and those the dedicated server of the game it plays in tells it of.
+  each line `host[:port]`, the port 2302 if none; the release's file, and
+  the game when it finds none, names the project's, `net.goath1.com`:
+  `deploy/net`), and those the dedicated server of the game it plays in tells it of.
   Both machines connect to every relay of both offers (6 at most). The
   first relay that gets their packets through carries the connection; the
   others stay ready. If that relay stops, another takes over in a few

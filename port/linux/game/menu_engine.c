@@ -17,19 +17,25 @@ events (menu_engine_screen_event). The widgets are the game's struct
 widget_instance (menu_widget.h), so that the menus' functions
 (menu_functions.c), which read and write them by name, run alike on both.
 
-From the model the engine takes what the widgets cannot say: a settings
-screen's rows and sections, their order and the geometry they are laid out
-by (menu_engine_settings_layout, in place of settings_rows_pack's packing),
-each row's help and note (menu_engine_row_help, in place of the help found
-by its label's index + 1); and how each widget takes its events and what
-they do, its behaviour (model/behaviour: its flags and its <on> handlers,
-which menu_tags.c makes the game's), in place of its definition's.
+Each widget is drawn from its look in the model (model/look: its box, wide
+layout, places, pictures, text and its style, and where its children are),
+not its definition: ui_widget.c finds every widget's definition through
+menu_engine_definition, which gives it the one menu_tags.c made from the
+model (pc_menu_look_definition). From the model the engine also takes what
+the widgets cannot say: a settings screen's rows and sections, their order
+and the geometry they are laid out by (menu_engine_settings_layout, in place
+of settings_rows_pack's packing), each row's help and note
+(menu_engine_row_help, in place of the help found by its label's index + 1);
+and how each widget takes its events and what they do, its behaviour
+(model/behaviour: its flags and its <on> handlers, which menu_tags.c makes
+the game's), in place of its definition's.
 */
 
 #include "cseries.h"
 #include "input/input.h"
 #include "interface/event_manager.h"
 #include "interface/ui_widget.h"
+#include "interface/ui_widget_definitions.h"
 #include "networking/network_connection.h"
 #include "tag_files/tag_groups.h"
 
@@ -41,6 +47,8 @@ which menu_tags.c makes the game's), in place of its definition's.
 #include <string.h>
 
 char const *config_string(char const *name);
+unsigned long config_changes(void);
+void *pc_menu_look_definition(long tag_index);
 char *tag_get_name(long tag_index);
 boolean pc_menu_tag(long tag_index);
 void platform_log(char const *format, ...);
@@ -112,6 +120,29 @@ static struct
 static boolean engine_on(void)
 {
 	return !strcmp(config_string("display.menu_engine"), "new");
+}
+
+/* engine_on, read again only when a setting changes: every widget's
+definition asks it (menu_engine_definition) */
+boolean menu_engine_looks(void)
+{
+	static unsigned long read_at;
+	static boolean read, on;
+
+	if (!read || read_at != config_changes())
+	{
+		read = TRUE;
+		read_at = config_changes();
+		on = engine_on();
+	}
+	return on;
+}
+
+void *menu_engine_definition(long tag_index)
+{
+	void *look = tag_index != NONE && menu_engine_looks() ? pc_menu_look_definition(tag_index) : NULL;
+
+	return look ? look : tag_get(UI_WIDGET_DEFINITION_TAG, tag_index);
 }
 
 /* a widget's name as the menus' files have it: its tag's, without "pc\" and

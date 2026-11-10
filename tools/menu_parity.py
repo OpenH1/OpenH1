@@ -17,6 +17,11 @@ controller, the keyboard and mouse, touch).
 config.toml and player profile and compares where the focus was after each press, config.toml, the profile's files,
 the settings written and the last screen's layout; --sweep adds every generated screen's navigation (SWEEP).
 
+The new engine draws each widget of the generated screens from its look in the model (model/look:
+tools/menu_look.py), never its widget definition; a widget it draws from its definition is logged ("menu engine:
+look from the widget definition"), which fails it too. --look-control proves that this is noticed: a model with a
+widget's look taken out must log it.
+
 The runs reuse one map cache (a clone of --saves's, by default ~/.cache/openh1-bench/saves/z: APFS clones on a
 Mac, so nothing is unpacked again), each with its own data and save folders, deleted afterwards. A difference
 not listed in DELIBERATE fails it (exit status 1).
@@ -66,6 +71,16 @@ def is_deliberate_frame(screen: str, classic: dict, new: dict) -> bool:
 
 # the engine each side runs (--baseline: the classic on both, to see what differs between two runs of one)
 ENGINES = {}
+
+# what the new engine logs for a widget it drew from its widget definition, not its look in the model
+# (port/linux/game/menu_tags.c's look_missing)
+LOOK_FROM_DEFINITION = "menu engine: look from the widget definition"
+
+
+def looks_from_definitions(logs: list) -> list:
+    """the widgets the new engine drew from their widget definitions, by the runs' logs"""
+    return sorted({line.split(LOOK_FROM_DEFINITION + ": ", 1)[1].strip() for log in logs for line in log.splitlines()
+                   if LOOK_FROM_DEFINITION in line})
 
 
 def engine_variant(variant: menu_gallery.Variant, engine: str) -> menu_gallery.Variant:
@@ -155,9 +170,10 @@ def compare_pictures(classic, new) -> list:
 
 
 def run_layouts(build: Path, screens: list, variant_names: list, maps: Path, template: Path, jobs: int,
-                timeout: float, pictures: bool = False) -> dict:
+                timeout: float, pictures: bool = False, logs: dict = None) -> dict:
     """{(variant, engine): {screen: (picture, layout)}}, each variant's screens split over parts run at once
-    (pictures: each screen's frame too, read from the run's folder into memory, which is then deleted)"""
+    (pictures: each screen's frame too, read from the run's folder into memory, which is then deleted; logs:
+    {engine: [each run's log]} filled in)"""
     parts = max(1, jobs // max(1, 2 * len(variant_names)))
     size = -(-len(screens) // parts)
     tasks = [(name, engine, screens[start:start + size]) for name in variant_names for engine in ("classic", "new")
@@ -169,7 +185,8 @@ def run_layouts(build: Path, screens: list, variant_names: list, maps: Path, tem
         try:
             found = menu_gallery.tour(build, part, engine_variant(VARIANTS[name], ENGINES.get(engine, engine)), maps,
                                       None, pictures,
-                                      False, timeout + len(part), template)
+                                      False, timeout + len(part), template,
+                                      logs.setdefault(engine, []) if logs is not None else None)
         except Exception as error:  # (reported as the screens' difference)
             return task, {screen.name: {"error": str(error)} for screen in part}
         return task, {screen.name: found[screen.name] for screen in part}
@@ -440,6 +457,38 @@ def compare_results(results: dict, screens: list, variant_names: list, arguments
     return differences
 
 
+def look_control(build: Path, screens: list, maps: Path, template: Path, timeout: float) -> int:
+    """the new engine run on the first screen with its own look taken out of the model (a menus folder's file
+    in place of its look's): 0 if the run logs that it drew it from its definition"""
+    import shutil
+    import tempfile
+    screen = screens[0]
+    folder = Path(tempfile.mkdtemp(prefix="menu-parity-look-"))
+    try:
+        found = None
+        for path in sorted((ROOT / menu_gallery.MENUS.parent / "model" / "look").glob("*.xml")):
+            text = path.read_text()
+            start = text.find(f'\t<look name="{screen.name}"')
+            if start >= 0:
+                end = text.find("\n\t<look ", start + 1)
+                (folder / "model" / "look").mkdir(parents=True)
+                (folder / "model" / "look" / path.name).write_text(text[:start] + text[end + 1:])
+                found = path.name
+                break
+        if not found:
+            print(f"menu_parity: the model has no look of {screen.name}")
+            return 1
+        logs = []
+        menu_gallery.tour(build, [screen], engine_variant(VARIANTS["16x9-keyboard"], "new"), maps, folder, False,
+                          False, timeout, template, logs)
+        noticed = looks_from_definitions(logs)
+        print(f"menu_parity: --look-control: {screen.name}'s look taken out of {found}; "
+              f"{'noticed: ' + ', '.join(noticed) if noticed else 'NOT noticed'}")
+        return 0 if any(item.startswith(screen.name + " ") for item in noticed) else 1
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--layout", action="store_true", help="compare the screens' layouts (debug.menu_layout)")
@@ -466,7 +515,11 @@ def main(argv=None) -> int:
                         "change that both engines run, as the model's sliders and conditions are): before | after")
     parser.add_argument("--show", type=Path, help="a scratch folder each differing pair of frames is saved in, to "
                         "look at (the game's imagery: delete it after)")
+    parser.add_argument("--look-control", action="store_true", help="prove that a widget drawn from its definition is "
+                        "noticed: the new engine run with one widget's look taken out of the model")
     arguments = parser.parse_args(argv)
+    if arguments.look_control:
+        arguments.layout = True
     if arguments.baseline:
         ENGINES["new"] = "classic"
     if not arguments.layout and not arguments.pixels and not arguments.behaviour:
@@ -493,8 +546,11 @@ def main(argv=None) -> int:
             parser.error(f"no variant {name} ({', '.join(VARIANTS)})")
     screens = [screen for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS)
                if re.search(arguments.screens, screen.name)]
+    if arguments.look_control:
+        return look_control(arguments.build, screens, arguments.data, template, arguments.timeout)
+    logs = {}
     results = run_layouts(arguments.build, screens, variant_names, arguments.data, template, arguments.jobs,
-                          arguments.timeout, arguments.pixels)
+                          arguments.timeout, arguments.pixels, logs)
     differences = compare_results(results, screens, variant_names, arguments)
     if arguments.pixels and differences:
         # (a frame that differs is drawn again, one run at a time on each side: what the textures still
@@ -521,9 +577,13 @@ def main(argv=None) -> int:
     print(f"menu_parity: {' and '.join(kind for kind, on in (('layout', arguments.layout), ('pixels', arguments.pixels)) if on)}: "
           f"{same} the same, {len(differences)} differ "
           f"({len(screens)} screens x {len(variant_names)} variants)")
+    from_definitions = [] if arguments.baseline else looks_from_definitions(logs.get("new", []))
+    for widget in from_definitions:
+        print(f"LOOK FROM ITS DEFINITION {widget}")
+    print(f"menu_parity: the new engine drew {len(from_definitions)} widgets from their definitions, not the model")
     if arguments.out:
         arguments.out.write_text(json.dumps(differences, indent=1))
-    return 1 if differences or failed else 0
+    return 1 if differences or failed or from_definitions else 0
 
 
 if __name__ == "__main__":

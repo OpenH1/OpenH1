@@ -678,9 +678,10 @@ def map_cache_unchanged(template: Path) -> bool:
 
 
 def tour(build: Path, screens: list, variant: Variant, maps: Path, menus: Path, pictures: bool, xvfb: bool,
-         timeout: float, template: Path = None) -> dict:
+         timeout: float, template: Path = None, logs: list = None) -> dict:
     """one run of the game through the screens (debug.menu_tour), the menu files of a folder over its own
-    (its menus folder: no build for a change to them): {screen's name: (picture or None, layout or None)}"""
+    (its menus folder: no build for a change to them): {screen's name: (picture or None, layout or None)}
+    (logs: the run's log appended to it)"""
     # (beside the template, on its file system, where its files can be cloned or linked: not a /tmp of RAM)
     if template:
         (MAP_CACHE_TEMPLATES / "runs").mkdir(parents=True, exist_ok=True)
@@ -718,6 +719,8 @@ def tour(build: Path, screens: list, variant: Variant, maps: Path, menus: Path, 
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
         text = (folder / "halo.log").read_text(errors="replace")
+        if logs is not None:
+            logs.append(text)
         if "debug.menu_tour: done" not in text:
             raise RuntimeError(f"the tour ({variant.description}) did not finish in {timeout:g} s\n{text[-2000:]}")
         results = {}

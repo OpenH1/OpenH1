@@ -171,7 +171,9 @@ for each texture by its Data, Format and Size. */
 picture, a difficulty's badge) is upscaled on a thread of its own, the
 original drawn until it is: upscaling one (256x128 to 1024x512) took a few
 milliseconds of the frame that first drew it, four of them as Choose
-Mission opened. */
+Mission opened. Where the frames' time is fixed (debug.frame_time:
+port/linux/game/frames_clock.c) the frame that asks for it waits for it, so
+that two runs draw the same frames (tools/menu_parity.py). */
 struct upscale_job
 {
 	struct upscale_job *next;
@@ -187,9 +189,14 @@ static struct
 {
 	pthread_mutex_t lock;
 	pthread_cond_t work;
+	/* (a job done: upscale_take's wait) */
+	pthread_cond_t finished;
 	int running;
 	struct upscale_job *queue;
-} upscaler = { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER };
+} upscaler = { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, PTHREAD_COND_INITIALIZER };
+
+/* frames_clock.c */
+int frames_clock(unsigned long *milliseconds);
 
 static void *upscaler_thread(void *unused)
 {
@@ -218,6 +225,7 @@ static void *upscaler_thread(void *unused)
 		}
 		job->pixels = pixels;
 		job->done = 1;
+		pthread_cond_broadcast(&upscaler.finished);
 	}
 	return NULL;
 }
@@ -268,6 +276,9 @@ static unsigned int upscale_take(struct upscale_job **job, unsigned long *levels
 	unsigned long width, height;
 
 	pthread_mutex_lock(&upscaler.lock);
+	/* (waited for where the frames' time is fixed) */
+	while (!(*job)->done && frames_clock(NULL))
+		pthread_cond_wait(&upscaler.finished, &upscaler.lock);
 	if (!(*job)->done)
 	{
 		pthread_mutex_unlock(&upscaler.lock);
