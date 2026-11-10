@@ -589,17 +589,22 @@ is then RGBA16F, an input attachment too.
   does between the two: a colour attachment's write lands after the shader,
   outside it, so reading the input attachment inside it was not enough (the
   4090 still lost the plasma rifle's scorch marks where two were batched).
-  A second barrier after the draw makes its writes the pass's draws' after
-  it. The targets it writes are made uncompressed where the device can say
+  A run of interlocked draws has a barrier before its first draw (the
+  pass's draws before it seen) and one after its last (its writes seen as
+  the colour attachment's by what follows: `color_stores_seen`), none
+  between them: the interlock's primitive order runs on from one draw to
+  the next in a pass, and their coherent storage reads and writes see each
+  other's (a barrier between each two cost the 4090 0.28 ms a frame of the
+  benchmark's 0.44, and the frames drawn without them are the same, byte
+  for byte, on the 4090 and RADV). The targets it writes are made uncompressed where the device can say
   so (`VK_EXT_image_compression_control`): RADV's DCC left specks of
   other colours over every interlocked pixel on an RDNA 3.5 GPU (Mesa
   26.2); a device with neither that nor NVIDIA's driver is not
   interlocked. Its cost, `tools/bench.py` at 2560x1440 with HDR on
-  (`HALO_VULKAN_NO_INTERLOCK=1` against): an RTX 4090's GPU time 1.00 to
-  1.37 ms a frame (the view's pass 0.28 to 0.55 ms; 0.12 ms of it the
-  barriers after the draws, none the interlock itself or the targets'
-  storage use), a Radeon 8060S's 2.31 to 2.35 ms (the view's pass 0.48 to
-  0.58 ms).
+  (`HALO_VULKAN_NO_INTERLOCK=1` against): an RTX 4090's GPU time 0.98 to
+  1.15 ms a frame (the view's pass 0.28 to 0.40 ms); a Radeon 8060S's
+  2.45 to 2.31 ms, less than the barrier before each tagged draw costs
+  without the interlock.
 - Elsewhere (neither), two triangles of one tagged draw over the same
   pixel read it unordered (decals that overlap are never one draw, on any
   device: `rasterizer_decal_batch_overlaps`).

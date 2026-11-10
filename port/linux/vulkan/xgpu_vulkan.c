@@ -34,7 +34,7 @@ overlapping triangles in order too. Where the device has the fragment
 shader interlock instead (VK_EXT_fragment_shader_interlock), a draw that
 writes no depth (its pipeline's color_store) reads and writes the
 attachment as a storage image of the same set, its own triangles ordered by
-the interlock, after a barrier before it and with one after it, its
+the interlock, a run of them after a barrier and with one after it, its
 pipeline writing no colour; the targets it writes are uncompressed where
 the device can say so (VK_EXT_image_compression_control). Where the
 frames are HDR and the window's display shows HDR, the swapchain is HDR
@@ -629,8 +629,10 @@ static struct
 	/* cube maps sampled face by face (VK_EXT_non_seamless_cube_map) */
 	int non_seamless;
 	/* display.hdr's interlocked draws: the targets they write as storage
-	images made uncompressed (VK_EXT_image_compression_control) */
-	int compression_control;
+	images made uncompressed (VK_EXT_image_compression_control); and one
+	drawn whose writes the pass's other commands have not yet been made to
+	see (color_stores_seen) */
+	int compression_control, color_stored;
 
 	/* memory blocks for images, by memory type */
 	struct block *blocks;
@@ -4995,10 +4997,32 @@ static int pass_begin(uint32_t clear_parts, const float clear_color[4], float cl
 	return 1;
 }
 
+/* display.hdr: the writes of the interlocked draws drawn since the last
+barrier (their storage image's) seen by what comes after them in the pass,
+as the colour attachment's writes, and by what follows the pass as its
+writes are: one barrier after a run of interlocked draws, and none between
+them (draw_body) */
+static void color_stores_seen(VkCommandBuffer commands)
+{
+	VkMemoryBarrier stored;
+
+	if (!vk.color_stored)
+		return;
+	memset(&stored, 0, sizeof(stored));
+	stored.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	stored.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	stored.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
+		VK_ACCESS_INPUT_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+	vkCmdPipelineBarrier(commands, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_DEPENDENCY_BY_REGION_BIT, 1, &stored, 0, NULL, 0, NULL);
+	vk.color_stored = 0;
+}
+
 static void pass_end_body(void)
 {
 	if (!vk.pass_active)
 		return;
+	color_stores_seen(vk.pass_commands);
 	test_query_end();
 	/* (with discards, the pass's draws ended: its rendering, and the
 	barrier after it, are made at the submission, segments_play) */
@@ -5201,7 +5225,10 @@ void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t 
 		rect_count++;
 	}
 	if (rect_count && attachment_count)
+	{
+		color_stores_seen(vk.pass_commands);
 		vkCmdClearAttachments(vk.pass_commands, attachment_count, attachments, rect_count, rects);
+	}
 	if (rect_count && draw.pipeline)
 	{
 		struct xgpu_vulkan_dynamic_state dynamic;
@@ -6287,13 +6314,20 @@ static void draw_body(const struct xgpu_vulkan_draw *draw)
 	stages, by region); an interlocked one, which reads and writes it as a
 	storage image, the same, its shader's reads and writes (and the draws
 	after it see its writes: below) */
+	if (!draw->stores_color)
+		color_stores_seen(commands);
 	if (draw->reads_color)
 	{
 		VkDescriptorSet input = input_set();
 
 		if (!input)
 			return;
-		if (!vk.capabilities.raster_order)
+		/* (an interlocked draw right after another, none: the interlock
+		orders the two draws' triangles over the same pixel as it orders one
+		draw's, in primitive order, which runs on from one draw to the next
+		in a pass, and their coherent reads and writes of the storage image
+		inside it see each other's) */
+		if (!vk.capabilities.raster_order && !(draw->stores_color && vk.color_stored))
 		{
 			VkMemoryBarrier local;
 
@@ -6391,19 +6425,11 @@ static void draw_body(const struct xgpu_vulkan_draw *draw)
 	}
 	draw_times_draw(commands, draw, 1);
 	timing_draw_mark(commands, 1);
-	/* (an interlocked draw's writes, as the colour attachment's: seen by the
-	pass's draws after it, and by what follows the pass as its writes are) */
+	/* (an interlocked draw's writes: seen by what comes after its run,
+	color_stores_seen) */
 	if (draw->stores_color)
 	{
-		VkMemoryBarrier stored;
-
-		memset(&stored, 0, sizeof(stored));
-		stored.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-		stored.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-		stored.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
-			VK_ACCESS_INPUT_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-		vkCmdPipelineBarrier(commands, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
-			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_DEPENDENCY_BY_REGION_BIT, 1, &stored, 0, NULL, 0, NULL);
+		vk.color_stored = 1;
 		vk.statistics.color_stores++;
 	}
 	vk.statistics.draws++;
