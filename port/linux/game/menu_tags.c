@@ -1261,16 +1261,16 @@ static long split(char const *text, char const **pieces)
 	return count;
 }
 
-/* a spinner's strings, or its values, split: its own, but Video Setup's
+/* a spinner's strings, or its values (count of them in pieces), with those
+the platform adds: Video Setup's
 sizes are the display's (sdl_platform.c), shown "1920 x 1080" and set
 "1920x1080": its resolutions after Resolution's own (NATIVE), and the
 window sizes that fit it in place of Window Size's own; its refresh rates
 after Refresh Rate's own (AUTO); and Audio Setup's
 devices SDL finds, after their SYSTEM DEFAULT, each set by its name and
 shown by it (in capitals, as the menus' words are, and cut short) */
-static long spinner_split(struct halo_menu_widget const *widget, boolean values, char const **pieces)
+static long spinner_expand(char const *setting, boolean values, char const **pieces, long count)
 {
-	long count = split(values ? widget->values : widget->strings, pieces);
 	long widths[MAXIMUM_STRINGS], heights[MAXIMUM_STRINGS];
 	long added, index;
 
@@ -1279,7 +1279,7 @@ static long spinner_split(struct halo_menu_widget const *widget, boolean values,
 	is asked (sdl_platform.c's platform_vrr_detected); every choice SET BY
 	MACOS on the Mac, where the system sets it: its row's condition in the
 	model dims it, menu_functions.c's settings_rows_conditions) */
-	if (!values && widget->setting && !strcmp(widget->setting, "display.vrr"))
+	if (!values && setting && !strcmp(setting, "display.vrr"))
 	{
 		int vrr = platform_vrr_detected();
 
@@ -1293,12 +1293,12 @@ static long spinner_split(struct halo_menu_widget const *widget, boolean values,
 		return count;
 	}
 
-	if (widget->setting && (!strcmp(widget->setting, "audio.output_device") ||
-		!strcmp(widget->setting, "audio.input_device")))
+	if (setting && (!strcmp(setting, "audio.output_device") ||
+		!strcmp(setting, "audio.input_device")))
 	{
 		static char names[MAXIMUM_STRINGS][128];
 
-		added = platform_audio_devices(!strcmp(widget->setting, "audio.input_device"), names,
+		added = platform_audio_devices(!strcmp(setting, "audio.input_device"), names,
 			(int)(MAXIMUM_STRINGS - count));
 		for (index = 0; index < added; index++)
 		{
@@ -1328,7 +1328,7 @@ static long spinner_split(struct halo_menu_widget const *widget, boolean values,
 		}
 		return count;
 	}
-	if (widget->setting && !strcmp(widget->setting, "display.refresh_rate"))
+	if (setting && !strcmp(setting, "display.refresh_rate"))
 	{
 		/* (the display's rates after Refresh Rate's own, AUTO: shown "144 HZ",
 		set "144") */
@@ -1347,9 +1347,9 @@ static long spinner_split(struct halo_menu_widget const *widget, boolean values,
 		}
 		return count;
 	}
-	if (widget->setting && !strcmp(widget->setting, "display.resolution"))
+	if (setting && !strcmp(setting, "display.resolution"))
 		added = platform_display_resolutions(widths, heights, (int)(MAXIMUM_STRINGS - count));
-	else if (widget->setting && !strcmp(widget->setting, "display.window_size"))
+	else if (setting && !strcmp(setting, "display.window_size"))
 	{
 		added = platform_window_sizes(widths, heights, MAXIMUM_STRINGS);
 		if (added > 0)
@@ -1370,6 +1370,26 @@ static long spinner_split(struct halo_menu_widget const *widget, boolean values,
 		pieces[count++] = piece;
 	}
 	return count;
+}
+
+/* a spinner's strings, or its values, split, and expanded so */
+static long spinner_split(struct halo_menu_widget const *widget, boolean values, char const **pieces)
+{
+	long count = split(values ? widget->values : widget->strings, pieces);
+
+	return spinner_expand(widget->setting, values, pieces, count);
+}
+
+/* a setting's values as the menus' spinners have them (the menu engine's
+model's rows', menu_functions.c's settings_row_setting): those given, and
+those the platform adds as the menus are made (spinner_expand: the
+displays' sizes and rates, the audio devices) */
+long pc_menu_setting_values(
+	char const *setting,
+	char const **values,
+	long count)
+{
+	return spinner_expand(setting, TRUE, values, count);
 }
 
 /* a tag's value in a table of them (MENU_TAG_VALUES at most: past that,
