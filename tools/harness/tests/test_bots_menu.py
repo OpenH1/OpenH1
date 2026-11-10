@@ -1,7 +1,7 @@
 """The bots in the menus: every hosted game's lobby but co-op's has the host's bots' rows (BOTS: NONE, ADD n, FILL TO
 n; BOT SKILL; BOT TEAMS), which tools/port_settings.py writes and port/linux/game/lobby_menu.inc shows and writes;
 Server Setup has none (a game of this machine alone, Create Game's OFFLINE, hides the network's rows and says what it
-is in their place: menu_functions.c's server_settings_local); the menus' spinners of more than two values stop at
+is in their place: their conditions in the menus' model, model/nodes.xml); the menus' spinners of more than two values stop at
 their ends (ui_widget.c's ui_widget_port_spinner_stops: the bots' count once went round from the most to none), and a
 game the bots left one team alone in goes on (game_engine.c's game_engine_should_end_game)."""
 
@@ -17,8 +17,8 @@ from harness import CHECK_FAILED, ROOT, build, constant, function, mutated, read
 CASES = ["local", "spinner-ends", "lobby-bots", "bots-left"]
 
 NEGATIVE_CONTROLS = {
-    "network-rows-kept": (("visible_set(named(list, server_settings_network_rows[index], 0), !local);", ""), "local"),
-    "no-line": (('visible_set(named(screen_of(list), "local_note", 0), local);', ""), "local"),
+    "network-rows-kept": (('\tvisible_named(screen, "op_invite", !local);\n', ""), "local"),
+    "no-line": (('\tvisible_named(screen, "local_note", local);\n', ""), "local"),
     "spinner-wraps": (("return forward ? widget->parameters.list.selected_index >= count - 1 :",
                        "return FALSE && forward ? widget->parameters.list.selected_index >= count - 1 :"),
                       "spinner-ends"),
@@ -38,14 +38,32 @@ MT = "main_menu/multiplayer_type_select"
 CE = ROOT / "port/assets/menus/ce"
 
 
+def server_settings_local() -> str:
+    """Server Setup's rows' conditions of a game of this machine alone (the model's, model/nodes.xml:
+    tools/port_settings.py's SETUP_NODE_WHEN, which menu_functions.c's setup_nodes_conditions tests) as C: each
+    node whose condition is "local" or "!local", shown so"""
+    import xml.etree.ElementTree as ET
+    root = ET.parse(ROOT / "port/assets/menus/model/nodes.xml").getroot()
+    screen = next(screen for screen in root.findall("screen")
+                  if screen.get("name") == f"{MT}/server_settings/server_settings_screen")
+    lines = ["static void visible_named(struct widget_instance *screen, char const *name, boolean visible)", "{",
+             "\tstruct widget_instance *widget = named(screen, name, 0);", "", "\tif (widget)",
+             "\t\twidget->visible = visible;", "}", "",
+             "static void server_settings_local(struct widget_instance *list, boolean local)", "{",
+             "\tstruct widget_instance *screen = list;", "", "\twhile (screen->parent)",
+             "\t\tscreen = screen->parent;"]
+    for node in screen.findall("node"):
+        if node.get("when") in ("local", "!local"):
+            lines.append(f'\tvisible_named(screen, "{node.get("name").rsplit("/", 1)[1]}", {node.get("when")});')
+    return "\n".join(lines + ["}", ""])
+
+
 def generated(fault=None):
     menus = read("port/linux/game/menu_functions.c")
     lobby = read("port/linux/game/lobby_menu.inc")
     widgets = read("source/interface/ui_widget.c")
     engine = read("source/game/game_engine.c")
-    rows = menus[menus.index("static char const *const server_settings_network_rows"):]
-    rows = rows[:rows.index("};") + 2]
-    code = "\n\n".join([rows, function(menus, "server_settings_local"),
+    code = "\n\n".join([server_settings_local(),
                         function(widgets, "ui_widget_port_spinner_stops"),
                         function(lobby, "lobby_board_bots_choice"), function(lobby, "lobby_board_bots_load"),
                         function(engine, "game_engine_port_bot_left"), function(engine, "game_engine_should_end_game")])
