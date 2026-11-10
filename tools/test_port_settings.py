@@ -169,16 +169,20 @@ def function_body(source, name):
 
 
 def _engine_tabs():
-    """menu_functions.c's settings_tabs: each tab's folder and screen, in order"""
-    functions = (Path(__file__).resolve().parent.parent / "port/linux/game/menu_functions.c").read_text()
-    table = functions[functions.index("} const settings_tabs[] ="):]
-    return re.findall(r'\{ "(\w+)", "(\w+)" \}', table[:table.index("};")])
+    """the menus' tabs as menu_functions.c finds them (settings_tab_screen): the model's screens laid out as tabs,
+    in order"""
+    import xml.etree.ElementTree as ET
+    model = ET.parse(Path(__file__).resolve().parent.parent / "port/assets/menus/model/settings.xml").getroot()
+    return [screen.get("name") for screen in model.findall("screen") if screen.get("layout") == "tab"]
 
 
 def test_engine_tabs_are_the_generators():
     """the tabs Q and E, LB and RB step through (and a click opens) are the
-    generator's, in its order"""
-    assert _engine_tabs() == [(folder, PAGES[folder]["screen"]) for folder in port_settings.SETTINGS_TAB_PAGES]
+    generator's, in its order; the panel's words for each are its screen's"""
+    assert _engine_tabs() == [f"{port_settings.PE}/{folder}/{PAGES[folder]['screen']}"
+                              for folder in port_settings.SETTINGS_TAB_PAGES]
+    functions = (Path(__file__).resolve().parent.parent / "port/linux/game/menu_functions.c").read_text()
+    assert "settings_tabs[]" not in functions
 
 
 def _tab_problems(places, names):
