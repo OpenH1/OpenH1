@@ -957,8 +957,11 @@ enum
 
 /* The public definition header intentionally exposes only the shared prefix;
 this TU owns the complete January layout used below. */
+/* port: the menu engine's definition of a widget of the menus' files, made
+from its look in the model, where it draws it (display.menu_engine "new":
+port/linux/game/menu_engine.c), else the tag */
 #define ui_widget_definition_get(tag_index) \
-	((struct ui_widget_definition *)tag_get(UI_WIDGET_DEFINITION_TAG, (tag_index)))
+	((struct ui_widget_definition *)menu_engine_definition(tag_index))
 
 /* ---------- structures */
 
@@ -4375,8 +4378,16 @@ static void render_state_bitmap(
 	frame_index = 0;
 	bitmap = NULL;
 	clip = NULL;
+	/* port: the frames' time where it is fixed (debug.frame_time:
+	port/linux/game/frames_clock.c), so that two runs animate the icon
+	alike (tools/menu_parity.py) */
 	if (icon->frame_rate)
-		frame_index = system_milliseconds() * 30 / 1000 / icon->frame_rate;
+	{
+		unsigned long fixed_time;
+
+		frame_index = (frames_clock(&fixed_time) ? (long)fixed_time : system_milliseconds()) * 30 / 1000 /
+			icon->frame_rate;
+	}
 	hud_retrieve_bitmap_and_bounding_rect(
 		bitmap_group_index,
 		icon->sequence_index,

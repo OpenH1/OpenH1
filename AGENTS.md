@@ -203,6 +203,7 @@ python -m pytest -q tools/test_screenshot_key.py            # the Screenshot key
 python -m pytest -q tools/test_map_name.py                  # a map that cannot be loaded refused, the game usable (a build, assets/maps)
 python -m pytest -q tools/test_cache_file_formats.py tools/test_bmp_files.py tools/test_profile.py
 python -m pytest -q tools/test_xiso.py tools/test_port_settings.py  # the disc image's maps and movies extracted; the settings pages' rows fit
+python -m pytest -q tools/test_menu_look.py                 # the menu engine's model of the widgets' look: what tools/menu_look.py writes
 python -m pytest -q tools/test_cabinet.py                   # Custom Edition's installer and Halo PC's CD read (made-up cabinets; cabextract checks them)
 python -m pytest -q tools/test_demo_files.py                # the demos' files: written and read back, a damaged block refused, retention
 python -m pytest -q tools/test_render_manifest.py tools/test_render_stream.py  # the renderer's manifest, the command stream
