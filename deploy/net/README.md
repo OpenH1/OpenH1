@@ -46,8 +46,8 @@ boot).
 | `update-relay.sh` | `/usr/local/sbin/update-relay.sh` | The latest release installed as the relay, its signature checked |
 | `openh1-relay-update.service`, `.timer` | `/etc/systemd/system/` | `update-relay.sh` weekly |
 | `nftables.conf` | `/etc/nftables.conf` | Loads `/etc/nftables.d`, without flushing Tailscale's tables |
-| `sshd-goath1.conf` | `/etc/ssh/sshd_config.d/10-goath1.conf` | ssh by key only |
-| `unattended-goath1.conf` | `/etc/apt/apt.conf.d/51goath1-reboot` | Security updates daily, rebooting at 09:30 UTC when they need to |
+| `sshd-goath1.conf` | `/etc/ssh/sshd_config.d/10-goath1.conf` | ssh by key only. Already on the server: a copy of it, which `setup.sh` installs only on a new server that has none |
+| `unattended-goath1.conf` | `/etc/apt/apt.conf.d/51goath1-reboot` | Security updates daily, rebooting at 09:30 UTC when they need to. Already on the server: `setup.sh` installs it only where it is missing |
 | `setup.sh` | | All of the above on a fresh Ubuntu 24.04, as root |
 
 ## The broker
