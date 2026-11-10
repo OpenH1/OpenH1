@@ -1164,9 +1164,37 @@ in an OpenH1 game of several sub-steps a tick (`network_distributed.c`,
   came out of order).
 
 Each costs a client, at 120, 90 states a second for each player near it (30
-at 60), about 3.3 KB/s a player at 120 (1.1 at 60) and 10 bytes a message.
-Nothing changes in a Legacy game, at 30, or for an OpenCE machine (sent no
-message of 120 and after) or an OpenCE player's state.
+at 60), and 10 bytes a message. Nothing changes in a Legacy game, at 30, or
+for an OpenCE machine (sent no message of 120 and after) or an OpenCE
+player's state.
+
+From protocol version 22 a sub-step's state is written as its difference
+from the tick's state the host last sent that client of the player
+(`distributed_substep_state_write`), not whole: the player, the host's ticks
+since that state (at most 7), the client's tick's difference in a byte, the
+position's in 16 bits a part of 1/4096 of a world unit (rounded: an 8192th
+off at most, where a client corrects another player only past a twentieth),
+and the velocity's and the facing's in a byte a part, each part whole where
+its difference does not fit, and the up where it is not the tick state's.
+A sub-step's state carries nothing else the client takes from it (a death,
+a spawn, a seat and the shields wait for the tick's state, as before). Where
+there is no such tick's state (none sent, another unit, older than 7 ticks,
+further than 8 world units away, or the client's tick further than a byte),
+the state goes whole as before, after a byte that says so. A client keeps
+the host's last 8 ticks' states of each player
+(`distributed_taken_substep_bases`) and passes over a difference from one
+it has not (lost), until the tick's state.
+
+A state of a sub-step was 37 bytes on average, and is 17.6 (16 on foot and
+turning slowly). Forty players on Blood Gulch at 120 (8 clients and 32 of
+the host's bots, 60 s): the states of the sub-steps 504 KB/s of the host's
+1,139 KB/s before, 249 KB/s of 895 KB/s after, the datagrams on the wire
+1.24 MB/s and 1.00 MB/s (-20%). Over 20 ms ±3 each way, three games of each
+build in turn, the players near a client (within 25 world units) were where
+the host had them within 0.16 to 0.17 world units (p95) before and 0.16 to
+0.18 after, aimed within 14.9 to 17.9 degrees and 13.9 to 16.0, a press
+seen from one client to another in 50 to 52 ms and 49 to 57, and a hit dealt
+in 26 ms and 25 to 26: the games' spread, not the builds'.
 
 ### Actors to far clients
 
