@@ -160,6 +160,8 @@ four multiview views and fragment storage-buffer atomics.
 | `HALO_VULKAN_STATS=1` | Every 600 frames, submissions, passes, attachment loads/clears, clears drawn, draws, pipeline creation count/time, upload ring bytes, stores discarded, resolves in passes, passes continued and put aside and buffers renamed (`HALO_VULKAN_DISCARDS`), textures made, and the frames' GPU time (from each frame's first work to its last) and time between frames (not in the VR mode, which times its own); as `debug.gpu_stats` |
 | `HALO_VULKAN_DRAW_TIMES=<n>` | Every `n`th frame, a timestamp after each draw; the times between them, sorted, each the draw's that ended it, summed by the draws' `display.ambient_occlusion` kind (their pixel key's `ambient_occlusion`, in hex: `ao11` a model lit for each pixel with the world's, `ao13` the lightmap pass with it, `ao00` none) and logged every 20 timed frames (`vulkan: draw times a frame`), the rest of the frame after its last draw as `other`. A timestamp after every draw serializes the draws, so each time is the draw's own. For measuring only |
 | `HALO_VULKAN_DRAW_TIMES_FILE=<file>` | With `HALO_VULKAN_DRAW_TIMES`: each timed frame's draws written there, a line each (`<draw> <microseconds> <ambient occlusion> <lighting> <per-pixel lighting> <flags> <vertices>`), to compare two runs of a fixed-step game draw for draw |
+| `HALO_VULKAN_NO_INTERLOCK=1` | The device made without the fragment shader interlock, as one that has none: `display.hdr`'s draws that blend in the shader read their target as an input attachment, their own triangles over the same pixel unordered ("HDR", below) |
+| `HALO_VULKAN_HDR_SERIAL=1` | Without the interlock: each triangle of a triangle list that blends in the shader drawn after a barrier of its own, the ordered picture to compare a draw's overlapping triangles with ("HDR", below). For checking only |
 | `HALO_VULKAN_NO_RAY_QUERIES=1` | The device made without ray queries, as one that has none: `display.ambient_occlusion` `"ray_traced"` draws as `"world"` (`docs/world-ao.md`, "Hardware ray queries") |
 | `HALO_VULKAN_RT_FLIP=1` | `"ray_traced"`'s objects' triangles' facing turned (`VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR`), to check which way they face. For checking only |
 | `HALO_VULKAN_NO_SUBGROUPS=1` | Shaders made as for a device without the subgroups' bitwise operations in pixel shaders (`display.ambient_occlusion` `"world"`'s proxies walked a pixel at a time: `docs/world-ao.md`, "Where the time goes") |
@@ -571,11 +573,39 @@ is then RGBA16F, an input attachment too.
   that input and orders the draw after the pass's draws before it with a
   framebuffer-local barrier (by region), or, where the device orders
   attachment reads in rasterization order
-  (`VK_EXT_rasterization_order_attachment_access`), with none, its own
-  overlapping triangles in order too. Without that extension, two
-  triangles of one tagged draw over the same pixel read it unordered (the
-  tagged draws are surfaces, HUD bitmaps and glows, which seldom overlap
-  themselves).
+  (`VK_EXT_rasterization_order_attachment_access`: tilers'), with none,
+  its own overlapping triangles in order too.
+- Where it does not but has the fragment shader interlock
+  (`VK_EXT_fragment_shader_interlock`: NVIDIA's and RADV's desktop GPUs),
+  a tagged draw's own triangles over the same pixel are put in order by it:
+  the draw reads and writes its target as a storage image (binding 1 of the
+  same set, `XGPU_VULKAN_BINDING_STORE`) between
+  `OpBeginInvocationInterlockEXT` and `OpEndInvocationInterlockEXT`,
+  pixel-ordered (sample-ordered under sample shading), its colour mask
+  applied in the shader, its pipeline writing no colour, its depth and
+  stencil tests before the shader (`interlocked` in
+  `xgpu_vulkan_stream.c`: a draw that writes depth or stencil, or replaces
+  its depth, is not interlocked). The interlock orders only what the shader
+  does between the two: a colour attachment's write lands after the shader,
+  outside it, so reading the input attachment inside it was not enough (the
+  4090 still lost the plasma rifle's scorch marks where two were batched).
+  A second barrier after the draw makes its writes the pass's draws' after
+  it. The targets it writes are made uncompressed where the device can say
+  so (`VK_EXT_image_compression_control`): RADV's DCC left specks of
+  other colours over every interlocked pixel on an RDNA 3.5 GPU (Mesa
+  26.2); a device with neither that nor NVIDIA's driver is not
+  interlocked. Its cost, `tools/bench.py` at 2560x1440 with HDR on
+  (`HALO_VULKAN_NO_INTERLOCK=1` against): an RTX 4090's GPU time 1.00 to
+  1.37 ms a frame (the view's pass 0.28 to 0.55 ms; 0.12 ms of it the
+  barriers after the draws, none the interlock itself or the targets'
+  storage use), a Radeon 8060S's 2.31 to 2.35 ms (the view's pass 0.48 to
+  0.58 ms).
+- Elsewhere (neither), two triangles of one tagged draw over the same
+  pixel read it unordered (decals that overlap are never one draw, on any
+  device: `rasterizer_decal_batch_overlaps`).
+  `HALO_VULKAN_HDR_SERIAL=1` draws each triangle of such a draw (a
+  triangle list's) after a barrier of its own, the ordered picture to
+  compare with, for checking only.
 - The tone map is the shared GLSL (`xgpu_hdr.c`) compiled to SPIR-V by
   `tools/vulkan_post_shaders.py` (the same source `tools/metal_post_shaders.py`
   makes Metal's from), drawn as a triangle in the pass that drew the view,
