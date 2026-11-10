@@ -623,6 +623,27 @@ wchar_t const *menu_engine_row_help(struct widget_instance *row, boolean *found)
 	return help;
 }
 
+struct halo_menu_model const *menu_engine_model(void)
+{
+	if (!engine.model)
+		engine.model = halo_menus_model();
+	return engine.model;
+}
+
+struct halo_menu_model_screen const *menu_engine_model_screen_of(struct widget_instance const *widget)
+{
+	while (widget && widget->parent)
+		widget = widget->parent;
+	return widget ? engine_model_screen(widget->definition_tag_index) : NULL;
+}
+
+struct halo_menu_model_row const *menu_engine_model_row_of(struct widget_instance const *row)
+{
+	if (!row || !row->name || strncmp(row->name, "op_", 3))
+		return NULL;
+	return engine_model_row(menu_engine_model_screen_of(row), row->name + 3);
+}
+
 boolean menu_engine_lays_out(struct widget_instance *widget)
 {
 	struct widget_instance *screen = widget;
