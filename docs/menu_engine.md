@@ -135,6 +135,10 @@ widget's name, as the game's definitions are:
   effects go here as attributes when they come (outlines, glows and drop
   shadows: the MSDF atlas's fourth channel is a plain distance, so each is a
   threshold in the text's shader).
+- `role` is what the game's code finds the widget by, where it is not a
+  model row's: Settings' `tabs` and `buttons` bars, the panel's
+  `panel name`, `panel value`, `panel text` and `panel note`, Quality's
+  stills (`tools/port_settings.py`'s `settings_look_roles`).
 - `<at>` is where a child is in it. A child is found by its name and its
   place among those of the same name, so a widget may not have two children
   of one name for different platforms (`tools/menu_look.py` refuses it).
@@ -346,10 +350,11 @@ The steps, in order:
    gametype's own options stay in C, decided: `gametype_options` says which
    field of the game variant each spinner sets, by `offsetof`, which the C
    compiler checks where the structure is; a model naming the fields would
-   need a table of names to offsets in C, the same table moved. Left: the
-   look's widgets that Settings' code still finds by name (the tabs' bar,
-   the button bar, the panel's parts), to be found through `model/look`,
-   and then the setup screens' other handlers.
+   need a table of names to offsets in C, the same table moved. Settings'
+   tabs' bar, button bar and the panel's parts are found by their roles in
+   their looks (`model/look`'s `role`, `tools/port_settings.py`'s
+   `settings_look_roles`: `settings_part`), not their names. Left: the
+   setup screens' other handlers.
 5. **The switch**: `"new"` the default, played for a while; then the
    generated screens' widget XML no longer written, `display.menu_engine`
    retired.

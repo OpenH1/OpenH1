@@ -514,6 +514,10 @@ def look_control(build: Path, screens: list, maps: Path, template: Path, timeout
 
 
 def main(argv=None) -> int:
+    import signal
+    # (stopped, it leaves as a raised exit, so that each run's folder, its own clone of the map cache, is deleted as
+    # its run ends: a signal's default left them behind, gigabytes each)
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--layout", action="store_true", help="compare the screens' layouts (debug.menu_layout)")
     parser.add_argument("--pixels", action="store_true", help="compare the screens' frames, pixel for pixel")

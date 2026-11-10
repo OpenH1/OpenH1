@@ -28,7 +28,7 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/vr_controls/op_vr_display_screen" x="54" y="343"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/vr_controls/button_bar" x="0" y="414"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/vr_controls/button_bar" type="column_list" box="0 0 640 28">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/vr_controls/button_bar" role="buttons" type="column_list" box="0 0 640 28">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/vr_controls/button_defaults" x="0" y="1"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/vr_controls/button_ok" x="380" y="1"/>
 		<at widget="common_button_cancel" x="510" y="1"/>

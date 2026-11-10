@@ -14,7 +14,7 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/op_low_latency" x="28" y="164"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/button_bar" x="0" y="414"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/button_bar" type="column_list" box="0 0 640 28">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/button_bar" role="buttons" type="column_list" box="0 0 640 28">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/button_defaults" x="24" y="1"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/button_ok" x="358" y="1"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/button_cancel" x="488" y="1"/>
