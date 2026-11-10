@@ -375,6 +375,8 @@ legends; where they are not, the Xbox's picture */
 /* port/linux/game/menu_shapes.c */
 void menu_shape_rounded_box(real x0, real y0, real x1, real y1, real radius, real edge, pixel32 fill,
 	pixel32 color);
+void menu_shape_shaded_box(real x0, real y0, real x1, real y1, real radius, real edge, pixel32 top, pixel32 bottom,
+	pixel32 color);
 void menu_shape_band(real x0, real y0, real x1, real y1, pixel32 top, pixel32 bottom);
 /* port/linux/src/xinput_sdl.c (halo_keyboard.h) */
 int halo_keyboard_prompts(void);
@@ -533,13 +535,16 @@ static void virtual_keyboard_port_render_backdrop(
 		rasterizer_text_set_scale(1.0f, 0.0f, 0.0f);
 	}
 
-	/* the panels: the text's and the keys' */
-	menu_shape_rounded_box(VIRTUAL_KEYBOARD_PORT_PANEL_LEFT, VIRTUAL_KEYBOARD_PORT_TEXT_PANEL_TOP,
+	/* the panels: the text's and the keys', filled as the Xbox's picture
+	(ui\bkd_virtual_keyboard) fills them: 0xEE of one shade down both,
+	from 02142A at the text's top to 02070D at the keys' bottom (issue 896:
+	a flat navy hid the shade) */
+	menu_shape_shaded_box(VIRTUAL_KEYBOARD_PORT_PANEL_LEFT, VIRTUAL_KEYBOARD_PORT_TEXT_PANEL_TOP,
 		VIRTUAL_KEYBOARD_PORT_PANEL_RIGHT, VIRTUAL_KEYBOARD_PORT_TEXT_PANEL_BOTTOM, 9.5f, 2.0f,
-		0xE0000E23UL, 0xFF2995FFUL);
-	menu_shape_rounded_box(VIRTUAL_KEYBOARD_PORT_PANEL_LEFT, VIRTUAL_KEYBOARD_PORT_KEYS_PANEL_TOP,
+		0xEE02142AUL, 0xEE021225UL, 0xFF2995FFUL);
+	menu_shape_shaded_box(VIRTUAL_KEYBOARD_PORT_PANEL_LEFT, VIRTUAL_KEYBOARD_PORT_KEYS_PANEL_TOP,
 		VIRTUAL_KEYBOARD_PORT_PANEL_RIGHT, VIRTUAL_KEYBOARD_PORT_KEYS_PANEL_BOTTOM, 9.5f, 2.0f,
-		0xE0000E23UL, 0xFF2995FFUL);
+		0xEE021225UL, 0xEE02070DUL, 0xFF2995FFUL);
 }
 
 /* how a key looks: chosen (pressed, if A was the last thing done to it), or
