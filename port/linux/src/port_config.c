@@ -4769,14 +4769,17 @@ static void config_load(void)
 	config_check_words();
 }
 
-/* the file read, the first time a setting is asked for */
+/* the file read, the first time a setting is asked for (once read, a
+setting is read without the lock: what is read every frame) */
 static void config_ensure_loaded(void)
 {
+	if (__atomic_load_n(&config_loaded, __ATOMIC_ACQUIRE))
+		return;
 	pthread_mutex_lock(&config_lock);
 	if (!config_loaded)
 	{
 		config_load();
-		config_loaded = 1;
+		__atomic_store_n(&config_loaded, 1, __ATOMIC_RELEASE);
 	}
 	pthread_mutex_unlock(&config_lock);
 }

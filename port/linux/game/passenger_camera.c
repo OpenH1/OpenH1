@@ -27,6 +27,7 @@ and the deterministic camera used for shooting keeps its original view.
 #include <string.h>
 
 int config_boolean(const char *name);
+unsigned long config_changes(void);
 #ifdef HALO_VR
 /* port/linux/src/vr.c */
 int halo_vr_running(void);
@@ -34,6 +35,23 @@ int halo_vr_running(void);
 
 static boolean reticle_active;
 static real_point2d reticle_offset;
+
+/* display.passenger_third_person, read again as the settings change
+(config_changes): asked several times a frame */
+static boolean third_person_setting(void)
+{
+	static boolean read;
+	static unsigned long read_at;
+	static boolean on;
+
+	if (!read || read_at != config_changes())
+	{
+		read_at = config_changes();
+		read = TRUE;
+		on = config_boolean("display.passenger_third_person") != 0;
+	}
+	return on;
+}
 
 /* Match stock vehicle tag paths, including the PC multiplayer Warthog.
 Seat roles identify the passengers without relying on their array order. */
@@ -55,7 +73,7 @@ static struct unit_seat const *reference_seat(short local_player_index, long *ve
 		return NULL;
 #endif
 	if (local_player_index < 0 || local_player_index >= MAXIMUM_LOCAL_PLAYERS ||
-		!config_boolean("display.passenger_third_person") || game_engine_running() || cinematic_in_progress() ||
+		!third_person_setting() || game_engine_running() || cinematic_in_progress() ||
 		(director_camera_scripted && *director_camera_scripted))
 		return NULL;
 	player_index = local_player_get_player_index(local_player_index);

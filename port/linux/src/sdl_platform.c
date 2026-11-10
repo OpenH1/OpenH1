@@ -1085,8 +1085,21 @@ static BOOL platform_size_parse(const char *text, long *width, long *height)
 as for one the game cannot draw at */
 static void platform_resolution_setting(long *width, long *height)
 {
-	if (!platform_size_parse(config_string("display.resolution"), width, height))
-		*width = *height = 0;
+	/* (read again as the settings change: config_changes; the screen's
+	mode asks every frame) */
+	static unsigned long read_at = (unsigned long)-1;
+	static long setting_width, setting_height;
+
+	if (read_at != config_changes())
+	{
+		unsigned long changes = config_changes();
+
+		if (!platform_size_parse(config_string("display.resolution"), &setting_width, &setting_height))
+			setting_width = setting_height = 0;
+		read_at = changes;
+	}
+	*width = setting_width;
+	*height = setting_height;
 }
 
 /* the window's size (display.window_size), else the Xbox's 640x480 times
@@ -1235,10 +1248,21 @@ BOOL platform_screen_mode(long *width, long *height)
 {
 	/* (the size last given, for a window that has none: minimized) */
 	static long last_width, last_height;
+	/* (display.resolution_scaling, read again as the settings change:
+	config_changes) */
+	static unsigned long scaling_read_at = (unsigned long)-1;
+	static BOOL original;
 	long resolution_width, resolution_height;
 	BOOL fullscreen;
 
-	if (!strcmp(config_string("display.resolution_scaling"), "original"))
+	if (scaling_read_at != config_changes())
+	{
+		unsigned long changes = config_changes();
+
+		original = !strcmp(config_string("display.resolution_scaling"), "original");
+		scaling_read_at = changes;
+	}
+	if (original)
 		return FALSE;
 	if (platform_window)
 	{
@@ -2040,14 +2064,17 @@ static BOOL platform_vrr(void)
 	static int on = -1;
 	static char reason[160];
 	static float logged_margin;
+	/* (display.vrr is "auto": asked again every VRR_ASK_MS) */
+	static int automatic;
 	char why[160];
 	const char *mode;
 	int now_on, detected;
 	Uint64 now = SDL_GetTicks();
 
-	mode = config_string("display.vrr");
-	if (on >= 0 && read_at == config_changes() && (strcmp(mode, "auto") || now - asked_at < VRR_ASK_MS))
+	if (on >= 0 && read_at == config_changes() && (!automatic || now - asked_at < VRR_ASK_MS))
 		return on;
+	mode = config_string("display.vrr");
+	automatic = !strcmp(mode, "auto");
 	read_at = config_changes();
 	asked_at = now;
 	if (!strcmp(mode, "on"))
@@ -2692,12 +2719,29 @@ static void test_menu_mouse(void)
 	platform_log("test input: wheel turned %g in %d events", wheel, events);
 }
 
-/* whether a mouse's event is left out of a scripted run of the menus
-(debug.test_input "menu:..."), which takes its presses alone: any mouse's
-but its own (test_menu_mouse) */
+/* whether this is a scripted run of the menus (debug.test_input
+"menu:..."), read again as the settings change (config_changes): the
+pointer is read every frame */
+static BOOL test_menu_run(void)
+{
+	static unsigned long read_at = (unsigned long)-1;
+	static BOOL menu;
+
+	if (read_at != config_changes())
+	{
+		unsigned long changes = config_changes();
+
+		menu = !strncmp(config_string("debug.test_input"), "menu:", 5);
+		read_at = changes;
+	}
+	return menu;
+}
+
+/* whether a mouse's event is left out of a scripted run of the menus,
+which takes its presses alone: any mouse's but its own (test_menu_mouse) */
 static BOOL test_menu_mouse_ignored(SDL_MouseID which)
 {
-	return which != TEST_MENU_MOUSE_ID && !strncmp(config_string("debug.test_input"), "menu:", 5);
+	return which != TEST_MENU_MOUSE_ID && test_menu_run();
 }
 #endif
 
@@ -2773,9 +2817,19 @@ the machine of someone at work on it, the game puts no invite on it and
 joins none found there */
 static BOOL platform_clipboard_left_alone(void)
 {
-	return config_boolean("debug.no_clipboard") || config_boolean("debug.null_renderer") ||
-		config_string("debug.test_input")[0] || config_boolean("debug.fixed_step") ||
-		config_string("debug.network_test")[0] || config_real("debug.exit_after") > 0.0;
+	/* (read again as the settings change: config_changes; the events'
+	pump asks every frame) */
+	static unsigned long read_at;
+	static int alone = -1;
+
+	if (alone < 0 || read_at != config_changes())
+	{
+		read_at = config_changes();
+		alone = config_boolean("debug.no_clipboard") || config_boolean("debug.null_renderer") ||
+			config_string("debug.test_input")[0] || config_boolean("debug.fixed_step") ||
+			config_string("debug.network_test")[0] || config_real("debug.exit_after") > 0.0;
+	}
+	return alone;
 }
 
 /* whether the clipboard has an invite link on it (the multiplayer menu's
@@ -4040,7 +4094,7 @@ BOOL platform_ui_pointer_read(struct platform_ui_pointer *pointer)
 	pthread_mutex_unlock(&input_lock);
 	/* (a scripted run of the menus, debug.test_input = "menu:...", takes its
 	presses alone: the mouse of whoever is at the computer moves no focus) */
-	if (!strncmp(config_string("debug.test_input"), "menu:", 5))
+	if (test_menu_run())
 	{
 		/* (but its own clicks: "click:<x>:<y>", platform_test_menu_click;
 		and its own mouse's wheel, the others' events left out:
@@ -4192,7 +4246,19 @@ void platform_input_read(struct platform_input_state *state, BOOL consume_motion
 CPU clocks are -1, never an apparent zero cost. No clocks read when disabled. */
 int halo_load_trace_enabled(void)
 {
-	return config_boolean("debug.load_trace");
+	/* (read again as the settings change: config_changes; asked every
+	frame and every file read) */
+	static unsigned long read_at = (unsigned long)-1;
+	static int enabled;
+
+	if (read_at != config_changes())
+	{
+		unsigned long changes = config_changes();
+
+		enabled = config_boolean("debug.load_trace");
+		read_at = changes;
+	}
+	return enabled;
 }
 
 void halo_load_trace(char const *phase, char const *detail)
@@ -4200,7 +4266,7 @@ void halo_load_trace(char const *phase, char const *detail)
 	struct timespec now;
 	double wall = -1.0, thread = -1.0, process = -1.0;
 
-	if (!config_boolean("debug.load_trace"))
+	if (!halo_load_trace_enabled())
 		return;
 	if (clock_gettime(CLOCK_MONOTONIC, &now) == 0)
 		wall = (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
@@ -4228,7 +4294,7 @@ void halo_load_trace_frame(void)
 	double wall;
 	char detail[32];
 
-	if (!config_boolean("debug.load_trace") || clock_gettime(CLOCK_MONOTONIC, &now) != 0)
+	if (!halo_load_trace_enabled() || clock_gettime(CLOCK_MONOTONIC, &now) != 0)
 		return;
 	wall = (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
 	if (previous > 0.0 && wall - previous > LONG_FRAME_SECONDS)

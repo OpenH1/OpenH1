@@ -55,6 +55,7 @@ orders from outside are not here.)
 /* port/linux/src/port_config.c */
 int config_boolean(char const *name);
 double config_real(char const *name);
+unsigned long config_changes(void);
 void platform_log(char const *format, ...);
 
 /* ---------- constants */
@@ -130,9 +131,12 @@ static struct
 	struct bots_knowledge_slot slots[BOTS_MAXIMUM];
 	/* each team's sightings, which reach its bots bots.share_delay late */
 	struct bots_knowledge_team_sighting team_seen[2][BOTS_KNOWLEDGE_TEAM_MEMORY];
-	/* bots.share_sightings and bots.share_delay (ticks), read once a tick */
+	/* bots.share_sightings and bots.share_delay (ticks), read again as the
+	settings change (config_changes was settings_read_at) */
 	boolean share;
 	long share_delay_ticks;
+	boolean settings_read;
+	unsigned long settings_read_at;
 	/* the item spawns, found once a map */
 	boolean spawns_ready;
 	short spawn_count;
@@ -639,8 +643,14 @@ void bots_knowledge_tick_begin(void)
 	struct player_datum *player;
 	long now = game_time_get(), team, index;
 
-	bots_knowledge.share = config_boolean("bots.share_sightings") != 0;
-	bots_knowledge.share_delay_ticks = bots_knowledge_share_delay_ticks();
+	/* (the settings read again only as they change: config_changes) */
+	if (!bots_knowledge.settings_read || bots_knowledge.settings_read_at != config_changes())
+	{
+		bots_knowledge.settings_read_at = config_changes();
+		bots_knowledge.settings_read = TRUE;
+		bots_knowledge.share = config_boolean("bots.share_sightings") != 0;
+		bots_knowledge.share_delay_ticks = bots_knowledge_share_delay_ticks();
+	}
 	for (team = 0; team < 2; team++)
 	{
 		for (index = 0; index < BOTS_KNOWLEDGE_TEAM_MEMORY; index++)
