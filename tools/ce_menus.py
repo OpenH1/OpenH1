@@ -52,6 +52,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from hud_assets import bleed, render_svg  # noqa: E402
 import menu_behaviour  # noqa: E402
 import menu_look  # noqa: E402
+import menu_nodes  # noqa: E402
 import port_settings  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -773,10 +774,11 @@ def port_pictures_only() -> None:
     ports = {**port_settings.settings_files(), **port_settings.multiplayer_files(), **port_settings.campaign_files()}
     for name, lines in ports.items():
         (CE / name).write_text("\n".join(lines))
-    # (the model's rows, and the widgets' look and behaviour: tools/menu_look.py, tools/menu_behaviour.py)
+    # (the model's rows, the widgets' look and behaviour, and the setup screens' nodes: tools/menu_look.py,
+    # tools/menu_behaviour.py, tools/menu_nodes.py)
     for name, lines in port_settings.model_files().items():
         (MENUS / name).write_text("\n".join(lines))
-    looks = menu_look.write(MENUS) + menu_behaviour.write(MENUS)
+    looks = menu_look.write(MENUS) + menu_behaviour.write(MENUS) + menu_nodes.write(MENUS)
     art = Art.__new__(Art)
     art.pngs = []
     blocks = bitmap_blocks((CE / "bitmaps.xml").read_text())
@@ -819,7 +821,7 @@ def port_pictures_only() -> None:
     listed = json.loads((MENUS / "menus.json").read_text())
     pngs = sorted((set(name for name in listed["files"] if name.endswith(".png")) - old_pngs) | set(art.pngs))
     xmls = [name for name in listed["files"] if not name.endswith(".png") and not name.startswith(menu_look.LOOK)
-            and not name.startswith(menu_behaviour.BEHAVIOUR)]
+            and not name.startswith(menu_behaviour.BEHAVIOUR) and name != menu_nodes.NODES]
     xmls = sorted(xmls + looks)
     # (and a file of the port's screens new to it, before the first listed
     # after it)
@@ -907,9 +909,11 @@ def main() -> None:
     for name, lines in port_settings.model_files().items():
         (MENUS / name).parent.mkdir(exist_ok=True)
         (MENUS / name).write_text("\n".join(lines))
-    # (and the look and behaviour of every widget written: tools/menu_look.py, tools/menu_behaviour.py)
+    # (and the look and behaviour of every widget written, and the setup screens' nodes: tools/menu_look.py,
+    # tools/menu_behaviour.py, tools/menu_nodes.py)
     menu_look.write(MENUS)
     menu_behaviour.write(MENUS)
+    menu_nodes.write(MENUS)
     # their strings
     (CE / "strings.xml").write_text(strings_xml({
         tag: [text_value(item["string"]) for item in tags.load(tag, "unicode_string_list")["strings"]]

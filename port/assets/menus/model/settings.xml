@@ -1271,7 +1271,7 @@
 		<row key="link_status" kind="status" label="DISCORD">
 			<help>The Discord account linked to this game, and how many of the master servers it is linked with.</help>
 		</row>
-		<row key="link_unlink" kind="status" label="UNLINK" run="port discord unlink">
+		<row key="link_unlink" kind="status" label="UNLINK" when="discord_linked" run="port discord unlink">
 			<help>Forgets the linked account on this device. Select it twice: the first asks, the second unlinks.</help>
 		</row>
 		<section key="section_3" title="MASTER SERVERS"/>

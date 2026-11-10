@@ -63,6 +63,14 @@ reads XML and has no JSON reader.
   header so that the C and the Python never disagree); `nodes`, every other
   screen (the PC version's from its tags, the lobby, the server browser, the
   campaign, the dialogs), a tree of nodes with the XML widgets' attributes.
+  The setup screens (Server Setup, its co-op options, the gametype editor's
+  Item Options and OpenCE Options) are the first in the model as nodes
+  (`model/nodes.xml`, written by `tools/menu_nodes.py` from `ce/`'s widgets
+  after the generators have written them): each node is a widget, keyed by
+  its name as the look and the behaviour are, with its parent, what A does
+  (`open`, `run`), whether the focus may take it (`focusable`), the one it
+  starts on (`initial`) and its condition (`when`, `tools/port_settings.py`'s
+  `SETUP_NODE_WHEN`).
 - **Kinds of row.** `choice` (a spinner: two values are a toggle), `slider`
   (its range, step, typed range and stops: the table `menu_functions.c`
   copies today goes), `link` (opens a page or runs a function), `binding`
@@ -80,8 +88,13 @@ reads XML and has no JSON reader.
   tests them each frame as a Settings page is shown, on both engines
   (`settings_rows_conditions`); a platform's term still holds as the file is
   read (#853 is a later change). The predicates `menu_functions.c` ran by
-  row name on Settings' tabs and pages are gone; the setup screens' (Server
-  Setup's, Game Options', co-op's) wait for those screens' model.
+  row name on Settings' tabs and pages are gone. The setup screens' nodes'
+  conditions are tested so too (`setup_nodes_conditions`), with Server
+  Setup's states (`cooperative`, `local`, `internet_host`, `online`,
+  `public_lobby`, `private`) and a game's spinner at its nth word
+  (`loadout=1`), in place of the predicates of `server_settings_update` and
+  `gametype_option_help`; Discord's UNLINK is a Settings row's condition
+  (`discord_linked`).
 - **Actions** are the XML's (`open`, `replace`, `back`, `close`, `run`,
   `branch`/`otherwise`, `sound`), on a row, a button or a node.
 - **Behaviour** (`model/behaviour/<file>.xml`, written by
@@ -285,7 +298,7 @@ The steps, in order:
    screens, the engine drawing every generated screen under `"new"`, the
    rows laid out and their help found from the model; 972 of 972 screen
    variants alike in layout and pixels.
-2. **Input and behaviour by the engine**: focus, navigation, pad, keys,
+2. **Input and behaviour by the engine** (done): focus, navigation, pad, keys,
    mouse, touch and repeat, the rows' actions, sliders' ranges and stops
    from the model (`settings_sliders` gone), the rows' conditions from the
    model (the row-name predicates gone); the parity tool's behaviour scripts,
@@ -302,9 +315,11 @@ The steps, in order:
    way through a screen's children and a generated list's items, over its
    labels (`engine_tab`, `engine_list_step`), by the model's behaviour, not
    the definitions'; giving a widget the focus stays `ui_widget.c`'s, as do
-   a list made in code and a list stepped by a handler's function. Left:
-   the setup screens' row-name predicates, which wait for their screens'
-   model.
+   a list made in code and a list stepped by a handler's function. The
+   setup screens in the model as nodes (`model/nodes.xml`), and their rows'
+   conditions there, in place of their row-name predicates. Step 2 is done:
+   what `ui_widget.c` still does for the engine (giving the focus, a list's
+   frames, the history) is Halo's, as the hooks say.
 3. **The look in the model** (done): bounds, anchors, places, pictures, text
    and its style, and the children's places written by the generators into
    the model for every widget of every generated screen

@@ -282,6 +282,7 @@
   "model/look/main_menu.update.xml",
   "model/look/main_menu.xml",
   "model/look/shell.xml",
+  "model/nodes.xml",
   "model/settings.xml",
   "ce/port/bitmaps/text_button_background__0.png",
   "ce/port/bitmaps/text_button_background__1.png",

@@ -1861,6 +1861,8 @@ SETTINGS_ROW_WHEN = {
                                "gyro_smoothing", "gyro_calibrate")},
     "gyro_button": "gyro+gyro_aim=hold gyro+gyro_aim=pause",
     **{f"viewmodel_weapon_{name}": "weapon_held" for name in ("x", "y", "z", "pitch", "yaw", "roll", "reset")},
+    # (Discord's UNLINK an account linked, or waiting for its code)
+    "link_unlink": "discord_linked",
 }
 SETTINGS_ROW_ENABLED = {
     # (macOS's Metal and ProMotion set it: SET BY MACOS; its frame cap only
@@ -3400,6 +3402,58 @@ SETUP_OPTION_SCREENS = [
     ("indicator_options", "indicator_options_edit/indicator_options_screen"),
     ("team_options", "teamplay_options_edit/teamplay_options_screen"),
 ]
+
+
+# ---------- the setup screens' model (docs/menu_engine.md): Server Setup,
+# its co-op options' screen, and the gametype editor's Item Options and
+# OpenCE Options, as screens of nodes (tools/menu_nodes.py writes them from
+# ce/'s widgets, model/nodes.xml), and each node's condition here, by its
+# widget's name: the terms of a Settings row's condition
+# (SETTINGS_ROW_WHEN), and Server Setup's states (cooperative: a co-op game
+# hosted; local: a game of this machine alone; internet_host: an internet
+# game hosted; online: network.online; public_lobby: network.public_lobby;
+# private: the game PRIVATE), and "<key>=<n>" for a spinner of the game's
+# (its <key>_spinner) at its nth word. menu_functions.c tests them each frame
+# as the screen is shown (setup_nodes_conditions), in place of the row-name
+# predicates of server_settings_update and gametype_option_help.
+SS = f"{MT}/server_settings"
+ITEM_EDIT = "main_menu/settings_select/multiplayer_setup/item_options_edit"
+SETUP_NODE_WHEN = {
+    f"{SS}/server_settings_screen": {
+        # (a game of this machine alone: none of the network's rows, a line
+        # saying what the game is in their place: LOCAL_NOTE)
+        **{f"{SS}/{name}": "!local" for name in ("op_game_mode", "op_invite", "op_map_share_options")},
+        f"{SS}/local_note": "local",
+        # (co-op's options in the place of the gametype's)
+        **{f"{SS}/op_{key}": "!cooperative" for key, _ in SETUP_OPTION_SCREENS},
+        **{f"{SS}/op_{key}": "cooperative" for key, _, _, _ in COOP_SETUP_SCREENS},
+        # (LISTING an internet game's, with the public lobby on; PASSWORD a
+        # public one's)
+        f"{SS}/op_listing": "internet_host+online+public_lobby",
+        f"{SS}/op_password": "internet_host+online+public_lobby+!private",
+    },
+    # (CO-OP OPTIONS: PER PLAYER's amount while one of the extras is per
+    # player, MULTIPLIER's while one is a multiplier)
+    f"{SS}/coop_options/coop_options_screen": {
+        f"{SS}/coop_options/op_coop_enemies_{row}": " ".join(
+            f"{key}={words.index(word)}" for key, _, words, _ in COOP_SETUP_SCREENS[0][3]
+            if key.startswith("coop_extra_"))
+        for row, word in (("per_player", "PER PLAYER"), ("multiplier", "STATIC MULTIPLIER"))
+    },
+    # (Item Options: the weapon set's row for a category loadout, the two
+    # weapons' for a custom one)
+    f"{ITEM_EDIT}/item_options_screen": {
+        f"{ITEM_EDIT}/op_weapon_set": "loadout=0",
+        f"{ITEM_EDIT}/op_primary_weapon": "loadout=1",
+        f"{ITEM_EDIT}/op_secondary_weapon": "loadout=1",
+    },
+    # (OPENCE OPTIONS: Infection's rows and Gun Game's, by MODE)
+    f"{OPENCE_EDIT}/opence_screen": {
+        f"{OPENCE_EDIT}/op_{key}": f"oce_mode={OPENCE_ROWS[0][2].index(mode)}"
+        for key, _, _, _ in OPENCE_ROWS for prefix, mode in (("inf_", "INFECTION"), ("gg_", "GUN GAME"))
+        if key.startswith(prefix)
+    },
+}
 
 
 def lobby_column_x(column: int) -> int:
@@ -7804,11 +7858,14 @@ def main() -> None:
     for name, lines in model_files().items():
         (folder.parent / name).parent.mkdir(exist_ok=True)
         (folder.parent / name).write_text("\n".join(lines))
-    # (and the widgets' look and behaviour, from those files: tools/menu_look.py, tools/menu_behaviour.py)
+    # (and the widgets' look and behaviour, and the setup screens' nodes, from those files: tools/menu_look.py,
+    # tools/menu_behaviour.py, tools/menu_nodes.py)
     import menu_behaviour
     import menu_look
+    import menu_nodes
     menu_look.write(folder.parent)
     menu_behaviour.write(folder.parent)
+    menu_nodes.write(folder.parent)
 
 
 if __name__ == "__main__":

@@ -2307,10 +2307,19 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 	return TRUE;
 }
 
+/* Server Setup's states, a setup screen's nodes' terms (below) */
+static boolean hosting_cooperative(void);
+static boolean server_settings_private(void);
+static boolean server_settings_internet_host(void);
+static boolean server_settings_local_game(void);
+/* (and the Discord page's: an account linked, or waiting for its code) */
+static boolean discord_linked(void);
+
 /* a term of a row's condition in the model (tools/port_settings.py's
-SETTINGS_ROW_WHEN and SETTINGS_ROW_ENABLED): a platform's, "<key>=<value>"
-(another row's value shown, its spinner's), or a state or a capability of
-the game's */
+SETTINGS_ROW_WHEN and SETTINGS_ROW_ENABLED, and a setup screen's node's,
+SETUP_NODE_WHEN): a platform's, "<key>=<value>" (another row's value shown,
+its spinner's; a spinner of the game's at its nth item, "<key>=<n>"), or a
+state or a capability of the game's */
 static boolean settings_condition_term(struct widget_instance *list, char const *term, unsigned long length)
 {
 	char name[64];
@@ -2330,6 +2339,11 @@ static boolean settings_condition_term(struct widget_instance *list, char const 
 		spinner = named(list, name, 0);
 		setting = spinner ? pc_menu_setting_get(spinner->definition_tag_index) : NULL;
 		index = spinner ? spinner->parameters.list.selected_index : NONE;
+		if (spinner && !setting && length - key - 1 > 0 && length - key - 1 < 6 &&
+			strspn(equals + 1, "0123456789") >= length - key - 1)
+		{
+			return index == (short)atoi(equals + 1);
+		}
 		return setting && index >= 0 && index < setting->value_count &&
 			strlen(setting->values[index]) == length - key - 1 &&
 			!strncmp(setting->values[index], equals + 1, length - key - 1);
@@ -2364,6 +2378,20 @@ static boolean settings_condition_term(struct widget_instance *list, char const 
 		return !main_menu_is_active() &&
 			viewmodel_held_weapon(local_player_index == NONE ? 0 : local_player_index, path, sizeof(path));
 	}
+	if (!strcmp(name, "discord_linked"))
+		return discord_linked();
+	if (!strcmp(name, "cooperative"))
+		return hosting_cooperative();
+	if (!strcmp(name, "local"))
+		return server_settings_local_game();
+	if (!strcmp(name, "internet_host"))
+		return server_settings_internet_host();
+	if (!strcmp(name, "online"))
+		return config_boolean("network.online");
+	if (!strcmp(name, "public_lobby"))
+		return config_boolean("network.public_lobby");
+	if (!strcmp(name, "private"))
+		return server_settings_private();
 	platform_log("menus: a row's condition names %s, which is no term of one", name);
 	return FALSE;
 }
@@ -2469,6 +2497,28 @@ static void settings_rows_conditions(struct widget_instance *list)
 		list->focused_child = place;
 		list->parameters.list.selected_index = at;
 		return;
+	}
+}
+
+/* a setup screen's nodes' conditions in the model (docs/menu_engine.md;
+tools/port_settings.py's SETUP_NODE_WHEN, model/nodes.xml), as the screen is
+shown: each node with a condition shown while it holds */
+static void setup_nodes_conditions(struct widget_instance *widget)
+{
+	struct widget_instance *screen = screen_of(widget);
+	struct halo_menu_model_screen const *model_screen = menu_engine_model_screen_of(screen);
+	struct halo_menu_model const *model = menu_engine_model();
+	long index;
+
+	for (index = 0; model_screen && model && index < model_screen->row_count; index++)
+	{
+		struct halo_menu_model_row const *node = &model->rows[model_screen->first_row + index];
+		char const *leaf;
+
+		if (strcmp(node->kind, "node") || !node->when || !settings_condition_runs(node->when))
+			continue;
+		leaf = strrchr(node->key, '/');
+		visible_set(named(screen, leaf ? leaf + 1 : node->key, 0), settings_condition(screen, node->when));
 	}
 }
 
@@ -2813,8 +2863,33 @@ static int discord_master_of(char const *name)
 	return master >= 0 && master < PLAYER_LINK_MAXIMUM_MASTERS ? master : NONE;
 }
 
+/* the account's state, as the rows show it: one a server needs, unless
+linked or waiting for its code */
+static int discord_state_shown(char *name, int name_size, char *code, int code_size, int *linked,
+	int *masters)
+{
+	int needed = player_link_needed_master();
+	int state = player_link_state(name, name_size, code, code_size, linked, masters);
+
+	if (state != _player_link_state_linked && state != _player_link_state_waiting && needed >= 0)
+		state = _player_link_state_needed;
+	return state;
+}
+
+/* "discord_linked", UNLINK's condition (tools/port_settings.py's
+SETTINGS_ROW_WHEN) */
+static boolean discord_linked(void)
+{
+	char name[PLAYER_LINK_NAME_SIZE + 1], code[PLAYER_LINK_CODE_SIZE];
+	int linked, masters;
+	int state = discord_state_shown(name, sizeof(name), code, sizeof(code), &linked, &masters);
+
+	return state != _player_link_state_none && state != _player_link_state_needed;
+}
+
 /* each frame of Online's list and of the page's: the rows' values, the
-masters' hosts, the rows shown */
+masters' hosts, the rows shown (UNLINK by its condition in the model,
+settings_rows_conditions, which comes first) */
 static void discord_account_show(struct widget_instance *list)
 {
 	struct widget_instance *screen = screen_of(list);
@@ -2825,16 +2900,13 @@ static void discord_account_show(struct widget_instance *list)
 
 	if (!named(list, "op_discord_account", 0) && !page)
 		return;
-	state = player_link_state(name, sizeof(name), code, sizeof(code), &linked, &masters);
-	if (state != _player_link_state_linked && state != _player_link_state_waiting && needed >= 0)
-		state = _player_link_state_needed;
+	state = discord_state_shown(name, sizeof(name), code, sizeof(code), &linked, &masters);
 	discord_text_set(named(list, "discord_account_value", 0), discord_state_word(state));
 	if (!page)
 		return;
 	discord_text_set(named(list, "link_status_value", 0), discord_state_word(state));
 	if ((row = named(list, "op_link_unlink", 0)) != NULL)
 	{
-		row->visible = state != _player_link_state_none && state != _player_link_state_needed;
 		if (!row->visible)
 			discord_account.unlink_asked = 0;
 		discord_text_set(named(row, "link_unlink_value", 0), discord_unlink_asked() ? "SELECT AGAIN" : "");
@@ -6282,13 +6354,6 @@ static boolean hosting_cooperative(void)
 	return server && game_cooperative(network_game_server_get_game(server));
 }
 
-/* Server Setup's gametype rows, which co-op hides */
-static char const *const server_settings_gametype_rows[] =
-{
-	"op_game_type", "op_player_options", "op_item_options", "op_vehicle_options", "op_indicator_options",
-	"op_team_options",
-};
-
 /* the most players a co-op game hosted starts with (maximum_players') */
 #define COOPERATIVE_DEFAULT_PLAYERS 16
 /* Server Setup's help for co-op's options' rows (CO-OP OPTIONS, VOICE AND
@@ -6390,6 +6455,20 @@ static boolean server_settings_private(void)
 	return hosting_cooperative() ? !config_boolean("network.coop_public") : multiplayer.game_private;
 }
 
+/* an internet game hosted (Create Game's INTERNET) */
+static boolean server_settings_internet_host(void)
+{
+	return multiplayer.mode == _multiplayer_mode_host_internet;
+}
+
+/* a game of this machine alone (Create Game's OFFLINE) */
+static boolean server_settings_local_game(void)
+{
+	void *server = global_network_game_server_get();
+
+	return server && network_game_is_splitscreen_local();
+}
+
 static void server_settings_private_set(boolean private_game)
 {
 	if (!hosting_cooperative())
@@ -6440,21 +6519,6 @@ static void wide_to_text(wchar_t const *wide, char *text, short size)
 	text[index] = 0;
 }
 
-/* Server Setup in a game of this machine alone (Create Game's OFFLINE): the
-network's rows (GAME, INVITE LINK, MAP SHARING) hidden, and in their place a
-line saying what the game is (tools/port_settings.py's LOCAL_NOTE). Its bots
-are the lobby's, as every game's (lobby_menu.inc) */
-static char const *const server_settings_network_rows[] = { "op_game_mode", "op_invite", "op_map_share_options" };
-
-static void server_settings_local(struct widget_instance *list, boolean local)
-{
-	short index;
-
-	for (index = 0; index < NUMBEROF(server_settings_network_rows); index++)
-		visible_set(named(list, server_settings_network_rows[index], 0), !local);
-	visible_set(named(screen_of(list), "local_note", 0), local);
-}
-
 /* "server settings update" */
 static void server_settings_update(struct widget_instance *list)
 {
@@ -6481,19 +6545,18 @@ static void server_settings_update(struct widget_instance *list)
 		text_set(named(list, "game_type_value", 0), type);
 	}
 	settings_help(list);
+	/* the rows shown by their conditions in the model (SETUP_NODE_WHEN):
+	co-op's options in the place of the gametype's, none of the network's in
+	a game of this machine alone (a line saying what the game is in their
+	place, LOCAL_NOTE; its bots are the lobby's, as every game's), LISTING an
+	internet game's, PASSWORD a public one's */
+	setup_nodes_conditions(list);
 	{
-		boolean cooperative = hosting_cooperative();
-		short row;
-
-		for (row = 0; row < NUMBEROF(server_settings_gametype_rows); row++)
-			visible_set(named(list, server_settings_gametype_rows[row], 0), !cooperative);
-		/* co-op's options in their place, rows opening their screens
-		(tools/port_settings.py's COOP_SETUP_SCREENS), each its help */
+		/* (co-op's options' rows open their screens:
+		tools/port_settings.py's COOP_SETUP_SCREENS, each its help) */
 		{
 			struct widget_instance *help = list->parameters.list.extended_description;
 
-			visible_set(named(list, "op_coop_options", 0), cooperative);
-			visible_set(named(list, "op_voice_options", 0), cooperative);
 			if (help && list->focused_child == named(list, "op_coop_options", 0))
 				help->parameters.text_box.string_list_index = COOPERATIVE_OPTIONS_HELP;
 			else if (help && list->focused_child == named(list, "op_voice_options", 0))
@@ -6503,16 +6566,8 @@ static void server_settings_update(struct widget_instance *list)
 				help->parameters.text_box.string_list_index = MAP_SHARE_OPTIONS_HELP;
 		}
 	}
-	/* (a game of this machine alone: none of the network's rows) */
-	{
-		void *server = global_network_game_server_get();
-
-		server_settings_local(list, server && network_game_is_splitscreen_local());
-	}
 	/* LISTING (an internet game's): PUBLIC, listed in everyone's server
 	browser, or PRIVATE, for this game. Its help is its choice's */
-	visible_set(named(list, "op_listing", 0), multiplayer.mode == _multiplayer_mode_host_internet &&
-		config_boolean("network.online") && config_boolean("network.public_lobby"));
 	if ((spinner = named(list, "listing_spinner", 0)) != NULL && named(list, "op_listing", 0) &&
 		named(list, "op_listing", 0)->visible)
 	{
@@ -6535,10 +6590,10 @@ static void server_settings_update(struct widget_instance *list)
 		if (help && list->focused_child == named(list, "op_game_mode", 0))
 			help->parameters.text_box.string_list_index = (short)(GAME_MODE_HELP + index);
 	}
-	/* PASSWORD (a PUBLIC internet game's): its stars, NONE if it has none */
+	/* PASSWORD (a PUBLIC internet game's): its stars, NONE if it has none
+	(its condition again, for the listing just chosen) */
+	setup_nodes_conditions(list);
 	row = named(list, "op_password", 0);
-	visible_set(row, named(list, "op_listing", 0) && named(list, "op_listing", 0)->visible &&
-		!server_settings_private());
 	if (row && !row->visible && text_field_editing(row))
 		text_field_end(FALSE);
 	if (row && row->visible)
@@ -11925,30 +11980,20 @@ static void gametype_option_help(struct widget_instance *list)
 	struct widget_instance *row;
 	short index = 0;
 
-	/* (Item Options: the weapon set's row for a category loadout, the two
-	weapons' for a custom one) */
-	if (named(list, "loadout_spinner", 0))
-	{
-		boolean custom = named(list, "loadout_spinner", 0)->parameters.list.selected_index == _loadout_custom;
-
-		visible_set(named(list, "op_weapon_set", 0), !custom);
-		visible_set(named(list, "op_primary_weapon", 0), custom);
-		visible_set(named(list, "op_secondary_weapon", 0), custom);
-	}
-	/* (OPENCE OPTIONS: the mode's own rows, Infection's or Gun Game's, below
-	MODE and HARDCORE) */
+	/* (the rows shown, by their conditions in the model, SETUP_NODE_WHEN:
+	Item Options' weapon set's row for a category loadout, the two weapons'
+	for a custom one; OPENCE OPTIONS' mode's own rows, Infection's or Gun
+	Game's; CO-OP OPTIONS' PER PLAYER and MULTIPLIER amounts, by the extras) */
+	setup_nodes_conditions(list);
+	/* (OPENCE OPTIONS: the mode's rows below MODE and HARDCORE) */
 	if (named(list, "oce_mode_spinner", 0))
 	{
-		short mode = named(list, "oce_mode_spinner", 0)->parameters.list.selected_index;
 		short place = 73 + 2 * 30;
 
 		for (row = list->child; row; row = row->next)
 		{
-			boolean infection = !strncmp(row->name, "op_inf_", 7);
-
-			if (!infection && strncmp(row->name, "op_gg_", 6))
+			if (strncmp(row->name, "op_inf_", 7) && strncmp(row->name, "op_gg_", 6))
 				continue;
-			row->visible = infection ? mode == _game_mode_infection : mode == _game_mode_gun_game;
 			if (row->visible)
 			{
 				row->vertical_offset = place;
@@ -11956,24 +12001,10 @@ static void gametype_option_help(struct widget_instance *list)
 			}
 		}
 	}
-	/* CO-OP OPTIONS: enemies, pickups and vehicles share the amount rows.
-	Mixed modes may need both rows at once. */
+	/* (CO-OP OPTIONS: enemies, pickups and vehicles share the amount rows,
+	mixed modes both at once) */
 	if (named(list, "coop_extra_enemies_spinner", 0))
 	{
-		short mode = named(list, "coop_extra_enemies_spinner", 0)->parameters.list.selected_index;
-
-		struct widget_instance *pickups = named(list, "coop_extra_pickups_spinner", 0);
-		struct widget_instance *vehicles = named(list, "coop_extra_vehicles_spinner", 0);
-		boolean per_player = mode == _cooperative_enemies_per_player ||
-			(pickups && pickups->parameters.list.selected_index == _cooperative_enemies_per_player) ||
-			(vehicles && vehicles->parameters.list.selected_index == _cooperative_enemies_per_player);
-		boolean multiplier = mode == _cooperative_enemies_multiplier ||
-			(pickups && pickups->parameters.list.selected_index == _cooperative_enemies_multiplier) ||
-			(vehicles && vehicles->parameters.list.selected_index == _cooperative_enemies_multiplier);
-
-		visible_set(named(list, "op_coop_enemies_per_player", 0), per_player);
-		visible_set(named(list, "op_coop_enemies_multiplier", 0), multiplier);
-
 		/* Hidden amounts must not reserve a blank row. Offsets are relative
 		to the parent: moving only the row carries its labels and spinners
 		with it when widget_instance_render_recursive draws and notes targets. */
