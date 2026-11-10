@@ -15,7 +15,7 @@ a row-name predicate run each frame (`video_rows_show`, `gamma_row_show`,
 The menu engine renders the generators' model instead: what the generators
 already hold as data, written as data, read by the game, and drawn with
 Halo's own primitives so that the look is the same. `display.menu_engine`
-chooses it (`"classic"`, the default, or `"new"`). The map-tag menus (the
+chooses it (`"new"`, the default, or `"classic"`). The map-tag menus (the
 in-game pause menu, `display.menus = "xbox"`) stay on Halo's engine.
 
 ## The model
@@ -279,7 +279,7 @@ widgets (the flattened XML, `menu_tags.c`), its meaning from the model, and
 its behaviour from `menu_functions.c` on `widget_instance`s: three places,
 more than before. Each step below removes one, and each is proved by
 `tools/menu_parity.py` (layout, pixels and, from step 2, behaviour) before it
-merges, with `display.menu_engine` still `"classic"` by default.
+merges, with `display.menu_engine` `"classic"` by default until step 5.
 
 The end:
 
@@ -355,9 +355,9 @@ The steps, in order:
    their looks (`model/look`'s `role`, `tools/port_settings.py`'s
    `settings_look_roles`: `settings_part`), not their names. Left: the
    setup screens' other handlers.
-5. **The switch**: `"new"` the default, played for a while; then the
-   generated screens' widget XML no longer written, `display.menu_engine`
-   retired.
+5. **The switch**: `"new"` the default (done), played for a while, with
+   `"classic"` still a setting; then the generated screens' widget XML no
+   longer written, `display.menu_engine` retired.
 
 Features that need the model (scrolling long strings, #899; one dialog
 style, #901; search; live values) come after step 2, on the engine alone.
