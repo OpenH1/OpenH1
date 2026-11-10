@@ -115,6 +115,11 @@ static boolean demo_playback_rules(unsigned long *rules)
 	return FALSE;
 }
 
+static boolean demo_playing(void)
+{
+	return FALSE;
+}
+
 static int halo_server_mode(void)
 {
 	return server_mode;

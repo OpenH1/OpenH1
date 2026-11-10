@@ -2120,6 +2120,11 @@ static const struct config_setting config_settings[] =
 		"machines of twice it), to test the netcode as over the internet; 0 none." },
 	{ "debug.network_loss", _config_real, "0.0", "HALO_NETWORK_LOSS", _environment_value, _platform_all,
 		"Percent of datagrams received that are dropped, for the same; 0 none." },
+	{ "debug.network_relay_only", _config_boolean, "false", "HALO_NETWORK_RELAY_ONLY", _environment_set_is_true,
+		_platform_all,
+		"Send internet play's tunnel packets to other players only through a\n"
+		"relay and drop those that come straight from them, as two NATs that\n"
+		"hole punching cannot meet do, to test the relays (network.relays_file)." },
 	{ "debug.network_corrupt", _config_real, "0.0", "HALO_NETWORK_CORRUPT", _environment_value, _platform_all,
 		"Percent of the datagrams received that are damaged at random, to test\n"
 		"that nothing a machine sends can crash the game; 0 none." },

@@ -122,6 +122,10 @@ plays on an OpenCE machine, and so at 30 (objects.c's lanes): the host's
 from its machines, a client's from its host
 (_distributed_message_opence_players) */
 boolean network_standard_player_is_opence(long player_index);
+/* ... for a demo (demo.c's G records): the players' as a host's next tick
+takes them, and in a demo's playback the recording's, which
+network_standard_player_is_opence then answers with */
+void *network_standard_port_demo_state(long *size);
 /* a new game (network_distributed.c), each tick of the host (it tells its
 OpenH1 clients which players are OpenCE's) and the message it sends them */
 void network_standard_new_game(void);
