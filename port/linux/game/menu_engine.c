@@ -25,7 +25,10 @@ by its label's index + 1).
 */
 
 #include "cseries.h"
+#include "input/input.h"
+#include "interface/event_manager.h"
 #include "interface/ui_widget.h"
+#include "networking/network_connection.h"
 #include "tag_files/tag_groups.h"
 
 #include "halo_menus.h"
@@ -39,10 +42,41 @@ char const *config_string(char const *name);
 char *tag_get_name(long tag_index);
 boolean pc_menu_tag(long tag_index);
 void platform_log(char const *format, ...);
+void main_goto_main_menu(void);
 
 /* ui_widget.c's widget types (its enum) */
 #define ENGINE_WIDGET_SPINNER 2
 #define ENGINE_WIDGET_COLUMN_LIST 3
+
+/* the event manager's kinds of event (ui_widget.c's enum of them) */
+#define ENGINE_EVENT_LEFT_STICK 1
+#define ENGINE_EVENT_RIGHT_STICK 2
+#define ENGINE_EVENT_BUTTON 3
+
+/* the events a widget's handlers are for past the buttons: the sticks pushed
+(ui_widget.c's _widget_event_left_stick_up, ...) */
+#define ENGINE_HANDLER_LEFT_STICK_UP NUMBER_OF_GAMEPAD_BUTTONS
+#define ENGINE_HANDLER_RIGHT_STICK_UP (NUMBER_OF_GAMEPAD_BUTTONS + 4)
+
+/* a widget definition's flags' bits that its events are taken by
+(ui_widget.c's _widget_..._bit) */
+#define ENGINE_PASS_UNHANDLED_TO_FOCUSED_CHILD_BIT 0
+#define ENGINE_UP_DOWN_TABS_CHILDREN_BIT 3
+#define ENGINE_LEFT_RIGHT_TABS_CHILDREN_BIT 4
+#define ENGINE_UP_DOWN_TABS_ITEMS_BIT 5
+#define ENGINE_LEFT_RIGHT_TABS_ITEMS_BIT 6
+#define ENGINE_PASS_UNHANDLED_TO_ALL_CHILDREN_BIT 8
+#define ENGINE_PASS_HANDLED_TO_ALL_CHILDREN_BIT 10
+#define ENGINE_RETURN_TO_MAIN_MENU_BIT 11
+
+/* the sounds the menus play (ui_widget.c's _ui_audio_feedback_...) */
+#define ENGINE_SOUND_NONE 0
+#define ENGINE_SOUND_CURSOR 1
+#define ENGINE_SOUND_BACK 3
+
+/* a held D-pad direction repeats no faster than this (ui_widget.c's
+DPAD_EVENT_REPEAT_MILLISECONDS) */
+#define ENGINE_DPAD_REPEAT_MILLISECONDS 250
 
 /* the screens open (one for each player's stack, and room for the screen
 being opened as the one it replaces closes) */
@@ -247,6 +281,225 @@ static void engine_draw(struct engine_screen const *screen, struct widget_instan
 	}
 }
 
+/* ---------- input
+
+An event for a screen the engine runs is taken here: the focus moved, a
+held direction repeated, the widgets' actions run, the event passed down
+the focus, as the game's menus take one (ui_widget.c's
+widget_instance_process_one_event_recursive), its steps the same; what the
+widgets do and how they are moved through (their definitions' flags and
+event handlers) read from ui_widget.c (ui_widget_port_...). */
+
+/* the direction of a D-pad button (0 up, 1 down, 2 left, 3 right), or NONE */
+static short engine_dpad_direction(struct event_record const *event)
+{
+	if (event->type != ENGINE_EVENT_BUTTON || event->data.button.index < _gamepad_binary_button_dpad_up ||
+		event->data.button.index > _gamepad_binary_button_dpad_right)
+	{
+		return NONE;
+	}
+	return (short)(event->data.button.index - _gamepad_binary_button_dpad_up);
+}
+
+/* whether the event is a press (a button's first, or a held one's repeat) */
+static boolean engine_pressed(struct event_record const *event)
+{
+	return event->type == ENGINE_EVENT_BUTTON && event->data.button.value == 1;
+}
+
+/* whether the widget has an event handler for the event type */
+static boolean engine_has_handler(struct widget_instance const *widget, short event_type)
+{
+	long index;
+
+	for (index = 0; index < ui_widget_port_handler_count(widget); index++)
+	{
+		if (ui_widget_port_handler_event_type(widget, index) == event_type)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+/* the focus moved through the widget's children or its list's items, by its
+flags, for a direction pressed or a stick pushed: TRUE if it was */
+static boolean engine_move(struct widget_instance *widget, long flags, struct event_record *event, boolean *deleted)
+{
+	boolean pressed = engine_pressed(event);
+	boolean stick = event->type == ENGINE_EVENT_LEFT_STICK;
+	/* (-1 back, 1 on, 0 none: up and down, left and right) */
+	short vertical = 0, horizontal = 0;
+	boolean list = widget->type == ENGINE_WIDGET_SPINNER || widget->type == ENGINE_WIDGET_COLUMN_LIST;
+
+	if (pressed)
+	{
+		switch (engine_dpad_direction(event))
+		{
+		case 0: vertical = -1; break;
+		case 1: vertical = 1; break;
+		case 2: horizontal = -1; break;
+		case 3: horizontal = 1; break;
+		}
+	}
+	else if (stick)
+	{
+		vertical = event->data.stick.y == SHORT_MIN ? 1 : event->data.stick.y == SHORT_MAX ? -1 : 0;
+		horizontal = event->data.stick.x == SHORT_MIN ? -1 : event->data.stick.x == SHORT_MAX ? 1 : 0;
+	}
+	if (!vertical && !horizontal)
+		return FALSE;
+	if (vertical && TEST_FLAG(flags, ENGINE_UP_DOWN_TABS_CHILDREN_BIT) && widget->focused_child)
+	{
+		ui_widget_port_tab(widget, vertical > 0);
+		return TRUE;
+	}
+	if (horizontal && TEST_FLAG(flags, ENGINE_LEFT_RIGHT_TABS_CHILDREN_BIT) && widget->focused_child)
+	{
+		ui_widget_port_tab(widget, horizontal > 0);
+		return TRUE;
+	}
+	if (vertical && TEST_FLAG(flags, ENGINE_UP_DOWN_TABS_ITEMS_BIT) && list)
+	{
+		if (vertical > 0)
+			widget_event_function_list_widget_goto_next_item(widget, event, deleted);
+		else
+			widget_event_function_list_widget_goto_previous_item(widget, event, deleted);
+		return TRUE;
+	}
+	if (horizontal && TEST_FLAG(flags, ENGINE_LEFT_RIGHT_TABS_ITEMS_BIT) && list)
+	{
+		if (horizontal > 0)
+			widget_event_function_list_widget_goto_next_item(widget, event, deleted);
+		else
+			widget_event_function_list_widget_goto_previous_item(widget, event, deleted);
+		return TRUE;
+	}
+	return FALSE;
+}
+
+/* whether a handler of the widget's is for the event */
+static boolean engine_handler_matches(short handler, struct event_record const *event)
+{
+	short base;
+
+	switch (event->type)
+	{
+	case ENGINE_EVENT_LEFT_STICK:
+	case ENGINE_EVENT_RIGHT_STICK:
+		base = event->type == ENGINE_EVENT_LEFT_STICK ? ENGINE_HANDLER_LEFT_STICK_UP : ENGINE_HANDLER_RIGHT_STICK_UP;
+		return (handler == base && event->data.stick.y == SHORT_MAX) ||
+			(handler == base + 1 && event->data.stick.y == SHORT_MIN) ||
+			(handler == base + 2 && event->data.stick.x == SHORT_MIN) ||
+			(handler == base + 3 && event->data.stick.x == SHORT_MAX);
+	case ENGINE_EVENT_BUTTON:
+		return handler == event->data.button.index && event->data.button.value == 1;
+	}
+	return FALSE;
+}
+
+/* an event for a widget of a screen the engine runs, and on down the focus */
+static void engine_event(struct widget_instance *widget, struct event_record *event, boolean *return_deleted)
+{
+	long flags = ui_widget_port_definition_flags(widget);
+	boolean handled = FALSE;
+	boolean deleted = FALSE;
+	boolean for_this = ui_widget_port_takes_events(widget, event->controller_index);
+	short sound = ENGINE_SOUND_NONE;
+	short direction = engine_dpad_direction(event);
+	boolean player = event->controller_index >= 0 && event->controller_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS;
+	long index;
+
+	/* (a direction pressed: the pointer is not what moved the focus last; a
+	held one repeats, as a press, once it has waited long enough) */
+	if (direction != NONE)
+		ui_widget_port_pointer_not_last();
+	if (direction != NONE && player && event->data.button.value > 1 &&
+		ui_widget_port_milliseconds() - *ui_widget_port_dpad_time(event->controller_index, direction) >=
+			ENGINE_DPAD_REPEAT_MILLISECONDS)
+	{
+		event->data.button.value = 1;
+	}
+	if (widget->close_if_local_player_controller_present)
+	{
+		short controller;
+
+		for (controller = 0; controller < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS && !deleted; controller++)
+		{
+			if ((widget->local_player_index == NONE || widget->local_player_index == controller) &&
+				input_has_gamepad(controller))
+			{
+				ui_widget_delete(widget_instance_get_topmost_parent(widget));
+				deleted = TRUE;
+			}
+		}
+	}
+	/* (B or Back with no handler of its own: the screen before) */
+	if (for_this && !deleted && engine_pressed(event) &&
+		(event->data.button.index == _gamepad_analog_button_b ||
+			event->data.button.index == _gamepad_binary_button_back) &&
+		!engine_has_handler(widget, event->data.button.index))
+	{
+		ui_widget_port_go_back(widget);
+		sound = ENGINE_SOUND_BACK;
+		deleted = TRUE;
+		handled = TRUE;
+	}
+	if (!deleted && widget->milliseconds_to_auto_close > 0)
+	{
+		unsigned long now = ui_widget_port_milliseconds();
+
+		if (now - widget->creation_time >= widget->auto_close_fade_time + widget->milliseconds_to_auto_close)
+		{
+			ui_widget_delete(widget_instance_get_topmost_parent(widget));
+			deleted = TRUE;
+		}
+		else if (widget->auto_close_fade_time > 0)
+		{
+			long faded = (long)(now - widget->creation_time - widget->milliseconds_to_auto_close);
+
+			if (faded > 0)
+				widget->alpha_modifier = 1.0f - (real)faded / (real)widget->auto_close_fade_time;
+		}
+	}
+	if (!deleted)
+	{
+		ui_widget_port_lists_update(widget);
+		if (for_this && !handled && engine_move(widget, flags, event, &deleted))
+		{
+			sound = ENGINE_SOUND_CURSOR;
+			handled = TRUE;
+		}
+	}
+	for (index = 0; for_this && !deleted && index < ui_widget_port_handler_count(widget); index++)
+	{
+		if (engine_handler_matches(ui_widget_port_handler_event_type(widget, index), event))
+		{
+			handled = TRUE;
+			ui_widget_port_handler_dispatch(widget, event, index, &deleted);
+		}
+	}
+	if ((TEST_FLAG(flags, ENGINE_PASS_HANDLED_TO_ALL_CHILDREN_BIT) || !handled) && (TEST_FLAG(flags, ENGINE_PASS_UNHANDLED_TO_FOCUSED_CHILD_BIT) || TEST_FLAG(flags, ENGINE_PASS_UNHANDLED_TO_ALL_CHILDREN_BIT)) && !deleted)
+	{
+		if (TEST_FLAG(flags, ENGINE_PASS_UNHANDLED_TO_ALL_CHILDREN_BIT))
+		{
+			struct widget_instance *child;
+
+			for (child = widget->child; child && !deleted; child = child->next)
+			{
+				if (ui_widget_port_takes_events(child, event->controller_index))
+					engine_event(child, event, &deleted);
+			}
+		}
+		else if (widget->focused_child && ui_widget_port_takes_events(widget->focused_child, event->controller_index))
+			engine_event(widget->focused_child, event, &deleted);
+	}
+	if (deleted && TEST_FLAG(flags, ENGINE_RETURN_TO_MAIN_MENU_BIT) && ui_widget_port_no_screens())
+		main_goto_main_menu();
+	if (direction != NONE && player && event->data.button.value == 1)
+		*ui_widget_port_dpad_time(event->controller_index, direction) = ui_widget_port_milliseconds();
+	ui_play_audio_feedback_sound(sound);
+	*return_deleted = deleted;
+}
+
 /* ---------- ui_widget.c's calls */
 
 void menu_engine_screen_opened(struct widget_instance *screen)
@@ -301,7 +554,7 @@ boolean menu_engine_screen_event(struct widget_instance *screen, struct event_re
 		return FALSE;
 	engine.processing = screen;
 	*deleted = FALSE;
-	ui_widget_port_process_event(screen, event, deleted);
+	engine_event(screen, event, deleted);
 	engine.processing = previous;
 	return TRUE;
 }
