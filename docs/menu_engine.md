@@ -338,9 +338,15 @@ The steps, in order:
    as tabs (`settings_tab_screen`: the table `settings_tabs` gone), and the
    panel's words for a tab and a button from the model; the status rows'
    values written, and their panels' rows found, by their model rows
-   (`settings_model_row`, `settings_status_set`). Left: the setup screens'
-   handlers, and the look's widgets that Settings' code still finds by
-   name (the tabs' bar, the button bar, the panel's parts).
+   (`settings_model_row`, `settings_status_set`); the setup screens' spinners
+   of the host's own settings (voice and voting, co-op's options, map
+   sharing, aim assist, shield effects), their settings and values from
+   their nodes in the model (`gametype_option_setting`; `tools/port_settings.py`'s
+   `SETUP_ROW_SETTINGS`, in place of `gametype_options`' copies). Left: the
+   gametype's own options (the fields of the variant each spinner sets,
+   `gametype_options`), the setup screens' other handlers, and the look's
+   widgets that Settings' code still finds by name (the tabs' bar, the
+   button bar, the panel's parts).
 5. **The switch**: `"new"` the default, played for a while; then the
    generated screens' widget XML no longer written, `display.menu_engine`
    retired.

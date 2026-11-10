@@ -57,7 +57,30 @@ def _pressed(widget: ET.Element) -> tuple:
     return None, None
 
 
-def _screen(name: str, whens: dict, widgets: dict) -> list:
+def _words(widget: ET.Element, lists: dict) -> list:
+    """a spinner's words: its own (strings=), or its string list's"""
+    if widget.get("strings"):
+        return widget.get("strings").split("|")
+    return lists.get(widget.get("string_list"), [])
+
+
+def _settings(widget_name: str, widget: ET.Element, lists: dict) -> tuple:
+    """a spinner of the host's own settings: its setting= and its <choice>s (tools/port_settings.py's
+    SETUP_ROW_SETTINGS), else (None, [])"""
+    leaf = widget_name.replace("\\", "/").rsplit("/", 1)[-1]
+    key = leaf[:-len("_spinner")] if leaf.endswith("_spinner") else None
+    if key not in port_settings.SETUP_ROW_SETTINGS:
+        return None, []
+    setting, values = port_settings.SETUP_ROW_SETTINGS[key]
+    words = _words(widget, lists)
+    if len(words) != len(values):
+        raise SystemExit(f"menu_nodes: {widget_name} shows {len(words)} words, its setting {setting} has "
+                         f"{len(values)} values")
+    return setting, [f"\t\t\t<choice{_attributes([('shown', word), ('value', value)])}/>"
+                     for word, value in zip(words, values)]
+
+
+def _screen(name: str, whens: dict, widgets: dict, lists: dict) -> list:
     if name not in widgets:
         raise SystemExit(f"menu_nodes: ce/ has no screen {name}")
     lines, seen, initial = [], set(), [None]
@@ -75,10 +98,14 @@ def _screen(name: str, whens: dict, widgets: dict) -> list:
         if first:
             initial[0] = widget_name
         opens, runs = _pressed(widget)
+        setting, choices = _settings(widget_name, widget, lists)
         pairs = [("name", widget_name), ("parent", parent), ("open", opens), ("run", runs),
                  ("focusable", "true" if focusable else None), ("initial", "true" if first else None),
-                 ("when", whens.get(widget_name))]
-        lines.append(f"\t\t<node{_attributes(pairs)}/>")
+                 ("when", whens.get(widget_name)), ("setting", setting)]
+        if choices:
+            lines.extend([f"\t\t<node{_attributes(pairs)}>", *choices, "\t\t</node>"])
+        else:
+            lines.append(f"\t\t<node{_attributes(pairs)}/>")
         is_list = widget.get("type") == "column_list" and initial[0] is None
         for child in widget.findall("child"):
             walk(child.get("widget"), widget_name, is_list)
@@ -92,11 +119,13 @@ def _screen(name: str, whens: dict, widgets: dict) -> list:
 def node_files(ce: Path = menu_look.CE) -> dict:
     """the nodes' file, by its path in port/assets/menus"""
     widgets = _widgets(ce)
+    lists = {element.get("name"): [item.get("text") for item in element.findall("string")]
+             for path in sorted(ce.glob("*.xml")) for element in ET.parse(path).getroot().iter("strings")}
     lines = ['<?xml version="1.0" encoding="UTF-8"?>',
              "<!-- The setup screens' nodes, for the menu engine (docs/menu_engine.md; tools/menu_nodes.py, "
              "tools/port_settings.py's SETUP_NODE_WHEN) -->", "<model>"]
-    for name, whens in port_settings.SETUP_NODE_WHEN.items():
-        lines += _screen(name, whens, widgets)
+    for name in port_settings.SETUP_NODE_SCREENS:
+        lines += _screen(name, port_settings.SETUP_NODE_WHEN.get(name, {}), widgets, lists)
     return {NODES: lines + ["</model>", ""]}
 
 

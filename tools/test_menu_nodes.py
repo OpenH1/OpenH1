@@ -45,11 +45,11 @@ def test_conditions_known():
     lists = {element.get("name"): [item.get("text") for item in element.findall("string")]
              for path in (MENUS / "ce").glob("*.xml") for element in ET.parse(path).getroot().iter("strings")}
     screens = _screens()
-    assert set(screens) == set(port_settings.SETUP_NODE_WHEN)
+    assert list(screens) == port_settings.SETUP_NODE_SCREENS
     for screen, nodes in screens.items():
         names = {node.get("name") for node in nodes}
         whens = {node.get("name"): node.get("when") for node in nodes if node.get("when")}
-        assert whens == port_settings.SETUP_NODE_WHEN[screen], screen
+        assert whens == port_settings.SETUP_NODE_WHEN.get(screen, {}), screen
         for name, when in whens.items():
             for term in re.split(r"[ +]", when):
                 term = term.lstrip("!")
@@ -69,3 +69,23 @@ def test_one_initial():
     for screen, nodes in _screens().items():
         initial = [node for node in nodes if node.get("initial")]
         assert len(initial) == 1 and initial[0].get("focusable") == "true", screen
+
+
+def test_host_settings():
+    """every spinner of the host's own settings (SETUP_ROW_SETTINGS) is a node of the setup screens with its setting
+    and values, in its words' order; and menu_functions.c's gametype_options names each of them (an _option_setting)
+    with no setting or values of its own, which gametype_option_setting reads from the nodes"""
+    found = {}
+    for nodes in _screens().values():
+        for node in nodes:
+            if node.get("setting"):
+                key = node.get("name").rsplit("/", 1)[1][:-len("_spinner")]
+                found.setdefault(key, set()).add((node.get("setting"),
+                                                  tuple(choice.get("value") for choice in node.findall("choice"))))
+    assert found == {key: {(setting, tuple(values))} for key, (setting, values) in
+                     port_settings.SETUP_ROW_SETTINGS.items()}
+    source = (ROOT / "port/linux/game/menu_functions.c").read_text()
+    table = source[source.index("static struct gametype_option const gametype_options[] ="):]
+    table = table[:table.index("\n};")]
+    assert set(re.findall(r'\{ "(\w+)_spinner", _option_setting \}', table)) == set(port_settings.SETUP_ROW_SETTINGS)
+    assert table.count("_option_setting") == len(port_settings.SETUP_ROW_SETTINGS)

@@ -1454,8 +1454,9 @@ WIDE_SETTINGS = {"audio.output_device", "audio.input_device", "streamer.slurs", 
 
 # Teamplay Options' rows of the port's (_teamplay_options_extras): the
 # gametype's FORCE TEAM SPAWNS, then the host's voice chat and vote kicks;
-# each row's key, its label, its choices' words (menu_functions.c's
-# gametype_options give their values) and their helps
+# each row's key, its label, its choices' words (SETUP_ROW_SETTINGS gives
+# the host's settings' values, menu_functions.c's gametype_options the
+# gametype's) and their helps
 TEAMPLAY_EDIT = "main_menu/settings_select/multiplayer_setup/teamplay_options_edit"
 VOICE_QUALITIES = (8, 12, 16, 24, 32, 48, 64)
 # (the rows' step: closer than the PC's 30px, so that all of Server Setup's
@@ -3271,15 +3272,14 @@ def _server_settings() -> list:
 
 MAXIMUM_PLAYERS = [2, 4, 8, 12, 16, 24, 32, 48, 64, 96, 128]
 # CO-OP OPTIONS' amounts of PER PLAYER (network.coop_enemies, percentages)
-# and STATIC MULTIPLIER (network.coop_enemies_multiplier), as menu_functions.c's
-# gametype_options have their values
+# and STATIC MULTIPLIER (network.coop_enemies_multiplier), as
+# SETUP_ROW_SETTINGS has their values
 COOP_ENEMIES_PERCENTAGES = [25, 50, 100, 150, 200]
 COOP_ENEMIES_MULTIPLIERS = [2, 4, 8, 16, 32]
 # co-op's Server Setup options, in screens of their own as the gametype's
 # are (its rows: _server_settings), each its key, its title, its row's help
 # and its rows (as TEAMPLAY_ROWS: each spinner's key, label, words and the
-# help of each of them; menu_functions.c's gametype_options give their
-# settings' values)
+# help of each of them; SETUP_ROW_SETTINGS gives their settings' values)
 COOP_SETUP_SCREENS = [
     ("coop_options", "CO-OP OPTIONS", "Friendly fire, the enemies and player collisions,\\nfor this game.", [
         ("coop_friendly_fire", "FRIENDLY FIRE:", ["OFF", "ON", "SHIELD ONLY", "EXPLOSIVES ONLY"], [
@@ -3324,7 +3324,7 @@ COOP_SETUP_SCREENS = [
 ]
 # Server Setup's map sharing (port/linux/game/map_share.c), for any game,
 # laid out as co-op's options are (its key, its title, its row's help and
-# its rows: menu_functions.c's gametype_options give their settings' values)
+# its rows: SETUP_ROW_SETTINGS gives their settings' values)
 MAP_SHARE_UPLOADS = (256, 512, 1024, 2048, 4096, 8192, 16384, 20480)
 MAP_SHARE_SETUP = ("map_share_options", "MAP SHARING",
                    "Sending players who join without the game's\\nCustom Edition map the map, and how fast.", [
@@ -3454,6 +3454,43 @@ SETUP_NODE_WHEN = {
         if key.startswith(prefix)
     },
 }
+
+# the setup screens' spinners of the host's own settings (config.toml's, not
+# the gametype's: Server Setup's copy of the gametype's screens alone, its
+# co-op options, voice and voting, and map sharing), each by its key (its
+# <key>_spinner), its setting and its values in its words' order: written
+# into the setup screens' nodes (tools/menu_nodes.py), which menu_functions.c's
+# gametype_option_setting reads them from
+SETUP_ROW_SETTINGS = {
+    "voice_mode": ("network.voice_mode",
+                   ["off", "team_proximity", "team_enemy_proximity", "team_global", "team_global_enemy_proximity"]),
+    "voice_lobby": ("network.voice_lobby", ["true", "false"]),
+    "voice_kbps": ("network.voice_kbps", [str(kbps) for kbps in VOICE_QUALITIES]),
+    "voice_proximity": ("network.voice_proximity", ["5", "10", "15", "20", "30", "50"]),
+    "votekick": ("network.votekick", ["true", "false"]),
+    "text_chat": ("network.text_chat", ["on", "links", "off"]),
+    "pings": ("network.pings", ["true", "false"]),
+    "aim_assist": ("network.block_mouse_aim_assist", ["false", "true"]),
+    "shield_effects": ("network.shield_effects",
+                       ["stock", "glow", "light_show", "overshield", "glow_overshield", "light_show_overshield",
+                        "players"]),
+    "coop_friendly_fire": ("network.coop_friendly_fire", ["off", "on", "shields_only", "explosives_only"]),
+    "coop_extra_enemies": ("network.coop_enemies_mode", ["per_player", "multiplier", "none"]),
+    "coop_extra_pickups": ("network.coop_pickups", ["per_player", "multiplier", "none"]),
+    "coop_extra_vehicles": ("network.coop_vehicles", ["per_player", "multiplier", "none"]),
+    "coop_enemies_per_player": ("network.coop_enemies", [str(percent) for percent in COOP_ENEMIES_PERCENTAGES]),
+    "coop_enemies_multiplier": ("network.coop_enemies_multiplier",
+                                [str(multiplier) for multiplier in COOP_ENEMIES_MULTIPLIERS]),
+    "coop_player_collisions": ("network.coop_player_collisions", ["true", "false"]),
+    "coop_ally_friendly_fire": ("network.coop_ally_friendly_fire", ["true", "false"]),
+    "map_share": ("network.map_share", ["true", "false"]),
+    "map_share_upload": ("network.map_share_upload", [str(kb) for kb in MAP_SHARE_UPLOADS]),
+}
+# the setup screens in the model as nodes: those with conditions
+# (SETUP_NODE_WHEN), and those with spinners of the host's settings
+SETUP_NODE_SCREENS = [*SETUP_NODE_WHEN, f"{SS}/voice_options/voice_options_screen",
+                      f"{SS}/map_share_options/map_share_options_screen", f"{PLAYER_EDIT}/player_options_screen",
+                      f"{TEAMPLAY_EDIT}/teamplay_options_screen"]
 
 
 def lobby_column_x(column: int) -> int:
