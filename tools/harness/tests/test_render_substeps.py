@@ -17,7 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run, structure  # noqa: E402
 
 CASES = ["classic", "substeps", "substeps_60", "carried", "camera_slow", "projectile", "projectile_late",
-         "projectile_turning", "vr_release", "respawn", "respawn_120", "scripted_camera", "scripted_camera_120", "lead",
+         "projectile_turning", "vr_release", "respawn", "respawn_120", "scripted_camera", "scripted_camera_120",
+         "scripted_camera_fast", "scripted_camera_fast_120", "scripted_camera_cut", "steady_part", "lead",
          "lead_60", "lead_glide", "lead_classic"]
 
 # a fault in the code, and the case that must catch it
@@ -68,6 +69,30 @@ NEGATIVE_CONTROLS = {
     # ... or the snapshot before the previous one not taken when the frame's moment falls before the previous
     "scripted-camera-no-before": (("\t\tif (drawn_time < from_time && camera->has_before)",
                                    "\t\tif (0)"), "scripted_camera"),
+    # ... a fast one's snapshots judged a cut when further apart than a cut's distance, as the player's views are: drawn
+    # from the latest a tick ahead at random ticks (#805)
+    "scripted-camera-fast-cuts": (("\t\t(camera->timed ? camera->cut_to_latest : observer_cut(&camera->previous, "
+                                   "&camera->latest)))",
+                                   "\t\tobserver_cut(&camera->previous, &camera->latest))"), "scripted_camera_fast"),
+    "scripted-camera-fast-cuts-120": (("\t\t(camera->timed ? camera->cut_to_latest : observer_cut(&camera->previous, "
+                                       "&camera->latest)))",
+                                       "\t\tobserver_cut(&camera->previous, &camera->latest))"),
+                                      "scripted_camera_fast_120"),
+    # ... or a cut to another point taken for the fast move it is not: glided through
+    "scripted-camera-cut-glides": (("\treturn !(distance_squared(&expected, &b->position) <= CAMERA_CUT_DISTANCE * "
+                                    "CAMERA_CUT_DISTANCE);",
+                                    "\treturn FALSE;"), "scripted_camera_cut"),
+    # ... or a fast camera's first move after a cut (faster than a cut's distance a tick, with no move since the cut to
+    # carry on) taken for another cut: drawn from the latest, a tick ahead
+    "scripted-camera-cut-twice": (("\t\treach += speed * ticks;", "\t\treach += 0.0f * ticks;"),
+                                  "scripted_camera_cut"),
+    # a part moving steadily further than a limb moves in a tick taken for a new pose each tick: drawn stepping
+    "steady-part-snaps": (("NODE_SNAP_DISTANCE + (steady ? NODE_STEADY_GROWTH * moves_before[node_index] : 0.0f)",
+                           "NODE_SNAP_DISTANCE"), "steady_part"),
+    # ... or any node's jump allowed: a new pose blended
+    "new-pose-blended": (("\t\t\tif (!(moved <= NODE_SNAP_DISTANCE + (steady ? NODE_STEADY_GROWTH * "
+                          "moves_before[node_index] : 0.0f)))",
+                          "\t\t\tif (0)"), "steady_part"),
     # another's player drawn from the tick drawn's sub-steps, a tick behind, not its newest
     "lead-a-tick-behind": (("\treturn (short)(interpolation_substep_index + interpolation_substep_count - 1);",
                             "\treturn interpolation_substep_index;"), "lead"),
@@ -175,7 +200,7 @@ def generated(fault=None, newest=False):
                  "render_interpolation_substep_offset", "render_interpolation_substep_frame",
                  "render_interpolation_frame_begin", "render_interpolation_frame_end",
                  "render_interpolation_pending_from", "render_interpolation_blend_in_frame",
-                 "render_interpolation_object_node_matrices", "observer_blend", "observer_cut",
+                 "render_interpolation_object_node_matrices", "observer_blend", "observer_cut", "observer_timed_cut",
                  "render_interpolation_camera_timed",
                  "render_interpolation_camera_substep_unit", "render_interpolation_camera_at_tick",
                  "render_interpolation_camera_anchors", "render_interpolation_camera_substep_vehicle",
@@ -199,11 +224,31 @@ def test_case(case):
     assert status == 0, output
 
 
+# the cases whose frames come at times drawn from a seed, run from many seeds (the test's own generator: the same
+# frames on every system), so that a rare frame timing cannot pass on one machine and fail on another
+SEEDED = ["scripted_camera", "scripted_camera_120", "scripted_camera_fast", "scripted_camera_fast_120",
+          "scripted_camera_cut"]
+SEEDS = 200
+
+
+@pytest.mark.parametrize("case", SEEDED)
+def test_case_seeds(case):
+    executable = build("render_substeps", generated())
+    for seed in range(1, SEEDS + 1):
+        status, output = run(executable, f"{case}@{seed}")
+        assert status == 0, f"seed {seed}: {output}"
+
+
 @pytest.mark.parametrize("control", NEGATIVE_CONTROLS)
 def test_negative_control(control):
     fault, case = NEGATIVE_CONTROLS[control]
-    status, output = run(build("render_substeps", generated(fault)), case)
-    assert status == CHECK_FAILED, f"the code with a fault ({control}) passed '{case}': the test cannot see it"
+    executable = build("render_substeps", generated(fault))
+    # (a seeded case's fault seen from any of its seeds: some faults show only at some frames' timings)
+    for name in [f"{case}@{seed}" for seed in range(1, SEEDS + 1)] if case in SEEDED else [case]:
+        status, output = run(executable, name)
+        if status == CHECK_FAILED:
+            return
+    assert False, f"the code with a fault ({control}) passed '{case}': the test cannot see it"
 
 
 def test_registered_last():
