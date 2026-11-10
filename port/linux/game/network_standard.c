@@ -61,6 +61,7 @@ host tells its OpenH1 clients which players are OpenCE's
 char const *config_string(char const *name);
 long config_integer(char const *name);
 int config_boolean(char const *name);
+unsigned long config_changes(void);
 
 /* ---------- constants */
 
@@ -158,6 +159,9 @@ sim_rate.c steps at, else 30 */
 static long network_standard_rate_setting(
 	void)
 {
+	/* (network.sim_rate, read again as the settings change: config_changes) */
+	static unsigned long read_at = (unsigned long)-1;
+	static long setting;
 	long rate;
 
 	if (halo_server_mode())
@@ -167,7 +171,12 @@ static long network_standard_rate_setting(
 		rate = network_standard_server_setting();
 		return rate ? rate : network_standard_globals.hosting_rate;
 	}
-	rate = config_integer("network.sim_rate");
+	if (read_at != config_changes())
+	{
+		read_at = config_changes();
+		setting = config_integer("network.sim_rate");
+	}
+	rate = setting;
 	return sim_rate_supported(rate) ? rate : SIM_RATE_CLASSIC;
 }
 

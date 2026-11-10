@@ -71,6 +71,7 @@ tools/harness/tests/test_matchmaking.py's.
 /* the platform layer's (port_config.c, sdl_platform.c) */
 char const *config_string(char const *name);
 int config_boolean(char const *name);
+unsigned long config_changes(void);
 void platform_log(char const *format, ...);
 unsigned long system_milliseconds(void);
 /* ui_widget_event_handler_functions.c's: a profile's player in a
@@ -830,23 +831,34 @@ void matchmaking_update(
 	void)
 {
 	static struct p2p_listing games[MATCHMAKING_MAXIMUM_GAMES];
+	/* (network.online and debug.matchmaking_host's quality, NONE for
+	none, read again as the settings change: config_changes) */
+	static boolean settings_read, online;
+	static unsigned long settings_read_at;
+	static short forced_quality;
 	unsigned long now = system_milliseconds();
 	struct matchmaking_view view;
 	boolean member;
 	short party_size, count = 0, stage, action;
 	int request;
 
-	if (!game_time_initialized() || !config_boolean("network.online"))
+	if (!settings_read || settings_read_at != config_changes())
+	{
+		char const *forced;
+
+		settings_read_at = config_changes();
+		settings_read = TRUE;
+		online = config_boolean("network.online") != 0;
+		forced = config_string("debug.matchmaking_host");
+		forced_quality = !strcmp(forced, "strict") ? _p2p_party_host_strict :
+			!strcmp(forced, "open") ? _p2p_party_host_open : NONE;
+	}
+	if (!game_time_initialized() || !online)
 		return;
 	/* (what the party is told of how well this machine can host; a test's
 	machine as debug.matchmaking_host says, in the menus) */
-	{
-		char const *forced = config_string("debug.matchmaking_host");
-
-		p2p_party_set_host_quality(!matchmaking_in_menus() ? _p2p_party_host_unable :
-			!strcmp(forced, "strict") ? _p2p_party_host_strict : !strcmp(forced, "open") ? _p2p_party_host_open :
-			p2p_nat_strict() ? _p2p_party_host_strict : _p2p_party_host_open);
-	}
+	p2p_party_set_host_quality(!matchmaking_in_menus() ? _p2p_party_host_unable :
+		forced_quality != NONE ? forced_quality : p2p_nat_strict() ? _p2p_party_host_strict : _p2p_party_host_open);
 	/* (the listing's playlist and the bots of a game no longer hosted) */
 	if (matchmaking.listed_playlist && !global_network_game_server_get())
 	{

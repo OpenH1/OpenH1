@@ -53,13 +53,14 @@ static struct
 static boolean menu_tour_read(
 	void)
 {
-	char const *path = config_string("debug.menu_tour");
+	char const *path;
 	char line[MENU_TOUR_NAME_LENGTH];
 	FILE *file;
 
 	if (menu_tour.read)
 		return menu_tour.count > 0;
 	menu_tour.read = 1;
+	path = config_string("debug.menu_tour");
 	if (!path[0])
 		return FALSE;
 	file = fopen(path, "r");

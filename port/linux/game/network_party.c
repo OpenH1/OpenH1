@@ -116,6 +116,7 @@ taking those keys from the game and the menus while it is shown.
 /* the platform layer's, port_config.c's */
 unsigned long system_milliseconds(void);
 int config_boolean(const char *name);
+unsigned long config_changes(void);
 /* p2p_party.c's (port/linux/src/p2p.h) */
 int p2p_party_invite_link(char *link, int size);
 int p2p_party_join_link(const char *text);
@@ -1426,11 +1427,19 @@ game's), an OpenCE machine's said so */
 static void party_recent_update(
 	unsigned long now)
 {
+	/* (network.online, read again as the settings change: config_changes) */
+	static unsigned long online_read_at = (unsigned long)-1;
+	static boolean online;
 	short connection = game_connection();
 	short player_index;
 
+	if (online_read_at != config_changes())
+	{
+		online_read_at = config_changes();
+		online = config_boolean("network.online") != 0;
+	}
 	if ((connection != _game_connection_network_client && connection != _game_connection_network_server) ||
-		!game_in_progress() || !config_boolean("network.online"))
+		!game_in_progress() || !online)
 	{
 		party_globals.recent_time = 0;
 		return;
