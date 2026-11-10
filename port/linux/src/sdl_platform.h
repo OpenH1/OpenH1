@@ -220,6 +220,14 @@ int platform_test_menu_keys(char *typed, int size, int *enter);
 1 once in its second, with the button to click (SDL's numbering, 0 for
 none), or the wheel's turn and in how many events it comes */
 int platform_test_menu_mouse(int *button, float *wheel, int *wheel_events);
+/* a script that starts with "ready": its seconds counted from now, the
+menus' screen up (menu_tour.c's call); whether it waits for that still; the
+second it is in, from 100 ms before it starts (-1: none, or waiting);
+whether it is past its last press */
+void platform_test_menu_start(void);
+int platform_test_menu_waiting(void);
+int platform_test_menu_step(void);
+int platform_test_menu_done(void);
 
 /* returns the window's size in the units that pointer positions come in,
 which differ from the drawable's pixels on displays that scale */

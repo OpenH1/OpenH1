@@ -1635,9 +1635,78 @@ stick pushed forward, which moves a player whom no menu has), stick_left
 and stick_right (the left stick pushed sideways), screenshot
 (the Screenshot key's capture, once), or wait (none), separated by spaces
 or commas; two or more joined by + ("back+x") hold the first through the
-second and press the others half way through it */
-static char test_input_menu[512];
+second and press the others half way through it; "hold:<button>" holds it
+the whole second (one after another, held on: the menus' repeat). A script
+that starts with "ready" waits for the menus' screen to be up
+(platform_test_menu_start, menu_tour.c's) and counts its seconds from then:
+tools/menu_parity.py's, whose runs share the computer */
+static char test_input_menu[2048];
 static Uint64 test_input_menu_since;
+/* ("ready": the seconds not counted yet) */
+static int test_input_menu_waiting;
+
+int frames_clock(unsigned long *milliseconds);
+
+/* the script's clock: the frames' with their time fixed (debug.frame_time,
+port/linux/game/frames_clock.c), which the menus' clock is then too, so that
+a press lasts as many of the menus' frames in every run; else the
+computer's */
+static Uint64 test_input_menu_now(void)
+{
+	unsigned long milliseconds;
+
+	return frames_clock(&milliseconds) ? (Uint64)milliseconds : SDL_GetTicks();
+}
+
+/* the time into the script (FALSE for none, or one waiting for the menus) */
+static int test_input_menu_elapsed(Uint64 *elapsed)
+{
+	if (!test_input_menu[0] || test_input_menu_waiting)
+		return 0;
+	*elapsed = test_input_menu_now() - test_input_menu_since;
+	return 1;
+}
+
+void platform_test_menu_start(void)
+{
+	if (!test_input_menu_waiting)
+		return;
+	test_input_menu_waiting = 0;
+	test_input_menu_since = test_input_menu_now();
+}
+
+int platform_test_menu_step(void)
+{
+	Uint64 elapsed;
+
+	/* (a second's last 100 ms counted as the next's: where its press left
+	the menus is logged at its end, menu_tour.c's) */
+	return test_input_menu_elapsed(&elapsed) ? (int)((elapsed + 100) / 1000) : -1;
+}
+
+int platform_test_menu_waiting(void)
+{
+	return test_input_menu_waiting;
+}
+
+int platform_test_menu_done(void)
+{
+	const char *token = test_input_menu;
+	int count = 0;
+
+	for (;;)
+	{
+		size_t length;
+
+		token += strspn(token, " ,");
+		length = strcspn(token, " ,");
+		if (!length)
+			break;
+		count++;
+		token += length;
+	}
+	return platform_test_menu_step() >= count;
+}
 
 static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 {
@@ -1663,14 +1732,19 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 		{ "lt", XINPUT_GAMEPAD_LEFT_TRIGGER, 0 },
 		{ "rt", XINPUT_GAMEPAD_RIGHT_TRIGGER, 0 },
 	};
-	Uint64 elapsed = SDL_GetTicks() - test_input_menu_since;
-	Uint64 step = elapsed / 1000;
-	Uint64 into = elapsed % 1000;
+	Uint64 elapsed;
+	Uint64 step;
+	Uint64 into;
 	const char *token = test_input_menu;
 	size_t length;
 	size_t part;
 	unsigned int index;
+	BOOL held = FALSE;
 
+	if (!test_input_menu_elapsed(&elapsed))
+		return;
+	step = elapsed / 1000;
+	into = elapsed % 1000;
 	for (;;)
 	{
 		token += strspn(token, " ,");
@@ -1705,6 +1779,12 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 		}
 		return;
 	}
+	if (length > 5 && !strncmp(token, "hold:", 5))
+	{
+		held = TRUE;
+		token += 5;
+		length -= 5;
+	}
 	/* (a button pressed for the first 150 ms of its second; "<held>+<pressed>"
 	holds the first through its second and presses the others 500 ms into it,
 	as one hand holds Back while the other presses X) */
@@ -1716,7 +1796,7 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 		if (name_length > length)
 			name_length = length;
 		if (part == 0)
-			down = name_length < length && token[name_length] == '+' ? TRUE : into < 150;
+			down = held || (name_length < length && token[name_length] == '+') ? TRUE : into < 150;
 		else
 			down = into >= 500 && into < 650;
 		if (down && name_length == 7 && !strncmp(token, "forward", 7))
@@ -1752,13 +1832,13 @@ menus) */
 int platform_test_menu_click(float *x, float *y)
 {
 	static Uint64 clicked_step = (Uint64)-1;
-	Uint64 step;
+	Uint64 step, elapsed;
 	const char *token = test_input_menu;
 	size_t length;
 
-	if (!test_input_menu[0])
+	if (!test_input_menu_elapsed(&elapsed))
 		return 0;
-	step = (SDL_GetTicks() - test_input_menu_since) / 1000;
+	step = elapsed / 1000;
 	for (length = 0;; step--)
 	{
 		token += strspn(token, " ,");
@@ -1767,7 +1847,7 @@ int platform_test_menu_click(float *x, float *y)
 			break;
 		token += length;
 	}
-	step = (SDL_GetTicks() - test_input_menu_since) / 1000;
+	step = elapsed / 1000;
 	if (!length || strncmp(token, "click:", 6) || step == clicked_step ||
 		sscanf(token + 6, "%f:%f", x, y) != 2)
 		return 0;
@@ -1784,16 +1864,16 @@ second, as the mouse's own events (sdl_platform.c's test_menu_mouse) */
 int platform_test_menu_mouse(int *button, float *wheel, int *wheel_events)
 {
 	static Uint64 played_step = (Uint64)-1;
-	Uint64 step;
+	Uint64 step, elapsed;
 	const char *token = test_input_menu;
 	size_t length = 0;
 
 	*button = 0;
 	*wheel = 0.0f;
 	*wheel_events = 0;
-	if (!test_input_menu[0])
+	if (!test_input_menu_elapsed(&elapsed))
 		return 0;
-	for (step = (SDL_GetTicks() - test_input_menu_since) / 1000;; step--)
+	for (step = elapsed / 1000;; step--)
 	{
 		token += strspn(token, " ,");
 		length = strcspn(token, " ,");
@@ -1801,7 +1881,7 @@ int platform_test_menu_mouse(int *button, float *wheel, int *wheel_events)
 			break;
 		token += length;
 	}
-	step = (SDL_GetTicks() - test_input_menu_since) / 1000;
+	step = elapsed / 1000;
 	if (!length || step == played_step)
 		return 0;
 	if (!strncmp(token, "mouse:", 6) && sscanf(token + 6, "%d", button) == 1 && *button > 0)
@@ -1840,9 +1920,8 @@ int platform_test_menu_keys(char *typed, int size, int *enter)
 
 	typed[0] = 0;
 	*enter = 0;
-	if (!test_input_menu[0] || size <= 0)
+	if (size <= 0 || !test_input_menu_elapsed(&elapsed))
 		return 0;
-	elapsed = SDL_GetTicks() - test_input_menu_since;
 	into = elapsed % 1000;
 	for (step = elapsed / 1000;; step--)
 	{
@@ -2279,7 +2358,14 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 		if (!strncmp(setting, "menu:", 5))
 		{
 			snprintf(test_input_menu, sizeof(test_input_menu), "%s", setting + 5);
-			test_input_menu_since = SDL_GetTicks();
+			test_input_menu_since = test_input_menu_now();
+			if (!strncmp(test_input_menu, "ready", 5) && (!test_input_menu[5] ||
+				strchr(" ,", test_input_menu[5])))
+			{
+				/* (its seconds counted once the menus are up) */
+				memmove(test_input_menu, test_input_menu + 5, strlen(test_input_menu + 5) + 1);
+				test_input_menu_waiting = 1;
+			}
 		}
 		else if (!strncmp(setting, "bot:", 4))
 			seed = atoi(setting + 4);
