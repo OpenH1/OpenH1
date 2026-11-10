@@ -1327,6 +1327,7 @@ void halo_menus_art_register(void const *texture, char const *png)
 	memset(&art[index], 0, sizeof(art[index]));
 	art[index].data = data;
 	art[index].png = strdup(png);
+	xgpu_texture_replacements_changed();
 }
 
 void halo_menus_art_forget(void)
@@ -1348,6 +1349,7 @@ void halo_menus_art_forget(void)
 	art_count = 0;
 	memset(art_lookup, 0, sizeof(art_lookup));
 	memset(art_lookup_data, 0, sizeof(art_lookup_data));
+	xgpu_texture_replacements_changed();
 }
 
 /* a decoding thread: each PNG queued in turn, until none is */

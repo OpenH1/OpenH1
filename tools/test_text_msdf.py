@@ -48,7 +48,8 @@ STUBS = {
     "xgpu_images.h": "enum { XGPU_IMAGE_RGBA };\n"
                      "unsigned int xgpu_image_create(void *pixels, unsigned long width, unsigned long height, "
                      "unsigned long levels, int format, int owned);\nvoid xgpu_image_changed(unsigned int image);\n"
-                     "void xgpu_image_delete(unsigned int image);\n",
+                     "void xgpu_image_delete(unsigned int image);\n"
+                     "static void xgpu_texture_replacements_changed(void) {}\n",
 }
 
 

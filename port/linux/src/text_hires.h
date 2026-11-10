@@ -86,6 +86,9 @@ void text_hires_register_atlas(const unsigned long *texture, unsigned long width
 placeholder's, its glyphs' fields uploaded, to be sampled as
 XGPU_ADDRESS_MSDF; 0 otherwise */
 unsigned int text_hires_atlas_texture(unsigned long data);
+/* whether a texture's Data is the atlas's placeholder's (its image is made
+and changed as the text is drawn: chosen at every bind, xbox_textures.c) */
+int text_hires_atlas_placeholder(unsigned long data);
 
 /* a function called before the atlas is emptied, which draws what has been
 batched from it (rasterizer_xbox_text.c's rasterizer_text_flush) */
