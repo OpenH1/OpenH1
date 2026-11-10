@@ -895,6 +895,10 @@ def main() -> None:
     for name, lines in [*port_settings.settings_files().items(), *port_settings.multiplayer_files().items(),
                         *port_settings.campaign_files().items()]:
         (CE / name).write_text("\n".join(lines))
+    # (the menu engine's model of them: docs/menu_engine.md)
+    for name, lines in port_settings.model_files().items():
+        (MENUS / name).parent.mkdir(exist_ok=True)
+        (MENUS / name).write_text("\n".join(lines))
     # their strings
     (CE / "strings.xml").write_text(strings_xml({
         tag: [text_value(item["string"]) for item in tags.load(tag, "unicode_string_list")["strings"]]

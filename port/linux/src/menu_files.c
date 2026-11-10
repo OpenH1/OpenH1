@@ -1025,7 +1025,9 @@ static void menus_files_read(void)
 	{
 		size_t length = strlen(files[index].path);
 
-		if (length > 4 && !strcmp(files[index].path + length - 4, ".xml"))
+		/* (but the menu engine's model, menu_model.c) */
+		if (length > 4 && !strcmp(files[index].path + length - 4, ".xml") &&
+			strncmp(files[index].path, HALO_MENU_MODEL_FOLDER, strlen(HALO_MENU_MODEL_FOLDER)))
 			read_file(&reader, &files[index]);
 	}
 	free(reader.last_child);
@@ -1070,6 +1072,18 @@ struct halo_menus const *halo_menus_load(void)
 	return menus_succeeded ? &menus : NULL;
 }
 
+/* a file gathered (halo_menus_load's): its path and data, FALSE past the
+last (the menu engine's model: menu_model.c) */
+int halo_menus_file_at(long index, char const **path, unsigned char const **data, unsigned long *size)
+{
+	if (index < 0 || index >= file_count)
+		return 0;
+	*path = files[index].path;
+	*data = files[index].data;
+	*size = files[index].size;
+	return 1;
+}
+
 /* the files read again by the next halo_menus_load (the menu studio's
 reload: port/linux/game/menu_studio.c, after the menus' tags are let go).
 What the last reading made is kept, not freed: the description points into
@@ -1086,6 +1100,7 @@ void halo_menus_reload(void)
 	memset(&menus, 0, sizeof(menus));
 	menus_succeeded = 0;
 	menus_read = 0;
+	halo_menus_model_forget();
 }
 
 /* the menu studio's notes file and pictures' folder (debug.menu_notes, else

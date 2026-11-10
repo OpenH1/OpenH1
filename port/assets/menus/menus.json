@@ -96,6 +96,7 @@
   "ce/main_menu.xml",
   "ce/shell.xml",
   "ce/strings.xml",
+  "model/settings.xml",
   "ce/port/bitmaps/text_button_background__0.png",
   "ce/port/bitmaps/text_button_background__1.png",
   "ce/port/blank__0.png",

@@ -1,0 +1,470 @@
+/*
+MENU_MODEL.C
+
+The menu engine's model (halo_menus.h; docs/menu_engine.md): the files in
+the menus' model folder (port/assets/menus/model, which
+tools/port_settings.py writes beside the menus' XML, or a menus folder's
+file of the same name) read with Expat into screens, their rows and their
+choices, for the game's menu engine (port/linux/game/menu_engine.c).
+
+As with the menus' files (menu_files.c), only the files' shape is checked
+here: their elements and attributes, and numbers. A problem is logged with
+the file and line, and then there is no model: the engine leaves the screens
+to the game's widgets.
+*/
+
+#include "halo_menus.h"
+#include "platform.h"
+
+#include "expat.h"
+
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+enum model_element
+{
+	_model_none,
+	_model_model,
+	_model_geometry,
+	_model_screen,
+	_model_about,
+	_model_row,
+	_model_help,
+	_model_note,
+	_model_choice,
+};
+
+#define MODEL_MAXIMUM_DEPTH 8
+
+struct model_reader
+{
+	struct halo_menu_model model;
+	char const *file;
+	XML_Parser parser;
+	int failed;
+	enum model_element elements[MODEL_MAXIMUM_DEPTH];
+	int depth;
+	/* the text of the open <about>, <help> or <note> */
+	char *text;
+	size_t text_length;
+	/* the capacities of the model's arrays */
+	long screen_capacity, row_capacity, choice_capacity;
+};
+
+static struct halo_menu_model model;
+static int model_read;
+static int model_succeeded;
+
+static void model_error(struct model_reader *reader, char const *format, char const *detail)
+{
+	char message[512];
+
+	snprintf(message, sizeof(message), format, detail);
+	if (!reader->failed)
+	{
+		platform_log("menus: %s:%lu: %s", reader->file, (unsigned long)XML_GetCurrentLineNumber(reader->parser),
+			message);
+	}
+	reader->failed = 1;
+	XML_StopParser(reader->parser, XML_FALSE);
+}
+
+static char *model_copy(char const *text)
+{
+	size_t length = strlen(text);
+	char *result = malloc(length + 1);
+
+	if (result)
+		memcpy(result, text, length + 1);
+	return result;
+}
+
+/* room for one more in an array of size each, count of capacity */
+static int model_grow(struct model_reader *reader, void **array, long count, long *capacity, size_t size)
+{
+	void *grown;
+	long wanted;
+
+	if (count < *capacity)
+		return 1;
+	wanted = *capacity ? *capacity * 2 : 64;
+	grown = realloc(*array, (size_t)wanted * size);
+	if (!grown)
+	{
+		model_error(reader, "out of memory%s", "");
+		return 0;
+	}
+	*array = grown;
+	*capacity = wanted;
+	return 1;
+}
+
+static int model_long(struct model_reader *reader, char const *text, long *value)
+{
+	char *end;
+
+	errno = 0;
+	*value = strtol(text, &end, 10);
+	if (!*text || *end || errno == ERANGE || *value < -32768 || *value > 32767)
+	{
+		model_error(reader, "\"%s\" is not a whole number from -32768 to 32767", text);
+		return 0;
+	}
+	return 1;
+}
+
+static int model_real(struct model_reader *reader, char const *text, double *value)
+{
+	char *end;
+
+	*value = strtod(text, &end);
+	if (!*text || *end)
+	{
+		model_error(reader, "\"%s\" is not a number", text);
+		return 0;
+	}
+	return 1;
+}
+
+static int model_flag(struct model_reader *reader, char const *text, long *value)
+{
+	if (strcmp(text, "true") && strcmp(text, "false"))
+	{
+		model_error(reader, "\"%s\" is not true or false", text);
+		return 0;
+	}
+	*value = !strcmp(text, "true");
+	return 1;
+}
+
+/* an attribute an element may have: text, a whole number, a number or a
+flag (true or false) */
+struct model_attribute
+{
+	char const *name;
+	char const **text;
+	long *number;
+	double *real;
+	long *flag;
+};
+
+static void model_attributes(struct model_reader *reader, char const *element, XML_Char const **attributes,
+	struct model_attribute const *table, size_t count)
+{
+	int index;
+
+	for (index = 0; attributes[index] && !reader->failed; index += 2)
+	{
+		char const *name = attributes[index], *value = attributes[index + 1];
+		size_t field;
+
+		for (field = 0; field < count && strcmp(name, table[field].name); field++)
+			;
+		if (field == count)
+		{
+			char detail[160];
+
+			snprintf(detail, sizeof(detail), "<%s> has no attribute %s", element, name);
+			model_error(reader, "%s", detail);
+		}
+		else if (table[field].text)
+		{
+			*table[field].text = model_copy(value);
+			if (!*table[field].text)
+				model_error(reader, "out of memory%s", "");
+		}
+		else if (table[field].number)
+			model_long(reader, value, table[field].number);
+		else if (table[field].real)
+			model_real(reader, value, table[field].real);
+		else
+			model_flag(reader, value, table[field].flag);
+	}
+}
+
+static void model_geometry(struct model_reader *reader, XML_Char const **attributes)
+{
+	struct halo_menu_model_geometry *geometry = &reader->model.geometry;
+	struct model_attribute table[] =
+	{
+		{ "row_x", NULL, &geometry->row_x }, { "row_width", NULL, &geometry->row_width },
+		{ "row_height", NULL, &geometry->row_height }, { "row_step", NULL, &geometry->row_step },
+		{ "section_height", NULL, &geometry->section_height }, { "section_step", NULL, &geometry->section_step },
+		{ "section_gap", NULL, &geometry->section_gap }, { "tab_top", NULL, &geometry->tab_top },
+		{ "page_top", NULL, &geometry->page_top }, { "rows_bottom", NULL, &geometry->rows_bottom },
+		{ "spinner_x", NULL, &geometry->spinner_x }, { "spinner_width", NULL, &geometry->spinner_width },
+	};
+
+	model_attributes(reader, "geometry", attributes, table, sizeof(table) / sizeof(*table));
+}
+
+static void model_screen(struct model_reader *reader, XML_Char const **attributes)
+{
+	struct halo_menu_model_screen screen;
+	struct model_attribute table[] =
+	{
+		{ "name", &screen.name }, { "kind", &screen.kind }, { "layout", &screen.layout }, { "tab", &screen.tab },
+		{ "title", &screen.title }, { "spacing", NULL, &screen.spacing },
+		{ "platform_places", NULL, NULL, NULL, &screen.platform_places },
+		{ "profile", NULL, NULL, NULL, &screen.profile },
+	};
+
+	memset(&screen, 0, sizeof(screen));
+	model_attributes(reader, "screen", attributes, table, sizeof(table) / sizeof(*table));
+	if (!reader->failed && (!screen.name || !screen.kind))
+		model_error(reader, "a <screen> needs a name and a kind%s", "");
+	if (reader->failed || !model_grow(reader, (void **)&reader->model.screens, reader->model.screen_count,
+		&reader->screen_capacity, sizeof(screen)))
+		return;
+	screen.first_row = reader->model.row_count;
+	screen.file = reader->file;
+	screen.line = (long)XML_GetCurrentLineNumber(reader->parser);
+	reader->model.screens[reader->model.screen_count++] = screen;
+}
+
+/* a <row>, <section> or <button> of the screen open */
+static void model_row(struct model_reader *reader, char const *element, XML_Char const **attributes)
+{
+	struct halo_menu_model_row row;
+	struct model_attribute table[] =
+	{
+		{ "kind", &row.kind }, { "key", &row.key }, { "setting", &row.setting }, { "label", &row.label },
+		{ "title", &row.title }, { "when", &row.when }, { "open", &row.open }, { "run", &row.run },
+		{ "help", &row.help },
+		{ "same_place", NULL, NULL, NULL, &row.same_place }, { "not_in_vr", NULL, NULL, NULL, &row.not_in_vr },
+		{ "named", NULL, NULL, NULL, &row.named }, { "status", NULL, NULL, NULL, &row.status },
+		{ "least", NULL, NULL, &row.least }, { "most", NULL, NULL, &row.most }, { "step", NULL, NULL, &row.step },
+		{ "typed_least", NULL, NULL, &row.typed_least }, { "typed_most", NULL, NULL, &row.typed_most },
+		{ "whole", NULL, NULL, NULL, &row.whole },
+	};
+	struct halo_menu_model_screen *screen;
+
+	memset(&row, 0, sizeof(row));
+	model_attributes(reader, element, attributes, table, sizeof(table) / sizeof(*table));
+	if (reader->failed)
+		return;
+	if (!row.key)
+	{
+		model_error(reader, "a <%s> needs a key", element);
+		return;
+	}
+	if (!strcmp(element, "section"))
+		row.kind = "section";
+	else if (!strcmp(element, "button"))
+	{
+		row.label = row.kind;
+		row.kind = "button";
+	}
+	else if (!row.kind)
+	{
+		model_error(reader, "a <row> needs a kind%s", "");
+		return;
+	}
+	if (!model_grow(reader, (void **)&reader->model.rows, reader->model.row_count, &reader->row_capacity,
+		sizeof(row)))
+		return;
+	row.first_choice = reader->model.choice_count;
+	row.file = reader->file;
+	row.line = (long)XML_GetCurrentLineNumber(reader->parser);
+	reader->model.rows[reader->model.row_count++] = row;
+	screen = &reader->model.screens[reader->model.screen_count - 1];
+	screen->row_count++;
+}
+
+static void model_choice(struct model_reader *reader, XML_Char const **attributes)
+{
+	struct halo_menu_model_choice choice;
+	struct model_attribute table[] = { { "shown", &choice.shown }, { "value", &choice.value } };
+
+	memset(&choice, 0, sizeof(choice));
+	model_attributes(reader, "choice", attributes, table, sizeof(table) / sizeof(*table));
+	if (!reader->failed && (!choice.shown || !choice.value))
+		model_error(reader, "a choice needs what it shows and its value%s", "");
+	if (reader->failed || !model_grow(reader, (void **)&reader->model.choices, reader->model.choice_count,
+		&reader->choice_capacity, sizeof(choice)))
+		return;
+	reader->model.choices[reader->model.choice_count++] = choice;
+	reader->model.rows[reader->model.row_count - 1].choice_count++;
+}
+
+static void XMLCALL model_start(void *data, XML_Char const *name, XML_Char const **attributes)
+{
+	struct model_reader *reader = data;
+	enum model_element parent = reader->depth ? reader->elements[reader->depth - 1] : _model_none;
+	enum model_element element = _model_none;
+
+	if (reader->failed)
+		return;
+	if (reader->depth == MODEL_MAXIMUM_DEPTH)
+	{
+		model_error(reader, "elements nested too deeply%s", "");
+		return;
+	}
+	if (!strcmp(name, "model") && parent == _model_none)
+		element = _model_model;
+	else if (!strcmp(name, "geometry") && parent == _model_model)
+	{
+		element = _model_geometry;
+		model_geometry(reader, attributes);
+	}
+	else if (!strcmp(name, "screen") && parent == _model_model)
+	{
+		element = _model_screen;
+		model_screen(reader, attributes);
+	}
+	else if (!strcmp(name, "about") && parent == _model_screen)
+		element = _model_about;
+	else if ((!strcmp(name, "row") || !strcmp(name, "section") || !strcmp(name, "button")) &&
+		parent == _model_screen)
+	{
+		element = _model_row;
+		model_row(reader, name, attributes);
+	}
+	else if (!strcmp(name, "help") && parent == _model_row)
+		element = _model_help;
+	else if (!strcmp(name, "note") && parent == _model_row)
+		element = _model_note;
+	else if ((!strcmp(name, "choice") || !strcmp(name, "stop")) && parent == _model_row)
+	{
+		element = _model_choice;
+		model_choice(reader, attributes);
+	}
+	if (element == _model_none)
+	{
+		model_error(reader, "<%s> cannot be here", name);
+		return;
+	}
+	if ((element == _model_about || element == _model_help || element == _model_note) && attributes[0])
+		model_error(reader, "<%s> has no attributes", name);
+	reader->text_length = 0;
+	reader->elements[reader->depth++] = element;
+}
+
+static void XMLCALL model_end(void *data, XML_Char const *name)
+{
+	struct model_reader *reader = data;
+	enum model_element element;
+	char *text;
+
+	(void)name;
+	if (reader->failed || !reader->depth)
+		return;
+	element = reader->elements[--reader->depth];
+	if (element != _model_about && element != _model_help && element != _model_note)
+		return;
+	text = malloc(reader->text_length + 1);
+	if (!text)
+	{
+		model_error(reader, "out of memory%s", "");
+		return;
+	}
+	memcpy(text, reader->text ? reader->text : "", reader->text_length);
+	text[reader->text_length] = 0;
+	if (element == _model_about)
+		reader->model.screens[reader->model.screen_count - 1].about = text;
+	else if (element == _model_help)
+		reader->model.rows[reader->model.row_count - 1].help = text;
+	else
+		reader->model.rows[reader->model.row_count - 1].note = text;
+}
+
+static void XMLCALL model_text(void *data, XML_Char const *characters, int length)
+{
+	struct model_reader *reader = data;
+	enum model_element element = reader->depth ? reader->elements[reader->depth - 1] : _model_none;
+	char *grown;
+	int index;
+
+	if (reader->failed)
+		return;
+	if (element != _model_about && element != _model_help && element != _model_note)
+	{
+		for (index = 0; index < length; index++)
+		{
+			if (!strchr(" \t\r\n", characters[index]))
+			{
+				model_error(reader, "text belongs in <about>, <help> or <note>%s", "");
+				return;
+			}
+		}
+		return;
+	}
+	grown = realloc(reader->text, reader->text_length + (size_t)length + 1);
+	if (!grown)
+	{
+		model_error(reader, "out of memory%s", "");
+		return;
+	}
+	reader->text = grown;
+	memcpy(reader->text + reader->text_length, characters, (size_t)length);
+	reader->text_length += (size_t)length;
+}
+
+static void model_file(struct model_reader *reader, char const *path, unsigned char const *data, unsigned long size)
+{
+	reader->file = path;
+	reader->depth = 0;
+	reader->parser = XML_ParserCreate("UTF-8");
+	if (!reader->parser)
+	{
+		platform_log("menus: %s: no XML parser (out of memory)", path);
+		reader->failed = 1;
+		return;
+	}
+	XML_SetUserData(reader->parser, reader);
+	XML_SetElementHandler(reader->parser, model_start, model_end);
+	XML_SetCharacterDataHandler(reader->parser, model_text);
+	if (XML_Parse(reader->parser, (char const *)data, (int)size, XML_TRUE) == XML_STATUS_ERROR && !reader->failed)
+	{
+		platform_log("menus: %s:%lu:%lu: %s", path, (unsigned long)XML_GetCurrentLineNumber(reader->parser),
+			(unsigned long)XML_GetCurrentColumnNumber(reader->parser),
+			XML_ErrorString(XML_GetErrorCode(reader->parser)));
+		reader->failed = 1;
+	}
+	XML_ParserFree(reader->parser);
+}
+
+struct halo_menu_model const *halo_menus_model(void)
+{
+	struct model_reader reader;
+	char const *path;
+	unsigned char const *data;
+	unsigned long size;
+	long index;
+
+	if (model_read)
+		return model_succeeded ? &model : NULL;
+	model_read = 1;
+	if (!halo_menus_load())
+		return NULL;
+	memset(&reader, 0, sizeof(reader));
+	for (index = 0; !reader.failed && halo_menus_file_at(index, &path, &data, &size); index++)
+	{
+		size_t length = strlen(path);
+
+		if (!strncmp(path, HALO_MENU_MODEL_FOLDER, strlen(HALO_MENU_MODEL_FOLDER)) && length > 4 &&
+			!strcmp(path + length - 4, ".xml"))
+			model_file(&reader, path, data, size);
+	}
+	free(reader.text);
+	if (reader.failed || !reader.model.screen_count)
+	{
+		if (reader.failed)
+			platform_log("menus: the model has a problem; the menus run on the game's widgets");
+		return NULL;
+	}
+	model = reader.model;
+	model_succeeded = 1;
+	platform_log("menus: the model has %ld screens, %ld rows", model.screen_count, model.row_count);
+	return &model;
+}
+
+/* the model read again with the menus (halo_menus_reload: the menu studio's) */
+void halo_menus_model_forget(void)
+{
+	model_read = 0;
+	model_succeeded = 0;
+	memset(&model, 0, sizeof(model));
+}
