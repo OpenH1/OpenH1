@@ -229,6 +229,7 @@ struct pc_menu_setting
 };
 
 struct pc_menu_setting *pc_menu_setting_get(long definition_index);
+long pc_menu_setting_values(char const *setting, char const **values, long count);
 /* sdl_platform.c's: whether fullscreen can set the display's refresh rate */
 int platform_refresh_rates_settable(void);
 /* the menus' pointer, their latest click on an item and the latest place
@@ -265,6 +266,91 @@ ui_widget_load_children_recursive) */
 static boolean spinner_item(struct widget_instance const *widget)
 {
 	return widget->parent && widget->parent->definition_tag_index == widget->definition_tag_index;
+}
+
+/* the settings of Settings' spinners, from their rows in the menus' model
+(docs/menu_engine.md): each a choice row's setting, its values its choices'
+(and the platform's, as the spinners' are), and its value as it was loaded
+kept with the row, not with the spinner's widget definition; made the first
+time a row's is asked for, and made again with the next tags, as the widget
+definitions' are (menu_tags.c) */
+#define SETTINGS_MAXIMUM_CHOICES 512
+/* the size of a widget's name as its instance has it: its definition's,
+cut short (menu_tags.c's definitions' name[32]: a long key's spinner,
+mouse_vertical_sensitivity_spinner, is mouse_vertical_sensitivity_spin) */
+#define SETTINGS_WIDGET_NAME_SIZE 32
+
+/* a row's widget's name (its prefix, key and suffix) as its instance has it */
+static void settings_widget_name(char *name, size_t size, char const *prefix, char const *key, char const *suffix)
+{
+	snprintf(name, size < SETTINGS_WIDGET_NAME_SIZE ? size : SETTINGS_WIDGET_NAME_SIZE, "%s%s%s", prefix, key, suffix);
+}
+
+static struct
+{
+	struct halo_menu_model const *model;
+	unsigned long generation;
+	struct halo_menu_model_row const *rows[SETTINGS_MAXIMUM_CHOICES];
+	struct pc_menu_setting settings[SETTINGS_MAXIMUM_CHOICES];
+	long count;
+} settings_rows;
+
+static struct pc_menu_setting *settings_row_setting(struct halo_menu_model_row const *row)
+{
+	struct halo_menu_model const *model = menu_engine_model();
+	struct pc_menu_setting *setting;
+	long index, choice;
+
+	if (!model || !row || !row->setting || strcmp(row->kind, "choice"))
+		return NULL;
+	if (settings_rows.model != model)
+	{
+		settings_rows.model = model;
+		settings_rows.count = 0;
+	}
+	if (settings_rows.generation != cache_files_tags_generation())
+	{
+		settings_rows.generation = cache_files_tags_generation();
+		settings_rows.count = 0;
+	}
+	for (index = 0; index < settings_rows.count; index++)
+	{
+		if (settings_rows.rows[index] == row)
+			return &settings_rows.settings[index];
+	}
+	if (settings_rows.count == SETTINGS_MAXIMUM_CHOICES)
+		return NULL;
+	index = settings_rows.count++;
+	settings_rows.rows[index] = row;
+	setting = &settings_rows.settings[index];
+	memset(setting, 0, sizeof(*setting));
+	setting->definition_index = NONE;
+	setting->setting = row->setting;
+	setting->loaded_index = NONE;
+	for (choice = 0; choice < row->choice_count && choice < MAXIMUM_STRINGS; choice++)
+		setting->values[choice] = model->choices[row->first_choice + choice].value;
+	/* (and those the platform adds, as the spinners' are: menu_tags.c) */
+	setting->value_count = pc_menu_setting_values(row->setting, setting->values, choice);
+	return setting;
+}
+
+/* a spinner's setting: its row's in the model (the spinner <key>_spinner of
+the row op_<key>), else its widget definition's (the lobby's, whose screen
+the model has not: menu_tags.c's) */
+static struct pc_menu_setting *settings_setting_of(struct widget_instance *spinner)
+{
+	struct halo_menu_model_row const *row;
+	struct pc_menu_setting *setting = NULL;
+	char name[80];
+
+	if (!spinner)
+		return NULL;
+	row = spinner->parent ? menu_engine_model_row_of(spinner->parent) : NULL;
+	if (row)
+		settings_widget_name(name, sizeof(name), "", row->key, "_spinner");
+	if (row && spinner->name && !strcmp(spinner->name, name))
+		setting = settings_row_setting(row);
+	return setting ? setting : pc_menu_setting_get(spinner->definition_tag_index);
 }
 
 /* the value shown for the setting's: the same one, else the nearest number */
@@ -614,7 +700,7 @@ static void settings_pending_clear(void)
 
 static boolean setting_load(struct widget_instance *widget)
 {
-	struct pc_menu_setting *setting = pc_menu_setting_get(widget->definition_tag_index);
+	struct pc_menu_setting *setting = settings_setting_of(widget);
 	char current[300];
 	char const *pending;
 
@@ -640,7 +726,7 @@ static boolean setting_load(struct widget_instance *widget)
 
 static boolean setting_save(struct widget_instance *widget)
 {
-	struct pc_menu_setting *setting = pc_menu_setting_get(widget->definition_tag_index);
+	struct pc_menu_setting *setting = settings_setting_of(widget);
 
 	if (spinner_item(widget))
 		return TRUE;
@@ -1689,9 +1775,11 @@ static boolean saved_game_delete(short controller)
 }
 
 /* the settings' screens (tools/port_settings.py): every spinner of a
-setting in the screen */
-static void settings_each(struct widget_instance *widget, boolean (*visit)(struct widget_instance *spinner,
-	struct pc_menu_setting *setting))
+setting in the screen, by its row in the screen's model (each choice row's
+of a setting, in the rows' order, which is the widgets'), or for a screen
+the model has none of, by its widgets' definitions */
+static void settings_each_definition(struct widget_instance *widget,
+	boolean (*visit)(struct widget_instance *spinner, struct pc_menu_setting *setting))
 {
 	struct widget_instance *child;
 
@@ -1703,8 +1791,35 @@ static void settings_each(struct widget_instance *widget, boolean (*visit)(struc
 		if (setting)
 			visit(child, setting);
 		else
-			settings_each(child, visit);
+			settings_each_definition(child, visit);
 	}
+}
+
+static void settings_each(struct widget_instance *widget, boolean (*visit)(struct widget_instance *spinner,
+	struct pc_menu_setting *setting))
+{
+	struct halo_menu_model_screen const *screen = menu_engine_model_screen_of(widget);
+	struct halo_menu_model const *model = menu_engine_model();
+	boolean rows = FALSE;
+	long index;
+
+	for (index = 0; screen && model && index < screen->row_count; index++)
+	{
+		struct halo_menu_model_row const *row = &model->rows[screen->first_row + index];
+		struct pc_menu_setting *setting = settings_row_setting(row);
+		struct widget_instance *spinner;
+		char name[80];
+
+		if (!setting)
+			continue;
+		rows = TRUE;
+		settings_widget_name(name, sizeof(name), "", row->key, "_spinner");
+		spinner = named(widget, name, 0);
+		if (spinner && spinner->type == 2 && !spinner_item(spinner))
+			visit(spinner, setting);
+	}
+	if (!rows)
+		settings_each_definition(widget, visit);
 }
 
 static struct widget_instance *screen_of(struct widget_instance *widget)
@@ -1778,7 +1893,7 @@ static void row_dim(struct widget_instance *row, struct widget_instance *spinner
 	/* (the row still takes the cursor, so that its panel says why; its
 	value held where it was loaded while it is dimmed: a press changes
 	nothing) */
-	setting = pc_menu_setting_get(spinner->definition_tag_index);
+	setting = settings_setting_of(spinner);
 	if (dim && setting && setting->loaded_index >= 0 && setting->loaded_index < setting->value_count)
 		spinner->parameters.list.selected_index = setting->loaded_index;
 	if (spinner->disabled == dim)
@@ -1870,7 +1985,7 @@ is so */
 static void graphics_preset_show(struct widget_instance *list)
 {
 	struct widget_instance *spinner = named(list, "graphics_spinner", 0);
-	struct pc_menu_setting *setting = spinner ? pc_menu_setting_get(spinner->definition_tag_index) : NULL;
+	struct pc_menu_setting *setting = settings_setting_of(spinner);
 	short index, custom, count;
 	char base[64];
 
@@ -1983,7 +2098,7 @@ static void sim_rate_row_show(struct widget_instance *list)
 {
 	struct widget_instance *row = named(list, "op_sim_rate", 0);
 	struct widget_instance *spinner = named(list, "sim_rate_spinner", 0);
-	struct pc_menu_setting *setting = spinner ? pc_menu_setting_get(spinner->definition_tag_index) : NULL;
+	struct pc_menu_setting *setting = settings_setting_of(spinner);
 	boolean locked = sim_rate_locked();
 	struct widget_instance *child;
 	short index;
@@ -2337,7 +2452,7 @@ static boolean settings_condition_term(struct widget_instance *list, char const 
 
 		snprintf(name, sizeof(name), "%.*s_spinner", (int)key, term);
 		spinner = named(list, name, 0);
-		setting = spinner ? pc_menu_setting_get(spinner->definition_tag_index) : NULL;
+		setting = settings_setting_of(spinner);
 		index = spinner ? spinner->parameters.list.selected_index : NONE;
 		if (spinner && !setting && length - key - 1 > 0 && length - key - 1 < 6 &&
 			strspn(equals + 1, "0123456789") >= length - key - 1)
@@ -3433,7 +3548,7 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		/* (Quality: CLASSIC or ENHANCED framed, neither for CUSTOM) */
 		if (!strcmp(row->name, "op_graphics") && spinner)
 		{
-			struct pc_menu_setting *setting = pc_menu_setting_get(spinner->definition_tag_index);
+			struct pc_menu_setting *setting = settings_setting_of(spinner);
 			short shown = spinner->parameters.list.selected_index;
 
 			stills = TRUE;
