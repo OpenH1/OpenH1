@@ -2177,27 +2177,35 @@ places under its name (_settings_shared) */
 the room kept clear above it, inside its rim */
 #define SETTINGS_PANEL_BOTTOM 400
 #define SETTINGS_PANEL_TEXT_MARGIN 6
-#define SETTINGS_FOLDER "pc\\main_menu\\settings_select\\player_setup\\player_profile_edit\\"
 #define SETTINGS_SHARED "pc\\main_menu\\settings\\"
 /* the link rows' sign, after their labels (U+203A) */
 #define SETTINGS_LINK_SIGN 0x203A
 
-/* the tabs in order: each one's folder (below the profile menu's, whose
-screens they replace) and screen */
-static struct
+/* the tabs, in order: the model's screens laid out as tabs
+(tools/port_settings.py's PAGES' tabs), the tab'th (NULL: none) */
+static struct halo_menu_model_screen const *settings_tab_screen(short tab)
 {
-	char const *folder;
-	char const *screen;
-} const settings_tabs[] =
+	struct halo_menu_model const *model = menu_engine_model();
+	long index;
+
+	for (index = 0; model && index < model->screen_count && tab >= 0; index++)
+	{
+		struct halo_menu_model_screen const *screen = &model->screens[index];
+
+		if (screen->layout && !strcmp(screen->layout, "tab") && tab-- == 0)
+			return screen;
+	}
+	return NULL;
+}
+
+static short settings_tab_count(void)
 {
-	{ "video_settings", "video_settings_screen" },
-	{ "audio_settings", "audio_settings_screen" },
-	{ "mouse_settings", "mouse_settings_screen" },
-	{ "network_setup", "network_settings_screen" },
-	{ "interface_settings", "interface_settings_screen" },
-	{ "profile_settings", "profile_settings_screen" },
-	{ "mods_settings", "mods_settings_screen" },
-};
+	short count = 0;
+
+	while (settings_tab_screen(count))
+		count++;
+	return count;
+}
 
 static struct
 {
@@ -2211,11 +2219,12 @@ static struct
 
 static short settings_tab_of(struct widget_instance const *screen)
 {
+	struct halo_menu_model_screen const *model = menu_engine_model_screen_of(screen);
 	short tab;
 
-	for (tab = 0; tab < (short)NUMBEROF(settings_tabs); tab++)
+	for (tab = 0; model && settings_tab_screen(tab); tab++)
 	{
-		if (screen->name && !strcmp(screen->name, settings_tabs[tab].screen))
+		if (settings_tab_screen(tab) == model)
 			return tab;
 	}
 	return NONE;
@@ -2277,14 +2286,23 @@ static void settings_pending_write(boolean finish)
 static boolean settings_tab_open(struct widget_instance *widget, short tab, boolean *widget_deleted)
 {
 	struct widget_instance *screen = screen_of(widget);
-	short count = (short)NUMBEROF(settings_tabs);
+	short count = settings_tab_count();
 	char name[256];
+	short index;
 
+	if (!count)
+		return FALSE;
 	tab = (short)((tab + count) % count);
 	if (tab == settings_tab_of(screen))
 		return TRUE;
 	settings_each(screen, setting_stash);
-	snprintf(name, sizeof(name), SETTINGS_FOLDER "%s\\%s", settings_tabs[tab].folder, settings_tabs[tab].screen);
+	/* (its tag's name: the model's, with the menus' prefix) */
+	snprintf(name, sizeof(name), "pc\\%s", settings_tab_screen(tab)->name);
+	for (index = 0; name[index]; index++)
+	{
+		if (name[index] == '/')
+			name[index] = '\\';
+	}
 	ui_play_audio_feedback_sound(SOUND_CURSOR);
 	return ui_widget_port_switch(widget, name, widget_deleted);
 }
@@ -2760,6 +2778,25 @@ static void settings_wide_copy(wchar_t *to, wchar_t const *from, short size)
 	for (; from && *from && length < size - 1; from++)
 		to[length++] = *from;
 	to[length] = 0;
+}
+
+/* a text of the model's in UTF-16, in one of two buffers (NULL: none) */
+static wchar_t const *settings_model_text(char const *text, short buffer)
+{
+	static wchar_t texts[2][SETTINGS_PANEL_TEXT_LENGTH];
+
+	if (!text || buffer < 0 || buffer > 1)
+		return NULL;
+	halo_menus_utf16(text, (unsigned short *)texts[buffer], SETTINGS_PANEL_TEXT_LENGTH);
+	return texts[buffer];
+}
+
+/* whether a row is the model's row of the key (on its screen) */
+static boolean settings_row_is(struct widget_instance const *row, char const *key)
+{
+	struct halo_menu_model_row const *model_row = menu_engine_model_row_of(row);
+
+	return model_row && !strcmp(model_row->key, key);
 }
 
 /* how wide the text is drawn in the font */
@@ -3454,16 +3491,39 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		return;
 	if (!strcmp(row->name, "tabs") && row->focused_child)
 	{
-		index = sibling_index(row->focused_child);
+		/* (a tab's name and words: its screen's in the model) */
+		struct halo_menu_model_screen const *shown = settings_tab_screen(sibling_index(row->focused_child));
+
 		settings_wide_copy(name, L"SETTINGS", ROW_TEXT_LENGTH);
-		settings_wide_copy(value, settings_string(SETTINGS_SHARED "tab_names", index), ROW_TEXT_LENGTH);
-		help = settings_string(SETTINGS_SHARED "tab_about", index);
+		settings_wide_copy(value, settings_model_text(shown ? shown->tab : NULL, 0), ROW_TEXT_LENGTH);
+		help = settings_model_text(shown ? shown->about : NULL, 1);
 	}
 	else if (!strcmp(row->name, "button_bar") && row->focused_child)
 	{
-		index = sibling_index(row->focused_child);
+		/* (a button's words: the screen's button's in the model, the
+		index'th) */
+		struct halo_menu_model_screen const *screen = menu_engine_model_screen_of(list);
+		struct halo_menu_model const *model = menu_engine_model();
+		short button = sibling_index(row->focused_child);
+
 		settings_wide_copy(name, settings_widget_text(row->focused_child, NONE), ROW_TEXT_LENGTH);
-		help = settings_string(SETTINGS_SHARED "button_help", (short)((tab == NONE ? 3 : 0) + index));
+		for (index = 0; screen && model && index < screen->row_count; index++)
+		{
+			struct halo_menu_model_row const *model_row = &model->rows[screen->first_row + index];
+
+			if (!strcmp(model_row->kind, "button") && button-- == 0)
+			{
+				help = settings_model_text(model_row->help, 1);
+				break;
+			}
+		}
+		/* (a screen whose model has no buttons: the menus' words for a
+		page's) */
+		if (!help)
+		{
+			help = settings_string(SETTINGS_SHARED "button_help",
+				(short)((tab == NONE ? 3 : 0) + sibling_index(row->focused_child)));
+		}
 	}
 	else if (!strncmp(row->name, "op_", 3))
 	{
@@ -3497,18 +3557,18 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 				value[length] = (wchar_t)number[length];
 			value[length] = 0;
 		}
-		else if (profile && !strcmp(row->name, "op_name"))
+		else if (profile && settings_row_is(row, "name"))
 		{
 			ustrncpy(value, profile->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH);
 			value[MAXIMUM_PLAYER_PROFILE_NAME_LENGTH] = 0;
 		}
-		else if (profile && !strcmp(row->name, "op_color") && profile->primary_color_index == NONE)
+		else if (profile && settings_row_is(row, "color") && profile->primary_color_index == NONE)
 		{
 			/* (a new profile's: no colour chosen, so the host gives the player
 			one no one else has, network_server_manager.c's get_unique_random_color) */
 			settings_wide_copy(value, L"Random", ROW_TEXT_LENGTH);
 		}
-		else if (profile && !strcmp(row->name, "op_color"))
+		else if (profile && settings_row_is(row, "color"))
 		{
 			string_get("pc\\main_menu\\settings_select\\player_setup\\player_profile_edit\\color_edit\\colors_list",
 				profile->primary_color_index, value);
@@ -3534,7 +3594,7 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 			controls_panel(row, name, value, &help);
 		row_spinner = spinner;
 		/* (Quality: CLASSIC or ENHANCED framed, neither for CUSTOM) */
-		if (!strcmp(row->name, "op_graphics") && spinner)
+		if (settings_row_is(row, "graphics") && spinner)
 		{
 			struct pc_menu_setting *setting = settings_setting_of(spinner);
 			short shown = spinner->parameters.list.selected_index;

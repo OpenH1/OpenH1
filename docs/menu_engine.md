@@ -334,7 +334,9 @@ The steps, in order:
    Done so far: Settings' spinners' settings from their model rows
    (`settings_each`, `settings_setting_of`: each choice row's setting and
    its choices, the value it was loaded at kept with the row, not the
-   spinner's widget definition).
+   spinner's widget definition); the tabs, the model's screens laid out
+   as tabs (`settings_tab_screen`: the table `settings_tabs` gone), and the
+   panel's words for a tab and a button from the model.
 5. **The switch**: `"new"` the default, played for a while; then the
    generated screens' widget XML no longer written, `display.menu_engine`
    retired.
