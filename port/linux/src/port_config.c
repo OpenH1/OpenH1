@@ -1192,6 +1192,11 @@ static const struct config_setting config_settings[] =
 		"split screen and games with bots. Network games play at the rate they\n"
 		"agreed on (a Legacy game's 30, an OpenH1 game's network.sim_rate), and\n"
 		"saved films at 30, whatever this is." },
+	{ "game.priority", _config_string, "\"normal\"", "HALO_PRIORITY", _environment_value, _platform_guest,
+		"Linux: \"normal\" runs the game at the normal priority whatever its\n"
+		"launcher's (a launcher run at a low one, as CachyOS runs Steam, left the\n"
+		"game behind every other program's work); \"inherit\" keeps the\n"
+		"launcher's. Read by the host as it starts (port/android/host/host_common.c)." },
 	{ "game.map_cache_megabytes", _config_integer, "0", "HALO_MAP_CACHE_MEGABYTES", _environment_value, _platform_all,
 		"The most the decompressed maps the game keeps (the save folder's z/)\n"
 		"may take of the disk, in MB. 0 (Settings' Instant Loading): every\n"
@@ -4325,6 +4330,7 @@ static const struct
 	{ "input.zoom_sensitivity", { "cs2", "halo", NULL }, "cs2" },
 	{ "game.console_log", { "important", "all", "none", NULL }, NULL },
 	{ "game.spectate_on_death", { "teammates", "off", NULL }, NULL },
+	{ "game.priority", { "normal", "inherit", NULL }, NULL },
 	{ "game.language", { "", "ja", "de", "fr", "es", "it", NULL }, NULL },
 	{ "network.game_mode", { "openh1", "legacy", "standard", NULL }, NULL },
 	{ "server.game_mode", { "openh1_120", "openh1_60", "openh1_30", "legacy", NULL }, NULL },
