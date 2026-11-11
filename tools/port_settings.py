@@ -3124,8 +3124,8 @@ def _join_game_extras() -> list:
     password screen"""
     base = f"{MT}/join_game"
     lines = _password_screen()
-    lines += _header(f"{base}/header_server_browser", f"{base}/header_server_browser", box=BROWSER_TITLE)
-    lines += _header(f"{base}/header_direct_link", f"{base}/header_direct_link", box=BROWSER_TITLE)
+    lines += _browser_title(f"{base}/header_server_browser", f"{base}/header_server_browser")
+    lines += _browser_title(f"{base}/header_direct_link", f"{base}/header_direct_link")
     lines += _connect_screen()
     # (each row's star: _browser puts it in the rows)
     lines += _widget(FAVORITE_STAR_WIDGET, [("width", 16), ("height", 18), ("bitmap", FAVORITE_STAR)], [])
@@ -4543,14 +4543,19 @@ BROWSER_PANEL = (440, 104, 172, 296)
 # top, width, height: the PC version's titles' place, _header's), the
 # counts', the tabs', the words for none's and the footer's
 BROWSER_TITLE = (35, 11, 363, 59)
+# (and their background, and whether their titles are words in the slim
+# header, tall_title, rather than the PC version's pictures)
+BROWSER_BACKGROUND = "bitmaps/gradient"
+BROWSER_TITLE_WORDS = False
 BROWSER_COUNTS_TOP = 46
 BROWSER_TABS_TOP = SETTINGS_TABS_TOP
 BROWSER_EMPTY_TOP = 200
 BROWSER_FOOTER_TOP = 414
 # The menu engine's own layout of the server browser and PRO 2V2's browser
 # (display.menu_engine "new" alone; the classic engine keeps the places
-# above: docs/menu_engine.md, "Deliberate differences"): the screen's
-# whole height, a slim title (its picture smaller) and the tabs under it,
+# above: docs/menu_engine.md, "Deliberate differences"), the tall layout's
+# parts (TALL_BAND...): the screen's whole height, the slim header (its
+# band, the title in words and the counts in it) and the tabs under it,
 # the footer at the very bottom, the list and the panel filling what is
 # between, each row taller (BROWSER_ROWS of them, scrolling beyond); and
 # on a screen wider than 16:9 the list, the panel, the title and the counts
@@ -4558,12 +4563,58 @@ BROWSER_FOOTER_TOP = 414
 # tabs and the footer as 16:9 has them. The same generator writes them, its
 # places these (_browser_geometry), and tools/menu_look.py writes the looks
 # of the widgets they change (tall_widgets) in place of ce/'s
+# ---------- the tall layout (the menu engine's: docs/menu_engine.md,
+# "Deliberate differences"), as Settings' tall layout has it: the slim
+# header, the top TALL_BAND units a dark band with its line under it, and
+# the footer's line TALL_FOOTER above the bottom (TALL_BACKGROUND, in place
+# of bitmaps/gradient, whose lines are at 70 and 409); the title in it as
+# words (tall_title); and past 16:9 a widget's past, "dx dw", which moves it
+# dx and widens it dw on a 21:9 screen past what its wide does at 16:9
+# (menu_tags.c's ui_widget_port_past_scale)
+TALL_BAND, TALL_FOOTER = 40, 37
+TALL_BACKGROUND = "main_menu/parts/background_tall"
+# (the extra width of a 21:9 screen past 16:9's)
+PAST_EXTRA = WIDE_SCREENS["21:9"] - WIDE_WIDTH
+PAST_HALF = PAST_EXTRA // 2
+
+
+def past(dx: float = 0, dw: float = 0):
+    """a widget's past attribute: moved dx, dw wider, on a 21:9 screen past 16:9 (None: neither)"""
+    return f"{round(dx)} {round(dw)}" if round(dx) or round(dw) else None
+
+
+def tall_title(name: str, strings: str, index: int) -> list:
+    """a screen's title in the slim header: its words (the index'th of a <strings>: a look's text is the strings
+    its widget in ce/ has, and a title's widget there has none) in the heading font (OpenCE, as the titles'
+    pictures set them, in their colour), from the screen's left margin at every width"""
+    return _widget(name, [("type", "text"), ("left", WIDE_MARGIN), ("top", 0), ("width", 640 - 2 * WIDE_MARGIN),
+                          ("height", TALL_BAND), ("string_list", strings), ("string_index", index or None),
+                          ("font", "heading"),
+                          ("color", "#FF%02X%02X%02X" % TITLE_COLOR[:3]),
+                          ("text_y", caps_text_y(TALL_BAND, large=True)),
+                          ("wide", WIDE_LEFT), ("past", past(-PAST_HALF))], [])
+
+
 BROWSER_TALL = {
-    "BROWSER_TITLE": (35, 6, 245, 40), "BROWSER_COUNTS_TOP": 22, "BROWSER_TABS_TOP": 48,
-    "BROWSER_HEADERS_TOP": 78, "BROWSER_ROWS_TOP": 98, "BROWSER_ROW_HEIGHT": 24, "BROWSER_ROW_STEP": 24,
-    "BROWSER_PANEL": (440, 78, 172, 358), "BROWSER_EMPTY_TOP": 226, "BROWSER_CLEAR_TOP": 314,
-    "BROWSER_FOOTER_TOP": 448,
+    "BROWSER_TITLE": (0, 0, 640, TALL_BAND), "BROWSER_TITLE_WORDS": True, "BROWSER_BACKGROUND": TALL_BACKGROUND,
+    "BROWSER_COUNTS_TOP": (TALL_BAND - 18) // 2, "BROWSER_TABS_TOP": TALL_BAND + 6, "BROWSER_HEADERS_TOP": 74,
+    "BROWSER_ROWS_TOP": 92, "BROWSER_ROW_HEIGHT": 24, "BROWSER_ROW_STEP": 24, "BROWSER_PANEL": (440, 74, 172, 362),
+    "BROWSER_EMPTY_TOP": 220, "BROWSER_CLEAR_TOP": 308, "BROWSER_FOOTER_TOP": 480 - TALL_FOOTER + 5,
 }
+# the browsers' titles' words in the slim header (tall_title), by their
+# titles' widgets
+BROWSER_TALL_TITLES = f"{MT}/join_game/tall_titles"
+BROWSER_TITLE_NAMES = {"header_lan": "LOCAL NETWORK", "header_direct_link": "JOIN BY LINK",
+                       "header_server_browser": "SERVER BROWSER", "header_doubles_browser": "PRO 2V2"}
+
+
+def _browser_title(name: str, bitmap: str) -> list:
+    """a browser's title (header_lan, ...): the PC version's picture in its
+    place (BROWSER_TITLE), or the tall layout's words (BROWSER_TITLE_WORDS)"""
+    short = name.rsplit("/", 1)[1]
+    if BROWSER_TITLE_WORDS:
+        return tall_title(name, BROWSER_TALL_TITLES, list(BROWSER_TITLE_NAMES).index(short))
+    return _header(name, bitmap, box=BROWSER_TITLE)
 BROWSER_COLUMNS = {
     "favorite": (6, 16), "server_name": (26, 110), "map": (140, 78), "type": (222, 60), "players": (284, 56),
     "ping": (344, 54),
@@ -4765,6 +4816,8 @@ def parts_pictures() -> list:
             'fill-opacity="0.45"/>']), HUB_ITEM[0], PART_SECTION_HEIGHT)]),
         *((part_panel(*panel[2:]), [(framed(*panel[2:], "#000e23", 0.88, "#2995ff", 9.5), *panel[2:])])
           for panel in (BROWSER_PANEL, BROWSER_TALL["BROWSER_PANEL"])),
+        # (the tall layout's background: BROWSER_TALL's)
+        (TALL_BACKGROUND, [(tall_background_svg(), 4, 512)]),
         (part_panel(*HUB_PANEL[2:]), [(framed(*HUB_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5), *HUB_PANEL[2:])]),
         *((part_pill(width), pill(width)) for width in (BROWSER_TICK_BADGE, BROWSER_PILL, BROWSER_WIDE_PILL)),
         (part_button(join_w, join_h), [(framed(join_w, join_h, "#1e5fd1", 0.9, "#5aa9ff"), join_w, join_h),
@@ -5057,7 +5110,7 @@ def _browser() -> list:
     inner_left, inner_width = panel_left + 12, panel_width - 24
     lines = _widget(f"{base}/join_game_screen",
                     [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child"),
-                     ("bitmap", "bitmaps/gradient")],
+                     ("bitmap", BROWSER_BACKGROUND)],
                     ['<on event="created" run="gamespy screen init"/>',
                      '<on event="deleted" run="gamespy screen dispose"/>',
                      '<on event="b" run="gamespy back handler"/>', '<on event="back" run="gamespy back handler"/>',
@@ -5081,10 +5134,12 @@ def _browser() -> list:
     # (the title of the mode chosen: menu_functions.c's browser_initialize)
     lines += _widget(f"{base}/header_join_game", [("controller", 1), ("left", BROWSER_TITLE[0]),
                                                   ("top", BROWSER_TITLE[1]), ("width", BROWSER_TITLE[2]),
-                                                  ("height", BROWSER_TITLE[3]), ("wide", WIDE_LEFT)],
+                                                  ("height", BROWSER_TITLE[3]),
+                                                  ("wide", None if BROWSER_TITLE_WORDS else WIDE_LEFT)],
                      [f'<child widget="{base}/{name}"/>' for name in
                       ("header_server_browser", "header_lan", "header_direct_link")])
-    lines += _header(f"{base}/header_lan", f"{base}/header_local_network", box=BROWSER_TITLE)
+    lines += _browser_title(f"{base}/header_lan", f"{base}/header_local_network")
+    lines += _strings(BROWSER_TALL_TITLES, list(BROWSER_TITLE_NAMES.values()))
     lines += _part_text(f"{base}/browser_counts", [("left", 372), ("top", BROWSER_COUNTS_TOP), ("width", 240),
                                                   ("height", 18),
                                                   ("font", "ui\\small_ui"), ("color", PART_DIM), ("align", "right"),
@@ -5311,13 +5366,32 @@ def _browsers() -> list:
 BROWSER_TALL_CENTRED = re.compile(r"/(browser_tabs|tab_\w+|prompt_\w+)$")
 
 
+def tall_background_svg() -> str:
+    """the tall layout's background (TALL_BACKGROUND), as bitmaps/gradient is drawn (4 wide, repeated across;
+    its 512 rows the screen's 480 and room under them): the slim header's band, dark, its line under it, the
+    gradient's body to the footer's line, and the footer's band, as bitmaps/gradient's are"""
+    footer = 480 - TALL_FOOTER
+    return "\n".join([
+        '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="512" viewBox="0 0 4 512">', "<defs>",
+        f'<linearGradient id="g0" gradientUnits="userSpaceOnUse" x1="0" y1="{TALL_BAND + 1}" x2="0" y2="{footer}">',
+        '  <stop offset="0.00000" stop-color="#072852" stop-opacity="0.69"/>',
+        '  <stop offset="0.20562" stop-color="#062247" stop-opacity="0.69"/>',
+        '  <stop offset="0.70562" stop-color="#030e1b" stop-opacity="0.69"/>',
+        '  <stop offset="1.00000" stop-color="#02060c" stop-opacity="0.689"/>', "</linearGradient>", "</defs>",
+        f'<rect x="0" y="0" width="4" height="{TALL_BAND}" fill="#020a16" fill-opacity="0.82"/>',
+        f'<rect x="0" y="{TALL_BAND}" width="4" height="1" fill="#36afff"/>',
+        f'<rect x="0" y="{TALL_BAND + 1}" width="4" height="{footer - TALL_BAND - 1}" fill="url(#g0)"/>',
+        f'<rect x="0" y="{footer}" width="4" height="1" fill="#2896ff"/>',
+        f'<rect x="0" y="{footer + 1}" width="4" height="{480 - footer - 1}" fill="#000000" fill-opacity="0.696"/>',
+        "</svg>", ""])
+
+
 def _past(wide_layout: str) -> str:
     """a widget's past (menu_tags.c's: its move and growth at 21:9 past
     16:9's) that takes its wide layout on to a wider screen's edges: as much
     again for each unit past 16:9 as for each past the 640"""
-    past = WIDE_SCREENS["21:9"] - WIDE_WIDTH
     dx, dw = (int(value) for value in wide_layout.split())
-    return f"{round(dx * past / WIDE_EXTRA)} {round(dw * past / WIDE_EXTRA)}"
+    return past(dx * PAST_EXTRA / WIDE_EXTRA, dw * PAST_EXTRA / WIDE_EXTRA)
 
 
 def tall_widgets() -> list:
@@ -5335,7 +5409,8 @@ def tall_widgets() -> list:
         tall = parsed(_browsers())
     lines = []
     for name, element in tall.items():
-        if element.get("wide") and not BROWSER_TALL_CENTRED.search(name):
+        if element.get("wide") and not element.get("past") and not BROWSER_TALL_CENTRED.search(name) and \
+                _past(element.get("wide")):
             element.set("past", _past(element.get("wide")))
         if ElementTree.tostring(element) != ElementTree.tostring(classic[name]):
             element.tail = None
@@ -5687,7 +5762,7 @@ def _doubles_browser() -> list:
     panel_moved, panel_grown = BROWSER_WIDE_PANEL
     lines = _widget(f"{base}/doubles_browser_screen",
                     [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child"),
-                     ("bitmap", "bitmaps/gradient")],
+                     ("bitmap", BROWSER_BACKGROUND)],
                     ['<on event="created" run="port doubles init"/>',
                      '<on event="deleted" run="port doubles dispose"/>',
                      '<on event="b" run="gamespy back handler"/>', '<on event="back" run="gamespy back handler"/>',
@@ -5704,7 +5779,7 @@ def _doubles_browser() -> list:
     # its tabs: doubles_browser.inc fills it in)
     # (its title PRO 2V2's picture, a widget of its own: the browsers' place
     # for it, BROWSER_TITLE)
-    lines += _header(f"{base}/header_doubles_browser", f"{DOUBLES}/header_doubles", box=BROWSER_TITLE)
+    lines += _browser_title(f"{base}/header_doubles_browser", f"{DOUBLES}/header_doubles")
     lines += _part_text(f"{base}/doubles_kind", [("left", BROWSER_LIST_X + 4), ("top", BROWSER_TABS_TOP + 2),
                                                 ("width", BROWSER_LIST_WIDTH), ("height", 20), ("font", "ui\\large_ui"),
                                                 ("color", "#FFFFFFFF"), ("wide", wide(-WIDE_HALF, BROWSER_WIDE_LIST))])

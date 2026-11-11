@@ -283,9 +283,11 @@ Each one is listed here with its reason, and in `tools/menu_parity.py`'s
 - **The browsers' tall layout.** The server browser (and the local
   network's list and Join by Link, its screen) and PRO 2V2's browser are
   laid out for the screen's whole height by the new engine alone
-  (`tools/port_settings.py`'s `BROWSER_TALL`): a slim title (its picture
-  smaller) with the counts beside it and the tabs under it, the footer at
-  the very bottom, the rows (taller, 24 units, `BROWSER_ROWS` of them,
+  (`tools/port_settings.py`'s `BROWSER_TALL`), in the tall layout's parts
+  as Settings' tall layout has them (`TALL_BAND`, `TALL_FOOTER`,
+  `TALL_BACKGROUND`, `tall_title`): the slim header, a dark band with the
+  title in words (the heading font, not the PC version's picture) and the
+  counts in it, the tabs under it, the footer at the very bottom, the rows (taller, 24 units, `BROWSER_ROWS` of them,
   scrolling beyond) and the panel filling what is between; on a screen
   wider than 16:9 the list, the panel, the title and the counts reach its
   edges, the tabs and the footer as 16:9 has them. The classic engine keeps

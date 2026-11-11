@@ -65,9 +65,13 @@ PLACE_KEYS = {"box", "clip", "extent", "whole", "wide", "scale"}
 
 def _browser_tall(left, right) -> bool:
     """the server browser's and PRO 2V2's browser's tall layout (tools/port_settings.py's BROWSER_TALL, the menu
-    engine's own looks): the same items, each where the tall layout puts it"""
-    return bool(left and right) and {key: value for key, value in left.items() if key not in PLACE_KEYS} == \
-        {key: value for key, value in right.items() if key not in PLACE_KEYS}
+    engine's own looks): the same items, each where the tall layout puts it (a text wrapped where its wider box
+    breaks its lines)"""
+    def kept(item):
+        return {key: " ".join(value.split()) if key == "text" and isinstance(value, str) else value
+                for key, value in item.items() if key not in PLACE_KEYS}
+
+    return bool(left and right) and kept(left) == kept(right)
 
 
 DELIBERATE = [("profile_settings", _shows_menu_engine),
