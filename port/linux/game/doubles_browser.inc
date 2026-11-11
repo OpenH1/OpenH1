@@ -23,7 +23,7 @@ With no game of the kind, the list says so and HOST GAME has the focus.
 
 The panel on the right: the game chosen (its name, map and mode, how it is,
 as the server browser's panel says), or the search under way, and the
-friends online under it, those in a 2v2 of this kind first, marked IN A 2V2 (their
+friends online under it, those in a 2v2 of this kind first, marked IN PRO 2V2 (their
 presence says "OpenH1 30 Tick · Pro Doubles on ...": lobby_menu.inc's
 lobby_presence_tell); a friend's A joins them where the Friends screen
 would (p2p_friends_join), else invites them to this machine's party; the
@@ -65,15 +65,15 @@ static struct
 	unsigned long done_time;
 } doubles_browser = { _matchmaking_doubles_classic, NONE };
 
-/* the kind's words: "2V2 CLASSIC", "2v2 Classic" */
+/* the kind's words: "PRO 2V2 CLASSIC", "Pro 2v2 Classic" */
 static wchar_t const *doubles_browser_title(void)
 {
-	return doubles_browser.kind == _matchmaking_doubles_lowest_latency ? L"2V2 LOWEST LATENCY" : L"2V2 CLASSIC";
+	return doubles_browser.kind == _matchmaking_doubles_lowest_latency ? L"PRO 2V2 LOW LATENCY" : L"PRO 2V2 CLASSIC";
 }
 
 static wchar_t const *doubles_browser_words(void)
 {
-	return doubles_browser.kind == _matchmaking_doubles_lowest_latency ? L"2v2 Lowest Latency" : L"2v2 Classic";
+	return doubles_browser.kind == _matchmaking_doubles_lowest_latency ? L"Pro 2v2 Low Latency" : L"Pro 2v2 Classic";
 }
 
 /* whether a friend's game (their presence's words) is a 2v2 of this kind:
@@ -260,7 +260,7 @@ static void doubles_browser_update(struct widget_instance *list)
 		friends_wide(entry->name[0] ? entry->name : "Player", text, NUMBEROF(text));
 		menu_text_box_fit(row, text, 0);
 		if (doubles_browser.in_kind[index])
-			usnprintf(text, NUMBEROF(text) - 1, L"IN A 2V2");
+			usnprintf(text, NUMBEROF(text) - 1, L"IN PRO 2V2");
 		else
 			usnprintf(text, NUMBEROF(text) - 1, L"%s", friends_where(entry));
 		text[NUMBEROF(text) - 1] = 0;

@@ -265,7 +265,7 @@
 		<string text="The window's size: 4:3 first, then 16:10, 16:9 and 21:9. Its edges can also be dragged."/>
 		<string text="How many times a second the display shows a picture while the game is fullscreen. Auto keeps the display's own. VSync and Max FPS's Auto follow it."/>
 		<string text="VSync, variable refresh (G-SYNC, FreeSync), the most frames a second and low latency."/>
-		<string text="How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini Projection (First Person). Passenger seats use it too; driver and gunner: First Person.|Click the number (or press A) to type 20 to 160."/>
+		<string text="How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini Projection (First Person). Passenger seats use it too; driver and gunner: First Person.|Click the number (or press A) to type 20 to 160. Capped at 110 in Pro 2v2 games."/>
 		<string text="Which way up you hold the device. Portrait has a strip of buttons along the top, the picture under it and the touch controls below it. Auto turns with the device."/>
 		<string text="Where the picture sits on a screen taller than it, its shape, and the frame around it in portrait."/>
 		<string text="The vehicles' and scopes' fields of view, the Panini projection, how far you see, the reticle, a passenger's view, and your weapon, body and shields."/>

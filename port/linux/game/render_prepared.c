@@ -59,6 +59,7 @@ loaded) and the walk made.
 #include "tag_files/tag_files.h"
 #include "tag_files/tag_groups.h"
 #include "cseries/cseries_windows.h"
+#include "network_standard.h"
 
 #include "../src/xgpu_manifest.h"
 #include "render_enumerate.h"
@@ -254,6 +255,10 @@ static uint64_t prepared_derivation(void)
 
 		if (!config_text(prepared_settings[index], value, sizeof(value)))
 			value[0] = 0;
+		/* (the dynamic lights a Pro 2v2 game draws: the classic ones,
+		whatever the setting, as d3d8_device.c draws them) */
+		if (!strcmp(prepared_settings[index], "display.dynamic_lights") && !network_standard_enhanced_lights_allowed())
+			snprintf(value, sizeof(value), "classic");
 		hash = prepared_hash_string(prepared_settings[index], hash);
 		hash = prepared_hash_string(value, hash);
 	}

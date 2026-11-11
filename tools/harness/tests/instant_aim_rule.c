@@ -34,6 +34,8 @@ static struct
 	long rules_rate;
 	boolean rules_no_direct_camera;
 	boolean hosting_no_direct_camera;
+	boolean rules_pro;
+	boolean hosting_pro;
 } network_standard_globals;
 static short game_connection(void) { return connection; }
 static struct network_game *network_game_get_game(void) { return &record; }
@@ -53,7 +55,7 @@ static void host_with_rules(long rate, boolean no_direct_camera)
 	sim_rate = 60;
 	changes++;
 	memset(&record, 0, sizeof(record));
-	network_standard_set_hosting_rules(rate, no_direct_camera);
+	network_standard_set_hosting_rules(rate, no_direct_camera, rate != 0);
 	network_standard_server_created();
 	network_standard_stamp_game(&record, TRUE);
 	connection = _game_connection_network_server;
@@ -98,7 +100,7 @@ int main(int argc, char **argv)
 	{
 		/* (matchmaking's server gone: the next one hosted is the settings') */
 		host_with_rules(30, TRUE);
-		network_standard_set_hosting_rules(0, FALSE);
+		network_standard_set_hosting_rules(0, FALSE, FALSE);
 		game_mode = "openh1";
 		changes++;
 		network_standard_server_created();

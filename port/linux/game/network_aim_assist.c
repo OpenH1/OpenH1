@@ -7,6 +7,7 @@
 #include "networking/network_game_globals.h"
 #include "network_distributed.h"
 #include "network_aim_assist.h"
+#include "network_standard.h"
 #include <string.h>
 
 int config_boolean(char const *name);
@@ -26,7 +27,8 @@ static boolean host_blocks_mouse(void)
         read_at = config_changes();
         blocks = config_boolean("network.block_mouse_aim_assist") != 0;
     }
-    return blocks;
+    /* (a Pro 2v2 game's always: network_standard_pro_hosting) */
+    return blocks || network_standard_pro_hosting();
 }
 struct aim_assist_policy_message
 {

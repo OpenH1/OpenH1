@@ -24,6 +24,8 @@ static void distributed_send(void *data,byte type,int count,word size,int destin
  memcpy(wire,data,size);struct distributed_message_header *h=(void*)wire;h->header=8;h->type=type;h->count=count;wire_size=size;sends++;
 }
 static void distributed_send_to_machine_reliably(long machine,void *data,byte type,int count,word size){distributed_send(data,type,count,size,0);}
+/* (no Pro 2v2 game: test_pro_rules.py's) */
+static boolean network_standard_pro_hosting(void) { return FALSE; }
 #include "policy.inc"
 #include "input.inc"
 static void receive(int from,int value,int count,int size){

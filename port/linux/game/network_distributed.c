@@ -6097,6 +6097,51 @@ static void distributed_build_text(
 	destination[length] = 0;
 }
 
+/* the mods of a client's build (its lines, "folder version [what it
+replaces]": port_mods_list) that a Pro 2v2 game refuses, those that replace
+sounds, bitmaps or models (text alone, a translation, is played), or that
+the list could not hold ("... [unlisted]"), or a line that does not say what
+it replaces: their folders, ", " between them, into names (cut short with
+"..." where they do not fit); how many. What a client says is all a host
+knows of its mods: a client that says less than it plays is not caught */
+static short distributed_pro_refused_mods(char const *mods, char *names, size_t size)
+{
+	short count = 0;
+	char const *line = mods;
+
+	if (size)
+		names[0] = 0;
+	while (line && *line)
+	{
+		char const *end = strchr(line, '\n');
+		size_t length = end ? (size_t)(end - line) : strlen(line);
+		char text[DISTRIBUTED_CLIENT_BUILD_MODS_SIZE];
+		char *open, *close;
+		size_t folder;
+
+		snprintf(text, sizeof(text), "%.*s", (int)length, line);
+		line = end ? end + 1 : NULL;
+		open = strrchr(text, '[');
+		close = open ? strchr(open, ']') : NULL;
+		if (open && close)
+		{
+			*close = 0;
+			if (!strstr(open, "sounds") && !strstr(open, "bitmaps") && !strstr(open, "models") &&
+				!strstr(open, "unlisted"))
+			{
+				continue;
+			}
+		}
+		count++;
+		folder = strcspn(text, " ");
+		if (size && strlen(names) + folder + 2 < size)
+			snprintf(names + strlen(names), size - strlen(names), "%s%.*s", names[0] ? ", " : "", (int)folder, text);
+		else if (size > 4 && !strstr(names, "..."))
+			snprintf(names + (strlen(names) < size - 4 ? strlen(names) : size - 4), 4, "...");
+	}
+	return count;
+}
+
 /* (a client) its build, to the host: once a machine the host takes
 messages of (its ready sent), once a game */
 void distributed_client_send_build(
@@ -7216,6 +7261,22 @@ void network_distributed_handle_message(
 			platform_log("network: machine %ld (%s) plays %s, from %s; mods: %s", machine_index,
 				names[0] ? names : "no player yet", kept->version[0] ? kept->version : "a build it does not name",
 				kept->repository[0] ? kept->repository : "a repository it does not name", mods[0] ? mods : "none");
+			/* (a Pro 2v2 game's: no machine whose mods replace what the
+			players see or hear) */
+			if (network_standard_pro_hosting())
+			{
+				char refused[80], notice[MAXIMUM_NOTICE_LENGTH];
+
+				if (distributed_pro_refused_mods(kept->mods, refused, sizeof(refused)))
+				{
+					snprintf(notice, sizeof(notice), "Pro 2v2 doesn't allow mods that change what you see or hear: "
+						"%s. Turn them off in Settings > Mods to join.", refused);
+					platform_log("network: machine %ld (%s) refused for this Pro 2v2 game: its mods replace sounds, "
+						"bitmaps or models (%s)", machine_index, names[0] ? names : "no player yet", refused);
+					distributed_send_notice_to_machine(machine_index, notice);
+					network_game_server_kick_machine(machine_index, FALSE);
+				}
+			}
 		}
 		break;
 	case _distributed_message_notice:

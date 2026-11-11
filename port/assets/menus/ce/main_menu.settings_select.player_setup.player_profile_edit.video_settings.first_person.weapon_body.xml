@@ -166,7 +166,7 @@
 		<string text=""/>
 		<string text="When your shield takes a hit, its flare shows on your first-person arms too, as on your body, and fades as it does there. A full, untouched shield shows nothing.|An overshield stays lit on them with Overshield on, below."/>
 		<string text="Your shield's flare in an armor color, whatever your armor. Only you see it. Default keeps its own."/>
-		<string text="An overshield stays lit for as long as it lasts, in its own color, on your body and, with Arm Shields, your arms. Off draws it as the original did. Online: the host's choice."/>
+		<string text="An overshield stays lit for as long as it lasts, in its own color, on your body and, with Arm Shields, your arms. Off draws it as the original did. Online: the host's choice.|Off in Pro 2v2 games, for everyone."/>
 		<string text="The overshield's color as its layers drain, as your shield meter shows them: green while the green layer lasts, then red. Red keeps it red throughout."/>
 	</strings>
 </menus>
