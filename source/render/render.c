@@ -709,11 +709,12 @@ static void render_window(
 			/* port: and drawn through display.panini's projection, the HUD
 			not (port/linux/game/panini.c) */
 			panini_window_draw();
-			/* port: the HUD's Spartan link: the teammates' feeds, under the
-			rest of the HUD (port/linux/game/spartan_link.c) */
-			spartan_link_draw(local_player_index);
 		}
 		interface_draw_screen();
+		/* port: the HUD's Spartan link: the teammates' feeds in its top line
+		(port/linux/game/spartan_link.c) */
+		if (rasterizer_target == _render_target_primary)
+			spartan_link_draw(local_player_index);
 		/* port: and every HUD's (port/linux/game/render_enumerate.c) */
 		render_enumerate_interface();
 		render_enumerate_screen_flashes();

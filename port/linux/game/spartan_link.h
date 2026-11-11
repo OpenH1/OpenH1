@@ -34,8 +34,7 @@ long spartan_link_hidden_unit(void);
 boolean spartan_link_drawing(void);
 long spartan_link_posed_unit(void);
 
-/* the window's link drawn in its HUD (render.c, after its view's passes,
-before the rest of the HUD) */
+/* the window's link drawn in its HUD (render.c, after the rest of the HUD) */
 void spartan_link_draw(short local_player_index);
 
 #endif

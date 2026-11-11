@@ -2049,9 +2049,11 @@ static const struct config_setting config_settings[] =
 		"Open every local player's Spartan link as each game starts, without the\n"
 		"key (its tests: port/linux/game/spartan_link.c)." },
 	{ "debug.spartan_link_log", _config_boolean, "false", "HALO_SPARTAN_LINK_LOG", _environment_value, _platform_all,
-		"Log each Spartan link feed's camera as it is drawn: the tick, the local\n"
+		"Log each Spartan link feed's camera as it is drawn (the tick, the local\n"
 		"player, the teammate, through their eyes, where it looks from and along,\n"
-		"its field of view and the frame's place between the ticks." },
+		"its field of view and the frame's place between the ticks), every\n"
+		"player's eye and aim each tick (another machine's feeds compared with\n"
+		"them), and the key's refusals, with a screenshot of the next frame." },
 	{ "debug.spectate_log", _config_boolean, "false", "HALO_SPECTATE_LOG", _environment_value, _platform_all,
 		"Log each local player's camera each tick, with whether it is dead and\n"
 		"whom it watches (game.spectate_on_death's tests:\n"

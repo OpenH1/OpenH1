@@ -94,6 +94,10 @@ void halo_view_release(int view);
 float halo_screen_pixel_scale(void);
 long halo_screen_width(void);
 
+/* port/linux/src/d3d8_device.c: the next frame saved as
+debug.screenshot_directory's <name>.bmp */
+void halo_screenshot_named(const char *name);
+
 /* source/objects/object_lights.c */
 void lights_port_keep(boolean keep);
 
@@ -165,6 +169,7 @@ static struct
 	real size;
 	boolean log;
 	boolean debug_open;
+	long logged_tick;
 	struct spartan_link_window windows[MAXIMUM_LOCAL_PLAYERS];
 	boolean key_held;
 	/* the feed drawn this frame (local player, feed; NONE none), and the
@@ -349,6 +354,11 @@ static void spartan_link_toggle(
 		window->refusal = spartan_link_pro_doubles() ? L"Spartan link is off in Pro 2v2" :
 			L"Spartan link: no teammates in free for all";
 		window->refusal_at = now;
+		if (spartan_link.log)
+		{
+			platform_log("spartan link: local player %d: %ls", (int)local_player_index, window->refusal);
+			halo_screenshot_named("spartan_link_refusal");
+		}
 		return;
 	}
 	spartan_link_window_update(local_player_index, now);
@@ -424,9 +434,9 @@ static short spartan_link_layout(
 
 	if (count <= 0 || width <= 0.0f || height <= 0.0f)
 		return 0;
-	*scale = height / 480.0f;
-	if (*scale > 1.0f)
-		*scale = 1.0f;
+	/* (a split screen's window keeps the HUD's size, and the feeds most of
+	theirs) */
+	*scale = PIN(height / 480.0f * 1.5f, 0.6f, 1.0f);
 	feed_width = spartan_link_widths[count - 1] * spartan_link.size * *scale;
 	total = feed_width * count + SPARTAN_LINK_GAP * *scale * (count - 1);
 	room = width - (SPARTAN_LINK_PANEL_LEFT + SPARTAN_LINK_PANEL_RIGHT) * *scale;
@@ -675,7 +685,7 @@ static void spartan_link_draw_row(
 	real margin = 2.0f * scale;
 	/* (the text as large as the design's at a feed's width of four, smaller
 	in a narrower feed, to a point) */
-	real text_scale = 0.6f * scale * MAX(spartan_link.size, 0.9f) *
+	real text_scale = 0.6f * MAX(scale, 0.9f) * MAX(spartan_link.size, 0.9f) *
 		PIN(width / (spartan_link_widths[SPARTAN_LINK_FEEDS - 1] * scale), 0.75f, 1.0f);
 	real shield = 0.0f;
 	real bar_height = MAX(2.0f * scale, 1.0f / (halo_screen_pixel_scale() > 0.0f ? halo_screen_pixel_scale() : 1.0f));
@@ -793,6 +803,27 @@ void spartan_link_update(
 	spartan_link.key_held = key;
 	if (!spartan_link.in_game)
 		return;
+	/* (debug.spartan_link_log: each tick, every player's eye and aim as this
+	machine has them, which another machine's feeds are compared with) */
+	if (spartan_link.log && game_time_get() != spartan_link.logged_tick)
+	{
+		struct data_iterator iterator;
+		struct player_datum *player;
+
+		spartan_link.logged_tick = game_time_get();
+		data_iterator_new(&iterator, player_data);
+		while ((player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
+		{
+			struct camera_command command;
+
+			if (player->unit_index == NONE || !object_try_and_get_and_verify_type(player->unit_index, _object_mask_unit))
+				continue;
+			first_person_camera_fake(player->unit_index, &command);
+			platform_log("spartan link player: %ld %ld %.4f %.4f %.4f %.5f %.5f %.5f", game_time_get(),
+				(long)DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index), command.position.x, command.position.y,
+				command.position.z, command.forward.i, command.forward.j, command.forward.k);
+		}
+	}
 	for (local_player_index = 0; local_player_index < MAXIMUM_LOCAL_PLAYERS; local_player_index++)
 	{
 		struct spartan_link_window *window = &spartan_link.windows[local_player_index];
@@ -967,7 +998,7 @@ void spartan_link_draw(
 	{
 		real_argb_color color;
 		real height = (real)(viewport.y1 - viewport.y0);
-		real line_scale = MIN(height / 480.0f, 1.0f);
+		real line_scale = PIN(height / 480.0f * 1.5f, 0.6f, 1.0f);
 
 		hud_get_text_color(&color);
 		color.alpha = 1.0f;
