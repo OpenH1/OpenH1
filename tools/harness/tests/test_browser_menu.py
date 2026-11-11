@@ -26,17 +26,32 @@ NEGATIVE_CONTROLS = {
                              "\t\tif (a->dedicated != b->dedicated && FALSE)"), "sort"),
     # (#920: the grouping before the players, as it was)
     "grouped-before-players": (("if (!difference && browser_sort_column", "if (browser_sort_column"), "sort"),
-    # (the server browser's groups: the official servers, OpenH1's, the Legacy ones under their heading)
-    "groups-none": (("\tif (!browser_grouped || entry->official)", "\tif (TRUE)"), "groups"),
-    "official-not-first": (("\tif (!browser_grouped || entry->official)", "\tif (!browser_grouped)"), "groups"),
-    "legacy-not-headed": (("\tdefault:\n\t\treturn browser_tab != _browser_tab_legacy;", "\tdefault:\n\t\treturn FALSE;"),
-                          "groups"),
-    "legacy-tab-headed": (("\tdefault:\n\t\treturn browser_tab != _browser_tab_legacy;", "\tdefault:\n\t\treturn TRUE;"),
-                          "groups"),
-    "openh1-always-headed": (("\tcase _browser_group_openh1:\n\t\treturn official;",
-                              "\tcase _browser_group_openh1:\n\t\treturn TRUE;"), "groups"),
+    # (the server browser's groups: OpenH1's dedicated servers, the project's first; the games players host; the
+    # Legacy ones)
+    "groups-none": (("\tif (!browser_grouped)\n\t\treturn _browser_group_dedicated;", "\tif (TRUE)\n\t\treturn "
+                     "_browser_group_dedicated;"), "groups"),
+    "hosted-as-dedicated": (("return entry->dedicated ? _browser_group_dedicated : _browser_group_hosted;",
+                             "return _browser_group_dedicated;"), "groups"),
+    "project-not-first": (("(project != NONE && entries[index].project != project)", "FALSE"), "groups"),
+    "favorites-before-project": (("\t\tfor (project = browser_grouped ? TRUE : NONE; project >= (browser_grouped ? "
+                                  "FALSE : NONE); project--)\n\t\t{\n\t\t\twritten = browser_order_part(favorite_of, "
+                                  "entries, count, group, project, TRUE, order, written);\n\t\t\twritten = "
+                                  "browser_order_part(favorite_of, entries, count, group, project, FALSE, order, written);",
+                                  "\t\tfor (project = browser_grouped ? TRUE : NONE; project >= (browser_grouped ? "
+                                  "FALSE : NONE); project--)\n\t\t\twritten = browser_order_part(favorite_of, "
+                                  "entries, count, group, project, TRUE, order, written);\n\t\tfor (project = "
+                                  "browser_grouped ? TRUE : NONE; project >= (browser_grouped ? FALSE : NONE); "
+                                  "project--)\n\t\t{\n\t\t\twritten = browser_order_part(favorite_of, entries, "
+                                  "count, group, project, FALSE, order, written);"), "groups"),
+    "legacy-not-headed": (("return group != _browser_group_legacy || browser_tab != _browser_tab_legacy;",
+                           "return group != _browser_group_legacy;"), "groups"),
+    "legacy-tab-headed": (("return group != _browser_group_legacy || browser_tab != _browser_tab_legacy;",
+                           "return TRUE;"), "groups"),
+    "empty-group-headed": (("if (written > start && browser_grouped && browser_group_headed(group))",
+                            "if (browser_grouped && browser_group_headed(group))"), "groups"),
     "heading-words": (('return L"Legacy (Slow) Servers";', 'return L"Legacy Servers";'), "groups"),
-    "favorites-before-groups": (("browser_group_of(&entries[index]) != group)", "FALSE)"), "groups"),
+    "dedicated-heading-words": (('return L"OpenH1 Dedicated Servers";', 'return L"Dedicated Servers";'), "groups"),
+    "favorites-before-groups": (("browser_group_of(&entries[index]) != group ||", "FALSE ||"), "groups"),
     "offline-on-every-tab": (("\tif (!browser_tab_lists_offline())\n\t\tbrowser_offline_count = 0;\n", ""), "tabs"),
     "lan-says-nothing-to-do": (("L\"No games on your network yet.\\r\\nHost one from Create Game.\"",
                                 "L\"No games.\""), "empty"),
@@ -112,7 +127,7 @@ def generated(fault=None):
     menus = read("port/linux/game/menu_functions.c")
     config = "\n\n".join([
         enum_with(menus, "_multiplayer_mode_server_browser"), enum_with(menus, "_browser_sort_players"),
-        enum_with(menus, "_browser_tab_all"), enum_with(menus, "_browser_group_official"),
+        enum_with(menus, "_browser_tab_all"), enum_with(menus, "_browser_group_dedicated"),
         "\n".join(re.findall(r"^#define BROWSER_HEADING(?:_GROUP)?\(\w+\) [^\n]+", menus, re.M)),
         "#define BROWSER_LISTED_MAXIMUM %s" % re.search(r"#define BROWSER_LISTED_MAXIMUM (.+)", menus).group(1),
         enum_with(menus, "_browser_ping_measured"),

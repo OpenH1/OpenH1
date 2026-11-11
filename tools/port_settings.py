@@ -5079,7 +5079,8 @@ def _browser() -> list:
                                                             ("bitmap", f"bitmaps/arrow_sm_{way}")], [])
     # (a row: its game's star, its name with its tick rate's badge (OpenH1's
     # games) and its lock (a password) after it, its map, its mode, its
-    # players and its ping's bars)
+    # players and its ping's bars; or, the server browser's group's heading,
+    # its words across the row: menu_functions.c's browser_heading_show)
     for row in range(1, BROWSER_ROWS + 1):
         lines += _widget(f"{base}/server_item_{row}",
                          [("width", BROWSER_LIST_WIDTH), ("height", BROWSER_ROW_HEIGHT),
@@ -5094,7 +5095,13 @@ def _browser() -> list:
                           f'<child widget="{base}/server_item_tick" y="1"/>',
                           f'<child widget="{base}/server_item_locked" y="1"/>',
                           f'<child widget="{base}/server_item_ping" x="{BROWSER_COLUMNS["ping"][0]}" y="1"/>',
-                          f'<child widget="{base}/server_item_ping_ms" x="{BROWSER_COLUMNS["ping"][0]}"/>'])
+                          f'<child widget="{base}/server_item_ping_ms" x="{BROWSER_COLUMNS["ping"][0]}"/>',
+                          f'<child widget="{base}/server_item_heading" x="{BROWSER_COLUMNS["server_name"][0]}"/>'])
+    lines += _widget(f"{base}/server_item_heading",
+                     [("type", "text"), ("width", sum(BROWSER_COLUMNS["ping"]) - BROWSER_COLUMNS["server_name"][0]),
+                      ("height", BROWSER_ROW_HEIGHT), ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
+                      ("text_y", caps_text_y(BROWSER_ROW_HEIGHT)), ("text_flags", "no_focus_test"),
+                      ("wide", wide(0, BROWSER_WIDE_LIST))], [])
     for column in ("server_name", "map", "type", "players"):
         lines += _widget(f"{base}/server_item_{column}",
                          [("type", "text"), ("width", BROWSER_COLUMNS[column][1]), ("height", BROWSER_ROW_HEIGHT),
@@ -6322,7 +6329,13 @@ def _touch_browser() -> tuple:
                           f'<child widget="{touch}/server_item_ping" x="{TOUCH_BROWSER_CELLS["ping"][0]}" '
                           f'y="{TOUCH_BROWSER_CELLS["ping"][1] - 1}"/>',
                           f'<child widget="{touch}/server_item_ping_ms" x="{TOUCH_BROWSER_CELLS["ping"][0]}" '
-                          f'y="{TOUCH_BROWSER_CELLS["ping"][1]}"/>'])
+                          f'y="{TOUCH_BROWSER_CELLS["ping"][1]}"/>',
+                          f'<child widget="{touch}/server_item_heading" x="{TOUCH_BROWSER_CELLS["server_name"][0]}" '
+                          f'y="{TOUCH_BROWSER_CELLS["server_name"][1]}"/>'])
+    lines += _widget(f"{touch}/server_item_heading",
+                     [("type", "text"), ("width", row_w - 2 * TOUCH_BROWSER_CELLS["server_name"][0]), ("height", 20),
+                      ("font", "ui\\large_ui"), ("color", "#FFFFFFFF"), ("text_flags", "no_focus_test"),
+                      ("wide", wide(0, BROWSER_WIDE_LIST))], [])
     for column in ("server_name", "map", "type", "players"):
         _, _, cell_w, moved, grown = TOUCH_BROWSER_CELLS[column]
         large = column in ("server_name", "players")

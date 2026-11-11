@@ -7665,15 +7665,17 @@ master server's: port/linux/src/master_list.c), OpenH1's own, Legacy ones
 favorites. Nothing is sent: it is the lists', and kept while
 the game runs.
 
-The server browser's list is in groups, each sorted alike, its favorites
-first: the official servers (the project's, on its own master's word:
-port/linux/src/master_list.c's master_list_official), then OpenH1's games,
-then the Legacy ones under their heading, "Legacy (Slow) Servers" (OpenCE's
-netcode, at 30 ticks), so that the games players are sent to are OpenH1's
-first, and the Legacy ones still listed. A heading is a row of its own,
-which the focus passes over (lobby_browser_update); the official servers
-have one when there are any, and OpenH1's then too, to part them. The
-local network's list has no groups */
+The server browser's list is in groups, each under its heading: OpenH1's
+dedicated servers ("OpenH1 Dedicated Servers"), the OpenH1 games players
+host ("Hosted Servers"), then the Legacy ones ("Legacy (Slow) Servers":
+OpenCE's netcode, at 30 ticks), so that the games players are sent to are
+OpenH1's first, and the Legacy ones still listed. In each group the
+project's own servers come first (on its own master's word:
+port/linux/src/master_list.c's master_list_project_server), then the
+others, each part sorted alike with its favorites first. A heading is a row
+of its own, which the focus passes over (lobby_browser_update), over a
+group that has games (the LEGACY tab's, which lists nothing else, has
+none). The local network's list has no groups */
 
 enum
 {
@@ -7702,8 +7704,8 @@ enum
 /* the server browser's groups, in the order they are listed */
 enum
 {
-	_browser_group_official,
-	_browser_group_openh1,
+	_browser_group_dedicated,
+	_browser_group_hosted,
 	_browser_group_legacy,
 	NUMBER_OF_BROWSER_GROUPS
 };
@@ -7724,8 +7726,8 @@ struct browser_sort_entry
 	short ping;
 	short rate;
 	boolean openh1;
-	/* an official server's (the project's: p2p_listing's official) */
-	boolean official;
+	/* a server of the project's own (p2p_listing's project) */
+	boolean project;
 	/* the campaign's (network co-op: no gametype) */
 	boolean coop;
 	/* a dedicated server's */
@@ -7836,25 +7838,18 @@ static boolean browser_sort_before(struct browser_sort_entry const *a, struct br
 /* the game's group (the first, if the list has none) */
 static short browser_group_of(struct browser_sort_entry const *entry)
 {
-	if (!browser_grouped || entry->official)
-		return _browser_group_official;
-	return entry->openh1 ? _browser_group_openh1 : _browser_group_legacy;
+	if (!browser_grouped)
+		return _browser_group_dedicated;
+	if (!entry->openh1)
+		return _browser_group_legacy;
+	return entry->dedicated ? _browser_group_dedicated : _browser_group_hosted;
 }
 
-/* whether a group listed has its heading over it: the official servers',
-OpenH1's after them (official: some were listed), and the Legacy ones'
-(but on the LEGACY tab, which lists nothing else) */
-static boolean browser_group_headed(short group, boolean official)
+/* whether a group listed has its heading over it: each has (but the
+Legacy ones on the LEGACY tab, which lists nothing else) */
+static boolean browser_group_headed(short group)
 {
-	switch (group)
-	{
-	case _browser_group_official:
-		return TRUE;
-	case _browser_group_openh1:
-		return official;
-	default:
-		return browser_tab != _browser_tab_legacy;
-	}
+	return group != _browser_group_legacy || browser_tab != _browser_tab_legacy;
 }
 
 /* a group's heading's words */
@@ -7862,10 +7857,10 @@ static wchar_t const *browser_group_heading(short group)
 {
 	switch (group)
 	{
-	case _browser_group_official:
-		return L"Official Servers";
-	case _browser_group_openh1:
-		return L"OpenH1 Servers";
+	case _browser_group_dedicated:
+		return L"OpenH1 Dedicated Servers";
+	case _browser_group_hosted:
+		return L"Hosted Servers";
 	default:
 		return L"Legacy (Slow) Servers";
 	}
@@ -8082,11 +8077,12 @@ static void browser_filters_refresh(void)
 	browser_filters_read(&browser_filters);
 }
 
-/* the games of a group the tab shows, the favorites or the others, into
-order from written, sorted by the column chosen (alike ones kept in the
-order found); returns where they end */
+/* the games of a group the tab shows, the project's own or the others
+(project; NONE: either), the favorites or the others, into order from
+written, sorted by the column chosen (alike ones kept in the order found);
+returns where they end */
 static short browser_order_part(short const *favorite_of, struct browser_sort_entry const *entries, short count,
-	short group, boolean favorites, short *order, short written)
+	short group, short project, boolean favorites, short *order, short written)
 {
 	short start = written;
 	short index;
@@ -8094,7 +8090,7 @@ static short browser_order_part(short const *favorite_of, struct browser_sort_en
 	for (index = 0; index < count; index++)
 	{
 		if ((favorite_of[index] != NONE) != favorites || !browser_tab_shows(&entries[index], favorites) ||
-			browser_group_of(&entries[index]) != group)
+			browser_group_of(&entries[index]) != group || (project != NONE && entries[index].project != project))
 		{
 			continue;
 		}
@@ -8128,7 +8124,8 @@ static short browser_order_part(short const *favorite_of, struct browser_sort_en
 }
 
 /* the order of the games found, those the tab shows: in each group (the
-server browser's: browser_grouped; else one) the favorites first, then the
+server browser's: browser_grouped; else one) the project's own servers
+first (the server browser's), the favorites first among them and among the
 others, each part sorted by the column chosen, and a group's heading
 (BROWSER_HEADING) before it if it has one; into `order` (count and
 NUMBER_OF_BROWSER_GROUPS long), returning how many */
@@ -8137,7 +8134,6 @@ static short browser_favorites_order(short const *favorite_of, struct browser_so
 {
 	short group, index;
 	short written = 0;
-	boolean official = FALSE;
 
 	browser_filtered_count = 0;
 	browser_searched_count = 0;
@@ -8145,10 +8141,15 @@ static short browser_favorites_order(short const *favorite_of, struct browser_so
 	{
 		short start = written;
 
-		written = browser_order_part(favorite_of, entries, count, group, TRUE, order, written);
-		written = browser_order_part(favorite_of, entries, count, group, FALSE, order, written);
+		short project;
+
+		for (project = browser_grouped ? TRUE : NONE; project >= (browser_grouped ? FALSE : NONE); project--)
+		{
+			written = browser_order_part(favorite_of, entries, count, group, project, TRUE, order, written);
+			written = browser_order_part(favorite_of, entries, count, group, project, FALSE, order, written);
+		}
 		/* (its heading before it, if it has games and one) */
-		if (written > start && browser_grouped && browser_group_headed(group, official))
+		if (written > start && browser_grouped && browser_group_headed(group))
 		{
 			for (index = written; index > start; index--)
 			{
@@ -8159,8 +8160,6 @@ static short browser_favorites_order(short const *favorite_of, struct browser_so
 			browser_listed_favorite[start] = FALSE;
 			written++;
 		}
-		if (group == _browser_group_official && browser_grouped && written > start)
-			official = TRUE;
 	}
 	if (!browser_tab_lists_offline())
 		browser_offline_count = 0;
@@ -8562,6 +8561,7 @@ static void browser_row_show(struct widget_instance *row_widget, short row_index
 	wchar_t text[ROW_TEXT_LENGTH];
 
 	browser_row_heading[row_index] = FALSE;
+	visible_set(named(row_widget, "server_item_heading", 0), FALSE);
 	browser_row_favorite[row_index] = favorite || row->offline;
 	browser_row_offline[row_index] = row->offline;
 	/* (and one without room for this machine's whole party) */
@@ -8617,12 +8617,12 @@ static void browser_row_show(struct widget_instance *row_widget, short row_index
 }
 
 /* a group's heading's row (the server browser's: lobby_browser_favorites):
-its words in the name's column, nothing else */
+its words across the row (server_item_heading), nothing else */
 static void browser_heading_show(struct widget_instance *row_widget, short row_index, wchar_t const *words)
 {
 	static char const *const emptied[] =
 	{
-		"server_item_map", "server_item_type", "server_item_players", "server_item_ping_ms",
+		"server_item_server_name", "server_item_map", "server_item_type", "server_item_players", "server_item_ping_ms",
 	};
 	static char const *const hidden[] =
 	{
@@ -8635,7 +8635,8 @@ static void browser_heading_show(struct widget_instance *row_widget, short row_i
 	browser_row_pings[row_index] = -1;
 	browser_row_measuring[row_index] = FALSE;
 	row_widget->animation.current_frame_index = 0;
-	menu_text_box_fit(named(row_widget, "server_item_server_name", 0), words, 0);
+	visible_set(named(row_widget, "server_item_heading", 0), TRUE);
+	menu_text_box_fit(named(row_widget, "server_item_heading", 0), words, 0);
 	for (index = 0; index < NUMBEROF(emptied); index++)
 		menu_text_box_fit(named(row_widget, emptied[index], 0), L"", 0);
 	for (index = 0; index < NUMBEROF(hidden); index++)
@@ -9575,7 +9576,7 @@ static short lobby_browser_favorites(short count)
 		entries[index].rate = game->rate;
 		entries[index].openh1 = game->standard != 0;
 		/* (on the project's master's word: master_list.c) */
-		entries[index].official = game->official != 0;
+		entries[index].project = game->project != 0;
 		entries[index].coop = game->engine_type == 0;
 		/* (on a master server's word alone: p2p_lobby.c) */
 		entries[index].dedicated = game->dedicated != 0;
@@ -10127,7 +10128,7 @@ static short local_browser_favorites(struct widget_instance *list)
 			(short)p2p_peer_ping(game->xnaddr + 2) : NONE;
 		entries[index].rate = (short)advertised_game_rate(game);
 		entries[index].openh1 = advertised_game_standard(game);
-		entries[index].official = FALSE;
+		entries[index].project = FALSE;
 		entries[index].coop = game->engine_type == 0;
 		entries[index].dedicated = advertised_dedicated(game);
 		settings_wide_copy(entries[index].mode, game_kind_name(game->engine_type, favorites[index].kind, FALSE),

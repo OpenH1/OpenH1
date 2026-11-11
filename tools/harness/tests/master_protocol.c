@@ -162,13 +162,13 @@ static struct
 	char region[64];
 	int version;
 	int dedicated;
-	int official;
+	int project;
 	unsigned char master_key_id[8];
 } entries_taken[4];
 static int entries_count;
 
 static int p2p_lobby_take_master_listing(const unsigned char *payload, int size, const char *publisher,
-	const char *region, int network_version_shown, int dedicated, int official, const unsigned char *master_key_id)
+	const char *region, int network_version_shown, int dedicated, int project, const unsigned char *master_key_id)
 {
 	(void)payload;
 	if (entries_count < 4)
@@ -179,7 +179,7 @@ static int p2p_lobby_take_master_listing(const unsigned char *payload, int size,
 		snprintf(entries_taken[entries_count].region, sizeof(entries_taken[entries_count].region), "%s", region);
 		entries_taken[entries_count].version = network_version_shown;
 		entries_taken[entries_count].dedicated = dedicated;
-		entries_taken[entries_count].official = official;
+		entries_taken[entries_count].project = project;
 	}
 	entries_count++;
 	return 1;
@@ -1211,38 +1211,38 @@ int main(int argc, char **argv)
 	/* a list's entries: one that is not an entry is skipped, not the list;
 	the publisher's name and region kept to what the ticker shows; the
 	entry's word on a dedicated server passed on */
-	/* an official server's: on the project's own master's word alone (its
+	/* a server of the project's own: on the project's own master's word alone (its
 	key), by a publisher id of the project's (the test's, added to the
 	table: test_master_protocol.py) */
-	CASE("official")
+	CASE("project-server")
 	{
 		char base64[400], body[2048];
 		unsigned char bytes[400];
 		int size;
 
-		CHECK(master_list_official(project_master_key, "p_officialtest"), "the project's publisher on its master");
-		CHECK(!master_list_official(other_master_key, "p_officialtest"), "another master's word taken");
-		CHECK(!master_list_official(project_master_key, "p_someoneelse"), "any publisher taken");
-		CHECK(!master_list_official(project_master_key, "p_officialtes") &&
-			!master_list_official(project_master_key, "p_officialtestx"), "a part of an id taken");
-		CHECK(!master_list_official(project_master_key, "") && !master_list_official(project_master_key, NULL) &&
-			!master_list_official(NULL, "p_officialtest"), "nothing taken as official");
+		CHECK(master_list_project_server(project_master_key, "p_projecttest"), "the project's publisher on its master");
+		CHECK(!master_list_project_server(other_master_key, "p_projecttest"), "another master's word taken");
+		CHECK(!master_list_project_server(project_master_key, "p_someoneelse"), "any publisher taken");
+		CHECK(!master_list_project_server(project_master_key, "p_projecttes") &&
+			!master_list_project_server(project_master_key, "p_projecttestx"), "a part of an id taken");
+		CHECK(!master_list_project_server(project_master_key, "") && !master_list_project_server(project_master_key, NULL) &&
+			!master_list_project_server(NULL, "p_projecttest"), "nothing taken as the project's");
 		size = hex_decode(vector_listings[0].bytes, bytes, sizeof(bytes));
 		server_base64_encode(bytes, size, base64);
 		snprintf(body, sizeof(body), "{\"protocol\":1,\"servers\":["
-			"{\"id\":\"a\",\"listing\":\"%s\",\"publisher\":{\"id\":\"p_officialtest\",\"name\":\"GOAT H1\"}},"
+			"{\"id\":\"a\",\"listing\":\"%s\",\"publisher\":{\"id\":\"p_projecttest\",\"name\":\"GOAT H1\"}},"
 			"{\"id\":\"b\",\"listing\":\"%s\",\"publisher\":{\"id\":\"p_someoneelse\",\"name\":\"GOAT H1\"}},"
-			"{\"id\":\"c\",\"listing\":\"%s\",\"publisher\":{\"name\":\"p_officialtest\"}}]}",
+			"{\"id\":\"c\",\"listing\":\"%s\",\"publisher\":{\"name\":\"p_projecttest\"}}]}",
 			base64, base64, base64);
 		entries_count = 0;
 		CHECK(take_list(body, (unsigned long)strlen(body), project_master_key, (const unsigned char *)"listedby") == 3,
 			"%d entries taken of 3", entries_count);
-		CHECK(entries_taken[0].official && !entries_taken[1].official && !entries_taken[2].official,
-			"official as taken: %d %d %d (the project's id; another's under the project's name; the id as a name)",
-			entries_taken[0].official, entries_taken[1].official, entries_taken[2].official);
+		CHECK(entries_taken[0].project && !entries_taken[1].project && !entries_taken[2].project,
+			"the project's as taken: %d %d %d (its id; another's under its name; the id as a name)",
+			entries_taken[0].project, entries_taken[1].project, entries_taken[2].project);
 		entries_count = 0;
 		take_list(body, (unsigned long)strlen(body), other_master_key, (const unsigned char *)"listedby");
-		CHECK(entries_count == 3 && !entries_taken[0].official, "another master's list made a server official");
+		CHECK(entries_count == 3 && !entries_taken[0].project, "another master's list made a server the project's");
 		return 0;
 	}
 	CASE("take-list")

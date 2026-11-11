@@ -132,6 +132,7 @@
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_locked" x="0" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_heading" x="26" y="0"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/server_item_2" box="0 0 404 19" wide="-106 144" picture="main_menu/parts/row_404x19">
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="6" y="1"/>
@@ -143,6 +144,7 @@
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_locked" x="0" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_heading" x="26" y="0"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/server_item_3" box="0 0 404 19" wide="-106 144" picture="main_menu/parts/row_404x19">
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="6" y="1"/>
@@ -154,6 +156,7 @@
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_locked" x="0" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_heading" x="26" y="0"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/server_item_4" box="0 0 404 19" wide="-106 144" picture="main_menu/parts/row_404x19">
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="6" y="1"/>
@@ -165,6 +168,7 @@
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_locked" x="0" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_heading" x="26" y="0"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/server_item_5" box="0 0 404 19" wide="-106 144" picture="main_menu/parts/row_404x19">
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="6" y="1"/>
@@ -176,6 +180,7 @@
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_locked" x="0" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_heading" x="26" y="0"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/server_item_6" box="0 0 404 19" wide="-106 144" picture="main_menu/parts/row_404x19">
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="6" y="1"/>
@@ -187,6 +192,7 @@
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_locked" x="0" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_heading" x="26" y="0"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/server_item_7" box="0 0 404 19" wide="-106 144" picture="main_menu/parts/row_404x19">
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="6" y="1"/>
@@ -198,6 +204,7 @@
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_locked" x="0" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_heading" x="26" y="0"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/server_item_8" box="0 0 404 19" wide="-106 144" picture="main_menu/parts/row_404x19">
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="6" y="1"/>
@@ -209,6 +216,7 @@
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_locked" x="0" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_heading" x="26" y="0"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/server_item_9" box="0 0 404 19" wide="-106 144" picture="main_menu/parts/row_404x19">
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="6" y="1"/>
@@ -220,6 +228,7 @@
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_locked" x="0" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_heading" x="26" y="0"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/server_item_10" box="0 0 404 19" wide="-106 144" picture="main_menu/parts/row_404x19">
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="6" y="1"/>
@@ -231,6 +240,7 @@
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_locked" x="0" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_heading" x="26" y="0"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/server_item_11" box="0 0 404 19" wide="-106 144" picture="main_menu/parts/row_404x19">
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="6" y="1"/>
@@ -242,6 +252,7 @@
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_locked" x="0" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_heading" x="26" y="0"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/server_item_12" box="0 0 404 19" wide="-106 144" picture="main_menu/parts/row_404x19">
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="6" y="1"/>
@@ -253,6 +264,7 @@
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_locked" x="0" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_heading" x="26" y="0"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/server_item_13" box="0 0 404 19" wide="-106 144" picture="main_menu/parts/row_404x19">
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="6" y="1"/>
@@ -264,6 +276,7 @@
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_locked" x="0" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_heading" x="26" y="0"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/server_item_14" box="0 0 404 19" wide="-106 144" picture="main_menu/parts/row_404x19">
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="6" y="1"/>
@@ -275,6 +288,10 @@
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_locked" x="0" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="344" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="344" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_heading" x="26" y="0"/>
+	</look>
+	<look name="main_menu/multiplayer_type_select/join_game/server_item_heading" type="text" box="0 0 372 19" wide="0 144">
+		<text font="ui\small_ui" color="#FFFFFFFF" at="0 0" flags="no_focus_test"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/join_game/server_item_server_name" type="text" box="0 0 110 19" wide="0 64">
 		<text font="ui\small_ui" color="#FFFFFFFF" at="0 0"/>

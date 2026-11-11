@@ -3235,26 +3235,27 @@ Sorting and the tabs, in all three lists, for this run of the game:
   Legacy ones only, co-op games, or the favorites.
 - Favorites stay at the top, sorted the same way among themselves; those
   not found stay at the bottom of All and Favorites, grey.
-- The Server Browser's list is in three groups, in this order, each sorted
-  the same way with its favorites first: the official servers (the
-  project's own, under an "Official Servers" heading, when there are any),
-  the OpenH1 games (under "OpenH1 Servers" when official servers are
-  listed above them), then the Legacy games (OpenCE's netcode, 30 ticks)
-  under "Legacy (Slow) Servers". Legacy games are never hidden: the LEGACY
-  tab lists only them, without the heading. A heading is not a game: the
+- The Server Browser's list is in three groups, in this order, each under
+  its heading when it has games: "OpenH1 Dedicated Servers" (OpenH1's
+  dedicated servers, the project's own first, then the community's),
+  "Hosted Servers" (OpenH1 games a player hosts), then "Legacy (Slow)
+  Servers" (OpenCE's netcode, 30 ticks). In each group, and among the
+  project's servers and the others, favorites come first and the rest
+  are sorted the same way. Legacy games are never hidden: the LEGACY tab
+  lists only them, without the heading. A heading is not a game: the
   D-pad, the arrow keys and the stick go past it, a click on it does
   nothing, and the counts leave it out. The local network's list and Join
   by Link have no groups.
 
-A server is official only on the word of the project's own master
+A server is the project's own only on the word of the project's master
 (`https://master.goath1.com`): the master's list is signed with its key,
 built into the game, and each entry names its publisher by the id that
-master gave it when it approved the publisher. A server is official when
-its entry in that master's list has one of the project's publisher ids
-(`official_publishers` in `port/linux/src/master_list.c`, built in). A
+master gave it when it approved the publisher. A server is the project's
+when its entry in that master's list has one of the project's publisher
+ids (`project_publishers` in `port/linux/src/master_list.c`, built in). A
 server's name, its own listing, the brokers and any other master's list
-cannot make it official; a `masters.txt` that pins another key for the
-project's master turns the group off. Nothing is sent for it: the browser
+cannot make it the project's; a `masters.txt` that pins another key for
+the project's master turns this off. Nothing is sent for it: the browser
 reads what the master's list already carries.
 
 Filters, in the server browser and the local network's list (not in Join

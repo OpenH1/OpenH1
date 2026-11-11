@@ -288,20 +288,20 @@ int master_list_read_defaults(char (*urls)[MASTER_LIST_URL_SIZE], unsigned char 
 	return count;
 }
 
-/* the publishers whose servers are the project's (official servers:
-master_list_official), by the ids the project's own master gave them (the
+/* the publishers whose servers are the project's own
+(master_list_project_server), by the ids the project's own master gave them (the
 first of master_list_read_defaults', master.goath1.com: deploy/net). An id
 is that master's word, in its signed list: no one else's list or listing
-makes a server official, whatever it calls itself, and another master's
+makes a server the project's, whatever it calls itself, and another master's
 list naming the same id is not believed. An id is added here as the
 project publishes servers (opence-master-cli list-publishers, on the
 master) */
-static const char *const official_publishers[] =
+static const char *const project_publishers[] =
 {
 	NULL,
 };
 
-int master_list_official(const unsigned char *master_key, const char *publisher_id)
+int master_list_project_server(const unsigned char *master_key, const char *publisher_id)
 {
 	char urls[1][MASTER_LIST_URL_SIZE];
 	unsigned char keys[1][MASTER_LIST_KEY_SIZE];
@@ -312,9 +312,9 @@ int master_list_official(const unsigned char *master_key, const char *publisher_
 	{
 		return 0;
 	}
-	for (index = 0; official_publishers[index]; index++)
+	for (index = 0; project_publishers[index]; index++)
 	{
-		if (!strcmp(official_publishers[index], publisher_id))
+		if (!strcmp(project_publishers[index], publisher_id))
 			return 1;
 	}
 	return 0;
@@ -679,7 +679,7 @@ static int take_list(const char *body, unsigned long size, const unsigned char *
 		}
 		region[P2P_LISTING_REGION_SIZE] = 0;
 		taken += p2p_lobby_take_master_listing(listing, listing_size, publisher, region, (int)version, dedicated,
-			master_list_official(master_key, publisher_id), master_key_id);
+			master_list_project_server(master_key, publisher_id), master_key_id);
 	}
 	server_json_document_free(&document);
 	return taken;
