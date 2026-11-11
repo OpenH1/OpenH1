@@ -80,7 +80,7 @@
 		<at widget="main_menu/doubles/browser/doubles_browser_list" x="0" y="0"/>
 	</look>
 	<look name="main_menu/doubles/browser/header_doubles_browser" type="text" box="24 0 616 40" wide="-106 0" past="-143 0">
-		<text font="heading" color="#FF2995FD" at="0 9" string_list="main_menu/multiplayer_type_select/join_game/tall_titles" index="3"/>
+		<text font="heading" color="#FF2995FD" at="0 9" string_list="main_menu/multiplayer_type_select/join_game/tall_titles" index="3" scale="1.4 1.4"/>
 	</look>
 	<look name="main_menu/doubles/browser/doubles_kind" type="text" box="32 48 436 68" wide="-106 144" past="-143 194">
 		<text font="ui\large_ui" color="#FFFFFFFF" flags="no_focus_test"/>

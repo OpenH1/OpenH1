@@ -33,11 +33,16 @@ def _profile_row(entry):
     return (entry[1] or "").startswith("profile.") or _key(entry) in ("name", "color", "profiles")
 
 
-def _rows_bottom(page, platforms, profile):
+# the layouts the rows are packed in: the classic engine's (settings_rows_pack),
+# and the new engine's tall one (menu_engine.c's engine_settings_layout)
+LAYOUTS = {"classic": port_settings.SETTINGS_CLASSIC, "tall": port_settings.SETTINGS_TALL}
+
+
+def _rows_bottom(page, platforms, profile, layout=port_settings.SETTINGS_CLASSIC):
     """where the last row shown ends, the rows packed as settings_rows_pack
     packs them: a step apart, a section's title over its rows (none for a
     section with no row shown), a gap above a section after rows"""
-    y = SETTINGS_TOP if "tab" in page else PAGE_TOP
+    y = layout.tab_top if "tab" in page else layout.page_top
     bottom, rows_above, section, previous_shown = y, False, False, False
     for entry in page["rows"]:
         if entry[0] == SECTION:
@@ -58,26 +63,28 @@ def _rows_bottom(page, platforms, profile):
         if not shown:
             continue
         if section:
-            y += (SETTINGS_SECTION_GAP if rows_above else 0) + SETTINGS_SECTION_STEP
+            y += (layout.section_gap if rows_above else 0) + layout.section_step
             section = False
-        bottom = y + SETTINGS_ROW_HEIGHT
-        y += SETTINGS_ROW_STEP
+        bottom = y + layout.row_height
+        y += layout.row_step
         rows_above = True
     return bottom
 
 
+@pytest.mark.parametrize("layout", sorted(LAYOUTS))
 @pytest.mark.parametrize("folder", sorted(PAGES))
-def test_settings_rows_fit(folder):
+def test_settings_rows_fit(folder, layout):
     """no page's rows reach the footer's band, which they would be drawn
-    over (the list does not scroll), for any build, with a profile or
-    without"""
-    page = PAGES[folder]
+    over (the classic engine's list does not scroll; the new engine's tall
+    layout scrolls them, but a page is laid out to need none), for any build,
+    with a profile or without"""
+    page, geometry = PAGES[folder], LAYOUTS[layout]
     for build, platforms in BUILDS.items():
         for profile in (True, False):
-            bottom = _rows_bottom(page, platforms, profile)
-            assert bottom <= SETTINGS_ROWS_BOTTOM, \
-                f"{folder}'s rows end at {bottom} on {build}{'' if profile else ' with no profile'}, past " \
-                f"{SETTINGS_ROWS_BOTTOM}: move a row to a page with room"
+            bottom = _rows_bottom(page, platforms, profile, geometry)
+            assert bottom <= geometry.rows_bottom, \
+                f"{folder}'s rows end at {bottom} on {build}{'' if profile else ' with no profile'} in the " \
+                f"{layout} layout, past {geometry.rows_bottom}: move a row to a page with room"
 
 
 def test_rows_bottom_counts_a_page_that_overflows():
@@ -108,11 +115,12 @@ def _help_lines(words, width):
     return lines
 
 
-def _help_room(page):
-    """the lines a page's panel has for a row's words under its name and value (settings_panel_show)"""
-    top = SETTINGS_TOP if "tab" in page else PAGE_TOP
+def _help_room(page, layout=port_settings.SETTINGS_CLASSIC):
+    """the lines a page's panel has for a row's words under its name and value (settings_panel_show: the panel's
+    bottom its layout's, the model's geometry's)"""
+    top = layout.tab_top if "tab" in page else layout.page_top
     name_top = top + 12
-    room = _functions_define("SETTINGS_PANEL_BOTTOM") - _functions_define("SETTINGS_PANEL_TEXT_MARGIN") - name_top - \
+    room = layout.panel_bottom - _functions_define("SETTINGS_PANEL_TEXT_MARGIN") - name_top - \
         _functions_define("SETTINGS_PANEL_TEXT_TOP")
     return room // port_settings.SMALL_UI_LINE
 
@@ -121,20 +129,21 @@ def _help_room(page):
 HELP_WIDTH = port_settings.SETTINGS_PANEL_WORDS + port_settings.SETTINGS_WIDE_PANEL[1]
 
 
+@pytest.mark.parametrize("layout", sorted(LAYOUTS))
 @pytest.mark.parametrize("folder", sorted(PAGES))
-def test_settings_help_fits(folder):
+def test_settings_help_fits(folder, layout):
     """each row's words fit the panel at its narrowest without their last lines cut (settings_panel_show cuts
-    them, after leaving out the note, which may go)"""
-    page = PAGES[folder]
+    them, after leaving out the note, which may go), in each layout (the tall one's panel taller)"""
+    page, geometry = PAGES[folder], LAYOUTS[layout]
     assert port_settings.SMALL_UI_LINE == 20 and _functions_define("SETTINGS_PANEL_BOTTOM") == \
-        port_settings.SETTINGS_PANEL_BOTTOM
+        port_settings.SETTINGS_PANEL_BOTTOM == port_settings.SETTINGS_CLASSIC.panel_bottom
     for entry in page["rows"]:
         if entry[0] == SECTION or not entry[3]:
             continue
         words = entry[3].split("|", 1)[0]
         lines = _help_lines(words, HELP_WIDTH)
-        assert lines <= _help_room(page), f"{folder}'s {entry[0]}: its words take {lines} lines of the panel's " \
-            f"{_help_room(page)} on a wide screen: say it in fewer"
+        assert lines <= _help_room(page, geometry), f"{folder}'s {entry[0]}: its words take {lines} lines of " \
+            f"the {layout} panel's {_help_room(page, geometry)} on a wide screen: say it in fewer"
 
 
 def test_help_check_sees_words_too_long():
@@ -376,3 +385,90 @@ def test_settings_spinners_are_model_rows():
             assert row is not None, name
             assert row.get("setting") == widget.get("setting"), name
             assert [choice.get("value") for choice in row.findall("choice")] == widget.get("values").split("|"), name
+
+
+def _tall_widgets():
+    """the tall layout's widgets (tools/port_settings.py's tall_widgets), by name"""
+    import xml.etree.ElementTree as ET
+    menus = ET.fromstring("<menus>" + "\n".join(port_settings.tall_widgets()) + "</menus>")
+    return {widget.get("name"): widget for widget in menus.iter("widget")}
+
+
+def _tall_scale(widget, extra):
+    """a widget's text scale at an extra width (menu_tags.c's pc_menu_text_scale)"""
+    least, most = (float(value) for value in (widget.get("text_scale") or "1 1").split())
+    return least + (most - least) * extra / port_settings.WIDE_EXTRA
+
+
+def _tall_width(widget, extra):
+    """a widget's width at an extra width (its wide's growth; past 16:9 none here)"""
+    dw = int((widget.get("wide") or "0 0").split()[1])
+    return int(widget.get("width", 640)) + port_settings.wide_scale(dw, extra)
+
+
+@pytest.mark.parametrize("aspect", sorted(set(port_settings.WIDE_SCREENS) - {"4:3"}))
+def test_tall_rows_words_fit(aspect):
+    """in the tall layout each row's label, and each spinner's longest value, fits its box at its text's scale
+    on a wide screen (labels laid out from their text_x; a value in its spinner's box between its arrows). (At
+    4:3 its words are their font's size in the classic's widths)"""
+    extra = port_settings.wide_extra_of(port_settings.WIDE_SCREENS[aspect])
+    widgets, labels, too_wide = _tall_widgets(), {}, []
+    for folder, page in PAGES.items():
+        names = [entry[1] if entry[0] == SECTION else entry[0] for entry in page["rows"]]
+        labels[f"{port_settings.PE}/{folder}/labels"] = names
+    for name, widget in widgets.items():
+        scale = _tall_scale(widget, extra)
+        if name.endswith("_label") and widget.get("string_list") in labels:
+            text = labels[widget.get("string_list")][int(widget.get("string_index") or 0)]
+            room = _tall_width(widget, extra) - int(widget.get("text_x", 0))
+        elif widget.get("type") == "spinner" and widget.get("strings"):
+            text = max(widget.get("strings").split("|"), key=port_settings.small_ui_width)
+            room = _tall_width(widget, extra)
+        else:
+            continue
+        if text.endswith(" ›"):
+            text = text[:-2]
+        if port_settings.small_ui_width(text) * scale > room:
+            too_wide.append(f"{name}: {text!r} {port_settings.small_ui_width(text) * scale:.0f} > {room}")
+    assert not too_wide, f"at {aspect}: " + "; ".join(too_wide[:8])
+
+
+def test_tall_segments_fit_at_16_9():
+    """the tall layout's segments, each as wide as its words at their scale, fit in their row on a 16:9 screen
+    (menu_functions.c's settings_segments_fit)"""
+    extra = port_settings.WIDE_EXTRA
+    widgets = _tall_widgets()
+    room = port_settings.SETTINGS_ROW_WIDTH + port_settings.wide_scale(port_settings.SETTINGS_WIDE_ROWS, extra) - \
+        _functions_define("SETTINGS_SEGMENTS_MARGIN")
+    segmented = 0
+    for name, widget in widgets.items():
+        children = [child for child in widget.findall("child") if re.search(r"_seg\d+$", child.get("widget"))]
+        if not children:
+            continue
+        segmented += 1
+        last = children[-1]
+        segment = widgets[last.get("widget")]
+        right = int(last.get("x")) + port_settings.wide_scale(int(segment.get("wide").split()[0]), extra) + \
+            int(segment.get("width"))
+        assert right <= room, f"{name}: its segments end at {right}, past {room}"
+        assert all(port_settings.small_ui_width(widgets[child.get("widget")].get("text")) * _tall_scale(
+            widgets[child.get("widget")], extra) <= int(widgets[child.get("widget")].get("width")) for child in
+            children), name
+    assert segmented
+
+
+def test_tall_layout_is_the_new_engines():
+    """the tall layout's widgets are ce/'s by their names (tools/menu_look.py writes their looks in place of
+    ce/'s), its pictures are drawn, and the model names its geometry for every Settings tab and page"""
+    widgets = _tall_widgets()
+    ce = "\n".join(path.read_text() for path in (Path(__file__).resolve().parent.parent /
+                                                 "port/assets/menus/ce").glob("*.xml"))
+    assert all(f'<widget name="{name}"' in ce for name in widgets)
+    assert "past=" not in ce and "text_scale=" not in ce
+    pictures = {name for name, _ in port_settings.settings_pictures()}
+    tall = port_settings.SETTINGS_TALL
+    assert {tall.row_picture, tall.section_picture, tall.segment_picture, port_settings.TALL_BACKGROUND,
+            tall.panel_picture.format(kind="tab"), tall.panel_picture.format(kind="page")} <= pictures
+    model = "\n".join(port_settings.model_files()[port_settings.MODEL_FILE])
+    assert model.count(f'geometry="{tall.name}"') == len(PAGES)
+    assert f'<geometry name="{tall.name}"' in model

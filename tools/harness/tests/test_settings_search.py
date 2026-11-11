@@ -73,7 +73,9 @@ def model_data():
 
 def generated(fault=None):
     header = read("port/linux/include/halo_menus.h")
-    structures = "struct halo_menu_handler;\n" + "\n".join(
+    # (and the model's sizes its structures have: the most geometries)
+    sizes = "\n".join(re.findall(r"^#define HALO_MENU_MODEL_\w+ \d+$", header, flags=re.M))
+    structures = sizes + "\nstruct halo_menu_handler;\n" + "\n".join(
         structure(header, name) for name in ("halo_menu_model_choice", "halo_menu_model_row",
                                              "halo_menu_model_screen", "halo_menu_model_geometry",
                                              "halo_menu_model_place", "halo_menu_model_look",

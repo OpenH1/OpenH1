@@ -63,14 +63,15 @@ def _text(widget: ET.Element):
     """a widget's text element's attributes (None: it has no text)"""
     get = widget.get
     keys = ("font", "color", "align", "text_x", "text_y", "text_flags", "string_list", "string_index", "text",
-            "strings")
+            "strings", "text_scale")
     if not any(get(key) is not None for key in keys) and not widget.findall("replace"):
         return None
     at = f"{get('text_x', 0)} {get('text_y', 0)}" if get("text_x") or get("text_y") else None
     replaces = [f"{item.get('search')} {item.get('function', 'none')}" for item in widget.findall("replace")]
     return [("font", get("font")), ("color", get("color")), ("align", get("align")), ("at", at),
             ("flags", get("text_flags")), ("string_list", get("string_list")), ("index", get("string_index")),
-            ("text", get("text")), ("items", get("strings")), ("replace", "|".join(replaces) or None)]
+            ("text", get("text")), ("items", get("strings")), ("replace", "|".join(replaces) or None),
+            ("scale", get("text_scale"))]
 
 
 def _tall() -> dict:
@@ -122,7 +123,8 @@ def _look(widget: ET.Element, roles: dict) -> list:
 
 
 def look_files(ce: Path = CE) -> dict:
-    """the look's files, by their paths in port/assets/menus: one for each of ce/'s files of widgets"""
+    """the look's files, by their paths in port/assets/menus: one for each of ce/'s files of widgets (a widget
+    of a screen laid out in the tall layout as it is there)"""
     files = {}
     roles = _roles()
     tall = _tall()

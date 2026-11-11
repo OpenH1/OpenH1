@@ -4022,7 +4022,11 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	if (text && settings_part(panel, "panel name"))
 	{
 		short name_top = settings_part(panel, "panel name")->vertical_offset;
-		short room = (short)(SETTINGS_PANEL_BOTTOM - SETTINGS_PANEL_TEXT_MARGIN - name_top);
+		struct halo_menu_model_geometry const *geometry = menu_engine_settings_geometry(list);
+		/* (the panel's bottom in the geometry its screen is laid out in: the
+		tall layout's lower) */
+		short bottom = (short)(geometry && geometry->panel_bottom ? geometry->panel_bottom : SETTINGS_PANEL_BOTTOM);
+		short room = (short)(bottom - SETTINGS_PANEL_TEXT_MARGIN - name_top);
 		short top = stills ? SETTINGS_PANEL_TEXT_UNDER_STILLS : picture ? SETTINGS_PANEL_TEXT_UNDER_PICTURE :
 			SETTINGS_PANEL_TEXT_TOP;
 
