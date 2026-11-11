@@ -394,6 +394,11 @@ boolean player_position_switches_bsp(
 	real_point3d const *position);
 void players_note_checkpoint(
 	void);
+/* port: network co-op's state above, which the ticks read, by part, for the
+demos (port/linux/game/demo.c's G records); NULL past the last */
+void *players_coop_port_demo_state(
+	short part,
+	long *size);
 void players_respawn_at_checkpoint(
 	void);
 void players_reconnect_to_structure_bsp(

@@ -2879,6 +2879,20 @@ static long players_coop_respawn_unit(
 the player (players_respawn_network_coop), else NONE */
 static long players_coop_spawn_beside_index = NONE;
 
+/* port: (the demos': players.h) */
+void *players_coop_port_demo_state(
+	short part,
+	long *size)
+{
+	switch (part)
+	{
+	case 0: *size = sizeof(players_coop_state); return &players_coop_state;
+	case 1: *size = sizeof(players_checkpoint); return &players_checkpoint;
+	case 2: *size = sizeof(players_coop_spawn_beside_index); return &players_coop_spawn_beside_index;
+	}
+	return NULL;
+}
+
 /* how far behind the teammate a respawn starts (world units) past what it
 rides (its bounding sphere) */
 #define COOP_SPAWN_BEHIND_DISTANCE 0.5f

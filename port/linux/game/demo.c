@@ -89,15 +89,19 @@ the code, and another's may part from it at the first tick.
 #include "game/players.h"
 #include "main/main.h"
 #include "memory/data.h"
+#include "networking/network_game_globals.h"
+#include "networking/network_game_manager.h"
 #include "memory/memory_pool.h"
 #include "objects/objects.h"
 #include "scenario/scenario.h"
+#include "scenario/scenario_definitions.h"
 #include "tag_files/tag_groups.h"
 #include "units/units.h"
 #include "camera/observer.h"
 #include "structures/structure_bsp_definitions.h"
 
 #include "demo.h"
+#include "network_coop.h"
 #include "halo_keyboard.h"
 #include "sim_rate.h"
 #include "../src/demo_files.h"
@@ -143,6 +147,7 @@ void *game_engine_port_demo_state(short part, long *size);
 void *game_sound_port_demo_state(short part, long *size);
 void *wind_port_demo_state(long *size);
 void *network_standard_port_demo_state(long *size);
+void *main_port_demo_state(short part, long *size);
 unsigned long network_standard_demo_rules(void);
 extern struct game_variant game_variant_global;
 void main_build_identity(long *number, char *flavor, size_t flavor_size, char *repository, size_t repository_size,
@@ -177,8 +182,9 @@ enum
 {
 	/* 3: every sub-step's U and every tick's Z, which bound the records
 	the tick's code takes as it runs (D, F, I, L); the wind in G; the
-	game's rules in the header */
-	DEMO_FORMAT_VERSION = 3,
+	game's rules in the header; 4: G the runs of bytes that changed, with
+	the network game and the co-op host's parts (network_coop.c) */
+	DEMO_FORMAT_VERSION = 4,
 	DEMO_HEADER_SIZE = 512,
 	DEMO_BUILD_SIZE = 64,
 	DEMO_MAP_NAME_SIZE = 128,
@@ -198,7 +204,7 @@ enum
 	/* the largest record */
 	DEMO_RECORD_MAXIMUM_SIZE = DEMO_BLOCK_MAXIMUM_SIZE,
 	/* the most of the game engine's state outside the game state (G) */
-	DEMO_ENGINE_STATE_SIZE = 256 * 1024,
+	DEMO_ENGINE_STATE_SIZE = 1024 * 1024,
 	/* the whole game states taken one after another for what the game's
 	code made or deleted outside the ticks, and the ticks that give one
 	more (a snapshot's), past which the recording warns that they come too
@@ -294,6 +300,9 @@ static struct
 	long count;
 	struct demo_allocation list[MAXIMUM_DEMO_ALLOCATIONS];
 } demo_allocations;
+
+/* the network game a host's ticks read (G records: demo_outside_part) */
+static struct network_game demo_network_game;
 
 /* the objects' fields left out (absolute addresses, in order) */
 static unsigned long demo_skips[MAXIMUM_DEMO_SKIPS];
@@ -748,6 +757,22 @@ static unsigned long demo_state_hash(
 
 /* ---------- recording */
 
+/* the machine's players (players_globals' count is the last tick's: none
+before a network game's first, whose players were added outside it) */
+static unsigned long demo_local_player_count(
+	void)
+{
+	unsigned long count = 0;
+	short local_player_index;
+
+	for (local_player_index = 0; local_player_index < MAXIMUM_LOCAL_PLAYERS; local_player_index++)
+	{
+		if (players_globals->local_players[local_player_index] != NONE)
+			count++;
+	}
+	return count;
+}
+
 static void demo_header_write(
 	unsigned char *header)
 {
@@ -771,7 +796,7 @@ static void demo_header_write(
 			(unsigned long)game_difficulty_level_get(),
 			(unsigned long)game_time_get(),
 			0,
-			(unsigned long)players_globals->local_player_count,
+			demo_local_player_count(),
 			(unsigned long)halo_server_mode(),
 			/* (the game's rules this machine's settings would give a game
 			of the playback's machine otherwise: network_standard.c) */
@@ -1209,6 +1234,35 @@ static void *demo_outside_part(
 	moves once a tick: network_standard.c) */
 	if (part == count + 1)
 		return network_standard_port_demo_state(size);
+	/* (and the network game a host's ticks read: its players, its co-op
+	switches; a playback's is the recording's) */
+	if (part == count + 2)
+	{
+		if (!demo_player.playing)
+		{
+			struct network_game *game = game_connection() == _game_connection_network_server ?
+				network_game_get_game() : NULL;
+
+			if (game)
+				memcpy(&demo_network_game, game, sizeof(demo_network_game));
+			else
+				memset(&demo_network_game, 0, sizeof(demo_network_game));
+		}
+		*size = sizeof(demo_network_game);
+		return &demo_network_game;
+	}
+	/* (and what the ticks asked of the main loop, with its timers: main.c;
+	then what the co-op host's ticks read from outside the game state:
+	network_coop.c) */
+	part = (short)(part - count - 3);
+	address = main_port_demo_state(part, size);
+	if (address)
+		return address;
+	count = 0;
+	while (main_port_demo_state(count, &part_size))
+		count++;
+	if (part >= count)
+		return network_coop_port_demo_state((short)(part - count), size);
 	return NULL;
 }
 
@@ -1232,9 +1286,12 @@ static unsigned long demo_engine_state_get(
 	return size;
 }
 
-/* ... where it changed since it was last recorded (a G record), or always
-(a snapshot's, whole): the game engine's code run outside the ticks (a
-kill dealt there) changes it, and the game's start set it by its players */
+/* ... where it changed since it was last recorded (a G record: its size,
+then the runs of bytes that changed, each its offset, its size and its
+bytes), or always (a snapshot's, whole: one run of it all): the game
+engine's code run outside the ticks (a kill dealt there) changes it, the
+game's start set it by its players, and a co-op host's netcode after each
+tick changes its parts (network_coop.c) */
 static void demo_engine_state_write(
 	boolean whole)
 {
@@ -1255,7 +1312,47 @@ static void demo_engine_state_write(
 		return;
 	}
 	start = demo_record_begin(&demo_recorder.records, 'G');
-	demo_buffer_bytes(&demo_recorder.records, state, size);
+	demo_buffer_u32(&demo_recorder.records, size);
+	if (whole || size != demo_recorder.engine_state_size)
+	{
+		demo_buffer_u32(&demo_recorder.records, 0);
+		demo_buffer_u32(&demo_recorder.records, size);
+		demo_buffer_bytes(&demo_recorder.records, state, size);
+	}
+	else
+	{
+		unsigned long position = 0;
+
+		while (position < size)
+		{
+			unsigned long run_end;
+
+			if (state[position] == demo_recorder.engine_state[position])
+			{
+				position++;
+				continue;
+			}
+			/* (a run, two this near joined) */
+			for (run_end = position + 1; run_end < size; run_end++)
+			{
+				unsigned long next;
+
+				if (state[run_end] != demo_recorder.engine_state[run_end])
+					continue;
+				for (next = run_end; next < size && next < run_end + DEMO_PATCH_JOIN_BYTES &&
+					state[next] == demo_recorder.engine_state[next]; next++)
+				{
+				}
+				if (next == size || next == run_end + DEMO_PATCH_JOIN_BYTES)
+					break;
+				run_end = next;
+			}
+			demo_buffer_u32(&demo_recorder.records, position);
+			demo_buffer_u32(&demo_recorder.records, run_end - position);
+			demo_buffer_bytes(&demo_recorder.records, state + position, run_end - position);
+			position = run_end;
+		}
+	}
 	demo_record_end(&demo_recorder.records, start);
 	memcpy(demo_recorder.engine_state, state, size);
 	demo_recorder.engine_state_size = size;
@@ -1271,21 +1368,41 @@ static void demo_engine_state_take(
 		demo_recorder.engine_state_size = demo_engine_state_get(demo_recorder.engine_state);
 }
 
-/* (the playback's) a G record's state put back, part by part, if its size
-is this build's */
+/* (the playback's) a G record's runs written over the state as the
+playback has it, which is then put back, part by part, if its size is this
+build's and each run is in it */
 static void demo_engine_state_set(
-	unsigned char const *state,
-	unsigned long size)
+	unsigned char const *bytes,
+	unsigned long length)
 {
-	unsigned long position = 0;
+	static unsigned char *state;
+	unsigned long position = 4;
+	unsigned long size;
 	short part;
 	long part_size;
 	void *address;
 
-	for (part = 0; demo_outside_part(part, &part_size) != NULL; part++)
-		position += (unsigned long)part_size;
-	if (position != size)
+	if (!state)
+		state = demo_files_alloc(DEMO_ENGINE_STATE_SIZE);
+	if (!state || length < 4)
 		return;
+	size = demo_engine_state_get(state);
+	if (!size || demo_read_u32(bytes) != size)
+		return;
+	while (position < length)
+	{
+		unsigned long offset, run;
+
+		if (length - position < 8)
+			return;
+		offset = demo_read_u32(bytes + position);
+		run = demo_read_u32(bytes + position + 4);
+		position += 8;
+		if (run > length - position || offset > size || run > size - offset)
+			return;
+		memcpy(state + offset, bytes + position, run);
+		position += run;
+	}
 	position = 0;
 	for (part = 0; (address = demo_outside_part(part, &part_size)) != NULL; part++)
 	{
@@ -2029,6 +2146,32 @@ boolean demo_playback_rules(
 	return TRUE;
 }
 
+/* (only inside the ticks: the frames, the menus and the netcode stay
+those of a game of this machine's own. A multiplayer game's ticks run as
+this machine's, as they always did: what the host decided by its machines
+in them is recorded, D and F) */
+static boolean demo_playback_as_host(
+	void)
+{
+	return demo_player.playing && demo_recorder.in_tick && demo_player.connection == _game_connection_network_server &&
+		global_scenario && global_scenario->type == _scenario_type_solo && !game_engine_running();
+}
+
+boolean demo_playback_connection(
+	short *connection)
+{
+	if (!demo_playback_as_host())
+		return FALSE;
+	*connection = (short)demo_player.connection;
+	return TRUE;
+}
+
+struct network_game *demo_playback_network_game(
+	void)
+{
+	return demo_playback_as_host() ? &demo_network_game : NULL;
+}
+
 /* a playback over: the game quits (debug.demo_quit, or a demo that cannot be
 played), or goes back to the main menu */
 static void demo_playback_end(
@@ -2444,8 +2587,10 @@ static void demo_playback_tick_begin(
 		if (demo_playback_record(&bytes, &length, FALSE) == 'V')
 			demo_playback_record(&bytes, &length, TRUE);
 	}
-	/* (a seek: the snapshot's tick begins here, its own records before it
-	taken already, the next its input) */
+	/* (a seek: the snapshot's tick begins here, its T before it taken
+	already; then what its tick took from outside it after the snapshot, as
+	any tick's: the whole of what the game keeps outside the game state (G),
+	the input, the seeds, the cameras) */
 	if (demo_player.seek_block != NONE)
 	{
 		struct demo_block_entry const *entry = &demo_player.blocks[demo_player.seek_block];
@@ -2461,31 +2606,33 @@ static void demo_playback_tick_begin(
 		demo_player.cursor = demo_player.block_size;
 		demo_player.ticks = (long)entry->position;
 		demo_player.last_tick = (long)entry->first_tick;
-		return;
 	}
-	demo_shadow_restore();
-	/* (what the netcode did between the ticks) */
-	demo_playback_open_records(0);
-	if (!demo_player.playing)
-		return;
-	type = demo_playback_record(&bytes, &length, TRUE);
-	if (type == 'E' || type == 0)
+	else
 	{
-		demo_playback_stop(type == 'E' ? "its end" : "the file ends there", FALSE);
-		return;
+		demo_shadow_restore();
+		/* (what the netcode did between the ticks) */
+		demo_playback_open_records(0);
+		if (!demo_player.playing)
+			return;
+		type = demo_playback_record(&bytes, &length, TRUE);
+		if (type == 'E' || type == 0)
+		{
+			demo_playback_stop(type == 'E' ? "its end" : "the file ends there", FALSE);
+			return;
+		}
+		if (type != 'T' || length < 8)
+		{
+			demo_playback_stop("a damaged record", TRUE);
+			return;
+		}
+		demo_player.rate = (long)demo_read_u32(bytes + 4);
+		if (!sim_rate_supported(demo_player.rate))
+		{
+			demo_playback_stop("a damaged record (its rate)", TRUE);
+			return;
+		}
+		demo_player.last_tick = (long)demo_read_u32(bytes);
 	}
-	if (type != 'T' || length < 8)
-	{
-		demo_playback_stop("a damaged record", TRUE);
-		return;
-	}
-	demo_player.rate = (long)demo_read_u32(bytes + 4);
-	if (!sim_rate_supported(demo_player.rate))
-	{
-		demo_playback_stop("a damaged record (its rate)", TRUE);
-		return;
-	}
-	demo_player.last_tick = (long)demo_read_u32(bytes);
 	for (;;)
 	{
 		type = demo_playback_record(&bytes, &length, FALSE);

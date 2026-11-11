@@ -14,6 +14,11 @@ void coop_enemies_new_game(
 	void);
 void coop_enemies_reset(
 	void);
+/* the host's extra enemies and choices, by part, for the demos (demo.c's G
+records: network_coop_port_demo_state); NULL past the last */
+void *coop_enemies_port_demo_state(
+	short part,
+	long *size);
 
 /* encounters.c: how many enemies more a squad placed with `count` gets
 (none but on a co-op host, for an encounter of the players' enemies) */
