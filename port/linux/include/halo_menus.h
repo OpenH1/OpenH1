@@ -198,22 +198,30 @@ struct halo_menu_model_row
 };
 
 /* a screen: kind "settings", laid out as layout says ("tab", "page" or
-"options": rows spacing apart); its rows from first_row */
+"options": rows spacing apart), in the geometry named so where the menu
+engine draws it (NULL: the first, the classic engine's); its rows from
+first_row */
 struct halo_menu_model_screen
 {
-	char const *name, *kind, *layout, *tab, *title, *about;
+	char const *name, *kind, *layout, *geometry, *tab, *title, *about;
 	long spacing, platform_places, profile;
 	long first_row, row_count;
 	char const *file;
 	long line;
 };
 
-/* the geometry the settings rows are laid out by (tools/port_settings.py's
-SETTINGS_*), in the menus' 640x480 units */
+/* a geometry the settings rows are laid out by (tools/port_settings.py's
+SETTINGS_*, and SettingsLayout's), in the menus' 640x480 units: its name
+(NULL for the first, the classic engine's), its rows' and sections' places,
+where the rows and the panel end, and whether rows past the end are
+scrolled to (the tall layout's: menu_engine.c) */
+#define HALO_MENU_MODEL_MAXIMUM_GEOMETRIES 4
 struct halo_menu_model_geometry
 {
+	char const *name;
 	long row_x, row_width, row_height, row_step, section_height, section_step, section_gap, tab_top, page_top,
-		rows_bottom, spinner_x, spinner_width;
+		rows_bottom, spinner_x, spinner_width, panel_bottom;
+	long scrolls;
 	/* (Settings' search: the least extra width of a wide screen that shows
 	the field's word, the most rows found made, the most groups of them) */
 	long search_word_extra, search_results, search_crumbs;
@@ -246,6 +254,9 @@ struct halo_menu_model_look
 	long has_text;
 	char const *font, *color, *align, *text_flags, *string_list, *text, *items, *replace;
 	long text_x, text_y, string_index;
+	/* (its text's scale at the menus' 640 and at 16:9 and wider, "least
+	most": NULL, its font's size) */
+	char const *text_scale;
 	long first_place, place_count;
 	char const *file;
 	long line;
@@ -265,7 +276,10 @@ struct halo_menu_model_behaviour
 
 struct halo_menu_model
 {
+	/* (the first geometry, and every one, by their names) */
 	struct halo_menu_model_geometry geometry;
+	struct halo_menu_model_geometry geometries[HALO_MENU_MODEL_MAXIMUM_GEOMETRIES];
+	long geometry_count;
 	struct halo_menu_model_screen *screens;
 	long screen_count;
 	struct halo_menu_model_row *rows;

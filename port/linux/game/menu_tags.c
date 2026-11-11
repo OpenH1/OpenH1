@@ -315,6 +315,9 @@ struct menu_look
 	boolean made;
 	struct menu_wide wide;
 	short radius;
+	/* its text's scale at the menus' 640 and at 16:9 and wider (its text's
+	scale: pc_menu_text_scale; 1 and 1, its font's size) */
+	real text_scale_least, text_scale_most;
 };
 
 /* a spinner bound to a setting (menu_functions.c) */
@@ -902,6 +905,24 @@ short ui_widget_port_wide_stretch(long definition_index)
 
 	return wide ? (short)(ui_widget_port_wide_scale(wide->dw, menu_tags.wide_extra) +
 		ui_widget_port_past_scale(wide->past_dw, menu_tags.past_extra)) : 0;
+}
+
+/* the scale a widget's text is drawn at in the layout now (its look's text
+scale, between its least at the menus' 640 and its most at 16:9 and wider;
+1 for a widget without one) */
+real pc_menu_text_scale(long definition_index)
+{
+	long index;
+	struct menu_look const *look;
+
+	if (!menu_tags.looks || definition_index == NONE || !menu_engine_looks())
+		return 1.0f;
+	index = DATUM_INDEX_TO_ABSOLUTE_INDEX(definition_index) - menu_tags.original_count;
+	if (index < 0 || index >= menu_tags.look_count || !menu_tags.looks[index].definition)
+		return 1.0f;
+	look = &menu_tags.looks[index];
+	return look->text_scale_least + (look->text_scale_most - look->text_scale_least) *
+		(real)menu_tags.wide_extra / (real)WIDE_LAYOUT_EXTRA;
 }
 
 /* ---------- private code */
@@ -2629,6 +2650,22 @@ static boolean look_make(struct menu_look *made, long tag_index)
 		made->wide.footer_x0 = definition->list_footer_bounds.x0;
 		made->wide.footer_x1 = definition->list_footer_bounds.x1;
 		wide_apply(&made->wide, menu_tags.wide_extra, menu_tags.past_extra);
+	}
+	/* its text's scale: "least most", each a half to three */
+	made->text_scale_least = made->text_scale_most = 1.0f;
+	if (look->text_scale)
+	{
+		float least, most;
+		char end;
+
+		if (sscanf(look->text_scale, "%f %f %c", &least, &most, &end) != 2 || least < 0.5f || least > 3.0f ||
+			most < 0.5f || most > 3.0f)
+		{
+			look_missing(made->name, "its text's scale is not \"least most\", each 0.5 to 3:", look->text_scale);
+			return FALSE;
+		}
+		made->text_scale_least = least;
+		made->text_scale_most = most;
 	}
 	made->definition = definition;
 	return TRUE;

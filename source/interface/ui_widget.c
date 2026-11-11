@@ -1431,6 +1431,10 @@ short pc_menu_legend_room(
 radius attribute: port/linux/game/menu_tags.c), 0 for square */
 short pc_menu_widget_radius(
 	long definition_index);
+/* port: the scale a menu widget's text is drawn at (its look's text scale,
+the menu engine's: port/linux/game/menu_tags.c), 1 for its font's size */
+real pc_menu_text_scale(
+	long definition_index);
 /* port: the placeholder bitmap the menus draw a sprite of a high-res
 texture from, or the sheet if it has none (port/linux/game/hud_hires_tags.c) */
 struct bitmap_data const *hud_hires_sprite_bitmap(
@@ -1793,6 +1797,17 @@ static __inline real compute_offset_coordinate(
 /* port: draw_bitmap_in_rect, its texture's columns from u0 to u1 (its parts'
 of the bitmap's width) rather than from its left (u1 negative: from its
 left, as the bitmap rectangle has it) */
+/* port: the menu engine's cut (port/linux/game/menu_engine.c: a settings
+list's rows scrolled), in the screen's units, while it is set: the pictures
+drawn cut to it, their texture with them, not squeezed into it as a clip
+squeezes them; NULL none */
+static rectangle2d const *ui_widget_port_cut = NULL;
+
+void ui_widget_port_cut_set(rectangle2d const *cut)
+{
+	ui_widget_port_cut = cut;
+}
+
 static void draw_bitmap_columns_in_rect(
 	struct bitmap_data *bitmap,
 	rectangle2d *rect,
@@ -1891,6 +1906,34 @@ static void draw_bitmap_columns_in_rect(
 			vertices[vertex_index].texture_coordinates.y =
 				(vertex_index > 1) ? texture_height : 0.0f;
 			vertices[vertex_index].position = points[vertex_index];
+		}
+		/* port: cut to the menu engine's cut (its texture with it), in place
+		of the clip */
+		if (ui_widget_port_cut && rectangle_width > 0 && rectangle_height > 0)
+		{
+			real left = (real)rectangle_x0, top = (real)rectangle_y0;
+			real right = left + (real)rectangle_width, bottom = top + (real)rectangle_height;
+			real x0 = MAX(left, (real)ui_widget_port_cut->x0), x1 = MIN(right, (real)ui_widget_port_cut->x1);
+			real y0 = MAX(top, (real)ui_widget_port_cut->y0), y1 = MIN(bottom, (real)ui_widget_port_cut->y1);
+			real ua = vertices[0].texture_coordinates.x, ub = vertices[1].texture_coordinates.x;
+			real va = 0.0f, vb = texture_height;
+
+			if (x1 <= x0 || y1 <= y0)
+				return;
+			for (vertex_index = 0;
+				vertex_index < NUMBER_OF_POINTS_PER_RECTANGLE;
+				vertex_index++)
+			{
+				boolean at_right = (vertex_index % 3) != 0;
+				boolean at_bottom = vertex_index > 1;
+
+				vertices[vertex_index].position.x = at_right ? x1 : x0;
+				vertices[vertex_index].position.y = at_bottom ? y1 : y0;
+				vertices[vertex_index].texture_coordinates.x =
+					ua + (ub - ua) * ((at_right ? x1 : x0) - left) / (right - left);
+				vertices[vertex_index].texture_coordinates.y =
+					va + (vb - va) * ((at_bottom ? y1 : y0) - top) / (bottom - top);
+			}
 		}
 
 		csmemset(&parameters, 0, sizeof(parameters));
@@ -5897,6 +5940,36 @@ map's two reasons ran past the dialog's footer). Sets the draw mode's font
 and the text's scale (rasterizer_text_set_scale) it is drawn in, and the
 bounds it is laid out in; returns the scale (1: as it was) */
 #define UI_WIDGET_PORT_TEXT_LEAST_SCALE 0.6f
+
+/* port: a widget's text drawn at its look's scale (pc_menu_text_scale): the
+bounds it is laid out in made as much the wider and taller about the box's
+middle, and its left, middle or right as justified, which the scale keeps
+where they are, and the text's scale (rasterizer_text_set_scale) set for it;
+returns the scale (1: as it was, nothing set) */
+static real ui_widget_port_text_scale_begin(
+	struct widget_instance *widget,
+	struct ui_widget_definition const *definition,
+	rectangle2d *bounds,
+	point2d offset,
+	short justification)
+{
+	real scale = pc_menu_text_scale(widget->definition_tag_index);
+	real origin_x, origin_y;
+
+	if (scale == 1.0f)
+		return 1.0f;
+	origin_x = justification == _text_justification_right ? (real)bounds->x1 :
+		justification == _text_justification_center ? (real)(bounds->x0 + bounds->x1) * 0.5f : (real)bounds->x0;
+	origin_y = (real)(definition->bounds.y0 + definition->bounds.y1) * 0.5f + (real)offset.y;
+	bounds->x0 = (short)(origin_x - (origin_x - (real)bounds->x0) / scale);
+	bounds->x1 = (short)(origin_x + ((real)bounds->x1 - origin_x) / scale);
+	bounds->y0 = (short)(origin_y - (origin_y - (real)bounds->y0) / scale);
+	bounds->y1 = (short)(origin_y + ((real)bounds->y1 - origin_y) / scale);
+	rasterizer_text_set_scale(scale, origin_x, origin_y);
+
+	return scale;
+}
+
 static real ui_widget_port_text_fit(
 	wchar_t *text,
 	rectangle2d *bounds,
@@ -6223,6 +6296,10 @@ static void widget_instance_render_text_box(
 		}
 		fit_scale = ui_widget_port_text_fit(*text, &bounds, width, height, &font_index, &color, justification);
 	}
+	/* port: or drawn at its look's scale (the menu engine's), but a field
+	typed into, whose caret is placed at its font's size */
+	else if (!caret)
+		fit_scale = ui_widget_port_text_scale_begin(widget, definition, &bounds, offset, justification);
 	/* port: the key of a button pictured beside the words in their gap
 	(ui_widget_port_key_label_text), the words left-justified moved left
 	by as much as the key's cap is wider than the gap, so that they end
@@ -6504,7 +6581,15 @@ static void widget_instance_render_spinner_list(
 					definition->justification,
 					0,
 					&color);
-				rasterizer_draw_unicode_string(&bounds, &clip, NULL, 0, item_text);
+				/* port: at its look's scale (the menu engine's) */
+				if (ui_widget_port_text_scale_begin(widget, definition, &bounds, offset,
+					definition->justification) != 1.0f)
+				{
+					rasterizer_draw_unicode_string(&bounds, &clip, NULL, 0, item_text);
+					rasterizer_text_set_scale(1.0f, 0.0f, 0.0f);
+				}
+				else
+					rasterizer_draw_unicode_string(&bounds, &clip, NULL, 0, item_text);
 			}
 		}
 		if (definition->text_label_string_list.index != NONE)
@@ -8735,6 +8820,32 @@ static void ui_widgets_process_mouse(
 	return;
 }
 
+/* port: the menu engine's (port/linux/game/menu_engine.c): how many tap
+targets this frame has noted so far, and those noted from the first on cut
+to a clip (a settings list's rows, scrolled), any wholly outside it dropped */
+long ui_widget_port_targets_noted(void)
+{
+	return ui_mouse_target_count;
+}
+
+void ui_widget_port_targets_clip(long first, rectangle2d const *clip)
+{
+	long index, kept = first;
+
+	for (index = first; index < ui_mouse_target_count; index++)
+	{
+		struct ui_mouse_target target = ui_mouse_targets[index];
+
+		target.bounds.x0 = MAX(target.bounds.x0, clip->x0);
+		target.bounds.y0 = MAX(target.bounds.y0, clip->y0);
+		target.bounds.x1 = MIN(target.bounds.x1, clip->x1);
+		target.bounds.y1 = MIN(target.bounds.y1, clip->y1);
+		if (target.bounds.x0 < target.bounds.x1 && target.bounds.y0 < target.bounds.y1)
+			ui_mouse_targets[kept++] = target;
+	}
+	ui_mouse_target_count = kept;
+}
+
 /* port: a widget drawn alone, for the menu engine
 (ui_widget_port_render_node): the widget (what it draws of others, a list's
 description, drawn whole), whether it was shown, and where and whether its
@@ -8865,6 +8976,10 @@ static void widget_instance_render_recursive(
 		bounds.x1 += offset.x;
 		bounds.y0 += offset.y;
 		bounds.y1 += offset.y;
+		/* port: (the menu engine's cut in place of the clip, which the
+		pictures are cut to: ui_widget_port_cut_set) */
+		if (ui_widget_port_cut)
+			clip = NULL;
 		if (clip)
 		{
 			local_clip = *clip;
