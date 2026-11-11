@@ -26,7 +26,9 @@ as the server browser's panel says), or the search under way, and the
 friends online under it, those in a 2v2 of this kind first, marked IN A 2V2 (their
 presence says "OpenH1 30 Tick · Pro Doubles on ...": lobby_menu.inc's
 lobby_presence_tell); a friend's A joins them where the Friends screen
-would (p2p_friends_join), else invites them to this machine's party. The
+would (p2p_friends_join), else invites them to this machine's party; the
+footer names it for the friend chosen (A JOIN, with X INVITE where both
+are offered, else A INVITE: friends_prompts_of's rules). The
 friends' rows come after the buttons in the list, so the controller's and
 the keyboard's Down reaches them from the buttons.
 Included in menu_functions.c after friends_menu.inc, whose helpers it uses.
@@ -52,6 +54,12 @@ static struct
 	/* the focus put on HOST GAME as the list emptied (once: it may then be
 	moved) */
 	boolean empty_focused;
+	/* the friend chosen (doubles_friend_chosen): whether there is one, its
+	code; the prompts last logged for it */
+	boolean friend_chosen;
+	byte friend_code[P2P_FRIEND_CODE_BYTES];
+	unsigned long prompts_logged;
+	byte logged_code[P2P_FRIEND_CODE_BYTES];
 	/* what was just done (a friend joined or invited, a host refused) */
 	wchar_t done[96];
 	unsigned long done_time;
@@ -110,6 +118,9 @@ static void doubles_friends_read(void)
 	}
 }
 
+/* (the footer's prompts for the friend chosen: below) */
+static void doubles_friend_prompts_show(struct widget_instance *list);
+
 /* the friend of a row (doubles_friend_<n>, 1 up), NONE if it is none */
 static short doubles_friend_row_of(struct widget_instance const *widget)
 {
@@ -158,6 +169,8 @@ static boolean doubles_browser_initialize(struct widget_instance *screen, struct
 	browser_doubles_name = doubles_browser_title();
 	doubles_browser.friends_time = 0;
 	doubles_browser.done_time = 0;
+	doubles_browser.friend_chosen = FALSE;
+	doubles_browser.prompts_logged = (unsigned long)-1;
 	doubles_browser.empty_focused = FALSE;
 	text_set(named(screen, "doubles_kind", 0), doubles_browser.kind == _matchmaking_doubles_lowest_latency ?
 		L"LOWEST LATENCY \x00B7 OPENH1 120 TICK" : L"CLASSIC \x00B7 OPENH1 30 TICK \x00B7 INSTANT AIM OFF");
@@ -239,6 +252,7 @@ static void doubles_browser_update(struct widget_instance *list)
 		snprintf(name, sizeof(name), "df_note_%d", index + 1);
 		text_set(named(row, name, 0), doubles_browser.in_kind[index] ? L"" : text);
 	}
+	doubles_friend_prompts_show(list);
 	if (panel)
 	{
 		struct p2p_friends_state state;
@@ -307,31 +321,137 @@ static boolean doubles_browser_find(short controller)
 	return TRUE;
 }
 
-/* "port doubles friend" (a friend's row): joined where they are, as the
-Friends screen's JOIN, else invited to this machine's party */
-static boolean doubles_browser_friend(struct widget_instance *widget)
+/* the friend chosen (the row focused last, kept while the focus is on the
+footer's prompts), NULL for none */
+static struct p2p_friend const *doubles_friend_chosen(void)
 {
-	short row = doubles_friend_row_of(widget);
-	struct p2p_friend const *entry;
+	short index;
+
+	for (index = 0; doubles_browser.friend_chosen && index < doubles_browser.friend_count; index++)
+	{
+		if (!memcmp(doubles_browser.friends[index].code, doubles_browser.friend_code, P2P_FRIEND_CODE_BYTES))
+			return &doubles_browser.friends[index];
+	}
+	return NULL;
+}
+
+/* what the Friends screen offers a friend (friends_prompts_of): JOIN and
+INVITE, a bit each */
+static unsigned long doubles_friend_prompts(struct p2p_friend const *entry)
+{
 	struct p2p_friends_state state;
+
+	if (!entry)
+		return 0;
+	p2p_friends_state(&state);
+	return friends_prompts_of(entry, state.identity, config_boolean("friends.share_status"),
+		config_boolean("network.online"));
+}
+
+/* the footer's prompts for the friend chosen (the Friends screen's: A JOIN
+where they can be joined, with X INVITE, else A INVITE; neither offline),
+REFRESH and SORT where these take their places; logged as they change */
+static void doubles_friend_prompts_show(struct widget_instance *list)
+{
+	struct widget_instance *bar = named(list, "doubles_prompts", 0);
+	struct widget_instance *focused = list->focused_child;
+	struct p2p_friend const *entry;
 	unsigned long prompts;
+	boolean join, invite;
+	short row = doubles_friend_row_of(focused);
+
+	if (row != NONE && row < doubles_browser.friend_count)
+	{
+		doubles_browser.friend_chosen = TRUE;
+		csmemcpy(doubles_browser.friend_code, doubles_browser.friends[row].code, P2P_FRIEND_CODE_BYTES);
+	}
+	else if (focused && strcmp(focused->name, "doubles_prompts"))
+		doubles_browser.friend_chosen = FALSE;
+	entry = doubles_friend_chosen();
+	prompts = doubles_friend_prompts(entry);
+	join = TEST_FLAG(prompts, _friends_prompt_join);
+	invite = TEST_FLAG(prompts, _friends_prompt_invite);
+	menu_prompts_show(bar, "prompt_join", join);
+	menu_prompts_show(bar, "prompt_invite", invite && !join);
+	menu_prompts_show(bar, "prompt_invite_x", invite && join);
+	menu_prompts_show(bar, "prompt_refresh", !entry);
+	menu_prompts_show(bar, "prompt_sort", !(invite && join));
+	{
+		unsigned long shown = (entry ? 4UL : 0UL) | (join ? 1UL : 0UL) | (invite ? 2UL : 0UL);
+
+		if (shown != doubles_browser.prompts_logged || (entry && memcmp(entry->code, doubles_browser.logged_code,
+			P2P_FRIEND_CODE_BYTES)))
+		{
+			doubles_browser.prompts_logged = shown;
+			if (entry)
+			{
+				csmemcpy(doubles_browser.logged_code, entry->code, P2P_FRIEND_CODE_BYTES);
+				platform_log("menus: 2V2 friend %s chosen%s: prompts %s", entry->name,
+					doubles_browser.in_kind[entry - doubles_browser.friends] ? " (in a 2v2 of this kind)" : "",
+					join && invite ? "A JOIN, X INVITE" : join ? "A JOIN" : invite ? "A INVITE" : "none");
+			}
+		}
+	}
+}
+
+/* a friend joined where they are (the Friends screen's JOIN), or invited to
+this machine's party (its INVITE): action _friends_prompt_join or _invite,
+or NONE for the one A offers (JOIN where it can, else INVITE) */
+static boolean doubles_friend_act(struct p2p_friend const *entry, short action)
+{
+	unsigned long prompts = doubles_friend_prompts(entry);
 	wchar_t name[P2P_FRIEND_NAME_SIZE];
 
-	if (row == NONE || row >= doubles_browser.friend_count)
+	if (!entry)
 		return TRUE;
-	entry = &doubles_browser.friends[row];
-	p2p_friends_state(&state);
-	prompts = friends_prompts_of(entry, state.identity, config_boolean("friends.share_status"),
-		config_boolean("network.online"));
-	friends_wide(entry->name[0] ? entry->name : "Player", name, NUMBEROF(name));
-	if (TEST_FLAG(prompts, _friends_prompt_join) && p2p_friends_join(entry->code))
-		usnprintf(doubles_browser.done, NUMBEROF(doubles_browser.done) - 1, L"Joining %s...", name);
-	else if (TEST_FLAG(prompts, _friends_prompt_invite) && p2p_friends_invite(entry->code))
-		usnprintf(doubles_browser.done, NUMBEROF(doubles_browser.done) - 1, L"Invited %s to your party.", name);
-	else
+	if (action == NONE)
+		action = TEST_FLAG(prompts, _friends_prompt_join) ? _friends_prompt_join : _friends_prompt_invite;
+	if (!TEST_FLAG(prompts, action))
 		return campaign_fail();
+	friends_wide(entry->name[0] ? entry->name : "Player", name, NUMBEROF(name));
+	if (action == _friends_prompt_join)
+	{
+		if (!p2p_friends_join(entry->code))
+			return campaign_fail();
+		usnprintf(doubles_browser.done, NUMBEROF(doubles_browser.done) - 1, L"Joining %s...", name);
+	}
+	else
+	{
+		if (!p2p_friends_invite(entry->code))
+			return campaign_fail();
+		usnprintf(doubles_browser.done, NUMBEROF(doubles_browser.done) - 1, L"Invited %s to your party.", name);
+	}
+	platform_log("menus: 2V2 friend %s: %s", entry->name, action == _friends_prompt_join ? "joining" : "invited");
 	doubles_browser.done[NUMBEROF(doubles_browser.done) - 1] = 0;
 	doubles_browser.done_time = system_milliseconds();
 	ui_play_audio_feedback_sound(SOUND_FORWARD);
 	return TRUE;
+}
+
+/* "port doubles friend" (a friend's row's A or click): what A offers them */
+static boolean doubles_browser_friend(struct widget_instance *widget)
+{
+	short row = doubles_friend_row_of(widget);
+
+	if (row == NONE || row >= doubles_browser.friend_count)
+		return TRUE;
+	return doubles_friend_act(&doubles_browser.friends[row], NONE);
+}
+
+/* "port doubles join" and "port doubles invite" (the footer's prompts):
+the friend chosen joined, or invited */
+static boolean doubles_browser_friend_prompt(boolean join)
+{
+	return doubles_friend_act(doubles_friend_chosen(), join ? _friends_prompt_join : _friends_prompt_invite);
+}
+
+/* "port doubles x" (the screen's X): INVITE for a friend chosen whom A
+joins, else the server browser's SORT */
+static boolean doubles_browser_x(void)
+{
+	unsigned long prompts = doubles_friend_prompts(doubles_friend_chosen());
+
+	if (TEST_FLAG(prompts, _friends_prompt_join) && TEST_FLAG(prompts, _friends_prompt_invite))
+		return doubles_friend_act(doubles_friend_chosen(), _friends_prompt_invite);
+	return browser_sort_choose(_browser_sort_players, TRUE);
 }

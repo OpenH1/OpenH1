@@ -2974,7 +2974,12 @@ and A on one opens that kind's **2V2 browser** (`game/doubles_browser.inc`):
   under it your friends online, those in a 2v2 of this kind first, marked IN
   A 2V2 (their presence says "OpenH1 30 Tick · Pro Doubles on ..."). A
   friend's A joins them, as the Friends screen's JOIN does, or invites them
-  to your party. Down from HOST GAME and FIND GAME reaches them.
+  to your party. Down from HOST GAME and FIND GAME reaches them. The footer
+  names what the friend chosen offers, as the Friends screen does: A JOIN,
+  with X INVITE beside it, for a friend you can join (in the menus too: JOIN
+  then joins or makes their party); A INVITE for one you can only invite;
+  neither offline. REFRESH and SORT give their places while a friend is
+  chosen.
 - With none of the kind's games, the list says so ("No 2v2 Classic games
   right now") and HOST GAME has the focus. Offline, or without the kind's
   maps, it says why, and HOST GAME and FIND GAME say it again.

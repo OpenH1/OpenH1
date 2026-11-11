@@ -583,6 +583,7 @@ static char const *const port_function_names[] =
 	"port campaign restart cancel",
 	/* (the main menu's 2V2 browser: doubles_browser.inc) */
 	"port doubles init", "port doubles dispose", "port doubles host", "port doubles find", "port doubles friend",
+	"port doubles join", "port doubles invite", "port doubles x",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from

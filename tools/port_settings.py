@@ -5595,7 +5595,7 @@ def _doubles_browser() -> list:
                     ['<on event="created" run="port doubles init"/>',
                      '<on event="deleted" run="port doubles dispose"/>',
                      '<on event="b" run="gamespy back handler"/>', '<on event="back" run="gamespy back handler"/>',
-                     '<on event="x" run="port browser sort"/>',
+                     '<on event="x" run="port doubles x"/>',
                      '<on event="right_trigger" run="port browser refresh"/>',
                      '<on event="right_thumb" run="port browser search next"/>',
                      f'<child widget="{DOUBLES}/header_doubles"/>',
@@ -5681,11 +5681,16 @@ def _doubles_browser() -> list:
 
 
 # the 2V2 browser's footer: the server browser's REFRESH, SEARCH and SORT,
-# and BACK
+# and BACK; for the friend chosen, in REFRESH's place what A does (JOIN, else
+# INVITE), and X INVITE in SORT's where JOIN and INVITE both are offered
+# (doubles_browser.inc's doubles_friend_prompts_show)
 DOUBLES_BROWSER_PROMPTS = [
     ("prompt_refresh", "%right-trigger REFRESH", 24, 102, '<on event="a" run="port browser refresh"/>'),
+    ("prompt_join", "%a-button JOIN", 24, 102, '<on event="a" run="port doubles join"/>'),
+    ("prompt_invite", "%a-button INVITE", 24, 102, '<on event="a" run="port doubles invite"/>'),
     ("prompt_search", "%right-thumb SEARCH", 238, 97, '<on event="a" run="port browser search next"/>'),
     ("prompt_sort", "%x-button SORT", 337, 90, '<on event="a" run="port browser sort"/>'),
+    ("prompt_invite_x", "%x-button INVITE", 337, 90, '<on event="a" run="port doubles invite"/>'),
     ("prompt_back", "%b-button BACK", 528, 88, '<on event="a" run="mouse emit back event"/>'),
 ]
 
