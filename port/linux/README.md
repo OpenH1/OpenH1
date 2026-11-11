@@ -780,7 +780,7 @@ with six tabs (BOTS, the last, not in co-op):
   players from OpenCE's). For the player chosen: KICK, BAN... (then BAN FOR
   AN HOUR, BAN FOR A DAY or BAN FOR GOOD, with ADD A REASON to type why
   first), MOVE TO RED or BLUE, and MUTE... (then for 10 minutes, an hour or
-  a day; their text chat and voice, for everyone) or UNMUTE. The host's own
+  a day; their text chat, voice and pings, for everyone) or UNMUTE. The host's own
   players are never kicked, banned or muted; KICK on a bot takes it out, one
   bot fewer (`bots.count`), as BOTS's REMOVE BOT does. In the lobby every player can be moved, OpenCE's
   too. In a game a team move is offered in an OpenH1 game of teams with no
@@ -3032,18 +3032,18 @@ Host Controls), and `display.text_chat` hides the chat on one machine.
 Pressing T where the chat
 is off says so, and a refused line tells its sender why.
 
-On the scoreboard (right-click, then click the player), Mute voice and chat
-mutes a player for you alone: you no longer see their lines or hear their
-voice, and nobody else is told. The host's scoreboard also has Mute for
-everyone: no machine sees the player's lines or hears their voice for 20
-minutes, or until the host picks Unmute for everyone, and all the players
+On the scoreboard (right-click, then click the player), Mute voice, chat
+and pings mutes a player for you alone: you no longer see their lines, hear
+their voice or see and hear their pings, and nobody else is told. The host's
+scoreboard also has Mute for everyone: no machine sees the player's lines,
+hears their voice or shows their pings for 20 minutes, or until the host picks Unmute for everyone, and all the players
 see "Milenko muted for 20 minutes". The mute holds in the lobby too. A
 machine's voice is one: muting one of two players in split screen mutes
-the other's voice too.
+the other's voice, lines and pings too.
 
 The host can also mute a player from the chat: type `/mute <player>
 <minutes>`, as `/mute Milenko 5` (20 minutes when you give none, 1440 at
-most), which mutes their voice too. The player is found as the console's `kick` finds one: the whole
+most), which mutes their voice and pings too. The player is found as the console's `kick` finds one: the whole
 name in either case, else the one player whose name begins with what you
 typed. All the players see "Milenko muted for 5 minutes". The muted
 player's lines go to no one, and they see how many minutes are left. The
@@ -3075,6 +3075,12 @@ in OpenH1 games only: a Legacy game has none, and an OpenCE player of a
 mixed game neither sends nor sees them. The host chooses with PINGS in Server
 Setup > Teamplay Options (in co-op, Voice and Voting; `network.pings`, on by
 default).
+
+A player you mute on the scoreboard (Mute voice, chat and pings, refer to
+"Text chat") has their pings neither shown nor heard on your computer, and
+nobody else is told. A player the host mutes for everyone (`/mute`, Mute for
+everyone, Host Controls' MUTE) cannot ping: the host takes none of their
+pings until the mute ends.
 
 ### Voice chat
 
@@ -3108,8 +3114,9 @@ A speaker shows next to the name of a player who talks: in the lobby, on
 the scoreboard, in a list at the left of the screen during a game, and
 beside the name above their head (when names are shown there:
 `display.player_names`). To mute a player, open the scoreboard,
-right-click, click the player, and click Mute voice and chat. You no longer
-hear them or see their text chat lines, and nobody else is told. The host's
+right-click, click the player, and click Mute voice, chat and pings. You no
+longer hear them or see their text chat lines and pings, and nobody else is
+told. The host's
 Mute for everyone silences a player's voice for every machine (refer to
 "Text chat").
 
@@ -7331,7 +7338,7 @@ Other changes:
 | `effects/decals.c` | A decal is made whether or not the texture cache has its bitmap yet (the bitmap is asked for; drawing the decal loads it), and its randomness takes the frames' local seed, in a tick too ("Determinism"). |
 | `interface/first_person_weapons.c` | The first-person weapon's sound's index is kept beside the game state; the weapon's state holds the sound's definition. |
 | `cseries/cseries_windows.c` | The clock's readers in a tick go to the determinism check. |
-| `main/main.c`, `interface/hud.c`, `interface/hud_unit.c`, `interface/hud_draw.c`, `game/game_engine.c` | The text chat of network games (`game/network_chat.c`): its keys are read each frame, and the debug keys are not while a line is typed; each view's HUD draws its lines, above the motion sensor, whose place the HUD notes (the left of the last picture drawn); the scoreboard's menu has Mute voice and chat, and the host's Mute for everyone. |
+| `main/main.c`, `interface/hud.c`, `interface/hud_unit.c`, `interface/hud_draw.c`, `game/game_engine.c` | The text chat of network games (`game/network_chat.c`): its keys are read each frame, and the debug keys are not while a line is typed; each view's HUD draws its lines, above the motion sensor, whose place the HUD notes (the left of the last picture drawn); the scoreboard's menu has Mute voice, chat and pings, and the host's Mute for everyone. |
 | `networking/network_server_message_handler.c`, `game/game_engine.c` | A dedicated server's admins in the game (`game/network_admin.c`): the host takes their games' key proofs and requests over their streams in the lobby too; the scoreboard's menu offers an admin the server's Kick, Ban and Move to the other team. |
 
 The x86 inline assembly of the game is replaced by C. Thus the compiler

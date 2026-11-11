@@ -194,7 +194,7 @@ the game's console commands of those names.
 | `sv_vpn` | viewer | The VPN policy, the netlist held (its masters, serial, ranges, age) and the joins refused for it ("VPNs and linked Discord accounts") |
 | `sv_vpn_check <address>` | moderator | Whether an IPv4 address is refused as a VPN's, and by what (`netlist`, `vpn_block.txt`, `vpn_allow.txt`) |
 | `sv_vpn_fetch` | admin | Fetches the masters' netlists now |
-| `mute <player> [<minutes>]`, `unmute <player>` | moderator | The host's mute of a player's chat and voice for everyone |
+| `mute <player> [<minutes>]`, `unmute <player>` | moderator | The host's mute of a player's chat, voice and pings for everyone |
 | `sv_map <map> [<gametype>]`, `sv_map <entry>` | moderator | Plays that game (or a rotation entry, `map:gametype+rule=value`; a co-op one too), below |
 | `sv_map_next` (`sv_next`) | moderator | Ends the game without its scores and plays the rotation's next |
 | `sv_end_game` | moderator | Ends the game: its scores, then the next |

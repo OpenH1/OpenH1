@@ -51,8 +51,9 @@ by the player's name, in either case (the host keeps players' names apart
 in either case), which then sends no line further than the host till
 the minutes are up (or the host unmutes it) and is told for how long; every
 machine is told of each mute and unmute, a line of the host's alone in the
-chat (_chat_line_notice_bit). A client's /mute is not sent: only the host
-mutes. The host's welcome to OpenCE players is a notice too
+chat (_chat_line_notice_bit). The mute silences the player's voice too
+(network_voice.c) and their pings (network_markers.c). A client's /mute is
+not sent: only the host mutes. The host's welcome to OpenCE players is a notice too
 (network_welcome.c), which an OpenH1 machine does not show.
 */
 
