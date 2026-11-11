@@ -660,9 +660,9 @@ list names the chosen game's kind: "OpenH1 60 Tick, OpenCE can join" (a
 mixed game, below), "OpenH1 60 Tick" or "Legacy".
 
 How OpenH1 machines recognise each other in an OpenH1 game that OpenH1
-players alone join (`network.allow_opence` false; by default OpenCE players
-join an OpenH1 game too, advertised as below, "OpenCE players in an OpenH1
-game"):
+players alone join (`network.allow_opence` false, the default; with it on,
+OpenCE players join an OpenH1 game too, advertised as below, "OpenCE players
+in an OpenH1 game"):
 
 - The advertisement's version word carries the OpenH1 protocol version
   (above), and the reserved byte after the game's kind
@@ -1343,8 +1343,11 @@ at 30, single player and split screen are drawn as before.
 
 ### OpenCE players in an OpenH1 game
 
-An OpenH1 game's host takes OpenCE players too (`network.allow_opence`,
-on by default: a mixed game; `port/linux/game/network_standard.c`). The
+An OpenH1 game's host takes OpenCE players too with `network.allow_opence`
+on (a mixed game; `port/linux/game/network_standard.c`). It is off by
+default: an OpenH1 game is OpenH1 players' alone, advertised with OpenH1's
+own protocol version (an OpenH1 build of another version is told so, not
+joined at 30), and a Legacy game is the one to play with OpenCE players. The
 server browser and the LAN list say so ("OpenH1 60 Tick, OpenCE can join"),
 and Server Setup's GAME choices. Each player plays
 at their own rate: OpenCE players at 30, as in a Legacy game, and OpenH1
