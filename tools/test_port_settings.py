@@ -292,6 +292,37 @@ def test_tab_check_sees_a_tab_too_narrow():
     assert _tab_problems([places[0], (places[0][0] + 10, places[1][1])] + places[2:], names)
 
 
+def test_search_tabs_fit_their_names():
+    """the menu engine's tabs, after Settings' search's field (SETTINGS_SEARCH), hold their names at 4:3 too, the
+    field's magnifying glass before them; from 16:10 the field is wide enough for its word"""
+    names = [PAGES[folder]["tab"] for folder in port_settings.SETTINGS_TAB_PAGES]
+    places = port_settings.settings_tab_places(port_settings.SETTINGS_SEARCH_TABS_X)
+    assert _tab_problems(places, names) == []
+    assert places[0][0] >= port_settings.SETTINGS_TABS_X + port_settings.SEARCH_FIELD_WIDTH
+    assert port_settings.SEARCH_WORD_EXTRA <= port_settings.wide_extra_of(port_settings.WIDE_SCREENS["16:10"])
+
+
+def test_search_words_are_rows():
+    """Settings' search's other words (SETTINGS_SEARCH_WORDS) find real rows, each named once; every page has the way
+    to it (its crumb), no longer than three names; the model's rows have them"""
+    found = port_settings.settings_search_synonyms()
+    assert set(found) <= set(port_settings.settings_search_rows())
+    assert sum(map(len, found.values())) == sum(map(len, port_settings.SETTINGS_SEARCH_WORDS.values()))
+    crumbs = port_settings.settings_crumbs()
+    assert set(crumbs) == set(PAGES) and all(len(crumb.split(" › ")) <= 3 for crumb in crumbs.values())
+    with pytest.raises(ValueError):
+        saved = dict(port_settings.SETTINGS_SEARCH_WORDS)
+        try:
+            port_settings.SETTINGS_SEARCH_WORDS["nothing"] = ["no_such_row"]
+            port_settings.settings_search_synonyms()
+        finally:
+            port_settings.SETTINGS_SEARCH_WORDS.clear()
+            port_settings.SETTINGS_SEARCH_WORDS.update(saved)
+    model = port_settings.model_files()[port_settings.MODEL_FILE]
+    assert any('crumb="VIDEO › FRAME RATE &amp; SYNC"' in line and 'key="vsync"' in line for line in model)
+    assert any('search="fov"' in line and 'key="fov"' in line for line in model)
+
+
 def test_map_storage_row():
     """MAP STORAGE (issue 603) sets game.map_cache_megabytes: Instant Load
     Times its default (0, every stock map kept), Disk Space Saver the Xbox's

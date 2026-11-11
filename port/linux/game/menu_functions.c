@@ -119,6 +119,7 @@ their handlers open opens.
 #include "network_map_vote.h"
 #include "text/draw_string.h"
 #include "halo_keyboard.h"
+#include "menu_search.h"
 /* (internet play's server browser: the platform layer's) */
 #include "../src/p2p.h"
 #include "../src/browser_favorites.h"
@@ -1797,6 +1798,9 @@ static void settings_each_definition(struct widget_instance *widget,
 	}
 }
 
+static void settings_search_each(boolean (*visit)(struct widget_instance *spinner,
+	struct pc_menu_setting *setting));
+
 static void settings_each(struct widget_instance *widget, boolean (*visit)(struct widget_instance *spinner,
 	struct pc_menu_setting *setting))
 {
@@ -1805,6 +1809,12 @@ static void settings_each(struct widget_instance *widget, boolean (*visit)(struc
 	boolean rows = FALSE;
 	long index;
 
+	/* (the search's: its rows found, each its own page's) */
+	if (menu_engine_search_screen(widget))
+	{
+		settings_search_each(visit);
+		return;
+	}
 	for (index = 0; screen && model && index < screen->row_count; index++)
 	{
 		struct halo_menu_model_row const *row = &model->rows[screen->first_row + index];
@@ -2040,6 +2050,7 @@ boolean viewmodel_held_weapon(short local_player_index, char *path, unsigned int
 static void discord_text_set(struct widget_instance *text_box, char const *text);
 static boolean settings_row_is(struct widget_instance const *row, char const *key);
 static struct widget_instance *settings_part(struct widget_instance *widget, char const *role);
+static boolean settings_is_part(struct widget_instance const *widget, char const *role);
 
 /* a row of the list's screen's model, by its key: its widget (op_<key>),
 NULL if the model has not the row or the screen not its widget (its
@@ -2419,6 +2430,19 @@ static boolean settings_profile_new(struct widget_instance *widget, struct event
 
 static void settings_weapon_reset(struct widget_instance *screen);
 static void clear_caches_press(void);
+/* Settings' search, the menu engine's (settings_search_menu.inc) */
+static boolean settings_search_open(struct widget_instance *widget, boolean *widget_deleted);
+static void settings_search_edit(struct widget_instance *widget);
+static boolean settings_search_back(struct widget_instance *widget);
+static void settings_search_left(void);
+static void settings_search_keys(struct widget_instance *list);
+static void settings_search_bars_show(struct widget_instance *list);
+static void settings_search_update(struct widget_instance *list);
+static boolean settings_search_term(char const *key, unsigned long key_length, char const *value,
+	unsigned long value_length);
+static wchar_t const *settings_search_about(void);
+static wchar_t const *settings_search_field_help(struct widget_instance *list);
+static boolean settings_search_returned(void);
 
 /* "port settings <name>": FALSE if it is not one of these */
 static boolean settings_function(char const *name, struct widget_instance *widget, struct event_record *event,
@@ -2444,7 +2468,9 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 	}
 	else if (!strcmp(name, "tab"))
 	{
-		*result = settings_tab_open(widget, sibling_index(widget), widget_deleted);
+		/* (the search's tabs: after its field) */
+		*result = settings_tab_open(widget, (short)(sibling_index(widget) -
+			(widget->parent && settings_is_part(widget->parent, "search tabs") ? 1 : 0)), widget_deleted);
 	}
 	else if (!strcmp(name, "tab next") || !strcmp(name, "tab previous"))
 	{
@@ -2469,6 +2495,21 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 		settings_pending_write(FALSE);
 		pad_editor_save(screen);
 		controls_page_save(screen);
+		/* (the search's OK: it is left) */
+		if (menu_engine_search_screen(screen))
+			settings_search_left();
+	}
+	else if (!strcmp(name, "search"))
+	{
+		*result = settings_search_open(widget, widget_deleted);
+	}
+	else if (!strcmp(name, "search edit"))
+	{
+		settings_search_edit(widget);
+	}
+	else if (!strcmp(name, "search back"))
+	{
+		*result = settings_search_back(widget);
 	}
 	else if (!strcmp(name, "page cancel"))
 	{
@@ -2556,6 +2597,10 @@ static boolean settings_condition_term(struct widget_instance *list, char const 
 
 		snprintf(name, sizeof(name), "%.*s_spinner", (int)key, term);
 		spinner = named(list, name, 0);
+		/* (a row found by the search, its page's other row not found with
+		it: that row's setting's value) */
+		if (!spinner && menu_engine_search_screen(list))
+			return settings_search_term(term, key, equals + 1, length - key - 1);
 		setting = settings_setting_of(spinner);
 		index = spinner ? spinner->parameters.list.selected_index : NONE;
 		if (spinner && !setting && length - key - 1 > 0 && length - key - 1 < 6 &&
@@ -2844,9 +2889,16 @@ static void settings_focus_shown(struct widget_instance *list)
 static void settings_tabs_show(struct widget_instance *list, short tab)
 {
 	struct widget_instance *tabs = settings_part(list, "tabs");
+	struct widget_instance *search_tabs = settings_part(list, "search tabs");
 	struct widget_instance *item;
 	short index = 0;
 
+	/* (the menu engine's tabs, after the search's field) */
+	if (search_tabs && search_tabs->visible && tab != NONE)
+	{
+		tabs = search_tabs;
+		tab++;
+	}
 	if (!tabs || tab == NONE || list->focused_child == tabs)
 		return;
 	for (item = tabs->child; item && index < tab; item = item->next)
@@ -3791,10 +3843,20 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 
 	if (!panel || !row || !row->name)
 		return;
-	if (settings_is_part(row, "tabs") && row->focused_child)
+	if (settings_is_part(row, "search field") || (settings_is_part(row, "search tabs") && row->focused_child &&
+		settings_is_part(row->focused_child, "search field")))
 	{
-		/* (a tab's name and words: its screen's in the model) */
-		struct halo_menu_model_screen const *shown = settings_tab_screen(sibling_index(row->focused_child));
+		/* (the search's field: what it does, and how to open it) */
+		settings_wide_copy(name, L"SETTINGS", ROW_TEXT_LENGTH);
+		settings_wide_copy(value, L"SEARCH", ROW_TEXT_LENGTH);
+		help = settings_search_field_help(list);
+	}
+	else if ((settings_is_part(row, "tabs") || settings_is_part(row, "search tabs")) && row->focused_child)
+	{
+		/* (a tab's name and words: its screen's in the model; the search's
+		tabs after its field) */
+		struct halo_menu_model_screen const *shown = settings_tab_screen((short)(sibling_index(row->focused_child) -
+			(settings_is_part(row, "search tabs") ? 1 : 0)));
 
 		settings_wide_copy(name, L"SETTINGS", ROW_TEXT_LENGTH);
 		settings_wide_copy(value, settings_model_text(shown ? shown->tab : NULL, 0), ROW_TEXT_LENGTH);
@@ -4142,14 +4204,23 @@ static void settings_page_update(struct widget_instance *list)
 	struct widget_instance *screen = screen_of(list);
 	short tab = settings_tab_of(screen);
 
-	/* (a page made: what was kept as it opened, for its Cancel) */
+	/* (the search's screen, the menu engine's: settings_search_menu.inc) */
+	if (menu_engine_search_screen(screen))
+	{
+		settings_search_update(list);
+		return;
+	}
+	/* (a page made: what was kept as it opened, for its Cancel; but made
+	again as the search is left, what it kept as it first opened) */
 	if (screen != settings_page.screen || screen->definition_tag_index != settings_page.screen_tag ||
 		screen->creation_time != settings_page.screen_time)
 	{
+		boolean returned = settings_search_returned();
+
 		settings_page.screen = screen;
 		settings_page.screen_tag = screen->definition_tag_index;
 		settings_page.screen_time = screen->creation_time;
-		if (tab == NONE)
+		if (tab == NONE && !returned)
 			settings_snapshot = settings_pending;
 		/* (back from the profile manager: player 1's profile edited, the
 		one chosen there; none, if every profile was deleted) */
@@ -4160,6 +4231,8 @@ static void settings_page_update(struct widget_instance *list)
 				pc_menu_profile_edit_begin();
 		}
 	}
+	settings_search_keys(list);
+	settings_search_bars_show(list);
 	settings_rows_conditions(list);
 	discord_account_show(list);
 	clear_caches_show(list);
@@ -13151,6 +13224,10 @@ static void gametype_engine_name(struct widget_instance *text_box)
 /* ---------- Host Controls: the pause menu's HOST CONTROLS, the host's */
 
 #include "host_controls_menu.inc"
+
+/* ---------- Settings' search, the menu engine's */
+
+#include "settings_search_menu.inc"
 
 /* ---------- public code */
 

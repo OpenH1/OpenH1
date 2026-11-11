@@ -24,6 +24,7 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_chat_style" x="28" y="386"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/button_bar" x="0" y="414"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tabs" x="0" y="76"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tabs_search" x="0" y="76"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/button_bar" role="buttons" type="column_list" box="0 0 640 28">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/button_defaults" x="24" y="1"/>
@@ -59,6 +60,37 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_interface_settings" x="343" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_profile_settings" x="440" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tab_mods_settings" x="525" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/search_tab_video_settings" type="text" box="0 0 56 22" wide="4 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/search_tab_audio_settings" type="text" box="0 0 58 22" wide="21 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="1"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/search_tab_mouse_settings" type="text" box="0 0 88 22" wide="38 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="2"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/search_tab_network_settings" type="text" box="0 0 65 22" wide="55 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="3"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/search_tab_interface_settings" type="text" box="0 0 91 22" wide="72 0" place="keep_ends" picture="main_menu/settings/tab_current">
+		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="4"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/search_tab_profile_settings" type="text" box="0 0 81 22" wide="89 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="5"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/search_tab_mods_settings" type="text" box="0 0 53 22" wide="106 0" place="keep_ends" picture="main_menu/settings/tab">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 2" string_list="main_menu/settings/tab_names" index="6"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/tabs_search" role="search tabs" type="column_list" box="0 0 640 22">
+		<at widget="main_menu/settings/search_field" x="56" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/search_tab_video_settings" x="78" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/search_tab_audio_settings" x="136" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/search_tab_mouse_settings" x="196" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/search_tab_network_settings" x="286" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/search_tab_interface_settings" x="353" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/search_tab_profile_settings" x="446" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/search_tab_mods_settings" x="529" y="0"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/button_defaults" type="text" box="0 0 128 24" wide="-106 0" picture="bitmaps/text_button_background">
 		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" string_list="strings/common_button_captions" index="3"/>
