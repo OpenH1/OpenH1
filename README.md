@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/OpenH1/OpenH1/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/OpenH1/OpenH1?label=release&color=9dff3c&labelColor=0a0d09"></a>
-  <a href="https://github.com/OpenH1/OpenH1/actions/workflows/build.yml"><img alt="Build" src="https://github.com/OpenH1/OpenH1/actions/workflows/build.yml/badge.svg?branch=master"></a>
+  <a href="https://github.com/OpenH1/goath1/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/OpenH1/goath1?label=release&color=9dff3c&labelColor=0a0d09"></a>
+  <a href="https://github.com/OpenH1/goath1/actions/workflows/build.yml"><img alt="Build" src="https://github.com/OpenH1/goath1/actions/workflows/build.yml/badge.svg?branch=master"></a>
   <a href="https://discord.gg/MJa327PSWt"><img alt="Discord" src="https://img.shields.io/discord/1561955817463222332?logo=discord&logoColor=white&label=Discord&color=5865F2&labelColor=0a0d09"></a>
   <a href="LICENSE"><img alt="Licence: AGPL-3.0-or-later" src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-eef4ea?labelColor=0a0d09"></a>
 </p>
@@ -81,17 +81,17 @@ builds of the latest release:
 
 | Platform | Release | Debug |
 | --- | --- | --- |
-| macOS (Apple silicon, macOS 14.4 or later) | [OpenH1.dmg](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1.dmg) | [OpenH1-debug.dmg](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-debug.dmg) |
-| Windows | [OpenH1-Windows.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Windows.zip) | [OpenH1-Windows-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Windows-debug.zip) |
-| Linux x86-64 (also the Steam Deck) | [OpenH1-Linux.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Linux.zip) | [OpenH1-Linux-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Linux-debug.zip) |
-| Linux arm64 | [OpenH1-Linux-ARM64.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Linux-ARM64.zip) | [OpenH1-Linux-ARM64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Linux-ARM64-debug.zip) |
-| Linux x86-64 VR | [OpenH1-Linux-VR.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Linux-VR.zip) | |
-| Steam Frame VR ([install](port/linux/frame/README.md#install-or-update)) | [OpenH1-Steam-Frame.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Steam-Frame.zip) | |
-| Android (64-bit, Android 9 or later, Vulkan 1.3) | [OpenH1-Android.apk](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Android.apk) | [OpenH1-Android-debug.apk](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Android-debug.apk) |
+| macOS (Apple silicon, macOS 14.4 or later) | [OpenH1.dmg](https://github.com/OpenH1/goath1/releases/latest/download/OpenH1.dmg) | [OpenH1-debug.dmg](https://github.com/OpenH1/goath1/releases/latest/download/OpenH1-debug.dmg) |
+| Windows | [OpenH1-Windows.zip](https://github.com/OpenH1/goath1/releases/latest/download/OpenH1-Windows.zip) | [OpenH1-Windows-debug.zip](https://github.com/OpenH1/goath1/releases/latest/download/OpenH1-Windows-debug.zip) |
+| Linux x86-64 (also the Steam Deck) | [OpenH1-Linux.zip](https://github.com/OpenH1/goath1/releases/latest/download/OpenH1-Linux.zip) | [OpenH1-Linux-debug.zip](https://github.com/OpenH1/goath1/releases/latest/download/OpenH1-Linux-debug.zip) |
+| Linux arm64 | [OpenH1-Linux-ARM64.zip](https://github.com/OpenH1/goath1/releases/latest/download/OpenH1-Linux-ARM64.zip) | [OpenH1-Linux-ARM64-debug.zip](https://github.com/OpenH1/goath1/releases/latest/download/OpenH1-Linux-ARM64-debug.zip) |
+| Linux x86-64 VR | [OpenH1-Linux-VR.zip](https://github.com/OpenH1/goath1/releases/latest/download/OpenH1-Linux-VR.zip) | |
+| Steam Frame VR ([install](port/linux/frame/README.md#install-or-update)) | [OpenH1-Steam-Frame.zip](https://github.com/OpenH1/goath1/releases/latest/download/OpenH1-Steam-Frame.zip) | |
+| Android (64-bit, Android 9 or later, Vulkan 1.3) | [OpenH1-Android.apk](https://github.com/OpenH1/goath1/releases/latest/download/OpenH1-Android.apk) | [OpenH1-Android-debug.apk](https://github.com/OpenH1/goath1/releases/latest/download/OpenH1-Android-debug.apk) |
 
 Use the release build to play. The debug build stops at the first failed
 assertion and writes it to the log. Use the debug build to find and report
-problems. The [Releases](https://github.com/OpenH1/OpenH1/releases) page
+problems. The [Releases](https://github.com/OpenH1/goath1/releases) page
 keeps the last five releases: if the latest build has a problem, get an
 older build there.
 
@@ -445,7 +445,7 @@ it calculates the game, needs `HALO_PORT_NETWORK_VERSION` and a
 `tools/net_compare.py` run (refer to "Testing"), so that OpenH1 and OpenCE
 players can still play together.
 
-Report problems on the [issue tracker](https://github.com/OpenH1/OpenH1/issues),
+Report problems on the [issue tracker](https://github.com/OpenH1/goath1/issues),
 with the build number (Settings, Profile, About shows it) and `debug.txt`.
 For help, or to talk about a change before you make it, ask on the
 [Discord](https://discord.gg/MJa327PSWt): #help, and #dev-general.

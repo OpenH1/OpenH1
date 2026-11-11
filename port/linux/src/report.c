@@ -1818,7 +1818,7 @@ void report_crash_answer(int report)
 
 /* ---------- the issue */
 
-#define REPORT_ISSUES "https://github.com/OpenH1/OpenH1/issues/new"
+#define REPORT_ISSUES "https://github.com/OpenH1/goath1/issues/new"
 /* GitHub's addresses: some 8 KB at most */
 #define REPORT_URL_MOST 7800
 

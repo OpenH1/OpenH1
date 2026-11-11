@@ -197,7 +197,7 @@ int main(int argc, char **argv)
 
 		CHECK(report_issue_url("Problem report (macOS, build-1)", "# Hi\n- a&b=c\n", url, sizeof(url)), "it fits");
 		printf("%s\n", url);
-		CHECK(!strcmp(url, "https://github.com/OpenH1/OpenH1/issues/new?title=Problem%20report%20%28macOS%2C%20build-1"
+		CHECK(!strcmp(url, "https://github.com/OpenH1/goath1/issues/new?title=Problem%20report%20%28macOS%2C%20build-1"
 			"%29&body=%23%20Hi%0A-%20a%26b%3Dc%0A"), "the address");
 		/* (a long body cut at a line's end) */
 		for (index = 0; index < 20; index++)

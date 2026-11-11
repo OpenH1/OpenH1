@@ -156,7 +156,7 @@ downloads Sparkle's release once, pinned by its SHA-256
 `build/macos/third_party/Sparkle`.
 
 - A release's `Info.plist` has `SUFeedURL`
-  (`https://github.com/OpenH1/OpenH1/releases/latest/download/appcast.xml`),
+  (`https://github.com/OpenH1/goath1/releases/latest/download/appcast.xml`),
   `SUPublicEDKey` (the `SPARKLE_PUBLIC_KEY` repository variable),
   `SUEnableAutomaticChecks`, `SUScheduledCheckInterval` (four hours) and
   `SUVerifyUpdateBeforeExtraction`. Debug and local builds have none of

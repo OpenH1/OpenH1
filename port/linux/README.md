@@ -1769,7 +1769,7 @@ game write to it.
 When GitHub has trouble (no answer, or a 5xx, 408, 425 or 429), the game
 tries each download two more times, after 1 s and then 3 s. If a file of
 the release does not come from its link
-(`github.com/OpenH1/OpenH1/releases/download/...`), the game asks GitHub's
+(`github.com/OpenH1/goath1/releases/download/...`), the game asks GitHub's
 API for the same file (`api.github.com/.../releases/assets/<id>`, the id
 from the API's answer about the release). This happens when the servers of
 GitHub's release links fail and its API does not. The checks below are the
@@ -4528,7 +4528,7 @@ download the latest release's package, unzip it and open `install.sh` in
 it (port/linux/frame/README.md): it installs the game, asks for the maps,
 and adds it to Steam with its library artwork. From a computer with SSH to the Frame,
 the latest release's package
-([OpenH1-Steam-Frame.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Steam-Frame.zip)):
+([OpenH1-Steam-Frame.zip](https://github.com/OpenH1/goath1/releases/latest/download/OpenH1-Steam-Frame.zip)):
 
 ```sh
 tools/frame_install.sh --package OpenH1-Steam-Frame.zip <frame>

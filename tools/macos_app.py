@@ -135,7 +135,7 @@ def credits_html(build: int, flavor: str) -> str:
     return ("<html><body style=\"font: 11px -apple-system; text-align: center\">"
             f"<p>OpenH1 macOS | {label}</p>"
             "<p>The Halo: Combat Evolved decompilation (Xbox build 01.01.14.2342), ported.<br>"
-            "<a href=\"https://github.com/OpenH1/OpenH1\">github.com/OpenH1/OpenH1</a></p>"
+            "<a href=\"https://github.com/OpenH1/goath1\">github.com/OpenH1/goath1</a></p>"
             "</body></html>\n")
 
 

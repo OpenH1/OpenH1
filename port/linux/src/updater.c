@@ -187,7 +187,7 @@ static void updater_log_build(void)
 #include <stdlib.h>
 #include <string.h>
 
-#define UPDATE_REPOSITORY "OpenH1/OpenH1"
+#define UPDATE_REPOSITORY "OpenH1/goath1"
 #ifdef HALO_WINDOWS
 #define PATH_SEPARATOR "\\"
 #else

@@ -6,7 +6,7 @@
 # python3 (Ubuntu's).
 set -eu
 
-REPO=OpenH1/OpenH1
+REPO=OpenH1/goath1
 ASSET=OpenH1-Linux.zip
 ROOT=/opt/openh1-relay
 # port/assets/release-key.pub: the key the game's self-updater checks with
