@@ -124,8 +124,14 @@ update is needed only when that version changes.
 ## The master server
 
 [opence-master](https://github.com/OpenCommunityEdition/opence-master-server)
-(AGPL-3.0; protocol 1, `docs/master_protocol.md`), the static release binary
-in `/usr/local/bin/opence-master`, run by `opence-master.service` (the
+(AGPL-3.0; protocol 1, `docs/master_protocol.md`), as our fork builds it
+([OpenH1/opence-master-server](https://github.com/OpenH1/opence-master-server),
+its release `v0.1.8-goath1.1`): upstream's v0.1.8 with two settings,
+`MASTER_GAME_NAME` (`GOAT H1`: the game's name in the pages', the bot's and
+the mails' text, in place of "OpenCE") and `MASTER_PROJECT_URL` (the
+footer's source link, the fork's tag that runs, as the AGPL asks). Nothing
+on the wire or in the database differs from upstream's. The static binary
+is in `/usr/local/bin/opence-master`, run by `opence-master.service` (the
 upstream unit) on 127.0.0.1:8090. Caddy (Ubuntu's package) serves it at
 `https://master.goath1.com` with a Let's Encrypt certificate that it gets and
 renews itself (it needs TCP 80 and 443). Its state is
@@ -173,10 +179,21 @@ A new key would refuse every list to every game that pins this one: back up
   `list-publishers`, `suspend`, `resume`, `revoke`, `quota`.
 - **No peers**: approvals are not shared with OpenCE's master
   (`MASTER_PEERS`); that is for the maintainers to decide.
-- **Updates, by hand**: the admin pages say when opence-master has a release
-  (`MASTER_UPDATES=notify`; it never installs one by itself). Read its notes,
-  then `ssh root@goath1-net-ash sh /root/goath1-net/install-master.sh
-  v<x.y.z>`: it downloads the release's binary and `SHA256SUMS`, checks the
+- **Updates, by hand**: the fork's build is not a release version to the
+  master (`v0.1.8-goath1.1`), so it checks for none, the admin pages say
+  nothing of upstream's, and it backs up no database when it starts. An
+  upstream release is merged into the fork, tagged `v<x.y.z>-goath1.<n>`,
+  built as upstream's release workflow builds it (`CGO_ENABLED=0 GOOS=linux
+  GOARCH=amd64 go build -trimpath -ldflags "-s -w -X
+  .../internal/core.Version=<tag>"`), published with its `SHA256SUMS` on the
+  fork's release, and installed by hand: its sum checked, the old binary
+  kept beside it, `master.db` copied while the master is stopped,
+  `MASTER_PROJECT_URL` changed to the new tag, the master restarted.
+  `install-master.sh` installs upstream's signed release instead (the fork's
+  is not signed by upstream's key), which names OpenCE again: it is the way
+  back to upstream. `ssh root@goath1-net-ash sh
+  /root/goath1-net/install-master.sh v<x.y.z>` downloads the release's
+  binary and `SHA256SUMS`, checks the
   signature with opence-master's release key and the binary's sum, installs
   it and restarts the master (a newer database is backed up by the master
   itself, `master.db.before-<version>`). To go back: the older tag the same
@@ -236,6 +253,8 @@ opence-master -u caddy`.
    start, a new key: put its public half (the script prints it) in
    `masters.txt` and `master_list_read_defaults`, or restore the old
    `master.key` into `/var/lib/private/opence-master/` before the first start
-   to keep the one the games pin.
+   to keep the one the games pin. It installs upstream's release
+   (`install-master.sh`): put the fork's binary in its place after
+   ("The master server", "Updates, by hand").
 
 The server holds no secrets but its ssh host keys; nothing here needs any.
