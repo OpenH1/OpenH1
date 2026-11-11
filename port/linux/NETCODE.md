@@ -1669,10 +1669,6 @@ A party's leader joins a game first and its members follow it in
   and the host decides. In a team game the host puts a party's player on the
   team most of its party is on, if that team has half the game's players or
   fewer; the lobby's auto team balance moves a player of no party first.
-  Where the bots make room for players and even the teams (a matchmaking
-  game's always), they are not counted: a player, the party's leader
-  among them, goes on the team of fewer people, so that the party after it
-  has room there (a party of two in Doubles is one of its two teams).
 - Matchmaking (`port/linux/game/matchmaking.c`) adds nothing to the game's
   messages: a host lists the playlist it hosts for in the listing's stamp
   (its sixth byte, the playlist's number, 1 up in `matchmaking_playlists`'

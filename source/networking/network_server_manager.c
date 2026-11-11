@@ -3111,18 +3111,13 @@ boolean network_game_server_add_player_to_game(
 			short team_counts[NUMBER_OF_MULTIPLAYER_TEAMS];
 			long player_index;
 			short party_team;
-			/* (bots that make room for players and even the teams around them
-			are not counted: they leave, or move, for the players, so that a
-			party's leader takes the team with room for its party) */
-			boolean bots_move = bots_make_room() && bots_teams() == _bots_teams_even;
 
 			for (player_index = 0; player_index < MAXIMUM_NETWORK_PLAYER_COUNT; player_index++)
 			{
 				struct network_player *other_player = &server->game.players[player_index];
 
 				if (network_player_is_valid(other_player) &&
-					VALID_INDEX(other_player->team_index, NUMBER_OF_MULTIPLAYER_TEAMS) &&
-					!(bots_move && bots_machine_is_bot(other_player->machine_index)))
+					VALID_INDEX(other_player->team_index, NUMBER_OF_MULTIPLAYER_TEAMS))
 				{
 					player_count_by_team[other_player->team_index]++;
 					if (network_party_machines_together(machine->machine_index, address,
