@@ -51,7 +51,7 @@ import java.util.List;
  * installed: the new version could only show it a black screen.
  */
 final class Updater {
-    private static final String REPOSITORY = "OpenH1/OpenH1";
+    private static final String REPOSITORY = "OpenH1/goath1";
     private static final String USER_AGENT = "halo-ce-universal-updater";
     private static final int TIMEOUT_MILLISECONDS = 20000;
     /** the most a download (the release's APK, about 35 MB) may be */

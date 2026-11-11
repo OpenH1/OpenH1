@@ -413,7 +413,7 @@ number, configuration, the label it shows ("OpenH1 Linux | build 120
 (release)", OpenCE's "OpenCE Linux | build 282 (release)"), the GitHub
 repository it is made from (owner/name, which the build scripts take from
 CI's `GITHUB_REPOSITORY` or the checkout's origin remote: OpenH1's builds
-say `OpenH1/OpenH1`) and the mods it plays, a line each ("folder version",
+say `OpenH1/goath1`) and the mods it plays, a line each ("folder version",
 in the load order); the host keeps it printable and logs it once, and a
 dedicated server shows it in `/api/players` (`client`). A host without the
 message drops it as a kind it does not know. It is below 120, so an OpenH1

@@ -213,7 +213,7 @@ static void latest_answer(char *text, size_t size)
 	for (index = 0; ids_listed && index < UPDATER_ASSET_COUNT; index++)
 	{
 		snprintf(assets + strlen(assets), sizeof(assets) - strlen(assets),
-			"%s{\"url\": \"" TEST_SERVER "/repos/OpenH1/OpenH1/releases/assets/%llu\", \"id\": %llu, "
+			"%s{\"url\": \"" TEST_SERVER "/repos/OpenH1/goath1/releases/assets/%llu\", \"id\": %llu, "
 			"\"uploader\": {\"login\": \"github-actions[bot]\", \"id\": 41898282}, \"name\": \"%s\", "
 			"\"label\": \"\", \"size\": %d}",
 			index ? ", " : "", file_ids[index], file_ids[index], updater_asset_name(index),
@@ -230,7 +230,7 @@ host, or the answer itself), its description else */
 int update_https_request(const char *method, const char *url, const char *headers, const void *body,
 	unsigned long body_size, unsigned long maximum, struct update_response *response, char *error, int error_size)
 {
-	static const char api[] = TEST_SERVER "/repos/OpenH1/OpenH1/releases/assets/";
+	static const char api[] = TEST_SERVER "/repos/OpenH1/goath1/releases/assets/";
 	unsigned long long id;
 	int index;
 
@@ -302,13 +302,13 @@ redirect to) */
 int update_download(const char *url, const char *path, unsigned long long maximum, update_progress_proc progress,
 	void *context, char *error, int error_size)
 {
-	static const char link[] = TEST_SERVER "/OpenH1/OpenH1/releases/download/build-8/";
+	static const char link[] = TEST_SERVER "/OpenH1/goath1/releases/download/build-8/";
 	static const char host[] = "https://files.test/";
 	char name[256];
 	int index;
 
 	(void)maximum;
-	if (!strcmp(url, TEST_SERVER "/repos/OpenH1/OpenH1/releases/latest"))
+	if (!strcmp(url, TEST_SERVER "/repos/OpenH1/goath1/releases/latest"))
 	{
 		char text[4096];
 

@@ -1235,7 +1235,7 @@ class FakeReleases:
                 self.wfile.write(body)
 
             def do_GET(self):
-                if self.path == "/repos/OpenH1/OpenH1/releases/latest":
+                if self.path == "/repos/OpenH1/goath1/releases/latest":
                     if not releases.build:
                         self.answer(404, b'{"message": "Not Found"}')
                         return
@@ -1245,7 +1245,7 @@ class FakeReleases:
                              f"Standard network version: {releases.standard_version}\n\nThe release builds...")
                     self.answer(200, json.dumps({"tag_name": f"build-{releases.build}", "body": notes}).encode())
                     return
-                prefix = f"/OpenH1/OpenH1/releases/download/build-{releases.build}/"
+                prefix = f"/OpenH1/goath1/releases/download/build-{releases.build}/"
                 if releases.build and self.path == prefix + "SHA256SUMS":
                     self.answer(200, releases.sums().encode(), "text/plain")
                     return
