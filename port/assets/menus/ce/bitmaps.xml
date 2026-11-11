@@ -607,6 +607,10 @@
 		<frame png="ce/port/main_menu/parts/item_280x26__0.png" width="280" height="26"/>
 		<frame png="ce/port/main_menu/parts/item_280x26__1.png" width="280" height="26"/>
 	</bitmap>
+	<bitmap name="main_menu/parts/item_148x18">
+		<frame png="ce/port/main_menu/parts/item_148x18__0.png" width="148" height="18"/>
+		<frame png="ce/port/main_menu/parts/item_148x18__1.png" width="148" height="18"/>
+	</bitmap>
 	<bitmap name="main_menu/parts/item_88x24">
 		<frame png="ce/port/main_menu/parts/item_88x24__0.png" width="88" height="24"/>
 		<frame png="ce/port/main_menu/parts/item_88x24__1.png" width="88" height="24"/>
@@ -614,6 +618,10 @@
 	<bitmap name="main_menu/parts/item_90x24">
 		<frame png="ce/port/main_menu/parts/item_90x24__0.png" width="90" height="24"/>
 		<frame png="ce/port/main_menu/parts/item_90x24__1.png" width="90" height="24"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/item_92x24">
+		<frame png="ce/port/main_menu/parts/item_92x24__0.png" width="92" height="24"/>
+		<frame png="ce/port/main_menu/parts/item_92x24__1.png" width="92" height="24"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/item_96x24">
 		<frame png="ce/port/main_menu/parts/item_96x24__0.png" width="96" height="24"/>
@@ -623,9 +631,17 @@
 		<frame png="ce/port/main_menu/parts/item_97x24__0.png" width="97" height="24"/>
 		<frame png="ce/port/main_menu/parts/item_97x24__1.png" width="97" height="24"/>
 	</bitmap>
+	<bitmap name="main_menu/parts/item_99x24">
+		<frame png="ce/port/main_menu/parts/item_99x24__0.png" width="99" height="24"/>
+		<frame png="ce/port/main_menu/parts/item_99x24__1.png" width="99" height="24"/>
+	</bitmap>
 	<bitmap name="main_menu/parts/item_102x24">
 		<frame png="ce/port/main_menu/parts/item_102x24__0.png" width="102" height="24"/>
 		<frame png="ce/port/main_menu/parts/item_102x24__1.png" width="102" height="24"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/item_105x24">
+		<frame png="ce/port/main_menu/parts/item_105x24__0.png" width="105" height="24"/>
+		<frame png="ce/port/main_menu/parts/item_105x24__1.png" width="105" height="24"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/item_108x24">
 		<frame png="ce/port/main_menu/parts/item_108x24__0.png" width="108" height="24"/>

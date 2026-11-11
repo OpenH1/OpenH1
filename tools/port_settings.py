@@ -37,6 +37,12 @@ QUIT_ITEM_PLACE = (192, 391)
 # (matchmaking.c's matchmaking_doubles_playlist), searched at once
 DOUBLES = "main_menu/doubles"
 DOUBLES_ROWS = 2
+# the 2V2 browser's (_doubles_browser): its rows of games (the server
+# browser's), HOST GAME and FIND GAME under them, and the friends' rows in
+# its panel, their height and step, and where in the panel they begin
+DOUBLES_BROWSER_ROWS = 12
+DOUBLES_FRIEND_ROWS = 6
+DOUBLES_FRIEND_HEIGHT, DOUBLES_FRIEND_STEP, DOUBLES_FRIENDS_TOP = 18, 20, 166
 # the profile manager (the PC version's, which the main menu's Profile
 # opened): the profiles listed, the one chosen made player 1's, NEW and
 # DELETE; Settings' PROFILES tab opens it (MANAGE PROFILES)
@@ -4693,6 +4699,9 @@ def parts_pictures() -> list:
                      (framed(tab_w, tab_h, "#0d3a7a", 0.9, "#8cc8ff"), tab_w, tab_h)]),
         *rows,
         (part_highlight(*HUB_ITEM), highlight(*HUB_ITEM)),
+        # (the 2V2 browser's friends' rows: _doubles_browser)
+        (part_highlight(BROWSER_PANEL[2] - 24, DOUBLES_FRIEND_HEIGHT),
+         highlight(BROWSER_PANEL[2] - 24, DOUBLES_FRIEND_HEIGHT)),
         *((part_highlight(width, PART_PROMPT_HEIGHT), highlight(width, PART_PROMPT_HEIGHT))
           for width in prompt_widths),
         (part_line(BROWSER_LIST_WIDTH), line(BROWSER_LIST_WIDTH)),
@@ -5557,12 +5566,132 @@ def _doubles() -> list:
                      f'<on event="start" open="{DOUBLES}/doubles_screen"/>',
                      '<on event="left_mouse" run="mouse emit accept event"/>'])
     lines += _header(f"{DOUBLES}/header_doubles", f"{DOUBLES}/header_doubles")
+    prompts = [("prompt_search", "%a-button CHOOSE", 28, 124, '<on event="a" run="port matchmaking button"/>'),
+               *MATCHMAKING_PROMPTS[1:]]
     return lines + _matchmaking_screen(DOUBLES, "doubles", f"{DOUBLES}/header_doubles", "2 AGAINST 2", DOUBLES_ROWS,
                                        "Pro settings on the 2v2 maps. Classic: 30 ticks, Instant Aim off for "
-                                       "everyone. Lowest Latency: 120. Each meets only its own kind.")
+                                       "everyone. Lowest Latency: 120. Each lists only its own games.",
+                                       prompts) + _doubles_browser()
 
 
-def _matchmaking_screen(base: str, name: str, header: str, section: str, row_count: int, help_text: str) -> list:
+def _doubles_browser() -> list:
+    """the 2V2 browser (port/linux/game/doubles_browser.inc): a kind's games
+    in the server browser's own column titles and rows (join_game's widgets,
+    filled by the server browser's code, kept to the kind's games), HOST
+    GAME and FIND GAME under them, and the panel on the right: the game
+    chosen (the server browser's panel's words) over the friends online,
+    those in a 2v2 of the kind first; the friends' rows are the list's, after
+    the buttons. Its title is 2V2's, the kind and its rules on the line
+    under it"""
+    base = f"{DOUBLES}/browser"
+    browser = f"{MT}/join_game"
+    list_name = f"{base}/doubles_browser_list"
+    panel_left, panel_top, panel_width, panel_height = BROWSER_PANEL
+    inner_left, inner_width = panel_left + 12, panel_width - 24
+    panel_moved, panel_grown = BROWSER_WIDE_PANEL
+    lines = _widget(f"{base}/doubles_browser_screen",
+                    [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child"),
+                     ("bitmap", "bitmaps/gradient")],
+                    ['<on event="created" run="port doubles init"/>',
+                     '<on event="deleted" run="port doubles dispose"/>',
+                     '<on event="b" run="gamespy back handler"/>', '<on event="back" run="gamespy back handler"/>',
+                     '<on event="x" run="port browser sort"/>',
+                     '<on event="right_trigger" run="port browser refresh"/>',
+                     '<on event="right_thumb" run="port browser search next"/>',
+                     f'<child widget="{DOUBLES}/header_doubles"/>',
+                     f'<child widget="{base}/doubles_kind"/>',
+                     f'<child widget="{browser}/browser_counts"/>',
+                     f'<child widget="{browser}/browser_columns_line"/>',
+                     f'<child widget="{browser}/browser_empty"/>',
+                     f'<child widget="{list_name}"/>'])
+    # (the kind and its rules, under the title where the server browser has
+    # its tabs: doubles_browser.inc fills it in)
+    lines += _part_text(f"{base}/doubles_kind", [("left", BROWSER_LIST_X + 4), ("top", SETTINGS_TABS_TOP + 2),
+                                                ("width", BROWSER_LIST_WIDTH), ("height", 20), ("font", "ui\\large_ui"),
+                                                ("color", "#FFFFFFFF"), ("wide", wide(-WIDE_HALF, BROWSER_WIDE_LIST))])
+    rows = [f'<child widget="{browser}/server_item_{row}" x="{BROWSER_LIST_X}" '
+            f'y="{BROWSER_ROWS_TOP + BROWSER_ROW_STEP * (row - 1)}"/>' for row in range(1, DOUBLES_BROWSER_ROWS + 1)]
+    friends = [f'<child widget="{base}/doubles_friend_{row}" x="{inner_left}" '
+               f'y="{panel_top + DOUBLES_FRIENDS_TOP + DOUBLES_FRIEND_STEP * (row - 1)}"/>'
+               for row in range(1, DOUBLES_FRIEND_ROWS + 1)]
+    lines += _widget(list_name, [("type", "column_list"), ("width", 640), ("height", 480),
+                                 ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                                 ("description", f"{base}/doubles_panel")],
+                     ['<data input="port doubles update"/>',
+                      f'<child widget="{browser}/join_game_header" y="{BROWSER_HEADERS_TOP}"/>',
+                      *rows,
+                      f'<child widget="{base}/doubles_actions" '
+                      f'y="{BROWSER_ROWS_TOP + BROWSER_ROW_STEP * DOUBLES_BROWSER_ROWS + 8}"/>',
+                      *friends,
+                      f'<child widget="{browser}/browser_clear_bar" y="{BROWSER_CLEAR_TOP}"/>',
+                      f'<child widget="{base}/doubles_prompts" y="414"/>'])
+    # (HOST GAME and FIND GAME, under the rows: left and right between them)
+    join_w, join_h = BROWSER_JOIN
+    lines += _widget(f"{base}/doubles_actions", [("type", "column_list"), ("width", 640), ("height", join_h),
+                                                 ("flags", "pass_unhandled_to_focused_child left_right_tabs_children")],
+                     [f'<child widget="{base}/button_doubles_host" x="{BROWSER_LIST_X}"/>',
+                      f'<child widget="{base}/button_doubles_find" x="{BROWSER_LIST_X + join_w + 8}"/>'])
+    for name, words, run in (("button_doubles_host", "HOST GAME", "port doubles host"),
+                             ("button_doubles_find", "FIND GAME", "port doubles find")):
+        lines += _widget(f"{base}/{name}", [("type", "text"), ("width", join_w), ("height", join_h),
+                                           ("bitmap", part_button(join_w, join_h)), ("wide", wide(-WIDE_HALF)),
+                                           ("text", words), ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
+                                           ("align", "center"), ("text_y", caps_text_y(join_h))],
+                         [f'<on event="a" run="{run}"/>', f'<on event="start" run="{run}"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>'])
+    # (a friend's row: their name, and at its end where they are: green in
+    # a 2v2 of this kind, blue otherwise)
+    for row in range(1, DOUBLES_FRIEND_ROWS + 1):
+        lines += _widget(f"{base}/doubles_friend_{row}",
+                         [("type", "text"), ("width", inner_width), ("height", DOUBLES_FRIEND_HEIGHT),
+                          ("wide", wide(panel_moved, panel_grown)),
+                          ("bitmap", part_highlight(inner_width, DOUBLES_FRIEND_HEIGHT)),
+                          ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("text_x", 4),
+                          ("text_y", caps_text_y(DOUBLES_FRIEND_HEIGHT))],
+                         ['<on event="a" run="port doubles friend"/>', '<on event="start" run="port doubles friend"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          f'<child widget="{base}/df_note_{row}"/>', f'<child widget="{base}/df_live_{row}"/>'])
+        for note, color in ((f"df_note_{row}", "#FF7FB2FF"), (f"df_live_{row}", "#FF5ED38C")):
+            lines += _widget(f"{base}/{note}", [("type", "text"), ("width", inner_width - 6),
+                                                ("height", DOUBLES_FRIEND_HEIGHT), ("wide", wide(0, panel_grown)),
+                                                ("font", "ui\\small_ui"), ("color", color), ("align", "right"),
+                                                ("text_y", caps_text_y(DOUBLES_FRIEND_HEIGHT)),
+                                                ("text_flags", "no_focus_test")], [])
+    # (the panel: the game chosen in the server browser's panel's words,
+    # its own widgets, then FRIENDS ONLINE over the friends' rows)
+    panel = [f'<child widget="{browser}/panel_title" x="{inner_left}" y="{panel_top + 10}"/>',
+             f'<child widget="{browser}/panel_where" x="{inner_left}" y="{panel_top + 40}"/>',
+             f'<child widget="{browser}/panel_status" x="{inner_left}" y="{panel_top + 80}"/>',
+             f'<child widget="{base}/doubles_friends_title" x="{inner_left}" y="{panel_top + DOUBLES_FRIENDS_TOP - 20}"/>',
+             f'<child widget="{base}/doubles_friends_empty" x="{inner_left}" y="{panel_top + DOUBLES_FRIENDS_TOP}"/>']
+    lines += _widget(f"{base}/doubles_friends_title",
+                     [("type", "text"), ("controller", 1), ("width", inner_width), ("height", 18),
+                      ("text", "FRIENDS ONLINE"), ("font", "ui\\small_ui"),
+                      ("color", PART_DIM), ("text_x", 4), ("wide", wide(0, panel_grown)),
+                      ("text_flags", "no_focus_test")], [])
+    lines += _part_text(f"{base}/doubles_friends_empty", [("width", inner_width), ("height", 40),
+                                                         ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE),
+                                                         ("wide", wide(0, panel_grown))])
+    lines += _widget(f"{base}/doubles_panel", [("controller", 1), ("left", panel_left), ("top", panel_top),
+                                               ("width", panel_width), ("height", panel_height),
+                                               ("bitmap", part_panel(panel_width, panel_height)),
+                                               ("wide", wide(*BROWSER_WIDE_PANEL))], panel)
+    lines += _prompts(base, "doubles_prompts", DOUBLES_BROWSER_PROMPTS, browser=True)
+    return lines
+
+
+# the 2V2 browser's footer: the server browser's REFRESH, SEARCH and SORT,
+# and BACK
+DOUBLES_BROWSER_PROMPTS = [
+    ("prompt_refresh", "%right-trigger REFRESH", 24, 102, '<on event="a" run="port browser refresh"/>'),
+    ("prompt_search", "%right-thumb SEARCH", 238, 97, '<on event="a" run="port browser search next"/>'),
+    ("prompt_sort", "%x-button SORT", 337, 90, '<on event="a" run="port browser sort"/>'),
+    ("prompt_back", "%b-button BACK", 528, 88, '<on event="a" run="mouse emit back event"/>'),
+]
+
+
+def _matchmaking_screen(base: str, name: str, header: str, section: str, row_count: int, help_text: str,
+                        prompts: list = None) -> list:
     """a matchmaking screen (_matchmaking, _doubles): its rows under
     section, the panel, the prompts; its list <name>_list"""
     left, top, width, height = HUB_PANEL
@@ -5623,7 +5752,7 @@ def _matchmaking_screen(base: str, name: str, header: str, section: str, row_cou
                                                    ("width", width), ("height", height),
                                                    ("bitmap", part_panel(width, height)),
                                                    ("wide", wide(*HUB_WIDE_PANEL))], panel)
-    lines += _prompts(base, "matchmaking_prompts", MATCHMAKING_PROMPTS)
+    lines += _prompts(base, "matchmaking_prompts", prompts or MATCHMAKING_PROMPTS)
     return lines
 
 

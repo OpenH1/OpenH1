@@ -14,9 +14,10 @@ import pytest
 from tools import port_settings
 from tools.harness import build, constant, enum_with, function, mutated, read, run, structure
 
-CASES = ["pick", "problem", "start", "look", "join", "host", "playlists", "doubles"]
-FUNCTIONS = ["matchmaking_game_score", "matchmaking_pick", "matchmaking_search_problem", "matchmaking_start_choice",
-             "matchmaking_step"]
+CASES = ["pick", "problem", "start", "look", "join", "host", "playlists", "doubles", "browser", "host_action"]
+FUNCTIONS = ["matchmaking_listing_of", "matchmaking_game_score", "matchmaking_pick", "matchmaking_search_problem",
+             "matchmaking_start_choice", "matchmaking_step", "matchmaking_playlist_games", "matchmaking_can_search",
+             "matchmaking_host_playlist"]
 
 
 def generated(fault=None):
@@ -35,12 +36,33 @@ def generated(fault=None):
                                 source, re.M | re.S).group(0) + "\n"
     config += re.search(r"^static short const matchmaking_doubles_playlists\[.*?;", source, re.M | re.S).group(0) + "\n"
     config += f"#define MATCHMAKING_ROWS {rows()}\n"
+    # (its state, which HOST GAME begins: matchmaking_host_playlist; the stubs it calls are matchmaking.c's test's)
+    config += "#include \"stubs.inc\"\n"
+    config += re.search(r"^static struct\n\{\n\tshort stage;.*?^\} matchmaking = \{[^}]*\};", source,
+                        re.M | re.S).group(0) + "\n"
     code = "\n\n".join(function(source, name) for name in FUNCTIONS)
     if fault and fault[0] in code:
         code = mutated(code, *fault)
     elif fault:
         config = mutated(config, *fault)
-    return (("config.inc", config), ("under_test.inc", code))
+    return (("config.inc", config), ("stubs.inc", STUBS), ("under_test.inc", code))
+
+
+# the world matchmaking_can_search and matchmaking_host_playlist call: the party, the settings, the maps folder, the
+# hosting itself (recorded), the stage set, the clock, the log
+STUBS = """
+static short stub_party_size = 1;
+static boolean stub_member, stub_online = TRUE, stub_hosted_ok = TRUE;
+static short stub_maps = 5, stub_hosted_playlist = NONE, stub_hosts;
+static short matchmaking_party(boolean *member) { *member = stub_member; return stub_party_size; }
+static int config_boolean(char const *name) { (void)name; return stub_online; }
+static short matchmaking_maps_present(short playlist, short nth) { (void)playlist; (void)nth; return stub_maps; }
+static boolean matchmaking_host(void);
+static void matchmaking_stage(short stage);
+static unsigned long system_milliseconds(void) { return 1000; }
+static void platform_log(char const *format, ...) { (void)format; }
+#define VALID_INDEX(index, count) ((index) >= 0 && (index) < (count))
+"""
 
 
 def rows():
@@ -61,11 +83,24 @@ def test_case(case):
 
 # a fault, and the case that must catch it
 FAULTS = {
-    "any-playlist": (("if (game->playlist != playlist || !playlist || !game->standard",
-                      "if (!playlist || !game->standard"), "pick"),
-    "legacy-picked": (("|| !playlist || !game->standard || !game->open", "|| !playlist || !game->open"), "pick"),
+    "any-playlist": (("return playlist && game->playlist == playlist && game->standard",
+                      "return playlist && game->standard"), "pick"),
+    "legacy-picked": (("game->playlist == playlist && game->standard && (", "game->playlist == playlist && ("),
+                      "pick"),
+    "browser-any-kind": (("if (!matchmaking_listing_of(&games[read], (short)(playlist + 1)))", "if (0)"), "browser"),
+    "browser-legacy": (("game->playlist == playlist && game->standard && (", "game->playlist == playlist && ("),
+                       "browser"),
+    "browser-rate-ignored": (("(!rate || game->rate == rate)", "(1)"), "browser"),
+    "host-anything": (("\tif (problem != _matchmaking_problem_none)\n\t\treturn FALSE;\n\tmatchmaking.playlist = playlist;\n"
+                       "\tmatchmaking.controller = controller;\n\tmatchmaking.begin_time",
+                       "\tmatchmaking.playlist = playlist;\n\tmatchmaking.controller = controller;\n\tmatchmaking.begin_time"),
+                      "host_action"),
+    "host-over-a-search": (("\tif (matchmaking.stage != _matchmaking_idle)\n\t\treturn FALSE;\n\tmatchmaking.problem = problem;",
+                            "\tmatchmaking.problem = problem;"), "host_action"),
+    "host-without-maps": (("\tif (problem == _matchmaking_problem_none && !matchmaking_maps_present(playlist, NONE))\n"
+                           "\t\tproblem = _matchmaking_problem_no_maps;\n", ""), "host_action"),
     "password-picked": ((" || game->locked || game->failed", " || game->failed"), "pick"),
-    "failed-picked": ((" || game->failed ||\n\t\t!game->invite[0])", " ||\n\t\t!game->invite[0])"), "pick"),
+    "failed-picked": ((" || game->failed || !game->invite[0])", " || !game->invite[0])"), "pick"),
     "party-split": (("game->player_count + party_size > game->maximum_player_count",
                      "game->player_count + 1 > game->maximum_player_count"), "pick"),
     "emptiest-first": (("+ game->player_count * 10L", "- game->player_count * 10L"), "pick"),
@@ -99,7 +134,7 @@ FAULTS = {
     "playlist-inserted": (('\t{ "Slayer", L"SLAYER"', '\t{ "Doubles", L"DOUBLES", L"", { "team_slayer", NULL },\n'
                            '\t\t{ "wizard", NULL }, 2, 4, 2, 2 },\n\t{ "Slayer", L"SLAYER"'), "playlists"),
     "party-split-teams": (("\t\t2, 4, 2, 2, 30, TRUE },", "\t\t2, 4, 2, 4, 30, TRUE },"), "playlists"),
-    "rate-ignored": (("\tif (rate && game->rate != rate)\n\t\treturn NONE;", ""), "doubles"),
+    "rate-ignored": (("(!rate || game->rate == rate)", "(1)"), "doubles"),
     "kinds-swapped": (("matchmaking_doubles_playlists[NUMBER_OF_MATCHMAKING_DOUBLES_KINDS] = { 6, 5 };",
                        "matchmaking_doubles_playlists[NUMBER_OF_MATCHMAKING_DOUBLES_KINDS] = { 5, 6 };"), "doubles"),
     "classic-at-120": (("\t\t2, 4, 2, 2, 30, TRUE },", "\t\t2, 4, 2, 2, 120, TRUE },"), "doubles"),

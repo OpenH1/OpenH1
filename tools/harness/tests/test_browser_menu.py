@@ -15,9 +15,15 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, ROOT, build, enum_with, function, mutated, read, run, structure  # noqa: E402
 
-CASES = ["tabs", "groups", "sort", "empty", "ellipsis", "ping", "filters", "search"]
+CASES = ["tabs", "groups", "sort", "empty", "ellipsis", "ping", "filters", "search", "doubles"]
 
 NEGATIVE_CONTROLS = {
+    "doubles-by-tab": (("\tif (browser_doubles_playlist != NONE)\n\t\treturn TRUE;\n\tswitch (browser_tab)",
+                        "\tswitch (browser_tab)"), "doubles"),
+    "doubles-filtered": (("if (browser_filtering && browser_doubles_playlist == NONE &&",
+                          "if (browser_filtering &&"), "doubles"),
+    "doubles-offline": (("\tif (browser_doubles_playlist != NONE)\n\t\treturn FALSE;\n\treturn", "\treturn"),
+                        "doubles"),
     "favorites-on-every-tab": (("\tcase _browser_tab_favorites:\n\t\treturn favorite;\n", ""), "tabs"),
     "legacy-as-openh1": (("\t\treturn !entry->openh1;", "\t\treturn entry->openh1;"), "tabs"),
     "dedicated-tab-lists-all": (("\tcase _browser_tab_dedicated:\n\t\treturn entry->dedicated;\n", ""), "tabs"),

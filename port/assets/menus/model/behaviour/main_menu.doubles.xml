@@ -38,4 +38,76 @@
 		<on event="start" run="port matchmaking button"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</behaviour>
+	<behaviour name="main_menu/doubles/browser/doubles_browser_screen" flags="pass_unhandled_to_focused_child">
+		<on event="created" run="port doubles init"/>
+		<on event="deleted" run="port doubles dispose"/>
+		<on event="b" run="gamespy back handler"/>
+		<on event="back" run="gamespy back handler"/>
+		<on event="x" run="port browser sort"/>
+		<on event="right_trigger" run="port browser refresh"/>
+		<on event="right_thumb" run="port browser search next"/>
+	</behaviour>
+	<behaviour name="main_menu/doubles/browser/doubles_browser_list" flags="pass_unhandled_to_focused_child up_down_tabs_children"/>
+	<behaviour name="main_menu/doubles/browser/doubles_actions" flags="pass_unhandled_to_focused_child left_right_tabs_children"/>
+	<behaviour name="main_menu/doubles/browser/button_doubles_host">
+		<on event="a" run="port doubles host"/>
+		<on event="start" run="port doubles host"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
+	<behaviour name="main_menu/doubles/browser/button_doubles_find">
+		<on event="a" run="port doubles find"/>
+		<on event="start" run="port doubles find"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
+	<behaviour name="main_menu/doubles/browser/doubles_friend_1">
+		<on event="a" run="port doubles friend"/>
+		<on event="start" run="port doubles friend"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
+	<behaviour name="main_menu/doubles/browser/doubles_friend_2">
+		<on event="a" run="port doubles friend"/>
+		<on event="start" run="port doubles friend"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
+	<behaviour name="main_menu/doubles/browser/doubles_friend_3">
+		<on event="a" run="port doubles friend"/>
+		<on event="start" run="port doubles friend"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
+	<behaviour name="main_menu/doubles/browser/doubles_friend_4">
+		<on event="a" run="port doubles friend"/>
+		<on event="start" run="port doubles friend"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
+	<behaviour name="main_menu/doubles/browser/doubles_friend_5">
+		<on event="a" run="port doubles friend"/>
+		<on event="start" run="port doubles friend"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
+	<behaviour name="main_menu/doubles/browser/doubles_friend_6">
+		<on event="a" run="port doubles friend"/>
+		<on event="start" run="port doubles friend"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
+	<behaviour name="main_menu/doubles/browser/doubles_prompts" flags="pass_unhandled_to_focused_child left_right_tabs_items"/>
+	<behaviour name="main_menu/doubles/browser/prompt_refresh">
+		<on event="a" run="port browser refresh"/>
+		<on event="start" run="port browser refresh"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
+	<behaviour name="main_menu/doubles/browser/prompt_search">
+		<on event="a" run="port browser search next"/>
+		<on event="start" run="port browser search next"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
+	<behaviour name="main_menu/doubles/browser/prompt_sort">
+		<on event="a" run="port browser sort"/>
+		<on event="start" run="port browser sort"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
+	<behaviour name="main_menu/doubles/browser/prompt_back">
+		<on event="a" run="mouse emit back event"/>
+		<on event="start" run="mouse emit back event"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
 </model>

@@ -7303,7 +7303,9 @@ static boolean browser_item_usable(struct widget_instance *child)
 	above them; JOIN GAME, in the panel) */
 	return browser_row_index(child) != NONE || !strcmp(child->name, "join_game_button_bar") ||
 		!strcmp(child->name, "join_game_header") || !strcmp(child->name, "browser_tabs") ||
-		!strcmp(child->name, "browser_join_bar") || !strcmp(child->name, "browser_clear_bar");
+		!strcmp(child->name, "browser_join_bar") || !strcmp(child->name, "browser_clear_bar") ||
+		/* (the 2V2 browser's HOST GAME and FIND GAME, its friends) */
+		!strcmp(child->name, "doubles_actions") || !strncmp(child->name, "doubles_friend_", 15);
 }
 
 /* the browser's focus, off what cannot have it (at the start, or a row whose
@@ -7770,6 +7772,13 @@ static boolean browser_sort_descending = TRUE;
 static short browser_tab = _browser_tab_all;
 /* whether the list being ordered is in groups (the server browser's) */
 static boolean browser_grouped;
+/* the 2V2 browser's (doubles_browser.inc): the server browser kept to the
+games of a matchmaking playlist (0 up; NONE: the server browser itself),
+every tab's, unfiltered (its searches kept), no favorites offline; and its
+panel's title. Its words for a list of none of them */
+static short browser_doubles_playlist = NONE;
+static wchar_t const *browser_doubles_name = L"";
+static void doubles_browser_empty(wchar_t *text, short size);
 
 /* each column's title (op_sort_header_*) and its words (port_settings.py's
 BROWSER_HEADERS), and the way it sorts first (more players first) */
@@ -7893,6 +7902,9 @@ static wchar_t const *browser_group_heading(short group)
 /* whether the tab shown lists the game (a favorite or not) */
 static boolean browser_tab_shows(struct browser_sort_entry const *entry, boolean favorite)
 {
+	/* (the 2V2 browser's games are its kind's, whatever the tab) */
+	if (browser_doubles_playlist != NONE)
+		return TRUE;
 	switch (browser_tab)
 	{
 	case _browser_tab_dedicated:
@@ -7914,6 +7926,8 @@ static boolean browser_tab_shows(struct browser_sort_entry const *entry, boolean
 games: ALL's and FAVORITES' */
 static boolean browser_tab_lists_offline(void)
 {
+	if (browser_doubles_playlist != NONE)
+		return FALSE;
 	return browser_tab == _browser_tab_all || browser_tab == _browser_tab_favorites;
 }
 
@@ -8119,7 +8133,8 @@ static short browser_order_part(short const *favorite_of, struct browser_sort_en
 			continue;
 		}
 		/* (those the filters hide counted, for the words over the list) */
-		if (browser_filtering && !browser_filters_show(&browser_filters, &entries[index]))
+		if (browser_filtering && browser_doubles_playlist == NONE &&
+			!browser_filters_show(&browser_filters, &entries[index]))
 			browser_filtered_count++;
 		else if (browser_filtering && !browser_search_shows(browser_searches, entries[index].name,
 			entries[index].map, entries[index].map_shown))
@@ -9734,6 +9749,13 @@ static void lobby_browser_update(struct widget_instance *list)
 	browser_party_size = browser_party_members();
 	lobby_browser.count = lobby_browser_valid_games(lobby_browser.games,
 		(short)p2p_lobby_games(lobby_browser.games, LOBBY_BROWSER_GAMES));
+	/* (the 2V2 browser's: its kind's games alone, as matchmaking's search
+	takes them) */
+	if (browser_doubles_playlist != NONE)
+	{
+		lobby_browser.count = matchmaking_playlist_games(lobby_browser.games, lobby_browser.count,
+			browser_doubles_playlist);
+	}
 	lobby_browser.count = lobby_browser_favorites(lobby_browser.count);
 	rows = lobby_browser_rows();
 	/* (the game starred or unstarred, moved by it: its row focused) */
@@ -9930,15 +9952,24 @@ static void lobby_browser_update(struct widget_instance *list)
 			browser_status_text(&shown, text, NUMBEROF(text));
 		else
 		{
-			usnprintf(text, NUMBEROF(text) - 1, L"Every public game on the Internet, OpenH1 and Legacy.");
+			usnprintf(text, NUMBEROF(text) - 1, browser_doubles_playlist != NONE ?
+				L"Choose a game to join it, or host one." : L"Every public game on the Internet, OpenH1 and Legacy.");
 		}
 		text[NUMBEROF(text) - 1] = 0;
-		browser_panel_show(list, chosen < rows ? &shown : NULL, L"SERVER BROWSER", text);
+		browser_panel_show(list, chosen < rows ? &shown : NULL,
+			browser_doubles_playlist != NONE ? browser_doubles_name : L"SERVER BROWSER", text);
 		for (index = 0; index < lobby_browser.count; index++)
 			players += lobby_browser.games[index].player_count;
 		browser_empty_text(multiplayer.mode, browser_tab, config_boolean("network.online"),
 			config_boolean("network.public_lobby"), now - lobby_browser.begin_time < LOBBY_BROWSER_LOOK_TIME,
 			p2p_lobby_newer_games(), browser_filtered_count, browser_searched_count, text, NUMBEROF(text));
+		/* (the 2V2 browser's, once it has looked: none of its kind) */
+		if (browser_doubles_playlist != NONE && config_boolean("network.online") &&
+			config_boolean("network.public_lobby") && now - lobby_browser.begin_time >= LOBBY_BROWSER_LOOK_TIME &&
+			!browser_searched_count)
+		{
+			doubles_browser_empty(text, NUMBEROF(text));
+		}
 		browser_header_show(list, (short)(lobby_browser.count - lobby_browser.headings), players, rows, text);
 		browser_clear_show(list, rows);
 	}
@@ -12607,6 +12638,7 @@ static void gametype_engine_name(struct widget_instance *text_box)
 #include "party_menu.inc"
 #include "matchmaking_menu.inc"
 #include "friends_menu.inc"
+#include "doubles_browser.inc"
 #include "lobby_menu.inc"
 /* (the campaign's screens: the Campaign menu, Choose Mission, Choose Difficulty) */
 #include "campaign_menu.inc"
@@ -12828,6 +12860,27 @@ boolean pc_menu_event_function_invoke(
 		{
 			lobby_browser_end();
 		}
+		/* (the 2V2 browser: doubles_browser.inc) */
+		else if (!strcmp(name, "port doubles init"))
+		{
+			return doubles_browser_initialize(widget, event, widget_deleted);
+		}
+		else if (!strcmp(name, "port doubles dispose"))
+		{
+			doubles_browser_dispose();
+		}
+		else if (!strcmp(name, "port doubles host"))
+		{
+			return doubles_browser_host(controller);
+		}
+		else if (!strcmp(name, "port doubles find"))
+		{
+			return doubles_browser_find(controller);
+		}
+		else if (!strcmp(name, "port doubles friend"))
+		{
+			return doubles_browser_friend(widget);
+		}
 		else if (!strcmp(name, "port pause end game"))
 		{
 			return pause_end_game();
@@ -13002,7 +13055,7 @@ boolean pc_menu_event_function_invoke(
 		/* (matchmaking: matchmaking_menu.inc) */
 		else if (!strcmp(name, "port matchmaking button"))
 		{
-			return matchmaking_screen_button(widget, controller);
+			return matchmaking_screen_button(widget, controller, widget_deleted);
 		}
 		else if (!strcmp(name, "port matchmaking x"))
 		{
@@ -13245,6 +13298,8 @@ void pc_menu_game_data_function_invoke(
 		password_screen_update(widget);
 	else if (!strcmp(name, "gamespy screen update"))
 		browser_update(widget);
+	else if (!strcmp(name, "port doubles update"))
+		doubles_browser_update(widget);
 	else if (!strcmp(name, "gt edit list update"))
 		gametype_edit_list_update(widget);
 	else if (!strcmp(name, "get edit game settings name"))
