@@ -60,7 +60,8 @@ reads XML and has no JSON reader.
 - **Kinds of screen.** `settings` (a Settings tab or page, and the setup
   options' screens of rows), whose rows are their meaning, laid out by the
   engine from the generator's geometry (`SETTINGS_*`, carried in the model's
-  header so that the C and the Python never disagree); `nodes`, every other
+  header so that the C and the Python never disagree; a screen's
+  `geometry`, another of the model's by name: the tall layout's, below); `nodes`, every other
   screen (the PC version's from its tags, the lobby, the server browser, the
   campaign, the dialogs), a tree of nodes with the XML widgets' attributes.
   The setup screens (Server Setup, its co-op options, the gametype editor's
@@ -116,21 +117,23 @@ again from `ce/` alone. A widget's look is its own element, keyed by the
 widget's name, as the game's definitions are:
 
 ```xml
-<look name="main_menu/.../button_bar" type="column_list" box="0 0 640 28" wide="-106 212"
+<look name="main_menu/.../button_bar" type="column_list" box="0 0 640 28" wide="-106 212" past="-143 286"
       place="anchor_left stretch keep_ends" picture="settings/panel" radius="8" effects="flash_bitmap nifty_fx"
       list="items_in_code" header="..." header_box="x0 y0 x1 y1" footer="..." footer_box="x0 y0 x1 y1">
-  <text font="large" color="#FF6F9CD0" align="center" at="4 2" flags="wrap no_focus_test"
+  <text font="large" color="#FF6F9CD0" align="center" at="4 2" flags="wrap no_focus_test" scale="1 1.2"
         string_list="..." index="3" text="..." items="A|B" replace="%controller controller"/>
   <at widget="main_menu/.../button_ok" x="464" y="2"/>
 </look>
 ```
 
 - `box` is the widget's area in its parent's units (left, top, right,
-  bottom); `wide` its wide layout (`dx dw`, as the XML's); `place` the flags
+  bottom); `wide` its wide layout (`dx dw`, as the XML's); `past` its layout
+  past 16:9 (`dx dw` at 21:9 past 16:9's: the tall layout's, below); `place` the flags
   that place it on a touchscreen's wide screen and keep its picture's ends;
   `effects` the plasma and the flashing picture.
 - `<text>` is the text and its style: its font, colour, alignment, where it
-  starts (`at`), its text flags, and what it says (a `<strings>` list and an
+  starts (`at`), its text flags, its scale (`least most`: drawn so many times
+  its font's size at 4:3 and at 16:9 and wider), and what it says (a `<strings>` list and an
   index, its own `text`, a spinner's `items`, its replaces). A text style's
   effects go here as attributes when they come (outlines, glows and drop
   shadows: the MSDF atlas's fourth channel is a plain distance, so each is a
@@ -276,16 +279,17 @@ taken out of the model (a menus folder's copy of its file) must be logged.
 
 ## Deliberate differences
 
-Each one is listed here with its reason, and in `tools/menu_parity.py`'s
-`DELIBERATE`, which lets that difference alone through.
+Each one is listed here with its reason, and `tools/menu_parity.py` has a
+matcher for it (`DELIBERATE`, `is_tall_layout`); every other screen stays
+the same in layout, pixels and behaviour.
 
 - **Profiles' MENU ENGINE row** shows the engine that draws it.
 - **The browsers' tall layout.** The server browser (and the local
   network's list and Join by Link, its screen) and PRO 2V2's browser are
   laid out for the screen's whole height by the new engine alone
-  (`tools/port_settings.py`'s `BROWSER_TALL`), in the tall layout's parts
-  as Settings' tall layout has them (`TALL_BAND`, `TALL_FOOTER`,
-  `TALL_BACKGROUND`, `tall_title`): the slim header, a dark band with the
+  (`tools/port_settings.py`'s `BROWSER_TALL`), in the tall layout's shared
+  parts (below: `TALL_BAND`, `TALL_FOOTER`, `TALL_BACKGROUND`,
+  `tall_title`): the slim header, a dark band with the
   title in words (the heading font, not the PC version's picture) and the
   counts in it, the tabs under it, the footer at the very bottom, the rows (taller, 24 units, `BROWSER_ROWS` of them,
   scrolling beyond) and the panel filling what is between; on a screen
@@ -304,9 +308,7 @@ Each one is listed here with its reason, and in `tools/menu_parity.py`'s
   (`ui_widget_port_past_extra`). The parity tool lets each item of those two
   screens differ in its place (`PLACE_KEYS`) and a text in its line breaks,
   and their titles be words in place of pictures, nothing else
-  (`tall_items`). Another screen
-  laid out tall (Settings') takes the same way: its widgets' tall looks
-  added to `tall_widgets`.
+  (`tall_items`).
 - **Settings' search** (the new engine's alone). The first feature that
   needs the model: it reads every tab's and page's rows, their labels, help
   and choices, which the classic engine has only as widgets of one screen at a
@@ -325,7 +327,7 @@ Each one is listed here with its reason, and in `tools/menu_parity.py`'s
   rows found in the screen's list from their own pages' widgets (each the
   real row, which `menu_functions.c` runs as on its page, its model's row
   given by `menu_engine_model_row_of`), as many as fit, grouped under the way
-  to them (each row's `crumb` in the model) and laid out from the top;
+  to them (each row's `crumb` in the model) and laid out from the top (in the tall layout's geometry, as Settings' tabs);
   `settings_search_menu.inc` takes what is typed, the rows' conditions (a
   term naming a row of its page that was not found: that row's setting's
   value) and the panel. Esc (B) clears it and goes back to the row it was
@@ -338,6 +340,61 @@ Each one is listed here with its reason, and in `tools/menu_parity.py`'s
   on-screen keyboard, a row found that opens a page and back), and
   `tools/harness/tests/test_settings_search.py` its ranking on the real model.
   Not yet: Host Controls' and the server browser's lists.
+- **Settings' tall layout.** The new engine lays Settings' tabs and pages
+  out full screen, in a geometry of their own that the classic engine's
+  widgets have not (`tools/port_settings.py`'s `SETTINGS_TALL`): a slim
+  header (a dark band 40 units tall with its line under it, the title in it
+  as words), the tabs under it, the rows from under them to the footer's
+  line (24 units tall, 25 apart; their words drawn up to 1.2 times their
+  font's size, as tall against the row as the classic's), the buttons at
+  the bottom, and the panel from under the tabs to the footer. Past 16:9 it
+  goes edge to edge (the panel about a quarter of a 21:9 screen); 4:3 has it
+  at its width. The rows scroll where they are more than their room (none
+  of today's pages is): the focused row kept in view, eased, a thin track at
+  their right, the wheel and a touch drag moving the focus as they do. The
+  classic engine keeps the 640x480 frame (`display.menu_engine = "classic"`).
+  Parity: as the browsers' (`is_tall_layout`, `tall_items`), a Settings
+  screen's items may differ in their places, its title be words, and its
+  panel (taller, so with more of its words, facts and pictures) differ; all
+  else must be the same, the new engine's rows the classic's in order (a
+  run of them where it scrolls, the rest not compared). The behaviour
+  scripts' clicks are each engine's places of what they click (`CLICKS`).
+
+## The tall layout
+
+A screen the engine draws may be laid out in a geometry of its own. It is
+written by the generators, not decided by the engine: each of the screen's
+widgets is generated a second time in the tall geometry
+(`tools/port_settings.py`'s `tall_widgets`), and `tools/menu_look.py`
+writes the look of every widget of that name from it in place of `ce/`'s,
+so that the classic engine's widgets are unchanged and the new engine's
+looks are the tall ones. A screen opts in so:
+
+- its widgets in `tall_widgets` (the same names as its `ce/` widgets, so its
+  behaviour and its game functions are the same): Settings' are its pages
+  written in `SETTINGS_TALL`, the browsers' their generator run again with
+  `BROWSER_TALL`'s places (`_browser_tall_widgets`);
+- `TALL_BACKGROUND` in place of `bitmaps/gradient` (the slim header's band
+  and line, the footer's line at `480 - TALL_FOOTER`), and `tall_title` for
+  its title (words of a `<strings>` of `ce/`'s, in the heading font,
+  `TALL_TITLE_SCALE` larger: a look's text is the strings its `ce/` widget
+  was built with);
+- a look's `past` ("dx dw", `port_settings.past`) for its place past 16:9:
+  the move and growth at 21:9 past 16:9's, more on a wider screen
+  (`menu_tags.c`'s `ui_widget_port_past_scale`); without one, a widget keeps
+  16:9's place in the middle;
+- a look's text `scale` ("least most": at 4:3, and at 16:9 and wider), its
+  words laid out in their font and drawn larger by the high-res text's
+  distance fields, about the text box's middle (`ui_widget.c`'s
+  `ui_widget_port_text_scale_begin`, `rasterizer_text_set_scale`; a field
+  typed into keeps its font's size, for its caret);
+- for a settings screen, its model's `geometry="tall"`, the model's
+  `<geometry name="tall" ... scrolls="true">`, which the engine lays its rows
+  out in (`engine_geometry`) and scrolls by (`engine_scroll`: its rows cut to
+  their room, their pictures with their texture, `ui_widget_port_cut_set`,
+  and their tap targets, `ui_widget_port_targets_clip`), and whose
+  `panel_bottom` `settings_panel_show` fits the panel's words to
+  (`menu_engine_settings_geometry`).
 
 ## Where it ends, and the steps there
 

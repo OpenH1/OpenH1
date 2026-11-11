@@ -96,6 +96,10 @@
 	</widget>
 	<widget name="main_menu/settings/tab_prompt_next" type="text" controller="1" width="30" height="22" wide="106 0" text="%black-button" color="#FF2896FF" text_x="2" text_y="2" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_shared/_settings_text">
 	</widget>
+	<widget name="main_menu/settings/tabs/tab_prompt_previous" type="text" controller="1" width="30" height="22" wide="-106 0" text="%white-button" color="#FF2896FF" text_x="2" text_y="2" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_shared/_settings_text">
+	</widget>
+	<widget name="main_menu/settings/tabs/tab_prompt_next" type="text" controller="1" width="30" height="22" wide="106 0" text="%black-button" color="#FF2896FF" text_x="2" text_y="2" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_shared/_settings_text">
+	</widget>
 	<strings name="main_menu/settings/tab_names">
 		<string text="VIDEO"/>
 		<string text="AUDIO"/>
@@ -140,6 +144,24 @@
 	</widget>
 	<widget name="main_menu/settings/search_word" type="text" controller="1" width="20" height="22" text="SEARCH" color="#FF2896FF" text_x="20" text_y="2" text_flags="no_focus_test" wide="0 110" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_shared/_settings_text">
 	</widget>
+	<strings name="main_menu/settings/tall_titles">
+		<string text="SETTINGS"/>
+		<string text="ADVANCED GRAPHICS"/>
+		<string text="BRIGHTNESS"/>
+		<string text="FRAME RATE &amp; SYNC"/>
+		<string text="FIRST PERSON"/>
+		<string text="WEAPON POSITION"/>
+		<string text="WEAPON &amp; BODY"/>
+		<string text="CONTROLLER"/>
+		<string text="BUTTON REMAPPING"/>
+		<string text="KEY BINDINGS"/>
+		<string text="GYRO &amp; FLICK STICK"/>
+		<string text="STICK DEAD ZONES"/>
+		<string text="SCREEN LAYOUT"/>
+		<string text="STREAMER MODE"/>
+		<string text="FILTERS"/>
+		<string text="DISCORD ACCOUNT"/>
+	</strings>
 	<widget name="main_menu/settings/stepped_left" controller="1" width="16" height="16" bitmap="bitmaps/arrow_sm_left" wide="20 0" source="tools/port_settings.py settings_files/_settings_shared">
 	</widget>
 	<widget name="main_menu/settings/stepped_right" controller="1" width="16" height="16" bitmap="bitmaps/arrow_sm_right" wide="140 0" source="tools/port_settings.py settings_files/_settings_shared">

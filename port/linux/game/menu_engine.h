@@ -98,6 +98,11 @@ char const *menu_engine_look_role(struct widget_instance const *widget);
 /* whether the engine lays out what is in the widget (a settings tab's or
 page's rows) from the model */
 boolean menu_engine_lays_out(struct widget_instance *widget);
+/* the geometry the settings screen of a widget is laid out in: its own (the
+tall layout's) where the engine runs it, else the model's first (NULL: no
+model) */
+struct halo_menu_model_geometry;
+struct halo_menu_model_geometry const *menu_engine_settings_geometry(struct widget_instance *widget);
 
 /* ---------- Settings' search, the engine's alone (menu_search.c; the menus'
 functions' settings_search_*) */

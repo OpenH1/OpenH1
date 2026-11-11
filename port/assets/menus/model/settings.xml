@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- The settings screens' model, for the menu engine (docs/menu_engine.md; tools/port_settings.py) -->
 <model>
-	<geometry row_x="28" row_width="344" row_height="20" row_step="21" section_height="18" section_step="20" section_gap="6" tab_top="104" page_top="80" rows_bottom="408" spinner_x="188" spinner_width="140" search_word_extra="123" search_results="14" search_crumbs="8"/>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/video_settings_screen" kind="settings" layout="tab" tab="VIDEO">
+	<geometry row_x="28" row_width="344" row_height="20" row_step="21" section_height="18" section_step="20" section_gap="6" tab_top="104" page_top="80" rows_bottom="408" spinner_x="188" spinner_width="140" search_word_extra="123" search_results="14" search_crumbs="8" panel_bottom="400"/>
+	<geometry name="tall" row_x="28" row_width="344" row_height="24" row_step="25" section_height="20" section_step="22" section_gap="6" tab_top="78" page_top="50" rows_bottom="438" spinner_x="188" spinner_width="140" panel_bottom="438" scrolls="true" search_word_extra="123" search_results="14" search_crumbs="8"/>
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/video_settings_screen" kind="settings" layout="tab" geometry="tall" tab="VIDEO">
 		<about>The window, the frame rate and the graphics.</about>
 		<section key="section_0" title="DISPLAY"/>
 		<row key="mode" kind="choice" setting="display.mode" label="WINDOW" crumb="VIDEO › DISPLAY" search="monitor" search_choices="fullscreen borderless windowed" when="computer">
@@ -95,7 +96,7 @@
 		<button key="button_ok" kind="ok" run="port settings ok" help="Keeps your changes, on every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings cancel" help="Leaves Settings without keeping any change."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/audio_settings_screen" kind="settings" layout="tab" tab="AUDIO">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/audio_settings_screen" kind="settings" layout="tab" geometry="tall" tab="AUDIO">
 		<about>The sound and its devices, 3D audio, the volumes and voice chat.</about>
 		<section key="section_0" title="SOUND"/>
 		<row key="output_device" kind="choice" setting="audio.output_device" label="OUTPUT DEVICE" crumb="AUDIO › SOUND" when="desktop">
@@ -206,7 +207,7 @@
 		<button key="button_ok" kind="ok" run="port settings ok" help="Keeps your changes, on every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings cancel" help="Leaves Settings without keeping any change."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_settings_screen" kind="settings" layout="tab" tab="CONTROLS">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_settings_screen" kind="settings" layout="tab" geometry="tall" tab="CONTROLS">
 		<about>The mouse, the controller and the keys.</about>
 		<section key="section_0" title="MOUSE AND KEYBOARD"/>
 		<row key="mouse_sensitivity" kind="slider" setting="input.mouse_sensitivity" label="SENSITIVITY" crumb="CONTROLS › MOUSE AND KEYBOARD" search="sens dpi" least="0.1" most="10" step="0.05" typed_least="0.01" typed_most="100">
@@ -296,7 +297,7 @@
 		<button key="button_ok" kind="ok" run="port settings ok" help="Keeps your changes, on every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings cancel" help="Leaves Settings without keeping any change."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/network_settings_screen" kind="settings" layout="tab" tab="ONLINE">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/network_settings_screen" kind="settings" layout="tab" geometry="tall" tab="ONLINE">
 		<about>Internet play, sharing maps and updates.</about>
 		<section key="section_0" title="INTERNET"/>
 		<row key="online" kind="choice" setting="network.online" label="INTERNET PLAY" crumb="ONLINE › INTERNET" when="desktop+!in_game android+!in_game">
@@ -361,7 +362,7 @@
 		<button key="button_ok" kind="ok" run="port settings ok" help="Keeps your changes, on every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings cancel" help="Leaves Settings without keeping any change."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/interface_settings_screen" kind="settings" layout="tab" tab="INTERFACE">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/interface_settings_screen" kind="settings" layout="tab" geometry="tall" tab="INTERFACE">
 		<about>The HUD, the players' names, the scoreboard and the chat.</about>
 		<section key="section_0" title="HUD"/>
 		<row key="high_res_hud" kind="choice" setting="display.high_res_hud" label="HIGH-RES HUD" crumb="INTERFACE › HUD">
@@ -434,7 +435,7 @@
 		<button key="button_ok" kind="ok" run="port settings ok" help="Keeps your changes, on every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings cancel" help="Leaves Settings without keeping any change."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/profile_settings/profile_settings_screen" kind="settings" layout="tab" tab="PROFILES">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/profile_settings/profile_settings_screen" kind="settings" layout="tab" geometry="tall" tab="PROFILES">
 		<about>Your player profiles, your name and color, and the disk space the maps and caches take.</about>
 		<section key="section_0" title="PLAYER"/>
 		<row key="name" kind="link" label="NAME ›" crumb="PROFILES › PLAYER" search="gamertag nickname" when="profile+!in_game" open="main_menu/settings_select/player_setup/player_profile_edit/name_edit/profile_name_screen" run="player profile change name">
@@ -472,7 +473,7 @@
 		<button key="button_ok" kind="ok" run="port settings ok" help="Keeps your changes, on every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings cancel" help="Leaves Settings without keeping any change."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/mods_settings_screen" kind="settings" layout="tab" tab="MODS">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/mods_settings_screen" kind="settings" layout="tab" geometry="tall" tab="MODS">
 		<about>Texture, sound, text and model packs from the mods folder.</about>
 		<section key="section_0" title="MODS"/>
 		<row key="mods" kind="link" label="MANAGE MODS ›" crumb="MODS › MODS" when="!in_game" open="main_menu/mods/mods_screen">
@@ -485,7 +486,7 @@
 		<button key="button_ok" kind="ok" run="port settings ok" help="Keeps your changes, on every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings cancel" help="Leaves Settings without keeping any change."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/advanced_graphics_screen" kind="settings" layout="page" title="ADVANCED GRAPHICS">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/advanced_graphics_screen" kind="settings" layout="page" geometry="tall" title="ADVANCED GRAPHICS">
 		<row key="render_resolution" kind="choice" setting="display.render_resolution" label="RENDER RESOLUTION" crumb="VIDEO › ADVANCED GRAPHICS" search_choices="xbox 640x480 full" when="computer">
 			<help>Full draws the game at your screen's resolution. Above 100% draws it larger and scales it down: finer and smoother, for over twice the graphics card's work at 150%, four times at 200%. Xbox draws 640x480, scaled up: softer, and very light.</help>
 			<choice shown="XBOX 640X480" value="original"/>
@@ -585,7 +586,7 @@
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/brightness/brightness_screen" kind="settings" layout="page" title="BRIGHTNESS">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/brightness/brightness_screen" kind="settings" layout="page" geometry="tall" title="BRIGHTNESS">
 		<section key="section_0" title="PICTURE"/>
 		<row key="gamma" kind="slider" setting="display.gamma" label="GAMMA" crumb="VIDEO › BRIGHTNESS" when="!vr_build" not_in_vr="true" least="0.5" most="2" step="0.05" typed_least="0.5" typed_most="2">
 			<help>How bright the picture is, the HUD and menus too, as Halo PC's gamma. Higher brightens the dark parts; lower darkens them. 1.0 shows the game as it is drawn. With HDR on an HDR display, Paper White sets the brightness instead.</help>
@@ -664,7 +665,7 @@
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/frame_rate_screen" kind="settings" layout="page" title="FRAME RATE &amp; SYNC">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/frame_rate/frame_rate_screen" kind="settings" layout="page" geometry="tall" title="FRAME RATE &amp; SYNC">
 		<row key="vsync" kind="choice" setting="display.vsync" label="VSYNC" crumb="VIDEO › FRAME RATE &amp; SYNC">
 			<help>Shows each frame at a refresh of the display: even motion that never tears. With Low Latency it adds almost no input lag. It is on in the Steam Deck's Game Mode.</help>
 			<choice shown="ON" value="true"/>
@@ -725,7 +726,7 @@
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/first_person_screen" kind="settings" layout="page" title="FIRST PERSON">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/first_person_screen" kind="settings" layout="page" geometry="tall" title="FIRST PERSON">
 		<section key="section_0" title="VIEW"/>
 		<row key="vehicle_fov" kind="slider" setting="display.vehicle_fov" label="VEHICLE FIELD OF VIEW" crumb="VIDEO › FIRST PERSON" search="fov" search_choices="match" least="80" most="160" step="5" typed_least="20" typed_most="160">
 			<help>How wide you see from a vehicle's third-person seats (driver, gunner), in degrees across a 16:9 screen. Passenger seats use your Field of View. Default keeps the game's view; Match uses your Field of View. Above 150 needs Panini Projection.</help>
@@ -801,7 +802,7 @@
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_position/weapon_position_screen" kind="settings" layout="page" title="WEAPON POSITION">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_position/weapon_position_screen" kind="settings" layout="page" geometry="tall" title="WEAPON POSITION">
 		<section key="section_0" title="ALL WEAPONS"/>
 		<row key="viewmodel_offset_x" kind="slider" setting="display.viewmodel_offset_x" label="HORIZONTAL" crumb="VIDEO › … › WEAPON POSITION" least="-20" most="20" step="0.5" typed_least="-20" typed_most="20">
 			<help>Moves your weapon and hands right, or left below 0, in centimeters, for every weapon, as far on the screen at any weapon field of view. 0 keeps them where the game puts them. In a game, Settings from the pause menu also sets the weapon you hold on its own.</help>
@@ -859,7 +860,7 @@
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/weapon_body_screen" kind="settings" layout="page" title="WEAPON &amp; BODY">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/weapon_body_screen" kind="settings" layout="page" geometry="tall" title="WEAPON &amp; BODY">
 		<section key="section_0" title="WEAPON"/>
 		<row key="viewmodel_visible" kind="choice" setting="display.viewmodel_visible" label="WEAPON AND HANDS" crumb="VIDEO › FIRST PERSON › WEAPON &amp; BODY" search="viewmodel gun">
 			<help>Draws your weapon, your hands and what they hold. Hide clears the view; you still fire, reload and hear them.</help>
@@ -939,7 +940,7 @@
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gamepad_setup_screen" kind="settings" layout="page" title="CONTROLLER" profile="true">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gamepad_setup_screen" kind="settings" layout="page" geometry="tall" title="CONTROLLER" profile="true">
 		<section key="section_0" title="LOOK"/>
 		<row key="look_sensitivity" kind="choice" setting="profile.look_sensitivity" label="LOOK SENSITIVITY" crumb="CONTROLS › CONTROLLER" search="sens" when="profile">
 			<help>How fast the right stick turns the view.</help>
@@ -1021,7 +1022,7 @@
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/button_remapping/button_remapping_screen" kind="settings" layout="page" title="BUTTON REMAPPING">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/button_remapping/button_remapping_screen" kind="settings" layout="page" geometry="tall" title="BUTTON REMAPPING">
 		<section key="section_0" title="LAYOUT"/>
 		<row key="remap_player" kind="stepped" label="PLAYER" crumb="CONTROLS › CONTROLLER › BUTTON REMAPPING" run="port controller right" status="true">
 			<help>Whose buttons to edit. Each player's layout is kept apart, and named for the controller they play with. OK saves every player's.</help>
@@ -1040,7 +1041,7 @@
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/controls_settings_screen" kind="settings" layout="page">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/controls_settings_screen" kind="settings" layout="page" geometry="tall">
 		<section key="section_0" title="KEYBOARD AND MOUSE"/>
 		<row key="group" kind="choice" label="SHOW" crumb="CONTROLS › KEY BINDINGS" search_choices="movement weapons actions communication">
 			<help>Which of the actions to show: movement, weapons, actions or communication.</help>
@@ -1081,7 +1082,7 @@
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_screen" kind="settings" layout="page" title="GYRO &amp; FLICK STICK">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_screen" kind="settings" layout="page" geometry="tall" title="GYRO &amp; FLICK STICK">
 		<section key="section_0" title="GYRO AIMING"/>
 		<row key="gyro_found" kind="status" label="GYRO" crumb="CONTROLS › CONTROLLER › GYRO &amp; FLICK STICK">
 			<help>Whether a controller with a gyroscope is connected: a DualSense, a DualShock 4, a Switch Pro Controller or Joy-Cons, a Steam Deck.</help>
@@ -1153,7 +1154,7 @@
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/dead_zones/dead_zones_screen" kind="settings" layout="page" title="STICK DEAD ZONES">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/dead_zones/dead_zones_screen" kind="settings" layout="page" geometry="tall" title="STICK DEAD ZONES">
 		<section key="section_0" title="DEAD ZONES"/>
 		<row key="left_stick_dead_zone" kind="choice" setting="input.left_stick_dead_zone" label="LEFT STICK" crumb="CONTROLS › CONTROLLER › STICK DEAD ZONES" search="deadzone">
 			<help>How far the left stick moves before you move. Raise it for a stick that drifts; lower it to start walking sooner. Default is the game's own, 27%.</help>
@@ -1190,7 +1191,7 @@
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/screen_layout_screen" kind="settings" layout="page" title="SCREEN LAYOUT">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/screen_layout/screen_layout_screen" kind="settings" layout="page" geometry="tall" title="SCREEN LAYOUT">
 		<section key="section_0" title="PICTURE" when="android"/>
 		<row key="picture_position" kind="choice" setting="display.picture_position" label="PICTURE POSITION" crumb="VIDEO › SCREEN LAYOUT" search_choices="center top bottom" when="android">
 			<help>Where the picture sits on a screen taller than it, such as a folding phone's inner screen or a tablet. Top puts all the black space below it, where the touch controls are; Bottom puts it all above. Portrait always has it near the top, under the strip of buttons.</help>
@@ -1214,7 +1215,7 @@
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/streamer_mode_screen" kind="settings" layout="page" title="STREAMER MODE">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/streamer_mode_screen" kind="settings" layout="page" geometry="tall" title="STREAMER MODE">
 		<section key="section_0" title="STREAMER MODE"/>
 		<row key="enabled" kind="choice" setting="streamer.enabled" label="STREAMER MODE" crumb="ONLINE › STREAMER MODE">
 			<help>Hides offensive words in names and text from other players, maps and mods, as stars.</help>
@@ -1247,7 +1248,7 @@
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_filters_screen" kind="settings" layout="page">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_filters_screen" kind="settings" layout="page" geometry="tall">
 		<section key="section_0" title="GAMES"/>
 		<row key="browser_show_full" kind="choice" setting="network.browser_show_full" label="SHOW FULL GAMES" crumb="ONLINE › SERVER BROWSER FILTERS">
 			<help>Lists the games that have no room left.</help>
@@ -1304,7 +1305,7 @@
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/discord_account/discord_account_screen" kind="settings" layout="page" title="DISCORD ACCOUNT">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/discord_account/discord_account_screen" kind="settings" layout="page" geometry="tall" title="DISCORD ACCOUNT">
 		<section key="section_0" title="ACCOUNT"/>
 		<row key="link_status" kind="status" label="DISCORD" crumb="ONLINE › DISCORD ACCOUNT">
 			<help>The Discord account linked to this game, and how many of the master servers it is linked with.</help>
@@ -1728,7 +1729,7 @@ floor.</help>
 			<choice shown="2.00 M" value="2"/>
 		</row>
 	</screen>
-	<screen name="main_menu/settings_select/player_setup/player_profile_edit/settings_search/settings_search_screen" kind="settings" layout="search" title="SEARCH">
+	<screen name="main_menu/settings_select/player_setup/player_profile_edit/settings_search/settings_search_screen" kind="settings" layout="search" geometry="tall" title="SEARCH">
 		<about>Finds a setting on any tab or page by its name, the words that explain it or one of its choices: VSYNC, FOV, BORDERLESS. Change it right there. Esc, or B, goes back to where you were.|Start typing on any Settings screen, or press Ctrl+F, / or a controller's Y.</about>
 		<row key="hint_0" kind="hint" label="radar tracker motion">
 			<help>The motion tracker is set for each game you host: Server Setup's INDICATOR OPTIONS.</help>

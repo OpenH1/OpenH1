@@ -415,6 +415,8 @@ SETTINGS_BLUE = "#FF2896FF"
 SETTINGS_DIM = "#FF6F9CD0"
 SETTINGS = "main_menu/settings"
 SETTINGS_TITLE = f"{SETTINGS}/header_settings"
+# (Settings' tabs' prompts, its own: _settings_shared)
+SETTINGS_TAB_PROMPTS = f"{SETTINGS}/tabs"
 SETTINGS_FUNCTIONS = "port settings page"
 
 # ---------- the wide layout of the port's own screens (menu_tags.c's
@@ -468,6 +470,11 @@ def wide_spread(index: int, count: int) -> int:
     return round(-WIDE_HALF + index * WIDE_EXTRA / max(count - 1, 1))
 
 
+def past_spread(index: int, count: int) -> int:
+    """the same past 16:9 (a past attribute's move), to a 21:9 screen's edges"""
+    return round(-PAST_HALF + index * PAST_EXTRA / max(count - 1, 1))
+
+
 # Settings on a wide screen: the panel at the screen's right, SETTINGS_WIDE_PANEL_LESS
 # narrower than the 640 have it (about a quarter of a 16:10 screen, a little
 # less of 16:9's; its help wraps to more lines: test_port_settings.py's
@@ -496,6 +503,110 @@ SEGMENTED_MOST = 3
 SEGMENT_PAD, SEGMENT_LEAST, SEGMENT_GAP, SEGMENT_HEIGHT = 8, 48, 4, 18
 SEGMENT_NOT = {"display.vrr", "display.resolution", "display.window_size", "display.refresh_rate",
                "audio.output_device", "audio.input_device"}
+
+# ---------- the tall layout (the menu engine's: docs/menu_engine.md, "Deliberate differences")
+#
+# A screen the menu engine draws (display.menu_engine "new") may be laid out in a geometry of its own, which the
+# classic engine's widgets (ce/) have not: the generators write its widgets a second time in it (tall_widgets),
+# and tools/menu_look.py writes their looks from those in place of ce/'s, by the widgets' names. Its parts, for
+# any screen to use:
+# - the slim header: the top TALL_BAND units a dark band with its line under it, and the footer's line
+#   TALL_FOOTER above the bottom (TALL_BACKGROUND, in place of bitmaps/gradient, whose lines are at 70 and 409);
+#   the title in it as words (tall_title): the heading font, TALL_TITLE_SCALE larger
+# - past 16:9: a widget's past, "dx dw", moves it dx and widens it dw on a 21:9 screen past what its wide does at
+#   16:9, by its part of that on a screen between them and by more on a wider one (menu_tags.c's
+#   ui_widget_port_past_scale), so that the screen is used edge to edge; one without keeps 16:9's place, centred
+# - a text's scale, "least most" (text_scale): drawn so many times its font's size at the menus' 640 (4:3) and
+#   at 16:9 and wider, in between on a screen between them (menu_tags.c's pc_menu_text_scale); laid out in its
+#   font and drawn larger by the high-res text's distance fields (rasterizer_text_set_scale), about its box's
+#   middle
+# Settings' tabs and pages are laid out in it (SETTINGS_TALL); another screen opts in by writing its widgets in
+# it too (tall_widgets).
+TALL_BAND, TALL_FOOTER = 40, 37
+TALL_BACKGROUND = "main_menu/parts/background_tall"
+TALL_TITLE_SCALE = 1.4
+# (the words of the titles that are the PC version's pictures, not TITLES')
+TALL_TITLE_WORDS = {"main_menu/multiplayer_type_select/join_game/filters/header_filters": "FILTERS"}
+# (the extra width of a 21:9 screen past 16:9's)
+PAST_EXTRA = WIDE_SCREENS["21:9"] - WIDE_WIDTH
+PAST_HALF = PAST_EXTRA // 2
+
+
+def past(dx: float = 0, dw: float = 0):
+    """a widget's past attribute: moved dx, dw wider, on a 21:9 screen past 16:9 (None: neither)"""
+    return f"{round(dx)} {round(dw)}" if round(dx) or round(dw) else None
+
+
+def tall_title(name: str, strings: str, index: int) -> list:
+    """a screen's title in the slim header: its words (the index'th of a <strings>: a look's text is the strings
+    its widget in ce/ has, and a title's widget there has none) in the heading font (OpenCE, as the titles'
+    pictures set them, in their colour), TALL_TITLE_SCALE larger, from the screen's left margin at every width"""
+    return _widget(name, [("type", "text"), ("left", WIDE_MARGIN), ("top", 0), ("width", 640 - 2 * WIDE_MARGIN),
+                          ("height", TALL_BAND), ("string_list", strings), ("string_index", index or None),
+                          ("font", "heading"),
+                          ("color", "#FF%02X%02X%02X" % TITLE_COLOR[:3]),
+                          ("text_y", caps_text_y(TALL_BAND, large=True)),
+                          ("text_scale", f"{TALL_TITLE_SCALE:g} {TALL_TITLE_SCALE:g}"),
+                          ("wide", WIDE_LEFT), ("past", past(-PAST_HALF))], [])
+
+
+class SettingsLayout(NamedTuple):
+    """the geometry Settings' tabs and pages are laid out in: the rows' tops (a tab's, under its tabs, and a
+    page's), the tabs', a row's height and step, a section's, where the rows and the panel end, the button bar's
+    top, a segment's height; the screen's background, the rows', sections', panels' (by kind) and segments'
+    pictures; the rows' text scale (None: their font's size); whether it is laid out past 16:9; and whether its
+    titles are words (the slim header's) or pictures"""
+    name: str
+    tab_top: int
+    page_top: int
+    tabs_top: int
+    row_height: int
+    row_step: int
+    section_height: int
+    section_step: int
+    section_gap: int
+    rows_bottom: int
+    panel_bottom: int
+    bar_y: int
+    segment_height: int
+    background: str
+    row_picture: str
+    section_picture: str
+    panel_picture: str
+    segment_picture: str
+    text_scale: str = None
+    past: bool = False
+    words_title: bool = False
+    # (the labels' column's part of the rows' growth at 16:9: SETTINGS_WIDE_LABELS)
+    wide_labels: int = 20
+    # (the room either side of a segment's words: SEGMENT_PAD)
+    segment_pad: int = SEGMENT_PAD
+
+
+# (the rows' bottom the footer's band's line, bitmaps/gradient's at 409; the
+# list does not scroll)
+SETTINGS_CLASSIC = SettingsLayout("classic", 104, 80, 76, 20, 21, 18, 20, 6, 408, 400, 414, 18, "bitmaps/gradient",
+                                  "main_menu/settings/row", "main_menu/settings/section",
+                                  "main_menu/settings/{kind}_panel", "main_menu/settings/segment")
+# (the band, the tabs under it, the rows from under them to above the
+# footer's line, scrolled where they do not fit (menu_engine.c); a row
+# TALL_ROW_HEIGHT high, its words SETTINGS_TALL_TEXT larger, at 16:9 as tall
+# against it as small_ui's against the classic's 20, and its labels' column
+# the wider for them)
+TALL_ROW_HEIGHT = 24
+SETTINGS_TALL_TEXT = "1 1.2"
+SETTINGS_TALL = SettingsLayout("tall", TALL_BAND + 38, TALL_BAND + 10, TALL_BAND + 6, TALL_ROW_HEIGHT,
+                               TALL_ROW_HEIGHT + 1, 20, 22, 6, 480 - TALL_FOOTER - 5, 480 - TALL_FOOTER - 5,
+                               480 - TALL_FOOTER + 5, 20, TALL_BACKGROUND,
+                               "main_menu/settings/row_tall", "main_menu/settings/section_tall",
+                               "main_menu/settings/{kind}_panel_tall", "main_menu/settings/segment_tall",
+                               SETTINGS_TALL_TEXT, True, True, 40, 5)
+# Settings past 16:9 (SETTINGS_TALL's): the panel SETTINGS_PAST_PANEL wider (about a quarter of a 21:9 screen),
+# the rows the rest; SETTINGS_PAST_LABELS of the rows' the labels' column's, the rest the values'
+SETTINGS_PAST_PANEL = 93
+SETTINGS_PAST_ROWS = PAST_EXTRA - SETTINGS_PAST_PANEL
+SETTINGS_PAST_LABELS = 60
+SETTINGS_PAST_VALUES = SETTINGS_PAST_ROWS - SETTINGS_PAST_LABELS
 
 DISPLAY_MODES = [("FULLSCREEN", "fullscreen"), ("BORDERLESS", "borderless"), ("WINDOWED", "windowed")]
 # input.left_stick_dead_zone's and right's: the game's own (-1), or a part of
@@ -1821,10 +1932,11 @@ def _strings(name: str, texts: list) -> list:
             *[f"\t\t<string{attributes([('text', text)])}/>" for text in texts], "\t</strings>"]
 
 
-def _button(name: str, caption: int, handlers: list, wide_layout=None) -> list:
+def _button(name: str, caption: int, handlers: list, wide_layout=None, past_layout=None) -> list:
     pairs = [("type", "text"), ("width", 128), ("height", 24), ("bitmap", "bitmaps/text_button_background"),
              ("string_list", "strings/common_button_captions"), ("string_index", caption), ("font", "ui\\small_ui"),
-             ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 2), ("wide", wide_layout)]
+             ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 2), ("wide", wide_layout),
+             ("past", past_layout)]
     return _widget(name, pairs, handlers + ['<on event="left_mouse" run="mouse emit accept event"/>'])
 
 
@@ -2130,19 +2242,27 @@ def segmented(setting, choices) -> bool:
         setting not in SEGMENT_NOT
 
 
-def segments_width(choices) -> int:
-    """the width of each of a segmented row's segments"""
-    return max(SEGMENT_LEAST, max(small_ui_width(shown) for shown, _ in choices) + 2 * SEGMENT_PAD)
+def segments_width(choices, scale: float = 1, pad: int = SEGMENT_PAD) -> int:
+    """the width of each of a segmented row's segments (their words drawn scale times their size: the tall
+    layout's text scale at its most; pad either side of them)"""
+    return max(SEGMENT_LEAST, math.ceil(max(small_ui_width(shown) for shown, _ in choices) * scale) + 2 * pad)
 
 
-def _settings_page(folder: str, page: dict) -> list:
+def text_scale_most(text_scale) -> float:
+    """a text scale's ("least most") most, 1 for None"""
+    return float(text_scale.split()[1]) if text_scale else 1.0
+
+
+def _settings_page(folder: str, page: dict, g: SettingsLayout = SETTINGS_CLASSIC) -> list:
     """a tab of Settings, or a page a row opens: the title, the tabs (a
     tab's), the rows under their sections, the panel (the list's
     description), and Defaults, OK and Cancel"""
     base = f"{PE}/{folder}"
     tab = "tab" in page
     kind = "tab" if tab else "page"
-    y = SETTINGS_TOP if tab else PAGE_TOP
+    y = g.tab_top if tab else g.page_top
+    # (past 16:9: the tall layout's, past; the classic's none)
+    gp = past if g.past else (lambda dx=0, dw=0: None)
     # (a tab's title is Settings'; a page's, its own: its widget named as
     # its picture)
     header = SETTINGS_TITLE if tab else f"{base}/header_{page['screen'][:-len('_screen')]}"
@@ -2155,20 +2275,23 @@ def _settings_page(folder: str, page: dict) -> list:
             platform = _settings_platform(page["rows"], index)
             name = f"{base}/section_{index}"
             if labels:
-                y += SETTINGS_SECTION_GAP
+                y += g.section_gap
             children.append(f'<child{attributes([("widget", name), ("x", SETTINGS_ROW_X), ("y", y), ("platform", platform)])}/>')
-            extra += _widget(name, [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_SECTION_HEIGHT),
-                                    ("bitmap", f"{SETTINGS}/section"), ("platform", platform),
-                                    ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS))],
+            extra += _widget(name, [("width", SETTINGS_ROW_WIDTH), ("height", g.section_height),
+                                    ("bitmap", g.section_picture), ("platform", platform),
+                                    ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS)),
+                                    ("past", gp(-PAST_HALF, SETTINGS_PAST_ROWS))],
                              [f'<child widget="{name}_title"/>'])
-            extra += _settings_text(f"{name}_title", [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_SECTION_HEIGHT),
+            extra += _settings_text(f"{name}_title", [("width", SETTINGS_ROW_WIDTH), ("height", g.section_height),
                                                       ("wide", wide(0, SETTINGS_WIDE_ROWS)),
+                                                      ("past", gp(0, SETTINGS_PAST_ROWS)),
                                                       ("string_list", f"{base}/labels"),
                                                       ("string_index", len(labels) or None), ("color", SETTINGS_DIM),
-                                                      ("text_x", 2), ("text_y", 1)])
+                                                      ("text_x", 2), ("text_y", 1 + (g.section_height - SETTINGS_SECTION_HEIGHT) // 2),
+                                                      ("text_scale", g.text_scale)])
             labels.append(entry[1])
             helps.append("")
-            y += SETTINGS_SECTION_STEP
+            y += g.section_step
             continue
         label, setting, choices, help_text, platform, *named = entry
         # (a link's by its label: "ADVANCED GRAPHICS ›", advanced_graphics)
@@ -2176,9 +2299,9 @@ def _settings_page(folder: str, page: dict) -> list:
             re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
         row = f"{base}/op_{key}"
         if key in SETTINGS_SAME_PLACE or setting == "display.window_size":
-            y -= SETTINGS_ROW_STEP
+            y -= g.row_step
         children.append(f'<child{attributes([("widget", row), ("x", SETTINGS_ROW_X), ("y", y), ("platform", platform)])}/>')
-        y += SETTINGS_ROW_STEP
+        y += g.row_step
         status = key in SETTINGS_STATUS_ROWS
         # (a label menu_functions.c writes: no text of a list's, which a text
         # box draws in place of its own; wider, its value narrower and at the
@@ -2193,14 +2316,17 @@ def _settings_page(folder: str, page: dict) -> list:
         spun = bool(setting) or isinstance(choices, list)
         label_widget = _settings_text(f"{base}/{key}_label",
                                       [("width", value_x - 4 if spun or status else SETTINGS_ROW_WIDTH - 12),
-                                       ("height", SETTINGS_ROW_HEIGHT), *label_text, ("color", SETTINGS_BLUE),
-                                       ("text_x", 10), ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT)),
-                                       ("wide", wide(0, SETTINGS_WIDE_LABELS if (spun or status) and not named_row
-                                                     else SETTINGS_WIDE_ROWS))])
-        row_pairs = [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_ROW_HEIGHT),
-                     ("flags", "pass_unhandled_to_focused_child"), ("bitmap", f"{SETTINGS}/row"),
+                                       ("height", g.row_height), *label_text, ("color", SETTINGS_BLUE),
+                                       ("text_x", 10), ("text_y", caps_text_y(g.row_height)),
+                                       ("wide", wide(0, g.wide_labels if (spun or status) and not named_row
+                                                     else SETTINGS_WIDE_ROWS)),
+                                       ("past", gp(0, SETTINGS_PAST_LABELS if (spun or status) and not named_row
+                                                   else SETTINGS_PAST_ROWS)),
+                                       ("text_scale", g.text_scale)])
+        row_pairs = [("width", SETTINGS_ROW_WIDTH), ("height", g.row_height),
+                     ("flags", "pass_unhandled_to_focused_child"), ("bitmap", g.row_picture),
                      ("color", SETTINGS_BLUE), ("platform", platform),
-                     ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS))]
+                     ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS)), ("past", gp(-PAST_HALF, SETTINGS_PAST_ROWS))]
         if key in CONTROL_COMMAND_ROWS:
             # (Key Bindings' action: its name and its two bindings, in the
             # values' column's halves, menu_functions.c's controls_update
@@ -2208,6 +2334,7 @@ def _settings_page(folder: str, page: dict) -> list:
             # binding left and right choose, or the one clicked)
             first, second = CONTROL_BINDINGS_X
             grown = SETTINGS_WIDE_ROWS // 3
+            grown_past = SETTINGS_PAST_ROWS // 3
             extra += _widget(row, row_pairs,
                              ['<on event="a" run="controls begin binding"/>',
                               '<on event="start" run="controls begin binding"/>',
@@ -2221,15 +2348,18 @@ def _settings_page(folder: str, page: dict) -> list:
                 # (on a wide screen the row's extra width shared by the
                 # name and the two bindings)
                 extra += _settings_text(f"{base}/command_label",
-                                        [("width", first - 4), ("height", SETTINGS_ROW_HEIGHT),
+                                        [("width", first - 4), ("height", g.row_height),
                                          ("color", SETTINGS_BLUE), ("text_x", 10),
-                                         ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT)), ("wide", wide(0, grown))])
-                for name, moved in (("command_binding", grown), ("command_binding_second", 2 * grown)):
+                                         ("text_y", caps_text_y(g.row_height)), ("wide", wide(0, grown)),
+                                         ("past", gp(0, grown_past)), ("text_scale", g.text_scale)])
+                for name, moved, moved_past in (("command_binding", grown, grown_past),
+                                                ("command_binding_second", 2 * grown, 2 * grown_past)):
                     extra += _settings_text(f"{base}/{name}",
-                                            [("width", CONTROL_BINDING_WIDTH), ("height", SETTINGS_ROW_HEIGHT),
+                                            [("width", CONTROL_BINDING_WIDTH), ("height", g.row_height),
                                              ("color", SETTINGS_BLUE), ("align", "center"),
-                                             ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT)),
-                                             ("text_flags", "no_focus_test"), ("wide", wide(moved, grown))])
+                                             ("text_y", caps_text_y(g.row_height)),
+                                             ("text_flags", "no_focus_test"), ("wide", wide(moved, grown)),
+                                             ("past", gp(moved_past, grown_past)), ("text_scale", g.text_scale)])
         elif setting and isinstance(choices, Slider):
             # (a slider: its track, the thumb on it, and its number, which
             # menu_functions.c's "port slider ..." set and its page update
@@ -2242,14 +2372,15 @@ def _settings_page(folder: str, page: dict) -> list:
                               '<on event="left_mouse" run="mouse emit accept event"/>',
                               f'<child widget="{base}/{key}_label"/>',
                               f'<child widget="{base}/{key}_track" x="{SETTINGS_SPINNER_X}" '
-                              f'y="{(SETTINGS_ROW_HEIGHT - SLIDER_TRACK_HEIGHT) // 2}"/>',
+                              f'y="{(g.row_height - SLIDER_TRACK_HEIGHT) // 2}"/>',
                               f'<child widget="{base}/{key}_value" x="{SETTINGS_SPINNER_X + SLIDER_VALUE_X}" '
-                              f'y="{(SETTINGS_ROW_HEIGHT - SLIDER_VALUE_HEIGHT) // 2}"/>'])
+                              f'y="{(g.row_height - SLIDER_VALUE_HEIGHT) // 2}"/>'])
             extra += label_widget
             extra += _widget(f"{base}/{key}_track", [("controller", 1), ("width", SLIDER_TRACK_WIDTH),
                                                      ("height", SLIDER_TRACK_HEIGHT),
                                                      ("bitmap", f"{SETTINGS}/slider_track"),
-                                                     ("wide", wide(SETTINGS_WIDE_LABELS, SETTINGS_WIDE_VALUES))],
+                                                     ("wide", wide(g.wide_labels, (SETTINGS_WIDE_ROWS - g.wide_labels))),
+                                                     ("past", gp(SETTINGS_PAST_LABELS, SETTINGS_PAST_VALUES))],
                              [f'<child widget="{base}/{key}_thumb"/>'])
             extra += _widget(f"{base}/{key}_thumb", [("controller", 1), ("width", SLIDER_THUMB_WIDTH),
                                                      ("height", SLIDER_TRACK_HEIGHT),
@@ -2262,35 +2393,49 @@ def _settings_page(folder: str, page: dict) -> list:
                                                             ("color", SETTINGS_BLUE), ("align", "center"),
                                                             ("text_y", caps_text_y(SLIDER_VALUE_HEIGHT)),
                                                             ("text_flags", "no_focus_test"),
-                                                            ("wide", wide(SETTINGS_WIDE_ROWS))])
+                                                            ("wide", wide(SETTINGS_WIDE_ROWS)),
+                                                            ("past", gp(SETTINGS_PAST_ROWS))])
         elif spun:
-            spinner_arrows = arrows_bounds(SETTINGS_ROW_HEIGHT, 0, SETTINGS_SPINNER_WIDTH)
+            spinner_arrows = arrows_bounds(g.row_height, 0, SETTINGS_SPINNER_WIDTH)
             segments = segmented(setting, choices)
-            segment_width = segments_width(choices) if segments else 0
+            # (each segment as wide as the widest; in the tall layout, whose
+            # words are larger, each as wide as its own, so that they fit a
+            # 16:9 screen's row)
+            if not segments:
+                segment_widths = []
+            elif g.text_scale:
+                segment_widths = [segments_width([choice], text_scale_most(g.text_scale), g.segment_pad)
+                                  for choice in choices]
+            else:
+                segment_widths = [segments_width(choices)] * len(choices)
+            segment_xs = [SETTINGS_SPINNER_X + sum(segment_widths[:index]) + index * SEGMENT_GAP
+                          for index in range(len(segment_widths))]
             extra += _widget(row, row_pairs, [
                 f'<child widget="{base}/{key}_label"/>',
                 f'<child widget="{base}/{key}_spinner" x="{SETTINGS_SPINNER_X}"/>',
                 *(f'<child widget="{base}/{key}_seg{index}" '
-                  f'x="{SETTINGS_SPINNER_X + index * (segment_width + SEGMENT_GAP)}" '
-                  f'y="{(SETTINGS_ROW_HEIGHT - SEGMENT_HEIGHT) // 2}"/>' for index in range(len(choices) if segments else 0))])
+                  f'x="{segment_xs[index]}" '
+                  f'y="{(g.row_height - g.segment_height) // 2}"/>' for index in range(len(choices) if segments else 0))])
             extra += label_widget
             for index, (shown, _) in enumerate(choices if segments else []):
                 extra += _settings_text(f"{base}/{key}_seg{index}",
-                                        [("width", segment_width), ("height", SEGMENT_HEIGHT),
-                                         ("flags", "keep_ends"), ("bitmap", f"{SETTINGS}/segment"),
+                                        [("width", segment_widths[index]), ("height", g.segment_height),
+                                         ("flags", "keep_ends"), ("bitmap", g.segment_picture),
                                          ("text", shown), ("color", SETTINGS_BLUE), ("align", "center"),
-                                         ("text_y", caps_text_y(SEGMENT_HEIGHT)), ("text_flags", "no_focus_test"),
-                                         ("wide", wide(SETTINGS_WIDE_LABELS))])
+                                         ("text_y", caps_text_y(g.segment_height)), ("text_flags", "no_focus_test"),
+                                         ("wide", wide(g.wide_labels)), ("past", gp(SETTINGS_PAST_LABELS)),
+                                         ("text_scale", g.text_scale)])
             extra += _widget(f"{base}/{key}_spinner",
                              [("type", "spinner"), ("top", SETTINGS_SPINNER_TOP), ("width", SETTINGS_SPINNER_WIDTH),
-                              ("height", SETTINGS_ROW_HEIGHT - 2 * SETTINGS_SPINNER_TOP),
+                              ("height", g.row_height - 2 * SETTINGS_SPINNER_TOP),
                               ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
                               ("strings", "|".join(shown for shown, _ in choices)), ("setting", setting),
                               ("values", "|".join(value for _, value in choices) if setting else None),
                               ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE), ("align", "center"), ("text_y", 0),
                               ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
                               ("header_bounds", spinner_arrows[0]), ("footer_bounds", spinner_arrows[1]),
-                              ("wide", wide(SETTINGS_WIDE_LABELS, SETTINGS_WIDE_SPINNER))],
+                              ("wide", wide(g.wide_labels, SETTINGS_WIDE_SPINNER)),
+                              ("past", gp(SETTINGS_PAST_LABELS, SETTINGS_PAST_LABELS)), ("text_scale", g.text_scale)],
                              (['<on event="created" run="port setting load"/>'] if setting else []) +
                              # (a segmented row's A, and a click on the row, as its
                              # spinner is hidden: a segment chosen)
@@ -2313,7 +2458,7 @@ def _settings_page(folder: str, page: dict) -> list:
             # side of its value, where a spinner's are)
             arrows = []
             if key in SETTINGS_STEPPED_ROWS:
-                arrow_y = int(SETTINGS_ROW_HEIGHT / 2 - ARROW_SM_MIDDLE)
+                arrow_y = int(g.row_height / 2 - ARROW_SM_MIDDLE)
                 arrows = [f'<child widget="{SETTINGS}/stepped_left" x="{SETTINGS_SPINNER_X - ARROW_SM_WIDTH}" '
                           f'y="{arrow_y}"/>',
                           f'<child widget="{SETTINGS}/stepped_right" x="{SETTINGS_SPINNER_X + SETTINGS_SPINNER_WIDTH}" '
@@ -2325,16 +2470,19 @@ def _settings_page(folder: str, page: dict) -> list:
                                                                  value_x), ("height", 16),
                                                                 ("color", SETTINGS_BLUE),
                                                                 ("align", "right" if named_row else "center"),
-                                                                ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT, 2)),
+                                                                ("text_y", caps_text_y(g.row_height, 2)),
                                                                 ("text_flags", "no_focus_test"),
                                                                 ("wide", wide(SETTINGS_WIDE_ROWS) if named_row else
-                                                                 wide(SETTINGS_WIDE_LABELS, SETTINGS_WIDE_SPINNER))])
+                                                                 wide(g.wide_labels, SETTINGS_WIDE_SPINNER)),
+                                                                ("past", gp(SETTINGS_PAST_ROWS) if named_row else
+                                                                 gp(SETTINGS_PAST_LABELS, SETTINGS_PAST_LABELS)),
+                                                                ("text_scale", g.text_scale)])
         labels.append(label)
         helps.append(help_text)
     lines = []
     lines += _widget(f"{base}/{page['screen']}",
                      [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child pause_game"),
-                      ("bitmap", "bitmaps/gradient")],
+                      ("bitmap", g.background)],
                      [f'<on event="b" run="{cancel}" back="true"/>',
                       f'<on event="back" run="{cancel}" back="true"/>',
                       *(['<on event="white" run="port settings tab previous"/>',
@@ -2342,13 +2490,17 @@ def _settings_page(folder: str, page: dict) -> list:
                       # (the search, the menu engine's: SETTINGS_SEARCH)
                       '<on event="y" run="port settings search"/>',
                       f'<child widget="{header}"/>',
-                      *([f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" '
-                         f'y="{SETTINGS_TABS_TOP}"/>',
-                         f'<child widget="{SETTINGS}/tab_prompt_next" '
+                      *([f'<child widget="{SETTINGS_TAB_PROMPTS}/tab_prompt_previous" x="{WIDE_MARGIN}" '
+                         f'y="{g.tabs_top}"/>',
+                         f'<child widget="{SETTINGS_TAB_PROMPTS}/tab_prompt_next" '
                          f'x="{SETTINGS_TABS_RIGHT + 4}" '
-                         f'y="{SETTINGS_TABS_TOP}"/>'] if tab else []),
+                         f'y="{g.tabs_top}"/>'] if tab else []),
                       f'<child widget="{base}/options_menu"/>'])
-    if not tab:
+    if not tab and g.words_title:
+        # (its title's words, its picture's: TITLES, or the PC version's
+        # picture's)
+        lines += tall_title(header, SETTINGS_TALL_TITLES, settings_tall_titles().index(page.get("header", header)))
+    elif not tab:
         # (its title's picture its own, or one the PC version has: "header")
         lines += _widget(header, [("controller", 1), ("left", 35), ("top", 11), ("width", 605), ("height", 59),
                                   ("bitmap", page.get("header", header)), ("wide", WIDE_LEFT)], [])
@@ -2358,9 +2510,9 @@ def _settings_page(folder: str, page: dict) -> list:
                       ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
                       ("description", f"{SETTINGS}/{kind}_panel")],
                      [f'<data input="{SETTINGS_FUNCTIONS}"/>', *children,
-                      f'<child widget="{base}/button_bar" y="414"/>',
-                      *([f'<child widget="{base}/tabs" y="{SETTINGS_TABS_TOP}"/>',
-                         f'<child widget="{base}/tabs_search" y="{SETTINGS_TABS_TOP}"/>'] if tab else [])])
+                      f'<child widget="{base}/button_bar" y="{g.bar_y}"/>',
+                      *([f'<child widget="{base}/tabs" y="{g.tabs_top}"/>',
+                         f'<child widget="{base}/tabs_search" y="{g.tabs_top}"/>'] if tab else [])])
     lines += _widget(f"{base}/button_bar",
                      [("type", "column_list"), ("width", 640), ("height", 28),
                       ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
@@ -2377,6 +2529,7 @@ def _settings_page(folder: str, page: dict) -> list:
             lines += _settings_text(name, [("width", tab_width), ("height", SETTINGS_TAB_HEIGHT),
                                            ("flags", "keep_ends"),
                                            ("wide", wide(wide_spread(index, len(SETTINGS_TAB_PAGES)))),
+                                           ("past", gp(past_spread(index, len(SETTINGS_TAB_PAGES)))),
                                            ("bitmap", f"{SETTINGS}/{'tab_current' if current else 'tab'}"),
                                            ("string_list", f"{SETTINGS}/tab_names"), ("string_index", index or None),
                                            ("color", "#FFFFFFFF" if current else SETTINGS_BLUE),
@@ -2399,6 +2552,7 @@ def _settings_page(folder: str, page: dict) -> list:
             lines += _settings_text(name, [("width", tab_width), ("height", SETTINGS_TAB_HEIGHT),
                                            ("flags", "keep_ends"),
                                            ("wide", wide(SEARCH_FIELD_GROWTH - WIDE_HALF + index * spread)),
+                                           ("past", gp(past_spread(index, len(SETTINGS_TAB_PAGES)))),
                                            ("bitmap", f"{SETTINGS}/{'tab_current' if current else 'tab'}"),
                                            ("string_list", f"{SETTINGS}/tab_names"), ("string_index", index or None),
                                            ("color", "#FFFFFFFF" if current else SETTINGS_BLUE),
@@ -2411,27 +2565,34 @@ def _settings_page(folder: str, page: dict) -> list:
                                                  ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
                          items)
     lines += _button(f"{base}/button_defaults", 3, ['<on event="a" run="port settings defaults"/>',
-                                                     '<on event="start" run="port settings defaults"/>'], WIDE_LEFT)
+                                                     '<on event="start" run="port settings defaults"/>'], WIDE_LEFT,
+                     gp(-PAST_HALF))
     ok = "port settings ok" if tab else "port settings keep"
     lines += _button(f"{base}/button_ok", 1, [f'<on event="a" run="{ok}" back="true"/>',
-                                               f'<on event="start" run="{ok}" back="true"/>'], WIDE_RIGHT)
+                                               f'<on event="start" run="{ok}" back="true"/>'], WIDE_RIGHT,
+                     gp(PAST_HALF))
     lines += _button(f"{base}/button_cancel", 2, [f'<on event="a" run="{cancel}" back="true"/>',
-                                                   f'<on event="start" run="{cancel}" back="true"/>'], WIDE_RIGHT)
+                                                   f'<on event="start" run="{cancel}" back="true"/>'], WIDE_RIGHT,
+                     gp(PAST_HALF))
     lines += extra
     lines += _strings(f"{base}/labels", labels)
     lines += _strings(f"{base}/help_strings", helps)
     return lines
 
 
-def _settings_shared() -> list:
+def _settings_shared(g: SettingsLayout = SETTINGS_CLASSIC) -> list:
     """what every page of Settings shares: its title, the panels, the tabs'
     names, the buttons' words, and the screens that make a profile"""
-    lines = _widget(SETTINGS_TITLE, [("controller", 1), ("left", 35), ("top", 11), ("width", 605), ("height", 59),
-                                     ("bitmap", SETTINGS_TITLE), ("wide", WIDE_LEFT)], [])
-    for kind, top in (("tab", SETTINGS_TOP), ("page", PAGE_TOP)):
+    gp = past if g.past else (lambda dx=0, dw=0: None)
+    if g.words_title:
+        lines = tall_title(SETTINGS_TITLE, SETTINGS_TALL_TITLES, settings_tall_titles().index(SETTINGS_TITLE))
+    else:
+        lines = _widget(SETTINGS_TITLE, [("controller", 1), ("left", 35), ("top", 11), ("width", 605), ("height", 59),
+                                         ("bitmap", SETTINGS_TITLE), ("wide", WIDE_LEFT)], [])
+    for kind, top in (("tab", g.tab_top), ("page", g.page_top)):
         # (menu_functions.c's settings_panel_show fills it in, and shows the
         # Quality row's pictures)
-        height = SETTINGS_PANEL_BOTTOM - top
+        height = g.panel_bottom - top
         # (a description's children are placed on the screen, not in it)
         left, still_y = SETTINGS_PANEL_X + SETTINGS_PANEL_INSET, top + 52
         children = [f'<child widget="{SETTINGS}/panel_name" x="{left}" y="{top + 12}"/>',
@@ -2452,42 +2613,47 @@ def _settings_shared() -> list:
         lines += _widget(f"{SETTINGS}/{kind}_panel",
                          [("controller", 1), ("left", SETTINGS_PANEL_X), ("top", top),
                           ("width", SETTINGS_PANEL_WIDTH), ("height", height), ("flags", "keep_ends"),
-                          ("bitmap", f"{SETTINGS}/{kind}_panel"), ("wide", wide(*SETTINGS_WIDE_PANEL))], children)
+                          ("bitmap", g.panel_picture.format(kind=kind)), ("wide", wide(*SETTINGS_WIDE_PANEL)),
+                          ("past", gp(PAST_HALF - SETTINGS_PAST_PANEL, SETTINGS_PAST_PANEL))], children)
     # (in a wider panel: its words wider, its pictures in its middle)
     grown, middle = wide(0, SETTINGS_WIDE_PANEL[1]), wide(SETTINGS_WIDE_PANEL[1] / 2)
+    grown_past, middle_past = gp(0, SETTINGS_PAST_PANEL), gp(SETTINGS_PAST_PANEL / 2)
+    # (the words' box as tall as the panel's room for them: settings_panel_show
+    # cuts them to it)
+    text_height = 220 if g is SETTINGS_CLASSIC else g.panel_bottom - g.tab_top - 52 - 6
     lines += _settings_text(f"{SETTINGS}/panel_name", [("width", SETTINGS_PANEL_WORDS), ("height", 18), ("color", SETTINGS_DIM),
-                                                      ("wide", grown)])
+                                                      ("wide", grown), ("past", grown_past)])
     lines += _settings_text(f"{SETTINGS}/panel_value", [("width", SETTINGS_PANEL_WORDS), ("height", 24), ("font", "ui\\large_ui"),
-                                                       ("color", "#FFFFFFFF"), ("wide", grown)])
-    lines += _settings_text(f"{SETTINGS}/panel_text", [("width", SETTINGS_PANEL_WORDS), ("height", 220), ("color", SETTINGS_BLUE),
-                                                      ("wide", grown)])
+                                                       ("color", "#FFFFFFFF"), ("wide", grown), ("past", grown_past)])
+    lines += _settings_text(f"{SETTINGS}/panel_text", [("width", SETTINGS_PANEL_WORDS), ("height", text_height), ("color", SETTINGS_BLUE),
+                                                      ("wide", grown), ("past", grown_past)])
     lines += _settings_text(f"{SETTINGS}/panel_note", [("width", SETTINGS_PANEL_WORDS), ("height", 40), ("color", SETTINGS_DIM),
-                                                      ("wide", grown)])
+                                                      ("wide", grown), ("past", grown_past)])
     # (what the panel's row is: its default, and whether the host decides it
     # online; each fact's name, and its value at the panel's right:
     # menu_functions.c's settings_facts)
     lines += _settings_text(f"{SETTINGS}/panel_facts", [("width", SETTINGS_PANEL_WORDS), ("height", 40),
-                                                       ("color", SETTINGS_DIM), ("wide", grown)])
+                                                       ("color", SETTINGS_DIM), ("wide", grown), ("past", grown_past)])
     lines += _settings_text(f"{SETTINGS}/panel_facts_values", [("width", SETTINGS_PANEL_WORDS), ("height", 40),
                                                               ("color", "#FFFFFFFF"), ("align", "right"),
-                                                              ("wide", grown)])
+                                                              ("wide", grown), ("past", grown_past)])
     for index, still in enumerate(("classic", "enhanced")):
         lines += _widget(f"{SETTINGS}/panel_{still}", [("controller", 1), ("width", SETTINGS_STILL_WIDTH),
                                                        ("height", SETTINGS_STILL_HEIGHT),
-                                                       ("bitmap", f"{SETTINGS}/graphics_{still}"), ("wide", middle)],
+                                                       ("bitmap", f"{SETTINGS}/graphics_{still}"), ("wide", middle), ("past", middle_past)],
                          [])
         lines += _widget(f"{SETTINGS}/panel_{still}_frame", [("controller", 1), ("width", SETTINGS_STILL_WIDTH),
                                                              ("height", SETTINGS_STILL_HEIGHT),
-                                                             ("bitmap", f"{SETTINGS}/still_frame"), ("wide", middle)],
+                                                             ("bitmap", f"{SETTINGS}/still_frame"), ("wide", middle), ("past", middle_past)],
                          [])
         lines += _settings_text(f"{SETTINGS}/panel_{still}_caption",
                                 [("width", SETTINGS_STILL_WIDTH), ("height", 18),
                                  ("string_list", f"{SETTINGS}/still_captions"), ("string_index", index or None),
-                                 ("color", SETTINGS_BLUE), ("align", "center"), ("wide", middle)])
+                                 ("color", SETTINGS_BLUE), ("align", "center"), ("wide", middle), ("past", middle_past)])
     for key in SETTINGS_VALUE_PICTURES:
         lines += _widget(f"{SETTINGS}/panel_picture_{key}",
                          [("controller", 1), ("width", SETTINGS_PICTURE_WIDTH), ("height", SETTINGS_PICTURE_HEIGHT),
-                          ("bitmap", f"{SETTINGS}/pictures_{key}"), ("wide", middle)], [])
+                          ("bitmap", f"{SETTINGS}/pictures_{key}"), ("wide", middle), ("past", middle_past)], [])
     # (making a profile, from CREATE PROFILE: its name asked, as the main
     # menu's items ask it ("new campaign chosen", settings_profile_new), the
     # profile made and edited ("new campaign decision", which edits it for
@@ -2504,13 +2670,17 @@ def _settings_shared() -> list:
                       '<child widget="error/warning_creating_player_profile_screen"/>'])
     # (LB and RB, or Q and E while the keyboard and mouse play, either side
     # of the tabs: the HUD's button pictures, display.hud_button_style, or
-    # its key caps, ui_widget.c and hud_key_prompts.c)
-    for name, icon in (("previous", "white"), ("next", "black")):
-        lines += _settings_text(f"{SETTINGS}/tab_prompt_{name}", [("width", SETTINGS_TAB_PROMPT_WIDTH),
-                                                                 ("height", SETTINGS_TAB_HEIGHT),
-                                                                 ("wide", WIDE_RIGHT if name == "next" else WIDE_LEFT),
-                                                                 ("text", f"%{icon}-button"), ("color", SETTINGS_BLUE), ("text_x", 2),
-                                                                 ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT))])
+    # its key caps, ui_widget.c and hud_key_prompts.c; the server browser's
+    # and Host Controls' the same, but Settings' its own, which the tall
+    # layout moves to a 21:9 screen's edges: SETTINGS_TAB_PROMPTS)
+    for folder, moved in ((SETTINGS, False), (SETTINGS_TAB_PROMPTS, True)):
+        for name, icon in (("previous", "white"), ("next", "black")):
+            lines += _settings_text(f"{folder}/tab_prompt_{name}",
+                                    [("width", SETTINGS_TAB_PROMPT_WIDTH), ("height", SETTINGS_TAB_HEIGHT),
+                                     ("wide", WIDE_RIGHT if name == "next" else WIDE_LEFT),
+                                     ("past", gp(PAST_HALF if name == "next" else -PAST_HALF) if moved else None),
+                                     ("text", f"%{icon}-button"), ("color", SETTINGS_BLUE), ("text_x", 2),
+                                     ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT))])
     lines += _strings(f"{SETTINGS}/tab_names", [PAGES[folder]["tab"] for folder in SETTINGS_TAB_PAGES])
     lines += _strings(f"{SETTINGS}/tab_about", [PAGES[folder]["about"] for folder in SETTINGS_TAB_PAGES])
     lines += _strings(f"{SETTINGS}/button_help", SETTINGS_BUTTON_HELP["tab"] + SETTINGS_BUTTON_HELP["page"])
@@ -2524,7 +2694,7 @@ def _settings_shared() -> list:
     lines += _widget(f"{SETTINGS}/search_field",
                      [("controller", 1), ("width", SEARCH_FIELD_WIDTH), ("height", SETTINGS_TAB_HEIGHT),
                       ("flags", "keep_ends"), ("bitmap", f"{SETTINGS}/search_field"),
-                      ("wide", wide(-WIDE_HALF, SEARCH_FIELD_GROWTH))],
+                      ("wide", wide(-WIDE_HALF, SEARCH_FIELD_GROWTH)), ("past", gp(-PAST_HALF))],
                      search + [f'<child widget="{SETTINGS}/search_icon" x="{SEARCH_ICON_X}" '
                                f'y="{(SETTINGS_TAB_HEIGHT - 16) // 2}"/>',
                                f'<child widget="{SETTINGS}/search_prompt"/>',
@@ -2541,37 +2711,44 @@ def _settings_shared() -> list:
                                                        ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT)),
                                                        ("text_flags", "no_focus_test"),
                                                        ("wide", wide(0, SEARCH_FIELD_GROWTH))])
+    # (the titles' words, for the tall layout's slim header)
+    lines += _strings(SETTINGS_TALL_TITLES, [TITLES.get(picture) or TALL_TITLE_WORDS[picture]
+                                             for picture in settings_tall_titles()])
     # (a stepped row's arrows: SETTINGS_STEPPED_ROWS; their pictures' frames
     # are 16 units square, the arrow at the top left, as a spinner draws them)
     for side in ("left", "right"):
         lines += _widget(f"{SETTINGS}/stepped_{side}", [("controller", 1), ("width", 16),
                                                         ("height", 16), ("bitmap", f"bitmaps/arrow_sm_{side}"),
-                                                        ("wide", wide(SETTINGS_WIDE_LABELS if side == "left"
-                                                                      else SETTINGS_WIDE_LABELS +
-                                                                      SETTINGS_WIDE_SPINNER))], [])
+                                                        ("wide", wide(g.wide_labels if side == "left"
+                                                                      else g.wide_labels +
+                                                                      SETTINGS_WIDE_SPINNER)),
+                                                        ("past", gp(SETTINGS_PAST_LABELS if side == "left"
+                                                                    else 2 * SETTINGS_PAST_LABELS))], [])
     return lines
 
 
-def _settings_search() -> list:
+def _settings_search(g: SettingsLayout = SETTINGS_CLASSIC) -> list:
     """Settings' search's screen (SETTINGS_SEARCH): the title, the field typed
     into across the tabs' row, the rows found (made by the menu engine, from
     their own pages' widgets: none here), the groups' crumbs over them, the
-    words for none or for more, the panel, and OK and BACK"""
+    words for none or for more, the panel, and OK and BACK (in a layout's
+    geometry: the tall one's, as its rows found are)"""
     base = SETTINGS_SEARCH
+    gp = past if g.past else (lambda dx=0, dw=0: None)
     back = "port settings search back"
     lines = _widget(SETTINGS_SEARCH_SCREEN,
                     [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child pause_game"),
-                     ("bitmap", "bitmaps/gradient")],
+                     ("bitmap", g.background)],
                     [f'<on event="b" run="{back}" back="true"/>', f'<on event="back" run="{back}" back="true"/>',
                      '<on event="y" run="port settings search"/>',
                      f'<child widget="{SETTINGS_TITLE}"/>', f'<child widget="{base}/options_menu"/>'])
     # (the crumbs and the words placed by the engine, menu_engine.c's
     # engine_search_layout; the rows found go before the buttons)
-    children = [f'<child widget="{base}/search_field" x="{WIDE_MARGIN}" y="{SETTINGS_TABS_TOP}"/>',
-                *(f'<child widget="{base}/crumb_{number}" x="{SETTINGS_ROW_X}" y="{SETTINGS_TOP}"/>'
+    children = [f'<child widget="{base}/search_field" x="{WIDE_MARGIN}" y="{g.tabs_top}"/>',
+                *(f'<child widget="{base}/crumb_{number}" x="{SETTINGS_ROW_X}" y="{g.tab_top}"/>'
                   for number in range(1, SEARCH_CRUMBS + 1)),
-                f'<child widget="{base}/search_note" x="{SETTINGS_ROW_X}" y="{SETTINGS_TOP}"/>',
-                f'<child widget="{base}/button_bar" y="414"/>']
+                f'<child widget="{base}/search_note" x="{SETTINGS_ROW_X}" y="{g.tab_top}"/>',
+                f'<child widget="{base}/button_bar" y="{g.bar_y}"/>']
     lines += _widget(f"{base}/options_menu",
                      [("type", "column_list"), ("width", 640), ("height", 480),
                       ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
@@ -2585,37 +2762,68 @@ def _settings_search() -> list:
                             [("width", 640 - 2 * WIDE_MARGIN), ("height", SETTINGS_TAB_HEIGHT), ("flags", "keep_ends"),
                              ("bitmap", f"{SETTINGS}/search_field"), ("color", "#FFFFFFFF"),
                              ("text_x", SEARCH_WORD_X), ("text_y", caps_text_y(SETTINGS_TAB_HEIGHT)),
-                             ("text_flags", "no_focus_test"), ("wide", wide(-WIDE_HALF, WIDE_EXTRA))],
+                             ("text_flags", "no_focus_test"), ("wide", wide(-WIDE_HALF, WIDE_EXTRA)),
+                             ("past", gp(-PAST_HALF, PAST_EXTRA))],
                             edit + [f'<child widget="{SETTINGS}/search_icon" x="{SEARCH_ICON_X}" '
                                     f'y="{(SETTINGS_TAB_HEIGHT - 16) // 2}"/>'])
     for number in range(1, SEARCH_CRUMBS + 1):
         lines += _widget(f"{base}/crumb_{number}",
-                         [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_SECTION_HEIGHT),
-                          ("bitmap", f"{SETTINGS}/section"), ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS))],
+                         [("width", SETTINGS_ROW_WIDTH), ("height", g.section_height),
+                          ("bitmap", g.section_picture), ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS)),
+                          ("past", gp(-PAST_HALF, SETTINGS_PAST_ROWS))],
                          [f'<child widget="{base}/crumb_title"/>'])
-    lines += _settings_text(f"{base}/crumb_title", [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_SECTION_HEIGHT),
-                                                   ("color", SETTINGS_DIM), ("text_x", 2), ("text_y", 1),
+    lines += _settings_text(f"{base}/crumb_title", [("width", SETTINGS_ROW_WIDTH), ("height", g.section_height),
+                                                   ("color", SETTINGS_DIM), ("text_x", 2),
+                                                   ("text_y", 1 + (g.section_height - SETTINGS_SECTION_HEIGHT) // 2),
                                                    ("text_flags", "no_focus_test"),
-                                                   ("wide", wide(0, SETTINGS_WIDE_ROWS))])
-    lines += _settings_text(f"{base}/search_note", [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_ROW_HEIGHT),
+                                                   ("wide", wide(0, SETTINGS_WIDE_ROWS)),
+                                                   ("past", gp(0, SETTINGS_PAST_ROWS)),
+                                                   ("text_scale", g.text_scale)])
+    lines += _settings_text(f"{base}/search_note", [("width", SETTINGS_ROW_WIDTH), ("height", g.row_height),
                                                    ("color", SETTINGS_DIM), ("text_x", 10),
-                                                   ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT)),
+                                                   ("text_y", caps_text_y(g.row_height)),
                                                    ("text_flags", "no_focus_test"),
-                                                   ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS))])
+                                                   ("wide", wide(-WIDE_HALF, SETTINGS_WIDE_ROWS)),
+                                                   ("past", gp(-PAST_HALF, SETTINGS_PAST_ROWS)),
+                                                   ("text_scale", g.text_scale)])
     lines += _widget(f"{base}/button_bar",
                      [("type", "column_list"), ("width", 640), ("height", 28),
                       ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
                      [f'<child widget="{base}/button_ok" x="{640 - WIDE_MARGIN - 2 * 128 - 2}" y="1"/>',
                       f'<child widget="{base}/button_back" x="{640 - WIDE_MARGIN - 128}" y="1"/>'])
     lines += _button(f"{base}/button_ok", 1, ['<on event="a" run="port settings keep" back="true"/>',
-                                               '<on event="start" run="port settings keep" back="true"/>'], WIDE_RIGHT)
+                                               '<on event="start" run="port settings keep" back="true"/>'], WIDE_RIGHT,
+                     gp(PAST_HALF))
     lines += _widget(f"{base}/button_back",
                      [("type", "text"), ("width", 128), ("height", 24), ("bitmap", "bitmaps/text_button_background"),
                       ("text", "BACK"), ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
-                      ("text_y", 2), ("wide", WIDE_RIGHT)],
+                      ("text_y", 2), ("wide", WIDE_RIGHT), ("past", gp(PAST_HALF))],
                      [f'<on event="a" run="{back}" back="true"/>', f'<on event="start" run="{back}" back="true"/>',
                       '<on event="left_mouse" run="mouse emit accept event"/>'])
     return lines
+
+
+SETTINGS_TALL_TITLES = f"{SETTINGS}/tall_titles"
+
+
+def settings_tall_titles() -> list:
+    """the titles' pictures of Settings' tabs and pages, in the order of their words in SETTINGS_TALL_TITLES"""
+    pictures = [SETTINGS_TITLE]
+    for folder, page in PAGES.items():
+        if "tab" not in page:
+            picture = page.get("header", f"{PE}/{folder}/header_{page['screen'][:-len('_screen')]}")
+            pictures += [picture] if picture not in pictures else []
+    return pictures
+
+
+def tall_widgets() -> list:
+    """the widgets of the screens laid out in the tall layout, as they are there (<widget> elements, without a
+    <menus>): Settings' tabs and pages (SETTINGS_TALL) and the browsers' (BROWSER_TALL). tools/menu_look.py
+    writes their looks in place of ce/'s widgets' of the same names (docs/menu_engine.md, "The tall layout")"""
+    lines = []
+    for folder, page in PAGES.items():
+        lines += _settings_page(folder, page, SETTINGS_TALL)
+    return lines + _settings_shared(SETTINGS_TALL) + _settings_search(SETTINGS_TALL) + _browser_tall_widgets()
 
 
 def settings_files() -> dict:
@@ -2654,6 +2862,26 @@ def _rounded(width: float, height: float, inset: float, radius: float, fill: str
 def _svg(width: int, height: int, body: list) -> str:
     return "\n".join([f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
                       f'viewBox="0 0 {width} {height}">', *body, "</svg>", ""])
+
+
+def tall_background_svg() -> str:
+    """the tall layout's background (TALL_BACKGROUND), as bitmaps/gradient is drawn (4 wide, repeated across;
+    its 512 rows the screen's 480 and room under them): the slim header's band, dark, its line under it, the
+    gradient's body to the footer's line, and the footer's band, as bitmaps/gradient's are"""
+    footer = 480 - TALL_FOOTER
+    return "\n".join([
+        '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="512" viewBox="0 0 4 512">', "<defs>",
+        f'<linearGradient id="g0" gradientUnits="userSpaceOnUse" x1="0" y1="{TALL_BAND + 1}" x2="0" y2="{footer}">',
+        '  <stop offset="0.00000" stop-color="#072852" stop-opacity="0.69"/>',
+        '  <stop offset="0.20562" stop-color="#062247" stop-opacity="0.69"/>',
+        '  <stop offset="0.70562" stop-color="#030e1b" stop-opacity="0.69"/>',
+        '  <stop offset="1.00000" stop-color="#02060c" stop-opacity="0.689"/>', "</linearGradient>", "</defs>",
+        f'<rect x="0" y="0" width="4" height="{TALL_BAND}" fill="#020a16" fill-opacity="0.82"/>',
+        f'<rect x="0" y="{TALL_BAND}" width="4" height="1" fill="#36afff"/>',
+        f'<rect x="0" y="{TALL_BAND + 1}" width="4" height="{footer - TALL_BAND - 1}" fill="url(#g0)"/>',
+        f'<rect x="0" y="{footer}" width="4" height="1" fill="#2896ff"/>',
+        f'<rect x="0" y="{footer + 1}" width="4" height="{480 - footer - 1}" fill="#000000" fill-opacity="0.696"/>',
+        "</svg>", ""])
 
 
 def settings_pictures() -> list:
@@ -2714,6 +2942,27 @@ def settings_pictures() -> list:
         height = SETTINGS_PANEL_BOTTOM - top
         # (list_field's framed panel: a navy field, a blue rim)
         pictures.append((f"{SETTINGS}/{kind}_panel", [(_svg(SETTINGS_PANEL_WIDTH, height, [
+            _rounded(SETTINGS_PANEL_WIDTH, height, 1, 9.5, "#000e23", 0.88, "#2995ff", 2)]),
+            SETTINGS_PANEL_WIDTH, height)]))
+    # (the tall layout's: its rows', sections', segments' and panels' at its
+    # sizes; its background, TALL_BACKGROUND, is with the browsers' pictures)
+    tall = SETTINGS_TALL
+    tall_row, tall_section, tall_segment = tall.row_height, tall.section_height, tall.segment_height
+    pictures += [
+        (tall.row_picture, [(_svg(row_w, tall_row, []), row_w, tall_row),
+                            (_svg(row_w, tall_row, [_rounded(row_w, tall_row, 1, 8, "#002244", 0.9, "#2299ff", 2)]),
+                             row_w, tall_row)]),
+        (tall.section_picture, [(_svg(row_w, tall_section, [
+            f'  <rect x="0" y="{tall_section - 1.5:g}" width="{row_w}" height="1" fill="#2995ff" '
+            'fill-opacity="0.45"/>']), row_w, tall_section)]),
+        (tall.segment_picture,
+         [(_svg(SEGMENT_LEAST, tall_segment, []), SEGMENT_LEAST, tall_segment),
+          (_svg(SEGMENT_LEAST, tall_segment, [_rounded(SEGMENT_LEAST, tall_segment, 1, 8, "#0a2a5a", 0.75,
+                                                       "#2299ff", 2)]), SEGMENT_LEAST, tall_segment)]),
+    ]
+    for kind, top in (("tab", tall.tab_top), ("page", tall.page_top)):
+        height = tall.panel_bottom - top
+        pictures.append((tall.panel_picture.format(kind=kind), [(_svg(SETTINGS_PANEL_WIDTH, height, [
             _rounded(SETTINGS_PANEL_WIDTH, height, 1, 9.5, "#000e23", 0.88, "#2995ff", 2)]),
             SETTINGS_PANEL_WIDTH, height)]))
     pictures.append((f"{SETTINGS}/still_frame", [
@@ -4950,36 +5199,8 @@ BROWSER_FOOTER_TOP = 414
 # tabs and the footer as 16:9 has them. The same generator writes them, its
 # places these (_browser_geometry), and tools/menu_look.py writes the looks
 # of the widgets they change (tall_widgets) in place of ce/'s
-# ---------- the tall layout (the menu engine's: docs/menu_engine.md,
-# "Deliberate differences"), as Settings' tall layout has it: the slim
-# header, the top TALL_BAND units a dark band with its line under it, and
-# the footer's line TALL_FOOTER above the bottom (TALL_BACKGROUND, in place
-# of bitmaps/gradient, whose lines are at 70 and 409); the title in it as
-# words (tall_title); and past 16:9 a widget's past, "dx dw", which moves it
-# dx and widens it dw on a 21:9 screen past what its wide does at 16:9
-# (menu_tags.c's ui_widget_port_past_scale)
-TALL_BAND, TALL_FOOTER = 40, 37
-TALL_BACKGROUND = "main_menu/parts/background_tall"
-# (the extra width of a 21:9 screen past 16:9's)
-PAST_EXTRA = WIDE_SCREENS["21:9"] - WIDE_WIDTH
-PAST_HALF = PAST_EXTRA // 2
-
-
-def past(dx: float = 0, dw: float = 0):
-    """a widget's past attribute: moved dx, dw wider, on a 21:9 screen past 16:9 (None: neither)"""
-    return f"{round(dx)} {round(dw)}" if round(dx) or round(dw) else None
-
-
-def tall_title(name: str, strings: str, index: int) -> list:
-    """a screen's title in the slim header: its words (the index'th of a <strings>: a look's text is the strings
-    its widget in ce/ has, and a title's widget there has none) in the heading font (OpenCE, as the titles'
-    pictures set them, in their colour), from the screen's left margin at every width"""
-    return _widget(name, [("type", "text"), ("left", WIDE_MARGIN), ("top", 0), ("width", 640 - 2 * WIDE_MARGIN),
-                          ("height", TALL_BAND), ("string_list", strings), ("string_index", index or None),
-                          ("font", "heading"),
-                          ("color", "#FF%02X%02X%02X" % TITLE_COLOR[:3]),
-                          ("text_y", caps_text_y(TALL_BAND, large=True)),
-                          ("wide", WIDE_LEFT), ("past", past(-PAST_HALF))], [])
+# (the tall layout's parts, Settings' and the browsers': TALL_BAND, past,
+# tall_title and TALL_BACKGROUND, with Settings' geometry)
 
 
 BROWSER_TALL = {
@@ -5753,26 +5974,6 @@ def _browsers() -> list:
 BROWSER_TALL_CENTRED = re.compile(r"/(browser_tabs|tab_\w+|prompt_\w+)$")
 
 
-def tall_background_svg() -> str:
-    """the tall layout's background (TALL_BACKGROUND), as bitmaps/gradient is drawn (4 wide, repeated across;
-    its 512 rows the screen's 480 and room under them): the slim header's band, dark, its line under it, the
-    gradient's body to the footer's line, and the footer's band, as bitmaps/gradient's are"""
-    footer = 480 - TALL_FOOTER
-    return "\n".join([
-        '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="512" viewBox="0 0 4 512">', "<defs>",
-        f'<linearGradient id="g0" gradientUnits="userSpaceOnUse" x1="0" y1="{TALL_BAND + 1}" x2="0" y2="{footer}">',
-        '  <stop offset="0.00000" stop-color="#072852" stop-opacity="0.69"/>',
-        '  <stop offset="0.20562" stop-color="#062247" stop-opacity="0.69"/>',
-        '  <stop offset="0.70562" stop-color="#030e1b" stop-opacity="0.69"/>',
-        '  <stop offset="1.00000" stop-color="#02060c" stop-opacity="0.689"/>', "</linearGradient>", "</defs>",
-        f'<rect x="0" y="0" width="4" height="{TALL_BAND}" fill="#020a16" fill-opacity="0.82"/>',
-        f'<rect x="0" y="{TALL_BAND}" width="4" height="1" fill="#36afff"/>',
-        f'<rect x="0" y="{TALL_BAND + 1}" width="4" height="{footer - TALL_BAND - 1}" fill="url(#g0)"/>',
-        f'<rect x="0" y="{footer}" width="4" height="1" fill="#2896ff"/>',
-        f'<rect x="0" y="{footer + 1}" width="4" height="{480 - footer - 1}" fill="#000000" fill-opacity="0.696"/>',
-        "</svg>", ""])
-
-
 def _past(wide_layout: str) -> str:
     """a widget's past (menu_tags.c's: its move and growth at 21:9 past
     16:9's) that takes its wide layout on to a wider screen's edges: as much
@@ -5781,12 +5982,9 @@ def _past(wide_layout: str) -> str:
     return past(dx * PAST_EXTRA / WIDE_EXTRA, dw * PAST_EXTRA / WIDE_EXTRA)
 
 
-def tall_widgets() -> list:
-    """the widgets of the screens the menu engine lays out tall
-    (tools/menu_look.py writes their looks in place of ce/'s;
-    docs/menu_engine.md, "Deliberate differences"): the browsers'
-    (BROWSER_TALL), each widget that layout places otherwise, as <widget>
-    elements' lines"""
+def _browser_tall_widgets() -> list:
+    """the browsers' widgets in the tall layout (BROWSER_TALL), each that it
+    places otherwise, as <widget> elements' lines (tall_widgets)"""
     def parsed(lines):
         root = ElementTree.fromstring("<menus>" + "\n".join(lines) + "</menus>")
         return {element.get("name"): element for element in root.iter("widget")}
@@ -8246,6 +8444,7 @@ def _model_page(folder: str, page: dict) -> list:
         inner += _model_element("button", [("key", f"button_{button}"), ("kind", button), ("run", run),
                                            ("help", SETTINGS_BUTTON_HELP[kind][index])])
     return _model_element("screen", [("name", f"{base}/{page['screen']}"), ("kind", "settings"), ("layout", kind),
+                                     ("geometry", SETTINGS_TALL.name),
                                      ("tab", page.get("tab")), ("title", page.get("title")),
                                      ("profile", "true" if page.get("profile") else None)], inner, 1)
 
@@ -8289,7 +8488,7 @@ def _model_search() -> list:
                                             "port settings search back"),
                                            ("help", SEARCH_BUTTON_HELP[index])])
     return _model_element("screen", [("name", SETTINGS_SEARCH_SCREEN), ("kind", "settings"), ("layout", "search"),
-                                     ("title", "SEARCH")], inner, 1)
+                                     ("geometry", SETTINGS_TALL.name), ("title", "SEARCH")], inner, 1)
 
 
 def model_files() -> dict:
@@ -8300,10 +8499,22 @@ def model_files() -> dict:
                 ("tab_top", SETTINGS_TOP), ("page_top", PAGE_TOP), ("rows_bottom", SETTINGS_ROWS_BOTTOM),
                 ("spinner_x", SETTINGS_SPINNER_X), ("spinner_width", SETTINGS_SPINNER_WIDTH),
                 ("search_word_extra", SEARCH_WORD_EXTRA), ("search_results", SEARCH_RESULTS),
-                ("search_crumbs", SEARCH_CRUMBS)]
+                ("search_crumbs", SEARCH_CRUMBS),
+                ("panel_bottom", SETTINGS_PANEL_BOTTOM)]
+    # (and the tall layout's, by its name, which the screens laid out in it
+    # name: SETTINGS_TALL)
+    tall = SETTINGS_TALL
+    tall_geometry = [("name", tall.name), ("row_x", SETTINGS_ROW_X), ("row_width", SETTINGS_ROW_WIDTH),
+                     ("row_height", tall.row_height), ("row_step", tall.row_step),
+                     ("section_height", tall.section_height), ("section_step", tall.section_step),
+                     ("section_gap", tall.section_gap), ("tab_top", tall.tab_top), ("page_top", tall.page_top),
+                     ("rows_bottom", tall.rows_bottom), ("spinner_x", SETTINGS_SPINNER_X),
+                     ("spinner_width", SETTINGS_SPINNER_WIDTH), ("panel_bottom", tall.panel_bottom),
+                     ("scrolls", "true"), ("search_word_extra", SEARCH_WORD_EXTRA), ("search_results", SEARCH_RESULTS),
+                     ("search_crumbs", SEARCH_CRUMBS)]
     lines = ['<?xml version="1.0" encoding="UTF-8"?>',
              "<!-- The settings screens' model, for the menu engine (docs/menu_engine.md; tools/port_settings.py) -->",
-             "<model>", f"\t<geometry{attributes(geometry)}/>"]
+             "<model>", f"\t<geometry{attributes(geometry)}/>", f"\t<geometry{attributes(tall_geometry)}/>"]
     for folder, page in PAGES.items():
         lines += _model_page(folder, page)
     for folder, spec in SCREENS.items():

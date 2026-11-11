@@ -54,6 +54,14 @@ char *tag_get_name(long tag_index);
 boolean pc_menu_tag(long tag_index);
 void platform_log(char const *format, ...);
 void main_goto_main_menu(void);
+/* ui_widget.c's: whether the pointer moved the focus last, the frame's tap
+targets noted so far and those from the first cut to a clip; menu_shapes.c's
+bar */
+boolean ui_widget_port_pointer_focused(void);
+long ui_widget_port_targets_noted(void);
+void ui_widget_port_targets_clip(long first, rectangle2d const *clip);
+void menu_shape_caret(real x, real y0, real y1, real width, pixel32 color);
+void ui_widget_port_cut_set(rectangle2d const *cut);
 /* menu_tags.c's: the model's widgets' behaviours made the game's */
 long menu_tags_behaviour_flags(struct halo_menu_model_behaviour const *behaviour);
 void const *menu_tags_behaviour_handlers(struct halo_menu_model const *model,
@@ -103,12 +111,30 @@ DPAD_EVENT_REPEAT_MILLISECONDS) */
 being opened as the one it replaces closes) */
 #define ENGINE_MAXIMUM_SCREENS 8
 
+/* a settings list's rows scrolled (a geometry that scrolls: the tall
+layout's), the scroll eased this long towards where it is going */
+#define ENGINE_SCROLL_EASE_MILLISECONDS 90
+/* the scroll's position track at the rows' right: its gap from them, its
+width, and its colours (the menus' blue, dim and lit) */
+#define ENGINE_SCROLL_TRACK_GAP 4
+#define ENGINE_SCROLL_TRACK_WIDTH 2
+#define ENGINE_SCROLL_TRACK_COLOR 0x402995FF
+#define ENGINE_SCROLL_THUMB_COLOR 0xD02995FF
+
 struct engine_screen
 {
 	struct widget_instance *widget;
 	/* its model (NULL: a screen the model has nothing for, drawn and run as
 	its widgets are) */
 	struct halo_menu_model_screen const *model;
+	/* its list's rows scrolled: how far they are scrolled up and to where,
+	when it was eased last, whether it has been laid out once (the first
+	time, where it is going at once), and the rows' room and how far they
+	go (the list's units), for the track */
+	real scroll, scroll_to;
+	unsigned long scroll_time;
+	boolean scroll_laid;
+	short rows_top, rows_bottom, rows_end;
 };
 
 /* Settings' search's rows found the most, and the most groups of them (the
@@ -251,20 +277,78 @@ static struct widget_instance *engine_child(struct widget_instance *list, char c
 	return NULL;
 }
 
+/* the geometry a settings screen of the model is laid out in where the
+engine draws it: the one it names (the tall layout's), else the first */
+static struct halo_menu_model_geometry const *engine_geometry(struct halo_menu_model_screen const *screen)
+{
+	struct halo_menu_model const *model = engine.model ? engine.model : (engine.model = halo_menus_model());
+	long index;
+
+	for (index = 1; model && screen && screen->geometry && index < model->geometry_count; index++)
+	{
+		if (!strcmp(model->geometries[index].name, screen->geometry))
+			return &model->geometries[index];
+	}
+	return model ? &model->geometry : NULL;
+}
+
+/* where a list's rows are scrolled to: the focused row (with its section's
+title over it, the first row of one) in the rows' room, the room past the
+last row none, eased there from where they are (at once the first time,
+and while the pointer moved the focus last: a row the pointer is on is shown
+already, and moving under it would move the focus again) */
+static void engine_scroll(struct engine_screen *screen, short focus_top, short focus_bottom)
+{
+	real room = (real)(screen->rows_bottom - screen->rows_top);
+	real most = MAX((real)(screen->rows_end - screen->rows_top) - room, 0.0f);
+	unsigned long now = ui_widget_port_milliseconds();
+	real to = screen->scroll_to;
+
+	if (focus_bottom > focus_top && !ui_widget_port_pointer_focused())
+	{
+		if ((real)(focus_top - screen->rows_top) < to)
+			to = (real)(focus_top - screen->rows_top);
+		if ((real)(focus_bottom - screen->rows_top) > to + room)
+			to = (real)(focus_bottom - screen->rows_top) - room;
+	}
+	screen->scroll_to = PIN(to, 0.0f, most);
+	if (!screen->scroll_laid)
+	{
+		screen->scroll_laid = TRUE;
+		screen->scroll = screen->scroll_to;
+	}
+	else
+	{
+		real part = MIN((real)(now - screen->scroll_time) / (real)ENGINE_SCROLL_EASE_MILLISECONDS, 1.0f);
+
+		screen->scroll += (screen->scroll_to - screen->scroll) * part;
+		if (screen->scroll - screen->scroll_to < 0.5f && screen->scroll_to - screen->scroll < 0.5f)
+			screen->scroll = screen->scroll_to;
+	}
+	screen->scroll_time = now;
+}
+
 /* a settings tab's or page's list (its options_menu) laid out from the model:
 its rows shown, from the top, a step apart, each section's title over them
 (hidden with none shown, a gap above it after rows), as
-tools/port_settings.py lays them out for every row; after the list's own
-function (settings_page_update) has chosen the rows shown */
-static void engine_settings_layout(struct engine_screen const *screen, struct widget_instance *list)
+tools/port_settings.py lays them out for every row, in its screen's geometry,
+and scrolled where it scrolls (engine_scroll); after the list's own function
+(settings_page_update) has chosen the rows shown */
+static void engine_settings_layout(struct engine_screen *screen, struct widget_instance *list)
 {
-	struct halo_menu_model_geometry const *geometry = &engine.model->geometry;
+	struct halo_menu_model_geometry const *geometry = engine_geometry(screen->model);
 	struct halo_menu_model_screen const *model = screen->model;
-	short y = (short)(!strcmp(model->layout, "tab") ? geometry->tab_top : geometry->page_top);
+	short top = (short)(!strcmp(model->layout, "tab") ? geometry->tab_top : geometry->page_top);
+	short y = top;
 	struct widget_instance *section = NULL;
+	struct widget_instance *laid[256];
+	short laid_y[256];
+	long laid_count = 0;
 	boolean rows_above = FALSE;
 	boolean section_shown = FALSE;
 	short section_y = 0;
+	short focus_top = 0, focus_bottom = 0;
+	short scrolled;
 	long index;
 
 	for (index = 0; index < model->row_count; index++)
@@ -296,15 +380,55 @@ static void engine_settings_layout(struct engine_screen const *screen, struct wi
 		{
 			/* (the section's title, over its first row shown) */
 			section_shown = TRUE;
-			section->vertical_offset = (short)(list->vertical_offset + section_y);
+			if (laid_count < (long)NUMBEROF(laid))
+			{
+				laid[laid_count] = section;
+				laid_y[laid_count++] = section_y;
+			}
 			y = (short)(section_y + geometry->section_step);
+			/* (a section's first row with the focus: its title shown with it) */
+			if (widget == list->focused_child)
+				focus_top = section_y;
 		}
-		widget->vertical_offset = (short)(list->vertical_offset + y);
+		else if (widget == list->focused_child)
+			focus_top = y;
+		if (widget == list->focused_child)
+			focus_bottom = (short)(y + geometry->row_height);
+		if (laid_count < (long)NUMBEROF(laid))
+		{
+			laid[laid_count] = widget;
+			laid_y[laid_count++] = y;
+		}
 		y = (short)(y + geometry->row_step);
 		rows_above = TRUE;
 	}
 	if (section)
 		section->visible = section_shown;
+	/* (scrolled: the rows up by as much, those out of the room drawn cut,
+	or not at all: engine_draw) */
+	screen->rows_top = top;
+	screen->rows_bottom = (short)geometry->rows_bottom;
+	screen->rows_end = (short)(y - geometry->row_step + geometry->row_height);
+	if (geometry->scrolls)
+		engine_scroll(screen, focus_top, focus_bottom);
+	else
+		screen->scroll = screen->scroll_to = 0.0f;
+	scrolled = (short)(screen->scroll + 0.5f);
+	for (index = 0; index < laid_count; index++)
+		laid[index]->vertical_offset = (short)(list->vertical_offset + laid_y[index] - scrolled);
+}
+
+/* whether a settings list's rows scroll (more of them than their room) */
+static boolean engine_scrolls(struct engine_screen const *screen)
+{
+	return screen->rows_end > screen->rows_bottom;
+}
+
+/* whether a child of a settings list is one of its rows or sections (not
+its tabs or buttons) */
+static boolean engine_is_row(struct widget_instance const *child)
+{
+	return child->name && (!strncmp(child->name, "op_", 3) || !strncmp(child->name, "section_", 8));
 }
 
 /* whether the model lays out what is in the widget: a settings tab's or
@@ -423,7 +547,9 @@ long menu_engine_search_find(struct widget_instance *list, char const *typed, me
 	snprintf(engine.search.typed, sizeof(engine.search.typed), "%s", typed);
 	if (!typed[0])
 		return 0;
-	geometry = &engine.model->geometry;
+	/* (in the geometry the search's screen is laid out in: the tall layout's
+	in the new engine, as its rows found are) */
+	geometry = engine_geometry(owned->model);
 	maximum = geometry->search_results > 0 && geometry->search_results < ENGINE_SEARCH_ROWS ?
 		geometry->search_results : ENGINE_SEARCH_ROWS;
 	count = menu_search_rank(engine.model, typed, shown, context, found, maximum);
@@ -524,7 +650,7 @@ room, and the words (its "search note") under the last, or at the top for
 none */
 static void engine_search_layout(struct widget_instance *list)
 {
-	struct halo_menu_model_geometry const *geometry = &engine.model->geometry;
+	struct halo_menu_model_geometry const *geometry = menu_engine_settings_geometry(list);
 	struct widget_instance *crumbs[ENGINE_SEARCH_GROUPS];
 	struct widget_instance *note = engine_child_of_role(list, "search note");
 	struct widget_instance *child;
@@ -574,7 +700,7 @@ static void engine_search_layout(struct widget_instance *list)
 
 /* after a widget's own drawing (its game data inputs run): what the model
 lays out in it */
-static void engine_layout(struct engine_screen const *screen, struct widget_instance *widget)
+static void engine_layout(struct engine_screen *screen, struct widget_instance *widget)
 {
 	if (engine_lays_out(screen, widget))
 		engine_settings_layout(screen, widget);
@@ -587,22 +713,92 @@ static void engine_layout(struct engine_screen const *screen, struct widget_inst
 /* a widget and what is in it, as ui_widget.c's render does: the widget by
 the game's drawing, then each child from where its parent puts them, the
 focused one drawn focused (and with the plasma, in a list) */
-static void engine_draw(struct engine_screen const *screen, struct widget_instance *widget, rectangle2d *clip,
+static void engine_draw(struct engine_screen *screen, struct widget_instance *widget, rectangle2d *clip,
+	point2d offset, boolean focus, boolean nifty);
+
+/* a scrolled settings list's rows, each in the rows' room (cut to it, its
+tap targets too; one wholly out of it not drawn), and the scroll's track at
+their right */
+static void engine_draw_rows(struct engine_screen *screen, struct widget_instance *list, rectangle2d *clip,
+	point2d children_offset)
+{
+	struct halo_menu_model_geometry const *geometry = engine_geometry(screen->model);
+	short base = (short)(children_offset.y + list->vertical_offset);
+	rectangle2d room;
+	struct widget_instance *child, *right_row = NULL;
+	short right = 0;
+
+	if (clip)
+		room = *clip;
+	else
+		set_rectangle2d(&room, SHORT_MIN, SHORT_MIN, SHORT_MAX, SHORT_MAX);
+
+	room.y0 = (short)MAX(room.y0, base + screen->rows_top);
+	room.y1 = (short)MIN(room.y1, base + screen->rows_bottom);
+	for (child = list->child; child; child = child->next)
+	{
+		boolean child_focus = child == list->focused_child;
+		short height = (short)(child->name && !strncmp(child->name, "section_", 8) ? geometry->section_height :
+			geometry->row_height);
+		short child_top = (short)(children_offset.y + child->vertical_offset);
+		long first;
+
+		if (!engine_is_row(child))
+			continue;
+		if (child->visible && !right_row && !strncmp(child->name, "op_", 3))
+			right_row = child;
+		if (child_top >= room.y1 || child_top + height <= room.y0)
+			continue;
+		/* (its words clipped to the room, its pictures cut to it) */
+		first = ui_widget_port_targets_noted();
+		ui_widget_port_cut_set(&room);
+		engine_draw(screen, child, &room, children_offset, child_focus, child_focus);
+		ui_widget_port_cut_set(NULL);
+		ui_widget_port_targets_clip(first, &room);
+	}
+	/* (the track: the room's height, the thumb the rows shown's part of
+	them, where they are among them) */
+	if (right_row)
+	{
+		real length = (real)(screen->rows_end - screen->rows_top);
+		real shown = (real)(screen->rows_bottom - screen->rows_top);
+		real track_top = (real)room.y0, track_bottom = (real)room.y1;
+		real thumb_top = track_top + (track_bottom - track_top) * screen->scroll / length;
+		real thumb_bottom = thumb_top + (track_bottom - track_top) * MIN(shown / length, 1.0f);
+
+		right = (short)(children_offset.x + right_row->horizontal_offset + geometry->row_width +
+			ui_widget_port_wide_offset(right_row->definition_tag_index) +
+			ui_widget_port_wide_stretch(right_row->definition_tag_index) + ENGINE_SCROLL_TRACK_GAP);
+		menu_shape_caret((real)right, track_top, track_bottom, (real)ENGINE_SCROLL_TRACK_WIDTH,
+			ENGINE_SCROLL_TRACK_COLOR);
+		menu_shape_caret((real)right, thumb_top, thumb_bottom, (real)ENGINE_SCROLL_TRACK_WIDTH,
+			ENGINE_SCROLL_THUMB_COLOR);
+	}
+}
+
+static void engine_draw(struct engine_screen *screen, struct widget_instance *widget, rectangle2d *clip,
 	point2d offset, boolean focus, boolean nifty)
 {
 	struct widget_instance *child;
 	point2d children_offset;
 	boolean children;
+	boolean rows;
 
 	if (!ui_widget_port_render_node(widget, clip, offset, focus, nifty, &children_offset, &children))
 		return;
 	engine_layout(screen, widget);
 	if (!children)
 		return;
+	/* (a settings list whose rows scroll: they in their room) */
+	rows = engine_lays_out(screen, widget) && engine_scrolls(screen);
+	if (rows)
+		engine_draw_rows(screen, widget, clip, children_offset);
 	for (child = widget->child; child; child = child->next)
 	{
 		boolean child_focus = child == widget->focused_child;
 
+		if (rows && engine_is_row(child))
+			continue;
 		engine_draw(screen, child, clip, children_offset, child_focus, child_focus &&
 			(widget->type == ENGINE_WIDGET_SPINNER || widget->type == ENGINE_WIDGET_COLUMN_LIST));
 	}
@@ -1183,4 +1379,19 @@ boolean menu_engine_lays_out(struct widget_instance *widget)
 	while (screen && screen->parent)
 		screen = screen->parent;
 	return engine_lays_out(engine_screen_of(screen), widget);
+}
+
+struct halo_menu_model_geometry const *menu_engine_settings_geometry(struct widget_instance *widget)
+{
+	struct widget_instance *screen = widget;
+	struct engine_screen *owned;
+
+	while (screen && screen->parent)
+		screen = screen->parent;
+	owned = engine_screen_of(screen);
+	if (owned && owned->model)
+		return engine_geometry(owned->model);
+	if (!engine.model)
+		engine.model = halo_menus_model();
+	return engine.model ? &engine.model->geometry : NULL;
 }

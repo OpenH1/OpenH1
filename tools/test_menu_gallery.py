@@ -253,3 +253,38 @@ def test_parity_counts_no_layout_on_either_side_as_not_compared():
     assert menu_parity.compare_layouts(screen, other, other, opened=True)[0].startswith("NOT COMPARED")
     own = {"screen_name": "pc\\" + screen.replace("/", "\\"), "items": []}
     assert menu_parity.compare_layouts(screen, own, own, opened=True) == []
+
+
+def test_parity_tall_layout_is_deliberate_only_for_settings():
+    """a Settings screen laid out in the tall layout may differ in its places and sizes, but only with the
+    classic's rows drawn, in order (a run of them where it scrolls); any other screen, or other rows, differs"""
+    import menu_parity
+    base = "pc\\main_menu\\settings_select\\player_setup\\player_profile_edit\\audio_settings\\"
+
+    def layout(name, rows, y):
+        items = [{"kind": "widget", "id": 1, "name": base + "audio_settings_screen", "box": [0, 0, 640, 480]}]
+        items += [{"kind": "widget", "id": 2 + index, "parent": 1, "name": base + row, "box": [28, y + 25 * index,
+                                                                                              372, y + 25 * index + 24]}
+                  for index, row in enumerate(rows)]
+        return {"screen_name": name, "screen": [0, 0, 640, 480], "items": items}
+
+    screen = base + "audio_settings_screen"
+    classic = layout(screen, ["op_output_device", "op_spatial", "op_reverb"], 124)
+    assert menu_parity.is_tall_layout(classic, layout(screen, ["op_output_device", "op_spatial", "op_reverb"], 100))
+    assert menu_parity.is_tall_layout(classic, layout(screen, ["op_spatial", "op_reverb"], 80))
+    assert menu_parity.compare_layouts(screen.replace("\\", "/")[3:], classic,
+                                       layout(screen, ["op_output_device", "op_spatial", "op_reverb"], 100)) == []
+    assert not menu_parity.is_tall_layout(classic, layout(screen, ["op_reverb", "op_spatial"], 100))
+    assert not menu_parity.is_tall_layout(classic, layout(screen, [], 100))
+    assert menu_parity.is_tall_layout(layout(screen, [], 124), layout(screen, [], 100))
+    other = "pc\\main_menu\\multiplayer_type_select\\lobby\\lobby_screen"
+    assert not menu_parity.is_tall_layout(layout(other, ["op_a"], 124), layout(other, ["op_a"], 100))
+    # (a segmented row's segments on one side, its spinner on the other: whichever fit its row)
+    spinner = layout(screen, ["op_spatial"], 124)
+    spinner["items"].append({"kind": "widget", "id": 9, "parent": 2, "name": base + "spatial_spinner", "box": [1, 2, 3, 4]})
+    segments = layout(screen, ["op_spatial"], 100)
+    segments["items"] += [{"kind": "widget", "id": 9 + index, "parent": 2, "name": base + f"spatial_seg{index}",
+                           "box": [1, 2, 3, 4]} for index in range(3)]
+    assert menu_parity.is_tall_layout(spinner, segments)
+    assert menu_parity.engine_presses(["down", "click@ok"], "classic") == ["down", menu_parity.CLICKS["ok"][0]]
+    assert menu_parity.engine_presses(["click@ok"], "new") == [menu_parity.CLICKS["ok"][1]]
