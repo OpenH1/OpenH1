@@ -71,9 +71,14 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
   it brings every player to the host, however far behind, so no one
   running ahead or doubling back drags the team through the level (while
   none of the host's players are alive, anyone's crossing does); a client
-  standing on a loading zone is told it waits for the host. A player
-  outside the loaded BSP and falling for two seconds is brought back beside
-  the host, else a teammate. A dead
+  standing on a loading zone is told it waits for the host. Where there is
+  no room beside the host or a teammate who is in, the player is tried in
+  the host, the two passing through each other until they are apart. A
+  player still outside the loaded BSP after two seconds, falling or
+  standing anywhere but on an elevator (one a switch left where they were
+  stands on nothing until they move), is brought back beside the host,
+  else a teammate (in them, if there is no room), and tried again every
+  two seconds. A dead
   player watches a living teammate, through their eyes
   (`dead_spectate.c`, `game.spectate_on_death`, drawn from this machine's
   copy of the world: nothing is sent) or from behind (`coop_spectate.c`), and comes back
