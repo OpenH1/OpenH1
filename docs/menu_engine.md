@@ -279,7 +279,8 @@ widgets (the flattened XML, `menu_tags.c`), its meaning from the model, and
 its behaviour from `menu_functions.c` on `widget_instance`s: three places,
 more than before. Each step below removes one, and each is proved by
 `tools/menu_parity.py` (layout, pixels and, from step 2, behaviour) before it
-merges, with `display.menu_engine` still `"classic"` by default.
+merges. `display.menu_engine` is `"new"` by default (since the maintainers
+chose it, before the last steps); `"classic"` keeps the game's widgets.
 
 The end:
 
