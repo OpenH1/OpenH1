@@ -989,7 +989,7 @@ static const char *const binding_settings[NUMBER_OF_HALO_KEYBOARD_ACTIONS] =
 	"controls.reload", "controls.zoom", "controls.switch_weapon", "controls.switch_grenade", "controls.action",
 	"controls.flashlight", "controls.scoreboard", "controls.pause", "controls.screenshot",
 	"controls.report", "controls.push_to_talk", "controls.chat", "controls.team_chat", "controls.party_accept",
-	"controls.vote_yes", "controls.vote_no", "controls.clip", "controls.ping",
+	"controls.vote_yes", "controls.vote_no", "controls.clip", "controls.ping", "controls.walk",
 };
 
 static const struct
@@ -1981,6 +1981,9 @@ second (tools/scorecard). An event is "<start>[-<end>] <action>":
                          Steam Deck's), start to end (input.gyro_aim's
                          "touch")
     gyro_calibrate       its calibration asked for at start, once
+    key=<action>         a keyboard action held (its config.toml name,
+                         controls.<action>: move_forward, walk), start
+                         to end, as its key would be (halo_keyboard_actions)
 
 A time on the 30 Hz grid (a multiple of 1/30) falls on a step at every
 rate. */
@@ -2003,6 +2006,8 @@ static struct test_script_event
 	/* (gyro=, tilt=: the rates or the direction in x, y and z) */
 	int gyro, tilt, gyro_button, stick_touch, gyro_calibrate;
 	float z;
+	/* (key=: the keyboard action held, plus one) */
+	int key;
 } test_script[TEST_SCRIPT_EVENTS];
 static int test_script_count;
 static int test_script_on;
@@ -2083,6 +2088,21 @@ static void test_script_parse(const char *script)
 			event->stick_touch = test_script_gyro = 1;
 		else if (!strcmp(action, "gyro_calibrate"))
 			event->gyro_calibrate = test_script_gyro = 1;
+		else if (!strncmp(action, "key=", 4))
+		{
+			int key;
+
+			for (key = 0; key < NUMBER_OF_HALO_KEYBOARD_ACTIONS; key++)
+			{
+				if (!strcmp(action + 4, binding_settings[key] + sizeof("controls.") - 1))
+					event->key = key + 1;
+			}
+			if (!event->key)
+			{
+				platform_log("test input: script: no keyboard action \"%s\": left out", action + 4);
+				continue;
+			}
+		}
 		else
 		{
 			platform_log("test input: script: no action \"%s\": left out", action);
@@ -2150,6 +2170,23 @@ static void test_script_gamepad(XINPUT_GAMEPAD *pad)
 			pad->sThumbRY = test_script_axis(event->y);
 		}
 	}
+}
+
+/* the keyboard actions the script holds now (key=), a bit each */
+static unsigned long test_script_keys(void)
+{
+	double t = sim_trace_scenario_seconds() + 1e-6;
+	unsigned long held = 0;
+	int index;
+
+	if (!test_script_on || t < 0.0)
+		return 0;
+	for (index = 0; index < test_script_count; index++)
+	{
+		if (test_script[index].key && t >= test_script[index].start && t < test_script[index].end)
+			held |= 1UL << (test_script[index].key - 1);
+	}
+	return held;
 }
 
 /* debug.test_input "latency:<seed>[:<kinds>]": in turn, the controller's
@@ -3532,6 +3569,7 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 					input.keys[SDL_SCANCODE_RETURN] = input.keys[SDL_SCANCODE_KP_ENTER] = 0;
 					held = keyboard_bound_actions(&input);
 				}
+				held |= test_script_keys();
 				keyboard_controls(held, &state->Gamepad);
 			}
 		}

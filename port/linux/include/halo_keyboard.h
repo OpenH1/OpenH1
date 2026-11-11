@@ -58,6 +58,11 @@ enum halo_keyboard_action
 	/* (a ping's, which the game itself does not read: what the player aims
 	at marked for their allies, port/linux/game/network_markers.c) */
 	HALO_KEYBOARD_PING,
+	/* (walking's: while it is held (or toggled on, input.walk), the movement
+	keys push the player a part of the way, as a stick pushed a little does,
+	slowly enough by default to stay off the enemies' motion trackers:
+	source/input/input_abstraction.c, port/linux/game/keyboard_walk.c) */
+	HALO_KEYBOARD_WALK,
 	NUMBER_OF_HALO_KEYBOARD_ACTIONS
 };
 

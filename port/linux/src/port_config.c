@@ -951,6 +951,17 @@ static const struct config_setting config_settings[] =
 		"stick, walking at a crouch's speed; false: a full push stands them up,\n"
 		"as Halo did. The touch controls always stay crouched, and the keys walk\n"
 		"crouched as before." },
+	{ "input.walk", _config_string, "\"hold\"", "HALO_WALK", _environment_value, _platform_all,
+		"The keys' Walk (controls.walk): \"hold\" walks while it is held;\n"
+		"\"toggle\" walks from one press to the next. Walking, the movement keys\n"
+		"move the player at input.walk_speed, as a stick pushed part of the way\n"
+		"does: the same input as a controller's, in every game. Crouched, the\n"
+		"slower of the two. On foot only; controllers and the touch controls\n"
+		"have their sticks." },
+	{ "input.walk_speed", _config_string, "\"tracker\"", "HALO_WALK_SPEED", _environment_value, _platform_all,
+		"How fast the keys walk: \"tracker\", as fast as a player can go and\n"
+		"stay off the enemies' motion trackers (the map's threshold, the\n"
+		"player's speeds); or a percentage of the full speed, 10 to 90." },
 	{ "input.mouse_sensitivity", _config_real, "5.73", "HALO_MOUSE_SENSITIVITY", _environment_value, _platform_desktop,
 		"How far the view turns for the mouse's movement, on " CONFIG_MOUSE_MARK " scale:\n"
 		"0.022 degrees a count of the mouse times this, with no acceleration,\n"
@@ -1151,6 +1162,9 @@ static const struct config_setting config_settings[] =
 		"Ping: mark what you aim at (a spot, an enemy, a vehicle, a weapon) for\n"
 		"your allies, with a nav point and its distance; again on the same spot\n"
 		"takes it away (the controller's D-pad Right)." },
+	{ "controls.walk", _config_string, "\"Left Shift\"", "HALO_KEY_WALK", _environment_value, _platform_all,
+		"Walking: the movement keys move the player slowly while it is held\n"
+		"(input.walk, input.walk_speed)." },
 
 	{ "game.console_log", _config_string, "\"important\"", "HALO_CONSOLE_LOG", _environment_value, _platform_all,
 		"What the game's console shows on screen of what it logs: \"important\"\n"
@@ -2187,7 +2201,7 @@ static const struct config_setting config_settings[] =
 		"debug.frame_time, logs where the focus is after each and quits after\n"
 		"the last (tools/menu_parity.py);\n"
 		"\"script:<second>[-<second>] <action>;...\" presses, holds and aims (\"hunt\": at the\n"
-		"nearest enemy in sight) on the\n"
+		"nearest enemy in sight; \"key=walk\": a keyboard action held) on the\n"
 		"simulation's clock in seconds from the scenario's start (tools/scorecard),\n"
 		"the same at any simulation rate; empty for none." },
 	{ "debug.trace", _config_string, "\"\"", "HALO_TRACE", _environment_value, _platform_all,
@@ -4322,6 +4336,7 @@ static const struct
 	{ "input.touch_controls", { "auto", "on", "off", NULL }, NULL },
 	{ "input.touch_crouch", { "toggle", "hold", NULL }, NULL },
 	{ "input.crouch", { "hold", "toggle", NULL }, NULL },
+	{ "input.walk", { "hold", "toggle", NULL }, NULL },
 	{ "input.gyro_aim", { "off", "on", "hold", "pause", "touch", NULL }, NULL },
 	{ "input.gyro_button", { "touchpad", "left_paddle", "right_paddle", "misc", "left_bumper", "right_bumper",
 		"left_trigger", "right_trigger", "left_stick", "right_stick", NULL }, NULL },

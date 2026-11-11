@@ -1277,6 +1277,16 @@ PAGES = {
              "Which of the actions to show: movement, weapons, actions or communication.", None, "group"),
             (SECTION, "ACTIONS"),
             *[("", None, None, "", None, f"command_{n}") for n in range(1, CONTROL_ROWS + 1)],
+            # (the keys' Walk, controls.walk: port/linux/game/keyboard_walk.c;
+            # the Controls tab has no room left for them)
+            (SECTION, "WALK"),
+            ("WALK", "input.walk", [("HOLD", "hold"), ("TOGGLE", "toggle")],
+             "Hold walks while the Walk key is held; Toggle walks from one press to the next. Walking, the "
+             "movement keys move you slowly, as a stick pushed a little does.", None),
+            ("WALK SPEED", "input.walk_speed",
+             [("TRACKER", "tracker")] + [(f"{percent}%", str(percent)) for percent in range(10, 100, 10)],
+             "How fast you walk. Tracker: as fast as you can and still stay off the enemies' motion trackers. "
+             "Or a part of your full speed.", None),
         ],
     },
     GYRO[0]: {

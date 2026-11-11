@@ -1045,6 +1045,25 @@
 		<row key="command_5" kind="binding" label=""/>
 		<row key="command_6" kind="binding" label=""/>
 		<row key="command_7" kind="binding" label=""/>
+		<section key="section_10" title="WALK"/>
+		<row key="walk" kind="choice" setting="input.walk" label="WALK">
+			<help>Hold walks while the Walk key is held; Toggle walks from one press to the next. Walking, the movement keys move you slowly, as a stick pushed a little does.</help>
+			<choice shown="HOLD" value="hold"/>
+			<choice shown="TOGGLE" value="toggle"/>
+		</row>
+		<row key="walk_speed" kind="choice" setting="input.walk_speed" label="WALK SPEED">
+			<help>How fast you walk. Tracker: as fast as you can and still stay off the enemies' motion trackers. Or a part of your full speed.</help>
+			<choice shown="TRACKER" value="tracker"/>
+			<choice shown="10%" value="10"/>
+			<choice shown="20%" value="20"/>
+			<choice shown="30%" value="30"/>
+			<choice shown="40%" value="40"/>
+			<choice shown="50%" value="50"/>
+			<choice shown="60%" value="60"/>
+			<choice shown="70%" value="70"/>
+			<choice shown="80%" value="80"/>
+			<choice shown="90%" value="90"/>
+		</row>
 		<button key="button_defaults" kind="defaults" run="port settings defaults" help="Puts this page's settings back to their defaults."/>
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>
 		<button key="button_cancel" kind="cancel" run="port settings page cancel" help="Goes back without these changes."/>
