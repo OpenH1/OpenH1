@@ -568,7 +568,7 @@ KEY_BINDINGS = ("controls_setup", "controls_settings_screen")
 # port/linux/game/menu_functions.c's table of them), and its rows for a
 # group's actions (the most a group has), each its action's two bindings
 CONTROL_GROUPS = ["MOVEMENT", "WEAPONS", "ACTIONS", "COMMUNICATION"]
-CONTROL_ROWS = 7
+CONTROL_ROWS = 8
 CONTROL_COMMAND_ROWS = {f"command_{n}" for n in range(1, CONTROL_ROWS + 1)}
 # (an action's row: its name, then its two bindings' columns, to the row's end)
 CONTROL_BINDINGS_X, CONTROL_BINDING_WIDTH = (136, 240), 104
@@ -687,6 +687,9 @@ PAGES = {
              "Enhanced: smoother edges, sharper textures and shadows, smoother lighting. Classic looks as the "
              "Xbox did.|Changing one shows CUSTOM.", None),
             # (display.battery_saver: port/linux/src/battery_saver.c)
+            # (from Interface: port/linux/game/spartan_link.c's row took its place)
+            ("HIGH-RES TEXT", "display.high_res_text", ON_OFF,
+             "Draws text and titles with sharp high-resolution fonts. Off draws the game's own.", None),
             ("BATTERY SAVER", "display.battery_saver", [("OFF", "off"), ("ON", "on"), ("AUTO", "auto")],
              "Up to 60 frames a second and Classic graphics, for a longer battery and a cooler device. Auto turns "
              "it on while the device runs on its battery. Your own settings come back as it turns off.", None),
@@ -862,8 +865,13 @@ PAGES = {
              [("CLASSIC", "classic"), ("GEMS", "gems"), ("DARK GEMS", "menu_gems")],
              "The buttons the HUD draws. Classic: plain Xbox buttons. Gems: shaded Xbox buttons. Dark Gems: the "
              "menus' button artwork.", None),
-            ("HIGH-RES TEXT", "display.high_res_text", ON_OFF,
-             "Draws text and titles with sharp high-resolution fonts. Off draws the game's own.", None),
+            # (port/linux/game/spartan_link.c: co-op and team games; HIGH-RES
+            # TEXT moved to Video's GRAPHICS to make room)
+            ("SPARTAN LINK", "display.spartan_link",
+             [("SMALL", "small"), ("MEDIUM", "medium"), ("LARGE", "large"), ("OFF", "off")],
+             "Your living teammates' views in the HUD's top line, with their names, shields and distances, in "
+             "co-op and team games: the SPARTAN LINK key (or D-pad Down) shows and hides them. Off: the key does "
+             "nothing.", None),
             (SECTION, "MULTIPLAYER"),
             ("PLAYER NAMES", "display.player_names",
              [("ALL", "all"), ("ALLIES", "allies"), ("ENEMIES", "enemies"), ("NONE", "none")],

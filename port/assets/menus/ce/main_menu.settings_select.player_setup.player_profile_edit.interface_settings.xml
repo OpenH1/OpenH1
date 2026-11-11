@@ -16,7 +16,7 @@
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_0" x="28" y="104"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_high_res_hud" x="28" y="124"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_hud_button_style" x="28" y="145"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_high_res_text" x="28" y="166"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_spartan_link" x="28" y="166"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_4" x="28" y="193"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_player_names" x="28" y="213"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_player_name_scale" x="28" y="234"/>
@@ -117,13 +117,13 @@
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/hud_button_style_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="CLASSIC|GEMS|DARK GEMS" setting="display.hud_button_style" values="classic|gems|menu_gems" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="120 0" source="tools/port_settings.py settings_files/_settings_page">
 		<on event="created" run="port setting load"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_high_res_text" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" wide="-106 120" source="tools/port_settings.py settings_files/_settings_page">
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/high_res_text_label"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/high_res_text_spinner" x="188"/>
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/op_spartan_link" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" wide="-106 120" source="tools/port_settings.py settings_files/_settings_page">
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/spartan_link_label"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/spartan_link_spinner" x="188"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/high_res_text_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="3" color="#FF2896FF" text_x="10" text_y="1" wide="0 120" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/spartan_link_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/labels" string_index="3" color="#FF2896FF" text_x="10" text_y="1" wide="0 120" font="ui\small_ui" source="tools/port_settings.py settings_files/_settings_page/_settings_text">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/high_res_text_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="ON|OFF" setting="display.high_res_text" values="true|false" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="120 0" source="tools/port_settings.py settings_files/_settings_page">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/spartan_link_spinner" type="spinner" top="1" width="140" height="18" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="SMALL|MEDIUM|LARGE|OFF" setting="display.spartan_link" values="small|medium|large|off" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="4 -6 16 0" footer_bounds="4 140 16 146" wide="120 0" source="tools/port_settings.py settings_files/_settings_page">
 		<on event="created" run="port setting load"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/section_4" width="344" height="18" bitmap="main_menu/settings/section" wide="-106 120" source="tools/port_settings.py settings_files/_settings_page">
@@ -212,7 +212,7 @@
 		<string text="HUD"/>
 		<string text="HIGH-RES HUD"/>
 		<string text="BUTTON STYLE"/>
-		<string text="HIGH-RES TEXT"/>
+		<string text="SPARTAN LINK"/>
 		<string text="MULTIPLAYER"/>
 		<string text="PLAYER NAMES"/>
 		<string text="NAME SIZE"/>
@@ -229,7 +229,7 @@
 		<string text=""/>
 		<string text="Draws the HUD from sharp high-resolution redraws. Off draws the game's own pictures."/>
 		<string text="The buttons the HUD draws. Classic: plain Xbox buttons. Gems: shaded Xbox buttons. Dark Gems: the menus' button artwork."/>
-		<string text="Draws text and titles with sharp high-resolution fonts. Off draws the game's own."/>
+		<string text="Your living teammates' views in the HUD's top line, with their names, shields and distances, in co-op and team games: the SPARTAN LINK key (or D-pad Down) shows and hides them. Off: the key does nothing."/>
 		<string text=""/>
 		<string text="In multiplayer, whose names are drawn above their heads."/>
 		<string text="How large the players' names are drawn."/>

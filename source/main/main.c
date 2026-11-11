@@ -384,6 +384,7 @@ symbols in this file:
 #include "network_voice.h" /* port: port/linux/game/network_voice.c */
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
 #include "network_markers.h" /* port: port/linux/game/network_markers.c */
+#include "spartan_link.h" /* port: port/linux/game/spartan_link.c */
 #include "network_party.h" /* port: port/linux/game/network_party.c */
 #include "network_host_controls.h" /* port: port/linux/game/network_host_controls.c */
 #include "party.h" /* port: port/linux/game/party_menu.inc */
@@ -4012,6 +4013,8 @@ void main_loop(
 			network_chat_update();
 			/* port: the players' pings (port/linux/game/network_markers.c) */
 			network_markers_update();
+			/* port: the HUD's Spartan link (port/linux/game/spartan_link.c) */
+			spartan_link_update();
 			/* port: the party, which follows its leader into its games
 			(port/linux/game/party_menu.inc) */
 			party_update();

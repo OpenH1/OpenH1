@@ -4292,7 +4292,7 @@ static boolean coop_player2_choose(short controller)
 bindings each */
 
 #define CONTROL_BINDINGS 2
-#define CONTROL_ROWS 7
+#define CONTROL_ROWS 8
 #define CONTROL_NAME_LENGTH 32
 
 /* (a refused change's help shown this long: control_capture_poll) */
@@ -4338,6 +4338,9 @@ static struct
 	/* (MOVEMENT's last row, after CROUCH: a group's rows are its controls in
 	this order) */
 	{ "controls.walk", L"WALK", 0, FALSE },
+	/* (COMMUNICATION's last row, after PING: the HUD's Spartan link,
+	spartan_link.c) */
+	{ "controls.spartan_link", L"SPARTAN LINK", 3, FALSE },
 };
 
 static struct

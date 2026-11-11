@@ -50,6 +50,8 @@ typedef unsigned long xgpu_target;
 /* (a map's preparation's journal: not recorded here) */
 enum { JOURNAL_ANTI_ALIAS = 5, JOURNAL_PANINI };
 static BOOL journal_recording;
+/* (no extra view drawn: d3d8_device.c's halo_view_begin) */
+static int screen_view;
 static void journal_operation(unsigned long op, const void *arguments, unsigned long bytes)
 { (void)op; (void)arguments; (void)bytes; }
 struct xgpu_render_target { xgpu_target number; int samples; float scale[2]; };

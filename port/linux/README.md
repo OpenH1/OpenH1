@@ -1320,6 +1320,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.viewmodel_shield` | `false` | `HALO_VIEWMODEL_SHIELD` | `true`: the energy shield's flare is drawn on the first-person arms too, as on the body, with the unit's own shield shader, kept closer to the arms than to the body. The stock game draws it on the body only. The flare is the shield's hits: it shows as the shield takes damage and fades over the next second or two (the unit's recent shield damage), so a full shield that nothing hits shows none, on the arms as on the body. An overshield stays lit on the arms with `display.overshield_effect` (OVERSHIELD, on the same screen). |
 | `display.first_person_legs` | `false` | `HALO_FIRST_PERSON_LEGS` | `true`: your own body is drawn in first person from the belly down, with its shadow, so you see your legs when you look down, moving as the body's animation moves them, its feet where they stand; its lower body stays planted as you turn and faces the way you walk, on your screen alone. Refer to "Field of view". |
 | `display.shield_color` | `default` | `HALO_SHIELD_COLOR` | Your energy shield's flare as this machine draws it: `default` (the shield's own) or a multiplayer armor color (`white`, `black`, `red`, `blue`, `gray`, `yellow`, `green`, `pink`, `purple`, `cyan`, `cobalt`, `orange`, `teal`, `sage`, `brown`, `tan`, `maroon`, `salmon`), whatever the armor's, on the body and, with `display.viewmodel_shield`, on the first-person arms. The shield's own shader is drawn with its two colors replaced at their brightness; the flare is added to what is behind it, so `black` is drawn a faint grey. Only this machine sees it. |
+| `display.spartan_link` | `"medium"` | `HALO_SPARTAN_LINK` | The Spartan link: live feeds of your living teammates' views in the HUD's top line (up to four), shown and hidden with `controls.spartan_link` (B; a controller's D-pad Down in the stock layouts), off as each game starts; co-op and team games only, not Pro 2V2. `"small"`, `"medium"` or `"large"` feeds; `"off"`: the key does nothing. SPARTAN LINK in Settings > Interface. Refer to "Spartan link". |
 | `display.high_res_hud` | `true` | `HALO_HIGH_RES_HUD` | `true`: the HUD (meters, counters, panels and their outlines, reticles, waypoints, scopes, the message icons and their pictures of the weapons, the reticle's warnings, the multiplayer icons) is drawn from the high-res assets in `port/assets/hud`, 4x the size of the maps' bitmaps: Aerocatia's and Jessie's art from Halo PC Restored (`port/assets/hud/NOTICE.md`); the motion sensor and the health meter's base, which it has no larger, from redraws at 8x. Another language's text (the message icons' words, the warnings, the seat plates) is upscaled from its maps' own pixels without changing their layout. `false`: the maps' own bitmaps. |
 | `display.hud_button_style` | `classic` | `HALO_HUD_BUTTON_STYLE` | Gameplay controller icons while High-Res HUD is on: `classic` (the Xbox's flat faces, their letters cut out: Aerocatia's and Jessie's stencils from Halo PC Restored), `gems` (shaded Xbox faces), or `menu_gems` (Dark Gems). |
 | `display.menu_pictures` | `true` | `HALO_MENU_PICTURES` | `true`: the menus' small pictures of the missions and the multiplayer maps (ui.map's 140x114 `sp_levels` and `mp_map_grafix`) are drawn again, sharp, from the player's own maps, once, as the main menu first shows ("Preparing menu pictures", about a second each), and kept in the data root's `menu_pictures/` ("Menu pictures"). `false`: the originals. |
@@ -3232,6 +3233,38 @@ A player you mute on the scoreboard (Mute voice, chat and pings, refer to
 nobody else is told. A player the host mutes for everyone (`/mute`, Mute for
 everyone, Host Controls' MUTE) cannot ping: the host takes none of their
 pings until the mute ends.
+
+### Spartan link
+
+B (`controls.spartan_link`, Settings > Controls > Key Bindings, COMMUNICATION),
+or a controller's D-pad Down in the stock layouts (which then does not move
+the player back), shows and hides the Spartan link: a live feed of each
+living teammate's view, up to four, in the HUD's top line between the
+ammunition's panel and the shield's. Each is the teammate's first-person
+view (their eye, aim and zoom, their weapon and arms, none of their HUD),
+framed as the HUD's panels are, tinted blue, with their name, a thin bar of
+their shield and their distance under it. A teammate in a seat whose camera
+follows the vehicle is seen from behind. A teammate who dies shows DOWN for
+a moment and drops out; with none left alive the link closes. While you are
+dead it hides (spectating fills the screen) and comes back as you respawn.
+It is off as each game starts.
+
+The link is for co-op (network and split screen; each window has its own,
+of its player's teammates) and games with teams, and shows only teammates.
+In a free-for-all game, and in Pro 2V2 (Classic and Lowest Latency), the key
+says so on the HUD and shows nothing. `display.spartan_link` sets the
+feeds' size (small, medium, large) or turns the key off.
+
+The feeds are drawn from this computer's copy of the game, as the rest of
+the picture is: nothing is sent, and a far teammate moves as smoothly as the
+host's updates of them do. One feed is drawn a frame, in turn, each kept in
+an image of its own at the size it has on the screen (`port/linux/src/d3d8_device.c`'s
+extra views), without the anti-aliasing pass, multisampling, the world's
+ambient occlusion, the objects' shadows, lens flares or the weather, so the
+frame pays for about one small view whatever the number of feeds; with the
+link hidden, nothing. The weapon and arms are posed in their idle
+animation (not the teammate's reloads or shots). Not yet in VR, nor on the
+touch controls (`port/linux/game/spartan_link.c`).
 
 ### Voice chat
 

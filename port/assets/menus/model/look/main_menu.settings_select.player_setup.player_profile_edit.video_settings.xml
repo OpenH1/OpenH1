@@ -21,9 +21,10 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_movies" x="28" y="292"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/section_11" x="28" y="319"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_graphics" x="28" y="339"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_battery_saver" x="28" y="360"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_brightness_settings" x="28" y="381"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_advanced_graphics" x="28" y="402"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_high_res_text" x="28" y="360"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_battery_saver" x="28" y="381"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_brightness_settings" x="28" y="402"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_advanced_graphics" x="28" y="423"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/button_bar" x="0" y="414"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/tabs" x="0" y="76"/>
 	</look>
@@ -197,13 +198,24 @@
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ENHANCED|CLASSIC|CUSTOM"/>
 	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_high_res_text" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/high_res_text_label" x="0" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/high_res_text_spinner" x="188" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/high_res_text_label" type="text" box="0 0 184 20" wide="0 120">
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/labels" index="13"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/high_res_text_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
+	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_battery_saver" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/battery_saver_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/battery_saver_spinner" x="188" y="0"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/battery_saver_label" type="text" box="0 0 184 20" wide="0 120">
-		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/labels" index="13"/>
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/labels" index="14"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/battery_saver_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="OFF|ON|AUTO"/>
@@ -213,13 +225,13 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/brightness_settings_label" x="0" y="0"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/brightness_settings_label" type="text" box="0 0 332 20" wide="0 120">
-		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/labels" index="14"/>
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/labels" index="15"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_advanced_graphics" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced_graphics_label" x="0" y="0"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced_graphics_label" type="text" box="0 0 332 20" wide="0 120">
-		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/labels" index="15"/>
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/labels" index="16"/>
 	</look>
 </model>

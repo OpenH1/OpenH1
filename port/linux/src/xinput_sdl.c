@@ -81,6 +81,8 @@ extern unsigned char network_vote_pad_open(void);
 /* port/linux/game/network_markers.c: the port's player pings with the stock
 layouts' D-pad Right now */
 extern unsigned char network_markers_pad_open(short port);
+/* port/linux/game/spartan_link.c */
+extern unsigned char spartan_link_pad_open(short port);
 /* port/linux/game/menu_functions.c: two or more players on this machine
 (co-op, or split screen in a network game) */
 extern unsigned char pc_menu_split_players(void);
@@ -626,6 +628,41 @@ int halo_ping_pad_pressed(short port)
 	return pressed;
 }
 
+/* each port's stock layouts' Spartan link (D-pad Down), as the ping's
+above: while the link can be in its player's game (spartan_link_pad_open)
+and no overlay reads it, a press is the link's (halo_spartan_link_pad_pressed)
+and the game gets none of that direction */
+static unsigned char spartan_link_pad_held[PORT_COUNT];
+static unsigned char spartan_link_pad_pressed_ports[PORT_COUNT];
+
+static void spartan_link_pad_read(int port, XINPUT_GAMEPAD *pad, unsigned int reserved)
+{
+	unsigned char layout[CONTROLLER_REMAP_ACTIONS];
+	unsigned char held = (chat_physical_pad[port] & (1UL << HALO_CHAT_PAD_DOWN)) != 0;
+
+	if (controller_remap_read((short)port, layout) || (reserved & CONTROLLER_REMAP_RESERVE_DPAD_DOWN) ||
+		!spartan_link_pad_open((short)port))
+	{
+		spartan_link_pad_held[port] = held;
+		return;
+	}
+	if (held && !spartan_link_pad_held[port])
+		spartan_link_pad_pressed_ports[port] = 1;
+	spartan_link_pad_held[port] = held;
+	pad->wButtons &= (WORD)~XINPUT_GAMEPAD_DPAD_DOWN;
+}
+
+int halo_spartan_link_pad_pressed(short port)
+{
+	int pressed;
+
+	if (port < 0 || port >= PORT_COUNT)
+		return 0;
+	pressed = spartan_link_pad_pressed_ports[port];
+	spartan_link_pad_pressed_ports[port] = 0;
+	return pressed;
+}
+
 /* the touch controls' stick as the player's movement (input_abstraction.c's
 keyboard_controls_update), forward and strafe -1..1, whatever the
 profile's sticks do; nonzero while it is pushed. Nothing but on Android and
@@ -990,6 +1027,7 @@ static const char *const binding_settings[NUMBER_OF_HALO_KEYBOARD_ACTIONS] =
 	"controls.flashlight", "controls.scoreboard", "controls.pause", "controls.screenshot",
 	"controls.report", "controls.push_to_talk", "controls.chat", "controls.team_chat", "controls.party_accept",
 	"controls.vote_yes", "controls.vote_no", "controls.clip", "controls.ping", "controls.walk",
+	"controls.spartan_link",
 };
 
 static const struct
@@ -3634,6 +3672,9 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		vote_pad_hold_over(&state->Gamepad);
 		/* (and pings, the stock layouts' D-pad Right: network_markers.c) */
 		ping_pad_read(0, &state->Gamepad, reserved);
+		/* (and the Spartan link, the stock layouts' D-pad Down:
+		spartan_link.c) */
+		spartan_link_pad_read(0, &state->Gamepad, reserved);
 		/* (the input trace: what the first controller reads in all) */
 		input_trace_pad(0, state->Gamepad.wButtons, state->Gamepad.sThumbLX, state->Gamepad.sThumbLY,
 			state->Gamepad.sThumbRX, state->Gamepad.sThumbRY,
@@ -3668,6 +3709,7 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		chat_pad_record((short)port, &state->Gamepad);
 		chat_pad_hold_over((short)port, &state->Gamepad);
 		ping_pad_read(port, &state->Gamepad, reserved);
+		spartan_link_pad_read(port, &state->Gamepad, reserved);
 	}
 	if (captured) memset(&state->Gamepad, 0, sizeof(state->Gamepad));
 	/* (the port's gyroscope, and its right stick as the flick stick) */
