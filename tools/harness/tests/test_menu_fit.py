@@ -77,7 +77,8 @@ NEGATIVE_CONTROLS = {
     # capitals placed without the ascent (text_y as a box's top): low in every box (issue 670)
     "text-y-without-ascent": ("caps_text_y", lambda height, top=0, large=False: (height - 10) // 2 - top, "centred"),
     # the prompts as wide as laid out by hand (issue 670's ADD PLAYER)
-    "prompts-not-fitted": ("prompt_fit_width", lambda words, width, text_x, browser=False: width, "prompts"),
+    "prompts-not-fitted": ("prompt_fit_width", lambda words, width, text_x, browser=False, lingering=False: width,
+                           "prompts"),
     # a key's cap measured without its gap
     "cap-without-gap": ("KEY_CAP_GAP", 0, "prompts"),
     # Choose Mission's arrows at the screen's margin, moved to a wide screen's edges, as before (issue 681)

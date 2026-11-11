@@ -3737,7 +3737,7 @@ def _lobby_board(base: str) -> tuple:
     # (CHANGE TEAM's keys the arrows, the keyboard's and the D-pad's alike:
     # the spinners' arrows before its words)
     team_prompt = LOBBY_PROMPTS[0]
-    lines += _prompts(base, "board_prompts", LOBBY_PROMPTS, defined=(team_prompt[0],))
+    lines += _prompts(base, "board_prompts", LOBBY_PROMPTS, defined=(team_prompt[0],), lingering=True)
     _, words, x, width, handler = team_prompt
     lines += _widget(f"{base}/{team_prompt[0]}", [("type", "text"), ("width", width), ("height", PART_PROMPT_HEIGHT),
                                                   ("wide", prompt_wide(x, width)),
@@ -4784,11 +4784,11 @@ def _tab_strip(base: str, strip: str, tabs: list, handlers: list) -> list:
 _PROMPT_WIDTHS = set()
 
 
-def _prompt_fitted(prompt: tuple, text_x: int, browser: bool) -> tuple:
+def _prompt_fitted(prompt: tuple, text_x: int, browser: bool, lingering: bool = False) -> tuple:
     """a prompt as wide as its words need (prompt_fit_width): grown away
     from the screen's edge it is at, its other end where it was"""
     name, words, x, width, handler = prompt
-    fitted = prompt_fit_width(words, width, text_x, browser)
+    fitted = prompt_fit_width(words, width, text_x, browser, lingering)
     if fitted > width and x + width / 2 >= 320:
         x -= fitted - width
     _PROMPT_WIDTHS.add(fitted)
@@ -4803,13 +4803,15 @@ def prompt_picture_widths() -> list:
     return sorted(_PROMPT_WIDTHS)
 
 
-def _prompts(base: str, bar: str, prompts: list, defined: tuple = (), text_x: int = 8, browser: bool = False) -> list:
+def _prompts(base: str, bar: str, prompts: list, defined: tuple = (), text_x: int = 8, browser: bool = False,
+             lingering: bool = False) -> list:
     """a footer of key prompts, a bar of buttons: each its button's picture
     in its words (the device's, menu_functions.c's), as wide as they need
-    (_prompt_fitted; browser: a server browser's keys), highlighted while it
+    (_prompt_fitted; browser: a server browser's keys; lingering: a screen a
+    browser opens, prompt_words_end's), highlighted while it
     has the focus, and its function run by A or a click (those another
     footer has, by their names in defined, its)"""
-    prompts = [_prompt_fitted(prompt, text_x, browser) for prompt in prompts]
+    prompts = [_prompt_fitted(prompt, text_x, browser, lingering) for prompt in prompts]
     wides = prompts_wide(prompts, text_x)
     lines = _widget(f"{base}/{bar}", [("type", "column_list"), ("width", 640), ("height", PART_PROMPT_HEIGHT + 4),
                                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
@@ -4858,15 +4860,22 @@ def key_cap_advance(name: str) -> int:
     return KEY_CAP_INSET + width + KEY_CAP_GAP
 
 
-def prompt_words_end(words: str, browser: bool = False) -> int:
+def prompt_words_end(words: str, browser: bool = False, lingering: bool = False) -> int:
     """where a prompt's words ("%b-button BACK") end, from its text's left:
     its button as the key the keyboard presses it with (a server browser's:
     BROWSER_KEYS), its words after it (a button the keyboard has no key for
-    is the controller's picture, narrower than a key's cap: as a letter's)"""
+    is the controller's picture, narrower than a key's cap: as a letter's).
+    lingering: a screen a browser opens (the lobby, a game joined), whose
+    prompts are drawn with the browser's keys for a quarter of a second after
+    it was last drawn (xinput_sdl.c's BROWSER_KEYS_MILLISECONDS: X's Tab, not
+    E), the wider of the two keys (fitted to E alone, the lobby's ADD PLAYER
+    was cut to ADD PLAYEI by Tab's cap)"""
     if words.startswith("%"):
         button, _, rest = words[1:].partition(" ")
-        key = (BROWSER_KEYS if browser else MENU_KEYS).get(button, "E")
-        return key_cap_advance(key) + small_ui_width(" " + rest)
+        keys = [(BROWSER_KEYS if browser else MENU_KEYS).get(button, "E")]
+        if lingering:
+            keys.append(BROWSER_KEYS.get(button, "E"))
+        return max(key_cap_advance(key) for key in keys) + small_ui_width(" " + rest)
     return small_ui_width(words)
 
 
@@ -4927,9 +4936,9 @@ def prompts_wide(prompts: list, text_x: int) -> dict:
     return {name: wide(placed[name] - x, grown[name] - width) for name, _, x, width, _ in prompts}
 
 
-def prompt_fit_width(words: str, width: int, text_x: int, browser: bool = False) -> int:
+def prompt_fit_width(words: str, width: int, text_x: int, browser: bool = False, lingering: bool = False) -> int:
     """a prompt's width: as wide as it was laid out, or as its words need"""
-    return max(width, text_x + prompt_words_end(words, browser) + PROMPT_RIGHT_ROOM)
+    return max(width, text_x + prompt_words_end(words, browser, lingering) + PROMPT_RIGHT_ROOM)
 
 
 def prompt_wide(x: int, width: int):
