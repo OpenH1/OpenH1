@@ -1479,6 +1479,43 @@ those lines too, and with `--events` that each client reported hits and the
 host rejected none (`debug.network_test_shoot`: the OpenCE player shoots an
 OpenH1 player, an OpenH1 player the OpenCE one).
 
+### The Legacy encodings
+
+The host sends two streams each tick in either of two encodings: the
+players' tick states, and the actors' states. A Legacy game's machines, and
+an OpenCE machine of an OpenH1 game, take network version 41's (the whole
+unit states, `_distributed_message_unit_states`, and the whole 88-byte actor
+structures, `_distributed_message_actor_states`). An OpenH1 client of an
+OpenH1 game takes OpenH1's (`_distributed_message_unit_state_differences`
+and `_distributed_message_actor_states_compact`, above). One function makes
+that choice, `network_legacy_machine` (`port/linux/game/network_legacy.c`),
+and each stream asks it once a client, where it begins
+(`network_distributed.c`'s `distributed_tick_states_begin`,
+`network_actors.c`'s `actor_states_begin`). The streams' other code, which
+states go and when, is the same for both kinds.
+
+`network_legacy.c` and `network_legacy.h` hold the Legacy encodings: the
+unit state's bytes (`distributed_unit_state_write` and
+`distributed_unit_state_read`, which OpenH1's messages also carry whole: a
+difference's or a sub-step's whole form, a client's prediction), the actor
+structure and its message, and the flags and sizes they use. The OpenH1
+encodings stay beside the streams they serve, so a change to them does not
+touch these files. Nothing in them may change a byte, and two checks hold
+them to that:
+
+- `tools/harness/tests/test_legacy_golden.py` writes fixed states with the
+  sources' encoders and compares the bytes with those recorded in the test:
+  players on foot, riding, tilted, dead with a killer and without, hurt,
+  camouflaged, with powerups and with a prediction's fine velocity (with
+  the client's tick and without), and actors standing, riding, moving, with
+  an impulse, a speech or a custom animation, fleeing and camouflaged, in
+  their messages (13 whole structures a datagram). It records the OpenH1
+  encodings of the same states too, which may change with OpenH1's protocol
+  version (`GOLDEN_RECORD=1` prints them to record again). The Legacy lines
+  must never change.
+- `tools/network_format.py` holds the structures, flags and sizes to
+  `port/linux/network_format.txt`.
+
 ### The host's controls
 
 The host's HOST CONTROLS (its pause menu, the scoreboard's player menu, the

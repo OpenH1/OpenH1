@@ -47,6 +47,7 @@ an AI unit the same way it kills a player's.
 #include "units/unit_control_data.h"
 #include "network_coop.h"
 #include "network_distributed.h"
+#include "network_legacy.h"
 #include "network_standard.h"
 
 #include <math.h>
@@ -92,73 +93,7 @@ enum
 	PRESSED_AIM_STEP = 2048,
 };
 
-/* struct distributed_actor_state flags */
-enum
-{
-	_distributed_actor_rides_bit = 0,
-	_distributed_actor_shield_depleted_bit,
-	_distributed_actor_shield_charging_bit,
-	_distributed_actor_shield_over_charging_bit,
-	_distributed_actor_camouflaged_bit,
-	_distributed_actor_super_camouflaged_bit,
-	/* the impulse turns the unit to impulse_alignment */
-	_distributed_actor_impulse_aligned_bit,
-	/* fleeing in a panic, toward run_blindly_angle (unit_start_running_blindly) */
-	_distributed_actor_running_blindly_bit,
-};
-
-/* facing, aiming and looking vectors are sent as yaw and pitch */
-enum
-{
-	_angle_yaw,
-	_angle_pitch,
-	NUMBER_OF_ANGLES
-};
-
 /* ---------- structures */
-
-/* an AI unit's control and state at the end of the host's tick (like
-struct distributed_unit_state for players) */
-struct distributed_actor_state
-{
-	long unit_index;
-	long vehicle_index;
-	short seat_index;
-	byte flags;
-	/* the impulse's sequence number; impulse is NO_IMPULSE when there is none */
-	byte impulse_number;
-	byte impulse;
-	byte animation_state;
-	byte aiming_speed;
-	byte primary_trigger;
-	word control_flags;
-	signed char throttle[3];
-	byte active_camouflage;
-	/* the speech's sequence number; 0 when there is none */
-	byte speech_number;
-	/* the unit's team (NO_TEAM for none): the AI sets it after the unit is
-	made, so a client's copy would keep the team it was made with */
-	byte team;
-	short facing[NUMBER_OF_ANGLES];
-	short aiming[NUMBER_OF_ANGLES];
-	short looking[NUMBER_OF_ANGLES];
-	short impulse_alignment;
-	short run_blindly_angle;
-	word body_vitality;
-	word shield_vitality;
-	/* the sound the unit started saying (a sound tag) */
-	long speech_sound;
-	/* the custom animation it started (unit_start_user_animation), and its
-	sequence number; the graph is NONE when there is none */
-	long user_animation_graph;
-	short user_animation;
-	byte user_animation_number;
-	byte user_animation_interpolate;
-	real_point3d position;
-	struct distributed_vector velocity;
-	struct distributed_vector forward;
-	struct distributed_vector up;
-};
 
 /* the damage an AI unit is taking: its shield's flare and its body's wounds
 are drawn by it */
@@ -175,12 +110,6 @@ struct distributed_actor_damage_message
 {
 	struct distributed_message_header header;
 	struct distributed_actor_damage units[MAXIMUM_ENTRIES_PER_MESSAGE];
-};
-
-struct distributed_actor_state_message
-{
-	struct distributed_message_header header;
-	struct distributed_actor_state states[MAXIMUM_ENTRIES_PER_MESSAGE];
 };
 
 /* host: the control of the entry last sent to every client at once (an
@@ -495,6 +424,80 @@ static word actor_state_compact_read(
 		return 0;
 	}
 	return (word)(cursor - buffer);
+}
+
+/* ---------- the actors' states to a client
+In the encoding the client takes (network_legacy_machine, the one place
+that decides): to an OpenH1 client of an OpenH1 game compact
+(_distributed_message_actor_states_compact), as many as the whole
+structures' message holds of bytes; to any other the whole structures, as
+a Legacy host sends them (_distributed_message_actor_states,
+network_legacy.c). */
+
+struct actor_states_out
+{
+	long machine_index;
+	boolean legacy;
+	short count;
+	word size;
+};
+
+/* (an OpenH1 client's: the same bytes as the whole structures' at most) */
+static struct
+{
+	struct distributed_message_header header;
+	byte data[DATAGRAM_ENTRIES(struct distributed_actor_state) * sizeof(struct distributed_actor_state)];
+} actor_compact_message;
+
+static void actor_states_begin(
+	struct actor_states_out *out,
+	long machine_index)
+{
+	out->machine_index = machine_index;
+	out->legacy = network_legacy_machine(machine_index);
+	out->count = 0;
+	out->size = 0;
+}
+
+/* a state to the client (its messages sent as they fill): the bytes it
+takes */
+static word actor_states_add(
+	struct actor_states_out *out,
+	struct distributed_actor_state const *state)
+{
+	byte entry[ACTOR_COMPACT_MAXIMUM_SIZE];
+	word size;
+
+	if (out->legacy)
+		return network_legacy_actor_state_add(out->machine_index, state);
+	size = actor_state_compact_write(state, entry);
+	if (out->count &&
+		(out->size + size > sizeof(actor_compact_message.data) || out->count == MAXIMUM_ENTRIES_PER_MESSAGE))
+	{
+		distributed_send_to_machine(out->machine_index, &actor_compact_message,
+			_distributed_message_actor_states_compact, out->count,
+			(word)(sizeof(actor_compact_message.header) + out->size));
+		out->count = 0;
+		out->size = 0;
+	}
+	csmemcpy(actor_compact_message.data + out->size, entry, size);
+	out->size = (word)(out->size + size);
+	out->count++;
+	return size;
+}
+
+/* the rest of the states to the client sent */
+static void actor_states_end(
+	struct actor_states_out *out)
+{
+	if (out->legacy)
+		network_legacy_actor_states_end(out->machine_index);
+	else if (out->count)
+	{
+		distributed_send_to_machine(out->machine_index, &actor_compact_message,
+			_distributed_message_actor_states_compact, out->count,
+			(word)(sizeof(actor_compact_message.header) + out->size));
+	}
 }
 
 /* ---------- private code */
@@ -1065,14 +1068,6 @@ void network_actors_host_tick(
 		_urgent_pressed,
 	};
 	boolean openh1 = network_standard_hosting();
-	struct distributed_actor_state_message message;
-	/* (an OpenH1 client's: the same bytes as the whole structures' at most) */
-	static struct
-	{
-		struct distributed_message_header header;
-		byte data[DATAGRAM_ENTRIES(struct distributed_actor_state) * sizeof(struct distributed_actor_state)];
-	} compact;
-	word compact_size;
 	long machine_indices[HALO_PORT_MAXIMUM_NETWORK_MACHINES];
 	short machine_count = distributed_client_machines(machine_indices, HALO_PORT_MAXIMUM_NETWORK_MACHINES);
 	long now = game_time_get();
@@ -1118,10 +1113,9 @@ void network_actors_host_tick(
 	{
 		long machine_index = machine_indices[machine_number];
 		boolean machine_openh1 = openh1 && network_standard_machine_is_openh1(machine_index);
-		short count = 0;
+		struct actor_states_out out;
 
-		compact_size = 0;
-
+		actor_states_begin(&out, machine_index);
 		for (index = 0; index < state_count; index++)
 		{
 			struct distributed_actor_state const *state = &states[index];
@@ -1140,45 +1134,9 @@ void network_actors_host_tick(
 				else
 					continue;
 			}
-			/* (an OpenH1 client's compact: as many as the whole structures'
-			message holds of bytes) */
-			if (machine_openh1)
-			{
-				byte entry[ACTOR_COMPACT_MAXIMUM_SIZE];
-				word size = actor_state_compact_write(state, entry);
-
-				if (count && (compact_size + size > sizeof(compact.data) || count == MAXIMUM_ENTRIES_PER_MESSAGE))
-				{
-					distributed_send_to_machine(machine_index, &compact, _distributed_message_actor_states_compact,
-						count, (word)(sizeof(compact.header) + compact_size));
-					count = 0;
-					compact_size = 0;
-				}
-				csmemcpy(compact.data + compact_size, entry, size);
-				compact_size = (word)(compact_size + size);
-				count++;
-				actors_bytes_sent += size;
-				continue;
-			}
-			actors_bytes_sent += sizeof(*state);
-			message.states[count++] = *state;
-			if (count == MAXIMUM_ENTRIES_PER_MESSAGE || count == DATAGRAM_ENTRIES(struct distributed_actor_state))
-			{
-				distributed_send_to_machine(machine_index, &message, _distributed_message_actor_states, count,
-					(word)(sizeof(message.header) + count * sizeof(struct distributed_actor_state)));
-				count = 0;
-			}
+			actors_bytes_sent += actor_states_add(&out, state);
 		}
-		if (count && machine_openh1)
-		{
-			distributed_send_to_machine(machine_index, &compact, _distributed_message_actor_states_compact, count,
-				(word)(sizeof(compact.header) + compact_size));
-		}
-		else if (count)
-		{
-			distributed_send_to_machine(machine_index, &message, _distributed_message_actor_states, count,
-				(word)(sizeof(message.header) + count * sizeof(struct distributed_actor_state)));
-		}
+		actor_states_end(&out);
 	}
 }
 

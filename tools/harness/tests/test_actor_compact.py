@@ -14,6 +14,8 @@ pytestmark = needs_32_bit_abi("a state's longs go on the wire as the game's, 4 b
 
 SOURCE = "port/linux/game/network_actors.c"
 HEADER = "port/linux/game/network_distributed.h"
+# (the structure, the Legacy encoding's whole)
+LEGACY_HEADER = "port/linux/game/network_legacy.h"
 CASES = ["standing", "each-part", "short"]
 
 # a fault in the encoding and the case that must catch it
@@ -48,9 +50,11 @@ def generated(fault=None):
         code = mutated(code, *fault)
     config = "enum { NO_IMPULSE = 0xFF };\n"
     config += "#define DISTRIBUTED_UNIT_SCALE " + re.search(r"#define DISTRIBUTED_UNIT_SCALE\s+(\S+)", header)[1] + "\n"
-    for member in ("_angle_yaw", "_actor_part_riding_bit", "ACTOR_COMPACT_MINIMUM_SIZE"):
+    legacy_header = read(LEGACY_HEADER)
+    config += enum_with(legacy_header, "_angle_yaw") + "\n"
+    for member in ("_actor_part_riding_bit", "ACTOR_COMPACT_MINIMUM_SIZE"):
         config += enum_with(source, member) + "\n"
-    config += structure(source, "distributed_actor_state") + "\n"
+    config += structure(legacy_header, "distributed_actor_state") + "\n"
     return (("config.inc", config), ("under_test.inc", code))
 
 
