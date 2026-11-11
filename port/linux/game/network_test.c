@@ -1163,7 +1163,38 @@ static void network_test_set_name(
 at that many seconds in, the same again 3 seconds on (taking it away), and
 again 3 more on; a client then sends one as another machine's player's (the
 host refuses it), and 3 seconds on each sends 6 at once (the host takes
-MARKER_BURST); the pings each machine shows logged a second after each */
+MARKER_BURST); then the last player's machine mutes an ally's machine for
+itself (the scoreboard's mute) as the other machines ping twice, 3 seconds
+apart (it shows the ally's neither time), and unmutes it as the host mutes
+the last player for everyone, and 3 seconds on that machine pings (the host
+refuses it), and the host unmutes them 3 more on; the pings each machine
+shows logged a second after each */
+static short network_test_last_player_index(void);
+static boolean network_test_last_player_local(void);
+
+/* the machine of the first player of another machine who sees the first
+local player's pings (their team; anyone in co-op), NONE for none */
+static long network_test_ally_machine(
+	void)
+{
+	short local_player_index = local_player_get_next(NONE);
+	long viewer_index = local_player_index != NONE ? local_player_get_player_index(local_player_index) : NONE;
+	struct player_datum *viewer = viewer_index != NONE ? player_get(viewer_index) : NULL;
+	struct data_iterator iterator;
+	struct player_datum *player;
+
+	data_iterator_new(&iterator, player_data);
+	while (viewer && (player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
+	{
+		if (player->local_player_index == NONE &&
+			(!game_engine_running() || (game_engine_has_teams() && player->team_index == viewer->team_index)))
+		{
+			return player->network_player_data.machine_index;
+		}
+	}
+	return NONE;
+}
+
 static void network_test_pings(
 	void)
 {
@@ -1190,7 +1221,7 @@ static void network_test_pings(
 		network_test.ping_steps++;
 		return;
 	}
-	if (step % 2 != 0 || step >= 10 || now < start + (step / 2) * 3 * TICKS_PER_SECOND)
+	if (step % 2 != 0 || step >= 20 || now < start + (step / 2) * 3 * TICKS_PER_SECOND)
 		return;
 	switch (step / 2)
 	{
@@ -1203,8 +1234,41 @@ static void network_test_pings(
 		if (network_test.mode != _network_test_host)
 			platform_log("network test: a forged ping %s", network_markers_ping_forged() ? "sent" : "not sent");
 		break;
-	default:
+	case 4:
 		platform_log("network test: a burst of pings, %d sent", network_markers_ping_burst(6));
+		break;
+	case 5:
+	case 6:
+		if (!network_test_last_player_local())
+		{
+			platform_log("network test: ping %d %s", step / 2, network_markers_ping_aimed() ? "sent" : "not sent");
+		}
+		else if (step / 2 == 5)
+		{
+			long ally = network_test_ally_machine();
+
+			network_voice_mute_machine(ally, TRUE);
+			platform_log("network test: machine %ld muted here", ally);
+		}
+		break;
+	case 7:
+		if (network_test.mode == _network_test_host)
+			network_chat_host_mute(network_test_last_player_index(), TRUE);
+		if (network_test_last_player_local())
+		{
+			long ally = network_test_ally_machine();
+
+			network_voice_mute_machine(ally, FALSE);
+			platform_log("network test: machine %ld unmuted here", ally);
+		}
+		break;
+	case 8:
+		if (network_test_last_player_local())
+			platform_log("network test: ping %d %s", step / 2, network_markers_ping_aimed() ? "sent" : "not sent");
+		break;
+	default:
+		if (network_test.mode == _network_test_host)
+			network_chat_host_mute(network_test_last_player_index(), FALSE);
 		break;
 	}
 	network_test.ping_steps++;

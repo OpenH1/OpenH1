@@ -571,9 +571,10 @@ client's `/mute` is never sent, and the host takes the text of a line that
 came up as a line, never a command. The host's scoreboard Mute for everyone
 is the same mute (20 minutes), and the host relays none of a muted player's
 machine's voice either (`network_voice.c`'s `voice_host_relay`, by the
-names of the network game's players, which the lobby has too). A
-machine's own scoreboard mute stays its own: it plays none of that
-machine's voice and shows none of its players' lines, and tells no one.
+names of the network game's players, which the lobby has too), nor takes
+their pings ("Pings"). A machine's own scoreboard mute stays its own: it
+plays none of that machine's voice and shows none of its players' lines or
+pings, and tells no one.
 The host's chat settings (`network.text_chat`: on, links allowed, or off,
 listed in the server browser or not) go to every client in
 `_distributed_message_chat_config` (one byte of flags), reliably, as they
@@ -1573,6 +1574,13 @@ decides:
   in an OpenH1 game under way, of a player it has and a point inside the
   world (an object it does not have is shown at the point), and plays the
   menus' cursor sound as a ping its players see comes.
+- Mutes are those of the text chat and the voice, and nothing new is sent
+  for them. The host refuses the pings of a player it muted for everyone
+  (the chat's mute, by name: `network_chat_host_mute_minutes`), as it
+  relays none of their voice, so no machine shows them. A machine's own
+  scoreboard mute of another (`network_voice_machine_muted`) is its own: it
+  is still sent that machine's players' pings, and neither draws them nor
+  plays their sound (`markers_shown_to`).
 - The host's `network.pings` (Server Setup's PINGS: Teamplay Options, and
   co-op's VOICE AND VOTING; on by default) goes to each OpenH1 client in the
   same message every 3 seconds and as it changes. A client that has not
@@ -2399,7 +2407,11 @@ it shows them (the notices as `chat notice:`), `debug.network_test_ping`
 has each machine's first player ping what they aim at, the same again 3
 seconds on (taking it away) and again 3 more on, then each client send one
 as another machine's player (the host refuses it) and a burst of 6 past its
-own limit (the host takes 3), each machine logging every ping it shows
+own limit (the host takes 3), then the last player's machine mute an ally's
+machine for itself as the other machines ping twice (the ally's logged
+there as `(muted here)`, and not in its `pings shown`), and unmute it as the
+host mutes the last player for everyone before that machine pings (the host
+refuses it: `muted by the host`) and unmutes them, each machine logging every ping it shows
 (`pings: player <n> pinged ...`) and those it shows a second after each
 step (`network test: pings shown:`), and `debug.network_test_score`
 shortens the game, to test the next (`host:<map>:<variant>,<variant>...`

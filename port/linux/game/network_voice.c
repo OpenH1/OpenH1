@@ -30,10 +30,11 @@ decodes, and a machine's own voice never comes back to it.
 Each machine decides only for itself: whether it talks (audio.voice_chat:
 push to talk, open mic, or not), how loud the others are
 (audio.voice_volume), and whom it mutes (the scoreboard's menu,
-game_engine.c: their voice and their text chat lines), which it does not
-tell anyone. The host's mute for everyone (the scoreboard's, or the chat's
-/mute: network_chat.c) is the host's alone: it relays none of a muted
-player's voice.
+game_engine.c: their voice, their text chat lines and their pings,
+network_markers.c), which it does not tell anyone. The host's mute for
+everyone (the scoreboard's, or the chat's /mute: network_chat.c) is the
+host's alone: it relays none of a muted player's voice (and takes none of
+their pings).
 */
 
 #include "cseries.h"
