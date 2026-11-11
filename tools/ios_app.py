@@ -34,6 +34,8 @@ ROOT = Path(__file__).resolve().parent.parent
 ENTITLEMENTS = ROOT / "port/ios/halo.entitlements"
 ICON = ROOT / "port/ios/openh1-icon-1024.png"
 APP_NAME = "OpenH1"
+# the name under the icon on the home screen (the app and its files keep APP_NAME)
+DISPLAY_NAME = "GOAT H1"
 EXECUTABLE = "halo"
 DEFAULT_APP = ROOT / "build/ios" / (APP_NAME + ".app")
 DEFAULT_BUNDLE_ID = "com.openh1.openh1"
@@ -56,7 +58,7 @@ def info_plist(bundle_id: str, build: int, minimum: str, simulator: bool = False
     version = str(build)
     return {
         "CFBundleDevelopmentRegion": "en",
-        "CFBundleDisplayName": APP_NAME,
+        "CFBundleDisplayName": DISPLAY_NAME,
         "CFBundleExecutable": EXECUTABLE,
         "CFBundleIdentifier": bundle_id,
         "CFBundleInfoDictionaryVersion": "6.0",

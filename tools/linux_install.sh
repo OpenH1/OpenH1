@@ -101,7 +101,7 @@ fi
 # its first start
 case $package_kind in
 frame)
-	app="OpenH1 VR"
+	app="GOAT H1 VR"
 	dir=$HOME/apps/halo-vr
 	entry=$HOME/.local/share/applications/openh1-vr.desktop
 	program=halo-vr.sh
@@ -116,11 +116,11 @@ frame)
 	;;
 vr|desktop)
 	if [ "$package_kind" = vr ]; then
-		app="OpenH1 VR"
+		app="GOAT H1 VR"
 		dir=$HOME/Applications/OpenH1-VR
 		entry=$HOME/.local/share/applications/openh1-vr.desktop
 	else
-		app=OpenH1
+		app="GOAT H1"
 		dir=$HOME/Applications/OpenH1
 		entry=$HOME/.local/share/applications/openh1.desktop
 	fi
