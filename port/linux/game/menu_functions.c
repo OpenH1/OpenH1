@@ -131,7 +131,7 @@ their handlers open opens.
 #include "text_filter.h"
 /* (the party: party_menu.inc) */
 #include "party.h"
-/* (matchmaking: matchmaking_menu.inc, matchmaking.c) */
+/* (matchmaking: matchmaking_menu.inc, PRO 2V2's; matchmaking.c) */
 #include "matchmaking.h"
 /* (the lobby's bots: lobby_menu.inc) */
 #include "bots.h"
@@ -1286,9 +1286,6 @@ static void visible_set(struct widget_instance *widget, boolean visible);
 static void party_screen_noted(struct widget_instance *widget);
 static void party_hub_note(wchar_t *text, short size);
 static void party_hub_status(wchar_t *headline, short headline_size, wchar_t *detail, short detail_size);
-/* (matchmaking_menu.inc's) */
-static void matchmaking_hub_note(wchar_t *text, short size);
-static void matchmaking_hub_status(wchar_t *headline, short headline_size, wchar_t *detail, short detail_size);
 /* (friends_menu.inc's) */
 static void friends_hub_note(wchar_t *text, short size);
 static void friends_hub_status(wchar_t *headline, short headline_size, wchar_t *detail, short detail_size);
@@ -8842,7 +8839,7 @@ static void browser_status_text(struct browser_row const *row, wchar_t *text, sh
 
 		matchmaking_playlist_text((short)(row->playlist - 1), name, NUMBEROF(name), NULL, 0);
 		if (name[0])
-			usnprintf(playlist, NUMBEROF(playlist) - 1, L"Matchmaking: %s. ", name);
+			usnprintf(playlist, NUMBEROF(playlist) - 1, L"Playlist: %s. ", name);
 		playlist[NUMBEROF(playlist) - 1] = 0;
 	}
 	/* (a dedicated server's, who runs it and where, first) */
@@ -10373,8 +10370,6 @@ enum
 	_multiplayer_item_coop,
 	/* (PARTY, which opens the party's screen: party_menu.inc) */
 	_multiplayer_item_party,
-	/* (MATCHMAKING, which opens its screen: matchmaking_menu.inc) */
-	_multiplayer_item_matchmaking,
 	/* (FRIENDS, which opens its screen: friends_menu.inc) */
 	_multiplayer_item_friends,
 };
@@ -10399,7 +10394,6 @@ static struct
 	{ "hub_online_coop", _multiplayer_item_online_coop },
 	{ "hub_split_coop", _multiplayer_item_split_screen_coop },
 	{ "hub_party", _multiplayer_item_party },
-	{ "hub_matchmaking", _multiplayer_item_matchmaking },
 	{ "hub_friends", _multiplayer_item_friends },
 };
 
@@ -10664,8 +10658,6 @@ static void multiplayer_status_notes(struct widget_instance *list)
 	text_set(named(list, "invite_note", 0), multiplayer_status.invite ? L"INVITE READY" : L"");
 	party_hub_note(text, NUMBEROF(text));
 	text_set(named(list, "party_note", 0), text);
-	matchmaking_hub_note(text, NUMBEROF(text));
-	text_set(named(list, "matchmaking_note", 0), text);
 	friends_hub_note(text, NUMBEROF(text));
 	text_set(named(list, "friends_note", 0), text);
 }
@@ -10841,9 +10833,6 @@ static void multiplayer_status_update(struct widget_instance *list)
 		break;
 	case _multiplayer_item_party:
 		party_hub_status(headline, NUMBEROF(headline), detail, NUMBEROF(detail));
-		break;
-	case _multiplayer_item_matchmaking:
-		matchmaking_hub_status(headline, NUMBEROF(headline), detail, NUMBEROF(detail));
 		break;
 	case _multiplayer_item_friends:
 		friends_hub_status(headline, NUMBEROF(headline), detail, NUMBEROF(detail));

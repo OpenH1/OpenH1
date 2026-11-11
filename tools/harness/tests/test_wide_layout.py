@@ -164,7 +164,7 @@ def test_hub_layout(aspect):
     with its items."""
     width = WIDTHS[aspect]
     area = inner(width)
-    for root, page_items in ((f"{MT}/multiplayer_type_select_screen", 8 + port_settings.HUB_MATCHMAKING),
+    for root, page_items in ((f"{MT}/multiplayer_type_select_screen", 8),
                              (f"{MT}/hub/create_screen", 3),
                              (f"{MT}/hub/coop_screen", 2)):
         boxes = layout(root, width)
@@ -221,32 +221,6 @@ def test_friends_layout(aspect):
     for shown in (["copy", "code", "hide"], ["copy", "code", "show"], ["join", "invite", "remove"],
                   ["accept", "ignore", "block"], ["cancel"], ["add", "block"], ["unblock"]):
         _check_apart([prompts[f"prompt_{name}"] for name in shown] + [prompts["prompt_back"]], f"prompts {shown}")
-
-
-@pytest.mark.parametrize("aspect", WIDTHS)
-def test_matchmaking_layout(aspect):
-    """The Matchmaking screen, laid out as Multiplayer is: its playlists' rows (each note in its row) under their
-    section from the screen's left, apart, the panel beside them to its right with its words in it, its footer's
-    prompts at the screen's edges; on the screen, none over another."""
-    width = WIDTHS[aspect]
-    area = inner(width)
-    boxes = layout(f"{MT}/matchmaking/matchmaking_screen", width)
-    panel = one(boxes, "matchmaking_panel")
-    section = one(boxes, "section_matchmaking")
-    assert panel.inside(area) and section.inside(area) and section.x1 + 8 <= panel.x0
-    rows = [one(boxes, f"mm_row_{row}") for row in range(port_settings.MATCHMAKING_ROWS)]
-    for row, box in enumerate(rows):
-        assert box.inside(area) and box.x0 >= section.x0 and box.x1 <= section.x1 and box.x1 + 8 <= panel.x0, box
-        assert one(boxes, f"mm_note_{row}").inside(box), row
-    _check_apart(rows, "rows")
-    for box in boxes:
-        if box.path and box.path[-1] == "matchmaking_panel":
-            assert box.inside(panel), f"{box} is out of the panel {panel}"
-    prompts = [box for box in boxes if box.name.startswith("prompt_")]
-    for box in prompts:
-        assert box.inside(area), box
-    for left in ("prompt_search", "prompt_cancel"):
-        assert one(boxes, left).x0 - usable(width).x0 == 28
 
 
 @pytest.mark.parametrize("aspect", WIDTHS)

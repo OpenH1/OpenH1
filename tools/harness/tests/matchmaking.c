@@ -273,7 +273,6 @@ static void case_playlists(void)
 	long index;
 
 	CHECK(NUMBEROF(matchmaking_playlists) >= NUMBEROF(listed), "no playlist taken out");
-	CHECK(NUMBEROF(matchmaking_playlists) <= MATCHMAKING_ROWS, "a row of the Matchmaking screen for each playlist");
 	for (index = 0; index < NUMBEROF(listed); index++)
 	{
 		CHECK(!strcmp(matchmaking_playlists[index].name, listed[index]), "playlist %ld is still %s (it is %s)",

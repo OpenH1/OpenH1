@@ -557,7 +557,7 @@ static char const *const port_function_names[] =
 	"port browser filters", "port browser search", "port browser search next", "port browser search clear",
 	/* (Multiplayer's PARTY and its screen: party_menu.inc) */
 	"port party open", "port party button", "port party x", "port party y",
-	/* (Multiplayer's MATCHMAKING and its screen: matchmaking_menu.inc) */
+	/* (the main menu's PRO 2V2 screen: matchmaking_menu.inc) */
 	"port matchmaking button", "port matchmaking x",
 	/* (Multiplayer's FRIENDS and its screens: friends_menu.inc) */
 	"port friends open", "port friends button", "port friends x", "port friends y",

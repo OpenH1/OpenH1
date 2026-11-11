@@ -3,7 +3,7 @@ playlist's, an OpenH1 game of this build, open, no password, room for the whole 
 who may search, how a hosted game starts (full at once, else after a wait with bots or its least players), and a
 search's steps (looked for, reached, joined, failed and looked again, the lead passed or hosted when none fits, the new
 leader followed), and the playlists themselves (each listed by its number, which builds must agree on; teams that a
-party fits on; a row of the Matchmaking screen for each), and 2V2's kinds (Classic and Lowest Latency: each its own
+party fits on), and 2V2's kinds (Classic and Lowest Latency: each its own
 playlist and tick rate, never matched with the other's games). The party's host election is tools/p2p_party_check.c's "host" case; the listing's playlist
 p2p_lobby_check.c's."""
 
@@ -11,8 +11,7 @@ import re
 
 import pytest
 
-from tools import port_settings
-from tools.harness import build, constant, enum_with, function, mutated, read, run, structure
+from tools.harness import build, enum_with, function, mutated, read, run, structure
 
 CASES = ["pick", "problem", "start", "look", "join", "host", "playlists", "doubles", "browser", "host_action"]
 FUNCTIONS = ["matchmaking_listing_of", "matchmaking_game_score", "matchmaking_pick", "matchmaking_search_problem",
@@ -35,7 +34,6 @@ def generated(fault=None):
     config += "\n" + re.search(r"^static struct matchmaking_playlist const matchmaking_playlists\[\] =\n\{.*?^\};",
                                 source, re.M | re.S).group(0) + "\n"
     config += re.search(r"^static short const matchmaking_doubles_playlists\[.*?;", source, re.M | re.S).group(0) + "\n"
-    config += f"#define MATCHMAKING_ROWS {rows()}\n"
     # (its state, which HOST GAME begins: matchmaking_host_playlist; the stubs it calls are matchmaking.c's test's)
     config += "#include \"stubs.inc\"\n"
     config += re.search(r"^static struct\n\{\n\tshort stage;.*?^\} matchmaking = \{[^}]*\};", source,
@@ -63,16 +61,6 @@ static unsigned long system_milliseconds(void) { return 1000; }
 static void platform_log(char const *format, ...) { (void)format; }
 #define VALID_INDEX(index, count) ((index) >= 0 && (index) < (count))
 """
-
-
-def rows():
-    """The Matchmaking screen's rows (matchmaking_menu.inc's)."""
-    return constant(read("port/linux/game/matchmaking_menu.inc"), "MATCHMAKING_ROWS")
-
-
-def test_screen_rows():
-    """The screen's rows as the menus' generator writes them (tools/port_settings.py) and as the game fills them."""
-    assert port_settings.MATCHMAKING_ROWS == rows()
 
 
 @pytest.mark.parametrize("case", CASES)

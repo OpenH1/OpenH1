@@ -2913,10 +2913,12 @@ through the host of a game).
 
 ### Matchmaking
 
-Multiplayer > PLAY ONLINE > MATCHMAKING finds a game for you and your party
-by playlist (`game/matchmaking.c`; the screen is `game/matchmaking_menu.inc`),
-with no server of its own: it uses the server browser's public games and
-the party's brokers.
+Matchmaking (`game/matchmaking.c`) finds a game for you and your party by
+playlist, with no server of its own: it uses the server browser's public
+games and the party's brokers. Its one way in is PRO 2V2's FIND GAME (below):
+the Matchmaking screen of every playlist is gone, and the server browser is
+the way to every other game. Its playlists stay, by their numbers, for the
+games they list (`debug.matchmaking` searches any of them, for a test).
 
 - The playlists: TEAM SLAYER (4 against 4), SLAYER (everyone for
   themselves, 8 at most, parties of 2), CAPTURE THE FLAG (4 against 4), SWAT,
@@ -2926,11 +2928,10 @@ the party's brokers.
   takes; PRO 2V2's have a tick rate too. A game is listed by its playlist's
   number, so a new playlist is added after the others: an older build of the
   same version does not show it, and passes over its games.
-- Pick a playlist and press A (or SEARCH). Your party's leader searches for
-  everyone; a member sees that its leader searches. The panel shows the time
-  searched, the games found and what the search is doing; CANCEL (X) stops
-  it. The search goes on if you go back to Multiplayer, whose MATCHMAKING
-  says SEARCHING.
+- Your party's leader searches for everyone; a member sees that its leader
+  searches. The panel shows the time searched, the games found and what the
+  search is doing; CANCEL (X) stops it. The search goes on whatever screen
+  is shown.
 - The search takes an OpenH1 game hosted for the playlist with room for the
   whole party, the nearest first (then the fullest), and joins it; the party
   follows, its slots held by the host (refer to "Parties"). A game it cannot
@@ -2949,12 +2950,13 @@ the party's brokers.
 - Without internet play on (`network.online`, `network.public_lobby`), or
   without any of a playlist's maps in the maps folder, a playlist cannot be
   searched, and the panel says why (INTERNET PLAY IS OFF, NO MULTIPLAYER
-  MAPS) as soon as it is chosen.
+  MAPS) as soon as its kind is chosen.
 
 ### PRO 2V2
 
 The main menu's PRO 2V2 is matchmaking's two against two (until now named 2V2). It asks which kind,
-CLASSIC or LOWEST LATENCY (the Matchmaking screen's look, a row for each),
+CLASSIC or LOWEST LATENCY (in Multiplayer's look, a row for each;
+`game/matchmaking_menu.inc`),
 and A on one opens that kind's **PRO 2V2 browser** (`game/doubles_browser.inc`):
 
 - **Its games**: the server browser itself, kept to the kind's games: the

@@ -34,7 +34,7 @@ SETTINGS_ITEM_PLACE = (192, 355)
 QUIT_ITEM_PLACE = (192, 391)
 # The main menu's PRO 2V2 (port/linux/game/matchmaking_menu.inc): its screen of
 # kinds, CLASSIC and LOWEST LATENCY, each a matchmaking playlist
-# (matchmaking.c's matchmaking_doubles_playlist), searched at once
+# (matchmaking.c's matchmaking_doubles_playlist), whose browser it opens
 DOUBLES = "main_menu/doubles"
 DOUBLES_ROWS = 2
 # the 2V2 browser's (_doubles_browser): its rows of games (the server
@@ -2687,10 +2687,6 @@ MULTIPLAYER_LINE_PLACE = (28, 375)
 HUB_LIST_STEP = 27
 HUB_SECTION_GAP = 6
 HUB_GAMETYPES_GAP = 6
-# (MATCHMAKING, PLAY ONLINE's first item, is left off Multiplayer's list and
-# tiles until matchmaking is decided, #813: its screen, _matchmaking, and
-# matchmaking.c stay, and True puts it back)
-HUB_MATCHMAKING = False
 # the screen's children for one platform only (tools/ce_menus.py): the
 # computer's list and its line (the hub's, in the PC version's places:
 # WIDGET_PATCHES' swap), the touchscreen's tiles in their place (_touch_hub)
@@ -4677,7 +4673,6 @@ HUB_DESCRIPTIONS = [
     "Host a game on the Internet, or for players on your local network only.",
     "Play the campaign together: online, or split screen on this computer.",
     "Group up with friends: they join with your party's link, and come with you to every game you host or join.",
-    "Pick a playlist: OpenH1 finds a game with room for you and your party, or hosts one that fills up.",
     "Your friends, who's online and where, with your friend code. Join them, invite them, or add someone you played.",
 ]
 
@@ -5364,9 +5359,6 @@ def _hub() -> list:
         "hub_join_internet": ("SERVER BROWSER", joins(browser), "browser_note"),
         "hub_join_lan_item": ("LOCAL NETWORK", joins(browser), "item_note"),
         "hub_join_direct": ("JOIN BY LINK", joins(browser), "invite_note"),
-        # (matchmaking's screen: _matchmaking)
-        "hub_matchmaking": ("MATCHMAKING", [f'<on event="{event}" open="{MT}/matchmaking/matchmaking_screen"/>'
-                                            for event in ("a", "start")], "matchmaking_note"),
         # (the party's screen: _party)
         "hub_party": ("PARTY", [f'<on event="{event}" open="{MT}/party/party_screen"/>' for event in ("a", "start")],
                       "party_note"),
@@ -5409,9 +5401,8 @@ def _hub() -> list:
                        ['<data input="port multiplayer status"/>', *children])
 
     # (Multiplayer's own list a unit closer, its sections closer, for its
-    # ten items, eleven with MATCHMAKING: HUB_LIST_STEP, HUB_MATCHMAKING)
-    online = ["hub_matchmaking"] * HUB_MATCHMAKING + ["hub_join_internet", "hub_join_lan_item", "hub_join_direct",
-                                                      "hub_party", "hub_friends"]
+    # ten items: HUB_LIST_STEP)
+    online = ["hub_join_internet", "hub_join_lan_item", "hub_join_direct", "hub_party", "hub_friends"]
     lines = page_list("hub_list", [("section_online", "PLAY ONLINE", online),
                                    ("section_host", "HOST", ["hub_create", "hub_coop"]),
                                    (None, None, ["hub_gametypes"])], "hub_prompts", HUB_LIST_STEP, HUB_SECTION_GAP)
@@ -5447,7 +5438,7 @@ def _hub() -> list:
     # menu_functions.c's multiplayer_status_notes)
     # (right-aligned in from the highlight's end, clear of the items' words)
     for name, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C"),
-                        ("party_note", "#FF7FB2FF"), ("matchmaking_note", "#FF5ED38C"),
+                        ("party_note", "#FF7FB2FF"),
                         ("friends_note", "#FF5ED38C")):
         lines += _widget(f"{HUB}/{name}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
                                            ("wide", wide(0, HUB_WIDE_ITEMS)),
@@ -5550,51 +5541,32 @@ def _party() -> list:
     return lines
 
 
-# the Matchmaking screen's (_matchmaking): a row for each playlist
-# (matchmaking.c's), and its footer's prompts (menu_functions.c's
-# matchmaking_screen_update shows SEARCH or CANCEL)
-MATCHMAKING_ROWS = 7
-MATCHMAKING_PROMPTS = [
-    ("prompt_search", "%a-button SEARCH", 28, 124, '<on event="a" run="port matchmaking button"/>'),
+# the PRO 2V2 screen's footer prompts (menu_functions.c's
+# matchmaking_screen_update shows CHOOSE or, while FIND GAME searches,
+# CANCEL)
+DOUBLES_PROMPTS = [
+    ("prompt_search", "%a-button CHOOSE", 28, 124, '<on event="a" run="port matchmaking button"/>'),
     ("prompt_cancel", "%x-button CANCEL", 28, 124, '<on event="a" run="port matchmaking button"/>'),
     ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="port matchmaking button"/>'),
 ]
 
 
-def _matchmaking() -> list:
-    """the Matchmaking screen (port/linux/game/matchmaking_menu.inc), in
-    Multiplayer's look (_hub's parts): MATCHMAKING's section over a row for
-    each playlist (its name, and at its end what its search is doing), the
-    panel beside them (the playlist chosen's name and what it is, the search:
-    its time, the games it found and what it does now, and what matchmaking
-    is), and the footer's key prompts: SEARCH (A, a row's A or click: the
-    playlist searched for the whole party) or, while a search goes on, CANCEL
-    (X), and BACK. On a wide screen it is laid out as Multiplayer is
-    (HUB_WIDE_ITEMS, HUB_WIDE_PANEL)"""
-    return _matchmaking_screen(f"{MT}/matchmaking", "matchmaking", f"{MT}/header_multiplayer", "MATCHMAKING",
-                               MATCHMAKING_ROWS,
-                               "Matchmaking finds a game with room for your whole party, by ping, or hosts one that "
-                               "players searching the same playlist join. Your party comes with you.")
-
-
 def _doubles() -> list:
     """the main menu's PRO 2V2 (main_menu_item_doubles, in the redraws' letters:
-    menu_item_frames) and its screen, the Matchmaking screen's
-    (_matchmaking_screen) with a row for each kind, CLASSIC and LOWEST
-    LATENCY: A on one searches its playlist at once (matchmaking_menu.inc),
-    and the panel says why it cannot be (internet play off, no maps for it)"""
+    menu_item_frames) and its screen (_matchmaking_screen), a row for each
+    kind, CLASSIC and LOWEST LATENCY: A on one opens the PRO 2V2 browser of
+    its playlist (matchmaking_menu.inc), and the panel says why it cannot be
+    searched (internet play off, no maps for it)"""
     lines = _widget("main_menu/main_menu_item_doubles",
                     [("type", "text"), ("width", 256), ("height", 33), ("bitmap", "main_menu/menu_doubles")],
                     [f'<on event="a" open="{DOUBLES}/doubles_screen"/>',
                      f'<on event="start" open="{DOUBLES}/doubles_screen"/>',
                      '<on event="left_mouse" run="mouse emit accept event"/>'])
     lines += _header(f"{DOUBLES}/header_doubles", f"{DOUBLES}/header_doubles")
-    prompts = [("prompt_search", "%a-button CHOOSE", 28, 124, '<on event="a" run="port matchmaking button"/>'),
-               *MATCHMAKING_PROMPTS[1:]]
     return lines + _matchmaking_screen(DOUBLES, "doubles", f"{DOUBLES}/header_doubles", "2 AGAINST 2", DOUBLES_ROWS,
                                        "Pro settings on the 2v2 maps. Classic: 30 ticks, Instant Aim off for "
                                        "everyone. Lowest Latency: 120. Each lists only its own games.",
-                                       prompts) + _doubles_browser()
+                                       DOUBLES_PROMPTS) + _doubles_browser()
 
 
 def _doubles_browser() -> list:
@@ -5719,9 +5691,9 @@ DOUBLES_BROWSER_PROMPTS = [
 
 
 def _matchmaking_screen(base: str, name: str, header: str, section: str, row_count: int, help_text: str,
-                        prompts: list = None) -> list:
-    """a matchmaking screen (_matchmaking, _doubles): its rows under
-    section, the panel, the prompts; its list <name>_list"""
+                        prompts: list) -> list:
+    """matchmaking's screen (PRO 2V2's, _doubles): its rows under section,
+    the panel, the prompts; its list <name>_list"""
     left, top, width, height = HUB_PANEL
     item_w, item_h = HUB_ITEM
     step = item_h + 2
@@ -5780,7 +5752,7 @@ def _matchmaking_screen(base: str, name: str, header: str, section: str, row_cou
                                                    ("width", width), ("height", height),
                                                    ("bitmap", part_panel(width, height)),
                                                    ("wide", wide(*HUB_WIDE_PANEL))], panel)
-    lines += _prompts(base, "matchmaking_prompts", prompts or MATCHMAKING_PROMPTS)
+    lines += _prompts(base, "matchmaking_prompts", prompts)
     return lines
 
 
@@ -6199,8 +6171,7 @@ TOUCH_TILE = ((TOUCH_HUB_WIDTH - TOUCH_GAP) // 2, TOUCH_TAP)
 TOUCH_HUB_PANEL = (HUB_LIST_X + TOUCH_HUB_WIDTH + 8, HUB_PANEL[1],
                    640 - HUB_LIST_X - (HUB_LIST_X + TOUCH_HUB_WIDTH + 8), HUB_PANEL[3])
 TOUCH_TILES = [
-    ("section_online", "PLAY ONLINE", [("hub_matchmaking", "MATCHMAKING", "matchmaking_note")] * HUB_MATCHMAKING + [
-                                       ("hub_join_internet", "BROWSE GAMES", "browser_note"),
+    ("section_online", "PLAY ONLINE", [("hub_join_internet", "BROWSE GAMES", "browser_note"),
                                        ("hub_join_lan_item", "LOCAL GAMES", "item_note"),
                                        ("hub_join_direct", "JOIN BY LINK", "invite_note"),
                                        ("hub_party", "PARTY", "party_note"),
@@ -6614,8 +6585,6 @@ def _touch_hub() -> tuple:
                f'<on event="a" run="mp type set mode" open="{MT}/connected/connected_map_select_wrapper"/>']
     browser = f"{MT}/join_game/join_game_screen"
     handlers.update({
-        "hub_matchmaking": [f'<on event="{event}" open="{MT}/matchmaking/matchmaking_screen"/>'
-                            for event in ("a", "start")],
         "hub_join_internet": joins(browser), "hub_join_lan_item": joins(browser), "hub_join_direct": joins(browser),
         "hub_party": [f'<on event="{event}" open="{MT}/party/party_screen"/>' for event in ("a", "start")],
         "hub_friends": [f'<on event="{event}" open="{MT}/friends/friends_screen"/>' for event in ("a", "start")],
@@ -6664,7 +6633,7 @@ def _touch_hub() -> tuple:
                      ['<data input="port multiplayer status"/>', *children])
     lines += _hub_panel(touch, TOUCH_HUB_PANEL, HUB_WIDE_PANEL)
     for note, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C"),
-                        ("party_note", "#FF7FB2FF"), ("matchmaking_note", "#FF5ED38C"),
+                        ("party_note", "#FF7FB2FF"),
                         ("friends_note", "#FF5ED38C")):
         lines += _widget(f"{touch}/{note}", [("type", "text"), ("width", tile_w - 20), ("height", 16),
                                             ("wide", wide(0, half)), ("font", "ui\\small_ui"), ("color", color),
@@ -7777,7 +7746,6 @@ def multiplayer_files() -> dict:
         f"{MT}/coop".replace("/", ".") + ".xml": head + _coop() + ["</menus>", ""],
         f"{MT}/bots".replace("/", ".") + ".xml": head + _bots() + ["</menus>", ""],
         f"{MT}/party".replace("/", ".") + ".xml": head + _party() + ["</menus>", ""],
-        f"{MT}/matchmaking".replace("/", ".") + ".xml": head + _matchmaking() + ["</menus>", ""],
         DOUBLES.replace("/", ".") + ".xml": head + _doubles() + ["</menus>", ""],
         f"{MT}/party/touch".replace("/", ".") + ".xml": head + _touch_party() + ["</menus>", ""],
         f"{MT}/friends".replace("/", ".") + ".xml": head + _friends() + ["</menus>", ""],
