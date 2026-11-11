@@ -15,7 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, ROOT, build, enum_with, function, mutated, read, run, structure  # noqa: E402
 
-CASES = ["tabs", "sort", "empty", "ellipsis", "ping", "filters", "search"]
+CASES = ["tabs", "groups", "sort", "empty", "ellipsis", "ping", "filters", "search"]
 
 NEGATIVE_CONTROLS = {
     "favorites-on-every-tab": (("\tcase _browser_tab_favorites:\n\t\treturn favorite;\n", ""), "tabs"),
@@ -26,6 +26,17 @@ NEGATIVE_CONTROLS = {
                              "\t\tif (a->dedicated != b->dedicated && FALSE)"), "sort"),
     # (#920: the grouping before the players, as it was)
     "grouped-before-players": (("if (!difference && browser_sort_column", "if (browser_sort_column"), "sort"),
+    # (the server browser's groups: the official servers, OpenH1's, the Legacy ones under their heading)
+    "groups-none": (("\tif (!browser_grouped || entry->official)", "\tif (TRUE)"), "groups"),
+    "official-not-first": (("\tif (!browser_grouped || entry->official)", "\tif (!browser_grouped)"), "groups"),
+    "legacy-not-headed": (("\tdefault:\n\t\treturn browser_tab != _browser_tab_legacy;", "\tdefault:\n\t\treturn FALSE;"),
+                          "groups"),
+    "legacy-tab-headed": (("\tdefault:\n\t\treturn browser_tab != _browser_tab_legacy;", "\tdefault:\n\t\treturn TRUE;"),
+                          "groups"),
+    "openh1-always-headed": (("\tcase _browser_group_openh1:\n\t\treturn official;",
+                              "\tcase _browser_group_openh1:\n\t\treturn TRUE;"), "groups"),
+    "heading-words": (('return L"Legacy (Slow) Servers";', 'return L"Legacy Servers";'), "groups"),
+    "favorites-before-groups": (("browser_group_of(&entries[index]) != group)", "FALSE)"), "groups"),
     "offline-on-every-tab": (("\tif (!browser_tab_lists_offline())\n\t\tbrowser_offline_count = 0;\n", ""), "tabs"),
     "lan-says-nothing-to-do": (("L\"No games on your network yet.\\r\\nHost one from Create Game.\"",
                                 "L\"No games.\""), "empty"),
@@ -78,12 +89,12 @@ NEGATIVE_CONTROLS = {
     "search-server-searches-map": (("if (!browser_ascii_has(name, searches[_browser_search_server]))",
                                     "if (!browser_ascii_has(name, searches[_browser_search_server]) && "
                                     "!browser_ascii_has(map, searches[_browser_search_server]))"), "search"),
-    "search-ignores-filters": (("\t\t\telse if (browser_filtering && !browser_search_shows(",
-                                "\t\t\tif (browser_filtering && !browser_search_shows("), "search"),
-    "search-not-counted": (("\t\t\t\tbrowser_searched_count++;\n\t\t\t}", "\t\t\t}"), "search"),
+    "search-ignores-filters": (("\t\telse if (browser_filtering && !browser_search_shows(",
+                                "\t\tif (browser_filtering && !browser_search_shows("), "search"),
+    "search-not-counted": (("\t\t\tbrowser_searched_count++;\n\t\t}", "\t\t}"), "search"),
     "searched-says-filters": (("\telse if (searched > 0)", "\telse if (FALSE)"), "empty"),
     "types-read-shifted": (("(short)(1 << index);", "(short)(1 << (index - 1));"), "filters"),
-    "hidden-not-counted": (("&entries[index]))\n\t\t\t\tbrowser_filtered_count++;", "&entries[index]))\n\t\t\t\t;"),
+    "hidden-not-counted": (("&entries[index]))\n\t\t\tbrowser_filtered_count++;", "&entries[index]))\n\t\t\t;"),
                            "filters"),
     "filtered-says-nothing": (("\telse if (filtered > 0)", "\telse if (FALSE)"), "empty"),
     "ping-unknown-as-measuring": (("\telse if (ping_state == _browser_ping_measuring)",
@@ -101,7 +112,10 @@ def generated(fault=None):
     menus = read("port/linux/game/menu_functions.c")
     config = "\n\n".join([
         enum_with(menus, "_multiplayer_mode_server_browser"), enum_with(menus, "_browser_sort_players"),
-        enum_with(menus, "_browser_tab_all"), enum_with(menus, "_browser_ping_measured"),
+        enum_with(menus, "_browser_tab_all"), enum_with(menus, "_browser_group_official"),
+        "\n".join(re.findall(r"^#define BROWSER_HEADING(?:_GROUP)?\(\w+\) [^\n]+", menus, re.M)),
+        "#define BROWSER_LISTED_MAXIMUM %s" % re.search(r"#define BROWSER_LISTED_MAXIMUM (.+)", menus).group(1),
+        enum_with(menus, "_browser_ping_measured"),
         enum_with(menus, "PING_GOOD = 80"), enum_with(menus, "_browser_search_server"),
         "#define BROWSER_SEARCH_LENGTH %s" % re.search(r"#define BROWSER_SEARCH_LENGTH (\d+)", menus).group(1),
         "#define BROWSER_ALL_ENGINES %s" % re.search(r"#define BROWSER_ALL_ENGINES (\w+)", menus).group(1),
@@ -112,9 +126,9 @@ def generated(fault=None):
         structure(menus, "browser_sort_entry"), structure(menus, "browser_filters")]) + "\n"
     code = "\n\n".join(function(menus, name) for name in (
         "settings_wide_copy", "browser_text_compare", "browser_wide_compare", "browser_sort_before",
-        "browser_tab_shows", "browser_tab_lists_offline", "browser_search_key", "browser_text_has",
+        "browser_group_of", "browser_group_headed", "browser_group_heading", "browser_tab_shows", "browser_tab_lists_offline", "browser_search_key", "browser_text_has",
         "browser_ascii_has", "browser_search_shows", "browser_search_reads_map_shown", "browser_filters_show",
-        "browser_filters_read", "browser_favorites_order", "browser_empty_text",
+        "browser_filters_read", "browser_order_part", "browser_favorites_order", "browser_empty_text",
         "menu_text_cut", "menu_text_fit", "browser_ping_cell", "browser_ping_bars"))
     if fault:
         code = mutated(code, *fault)

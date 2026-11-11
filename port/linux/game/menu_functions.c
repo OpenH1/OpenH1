@@ -7185,6 +7185,9 @@ static boolean browser_row_closed[BROWSER_ROWS];
 #define PLAYERS_COLOR_CLOSED 0x7F8A99FFUL
 static boolean browser_row_favorite[BROWSER_ROWS];
 static boolean browser_row_offline[BROWSER_ROWS];
+/* a group's heading's row (the server browser's), its words white and its
+background never lit */
+static boolean browser_row_heading[BROWSER_ROWS];
 static short browser_row_pings[BROWSER_ROWS];
 static boolean browser_row_measuring[BROWSER_ROWS];
 /* a ping's bars (port_settings.py's PING_BARS) and its number's colour:
@@ -7223,6 +7226,11 @@ boolean pc_menu_text_color(struct widget_instance *widget, real_argb_color *colo
 	}
 	if (row < 0 || row >= BROWSER_ROWS)
 		return FALSE;
+	if (browser_row_heading[row])
+	{
+		color->red = color->green = color->blue = 1.0f;
+		return TRUE;
+	}
 	if (browser_row_offline[row])
 		rgba = PLAYERS_COLOR_CLOSED;
 	else if (!strcmp(widget->name, "server_item_ping_ms"))
@@ -7293,7 +7301,10 @@ static void browser_focus(struct widget_instance *list, short chosen_row)
 		short row_index = browser_row_index(row);
 
 		if (row_index != NONE)
-			row->animation.current_frame_index = row_index == chosen_row ? 2 : row == focused ? 1 : 0;
+		{
+			row->animation.current_frame_index = browser_row_heading[row_index] ? 0 : row_index == chosen_row ? 2 :
+				row == focused ? 1 : 0;
+		}
 	}
 	focus_off_hidden(named(list, "join_game_button_bar", 0));
 	if (focused && focused->visible && !focused->disabled)
@@ -7545,8 +7556,12 @@ again by its last known name, and takes the new one. Nothing is sent */
 /* the favorites listed offline, after the games found (their indices) */
 static short browser_offline[BROWSER_FAVORITES_MAXIMUM];
 static short browser_offline_count;
-/* how many of the games found are favorites (the first ones listed) */
-static short browser_found_favorites;
+/* the most a list orders (browser_favorites_order): the server browser's
+games and its groups' headings (LOBBY_BROWSER_GAMES and
+NUMBER_OF_BROWSER_GROUPS, below), more than the local network's */
+#define BROWSER_LISTED_MAXIMUM (256 + 3)
+/* which of those listed are favorites found (each group's first) */
+static boolean browser_listed_favorite[BROWSER_LISTED_MAXIMUM];
 /* the game starred or unstarred last, whose row takes the focus once the
 list is ordered again (empty: none) */
 static char browser_follow_key[BROWSER_FAVORITE_KEY_SIZE];
@@ -7648,7 +7663,17 @@ servers (on the LAN by their advertisement's word, on the internet by a
 master server's: port/linux/src/master_list.c), OpenH1's own, Legacy ones
 (OpenCE's netcode: port/linux/game/network_standard.c), co-op games, or the
 favorites. Nothing is sent: it is the lists', and kept while
-the game runs */
+the game runs.
+
+The server browser's list is in groups, each sorted alike, its favorites
+first: the official servers (the project's, on its own master's word:
+port/linux/src/master_list.c's master_list_official), then OpenH1's games,
+then the Legacy ones under their heading, "Legacy (Slow) Servers" (OpenCE's
+netcode, at 30 ticks), so that the games players are sent to are OpenH1's
+first, and the Legacy ones still listed. A heading is a row of its own,
+which the focus passes over (lobby_browser_update); the official servers
+have one when there are any, and OpenH1's then too, to part them. The
+local network's list has no groups */
 
 enum
 {
@@ -7674,6 +7699,20 @@ enum
 
 #define BROWSER_MODE_LENGTH 24
 
+/* the server browser's groups, in the order they are listed */
+enum
+{
+	_browser_group_official,
+	_browser_group_openh1,
+	_browser_group_legacy,
+	NUMBER_OF_BROWSER_GROUPS
+};
+
+/* an order's place for a group's heading (browser_favorites_order): below
+0, apart from the games' indices */
+#define BROWSER_HEADING(group) ((short)(-1 - (group)))
+#define BROWSER_HEADING_GROUP(place) ((short)(-1 - (place)))
+
 /* what a game is sorted and filtered by */
 struct browser_sort_entry
 {
@@ -7685,6 +7724,8 @@ struct browser_sort_entry
 	short ping;
 	short rate;
 	boolean openh1;
+	/* an official server's (the project's: p2p_listing's official) */
+	boolean official;
 	/* the campaign's (network co-op: no gametype) */
 	boolean coop;
 	/* a dedicated server's */
@@ -7701,6 +7742,8 @@ struct browser_sort_entry
 static short browser_sort_column = _browser_sort_players;
 static boolean browser_sort_descending = TRUE;
 static short browser_tab = _browser_tab_all;
+/* whether the list being ordered is in groups (the server browser's) */
+static boolean browser_grouped;
 
 /* each column's title (op_sort_header_*) and its words (port_settings.py's
 BROWSER_HEADERS), and the way it sorts first (more players first) */
@@ -7788,6 +7831,44 @@ static boolean browser_sort_before(struct browser_sort_entry const *a, struct br
 			return a->dedicated;
 	}
 	return browser_sort_descending ? difference > 0 : difference < 0;
+}
+
+/* the game's group (the first, if the list has none) */
+static short browser_group_of(struct browser_sort_entry const *entry)
+{
+	if (!browser_grouped || entry->official)
+		return _browser_group_official;
+	return entry->openh1 ? _browser_group_openh1 : _browser_group_legacy;
+}
+
+/* whether a group listed has its heading over it: the official servers',
+OpenH1's after them (official: some were listed), and the Legacy ones'
+(but on the LEGACY tab, which lists nothing else) */
+static boolean browser_group_headed(short group, boolean official)
+{
+	switch (group)
+	{
+	case _browser_group_official:
+		return TRUE;
+	case _browser_group_openh1:
+		return official;
+	default:
+		return browser_tab != _browser_tab_legacy;
+	}
+}
+
+/* a group's heading's words */
+static wchar_t const *browser_group_heading(short group)
+{
+	switch (group)
+	{
+	case _browser_group_official:
+		return L"Official Servers";
+	case _browser_group_openh1:
+		return L"OpenH1 Servers";
+	default:
+		return L"Legacy (Slow) Servers";
+	}
 }
 
 /* whether the tab shown lists the game (a favorite or not) */
@@ -8001,54 +8082,85 @@ static void browser_filters_refresh(void)
 	browser_filters_read(&browser_filters);
 }
 
-/* the order of the games found: the favorites first, then the others, those
-the tab shows, each part sorted by the column chosen; into `order`,
-returning how many */
+/* the games of a group the tab shows, the favorites or the others, into
+order from written, sorted by the column chosen (alike ones kept in the
+order found); returns where they end */
+static short browser_order_part(short const *favorite_of, struct browser_sort_entry const *entries, short count,
+	short group, boolean favorites, short *order, short written)
+{
+	short start = written;
+	short index;
+
+	for (index = 0; index < count; index++)
+	{
+		if ((favorite_of[index] != NONE) != favorites || !browser_tab_shows(&entries[index], favorites) ||
+			browser_group_of(&entries[index]) != group)
+		{
+			continue;
+		}
+		/* (those the filters hide counted, for the words over the list) */
+		if (browser_filtering && !browser_filters_show(&browser_filters, &entries[index]))
+			browser_filtered_count++;
+		else if (browser_filtering && !browser_search_shows(browser_searches, entries[index].name,
+			entries[index].map, entries[index].map_shown))
+		{
+			browser_filtered_count++;
+			browser_searched_count++;
+		}
+		else
+			order[written++] = index;
+	}
+	for (index = (short)(start + 1); index < written; index++)
+	{
+		short moving = order[index];
+		short place = index;
+
+		while (place > start && browser_sort_before(&entries[moving], &entries[order[place - 1]]))
+		{
+			order[place] = order[place - 1];
+			place--;
+		}
+		order[place] = moving;
+	}
+	for (index = start; index < written; index++)
+		browser_listed_favorite[index] = favorites;
+	return written;
+}
+
+/* the order of the games found, those the tab shows: in each group (the
+server browser's: browser_grouped; else one) the favorites first, then the
+others, each part sorted by the column chosen, and a group's heading
+(BROWSER_HEADING) before it if it has one; into `order` (count and
+NUMBER_OF_BROWSER_GROUPS long), returning how many */
 static short browser_favorites_order(short const *favorite_of, struct browser_sort_entry const *entries,
 	short count, short *order)
 {
-	short pass, index;
+	short group, index;
 	short written = 0;
+	boolean official = FALSE;
 
-	browser_found_favorites = 0;
 	browser_filtered_count = 0;
 	browser_searched_count = 0;
-	for (pass = 0; pass < 2; pass++)
+	for (group = 0; group < (browser_grouped ? NUMBER_OF_BROWSER_GROUPS : 1); group++)
 	{
 		short start = written;
-		short sorted;
 
-		for (index = 0; index < count; index++)
+		written = browser_order_part(favorite_of, entries, count, group, TRUE, order, written);
+		written = browser_order_part(favorite_of, entries, count, group, FALSE, order, written);
+		/* (its heading before it, if it has games and one) */
+		if (written > start && browser_grouped && browser_group_headed(group, official))
 		{
-			if ((favorite_of[index] != NONE) != (pass == 0) || !browser_tab_shows(&entries[index], pass == 0))
-				continue;
-			/* (those the filters hide counted, for the words over the list) */
-			if (browser_filtering && !browser_filters_show(&browser_filters, &entries[index]))
-				browser_filtered_count++;
-			else if (browser_filtering && !browser_search_shows(browser_searches, entries[index].name,
-				entries[index].map, entries[index].map_shown))
+			for (index = written; index > start; index--)
 			{
-				browser_filtered_count++;
-				browser_searched_count++;
+				order[index] = order[index - 1];
+				browser_listed_favorite[index] = browser_listed_favorite[index - 1];
 			}
-			else
-				order[written++] = index;
+			order[start] = BROWSER_HEADING(group);
+			browser_listed_favorite[start] = FALSE;
+			written++;
 		}
-		/* (each part sorted, alike ones kept in the order found) */
-		for (sorted = (short)(start + 1); sorted < written; sorted++)
-		{
-			short moving = order[sorted];
-			short place = sorted;
-
-			while (place > start && browser_sort_before(&entries[moving], &entries[order[place - 1]]))
-			{
-				order[place] = order[place - 1];
-				place--;
-			}
-			order[place] = moving;
-		}
-		if (pass == 0)
-			browser_found_favorites = written;
+		if (group == _browser_group_official && browser_grouped && written > start)
+			official = TRUE;
 	}
 	if (!browser_tab_lists_offline())
 		browser_offline_count = 0;
@@ -8449,6 +8561,7 @@ static void browser_row_show(struct widget_instance *row_widget, short row_index
 	short badge_width = 0, room = 0, drawn, x;
 	wchar_t text[ROW_TEXT_LENGTH];
 
+	browser_row_heading[row_index] = FALSE;
 	browser_row_favorite[row_index] = favorite || row->offline;
 	browser_row_offline[row_index] = row->offline;
 	/* (and one without room for this machine's whole party) */
@@ -8501,6 +8614,32 @@ static void browser_row_show(struct widget_instance *row_widget, short row_index
 	visible_set(ping, !row->offline && drawn + BROWSER_PING_GAP + BROWSER_PING_BARS_WIDTH <= x);
 	if (ping)
 		ping->animation.current_frame_index = browser_ping_bars(browser_row_pings[row_index]);
+}
+
+/* a group's heading's row (the server browser's: lobby_browser_favorites):
+its words in the name's column, nothing else */
+static void browser_heading_show(struct widget_instance *row_widget, short row_index, wchar_t const *words)
+{
+	static char const *const emptied[] =
+	{
+		"server_item_map", "server_item_type", "server_item_players", "server_item_ping_ms",
+	};
+	static char const *const hidden[] =
+	{
+		"server_item_tick", "server_item_locked", "server_item_ping", "server_item_favorite",
+	};
+	short index;
+
+	browser_row_heading[row_index] = TRUE;
+	browser_row_favorite[row_index] = browser_row_offline[row_index] = browser_row_closed[row_index] = FALSE;
+	browser_row_pings[row_index] = -1;
+	browser_row_measuring[row_index] = FALSE;
+	row_widget->animation.current_frame_index = 0;
+	menu_text_box_fit(named(row_widget, "server_item_server_name", 0), words, 0);
+	for (index = 0; index < NUMBEROF(emptied); index++)
+		menu_text_box_fit(named(row_widget, emptied[index], 0), L"", 0);
+	for (index = 0; index < NUMBEROF(hidden); index++)
+		visible_set(named(row_widget, hidden[index], 0), FALSE);
 }
 
 /* the panel's ping: its milliseconds, or why there are none */
@@ -9049,10 +9188,18 @@ join that failed */
 #define LOBBY_BROWSER_LOOK_TIME 6000
 #define LOBBY_BROWSER_FAILED_TIME 8000
 
+typedef char lobby_browser_listed_assert[LOBBY_BROWSER_GAMES + NUMBER_OF_BROWSER_GROUPS <= BROWSER_LISTED_MAXIMUM ?
+	1 : -1];
+
 static struct
 {
-	struct p2p_listing games[LOBBY_BROWSER_GAMES];
-	/* the games found, the first on the rows, the one last focused (Join's) */
+	/* the games found, as listed: the groups' headings among them, each
+	a game of nothing (headed: its group + 1; 0, a game's) */
+	struct p2p_listing games[LOBBY_BROWSER_GAMES + NUMBER_OF_BROWSER_GROUPS];
+	unsigned char headed[LOBBY_BROWSER_GAMES + NUMBER_OF_BROWSER_GROUPS];
+	short headings;
+	/* the games listed (the headings too), the first on the rows, the one
+	last focused (Join's) */
 	short count, first, chosen;
 	/* whether it has shown a game (the first has the focus) */
 	boolean shown;
@@ -9348,6 +9495,7 @@ static short browser_chosen_row(void)
 static void lobby_browser_begin(void)
 {
 	lobby_browser.count = 0;
+	lobby_browser.headings = 0;
 	lobby_browser.first = 0;
 	lobby_browser.chosen = 0;
 	lobby_browser.shown = FALSE;
@@ -9403,13 +9551,14 @@ static short lobby_browser_valid_games(struct p2p_listing *games, short count)
 	return written;
 }
 
-/* the games found in the favorites' order (browser_favorites_order), the
-favorites offline after them; returns how many found are listed */
+/* the games found in the favorites' order (browser_favorites_order), in the
+groups with their headings, the favorites offline after them; returns how
+many found are listed, the headings too */
 static short lobby_browser_favorites(short count)
 {
 	static struct browser_favorite favorites[LOBBY_BROWSER_GAMES];
-	static struct p2p_listing ordered[LOBBY_BROWSER_GAMES];
-	short favorite_of[LOBBY_BROWSER_GAMES], order[LOBBY_BROWSER_GAMES];
+	static struct p2p_listing ordered[LOBBY_BROWSER_GAMES + NUMBER_OF_BROWSER_GROUPS];
+	short favorite_of[LOBBY_BROWSER_GAMES], order[LOBBY_BROWSER_GAMES + NUMBER_OF_BROWSER_GROUPS];
 	short index, listed;
 
 	static struct browser_sort_entry entries[LOBBY_BROWSER_GAMES];
@@ -9425,6 +9574,8 @@ static short lobby_browser_favorites(short count)
 		entries[index].ping = game->failed ? NONE : game->ping;
 		entries[index].rate = game->rate;
 		entries[index].openh1 = game->standard != 0;
+		/* (on the project's master's word: master_list.c) */
+		entries[index].official = game->official != 0;
 		entries[index].coop = game->engine_type == 0;
 		/* (on a master server's word alone: p2p_lobby.c) */
 		entries[index].dedicated = game->dedicated != 0;
@@ -9440,12 +9591,32 @@ static short lobby_browser_favorites(short count)
 	}
 	browser_favorites_match(favorites, count, favorite_of, "net:");
 	browser_filtering = TRUE;
+	browser_grouped = TRUE;
 	listed = browser_favorites_order(favorite_of, entries, count, order);
+	browser_grouped = FALSE;
 	browser_offline_search();
+	lobby_browser.headings = 0;
 	for (index = 0; index < listed; index++)
-		ordered[index] = lobby_browser.games[order[index]];
+	{
+		lobby_browser.headed[index] = 0;
+		if (order[index] < 0)
+		{
+			csmemset(&ordered[index], 0, sizeof(ordered[index]));
+			ordered[index].ping = NONE;
+			lobby_browser.headed[index] = (unsigned char)(BROWSER_HEADING_GROUP(order[index]) + 1);
+			lobby_browser.headings++;
+		}
+		else
+			ordered[index] = lobby_browser.games[order[index]];
+	}
 	csmemcpy(lobby_browser.games, ordered, listed * sizeof(ordered[0]));
 	return listed;
+}
+
+/* whether the list's index is a group's heading (not a game) */
+static boolean lobby_browser_heading(short index)
+{
+	return index >= 0 && index < lobby_browser.count && lobby_browser.headed[index] != 0;
 }
 
 /* the rows the list has: the games found, then the favorites offline */
@@ -9492,8 +9663,38 @@ static void lobby_browser_focus_row(struct widget_instance *list, short row)
 	}
 }
 
+/* the focus off a group's heading (a row of no game), as the controller or
+keyboard moved it there: on the game after it, or the game before it if
+the focus came up from below (over a heading at the top, the column
+titles); the row then focused (NONE: the titles). A row the pointer is on
+keeps it: the heading is not chosen (lobby_browser_update) */
+static short lobby_browser_off_heading(struct widget_instance *list, short focused, short shown)
+{
+	short index = (short)(lobby_browser.first + focused);
+
+	if (focused == NONE || ui_widget_port_hover_focused() || !lobby_browser_heading(index))
+		return focused;
+	if (lobby_browser.chosen > index && index == 0)
+	{
+		struct widget_instance *titles = named(list, "join_game_header", 0);
+
+		if (titles && titles->visible)
+		{
+			list_focus_child(list, titles);
+			return NONE;
+		}
+	}
+	/* (a heading is never the last: its group has a game) */
+	index = (short)(lobby_browser.chosen > index && index > 0 ? index - 1 : index + 1);
+	lobby_browser.first = (short)PIN(lobby_browser.first, index - shown + 1, index);
+	focused = (short)(index - lobby_browser.first);
+	lobby_browser_focus_row(list, focused);
+	return focused;
+}
+
 /* "gamespy screen update" for the server browser: the rows (scrolled on
-at their ends), the panel, the counts and tabs over them */
+at their ends; the groups' headings passed over), the panel, the counts
+and tabs over them */
 static void lobby_browser_update(struct widget_instance *list)
 {
 	struct widget_instance *row;
@@ -9519,6 +9720,8 @@ static void lobby_browser_update(struct widget_instance *list)
 		{
 			struct browser_favorite favorite;
 
+			if (lobby_browser_heading(index))
+				continue;
 			if (index < lobby_browser.count)
 				listing_favorite(&lobby_browser.games[index], &favorite);
 			else
@@ -9560,8 +9763,15 @@ static void lobby_browser_update(struct widget_instance *list)
 			lobby_browser.chosen = lobby_browser.first;
 		}
 	}
-	if (focused != NONE && !ui_widget_port_hover_focused())
+	focused = lobby_browser_off_heading(list, focused, shown);
+	if (focused != NONE && !ui_widget_port_hover_focused() &&
+		!lobby_browser_heading((short)(lobby_browser.first + focused)))
+	{
 		lobby_browser.chosen = (short)(lobby_browser.first + focused);
+	}
+	/* (a game chosen, not a heading: the list moved under the choice) */
+	if (lobby_browser_heading(lobby_browser.chosen))
+		lobby_browser.chosen++;
 	chosen = lobby_browser.chosen;
 	/* (its host's tunnel opened and kept while it is chosen: joining it is
 	then at once) */
@@ -9582,11 +9792,16 @@ static void lobby_browser_update(struct widget_instance *list)
 		row->visible = index < rows;
 		if (index >= rows)
 			continue;
+		if (lobby_browser_heading(index))
+		{
+			browser_heading_show(row, row_index, browser_group_heading((short)(lobby_browser.headed[index] - 1)));
+			continue;
+		}
 		if (index >= lobby_browser.count)
 			browser_offline_row(browser_favorites_get(browser_offline[index - lobby_browser.count]), &shown);
 		else
 			browser_listing_row(&lobby_browser.games[index], &shown);
-		browser_row_show(row, row_index, &shown, index < browser_found_favorites);
+		browser_row_show(row, row_index, &shown, index < lobby_browser.count && browser_listed_favorite[index]);
 	}
 	/* joining: once the host is reached, its game joined (by an A press, on
 	its row); given up after a while */
@@ -9611,7 +9826,8 @@ static void lobby_browser_update(struct widget_instance *list)
 			lobby_browser.ready = TRUE;
 			for (index = 0; index < lobby_browser.count; index++)
 			{
-				if (!memcmp(lobby_browser.games[index].identifier, lobby_browser.identifier, 6) &&
+				if (!lobby_browser_heading(index) &&
+					!memcmp(lobby_browser.games[index].identifier, lobby_browser.identifier, 6) &&
 					index >= lobby_browser.first && index < lobby_browser.first + shown)
 				{
 					lobby_browser_focus_row(list, (short)(index - lobby_browser.first));
@@ -9698,7 +9914,7 @@ static void lobby_browser_update(struct widget_instance *list)
 		browser_empty_text(multiplayer.mode, browser_tab, config_boolean("network.online"),
 			config_boolean("network.public_lobby"), now - lobby_browser.begin_time < LOBBY_BROWSER_LOOK_TIME,
 			p2p_lobby_newer_games(), browser_filtered_count, browser_searched_count, text, NUMBEROF(text));
-		browser_header_show(list, lobby_browser.count, players, rows, text);
+		browser_header_show(list, (short)(lobby_browser.count - lobby_browser.headings), players, rows, text);
 		browser_clear_show(list, rows);
 	}
 	browser_focus(list, browser_chosen_row());
@@ -9760,6 +9976,9 @@ static boolean lobby_browser_select(struct widget_instance *widget, short contro
 	if (lobby_browser.joining)
 		return TRUE;
 	index = row != NONE ? (short)(lobby_browser.first + row) : lobby_browser.chosen;
+	/* (a group's heading: nothing to join) */
+	if (lobby_browser_heading(index))
+		return TRUE;
 	if (index >= lobby_browser.count)
 		return campaign_fail();
 	game = &lobby_browser.games[index];
@@ -9908,6 +10127,7 @@ static short local_browser_favorites(struct widget_instance *list)
 			(short)p2p_peer_ping(game->xnaddr + 2) : NONE;
 		entries[index].rate = (short)advertised_game_rate(game);
 		entries[index].openh1 = advertised_game_standard(game);
+		entries[index].official = FALSE;
 		entries[index].coop = game->engine_type == 0;
 		entries[index].dedicated = advertised_dedicated(game);
 		settings_wide_copy(entries[index].mode, game_kind_name(game->engine_type, favorites[index].kind, FALSE),
@@ -9923,6 +10143,7 @@ static short local_browser_favorites(struct widget_instance *list)
 		multiplayer.mode == _multiplayer_mode_lan ? "lan:" : NULL);
 	/* (Join by Link's games are the invites taken: never hidden) */
 	browser_filtering = multiplayer.mode != _multiplayer_mode_direct_link;
+	browser_grouped = FALSE;
 	multiplayer.game_count = browser_favorites_order(favorite_of, entries, multiplayer.game_count, order);
 	if (browser_filtering)
 		browser_offline_search();
@@ -10007,7 +10228,7 @@ static void browser_update(struct widget_instance *list)
 			browser_offline_row(browser_favorites_get(browser_offline[index - multiplayer.game_count]), &shown);
 		else
 			browser_advertised_row(multiplayer.games[index], &shown);
-		browser_row_show(row, row_index, &shown, index < browser_found_favorites);
+		browser_row_show(row, row_index, &shown, index < multiplayer.game_count && browser_listed_favorite[index]);
 	}
 	if (chosen < multiplayer.game_count)
 	{
@@ -10631,6 +10852,8 @@ static boolean browser_favorite_toggle(short row)
 	if (row == NONE)
 		return campaign_fail();
 	index = server_browser ? (short)(lobby_browser.first + row) : row;
+	if (server_browser && lobby_browser_heading(index))
+		return TRUE;
 	if (index < count && server_browser)
 		listing_favorite(&lobby_browser.games[index], &game);
 	else if (index < count)

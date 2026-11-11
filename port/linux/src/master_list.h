@@ -66,6 +66,12 @@ answer came, with its status and its body (malloc'd, NUL terminated after
 its size: the caller frees it; 1 MB at most). Any thread; it may block */
 int master_list_get(const char *url, int *status, char **body, unsigned long *size);
 
+/* whether a list's entry is an official server's (the project's, which the
+server browser lists first): the list signed with the project's own
+master's key (built in; masters.txt pins it), and the entry's publisher
+id one of the project's (built in). Pure: the harness tests it */
+int master_list_official(const unsigned char *master_key, const char *publisher_id);
+
 /* the server browser open (asked every 30 seconds) or closed */
 void master_list_browse(int on);
 /* Refresh: asked again now */
