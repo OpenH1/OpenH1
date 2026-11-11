@@ -95,7 +95,7 @@ takes it for a newer version and does not join. Raise it with any change to
 what a Standard game's machines send each other, and with every raise of
 HALO_PORT_NETWORK_VERSION: HALO_PORT_STANDARD_BASE_VERSION is the network
 version it was last raised for, and the build fails until they agree. */
-#define HALO_PORT_STANDARD_NETWORK_VERSION 25
+#define HALO_PORT_STANDARD_NETWORK_VERSION 26
 /* (1: the rate agreed; 2: the players' sub-steps sent, network_substeps.c;
 3: OpenCE players in the game, network_standard.c's mixed games; 4: a
 player moved to the other team by the host, network_host_controls.c; 5:
@@ -142,7 +142,13 @@ _distributed_message_unit_state_differences and the input's word on them;
 network_actors.c's _distributed_message_actor_states_compact; 25: the
 host's word that its players' views are drawn as with display.direct_camera
 off in the game record (_network_game_no_direct_camera_bit, a 2V2 Classic
-game's: network_standard.c's network_standard_direct_camera_allowed). Legacy
+game's: network_standard.c's network_standard_direct_camera_allowed); 26:
+the host's word that its game is a Pro 2v2 game in the game record
+(_network_game_pro_rules_bit: network_standard_pro_game; its players' dynamic
+lights classic, their field of view at most 110, no teammates' feeds), and a
+client's mods each marked with what they replace (sounds, bitmaps, models,
+text: distributed_client_build's mods), which a Pro host refuses a machine
+for. Legacy
 games, and what an OpenCE
 machine sees, are unchanged) */
 #define HALO_PORT_STANDARD_BASE_VERSION 41

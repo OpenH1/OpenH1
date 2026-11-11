@@ -2171,27 +2171,56 @@ static void sim_rate_row_show(struct widget_instance *list)
 	}
 }
 
-/* Mouse's INSTANT AIM row (display.direct_camera): in a game whose host
-draws every player's view as with it off (a 2V2 Classic game's:
-network_standard_direct_camera_allowed), shown OFF and dimmed, its value
-held (setting_changed_save passes over a disabled spinner, so the player's
-own setting stays, and is theirs again after the game); its help says why.
-The row keeps the cursor, so that its help is read */
-static void direct_camera_row_show(struct widget_instance *list)
+/* the rows a game's host holds at a value for every player, whatever their
+own settings, which stay as they are and are theirs again after it: Mouse's
+INSTANT AIM in a Pro 2v2 Classic game (network_standard_direct_camera_allowed),
+and Video's DYNAMIC LIGHTS, SHIELD GLOW and GLOW INTENSITY, Weapon & Body's
+OVERSHIELD and Mouse's MOUSE AIM ASSIST in either kind's
+(network_standard_enhanced_lights_allowed: the Pro 2v2 rules; the shields'
+are the host's stock, network_shield_effects.c; the mouse's assist the host
+blocks, network_aim_assist.c). FIELD OF VIEW, a slider, is not held: its
+note says a Pro 2v2 game caps it (view_fov.c).
+Each shown at that value and dimmed, its value held (setting_changed_save
+passes over a disabled spinner); its note says why. The row keeps the
+cursor, so that its note is read */
+static struct
 {
-	struct widget_instance *row = named(list, "op_direct_camera", 0);
-	struct widget_instance *spinner = named(list, "direct_camera_spinner", 0);
-	struct pc_menu_setting *setting = settings_setting_of(spinner);
-	boolean forced = !network_standard_direct_camera_allowed();
+	char const *row;
+	char const *spinner;
+	char const *value;
+	boolean (*allowed)(void);
+} const settings_held_rows[] =
+{
+	{ "op_direct_camera", "direct_camera_spinner", "false", network_standard_direct_camera_allowed },
+	{ "op_dynamic_lights", "dynamic_lights_spinner", "classic", network_standard_enhanced_lights_allowed },
+	{ "op_shield_glow", "shield_glow_spinner", "false", network_standard_enhanced_lights_allowed },
+	{ "op_shield_glow_intensity", "shield_glow_intensity_spinner", "default",
+		network_standard_enhanced_lights_allowed },
+	{ "op_overshield_effect", "overshield_effect_spinner", "false", network_standard_enhanced_lights_allowed },
+	/* (the host's: network_aim_assist.c, a Pro host's always) */
+	{ "op_mouse_aim_assist", "mouse_aim_assist_spinner", "false", network_standard_enhanced_lights_allowed },
+};
 
-	if (!row || !setting || spinner->disabled == forced)
-		return;
-	spinner->disabled = forced;
-	row->alpha_modifier = forced ? 0.4f : 1.0f;
-	if (forced)
-		spinner->parameters.list.selected_index = setting_value_index(setting, "false");
-	else if (setting->loaded_index >= 0 && setting->loaded_index < setting->value_count)
-		spinner->parameters.list.selected_index = setting->loaded_index;
+static void settings_held_rows_show(struct widget_instance *list)
+{
+	short index;
+
+	for (index = 0; index < (short)NUMBEROF(settings_held_rows); index++)
+	{
+		struct widget_instance *row = named(list, settings_held_rows[index].row, 0);
+		struct widget_instance *spinner = named(list, settings_held_rows[index].spinner, 0);
+		struct pc_menu_setting *setting = settings_setting_of(spinner);
+		boolean held = !settings_held_rows[index].allowed();
+
+		if (!row || !setting || spinner->disabled == held)
+			continue;
+		spinner->disabled = held;
+		row->alpha_modifier = held ? 0.4f : 1.0f;
+		if (held)
+			spinner->parameters.list.selected_index = setting_value_index(setting, settings_held_rows[index].value);
+		else if (setting->loaded_index >= 0 && setting->loaded_index < setting->value_count)
+			spinner->parameters.list.selected_index = setting->loaded_index;
+	}
 }
 
 /* (Controller's Button Remapping, a page of Settings') */
@@ -3850,7 +3879,7 @@ static void settings_page_update(struct widget_instance *list)
 	controls_page_update(list);
 	graphics_preset_show(list);
 	sim_rate_row_show(list);
-	direct_camera_row_show(list);
+	settings_held_rows_show(list);
 	viewmodel_weapon_rows_show(list);
 	gyro_rows_show(list);
 	settings_each(screen, setting_stash);

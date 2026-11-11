@@ -42,7 +42,8 @@ def generated(fault=None):
     ]) + '\n'
     code = '\n'.join(function(standard, name) for name in [
         'network_standard_server_setting', 'network_standard_rate_setting', 'network_standard_server_created',
-        'network_standard_set_hosting_rules', 'network_standard_server_rate', 'network_standard_stamp_game',
+        'network_standard_set_hosting_rules', 'network_standard_pro_hosting', 'network_standard_server_rate',
+        'network_standard_stamp_game',
         'network_standard_direct_camera_allowed'])
     if fault:
         code = mutated(code, *fault)

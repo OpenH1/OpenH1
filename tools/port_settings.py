@@ -27,12 +27,12 @@ MOD_ROWS = 11
 # the main menu's items (ce/main_menu.xml): CAMPAIGN, MULTIPLAYER, SETTINGS
 # and QUIT, a row apart (Profile and Credits are left out: tools/ce_menus.py's
 # LEFT_OUT; its CHILD_OFFSETS move Settings and Quit up into their rows)
-# (the main menu's items: CAMPAIGN, MULTIPLAYER, 2V2 (_doubles), SETTINGS
+# (the main menu's items: CAMPAIGN, MULTIPLAYER, PRO 2V2 (_doubles), SETTINGS
 # and QUIT, 36 apart, as the PC version's)
 DOUBLES_ITEM_PLACE = (192, 319)
 SETTINGS_ITEM_PLACE = (192, 355)
 QUIT_ITEM_PLACE = (192, 391)
-# The main menu's 2V2 (port/linux/game/matchmaking_menu.inc): its screen of
+# The main menu's PRO 2V2 (port/linux/game/matchmaking_menu.inc): its screen of
 # kinds, CLASSIC and LOWEST LATENCY, each a matchmaking playlist
 # (matchmaking.c's matchmaking_doubles_playlist), searched at once
 DOUBLES = "main_menu/doubles"
@@ -655,7 +655,7 @@ PAGES = {
             ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
              "How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini "
              "Projection (First Person). Passenger seats use it too; driver and gunner: First Person.|Click the "
-             "number (or press A) to type 20 to 160.", None),
+             "number (or press A) to type 20 to 160. Capped at 110 in Pro 2v2 games.", None),
             ("ORIENTATION", "display.orientation",
              [("LANDSCAPE", "landscape"), ("PORTRAIT", "portrait"), ("AUTO", "auto")],
              "Which way up you hold the device. Portrait has a strip of buttons along the top, the picture under "
@@ -751,12 +751,12 @@ PAGES = {
              "Moving the mouse forward looks down, as a flight stick does.", None),
             ("MOUSE AIM ASSIST", "input.mouse_aim_assist", ON_OFF,
              "Slows and drags your aim along with a target while you aim with the mouse, as it does with a "
-             "controller.", None),
+             "controller.|Off in Pro 2v2 games, for everyone.", None),
             # (off, dimmed, in a 2V2 Classic game: menu_functions.c's
             # direct_camera_row_show)
             ("INSTANT AIM", "display.direct_camera", ON_OFF,
              "Turns the view the moment the mouse moves, not up to two of the game's updates later. Off feels as "
-             "the original did.|Off for everyone in a Classic 2v2 game; yours again after it.", "computer"),
+             "the original did.|Off for everyone in a Pro 2v2 Classic game; yours again after it.", "computer"),
             # (port/linux/src/sdl_platform.c's menu_cursor_size; hidden in the
             # headset, where VR Setup's row takes its room and the menus have
             # no desktop pointer: SETTINGS_ROW_WHEN)
@@ -985,7 +985,8 @@ PAGES = {
              "cost.", None),
             ("DYNAMIC LIGHTS", "display.dynamic_lights", [("CLASSIC", "classic"), ("ENHANCED", "enhanced")],
              "Enhanced: plasma bolts, muzzle flashes and blasts light their surroundings smoothly, with a glow. "
-             "Classic lights them as the Xbox did.", "desktop android"),
+             "Classic lights them as the Xbox did.|Classic for everyone in a Pro 2v2 game; yours again after it.",
+             "desktop android"),
             ("AMBIENT OCCLUSION", "display.ambient_occlusion",
              [("OFF", "off"), ("WORLD", "world"), ("RAY TRACED", "ray_traced")],
              "World: grounds characters, vehicles and scenery with soft shade where they meet the level and each "
@@ -993,10 +994,10 @@ PAGES = {
              "of characters and vehicles traced by the graphics card, where it can (else World).", "desktop android"),
             ("SHIELD GLOW", "display.shield_glow", ON_OFF,
              "Shields light their surroundings as they flare, in the shield's own color. Online: the host's "
-             "choice.", None),
+             "choice.|Off in Pro 2v2 games, for everyone.", None),
             ("GLOW INTENSITY", "display.shield_glow_intensity", [("DEFAULT", "default"), ("LIGHT SHOW", "light_show")],
-             "Light Show: the shields' glow reaches three times as far, and is brighter. Online: the host's choice.",
-             None),
+             "Light Show: the shields' glow reaches three times as far, and is brighter. Online: the host's choice."
+             "|Default in Pro 2v2 games, for everyone.", None),
             (SECTION, "GAME"),
             # (locked at ORIGINAL (30) in a game that plays at 30 whatever it
             # says, a network game of other machines, a film's playback:
@@ -1204,7 +1205,8 @@ PAGES = {
              "own.", None),
             ("OVERSHIELD", "display.overshield_effect", ON_OFF,
              "An overshield stays lit for as long as it lasts, in its own color, on your body and, with Arm "
-             "Shields, your arms. Off draws it as the original did. Online: the host's choice.", None),
+             "Shields, your arms. Off draws it as the original did. Online: the host's choice.|Off in Pro 2v2 "
+             "games, for everyone.", None),
             ("OVERSHIELD COLOR", "display.overshield_layer_color", [("LAYERS", "true"), ("RED", "false")],
              "The overshield's color as its layers drain, as your shield meter shows them: green while the green "
              "layer lasts, then red. Red keeps it red throughout.", None),
@@ -5566,7 +5568,7 @@ def _matchmaking() -> list:
 
 
 def _doubles() -> list:
-    """the main menu's 2V2 (main_menu_item_doubles, in the redraws' letters:
+    """the main menu's PRO 2V2 (main_menu_item_doubles, in the redraws' letters:
     menu_item_frames) and its screen, the Matchmaking screen's
     (_matchmaking_screen) with a row for each kind, CLASSIC and LOWEST
     LATENCY: A on one searches its playlist at once (matchmaking_menu.inc),
@@ -5973,7 +5975,7 @@ HOST_PROMPTS = [
     ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="mouse emit back event"/>'),
 ]
 TITLES[f"{HOST_CONTROLS}/header_host_controls"] = "HOST CONTROLS"
-TITLES[f"{DOUBLES}/header_doubles"] = "2V2"
+TITLES[f"{DOUBLES}/header_doubles"] = "PRO 2V2"
 
 
 def _host_controls() -> list:
@@ -7820,7 +7822,8 @@ MENU_ITEM_TOP, MENU_ITEM_SCALE, MENU_ITEM_MIDDLE = 6.57, 0.9037, 130.0
 # RU, IA as EA and NA, AL as AD and AI), and a word's space as LOAD GAME's D
 # to G, less D's side
 MENU_ITEM_SPACES = {"VR": 0.3, "R ": 6.0, " T": 6.0, "TU": 2.12, "UT": 1.66, "TO": 0.75, "OR": 3.0, "RI": 3.25,
-                    "IA": 1.3, "AL": 1.58, "2V": 1.2, "V2": 1.2}
+                    "IA": 1.3, "AL": 1.58, "2V": 1.2, "V2": 1.2,
+                    "PR": 3.16, "RO": 1.85, "O ": 6.0, " 2": 6.0}
 # a space's own width (none: the spaces about it are its pairs')
 MENU_ITEM_SPACE_WIDTH = 0.0
 # the mods' status icons (port/assets/icons/lucide): a mod out of the order it

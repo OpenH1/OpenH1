@@ -337,7 +337,7 @@ static void matchmaking_hub_status(wchar_t *headline, short headline_size, wchar
 	if (status.stage == _matchmaking_idle)
 	{
 		usnprintf(headline, headline_size - 1, L"FIND A GAME");
-		usnprintf(detail, detail_size - 1, L"Team Slayer, Slayer, CTF,\r\nSWAT, Big Team and 2v2.");
+		usnprintf(detail, detail_size - 1, L"Team Slayer, Slayer, CTF,\r\nSWAT, Big Team and Pro 2v2.");
 		headline[headline_size - 1] = detail[detail_size - 1] = 0;
 		return;
 	}

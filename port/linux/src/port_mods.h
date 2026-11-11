@@ -12,9 +12,12 @@ declares these for itself: keep the two the same).
 /* finds the mods again, and lists the files of those that are on: how
 many are on. Every file index from before is gone */
 long port_mods_scan(void);
-/* the mods that are on, in the load order, a line each: its folder, and
-its version if its mod.toml says one ("trollface 1.0"); how many fitted
-into text (a line that does not fit is left out whole) */
+/* the mods that are on, in the load order, a line each: its folder, its
+version if its mod.toml says one, and what its files replace, those of
+sounds, bitmaps, models and text it has ("trollface 1.0 [bitmaps text]");
+how many fitted into text (a line that does not fit is left out whole, and
+"... [unlisted]" says some were). A client's build tells its host them
+(network_distributed.c), which a Pro 2v2 game refuses some for */
 int port_mods_list(char *text, unsigned long size);
 /* the mods played (as the last port_mods_scan found them), in the load
 order, a Markdown list's line each, its first `most` (those that fit whole):

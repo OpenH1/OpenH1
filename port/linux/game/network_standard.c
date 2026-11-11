@@ -146,6 +146,11 @@ static struct
 	long rules_rate;
 	boolean rules_no_direct_camera;
 	boolean hosting_no_direct_camera;
+	/* ... and the Pro 2v2 rules (every 2V2 kind's): its players' dynamic
+	lights the classic ones, its shield effects the stock game's; as the
+	server took them */
+	boolean rules_pro;
+	boolean hosting_pro;
 } network_standard_globals = { FALSE, SIM_RATE_CLASSIC, FALSE, FALSE };
 
 /* ---------- private code */
@@ -214,6 +219,12 @@ void network_standard_server_created(
 	by the host's word, Classic's views included) */
 	network_standard_globals.hosting_no_direct_camera = network_standard_globals.hosting && !halo_server_mode() &&
 		network_standard_globals.rules_no_direct_camera;
+	network_standard_globals.hosting_pro = network_standard_globals.hosting && !halo_server_mode() &&
+		network_standard_globals.rules_pro;
+	/* (a Pro 2v2 game's weapons picked up by holding the action button, the
+	Xbox's way, whatever game.auto_pickup) */
+	if (network_standard_globals.hosting_pro)
+		network_standard_globals.hosting_hold_to_pick_up = TRUE;
 	network_standard_globals.mixed = network_standard_globals.hosting && !rules &&
 		config_boolean("network.allow_opence");
 	network_standard_globals.mixed_since = network_standard_globals.mixed;
@@ -237,10 +248,48 @@ boolean network_standard_hosting(
 
 void network_standard_set_hosting_rules(
 	long rate,
-	boolean no_direct_camera)
+	boolean no_direct_camera,
+	boolean pro)
 {
 	network_standard_globals.rules_rate = rate;
 	network_standard_globals.rules_no_direct_camera = no_direct_camera;
+	network_standard_globals.rules_pro = pro;
+}
+
+boolean network_standard_pro_hosting(
+	void)
+{
+	return network_standard_globals.hosting && network_standard_globals.hosting_pro;
+}
+
+boolean network_standard_pro_game(
+	void)
+{
+	struct network_game *game;
+
+	switch (game_connection())
+	{
+	case _game_connection_network_server:
+		return network_standard_pro_hosting();
+	case _game_connection_network_client:
+		/* (the host's word, as its record brought it; a Legacy host's none) */
+		game = network_game_get_game();
+		return network_standard_globals.joined && game &&
+			TEST_FLAG(game->cooperative_flags, _network_game_pro_rules_bit);
+	}
+	return FALSE;
+}
+
+boolean network_standard_enhanced_lights_allowed(
+	void)
+{
+	return !network_standard_pro_game();
+}
+
+boolean network_standard_teammate_feeds_allowed(
+	void)
+{
+	return !network_standard_pro_game();
 }
 
 boolean network_standard_direct_camera_allowed(
@@ -402,6 +451,7 @@ struct network_game const *network_standard_game_for_machine(
 	SET_FLAG(legacy_game.cooperative_flags, _network_game_hold_to_pick_up_bit, FALSE);
 	SET_FLAG(legacy_game.cooperative_flags, _network_game_classic_turning_bit, FALSE);
 	SET_FLAG(legacy_game.cooperative_flags, _network_game_no_direct_camera_bit, FALSE);
+	SET_FLAG(legacy_game.cooperative_flags, _network_game_pro_rules_bit, FALSE);
 	return &legacy_game;
 }
 
@@ -624,7 +674,8 @@ void network_standard_stamp_game(
 	/* (and how its players pick up a second weapon, read as the rate is) */
 	if (in_lobby)
 	{
-		network_standard_globals.hosting_hold_to_pick_up = !config_boolean("game.auto_pickup");
+		network_standard_globals.hosting_hold_to_pick_up = network_standard_pro_hosting() ||
+			!config_boolean("game.auto_pickup");
 		network_standard_globals.hosting_classic_turning = !config_boolean("game.enhanced_animations");
 	}
 	if (game)
@@ -633,6 +684,7 @@ void network_standard_stamp_game(
 			network_standard_globals.hosting && network_standard_globals.hosting_hold_to_pick_up);
 		SET_FLAG(game->cooperative_flags, _network_game_no_direct_camera_bit,
 			network_standard_globals.hosting && network_standard_globals.hosting_no_direct_camera);
+		SET_FLAG(game->cooperative_flags, _network_game_pro_rules_bit, network_standard_pro_hosting());
 		SET_FLAG(game->cooperative_flags, _network_game_classic_turning_bit,
 			network_standard_globals.hosting && network_standard_globals.hosting_classic_turning);
 	}

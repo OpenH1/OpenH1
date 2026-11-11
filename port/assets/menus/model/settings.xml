@@ -28,7 +28,7 @@
 		</row>
 		<row key="fov" kind="slider" setting="display.fov" label="FIELD OF VIEW" least="80" most="160" step="5" typed_least="20" typed_most="160">
 			<help>How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini Projection (First Person). Passenger seats use it too; driver and gunner: First Person.</help>
-			<note>Click the number (or press A) to type 20 to 160.</note>
+			<note>Click the number (or press A) to type 20 to 160. Capped at 110 in Pro 2v2 games.</note>
 			<stop shown="DEFAULT" value="0"/>
 			<stop shown="80" value="80"/>
 			<stop shown="85" value="85"/>
@@ -236,12 +236,13 @@
 		</row>
 		<row key="mouse_aim_assist" kind="choice" setting="input.mouse_aim_assist" label="MOUSE AIM ASSIST">
 			<help>Slows and drags your aim along with a target while you aim with the mouse, as it does with a controller.</help>
+			<note>Off in Pro 2v2 games, for everyone.</note>
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>
 		<row key="direct_camera" kind="choice" setting="display.direct_camera" label="INSTANT AIM" when="computer">
 			<help>Turns the view the moment the mouse moves, not up to two of the game's updates later. Off feels as the original did.</help>
-			<note>Off for everyone in a Classic 2v2 game; yours again after it.</note>
+			<note>Off for everyone in a Pro 2v2 Classic game; yours again after it.</note>
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>
@@ -539,6 +540,7 @@
 		</row>
 		<row key="dynamic_lights" kind="choice" setting="display.dynamic_lights" label="DYNAMIC LIGHTS" when="desktop android">
 			<help>Enhanced: plasma bolts, muzzle flashes and blasts light their surroundings smoothly, with a glow. Classic lights them as the Xbox did.</help>
+			<note>Classic for everyone in a Pro 2v2 game; yours again after it.</note>
 			<choice shown="CLASSIC" value="classic"/>
 			<choice shown="ENHANCED" value="enhanced"/>
 		</row>
@@ -550,11 +552,13 @@
 		</row>
 		<row key="shield_glow" kind="choice" setting="display.shield_glow" label="SHIELD GLOW">
 			<help>Shields light their surroundings as they flare, in the shield's own color. Online: the host's choice.</help>
+			<note>Off in Pro 2v2 games, for everyone.</note>
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>
 		<row key="shield_glow_intensity" kind="choice" setting="display.shield_glow_intensity" label="GLOW INTENSITY">
 			<help>Light Show: the shields' glow reaches three times as far, and is brighter. Online: the host's choice.</help>
+			<note>Default in Pro 2v2 games, for everyone.</note>
 			<choice shown="DEFAULT" value="default"/>
 			<choice shown="LIGHT SHOW" value="light_show"/>
 		</row>
@@ -915,6 +919,7 @@
 		</row>
 		<row key="overshield_effect" kind="choice" setting="display.overshield_effect" label="OVERSHIELD">
 			<help>An overshield stays lit for as long as it lasts, in its own color, on your body and, with Arm Shields, your arms. Off draws it as the original did. Online: the host's choice.</help>
+			<note>Off in Pro 2v2 games, for everyone.</note>
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>

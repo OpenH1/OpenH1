@@ -247,16 +247,16 @@ static struct matchmaking_playlist const matchmaking_playlists[] =
 		{ "bloodgulch", "sidewinder", "boardingaction", NULL, NULL, NULL, NULL, NULL, NULL }, 8, 16, 4, 8 },
 	/* (a playlist is listed by its number, 1 up: a new one goes last, so
 	that the others keep theirs for the builds that do not know it) */
-	/* the 2V2 screen's (matchmaking_doubles_playlists): 2 against 2 on pro
+	/* the PRO 2V2 screen's (matchmaking_doubles_playlists): 2 against 2 on pro
 	settings (game_modes.c's pro_doubles) on the 2v2 maps of the competitive
 	rules, Chill Out, Hang 'Em High, Prisoner, Damnation and Derelict
 	(carousel); Lowest Latency at 120 ticks, Classic at the Xbox's 30 with
 	Instant Aim off for everyone. Only the tick rate and the aim differ */
-	{ "2v2 Low Latency", L"2V2 LOWEST LATENCY", L"2 against 2, pro settings, at 120 ticks.",
+	{ "2v2 Low Latency", L"PRO 2V2 LOW LATENCY", L"2 against 2, pro settings, at 120 ticks.",
 		{ "pro_doubles", NULL },
 		{ "chillout", "hangemhigh", "prisoner", "damnation", "carousel", NULL, NULL, NULL, NULL },
 		2, 4, 2, 2, 120, FALSE },
-	{ "2v2 Classic", L"2V2 CLASSIC", L"2 against 2, pro settings, at the Xbox's 30.",
+	{ "2v2 Classic", L"PRO 2V2 CLASSIC", L"2 against 2, pro settings, at the Xbox's 30.",
 		{ "pro_doubles", NULL },
 		{ "chillout", "hangemhigh", "prisoner", "damnation", "carousel", NULL, NULL, NULL, NULL },
 		2, 4, 2, 2, 30, TRUE },
@@ -709,7 +709,8 @@ static boolean matchmaking_host(
 	dispose_global_network_game_server();
 	/* (a playlist's own rate and aim: the server made next takes them,
 	network_standard_server_created) */
-	network_standard_set_hosting_rules(playlist->rate, playlist->classic_aim);
+	/* (a playlist of its own rate is a 2V2 kind's: the Pro 2v2 rules too) */
+	network_standard_set_hosting_rules(playlist->rate, playlist->classic_aim, playlist->rate != 0);
 	matchmaking.rules_set = playlist->rate != 0 || playlist->classic_aim;
 	p2p_set_hosting_allowed(TRUE);
 	p2p_set_hosting_public(TRUE);
@@ -1053,7 +1054,7 @@ void matchmaking_update(
 	if (matchmaking.rules_set && !global_network_game_server_get() && matchmaking.stage != _matchmaking_hosting)
 	{
 		matchmaking.rules_set = FALSE;
-		network_standard_set_hosting_rules(0, FALSE);
+		network_standard_set_hosting_rules(0, FALSE, FALSE);
 	}
 	/* debug.matchmaking: an automated test's search, of a playlist by its
 	name or number (1 up), once the main menu is up */

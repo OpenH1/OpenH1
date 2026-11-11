@@ -72,6 +72,8 @@ static struct network_game record;
 static struct network_game *network_game_get_game(void) { return &record; }
 static long network_standard_server_rate(boolean in_lobby) { return network_standard_globals.hosting ? 60 : 0; }
 static boolean network_standard_player_is_opence(long player_index) { return player_index == OPENCE_PLAYER; }
+/* (no Pro 2v2 game: test_pro_rules.py's) */
+static boolean network_standard_pro_hosting(void) { return FALSE; }
 /* (no demo plays: demo.c's) */
 static boolean demo_playback_rules(unsigned long *rules) { return FALSE; }
 

@@ -266,8 +266,8 @@
 		<string text="How far the view turns up and down, of how far it turns side to side. 1X turns it as far."/>
 		<string text="How fast you turn while zoomed in. CS2 matches Counter-Strike 2's scoped feel; Original is how Halo felt.|Mouse only: controllers always turn as Halo did."/>
 		<string text="Moving the mouse forward looks down, as a flight stick does."/>
-		<string text="Slows and drags your aim along with a target while you aim with the mouse, as it does with a controller."/>
-		<string text="Turns the view the moment the mouse moves, not up to two of the game's updates later. Off feels as the original did.|Off for everyone in a Classic 2v2 game; yours again after it."/>
+		<string text="Slows and drags your aim along with a target while you aim with the mouse, as it does with a controller.|Off in Pro 2v2 games, for everyone."/>
+		<string text="Turns the view the moment the mouse moves, not up to two of the game's updates later. Off feels as the original did.|Off for everyone in a Pro 2v2 Classic game; yours again after it."/>
 		<string text="The menus' blue arrow for the mouse, and its size. The sizes keep their share of the screen at any resolution.|Off shows the system's pointer."/>
 		<string text="The keys and mouse buttons for each action, two for each."/>
 		<string text="The buttons the HUD's prompts show. Auto shows the keys or the controller's buttons, as you last played with."/>

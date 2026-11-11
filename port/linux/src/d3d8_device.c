@@ -3731,6 +3731,10 @@ static struct
 	BOOL read;
 	unsigned long read_at;
 	BOOL enhanced;
+	/* whether the game played lets them be enhanced, as then (a Pro 2v2
+	game's do not: port/linux/game/network_standard.c's
+	network_standard_enhanced_lights_allowed) */
+	BOOL allowed;
 	/* the look: [0] the lights' brightness, the core (1 / (1 + core x^2)),
 	the spill past white, the models' wrap; [1] the glow's size (of the
 	light's radius), brightness, softness against what it meets (world
@@ -3753,20 +3757,27 @@ static struct
 	struct xgpu_dynamic_lights_halos halos;
 } dynamic_lights;
 
+/* port/linux/game/network_standard.c's: whether the game played lets the
+dynamic lights be enhanced (a Pro 2v2 game's: classic for every player,
+whatever their display.dynamic_lights) */
+int network_standard_enhanced_lights_allowed(void);
+
 static void dynamic_lights_read_settings(void)
 {
 	static const float defaults[2][4] = { { 1.7f, 12.0f, 0.18f, 0.25f }, { 0.22f, 1.2f, 0.12f, 0.035f } };
 	const char *look;
+	BOOL allowed = network_standard_enhanced_lights_allowed() != 0;
 
 	/* (as the front end took the settings up between frames, not as the
 	menus write them: the draws' pipelines change at the frame that
 	prepares the map again under them, render_enumerate.c's
 	enumerated_derivation_check) */
-	if (dynamic_lights.read && dynamic_lights.read_at == halo_gpu_settings_taken())
+	if (dynamic_lights.read && dynamic_lights.read_at == halo_gpu_settings_taken() && dynamic_lights.allowed == allowed)
 		return;
 	dynamic_lights.read = TRUE;
 	dynamic_lights.read_at = halo_gpu_settings_taken();
-	dynamic_lights.enhanced = !strcmp(config_string("display.dynamic_lights"), "enhanced");
+	dynamic_lights.allowed = allowed;
+	dynamic_lights.enhanced = !strcmp(config_string("display.dynamic_lights"), "enhanced") && allowed;
 	memcpy(dynamic_lights.look, defaults, sizeof(defaults));
 	look = config_string("debug.dynamic_lights_look");
 	if (look && *look)
