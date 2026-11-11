@@ -87,7 +87,11 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
   with players still alive reverts to the last checkpoint on the host, as a
   skipped cutscene does (below); a client never reverts on its own. A level
   won ends the round as in multiplayer, and the next round is the
-  campaign's next level.
+  campaign's next level, or the one its host asked for in Host Controls'
+  MAPS (with its difficulty). The host's PLAY NOW ends the level for every
+  machine as a won one is ended, and its lobby starts the new one: the level
+  and difficulty go to the clients in the lobby's own settings, nothing new
+  (`network_host_game.c`).
 
   Cutscenes are skipped by vote: more than half the machines must press
   skip. The host then reverts as single player does, but keeps its clock

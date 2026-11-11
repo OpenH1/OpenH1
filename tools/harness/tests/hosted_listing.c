@@ -235,6 +235,20 @@ static boolean host_ask(short verb, void const *player, long number, char const 
 	return FALSE;
 }
 static boolean host_next(struct server_entry *entry, boolean *now) { return network_host_game_next(entry, now); }
+/* (a multiplayer game's host: no co-op level to change) */
+#define HOST_GAME_MAP_SIZE 128
+static boolean host_cooperative(void) { return FALSE; }
+static boolean network_host_game_cooperative_next(char *level, long size, short *difficulty, boolean *now)
+{
+	(void)level; (void)size; (void)difficulty;
+	*now = FALSE;
+	return FALSE;
+}
+static void network_host_game_cooperative_text(char const *level, short difficulty, wchar_t *text, short size)
+{
+	(void)level; (void)difficulty; (void)size;
+	text[0] = 0;
+}
 
 /* Host Controls' screen state (host_controls_menu.inc's host_menu) */
 static struct
@@ -242,6 +256,8 @@ static struct
 	short tab, first;
 	/* (MAPS' gametype: CHANGE MAP... opens it on CURRENT) */
 	short gametype;
+	/* (co-op's difficulty, which it opens on too) */
+	short difficulty;
 	boolean focus_first;
 	short game_rows[MAXIMUM_HOST_GAME_ROWS];
 	short game_row_count;
