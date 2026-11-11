@@ -34,120 +34,144 @@
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/button_cancel" type="text" box="0 0 128 24" wide="106 0" picture="bitmaps/text_button_background">
 		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" string_list="strings/common_button_captions" index="2"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/section_0" box="0 0 344 18" wide="-106 120" picture="main_menu/settings/section">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/section_0" box="0 0 344 18" wide="-106 244" picture="main_menu/settings/section">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/section_0_title" x="0" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/section_0_title" type="text" box="0 0 344 18" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/section_0_title" type="text" box="0 0 344 18" wide="0 244">
 		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/labels"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_found" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_found" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_found_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_found_value" x="188" y="2"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_found_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_found_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/labels" index="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_found_value" type="text" box="0 0 140 16" wide="120 0">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_found_value" type="text" box="0 0 140 16" wide="20 120">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 -1" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_aim" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_aim" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_aim_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_aim_spinner" x="188" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_aim_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_aim_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/labels" index="2"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_aim_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_aim_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="OFF|ALWAYS ON|HOLD TO AIM|HOLD TO PAUSE|THUMB ON STICK"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_button" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_button" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_button_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_button_spinner" x="188" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_button_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_button_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/labels" index="3"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_button_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_button_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="TOUCHPAD|LEFT PADDLE|RIGHT PADDLE|CAPTURE / SHARE|LEFT BUMPER|RIGHT BUMPER|LEFT TRIGGER|RIGHT TRIGGER|LEFT STICK|RIGHT STICK"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_sensitivity" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_sensitivity" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_sensitivity_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_sensitivity_track" x="188" y="3"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_sensitivity_value" x="252" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_sensitivity_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_sensitivity_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/labels" index="4"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_sensitivity_track" box="0 0 62 14" wide="120 0" picture="main_menu/settings/slider_track">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_sensitivity_track" box="0 0 62 14" wide="20 224" picture="main_menu/settings/slider_track">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_sensitivity_thumb" x="0" y="0"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_sensitivity_thumb" box="0 0 8 14" picture="main_menu/settings/slider_thumb"/>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_sensitivity_value" type="text" box="0 0 76 20" wide="120 0" picture="main_menu/settings/slider_field">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_sensitivity_value" type="text" box="0 0 76 20" wide="244 0" picture="main_menu/settings/slider_field">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 1" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_vertical_sensitivity" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_vertical_sensitivity" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_vertical_sensitivity_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_vertical_sensitivity_spinner" x="188" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_vertical_sensitivity_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_vertical_sensitivity_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/labels" index="5"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_vertical_sensitivity_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_vertical_sensitivity_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="0.25X|0.5X|0.6X|0.7X|0.75X|0.8X|0.9X|1X|1.1X|1.25X|1.5X|2X"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_space" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_space" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_space_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_space_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_space_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_space_seg1" x="312" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_space_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_space_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/labels" index="6"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_space_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_space_seg0" type="text" box="0 0 120 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="PLAYER SPACE"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_space_seg1" type="text" box="0 0 120 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="LOCAL SPACE"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_space_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="PLAYER SPACE|LOCAL SPACE"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_smoothing" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_smoothing" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_smoothing_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_smoothing_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_smoothing_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_smoothing_seg1" x="240" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_smoothing_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_smoothing_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/labels" index="7"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_smoothing_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_smoothing_seg0" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="ON"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_smoothing_seg1" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="OFF"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_smoothing_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_calibrate" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_gyro_calibrate" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_calibrate_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_calibrate_value" x="188" y="2"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_calibrate_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_calibrate_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/labels" index="8"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_calibrate_value" type="text" box="0 0 140 16" wide="120 0">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/gyro_calibrate_value" type="text" box="0 0 140 16" wide="20 120">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 -1" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/section_9" box="0 0 344 18" wide="-106 120" picture="main_menu/settings/section">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/section_9" box="0 0 344 18" wide="-106 244" picture="main_menu/settings/section">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/section_9_title" x="0" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/section_9_title" type="text" box="0 0 344 18" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/section_9_title" type="text" box="0 0 344 18" wide="0 244">
 		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/labels" index="9"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_flick_stick" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/op_flick_stick" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/flick_stick_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/flick_stick_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/flick_stick_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/flick_stick_seg1" x="240" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/flick_stick_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/flick_stick_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/labels" index="10"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/flick_stick_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/flick_stick_seg0" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="ON"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/flick_stick_seg1" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="OFF"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gyro/flick_stick_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
 	</look>
 </model>

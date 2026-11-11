@@ -71,163 +71,231 @@
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/button_cancel" type="text" box="0 0 128 24" wide="106 0" picture="bitmaps/text_button_background">
 		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" string_list="strings/common_button_captions" index="2"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/section_0" box="0 0 344 18" wide="-106 120" picture="main_menu/settings/section">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/section_0" box="0 0 344 18" wide="-106 244" picture="main_menu/settings/section">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/section_0_title" x="0" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/section_0_title" type="text" box="0 0 344 18" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/section_0_title" type="text" box="0 0 344 18" wide="0 244">
 		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_mouse_sensitivity" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_mouse_sensitivity" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_track" x="188" y="3"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_value" x="252" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_track" box="0 0 62 14" wide="120 0" picture="main_menu/settings/slider_track">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_track" box="0 0 62 14" wide="20 224" picture="main_menu/settings/slider_track">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_thumb" x="0" y="0"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_thumb" box="0 0 8 14" picture="main_menu/settings/slider_thumb"/>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_value" type="text" box="0 0 76 20" wide="120 0" picture="main_menu/settings/slider_field">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_value" type="text" box="0 0 76 20" wide="244 0" picture="main_menu/settings/slider_field">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 1" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_mouse_vertical_sensitivity" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_mouse_vertical_sensitivity" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_vertical_sensitivity_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_vertical_sensitivity_spinner" x="188" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_vertical_sensitivity_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_vertical_sensitivity_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="2"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_vertical_sensitivity_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_vertical_sensitivity_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="0.25X|0.5X|0.6X|0.7X|0.75X|0.8X|0.9X|1X|1.1X|1.25X|1.5X|2X"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_zoom_sensitivity" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_zoom_sensitivity" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/zoom_sensitivity_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/zoom_sensitivity_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/zoom_sensitivity_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/zoom_sensitivity_seg1" x="274" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/zoom_sensitivity_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/zoom_sensitivity_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="3"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/zoom_sensitivity_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/zoom_sensitivity_seg0" type="text" box="0 0 82 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="CS2"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/zoom_sensitivity_seg1" type="text" box="0 0 82 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="ORIGINAL"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/zoom_sensitivity_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="CS2|ORIGINAL"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_invert_mouse" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_invert_mouse" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/invert_mouse_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/invert_mouse_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/invert_mouse_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/invert_mouse_seg1" x="240" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/invert_mouse_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/invert_mouse_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="4"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/invert_mouse_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/invert_mouse_seg0" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="YES"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/invert_mouse_seg1" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="NO"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/invert_mouse_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="YES|NO"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_mouse_aim_assist" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_mouse_aim_assist" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_aim_assist_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_aim_assist_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_aim_assist_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_aim_assist_seg1" x="240" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_aim_assist_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_aim_assist_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="5"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_aim_assist_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_aim_assist_seg0" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="ON"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_aim_assist_seg1" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="OFF"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_aim_assist_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_direct_camera" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_direct_camera" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/direct_camera_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/direct_camera_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/direct_camera_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/direct_camera_seg1" x="240" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/direct_camera_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/direct_camera_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="6"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/direct_camera_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/direct_camera_seg0" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="ON"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/direct_camera_seg1" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="OFF"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/direct_camera_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_menu_cursor" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_menu_cursor" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/menu_cursor_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/menu_cursor_spinner" x="188" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/menu_cursor_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/menu_cursor_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="7"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/menu_cursor_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/menu_cursor_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="OFF|SMALL|MEDIUM|LARGE|EXTRA LARGE"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_key_bindings" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_key_bindings" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/key_bindings_label" x="0" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/key_bindings_label" type="text" box="0 0 332 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/key_bindings_label" type="text" box="0 0 332 20" wide="0 244">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="8"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_button_prompts" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_button_prompts" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/button_prompts_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/button_prompts_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/button_prompts_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/button_prompts_seg1" x="300" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/button_prompts_seg2" x="412" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/button_prompts_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/button_prompts_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="9"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/button_prompts_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/button_prompts_seg0" type="text" box="0 0 108 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="AUTO"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/button_prompts_seg1" type="text" box="0 0 108 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="CONTROLLER"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/button_prompts_seg2" type="text" box="0 0 108 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="KEYBOARD"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/button_prompts_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="AUTO|CONTROLLER|KEYBOARD"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/section_10" box="0 0 344 18" wide="-106 120" picture="main_menu/settings/section">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/section_10" box="0 0 344 18" wide="-106 244" picture="main_menu/settings/section">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/section_10_title" x="0" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/section_10_title" type="text" box="0 0 344 18" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/section_10_title" type="text" box="0 0 344 18" wide="0 244">
 		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="10"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_controller" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_controller" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/controller_label" x="0" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/controller_label" type="text" box="0 0 332 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/controller_label" type="text" box="0 0 332 20" wide="0 244">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="11"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_vr_setup" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_vr_setup" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/vr_setup_label" x="0" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/vr_setup_label" type="text" box="0 0 332 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/vr_setup_label" type="text" box="0 0 332 20" wide="0 244">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="12"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_crouch" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_crouch" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_seg1" x="263" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="13"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_seg0" type="text" box="0 0 71 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="HOLD"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_seg1" type="text" box="0 0 71 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="TOGGLE"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="HOLD|TOGGLE"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_crouch_walk" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_crouch_walk" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_walk_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_walk_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_walk_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_walk_seg1" x="240" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_walk_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_walk_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="14"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_walk_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_walk_seg0" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="OFF"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_walk_seg1" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="ON"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_walk_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="OFF|ON"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_touch_crouch" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_touch_crouch" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/touch_crouch_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/touch_crouch_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/touch_crouch_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/touch_crouch_seg1" x="263" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/touch_crouch_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/touch_crouch_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" index="15"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/touch_crouch_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/touch_crouch_seg0" type="text" box="0 0 71 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="TOGGLE"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/touch_crouch_seg1" type="text" box="0 0 71 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="HOLD"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/touch_crouch_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="TOGGLE|HOLD"/>
 	</look>
 </model>

@@ -34,111 +34,151 @@
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/button_cancel" type="text" box="0 0 128 24" wide="106 0" picture="bitmaps/text_button_background">
 		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" string_list="strings/common_button_captions" index="2"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_0" box="0 0 344 18" wide="-106 120" picture="main_menu/settings/section">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_0" box="0 0 344 18" wide="-106 244" picture="main_menu/settings/section">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_0_title" x="0" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_0_title" type="text" box="0 0 344 18" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_0_title" type="text" box="0 0 344 18" wide="0 244">
 		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/labels"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_viewmodel_visible" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_viewmodel_visible" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_visible_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_visible_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_visible_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_visible_seg1" x="249" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_visible_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_visible_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/labels" index="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_visible_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_visible_seg0" type="text" box="0 0 57 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="SHOW"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_visible_seg1" type="text" box="0 0 57 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="HIDE"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_visible_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="SHOW|HIDE"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_viewmodel_fov" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_viewmodel_fov" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_fov_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_fov_track" x="188" y="3"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_fov_value" x="252" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_fov_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_fov_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/labels" index="2"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_fov_track" box="0 0 62 14" wide="120 0" picture="main_menu/settings/slider_track">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_fov_track" box="0 0 62 14" wide="20 224" picture="main_menu/settings/slider_track">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_fov_thumb" x="0" y="0"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_fov_thumb" box="0 0 8 14" picture="main_menu/settings/slider_thumb"/>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_fov_value" type="text" box="0 0 76 20" wide="120 0" picture="main_menu/settings/slider_field">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_fov_value" type="text" box="0 0 76 20" wide="244 0" picture="main_menu/settings/slider_field">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 1" flags="no_focus_test"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_weapon_position" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_weapon_position" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/weapon_position_label" x="0" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/weapon_position_label" type="text" box="0 0 332 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/weapon_position_label" type="text" box="0 0 332 20" wide="0 244">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/labels" index="3"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_4" box="0 0 344 18" wide="-106 120" picture="main_menu/settings/section">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_4" box="0 0 344 18" wide="-106 244" picture="main_menu/settings/section">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_4_title" x="0" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_4_title" type="text" box="0 0 344 18" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_4_title" type="text" box="0 0 344 18" wide="0 244">
 		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/labels" index="4"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_first_person_legs" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_first_person_legs" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/first_person_legs_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/first_person_legs_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/first_person_legs_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/first_person_legs_seg1" x="240" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/first_person_legs_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/first_person_legs_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/labels" index="5"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/first_person_legs_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/first_person_legs_seg0" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="ON"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/first_person_legs_seg1" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="OFF"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/first_person_legs_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_6" box="0 0 344 18" wide="-106 120" picture="main_menu/settings/section">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_6" box="0 0 344 18" wide="-106 244" picture="main_menu/settings/section">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_6_title" x="0" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_6_title" type="text" box="0 0 344 18" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/section_6_title" type="text" box="0 0 344 18" wide="0 244">
 		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/labels" index="6"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_viewmodel_shield" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_viewmodel_shield" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_shield_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_shield_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_shield_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_shield_seg1" x="240" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_shield_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_shield_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/labels" index="7"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_shield_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_shield_seg0" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="ON"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_shield_seg1" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="OFF"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/viewmodel_shield_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_shield_color" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_shield_color" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/shield_color_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/shield_color_spinner" x="188" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/shield_color_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/shield_color_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/labels" index="8"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/shield_color_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/shield_color_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="DEFAULT|WHITE|BLACK|RED|BLUE|GRAY|YELLOW|GREEN|PINK|PURPLE|CYAN|COBALT|ORANGE|TEAL|SAGE|BROWN|TAN|MAROON|SALMON"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_overshield_effect" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_overshield_effect" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_effect_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_effect_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_effect_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_effect_seg1" x="240" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_effect_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_effect_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/labels" index="9"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_effect_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_effect_seg0" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="ON"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_effect_seg1" type="text" box="0 0 48 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="OFF"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_effect_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ON|OFF"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_overshield_layer_color" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/op_overshield_layer_color" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_layer_color_label" x="0" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_layer_color_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_layer_color_seg0" x="188" y="1"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_layer_color_seg1" x="263" y="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_layer_color_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_layer_color_label" type="text" box="0 0 184 20" wide="0 20">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/labels" index="10"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_layer_color_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_layer_color_seg0" type="text" box="0 0 71 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="LAYERS"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_layer_color_seg1" type="text" box="0 0 71 18" wide="20 0" place="keep_ends" picture="main_menu/settings/segment">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" flags="no_focus_test" text="RED"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/overshield_layer_color_spinner" type="spinner" box="0 1 140 19" wide="20 120" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="LAYERS|RED"/>
 	</look>
 </model>

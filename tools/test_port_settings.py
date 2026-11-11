@@ -89,6 +89,81 @@ def test_rows_bottom_counts_a_page_that_overflows():
     assert _rows_bottom(page, BUILDS["desktop"], True) > SETTINGS_ROWS_BOTTOM
 
 
+FUNCTIONS = (Path(__file__).resolve().parent.parent / "port/linux/game/menu_functions.c").read_text()
+
+
+def _functions_define(name):
+    return int(re.search(rf"#define {name} (\d+)", FUNCTIONS).group(1))
+
+
+def _help_lines(words, width):
+    """how many lines words take wrapped to a width in small_ui (settings_text_wrap: at spaces)"""
+    lines, line = 1, ""
+    for word in words.split(" "):
+        longer = f"{line} {word}" if line else word
+        if line and port_settings.small_ui_width(longer) > width:
+            lines, line = lines + 1, word
+        else:
+            line = longer
+    return lines
+
+
+def _help_room(page):
+    """the lines a page's panel has for a row's words under its name and value (settings_panel_show)"""
+    top = SETTINGS_TOP if "tab" in page else PAGE_TOP
+    name_top = top + 12
+    room = _functions_define("SETTINGS_PANEL_BOTTOM") - _functions_define("SETTINGS_PANEL_TEXT_MARGIN") - name_top - \
+        _functions_define("SETTINGS_PANEL_TEXT_TOP")
+    return room // port_settings.SMALL_UI_LINE
+
+
+# the panel's words' width at its narrowest, a wide screen's (16:9 and wider: SETTINGS_WIDE_PANEL)
+HELP_WIDTH = port_settings.SETTINGS_PANEL_WORDS + port_settings.SETTINGS_WIDE_PANEL[1]
+
+
+@pytest.mark.parametrize("folder", sorted(PAGES))
+def test_settings_help_fits(folder):
+    """each row's words fit the panel at its narrowest without their last lines cut (settings_panel_show cuts
+    them, after leaving out the note, which may go)"""
+    page = PAGES[folder]
+    assert port_settings.SMALL_UI_LINE == 20 and _functions_define("SETTINGS_PANEL_BOTTOM") == \
+        port_settings.SETTINGS_PANEL_BOTTOM
+    for entry in page["rows"]:
+        if entry[0] == SECTION or not entry[3]:
+            continue
+        words = entry[3].split("|", 1)[0]
+        lines = _help_lines(words, HELP_WIDTH)
+        assert lines <= _help_room(page), f"{folder}'s {entry[0]}: its words take {lines} lines of the panel's " \
+            f"{_help_room(page)} on a wide screen: say it in fewer"
+
+
+def test_help_check_sees_words_too_long():
+    """the check sees a help too long for the panel"""
+    assert _help_lines(" ".join(["WORDS"] * 200), HELP_WIDTH) > _help_room(PAGES["video_settings"])
+
+
+def test_segments_fit_at_16_9():
+    """every segmented row's segments fit in its row on a 16:9 screen (menu_functions.c's settings_segments_fit:
+    the room kept at the row's end), so that no wide screen has a spinner for one"""
+    extra = port_settings.WIDE_EXTRA
+    room = port_settings.SETTINGS_ROW_WIDTH + port_settings.wide_scale(port_settings.SETTINGS_WIDE_ROWS, extra) - \
+        _functions_define("SETTINGS_SEGMENTS_MARGIN")
+    segmented = 0
+    for folder, page in PAGES.items():
+        for entry in page["rows"]:
+            if entry[0] == SECTION or not port_settings.segmented(entry[1], entry[2]):
+                continue
+            segmented += 1
+            count, width = len(entry[2]), port_settings.segments_width(entry[2])
+            right = port_settings.SETTINGS_SPINNER_X + port_settings.wide_scale(port_settings.SETTINGS_WIDE_LABELS,
+                                                                                extra) + \
+                count * width + (count - 1) * port_settings.SEGMENT_GAP
+            assert right <= room, f"{folder}'s {entry[0]}: its segments end at {right}, past {room}"
+            # (each segment found by its name, which its instance keeps SETTINGS_WIDGET_NAME_SIZE long)
+            assert len(f"{_key(entry)}_seg{count - 1}") < _functions_define("SETTINGS_WIDGET_NAME_SIZE"), entry[0]
+    assert segmented and _functions_define("SETTINGS_SEGMENTS_MOST") == port_settings.SEGMENTED_MOST
+
+
 def _main_menu_items():
     """the main menu's items (the headset's VR TUTORIAL left out), in their
     order, with their places"""

@@ -70,14 +70,15 @@ def test_generator_is_the_engine():
 
 def test_game_menus_stay_centred():
     """Only the port's own screens (the generator's files) are laid out wide, and Multiplayer's title (the PC
-    version's, over the hub: WIDGET_PATCHES); every wide attribute is "dx dw" within the extra width."""
+    version's, over the hub: WIDGET_PATCHES); every wide attribute is "dx dw" within twice the extra width
+    (menu_tags.c)."""
     ours = {*port_settings.settings_files(), *port_settings.multiplayer_files(), *port_settings.campaign_files()}
     patched = {name for name, patch in port_settings.WIDGET_PATCHES.items() if "wide" in patch.get("set", {})}
     assert patched == {f"{MT}/header_multiplayer"}
     for path in sorted(menu_layout.CE.glob("*.xml")):
         for name, wide in re.findall(r'<widget name="([^"]+)"[^>]*? wide="([^"]*)"', path.read_text()):
             dx, dw = (int(value) for value in wide.split())
-            assert abs(dx) <= port_settings.WIDE_EXTRA and abs(dw) <= port_settings.WIDE_EXTRA, name
+            assert abs(dx) <= 2 * port_settings.WIDE_EXTRA and abs(dw) <= 2 * port_settings.WIDE_EXTRA, name
             assert path.name in ours or name in patched, f"{name} ({path.name}) is the game's own, laid out wide"
 
 
@@ -146,14 +147,23 @@ def test_settings_layout(aspect, folder, root, tab, platforms):
         _check_apart(tabs + prompts, "tabs")
         assert prompts[0].x1 <= min(box.x0 for box in tabs) and prompts[1].x0 >= max(box.x1 for box in tabs)
     # (wider as the screen is: at 16:9 the rows and panel as wide as the usable screen, less the margins; 21:9's
-    # 16:9's)
+    # 16:9's. The extra width the rows', and some of the panel's: the panel about a quarter of a 16:10 or 16:9
+    # screen)
     if width >= port_settings.WIDE_WIDTH:
         assert layout(root, width, platforms) == layout(root, port_settings.WIDE_WIDTH, platforms)
         assert rows[0].x0 - usable(width).x0 == 28 and usable(width).x1 - panel.x1 == 28
+        assert (panel.x1 - panel.x0) / port_settings.WIDE_WIDTH < 0.25
     if width > 640:
-        narrow = [box for box in layout(root, 640, platforms) if box.name in (rows[0].name, panel.name)]
-        assert rows[0].x1 - rows[0].x0 > narrow[0].x1 - narrow[0].x0
-        assert panel.x1 - panel.x0 > narrow[1].x1 - narrow[1].x0
+        narrow = layout(root, 640, platforms)
+        narrow_row, narrow_panel = one(narrow, rows[0].name), one(narrow, panel.name)
+        less = port_settings.wide_scale(port_settings.SETTINGS_WIDE_PANEL_LESS, port_settings.wide_extra_of(width))
+        assert rows[0].x1 - rows[0].x0 - (narrow_row.x1 - narrow_row.x0) == port_settings.wide_extra_of(width) + less
+        assert panel.x1 - panel.x0 == narrow_panel.x1 - narrow_panel.x0 - less
+        assert (panel.x1 - panel.x0) / min(width, port_settings.WIDE_WIDTH) < 0.28
+        # (the values' column longer: a spinner's, a slider's track)
+        for value in [box for box in boxes if box.name.endswith(("_spinner", "_track"))]:
+            before = [box for box in narrow if box.name == value.name and box.path == value.path]
+            assert before and value.x1 - value.x0 > before[0].x1 - before[0].x0, value
 
 
 @pytest.mark.parametrize("aspect", WIDTHS)

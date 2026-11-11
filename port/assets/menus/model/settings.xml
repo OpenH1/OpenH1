@@ -6,7 +6,7 @@
 		<about>The window, the frame rate and the graphics.</about>
 		<section key="section_0" title="DISPLAY"/>
 		<row key="mode" kind="choice" setting="display.mode" label="WINDOW" when="computer">
-			<help>How the game takes the screen. Fullscreen sets the display to the game's resolution; borderless covers the screen with a window, so that other windows open over it at once; windowed is a window you can move and resize. F11 switches between the window and the screen.</help>
+			<help>How the game takes the screen. Fullscreen sets the display to the game's resolution. Borderless covers it with a window that others open over. Windowed is a window to move and resize. F11 switches between the two.</help>
 			<choice shown="FULLSCREEN" value="fullscreen"/>
 			<choice shown="BORDERLESS" value="borderless"/>
 			<choice shown="WINDOWED" value="windowed"/>
@@ -27,7 +27,7 @@
 			<help>VSync, variable refresh (G-SYNC, FreeSync), the most frames a second and low latency.</help>
 		</row>
 		<row key="fov" kind="slider" setting="display.fov" label="FIELD OF VIEW" least="80" most="160" step="5" typed_least="20" typed_most="160">
-			<help>How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini Projection (First Person). Passenger seats use it too; driver and gunner: First Person.</help>
+			<help>How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini Projection. Passengers use it too; driver and gunner: First Person.</help>
 			<note>Click the number (or press A) to type 20 to 160. Capped at 110 in Pro 2v2 games.</note>
 			<stop shown="DEFAULT" value="0"/>
 			<stop shown="80" value="80"/>
@@ -457,7 +457,7 @@
 			<choice shown="DISK SPACE SAVER" value="730"/>
 		</row>
 		<row key="clear_caches" kind="status" label="CLEAR CACHES" run="port settings clear caches">
-			<help>Deletes what the game keeps only to start and load faster: the unpacked maps, their prepared draws, the menus' pictures, the ambient occlusion's volumes and the GPU's pipelines. They go at the next start and are made again as you play.</help>
+			<help>Deletes what the game keeps only to start and load faster: the unpacked maps, their prepared draws, the menus' pictures, the ambient occlusion's volumes and the GPU's pipelines, made again as you play.</help>
 			<note>Select it twice: the first asks, the second clears.</note>
 		</row>
 		<section key="section_8" title="HELP"/>
@@ -487,7 +487,7 @@
 	</screen>
 	<screen name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/advanced/advanced_graphics_screen" kind="settings" layout="page" title="ADVANCED GRAPHICS">
 		<row key="render_resolution" kind="choice" setting="display.render_resolution" label="RENDER RESOLUTION" when="computer">
-			<help>Full draws the game at your screen's resolution. Above 100% draws it larger and scales it down: finer detail and smoother edges, with any anti-aliasing, for over twice the graphics card's work at 150%, four times at 200%. Xbox draws the Xbox's 640x480 and scales it up: softer, and very light.</help>
+			<help>Full draws the game at your screen's resolution. Above 100% draws it larger and scales it down: finer and smoother, for over twice the graphics card's work at 150%, four times at 200%. Xbox draws 640x480, scaled up: softer, and very light.</help>
 			<choice shown="XBOX 640X480" value="original"/>
 			<choice shown="FULL" value="1"/>
 			<choice shown="125%" value="1.25"/>
@@ -552,7 +552,7 @@
 			<choice shown="ENHANCED" value="enhanced"/>
 		</row>
 		<row key="ambient_occlusion" kind="choice" setting="display.ambient_occlusion" label="AMBIENT OCCLUSION" when="desktop android">
-			<help>World: grounds characters, vehicles and scenery with soft shade where they meet the level and each other, worked out from the level's shape. The levels keep their own lighting. Ray Traced: the shade of characters and vehicles traced by the graphics card, where it can (else World).</help>
+			<help>World: soft shade where characters, vehicles and scenery meet the level and each other, from the level's shape; the levels keep their own lighting. Ray Traced: the shade of characters and vehicles traced by the graphics card, where it can (else World).</help>
 			<choice shown="OFF" value="off"/>
 			<choice shown="WORLD" value="world"/>
 			<choice shown="RAY TRACED" value="ray_traced"/>
@@ -571,7 +571,7 @@
 		</row>
 		<section key="section_13" title="GAME"/>
 		<row key="sim_rate" kind="choice" setting="game.sim_rate" label="TICK RATE">
-			<help>How often the world updates each second, in games on this device: the campaign, split screen and bots. 60 and 120 respond faster and take more of the processor. Online games play at their host's tick rate: an OpenH1 game's (OpenH1 60 Tick), a Legacy game's 30.</help>
+			<help>How often the world updates each second, in games on this device (campaign, split screen, bots). 60 and 120 respond faster and take more of the processor. Online games play at their host's tick rate: an OpenH1 game's (OpenH1 60 Tick), a Legacy game's 30.</help>
 			<choice shown="ORIGINAL (30)" value="30"/>
 			<choice shown="60" value="60"/>
 			<choice shown="120" value="120"/>
@@ -1088,7 +1088,7 @@
 			<note>With Steam Input, turn it off for OpenH1.</note>
 		</row>
 		<row key="gyro_aim" kind="choice" setting="input.gyro_aim" label="GYRO AIMING" when="gyro">
-			<help>Aim by turning the controller, as you would a mouse; the stick still works too. Hold to Aim: only while the gyro button is held. Hold to Pause: except while it is held, to re-center. Thumb on Stick: while your thumb touches the right stick (a Steam Deck, a Steam Controller).</help>
+			<help>Aim by turning the controller, as a mouse; the stick still works. Hold to Aim: only while the gyro button is held. Hold to Pause: except while it is held, to re-center. Thumb on Stick: while your thumb is on the right stick (Steam Deck, Steam Controller).</help>
 			<note>No aim assist on the gyro's aim.</note>
 			<choice shown="OFF" value="off"/>
 			<choice shown="ALWAYS ON" value="on"/>
