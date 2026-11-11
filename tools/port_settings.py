@@ -357,6 +357,9 @@ SMALL_UI_CAPITALS = {"A": 10.33, "B": 9.94, "C": 9.10, "D": 10.21, "E": 8.98, "F
 # (the tab keys' prompts: LB's at the margin, RB's after the last tab)
 SETTINGS_TAB_PROMPT_WIDTH = 30
 SETTINGS_PANEL_X, SETTINGS_PANEL_WIDTH, SETTINGS_PANEL_BOTTOM = 388, 224, 400
+# (its words SETTINGS_PANEL_INSET in from its sides)
+SETTINGS_PANEL_INSET = 12
+SETTINGS_PANEL_WORDS = SETTINGS_PANEL_WIDTH - 2 * SETTINGS_PANEL_INSET
 # the footer's band (bitmaps/gradient's line, at 409, over Defaults, OK and
 # Cancel): a page's rows, packed for any platform, end above it
 # (test_port_settings.py's test_settings_rows_fit). The list does not scroll
@@ -399,7 +402,9 @@ def arrows_bounds(height: int, left: int, right: int) -> tuple:
     return (f"{y} {left - ARROW_SM_WIDTH} {y + ARROW_SM_HEIGHT} {left}",
             f"{y} {right} {y + ARROW_SM_HEIGHT} {right + ARROW_SM_WIDTH}")
 # the Quality row's pictures in the panel (its stills: SETTINGS_STILLS)
-SETTINGS_STILL_WIDTH, SETTINGS_STILL_HEIGHT = 96, 60
+# (side by side, SETTINGS_STILL_GAP apart, in the middle of the panel at its
+# narrowest, a wide screen's)
+SETTINGS_STILL_WIDTH, SETTINGS_STILL_HEIGHT, SETTINGS_STILL_GAP = 88, 55, 6
 # (the panel's pictures' corners, rounded as their frames are: still_frame's
 # rim, SETTINGS_STILL_RIM wide, is drawn this far in, its outer edge at the
 # picture's; tools/ce_menus.py's Art.still cuts each picture's corners to
@@ -463,11 +468,34 @@ def wide_spread(index: int, count: int) -> int:
     return round(-WIDE_HALF + index * WIDE_EXTRA / max(count - 1, 1))
 
 
-# Settings on a wide screen: the rows from the screen's left, SETTINGS_WIDE_ROWS
-# wider (the labels' column; the values at the rows' right), the panel beside
-# them to the screen's right, wider by the rest, the tabs spread across it
-SETTINGS_WIDE_ROWS = 120
-SETTINGS_WIDE_PANEL = (-WIDE_HALF + SETTINGS_WIDE_ROWS, WIDE_EXTRA - SETTINGS_WIDE_ROWS)
+# Settings on a wide screen: the panel at the screen's right, SETTINGS_WIDE_PANEL_LESS
+# narrower than the 640 have it (about a quarter of a 16:10 screen, a little
+# less of 16:9's; its help wraps to more lines: test_port_settings.py's
+# test_settings_help_fits), the rows from the screen's left to it, wider by
+# the extra width and what the panel gave up: SETTINGS_WIDE_LABELS of it the
+# labels' column's, the rest the values' (about a third and two thirds of a
+# 16:9 screen's rows); the tabs spread across it
+SETTINGS_WIDE_PANEL_LESS = 32
+SETTINGS_WIDE_ROWS = WIDE_EXTRA + SETTINGS_WIDE_PANEL_LESS
+SETTINGS_WIDE_LABELS = 20
+SETTINGS_WIDE_VALUES = SETTINGS_WIDE_ROWS - SETTINGS_WIDE_LABELS
+SETTINGS_WIDE_PANEL = (WIDE_HALF + SETTINGS_WIDE_PANEL_LESS, -SETTINGS_WIDE_PANEL_LESS)
+# a spinner at the values' column's left, SETTINGS_WIDE_SPINNER wider (not
+# the whole column: its value and arrows kept together); a slider's track the
+# whole column, its number at the column's end
+SETTINGS_WIDE_SPINNER = 120
+# a setting of two or three choices (SEGMENTED_MOST), segmented: each choice
+# a segment at the values' column's left, the one chosen lit (Settings'
+# current tab's frame), one click choosing it; left and right step them as
+# its spinner's, which holds the choice, hidden while the segments show
+# (menu_functions.c's settings_segments_show: wherever they fit in the row,
+# else the spinner). Each SEGMENT_PAD either side of the longest choice,
+# SEGMENT_LEAST wide at least, SEGMENT_GAP apart; not the settings whose
+# choices the game adds to or rewrites (menu_tags.c's spinner_expand)
+SEGMENTED_MOST = 3
+SEGMENT_PAD, SEGMENT_LEAST, SEGMENT_GAP, SEGMENT_HEIGHT = 8, 48, 4, 18
+SEGMENT_NOT = {"display.vrr", "display.resolution", "display.window_size", "display.refresh_rate",
+               "audio.output_device", "audio.input_device"}
 
 DISPLAY_MODES = [("FULLSCREEN", "fullscreen"), ("BORDERLESS", "borderless"), ("WINDOWED", "windowed")]
 # input.left_stick_dead_zone's and right's: the game's own (-1), or a part of
@@ -641,9 +669,9 @@ PAGES = {
         "rows": [
             (SECTION, "DISPLAY"),
             ("WINDOW", "display.mode", DISPLAY_MODES,
-             "How the game takes the screen. Fullscreen sets the display to the game's resolution; borderless covers "
-             "the screen with a window, so that other windows open over it at once; windowed is a window you can "
-             "move and resize. F11 switches between the window and the screen.", "computer"),
+             "How the game takes the screen. Fullscreen sets the display to the game's resolution. Borderless "
+             "covers it with a window that others open over. Windowed is a window to move and resize. F11 "
+             "switches between the two.", "computer"),
             # (in Window Size's place, the one the display mode shown uses:
             # SETTINGS_ROW_WHEN; port/linux/game/menu_tags.c
             # adds the display's resolutions, and puts the sizes that fit the
@@ -664,8 +692,8 @@ PAGES = {
              "VSync, variable refresh (G-SYNC, FreeSync), the most frames a second and low latency.", None),
             ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
              "How wide you see on foot, in degrees across 16:9. Default is the Xbox's. Above 150 needs Panini "
-             "Projection (First Person). Passenger seats use it too; driver and gunner: First Person.|Click the "
-             "number (or press A) to type 20 to 160. Capped at 110 in Pro 2v2 games.", None),
+             "Projection. Passengers use it too; driver and gunner: First Person.|Click the number (or press A) "
+             "to type 20 to 160. Capped at 110 in Pro 2v2 games.", None),
             ("ORIENTATION", "display.orientation",
              [("LANDSCAPE", "landscape"), ("PORTRAIT", "portrait"), ("AUTO", "auto")],
              "Which way up you hold the device. Portrait has a strip of buttons along the top, the picture under "
@@ -927,8 +955,8 @@ PAGES = {
             # menu_functions.c's clear_caches_show; port/linux/src/game_caches.c)
             ("CLEAR CACHES", None, None,
              "Deletes what the game keeps only to start and load faster: the unpacked maps, their prepared "
-             "draws, the menus' pictures, the ambient occlusion's volumes and the GPU's pipelines. They go at the "
-             "next start and are made again as you play.|Select it twice: the first asks, the second clears.",
+             "draws, the menus' pictures, the ambient occlusion's volumes and the GPU's pipelines, made again "
+             "as you play.|Select it twice: the first asks, the second clears.",
              None, "clear_caches", "port settings clear caches"),
             # (port/linux/src/report.c: saved at the next frame, and a GitHub
             # issue opened in the browser, filled in; the game sends nothing)
@@ -969,9 +997,9 @@ PAGES = {
             # with any anti-aliasing, drawn at their resolution:
             # d3d8_device.c's screen_mode_choose; not iOS's)
             ("RENDER RESOLUTION", "display.render_resolution", RENDER_RESOLUTIONS,
-             "Full draws the game at your screen's resolution. Above 100% draws it larger and scales it down: finer "
-             "detail and smoother edges, with any anti-aliasing, for over twice the graphics card's work at 150%, "
-             "four times at 200%. Xbox draws the Xbox's 640x480 and scales it up: softer, and very light.",
+             "Full draws the game at your screen's resolution. Above 100% draws it larger and scales it down: "
+             "finer and smoother, for over twice the graphics card's work at 150%, four times at 200%. Xbox draws "
+             "640x480, scaled up: softer, and very light.",
              "computer"),
             ("ANTI-ALIASING", "display.anti_aliasing",
              [("OFF", "off"), ("FXAA", "fxaa"), ("SMAA", "smaa"), ("MSAA 2X", "msaa2x"), ("MSAA 4X", "msaa4x"),
@@ -1007,9 +1035,9 @@ PAGES = {
              "desktop android"),
             ("AMBIENT OCCLUSION", "display.ambient_occlusion",
              [("OFF", "off"), ("WORLD", "world"), ("RAY TRACED", "ray_traced")],
-             "World: grounds characters, vehicles and scenery with soft shade where they meet the level and each "
-             "other, worked out from the level's shape. The levels keep their own lighting. Ray Traced: the shade "
-             "of characters and vehicles traced by the graphics card, where it can (else World).", "desktop android"),
+             "World: soft shade where characters, vehicles and scenery meet the level and each other, from the "
+             "level's shape; the levels keep their own lighting. Ray Traced: the shade of characters and vehicles "
+             "traced by the graphics card, where it can (else World).", "desktop android"),
             ("SHIELD GLOW", "display.shield_glow", ON_OFF,
              "Shields light their surroundings as they flare, in the shield's own color. Online: the host's "
              "choice.|Off in Pro 2v2 games, for everyone.", None),
@@ -1021,9 +1049,9 @@ PAGES = {
             # says, a network game of other machines, a film's playback:
             # menu_functions.c's sim_rate_row_show)
             ("TICK RATE", "game.sim_rate", [("ORIGINAL (30)", "30"), ("60", "60"), ("120", "120")],
-             "How often the world updates each second, in games on this device: the campaign, split screen and "
-             "bots. 60 and 120 respond faster and take more of the processor. Online games play at their host's "
-             "tick rate: an OpenH1 game's (OpenH1 60 Tick), a Legacy game's 30.", None),
+             "How often the world updates each second, in games on this device (campaign, split screen, bots). "
+             "60 and 120 respond faster and take more of the processor. Online games play at their host's tick "
+             "rate: an OpenH1 game's (OpenH1 60 Tick), a Legacy game's 30.", None),
             # (game.enhanced_animations: the preset's, Classic's off, as the
             # Xbox played; a network game's turning is its host's:
             # network_standard_turns_with_aim)
@@ -1323,9 +1351,9 @@ PAGES = {
             ("GYRO AIMING", "input.gyro_aim",
              [("OFF", "off"), ("ALWAYS ON", "on"), ("HOLD TO AIM", "hold"), ("HOLD TO PAUSE", "pause"),
               ("THUMB ON STICK", "touch")],
-             "Aim by turning the controller, as you would a mouse; the stick still works too. Hold to Aim: only "
-             "while the gyro button is held. Hold to Pause: except while it is held, to re-center. Thumb on "
-             "Stick: while your thumb touches the right stick (a Steam Deck, a Steam Controller).|No aim assist "
+             "Aim by turning the controller, as a mouse; the stick still works. Hold to Aim: only while the "
+             "gyro button is held. Hold to Pause: except while it is held, to re-center. Thumb on Stick: while "
+             "your thumb is on the right stick (Steam Deck, Steam Controller).|No aim assist "
              "on the gyro's aim.", None),
             ("GYRO BUTTON", "input.gyro_button", GYRO_BUTTONS,
              "The button that Hold to Aim and Hold to Pause hold. It still does its own action too: Button "
@@ -1934,6 +1962,17 @@ def _settings_row_when(key: str, setting, platform):
     return " ".join(f"{name}+{term}" for name in platform.split() for term in condition.split())
 
 
+def segmented(setting, choices) -> bool:
+    """whether a row's setting is segmented (SEGMENTED_MOST)"""
+    return bool(setting) and isinstance(choices, list) and 2 <= len(choices) <= SEGMENTED_MOST and \
+        setting not in SEGMENT_NOT
+
+
+def segments_width(choices) -> int:
+    """the width of each of a segmented row's segments"""
+    return max(SEGMENT_LEAST, max(small_ui_width(shown) for shown, _ in choices) + 2 * SEGMENT_PAD)
+
+
 def _settings_page(folder: str, page: dict) -> list:
     """a tab of Settings, or a page a row opens: the title, the tabs (a
     tab's), the rows under their sections, the panel (the list's
@@ -1994,7 +2033,8 @@ def _settings_page(folder: str, page: dict) -> list:
                                       [("width", value_x - 4 if spun or status else SETTINGS_ROW_WIDTH - 12),
                                        ("height", SETTINGS_ROW_HEIGHT), *label_text, ("color", SETTINGS_BLUE),
                                        ("text_x", 10), ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT)),
-                                       ("wide", wide(0, SETTINGS_WIDE_ROWS))])
+                                       ("wide", wide(0, SETTINGS_WIDE_LABELS if (spun or status) and not named_row
+                                                     else SETTINGS_WIDE_ROWS))])
         row_pairs = [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_ROW_HEIGHT),
                      ("flags", "pass_unhandled_to_focused_child"), ("bitmap", f"{SETTINGS}/row"),
                      ("color", SETTINGS_BLUE), ("platform", platform),
@@ -2047,7 +2087,7 @@ def _settings_page(folder: str, page: dict) -> list:
             extra += _widget(f"{base}/{key}_track", [("controller", 1), ("width", SLIDER_TRACK_WIDTH),
                                                      ("height", SLIDER_TRACK_HEIGHT),
                                                      ("bitmap", f"{SETTINGS}/slider_track"),
-                                                     ("wide", wide(SETTINGS_WIDE_ROWS))],
+                                                     ("wide", wide(SETTINGS_WIDE_LABELS, SETTINGS_WIDE_VALUES))],
                              [f'<child widget="{base}/{key}_thumb"/>'])
             extra += _widget(f"{base}/{key}_thumb", [("controller", 1), ("width", SLIDER_THUMB_WIDTH),
                                                      ("height", SLIDER_TRACK_HEIGHT),
@@ -2063,9 +2103,22 @@ def _settings_page(folder: str, page: dict) -> list:
                                                             ("wide", wide(SETTINGS_WIDE_ROWS))])
         elif spun:
             spinner_arrows = arrows_bounds(SETTINGS_ROW_HEIGHT, 0, SETTINGS_SPINNER_WIDTH)
-            extra += _widget(row, row_pairs, [f'<child widget="{base}/{key}_label"/>',
-                                              f'<child widget="{base}/{key}_spinner" x="{SETTINGS_SPINNER_X}"/>'])
+            segments = segmented(setting, choices)
+            segment_width = segments_width(choices) if segments else 0
+            extra += _widget(row, row_pairs, [
+                f'<child widget="{base}/{key}_label"/>',
+                f'<child widget="{base}/{key}_spinner" x="{SETTINGS_SPINNER_X}"/>',
+                *(f'<child widget="{base}/{key}_seg{index}" '
+                  f'x="{SETTINGS_SPINNER_X + index * (segment_width + SEGMENT_GAP)}" '
+                  f'y="{(SETTINGS_ROW_HEIGHT - SEGMENT_HEIGHT) // 2}"/>' for index in range(len(choices) if segments else 0))])
             extra += label_widget
+            for index, (shown, _) in enumerate(choices if segments else []):
+                extra += _settings_text(f"{base}/{key}_seg{index}",
+                                        [("width", segment_width), ("height", SEGMENT_HEIGHT),
+                                         ("flags", "keep_ends"), ("bitmap", f"{SETTINGS}/segment"),
+                                         ("text", shown), ("color", SETTINGS_BLUE), ("align", "center"),
+                                         ("text_y", caps_text_y(SEGMENT_HEIGHT)), ("text_flags", "no_focus_test"),
+                                         ("wide", wide(SETTINGS_WIDE_LABELS))])
             extra += _widget(f"{base}/{key}_spinner",
                              [("type", "spinner"), ("top", SETTINGS_SPINNER_TOP), ("width", SETTINGS_SPINNER_WIDTH),
                               ("height", SETTINGS_ROW_HEIGHT - 2 * SETTINGS_SPINNER_TOP),
@@ -2075,8 +2128,11 @@ def _settings_page(folder: str, page: dict) -> list:
                               ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE), ("align", "center"), ("text_y", 0),
                               ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
                               ("header_bounds", spinner_arrows[0]), ("footer_bounds", spinner_arrows[1]),
-                              ("wide", wide(SETTINGS_WIDE_ROWS))],
-                             ['<on event="created" run="port setting load"/>'] if setting else [])
+                              ("wide", wide(SETTINGS_WIDE_LABELS, SETTINGS_WIDE_SPINNER))],
+                             (['<on event="created" run="port setting load"/>'] if setting else []) +
+                             # (a segmented row's A, and a click on the row, as its
+                             # spinner is hidden: a segment chosen)
+                             (['<on event="a" run="port setting segment"/>'] if segments else []))
         else:
             # (a row that opens a page, choices: its screen; run: a function
             # first; none: nothing to open)
@@ -2109,7 +2165,8 @@ def _settings_page(folder: str, page: dict) -> list:
                                                                 ("align", "right" if named_row else "center"),
                                                                 ("text_y", caps_text_y(SETTINGS_ROW_HEIGHT, 2)),
                                                                 ("text_flags", "no_focus_test"),
-                                                                ("wide", wide(SETTINGS_WIDE_ROWS))])
+                                                                ("wide", wide(SETTINGS_WIDE_ROWS) if named_row else
+                                                                 wide(SETTINGS_WIDE_LABELS, SETTINGS_WIDE_SPINNER))])
         labels.append(label)
         helps.append(help_text)
     lines = []
@@ -2187,11 +2244,12 @@ def _settings_shared() -> list:
         # Quality row's pictures)
         height = SETTINGS_PANEL_BOTTOM - top
         # (a description's children are placed on the screen, not in it)
-        left, still_y = SETTINGS_PANEL_X + 14, top + 52
+        left, still_y = SETTINGS_PANEL_X + SETTINGS_PANEL_INSET, top + 52
         children = [f'<child widget="{SETTINGS}/panel_name" x="{left}" y="{top + 12}"/>',
                     f'<child widget="{SETTINGS}/panel_value" x="{left}" y="{top + 26}"/>']
         for index, still in enumerate(("classic", "enhanced")):
-            x = SETTINGS_PANEL_X + 12 + index * (SETTINGS_STILL_WIDTH + 8)
+            x = SETTINGS_PANEL_X + (SETTINGS_PANEL_WIDTH - 2 * SETTINGS_STILL_WIDTH - SETTINGS_STILL_GAP) // 2 + \
+                index * (SETTINGS_STILL_WIDTH + SETTINGS_STILL_GAP)
             children += [f'<child widget="{SETTINGS}/panel_{still}" x="{x}" y="{still_y}"/>',
                          f'<child widget="{SETTINGS}/panel_{still}_frame" x="{x}" y="{still_y}"/>',
                          f'<child widget="{SETTINGS}/panel_{still}_caption" x="{x}" y="{still_y + SETTINGS_STILL_HEIGHT + 2}"/>']
@@ -2199,21 +2257,31 @@ def _settings_shared() -> list:
                      f'x="{SETTINGS_PANEL_X + (SETTINGS_PANEL_WIDTH - SETTINGS_PICTURE_WIDTH) // 2}" y="{still_y}"/>'
                      for key in SETTINGS_VALUE_PICTURES]
         children += [f'<child widget="{SETTINGS}/panel_text" x="{left}" y="{top + 52}"/>',
-                     f'<child widget="{SETTINGS}/panel_note" x="{left}" y="{top + height - 40}"/>']
+                     f'<child widget="{SETTINGS}/panel_note" x="{left}" y="{top + height - 40}"/>',
+                     f'<child widget="{SETTINGS}/panel_facts" x="{left}" y="{top + height - 40}"/>',
+                     f'<child widget="{SETTINGS}/panel_facts_values" x="{left}" y="{top + height - 40}"/>']
         lines += _widget(f"{SETTINGS}/{kind}_panel",
                          [("controller", 1), ("left", SETTINGS_PANEL_X), ("top", top),
-                          ("width", SETTINGS_PANEL_WIDTH), ("height", height),
+                          ("width", SETTINGS_PANEL_WIDTH), ("height", height), ("flags", "keep_ends"),
                           ("bitmap", f"{SETTINGS}/{kind}_panel"), ("wide", wide(*SETTINGS_WIDE_PANEL))], children)
     # (in a wider panel: its words wider, its pictures in its middle)
     grown, middle = wide(0, SETTINGS_WIDE_PANEL[1]), wide(SETTINGS_WIDE_PANEL[1] / 2)
-    lines += _settings_text(f"{SETTINGS}/panel_name", [("width", 196), ("height", 18), ("color", SETTINGS_DIM),
+    lines += _settings_text(f"{SETTINGS}/panel_name", [("width", SETTINGS_PANEL_WORDS), ("height", 18), ("color", SETTINGS_DIM),
                                                       ("wide", grown)])
-    lines += _settings_text(f"{SETTINGS}/panel_value", [("width", 196), ("height", 24), ("font", "ui\\large_ui"),
+    lines += _settings_text(f"{SETTINGS}/panel_value", [("width", SETTINGS_PANEL_WORDS), ("height", 24), ("font", "ui\\large_ui"),
                                                        ("color", "#FFFFFFFF"), ("wide", grown)])
-    lines += _settings_text(f"{SETTINGS}/panel_text", [("width", 196), ("height", 220), ("color", SETTINGS_BLUE),
+    lines += _settings_text(f"{SETTINGS}/panel_text", [("width", SETTINGS_PANEL_WORDS), ("height", 220), ("color", SETTINGS_BLUE),
                                                       ("wide", grown)])
-    lines += _settings_text(f"{SETTINGS}/panel_note", [("width", 196), ("height", 40), ("color", SETTINGS_DIM),
+    lines += _settings_text(f"{SETTINGS}/panel_note", [("width", SETTINGS_PANEL_WORDS), ("height", 40), ("color", SETTINGS_DIM),
                                                       ("wide", grown)])
+    # (what the panel's row is: its default, and whether the host decides it
+    # online; each fact's name, and its value at the panel's right:
+    # menu_functions.c's settings_facts)
+    lines += _settings_text(f"{SETTINGS}/panel_facts", [("width", SETTINGS_PANEL_WORDS), ("height", 40),
+                                                       ("color", SETTINGS_DIM), ("wide", grown)])
+    lines += _settings_text(f"{SETTINGS}/panel_facts_values", [("width", SETTINGS_PANEL_WORDS), ("height", 40),
+                                                              ("color", "#FFFFFFFF"), ("align", "right"),
+                                                              ("wide", grown)])
     for index, still in enumerate(("classic", "enhanced")):
         lines += _widget(f"{SETTINGS}/panel_{still}", [("controller", 1), ("width", SETTINGS_STILL_WIDTH),
                                                        ("height", SETTINGS_STILL_HEIGHT),
@@ -2263,7 +2331,9 @@ def _settings_shared() -> list:
     for side in ("left", "right"):
         lines += _widget(f"{SETTINGS}/stepped_{side}", [("controller", 1), ("width", 16),
                                                         ("height", 16), ("bitmap", f"bitmaps/arrow_sm_{side}"),
-                                                        ("wide", wide(SETTINGS_WIDE_ROWS))], [])
+                                                        ("wide", wide(SETTINGS_WIDE_LABELS if side == "left"
+                                                                      else SETTINGS_WIDE_LABELS +
+                                                                      SETTINGS_WIDE_SPINNER))], [])
     return lines
 
 
@@ -2326,6 +2396,12 @@ def settings_pictures() -> list:
         (f"{SETTINGS}/tab_current",
          [(_svg(tab_w, tab_h, [_rounded(tab_w, tab_h, 1, 8, "#0a2a5a", 0.75, "#2299ff", 2)]), tab_w, tab_h),
           (_svg(tab_w, tab_h, [_rounded(tab_w, tab_h, 1, 8, "#0d3a7a", 0.9, "#8cc8ff", 2)]), tab_w, tab_h)]),
+        # (a segmented row's segment: nothing, and the one chosen framed as the
+        # current tab is; its ends kept at the segment's width)
+        (f"{SETTINGS}/segment",
+         [(_svg(SEGMENT_LEAST, SEGMENT_HEIGHT, []), SEGMENT_LEAST, SEGMENT_HEIGHT),
+          (_svg(SEGMENT_LEAST, SEGMENT_HEIGHT, [_rounded(SEGMENT_LEAST, SEGMENT_HEIGHT, 1, 8, "#0a2a5a", 0.75,
+                                                         "#2299ff", 2)]), SEGMENT_LEAST, SEGMENT_HEIGHT)]),
     ]
     # (a slider's track, a groove in the redraws' navy and blue rim, and its
     # thumb, a blue tab)
@@ -2408,7 +2484,8 @@ SETTINGS_STILLS_MADE = [
     "(`port/assets/menus/stills`). They are this port's own drawing of the game: a local",
     "Slayer game on Blood Gulch (`debug.network_test = \"local:bloodgulch:slayer\"`, `debug.random_seed = 7`,",
     "four bots), the same frame of each run captured offscreen by the macOS build at 1600x1200",
-    "(`debug.screenshot_every`), cropped to 16:10, scaled to 288x180 (three times their size in the menu) and",
+    "(`debug.screenshot_every`), cropped to 16:10, scaled to 288x180 (the menus' copies 264x165, three times their",
+    "size in the menu) and",
     "reduced to 96 colors for size. The pictures of other rows' values are made the same way at the frame 12 s",
     "into the game with the setting set, 320x200 (twice their size in the menu), reduced to 64 colors: the whole",
     "view, or a part of it at 1:1 or larger. The menus ship them with their corners cut round, and the others'",
@@ -3527,8 +3604,10 @@ SETUP_NODE_SCREENS = [*SETUP_NODE_WHEN, f"{SS}/voice_options/voice_options_scree
 def settings_look_roles() -> dict:
     """the Settings screens' widgets that menu_functions.c finds by what they are, their role in their look
     (model/look's role=, written by tools/menu_look.py), by their names: each tab's or page's tabs and button bar,
-    and the panel's name, value, words, note and Quality's two stills (each with its frame and caption)"""
+    and the panel's name, value, words, note, facts and Quality's two stills (each with its frame and caption)"""
     roles = {f"{SETTINGS}/panel_{part}": f"panel {part}" for part in ("name", "value", "text", "note")}
+    roles[f"{SETTINGS}/panel_facts"] = "panel facts"
+    roles[f"{SETTINGS}/panel_facts_values"] = "panel facts values"
     for still in ("classic", "enhanced"):
         roles[f"{SETTINGS}/panel_{still}"] = f"still {still}"
         for part in ("frame", "caption"):

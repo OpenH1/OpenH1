@@ -299,6 +299,9 @@ struct menu_wide
 	ui_widget_port_past_scale) */
 	short past_dx, past_dw;
 	short x1;
+	/* a spinner's right arrow's sides (its footer's), which move with its
+	right side */
+	short footer_x0, footer_x1;
 };
 
 /* a widget of the menus' files as the menu engine draws it
@@ -545,6 +548,8 @@ static char const *const port_function_names[] =
 	"port discord link", "port discord unlink",
 	/* (Settings' sliders: menu_functions.c's settings_slider_*) */
 	"port slider left", "port slider right", "port slider edit",
+	/* (Settings' segmented rows: menu_functions.c's settings_segment_pick) */
+	"port setting segment",
 	/* (the server browsers' favorites: menu_functions.c's browser_favorite_toggle) */
 	"port browser favorite",
 	/* (internet play's connecting box: menu_functions.c's connect_dialog) */
@@ -827,13 +832,20 @@ static struct menu_wide const *wide_of(long definition_index)
 }
 
 /* a widget's definition as much wider as its wide layout says at an extra
-width (and past 16:9's) */
+width (and past 16:9's; a spinner's right arrow with its right side) */
 static void wide_apply(struct menu_wide const *wide, short extra, short past)
 {
 	if (wide->definition && (wide->dw || wide->past_dw))
 	{
-		wide->definition->bounds.x1 = (short)(wide->x1 + (wide_anchored(wide) ? 0 :
-			ui_widget_port_wide_scale(wide->dw, extra) + ui_widget_port_past_scale(wide->past_dw, past)));
+		short grown = wide_anchored(wide) ? 0 :
+			(short)(ui_widget_port_wide_scale(wide->dw, extra) + ui_widget_port_past_scale(wide->past_dw, past));
+
+		wide->definition->bounds.x1 = (short)(wide->x1 + grown);
+		if (wide->definition->type == _widget_type_spinner_list)
+		{
+			wide->definition->list_footer_bounds.x0 = (short)(wide->footer_x0 + grown);
+			wide->definition->list_footer_bounds.x1 = (short)(wide->footer_x1 + grown);
+		}
 	}
 }
 
@@ -1993,6 +2005,8 @@ static void *widget_build(long widget_index)
 		source->file, source->line);
 	definition->horizontal_offset = (short)source->text_x;
 	definition->vertical_offset = (short)source->text_y;
+	parse_bounds(source->header_bounds, &definition->list_header_bounds, source->file, source->line);
+	parse_bounds(source->footer_bounds, &definition->list_footer_bounds, source->file, source->line);
 	/* its wide layout: "dx dw" (ui_widget_port_wide_layout) */
 	if (source->wide)
 	{
@@ -2000,10 +2014,10 @@ static void *widget_build(long widget_index)
 		long dx, dw;
 		char end;
 
-		if (sscanf(source->wide, "%ld %ld %c", &dx, &dw, &end) != 2 || dx < -WIDE_LAYOUT_EXTRA ||
-			dx > WIDE_LAYOUT_EXTRA || dw < -WIDE_LAYOUT_EXTRA || dw > WIDE_LAYOUT_EXTRA)
+		if (sscanf(source->wide, "%ld %ld %c", &dx, &dw, &end) != 2 || dx < -2 * WIDE_LAYOUT_EXTRA ||
+			dx > 2 * WIDE_LAYOUT_EXTRA || dw < -2 * WIDE_LAYOUT_EXTRA || dw > 2 * WIDE_LAYOUT_EXTRA)
 		{
-			problem(source->file, source->line, "wide is \"dx dw\", each -212 to 212:", source->wide);
+			problem(source->file, source->line, "wide is \"dx dw\", each -424 to 424:", source->wide);
 		}
 		else if (index >= 0 && index < menu_tags.wide_count)
 		{
@@ -2011,6 +2025,8 @@ static void *widget_build(long widget_index)
 			menu_tags.wides[index].dx = (short)dx;
 			menu_tags.wides[index].dw = (short)dw;
 			menu_tags.wides[index].x1 = definition->bounds.x1;
+			menu_tags.wides[index].footer_x0 = definition->list_footer_bounds.x0;
+			menu_tags.wides[index].footer_x1 = definition->list_footer_bounds.x1;
 		}
 	}
 	/* the list */
@@ -2042,8 +2058,6 @@ static void *widget_build(long widget_index)
 		reference_set(&definition->list_footer_bitmap, BITMAP_GROUP_TAG,
 			tag_named(BITMAP_GROUP_TAG, source->footer_bitmap, source->file, source->line));
 	}
-	parse_bounds(source->header_bounds, &definition->list_header_bounds, source->file, source->line);
-	parse_bounds(source->footer_bounds, &definition->list_footer_bounds, source->file, source->line);
 	reference_clear(&definition->extended_description_widget, UI_WIDGET_DEFINITION_TAG);
 	if (source->description)
 	{
@@ -2591,10 +2605,10 @@ static boolean look_make(struct menu_look *made, long tag_index)
 		long dx = 0, dw = 0, past_dx = 0, past_dw = 0;
 		char end;
 
-		if (look->wide && (sscanf(look->wide, "%ld %ld %c", &dx, &dw, &end) != 2 || dx < -WIDE_LAYOUT_EXTRA ||
-			dx > WIDE_LAYOUT_EXTRA || dw < -WIDE_LAYOUT_EXTRA || dw > WIDE_LAYOUT_EXTRA))
+		if (look->wide && (sscanf(look->wide, "%ld %ld %c", &dx, &dw, &end) != 2 || dx < -2 * WIDE_LAYOUT_EXTRA ||
+			dx > 2 * WIDE_LAYOUT_EXTRA || dw < -2 * WIDE_LAYOUT_EXTRA || dw > 2 * WIDE_LAYOUT_EXTRA))
 		{
-			look_missing(made->name, "its wide is not \"dx dw\", each -212 to 212:", look->wide);
+			look_missing(made->name, "its wide is not \"dx dw\", each -424 to 424:", look->wide);
 			return FALSE;
 		}
 		if (look->past && (sscanf(look->past, "%ld %ld %c", &past_dx, &past_dw, &end) != 2 ||
@@ -2610,6 +2624,8 @@ static boolean look_make(struct menu_look *made, long tag_index)
 		made->wide.past_dx = (short)past_dx;
 		made->wide.past_dw = (short)past_dw;
 		made->wide.x1 = definition->bounds.x1;
+		made->wide.footer_x0 = definition->list_footer_bounds.x0;
+		made->wide.footer_x1 = definition->list_footer_bounds.x1;
 		wide_apply(&made->wide, menu_tags.wide_extra, menu_tags.past_extra);
 	}
 	made->definition = definition;

@@ -190,7 +190,9 @@ extra width on a narrower one (16:10's 128 of 212), none at 4:3. A move
 carries what is in the widget, as an anchor does; a widened picture keeps
 its ends and stretches its middle. `-106 0` keeps a widget as far from the
 screen's left edge as the 640 have it from theirs, `106 0` from the right;
-`-106 212` stretches it across. `tools/port_settings.py`'s `wide`,
+`-106 212` stretches it across (each of dx and dw within -424 to 424: a
+widget may grow by more than the extra width, Settings' rows by what the
+panel beside them gives up). `tools/port_settings.py`'s `wide`,
 `WIDE_LEFT`, `WIDE_RIGHT` and `wide_spread` (tabs) write them, and
 `tools/harness/menu_layout.py` lays a screen out at a width for its tests.
 Their rows, panels, tabs and buttons keep `WIDE_MARGIN` (24 units) from the

@@ -251,6 +251,8 @@ static struct settings_slider const *settings_slider_of(struct widget_instance c
 static double settings_slider_value(struct settings_slider const *slider);
 static void settings_slider_text(struct settings_slider const *slider, double value, char *text, unsigned int size);
 static short settings_slider_stop_nearest(struct settings_slider const *slider);
+static boolean settings_slider_text_value(struct settings_slider const *slider, char const *text, double *value);
+static char const *settings_slider_setting(struct settings_slider const *slider);
 
 static boolean text_is_number(char const *text, double *number)
 {
@@ -3624,11 +3626,157 @@ static boolean discord_unlink(void)
 (after a "|", a note under them); Quality's pictures, the preset shown
 framed, or a picture of the value shown (settings_value_picture_show); the
 tabs' and the buttons' own words */
+/* the words a help says the host decides a setting by, online (taken out
+of the words: the panel's facts say it) */
+static wchar_t const settings_host_choice[] = L"Online: the host's choice.";
+
+/* words without what a help says of the host's choice, and whether it did */
+static boolean settings_host_choice_cut(wchar_t *words)
+{
+	short length = (short)(NUMBEROF(settings_host_choice) - 1), at, index;
+
+	for (at = 0; words[at]; at++)
+	{
+		for (index = 0; index < length && words[at + index] == settings_host_choice[index]; index++)
+		{
+		}
+		if (index == length)
+		{
+			short start = at;
+
+			/* (and the space before it) */
+			while (start > 0 && words[start - 1] == ' ')
+				start--;
+			for (index = 0; (words[start + index] = words[at + length + index]) != 0; index++)
+			{
+			}
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+/* words added to the end of others, ROW_TEXT_LENGTH at most */
+static void settings_words_add(wchar_t *words, wchar_t const *more)
+{
+	short length = 0;
+
+	while (length < ROW_TEXT_LENGTH - 1 && words[length])
+		length++;
+	while (length < ROW_TEXT_LENGTH - 1 && *more)
+		words[length++] = *more++;
+	words[length] = 0;
+}
+
+/* the panel's facts of a row: their names and values */
+#define SETTINGS_FACTS_MOST 2
+/* (the room kept between a fact's name and its value on one line) */
+#define SETTINGS_FACTS_GAP 8
+struct settings_facts
+{
+	wchar_t const *names[SETTINGS_FACTS_MOST];
+	wchar_t values[SETTINGS_FACTS_MOST][ROW_TEXT_LENGTH];
+	short count;
+};
+
+static void settings_fact_add(struct settings_facts *facts, wchar_t const *name, wchar_t const *value)
+{
+	if (facts->count >= SETTINGS_FACTS_MOST)
+		return;
+	facts->names[facts->count] = name;
+	settings_wide_copy(facts->values[facts->count], value, ROW_TEXT_LENGTH);
+	facts->count++;
+}
+
+/* the facts of a row of a setting for the panel: the value its default
+shows, and the host's choice online where its help says so (taken out of
+its words) */
+static void settings_facts_of(struct widget_instance *row, struct widget_instance *spinner, wchar_t *words,
+	struct settings_facts *facts)
+{
+	struct settings_slider const *slider = settings_slider_of(row);
+	struct pc_menu_setting *setting = spinner ? settings_setting_of(spinner) : NULL;
+	char text[300];
+	wchar_t shown[ROW_TEXT_LENGTH] = { 0 };
+	double number;
+
+	facts->count = 0;
+	if (setting && setting->setting && setting_text(setting->setting, text, sizeof(text), TRUE))
+		settings_wide_copy(shown, settings_widget_text(spinner, setting_value_index(setting, text)), ROW_TEXT_LENGTH);
+	else if (slider && setting_text(settings_slider_setting(slider), text, sizeof(text), TRUE) &&
+		settings_slider_text_value(slider, text, &number))
+	{
+		short length;
+
+		settings_slider_text(slider, number, text, sizeof(text));
+		for (length = 0; text[length] && length < ROW_TEXT_LENGTH - 1; length++)
+			shown[length] = (wchar_t)text[length];
+		shown[length] = 0;
+	}
+	if (shown[0])
+		settings_fact_add(facts, L"DEFAULT", shown);
+	if (settings_host_choice_cut(words))
+		settings_fact_add(facts, L"ONLINE", L"HOST'S CHOICE");
+}
+
+/* the width of words in a font, as drawn */
+static short settings_words_width(long font, wchar_t const *words)
+{
+	rectangle2d bounds, text_bounds, cursor;
+	static real_argb_color const white = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+	if (font == NONE)
+		return 0;
+	bounds.x0 = 0;
+	bounds.y0 = 0;
+	bounds.x1 = 0x3FFF;
+	bounds.y1 = 480;
+	draw_string_set_draw_mode(font, NONE, 0, 0, &white);
+	draw_unicode_string_compute_bounds(&bounds, words, &text_bounds, &cursor);
+	return (short)(text_bounds.x1 - text_bounds.x0);
+}
+
+/* the facts as the panel's two text boxes have them (names, and values at
+the right), a line each, or a value on the line under its name where both
+do not fit across the panel: the lines they take */
+static short settings_facts_lines(struct settings_facts const *facts, long font, short width, wchar_t *names,
+	wchar_t *values)
+{
+	short index, lines = 0;
+
+	names[0] = 0;
+	values[0] = 0;
+	for (index = 0; index < facts->count; index++)
+	{
+		boolean under = settings_words_width(font, facts->names[index]) + SETTINGS_FACTS_GAP +
+			settings_words_width(font, facts->values[index]) > width;
+
+		if (lines)
+		{
+			settings_words_add(names, L"\r\n");
+			settings_words_add(values, L"\r\n");
+		}
+		settings_words_add(names, facts->names[index]);
+		if (under)
+		{
+			settings_words_add(names, L"\r\n");
+			settings_words_add(values, L"\r\n");
+			lines++;
+		}
+		settings_words_add(values, facts->values[index]);
+		lines++;
+	}
+	return lines;
+}
+
 static void settings_panel_show(struct widget_instance *list, short tab)
 {
 	struct widget_instance *panel = list->parameters.list.extended_description;
 	struct widget_instance *row = list->focused_child;
-	struct widget_instance *text, *note;
+	struct widget_instance *text, *note, *facts, *facts_values;
+	struct settings_facts row_facts;
+	wchar_t fact_names[ROW_TEXT_LENGTH] = { 0 }, fact_values[ROW_TEXT_LENGTH] = { 0 };
+	short fact_lines = 0, facts_height, facts_width;
 	long text_font, note_font;
 	short text_width, note_width;
 	wchar_t name[ROW_TEXT_LENGTH] = { 0 }, value[ROW_TEXT_LENGTH] = { 0 };
@@ -3766,6 +3914,10 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	}
 	if (*bar)
 		*bar++ = 0;
+	/* (a setting's: its default, the host's choice) */
+	row_facts.count = 0;
+	if (!strncmp(row->name, "op_", 3))
+		settings_facts_of(row, row_spinner, words, &row_facts);
 	text_set_length(settings_part(panel, "panel name"), name, ROW_TEXT_LENGTH);
 	text_set_length(settings_part(panel, "panel value"), value, ROW_TEXT_LENGTH);
 	/* (wrapped in the text boxes' fonts, taken from their definitions in the
@@ -3773,6 +3925,8 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	are numbered again) */
 	text = settings_part(panel, "panel text");
 	note = settings_part(panel, "panel note");
+	facts = settings_part(panel, "panel facts");
+	facts_values = settings_part(panel, "panel facts values");
 	text_font = ui_widget_port_text_box_font(text, &text_width);
 	note_font = ui_widget_port_text_box_font(note, &note_width);
 	lines = settings_text_wrap(words, wrapped, SETTINGS_PANEL_TEXT_LENGTH, text_font, text_width);
@@ -3793,10 +3947,16 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		draw_unicode_string_compute_bounds(&bounds, L"X", &text_bounds, &cursor);
 		line = (short)(line - (text_bounds.y1 - text_bounds.y0));
 	}
-	/* (under the name, or under the pictures; the words and the note kept
-	inside the panel, whatever the screen's width: the pictures left out if
-	the words do not fit under them, then the note, then the words' last
-	lines) */
+	if (facts && facts_values)
+	{
+		long facts_font = ui_widget_port_text_box_font(facts, &facts_width);
+
+		fact_lines = settings_facts_lines(&row_facts, facts_font, facts_width, fact_names, fact_values);
+	}
+	/* (under the name, or under the pictures; the words, the note and the
+	facts kept inside the panel, whatever the screen's width: the facts left
+	out if all do not fit, then the pictures if the words do not fit under
+	them, then the note, then the words' last lines) */
 	if (text && settings_part(panel, "panel name"))
 	{
 		short name_top = settings_part(panel, "panel name")->vertical_offset;
@@ -3804,6 +3964,11 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		short top = stills ? SETTINGS_PANEL_TEXT_UNDER_STILLS : picture ? SETTINGS_PANEL_TEXT_UNDER_PICTURE :
 			SETTINGS_PANEL_TEXT_TOP;
 
+		if (!facts || !facts_values ||
+			settings_panel_height(lines, note_lines, line) + line / 2 + fact_lines * line > room - top)
+		{
+			fact_lines = 0;
+		}
 		if ((stills || picture) && settings_panel_height(lines, note_lines, line) > room - top)
 		{
 			settings_value_picture_show(panel, row, NONE);
@@ -3824,6 +3989,23 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	/* (the note a line under the words) */
 	if (note && text)
 		note->vertical_offset = (short)(text->vertical_offset + lines * line + line / 2);
+	/* (the facts a line under the words or the note) */
+	if (!fact_lines)
+	{
+		fact_names[0] = 0;
+		fact_values[0] = 0;
+	}
+	facts_height = (short)(text ? text->vertical_offset + settings_panel_height(lines, note_lines, line) + line / 2 : 0);
+	if (facts)
+	{
+		text_set_length(facts, fact_names, ROW_TEXT_LENGTH);
+		facts->vertical_offset = facts_height;
+	}
+	if (facts_values)
+	{
+		text_set_length(facts_values, fact_values, ROW_TEXT_LENGTH);
+		facts_values->vertical_offset = facts_height;
+	}
 	for (index = 0; index < 2; index++)
 	{
 		char role[32];
@@ -3842,6 +4024,116 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		if ((widget = settings_part(panel, role)) != NULL)
 			widget->visible = stills;
 	}
+}
+
+/* ---------- a setting of two or three choices, segmented
+(tools/port_settings.py's SEGMENTED_MOST): each choice a segment of its row,
+<key>_seg<n>, the one chosen lit; its spinner holds the choice (its
+setting loaded, saved, its defaults and the panel's value), hidden while
+the segments show, which they do on a wide screen where they fit in the
+row (4:3, and a narrow screen where they do not, has the spinner) */
+
+#define SETTINGS_SEGMENTS_MOST 3
+/* (the room kept between the last segment and the row's right end) */
+#define SETTINGS_SEGMENTS_MARGIN 8
+
+/* a row's segments (count of them), its spinner, and whether they show */
+static short settings_segments(struct widget_instance *row, struct widget_instance **segments,
+	struct widget_instance **spinner)
+{
+	struct halo_menu_model_row const *model_row = row ? menu_engine_model_row_of(row) : NULL;
+	char name[64];
+	short count = 0;
+
+	*spinner = NULL;
+	if (!model_row || !model_row->key)
+		return 0;
+	snprintf(name, sizeof(name), "%s_spinner", model_row->key);
+	*spinner = named(row, name, 0);
+	for (count = 0; count < SETTINGS_SEGMENTS_MOST; count++)
+	{
+		snprintf(name, sizeof(name), "%s_seg%d", model_row->key, count);
+		if ((segments[count] = named(row, name, 0)) == NULL)
+			break;
+	}
+	return *spinner ? count : 0;
+}
+
+/* whether a row's segments fit in it at the screen's width now (none at
+the menus' 640, 4:3, which keeps its spinners) */
+static boolean settings_segments_fit(struct widget_instance *row, struct widget_instance *last)
+{
+	struct halo_menu_model const *model = menu_engine_model();
+	short width;
+
+	if (!model || !ui_widget_port_wide_extra())
+		return FALSE;
+	ui_widget_port_text_box_font(last, &width);
+	return widget_screen_x(last) + width + SETTINGS_SEGMENTS_MARGIN <= widget_screen_x(row) +
+		model->geometry.row_width + ui_widget_port_wide_stretch(row->definition_tag_index);
+}
+
+/* (each frame of a page) each segmented row's segments shown where they fit,
+the one chosen lit; else its spinner */
+static void settings_segments_show(struct widget_instance *list)
+{
+	struct widget_instance *row;
+
+	for (row = list->child; row; row = row->next)
+	{
+		struct widget_instance *segments[SETTINGS_SEGMENTS_MOST];
+		struct widget_instance *spinner;
+		short count = settings_segments(row, segments, &spinner);
+		boolean shown;
+		short index;
+
+		if (!count || !row->visible)
+			continue;
+		shown = settings_segments_fit(row, segments[count - 1]);
+		spinner->visible = !shown;
+		for (index = 0; index < count; index++)
+		{
+			segments[index]->visible = shown;
+			segments[index]->animation.current_frame_index =
+				(short)(index == spinner->parameters.list.selected_index);
+		}
+	}
+}
+
+/* "port setting segment" (a segmented row's spinner's A, which a click on
+the row presses as its spinner is hidden): the segment clicked chosen, or
+with no click the next; nothing while the spinner shows (left and right
+step it, as they do the segments) */
+static boolean settings_segment_pick(struct widget_instance *widget)
+{
+	struct widget_instance *segments[SETTINGS_SEGMENTS_MOST];
+	struct widget_instance *spinner;
+	short count = settings_segments(widget ? widget->parent : NULL, segments, &spinner);
+	short chosen, index, x, y;
+
+	if (!count || spinner != widget || spinner->visible || spinner->disabled)
+		return FALSE;
+	chosen = (short)((spinner->parameters.list.selected_index + 1) % count);
+	if (ui_widget_port_take_click(&x, &y))
+	{
+		chosen = NONE;
+		for (index = 0; index < count; index++)
+		{
+			short width;
+
+			ui_widget_port_text_box_font(segments[index], &width);
+			if (x >= widget_screen_x(segments[index]) && x < widget_screen_x(segments[index]) + width)
+				chosen = index;
+		}
+		if (chosen == NONE)
+			return TRUE;
+	}
+	if (chosen != spinner->parameters.list.selected_index)
+	{
+		spinner->parameters.list.selected_index = chosen;
+		ui_play_audio_feedback_sound(SOUND_CURSOR);
+	}
+	return TRUE;
 }
 
 /* "port settings page": each frame of a tab's or a page's list */
@@ -3880,6 +4172,7 @@ static void settings_page_update(struct widget_instance *list)
 	viewmodel_weapon_rows_show(list);
 	gyro_rows_show(list);
 	settings_each(screen, setting_stash);
+	settings_segments_show(list);
 	settings_sliders_show(list);
 	settings_rows_pack(list, tab != NONE);
 	settings_focus_shown(list);
@@ -5690,9 +5983,16 @@ static struct
 } settings_slider_cache;
 
 /* the track and the thumb, as tools/port_settings.py lays them out
-(SLIDER_TRACK_WIDTH, SLIDER_THUMB_WIDTH) */
+(SLIDER_TRACK_WIDTH, SLIDER_THUMB_WIDTH); a wide screen's track is longer
+(its wide layout: slider_track_width) */
 #define SLIDER_TRACK_WIDTH 62
 #define SLIDER_THUMB_WIDTH 8
+
+/* a slider's track's width in the layout now */
+static short slider_track_width(struct widget_instance *track)
+{
+	return (short)(SLIDER_TRACK_WIDTH + ui_widget_port_wide_stretch(track->definition_tag_index));
+}
 
 /* the slider the mouse drags (its row), and the one typed into */
 static struct
@@ -5782,6 +6082,12 @@ static short settings_slider_word(struct settings_slider const *slider, double v
 
 /* a setting's text as the slider's value: a stop's word of the setting's,
 else its number */
+/* a slider's setting */
+static char const *settings_slider_setting(struct settings_slider const *slider)
+{
+	return slider->setting;
+}
+
 static boolean settings_slider_text_value(struct settings_slider const *slider, char const *text, double *value)
 {
 	short stop;
@@ -5942,7 +6248,7 @@ static double settings_slider_round(double value, double step)
 static void settings_slider_place(struct settings_slider const *slider, struct widget_instance *track, short x)
 {
 	double fraction = (double)(x - widget_screen_x(track) - SLIDER_THUMB_WIDTH / 2) /
-		(SLIDER_TRACK_WIDTH - SLIDER_THUMB_WIDTH);
+		(slider_track_width(track) - SLIDER_THUMB_WIDTH);
 	double least = slider->least, most = slider->most;
 	double step = slider->step;
 	double value = least + PIN(fraction, 0.0, 1.0) * (most - least);
@@ -6043,7 +6349,7 @@ static boolean settings_slider_function(char const *name, struct widget_instance
 		}
 		/* (a click on the track sets the value there, and drags it) */
 		if (ui_widget_port_take_click(&x, &y) && x >= widget_screen_x(track) - 4 &&
-			x < widget_screen_x(track) + SLIDER_TRACK_WIDTH + 4)
+			x < widget_screen_x(track) + slider_track_width(track) + 4)
 		{
 			settings_slider_place(slider, track, x);
 			settings_slider.dragged = row;
@@ -6083,7 +6389,7 @@ struct widget_instance *menu_functions_finger_down(struct widget_instance *item,
 	for (depth = 0; row && depth < 3 && (slider = settings_slider_of(row)) == NULL; depth++)
 		row = row->parent;
 	track = slider ? settings_slider_track(row) : NULL;
-	if (!track || x < widget_screen_x(track) - 4 || x >= widget_screen_x(track) + SLIDER_TRACK_WIDTH + 4)
+	if (!track || x < widget_screen_x(track) - 4 || x >= widget_screen_x(track) + slider_track_width(track) + 4)
 		return NULL;
 	/* (a number being typed is kept, and the finger places the value
 	too, where the mouse's click would only end the typing) */
@@ -6126,7 +6432,7 @@ static void settings_sliders_show(struct widget_instance *list)
 		value = settings_slider_value(slider);
 		fraction = settings_slider_fraction(slider, value);
 		if (thumb)
-			thumb->horizontal_offset = (short)(PIN(fraction, 0.0, 1.0) * (SLIDER_TRACK_WIDTH - SLIDER_THUMB_WIDTH) + 0.5);
+			thumb->horizontal_offset = (short)(PIN(fraction, 0.0, 1.0) * (slider_track_width(track) - SLIDER_THUMB_WIDTH) + 0.5);
 		for (value_text = track->next; value_text && value_text->type != 1; value_text = value_text->next)
 		{
 		}
@@ -13206,6 +13512,10 @@ boolean pc_menu_event_function_invoke(
 		else if (!strncmp(name, "port slider ", 12))
 		{
 			return settings_slider_function(name + 12, widget);
+		}
+		else if (!strcmp(name, "port setting segment"))
+		{
+			return settings_segment_pick(widget);
 		}
 		else if (!strcmp(name, "port mods init") || !strcmp(name, "port mods close"))
 		{

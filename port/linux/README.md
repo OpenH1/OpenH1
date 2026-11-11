@@ -953,8 +953,12 @@ players' names over their heads fade out while it shows.
 The port's own screens use the screen's width up to 16:9: Settings,
 Multiplayer, the Server Browser (and the LAN list and Join by Link) and the
 carnage report. Their lists start at the screen's left and their panels end
-at its right, each wider by what the screen adds: Settings' rows and help
-panel, the browser's Server, Map and Mode columns and its details panel,
+at its right, each wider by what the screen adds: Settings' rows (their
+values' column most: sliders across it, spinners at its left; a setting of
+two or three choices shows them all, the one chosen framed, a click
+choosing one; its help panel a little narrower, about a quarter of a 16:10
+screen, and under a setting's words its default and, where the host
+decides it online, that), the browser's Server, Map and Mode columns and its details panel,
 Multiplayer's items and panel, the carnage report's columns, and the
 scoreboard's names. The tabs spread across the screen, and the key prompts
 keep to its edges. A wider screen (21:9 and up) has the 16:9 layout in its

@@ -47,7 +47,8 @@ Settings' Quality row shows these two small screenshots of the game, the same vi
 (`port/assets/menus/stills`). They are this port's own drawing of the game: a local
 Slayer game on Blood Gulch (`debug.network_test = "local:bloodgulch:slayer"`, `debug.random_seed = 7`,
 four bots), the same frame of each run captured offscreen by the macOS build at 1600x1200
-(`debug.screenshot_every`), cropped to 16:10, scaled to 288x180 (three times their size in the menu) and
+(`debug.screenshot_every`), cropped to 16:10, scaled to 288x180 (the menus' copies 264x165, three times their
+size in the menu) and
 reduced to 96 colors for size. The pictures of other rows' values are made the same way at the frame 12 s
 into the game with the setting set, 320x200 (twice their size in the menu), reduced to 64 colors: the whole
 view, or a part of it at 1:1 or larger. The menus ship them with their corners cut round, and the others'
@@ -55,8 +56,8 @@ framed (`ce/port/stills`, tools/ce_menus.py's `rounded_still`).
 
 | File | Size | What it shows |
 | --- | --- | --- |
-| `stills/graphics_classic.png` | 96x60 | Quality CLASSIC (`display.graphics = "classic"`) |
-| `stills/graphics_enhanced.png` | 96x60 | Quality ENHANCED (`display.graphics = "enhanced"`) |
+| `stills/graphics_classic.png` | 88x55 | Quality CLASSIC (`display.graphics = "classic"`) |
+| `stills/graphics_enhanced.png` | 88x55 | Quality ENHANCED (`display.graphics = "enhanced"`) |
 | `stills/fov_default.png` | 160x100 | Field of view DEFAULT (`display.fov = 0`); HDR mode FAITHFUL |
 | `stills/fov_100.png` | 160x100 | Field of view 100, for 95 to 115 |
 | `stills/fov_130.png` | 160x100 | Field of view 130, for 120 to 160 |
@@ -92,7 +93,7 @@ until it is redrawn.
 | `ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__6.png` | 512x256 | `shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__6.png` |
 | `ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__8.png` | 512x256 | `shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__8.png` |
 
-13 of 453 frames are placeholders.
+13 of 455 frames are placeholders.
 
 The PC version's `ui\gamespy` and `ui\ticker` fonts are drawn with `ui\small_ui`, which
 the Xbox's map has.

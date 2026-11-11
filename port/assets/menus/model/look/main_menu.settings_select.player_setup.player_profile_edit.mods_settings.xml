@@ -58,24 +58,24 @@
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/button_cancel" type="text" box="0 0 128 24" wide="106 0" picture="bitmaps/text_button_background">
 		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 2" string_list="strings/common_button_captions" index="2"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/section_0" box="0 0 344 18" wide="-106 120" picture="main_menu/settings/section">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/section_0" box="0 0 344 18" wide="-106 244" picture="main_menu/settings/section">
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/section_0_title" x="0" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/section_0_title" type="text" box="0 0 344 18" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/section_0_title" type="text" box="0 0 344 18" wide="0 244">
 		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/labels"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/op_mods" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/op_mods" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/mods_label" x="0" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/mods_label" type="text" box="0 0 332 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/mods_label" type="text" box="0 0 332 20" wide="0 244">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/labels" index="1"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/op_mods_folder" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/op_mods_folder" box="0 0 344 20" wide="-106 244" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/mods_folder_label" x="0" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/mods_folder_label" type="text" box="0 0 332 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/mods_folder_label" type="text" box="0 0 332 20" wide="0 244">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/mods_settings/labels" index="2"/>
 	</look>
 </model>

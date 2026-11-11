@@ -76,18 +76,22 @@
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_zoom_sensitivity" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/zoom_sensitivity_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_invert_mouse" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/invert_mouse_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_mouse_aim_assist" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_aim_assist_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_direct_camera" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/direct_camera_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_menu_cursor" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/menu_cursor_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
@@ -101,6 +105,7 @@
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_button_prompts" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/button_prompts_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_controller" flags="pass_unhandled_to_focused_child">
 		<on event="a" open="main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/gamepad_setup_screen"/>
@@ -115,13 +120,16 @@
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_crouch" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_crouch_walk" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/crouch_walk_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_touch_crouch" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/touch_crouch_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 </model>

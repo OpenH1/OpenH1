@@ -51,5 +51,6 @@
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/discord_account/op_link_share" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/discord_account/link_share_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 </model>

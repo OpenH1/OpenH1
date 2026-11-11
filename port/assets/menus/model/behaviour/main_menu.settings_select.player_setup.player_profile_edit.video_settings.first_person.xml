@@ -34,6 +34,7 @@
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/op_scale_scoped_fov" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/scale_scoped_fov_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/op_panini" flags="pass_unhandled_to_focused_child">
 		<on event="left" run="port slider left"/>
@@ -65,6 +66,7 @@
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/op_lowered_reticle" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/lowered_reticle_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/op_lowered_reticle_amount" flags="pass_unhandled_to_focused_child">
 		<on event="left" run="port slider left"/>
@@ -78,6 +80,7 @@
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/op_passenger_third_person" flags="pass_unhandled_to_focused_child"/>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/passenger_third_person_spinner" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<on event="created" run="port setting load"/>
+		<on event="a" run="port setting segment"/>
 	</behaviour>
 	<behaviour name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/op_weapon_body" flags="pass_unhandled_to_focused_child">
 		<on event="a" open="main_menu/settings_select/player_setup/player_profile_edit/video_settings/first_person/weapon_body/weapon_body_screen"/>
