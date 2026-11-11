@@ -68,6 +68,7 @@ version is unchanged.
 #include "controller_remap.h"
 #include "far_clip.h"
 #include "network_coop.h"
+#include "network_standard.h"
 #include "spartan_link.h"
 
 #include <limits.h>
@@ -92,6 +93,9 @@ void halo_view_sample(int view);
 void halo_view_release(int view);
 float halo_screen_pixel_scale(void);
 long halo_screen_width(void);
+
+/* source/objects/object_lights.c */
+void lights_port_keep(boolean keep);
 
 /* port/linux/game/render_interpolation.c */
 void render_interpolation_unit_camera_position(long unit_index, real_point3d *position);
@@ -199,18 +203,12 @@ static void spartan_link_read(
 	spartan_link.log = config_boolean("debug.spartan_link_log");
 }
 
-/* a Pro 2V2 game, matchmaking's (game_modes.c's Pro Doubles, in its Classic
-and Lowest Latency playlists alike), which has no link: its game variant,
-as the host's game record names it */
+/* a game whose host allows no teammates' feeds: Pro 2V2's, Classic and
+Lowest Latency (network_standard_teammate_feeds_allowed) */
 static boolean spartan_link_pro_doubles(
 	void)
 {
-	struct game_variant *variant;
-
-	if (!game_engine_running())
-		return FALSE;
-	variant = game_engine_get_variant();
-	return variant && !ustrcmp(variant->human_readable_game_description, L"Pro Doubles");
+	return !network_standard_teammate_feeds_allowed();
 }
 
 /* whether this game has a link: co-op (a campaign, network or split
@@ -906,6 +904,8 @@ boolean spartan_link_feed_begin(
 	spartan_link.posed_unit = through_eyes && object_get(feed->unit_index)->object.parent_object_index == NONE ?
 		feed->unit_index : NONE;
 	halo_view_begin(view, width, height);
+	/* (what the view's drawing sets of the lights, put back after it) */
+	lights_port_keep(TRUE);
 	if (spartan_link.log)
 	{
 		platform_log("spartan link: %ld %d %ld %d %.4f %.4f %.4f %.5f %.5f %.5f %.4f %.3f", game_time_get(),
@@ -920,9 +920,16 @@ void spartan_link_feed_end(
 	void)
 {
 	halo_view_end();
+	lights_port_keep(FALSE);
 	spartan_link.drawing = FALSE;
 	spartan_link.hidden_unit = NONE;
 	spartan_link.posed_unit = NONE;
+}
+
+boolean spartan_link_drawing(
+	void)
+{
+	return spartan_link.drawing;
 }
 
 long spartan_link_hidden_unit(

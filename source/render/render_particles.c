@@ -31,6 +31,8 @@ symbols in this file:
 #include "units/units.h"
 #include "view_fov.h" /* port: port/linux/game/view_fov.c */
 #include "rasterizer/rasterizer.h" /* port: (render_particles_cut_run) */
+/* port: port/linux/game/spartan_link.c: a feed of the HUD's Spartan link is drawn */
+boolean spartan_link_drawing(void);
 
 /* ---------- constants */
 
@@ -574,8 +576,13 @@ void render_particles(
 										fade,
 										flags);
 
-									particle->last_rendered_frame_index =
-										render.frame_index;
+									/* port: not by a feed of the HUD's Spartan link:
+									a particle a player's own view no longer draws goes,
+									as before, and makes no effect where it strikes
+									(port/linux/game/spartan_link.c) */
+									if (!spartan_link_drawing())
+										particle->last_rendered_frame_index =
+											render.frame_index;
 								}
 							}
 						}

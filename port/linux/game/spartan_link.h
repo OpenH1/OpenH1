@@ -29,6 +29,9 @@ void spartan_link_feed_end(void);
 (render_objects.c), and whose weapon and arms are posed in it
 (first_person_weapons.c), else NONE */
 long spartan_link_hidden_unit(void);
+/* a feed is being drawn: what the views' drawing changes of the game state
+(an antenna's or a flag's steps, antenna.c, flags.c) it leaves alone */
+boolean spartan_link_drawing(void);
 long spartan_link_posed_unit(void);
 
 /* the window's link drawn in its HUD (render.c, after its view's passes,
