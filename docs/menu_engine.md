@@ -235,7 +235,14 @@ allowing only the differences listed below as deliberate.
    touch), `debug.null_renderer`, and diffs the `debug.menu_layout` JSON of
    each pair: every widget's box and clip, every string's text, box, clip and
    extent, every glyph and every pointer target. The stand-in's own record
-   is dropped; the engine names its nodes as the widgets were named.
+   is dropped; the engine names its nodes as the widgets were named. Each
+   run starts from the behaviour scripts' player profile, and a screen that
+   the game opens only in some state has the game's own functions run first
+   (`menu_gallery.TOUR_SETUP`: a new gametype being edited for the gametype
+   editor's screens, a name's keyboard for the name screens). A screen with
+   no layout on either side is not the same but not compared, which fails,
+   but for the name screens, which the game shows only under the virtual
+   keyboard (no widget is drawn while it is up), whose frames are compared.
 2. **Pixels.** `debug.menu_parity` (the tour's mode): each screen is drawn
    by the classic engine and then by the new one into the same frame size,
    both read back in memory as the Screenshot key reads the frame
