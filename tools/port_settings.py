@@ -4475,6 +4475,14 @@ def part_button(width: int, height: int) -> str:
     return f"{PARTS}/button_{width}x{height}"
 
 
+def part_button_set(width: int, height: int) -> str:
+    """a button whose lit frame the game sets, not the engine (three frames:
+    plain, lit, lit; the engine lights only a picture of two by the focus):
+    the 2V2 browser's HOST GAME and FIND GAME, lit only while their bar has
+    the list's focus (doubles_browser.inc's doubles_actions_focus)"""
+    return f"{PARTS}/button_set_{width}x{height}"
+
+
 def part_outline(width: int, height: int) -> str:
     """a button drawn as its outline (the lobby's GAME SETTINGS), filled
     while it has the focus"""
@@ -4715,6 +4723,9 @@ def parts_pictures() -> list:
         *((part_pill(width), pill(width)) for width in (BROWSER_TICK_BADGE, BROWSER_PILL, BROWSER_WIDE_PILL)),
         (part_button(join_w, join_h), [(framed(join_w, join_h, "#1e5fd1", 0.9, "#5aa9ff"), join_w, join_h),
                                        (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h)]),
+        (part_button_set(join_w, join_h), [(framed(join_w, join_h, "#1e5fd1", 0.9, "#5aa9ff"), join_w, join_h),
+                                           (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h),
+                                           (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h)]),
         *lobby_pictures(framed, highlight),
         *touch_pictures(),
         # (the searches' fields, magnifying glass and X: Lucide's,
@@ -5634,7 +5645,7 @@ def _doubles_browser() -> list:
     for name, words, run in (("button_doubles_host", "HOST GAME", "port doubles host"),
                              ("button_doubles_find", "FIND GAME", "port doubles find")):
         lines += _widget(f"{base}/{name}", [("type", "text"), ("width", join_w), ("height", join_h),
-                                           ("bitmap", part_button(join_w, join_h)), ("wide", wide(-WIDE_HALF)),
+                                           ("bitmap", part_button_set(join_w, join_h)), ("wide", wide(-WIDE_HALF)),
                                            ("text", words), ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
                                            ("align", "center"), ("text_y", caps_text_y(join_h))],
                          [f'<on event="a" run="{run}"/>', f'<on event="start" run="{run}"/>',

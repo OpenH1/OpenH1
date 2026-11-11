@@ -110,10 +110,10 @@
 		<at widget="main_menu/doubles/browser/button_doubles_host" x="28" y="0"/>
 		<at widget="main_menu/doubles/browser/button_doubles_find" x="184" y="0"/>
 	</look>
-	<look name="main_menu/doubles/browser/button_doubles_host" type="text" box="0 0 148 24" wide="-106 0" picture="main_menu/parts/button_148x24">
+	<look name="main_menu/doubles/browser/button_doubles_host" type="text" box="0 0 148 24" wide="-106 0" picture="main_menu/parts/button_set_148x24">
 		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 3" text="HOST GAME"/>
 	</look>
-	<look name="main_menu/doubles/browser/button_doubles_find" type="text" box="0 0 148 24" wide="-106 0" picture="main_menu/parts/button_148x24">
+	<look name="main_menu/doubles/browser/button_doubles_find" type="text" box="0 0 148 24" wide="-106 0" picture="main_menu/parts/button_set_148x24">
 		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 3" text="FIND GAME"/>
 	</look>
 	<look name="main_menu/doubles/browser/doubles_friend_1" type="text" box="0 0 148 18" wide="38 68" picture="main_menu/parts/item_148x18">

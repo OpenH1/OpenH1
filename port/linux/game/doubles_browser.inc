@@ -188,6 +188,23 @@ static void doubles_browser_dispose(void)
 		multiplayer.mode = doubles_browser.previous_mode;
 }
 
+/* HOST GAME's and FIND GAME's frames (port_settings.py's part_button_set:
+plain, lit, lit; three, so that the engine, which lights a picture of two by
+its parent's focus whatever has the list's, leaves them to this, as the
+server browser's rows: browser_focus): lit only for the one focused while
+their bar has the list's focus, so that a friend or a game chosen is the
+one thing that looks focused */
+static void doubles_actions_focus(struct widget_instance *list, struct widget_instance *actions)
+{
+	struct widget_instance *button;
+
+	for (button = actions ? actions->child : NULL; button; button = button->next)
+	{
+		button->animation.current_frame_index =
+			(short)(list->focused_child == actions && actions->focused_child == button);
+	}
+}
+
 /* "port doubles update" (the list's): the server browser's update of the
 rows and the panel, then the buttons, the friends and the focus */
 static void doubles_browser_update(struct widget_instance *list)
@@ -274,6 +291,7 @@ static void doubles_browser_update(struct widget_instance *list)
 		actions->focused_child = actions->child;
 		actions->parameters.list.selected_index = 0;
 	}
+	doubles_actions_focus(list, actions);
 }
 
 /* HOST GAME or FIND GAME refused: why, in the panel's line (matchmaking's
