@@ -923,6 +923,12 @@ void game_connection_set(
 short game_connection(
 	void)
 {
+	/* port: a demo's playback of a co-op game this machine hosted runs its
+	ticks as the host's (port/linux/game/demo.c) */
+	short connection;
+
+	if (demo_playback_connection(&connection))
+		return connection;
 	return main_globals.connection;
 }
 
@@ -2429,6 +2435,26 @@ static void main_respawn_private(
 		main_globals.respawn_timer = 0;
 	}
 	return;
+}
+
+/* port: what the ticks ask of the main loop and its frames carry out (a
+respawn, a lost level's revert), with its timers, by part, for the demos
+(port/linux/game/demo.c's G records): a playback's main loop has the
+recording's, after a seek too; NULL past the last */
+void *main_port_demo_state(
+	short part,
+	long *size)
+{
+	switch (part)
+	{
+	case 0: *size = sizeof(main_globals.respawn); return &main_globals.respawn;
+	case 1: *size = sizeof(main_globals.respawn_timer); return &main_globals.respawn_timer;
+	case 2: *size = sizeof(main_respawn_last_tick); return &main_respawn_last_tick;
+	case 3: *size = sizeof(main_globals.lost_map); return &main_globals.lost_map;
+	case 4: *size = sizeof(main_globals.loss_timer); return &main_globals.loss_timer;
+	case 5: *size = sizeof(main_loss_last_tick); return &main_loss_last_tick;
+	}
+	return NULL;
 }
 
 static void main_load_core_private(

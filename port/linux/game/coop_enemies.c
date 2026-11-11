@@ -968,6 +968,18 @@ void coop_enemies_new_game(
 		!strcmp(mode, "multiplier") ? _coop_enemies_multiplier : _coop_enemies_none;
 }
 
+void *coop_enemies_port_demo_state(
+	short part,
+	long *size)
+{
+	switch (part)
+	{
+	case 0: *size = sizeof(coop_enemies); return &coop_enemies;
+	case 1: *size = sizeof(coop_spread); return &coop_spread;
+	}
+	return NULL;
+}
+
 void coop_enemies_reset(
 	void)
 {

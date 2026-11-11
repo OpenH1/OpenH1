@@ -96,6 +96,15 @@ enum
 	_demo_rule_walk_over_pickup_bit,
 };
 boolean demo_playback_rules(unsigned long *rules);
+/* the connection the ticks of the demo playing run as (main.c's
+game_connection): a co-op game this machine hosted plays its ticks as its
+host's, whose code decides the game's co-op parts (network_coop.c, the
+co-op files, players.c); FALSE otherwise (the machine's own: a local game) */
+boolean demo_playback_connection(short *connection);
+/* ... and the network game its ticks read then, the host's as the recording
+had it (network_game_globals.c's network_game_get_game: its players, its
+co-op switches); NULL otherwise */
+struct network_game *demo_playback_network_game(void);
 
 /* each frame (main.c): a demo asked for (demo.play, --demo) started, and
 the playback's end */
