@@ -458,6 +458,48 @@ uint32_t host_make_boot(const struct host_environment *environment, const char *
 
 /* ---------- config.toml's settings the host reads */
 
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <sys/resource.h>
+
+/* (game.priority) the game's threads at the normal priority, not the
+launcher's: a new thread takes its creator's niceness, and a launcher may
+run at a low one (CachyOS's ananicy-cpp runs Steam at nice 16 as a
+"Launcher", and the games Steam starts take it), which leaves the game's
+threads behind every other program's work. Raised on the game thread before
+it makes the others (the render thread, the workers), so they take it too;
+the audio threads raise their own (host_sdl.c). Raising one's niceness
+back needs RLIMIT_NICE or RealtimeKit, which SDL asks for when setpriority
+is refused; a desktop has one or the other. "inherit": as launched */
+static void host_apply_priority(const char *mode)
+{
+	int niceness;
+
+	errno = 0;
+	niceness = getpriority(PRIO_PROCESS, 0);
+	if (errno)
+		return;
+	if (!strcmp(mode, "inherit"))
+	{
+		if (niceness > 0)
+			host_logf(HOST_LOG_INFO, "priority: nice %d, the launcher's (game.priority \"inherit\")", niceness);
+		return;
+	}
+	if (niceness <= 0)
+		return;
+	if (setpriority(PRIO_PROCESS, 0, 0) == 0 || SDL_SetCurrentThreadPriority(SDL_THREAD_PRIORITY_NORMAL))
+	{
+		errno = 0;
+		host_logf(HOST_LOG_INFO, "priority: started at nice %d (the launcher's), now %d (game.priority)", niceness,
+			getpriority(PRIO_PROCESS, 0));
+	}
+	else
+	{
+		host_logf(HOST_LOG_WARN, "priority: started at nice %d (the launcher's), and could not be raised (no "
+			"RLIMIT_NICE, no RealtimeKit): the game runs behind the computer's other work", niceness);
+	}
+}
+#endif
+
 /* (display.astc_textures' default, as port_config.c's) */
 char host_astc_textures[16] = "auto";
 int host_pass_times;
@@ -469,6 +511,8 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 	/* (debug.stall_ms' default, as port_config.c's) */
 	double stall_ms = 100.0;
 	int memory_watch = 1;
+	/* (game.priority's default, as port_config.c's) */
+	char priority_mode[16] = "normal";
 
 	if (result.ok)
 	{
@@ -477,6 +521,7 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 		toml_datum_t astc = toml_seek(result.toptab, "display.astc_textures");
 		toml_datum_t pass_times = toml_seek(result.toptab, "debug.pass_times");
 		toml_datum_t stall = toml_seek(result.toptab, "debug.stall_ms");
+		toml_datum_t priority = toml_seek(result.toptab, "game.priority");
 
 		sample_seconds = seconds.type == TOML_FP64 ? seconds.u.fp64 :
 			seconds.type == TOML_INT64 ? (double)seconds.u.int64 : 0.0;
@@ -488,6 +533,8 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 			host_pass_times = (int)pass_times.u.int64;
 		if (stall.type == TOML_FP64 || stall.type == TOML_INT64)
 			stall_ms = stall.type == TOML_FP64 ? stall.u.fp64 : (double)stall.u.int64;
+		if (priority.type == TOML_STRING)
+			snprintf(priority_mode, sizeof(priority_mode), "%s", priority.u.s);
 		toml_free(result);
 	}
 	if (getenv("HALO_ASTC_TEXTURES") && *getenv("HALO_ASTC_TEXTURES"))
@@ -498,6 +545,14 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 		host_pass_times = atoi(getenv("HALO_PASS_TIMES"));
 	if (getenv("HALO_SAMPLE"))
 		sample_seconds = atof(getenv("HALO_SAMPLE"));
+	if (getenv("HALO_PRIORITY") && *getenv("HALO_PRIORITY"))
+		snprintf(priority_mode, sizeof(priority_mode), "%s", getenv("HALO_PRIORITY"));
+#if defined(__linux__) && !defined(__ANDROID__)
+	/* (before the threads the game makes: they take it) */
+	host_apply_priority(priority_mode);
+#else
+	(void)priority_mode;
+#endif
 	if (getenv("HALO_STALL_MS") && *getenv("HALO_STALL_MS"))
 		stall_ms = atof(getenv("HALO_STALL_MS"));
 	host_stall_start(stall_ms);
