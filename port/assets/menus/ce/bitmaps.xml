@@ -317,6 +317,9 @@
 	<bitmap name="main_menu/campaign/header_missions">
 		<frame png="ce/port/main_menu/campaign/header_missions.png" width="512" height="64"/>
 	</bitmap>
+	<bitmap name="main_menu/doubles/header_doubles">
+		<frame png="ce/port/main_menu/doubles/header_doubles.png" width="512" height="64"/>
+	</bitmap>
 	<bitmap name="main_menu/host_controls/header_host_controls">
 		<frame png="ce/port/main_menu/host_controls/header_host_controls.png" width="512" height="64"/>
 	</bitmap>
@@ -450,6 +453,10 @@
 	<bitmap name="main_menu/menu_training">
 		<frame png="ce/port/main_menu/menu_training__0.png" width="256" height="64"/>
 		<frame png="ce/port/main_menu/menu_training__1.png" width="256" height="64"/>
+	</bitmap>
+	<bitmap name="main_menu/menu_doubles">
+		<frame png="ce/port/main_menu/menu_doubles__0.png" width="256" height="64"/>
+		<frame png="ce/port/main_menu/menu_doubles__1.png" width="256" height="64"/>
 	</bitmap>
 	<bitmap name="mods/status">
 		<frame png="ce/port/mods/status__0.png" width="24" height="24"/>

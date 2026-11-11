@@ -939,6 +939,8 @@ def main() -> None:
     # mods' status icons: Lucide's, port/assets/icons/lucide)
     lines.append(art.port_picture("main_menu/menu_training",
                                   port_settings.menu_item_frames("VR TUTORIAL", art.redraws)))
+    # (the main menu's 2V2, so too: port_settings._doubles)
+    lines.append(art.port_picture("main_menu/menu_doubles", port_settings.menu_item_frames("2V2", art.redraws)))
     lines.append(art.port_picture("mods/status", port_settings.mod_status_frames(ROOT / "port/assets/icons/lucide")))
     lines.append(art.port_picture("mods/status_small",
                                   port_settings.mod_status_frames(ROOT / "port/assets/icons/lucide", 16)))

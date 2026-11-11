@@ -64,6 +64,11 @@ enum
 	network_standard_turns_with_aim). Only a Standard host sets it, and its
 	OpenH1 machines alone read it */
 	_network_game_classic_turning_bit = 4,
+	/* not co-op's: every OpenH1 machine draws its players' views as with
+	display.direct_camera off, whatever its own setting (a 2V2 Classic
+	game's: network_standard_direct_camera_allowed). Only a Standard host
+	sets it, and its OpenH1 machines alone read it */
+	_network_game_no_direct_camera_bit = 5,
 };
 
 struct network_game

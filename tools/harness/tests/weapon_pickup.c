@@ -62,6 +62,8 @@ static struct
 	long hosting_rate;
 	boolean hosting_hold_to_pick_up;
 	boolean hosting_classic_turning;
+	/* (2V2 Classic's views: instant_aim_rule.c's) */
+	boolean hosting_no_direct_camera;
 	boolean joined;
 	/* (a game of this machine's own: its setting as the map began) */
 	boolean local_auto_pickup;

@@ -9,18 +9,45 @@ beside them (the playlist chosen, the search's time and what it does), and
 the footer's SEARCH, CANCEL and BACK. A row's A, or SEARCH on the row
 chosen, searches its playlist for the whole party; CANCEL (X) gives the
 search up. The search goes on whatever screen is shown: its game's lobby
-takes this one's place as it is joined or hosted. Included in
-menu_functions.c, whose widgets' helpers it uses. The search's words
-(matchmaking_status_text) are tools/harness/tests/test_matchmaking.py's.
+takes this one's place as it is joined or hosted. The main menu's 2V2
+screen (_matchmaking's doubles screen, its list doubles_list) is the same
+screen with a row for each of 2V2's kinds, CLASSIC and LOWEST LATENCY
+(matchmaking_doubles_playlist), whose A searches its playlist at once.
+Included in menu_functions.c, whose widgets' helpers it uses. The search's
+words (matchmaking_status_text) are tools/harness/tests/test_matchmaking.py's.
 */
 
-#define MATCHMAKING_ROWS 6
+#define MATCHMAKING_ROWS 7
 
 static struct
 {
-	/* the row chosen */
+	/* the playlist chosen (0 up) */
 	short chosen;
 } matchmaking_menu;
+
+/* the 2V2 screen's rows' names and lines, by kind (_matchmaking_doubles_*) */
+static wchar_t const *const matchmaking_doubles_names[NUMBER_OF_MATCHMAKING_DOUBLES_KINDS] =
+{
+	L"CLASSIC", L"LOWEST LATENCY"
+};
+
+/* whether the screen of a widget is the 2V2 screen (its list doubles_list),
+not Matchmaking */
+static boolean matchmaking_doubles_screen(struct widget_instance *widget)
+{
+	return widget && named(screen_of(widget), "doubles_list", 0) != NULL;
+}
+
+/* a row's playlist (0 up) on the widget's screen, NONE for none: the 2V2
+screen's by its kind, Matchmaking's by its place */
+static short matchmaking_row_playlist(struct widget_instance *widget, short row)
+{
+	if (row == NONE)
+		return NONE;
+	if (matchmaking_doubles_screen(widget))
+		return matchmaking_doubles_playlist(row);
+	return row < matchmaking_playlist_count() ? row : NONE;
+}
 
 /* milliseconds as minutes and seconds ("1:05") */
 static void matchmaking_time_text(unsigned long milliseconds, wchar_t *text, short size)
@@ -106,6 +133,10 @@ static void matchmaking_status_text(struct matchmaking_status const *status, wch
 		case _matchmaking_problem_cancelled:
 			usnprintf(headline, headline_size - 1, L"SEARCH CANCELLED");
 			break;
+		case _matchmaking_problem_no_maps:
+			usnprintf(headline, headline_size - 1, L"NO MULTIPLAYER MAPS");
+			usnprintf(detail, detail_size - 1, L"None of %s's maps is in your maps folder.", playlist);
+			break;
 		default:
 			usnprintf(headline, headline_size - 1, L"PICK A PLAYLIST");
 			usnprintf(detail, detail_size - 1, status->party_size > 1 ?
@@ -135,8 +166,9 @@ static __declspec(noinline) void matchmaking_screen_update(struct widget_instanc
 	struct matchmaking_status status;
 	wchar_t name[MATCHMAKING_PLAYLIST_NAME_SIZE * 2], about[MATCHMAKING_ABOUT_SIZE * 2];
 	wchar_t headline[64], detail[160];
-	short focused = matchmaking_row_of(list->focused_child);
-	short row;
+	boolean doubles = matchmaking_doubles_screen(list);
+	short focused = matchmaking_row_playlist(list, matchmaking_row_of(list->focused_child));
+	short row, rows = doubles ? NUMBER_OF_MATCHMAKING_DOUBLES_KINDS : MATCHMAKING_ROWS;
 	boolean searching;
 
 	/* (the Party screen may open over it: a member following its leader) */
@@ -147,23 +179,35 @@ static __declspec(noinline) void matchmaking_screen_update(struct widget_instanc
 		matchmaking_menu.chosen = focused;
 	if (searching && status.playlist != NONE)
 		matchmaking_menu.chosen = status.playlist;
-	for (row = 0; row < MATCHMAKING_ROWS; row++)
+	/* (the 2V2 screen's choice one of its kinds: its first, else) */
+	if (doubles && matchmaking_menu.chosen != matchmaking_doubles_playlist(_matchmaking_doubles_classic) &&
+		matchmaking_menu.chosen != matchmaking_doubles_playlist(_matchmaking_doubles_lowest_latency))
+	{
+		matchmaking_menu.chosen = matchmaking_doubles_playlist(_matchmaking_doubles_classic);
+	}
+	for (row = 0; row < rows; row++)
 	{
 		char widget_name[16];
 		struct widget_instance *item;
+		short playlist = matchmaking_row_playlist(list, row);
 
 		snprintf(widget_name, sizeof(widget_name), "mm_row_%d", row);
 		item = named(list, widget_name, 0);
-		visible_set(item, row < matchmaking_playlist_count());
-		if (!item || row >= matchmaking_playlist_count())
+		visible_set(item, playlist != NONE);
+		if (!item || playlist == NONE)
 			continue;
-		matchmaking_playlist_text(row, name, NUMBEROF(name), NULL, 0);
-		text_set(item, name);
+		if (doubles)
+			text_set(item, matchmaking_doubles_names[row]);
+		else
+		{
+			matchmaking_playlist_text(playlist, name, NUMBEROF(name), NULL, 0);
+			text_set(item, name);
+		}
 		{
 			char note_name[16];
 
 			snprintf(note_name, sizeof(note_name), "mm_note_%d", row);
-			text_set(named(item, note_name, 0), searching && status.playlist == row ?
+			text_set(named(item, note_name, 0), searching && status.playlist == playlist ?
 				(status.stage == _matchmaking_hosting ? L"HOSTING" : L"SEARCHING") : L"");
 		}
 	}
@@ -171,13 +215,35 @@ static __declspec(noinline) void matchmaking_screen_update(struct widget_instanc
 	if (panel)
 	{
 		wchar_t playlist[MATCHMAKING_PLAYLIST_NAME_SIZE * 2];
+		short problem = !searching && status.problem != _matchmaking_problem_joined ?
+			matchmaking_can_search(matchmaking_menu.chosen) : _matchmaking_problem_none;
 
+		/* (why the row chosen cannot be searched, said before it is: no
+		internet play, no maps for it, a party's member, a party too big;
+		said of it, not of a search before) */
+		if (problem != _matchmaking_problem_none)
+		{
+			status.problem = problem;
+			status.playlist = matchmaking_menu.chosen;
+		}
+		else if (!searching && (status.problem == _matchmaking_problem_offline ||
+			status.problem == _matchmaking_problem_member || status.problem == _matchmaking_problem_party_too_big ||
+			status.problem == _matchmaking_problem_no_maps))
+		{
+			status.problem = _matchmaking_problem_none;
+		}
 		matchmaking_playlist_text(searching || status.problem ? status.playlist : matchmaking_menu.chosen, playlist,
 			NUMBEROF(playlist), NULL, 0);
-		/* (a problem of another row's search is said of the row chosen too) */
-		if (!searching && status.problem == _matchmaking_problem_party_too_big)
-			status.problem = matchmaking_can_search(matchmaking_menu.chosen);
 		matchmaking_status_text(&status, playlist, headline, NUMBEROF(headline), detail, NUMBEROF(detail));
+		/* (the 2V2 screen's first words, before a kind is searched) */
+		if (doubles && !searching && !status.problem)
+		{
+			usnprintf(headline, NUMBEROF(headline) - 1, L"PICK A KIND");
+			usnprintf(detail, NUMBEROF(detail) - 1, status.party_size > 1 ?
+				L"Your party of %d plays as one team." : L"Search alone, or bring a friend in a party as your "
+				L"teammate.", status.party_size);
+			headline[NUMBEROF(headline) - 1] = detail[NUMBEROF(detail) - 1] = 0;
+		}
 		menu_text_box_wrap(named(panel, "panel_title", 0), name, 1);
 		menu_text_box_wrap(named(panel, "panel_about", 0), about, 2);
 		menu_text_box_wrap(named(panel, "panel_status", 0), headline, 1);
@@ -195,7 +261,7 @@ static __declspec(noinline) void matchmaking_screen_update(struct widget_instanc
 playlist searched, the search given up, or back */
 static boolean matchmaking_screen_button(struct widget_instance *widget, short controller)
 {
-	short row = matchmaking_row_of(widget);
+	short row = matchmaking_row_playlist(widget, matchmaking_row_of(widget));
 	struct matchmaking_status status;
 
 	matchmaking_status(&status);
@@ -217,6 +283,12 @@ static boolean matchmaking_screen_button(struct widget_instance *widget, short c
 	matchmaking_menu.chosen = row;
 	if (!matchmaking_search(row, controller >= 0 && controller < 4 ? controller : 0))
 		return campaign_fail();
+	if (matchmaking_doubles_screen(widget))
+	{
+		platform_log("menus: 2V2 %s chosen: searching its playlist (OpenH1 %d Tick)",
+			row == matchmaking_doubles_playlist(_matchmaking_doubles_classic) ? "CLASSIC" : "LOWEST LATENCY",
+			matchmaking_playlist_rate(row));
+	}
 	ui_play_audio_feedback_sound(SOUND_FORWARD);
 	return TRUE;
 }
@@ -259,7 +331,7 @@ static void matchmaking_hub_status(wchar_t *headline, short headline_size, wchar
 	if (status.stage == _matchmaking_idle)
 	{
 		usnprintf(headline, headline_size - 1, L"FIND A GAME");
-		usnprintf(detail, detail_size - 1, L"Team Slayer, Slayer, CTF,\r\nSWAT and Big Team.");
+		usnprintf(detail, detail_size - 1, L"Team Slayer, Slayer, CTF,\r\nSWAT, Big Team and 2v2.");
 		headline[headline_size - 1] = detail[detail_size - 1] = 0;
 		return;
 	}

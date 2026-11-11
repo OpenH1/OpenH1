@@ -241,6 +241,7 @@
 		</row>
 		<row key="direct_camera" kind="choice" setting="display.direct_camera" label="INSTANT AIM" when="computer">
 			<help>Turns the view the moment the mouse moves, not up to two of the game's updates later. Off feels as the original did.</help>
+			<note>Off for everyone in a Classic 2v2 game; yours again after it.</note>
 			<choice shown="ON" value="true"/>
 			<choice shown="OFF" value="false"/>
 		</row>

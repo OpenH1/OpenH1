@@ -3,7 +3,8 @@ playlist's, an OpenH1 game of this build, open, no password, room for the whole 
 who may search, how a hosted game starts (full at once, else after a wait with bots or its least players), and a
 search's steps (looked for, reached, joined, failed and looked again, the lead passed or hosted when none fits, the new
 leader followed), and the playlists themselves (each listed by its number, which builds must agree on; teams that a
-party fits on; a row of the Matchmaking screen for each). The party's host election is tools/p2p_party_check.c's "host" case; the listing's playlist
+party fits on; a row of the Matchmaking screen for each), and 2V2's kinds (Classic and Lowest Latency: each its own
+playlist and tick rate, never matched with the other's games). The party's host election is tools/p2p_party_check.c's "host" case; the listing's playlist
 p2p_lobby_check.c's."""
 
 import re
@@ -13,7 +14,7 @@ import pytest
 from tools import port_settings
 from tools.harness import build, constant, enum_with, function, mutated, read, run, structure
 
-CASES = ["pick", "problem", "start", "look", "join", "host", "playlists"]
+CASES = ["pick", "problem", "start", "look", "join", "host", "playlists", "doubles"]
 FUNCTIONS = ["matchmaking_game_score", "matchmaking_pick", "matchmaking_search_problem", "matchmaking_start_choice",
              "matchmaking_step"]
 
@@ -25,12 +26,14 @@ def generated(fault=None):
     config = enum_with(p2p, "P2P_LISTING_NAME_SIZE") + "\n" + structure(p2p, "p2p_listing") + "\n"
     config += enum_with(p2p, "_p2p_join_reached") + "\n"
     config += enum_with(header, "_matchmaking_looking") + "\n" + enum_with(header, "_matchmaking_problem_member") + "\n"
+    config += enum_with(header, "_matchmaking_doubles_classic") + "\n"
     for member in ("MATCHMAKING_MAXIMUM_MAPS = ", "_matchmaking_action_reach,", "_matchmaking_start_bots,"):
         config += enum_with(source, member) + "\n"
     config += structure(source, "matchmaking_view") + "\n"
     config += enum_with(header, "MATCHMAKING_PLAYLIST_NAME_SIZE") + "\n" + structure(source, "matchmaking_playlist")
     config += "\n" + re.search(r"^static struct matchmaking_playlist const matchmaking_playlists\[\] =\n\{.*?^\};",
                                 source, re.M | re.S).group(0) + "\n"
+    config += re.search(r"^static short const matchmaking_doubles_playlists\[.*?;", source, re.M | re.S).group(0) + "\n"
     config += f"#define MATCHMAKING_ROWS {rows()}\n"
     code = "\n\n".join(function(source, name) for name in FUNCTIONS)
     if fault and fault[0] in code:
@@ -95,7 +98,16 @@ FAULTS = {
     "followed-for-ever": (("if (view->waited > MATCHMAKING_FOLLOW_MILLISECONDS)", "if (0)"), "host"),
     "playlist-inserted": (('\t{ "Slayer", L"SLAYER"', '\t{ "Doubles", L"DOUBLES", L"", { "team_slayer", NULL },\n'
                            '\t\t{ "wizard", NULL }, 2, 4, 2, 2 },\n\t{ "Slayer", L"SLAYER"'), "playlists"),
-    "party-split-teams": (("\t\t2, 4, 2, 2 },", "\t\t2, 4, 2, 4 },"), "playlists"),
+    "party-split-teams": (("\t\t2, 4, 2, 2, 30, TRUE },", "\t\t2, 4, 2, 4, 30, TRUE },"), "playlists"),
+    "rate-ignored": (("\tif (rate && game->rate != rate)\n\t\treturn NONE;", ""), "doubles"),
+    "kinds-swapped": (("matchmaking_doubles_playlists[NUMBER_OF_MATCHMAKING_DOUBLES_KINDS] = { 6, 5 };",
+                       "matchmaking_doubles_playlists[NUMBER_OF_MATCHMAKING_DOUBLES_KINDS] = { 5, 6 };"), "doubles"),
+    "classic-at-120": (("\t\t2, 4, 2, 2, 30, TRUE },", "\t\t2, 4, 2, 2, 120, TRUE },"), "doubles"),
+    "classic-instant-aim": (("\t\t2, 4, 2, 2, 30, TRUE },", "\t\t2, 4, 2, 2, 30, FALSE },"), "doubles"),
+    "kinds-maps-differ": (('{ "chillout", "hangemhigh", "prisoner", "damnation", "carousel", NULL, NULL, NULL, NULL },\n'
+                           '\t\t2, 4, 2, 2, 30',
+                           '{ "chillout", "hangemhigh", "prisoner", "damnation", "wizard", NULL, NULL, NULL, NULL },\n'
+                           '\t\t2, 4, 2, 2, 30'), "doubles"),
     "server-waited-for-ever": (("if (!view->hosting && view->waited > MATCHMAKING_HOST_MILLISECONDS)", "if (0)"),
                                "host"),
 }
