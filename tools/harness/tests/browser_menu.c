@@ -52,7 +52,7 @@ static boolean browser_grouped;
 static boolean browser_listed_favorite[BROWSER_LISTED_MAXIMUM];
 static short browser_sort_column, browser_tab;
 static boolean browser_sort_descending;
-static struct browser_filters browser_filters = { TRUE, TRUE, TRUE, 0, BROWSER_ALL_ENGINES };
+static struct browser_filters browser_filters = { TRUE, TRUE, TRUE, 0, _browser_tick_any, _browser_type_any };
 static boolean browser_filtering;
 /* the 2V2 browser's playlist (NONE: the server browser itself): its kind's
 games listed whatever the tab and the Filters, no favorites offline */
@@ -69,10 +69,15 @@ static struct
 {
 	{ "network.browser_show_full", "true" }, { "network.browser_show_empty", "true" },
 	{ "network.browser_show_password", "true" }, { "network.browser_ping", "0" },
-	{ "network.browser_show_ctf", "true" }, { "network.browser_show_slayer", "true" },
-	{ "network.browser_show_oddball", "true" }, { "network.browser_show_king", "true" },
-	{ "network.browser_show_race", "true" },
+	{ "network.browser_tick", "any" }, { "network.browser_game_type", "any" },
+	{ "network.browser_tab", "all" }, { "network.browser_sort", "players" },
+	{ "network.browser_sort_descending", "true" },
 };
+/* the settings config_write wrote, in order ("name=value "), and the words
+they were given, kept */
+static char config_written[512];
+static char config_words[8][32];
+static short config_word_count;
 
 static char const *config_string(char const *name)
 {
@@ -96,6 +101,20 @@ static void config_set(char const *name, char const *value)
 		if (!strcmp(fake_settings[index].name, name))
 			fake_settings[index].value = value;
 	}
+}
+
+/* (port_config.c's: the setting for now and in config.toml) */
+static int config_write(char const *name, char const *value)
+{
+	char *kept = config_words[config_word_count++ % 8];
+
+	snprintf(kept, sizeof(config_words[0]), "%s", value);
+	config_set(name, kept);
+	strncat(config_written, name, sizeof(config_written) - strlen(config_written) - 1);
+	strncat(config_written, "=", sizeof(config_written) - strlen(config_written) - 1);
+	strncat(config_written, value, sizeof(config_written) - strlen(config_written) - 1);
+	strncat(config_written, " ", sizeof(config_written) - strlen(config_written) - 1);
+	return 1;
 }
 
 static int config_boolean(char const *name)
@@ -309,7 +328,8 @@ int main(int argc, char **argv)
 		browser_filtering = TRUE;
 		browser_filters.show_full = FALSE;
 		browser_filters.maximum_ping = 1;
-		browser_filters.engines = 0;
+		browser_filters.tick = _browser_tick_120;
+		browser_filters.game_type = _browser_type_race;
 		listed(_browser_tab_all, names, sizeof(names), &offline);
 		CHECK(!strcmp(names, "bravo* echo* delta alpha coop "), "the Filters hide 2V2's games: %s", names);
 		/* (and the server browser itself as it was) */
@@ -455,7 +475,7 @@ int main(int argc, char **argv)
 		/* the settings' defaults list every game */
 		browser_filters_read(&filters);
 		CHECK(filters.show_full && filters.show_empty && filters.show_password && filters.maximum_ping == 0 &&
-			filters.engines == BROWSER_ALL_ENGINES, "the defaults filter games");
+			filters.tick == _browser_tick_any && filters.game_type == _browser_type_any, "the defaults filter games");
 		CHECK(browser_filters_show(&filters, &game), "the defaults hide a game");
 		/* full and empty games */
 		game.players = 16;
@@ -490,35 +510,34 @@ int main(int argc, char **argv)
 		CHECK(browser_filters_show(&filters, &game), "PING UNDER 100 hides 99 ms");
 		game.ping = NONE;
 		CHECK(browser_filters_show(&filters, &game), "a ping not known hidden by PING");
-		/* the game types, more than one at once; a co-op game has none */
-		filters.engines = (short)(1 << 1 | 1 << 3);
-		CHECK(!browser_filters_show(&filters, &game), "CTF and ODDBALL alone list Slayer");
-		game.engine_type = 3;
-		CHECK(browser_filters_show(&filters, &game), "CTF and ODDBALL alone hide Oddball");
-		game.engine_type = 1;
-		CHECK(browser_filters_show(&filters, &game), "CTF and ODDBALL alone hide CTF");
-		game.engine_type = 0;
-		CHECK(browser_filters_show(&filters, &game), "the game types hide a co-op game");
-		filters.engines = 0;
-		CHECK(browser_filters_show(&filters, &game), "no game type hides a co-op game");
-		game.engine_type = 5;
-		CHECK(!browser_filters_show(&filters, &game), "no game type lists Race");
-		filters.engines = BROWSER_ALL_ENGINES;
-		/* the settings read: the game types in the engines' order, the
-		ping */
+		/* the settings read: the tick rate and the game type by their
+		words, in their orders; a word not known (another build's) any */
 		config_set("network.browser_show_full", "false");
 		config_set("network.browser_show_password", "false");
 		config_set("network.browser_ping", "250");
-		config_set("network.browser_show_slayer", "false");
-		config_set("network.browser_show_race", "false");
+		config_set("network.browser_tick", "120");
+		config_set("network.browser_game_type", "team_slayer");
 		browser_filters_read(&filters);
 		CHECK(!filters.show_full && filters.show_empty && !filters.show_password, "the settings' YES and NO");
 		CHECK(filters.maximum_ping == 250, "network.browser_ping 250 read as %d", filters.maximum_ping);
-		CHECK(filters.engines == (1 << 1 | 1 << 3 | 1 << 4), "the game types read as %#x", filters.engines);
+		CHECK(filters.tick == _browser_tick_120, "network.browser_tick 120 read as %d", filters.tick);
+		CHECK(filters.game_type == _browser_type_team_slayer, "network.browser_game_type team_slayer read as %d",
+			filters.game_type);
+		config_set("network.browser_tick", "legacy");
+		config_set("network.browser_game_type", "pro_2v2");
+		browser_filters_read(&filters);
+		CHECK(filters.tick == _browser_tick_legacy && filters.game_type == _browser_type_pro_2v2,
+			"legacy and pro_2v2 read as %d and %d", filters.tick, filters.game_type);
+		config_set("network.browser_tick", "240");
+		config_set("network.browser_game_type", "juggernaut");
+		browser_filters_read(&filters);
+		CHECK(filters.tick == _browser_tick_any && filters.game_type == _browser_type_any,
+			"words not known read as %d and %d, not any", filters.tick, filters.game_type);
+		config_set("network.browser_tick", "any");
+		config_set("network.browser_game_type", "any");
 		/* the list: the filters hide games from every tab, counted; the
 		favorites too. Off (Join by Link's), they hide none */
 		browser_filters = filters;
-		browser_filters.engines = BROWSER_ALL_ENGINES;
 		browser_filters.show_empty = FALSE;
 		browser_filters.maximum_ping = 0;
 		browser_filtering = TRUE;
@@ -535,6 +554,167 @@ int main(int argc, char **argv)
 		listed(_browser_tab_all, names, sizeof(names), &offline);
 		CHECK(!strcmp(names, "bravo* echo* delta alpha coop "), "unfiltered lists %s", names);
 		CHECK(browser_filtered_count == 0, "unfiltered counts %d hidden", browser_filtered_count);
+		return 0;
+	}
+	CASE("tick")
+	{
+		struct browser_filters filters = { TRUE, TRUE, TRUE, 0, _browser_tick_any, _browser_type_any };
+		struct browser_sort_entry game = entry("game", TRUE, FALSE, 4);
+		/* (OpenH1 at 30, 60 and 120, and Legacy at 30) */
+		static short const rates[] = { 30, 60, 120, 30 };
+		static boolean const openh1[] = { TRUE, TRUE, TRUE, FALSE };
+		/* (which of them each choice lists: any, 30, 60, 120, Legacy) */
+		static char const *const shown[NUMBER_OF_BROWSER_TICKS] = { "1111", "1000", "0100", "0010", "0001" };
+		short tick, index;
+
+		for (tick = 0; tick < NUMBER_OF_BROWSER_TICKS; tick++)
+		{
+			filters.tick = tick;
+			for (index = 0; index < 4; index++)
+			{
+				game.rate = rates[index];
+				game.openh1 = openh1[index];
+				CHECK(browser_filters_show(&filters, &game) == (shown[tick][index] == '1'),
+					"TICK RATE %s %s an %s game at %d", browser_tick_words[tick],
+					shown[tick][index] == '1' ? "hides" : "lists", openh1[index] ? "OpenH1" : "Legacy", rates[index]);
+			}
+		}
+		/* (the list: OpenH1 60's alone, of the five: alpha, delta and echo
+		at 60, bravo and coop Legacy; delta full but listed) */
+		{
+			char names[128];
+			short offline;
+
+			browser_filters = filters;
+			browser_filters.tick = _browser_tick_60;
+			browser_filtering = TRUE;
+			listed(_browser_tab_all, names, sizeof(names), &offline);
+			CHECK(!strcmp(names, "echo* delta alpha "), "OPENH1 60 lists %s", names);
+			CHECK(browser_filtered_count == 2, "OPENH1 60 counts %d hidden", browser_filtered_count);
+			browser_filters.tick = _browser_tick_legacy;
+			listed(_browser_tab_all, names, sizeof(names), &offline);
+			CHECK(!strcmp(names, "bravo* coop "), "LEGACY lists %s", names);
+			browser_filters.tick = _browser_tick_any;
+			browser_filtering = FALSE;
+		}
+		return 0;
+	}
+	CASE("game_type")
+	{
+		struct browser_filters filters = { TRUE, TRUE, TRUE, 0, _browser_tick_any, _browser_type_any };
+		/* the games: (engine, kind, teams, PRO 2V2's, co-op) */
+		static struct
+		{
+			char const *name;
+			short engine;
+			byte kind;
+			boolean teams, pro_2v2, coop;
+		} const games[] =
+		{
+			{ "slayer", 2, _game_mode_none, FALSE, FALSE, FALSE },
+			{ "team_slayer", 2, _game_mode_none, TRUE, FALSE, FALSE },
+			{ "hc_slayer", 2, GAME_MODES_KIND_HARDCORE, FALSE, FALSE, FALSE },
+			{ "ctf", 1, _game_mode_none, TRUE, FALSE, FALSE },
+			{ "hc_ctf", 1, GAME_MODES_KIND_HARDCORE, TRUE, FALSE, FALSE },
+			{ "oddball", 3, _game_mode_none, FALSE, FALSE, FALSE },
+			{ "king", 4, _game_mode_none, TRUE, FALSE, FALSE },
+			{ "race", 5, _game_mode_none, FALSE, FALSE, FALSE },
+			{ "swat", 2, _game_mode_swat, TRUE, FALSE, FALSE },
+			{ "hc_infection", 2, _game_mode_infection | GAME_MODES_KIND_HARDCORE, TRUE, FALSE, FALSE },
+			{ "gun_game", 2, _game_mode_gun_game, FALSE, FALSE, FALSE },
+			{ "coop", 0, _game_mode_none, FALSE, FALSE, TRUE },
+			{ "pro_2v2", 2, _game_mode_none, TRUE, TRUE, FALSE },
+		};
+		/* (which games each choice lists, by their names) */
+		static char const *const shown[NUMBER_OF_BROWSER_TYPES] =
+		{
+			"slayer team_slayer hc_slayer ctf hc_ctf oddball king race swat hc_infection gun_game coop pro_2v2 ",
+			"slayer hc_slayer ", "team_slayer pro_2v2 ", "ctf hc_ctf ", "oddball ", "king ", "race ", "swat ",
+			"hc_infection ", "gun_game ", "coop ", "pro_2v2 ",
+		};
+		short game_type, index;
+
+		for (game_type = 0; game_type < NUMBER_OF_BROWSER_TYPES; game_type++)
+		{
+			char names[256];
+
+			names[0] = 0;
+			filters.game_type = game_type;
+			for (index = 0; index < (short)NUMBEROF(games); index++)
+			{
+				struct browser_sort_entry game = entry(games[index].name, TRUE, games[index].coop, 4);
+
+				game.engine_type = games[index].engine;
+				game.kind = games[index].kind;
+				game.has_teams = games[index].teams;
+				game.pro_2v2 = games[index].pro_2v2;
+				if (browser_filters_show(&filters, &game))
+				{
+					strncat(names, games[index].name, sizeof(names) - strlen(names) - 2);
+					strcat(names, " ");
+				}
+			}
+			CHECK(!strcmp(names, shown[game_type]), "GAME TYPE %s lists %s", browser_type_words[game_type], names);
+		}
+		return 0;
+	}
+	CASE("view")
+	{
+		/* the defaults: ALL, by players, the most first */
+		browser_tab = _browser_tab_favorites;
+		browser_sort_column = _browser_sort_map;
+		browser_sort_descending = FALSE;
+		browser_view_read();
+		CHECK(browser_tab == _browser_tab_all && browser_sort_column == _browser_sort_players &&
+			browser_sort_descending, "the defaults read as tab %d, column %d, %s", browser_tab, browser_sort_column,
+			browser_sort_descending ? "down" : "up");
+		/* nothing changed, nothing written */
+		config_written[0] = 0;
+		browser_view_write();
+		CHECK(!config_written[0], "an unchanged view wrote %s", config_written);
+		/* a tab, a column and its way chosen: each written, and read again
+		as the next run's */
+		browser_tab = _browser_tab_legacy;
+		browser_view_write();
+		CHECK(!strcmp(config_written, "network.browser_tab=legacy "), "LEGACY wrote %s", config_written);
+		browser_sort_column = _browser_sort_ping;
+		browser_sort_descending = FALSE;
+		config_written[0] = 0;
+		browser_view_write();
+		CHECK(!strcmp(config_written, "network.browser_sort=ping network.browser_sort_descending=false "),
+			"PING up wrote %s", config_written);
+		browser_tab = _browser_tab_all;
+		browser_sort_column = _browser_sort_players;
+		browser_sort_descending = TRUE;
+		browser_view_read();
+		CHECK(browser_tab == _browser_tab_legacy && browser_sort_column == _browser_sort_ping &&
+			!browser_sort_descending, "read again as tab %d, column %d, %s", browser_tab, browser_sort_column,
+			browser_sort_descending ? "down" : "up");
+		/* every tab and column, by its word */
+		for (browser_tab = 0; browser_tab < NUMBER_OF_BROWSER_TABS; browser_tab++)
+		{
+			short tab = browser_tab;
+
+			browser_view_write();
+			browser_tab = NONE;
+			browser_view_read();
+			CHECK(browser_tab == tab, "tab %d read again as %d", tab, browser_tab);
+		}
+		for (browser_sort_column = 0; browser_sort_column < NUMBER_OF_BROWSER_SORTS; browser_sort_column++)
+		{
+			short column = browser_sort_column;
+
+			browser_view_write();
+			browser_sort_column = NONE;
+			browser_view_read();
+			CHECK(browser_sort_column == column, "column %d read again as %d", column, browser_sort_column);
+		}
+		/* a word not known (an older or newer build's): the first */
+		config_set("network.browser_tab", "pinned");
+		config_set("network.browser_sort", "region");
+		browser_view_read();
+		CHECK(browser_tab == _browser_tab_all && browser_sort_column == _browser_sort_players,
+			"words not known read as tab %d, column %d", browser_tab, browser_sort_column);
 		return 0;
 	}
 	CASE("search")

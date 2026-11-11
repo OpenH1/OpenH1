@@ -577,8 +577,16 @@ DISCORD_ACCOUNT = ("network_setup/discord_account", "discord_account_screen")
 # browser_filters_read; its title the PC version's Filters')
 BROWSER_FILTERS = ("network_setup/browser_filters", "browser_filters_screen")
 BROWSER_FILTERS_TITLE = "main_menu/multiplayer_type_select/join_game/filters/header_filters"
-SHOW_HIDE = [("SHOW", "true"), ("HIDE", "false")]
 BROWSER_PINGS = [("ANY", "0")] + [(f"UNDER {ms} MS", str(ms)) for ms in (300, 250, 150, 100, 50)]
+# the Filters page's TICK RATE and GAME TYPE (network.browser_tick and
+# network.browser_game_type: menu_functions.c's browser_tick_words and
+# browser_type_words, in their order)
+BROWSER_TICKS = [("ANY", "any"), ("OPENH1 30", "30"), ("OPENH1 60", "60"), ("OPENH1 120", "120"),
+                 ("LEGACY", "legacy")]
+BROWSER_GAME_TYPES = [("ANY", "any"), ("SLAYER", "slayer"), ("TEAM SLAYER", "team_slayer"),
+                      ("CAPTURE THE FLAG", "ctf"), ("ODDBALL", "oddball"), ("KING OF THE HILL", "king"),
+                      ("RACE", "race"), ("SWAT", "swat"), ("INFECTION", "infection"), ("GUN GAME", "gun_game"),
+                      ("CO-OP", "coop"), ("PRO 2V2", "pro_2v2")]
 # Button Remapping's rows for a group's actions (the most a group has:
 # controller_remap_menu.inl's pad_action_groups), and what each row does: A
 # (or a click) takes the next button pressed, left and right step through
@@ -1404,14 +1412,13 @@ PAGES = {
             ("PING", "network.browser_ping", BROWSER_PINGS,
              "Lists only the games whose ping is under this.|A game whose ping is not known is listed: a local "
              "network game's, a dedicated server's, one still being timed.", None),
-            (SECTION, "GAME TYPES"),
-            ("CAPTURE THE FLAG", "network.browser_show_ctf", SHOW_HIDE,
-             "Lists Capture the Flag games, OpenCE's kinds of it too.", None),
-            ("SLAYER", "network.browser_show_slayer", SHOW_HIDE,
-             "Lists Slayer games, OpenCE's kinds of it too (SWAT, Infection, Gun Game).", None),
-            ("ODDBALL", "network.browser_show_oddball", SHOW_HIDE, "Lists Oddball games.", None),
-            ("KING OF THE HILL", "network.browser_show_king", SHOW_HIDE, "Lists King of the Hill games.", None),
-            ("RACE", "network.browser_show_race", SHOW_HIDE, "Lists Race games.", None),
+            (SECTION, "GAME"),
+            ("TICK RATE", "network.browser_tick", BROWSER_TICKS,
+             "Lists only the games of this tick rate.|OpenH1 games play at 30, 60 or 120 ticks a second; Legacy "
+             "games are OpenCE's netcode.", None),
+            ("GAME TYPE", "network.browser_game_type", BROWSER_GAME_TYPES,
+             "Lists only the games of this type.|Slayer is free for all; SWAT, Infection and Gun Game are "
+             "OpenCE's. Pro 2v2 is PRO 2V2's games.", None),
         ],
     },
     DISCORD_ACCOUNT[0]: {

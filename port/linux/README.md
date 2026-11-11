@@ -1442,7 +1442,10 @@ the setting for one start of the game. It has priority over the file.
 | `network.browser_show_empty` | `true` | `HALO_NET_BROWSER_SHOW_EMPTY` | `false`: the server browser and the local network's list hide games with no player. Their Filters page. |
 | `network.browser_show_password` | `true` | `HALO_NET_BROWSER_SHOW_PASSWORD` | `false`: the server browser hides games that need a password. Their Filters page. |
 | `network.browser_ping` | `0` | `HALO_NET_BROWSER_PING` | The server browsers list only games whose ping is under this many milliseconds (300, 250, 150, 100 or 50); `0` lists every game. A game whose ping is not known (a local network game's, a dedicated server's, one still being timed) is listed. Their Filters page. |
-| `network.browser_show_ctf`, `network.browser_show_slayer`, `network.browser_show_oddball`, `network.browser_show_king`, `network.browser_show_race` | `true` | `HALO_NET_BROWSER_SHOW_CTF`, `HALO_NET_BROWSER_SHOW_SLAYER`, `HALO_NET_BROWSER_SHOW_ODDBALL`, `HALO_NET_BROWSER_SHOW_KING`, `HALO_NET_BROWSER_SHOW_RACE` | `false`: the server browsers hide the games of that game type (OpenCE's kinds of it too: SWAT is Slayer). Co-op games have none (the CO-OP tab). Their Filters page. |
+| `network.browser_tick` | `"any"` | `HALO_NET_BROWSER_TICK` | The server browsers list only games of this tick rate: `"30"`, `"60"` or `"120"` (OpenH1 games at that rate), or `"legacy"` (OpenCE's netcode). Their Filters page. |
+| `network.browser_game_type` | `"any"` | `HALO_NET_BROWSER_GAME_TYPE` | The server browsers list only games of this type: `"slayer"` (free for all), `"team_slayer"`, `"ctf"`, `"oddball"`, `"king"`, `"race"`, `"swat"`, `"infection"`, `"gun_game"`, `"coop"` or `"pro_2v2"`. Their Filters page. |
+| `network.browser_tab` | `"all"` | `HALO_NET_BROWSER_TAB` | The server browsers' tab, the one shown last: `"all"`, `"dedicated"`, `"openh1"`, `"legacy"`, `"coop"` or `"favorites"`. The browsers write it. |
+| `network.browser_sort`, `network.browser_sort_descending` | `"players"`, `true` | `HALO_NET_BROWSER_SORT`, `HALO_NET_BROWSER_SORT_DESCENDING` | The column the server browsers sort by, the one chosen last (`"players"`, `"ping"`, `"server"`, `"map"` or `"mode"`), and its way (`true`: the most first, or Z to A). The browsers write them. |
 | `friends.share_status` | `true` | `HALO_FRIENDS_SHARE_STATUS` | Show your friends that you are online, and where, and let them join you (Multiplayer > FRIENDS). Only your friends can read it. `false` appears offline: nothing is published, and you still see your friends. Refer to "Friends". |
 | `network.host_public` | `true` | `HALO_NET_HOST_PUBLIC` | `true`: a new game of Create Game > Internet starts as PUBLIC. `false`: it starts as PRIVATE. LISTING in Server Setup changes it for each game. Refer to "Server browser". |
 | `network.game_mode` | `"openh1"` | `HALO_NET_GAME_MODE` | When you host: `"openh1"`, an OpenH1 game ("OpenH1 60 Tick" and the like) at the tick rate `network.sim_rate` sets, which OpenCE players can join too, at 30, with `network.allow_opence`; `"legacy"`, OpenCE's netcode at 30 ticks a second for everyone. `"standard"` is the same as `"openh1"`. Server Setup's GAME row (OPENH1 30 TICK, OPENH1 60 TICK, OPENH1 120 TICK or LEGACY) writes it and `network.sim_rate`. Read when hosting starts, and again when the game is started from Server Setup if no one has joined yet. Refer to "OpenH1 and Legacy games" in NETCODE.md. |
@@ -3342,7 +3345,9 @@ chosen game's kind (OPENH1 or LEGACY), its tick rate (a Legacy game's 30),
 and OPENCE CAN JOIN for one OpenCE players join too (an OpenH1 game at 30,
 the default, and every Legacy game: NETCODE.md, "OpenH1 and Legacy games").
 
-Sorting and the tabs, in all three lists, for this run of the game:
+Sorting and the tabs, in all three lists, kept for the next time the game
+starts (`network.browser_tab`, `network.browser_sort`,
+`network.browser_sort_descending`, which the browsers write as you choose):
 
 - Choosing a column's title sorts the games by it; choosing it again sorts
   the other way. Click or tap the title, or with a controller press up from
@@ -3389,10 +3394,19 @@ time the game starts; Cancel leaves them as they were.
 - PING: ANY, or only games under 300, 250, 150, 100 or 50 ms. A game whose
   ping is not known (a local network game's, a dedicated server's, one
   still being timed) stays listed.
-- GAME TYPES: CAPTURE THE FLAG, SLAYER, ODDBALL, KING OF THE HILL and RACE,
-  each SHOW or HIDE, so that any mix of them is listed. OpenCE's kinds go
-  with their game type (SWAT, Infection and Gun Game with Slayer). Co-op
-  games have no game type: the CO-OP tab lists them.
+- TICK RATE: ANY, OPENH1 30, OPENH1 60, OPENH1 120 (OpenH1 games at that
+  rate) or LEGACY (OpenCE's netcode, at 30).
+- GAME TYPE: ANY, or one of SLAYER (free for all), TEAM SLAYER, CAPTURE THE
+  FLAG, ODDBALL, KING OF THE HILL, RACE, OpenCE's SWAT, INFECTION and GUN
+  GAME, CO-OP (the campaign) and PRO 2V2 (games hosted for PRO 2V2's
+  playlists, which are Team Slayer games too). A Hardcore game goes with
+  its game type. A local network game's advertisement names no playlist,
+  so PRO 2V2 lists none of them. (The SHOW or HIDE rows of each game type
+  before it, `network.browser_show_ctf` and the others, are gone: an older
+  `config.toml`'s lines are taken out.)
+
+Both are what the games' listings already carry (their netcode and rate,
+game engine, teams, OpenCE mode and playlist): nothing new is sent.
 
 The filters apply on every tab, the favorites too. The counts above the
 list say how many games they hide (`3 HIDDEN`), and a list that they leave

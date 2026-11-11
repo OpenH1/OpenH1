@@ -7717,8 +7717,8 @@ come before the games players host. The tabs
 servers (on the LAN by their advertisement's word, on the internet by a
 master server's: port/linux/src/master_list.c), OpenH1's own, Legacy ones
 (OpenCE's netcode: port/linux/game/network_standard.c), co-op games, or the
-favorites. Nothing is sent: it is the lists', and kept while
-the game runs.
+favorites. Nothing is sent: it is the lists', and kept from one
+run to the next (browser_view_read, below).
 
 The server browser's list is in groups, each under its heading: OpenH1's
 dedicated servers ("OpenH1 Dedicated Servers"), the OpenH1 games players
@@ -7794,6 +7794,12 @@ struct browser_sort_entry
 	short engine_type;
 	boolean locked;
 	wchar_t map_shown[ROW_TEXT_LENGTH];
+	/* ... and its kind (game_modes_kind: its mode, and Hardcore), whether
+	it is on teams, and whether it is PRO 2V2's (hosted for one of its
+	matchmaking playlists: a listing's playlist) */
+	byte kind;
+	boolean has_teams;
+	boolean pro_2v2;
 };
 
 static short browser_sort_column = _browser_sort_players;
@@ -7965,26 +7971,69 @@ BROWSER_FILTERS: the network.browser_* settings, read as a list opens and
 kept): full games, empty ones and those with a password listed or not, only
 the games whose ping is under a limit (one whose ping is not known is
 listed: a local network game's, a master server's dedicated server's, one
-being timed), the gametypes listed (a co-op game has none: CO-OP is its
-tab). The searches (browser_searches: the SERVER and MAP columns', and
+being timed), the tick rate (OpenH1's 30, 60 or 120, or Legacy: OpenCE's
+netcode, the listing's standard and rate) and the game type (an engine's,
+Team Slayer's teams, OpenCE's modes of Slayer, co-op's none, PRO 2V2's
+playlists: what the listings carry, engine_type, has_teams, kind and
+playlist; one at a time, or any). The searches (browser_searches: the SERVER and MAP columns', and
 the touchscreen's one field for both) hide the games whose name or map has
 not their words. The server browser's and
 the local network's lists are filtered, not Join by Link's, whose games are
 the invites taken. Nothing is sent: the lists' own */
 
 #define BROWSER_SEARCH_LENGTH 31
-#define BROWSER_ALL_ENGINES 0x3E
+
+/* the TICK RATE filter's choices (network.browser_tick's words, below) */
+enum
+{
+	_browser_tick_any,
+	_browser_tick_30,
+	_browser_tick_60,
+	_browser_tick_120,
+	_browser_tick_legacy,
+	NUMBER_OF_BROWSER_TICKS
+};
+
+/* the GAME TYPE filter's (network.browser_game_type's) */
+enum
+{
+	_browser_type_any,
+	_browser_type_slayer,
+	_browser_type_team_slayer,
+	_browser_type_ctf,
+	_browser_type_oddball,
+	_browser_type_king,
+	_browser_type_race,
+	_browser_type_swat,
+	_browser_type_infection,
+	_browser_type_gun_game,
+	_browser_type_coop,
+	_browser_type_pro_2v2,
+	NUMBER_OF_BROWSER_TYPES
+};
+
+/* the settings' words for them, in their order (tools/port_settings.py's
+BROWSER_TICKS and BROWSER_GAME_TYPES) */
+static char const *const browser_tick_words[NUMBER_OF_BROWSER_TICKS] =
+{
+	"any", "30", "60", "120", "legacy",
+};
+static char const *const browser_type_words[NUMBER_OF_BROWSER_TYPES] =
+{
+	"any", "slayer", "team_slayer", "ctf", "oddball", "king", "race", "swat", "infection", "gun_game", "coop",
+	"pro_2v2",
+};
 
 struct browser_filters
 {
 	boolean show_full, show_empty, show_password;
 	/* milliseconds; 0: any */
 	short maximum_ping;
-	/* a bit for each game engine listed (1 << 1 CTF to 1 << 5 Race) */
-	short engines;
+	/* _browser_tick_* and _browser_type_* */
+	short tick, game_type;
 };
 
-static struct browser_filters browser_filters = { TRUE, TRUE, TRUE, 0, BROWSER_ALL_ENGINES };
+static struct browser_filters browser_filters = { TRUE, TRUE, TRUE, 0, _browser_tick_any, _browser_type_any };
 /* whether the list being ordered is filtered, how many of the games its
 tab lists the filters and the searches hid, and how many of those the
 searches alone hid (the Filters' listed) */
@@ -8100,6 +8149,79 @@ static boolean browser_searching(void)
 	return FALSE;
 }
 
+/* whether the TICK RATE filter lists the game: an OpenH1 game's rate (in
+Hz: OpenH1 30 Tick is OpenH1's netcode at the Xbox's rate), or Legacy,
+OpenCE's netcode (at 30 ticks, apart from OpenH1's 30) */
+static boolean browser_tick_shows(short tick, struct browser_sort_entry const *entry)
+{
+	switch (tick)
+	{
+	case _browser_tick_30:
+		return entry->openh1 && entry->rate == 30;
+	case _browser_tick_60:
+		return entry->openh1 && entry->rate == 60;
+	case _browser_tick_120:
+		return entry->openh1 && entry->rate == 120;
+	case _browser_tick_legacy:
+		return !entry->openh1;
+	default:
+		return TRUE;
+	}
+}
+
+/* whether the GAME TYPE filter lists the game: by its game engine (1 CTF,
+2 Slayer, 3 Oddball, 4 King of the Hill, 5 Race; 0 co-op's none), Slayer
+free for all or on teams, OpenCE's modes of Slayer (SWAT, Infection, Gun
+Game: their own, not Slayer's; Hardcore is rules over any, not a type),
+PRO 2V2's playlists (Team Slayer's too) */
+static boolean browser_type_shows(short game_type, struct browser_sort_entry const *entry)
+{
+	short mode = (short)(entry->kind & ~GAME_MODES_KIND_HARDCORE);
+	boolean slayer = entry->engine_type == 2 && mode == _game_mode_none;
+
+	switch (game_type)
+	{
+	case _browser_type_slayer:
+		return slayer && !entry->has_teams;
+	case _browser_type_team_slayer:
+		return slayer && entry->has_teams;
+	case _browser_type_ctf:
+		return entry->engine_type == 1;
+	case _browser_type_oddball:
+		return entry->engine_type == 3;
+	case _browser_type_king:
+		return entry->engine_type == 4;
+	case _browser_type_race:
+		return entry->engine_type == 5;
+	case _browser_type_swat:
+		return entry->engine_type == 2 && mode == _game_mode_swat;
+	case _browser_type_infection:
+		return entry->engine_type == 2 && mode == _game_mode_infection;
+	case _browser_type_gun_game:
+		return entry->engine_type == 2 && mode == _game_mode_gun_game;
+	case _browser_type_coop:
+		return entry->coop;
+	case _browser_type_pro_2v2:
+		return entry->pro_2v2;
+	default:
+		return TRUE;
+	}
+}
+
+/* a word's place among words (count of them), the first's if it is none
+(a word the file has that this build does not know: any) */
+static short browser_word_index(char const *word, char const *const *words, short count)
+{
+	short index;
+
+	for (index = 0; word && index < count; index++)
+	{
+		if (!strcmp(word, words[index]))
+			return index;
+	}
+	return 0;
+}
+
 /* whether the filters list the game */
 static boolean browser_filters_show(struct browser_filters const *filters, struct browser_sort_entry const *entry)
 {
@@ -8112,7 +8234,7 @@ static boolean browser_filters_show(struct browser_filters const *filters, struc
 	/* (a ping not known, NONE, under any limit) */
 	if (filters->maximum_ping > 0 && entry->ping >= filters->maximum_ping)
 		return FALSE;
-	if (entry->engine_type >= 1 && entry->engine_type <= 5 && !(filters->engines & (1 << entry->engine_type)))
+	if (!browser_tick_shows(filters->tick, entry) || !browser_type_shows(filters->game_type, entry))
 		return FALSE;
 	return TRUE;
 }
@@ -8120,28 +8242,55 @@ static boolean browser_filters_show(struct browser_filters const *filters, struc
 /* the filters as the settings have them */
 static void browser_filters_read(struct browser_filters *filters)
 {
-	static char const *const engines[] =
-	{
-		NULL, "network.browser_show_ctf", "network.browser_show_slayer", "network.browser_show_oddball",
-		"network.browser_show_king", "network.browser_show_race",
-	};
-	short index;
-
 	filters->show_full = config_boolean("network.browser_show_full") != 0;
 	filters->show_empty = config_boolean("network.browser_show_empty") != 0;
 	filters->show_password = config_boolean("network.browser_show_password") != 0;
 	filters->maximum_ping = (short)PIN(config_integer("network.browser_ping"), 0, 9999);
-	filters->engines = 0;
-	for (index = 1; index < (short)NUMBEROF(engines); index++)
-	{
-		if (config_boolean(engines[index]))
-			filters->engines |= (short)(1 << index);
-	}
+	filters->tick = browser_word_index(config_string("network.browser_tick"), browser_tick_words,
+		NUMBER_OF_BROWSER_TICKS);
+	filters->game_type = browser_word_index(config_string("network.browser_game_type"), browser_type_words,
+		NUMBER_OF_BROWSER_TYPES);
+}
+
+/* ---- the browsers' tab and order, kept from one run to the next
+(network.browser_tab, network.browser_sort and
+network.browser_sort_descending, as game.campaign_difficulty keeps the
+difficulty chosen last): read as a list opens, written as they change */
+
+/* the settings' words for the tabs and the columns, in their orders */
+static char const *const browser_tab_words[NUMBER_OF_BROWSER_TABS] =
+{
+	"all", "dedicated", "openh1", "legacy", "coop", "favorites",
+};
+static char const *const browser_sort_words[NUMBER_OF_BROWSER_SORTS] =
+{
+	"players", "ping", "server", "map", "mode",
+};
+
+static void browser_view_read(void)
+{
+	browser_tab = browser_word_index(config_string("network.browser_tab"), browser_tab_words,
+		NUMBER_OF_BROWSER_TABS);
+	browser_sort_column = browser_word_index(config_string("network.browser_sort"), browser_sort_words,
+		NUMBER_OF_BROWSER_SORTS);
+	browser_sort_descending = config_boolean("network.browser_sort_descending") != 0;
+}
+
+/* (only what changed: config_write writes config.toml) */
+static void browser_view_write(void)
+{
+	if (strcmp(config_string("network.browser_tab"), browser_tab_words[browser_tab]))
+		config_write("network.browser_tab", browser_tab_words[browser_tab]);
+	if (strcmp(config_string("network.browser_sort"), browser_sort_words[browser_sort_column]))
+		config_write("network.browser_sort", browser_sort_words[browser_sort_column]);
+	if ((config_boolean("network.browser_sort_descending") != 0) != (browser_sort_descending != FALSE))
+		config_write("network.browser_sort_descending", browser_sort_descending ? "true" : "false");
 }
 
 static void browser_filters_refresh(void)
 {
 	browser_filters_read(&browser_filters);
+	browser_view_read();
 }
 
 /* the games of a group the tab shows, the project's own or the others
@@ -8280,6 +8429,7 @@ static boolean browser_sort_choose(short sort, boolean next)
 	else
 		browser_sort_descending = browser_sorts[sort].descending;
 	browser_sort_column = sort;
+	browser_view_write();
 	browser_list_restart();
 	ui_play_audio_feedback_sound(SOUND_FORWARD);
 	return TRUE;
@@ -8317,6 +8467,7 @@ static boolean browser_tab_choose(short tab)
 	if (tab != browser_tab)
 	{
 		browser_tab = tab;
+		browser_view_write();
 		browser_list_restart();
 		ui_play_audio_feedback_sound(SOUND_CURSOR);
 	}
@@ -9620,6 +9771,19 @@ static short lobby_browser_valid_games(struct p2p_listing *games, short count)
 	return written;
 }
 
+/* whether a listing's playlist (1 up; 0: none) is one of PRO 2V2's */
+static boolean browser_playlist_pro_2v2(short playlist)
+{
+	short kind;
+
+	for (kind = 0; playlist > 0 && kind < NUMBER_OF_MATCHMAKING_DOUBLES_KINDS; kind++)
+	{
+		if (playlist - 1 == matchmaking_doubles_playlist(kind))
+			return TRUE;
+	}
+	return FALSE;
+}
+
 /* the games found in the favorites' order (browser_favorites_order), in the
 groups with their headings, the favorites offline after them; returns how
 many found are listed, the headings too */
@@ -9653,6 +9817,9 @@ static short lobby_browser_favorites(short count)
 		entries[index].maximum_players = game->maximum_player_count;
 		entries[index].engine_type = (short)game->engine_type;
 		entries[index].locked = game->locked != 0;
+		entries[index].kind = game->kind;
+		entries[index].has_teams = game->has_teams != 0;
+		entries[index].pro_2v2 = browser_playlist_pro_2v2(game->playlist);
 		/* (the map's name as shown, for the words searched for alone) */
 		entries[index].map_shown[0] = 0;
 		if (browser_search_reads_map_shown())
@@ -10220,6 +10387,10 @@ static short local_browser_favorites(struct widget_instance *list)
 		entries[index].maximum_players = game->maximum_player_count;
 		entries[index].engine_type = (short)game->engine_type;
 		entries[index].locked = FALSE;
+		entries[index].kind = favorites[index].kind;
+		entries[index].has_teams = game->has_teams != 0;
+		/* (a local network game's advertisement carries no playlist) */
+		entries[index].pro_2v2 = FALSE;
 		entries[index].map_shown[0] = 0;
 		if (browser_search_reads_map_shown())
 			game_map_name(game, entries[index].map_shown);
