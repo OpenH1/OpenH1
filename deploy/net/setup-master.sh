@@ -20,7 +20,7 @@ fi
 chmod 600 /etc/opence-master/env
 
 # the program, its signature checked, and its unit
-[ -x /usr/local/bin/opence-master ] || sh ./install-master.sh v0.1.8
+[ -x /usr/local/bin/opence-master ] || sh ./install-master.sh v0.1.10801
 install -m 755 opence-master-cli /usr/local/sbin/opence-master-cli
 install -m 644 opence-master.service /etc/systemd/system/opence-master.service
 systemctl daemon-reload
