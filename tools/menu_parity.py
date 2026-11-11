@@ -59,7 +59,19 @@ def _shows_menu_engine(left, right) -> bool:
                for item in (left, right))
 
 
-DELIBERATE = [("profile_settings", _shows_menu_engine)]
+# (the places an item has, which the browsers' tall layout moves: menu_layout.c's rectangles and a text's scale)
+PLACE_KEYS = {"box", "clip", "extent", "whole", "wide", "scale"}
+
+
+def _browser_tall(left, right) -> bool:
+    """the server browser's and PRO 2V2's browser's tall layout (tools/port_settings.py's BROWSER_TALL, the menu
+    engine's own looks): the same items, each where the tall layout puts it"""
+    return bool(left and right) and {key: value for key, value in left.items() if key not in PLACE_KEYS} == \
+        {key: value for key, value in right.items() if key not in PLACE_KEYS}
+
+
+DELIBERATE = [("profile_settings", _shows_menu_engine),
+              (r"join_game/join_game_screen|doubles/browser/doubles_browser_screen", _browser_tall)]
 
 
 def is_deliberate_frame(screen: str, classic: dict, new: dict) -> bool:

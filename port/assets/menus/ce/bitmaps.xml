@@ -603,6 +603,11 @@
 		<frame png="ce/port/main_menu/parts/row_404x19__1.png" width="404" height="19"/>
 		<frame png="ce/port/main_menu/parts/row_404x19__2.png" width="404" height="19"/>
 	</bitmap>
+	<bitmap name="main_menu/parts/row_404x24">
+		<frame png="ce/port/main_menu/parts/row_404x24__0.png" width="404" height="24"/>
+		<frame png="ce/port/main_menu/parts/row_404x24__1.png" width="404" height="24"/>
+		<frame png="ce/port/main_menu/parts/row_404x24__2.png" width="404" height="24"/>
+	</bitmap>
 	<bitmap name="main_menu/parts/item_280x26">
 		<frame png="ce/port/main_menu/parts/item_280x26__0.png" width="280" height="26"/>
 		<frame png="ce/port/main_menu/parts/item_280x26__1.png" width="280" height="26"/>
@@ -694,6 +699,9 @@
 	</bitmap>
 	<bitmap name="main_menu/parts/panel_172x296">
 		<frame png="ce/port/main_menu/parts/panel_172x296__0.png" width="172" height="296"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/panel_172x358">
+		<frame png="ce/port/main_menu/parts/panel_172x358__0.png" width="172" height="358"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/panel_296x320">
 		<frame png="ce/port/main_menu/parts/panel_296x320__0.png" width="296" height="320"/>

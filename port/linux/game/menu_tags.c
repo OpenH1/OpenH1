@@ -296,6 +296,9 @@ struct menu_wide
 	struct ui_widget_definition *definition;
 	short dx, dw;
 	short x1;
+	/* laid out to the screen's edges past 16:9 too (a look's "dx dw edge":
+	ui_widget_port_wide_layout) */
+	boolean edge;
 };
 
 /* a widget of the menus' files as the menu engine draws it
@@ -672,6 +675,9 @@ static struct
 	char const **sources;
 	long source_count;
 	short wide_extra;
+	/* the extra width past the menus' 640 to the screen's edges, however
+	wide (the menu engine's looks laid out to them: "dx dw edge") */
+	short edge_extra;
 	boolean loaded;
 	char root[300];
 	/* the tags' generation they were added to (cache_files_tags_generation):
@@ -753,7 +759,11 @@ nothing at the menus' 640 (4:3); a wider screen (21:9, 32:9) has 16:9's
 layout, centred. Each frame's widgets are drawn (and clicked) at the width
 of the view they are drawn in (ui_widget_port_wide_layout: a split screen's
 quarter has the 640's); a widget anchored on a touchscreen (anchor_left,
-anchor_right, stretch) keeps its anchor instead. */
+anchor_right, stretch) keeps its anchor instead. A look of the menu
+engine's whose wide is "dx dw edge" (the browsers' tall layout,
+tools/port_settings.py's BROWSER_TALL) is laid out to the screen's edges
+however wide it is: its move and growth the same part of all the extra
+width (edge_extra) as of 16:9's. */
 #define WIDE_LAYOUT_WIDTH 852
 #define WIDE_LAYOUT_EXTRA (WIDE_LAYOUT_WIDTH - 640)
 
@@ -797,14 +807,20 @@ static struct menu_wide const *wide_of(long definition_index)
 	return wide->definition && !wide_anchored(wide) ? wide : NULL;
 }
 
-/* a widget's definition as much wider as its wide layout says at an extra
-width */
-static void wide_apply(struct menu_wide const *wide, short extra)
+/* the extra width a wide layout is laid out in now: 16:9's at most, or (an
+edge one's) the screen's */
+static short wide_extra_for(struct menu_wide const *wide)
+{
+	return wide->edge ? menu_tags.edge_extra : menu_tags.wide_extra;
+}
+
+/* a widget's definition as much wider as its wide layout says now */
+static void wide_apply(struct menu_wide const *wide)
 {
 	if (wide->definition && wide->dw)
 	{
 		wide->definition->bounds.x1 = (short)(wide->x1 +
-			(wide_anchored(wide) ? 0 : ui_widget_port_wide_scale(wide->dw, extra)));
+			(wide_anchored(wide) ? 0 : ui_widget_port_wide_scale(wide->dw, wide_extra_for(wide))));
 	}
 }
 
@@ -814,17 +830,19 @@ ui_widget_port_wide_offset's, as it is drawn) */
 void ui_widget_port_wide_layout(long width)
 {
 	short extra = ui_widget_port_wide_extra_of(width);
+	short edge = (short)MAX(width - 640, 0);
 	long index;
 
 	pause_boxes_fit();
-	if (extra == menu_tags.wide_extra || !menu_tags.wides)
+	if ((extra == menu_tags.wide_extra && edge == menu_tags.edge_extra) || !menu_tags.wides)
 		return;
 	menu_tags.wide_extra = extra;
+	menu_tags.edge_extra = edge;
 	for (index = 0; index < menu_tags.wide_count; index++)
-		wide_apply(&menu_tags.wides[index], extra);
+		wide_apply(&menu_tags.wides[index]);
 	/* (and the menu engine's definitions made) */
 	for (index = 0; index < menu_tags.look_count; index++)
-		wide_apply(&menu_tags.looks[index].wide, extra);
+		wide_apply(&menu_tags.looks[index].wide);
 }
 
 /* the extra width the port's screens are laid out in now (the view's past
@@ -834,13 +852,21 @@ short ui_widget_port_wide_extra(void)
 	return menu_tags.wide_extra;
 }
 
+/* ... and the extra width the widgets drawn now may reach into, half of it
+each side: the screen's under the menu engine (its looks laid out to the
+screen's edges), else the wide layout's */
+short ui_widget_port_drawn_extra(void)
+{
+	return menu_engine_looks() ? MAX(menu_tags.edge_extra, menu_tags.wide_extra) : menu_tags.wide_extra;
+}
+
 /* how far a widget (and what is in it) is moved where it is drawn, in the
 layout now */
 short ui_widget_port_wide_offset(long definition_index)
 {
 	struct menu_wide const *wide = wide_of(definition_index);
 
-	return wide ? ui_widget_port_wide_scale(wide->dx, menu_tags.wide_extra) : 0;
+	return wide ? ui_widget_port_wide_scale(wide->dx, wide_extra_for(wide)) : 0;
 }
 
 /* how much wider than its picture a widget is drawn in the layout now: its
@@ -849,7 +875,7 @@ short ui_widget_port_wide_stretch(long definition_index)
 {
 	struct menu_wide const *wide = wide_of(definition_index);
 
-	return wide ? ui_widget_port_wide_scale(wide->dw, menu_tags.wide_extra) : 0;
+	return wide ? ui_widget_port_wide_scale(wide->dw, wide_extra_for(wide)) : 0;
 }
 
 /* ---------- private code */
@@ -2547,23 +2573,25 @@ static boolean look_make(struct menu_look *made, long tag_index)
 	if (!look_children(definition, tag, model, look))
 		return FALSE;
 	/* its wide layout: "dx dw", as the menus' 640 have it, and as wide now
-	(ui_widget_port_wide_layout) */
+	(ui_widget_port_wide_layout); "dx dw edge" to the screen's edges */
 	if (look->wide)
 	{
 		long dx, dw;
-		char end;
+		char word[8], end;
+		int read = sscanf(look->wide, "%ld %ld %7s %c", &dx, &dw, word, &end);
 
-		if (sscanf(look->wide, "%ld %ld %c", &dx, &dw, &end) != 2 || dx < -WIDE_LAYOUT_EXTRA ||
+		if ((read != 2 && (read != 3 || strcmp(word, "edge"))) || dx < -WIDE_LAYOUT_EXTRA ||
 			dx > WIDE_LAYOUT_EXTRA || dw < -WIDE_LAYOUT_EXTRA || dw > WIDE_LAYOUT_EXTRA)
 		{
-			look_missing(made->name, "its wide is not \"dx dw\", each -212 to 212:", look->wide);
+			look_missing(made->name, "its wide is not \"dx dw\" or \"dx dw edge\", each -212 to 212:", look->wide);
 			return FALSE;
 		}
 		made->wide.definition = definition;
 		made->wide.dx = (short)dx;
 		made->wide.dw = (short)dw;
 		made->wide.x1 = definition->bounds.x1;
-		wide_apply(&made->wide, menu_tags.wide_extra);
+		made->wide.edge = read == 3;
+		wide_apply(&made->wide);
 	}
 	made->definition = definition;
 	return TRUE;

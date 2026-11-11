@@ -276,7 +276,31 @@ taken out of the model (a menus folder's copy of its file) must be logged.
 
 ## Deliberate differences
 
-None yet. Each one added is listed here with its reason.
+Each one is listed here with its reason, and in `tools/menu_parity.py`'s
+`DELIBERATE`, which lets that difference alone through.
+
+- **Profiles' MENU ENGINE row** shows the engine that draws it.
+- **The browsers' tall layout.** The server browser (and the local
+  network's list and Join by Link, its screen) and PRO 2V2's browser are
+  laid out for the screen's whole height by the new engine alone
+  (`tools/port_settings.py`'s `BROWSER_TALL`): a slim title (its picture
+  smaller) with the counts beside it and the tabs under it, the footer at
+  the very bottom, the rows (taller, 24 units, `BROWSER_ROWS` of them,
+  scrolling beyond) and the panel filling what is between; on a screen
+  wider than 16:9 the list, the panel, the title and the counts reach its
+  edges, the tabs and the footer as 16:9 has them. The classic engine keeps
+  the PC version's places. The same generator writes both: its places are
+  swapped for `BROWSER_TALL`'s (`_browser_geometry`), and the widgets that
+  then differ (`engine_look_widgets`) have those looks in `model/look` in
+  place of `ce/`'s, `tools/menu_look.py` writing them; their pictures at
+  the new sizes are parts of their own (`parts_pictures`). A look's `wide`
+  may end in `edge` ("dx dw edge"): its move and growth are the same part
+  of all the screen's extra width as of 16:9's (`menu_tags.c`), and the
+  engine draws to the screen's edges (`ui_widget_port_drawn_extra`). The
+  parity tool lets each item of those two screens differ in its place
+  (`PLACE_KEYS`), nothing else. Another screen laid out tall (Settings')
+  can take the same way: its places swapped, its differing widgets' looks
+  added to `engine_look_widgets`.
 
 ## Where it ends, and the steps there
 

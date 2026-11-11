@@ -236,6 +236,9 @@ short ui_widget_port_wide_extra_of(long width);
 short ui_widget_port_wide_scale(short value, short extra);
 void ui_widget_port_wide_layout(long width);
 short ui_widget_port_wide_extra(void);
+/* the extra width past the menus' 640 the widgets drawn may reach into (the
+menu engine's looks to the screen's edges: its wide layout's "edge") */
+short ui_widget_port_drawn_extra(void);
 short ui_widget_port_wide_offset(long definition_index);
 short ui_widget_port_wide_stretch(long definition_index);
 /* whether a widget's picture keeps its ends at the widget's width (its port

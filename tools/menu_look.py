@@ -7,7 +7,7 @@ The generators (tools/ce_menus.py, tools/port_settings.py) call it once they hav
 the widgets and their look cannot disagree; `python3 tools/menu_look.py` writes it again from them alone. The
 engine (port/linux/game/menu_engine.c) draws the generated screens from it, not from their widget definitions.
 
-    <look name="main_menu/..." type="text" box="x0 y0 x1 y1" wide="dx dw" place="anchor_left stretch keep_ends"
+    <look name="main_menu/..." type="text" box="x0 y0 x1 y1" wide="dx dw [edge]" place="anchor_left stretch keep_ends"
           picture="<bitmap>" radius="8" effects="flash_bitmap nifty_fx" list="items_in_code ..."
           header="<bitmap>" header_box="x0 y0 x1 y1" footer="<bitmap>" footer_box="x0 y0 x1 y1">
         <text font="large" color="#AARRGGBB" align="center" at="x y" flags="wrap ..." string_list="<strings>"
@@ -73,6 +73,13 @@ def _text(widget: ET.Element):
             ("text", get("text")), ("items", get("strings")), ("replace", "|".join(replaces) or None)]
 
 
+def _engine_looks() -> dict:
+    """the menu engine's own looks of widgets, in place of ce/'s (tools/port_settings.py's engine_look_widgets:
+    the browsers' tall layout, docs/menu_engine.md's "Deliberate differences"), by their names"""
+    import port_settings
+    return port_settings.engine_look_widgets()
+
+
 def _roles() -> dict:
     """the widgets' roles, by their names (tools/port_settings.py's settings_look_roles)"""
     import port_settings
@@ -117,6 +124,7 @@ def look_files(ce: Path = CE) -> dict:
     """the look's files, by their paths in port/assets/menus: one for each of ce/'s files of widgets"""
     files = {}
     roles = _roles()
+    engine = _engine_looks()
     named = set()
     for path in sorted(ce.glob("*.xml")):
         if path.name in NOT_WIDGETS:
@@ -125,9 +133,11 @@ def look_files(ce: Path = CE) -> dict:
                  f"<!-- The look of ce/{path.name}'s widgets, for the menu engine (docs/menu_engine.md; "
                  "tools/menu_look.py) -->", "<model>"]
         for widget in ET.parse(path).getroot().iter("widget"):
-            lines += _look(widget, roles)
+            lines += _look(engine.get(widget.get("name"), widget), roles)
             named.add(widget.get("name"))
         files[f"{LOOK}/{path.name}"] = lines + ["</model>", ""]
+    if set(engine) - named:
+        raise SystemExit(f"menu_look: no widgets {', '.join(sorted(set(engine) - named))} for the engine's looks")
     if set(roles) - named:
         raise SystemExit(f"menu_look: no widgets {', '.join(sorted(set(roles) - named))} for their roles")
     return files

@@ -89,12 +89,14 @@
 		<on event="x" run="port doubles x"/>
 		<on event="right_trigger" run="port browser refresh"/>
 		<on event="right_thumb" run="port browser search next"/>
-		<child widget="main_menu/doubles/header_doubles"/>
+		<child widget="main_menu/doubles/browser/header_doubles_browser"/>
 		<child widget="main_menu/doubles/browser/doubles_kind"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/browser_counts"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/browser_columns_line"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/browser_empty"/>
 		<child widget="main_menu/doubles/browser/doubles_browser_list"/>
+	</widget>
+	<widget name="main_menu/doubles/browser/header_doubles_browser" controller="1" left="35" top="11" width="363" height="59" bitmap="main_menu/doubles/header_doubles" source="tools/port_settings.py _doubles/_doubles_browser/_header">
 	</widget>
 	<widget name="main_menu/doubles/browser/doubles_kind" type="text" controller="1" left="32" top="78" width="404" height="20" font="ui\large_ui" color="#FFFFFFFF" wide="-106 144" text_flags="no_focus_test" source="tools/port_settings.py _doubles/_doubles_browser/_part_text">
 	</widget>

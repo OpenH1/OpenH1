@@ -13,9 +13,11 @@ settings defaults" shows the defaults. Controls Setup binds the keyboard and
 mouse's controls, by the functions the PC version names for it.
 """
 
+import contextlib
 import math
 import re
 import sys
+import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 from typing import NamedTuple
 from xml.sax.saxutils import escape, quoteattr
@@ -3054,8 +3056,11 @@ TITLE_LEFT, TITLE_TOP, TITLE_CAP = 30.68, 33.5, 21.5
 TITLE_COLOR = (0x29, 0x95, 0xFD, 255)
 
 
-def _header(name: str, bitmap: str, platform=None) -> list:
-    return _widget(name, [("controller", 1), ("left", 35), ("top", 11), ("width", 363), ("height", 59),
+def _header(name: str, bitmap: str, platform=None, box=(35, 11, 363, 59)) -> list:
+    """a screen's title: its picture in the PC version's titles' place (box:
+    left, top, width, height), or the browsers' (BROWSER_TITLE)"""
+    left, top, width, height = box
+    return _widget(name, [("controller", 1), ("left", left), ("top", top), ("width", width), ("height", height),
                           ("bitmap", bitmap), ("platform", platform)], [])
 
 
@@ -3119,8 +3124,8 @@ def _join_game_extras() -> list:
     password screen"""
     base = f"{MT}/join_game"
     lines = _password_screen()
-    lines += _header(f"{base}/header_server_browser", f"{base}/header_server_browser")
-    lines += _header(f"{base}/header_direct_link", f"{base}/header_direct_link")
+    lines += _header(f"{base}/header_server_browser", f"{base}/header_server_browser", box=BROWSER_TITLE)
+    lines += _header(f"{base}/header_direct_link", f"{base}/header_direct_link", box=BROWSER_TITLE)
     lines += _connect_screen()
     # (each row's star: _browser puts it in the rows)
     lines += _widget(FAVORITE_STAR_WIDGET, [("width", 16), ("height", 18), ("bitmap", FAVORITE_STAR)], [])
@@ -4534,6 +4539,31 @@ BROWSER_HEADERS_TOP = 104
 # descenders of its words, centred on their capitals)
 BROWSER_ROWS_TOP, BROWSER_ROW_HEIGHT, BROWSER_ROW_STEP, BROWSER_ROWS = 124, 19, 19, 14
 BROWSER_PANEL = (440, 104, 172, 296)
+# the rest of the browsers' places down the screen: their title's (left,
+# top, width, height: the PC version's titles' place, _header's), the
+# counts', the tabs', the words for none's and the footer's
+BROWSER_TITLE = (35, 11, 363, 59)
+BROWSER_COUNTS_TOP = 46
+BROWSER_TABS_TOP = SETTINGS_TABS_TOP
+BROWSER_EMPTY_TOP = 200
+BROWSER_FOOTER_TOP = 414
+# The menu engine's own layout of the server browser and PRO 2V2's browser
+# (display.menu_engine "new" alone; the classic engine keeps the places
+# above: docs/menu_engine.md, "Deliberate differences"): the screen's
+# whole height, a slim title (its picture smaller) and the tabs under it,
+# the footer at the very bottom, the list and the panel filling what is
+# between, each row taller (BROWSER_ROWS of them, scrolling beyond); and
+# on a screen wider than 16:9 the list, the panel, the title and the counts
+# to its edges (their wide "dx dw edge": menu_tags.c), the tabs and the
+# footer as 16:9 has them. The same generator writes them, its places these
+# (_browser_geometry), and tools/menu_look.py writes the looks of the
+# widgets they change (engine_look_widgets) in place of ce/'s
+BROWSER_TALL = {
+    "BROWSER_TITLE": (35, 6, 245, 40), "BROWSER_COUNTS_TOP": 22, "BROWSER_TABS_TOP": 48,
+    "BROWSER_HEADERS_TOP": 78, "BROWSER_ROWS_TOP": 98, "BROWSER_ROW_HEIGHT": 24, "BROWSER_ROW_STEP": 24,
+    "BROWSER_PANEL": (440, 78, 172, 358), "BROWSER_EMPTY_TOP": 226, "BROWSER_CLEAR_TOP": 314,
+    "BROWSER_FOOTER_TOP": 448,
+}
 BROWSER_COLUMNS = {
     "favorite": (6, 16), "server_name": (26, 110), "map": (140, 78), "type": (222, 60), "players": (284, 56),
     "ping": (344, 54),
@@ -4707,9 +4737,11 @@ def parts_pictures() -> list:
                 (_svg(width, height, [_rounded(width, height, 0.75, 3, stroke="#2f7fff", stroke_width=1.5)]),
                  width, height)]
 
-    rows = [(part_row(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT), highlight(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT) +
-             [(framed(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT, "#0d3a7a", 0.9, "#8cc8ff"), BROWSER_LIST_WIDTH,
-               BROWSER_ROW_HEIGHT)])]
+    # (the browsers' rows and panel, and the menu engine's tall layout's:
+    # BROWSER_TALL)
+    rows = [(part_row(BROWSER_LIST_WIDTH, height), highlight(BROWSER_LIST_WIDTH, height) +
+             [(framed(BROWSER_LIST_WIDTH, height, "#0d3a7a", 0.9, "#8cc8ff"), BROWSER_LIST_WIDTH, height)])
+            for height in (BROWSER_ROW_HEIGHT, BROWSER_TALL["BROWSER_ROW_HEIGHT"])]
     prompt_widths = sorted(set(prompt_picture_widths()) | {BROWSER_CLEAR[0]})
     join_w, join_h = BROWSER_JOIN
     return [
@@ -4731,8 +4763,8 @@ def parts_pictures() -> list:
         (part_section(HUB_ITEM[0]), [(_svg(HUB_ITEM[0], PART_SECTION_HEIGHT, [
             f'  <rect x="0" y="{PART_SECTION_HEIGHT - 1.5:g}" width="{HUB_ITEM[0]}" height="1" fill="#2995ff" '
             'fill-opacity="0.45"/>']), HUB_ITEM[0], PART_SECTION_HEIGHT)]),
-        (part_panel(*BROWSER_PANEL[2:]), [(framed(*BROWSER_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5),
-                                           *BROWSER_PANEL[2:])]),
+        *((part_panel(*panel[2:]), [(framed(*panel[2:], "#000e23", 0.88, "#2995ff", 9.5), *panel[2:])])
+          for panel in (BROWSER_PANEL, BROWSER_TALL["BROWSER_PANEL"])),
         (part_panel(*HUB_PANEL[2:]), [(framed(*HUB_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5), *HUB_PANEL[2:])]),
         *((part_pill(width), pill(width)) for width in (BROWSER_TICK_BADGE, BROWSER_PILL, BROWSER_WIDE_PILL)),
         (part_button(join_w, join_h), [(framed(join_w, join_h, "#1e5fd1", 0.9, "#5aa9ff"), join_w, join_h),
@@ -5037,22 +5069,24 @@ def _browser() -> list:
                      '<on event="right_thumb" run="port browser search next"/>',
                      f'<child widget="{base}/header_join_game"/>',
                      f'<child widget="{base}/browser_counts" platform="pointer"/>',
-                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" y="{SETTINGS_TABS_TOP}" '
+                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" y="{BROWSER_TABS_TOP}" '
                      'platform="pointer"/>',
                      f'<child widget="{SETTINGS}/tab_prompt_next" '
                      f'x="{SETTINGS_TABS_X + (len(BROWSER_TABS) - 1) * SETTINGS_TAB_STEP + SETTINGS_TAB_LAID + 4}" '
-                     f'y="{SETTINGS_TABS_TOP}" platform="pointer"/>',
+                     f'y="{BROWSER_TABS_TOP}" platform="pointer"/>',
                      f'<child widget="{base}/browser_columns_line" platform="pointer"/>',
                      f'<child widget="{base}/browser_empty" platform="pointer"/>',
                      f'<child widget="{list_name}" platform="pointer"/>',
                      *_touch_browser()[0]])
     # (the title of the mode chosen: menu_functions.c's browser_initialize)
-    lines += _widget(f"{base}/header_join_game", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
-                                                  ("height", 59), ("wide", WIDE_LEFT)],
+    lines += _widget(f"{base}/header_join_game", [("controller", 1), ("left", BROWSER_TITLE[0]),
+                                                  ("top", BROWSER_TITLE[1]), ("width", BROWSER_TITLE[2]),
+                                                  ("height", BROWSER_TITLE[3]), ("wide", WIDE_LEFT)],
                      [f'<child widget="{base}/{name}"/>' for name in
                       ("header_server_browser", "header_lan", "header_direct_link")])
-    lines += _header(f"{base}/header_lan", f"{base}/header_local_network")
-    lines += _part_text(f"{base}/browser_counts", [("left", 372), ("top", 46), ("width", 240), ("height", 18),
+    lines += _header(f"{base}/header_lan", f"{base}/header_local_network", box=BROWSER_TITLE)
+    lines += _part_text(f"{base}/browser_counts", [("left", 372), ("top", BROWSER_COUNTS_TOP), ("width", 240),
+                                                  ("height", 18),
                                                   ("font", "ui\\small_ui"), ("color", PART_DIM), ("align", "right"),
                                                   ("wide", WIDE_RIGHT)])
     lines += _widget(f"{base}/browser_columns_line", [("controller", 1), ("left", BROWSER_LIST_X),
@@ -5061,7 +5095,7 @@ def _browser() -> list:
                                                       ("wide", wide(-WIDE_HALF, BROWSER_WIDE_LIST))], [])
     # (the list's words while it has no rows: menu_functions.c's
     # browser_empty_text)
-    lines += _part_text(f"{base}/browser_empty", [("left", BROWSER_LIST_X + 24), ("top", 200),
+    lines += _part_text(f"{base}/browser_empty", [("left", BROWSER_LIST_X + 24), ("top", BROWSER_EMPTY_TOP),
                                                  ("width", BROWSER_LIST_WIDTH - 48), ("height", 80),
                                                  ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE),
                                                  ("align", "center"), ("wide", wide(-WIDE_HALF, BROWSER_WIDE_LIST))])
@@ -5073,12 +5107,12 @@ def _browser() -> list:
                                  ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
                                  ("description", f"{base}/browser_panel")],
                      ['<data input="gamespy screen update"/>',
-                      f'<child widget="{base}/browser_tabs" y="{SETTINGS_TABS_TOP}"/>',
+                      f'<child widget="{base}/browser_tabs" y="{BROWSER_TABS_TOP}"/>',
                       f'<child widget="{base}/join_game_header" y="{BROWSER_HEADERS_TOP}"/>',
                       *rows,
                       f'<child widget="{base}/browser_join_bar" y="{panel_top + panel_height - BROWSER_JOIN[1] - 10}"/>',
                       f'<child widget="{base}/browser_clear_bar" y="{BROWSER_CLEAR_TOP}"/>',
-                      f'<child widget="{base}/join_game_button_bar" y="414"/>'])
+                      f'<child widget="{base}/join_game_button_bar" y="{BROWSER_FOOTER_TOP}"/>'])
     lines += _tab_strip(base, "browser_tabs", BROWSER_TABS, ['<on event="a" run="port browser tab"/>',
                                                              '<on event="start" run="port browser tab"/>'])
     # (the column titles: A or a click sorts by one, again the other way;
@@ -5137,7 +5171,9 @@ def _browser() -> list:
     # (a row: its game's star, its name with its tick rate's badge (OpenH1's
     # games) and its lock (a password) after it, its map, its mode, its
     # players and its ping's bars; or, the server browser's group's heading,
-    # its words across the row: menu_functions.c's browser_heading_show)
+    # its words across the row: menu_functions.c's browser_heading_show; the
+    # star, badge, lock and bars, 16 tall, in its middle)
+    icon_y = (BROWSER_ROW_HEIGHT - 16) // 2
     for row in range(1, BROWSER_ROWS + 1):
         lines += _widget(f"{base}/server_item_{row}",
                          [("width", BROWSER_LIST_WIDTH), ("height", BROWSER_ROW_HEIGHT),
@@ -5146,12 +5182,13 @@ def _browser() -> list:
                          ['<on event="a" run="gamespy select item"/>', '<on event="start" run="gamespy select item"/>',
                           '<on event="left_mouse" run="mouse emit accept event"/>',
                           '<on event="double_click" run="gamespy select item"/>',
-                          f'<child widget="{FAVORITE_STAR_WIDGET}" x="{BROWSER_COLUMNS["favorite"][0]}" y="1"/>',
+                          f'<child widget="{FAVORITE_STAR_WIDGET}" x="{BROWSER_COLUMNS["favorite"][0]}" '
+                          f'y="{icon_y}"/>',
                           *(f'<child widget="{base}/server_item_{column}" x="{BROWSER_COLUMNS[column][0]}"/>'
                             for column in ("server_name", "map", "type", "players")),
-                          f'<child widget="{base}/server_item_tick" y="1"/>',
-                          f'<child widget="{base}/server_item_locked" y="1"/>',
-                          f'<child widget="{base}/server_item_ping" x="{BROWSER_COLUMNS["ping"][0]}" y="1"/>',
+                          f'<child widget="{base}/server_item_tick" y="{icon_y}"/>',
+                          f'<child widget="{base}/server_item_locked" y="{icon_y}"/>',
+                          f'<child widget="{base}/server_item_ping" x="{BROWSER_COLUMNS["ping"][0]}" y="{icon_y}"/>',
                           f'<child widget="{base}/server_item_ping_ms" x="{BROWSER_COLUMNS["ping"][0]}"/>',
                           f'<child widget="{base}/server_item_heading" x="{BROWSER_COLUMNS["server_name"][0]}"/>'])
     lines += _widget(f"{base}/server_item_heading",
@@ -5247,6 +5284,53 @@ def _browser() -> list:
                       '<on event="left_mouse" run="mouse emit accept event"/>'])
     lines += _prompts(base, "join_game_button_bar", BROWSER_PROMPTS, text_x=BROWSER_PROMPT_TEXT_X, browser=True)
     return lines
+
+
+@contextlib.contextmanager
+def _browser_geometry(places: dict):
+    """the browsers written with these places (BROWSER_TALL's names and
+    values) in place of the module's own, which are back afterwards"""
+    saved = {name: globals()[name] for name in places}
+    globals().update(places)
+    try:
+        yield
+    finally:
+        globals().update(saved)
+
+
+def _browsers() -> list:
+    """the widgets the browsers' layout places: the server browser's (and
+    the local network's and Join by Link's, its screen), its titles, PRO
+    2V2's browser"""
+    return _browser() + _join_game_extras() + _doubles_browser()
+
+
+# the widgets of the tall layout that keep 16:9's places on a wider screen
+# (their wide not "edge"): the tabs, whose LB and RB prompts are Settings',
+# and the footer's prompts, spread for 16:9 (wider, they would meet)
+BROWSER_TALL_CENTRED = re.compile(r"/(browser_tabs|tab_\w+|prompt_\w+)$")
+
+
+def engine_look_widgets() -> dict:
+    """the menu engine's own looks of widgets (tools/menu_look.py writes
+    them in place of ce/'s; docs/menu_engine.md, "Deliberate
+    differences"): the browsers' tall layout (BROWSER_TALL), each widget it
+    places otherwise, by its name, as an <widget> element"""
+    def parsed(lines):
+        root = ElementTree.fromstring("<menus>" + "\n".join(lines) + "</menus>")
+        return {element.get("name"): element for element in root.iter("widget")}
+
+    classic = parsed(_browsers())
+    with _browser_geometry(BROWSER_TALL):
+        tall = parsed(_browsers())
+    looks = {}
+    for name, element in tall.items():
+        wide_layout = element.get("wide")
+        if wide_layout and not BROWSER_TALL_CENTRED.search(name):
+            element.set("wide", wide_layout + " edge")
+        if ElementTree.tostring(element) != ElementTree.tostring(classic[name]):
+            looks[name] = element
+    return looks
 
 
 def _search_places(column: str) -> list:
@@ -5600,7 +5684,7 @@ def _doubles_browser() -> list:
                      '<on event="x" run="port doubles x"/>',
                      '<on event="right_trigger" run="port browser refresh"/>',
                      '<on event="right_thumb" run="port browser search next"/>',
-                     f'<child widget="{DOUBLES}/header_doubles"/>',
+                     f'<child widget="{base}/header_doubles_browser"/>',
                      f'<child widget="{base}/doubles_kind"/>',
                      f'<child widget="{browser}/browser_counts"/>',
                      f'<child widget="{browser}/browser_columns_line"/>',
@@ -5608,7 +5692,10 @@ def _doubles_browser() -> list:
                      f'<child widget="{list_name}"/>'])
     # (the kind and its rules, under the title where the server browser has
     # its tabs: doubles_browser.inc fills it in)
-    lines += _part_text(f"{base}/doubles_kind", [("left", BROWSER_LIST_X + 4), ("top", SETTINGS_TABS_TOP + 2),
+    # (its title PRO 2V2's picture, a widget of its own: the browsers' place
+    # for it, BROWSER_TITLE)
+    lines += _header(f"{base}/header_doubles_browser", f"{DOUBLES}/header_doubles", box=BROWSER_TITLE)
+    lines += _part_text(f"{base}/doubles_kind", [("left", BROWSER_LIST_X + 4), ("top", BROWSER_TABS_TOP + 2),
                                                 ("width", BROWSER_LIST_WIDTH), ("height", 20), ("font", "ui\\large_ui"),
                                                 ("color", "#FFFFFFFF"), ("wide", wide(-WIDE_HALF, BROWSER_WIDE_LIST))])
     rows = [f'<child widget="{browser}/server_item_{row}" x="{BROWSER_LIST_X}" '
@@ -5626,7 +5713,7 @@ def _doubles_browser() -> list:
                       f'y="{BROWSER_ROWS_TOP + BROWSER_ROW_STEP * DOUBLES_BROWSER_ROWS + 8}"/>',
                       *friends,
                       f'<child widget="{browser}/browser_clear_bar" y="{BROWSER_CLEAR_TOP}"/>',
-                      f'<child widget="{base}/doubles_prompts" y="414"/>'])
+                      f'<child widget="{base}/doubles_prompts" y="{BROWSER_FOOTER_TOP}"/>'])
     # (HOST GAME and FIND GAME, under the rows: left and right between them)
     join_w, join_h = BROWSER_JOIN
     lines += _widget(f"{base}/doubles_actions", [("type", "column_list"), ("width", 640), ("height", join_h),

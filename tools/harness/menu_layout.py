@@ -110,10 +110,13 @@ def layout(root, width, platforms=DESKTOP, every=None):
         attributes = widget.attributes
         if not _platform_shown(attributes.get("platform"), platforms):
             return
-        dx, dw = (int(value) for value in attributes.get("wide", "0 0").split())
-        x += port_settings.wide_scale(dx, extra)
+        # (a menu engine's look laid out to the screen's edges, "dx dw edge", by all the extra width:
+        # engine_widgets)
+        dx, dw, *edge = attributes.get("wide", "0 0").split()
+        part = max(width - 640, 0) if edge == ["edge"] else extra
+        x += port_settings.wide_scale(int(dx), part)
         left, top = int(attributes.get("left", 0)), int(attributes.get("top", 0))
-        right = left + int(attributes.get("width", 640)) + port_settings.wide_scale(dw, extra)
+        right = left + int(attributes.get("width", 640)) + port_settings.wide_scale(int(dw), part)
         bottom = top + int(attributes.get("height", 480))
         boxes.append(Box(name.rsplit("/", 1)[-1], x + left, y + top, x + right, y + bottom, path))
         for child, child_x, child_y, platform in widget.children:
@@ -124,6 +127,17 @@ def layout(root, width, platforms=DESKTOP, every=None):
 
     walk(root, 0, 0, ())
     return boxes
+
+
+@lru_cache(maxsize=None)
+def engine_widgets():
+    """the widgets as the menu engine lays them out (display.menu_engine "new"): the menu files', those with a look
+    of the engine's own in its place (tools/port_settings.py's engine_look_widgets: the browsers' tall layout)"""
+    every = dict(widgets())
+    every.update(widgets_of([ElementTree.fromstring("<menus>" + "".join(
+        ElementTree.tostring(element, encoding="unicode") for element in port_settings.engine_look_widgets().values())
+        + "</menus>")]))
+    return every
 
 
 def named(boxes, name):

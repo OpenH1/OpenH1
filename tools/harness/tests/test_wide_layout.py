@@ -247,3 +247,88 @@ def test_party_layout(aspect):
         assert box.inside(area), box
     for left in ("prompt_make", "prompt_copy"):
         assert one(boxes, left).x0 - usable(width).x0 == 28
+
+
+# the browsers the menu engine lays out tall (tools/port_settings.py's BROWSER_TALL), and the parts each must have
+TALL_BROWSERS = {
+    f"{MT}/join_game/join_game_screen": ("join_game_items_list", "browser_panel", "join_game_button_bar"),
+    "main_menu/doubles/browser/doubles_browser_screen": ("doubles_browser_list", "doubles_panel", "doubles_prompts"),
+}
+
+
+def _tall_parts(root, width):
+    boxes = layout(root, width, every=menu_layout.engine_widgets())
+    _, panel_name, prompts_name = TALL_BROWSERS[root]
+    rows = [box for box in boxes if re.fullmatch(r"server_item_\d+", box.name)]
+    prompts = [box for box in boxes if box.name.startswith("prompt_") and box.path[-1] == prompts_name]
+    titles = [box for box in boxes if box.name in ("header_join_game", "header_doubles_browser")]
+    return boxes, rows, one(boxes, panel_name), prompts, titles
+
+
+@pytest.mark.parametrize("aspect", WIDTHS)
+@pytest.mark.parametrize("root", TALL_BROWSERS)
+def test_tall_browser_layout(aspect, root):
+    """The browsers as the menu engine lays them out (BROWSER_TALL, the engine's own looks: classic keeps
+    test_browser_menu's): the whole height, a slim title and the tabs under it at the top, the footer's prompts at
+    the very bottom, the rows (taller than the classic's) and the panel filling what is between, none over another;
+    on a screen wider than 16:9 the rows from its left edge and the panel to its right (WIDE_MARGIN in), the tabs
+    16:9's; the classic layout's rows and footer where they were."""
+    width = WIDTHS[aspect]
+    screen = menu_layout.screen(width)
+    margin = port_settings.WIDE_MARGIN
+    boxes, rows, panel, prompts, titles = _tall_parts(root, width)
+    tall = port_settings.BROWSER_TALL
+    assert rows and prompts and titles
+    # (the title slim: under 0.7 of the classic's height, at the top)
+    for title in titles:
+        assert title.y0 <= 8 and title.y1 - title.y0 <= port_settings.BROWSER_TITLE[3] * 0.7, title
+    # (the footer at the very bottom, the rows and panel down to it)
+    assert all(470 <= prompt.y1 <= 480 for prompt in prompts), prompts
+    footer_top = min(prompt.y0 for prompt in prompts)
+    # (under PRO 2V2's rows its HOST GAME and FIND GAME)
+    lowest = max(box.y1 for box in rows + [box for box in boxes if box.name.startswith("button_doubles_")])
+    assert 0 < footer_top - lowest <= 40 and 0 < footer_top - panel.y1 <= 16, (lowest, panel)
+    assert panel.y0 <= 80 and panel.y1 - panel.y0 >= 350, panel
+    assert all(row.y1 - row.y0 == tall["BROWSER_ROW_HEIGHT"] > port_settings.BROWSER_ROW_HEIGHT for row in rows)
+    _check_apart(rows, "rows")
+    # (wider than 16:9, the prompts apart as 16:9's are: those shown together, test_browser_menu's)
+    wide = {prompt.name: prompt for prompt in _tall_parts(root, port_settings.WIDE_WIDTH)[3]}
+    for prompt in prompts if width > port_settings.WIDE_WIDTH else []:
+        for other in prompts:
+            assert prompt is other or wide[prompt.name].overlaps(wide[other.name]) or not prompt.overlaps(other), \
+                (prompt, other)
+    for box in rows + [panel] + prompts + titles:
+        assert box.inside(screen), f"{box} is off the screen {screen}"
+        assert not any(box.overlaps(row) for row in rows if row is not box) or box in rows
+    assert all(not row.overlaps(panel) for row in rows)
+    # (to the screen's edges, however wide: the rows' left and the panel's right WIDE_MARGIN in)
+    if width > port_settings.WIDE_WIDTH:
+        assert min(row.x0 for row in rows) - screen.x0 <= margin + 8, rows[0]
+        assert screen.x1 - panel.x1 <= margin + 8, panel
+        tabs = [box for box in boxes if box.name.startswith("tab_")]
+        assert all(box.inside(usable(width)) for box in tabs), tabs
+    # (the classic engine's layout unchanged: its rows where BROWSER_ROWS_TOP has them, its footer at 414)
+    classic = layout(root, width)
+    first = min((box for box in classic if re.fullmatch(r"server_item_\d+", box.name)), key=lambda box: box.y0)
+    assert first.y0 == port_settings.BROWSER_ROWS_TOP and first.y1 - first.y0 == port_settings.BROWSER_ROW_HEIGHT
+    assert all(414 <= box.y0 <= 420 for box in classic if box.name.startswith("prompt_") and box.path[-1] in
+               TALL_BROWSERS[root][2])
+
+
+def test_tall_browser_negative_controls(monkeypatch):
+    """The tall layout's test sees a layout that is not: the footer left at 414, the rows not to a 21:9 screen's
+    edge (their wide not "edge"), the title not slimmer."""
+    root = f"{MT}/join_game/join_game_screen"
+    faults = [{"BROWSER_FOOTER_TOP": 414}, {"BROWSER_TITLE": port_settings.BROWSER_TITLE}]
+    for fault in faults:
+        monkeypatch.setattr(port_settings, "BROWSER_TALL", {**port_settings.BROWSER_TALL, **fault})
+        menu_layout.engine_widgets.cache_clear()
+        with pytest.raises(AssertionError):
+            test_tall_browser_layout("16:9", root)
+    monkeypatch.setattr(port_settings, "BROWSER_TALL", dict(port_settings.BROWSER_TALL))
+    monkeypatch.setattr(port_settings, "BROWSER_TALL_CENTRED", re.compile(r"."))
+    menu_layout.engine_widgets.cache_clear()
+    with pytest.raises(AssertionError):
+        test_tall_browser_layout("21:9", root)
+    monkeypatch.undo()
+    menu_layout.engine_widgets.cache_clear()
