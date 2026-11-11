@@ -4,7 +4,7 @@ may have done to them (the host's own players and the bots are never kicked, ban
 kicked as anyone), Kick and Ban by the console's own kick and ban, Move team only in an OpenH1 game without OpenCE's
 machines (the unit killed without statistics, every OpenH1 machine told, a client taking it from the host's stream
 alone), Lock teams, End game now and Restart round (the scores, then the lobby and its countdown), Max players and
-bans.txt's lines; and the menus: the pause menu's HOST CONTROLS the network game's host's alone, the scoreboard's player
+bans.txt's lines; and the menus: the pause menu's HOST CONTROLS the network game's host's alone (co-op's too), the scoreboard's player
 menu offering what Host Controls offers, the lobby's team changes kept by the lock, and the screen's file the
 generator's."""
 
@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import enum_with, CHECK_FAILED, ROOT, build, constant, mutated, read, run  # noqa: E402
 
 CASES = ["seats", "actions", "team_moves", "kick", "move", "lock", "end", "next", "same", "maximum", "bans",
-         "players", "bots", "bots_tab", "bot_count", "bot_skill", "bot_choices"]
+         "players", "bots", "bots_tab", "bot_count", "bot_skill", "bot_choices", "pause"]
 
 # a fault in network_host_controls.c, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -111,6 +111,13 @@ NEGATIVE_CONTROLS = {
                              "return player && !player->quit_out_of_game &&"), "bots"),
     "balance-row-always": (("if (row == _host_bot_row_balance && !network_host_game_teams_arrangeable())",
                             "if (0)"), "bots"),
+    # (the maintainer's report: a co-op host's pause menu had no HOST CONTROLS)
+    "coop-host-without-them": (("\telse if (!view->local && view->host_controls_screen)",
+                                "\telse if (!view->coop && !view->local && view->host_controls_screen)"), "pause"),
+    "coop-client-has-them": (("\tif (!view->host)\n\t\treturn rows;", ""), "pause"),
+    "coop-end-game": (("\telse if (!view->coop)\n", "\telse\n"), "pause"),
+    "coop-no-friendly-fire": (("\tif (view->coop)\n\t\tSET_FLAG(rows, _host_controls_pause_friendly_fire, TRUE);",
+                               ""), "pause"),
     "legacy-told-apart": (("\t\telse if (network_standard_machine_is_openh1(machine_index))\n"
                            "\t\t\tentry->tag = _host_controls_tag_openh1;", ""), "players"),
 }
@@ -153,9 +160,18 @@ def test_pause_menu_is_the_network_hosts():
     and opens Host Controls' screen; its function fails for anyone else."""
     tags = read("port/linux/game/menu_tags.c")
     patch = tags[tags.index("static long pause_list_patch("):tags.index("/* the Xbox's own box")]
-    assert "host && !network_game_is_splitscreen_local() && host_controls_widget != NONE" in patch
+    assert "rows = network_host_controls_pause_rows_for(&view);" in patch
+    assert "view.local = network_game_is_splitscreen_local();" in patch
+    assert "view.host_controls_screen = host_controls_widget != NONE;" in patch
     assert '"HOST CONTROLS"' in patch and 'function_index("port host open"' in patch
     assert "build.widget_tags[host_controls_widget]" in patch
+    # (the tags kept for the buttons: each a widget and its text, as many as the list adds at most)
+    most = int(re.search(r"char const \*names\[(\d+)\];", patch).group(1))
+    assert int(re.search(r"#define PAUSE_PATCH_TAGS (\d+)", tags).group(1)) >= 2 * most
+    # (network co-op's campaign pause menu: its host's too)
+    campaign = tags[tags.index("static void pause_campaign_patch("):]
+    campaign = campaign[:campaign.index("\n}\n")]
+    assert "pause_list_patch(instances, list, revert, build.coop && global_network_game_server_get() != NULL," in campaign
     menu = read("port/linux/game/host_controls_menu.inc")
     opened = menu[menu.index("static boolean host_controls_open(void)"):]
     opened = opened[:opened.index("\n}\n")]

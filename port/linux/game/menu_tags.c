@@ -51,6 +51,7 @@ looks", below).
 #include "menu_engine.h"
 #include "custom_edition_cache.h"
 #include "network_admin.h"
+#include "network_host_controls.h"
 #include "basic_training.h"
 #include "halo_keyboard.h"
 
@@ -109,9 +110,10 @@ adds to */
 #define CAMPAIGN_PAUSE_SCREEN "ui\\shell\\solo_game\\pause_game\\pause_game"
 /* the campaign's split screen pause screen, which shares its box */
 #define CAMPAIGN_PAUSE_SPLIT_SCREEN "ui\\shell\\solo_game\\pause_game\\pause_game_split_screen"
-/* the tags pause_patch or pause_campaign_patch adds: two buttons and their
-texts (SETTINGS, and HOST CONTROLS, END GAME or FRIENDLY FIRE) */
-#define PAUSE_PATCH_TAGS 4
+/* the tags pause_patch or pause_campaign_patch adds: three buttons at most
+and their texts (SETTINGS; HOST CONTROLS, END GAME or CHAPTERS; network
+co-op's FRIENDLY FIRE, and its host's HOST CONTROLS) */
+#define PAUSE_PATCH_TAGS 6
 /* what a frame of ui.map's is drawn as in a game map, which has not got it */
 #define BLANK_PNG "ce/port/blank__0.png"
 #define UI_WIDGET_DEFINITION_TAG 'DeLa'
@@ -2789,48 +2791,81 @@ static void *pause_button(struct cache_file_tag_instance *instances, struct ui_w
 
 /* the list's buttons: SETTINGS, and network co-op's FRIENDLY FIRE (whose
 text says the machine's choice: menu_functions.c), a network game's host's
-HOST CONTROLS, or the host's END GAME, put before LEAVE GAME or REVERT TO
-SAVED (quit); returns how many were added, and how much taller the list grew
-for them (growth) */
+HOST CONTROLS (network co-op's too), or the host's END GAME, put before
+LEAVE GAME or REVERT TO SAVED (quit; network_host_controls_pause_rows_for);
+returns how many were added, and how much taller the list grew for them
+(growth) */
 static long pause_list_patch(struct cache_file_tag_instance *instances, struct ui_widget_definition *list, long quit,
 	boolean host, short *growth)
 {
 	long host_controls_widget = widget_named(PAUSE_HOST_CONTROLS_SCREEN);
-	boolean host_controls = host && !network_game_is_splitscreen_local() && host_controls_widget != NONE;
 	long training_widget = widget_named(PAUSE_TRAINING_SCREEN);
-	boolean training = host && !build.coop && basic_training_active() && training_widget != NONE;
+	struct host_controls_pause_view view;
+	unsigned long rows;
 	struct ui_widget_child_reference *children = list->child_widgets.address;
-	long count = list->child_widgets.count, added = host || build.coop ? 2 : 1, child;
-	struct ui_widget_child_reference *grown = allocate((count + added) * sizeof(struct ui_widget_child_reference));
+	long count = list->child_widgets.count, added = 1, child;
+	struct ui_widget_child_reference *grown;
 	struct ui_widget_definition const *model = tag_get(UI_WIDGET_DEFINITION_TAG, children[quit].widget_tag.index);
 	long settings_widget = widget_named(PAUSE_SETTINGS_SCREEN);
 	short spacing = count >= 2 ? (short)(children[count - 1].vertical_offset - children[count - 2].vertical_offset) :
 		PAUSE_BUTTON_SPACING;
-	char const *names[2];
-	void *buttons[2];
-	long tags[2];
+	char const *names[3];
+	void *buttons[3];
+	long tags[3];
 
+	view.host = host;
+	view.coop = build.coop;
+	view.local = network_game_is_splitscreen_local();
+	view.training = basic_training_active();
+	view.host_controls_screen = host_controls_widget != NONE;
+	view.training_screen = training_widget != NONE;
+	rows = network_host_controls_pause_rows_for(&view);
+	for (child = 0; child < NUMBER_OF_HOST_CONTROLS_PAUSE_ROWS; child++)
+		added += TEST_FLAG(rows, child) ? 1 : 0;
+	if (added > (long)NUMBEROF(names))
+		return 0;
+	grown = allocate((count + added) * sizeof(struct ui_widget_child_reference));
 	if (!grown || settings_widget == NONE || spacing <= 0)
 		return 0;
 	names[0] = "pause/settings_button";
 	tags[0] = next_tag();
 	buttons[0] = pause_button(instances, model, names[0], "SETTINGS",
 		function_index("port settings begin", "pause", 0), build.widget_tags[settings_widget], NULL, NONE);
-	names[1] = build.coop ? "pause/friendly_fire_button" : training ? "pause/training_button" :
-		host_controls ? "pause/host_controls_button" : "pause/end_game_button";
-	tags[1] = added > 1 ? next_tag() : NONE;
-	buttons[1] = build.coop ?
-		pause_button(instances, model, names[1], "FRIENDLY FIRE ON",
+	added = 1;
+	if (TEST_FLAG(rows, _host_controls_pause_friendly_fire))
+	{
+		names[added] = "pause/friendly_fire_button";
+		tags[added] = next_tag();
+		buttons[added++] = pause_button(instances, model, "pause/friendly_fire_button", "FRIENDLY FIRE ON",
 			function_index("port coop friendly fire", "pause", 0), NONE, "FRIENDLY FIRE OFF",
-			game_data_input_index("port coop friendly fire text", "pause", 0)) :
-		training ? pause_button(instances, model, names[1], "CHAPTERS",
-			function_index("port training open", "pause", 0), build.widget_tags[training_widget], NULL, NONE) :
-		host_controls ? pause_button(instances, model, names[1], "HOST CONTROLS",
-			function_index("port host open", "pause", 0), build.widget_tags[host_controls_widget], NULL, NONE) :
-		host ? pause_button(instances, model, names[1], "END GAME",
-			function_index("port pause end game", "pause", 0), NONE, NULL, NONE) : NULL;
-	if (!buttons[0] || (added > 1 && !buttons[1]))
-		return 0;
+			game_data_input_index("port coop friendly fire text", "pause", 0));
+	}
+	if (TEST_FLAG(rows, _host_controls_pause_chapters))
+	{
+		names[added] = "pause/training_button";
+		tags[added] = next_tag();
+		buttons[added++] = pause_button(instances, model, "pause/training_button", "CHAPTERS",
+			function_index("port training open", "pause", 0), build.widget_tags[training_widget], NULL, NONE);
+	}
+	if (TEST_FLAG(rows, _host_controls_pause_host_controls))
+	{
+		names[added] = "pause/host_controls_button";
+		tags[added] = next_tag();
+		buttons[added++] = pause_button(instances, model, "pause/host_controls_button", "HOST CONTROLS",
+			function_index("port host open", "pause", 0), build.widget_tags[host_controls_widget], NULL, NONE);
+	}
+	if (TEST_FLAG(rows, _host_controls_pause_end_game))
+	{
+		names[added] = "pause/end_game_button";
+		tags[added] = next_tag();
+		buttons[added++] = pause_button(instances, model, "pause/end_game_button", "END GAME",
+			function_index("port pause end game", "pause", 0), NONE, NULL, NONE);
+	}
+	for (child = 0; child < added; child++)
+	{
+		if (!buttons[child])
+			return 0;
+	}
 	for (child = 0; child < added; child++)
 		instance_set(instances, UI_WIDGET_DEFINITION_TAG, tags[child], names[child], "", buttons[child]);
 	if (quit)
@@ -3153,7 +3188,8 @@ static void pause_patch(struct cache_file_tag_instance *instances)
 /* ---------- the campaign's pause menu
 
 Its list gets the same SETTINGS (pause_list_patch) before REVERT TO SAVED, a
-copy of it, and in network co-op FRIENDLY FIRE after SETTINGS. The rows use
+copy of it, and in network co-op FRIENDLY FIRE after SETTINGS, then the
+host's HOST CONTROLS (as a multiplayer game's host has it). The rows use
 the PC version's pause menu's pitch, so a highlight sits clear of the next
 label. The prompts (B and A) stay that same gap under the last row, and the
 box beside the mission objectives grows with them, and the box is as wide as
@@ -3161,12 +3197,13 @@ the legends need (pause_campaign_widen). Settings there hides the rows that
 do not work in a game (their conditions in the model: menu_functions.c's
 settings_rows_conditions). */
 
-/* the pause box's frames from the third (pause_box_height's of five and six
-rows), and the mission objectives' box's, are the stock 159 grown by the 36
-that five rows at the PC version's pitch add (SETTINGS), then by the 66 that
-six add (network co-op's FRIENDLY FIRE too: tools/port_settings.py) */
+/* the pause box's frames from the third (pause_box_height's of five, six and
+seven rows), and the mission objectives' box's, are the stock 159 grown by
+the 36 that five rows at the PC version's pitch add (SETTINGS), by the 66
+that six add (network co-op's FRIENDLY FIRE too), then by the 96 that seven
+add (its host's HOST CONTROLS too: tools/port_settings.py) */
 #define PAUSE_CAMPAIGN_BOX_FRAME 2
-static short const pause_campaign_box_heights[] = { 195, 225 };
+static short const pause_campaign_box_heights[] = { 195, 225, 255 };
 
 /* the port box piece for one of the map's pause box pieces, else NULL */
 static char const *pause_campaign_box_bitmap(long tag_index)
@@ -3344,7 +3381,7 @@ static void pause_campaign_patch(struct cache_file_tag_instance *instances)
 		struct ui_widget_definition *list;
 		struct ui_widget_child_reference const *rows;
 		short span, top, grow, bottom;
-		long revert;
+		long revert, added;
 
 		if (children[child].widget_tag.index == NONE)
 			continue;
@@ -3364,7 +3401,11 @@ static void pause_campaign_patch(struct cache_file_tag_instance *instances)
 		span = (short)(rows[list->child_widgets.count - 1].vertical_offset - rows[0].vertical_offset);
 		top = rows[0].vertical_offset;
 		bottom = list->bounds.y1;
-		if (pause_list_patch(instances, list, revert, FALSE, &grow))
+		/* (network co-op's host's HOST CONTROLS too, as a multiplayer
+		game's host has them) */
+		added = pause_list_patch(instances, list, revert, build.coop && global_network_game_server_get() != NULL,
+			&grow);
+		if (added)
 		{
 			struct ui_widget_child_reference *placed = list->child_widgets.address;
 			struct ui_widget_definition const *button =
@@ -3398,7 +3439,8 @@ static void pause_campaign_patch(struct cache_file_tag_instance *instances)
 				pause_campaign_grow_box(definition, need);
 			}
 			pause_campaign_widen(definition);
-			platform_log("menus: the pause menu has SETTINGS%s", build.coop ? " and FRIENDLY FIRE" : "");
+			platform_log("menus: the pause menu has SETTINGS%s%s", build.coop ? " and FRIENDLY FIRE" : "",
+				added > (build.coop ? 2 : 1) ? " and HOST CONTROLS" : "");
 		}
 		return;
 	}

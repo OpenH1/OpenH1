@@ -329,6 +329,10 @@ int halo_frames_unseen(void);
 void unseen_frame_wait(void);
 /* network.client_timeout_seconds, in milliseconds (port/linux/src/port_config.c) */
 unsigned long network_client_timeout_milliseconds(void);
+/* a co-op level won: the level the host asked for after it (Host Controls),
+at its difficulty, else campaign_next, at the game's (difficulty NONE)
+(port/linux/game/network_host_game.c) */
+char const *network_host_game_cooperative_won(char const *campaign_next, short *difficulty);
 /* the game halted on a fatal error, its report offered at the next start
 as a crash's (port/linux/src/report.c: main.c) */
 void report_session_halted(char const *reason);

@@ -763,7 +763,9 @@ PLAYER then START, and JOIN GAME brings them all into the game.
 
 In a multiplayer game, the pause menu (escape) has SETTINGS, which opens
 the profile's settings while the game goes on, and for the host HOST
-CONTROLS (below; in a game of this computer alone, END GAME).
+CONTROLS (below; in a game of this computer alone, END GAME). In network
+co-op the campaign's pause menu has SETTINGS and FRIENDLY FIRE, and the
+host's HOST CONTROLS too.
 There Network Setup has only its pages that work in a game (Map Sharing,
 Multiplayer HUD with the text chat, and Streamer Mode), not INTERNET PLAY,
 which would drop the game, nor the rows for the main menu.
@@ -773,7 +775,7 @@ the carnage report the host picks the next map and gametype (PICK GAME).
 HOST CONTROLS is the host's of a network game (internet or LAN), laid out as
 the server browser is, over the game dimmed and without its HUD, and in the
 lobby too (its HOST CONTROLS, in the details panel, before the game starts),
-with six tabs (BOTS, the last, not in co-op):
+with six tabs (BOTS, the last, not in co-op, whose tabs are below):
 
 - PLAYERS: everyone in the game, with their team, score, ping and a tag
   (HOST, BOT, OPENH1 or OPENCE; in a Legacy game the host cannot tell OpenH1's
@@ -876,11 +878,33 @@ sets the vehicles and `host_weapons map` or `host_weapons <primary> [<secondary>
 `plasma_pistol`, `plasma_rifle`, `needler`) the starting weapons (as RULES's rows), and
 `ban <player> [30m|2h|7d|1w|forever]
 [reason]` bans for a while and says why (the duration with its unit).
-A co-op game has none of the map changes and no playlist: its next game is
-the campaign's next level. A list of more than 512 maps leaves the rest out,
+A list of more than 512 maps leaves the rest out,
 and MAPS says how many. Nothing new goes to the other machines: a map change is the lobby's own, a
 notice OpenCE knows, so OpenCE players in a Legacy game see it all as any
 host's.
+
+A co-op game's host has HOST CONTROLS too (the campaign's pause menu's, and
+the lobby's between levels), with PLAYERS (KICK, BAN..., MUTE...; no teams),
+GAME (CHANGE LEVEL..., MAX PLAYERS and the internet game's rows), MAPS,
+PLAYLIST and BANS; no BOTS, which play no campaign, and no RULES:
+
+- MAPS: DIFFICULTY (left and right step it: Easy, Normal, Heroic,
+  Legendary; first the game's), then the campaign's levels whose maps are in
+  the maps folder, and Custom Edition's campaign maps (`custom_maps`). For
+  the level chosen: PLAY NOW (in a level, pressed twice: the level ends for
+  everyone, as a won level ends, every machine goes to the lobby, and the
+  new level starts from there by itself, at the difficulty chosen) and
+  AFTER THIS LEVEL (when the level is won, that one is set up in the lobby
+  in place of the campaign's next). In the lobby PLAY IN THIS LOBBY sets the
+  lobby's level and difficulty.
+- PLAYLIST: co-op has none; a level asked for after this one (NEXT, with
+  CANCEL CHANGE), else the campaign's next level plays.
+
+The console's `host_map <level> [difficulty]` and `host_map_next <level>
+[difficulty]` do the same in co-op (`host_map a30 heroic`, `host_map
+custom_maps\<name>`; no difficulty: the game's). Nothing new goes to the
+other machines: the level and difficulty are the lobby's own settings, sent
+as a won level's next one is.
 
 The scoreboard's player menu (a right click on a name) offers the host the
 same: Mute for everyone, Kick, Ban (picked twice), Move to the other team,

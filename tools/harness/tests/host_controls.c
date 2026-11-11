@@ -1165,6 +1165,40 @@ static void case_bot_skill(void)
 		bots_world.count == 7, "host_bots past the limits set");
 }
 
+/* the pause menu's rows after SETTINGS: network co-op's FRIENDLY FIRE on
+every machine, and its host's HOST CONTROLS as a multiplayer game's host
+has them (the maintainer's report: a co-op host had none) */
+static void case_pause(void)
+{
+	struct host_controls_pause_view view = { TRUE, FALSE, FALSE, FALSE, TRUE, TRUE };
+	unsigned long friendly_fire = FLAG(_host_controls_pause_friendly_fire);
+	unsigned long host_controls = FLAG(_host_controls_pause_host_controls);
+
+	CHECK(network_host_controls_pause_rows_for(&view) == host_controls, "a network game's host: HOST CONTROLS");
+	view.local = TRUE;
+	CHECK(network_host_controls_pause_rows_for(&view) == FLAG(_host_controls_pause_end_game),
+		"a game of this machine alone's host: END GAME");
+	view.local = FALSE;
+	view.training = TRUE;
+	CHECK(network_host_controls_pause_rows_for(&view) == FLAG(_host_controls_pause_chapters),
+		"Basic Training's: CHAPTERS");
+	view.training = FALSE;
+	view.host = FALSE;
+	CHECK(network_host_controls_pause_rows_for(&view) == 0, "a client: nothing");
+	view.coop = TRUE;
+	CHECK(network_host_controls_pause_rows_for(&view) == friendly_fire, "a co-op client: FRIENDLY FIRE alone");
+	view.host = TRUE;
+	CHECK(network_host_controls_pause_rows_for(&view) == (friendly_fire | host_controls),
+		"a co-op host: FRIENDLY FIRE and HOST CONTROLS");
+	view.training = TRUE;
+	CHECK(network_host_controls_pause_rows_for(&view) == (friendly_fire | host_controls),
+		"a co-op host: no CHAPTERS");
+	view.training = FALSE;
+	view.host_controls_screen = FALSE;
+	CHECK(network_host_controls_pause_rows_for(&view) == friendly_fire,
+		"a co-op host without the screen: no END GAME, which the campaign has not");
+}
+
 int main(int argc, char **argv)
 {
 	char const *case_name = argc > 1 ? argv[1] : "";
@@ -1186,6 +1220,7 @@ int main(int argc, char **argv)
 	else CASE("bots_tab") case_bots_tab();
 	else CASE("bot_count") case_bot_count();
 	else CASE("bot_skill") case_bot_skill();
+	else CASE("pause") case_pause();
 	else
 	{
 		fprintf(stderr, "no case %s\n", case_name);

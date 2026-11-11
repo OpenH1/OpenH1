@@ -2887,12 +2887,12 @@ def pause_box_height(rows: int) -> int:
             PAUSE_BOX_LEGENDS_BOTTOM)
 
 
-# the campaign pause box, tall enough for five rows (SETTINGS added) or six
-# (network co-op's FRIENDLY FIRE too), with the prompts still under the last
-# row: the stock box is 159, and those rows need 36 and 66 more
-# (menu_tags.c's pause_campaign_patch); the mission objectives' box beside
-# it grows with it
-PAUSE_BOX_EXTRA_HEIGHTS = [pause_box_height(5), pause_box_height(6)]
+# the campaign pause box, tall enough for five rows (SETTINGS added), six
+# (network co-op's FRIENDLY FIRE too) or seven (its host's HOST CONTROLS
+# too), with the prompts still under the last row: the stock box is 159, and
+# those rows need 36, 66 and 96 more (menu_tags.c's pause_campaign_patch);
+# the mission objectives' box beside it grows with it
+PAUSE_BOX_EXTRA_HEIGHTS = [pause_box_height(5), pause_box_height(6), pause_box_height(7)]
 
 
 def pause_box_svg(piece: str, height: int, header: bool = False) -> str:

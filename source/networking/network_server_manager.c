@@ -804,6 +804,9 @@ static void network_game_server_remove_players_gone_while_loading(
 /* port: the map for the next co-op round after a win
 (network_game_server_port_cooperative_won); empty when there is none */
 static char network_game_server_cooperative_next_map[sizeof(((struct network_game *)NULL)->map.name)];
+/* port: ... and its difficulty (NONE: the game's), the host's change of
+level (port/linux/game/network_host_game.c) */
+static short network_game_server_cooperative_next_difficulty = NONE;
 
 struct network_game_server network_game_server_memory_do_not_use_directly;
 boolean network_game_server_memory_do_not_use_directly_in_use = FALSE;
@@ -1433,6 +1436,7 @@ void network_game_server_dispose(
 
 	/* port: a won co-op round's next level belongs to this server alone */
 	network_game_server_cooperative_next_map[0] = 0;
+	network_game_server_cooperative_next_difficulty = NONE;
 
 	switch (server->state)
 	{
@@ -5042,6 +5046,21 @@ void network_game_server_port_set_settings(
 void network_game_server_port_cooperative_won(
 	char const *next_map)
 {
+	short difficulty;
+
+	/* (the level its host asked for after this one, if any: Host Controls) */
+	next_map = network_host_game_cooperative_won(next_map, &difficulty);
+	network_game_server_port_cooperative_change(next_map, difficulty);
+}
+
+/* port: a co-op level ended for everyone as a won one is (its host's
+change of level now, from Host Controls: port/linux/game/network_host_game.c),
+the next round on next_map (NULL: this one again) at difficulty (NONE: the
+game's) */
+void network_game_server_port_cooperative_change(
+	char const *next_map,
+	short difficulty)
+{
 	struct network_game_server *server = global_network_game_server_get();
 
 	if (!server)
@@ -5049,6 +5068,7 @@ void network_game_server_port_cooperative_won(
 	csstrncpy(network_game_server_cooperative_next_map, next_map ? next_map : server->game.map.name,
 		sizeof(network_game_server_cooperative_next_map) - 1);
 	network_game_server_cooperative_next_map[sizeof(network_game_server_cooperative_next_map) - 1] = 0;
+	network_game_server_cooperative_next_difficulty = difficulty >= 0 && difficulty < 4 ? difficulty : NONE;
 	network_game_server_switch_to_postgame(server);
 	/* Back to the lobby at once, with the next level set up there to start
 	or change. Multiplayer leaves the postgame when the host presses a button
@@ -5082,7 +5102,15 @@ static void network_game_server_cooperative_round(
 	server->game.map.version = (long)cache_files_map_version(server->game.map.name);
 	main_set_multiplayer_map_name(server->game.map.name);
 	server->game.maximum_teams = 1;
+	/* (the difficulty the host changed to, every machine's from the
+	settings sent after this) */
+	if (network_game_server_cooperative_next_difficulty != NONE)
+	{
+		server->game.difficulty = network_game_server_cooperative_next_difficulty;
+		main_set_difficulty(server->game.difficulty);
+	}
 	network_game_server_cooperative_next_map[0] = 0;
+	network_game_server_cooperative_next_difficulty = NONE;
 }
 
 void network_game_server_port_set_cooperative(
@@ -5097,6 +5125,28 @@ void network_game_server_port_set_cooperative(
 	server->game.maximum_players = MIN(16, MAXIMUM_NETWORK_PLAYER_COUNT);
 	if (!network_game_server_send_game_data_pregame(server))
 		network_event("network_game_server_port_set_cooperative() failed to send updated game settings to clients");
+
+	return;
+}
+
+/* port: a co-op lobby's level and difficulty (its host's Host Controls:
+port/linux/game/network_host_game.c), set as
+network_game_server_port_set_cooperative sets them, its players' limit kept */
+void network_game_server_port_set_cooperative_level(
+	struct network_game_server *server,
+	char const *map_name,
+	short difficulty)
+{
+	if (!server || server->state != _network_game_server_state_pregame || !map_name || !map_name[0] ||
+		difficulty < 0 || difficulty >= 4)
+	{
+		return;
+	}
+	server->game.difficulty = difficulty;
+	main_set_difficulty(difficulty);
+	main_set_multiplayer_map_name(map_name);
+	/* (the settings sent with the map) */
+	network_game_server_change_map_name(server, map_name);
 
 	return;
 }
