@@ -465,10 +465,10 @@ def test_tall_layout_is_the_new_engines():
                                                  "port/assets/menus/ce").glob("*.xml"))
     assert all(f'<widget name="{name}"' in ce for name in widgets)
     assert "past=" not in ce and "text_scale=" not in ce
-    pictures = {name for name, _ in port_settings.settings_pictures()}
+    pictures = {name for name, _ in port_settings.settings_pictures() + port_settings.parts_pictures()}
     tall = port_settings.SETTINGS_TALL
     assert {tall.row_picture, tall.section_picture, tall.segment_picture, port_settings.TALL_BACKGROUND,
             tall.panel_picture.format(kind="tab"), tall.panel_picture.format(kind="page")} <= pictures
     model = "\n".join(port_settings.model_files()[port_settings.MODEL_FILE])
-    assert model.count(f'geometry="{tall.name}"') == len(PAGES)
+    assert model.count(f'geometry="{tall.name}"') == len(PAGES) + 1  # (and the search's screen)
     assert f'<geometry name="{tall.name}"' in model

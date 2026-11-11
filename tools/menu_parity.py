@@ -66,20 +66,56 @@ PLACE_KEYS = {"box", "clip", "extent", "whole", "wide", "scale"}
 
 DELIBERATE = [("profile_settings", _shows_menu_engine)]
 
-# the screens the new engine lays out tall (the server browser's and PRO 2V2's browser's: tools/port_settings.py's
-# BROWSER_TALL), whose items may differ in their places, their titles words in place of pictures
-TALL_SCREENS = re.compile(r"join_game/join_game_screen$|doubles/browser/doubles_browser_screen$")
-# (their titles' widgets: tools/port_settings.py's BROWSER_TITLE_NAMES)
-TALL_TITLES = re.compile(r"\\(header_lan|header_direct_link|header_server_browser|header_doubles_browser)$")
+# the screens the new engine lays out tall (docs/menu_engine.md, "Deliberate differences": the server browser's and
+# PRO 2V2's browser's, tools/port_settings.py's BROWSER_TALL; Settings' tabs and pages, SETTINGS_TALL), whose items
+# may differ in their places, their titles words in place of pictures
+def _tall_screens() -> list:
+    """the screens the new engine lays out tall, by the names the layouts give them"""
+    import port_settings
+    return ["multiplayer_type_select/join_game/join_game_screen", "doubles/browser/doubles_browser_screen"] + \
+        [f"{port_settings.PE}/{folder}/{page['screen']}" for folder, page in port_settings.PAGES.items()]
 
 
-def tall_items(items: list) -> list:
+TALL_SCREENS = re.compile("(?:" + "|".join(re.escape(screen) for screen in _tall_screens()) + ")$")
+# (their titles' widgets: tools/port_settings.py's BROWSER_TITLE_NAMES, and Settings' headers)
+TALL_TITLES = re.compile(r"\\header_\w+$")
+# (Settings' panel, taller in the tall layout: its words, note, facts and pictures cut, or left out, where they do
+# not fit, so fewer of them in the classic's; settings_panel_show)
+TALL_FREE = re.compile(r"\\(tab|page)_panel(/|$)")
+
+
+def _row_of(path: str) -> str:
+    """the settings row (op_<key>) an item's path is in, "" if none"""
+    found = re.search(r"^(.*?[\\/]op_[^\\/]*)", path.replace("/pc\\", "/pc\\"))
+    return found.group(1) if found else ""
+
+
+# (a segmented row's segments or its spinner, whichever fit its row: menu_functions.c's settings_segments_show,
+# which the tall layout's segments, each as wide as its words, and its labels' column fit otherwise)
+SEGMENT = re.compile(r"\\(\w+)_seg\d+(/|$)")
+
+
+def _segmented(items: list) -> set:
+    """the keys of the rows whose segments show in a layout's items"""
+    return {found.group(1) for item in items
+            for found in [SEGMENT.search(str(item.get("path", item.get("of", ""))))] if found}
+
+
+def tall_items(items: list, rows: set = None, segmented: set = frozenset()) -> list:
     """a tall screen's items as the tall layout may not change them: without their places (PLACE_KEYS), their
-    titles (a picture's widget on one side, words on the other) and a text's line breaks (a wider box wraps it
-    elsewhere)"""
+    titles (a picture's widget on one side, words on the other), Settings' panel's (TALL_FREE), a text's line
+    breaks (a wider box wraps it elsewhere), (segmented) the segments or spinner of the rows of those keys, and
+    (rows) only the items of those of its rows, and of none"""
     kept = []
     for item in items:
-        if TALL_TITLES.search(str(item.get("path", item.get("of", "")))):
+        path = str(item.get("path", item.get("of", "")))
+        value = re.search(r"\\(\w+?)_(spinner|seg\d+)(/|$)", path)
+        # (and a segmented row's tap targets: a value's, its spinner's, or an item's, its row's)
+        if not value and item.get("kind") == "target":
+            value = re.search(r"\\op_(\w+)()$", _row_of(path))
+        if TALL_TITLES.search(path) or TALL_FREE.search(path) or (rows is not None and _row_of(path) and
+                                                                   _row_of(path) not in rows) or \
+                (value and value.group(1) in segmented):
             continue
         kept.append({key: " ".join(value.split()) if key == "text" and isinstance(value, str) else value
                      for key, value in item.items() if key not in PLACE_KEYS})
@@ -107,12 +143,45 @@ def search_tabs_left_out(screen: str, items: list) -> list:
     return [item for item in items if not SEARCH_TABS.search(item.get("path", "") or item.get("of", ""))]
 
 
+def _rows(layout: dict) -> list:
+    """the rows a settings screen's layout draws (their widgets' paths), in order"""
+    return [item["path"] for item in layout_items(layout)
+            if item.get("kind") == "widget" and re.split(r"[/\\]", item.get("path", ""))[-1].startswith("op_")]
+
+
+def is_tall_layout(classic: dict, new: dict) -> bool:
+    """whether two layouts of a tall screen (TALL_SCREENS) differ only as the tall layout lays it out: the same
+    screen, prompts and touch layout, the same items but for their places, titles and Settings' panel
+    (tall_items), the new engine drawing the classic's rows in their order, or a run of them where it scrolls
+    (the rows out of their room are not drawn, and are not compared)"""
+    if classic is None or new is None:
+        return False
+    name = str(classic.get("screen_name", "")).replace("\\", "/")
+    if name != str(new.get("screen_name", "")).replace("\\", "/") or not TALL_SCREENS.search(name):
+        return False
+    for key in ("screen", "prompts", "touch_menus"):
+        if classic.get(key) != new.get(key):
+            return False
+    rows, shown = _rows(classic), _rows(new)
+    if shown and not any(rows[start:start + len(shown)] == shown for start in range(len(rows) - len(shown) + 1)):
+        return False
+    if not shown and rows:
+        return False
+    # (a Settings tab's tabs' row left out: the new engine's has the search's field, search_tabs_left_out)
+    a = search_tabs_left_out(name, layout_items(classic))
+    b = search_tabs_left_out(name, layout_items(new))
+    segmented = _segmented(a) | _segmented(b)
+    return tall_items(a, set(shown), segmented) == tall_items(b, set(shown), segmented)
+
+
 def is_deliberate_frame(screen: str, classic: dict, new: dict, box=None, size=None) -> bool:
     """whether two frames' difference is a deliberate one: their layouts differ only so (the frames of a
     screen whose layouts are the same must be the same); a Settings tab's, in its tabs' row alone (box: the
     pixels' bounds that differ, in a frame of size)"""
     if classic is None or new is None:
         return False
+    if is_tall_layout(classic, new):
+        return True
     a, b = layout_items(classic), layout_items(new)
     if _settings_tab(screen) and a != b and search_tabs_left_out(screen, a) == search_tabs_left_out(screen, b):
         if box is None or size is None:
@@ -196,11 +265,15 @@ def compare_layouts(screen: str, classic: dict, new: dict, opened: bool = False)
                 lines.append(f"NOT COMPARED: {engine} drew {drawn or 'no screen'}, not {screen}")
         if lines:
             return lines
+    # (a screen in the tall layout: deliberate, is_tall_layout; otherwise its items without their places
+    # compared, to say how else they differ)
+    if is_tall_layout(classic, new):
+        return []
     for key in ("screen_name", "screen", "prompts", "touch_menus"):
         if classic.get(key) != new.get(key):
             lines.append(f"{key}: {classic.get(key)!r} | {new.get(key)!r}")
     a, b = search_tabs_left_out(screen, layout_items(classic)), search_tabs_left_out(screen, layout_items(new))
-    if TALL_SCREENS.search(screen):
+    if TALL_SCREENS.search(str(classic.get("screen_name", "")).replace("\\", "/")):
         a, b = tall_items(a), tall_items(b)
     for index in range(max(len(a), len(b))):
         left = a[index] if index < len(a) else None
@@ -276,8 +349,25 @@ PE = "main_menu/settings_select/player_setup/player_profile_edit"
 # (the setup screens': the gametype editor's and Server Setup's)
 MS = "main_menu/settings_select/multiplayer_setup"
 MT = "main_menu/multiplayer_type_select"
-# (the 4:3 window's fractions of the buttons of a Settings tab or page: the menus' 640 x 480 fill it)
-OK_CLICK, CANCEL_CLICK, DEFAULTS_CLICK = "click:0.659:0.889", "click:0.859:0.889", "click:0.138:0.889"
+# what the scripts click, by name ("click@<name>"): the 4:3 window's fractions of it (the menus' 640 x 480 fill it)
+# in the classic engine's layout and in the new engine's, Settings' tall one (docs/menu_engine.md, "Deliberate
+# differences"): a Settings tab's or page's buttons, Video's FIELD OF VIEW track and STARTUP MOVIES' spinner, and the
+# AUDIO tab
+CLICKS = {
+    "ok": ("click:0.659:0.889", "click:0.659:0.960"),
+    "cancel": ("click:0.859:0.889", "click:0.859:0.960"),
+    "defaults": ("click:0.138:0.889", "click:0.138:0.960"),
+    "fov_track": ("click:0.406:0.410", "click:0.406:0.390"),
+    "movies": ("click:0.53:0.498", "click:0.53:0.494"),
+    "audio_tab": ("click:0.230:0.181", "click:0.230:0.119"),
+}
+OK_CLICK, CANCEL_CLICK, DEFAULTS_CLICK = "click@ok", "click@cancel", "click@defaults"
+
+
+def engine_presses(presses: list, engine: str) -> list:
+    """a script's presses for an engine: its clicks by name where they are in its layout"""
+    return [CLICKS[press[len("click@"):]][engine == "new"] if press.startswith("click@") else press
+            for press in presses]
 # each script: its name, the screen it starts on (debug.menu_open) and its presses (debug.test_input
 # "menu:ready ...", one a second of the frames' clock from when the screen is up: port/linux/src/xinput_sdl.c,
 # port/linux/game/menu_tour.c)
@@ -313,7 +403,7 @@ SCRIPTS = [
      ["down", "right", "right", "down", "down", "right", "up", OK_CLICK]),
     # (the 4:3 window's fractions of FIELD OF VIEW's track, MOVIES' spinner and the AUDIO tab)
     ("clicks-and-wheel", f"{PE}/video_settings/video_settings_screen",
-     ["click:0.406:0.410", "click:0.53:0.498", "down", "down", "down", "wheel:1", "wheel:-3", "click:0.230:0.181",
+     ["click@fov_track", "click@movies", "down", "down", "down", "wheel:1", "wheel:-3", "click@audio_tab",
       "wait", "down", "right", OK_CLICK]),
     # (sliders without stops, Defaults over a page's sliders, and stops that write a word of the setting's:
     # VEHICLE FIELD OF VIEW's DEFAULT and MATCH)
@@ -352,7 +442,7 @@ SCRIPTS = [
      ["down", "right", "down", "down", "right", "rb", "wait", "down", "right", "lb", "wait", "up", "up", "right",
       "a"], "4x3-controller"),
     ("touch", f"{PE}/video_settings/video_settings_screen",
-     ["click:0.406:0.410", "click:0.53:0.498", "down", "right", "click:0.230:0.181", "wait", OK_CLICK],
+     ["click@fov_track", "click@movies", "down", "right", "click@audio_tab", "wait", OK_CLICK],
      "4x3-touch"),
 ]
 # the script that makes the player profile every other run starts from (its text field typed into): run on the
@@ -494,7 +584,7 @@ def behaviour_run(build: Path, script: tuple, engine: str, maps: Path, template:
                                  ENGINES.get(engine, engine))
         environment = menu_gallery.run_environment(variant, folder, timeout, True)
         environment.pop("HALO_MENU_TOUR", None)
-        presses = list(presses) + ["wait"] * 2
+        presses = engine_presses(list(presses), ENGINES.get(engine, engine)) + ["wait"] * 2
         environment.update({
             "HALO_MENU_OPEN": screen, "HALO_TEST_INPUT": "menu:ready " + " ".join(presses),
             "HALO_EXIT_AFTER": str(int(timeout)), "HALO_MENU_LAYOUT": "layout.json",
