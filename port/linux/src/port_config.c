@@ -1538,6 +1538,13 @@ static const struct config_setting config_settings[] =
 		"Hosting: the text chat: \"on\" (links in lines are refused), \"links\"\n"
 		"(links allowed) or \"off\", in either case; listed in the server\n"
 		"browser or not." },
+	{ "network.chat_channels", _config_string, "\"all\"", "HALO_NET_CHAT_CHANNELS", _environment_value,
+		_platform_all,
+		"The text chat's channel each local player chose last, which T\n"
+		"(controls.chat) and a controller's D-pad Up open the chat on: a word\n"
+		"for each player in turn, separated by commas, \"all\", \"team\" or\n"
+		"\"vehicle\" (as \"team,all\"). A team's opens to all in a game without\n"
+		"teams, a vehicle's to the team (or all) on foot. The chat writes it." },
 	{ "network.pings", _config_boolean, "true", "HALO_NET_PINGS", _environment_value, _platform_all,
 		"Hosting: let the players ping (controls.ping, a controller's D-pad\n"
 		"Right): what they aim at marked for their allies with a nav point and\n"
