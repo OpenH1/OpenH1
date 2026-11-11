@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The look of ce/main_menu.doubles.xml's widgets, for the menu engine (docs/menu_engine.md; tools/menu_look.py) -->
+<model>
+	<look name="main_menu/main_menu_item_doubles" type="text" box="0 0 256 33" picture="main_menu/menu_doubles"/>
+	<look name="main_menu/doubles/header_doubles" box="35 11 398 70" picture="main_menu/doubles/header_doubles"/>
+	<look name="main_menu/doubles/doubles_screen" picture="bitmaps/gradient">
+		<at widget="main_menu/doubles/header_doubles" x="0" y="0"/>
+		<at widget="main_menu/doubles/section_matchmaking" x="28" y="80"/>
+		<at widget="main_menu/doubles/matchmaking_panel" x="0" y="0"/>
+		<at widget="main_menu/doubles/doubles_list" x="0" y="0"/>
+	</look>
+	<look name="main_menu/doubles/section_matchmaking" type="text" box="0 0 280 20" wide="-106 80" picture="main_menu/parts/section_280">
+		<text font="ui\small_ui" color="#FF6F9CD0" at="4 0" text="2 AGAINST 2"/>
+	</look>
+	<look name="main_menu/doubles/doubles_list" type="column_list">
+		<at widget="main_menu/doubles/mm_row_0" x="28" y="102"/>
+		<at widget="main_menu/doubles/mm_row_1" x="28" y="130"/>
+		<at widget="main_menu/doubles/matchmaking_prompts" x="0" y="414"/>
+	</look>
+	<look name="main_menu/doubles/mm_row_0" type="text" box="0 0 280 26" wide="-106 80" picture="main_menu/parts/item_280x26">
+		<text font="ui\large_ui" color="#FF2896FF" at="10 2"/>
+		<at widget="main_menu/doubles/mm_note_0" x="0" y="0"/>
+	</look>
+	<look name="main_menu/doubles/mm_note_0" type="text" box="0 0 264 26" wide="0 80">
+		<text font="ui\small_ui" color="#FF5ED38C" align="right" at="0 4" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/mm_row_1" type="text" box="0 0 280 26" wide="-106 80" picture="main_menu/parts/item_280x26">
+		<text font="ui\large_ui" color="#FF2896FF" at="10 2"/>
+		<at widget="main_menu/doubles/mm_note_1" x="0" y="0"/>
+	</look>
+	<look name="main_menu/doubles/mm_note_1" type="text" box="0 0 264 26" wide="0 80">
+		<text font="ui\small_ui" color="#FF5ED38C" align="right" at="0 4" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/panel_title" type="text" box="330 94 598 118" wide="0 132">
+		<text font="ui\large_ui" color="#FFFFFFFF" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/panel_about" type="text" box="330 120 598 156" wide="0 132">
+		<text font="ui\small_ui" color="#FF2896FF" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/panel_status_label" type="text" box="330 164 598 180" wide="0 132">
+		<text font="ui\small_ui" color="#FF6F9CD0" flags="no_focus_test" text="SEARCH"/>
+	</look>
+	<look name="main_menu/doubles/panel_status" type="text" box="330 180 598 204" wide="0 132">
+		<text font="ui\large_ui" color="#FFFFFFFF" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/panel_detail" type="text" box="330 206 598 290" wide="0 132">
+		<text font="ui\small_ui" color="#FF2896FF" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/panel_help" type="text" box="330 310 598 388" wide="0 132">
+		<text font="ui\small_ui" color="#FF2896FF" flags="no_focus_test wrap" text="Pro settings on the 2v2 maps. Classic: 30 ticks, Instant Aim off for everyone. Lowest Latency: 120. Each meets only its own kind."/>
+	</look>
+	<look name="main_menu/doubles/matchmaking_panel" box="316 80 612 400" wide="-26 132" picture="main_menu/parts/panel_296x320">
+		<at widget="main_menu/doubles/panel_title" x="0" y="0"/>
+		<at widget="main_menu/doubles/panel_about" x="0" y="0"/>
+		<at widget="main_menu/doubles/panel_status_label" x="0" y="0"/>
+		<at widget="main_menu/doubles/panel_status" x="0" y="0"/>
+		<at widget="main_menu/doubles/panel_detail" x="0" y="0"/>
+		<at widget="main_menu/doubles/panel_help" x="0" y="0"/>
+	</look>
+	<look name="main_menu/doubles/matchmaking_prompts" type="column_list" box="0 0 640 28">
+		<at widget="main_menu/doubles/prompt_search" x="28" y="1"/>
+		<at widget="main_menu/doubles/prompt_cancel" x="28" y="1"/>
+		<at widget="main_menu/doubles/prompt_back" x="516" y="1"/>
+	</look>
+	<look name="main_menu/doubles/prompt_search" type="text" box="0 0 124 24" wide="-106 0" picture="main_menu/parts/item_124x24">
+		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%a-button SEARCH"/>
+	</look>
+	<look name="main_menu/doubles/prompt_cancel" type="text" box="0 0 124 24" wide="-106 0" picture="main_menu/parts/item_124x24">
+		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%x-button CANCEL"/>
+	</look>
+	<look name="main_menu/doubles/prompt_back" type="text" box="0 0 96 24" wide="106 0" picture="main_menu/parts/item_96x24">
+		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%b-button BACK"/>
+	</look>
+</model>

@@ -100,14 +100,15 @@ def _main_menu_items():
 
 
 def test_main_menu_items():
-    """the main menu is CAMPAIGN, MULTIPLAYER, SETTINGS and QUIT (the
+    """the main menu is CAMPAIGN, MULTIPLAYER, 2V2, SETTINGS and QUIT (the
     profiles and the mods are Settings' PROFILES and MODS tabs'), a row apart
     with no gap"""
     items = _main_menu_items()
-    assert [name for name, _, _ in items] == ["load_camp", "multiplayer", "settings", "quit_game"]
+    assert [name for name, _, _ in items] == ["load_camp", "multiplayer", "doubles", "settings", "quit_game"]
     assert {after[2] - before[2] for before, after in zip(items, items[1:])} == {36}
-    assert items[2][1:] == port_settings.SETTINGS_ITEM_PLACE
-    assert items[3][1:] == port_settings.QUIT_ITEM_PLACE
+    assert items[2][1:] == port_settings.DOUBLES_ITEM_PLACE
+    assert items[3][1:] == port_settings.SETTINGS_ITEM_PLACE
+    assert items[4][1:] == port_settings.QUIT_ITEM_PLACE
 
 
 def test_profiles_tab_opens_profiles():

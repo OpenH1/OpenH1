@@ -709,6 +709,11 @@ edition shows it: each of the PC version's texts is that `loc.map`'s
 it is English. The pictures with words in them (the screens' titles, the
 main menu's items) are drawn in English.
 
+The main menu has one item the PC version's has not, 2V2, after MULTIPLAYER:
+matchmaking's two against two, CLASSIC or LOWEST LATENCY (refer to "2V2"
+under "Internet play"). Its item is drawn in the redraws' own letters, as VR
+TUTORIAL is.
+
 Multiplayer > SPLIT-SCREEN CO-OP is the Xbox's cooperative play, which the PC
 version does not have: two players on this computer play the campaign in
 split screen. Player 1 is the player who chose it, on the current profile.
@@ -1214,7 +1219,8 @@ weapons, Hardcore's restores); the clients take them from it as they take
 the rest of the game. The lobby and Server Setup name the gametype's mode.
 `debug.network_test` hosts them by name: `swat`, `infection`, `gun_game`,
 `hardcore`, `hardcore_ctf`, `hardcore_oddball` and `hardcore_king`
-(`host:bloodgulch:infection`).
+(`host:bloodgulch:infection`), and `pro_doubles`, 2V2's Pro Doubles, which
+Select Gametype does not list (refer to "2V2").
 
 Three more options of OpenCE's (its pull request #467, by s3anyboy) are in
 the gametype editor's own screens:
@@ -1294,7 +1300,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.prepare_shaders` | `true` | `HALO_PREPARE_SHADERS` | `true`: as a map loads, its first frame is drawn unseen through every shader its tags hold, in each way the game's code draws them, with its other structures' materials too, so that the renderer makes their shaders and pipelines during the loading screen, not in play nor at a load zone (a structure with materials its first could not stand in for draws those at its own first frame) (`port/assets/render/README.md`, "A map's enumeration"). `false`: each is made the first time a draw needs it, which the draw waits for. |
 | `display.interpolation` | `true` | `HALO_INTERPOLATION` | `true`: one frame for each refresh of the display. `false`: 30 frames each second, as on the Xbox. Refer to "Frame rate". |
 | `display.menu_cursor` | `"medium"` | `HALO_MENU_CURSOR` | The menus' pointer for the mouse (Settings > Controls > Menu Cursor): the game's blue arrow, `"small"`, `"medium"`, `"large"` or `"extra_large"` (18, 24, 32 or 40 of the menus' 480 lines tall, the same part of the screen at any resolution), or `"off"` for the system's pointer. Linux, Windows and macOS. Refer to "Controls". |
-| `display.direct_camera` | `true` | `HALO_DIRECT_CAMERA` | `true`: in first person, on foot, the view points where the player aims in each frame, not where the last tick left it; and (not in the VR mode) the view stands where the newest step left the player, and the gun and hands show the newest step's pose (a shot, a step, a reload seen 33 ms sooner). In a vehicle's seat (first or third person, not in the VR mode) the vehicle, its riders and the view from it are drawn as the vehicle's newest step left it, the view aimed where the player aims. On Android and iOS too, with the touch controls' swipe and gyroscope. Refer to "Frame rate". |
+| `display.direct_camera` | `true` | `HALO_DIRECT_CAMERA` | (Off for every player in a 2V2 Classic game, whatever this says, as its host's word: refer to "2V2"; the setting is left as it is.) `true`: in first person, on foot, the view points where the player aims in each frame, not where the last tick left it; and (not in the VR mode) the view stands where the newest step left the player, and the gun and hands show the newest step's pose (a shot, a step, a reload seen 33 ms sooner). In a vehicle's seat (first or third person, not in the VR mode) the vehicle, its riders and the view from it are drawn as the vehicle's newest step left it, the view aimed where the player aims. On Android and iOS too, with the touch controls' swipe and gyroscope. Refer to "Frame rate". |
 | `display.fov` | `0.0` | `HALO_FOV` | The view's field of view on foot, in degrees across at 16:9, from 20 to 150, or to 160 with `display.panini` on (150 while it is off). `0`: the stock view. A seat seen in first person (a passenger's, the Shade's turret) takes it too; the third-person seats take `display.vehicle_fov`'s. Video Setup's Field of View is a slider through Default and 80 to 160, with a field to type any from 20 to 160 (Enter keeps it). Refer to "Field of view". |
 | `display.scale_scoped_fov` | `false` | `HALO_SCALE_SCOPED_FOV` | How far a scope zooms at a field of view other than the stock one (`display.fov`, `display.vehicle_fov`). `false`: as the Xbox did, every zoom level is the weapon's own angle (the stock view over its magnification), whatever the player's view is. `true`: each zoom level magnifies the player's view as much as the Xbox's magnifies the stock view: the tangent of half the zoomed angle times the tangent of half the player's angle over the stock one's, so the reticle's scale and the scope's picture keep together. Classic and Enhanced both leave it off. First Person's Scoped Field of View (XBOX or SCALED), under Vehicle Field of View. Refer to "Field of view". |
 | `display.vehicle_fov` | `"default"` | `HALO_VEHICLE_FOV` | The view's field of view in a vehicle's seat seen in third person (a driver's, a gunner's, a passenger's with `display.passenger_third_person`), and getting in and out of it. A seat seen in first person (a passenger's, the Shade's turret) takes `display.fov`'s, as on foot. `"default"`: the stock view, the reticle at its stock size. `"match"`: `display.fov`'s. A number (`110`, unquoted or quoted): degrees across at 16:9, from 20 to 160, as `display.fov` reads it (above 150 with `display.panini` on; another number, the stock view). Getting in or out, or changing between a first-person and a third-person seat, the view eases between the two in half a second. First Person's Vehicle Field of View is a slider through Default, Match and 80 to 160, with a field to type any from 20 to 160. Refer to "Field of view". |
@@ -2912,11 +2918,11 @@ the party's brokers.
 - The playlists: TEAM SLAYER (4 against 4), SLAYER (everyone for
   themselves, 8 at most, parties of 2), CAPTURE THE FLAG (4 against 4), SWAT,
   BIG TEAM BATTLE (8 against 8 on Blood Gulch, Sidewinder and Boarding
-  Action) and DOUBLES (Team Slayer 2 against 2 on the small maps, parties of
-  2: a party of two is one team). Each has its gametypes, maps, players and
-  the biggest party it takes. A game is listed by its playlist's number, so
-  a new playlist is added after the others: an older build of the same
-  version does not show it, and passes over its games.
+  Action), and 2V2 LOWEST LATENCY and 2V2 CLASSIC (the main menu's 2V2,
+  below). Each has its gametypes, maps, players and the biggest party it
+  takes; 2V2's have a tick rate too. A game is listed by its playlist's
+  number, so a new playlist is added after the others: an older build of the
+  same version does not show it, and passes over its games.
 - Pick a playlist and press A (or SEARCH). Your party's leader searches for
   everyone; a member sees that its leader searches. The panel shows the time
   searched, the games found and what the search is doing; CANCEL (X) stops
@@ -2936,7 +2942,56 @@ the party's brokers.
   players it has (2 at least). Its bots are on both teams, evening them
   with the players, whatever the host's `bots.teams`.
 - It never joins a Legacy game, nor an OpenH1 game of another version. OpenCE
-  players can join a game it hosts, as any OpenH1 game.
+  players can join a game it hosts, as any OpenH1 game, but for 2V2's.
+- Without internet play on (`network.online`, `network.public_lobby`), or
+  without any of a playlist's maps in the maps folder, a playlist cannot be
+  searched, and the panel says why (INTERNET PLAY IS OFF, NO MULTIPLAYER
+  MAPS) as soon as it is chosen.
+
+### 2V2
+
+The main menu's 2V2 is matchmaking's two against two. It asks which kind,
+CLASSIC or LOWEST LATENCY, and A on one searches at once (its screen is the
+Matchmaking screen's, with a row for each kind: the time searched, the
+games found, CANCEL on X). The search is the one above: a game with room
+for you (and your party: a party of two is one team; the party's leader
+searches), else one hosted that others searching the same kind find; once
+it has waited 90 seconds bots fill the empty places, one team's and the
+other's evenly.
+
+- **CLASSIC** is an OpenH1 game at 30 ticks (OpenH1 30 Tick, the Xbox's rate,
+  on OpenH1's netcode, not a Legacy game), with INSTANT AIM off for every
+  player: each machine draws its player's view as with
+  `display.direct_camera = false`, the view turning on the game's ticks as
+  the original's did, whatever the player's own setting. It is the host's
+  word in the game record (`_network_game_no_direct_camera_bit`), so every
+  machine of the game has it; the setting itself is not changed, and is the
+  player's again after the game. Settings' INSTANT AIM row shows OFF, dimmed,
+  during such a game, and its help says why.
+- **LOWEST LATENCY** is an OpenH1 game at 120 ticks (OpenH1 120 Tick), each
+  player's INSTANT AIM their own.
+- Only the tick rate (and with it Classic's aim) differs. Both play Pro
+  Doubles on the same maps: Chill Out, Hang 'Em High, Prisoner, Damnation
+  and Derelict, the Team Slayer maps of the competitive 2v2 rules below, all
+  stock multiplayer maps. Pro Doubles (`pro_doubles` for
+  `debug.network_test` and a dedicated server's gametype; `game/game_modes.c`)
+  is Team Slayer as competitive Halo 1 2v2 was played, from a 2v2 tournament's
+  published rules for the original game ("2v2 Rules Halo 1 Original"): to 50
+  kills, a respawn of 5 seconds and a suicide penalty of 5, infinite lives,
+  100% health, shields on, the normal weapons, generic starting equipment,
+  other players not on the radar, no objective indicator, friends'
+  indicators on, no death bonus, kill penalty, kill in order, odd man out or
+  respawn growth. What the rules leave unsaid is Team Slayer's: friendly fire
+  on, no time limit.
+- A kind only ever meets its own: each is a playlist of its own, listed by
+  its number, and its search takes only a game listed at its rate (a Classic
+  search never a 120 Tick game, Lowest Latency never a 30 Tick one). The
+  machine that hosts one hosts it at the kind's rate whatever its
+  `network.game_mode` and `network.sim_rate` say, closed to OpenCE's players
+  (Host Controls cannot open it to them), and the next game it hosts is its
+  settings' again.
+- 2V2 cannot be searched without internet play, or without any of its maps:
+  the panel says why.
 
 ### Friends
 

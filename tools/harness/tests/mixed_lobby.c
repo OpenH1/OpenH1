@@ -54,7 +54,8 @@ struct distributed_message_header
 
 /* the record, as far as the host changes it: everything else is copied */
 /* the record's pickup bit (network_game_manager.h) */
-enum { _network_game_hold_to_pick_up_bit = 3, _network_game_classic_turning_bit = 4 };
+enum { _network_game_hold_to_pick_up_bit = 3, _network_game_classic_turning_bit = 4,
+	_network_game_no_direct_camera_bit = 5 };
 #define SET_FLAG(f, b, v) ((v) ? ((f) |= (unsigned)FLAG(b)) : ((f) &= (unsigned)~FLAG(b)))
 
 struct network_game

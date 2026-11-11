@@ -136,6 +136,7 @@ the frame takes its view.
 #include "passenger_camera.h"
 #include "sim_rate.h"
 #include "demo.h"
+#include "network_standard.h"
 
 /* port/linux/src/port_config.c */
 int config_boolean(const char *name);
@@ -2989,7 +2990,9 @@ static short render_interpolation_direct(
 		enabled = config_boolean("display.direct_camera");
 	}
 	perspective = director_get_perspective(local_player_index);
-	if (!enabled ||
+	/* (off in a game whose host says so, a 2V2 Classic game's, whatever the
+	setting: network_standard_direct_camera_allowed) */
+	if (!enabled || !network_standard_direct_camera_allowed() ||
 		(perspective != _director_perspective_first_person && perspective != _director_perspective_third_person) ||
 		director_inhibited_facing(local_player_index) ||
 		cinematic_in_progress())

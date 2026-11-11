@@ -27,8 +27,16 @@ MOD_ROWS = 11
 # the main menu's items (ce/main_menu.xml): CAMPAIGN, MULTIPLAYER, SETTINGS
 # and QUIT, a row apart (Profile and Credits are left out: tools/ce_menus.py's
 # LEFT_OUT; its CHILD_OFFSETS move Settings and Quit up into their rows)
-SETTINGS_ITEM_PLACE = (192, 319)
-QUIT_ITEM_PLACE = (192, 355)
+# (the main menu's items: CAMPAIGN, MULTIPLAYER, 2V2 (_doubles), SETTINGS
+# and QUIT, 36 apart, as the PC version's)
+DOUBLES_ITEM_PLACE = (192, 319)
+SETTINGS_ITEM_PLACE = (192, 355)
+QUIT_ITEM_PLACE = (192, 391)
+# The main menu's 2V2 (port/linux/game/matchmaking_menu.inc): its screen of
+# kinds, CLASSIC and LOWEST LATENCY, each a matchmaking playlist
+# (matchmaking.c's matchmaking_doubles_playlist), searched at once
+DOUBLES = "main_menu/doubles"
+DOUBLES_ROWS = 2
 # the profile manager (the PC version's, which the main menu's Profile
 # opened): the profiles listed, the one chosen made player 1's, NEW and
 # DELETE; Settings' PROFILES tab opens it (MANAGE PROFILES)
@@ -738,9 +746,11 @@ PAGES = {
             ("MOUSE AIM ASSIST", "input.mouse_aim_assist", ON_OFF,
              "Slows and drags your aim along with a target while you aim with the mouse, as it does with a "
              "controller.", None),
+            # (off, dimmed, in a 2V2 Classic game: menu_functions.c's
+            # direct_camera_row_show)
             ("INSTANT AIM", "display.direct_camera", ON_OFF,
              "Turns the view the moment the mouse moves, not up to two of the game's updates later. Off feels as "
-             "the original did.", "computer"),
+             "the original did.|Off for everyone in a Classic 2v2 game; yours again after it.", "computer"),
             # (port/linux/src/sdl_platform.c's menu_cursor_size; hidden in the
             # headset, where VR Setup's row takes its room and the menus have
             # no desktop pointer: SETTINGS_ROW_WHEN)
@@ -2695,11 +2705,15 @@ WIDGET_PATCHES = {
     "main_menu/main_menu_item_settings": {"handlers": [
         f'<on event="{event}" run="port settings begin" open="{PE}/video_settings/video_settings_screen"/>'
         for event in ("a", "start")] + ['<on event="left_mouse" run="mouse emit accept event"/>']},
-    # (in the headset, VR TUTORIAL above the first: _training)
+    # (in the headset, VR TUTORIAL above the first: _training; 2V2 after
+    # MULTIPLAYER: _doubles)
     "main_menu/main_menu_select_list": {"insert_before": {
         "main_menu/main_menu_item_load_camp": [
             f'<child widget="main_menu/main_menu_item_training" x="{TRAINING_ITEM_PLACE[0]}" '
-            f'y="{TRAINING_ITEM_PLACE[1]}" platform="vr"/>']}},
+            f'y="{TRAINING_ITEM_PLACE[1]}" platform="vr"/>'],
+        "main_menu/main_menu_item_settings": [
+            f'<child widget="main_menu/main_menu_item_doubles" x="{DOUBLES_ITEM_PLACE[0]}" '
+            f'y="{DOUBLES_ITEM_PLACE[1]}"/>']}},
     # (Quit's game data input notes the main menu shown, over which the
     # update question opens: _update)
     "main_menu/main_menu_item_quit_game": {"inputs": ["port update question"]},
@@ -5507,7 +5521,7 @@ def _party() -> list:
 # the Matchmaking screen's (_matchmaking): a row for each playlist
 # (matchmaking.c's), and its footer's prompts (menu_functions.c's
 # matchmaking_screen_update shows SEARCH or CANCEL)
-MATCHMAKING_ROWS = 6
+MATCHMAKING_ROWS = 7
 MATCHMAKING_PROMPTS = [
     ("prompt_search", "%a-button SEARCH", 28, 124, '<on event="a" run="port matchmaking button"/>'),
     ("prompt_cancel", "%x-button CANCEL", 28, 124, '<on event="a" run="port matchmaking button"/>'),
@@ -5525,28 +5539,53 @@ def _matchmaking() -> list:
     playlist searched for the whole party) or, while a search goes on, CANCEL
     (X), and BACK. On a wide screen it is laid out as Multiplayer is
     (HUB_WIDE_ITEMS, HUB_WIDE_PANEL)"""
-    base = f"{MT}/matchmaking"
+    return _matchmaking_screen(f"{MT}/matchmaking", "matchmaking", f"{MT}/header_multiplayer", "MATCHMAKING",
+                               MATCHMAKING_ROWS,
+                               "Matchmaking finds a game with room for your whole party, by ping, or hosts one that "
+                               "players searching the same playlist join. Your party comes with you.")
+
+
+def _doubles() -> list:
+    """the main menu's 2V2 (main_menu_item_doubles, in the redraws' letters:
+    menu_item_frames) and its screen, the Matchmaking screen's
+    (_matchmaking_screen) with a row for each kind, CLASSIC and LOWEST
+    LATENCY: A on one searches its playlist at once (matchmaking_menu.inc),
+    and the panel says why it cannot be (internet play off, no maps for it)"""
+    lines = _widget("main_menu/main_menu_item_doubles",
+                    [("type", "text"), ("width", 256), ("height", 33), ("bitmap", "main_menu/menu_doubles")],
+                    [f'<on event="a" open="{DOUBLES}/doubles_screen"/>',
+                     f'<on event="start" open="{DOUBLES}/doubles_screen"/>',
+                     '<on event="left_mouse" run="mouse emit accept event"/>'])
+    lines += _header(f"{DOUBLES}/header_doubles", f"{DOUBLES}/header_doubles")
+    return lines + _matchmaking_screen(DOUBLES, "doubles", f"{DOUBLES}/header_doubles", "2 AGAINST 2", DOUBLES_ROWS,
+                                       "Pro settings on the 2v2 maps. Classic: 30 ticks, Instant Aim off for "
+                                       "everyone. Lowest Latency: 120. Each meets only its own kind.")
+
+
+def _matchmaking_screen(base: str, name: str, header: str, section: str, row_count: int, help_text: str) -> list:
+    """a matchmaking screen (_matchmaking, _doubles): its rows under
+    section, the panel, the prompts; its list <name>_list"""
     left, top, width, height = HUB_PANEL
     item_w, item_h = HUB_ITEM
     step = item_h + 2
     items_wide = wide(-WIDE_HALF, HUB_WIDE_ITEMS)
     rows = [f'<child widget="{base}/mm_row_{row}" x="{HUB_LIST_X}" y="{top + PART_SECTION_HEIGHT + 2 + step * row}"/>'
-            for row in range(MATCHMAKING_ROWS)]
-    lines = _widget(f"{base}/matchmaking_screen", [("width", 640), ("height", 480),
-                                                   ("flags", "pass_unhandled_to_focused_child"),
-                                                   ("bitmap", "bitmaps/gradient")],
+            for row in range(row_count)]
+    lines = _widget(f"{base}/{name}_screen", [("width", 640), ("height", 480),
+                                              ("flags", "pass_unhandled_to_focused_child"),
+                                              ("bitmap", "bitmaps/gradient")],
                     ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
-                     '<on event="x" run="port matchmaking x"/>', f'<child widget="{MT}/header_multiplayer"/>',
+                     '<on event="x" run="port matchmaking x"/>', f'<child widget="{header}"/>',
                      f'<child widget="{base}/section_matchmaking" x="{HUB_LIST_X}" y="{top}"/>',
-                     f'<child widget="{base}/matchmaking_panel"/>', f'<child widget="{base}/matchmaking_list"/>'])
-    lines += _section(f"{base}/section_matchmaking", "MATCHMAKING", item_w, items_wide)
-    lines += _widget(f"{base}/matchmaking_list", [("type", "column_list"), ("width", 640), ("height", 480),
-                                                  ("flags", "pass_unhandled_to_focused_child up_down_tabs_items")],
+                     f'<child widget="{base}/matchmaking_panel"/>', f'<child widget="{base}/{name}_list"/>'])
+    lines += _section(f"{base}/section_matchmaking", section, item_w, items_wide)
+    lines += _widget(f"{base}/{name}_list", [("type", "column_list"), ("width", 640), ("height", 480),
+                                             ("flags", "pass_unhandled_to_focused_child up_down_tabs_items")],
                      ['<data input="port matchmaking update"/>', *rows,
                       f'<child widget="{base}/matchmaking_prompts" y="414"/>'])
     # (a playlist's row: its name, filled in, and what its search does at
     # its end)
-    for row in range(MATCHMAKING_ROWS):
+    for row in range(row_count):
         lines += _widget(f"{base}/mm_row_{row}", [("type", "text"), ("width", item_w), ("height", item_h),
                                                   ("wide", items_wide), ("bitmap", part_highlight(item_w, item_h)),
                                                   ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE), ("text_x", 10),
@@ -5579,9 +5618,7 @@ def _matchmaking() -> list:
     lines += text("panel_detail", 126, 84, "ui\\small_ui", SETTINGS_BLUE)
     # (wrapped in its box, as a dialog's message is: one line it ran past the
     # panel's edge; four lines tall for 4:3's narrower panel)
-    lines += text("panel_help", height - 90, 78, "ui\\small_ui", SETTINGS_BLUE,
-                  words="Matchmaking finds a game with room for your whole party, by ping, or hosts one that "
-                        "players searching the same playlist join. Your party comes with you.", flags="wrap")
+    lines += text("panel_help", height - 90, 78, "ui\\small_ui", SETTINGS_BLUE, words=help_text, flags="wrap")
     lines += _widget(f"{base}/matchmaking_panel", [("controller", 1), ("left", left), ("top", top),
                                                    ("width", width), ("height", height),
                                                    ("bitmap", part_panel(width, height)),
@@ -5791,6 +5828,7 @@ HOST_PROMPTS = [
     ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="mouse emit back event"/>'),
 ]
 TITLES[f"{HOST_CONTROLS}/header_host_controls"] = "HOST CONTROLS"
+TITLES[f"{DOUBLES}/header_doubles"] = "2V2"
 
 
 def _host_controls() -> list:
@@ -7583,6 +7621,7 @@ def multiplayer_files() -> dict:
         f"{MT}/bots".replace("/", ".") + ".xml": head + _bots() + ["</menus>", ""],
         f"{MT}/party".replace("/", ".") + ".xml": head + _party() + ["</menus>", ""],
         f"{MT}/matchmaking".replace("/", ".") + ".xml": head + _matchmaking() + ["</menus>", ""],
+        DOUBLES.replace("/", ".") + ".xml": head + _doubles() + ["</menus>", ""],
         f"{MT}/party/touch".replace("/", ".") + ".xml": head + _touch_party() + ["</menus>", ""],
         f"{MT}/friends".replace("/", ".") + ".xml": head + _friends() + ["</menus>", ""],
         f"{MT}/friends/touch".replace("/", ".") + ".xml": head + _touch_friends() + ["</menus>", ""],
@@ -7636,7 +7675,7 @@ MENU_ITEM_TOP, MENU_ITEM_SCALE, MENU_ITEM_MIDDLE = 6.57, 0.9037, 130.0
 # RU, IA as EA and NA, AL as AD and AI), and a word's space as LOAD GAME's D
 # to G, less D's side
 MENU_ITEM_SPACES = {"VR": 0.3, "R ": 6.0, " T": 6.0, "TU": 2.12, "UT": 1.66, "TO": 0.75, "OR": 3.0, "RI": 3.25,
-                    "IA": 1.3, "AL": 1.58}
+                    "IA": 1.3, "AL": 1.58, "2V": 1.2, "V2": 1.2}
 # a space's own width (none: the spaces about it are its pairs')
 MENU_ITEM_SPACE_WIDTH = 0.0
 # the mods' status icons (port/assets/icons/lucide): a mod out of the order it
@@ -7650,10 +7689,15 @@ def redraw_letters(redraws: Path) -> dict:
     """the redraws' letters (their <path id="gA">s, one drawing of each
     letter in every item and header), by letter"""
     letters = {}
+    digits = {name: str(digit) for digit, name in enumerate(
+        ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"])}
     for svg in sorted(redraws.rglob("*.svg")):
         if any(part.startswith("_") for part in svg.relative_to(redraws).parts):
             continue
-        for letter, path in re.findall(r'<path id="g([A-Z])" d="([^"]+)"', svg.read_text()):
+        # (and their digits, named: a header's "gtwo")
+        for letter, path in re.findall(r'<path id="g([A-Z]|zero|one|two|three|four|five|six|seven|eight|nine)" '
+                                       r'd="([^"]+)"', svg.read_text()):
+            letter = digits.get(letter, letter)
             if letters.setdefault(letter, path) != path:
                 sys.exit(f"{svg}: the redraws draw {letter} two ways")
     return letters

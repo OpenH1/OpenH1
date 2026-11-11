@@ -37,7 +37,14 @@ leader as always (party_menu.inc), and the game's host holds room for them
   bots filling it (bots_set_matchmaking) in a gametype they play, else with
   the players there are if they are its playlist's least; else it waits on.
   A member asked to host by its leader (p2p_party_take_host_request) hosts
-  the same way.
+  the same way. A playlist of a tick rate of its own (2V2's) is hosted as an
+  OpenH1 game at that rate whatever this machine's network.game_mode and
+  network.sim_rate say, closed to OpenCE's players, and, Classic's, with
+  every player's view as with display.direct_camera off
+  (network_standard_set_hosting_rules); its search takes only games listed
+  at that rate. The 2V2 screen's kinds are two such playlists
+  (matchmaking_doubles_playlist): Classic at 30, Lowest Latency at 120,
+  each only ever matched with its own, by its number and its rate.
 - Following: a leader that passed the lead follows its new leader's game as
   a member does, by its invite.
 A Legacy game, or one of an older OpenH1, is never picked (the listing says
@@ -60,8 +67,10 @@ tools/harness/tests/test_matchmaking.py's.
 #include "game/game.h"
 #include "game/game_engine.h"
 #include "text/unicode.h"
+#include "cache/cache_files.h"
 #include "bots.h"
 #include "matchmaking.h"
+#include "network_standard.h"
 #include "../src/p2p.h" /* port: port/linux/src/p2p.c, p2p_lobby.c, p2p_party.c */
 
 #include <stdio.h>
@@ -117,6 +126,9 @@ enum
 	taken as this */
 	MATCHMAKING_PING_STEP = 50,
 	MATCHMAKING_UNKNOWN_PING = 250,
+
+	/* a playlist's maps looked for in the maps folder again after this */
+	MATCHMAKING_MAPS_MILLISECONDS = 5000,
 };
 
 /* what a step does as it goes on (matchmaking_step) */
@@ -174,6 +186,12 @@ struct matchmaking_playlist
 	short players;
 	short minimum;
 	short party_most;
+	/* the tick rate its games are hosted at, an OpenH1 game's (0: the
+	host's own network settings'), which its search requires of a listing;
+	and whether every player's view is drawn as with display.direct_camera
+	off in its games (the host's word: network_standard.c) */
+	short rate;
+	boolean classic_aim;
 };
 
 /* what a step is made from (matchmaking_step) */
@@ -229,11 +247,23 @@ static struct matchmaking_playlist const matchmaking_playlists[] =
 		{ "bloodgulch", "sidewinder", "boardingaction", NULL, NULL, NULL, NULL, NULL, NULL }, 8, 16, 4, 8 },
 	/* (a playlist is listed by its number, 1 up: a new one goes last, so
 	that the others keep theirs for the builds that do not know it) */
-	{ "Doubles", L"DOUBLES", L"2 against 2. The team with the most kills wins.",
-		{ "team_slayer", NULL },
-		{ "chillout", "damnation", "hangemhigh", "prisoner", "wizard", "longest", "ratrace", "carousel", NULL },
-		2, 4, 2, 2 },
+	/* the 2V2 screen's (matchmaking_doubles_playlists): 2 against 2 on pro
+	settings (game_modes.c's pro_doubles) on the 2v2 maps of the competitive
+	rules, Chill Out, Hang 'Em High, Prisoner, Damnation and Derelict
+	(carousel); Lowest Latency at 120 ticks, Classic at the Xbox's 30 with
+	Instant Aim off for everyone. Only the tick rate and the aim differ */
+	{ "2v2 Low Latency", L"2V2 LOWEST LATENCY", L"2 against 2, pro settings, at 120 ticks.",
+		{ "pro_doubles", NULL },
+		{ "chillout", "hangemhigh", "prisoner", "damnation", "carousel", NULL, NULL, NULL, NULL },
+		2, 4, 2, 2, 120, FALSE },
+	{ "2v2 Classic", L"2V2 CLASSIC", L"2 against 2, pro settings, at the Xbox's 30.",
+		{ "pro_doubles", NULL },
+		{ "chillout", "hangemhigh", "prisoner", "damnation", "carousel", NULL, NULL, NULL, NULL },
+		2, 4, 2, 2, 30, TRUE },
 };
+
+/* the 2V2 screen's kinds' playlists (0 up), by _matchmaking_doubles_* */
+static short const matchmaking_doubles_playlists[NUMBER_OF_MATCHMAKING_DOUBLES_KINDS] = { 6, 5 };
 
 static struct
 {
@@ -266,6 +296,13 @@ static struct
 	/* its map's name (a multiplayer map's: "carousel") */
 	char map[32];
 	short listed_playlist;
+	/* the hosting rules asked of network_standard.c for the playlist (its
+	rate, Classic's aim), until its server is gone */
+	boolean rules_set;
+	/* each playlist's maps this machine has (matchmaking_maps_present), and
+	when they were looked for */
+	short maps_present[16];
+	unsigned long maps_time[16];
 	/* debug.matchmaking taken */
 	boolean debug_checked;
 } matchmaking = { _matchmaking_idle, NONE };
@@ -300,13 +337,25 @@ void matchmaking_playlist_text(
 	}
 }
 
+short matchmaking_doubles_playlist(
+	short kind)
+{
+	return VALID_INDEX(kind, NUMBER_OF_MATCHMAKING_DOUBLES_KINDS) ? matchmaking_doubles_playlists[kind] : NONE;
+}
+
+short matchmaking_playlist_rate(
+	short playlist)
+{
+	return VALID_INDEX(playlist, NUMBEROF(matchmaking_playlists)) ? matchmaking_playlists[playlist].rate : 0;
+}
+
 /* ---------- what the search decides */
 
 /* a public game's worth to a party of party_size looking for a game of the
 playlist (its listing's number: 1 up): NONE if it cannot take the party (a
 game of no playlist or another's, not an OpenH1 game this build joins as
-one, closed, with a password, no room for the whole party, its join failed
-this run), else the higher the better: the lowest ping (in steps of
+one, not at the playlist's tick rate where it has one, closed, with a
+password, no room for the whole party, its join failed this run), else the higher the better: the lowest ping (in steps of
 MATCHMAKING_PING_STEP, an unknown one MATCHMAKING_UNKNOWN_PING), then the
 fullest, a lobby before a game under way */
 static long matchmaking_game_score(
@@ -315,12 +364,18 @@ static long matchmaking_game_score(
 	short party_size)
 {
 	long ping;
+	short rate = playlist > 0 && playlist <= (short)NUMBEROF(matchmaking_playlists) ?
+		matchmaking_playlists[playlist - 1].rate : 0;
 
 	if (game->playlist != playlist || !playlist || !game->standard || !game->open || game->locked || game->failed ||
 		!game->invite[0])
 	{
 		return NONE;
 	}
+	/* (a game of another rate is another kind's: 2V2's Classic never takes
+	a 120 Tick game, nor Lowest Latency a 30 Tick one) */
+	if (rate && game->rate != rate)
+		return NONE;
 	if (game->maximum_player_count > 0 && game->player_count + party_size > game->maximum_player_count)
 		return NONE;
 	ping = game->ping >= 0 ? game->ping : MATCHMAKING_UNKNOWN_PING;
@@ -563,6 +618,46 @@ static void matchmaking_client(
 		game_connection_set(_game_connection_network_client);
 }
 
+/* how many of the playlist's maps this machine has in its maps folder,
+looked for again every MATCHMAKING_MAPS_MILLISECONDS; with nth, the index
+of the nth of those (NONE for none) */
+static short matchmaking_maps_present(
+	short playlist,
+	short nth)
+{
+	struct matchmaking_playlist const *entry = &matchmaking_playlists[playlist];
+	unsigned long now = system_milliseconds();
+	short index, count = 0;
+
+	if (nth == NONE && playlist < (short)NUMBEROF(matchmaking.maps_present) && matchmaking.maps_time[playlist] &&
+		now - matchmaking.maps_time[playlist] < MATCHMAKING_MAPS_MILLISECONDS)
+	{
+		return matchmaking.maps_present[playlist];
+	}
+	for (index = 0; index < MATCHMAKING_MAXIMUM_MAPS && entry->maps[index]; index++)
+	{
+		char path[256];
+		FILE *file;
+
+		snprintf(path, sizeof(path), "%s%s.map", cache_files_map_directory(), entry->maps[index]);
+		file = fopen(path, "rb");
+		if (!file)
+			continue;
+		fclose(file);
+		if (nth != NONE && count == nth)
+			return index;
+		count++;
+	}
+	if (nth != NONE)
+		return NONE;
+	if (playlist < (short)NUMBEROF(matchmaking.maps_present))
+	{
+		matchmaking.maps_present[playlist] = count;
+		matchmaking.maps_time[playlist] = now | 1;
+	}
+	return count;
+}
+
 /* the stage set, its clock begun */
 static void matchmaking_stage(
 	short stage)
@@ -588,7 +683,7 @@ static boolean matchmaking_host(
 	void)
 {
 	struct matchmaking_playlist const *playlist = &matchmaking_playlists[matchmaking.playlist];
-	short maps = 0;
+	short maps, map;
 	unsigned long pick = system_milliseconds() ^ ((unsigned long)p2p_identifier()[5] << 8);
 
 	if (!matchmaking_player())
@@ -596,10 +691,20 @@ static boolean matchmaking_host(
 		matchmaking_end(_matchmaking_problem_no_profile);
 		return FALSE;
 	}
-	while (maps < MATCHMAKING_MAXIMUM_MAPS && playlist->maps[maps])
-		maps++;
+	/* (one of its maps this machine has: none, nothing hosted) */
+	maps = matchmaking_maps_present(matchmaking.playlist, NONE);
+	map = maps > 0 ? matchmaking_maps_present(matchmaking.playlist, (short)(pick % maps)) : NONE;
+	if (map == NONE)
+	{
+		matchmaking_end(_matchmaking_problem_no_maps);
+		return FALSE;
+	}
 	dispose_global_network_game_client();
 	dispose_global_network_game_server();
+	/* (a playlist's own rate and aim: the server made next takes them,
+	network_standard_server_created) */
+	network_standard_set_hosting_rules(playlist->rate, playlist->classic_aim);
+	matchmaking.rules_set = playlist->rate != 0 || playlist->classic_aim;
 	p2p_set_hosting_allowed(TRUE);
 	p2p_set_hosting_public(TRUE);
 	{
@@ -611,14 +716,20 @@ static boolean matchmaking_host(
 		name[index] = 0;
 		network_game_server_port_set_settings(name, playlist->players);
 	}
-	snprintf(matchmaking.map, sizeof(matchmaking.map), "%s", playlist->maps[pick % MAX(maps, 1)]);
+	snprintf(matchmaking.map, sizeof(matchmaking.map), "%s", playlist->maps[map]);
 	main_set_multiplayer_map_name(matchmaking.map);
 	player_ui_fast_setup_network_server();
 	matchmaking.host_time = system_milliseconds();
 	matchmaking.set_up = matchmaking.player_added = matchmaking.bots_asked = FALSE;
 	matchmaking.full_time = 0;
 	matchmaking.game_engine = NONE;
-	platform_log("matchmaking: hosting a %s game", playlist->name);
+	if (playlist->rate)
+	{
+		platform_log("matchmaking: hosting a %s game (OpenH1 %d Tick, Instant Aim %s)", playlist->name,
+			playlist->rate, playlist->classic_aim ? "off for everyone" : "each player's own");
+	}
+	else
+		platform_log("matchmaking: hosting a %s game", playlist->name);
 	return TRUE;
 }
 
@@ -657,7 +768,10 @@ static void matchmaking_host_update(
 		matchmaking.listed_playlist = (short)(matchmaking.playlist + 1);
 		p2p_set_game_listing_playlist(matchmaking.listed_playlist);
 		matchmaking.set_up = TRUE;
-		platform_log("matchmaking: %s on %s, listed for the playlist", name, matchmaking.map);
+		platform_log("matchmaking: %s on %s, listed for the playlist (%s %ld Tick, OpenCE's players %s, Instant Aim "
+			"%s)", name, matchmaking.map, network_standard_hosting() ? "OpenH1" : "Legacy",
+			network_standard_server_rate(TRUE), network_standard_opence_joins_open() ? "let in" : "kept out",
+			network_standard_direct_camera_allowed() ? "each player's own" : "off for every player");
 	}
 	if (!matchmaking.player_added && now - matchmaking.host_time >= MATCHMAKING_PLAYER_MILLISECONDS)
 	{
@@ -765,10 +879,16 @@ short matchmaking_can_search(
 	boolean member;
 	short size = matchmaking_party(&member);
 
+	short problem;
+
 	if (!VALID_INDEX(playlist, NUMBEROF(matchmaking_playlists)))
 		return _matchmaking_problem_cancelled;
-	return matchmaking_search_problem(config_boolean("network.online") && config_boolean("network.public_lobby"),
+	problem = matchmaking_search_problem(config_boolean("network.online") && config_boolean("network.public_lobby"),
 		member, size, matchmaking_playlists[playlist].party_most);
+	/* (none of its maps here: nothing it could host) */
+	if (problem == _matchmaking_problem_none && !matchmaking_maps_present(playlist, NONE))
+		problem = _matchmaking_problem_no_maps;
+	return problem;
 }
 
 boolean matchmaking_search(
@@ -792,8 +912,17 @@ boolean matchmaking_search(
 	p2p_lobby_browse(TRUE);
 	matchmaking_client();
 	matchmaking_stage(_matchmaking_looking);
-	platform_log("matchmaking: looking for a %s game (hosting one in %lu seconds if none is found)",
-		matchmaking_playlists[playlist].name, matchmaking.search_time / 1000);
+	if (matchmaking_playlists[playlist].rate)
+	{
+		platform_log("matchmaking: looking for a %s game, OpenH1 %d Tick only (hosting one in %lu seconds if none "
+			"is found)", matchmaking_playlists[playlist].name, matchmaking_playlists[playlist].rate,
+			matchmaking.search_time / 1000);
+	}
+	else
+	{
+		platform_log("matchmaking: looking for a %s game (hosting one in %lu seconds if none is found)",
+			matchmaking_playlists[playlist].name, matchmaking.search_time / 1000);
+	}
 	return TRUE;
 }
 
@@ -871,6 +1000,13 @@ void matchmaking_update(
 		matchmaking.listed_playlist = 0;
 		p2p_set_game_listing_playlist(0);
 		bots_set_matchmaking(NONE, 0);
+	}
+	/* (and its rate and aim, once its server is gone: the next game hosted
+	is the settings' again) */
+	if (matchmaking.rules_set && !global_network_game_server_get() && matchmaking.stage != _matchmaking_hosting)
+	{
+		matchmaking.rules_set = FALSE;
+		network_standard_set_hosting_rules(0, FALSE);
 	}
 	/* debug.matchmaking: an automated test's search, of a playlist by its
 	name or number (1 up), once the main menu is up */

@@ -27,8 +27,9 @@
 		<at widget="main_menu/main_menu_item_training" x="192" y="211"/>
 		<at widget="main_menu/main_menu_item_load_camp" x="194" y="247"/>
 		<at widget="main_menu/main_menu_item_multiplayer" x="192" y="283"/>
-		<at widget="main_menu/main_menu_item_settings" x="192" y="319"/>
-		<at widget="main_menu/main_menu_item_quit_game" x="192" y="355"/>
+		<at widget="main_menu/main_menu_item_doubles" x="192" y="319"/>
+		<at widget="main_menu/main_menu_item_settings" x="192" y="355"/>
+		<at widget="main_menu/main_menu_item_quit_game" x="192" y="391"/>
 	</look>
 	<look name="main_menu/new_campaign_creating_profile"/>
 	<look name="main_menu/new_campaign_saving_profile">

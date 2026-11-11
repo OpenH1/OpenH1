@@ -250,7 +250,8 @@ static void case_playlists(void)
 {
 	/* the listings' numbers (1 up) of the playlists, as the builds before
 	knew them: a playlist is only ever added after these */
-	static char const *const listed[] = { "Team Slayer", "Slayer", "CTF", "SWAT", "Big Team", "Doubles" };
+	static char const *const listed[] = { "Team Slayer", "Slayer", "CTF", "SWAT", "Big Team", "2v2 Low Latency",
+		"2v2 Classic" };
 	/* the Xbox's multiplayer maps */
 	static char const *const maps[] = { "beavercreek", "bloodgulch", "boardingaction", "carousel", "chillout",
 		"damnation", "hangemhigh", "longest", "prisoner", "putput", "ratrace", "sidewinder", "wizard" };
@@ -292,6 +293,65 @@ static void case_playlists(void)
 	}
 }
 
+/* 2V2's kinds: each its own playlist and tick rate, the same rules
+otherwise, and a search of one never takes a game of the other's */
+static void case_doubles(void)
+{
+	short classic = matchmaking_doubles_playlists[_matchmaking_doubles_classic];
+	short lowest = matchmaking_doubles_playlists[_matchmaking_doubles_lowest_latency];
+	struct matchmaking_playlist const *a = &matchmaking_playlists[classic];
+	struct matchmaking_playlist const *b = &matchmaking_playlists[lowest];
+	struct p2p_listing games[4];
+	long index;
+
+	CHECK(classic != lowest && classic >= 0 && classic < NUMBEROF(matchmaking_playlists) && lowest >= 0 &&
+		lowest < NUMBEROF(matchmaking_playlists), "two playlists of their own");
+	CHECK(a->rate == 30 && a->classic_aim, "Classic: OpenH1 30 Tick, Instant Aim off for everyone");
+	CHECK(b->rate == 120 && !b->classic_aim, "Lowest Latency: OpenH1 120 Tick, each player's own aim");
+	CHECK(a->team_size == 2 && a->players == 4 && a->party_most == 2, "Classic: 2 against 2, a party of 2 at most");
+	CHECK(b->team_size == a->team_size && b->players == a->players && b->minimum == a->minimum &&
+		b->party_most == a->party_most, "the same teams");
+	CHECK(!strcmp(a->variants[0], "pro_doubles") && !strcmp(b->variants[0], "pro_doubles") && !a->variants[1] &&
+		!b->variants[1], "both play Pro Doubles alone");
+	for (index = 0; index < MATCHMAKING_MAXIMUM_MAPS; index++)
+	{
+		CHECK((!a->maps[index] && !b->maps[index]) || (a->maps[index] && b->maps[index] &&
+			!strcmp(a->maps[index], b->maps[index])), "the same maps (map %ld)", index);
+	}
+	for (index = 0; index < NUMBEROF(matchmaking_playlists); index++)
+	{
+		if (index != classic && index != lowest)
+			CHECK(matchmaking_playlists[index].rate == 0 && !matchmaking_playlists[index].classic_aim,
+				"%s: the host's own rate and aim", matchmaking_playlists[index].name);
+	}
+	/* (listings stamp the playlist 1 up) */
+	games[0] = game((short)(classic + 1), 1, 4, 30);
+	games[0].rate = 30;
+	games[1] = game((short)(lowest + 1), 1, 4, 30);
+	games[1].rate = 120;
+	CHECK(matchmaking_game_score(&games[0], (short)(classic + 1), 2) != NONE, "Classic takes a Classic game at 30");
+	CHECK(matchmaking_game_score(&games[1], (short)(lowest + 1), 2) != NONE,
+		"Lowest Latency takes a Lowest Latency game at 120");
+	CHECK(matchmaking_game_score(&games[1], (short)(classic + 1), 1) == NONE &&
+		matchmaking_game_score(&games[0], (short)(lowest + 1), 1) == NONE, "nor the other kind's game");
+	/* (a game stamped for a kind but at another rate: an older build's, or
+	a host whose rate was not the playlist's) */
+	games[2] = game((short)(classic + 1), 1, 4, 10);
+	games[2].rate = 120;
+	games[3] = game((short)(lowest + 1), 1, 4, 10);
+	games[3].rate = 60;
+	CHECK(matchmaking_game_score(&games[2], (short)(classic + 1), 1) == NONE,
+		"Classic never takes a 120 Tick game, even stamped Classic");
+	CHECK(matchmaking_game_score(&games[3], (short)(lowest + 1), 1) == NONE,
+		"Lowest Latency never takes a 60 Tick one");
+	games[3].rate = 30;
+	CHECK(matchmaking_game_score(&games[3], (short)(lowest + 1), 1) == NONE, "nor a 30 Tick one");
+	CHECK(matchmaking_pick(games, 4, (short)(classic + 1), 1) == 0, "Classic's pick: its own, not the nearer others");
+	CHECK(matchmaking_pick(games, 4, (short)(lowest + 1), 1) == 1, "Lowest Latency's: its own");
+	games[0].rate = 0;
+	CHECK(matchmaking_game_score(&games[0], (short)(classic + 1), 1) == NONE, "nor a game of no rate said");
+}
+
 int main(int argc, char **argv)
 {
 	char const *case_name = argc > 1 ? argv[1] : "";
@@ -310,6 +370,8 @@ int main(int argc, char **argv)
 		case_host();
 	else if (!strcmp(case_name, "playlists"))
 		case_playlists();
+	else if (!strcmp(case_name, "doubles"))
+		case_doubles();
 	else
 		return 2;
 	return 0;

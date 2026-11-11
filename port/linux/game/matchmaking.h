@@ -51,8 +51,19 @@ enum
 	_matchmaking_problem_hosting,
 	/* cancelled */
 	_matchmaking_problem_cancelled,
+	/* none of the playlist's maps in the maps folder */
+	_matchmaking_problem_no_maps,
 	/* (ended well) in the game found or hosted */
 	_matchmaking_problem_joined,
+};
+
+/* the 2V2 screen's kinds (matchmaking_doubles_playlist): Classic, OpenH1 30
+Tick with Instant Aim off for everyone, and Lowest Latency, OpenH1 120 Tick */
+enum
+{
+	_matchmaking_doubles_classic,
+	_matchmaking_doubles_lowest_latency,
+	NUMBER_OF_MATCHMAKING_DOUBLES_KINDS
 };
 
 /* ---------- structures */
@@ -87,6 +98,10 @@ void matchmaking_update(void);
 /* the playlists: how many, and each one's name and what it is */
 short matchmaking_playlist_count(void);
 void matchmaking_playlist_text(short playlist, wchar_t *name, short name_size, wchar_t *about, short about_size);
+/* the playlist of a 2V2 kind (_matchmaking_doubles_*), NONE for none; a
+playlist's tick rate (0: the host's own settings') */
+short matchmaking_doubles_playlist(short kind);
+short matchmaking_playlist_rate(short playlist);
 /* whether this machine may search the playlist (a party's leader, or in no
 party; online), and why not (_matchmaking_problem_*) */
 short matchmaking_can_search(short playlist);

@@ -2171,6 +2171,29 @@ static void sim_rate_row_show(struct widget_instance *list)
 	}
 }
 
+/* Mouse's INSTANT AIM row (display.direct_camera): in a game whose host
+draws every player's view as with it off (a 2V2 Classic game's:
+network_standard_direct_camera_allowed), shown OFF and dimmed, its value
+held (setting_changed_save passes over a disabled spinner, so the player's
+own setting stays, and is theirs again after the game); its help says why.
+The row keeps the cursor, so that its help is read */
+static void direct_camera_row_show(struct widget_instance *list)
+{
+	struct widget_instance *row = named(list, "op_direct_camera", 0);
+	struct widget_instance *spinner = named(list, "direct_camera_spinner", 0);
+	struct pc_menu_setting *setting = settings_setting_of(spinner);
+	boolean forced = !network_standard_direct_camera_allowed();
+
+	if (!row || !setting || spinner->disabled == forced)
+		return;
+	spinner->disabled = forced;
+	row->alpha_modifier = forced ? 0.4f : 1.0f;
+	if (forced)
+		spinner->parameters.list.selected_index = setting_value_index(setting, "false");
+	else if (setting->loaded_index >= 0 && setting->loaded_index < setting->value_count)
+		spinner->parameters.list.selected_index = setting->loaded_index;
+}
+
 /* (Controller's Button Remapping, a page of Settings') */
 #include "controller_remap_menu.inl"
 
@@ -3827,6 +3850,7 @@ static void settings_page_update(struct widget_instance *list)
 	controls_page_update(list);
 	graphics_preset_show(list);
 	sim_rate_row_show(list);
+	direct_camera_row_show(list);
 	viewmodel_weapon_rows_show(list);
 	gyro_rows_show(list);
 	settings_each(screen, setting_stash);

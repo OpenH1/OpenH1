@@ -1680,6 +1680,26 @@ A party's leader joins a game first and its members follow it in
   name) and a HOST message (`'H'`, the member's id and the playlist) that
   the member takes by taking the lead (`p2p_party.c`). An older build
   passes over the type and never sends the byte, so it is never asked.
+- 2V2's kinds (README, "2V2") are two playlists, 2V2 LOWEST LATENCY (6) and
+  2V2 CLASSIC (7), each with a tick rate of its own (120 and 30). The host of
+  one hosts an OpenH1 game at that rate whatever its `network.game_mode` and
+  `network.sim_rate` (`network_standard_set_hosting_rules`), closed to
+  OpenCE's players, and the listing says the rate as every OpenH1 game's
+  does; a search takes only a game listed for its playlist *and* at its
+  rate (`matchmaking_game_score`), so a Classic search never lands in a 120
+  Tick game, nor a Lowest Latency one in a 30 Tick game, an older build's
+  included. The listing carries nothing new.
+- From protocol version 25 the host of a 2V2 Classic game says in the game
+  record that every player's view is drawn as with `display.direct_camera`
+  off: bit 5 of `cooperative_flags` (`_network_game_no_direct_camera_bit`),
+  set as the record is stamped in the lobby, as the pickup's and the
+  turning's bits are. Every OpenH1 machine takes it
+  (`network_standard_direct_camera_allowed`: the host from its own rules, a
+  client from the record) and draws its views from the tick, not the newest
+  step, whatever its own setting, which stays as it is; an OpenCE machine's
+  copy of the record leaves it clear (none can be in such a game). A
+  machine of protocol 24 would ignore the bit, so the version is raised: it
+  does not join.
 - The listing's stamp says the host holds room (its fifth byte, 1). A
   Legacy host, and an older OpenH1 one (which drops 128 as a kind it does not
   know), hold nothing: the browser says there is no room guarantee and the
