@@ -317,7 +317,7 @@ def test_tall_browser_layout(aspect, root):
 
 def test_tall_browser_negative_controls(monkeypatch):
     """The tall layout's test sees a layout that is not: the footer left at 414, the rows not to a 21:9 screen's
-    edge (their wide not "edge"), the title not slimmer."""
+    edge (no past), the title not slimmer."""
     root = f"{MT}/join_game/join_game_screen"
     faults = [{"BROWSER_FOOTER_TOP": 414}, {"BROWSER_TITLE": port_settings.BROWSER_TITLE}]
     for fault in faults:

@@ -227,7 +227,7 @@ children's places, from first_place. Names are the menus' (a <bitmap>, a
 <strings>, a widget), or a map's tag with a backslash */
 struct halo_menu_model_look
 {
-	char const *name, *type, *wide, *place, *picture, *effects, *list, *header, *footer;
+	char const *name, *type, *wide, *past, *place, *picture, *effects, *list, *header, *footer;
 	/* (what the widget is to the game's code, which finds it by it: "tabs",
 	"buttons", "panel name", ...; tools/port_settings.py's
 	settings_look_roles) */

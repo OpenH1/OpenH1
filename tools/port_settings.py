@@ -4554,10 +4554,10 @@ BROWSER_FOOTER_TOP = 414
 # the footer at the very bottom, the list and the panel filling what is
 # between, each row taller (BROWSER_ROWS of them, scrolling beyond); and
 # on a screen wider than 16:9 the list, the panel, the title and the counts
-# to its edges (their wide "dx dw edge": menu_tags.c), the tabs and the
-# footer as 16:9 has them. The same generator writes them, its places these
-# (_browser_geometry), and tools/menu_look.py writes the looks of the
-# widgets they change (engine_look_widgets) in place of ce/'s
+# to its edges (their past, "dx dw" at 21:9 past 16:9's: menu_tags.c), the
+# tabs and the footer as 16:9 has them. The same generator writes them, its
+# places these (_browser_geometry), and tools/menu_look.py writes the looks
+# of the widgets they change (tall_widgets) in place of ce/'s
 BROWSER_TALL = {
     "BROWSER_TITLE": (35, 6, 245, 40), "BROWSER_COUNTS_TOP": 22, "BROWSER_TABS_TOP": 48,
     "BROWSER_HEADERS_TOP": 78, "BROWSER_ROWS_TOP": 98, "BROWSER_ROW_HEIGHT": 24, "BROWSER_ROW_STEP": 24,
@@ -5306,16 +5306,26 @@ def _browsers() -> list:
 
 
 # the widgets of the tall layout that keep 16:9's places on a wider screen
-# (their wide not "edge"): the tabs, whose LB and RB prompts are Settings',
+# (no past): the tabs, whose LB and RB prompts are Settings',
 # and the footer's prompts, spread for 16:9 (wider, they would meet)
 BROWSER_TALL_CENTRED = re.compile(r"/(browser_tabs|tab_\w+|prompt_\w+)$")
 
 
-def engine_look_widgets() -> dict:
-    """the menu engine's own looks of widgets (tools/menu_look.py writes
-    them in place of ce/'s; docs/menu_engine.md, "Deliberate
-    differences"): the browsers' tall layout (BROWSER_TALL), each widget it
-    places otherwise, by its name, as an <widget> element"""
+def _past(wide_layout: str) -> str:
+    """a widget's past (menu_tags.c's: its move and growth at 21:9 past
+    16:9's) that takes its wide layout on to a wider screen's edges: as much
+    again for each unit past 16:9 as for each past the 640"""
+    past = WIDE_SCREENS["21:9"] - WIDE_WIDTH
+    dx, dw = (int(value) for value in wide_layout.split())
+    return f"{round(dx * past / WIDE_EXTRA)} {round(dw * past / WIDE_EXTRA)}"
+
+
+def tall_widgets() -> list:
+    """the widgets of the screens the menu engine lays out tall
+    (tools/menu_look.py writes their looks in place of ce/'s;
+    docs/menu_engine.md, "Deliberate differences"): the browsers'
+    (BROWSER_TALL), each widget that layout places otherwise, as <widget>
+    elements' lines"""
     def parsed(lines):
         root = ElementTree.fromstring("<menus>" + "\n".join(lines) + "</menus>")
         return {element.get("name"): element for element in root.iter("widget")}
@@ -5323,14 +5333,14 @@ def engine_look_widgets() -> dict:
     classic = parsed(_browsers())
     with _browser_geometry(BROWSER_TALL):
         tall = parsed(_browsers())
-    looks = {}
+    lines = []
     for name, element in tall.items():
-        wide_layout = element.get("wide")
-        if wide_layout and not BROWSER_TALL_CENTRED.search(name):
-            element.set("wide", wide_layout + " edge")
+        if element.get("wide") and not BROWSER_TALL_CENTRED.search(name):
+            element.set("past", _past(element.get("wide")))
         if ElementTree.tostring(element) != ElementTree.tostring(classic[name]):
-            looks[name] = element
-    return looks
+            element.tail = None
+            lines.append(ElementTree.tostring(element, encoding="unicode"))
+    return lines
 
 
 def _search_places(column: str) -> list:

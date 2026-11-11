@@ -110,13 +110,15 @@ def layout(root, width, platforms=DESKTOP, every=None):
         attributes = widget.attributes
         if not _platform_shown(attributes.get("platform"), platforms):
             return
-        # (a menu engine's look laid out to the screen's edges, "dx dw edge", by all the extra width:
-        # engine_widgets)
-        dx, dw, *edge = attributes.get("wide", "0 0").split()
-        part = max(width - 640, 0) if edge == ["edge"] else extra
-        x += port_settings.wide_scale(int(dx), part)
+        # (and past 16:9, a menu engine's look's past: its move and growth at 21:9 past 16:9's, menu_tags.c's
+        # ui_widget_port_past_scale: engine_widgets)
+        dx, dw = (int(value) for value in attributes.get("wide", "0 0").split())
+        past_dx, past_dw = (int(value) for value in attributes.get("past", "0 0").split())
+        past = min(max(width - port_settings.WIDE_WIDTH, 0), 4 * PAST_EXTRA)
+        x += port_settings.wide_scale(dx, extra) + past_scale(past_dx, past)
         left, top = int(attributes.get("left", 0)), int(attributes.get("top", 0))
-        right = left + int(attributes.get("width", 640)) + port_settings.wide_scale(int(dw), part)
+        right = left + int(attributes.get("width", 640)) + port_settings.wide_scale(dw, extra) + past_scale(past_dw,
+                                                                                                             past)
         bottom = top + int(attributes.get("height", 480))
         boxes.append(Box(name.rsplit("/", 1)[-1], x + left, y + top, x + right, y + bottom, path))
         for child, child_x, child_y, platform in widget.children:
@@ -129,14 +131,24 @@ def layout(root, width, platforms=DESKTOP, every=None):
     return boxes
 
 
+# a past's width, 21:9's past 16:9's (menu_tags.c's WIDE_LAYOUT_PAST_EXTRA)
+PAST_EXTRA = port_settings.WIDE_SCREENS["21:9"] - port_settings.WIDE_WIDTH
+
+
+def past_scale(value, past):
+    """a past attribute's move or growth at a width past 16:9's, rounded as menu_tags.c's
+    ui_widget_port_past_scale (half away from 0)"""
+    scaled = value * past
+    return (abs(scaled) + PAST_EXTRA // 2) // PAST_EXTRA * (-1 if scaled < 0 else 1)
+
+
 @lru_cache(maxsize=None)
 def engine_widgets():
-    """the widgets as the menu engine lays them out (display.menu_engine "new"): the menu files', those with a look
-    of the engine's own in its place (tools/port_settings.py's engine_look_widgets: the browsers' tall layout)"""
+    """the widgets as the menu engine lays them out (display.menu_engine "new"): the menu files', those of its tall
+    layout in their place (tools/port_settings.py's tall_widgets: the browsers')"""
     every = dict(widgets())
-    every.update(widgets_of([ElementTree.fromstring("<menus>" + "".join(
-        ElementTree.tostring(element, encoding="unicode") for element in port_settings.engine_look_widgets().values())
-        + "</menus>")]))
+    every.update(widgets_of([ElementTree.fromstring("<menus>" + "".join(port_settings.tall_widgets())
+                                                    + "</menus>")]))
     return every
 
 

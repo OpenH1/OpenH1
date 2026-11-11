@@ -9125,7 +9125,7 @@ void render_ui_widgets_postgame(
 		if (should_render)
 		{
 			/* port: (ui_widget_port_anchor_extra, as below) */
-			bounds.x0 = (short)-MAX(ui_widget_port_anchor_extra(), (ui_widget_port_drawn_extra() + 1) / 2);
+			bounds.x0 = (short)-MAX(ui_widget_port_anchor_extra(), (ui_widget_port_wide_extra() + ui_widget_port_past_extra() + 1) / 2);
 			bounds.y0 = 0;
 			bounds.x1 = window_bounds->x1 - window_bounds->x0;
 			bounds.y1 = window_bounds->y1 - window_bounds->y0;
@@ -9412,9 +9412,9 @@ void render_ui_widgets(
 
 				/* port: from the screen's left edge where widgets are anchored to
 				it (ui_widget_port_anchor_extra), or the wide layout's
-				(ui_widget_port_drawn_extra: to the screen's edge where the menu
-				engine lays its looks out to it), not the menus' 0 */
-				bounds.x0 = (short)-MAX(ui_widget_port_anchor_extra(), (ui_widget_port_drawn_extra() + 1) / 2);
+				(ui_widget_port_wide_extra, and past 16:9 the menu engine's:
+				ui_widget_port_past_extra), not the menus' 0 */
+				bounds.x0 = (short)-MAX(ui_widget_port_anchor_extra(), (ui_widget_port_wide_extra() + ui_widget_port_past_extra() + 1) / 2);
 				bounds.y0 = 0;
 				bounds.x1 = window_bounds->x1 - window_bounds->x0;
 				bounds.y1 = window_bounds->y1 - window_bounds->y0;

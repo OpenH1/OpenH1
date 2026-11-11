@@ -291,16 +291,18 @@ Each one is listed here with its reason, and in `tools/menu_parity.py`'s
   edges, the tabs and the footer as 16:9 has them. The classic engine keeps
   the PC version's places. The same generator writes both: its places are
   swapped for `BROWSER_TALL`'s (`_browser_geometry`), and the widgets that
-  then differ (`engine_look_widgets`) have those looks in `model/look` in
-  place of `ce/`'s, `tools/menu_look.py` writing them; their pictures at
-  the new sizes are parts of their own (`parts_pictures`). A look's `wide`
-  may end in `edge` ("dx dw edge"): its move and growth are the same part
-  of all the screen's extra width as of 16:9's (`menu_tags.c`), and the
-  engine draws to the screen's edges (`ui_widget_port_drawn_extra`). The
-  parity tool lets each item of those two screens differ in its place
-  (`PLACE_KEYS`), nothing else. Another screen laid out tall (Settings')
-  can take the same way: its places swapped, its differing widgets' looks
-  added to `engine_look_widgets`.
+  then differ (`tall_widgets`) have those looks in `model/look` in place of
+  `ce/`'s, `tools/menu_look.py` writing them;
+  their pictures at the new sizes are parts of their own
+  (`parts_pictures`). A look may have a `past` ("dx dw"): its move and
+  growth at 21:9 past 16:9's, and its part of that on a screen between
+  them (`menu_tags.c`'s `ui_widget_port_past_scale`), which the browsers'
+  give each widget with a wide layout but the tabs and the footer, so that
+  they reach a wider screen's edges; the menus are drawn out to them
+  (`ui_widget_port_past_extra`). The parity tool lets each item of those two
+  screens differ in its place (`PLACE_KEYS`), nothing else. Another screen
+  laid out tall (Settings') takes the same way: its widgets' tall looks
+  added to `tall_widgets`.
 
 ## Where it ends, and the steps there
 
