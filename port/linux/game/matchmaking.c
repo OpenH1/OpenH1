@@ -227,6 +227,12 @@ static struct matchmaking_playlist const matchmaking_playlists[] =
 	{ "Big Team", L"BIG TEAM BATTLE", L"8 against 8 on the big maps, vehicles and all.",
 		{ "team_slayer", "ctf" },
 		{ "bloodgulch", "sidewinder", "boardingaction", NULL, NULL, NULL, NULL, NULL, NULL }, 8, 16, 4, 8 },
+	/* (a playlist is listed by its number, 1 up: a new one goes last, so
+	that the others keep theirs for the builds that do not know it) */
+	{ "Doubles", L"DOUBLES", L"2 against 2. The team with the most kills wins.",
+		{ "team_slayer", NULL },
+		{ "chillout", "damnation", "hangemhigh", "prisoner", "wizard", "longest", "ratrace", "carousel", NULL },
+		2, 4, 2, 2 },
 };
 
 static struct

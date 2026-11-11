@@ -1671,7 +1671,9 @@ A party's leader joins a game first and its members follow it in
   fewer; the lobby's auto team balance moves a player of no party first.
 - Matchmaking (`port/linux/game/matchmaking.c`) adds nothing to the game's
   messages: a host lists the playlist it hosts for in the listing's stamp
-  (its sixth byte, the playlist's number; an OpenH1 game's alone), and a
+  (its sixth byte, the playlist's number, 1 up in `matchmaking_playlists`'
+  order: a new playlist goes last, and an older build passes over a number
+  it does not know; an OpenH1 game's alone), and a
   party picks its host among its members by a byte a member adds to its
   STATE after its name (how well it can host now: unable, strict NAT, open;
   a leader's STATE has none, and older builds read no further than the

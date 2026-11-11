@@ -8,7 +8,11 @@ search (matchmaking_search_problem), how a hosted game starts
 (matchmaking_start_choice: full at once, else after a wait with bots or with
 its least players), and a search's steps (matchmaking_step: looked for,
 reached, joined, failed and looked again, the lead passed or hosted when
-none fits, the new leader followed) */
+none fits, the new leader followed), and the playlists (matchmaking_playlists:
+listed by their numbers, which every build of a network version must agree
+on, so a new one goes last; teams a party fits on; a screen's row each) */
+
+#include <wchar.h>
 
 #define NUMBEROF(array) ((long)(sizeof(array) / sizeof((array)[0])))
 
@@ -104,6 +108,10 @@ static void case_start(void)
 	CHECK(matchmaking_start_choice(1, 8, 2, MATCHMAKING_FILL_MILLISECONDS * 3, FALSE) == _matchmaking_start_wait,
 		"but not fewer than its least");
 	CHECK(matchmaking_start_choice(0, 0, 2, 0, FALSE) == _matchmaking_start_wait, "no most known: not full");
+	/* Doubles': 4 at most */
+	CHECK(matchmaking_start_choice(4, 4, 2, 0, TRUE) == _matchmaking_start_now, "Doubles full at 4");
+	CHECK(matchmaking_start_choice(2, 4, 2, MATCHMAKING_FILL_MILLISECONDS, TRUE) == _matchmaking_start_bots,
+		"a party of two, and two bots");
 }
 
 static short step(struct matchmaking_view *view, short *action)
@@ -238,6 +246,52 @@ static void case_host(void)
 		"a server that never came: given up");
 }
 
+static void case_playlists(void)
+{
+	/* the listings' numbers (1 up) of the playlists, as the builds before
+	knew them: a playlist is only ever added after these */
+	static char const *const listed[] = { "Team Slayer", "Slayer", "CTF", "SWAT", "Big Team", "Doubles" };
+	/* the Xbox's multiplayer maps */
+	static char const *const maps[] = { "beavercreek", "bloodgulch", "boardingaction", "carousel", "chillout",
+		"damnation", "hangemhigh", "longest", "prisoner", "putput", "ratrace", "sidewinder", "wizard" };
+	long index;
+
+	CHECK(NUMBEROF(matchmaking_playlists) >= NUMBEROF(listed), "no playlist taken out");
+	CHECK(NUMBEROF(matchmaking_playlists) <= MATCHMAKING_ROWS, "a row of the Matchmaking screen for each playlist");
+	for (index = 0; index < NUMBEROF(listed); index++)
+	{
+		CHECK(!strcmp(matchmaking_playlists[index].name, listed[index]), "playlist %ld is still %s (it is %s)",
+			index + 1, listed[index], matchmaking_playlists[index].name);
+	}
+	for (index = 0; index < NUMBEROF(matchmaking_playlists); index++)
+	{
+		struct matchmaking_playlist const *playlist = &matchmaking_playlists[index];
+		long map, known;
+
+		CHECK(strlen(playlist->name) < MATCHMAKING_PLAYLIST_NAME_SIZE, "%s: its name fits", playlist->name);
+		CHECK(playlist->variants[0] && playlist->maps[0], "%s: a gametype and a map", playlist->name);
+		CHECK(playlist->minimum >= 2 && playlist->minimum <= playlist->players, "%s: its least players",
+			playlist->name);
+		CHECK(playlist->party_most >= 1 && playlist->party_most <= playlist->players, "%s: its party's most",
+			playlist->name);
+		if (playlist->team_size)
+		{
+			CHECK(playlist->players == playlist->team_size * 2, "%s: two teams of %d", playlist->name,
+				playlist->team_size);
+			/* (a team holds half the game's most: network_party.c's
+			party_team_choice) */
+			CHECK(playlist->party_most <= (playlist->players + 1) / 2, "%s: a party fits on one team",
+				playlist->name);
+		}
+		for (map = 0; map < MATCHMAKING_MAXIMUM_MAPS && playlist->maps[map]; map++)
+		{
+			for (known = 0; known < NUMBEROF(maps) && strcmp(playlist->maps[map], maps[known]); known++)
+				;
+			CHECK(known < NUMBEROF(maps), "%s: %s is a multiplayer map", playlist->name, playlist->maps[map]);
+		}
+	}
+}
+
 int main(int argc, char **argv)
 {
 	char const *case_name = argc > 1 ? argv[1] : "";
@@ -254,6 +308,8 @@ int main(int argc, char **argv)
 		case_join();
 	else if (!strcmp(case_name, "host"))
 		case_host();
+	else if (!strcmp(case_name, "playlists"))
+		case_playlists();
 	else
 		return 2;
 	return 0;
