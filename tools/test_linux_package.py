@@ -263,11 +263,11 @@ def test_frame_install_from_package(tmp_path):
         assert (installed / name).read_bytes() == (package / name).read_bytes(), name
         expected = 0o755 if name in ("halo", "libSDL3.so.0", "halo-vr.sh", "install.sh") else 0o644
         assert stat.S_IMODE((installed / name).stat().st_mode) == expected, name
-    assert "Installing OpenH1 VR to" in output and "(commit " in output
+    assert "Installing GOAT H1 VR to" in output and "(commit " in output
     assert "No maps here" in output and "Add a Non-Steam Game" in output and "Start SteamVR" in output
     entry = dict(line.split("=", 1) for line in
                  (home / ".local/share/applications/openh1-vr.desktop").read_text().splitlines() if "=" in line)
-    assert entry["Name"] == "OpenH1 VR" and entry["Exec"] == f'"{installed}/halo-vr.sh"'
+    assert entry["Name"] == "GOAT H1 VR" and entry["Exec"] == f'"{installed}/halo-vr.sh"'
     assert entry["Path"] == str(installed) and entry["Icon"] == f"{installed}/openh1.png"
     assert not (home / "Applications").exists()
 
@@ -285,7 +285,7 @@ def test_frame_install_asks_for_maps_and_adds_to_steam(tmp_path):
     assert (installed / "maps/a10.map").read_text() == "map"
     assert calls(home) == [f"kdialog --title OpenH1: your game's maps --getexistingdirectory {home}",
                            f"steamos-add-to-steam {home}/.local/share/applications/openh1-vr.desktop"]
-    assert "Added to Steam as OpenH1 VR: start SteamVR, then it, from the library." in output
+    assert "Added to Steam as GOAT H1 VR: start SteamVR, then it, from the library." in output
     appid = steam_id(f"{installed}/halo-vr.sh")
     grid = home / ".local/share/Steam/userdata/12345/config/grid"
     assert (grid / f"{appid}p.png").read_bytes() == (package / "steam-capsule.png").read_bytes()
@@ -472,7 +472,7 @@ HOME="{frame}" exec bash -c "$1"
     installed = frame / "apps/halo-vr"
     for name in files(package):
         assert (installed / name).read_bytes() == (package / name).read_bytes(), name
-    assert "Installing OpenH1 VR to" in result.stdout and "Add a Non-Steam Game" in result.stdout
+    assert "Installing GOAT H1 VR to" in result.stdout and "Add a Non-Steam Game" in result.stdout
     ssh = (tmp_path / "ssh.txt").read_text()
     remote = re.search(r"rm -rf '(/tmp/openh1-install\.[^']+)'", ssh).group(1)
     assert f"bash '{remote}/install.sh' --package '{remote}/halo-vr-frame' --batch" in ssh
@@ -689,7 +689,7 @@ def test_install_sh_installs_the_tree(release, tmp_path):
     assert sorted(path.name for path in (installed / "maps").iterdir()) == ["a10.map", "loading.tga", "ui.map"]
     assert not (installed / "maps.partial").exists()
     entry = desktop_entry(home)
-    assert entry["Name"] == "OpenH1"
+    assert entry["Name"] == "GOAT H1"
     assert entry["Exec"] == f'"{installed}/bin/openh1"'
     assert entry["Path"] == str(installed)
     assert entry["Icon"] == f"{installed}/share/icons/hicolor/256x256/apps/openh1.png"
@@ -705,7 +705,7 @@ def test_install_sh_installs_the_tree(release, tmp_path):
         f"kdialog --title OpenH1: your game's maps --getexistingdirectory {home}",
         f"steamos-add-to-steam {home}/.local/share/applications/openh1.desktop",
     ]
-    assert "Added to Steam as OpenH1" in output
+    assert "Added to Steam as GOAT H1" in output
     assert f"{release} can be deleted" in output
 
 
@@ -730,7 +730,7 @@ def test_install_sh_again_and_update(release, tmp_path):
     output = run_install(release, home)
     assert "Nothing changed" in output
     assert calls(home) == []
-    assert "Steam has OpenH1 already" in output
+    assert "Steam has GOAT H1 already" in output
 
     (release / "bin/openh1").write_text(GAME + "# a newer build\n")
     (release / "share/openh1/brokers.txt").write_text("newer brokers\n")
@@ -753,9 +753,9 @@ def test_install_sh_without_steamos(release, tmp_path):
     (home / ".local/share/Steam").mkdir(parents=True)
     output = run_install(release, home, tools=())
     assert (home / "Applications/OpenH1/bin/openh1").is_file()
-    assert desktop_entry(home)["Name"] == "OpenH1"
+    assert desktop_entry(home)["Name"] == "GOAT H1"
     assert "No maps yet: at its first start" in output
-    assert "Add a Non-Steam Game to My Library" in output and "Tick OpenH1 in the list" in output
+    assert "Add a Non-Steam Game to My Library" in output and "Tick GOAT H1 in the list" in output
     assert calls(home) == []
 
 
@@ -817,7 +817,7 @@ def test_install_sh_refuses_while_running(release, tmp_path):
     commands = command_folder(tmp_path / "commands")
     result = subprocess.run([str(release / "install.sh")], capture_output=True, text=True,
                             env={"HOME": str(home), "PATH": f"{stand_ins}:{commands}", "OPENH1_INSTALL_WINDOW": "1"})
-    assert result.returncode == 3 and "OpenH1 is running (process 41 42)" in result.stderr
+    assert result.returncode == 3 and "GOAT H1 is running (process 41 42)" in result.stderr
     assert not (home / "Applications/OpenH1/bin").exists()
 
 
@@ -860,11 +860,11 @@ def test_install_sh_vr_beside_the_other(release, tmp_path):
     before =snapshot(desktop), (entries / "openh1.desktop").read_bytes()
 
     output = run_install(vr_release, home)
-    assert f"Installing OpenH1 VR to {vr}" in output and "Added to Steam as OpenH1 VR" in output
+    assert f"Installing GOAT H1 VR to {vr}" in output and "Added to Steam as GOAT H1 VR" in output
     assert (vr / "bin/openh1").read_bytes() == (vr_release / "bin/openh1").read_bytes()
     assert (vr / "share/openh1/vr").is_file()
     entry = dict(line.split("=", 1) for line in (entries / "openh1-vr.desktop").read_text().splitlines() if "=" in line)
-    assert entry["Name"] == "OpenH1 VR" and entry["Exec"] == f'"{vr}/bin/openh1"' and entry["Path"] == str(vr)
+    assert entry["Name"] == "GOAT H1 VR" and entry["Exec"] == f'"{vr}/bin/openh1"' and entry["Path"] == str(vr)
     assert entry["Icon"] == f"{vr}/share/icons/hicolor/256x256/apps/openh1.png"
     # (Steam's shortcut to the other build is not this one's; each has its own art)
     assert steam_calls(home) == [f"steamos-add-to-steam {entries}/openh1-vr.desktop"]
@@ -880,10 +880,10 @@ def test_install_sh_vr_beside_the_other(release, tmp_path):
                                          ("Exe", f'"{vr}/bin/openh1"')]))
     before_vr = snapshot(vr), (entries / "openh1-vr.desktop").read_bytes()
     output = run_install(release, home)
-    assert "Nothing changed" in output and "Added to Steam as OpenH1:" in output
+    assert "Nothing changed" in output and "Added to Steam as GOAT H1:" in output
     assert steam_calls(home) == [f"steamos-add-to-steam {entries}/openh1.desktop"]
     assert (snapshot(vr), (entries / "openh1-vr.desktop").read_bytes()) == before_vr
-    assert desktop_entry(home)["Name"] == "OpenH1"
+    assert desktop_entry(home)["Name"] == "GOAT H1"
 
 
 def test_steam_artwork(release, tmp_path):
@@ -913,7 +913,7 @@ def test_steam_artwork(release, tmp_path):
     before = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in userdata.glob("*/config/shortcuts.vdf")}
 
     output = run_install(release, home)
-    assert "Steam has OpenH1 already" in output and steam_calls(home) == []
+    assert "Steam has GOAT H1 already" in output and steam_calls(home) == []
     art = release / "share/openh1/steam"
     # Steam's app ID for a shortcut without one: the CRC-32 of its Exe (quoted) and AppName, the top bit set, as
     # a Steam Frame's shortcuts.vdf has it ("NFL Blitz 2027": 3691653383)
@@ -1083,7 +1083,7 @@ def called(home, call):
 
 
 STEAM_TOOLS = ("kdialog", "steamos-add-to-steam", "steam")
-HOW = "in Game Mode, Steam > OpenH1 > the controller icon > Disable Steam Input."
+HOW = "in Game Mode, Steam > GOAT H1 > the controller icon > Disable Steam Input."
 
 
 @pytest.mark.parametrize("root_apps", [True, False])
@@ -1102,9 +1102,9 @@ def test_steam_input_off_for_a_new_shortcut(release, tmp_path, root_apps):
     noted = started_again(home)
     assert noted[next(index for index, line in enumerate(noted) if line.startswith("steamos")):] == [
         f"steamos-add-to-steam {entries}/openh1.desktop",
-        "kdialog --title OpenH1: Steam Input --yesno Turn Steam Input off for OpenH1?",
+        "kdialog --title GOAT H1: Steam Input --yesno Turn Steam Input off for GOAT H1?",
         "",
-        "OpenH1 then reads the Steam Deck's controls itself: gyro aiming, and the back buttons (L4, L5, R4, R5) in "
+        "GOAT H1 then reads the Steam Deck's controls itself: gyro aiming, and the back buttons (L4, L5, R4, R5) in "
         "Button Remapping. The Steam and Quick Access buttons stay Steam's.",
         "",
         "Steam closes for a moment and opens again.",
@@ -1148,7 +1148,7 @@ def test_steam_input_kept_on_reinstall_and_update(release, tmp_path):
         path.write_text(changed)
         before = snapshot(home / ".local/share/Steam")
         output = run_install(release, home, tools=STEAM_TOOLS, KDIALOG_STEAM_INPUT=0)
-        assert "Steam has OpenH1 already" in output
+        assert "Steam has GOAT H1 already" in output
         assert steam_input_calls(home) == []
         assert snapshot(home / ".local/share/Steam") == before
         path.write_text(text)
@@ -1257,7 +1257,7 @@ def test_steam_input_not_for_the_vr_build(tmp_path):
     home, path = steam_input_home(tmp_path, shortcut_id)
     before = path.read_bytes()
     output = run_install(vr_release, home, tools=STEAM_TOOLS, KDIALOG_STEAM_INPUT=0)
-    assert "Added to Steam as OpenH1 VR" in output
+    assert "Added to Steam as GOAT H1 VR" in output
     assert steam_input_calls(home) == []
     assert path.read_bytes() == before and HOW not in output
 
