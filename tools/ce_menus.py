@@ -161,6 +161,11 @@ def rounded_still(png: str, width: int, height: int, rim: Optional[str]) -> str:
     from PIL import ImageChops, ImageDraw
     out = f"ce/port/stills/{Path(png).stem}{'' if rim is None else '_framed'}.png"
     image = Image.open(MENUS / png).convert("RGBA")
+    # (a whole number of pixels to the unit, as the menus read a frame: the
+    # picture scaled to the nearest whole multiple of its size in the menu)
+    multiple = max(1, round(image.width / width))
+    if image.size != (width * multiple, height * multiple):
+        image = image.resize((width * multiple, height * multiple), Image.LANCZOS)
     units = image.width / width
     big = (image.width * SCALE, image.height * SCALE)
     radius = port_settings.SETTINGS_STILL_RADIUS * units * SCALE
