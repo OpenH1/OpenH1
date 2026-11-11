@@ -4309,6 +4309,9 @@ static struct
 	{ "controls.vote_yes", L"VOTE YES", 3, FALSE },
 	{ "controls.vote_no", L"VOTE NO", 3, FALSE },
 	{ "controls.ping", L"PING", 3, FALSE },
+	/* (MOVEMENT's last row, after CROUCH: a group's rows are its controls in
+	this order) */
+	{ "controls.walk", L"WALK", 0, FALSE },
 };
 
 static struct

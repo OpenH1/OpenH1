@@ -70,6 +70,7 @@ symbols in this file:
 #include "units/vehicle_definitions.h"
 #include "units/vehicles.h"
 #include "halo_keyboard.h" /* port */
+#include "keyboard_walk.h" /* port: port/linux/game/keyboard_walk.c */
 
 /* ---------- constants */
 
@@ -357,6 +358,68 @@ static void crouch_controls_update(
 	return;
 }
 
+/* port: the keys' Walk (controls.walk, port/linux/game/keyboard_walk.c):
+input.walk "hold" walks while it is held, "toggle" from one press to the
+next (walk_toggle_update, the frame's, never a sub-step's) */
+static struct
+{
+	boolean on;
+	boolean down;
+} walk_toggles[MAXIMUM_GAMEPADS];
+
+static struct
+{
+	unsigned long read_at;
+	boolean toggle;
+} walk_settings = { (unsigned long)-1, FALSE };
+
+static void walk_settings_read(
+	void)
+{
+	extern const char *config_string(const char *name);
+	extern unsigned long config_changes(void);
+
+	if (walk_settings.read_at != config_changes())
+	{
+		const char *value = config_string("input.walk");
+
+		walk_settings.read_at = config_changes();
+		walk_settings.toggle = value && !strcmp(value, "toggle");
+	}
+	return;
+}
+
+static void walk_toggle_update(
+	long controller_index,
+	unsigned long held)
+{
+	boolean down = TEST_FLAG(held, HALO_KEYBOARD_WALK);
+
+	walk_settings_read();
+	if (!walk_settings.toggle)
+		walk_toggles[controller_index].on = FALSE;
+	else if (down && !walk_toggles[controller_index].down)
+		walk_toggles[controller_index].on = !walk_toggles[controller_index].on;
+	walk_toggles[controller_index].down = down;
+	return;
+}
+
+static boolean walk_held(
+	long controller_index,
+	unsigned long held)
+{
+	walk_settings_read();
+	return walk_settings.toggle ? walk_toggles[controller_index].on : TEST_FLAG(held, HALO_KEYBOARD_WALK);
+}
+
+/* port: a walking throttle's part on the 127 steps a network game sends,
+toward none, so that no machine moves it faster */
+static real walk_throttle_step(
+	real value)
+{
+	return value >= 0.f ? (real)floor(value * 127.f) / 127.f : -(real)floor(-value * 127.f) / 127.f;
+}
+
 /* the keys held as a game input state's (the keyboard's ticks counted as
 keyboard_controls_update counted them) */
 static void keyboard_controls_apply(
@@ -380,14 +443,25 @@ static void keyboard_controls_apply(
 	{
 		/* (diagonals on the unit circle) */
 		real length = x && y ? 0.70710678f : 1.f;
+		/* port: walking (controls.walk), a part of the full push, as a stick
+		pushed a little gives (keyboard_walk_throttle) */
+		boolean walking = walk_held(controller_index, held);
+		real push = walking ? keyboard_walk_throttle((short)controller_index) : 1.f;
 
 		/* port: crouched, below the full stick's 0.98 that stands a grounded
-		biped up (player_control.c), as a stick's crouch walk is */
+		biped up (player_control.c), as a stick's crouch walk is; walking
+		crouched, the slower of the two pushes */
 		if (TEST_FLAG(held, HALO_KEYBOARD_CROUCH))
-			length *= 0.97f;
+			push = MIN(push, 0.97f);
+		length *= push;
 
 		state->forward_movement = y * length;
 		state->strafe = -x * length;
+		if (walking && push < 1.f)
+		{
+			state->forward_movement = walk_throttle_step(state->forward_movement);
+			state->strafe = walk_throttle_step(state->strafe);
+		}
 	}
 	{
 		/* port: the touch controls' stick (port/linux/src/xinput_sdl.c)
@@ -431,6 +505,7 @@ static void keyboard_controls_update(
 		&keyboard_controls[controller_index].reload_ticks,
 		&keyboard_controls[controller_index].reload_down_time,
 		TEST_FLAG(held, HALO_KEYBOARD_RELOAD));
+	walk_toggle_update(controller_index, held); /* port */
 	keyboard_controls_apply(controller_index, held, state);
 	return;
 }
