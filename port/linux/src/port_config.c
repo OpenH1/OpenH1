@@ -377,7 +377,7 @@ static const struct config_setting config_settings[] =
 	{ "display.menus", _config_string, "\"pc\"", "HALO_MENUS", _environment_value, _platform_all,
 		"The menus: \"pc\" for the PC version's main menu (port/assets/menus,\n"
 		"and a menus folder here for your own), \"xbox\" for the Xbox's." },
-	{ "display.menu_engine", _config_string, "\"classic\"", "HALO_MENU_ENGINE", _environment_value, _platform_all,
+	{ "display.menu_engine", _config_string, "\"new\"", "HALO_MENU_ENGINE", _environment_value, _platform_all,
 		"What runs the PC menus' generated screens: \"classic\" the game's\n"
 		"widgets, built from the menus' files; \"new\" the port's menu engine,\n"
 		"from the menus' model (docs/menu_engine.md), drawn the same way." },
