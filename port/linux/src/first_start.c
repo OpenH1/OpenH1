@@ -180,11 +180,11 @@ static SDL_Window *first_start_window(BOOL gamescope)
 		int width = desktop && desktop->w >= 640 ? desktop->w : 1280;
 		int height = desktop && desktop->h >= 400 ? desktop->h : 800;
 
-		return SDL_CreateWindow("OpenH1", width, height, SDL_WINDOW_HIGH_PIXEL_DENSITY);
+		return SDL_CreateWindow("GOAT H1", width, height, SDL_WINDOW_HIGH_PIXEL_DENSITY);
 	}
 	if (fullscreen)
 		flags |= SDL_WINDOW_FULLSCREEN;
-	return SDL_CreateWindow("OpenH1", 1024, 640, flags);
+	return SDL_CreateWindow("GOAT H1", 1024, 640, flags);
 }
 
 /* ---------- text */
@@ -379,7 +379,7 @@ static float draw_heading(float left, float width, const char *headline, SDL_Col
 	int unit = chooser.unit;
 	float y = (float)chooser.height * 0.07f;
 
-	text(left, y, unit * 2, colour_accent, "OpenH1");
+	text(left, y, unit * 2, colour_accent, "GOAT H1");
 	y += GLYPH * unit * 2 + unit * 6;
 	fill(left, y, width, (float)unit, colour_bar);
 	y += unit * 12;
