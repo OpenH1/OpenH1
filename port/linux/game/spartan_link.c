@@ -123,9 +123,10 @@ and a refusal's line shown (milliseconds) */
 #define SPARTAN_LINK_REFUSAL_MILLISECONDS 2000
 
 /* the layout, in the screen's units of a window 480 tall (the HUD's): each
-feed's width for one to four feeds, the gap between them, the top, and the
-row under each (name, shield, distance). At 1600x900 these are the design's
-300, 260, 228 and 210 pixels */
+feed's width for one to four feeds, the gap between them, the top (from the
+view's top edge, not the title-safe frame's), and the row under each (name,
+shield, distance). At 1600x900 these are the design's 300, 260, 228 and 210
+pixels */
 static real const spartan_link_widths[SPARTAN_LINK_FEEDS] = { 160.0f, 138.7f, 121.6f, 112.0f };
 #define SPARTAN_LINK_GAP 6.4f
 #define SPARTAN_LINK_TOP 11.0f
@@ -417,17 +418,24 @@ static void spartan_link_schedule(
 	spartan_link.due_feed = best_feed;
 }
 
-/* the window's feeds' layout: each feed's rectangle in the window's units
-(left, top, right, bottom) and the scale of the units the design's are in */
+/* the window's feeds' layout: each feed's rectangle in the view's units, from
+its top left (left, top, right, bottom), and the scale of the units the
+design's are in. The HUD's panels are placed in the window's title-safe frame
+(its window bounds, 36 of 480 below the top of a whole screen's view), so the
+feeds are sized and placed across between the panels in it; but they hang
+from the view's own top edge, up in the panels' line, not under the frame's
+inset */
 static short spartan_link_layout(
 	short local_player_index,
-	rectangle2d const *viewport,
+	struct render_camera const *camera,
 	real_rectangle2d *rectangles,
 	real *scale)
 {
 	struct spartan_link_window *window = &spartan_link.windows[local_player_index];
-	real width = (real)(viewport->x1 - viewport->x0);
-	real height = (real)(viewport->y1 - viewport->y0);
+	/* (the title-safe frame in the view's units) */
+	real frame_x0 = (real)(camera->window_bounds.x0 - camera->viewport_bounds.x0);
+	real width = (real)(camera->window_bounds.x1 - camera->window_bounds.x0);
+	real height = (real)(camera->window_bounds.y1 - camera->window_bounds.y0);
 	real feed_width, total, room, left;
 	short count = window->count;
 	short index;
@@ -448,7 +456,7 @@ static short spartan_link_layout(
 		total = room;
 	}
 	/* (centred between the panels) */
-	left = SPARTAN_LINK_PANEL_LEFT * *scale + (room - total) * 0.5f;
+	left = frame_x0 + SPARTAN_LINK_PANEL_LEFT * *scale + (room - total) * 0.5f;
 	for (index = 0; index < count; index++)
 	{
 		rectangles[index].x0 = left + index * (feed_width + SPARTAN_LINK_GAP * *scale);
@@ -871,7 +879,7 @@ boolean spartan_link_feed_begin(
 	}
 	window = &spartan_link.windows[local_player_index];
 	if (spartan_link.due_feed >= window->count ||
-		spartan_link_layout(local_player_index, &camera->viewport_bounds, rectangles, &scale) <= spartan_link.due_feed)
+		spartan_link_layout(local_player_index, camera, rectangles, &scale) <= spartan_link.due_feed)
 	{
 		return FALSE;
 	}
@@ -981,7 +989,6 @@ void spartan_link_draw(
 	struct spartan_link_window *window;
 	struct bitmap_data *white;
 	real_rectangle2d rectangles[SPARTAN_LINK_FEEDS];
-	rectangle2d viewport;
 	real scale;
 	short count;
 	short index;
@@ -990,33 +997,28 @@ void spartan_link_draw(
 		return;
 	window = &spartan_link.windows[local_player_index];
 	white = NULL;
-	/* (the HUD's coordinates are the view's own: a split screen's lower
-	window's too) */
-	viewport = render.camera.window_bounds;
-	offset_rectangle2d(&viewport, (short)-render.camera.viewport_bounds.x0, (short)-render.camera.viewport_bounds.y0);
+	/* (the HUD's coordinates are the view's own, from its top left: a split
+	screen's lower window's too) */
 	if (window->refusal && system_milliseconds() - window->refusal_at < SPARTAN_LINK_REFUSAL_MILLISECONDS)
 	{
 		real_argb_color color;
-		real height = (real)(viewport.y1 - viewport.y0);
+		rectangle2d const *frame = &render.camera.window_bounds;
+		real height = (real)(frame->y1 - frame->y0);
 		real line_scale = PIN(height / 480.0f * 1.5f, 0.6f, 1.0f);
 
 		hud_get_text_color(&color);
 		color.alpha = 1.0f;
-		spartan_link_text(window->refusal, (real)viewport.x0, (real)viewport.y0 + SPARTAN_LINK_TOP * line_scale,
-			(real)(viewport.x1 - viewport.x0), 2, 0.8f * line_scale, &color);
+		spartan_link_text(window->refusal, (real)(frame->x0 - render.camera.viewport_bounds.x0),
+			SPARTAN_LINK_TOP * line_scale, (real)(frame->x1 - frame->x0), 2, 0.8f * line_scale, &color);
 	}
 	if (!spartan_link_shown(local_player_index))
 		return;
 	white = spartan_link_white();
 	if (!white)
 		return;
-	count = spartan_link_layout(local_player_index, &viewport, rectangles, &scale);
+	count = spartan_link_layout(local_player_index, &render.camera, rectangles, &scale);
 	for (index = 0; index < count; index++)
 	{
-		rectangles[index].x0 += viewport.x0;
-		rectangles[index].x1 += viewport.x0;
-		rectangles[index].y0 += viewport.y0;
-		rectangles[index].y1 += viewport.y0;
 		spartan_link_draw_feed(white, local_player_index, index, &rectangles[index], scale);
 		spartan_link_draw_row(white, local_player_index, index, &rectangles[index], scale);
 	}
