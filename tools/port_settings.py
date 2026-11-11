@@ -5491,7 +5491,7 @@ def _party() -> list:
 # the Matchmaking screen's (_matchmaking): a row for each playlist
 # (matchmaking.c's), and its footer's prompts (menu_functions.c's
 # matchmaking_screen_update shows SEARCH or CANCEL)
-MATCHMAKING_ROWS = 5
+MATCHMAKING_ROWS = 6
 MATCHMAKING_PROMPTS = [
     ("prompt_search", "%a-button SEARCH", 28, 124, '<on event="a" run="port matchmaking button"/>'),
     ("prompt_cancel", "%x-button CANCEL", 28, 124, '<on event="a" run="port matchmaking button"/>'),

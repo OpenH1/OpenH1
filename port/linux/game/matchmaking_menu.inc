@@ -14,7 +14,7 @@ menu_functions.c, whose widgets' helpers it uses. The search's words
 (matchmaking_status_text) are tools/harness/tests/test_matchmaking.py's.
 */
 
-#define MATCHMAKING_ROWS 5
+#define MATCHMAKING_ROWS 6
 
 static struct
 {

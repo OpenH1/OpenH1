@@ -938,6 +938,10 @@ short bots_skill(void)
 
 short bots_teams(void)
 {
+	/* (a matchmaking game's even, whatever its host's settings: its teams
+	are its playlist's) */
+	if (bots_matchmaking.count != NONE)
+		return _bots_teams_even;
 	bots_settings_read();
 	return bots_settings.teams;
 }

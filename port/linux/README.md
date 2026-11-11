@@ -2910,10 +2910,13 @@ with no server of its own: it uses the server browser's public games and
 the party's brokers.
 
 - The playlists: TEAM SLAYER (4 against 4), SLAYER (everyone for
-  themselves, 8 at most, parties of 2), CAPTURE THE FLAG (4 against 4), SWAT
-  and BIG TEAM BATTLE (8 against 8 on Blood Gulch, Sidewinder and Boarding
-  Action). Each has its gametypes, maps, players and the biggest party it
-  takes.
+  themselves, 8 at most, parties of 2), CAPTURE THE FLAG (4 against 4), SWAT,
+  BIG TEAM BATTLE (8 against 8 on Blood Gulch, Sidewinder and Boarding
+  Action) and DOUBLES (Team Slayer 2 against 2 on the small maps, parties of
+  2: a party of two is one team). Each has its gametypes, maps, players and
+  the biggest party it takes. A game is listed by its playlist's number, so
+  a new playlist is added after the others: an older build of the same
+  version does not show it, and passes over its games.
 - Pick a playlist and press A (or SEARCH). Your party's leader searches for
   everyone; a member sees that its leader searches. The panel shows the time
   searched, the games found and what the search is doing; CANCEL (X) stops
@@ -2930,7 +2933,8 @@ the party's brokers.
   the playlist find it. It starts by itself 3 seconds after it is full, or
   after 90 seconds: with bots filling it in playlists of a gametype the bots
   play (all but Race), else with the
-  players it has (2 at least).
+  players it has (2 at least). Its bots are on both teams, evening them
+  with the players, whatever the host's `bots.teams`.
 - It never joins a Legacy game, nor an OpenH1 game of another version. OpenCE
   players can join a game it hosts, as any OpenH1 game.
 
