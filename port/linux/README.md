@@ -3409,8 +3409,8 @@ Both are what the games' listings already carry (their netcode and rate,
 game engine, teams, OpenCE mode and playlist): nothing new is sent.
 
 The filters apply on every tab, the favorites too. The counts above the
-list say how many games they hide (`3 HIDDEN`), and a list that they leave
-empty says so.
+list say how many games are shown of how many (`2 OF 18 GAMES`), and a
+list that they leave empty says so.
 
 Searches, in the same two lists: the SERVER and MAP column titles each have
 a magnifying glass. Click it (or choose it with the D-pad and press A) and

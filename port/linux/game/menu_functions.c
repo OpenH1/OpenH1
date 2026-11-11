@@ -9379,14 +9379,18 @@ static void browser_header_show(struct widget_instance *list, short games, long 
 		text[NUMBEROF(text) - 1] = 0;
 		text_set(named(list, "prompt_sort", 0), text);
 	}
-	usnprintf(text, NUMBEROF(text) - 1, L"%d %s    %ld %s", games, games == 1 ? L"GAME" : L"GAMES", players,
-		players == 1 ? L"PLAYER" : L"PLAYERS");
-	/* (and how many the filters hide) */
+	/* (and, the filters or the searches hiding some, of how many: "2 OF
+	18 GAMES", which fits where "2 GAMES 16 HIDDEN" ran past the counts'
+	box) */
 	if (browser_filtering && browser_filtered_count > 0)
 	{
-		short length = (short)ustrlen(text);
-
-		usnprintf(text + length, NUMBEROF(text) - 1 - length, L"    %d HIDDEN", browser_filtered_count);
+		usnprintf(text, NUMBEROF(text) - 1, L"%d OF %d GAMES    %ld %s", games, games + browser_filtered_count,
+			players, players == 1 ? L"PLAYER" : L"PLAYERS");
+	}
+	else
+	{
+		usnprintf(text, NUMBEROF(text) - 1, L"%d %s    %ld %s", games, games == 1 ? L"GAME" : L"GAMES", players,
+			players == 1 ? L"PLAYER" : L"PLAYERS");
 	}
 	text[NUMBEROF(text) - 1] = 0;
 	text_set(named(screen, "browser_counts", 0), text);
