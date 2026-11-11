@@ -172,31 +172,36 @@ static void listed(short tab, char *names, size_t size, short *offline)
 
 /* the server browser's list in its groups, on a tab, sorted by a column:
 its games' names in order, the favorites marked with a *, each heading as
-[its words] */
-static void grouped(short tab, short column, boolean descending, boolean official, char *names, size_t size)
+[its words]; project: the project's own servers marked as its */
+static void grouped(short tab, short column, boolean descending, boolean project, char *names, size_t size)
 {
-	struct browser_sort_entry entries[7];
-	short favorite_of[7] = { NONE, NONE, NONE, 0, NONE, NONE, 1 };
-	short order[7 + NUMBER_OF_BROWSER_GROUPS], count, index;
+	struct browser_sort_entry entries[8];
+	short favorite_of[8] = { NONE, NONE, NONE, 0, NONE, NONE, 1, 2 };
+	short order[8 + NUMBER_OF_BROWSER_GROUPS], count, index;
 
-	/* (a full Legacy game players host; OpenH1's, one empty and dedicated;
-	the official servers, one empty; a Legacy favorite and an OpenH1 one) */
+	/* (a full Legacy game players host; OpenH1's dedicated servers: an
+	empty one, the project's two (one empty) and a favorite; OpenH1 games
+	players host, one a favorite; a Legacy favorite) */
 	entries[0] = entry("legacyhosted", FALSE, FALSE, 12);
 	entries[1] = entry("openh1empty", TRUE, FALSE, 0);
 	entries[1].dedicated = TRUE;
 	entries[2] = entry("openh1", TRUE, FALSE, 4);
 	entries[3] = entry("legacystar", FALSE, FALSE, 2);
-	entries[4] = entry("officialempty", TRUE, FALSE, 0);
-	entries[4].official = official;
-	entries[5] = entry("official", TRUE, FALSE, 6);
-	entries[5].official = official;
+	entries[4] = entry("projectempty", TRUE, FALSE, 0);
+	entries[4].dedicated = TRUE;
+	entries[4].project = project;
+	entries[5] = entry("project", TRUE, FALSE, 6);
+	entries[5].dedicated = TRUE;
+	entries[5].project = project;
 	entries[6] = entry("openh1star", TRUE, FALSE, 1);
+	entries[7] = entry("communitystar", TRUE, FALSE, 3);
+	entries[7].dedicated = TRUE;
 	browser_tab = tab;
 	browser_sort_column = column;
 	browser_sort_descending = descending;
 	browser_offline_count = 0;
 	browser_grouped = TRUE;
-	count = browser_favorites_order(favorite_of, entries, 7, order);
+	count = browser_favorites_order(favorite_of, entries, 8, order);
 	browser_grouped = FALSE;
 	names[0] = 0;
 	for (index = 0; index < count; index++)
@@ -285,38 +290,45 @@ int main(int argc, char **argv)
 	{
 		char names[512];
 
-		/* (the official servers first, then OpenH1's, then the Legacy ones
-		under their heading; in each the favorites first, then by players) */
+		/* (OpenH1's dedicated servers, the project's first, then the games
+		players host, then the Legacy ones; in each part the favorites
+		first, then by players) */
 		grouped(_browser_tab_all, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
-		CHECK(!strcmp(names, "[Official Servers] official officialempty [OpenH1 Servers] openh1star* openh1 "
-			"openh1empty [Legacy (Slow) Servers] legacystar* legacyhosted "), "ALL lists %s", names);
-		/* (no official servers: OpenH1's need no heading) */
+		CHECK(!strcmp(names, "[OpenH1 Dedicated Servers] project projectempty communitystar* openh1empty "
+			"[Hosted Servers] openh1star* openh1 [Legacy (Slow) Servers] legacystar* legacyhosted "),
+			"ALL lists %s", names);
+		/* (none of the project's: the dedicated servers as the others) */
 		grouped(_browser_tab_all, _browser_sort_players, TRUE, FALSE, names, sizeof(names));
-		CHECK(!strcmp(names, "openh1star* official openh1 openh1empty officialempty [Legacy (Slow) Servers] "
-			"legacystar* legacyhosted "), "ALL without official servers lists %s", names);
-		/* (each group sorted by the column chosen, the other way too) */
+		CHECK(!strcmp(names, "[OpenH1 Dedicated Servers] communitystar* project openh1empty projectempty "
+			"[Hosted Servers] openh1star* openh1 [Legacy (Slow) Servers] legacystar* legacyhosted "),
+			"ALL without the project's servers lists %s", names);
+		/* (each part sorted by the column chosen, the other way too) */
 		grouped(_browser_tab_all, _browser_sort_name, FALSE, TRUE, names, sizeof(names));
-		CHECK(!strcmp(names, "[Official Servers] official officialempty [OpenH1 Servers] openh1star* openh1 "
-			"openh1empty [Legacy (Slow) Servers] legacystar* legacyhosted "), "by name lists %s", names);
+		CHECK(!strcmp(names, "[OpenH1 Dedicated Servers] project projectempty communitystar* openh1empty "
+			"[Hosted Servers] openh1star* openh1 [Legacy (Slow) Servers] legacystar* legacyhosted "),
+			"by name lists %s", names);
 		grouped(_browser_tab_all, _browser_sort_players, FALSE, TRUE, names, sizeof(names));
-		CHECK(!strcmp(names, "[Official Servers] officialempty official [OpenH1 Servers] openh1star* openh1empty "
-			"openh1 [Legacy (Slow) Servers] legacystar* legacyhosted "), "fewest first lists %s", names);
-		/* (LEGACY's lists nothing else: no heading; OPENH1's no Legacy one) */
+		CHECK(!strcmp(names, "[OpenH1 Dedicated Servers] projectempty project communitystar* openh1empty "
+			"[Hosted Servers] openh1star* openh1 [Legacy (Slow) Servers] legacystar* legacyhosted "),
+			"fewest first lists %s", names);
+		/* (LEGACY's lists nothing else: no heading; a group with no games
+		none: OPENH1's, DEDICATED's) */
 		grouped(_browser_tab_legacy, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
 		CHECK(!strcmp(names, "legacystar* legacyhosted "), "LEGACY lists %s", names);
 		grouped(_browser_tab_openh1, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
-		CHECK(!strcmp(names, "[Official Servers] official officialempty [OpenH1 Servers] openh1star* openh1 "
-			"openh1empty "), "OPENH1 lists %s", names);
-		grouped(_browser_tab_dedicated, _browser_sort_players, TRUE, FALSE, names, sizeof(names));
-		CHECK(!strcmp(names, "openh1empty "), "DEDICATED lists %s", names);
+		CHECK(!strcmp(names, "[OpenH1 Dedicated Servers] project projectempty communitystar* openh1empty "
+			"[Hosted Servers] openh1star* openh1 "), "OPENH1 lists %s", names);
+		grouped(_browser_tab_dedicated, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
+		CHECK(!strcmp(names, "[OpenH1 Dedicated Servers] project projectempty communitystar* openh1empty "),
+			"DEDICATED lists %s", names);
 		/* (the filters still hide games, and a group they empty has no
 		heading) */
 		config_set("network.browser_show_empty", "false");
 		browser_filters_read(&browser_filters);
 		browser_filtering = TRUE;
 		grouped(_browser_tab_all, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
-		CHECK(!strcmp(names, "[Official Servers] official [OpenH1 Servers] openh1star* openh1 "
-			"[Legacy (Slow) Servers] legacystar* legacyhosted "), "SHOW EMPTY GAMES: NO lists %s", names);
+		CHECK(!strcmp(names, "[OpenH1 Dedicated Servers] project communitystar* [Hosted Servers] openh1star* "
+			"openh1 [Legacy (Slow) Servers] legacystar* legacyhosted "), "SHOW EMPTY GAMES: NO lists %s", names);
 		CHECK(browser_filtered_count == 2, "%d hidden counted, not 2", browser_filtered_count);
 		config_set("network.browser_show_full", "false");
 		browser_filters_read(&browser_filters);

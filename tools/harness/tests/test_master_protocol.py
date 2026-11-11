@@ -25,7 +25,7 @@ VECTORS_PATH = CHECKOUT_VECTORS if CHECKOUT_VECTORS.exists() else COPIED_VECTORS
 
 CASES = ["crypto", "listing-signatures", "proof", "server-id", "key-file", "instance", "publish-request",
          "me-request", "probe", "probe-refusals", "list-verify", "list-refusals", "list-body", "masters-file",
-         "masters-default", "masters-json", "official", "listing-read", "listing-bounds", "publish-body", "publish-answers", "take-list", "list-large",
+         "masters-default", "masters-json", "project-server", "listing-read", "listing-bounds", "publish-body", "publish-answers", "take-list", "list-large",
          "probe-nonces", "probe-sources"]
 
 # the functions taken, in their files' order (each is defined before what calls it)
@@ -33,7 +33,7 @@ SOURCES = {
     "port/linux/src/p2p.c": ["p2p_hex"],
     "port/linux/src/p2p_lobby.c": ["sanitize", "get_long", "get_text", "listing_read", "listing_signed"],
     "port/linux/src/master_list.c": ["hex_digit", "master_url_allowed", "masters_file", "master_list_read_file", "master_keep",
-                                     "master_list_read_defaults", "master_list_official", "master_list_read", "master_list_read_json", "master_list_verify", "take_list"],
+                                     "master_list_read_defaults", "master_list_project_server", "master_list_read", "master_list_read_json", "master_list_verify", "take_list"],
     "port/linux/src/server_master.c": ["hex_value", "seed_from_text", "key_file_path", "publisher_seed", "key_id_of",
                                        "server_master_publisher", "publisher_sign", "instance_name", "hex_text",
                                        "sign_request", "publish_body", "header_number", "logged_each_minute",
@@ -111,16 +111,16 @@ NEGATIVE_CONTROLS = {
                                  "take_list", "take-list"),
     "take-list-other-master": (("publisher_id), master_key_id);", 'publisher_id), (const unsigned char *)"wrongmas");'),
                                "take_list", "take-list"),
-    "official-any-master": (("|| master_list_read_defaults(urls, keys, 1) != 1 ||\n\t\tmemcmp(master_key, keys[0], "
-                             "MASTER_LIST_KEY_SIZE))", ")"), "master_list_official", "official"),
-    "official-any-publisher": (("if (!strcmp(official_publishers[index], publisher_id))", "if (1)"),
-                               "master_list_official", "official"),
-    "official-by-prefix": (("if (!strcmp(official_publishers[index], publisher_id))",
-                            "if (!strncmp(official_publishers[index], publisher_id, strlen(publisher_id)))"),
-                           "master_list_official", "official"),
-    "official-by-name": (('server_json_member(&document, entry, "publisher"),\n\t\t\t"id")',
+    "project-any-master": (("|| master_list_read_defaults(urls, keys, 1) != 1 ||\n\t\tmemcmp(master_key, keys[0], "
+                             "MASTER_LIST_KEY_SIZE))", ")"), "master_list_project_server", "project-server"),
+    "project-any-publisher": (("if (!strcmp(project_publishers[index], publisher_id))", "if (1)"),
+                               "master_list_project_server", "project-server"),
+    "project-by-prefix": (("if (!strcmp(project_publishers[index], publisher_id))",
+                            "if (!strncmp(project_publishers[index], publisher_id, strlen(publisher_id)))"),
+                           "master_list_project_server", "project-server"),
+    "project-by-name": (('server_json_member(&document, entry, "publisher"),\n\t\t\t"id")',
                           'server_json_member(&document, entry, "publisher"),\n\t\t\t"name")'), "take_list",
-                         "official"),
+                         "project-server"),
     "take-list-never-dedicated": (('server_json_member(&document, entry, "dedicated")',
                                    'server_json_member(&document, entry, "no such field")'), "take_list", "take-list"),
     "listing-unlabelled": (("memcpy(data, signature_label, sizeof(signature_label) - 1);\n\tmemcpy(data + sizeof",
@@ -283,12 +283,12 @@ def generated(fault=None, faulty_function=None):
         config += f"#define {name} {constant(publisher, name)}\n"
     config += structure(read("port/linux/src/update.h"), "update_response") + "\n"
     config += structure(publisher, "master") + "\n" + state.group(0) + "\n"
-    # (the project's publishers, the test's one added: master_list_official)
-    table = re.search(r"^static const char \*const official_publishers\[\] =\n\{\n(.*?)\tNULL,\n\};", lists,
+    # (the project's publishers, the test's one added: master_list_project_server)
+    table = re.search(r"^static const char \*const project_publishers\[\] =\n\{\n(.*?)\tNULL,\n\};", lists,
                       re.M | re.S)
     if not table:
-        raise LookupError("master_list.c's official_publishers (ending with NULL) not found")
-    config += table.group(0).replace("\tNULL,", '\t"p_officialtest",\n\tNULL,') + "\n"
+        raise LookupError("master_list.c's project_publishers (ending with NULL) not found")
+    config += table.group(0).replace("\tNULL,", '\t"p_projecttest",\n\tNULL,') + "\n"
     config += enum_with(lobby, "LISTING_FORMAT = 1") + "\n" + label.group(0) + "\n" + structure(lobby, "listing") + "\n"
     text = ""
     for path, names in SOURCES.items():
