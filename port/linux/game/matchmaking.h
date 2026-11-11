@@ -9,6 +9,8 @@ alone. The Matchmaking screen (matchmaking_menu.inc) shows it.
 #ifndef __HALO_PORT_MATCHMAKING_H
 #define __HALO_PORT_MATCHMAKING_H
 
+struct p2p_listing;
+
 /* ---------- constants */
 
 enum
@@ -109,6 +111,14 @@ short matchmaking_can_search(short playlist);
 why in the status, if it cannot be */
 boolean matchmaking_search(short playlist, short controller);
 void matchmaking_cancel(void);
+/* the 2V2 browser's (matchmaking_menu.inc): the public games of a playlist (0
+up) kept of games (count of them), the others taken out, as its search
+takes them (an OpenH1 game listed for it, at its tick rate); returns how many
+are left. And its game hosted at once, as a search that finds none hosts it
+(its rate, gametype and maps, listed for it, bots after the wait): FALSE,
+and why in the status, if it cannot be */
+short matchmaking_playlist_games(struct p2p_listing *games, short count, short playlist);
+boolean matchmaking_host_playlist(short playlist, short controller);
 void matchmaking_status(struct matchmaking_status *status);
 
 #endif

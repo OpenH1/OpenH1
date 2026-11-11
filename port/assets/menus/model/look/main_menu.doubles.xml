@@ -47,7 +47,7 @@
 		<text font="ui\small_ui" color="#FF2896FF" flags="no_focus_test"/>
 	</look>
 	<look name="main_menu/doubles/panel_help" type="text" box="330 310 598 388" wide="0 132">
-		<text font="ui\small_ui" color="#FF2896FF" flags="no_focus_test wrap" text="Pro settings on the 2v2 maps. Classic: 30 ticks, Instant Aim off for everyone. Lowest Latency: 120. Each meets only its own kind."/>
+		<text font="ui\small_ui" color="#FF2896FF" flags="no_focus_test wrap" text="Pro settings on the 2v2 maps. Classic: 30 ticks, Instant Aim off for everyone. Lowest Latency: 120. Each lists only its own games."/>
 	</look>
 	<look name="main_menu/doubles/matchmaking_panel" box="316 80 612 400" wide="-26 132" picture="main_menu/parts/panel_296x320">
 		<at widget="main_menu/doubles/panel_title" x="0" y="0"/>
@@ -63,12 +63,154 @@
 		<at widget="main_menu/doubles/prompt_back" x="516" y="1"/>
 	</look>
 	<look name="main_menu/doubles/prompt_search" type="text" box="0 0 124 24" wide="-106 0" picture="main_menu/parts/item_124x24">
-		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%a-button SEARCH"/>
+		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%a-button CHOOSE"/>
 	</look>
 	<look name="main_menu/doubles/prompt_cancel" type="text" box="0 0 124 24" wide="-106 0" picture="main_menu/parts/item_124x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%x-button CANCEL"/>
 	</look>
 	<look name="main_menu/doubles/prompt_back" type="text" box="0 0 96 24" wide="106 0" picture="main_menu/parts/item_96x24">
+		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%b-button BACK"/>
+	</look>
+	<look name="main_menu/doubles/browser/doubles_browser_screen" picture="bitmaps/gradient">
+		<at widget="main_menu/doubles/header_doubles" x="0" y="0"/>
+		<at widget="main_menu/doubles/browser/doubles_kind" x="0" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/browser_counts" x="0" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/browser_columns_line" x="0" y="0"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/browser_empty" x="0" y="0"/>
+		<at widget="main_menu/doubles/browser/doubles_browser_list" x="0" y="0"/>
+	</look>
+	<look name="main_menu/doubles/browser/doubles_kind" type="text" box="32 78 436 98" wide="-106 144">
+		<text font="ui\large_ui" color="#FFFFFFFF" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/browser/doubles_browser_list" type="column_list">
+		<at widget="main_menu/multiplayer_type_select/join_game/join_game_header" x="0" y="104"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_1" x="28" y="124"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_2" x="28" y="143"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_3" x="28" y="162"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_4" x="28" y="181"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_5" x="28" y="200"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_6" x="28" y="219"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_7" x="28" y="238"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_8" x="28" y="257"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_9" x="28" y="276"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_10" x="28" y="295"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_11" x="28" y="314"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/server_item_12" x="28" y="333"/>
+		<at widget="main_menu/doubles/browser/doubles_actions" x="0" y="360"/>
+		<at widget="main_menu/doubles/browser/doubles_friend_1" x="452" y="270"/>
+		<at widget="main_menu/doubles/browser/doubles_friend_2" x="452" y="290"/>
+		<at widget="main_menu/doubles/browser/doubles_friend_3" x="452" y="310"/>
+		<at widget="main_menu/doubles/browser/doubles_friend_4" x="452" y="330"/>
+		<at widget="main_menu/doubles/browser/doubles_friend_5" x="452" y="350"/>
+		<at widget="main_menu/doubles/browser/doubles_friend_6" x="452" y="370"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/browser_clear_bar" x="0" y="288"/>
+		<at widget="main_menu/doubles/browser/doubles_prompts" x="0" y="414"/>
+	</look>
+	<look name="main_menu/doubles/browser/doubles_actions" type="column_list" box="0 0 640 24">
+		<at widget="main_menu/doubles/browser/button_doubles_host" x="28" y="0"/>
+		<at widget="main_menu/doubles/browser/button_doubles_find" x="184" y="0"/>
+	</look>
+	<look name="main_menu/doubles/browser/button_doubles_host" type="text" box="0 0 148 24" wide="-106 0" picture="main_menu/parts/button_148x24">
+		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 3" text="HOST GAME"/>
+	</look>
+	<look name="main_menu/doubles/browser/button_doubles_find" type="text" box="0 0 148 24" wide="-106 0" picture="main_menu/parts/button_148x24">
+		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 3" text="FIND GAME"/>
+	</look>
+	<look name="main_menu/doubles/browser/doubles_friend_1" type="text" box="0 0 148 18" wide="38 68" picture="main_menu/parts/item_148x18">
+		<text font="ui\small_ui" color="#FFFFFFFF" at="4 0"/>
+		<at widget="main_menu/doubles/browser/df_note_1" x="0" y="0"/>
+		<at widget="main_menu/doubles/browser/df_live_1" x="0" y="0"/>
+	</look>
+	<look name="main_menu/doubles/browser/df_note_1" type="text" box="0 0 142 18" wide="0 68">
+		<text font="ui\small_ui" color="#FF7FB2FF" align="right" at="0 0" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/browser/df_live_1" type="text" box="0 0 142 18" wide="0 68">
+		<text font="ui\small_ui" color="#FF5ED38C" align="right" at="0 0" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/browser/doubles_friend_2" type="text" box="0 0 148 18" wide="38 68" picture="main_menu/parts/item_148x18">
+		<text font="ui\small_ui" color="#FFFFFFFF" at="4 0"/>
+		<at widget="main_menu/doubles/browser/df_note_2" x="0" y="0"/>
+		<at widget="main_menu/doubles/browser/df_live_2" x="0" y="0"/>
+	</look>
+	<look name="main_menu/doubles/browser/df_note_2" type="text" box="0 0 142 18" wide="0 68">
+		<text font="ui\small_ui" color="#FF7FB2FF" align="right" at="0 0" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/browser/df_live_2" type="text" box="0 0 142 18" wide="0 68">
+		<text font="ui\small_ui" color="#FF5ED38C" align="right" at="0 0" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/browser/doubles_friend_3" type="text" box="0 0 148 18" wide="38 68" picture="main_menu/parts/item_148x18">
+		<text font="ui\small_ui" color="#FFFFFFFF" at="4 0"/>
+		<at widget="main_menu/doubles/browser/df_note_3" x="0" y="0"/>
+		<at widget="main_menu/doubles/browser/df_live_3" x="0" y="0"/>
+	</look>
+	<look name="main_menu/doubles/browser/df_note_3" type="text" box="0 0 142 18" wide="0 68">
+		<text font="ui\small_ui" color="#FF7FB2FF" align="right" at="0 0" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/browser/df_live_3" type="text" box="0 0 142 18" wide="0 68">
+		<text font="ui\small_ui" color="#FF5ED38C" align="right" at="0 0" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/browser/doubles_friend_4" type="text" box="0 0 148 18" wide="38 68" picture="main_menu/parts/item_148x18">
+		<text font="ui\small_ui" color="#FFFFFFFF" at="4 0"/>
+		<at widget="main_menu/doubles/browser/df_note_4" x="0" y="0"/>
+		<at widget="main_menu/doubles/browser/df_live_4" x="0" y="0"/>
+	</look>
+	<look name="main_menu/doubles/browser/df_note_4" type="text" box="0 0 142 18" wide="0 68">
+		<text font="ui\small_ui" color="#FF7FB2FF" align="right" at="0 0" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/browser/df_live_4" type="text" box="0 0 142 18" wide="0 68">
+		<text font="ui\small_ui" color="#FF5ED38C" align="right" at="0 0" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/browser/doubles_friend_5" type="text" box="0 0 148 18" wide="38 68" picture="main_menu/parts/item_148x18">
+		<text font="ui\small_ui" color="#FFFFFFFF" at="4 0"/>
+		<at widget="main_menu/doubles/browser/df_note_5" x="0" y="0"/>
+		<at widget="main_menu/doubles/browser/df_live_5" x="0" y="0"/>
+	</look>
+	<look name="main_menu/doubles/browser/df_note_5" type="text" box="0 0 142 18" wide="0 68">
+		<text font="ui\small_ui" color="#FF7FB2FF" align="right" at="0 0" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/browser/df_live_5" type="text" box="0 0 142 18" wide="0 68">
+		<text font="ui\small_ui" color="#FF5ED38C" align="right" at="0 0" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/browser/doubles_friend_6" type="text" box="0 0 148 18" wide="38 68" picture="main_menu/parts/item_148x18">
+		<text font="ui\small_ui" color="#FFFFFFFF" at="4 0"/>
+		<at widget="main_menu/doubles/browser/df_note_6" x="0" y="0"/>
+		<at widget="main_menu/doubles/browser/df_live_6" x="0" y="0"/>
+	</look>
+	<look name="main_menu/doubles/browser/df_note_6" type="text" box="0 0 142 18" wide="0 68">
+		<text font="ui\small_ui" color="#FF7FB2FF" align="right" at="0 0" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/browser/df_live_6" type="text" box="0 0 142 18" wide="0 68">
+		<text font="ui\small_ui" color="#FF5ED38C" align="right" at="0 0" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/browser/doubles_friends_title" type="text" box="0 0 148 18" wide="0 68">
+		<text font="ui\small_ui" color="#FF6F9CD0" at="4 0" flags="no_focus_test" text="FRIENDS ONLINE"/>
+	</look>
+	<look name="main_menu/doubles/browser/doubles_friends_empty" type="text" box="0 0 148 40" wide="0 68">
+		<text font="ui\small_ui" color="#FF2896FF" flags="no_focus_test"/>
+	</look>
+	<look name="main_menu/doubles/browser/doubles_panel" box="440 104 612 400" wide="38 68" picture="main_menu/parts/panel_172x296">
+		<at widget="main_menu/multiplayer_type_select/join_game/panel_title" x="452" y="114"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/panel_where" x="452" y="144"/>
+		<at widget="main_menu/multiplayer_type_select/join_game/panel_status" x="452" y="184"/>
+		<at widget="main_menu/doubles/browser/doubles_friends_title" x="452" y="250"/>
+		<at widget="main_menu/doubles/browser/doubles_friends_empty" x="452" y="270"/>
+	</look>
+	<look name="main_menu/doubles/browser/doubles_prompts" type="column_list" box="0 0 640 28">
+		<at widget="main_menu/doubles/browser/prompt_refresh" x="24" y="1"/>
+		<at widget="main_menu/doubles/browser/prompt_search" x="238" y="1"/>
+		<at widget="main_menu/doubles/browser/prompt_sort" x="335" y="1"/>
+		<at widget="main_menu/doubles/browser/prompt_back" x="526" y="1"/>
+	</look>
+	<look name="main_menu/doubles/browser/prompt_refresh" type="text" box="0 0 105 24" wide="-106 70" picture="main_menu/parts/item_105x24">
+		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%right-trigger REFRESH"/>
+	</look>
+	<look name="main_menu/doubles/browser/prompt_search" type="text" box="0 0 99 24" wide="-143 63" picture="main_menu/parts/item_99x24">
+		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%right-thumb SEARCH"/>
+	</look>
+	<look name="main_menu/doubles/browser/prompt_sort" type="text" box="0 0 92 24" wide="203 0" picture="main_menu/parts/item_92x24">
+		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%x-button SORT"/>
+	</look>
+	<look name="main_menu/doubles/browser/prompt_back" type="text" box="0 0 90 24" wide="106 0" picture="main_menu/parts/item_90x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%b-button BACK"/>
 	</look>
 </model>

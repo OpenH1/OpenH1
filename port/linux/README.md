@@ -2951,13 +2951,33 @@ the party's brokers.
 ### 2V2
 
 The main menu's 2V2 is matchmaking's two against two. It asks which kind,
-CLASSIC or LOWEST LATENCY, and A on one searches at once (its screen is the
-Matchmaking screen's, with a row for each kind: the time searched, the
-games found, CANCEL on X). The search is the one above: a game with room
-for you (and your party: a party of two is one team; the party's leader
-searches), else one hosted that others searching the same kind find; once
-it has waited 90 seconds bots fill the empty places, one team's and the
-other's evenly.
+CLASSIC or LOWEST LATENCY (the Matchmaking screen's look, a row for each),
+and A on one opens that kind's **2V2 browser** (`game/doubles_browser.inc`):
+
+- **Its games**: the server browser itself, kept to the kind's games: the
+  OpenH1 games listed for the kind's playlist at its tick rate, players'
+  and dedicated servers' alike (a server that lists the playlist), never the
+  other kind's nor a Legacy game. Its columns, groups (OpenH1 Dedicated
+  Servers, Hosted Servers), sorting, searches, pings and stars are the
+  server browser's, and so is joining: A on a game joins it, your party
+  following you. The line under the title says the kind and its rules
+  (CLASSIC · OPENH1 30 TICK · INSTANT AIM OFF).
+- **HOST GAME** hosts the kind's game at once, as matchmaking hosts one: its
+  tick rate, Pro Doubles, one of its maps, listed for its playlist so that
+  others see it, OpenCE's players kept out, Classic's Instant Aim, bots
+  filling the empty places evenly once it has waited 90 seconds.
+- **FIND GAME** is matchmaking's search of the kind, as 2V2 did before: a
+  game with room for you (and your party: a party of two is one team; the
+  party's leader searches), else one hosted that others find. CANCEL
+  SEARCH stops it; the panel says what it is doing.
+- **The panel** shows the game chosen, as the server browser's does, and
+  under it your friends online, those in a 2v2 of this kind first, marked IN
+  A 2V2 (their presence says "OpenH1 30 Tick · Pro Doubles on ..."). A
+  friend's A joins them, as the Friends screen's JOIN does, or invites them
+  to your party. Down from HOST GAME and FIND GAME reaches them.
+- With none of the kind's games, the list says so ("No 2v2 Classic games
+  right now") and HOST GAME has the focus. Offline, or without the kind's
+  maps, it says why, and HOST GAME and FIND GAME say it again.
 
 - **CLASSIC** is an OpenH1 game at 30 ticks (OpenH1 30 Tick, the Xbox's rate,
   on OpenH1's netcode, not a Legacy game), with INSTANT AIM off for every
@@ -2990,8 +3010,8 @@ other's evenly.
   `network.game_mode` and `network.sim_rate` say, closed to OpenCE's players
   (Host Controls cannot open it to them), and the next game it hosts is its
   settings' again.
-- 2V2 cannot be searched without internet play, or without any of its maps:
-  the panel says why.
+- 2V2 cannot be searched or hosted without internet play, or without any of
+  its maps: the browser says why.
 
 ### Friends
 

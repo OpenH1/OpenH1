@@ -351,6 +351,21 @@ short matchmaking_playlist_rate(
 
 /* ---------- what the search decides */
 
+/* whether a public game is one of the playlist's (its listing's number, 1
+up): an OpenH1 game this build joins as one, listed for it, at its tick rate
+where it has one (2V2's kinds: a Classic game is never a 120 Tick one, nor a
+Lowest Latency game a 30 Tick one). The search's (matchmaking_game_score) and
+the 2V2 browser's (matchmaking_playlist_games) */
+static boolean matchmaking_listing_of(
+	struct p2p_listing const *game,
+	short playlist)
+{
+	short rate = playlist > 0 && playlist <= (short)NUMBEROF(matchmaking_playlists) ?
+		matchmaking_playlists[playlist - 1].rate : 0;
+
+	return playlist && game->playlist == playlist && game->standard && (!rate || game->rate == rate);
+}
+
 /* a public game's worth to a party of party_size looking for a game of the
 playlist (its listing's number: 1 up): NONE if it cannot take the party (a
 game of no playlist or another's, not an OpenH1 game this build joins as
@@ -364,17 +379,8 @@ static long matchmaking_game_score(
 	short party_size)
 {
 	long ping;
-	short rate = playlist > 0 && playlist <= (short)NUMBEROF(matchmaking_playlists) ?
-		matchmaking_playlists[playlist - 1].rate : 0;
 
-	if (game->playlist != playlist || !playlist || !game->standard || !game->open || game->locked || game->failed ||
-		!game->invite[0])
-	{
-		return NONE;
-	}
-	/* (a game of another rate is another kind's: 2V2's Classic never takes
-	a 120 Tick game, nor Lowest Latency a 30 Tick one) */
-	if (rate && game->rate != rate)
+	if (!matchmaking_listing_of(game, playlist) || !game->open || game->locked || game->failed || !game->invite[0])
 		return NONE;
 	if (game->maximum_player_count > 0 && game->player_count + party_size > game->maximum_player_count)
 		return NONE;
@@ -872,6 +878,47 @@ static short matchmaking_read(
 }
 
 /* ---------- public code */
+
+short matchmaking_playlist_games(
+	struct p2p_listing *games,
+	short count,
+	short playlist)
+{
+	short read, written = 0;
+
+	for (read = 0; read < count; read++)
+	{
+		if (!matchmaking_listing_of(&games[read], (short)(playlist + 1)))
+			continue;
+		if (written != read)
+			games[written] = games[read];
+		written++;
+	}
+	return written;
+}
+
+boolean matchmaking_host_playlist(
+	short playlist,
+	short controller)
+{
+	short problem = matchmaking_can_search(playlist);
+
+	/* (a search under way hosts by itself, when it finds none) */
+	if (matchmaking.stage != _matchmaking_idle)
+		return FALSE;
+	matchmaking.problem = problem;
+	if (problem != _matchmaking_problem_none)
+		return FALSE;
+	matchmaking.playlist = playlist;
+	matchmaking.controller = controller;
+	matchmaking.begin_time = system_milliseconds();
+	matchmaking.order = 0;
+	platform_log("matchmaking: HOST GAME: a %s game hosted at once", matchmaking_playlists[playlist].name);
+	if (!matchmaking_host())
+		return FALSE;
+	matchmaking_stage(_matchmaking_hosting);
+	return TRUE;
+}
 
 short matchmaking_can_search(
 	short playlist)

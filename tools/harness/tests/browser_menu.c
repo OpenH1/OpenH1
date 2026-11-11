@@ -54,6 +54,9 @@ static short browser_sort_column, browser_tab;
 static boolean browser_sort_descending;
 static struct browser_filters browser_filters = { TRUE, TRUE, TRUE, 0, BROWSER_ALL_ENGINES };
 static boolean browser_filtering;
+/* the 2V2 browser's playlist (NONE: the server browser itself): its kind's
+games listed whatever the tab and the Filters, no favorites offline */
+static short browser_doubles_playlist = NONE;
 static short browser_filtered_count, browser_searched_count;
 static char browser_searches[NUMBER_OF_BROWSER_SEARCHES][BROWSER_SEARCH_LENGTH + 1];
 
@@ -284,6 +287,35 @@ int main(int argc, char **argv)
 		listed(_browser_tab_favorites, names, sizeof(names), &offline);
 		CHECK(!strcmp(names, "bravo* echo* "), "FAVORITES lists %s", names);
 		CHECK(offline == 2, "FAVORITES lists no favorites offline");
+		return 0;
+	}
+	CASE("doubles")
+	{
+		char names[128];
+		short offline;
+		short tab;
+
+		/* (the 2V2 browser's games, its kind's already: matchmaking.c's
+		matchmaking_playlist_games; every one listed on any tab, the
+		favorites first, none offline) */
+		browser_doubles_playlist = 6;
+		for (tab = 0; tab < NUMBER_OF_BROWSER_TABS; tab++)
+		{
+			listed(tab, names, sizeof(names), &offline);
+			CHECK(!strcmp(names, "bravo* echo* delta alpha coop "), "tab %d hides 2V2's games: %s", tab, names);
+			CHECK(offline == 0, "tab %d lists favorites offline in 2V2's", tab);
+		}
+		/* (the Filters, the server browser's settings, hide none of them) */
+		browser_filtering = TRUE;
+		browser_filters.show_full = FALSE;
+		browser_filters.maximum_ping = 1;
+		browser_filters.engines = 0;
+		listed(_browser_tab_all, names, sizeof(names), &offline);
+		CHECK(!strcmp(names, "bravo* echo* delta alpha coop "), "the Filters hide 2V2's games: %s", names);
+		/* (and the server browser itself as it was) */
+		browser_doubles_playlist = NONE;
+		listed(_browser_tab_legacy, names, sizeof(names), &offline);
+		CHECK(strcmp(names, "bravo* echo* delta alpha coop "), "the server browser's tabs gone");
 		return 0;
 	}
 	CASE("groups")

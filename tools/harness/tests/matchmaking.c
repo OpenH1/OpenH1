@@ -17,6 +17,21 @@ on, so a new one goes last; teams a party fits on; a screen's row each) */
 #define NUMBEROF(array) ((long)(sizeof(array) / sizeof((array)[0])))
 
 #include "config.inc"
+
+/* (the hosting HOST GAME asks for: recorded, as matchmaking.c's would make
+the server; and the stage set) */
+static boolean matchmaking_host(void)
+{
+	stub_hosts++;
+	stub_hosted_playlist = matchmaking.playlist;
+	return stub_hosted_ok;
+}
+
+static void matchmaking_stage(short stage)
+{
+	matchmaking.stage = stage;
+}
+
 #include "under_test.inc"
 
 static struct p2p_listing game(short playlist, short players, short most, short ping)
@@ -352,6 +367,94 @@ static void case_doubles(void)
 	CHECK(matchmaking_game_score(&games[0], (short)(classic + 1), 1) == NONE, "nor a game of no rate said");
 }
 
+/* the 2V2 browser's list (matchmaking_playlist_games): of every public game,
+the kind's alone, in their order: never the other kind's, a Legacy game, a
+game of the kind's playlist at another rate, or another playlist's */
+static void case_browser(void)
+{
+	short classic = matchmaking_doubles_playlists[_matchmaking_doubles_classic];
+	short lowest = matchmaking_doubles_playlists[_matchmaking_doubles_lowest_latency];
+	struct p2p_listing games[8], copy[8];
+	short count;
+
+	games[0] = game((short)(classic + 1), 2, 4, 40);
+	games[0].rate = 30;
+	games[1] = game((short)(lowest + 1), 2, 4, 30);
+	games[1].rate = 120;
+	/* (a Legacy game stamped as the kind's: a Legacy listing has no playlist,
+	p2p_lobby.c's, but the browser does not lean on it) */
+	games[2] = game((short)(classic + 1), 1, 4, 20);
+	games[2].rate = 30;
+	games[2].standard = 0;
+	games[3] = game((short)(classic + 1), 1, 4, 20);
+	games[3].rate = 120;
+	games[4] = game(1, 3, 8, 20);
+	games[5] = game(0, 3, 4, 20);
+	games[5].rate = 30;
+	games[6] = game((short)(classic + 1), 3, 4, 90);
+	games[6].rate = 30;
+	games[6].locked = 1;
+	games[7] = game((short)(lowest + 1), 4, 4, 10);
+	games[7].rate = 120;
+	games[7].in_progress = 1;
+	memcpy(copy, games, sizeof(games));
+	count = matchmaking_playlist_games(copy, 8, classic);
+	CHECK(count == 2 && copy[0].ping == 40 && copy[1].ping == 90,
+		"Classic's browser lists its two games, in order (it listed %d)", count);
+	CHECK(copy[0].rate == 30 && copy[1].rate == 30 && copy[0].standard && copy[1].standard,
+		"never a 120 Tick game nor a Legacy one");
+	memcpy(copy, games, sizeof(games));
+	count = matchmaking_playlist_games(copy, 8, lowest);
+	CHECK(count == 2 && copy[0].ping == 30 && copy[1].ping == 10 && copy[0].rate == 120 && copy[1].rate == 120,
+		"Lowest Latency's lists its two (full and under way too: the browser shows them as they are)");
+	memcpy(copy, games, sizeof(games));
+	count = matchmaking_playlist_games(copy, 8, 0);
+	CHECK(count == 1 && copy[0].playlist == 1, "Team Slayer's (no rate of its own) lists its game");
+	CHECK(matchmaking_playlist_games(copy, 0, classic) == 0, "none of none");
+}
+
+/* HOST GAME (matchmaking_host_playlist): the kind's game hosted at once, as a
+search that finds none hosts it; refused, and why, offline, without its
+maps, a party's member, while a search goes on */
+static void case_host_action(void)
+{
+	short classic = matchmaking_doubles_playlists[_matchmaking_doubles_classic];
+	short lowest = matchmaking_doubles_playlists[_matchmaking_doubles_lowest_latency];
+
+	matchmaking.stage = _matchmaking_idle;
+	CHECK(matchmaking_host_playlist(classic, 1) && stub_hosts == 1 && stub_hosted_playlist == classic &&
+		matchmaking.stage == _matchmaking_hosting && matchmaking.controller == 1,
+		"Classic's HOST GAME hosts its playlist (its rate, gametype and maps: matchmaking_host)");
+	CHECK(!matchmaking_host_playlist(lowest, 0) && stub_hosts == 1, "not over a game being hosted");
+	matchmaking.stage = _matchmaking_looking;
+	CHECK(!matchmaking_host_playlist(lowest, 0) && stub_hosts == 1, "nor over a search, which hosts by itself");
+	matchmaking.stage = _matchmaking_idle;
+	stub_online = FALSE;
+	CHECK(!matchmaking_host_playlist(lowest, 0) && matchmaking.problem == _matchmaking_problem_offline &&
+		stub_hosts == 1, "offline: refused, and why");
+	stub_online = TRUE;
+	stub_maps = 0;
+	CHECK(!matchmaking_host_playlist(lowest, 0) && matchmaking.problem == _matchmaking_problem_no_maps &&
+		stub_hosts == 1, "none of its maps: refused, and why");
+	stub_maps = 5;
+	stub_member = TRUE;
+	stub_party_size = 2;
+	CHECK(!matchmaking_host_playlist(lowest, 0) && matchmaking.problem == _matchmaking_problem_member &&
+		stub_hosts == 1, "a party's member: its leader hosts");
+	stub_member = FALSE;
+	stub_party_size = 3;
+	CHECK(!matchmaking_host_playlist(lowest, 0) && matchmaking.problem == _matchmaking_problem_party_too_big,
+		"a party of 3 for 2 against 2: refused");
+	stub_party_size = 2;
+	CHECK(matchmaking_host_playlist(lowest, 0) && stub_hosted_playlist == lowest &&
+		matchmaking.stage == _matchmaking_hosting, "a party of two's leader hosts Lowest Latency's");
+	matchmaking.stage = _matchmaking_idle;
+	stub_hosted_ok = FALSE;
+	CHECK(!matchmaking_host_playlist(classic, 0) && matchmaking.stage == _matchmaking_idle,
+		"a host that could not be made: not hosting");
+	CHECK(!matchmaking_host_playlist(NUMBEROF(matchmaking_playlists), 0), "no such playlist");
+}
+
 int main(int argc, char **argv)
 {
 	char const *case_name = argc > 1 ? argv[1] : "";
@@ -372,6 +475,10 @@ int main(int argc, char **argv)
 		case_playlists();
 	else if (!strcmp(case_name, "doubles"))
 		case_doubles();
+	else if (!strcmp(case_name, "browser"))
+		case_browser();
+	else if (!strcmp(case_name, "host_action"))
+		case_host_action();
 	else
 		return 2;
 	return 0;

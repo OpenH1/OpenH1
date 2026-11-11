@@ -12,7 +12,8 @@ search up. The search goes on whatever screen is shown: its game's lobby
 takes this one's place as it is joined or hosted. The main menu's 2V2
 screen (_matchmaking's doubles screen, its list doubles_list) is the same
 screen with a row for each of 2V2's kinds, CLASSIC and LOWEST LATENCY
-(matchmaking_doubles_playlist), whose A searches its playlist at once.
+(matchmaking_doubles_playlist), whose A opens the 2V2 browser of that kind
+(doubles_browser.inc): its games, HOST GAME and FIND GAME, the friends.
 Included in menu_functions.c, whose widgets' helpers it uses. The search's
 words (matchmaking_status_text) are tools/harness/tests/test_matchmaking.py's.
 */
@@ -240,8 +241,8 @@ static __declspec(noinline) void matchmaking_screen_update(struct widget_instanc
 		{
 			usnprintf(headline, NUMBEROF(headline) - 1, L"PICK A KIND");
 			usnprintf(detail, NUMBEROF(detail) - 1, status.party_size > 1 ?
-				L"Your party of %d plays as one team." : L"Search alone, or bring a friend in a party as your "
-				L"teammate.", status.party_size);
+				L"Its games are listed next. Your party of %d plays as one team." :
+				L"Its games are listed next. Bring a friend in a party as your teammate.", status.party_size);
 			headline[NUMBEROF(headline) - 1] = detail[NUMBEROF(detail) - 1] = 0;
 		}
 		menu_text_box_wrap(named(panel, "panel_title", 0), name, 1);
@@ -257,9 +258,13 @@ static __declspec(noinline) void matchmaking_screen_update(struct widget_instanc
 	}
 }
 
+/* (doubles_browser.inc's: the 2V2 browser of a kind opened) */
+static boolean doubles_browser_open(struct widget_instance *widget, short kind, boolean *widget_deleted);
+
 /* "port matchmaking button" (a row's A or click, and the prompts'): a
-playlist searched, the search given up, or back */
-static boolean matchmaking_screen_button(struct widget_instance *widget, short controller)
+playlist searched, the search given up, or back; the 2V2 screen's row (and
+its CHOOSE) opens the 2V2 browser of its kind */
+static boolean matchmaking_screen_button(struct widget_instance *widget, short controller, boolean *widget_deleted)
 {
 	short row = matchmaking_row_playlist(widget, matchmaking_row_of(widget));
 	struct matchmaking_status status;
@@ -276,6 +281,13 @@ static boolean matchmaking_screen_button(struct widget_instance *widget, short c
 		ui_play_audio_feedback_sound(SOUND_BACK);
 		return TRUE;
 	}
+	if (matchmaking_doubles_screen(widget))
+	{
+		short kind = row == NONE ? matchmaking_menu.chosen : row;
+
+		return doubles_browser_open(widget, kind == matchmaking_doubles_playlist(_matchmaking_doubles_lowest_latency) ?
+			_matchmaking_doubles_lowest_latency : _matchmaking_doubles_classic, widget_deleted);
+	}
 	if (status.stage != _matchmaking_idle)
 		return TRUE;
 	if (row == NONE)
@@ -283,12 +295,6 @@ static boolean matchmaking_screen_button(struct widget_instance *widget, short c
 	matchmaking_menu.chosen = row;
 	if (!matchmaking_search(row, controller >= 0 && controller < 4 ? controller : 0))
 		return campaign_fail();
-	if (matchmaking_doubles_screen(widget))
-	{
-		platform_log("menus: 2V2 %s chosen: searching its playlist (OpenH1 %d Tick)",
-			row == matchmaking_doubles_playlist(_matchmaking_doubles_classic) ? "CLASSIC" : "LOWEST LATENCY",
-			matchmaking_playlist_rate(row));
-	}
 	ui_play_audio_feedback_sound(SOUND_FORWARD);
 	return TRUE;
 }
