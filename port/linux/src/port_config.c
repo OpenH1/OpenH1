@@ -356,6 +356,12 @@ static const struct config_setting config_settings[] =
 		"waypoints, scopes, message icons) from the high-res assets: Aerocatia's\n"
 		"and Jessie's art from Halo PC Restored, 4x the maps' bitmaps;\n"
 		"false draws the maps' own bitmaps." },
+	{ "display.spartan_link", _config_string, "\"medium\"", "HALO_SPARTAN_LINK", _environment_value, _platform_all,
+		"The Spartan link: live feeds of your living teammates' views in the\n"
+		"HUD's top line, each with their name, shield and distance, shown and\n"
+		"hidden with controls.spartan_link (a controller's D-pad Down), off as\n"
+		"each game starts. Co-op and team games only (not Pro 2v2). \"small\",\n"
+		"\"medium\" or \"large\" feeds; \"off\": the key does nothing." },
 	{ "display.hud_button_style", _config_string, "\"classic\"", "HALO_HUD_BUTTON_STYLE", _environment_value, _platform_all,
 		"High-res gameplay controller buttons: classic uses the Xbox's stencils;\n"
 		"gems uses shaded Xbox faces; menu_gems uses the menu's button art.\n"
@@ -1165,6 +1171,9 @@ static const struct config_setting config_settings[] =
 	{ "controls.walk", _config_string, "\"Left Shift\"", "HALO_KEY_WALK", _environment_value, _platform_all,
 		"Walking: the movement keys move the player slowly while it is held\n"
 		"(input.walk, input.walk_speed)." },
+	{ "controls.spartan_link", _config_string, "\"B\"", "HALO_KEY_SPARTAN_LINK", _environment_value, _platform_all,
+		"The Spartan link: your teammates' feeds in the HUD shown or hidden\n"
+		"(display.spartan_link)." },
 
 	{ "game.console_log", _config_string, "\"important\"", "HALO_CONSOLE_LOG", _environment_value, _platform_all,
 		"What the game's console shows on screen of what it logs: \"important\"\n"
@@ -2036,6 +2045,13 @@ static const struct config_setting config_settings[] =
 		"empty for none." },
 	{ "debug.network_test_start", _config_real, "15.0", "HALO_NETWORK_TEST_START", _environment_value, _platform_all,
 		"Seconds after hosting that an automated test game starts." },
+	{ "debug.spartan_link_open", _config_boolean, "false", "HALO_SPARTAN_LINK_OPEN", _environment_value, _platform_all,
+		"Open every local player's Spartan link as each game starts, without the\n"
+		"key (its tests: port/linux/game/spartan_link.c)." },
+	{ "debug.spartan_link_log", _config_boolean, "false", "HALO_SPARTAN_LINK_LOG", _environment_value, _platform_all,
+		"Log each Spartan link feed's camera as it is drawn: the tick, the local\n"
+		"player, the teammate, through their eyes, where it looks from and along,\n"
+		"its field of view and the frame's place between the ticks." },
 	{ "debug.spectate_log", _config_boolean, "false", "HALO_SPECTATE_LOG", _environment_value, _platform_all,
 		"Log each local player's camera each tick, with whether it is dead and\n"
 		"whom it watches (game.spectate_on_death's tests:\n"
@@ -4334,6 +4350,7 @@ static const struct
 	{ "display.picture_shape", { "4:3", "16:9", NULL }, NULL },
 	{ "display.frame_style", { "plain", "halo", "xbox", NULL }, NULL },
 	{ "display.hud_button_style", { "classic", "gems", "menu_gems", NULL }, NULL },
+	{ "display.spartan_link", { "small", "medium", "large", "off", NULL }, NULL },
 	{ "display.menus", { "pc", "xbox", NULL }, NULL },
 	{ "display.menu_engine", { "classic", "new", NULL }, NULL },
 	{ "display.menu_cursor", { "off", "small", "medium", "large", "extra_large", NULL }, "medium" },

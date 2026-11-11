@@ -17,9 +17,10 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/op_command_5" x="28" y="231"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/op_command_6" x="28" y="252"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/op_command_7" x="28" y="273"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/section_10" x="28" y="300"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/op_walk" x="28" y="320"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/op_walk_speed" x="28" y="341"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/op_command_8" x="28" y="294"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/section_11" x="28" y="321"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/op_walk" x="28" y="341"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/op_walk_speed" x="28" y="362"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/button_bar" x="0" y="414"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/button_bar" role="buttons" type="column_list" box="0 0 640 28">
@@ -110,11 +111,17 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/command_binding" x="136" y="0"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/command_binding_second" x="240" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/section_10" box="0 0 344 18" wide="-106 120" picture="main_menu/settings/section">
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/section_10_title" x="0" y="0"/>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/op_command_8" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+		<text color="#FF2896FF"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/command_label" x="0" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/command_binding" x="136" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/command_binding_second" x="240" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/section_10_title" type="text" box="0 0 344 18" wide="0 120">
-		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/labels" index="10"/>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/section_11" box="0 0 344 18" wide="-106 120" picture="main_menu/settings/section">
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/section_11_title" x="0" y="0"/>
+	</look>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/section_11_title" type="text" box="0 0 344 18" wide="0 120">
+		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/labels" index="11"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/op_walk" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
@@ -122,7 +129,7 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/walk_spinner" x="188" y="0"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/walk_label" type="text" box="0 0 184 20" wide="0 120">
-		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/labels" index="11"/>
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/labels" index="12"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/walk_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="HOLD|TOGGLE"/>
@@ -133,7 +140,7 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/walk_speed_spinner" x="188" y="0"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/walk_speed_label" type="text" box="0 0 184 20" wide="0 120">
-		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/labels" index="12"/>
+		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/labels" index="13"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/walk_speed_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
 		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="TRACKER|10%|20%|30%|40%|50%|60%|70%|80%|90%"/>

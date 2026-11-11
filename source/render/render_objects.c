@@ -517,6 +517,14 @@ static boolean object_is_first_person_camera(
 		if (object_index != NONE && object_index == dead_spectate_eyes_unit(render.local_player_index))
 			return TRUE;
 	}
+	{
+		/* port: a teammate's feed in the HUD's Spartan link, drawn from
+		their eyes, their body hidden (port/linux/game/spartan_link.c) */
+		extern long spartan_link_hidden_unit(void);
+
+		if (object_index != NONE && object_index == spartan_link_hidden_unit())
+			return TRUE;
+	}
 	return (unit_index == object_index &&
 		director_get_perspective(render.local_player_index) ==
 			_director_perspective_first_person) ||

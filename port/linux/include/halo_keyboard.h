@@ -63,6 +63,9 @@ enum halo_keyboard_action
 	slowly enough by default to stay off the enemies' motion trackers:
 	source/input/input_abstraction.c, port/linux/game/keyboard_walk.c) */
 	HALO_KEYBOARD_WALK,
+	/* (the HUD's Spartan link's, which the game itself does not read: the
+	teammates' feeds shown or hidden, port/linux/game/spartan_link.c) */
+	HALO_KEYBOARD_SPARTAN_LINK,
 	NUMBER_OF_HALO_KEYBOARD_ACTIONS
 };
 

@@ -531,6 +531,12 @@ void first_person_weapons_dispose_from_old_map(
 	return;
 }
 
+/* port: a teammate's weapon and arms drawn in their feed (the HUD's Spartan
+link, port/linux/game/spartan_link.c): the unit the feed being drawn looks
+out of where no local player's slot animates it, else NONE */
+long spartan_link_posed_unit(void);
+static void first_person_weapon_draw_posed(long unit_index);
+
 long first_person_weapon_get_local_index(
 	long weapon_index)
 {
@@ -563,6 +569,17 @@ void first_person_weapon_draw(
 	if (vr_render_scope_pass())
 		return;
 #endif
+	/* port: (spartan_link_posed_unit) */
+	if (render.local_player_index==NONE)
+	{
+		long posed_unit_index= spartan_link_posed_unit();
+
+		if (posed_unit_index!=NONE)
+		{
+			first_person_weapon_draw_posed(posed_unit_index);
+		}
+		return;
+	}
 	if (render.local_player_index!=NONE)
 	{
 		struct first_person_weapon *first_person_weapon= first_person_weapon_get(render.local_player_index);
@@ -1175,6 +1192,193 @@ short first_person_weapon_vr_idle_pose(
 #endif
 
 /* ---------- private code */
+
+/* port: (spartan_link_posed_unit) a unit's weapon in hand and the arms, as
+its own player sees them but drawn from nothing of the game state's: the
+weapon's idle animation at the game's time and its ammunition's overlay,
+posed at the view's camera (render.camera), lit and coloured as
+first_person_weapon_draw lights and colours a slot's. Not through a zoom,
+as its player sees none then. */
+static void first_person_weapon_draw_posed(
+	long unit_index)
+{
+	struct unit_datum *unit;
+	long weapon_index;
+	struct weapon_datum *weapon;
+	struct weapon_definition *weapon_definition;
+	struct animation_graph *animation_graph;
+	struct animation_graph_first_person_weapon_animations *first_person_weapon_animations;
+	struct game_globals_first_person_interface *first_person_interface;
+	long animation_graph_index;
+	long weapon_model_index;
+	short weapon_node_remapping_table[MAXIMUM_NODES_PER_ANIMATION];
+	short hands_node_remapping_table[MAXIMUM_NODES_PER_ANIMATION];
+	real_orientation node_orientations[MAXIMUM_NODES_PER_ANIMATION];
+	struct real_matrix4x3 node_matrices[MAXIMUM_NODES_PER_ANIMATION];
+	struct real_matrix4x3 model_node_matrices[MAXIMUM_NODES_PER_ANIMATION];
+	struct render_model_effect model_effect;
+	struct render_lighting *lighting;
+	struct animation *idle_animation;
+	short idle_animation_index;
+	short firing_animation_index;
+	real camouflage_super_amount;
+	real active_camouflage;
+
+	if (!object_try_and_get_and_verify_type(unit_index, _object_mask_unit))
+	{
+		return;
+	}
+	unit= unit_get(unit_index);
+	if (unit->unit.current_zoom_level!=NONE)
+	{
+		return;
+	}
+	weapon_index= unit_inventory_get_weapon(unit_index, unit->unit.current_weapon_index);
+	if (weapon_index==NONE || !weapon_try_and_get(weapon_index))
+	{
+		return;
+	}
+	weapon= weapon_get(weapon_index);
+	weapon_definition= weapon_definition_get(weapon->definition_index);
+	animation_graph_index= weapon_definition->weapon.interface_definition.first_person_animations.index;
+	weapon_model_index= weapon_definition->weapon.interface_definition.first_person_model.index;
+	first_person_interface= TAG_BLOCK_GET_ELEMENT(
+		&scenario_get_game_globals()->first_person_interface,
+		0,
+		struct game_globals_first_person_interface);
+	if (animation_graph_index==NONE || weapon_model_index==NONE || !first_person_interface)
+	{
+		return;
+	}
+	animation_graph= animation_graph_definition_get(animation_graph_index);
+	if (!animation_graph->first_person_weapon_animations.count ||
+		animation_graph->nodes.count<=0 ||
+		animation_graph->nodes.count>MAXIMUM_NODES_PER_ANIMATION ||
+		!model_build_remapping_table_for_animation_graph(weapon_model_index, animation_graph_index,
+			weapon_node_remapping_table))
+	{
+		return;
+	}
+	first_person_weapon_animations= TAG_BLOCK_GET_ELEMENT(
+		&animation_graph->first_person_weapon_animations,
+		0,
+		struct animation_graph_first_person_weapon_animations);
+	idle_animation_index= VALID_INDEX(
+		_first_person_weapon_animation_idle,
+		first_person_weapon_animations->animations.count) ?
+		animation_graph_animation_index_get(
+			&first_person_weapon_animations->animations)
+				[_first_person_weapon_animation_idle].animation_index :
+		(short)NONE;
+	if (idle_animation_index==NONE)
+	{
+		return;
+	}
+	idle_animation= TAG_BLOCK_GET_ELEMENT(&animation_graph->animations, idle_animation_index, struct animation);
+	if (!first_person_weapon_animation_fits(animation_graph, idle_animation) || idle_animation->frame_count<=0)
+	{
+		return;
+	}
+	animation_get_node_orientations(
+		NULL,
+		idle_animation,
+		(short)(game_time_get()%idle_animation->frame_count),
+		node_orientations);
+	firing_animation_index= VALID_INDEX(
+		_first_person_weapon_animation_ammunition,
+		first_person_weapon_animations->animations.count) ?
+		animation_graph_animation_index_get(
+			&first_person_weapon_animations->animations)
+				[_first_person_weapon_animation_ammunition].animation_index :
+		(short)NONE;
+	if (firing_animation_index!=NONE)
+	{
+		struct animation *firing_animation= TAG_BLOCK_GET_ELEMENT(
+			&animation_graph->animations,
+			firing_animation_index,
+			struct animation);
+
+		if (first_person_weapon_animation_fits(animation_graph, firing_animation) &&
+			weapon->weapon.magazines[0].rounds_loaded>=0 &&
+			weapon->weapon.magazines[0].rounds_loaded<firing_animation->frame_count)
+		{
+			overlay_animation_apply(
+				firing_animation,
+				weapon->weapon.magazines[0].rounds_loaded,
+				node_orientations);
+		}
+	}
+	animation_graph_node_matrices_from_orientations(
+		animation_graph_index,
+		node_matrices,
+		node_orientations,
+		&render.camera.position,
+		&render.camera.forward,
+		&render.camera.up);
+
+	lighting= object_get_cached_render_lighting(unit_index, FLT_MAX);
+	active_camouflage= render_interpolation_unit_camouflage(unit_index, &camouflage_super_amount);
+	model_effect.modifier_shader= NULL;
+	if (TEST_FLAG(unit->unit.flags, _unit_active_camouflaged_bit) || active_camouflage>0.0f)
+	{
+		model_effect.type= _render_model_effect_type_active_camouflage;
+		model_effect.intensity= active_camouflage;
+		model_effect.parameter= camouflage_super_amount;
+		model_effect.source_object_index= unit_index;
+		model_effect.source_object_centroid= render.camera.position;
+	}
+	else
+	{
+		model_effect.type= _render_model_effect_type_none;
+	}
+	model_remap_node_matrices_to_match_animation_graph(
+		weapon_model_index,
+		model_node_matrices,
+		animation_graph_index,
+		node_matrices,
+		weapon_node_remapping_table);
+	render_model(
+		weapon_model_index,
+		0.0f,
+		model_node_matrices,
+		NULL,
+		render_interpolation_object_change_colors(weapon_index),
+		render_interpolation_object_function_values(weapon_index),
+		lighting,
+		&render.camera.position,
+		0.0f,
+		&model_effect,
+		weapon_index,
+		0,
+		FLAG(_render_model_first_person_bit));
+	if (first_person_interface->hands.index!=NONE &&
+		model_build_remapping_table_for_animation_graph(first_person_interface->hands.index, animation_graph_index,
+			hands_node_remapping_table))
+	{
+		model_remap_node_matrices_to_match_animation_graph(
+			first_person_interface->hands.index,
+			model_node_matrices,
+			animation_graph_index,
+			node_matrices,
+			hands_node_remapping_table);
+		render_model(
+			first_person_interface->hands.index,
+			0.0f,
+			model_node_matrices,
+			NULL,
+			render_interpolation_object_change_colors(unit_index),
+			render_interpolation_object_function_values(unit_index),
+			lighting,
+			&render.camera.position,
+			0.0f,
+			&model_effect,
+			weapon_index,
+			0,
+			FLAG(_render_model_first_person_bit));
+	}
+
+	return;
+}
 
 static void first_person_weapon_set_visibility(
 	short local_player_index,

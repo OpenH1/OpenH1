@@ -1039,6 +1039,9 @@ struct render_target_entry
 	multisampled with multisampling (render_target_multisample) */
 	BOOL screen_buffer;
 	enum render_target_kind kind;
+	/* a screen's target's view: 0 the screen's own, else an extra view's
+	(halo_view_begin), whose targets are its own */
+	int view;
 };
 
 /* every draw looks up its targets and whether its textures are render
@@ -1057,6 +1060,33 @@ static struct render_target_entry *render_targets;
 static xgpu_target next_target_number = 1;
 
 static void render_targets_evict(void);
+
+/* ---------- extra views
+
+A view drawn into images of its own rather than the screen: a teammate's
+feed in the HUD's Spartan link (port/linux/game/spartan_link.c). Between
+halo_view_begin and halo_view_end the screen's targets (the back buffer,
+its depth buffer, the secondary target) are the view's: entries of their
+own, at the screen's scale, the back buffer and its depth buffer only the
+view's size (its units from the screen's top left corner, where its window
+is drawn). They are drawn without multisampling, the anti-aliasing pass or
+the world's ambient occlusion, and kept from frame to frame, so that the
+view need not be drawn every frame; the HUD draws the view's image
+(halo_view_sample). Nothing on the backends is new: a view's images are
+render targets as any other. */
+#define HALO_VIEW_COUNT 17
+
+static struct
+{
+	/* its size in the screen's units (0: none) */
+	unsigned long width, height;
+} views[HALO_VIEW_COUNT];
+/* the view the screen's targets are now (0: the screen's own), and the
+view whose image stage 0 samples (0: none) */
+static int screen_view;
+static int sampled_view;
+/* views' images no longer drawn, freed between frames (halo_screen_commit) */
+static BOOL views_released;
 
 /* the target that holds the Xbox surface at this physical address (the
 latest drawn into, of the pass drawing now), or NULL */
@@ -1628,6 +1658,7 @@ static struct
 	DWORD data, format, size;
 	long screen_width;
 	float scale[2];
+	int view;
 	struct render_target_entry *entry;
 } recent_render_targets[RECENT_RENDER_TARGET_COUNT];
 static unsigned long recent_render_target_next;
@@ -1643,6 +1674,7 @@ static struct render_target_entry *render_target_remember(const D3DSurface *surf
 	recent_render_targets[slot].screen_width = screen;
 	recent_render_targets[slot].scale[0] = screen_scale[0];
 	recent_render_targets[slot].scale[1] = screen_scale[1];
+	recent_render_targets[slot].view = screen_view;
 	recent_render_targets[slot].entry = entry;
 	return entry;
 }
@@ -1679,7 +1711,7 @@ static struct render_target_entry *render_target_get(const D3DSurface *surface)
 		if (recent_render_targets[slot].entry && recent_render_targets[slot].data == surface->Data &&
 			recent_render_targets[slot].format == surface->Format && recent_render_targets[slot].size == surface->Size &&
 			recent_render_targets[slot].screen_width == screen && recent_render_targets[slot].scale[0] == screen_scale[0] &&
-			recent_render_targets[slot].scale[1] == screen_scale[1])
+			recent_render_targets[slot].scale[1] == screen_scale[1] && recent_render_targets[slot].view == screen_view)
 		{
 			return recent_render_targets[slot].entry;
 		}
@@ -1696,6 +1728,12 @@ static struct render_target_entry *render_target_get(const D3DSurface *surface)
 		scale[0] = screen_scale[0];
 		scale[1] = screen_scale[1];
 		kind = _render_target_screen;
+		/* (an extra view's: the back buffer and its depth buffer its size) */
+		if (screen_view && height == SCREEN_HEIGHT)
+		{
+			width = views[screen_view].width;
+			height = views[screen_view].height;
+		}
 #ifdef HALO_VR
 		/* in the eye pass the back buffer is the eyes' swapchain image, and
 		the screen's other targets have a layer for each eye (foveated, two:
@@ -1719,7 +1757,7 @@ static struct render_target_entry *render_target_get(const D3DSurface *surface)
 		if (entry->target.data == surface->Data && entry->target.width == width &&
 			entry->target.height == height && entry->target.depth == depth &&
 			entry->target.scale[0] == scale[0] && entry->target.scale[1] == scale[1] &&
-			entry->target.layers == layers)
+			entry->target.layers == layers && entry->view == (kind == _render_target_screen ? screen_view : 0))
 		{
 			return render_target_remember(surface, screen, entry);
 		}
@@ -1733,6 +1771,7 @@ static struct render_target_entry *render_target_get(const D3DSurface *surface)
 	entry->target.scale[0] = scale[0];
 	entry->target.scale[1] = scale[1];
 	entry->kind = kind;
+	entry->view = kind == _render_target_screen ? screen_view : 0;
 	entry->target.pixel_width = (unsigned long)(width * scale[0] + 0.5f);
 	entry->target.pixel_height = (unsigned long)(height * scale[1] + 0.5f);
 	entry->target.layers = layers;
@@ -1762,6 +1801,10 @@ struct xgpu_render_target *xgpu_render_target_find(unsigned long data)
 #endif
 	for (entry = *render_target_bucket(data); entry; entry = entry->next_in_bucket)
 	{
+		/* (an extra view's screen targets in its own pass alone, and the
+		screen's outside them: halo_view_begin) */
+		if (entry->kind == _render_target_screen && entry->view != screen_view)
+			continue;
 		/* (in a VR pass, the screen's targets of its own pass: the eyes' have
 		a layer for each eye, the HUD's and the scope's one, each at its
 		pass's scale) */
@@ -1904,6 +1947,12 @@ static BOOL bind_targets(BOOL *has_depth)
 	samples = anti_aliasing() == _anti_aliasing_msaa ? anti_aliasing_samples : 0;
 	if (samples && !target_multisampled)
 		samples = 0;
+	/* (not an extra view's: a few hundred pixels, drawn now and then) */
+	if (screen_view)
+	{
+		samples = 0;
+		target_multisampled = FALSE;
+	}
 #ifdef HALO_VR
 	/* (not in the VR mode's passes: the eyes' targets have a layer for each
 	eye, and the HUD and its groups are layers of their own) */
@@ -2496,6 +2545,12 @@ long halo_screen_commit(void)
 			shadow_scale = shadow;
 			render_targets_evict();
 		}
+	}
+	/* (the extra views' images no longer drawn: halo_view_release) */
+	if (views_released)
+	{
+		views_released = FALSE;
+		render_targets_evict();
 	}
 	if (!screen_width)
 		return halo_screen_width();
@@ -3226,8 +3281,15 @@ static BOOL render_target_stale(const struct render_target_entry *entry)
 	switch (entry->kind)
 	{
 	case _render_target_screen:
+		/* (an extra view's: gone, or of another size) */
+		if (entry->view && entry->screen_buffer && (entry->target.width != views[entry->view].width ||
+				entry->target.height != views[entry->view].height))
+			return TRUE;
+		if (entry->view && !views[entry->view].width)
+			return TRUE;
 		return entry->target.scale[0] != screen_scale[0] || entry->target.scale[1] != screen_scale[1] ||
-			(entry->target.height == SCREEN_HEIGHT && entry->target.width != (unsigned long)halo_screen_width()) ||
+			(!entry->view && entry->target.height == SCREEN_HEIGHT &&
+				entry->target.width != (unsigned long)halo_screen_width()) ||
 			(render_target_screen_colour(entry) && entry->target.format != hdr_back_buffer_format());
 	case _render_target_shadow_map:
 		return entry->target.scale[0] != (float)halo_shadow_map_scale();
@@ -3318,6 +3380,18 @@ static void bind_textures(struct nv2a_pixel_shader_key *key, float texture_scale
 			continue;
 		}
 		target = xgpu_render_target_find(texture->Data);
+		/* (an extra view's image in stage 0's place: halo_view_sample) */
+		if (stage == 0 && sampled_view)
+		{
+			struct render_target_entry *view;
+
+			target = NULL;
+			for (view = render_targets; view; view = view->next)
+			{
+				if (view->view == sampled_view && view->screen_buffer && !view->target.depth)
+					target = &view->target;
+			}
+		}
 		if (target)
 		{
 			xgpu_texture_describe(texture->Format, texture->Size, &description);
@@ -5481,7 +5555,7 @@ void halo_screen_anti_alias(short x0, short y0, short x1, short y1)
 
 		journal_operation(JOURNAL_ANTI_ALIAS, arguments, sizeof(arguments));
 	}
-	if (!device.gl_ready || (mode != _anti_aliasing_fxaa && mode != _anti_aliasing_smaa))
+	if (!device.gl_ready || (mode != _anti_aliasing_fxaa && mode != _anti_aliasing_smaa) || screen_view)
 		return;
 	/* (the primary target's view: the back buffer's) */
 	target = render_target_get(&device.back_buffer);
@@ -5517,7 +5591,7 @@ int halo_world_ao_prepass_begin(void)
 {
 	struct render_target_entry *target;
 
-	if (!device.gl_ready || !world_ao.active || world_ao.failed || device.render_target != &device.back_buffer ||
+	if (!device.gl_ready || !world_ao.active || world_ao.failed || screen_view || device.render_target != &device.back_buffer ||
 		device.depth_stencil != &device.depth_buffer || !(target = render_target_get(&device.back_buffer)))
 		return FALSE;
 	world_ao.prepass = world_ao.sampled = TRUE;
@@ -5602,7 +5676,7 @@ void halo_screen_panini(short x0, short y0, short x1, short y1, const float proj
 	}
 	/* (no projection: the setting off, the pass only journaled, for a load
 	with it on: port/linux/game/panini.c) */
-	if (!device.gl_ready || !projection)
+	if (!device.gl_ready || !projection || screen_view)
 		return;
 	target = render_target_get(&device.back_buffer);
 	if (!target)
@@ -5641,6 +5715,85 @@ void halo_screen_tone_map(short x0, short y0, short x1, short y1)
 	corners[2] = scaled_pixel(x1, target->target.scale[0]);
 	corners[3] = scaled_pixel(y1, target->target.scale[1]);
 	xgpu_backend_tone_map(target->target.number, corners);
+}
+
+/* ---------- extra views (above, "extra views") */
+
+/* the screen's targets are the view's from now on (1 to HALO_VIEW_COUNT - 1),
+its back buffer and depth buffer width by height of the screen's units */
+void halo_view_begin(int view, unsigned long width, unsigned long height)
+{
+	if (view <= 0 || view >= HALO_VIEW_COUNT || !width || !height)
+		return;
+	if (width > (unsigned long)halo_screen_width())
+		width = (unsigned long)halo_screen_width();
+	if (height > SCREEN_HEIGHT)
+		height = SCREEN_HEIGHT;
+	/* (its images of another size freed between frames) */
+	if (views[view].width && (views[view].width != width || views[view].height != height))
+		views_released = TRUE;
+	views[view].width = width;
+	views[view].height = height;
+	screen_view = view;
+}
+
+/* ... and the screen's own again: the view's image made opaque (its alpha,
+which its draws leave as they please, 1), as the HUD draws it */
+void halo_view_end(void)
+{
+	struct render_target_entry *target;
+
+	if (!screen_view)
+		return;
+	target = device.gl_ready ? render_target_get(&device.back_buffer) : NULL;
+	if (target)
+	{
+		static const float opaque[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+		long rectangle[1][4];
+
+		rectangle[0][0] = 0;
+		rectangle[0][1] = 0;
+		rectangle[0][2] = (long)target->target.pixel_width;
+		rectangle[0][3] = (long)target->target.pixel_height;
+		xgpu_backend_set_targets(target->target.number, -1, 0, 1, 0, 0);
+		xgpu_backend_clear(XGPU_CLEAR_COLOR | XGPU_CLEAR_ALPHA, opaque, 1.0f, 0, (const long (*)[4])rectangle, 1);
+		target->target.written = ++render_target_write_serial;
+		target->last_rendered = device.frame + 1;
+	}
+	screen_view = 0;
+}
+
+/* whether the view's image is there to be drawn: drawn since its targets
+were made (a change of the screen's resolution or format makes them again) */
+int halo_view_drawn(int view)
+{
+	struct render_target_entry *entry;
+
+	if (view <= 0 || view >= HALO_VIEW_COUNT || !views[view].width)
+		return FALSE;
+	for (entry = render_targets; entry; entry = entry->next)
+	{
+		if (entry->view == view && entry->screen_buffer && !entry->target.depth && entry->last_rendered &&
+			!render_target_stale(entry))
+			return TRUE;
+	}
+	return FALSE;
+}
+
+/* the draws from now on sample the view's image in stage 0 in place of its
+texture (0: their textures again): its pixels across the texture's
+coordinates 0 to 1, the view's width and height */
+void halo_view_sample(int view)
+{
+	sampled_view = view > 0 && view < HALO_VIEW_COUNT ? view : 0;
+}
+
+void halo_view_release(int view)
+{
+	if (view <= 0 || view >= HALO_VIEW_COUNT || !views[view].width)
+		return;
+	views[view].width = views[view].height = 0;
+	views_released = TRUE;
 }
 
 /* display.overshield_effect's rise (rasterizer_xbox_plasma_energy.c,

@@ -74,6 +74,11 @@
 			<choice shown="CLASSIC" value="classic"/>
 			<choice shown="CUSTOM" value="custom"/>
 		</row>
+		<row key="high_res_text" kind="choice" setting="display.high_res_text" label="HIGH-RES TEXT">
+			<help>Draws text and titles with sharp high-resolution fonts. Off draws the game's own.</help>
+			<choice shown="ON" value="true"/>
+			<choice shown="OFF" value="false"/>
+		</row>
 		<row key="battery_saver" kind="choice" setting="display.battery_saver" label="BATTERY SAVER">
 			<help>Up to 60 frames a second and Classic graphics, for a longer battery and a cooler device. Auto turns it on while the device runs on its battery. Your own settings come back as it turns off.</help>
 			<choice shown="OFF" value="off"/>
@@ -370,10 +375,12 @@
 			<choice shown="GEMS" value="gems"/>
 			<choice shown="DARK GEMS" value="menu_gems"/>
 		</row>
-		<row key="high_res_text" kind="choice" setting="display.high_res_text" label="HIGH-RES TEXT">
-			<help>Draws text and titles with sharp high-resolution fonts. Off draws the game's own.</help>
-			<choice shown="ON" value="true"/>
-			<choice shown="OFF" value="false"/>
+		<row key="spartan_link" kind="choice" setting="display.spartan_link" label="SPARTAN LINK">
+			<help>Your living teammates' views in the HUD's top line, with their names, shields and distances, in co-op and team games: the SPARTAN LINK key (or D-pad Down) shows and hides them. Off: the key does nothing.</help>
+			<choice shown="SMALL" value="small"/>
+			<choice shown="MEDIUM" value="medium"/>
+			<choice shown="LARGE" value="large"/>
+			<choice shown="OFF" value="off"/>
 		</row>
 		<section key="section_4" title="MULTIPLAYER"/>
 		<row key="player_names" kind="choice" setting="display.player_names" label="PLAYER NAMES">
@@ -1050,7 +1057,8 @@
 		<row key="command_5" kind="binding" label=""/>
 		<row key="command_6" kind="binding" label=""/>
 		<row key="command_7" kind="binding" label=""/>
-		<section key="section_10" title="WALK"/>
+		<row key="command_8" kind="binding" label=""/>
+		<section key="section_11" title="WALK"/>
 		<row key="walk" kind="choice" setting="input.walk" label="WALK">
 			<help>Hold walks while the Walk key is held; Toggle walks from one press to the next. Walking, the movement keys move you slowly, as a stick pushed a little does.</help>
 			<choice shown="HOLD" value="hold"/>
