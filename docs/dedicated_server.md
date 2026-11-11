@@ -420,7 +420,7 @@ new.
 
 | Value | The games |
 | --- | --- |
-| `openh1_120` (the default), `openh1_60` | An OpenH1 game at 120 or 60 ticks a second: each OpenH1 player's sub-steps go between the machines, and OpenCE players join it too, at 30, while `network.allow_opence` is on (the default) |
+| `openh1_120` (the default), `openh1_60` | An OpenH1 game at 120 or 60 ticks a second: each OpenH1 player's sub-steps go between the machines, and OpenCE players join it too, at 30, when `network.allow_opence` is on (it is off by default) |
 | `openh1_30` | An OpenH1 game at 30, as a player's Server Setup offers it |
 | `legacy` | OpenCE's netcode at 30 ticks a second, which OpenCE's players and OpenH1's join alike |
 

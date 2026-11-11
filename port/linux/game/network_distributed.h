@@ -226,6 +226,15 @@ enum
 	settings) to its OpenH1 clients with a player who sees it */
 	_distributed_message_marker_up = 139,
 	_distributed_message_marker_down = 140,
+	/* an OpenH1 game's tick states of the players (network_distributed.c,
+	unreliable, to each OpenH1 client, in place of _distributed_message_unit_states):
+	each the difference from a state of the player the client said it took,
+	or whole */
+	_distributed_message_unit_state_differences = 141,
+	/* an OpenH1 game's actors' states (network_actors.c, unreliable, to each
+	OpenH1 client, in place of _distributed_message_actor_states): each
+	without the parts at their defaults */
+	_distributed_message_actor_states_compact = 142,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };
@@ -561,6 +570,10 @@ each client */
 void network_actors_host_tick(void);
 /* (a client) the host's word on its actors' units */
 void network_actors_handle_states(void const *entries, short count);
+/* ... an OpenH1 game's compact (_distributed_message_actor_states_compact),
+each read no further than end, and their least bytes */
+void network_actors_handle_compact_states(void const *data, void const *end, short count);
+word network_actors_compact_minimum_size(void);
 word network_actors_entry_size(void);
 /* (a client, in its tick where the host runs its actors) each actor's unit
 given the control the host last sent for it */

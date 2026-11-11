@@ -1465,17 +1465,18 @@ static const struct config_setting config_settings[] =
 		"LISTING changes it for each game." },
 	{ "network.game_mode", _config_string, "\"openh1\"", "HALO_NET_GAME_MODE", _environment_value, _platform_all,
 		"Hosting: \"openh1\", an OpenH1 game at the rate network.sim_rate picks,\n"
-		"which OpenCE players join too at 30 (network.allow_opence), or\n"
+		"which OpenCE players may join too at 30 (network.allow_opence), or\n"
 		"\"legacy\", OpenCE's netcode at 30 ticks a second for everyone. Read as\n"
 		"the game is hosted (\"standard\" is \"openh1\" too)." },
 	{ "network.sim_rate", _config_integer, "120", "HALO_NET_SIM_RATE", _environment_value, _platform_all,
 		"Hosting an OpenH1 game: its tick rate, 30, 60 or 120 (game.sim_rate's\n"
 		"steps), which every machine of it takes as the game starts. A Legacy game\n"
 		"plays at 30." },
-	{ "network.allow_opence", _config_boolean, "true", "HALO_NET_ALLOW_OPENCE", _environment_value, _platform_all,
-		"Hosting an OpenH1 game: let OpenCE players join it too. They play at 30\n"
-		"ticks a second, as on their own machine, and OpenH1 players at\n"
-		"network.sim_rate. False: OpenH1 players only. Read with\n"
+	{ "network.allow_opence", _config_boolean, "false", "HALO_NET_ALLOW_OPENCE", _environment_value, _platform_all,
+		"Hosting an OpenH1 game: true lets OpenCE players join it too. They play\n"
+		"at 30 ticks a second, as on their own machine, and OpenH1 players at\n"
+		"network.sim_rate. False: OpenH1 players only (a Legacy game,\n"
+		"network.game_mode, is the one to play with OpenCE players). Read with\n"
 		"network.game_mode." },
 	{ "network.opence_welcome", _config_boolean, "true", "HALO_NET_OPENCE_WELCOME", _environment_value,
 		_platform_all,
@@ -1749,7 +1750,7 @@ static const struct config_setting config_settings[] =
 	{ "server.game_mode", _config_string, "\"openh1_120\"", "HALO_SERVER_GAME_MODE", _environment_value,
 		_platform_server,
 		"The games hosted: \"openh1_120\" or \"openh1_60\" (or \"openh1_30\"), an\n"
-		"OpenH1 game at that tick rate, which OpenCE players join too at 30 while\n"
+		"OpenH1 game at that tick rate, which OpenCE players join too at 30 when\n"
 		"network.allow_opence is true; or \"legacy\", OpenCE's netcode at 30 ticks\n"
 		"a second for everyone. A change waits for the server to be empty in its\n"
 		"lobby (players in it keep the kind they joined)." },

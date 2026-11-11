@@ -660,9 +660,9 @@ list names the chosen game's kind: "OpenH1 60 Tick, OpenCE can join" (a
 mixed game, below), "OpenH1 60 Tick" or "Legacy".
 
 How OpenH1 machines recognise each other in an OpenH1 game that OpenH1
-players alone join (`network.allow_opence` false; by default OpenCE players
-join an OpenH1 game too, advertised as below, "OpenCE players in an OpenH1
-game"):
+players alone join (`network.allow_opence` false, the default; with it on,
+OpenCE players join an OpenH1 game too, advertised as below, "OpenCE players
+in an OpenH1 game"):
 
 - The advertisement's version word carries the OpenH1 protocol version
   (above), and the reserved byte after the game's kind
@@ -1164,9 +1164,92 @@ in an OpenH1 game of several sub-steps a tick (`network_distributed.c`,
   came out of order).
 
 Each costs a client, at 120, 90 states a second for each player near it (30
-at 60), about 3.3 KB/s a player at 120 (1.1 at 60) and 10 bytes a message.
-Nothing changes in a Legacy game, at 30, or for an OpenCE machine (sent no
-message of 120 and after) or an OpenCE player's state.
+at 60), and 10 bytes a message. Nothing changes in a Legacy game, at 30, or
+for an OpenCE machine (sent no message of 120 and after) or an OpenCE
+player's state.
+
+From protocol version 22 a sub-step's state is written as its difference
+from the tick's state the host last sent that client of the player
+(`distributed_substep_state_write`), not whole: the player, the host's ticks
+since that state (at most 7), the client's tick's difference in a byte, the
+position's in 16 bits a part of 1/4096 of a world unit (rounded: an 8192th
+off at most, where a client corrects another player only past a twentieth),
+and the velocity's and the facing's in a byte a part, each part whole where
+its difference does not fit, and the up where it is not the tick state's.
+A sub-step's state carries nothing else the client takes from it (a death,
+a spawn, a seat and the shields wait for the tick's state, as before). Where
+there is no such tick's state (none sent, another unit, older than 7 ticks,
+further than 8 world units away, or the client's tick further than a byte),
+the state goes whole as before, after a byte that says so. A client keeps
+the host's last 8 ticks' states of each player
+(`distributed_taken_substep_bases`) and passes over a difference from one
+it has not (lost), until the tick's state.
+
+A state of a sub-step was 37 bytes on average, and is 17.6 (16 on foot and
+turning slowly). Forty players on Blood Gulch at 120 (8 clients and 32 of
+the host's bots, 60 s): the states of the sub-steps 504 KB/s of the host's
+1,139 KB/s before, 249 KB/s of 895 KB/s after, the datagrams on the wire
+1.24 MB/s and 1.00 MB/s (-20%). Over 20 ms ±3 each way, three games of each
+build in turn, the players near a client (within 25 world units) were where
+the host had them within 0.16 to 0.17 world units (p95) before and 0.16 to
+0.18 after, aimed within 14.9 to 17.9 degrees and 13.9 to 16.0, a press
+seen from one client to another in 50 to 52 ms and 49 to 57, and a hit dealt
+in 26 ms and 25 to 26: the games' spread, not the builds'.
+
+### Tick states as differences
+
+From protocol version 23 an OpenH1 game's host sends its OpenH1 clients each
+tick's states of the players as their differences from states the client
+says it took (`_distributed_message_unit_state_differences`, in place of
+`_distributed_message_unit_states`; `network_distributed.c`'s
+`distributed_unit_difference_write`), not whole. A Legacy game, and what an
+OpenCE machine is sent, are as before.
+
+- **On a grid.** The host's states as its OpenH1 clients have them are on a
+  grid of 1/4096 of a world unit (`distributed_unit_state_snap`: an 8192th
+  off at most, where a client corrects another player only past a
+  twentieth), so a difference and the whole state come to the same state,
+  whatever state the difference is from. The host keeps its last 32 ticks'
+  states of each player so (`distributed_tick_states`), once for every
+  client, and the last 4 ticks it sent each client each player.
+- **The client's word.** A client's input (its byte that was padding) says
+  how many of the host's ticks before `host_time` the latest is whose states
+  it took, or 255: none, or a difference came from a state it has not (lost),
+  until a later tick's are all known. The host writes each difference from
+  the latest state of the player it sent that client at a tick no later than
+  that one, within 32 ticks; with none (or 255), whole.
+- **A difference** is the player, the host's ticks since the state it is
+  from, and which parts differ (16 bits): the flags, the killer, the unit,
+  the vehicle and seat, the position (its steps on the grid, 16 bits a part),
+  the velocity and the facing (a byte a part where the change fits, else
+  whole), the up, the client's tick (a byte, else whole), the shields and
+  health, the damage they show, the powerups, the camouflage. A part the
+  whole state leaves at its default (a dead player's position) is not
+  compared. A teleport further than 8 world units, a state with a velocity
+  at full precision, or no state to be from, goes whole after a byte that
+  says so.
+- **Read.** A client keeps the states it took of the host's last 32 ticks of
+  each player (`distributed_unit_bases`), reads a difference against the one
+  it names and takes the result as the whole state would have been (written
+  and read back); a difference from one it has not is passed over, and the
+  next input asks for them whole. The sub-steps' states are written against
+  these states as before ("States at the sub-steps").
+
+A player's tick state was 35 bytes on foot, and its difference is 14 to 18
+from the tick before (5 of its own, the position 6, the velocity, facing and
+client's tick 7). Forty players on Blood Gulch (8 clients and 32 of the host's
+bots, 60 s, after version 22): the tick states 245 KB/s before and 156 KB/s
+after at 120 (120 KB/s of differences, and 36 KB/s still of
+`_distributed_message_unit_states`, to machines the host does not take for
+OpenH1 clients), the host's datagrams 1.00 MB/s and 0.90 MB/s on the wire (-10%);
+at 60, from before version 22, 0.80 MB/s and 0.64 MB/s (-20%). Over 20 ms ±3
+each way the players near a client were where the host had them within 0.17
+world units (p95; 0.16 to 0.18 before), aimed within 14.6 to 15.4 degrees
+(13.9 to 17.9), a press seen from one client to another in 50 to 56 ms (49 to
+57); with 1% of the datagrams lost too, within 0.17 and 14.8 to 14.9 degrees,
+the host's datagrams 0.92 to 0.96 MB/s (the whole states the lost ones asked
+for). At 30 (16 players) the states go as differences too, with the clients'
+players where the host has them as before.
 
 ### Actors to far clients
 
@@ -1202,6 +1285,22 @@ wandering the beach's fight, 51 seconds), the host sent the client 100.0 KB/s
 on average (`network test: bandwidth`), 63.3 KB/s of it actors' states
 (`network test: actors to clients`): the presses 1.0 KB/s of those, the aims
 1.8 KB/s, so 97.2 KB/s before (2.9% more).
+
+From protocol version 24 an OpenH1 game's host sends its OpenH1 clients the
+actors' states without the parts at their defaults
+(`_distributed_message_actor_states_compact`, `network_actors.c`'s
+`actor_state_compact_write`), in place of the whole 88-byte structure: the
+unit, its flags, animation state, aiming speed and team, its aim, shields
+and health, where it is and which way it faces always (36 bytes), and each
+of the rest only where any of its values is not its default (the vehicle and
+seat, an impulse, a speech, a custom animation, fleeing, camouflage, a look
+or a facing not along its aim, an up not straight up, a velocity, the sticks,
+the control flags, the trigger). The structure read is the one written, byte
+for byte. A Legacy game, and an OpenCE machine, take the whole structure as
+before. On b30 (the host and three clients, the scripted player, 60 s) the
+actors' states were 288 KB/s at 60 and 297 at 120, and are 153 and 150
+(about 45 bytes each), the host's datagrams 0.46 and 0.48 MB/s, now 0.32 and
+0.31 (-31% and -35%, with version 23's tick states).
 
 ### Remote players drawn from the newest sub-steps
 
@@ -1244,8 +1343,11 @@ at 30, single player and split screen are drawn as before.
 
 ### OpenCE players in an OpenH1 game
 
-An OpenH1 game's host takes OpenCE players too (`network.allow_opence`,
-on by default: a mixed game; `port/linux/game/network_standard.c`). The
+An OpenH1 game's host takes OpenCE players too with `network.allow_opence`
+on (a mixed game; `port/linux/game/network_standard.c`). It is off by
+default: an OpenH1 game is OpenH1 players' alone, advertised with OpenH1's
+own protocol version (an OpenH1 build of another version is told so, not
+joined at 30), and a Legacy game is the one to play with OpenCE players. The
 server browser and the LAN list say so ("OpenH1 60 Tick, OpenCE can join"),
 and Server Setup's GAME choices. Each player plays
 at their own rate: OpenCE players at 30, as in a Legacy game, and OpenH1

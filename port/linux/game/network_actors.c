@@ -270,6 +270,233 @@ static long actors_bytes_sent;
 static long actors_pressed_bytes_sent;
 static long actors_aimed_bytes_sent;
 
+/* ---------- compact states
+An OpenH1 game's host sends its OpenH1 clients the actors' states without
+the parts at their defaults (_distributed_message_actor_states_compact,
+actor_state_compact_write), which most are: an actor rides nothing, starts
+no impulse, says nothing, plays no custom animation, does not flee, is not
+camouflaged, stands up straight and looks where it aims. A part comes
+whole where any of its values is not its default, and the state read is the
+state written. Legacy games and OpenCE machines take the whole structure
+as before. */
+
+/* the parts of a compact state that are there (16 bits, after the unit) */
+enum
+{
+	_actor_part_riding_bit = 0,
+	_actor_part_impulse_bit,
+	_actor_part_speech_bit,
+	_actor_part_animation_bit,
+	_actor_part_run_blindly_bit,
+	_actor_part_camouflage_bit,
+	_actor_part_looking_bit,
+	_actor_part_facing_bit,
+	_actor_part_up_bit,
+	_actor_part_velocity_bit,
+	_actor_part_throttle_bit,
+	_actor_part_control_bit,
+	_actor_part_trigger_bit,
+};
+
+enum
+{
+	/* its least bytes: the parts, the unit, its flags, animation state,
+	aiming speed and team, its aim, shields and health, where it is and
+	which way it faces */
+	ACTOR_COMPACT_MINIMUM_SIZE = 2 + 4 + 4 + 2 * NUMBER_OF_ANGLES + 4 + 12 + 6,
+	ACTOR_COMPACT_MAXIMUM_SIZE = ACTOR_COMPACT_MINIMUM_SIZE + (4 + 2) + (1 + 1 + 2) + (1 + 4) + (4 + 2 + 1 + 1) + 2 +
+		1 + 2 * 2 * NUMBER_OF_ANGLES + 6 + 6 + 3 + 2 + 1,
+};
+
+static byte *actor_put(
+	byte *cursor,
+	void const *data,
+	short size)
+{
+	csmemcpy(cursor, data, size);
+	return cursor + size;
+}
+
+static boolean actor_take(
+	byte const **cursor,
+	byte const *end,
+	void *data,
+	short size)
+{
+	if (end - *cursor < size)
+		return FALSE;
+	csmemcpy(data, *cursor, size);
+	*cursor += size;
+	return TRUE;
+}
+
+/* a state's bytes, compact (at most ACTOR_COMPACT_MAXIMUM_SIZE) */
+static word actor_state_compact_write(
+	struct distributed_actor_state const *state,
+	byte *buffer)
+{
+	word parts = 0;
+	byte *cursor = buffer + 2;
+
+	cursor = actor_put(cursor, &state->unit_index, sizeof(state->unit_index));
+	*cursor++ = state->flags;
+	*cursor++ = state->animation_state;
+	*cursor++ = state->aiming_speed;
+	*cursor++ = state->team;
+	cursor = actor_put(cursor, state->aiming, sizeof(state->aiming));
+	cursor = actor_put(cursor, &state->body_vitality, sizeof(state->body_vitality));
+	cursor = actor_put(cursor, &state->shield_vitality, sizeof(state->shield_vitality));
+	cursor = actor_put(cursor, &state->position, sizeof(state->position));
+	cursor = actor_put(cursor, &state->forward, sizeof(state->forward));
+	if (state->vehicle_index != NONE || state->seat_index != NONE)
+	{
+		SET_FLAG(parts, _actor_part_riding_bit, TRUE);
+		cursor = actor_put(cursor, &state->vehicle_index, sizeof(state->vehicle_index));
+		cursor = actor_put(cursor, &state->seat_index, sizeof(state->seat_index));
+	}
+	if (state->impulse != NO_IMPULSE || state->impulse_number || state->impulse_alignment)
+	{
+		SET_FLAG(parts, _actor_part_impulse_bit, TRUE);
+		*cursor++ = state->impulse;
+		*cursor++ = state->impulse_number;
+		cursor = actor_put(cursor, &state->impulse_alignment, sizeof(state->impulse_alignment));
+	}
+	if (state->speech_sound != NONE || state->speech_number)
+	{
+		SET_FLAG(parts, _actor_part_speech_bit, TRUE);
+		*cursor++ = state->speech_number;
+		cursor = actor_put(cursor, &state->speech_sound, sizeof(state->speech_sound));
+	}
+	if (state->user_animation_graph != NONE || state->user_animation || state->user_animation_number ||
+		state->user_animation_interpolate)
+	{
+		SET_FLAG(parts, _actor_part_animation_bit, TRUE);
+		cursor = actor_put(cursor, &state->user_animation_graph, sizeof(state->user_animation_graph));
+		cursor = actor_put(cursor, &state->user_animation, sizeof(state->user_animation));
+		*cursor++ = state->user_animation_number;
+		*cursor++ = state->user_animation_interpolate;
+	}
+	if (state->run_blindly_angle)
+	{
+		SET_FLAG(parts, _actor_part_run_blindly_bit, TRUE);
+		cursor = actor_put(cursor, &state->run_blindly_angle, sizeof(state->run_blindly_angle));
+	}
+	if (state->active_camouflage)
+	{
+		SET_FLAG(parts, _actor_part_camouflage_bit, TRUE);
+		*cursor++ = state->active_camouflage;
+	}
+	if (csmemcmp(state->looking, state->aiming, sizeof(state->aiming)))
+	{
+		SET_FLAG(parts, _actor_part_looking_bit, TRUE);
+		cursor = actor_put(cursor, state->looking, sizeof(state->looking));
+	}
+	if (csmemcmp(state->facing, state->aiming, sizeof(state->aiming)))
+	{
+		SET_FLAG(parts, _actor_part_facing_bit, TRUE);
+		cursor = actor_put(cursor, state->facing, sizeof(state->facing));
+	}
+	if (state->up.i || state->up.j || state->up.k != (short)DISTRIBUTED_UNIT_SCALE)
+	{
+		SET_FLAG(parts, _actor_part_up_bit, TRUE);
+		cursor = actor_put(cursor, &state->up, sizeof(state->up));
+	}
+	if (state->velocity.i || state->velocity.j || state->velocity.k)
+	{
+		SET_FLAG(parts, _actor_part_velocity_bit, TRUE);
+		cursor = actor_put(cursor, &state->velocity, sizeof(state->velocity));
+	}
+	if (state->throttle[0] || state->throttle[1] || state->throttle[2])
+	{
+		SET_FLAG(parts, _actor_part_throttle_bit, TRUE);
+		cursor = actor_put(cursor, state->throttle, sizeof(state->throttle));
+	}
+	if (state->control_flags)
+	{
+		SET_FLAG(parts, _actor_part_control_bit, TRUE);
+		cursor = actor_put(cursor, &state->control_flags, sizeof(state->control_flags));
+	}
+	if (state->primary_trigger)
+	{
+		SET_FLAG(parts, _actor_part_trigger_bit, TRUE);
+		*cursor++ = state->primary_trigger;
+	}
+	csmemcpy(buffer, &parts, sizeof(parts));
+	return (word)(cursor - buffer);
+}
+
+/* a state from its compact bytes, no further than end: the bytes it took, 0
+for none that make one */
+static word actor_state_compact_read(
+	byte const *buffer,
+	byte const *end,
+	struct distributed_actor_state *state)
+{
+	byte const *cursor = buffer;
+	word parts;
+
+	csmemset(state, 0, sizeof(*state));
+	state->vehicle_index = NONE;
+	state->seat_index = NONE;
+	state->impulse = NO_IMPULSE;
+	state->speech_sound = NONE;
+	state->user_animation_graph = NONE;
+	state->up.k = (short)DISTRIBUTED_UNIT_SCALE;
+	if (!actor_take(&cursor, end, &parts, sizeof(parts)) ||
+		!actor_take(&cursor, end, &state->unit_index, sizeof(state->unit_index)) ||
+		!actor_take(&cursor, end, &state->flags, sizeof(state->flags)) ||
+		!actor_take(&cursor, end, &state->animation_state, sizeof(state->animation_state)) ||
+		!actor_take(&cursor, end, &state->aiming_speed, sizeof(state->aiming_speed)) ||
+		!actor_take(&cursor, end, &state->team, sizeof(state->team)) ||
+		!actor_take(&cursor, end, state->aiming, sizeof(state->aiming)) ||
+		!actor_take(&cursor, end, &state->body_vitality, sizeof(state->body_vitality)) ||
+		!actor_take(&cursor, end, &state->shield_vitality, sizeof(state->shield_vitality)) ||
+		!actor_take(&cursor, end, &state->position, sizeof(state->position)) ||
+		!actor_take(&cursor, end, &state->forward, sizeof(state->forward)))
+	{
+		return 0;
+	}
+	csmemcpy(state->looking, state->aiming, sizeof(state->aiming));
+	csmemcpy(state->facing, state->aiming, sizeof(state->aiming));
+	if ((TEST_FLAG(parts, _actor_part_riding_bit) &&
+			(!actor_take(&cursor, end, &state->vehicle_index, sizeof(state->vehicle_index)) ||
+				!actor_take(&cursor, end, &state->seat_index, sizeof(state->seat_index)))) ||
+		(TEST_FLAG(parts, _actor_part_impulse_bit) &&
+			(!actor_take(&cursor, end, &state->impulse, sizeof(state->impulse)) ||
+				!actor_take(&cursor, end, &state->impulse_number, sizeof(state->impulse_number)) ||
+				!actor_take(&cursor, end, &state->impulse_alignment, sizeof(state->impulse_alignment)))) ||
+		(TEST_FLAG(parts, _actor_part_speech_bit) &&
+			(!actor_take(&cursor, end, &state->speech_number, sizeof(state->speech_number)) ||
+				!actor_take(&cursor, end, &state->speech_sound, sizeof(state->speech_sound)))) ||
+		(TEST_FLAG(parts, _actor_part_animation_bit) &&
+			(!actor_take(&cursor, end, &state->user_animation_graph, sizeof(state->user_animation_graph)) ||
+				!actor_take(&cursor, end, &state->user_animation, sizeof(state->user_animation)) ||
+				!actor_take(&cursor, end, &state->user_animation_number, sizeof(state->user_animation_number)) ||
+				!actor_take(&cursor, end, &state->user_animation_interpolate,
+					sizeof(state->user_animation_interpolate)))) ||
+		(TEST_FLAG(parts, _actor_part_run_blindly_bit) &&
+			!actor_take(&cursor, end, &state->run_blindly_angle, sizeof(state->run_blindly_angle))) ||
+		(TEST_FLAG(parts, _actor_part_camouflage_bit) &&
+			!actor_take(&cursor, end, &state->active_camouflage, sizeof(state->active_camouflage))) ||
+		(TEST_FLAG(parts, _actor_part_looking_bit) &&
+			!actor_take(&cursor, end, state->looking, sizeof(state->looking))) ||
+		(TEST_FLAG(parts, _actor_part_facing_bit) &&
+			!actor_take(&cursor, end, state->facing, sizeof(state->facing))) ||
+		(TEST_FLAG(parts, _actor_part_up_bit) && !actor_take(&cursor, end, &state->up, sizeof(state->up))) ||
+		(TEST_FLAG(parts, _actor_part_velocity_bit) &&
+			!actor_take(&cursor, end, &state->velocity, sizeof(state->velocity))) ||
+		(TEST_FLAG(parts, _actor_part_throttle_bit) &&
+			!actor_take(&cursor, end, state->throttle, sizeof(state->throttle))) ||
+		(TEST_FLAG(parts, _actor_part_control_bit) &&
+			!actor_take(&cursor, end, &state->control_flags, sizeof(state->control_flags))) ||
+		(TEST_FLAG(parts, _actor_part_trigger_bit) &&
+			!actor_take(&cursor, end, &state->primary_trigger, sizeof(state->primary_trigger))))
+	{
+		return 0;
+	}
+	return (word)(cursor - buffer);
+}
+
 /* ---------- private code */
 
 static void angles_pack(
@@ -839,6 +1066,13 @@ void network_actors_host_tick(
 	};
 	boolean openh1 = network_standard_hosting();
 	struct distributed_actor_state_message message;
+	/* (an OpenH1 client's: the same bytes as the whole structures' at most) */
+	static struct
+	{
+		struct distributed_message_header header;
+		byte data[DATAGRAM_ENTRIES(struct distributed_actor_state) * sizeof(struct distributed_actor_state)];
+	} compact;
+	word compact_size;
 	long machine_indices[HALO_PORT_MAXIMUM_NETWORK_MACHINES];
 	short machine_count = distributed_client_machines(machine_indices, HALO_PORT_MAXIMUM_NETWORK_MACHINES);
 	long now = game_time_get();
@@ -886,6 +1120,8 @@ void network_actors_host_tick(
 		boolean machine_openh1 = openh1 && network_standard_machine_is_openh1(machine_index);
 		short count = 0;
 
+		compact_size = 0;
+
 		for (index = 0; index < state_count; index++)
 		{
 			struct distributed_actor_state const *state = &states[index];
@@ -904,6 +1140,26 @@ void network_actors_host_tick(
 				else
 					continue;
 			}
+			/* (an OpenH1 client's compact: as many as the whole structures'
+			message holds of bytes) */
+			if (machine_openh1)
+			{
+				byte entry[ACTOR_COMPACT_MAXIMUM_SIZE];
+				word size = actor_state_compact_write(state, entry);
+
+				if (count && (compact_size + size > sizeof(compact.data) || count == MAXIMUM_ENTRIES_PER_MESSAGE))
+				{
+					distributed_send_to_machine(machine_index, &compact, _distributed_message_actor_states_compact,
+						count, (word)(sizeof(compact.header) + compact_size));
+					count = 0;
+					compact_size = 0;
+				}
+				csmemcpy(compact.data + compact_size, entry, size);
+				compact_size = (word)(compact_size + size);
+				count++;
+				actors_bytes_sent += size;
+				continue;
+			}
 			actors_bytes_sent += sizeof(*state);
 			message.states[count++] = *state;
 			if (count == MAXIMUM_ENTRIES_PER_MESSAGE || count == DATAGRAM_ENTRIES(struct distributed_actor_state))
@@ -913,12 +1169,45 @@ void network_actors_host_tick(
 				count = 0;
 			}
 		}
-		if (count)
+		if (count && machine_openh1)
+		{
+			distributed_send_to_machine(machine_index, &compact, _distributed_message_actor_states_compact, count,
+				(word)(sizeof(compact.header) + compact_size));
+		}
+		else if (count)
 		{
 			distributed_send_to_machine(machine_index, &message, _distributed_message_actor_states, count,
 				(word)(sizeof(message.header) + count * sizeof(struct distributed_actor_state)));
 		}
 	}
+}
+
+/* client: the host's AI units' compact states (an OpenH1 game's) */
+void network_actors_handle_compact_states(
+	void const *data,
+	void const *end,
+	short count)
+{
+	byte const *cursor = data;
+	long now = game_time_get();
+	short index;
+
+	for (index = 0; index < count; index++)
+	{
+		struct distributed_actor_state state;
+		word size = actor_state_compact_read(cursor, end, &state);
+
+		if (!size)
+			break;
+		cursor += size;
+		actor_state_apply(&state, now);
+	}
+}
+
+word network_actors_compact_minimum_size(
+	void)
+{
+	return ACTOR_COMPACT_MINIMUM_SIZE;
 }
 
 word network_actors_damage_entry_size(

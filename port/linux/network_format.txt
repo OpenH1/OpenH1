@@ -70,6 +70,7 @@ enum _distributed_infection_role_zombie 2
 enum _distributed_infection_waiting 0
 enum _distributed_message_actor_damage 73
 enum _distributed_message_actor_states 64
+enum _distributed_message_actor_states_compact 142
 enum _distributed_message_admin_down 137
 enum _distributed_message_admin_up 138
 enum _distributed_message_aim_assist_policy 90
@@ -132,6 +133,7 @@ enum _distributed_message_relayed_substeps 121
 enum _distributed_message_shield_effects 91
 enum _distributed_message_structure_bsp 65
 enum _distributed_message_substep_states 136
+enum _distributed_message_unit_state_differences 141
 enum _distributed_message_unit_states 2
 enum _distributed_message_vehicle_prediction 12
 enum _distributed_message_voice_config 82
