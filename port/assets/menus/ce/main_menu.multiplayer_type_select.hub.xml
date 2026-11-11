@@ -72,12 +72,6 @@
 		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/multiplayer_type_select/hub/invite_note"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/hub/hub_matchmaking" type="text" width="280" height="26" wide="-106 80" bitmap="main_menu/parts/item_280x26" text="MATCHMAKING" font="ui\large_ui" color="#FF2896FF" text_x="10" text_y="2" source="tools/port_settings.py multiplayer_files/_hub">
-		<on event="a" open="main_menu/multiplayer_type_select/matchmaking/matchmaking_screen"/>
-		<on event="start" open="main_menu/multiplayer_type_select/matchmaking/matchmaking_screen"/>
-		<on event="left_mouse" run="mouse emit accept event"/>
-		<child widget="main_menu/multiplayer_type_select/hub/matchmaking_note"/>
-	</widget>
 	<widget name="main_menu/multiplayer_type_select/hub/hub_party" type="text" width="280" height="26" wide="-106 80" bitmap="main_menu/parts/item_280x26" text="PARTY" font="ui\large_ui" color="#FF2896FF" text_x="10" text_y="2" source="tools/port_settings.py multiplayer_files/_hub">
 		<on event="a" open="main_menu/multiplayer_type_select/party/party_screen"/>
 		<on event="start" open="main_menu/multiplayer_type_select/party/party_screen"/>
@@ -137,8 +131,6 @@
 	<widget name="main_menu/multiplayer_type_select/hub/invite_note" type="text" width="264" height="26" wide="0 80" font="ui\small_ui" color="#FF5ED38C" align="right" text_y="4" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_hub">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/hub/party_note" type="text" width="264" height="26" wide="0 80" font="ui\small_ui" color="#FF7FB2FF" align="right" text_y="4" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_hub">
-	</widget>
-	<widget name="main_menu/multiplayer_type_select/hub/matchmaking_note" type="text" width="264" height="26" wide="0 80" font="ui\small_ui" color="#FF5ED38C" align="right" text_y="4" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_hub">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/hub/friends_note" type="text" width="264" height="26" wide="0 80" font="ui\small_ui" color="#FF5ED38C" align="right" text_y="4" text_flags="no_focus_test" source="tools/port_settings.py multiplayer_files/_hub">
 	</widget>
@@ -258,7 +250,6 @@
 		<string text="Host a game on the Internet, or for players on your local network only."/>
 		<string text="Play the campaign together: online, or split screen on this computer."/>
 		<string text="Group up with friends: they join with your party's link, and come with you to every game you host or join."/>
-		<string text="Pick a playlist: OpenH1 finds a game with room for you and your party, or hosts one that fills up."/>
 		<string text="Your friends, who's online and where, with your friend code. Join them, invite them, or add someone you played."/>
 	</strings>
 </menus>

@@ -295,6 +295,9 @@ struct menu_wide
 {
 	struct ui_widget_definition *definition;
 	short dx, dw;
+	/* (and past 16:9, a look's past: its move and growth at 21:9 past 16:9's,
+	ui_widget_port_past_scale) */
+	short past_dx, past_dw;
 	short x1;
 };
 
@@ -557,7 +560,7 @@ static char const *const port_function_names[] =
 	"port browser filters", "port browser search", "port browser search next", "port browser search clear",
 	/* (Multiplayer's PARTY and its screen: party_menu.inc) */
 	"port party open", "port party button", "port party x", "port party y",
-	/* (Multiplayer's MATCHMAKING and its screen: matchmaking_menu.inc) */
+	/* (the main menu's PRO 2V2 screen: matchmaking_menu.inc) */
 	"port matchmaking button", "port matchmaking x",
 	/* (Multiplayer's FRIENDS and its screens: friends_menu.inc) */
 	"port friends open", "port friends button", "port friends x", "port friends y",
@@ -672,6 +675,9 @@ static struct
 	char const **sources;
 	long source_count;
 	short wide_extra;
+	/* (and the width past 16:9's they are laid out for now:
+	ui_widget_port_past_scale) */
+	short past_extra;
 	boolean loaded;
 	char root[300];
 	/* the tags' generation they were added to (cache_files_tags_generation):
@@ -756,6 +762,13 @@ quarter has the 640's); a widget anchored on a touchscreen (anchor_left,
 anchor_right, stretch) keeps its anchor instead. */
 #define WIDE_LAYOUT_WIDTH 852
 #define WIDE_LAYOUT_EXTRA (WIDE_LAYOUT_WIDTH - 640)
+/* A look in the model (the menu engine's: tools/port_settings.py's tall
+layout) may say how it is laid out past 16:9 too: its past, "dx dw", moves
+it dx and makes it dw wider at 21:9 (WIDE_LAYOUT_PAST_WIDTH) than at 16:9,
+and by its part of that on a screen between them, and more on a wider one,
+so that its screen is used edge to edge */
+#define WIDE_LAYOUT_PAST_WIDTH 1138
+#define WIDE_LAYOUT_PAST_EXTRA (WIDE_LAYOUT_PAST_WIDTH - WIDE_LAYOUT_WIDTH)
 
 /* the extra width a view this wide lays the port's screens out in: 0 at the
 menus' 640 or less, WIDE_LAYOUT_EXTRA at 16:9 and wider */
@@ -771,6 +784,22 @@ short ui_widget_port_wide_scale(short value, short extra)
 	long scaled = (long)value * extra;
 
 	return (short)((scaled + (scaled < 0 ? -WIDE_LAYOUT_EXTRA / 2 : WIDE_LAYOUT_EXTRA / 2)) / WIDE_LAYOUT_EXTRA);
+}
+
+/* the width of a view this wide past 16:9's (none at 16:9 or narrower) */
+static short wide_past_of(long width)
+{
+	return (short)(width <= WIDE_LAYOUT_WIDTH ? 0 : MIN(width - WIDE_LAYOUT_WIDTH, 4 * WIDE_LAYOUT_PAST_EXTRA));
+}
+
+/* a past attribute's move or growth at a width past 16:9's (its 21:9
+value's part of it, or more, rounded) */
+short ui_widget_port_past_scale(short value, short past)
+{
+	long scaled = (long)value * past;
+
+	return (short)((scaled + (scaled < 0 ? -WIDE_LAYOUT_PAST_EXTRA / 2 : WIDE_LAYOUT_PAST_EXTRA / 2)) /
+		WIDE_LAYOUT_PAST_EXTRA);
 }
 
 /* whether a widget with a wide layout keeps its touchscreen's anchor */
@@ -798,13 +827,13 @@ static struct menu_wide const *wide_of(long definition_index)
 }
 
 /* a widget's definition as much wider as its wide layout says at an extra
-width */
-static void wide_apply(struct menu_wide const *wide, short extra)
+width (and past 16:9's) */
+static void wide_apply(struct menu_wide const *wide, short extra, short past)
 {
-	if (wide->definition && wide->dw)
+	if (wide->definition && (wide->dw || wide->past_dw))
 	{
-		wide->definition->bounds.x1 = (short)(wide->x1 +
-			(wide_anchored(wide) ? 0 : ui_widget_port_wide_scale(wide->dw, extra)));
+		wide->definition->bounds.x1 = (short)(wide->x1 + (wide_anchored(wide) ? 0 :
+			ui_widget_port_wide_scale(wide->dw, extra) + ui_widget_port_past_scale(wide->past_dw, past)));
 	}
 }
 
@@ -814,17 +843,19 @@ ui_widget_port_wide_offset's, as it is drawn) */
 void ui_widget_port_wide_layout(long width)
 {
 	short extra = ui_widget_port_wide_extra_of(width);
+	short past = wide_past_of(width);
 	long index;
 
 	pause_boxes_fit();
-	if (extra == menu_tags.wide_extra || !menu_tags.wides)
+	if ((extra == menu_tags.wide_extra && past == menu_tags.past_extra) || !menu_tags.wides)
 		return;
 	menu_tags.wide_extra = extra;
+	menu_tags.past_extra = past;
 	for (index = 0; index < menu_tags.wide_count; index++)
-		wide_apply(&menu_tags.wides[index], extra);
+		wide_apply(&menu_tags.wides[index], extra, past);
 	/* (and the menu engine's definitions made) */
 	for (index = 0; index < menu_tags.look_count; index++)
-		wide_apply(&menu_tags.looks[index].wide, extra);
+		wide_apply(&menu_tags.looks[index].wide, extra, past);
 }
 
 /* the extra width the port's screens are laid out in now (the view's past
@@ -834,13 +865,19 @@ short ui_widget_port_wide_extra(void)
 	return menu_tags.wide_extra;
 }
 
+short ui_widget_port_past_extra(void)
+{
+	return menu_tags.past_extra;
+}
+
 /* how far a widget (and what is in it) is moved where it is drawn, in the
 layout now */
 short ui_widget_port_wide_offset(long definition_index)
 {
 	struct menu_wide const *wide = wide_of(definition_index);
 
-	return wide ? ui_widget_port_wide_scale(wide->dx, menu_tags.wide_extra) : 0;
+	return wide ? (short)(ui_widget_port_wide_scale(wide->dx, menu_tags.wide_extra) +
+		ui_widget_port_past_scale(wide->past_dx, menu_tags.past_extra)) : 0;
 }
 
 /* how much wider than its picture a widget is drawn in the layout now: its
@@ -849,7 +886,8 @@ short ui_widget_port_wide_stretch(long definition_index)
 {
 	struct menu_wide const *wide = wide_of(definition_index);
 
-	return wide ? ui_widget_port_wide_scale(wide->dw, menu_tags.wide_extra) : 0;
+	return wide ? (short)(ui_widget_port_wide_scale(wide->dw, menu_tags.wide_extra) +
+		ui_widget_port_past_scale(wide->past_dw, menu_tags.past_extra)) : 0;
 }
 
 /* ---------- private code */
@@ -2547,23 +2585,32 @@ static boolean look_make(struct menu_look *made, long tag_index)
 	if (!look_children(definition, tag, model, look))
 		return FALSE;
 	/* its wide layout: "dx dw", as the menus' 640 have it, and as wide now
-	(ui_widget_port_wide_layout) */
-	if (look->wide)
+	(ui_widget_port_wide_layout); and past 16:9, "dx dw" */
+	if (look->wide || look->past)
 	{
-		long dx, dw;
+		long dx = 0, dw = 0, past_dx = 0, past_dw = 0;
 		char end;
 
-		if (sscanf(look->wide, "%ld %ld %c", &dx, &dw, &end) != 2 || dx < -WIDE_LAYOUT_EXTRA ||
-			dx > WIDE_LAYOUT_EXTRA || dw < -WIDE_LAYOUT_EXTRA || dw > WIDE_LAYOUT_EXTRA)
+		if (look->wide && (sscanf(look->wide, "%ld %ld %c", &dx, &dw, &end) != 2 || dx < -WIDE_LAYOUT_EXTRA ||
+			dx > WIDE_LAYOUT_EXTRA || dw < -WIDE_LAYOUT_EXTRA || dw > WIDE_LAYOUT_EXTRA))
 		{
 			look_missing(made->name, "its wide is not \"dx dw\", each -212 to 212:", look->wide);
+			return FALSE;
+		}
+		if (look->past && (sscanf(look->past, "%ld %ld %c", &past_dx, &past_dw, &end) != 2 ||
+			past_dx < -2 * WIDE_LAYOUT_PAST_EXTRA || past_dx > 2 * WIDE_LAYOUT_PAST_EXTRA ||
+			past_dw < -2 * WIDE_LAYOUT_PAST_EXTRA || past_dw > 2 * WIDE_LAYOUT_PAST_EXTRA))
+		{
+			look_missing(made->name, "its past is not \"dx dw\", each -572 to 572:", look->past);
 			return FALSE;
 		}
 		made->wide.definition = definition;
 		made->wide.dx = (short)dx;
 		made->wide.dw = (short)dw;
+		made->wide.past_dx = (short)past_dx;
+		made->wide.past_dw = (short)past_dw;
 		made->wide.x1 = definition->bounds.x1;
-		wide_apply(&made->wide, menu_tags.wide_extra);
+		wide_apply(&made->wide, menu_tags.wide_extra, menu_tags.past_extra);
 	}
 	made->definition = definition;
 	return TRUE;

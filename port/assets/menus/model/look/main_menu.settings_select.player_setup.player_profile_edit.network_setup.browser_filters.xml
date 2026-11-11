@@ -13,11 +13,8 @@
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_show_password" x="28" y="142"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_ping" x="28" y="163"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/section_5" x="28" y="190"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_show_ctf" x="28" y="210"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_show_slayer" x="28" y="231"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_show_oddball" x="28" y="252"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_show_king" x="28" y="273"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_show_race" x="28" y="294"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_tick" x="28" y="210"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_game_type" x="28" y="231"/>
 		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/button_bar" x="0" y="414"/>
 	</look>
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/button_bar" role="buttons" type="column_list" box="0 0 640 28">
@@ -90,59 +87,26 @@
 	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/section_5_title" type="text" box="0 0 344 18" wide="0 120">
 		<text font="ui\small_ui" color="#FF6F9CD0" at="2 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/labels" index="5"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_show_ctf" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_tick" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_ctf_label" x="0" y="0"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_ctf_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_tick_label" x="0" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_tick_spinner" x="188" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_ctf_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_tick_label" type="text" box="0 0 184 20" wide="0 120">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/labels" index="6"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_ctf_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
-		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="SHOW|HIDE"/>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_tick_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ANY|OPENH1 30|OPENH1 60|OPENH1 120|LEGACY"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_show_slayer" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_game_type" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
 		<text color="#FF2896FF"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_slayer_label" x="0" y="0"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_slayer_spinner" x="188" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_game_type_label" x="0" y="0"/>
+		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_game_type_spinner" x="188" y="0"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_slayer_label" type="text" box="0 0 184 20" wide="0 120">
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_game_type_label" type="text" box="0 0 184 20" wide="0 120">
 		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/labels" index="7"/>
 	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_slayer_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
-		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="SHOW|HIDE"/>
-	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_show_oddball" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
-		<text color="#FF2896FF"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_oddball_label" x="0" y="0"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_oddball_spinner" x="188" y="0"/>
-	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_oddball_label" type="text" box="0 0 184 20" wide="0 120">
-		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/labels" index="8"/>
-	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_oddball_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
-		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="SHOW|HIDE"/>
-	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_show_king" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
-		<text color="#FF2896FF"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_king_label" x="0" y="0"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_king_spinner" x="188" y="0"/>
-	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_king_label" type="text" box="0 0 184 20" wide="0 120">
-		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/labels" index="9"/>
-	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_king_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
-		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="SHOW|HIDE"/>
-	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/op_browser_show_race" box="0 0 344 20" wide="-106 120" picture="main_menu/settings/row">
-		<text color="#FF2896FF"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_race_label" x="0" y="0"/>
-		<at widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_race_spinner" x="188" y="0"/>
-	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_race_label" type="text" box="0 0 184 20" wide="0 120">
-		<text font="ui\small_ui" color="#FF2896FF" at="10 1" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/labels" index="10"/>
-	</look>
-	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_show_race_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
-		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="SHOW|HIDE"/>
+	<look name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/browser_filters/browser_game_type_spinner" type="spinner" box="0 1 140 19" wide="120 0" header="bitmaps/arrow_sm_left" header_box="-6 4 0 16" footer="bitmaps/arrow_sm_right" footer_box="140 4 146 16">
+		<text font="ui\small_ui" color="#FF2896FF" align="center" at="0 0" items="ANY|SLAYER|TEAM SLAYER|CAPTURE THE FLAG|ODDBALL|KING OF THE HILL|RACE|SWAT|INFECTION|GUN GAME|CO-OP|PRO 2V2"/>
 	</look>
 </model>

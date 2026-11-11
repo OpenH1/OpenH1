@@ -1266,31 +1266,31 @@
 			<choice shown="UNDER 100 MS" value="100"/>
 			<choice shown="UNDER 50 MS" value="50"/>
 		</row>
-		<section key="section_5" title="GAME TYPES"/>
-		<row key="browser_show_ctf" kind="choice" setting="network.browser_show_ctf" label="CAPTURE THE FLAG">
-			<help>Lists Capture the Flag games, OpenCE's kinds of it too.</help>
-			<choice shown="SHOW" value="true"/>
-			<choice shown="HIDE" value="false"/>
+		<section key="section_5" title="GAME"/>
+		<row key="browser_tick" kind="choice" setting="network.browser_tick" label="TICK RATE">
+			<help>Lists only the games of this tick rate.</help>
+			<note>OpenH1 games play at 30, 60 or 120 ticks a second; Legacy games are OpenCE's netcode.</note>
+			<choice shown="ANY" value="any"/>
+			<choice shown="OPENH1 30" value="30"/>
+			<choice shown="OPENH1 60" value="60"/>
+			<choice shown="OPENH1 120" value="120"/>
+			<choice shown="LEGACY" value="legacy"/>
 		</row>
-		<row key="browser_show_slayer" kind="choice" setting="network.browser_show_slayer" label="SLAYER">
-			<help>Lists Slayer games, OpenCE's kinds of it too (SWAT, Infection, Gun Game).</help>
-			<choice shown="SHOW" value="true"/>
-			<choice shown="HIDE" value="false"/>
-		</row>
-		<row key="browser_show_oddball" kind="choice" setting="network.browser_show_oddball" label="ODDBALL">
-			<help>Lists Oddball games.</help>
-			<choice shown="SHOW" value="true"/>
-			<choice shown="HIDE" value="false"/>
-		</row>
-		<row key="browser_show_king" kind="choice" setting="network.browser_show_king" label="KING OF THE HILL">
-			<help>Lists King of the Hill games.</help>
-			<choice shown="SHOW" value="true"/>
-			<choice shown="HIDE" value="false"/>
-		</row>
-		<row key="browser_show_race" kind="choice" setting="network.browser_show_race" label="RACE">
-			<help>Lists Race games.</help>
-			<choice shown="SHOW" value="true"/>
-			<choice shown="HIDE" value="false"/>
+		<row key="browser_game_type" kind="choice" setting="network.browser_game_type" label="GAME TYPE">
+			<help>Lists only the games of this type.</help>
+			<note>Slayer is free for all; SWAT, Infection and Gun Game are OpenCE's. Pro 2v2 is PRO 2V2's games.</note>
+			<choice shown="ANY" value="any"/>
+			<choice shown="SLAYER" value="slayer"/>
+			<choice shown="TEAM SLAYER" value="team_slayer"/>
+			<choice shown="CAPTURE THE FLAG" value="ctf"/>
+			<choice shown="ODDBALL" value="oddball"/>
+			<choice shown="KING OF THE HILL" value="king"/>
+			<choice shown="RACE" value="race"/>
+			<choice shown="SWAT" value="swat"/>
+			<choice shown="INFECTION" value="infection"/>
+			<choice shown="GUN GAME" value="gun_game"/>
+			<choice shown="CO-OP" value="coop"/>
+			<choice shown="PRO 2V2" value="pro_2v2"/>
 		</row>
 		<button key="button_defaults" kind="defaults" run="port settings defaults" help="Puts this page's settings back to their defaults."/>
 		<button key="button_ok" kind="ok" run="port settings keep" help="Saves your changes, on this page and every tab, and applies them."/>

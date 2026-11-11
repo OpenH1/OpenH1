@@ -363,7 +363,7 @@ static void model_look(struct model_reader *reader, XML_Char const **attributes)
 	struct model_attribute table[] =
 	{
 		{ "name", &look.name }, { "role", &look.role }, { "type", &look.type }, { "box", &box },
-		{ "wide", &look.wide },
+		{ "wide", &look.wide }, { "past", &look.past },
 		{ "place", &look.place }, { "picture", &look.picture }, { "radius", NULL, &look.radius },
 		{ "effects", &look.effects }, { "list", &look.list }, { "header", &look.header },
 		{ "header_box", &header_box }, { "footer", &look.footer }, { "footer_box", &footer_box },

@@ -1457,21 +1457,27 @@ static const struct config_setting config_settings[] =
 		"milliseconds (300, 250, 150, 100 or 50); 0 lists every game. A game\n"
 		"whose ping is not known (a local network game's, a dedicated\n"
 		"server's, one still being timed) is listed." },
-	{ "network.browser_show_ctf", _config_boolean, "true", "HALO_NET_BROWSER_SHOW_CTF", _environment_value,
+	{ "network.browser_tick", _config_string, "\"any\"", "HALO_NET_BROWSER_TICK", _environment_value, _platform_all,
+		"The server browsers list only games of this tick rate (their Filters\n"
+		"page): \"any\", \"30\", \"60\" or \"120\" (OpenH1 games at that rate),\n"
+		"or \"legacy\" (OpenCE's netcode)." },
+	{ "network.browser_game_type", _config_string, "\"any\"", "HALO_NET_BROWSER_GAME_TYPE", _environment_value,
 		_platform_all,
-		"The server browsers list Capture the Flag games (their Filters page)." },
-	{ "network.browser_show_slayer", _config_boolean, "true", "HALO_NET_BROWSER_SHOW_SLAYER", _environment_value,
+		"The server browsers list only games of this type (their Filters\n"
+		"page): \"any\", \"slayer\" (free for all), \"team_slayer\", \"ctf\",\n"
+		"\"oddball\", \"king\", \"race\", OpenCE's \"swat\", \"infection\" or\n"
+		"\"gun_game\", \"coop\" (the campaign), or \"pro_2v2\" (PRO 2V2's)." },
+	{ "network.browser_tab", _config_string, "\"all\"", "HALO_NET_BROWSER_TAB", _environment_value, _platform_all,
+		"The server browsers' tab, the one shown last: \"all\", \"dedicated\",\n"
+		"\"openh1\", \"legacy\", \"coop\" or \"favorites\". The browsers write it." },
+	{ "network.browser_sort", _config_string, "\"players\"", "HALO_NET_BROWSER_SORT", _environment_value,
 		_platform_all,
-		"The server browsers list Slayer games (their Filters page)." },
-	{ "network.browser_show_oddball", _config_boolean, "true", "HALO_NET_BROWSER_SHOW_ODDBALL", _environment_value,
-		_platform_all,
-		"The server browsers list Oddball games (their Filters page)." },
-	{ "network.browser_show_king", _config_boolean, "true", "HALO_NET_BROWSER_SHOW_KING", _environment_value,
-		_platform_all,
-		"The server browsers list King of the Hill games (their Filters page)." },
-	{ "network.browser_show_race", _config_boolean, "true", "HALO_NET_BROWSER_SHOW_RACE", _environment_value,
-		_platform_all,
-		"The server browsers list Race games (their Filters page)." },
+		"The column the server browsers sort by, the one chosen last:\n"
+		"\"players\", \"ping\", \"server\", \"map\" or \"mode\". The browsers write it." },
+	{ "network.browser_sort_descending", _config_boolean, "true", "HALO_NET_BROWSER_SORT_DESCENDING",
+		_environment_value, _platform_all,
+		"The server browsers sort from the most (players, ping) or the end of\n"
+		"the alphabet down; false, the other way. The browsers write it." },
 	{ "friends.share_status", _config_boolean, "true", "HALO_FRIENDS_SHARE_STATUS", _environment_value, _platform_all,
 		"Show your friends that you are online, and where (the menus, a party,\n"
 		"a game), and let them join you (Multiplayer > FRIENDS). Only your\n"
@@ -2990,6 +2996,13 @@ static const char *const config_retired_settings[] =
 	/* (the high-res text's letters rasterized or drawn from distance
 	fields: the fields draw them all) */
 	"display.text_renderer",
+	/* (the server browsers' game types shown or hidden one by one: one
+	GAME TYPE in their place, network.browser_game_type) */
+	"network.browser_show_ctf",
+	"network.browser_show_slayer",
+	"network.browser_show_oddball",
+	"network.browser_show_king",
+	"network.browser_show_race",
 	NULL,
 };
 
@@ -4348,6 +4361,11 @@ static const struct
 	{ "game.priority", { "normal", "inherit", NULL }, NULL },
 	{ "game.language", { "", "ja", "de", "fr", "es", "it", NULL }, NULL },
 	{ "network.game_mode", { "openh1", "legacy", "standard", NULL }, NULL },
+	{ "network.browser_tick", { "any", "30", "60", "120", "legacy", NULL }, "any" },
+	{ "network.browser_game_type", { "any", "slayer", "team_slayer", "ctf", "oddball", "king", "race", "swat",
+		"infection", "gun_game", "coop", "pro_2v2", NULL }, "any" },
+	{ "network.browser_tab", { "all", "dedicated", "openh1", "legacy", "coop", "favorites", NULL }, "all" },
+	{ "network.browser_sort", { "players", "ping", "server", "map", "mode", NULL }, "players" },
 	{ "server.game_mode", { "openh1_120", "openh1_60", "openh1_30", "legacy", NULL }, NULL },
 	{ "network.text_chat", { "on", "links", "off", NULL }, NULL },
 	{ "server.chat_filter", { "off", "censor", "block", NULL }, NULL },

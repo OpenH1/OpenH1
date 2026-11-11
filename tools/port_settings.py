@@ -13,9 +13,11 @@ settings defaults" shows the defaults. Controls Setup binds the keyboard and
 mouse's controls, by the functions the PC version names for it.
 """
 
+import contextlib
 import math
 import re
 import sys
+import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 from typing import NamedTuple
 from xml.sax.saxutils import escape, quoteattr
@@ -34,7 +36,7 @@ SETTINGS_ITEM_PLACE = (192, 355)
 QUIT_ITEM_PLACE = (192, 391)
 # The main menu's PRO 2V2 (port/linux/game/matchmaking_menu.inc): its screen of
 # kinds, CLASSIC and LOWEST LATENCY, each a matchmaking playlist
-# (matchmaking.c's matchmaking_doubles_playlist), searched at once
+# (matchmaking.c's matchmaking_doubles_playlist), whose browser it opens
 DOUBLES = "main_menu/doubles"
 DOUBLES_ROWS = 2
 # the 2V2 browser's (_doubles_browser): its rows of games (the server
@@ -577,8 +579,16 @@ DISCORD_ACCOUNT = ("network_setup/discord_account", "discord_account_screen")
 # browser_filters_read; its title the PC version's Filters')
 BROWSER_FILTERS = ("network_setup/browser_filters", "browser_filters_screen")
 BROWSER_FILTERS_TITLE = "main_menu/multiplayer_type_select/join_game/filters/header_filters"
-SHOW_HIDE = [("SHOW", "true"), ("HIDE", "false")]
 BROWSER_PINGS = [("ANY", "0")] + [(f"UNDER {ms} MS", str(ms)) for ms in (300, 250, 150, 100, 50)]
+# the Filters page's TICK RATE and GAME TYPE (network.browser_tick and
+# network.browser_game_type: menu_functions.c's browser_tick_words and
+# browser_type_words, in their order)
+BROWSER_TICKS = [("ANY", "any"), ("OPENH1 30", "30"), ("OPENH1 60", "60"), ("OPENH1 120", "120"),
+                 ("LEGACY", "legacy")]
+BROWSER_GAME_TYPES = [("ANY", "any"), ("SLAYER", "slayer"), ("TEAM SLAYER", "team_slayer"),
+                      ("CAPTURE THE FLAG", "ctf"), ("ODDBALL", "oddball"), ("KING OF THE HILL", "king"),
+                      ("RACE", "race"), ("SWAT", "swat"), ("INFECTION", "infection"), ("GUN GAME", "gun_game"),
+                      ("CO-OP", "coop"), ("PRO 2V2", "pro_2v2")]
 # Button Remapping's rows for a group's actions (the most a group has:
 # controller_remap_menu.inl's pad_action_groups), and what each row does: A
 # (or a click) takes the next button pressed, left and right step through
@@ -1404,14 +1414,13 @@ PAGES = {
             ("PING", "network.browser_ping", BROWSER_PINGS,
              "Lists only the games whose ping is under this.|A game whose ping is not known is listed: a local "
              "network game's, a dedicated server's, one still being timed.", None),
-            (SECTION, "GAME TYPES"),
-            ("CAPTURE THE FLAG", "network.browser_show_ctf", SHOW_HIDE,
-             "Lists Capture the Flag games, OpenCE's kinds of it too.", None),
-            ("SLAYER", "network.browser_show_slayer", SHOW_HIDE,
-             "Lists Slayer games, OpenCE's kinds of it too (SWAT, Infection, Gun Game).", None),
-            ("ODDBALL", "network.browser_show_oddball", SHOW_HIDE, "Lists Oddball games.", None),
-            ("KING OF THE HILL", "network.browser_show_king", SHOW_HIDE, "Lists King of the Hill games.", None),
-            ("RACE", "network.browser_show_race", SHOW_HIDE, "Lists Race games.", None),
+            (SECTION, "GAME"),
+            ("TICK RATE", "network.browser_tick", BROWSER_TICKS,
+             "Lists only the games of this tick rate.|OpenH1 games play at 30, 60 or 120 ticks a second; Legacy "
+             "games are OpenCE's netcode.", None),
+            ("GAME TYPE", "network.browser_game_type", BROWSER_GAME_TYPES,
+             "Lists only the games of this type.|Slayer is free for all; SWAT, Infection and Gun Game are "
+             "OpenCE's. Pro 2v2 is PRO 2V2's games.", None),
         ],
     },
     DISCORD_ACCOUNT[0]: {
@@ -2687,10 +2696,6 @@ MULTIPLAYER_LINE_PLACE = (28, 375)
 HUB_LIST_STEP = 27
 HUB_SECTION_GAP = 6
 HUB_GAMETYPES_GAP = 6
-# (MATCHMAKING, PLAY ONLINE's first item, is left off Multiplayer's list and
-# tiles until matchmaking is decided, #813: its screen, _matchmaking, and
-# matchmaking.c stay, and True puts it back)
-HUB_MATCHMAKING = False
 # the screen's children for one platform only (tools/ce_menus.py): the
 # computer's list and its line (the hub's, in the PC version's places:
 # WIDGET_PATCHES' swap), the touchscreen's tiles in their place (_touch_hub)
@@ -3051,8 +3056,11 @@ TITLE_LEFT, TITLE_TOP, TITLE_CAP = 30.68, 33.5, 21.5
 TITLE_COLOR = (0x29, 0x95, 0xFD, 255)
 
 
-def _header(name: str, bitmap: str, platform=None) -> list:
-    return _widget(name, [("controller", 1), ("left", 35), ("top", 11), ("width", 363), ("height", 59),
+def _header(name: str, bitmap: str, platform=None, box=(35, 11, 363, 59)) -> list:
+    """a screen's title: its picture in the PC version's titles' place (box:
+    left, top, width, height), or the browsers' (BROWSER_TITLE)"""
+    left, top, width, height = box
+    return _widget(name, [("controller", 1), ("left", left), ("top", top), ("width", width), ("height", height),
                           ("bitmap", bitmap), ("platform", platform)], [])
 
 
@@ -3116,8 +3124,8 @@ def _join_game_extras() -> list:
     password screen"""
     base = f"{MT}/join_game"
     lines = _password_screen()
-    lines += _header(f"{base}/header_server_browser", f"{base}/header_server_browser")
-    lines += _header(f"{base}/header_direct_link", f"{base}/header_direct_link")
+    lines += _browser_title(f"{base}/header_server_browser", f"{base}/header_server_browser")
+    lines += _browser_title(f"{base}/header_direct_link", f"{base}/header_direct_link")
     lines += _connect_screen()
     # (each row's star: _browser puts it in the rows)
     lines += _widget(FAVORITE_STAR_WIDGET, [("width", 16), ("height", 18), ("bitmap", FAVORITE_STAR)], [])
@@ -4531,6 +4539,82 @@ BROWSER_HEADERS_TOP = 104
 # descenders of its words, centred on their capitals)
 BROWSER_ROWS_TOP, BROWSER_ROW_HEIGHT, BROWSER_ROW_STEP, BROWSER_ROWS = 124, 19, 19, 14
 BROWSER_PANEL = (440, 104, 172, 296)
+# the rest of the browsers' places down the screen: their title's (left,
+# top, width, height: the PC version's titles' place, _header's), the
+# counts', the tabs', the words for none's and the footer's
+BROWSER_TITLE = (35, 11, 363, 59)
+# (and their background, and whether their titles are words in the slim
+# header, tall_title, rather than the PC version's pictures)
+BROWSER_BACKGROUND = "bitmaps/gradient"
+BROWSER_TITLE_WORDS = False
+BROWSER_COUNTS_TOP = 46
+BROWSER_TABS_TOP = SETTINGS_TABS_TOP
+BROWSER_EMPTY_TOP = 200
+BROWSER_FOOTER_TOP = 414
+# The menu engine's own layout of the server browser and PRO 2V2's browser
+# (display.menu_engine "new" alone; the classic engine keeps the places
+# above: docs/menu_engine.md, "Deliberate differences"), the tall layout's
+# parts (TALL_BAND...): the screen's whole height, the slim header (its
+# band, the title in words and the counts in it) and the tabs under it,
+# the footer at the very bottom, the list and the panel filling what is
+# between, each row taller (BROWSER_ROWS of them, scrolling beyond); and
+# on a screen wider than 16:9 the list, the panel, the title and the counts
+# to its edges (their past, "dx dw" at 21:9 past 16:9's: menu_tags.c), the
+# tabs and the footer as 16:9 has them. The same generator writes them, its
+# places these (_browser_geometry), and tools/menu_look.py writes the looks
+# of the widgets they change (tall_widgets) in place of ce/'s
+# ---------- the tall layout (the menu engine's: docs/menu_engine.md,
+# "Deliberate differences"), as Settings' tall layout has it: the slim
+# header, the top TALL_BAND units a dark band with its line under it, and
+# the footer's line TALL_FOOTER above the bottom (TALL_BACKGROUND, in place
+# of bitmaps/gradient, whose lines are at 70 and 409); the title in it as
+# words (tall_title); and past 16:9 a widget's past, "dx dw", which moves it
+# dx and widens it dw on a 21:9 screen past what its wide does at 16:9
+# (menu_tags.c's ui_widget_port_past_scale)
+TALL_BAND, TALL_FOOTER = 40, 37
+TALL_BACKGROUND = "main_menu/parts/background_tall"
+# (the extra width of a 21:9 screen past 16:9's)
+PAST_EXTRA = WIDE_SCREENS["21:9"] - WIDE_WIDTH
+PAST_HALF = PAST_EXTRA // 2
+
+
+def past(dx: float = 0, dw: float = 0):
+    """a widget's past attribute: moved dx, dw wider, on a 21:9 screen past 16:9 (None: neither)"""
+    return f"{round(dx)} {round(dw)}" if round(dx) or round(dw) else None
+
+
+def tall_title(name: str, strings: str, index: int) -> list:
+    """a screen's title in the slim header: its words (the index'th of a <strings>: a look's text is the strings
+    its widget in ce/ has, and a title's widget there has none) in the heading font (OpenCE, as the titles'
+    pictures set them, in their colour), from the screen's left margin at every width"""
+    return _widget(name, [("type", "text"), ("left", WIDE_MARGIN), ("top", 0), ("width", 640 - 2 * WIDE_MARGIN),
+                          ("height", TALL_BAND), ("string_list", strings), ("string_index", index or None),
+                          ("font", "heading"),
+                          ("color", "#FF%02X%02X%02X" % TITLE_COLOR[:3]),
+                          ("text_y", caps_text_y(TALL_BAND, large=True)),
+                          ("wide", WIDE_LEFT), ("past", past(-PAST_HALF))], [])
+
+
+BROWSER_TALL = {
+    "BROWSER_TITLE": (0, 0, 640, TALL_BAND), "BROWSER_TITLE_WORDS": True, "BROWSER_BACKGROUND": TALL_BACKGROUND,
+    "BROWSER_COUNTS_TOP": (TALL_BAND - 18) // 2, "BROWSER_TABS_TOP": TALL_BAND + 6, "BROWSER_HEADERS_TOP": 74,
+    "BROWSER_ROWS_TOP": 92, "BROWSER_ROW_HEIGHT": 24, "BROWSER_ROW_STEP": 24, "BROWSER_PANEL": (440, 74, 172, 362),
+    "BROWSER_EMPTY_TOP": 220, "BROWSER_CLEAR_TOP": 308, "BROWSER_FOOTER_TOP": 480 - TALL_FOOTER + 5,
+}
+# the browsers' titles' words in the slim header (tall_title), by their
+# titles' widgets
+BROWSER_TALL_TITLES = f"{MT}/join_game/tall_titles"
+BROWSER_TITLE_NAMES = {"header_lan": "LOCAL NETWORK", "header_direct_link": "JOIN BY LINK",
+                       "header_server_browser": "SERVER BROWSER", "header_doubles_browser": "PRO 2V2"}
+
+
+def _browser_title(name: str, bitmap: str) -> list:
+    """a browser's title (header_lan, ...): the PC version's picture in its
+    place (BROWSER_TITLE), or the tall layout's words (BROWSER_TITLE_WORDS)"""
+    short = name.rsplit("/", 1)[1]
+    if BROWSER_TITLE_WORDS:
+        return tall_title(name, BROWSER_TALL_TITLES, list(BROWSER_TITLE_NAMES).index(short))
+    return _header(name, bitmap, box=BROWSER_TITLE)
 BROWSER_COLUMNS = {
     "favorite": (6, 16), "server_name": (26, 110), "map": (140, 78), "type": (222, 60), "players": (284, 56),
     "ping": (344, 54),
@@ -4677,7 +4761,6 @@ HUB_DESCRIPTIONS = [
     "Host a game on the Internet, or for players on your local network only.",
     "Play the campaign together: online, or split screen on this computer.",
     "Group up with friends: they join with your party's link, and come with you to every game you host or join.",
-    "Pick a playlist: OpenH1 finds a game with room for you and your party, or hosts one that fills up.",
     "Your friends, who's online and where, with your friend code. Join them, invite them, or add someone you played.",
 ]
 
@@ -4705,9 +4788,11 @@ def parts_pictures() -> list:
                 (_svg(width, height, [_rounded(width, height, 0.75, 3, stroke="#2f7fff", stroke_width=1.5)]),
                  width, height)]
 
-    rows = [(part_row(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT), highlight(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT) +
-             [(framed(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT, "#0d3a7a", 0.9, "#8cc8ff"), BROWSER_LIST_WIDTH,
-               BROWSER_ROW_HEIGHT)])]
+    # (the browsers' rows and panel, and the menu engine's tall layout's:
+    # BROWSER_TALL)
+    rows = [(part_row(BROWSER_LIST_WIDTH, height), highlight(BROWSER_LIST_WIDTH, height) +
+             [(framed(BROWSER_LIST_WIDTH, height, "#0d3a7a", 0.9, "#8cc8ff"), BROWSER_LIST_WIDTH, height)])
+            for height in (BROWSER_ROW_HEIGHT, BROWSER_TALL["BROWSER_ROW_HEIGHT"])]
     prompt_widths = sorted(set(prompt_picture_widths()) | {BROWSER_CLEAR[0]})
     join_w, join_h = BROWSER_JOIN
     return [
@@ -4729,8 +4814,10 @@ def parts_pictures() -> list:
         (part_section(HUB_ITEM[0]), [(_svg(HUB_ITEM[0], PART_SECTION_HEIGHT, [
             f'  <rect x="0" y="{PART_SECTION_HEIGHT - 1.5:g}" width="{HUB_ITEM[0]}" height="1" fill="#2995ff" '
             'fill-opacity="0.45"/>']), HUB_ITEM[0], PART_SECTION_HEIGHT)]),
-        (part_panel(*BROWSER_PANEL[2:]), [(framed(*BROWSER_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5),
-                                           *BROWSER_PANEL[2:])]),
+        *((part_panel(*panel[2:]), [(framed(*panel[2:], "#000e23", 0.88, "#2995ff", 9.5), *panel[2:])])
+          for panel in (BROWSER_PANEL, BROWSER_TALL["BROWSER_PANEL"])),
+        # (the tall layout's background: BROWSER_TALL's)
+        (TALL_BACKGROUND, [(tall_background_svg(), 4, 512)]),
         (part_panel(*HUB_PANEL[2:]), [(framed(*HUB_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5), *HUB_PANEL[2:])]),
         *((part_pill(width), pill(width)) for width in (BROWSER_TICK_BADGE, BROWSER_PILL, BROWSER_WIDE_PILL)),
         (part_button(join_w, join_h), [(framed(join_w, join_h, "#1e5fd1", 0.9, "#5aa9ff"), join_w, join_h),
@@ -5023,7 +5110,7 @@ def _browser() -> list:
     inner_left, inner_width = panel_left + 12, panel_width - 24
     lines = _widget(f"{base}/join_game_screen",
                     [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child"),
-                     ("bitmap", "bitmaps/gradient")],
+                     ("bitmap", BROWSER_BACKGROUND)],
                     ['<on event="created" run="gamespy screen init"/>',
                      '<on event="deleted" run="gamespy screen dispose"/>',
                      '<on event="b" run="gamespy back handler"/>', '<on event="back" run="gamespy back handler"/>',
@@ -5035,22 +5122,26 @@ def _browser() -> list:
                      '<on event="right_thumb" run="port browser search next"/>',
                      f'<child widget="{base}/header_join_game"/>',
                      f'<child widget="{base}/browser_counts" platform="pointer"/>',
-                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" y="{SETTINGS_TABS_TOP}" '
+                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="{WIDE_MARGIN}" y="{BROWSER_TABS_TOP}" '
                      'platform="pointer"/>',
                      f'<child widget="{SETTINGS}/tab_prompt_next" '
                      f'x="{SETTINGS_TABS_X + (len(BROWSER_TABS) - 1) * SETTINGS_TAB_STEP + SETTINGS_TAB_LAID + 4}" '
-                     f'y="{SETTINGS_TABS_TOP}" platform="pointer"/>',
+                     f'y="{BROWSER_TABS_TOP}" platform="pointer"/>',
                      f'<child widget="{base}/browser_columns_line" platform="pointer"/>',
                      f'<child widget="{base}/browser_empty" platform="pointer"/>',
                      f'<child widget="{list_name}" platform="pointer"/>',
                      *_touch_browser()[0]])
     # (the title of the mode chosen: menu_functions.c's browser_initialize)
-    lines += _widget(f"{base}/header_join_game", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
-                                                  ("height", 59), ("wide", WIDE_LEFT)],
+    lines += _widget(f"{base}/header_join_game", [("controller", 1), ("left", BROWSER_TITLE[0]),
+                                                  ("top", BROWSER_TITLE[1]), ("width", BROWSER_TITLE[2]),
+                                                  ("height", BROWSER_TITLE[3]),
+                                                  ("wide", None if BROWSER_TITLE_WORDS else WIDE_LEFT)],
                      [f'<child widget="{base}/{name}"/>' for name in
                       ("header_server_browser", "header_lan", "header_direct_link")])
-    lines += _header(f"{base}/header_lan", f"{base}/header_local_network")
-    lines += _part_text(f"{base}/browser_counts", [("left", 372), ("top", 46), ("width", 240), ("height", 18),
+    lines += _browser_title(f"{base}/header_lan", f"{base}/header_local_network")
+    lines += _strings(BROWSER_TALL_TITLES, list(BROWSER_TITLE_NAMES.values()))
+    lines += _part_text(f"{base}/browser_counts", [("left", 372), ("top", BROWSER_COUNTS_TOP), ("width", 240),
+                                                  ("height", 18),
                                                   ("font", "ui\\small_ui"), ("color", PART_DIM), ("align", "right"),
                                                   ("wide", WIDE_RIGHT)])
     lines += _widget(f"{base}/browser_columns_line", [("controller", 1), ("left", BROWSER_LIST_X),
@@ -5059,7 +5150,7 @@ def _browser() -> list:
                                                       ("wide", wide(-WIDE_HALF, BROWSER_WIDE_LIST))], [])
     # (the list's words while it has no rows: menu_functions.c's
     # browser_empty_text)
-    lines += _part_text(f"{base}/browser_empty", [("left", BROWSER_LIST_X + 24), ("top", 200),
+    lines += _part_text(f"{base}/browser_empty", [("left", BROWSER_LIST_X + 24), ("top", BROWSER_EMPTY_TOP),
                                                  ("width", BROWSER_LIST_WIDTH - 48), ("height", 80),
                                                  ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE),
                                                  ("align", "center"), ("wide", wide(-WIDE_HALF, BROWSER_WIDE_LIST))])
@@ -5071,12 +5162,12 @@ def _browser() -> list:
                                  ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
                                  ("description", f"{base}/browser_panel")],
                      ['<data input="gamespy screen update"/>',
-                      f'<child widget="{base}/browser_tabs" y="{SETTINGS_TABS_TOP}"/>',
+                      f'<child widget="{base}/browser_tabs" y="{BROWSER_TABS_TOP}"/>',
                       f'<child widget="{base}/join_game_header" y="{BROWSER_HEADERS_TOP}"/>',
                       *rows,
                       f'<child widget="{base}/browser_join_bar" y="{panel_top + panel_height - BROWSER_JOIN[1] - 10}"/>',
                       f'<child widget="{base}/browser_clear_bar" y="{BROWSER_CLEAR_TOP}"/>',
-                      f'<child widget="{base}/join_game_button_bar" y="414"/>'])
+                      f'<child widget="{base}/join_game_button_bar" y="{BROWSER_FOOTER_TOP}"/>'])
     lines += _tab_strip(base, "browser_tabs", BROWSER_TABS, ['<on event="a" run="port browser tab"/>',
                                                              '<on event="start" run="port browser tab"/>'])
     # (the column titles: A or a click sorts by one, again the other way;
@@ -5135,7 +5226,9 @@ def _browser() -> list:
     # (a row: its game's star, its name with its tick rate's badge (OpenH1's
     # games) and its lock (a password) after it, its map, its mode, its
     # players and its ping's bars; or, the server browser's group's heading,
-    # its words across the row: menu_functions.c's browser_heading_show)
+    # its words across the row: menu_functions.c's browser_heading_show; the
+    # star, badge, lock and bars, 16 tall, in its middle)
+    icon_y = (BROWSER_ROW_HEIGHT - 16) // 2
     for row in range(1, BROWSER_ROWS + 1):
         lines += _widget(f"{base}/server_item_{row}",
                          [("width", BROWSER_LIST_WIDTH), ("height", BROWSER_ROW_HEIGHT),
@@ -5144,12 +5237,13 @@ def _browser() -> list:
                          ['<on event="a" run="gamespy select item"/>', '<on event="start" run="gamespy select item"/>',
                           '<on event="left_mouse" run="mouse emit accept event"/>',
                           '<on event="double_click" run="gamespy select item"/>',
-                          f'<child widget="{FAVORITE_STAR_WIDGET}" x="{BROWSER_COLUMNS["favorite"][0]}" y="1"/>',
+                          f'<child widget="{FAVORITE_STAR_WIDGET}" x="{BROWSER_COLUMNS["favorite"][0]}" '
+                          f'y="{icon_y}"/>',
                           *(f'<child widget="{base}/server_item_{column}" x="{BROWSER_COLUMNS[column][0]}"/>'
                             for column in ("server_name", "map", "type", "players")),
-                          f'<child widget="{base}/server_item_tick" y="1"/>',
-                          f'<child widget="{base}/server_item_locked" y="1"/>',
-                          f'<child widget="{base}/server_item_ping" x="{BROWSER_COLUMNS["ping"][0]}" y="1"/>',
+                          f'<child widget="{base}/server_item_tick" y="{icon_y}"/>',
+                          f'<child widget="{base}/server_item_locked" y="{icon_y}"/>',
+                          f'<child widget="{base}/server_item_ping" x="{BROWSER_COLUMNS["ping"][0]}" y="{icon_y}"/>',
                           f'<child widget="{base}/server_item_ping_ms" x="{BROWSER_COLUMNS["ping"][0]}"/>',
                           f'<child widget="{base}/server_item_heading" x="{BROWSER_COLUMNS["server_name"][0]}"/>'])
     lines += _widget(f"{base}/server_item_heading",
@@ -5244,6 +5338,83 @@ def _browser() -> list:
                       '<on event="start" run="port browser search clear"/>',
                       '<on event="left_mouse" run="mouse emit accept event"/>'])
     lines += _prompts(base, "join_game_button_bar", BROWSER_PROMPTS, text_x=BROWSER_PROMPT_TEXT_X, browser=True)
+    return lines
+
+
+@contextlib.contextmanager
+def _browser_geometry(places: dict):
+    """the browsers written with these places (BROWSER_TALL's names and
+    values) in place of the module's own, which are back afterwards"""
+    saved = {name: globals()[name] for name in places}
+    globals().update(places)
+    try:
+        yield
+    finally:
+        globals().update(saved)
+
+
+def _browsers() -> list:
+    """the widgets the browsers' layout places: the server browser's (and
+    the local network's and Join by Link's, its screen), its titles, PRO
+    2V2's browser"""
+    return _browser() + _join_game_extras() + _doubles_browser()
+
+
+# the widgets of the tall layout that keep 16:9's places on a wider screen
+# (no past): the tabs, whose LB and RB prompts are Settings',
+# and the footer's prompts, spread for 16:9 (wider, they would meet)
+BROWSER_TALL_CENTRED = re.compile(r"/(browser_tabs|tab_\w+|prompt_\w+)$")
+
+
+def tall_background_svg() -> str:
+    """the tall layout's background (TALL_BACKGROUND), as bitmaps/gradient is drawn (4 wide, repeated across;
+    its 512 rows the screen's 480 and room under them): the slim header's band, dark, its line under it, the
+    gradient's body to the footer's line, and the footer's band, as bitmaps/gradient's are"""
+    footer = 480 - TALL_FOOTER
+    return "\n".join([
+        '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="512" viewBox="0 0 4 512">', "<defs>",
+        f'<linearGradient id="g0" gradientUnits="userSpaceOnUse" x1="0" y1="{TALL_BAND + 1}" x2="0" y2="{footer}">',
+        '  <stop offset="0.00000" stop-color="#072852" stop-opacity="0.69"/>',
+        '  <stop offset="0.20562" stop-color="#062247" stop-opacity="0.69"/>',
+        '  <stop offset="0.70562" stop-color="#030e1b" stop-opacity="0.69"/>',
+        '  <stop offset="1.00000" stop-color="#02060c" stop-opacity="0.689"/>', "</linearGradient>", "</defs>",
+        f'<rect x="0" y="0" width="4" height="{TALL_BAND}" fill="#020a16" fill-opacity="0.82"/>',
+        f'<rect x="0" y="{TALL_BAND}" width="4" height="1" fill="#36afff"/>',
+        f'<rect x="0" y="{TALL_BAND + 1}" width="4" height="{footer - TALL_BAND - 1}" fill="url(#g0)"/>',
+        f'<rect x="0" y="{footer}" width="4" height="1" fill="#2896ff"/>',
+        f'<rect x="0" y="{footer + 1}" width="4" height="{480 - footer - 1}" fill="#000000" fill-opacity="0.696"/>',
+        "</svg>", ""])
+
+
+def _past(wide_layout: str) -> str:
+    """a widget's past (menu_tags.c's: its move and growth at 21:9 past
+    16:9's) that takes its wide layout on to a wider screen's edges: as much
+    again for each unit past 16:9 as for each past the 640"""
+    dx, dw = (int(value) for value in wide_layout.split())
+    return past(dx * PAST_EXTRA / WIDE_EXTRA, dw * PAST_EXTRA / WIDE_EXTRA)
+
+
+def tall_widgets() -> list:
+    """the widgets of the screens the menu engine lays out tall
+    (tools/menu_look.py writes their looks in place of ce/'s;
+    docs/menu_engine.md, "Deliberate differences"): the browsers'
+    (BROWSER_TALL), each widget that layout places otherwise, as <widget>
+    elements' lines"""
+    def parsed(lines):
+        root = ElementTree.fromstring("<menus>" + "\n".join(lines) + "</menus>")
+        return {element.get("name"): element for element in root.iter("widget")}
+
+    classic = parsed(_browsers())
+    with _browser_geometry(BROWSER_TALL):
+        tall = parsed(_browsers())
+    lines = []
+    for name, element in tall.items():
+        if element.get("wide") and not element.get("past") and not BROWSER_TALL_CENTRED.search(name) and \
+                _past(element.get("wide")):
+            element.set("past", _past(element.get("wide")))
+        if ElementTree.tostring(element) != ElementTree.tostring(classic[name]):
+            element.tail = None
+            lines.append(ElementTree.tostring(element, encoding="unicode"))
     return lines
 
 
@@ -5364,9 +5535,6 @@ def _hub() -> list:
         "hub_join_internet": ("SERVER BROWSER", joins(browser), "browser_note"),
         "hub_join_lan_item": ("LOCAL NETWORK", joins(browser), "item_note"),
         "hub_join_direct": ("JOIN BY LINK", joins(browser), "invite_note"),
-        # (matchmaking's screen: _matchmaking)
-        "hub_matchmaking": ("MATCHMAKING", [f'<on event="{event}" open="{MT}/matchmaking/matchmaking_screen"/>'
-                                            for event in ("a", "start")], "matchmaking_note"),
         # (the party's screen: _party)
         "hub_party": ("PARTY", [f'<on event="{event}" open="{MT}/party/party_screen"/>' for event in ("a", "start")],
                       "party_note"),
@@ -5409,9 +5577,8 @@ def _hub() -> list:
                        ['<data input="port multiplayer status"/>', *children])
 
     # (Multiplayer's own list a unit closer, its sections closer, for its
-    # ten items, eleven with MATCHMAKING: HUB_LIST_STEP, HUB_MATCHMAKING)
-    online = ["hub_matchmaking"] * HUB_MATCHMAKING + ["hub_join_internet", "hub_join_lan_item", "hub_join_direct",
-                                                      "hub_party", "hub_friends"]
+    # ten items: HUB_LIST_STEP)
+    online = ["hub_join_internet", "hub_join_lan_item", "hub_join_direct", "hub_party", "hub_friends"]
     lines = page_list("hub_list", [("section_online", "PLAY ONLINE", online),
                                    ("section_host", "HOST", ["hub_create", "hub_coop"]),
                                    (None, None, ["hub_gametypes"])], "hub_prompts", HUB_LIST_STEP, HUB_SECTION_GAP)
@@ -5447,7 +5614,7 @@ def _hub() -> list:
     # menu_functions.c's multiplayer_status_notes)
     # (right-aligned in from the highlight's end, clear of the items' words)
     for name, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C"),
-                        ("party_note", "#FF7FB2FF"), ("matchmaking_note", "#FF5ED38C"),
+                        ("party_note", "#FF7FB2FF"),
                         ("friends_note", "#FF5ED38C")):
         lines += _widget(f"{HUB}/{name}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
                                            ("wide", wide(0, HUB_WIDE_ITEMS)),
@@ -5550,51 +5717,32 @@ def _party() -> list:
     return lines
 
 
-# the Matchmaking screen's (_matchmaking): a row for each playlist
-# (matchmaking.c's), and its footer's prompts (menu_functions.c's
-# matchmaking_screen_update shows SEARCH or CANCEL)
-MATCHMAKING_ROWS = 7
-MATCHMAKING_PROMPTS = [
-    ("prompt_search", "%a-button SEARCH", 28, 124, '<on event="a" run="port matchmaking button"/>'),
+# the PRO 2V2 screen's footer prompts (menu_functions.c's
+# matchmaking_screen_update shows CHOOSE or, while FIND GAME searches,
+# CANCEL)
+DOUBLES_PROMPTS = [
+    ("prompt_search", "%a-button CHOOSE", 28, 124, '<on event="a" run="port matchmaking button"/>'),
     ("prompt_cancel", "%x-button CANCEL", 28, 124, '<on event="a" run="port matchmaking button"/>'),
     ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="port matchmaking button"/>'),
 ]
 
 
-def _matchmaking() -> list:
-    """the Matchmaking screen (port/linux/game/matchmaking_menu.inc), in
-    Multiplayer's look (_hub's parts): MATCHMAKING's section over a row for
-    each playlist (its name, and at its end what its search is doing), the
-    panel beside them (the playlist chosen's name and what it is, the search:
-    its time, the games it found and what it does now, and what matchmaking
-    is), and the footer's key prompts: SEARCH (A, a row's A or click: the
-    playlist searched for the whole party) or, while a search goes on, CANCEL
-    (X), and BACK. On a wide screen it is laid out as Multiplayer is
-    (HUB_WIDE_ITEMS, HUB_WIDE_PANEL)"""
-    return _matchmaking_screen(f"{MT}/matchmaking", "matchmaking", f"{MT}/header_multiplayer", "MATCHMAKING",
-                               MATCHMAKING_ROWS,
-                               "Matchmaking finds a game with room for your whole party, by ping, or hosts one that "
-                               "players searching the same playlist join. Your party comes with you.")
-
-
 def _doubles() -> list:
     """the main menu's PRO 2V2 (main_menu_item_doubles, in the redraws' letters:
-    menu_item_frames) and its screen, the Matchmaking screen's
-    (_matchmaking_screen) with a row for each kind, CLASSIC and LOWEST
-    LATENCY: A on one searches its playlist at once (matchmaking_menu.inc),
-    and the panel says why it cannot be (internet play off, no maps for it)"""
+    menu_item_frames) and its screen (_matchmaking_screen), a row for each
+    kind, CLASSIC and LOWEST LATENCY: A on one opens the PRO 2V2 browser of
+    its playlist (matchmaking_menu.inc), and the panel says why it cannot be
+    searched (internet play off, no maps for it)"""
     lines = _widget("main_menu/main_menu_item_doubles",
                     [("type", "text"), ("width", 256), ("height", 33), ("bitmap", "main_menu/menu_doubles")],
                     [f'<on event="a" open="{DOUBLES}/doubles_screen"/>',
                      f'<on event="start" open="{DOUBLES}/doubles_screen"/>',
                      '<on event="left_mouse" run="mouse emit accept event"/>'])
     lines += _header(f"{DOUBLES}/header_doubles", f"{DOUBLES}/header_doubles")
-    prompts = [("prompt_search", "%a-button CHOOSE", 28, 124, '<on event="a" run="port matchmaking button"/>'),
-               *MATCHMAKING_PROMPTS[1:]]
     return lines + _matchmaking_screen(DOUBLES, "doubles", f"{DOUBLES}/header_doubles", "2 AGAINST 2", DOUBLES_ROWS,
                                        "Pro settings on the 2v2 maps. Classic: 30 ticks, Instant Aim off for "
                                        "everyone. Lowest Latency: 120. Each lists only its own games.",
-                                       prompts) + _doubles_browser()
+                                       DOUBLES_PROMPTS) + _doubles_browser()
 
 
 def _doubles_browser() -> list:
@@ -5614,14 +5762,14 @@ def _doubles_browser() -> list:
     panel_moved, panel_grown = BROWSER_WIDE_PANEL
     lines = _widget(f"{base}/doubles_browser_screen",
                     [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child"),
-                     ("bitmap", "bitmaps/gradient")],
+                     ("bitmap", BROWSER_BACKGROUND)],
                     ['<on event="created" run="port doubles init"/>',
                      '<on event="deleted" run="port doubles dispose"/>',
                      '<on event="b" run="gamespy back handler"/>', '<on event="back" run="gamespy back handler"/>',
                      '<on event="x" run="port doubles x"/>',
                      '<on event="right_trigger" run="port browser refresh"/>',
                      '<on event="right_thumb" run="port browser search next"/>',
-                     f'<child widget="{DOUBLES}/header_doubles"/>',
+                     f'<child widget="{base}/header_doubles_browser"/>',
                      f'<child widget="{base}/doubles_kind"/>',
                      f'<child widget="{browser}/browser_counts"/>',
                      f'<child widget="{browser}/browser_columns_line"/>',
@@ -5629,7 +5777,10 @@ def _doubles_browser() -> list:
                      f'<child widget="{list_name}"/>'])
     # (the kind and its rules, under the title where the server browser has
     # its tabs: doubles_browser.inc fills it in)
-    lines += _part_text(f"{base}/doubles_kind", [("left", BROWSER_LIST_X + 4), ("top", SETTINGS_TABS_TOP + 2),
+    # (its title PRO 2V2's picture, a widget of its own: the browsers' place
+    # for it, BROWSER_TITLE)
+    lines += _browser_title(f"{base}/header_doubles_browser", f"{DOUBLES}/header_doubles")
+    lines += _part_text(f"{base}/doubles_kind", [("left", BROWSER_LIST_X + 4), ("top", BROWSER_TABS_TOP + 2),
                                                 ("width", BROWSER_LIST_WIDTH), ("height", 20), ("font", "ui\\large_ui"),
                                                 ("color", "#FFFFFFFF"), ("wide", wide(-WIDE_HALF, BROWSER_WIDE_LIST))])
     rows = [f'<child widget="{browser}/server_item_{row}" x="{BROWSER_LIST_X}" '
@@ -5647,7 +5798,7 @@ def _doubles_browser() -> list:
                       f'y="{BROWSER_ROWS_TOP + BROWSER_ROW_STEP * DOUBLES_BROWSER_ROWS + 8}"/>',
                       *friends,
                       f'<child widget="{browser}/browser_clear_bar" y="{BROWSER_CLEAR_TOP}"/>',
-                      f'<child widget="{base}/doubles_prompts" y="414"/>'])
+                      f'<child widget="{base}/doubles_prompts" y="{BROWSER_FOOTER_TOP}"/>'])
     # (HOST GAME and FIND GAME, under the rows: left and right between them)
     join_w, join_h = BROWSER_JOIN
     lines += _widget(f"{base}/doubles_actions", [("type", "column_list"), ("width", 640), ("height", join_h),
@@ -5719,9 +5870,9 @@ DOUBLES_BROWSER_PROMPTS = [
 
 
 def _matchmaking_screen(base: str, name: str, header: str, section: str, row_count: int, help_text: str,
-                        prompts: list = None) -> list:
-    """a matchmaking screen (_matchmaking, _doubles): its rows under
-    section, the panel, the prompts; its list <name>_list"""
+                        prompts: list) -> list:
+    """matchmaking's screen (PRO 2V2's, _doubles): its rows under section,
+    the panel, the prompts; its list <name>_list"""
     left, top, width, height = HUB_PANEL
     item_w, item_h = HUB_ITEM
     step = item_h + 2
@@ -5780,7 +5931,7 @@ def _matchmaking_screen(base: str, name: str, header: str, section: str, row_cou
                                                    ("width", width), ("height", height),
                                                    ("bitmap", part_panel(width, height)),
                                                    ("wide", wide(*HUB_WIDE_PANEL))], panel)
-    lines += _prompts(base, "matchmaking_prompts", prompts or MATCHMAKING_PROMPTS)
+    lines += _prompts(base, "matchmaking_prompts", prompts)
     return lines
 
 
@@ -6199,8 +6350,7 @@ TOUCH_TILE = ((TOUCH_HUB_WIDTH - TOUCH_GAP) // 2, TOUCH_TAP)
 TOUCH_HUB_PANEL = (HUB_LIST_X + TOUCH_HUB_WIDTH + 8, HUB_PANEL[1],
                    640 - HUB_LIST_X - (HUB_LIST_X + TOUCH_HUB_WIDTH + 8), HUB_PANEL[3])
 TOUCH_TILES = [
-    ("section_online", "PLAY ONLINE", [("hub_matchmaking", "MATCHMAKING", "matchmaking_note")] * HUB_MATCHMAKING + [
-                                       ("hub_join_internet", "BROWSE GAMES", "browser_note"),
+    ("section_online", "PLAY ONLINE", [("hub_join_internet", "BROWSE GAMES", "browser_note"),
                                        ("hub_join_lan_item", "LOCAL GAMES", "item_note"),
                                        ("hub_join_direct", "JOIN BY LINK", "invite_note"),
                                        ("hub_party", "PARTY", "party_note"),
@@ -6614,8 +6764,6 @@ def _touch_hub() -> tuple:
                f'<on event="a" run="mp type set mode" open="{MT}/connected/connected_map_select_wrapper"/>']
     browser = f"{MT}/join_game/join_game_screen"
     handlers.update({
-        "hub_matchmaking": [f'<on event="{event}" open="{MT}/matchmaking/matchmaking_screen"/>'
-                            for event in ("a", "start")],
         "hub_join_internet": joins(browser), "hub_join_lan_item": joins(browser), "hub_join_direct": joins(browser),
         "hub_party": [f'<on event="{event}" open="{MT}/party/party_screen"/>' for event in ("a", "start")],
         "hub_friends": [f'<on event="{event}" open="{MT}/friends/friends_screen"/>' for event in ("a", "start")],
@@ -6664,7 +6812,7 @@ def _touch_hub() -> tuple:
                      ['<data input="port multiplayer status"/>', *children])
     lines += _hub_panel(touch, TOUCH_HUB_PANEL, HUB_WIDE_PANEL)
     for note, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C"),
-                        ("party_note", "#FF7FB2FF"), ("matchmaking_note", "#FF5ED38C"),
+                        ("party_note", "#FF7FB2FF"),
                         ("friends_note", "#FF5ED38C")):
         lines += _widget(f"{touch}/{note}", [("type", "text"), ("width", tile_w - 20), ("height", 16),
                                             ("wide", wide(0, half)), ("font", "ui\\small_ui"), ("color", color),
@@ -7777,7 +7925,6 @@ def multiplayer_files() -> dict:
         f"{MT}/coop".replace("/", ".") + ".xml": head + _coop() + ["</menus>", ""],
         f"{MT}/bots".replace("/", ".") + ".xml": head + _bots() + ["</menus>", ""],
         f"{MT}/party".replace("/", ".") + ".xml": head + _party() + ["</menus>", ""],
-        f"{MT}/matchmaking".replace("/", ".") + ".xml": head + _matchmaking() + ["</menus>", ""],
         DOUBLES.replace("/", ".") + ".xml": head + _doubles() + ["</menus>", ""],
         f"{MT}/party/touch".replace("/", ".") + ".xml": head + _touch_party() + ["</menus>", ""],
         f"{MT}/friends".replace("/", ".") + ".xml": head + _friends() + ["</menus>", ""],

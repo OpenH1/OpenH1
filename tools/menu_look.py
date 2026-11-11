@@ -7,7 +7,7 @@ The generators (tools/ce_menus.py, tools/port_settings.py) call it once they hav
 the widgets and their look cannot disagree; `python3 tools/menu_look.py` writes it again from them alone. The
 engine (port/linux/game/menu_engine.c) draws the generated screens from it, not from their widget definitions.
 
-    <look name="main_menu/..." type="text" box="x0 y0 x1 y1" wide="dx dw" place="anchor_left stretch keep_ends"
+    <look name="main_menu/..." type="text" box="x0 y0 x1 y1" wide="dx dw" past="dx dw" place="anchor_left stretch keep_ends"
           picture="<bitmap>" radius="8" effects="flash_bitmap nifty_fx" list="items_in_code ..."
           header="<bitmap>" header_box="x0 y0 x1 y1" footer="<bitmap>" footer_box="x0 y0 x1 y1">
         <text font="large" color="#AARRGGBB" align="center" at="x y" flags="wrap ..." string_list="<strings>"
@@ -73,6 +73,14 @@ def _text(widget: ET.Element):
             ("text", get("text")), ("items", get("strings")), ("replace", "|".join(replaces) or None)]
 
 
+def _tall() -> dict:
+    """the widgets of the screens laid out in the tall layout (tools/port_settings.py's tall_widgets), by their
+    names: the engine draws them so, not as ce/ has them"""
+    import port_settings
+    menus = ET.fromstring("<menus>" + "\n".join(port_settings.tall_widgets()) + "</menus>")
+    return {widget.get("name"): widget for widget in menus.iter("widget")}
+
+
 def _roles() -> dict:
     """the widgets' roles, by their names (tools/port_settings.py's settings_look_roles)"""
     import port_settings
@@ -85,7 +93,7 @@ def _look(widget: ET.Element, roles: dict) -> list:
     flags = get("flags")
     pairs = [("name", get("name")), ("role", roles.get(get("name"))),
              ("type", None if get("type", "container") == "container" else get("type")),
-             ("box", None if box == "0 0 640 480" else box), ("wide", get("wide")),
+             ("box", None if box == "0 0 640 480" else box), ("wide", get("wide")), ("past", get("past")),
              ("place", _words(flags, PLACE_FLAGS)), ("picture", get("bitmap")), ("radius", get("radius")),
              ("effects", _words(flags, EFFECT_FLAGS)), ("list", get("list_flags")),
              ("header", get("header_bitmap")),
@@ -117,6 +125,7 @@ def look_files(ce: Path = CE) -> dict:
     """the look's files, by their paths in port/assets/menus: one for each of ce/'s files of widgets"""
     files = {}
     roles = _roles()
+    tall = _tall()
     named = set()
     for path in sorted(ce.glob("*.xml")):
         if path.name in NOT_WIDGETS:
@@ -125,9 +134,11 @@ def look_files(ce: Path = CE) -> dict:
                  f"<!-- The look of ce/{path.name}'s widgets, for the menu engine (docs/menu_engine.md; "
                  "tools/menu_look.py) -->", "<model>"]
         for widget in ET.parse(path).getroot().iter("widget"):
-            lines += _look(widget, roles)
+            lines += _look(tall.get(widget.get("name"), widget), roles)
             named.add(widget.get("name"))
         files[f"{LOOK}/{path.name}"] = lines + ["</model>", ""]
+    if set(tall) - named:
+        raise SystemExit(f"menu_look: no widgets {', '.join(sorted(set(tall) - named))} in ce/ for their tall looks")
     if set(roles) - named:
         raise SystemExit(f"menu_look: no widgets {', '.join(sorted(set(roles) - named))} for their roles")
     return files
