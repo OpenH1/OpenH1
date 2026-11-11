@@ -110,10 +110,10 @@
 		<at widget="main_menu/doubles/browser/button_doubles_host" x="28" y="0"/>
 		<at widget="main_menu/doubles/browser/button_doubles_find" x="184" y="0"/>
 	</look>
-	<look name="main_menu/doubles/browser/button_doubles_host" type="text" box="0 0 148 24" wide="-106 0" picture="main_menu/parts/button_148x24">
+	<look name="main_menu/doubles/browser/button_doubles_host" type="text" box="0 0 148 24" wide="-106 0" picture="main_menu/parts/button_set_148x24">
 		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 3" text="HOST GAME"/>
 	</look>
-	<look name="main_menu/doubles/browser/button_doubles_find" type="text" box="0 0 148 24" wide="-106 0" picture="main_menu/parts/button_148x24">
+	<look name="main_menu/doubles/browser/button_doubles_find" type="text" box="0 0 148 24" wide="-106 0" picture="main_menu/parts/button_set_148x24">
 		<text font="ui\small_ui" color="#FFFFFFFF" align="center" at="0 3" text="FIND GAME"/>
 	</look>
 	<look name="main_menu/doubles/browser/doubles_friend_1" type="text" box="0 0 148 18" wide="38 68" picture="main_menu/parts/item_148x18">
@@ -197,18 +197,30 @@
 	</look>
 	<look name="main_menu/doubles/browser/doubles_prompts" type="column_list" box="0 0 640 28">
 		<at widget="main_menu/doubles/browser/prompt_refresh" x="24" y="1"/>
+		<at widget="main_menu/doubles/browser/prompt_join" x="24" y="1"/>
+		<at widget="main_menu/doubles/browser/prompt_invite" x="24" y="1"/>
 		<at widget="main_menu/doubles/browser/prompt_search" x="238" y="1"/>
 		<at widget="main_menu/doubles/browser/prompt_sort" x="335" y="1"/>
+		<at widget="main_menu/doubles/browser/prompt_invite_x" x="329" y="1"/>
 		<at widget="main_menu/doubles/browser/prompt_back" x="526" y="1"/>
 	</look>
 	<look name="main_menu/doubles/browser/prompt_refresh" type="text" box="0 0 105 24" wide="-106 70" picture="main_menu/parts/item_105x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%right-trigger REFRESH"/>
+	</look>
+	<look name="main_menu/doubles/browser/prompt_join" type="text" box="0 0 102 24" wide="-106 0" picture="main_menu/parts/item_102x24">
+		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%a-button JOIN"/>
+	</look>
+	<look name="main_menu/doubles/browser/prompt_invite" type="text" box="0 0 108 24" wide="-106 0" picture="main_menu/parts/item_108x24">
+		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%a-button INVITE"/>
 	</look>
 	<look name="main_menu/doubles/browser/prompt_search" type="text" box="0 0 99 24" wide="-143 63" picture="main_menu/parts/item_99x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%right-thumb SEARCH"/>
 	</look>
 	<look name="main_menu/doubles/browser/prompt_sort" type="text" box="0 0 92 24" wide="203 0" picture="main_menu/parts/item_92x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%x-button SORT"/>
+	</look>
+	<look name="main_menu/doubles/browser/prompt_invite_x" type="text" box="0 0 98 24" wide="109 0" picture="main_menu/parts/item_98x24">
+		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%x-button INVITE"/>
 	</look>
 	<look name="main_menu/doubles/browser/prompt_back" type="text" box="0 0 90 24" wide="106 0" picture="main_menu/parts/item_90x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%b-button BACK"/>

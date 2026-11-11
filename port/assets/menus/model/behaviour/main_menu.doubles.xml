@@ -43,7 +43,7 @@
 		<on event="deleted" run="port doubles dispose"/>
 		<on event="b" run="gamespy back handler"/>
 		<on event="back" run="gamespy back handler"/>
-		<on event="x" run="port browser sort"/>
+		<on event="x" run="port doubles x"/>
 		<on event="right_trigger" run="port browser refresh"/>
 		<on event="right_thumb" run="port browser search next"/>
 	</behaviour>
@@ -95,6 +95,16 @@
 		<on event="start" run="port browser refresh"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</behaviour>
+	<behaviour name="main_menu/doubles/browser/prompt_join">
+		<on event="a" run="port doubles join"/>
+		<on event="start" run="port doubles join"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
+	<behaviour name="main_menu/doubles/browser/prompt_invite">
+		<on event="a" run="port doubles invite"/>
+		<on event="start" run="port doubles invite"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
 	<behaviour name="main_menu/doubles/browser/prompt_search">
 		<on event="a" run="port browser search next"/>
 		<on event="start" run="port browser search next"/>
@@ -103,6 +113,11 @@
 	<behaviour name="main_menu/doubles/browser/prompt_sort">
 		<on event="a" run="port browser sort"/>
 		<on event="start" run="port browser sort"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</behaviour>
+	<behaviour name="main_menu/doubles/browser/prompt_invite_x">
+		<on event="a" run="port doubles invite"/>
+		<on event="start" run="port doubles invite"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</behaviour>
 	<behaviour name="main_menu/doubles/browser/prompt_back">

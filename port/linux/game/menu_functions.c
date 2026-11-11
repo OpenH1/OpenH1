@@ -12884,6 +12884,14 @@ boolean pc_menu_event_function_invoke(
 		{
 			return doubles_browser_friend(widget);
 		}
+		else if (!strcmp(name, "port doubles join") || !strcmp(name, "port doubles invite"))
+		{
+			return doubles_browser_friend_prompt(!strcmp(name, "port doubles join"));
+		}
+		else if (!strcmp(name, "port doubles x"))
+		{
+			return doubles_browser_x();
+		}
 		else if (!strcmp(name, "port pause end game"))
 		{
 			return pause_end_game();

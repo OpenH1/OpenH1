@@ -631,6 +631,10 @@
 		<frame png="ce/port/main_menu/parts/item_97x24__0.png" width="97" height="24"/>
 		<frame png="ce/port/main_menu/parts/item_97x24__1.png" width="97" height="24"/>
 	</bitmap>
+	<bitmap name="main_menu/parts/item_98x24">
+		<frame png="ce/port/main_menu/parts/item_98x24__0.png" width="98" height="24"/>
+		<frame png="ce/port/main_menu/parts/item_98x24__1.png" width="98" height="24"/>
+	</bitmap>
 	<bitmap name="main_menu/parts/item_99x24">
 		<frame png="ce/port/main_menu/parts/item_99x24__0.png" width="99" height="24"/>
 		<frame png="ce/port/main_menu/parts/item_99x24__1.png" width="99" height="24"/>
@@ -712,6 +716,11 @@
 	<bitmap name="main_menu/parts/button_148x24">
 		<frame png="ce/port/main_menu/parts/button_148x24__0.png" width="148" height="24"/>
 		<frame png="ce/port/main_menu/parts/button_148x24__1.png" width="148" height="24"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/button_set_148x24">
+		<frame png="ce/port/main_menu/parts/button_set_148x24__0.png" width="148" height="24"/>
+		<frame png="ce/port/main_menu/parts/button_set_148x24__1.png" width="148" height="24"/>
+		<frame png="ce/port/main_menu/parts/button_set_148x24__2.png" width="148" height="24"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/team_panel_186x320">
 		<frame png="ce/port/main_menu/parts/team_panel_186x320__0.png" width="186" height="320"/>

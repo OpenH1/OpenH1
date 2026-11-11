@@ -4485,6 +4485,14 @@ def part_button(width: int, height: int) -> str:
     return f"{PARTS}/button_{width}x{height}"
 
 
+def part_button_set(width: int, height: int) -> str:
+    """a button whose lit frame the game sets, not the engine (three frames:
+    plain, lit, lit; the engine lights only a picture of two by the focus):
+    the 2V2 browser's HOST GAME and FIND GAME, lit only while their bar has
+    the list's focus (doubles_browser.inc's doubles_actions_focus)"""
+    return f"{PARTS}/button_set_{width}x{height}"
+
+
 def part_outline(width: int, height: int) -> str:
     """a button drawn as its outline (the lobby's GAME SETTINGS), filled
     while it has the focus"""
@@ -4725,6 +4733,9 @@ def parts_pictures() -> list:
         *((part_pill(width), pill(width)) for width in (BROWSER_TICK_BADGE, BROWSER_PILL, BROWSER_WIDE_PILL)),
         (part_button(join_w, join_h), [(framed(join_w, join_h, "#1e5fd1", 0.9, "#5aa9ff"), join_w, join_h),
                                        (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h)]),
+        (part_button_set(join_w, join_h), [(framed(join_w, join_h, "#1e5fd1", 0.9, "#5aa9ff"), join_w, join_h),
+                                           (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h),
+                                           (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h)]),
         *lobby_pictures(framed, highlight),
         *touch_pictures(),
         # (the searches' fields, magnifying glass and X: Lucide's,
@@ -5605,7 +5616,7 @@ def _doubles_browser() -> list:
                     ['<on event="created" run="port doubles init"/>',
                      '<on event="deleted" run="port doubles dispose"/>',
                      '<on event="b" run="gamespy back handler"/>', '<on event="back" run="gamespy back handler"/>',
-                     '<on event="x" run="port browser sort"/>',
+                     '<on event="x" run="port doubles x"/>',
                      '<on event="right_trigger" run="port browser refresh"/>',
                      '<on event="right_thumb" run="port browser search next"/>',
                      f'<child widget="{DOUBLES}/header_doubles"/>',
@@ -5644,7 +5655,7 @@ def _doubles_browser() -> list:
     for name, words, run in (("button_doubles_host", "HOST GAME", "port doubles host"),
                              ("button_doubles_find", "FIND GAME", "port doubles find")):
         lines += _widget(f"{base}/{name}", [("type", "text"), ("width", join_w), ("height", join_h),
-                                           ("bitmap", part_button(join_w, join_h)), ("wide", wide(-WIDE_HALF)),
+                                           ("bitmap", part_button_set(join_w, join_h)), ("wide", wide(-WIDE_HALF)),
                                            ("text", words), ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
                                            ("align", "center"), ("text_y", caps_text_y(join_h))],
                          [f'<on event="a" run="{run}"/>', f'<on event="start" run="{run}"/>',
@@ -5691,11 +5702,16 @@ def _doubles_browser() -> list:
 
 
 # the 2V2 browser's footer: the server browser's REFRESH, SEARCH and SORT,
-# and BACK
+# and BACK; for the friend chosen, in REFRESH's place what A does (JOIN, else
+# INVITE), and X INVITE in SORT's where JOIN and INVITE both are offered
+# (doubles_browser.inc's doubles_friend_prompts_show)
 DOUBLES_BROWSER_PROMPTS = [
     ("prompt_refresh", "%right-trigger REFRESH", 24, 102, '<on event="a" run="port browser refresh"/>'),
+    ("prompt_join", "%a-button JOIN", 24, 102, '<on event="a" run="port doubles join"/>'),
+    ("prompt_invite", "%a-button INVITE", 24, 102, '<on event="a" run="port doubles invite"/>'),
     ("prompt_search", "%right-thumb SEARCH", 238, 97, '<on event="a" run="port browser search next"/>'),
     ("prompt_sort", "%x-button SORT", 337, 90, '<on event="a" run="port browser sort"/>'),
+    ("prompt_invite_x", "%x-button INVITE", 337, 90, '<on event="a" run="port doubles invite"/>'),
     ("prompt_back", "%b-button BACK", 528, 88, '<on event="a" run="mouse emit back event"/>'),
 ]
 
