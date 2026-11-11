@@ -156,19 +156,19 @@ pre code { font: inherit; }
   html { scroll-behavior: auto; }
 }
 
-/* ---------- renamed: a note for visitors sent here from openh1.com */
-.renamed { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 14px; width: max-content; max-width: calc(100% - 32px); box-sizing: border-box; padding: 12px 12px 12px 20px; border: 1px solid var(--line); border-radius: 999px; background: rgba(9, 12, 8, 0.94); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55), 0 0 24px rgba(157, 255, 60, 0.12); font: 500 15px/1.35 var(--body); color: var(--soft); }
+/* ---------- renamed: a bar above the header for visitors sent here from openh1.com */
+.renamed { position: fixed; inset: 0 0 auto; z-index: 21; height: 44px; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 0 52px; box-sizing: border-box; background: var(--green); color: #060806; font: 500 15px/1.3 var(--body); text-align: center; }
 .renamed[hidden] { display: none; }
-.renamed b { color: var(--text); font-weight: 600; }
-.renamed b.lit { color: var(--green); }
-.renamed button { flex: none; width: 36px; height: 36px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font: 20px/1 var(--body); cursor: pointer; }
-.renamed button:hover, .renamed button:focus-visible { color: var(--text); background: rgba(238, 244, 234, 0.08); }
-@media (max-width: 560px) { .renamed { bottom: 16px; border-radius: 18px; } }
+.renamed b { font-weight: 700; }
+.renamed button { position: absolute; right: 8px; top: 4px; width: 36px; height: 36px; border: 0; border-radius: 50%; background: transparent; color: #060806; font: 22px/1 var(--body); cursor: pointer; }
+.renamed button:hover, .renamed button:focus-visible { background: rgba(6, 8, 6, 0.12); }
+html.renamed-on .top { top: 44px; }
+@media (max-width: 560px) { .renamed { font-size: 14px; padding: 0 48px 0 16px; } }
 </style>
 </head>
 <body>
 <div class="renamed" id="renamed" role="status" hidden>
-  <span><b>OpenH1</b> is now <b class="lit">GOAT H1</b>. Same game, new name.</span>
+  <span><b>OpenH1</b> is now <b>GOAT H1</b>. Same game, new name.</span>
   <button type="button" id="renamed-close" aria-label="Close">×</button>
 </div>
 <script>
@@ -182,7 +182,11 @@ pre code { font: inherit; }
   history.replaceState(history.state, '', location.pathname + (q ? '?' + q : '') + location.hash);
   const note = document.getElementById('renamed');
   note.hidden = false;
-  document.getElementById('renamed-close').addEventListener('click', () => { note.hidden = true; });
+  document.documentElement.classList.add('renamed-on');
+  document.getElementById('renamed-close').addEventListener('click', () => {
+    note.hidden = true;
+    document.documentElement.classList.remove('renamed-on');
+  });
 })();
 </script>
 <a class="skip" href="#main">Skip to content</a>
