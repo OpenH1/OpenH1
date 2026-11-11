@@ -511,9 +511,36 @@ footer .legal + .legal { margin-top: 12px; }
   .reveal { opacity: 1; transform: none; transition: none; }
   .co, .hero-media video { transition: none; }
 }
+
+/* ---------- renamed: a note for visitors sent here from openh1.com */
+.renamed { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 14px; width: max-content; max-width: calc(100% - 32px); box-sizing: border-box; padding: 12px 12px 12px 20px; border: 1px solid var(--line); border-radius: 999px; background: rgba(9, 12, 8, 0.94); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55), 0 0 24px rgba(157, 255, 60, 0.12); font: 500 15px/1.35 var(--body); color: var(--soft); }
+.renamed[hidden] { display: none; }
+.renamed b { color: var(--text); font-weight: 600; }
+.renamed b.lit { color: var(--green); }
+.renamed button { flex: none; width: 36px; height: 36px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font: 20px/1 var(--body); cursor: pointer; }
+.renamed button:hover, .renamed button:focus-visible { color: var(--text); background: rgba(238, 244, 234, 0.08); }
+@media (max-width: 560px) { .renamed { bottom: 16px; border-radius: 18px; } }
 </style>
 </head>
 <body>
+<div class="renamed" id="renamed" role="status" hidden>
+  <span><b>OpenH1</b> is now <b class="lit">GOAT H1</b>. Same game, new name.</span>
+  <button type="button" id="renamed-close" aria-label="Close">×</button>
+</div>
+<script>
+// renamed: openh1.com sends its pages here with ?renamed; say so once, then
+// take it off the address so a reload or a shared link doesn't show it again
+(() => {
+  const params = new URLSearchParams(location.search);
+  if (!params.has('renamed')) return;
+  params.delete('renamed');
+  const q = params.toString();
+  history.replaceState(history.state, '', location.pathname + (q ? '?' + q : '') + location.hash);
+  const note = document.getElementById('renamed');
+  note.hidden = false;
+  document.getElementById('renamed-close').addEventListener('click', () => { note.hidden = true; });
+})();
+</script>
 <a class="skip" href="#main">Skip to content</a>
 
 <header class="top" id="top">
