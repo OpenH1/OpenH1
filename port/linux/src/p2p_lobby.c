@@ -903,6 +903,7 @@ static void update_browsing(void)
 		{
 			lobby.games[index].master = 0;
 			lobby.games[index].listing.master = 0;
+			lobby.games[index].listing.official = 0;
 			lobby.games[index].listing.master_key_id_count = 0;
 		}
 		if (lobby.newer[index].used && elapsed(lobby.newer[index].heard_time, GAME_EXPIRY))
@@ -952,7 +953,7 @@ int p2p_lobby_host_listing(unsigned char *bytes, int size)
 }
 
 int p2p_lobby_take_master_listing(const unsigned char *payload, int size, const char *publisher, const char *region,
-	int network_version_shown, int dedicated, const unsigned char *master_key_id)
+	int network_version_shown, int dedicated, int official, const unsigned char *master_key_id)
 {
 	struct listing listing;
 	struct queued queued;
@@ -1004,6 +1005,10 @@ int p2p_lobby_take_master_listing(const unsigned char *payload, int size, const 
 			game->master_time = p2p_now();
 			game->listing.dedicated = dedicated != 0;
 			game->listing.master = 1;
+			/* (official if the project's master says so: another master's
+			word on the same listing does not take it back) */
+			if (official)
+				game->listing.official = 1;
 			snprintf(game->listing.publisher, sizeof(game->listing.publisher), "%s", publisher ? publisher : "");
 			snprintf(game->listing.region, sizeof(game->listing.region), "%s", region ? region : "");
 			if (game->listing.master_count < 255)

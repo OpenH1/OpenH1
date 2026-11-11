@@ -231,6 +231,9 @@ struct p2p_listing
 	unsigned char master_count;
 	char publisher[P2P_LISTING_PUBLISHER_SIZE + 1];
 	char region[P2P_LISTING_REGION_SIZE + 1];
+	/* an official server's: the project's, on its own master's word
+	(master_list_official), which the server browser lists first */
+	unsigned char official;
 	/* the network version its host plays (another's cannot be joined) */
 	unsigned short network_version;
 	/* the key ids of the masters that listed it this time the browser was
@@ -270,7 +273,7 @@ int p2p_lobby_host_listing(unsigned char *bytes, int size);
 is unset or cannot be looked up (an IPv6 one, which the tunnel does not use) */
 int p2p_public_address(char *text, int size);
 int p2p_lobby_take_master_listing(const unsigned char *payload, int size, const char *publisher, const char *region,
-	int network_version_shown, int dedicated, const unsigned char *master_key_id);
+	int network_version_shown, int dedicated, int official, const unsigned char *master_key_id);
 void p2p_lobby_masters_heard(void);
 /* how many hosts list a game of a newer network version, which is not
 shown (an old build sees none of the games) */

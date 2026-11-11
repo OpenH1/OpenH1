@@ -47,7 +47,9 @@ static int usnprintf(wchar_t *text, size_t size, wchar_t const *format, ...)
 
 #include "config.inc"
 
-static short browser_found_favorites, browser_offline_count;
+static short browser_offline_count;
+static boolean browser_grouped;
+static boolean browser_listed_favorite[BROWSER_LISTED_MAXIMUM];
 static short browser_sort_column, browser_tab;
 static boolean browser_sort_descending;
 static struct browser_filters browser_filters = { TRUE, TRUE, TRUE, 0, BROWSER_ALL_ENGINES };
@@ -135,7 +137,7 @@ static struct browser_sort_entry entry(char const *name, boolean openh1, boolean
 }
 
 /* the games a tab lists, their names in order, separated by spaces, those
-shown as favorites (the first browser_found_favorites) marked with a * */
+shown as favorites (browser_listed_favorite) marked with a * */
 static void listed(short tab, char *names, size_t size, short *offline)
 {
 	struct browser_sort_entry entries[5];
@@ -163,9 +165,53 @@ static void listed(short tab, char *names, size_t size, short *offline)
 	for (index = 0; index < count; index++)
 	{
 		strncat(names, entries[order[index]].name, size - strlen(names) - 3);
-		strncat(names, index < browser_found_favorites ? "* " : " ", size - strlen(names) - 1);
+		strncat(names, browser_listed_favorite[index] ? "* " : " ", size - strlen(names) - 1);
 	}
 	*offline = browser_offline_count;
+}
+
+/* the server browser's list in its groups, on a tab, sorted by a column:
+its games' names in order, the favorites marked with a *, each heading as
+[its words] */
+static void grouped(short tab, short column, boolean descending, boolean official, char *names, size_t size)
+{
+	struct browser_sort_entry entries[7];
+	short favorite_of[7] = { NONE, NONE, NONE, 0, NONE, NONE, 1 };
+	short order[7 + NUMBER_OF_BROWSER_GROUPS], count, index;
+
+	/* (a full Legacy game players host; OpenH1's, one empty and dedicated;
+	the official servers, one empty; a Legacy favorite and an OpenH1 one) */
+	entries[0] = entry("legacyhosted", FALSE, FALSE, 12);
+	entries[1] = entry("openh1empty", TRUE, FALSE, 0);
+	entries[1].dedicated = TRUE;
+	entries[2] = entry("openh1", TRUE, FALSE, 4);
+	entries[3] = entry("legacystar", FALSE, FALSE, 2);
+	entries[4] = entry("officialempty", TRUE, FALSE, 0);
+	entries[4].official = official;
+	entries[5] = entry("official", TRUE, FALSE, 6);
+	entries[5].official = official;
+	entries[6] = entry("openh1star", TRUE, FALSE, 1);
+	browser_tab = tab;
+	browser_sort_column = column;
+	browser_sort_descending = descending;
+	browser_offline_count = 0;
+	browser_grouped = TRUE;
+	count = browser_favorites_order(favorite_of, entries, 7, order);
+	browser_grouped = FALSE;
+	names[0] = 0;
+	for (index = 0; index < count; index++)
+	{
+		if (order[index] < 0)
+		{
+			char words[64];
+
+			snprintf(words, sizeof(words), "[%ls] ", browser_group_heading(BROWSER_HEADING_GROUP(order[index])));
+			strncat(names, words, size - strlen(names) - 1);
+			continue;
+		}
+		strncat(names, entries[order[index]].name, size - strlen(names) - 3);
+		strncat(names, browser_listed_favorite[index] ? "* " : " ", size - strlen(names) - 1);
+	}
 }
 
 /* six games sorted by their players, their names in order */
@@ -233,6 +279,49 @@ int main(int argc, char **argv)
 		listed(_browser_tab_favorites, names, sizeof(names), &offline);
 		CHECK(!strcmp(names, "bravo* echo* "), "FAVORITES lists %s", names);
 		CHECK(offline == 2, "FAVORITES lists no favorites offline");
+		return 0;
+	}
+	CASE("groups")
+	{
+		char names[512];
+
+		/* (the official servers first, then OpenH1's, then the Legacy ones
+		under their heading; in each the favorites first, then by players) */
+		grouped(_browser_tab_all, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
+		CHECK(!strcmp(names, "[Official Servers] official officialempty [OpenH1 Servers] openh1star* openh1 "
+			"openh1empty [Legacy (Slow) Servers] legacystar* legacyhosted "), "ALL lists %s", names);
+		/* (no official servers: OpenH1's need no heading) */
+		grouped(_browser_tab_all, _browser_sort_players, TRUE, FALSE, names, sizeof(names));
+		CHECK(!strcmp(names, "openh1star* official openh1 openh1empty officialempty [Legacy (Slow) Servers] "
+			"legacystar* legacyhosted "), "ALL without official servers lists %s", names);
+		/* (each group sorted by the column chosen, the other way too) */
+		grouped(_browser_tab_all, _browser_sort_name, FALSE, TRUE, names, sizeof(names));
+		CHECK(!strcmp(names, "[Official Servers] official officialempty [OpenH1 Servers] openh1star* openh1 "
+			"openh1empty [Legacy (Slow) Servers] legacystar* legacyhosted "), "by name lists %s", names);
+		grouped(_browser_tab_all, _browser_sort_players, FALSE, TRUE, names, sizeof(names));
+		CHECK(!strcmp(names, "[Official Servers] officialempty official [OpenH1 Servers] openh1star* openh1empty "
+			"openh1 [Legacy (Slow) Servers] legacystar* legacyhosted "), "fewest first lists %s", names);
+		/* (LEGACY's lists nothing else: no heading; OPENH1's no Legacy one) */
+		grouped(_browser_tab_legacy, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
+		CHECK(!strcmp(names, "legacystar* legacyhosted "), "LEGACY lists %s", names);
+		grouped(_browser_tab_openh1, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
+		CHECK(!strcmp(names, "[Official Servers] official officialempty [OpenH1 Servers] openh1star* openh1 "
+			"openh1empty "), "OPENH1 lists %s", names);
+		grouped(_browser_tab_dedicated, _browser_sort_players, TRUE, FALSE, names, sizeof(names));
+		CHECK(!strcmp(names, "openh1empty "), "DEDICATED lists %s", names);
+		/* (the filters still hide games, and a group they empty has no
+		heading) */
+		config_set("network.browser_show_empty", "false");
+		browser_filters_read(&browser_filters);
+		browser_filtering = TRUE;
+		grouped(_browser_tab_all, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
+		CHECK(!strcmp(names, "[Official Servers] official [OpenH1 Servers] openh1star* openh1 "
+			"[Legacy (Slow) Servers] legacystar* legacyhosted "), "SHOW EMPTY GAMES: NO lists %s", names);
+		CHECK(browser_filtered_count == 2, "%d hidden counted, not 2", browser_filtered_count);
+		config_set("network.browser_show_full", "false");
+		browser_filters_read(&browser_filters);
+		grouped(_browser_tab_legacy, _browser_sort_players, TRUE, TRUE, names, sizeof(names));
+		CHECK(!strcmp(names, "legacystar* "), "LEGACY, no full games, lists %s", names);
 		return 0;
 	}
 	CASE("sort")
