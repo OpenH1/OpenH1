@@ -3,9 +3,11 @@ MENU_TOUR.C
 
 debug.menu_tour: one run of the game walks the menu screens a list names
 (a file in the data root, a screen a line, as port/assets/menus names it:
-main_menu/settings_select/...), for tools/menu_gallery.py. Once the menus
-are up, each screen in turn is opened alone (the others closed, a player
-profile being edited, as debug.menu_open opens one), the first at the same
+main_menu/settings_select/..., and after it, a tab before each, the event
+handler functions the game runs as it opens the screen: menu_tour_setup),
+for tools/menu_gallery.py. Once the menus are up, each screen in turn is
+opened alone (the others closed, a player profile being edited and the
+line's functions run, as debug.menu_open opens one), the first at the same
 game time in every run (MENU_TOUR_START_TICKS), shown for
 debug.menu_tour_frames frames, and then its layout written
 (menu_layout.c: tour/<n>.json in the data root, n its line, from 0) and,
@@ -23,7 +25,9 @@ compared; past its last, the game quits.
 
 #include "cseries.h"
 #include "game/game.h"
+#include "interface/event_manager.h"
 #include "interface/ui_widget.h"
+#include "interface/ui_widget_event_handler_functions.h"
 #include "interface/terminal.h"
 #include "interface/virtual_keyboard.h"
 #include "menu_layout.h"
@@ -43,6 +47,7 @@ int platform_test_menu_waiting(void);
 int platform_test_menu_step(void);
 int platform_test_menu_done(void);
 char const *ui_widget_port_screen_name(void);
+long pc_menu_event_function_index(char const *name);
 void const *ui_widget_port_focused_widget(void);
 
 #define MENU_TOUR_MAXIMUM_SCREENS 512
@@ -96,15 +101,64 @@ static boolean menu_tour_read(
 	return menu_tour.count > 0;
 }
 
-/* the screen of the menu files' name opened alone; FALSE where it is not
-one of theirs */
-static boolean menu_tour_open(
-	char const *name)
+/* the event handler functions the game runs as it opens a screen, before
+it does (a tab before each: a tour's line's, or debug.menu_open's, after
+the screen's name), run as the first player's press runs them: a new
+gametype made and edited ("create&edit playlist profile"), the keyboard
+launched on a name ("player profile change name"), the screens that the
+game shows only then, and that close at once without it ("close if not
+editing profile"). "close keyboard" closes the keyboard one of them left
+up, the name as it was, as a player's Cancel does */
+void menu_tour_setup(
+	char const *functions)
 {
-	char tag_name[MENU_TOUR_NAME_LENGTH + 8];
+	char function[MENU_TOUR_NAME_LENGTH];
+	struct widget_instance widget;
+	struct event_record event;
+	boolean deleted;
 	long index;
 
-	snprintf(tag_name, sizeof(tag_name), "pc\\%s", name);
+	while (functions && *functions == '\t')
+	{
+		size_t length = strcspn(++functions, "\t");
+
+		snprintf(function, sizeof(function), "%.*s", (int)length, functions);
+		functions += length;
+		if (!strcmp(function, "close keyboard"))
+		{
+			if (virtual_keyboard_active())
+				virtual_keyboard_close();
+			continue;
+		}
+		index = pc_menu_event_function_index(function);
+		if (index == NONE)
+		{
+			platform_log("menus: menu tour: there is no event handler function \"%s\"", function);
+			continue;
+		}
+		/* (a widget of the first player's menus, and its press) */
+		memset(&widget, 0, sizeof(widget));
+		widget.definition_tag_index = NONE;
+		widget.name = "menu tour";
+		widget.local_player_index = 0;
+		memset(&event, 0, sizeof(event));
+		event.controller_index = 0;
+		deleted = FALSE;
+		if (!ui_widget_event_handler_function_invoke(&widget, &event, (word)index, &deleted))
+			platform_log("menus: menu tour: \"%s\" failed", function);
+	}
+}
+
+/* the screen of the menu files' name opened alone, its line's functions run
+first; FALSE where it is not one of theirs */
+static boolean menu_tour_open(
+	char const *line)
+{
+	char tag_name[MENU_TOUR_NAME_LENGTH + 8];
+	size_t length = strcspn(line, "\t");
+	long index;
+
+	snprintf(tag_name, sizeof(tag_name), "pc\\%.*s", (int)length, line);
 	for (index = 0; tag_name[index]; index++)
 	{
 		if (tag_name[index] == '/')
@@ -117,6 +171,7 @@ static boolean menu_tour_open(
 	terminal_clear();
 	ui_widgets_close_all();
 	pc_menu_profile_edit_begin();
+	menu_tour_setup(line + length);
 	return ui_widget_load_by_name_or_tag(tag_name, NONE, NULL, NONE, NONE, NONE, NONE) != NULL;
 }
 

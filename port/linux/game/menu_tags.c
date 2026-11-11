@@ -1129,6 +1129,23 @@ static long function_index(char const *name, char const *file, long line)
 	return NONE;
 }
 
+/* an event handler function's index as a widget's handler of the name runs
+it (ours first, then the game's); NONE for none (menu_tour.c's setup) */
+long pc_menu_event_function_index(char const *name)
+{
+	char const *function_name;
+	long index = name_index(name, port_function_names, NUMBEROF(port_function_names));
+
+	if (index != NONE)
+		return PC_MENU_FUNCTION_BASE + index;
+	for (index = 0; (function_name = ui_widget_event_handler_function_name(index)) != NULL; index++)
+	{
+		if (!strcmp(name, function_name))
+			return index;
+	}
+	return NONE;
+}
+
 static long game_data_input_index(char const *name, char const *file, long line)
 {
 	long index;
@@ -3720,8 +3737,11 @@ char const *pc_menus_root_name(
 	{
 		static char name[300];
 		long index;
+		/* (the screen's name, and after it the functions the game runs as it
+		opens the screen, a tab before each: menu_tour_setup's) */
+		int length = (int)strcspn(open, "\t");
 
-		snprintf(name, sizeof(name), "%s%s", PC_MENU_TAG_PREFIX, open);
+		snprintf(name, sizeof(name), "%s%.*s", PC_MENU_TAG_PREFIX, length, open);
 		for (index = 0; name[index]; index++)
 		{
 			if (name[index] == '/')
@@ -3731,10 +3751,13 @@ char const *pc_menus_root_name(
 		{
 			extern boolean pc_menu_profile_edit_begin(void);
 
+			extern void menu_tour_setup(char const *functions);
+
 			pc_menu_profile_edit_begin();
+			menu_tour_setup(open + length);
 			return name;
 		}
-		platform_log("menus: debug.menu_open: there is no widget named %s", open);
+		platform_log("menus: debug.menu_open: there is no widget named %.*s", length, open);
 	}
 	return menu_tags.loaded && menu_tags.root[0] ? menu_tags.root : "ui\\shell\\main_menu\\main_menu";
 }

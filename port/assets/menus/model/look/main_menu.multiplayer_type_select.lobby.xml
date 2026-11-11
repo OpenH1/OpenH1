@@ -476,13 +476,13 @@
 	<look name="main_menu/multiplayer_type_select/lobby/board_prompts" type="column_list" box="0 0 640 28">
 		<at widget="main_menu/multiplayer_type_select/lobby/prompt_team" x="28" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/lobby/prompt_invite" x="176" y="1"/>
-		<at widget="main_menu/multiplayer_type_select/lobby/prompt_add" x="316" y="1"/>
+		<at widget="main_menu/multiplayer_type_select/lobby/prompt_add" x="305" y="1"/>
 		<at widget="main_menu/multiplayer_type_select/lobby/prompt_leave" x="516" y="1"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/lobby/prompt_invite" type="text" box="0 0 128 24" wide="-106 0" picture="main_menu/parts/item_128x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%y-button COPY INVITE"/>
 	</look>
-	<look name="main_menu/multiplayer_type_select/lobby/prompt_add" type="text" box="0 0 132 24" wide="106 0" picture="main_menu/parts/item_132x24">
+	<look name="main_menu/multiplayer_type_select/lobby/prompt_add" type="text" box="0 0 143 24" wide="106 0" picture="main_menu/parts/item_143x24">
 		<text font="ui\small_ui" color="#FFCFE3FF" at="8 3" text="%x-button ADD PLAYER"/>
 	</look>
 	<look name="main_menu/multiplayer_type_select/lobby/prompt_leave" type="text" box="0 0 96 24" wide="106 0" picture="main_menu/parts/item_96x24">

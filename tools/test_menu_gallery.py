@@ -1,5 +1,6 @@
 """tools/menu_gallery.py's parts that need no game: the screens found in menu files, the pictures'
 difference, the layout checks on made-up layouts, the page."""
+import re
 import sys
 from pathlib import Path
 
@@ -222,3 +223,33 @@ def test_a_line_cut_at_its_right_edge():
     wrapped["wide"] = [0, 200, 170, 219]
     found = menu_gallery.check_layout(layout(cut, wrapped), KEYBOARD)
     assert checks(found) == ["cut"] and "right edge" in found[0]["message"]
+
+
+def test_the_tours_setup_opens_real_screens_with_the_games_functions():
+    """each screen the tour opens with the game's functions first is one of the menus', and each function one its
+    menus run (or the tour's "close keyboard"), as its line names them"""
+    screens = {screen.name for screen in menu_gallery.enumerate_screens(menu_gallery.ROOT / menu_gallery.MENUS)}
+    runs = set()
+    for path in (menu_gallery.ROOT / menu_gallery.MENUS).glob("*.xml"):
+        runs.update(re.findall(r' run="([^"]+)"', path.read_text().replace("&amp;", "&")))
+    for name, functions in menu_gallery.TOUR_SETUP.items():
+        assert name in screens, name
+        for function in functions:
+            assert function == "close keyboard" or function in runs, function
+        assert menu_gallery.tour_line(name).split("\t") == [name, *functions]
+    assert menu_gallery.tour_line("main_menu/main_menu") == "main_menu/main_menu"
+
+
+def test_parity_counts_no_layout_on_either_side_as_not_compared():
+    """two runs that drew nothing of a screen are not its parity: it fails, but for a screen the game shows only
+    under the keyboard; and a layout of another screen than the one opened is not compared either"""
+    import menu_parity
+    screen = "main_menu/settings_select/player_setup/player_profile_edit/player_profile_edit_screen"
+    assert menu_parity.compare_layouts(screen, None, None)[0].startswith("NOT COMPARED")
+    assert menu_parity.compare_layouts(
+        "main_menu/settings_select/player_setup/player_profile_edit/name_edit/profile_name_screen", None, None) == []
+    assert menu_parity.compare_pictures(None, None)[0].startswith("NOT COMPARED")
+    other = {"screen_name": "pc\\main_menu\\main_menu", "items": []}
+    assert menu_parity.compare_layouts(screen, other, other, opened=True)[0].startswith("NOT COMPARED")
+    own = {"screen_name": "pc\\" + screen.replace("/", "\\"), "items": []}
+    assert menu_parity.compare_layouts(screen, own, own, opened=True) == []

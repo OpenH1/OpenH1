@@ -632,9 +632,9 @@
 		<frame png="ce/port/main_menu/parts/item_128x24__0.png" width="128" height="24"/>
 		<frame png="ce/port/main_menu/parts/item_128x24__1.png" width="128" height="24"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/item_132x24">
-		<frame png="ce/port/main_menu/parts/item_132x24__0.png" width="132" height="24"/>
-		<frame png="ce/port/main_menu/parts/item_132x24__1.png" width="132" height="24"/>
+	<bitmap name="main_menu/parts/item_143x24">
+		<frame png="ce/port/main_menu/parts/item_143x24__0.png" width="143" height="24"/>
+		<frame png="ce/port/main_menu/parts/item_143x24__1.png" width="143" height="24"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/item_144x24">
 		<frame png="ce/port/main_menu/parts/item_144x24__0.png" width="144" height="24"/>

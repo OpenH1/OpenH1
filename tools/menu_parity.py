@@ -7,11 +7,14 @@ and what each draws compared.
     python tools/menu_parity.py --layout --screens settings --variants 16x9-keyboard
     python tools/menu_parity.py --behaviour --sweep   # the scripts of presses, and every screen's navigation
 
---layout runs tools/menu_gallery.py's tour (debug.menu_tour: each screen opened alone, hidden, muted, no
-renderer) once on each engine for each variant, and compares each screen's layout (port/linux/game/menu_layout.c:
-every widget's box and clip, every string's text, box, clip and extent, every button's glyph and every pointer
-target), item by item. The variants are the four aspect ratios (4:3, 16:10, 16:9, 21:9) with each input (a
-controller, the keyboard and mouse, touch).
+--layout runs tools/menu_gallery.py's tour (debug.menu_tour: each screen opened alone, hidden, muted, no renderer,
+from the player profile the behaviour scripts start from, the game's functions that open it run first:
+menu_gallery.TOUR_SETUP) once on each engine for each variant, and compares each screen's layout
+(port/linux/game/menu_layout.c: every widget's box and clip, every string's text, box, clip and extent, every
+button's glyph and every pointer target), item by item. A screen with no layout on either side (it closed at once,
+or another was drawn) is not the same but NOT COMPARED, which fails it, but for the name screens the game shows
+only under the virtual keyboard (menu_gallery.UNDER_KEYBOARD), whose frames --pixels compares. The variants are the
+four aspect ratios (4:3, 16:10, 16:9, 21:9) with each input (a controller, the keyboard and mouse, touch).
 
 --behaviour runs scripts of presses (debug.test_input "menu:ready ...", SCRIPTS) on each engine from the same
 config.toml and player profile and compares where the focus was after each press, config.toml, the profile's files,
@@ -32,6 +35,7 @@ import concurrent.futures
 import json
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -121,12 +125,24 @@ def layout_items(layout: dict) -> list:
     return items
 
 
-def compare_layouts(screen: str, classic: dict, new: dict) -> list:
-    """the differences of two layouts of a screen, as lines (none: the same)"""
+def compare_layouts(screen: str, classic: dict, new: dict, opened: bool = False) -> list:
+    """the differences of two layouts of a screen, as lines (none: the same). No layout on either side is not the
+    same but a screen not compared, a failure too, but for a screen the game shows only under the keyboard
+    (menu_gallery.UNDER_KEYBOARD: its frames are compared); opened: the layouts must be the screen's own, not
+    another's it left for"""
     if classic is None or new is None:
-        return [] if classic is None and new is None else \
-            [f"layout written by {'classic' if classic is not None else 'new'} only"]
+        if classic is None and new is None:
+            return [] if menu_gallery.UNDER_KEYBOARD.search(screen) else \
+                ["NOT COMPARED: no layout on either engine (the screen closed, or was never drawn)"]
+        return [f"layout written by {'classic' if classic is not None else 'new'} only"]
     lines = []
+    if opened:
+        for engine, layout in (("classic", classic), ("new", new)):
+            drawn = str(layout.get("screen_name", "")).replace("\\", "/")
+            if not drawn.endswith(screen):
+                lines.append(f"NOT COMPARED: {engine} drew {drawn or 'no screen'}, not {screen}")
+        if lines:
+            return lines
     for key in ("screen_name", "screen", "prompts", "touch_menus"):
         if classic.get(key) != new.get(key):
             lines.append(f"{key}: {classic.get(key)!r} | {new.get(key)!r}")
@@ -153,9 +169,10 @@ def raw_shot(path: Path, size):
 
 
 def compare_pictures(classic, new) -> list:
-    """the differences of two frames of a screen, as lines (none: the same pixels)"""
+    """the differences of two frames of a screen, as lines (none: the same pixels; no frame on either side: not
+    compared, which fails)"""
     if classic is None or new is None:
-        return [] if classic is None and new is None else \
+        return ["NOT COMPARED: no frame from either engine"] if classic is None and new is None else \
             [f"frame drawn by {'classic' if classic is not None else 'new'} only"]
     if classic.size != new.size:
         return [f"frame sizes {classic.size} | {new.size}"]
@@ -170,10 +187,10 @@ def compare_pictures(classic, new) -> list:
 
 
 def run_layouts(build: Path, screens: list, variant_names: list, maps: Path, template: Path, jobs: int,
-                timeout: float, pictures: bool = False, logs: dict = None) -> dict:
+                timeout: float, pictures: bool = False, logs: dict = None, profile: Path = None) -> dict:
     """{(variant, engine): {screen: (picture, layout)}}, each variant's screens split over parts run at once
     (pictures: each screen's frame too, read from the run's folder into memory, which is then deleted; logs:
-    {engine: [each run's log]} filled in)"""
+    {engine: [each run's log]} filled in; profile: the player profiles each run starts with, MAKE_PROFILE's)"""
     parts = max(1, jobs // max(1, 2 * len(variant_names)))
     size = -(-len(screens) // parts)
     tasks = [(name, engine, screens[start:start + size]) for name in variant_names for engine in ("classic", "new")
@@ -186,7 +203,7 @@ def run_layouts(build: Path, screens: list, variant_names: list, maps: Path, tem
             found = menu_gallery.tour(build, part, engine_variant(VARIANTS[name], ENGINES.get(engine, engine)), maps,
                                       None, pictures,
                                       False, timeout + len(part), template,
-                                      logs.setdefault(engine, []) if logs is not None else None)
+                                      logs.setdefault(engine, []) if logs is not None else None, profile)
         except Exception as error:  # (reported as the screens' difference)
             return task, {screen.name: {"error": str(error)} for screen in part}
         return task, {screen.name: found[screen.name] for screen in part}
@@ -302,7 +319,7 @@ SWEEP_SKIP = re.compile(r"/name_edit/")
 
 def sweep_scripts(vr: bool = False) -> list:
     """the navigation sweep's scripts, one a screen (VR's too with vr)"""
-    return [(f"sweep:{screen.name}", screen.name, SWEEP)
+    return [(f"sweep:{screen.name}", menu_gallery.tour_line(screen.name), SWEEP)
             for screen in menu_gallery.enumerate_screens(ROOT / menu_gallery.MENUS, vr)
             if not SWEEP_SKIP.search(screen.name)]
 
@@ -399,21 +416,28 @@ def behaviour_run(build: Path, script: tuple, engine: str, maps: Path, template:
         shutil.rmtree(folder, ignore_errors=True)
 
 
-def behaviour(arguments, template: Path) -> dict:
-    """{script: lines} of the scripts whose results differ between the engines"""
-    scripts = [script for script in [MAKE_PROFILE] + SCRIPTS + (sweep_scripts(arguments.vr) if arguments.sweep else [])
-               if re.search(arguments.scripts, script[0])]
+def make_profile(arguments, template: Path) -> tuple:
+    """(a folder of the player profile the runs start from, made by a script on the classic engine: the same for
+    both engines; the script's result), the folder deleted by the caller"""
     import shutil
     import tempfile
-    tasks = [(script, engine) for script in scripts for engine in ("classic", "new")]
-    results = {}
-    # (the profile the scripts start from, made by a script: the same for both engines)
     profile = Path(tempfile.mkdtemp(prefix="menu-parity-profile-"))
     made = behaviour_run(arguments.build, MAKE_PROFILE, "classic", arguments.data, template, arguments.timeout,
                          keep=profile)
     if not made["profile"]:
         shutil.rmtree(profile, ignore_errors=True)
-        raise SystemExit("menu_parity: no player profile made for the scripts:\n" + made["log"][-800:])
+        raise SystemExit("menu_parity: no player profile made for the runs:\n" + made["log"][-800:])
+    return profile, made
+
+
+def behaviour(arguments, template: Path) -> dict:
+    """{script: lines} of the scripts whose results differ between the engines"""
+    scripts = [script for script in [MAKE_PROFILE] + SCRIPTS + (sweep_scripts(arguments.vr) if arguments.sweep else [])
+               if re.search(arguments.scripts, script[0])]
+    import shutil
+    tasks = [(script, engine) for script in scripts for engine in ("classic", "new")]
+    results = {}
+    profile, made = make_profile(arguments, template)
 
     def one(task):
         script, engine = task
@@ -447,7 +471,7 @@ def behaviour(arguments, template: Path) -> dict:
         for key in ("focus", "config", "profile", "writes"):
             if a[key] != b[key]:
                 lines.append(f"{key}: {json.dumps(a[key])[:1500]}\n      | {json.dumps(b[key])[:1500]}")
-        lines += compare_layouts(script[1], a["layout"], b["layout"])
+        lines += compare_layouts(script[1].split("\t")[0], a["layout"], b["layout"])
         if lines:
             differences[script[0]] = lines
         print(f"menu_parity: behaviour {script[0]}: {'differs' if lines else 'the same'} "
@@ -466,7 +490,7 @@ def compare_results(results: dict, screens: list, variant_names: list, arguments
             if isinstance(a, dict) or isinstance(b, dict):
                 lines = [f"run failed: {(a if isinstance(a, dict) else b)['error'][:300]}"]
             else:
-                lines = compare_layouts(screen.name, a[1], b[1]) if arguments.layout else []
+                lines = compare_layouts(screen.name, a[1], b[1], opened=True) if arguments.layout else []
                 if arguments.pixels and not lines:
                     lines = compare_pictures(a[0], b[0])
                     if lines and is_deliberate_frame(screen.name, a[1], b[1]):
@@ -579,34 +603,30 @@ def main(argv=None) -> int:
     if arguments.look_control:
         return look_control(arguments.build, screens, arguments.data, template, arguments.timeout)
     logs = {}
-    results = run_layouts(arguments.build, screens, variant_names, arguments.data, template, arguments.jobs,
-                          arguments.timeout, arguments.pixels, logs)
-    differences = compare_results(results, screens, variant_names, arguments)
-    if arguments.pixels and differences:
-        # (a frame that differs is drawn again, one run at a time on each side: what the textures still
-        # streaming in when many runs share the computer leaves out of a frame is not the engine's)
-        again = {}
-        for key in differences:
-            name, screen_name = key.split(" ", 1)
-            again.setdefault(name, []).append(next(screen for screen in screens if screen.name == screen_name))
-        print(f"menu_parity: {len(differences)} differ; drawn again one run at a time", file=sys.stderr, flush=True)
-        for name, part in again.items():
-            redone = run_layouts(arguments.build, part, [name], arguments.data, template, 2, arguments.timeout, True)
-            confirmed = compare_results(redone, part, [name], arguments)
-            for screen in part:
-                key = f"{name} {screen.name}"
-                if key not in confirmed:
-                    del differences[key]
-                else:
-                    differences[key] = confirmed[key]
+    # (the player profile each run starts with, as the behaviour scripts do: the screens that close at once with no
+    # profile being edited, the profile's hub among them, drawn)
+    profile, _ = make_profile(arguments, template)
+    try:
+        results = run_layouts(arguments.build, screens, variant_names, arguments.data, template, arguments.jobs,
+                              arguments.timeout, arguments.pixels, logs, profile)
+        differences = compare_results(results, screens, variant_names, arguments)
+        again_one_at_a_time(arguments, differences, screens, template, profile)
+    finally:
+        shutil.rmtree(profile, ignore_errors=True)
+    not_compared = sum(1 for lines in differences.values() if any(line.startswith("NOT COMPARED") for line in lines))
+    under_keyboard = [screen.name for screen in screens if menu_gallery.UNDER_KEYBOARD.search(screen.name)]
     same = len(screens) * len(variant_names) - len(differences)
     for key, lines in sorted(differences.items()):
         print(f"DIFFERS {key}")
         for line in lines:
             print(f"    {line}")
     print(f"menu_parity: {' and '.join(kind for kind, on in (('layout', arguments.layout), ('pixels', arguments.pixels)) if on)}: "
-          f"{same} the same, {len(differences)} differ "
+          f"{same} the same, {len(differences) - not_compared} differ, {not_compared} not compared "
           f"({len(screens)} screens x {len(variant_names)} variants)")
+    if under_keyboard:
+        print(f"menu_parity: {len(under_keyboard)} screens shown only under the keyboard, which writes no layout"
+              f"{': their frames compared' if arguments.pixels else ' (--pixels compares their frames)'}: "
+              f"{', '.join(under_keyboard)}")
     from_definitions = [] if arguments.baseline else looks_from_definitions(logs.get("new", []))
     for widget in from_definitions:
         print(f"LOOK FROM ITS DEFINITION {widget}")
@@ -614,6 +634,30 @@ def main(argv=None) -> int:
     if arguments.out:
         arguments.out.write_text(json.dumps(differences, indent=1))
     return 1 if differences or failed or from_definitions else 0
+
+
+def again_one_at_a_time(arguments, differences: dict, screens: list, template: Path, profile: Path):
+    """the frames that differ drawn again, one run at a time on each side, and differences that do not recur
+    dropped (what the textures still streaming in when many runs share the computer leaves out of a frame is not
+    the engine's); the screens not compared are not drawn again"""
+    if arguments.pixels and differences:
+        again = {}
+        for key, lines in differences.items():
+            if any(line.startswith("NOT COMPARED") for line in lines):
+                continue
+            name, screen_name = key.split(" ", 1)
+            again.setdefault(name, []).append(next(screen for screen in screens if screen.name == screen_name))
+        print(f"menu_parity: {len(differences)} differ; drawn again one run at a time", file=sys.stderr, flush=True)
+        for name, part in again.items():
+            redone = run_layouts(arguments.build, part, [name], arguments.data, template, 2, arguments.timeout, True,
+                                 None, profile)
+            confirmed = compare_results(redone, part, [name], arguments)
+            for screen in part:
+                key = f"{name} {screen.name}"
+                if key not in confirmed:
+                    del differences[key]
+                else:
+                    differences[key] = confirmed[key]
 
 
 if __name__ == "__main__":
